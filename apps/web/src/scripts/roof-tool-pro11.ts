@@ -1171,7 +1171,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const toitParCotes = monterToitParCotes({
     ancre: addAreaBtn, vide: () => !closed && vertices.length === 0, setStatus: (m) => setStatus(m),
     centre: () => { const c = map.getCenter?.(); return c ? [c.lng, c.lat] : null; },
-    creer: (anneau) => { localiserSiTraceVisible(ctx, map.getZoom()); vertices = anneau; close(); }, // T4-U4-013 — créé sur le toit VU : site localisé
+    creer: (anneau) => { localiserSiTraceVisible(ctx, typeof map.getZoom === 'function' ? map.getZoom() : Number.NaN); vertices = anneau; close(); }, // T4-U4-013 — créé sur le toit VU : site localisé
   });
   // ACAL410 — « Forme du toit » : un clic remplace le pan actif par les pans de la forme.
   const formesToit = monterFormesToit({
