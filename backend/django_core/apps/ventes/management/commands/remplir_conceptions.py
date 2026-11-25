@@ -335,7 +335,10 @@ def _ecarts_du_plan_par_defaut(lead, company):
     """``{refus}`` (le moteur refuse ce lead) ou ``{options: [...]}`` d'un lead sans toit : par
     option de sa conception (rangée courante, sinon calculée), la production d'aujourd'hui
     contre le plan par défaut au kWc, au compte et au matériel de l'option. Chaque option :
-    ``{option, kwc, avant, apres, kwc_plan, refus, pente_supposee}`` (lecture seule)."""
+    ``{option, kwc, avant, apres, kwc_plan, refus, pente_supposee, etapes_sans_fiche,
+    puissance_conception, fiche_vide}`` (lecture seule) : ``fiche_vide`` = la fiche du module
+    ne porte pas sa puissance ou fait omettre des étapes de pertes, la production « après »
+    est alors SURESTIMÉE."""
     from apps.ventes.conception.moteur import calculer_conception
     from apps.ventes.conception.porte_calepinage import production_du_plan_par_defaut
     from apps.ventes.models import ConceptionLead
@@ -356,8 +359,34 @@ def _ecarts_du_plan_par_defaut(lead, company):
                         'apres': plan.get('production_annuelle'), 'kwc_plan': plan.get('kwc') or kwc,
                         'refus': plan.get('refus'),
                         'pente_supposee': any(s.get('champ') == 'inclinaison_deg'
-                                              for s in plan.get('suppositions') or ())})
+                                              for s in plan.get('suppositions') or ()),
+                        **_fiche_du_module(plan.get('suppositions') or ())})
     return {'options': options}
+
+
+def _fiche_du_module(suppositions):
+    """``{etapes_sans_fiche, puissance_conception, fiche_vide}`` lus sur les suppositions du
+    plan par défaut (codes ``fiche_module_incomplete`` / ``puissance_module_de_la_conception``)."""
+    codes = [s.get('code') for s in suppositions]
+    etapes, puissance = codes.count('fiche_module_incomplete'), 'puissance_module_de_la_conception' in codes
+    return {'etapes_sans_fiche': etapes, 'puissance_conception': puissance, 'fiche_vide': bool(etapes or puissance)}
+
+
+def _drapeau_fiche(o):
+    """Le drapeau d'une ligne simulée avec une fiche de module vide (production surestimée)."""
+    if not o.get('fiche_vide'):
+        return ''
+    return (f', fiche du module vide : {o.get("etapes_sans_fiche", 0)} étape(s) de pertes non appliquée(s)'
+            + (', puissance prise de la conception' if o.get('puissance_conception') else ''))
+
+
+def _ligne_moyenne(quoi, ecarts):
+    """« ÉCART MOYEN (<quoi>) : … ; PLUS GRAND : … » sur ``ecarts`` (non vide)."""
+    plus_grand = max(ecarts, key=lambda ecart: abs(ecart['pct']))
+    return (f'  ÉCART MOYEN ({quoi}) : {_signe(sum(e["kwh"] for e in ecarts) / len(ecarts))} kWh/an '
+            f'({sum(e["pct"] for e in ecarts) / len(ecarts):+.1f} %) ; PLUS GRAND : lead '
+            f'#{plus_grand["lead"]} option {plus_grand["option"]} {_signe(plus_grand["kwh"])} '
+            f'kWh/an ({plus_grand["pct"]:+.1f} %)')
 
 
 def _rendement(production, kwc):
@@ -377,10 +406,11 @@ def _ligne_option(lead, o):
     if avant is None or apres is None:
         return tete + ' (écart —) ; changera : —', None
     kwh, pct = apres - avant, ((apres - avant) / avant * 100 if avant else 0.0)
-    supposee = ', pente supposée 30°' if o['pente_supposee'] else ''
+    supposee = (', pente supposée 30°' if o['pente_supposee'] else '') + _drapeau_fiche(o)
     return (tete + f' (écart {_signe(kwh)} kWh, {pct:+.1f} %{supposee}) ; '
             f'changera : {"oui" if round(apres) != round(avant) else "non"}',
-            {'lead': lead.pk, 'option': o['option'], 'kwh': kwh, 'pct': pct})
+            {'lead': lead.pk, 'option': o['option'], 'kwh': kwh, 'pct': pct,
+             'fiche_vide': bool(o.get('fiche_vide'))})
 
 
 def _compte_par_motif(motifs):
@@ -401,16 +431,19 @@ def _sortie_sans_toit(rendus):
             lignes.append(ligne)
             ecarts += [ecart] if ecart else []
             non_simulees += [o['refus']] if o['refus'] else []
-    simulees = sum(len(r.get('options') or ()) for _l, r in rendus) - len(non_simulees)
-    tete = [f'  COMPTES : {len(rendus)} lead(s) sans toit listé(s) ; {simulees} ligne(s) d\'option simulée(s) ; '
+    options = [o for _l, r in rendus for o in r.get('options') or ()]
+    simulees = len(options) - len(non_simulees)
+    vides = sum(1 for o in options if not o['refus'] and o.get('fiche_vide'))
+    tete = [f'  COMPTES : {len(rendus)} lead(s) sans toit listé(s) ; {simulees} ligne(s) d\'option simulée(s), '
+            f'dont {vides} avec une fiche de module vide (production surestimée) ; '
             f'{len(non_simulees)} non simulée(s) : {_compte_par_motif(non_simulees)} ; {len(refuses)} lead(s) '
             f'refusé(s) par le moteur : {_compte_par_motif([r.get("code") for _l, r in refuses])}']
     if ecarts:
-        plus_grand = max(ecarts, key=lambda ecart: abs(ecart['pct']))
-        tete.append(f'  ÉCART MOYEN : {_signe(sum(e["kwh"] for e in ecarts) / len(ecarts))} kWh/an '
-                    f'({sum(e["pct"] for e in ecarts) / len(ecarts):+.1f} %) ; PLUS GRAND : lead '
-                    f'#{plus_grand["lead"]} option {plus_grand["option"]} {_signe(plus_grand["kwh"])} '
-                    f'kWh/an ({plus_grand["pct"]:+.1f} %)')
+        completes = [e for e in ecarts if not e['fiche_vide']]
+        tete.append(_ligne_moyenne(f'fiche complète, {len(completes)} ligne(s)', completes) if completes else
+                    '  ÉCART MOYEN (fiche complète) : aucune ligne simulée avec une fiche de module complète — '
+                    'aucun écart fiable à moyenner')
+        tete.append(_ligne_moyenne(f'toutes les lignes simulées, {len(ecarts)}', ecarts))
     fin = ([f'  LEADS REFUSÉS PAR LE MOTEUR ({len(refuses)}, pas des écarts) :']
            + [f'    lead #{lead.pk} : {r.get("code")} — {r.get("message")}' for lead, r in refuses]) if refuses else []
     return tete + lignes + fin
