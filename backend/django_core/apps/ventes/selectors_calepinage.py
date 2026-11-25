@@ -702,6 +702,18 @@ def production_annoncee_du_devis(devis_id, company):
             'servie': base is not None, 'motif': motif}
 
 
+def pose_reelle_au_niveau(niveau):
+    """Relecture du lot 4, m2 — vrai quand un résultat rangé au niveau de règles ``niveau``
+    (``ConceptionLead.niveau_regles``) suit les règles de la pose réelle (niveau 15,
+    ``REGLES_POSE_REELLE_2111``) ; ``None`` suit les règles courantes. Lecture pure."""
+    from types import SimpleNamespace
+
+    from .domain.regles_calcul import REGLES_POSE_REELLE_2111, regles_au_moins
+
+    return regles_au_moins(None if niveau is None else SimpleNamespace(regles_calcul=niveau),
+                           REGLES_POSE_REELLE_2111)
+
+
 def production_imprimee_du_devis(devis):
     """R2-14 (D-ACAL-6) — LA production annuelle (kWh, ``Decimal``) que le PDF
     ``/proposal`` imprime pour ce devis (instance) : le MÊME rendu que

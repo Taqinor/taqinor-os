@@ -56,6 +56,10 @@ PARAMETRES = {
     'WS10M': 'ws10m',
 }
 
+#: ACAL2043 — délai TOTAL d'une comparaison (une demande par année) : au-delà, la comparaison
+#: est omise avec son motif, jamais la simulation retenue.
+DELAI_TOTAL_S = 30
+
 #: Heures d'une année complète (non bissextile, bissextile).
 HEURES_PAR_AN = (8760, 8784)
 
@@ -135,7 +139,7 @@ class ClientNasaPower:
                 'irradiation_horizontale_kwh_m2': {'pvgis': nombre(ghi_pvgis_kwh_m2), 'nasa_power': None},
                 'ecart_pct': None, 'annees': [], 'meteo': None, 'motif': ''}
         try:
-            serie = self.serie_horizontale(lat, lon, annee_debut, annee_fin)
+            serie = self._series_annuelles(lat, lon, int(annee_debut), int(annee_fin))
         except (NasaPowerIndisponible, TypeError, ValueError) as refus:
             logger.info('NASA POWER : comparaison omise (%s)', refus)
             bloc['motif'] = getattr(refus, 'motif', None) or f'Entrée illisible : {refus}'
@@ -159,6 +163,23 @@ class ClientNasaPower:
             return bloc
         bloc['ecart_pct'] = round((nasa - pvgis) / pvgis * 100.0, 2)
         return bloc
+
+    def _series_annuelles(self, lat, lon, annee_debut, annee_fin):
+        """ACAL2043 — la série des années demandées, UNE demande par année (chacune en cache) :
+        le service refuse en HTTP 422 une demande horaire JSON de plus d'un an (mesuré le
+        25/11/2026 : 2022 seule ⇒ 200, 2014-2023 ⇒ 422). Délai total borné (:data:`DELAI_TOTAL_S`)."""
+        import time
+
+        depart, points, meteo = time.monotonic(), [], None
+        for annee in range(annee_debut, annee_fin + 1):
+            if time.monotonic() - depart > DELAI_TOTAL_S:
+                raise NasaPowerIndisponible(
+                    f'NASA POWER n’a pas répondu à temps (plus de {DELAI_TOTAL_S} s pour '
+                    f'{annee_fin - annee_debut + 1} années) : la comparaison météo est omise.')
+            serie = self.serie_horizontale(lat, lon, annee, annee)
+            points.extend(serie['points'])
+            meteo = meteo or serie['meteo']
+        return {'points': points, 'meteo': meteo}
 
     # ── l'appel ─────────────────────────────────────────────────────────
     def _charge(self, url, params):

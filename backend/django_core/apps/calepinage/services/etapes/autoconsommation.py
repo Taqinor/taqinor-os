@@ -117,6 +117,38 @@ DEFINITION_TAUX = (
     'énergie importée ÷ consommation.')
 
 
+#: ACAL2024 (D-ACAL-97) — la clé du contexte qui porte, pour un calepinage DE LEAD, les deux
+#: taux de la conception rangée (:func:`taux_de_la_conception`), posée par ``simulation.py``.
+CLE_TAUX_CONCEPTION = 'taux_conception_lead'
+
+#: ACAL2024 — la définition publiée quand les deux taux viennent de la conception du lead.
+DEFINITION_TAUX_CONCEPTION = (
+    "Taux d'autoconsommation et couverture lus sur la conception du lead (version {version}, "
+    '{panneaux} panneaux) : les mêmes que la fiche du lead et le devis, jamais recalculés ici. '
+    'Les énergies et le tableau mensuel sont ceux de la pose simulée. ' + DEFINITION_TAUX)
+
+
+def taux_de_la_conception(calepinage):
+    """ACAL2024 — ``{taux_autoconsommation, taux_couverture, version, panneaux}`` de l'option
+    retenue de la conception COURANTE d'un calepinage DE LEAD (``devis_retenu``, porte de
+    ventes), ou ``None`` : sans lead (le calepinage garde son bilan propre), conception non
+    complète, agricole, ou taux absent. Lecture pure."""
+    if not getattr(calepinage, 'lead_id', None):
+        return None
+    from ..devis_retenu import conception_du_calepinage
+
+    conception = conception_du_calepinage(calepinage)
+    if not conception or conception.get('etat') != 'complet' or conception.get('marche') == 'agricole':
+        return None
+    valeurs = (conception.get('valeurs') or {}).get(conception.get('option_retenue')) or {}
+    lus = {cle: _nombre((valeurs.get(nom) or {}).get('valeur')) for cle, nom in (
+        ('taux_autoconsommation', 'autoconsommation'), ('taux_couverture', 'couverture'))}
+    if None in lus.values():
+        return None
+    return dict(lus, version=conception.get('version'),
+                panneaux=(valeurs.get('nb_panneaux') or {}).get('valeur'))
+
+
 def mode_hors_reseau(contexte):
     """Le calepinage est-il DÉCLARÉ hors réseau ? (relu par CALX191)
 
@@ -336,6 +368,7 @@ def bloc_autoconsommation(serie, contexte=None, *, charge=None):
 
     return _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie,
                     annees=annees_de_la_fenetre(contexte), plages=plages,
+                    conception=contexte.get(CLE_TAUX_CONCEPTION),
                     soutirage=(None if soutirage_kw is None else (
                         soutirage_kw, justification_soutirage,
                         float(pas) / 60.0)))
@@ -379,13 +412,18 @@ def _par_an(valeur, annees):
 
 
 def _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie,
-             annees=1, plages=None, soutirage=None):
+             annees=1, plages=None, soutirage=None, conception=None):
     """La série enrichie et le bloc, tirés du MÊME bilan horaire.
 
     ACAL54 — ``annees`` : le N de la fenêtre météo ; les énergies du bloc
     sont ramenées à l'ANNÉE MOYENNE (les taux, rapports de deux énergies,
     ne bougent pas ; la série horaire reste celle de la fenêtre).
+    ACAL2024 — ``conception`` (calepinage de lead) : les deux taux sont ceux
+    de la conception, la définition le dit avec sa version et sa taille.
     """
+    if conception:
+        bilan = dict(bilan, taux_autoconsommation=conception['taux_autoconsommation'],
+                     taux_couverture=conception['taux_couverture'])
     bloc_plafond = bilan['plafond']
     if bloc_plafond:
         exports = list(bloc_plafond['surplus_apres_ecretage'])
@@ -443,6 +481,7 @@ def _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie,
         'plafond': publie_plafond,
         'soutirage': _soutirage_publie(soutirage, imports, annees),
         'etape_plafond': etape,
-        'definition': DEFINITION_TAUX,
+        'definition': (DEFINITION_TAUX_CONCEPTION.format(**conception) if conception
+                       else DEFINITION_TAUX),
         'motif_absence': '',
     }

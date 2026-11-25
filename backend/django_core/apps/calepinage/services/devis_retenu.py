@@ -162,13 +162,15 @@ def cible_de_la_conception(calepinage):
 
 def memoriser_option_dessinee(calepinage):
     """ACAL1951 — range ``{devis, option}`` visés par l'enregistrement du dessin
-    dans ``resultat`` (retiré sans devis lié). N'écrit rien quand la valeur
-    rangée est déjà la bonne. Rend la valeur rangée."""
+    dans ``resultat`` : ACAL2025, l'option est celle de la conception COURANTE
+    (cible de l'atelier), jamais celle des lignes du devis ; retirée sans option
+    (aucune conception complète). N'écrit rien quand la valeur rangée est déjà
+    la bonne. Rend la valeur rangée."""
     from .resultat import modifier_resultat
 
-    conception = conception_du_devis_lie(calepinage)
-    valeur = ({'devis': conception['devis'], 'option': conception['option']}
-              if conception else None)
+    option = (cible_de_la_conception(calepinage) or {}).get('option')
+    valeur = ({'devis': getattr(calepinage, 'devis_id', None), 'option': option}
+              if option else None)
     if (getattr(calepinage, 'resultat', None) or {}).get(CLE_OPTION_DESSINEE) == valeur:
         return valeur
 
@@ -186,20 +188,6 @@ def _onduleur_retenu(conception):
     """ACAL1952 — la première ligne onduleur de l'option retenue, ou ``None``."""
     onduleurs = (conception or {}).get('onduleurs') or []
     return onduleurs[0] if onduleurs and onduleurs[0].get('produit') else None
-
-
-def _module_retenu(conception):
-    module = (conception or {}).get('module')
-    produit = module.get('produit') if isinstance(module, dict) else None
-    return produit if produit not in (None, '') else None
-
-
-def module_retenu_du_devis(calepinage):
-    """Rejeu T3-VAGUEC2 — le produit MODULE de la conception retenue du devis
-    lié (``apps.ventes.selectors_calepinage.conception_retenue_du_devis``),
-    ou ``None`` sans devis lié ni ligne panneau : le module que l'atelier pose
-    d'office, jamais un module d'essai du catalogue de même puissance."""
-    return _module_retenu(conception_du_devis_lie(calepinage))
 
 
 def _longueur_du_devis(conception):
@@ -260,8 +248,8 @@ def _devis_envoye_lie(calepinage):
     l'écran les compare au chiffre qu'il affiche, jamais à la conception."""
     from .equipements import devis_et_ecart
 
-    lu = conception_du_devis_lie(calepinage)
-    if not lu or not lu.get('recu'):
+    lu = _devis_recu_du_calepinage(calepinage)
+    if not lu:
         return None
     devis, ecart = devis_et_ecart(lu['devis'], lu, getattr(calepinage, 'company_id', None))
     if devis is None:
@@ -273,6 +261,25 @@ def _devis_envoye_lie(calepinage):
             'ecart_devis': ecart}
 
 
+def _devis_recu_du_calepinage(calepinage):
+    """T4-X5-004 — la conception retenue du devis que le client a REÇU, à comparer à ce
+    calepinage : son devis lié s'il est reçu, sinon — calepinage DE LEAD — le dernier devis
+    reçu du lead, lié ou non (``liens.dernier_devis_recu``, porte de ventes). ``None`` sinon.
+    Rien n'est écrit, aucun devis n'est touché."""
+    lu = conception_du_devis_lie(calepinage)
+    if lu and lu.get('recu'):
+        return lu
+    lead_id = getattr(calepinage, 'lead_id', None)
+    if not lead_id or getattr(calepinage, 'company', None) is None:
+        return None
+    from .equipements import conception_retenue
+    from .liens import dernier_devis_recu
+
+    devis = dernier_devis_recu(calepinage.company, lead_id)
+    lu = conception_retenue(devis) if devis is not None else None
+    return lu if lu and lu.get('recu') else None
+
+
 def bloc_production_devis(calepinage):
     """ACAL1956 (D-ACAL-90) — ``production_devis`` de ``GET resultat/`` : la
     production annuelle RETENUE PAR LE DEVIS (``conception_retenue_du_devis``,
@@ -280,8 +287,8 @@ def bloc_production_devis(calepinage):
     l'étape Résultats n'est jamais vide, même avant la simulation de la pose.
     ``{devis, reference, statut, production_annuelle_kwh, production_origine}``
     ou ``None`` (sans devis lié, ou devis encore brouillon)."""
-    conception = conception_du_devis_lie(calepinage)
-    if not conception or not conception['recu']:
+    conception = _devis_recu_du_calepinage(calepinage)  # T4-X5-004 : lié, sinon reçu du lead
+    if not conception:
         return None
     return {cle: conception[cle] for cle in ('devis', 'reference', 'statut',
                                              'production_annuelle_kwh', 'production_origine')}

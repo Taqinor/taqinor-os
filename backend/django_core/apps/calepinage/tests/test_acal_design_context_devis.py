@@ -239,8 +239,13 @@ class CibleOptionRetenueTest(_DevisDeuxOptions):
         self.assertIsNone(cible['option'])
 
     def test_l_enregistrement_range_l_option_visee(self):
+        """ACAL2025 — l'option rangée est celle de la CONCEPTION (« avec »), plus celle que
+        les lignes du devis recommandent (« sans »)."""
         from apps.calepinage.services.devis_retenu import CLE_OPTION_DESSINEE
 
+        from .test_acal_cible_lead import ranger_conception
+
+        ranger_conception(lead=self.lead_lie, nb=35, avec=48, option='avec')
         calepinage = self._calepinage(self._les_deux('Sans batterie', statut='brouillon'))
         url = f'{url_detail(calepinage.pk)}layout/'
         reponse = self.api.post(url, {'schema_version': 2, 'zones': []}, format='json',
@@ -248,7 +253,7 @@ class CibleOptionRetenueTest(_DevisDeuxOptions):
         self.assertEqual(reponse.status_code, 200, reponse.data)
         calepinage.refresh_from_db()
         self.assertEqual(calepinage.resultat[CLE_OPTION_DESSINEE],
-                         {'devis': calepinage.devis_id, 'option': 'sans'})
+                         {'devis': calepinage.devis_id, 'option': 'avec'})
 
 
 class LignesDuDevisPlusSourceTest(_DevisDeuxOptions):
@@ -261,6 +266,7 @@ class LignesDuDevisPlusSourceTest(_DevisDeuxOptions):
 
         from apps.calepinage.services import devis_retenu, electrique
         from apps.calepinage.services.devis import _cible_du_calepinage
+        from apps.calepinage.services.modules_stock import modules_disponibles_du_calepinage
 
         from .test_acal_cible_lead import ranger_conception
 
@@ -273,7 +279,9 @@ class LignesDuDevisPlusSourceTest(_DevisDeuxOptions):
                            side_effect=AssertionError('lignes du devis lues')) as lu_id:
             self.assertEqual(_cible_du_calepinage(calepinage)['panneaux'], 35)
             electrique.resoudre_materiel(self.company, {}, calepinage=calepinage)
+            modules_disponibles_du_calepinage(calepinage, [])  # ACAL2025 — l'ordre des modules
         self.assertEqual((lu.call_count, lu_id.call_count), (0, 0))
+        self.assertFalse(hasattr(devis_retenu, 'module_retenu_du_devis'))
         self.assertFalse(hasattr(electrique, '_produits_du_devis'))  # mutant « rétabli » : rouge
         self.assertFalse(hasattr(devis_retenu, 'produits_retenus'))
         self.assertFalse(hasattr(devis_retenu, 'cible_de_l_option_retenue'))
@@ -297,6 +305,27 @@ class ResultatsDeLaConceptionTest(_DevisDeuxOptions):
 
         return bloc_conception(Calepinage.objects.create(
             company=self.company, lead_id=self.lead_lie.pk, devis=devis, titre='QA-ACAL2015'))
+
+    def test_t4_x5_004_le_devis_envoye_du_lead_non_lie_est_nomme(self):
+        """T4-X5-004 — le devis automatique du lead a été ENVOYÉ sans lien au calepinage : le
+        calepinage du lead le nomme quand même, avec l'écart que ventes sert (« Réviser le
+        devis » possible) ; la production comparée est celle du devis ; le devis n'est pas touché."""
+        from django.utils import timezone
+
+        from apps.calepinage.services.devis_retenu import bloc_conception, bloc_production_devis
+
+        devis = self._les_deux('Sans batterie', etude={'etude_horaire_sans': {
+            'annuel': {'production_kwh': 6047.0}}}, date_envoi=timezone.now())
+        avant = Devis.objects.filter(pk=devis.pk).values().get()
+        calepinage = Calepinage.objects.create(company=self.company, lead_id=self.lead_lie.pk,
+                                               titre='QA-T4-X5-004')  # aucun devis lié
+        envoye = bloc_conception(calepinage)['devis_envoye']
+        self.assertEqual((envoye['devis'], envoye['reference']), (devis.pk, devis.reference))
+        ecarts = {e['valeur']: e for e in envoye['ecart_devis']}
+        self.assertEqual((ecarts['nb_panneaux']['devis'], ecarts['nb_panneaux']['conception']), (35, 48))
+        self.assertTrue(ecarts['nb_panneaux']['reviser_possible'])
+        self.assertEqual(bloc_production_devis(calepinage)['devis'], devis.pk)
+        self.assertEqual(Devis.objects.filter(pk=devis.pk).values().get(), avant)
 
     def test_sans_devis_un_seul_chiffre(self):
         bloc = self._bloc()

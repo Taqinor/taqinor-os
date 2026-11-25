@@ -401,6 +401,14 @@ GARDES = {
         ('Test the file-ownership checker itself (OWN)',
          'python -m unittest scripts.tests.test_check_ownership -v',
          '.'),
+        # ADEP108 (D-ACAL-97) — un seul moteur : aucun nouvel appel des cinq noyaux hors
+        # d'apps/ventes/conception/ et d'une liste figée qui ne fait que rétrécir.
+        ('Check one engine (ADEP108 — no new call of the five design kernels)',
+         'python scripts/check_moteur_unique.py',
+         '.'),
+        ('Test the one-engine checker itself (ADEP108)',
+         'python -m unittest scripts.tests.test_check_moteur_unique -v',
+         '.'),
         ('Check no raw JSON / bare error object is shown to the user (EZ16)',
          'python scripts/check_frontend_errors.py',
          '.'),

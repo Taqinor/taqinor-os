@@ -177,6 +177,19 @@ class MiseEnPagePage2Test(unittest.TestCase):
         self.assertIn('Production : celle du devis DEV-ACON42 (9100 kWh/an)',
                       html)
 
+    def test_t4_x5_015_la_production_du_devis_dit_sa_taille_face_a_la_pose(self):
+        """T4-X5-015 — page 1 « 7 module(s) — 4,97 kWc », page 2 la production d'un devis
+        à 6 panneaux : la page 2 dit les DEUX tailles, jamais l'une à côté de l'autre muette."""
+        document = presentation()
+        document['totaux'] = dict(document.get('totaux') or {}, total_modules=7, total_kwc=4.97)
+        html = _html_de_presentation(dict(
+            document, production_devis={'reference': 'DEV-X5', 'kwh': 6829, 'modules': 6}))
+        self.assertIn('celle du devis DEV-X5 (6829 kWh/an, 6 module(s))', html)
+        self.assertIn('la pose de cette synthèse compte 7 module(s) — 4,97 kWc', html)
+        meme_taille = _html_de_presentation(dict(
+            document, production_devis={'reference': 'DEV-X5', 'kwh': 6829, 'modules': 7}))
+        self.assertNotIn('la pose de cette synthèse compte', meme_taille)
+
     def test_sans_resultat_la_page_2_nomme_ce_qui_manque_sans_refuser(self):
         html = _html_de_presentation(presentation(resultat=None))
         self.assertIn('data-section="production"', html)
