@@ -130,6 +130,9 @@ def valeurs(resultat, option, investissement, *, froid, company=None):
         'economies_annuelles': _v(economies, 'MAD/an'),
         'payback': _v(payback, 'ans', 'devis' if investissement is not None else 'moteur'),
         'consommation_annuelle': _v(conso, 'kWh/an'), 'forme_horaire': _v(forme, None, source_forme),
+        # Reste d'ACAL2020 — la forme 24 h du moteur résidentiel (``None`` hors résidentiel).
+        'forme_horaire_24': _v(resultat.forme_horaire_24 if resultat.marche == 'residentiel' else None,
+                               'part', source_forme),
         **_produits(panneaux, onduleurs, batteries),
         'verdicts': _v(_verdicts(resultat, onduleurs, kwc, chaines, company)),
     }

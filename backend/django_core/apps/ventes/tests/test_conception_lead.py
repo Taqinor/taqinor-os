@@ -57,7 +57,7 @@ VALEURS_SOLAIRES = {
     'chaines', 'temperature_froid', 'tension_froid', 'ratio_dc_ac',
     'production_annuelle', 'production_mensuelle', 'autoconsommation',
     'couverture', 'economies_annuelles', 'payback', 'consommation_annuelle',
-    'forme_horaire', 'module_produit', 'onduleur_produit', 'batterie_produit', 'verdicts',
+    'forme_horaire', 'forme_horaire_24', 'module_produit', 'onduleur_produit', 'batterie_produit', 'verdicts',
 }
 #: La table §2 en agricole (la pompe remplace taille / matériel / bilan).
 VALEURS_POMPAGE = {'nb_panneaux', 'puissance_kwc', 'pompe', 'variateur', 'm3_jour'}
@@ -1288,6 +1288,23 @@ class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_u
         resultat = self._calculer(company, lead)
         self.assertEqual((resultat.etat, resultat.refus['code']), ('refus', 'refus_moteur'))
         self.assertTrue(resultat.refus['message'])
+
+    def test_acal2020_forme_horaire_24_du_moteur_residentiel(self):
+        """Reste d'ACAL2020 — la forme 24 h de la consommation que le moteur horaire a utilisée
+        est SERVIE (24 parts de somme 1, source de ``forme_horaire``), la même pour chaque option,
+        jamais uniforme ; hors résidentiel : ``None``."""
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        resultat = self._calculer(company, lead)
+        self.assertEqual((resultat.etat, resultat.absents), ('complet', {}), resultat.refus)
+        formes = {option: v['forme_horaire_24'] for option, v in resultat.valeurs.items()}
+        for option, forme in formes.items():
+            self.assertEqual(len(forme['valeur']), 24, option)  # mutant « clé absente » : rouge
+            self.assertAlmostEqual(sum(forme['valeur']), 1.0, places=4)
+            self.assertEqual((forme['unite'], forme['source']),
+                             ('part', resultat.valeurs[option]['forme_horaire']['source']))
+            self.assertGreater(max(forme['valeur']) - min(forme['valeur']), 0.01)  # jamais uniforme
+        self.assertEqual(len({tuple(f['valeur']) for f in formes.values()}), 1)
+        self.assertEqual(formes[resultat.option_retenue]['valeur'], resultat.forme_horaire_24)
 
     def test_une_autre_societe_n_obtient_rien(self):
         from authentication.models import Company

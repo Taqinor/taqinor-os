@@ -209,6 +209,27 @@ class ProposerTest(_Base):
         self.lead.refresh_from_db()
         self.assertEqual((self.lead.facture_hiver, self.lead.facture_ete), (Decimal('650'), Decimal('900')))
 
+    def test_acal2020_lead_residentiel_forme_horaire_24_servie_par_le_moteur(self):
+        """Reste d'ACAL2020 — la conception SERT la forme 24 h que le moteur résidentiel a
+        vraiment utilisée (occupation + équipements, ``valeurs.<option>.forme_horaire_24``) :
+        le calepinage la lit telle quelle, ni silhouette recomposée ici ni forme uniforme."""
+        from apps.calepinage.services.consommation import AVIS_FORME_UNIFORME
+
+        parts = [0.02] * 6 + [0.05] * 12 + [0.04] * 6  # une journée chargée le jour (somme = 1)
+        version = self._ranger('residentiel', {'etude_horaire': {
+            'occupation': 'presence_jour',
+            'mois': [{'mois': rang + 1, 'consommation_kwh': kwh} for rang, kwh in enumerate(self.KWH_CONCEPTION)]}})
+        type(version).objects.filter(pk=version.pk).update(
+            valeurs={'sans': {'forme_horaire_24': {'valeur': parts, 'unite': 'part', 'source': 'moteur'}}})
+
+        reponse = self._proposer({'source': 'lead'})
+
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        jour_moyen = sum(self.KWH_CONCEPTION) / 365.0
+        for heure in range(24):  # mutant « silhouette d'occupation » ou « uniforme » : rouge
+            self.assertAlmostEqual(reponse.data['courbe24'][heure], jour_moyen * parts[heure], places=3)
+        self.assertNotIn(AVIS_FORME_UNIFORME, reponse.data['avertissements'])
+
     def test_acal2020_lead_commercial_forme_horaire_de_la_conception(self):
         """Lead commercial : la journée moyenne des jours types de la conception
         (``blocs.etude_ci.profil_charge.jours_types``, pondérée par ``nb_jours``) —

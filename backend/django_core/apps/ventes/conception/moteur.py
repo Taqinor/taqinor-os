@@ -81,6 +81,9 @@ class ResultatConception:
     #: productible servi retenu (``None`` : production de la ville). Jamais servis.
     pose_a_produire: object = None
     productible_pose: object = None
+    #: Reste d'ACAL2020 — résidentiel : la forme 24 h (somme = 1) de la consommation que le
+    #: moteur horaire a utilisée (occupation + équipements), servie par ``valeurs``.
+    forme_horaire_24: object = None
 
     def sortie(self):
         return {cle: getattr(self, cle) for cle in CLES_SORTIE}
@@ -511,6 +514,9 @@ def _etudes(resultat, devis, contexte, *, sortie=None):
         kwc, kwc_sans = EL.puissances_des_lignes(contexte)
         bloc, bloc_sans = EL.blocs_horaires_des_lignes(contexte, kwc=kwc, kwc_sans=kwc_sans)
         _fusion(devis, es.MOTEUR_HORAIRE, etude_horaire=bloc, etude_horaire_sans=bloc_sans)
+        if bloc:  # une forme illisible est dite absente, jamais l'étude horaire
+            _au_mieux(resultat, 'forme_horaire_24', lambda: setattr(
+                resultat, 'forme_horaire_24', forme_horaire_24(contexte, kwc)))
 
     def _dimensionnement():
         etat, bloc = EL.dimensionnement_des_lignes(contexte)
@@ -535,6 +541,27 @@ def _etudes(resultat, devis, contexte, *, sortie=None):
     _au_mieux(resultat, 'ville_calcul', lambda: _fusion(
         devis, es.PIPELINE, ville_calcul=ville_calcul_du_devis(contexte)))
     return design
+
+
+def forme_horaire_24(devis, kwc):
+    """Reste d'ACAL2020 — la forme 24 h (somme = 1) de la consommation du moteur horaire
+    résidentiel : les douze jours types de ``etude_horaire.jours_types_annee`` (LA source des
+    courbes de l'étude : silhouette d'occupation + équipements + Ramadan, appelée telle
+    quelle sur les entrées du devis), pondérés par leurs jours. ``None`` sans les douze."""
+    from apps.ventes.domain.entrees import entrees_depuis_devis
+    from apps.ventes.etude_horaire import jours_types_annee, kwargs_moteur_horaire
+
+    entrees = entrees_depuis_devis(devis)
+    if entrees is None:
+        return None
+    arguments = {cle: valeur for cle, valeur in kwargs_moteur_horaire(entrees).items()
+                 if cle not in ('tranches', 'charges_fixes_mad')}
+    jours, _avertissements, _sources = jours_types_annee(kwc=kwc, **arguments)
+    if not jours or len(jours) != 12:
+        return None
+    total = [sum(jour['conso_24h'][heure] * jour['jours'] for jour in jours) for heure in range(24)]
+    somme = sum(total)
+    return [round(valeur / somme, 6) for valeur in total] if somme > 0 else None
 
 
 def _au_mieux(resultat, cle, calcul):

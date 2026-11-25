@@ -1280,7 +1280,12 @@ def _consommation_de_la_conception(calepinage):
         return None
     blocs, marche = conception.get('blocs') or {}, conception.get('marche')
     if marche == 'residentiel':
-        mois, parts = (blocs.get('etude_horaire') or {}).get('mois'), None
+        # Reste d'ACAL2020 — la forme 24 h que le moteur a VRAIMENT utilisée (occupation +
+        # équipements) ; une version d'avant cette clé garde la silhouette d'occupation.
+        retenue = (conception.get('valeurs') or {}).get(conception.get('option_retenue')) or {}
+        forme = _nombres((retenue.get('forme_horaire_24') or {}).get('valeur'), 24)
+        mois = (blocs.get('etude_horaire') or {}).get('mois')
+        parts = [valeur / sum(forme) for valeur in forme] if forme and sum(forme) else None
     else:
         etude = blocs.get('etude_ci') or {}
         mois = (etude.get('bilan') or {}).get('par_mois')
