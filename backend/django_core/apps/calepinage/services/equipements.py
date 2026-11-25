@@ -185,6 +185,19 @@ def _produit_actif(company, identifiant, type_fiche):
     return identifiant if produits_par_type_fiche_qs(company, type_fiche).filter(pk=identifiant).exists() else None
 
 
+def _designation_gardee(valeurs, role, identifiant):
+    """Revue E6 m1 — la désignation que la conception a GARDÉE pour ce produit (``module``,
+    ou la ligne ``onduleurs`` qui le porte), ``''`` sans elle : jamais l'identifiant."""
+    if role == 'module':
+        nom = (valeurs.get('module') or {}).get('valeur')
+        return nom.strip() if isinstance(nom, str) else ''
+    for ligne in (valeurs.get('onduleurs') or {}).get('valeur') or []:
+        nom = ligne.get('designation') if isinstance(ligne, dict) and ligne.get('produit') == identifiant else None
+        if isinstance(nom, str):
+            return nom.strip()
+    return ''
+
+
 def materiel_de_la_conception(calepinage):
     """ACAL2013 (D-ACAL-97) — le matériel que la conception COURANTE retient (option du
     moteur), DÉFAUT du calcul électrique quand rien n'est désigné : ``{produits: {module?,
@@ -208,10 +221,11 @@ def materiel_de_la_conception(calepinage):
         if identifiant in (None, ''):
             continue
         if _produit_actif(company, identifiant, type_fiche) is None:
+            designation = _designation_gardee(valeurs, role, identifiant)
             avertissements.append(
-                "%s de la conception (produit n° %s) est introuvable ou archivé dans le catalogue — "
+                "%s de la conception%s est introuvable ou archivé dans le catalogue — "
                 "désignez-le dans l'onglet Matériel électrique%s" % (
-                    libelle[0].upper() + libelle[1:], identifiant,
+                    libelle[0].upper() + libelle[1:], ' (%s)' % designation if designation else '',
                     ' (le module posé sert en attendant)' if role == 'module' else ''))
             continue
         produits[role] = identifiant
