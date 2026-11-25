@@ -2991,6 +2991,81 @@ class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_rela
         self.assertEqual(rendu, {'version': 2, 'ecrite': True})
         self.assertEqual(suivre.call_args.args[0].version, 2)
 
+    def test_envoye_entre_selection_et_ecriture_rien_ne_bouge(self):
+        """Relecture E4 M1 — le devis passe « envoyé » entre la sélection et
+        l'écriture : relu sous verrou, devis et lignes octet pour octet ; la
+        route répond 409."""
+        from apps.ventes.conception import brouillons
+        from apps.ventes.models import Devis
+
+        company, lead, user, intact, _retouche, _envoye = self._trois_devis()
+        v2 = self._nouvelle_version(company, lead)
+        selection = list(brouillons._brouillons_nes_avant(company.pk, lead.pk, v2.version))
+        Devis.objects.filter(pk=intact.pk).update(statut='envoye')
+        photo = _photo_devis(intact.pk)
+        with mock.patch.object(brouillons, '_brouillons_nes_avant', return_value=selection):
+            self.assertEqual(brouillons.suivre_la_conception(v2), [])  # mutant « sans relecture » : [intact]
+        with self.assertRaises(brouillons.MiseAJourRefusee):
+            brouillons.appliquer_a_la_demande(next(d for d in selection if d.pk == intact.pk), user)
+        self.assertEqual(_photo_devis(intact.pk), photo)
+
+    def test_brouillon_a_ligne_ajoutee_propose_jamais_recompose(self):
+        """Relecture E4 m2 — une ligne ajoutée à la main (« Transport ») que la
+        recomposition effacerait : le brouillon ne suit pas seul, il est PROPOSÉ."""
+        from apps.ventes.conception.brouillons import suivre_la_conception
+        from apps.ventes.models import LigneDevis
+        from apps.ventes.selectors import conception_courante
+
+        company, lead, _user, intact, _retouche, _envoye = self._trois_devis()
+        modele = intact.lignes.order_by('pk').first()
+        LigneDevis.objects.create(devis=intact, produit=modele.produit, designation='Transport ajouté',
+                                  quantite=Decimal('1'), prix_unitaire=Decimal('500'), taux_tva=modele.taux_tva,
+                                  ligne_composee=False, ordre=99)
+        photo = _photo_devis(intact.pk)
+        v2 = self._nouvelle_version(company, lead)
+        self.assertEqual(suivre_la_conception(v2), [])  # mutant « recomposer » : la ligne disparaît
+        self.assertEqual(_photo_devis(intact.pk), photo)
+        proposes = conception_courante(company, lead.pk)['brouillons_a_mettre_a_jour']
+        self.assertIn(intact.pk, [b['devis'] for b in proposes])
+
+    def test_ci_et_agricole_recomposes_par_la_decision(self):
+        """Relecture E4 M3 — un brouillon C&I ou agricole intact suit avec les
+        lignes, études et totaux du devis automatique né de la nouvelle version ;
+        un brouillon C&I retouché, mis à jour sur demande, garde sa taille et
+        son pointeur (la mise à jour reste proposée)."""
+        from apps.crm.models import Lead
+        from apps.stock.models import Produit
+        from apps.ventes.conception.brouillons import appliquer_a_la_demande, suivre_la_conception
+        from apps.ventes.models import Devis
+        from apps.ventes.services import build_devis_auto
+
+        changer = {'ci_commercial': lambda co, ld: Lead.objects.filter(pk=ld.pk).update(
+                       conso_mensuelle_kwh=Decimal('12000')),
+                   'agr_pompe_courbe': lambda co, ld: Produit.objects.filter(
+                       company=co, nom__startswith='Pompe').update(prix_vente=Decimal('17000'))}
+        for nom, changement in changer.items():
+            with self.subTest(cas=nom):
+                company, lead = self._cas(nom)
+                _reglages_de_la_societe(company)
+                user = self._utilisateur(company)
+                with self.captureOnCommitCallbacks(execute=True):
+                    brouillon, retouche = (build_devis_auto(lead=lead, user=user, company=company) for _ in range(2))
+                changement(company, lead)
+                lead.refresh_from_db()
+                v2 = self._relancer(lead, company, _declencheur('filet')).conception
+                panneau = retouche.lignes.filter(designation__icontains='panneau').order_by('pk').first()
+                type(panneau).objects.filter(pk=panneau.pk).update(quantite_manuelle=True)
+                self.assertEqual(suivre_la_conception(v2), [brouillon.pk])
+                frais = _photo_du_devis(build_devis_auto(lead=lead, user=user, company=company))
+                suivi = _photo_du_devis(Devis.objects.get(pk=brouillon.pk))
+                self.assertEqual(_ecarts_figeage(frais['lignes'], suivi['lignes'])  # mutant « pointeur seul » : rouge
+                                 + _ecarts_figeage(frais['etude_params'], suivi['etude_params']), [])
+                if nom == 'ci_commercial':
+                    rendu = appliquer_a_la_demande(Devis.objects.get(pk=retouche.pk), user)
+                    self.assertEqual(rendu['appliquees'], [])
+                    self.assertIn('taille', [n['champ'] for n in rendu['non_appliquees']])
+                    self.assertEqual(Devis.objects.get(pk=retouche.pk).conception_source['version'], 1)
+
     def test_retouche_liste_puis_mis_a_jour_sur_demande(self):
         from authentication.models import Company
 
