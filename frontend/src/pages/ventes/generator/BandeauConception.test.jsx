@@ -75,6 +75,49 @@ describe('AGEN12 — bandeau « La conception a changé »', () => {
   })
 })
 
+// T4-X6-012 — devis commercial / industriel : la fiche du lead changée dans un AUTRE onglet ;
+// le bandeau apparaît quand la fenêtre revient au premier plan (sans recharger la page) et
+// après un enregistrement ; un brouillon non retouché qui a suivi le dit et se recharge.
+describe('T4-X6-012 — bandeau relu au retour sur l’onglet (devis C&I)', () => {
+  const ci = { id: LISTE.devis, reference: LISTE.reference, statut: 'brouillon', lead: CONCEPTION.lead,
+    mode_installation: 'commercial', lignes: panneaux(14), updated_at: '2026-11-25T09:00:00Z' }
+  const sansListe = { ...CONCEPTION, brouillons_a_mettre_a_jour: [], ecart_devis: [] }
+  const revenir = async () => { await act(async () => { window.dispatchEvent(new Event('focus')) }) }
+
+  it('brouillon retouché listé après le changement : bandeau au retour sur l’onglet', async () => {
+    ventesApi.getConceptionLead.mockResolvedValueOnce({ data: sansListe })
+    rendre(ci)
+    await waitFor(() => expect(ventesApi.getConceptionLead).toHaveBeenCalledTimes(1))
+    expect(screen.queryByTestId('bandeau-conception')).toBeNull()
+    await revenir()
+    const bandeau = await screen.findByTestId('bandeau-conception')
+    expect(bandeau.textContent).toContain('La conception de ce lead a changé')
+    expect(screen.getByTestId('bandeau-conception-mettre-a-jour')).toBeTruthy()
+  })
+
+  it('après un enregistrement (jeton avancé) : relu, bandeau', async () => {
+    ventesApi.getConceptionLead.mockResolvedValueOnce({ data: sansListe })
+    const { rerender } = rendre(ci)
+    await waitFor(() => expect(ventesApi.getConceptionLead).toHaveBeenCalledTimes(1))
+    rerender(<MemoryRouter><BandeauConception devis={{ ...ci, updated_at: '2026-11-25T09:05:00Z' }}
+      onMisAJour={vi.fn()} /></MemoryRouter>)
+    expect(await screen.findByTestId('bandeau-conception')).toBeTruthy()
+  })
+
+  it('brouillon non retouché : la version avance, il l’a suivie — « Recharger »', async () => {
+    ventesApi.getConceptionLead.mockResolvedValueOnce({ data: sansListe })
+      .mockResolvedValue({ data: { ...sansListe, version: CONCEPTION.version + 1 } })
+    const { onMisAJour } = rendre(ci)
+    await waitFor(() => expect(ventesApi.getConceptionLead).toHaveBeenCalledTimes(1))
+    await revenir()
+    const suivi = await screen.findByTestId('bandeau-conception-suivi')
+    expect(suivi.textContent).toContain('il suit la nouvelle conception')
+    await act(async () => { fireEvent.click(screen.getByTestId('bandeau-conception-recharger')) })
+    expect(onMisAJour).toHaveBeenCalled()
+    expect(screen.queryByTestId('bandeau-conception-suivi')).toBeNull()
+  })
+})
+
 // E7d (revue lot 4, M4) — « Mettre à jour » ne perd JAMAIS une saisie non enregistrée :
 // avec des modifications à l'écran (`dirty`), il demande d'abord (enregistrer puis mettre à
 // jour, ou annuler) ; il n'efface rien en silence. Les deux branches, sur le vrai bandeau

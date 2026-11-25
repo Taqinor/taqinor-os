@@ -171,7 +171,7 @@
   "corps_regles": {
     "mode": "commercial | industriel — obligatoire",
     "lead": "entier ou null — lu via crm.selectors (contrat `lead_pro.json`, CIQ1)",
-    "devis": "entier ou null — un devis existant : ses `etude_params` C&I sont relues (priorité corps > devis > lead)",
+    "devis": "entier ou null — un devis existant : ses `etude_params` C&I sont relues (priorité corps > devis > lead) ; T4-X6-009 : un bloc `consommation` envoyé REMPLACE celui du devis en entier (c'est lui que l'enregistrement rangera) — un champ vidé à l'écran ne laisse plus passer les kWh rangés avant devant les factures tapées",
     "tension": "bt | mt | inconnue",
     "phases": "mono | tri | inconnu",
     "consommation": "`kwh_mensuels` [12] OU `kwh_annuel` ; `factures_mad` [{mois AAAA-MM, montant_ttc, kwh}] ; `registres_mt` [12 × {pointe_kwh, pleines_kwh, creuses_kwh, puissance_atteinte_kw, kvarh}] (MT) — une tranche ouverte (« plus de 4 000 DH ») n'est JAMAIS un montant (D-CIQ-19)",
@@ -189,6 +189,7 @@
     "tva_recuperable": "oui | non | inconnu — lu par l'économie (D-CIQ-3)",
     "options": "{batterie_souhaitee, om, nb_batteries} — nb_batteries (D-HYB-4, fondateur 17/11/2026) : entier ≥ 1 ou null/absent ; N < banque calculée R ⇒ l'option « avec » est redimensionnée pour N batteries (panneaux), onduleur hybride gardé pour R ; N ≥ R ou absent ⇒ la banque calculée ; persisté dans `etude_params.options.nb_batteries` par `etude-ci/recomposer-batteries/` (contrat devis_recomposer_batteries.json) ; une valeur non entière est ignorée",
     "taille_explicite_kwc": "nombre ou null — SOUVERAINE (D-QJR5-13) : la taille n'est plus calculée, `raison_arret` = taille_explicite",
+    "lignes": "T4-X6-008 — facultatif, avec `devis` seulement : [{produit, designation, quantite, prix_unitaire, remise, taux_tva, variante, optionnelle, type_ligne}] = les lignes de l'écran d'édition. L'étude est alors LE calcul rangé du devis (taille, onduleurs et option « avec » lus sur CES lignes : `conception/etudes_lignes.etude_ci_de_l_ecran`), saisies du corps par-dessus — le système que le devis VEND, jamais l'optimum du moteur ; forme de réponse inchangée. Lignes sans panneau ⇒ l'aperçu du moteur, comme sans `lignes`. Un produit d'une autre société est ignoré.",
     "site": "un site par étude (le multi-site reste aux lots QJR667)"
   },
   "exemple": {

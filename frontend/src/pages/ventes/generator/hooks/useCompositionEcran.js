@@ -394,8 +394,9 @@ export function useCompositionEcran(ctx) {
       }
     } else {
       // CIQ126 — C&I : la taille retenue par le moteur serveur (aperçu en
-      // direct du profil déclaré) ; sans elle, rien n'est inventé.
-      const t = apercuCi.donnees?.taille
+      // direct du profil déclaré) ; sans elle, rien n'est inventé. T4-X6-008 — en
+      // édition, l'aperçu décrit les LIGNES : la taille du moteur est son `conseil`.
+      const t = apercuCi.conseil ?? apercuCi.donnees?.taille
       if (!marcheCi || !(Number(t?.nb_panneaux) > 0)) {
         setErrors(e => ({
           ...e,

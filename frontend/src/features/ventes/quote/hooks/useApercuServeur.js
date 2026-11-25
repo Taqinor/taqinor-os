@@ -4,23 +4,39 @@
 // d'une saisie dépassée est jetée. `corps` = `null` ⇒ aucun appel.
 // `appeler(body, {signal})` rend une promesse axios ; `corpsServi` nomme la
 // saisie qui a produit `donnees`.
-import { useEffect, useState } from 'react'
+// T4-X6-010 / 011 — `precedentes` = la dernière réponse REÇUE, gardée pendant le
+// calcul suivant (les cartes restent en place sous « Calcul en cours… », jamais
+// lues comme `donnees`) et effacée sur un échec (pas d'anciens chiffres) ;
+// `relancer()` rejoue la dernière saisie (« Réessayer ») ; au retour du réseau
+// (`online`), un échec est rejoué tout seul.
+import { useEffect, useRef, useState } from 'react'
 import { useDebouncedValue } from '../../../../lib/debounce'
 
 export function useApercuServeur(corps, { appeler, erreurParDefaut, delai = 500 }) {
   const corpsKey = corps ? JSON.stringify(corps) : null
   const debouncedKey = useDebouncedValue(corpsKey, delai)
   const [donnees, setDonnees] = useState(null)
+  const [precedentes, setPrecedentes] = useState(null)
   const [chargement, setChargement] = useState(false)
   const [erreur, setErreur] = useState(null)
   const [corpsServi, setCorpsServi] = useState(null)
   // CIQ224 — le champ NOMMÉ par un 400 du serveur (`{detail, champ}`).
   const [erreurChamp, setErreurChamp] = useState(null)
+  const [essai, setEssai] = useState(0)
+  const enEchec = useRef(false)
+  useEffect(() => { enEchec.current = Boolean(erreur) }, [erreur])
+
+  useEffect(() => {
+    const auRetour = () => { if (enEchec.current) setEssai((n) => n + 1) }
+    window.addEventListener('online', auRetour)
+    return () => window.removeEventListener('online', auRetour)
+  }, [])
 
   useEffect(() => {
     if (!debouncedKey) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reflète l'absence de corps (D-ENF22)
       setDonnees(null)
+      setPrecedentes(null)
       setCorpsServi(null)
       setChargement(false)
       setErreur(null)
@@ -45,6 +61,7 @@ export function useApercuServeur(corps, { appeler, erreurParDefaut, delai = 500 
       .then((res) => {
         if (cancelled) return
         setDonnees(res.data)
+        setPrecedentes(res.data)
         setCorpsServi(debouncedKey)
       })
       .catch((err) => {
@@ -53,12 +70,14 @@ export function useApercuServeur(corps, { appeler, erreurParDefaut, delai = 500 
         const detail = err?.response?.data?.detail
         setErreur(typeof detail === 'string' && detail ? detail : erreurParDefaut)
         setErreurChamp(err?.response?.data?.champ || null)
+        setPrecedentes(null)
       })
       .finally(() => { if (!cancelled) setChargement(false) })
     return () => { cancelled = true; controller.abort() }
     // `appeler` est une référence stable (méthode de ventesApi) : seul le corps relance.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `appeler` est une référence stable (méthode de ventesApi) : seul le corps relance (D-ENF22)
-  }, [debouncedKey])
+  }, [debouncedKey, essai])
 
-  return { donnees, chargement, erreur, erreurChamp, corpsServi, corpsKey }
+  const relancer = () => setEssai((n) => n + 1)
+  return { donnees, precedentes, chargement, erreur, erreurChamp, corpsServi, corpsKey, relancer }
 }
