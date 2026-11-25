@@ -272,3 +272,31 @@ class EnregistrerUneRetoucheCiTests(TestCase):
 
     def test_x6_012_retouche_ci_nombre_de_panneaux_recompose(self):
         self._enregistrer_une_retouche_ci(False)
+
+
+class MarquerRetoucheSousVerrouTests(TestCase):
+    """T4-X6-012 / check_read_modify_write — ``marquer_retouche_ecran`` relit le statut
+    sous le verrou de la ligne : un devis parti (envoyé en base) alors que l'instance
+    en mémoire dit encore « brouillon » n'est ni marqué ni dit marqué."""
+
+    def _devis(self):
+        return DevisFactory(company=CompanyFactory(), conception_source={'version': 1})
+
+    def test_brouillon_marque(self):
+        from apps.ventes.conception.brouillons import CLE_RETOUCHE_ECRAN, marquer_retouche_ecran
+        devis = self._devis()
+        self.assertTrue(marquer_retouche_ecran(devis, [('autre',)]))
+        devis.refresh_from_db()
+        self.assertIs(devis.conception_source.get(CLE_RETOUCHE_ECRAN), True)
+        self.assertEqual(devis.statut, 'brouillon')
+
+    def test_devis_parti_en_base_jamais_marque(self):
+        from apps.ventes.conception.brouillons import CLE_RETOUCHE_ECRAN, marquer_retouche_ecran
+        from apps.ventes.models import Devis
+        devis = self._devis()
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye')
+        self.assertEqual(devis.statut, 'brouillon')  # l'instance périmée
+        self.assertFalse(marquer_retouche_ecran(devis, [('autre',)]))
+        self.assertNotIn(CLE_RETOUCHE_ECRAN, devis.conception_source)
+        devis.refresh_from_db()
+        self.assertEqual((devis.statut, devis.conception_source), ('envoye', {'version': 1}))
