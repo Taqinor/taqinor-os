@@ -367,6 +367,13 @@ class Protections(unittest.TestCase):
         self.assertIsNone(ligne["produit"])
         self.assertIn("courant nominal de la pompe (40 A)", ligne["motif"])
 
+    def test_r3_phase_inconnue_nommee_pas_aucun_article(self):
+        kit = composer_kit(**dict(BASE, produits_options=PROTECTIONS_SEED,
+                                  courant_pompe_a=14))
+        ligne = self._ligne(kit, "disjoncteur_ac")
+        self.assertIsNone(ligne["produit"])
+        self.assertIn("phase (mono / tri) de la pompe inconnue", ligne["motif"])
+
     def test_r3_disjoncteur_sans_calibre_publie_jamais_choisi(self):
         sans = [_option(88, "Disjoncteur AC tétrapolaire", "protection_ac")]
         kit = composer_kit(**dict(BASE, produits_options=sans,

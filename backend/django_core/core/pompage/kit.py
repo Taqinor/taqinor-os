@@ -288,9 +288,9 @@ def choisir_protections(produits, *, nb_chaines=None, alimentation=None,
                                            motif_chaines)
 
     ac = [p for p in produits if p.get("role_pompage") == "protection_ac"]
-    disjoncteurs = _de_la_phase(
-        [p for p in ac if "disjoncteur" in _norme(p.get("nom"))
-         and "parafoudre" not in _norme(p.get("nom"))], alimentation)
+    tous = [p for p in ac if "disjoncteur" in _norme(p.get("nom"))
+            and "parafoudre" not in _norme(p.get("nom"))]
+    disjoncteurs = _de_la_phase(tous, alimentation)
     calibre = lambda p: _nombre_du_nom(p, r"(\d+(?:[.,]\d+)?)\s*a\b")  # noqa: E731
     calibres = {calibre(p) for p in disjoncteurs}
     courant = _flottant(courant_pompe_a)
@@ -309,6 +309,10 @@ def choisir_protections(produits, *, nb_chaines=None, alimentation=None,
     # n'est jamais choisi ; un courant au-dessus de tout calibre : aucun.
     if not disjoncteurs:
         disjoncteur = None
+        if tous and alimentation not in ("mono", "tri"):
+            # Les articles existent : c'est la PHASE qui manque.
+            motif = ("disjoncteur AC non choisi : phase (mono / tri) de la "
+                     "pompe inconnue (alimentation à renseigner)")
     elif courant is None or courant <= 0:
         disjoncteur = None
         motif = motif_deduit
