@@ -18,6 +18,9 @@ from apps.ventes.domain.regles_calcul import (
 logger = logging.getLogger('apps.ventes.etude_horaire')
 
 SOURCE_POSE = 'calepinage_enregistre'
+#: ADEV155 (D-ACAL-108, niveau 15 seulement) — la base du PLAN PAR DÉFAUT d'un lead sans
+#: toit tracé (``conception/porte_calepinage.productible_du_plan_par_defaut``).
+SOURCE_PLAN_PAR_DEFAUT = 'plan_par_defaut'
 
 
 def base_depuis_servi(servi, *, kwc=None):
@@ -39,8 +42,9 @@ def base_depuis_servi(servi, *, kwc=None):
         ecart = abs(float(kwc) - float(simule)) / float(simule)
         if ecart > TOLERANCES['kwc_calepinage_ratio']:
             return None, 'lignes du devis différentes du calepinage'
+    # ADEV155 — la source servie (le contrat de la pose dit toujours ``SOURCE_POSE``).
     return {'kwh_kwc_annuel': annuel, 'kwh_kwc_mensuel': list(mensuel),
-            'pertes_incluses': True, 'source': SOURCE_POSE}, ''
+            'pertes_incluses': True, 'source': servi.get('source') or SOURCE_POSE}, ''
 
 
 def _base_rangee(devis):
@@ -82,6 +86,11 @@ def diagnostic_base_de_production(devis, *, kwc=None, marches=('residentiel',)):
         servi = productible_pose_servi(
             devis.pk, getattr(devis, 'company', None),
             tolerance_kwc_ratio=TOLERANCES['kwc_calepinage_ratio'])
+        rangee = _base_rangee(devis)[0] if servi is None else None
+        if rangee and rangee.get('source') == SOURCE_PLAN_PAR_DEFAUT:
+            # ADEV155 — brouillon né du moteur d'un lead SANS toit tracé : il garde la base du
+            # plan par défaut rangée (aucune simulation au rendu) tant qu'aucune pose n'est servie.
+            return rangee, ''
         return base_depuis_servi(
             servi, kwc=_kwc_du_devis(devis) if kwc is None else kwc)
     except Exception:  # noqa: BLE001 — lecture cross-app, jamais bloquante (D-ENF22-BLE001)

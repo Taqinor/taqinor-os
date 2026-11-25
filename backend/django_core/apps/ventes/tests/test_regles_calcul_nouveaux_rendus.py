@@ -791,3 +791,117 @@ class ArrondiAffichageTests(SimpleTestCase):
         with self.assertRaises(ValueError):
             A(float('nan'))
         self.assertEqual(A(float('inf'), 1), float('inf'))
+
+
+# ── ADEV155 (D-ACAL-108 « Yes, with level 15 ») — le moteur sans toit sur le plan par défaut ─
+# Module voisin lu par son NOM (jamais ses classes importées ici : le chargeur les rejouerait).
+from apps.ventes.tests import test_conception_lead as TCL  # noqa: E402 — après les classes de ce module
+
+
+def _plan_simule(company, lead, kwc, produits, nb_panneaux=None, *, suppositions=()):
+    """La doublure de ``porte_calepinage.production_du_plan_par_defaut`` : 2 100 kWh/kWc,
+    bien au-dessus de la ville — toute valeur calculée sur lui s'en écarte."""
+    return {'production_annuelle': kwc * 2100.0, 'production_mensuelle': [kwc * 175.0] * 12, 'kwc': kwc,
+            'pente_deg': 30.0, 'azimut_deg': 180.0, 'complete': True,
+            'suppositions': [{'code': 'pente_supposee', 'champ': 'inclinaison_deg'},
+                             {'code': 'pose_supposee', 'champ': 'type_toiture', 'valeur': 'affleurante'},
+                             *suppositions]}
+
+
+class MoteurSansToitPlanParDefautTests(TCL._emprunt(TCL.FigeageDevisAutoTests, *TCL._FABRIQUES), TestCase):
+    """ADEV155 — au niveau 14 COURANT, rien ne bouge au bit près (la simulation du plan n'est
+    jamais appelée) ; au niveau 15, la production d'un lead sans toit tracé vient du plan par
+    défaut, dite (source ``plan_par_defaut`` + suppositions) ; un plan à fiche de module vide
+    n'est jamais servi (la ville reste, absence dite)."""
+
+    def _calculer(self, company, lead, *, niveau=None, plan=_plan_simule, ouvert=None):
+        from apps.ventes.conception import moteur as M
+        from apps.ventes.conception import porte_calepinage as P
+        from apps.ventes.domain import regles_calcul as RC
+
+        TCL._reglages_de_la_societe(company)
+        ferme = mock.patch.object(M, 'plan_par_defaut_ouvert', return_value=False) if ouvert is False else None
+        with mock.patch.object(RC, 'REGLES_COURANTES', niveau or RC.REGLES_COURANTES), \
+                mock.patch.object(P, 'production_du_plan_par_defaut', side_effect=plan) as simule:
+            if ferme is None:
+                return M.calculer_conception(lead, company), simule
+            with ferme:
+                return M.calculer_conception(lead, company), simule
+
+    def test_niveau_courant_identique_avec_et_sans_le_plan(self):
+        from apps.ventes.domain import regles_calcul as RC
+
+        self.assertEqual(RC.REGLES_COURANTES, RC.REGLES_SENSIBILITES_1911)  # le niveau 15 reste dormant
+        company, lead = self._cas('res_facture_dirhams')
+        resultat, simule = self._calculer(company, lead)
+        simule.assert_not_called()  # mutant « ouvrir le plan au niveau 14 » : rouge
+        sans, _s = self._calculer(company, lead, ouvert=False)
+        self.assertEqual(TCL._json(resultat.sortie()), TCL._json(sans.sortie()))
+        self.assertEqual(TCL._json(resultat.etude_params), TCL._json(sans.etude_params))
+        self.assertNotIn('production_plan_par_defaut', resultat.absents)
+        self.assertEqual(resultat.valeurs[resultat.option_retenue]['production_annuelle']['source'], 'moteur')
+
+    def test_niveau_15_production_du_plan_par_defaut_dite(self):
+        from apps.ventes.domain.regles_calcul import REGLES_POSE_REELLE_2111 as N15
+
+        company, lead = self._cas('res_batterie_sans')
+        temoin, _s = self._calculer(company, lead, niveau=N15, plan=lambda *a, **k: {'refus': 'fiche vide'})
+        resultat, simule = self._calculer(company, lead, niveau=N15)
+        self.assertEqual(resultat.etat, 'complet', resultat.refus)
+        args = simule.call_args.args
+        self.assertEqual((args[0], args[1].pk), (company, lead.pk))
+        self.assertGreater(args[2], 0)
+        self.assertEqual(set(args[3]), {'module', 'onduleur'})
+        option = resultat.option_retenue
+        retenue, avant = resultat.valeurs[option], temoin.valeurs[option]
+        self.assertEqual(resultat.blocs['etude_horaire']['base_production']['source'], 'plan_par_defaut')
+        self.assertEqual(resultat.blocs['etude_horaire']['base_production']['kwh_kwc_annuel'], 2100.0)
+        self.assertEqual(retenue['production_annuelle']['source'], 'plan_par_defaut')
+        self.assertEqual(retenue['production_annuelle']['valeur'],
+                         resultat.blocs['etude_horaire']['annuel']['production_kwh'])
+        for cle in ('production_annuelle', 'economies_annuelles'):
+            self.assertNotEqual(retenue[cle]['valeur'], avant[cle]['valeur'], cle)
+        codes = [s['code'] for s in resultat.suppositions]
+        for code in ('pente_supposee', 'pose_supposee', 'production_plan_par_defaut'):
+            self.assertIn(code, codes)
+        dite = next(s for s in resultat.suppositions if s['code'] == 'production_plan_par_defaut')
+        self.assertIn('toit supposé', dite['message'])
+        self.assertIn('2100', dite['message'])
+        # Le plan refusé : la ville reste, l'absence est DITE (jamais un refus de la conception).
+        self.assertEqual(avant['production_annuelle']['source'], 'moteur')
+        self.assertEqual(temoin.absents['production_plan_par_defaut'], 'plan par défaut refusé : fiche vide')
+
+    def test_niveau_15_fiche_du_module_vide_jamais_servie(self):
+        from apps.ventes.domain.regles_calcul import REGLES_POSE_REELLE_2111 as N15
+
+        company, lead = self._cas('res_facture_dirhams')
+        resultat, simule = self._calculer(company, lead, niveau=N15, plan=lambda *a, **k: _plan_simule(
+            *a, **k, suppositions=[{'code': 'fiche_module_incomplete'}]))
+        simule.assert_called()
+        self.assertEqual(resultat.valeurs[resultat.option_retenue]['production_annuelle']['source'], 'moteur')
+        self.assertIn('fiche technique du module', resultat.absents['production_plan_par_defaut'])
+        self.assertNotIn('production_plan_par_defaut', [s['code'] for s in resultat.suppositions])
+
+
+class BrouillonDuPlanParDefautTests(SimpleTestCase):
+    """ADEV155 — un brouillon de niveau 15 né du plan par défaut (aucune pose servie) garde la
+    base rangée du plan ; au niveau 14, et pour une base rangée d'une autre source, rien ne change."""
+
+    BASE = {'kwh_kwc_annuel': 2100.0, 'kwh_kwc_mensuel': [175.0] * 12, 'pertes_incluses': True,
+            'source': 'plan_par_defaut'}
+
+    def _diag(self, **champs):
+        from apps.ventes.horaire.productible_pose import diagnostic_base_de_production
+        devis = SimpleNamespace(**dict(dict(pk=1, company=None, regles_calcul=REGLES_POSE_REELLE_2111,
+                                            statut='brouillon', mode_installation='residentiel',
+                                            etude_params={'etude_horaire': {'base_production': self.BASE}}),
+                                       **champs))
+        with mock.patch('apps.calepinage.selectors_devis.productible_pose_servi', return_value=None):
+            return diagnostic_base_de_production(devis, kwc=6.0)
+
+    def test_brouillon_niveau_15_garde_la_base_du_plan(self):
+        self.assertEqual(self._diag(), (self.BASE, ''))
+        self.assertEqual(self._diag(regles_calcul=REGLES_SENSIBILITES_1911), (None, 'règles d’avant le 21/11'))
+        autre = dict(self.BASE, source='calepinage_enregistre')
+        self.assertEqual(self._diag(etude_params={'etude_horaire': {'base_production': autre}}),
+                         (None, 'aucune simulation du calepinage'))

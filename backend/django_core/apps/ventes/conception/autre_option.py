@@ -58,7 +58,7 @@ def garder_l_autre_option(resultat, calcul, porteur, toit, imposes, designes):
     autre_option = 'sans' if designee == 'avec' else 'avec'
     autre = ResultatConception(marche=resultat.marche, entrees_utilisees=dict(resultat.entrees_utilisees),
                                empreinte=resultat.empreinte, niveau_regles=resultat.niveau_regles)
-    autre.pose_a_produire = resultat.pose_a_produire
+    autre.pose_a_produire, autre.plan_a_produire = resultat.pose_a_produire, resultat.plan_a_produire
     module = {'panneau_produit_id': designes['panneau_produit_id']} if designes.get('panneau_produit_id') else {}
     try:
         if module:

@@ -38,11 +38,12 @@ A_RENSEIGNER_POSE = 'renseigner « Type de toiture » sur la fiche du lead ou tr
 
 
 def _pose_supposee(type_installation=None, type_toiture=None):
-    """ACAL2045 — RÈGLE PROPOSÉE, EN ATTENTE DE LA RÉPONSE DU FONDATEUR (décision 26 du rapport) :
-    la seule place où elle vit. ``(flush, supposition)`` : sur châssis quand le lead déclare un
-    toit plat (« Terrasse béton ») ou est commercial, industriel ou agricole ; sinon affleurante
-    (lead résidentiel ou marché non dit). Le document la dit par ``flush`` comme une pose réelle :
-    l'étape « Échauffement des modules » la relie à la table société (D-ACAL-84)."""
+    """ACAL2045 — LA règle de D-ACAL-107 (fondateur, 25/11/2026 : « By roof type »), la seule
+    place où elle vit. ``(flush, supposition)`` : sur châssis quand le lead déclare un toit plat
+    (« Terrasse béton ») ou est un site commercial ou industriel (agricole : champ de pompage,
+    posé sur châssis) ; sinon affleurante (toit en pente d'une maison, marché non dit). Le
+    document la dit par ``flush`` comme une pose réelle : l'étape « Échauffement des modules »
+    la relie à la table société (D-ACAL-84), aucun coefficient n'est posé ici."""
     if type_toiture == 'terrasse_beton':
         flush, champ, raison, quoi = False, 'type_toiture', 'toit plat déclaré', 'tracer le toit au calepinage'
     elif type_installation in ('commercial', 'industriel', 'agricole'):
@@ -122,7 +123,9 @@ def simuler_plan_par_defaut(company, lat, lon, kwc, *, pente=None, azimut=AZIMUT
     (:func:`_pose_supposee`, toujours dite dans ``suppositions``).
 
     Rend ``{production_annuelle, production_mensuelle, nb_panneaux, kwc, pente_deg,
-    azimut_deg, version_moteur, hash_entree, suppositions, document}``. Lève
+    azimut_deg, version_moteur, hash_entree, complete, suppositions, document}``
+    (``complete`` : le total de la cascade est complet, aucune perte du socle manquante —
+    ADEV155 ne sert au moteur qu'un plan complet). Lève
     ``SimulationRefusee`` (champ nommé) comme la simulation de la pose."""
     from ..models import Calepinage
     from .electrique import resoudre_materiel
@@ -148,6 +151,7 @@ def simuler_plan_par_defaut(company, lat, lon, kwc, *, pente=None, azimut=AZIMUT
         'pente_deg': pente_deg, 'azimut_deg': float(azimut),
         'version_moteur': rendu['blocs'][CLE_SIMULATION]['version_moteur'],
         'hash_entree': rendu['hash_entree'],
+        'complete': (production.get('total') or {}).get('complete') is True,
         'suppositions': ([] if pente is not None else [{
             'code': 'pente_supposee', 'champ': 'inclinaison_deg', 'valeur': PENTE_SUPPOSEE_DEG,
             'source': 'defaut', 'message': MESSAGE_PENTE_SUPPOSEE}]) + [pose_dite]
