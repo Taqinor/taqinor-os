@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5326, operations: 8180, components: 4108}
+counts: {paths: 5326, operations: 8180, components: 4109}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -8317,6 +8317,7 @@ query_params:
   get /api/django/calepinage/calepinages/contenance/: largeur_m lead longueur_m origine pente_deg produit toit_plat
   get /api/django/calepinage/calepinages/du-lead/: lead
   get /api/django/calepinage/calepinages/modeles/: ordering
+  get /api/django/calepinage/calepinages/{id}/apercu-devis/: surfaces
   get /api/django/calepinage/calepinages/{id}/apercu-document/: code langue
   get /api/django/calepinage/calepinages/{id}/bom-fixation/: systeme
   get /api/django/calepinage/calepinages/{id}/chatter/historique/: ordering
@@ -9168,6 +9169,7 @@ query_params:
   get /api/v1/calepinage/calepinages/contenance/: largeur_m lead longueur_m origine pente_deg produit toit_plat
   get /api/v1/calepinage/calepinages/du-lead/: lead
   get /api/v1/calepinage/calepinages/modeles/: ordering
+  get /api/v1/calepinage/calepinages/{id}/apercu-devis/: surfaces
   get /api/v1/calepinage/calepinages/{id}/apercu-document/: code langue
   get /api/v1/calepinage/calepinages/{id}/bom-fixation/: systeme
   get /api/v1/calepinage/calepinages/{id}/chatter/historique/: ordering
@@ -10907,6 +10909,7 @@ components:
 - DevisAvenantSignatureReponse
 - DevisBoqLigneCreee
 - DevisBoqManque
+- DevisBoqRemplacee
 - DevisCompositionResponse
 - DevisConceptionElectriqueRequestRequest
 - DevisConceptionElectriqueResponse

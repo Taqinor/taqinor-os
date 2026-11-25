@@ -137,7 +137,7 @@ DEFINITION_TAUX_AUTRE_POSE = (
 #: T4-X7-002 — ``taux_source`` du bloc : d'où viennent ``taux_autoconsommation`` et ``taux_couverture``.
 #: ``conception`` : ceux de la conception du lead (ACAL2024) ; ``pose`` : aucun taux de conception
 #: (pas de lead, conception incomplète, agricole, taux absent) — le bilan propre de toujours ;
-#: ``autre_installation`` : SEUL signal d'un écart réel (``ecart_conception_pose``) — les taux de
+#: ``autre_installation`` : SEUL signal d'un écart réel (``_ecart_conception_pose``) — les taux de
 #: la pose, et les écrans taisent la part servie de la conception. Un résultat rangé sans la clé
 #: se lit comme avant.
 TAUX_DE_LA_CONCEPTION, TAUX_DE_LA_POSE, TAUX_AUTRE_INSTALLATION = 'conception', 'pose', 'autre_installation'
@@ -155,7 +155,7 @@ def _kwc_de_la_pose(contexte):
     return round(total, 3) if total > 0 else None
 
 
-def ecart_conception_pose(conception, kwc_pose, apres_batterie):
+def _ecart_conception_pose(conception, kwc_pose, apres_batterie):
     """T4-X7-002 — ce qui sépare la conception de la pose simulée (``''`` : rien de connu) :
     la puissance (quand les deux sont connues) et la batterie (quand la conception la dit)."""
     morceaux = []
@@ -468,7 +468,7 @@ def _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie,
     batterie des deux côtés ou d'aucun) ; sinon les taux de la pose simulée, ceux
     des énergies publiées à côté, et la définition dit pourquoi (``taux_source``).
     """
-    ecart = ecart_conception_pose(conception, kwc_pose, apres_batterie) if conception else ''
+    ecart = _ecart_conception_pose(conception, kwc_pose, apres_batterie) if conception else ''
     if ecart:
         definition = DEFINITION_TAUX_AUTRE_POSE.format(
             version=conception.get('version'), panneaux=conception.get('panneaux'), ecart=', ' + ecart)
