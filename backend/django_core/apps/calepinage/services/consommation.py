@@ -1323,6 +1323,39 @@ def _depuis_la_conception(lu, lead):
     return courbe24, annuel, saisons, avertissements, 'facture'
 
 
+def _conso_imposee(conso):
+    """T4-X5-002 — la consommation du document est-elle IMPOSÉE par une saisie (appareils,
+    courbe retouchée, factures ou relevé saisis, saisons posées dans l'atelier) ? Une
+    consommation proposée depuis le lead, ou estimée par l'atelier depuis la facture sans
+    geste (origine « atelier », méthode « facture »), ne l'est pas."""
+    source = conso.get('source') if isinstance(conso.get('source'), dict) else {}
+    origine = source.get('origine')
+    return bool(conso.get('appareils') or conso.get('methode') not in (None, 'facture')
+                or origine not in (None, 'lead', 'atelier') or (origine == 'atelier' and conso.get('saisons')))
+
+
+def document_avec_conso_de_la_conception(calepinage, document):
+    """T4-X5-002 (D-ACAL-97) — le document que la SIMULATION d'un calepinage DE LEAD lit : sa
+    consommation non imposée (:func:`_conso_imposee`) est remplacée par celle de la conception
+    rangée (:func:`_consommation_de_la_conception`) — ses kWh, leur répartition sur les DOUZE
+    mois (``saisons.mois`` : jour moyen du mois ÷ jour moyen de l'année) et sa forme horaire.
+    Sans lead, consommation imposée ou conception sans ses douze mois : le document tel quel.
+    Rien n'est écrit (le document rangé ne change pas)."""
+    conso = (document or {}).get('consumption') if isinstance(document, dict) else None
+    conso = conso if isinstance(conso, dict) else {}
+    if not getattr(calepinage, 'lead_id', None) or _conso_imposee(conso):
+        return document
+    lu = _consommation_de_la_conception(calepinage)
+    lead = _lire_lead(calepinage.company, calepinage.lead_id) if lu is not None else None
+    if lead is None:
+        return document
+    courbe24, annuel, _saisons, _avis, methode = _depuis_la_conception(lu, lead)
+    jour_moyen = annuel / sum(JOURS_DU_MOIS)
+    facteurs = [round(kwh / jours / jour_moyen, 4) for kwh, jours in zip(lu[0], JOURS_DU_MOIS)]
+    return dict(document, consumption=dict(conso, courbe24=courbe24, methode=methode, saisons={'mois': facteurs},
+                                           source={'origine': 'conception', 'version': lu[3]}))
+
+
 def _depuis_lead(corps, company, lead_id, lire_lead=None, calepinage=None):
     lead = (lire_lead or _lire_lead)(company, lead_id) if lead_id else None
     if lead is None:

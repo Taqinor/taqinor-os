@@ -527,6 +527,54 @@ class FormeDuMoteurAuNiveau14Test(SimpleTestCase):
         self.assertGreater(max(abs(a - b) for a, b in zip(forme, silhouette)), 1e-3)
 
 
+class ConsoDeLaConceptionDansLaSimulationTest(SimpleTestCase):
+    """T4-X5-002 — lead à deux factures (hiver 1 200 / été 700 MAD, « été différent ») : la
+    simulation de son calepinage lisait la courbe PLATE que l'atelier estime depuis la facture
+    moyenne (597 kWh en janvier comme en juillet). Elle lit maintenant la consommation de la
+    conception : ses kWh et leur répartition sur les douze mois, une saisie imposée gardée."""
+
+    KWH = [760.0, 700.0, 700.0, 600.0, 520.0, 450.0, 430.0, 430.0, 450.0, 560.0, 680.0, 748.0]
+    ESTIMEE = {'courbe24': [0.8] * 24, 'methode': 'facture', 'source': {'origine': 'atelier', 'saisi_le': 'x'}}
+
+    def _document(self, conso, lu=None):
+        import types
+        from unittest import mock
+
+        from apps.calepinage.services import consommation as service
+
+        lu = lu if lu is not None else (self.KWH, [1 / 24.0] * 24, 'residentiel', 4)
+        calepinage = types.SimpleNamespace(lead_id=3, company=object())
+        with mock.patch.object(service, '_consommation_de_la_conception', return_value=lu), \
+                mock.patch.object(service, '_lire_lead', return_value=types.SimpleNamespace()):
+            return service.document_avec_conso_de_la_conception(calepinage, {'consumption': conso, 'zones': []})
+
+    def test_la_simulation_suit_les_douze_mois_de_la_conception(self):
+        from apps.calepinage.services.consommation import JOURS_DU_MOIS
+        from apps.calepinage.services.courbe_charge import _repeter_courbe24
+
+        document = self._document(dict(self.ESTIMEE))
+        conso = document['consumption']
+        self.assertEqual(conso['source'], {'origine': 'conception', 'version': 4})
+        points = [{'mois': mois, 'heure': heure} for mois in (1, 7) for heure in range(24)]
+        courbe = _repeter_courbe24(points, conso['courbe24'], conso['saisons'], 'test', 'test', [])
+        janvier, juillet = sum(courbe[:24]) * JOURS_DU_MOIS[0], sum(courbe[24:]) * JOURS_DU_MOIS[6]
+        self.assertAlmostEqual(janvier, self.KWH[0], delta=1.0)  # mutant « courbe plate » : 597 / 597
+        self.assertAlmostEqual(juillet, self.KWH[6], delta=1.0)
+
+    def test_une_saisie_imposee_ou_sans_conception_reste(self):
+        for conso in (dict(self.ESTIMEE, methode='courbe'), dict(self.ESTIMEE, appareils=[{'kind': 'tv'}]),
+                      dict(self.ESTIMEE, source={'origine': 'csv'})):
+            self.assertIs(self._document(conso)['consumption'], conso)
+        import types
+        from unittest import mock
+
+        from apps.calepinage.services import consommation as service
+        with mock.patch.object(service, '_consommation_de_la_conception', return_value=None):
+            document = {'consumption': dict(self.ESTIMEE)}
+            self.assertIs(service.document_avec_conso_de_la_conception(
+                types.SimpleNamespace(lead_id=3, company=object()), document), document)
+
+
 class SaisonsLuesParLaSimulationTest(SimpleTestCase):
     """``consumption.saisons`` module la courbe de charge de la simulation."""
 

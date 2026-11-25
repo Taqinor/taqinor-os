@@ -300,6 +300,14 @@ def _repeter_courbe24(points, courbe24, saisons, origine, quelle_saison,
     from .consommation import MOIS_ETE
 
     saisons = saisons if isinstance(saisons, dict) else {}
+    par_mois = saisons.get('mois')
+    if isinstance(par_mois, list) and len(par_mois) == 12 and all(_facteur_saison(f) for f in par_mois):
+        # T4-X5-002 — la répartition des DOUZE mois de la conception du lead.
+        avertissements.append(
+            'Courbe de base : les 24 valeurs horaires {origine}, modulées mois par mois par la '
+            'répartition de la consommation de la conception du lead.'.format(origine=origine))
+        return [float(courbe24[_heure(point)]) * float(par_mois[_mois(point) - 1])
+                if 1 <= _mois(point) <= 12 else float(courbe24[_heure(point)]) for point in points]
     ete = _facteur_saison(saisons.get('ete'))
     hiver = _facteur_saison(saisons.get('hiver'))
     if ete is None and hiver is None:

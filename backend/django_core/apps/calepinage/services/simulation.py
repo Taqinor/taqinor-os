@@ -53,6 +53,7 @@ from .chaine_pertes import (
     appliquer_chaine,
     bloc_serie_horaire, completude_de_la_chaine, decision_meteo,
 )
+from . import consommation as _conso
 from .etapes.autoconsommation import (CLE_TAUX_CONCEPTION, bloc_autoconsommation,
                                       taux_de_la_conception)
 from .etapes.batterie import bloc_batterie
@@ -783,7 +784,8 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
         # ── les postes SAISIS (D-CALX 11 : la liste plate, telle quelle) ─
         'postes_saisis': postes_du_calepinage(calepinage),
         # ── les déclarations aval ───────────────────────────────────────
-        'consommation': _declaration_consommation(document),
+        'consommation': _declaration_consommation(_conso.document_avec_conso_de_la_conception(
+            calepinage, document)),  # T4-X5-002 — calepinage de lead : la consommation de la conception
         'batterie': _declaration_batterie(calepinage, donnees,
                                           materiel_resolu, company),
         # ACAL155 — LA saisie de raccordement (cos φ imposé, plafond
