@@ -1908,6 +1908,29 @@ describe('DevisList — T4-X4-005 : une page à la fois, filtres et en-tête ser
   })
 })
 
+// T4-X4-009 — « Envoyer » sur un devis dont la fiche n'a aucun numéro : un toast
+// « Numéro de téléphone invalide. » seul. Il dit maintenant ce qui manque et
+// offre de copier le lien (le geste de la fenêtre « Envoyer au client » du lead).
+describe('DevisList — T4-X4-009 : Envoyer sans numéro sur la fiche', () => {
+  it('409 « Numéro de téléphone invalide » : le manque est dit, avec « Copier le lien »', async () => {
+    const user = userEvent.setup()
+    const erreur = vi.spyOn(toast, 'error')
+    ventesApi.whatsappPreviewDevis.mockRejectedValueOnce(Object.assign(new Error('409'), {
+      response: { status: 409, data: { detail: 'Numéro de téléphone invalide.' } } }))
+    renderList({ loading: false, devis: [{ id: 62, reference: 'DEV-X4-009', client_nom: 'ACME',
+      statut: 'brouillon', is_active: true, date_creation: '2026-11-25', total_ttc: 4000,
+      nb_options: 1, version: 1 }] })
+    const ligne = screen.getByText('DEV-X4-009').closest('tr')
+    await user.click(within(ligne).getByRole('button', { name: /Envoyer/ }))
+    await waitFor(() => expect(erreur).toHaveBeenCalled())
+    const [message, options] = erreur.mock.calls.at(-1)
+    expect(message).toContain('aucun numéro de téléphone exploitable')
+    expect(message).not.toContain('invalide')
+    expect(options.action.label).toBe('Copier le lien')
+    erreur.mockRestore()
+  })
+})
+
 // T4-X1-012 — la colonne « Validité » disait « — » pour un brouillon dont le PDF
 // imprime « Validité : jusqu'au 25/12/2026 » : la liste lisait `date_validite`
 // (vide tant que le vendeur n'a rien saisi) au lieu de `date_expiration`, la
