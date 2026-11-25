@@ -367,6 +367,6 @@ export function useApercuEtude(ctx) {
     etudeHoraireEstimationConso, ligneStockageOuverte, setLigneStockageOuverte,
     apercuProductionKwh, apercuProductionKwhAvec, apercuEcoSans, verdictBatterieServeur,
     batterieInvendableServeur, apercuEcoAvec, apercuPaybackSans, apercuPaybackAvec, apercuPaybackSansJamais,
-    apercuPaybackAvecJamais, signerEcoOuRoi, chartData,
+    apercuPaybackAvecJamais, signerEcoOuRoi, chartData, paybackServi,
   }
 }

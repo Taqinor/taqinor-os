@@ -82,7 +82,7 @@ function Jalons({ jalons, jalonsTtc, testid = 'eco-ci-jalons' }) {
 // de l'offre réseau. Aucun calcul : le retour est comparé à DÉFINITION égale
 // (au dixième des deux côtés si le serveur le sert pour l'offre réseau, sinon
 // en années pleines des deux côtés).
-function DeuxOptions({ d, avec }) {
+function DeuxOptions({ d, avec, paybackServi }) {
   if (!avec) return null
   const sans = d && d.statut !== 'omis' ? d : null
   const flux = avec.economie_flux || {}
@@ -90,6 +90,9 @@ function DeuxOptions({ d, avec }) {
   const an1 = avec.economie_ci?.economie_annee1 || {}
   const dixieme = sans?.indicateurs?.retour_dixieme_ans != null && ind.retour_dixieme_ans != null
   const retour = (i) => (dixieme ? i?.retour_dixieme_ans : i?.retour_ans)
+  // AGEN13 (T4-X4-016) — le retour SERVI par option (conception, celui du PDF) prime.
+  const sansServi = paybackServi?.paybackSans ?? null
+  const avecServi = paybackServi?.paybackAvec ?? null
   const ans = (v) => (v == null ? '—' : `${nb(v, dixieme ? 1 : undefined)} ans`)
   const tri = (i) => (i?.tri_pct == null ? '—' : `${nb(i.tri_pct, 1)} % sur ${i.tri_horizon_ans} ans`)
   const deuxBases = sans?.base === 'deux' || flux.base === 'deux'
@@ -114,7 +117,8 @@ function DeuxOptions({ d, avec }) {
           )}
           <tr data-testid="eco-ci-deux-retour">
             <td>Retour sur investissement</td>
-            <td>{ans(retour(sans?.indicateurs))}</td><td><strong>{ans(retour(ind))}</strong></td>
+            <td>{sansServi != null ? `${nb(sansServi)} ans` : ans(retour(sans?.indicateurs))}</td>
+            <td><strong>{avecServi != null ? `${nb(avecServi)} ans` : ans(retour(ind))}</strong></td>
           </tr>
           <tr><td>TRI</td><td>{tri(sans?.indicateurs)}</td><td>{tri(ind)}</td></tr>
         </tbody>
@@ -131,7 +135,10 @@ function DeuxOptions({ d, avec }) {
   )
 }
 
-export default function CarteEconomieCi({ apercu, eco, setEcoChamp, optionAvec = null, children }) {
+// AGEN13 (T4-X4-016) — `paybackServi` : le retour SERVI par option (conception du lead,
+// celui du bandeau et du PDF) ; il remplace le retour de l'aperçu, dont l'investissement
+// pouvait cumuler les deux options.
+export default function CarteEconomieCi({ apercu, eco, setEcoChamp, optionAvec = null, paybackServi = null, children }) {
   const { donnees: d, chargement, erreur } = apercu || {}
   return (
     <div className="mt-4 grid gap-3 rounded-lg border border-border p-3" data-testid="eco-ci">
@@ -144,7 +151,7 @@ export default function CarteEconomieCi({ apercu, eco, setEcoChamp, optionAvec =
           {(d.motifs_omission || []).map((m) => <li key={m}>{m}</li>)}
         </ul>
       )}
-      <DeuxOptions d={d} avec={optionAvec} />
+      <DeuxOptions d={d} avec={optionAvec} paybackServi={paybackServi} />
       {d && d.statut !== 'omis' && (
         <div className="grid gap-2 text-xs" data-testid="eco-ci-resultat">
           {optionAvec && <p className="font-semibold">Détail — option sans batterie</p>}
@@ -188,7 +195,7 @@ export default function CarteEconomieCi({ apercu, eco, setEcoChamp, optionAvec =
           {d.indicateurs && (
             <p data-testid="eco-ci-indicateurs">
               TRI : <strong>{nb(d.indicateurs.tri_pct, 1)} %</strong> sur {d.indicateurs.tri_horizon_ans} ans
-              {' · '}retour : {nb(d.indicateurs.retour_ans)} ans
+              {' · '}retour : {nb(paybackServi?.paybackSans ?? d.indicateurs.retour_ans)} ans
               {' · '}{d.indicateurs.van_mad != null
                 ? <>VAN : {mad(d.indicateurs.van_mad)}</>
                 : <span data-testid="eco-ci-van-motif">VAN non calculée : {d.indicateurs.van_motif}</span>}

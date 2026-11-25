@@ -60,6 +60,8 @@ describe('QAH3 — corpus figé solar_corpus.json (contrat PACT10)', () => {
     const recompute = computeExpectedForEntry(entry)
     const attendu = byId.get(entry.id)
     expect(attendu).toBeDefined()
-    expect(recompute).toEqual(attendu)
+    // AGEN13 — productible et production n'ont plus de jumeau écran (vérifiés côté Python).
+    const { productible: _p, production_annuelle: _pa, ...attenduEcran } = attendu
+    expect(recompute).toEqual(attenduEcran)
   })
 })

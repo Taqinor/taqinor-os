@@ -2,7 +2,7 @@
 
 La table d'irradiance GHI mensuelle était dupliquée entre
 ``quote_engine/constants.py`` (source Python unique) et ``solar.js`` (miroir
-front). Ce test lit la table du JS et la compare à la constante Python.
+front). AGEN13 — le miroir front est retiré : ce test garde qu'il ne revient pas.
 AMOT47 — la troisième copie du productible de référence (une constante sans
 lecteur) a été supprimée : le repère est CompanyProfile.productible_kwh_kwc.
 """
@@ -31,15 +31,11 @@ def _parse_solarjs_ghi():
 
 
 class TestDC9GhiParity(SimpleTestCase):
-    def test_ghi_table_mirrors_between_python_and_js(self):
-        js_ghi = _parse_solarjs_ghi()
-        self.assertIsNotNone(js_ghi, "GHI introuvable dans solar.js")
-        self.assertEqual(len(js_ghi), 12)
+    def test_ghi_table_unique_cote_serveur(self):
+        # AGEN13 (D-ACAL-97) — le miroir écran est RETIRÉ (l'écran lit le moteur
+        # unique) : plus de seconde table à garder alignée, la seule est Python.
+        self.assertIsNone(_parse_solarjs_ghi(), "solar.js ne doit plus porter de table GHI")
         self.assertEqual(len(constants.GHI), 12)
-        for i, (py, js) in enumerate(zip(constants.GHI, js_ghi)):
-            self.assertAlmostEqual(
-                py, js, places=2,
-                msg=f"GHI[{i}] diverge : Python {py} ≠ solar.js {js}")
 
     def test_productible_constante_morte_retiree(self):
         # AMOT47 — ``constants.PRODUCTIBLE_DEFAUT`` (troisième copie du 1600,

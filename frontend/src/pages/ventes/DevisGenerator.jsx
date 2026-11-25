@@ -989,7 +989,7 @@ export default function DevisGenerator({
     verdictBatterieServeur, batterieInvendableServeur,
     apercuEcoAvec, apercuPaybackSans, apercuPaybackAvec,
     apercuPaybackSansJamais, apercuPaybackAvecJamais,
-    signerEcoOuRoi, chartData,
+    signerEcoOuRoi, chartData, paybackServi,
   } = useApercuEtude({
     lines, kwpLignes, kwpAvec, realBillMode, realBillKwh,
     realBillMad, distributeur, baremeSociete, provenanceMois, leadDuDevis, leads,
@@ -1710,7 +1710,7 @@ export default function DevisGenerator({
   // CIQ125 — le profil déclaré C&I + la réponse du moteur serveur.
   const socleEtudeReseau = {
     profilCi, apercuCi, tarifSaisie, setChampCi: ci.setChampCi, setTarifChamp: ci.setTarifChamp, reprisLead: ci.reprisLead,
-    apercuEcoCi, ecoCi, setEcoChamp,
+    apercuEcoCi, ecoCi, setEcoChamp, paybackServi,
   }
 
   return (

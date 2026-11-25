@@ -90,10 +90,10 @@ import { writeFileSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import {
-  productibleForCity,
-  PRODUCTIBLE_NET_FACTOR,
-} from '../src/features/ventes/solar.js'
+// AGEN13 (D-ACAL-97) — `productibleForCity` est RETIRÉ de l'écran (le moteur unique lit
+// `quote_engine/productible.py`) : les axes 3 et 4 (productible, production) ne sont plus
+// recalculés côté écran ; l'attendu FIGÉ les garde, vérifiés côté Python par
+// `test_solar_differential.ProductibleEtProductionTest`.
 import {
   isBattery, isHybridInverter, isReseauInverter, isOffgridInverter, isAnyInverter, isPanel,
   parseWatt,
@@ -338,11 +338,6 @@ export function computeExpectedForEntry(entry) {
     ? round2((nbPanneaux * watt) / 1000)
     : null
 
-  const productible = productibleForCity(entry.ville, entry.productible_override)
-  const productionAnnuelle = entry.kwc
-    ? Math.round(entry.kwc * productible * PRODUCTIBLE_NET_FACTOR)
-    : null
-
   const totals = optionTotalsTTC(entry.lines, entry.discount_pct)
   const totalTtc = entry.avec_batterie ? totals.totalAvec : totals.totalSans
 
@@ -352,8 +347,6 @@ export function computeExpectedForEntry(entry) {
     nb_panneaux: nbPanneaux,
     watt,
     kwc_des_lignes: kwcDesLignes,
-    productible,
-    production_annuelle: productionAnnuelle,
     total_ttc: totalTtc,
   }
 }

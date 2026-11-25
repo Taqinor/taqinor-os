@@ -24,11 +24,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  productibleForCity, PRODUCTIBLE_NET_FACTOR,
-  panneauxPourKwc,
-  ttcFromHt, htFromTtc,
-  ligneProduitCatalogue} from './solar.js'
-import { computeROI, computeCashflowPayback } from './calc/roi.js'
+  PRODUCTIBLE_NET_FACTOR, panneauxPourKwc, ttcFromHt, htFromTtc, ligneProduitCatalogue,
+} from './solar.js'
 import { totauxCanoniquesTtc } from './calc/totaux.js'
 import { ONEE_TRANCHES, FALLBACK_KWH_PRICE, monthlyBillFromKwh, kwhFromBill, consoAnnuelleDepuisFactures, kwhDepuisFactureMad, factureMad, tppanMad, twoBillsSavings } from './calc/tarifs.js'
 import { forAll, premierNonFini } from './proprietes.aleatoire.js'
@@ -395,79 +392,6 @@ const roiDe = (c, kwp = c.kwp) => computeROI({
   consoAnnuelleKwh: c.consoAnnuelleKwh, utility: c.utility, productible: c.productible,
 })
 
-test('computeROI : aucune sortie NaN/±inf, économies ≥ 0, avec ≥ sans, taux d\'autoconsommation dans [0,1], payback fini', () => {
-  verifier('', 'computeROI bornes', {
-    seed: 401, runs: RUNS,
-    gen: genRoi,
-    verifie: (c) => {
-      const r = roiDe(c)
-      const nf = premierNonFini(r)
-      if (nf) return `sortie non finie : ${nf}`
-      if (r.eco_annuelle_sans < 0 || r.eco_annuelle_avec < 0) return 'économie négative'
-      if (r.eco_annuelle_avec + 1e-6 < r.eco_annuelle_sans) return `avec ${r.eco_annuelle_avec} < sans ${r.eco_annuelle_sans}`
-      for (const k of ['autoconso_sans', 'autoconso_avec']) {
-        if (r[k] < -1e-9 || r[k] > 1 + 1e-9) return `${k} hors [0,1] : ${r[k]}`
-      }
-      for (const k of ['payback_sans', 'payback_avec']) {
-        if (r[k] !== null && !(r[k] > 0 && r[k] <= 25)) return `${k}=${r[k]} hors ]0,25]`
-      }
-      if (r.savings_model === 'factures') {
-        if (r.eco_annuelle_sans > r.facture_sans) return `économie ${r.eco_annuelle_sans} > facture actuelle ${r.facture_sans}`
-        if (r.eco_annuelle_avec > r.facture_sans) return `économie avec ${r.eco_annuelle_avec} > facture actuelle ${r.facture_sans}`
-      }
-      return null
-    },
-  })
-})
-
-test('computeROI : plus de kWc ⇒ production ↑, jamais moins ; production = kWc × productible × facteur (±0,1 kWh)', () => {
-  verifier('', 'production monotone en kWc', {
-    seed: 402, runs: RUNS,
-    gen: (g) => ({ ...genRoi(g), productible: g.pick([1500, 1651, 1687]), dKwp: g.float(0, 20) }),
-    verifie: (c) => {
-      const a = roiDe(c)
-      const b = roiDe(c, c.kwp + c.dKwp)
-      if (b.production_annuelle_kwh + 1e-9 < a.production_annuelle_kwh) {
-        return `production(${c.kwp + c.dKwp}) < production(${c.kwp})`
-      }
-      const attendu = c.kwp * c.productible * PRODUCTIBLE_NET_FACTOR
-      return Math.abs(a.production_annuelle_kwh - attendu) <= 0.06 + attendu * 1e-9 ? null
-        : `production ${a.production_annuelle_kwh} vs ${attendu}`
-    },
-  })
-})
-
-test('payback : > 0 et fini dès que l\'économie > 0 et l\'investissement > 0 ; jamais > 25 ans', () => {
-  verifier('', 'computeCashflowPayback', {
-    seed: 403, runs: RUNS,
-    gen: (g) => ({
-      inv: Math.round(g.logFloat(8000, 3e6)), eco: Math.round(g.logFloat(500, 4e5)),
-      battery: g.bool(), share: g.pick([null, 0, 0.5, 1]), invCost: g.pick([null, 0, 15000]),
-    }),
-    verifie: ({ inv, eco, battery, share, invCost }) => {
-      // Domaine RÉALISTE : l'économie annuelle ne dépasse pas 3× l'investissement
-      // (payback ≥ ~4 mois) — au-delà, l'arrondi 0,1 an peut rendre 0.
-      if (eco > inv * 3) return null
-      const r = computeCashflowPayback(inv, eco, { battery, batteryShare: share, inverterReplaceCost: invCost })
-      if (premierNonFini(r)) return `non fini ${premierNonFini(r)}`
-      if (!(r.paybackYears > 0 && r.paybackYears <= 25)) return `payback ${r.paybackYears}`
-      return r.cumulative.length === 25 ? null : 'cashflow ≠ 25 ans'
-    },
-  })
-})
-
-test('payback : plus d\'économie ⇒ payback jamais plus long', () => {
-  verifier('', 'payback monotone en économie', {
-    seed: 404, runs: RUNS,
-    gen: (g) => ({ inv: Math.round(g.logFloat(8000, 1e6)), eco: Math.round(g.logFloat(800, 2e5)), coef: g.float(1, 3) }),
-    verifie: ({ inv, eco, coef }) => {
-      const a = computeCashflowPayback(inv, eco).paybackYears
-      const b = computeCashflowPayback(inv, eco * coef).paybackYears
-      return b <= a + 1e-9 ? null : `payback(×${coef})=${b} > payback=${a}`
-    },
-  })
-})
-
 // ══ 5. DIMENSIONNEMENT ═══════════════════════════════════════════════════════
 
 test('panneaux : plus de kWc demandés ⇒ jamais moins de panneaux, et N × W ≥ kWc demandé', () => {
@@ -586,20 +510,6 @@ test('TTC ↔ HT : ttcFromHt(htFromTtc(x)) redonne x à ±1 dirham près, pour t
 // tests du noyau.
 
 // ══ 8. PRODUCTIBLE ═══════════════════════════════════════════════════════════
-
-test('productible : toujours > 0 et fini, quel que soit la ville (inconnue, vide, accentuée) ou l\'override', () => {
-  verifier('', 'productibleForCity', {
-    seed: 801, runs: RUNS,
-    gen: (g) => ({
-      ville: g.pick(['Casablanca', 'rabat', ' TANGER ', 'Agadir', 'Salé', 'Témara', '', null, undefined, 'Atlantide', 'Essaouira']),
-      ov: g.pick([null, undefined, 0, -3, 1600, 1450, 1750, 'abc']),
-    }),
-    verifie: ({ ville, ov }) => {
-      const p = productibleForCity(ville, ov)
-      return Number.isFinite(p) && p > 0 ? null : `productible ${p}`
-    },
-  })
-})
 
 // ══ ATOT28 — prix catalogue repris sans retouche = prix_vente EXACT ═════════
 // Une ligne créée depuis un produit porte le HT catalogue d'origine

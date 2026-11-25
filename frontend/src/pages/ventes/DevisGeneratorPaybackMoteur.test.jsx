@@ -30,13 +30,9 @@ vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDev
     getConceptionLead: vi.fn(),
     apercuConception: vi.fn(),
 }))
-// Mutant « rappeler un calcul local » : aucun appel ne doit en partir.
-vi.mock('../../features/ventes/calc/roi.js', async (orig) => {
-  const m = await orig()
-  return { ...m, computeROI: vi.fn(m.computeROI), paybackMoteurHoraire: vi.fn(m.paybackMoteurHoraire) }
-})
+// AGEN13 — le calcul local (`calc/roi.js`) n'existe plus : sa disparition est
+// épinglée par `features/ventes/solar.test.mjs` (cas AGEN13).
 
-import * as roi from '../../features/ventes/calc/roi.js'
 import ventesApi from '../../api/ventesApi'
 import stockApi from '../../api/stockApi'
 import DevisGenerator from './DevisGenerator'
@@ -76,7 +72,7 @@ const figure = (container, nom) => container
   ?.getAttribute('data-figure-value') ?? null
 
 describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', () => {
-  it('avec lead : la conception rangée, puis l’aperçu de la saisie ; payback servi ; saisie non arrondie ; 0 calcul local', async () => {
+  it('avec lead : la conception rangée, puis l’aperçu de la saisie ; payback servi ; saisie non arrondie', async () => {
     ventesApi.getConceptionLead.mockResolvedValue({ data: RANGEE })
     ventesApi.apercuConception.mockResolvedValue({ data: APERCU })
     const { container } = renderEdition()
@@ -98,8 +94,6 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
       .toBe(String(production)), { timeout: 5000 })
     // Le payback est celui SERVI avec la version rangée (l'aperçu n'en porte pas).
     expect(figure(container, 'payback_ans')).toBe(`${RANGEE.valeurs.sans.payback.valeur} ans`)
-    expect(roi.computeROI).not.toHaveBeenCalled()
-    expect(roi.paybackMoteurHoraire).not.toHaveBeenCalled()
   }, 20000)
 
   it('sans lead : rien avant la saisie, « Calcul en cours… » pendant l’appel, puis les chiffres servis', async () => {
@@ -122,6 +116,5 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
       .toBe(String(APERCU.valeurs.sans.economies_annuelles.valeur))
     // Aucun devis de référence servi : le payback n'est pas inventé (« N/A », aucune ancre chiffrée).
     expect(figure(container, 'payback_ans')).toBeNull()
-    expect(roi.computeROI).not.toHaveBeenCalled()
   }, 20000)
 })

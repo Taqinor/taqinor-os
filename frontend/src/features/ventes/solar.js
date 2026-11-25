@@ -9,15 +9,9 @@ import {
   _norm, _produitDeLigne, classifyProduct, isBattery, isPanel, parseKwh, parseWatt, texteClassement,
 } from './calc/classification.js'
 
-// ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
-// DC9 — MIROIR de la source Python unique
-// (backend apps/ventes/quote_engine/constants.py GHI). Les deux tables DOIVENT
-// rester identiques : un test de parité (test_dc9_ghi_parity.py) échoue sinon.
-// Ne jamais éditer l'une sans répercuter l'autre à l'identique.
-export const GHI = [
-  83.99, 96.79, 133.43, 155.30, 175.28, 179.62,
-  179.56, 161.17, 137.03, 111.59, 81.91, 74.61,
-]
+// AGEN13 (D-ACAL-97) — l'irradiance GHI, le rendement global et le tarif du kWh
+// de l'écran sont RETIRÉS : production et économies viennent du moteur unique
+// (conception servie, `quote_engine/constants.py` côté serveur).
 // Libellés des mois : grille des factures (complets) vs graphique (courts),
 // exactement comme dans le simulateur (MONTHS_FR vs labels du chart).
 export const MONTHS_FR = [
@@ -28,56 +22,19 @@ export const CHART_MONTHS = [
   'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun',
   'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc',
 ]
-export const EFFICIENCY = 0.8 // rendement global
-export const KWH_PRICE = 1.75 // MAD/kWh ONEE — usage interne, jamais affiché
-
-// ── QX38 — productible CANONIQUE (kWh/kWc/an) par ville, source PVGIS ─────────
-// MIROIR EXACT de backend apps/ventes/quote_engine/productible.py
-// (PRODUCTIBLE_PAR_VILLE + DEFAULT_PRODUCTIBLE) et de apps/web yieldTable.ts
-// (aspect Sud, inclinaison optimale). Les trois DOIVENT rester alignés :
-// l'écran, le PDF et la proposition web affichent alors la MÊME production/
-// économies pour les mêmes entrées. Ne jamais éditer l'un sans les deux autres.
-export const PRODUCTIBLE_PAR_VILLE = {
-  agadir: 1687,
-  marrakech: 1651,
-  casablanca: 1651,
-  rabat: 1630,
-  tanger: 1634,
-}
-export const DEFAULT_PRODUCTIBLE = 1651 // Casablanca (centre zone de service)
+// AGEN13 — `PRODUCTIBLE_PAR_VILLE` / `productibleForCity` sont RETIRÉS (la table
+// vit dans `quote_engine/productible.py`, lue par le moteur unique).
 
 // ── Pertes système : 20 % AU TOTAL (ordre fondateur, 18/08) — MIROIR pricing.py
 // Les productibles ci-dessus sont des sorties PVGIS demandées à `loss=14`
 // (cf. backend apps/parametres/pvgis.py) : 14 % de pertes sont DÉJÀ dedans.
 // Le fondateur fixe le total à 20 % → on applique le seul COMPLÉMENT,
 // (1 − 20 %)/(1 − 14 %) ≈ 0,9302, pour passer d'un productible « net à 14 % »
-// à un productible « net à 20 % ». Le chemin historique GHI × EFFICIENCY (0,8)
-// porte DÉJÀ les 20 % : il n'est pas touché (sinon on compterait deux fois).
+// à un productible « net à 20 % ». Gardé : Paramètres → Avancé l'affiche (AvanceSection.jsx).
 export const SYSTEM_LOSS_TOTAL = 0.20   // pertes système TOTALES (fondateur 18/08)
 export const PVGIS_BUILTIN_LOSS = 0.14  // pertes déjà incluses dans le productible
 export const PRODUCTIBLE_NET_FACTOR = (1 - SYSTEM_LOSS_TOTAL) / (1 - PVGIS_BUILTIN_LOSS)
-const _CITY_ALIASES = {
-  casa: 'casablanca', kenitra: 'rabat', sale: 'rabat', salé: 'rabat',
-  mohammedia: 'casablanca', 'el jadida': 'casablanca', essaouira: 'agadir',
-  safi: 'casablanca', temara: 'rabat', témara: 'rabat', tetouan: 'tanger',
-  tétouan: 'tanger', settat: 'casablanca', benguerir: 'marrakech',
-  berrechid: 'casablanca',
-}
 
-// Productible canonique pour une ville. `override` = productible société
-// (CompanyProfile) : renseigné (> 0, 1600 compris — AMOT64, D-AMOT-3 = a), il
-// prime ; vide (null) on lit le productible PVGIS de la ville (repli DEFAULT).
-// Même règle que productible.py::productible_for_city (aucune sentinelle 1600).
-export function productibleForCity(city, override = null) {
-  const ov = parseFloat(override)
-  if (Number.isFinite(ov) && ov > 0) {
-    return ov
-  }
-  const key = String(city || '').trim().toLowerCase()
-  if (!key) return DEFAULT_PRODUCTIBLE
-  const norm = _CITY_ALIASES[key] || key
-  return PRODUCTIBLE_PAR_VILLE[norm] ?? DEFAULT_PRODUCTIBLE
-}
 
 // Factures mensuelles affichées au chargement (initApp du simulateur)
 export const DEFAULT_MONTHLY_BILLS = [500, 450, 400, 380, 360, 500, 700, 680, 580, 480, 430, 480]
@@ -554,8 +511,7 @@ export function roleLabel(role) {
 
 // CIQ228 — la valorisation C&I écran (rachat 82-21 net, injection) est
 // SUPPRIMÉE : la revente MT et ses mentions viennent UNIQUEMENT du serveur
-// (`economie_ci.revente`). `KWH_PRICE` reste : le RÉSIDENTIEL le lit encore
-// (repli de `computeROI` et défaut `quoteLogic.kwhPrice` du générateur).
+// (`economie_ci.revente`).
 
 // ── Pompage solaire (mode Agricole) ───────────────────────────────────────────
 // AGNR26 — `HEURES_POMPAGE_DEFAUT` retiré : plus rien ne le lisait depuis
