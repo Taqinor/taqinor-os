@@ -277,7 +277,8 @@ def _devis_envoye_lie(calepinage):
     envoi = getattr(devis, 'date_envoi', None)
     return {'devis': devis.pk, 'reference': devis.reference or '', 'statut': devis.statut,
             'envoye_le': envoi.isoformat() if envoi else None, 'option': lu.get('option'),
-            'production_annuelle_kwh': lu.get('production_annuelle_kwh'), 'ecart_devis': ecart_devis(devis)}
+            'production_annuelle_kwh': lu.get('production_annuelle_kwh'),
+            'ecart_devis': ecart_devis(devis, retenue=lu)}
 
 
 def bloc_production_devis(calepinage):

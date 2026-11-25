@@ -308,7 +308,8 @@ def conception_ou_calcul(company, lead_id=None, *, calepinage_id=None):
     ``remplissage`` : « premier calcul ») et ``en_cours`` dit qu'elle est partie
     ou déjà en file. Un calepinage SANS lead n'en met aucune : le moteur le
     refuserait faute de lieu (``moteur.lead_du_calepinage`` ne porte ni ville
-    ni GPS). Lue UNE fois par requête (mémo ``core.request_cache``)."""
+    ni GPS). Lue UNE fois par requête (mémo ``core.request_cache``), sans le suivi des
+    devis (``ecart_devis`` / brouillons servis vides : le calepinage sert son propre écart)."""
     from core import request_cache
 
     if company is None or not getattr(company, 'pk', None):
@@ -321,7 +322,8 @@ def _conception_ou_calcul(company, lead_id, calepinage_id):
     from apps.ventes.conception.receivers import mettre_en_file
     from apps.ventes.selectors_conception import conception_courante
 
-    conception = conception_courante(company, lead_id, calepinage_id=calepinage_id)
+    # Le calepinage sert lui-même l'écart du devis qu'il montre (``devis_retenu.bloc_conception``).
+    conception = conception_courante(company, lead_id, calepinage_id=calepinage_id, suivi_des_devis=False)
     if conception is not None or not lead_id:
         return conception, False
     issue = mettre_en_file(company.pk, lead_id=lead_id, origine='remplissage', champs=[])

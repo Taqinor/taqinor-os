@@ -43,10 +43,13 @@ def _versions(company, lead_id, calepinage_id):
     return ConceptionLead.objects.filter(company=company, **_porteur(lead_id, calepinage_id))
 
 
-def conception_courante(company, lead_id=None, *, calepinage_id=None):
-    """La version COURANTE du porteur (de ``company``), forme du contrat."""
-    version = _versions(company, lead_id, calepinage_id).filter(courante=True).first()
-    return None if version is None else _forme(version)
+def conception_courante(company, lead_id=None, *, calepinage_id=None, suivi_des_devis=True):
+    """La version COURANTE du porteur (de ``company``), forme du contrat.
+    ``suivi_des_devis=False`` (relecture E5, coût des requêtes) : ``ecart_devis`` et
+    ``brouillons_a_mettre_a_jour`` servis vides — pour un lecteur qui sert lui-même
+    l'écart du devis qu'il montre (le calepinage, ``devis_retenu.bloc_conception``)."""
+    version = _versions(company, lead_id, calepinage_id).filter(courante=True).select_related('company').first()
+    return None if version is None else _forme(version, suivi_des_devis=suivi_des_devis)
 
 
 def historique_conception(company, lead_id=None, *, calepinage_id=None):
@@ -58,15 +61,16 @@ def historique_conception(company, lead_id=None, *, calepinage_id=None):
             for v in _versions(company, lead_id, calepinage_id).order_by('-version')]
 
 
-def _forme(version):
+def _forme(version, suivi_des_devis=True):
     from .conception.moteur import CLES_SORTIE
     forme = {cle: getattr(version, cle) for cle in CLES_SORTIE}
+    suivi = suivi_des_devis and version.lead_id
     forme.update(
         option_retenue=version.option_retenue or None, lead=version.lead_id, calepinage=version.calepinage_id,
         empreinte_pose=version.empreinte_pose, declencheur=version.declencheur, version=version.version,
         calcule_le=version.calcule_le.isoformat(), perimee=_perimee(version),
-        brouillons_a_mettre_a_jour=_brouillons_a_mettre_a_jour(version),
-        ecart_devis=ecart_devis(_devis_envoye_du_lead(version)) if version.lead_id else [])
+        brouillons_a_mettre_a_jour=_brouillons_a_mettre_a_jour(version) if suivi else [],
+        ecart_devis=ecart_devis(_devis_envoye_du_lead(version)) if suivi else [])
     return forme
 
 
@@ -149,7 +153,7 @@ def manques_du_moteur(lead):
                       if m['champ'] not in vus]
 
 
-def ecart_devis(devis):
+def ecart_devis(devis, *, retenue=None):
     """``[{valeur, devis, conception, devis_ref, reviser_possible,
     mise_a_jour_proposee, courante_refusee}]`` — chaque valeur de
     :data:`VALEURS_COMPAREES` qui diffère entre ``devis`` (lu tel qu'il est
@@ -161,16 +165,25 @@ def ecart_devis(devis):
     pour ce devis (actif, pas un brouillon — ``domain/revision.py``) ;
     ``mise_a_jour_proposee`` (ADEV148) : un brouillon actif RETOUCHÉ, né d'une
     version plus ancienne, propose « Mettre à jour » (rien n'est écrit ici).
-    Vide sans devis, sans lead, sans conception."""
+    Vide sans devis, sans lead, sans conception. ``retenue`` : la conception retenue du
+    devis déjà lue par l'appelant (relecture E5, coût des requêtes : jamais relue)."""
+    from django.db.models import Q
+
     from .models import ConceptionLead, Devis
     from .selectors_calepinage import conception_retenue_du_devis
 
     if devis is None or not devis.lead_id:
         return []
-    versions = ConceptionLead.objects.filter(company_id=devis.company_id, lead_id=devis.lead_id)
-    version = versions.filter(etat=ConceptionLead.Etat.COMPLET).order_by('-version').first()
-    courante_refusee = versions.filter(courante=True, etat=ConceptionLead.Etat.REFUS).exists()
-    retenue = conception_retenue_du_devis(devis) if version is not None else None
+    # UNE lecture : la dernière version complète et la courante (relecture E5, coût des requêtes).
+    lues = list(ConceptionLead.objects.filter(company_id=devis.company_id, lead_id=devis.lead_id)
+                .filter(Q(etat=ConceptionLead.Etat.COMPLET) | Q(courante=True))
+                .only('pk', 'etat', 'courante', 'version', 'valeurs', 'option_retenue').order_by('-version'))
+    version = next((v for v in lues if v.etat == ConceptionLead.Etat.COMPLET), None)
+    courante_refusee = any(v.courante and v.etat == ConceptionLead.Etat.REFUS for v in lues)
+    if version is not None and retenue is None:
+        retenue = conception_retenue_du_devis(devis)
+    elif version is None:
+        retenue = None
     if not retenue:
         return []
     module = retenue.get('module') or {}
