@@ -163,3 +163,22 @@ describe('Écran « Sources des paramètres normatifs » (CAL165)', () => {
     )
   })
 })
+
+describe('T4-X3-001 — la norme choisie est dite même sans coefficient saisi', () => {
+  it('norme enregistrée, aucun coefficient propre à la société : la page nomme la norme', async () => {
+    const servi = reponseContrat('calepinage', 'parametres_calepinage', 'exemple')
+    servi.data = {
+      ...servi.data,
+      norme_electrique: { norme: 'nf_c_15_100', reference: 'X3-ref test', coefficients: {} },
+    }
+    calepinageApi.parametres.get.mockResolvedValue(servi)
+    rendreEcran()
+    await screen.findByTestId('cal165-ecran')
+    const norme = screen.getByTestId('cal165-norme')
+    expect(norme).not.toHaveTextContent('Aucune norme électrique choisie')
+    expect(norme).toHaveTextContent('NF C 15-100')
+    expect(norme).toHaveTextContent('X3-ref test')
+    expect(norme).toHaveTextContent('ceux de la norme s’appliquent')
+    expect(within(norme).getByRole('link', { name: 'Changer la norme' })).toBeInTheDocument()
+  })
+})

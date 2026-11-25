@@ -4,6 +4,7 @@ import useResource from '../../../hooks/useResource'
 import { formatNumber } from '../../../lib/format'
 import { Card, Spinner } from '../../../ui'
 import { ORIGINES, estOrigineDeclaree } from './Provenance.helpers'
+import { NORMES } from '../reglages/ReglagesNorme'
 
 /* ============================================================================
    CAL165 — LA SOURCE DE CHAQUE PARAMÈTRE NORMATIF, AFFICHÉE AVEC LUI.
@@ -189,12 +190,28 @@ export default function SourcesNormatives() {
             texte={norme.norme ? 'Changer la norme' : 'Choisir la norme'}
           />
         )}
-        vide={Object.keys(coefficients).length === 0
+        // T4-X3-001 — « choisie » se lit sur la NORME enregistrée, pas sur la
+        // présence de coefficients saisis (la société n'en saisit en général aucun).
+        vide={!norme.norme && Object.keys(coefficients).length === 0
           ? 'Aucune norme électrique choisie : les coefficients sont omis.'
           : null}
       >
+        {norme.norme
+          ? (
+            <Ligne libelle="Norme choisie">
+              {NORMES.find((n) => n.valeur === norme.norme)?.libelle || norme.norme}
+            </Ligne>
+          )
+          : null}
         {norme.reference
           ? <Ligne libelle="Référence de la norme">{norme.reference}</Ligne>
+          : null}
+        {norme.norme && Object.keys(coefficients).length === 0
+          ? (
+            <Ligne libelle="Coefficients">
+              Aucun coefficient propre à la société : ceux de la norme s’appliquent.
+            </Ligne>
+          )
           : null}
         {Object.entries(coefficients).map(([code, coefficient]) => (
           <Ligne key={code} libelle={libelleDeCode(code)}>

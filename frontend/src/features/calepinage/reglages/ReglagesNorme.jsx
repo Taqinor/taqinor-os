@@ -16,7 +16,7 @@ import { Card } from '../../../ui'
    section servie (coefficients compris), seules `norme` et `reference`
    changent.
    ========================================================================== */
-const NORMES = [
+export const NORMES = [
   { valeur: '', libelle: 'Aucune — calculs dépendant d’une norme omis' },
   { valeur: 'nf_c_15_100', libelle: 'NF C 15-100 / UTE C 15-712-1 / IEC 62548 (jeu français)' },
 ]
