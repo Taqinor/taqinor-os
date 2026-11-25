@@ -203,7 +203,6 @@ def _recomposer_par_la_decision(devis, version, user):
     from apps.ventes.domain.creation_auto_agricole import alertes_journal_agricole, etude_params_creation_agricole
     from apps.ventes.domain.pipeline import MODE_ECRIRE, MODE_RAFRAICHIR, ORIGINE_AUTO, IntentionDevis, appliquer
     from apps.ventes.domain.pompage import etude_precalculee
-    from apps.ventes.models import Devis
 
     lead, company, marche = devis.lead, devis.company, devis.mode_installation
     journal = 'journal_auto' in (devis.etude_params or {})
@@ -214,8 +213,7 @@ def _recomposer_par_la_decision(devis, version, user):
     else:
         etude, lignes, scenario = decider_ci(lead=lead, company=company)
         entrees, contexte = etude_params_creation_ci(etude, mode=marche, scenario=scenario), contextlib.nullcontext()
-    Devis.objects.filter(pk=devis.pk).update(etude_params=blocs_et_creation(version, entrees))
-    devis.refresh_from_db()
+    _poser_l_etude_de_creation(devis, blocs_et_creation(version, entrees))
     commun = {'origine': ORIGINE_AUTO, 'company': company, 'user': user, 'lead': lead,
               'mode_installation': marche}
     with contexte:
@@ -226,6 +224,23 @@ def _recomposer_par_la_decision(devis, version, user):
                else alertes_journal_ci(etude, devis))
     marquer_rapide(devis, {'alertes': alertes} if journal else None)
     return []
+
+
+def _poser_l_etude_de_creation(devis, etude):
+    """L'étude du brouillon devient ``etude`` (celle que la création poserait)
+    par L'écrivain unique (``etude_schema.ecrire``), chaque clé réservée écrite
+    par SON propriétaire déclaré ; les clés de l'ancienne version absentes de
+    ``etude`` sont retirées (``None``, règle Z2) — jamais une affectation en bloc."""
+    from apps.ventes.domain import etude_schema as es
+
+    cles = dict({cle: None for cle in (devis.etude_params or {}) if cle not in etude}, **etude)
+    par_proprietaire = {}
+    for cle, valeur in cles.items():
+        regle = es.SCHEMA.get(cle) or {}
+        reservee = regle.get('nature') == es.DERIVEE or regle.get('exclusif')
+        par_proprietaire.setdefault(regle.get('proprietaire') if reservee else None, {})[cle] = valeur
+    for proprietaire, lot in par_proprietaire.items():
+        es.ecrire(devis, proprietaire=proprietaire, **lot)
 
 
 def suivre_la_conception(version):
