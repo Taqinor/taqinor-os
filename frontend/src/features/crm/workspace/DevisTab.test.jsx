@@ -859,6 +859,27 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (par devis, via le dia
     expect(await screen.findByText('Copié')).toBeInTheDocument()
   })
 
+  // T4-V2-019 — sur une pile lente, le clic partait sans RIEN changer à l'écran (la
+  // requête attendait : aucune trace, aucun lien, aucun message) : le geste en cours
+  // est dit, le bouton est occupé, et le lien arrive dès la réponse.
+  it('T4-V2-019 — « Copier le lien » en attente du serveur : l’écran le dit, puis montre le lien', async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn(() => Promise.resolve()) }, configurable: true, writable: true,
+    })
+    let repondre
+    shareLinkDevis.mockImplementationOnce(() => new Promise((r) => { repondre = r }))
+    renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user, { avance: false })
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
+    const statut = await screen.findByTestId('envoi-en-cours')
+    expect(statut).toHaveTextContent('Création du lien de la page client… le lien s’affichera ici dès la réponse du serveur.')
+    expect(screen.getByRole('button', { name: /Copier le lien/ })).toHaveAttribute('aria-busy', 'true')
+    repondre({ data: { path: '/proposition/karim/tok-abc', token: 'tok-abc', niveau: 'standard', otp_lecture: false } })
+    expect(await screen.findByTestId('envoi-lien-client')).toHaveValue('https://taqinor.ma/proposition/karim/tok-abc')
+    expect(screen.queryByTestId('envoi-en-cours')).toBeNull()
+  })
+
   it('T4-U2-003 / T4-U3-011 — copie refusée : le lien s’affiche dans un champ sélectionnable ; canaux grisés expliqués', async () => {
     const user = userEvent.setup()
     Object.defineProperty(navigator, 'clipboard', {

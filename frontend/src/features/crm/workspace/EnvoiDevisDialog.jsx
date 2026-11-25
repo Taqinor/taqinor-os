@@ -28,7 +28,7 @@ function CanauxEnvoi({ devis: d, envoi }) {
     <div className="lw-context-devis-links">
       <Button
         type="button" size="sm" variant="outline"
-        disabled={!leadPhoneOk || linkBusy === `w-${d.id}`}
+        disabled={!leadPhoneOk} loading={linkBusy === `w-${d.id}`}
         title={leadPhoneOk
           ? 'Envoyer le lien de la page client par WhatsApp'
           : 'Aucun numéro de téléphone exploitable'}
@@ -38,7 +38,7 @@ function CanauxEnvoi({ devis: d, envoi }) {
       </Button>
       <Button
         type="button" size="sm" variant="outline"
-        disabled={!leadEmail || linkBusy === `e-${d.id}`}
+        disabled={!leadEmail} loading={linkBusy === `e-${d.id}`}
         title={leadEmail
           ? `Envoyer la proposition (PDF + lien) à ${leadEmail}`
           : 'Aucune adresse e-mail sur la fiche'}
@@ -48,7 +48,7 @@ function CanauxEnvoi({ devis: d, envoi }) {
       </Button>
       <Button
         type="button" size="sm" variant="outline"
-        disabled={linkBusy === `l-${d.id}`}
+        loading={linkBusy === `l-${d.id}`}
         title="Copier le lien de la page client (page devis web publique)"
         onClick={() => envoi.copierPageClient(d)}
       >
@@ -68,6 +68,19 @@ function CanauxEnvoi({ devis: d, envoi }) {
       </Button>
     </div>
   )
+}
+
+// T4-V2-019 — un envoi en attente du serveur est DIT (pile lente : le clic semblait
+// ne rien faire — aucune trace, aucun lien, aucun message).
+const EN_COURS = {
+  w: 'Préparation du message WhatsApp…',
+  e: 'Envoi de l’e-mail en cours…',
+  l: 'Création du lien de la page client… le lien s’affichera ici dès la réponse du serveur.',
+}
+function EnvoiEnCours({ devis: d, envoi }) {
+  const [canal, id] = String(envoi.linkBusy || '').split('-')
+  if (String(d.id) !== id || !EN_COURS[canal]) return null
+  return <p className="gen-hint" role="status" data-testid="envoi-en-cours">{EN_COURS[canal]}</p>
 }
 
 // T4-U3-011 — un canal grisé dit POURQUOI dans la boîte (pas seulement au survol).
@@ -293,6 +306,7 @@ export default function EnvoiDevisDialog({ devis: d, envoi, ouvert, onOuvertChan
             </DialogDescription>
           </DialogHeader>
           <CanauxEnvoi devis={d} envoi={envoi} />
+          <EnvoiEnCours devis={d} envoi={envoi} />
           <CanauxIndisponibles envoi={envoi} />
           <RelanceJ3 relance={envoi.relance} />
           {envoi.actionMsg && <p className="gen-hint" role="status">{envoi.actionMsg}</p>}
