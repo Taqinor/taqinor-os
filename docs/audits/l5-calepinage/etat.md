@@ -1547,7 +1547,7 @@ FAIT pour le fondateur : la fiche technique du panneau par défaut des devis aut
 VIDE (puissance crête, Voc…) — les verdicts électriques de la conception disent donc « non calculé » pour ces leads.
 EN VOL : `lane/moteur-e7b`, `lane/moteur-e6c`, relecteur X5 (atelier après le toit, thème sombre).
 
-### Point du 25/11, 07 h 05 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11 noté « 07 h 05 » (heure réelle ≈ 05 h 15 UTC)
 
 **Lot 3 — PR Taqinor/taqinor-os#1555 : CI VERTE au quatrième passage (37 jobs), passée « prête », DANS LA FILE DE
 FUSION (position 1) à 07 h 00.** À sa fusion : dire au fondateur « mergé — à déployer par toi : `scripts/deploy-prod.ps1` »
@@ -1567,3 +1567,25 @@ ne porte à la fois des modules et une puissance crête » — la fiche techniqu
 la conception porte déjà (puissance par panneau = kWc ÷ panneaux), en supposant et en DISANT les valeurs de fiche
 manquantes. ADEV155 reste GATED (réponse du fondateur après lecture).
 EN VOL : `lane/moteur-e7b`, `lane/t3-liste`, relecteur X5.
+
+### Point du 25/11, 05 h 45 UTC, heure RÉELLE (le plus récent — REPRENDRE ICI)
+
+(Les heures des points précédents de cette nuit sont en avance d'environ 1 h 30 à 1 h 45 sur l'heure réelle : repère
+sûr = les fusions, 00 h 57 UTC pour le lot 2 et 05 h 22 UTC pour le lot 3.)
+
+**Lot 3 — PR Taqinor/taqinor-os#1555 FUSIONNÉE le 25/11 à 05 h 22 UTC.** Dit au fondateur : « mergé — à déployer par
+toi : `scripts/deploy-prod.ps1` ». TROIS lots sur `main`, AUCUN déployé.
+
+**Lot 4 — branche locale `dev-lot4`** (worktree de l'orchestrateur ; `origin/main` d'après le lot 3 intégré ;
+sauvegarde `origin/notes-l5-2511` ; PAS de PR) : `lane/moteur-e6c` + `lane/moteur-e7b` (ADEV152, AGEN11, AGEN12,
+AGEN13 : l'écran devis lit la conception, bandeau « La conception a changé », maths locales retirées ; ACAL1216
+résolue par conséquence) + tâches marquées « code livré » + contrats d'API régénérés. Gardes hôte vertes. À FAIRE
+avant sa PR : instantané OpenAPI (docker), REGARDER les écrans de l'écran devis sur l'instrument (liste au rapport de
+la lane : générateur avec lead / sans lead, brouillon retouché et « Mettre à jour », devis envoyé « Réviser », fiche
+du lead, devis commercial) — après le retour du relecteur X5 (il utilise l'instrument).
+- EN VOL : `lane/moteur-e7a` (fiche du lead : ALEA71, ACAL2021, note « par ? », libellé du brouillon jamais envoyé,
+  T4-V1-001 ; sonnet ; consignes `scratchpad/msg-lane-e7a.md`, base de test `e7a`), `lane/t3-liste` (liste des devis
+  légère), relecteur X5.
+- FILE : E7c atelier (ADEV153, ACAL2022, ACAL2023), correction du plan par défaut sur le kWc de la conception +
+  relance de la liste ADEV154, entrée imposée « consommation », lanes de correctifs 2 à 6 du tour 3, relecteurs X3,
+  X6 à X8, relecteur des maquettes ; étape 8 (ACAL2024, ADEP108) ; ADEV155 GATED.
