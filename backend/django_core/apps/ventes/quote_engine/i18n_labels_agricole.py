@@ -34,6 +34,13 @@ LIBELLES_AGRICOLE = {
     "agr_op_hmt": {
         "fr": "HMT", "en": "Head", "ar": "الارتفاع المانومتري",
     },
+    # D-ACAL-113 (fondateur 25/11/2026) — devis FINAL (visite faite) : la
+    # comparaison pompe / forage, sans « à vérifier à la visite ».
+    "agr_controle_forage_depasse_final": {
+        "fr": "Pompe {pompe} &gt; forage {forage}",
+        "en": "Pump {pompe} &gt; borehole {forage}",
+        "ar": "المضخة {pompe} &gt; الثقب {forage}",
+    },
 }
 
 

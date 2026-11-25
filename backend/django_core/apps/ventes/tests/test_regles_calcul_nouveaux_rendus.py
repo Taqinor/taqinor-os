@@ -88,6 +88,69 @@ class ReglesCalculTests(SimpleTestCase):
         for apercu in (None, SimpleNamespace()):
             self.assertTrue(hybrides_ht_ouverts(apercu))
 
+    def test_d_acal_102_phrases_profil_nouveaux_rendus(self):
+        # D-ACAL-102 (fondateur 25/11/2026 « Live now ») — les deux phrases
+        # corrigées du PDF C&I (T4-U2-019 / T4-U2-020) : nouveaux rendus
+        # seulement, sans rendre le niveau 15 courant.
+        from datetime import datetime, timezone
+
+        from apps.ventes.domain.regles_calcul import (
+            COUPURE_PHRASES_PROFIL, drapeaux_phrases_profil, phrases_profil_ouvertes)
+        self.assertEqual(COUPURE_PHRASES_PROFIL, (2026, 11, 26))
+        self.assertEqual(REGLES_COURANTES, REGLES_SENSIBILITES_1911)
+        avant = datetime(2026, 11, 20, 9, 0, tzinfo=timezone.utc)
+        apres = datetime(2026, 11, 26, 8, 0, tzinfo=timezone.utc)
+
+        def devis(**champs):
+            return SimpleNamespace(**dict({'regles_calcul': 14, 'date_creation': avant,
+                                           'mode_installation': 'industriel'}, **champs))
+        self.assertTrue(phrases_profil_ouvertes(devis(statut='brouillon', date_envoi=None)))
+        self.assertFalse(phrases_profil_ouvertes(devis(statut='envoye', date_envoi=avant)))
+        self.assertTrue(phrases_profil_ouvertes(devis(statut='envoye', date_envoi=apres)))
+        self.assertTrue(phrases_profil_ouvertes(devis(regles_calcul=15, statut='envoye', date_envoi=avant)))
+        for apercu in (None, SimpleNamespace()):
+            self.assertTrue(phrases_profil_ouvertes(apercu))
+        # Le drapeau de rendu marque le cas OUVERT (le rendu change : l'empreinte
+        # des données bouge) ; un devis qui garde son rendu (envoyé avant la
+        # coupure, autre marché) n'en reçoit aucun : charge utile inchangée.
+        for ouvert in (devis(statut='brouillon', date_envoi=None),
+                       devis(statut='envoye', date_envoi=apres)):
+            self.assertEqual(drapeaux_phrases_profil(ouvert), {'phrases_profil_ouvertes': True})
+        for ferme in (devis(statut='envoye', date_envoi=avant),
+                      devis(statut='brouillon', date_envoi=None, mode_installation='residentiel')):
+            self.assertEqual(drapeaux_phrases_profil(ferme), {})
+        from apps.ventes.quote_engine.builder import _avec_regles_pose_reelle
+        self.assertEqual(_avec_regles_pose_reelle({}, False, devis(statut='brouillon', date_envoi=None)),
+                         {'phrases_profil_ouvertes': True})
+        self.assertEqual(_avec_regles_pose_reelle({}, False, devis(statut='envoye', date_envoi=avant)), {})
+        self.assertEqual(_avec_regles_pose_reelle({}, True, None),
+                         {'regles_pose_reelle': True, 'phrases_pdf_2511': True})
+
+    def test_d_acal_111_114_une_coupure_un_predicat_cas_ouvert(self):
+        from datetime import datetime, timezone
+
+        from apps.ventes.domain.regles_calcul import (
+            COUPURE_PDF_2511, drapeaux_nouveaux_rendus, drapeaux_pdf_2511,
+            phrases_pdf_2511_ouvertes)
+        self.assertEqual(COUPURE_PDF_2511, (2026, 11, 26))
+        avant = datetime(2026, 11, 20, 9, 0, tzinfo=timezone.utc)
+        apres = datetime(2026, 11, 26, 8, 0, tzinfo=timezone.utc)
+
+        def devis(mode='residentiel', **champs):
+            return SimpleNamespace(**dict({'regles_calcul': 14, 'date_creation': avant,
+                                           'mode_installation': mode}, **champs))
+        for mode in ('residentiel', '', 'agricole'):
+            self.assertEqual(drapeaux_pdf_2511(devis(mode, statut='brouillon', date_envoi=None)),
+                             {'phrases_pdf_2511': True})
+            self.assertEqual(drapeaux_pdf_2511(devis(mode, statut='envoye', date_envoi=apres)),
+                             {'phrases_pdf_2511': True})
+            self.assertEqual(drapeaux_pdf_2511(devis(mode, statut='envoye', date_envoi=avant)), {})
+        for mode in ('commercial', 'industriel'):
+            self.assertEqual(drapeaux_pdf_2511(devis(mode, statut='brouillon', date_envoi=None)), {})
+        self.assertFalse(phrases_pdf_2511_ouvertes(devis(statut='accepte', date_envoi=avant)))
+        self.assertEqual(drapeaux_nouveaux_rendus(devis('industriel', statut='brouillon', date_envoi=None)),
+                         {'phrases_profil_ouvertes': True})
+
     # ── Niveau 3 (corrections résidentielles du 27/10/2026) ──
     def test_devis_envoye_au_niveau_2_hors_corrections_2710(self):
         envoye = SimpleNamespace(regles_calcul=REGLES_CORRIGEES)

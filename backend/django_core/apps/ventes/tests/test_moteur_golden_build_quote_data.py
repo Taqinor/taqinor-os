@@ -103,7 +103,7 @@ ETUDE_AGRICOLE = {
 #: message dit si l'empreinte SANS ces clés égale encore le golden — « egal »
 #: prouve que seule la table des libellés a bougé (aucune valeur du devis).
 #: Vider après la re-capture.
-LIBELLES_AJOUTES_DEPUIS_LA_CAPTURE = ('res_hyp_production_calepinage',)  # ACAL973
+LIBELLES_AJOUTES_DEPUIS_LA_CAPTURE = ('res_facture_recalculee_tranches',)  # D-ACAL-111
 
 #: Jeux d'options (nom → pdf_options). Les drapeaux ``_embed_*`` sont SERVEUR
 #: (hors liste blanche) : passés ici comme le fait ``generate_premium_devis_pdf``.

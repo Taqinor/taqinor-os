@@ -124,7 +124,8 @@ REGLES_SENSIBILITES_1911 = 14
 #: imprimée (``renderer._apres_annuel``, ``etude_restitution._facture_avec_affichee``).
 #: Et T4-U2-019 : un profil C&I dont l'heure ou les jours ont été supposés est
 #: dit « profil type — estimation », jamais « horaires déclarés »
-#: (``quote_engine/ci/synthese._methode_profil``).
+#: (``quote_engine/ci/synthese._methode_profil``) ; passée aux nouveaux rendus
+#: par D-ACAL-102 (voir :data:`COUPURE_PHRASES_PROFIL`).
 REGLES_POSE_REELLE_2111 = 15
 #: Niveau 16 (HT24, fondateur 24/11/2026 « With battery now also picks from HV
 #: inverters », DÉCLARÉ, PAS courant — il suit le 15) : l'option C&I « avec
@@ -138,8 +139,87 @@ REGLES_HYBRIDES_HT_2411 = 16
 #: Jour (inclus) à partir duquel un devis ENVOYÉ a pu recevoir la haute tension
 #: (le lendemain de la décision ; rien n'était en ligne avant).
 COUPURE_HYBRIDES_HT = (2026, 11, 25)
+#: D-ACAL-102 (fondateur 25/11/2026 « Live now », « nouveaux rendus
+#: seulement ») : les deux phrases corrigées du PDF C&I du niveau 15 —
+#: T4-U2-019 (horaires SUPPOSÉS dits « profil type — estimation », jamais
+#: « horaires déclarés ») et T4-U2-020 (« bases du calcul ci-dessous » dit
+#: seulement quand le bloc est rendu) — passent aux nouveaux rendus SANS rendre
+#: le niveau 15 courant : :func:`phrases_profil_ouvertes`, ouverte aux
+#: brouillons jamais envoyés et aux devis envoyés à partir de ce jour (le
+#: lendemain de la décision ; rien n'était en ligne avant), fermée aux devis
+#: envoyés avant — ils gardent la phrase reçue. Rien d'autre du niveau 15.
+COUPURE_PHRASES_PROFIL = (2026, 11, 26)
+#: D-ACAL-111 à 114 (fondateur 25/11/2026, « nouveaux rendus seulement ») :
+#: la ligne sous la facture actuelle recalculée (résidentiel), le titre sans
+#: numéro d'un devis à UNE option (résidentiel), le devis FINAL de pompage
+#: sans « à vérifier à la visite » — UNE coupure, UN prédicat
+#: (:func:`phrases_pdf_2511_ouvertes`), même mécanique que
+#: :data:`COUPURE_PHRASES_PROFIL` ; le niveau 15 n'est pas rendu courant.
+COUPURE_PDF_2511 = (2026, 11, 26)
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
 REGLES_COURANTES = REGLES_SENSIBILITES_1911
+
+
+def _ouvert_aux_nouveaux_rendus(devis, niveau, coupure) -> bool:
+    """« Nouveaux rendus seulement » sans niveau courant : vrai pour ``None``
+    (aperçu), une doublure sans champ, un devis au ``niveau``, un BROUILLON
+    jamais envoyé et tout devis envoyé à partir de ``coupure`` ; faux pour un
+    devis sorti du brouillon avant (repère : ``date_envoi``, à défaut
+    ``date_creation``)."""
+    from datetime import date
+    if devis is None or regles_au_moins(devis, niveau):
+        return True
+    envoi = getattr(devis, 'date_envoi', None)
+    if envoi is None and getattr(devis, 'statut', None) in (None, '', 'brouillon'):
+        return True
+    repere = envoi or getattr(devis, 'date_creation', None)
+    if repere is None:
+        return True
+    jour = repere.date() if hasattr(repere, 'date') else repere
+    return jour >= date(*coupure)
+
+
+def phrases_profil_ouvertes(devis) -> bool:
+    """D-ACAL-102 — les deux phrases corrigées du PDF C&I (T4-U2-019,
+    T4-U2-020) pour ce devis ? Voir :data:`COUPURE_PHRASES_PROFIL`."""
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111, COUPURE_PHRASES_PROFIL)
+
+
+def drapeaux_phrases_profil(devis) -> dict:
+    """D-ACAL-102 — le drapeau de RENDU des deux phrases, posé pour le cas
+    OUVERT : ``{'phrases_profil_ouvertes': True}`` pour un devis commercial /
+    industriel dont le rendu change (nouveaux rendus), ``{}`` sinon. Ainsi
+    l'empreinte des données (``builder.empreinte_donnees_pdf``) bouge pour les
+    devis dont le PDF change — le fichier stocké d'un brouillon est re-rendu —
+    et la charge utile d'un devis qui garde ce que son client a reçu (envoyé
+    avant la coupure, autre marché) ne bouge pas d'un octet."""
+    marche = (getattr(devis, 'mode_installation', None) or '').strip().lower()
+    if marche in ('commercial', 'industriel') and phrases_profil_ouvertes(devis):
+        return {'phrases_profil_ouvertes': True}
+    return {}
+
+
+def phrases_pdf_2511_ouvertes(devis) -> bool:
+    """D-ACAL-111 à 114 — les corrections du PDF du 25/11/2026 pour ce devis ?
+    Voir :data:`COUPURE_PDF_2511`."""
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111, COUPURE_PDF_2511)
+
+
+def drapeaux_pdf_2511(devis) -> dict:
+    """D-ACAL-111 à 114 — drapeau de RENDU du cas OUVERT : ``{'phrases_pdf_2511':
+    True}`` pour un devis résidentiel ou agricole dont le rendu change, ``{}``
+    sinon (envoyé avant la coupure, commercial / industriel) : l'empreinte des
+    données bouge exactement pour les devis dont le PDF change."""
+    marche = (getattr(devis, 'mode_installation', None) or '').strip().lower()
+    if marche not in ('commercial', 'industriel') and phrases_pdf_2511_ouvertes(devis):
+        return {'phrases_pdf_2511': True}
+    return {}
+
+
+def drapeaux_nouveaux_rendus(devis) -> dict:
+    """Les drapeaux de rendu « nouveaux rendus seulement » posés par le builder
+    (D-ACAL-102, D-ACAL-111 à 114) : cas OUVERT seulement."""
+    return {**drapeaux_phrases_profil(devis), **drapeaux_pdf_2511(devis)}
 
 
 def hybrides_ht_ouverts(devis) -> bool:
@@ -153,17 +233,7 @@ def hybrides_ht_ouverts(devis) -> bool:
     du brouillon avant cette date (envoyé, accepté, refusé, expiré — repère :
     ``date_envoi``, à défaut ``date_creation``) : il garde ce qu'il a reçu.
     """
-    from datetime import date
-    if devis is None or regles_au_moins(devis, REGLES_HYBRIDES_HT_2411):
-        return True
-    envoi = getattr(devis, 'date_envoi', None)
-    if envoi is None and getattr(devis, 'statut', None) in (None, '', 'brouillon'):
-        return True
-    repere = envoi or getattr(devis, 'date_creation', None)
-    if repere is None:
-        return True
-    jour = repere.date() if hasattr(repere, 'date') else repere
-    return jour >= date(*COUPURE_HYBRIDES_HT)
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_HYBRIDES_HT_2411, COUPURE_HYBRIDES_HT)
 
 
 def regles_au_moins(devis, niveau: int) -> bool:

@@ -118,6 +118,19 @@ def nom_option(d, option, minuscule=False):
     return nom[:1].lower() + nom[1:] if minuscule else nom
 
 
+def _note_facture_recalculee(d, masquer_eco):
+    """D-ACAL-111 (nouveaux rendus, ``phrases_pdf_2511``) — sous la facture
+    « aujourd'hui » RECALCULÉE au tarif par tranches (moteur horaire,
+    ``factures_source = etude_horaire``), la ligne approuvée par le fondateur ;
+    '' sous les douze factures saisies, sans économie, ou pour un devis envoyé
+    avant la coupure."""
+    if (masquer_eco or not d.get("phrases_pdf_2511")
+            or d.get("factures_source") != "etude_horaire"):
+        return ""
+    return ('<div class="c1-bigcut-note">'
+            + libelle_cat(d, "res_facture_recalculee_tranches") + '</div>')
+
+
 def build(ctx):
     from . import theme
     from .. import constants
@@ -296,14 +309,14 @@ def build(ctx):
         opt_caption = ('<div class="c1-bigcut-cap">'
                        + libelle_cat(d, _qual, option=_opt_txt) + '</div>')
 
-    cov_gap_note = ""
+    cov_gap_note = _note_facture_recalculee(d, masquer_eco)  # D-ACAL-111
     if not masquer_eco and coverage_pct - pct_cut >= 10:
         cov_gap_note = '<div class="c1-bigcut-note">' + libelle_fixe(
             d, "res_pourquoi_pas_cov", (
                 'Pourquoi pas −{cov} % ? Seuls les kWh '
                 'autoconsommés réduisent la facture (loi 82-21) — le surplus '
                 'injecté n\'est pas rémunéré.').format(cov=coverage_pct),
-            cov=coverage_pct) + '</div>'
+            cov=coverage_pct) + '</div>' + cov_gap_note
 
     kwc_str = decimale(f"{kwc:.2f}".rstrip("0").rstrip("."))
     # ── F1/L-2OPT (26/08/2026) — LE PRIX AU kWc D'UNE OPTION SE CALCULE SUR LE

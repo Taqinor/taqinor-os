@@ -124,30 +124,32 @@ class GabaritsLisentSyntheseCi(_ReglesCourantes):
                 self.assertIn("profil type de votre activité — estimation",
                               html)
 
-    def test_t4_u2_019_horaires_supposes_jamais_dits_declares(self):
-        """T4-U2-019 — régime 2×8 sans heure ni jours : 6 h et lundi-samedi
-        SUPPOSÉS (alertes du moteur). Au niveau 15 la couverture et la
-        une-page disent le profil type ; dessous, le document d'hier."""
+    def test_d_acal_102_horaires_supposes_nouveaux_rendus(self):
+        """D-ACAL-102 — le builder pose ``phrases_profil_ouvertes`` pour un devis
+        C&I dont le rendu change (brouillon, envoyé après la coupure) : le profil
+        type est dit ; sans la clé (envoyé avant la coupure), le document reçu,
+        octet pour octet ; des horaires déclarés restent « déclarés » partout."""
         from apps.ventes.quote_engine.ci.onepage import lire_synthese
         supposes = [{"code": "heure_debut_supposee", "niveau": "info"},
                     {"code": "jours_ouverts_supposes", "niveau": "info"}]
+        ouvert = {"phrases_profil_ouvertes": True}
         for nom, sample, renderer, render, _pages in GABARITS:
             with self.subTest(gabarit=nom):
                 declare = _data(sample)
                 suppose = _data(sample)
                 suppose["etude"]["etude_ci"]["alertes"] = supposes
-                hier = render.build_html(renderer._augment(suppose))
-                self.assertEqual(hier, render.build_html(renderer._augment(declare)))
-                self.assertIn("horaires déclarés", hier)
-                niveau_15 = render.build_html(renderer._augment(
-                    dict(suppose, regles_pose_reelle=True)))
-                self.assertIn("profil type de votre activité — estimation", niveau_15)
-                self.assertNotIn("horaires déclarés", niveau_15)
-                self.assertEqual(lire_synthese(dict(suppose, regles_pose_reelle=True),
-                                               nom)[1]["methode"], "archetype_estimation")
-                # Horaires réellement déclarés : la phrase reste au niveau 15.
-                self.assertIn("horaires déclarés", render.build_html(renderer._augment(
-                    dict(declare, regles_pose_reelle=True))))
+                nouveau = render.build_html(renderer._augment(dict(copy.deepcopy(suppose), **ouvert)))
+                self.assertIn("profil type de votre activité — estimation", nouveau)
+                self.assertNotIn("horaires déclarés", nouveau)
+                self.assertEqual(lire_synthese(dict(copy.deepcopy(suppose), **ouvert), nom)[1]["methode"],
+                                 "archetype_estimation")
+                envoye = render.build_html(renderer._augment(copy.deepcopy(suppose)))
+                self.assertIn("horaires déclarés", envoye)
+                self.assertNotIn("profil type de votre activité", envoye)
+                self.assertEqual(envoye, render.build_html(renderer._augment(copy.deepcopy(declare))))
+                for drapeaux in ({}, ouvert):
+                    self.assertIn("horaires déclarés", render.build_html(renderer._augment(
+                        dict(copy.deepcopy(declare), **drapeaux))))
 
     def test_sous_reserve_bandeau_et_a_confirmer(self):
         for nom, sample, renderer, render, _pages in GABARITS:

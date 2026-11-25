@@ -120,3 +120,26 @@ class HypotheseAutoconsoBatDiffTests(TestCase):
         self.assertTrue(phrase.endswith('% avec batterie.'), phrase)
         self.assertTrue(hypothese_traduite('en', phrase).endswith(
             '% with battery.'))
+
+
+class UneOptionSansNumeroD114Tests(SimpleTestCase):
+    """D-ACAL-114 — document à UNE option : le titre ne porte que le nom de
+    l'option (« Avec batterie »), ni « OPTION 2 » ni « Option 2 — » ;
+    nouveaux rendus seulement (``phrases_pdf_2511``) ; deux options : inchangé."""
+
+    def _html(self, scenario, **extra):
+        from apps.ventes.tests import _moteur_fixtures as F
+        return G.render_html_for(F.donnees_legacy(scenario=scenario, **extra))
+
+    def test_une_option_nouveau_rendu_sans_numero(self):
+        html = self._html("Avec batterie", phrases_pdf_2511=True)
+        self.assertNotIn(">Option 2<", html)
+        self.assertNotIn("Option 2 —", html)
+        self.assertIn("Avec batterie", html)
+
+    def test_devis_envoye_avant_et_deux_options_inchanges(self):
+        self.assertIn(">Option 2<", self._html("Avec batterie"))
+        self.assertIn("Option 2 —", self._html("Avec batterie"))
+        deux = self._html("Les deux (Sans + Avec)", phrases_pdf_2511=True)
+        self.assertEqual(deux, self._html("Les deux (Sans + Avec)"))
+        self.assertIn(">Option 2<", deux)

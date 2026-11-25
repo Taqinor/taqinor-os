@@ -93,6 +93,15 @@ LIBELLES_RESIDENTIEL = {
     'rpdf_jours_ouvres': {'fr': 'jours ouvrés', 'en': 'working days',
                           'ar': 'أيام عمل'},
     'rpdf_heures_abr': {'fr': 'h', 'en': 'h', 'ar': 'ساعة'},
+    # D-ACAL-111 (fondateur 25/11/2026) — sous la facture actuelle recalculée par
+    # le moteur de tarif ; texte français approuvé mot pour mot (en / ar : à relire).
+    'res_facture_recalculee_tranches': {
+        'fr': ('Montant recalculé au tarif par tranches à partir de votre '
+               'consommation ; il peut différer légèrement de votre facture.'),
+        'en': ('Amount recalculated at the tiered tariff from your consumption; '
+               'it may differ slightly from your bill.'),
+        'ar': ('مبلغ أُعيد حسابه وفق التعريفة بالشرائح انطلاقاً من استهلاككم؛ '
+               'قد يختلف قليلاً عن فاتورتكم.')},
 }
 
 
