@@ -62,7 +62,7 @@ const renderGenerator = ({ leads, produits = PRODUITS, route } = {}) =>
 declarerBeforeEachDevis({ stockApi, crmApi, ventesApi })
 
 describe('QJR308 → QJR602 — runAutoQuote : plus aucun avis de palier, la taille explicite est souveraine', () => {
-  it('QJR602 — un lead à 6,5 kWc : AUCUN avis, la taille part TELLE QUELLE (10 panneaux de 710 W)', async () => {
+  it('QJR602 — un lead à 6,5 kWc : AUCUN avis, la taille part TELLE QUELLE (6,5 kWc : le serveur compte les panneaux)', async () => {
     // D-QJR5-13 (fondateur 30/09/2026) : une taille explicite n'est plus
     // ramenée au palier de 5 kWc — il n'y a donc plus de snap à annoncer.
     const kwcSaisi = 6.5
@@ -81,7 +81,9 @@ describe('QJR308 → QJR602 — runAutoQuote : plus aucun avis de palier, la tai
     await waitFor(() => expect(screen.getByTestId('devis-succes')).toBeInTheDocument())
     expect(screen.queryByText(/Palier appliqué/)).not.toBeInTheDocument()
     expect(ventesApi.creerDevisAuto).toHaveBeenCalledTimes(1)
-    expect(ventesApi.creerDevisAuto.mock.calls[0][0].target_kwc).toBeCloseTo(7.1, 9)
+    // T4-X1-004 (25/11/2026) — plus d'arrondi d'écran au panneau de 710 W supposé (7,1 kWc) :
+    // la taille tapée part telle quelle, le serveur en dérive les panneaux de ses vrais produits.
+    expect(ventesApi.creerDevisAuto.mock.calls[0][0].target_kwc).toBeCloseTo(kwcSaisi, 9)
   })
 
   it('un kWc déjà aligné sur le palier : AUCUN avis ne s’affiche', async () => {
