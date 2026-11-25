@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
-import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Card } from '../../../ui'
 import { OBSTACLE_TYPES } from '@roofpro/types'
 import { refusServeur } from '../commun/refusServeur'
+import LectureSeuleSociete from '../commun/LectureSeuleSociete'
+import { usePeutReglerSociete } from '../commun/useReglagesSociete'
 
 /* ============================================================================
    ACAL494 — « GABARITS D'OBSTACLE » : la société range ici, une fois, ses
@@ -91,7 +92,7 @@ function entreeDe(brouillon, ancienne) {
 }
 
 export default function ReglagesGabaritsObstacle({ zonesTypes = null }) {
-  const peutGerer = useHasPermission('calepinage_gerer')
+  const peutGerer = usePeutReglerSociete()
   const [servi, setServi] = useState(zonesTypes && typeof zonesTypes === 'object' ? zonesTypes : {})
   const [brouillon, setBrouillon] = useState(null)
   const [erreurs, setErreurs] = useState({})

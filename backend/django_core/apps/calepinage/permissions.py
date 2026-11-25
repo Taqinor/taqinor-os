@@ -82,6 +82,27 @@ def ecriture_de_releve(request, view):
             and bool(champs) and set(champs) <= CHAMPS_PAN_RELEVE)
 
 
+#: D-ACAL-104 (25/11/2026) — ÉCRIRE un réglage de la SOCIÉTÉ (réglages, profils types,
+#: gabarits de dossier, systèmes de fixation…) exige le MÊME droit que d'appliquer ou
+#: retirer le profil de départ : ``calepinage_approuver``. Lire reste ``calepinage_voir``.
+#: Le réglage d'UN calepinage (le document, ses variantes, son entrée électrique) reste
+#: ``calepinage_gerer`` : un vendeur règle SA conception sans pouvoir toucher le défaut
+#: de la société.
+MESSAGE_REGLAGES_SOCIETE = (
+    "Changer les réglages de la société est réservé aux personnes qui peuvent "
+    "approuver un calepinage.")
+
+
+def exiger_droit_reglages_societe(user):
+    """403 NOMMÉ (``{reglages_societe: phrase}``, même forme que les refus du profil de
+    départ) quand ``user`` ne porte pas ``calepinage_approuver``. Appelé AVANT toute
+    écriture : le serveur est la serrure, l'écran ne fait que la suivre."""
+    from rest_framework.exceptions import PermissionDenied
+
+    if not _user_has_or_legacy(user, CAL_APPROUVER):
+        raise PermissionDenied({'reglages_societe': MESSAGE_REGLAGES_SOCIETE})
+
+
 # ── CAL16 — les DEUX gardes DRF par action (jamais un littéral en viewset) ──
 #
 # Le cliquet ``core.tests.test_action_permissions`` refuse toute ``@action``

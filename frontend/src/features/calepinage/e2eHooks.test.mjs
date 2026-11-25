@@ -56,6 +56,8 @@ export const ALL_HOOKS = [
   'cal-biblio-kit',
   'cal-biblio-kits-liste',
   'cal-biblio-lecture-seule',
+  'cal-reglages-lecture-seule',
+  'cal-allees-source',
   'cal-biblio-lien-reglages',
   'cal-biblio-modele',
   'cal-biblio-modele-annuler',

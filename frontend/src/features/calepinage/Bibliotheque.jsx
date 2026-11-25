@@ -5,6 +5,8 @@ import { useHasPermission } from '../../hooks/useHasPermission'
 import { Badge, Card, Combobox, Spinner } from '../../ui'
 import PageErreurChargement from '../../components/PageErreurChargement'
 import SelecteurRattachement from './SelecteurRattachement'
+import LectureSeuleSociete from './commun/LectureSeuleSociete'
+import { usePeutReglerSociete } from './commun/useReglagesSociete'
 
 /* ============================================================================
    CAL201 — L'ÉCRAN « BIBLIOTHÈQUE » DU MODULE (presets, kits, modèles,
@@ -337,6 +339,8 @@ function refusSection(erreur) {
 
 export default function Bibliotheque() {
   const peutGerer = useHasPermission('calepinage_gerer')
+  // D-ACAL-104 — préréglages, favoris et profils types sont des réglages de la SOCIÉTÉ : `calepinage_approuver`.
+  const peutReglerSociete = usePeutReglerSociete()
 
   const [parametres, setParametres] = useState(null)
   const [modeles, setModeles] = useState(null)
@@ -660,6 +664,7 @@ export default function Bibliotheque() {
           </Badge>
         )}
       </div>
+      {!peutReglerSociete && <div className="mt-1"><LectureSeuleSociete /></div>}
       <p className="mt-1 text-sm text-muted-foreground">
         Presets, kits de pose, calepinages modèles et matériel favori de votre
         société — réutilisés à chaque conception, jamais réinventés.
@@ -694,7 +699,7 @@ export default function Bibliotheque() {
             )}
 
           {/* CALX43 — L'ÉDITION, par la porte `parametres` existante. */}
-          {peutGerer ? (
+          {peutReglerSociete ? (
             <div className="mt-3 space-y-3" data-testid="cal-biblio-presets-edition">
               {presetsEdit.map((ligne, rang) => (
                 <div key={`preset-${rang}`} className="border border-border p-2"
@@ -1008,7 +1013,7 @@ export default function Bibliotheque() {
             )}
 
           {/* CALX43 — L'ÉDITION des favoris, même porte `parametres`. */}
-          {peutGerer ? (
+          {peutReglerSociete ? (
             <div className="mt-3 space-y-3" data-testid="cal-biblio-favoris-edition">
               {catalogueIndisponible && (
                 <p className="text-xs text-destructive" role="alert"
@@ -1132,7 +1137,7 @@ export default function Bibliotheque() {
                         <label className="text-xs text-muted-foreground">
                           Clé
                           <input type="text" value={profil.cle ?? ''}
-                            disabled={!peutGerer || enregistrementProfils}
+                            disabled={!peutReglerSociete || enregistrementProfils}
                             data-testid={`cal-biblio-profil-cle-${rang}`}
                             onChange={(e) => majProfil(rang, 'cle', e.target.value)}
                             className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
@@ -1140,7 +1145,7 @@ export default function Bibliotheque() {
                         <label className="text-xs text-muted-foreground">
                           Libellé
                           <input type="text" value={profil.libelle ?? ''}
-                            disabled={!peutGerer || enregistrementProfils}
+                            disabled={!peutReglerSociete || enregistrementProfils}
                             data-testid={`cal-biblio-profil-libelle-${rang}`}
                             onChange={(e) => majProfil(rang, 'libelle', e.target.value)}
                             className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
@@ -1148,7 +1153,7 @@ export default function Bibliotheque() {
                         <label className="text-xs text-muted-foreground">
                           Famille
                           <select value={profil.famille ?? ''}
-                            disabled={!peutGerer || enregistrementProfils}
+                            disabled={!peutReglerSociete || enregistrementProfils}
                             data-testid={`cal-biblio-profil-famille-${rang}`}
                             onChange={(e) => majProfil(rang, 'famille', e.target.value)}
                             className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground">
@@ -1161,7 +1166,7 @@ export default function Bibliotheque() {
                         <label className="text-xs text-muted-foreground">
                           Provenance (obligatoire)
                           <input type="text" value={profil.provenance ?? ''}
-                            disabled={!peutGerer || enregistrementProfils}
+                            disabled={!peutReglerSociete || enregistrementProfils}
                             data-testid={`cal-biblio-profil-provenance-${rang}`}
                             onChange={(e) => majProfil(rang, 'provenance', e.target.value)}
                             className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
@@ -1169,12 +1174,12 @@ export default function Bibliotheque() {
                         <label className="text-xs text-muted-foreground sm:col-span-2">
                           Courbe annuelle — 24 poids séparés par des virgules
                           <input type="text" value={profil.courbeTexte ?? ''}
-                            disabled={!peutGerer || enregistrementProfils}
+                            disabled={!peutReglerSociete || enregistrementProfils}
                             data-testid={`cal-biblio-profil-courbe-${rang}`}
                             onChange={(e) => majProfil(rang, 'courbeTexte', e.target.value)}
                             className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
                         </label>
-                        {peutGerer && (
+                        {peutReglerSociete && (
                           <div className="sm:col-span-2">
                             <button type="button" disabled={enregistrementProfils}
                               className="text-xs text-destructive underline"
@@ -1200,7 +1205,7 @@ export default function Bibliotheque() {
               </ul>
             )}
 
-          {peutGerer ? (
+          {peutReglerSociete ? (
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <button type="button" disabled={enregistrementProfils}
                 className="text-sm font-semibold underline"

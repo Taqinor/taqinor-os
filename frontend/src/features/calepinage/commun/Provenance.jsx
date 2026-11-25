@@ -294,6 +294,17 @@ export default function SourcesNormatives() {
       <Section
         titre="Dégagements"
         testId="cal165-degagements"
+        // D-ACAL-105 — sans source, la largeur d'allée et le retrait de bord par défaut restent « non sourcée » ;
+        // le champ « Source » qui les couvre tous les deux est sur l'écran des allées.
+        lien={codesDegagements.length > 0 && !sourceDegagements ? (
+          <Link
+            to="/calepinage/reglages/allees"
+            className="inline-flex min-h-[44px] items-center text-sm underline"
+            data-testid="cal939-lien-source-degagements"
+          >
+            Renseigner la source
+          </Link>
+        ) : null}
         vide={aucunDegagement
           ? 'Aucun dégagement enregistré : les valeurs de l’atelier s’appliquent.'
           : null}

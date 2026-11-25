@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
-import { useHasPermission } from '../../../hooks/useHasPermission'
 import { formatDateTime } from '../../../lib/format'
 import { Button, Card } from '../../../ui'
 import { useConfirmDialog } from '../../../ui/confirm'
+import LectureSeuleSociete from '../commun/LectureSeuleSociete'
+import { usePeutReglerSociete } from '../commun/useReglagesSociete'
 
 /* ============================================================================
    ACAL242 — « RÉGLAGES › CALEPINAGE › GABARITS » : LE DÉPÔT DES GABARITS.
@@ -344,7 +345,7 @@ function LigneGabarit({ gabarit, peutGerer, onChange }) {
 }
 
 export default function ReglagesGabarits() {
-  const peutGerer = useHasPermission('calepinage_gerer')
+  const peutGerer = usePeutReglerSociete()
   const [gabarits, setGabarits] = useState(null)
   const [erreurChargement, setErreurChargement] = useState(null)
 
@@ -365,6 +366,7 @@ export default function ReglagesGabarits() {
           l’ERP n’en fabrique aucun. Ses pièces et ses champs apparaissent ensuite dans
           les dossiers réglementaires de chaque calepinage.
         </p>
+        {!peutGerer && <LectureSeuleSociete />}
       </div>
       <Card className="p-4">
         {erreurChargement && <p className="text-sm text-destructive">{erreurChargement}</p>}

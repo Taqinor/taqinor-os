@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
-import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Card } from '../../../ui'
+import LectureSeuleSociete from '../commun/LectureSeuleSociete'
+import { usePeutReglerSociete } from '../commun/useReglagesSociete'
 
 /* ============================================================================
    ACAL893 — « RÉGLAGES › CALEPINAGE › ALLÉES » : le défaut de la société.
@@ -35,9 +36,10 @@ const CLASSE_ETIQUETTE = 'text-xs font-semibold uppercase tracking-wide text-mut
 const CLASSE_CHAMP = 'mt-1 rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground'
 
 export default function ReglagesAllees() {
-  const peutGerer = useHasPermission('calepinage_gerer')
+  const peutGerer = usePeutReglerSociete()
   const [parametres, setParametres] = useState(null)
   const [champ, setChamp] = useState('')
+  const [source, setSource] = useState('')
   const [circulation, setCirculation] = useState([])
   const [confirme, setConfirme] = useState(false)
   const [enregistrement, setEnregistrement] = useState(false)
@@ -51,6 +53,7 @@ export default function ReglagesAllees() {
       setParametres(reglages)
       const actuelle = reglages?.degagements?.allee_technique_m
       setChamp(Number.isFinite(actuelle) ? String(actuelle) : '')
+      setSource(typeof reglages?.degagements?.source === 'string' ? reglages.degagements.source : '')
       setCirculation(lignesCirculation(reglages?.degagements?.allees_circulation))
     }).catch(() => { if (!annule) setMessage('Réglages indisponibles.') })
     return () => { annule = true }
@@ -68,6 +71,8 @@ export default function ReglagesAllees() {
     const section = { ...(parametres?.degagements ?? {}) }
     if (nombre === null) delete section.allee_technique_m
     else section.allee_technique_m = nombre
+    if (source.trim()) section.source = source.trim()
+    else delete section.source
     const lignes = circulation.filter((l) => !ligneVide(l))
     if (lignes.length) section.allees_circulation = lignes.map(corpsCirculation)
     else delete section.allees_circulation
@@ -92,6 +97,7 @@ export default function ReglagesAllees() {
         <p className="text-sm text-muted-foreground">
           Le défaut de la société s’applique à tous vos calepinages ; l’allée d’un calepinage se règle dans son atelier.
         </p>
+        {!peutGerer && <LectureSeuleSociete />}
       </div>
       <Card className="p-4">
         <section data-testid="cal-allees-societe">
@@ -99,7 +105,18 @@ export default function ReglagesAllees() {
           <label className="mt-2 block max-w-xs" data-testid="cal-allees-champ">
             <span className={CLASSE_ETIQUETTE}>Largeur d’allée technique par défaut (m)</span>
             <input type="number" step="any" min="0" id="cal-allees-largeur" value={champ}
-              onChange={(e) => setChamp(e.target.value)} className={`${CLASSE_CHAMP} w-full`} />
+              onChange={(e) => setChamp(e.target.value)} disabled={!peutGerer} className={`${CLASSE_CHAMP} w-full`} />
+          </label>
+          {/* D-ACAL-105 — UNE source pour la largeur d'allée par défaut ET le retrait de bord par défaut :
+              la clé `degagements.source`, celle que « Sources des paramètres » lit déjà. */}
+          <label className="mt-2 block max-w-xs" data-testid="cal-allees-source">
+            <span className={CLASSE_ETIQUETTE}>Source</span>
+            <input type="text" id="cal-allees-source" value={source}
+              onChange={(e) => setSource(e.target.value)} disabled={!peutGerer} className={`${CLASSE_CHAMP} w-full`} />
+            <span className="mt-1 block text-xs text-muted-foreground">
+              D’où viennent la largeur d’allée par défaut et le retrait de bord par défaut (notice, norme, relevé…).
+              Cette source vaut pour les deux.
+            </span>
           </label>
 
           <div className="mt-3" data-testid="cal-allees-circulation">
@@ -111,34 +128,42 @@ export default function ReglagesAllees() {
                     <span className={CLASSE_ETIQUETTE}>{libelle}</span>
                     <input id={`cal-allees-circulation-${i}-${cle}`} value={l[cle]}
                       onChange={(e) => setCirculation((c) => c.map((x, j) => (j === i ? { ...x, [cle]: e.target.value } : x)))}
-                      className={`${CLASSE_CHAMP} w-32`} />
+                      disabled={!peutGerer} className={`${CLASSE_CHAMP} w-32`} />
                   </label>
                 ))}
-                <button type="button" onClick={() => setCirculation((c) => c.filter((_, j) => j !== i))}
-                  className="min-h-11 rounded border border-border px-3 py-1 text-xs text-foreground">
-                  Retirer
-                </button>
+                {peutGerer && (
+                  <button type="button" onClick={() => setCirculation((c) => c.filter((_, j) => j !== i))}
+                    className="min-h-11 rounded border border-border px-3 py-1 text-xs text-foreground">
+                    Retirer
+                  </button>
+                )}
               </div>
             ))}
-            <button type="button" data-testid="cal-allees-circulation-ajouter"
-              onClick={() => setCirculation((c) => [...c, { pays: '', largeur_m: '', source: '', reference: '' }])}
-              className="mt-2 min-h-11 rounded border border-border px-3 py-1.5 text-xs font-semibold text-foreground">
-              Ajouter un pays
-            </button>
+            {peutGerer && (
+              <button type="button" data-testid="cal-allees-circulation-ajouter"
+                onClick={() => setCirculation((c) => [...c, { pays: '', largeur_m: '', source: '', reference: '' }])}
+                className="mt-2 min-h-11 rounded border border-border px-3 py-1.5 text-xs font-semibold text-foreground">
+                Ajouter un pays
+              </button>
+            )}
           </div>
 
-          <label className="mt-3 flex items-center gap-2 text-sm text-foreground">
-            <input type="checkbox" checked={confirme} data-testid="cal-allees-confirmer-societe"
-              onChange={(e) => setConfirme(e.target.checked)} />
-            Je confirme : ce défaut s’applique à tous vos calepinages.
-          </label>
-          <div className="mt-3">
-            <button type="button" onClick={enregistrer} disabled={enregistrement || !confirme || !peutGerer}
-              data-testid="cal-allees-enregistrer"
-              className="min-h-11 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text disabled:opacity-60">
-              Enregistrer le défaut de la société
-            </button>
-          </div>
+          {peutGerer && (
+            <label className="mt-3 flex items-center gap-2 text-sm text-foreground">
+              <input type="checkbox" checked={confirme} data-testid="cal-allees-confirmer-societe"
+                onChange={(e) => setConfirme(e.target.checked)} />
+              Je confirme : ce défaut s’applique à tous vos calepinages.
+            </label>
+          )}
+          {peutGerer && (
+            <div className="mt-3">
+              <button type="button" onClick={enregistrer} disabled={enregistrement || !confirme}
+                data-testid="cal-allees-enregistrer"
+                className="min-h-11 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-primary-text disabled:opacity-60">
+                Enregistrer le défaut de la société
+              </button>
+            </div>
+          )}
         </section>
         {message && (
           <p className="mt-3 text-sm text-foreground" role="status" data-testid="cal-allees-message">{message}</p>

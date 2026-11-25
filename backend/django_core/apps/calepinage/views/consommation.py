@@ -24,6 +24,7 @@ from core.permissions import ScopedPermission
 
 from ..permissions import (
     CAL_GERER, CAL_VOIR, PeutGererCalepinage, PeutLireOuEcrireCalepinage,
+    exiger_droit_reglages_societe,
 )
 from ..serializers import corps_obligatoire
 from ..serializers_conso import (
@@ -57,6 +58,7 @@ class ProfilsTypesView(APIView):
     @extend_schema(request=ProfilsTypesEcritureSerializer,
                    responses={200: ProfilsTypesSerializer})
     def put(self, request, *args, **kwargs):
+        exiger_droit_reglages_societe(request.user)  # D-ACAL-104
         corps = request.data if isinstance(request.data, dict) else {}
         company = getattr(request.user, 'company', None)
         import_ = corps.get('depuis_import')

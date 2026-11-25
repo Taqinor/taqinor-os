@@ -166,6 +166,33 @@ describe('Écran « Sources des paramètres normatifs » (CAL165)', () => {
   })
 })
 
+describe('D-ACAL-105 — la source partagée du retrait et de l’allée par défaut', () => {
+  const servirDegagements = (degagements) => {
+    const servi = reponseContrat('calepinage', 'parametres_calepinage', 'exemple')
+    servi.data = { ...servi.data, degagements }
+    calepinageApi.parametres.get.mockResolvedValue(servi)
+  }
+
+  it('avec une source : les deux valeurs la portent, plus aucun « non sourcée » ni lien', async () => {
+    servirDegagements({ retrait_rive_m: 0.5, allee_technique_m: 0.9, source: 'relevé du 25/11' })
+    rendreEcran()
+    await screen.findByTestId('cal165-ecran')
+    const degagements = screen.getByTestId('cal165-degagements')
+    expect(degagements).toHaveTextContent('Retrait de rive')
+    expect(degagements).toHaveTextContent('relevé du 25/11')
+    expect(within(degagements).queryAllByText('non sourcée')).toHaveLength(0)
+    expect(screen.queryByTestId('cal939-lien-source-degagements')).toBeNull()
+  })
+
+  it('sans source : « non sourcée » et le lien vers le champ qui la reçoit', async () => {
+    servirDegagements({ retrait_rive_m: 0.5, allee_technique_m: 0.9 })
+    rendreEcran()
+    await screen.findByTestId('cal165-ecran')
+    expect(within(screen.getByTestId('cal165-degagements')).queryAllByText('non sourcée')).toHaveLength(2)
+    expect(screen.getByTestId('cal939-lien-source-degagements')).toHaveAttribute('href', '/calepinage/reglages/allees')
+  })
+})
+
 describe('T4-X3-005 — la page parle comme l’écran de saisie, jamais en clés techniques', () => {
   it('dégagements à valeur unique et coefficients de norme portent leur libellé', async () => {
     const servi = reponseContrat('calepinage', 'parametres_calepinage', 'exemple')
