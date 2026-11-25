@@ -1416,7 +1416,7 @@ scripts ; serveur à 1 700 Mo).
 - Constats du tour 2 sans lane : T4-V1-001 (responsable « Non assigné »), T4-V2-022 (fondateur) ; écarts 3 à 11 de la
   trace d'ACAL2027 (`docs/audits/acceptation/ACAL/traces/2026-11-25/`), dont 4, 5, 6, 8 sans lane.
 
-### Point du 25/11, 02 h 00 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 02 h 00 UTC
 
 **Charge du poste (16 Go).** Mesuré à 01 h 45 : 1 Go libre, 24 Go demandés. Règle tenue depuis : TROIS agents de fond
 au plus, dont DEUX à navigateur au plus, UN seul travail lourd à la fois (test docker, build du front, vitest), et
@@ -1452,3 +1452,30 @@ appelants). Restes de la lane e5-fix : étape Électrique sans phrase « calcul 
 atelier sans relecture automatique, budget de requêtes de `resultat/` à 22 pour 15, tests du front NON joués en local
 (la CI les joue), note « par ? » (source : `crm/serializers.py:129`, `ChatterTimeline.jsx:290`).
 EN VOL à 02 h 25 : relecture de l'étape 6 (lecture seule), X1 et X4. EN PAUSE : relecteur des trois lanes de correctifs.
+
+### Point du 25/11, 03 h 15 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 3 — PR BROUILLON Taqinor/taqinor-os#1555 (`dev-lot3`), tête poussée `580c0ab95b` : CI VERTE (38 jobs) au second
+passage.** Premier passage : 15 jobs rouges ramenés à huit causes, toutes corrigées (désignation sur un calepinage sans
+identité rangée — 83 erreurs ; « calcul en cours » pour un lead sans facture ; surface publique de `ventes.services` ;
+clé `siteLocalise` non classée ; garde du champ `retenue` ; golden de `ToitureDesign` ; zoom de la carte lu sans garde
+dans l'outil de toit ; instantané OpenAPI). **NE PAS FUSIONNER en l'état** : l'étape 6 y est avec ses deux défauts
+bloquants au niveau 14 (relecture `scratchpad/revue-e6.md`) ; la fusion attend le pli de `lane/moteur-e6b1`.
+Commits locaux NON poussés au-dessus de `580c0ab95b` : rapports et constats du tour 3, consolidation (docs seuls).
+- EN VOL (trois agents, la limite du poste) : `lane/moteur-e6b1` (worktree isolé, base de test `t6`, consignes
+  `scratchpad/msg-lane-e6b1.md` : B1, B2, m2, M5, M1, jamais de simulation synchrone, M3, M4 + m3, retour sur
+  investissement servi à la lecture, ACAL2026, ADEV154) ; `lane/moteur-e6b2` (base `u6`, consignes
+  `scratchpad/msg-lane-e6b2.md` : M2, m1, m4, ACAL2019 liée au niveau 15, ACAL2020) ; relecteur X2 du tour 3.
+- EN PAUSE : relecteur en lecture seule des lanes `agri-2` / `devis-2` / `calepinage-2` (agent `ab340260a0e92250d`,
+  à reprendre par message).
+- Garde C20 locale encore rouge (`test_conception_lead.py` + 173 lignes) alors que le job de la CI est vert : à régler
+  quand ADEV151 sera cochée (preuve en direct : `remplir_conceptions --ecarts` sur la société de démonstration de
+  l'instrument, après le pli de `moteur-e6b1` qui corrige la commande).
+
+**Test utilisateur, tour 3** — X1 et X4 TERMINÉS : 38 constats (2 S1 sur des PDF clients, 10 S2), tri et plan des cinq
+lanes de correctifs dans `T4/tour3/consolidation.md`, consignes communes `scratchpad/brief-lane-correctifs-tour3.md`.
+Faits mesurés : le pompage va de bout en bout avec un seul chiffre par valeur ; les 14 correctifs devis rejoués sont
+confirmés ; la liste des devis sert 52 à 82 Ko par devis et l'écran les charge tous (590 devis ≈ 48 Mo : un processus
+du serveur de la pile tué pour mémoire) — vrai défaut, priorité des lanes de correctifs. Erreurs 500 du devis
+automatique = instrument (connexion à la base perdue sous charge). À FAIRE ENSUITE, dans l'ordre des places libres :
+reprise du relecteur en pause ; lanes de correctifs 1 à 5 ; relecteurs X5, X3 ; étape 7 (après le pli de l'étape 6).
