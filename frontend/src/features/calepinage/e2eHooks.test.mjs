@@ -882,6 +882,7 @@ export const ALL_HOOKS = [
   'cal-panneaux-option-facture',
   'cal-panneaux-actualiser-conception',
   'cal-panneaux-option-max',
+  'cal-panneaux-retirer-un',
   'cal-panneaux-sens-pose',
   'cal-panneaux-ombre',
   'cal-carte-soleil',
