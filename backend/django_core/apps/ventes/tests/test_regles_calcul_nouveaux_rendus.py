@@ -902,6 +902,11 @@ class ProductibleDuPlanParDefautTests(SimpleTestCase):
         servi, _s, _m = self._porte(_plan_simule(None, None, 6.0, {}))
         self.assertEqual(servi['kwh_kwc_annuel'], 2100.0)
 
+    def test_mois_absent_jamais_servi_comme_zero(self):
+        plan = _plan_simule(None, None, 6.0, {})
+        plan['production_mensuelle'][6] = None
+        self.assertEqual(self._porte(plan), (None, [], 'plan par défaut incomplet'))  # mutant « m or 0 » : rouge
+
 
 class BrouillonDuPlanParDefautTests(SimpleTestCase):
     """ADEV155 — un brouillon de niveau 15 né du plan par défaut (aucune pose servie) garde la

@@ -235,7 +235,8 @@ def productible_du_plan_par_defaut(company, lead, kwc, produits):
         return None, [], 'fiche technique du module incomplète : pertes non appliquées%s' % (
             ' (champ manquant : %s)' % ' ; '.join('« %s »' % c for c in champs) if champs else '')
     annuel, mensuel, kwc_plan = plan.get('production_annuelle'), plan.get('production_mensuelle'), plan.get('kwc')
-    if not plan.get('complete') or not annuel or not kwc_plan or not isinstance(mensuel, list) or len(mensuel) != 12:
+    if (not plan.get('complete') or not annuel or not kwc_plan or not isinstance(mensuel, list) or len(mensuel) != 12
+            or any(m is None for m in mensuel)):  # un mois absent : jamais servi comme zéro
         return None, [], 'plan par défaut incomplet'
     rendement = round(float(annuel) / float(kwc_plan), 1)
     azimut = float(plan.get('azimut_deg') or 180.0)
@@ -246,7 +247,7 @@ def productible_du_plan_par_defaut(company, lead, kwc, produits):
                              '{:g}'.format(rendement).replace('.', ','))})
     return {'perime': False, 'motif': '', 'source': SOURCE_PLAN_PAR_DEFAUT, 'kwc_simule': None,
             'kwh_kwc_annuel': rendement,
-            'kwh_kwc_mensuel': [round(float(m or 0.0) / float(kwc_plan), 1) for m in mensuel],
+            'kwh_kwc_mensuel': [round(float(m) / float(kwc_plan), 1) for m in mensuel],
             'complete': True, 'pertes_et_ombrage_inclus': True}, suppositions, ''
 
 
