@@ -22,13 +22,23 @@ Run :
     python manage.py test apps.calepinage.tests.test_acal_empreinte_simulation -v2
 """
 import copy
+import datetime
+import gc
+import json
+import os
+import pathlib
+import sys
+import urllib.parse
 from unittest import mock
 
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, tag
 
 from apps.calepinage.services import simulation as service
 from apps.calepinage.services.electrique import (
     enregistrer_fournisseur_temperatures, resultat_calepinage,
+)
+from apps.calepinage.services.pvgis_serie import (
+    CACHE_LIGNES_MAX, ClientPvgis, _Cache,
 )
 from apps.calepinage.services.simulation import (
     VERSION_SIMULATION, empreinte_simulation, simuler_calepinage,
@@ -356,3 +366,167 @@ class SimulerApresModificationApiTest(TestCase):
 
         relance = self._poster()
         self.assertEqual(relance.status_code, 202, relance.content[:300])
+
+
+# ── ACAL2044 — vingt simulations dans UN processus ─────────────────────────
+
+#: L'année PLEINE 2020 réellement servie par PVGIS (8 784 h), rejouée sur deux
+#: années à chaque point : la taille réelle d'une réponse horaire.
+SERIE_2020 = (pathlib.Path(__file__).resolve().parent / 'fixtures_pvgis'
+              / 'seriescalc_casablanca_annee_2020_sud_15.json')
+ANNEES_SONDE = (2019, 2020)
+#: La série COURTE des tests de la porte : les deux premiers jours de chaque
+#: année (2 × 48 lignes par réponse) — assez pour faire évincer le cache.
+HEURES_COURTES = 48
+
+
+def _transport_pluriannuel(heures=None):
+    base = json.loads(SERIE_2020.read_text(encoding='utf-8'))
+    lignes = [dict(ligne, time=f'{annee}{ligne["time"][4:]}')
+              for annee in range(ANNEES_SONDE[0], ANNEES_SONDE[1] + 1)
+              for ligne in base['outputs']['hourly'][:heures]
+              if annee % 4 == 0 or ligne['time'][4:8] != '0229']
+
+    def transport(url, timeout_s):
+        if '/seriescalc?' not in url:
+            return 404, ''
+        requete = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+        charge = copy.deepcopy({k: v for k, v in base.items()
+                                if k != 'outputs'})
+        charge['inputs']['location'].update(
+            latitude=float(requete['lat'][0]),
+            longitude=float(requete['lon'][0]))
+        charge['outputs'] = {'hourly': lignes}
+        return 200, json.dumps(charge)
+    return transport
+
+
+def _octets_residents():
+    """La mémoire RÉSIDENTE du processus, en octets (Linux, Windows), ou None."""
+    try:
+        with open('/proc/self/statm', encoding='ascii') as statm:
+            return int(statm.read().split()[1]) * os.sysconf('SC_PAGE_SIZE')
+    except (OSError, ValueError, AttributeError):
+        pass
+    if sys.platform != 'win32':
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    class _Compteurs(ctypes.Structure):
+        _fields_ = [('cb', wintypes.DWORD), ('fautes', wintypes.DWORD)] + [
+            (nom, ctypes.c_size_t) for nom in (
+                'pic', 'residente', 'a', 'b', 'c', 'd', 'e', 'f')]
+
+    compteurs = _Compteurs(cb=ctypes.sizeof(_Compteurs))
+    noyau, psapi = ctypes.windll.kernel32, ctypes.windll.psapi
+    noyau.GetCurrentProcess.restype = ctypes.c_void_p
+    psapi.GetProcessMemoryInfo.argtypes = [
+        ctypes.c_void_p, ctypes.c_void_p, wintypes.DWORD]
+    psapi.GetProcessMemoryInfo(noyau.GetCurrentProcess(),
+                               ctypes.byref(compteurs), compteurs.cb)
+    return compteurs.residente
+
+
+class MemoireVingtSimulationsTest(SimpleTestCase):
+    """ACAL2044 — la cause : ``pvgis_serie._Cache`` (le cache PARTAGÉ du
+    processus) gardait jusqu'à 200 réponses horaires décodées ; une réponse à
+    la fenêtre plafond de 10 ans (87 672 lignes) pèse ~45 Mo et une
+    simulation en fait 4. Sonde sur l'hôte le 25/11/2026 (vrai
+    ``ClientPvgis``, transport rejoué, 10 ans, vingt plans) : mémoire
+    résidente 409 Mo → 3 872 Mo (+182 Mo par simulation, 80 entrées) avant ;
+    404 Mo → 670 Mo après (palier dès la 9e, 438 360 lignes, 5 entrées).
+
+    Les tests de la porte sont DÉTERMINISTES (séries courtes, borne comptée en
+    lignes) ; la mesure en octets est ``@tag('slow')`` (nocturne)."""
+
+    def setUp(self):
+        precedent = enregistrer_fournisseur_temperatures(_tmy_rejoue)
+        self.addCleanup(enregistrer_fournisseur_temperatures, precedent)
+        self.transport = _transport_pluriannuel(HEURES_COURTES)
+
+    def _simuler(self, rang, cache):
+        reglages = _reglage_simulation('fenetre_annees', list(ANNEES_SONDE))
+        layout = dict(copy.deepcopy(LAYOUT), pin={
+            'lat': 30.0 + rang * 0.37, 'lng': -9.0 + rang * 0.21})
+        layout['zones'][0]['geometry'].update(count=10 + rang,
+                                              tiltDeg=10.0 + rang)
+        client = ClientPvgis(self.transport, cache=cache,
+                             dormir=lambda _s: None)
+        return simuler_calepinage(
+            _Calepinage(layout=layout), client=client, materiel=MATERIEL,
+            reglages=reglages, enregistrer=False,
+            maintenant=datetime.datetime(2026, 11, 25, 10,
+                                         tzinfo=datetime.timezone.utc))['blocs']
+
+    def test_vingt_simulations_le_cache_reste_borne(self):
+        """Vingt plans à vingt points dans UN cache partagé : la borne en
+        lignes (mise à l'échelle de la série courte : 5 réponses, comme
+        ``CACHE_LIGNES_MAX`` = 5 réponses à la fenêtre plafond) évince, le
+        cache ne garde jamais plus de 5 réponses (80 sans la borne)."""
+        lignes_par_reponse = 2 * HEURES_COURTES
+        cache = _Cache(lignes_max=5 * lignes_par_reponse)
+        for rang in range(20):
+            self._simuler(rang, cache)
+            self.assertLessEqual(cache.lignes_gardees(), cache.lignes_max)
+            self.assertLessEqual(len(cache._entrees), 5)
+        self.assertEqual(cache.lignes_gardees(), 5 * lignes_par_reponse)
+        self.assertEqual(CACHE_LIGNES_MAX, 5 * 10 * 8784)
+
+    @tag('slow')
+    def test_vingt_simulations_la_memoire_ne_grossit_pas_au_dela_du_plafond(
+            self):
+        """La mesure en OCTETS (nocturne : bruit d'allocateur et de shard
+        hors porte). Série de 2 ans (17 568 lignes par réponse), cache neuf
+        partagé par les vingt simulations comme celui du processus, mesuré
+        sur l'hôte Windows le 25/11/2026 : +170 Mo de mémoire résidente entre
+        la 1re et la 20e avec la borne (palier ≈ ``CACHE_LIGNES_MAX`` lignes ≈
+        225 Mo de réponses) ; +659 Mo sans elle (1 403 520 lignes, 80
+        entrées). Plafond 300 Mo : la mesure + 130 Mo de marge (allocateur,
+        ordre des tests), toujours 2,2 fois sous la croissance non bornée."""
+        if _octets_residents() is None:
+            self.skipTest('mémoire résidente illisible sur ce système')
+        self.transport = _transport_pluriannuel()
+        cache = _Cache()
+        for rang in range(20):
+            self._simuler(rang, cache)
+            gc.collect()
+            if rang == 0:
+                apres_la_premiere = _octets_residents()
+        ecart = _octets_residents() - apres_la_premiere
+        self.assertLessEqual(cache.lignes_gardees(), CACHE_LIGNES_MAX)
+        self.assertLess(ecart, 300 * 10 ** 6,
+                        f'+{ecart / 1e6:.0f} Mo en vingt simulations')
+
+    def test_la_borne_pese_aussi_les_series_nasa_power(self):
+        """Les réponses horaires de NASA POWER (``properties.parameter``)
+        passent par le MÊME cache : elles comptent dans la borne."""
+        cache = _Cache(lignes_max=10)
+        heures = {f'20200101{h:02d}': 1.0 for h in range(6)}
+        cache.poser('a', {'properties': {'parameter': {'T2M': heures}}})
+        cache.poser('b', {'properties': {'parameter': {'T2M': heures}}})
+        cache.poser('c', {'ok': 1})
+        self.assertEqual((cache.lire('a'), cache.lignes_gardees()), (None, 6))
+
+    def test_la_borne_ne_change_aucun_resultat(self):
+        """Le cache n'est qu'un accélérateur : sous une borne d'UNE ligne
+        (chaque réponse évince la précédente), la simulation rend les MÊMES
+        blocs que sur un cache neuf à la borne de production — seuls le
+        compte d'appels réseau, les drapeaux « servi par le cache » (ce que
+        le cache EST) et la durée du calcul peuvent différer."""
+        def sans_compteurs(valeur):
+            if isinstance(valeur, dict):
+                return {cle: sans_compteurs(sous) for cle, sous in valeur.items()
+                        if cle not in ('appels_pvgis', 'depuis_cache',
+                                       'duree_s')}
+            if isinstance(valeur, list):
+                return [sans_compteurs(sous) for sous in valeur]
+            return valeur
+
+        with mock.patch('apps.calepinage.services.pvgis_serie._maintenant_iso',
+                        return_value='2026-11-25T10:00:00Z'):
+            neuve = self._simuler(3, _Cache())
+            evincee = self._simuler(3, _Cache(lignes_max=1))
+        self.assertEqual(
+            json.dumps(sans_compteurs(neuve), sort_keys=True, default=str),
+            json.dumps(sans_compteurs(evincee), sort_keys=True, default=str))
