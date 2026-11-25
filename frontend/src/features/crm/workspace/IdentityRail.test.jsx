@@ -374,6 +374,17 @@ describe('LW18 — bannières intelligentes (doublons · client_match)', () => {
     expect(screen.getByRole('link', { name: /Ouvrir la fiche/ })).toHaveAttribute('href', '/crm?id=42')
   })
 
+  // T4-X9-017 — le client que le lead porte DÉJÀ n'est pas une correspondance trouvée :
+  // un seul encart sur lui (« Client lié »), jamais « Ce contact correspond … Ouvrir la fiche ».
+  it('client_match = le client déjà lié → seul l’encart « Client lié »', async () => {
+    crmApi.getLeadClientMatch.mockResolvedValueOnce({ data: [{ id: 42, nom: 'Atlas Agri SARL' }] })
+    render(<IdentityRail state={makeState({ client: 42, client_nom: 'Atlas Agri SARL' })}
+      onAction={onAction} users={[]} />)
+    expect(await screen.findByTestId('lw-client-lie')).toBeInTheDocument()
+    await waitFor(() => expect(crmApi.getLeadClientMatch).toHaveBeenCalled())
+    expect(screen.queryByText(/correspond au client/)).toBeNull()
+  })
+
   it('aucune bannière quand ni doublon ni client correspondant (silencieux)', async () => {
     render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
     expect(await screen.findByText('Karim B.')).toBeInTheDocument()

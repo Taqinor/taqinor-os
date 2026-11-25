@@ -365,6 +365,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
 
   // ── Actions ─────────────────────────────────────────────────────────────────
   const alreadyClient = !!server.client
+  const autresClients = clientMatch.filter((c) => c && c.id !== server.client)
   // QJR590 — écart d'identité lead ↔ fiche client (servi par le GET lead).
   const clientEcart = Array.isArray(server.client_ecart) ? server.client_ecart : []
   const [syncBusy, setSyncBusy] = useState(false)
@@ -424,15 +425,17 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           </Button>
         </div>
       )}
-      {clientMatch.length > 0 && (
+      {/* T4-X9-017 — le client DÉJÀ lié n'est pas une correspondance trouvée : son seul
+          encart est « Client lié » plus bas. */}
+      {autresClients.length > 0 && (
         <div className="lw-banner-card lw-banner-card--info" role="status">
-          <span>Ce contact correspond au client {clientMatch[0].nom}</span>
+          <span>Ce contact correspond au client {autresClients[0].nom}</span>
           <a
             className="lw-banner-link"
             /* APX1 — `/crm/clients/:id` n'a JAMAIS existé côté routeur (404
                vérifié) : la fiche client s'ouvre par le lien profond `?id=`
                que ClientList lit déjà (VX220, `ClientList.jsx:71-75`). */
-            href={`/crm?id=${clientMatch[0].id}`}
+            href={`/crm?id=${autresClients[0].id}`}
             target="_blank"
             rel="noopener noreferrer"
           >
