@@ -39,7 +39,42 @@ T4-V2-010 — côté client, décision 18 du rapport. T4-U3-013 — l'atelier n'
 Couverture X1 : 21 lignes jouées sur 30 ; PDF-023 à PDF-028 n'ont aucun contrôle à l'écran (réglages passés par
 l'adresse seulement) ; PDF-032 bloquée (la pile n'envoie aucun e-mail) ; PDF-006 et PDF-031 non atteintes.
 
-## X4 — correctifs devis du tour 2, générateur (en cours)
+## X4 — correctifs devis du tour 2, générateur (terminé)
 
-À consolider à son retour. Déjà noté : l'erreur 500 du devis automatique (T4-X4-003) a la même cause d'instrument que
-T4-X1-011.
+**Ce qui marche.** Les 14 correctifs du tour 2 rejoués sont confirmés (0 « pas corrigé »). La chaîne complète passe sur
+un lead d'essai : envoyé → accepté → chantier → acompte émis → ticket après-vente. Les nombres tapés dans le générateur
+(3.7, 0, une longue décimale, 12,5) restent tels quels partout. Brouillon retouché à l'ÉCRAN puis facture changée : il est
+gardé ; brouillon intact : il suit (5 → 7 et 8 → 11 panneaux) — même résultat que l'acceptation ACAL2027.
+
+**Tri des 22 constats** (aucun S1 ; 9 S2).
+
+| Constat | Gravité | Tri de l'orchestrateur | Suite |
+|---|---|---|---|
+| T4-X4-005 | S2 | VRAI et MESURÉ au calme : la liste des devis sert de 52 à 82 Ko PAR devis (10 devis = 523 Ko, 25 = 2,0 Mo) et l'écran les charge TOUS par pages de 200 (590 devis pour ce rôle ≈ 48 Mo) ; une page de 200 a fait tuer un processus du serveur de la pile (mémoire). Une seule page lente vide l'écran entier. | lane de correctifs, PRIORITÉ : liste légère côté serveur |
+| T4-X4-001 | S2 | VRAI : panneaux retouchés de 5 à 7, « Structures acier » et « Socles » restent pour 5 : ≈ 1 300 MAD de pose en moins que le devis automatique de même taille, sans avertissement. | lane de correctifs |
+| T4-X4-011, 016, 019, 020 | S2 / S3 | UNE cause probable : des totaux ADDITIONNENT les lignes des deux options (total « villas » 82 800 pour 65 800 ; retour C&I 21 ans à l'écran contre 5,7 ans au bandeau et au PDF ; registre des surcharges 18 panneaux = 7 + 11 ; marge indicative négative). | lane de correctifs : une fonction « lignes de l'option », lue partout |
+| T4-X4-004 | S2 | VRAI : carte « Tailles », onglet Sans batterie : « Recommandé » montre la composition AVEC batterie à 36 900 MAD (moins que l'« Éco » à 5 panneaux). | lane de correctifs |
+| T4-X4-018 | S2 | VRAI : la simulation dit « option batterie non livrable » pour chaque taille alors que le devis la vend ; retours écrits « 5.74 ans ». | lane de correctifs |
+| T4-X4-021 | S2 | VRAI : devis ENVOYÉ ouvert dans deux onglets, le second enregistrement écrase le premier sans bandeau. | lane de correctifs |
+| T4-X4-008 | S2 | CONNU (étape 7) : le brouillon retouché gardé imprime l'ancienne facture et aucun écran ne dit qu'il est en retard sur la fiche ni ne propose « Mettre à jour » (AGEN12). | étape 7 du moteur |
+| T4-X4-003 | S3 | INSTRUMENT : erreur 500 = connexion à la base perdue sous charge. | — |
+| T4-X4-002 | S3 | CONNU : note « — par ? ». | lane de correctifs |
+| T4-X4-006, 009, 010, 012, 013, 014, 015, 017, 022 | S3 | VRAIS, petits : compteur « 1 bon de commande » sur des brouillons ; « Numéro invalide » quand il n'y en a aucun ; carte « À échoir » ; fenêtre coupée ; validité déjà passée acceptée ; « Devis enregistré » sans dire l'option ; « Renommer sur ce devis seulement » n'enregistre pas ; « Jui / Jui » pour juin et juillet ; « Réinitialiser » n'efface rien. | lane de correctifs |
+| T4-X4-007 | S3 | CONNU : 4 pages pour 3 annoncées. | décision 12 du rapport |
+
+Couverture X4 : 48 lignes jouées sur 57 ; 6 introuvables (MKT-003, TEC-006, SAV-005, SIM-004, RES-005, ADM-002, condition
+notée) ; 1 bloquée par la liste des devis ; 2 non atteintes.
+
+## Lanes de correctifs du tour 3 (à lancer dès qu'une place se libère ; trois agents de fond au plus sur ce poste)
+
+1. **Liste des devis légère** (T4-X4-005) — serveur `ventes` + écran de la liste.
+2. **Éditeur du devis** — « lignes de l'option » lues partout (T4-X4-011, 016, 019, 020), kit qui suit les panneaux
+   retouchés (001), carte Tailles (004), simulation (018), deux onglets (021), petits (012 à 015, 017, 022 ; T4-X1-004, 016).
+3. **Listes, envoi, PDF à l'écran** — attente d'un PDF qui se tait (T4-X1-003), validité (T4-X1-012), planche cotée sans
+   calepinage (T4-X1-007), Darija (T4-X1-010), message du devis automatique (T4-X1-011), T4-X4-006, 009, 010.
+4. **Pompage et rendu des PDF** — origine du débit perdue à l'enregistrement (T4-X1-008), pompe monophasée sous la
+   puissance minimale (T4-X1-009), formules dans deux alertes (T4-X1-014) ; PDF client au niveau de règles 15 :
+   prix par kWc de chaque option (T4-X1-001), garantie de l'onduleur lue sur la fiche du produit (T4-X1-002).
+5. **Fiche du lead** — note automatique « par ? », responsable « Non assigné » (T4-V1-001), et les écarts 4, 5, 6, 8 de
+   l'acceptation ACAL2027 (brouillon dupliqué sans pointeur, champ de l'heure de fin, phrases de « Mettre à jour »,
+   deux libellés pour un brouillon jamais envoyé).
