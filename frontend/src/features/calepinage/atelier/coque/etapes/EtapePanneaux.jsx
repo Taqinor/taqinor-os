@@ -361,12 +361,16 @@ function PuceResume({ figures, publiee, site = null }) {
       ['Production ÷ consommation', figures.couverture ? `≈ ${figures.couverture}` : null],
     ]
   const lus = indicateurs.filter(([, valeur]) => valeur)
-  if (lus.length === 0) return null
+  // T4-X9-006 — tailles différentes : la phrase du constructeur, UNE fois, en texte courant qui revient à la ligne dans la
+  // bande (jamais dans une case de chiffre, qui débordait sous la pile de zoom).
+  const phrase = publiee ? null : figures.tailles
+  if (lus.length === 0 && !phrase) return null
   return (
     <CarteFlottante className="cal-pan-puce" data-testid="cal-sur-carte-resume">
       {lus.map(([libelle, valeur]) => (
         <Indicateur key={libelle} libelle={libelle} valeur={<ValeurUnite texte={valeur} />} />
       ))}
+      {phrase && <p className="cal-pan-puce-phrase">{phrase}</p>}
     </CarteFlottante>
   )
 }

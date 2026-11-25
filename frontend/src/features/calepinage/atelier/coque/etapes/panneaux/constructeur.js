@@ -41,6 +41,8 @@ function lireFigures() {
     productionKwh: prod && /kWh/i.test(prod) ? entierDe(prod) : null, // M5 — la phrase de raison porte des kWc, pas des kWh
     couverture,
     couverturePct: couverture ? entierDe(couverture) : null,
+    // T4-X9-006 — la phrase des deux tailles, dite par le constructeur sous ses cartes (`tailleConception.ts`), ou `null`.
+    tailles: valeurOuNull(texteDe('rp9-reco-tailles')),
   }
 }
 
