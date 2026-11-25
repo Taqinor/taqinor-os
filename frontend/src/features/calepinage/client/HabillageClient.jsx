@@ -197,7 +197,7 @@ export default function HabillageClient({
         <LecteurSoleil bureau={bureau} />
         <TuilesClient tuiles={tuiles} ville={donnees.ville} bureau={bureau} />
       </div>
-      <PiedClient id={calepinageId} bureau={bureau} />
+      <PiedClient id={calepinageId} />
     </>
   )
 }

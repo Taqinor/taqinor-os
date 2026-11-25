@@ -49,7 +49,7 @@ function VueClient2D({ id, donnees: d, etat, onReessayer = null }) {
       <div className="cal-client-corps">
         <TuilesClient tuiles={d.tuiles} ville={d.ville} bureau={bureau} />
       </div>
-      <PiedClient id={id} bureau={bureau} />
+      <PiedClient id={id} />
     </div>
   )
 }

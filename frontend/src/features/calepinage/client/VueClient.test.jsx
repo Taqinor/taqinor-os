@@ -51,8 +51,8 @@ const api = calepinageApi.calepinages
 // Le chunk de l'atelier (lazy) se charge sous charge en plus d'1 s (délai par défaut de findBy) : 15 s.
 const ATTENTE_ATELIER = { timeout: 15000 }
 
-const rendre = (props = { webgl: false }) => render(
-  <MemoryRouter initialEntries={['/calepinage/7/client']}>
+const rendre = (props = { webgl: false }, entree = '/calepinage/7/client') => render(
+  <MemoryRouter initialEntries={[entree]}>
     <Routes><Route path="/calepinage/:id/client" element={<VueClient {...props} />} /></Routes>
   </MemoryRouter>,
 )
@@ -100,8 +100,9 @@ describe('Montrer au client — repli 2D, avec les seules données servies', () 
     expect(tuiles[1]).toHaveTextContent('2panneaux')
     expect(tuiles[2]).toHaveTextContent('82 %')
     expect(screen.getByText('Estimation pour une année moyenne à Casablanca. Les montants figurent dans le devis.')).toBeInTheDocument()
-    expect(screen.getByTestId('client-retour-releve')).toHaveTextContent('Retour au relevé')
-    expect(screen.getByTestId('client-retour-releve').getAttribute('href')).toBe('/calepinage/7/releve')
+    // T4-X8-007 — adresse ouverte directement : le retour mène à l'atelier (jamais au relevé d'office).
+    expect(screen.getByTestId('client-retour-atelier')).toHaveTextContent('Retour à l’atelier')
+    expect(screen.getByTestId('client-retour-atelier').getAttribute('href')).toBe('/calepinage/7')
     expect(screen.getByTestId('cal-vue-client').textContent).not.toMatch(/MAD|DH|prix|marge/i)
   })
 
@@ -285,7 +286,7 @@ describe('Montrer au client — l’atelier en mode présentation (vraie 3D)', (
     for (const t of ['cal-barre-projet', 'cal-panneau-etape']) {
       expect(screen.getByTestId(t).closest('[inert]')?.getAttribute('aria-hidden')).toBe('true')
     }
-    for (const t of ['client-soleil', 'client-envoyer-lien', 'client-retour-releve', 'client-projet']) {
+    for (const t of ['client-soleil', 'client-envoyer-lien', 'client-retour-atelier', 'client-projet']) {
       expect(screen.getByTestId(t).closest('[inert]')).toBeNull()
     }
     // Les VRAIS contrôles du soleil restent montés (inertes) : la vue client les pilote toujours.
@@ -548,7 +549,7 @@ describe('ACAL1837 — le téléphone sur sa maquette v2', () => {
   })
 
   it('la puce porte le pictogramme maison ; le pied : chevron « Retour au relevé » + « Envoyer le lien » dit pourquoi il est grisé, en entier', async () => {
-    rendre()
+    rendre(undefined, { pathname: '/calepinage/7/client', state: { depuis: 'releve' } })
     expect(await screen.findByTestId('client-projet')).toHaveTextContent('Villa Bennani')
     expect(screen.getByTestId('client-projet').querySelector('.cal-client-puce-icone svg')).not.toBeNull()
     expect(screen.getByTestId('client-retour-releve').querySelector('svg')).not.toBeNull()
@@ -569,11 +570,33 @@ describe('ACAL1837 — le téléphone sur sa maquette v2', () => {
       expect(getComputedStyle(screen.getByTestId('client-tuiles')).borderRadius).toBe('var(--cal-rayon-carte)')
       expect(getComputedStyle(screen.getByTestId('client-envoyer-lien')).height).toBe('54px')
       expect(getComputedStyle(screen.getByTestId('client-envoyer-lien')).borderRadius).toBe('15px')
-      expect(getComputedStyle(screen.getByTestId('client-retour-releve')).height).toBe('54px')
+      expect(getComputedStyle(screen.getByTestId('client-retour-atelier')).height).toBe('54px')
     } finally {
       style.remove()
     }
   })
+})
+
+/* T4-X8-007 — « Retour » ramène là d'où l'on vient, et le dit : du relevé → « Retour au relevé » ; de l'atelier ou d'une
+   adresse ouverte directement → « Retour à l'atelier ». Au téléphone comme au bureau. */
+describe('T4-X8-007 — le retour de la vue client', () => {
+  const origines = [
+    ['venue du relevé', { pathname: '/calepinage/7/client', state: { depuis: 'releve' } }, 'client-retour-releve', 'Retour au relevé', '/calepinage/7/releve'],
+    ['venue de l’atelier', { pathname: '/calepinage/7/client', state: { depuis: 'atelier' } }, 'client-retour-atelier', 'Retour à l’atelier', '/calepinage/7'],
+    ['adresse directe', '/calepinage/7/client', 'client-retour-atelier', 'Retour à l’atelier', '/calepinage/7'],
+  ]
+  for (const [nom, entree, testId, libelle, cible] of origines) {
+    for (const bureau of [false, true]) {
+      it(`${nom}, ${bureau ? 'au bureau' : 'au téléphone'} : « ${libelle} » → ${cible}`, async () => {
+        if (bureau) auBureau()
+        rendre(undefined, entree)
+        const retour = await screen.findByTestId(testId)
+        expect(retour).toHaveTextContent(libelle)
+        expect(retour.getAttribute('href')).toBe(cible)
+        expect(screen.getAllByRole('link', { name: /^Retour/ })).toHaveLength(1)
+      })
+    }
+  }
 })
 
 /* ACAL1838 — « Montrer au client » au BUREAU (≥ 1024 px, maquette Presentation) : mêmes pièces, autre disposition ; le pied
