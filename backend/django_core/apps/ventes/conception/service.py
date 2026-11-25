@@ -99,7 +99,7 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
         entrees = entrees_pour(lead, company, toit=toit)
         if courante is not None and courante.empreinte == empreinte_conception(entrees) and not forcer:
             return Relance(courante, False, None)
-        resultat = calculer_conception(lead, company, entrees=entrees, toit=toit)
+        resultat = calculer_conception(lead, company, entrees=entrees, toit=toit, calepinage_id=calepinage_id)
     origine, champs = _pourquoi(courante, entrees, origine, champs)
     maintenant = timezone.now()
     version = ConceptionLead.ranger(

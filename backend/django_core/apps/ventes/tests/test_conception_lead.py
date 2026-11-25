@@ -3299,3 +3299,86 @@ class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_rela
                                    'Commercial responsable': (False, 200), 'Administrateur': (False, 200)})
         collegue = self._api(self._avec_role(company, 'collegue', grille['Commercial']))
         self.assertEqual(collegue.post(URL_MISE_A_JOUR % retouche.pk).status_code, 404)
+
+
+# ── ADEV149 / ADEV150 — la pose du toit tracé, PAR le moteur, au niveau 15 seulement ─
+
+class PoseReelleTests(_emprunt(RelanceConceptionTests, '_relancer'), _emprunt(FigeageDevisAutoTests, *_FABRIQUES),
+                      TestCase):
+    """ADEV149 — toit tracé et pose complète, au niveau de règles 15 : la production
+    rangée est celle de LA simulation de la pose (façade ACAL2018), source « pose » ;
+    sans toit, ou au niveau 14 courant : le chemin d'aujourd'hui, la façade jamais
+    appelée. ADEV150 — une pose ajustée à la main impose son compte (source « pose »)."""
+
+    PRODUCTION = [round(500.0 + 10 * m, 1) for m in range(12)]
+
+    def _pose(self, nb, *, complete=True, a_la_main=False, module=None):
+        return {'nb_panneaux': nb, 'kwc': None, 'complete': complete, 'a_la_main': a_la_main,
+                'empreinte_pose': 'f' * 64, 'manquants': [], 'module_produit': module}
+
+    def _calculer(self, company, lead, *, niveau=None, pose=None, calepinage_id=77):
+        from apps.ventes.conception import porte_calepinage as P
+        from apps.ventes.conception.moteur import calculer_conception
+        from apps.ventes.domain import regles_calcul as RC
+
+        _reglages_de_la_societe(company)
+        sortie = {'complete': True, 'production_annuelle': sum(self.PRODUCTION),
+                  'production_mensuelle': self.PRODUCTION, 'hash_entree': 'h' * 64}
+        with mock.patch.object(RC, 'REGLES_COURANTES', niveau or RC.REGLES_COURANTES), \
+                mock.patch.object(P, 'pose_du_calepinage', return_value=pose) as lue, \
+                mock.patch.object(P, 'simuler_la_pose', return_value=sortie) as simulee:
+            resultat = calculer_conception(lead, company, calepinage_id=calepinage_id)
+        return resultat, lue, simulee
+
+    def test_niveau_14_la_facade_n_est_jamais_appelee_parite_intacte(self):
+        company, lead = self._cas('res_facture_dirhams')
+        resultat, lue, simulee = self._calculer(company, lead, pose=self._pose(12))
+        lue.assert_not_called()  # mutant « appeler la simulation au niveau 14 » : rouge
+        simulee.assert_not_called()
+        temoin, _l, _s = self._calculer(company, lead, calepinage_id=None)
+        self.assertEqual(_json(resultat.valeurs), _json(temoin.valeurs))
+        self.assertEqual(resultat.valeurs['sans']['production_annuelle']['source'], 'moteur')
+
+    def test_niveau_15_pose_complete_production_de_la_simulation(self):
+        from apps.ventes.domain.regles_calcul import REGLES_POSE_REELLE_2111
+
+        company, lead = self._cas('res_facture_dirhams')
+        resultat, lue, simulee = self._calculer(company, lead, niveau=REGLES_POSE_REELLE_2111,
+                                                pose=self._pose(12))
+        lue.assert_called_once_with(company, 77)
+        retenue = resultat.valeurs[resultat.option_retenue]
+        simulee.assert_called_once_with(company, 77, {'module': retenue['module_produit']['valeur'],
+                                                      'onduleur': retenue['onduleur_produit']['valeur']})
+        self.assertEqual(retenue['production_annuelle'],
+                         {'valeur': sum(self.PRODUCTION), 'unite': 'kWh/an', 'source': 'pose'})
+        self.assertEqual(retenue['production_mensuelle']['valeur'], self.PRODUCTION)
+        self.assertEqual(resultat.niveau_regles, REGLES_POSE_REELLE_2111)
+        # Un lead SANS toit tracé, même au niveau 15 : chemin par marché.
+        sans_toit, lue, simulee = self._calculer(company, lead, niveau=REGLES_POSE_REELLE_2111,
+                                                 pose=self._pose(12), calepinage_id=None)
+        lue.assert_not_called()
+        self.assertEqual(sans_toit.valeurs[sans_toit.option_retenue]['production_annuelle']['source'], 'moteur')
+
+    def test_niveau_15_pose_incomplete_aucune_simulation(self):
+        from apps.ventes.domain.regles_calcul import REGLES_POSE_REELLE_2111
+
+        company, lead = self._cas('res_facture_dirhams')
+        resultat, _lue, simulee = self._calculer(company, lead, niveau=REGLES_POSE_REELLE_2111,
+                                                 pose=self._pose(12, complete=False))
+        simulee.assert_not_called()
+        self.assertEqual(resultat.valeurs[resultat.option_retenue]['production_annuelle']['source'], 'moteur')
+
+    def test_relance_passe_le_calepinage_au_moteur_devis_envoye_intact(self):
+        from apps.ventes.conception import moteur as M
+        from apps.ventes.models import Devis
+        from apps.ventes.services import build_devis_auto
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        devis = build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye')
+        avant = _json(Devis.objects.filter(pk=devis.pk).values()[0])
+        with mock.patch.object(M, 'pose_reelle', return_value=None) as lue:
+            self._relancer(lead, company, _declencheur(), forcer=True)
+        self.assertEqual(lue.call_args.args[1:], (None, 'residentiel'))
+        self.assertEqual(_json(Devis.objects.filter(pk=devis.pk).values()[0]), avant)
