@@ -898,7 +898,7 @@ RoofImageRequest = {
     },
 }
 #: PV47 — réponse de ``ajouter-boq-electrique`` (``domain/bordereau``) :
-#: ``{creees, lignes, manques, deja_presentes}``, clés toujours présentes.
+#: ``{creees, lignes, manques, deja_presentes, remplacees, avertissements}``, clés toujours présentes.
 AjouterBoqResponse = _ser('DevisAjouterBoqResponse', {
     'creees': s.IntegerField(),
     'lignes': s.ListField(child=_ser('DevisBoqLigneCreee', {
@@ -914,6 +914,10 @@ AjouterBoqResponse = _ser('DevisAjouterBoqResponse', {
         'spec': s.JSONField(),
     })),
     'deja_presentes': s.ListField(child=s.CharField()),
+    # T4-X6-019 — lignes de même rôle remplacées, et phrases quand l'une reste.
+    'remplacees': s.ListField(child=_ser('DevisBoqRemplacee', {
+        'ancienne': s.CharField(), 'nouvelle': s.CharField()})),
+    'avertissements': s.ListField(child=s.CharField()),
 })
 RoofImageResponse = _ser('DevisRoofImageResponse', {
     'roof_image': s.CharField(),

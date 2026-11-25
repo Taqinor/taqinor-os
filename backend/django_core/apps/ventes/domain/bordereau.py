@@ -267,6 +267,49 @@ def _boq_apparier(designation, spec, candidats):
     return meilleur
 
 
+#: T4-X6-019 — familles du bordereau qui tiennent la place d'UNE ligne de rôle du devis
+#: (vocabulaire ``core.product_roles.ROLES_DEVIS``) : le câble solaire DC, le câble de
+#: terre, le coffret (« tableau » de protection). Les autres organes (parafoudre,
+#: disjoncteur…) n'ont pas de rôle de devis : ils s'ajoutent, comme avant.
+_BOQ_ROLE_DE_FAMILLE = {'cable_solaire': 'cable_dc', 'cable_terre': 'cable_terre',
+                        'coffret': 'tableau'}
+
+#: T4-X6-019 — la phrase servie quand une ligne de même rôle reste au devis.
+BOQ_AVERTISSEMENT_DOUBLON = ('déjà au devis : %s (même rôle que « %s ») — retirez l’ancienne '
+                             'ligne ou gardez-la')
+
+
+def _boq_role_de_ligne(ligne):
+    """Le rôle d'une ligne déjà au devis : le rôle FIGÉ à sa création (STKCAT23), sinon la
+    résolution de ``lignes._role_a_la_creation`` (rôle déclaré du produit, puis mots-clés)."""
+    from .lignes import _role_a_la_creation
+    return ligne.role_devis or _role_a_la_creation(
+        {'produit': ligne.produit, 'designation': ligne.designation})
+
+
+def _boq_meme_role(devis, lignes_existantes, role, intitule):
+    """T4-X6-019 — ``(remplacees, avertissements)`` pour une ligne de bordereau de rôle
+    ``role`` : chaque ligne produit COMMUNE du devis de ce rôle est retirée (le bordereau la
+    remplace), sauf quand la retirer n'est pas sûr — quantité ou prix tapés à la main, ligne
+    ajoutée à la main, ligne d'une option, devis déjà envoyé — : elle reste et c'est DIT.
+    Jamais un double compte silencieux."""
+    from .lignes import supprimer_ligne
+
+    remplacees, avertissements = [], []
+    for ligne in list(lignes_existantes):
+        if ligne.type_ligne != 'produit' or _boq_role_de_ligne(ligne) != role:
+            continue
+        gardee = (devis.statut != 'brouillon' or ligne.quantite_manuelle or ligne.prix_manuel
+                  or ligne.ligne_composee is False or (ligne.variante or ''))
+        if gardee:
+            avertissements.append(BOQ_AVERTISSEMENT_DOUBLON % (ligne.designation, intitule))
+            continue
+        remplacees.append({'ancienne': ligne.designation, 'nouvelle': intitule})
+        lignes_existantes.remove(ligne)
+        supprimer_ligne(ligne)
+    return remplacees, avertissements
+
+
 def _boq_prix(produit):
     try:
         return Decimal(str(getattr(produit, 'prix_vente', 0) or 0))
@@ -277,7 +320,8 @@ def _boq_prix(produit):
 def ajouter_lignes_boq_electrique(devis, user=None):
     """PV47 — ajoute au devis les lignes issues du bordereau électrique (PV41).
 
-    Rend TOUJOURS le même dict ``{creees, lignes, manques, deja_presentes}`` :
+    Rend TOUJOURS le même dict ``{creees, lignes, manques, deja_presentes, remplacees,
+    avertissements}`` :
 
     * ``creees`` — nombre de lignes ajoutées ;
     * ``lignes`` — une entrée par ligne créée (``designation``, ``produit``,
@@ -285,7 +329,11 @@ def ajouter_lignes_boq_electrique(devis, user=None):
     * ``manques`` — les lignes de bordereau qu'AUCUN produit du catalogue ne
       couvre. C'est la liste de courses du référencement, pas une erreur ;
     * ``deja_presentes`` — lignes ignorées parce que le devis les portait déjà
-      (garde anti-double-clic : ré-appeler l'action ne duplique rien).
+      (garde anti-double-clic : ré-appeler l'action ne duplique rien) ;
+    * ``remplacees`` — T4-X6-019 : ``[{ancienne, nouvelle}]``, les lignes du devis de MÊME
+      RÔLE (câble DC, câble de terre, tableau) que la ligne du bordereau remplace ;
+    * ``avertissements`` — les phrases à montrer quand une telle ligne reste (tapée à la
+      main, d'une option, devis envoyé) : jamais un double compte silencieux.
 
     N'écrit QUE des lignes : ni statut, ni prix inventé (règle #4). Un produit
     sans prix part à 0 avec « à chiffrer » dans son intitulé — visible à
@@ -297,7 +345,8 @@ def ajouter_lignes_boq_electrique(devis, user=None):
     design = getattr(devis, 'electrical_design', None)
     bom = (design or {}).get('bom') if isinstance(design, dict) else None
     if not isinstance(bom, list) or not bom:
-        return {'creees': 0, 'lignes': [], 'manques': [], 'deja_presentes': []}
+        return {'creees': 0, 'lignes': [], 'manques': [], 'deja_presentes': [],
+                'remplacees': [], 'avertissements': []}
 
     candidats = _boq_candidats(devis.company)
     lignes_existantes = list(devis.lignes.all())
@@ -307,6 +356,7 @@ def ajouter_lignes_boq_electrique(devis, user=None):
     creees = []
     manques = []
     deja = []
+    remplacees, avertissements = [], []
     with transaction.atomic():
         for item in bom:
             if not isinstance(item, dict):
@@ -322,6 +372,11 @@ def ajouter_lignes_boq_electrique(devis, user=None):
             if intitule in existantes:
                 deja.append(designation)
                 continue
+            role = _BOQ_ROLE_DE_FAMILLE.get(_boq_famille(designation))
+            if role:
+                retirees, dites = _boq_meme_role(devis, lignes_existantes, role, intitule)
+                remplacees += retirees
+                avertissements += dites
             try:
                 quantite = (Decimal(str(item.get('quantite')))
                             if item.get('quantite') not in (None, '')
@@ -357,7 +412,8 @@ def ajouter_lignes_boq_electrique(devis, user=None):
         logger.info('PV47 — %d ligne(s) de bordereau électrique ajoutées au '
                     'devis %s par %s', len(creees), devis.pk, user)
     return {'creees': len(creees), 'lignes': creees, 'manques': manques,
-            'deja_presentes': deja}
+            'deja_presentes': deja, 'remplacees': remplacees,
+            'avertissements': avertissements}
 
 
 # ── QJR76 : la CONCEPTION électrique rejoint le bordereau qu'elle produit ────
