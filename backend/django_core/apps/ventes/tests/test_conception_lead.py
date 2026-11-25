@@ -2878,10 +2878,8 @@ class EntreesHorsLeadTests(_emprunt(RelanceConceptionTests, '_relancer'), _empru
 # ── ADEV144 — PARITÉ : le devis né de la conception RANGÉE = les goldens ─────
 
 class PariteDevisDepuisConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
-                                       _emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur',
-                                                '_residentiel', '_ci', '_agricole', '_fiches_residentielles',
-                                                '_site_isole', '_structures', '_fiches_ci', '_cas', '_figer'),
-                                       TestCase):
+                                       _emprunt(EntreesHorsLeadTests, '_ancien_chemin', '_devis_auto'),
+                                       _emprunt(FigeageDevisAutoTests, *_FABRIQUES, '_figer'), TestCase):
     """ADEV144 — la conception du lead est RANGÉE d'abord (``relancer``), puis
     le devis automatique est créé : il la LIT (ADEV142, chemin « à jour ») et
     doit écrire EXACTEMENT ce que figent les goldens ``golden/conception/``
@@ -2900,6 +2898,21 @@ class PariteDevisDepuisConceptionTests(_emprunt(RelanceConceptionTests, '_relanc
             self._figer(nom, company, lead, **APPELS_FIGEAGE.get(nom, {}))  # compare au golden, clé par clé
         courante = ConceptionLead.objects.get(lead=lead, courante=True)
         self.assertEqual(courante.pk, rangee.pk)  # lue telle quelle : aucune relance écrite
+
+    def test_version_complete_sans_dimensionnement_le_devis_prend_l_ancien_chemin(self):
+        """Relecture E4 m1 — une étude ``dimensionnement`` dite absente ne
+        bloque pas le devis (« moteur indisponible ») : le chemin d'aujourd'hui."""
+        from apps.ventes.conception import etudes_lignes
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        with mock.patch.object(etudes_lignes, 'dimensionnement_des_lignes', side_effect=RuntimeError('panne')):
+            rangee = self._relancer(lead, company, _declencheur()).conception
+        self.assertEqual((rangee.etat, 'dimensionnement' in rangee.blocs), ('complet', False))
+        user = self._utilisateur(company)
+        nouveau = self._devis_auto(company, lead, user)  # mutant « bloc exigé » : AutoDevisError
+        ancien = self._ancien_chemin(company, lead, user)
+        self.assertEqual(_ecarts_figeage(_photo_du_devis(ancien), _photo_du_devis(nouveau)), [])
 
 
 def _test_de_parite_depuis_conception(nom):
