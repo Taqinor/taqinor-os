@@ -551,7 +551,10 @@ describe('CatalogueTable — AGR106 pompage à compléter', () => {
     expect(bandeau).toHaveTextContent('aucune pompe monophasée pricée avec courbe')
     expect(bandeau).toHaveTextContent('aucune pompe triphasée pricée avec courbe')
     expect(bandeau).toHaveTextContent('aucun variateur pricé avec fiche')
-    expect(bandeau).toHaveTextContent('aucune protection DC pricée')
+    // D-ACAL-118 — les protections du kit minimum, nommées une par une.
+    expect(bandeau).toHaveTextContent('aucun coffret de protection DC pricé')
+    expect(bandeau).toHaveTextContent('aucun disjoncteur AC pricé')
+    expect(bandeau).toHaveTextContent('aucun parafoudre AC pricé')
   })
 
   it('un kit complet affiche « oui »', () => {
@@ -561,7 +564,10 @@ describe('CatalogueTable — AGR106 pompage à compléter', () => {
       baseProduit({ id: 2, nom: 'Pompe T', prix_vente: '100', courbe_pompe: COURBE,
         role_pompage: 'pompe', alimentation: 'tri' }),
       baseProduit({ id: 3, nom: 'Variateur', prix_vente: '100', role_pompage: 'variateur_pompage' }),
-      baseProduit({ id: 4, nom: 'Protection DC', prix_vente: '100', role_pompage: 'protection_dc' }),
+      baseProduit({ id: 4, nom: 'Coffret DC 2 strings', prix_vente: '100', role_pompage: 'protection_dc' }),
+      baseProduit({ id: 5, nom: 'Disjoncteur AC courbe C 16 A tétrapolaire', prix_vente: '100',
+        role_pompage: 'protection_ac' }),
+      baseProduit({ id: 6, nom: 'Parafoudre AC type 2', prix_vente: '100', role_pompage: 'protection_ac' }),
     ]
     const fiches = new Map([[3, { type_fiche: 'variateur_pompage', var_v_sortie_v: '380.0' }]])
     renderTable({ produits: complet, fichesParProduit: fiches })

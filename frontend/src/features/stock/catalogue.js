@@ -435,8 +435,15 @@ export function kitPompageChiffrable(produits, fiches) {
       && ficheVariateurSaisie(_fiche(fiches, p)))) {
     manques.push('aucun variateur pricé avec fiche')
   }
-  if (!actifs.some((p) => roleDuProduitPompage(p) === 'protection_dc' && _pricee(p))) {
-    manques.push('aucune protection DC pricée')
+  // D-ACAL-112 / D-ACAL-118 — les protections du kit minimum (le serveur
+  // refuse le devis automatique de pompage tant qu'elles ne sont pas chiffrées).
+  for (const [role, mot, manque] of [
+    ['protection_dc', 'coffret', 'aucun coffret de protection DC pricé'],
+    ['protection_ac', 'disjoncteur', 'aucun disjoncteur AC pricé'],
+    ['protection_ac', 'parafoudre', 'aucun parafoudre AC pricé'],
+  ]) {
+    if (!actifs.some((p) => roleDuProduitPompage(p) === role && _pricee(p)
+        && _norm(p?.nom ?? '').includes(mot))) manques.push(manque)
   }
   return { chiffrable: manques.length === 0, manques }
 }
