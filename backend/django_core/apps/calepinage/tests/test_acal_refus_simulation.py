@@ -303,3 +303,41 @@ class EchecDeJobStructureTest(_BaseApi):
         self.assertEqual(element['champ'],
                          'parametres.simulation.mode_meteo')
         self.assertTrue(element['motif'])
+
+    def _echouer_sur(self, exception):
+        from apps.calepinage.tasks import resultat_du_job
+        from apps.calepinage.tasks import simuler_calepinage as tache
+
+        job = self._job()
+        with mock.patch(
+                'apps.calepinage.services.simulation.simuler_calepinage',
+                side_effect=exception):
+            issue = tache(job_id=job.pk, company_id=self.societe.pk,
+                          calepinage_id=self.calepinage.pk, forcer=True)
+        job.refresh_from_db()
+        return issue, job, resultat_du_job(job)['elements'][0]
+
+    def test_t4_v1_012_temps_depasse_dit_en_francais_quoi_faire(self):
+        """Au-delà de la limite douce de Celery, le serveur publiait
+        ``str(SoftTimeLimitExceeded())`` — « SoftTimeLimitExceeded() » à
+        l'écran, sans phrase ni nouvel essai."""
+        from celery.exceptions import SoftTimeLimitExceeded
+
+        issue, job, element = self._echouer_sur(SoftTimeLimitExceeded())
+        self.assertEqual(issue['statut'], 'failed')
+        self.assertEqual(element['champ'],
+                         'parametres.simulation.fenetre_annees')
+        self.assertTrue(element['motif'].startswith(
+            'La simulation a dépassé le temps alloué'))
+        self.assertIn('relancez-la', element['motif'])
+        self.assertIn('Fenêtre d’années météo', element['motif'])
+        for texte in (element['motif'], job.message_erreur, issue['motif']):
+            self.assertNotIn('SoftTimeLimitExceeded', texte)
+
+    def test_t4_v1_012_erreur_inattendue_jamais_le_nom_de_l_exception(self):
+        issue, job, element = self._echouer_sur(KeyError('zones'))
+        self.assertEqual(element['champ'], '')
+        self.assertTrue(element['motif'].startswith('La simulation a échoué'))
+        for texte in (element['motif'], job.message_erreur, issue['motif']):
+            self.assertNotIn('KeyError', texte)
+            self.assertNotIn("'zones'", texte)
