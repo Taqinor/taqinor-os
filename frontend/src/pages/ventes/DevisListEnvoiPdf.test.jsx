@@ -11,11 +11,8 @@
 
    Run : npx vitest run src/pages/ventes/DevisListEnvoiPdf.test.jsx */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, within, act, waitFor } from '@testing-library/react'
+import { screen, within, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
-import { configureStore } from '@reduxjs/toolkit'
 
 vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) =>
   (await import('../../test/devisListMocks.js')).ventesSliceMock(importOriginal))
@@ -37,27 +34,11 @@ vi.mock('../../api/crmApi', async (importOriginal) =>
 vi.mock('../../api/uxviewsApi', async () =>
   (await import('../../test/devisListMocks.js')).uxviewsApiMock())
 
-import DevisList from './DevisList'
+import { renderList } from './devisList.testHelpers.jsx'
 import ventesApi from '../../api/ventesApi'
 import { toast } from '../../ui'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { useDevisPdf } from './devisList/useDevisPdf.js'
-
-function renderList(devis) {
-  const store = configureStore({
-    reducer: {
-      ventes: (state = { devis, loading: false, error: null }) => state,
-      auth: (state = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => state,
-    },
-  })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter initialEntries={['/ventes/devis']}>
-        <ThemeProvider><DevisList /></ThemeProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
 
 const brouillon = (extra) => ({
   id: 61, reference: 'DEV-X1-012', client_nom: 'ACME', statut: 'brouillon', is_active: true,
