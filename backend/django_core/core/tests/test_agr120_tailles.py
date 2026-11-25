@@ -255,5 +255,35 @@ class PompeQuiNeDelivrePasLeDebit(unittest.TestCase):
             tailles["recommandee"]["couverture_mois_critique_pct"], 95)
 
 
+class DisjoncteurSurLeKwDuVariateur(unittest.TestCase):
+    """Revue R4 — UNE pompe, UN kW : une pompe aux seuls CV (sans pompe_kw)
+    est dimensionnée variateur ET disjoncteur sur le MÊME kW
+    (``selection.kw_pompe``), et la phrase d'hypothèse le dit."""
+
+    def test_pompe_aux_seuls_cv(self):
+        cv_seuls = [dict(p, pompe_kw=None, pompe_cv="10") if p["id"] == 314
+                    else p for p in POMPES]
+        disjoncteurs = [
+            {"id": 900 + a, "nom": "Disjoncteur AC courbe C %d A tétrapolaire"
+             % a, "role_pompage": "protection_ac", "prix_connu": True}
+            for a in (16, 20, 25, 32)]
+        choix = choisir_pompe(cv_seuls, hmt_m=HMT, debit_conception_m3h=25,
+                              alimentation="tri")
+        res = proposer_tailles(
+            choix_pompe=choix, besoin_m3_jour_mois=BESOIN, hmt_m=HMT,
+            alimentation="tri", variateurs=VARIATEURS, panneau=PANNEAU,
+            profils_horaires=PROFILS,
+            kit=dict(KIT, produits_options=disjoncteurs))
+        taille = next(t for t in res["tailles"] if t["pompe_produit"] == 314)
+        inclus = {x["cle"]: x for x in taille["composition"]["inclus"]}
+        # 10 CV ⇒ 7,5 kW (moteur normalisé) : variateur 7,5 kW (id 2) …
+        self.assertEqual(inclus["variateur"]["produit"], 2)
+        # … et disjoncteur sur ces 7,5 kW : 7 500 / (√3 × 380) ≈ 11,4 A ⇒ 16 A.
+        self.assertEqual(inclus["disjoncteur_ac"]["produit"], 916)
+        self.assertIn("déduit des 10 CV de la pompe (7,5 kW) et 380 V",
+                      inclus["disjoncteur_ac"]["hypothese"])
+        self.assertIn("11,4 A", inclus["disjoncteur_ac"]["hypothese"])
+
+
 if __name__ == "__main__":
     unittest.main()
