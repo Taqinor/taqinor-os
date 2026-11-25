@@ -103,7 +103,7 @@ import {
   type FiltrageAccesSolaire,
 } from './shadingUi'; // CALX115 — le seuil d'accès solaire lu par le posable
 import { $, celluleEconomies, fmt, fmtKwc, fmtMad, renommerDt } from './dom';
-import { raisonSansValeur, VALEURS_HORS_LIGNE, compteDevis, couvertureServie, phraseSurplus, peindreBande, productionServie, quiDuDevis, suiteAuDevis, texteEconomie, texteSurDevis } from './affichageErp'; // R2-13/16/17, ACAL2022
+import { raisonSansValeur, VALEURS_HORS_LIGNE, compteDevis, couvertureServie, phraseSurplus, peindreBande, phraseTaillesDuChiffrage, productionServie, quiDuDevis, suiteAuDevis, texteEconomie, texteSurDevis } from './affichageErp'; import { peindrePhraseTailles, suiteCouverture } from './tailleConception'; // R2-13/16/17, ACAL2022, T4-X9-007
 import { type CardData, type ChiffrageAtelier, type RenderConfigOpts, type RenderSceneFn } from './types';
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
@@ -301,16 +301,16 @@ export function facteurDerateAnnuel(c: Pick<Ctx, 'shadeAnnualFactor' | 'horizonA
 
 /** ACAL994/2022 — l'économie de l'année 1 SERVIE (`opts.chiffrage`, relu après « Enregistrer » par `majChiffrage`) remplace l'estimation de la carte
  *  et du Total : LUE du bloc servi, jamais calculée ici (ERP : sinon « au prochain enregistrement »). Site public (`chiffrage` absent) : l'estimation. */
-const etatsEco = new WeakMap<object, { chiffrage: ChiffrageAtelier | null | undefined; estimes: Record<string, string>; dernier: ChiffrageAtelier | null; horsLigne: boolean }>();
+const etatsEco = new WeakMap<object, { chiffrage: ChiffrageAtelier | null | undefined; estimes: Record<string, string>; kwcs: Record<string, number | null>; dernier: ChiffrageAtelier | null; horsLigne: boolean }>(); // T4-X9-003 — `kwcs` : le kWc posé de chaque case
 const etatEco = (c: Pick<Ctx, 'opts'>) => {
   let e = etatsEco.get(c);
-  if (!e) etatsEco.set(c, (e = { chiffrage: c.opts?.chiffrage, estimes: {}, dernier: c.opts?.chiffrage ?? null, horsLigne: false }));
+  if (!e) etatsEco.set(c, (e = { chiffrage: c.opts?.chiffrage, estimes: {}, kwcs: {}, dernier: c.opts?.chiffrage ?? null, horsLigne: false }));
   return e;
 };
 export function economieAffichee(c: Pick<Ctx, 'opts'>, id: 'carte' | 'total', estime: string, kwc?: number | null): string {
   const e = etatEco(c);
-  e.estimes[id] = estime;
-  return texteEconomie(e.chiffrage, kwc, estime); // ACAL2022 — ERP : la servie (au kWc posé), sinon « au prochain enregistrement »
+  e.estimes[id] = estime; if (kwc !== undefined) e.kwcs[id] = kwc; // T4-X9-003 — relu par majChiffrage : le Total reste contrôlé après « Enregistrer »
+  return texteEconomie(e.chiffrage, e.kwcs[id], estime); // ACAL2022 — ERP : la servie (au kWc posé), sinon « au prochain enregistrement »
 }
 
 /** ACAL80 — le point de rendement PVGIS par défaut (pages publiques d'apps/web). */
@@ -1079,8 +1079,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   const cibleDeCarte = (cibleSolveur: number): number => (cibleSolveur > 0 ? cibleSolveur : billToAnnualKwh(factureCarte()));
 
   /** ACAL852 — la phrase de couverture : « ≈ N % de la facture », ou « facture inconnue » quand la cible est absente ou nulle. */
-  const couverture = (target: number, cov: number) =>
-    (target > 0 ? (modeErp() ? ` — production ÷ consommation : ${cov} %` : ` ≈ ${cov} % de la facture`) : '. Facture inconnue — saisissez-la pour voir la couverture');
+  const couverture = (target: number, cov: number) => // T4-X5-005 — ERP : aucun pourcentage dans la phrase (la part est dans sa case)
+    suiteCouverture(target, cov, modeErp());
 
   /** ACAL994/2022 — d'où vient l'économie : servie ⇒ « au dernier enregistrement » (+ option) ; hors ligne ⇒ dernier calcul ; sinon « au prochain enregistrement ». Site public : aucune ligne. */
   function etiquetteEconomie() {
@@ -1098,7 +1098,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const eco = chiffrage?.economie_annee1_mad;
     ligne.textContent = etatEco(ctx).horsLigne ? VALEURS_HORS_LIGNE : eco?.etat === 'servi' && typeof eco.valeur === 'number'
       ? `au dernier enregistrement${eco.option ? ` · ${eco.option.replace(/_/g, ' ')}` : ''}`
-      : raisonSansValeur(chiffrage, derniereCarte?.kwc, 'économie'); // ACAL2022 + M5 (la vraie raison, avec les deux tailles) — l'estimation du navigateur n'est plus montrée en ERP
+      : raisonSansValeur(chiffrage, derniereCarte?.kwc, 'économie').replace(/^—$/, ''); // T4-X9-007 (la phrase est sous les cartes) ; ACAL2022 + M5 (la vraie raison, avec les deux tailles) — l'estimation du navigateur n'est plus montrée en ERP
   }
 
   /** ACAL994 — après « Enregistrer » : le bloc relu remplace le précédent ; la carte et le Total sont repeints à l'instant. */
@@ -1108,7 +1108,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     e.horsLigne = chiffrage === null && e.dernier != null; if (chiffrage) e.dernier = chiffrage; e.chiffrage = e.horsLigne ? e.dernier : chiffrage; // ACAL2022 — hors ligne après un servi : dernier calcul, dit
     if (ctx.opts) ctx.opts.chiffrage = e.chiffrage; // demande croisée — le Total (zones.ts) relit le bloc relu
     const cibles = [['carte', $('rp9-reco-savings')], ['total', ctx.dom.areasTotalSavingsEl]] as const;
-    for (const [id, el] of cibles) if (el && e.estimes[id] !== undefined) el.textContent = economieAffichee(ctx, id, e.estimes[id], id === 'carte' ? derniereCarte?.kwc : undefined);
+    for (const [id, el] of cibles) if (el && e.estimes[id] !== undefined) el.textContent = economieAffichee(ctx, id, e.estimes[id]); // T4-X9-003 — le kWc mémorisé de chaque case (celui que la carte et le Total ont peint)
     etiquetteEconomie();
     if (derniereCarte) paintCard(derniereCarte, derniereCarte.sourceLabel); // R2-16 + demande croisée — production, bande et économie relues
     if (derniereNote) syncNeedControl(derniereNote.fit, derniereNote.famille, derniereNote.motif, derniereNote.ecartes, derniereNote.pack); // R2-13, ACAL1526 — « au devis » relu avec le contexte
@@ -1139,7 +1139,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     renommerDt($('rp9-reco-cover'), modeErp() ? 'Production ÷ consommation' : null, true); // R2-05 — l'ERP : jamais « couverture » (mot du PDF)
     set('rp9-reco-cover', modeErp() ? (cServie != null ? `${Math.round(cServie)} %` : '—') : d.pct > 0 ? `${Math.round(d.pct)} %` : '—');
     // R2-08 — l'ERP donne UNE estimation (la borne prudente) : la fourchette 75-100 % n'encadrait rien du calcul du serveur.
-    set('rp9-reco-savings', economieAffichee(ctx, 'carte', factureInconnue ? '— facture inconnue' : modeErp() ? `≈ ${fmtMad(d.savingsLow)}/an` : `${fmtMad(d.savingsLow)} – ${fmtMad(d.savingsHigh)}/an`, kwc));
+    set('rp9-reco-savings', economieAffichee(ctx, 'carte', factureInconnue ? '— facture inconnue' : modeErp() ? `≈ ${fmtMad(d.savingsLow)}/an` : `${fmtMad(d.savingsLow)} – ${fmtMad(d.savingsHigh)}/an`, kwc)); if (modeErp()) peindrePhraseTailles($('rp9-reco-savings')?.closest('dl'), 'rp9-reco-tailles', phraseTaillesDuChiffrage(etatEco(ctx).chiffrage, kwc)); // T4-X9-007 — la phrase UNE fois, sous les cartes
     etiquetteEconomie(); if (ctx.matrixResult && ctx.roofType === 'flat') renderVariantCards(); // T4-V2-021 — la variante posée suit la carte
     // ACAL778 — la note « chiffre du devis » seulement si un devis est lié (option `devisLie`, jamais `cibleVendue`).
     const noteEco = $('rp9-reco-savings-note');

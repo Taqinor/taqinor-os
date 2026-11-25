@@ -14,6 +14,7 @@ import PiedResultats from '../../../production/PiedResultats'
 import ResultatAvantSimulation from '../../../production/ResultatAvantSimulation'
 import ResultatIncomplet from '../../../production/ResultatIncomplet'
 import TuilesResultat from '../../../production/TuilesResultat'
+import { memeTaille, phraseTailles, tailleDifferente } from '@roofpro/tailleConception' // T4-X9 — LE prédicat de taille de l'atelier
 import { messageResultatIndisponible } from '../../../delaiReseau'
 import EtatEcranAtelier from '../../EtatEcranAtelier'
 import { useModeExpert } from '../../modeExpert'
@@ -145,9 +146,17 @@ function tailleDeLaConception(contexte) {
   const valeur = kwc?.etat === 'servi' && typeof kwc.valeur === 'number' ? kwc.valeur : null
   if (valeur == null) return null
   const cible = contexte?.cible
-  const panneaux = typeof cible?.panneaux === 'number' && typeof cible?.kwc === 'number'
-    && Math.abs(cible.kwc - valeur) < 0.005 ? cible.panneaux : null
+  const panneaux = typeof cible?.panneaux === 'number' && memeTaille(cible?.kwc, valeur) ? cible.panneaux : null
   return { kwc: valeur, panneaux }
+}
+
+/** T4-X9-008 — la part de la consommation servie pour un calepinage de lead est celle de la CONCEPTION
+    (`services/etapes/autoconsommation.py::_publier`) : à une autre taille que la pose, la phrase des deux tailles (prédicat
+    et formateur uniques de l'atelier) remplace le chiffre ; `null` sinon (même taille, ou taille inconnue). */
+function phraseCouvertureConception(data, contexte) {
+  const taille = data?.conception && contexte?.etat === 'ok' ? tailleDeLaConception(contexte.donnees) : null
+  return taille && tailleDifferente(taille.kwc, data?.pose?.kwc)
+    ? phraseTailles('Part de la consommation', taille.kwc, data.pose.kwc) : null
 }
 
 /** Le motif de l'atelier (`affichageErp.ts::raisonSansValeur`) : « X kWc », le nombre de panneaux en plus s'il est servi. */
@@ -159,8 +168,7 @@ function ProductionDeLaConception({ bloc, taille = null, pose = null, simulee = 
   const dit = (n) => `${formatNumber(n, { decimals: 0 })} kWh par an`
   // T4-X5-001 — une pose d'une AUTRE taille que la conception : le chiffre de la conception dit sa taille, la pose est
   // renvoyée à sa propre simulation (jamais deux productions de deux tailles sans le dire). Même taille : une ligne.
-  const autreTaille = kwh != null && taille != null && typeof pose?.kwc === 'number'
-    && Math.abs(pose.kwc - taille.kwc) >= 0.005
+  const autreTaille = kwh != null && tailleDifferente(taille?.kwc, pose?.kwc)
   const envoye = bloc.devis_envoye
   const ecarts = envoye?.ecart_devis ?? []
   // Relecture E5 M2 — la production QUE LE DEVIS ENVOYÉ A RANGÉE (`devis_envoye.production_annuelle_kwh`, servie par
@@ -348,7 +356,8 @@ export default function EtapeResultats({
       )}
       {complet && (
         <>
-          <TuilesResultat data={data} nomProduction={data?.conception ? NOM_PRODUCTION_POSE : null} />
+          <TuilesResultat data={data} nomProduction={data?.conception ? NOM_PRODUCTION_POSE : null}
+            phraseCouverture={phraseCouvertureConception(data, contexte)} />
           <section className="cal-res-milieu">
             <MoisParMois data={data} nomProduction={data?.conception ? NOM_PRODUCTION_POSE : null} />
             <DuSoleilAuReseau cascade={data?.cascade} note={note} />

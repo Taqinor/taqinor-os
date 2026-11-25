@@ -23,6 +23,9 @@ export function cibleFactures(contexte) {
  * l'étape Résultats (« Production la première année »), avec la pose simulée. `null` sinon — la puce garde alors
  * l'estimation du navigateur, nommée « estimation ».
  */
+/** T4-X2-002 — la simulation de la pose est périmée : la bande le dit (jamais un chiffre simulé remplacé en silence). */
+export { simulationARefaire } from '../../../../production/BandeauProvenanceProduction.helpers'
+
 export function productionPubliee(resultat) {
   const total = resultat?.production?.total
   if (resultat?.simule !== true || resultat?.simulation_perimee !== false) return null

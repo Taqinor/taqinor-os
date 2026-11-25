@@ -446,6 +446,8 @@ retiré plus un hook ajouté.
 | `cal-tableau-variantes` | tableau variantes. |
 | `cal-variante-confirmer` | variante confirmer. |
 | `cal-variante-dupliquer` | variante dupliquer. |
+| `cal-simulation-a-refaire` | Expert, ligne de provenance de la production : « Simulation à refaire : le toit a changé depuis le dernier calcul. » et le lien pour la relancer (T4-X2-002). |
+| `cal-variante-refus` | Comparer les variantes : refus de « Retenir », dit à côté du bouton cliqué, avec le lien vers l'étape Électrique (T4-X9-010). |
 | `cal-variante-formulaire` | variante formulaire. |
 | `cal-variante-nom` | variante nom. |
 | `cal-variante-nom-erreur` | variante nom message d'erreur. |

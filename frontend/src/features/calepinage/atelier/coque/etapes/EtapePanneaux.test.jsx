@@ -44,6 +44,7 @@ function monterConstructeur(o = {}) {
     <p id="rp9-need-note">${c.note}</p>
     <p id="rp9-reco-panels">${c.panneaux}</p><p id="rp9-reco-kwc">${c.kwc}</p>
     <p id="rp9-reco-prod">${c.prod}</p><p id="rp9-reco-cover">${c.cover}</p>
+    ${c.tailles ? `<p id="rp9-reco-tailles">${c.tailles}</p>` : ''}
     ${['auto', 'portrait', 'landscape'].map((v) => `<button data-orient="${v}" aria-pressed="${v === c.orient}">${v}</button>`).join('')}
     <select id="rp9-pan-module-select">
       <option value="">Module par défaut de l'atelier</option>
@@ -543,6 +544,20 @@ describe('étape Panneaux — sur la carte', () => {
     expect(puce).not.toHaveTextContent('52 695')
   })
 
+  // T4-X2-002 (rejeu X9) — même pose, simulation faite : après « Enregistrer », la bande passait de « Production la première
+  // année 6 926 kWh » à une autre phrase sans rien dire. La simulation périmée est DITE, avec le geste pour la refaire.
+  it('T4-X2-002 — simulation périmée : la bande dit « Simulation à refaire » et où la relancer, une fois', async () => {
+    servir({ resultat: { simule: true, simulation_perimee: true,
+      production: { total: { p50_kwh: 6926, complete: true } }, pose: { total_modules: 6 } } })
+    monterConstructeur({ prod: '—', cover: '—' })
+    rendre()
+    const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+    await waitFor(() => expect(puce).toHaveTextContent(
+      'Simulation à refaire : le toit a changé depuis le dernier calcul. Relancez-la à l’étape Les résultats.'))
+    expect(puce.textContent.split('Simulation à refaire').length).toBe(2)
+    expect(puce).not.toHaveTextContent('6 926')
+  })
+
   it('ACAL2022 — pendant le dessin : « au prochain enregistrement » à la place de la production, jamais une estimation', () => {
     monterConstructeur({ prod: 'production au prochain enregistrement', cover: '—' })
     rendre()
@@ -554,12 +569,15 @@ describe('étape Panneaux — sur la carte', () => {
     expect(puce).toHaveTextContent('6,96 kWc') // seuls les panneaux et le kWc posés
   })
 
-  it('M5 — pose d’une autre taille que la conception : la puce dit pour quelle taille la production est calculée, pas « au prochain enregistrement »', () => {
-    monterConstructeur({ prod: 'production calculée pour la conception du lead : 21,6 kWc — votre pose en compte 6,96 kWc', cover: '—' })
+  // T4-X9-006 — la phrase débordait de la bande (une case de chiffre, sans retour à la ligne) et disait « 4,4 kWc » quand
+  // la carte voisine disait « 4,40 kWc » : elle est lue sous les cartes du constructeur et dite UNE fois, en texte courant.
+  it('M5 / T4-X9-006 — pose d’une autre taille : la bande dit la phrase en texte courant (deux décimales), aucune case « Production »', () => {
+    monterConstructeur({ prod: '—', cover: '—', tailles: 'Production et économie calculées pour la conception du lead : 21,60 kWc — votre pose en compte 6,96 kWc.' })
     rendre()
     const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
-    expect(puce).toHaveTextContent('Production')
-    expect(puce).toHaveTextContent('calculée pour la conception du lead : 21,6 kWc — votre pose en compte 6,96 kWc')
+    const phrase = puce.querySelector('.cal-pan-puce-phrase')
+    expect(phrase).toHaveTextContent('Production et économie calculées pour la conception du lead : 21,60 kWc — votre pose en compte 6,96 kWc.')
+    expect(puce.textContent.split('calculées pour la conception').length).toBe(2) // une seule fois
     expect(puce).not.toHaveTextContent('prochain enregistrement')
     expect(puce).not.toHaveTextContent('Production · conception') // aucune production en kWh n'est servie
   })

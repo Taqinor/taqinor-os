@@ -848,6 +848,30 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
     expect(zone()).not.toHaveTextContent('votre pose en compte')
   })
 
+  /* T4-X9-008 — la jauge « De la consommation » (74 %) posée à côté de « Production simulée de la pose » était la part de
+     la CONCEPTION (4,40 kWc), pas celle de la pose (5,68 kWc) : à une autre taille, la phrase remplace le chiffre. */
+  it('T4-X9-008 — conception d’une autre taille : la jauge dit la phrase des deux tailles, aucun pourcentage', async () => {
+    const d = { ...COMPLET(), conception: sans() }  // pose du contrat : 12 panneaux · 8,64 kWc
+    calepinageApi.calepinages.designContext.mockResolvedValue(contexteDeTaille(2.13, 3))
+    servir(d)
+    rendre()
+    const tuile = () => document.querySelector('[data-tuile="couverture"]')
+    await waitFor(() => expect(tuile()).toHaveTextContent(
+      `Part de la consommation calculée pour la conception du lead : ${kwc(2.13)} — votre pose en compte ${kwc(d.pose.kwc)}.`))
+    expect(tuile()).not.toHaveTextContent('%')
+    expect(tuile().querySelector('svg')).toBeNull()
+  })
+
+  it('T4-X9-008 — même taille : la jauge garde son pourcentage', async () => {
+    const d = { ...COMPLET(), conception: sans() }
+    calepinageApi.calepinages.designContext.mockResolvedValue(contexteDeTaille(d.pose.kwc, d.pose.total_modules))
+    servir(d)
+    rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    await waitFor(() => expect(calepinageApi.calepinages.designContext).toHaveBeenCalled())
+    expect(document.querySelector('[data-tuile="couverture"]')).toHaveTextContent('%')
+  })
+
   /* Relecture E5 M2 — « porte le même chiffre » n'est dit que si la production RANGÉE par le devis (servie) l'égale. */
   it('M2 — aucune ligne d’écart mais le devis a retenu « avec » à 6 047 kWh : les deux chiffres nommés et « Réviser »', async () => {
     const bloc = SERVI()

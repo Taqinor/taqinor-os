@@ -49,7 +49,7 @@ import { type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
 import { CALQUE_CONTOUR, CALQUE_COTES, cotesDesAretes, monterCotesAretes, texteCote } from './cotesAretes'; // ACAL1328, ACAL2042
 import { CALQUES_EDITION, poserEtapeAtelier, poserPresentation } from './presentationCarte'; // ACAL1328 ; suites v2 — l'étape
-import { peindreBande, texteEconomie, texteTotalProduction } from './affichageErp'; // ACAL1612
+import { peindreBande, phraseTaillesDuChiffrage, texteEconomie, texteTotalProduction } from './affichageErp'; // ACAL1612, T4-X9-007
 import { type CardData } from './types'; // ACAL1612
 
 const A: LngLat = [-7.6, 33.5];
@@ -1191,16 +1191,19 @@ describe('M5 — la raison vraie quand la pose n’a pas la taille de la concept
   const carte = { annualKwh: 4362, kwc: 1.1, count: 2, savingsLow: 5000, savingsHigh: 6000, target: 4000 } as unknown as CardData;
   const AUTRE = { kwc: { valeur: 21.6, etat: 'servi' }, production_annuelle_kwh: { valeur: 25000, etat: 'servi' }, economie_annee1_mad: { valeur: null, etat: 'omis' } } as never;
   const EGALE = { kwc: { valeur: 1.1, etat: 'servi' }, production_annuelle_kwh: { valeur: null, etat: 'omis' }, economie_annee1_mad: { valeur: null, etat: 'omis' } } as never;
-  const PROD = 'production calculée pour la conception du lead : 21,6 kWc — votre pose en compte 1,1 kWc';
+  const PHRASE = 'Production et économie calculées pour la conception du lead : 21,60 kWc — votre pose en compte 1,10 kWc.';
   const bande = (chiffrage: unknown) => {
     const el = new JSDOM('<!doctype html><p></p>').window.document.querySelector('p') as HTMLElement;
     peindreBande(el, carte, 4000, true, chiffrage as never, false, 1.1);
     return el.textContent ?? '';
   };
   it('autre taille : la bande, le Total et l’économie disent pour quelle taille la valeur est calculée, jamais « au prochain enregistrement »', () => {
-    expect(bande(AUTRE)).toContain(`Année 1 : ${PROD}`);
-    expect(texteTotalProduction(4362, 1.1, true, AUTRE)).toBe(PROD);
-    expect(texteEconomie(AUTRE, 1.1, '≈ 5 000 MAD/an')).toBe(PROD.replace('production', 'économie'));
+    // T4-X9-007 — les cases des chiffres clés disent « — » ; la phrase, une, en texte courant, deux décimales.
+    expect(bande(AUTRE)).toContain('Année 1 : —.');
+    expect(texteTotalProduction(4362, 1.1, true, AUTRE)).toBe('—');
+    expect(texteEconomie(AUTRE, 1.1, '≈ 5 000 MAD/an')).toBe('—');
+    expect(phraseTaillesDuChiffrage(AUTRE, 1.1)).toBe(PHRASE);
+    expect(phraseTaillesDuChiffrage(EGALE, 1.1)).toBe('');
     expect(bande(AUTRE)).not.toContain('prochain enregistrement');
   });
   it('même taille mais valeur pas encore servie, ou rien d’enregistré : « au prochain enregistrement » (vrai dans ces cas)', () => {

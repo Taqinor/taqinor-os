@@ -57,7 +57,9 @@ export const sorties = {
     // (CAL18, l'ATELIER) : ce sont les portes ÉCHANGE / round-trip fichier.
     // Forme figée par contract_samples/calepinage_export_layout.json (ENF15).
     exporterConception: (id) => api.get(`${pivot(id)}export-layout/`),
-    importerConception: (id, document) => api.post(`${pivot(id)}import-layout/`, document),
+    // T4-X9-001 — le panneau Documents dit LUI-MÊME chaque refus (carte « Remplacer le toit / Garder le toit actuel » du
+    // 409, liste des champs fautifs) : le toast global le doublait, en commençant par le nom anglais du champ.
+    importerConception: (id, document) => api.post(`${pivot(id)}import-layout/`, document, { suppressErrorToast: true }),
 
     // CALX18 — les postes de pertes (catalogue CAL139, `views/simulation.py`) :
     // lecture pure du catalogue + des postes persistés, et leur enregistrement.

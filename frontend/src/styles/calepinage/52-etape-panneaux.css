@@ -109,6 +109,15 @@
   gap: 0; padding: 0 6px; max-width: calc(100% - 140px); white-space: nowrap;
 }
 .cal-coque .cal-pan-puce .cal-indicateur { position: relative; padding: 0 16px; }
+/* T4-X9-006 — avec la phrase des deux tailles : la bande grandit et la phrase revient à la ligne DANS la bande (aucune
+   largeur fixe : la bande garde sa borne relative à la carte, à 1 440, 820 ou 390 px de large). */
+.cal-coque .cal-pan-puce:has(.cal-pan-puce-phrase) { flex-wrap: wrap; height: auto; min-height: 62px; padding: 8px 6px; white-space: normal; }
+.cal-coque .cal-pan-puce .cal-pan-puce-phrase {
+  flex: 1 0 100%; margin: 0; padding: 6px 16px 4px; font-size: 0.8125rem; line-height: 1.35; color: var(--cal-texte-2);
+}
+/* Téléphone et tablette (56-coque-responsive.css) : les enfants au-delà du troisième sont cachés et chaque enfant prend
+   `flex: 1 1 auto` — la phrase reste visible, sur sa propre ligne. */
+.rp9-host.cal-coque .cal-coque-sur-carte .cal-pan-puce > p.cal-pan-puce-phrase { display: block; flex: 1 0 100%; }
 .cal-coque .cal-pan-puce .cal-indicateur + .cal-indicateur::before {
   content: ''; position: absolute; left: 0; top: 16px; bottom: 16px; width: 1px; background: var(--cal-filet-fort);
 }
