@@ -2920,7 +2920,7 @@ URL_MISE_A_JOUR = '/api/django/ventes/devis/%d/mettre-a-jour-conception/'
 
 
 class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
-                                         _emprunt(ServirConceptionTests, '_api'),
+                                         _emprunt(ServirConceptionTests, '_api', '_avec_role'),
                                          _emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur',
                                                   '_residentiel', '_ci', '_agricole', '_fiches_residentielles',
                                                   '_site_isole', '_structures', '_fiches_ci', '_cas'), TestCase):
@@ -3127,3 +3127,29 @@ class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_rela
                                                                      photo['lignes']].index(True)]['quantite']))
         self.assertEqual(api.post(URL_MISE_A_JOUR % retouche.pk).json()['appliquees'], [])  # rien de plus
         self.assertEqual(conception_courante(company, lead.pk)['brouillons_a_mettre_a_jour'], [])
+
+    def test_mise_a_jour_meme_garde_que_reprendre_le_lead(self):
+        """Relecture E4 M4 — aucun rôle élargi : la garde de « Reprendre les
+        valeurs du lead » (rôles RÉELS du registre), 403 en français ; hors
+        portée (Commercial non propriétaire) : 404."""
+        from apps.crm.models import Lead
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+
+        company, lead, _user, _intact, retouche, _envoye = self._trois_devis()
+        self._nouvelle_version(company, lead)
+        grille = dict(CANONICAL_SYSTEM_ROLES)
+        roles = ('Viewer', 'Commercial', 'Commercial responsable', 'Administrateur')
+        comptes = {nom: self._avec_role(company, nom, grille[nom]) for nom in roles}
+        Lead.objects.filter(pk=lead.pk).update(owner=comptes['Commercial'])
+        statuts = {}
+        for nom in roles:
+            api = self._api(comptes[nom])
+            reprendre = api.post('/api/django/ventes/devis/%d/reappliquer-lead/' % retouche.pk)
+            reponse = api.post(URL_MISE_A_JOUR % retouche.pk)
+            statuts[nom] = (reprendre.status_code == 403, reponse.status_code)
+            if reponse.status_code == 403:
+                self.assertTrue(reponse.json()['detail'].startswith('Votre rôle ne permet pas'), reponse.json())
+        self.assertEqual(statuts, {'Viewer': (True, 403), 'Commercial': (False, 200),  # mutant « crm_voir seul » : 200
+                                   'Commercial responsable': (False, 200), 'Administrateur': (False, 200)})
+        collegue = self._api(self._avec_role(company, 'collegue', grille['Commercial']))
+        self.assertEqual(collegue.post(URL_MISE_A_JOUR % retouche.pk).status_code, 404)

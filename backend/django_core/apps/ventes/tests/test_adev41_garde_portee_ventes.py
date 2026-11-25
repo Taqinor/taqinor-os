@@ -69,6 +69,9 @@ ROUTES_SONDEES = {
     # portée (refus de portée distingué de ``conception_absente`` par
     # ``test_conception_du_lead_hors_portee``).
     'conception-lead', 'conception-apercu',
+    # ADEV148 (relecture E4 M4) — « Mettre à jour » un brouillon sur la
+    # conception (``<devis_id>``) : portée ``leads_visibles``, 404 avant tout.
+    'devis-mettre-a-jour-conception',
 }
 
 #: Routes sondées dont la fuite est CONNUE et portée par une tâche ouverte :
@@ -329,7 +332,7 @@ class GardePorteeVentesTests(TestCase):
                 continue
             pk = l1 if classe == 'LigneDevisViewSet' else d1
             url = _url(motif, {'pk': pk, 'token': '0' * 32, 'chemin': 'scenario',
-                               'lead_id': self.lead_hors.pk})
+                               'lead_id': self.lead_hors.pk, 'devis_id': d1})
             detail = bool(re.search(r'<(?:\w+:)?pk>|\(\?P<pk>', motif))
             for verbe in _methodes(callback):
                 if verbe == 'get':
