@@ -2088,3 +2088,20 @@ et liste `--ecarts-sans-toit` avec la pose supposée). APRÈS son pli : l'orches
 `manage.py remplir_conceptions --ecarts-sans-toit` sur la copie (pile l5t, lecture seule) et montre la liste à Reda.
 Neuf agents en vol : J1, I1 suite, I4 suite 2, K1, M1, M2, M4, N1, relecteur X7. En attente de créneau : M3, K2, E9b, B5.
 Le goulot est le créneau docker unique (le paquet de l'orchestrateur le tient depuis 16 h 48 : phase des rendus PDF).
+
+**Ajout de 18 h 05 UTC** — quatre réponses de plus (D-ACAL-111 à 114, PDF) : ligne sous la « facture actuelle » du PDF
+résidentiel (phrase approuvée au registre) ; PROTECTIONS ET LEUR CÂBLE DANS LE KIT MINIMUM du pompage (choix du
+fondateur, pas ma recommandation : modifie la décision du kit du 02/10, le prix monte) ; devis final de pompage sans
+« à vérifier à la visite » ; option unique sans « OPTION 2 ». Lane **P1** = l'auteur de K1 (agent ab75a7c7a60c1d28c,
+MÊME branche `lane/phrases-pdf-ci`, consigne `msg-lane-P1-pdf-decisions.md`) : d'abord la CORRECTION de K1 trouvée à
+la relecture — le drapeau de rendu marquait l'ANCIEN cas, donc le PDF déjà rangé d'un brouillon n'était pas régénéré
+(`cle_pdf_a_jour` compare l'empreinte des données) : le drapeau doit marquer le cas OUVERT ; puis les quatre décisions.
+`lane/phrases-pdf-ci` N'EST PAS PLIÉE (attendre le compte rendu de P1).
+PLIÉ depuis 17 h 25 : M1 (`lane/releve-telephone`, 4 constats de X8 ; choix noté au rapport § 2 : une cote reprise du
+dessin n'est plus envoyée comme mesure). Fait par l'orchestrateur : mémo de calcul accepté par la doublure
+`DevisAuxLignes` (rouge 2 échecs puis 21 verts, commit 141838e040).
+Paquet docker de 16 h 48 ARRÊTÉ à 17 h 50 par l'orchestrateur pour libérer le créneau : ~800 tests avec base passés
+sans échec (aucune marque E/F), seuls les rendus PDF de `test_quote_engine` n'ont pas fini — à rejouer dans le paquet
+d'avant push, après le pli de P1.
+En vol (12) : J1, I1 suite, I4 suite 2, M2, M3 (agent abf2f974be2593484), M4, N1, K2 (auteur d'I5), E9b (auteur d'E9),
+P1, relecteur X7. Reste à lancer : B5 (maquettes) après la pile rebâtie.
