@@ -44,6 +44,15 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
   champ_kwc: sel.dims.champKwc,
 })
 
+// T4-X1-011 — un 500 (ou aucune réponse : réseau, délai) n'est PAS la faute de
+// la fiche du lead : la seconde tentative, fiche inchangée, créait le devis.
+// Un refus qui répond 4xx garde son message (et son champ nommé) ; une panne
+// serveur le dit, et marque `serveur: true` pour que l'écran offre « Réessayer »
+// (la route est idempotente 120 s : un nouvel essai ne crée jamais deux devis).
+export const MESSAGE_SERVEUR_SANS_REPONSE = 'Le serveur n’a pas répondu (ou a rencontré une erreur) — '
+  + 'la fiche du lead n’est pas en cause. Réessayez dans un instant.'
+export const estPanneServeur = (err) => !err?.response || err.response.status >= 500
+
 // AGR126 / CIQ127 — l'agricole et le C&I partent au serveur (AGR124, CIQ120) :
 // un seul appel `POST /ventes/devis/auto/`, jamais `createDevisAtomic`. Le 422
 // du serveur (donnée manquante, relevé du point d'eau, aucune taille ni
@@ -74,6 +83,7 @@ async function creerDevisServeur({ lead, discountStr, onAlertes, onResultat, tar
         delaiDepasse: true,
       }
     }
+    if (estPanneServeur(err)) throw { detail: MESSAGE_SERVEUR_SANS_REPONSE, serveur: true }
     const data = err?.response?.data || {}
     throw {
       detail: data.detail
@@ -185,6 +195,7 @@ export async function createAutoQuote({ lead, discountStr, onAlertes, onResultat
       // `err.detail` — on rend son message tel quel, jamais un nôtre.
       // ALEA48 — le 409 nomme aussi le champ à compléter (`field`) : on le
       // relaie, comme la branche C&I, pour que l'écran propose « Compléter ».
+      if (estPanneServeur(err)) throw { detail: MESSAGE_SERVEUR_SANS_REPONSE, serveur: true }
       const champ = err?.response?.data?.field
       throw {
         detail: err?.response?.data?.detail
