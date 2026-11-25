@@ -74,7 +74,10 @@ JAMAIS_EXPOSES = ('reference', 'fichier_pdf',
                   'search_vector',  # NTPLT32 — index plein-texte, jamais écrit
                   # ADEV143 — pointeur vers la conception dont le devis naît, posé
                   # par le serveur ; jamais écrit par un client, jamais servi.
-                  'conception_source')
+                  'conception_source',
+                  # ADEV162 — cache rangé de la synthèse de la liste : écrit par
+                  # le seul ``domain.etudes.ranger_totaux_affiches``, jamais servi.
+                  'total_affiche_range', 'total_affiche_empreinte')
 
 
 # ═══════════════════════════════════════════════════════════════════════════

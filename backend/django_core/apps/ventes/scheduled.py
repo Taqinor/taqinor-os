@@ -552,6 +552,16 @@ def expire_stale_devis():
     return result
 
 
+@shared_task(name='ventes.ranger_totaux_affiches')
+def ranger_totaux_affiches_planifie():
+    """ADEV162 — toutes les 10 min : le total affiché rangé des devis en jeu
+    dont l'empreinte a bougé (``domain.etudes.ranger_totaux_affiches``,
+    l'écrivain unique ; deux colonnes de cache, jamais un statut)."""
+    from .domain.etudes import ranger_totaux_affiches
+    from .models import Devis
+    return ranger_totaux_affiches(Devis.objects.filter(is_active=True))
+
+
 @shared_task(name='ventes.devis_followup_nudges')
 def devis_followup_nudges():
     """QJ4 — Relance automatique cadencée des devis envoyés toujours en attente.

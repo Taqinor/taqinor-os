@@ -980,10 +980,12 @@ def finaliser_caches(devis):
 
     Partagés par ``finaliser`` (mode ``composer``) et le mode ``rafraichir``
     (Édition complète, ``perform_update``, ``LigneDevisViewSet``). Best-effort,
-    ne touche jamais au statut (règle #4).
+    ne touche jamais au statut (règle #4). ADEV162 — et le total affiché
+    rangé de la synthèse de la liste, après le commit.
     """
     poser_puissance_kwc(devis)
     refresh_marge_snapshot(devis)
+    ranger_total_affiche_apres_commit(devis)
     return devis
 
 
@@ -1300,6 +1302,7 @@ from apps.ventes.domain.etude_schema import PIPELINE  # noqa: E402 — fin de mo
 from apps.ventes.domain.etude_schema import ecrire as ecrire_etude  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 from apps.ventes.domain.etudes import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     rafraichir_etudes_du_devis,
+    ranger_total_affiche_apres_commit,
     refresh_marge_snapshot,
 )
 from apps.ventes.domain.lignes import remplacer_lignes  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)

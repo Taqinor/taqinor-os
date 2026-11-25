@@ -240,54 +240,124 @@ class ListeLegereT4X4005Tests(TestCase):
         self.assertEqual(
             self.api.get(URL, {'statut_effectif': 'zz'}).status_code, 400)
 
-    def test_synthese_memorise_le_total_par_contenu_du_devis(self):
-        """Revue de la liste : 583 devis = 11 s de moteur. Un devis inchangé
-        n'est pas recalculé ; modifié, il l'est, et le total reste celui de la
-        colonne « Total TTC »."""
+    # ADEV162 — le total affiché RANGÉ sur le devis (cache de ``display_totals``
+    # + empreinte de ce dont il a été calculé) remplace le cache de 6 h.
+    def _synthese_espionnee(self):
         from unittest import mock
-        from django.core.cache import cache
         from apps.ventes.quote_engine import builder
-        cache.clear()
-        (d,) = self._creer(1)
-        reel = builder.display_totals
-        with mock.patch.object(builder, 'display_totals', wraps=reel) as espion:
-            premier = self.api.get(URL + 'synthese/').json()
-            appels_froid = espion.call_count
-            self.api.get(URL + 'synthese/')
-            self.assertEqual(espion.call_count, appels_froid)  # rien de recalculé
-            ligne = d.lignes.first()
-            ligne.quantite = ligne.quantite + 1
-            ligne.save()
-            apres = self.api.get(URL + 'synthese/').json()
-            self.assertGreater(espion.call_count, appels_froid)  # contenu changé
-        self.assertEqual(appels_froid, 1)
-        self.assertNotEqual(premier['par_statut']['brouillon']['total'],
-                            apres['par_statut']['brouillon']['total'])
-        page = self._page().json()['results'][0]
-        self.assertAlmostEqual(apres['par_statut']['brouillon']['total'],
-                               float(page['total_affiche']))
+        with mock.patch.object(builder, 'display_totals',
+                               wraps=builder.display_totals) as espion:
+            data = self.api.get(URL + 'synthese/').json()
+        return data, espion.call_count
 
-    def test_synthese_total_suit_un_changement_de_reglage_societe(self):
-        """Pas de carte périmée : un réglage de la société change la clé du
-        total mémorisé ; la carte égale alors la colonne de la liste."""
-        from unittest import mock
+    def _colonne(self):
+        """La somme de la colonne « Total TTC » : la règle de la colonne,
+        ``display_totals``, recalculée de zéro sur chaque devis en jeu."""
+        from decimal import Decimal
+        from core.money import quantize_mad
+        from apps.ventes.quote_engine.builder import display_totals
+        total = sum((Decimal(str(display_totals(d)['total'] or 0))
+                     for d in Devis.objects.filter(company=self.company, is_active=True)),
+                    Decimal('0'))
+        return float(quantize_mad(total))
+
+    def test_synthese_200_devis_cache_vide_sans_moteur_par_devis(self):
+        """ADEV162 — 200 devis, cache vide : le calcul ne rappelle pas le
+        moteur du devis pour chaque devis, répond sous 2 s, mêmes totaux que
+        la colonne."""
+        import time
         from django.core.cache import cache
-        from apps.parametres.models import CompanyProfile
-        from apps.ventes.quote_engine import builder
+        from django.core.management import call_command
+        for _ in range(200):
+            self.n += 1
+            d = Devis.objects.create(
+                company=self.company, reference='DEV-ADEV162-%04d' % self.n,
+                client=self.client_obj, created_by=self.admin,
+                taux_tva=Decimal('20'), etude_params=_etude_reelle(self.n))
+            for k in range(2):
+                self._ligne.objects.create(
+                    devis=d, designation='Panneau 580 Wc %d' % k,
+                    quantite=Decimal('2'), prix_unitaire=Decimal('1450') + self.n)
         cache.clear()
-        self._creer(1)
-        reel = builder.display_totals
-        with mock.patch.object(builder, 'display_totals', wraps=reel) as espion:
-            self.api.get(URL + 'synthese/')
-            avant = espion.call_count
-            profil = CompanyProfile.get(self.company)
-            profil.quote_validity_days = (profil.quote_validity_days or 30) + 5
-            profil.save()
-            apres = self.api.get(URL + 'synthese/').json()
-            self.assertGreater(espion.call_count, avant)
-        page = self._page().json()['results'][0]
-        self.assertAlmostEqual(apres['par_statut']['brouillon']['total'],
-                               float(page['total_affiche']))
+        debut = time.perf_counter()
+        _, avant = self._synthese_espionnee()
+        froid_sans_range = time.perf_counter() - debut
+        from io import StringIO
+        call_command('ranger_totaux_affiches', stdout=StringIO())
+        cache.clear()
+        debut = time.perf_counter()
+        data, appels = self._synthese_espionnee()
+        froid_range = time.perf_counter() - debut
+        print('\nADEV162 synthese 200 devis : sans rangement=%.2f s (%d moteur) '
+              'range=%.2f s (%d moteur)' % (froid_sans_range, avant, froid_range, appels))
+        self.assertEqual(avant, 200)
+        self.assertEqual(appels, 0)
+        self.assertLess(froid_range, 2.0)
+        self.assertEqual(data['par_statut']['brouillon']['count'], 200)
+        self.assertEqual(data['par_statut']['brouillon']['total'], self._colonne())
+
+    def test_total_range_jamais_servi_perime(self):
+        """ADEV162 — Persistance : chaque écriture qui contourne ``save()``
+        (``update()`` sur le devis, une ligne, le produit, le client, le
+        profil société) change l'empreinte ; le total rangé n'est alors plus
+        servi et la carte égale la colonne recalculée."""
+        from apps.crm.models import Client as ClientModele
+        from apps.parametres.models import CompanyProfile
+        from apps.stock.models import Produit
+        from apps.ventes.domain.etudes import ranger_totaux_affiches
+        (d,) = self._creer(1)
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau 580', sku='ADEV162-P',
+            prix_vente=Decimal('1450'), prix_achat=Decimal('1'), quantite_stock=10)
+        self._ligne.objects.filter(pk=d.lignes.first().pk).update(produit=produit)
+        profil = CompanyProfile.get(self.company)
+        ecritures = [
+            lambda: Devis.objects.filter(pk=d.pk).update(remise_globale=Decimal('7')),
+            lambda: self._ligne.objects.filter(devis=d).update(prix_unitaire=Decimal('999')),
+            lambda: Produit.objects.filter(pk=produit.pk).update(nom='Batterie lithium 5 kWh'),
+            lambda: ClientModele.objects.filter(pk=self.client_obj.pk).update(nom='Benali II'),
+            lambda: CompanyProfile.objects.filter(pk=profil.pk).update(
+                quote_validity_days=(profil.quote_validity_days or 30) + 5),
+            lambda: Devis.objects.filter(pk=d.pk).update(statut=Devis.Statut.ENVOYE),
+        ]
+        for ecrire in ecritures:
+            self.assertEqual(ranger_totaux_affiches(Devis.objects.filter(pk=d.pk)), 1)
+            _, appels = self._synthese_espionnee()
+            self.assertEqual(appels, 0)  # rangé et concordant : servi
+            ecrire()
+            data, appels = self._synthese_espionnee()
+            self.assertEqual(appels, 1)  # empreinte changée : recalculé
+            (cellule,) = [v for v in data['par_statut'].values() if v['count']]
+            self.assertEqual(cellule['total'], self._colonne())
+        # Un GET n'écrit jamais : le devis lu périmé reste à ranger.
+        self.assertEqual(ranger_totaux_affiches(Devis.objects.filter(pk=d.pk)), 1)
+
+    def test_total_range_ecrit_apres_l_ecriture_du_devis(self):
+        """ADEV162 — l'écrivain : ``finaliser_caches`` (édition, lignes) range
+        après le commit ; le balayage planifié range un devis dont le statut a
+        changé. Un devis envoyé ne voit bouger ni statut ni ``updated_at``,
+        et les colonnes rangées ne sont servies ni en liste ni au détail."""
+        from apps.ventes.domain.pipeline import finaliser_caches
+        from apps.ventes.scheduled import ranger_totaux_affiches_planifie
+        (d,) = self._creer(1)
+        with self.captureOnCommitCallbacks(execute=True):
+            finaliser_caches(d)
+        self.assertEqual(self._synthese_espionnee()[1], 0)
+        Devis.objects.filter(pk=d.pk).update(statut=Devis.Statut.ENVOYE)
+        d.refresh_from_db()
+        avant = (d.statut, d.updated_at, d.total_ttc)
+        self.assertEqual(ranger_totaux_affiches_planifie(), 1)
+        self.assertEqual(ranger_totaux_affiches_planifie(), 0)  # idempotent
+        d.refresh_from_db()
+        self.assertEqual((d.statut, d.updated_at, d.total_ttc), avant)
+        data, appels = self._synthese_espionnee()
+        self.assertEqual(appels, 0)
+        self.assertEqual(data['par_statut']['envoye']['total'], self._colonne())
+        ligne = self._page().json()['results'][0]
+        detail = self.api.get('%s%s/' % (URL, d.pk)).json()
+        for cle in ('total_affiche_range', 'total_affiche_empreinte'):
+            self.assertNotIn(cle, ligne)
+            self.assertNotIn(cle, detail)
 
     def test_synthese_nombre_de_requetes_constant(self):
         """Les cartes par statut : pas de requête par devis (5 devis = 50)."""

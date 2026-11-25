@@ -1269,6 +1269,7 @@ CELERY_TASK_ROUTES = {
     'ventes.check_overdue_factures': {'queue': 'scheduled'},
     # NTSCM35/36 — ci-dessus : chaque tache du beat_schedule routee vers `scheduled`.
     'ventes.expire_stale_devis': {'queue': 'scheduled'},
+    'ventes.ranger_totaux_affiches': {'queue': 'scheduled'},  # ADEV162
     'ventes.relance_reminders': {'queue': 'scheduled'},
     'ventes.devis_followup_nudges': {'queue': 'scheduled'},
     'ventes.releve_mensuel_reminders': {'queue': 'scheduled'},

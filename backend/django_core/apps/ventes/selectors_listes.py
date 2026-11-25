@@ -130,53 +130,120 @@ def filtrer_liste_devis(qs, company, *, q=None, statut_effectif=None,
     return qs
 
 
-# T4-X1 (revue de la liste sur la copie de production) — le total d'un devis
-# est calculé par le MOTEUR du PDF (≈ 20 ms par devis, du calcul pur : 11
-# requêtes constantes, aucun N+1) ; sur 583 devis la synthèse prenait 11 à 12 s
-# et dépassait la limite de l'écran. Il est donc mémorisé par CONTENU du devis :
-# la clé porte l'horodatage du devis, la signature de ses lignes (quantité,
-# prix, remise, produit) et la version de ce calcul ; elle change à la moindre
-# modification du devis. Seul un changement fait HORS du devis (fiche produit,
-# réglage de société) peut laisser un total mémorisé jusqu'à son expiration
-# (``DUREE_TOTAL_MEMORISE_S``) — la colonne de la ligne, elle, se recalcule.
-# Lu HORS du devis par le moteur, et marqueur porté par la clé : le profil de la
-# société (``CompanyProfile.updated_at`` : TVA, règles, réglages) et chaque
-# produit des lignes (``Produit.date_mise_a_jour`` : nom, marque, classement en
-# option batterie / sans). SANS marqueur, donc couverts par la seule expiration :
-# la fiche technique du produit (``FicheTechnique``, description/garantie — elle
-# n'entre ni dans un prix ni dans le classement) et un changement du MOTEUR
-# lui-même (à ce jour : relever ``VERSION_TOTAL_MEMORISE`` avec le correctif).
-VERSION_TOTAL_MEMORISE = 1
-DUREE_TOTAL_MEMORISE_S = 6 * 3600
+# ADEV162 — le total d'un devis est calculé par le MOTEUR du PDF
+# (``display_totals``, 20 à 30 ms par devis, inexprimable en SQL) : sur 583
+# devis la synthèse prenait 11 à 21 s à froid. Il est donc RANGÉ sur le devis
+# (``total_affiche_range``) avec l'EMPREINTE de tout ce dont il a été calculé
+# (``total_affiche_empreinte``), écrit hors de toute lecture par
+# ``domain.etudes.ranger_totaux_affiches`` (après chaque écriture du devis et
+# de ses lignes, balayage planifié, commande). La synthèse relit l'empreinte et
+# ne sert le total rangé que si elle CONCORDE ; sinon elle recalcule (et ne
+# range rien : un GET n'écrit jamais). L'empreinte couvre chaque ligne de
+# base que le calcul lit sans requête : la ligne du devis (hors horodatage et
+# colonnes rangées), son lead, ses lignes, leurs produits et fiches
+# techniques, le client, la société et son profil. Un changement du MOTEUR
+# lui-même relève ``VERSION_TOTAL_RANGE`` avec le correctif.
+VERSION_TOTAL_RANGE = 1
+_HORS_EMPREINTE = frozenset({'updated_at', 'search_vector',
+                             'total_affiche_range', 'total_affiche_empreinte'})
+PREFETCH_TOTAUX = ('lignes', 'lignes__produit', 'lignes__produit__fiche_technique')
 
 
-def _total_affiche_memorise(devis, display_totals, marqueur_societe=None):
+def _sql_empreinte_devis():
+    """Les deux grosses lignes (devis : étude de 60 Ko ; lead) hachées par la
+    base — en Python, 600 études coûtaient 1,4 s de ``repr``."""
+    from django.db import connection
+
+    from .models import Devis
+    q = connection.ops.quote_name
+    table = q(Devis._meta.db_table)
+    colonnes = ', '.join('%s.%s' % (table, q(f.column)) for f in Devis._meta.concrete_fields
+                         if f.attname not in _HORS_EMPREINTE)
+    lead = q(Devis._meta.get_field('lead').related_model._meta.db_table)
+    return ("md5(ROW(%s)::text) || COALESCE((SELECT md5(ROW(l.*)::text) FROM %s l"
+            " WHERE l.id = %s.%s), '-')" % (colonnes, lead, table, q('lead_id')))
+
+
+def devis_pour_les_totaux(qs, *, leger=False):
+    """Le jeu de lecture UNIQUE de la synthèse et de l'écrivain : mêmes
+    lignes chargées, donc même empreinte des deux côtés. ``leger`` laisse en
+    base les gros blocs JSON du devis (l'empreinte les hache en SQL) : la
+    synthèse ne les charge que pour les devis à recalculer."""
+    from django.db.models.expressions import RawSQL
+
+    from .serializers import CHAMPS_RETIRES_LISTE_DEVIS
+    qs = (qs.select_related('client', 'lead', 'company').order_by('pk')
+          .prefetch_related(None).prefetch_related(*PREFETCH_TOTAUX)
+          .annotate(empreinte_sql_adev162=RawSQL(_sql_empreinte_devis(), ())))
+    return qs.defer(*CHAMPS_RETIRES_LISTE_DEVIS) if leger else qs
+
+
+def profil_pour_les_totaux(company):
+    """Le profil société relu EN BASE (un profil tout juste créé garde en
+    mémoire ses valeurs par défaut non normalisées : l'empreinte différerait)."""
+    from apps.parametres.models import CompanyProfile
+    profil = CompanyProfile.get(company)
+    if getattr(profil, 'pk', None):
+        profil.refresh_from_db()
+    return profil
+
+
+def _valeurs(obj):
+    if obj is None:
+        return None
+    return [f.value_from_object(obj) for f in obj._meta.concrete_fields
+            if f.attname not in _HORS_EMPREINTE]
+
+
+def empreinte_total_affiche(devis, profil):
+    """L'empreinte de ce que ``display_totals`` lit pour ce devis."""
+    import hashlib
+    lignes = sorted(((lg.pk, _valeurs(lg), _valeurs(lg.produit if lg.produit_id else None),
+                      _valeurs(getattr(lg.produit, 'fiche_technique', None)
+                               if lg.produit_id else None))
+                     for lg in devis.lignes.all()), key=lambda t: t[0])
+    contenu = repr((VERSION_TOTAL_RANGE, devis.empreinte_sql_adev162, lignes,
+                    _valeurs(devis.client), _valeurs(devis.company), _valeurs(profil)))
+    return hashlib.sha256(contenu.encode('utf-8')).hexdigest()
+
+
+def total_du_moteur(devis, display_totals):
+    from decimal import Decimal
+    return Decimal(str(display_totals(devis, lignes_prechargees=True)['total'] or 0))
+
+
+def total_range_valide(devis, profil):
+    """Le total rangé si son empreinte concorde avec la relecture, sinon None."""
+    if (devis.total_affiche_range is not None
+            and devis.total_affiche_empreinte == empreinte_total_affiche(devis, profil)):
+        return devis.total_affiche_range
+    return None
+
+
+def _totaux_par_statut(qs, company, jour):
+    """Nombre et total affiché par statut effectif des devis en jeu : le total
+    rangé quand il concorde, sinon ``display_totals`` sur le devis relu en
+    entier (un second passage, en nombre de requêtes constant)."""
     from decimal import Decimal
 
-    import hashlib
-
-    from django.core.cache import cache
-
-    lignes = [(lg.pk, str(lg.quantite), str(lg.prix_unitaire), str(lg.remise),
-               lg.produit_id,
-               str(getattr(lg.produit, 'date_mise_a_jour', '') if lg.produit_id else ''))
-              for lg in devis.lignes.all()]
-    cle = 'devis-total:v%s:%s:%s:%s:%s' % (
-        VERSION_TOTAL_MEMORISE, devis.pk, devis.updated_at, marqueur_societe,
-        hashlib.sha1(repr(lignes).encode('utf-8'), usedforsecurity=False).hexdigest())
-    try:
-        trouve = cache.get(cle)
-    except Exception:  # noqa: BLE001 — cache indisponible : on calcule, comme avant (D-ENF22-BLE001)
-        logger.warning('Total mémorisé du devis non lu : cache indisponible', exc_info=True)
-        trouve = None
-    if trouve is not None:
-        return Decimal(trouve)
-    total = Decimal(str(display_totals(devis, lignes_prechargees=True)['total'] or 0))
-    try:
-        cache.set(cle, str(total), DUREE_TOTAL_MEMORISE_S)
-    except Exception:  # noqa: BLE001 — le total est rendu quand même (D-ENF22-BLE001)
-        logger.warning('Total mémorisé du devis non rangé : cache indisponible', exc_info=True)
-    return total
+    from .quote_engine.builder import display_totals
+    from .utils.expiry import is_expired
+    profil = profil_pour_les_totaux(company)
+    par_statut = {s: {'count': 0, 'total': Decimal('0')} for s in STATUTS_EFFECTIFS}
+    a_calculer = {}
+    for devis in devis_pour_les_totaux(qs.filter(is_active=True), leger=True).iterator(chunk_size=100):
+        cle = 'expire' if is_expired(devis, today=jour) else devis.statut
+        cellule = par_statut.setdefault(cle, {'count': 0, 'total': Decimal('0')})
+        cellule['count'] += 1
+        total = total_range_valide(devis, profil)
+        if total is None:
+            a_calculer[devis.pk] = cle
+        else:
+            cellule['total'] += total
+    if a_calculer:
+        for devis in devis_pour_les_totaux(qs.filter(pk__in=list(a_calculer))).iterator(chunk_size=50):
+            par_statut[a_calculer[devis.pk]]['total'] += total_du_moteur(devis, display_totals)
+    return par_statut
 
 
 def synthese_liste_devis(qs, company):
@@ -187,29 +254,14 @@ def synthese_liste_devis(qs, company):
     colonne « Total TTC » de chaque ligne (``total_affiche``), jamais un
     second calcul ; les devis sont lus par paquets (mémoire bornée)."""
     from datetime import timedelta
-    from decimal import Decimal
 
     from django.utils import timezone
 
     from core.money import quantize_mad
 
-    from .quote_engine.builder import display_totals
-    from .utils.expiry import is_expired, q_expiration
-
-    from apps.parametres.models import CompanyProfile
-    marqueur_societe = getattr(CompanyProfile.get(company), 'updated_at', None)
+    from .utils.expiry import q_expiration
     jour = timezone.localdate()
-    par_statut = {s: {'count': 0, 'total': Decimal('0')} for s in STATUTS_EFFECTIFS}
-    en_jeu = (qs.filter(is_active=True).order_by('pk')
-              .prefetch_related(None)
-              .prefetch_related('lignes', 'lignes__produit',
-                                'lignes__produit__fiche_technique'))
-    for devis in en_jeu.iterator(chunk_size=50):
-        cle = 'expire' if is_expired(devis, today=jour) else devis.statut
-        cellule = par_statut.setdefault(cle, {'count': 0, 'total': Decimal('0')})
-        cellule['count'] += 1
-        cellule['total'] += _total_affiche_memorise(
-            devis, display_totals, marqueur_societe)
+    par_statut = _totaux_par_statut(qs, company, jour)
     for cellule in par_statut.values():  # une seule règle d'arrondi de l'argent (core.money)
         cellule['total'] = float(quantize_mad(cellule['total']))
     a_relancer = (qs.filter(is_active=True, statut='envoye')
