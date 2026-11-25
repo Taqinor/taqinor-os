@@ -1680,6 +1680,20 @@ describe('QJ-VUES — compteur de lectures client sur chaque carte devis', () =>
     })
     expect(screen.getByText('Jamais ouvert par le client')).toBeInTheDocument()
   })
+
+  it('brouillon jamais envoyé : « Pas encore envoyé au client », même né du devis automatique (lien déjà créé)', () => {
+    // Un lien client existe dès la création du devis automatique (0 vue) : tant
+    // que le devis n'est pas envoyé, un seul état, un seul libellé.
+    expect(lectureClientLabel({ nombre_vues: 0, derniere_consultation: null }, null, 'brouillon'))
+      .toBe('Pas encore envoyé au client')
+    renderTab({
+      state: leadState({
+        devis: [{ ...devisBase, statut: 'brouillon', lecture: { nombre_vues: 0, derniere_consultation: null } }],
+      }),
+    })
+    expect(screen.getByText('Pas encore envoyé au client')).toBeInTheDocument()
+    expect(screen.queryByText('Jamais ouvert par le client')).toBeNull()
+  })
 })
 
 // QJR534 (D-QJR5-1/2) — « Modifier » (brouillon/envoyé) ou « Réviser » sur la
