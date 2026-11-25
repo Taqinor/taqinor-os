@@ -2033,7 +2033,7 @@ d'acceptation ACAL2028 / ACAL2029, rejeux ACAL2034, 2035, 2038, deux tours sans 
 **Baux de plan** renouvelés à 16 h 50 UTC (propriétaire `DESKTOP-APTAHF6/dev-moteur-unique`, 6 h) : à renouveler vers
 22 h 30, à relâcher après la dernière fusion.
 
-### Point du 25/11, 17 h 25 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 17 h 25 UTC
 
 **Reda est présent et répond aux questions interactives.** Cinq réponses aujourd'hui, toutes au registre
 (`docs/audits/decisions.yml`) et au rapport (décisions 35, 39, 41, 42, 45) : D-ACAL-102 phrases corrigées du PDF
@@ -2117,3 +2117,71 @@ porte) : listes `T4/tour4/a-rejouer-devis.json` (52) et `a-rejouer-calepinage.js
 (agent aa0ab783422a1743b, consigne `scratchpad/tour4/msg-Y1.md`, côté devis) ; **Y2** (calepinage,
 `scratchpad/tour4/msg-Y2.md`) à lancer dès que X7 rend la main (deux navigateurs au plus). NE PAS rebâtir la pile tant
 que X7, Y1 ou Y2 jouent ; les corrections du lot 5 seront rejouées au tour 5, sur la pile rebâtie.
+
+### Point du 25/11, soir — REPRISE SUR LE POSTE Reda_Laptop (le plus récent — REPRENDRE ICI)
+
+**Le poste DESKTOP-APTAHF6 est arrêté** (confirmé par Reda à 20 h 15 UTC). Son dossier de travail, ses consignes de
+lane, son texte de PR, sa pile de revue et ses agents en vol sont PERDUS : seul ce qui est commité existe. Ses baux de
+plan ont été repris par `Reda_Laptop/dev-lot5` (à rendre après la fusion sur `main`, jamais avant).
+
+**Branche de travail : `dev-lot5`** (sur GitHub). Elle part de `origin/sauvegarde/dev-lot5` (19 h 13 UTC), porte les
+cinq lanes sauvées (`atelier-tablette`, `pdf-decisions-2`, `reglages-suite`, `fiche-lead-conception`,
+`moteur-decisions`), `origin/main` fusionné, puis les lanes du soir (branches `origin/lot5b/<nom>`, toutes pliées sauf
+mention). Note de reprise tenue à jour : `OneDrive - Atlencia/TAQINOR/Claude/REPRENDRE-ICI.md`.
+
+**Lanes du soir (base `origin/dev-lot5`), pliées :**
+- `atelier-divers` — T4-X7-011 (la liste « Prêt à envoyer ? » relue après l'enregistrement du matériel et des
+  décisions), 015 (panneau Calques), 018 (tracé à la mauvaise échelle signalé par la contradiction ; seuil d'affichage
+  de 1 000 m² choisi par la lane, à dire à Reda) ; 017 déjà corrigé par 7d3a7a26b.
+- `pdf-decisions-3` et `pdf-decisions-4` — D-ACAL-115 et 116 relues complètes ; T4-X7-003 (la phrase D-ACAL-111 suit
+  aussi « Facture actuelle ≈ … » de « Comment nous calculons », premium et format avec étude) ; T4-X7-004 déjà corrigé
+  par 5e821aba6 ; D-ACAL-116 : un devis ACCEPTÉ sur une option garde l'échéancier de cette option (trouvé par la
+  relecture) ; les deux tests de compte de pages restent SANS `@tag('pdf')` pour tourner à la barrière de fusion.
+- `fiche-lead-retour` — T4-X7-001 (le retour d'UNE option sur la carte Conception : lignes découpées dès que le DEVIS
+  porte deux options), T4-X7-022 (les souhaits du lead entrent dans l'empreinte : une conception rangée d'un lead à
+  souhait est recalculée une fois) ; T4-X7-014 = D-ACAL-120.
+- `calepinage-sans-doublon` — ACAL2047, par le registre `core.idempotency` déjà présent (clé réservée avant le calcul).
+- `moteur-sans-toit` et `moteur-sans-toit-2` — ADEV155 derrière le niveau 15 DORMANT (`REGLES_COURANTES` inchangé) ;
+  ACAL2045 était déjà construite (23778ec89), règle confirmée par D-ACAL-107 ; fiche de module incomplète (puissance
+  présente, coefficient absent) : plan jamais servi, champ nommé ; phrase de la pose supposée qui nomme le geste qui la
+  lève ; un mois absent n'est jamais servi comme zéro.
+- `reglages-lisibles` — T4-X3-019 (tables des réglages en champs lisibles ; `correspondances_nomenclature` reste en
+  JSON). **NON PLIÉ : son commit ea51baad8 (T4-X3-017, barre du haut de l'ERP)** — changement de la coque commune à
+  tous les écrans, jamais vu dans un navigateur : laissé sur la branche, à juger sur une pile.
+- `reviser-resync-2` — T4-X7-006 (la phrase dit ce que « Réviser » fait ; l'écart devis lié ↔ pose reste nommé :
+  `conception.devis_lie`), 007 (refus du couple module / onduleur qui nomme le geste qui le lève), 008 (alertes de
+  composition visibles sur la carte « Devis créé »), 016 (« Réviser (nouvelle version) », le résultat toujours dit).
+- `kit-pompage-protections` — D-ACAL-112 et 118 : rôle `protection_ac` (migration stock 0190), coffret DC +
+  disjoncteur AC + parafoudre AC au kit minimum des NOUVEAUX devis ; un article sans prix n'est jamais chiffré (devis
+  automatique refusé, article nommé) ; phrase « Pose : … » vraie (nouveaux rendus). Deux goldens agricoles retouchés
+  à la main (totaux à confirmer par la CI).
+- `gardes-backend` — balayage planifié des totaux par sociétés actives, `Devis.total_affiche_range` à 2 décimales
+  (migration 0163 retouchée : absente de `main`), `marquer_retouche_ecran` sous verrou (statut ET pointeur relus).
+- `technicien-ses-visites` — trouvé par la relecture : le Technicien (D-ACAL-106) lisait et relevait les calepinages
+  des leads de ses pairs ; borné aux visites qui lui sont assignées. Technicien responsable : ses propres visites
+  seulement (aucun sélecteur « visites de mon sous-arbre » : à décider).
+- `retirer-panneau` — D-ACAL-119 : bouton « Retirer un panneau » du mode guidé (même geste moteur que « Un de moins »).
+- `atelier-resultats-un-chiffre` — T4-X7-002 (S1 : part de la consommation de la POSE quand la conception décrit une
+  autre installation, `taux_source`), 013 (production et taille lues ensemble), 005 (production nulle : cause et geste
+  dits) ; 021 déjà corrigé par c21d54d7d.
+
+**Décisions du fondateur du soir (au registre) :** D-ACAL-119 à 125 — bouton « Retirer un panneau » ; heure WebKit à
+vérifier sur un vrai iPad (aucun code) ; courbe de charge réservée à l'Industriel ; **déploiement du lot 5 le 26/11
+AVANT tout envoi de devis** (les coupures `COUPURE_PDF_2511` et `COUPURE_PHRASES_PROFIL` sont au 26/11 : si le
+déploiement glisse, déplacer les deux dates avant de déployer) ; bouton « Voir le devis une page » du panneau du lead
+gardé ; calibre du disjoncteur AC dérivé des kW et de la tension de la pompe (option non recommandée, choisie) ; kit
+de pompage livré dans le lot 5.
+
+**Relectures indépendantes du lot entier (lecture seule, quatre surfaces)** : moteur de devis (aucun bloquant hors la
+date de coupure, tranchée par D-ACAL-122), droits / migrations / sociétés (Technicien, pointeur de conception : les
+deux corrigés), écrans (aucun test affaibli ; deux ajouts sur la fiche du lead : « matériel désigné » couvert par
+D-ACAL-109, bouton couvert par D-ACAL-123), serveur du calepinage (deux défauts du plan par défaut : corrigés).
+
+**JAMAIS VÉRIFIÉ sur ce poste (à dire à Reda) :** aucun test avec base de données (la CI est le premier passage) ;
+aucun écran vu dans un navigateur ; rejeux du tour 4 (Y1 à peine commencé : 4 lignes « non rejoué », Y2 jamais lancé),
+tour 5 des corrections du lot 5, relecteur des maquettes B5 : tous demandent une pile de revue ; la liste
+`remplir_conceptions --ecarts-sans-toit` reste à rejouer sur la copie anonymisée et à montrer à Reda avant toute
+activation du niveau 15 ; ACAL2029 (@acceptation) non jouée.
+
+**Reste ouvert :** T4-X3-017 (ci-dessus) ; T4-X4-003 (formulation d'une erreur 500, facultatif) ; D-AMOT-8 et D-AMOT-9
+(constats T4-X1-005, T4-X1-006, T4-X4-007) ; prix des articles de protection du pompage à saisir au catalogue.
