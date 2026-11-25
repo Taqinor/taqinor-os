@@ -11,6 +11,7 @@ import DevisTab from './DevisTab'
 // VT5 — visite technique terrain (fondateur 2026-09-09) : bouton de création
 // depuis la fiche lead + liste des visites déjà planifiées.
 import VisiteTab from './VisiteTab'
+import CarteConception from './CarteConception'
 // WIR14/NTCRM13 — checklist du playbook (progression auto-générée à chaque
 // changement de stage, apps/crm/receivers.py) : portée de l'ancien LeadForm
 // (section « Playbook », origin/main 2026-07-19) vers un onglet du rail.
@@ -163,6 +164,8 @@ export default function ContextRail({
 
   return (
     <aside className="lw-zone lw-rail-context" data-testid="lw-context-rail">
+      {/* ALEA71 — la conception RANGÉE du lead (moteur unique), lue, jamais calculée. */}
+      <CarteConception key={leadId} leadId={leadId} />
       <Tabs value={tab} onValueChange={changeTab}>
         <TabsList className="lw-context-tabs">
           <TabsTrigger value="historique">Historique</TabsTrigger>
