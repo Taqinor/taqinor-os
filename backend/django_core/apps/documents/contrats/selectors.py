@@ -167,6 +167,7 @@ def detail_acte(acte, langue='fr', *, droits=None):
         'sections_personnalisees': K.sections_personnalisees(acte, langue),
         'articles_personnalises': K.articles_personnalises(acte, langue),
         'sections_modifiables': G.sections_modifiables(acte.type, langue),
+        'garanties_du_contrat': K.origine_des_garanties(acte, lecture),
         'contenu': contenu,
     })
     return detail

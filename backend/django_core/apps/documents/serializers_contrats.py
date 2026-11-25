@@ -121,6 +121,11 @@ class DetailActeSerializer(ResumeActeSerializer):
         child=serializers.CharField())
     sections_modifiables = serializers.ListField(
         child=serializers.CharField())
+    #: D'où viennent les lignes et durées de garantie : vide (l'acte règle
+    #: les siennes) ou le statut du contrat dont la clôture les reprend —
+    #: ``brouillon`` (une durée saisie ici lui est portée), ``emis`` ou
+    #: ``signe`` (lecture seule à l'écran).
+    garanties_du_contrat = serializers.CharField(allow_blank=True)
     contenu = ContenuActeSerializer()
 
 

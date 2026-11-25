@@ -191,6 +191,13 @@ class Lecture:
                     .exclude(statut=T.ANNULE).order_by('pk').first())
         return self._une_fois(('acte', type_acte), lire)
 
+    def statut_du_contrat(self):
+        """Le statut du CONTRAT du chantier (non annulé), ou None sans
+        contrat : tant qu'il est un brouillon, une durée de garantie saisie
+        sur la clôture lui est portée ; émis ou signé, elle ne change plus."""
+        acte = self._acte(T.CONTRAT)
+        return acte.statut if acte is not None else None
+
     def garanties_du_contrat(self, langue):
         """Les garanties du CONTRAT du chantier dans la langue — lignes,
         durées, dates : son contenu figé s'il est émis ou signé, sinon son
@@ -1613,6 +1620,48 @@ def sections_personnalisees(acte, langue='fr'):
     surcharges = _surcharges_texte(acte, langue)
     ordre = T.SECTIONS_MODIFIABLES[acte.type]
     return [s for s in ordre if s in surcharges]
+
+
+def origine_des_garanties(acte, lecture=None):
+    """D'où viennent les lignes et les durées de garantie d'un acte (détail
+    servi : ``garanties_du_contrat``) : ``''`` — l'acte règle les siennes (le
+    contrat, ou une clôture sans contrat) ; sinon le statut du CONTRAT dont la
+    clôture les reprend — ``brouillon`` (une durée saisie sur la clôture lui
+    est portée), ``emis`` ou ``signe`` (lecture seule : elles ne se règlent
+    plus que sur le contrat rouvert, jamais sur un contrat signé)."""
+    if acte.type != T.CLOTURE:
+        return ''
+    lecture = lecture or Lecture(acte.chantier)
+    return lecture.statut_du_contrat() or ''
+
+
+def _faits_de_garanties(garanties):
+    return [(g.get('cle'), g.get('duree_mois') or None,
+             g.get('duree_libelle') or '') for g in garanties]
+
+
+def garanties_portees_au_contrat(contrat, lignes, lecture=None):
+    """Les garanties ENREGISTRÉES sur la clôture pendant que le contrat est
+    encore un brouillon : la liste à stocker sur le CONTRAT (une garantie par
+    chantier — sans cela la durée tapée sur la clôture était enregistrée puis
+    ignorée, et l'écran réaffichait l'ancienne). None quand lignes et durées
+    sont déjà celles du contrat. Les textes du contrat restent les siens (ceux
+    de la clôture s'appliquent par clé, sur la clôture) ; une ligne ajoutée
+    arrive avec ses textes ; une ligne retirée l'est pour tout le chantier."""
+    actuelles = _construire(contrat, 'fr', lecture).get('garanties') or []
+    if _faits_de_garanties(actuelles) == _faits_de_garanties(lignes):
+        return None
+    par_cle = {g.get('cle'): g for g in actuelles}
+    sortie = []
+    for g in lignes:
+        base = par_cle.get(g.get('cle'))
+        ligne = {k: (base if base is not None
+                     and k in T.CLES_GARANTIE_TEXTE else g).get(k)
+                 for k in T.CLES_GARANTIE}
+        # La date de fin se calcule sur la clôture (jour de la réception).
+        ligne['fin'] = None
+        sortie.append(ligne)
+    return sortie
 
 
 # ── Avertissements ──────────────────────────────────────────────────────────
