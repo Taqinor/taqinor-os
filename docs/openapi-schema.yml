@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5322, operations: 8176, components: 4096}
+counts: {paths: 5322, operations: 8176, components: 4099}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -10955,6 +10955,9 @@ components:
 - DevisLotCreationRequestRequest
 - DevisLotsResponse
 - DevisMarqueManquante
+- DevisMiseAJourConceptionErreur
+- DevisMiseAJourConceptionNote
+- DevisMiseAJourConceptionResponse
 - DevisNoterRequestRequest
 - DevisOffreTailleAppliquerRequestRequest
 - DevisOffreTailleCleRequestCleEnum
