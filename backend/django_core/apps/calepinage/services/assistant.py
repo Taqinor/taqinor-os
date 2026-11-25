@@ -767,12 +767,19 @@ def _simulation_stockee(calepinage):
 
 
 def _signaux_couteux(calepinage):
-    """Simulation (LUE sur le stocké, :func:`_simulation_stockee`) et verdict électrique
-    (recalculé : aucun verdict n'est déposé, ACAL325)."""
-    _electrique, s_electrique = _bloc_electrique(calepinage)
+    """``(signaux, juge)`` — simulation (LUE sur le stocké, :func:`_simulation_stockee`) et
+    verdict électrique (recalculé : aucun verdict n'est déposé, ACAL325), SANS réseau
+    (``temperatures_tmy.temperatures_sans_reseau``). Une année type absente du cache ⇒ le
+    verdict n'a pas été jugé sur les vraies températures : son signal est OMIS et ``juge``
+    vaut faux ; le signal de simulation (stocké) reste."""
+    from .temperatures_tmy import temperatures_sans_reseau
+
+    with temperatures_sans_reseau() as hors_reseau:
+        _electrique, s_electrique = _bloc_electrique(calepinage)
     _simulation, _production, _pertes, s_simulation = _bloc_production(
         _simulation_stockee(calepinage))
-    return s_simulation + s_electrique
+    juge = not hors_reseau.manques
+    return s_simulation + (s_electrique if juge else []), juge
 
 
 def _ligne_a_traiter(calepinage, *, evaluer):
@@ -782,7 +789,8 @@ def _ligne_a_traiter(calepinage, *, evaluer):
 
     signaux, a_retenir = _signaux_economiques(calepinage)
     if evaluer:
-        signaux = signaux + _signaux_couteux(calepinage)
+        couteux, evaluer = _signaux_couteux(calepinage)
+        signaux = signaux + couteux
     signaux = sorted(set(signaux), key=SIGNAUX.index)
     a_faire = _premier_blocage(signaux, a_retenir=a_retenir)
     if a_faire == 'rien':
