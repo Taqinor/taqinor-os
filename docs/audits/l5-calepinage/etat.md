@@ -1479,3 +1479,12 @@ confirmés ; la liste des devis sert 52 à 82 Ko par devis et l'écran les charg
 du serveur de la pile tué pour mémoire) — vrai défaut, priorité des lanes de correctifs. Erreurs 500 du devis
 automatique = instrument (connexion à la base perdue sous charge). À FAIRE ENSUITE, dans l'ordre des places libres :
 reprise du relecteur en pause ; lanes de correctifs 1 à 5 ; relecteurs X5, X3 ; étape 7 (après le pli de l'étape 6).
+
+**Ajout de 03 h 40 UTC.** `lane/moteur-e6b2` REVENUE et repliée (`ff796938ef`) : m1 (plus de numéro de produit dans une
+phrase), m4 (parité du lead 1742 restaurée, UNE marque « échec attendu » sur
+`test_acal_ecart_devis.py::test_lead_1742_ratio_juge_pour_la_pose_reelle_ok` — À RETIRER au pli de `moteur-e6b1`, dont
+le point M4 la fait passer), ACAL2019 (niveau 15 seulement), ACAL2020 (moitié calepinage). **M2 NON fait** (diagnostic) :
+le document du toit ne porte aucune marque de retouche à la main ; il faut que l'outil de toit écrive
+`zones[].geometry.poseManuelle` (= `hasManualEdits()` de `apps/web/src/lib/layoutVariability.ts`) à l'export, et que
+`pose_servie.a_la_main` la lise — ne concerne que le niveau 15 (dormant) : à confier à une lane avec l'étape 7.
+Relecteur en lecture seule des trois lanes de correctifs REPRIS. EN VOL : `moteur-e6b1`, X2, ce relecteur.
