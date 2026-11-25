@@ -5853,3 +5853,14 @@ decisions:
     date: "2026-11-25"
     source: "relecteur X3 du test utilisateur (T4-X3-002) et lane I5 : les deux valeurs partagent une « source » qu'aucun écran ne peut remplir ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « One shared field (Recommended) »"
     taches: []
+  - id: D-ACAL-106
+    question: "Qui fait le relevé du toit au téléphone ? Le rôle Technicien reçoit « Accès refusé » sur le calepinage, le relevé et les visites, alors que le planificateur de visite le propose dans « Assigner à »."
+    options:
+      - cle: technicien_aussi
+        texte: "Le rôle Technicien gagne : ouvrir les visites qui lui sont assignées, lire le calepinage et remplir le relevé au téléphone ; toujours aucun devis ni aucun prix"
+      - cle: commerciaux_seulement
+        texte: "Rien n'est ajouté au rôle Technicien ; il n'est plus proposé dans « Assigner à » d'une visite"
+    reponse: technicien_aussi
+    date: "2026-11-25"
+    source: "relecteur X8 du test utilisateur (T4-X8-017, téléphone, rôle Technicien, copie anonymisée de la production) : 403 sur /calepinage/<id>, le relevé, la vue client et /visites, et le compte proposé dans « Assigner à » ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Technicien too (Recommended) » ; changement de droits (rôle Technicien) : appliqué au prochain déploiement, à noter au journal du lot"
+    taches: []
