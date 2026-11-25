@@ -118,7 +118,7 @@ describe('CAL201 — les quatre listes, depuis les DEUX endpoints réels', () =>
 
     await waitFor(() => expect(screen.getByTestId('cal-bibliotheque')).toBeInTheDocument())
 
-    for (const cle of Object.keys(REGLAGES.presets)) {
+    for (const cle of Object.keys(REGLAGES.presets).filter((c) => c !== 'versions_conservees')) {
       expect(screen.getByTestId(`cal-biblio-preset-${cle}`)).toBeInTheDocument()
     }
     for (const kit of REGLAGES.kits) {
@@ -128,6 +128,22 @@ describe('CAL201 — les quatre listes, depuis les DEUX endpoints réels', () =>
       expect(screen.getByTestId(`cal-biblio-favori-${cle}`)).toBeInTheDocument()
     }
     expect(screen.getByTestId('cal-biblio-modele-5')).toHaveTextContent('Villa type R+1')
+  })
+
+  it('T4-X3-004 — « versions conservées » est un réglage, jamais un préréglage fantôme', async () => {
+    mocks.hasPermission.mockReturnValue(true)
+    mocks.getModeles.mockResolvedValue({ data: [] })
+    // Seul réglage d'historique posé (puis remis à vide : la clé reste, à null).
+    for (const versions of [30, null]) {
+      cleanup()
+      mocks.getParametres.mockResolvedValue({
+        data: { ...REGLAGES, presets: { versions_conservees: versions } },
+      })
+      render(<Bibliotheque />)
+      await waitFor(() => expect(screen.getByTestId('cal-bibliotheque')).toBeInTheDocument())
+      expect(screen.queryByTestId('cal-biblio-preset-versions_conservees')).toBeNull()
+      expect(screen.getByText(/Aucun preset réglé/)).toBeInTheDocument()
+    }
   })
 
   it('un favori compte EXACTEMENT ses ids — jamais un total inventé', async () => {

@@ -171,6 +171,14 @@ const CLE_SOURCE = 'source'
 //: elles ont leur propre chemin d'écriture et traversent intactes.
 const PRESETS_RESERVES = ['jeux', 'kits']
 
+/** T4-X3-004 — un VRAI préréglage est un objet de valeurs. `versions_conservees`
+ *  (le réglage d'historique, un nombre ou null), `jeux` et `kits` partagent la
+ *  section serveur mais ne sont jamais un préréglage : ni listés, ni éditables. */
+function estPreset(cle, valeur) {
+  return Boolean(valeur) && typeof valeur === 'object'
+    && !Array.isArray(valeur) && !PRESETS_RESERVES.includes(cle)
+}
+
 /** ACAL961 — les champs d'un préréglage, hors provenance, tels qu'enregistrés. */
 function champsDuPreset(valeur) {
   return Object.fromEntries(Object.entries(valeur ?? {})
@@ -272,9 +280,7 @@ function brouillonsDepuis(reglages) {
   for (const [cle, valeur] of Object.entries(presets)) {
     // Ce qui n'est pas un objet de valeurs (les listes `jeux`/`kits`) n'est
     // pas un préréglage de cet écran : il est GARDÉ, jamais réécrit.
-    const editable = valeur && typeof valeur === 'object'
-      && !Array.isArray(valeur) && !PRESETS_RESERVES.includes(cle)
-    if (!editable) {
+    if (!estPreset(cle, valeur)) {
       reserves[cle] = valeur
       continue
     }
@@ -412,7 +418,7 @@ export default function Bibliotheque() {
   const favoris = parametres?.favoris_materiel ?? {}
   const kits = Array.isArray(parametres?.kits) ? parametres.kits : []
 
-  const clesPresets = Object.keys(presets)
+  const clesPresets = Object.keys(presets).filter((cle) => estPreset(cle, presets[cle]))
   // ACAL961 — les champs admis d'un préréglage, servis (lecture seule).
   const definitionsChamps = Array.isArray(parametres?.champs_preset) ? parametres.champs_preset : []
   const clesFavoris = Object.keys(favoris)
