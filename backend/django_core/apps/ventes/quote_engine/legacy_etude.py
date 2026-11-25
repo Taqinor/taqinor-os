@@ -740,6 +740,19 @@ def lignes_des_marques(rendues):
     return rendues
 
 
+def methode_note_facture(data):
+    """D-ACAL-111 — le ``savings_method`` du bloc « Comment nous calculons »
+    (format avec étude, moteur legacy). Facture actuelle RECALCULÉE au tarif
+    par tranches sur un nouveau rendu (``residential.cover.facture_recalculee``) :
+    une copie marquée ``note_facture_recalculee`` (la phrase approuvée suit
+    l'exemple) ; sinon le dict reçu, tel quel (devis envoyé avant la coupure)."""
+    from .residential.cover import facture_recalculee
+    sm = data.get("savings_method")
+    if isinstance(sm, dict) and sm.get("exemple") and facture_recalculee(data):
+        return {**sm, "note_facture_recalculee": True}
+    return sm
+
+
 def lignes_echeancier_option():
     """D-ACAL-116 — Devis final d'un devis à DEUX options, nouveaux rendus :
     une ligne d'échéances par option, nommée (« Sans batterie : … / … / … MAD »),

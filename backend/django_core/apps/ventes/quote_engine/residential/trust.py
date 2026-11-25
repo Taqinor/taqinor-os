@@ -503,7 +503,11 @@ def build(ctx) -> str:
     if sm_line:
         _v = sm_line
         if sm_ex:
-            _v += f' <b>{sm_ex}{sm_approx}</b>'
+            # D-ACAL-111 — « Facture actuelle ≈ … » recalculée : la phrase
+            # approuvée, à la suite (même bloc, aucune ligne de mise en page).
+            from .cover import facture_recalculee
+            _v += f' <b>{sm_ex}{sm_approx}</b>' + (
+                " " + LC(d, "res_facture_recalculee_tranches") if facture_recalculee(d) else "")
         method_html = (
             '<div class="p3-method">'
             '<span class="p3-method-k">' + LC(d, "res_methode_titre")

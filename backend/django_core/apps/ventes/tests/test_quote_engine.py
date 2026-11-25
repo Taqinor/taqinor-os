@@ -238,6 +238,36 @@ class RpdfLegacyMiseEnPageTest(SimpleTestCase):
                     self.assertIn("Sans batterie : ", html)
                     self.assertEqual(len(HTML(string=html).render().pages), attendu)
 
+    @tag('pdf')  # rendu WeasyPrint réel (WOW5)
+    def test_d_acal_111_phrase_facture_recalculee_aucune_page_ajoutee(self):
+        """T4-X7-003 / D-ACAL-111 — la phrase approuvée suit aussi l'exemple
+        « Facture actuelle ≈ … » des blocs « Comment nous calculons » : premium
+        résidentiel (variante « long », page 3 la plus dense) toujours 3 pages,
+        format avec étude toujours 4, fr/en/ar."""
+        from weasyprint import HTML
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.quote_engine import i18n_labels
+        from apps.ventes.quote_engine.residential import render, renderer, sample_data
+        from apps.ventes.tests import _moteur_fixtures as F
+        neuf = {"factures_source": "etude_horaire", "phrases_pdf_2511": True}
+        for langue in ('fr', 'en', 'ar'):
+            phrase = i18n_labels.libelle("res_facture_recalculee_tranches", langue)
+            with self.subTest(format="premium", langue=langue):
+                d = dict(sample_data.build("long"), langue_sortie=langue,
+                         libelles_document=i18n_labels.libelles(langue), **neuf)
+                html = render.build_html(renderer._augment(d))
+                self.assertEqual(html.count(phrase), 2)  # couverture + méthode
+                self.assertEqual(len(HTML(string=html).render().pages), 3)
+            with self.subTest(format="etude", langue=langue):
+                d = F.donnees_legacy(
+                    pdf_mode='full', include_etude=True, langue_sortie=langue,
+                    libelles_document=i18n_labels.libelles(langue),
+                    savings_method=sample_data.build("long")["savings_method"], **neuf)
+                d['etude'] = {'production_annuelle': 25415}
+                html = G.render_html_for(d)
+                self.assertIn(phrase, html)
+                self.assertEqual(len(HTML(string=html).render().pages), 4)
+
     @staticmethod
     def _page2(html):
         from apps.ventes.quote_engine import generate_devis_premium as G
