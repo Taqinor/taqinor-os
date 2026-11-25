@@ -214,6 +214,14 @@ class _RattachementExigePublie(OpenApiSerializerExtension):
 @action(detail=False, methods=['post'], url_path='depuis-modele',
         permission_classes=[PeutGererCalepinage])
 def depuis_modele(self, request):
+    """ACAL2047 — deux envois de la MÊME création (en-tête ``Idempotency-Key``)
+    rendent le MÊME calepinage (réponse mémorisée, rien de recréé) ; sans clé,
+    comportement inchangé. Le geste lui-même : ``_depuis_modele_corps``."""
+    return self.executer_idempotent(
+        request, lambda: _depuis_modele_corps(self, request))
+
+
+def _depuis_modele_corps(self, request):
     """CALX351 — ``{modele_id?, lead_id|client_id|devis_id, titre,
     preset_id?}`` → le calepinage créé, en DÉTAIL (201 ; 200 quand un devis
     avait déjà son calepinage).

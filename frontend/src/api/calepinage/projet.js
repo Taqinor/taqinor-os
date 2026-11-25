@@ -41,8 +41,15 @@ export const projet = {
     // garde `create()` — la création d'aujourd'hui, inchangée.
     // T4-X9-011 — `silencieuxExpiration` (écran de création) : sans réponse à temps, l'écran cherche lui-même le
     // calepinage peut-être créé ; le toast global « … réessayez » (qui menait au doublon) est tu pour lui seul.
-    depuisModele: (corps, { silencieuxExpiration = false } = {}) =>
-      api.post('/calepinage/calepinages/depuis-modele/', corps, silencieuxExpiration ? { silencieuxExpiration: true } : undefined),
+    // ACAL2047 — `idempotencyKey` (une par création, la même au renvoi) part en en-tête `Idempotency-Key` : deux envois
+    // de la même création rendent le MÊME calepinage côté serveur.
+    depuisModele: (corps, { silencieuxExpiration = false, idempotencyKey } = {}) => {
+      const options = {
+        ...(silencieuxExpiration ? { silencieuxExpiration: true } : {}),
+        ...(idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
+      }
+      return api.post('/calepinage/calepinages/depuis-modele/', corps, Object.keys(options).length ? options : undefined)
+    },
 
     // CALX349 — la DÉCISION D'APPROBATION (second regard interne, CALX347) :
     // GET rend `{etat, decide_par, decide_le, motif, exigee}` (contrat

@@ -175,6 +175,9 @@ export default function CalepinageNouveau() {
   // Responsable facultatif : VIDE par défaut (le repli est le propriétaire du lead).
   const [responsableId, setResponsableId] = useState('')
   const responsables = useUtilisateursAssignables()
+  // ACAL2047 — la clé d'idempotence de CETTE création : la même tant qu'aucune réponse n'est arrivée pour le même corps
+  // (renvoi après délai dépassé), une neuve dès qu'une réponse est reçue ou que le corps change.
+  const creationRef = useRef(null)
   const refLead = useRef(null)
   const refClient = useRef(null)
   // CALX352 — partir d'un MODÈLE et/ou d'un JEU DE RÉGLAGES société. Rien
@@ -297,7 +300,17 @@ export default function CalepinageNouveau() {
       if (modeleId) corps.modele_id = modeleId
       if (presetId) corps.preset_id = presetId
       if (nom.trim()) corps.titre = nom.trim()
-      const res = await calepinageApi.calepinages.depuisModele(corps, { silencieuxExpiration: true }) // T4-X9-011
+      const empreinte = JSON.stringify(corps)
+      if (creationRef.current?.empreinte !== empreinte) {
+        creationRef.current = {
+          empreinte,
+          cle: globalThis.crypto?.randomUUID?.() || `cal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`,
+        }
+      }
+      const res = await calepinageApi.calepinages.depuisModele(
+        corps, { silencieuxExpiration: true, idempotencyKey: creationRef.current.cle }, // T4-X9-011 + ACAL2047
+      )
+      creationRef.current = null // créé : un nouvel envoi est une NOUVELLE création
       const id = res?.data?.id
       if (id && responsableId) {
         // Le responsable choisi est ÉCRIT puis relu au détail ; un refus ne
@@ -311,6 +324,7 @@ export default function CalepinageNouveau() {
       if (id) navigate(`/calepinage/${id}`)
       else setErreurs({ global: 'Le serveur n’a pas renvoyé l’identifiant du calepinage créé.' })
     } catch (err) {
+      if (err?.response) creationRef.current = null // refus servi : corriger puis renvoyer = nouvelle création
       const existantServi = err?.response?.status === 409
         ? err.response.data?.calepinage_existant : null
       if (existantServi) {

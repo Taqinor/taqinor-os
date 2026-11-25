@@ -54,8 +54,8 @@ from authentication.permissions import IsResponsableOrAdmin
 from core.champs_stricts import ChaineStricte
 from core.parseurs import ObjetJSON
 from core.idempotency import (
-    IDEMPOTENCY_KEY_HEADER, IdempotencyConflict, IdempotencyRecord,
-    _fingerprint,
+    IDEMPOTENCY_KEY_HEADER, IdempotencyRecord,
+    _fingerprint, _liberer, _reserver,
 )
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.permissions import (
@@ -160,28 +160,38 @@ class ActionIdempotenteMixin:
         endpoint = '%s.%s' % (type(self).__qualname__,
                               getattr(self, 'action', ''))
         empreinte = self._empreinte_idempotence(request)
-        memorise = IdempotencyRecord.objects.filter(
-            company=company, endpoint=endpoint, key=cle).first()
-        if memorise is not None:
-            if memorise.request_fingerprint != empreinte:
-                raise IdempotencyConflict()
-            return Response(memorise.response_body,
-                            status=memorise.response_status)
-        reponse = calcul()
+        if company is None:
+            return calcul()
+        # ACAL2047 — la clé est RÉSERVÉE avant le calcul (primitive de
+        # ``core.idempotency``, celle d'AGNR40) : un second envoi arrivé
+        # pendant que le premier tourne encore ne crée rien (409 « en
+        # cours »), un second envoi après coup rejoue la réponse mémorisée.
+        reservation = _reserver(company, endpoint, cle, empreinte)
+        if isinstance(reservation, Response):
+            return reservation
         try:
-            IdempotencyRecord.objects.get_or_create(
-                company=company, endpoint=endpoint, key=cle,
-                defaults={'request_fingerprint': empreinte,
-                          'response_status': reponse.status_code,
-                          # NORMALISÉ avant écriture : un `Decimal` ou un
-                          # `datetime` resté dans le corps ferait échouer le
-                          # `json.dumps` du JSONField, et l'idempotence
-                          # deviendrait un no-op SILENCIEUX.
-                          'response_body': json.loads(
-                              json.dumps(reponse.data, default=str))})
+            reponse = calcul()
+        except BaseException:
+            _liberer(reservation)
+            raise
+        if reponse.status_code >= 400:
+            # Un refus n'est pas mémorisé : corriger puis renvoyer la même
+            # clé doit pouvoir réussir.
+            _liberer(reservation)
+            return reponse
+        try:
+            # NORMALISÉ avant écriture : un `Decimal` ou un `datetime` resté
+            # dans le corps ferait échouer le `json.dumps` du JSONField.
+            reservation.etat = IdempotencyRecord.Etat.TERMINE
+            reservation.response_status = reponse.status_code
+            reservation.response_body = json.loads(
+                json.dumps(reponse.data, default=str))
+            reservation.save(update_fields=[
+                'etat', 'response_status', 'response_body'])
         except Exception:  # l'idempotence est un CONFORT : elle
             # ne fait jamais échouer une action qui a déjà réussi.
             logger.warning("executer idempotent : échec ignoré, comportement dégradé", exc_info=True)
+            _liberer(reservation)
         return reponse
 
 

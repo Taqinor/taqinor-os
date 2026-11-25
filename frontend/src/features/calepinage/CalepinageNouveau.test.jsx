@@ -283,10 +283,26 @@ describe('CalepinageNouveau (CAL36)', () => {
     expect(params).toMatchObject({ client: '3', ordering: '-created_at' })
     expect(typeof params.depuis).toBe('string')
     expect(screen.queryByText(/Réessayez/)).toBeNull()
-    expect(mocks.optionsDepuisModele).toHaveBeenCalledWith({ silencieuxExpiration: true }) // pas de toast « … réessayez »
+    expect(mocks.optionsDepuisModele).toHaveBeenCalledWith({ silencieuxExpiration: true, idempotencyKey: expect.any(String) }) // pas de toast « … réessayez »
     expect(screen.queryByRole('button', { name: /Créer le calepinage/ })).toBeNull() // aucun second envoi possible ici
     fireEvent.click(screen.getByRole('button', { name: 'Ouvrir le calepinage créé' }))
     expect(mocks.navigate).toHaveBeenCalledWith('/calepinage/1975')
+  })
+
+  // ACAL2047 — un second envoi de la MÊME création porte la MÊME clé : le serveur rend le même calepinage.
+  it('ACAL2047 — sans réponse puis renvoi : la même clé d’idempotence repart ; après un succès, une clé neuve', async () => {
+    mocks.depuisModele.mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout' })
+    mocks.list.mockResolvedValue({ data: { results: [] } })
+    rendre()
+    allerSurOnglet('Client')
+    await choisirDansCombobox('Client rattaché au calepinage', 'Client d’essai')
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    await screen.findByRole('alert')
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    await waitFor(() => expect(mocks.optionsDepuisModele).toHaveBeenCalledTimes(2))
+    const [premier, second] = mocks.optionsDepuisModele.mock.calls.map(([o]) => o.idempotencyKey)
+    expect(premier).toBeTruthy()
+    expect(second).toBe(premier)
   })
 
   it('T4-X9-011 — pas de réponse et rien de retrouvé : la liste est désignée avant tout nouvel essai', async () => {
