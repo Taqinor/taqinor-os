@@ -394,7 +394,7 @@ def _annoncer_apres_validation(version):
 
 # ── Relecture E5 B1 — la porte de LECTURE du calepinage (jamais une impasse) ─
 
-def conception_ou_calcul(company, lead_id=None, *, calepinage_id=None):
+def conception_ou_calcul(company, lead_id=None, *, calepinage_id=None, en_liste=False):
     """``(conception, en_cours)`` du porteur : la version COURANTE à la forme du
     contrat (``selectors_conception.conception_courante``, qui reste une
     lecture) ; sans version rangée d'un LEAD, UNE relance dédupliquée part en
@@ -404,22 +404,26 @@ def conception_ou_calcul(company, lead_id=None, *, calepinage_id=None):
     ou déjà en file. Un calepinage SANS lead n'en met aucune : le moteur le
     refuserait faute de lieu (``moteur.lead_du_calepinage`` ne porte ni ville
     ni GPS). Lue UNE fois par requête (mémo ``core.request_cache``), sans le suivi des
-    devis (``ecart_devis`` / brouillons servis vides : le calepinage sert son propre écart)."""
+    devis (``ecart_devis`` / brouillons servis vides : le calepinage sert son propre écart).
+    ``en_liste`` (une LISTE, ex. la file « à traiter ») : rien du moteur — ni empreinte des
+    entrées (péremption), ni relance en file ; la version rangée est lue telle quelle
+    (``perimee`` à faux), ``None`` sans version."""
     from core import request_cache
 
     if company is None or not getattr(company, 'pk', None):
         return None, False
-    cle = ('ventes.conception.courante', company.pk, lead_id, None if lead_id else calepinage_id)
-    return request_cache.memoize(cle, lambda: _conception_ou_calcul(company, lead_id, calepinage_id))
+    cle = ('ventes.conception.courante', company.pk, lead_id, None if lead_id else calepinage_id, en_liste)
+    return request_cache.memoize(cle, lambda: _conception_ou_calcul(company, lead_id, calepinage_id, en_liste))
 
 
-def _conception_ou_calcul(company, lead_id, calepinage_id):
+def _conception_ou_calcul(company, lead_id, calepinage_id, en_liste=False):
     from apps.ventes.conception.receivers import mettre_en_file
     from apps.ventes.selectors_conception import conception_courante
 
     # Le calepinage sert lui-même l'écart du devis qu'il montre (``devis_retenu.bloc_conception``).
-    conception = conception_courante(company, lead_id, calepinage_id=calepinage_id, suivi_des_devis=False)
-    if conception is not None or not lead_id:
+    conception = conception_courante(company, lead_id, calepinage_id=calepinage_id, suivi_des_devis=False,
+                                     peremption=not en_liste)
+    if conception is not None or not lead_id or en_liste:
         return conception, False
     issue = mettre_en_file(company.pk, lead_id=lead_id, origine='remplissage', champs=[])
     return None, issue in ('lancee', 'deja_en_file')

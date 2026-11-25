@@ -53,6 +53,8 @@ from .test_api_liste import BaseApiCalepinage
 #: ``check_query_budgets.py`` cherche ces chaînes dans ce fichier).
 LISTE = '/api/django/calepinage/calepinages/'
 DETAIL = '/api/django/calepinage/calepinages/<pk>/'
+#: Lot 4 — la file « à traiter » (8 calepinages de 8 leads à conception rangée), mesurée.
+BUDGET_FILE_A_TRAITER = 152
 RESULTAT = '/api/django/calepinage/calepinages/<pk>/resultat/'
 
 #: Un document de pose minimal (schéma v2) : deux pans posés.
@@ -284,3 +286,31 @@ class BudgetsRequetesCalepinageEnBaseTest(
                 with self.assertMaxQueries(budget):
                     reponse = self.api.get(url)
                 self.assertEqual(reponse.status_code, 200)
+
+    def test_la_file_a_traiter_ne_calcule_rien_du_moteur(self):
+        """Lot 4 (CI rouge du 25/11, api-fuzz : « Read timed out » sur ``a-traiter/?limite=19``) —
+        LISTER ne calcule rien du moteur : ni empreinte des entrées (péremption ADEV140), ni
+        relance en file, ni repli sur le devis reçu du lead. Mesuré avant le correctif, 8
+        calepinages de 8 leads à conception rangée : 203 requêtes et 5 relances en file."""
+        from django.core.cache import cache
+
+        from apps.crm.models import Lead
+        from apps.ventes import selectors_conception, tasks
+
+        from .test_acal_cible_lead import ranger_conception
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        for rang in range(8):
+            lead = Lead.objects.create(company=self.company, nom='File %d' % rang)
+            ranger_conception(lead=lead, nb=19, watt=710)
+            Calepinage.objects.create(company=self.company, lead_id=lead.pk, devis=self._devis(),
+                                      titre='File %d' % rang, roof_layout=LAYOUT, layout_hash='d' * 64)
+        url = '/api/django/calepinage/calepinages/a-traiter/?limite=19'
+        with mock.patch.object(tasks.task_relancer_conception, 'apply_async') as file, \
+                mock.patch.object(selectors_conception, '_empreinte_des_entrees',
+                                  wraps=selectors_conception._empreinte_des_entrees) as empreinte:
+            self._compte(url)  # à blanc
+            requetes, _reponse = self._compte(url)
+        self.assertEqual((file.call_count, empreinte.call_count), (0, 0))  # mutant « péremption lue » : rouge
+        self.assertLessEqual(requetes, BUDGET_FILE_A_TRAITER, 'GET a-traiter/ : %d requêtes' % requetes)

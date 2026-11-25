@@ -135,14 +135,14 @@ def conception_retenue_par_id(devis_id, company):
     return conception_retenue_du_devis_id(devis_id, company)
 
 
-def conception_ou_calcul(company, lead_id=None, *, calepinage_id=None):
+def conception_ou_calcul(company, lead_id=None, *, calepinage_id=None, en_liste=False):
     """Relecture E5 — LA porte de lecture de la conception (``apps.ventes.services.
     conception_ou_calcul``), passée par ce module, déjà importateur de ventes : la
     conception est lue par ``devis_retenu`` sans un importateur de plus (cliquet
     ``test_imports_croises_ventes``)."""
     from apps.ventes.services import conception_ou_calcul as porte
 
-    return porte(company, lead_id, calepinage_id=calepinage_id)
+    return porte(company, lead_id, calepinage_id=calepinage_id, en_liste=en_liste)
 
 
 def motif_facture_absente():
