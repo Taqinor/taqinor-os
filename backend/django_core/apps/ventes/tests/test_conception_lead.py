@@ -2648,6 +2648,48 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
         self.assertEqual(self.en_file.call_count, 0)
         self.assertFalse(conception_courante(company, lead.pk)['perimee'])
         self.assertEqual(self.en_file.call_count, 0)
+        # Une désignation SANS compte de panneaux n'est plus un refus « indiquez nb_panneaux ».
+        self.assertEqual(lue['etat'], 'complet', lue['refus'])
+
+    def test_e6b1_designation_archivee_jamais_un_refus(self):
+        """Relecture E6 B2 — un module désigné puis archivé : la conception reste
+        ``complet`` avec le module du moteur et la phrase qui nomme le produit (jamais son
+        identifiant) ; mutant « imposer quand même » : refus."""
+        self._hors_catalogue('archive', {'is_archived': True})
+
+    def test_e6b1_designation_sans_prix_jamais_un_refus(self):
+        self._hors_catalogue('sans_prix', {'prix_vente': Decimal('0')})
+
+    def _hors_catalogue(self, cas, champs):
+        from apps.stock.models import Produit
+        from apps.ventes.selectors import conception_courante
+
+        def _textes(noeud):
+            if isinstance(noeud, dict):
+                return [t for v in noeud.values() for t in _textes(v)]
+            if isinstance(noeud, list):
+                return [t for v in noeud for t in _textes(v)]
+            return [noeud] if isinstance(noeud, str) else []
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        module = Produit.objects.create(company=company, nom='Panneau Désigné 600W', sku='E6B2-%s' % cas,
+                                        prix_vente=Decimal('1300'), prix_achat=Decimal('1'),
+                                        quantite_stock=10)
+        calepinage = self._calepinage_designe(company, lead, module_produit=module.pk)
+        Produit.objects.filter(pk=module.pk).update(**champs)
+        self._relancer(lead, company, _declencheur('pose_enregistree'), calepinage_id=calepinage.pk)
+        lue = conception_courante(company, lead.pk)
+        self.assertEqual(lue['etat'], 'complet', lue['refus'])
+        retenue = lue['valeurs'][lue['option_retenue']]
+        self.assertNotEqual(retenue['module_produit']['valeur'], module.pk)
+        self.assertIn(
+            'Le matériel désigné « Panneau Désigné 600W » n\'est plus au catalogue de vente : la conception '
+            'utilise le matériel choisi par le moteur. Désignez un autre produit à l\'étape Électrique, ou '
+            'remettez celui-ci en vente dans Stock.', [s['message'] for s in lue['suppositions']])
+        self.assertFalse([t for t in _textes(lue) if str(module.pk) in t.split()
+                          or 'n° %s' % module.pk in t or 'Produit %s' % module.pk in t])
+        self.assertFalse(lue['perimee'])
 
 
 # ── ADEV141 — remplir les conceptions des leads existants, liste d'abord ─────

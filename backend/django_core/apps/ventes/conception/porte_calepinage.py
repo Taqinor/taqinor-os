@@ -117,16 +117,65 @@ def simuler_la_pose(company, calepinage_id, materiel):
     return simuler_pose(calepinage, materiel=materiel) if calepinage is not None else None
 
 
-def designations_du_calepinage(company, calepinage_id):
-    """ACAL2013 — le module et l'onduleur DÉSIGNÉS À LA MAIN à l'étape Électrique du
-    calepinage (entrée électrique stockée : ``module_produit``, ``onduleur_produit``), à la
-    forme des champs imposés du moteur (``panneau_produit_id``, ``onduleur_produit_id``) ;
-    ``{}`` sans désignation ou sans calepinage de la société."""
+#: Relecture E6 B2 — une désignation que le catalogue de vente du moteur refuse.
+CODE_DESIGNATION_HORS_CATALOGUE = 'designation_hors_catalogue'
+MESSAGE_HORS_CATALOGUE = ('Le matériel désigné « %s » n\'est plus au catalogue de vente : la conception utilise le '
+                          'matériel choisi par le moteur. Désignez un autre produit à l\'étape Électrique, ou '
+                          'remettez celui-ci en vente dans Stock.')
+#: Rôle de l'étape Électrique → (champ imposé du moteur, genre du vivier).
+_ROLES_DESIGNES = (('module_produit', 'panneau_produit_id', 'panneau'),
+                   ('onduleur_produit', 'onduleur_produit_id', 'onduleur'))
+
+
+def _designations(company, calepinage_id):
+    """``(imposes, écartées)`` : les désignations que le vivier du moteur accepte (forme des
+    champs imposés) et ``[{champ, nom}]`` de celles qu'il refuse (archivé, sans prix de
+    vente, d'un autre genre, inconnu) — jamais imposées (relecture E6 B2)."""
     from apps.calepinage.services.electrique import entree_stockee
     from apps.ventes.selectors_calepinage import calepinage_de_societe
 
     calepinage = calepinage_de_societe(calepinage_id, company) if calepinage_id else None
     entree = (entree_stockee(calepinage) or {}) if calepinage is not None else {}
-    return {cle: entree[role] for role, cle in (('module_produit', 'panneau_produit_id'),
-                                                ('onduleur_produit', 'onduleur_produit_id'))
-            if entree.get(role) not in (None, '')}
+    designes = [(role, cle, genre, entree[role]) for role, cle, genre in _ROLES_DESIGNES
+                if entree.get(role) not in (None, '')]
+    if not designes:
+        return {}, []
+    from apps.ventes.domain import resolution_catalogue as rc
+
+    vivier = rc.vivier(company)
+    imposes, ecartees = {}, []
+    for role, cle, genre, produit_id in designes:
+        if rc.resoudre_par_id(company, genre, produit_id, entrees=vivier).statut == rc.STATUT_UNIQUE:
+            imposes[cle] = produit_id
+        else:
+            ecartees.append({'champ': role, 'nom': _nom_produit(company, produit_id)})
+    return imposes, ecartees
+
+
+def _nom_produit(company, produit_id):
+    from apps.stock.selectors import get_produit_scoped
+    try:
+        produit = get_produit_scoped(company, int(produit_id))
+    except (TypeError, ValueError):
+        produit = None
+    return getattr(produit, 'nom', None) or None
+
+
+def designations_du_calepinage(company, calepinage_id):
+    """ACAL2013 — le module et l'onduleur DÉSIGNÉS À LA MAIN à l'étape Électrique du
+    calepinage (entrée électrique stockée : ``module_produit``, ``onduleur_produit``), à la
+    forme des champs imposés du moteur (``panneau_produit_id``, ``onduleur_produit_id``) ;
+    ``{}`` sans désignation ou sans calepinage de la société. Relecture E6 B2 : seulement
+    celles que le catalogue de vente du moteur accepte (les autres :
+    :func:`designations_ecartees`)."""
+    return _designations(company, calepinage_id)[0]
+
+
+def designations_ecartees(company, calepinage_id):
+    """Relecture E6 B2 — les suppositions (forme du contrat) des désignations du calepinage
+    que le catalogue de vente refuse : la conception garde le matériel du moteur et le DIT,
+    le produit nommé (jamais son identifiant)."""
+    return [{'code': CODE_DESIGNATION_HORS_CATALOGUE, 'champ': e['champ'], 'valeur': None, 'source': 'defaut',
+             'message': (MESSAGE_HORS_CATALOGUE % e['nom'] if e['nom'] else
+                         MESSAGE_HORS_CATALOGUE.replace('« %s »', "à l'étape Électrique"))}
+            for e in _designations(company, calepinage_id)[1]]

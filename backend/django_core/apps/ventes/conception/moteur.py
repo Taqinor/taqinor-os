@@ -71,13 +71,18 @@ class ResultatConception:
     #: (phrases françaises de ``electrical_service.motifs_fiche_incomplete`` :
     #: le champ de la fiche et où le remplir) ; ``[]`` quand elle est faite.
     motifs_electriques: list = field(default_factory=list)
+    #: Relecture E6 B2 / m2 — la composition IMPOSÉE effectivement retenue (forme
+    #: ``composition_imposee.CHAMPS_IMPOSES`` : pose ajustée, matériel désigné) et
+    #: les suppositions des désignations écartées. Jamais servis tels quels.
+    imposes_retenus: dict = field(default_factory=dict)
+    designations_ecartees: list = field(default_factory=list)
 
     def sortie(self):
         return {cle: getattr(self, cle) for cle in CLES_SORTIE}
 
 
 def calculer_conception(lead, company, *, entrees=None, toit=None, imposes=None, investissement=None,
-                        calepinage_id=None):
+                        calepinage_id=None, souple=False):
     """La conception du ``lead`` (de ``company`` seulement), SANS ÉCRITURE.
 
     ``entrees`` : ``EntreesConception`` déjà lues (sinon ``entrees_pour``) ;
@@ -95,11 +100,17 @@ def calculer_conception(lead, company, *, entrees=None, toit=None, imposes=None,
     pose complète ⇒ la production est celle de LA simulation de la pose
     (façade ``calepinage/services/pose_pour_moteur.py``, qui écrit le DÉTAIL
     dans ``Calepinage.resultat`` comme le bouton — seule écriture de ce
-    chemin). Au niveau 14 courant : ignoré, chemin d'aujourd'hui."""
+    chemin). Au niveau 14 courant : ignoré, chemin d'aujourd'hui.
+
+    ``souple`` (relecture E6 B2, résidentiel) : ``imposes`` est le matériel DÉSIGNÉ À LA
+    MAIN au calepinage (``porte_calepinage.designations_du_calepinage``, déjà filtré par
+    le catalogue de vente). Sans compte de panneaux, la taille est celle que le moteur
+    décide ; une désignation que la composition refuse n'est JAMAIS un refus de la
+    conception : le matériel du moteur reste et une supposition le dit."""
     if getattr(lead, 'company_id', None) != getattr(company, 'pk', None):
         raise ValueError('Lead hors de la société : aucune conception.')
     with reglages_lus_sans_creer(company):
-        return _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_id)
+        return _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_id, souple)
 
 
 @contextmanager
@@ -125,27 +136,28 @@ def reglages_lus_sans_creer(company):
         yield
 
 
-def _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_id=None):
+def _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_id=None, souple=False):
     from apps.ventes.conception.entrees import entrees_pour
     from apps.ventes.domain.regles_calcul import REGLES_COURANTES
-    from apps.ventes.domain.taille import AutoDevisError
 
     entrees = entrees or entrees_pour(lead, company, toit=toit)
     resultat = ResultatConception(
         marche=entrees.marche, entrees_utilisees=entrees.entrees_utilisees,
         niveau_regles=REGLES_COURANTES, empreinte=empreinte_conception(entrees, imposes))
+    designes, imposes = (imposes, None) if souple and entrees.marche == 'residentiel' else (None, imposes)
     pose = pose_reelle(company, calepinage_id, entrees.marche)
     if pose is not None and pose['a_la_main'] and entrees.marche == 'residentiel':
-        # ADEV150 : la pose souveraine — son compte et le module qu'elle porte (si catalogue).
+        # ADEV150 : la pose souveraine — son compte et le module qu'elle porte (si catalogue) ;
+        # relecture E6 (optionnel) : un module DÉSIGNÉ à la main passe devant celui de la pose.
         imposes = dict(imposes or {}, nb_panneaux=pose['nb_panneaux'],
                        **({'panneau_produit_id': pose['module_produit']} if pose.get('module_produit') else {}))
+    if calepinage_id:
+        from apps.ventes.conception.porte_calepinage import designations_ecartees
+        resultat.designations_ecartees = designations_ecartees(company, calepinage_id)
     refus = refus_localisation(lead)
     if refus is None:
         calcul = {'residentiel': _residentiel, 'agricole': _agricole}.get(entrees.marche, _ci)
-        try:
-            calcul(resultat, lead, company, entrees, toit=toit, imposes=imposes)
-        except AutoDevisError as exc:
-            refus = {'code': CODE_REFUS_MOTEUR, 'champ': exc.field or '', 'message': exc.message}
+        refus = _calcul_et_repli(resultat, calcul, (lead, company, entrees), toit, imposes, designes)
     if refus is not None:
         resultat.etat, resultat.refus = 'refus', refus
         resultat.etude_params, resultat.lignes, resultat.conception_electrique = {}, [], None
@@ -155,13 +167,71 @@ def _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_
     froid = None if entrees.marche == 'agricole' else froid_du_lead(lead)
     resultat.blocs = blocs_du_moteur(resultat.etude_params)
     from apps.ventes.conception.suppositions import suppositions_de
-    resultat.suppositions = suppositions_de(resultat, froid=froid)
+    resultat.suppositions = suppositions_de(resultat, froid=froid) + resultat.designations_ecartees
     resultat.option_retenue, options = V.options(resultat)
     resultat.valeurs = {option: V.valeurs(resultat, option, investissement, froid=froid, company=company)
                         for option in options}
     if pose is not None:
         _ranger_la_pose(resultat, company, calepinage_id, pose)
     return _sans_cles_interdites_partout(resultat)
+
+
+#: Relecture E6 B2 — une désignation que la composition refuse (famille, phase…).
+CODE_DESIGNATION_ECARTEE = 'designation_ecartee'
+
+
+def _calcul_et_repli(resultat, calcul, porteur, toit, imposes, designes):
+    """Le calcul du marché ; ``None`` ou le refus nommé. Relecture E6 B2 — le matériel
+    désigné (``designes``) est d'abord imposé (compte complété par le moteur) ; si la
+    composition le refuse, la conception est refaite SANS lui et une supposition dit
+    pourquoi : une désignation ne rend jamais la conception refusée."""
+    from apps.ventes.domain.taille import AutoDevisError
+
+    if designes:
+        avec = dict(imposes or {}, **designes)
+        try:
+            calcul(resultat, *porteur, toit=toit, imposes=avec, completer=True)
+            resultat.imposes_retenus = avec
+            return None
+        except AutoDevisError as exc:
+            champ = 'onduleur_produit' if str(exc.field or '').startswith('onduleur') or (
+                'panneau_produit_id' not in designes) else 'module_produit'
+            resultat.designations_ecartees.append({
+                'code': CODE_DESIGNATION_ECARTEE, 'champ': champ, 'valeur': None, 'source': 'defaut',
+                'message': ('Le matériel désigné ne convient pas à cette installation (%s) : la conception '
+                            "utilise le matériel choisi par le moteur. Changez la désignation à l'étape "
+                            'Électrique.' % exc.message.rstrip('. '))})
+    try:
+        calcul(resultat, *porteur, toit=toit, imposes=imposes)
+    except AutoDevisError as exc:
+        return {'code': CODE_REFUS_MOTEUR, 'champ': exc.field or '', 'message': exc.message}
+    resultat.imposes_retenus = dict(imposes or {})
+    return None
+
+
+def _compte_designe(lead, company, toit, imposes, dimensionner):
+    """Relecture E6 B2 — ``(imposes complétés, scénario)`` d'un matériel désigné sans
+    compte de panneaux : la taille que le moteur DÉCIDE sans la désignation (la facture
+    garde la main ; un module désigné d'une autre puissance garde la même puissance crête,
+    au panneau près) ; le scénario suit l'onduleur désigné (hybride ⇒ avec batterie,
+    réseau ⇒ sans), sinon la décision."""
+    from apps.ventes.conception.decisions import decider_taille_residentielle
+    from apps.ventes.domain import resolution_catalogue as rc
+
+    decision = decider_taille_residentielle(lead=lead, company=company, plafond_toit=getattr(
+        toit, 'plafond_panneaux', None), dimensionner=dimensionner)
+    nombre = decision.panneaux
+    panneau = (rc.entree_du_produit(company, imposes['panneau_produit_id'])
+               if imposes.get('panneau_produit_id') else None)
+    watt = float(getattr(panneau, 'wc', None) or 0)
+    if watt and abs(watt - float(decision.watt or 0)) >= 0.5:
+        nombre = max(1, int(round(decision.kwc * 1000 / watt)))
+    onduleur = (rc.entree_du_produit(company, imposes['onduleur_produit_id'])
+                if imposes.get('onduleur_produit_id') else None)
+    familles = {rc.FAMILLE_HYBRIDE: 'avec', rc.FAMILLE_RESEAU: 'sans'}
+    scenario = (familles.get(onduleur.famille) if onduleur is not None
+                else ('avec' if decision.avec_batterie else 'sans'))
+    return dict(imposes, nb_panneaux=nombre), scenario
 
 
 def pose_reelle(company, calepinage_id, marche):
@@ -301,9 +371,10 @@ def _provenance(devis, contexte, intention):
         _fusion(devis, PIPELINE, provenance=stamp)
 
 
-def _residentiel(resultat, lead, company, entrees, *, toit, imposes):
+def _residentiel(resultat, lead, company, entrees, *, toit, imposes, completer=False):
     """``_build_devis_auto_residentiel`` sans écriture : décision, contrôle à
-    blanc, intention, étapes 1-4, lignes de l'écrivain, étapes 6-8."""
+    blanc, intention, étapes 1-4, lignes de l'écrivain, étapes 6-8. ``completer``
+    (relecture E6 B2) : un matériel désigné sans compte reçoit celui du moteur."""
     from apps.ventes.conception.decisions import decider_taille_residentielle, verifier_composition_residentielle
     from apps.ventes.domain import creation_auto_residentiel as R
     from apps.ventes.domain import etude_schema as es
@@ -313,16 +384,20 @@ def _residentiel(resultat, lead, company, entrees, *, toit, imposes):
     from apps.ventes.utils.company_settings import tva_standard
 
     taux, journal, imposition, scenario = tva_standard(company), {}, None, None
-    if imposes:
-        from apps.ventes.domain.composition_imposee import _alerter, preparer_imposition
-        imposition, alertes, _phase, _isole = preparer_imposition(company=company, lead=lead, imposes=imposes)
-        scenario = imposition.scenario
-        for alerte in alertes:
-            _alerter(journal.setdefault('alertes', []), alerte['code'], alerte['message'], alerte.get('champ'))
 
     def dimensionner(**kw):  # ADEV142 — la sortie du moteur horaire, gardée pour le devis de cette requête
         resultat.taille_moteur = R._panneaux_dimensionnement_horaire(**kw)
         return resultat.taille_moteur
+    if imposes:
+        from apps.ventes.domain.composition_imposee import _alerter, preparer_imposition
+        demande = None
+        if completer and not imposes.get('nb_panneaux'):
+            imposes, demande = _compte_designe(lead, company, toit, imposes, dimensionner)
+        imposition, alertes, _phase, _isole = preparer_imposition(company=company, lead=lead, imposes=imposes,
+                                                                  scenario=demande)
+        scenario = imposition.scenario
+        for alerte in alertes:
+            _alerter(journal.setdefault('alertes', []), alerte['code'], alerte['message'], alerte.get('champ'))
     decision = decider_taille_residentielle(
         lead=lead, company=company, scenario=scenario, imposition=imposition,
         plafond_toit=getattr(toit, 'plafond_panneaux', None), dimensionner=dimensionner)
@@ -348,7 +423,7 @@ def _residentiel(resultat, lead, company, entrees, *, toit, imposes):
     resultat.etude_params, resultat.journal = devis.etude_params, journal
 
 
-def _ci(resultat, lead, company, entrees, *, toit, imposes):
+def _ci(resultat, lead, company, entrees, *, toit, imposes, completer=False):
     from apps.ventes.conception.decisions import decider_ci, etude_params_creation_ci
     from apps.ventes.domain.creation_auto import alertes_journal_ci
 
@@ -358,7 +433,7 @@ def _ci(resultat, lead, company, entrees, *, toit, imposes):
     resultat.journal = {'alertes': alertes_journal_ci(etude, contexte)}
 
 
-def _agricole(resultat, lead, company, entrees, *, toit, imposes):
+def _agricole(resultat, lead, company, entrees, *, toit, imposes, completer=False):
     from apps.ventes.conception.decisions import decider_agricole
     from apps.ventes.domain.creation_auto_agricole import alertes_journal_agricole, etude_params_creation_agricole
 
