@@ -120,6 +120,10 @@ ON_DEMAND_ALLOWLIST = {
     # demande par ``POST calepinages/<pk>/simuler/``
     # (``apps/calepinage/views/simulation.py``), jamais par beat.
     'calepinage.simuler',
+    # ACAL2019 — relance forcée du moteur unique par le bouton « Simuler » au
+    # niveau de règles 15 (``services/simulation_auto.soumettre_relance_du_moteur``),
+    # soumise à la demande, jamais par beat.
+    'calepinage.relancer_moteur',
     # ACAL468 — balayage inclinaison × azimut d'un pan : soumis à la demande
     # par ``POST calepinages/<pk>/balayage/`` (``core.jobs.submit`` depuis
     # ``apps/calepinage/views/balayage.py``), jamais par beat.

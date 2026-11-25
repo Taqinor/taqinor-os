@@ -227,6 +227,8 @@ SURFACE_PUBLIQUE = (
     "metre_cable_dc_par_paires",
     "metre_cable_terre",
     "moteur_calepinage_actif",
+    # ACAL2019 — le niveau de règles qui fait simuler la pose par le moteur (lu par le calepinage).
+    "moteur_simule_la_pose",
     "on_produit_modifie",
     "option_avec_servable",
     "ordonner_par_role",

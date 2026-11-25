@@ -335,6 +335,15 @@ relancer = _conception_service.relancer
 conception_ou_calcul = _conception_service.conception_ou_calcul
 
 
+def moteur_simule_la_pose():
+    """ACAL2019 — le moteur unique simule-t-il la pose ? Vrai au niveau de règles COURANT
+    ≥ 15 (``REGLES_POSE_REELLE_2111``, la condition de ``conception/moteur.pose_reelle``,
+    ADEV149) : le calepinage relance alors le moteur au lieu de simuler lui-même."""
+    from apps.ventes.domain import regles_calcul as RC
+
+    return RC.REGLES_COURANTES >= RC.REGLES_POSE_REELLE_2111
+
+
 # ═════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR76 : gammes → ``domain/gammes.py``
 # ═════════════════════════════════════════════════════════════════════════
@@ -685,6 +694,7 @@ __all__ = [
     'rejeter_paiement',
     'relancer',
     'conception_ou_calcul',
+    'moteur_simule_la_pose',
     'renouveler_devis',
     'request_esign_otp',
     'request_otp_lecture',

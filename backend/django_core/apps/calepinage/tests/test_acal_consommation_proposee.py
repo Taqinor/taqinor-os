@@ -169,6 +169,89 @@ class ProposerTest(_Base):
         self.assertEqual(len(set(reponse.data['courbe24'])), 1)
         self.assertIn(AVIS_FORME_UNIFORME, reponse.data['avertissements'])
 
+    # ── ACAL2020 (D-ACAL-97) — le chemin lead lit la CONCEPTION, plus les factures ──
+
+    KWH_CONCEPTION = [700.0, 650.0, 600.0, 560.0, 620.0, 800.0, 950.0, 980.0, 760.0, 600.0, 640.0, 720.0]
+
+    def _ranger(self, marche, blocs):
+        from apps.ventes.models import ConceptionLead
+
+        return ConceptionLead.ranger(
+            lead=self.lead, etat='complet', refus=None, marche=marche, option_retenue='sans',
+            valeurs={'sans': {}}, blocs=blocs, entrees_utilisees={}, suppositions=[], empreinte='c' * 64,
+            empreinte_pose='', niveau_regles=14, version_moteur='moteur-unique-1',
+            declencheur={'raison': 'remplissage', 'champs': [], 'origine': 'remplissage'})
+
+    def test_acal2020_lead_residentiel_kwh_et_forme_de_la_conception(self):
+        """Lead résidentiel (présence en journée supposée) : les douze kWh de la conception
+        (``blocs.etude_horaire.mois[].consommation_kwh``), jamais le barème appliqué aux
+        factures ; la forme = la silhouette d'occupation du moteur, jamais uniforme."""
+        from apps.calepinage.services.consommation import AVIS_FORME_UNIFORME
+        from apps.ventes.courbes_journalieres import OCCUPATION_PRESENCE, silhouette_occupation
+
+        self._poser_bareme()  # un barème RÉGLÉ : l'ancien chemin aurait converti les factures
+        version = self._ranger('residentiel', {'etude_horaire': {
+            'occupation': OCCUPATION_PRESENCE,
+            'mois': [{'mois': rang + 1, 'consommation_kwh': kwh} for rang, kwh in enumerate(self.KWH_CONCEPTION)]}})
+
+        reponse = self._proposer({'source': 'lead'})
+
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        self.assertEqual(reponse.data['kwh_annuel'], round(sum(self.KWH_CONCEPTION), 1))
+        jour_moyen = sum(self.KWH_CONCEPTION) / 365.0
+        silhouette = silhouette_occupation(OCCUPATION_PRESENCE)
+        for heure in range(24):
+            self.assertAlmostEqual(reponse.data['courbe24'][heure], jour_moyen * silhouette[heure], places=2)
+        self.assertGreater(reponse.data['saisons']['ete'], reponse.data['saisons']['hiver'])
+        avis = reponse.data['avertissements']
+        self.assertNotIn(AVIS_FORME_UNIFORME, avis)
+        self.assertIn('Consommation lue sur la conception du lead (version %s)' % version.version, ' '.join(avis))
+        self.lead.refresh_from_db()
+        self.assertEqual((self.lead.facture_hiver, self.lead.facture_ete), (Decimal('650'), Decimal('900')))
+
+    def test_acal2020_lead_commercial_forme_horaire_de_la_conception(self):
+        """Lead commercial : la journée moyenne des jours types de la conception
+        (``blocs.etude_ci.profil_charge.jours_types``, pondérée par ``nb_jours``) —
+        plus de forme uniforme."""
+        from apps.calepinage.services.consommation import AVIS_FORME_UNIFORME
+
+        ouvre = [0.0] * 7 + [10.0] * 11 + [0.0] * 6
+        repos = [1.0] * 24
+        jours = []
+        for mois in range(1, 13):
+            jours += [{'mois': mois, 'type_jour': 'ouvre', 'nb_jours': 22, 'charge_kwh': ouvre},
+                      {'mois': mois, 'type_jour': 'repos', 'nb_jours': 8, 'charge_kwh': repos}]
+        self._ranger('commercial', {'etude_ci': {
+            'profil_charge': {'archetype': 'bureau', 'jours_types': jours},
+            'bilan': {'par_mois': [{'mois': rang + 1, 'consommation_kwh': kwh}
+                                   for rang, kwh in enumerate(self.KWH_CONCEPTION)]}}})
+
+        reponse = self._proposer({'source': 'lead', 'classe': 'force_motrice'})
+
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        self.assertEqual(reponse.data['kwh_annuel'], round(sum(self.KWH_CONCEPTION), 1))
+        moyenne = [(22 * o + 8 * r) / 30.0 for o, r in zip(ouvre, repos)]
+        jour_moyen = sum(self.KWH_CONCEPTION) / 365.0
+        for heure in range(24):
+            self.assertAlmostEqual(reponse.data['courbe24'][heure],
+                                   jour_moyen * moyenne[heure] / sum(moyenne), places=3)
+        self.assertNotIn(AVIS_FORME_UNIFORME, reponse.data['avertissements'])
+
+    def test_acal2020_releve_colle_reste_au_calepinage_jamais_sur_le_lead(self):
+        """Un relevé collé reste la saisie du calepinage : la conception du lead ne le
+        remplace pas, et rien n'est écrit sur le lead."""
+        self._ranger('residentiel', {'etude_horaire': {
+            'mois': [{'mois': rang + 1, 'consommation_kwh': kwh} for rang, kwh in enumerate(self.KWH_CONCEPTION)]}})
+        contenu = 'kwh\n' + '\n'.join(['0.5'] * 8760)
+
+        reponse = self._proposer({'source': 'csv', 'csv': {'contenu': contenu}})
+
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        self.assertEqual(reponse.data['courbe24'], [0.5] * 24)
+        self.assertEqual(reponse.data['consumption']['source']['origine'], 'csv')
+        self.lead.refresh_from_db()
+        self.assertEqual((self.lead.facture_hiver, self.lead.facture_ete), (Decimal('650'), Decimal('900')))
+
     def test_appareils_et_climatisation(self):
         reponse = self._proposer({
             'source': 'appareils', 'appareils': APPAREILS,

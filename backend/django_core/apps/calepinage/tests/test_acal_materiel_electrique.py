@@ -146,10 +146,23 @@ class MaterielDeLaConception(BaseMateriel):
         self.assertIsNone(materiel['produits']['onduleur'])
         self.assertNotEqual(materiel['produits']['module'], self.module_devis.pk)
         textes = ' | '.join(materiel['absents'])
-        self.assertIn('Le module de la conception (produit n° %s) est introuvable ou archivé' % self.module_devis.pk,
-                      textes)
-        self.assertIn("L'onduleur de la conception (produit n° %s) est introuvable ou archivé" % self.onduleur.pk,
-                      textes)
+        # Revue E6 m1 — le produit est nommé par la DÉSIGNATION que la conception a gardée,
+        # jamais par son identifiant interne.
+        self.assertIn('Le module de la conception (Module devis 710) est introuvable ou archivé', textes)
+        self.assertIn("L'onduleur de la conception (Onduleur 10 kW) est introuvable ou archivé", textes)
+        self.assertNotIn('n°', textes)
+
+    def test_produit_archive_sans_designation_gardee_jamais_d_identifiant(self):
+        from apps.stock.models import Produit
+
+        ranger_conception(lead=self.lead, nb=12, watt=710, module=self.module_devis.nom,
+                          module_produit=self.module_devis.pk,
+                          onduleur={'produit': self.onduleur.pk, 'designation': '', 'quantite': 1})
+        Produit.objects.filter(pk=self.onduleur.pk).update(is_archived=True)
+        _c, materiel, _d, _doc = conception_du_calepinage(self._calepinage())
+        textes = ' | '.join(materiel['absents'])
+        self.assertIn("L'onduleur de la conception est introuvable ou archivé", textes)
+        self.assertNotIn(str(self.onduleur.pk), textes)
 
     def test_la_provenance_moteur_n_est_pas_persistee(self):
         self._conception()

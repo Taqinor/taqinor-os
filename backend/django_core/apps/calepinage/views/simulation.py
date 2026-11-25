@@ -320,6 +320,13 @@ def simuler(self, request, pk=None):
             'hash_entree': meta['hash_entree'],
             'detail': DETAIL_DEJA_CALCULE,
         })
+    from ..services.simulation_auto import par_le_moteur, soumettre_relance_du_moteur
+
+    if variante is None and par_le_moteur(calepinage):
+        # ACAL2019 — niveau 15 : « Relancer le moteur » (relance forcée du moteur unique,
+        # qui simule la pose) ; le 202 garde sa forme, l'identifiant est celui de son job.
+        job = soumettre_relance_du_moteur(calepinage, user=request.user, hash_entree=meta['hash_entree'])
+        return Response(accuse_de_simulation(job), status=status.HTTP_202_ACCEPTED)
 
     job = submit(KIND_CALEPINAGE, tache_de_simulation,
                  company=calepinage.company, user=request.user,

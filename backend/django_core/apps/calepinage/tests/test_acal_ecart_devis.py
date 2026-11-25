@@ -23,7 +23,7 @@ import json
 import pathlib
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest import mock
+from unittest import expectedFailure, mock
 
 from django.test import SimpleTestCase
 
@@ -35,7 +35,7 @@ from apps.calepinage.services.electrique import (
 from apps.calepinage.services.rapport.production import html_de_section
 from apps.ventes.models import Devis
 
-from .test_acal_cible_lead import ranger_conception
+from .test_acal_cible_lead import _valeurs
 from .test_acal_materiel_electrique import LAYOUT as LAYOUT_PAN, BaseMateriel
 from .test_api_liste import BaseApiCalepinage
 from .test_calx70_resultat_sert_la_simulation import (
@@ -266,16 +266,19 @@ class EcartDevisSansRenduTest(SimpleTestCase):
 
 
 class PariteLead1742Test(BaseMateriel):
-    """ACAL2017 (C4-E5, PARITÉ) — le lead 1742 rejoué en fabrique : résidentiel, deux options,
-    conception rangée à 35 panneaux (option « sans », onduleur HYBRIDE dans sa capacité publiée,
-    chaînes de 12). Le calepinage lit la cible, le matériel, la chaîne et les contrôles de la
-    conception : 35, l'hybride de l'option « sans », aucun « contre 16 », aucune alerte 1,50.
+    """ACAL2017 (C4-E5, PARITÉ) — le lead 1742 rejoué en fabrique, dans SA vérité : résidentiel,
+    deux options, conception rangée à 35 panneaux de 710 Wc (option « sans », onduleur HYBRIDE de
+    12 kW à capacité publiée de 18 kWc, chaînes de 12), pose réelle de 24 panneaux (17,04 kWc :
+    dans les 18 kWc publiés). Le calepinage lit la cible, le matériel et la chaîne de la
+    conception : 35, l'hybride de l'option « sans », 12, aucun « contre 16 » — sur un BROUILLON,
+    SANS devis et avec le devis ENVOYÉ, à l'identique.
 
-    ACAL2016 (relecture E5, TESTS) — le ratio de « Prêt à envoyer ? » est le verdict RANGÉ par le
-    moteur (jugé par ``ventes.conception.porte_calepinage.verdicts_electriques``, LA règle
-    ``ratio_devis.juger_ratio``) pour les 35 panneaux de la conception (2,07 : au-delà de 1,50,
-    dans les 30 kWc publiés), lu sur un BROUILLON et sans devis — jamais rejugé sur les 24
-    panneaux posés (1,42 : ce que rendait l'ancien code)."""
+    Revue E6 m4 — le test d'avant (capacité relevée à 30, cas du devis envoyé retiré, état jugé
+    par ``assertNotEqual``) est rétabli. Les verdicts rangés sont ceux que le moteur juge pour SA
+    conception (``porte_calepinage.verdicts_electriques`` sur 35 panneaux, 24,85 kWc), rangés
+    par l'écrivain du modèle. Le contrôle de ratio de « Prêt à envoyer ? » doit juger la POSE
+    réelle : « ok » (aucune alerte 1,50 nulle part, vérifié dès aujourd'hui) — c'est l'item M4
+    de la lane du moteur (``pret_a_envoyer.py``), d'où le seul test marqué « échec attendu »."""
 
     def setUp(self):
         super().setUp()
@@ -285,44 +288,56 @@ class PariteLead1742Test(BaseMateriel):
         self.hybride = self._produit(
             nom='Onduleur hybride Deye 12 kW', type_fiche='onduleur', ond_n_mppt=2, ond_mppt_v_min=160.0,
             ond_mppt_v_max=950.0, ond_v_max_abs=1100.0, ond_i_max_mppt_a=26.0, ond_ac_kw=12.0, ond_phases=3,
-            ond_dc_max_kwc=Decimal('30'))
+            ond_dc_max_kwc=Decimal('18'))
         hybride = {'produit': self.hybride.pk, 'designation': self.hybride.nom, 'quantite': 1}
-        version = ranger_conception(lead=self.lead, nb=35, watt=710, module=self.module_devis.nom,
-                                    module_produit=self.module_devis.pk, onduleur=hybride,
-                                    longueur=12, avec=35, option='sans')
         chaines = [{'nb_modules': 12, 'conforme': True}] * 2 + [{'nb_modules': 11, 'conforme': True}]
         design = {'ratio_dc_ac': 2.07, 'chaines': chaines,
                   'materiel': {'onduleur': {'designation': self.hybride.nom, 'ac_kw': 12.0}}}
-        self.verdicts = verdicts_electriques(self.company, design, [hybride], 24.85)
-        valeurs = dict(version.valeurs)
-        valeurs['sans'] = dict(valeurs['sans'], verdicts={'valeur': self.verdicts, 'unite': None,
-                                                          'source': 'moteur'})
-        ConceptionLead.objects.filter(pk=version.pk).update(valeurs=valeurs)
+        verdicts = {'valeur': verdicts_electriques(self.company, design, [hybride], 24.85),
+                    'unite': None, 'source': 'moteur'}
+        option = dict(_valeurs(35, watt=710, module=self.module_devis.nom, module_produit=self.module_devis.pk,
+                               onduleur=hybride, longueur=12), verdicts=verdicts)
+        ConceptionLead.ranger(
+            lead=self.lead, etat='complet', refus=None, marche='residentiel', option_retenue='sans',
+            valeurs={'sans': option, 'avec': option}, blocs={}, entrees_utilisees={}, suppositions=[],
+            empreinte='c' * 64, empreinte_pose='', niveau_regles=14, version_moteur='moteur-unique-1',
+            declencheur={'raison': 'remplissage', 'champs': [], 'origine': 'remplissage'})
+
+    def _cas(self):
+        """Les trois cas du lead 1742 : ``{nom: devis}`` — brouillon, aucun devis, devis ENVOYÉ."""
+        envoye = self._devis(self.module_devis, self.hybride)
+        Devis.objects.filter(pk=envoye.pk).update(statut=Devis.Statut.ENVOYE, reference='DEV-ACAL56-2')
+        return {'brouillon': self._devis(self.module_devis, self.hybride), 'sans_devis': None,
+                'envoye': Devis.objects.get(pk=envoye.pk)}
 
     def _lu(self, devis):
+        """``(cible, onduleur, provenance, longueur de référence)``, le contrôle de ratio, le texte servi."""
         from apps.calepinage.services.devis import _cible_du_calepinage
         from apps.calepinage.services.electrique import resoudre_materiel
         from apps.calepinage.services.pret_a_envoyer import controles_electriques
 
         calepinage = self._calepinage(devis=devis)
-        zone = dict(LAYOUT_1742['zones'][0])
-        calepinage.roof_layout = {**LAYOUT_1742, 'zones': [zone]}
+        calepinage.roof_layout = copy.deepcopy(LAYOUT_1742)
         calepinage.save(update_fields=['roof_layout'])
         cible = _cible_du_calepinage(calepinage)
         materiel = resoudre_materiel(self.company, {}, calepinage=calepinage)
         servi = resultat_calepinage(calepinage)
         ratio = next(c for c in controles_electriques(calepinage) if c['code'] == 'ratio_dc_ac')
-        texte = json.dumps([servi, ratio], ensure_ascii=False, default=str)
-        self.assertNotIn('contre 16', texte)
-        self.assertNotIn('1,50', texte)
-        return (cible['panneaux'], materiel['produits']['onduleur'], materiel['provenances']['onduleur'],
-                servi['longueur_chaine']['longueur_dossier'], ratio['etat'], ratio['valeur_texte'])
+        return ((cible['panneaux'], materiel['produits']['onduleur'], materiel['provenances']['onduleur'],
+                 servi['longueur_chaine']['longueur_dossier']), ratio,
+                json.dumps([servi, ratio], ensure_ascii=False, default=str))
 
-    def test_lead_1742_trente_cinq_hybride_sans_seize_ni_alerte(self):
-        ratio = self.verdicts['ratio_dc_ac']
-        self.assertEqual((ratio['conforme'], ratio['borne_source']), (True, "capacité publiée de l'onduleur"))
-        brouillon = self._lu(self._devis(self.module_devis, self.hybride))
-        # Rouge sur l'ancien code : le ratio y était rejugé sur la pose (« 1,42 … »).
-        self.assertEqual(brouillon, (35, self.hybride.pk, 'moteur', 12, 'ok', ratio['detail']))
-        self.assertTrue(ratio['detail'].startswith('2,07'), ratio['detail'])
-        self.assertEqual(self._lu(None), brouillon)
+    def test_lead_1742_trente_cinq_hybride_chaines_de_douze_sans_seize_ni_1_50(self):
+        for cas, devis in self._cas().items():
+            with self.subTest(cas=cas):
+                lu, _ratio, texte = self._lu(devis)
+                self.assertEqual(lu, (35, self.hybride.pk, 'moteur', 12))
+                self.assertNotIn('contre 16', texte)
+                self.assertNotIn('1,50', texte)
+
+    @expectedFailure  # M4 (lane moteur, pret_a_envoyer.py) : le ratio jugé pour la pose réelle ; retirer au fold
+    def test_lead_1742_ratio_juge_pour_la_pose_reelle_ok(self):
+        for cas, devis in self._cas().items():
+            with self.subTest(cas=cas):
+                _lu, ratio, _texte = self._lu(devis)
+                self.assertEqual(ratio['etat'], 'ok', ratio)
