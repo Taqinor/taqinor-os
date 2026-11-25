@@ -146,7 +146,10 @@ def _porteur_du_corps(user, company, corps):
     if lead_id is False or calepinage_id is False:
         return None, None, Response({'detail': '« lead » et « calepinage » sont des identifiants.'}, status=400)
     if not lead_id and not calepinage_id:
-        return None, None, Response({'detail': 'Porteur requis : « lead » ou « calepinage ».'}, status=400)
+        if isinstance(corps.get('entrees'), dict) and corps['entrees']:
+            return None, None, None  # ADEV152 — devis sans lead : les seules valeurs tapées
+        return None, None, Response({'detail': 'Porteur requis : « lead », « calepinage » ou des valeurs tapées.'},
+                                    status=400)
     lead = _lead_visible(user, company, lead_id) if lead_id else None
     if lead_id and lead is None:
         return None, None, Response({'detail': 'Lead introuvable.'}, status=404)

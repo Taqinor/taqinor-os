@@ -2101,6 +2101,38 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
         dossier = Calepinage.objects.create(company=company, client=client, appel_offre_id=3, titre='AO')
         self.assertEqual(api.post(URL_APERCU, {'calepinage': dossier.pk}, format='json').status_code, 409)
 
+    def test_apercu_devis_sans_lead_ni_calepinage(self):
+        """ADEV152 — un devis SANS lead (ni calepinage) : l'aperçu porte sur les
+        seules valeurs tapées (lead NON enregistré de la société), même moteur,
+        mêmes chiffres que le lead qui porterait ces valeurs ; rien n'est écrit ;
+        rappeler = même réponse ; sans aucune valeur, le porteur reste requis."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.crm.models import Lead
+        from apps.ventes.conception.service import apercu_conception
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        api = self._api(self._utilisateur(company))
+        tapees = {'ville': lead.ville, 'facture_hiver': 1800}
+        corps = {'lead': None, 'calepinage': None, 'entrees': tapees}
+        leads, versions = Lead.objects.count(), ConceptionLead.objects.count()
+        reponse = api.post(URL_APERCU, corps, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])  # avant : 400 « Porteur requis »
+        sans_lead = reponse.json()
+        self.assertEqual(set(sans_lead), CLES_RESULTAT)
+        self.assertEqual(sans_lead['entrees_utilisees']['facture_hiver'], {'valeur': 1800.0, 'source': 'saisie'})
+        par_lead, _refus = apercu_conception(lead, company)
+        self.assertEqual(sans_lead['valeurs'], par_lead['valeurs'])  # un seul moteur, un seul chiffre
+        with CaptureQueriesContext(connection) as requetes:
+            apercu_conception(None, company, saisies=tapees)
+        self.assertEqual(_ecritures(requetes), [])
+        self.assertEqual(api.post(URL_APERCU, corps, format='json').json()['valeurs'], sans_lead['valeurs'])
+        self.assertEqual((Lead.objects.count(), ConceptionLead.objects.count()), (leads, versions))
+        self.assertEqual(api.post(URL_APERCU, {'lead': None, 'entrees': {}}, format='json').status_code, 400)
+
 
 # ── ADEV138 — PARITÉ STOCKÉE : ce que relancer RANGE = ce qu'écrit le devis auto ─
 #

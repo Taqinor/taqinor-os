@@ -246,6 +246,11 @@ def apercu_conception(lead, company, *, calepinage_id=None, calepinage=None, sai
     from apps.ventes.conception.moteur import calculer_conception, reglages_lus_sans_creer, sans_cles_interdites
     from apps.ventes.domain.composition_imposee import imposition_du_corps
 
+    if lead is None and calepinage is None and calepinage_id is None:
+        # ADEV152 — devis SANS lead ni calepinage : un lead NON ENREGISTRÉ de la
+        # société ne portant que les valeurs tapées (comme ``lead_du_calepinage``).
+        from django.apps import apps as registre
+        lead = registre.get_model('crm', 'Lead')(company=company)
     lead, _filtre, refus = _porteur(lead, company, calepinage_id, calepinage)
     if refus is not None:
         return None, refus
