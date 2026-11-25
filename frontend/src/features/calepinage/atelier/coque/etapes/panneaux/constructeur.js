@@ -232,6 +232,12 @@ export const gestes = {
     poserEtDire(champ, n, 'input')
     return true
   },
+  /** T4-X7-012 (décision du 25/11 : « Add a button ») — un panneau de moins sur le pan : le besoin ramené à la pose
+      AFFICHÉE − 1, par le même `setNeeded` du script que « Un de moins » de l'Expert (`rp9-need-minus`) ; c'est le
+      script qui choisit quel panneau part. Depuis la pose (et non depuis le champ) : sur « le plus de panneaux » le
+      champ affiche le besoin de la facture (T4-X8-012), « − » y laissait la pose inchangée quand ce besoin dépasse ce
+      qui tient. Le script ne descend jamais sous 1 (`clampNeeded`). */
+  retirerUnPanneau: (pose) => (Number.isInteger(pose) && pose >= 2 ? gestes.besoin(pose - 1) : false),
   heure: (h) => {
     const champ = $('rp9-sun-hour')
     if (!champ) return false

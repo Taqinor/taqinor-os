@@ -321,6 +321,31 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   )
 }
 
+/** T4-X7-012 (décision du 25/11 : « Add a button ») — retirer un panneau en Guidé, sans passer en Expert : le geste du
+    script (`gestes.retirerUnPanneau`), qui choisit le panneau ; les chiffres suivent la lecture du constructeur. Grisé
+    avec sa raison quand rien ne peut partir. */
+function raisonSansRetrait(etat, lectureSeule) {
+  if (lectureSeule) return 'Ce calepinage est en lecture seule : la pose ne se modifie pas ici.'
+  const pose = etat.figures.panneaux
+  if (!(pose > 0)) return 'Aucun panneau posé à retirer.'
+  if (pose < 2) return 'Il reste un seul panneau sur ce pan : il ne se retire pas ici.'
+  if (!etat.besoin?.editable) return 'Choisissez d’abord une taille ci-dessus.'
+  return null
+}
+
+function RetirerUnPanneau({ etat, lectureSeule, g }) {
+  const raison = raisonSansRetrait(etat, lectureSeule)
+  return (
+    <div className="cal-pan-section">
+      <BoutonMarine disabled={!!raison} title={raison ?? undefined} data-testid="cal-panneaux-retirer-un"
+        onClick={() => g.retirerUnPanneau(etat.figures.panneaux)}>
+        Retirer un panneau
+      </BoutonMarine>
+      {raison && <p className="cal-pan-note" data-zone="retrait-impossible">{raison}</p>}
+    </div>
+  )
+}
+
 const PICTO_PORTRAIT = (
   <svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><rect x="0.75" y="0.75" width="8.5" height="14.5" rx="1" /></svg>
 )
@@ -506,6 +531,7 @@ export default function EtapePanneaux({
     <div className="cal-pan">
       <ChoixModule etat={etat} entrees={servi.entrees} servis={servi.servis} lectureSeule={lectureSeule} g={g} />
       <CombienDePanneaux etat={etat} servi={servi} lectureSeule={lectureSeule} g={gestesEcran} />
+      <RetirerUnPanneau etat={etat} lectureSeule={lectureSeule} g={g} />
       <section className="cal-pan-section">
         <h2 className="cal-pan-titre">Sens de pose</h2>
         <div data-testid="cal-panneaux-sens-pose">

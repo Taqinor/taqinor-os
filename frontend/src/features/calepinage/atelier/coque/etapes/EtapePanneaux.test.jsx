@@ -1142,3 +1142,51 @@ describe('en-tête de pose — suit la pose affichée tant que la scène n’est
     expect(result.current).toBeNull()
   })
 })
+
+/* T4-X7-012 (décision du 25/11 : « Add a button ») — en Guidé, retirer un panneau demandait de passer en Expert
+   (« Un de moins »). Le bouton renvoie au script le besoin = pose affichée − 1 (le script choisit le panneau) ; grisé
+   avec sa raison quand rien ne peut partir. */
+describe('étape Panneaux — « Retirer un panneau » (T4-X7-012)', () => {
+  it('renvoie au script la pose − 1', () => {
+    const { espion } = monterConstructeur({ besoin: '12', panneaux: '12 × 580 W', kwc: '6,96 kWc' })
+    const surInput = espion('#rp9-need-input', 'input')
+    rendre()
+    const bouton = screen.getByTestId('cal-panneaux-retirer-un')
+    expect(bouton).toHaveTextContent('Retirer un panneau')
+    expect(bouton).toBeEnabled()
+    fireEvent.click(bouton)
+    expect(surInput).toHaveBeenCalledTimes(1)
+    expect(document.getElementById('rp9-need-input').value).toBe('11')
+  })
+
+  it('« le plus de panneaux » : part de la pose (9), jamais du besoin de la facture affiché (12)', () => {
+    monterConstructeur({ besoin: '12', lePlus: true, panneaux: '9 × 710 W', kwc: '6,39 kWc',
+      note: 'Le plus de panneaux possible : 9 posés.' })
+    rendre()
+    fireEvent.click(screen.getByTestId('cal-panneaux-retirer-un'))
+    expect(document.getElementById('rp9-need-input').value).toBe('8')
+  })
+
+  it('grisé avec sa raison : lecture seule, aucun panneau, un seul panneau, aucune taille choisie', () => {
+    const cas = [
+      [{}, { lectureSeule: true }, 'Ce calepinage est en lecture seule : la pose ne se modifie pas ici.'],
+      [{ panneaux: '—', kwc: '—' }, {}, 'Aucun panneau posé à retirer.'],
+      [{ besoin: '1', panneaux: '1 × 580 W', kwc: '0,58 kWc' }, {}, 'Il reste un seul panneau sur ce pan : il ne se retire pas ici.'],
+      [{ besoin: '—', besoinDesactive: true }, {}, 'Choisissez d’abord une taille ci-dessus.'],
+    ]
+    for (const [constructeur, props, raison] of cas) {
+      const { espion } = monterConstructeur(constructeur)
+      const surInput = espion('#rp9-need-input', 'input')
+      rendre(props)
+      const bouton = screen.getByTestId('cal-panneaux-retirer-un')
+      expect(bouton).toBeDisabled()
+      expect(bouton).toHaveAttribute('title', raison)
+      expect(document.querySelector('[data-zone="retrait-impossible"]')).toHaveTextContent(raison)
+      fireEvent.click(bouton)
+      expect(surInput).not.toHaveBeenCalled()
+      cleanup()
+      document.getElementById('faux-constructeur')?.remove()
+      noeudCarte?.remove()
+    }
+  })
+})
