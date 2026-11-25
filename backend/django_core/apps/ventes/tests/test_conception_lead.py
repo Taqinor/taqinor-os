@@ -2914,6 +2914,63 @@ class PariteDevisDepuisConceptionTests(_emprunt(RelanceConceptionTests, '_relanc
         ancien = self._ancien_chemin(company, lead, user)
         self.assertEqual(_ecarts_figeage(_photo_du_devis(ancien), _photo_du_devis(nouveau)), [])
 
+    def test_conception_rangee_depuis_une_pose(self):
+        """Relecture E4 m3 — la version née d'une pose est relue avec sa pose."""
+        from types import SimpleNamespace
+
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        toit = SimpleNamespace(empreinte='p' * 64, plafond_panneaux=None)
+        rangee = self._relancer(lead, company, _declencheur('pose_enregistree'), toit=toit).conception
+        self.assertEqual(rangee.empreinte_pose, 'p' * 64)
+        with self.captureOnCommitCallbacks(execute=True):
+            self._figer('res_facture_dirhams', company, lead)
+        self.assertEqual(ConceptionLead.objects.get(lead=lead, courante=True).pk, rangee.pk)
+
+    def test_version_en_refus_le_devis_garde_le_message_d_aujourd_hui(self):
+        from apps.ventes.domain.taille import AutoDevisError
+
+        company, lead = self._residentiel()  # aucune consommation : le moteur refuse
+        _reglages_de_la_societe(company)
+        self.assertEqual(self._relancer(lead, company, _declencheur()).conception.etat, 'refus')
+        user = self._utilisateur(company)
+        with self.assertRaises(AutoDevisError) as nouveau:
+            self._devis_auto(company, lead, user)
+        with self.assertRaises(AutoDevisError) as ancien:
+            self._ancien_chemin(company, lead, user)
+        self.assertEqual((nouveau.exception.message, nouveau.exception.field),
+                         (ancien.exception.message, ancien.exception.field))
+
+    def test_entree_changee_avant_le_devis_relance_et_egale_l_ancien_chemin(self):
+        """Dérive : la facture change entre la version rangée et le devis ; le
+        devis relance dans la requête et vaut le chemin d'avant, rendu compris
+        (``build_quote_data``, masque du golden SPL160)."""
+        from apps.crm.models import Lead
+        from apps.ventes.coherence.contexte import rendu_sans_reseau
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.tests import split_golden as sg
+        from apps.ventes.tests.test_moteur_golden_build_quote_data import CLES_IDS
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        Lead.objects.filter(pk=lead.pk).update(facture_hiver=Decimal('2500'))
+        lead.refresh_from_db()
+        user = self._utilisateur(company)
+        nouveau = self._devis_auto(company, lead, user)
+        from apps.ventes.models import ConceptionLead
+        self.assertTrue(ConceptionLead.objects.get(lead=lead, courante=True).declencheur['raison'].endswith(
+            ' : Facture hiver 1 800 → 2 500 MAD'))
+        ancien = self._ancien_chemin(company, lead, user)
+        self.assertEqual(_ecarts_figeage(_photo_du_devis(ancien), _photo_du_devis(nouveau)), [])
+        rendus = []
+        for devis in (ancien, nouveau):
+            with rendu_sans_reseau():
+                rendus.append(_normaliser_figeage(sg.normaliser(build_quote_data(devis, {}), CLES_IDS)))
+        self.assertEqual(_ecarts_figeage(*rendus)[:20], [])
+
 
 def _test_de_parite_depuis_conception(nom):
     def test(self):
