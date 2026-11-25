@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import ChoixSurfaceAlbedo from './ChoixSurfaceAlbedo'
 import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Badge, Button, Card, Spinner } from '../../../ui'
+import { useFormSafety } from '../../../ui/useFormSafety'
 import ReglagesSite from './ReglagesSite'
 import ReglagesGabaritsObstacle from './ReglagesGabaritsObstacle'
 import DemarrageRapide from './DemarrageRapide'
@@ -498,6 +499,11 @@ export default function ReglagesSimulation() {
   const [lignesParSection, setLignesParSection] = useState({
     simulation: {}, electrique_societe: {},
   })
+  // T4-X3-018 — les lignes TELLES QUE SERVIES (ou telles qu'enregistrées) : tout écart est une saisie non enregistrée,
+  // gardée à la sortie de l'onglet comme à celle de la page (la garde de la maison, `useFormSafety`).
+  const [lignesServies, setLignesServies] = useState(() => JSON.stringify(lignesParSection))
+  const poserLignes = useCallback((lignes) => { setLignesParSection(lignes); setLignesServies(JSON.stringify(lignes)) }, [])
+  useFormSafety({ lignes: lignesServies }, { lignes: JSON.stringify(lignesParSection) }, null, { routeLevel: true })
   // Le registre ACTIF : UNIQUEMENT celui servi par le GET (ACAL133).
   const [registres, setRegistres] = useState(null)
   // ACAL130 — la section « imagerie » servie, pour « Site & imagerie ».
@@ -542,7 +548,7 @@ export default function ReglagesSimulation() {
         setLestage({ registre: servi.lestage ?? null, servi: data.lestage ?? {} })
         setDegagements(data.degagements && typeof data.degagements === 'object' ? data.degagements : {})
         setServis({ simulation: data.simulation, electrique_societe: data.electrique_societe })
-        setLignesParSection({
+        poserLignes({
           simulation: lignesDepuis(simulation, data.simulation),
           electrique_societe: lignesDepuis(electrique, data.electrique_societe),
         })
@@ -554,7 +560,7 @@ export default function ReglagesSimulation() {
       })
       .finally(() => { if (!annule) setChargement(false) })
     return () => { annule = true }
-  }, [relecture])
+  }, [relecture, poserLignes])
 
   useOuvrirChamp(chargement ? '' : decodeURIComponent((window.location.hash || '').slice(1)), chargement)
 
@@ -587,7 +593,7 @@ export default function ReglagesSimulation() {
         electrique_societe: electrique.section,
       })
       const data = res?.data ?? {}
-      setLignesParSection({
+      poserLignes({
         simulation: lignesDepuis(registres.simulation, data.simulation),
         electrique_societe: lignesDepuis(registres.electrique_societe, data.electrique_societe),
       })
