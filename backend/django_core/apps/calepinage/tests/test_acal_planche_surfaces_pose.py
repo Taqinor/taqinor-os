@@ -30,6 +30,8 @@ from apps.calepinage.services.planche import (
 )
 from apps.ventes.services import pans_du_document
 
+from .acal_livrables_helpers import texte_des_lignes_svg  # T4-V1-006
+
 SURFACE_SOL = {
     'id': 'sol-1', 'kind': 'sol', 'label': 'Champ nord',
     'contourM': [[0, 0], [20, 0], [20, 10], [0, 10]],
@@ -79,7 +81,7 @@ class ChampSeulTest(SimpleTestCase):
         self.assertEqual(len(surface['tables']), 2)
         svg = svg_de_planche(self.geometrie, titre='Champ')
         self.assertNotIn(DEBUT_FEUILLE, svg)  # UNE feuille, A3
-        self.assertIn(MENTION_REPERE_LOCAL, svg)
+        self.assertIn(MENTION_REPERE_LOCAL, texte_des_lignes_svg(svg))
         self.assertIn('Modules posés (moteur) : 24', svg)
         # Cotée : l'encombrement du champ en mètres.
         self.assertIn(texte_de_longueur(20.0), svg)
@@ -99,7 +101,7 @@ class ChampSeulTest(SimpleTestCase):
         plan = _plan_de_cablage(copy.deepcopy(CHAMP_SEUL), [
             {'module': 'sol-1:1', 'chaine': 1, 'onduleur': 1, 'mppt': 1}])
         svg = _svg_de_plan_cablage(plan, titre='Câblage')
-        self.assertIn(MENTION_REPERE_LOCAL, svg)
+        self.assertIn(MENTION_REPERE_LOCAL, texte_des_lignes_svg(svg))
 
     def test_dxf_porte_le_calque_des_surfaces(self):
         try:
@@ -127,7 +129,7 @@ class SiteMixteTest(SimpleTestCase):
         self.assertEqual(svg.count(DEBUT_FEUILLE), 2)
         html = html_de_planche(svg)
         self.assertEqual(html.count('class="feuille"'), 2)
-        self.assertIn(MENTION_REPERE_LOCAL, html)
+        self.assertIn(MENTION_REPERE_LOCAL, texte_des_lignes_svg(html))
 
 
 def ombriere(**appuis):
@@ -146,7 +148,7 @@ class PoteauxDOmbriereTest(SimpleTestCase):
 
     def test_entraxe_deux_et_demi_treize_poteaux_reperes(self):
         svg = self.svg(ombriere(pasM=2.5, sectionM=0.2))
-        self.assertIn('Poteaux : 13 (entraxe saisi 2,5 m, section 0,20 m)', svg)
+        self.assertIn('Poteaux : 13 (entraxe saisi 2,5 m, section 0,20 m)', texte_des_lignes_svg(svg))
         # Mutant « numéroter P0… » : P0 présent et P13 absent ⇒ échec.
         for numero in range(1, 14):
             self.assertIn('>P%d</text>' % numero, svg)
@@ -155,7 +157,7 @@ class PoteauxDOmbriereTest(SimpleTestCase):
 
     def test_entraxe_absent_non_decrits_sans_repere(self):
         svg = self.svg(ombriere(sectionM=0.2))
-        self.assertIn('Poteaux : non décrits (entraxe des appuis non renseigné)', svg)
+        self.assertIn('Poteaux : non décrits (entraxe des appuis non renseigné)', texte_des_lignes_svg(svg))
         self.assertNotIn('>P1</text>', svg)
 
     def test_un_champ_au_sol_ne_parle_pas_de_poteaux(self):

@@ -142,6 +142,25 @@ class PorteeClientsExistsTests(TestCase):
             self.assertNotIn(f'JOIN "{table}"', sql, sql)
         self.assertGreaterEqual(sql.upper().count('EXISTS'), 4, sql)
 
+    def test_t4_v1_011_le_client_cree_par_un_utilisateur_visible_est_dans_sa_portee(self):
+        """T4-V1-011 — un Commercial crée « V1-o Client sans adresse » (aucun
+        lead, aucun devis) : sa propre recherche ne le trouvait pas. Le client
+        qu'il a CRÉÉ est le sien ; celui créé hors de sa portée reste caché."""
+        a_lui = self.Client.objects.create(
+            company=self.co, nom='APRF16 cree-par-lui', created_by=self.visible)
+        a_un_autre = self.Client.objects.create(
+            company=self.co, nom='APRF16 cree-par-un-autre',
+            created_by=self.invisible)
+        visibles = set(scoping.scope_client_queryset(
+            self._base(), self.visible).values_list('pk', flat=True))
+        self.assertIn(a_lui.pk, visibles)
+        self.assertNotIn(a_un_autre.pk, visibles)
+        company_search = importlib.import_module('apps.crm.company_search')
+        hits = company_search.own_data_search(
+            self.co, 'cree-par', user=self.visible, limit=50)
+        self.assertEqual({h['id'] for h in hits if h['source'] == 'client'},
+                         {a_lui.pk})
+
     def test_portee_all_inchangee(self):
         with mock.patch.object(scoping, 'visible_user_ids', return_value=None):
             base = self._base()

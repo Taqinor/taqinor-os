@@ -33,6 +33,8 @@ export interface CartePresentable {
   getZoom?(): number;
   getPitch?(): number;
   setPadding?(p: { top: number; bottom: number; left: number; right: number }): unknown;
+  project?(ll: [number, number]): { x: number; y: number };
+  unproject?(p: [number, number]): { lng: number; lat: number };
 }
 
 /** J1 (tour 4) — la VUE TENUE de la présentation : la vue client s'ouvre de trois quarts et Y RESTE (atterrissage du
@@ -46,6 +48,9 @@ export interface VueTenue {
   atteinte: () => boolean;
   /** Appelée une fois : vue posée, toit cadré, carte au repos. */
   surPrete?: () => void;
+  /** T4-V1-010 — le CENTRE de la maison `[lng, lat]` : le glisser la tourne autour de lui (elle reste où le cadrage
+   *  l'a posée, dans la zone libre), jamais autour du centre de la caméra. `null` / absent : autour du centre. */
+  pivot?: () => [number, number] | null;
 }
 
 /** Re-poses au plus (un module qui bougerait la caméra sans fin ne fait jamais tourner la vue en boucle). */
@@ -75,19 +80,35 @@ function taire(map: CartePresentable, e: Etat): void {
   }
 }
 
-/** UN doigt (ou le bouton principal) fait tourner la maison ; deux doigts restent à la carte (pincer). */
-function tournerUnDoigt(map: CartePresentable, surGeste: () => void): () => void {
+/** T4-V1-010 — tourne le cap AUTOUR de `pivot` : le point du sol garde sa place à l'écran (la caméra glisse d'autant). Sans
+ *  pivot ou sans projection : le cap seul, autour du centre de la caméra (comportement d'avant). */
+function tournerAutour(map: CartePresentable, cap: number, pivot: [number, number] | null): void {
+  const { project, unproject, getCenter, jumpTo } = map as CartePresentable & { jumpTo?: (o: { center: [number, number] }) => unknown };
+  const centre = getCenter?.call(map);
+  if (!pivot || !project || !unproject || !centre || !jumpTo) { map.setBearing!(cap); return; }
+  const avant = project.call(map, pivot);
+  map.setBearing!(cap);
+  const apres = project.call(map, pivot);
+  // Le point du centre de la caméra (padding compris) décalé de ce dont le pivot a bougé : il redevient le centre.
+  const c = project.call(map, [centre.lng, centre.lat]);
+  const nouveau = unproject.call(map, [c.x + apres.x - avant.x, c.y + apres.y - avant.y]);
+  jumpTo.call(map, { center: [nouveau.lng, nouveau.lat] });
+}
+
+/** UN doigt (ou le bouton principal) fait tourner la maison ; deux doigts restent à la carte (pincer). T4-V1-010 —
+ *  autour du centre de la maison (`pivot`) quand l'hôte le donne. */
+function tournerUnDoigt(map: CartePresentable, surGeste: () => void, pivot?: () => [number, number] | null): () => void {
   const el = map.getCanvasContainer?.();
   if (!el || !map.setBearing || !map.getBearing) return () => {};
   const doigts = new Set<number>();
-  let depart: { x: number; cap: number } | null = null;
+  let depart: { x: number; cap: number; pivot: [number, number] | null } | null = null;
   const bas = (ev: PointerEvent) => {
     surGeste();
     doigts.add(ev.pointerId);
     try { el.setPointerCapture?.(ev.pointerId); } catch { /* pointeur déjà relâché */ }
-    depart = doigts.size === 1 && ev.button === 0 ? { x: ev.clientX, cap: map.getBearing!() } : null;
+    depart = doigts.size === 1 && ev.button === 0 ? { x: ev.clientX, cap: map.getBearing!(), pivot: pivot?.() ?? null } : null;
   };
-  const bouge = (ev: PointerEvent) => { if (depart && doigts.has(ev.pointerId)) map.setBearing!(depart.cap - (ev.clientX - depart.x) * DEG_PAR_PX); };
+  const bouge = (ev: PointerEvent) => { if (depart && doigts.has(ev.pointerId)) tournerAutour(map, depart.cap - (ev.clientX - depart.x) * DEG_PAR_PX, depart.pivot); };
   const haut = (ev: PointerEvent) => { doigts.delete(ev.pointerId); depart = null; };
   el.addEventListener('pointerdown', bas);
   el.addEventListener('pointermove', bouge);
@@ -182,7 +203,7 @@ export function poserPresentation(map: CartePresentable, actif: boolean, vue?: V
     taire(map, e);
     map.on?.('idle', veiller);
     const tenue = vue ? tenirVue(map, e, vue) : null;
-    const finRotation = tournerUnDoigt(map, () => tenue?.geste());
+    const finRotation = tournerUnDoigt(map, () => tenue?.geste(), vue?.pivot);
     const finToile = nommerToile(map);
     e.quitter = () => { map.off?.('idle', veiller); finRotation(); finToile(); tenue?.fin(); };
   } else {

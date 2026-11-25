@@ -169,6 +169,33 @@ MOTIF_INTERROMPU = (
     'le calcul a été interrompu par le serveur (mémoire) : réessayez ou '
     'réduisez la fenêtre météo')
 
+#: T4-V1-012 — au-delà de la limite DOUCE de Celery
+#: (``CELERY_TASK_SOFT_TIME_LIMIT``, 120 s, ``settings/base.py``) la tâche
+#: reçoit ``SoftTimeLimitExceeded`` : publiée par ``str(erreur)``, l'écran
+#: affichait « SoftTimeLimitExceeded() ». La durée suit surtout le nombre
+#: d'années de la série météo demandée (``parametres.simulation.
+#: fenetre_annees``, une requête PVGIS horaire par pan et par base) : c'est le
+#: levier nommé, et son champ fait apparaître le lien vers les réglages.
+CHAMP_TEMPS_DEPASSE = 'parametres.simulation.fenetre_annees'
+MOTIF_TEMPS_DEPASSE = (
+    'La simulation a dépassé le temps alloué (2 minutes) : relancez-la ; si '
+    'cela se reproduit, réduisez la « Fenêtre d’années météo » dans les '
+    'réglages de simulation du calepinage.')
+#: T4-V1-012 — toute autre erreur inattendue : jamais le nom ni le texte brut
+#: d'une exception à l'écran (ils restent dans le journal du serveur).
+MOTIF_ERREUR_INATTENDUE = (
+    "La simulation a échoué sur une erreur inattendue du serveur : relancez-"
+    "la ; si cela se reproduit, signalez-le à l'administrateur.")
+
+
+def _echec_inattendu(erreur):
+    """``(champ, motif)`` FRANÇAIS d'une exception non prévue — T4-V1-012."""
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    if isinstance(erreur, SoftTimeLimitExceeded):
+        return CHAMP_TEMPS_DEPASSE, MOTIF_TEMPS_DEPASSE
+    return '', MOTIF_ERREUR_INATTENDUE
+
 
 def _livraison_de_trop(job):
     """ACAL1622 — compte la livraison du job (cache société, 24 h) ; vrai
@@ -260,8 +287,9 @@ def simuler_calepinage(job_id=None, company_id=None, calepinage_id=None,
     except Exception as erreur:  # l'issue est publiée, pas avalée
         logger.exception('calepinage.simuler : calepinage #%s en échec',
                          calepinage_id)
-        _publier_echec(job, calepinage, '', str(erreur))
-        return {'statut': 'failed', 'motif': str(erreur)}
+        champ, motif = _echec_inattendu(erreur)  # T4-V1-012
+        _publier_echec(job, calepinage, champ, motif)
+        return {'statut': 'failed', 'champ': champ, 'motif': motif}
 
     resume = {
         'calepinage': calepinage.pk,
@@ -332,8 +360,9 @@ def balayer_calepinage(job_id=None, company_id=None, calepinage_id=None,
     except Exception as erreur:  # l'issue est publiée, pas avalée
         logger.exception('calepinage.balayer : calepinage #%s en échec',
                          calepinage_id)
-        _publier_echec(job, calepinage, '', str(erreur))
-        return {'statut': 'failed', 'motif': str(erreur)}
+        champ, motif = _echec_inattendu(erreur)  # T4-V1-012
+        _publier_echec(job, calepinage, champ, motif)
+        return {'statut': 'failed', 'champ': champ, 'motif': motif}
 
     charge = {'elements': [{'index': 0, 'repere': str(calepinage.pk),
                             'statut': 'done', 'motif': '',

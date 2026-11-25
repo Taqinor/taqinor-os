@@ -32,7 +32,10 @@ export default function BarreEnregistrement({
   derniereVersionLe = null, // l'heure de la DERNIÈRE VERSION servie (`versions.derniere_le`), tant que la session n'a rien écrit
   refus = null, // T4-U4-027 — l'enregistrement REFUSÉ (409 modifié ailleurs) : la barre le dit, jamais « ✓ Enregistré »
 }) {
-  const heure = enregistreLe || derniereVersionLe
+  // T4-U4-015 — UNE source : l'heure SERVEUR de la dernière version enregistrée (relue après chaque enregistrement) ;
+  // l'heure de la réponse ne sert que le temps de cette relecture. Un renvoi à l'identique (« Aucun changement »)
+  // n'enregistre rien : l'heure reste celle de la version — la même qu'à la réouverture.
+  const heure = derniereVersionLe || enregistreLe
   const propre = !modifiee && !enCours && !refus
   const textePropre = etatPropre || texteEnregistre(heure)
   // Scène propre et état connu : l'état SE LIT comme la maquette (« ✓ Enregistré à HH:MM ») et porte le geste.

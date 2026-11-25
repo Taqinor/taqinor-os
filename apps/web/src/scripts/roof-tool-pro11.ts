@@ -234,7 +234,7 @@ import {
 import { creerCoucheElectrique } from './roofPro11/electrique3d';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
 import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
-import { deplacerEpingleALaMain, oublierEpingleDeplacee } from './roofPro11/provenanceEpingle'; // ACAL593 — sorti de prefill.ts
+import { deplacerEpingleALaMain, localiserSiTraceVisible, oublierEpingleDeplacee } from './roofPro11/provenanceEpingle'; // ACAL593 — sorti de prefill.ts ; T4-U4-013
 import { masquerMarqueur, retirerMarqueur } from './roofPro11/epingleClient'; // ACAL972
 import { createReperesUi } from './roofPro11/reperesChantier'; // ACAL593
 import { refleterPrioriteRemplissage } from './roofPro11/prioriteRemplissage'; import { anneauxCoupuresDuPanActif, monterChampsCoupures } from './roofPro11/coupuresPavage'; import { monterChampPortee } from './roofPro11/piedsChassis'; import { monterChampsChassis } from './roofPro11/chassisPavage'; import { grouperStructurePose } from './roofPro11/structurePose'; // ACAL576, ACAL579, ACAL585, ACAL1522
@@ -1171,7 +1171,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const toitParCotes = monterToitParCotes({
     ancre: addAreaBtn, vide: () => !closed && vertices.length === 0, setStatus: (m) => setStatus(m),
     centre: () => { const c = map.getCenter?.(); return c ? [c.lng, c.lat] : null; },
-    creer: (anneau) => { vertices = anneau; close(); },
+    creer: (anneau) => { localiserSiTraceVisible(ctx, map.getZoom()); vertices = anneau; close(); }, // T4-U4-013 — créé sur le toit VU : site localisé
   });
   // ACAL410 — « Forme du toit » : un clic remplace le pan actif par les pans de la forme.
   const formesToit = monterFormesToit({

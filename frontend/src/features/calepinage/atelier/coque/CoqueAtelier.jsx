@@ -206,19 +206,21 @@ function useResultatServi(calepinageId, actif, relecture) {
     bandeau ne lit plus le nom du lead ici (il remplaçait le nom du calepinage APRÈS le chargement, puis à chaque
     relecture) — un seul nom, celui du calepinage. */
 function useDetailServi(calepinageId, relecture) {
-  const [detail, setDetail] = useState({ le: null })
+  const [detail, setDetail] = useState({ le: null, relecture: undefined })
   useEffect(() => {
     if (!calepinageId) return undefined
     let vivant = true
     Promise.resolve()
       .then(() => calepinageApi.calepinages.get(calepinageId))
       .then((rep) => {
-        if (vivant) setDetail({ le: rep?.data?.versions?.derniere_le ?? null })
+        if (vivant) setDetail({ le: rep?.data?.versions?.derniere_le ?? null, relecture })
       })
-      .catch(() => { if (vivant) setDetail({ le: null }) })
+      .catch(() => { if (vivant) setDetail({ le: null, relecture }) })
     return () => { vivant = false }
   }, [calepinageId, relecture])
-  return detail
+  // T4-U4-015 — l'heure lue AVANT le dernier enregistrement n'est jamais servie pour lui (aucun « 16:10 » le temps
+  // que la relecture revienne) : `null` jusqu'à la relecture qui suit cet enregistrement.
+  return { le: detail.relecture === relecture ? detail.le : null }
 }
 
 /** Le vrai bouton de devis du bloc, quand il est monté et à l'écran (hors `hidden`). */
@@ -357,7 +359,7 @@ export default function CoqueAtelier({
             le hook du rail d'onglets, qui ne monte pas de panneau en guidé dans la coque). */}
         <div className="cal-coque-ecran-hote" data-testid={cleActive ? 'cal-onglet-panneau' : undefined}>
           <Ecran {...ecranProps} calepinageId={calepinageId} parcours={parcours} ouvert={cleActive}
-            action={action} enregistreLe={enregistreLe || derniereVersionLe}
+            action={action} enregistreLe={derniereVersionLe || enregistreLe}
             actionDevis={<span ref={setNoeudDevis} className="contents" />} />
         </div>
       </Suspense>

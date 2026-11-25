@@ -52,6 +52,7 @@ import {
 import { DEG2M, DEG2RAD, VERTEX_GRAB_PX } from './constants';
 import { monterAtelierPose } from './poseSurfaces'; // CALX123
 import { suivreAlt } from './altTracker';
+import { activerSuiviSite, localiserSite, localiserSiTraceVisible } from './provenanceEpingle'; // T4-U4-013
 import { dateImageCapturee, lireImageCapture, poserImageCapture } from './imageCapture'; // ACAL509
 
 /**
@@ -465,6 +466,9 @@ export interface MapDraw {
 export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
   const { map, setStatus, updateAreaReadout } = deps;
   const opts = ctx.opts;
+  // T4-U4-013 — la page hôte (calepinage de l'ERP) suit la localisation du site.
+  if (opts.suiviSite) activerSuiviSite(ctx, opts.suiviSite.initial, opts.suiviSite.ecouter);
+  const zoomCourant = (): number => (typeof map.getZoom === 'function' ? map.getZoom() : Number.NaN);
   // WJ41 — `opts.strings` n'existe pas sur `InitOptions` (types.ts, hors
   // périmètre) : lu via cast local. Absent → CAPTURE_STRINGS_FR (rendu FR
   // inchangé, comportement pré-WJ41).
@@ -900,6 +904,7 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
       return;
     }
     ctx.vertices.push(p);
+    localiserSiTraceVisible(ctx, zoomCourant()); // T4-U4-013 — un coin posé sur le toit VU localise le site
     redrawTrace();
     if (ctx.vertices.length >= 3) setStatus(t.doubleClickToClose);
     else setStatus(t.cornerPlaced(ctx.vertices.length));
@@ -1565,6 +1570,7 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     if (!s) return;
     if (addressEl) addressEl.value = s.label;
     flyToCenter(s.center);
+    localiserSite(ctx, 'adresse'); // T4-U4-013 — adresse retenue (« Localiser », coordonnées collées)
     closeSuggestions();
   }
 

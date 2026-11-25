@@ -143,6 +143,15 @@ export function cadrerToit(map: CarteCadrable, sources: SourcesCamera, options: 
 /** J1 — la vue que la présentation TIENT (`modePresentation(true, { vue, cadrage, surPrete })`). */
 export interface VueClient { vue: NomVue; cadrage?: OptionsCadrage; surPrete?: () => void }
 
+/** T4-V1-010 — le centre (boîte englobante) de tous les pans tracés, ou `null` sans pan : le pivot de la vue client. */
+function centreDesPans(anneaux: readonly LngLat[][]): LngLat | null {
+  const pts = anneaux.filter((a) => Array.isArray(a) && a.length >= 3).flat();
+  if (pts.length === 0) return null;
+  const lngs = pts.map((p) => p[0]);
+  const lats = pts.map((p) => p[1]);
+  return [(Math.min(...lngs) + Math.max(...lngs)) / 2, (Math.min(...lats) + Math.max(...lats)) / 2];
+}
+
 const ecartAngle = (a: number, b: number) => Math.abs(((((a - b) % 360) + 540) % 360) - 180);
 
 /** Les commandes de caméra de l'API du constructeur (ACAL435 + F6) ; H6 — `modePresentation` (vue client) ; J1 — la vue
@@ -157,6 +166,7 @@ export function apiCamera(map: CarteCadrable & CartePresentable, sources: Source
       return Math.abs(map.getPitch() - cible.pitch) <= 0.5 && ecartAngle(map.getBearing(), cible.bearing) <= 0.5;
     },
     surPrete: v.surPrete,
+    pivot: () => centreDesPans(sources.anneaux()), // T4-V1-010 — la maison tourne sur elle-même
   });
   // ACAL1839 — changer de vue (Plan ↔ 3D) recadre le VOLUME avec le dernier cadrage demandé par l'hôte : en 3D la maison
   // entière (murs compris) reste visible, jamais coupée sous les pièces flottantes de l'atelier.

@@ -616,6 +616,22 @@ def _cadre_de_dessin():
     return (MARGE_MM, MARGE_MM, largeur, hauteur)
 
 
+#: T4-V1-006 — la zone du TRACÉ dans le cadre de dessin : à gauche la place de
+#: la cote verticale (tracée 6 mm à gauche du toit, libellé à 7,2), en bas celle
+#: de la cote horizontale (6 mm sous le toit), de la mention et de la barre
+#: d'échelle : la mention ne chevauche plus ni le toit ni son trait de cote.
+RESERVE_COTE_GAUCHE_MM = 10.0
+RESERVE_ECHELLE_BAS_MM = 22.0
+
+
+def _cadre_du_trace():
+    """``(x, y, largeur, hauteur)`` en mm où le toit est tracé (cotes et
+    échelle autour, dans :func:`_cadre_de_dessin`)."""
+    x, y, largeur, hauteur = _cadre_de_dessin()
+    return (x + RESERVE_COTE_GAUCHE_MM, y, largeur - RESERVE_COTE_GAUCHE_MM,
+            hauteur - RESERVE_ECHELLE_BAS_MM)
+
+
 def _echelle_de_dessin(etendue, cadre=None):
     """Millimètres de feuille par mètre de terrain — la plus grande qui tienne.
 
@@ -625,7 +641,7 @@ def _echelle_de_dessin(etendue, cadre=None):
     d'échelle métrique qui est dessinée (CAL172).
     """
     x0, y0, x1, y1 = etendue
-    cadre = cadre or _cadre_de_dessin()
+    cadre = cadre or _cadre_du_trace()  # T4-V1-006
     largeur_m = max(x1 - x0, 0.001)
     hauteur_m = max(y1 - y0, 0.001)
     return min(cadre[2] / largeur_m, cadre[3] / hauteur_m)
@@ -633,7 +649,7 @@ def _echelle_de_dessin(etendue, cadre=None):
 
 def _transformation(etendue, cadre=None):
     """``(x_m, y_m) -> (x_mm, y_mm)`` — le Y du SVG descend, celui du terrain monte."""
-    cadre = cadre or _cadre_de_dessin()
+    cadre = cadre or _cadre_du_trace()  # T4-V1-006
     echelle = _echelle_de_dessin(etendue, cadre)
     x0, y0, x1, y1 = etendue
     largeur_mm = (x1 - x0) * echelle
@@ -1413,11 +1429,31 @@ def _bandeau_svg(titre, sous_titre, lignes, geometrie,
             y += 4.4
         y += 3.0
 
+    # T4-V1-006 — chaque ligne se coupe à la largeur du bandeau (même règle que
+    # la légende, R3-21) : « Onduleur … Monophas », « Chaîne 1 : … météo type
+    # d » étaient coupés par le bord de la feuille. Aucun mot n'est changé.
     for ligne in lignes:
-        morceaux.append('<text x="%s" y="%s" font-size="3.4" fill="%s">%s'
-                        '</text>' % (_n(x), _n(y), NOIR, escape(str(ligne))))
-        y += 4.6
+        for rang, morceau in enumerate(_lignes_du_bandeau(str(ligne))):
+            morceaux.append(
+                '<text x="%s" y="%s" font-size="3.4" fill="%s">%s</text>'
+                % (_n(x + (2.0 if rang else 0.0)), _n(y), NOIR,
+                   escape(morceau)))
+            y += 4.2
+        y += 0.4
     return morceaux
+
+
+#: T4-V1-006 — place du texte dans le bandeau (mm) : bandeau − 3 de décalage −
+#: 3 de marge − 2 de retrait des suites ; corps 3,4 ; largeur moyenne d'un
+#: caractère ≈ 0,6 × le corps (DejaVu Sans), comme la légende.
+CARACTERES_PAR_LIGNE_BANDEAU = int(
+    (LARGEUR_BANDEAU_MM - 3.0 - 3.0 - 2.0) / (0.6 * 3.4))
+
+
+def _lignes_du_bandeau(texte):
+    """Le texte coupé aux mots pour tenir dans le bandeau (jamais tronqué)."""
+    return textwrap.wrap(texte, CARACTERES_PAR_LIGNE_BANDEAU,
+                         break_long_words=False) or [texte]
 
 
 # ── Les sorties : SVG, puis PDF par la plomberie PARTAGÉE ───────────────────

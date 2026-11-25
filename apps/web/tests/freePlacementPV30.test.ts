@@ -554,6 +554,21 @@ describe('PV30 §câblage — AJOUTER et RETIRER des panneaux (acte explicite du
     expect(editor.freePanels().length).toBe(before + 1);
   });
 
+  it('ACAL2032 — le bouton armé DIT le geste suivant ; un 2e clic l’annule ; après la pose il redevient « Ajouter »', () => {
+    const btn = document.getElementById('rp9-free-add')!;
+    btn.dispatchEvent(new Event('click'));
+    expect(btn.getAttribute('aria-pressed')).toBe('true');
+    expect(btn.textContent).toBe('Cliquez sur le toit pour poser le panneau (Échap : annuler)');
+    btn.dispatchEvent(new Event('click')); // le geste du relecteur : un 2e clic sur le bouton = annuler, sans pose
+    expect(btn.getAttribute('aria-pressed')).toBe('false');
+    expect(btn.textContent).toBe('＋ Ajouter un panneau');
+    const before = editor.freePanels().length;
+    btn.dispatchEvent(new Event('click'));
+    click2(map, pt(-8, 8));
+    expect(editor.freePanels().length).toBe(before + 1);
+    expect(btn.textContent).toBe('＋ Ajouter un panneau');
+  });
+
   it('« Échap » désarme l’ajout au lieu de poser n’importe où', () => {
     document.getElementById('rp9-free-add')!.dispatchEvent(new Event('click'));
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));

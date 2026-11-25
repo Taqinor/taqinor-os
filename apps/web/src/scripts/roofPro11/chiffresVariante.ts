@@ -1,0 +1,52 @@
+// T4-V2-021 — UN chiffre par valeur entre la carte de la pose, le total et les cartes de variante.
+// Sorti d'`optimizer.ts` (2 000 lignes et plus : il ne grossit pas). Le balayage des variantes (`fineGridMatrixV6`)
+// pave avec le module de RÉFÉRENCE de l'atelier (720 Wc, 2,384 × 1,303 m) ; la pose et le total, avec le module CHOISI
+// du pan (« 10 × 710 W · 7,1 kWc »). La carte de la variante POSÉE lit donc les chiffres de la pose (mêmes panneaux,
+// même module, même production) ; une autre carte reste une estimation du balayage, dite telle quelle.
+import { kwcDuPan, MODULE_PAR_DEFAUT_ATELIER, type ModuleDocument } from './moduleSelect';
+
+/** Ce que la carte de la pose affiche : nombre posé, kWc du module posé, watt, production (`null` = rien à dire). */
+export interface ChiffresPose { count: number; kwc: number | null; watt: number | null; annualKwh: number | null }
+
+/** Les chiffres de la pose : kWc au module CHOISI du pan (le défaut sans choix), production SERVIE quand elle l'est
+ *  (`prodServie`), sinon l'estimation du navigateur. Une seule définition, lue par la carte et par la variante posée. */
+export function chiffresDeLaPose(
+  d: { count: number; kwc: number; annualKwh: number },
+  choisi: ModuleDocument | null,
+  prodServie: (kwc: number | null) => number | null,
+): ChiffresPose {
+  const kwc = choisi ? kwcDuPan(d.count, choisi) : d.kwc;
+  const servie = prodServie(kwc);
+  return {
+    count: d.count,
+    kwc,
+    watt: (choisi ?? MODULE_PAR_DEFAUT_ATELIER).pmaxWc,
+    annualKwh: servie != null ? servie : d.annualKwh > 0 ? d.annualKwh : null,
+  };
+}
+
+/** Vrai quand le module choisi du pan n'est pas celui avec lequel le balayage a pavé (watt ou cotes). */
+function autreQueLaReference(choisi: ModuleDocument | null): boolean {
+  const ref = MODULE_PAR_DEFAUT_ATELIER;
+  return !!choisi && (choisi.pmaxWc !== ref.pmaxWc || choisi.longueurMm !== ref.longueurMm || choisi.largeurMm !== ref.largeurMm);
+}
+
+type Fmt = (n: number) => string;
+
+/** La ligne de chiffres d'une carte de variante : celle de la pose quand la variante est POSÉE ; sinon l'estimation du
+ *  balayage, dite « Estimation », avec le module de référence quand le pan en porte un autre. */
+export function texteChiffresVariante(
+  c: { count: number; kwc: number; annualKwh: number },
+  posee: ChiffresPose | null,
+  choisi: ModuleDocument | null,
+  fmt: Fmt,
+  fmtKwc: Fmt,
+): string {
+  if (posee) {
+    return `${fmt(posee.count)} panneaux · ${posee.kwc == null ? '—' : `${fmtKwc(posee.kwc)} kWc`} · ${posee.annualKwh == null ? '—' : `${fmt(Math.round(posee.annualKwh))} kWh/an`}`;
+  }
+  const chiffres = `${fmt(c.count)} panneaux · ${fmtKwc(c.kwc)} kWc · ${fmt(Math.round(c.annualKwh))} kWh/an`;
+  return autreQueLaReference(choisi)
+    ? `Estimation (module de référence ${fmt(MODULE_PAR_DEFAUT_ATELIER.pmaxWc as number)} Wc) : ${chiffres}`
+    : `Estimation : ${chiffres}`;
+}

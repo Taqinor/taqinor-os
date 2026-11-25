@@ -321,6 +321,40 @@ describe('PanneauProduction — bouton de calcul (CALX48, ACAL125)', () => {
       .toHaveAttribute('href', '/calepinage/reglages#calx69-mode_meteo')
   })
 
+  it('T4-V1-012 — temps dépassé : la phrase du serveur, le lien vers la fenêtre météo et « Réessayer » qui relance', async () => {
+    const motif = 'La simulation a dépassé le temps alloué (2 minutes) : relancez-la ; si cela se reproduit, réduisez la « Fenêtre d’années météo » dans les réglages de simulation du calepinage.'
+    calepinageApi.calepinages.resultat.mockResolvedValue(vide())
+    calepinageApi.calepinages.simuler.mockResolvedValue({ data: accuse })
+    calepinageApi.moteur.resultat.mockResolvedValue({
+      data: { ...refusServi, elements: [{ statut: 'failed', champ: 'parametres.simulation.fenetre_annees', motif }] },
+    })
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    fireEvent.click(screen.getByTestId('calx48-lancer-bouton'))
+    const refus = await screen.findByTestId('calx48-refus')
+    expect(refus).toHaveTextContent(motif)
+    expect(within(refus).getByTestId('calx48-lien-reglages'))
+      .toHaveAttribute('href', '/calepinage/reglages#calx69-fenetre_annees')
+    fireEvent.click(within(refus).getByRole('button', { name: 'Réessayer' }))
+    await waitFor(() => expect(calepinageApi.calepinages.simuler).toHaveBeenCalledTimes(2))
+    expect(calepinageApi.calepinages.simuler).toHaveBeenLastCalledWith(1, { forcer: true })
+  })
+
+  it('T4-V1-012 — un nom d’exception brut n’atteint jamais l’écran (ancien job) : phrase française et « Réessayer »', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue(vide())
+    calepinageApi.calepinages.simuler.mockResolvedValue({ data: accuse })
+    calepinageApi.moteur.resultat.mockResolvedValue({
+      data: { ...refusServi, elements: [{ statut: 'failed', champ: '', motif: 'SoftTimeLimitExceeded()' }] },
+    })
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    fireEvent.click(screen.getByTestId('calx48-lancer-bouton'))
+    const refus = await screen.findByTestId('calx48-refus')
+    expect(refus).not.toHaveTextContent('SoftTimeLimitExceeded')
+    expect(refus).toHaveTextContent('La simulation a échoué')
+    expect(within(refus).getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+  })
+
   it('ACAL940 — un seul 409 : 3 lignes, deux liens vers leur champ de réglage', async () => {
     const refusManquants = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_refus_manquants')
     calepinageApi.calepinages.resultat.mockResolvedValue(vide())

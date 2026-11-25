@@ -20,17 +20,29 @@ export function estEnAttente(statut) {
   return STATUTS_EN_ATTENTE.includes(String(statut || '').toLowerCase())
 }
 
-const MOTIF_PAR_DEFAUT = 'La simulation a échoué.'
+const MOTIF_PAR_DEFAUT = 'La simulation a échoué : relancez-la.'
 
-/** Un refus structuré `{champ, motif}` d'un job `failed` : le premier élément
+/* T4-V1-012 — un job en échec sur une erreur du SERVEUR (temps dépassé — champ de la fenêtre
+   météo, le levier — ou erreur inattendue — aucun champ) se RELANCE : l'écran offre « Réessayer ».
+   Un manque de réglage est refusé AVANT le job (409, ACAL940), jamais ici. */
+const CHAMPS_RELANCABLES = ['', 'parametres.simulation.fenetre_annees']
+/* T4-V1-012 — jamais le nom ou la représentation d'une exception à l'écran (« SoftTimeLimitExceeded() »,
+   « KeyError: … ») : un ancien job, ou un serveur plus ancien, peut encore en publier une. */
+const RE_EXCEPTION_BRUTE = /^[A-Za-z_][\w.]*(Error|Exception|Exceeded|Interrupt|Timeout)\b|^[A-Za-z_][\w.]*\(.*\)$/
+
+function motifLisible(motif) {
+  return RE_EXCEPTION_BRUTE.test(String(motif).trim()) ? MOTIF_PAR_DEFAUT : motif
+}
+
+/** Un refus structuré `{champ, motif, relancable}` d'un job `failed` : le premier élément
     nommé publié par le serveur (`elements[0]`), sinon le message d'erreur du
     job, sinon la phrase générique — jamais un champ inventé. */
 export function refusDepuisJob(suivi) {
   const premier = Array.isArray(suivi?.elements) ? suivi.elements[0] : null
-  if (premier && typeof premier.motif === 'string' && premier.motif) {
-    return { champ: typeof premier.champ === 'string' ? premier.champ : '', motif: premier.motif }
-  }
-  return { champ: '', motif: suivi?.message_erreur || MOTIF_PAR_DEFAUT }
+  const champ = premier && typeof premier.champ === 'string' ? premier.champ : ''
+  const motif = premier && typeof premier.motif === 'string' && premier.motif
+    ? premier.motif : (suivi?.message_erreur || MOTIF_PAR_DEFAUT)
+  return { champ, motif: motifLisible(motif), relancable: CHAMPS_RELANCABLES.includes(champ) }
 }
 
 /** Le refus 400 de `POST simuler/` : `{champ: [motif]}` — le champ fautif est
