@@ -419,6 +419,34 @@ describe('ACAL2023 — la vue client lit la conception courante servie', () => {
     expect(attente.find((t) => t.cle === 'kwh')).toBeUndefined()
   })
 
+  it('B1 — conception d’une AUTRE taille que la pose : aucun nombre de production ni de couverture, une phrase vraie ; même taille : les nombres', async () => {
+    const { tuilesClient } = await import('./vueClient.helpers')
+    const document = { zones: [ZONE] } // 2 panneaux posés, pose de 1,1 kWc
+    const autre = { ...CHIFFRAGE, kwc: { ...CHIFFRAGE.kwc, valeur: 21.6 } } // conception de 48 panneaux
+    const tuiles = tuilesClient(document, RESULTAT, autre)
+    expect(tuiles.find((t) => t.cle === 'kwh')).toBeUndefined()
+    expect(tuiles.find((t) => t.cle === 'couverture')).toBeUndefined()
+    expect(tuiles.map((t) => t.valeur).join(' ')).not.toMatch(/11.480|82/)
+    expect(tuiles.find((t) => t.cle === 'miseajour').libelle).toBe('Production : calculée à la mise à jour de la conception.')
+    expect(tuiles.find((t) => t.cle === 'panneaux').valeur).toBe('2')
+    // taille de la conception non servie : rien ne prouve la même taille ⇒ aucun nombre non plus
+    expect(tuilesClient(document, RESULTAT, sans('kwc')).find((t) => t.cle === 'kwh')).toBeUndefined()
+    // même taille (écart < 0,005) : les nombres de la conception
+    const egale = { ...CHIFFRAGE, kwc: { ...CHIFFRAGE.kwc, valeur: 1.1004 } }
+    expect(tuilesClient(document, RESULTAT, egale).map((t) => t.cle)).toEqual(['panneaux', 'kwh', 'couverture'])
+    // aucune conception : comme avant
+    expect(tuilesClient(document, RESULTAT, null).map((t) => t.cle)).toEqual(['panneaux', 'kwc'])
+  })
+
+  it('B1 — à l’écran : la phrase remplace la production et la part ; pas un chiffre de l’autre taille', async () => {
+    api.designContext.mockResolvedValue(contexteAvec({ ...CHIFFRAGE, kwc: { ...CHIFFRAGE.kwc, valeur: 21.6 } }))
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('client-mention-miseajour')).toHaveTextContent('Production : calculée à la mise à jour de la conception.'))
+    expect(screen.queryByTestId('client-tuile-kwh')).toBeNull()
+    expect(screen.queryByTestId('client-tuile-couverture')).toBeNull()
+    expect(screen.getByTestId('cal-vue-client').textContent).not.toMatch(/11.480|82 %|kWh par an/)
+  })
+
   it('3D : la production est celle de la conception, jamais l’estimation du constructeur ; les pertes par défaut sont dites', async () => {
     api.designContext.mockResolvedValue(contexteAvec({
       ...CHIFFRAGE, production_annuelle_kwh: { ...CHIFFRAGE.production_annuelle_kwh, source: 'standard_ville' },

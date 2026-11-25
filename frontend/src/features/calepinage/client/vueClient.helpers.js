@@ -78,6 +78,9 @@ const servi = (g) => (g?.etat === 'servi' && g.valeur != null && Number.isFinite
 const calculEnCours = (chiffrage) => (chiffrage?.omissions ?? [])
   .some((o) => o?.grandeur === 'production_annuelle_kwh' && /en cours/i.test(o?.motif ?? ''))
 
+/** B1 — la phrase quand la conception n'a pas la taille de la pose : aucun chiffre d'une autre taille, jamais un zéro. */
+export const PRODUCTION_A_LA_MISE_A_JOUR = 'Production : calculée à la mise à jour de la conception.'
+
 /**
  * Les tuiles de la maquette, dans son ordre ; une donnée non servie ⇒ tuile omise.
  * ACAL2023 (D-ACAL-97 : un seul moteur) — PRODUCTION ET COUVERTURE : celles de la CONCEPTION COURANTE du lead, lues sur le bloc
@@ -91,6 +94,16 @@ export function tuilesClient(document, resultat, chiffrage = null) {
   const panneaux = panneauxDuDocument(document)
   if (panneaux !== null) tuiles.push({ cle: 'panneaux', valeur: formatNumber(panneaux, { locale: 'fr' }), libelle: 'panneaux' })
   const kwh = panneaux === null ? null : servi(chiffrage?.production_annuelle_kwh) // aucun toit enregistré : rien à chiffrer devant le client
+  // B1 — même garde que l'atelier (`affichageErp.ts::productionServie`) : la production et la part servies sont celles de la
+  // TAILLE de la conception ; elles ne se lisent qu'à côté d'une pose de la MÊME taille, jamais à côté d'un autre compte de panneaux.
+  const kwcConception = servi(chiffrage?.kwc)
+  const kwcPose = puissancePose(resultat, panneaux)
+  const memeTaille = kwcConception !== null && kwcPose !== null && Math.abs(kwcConception - kwcPose) < 0.005
+  if (kwh > 0 && !memeTaille) {
+    tuiles.push({ cle: 'miseajour', valeur: '', libelle: PRODUCTION_A_LA_MISE_A_JOUR })
+    if (kwcPose !== null) tuiles.push({ cle: 'kwc', valeur: formatNumber(kwcPose, { locale: 'fr', decimals: 2 }), libelle: 'kWc de puissance', marine: true })
+    return tuiles
+  }
   if (kwh > 0) {
     const pertesParDefaut = chiffrage.production_annuelle_kwh.source !== 'calepinage_enregistre'
     tuiles.push({
