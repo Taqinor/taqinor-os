@@ -6,7 +6,7 @@
    « Confirmer » = la requête de « Enregistrer la pente », « Je ne la connais pas » n'écrit rien, le compte des
    contrôles, et la feuille 51-etape-toit.css sans couleur littérale (thème sombre par les jetons). */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, within, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, renderHook, screen, cleanup, within, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -1003,5 +1003,23 @@ describe('ACAL1907 — pièces de la carte', () => {
     expect(c.background).toContain('--cal-surface')
     expect(c.background).not.toMatch(/--cal-action|--primary|brass/)
     expect(regleMedia('min-width: 640px', bouton).map((r) => r.style.getPropertyValue('align-self'))).toContain('center')
+  })
+})
+
+// T4-X5-017 — la carte passait en plein écran sans que le toit soit recadré : il restait à sa place d'avant.
+describe('T4-X5-017 — plein écran de la carte (useAtelierVues)', () => {
+  it('entrer en plein écran recadre le toit sur tout l’écran ; en sortir ne recadre pas', async () => {
+    const { useAtelierVues } = await import('../../useAtelierVues')
+    const { ZOOM_MAX_CADRAGE_ATELIER } = await import('../../useAtelierBoot')
+    const cadrerToit = vi.fn(() => true)
+    const { result } = renderHook(() => useAtelierVues({ builderApi: { current: { cadrerToit } }, calepinageId: 1, devisId: null }))
+    // jsdom n'a pas l'API plein écran : la bascule prend le repli CSS (`enPleinEcran: true`), comme Safari iPhone.
+    result.current.mapWrapRef.current = document.createElement('div')
+    await act(async () => { result.current.basculerPleinEcran3d() })
+    await waitFor(() => expect(result.current.pleinEcran3d).toBe(true))
+    await waitFor(() => expect(cadrerToit).toHaveBeenCalledWith({ zoomMax: ZOOM_MAX_CADRAGE_ATELIER }))
+    await act(async () => { result.current.basculerPleinEcran3d() })
+    await waitFor(() => expect(result.current.pleinEcran3d).toBe(false))
+    expect(cadrerToit).toHaveBeenCalledTimes(1)
   })
 })
