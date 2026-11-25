@@ -41,6 +41,7 @@ CLES_RANGEES = {
     'payback_devis',  # relecture E6 : le devis de référence du payback servi à la lecture
 }
 CLES_VALEUR = {'valeur', 'unite', 'source'}
+CLES_ENTREES_PAYBACK = {'investissement_ttc', 'economie_annuelle', 'cout_onduleur_ttc', 'calcul'}  # T4-X9-016
 SOURCES_VALEUR = {'moteur', 'pose', 'impose', 'devis', 'defaut'}
 SOURCES_ENTREE = {'lead', 'calepinage', 'reglage_societe', 'defaut'}
 CLES_SUPPOSITION = {'code', 'champ', 'valeur', 'source', 'message'}
@@ -129,7 +130,10 @@ class ContratConceptionLeadTests(SimpleTestCase):
                     self.assertIn(option, {'sans', 'avec'})
                     self.assertEqual(set(valeurs), attendues)
                     for cle, valeur in valeurs.items():
-                        self.assertEqual(set(valeur), CLES_VALEUR, cle)
+                        # T4-X9-016 — le payback servi d'un devis porte aussi ses entrées.
+                        attendu = (CLES_VALEUR | CLES_ENTREES_PAYBACK
+                                   if cle == 'payback' and valeur.get('source') == 'devis' else CLES_VALEUR)
+                        self.assertEqual(set(valeur), attendu, cle)
                         self.assertIn(valeur['source'], SOURCES_VALEUR, cle)
 
     def test_suppositions_entrees_et_declencheur(self):

@@ -123,6 +123,7 @@ def _payback_servi(version, valeurs):
         return valeurs, {'devis_ref': None, 'motif': MOTIF_PAYBACK_SANS_DEVIS}
     from . import offres_tailles
     from .domain.catalogue import classer_produit
+    from .conception.valeurs import entrees_du_payback
     from .quote_engine.pricing import payback_publiable
     from .utils.options import AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option, lignes_avec_produit, option_totaux
 
@@ -147,35 +148,9 @@ def _payback_servi(version, valeurs):
         table['payback'] = dict({'valeur': payback_publiable(investissement, economie, stockage=option == 'avec',
                                                              cout_onduleur_ttc=cout, **horaire)['payback_years'],
                                  'unite': 'ans', 'source': 'devis'},
-                                **_entrees_du_payback(investissement, economie, cout, stockage=option == 'avec'
-                                                      and version.marche != 'residentiel'))
+                                **entrees_du_payback(investissement, economie, cout,
+                                                     stockage=option == 'avec' and version.marche != 'residentiel'))
     return servies, {'devis_ref': devis.reference, 'motif': None}
-
-
-def _entrees_du_payback(investissement, economie, cout_onduleur, *, stockage):
-    """T4-X9-016 — ce que le payback servi a pris, servi À CÔTÉ de lui (même option) : le
-    montant TTC de l'option, son économie annuelle, la provision d'onduleur, et la phrase du
-    calcul (``quote_engine/pricing.compute_cashflow_payback`` : un cumul, jamais un quotient)."""
-    from core.money import quantize_mad
-
-    from .quote_engine import pricing
-
-    morceaux = ['production en baisse de %s %%/an' % _pct(pricing.PANEL_DEGRADATION)]
-    if pricing.TARIFF_ESCALATION:
-        morceaux.append('tarif en hausse de %s %%/an' % _pct(pricing.TARIFF_ESCALATION))
-    if stockage:
-        morceaux.append('part stockée au rendement de la batterie (%s %%)' % _pct(pricing.BATTERY_ROUNDTRIP))
-    if cout_onduleur:
-        morceaux.append('onduleur remplacé la %de année' % pricing.INVERTER_REPLACE_YEAR)
-    return {'investissement_ttc': float(quantize_mad(investissement)) if investissement else None,
-            'economie_annuelle': economie,
-            'cout_onduleur_ttc': float(quantize_mad(cout_onduleur)) if cout_onduleur else None,
-            'calcul': 'Cumul des économies sur %d ans (%s) jusqu’à couvrir le montant.' % (
-                pricing.CASHFLOW_YEARS, ', '.join(morceaux))}
-
-
-def _pct(fraction):
-    return ('%g' % round(float(fraction) * 100, 2)).replace('.', ',')
 
 
 def _brouillons_a_mettre_a_jour(version):

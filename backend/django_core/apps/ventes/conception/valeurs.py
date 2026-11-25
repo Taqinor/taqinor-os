@@ -103,7 +103,7 @@ def _payback(resultat, option, investissement, economie, company):
     des cartes (``offres_tailles._cout_onduleur_ttc``) sur les lignes de l'option du moteur,
     part stockée 0 au modèle horaire résidentiel. Aucun prix d'achat lu."""
     if investissement is None:
-        return None
+        return None, {}
     from apps.ventes import offres_tailles
     from apps.ventes.domain.catalogue import classer_produit
     from apps.ventes.quote_engine.pricing import payback_publiable
@@ -119,8 +119,37 @@ def _payback(resultat, option, investissement, economie, company):
         portees, [classer_produit(getattr(li.produit, 'nom', '') or li.designation) for li in portees],
         1 - remise / 100, getattr(devis, 'taux_tva', None), company, devis)
     horaire = {'part_batterie': 0} if resultat.marche == 'residentiel' else {}
-    return payback_publiable(investissement, economie, stockage=option == 'avec', cout_onduleur_ttc=cout,
-                             **horaire)['payback_years']
+    annees = payback_publiable(investissement, economie, stockage=option == 'avec', cout_onduleur_ttc=cout,
+                               **horaire)['payback_years']
+    # T4-X9-016 — les entrées servies à côté, comme le payback servi à la lecture.
+    return annees, entrees_du_payback(investissement, economie, cout,
+                                      stockage=option == 'avec' and resultat.marche != 'residentiel')
+
+
+def entrees_du_payback(investissement, economie, cout_onduleur, *, stockage):
+    """T4-X9-016 — ce que le payback servi a pris, servi À CÔTÉ de lui (même option) : le
+    montant TTC de l'option, son économie annuelle, la provision d'onduleur, et la phrase du
+    calcul (``quote_engine/pricing.compute_cashflow_payback`` : un cumul, jamais un quotient)."""
+    from core.money import quantize_mad
+
+    from apps.ventes.quote_engine import pricing
+
+    morceaux = ['production en baisse de %s %%/an' % _pct(pricing.PANEL_DEGRADATION)]
+    if pricing.TARIFF_ESCALATION:
+        morceaux.append('tarif en hausse de %s %%/an' % _pct(pricing.TARIFF_ESCALATION))
+    if stockage:
+        morceaux.append('part stockée au rendement de la batterie (%s %%)' % _pct(pricing.BATTERY_ROUNDTRIP))
+    if cout_onduleur:
+        morceaux.append('onduleur remplacé la %de année' % pricing.INVERTER_REPLACE_YEAR)
+    return {'investissement_ttc': float(quantize_mad(investissement)) if investissement else None,
+            'economie_annuelle': economie,
+            'cout_onduleur_ttc': float(quantize_mad(cout_onduleur)) if cout_onduleur else None,
+            'calcul': 'Cumul des économies sur %d ans (%s) jusqu’à couvrir le montant.' % (
+                pricing.CASHFLOW_YEARS, ', '.join(morceaux))}
+
+
+def _pct(fraction):
+    return ('%g' % round(float(fraction) * 100, 2)).replace('.', ',')
 
 
 def valeurs(resultat, option, investissement, *, froid, company=None):
@@ -141,7 +170,7 @@ def valeurs(resultat, option, investissement, *, froid, company=None):
     source_production = 'pose' if _sur_la_pose(resultat, option) else 'moteur'
     if isinstance(investissement, dict):  # E7d (M1) — l'aperçu : un prix par option
         investissement = investissement.get(option)
-    payback = _payback(resultat, option, investissement, economies, company)
+    payback, entrees_payback = _payback(resultat, option, investissement, economies, company)
     devis = resultat.lignes[0].devis if resultat.lignes else None
     kwc = kwc_des_lignes(panneaux, nb, watt, devis)
     return {
@@ -155,7 +184,7 @@ def valeurs(resultat, option, investissement, *, froid, company=None):
         'production_mensuelle': _v(mensuelle or None, 'kWh', source_production),
         'autoconsommation': _v(autoconso, 'ratio'), 'couverture': _v(couverture, 'ratio'),
         'economies_annuelles': _v(economies, 'MAD/an'),
-        'payback': _v(payback, 'ans', 'devis' if investissement is not None else 'moteur'),
+        'payback': dict(_v(payback, 'ans', 'devis' if investissement is not None else 'moteur'), **entrees_payback),
         'consommation_annuelle': _v(conso, 'kWh/an'), 'forme_horaire': _v(forme, None, source_forme),
         # Reste d'ACAL2020 — la forme 24 h du moteur résidentiel (``None`` hors résidentiel).
         'forme_horaire_24': _v(resultat.forme_horaire_24 if resultat.marche == 'residentiel' else None,
