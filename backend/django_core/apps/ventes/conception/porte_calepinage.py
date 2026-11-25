@@ -185,6 +185,18 @@ def simuler_la_pose(company, calepinage_id, materiel):
     return simuler_pose(calepinage, materiel=materiel) if calepinage is not None else None
 
 
+def production_du_plan_par_defaut(company, lead, kwc, produits):
+    """ADEV154 / ACAL2026 — la production du PLAN PAR DÉFAUT d'un lead sans toit tracé
+    (``calepinage/services/plan_par_defaut.py``, sans écriture) : ``kwc`` du moteur, son
+    matériel (``{module, onduleur}`` : identifiants produit), le point du lead et sa pente
+    déclarée (``Lead.inclinaison_deg``, sinon 30° dite). Lève ``SimulationRefusee``."""
+    from apps.calepinage.services.plan_par_defaut import simuler_plan_par_defaut
+
+    pente = getattr(lead, 'inclinaison_deg', None)
+    return simuler_plan_par_defaut(company, None, None, kwc, lead_id=lead.pk, produits=produits,
+                                   pente=float(pente) if pente is not None else None)
+
+
 #: Relecture E6 B2 — une désignation que le catalogue de vente du moteur refuse.
 CODE_DESIGNATION_HORS_CATALOGUE = 'designation_hors_catalogue'
 MESSAGE_HORS_CATALOGUE = ('Le matériel désigné « %s » n\'est plus au catalogue de vente : la conception utilise le '
