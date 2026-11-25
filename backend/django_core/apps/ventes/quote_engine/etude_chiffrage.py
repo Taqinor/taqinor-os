@@ -29,6 +29,23 @@ from .lignes_classement import _battery_kwh_from_items, _cout_onduleur
 logger = logging.getLogger(__name__)
 
 
+def divergence_par_kwc(scal, devis):
+    """T4-X1-001 — ``builder._scalaires_par_option`` : deux options de MÊME
+    nombre de panneaux mais de modules différents (5 × 550 W / 5 × 710 W) ont
+    deux tailles (2,75 / 3,55 kWc). Le drapeau ``divergents`` (comptes seuls)
+    restait faux : la page 1 divisait le prix de l'option 1 par la taille de
+    l'option 2 et la page 2 annonçait une seule taille pour les deux. Au niveau
+    de règles 15 (``REGLES_POSE_REELLE_2111``, nouveaux rendus seulement), des
+    kWc différents lus sur les lignes de chaque option suffisent ; au niveau 14
+    le dict sort inchangé (octet-identique)."""
+    from apps.ventes.domain.regles_calcul import REGLES_POSE_REELLE_2111, regles_au_moins
+    kwc_s, kwc_a = scal.get("kwc_sans"), scal.get("kwc_avec")
+    if (not scal.get("divergents") and kwc_s and kwc_a and abs(float(kwc_s) - float(kwc_a)) > 0.005
+            and regles_au_moins(devis, REGLES_POSE_REELLE_2111)):
+        scal["divergents"] = True
+    return scal
+
+
 #: QJR625 — pour un devis I/C dont l'étude porte sa base ``etude['kwc']``, la
 #: base elle-même et les chiffres saisis à partir d'elle. CIQ129 : les
 #: dérivées écran v1 (et leur base ``etude_kwc_base``) ont quitté le schéma ;
