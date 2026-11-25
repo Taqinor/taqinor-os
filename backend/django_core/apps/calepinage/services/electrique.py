@@ -1002,6 +1002,9 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
     posee = modifier_resultat(calepinage, _poser)
     from .journal import noter
     from .layout import simuler_apres_enregistrement
+    from .simulation_auto import relancer_sur_designation
+
+    relancer_sur_designation(calepinage, avant_saisie, posee)  # ACAL2013 : désignation ⇒ entrée imposée
 
     if apres_envoi(calepinage):
         # ACAL43 — une saisie d'un devis ENVOYÉ se TRACE (corrigé après envoi).

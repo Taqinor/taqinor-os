@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = ['ETAT_A_JOUR', 'ETAT_EN_FILE', 'ETAT_IGNOREE', 'ETAT_INCOMPLETE',
            'ETAT_LANCEE', 'etat_simulation_automatique',
-           'lancer_simulation_automatique', 'simulation_automatique_en_cours']
+           'lancer_simulation_automatique', 'relancer_sur_designation', 'simulation_automatique_en_cours']
 
 ETAT_LANCEE = 'lancee'
 ETAT_A_JOUR = 'a_jour'
@@ -214,3 +214,21 @@ def _lancer(calepinage, user, rendu):
                      {'hash_entree': empreinte, 'job_id': job.pk},
                      timeout=DUREE_MARQUEUR_S)
     return dict(rendu, etat=ETAT_LANCEE, job_id=job.pk)
+
+
+#: ACAL2013 — les désignations de l'étape Électrique qui sont des ENTRÉES imposées du moteur.
+DESIGNATIONS_IMPOSEES = ('module_produit', 'onduleur_produit')
+
+
+def relancer_sur_designation(calepinage, avant, apres):
+    """ACAL2013 (D-ACAL-97) — un module ou un onduleur désigné (ou retiré) À LA MAIN
+    relance le moteur unique de son porteur : ``pose_enregistree`` part après validation
+    (même chemin qu'une pose changée, file dédupliquée ADEV139) ; le moteur relit la
+    désignation comme entrée IMPOSÉE (``relancer`` → ``designations_du_calepinage``) et
+    range une nouvelle version avec sa phrase « pourquoi »."""
+    if not any((avant or {}).get(cle) != (apres or {}).get(cle) for cle in DESIGNATIONS_IMPOSEES):
+        return False
+    from .layout import _emettre_pose_enregistree
+
+    _emettre_pose_enregistree(calepinage, getattr(calepinage, 'layout_hash', '') or '')
+    return True

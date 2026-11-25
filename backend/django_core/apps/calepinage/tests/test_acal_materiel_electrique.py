@@ -163,6 +163,50 @@ class MaterielDeLaConception(BaseMateriel):
         self.assertNotIn('module_produit', calepinage.resultat[CLE_ENTREE])
 
 
+class DesignationEntreeImposee(BaseMateriel):
+    """ACAL2013 (clause restée ouverte à l'étape 5) — un onduleur désigné À LA MAIN relance
+    le moteur de son porteur (``pose_enregistree`` → file ADEV139), et le moteur le reçoit
+    comme entrée IMPOSÉE (``relancer`` → ``imposes``) ; sans désignation, rien n'est imposé."""
+
+    class _Arret(Exception):
+        pass
+
+    def test_designation_relance_le_moteur_avec_la_designation_imposee(self):
+        from unittest import mock
+
+        from apps.calepinage.services.electrique import enregistrer_entree
+        from apps.ventes.conception.service import relancer
+
+        self._conception()
+        calepinage = self._calepinage()
+        with mock.patch('apps.ventes.conception.receivers.mettre_en_file') as en_file, \
+                mock.patch('apps.calepinage.services.layout.simuler_apres_enregistrement'):
+            with self.captureOnCommitCallbacks(execute=True):
+                enregistrer_entree(calepinage, {'onduleur_produit': self.onduleur.pk})
+        en_file.assert_called_once()  # mutant « aucune relance sur désignation » : rouge
+        self.assertEqual((en_file.call_args.kwargs['calepinage_id'], en_file.call_args.kwargs['origine']),
+                         (calepinage.pk, 'pose_enregistree'))
+        with mock.patch('apps.ventes.conception.moteur.calculer_conception', side_effect=self._Arret) as calcul:
+            with self.assertRaises(self._Arret):
+                relancer(self.lead, company=self.company, declencheur={'origine': 'pose_enregistree'},
+                         calepinage_id=calepinage.pk, forcer=True)
+        self.assertEqual(calcul.call_args.kwargs['imposes'], {'onduleur_produit_id': self.onduleur.pk})
+
+    def test_sans_designation_rien_n_est_impose_ni_relance(self):
+        from unittest import mock
+
+        from apps.calepinage.services.electrique import enregistrer_entree
+        from apps.ventes.conception.porte_calepinage import designations_du_calepinage
+
+        calepinage = self._calepinage()
+        self.assertEqual(designations_du_calepinage(self.company, calepinage.pk), {})
+        with mock.patch('apps.ventes.conception.receivers.mettre_en_file') as en_file, \
+                mock.patch('apps.calepinage.services.layout.simuler_apres_enregistrement'):
+            with self.captureOnCommitCallbacks(execute=True):
+                enregistrer_entree(calepinage, {'regime': 'TT'})
+        en_file.assert_not_called()
+
+
 class MaterielExplicite(BaseMateriel):
 
     def test_designation_gagne_sur_la_conception(self):

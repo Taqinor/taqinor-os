@@ -53,7 +53,8 @@ class Relance:
     refus: object = None
 
 
-def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None, calepinage_id=None):
+def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None, calepinage_id=None,
+             imposes=None):
     """La conception du porteur (de ``company`` seulement) recalculée et, si
     son empreinte a changé (ou ``forcer``), rangée en version suivante.
 
@@ -67,7 +68,13 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
     l'utilisateur (``None`` = tâche du moteur) ; ``toit`` : la pose servie (son
     ``empreinte`` et son ``plafond_panneaux`` entrent dans le calcul). Une
     empreinte égale n'appelle même pas le calcul (``Relance.resultat`` vaut
-    alors ``None``)."""
+    alors ``None``).
+
+    ``imposes`` (ADEV135, forme ``composition_imposee.CHAMPS_IMPOSES``) : la
+    composition IMPOSÉE par un humain ; absente, celle que le calepinage
+    ``calepinage_id`` porte (ACAL2013 : module / onduleur désignés à la main à
+    l'étape Électrique, ``porte_calepinage.designations_du_calepinage``) — elle
+    entre dans l'empreinte, donc une désignation changée range une version."""
     from django.utils import timezone
 
     from apps.ventes.conception.entrees import entrees_pour
@@ -95,11 +102,15 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
     if lead_efface(lead):  # relecture E3 B1 (loi 09-08) : rien calculé, rangé ni émis
         return Relance(None, False, None, dict(REFUS_LEAD_EFFACE))
     courante = _courante(ConceptionLead, company, porteur)
+    if imposes is None and calepinage_id:
+        from apps.ventes.conception.porte_calepinage import designations_du_calepinage
+        imposes = designations_du_calepinage(company, calepinage_id) or None
     with reglages_lus_sans_creer(company):
         entrees = entrees_pour(lead, company, toit=toit)
-        if courante is not None and courante.empreinte == empreinte_conception(entrees) and not forcer:
+        if courante is not None and courante.empreinte == empreinte_conception(entrees, imposes) and not forcer:
             return Relance(courante, False, None)
-        resultat = calculer_conception(lead, company, entrees=entrees, toit=toit, calepinage_id=calepinage_id)
+        resultat = calculer_conception(lead, company, entrees=entrees, toit=toit, calepinage_id=calepinage_id,
+                                       imposes=imposes)
     origine, champs = _pourquoi(courante, entrees, origine, champs)
     maintenant = timezone.now()
     version = ConceptionLead.ranger(

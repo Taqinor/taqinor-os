@@ -115,3 +115,18 @@ def simuler_la_pose(company, calepinage_id, materiel):
 
     calepinage = calepinage_de_societe(calepinage_id, company) if calepinage_id else None
     return simuler_pose(calepinage, materiel=materiel) if calepinage is not None else None
+
+
+def designations_du_calepinage(company, calepinage_id):
+    """ACAL2013 — le module et l'onduleur DÉSIGNÉS À LA MAIN à l'étape Électrique du
+    calepinage (entrée électrique stockée : ``module_produit``, ``onduleur_produit``), à la
+    forme des champs imposés du moteur (``panneau_produit_id``, ``onduleur_produit_id``) ;
+    ``{}`` sans désignation ou sans calepinage de la société."""
+    from apps.calepinage.services.electrique import entree_stockee
+    from apps.ventes.selectors_calepinage import calepinage_de_societe
+
+    calepinage = calepinage_de_societe(calepinage_id, company) if calepinage_id else None
+    entree = (entree_stockee(calepinage) or {}) if calepinage is not None else {}
+    return {cle: entree[role] for role, cle in (('module_produit', 'panneau_produit_id'),
+                                                ('onduleur_produit', 'onduleur_produit_id'))
+            if entree.get(role) not in (None, '')}
