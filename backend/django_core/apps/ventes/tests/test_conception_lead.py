@@ -2843,26 +2843,13 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
         self.assertEqual(ConceptionLead.objects.filter(company=company).count(), 7)
         self.assertEqual(_photo_devis(devis.pk), photo)
 
-    def test_adev151_ecarts_liste_brouillons_production_pose_zero_ecriture(self):
-        """ADEV151 — ``--ecarts`` : deux leads à toit tracé (un brouillon, un envoyé) listés,
-        production actuelle contre production de la pose (niveau 15 forcé dans le
-        processus), écart en kWh et en % ; un lead sans toit absent ; RIEN d'écrit.
-        Relecture E6 M3 — la simulation n'est PAS doublée à la frontière d'écriture : elle
-        écrit vraiment ``Calepinage.resultat`` (``modifier_resultat``, sous verrou), et tout
-        est annulé lead par lead ; « actuel » = la conception RANGÉE ; ``--limite``,
-        ``--lead`` et la ligne de progression."""
-        import io
-
-        from django.core.management import call_command
+    def _banc_des_ecarts(self):
+        """ADEV151 — deux leads à toit tracé (un brouillon, un devis envoyé) et un lead sans toit."""
         from django.utils import timezone
 
         from apps.calepinage.models import Calepinage
-        from apps.calepinage.services.resultat import modifier_resultat
         from apps.crm.models import Lead
-        from apps.ventes.conception import porte_calepinage as P
-        from apps.ventes.domain import regles_calcul as RC
-        from apps.ventes.management.commands import remplir_conceptions as commande
-        from apps.ventes.models import ConceptionLead, Devis
+        from apps.ventes.models import Devis
         from apps.ventes.services import build_devis_auto
 
         company, brouillon_lead = self._residentiel(facture_hiver=Decimal('1800'))
@@ -2881,6 +2868,28 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
             toit = Calepinage.objects.create(company=company, lead_id=lead.pk, titre='Toit', resultat={'x': 1})
             Calepinage.objects.filter(pk=toit.pk).update(layout_hash=empreinte)
             toits[lead.pk] = toit.pk
+        return company, brouillon_lead, envoye_lead, sans_toit, brouillon, envoye, toits
+
+    def test_adev151_ecarts_liste_brouillons_production_pose_zero_ecriture(self):
+        """ADEV151 — ``--ecarts`` : deux leads à toit tracé (un brouillon, un envoyé) listés,
+        production actuelle contre production de la pose (niveau 15 forcé dans le
+        processus), écart en kWh et en % ; un lead sans toit absent ; RIEN d'écrit.
+        Relecture E6 M3 — la simulation n'est PAS doublée à la frontière d'écriture : elle
+        écrit vraiment ``Calepinage.resultat`` (``modifier_resultat``, sous verrou), et tout
+        est annulé lead par lead ; « actuel » = la conception RANGÉE ; ``--limite``,
+        ``--lead`` et la ligne de progression."""
+        import io
+
+        from django.core.management import call_command
+
+        from apps.calepinage.models import Calepinage
+        from apps.calepinage.services.resultat import modifier_resultat
+        from apps.ventes.conception import porte_calepinage as P
+        from apps.ventes.domain import regles_calcul as RC
+        from apps.ventes.management.commands import remplir_conceptions as commande
+        from apps.ventes.models import ConceptionLead
+
+        company, brouillon_lead, envoye_lead, sans_toit, brouillon, envoye, toits = self._banc_des_ecarts()
         photos = (_photo_devis(brouillon.pk), _photo_devis(envoye.pk))
         conceptions = _json(list(ConceptionLead.objects.order_by('pk').values()))
         resultats = _json(list(Calepinage.objects.order_by('pk').values('pk', 'resultat')))
