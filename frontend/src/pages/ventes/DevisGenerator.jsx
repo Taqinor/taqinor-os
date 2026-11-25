@@ -2241,7 +2241,7 @@ export default function DevisGenerator({
       {/* QP2 — dialogue de renommage : deux choix explicites lorsqu'une ligne
           est renommée à l'écart du nom du produit lié (rôle autorisé). */}
       <Dialog open={!!renameDialog} onOpenChange={(o) => { if (!o) setRenameDialog(null) }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="grid-cols-[minmax(0,1fr)] break-words sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Désignation modifiée</DialogTitle>
             <DialogDescription>
@@ -2253,10 +2253,12 @@ export default function DevisGenerator({
           </DialogHeader>
           <AlerteErreur error={renameError} />
           <DialogFooter className="flex-col gap-2 sm:flex-col sm:items-stretch">
-            <Button type="button" variant="outline" onClick={renameHereOnly} disabled={renameBusy}>
+            <Button type="button" variant="outline" className="h-auto min-h-[var(--control-h)] whitespace-normal py-2 text-center"
+                    onClick={renameHereOnly} disabled={renameBusy}>
               Renommer sur ce devis seulement
             </Button>
-            <Button type="button" onClick={renameAsNewProduct} loading={renameBusy}>
+            <Button type="button" className="h-auto min-h-[var(--control-h)] whitespace-normal py-2 text-center"
+                    onClick={renameAsNewProduct} loading={renameBusy}>
               {renameBusy
                 ? 'Création…'
                 : `Créer un nouveau produit « ${renameDialog?.nouveauNom ?? ''} » dans le stock`}

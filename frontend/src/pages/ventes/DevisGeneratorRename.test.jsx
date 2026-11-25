@@ -124,6 +124,27 @@ describe('QP2 — renommer : deux options', () => {
   })
 })
 
+// T4-X4-012 — à 1 440 px le texte et les deux boutons étaient coupés à droite : le
+// nom (long) doit pouvoir passer à la ligne, boutons compris (jsdom n'a pas de mise
+// en page : on vérifie que le texte et les boutons portent la règle de retour à la ligne).
+describe('T4-X4-012 — la fenêtre de renommage tient dans son cadre', () => {
+  it('le texte et les deux boutons passent à la ligne', async () => {
+    renderGenerator({ role_nom: 'Directeur', permissions: ['stock_creer'] })
+    const input = await findSmartMeterDesignation()
+    fireEvent.change(input, { target: { value: 'Onduleur réseau Huawei 5kW Monophasé X4 très long nom de produit' } })
+    fireEvent.blur(input)
+    const dialog = await screen.findByRole('dialog')
+    const renommer = within(dialog).getByRole('button', { name: /Renommer sur ce devis seulement/ })
+    const creer = within(dialog).getByRole('button', { name: /Créer un nouveau produit/ })
+    for (const bouton of [renommer, creer]) {
+      expect(bouton.className).toContain('whitespace-normal')
+      expect(bouton.className).not.toContain('whitespace-nowrap')
+      expect(bouton.className).toContain('h-auto')
+    }
+    expect(dialog.className).toContain('break-words')
+  })
+})
+
 // T4-X4-015 — le choix du dialogue CONTINUE l'enregistrement qu'il a interrompu :
 // le blur de la désignation (mousedown sur « Créer ») ouvre la fenêtre et avale le clic.
 describe('T4-X4-015 — le choix poursuit l\'enregistrement interrompu', () => {
