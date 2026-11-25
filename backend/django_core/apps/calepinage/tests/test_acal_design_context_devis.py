@@ -239,8 +239,13 @@ class CibleOptionRetenueTest(_DevisDeuxOptions):
         self.assertIsNone(cible['option'])
 
     def test_l_enregistrement_range_l_option_visee(self):
+        """ACAL2025 — l'option rangée est celle de la CONCEPTION (« avec »), plus celle que
+        les lignes du devis recommandent (« sans »)."""
         from apps.calepinage.services.devis_retenu import CLE_OPTION_DESSINEE
 
+        from .test_acal_cible_lead import ranger_conception
+
+        ranger_conception(lead=self.lead_lie, nb=35, avec=48, option='avec')
         calepinage = self._calepinage(self._les_deux('Sans batterie', statut='brouillon'))
         url = f'{url_detail(calepinage.pk)}layout/'
         reponse = self.api.post(url, {'schema_version': 2, 'zones': []}, format='json',
@@ -248,7 +253,7 @@ class CibleOptionRetenueTest(_DevisDeuxOptions):
         self.assertEqual(reponse.status_code, 200, reponse.data)
         calepinage.refresh_from_db()
         self.assertEqual(calepinage.resultat[CLE_OPTION_DESSINEE],
-                         {'devis': calepinage.devis_id, 'option': 'sans'})
+                         {'devis': calepinage.devis_id, 'option': 'avec'})
 
 
 class LignesDuDevisPlusSourceTest(_DevisDeuxOptions):
@@ -261,6 +266,7 @@ class LignesDuDevisPlusSourceTest(_DevisDeuxOptions):
 
         from apps.calepinage.services import devis_retenu, electrique
         from apps.calepinage.services.devis import _cible_du_calepinage
+        from apps.calepinage.services.modules_stock import modules_disponibles_du_calepinage
 
         from .test_acal_cible_lead import ranger_conception
 
@@ -273,7 +279,9 @@ class LignesDuDevisPlusSourceTest(_DevisDeuxOptions):
                            side_effect=AssertionError('lignes du devis lues')) as lu_id:
             self.assertEqual(_cible_du_calepinage(calepinage)['panneaux'], 35)
             electrique.resoudre_materiel(self.company, {}, calepinage=calepinage)
+            modules_disponibles_du_calepinage(calepinage, [])  # ACAL2025 — l'ordre des modules
         self.assertEqual((lu.call_count, lu_id.call_count), (0, 0))
+        self.assertFalse(hasattr(devis_retenu, 'module_retenu_du_devis'))
         self.assertFalse(hasattr(electrique, '_produits_du_devis'))  # mutant « rétabli » : rouge
         self.assertFalse(hasattr(devis_retenu, 'produits_retenus'))
         self.assertFalse(hasattr(devis_retenu, 'cible_de_l_option_retenue'))

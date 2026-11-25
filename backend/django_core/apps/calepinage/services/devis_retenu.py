@@ -162,13 +162,15 @@ def cible_de_la_conception(calepinage):
 
 def memoriser_option_dessinee(calepinage):
     """ACAL1951 — range ``{devis, option}`` visés par l'enregistrement du dessin
-    dans ``resultat`` (retiré sans devis lié). N'écrit rien quand la valeur
-    rangée est déjà la bonne. Rend la valeur rangée."""
+    dans ``resultat`` : ACAL2025, l'option est celle de la conception COURANTE
+    (cible de l'atelier), jamais celle des lignes du devis ; retirée sans option
+    (aucune conception complète). N'écrit rien quand la valeur rangée est déjà
+    la bonne. Rend la valeur rangée."""
     from .resultat import modifier_resultat
 
-    conception = conception_du_devis_lie(calepinage)
-    valeur = ({'devis': conception['devis'], 'option': conception['option']}
-              if conception else None)
+    option = (cible_de_la_conception(calepinage) or {}).get('option')
+    valeur = ({'devis': getattr(calepinage, 'devis_id', None), 'option': option}
+              if option else None)
     if (getattr(calepinage, 'resultat', None) or {}).get(CLE_OPTION_DESSINEE) == valeur:
         return valeur
 
@@ -186,20 +188,6 @@ def _onduleur_retenu(conception):
     """ACAL1952 — la première ligne onduleur de l'option retenue, ou ``None``."""
     onduleurs = (conception or {}).get('onduleurs') or []
     return onduleurs[0] if onduleurs and onduleurs[0].get('produit') else None
-
-
-def _module_retenu(conception):
-    module = (conception or {}).get('module')
-    produit = module.get('produit') if isinstance(module, dict) else None
-    return produit if produit not in (None, '') else None
-
-
-def module_retenu_du_devis(calepinage):
-    """Rejeu T3-VAGUEC2 — le produit MODULE de la conception retenue du devis
-    lié (``apps.ventes.selectors_calepinage.conception_retenue_du_devis``),
-    ou ``None`` sans devis lié ni ligne panneau : le module que l'atelier pose
-    d'office, jamais un module d'essai du catalogue de même puissance."""
-    return _module_retenu(conception_du_devis_lie(calepinage))
 
 
 def _longueur_du_devis(conception):
