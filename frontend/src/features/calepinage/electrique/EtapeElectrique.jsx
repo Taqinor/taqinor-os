@@ -45,7 +45,7 @@ const nb = (v, decimals = 0) => formatNumber(v, { decimals, locale: 'fr' })
 
 /* Les props du rail (calepinageId, builderApi, onRecharger, lectureSeule, documentVivant) sont
    relayées TELLES QUELLES à chaque section avancée. */
-function Section({ cle, libelle, propsDuRail }) {
+function Section({ cle, libelle, propsDuRail, surEnregistre }) {
   const Composant = ongletParCle(cle)?.composant
   return (
     <AccordionItem value={cle} data-testid={`cal-electrique-section-${cle}`}>
@@ -53,7 +53,7 @@ function Section({ cle, libelle, propsDuRail }) {
       <AccordionContent>
         <ErrorBoundary fallback={<p role="alert" className="text-sm text-destructive">{`La section « ${libelle} » n’a pas pu s’afficher.`}</p>}>
           <Suspense fallback={<Spinner />}>
-            {Composant && <Composant {...propsDuRail} />}
+            {Composant && <Composant {...propsDuRail} surEnregistre={surEnregistre} />}
           </Suspense>
         </ErrorBoundary>
       </AccordionContent>
@@ -297,7 +297,7 @@ export default function EtapeElectrique(props) {
           <AccordionTrigger className="cel-avances-lien">Réglages avancés</AccordionTrigger>
           <AccordionContent>
             <Accordion type="multiple" value={sections} onValueChange={setSections}>
-              {SECTIONS_ELECTRIQUES.map((s) => <Section key={s.cle} {...s} propsDuRail={propsDuRail} />)}
+              {SECTIONS_ELECTRIQUES.map((s) => <Section key={s.cle} {...s} propsDuRail={propsDuRail} surEnregistre={relire} />)}
             </Accordion>
           </AccordionContent>
         </AccordionItem>

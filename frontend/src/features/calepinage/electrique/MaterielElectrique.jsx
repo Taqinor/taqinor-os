@@ -26,7 +26,7 @@ import DevisRetenu from './DevisRetenu'
 
 const idChamp = (champ) => `acal149-champ-${champ}`
 
-export default function MaterielElectrique({ calepinageId, lectureSeule = false } = {}) {
+export default function MaterielElectrique({ calepinageId, lectureSeule = false, surEnregistre = null } = {}) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
@@ -58,6 +58,7 @@ export default function MaterielElectrique({ calepinageId, lectureSeule = false 
     for (const role of ROLES) corps[role.champ] = valeur(role, courant)
     calepinageApi.calepinages.enregistrerEntreeElectrique(id, corps)
       .then(() => lire())
+      .then(() => surEnregistre?.()) // T4-X7-011 : la liste « Prêt à envoyer ? » se relit
       .catch((err) => {
         const parChamp = refusParChamp(err?.response?.data)
         setErreurs(Object.keys(parChamp).length
