@@ -220,18 +220,66 @@ def preparation_etude_ci(devis, lignes=None):
             'existant': params.get(CLE_ETUDE_CI) or {}}
 
 
-def etude_ci_calculee(devis, preparation, lignes=None):
+def lignes_de_l_ecran(devis, lignes):
+    """T4-X6-008 — les lignes PRODUIT que l'écran d'édition envoie (``produit`` de la société
+    du devis, quantité, prix, remise, TVA, option), en ``LigneDevis`` NON enregistrées : la
+    composition que l'étude lit (:class:`DevisAuxLignes`), jamais écrite. Une ligne
+    illisible ou d'un produit étranger est ignorée (elle n'apporte rien)."""
+    from decimal import Decimal, InvalidOperation
+
+    from apps.stock.selectors import get_produit_scoped
+    from apps.ventes.models import LigneDevis
+
+    def _decimal(valeur, defaut):
+        return Decimal(str(valeur)) if valeur not in (None, '') else defaut
+
+    composees = []
+    for ordre, ligne in enumerate(li for li in (lignes or []) if isinstance(li, dict)):
+        if (ligne.get('type_ligne') or 'produit') != 'produit':
+            continue
+        try:
+            produit = get_produit_scoped(devis.company, int(ligne.get('produit')))
+            valeurs = {'quantite': _decimal(ligne.get('quantite'), None),
+                       'prix_unitaire': _decimal(ligne.get('prix_unitaire'), None),
+                       'remise': _decimal(ligne.get('remise'), Decimal('0')),
+                       'taux_tva': _decimal(ligne.get('taux_tva'), devis.taux_tva)}
+        except (TypeError, ValueError, InvalidOperation):
+            continue
+        if produit is None or valeurs['quantite'] is None:
+            continue
+        composees.append(LigneDevis(
+            devis=devis, produit=produit, designation=str(ligne.get('designation') or produit.nom)[:255],
+            type_ligne='produit', ordre=ordre, variante=str(ligne.get('variante') or ''),
+            optionnelle=bool(ligne.get('optionnelle')), **valeurs))
+    return composees
+
+
+def etude_ci_de_l_ecran(devis, lignes, entrees):
+    """T4-X6-008 — l'étude C&I de l'écran d'édition : LE calcul rangé du devis
+    (:func:`preparation_etude_ci` + :func:`etude_ci_calculee`, taille, onduleurs et option
+    « avec » DES LIGNES envoyées) avec les entrées TAPÉES par-dessus ; ``None`` quand les
+    lignes ne portent aucun panneau (l'écran garde l'aperçu du moteur)."""
+    composees = lignes_de_l_ecran(devis, lignes)
+    preparation = preparation_etude_ci(devis, composees)
+    if not preparation or not preparation.get('kwc'):
+        return None
+    return etude_ci_calculee(devis, preparation, composees, entrees=entrees)[0]
+
+
+def etude_ci_calculee(devis, preparation, lignes=None, *, entrees=None):
     """``etudier_ci`` en TAILLE DONNÉE sur la préparation : ``(etude, bloc)``,
     ``bloc`` ``None`` sans bilan. Sans « une seule batterie »
     (``depart_une_batterie_ci.poser_depart``, qui simule dans une transaction :
-    laissé au rafraîchisseur)."""
+    laissé au rafraîchisseur). ``entrees`` (T4-X6-008, écran) : les saisies tapées,
+    posées par-dessus le devis avec la provenance « saisie »."""
     from apps.ventes.domain.etude_ci import (
         CLE_PRODUCTION_FIGEE, CLE_PRODUCTION_FIGEE_RASANTE, CLE_TAILLE_CREATION, VERSION_MOTEUR,
         _source_production, bloc_etude_ci_stocke, etudier_ci, provenance_lignes_du_devis)
     devis = avec_lignes(devis, lignes)
     params, base = preparation['params'], preparation['base']
+    corps = dict(entrees or {}, mode=preparation['mode'], taille_explicite_kwc=preparation['kwc'])
     etude = etudier_ci(
-        preparation['company'], {'mode': preparation['mode'], 'taille_explicite_kwc': preparation['kwc']},
+        preparation['company'], corps,
         devis=devis, lead=getattr(devis, 'lead', None),
         production_figee=None if base else params.get(CLE_PRODUCTION_FIGEE),
         onduleurs_imposes=preparation['onduleurs'] or None,
@@ -239,7 +287,7 @@ def etude_ci_calculee(devis, preparation, lignes=None):
         option_avec_imposee=preparation['imposee'],
         production_figee_rasante=params.get(CLE_PRODUCTION_FIGEE_RASANTE),
         verdict_creation=params.get(CLE_TAILLE_CREATION),
-        provenance_corps=provenance_lignes_du_devis(), base_production=base)
+        provenance_corps=None if entrees else provenance_lignes_du_devis(), base_production=base)
     if preparation['hyp_base'] and etude.get('bilan') is not None:
         etude['hypotheses'] = list(etude.get('hypotheses') or []) + [preparation['hyp_base']]
     if etude.get('bilan') is None:

@@ -268,15 +268,18 @@ describe('ADEV101 — carte résultat : 4 chiffres en tête, détails du calcul 
     expect(screen.getByTestId('ci-alertes')).toHaveTextContent('Vendeur seulement')
   })
 
-  it('« retour » seulement quand le serveur le sert ; économie « — » quand elle est omise', () => {
-    const { rerender } = render(<CarteResultatCi donnees={donnees()} />)
-    const sert = ECO.indicateurs?.retour_ans != null
-    expect(Boolean(screen.queryByTestId('ci-retour'))).toBe(sert)
+  // T4-X6-007 — UN retour pour l'offre réseau : celui de l'économie C&I sur les lignes de
+  // l'option (`retourSans`, le chiffre du PDF), jamais celui que l'étude calcule sur le prix
+  // de son propre moteur (`economie_ci.indicateurs.retour_ans` de l'aperçu).
+  it('« retour » seulement quand l’économie de l’option le sert ; économie « — » quand elle est omise', () => {
+    const { rerender } = render(<CarteResultatCi donnees={donnees({
+      economie_ci: { ...ECO, indicateurs: { ...ECO.indicateurs, retour_ans: 4.2 } } })} />)
+    expect(screen.queryByTestId('ci-retour')).toBeNull()
     rerender(<CarteResultatCi donnees={donnees({ economie_ci: { statut: 'omis' } })} />)
     expect(screen.queryByTestId('ci-retour')).toBeNull()
     expect(screen.getByTestId('ci-economie-an')).toHaveTextContent('—')
-    rerender(<CarteResultatCi donnees={donnees({ economie_ci: { ...ECO, indicateurs: { ...ECO.indicateurs, retour_ans: 4.2 } } })} />)
-    expect(screen.getByTestId('ci-retour')).toHaveTextContent('4,2')
+    rerender(<CarteResultatCi donnees={donnees()} retourSans={5.5} />)
+    expect(screen.getByTestId('ci-retour')).toHaveTextContent('5,5')
   })
 
   it('aucune clé interne brute : bornes et raison d’arrêt en français, inconnues sous « Autres »', () => {
