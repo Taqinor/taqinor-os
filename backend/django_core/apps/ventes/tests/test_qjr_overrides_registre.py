@@ -108,7 +108,10 @@ class EffectifTests(SimpleTestCase):
 
     def test_la_vue_effective_a_la_forme_du_contrat(self):
         contrat = json.loads(CONTRAT.read_text(encoding='utf-8'))
-        attendues = set(contrat['exemple']['effectif']['taille.nb_panneaux'])
+        # T4-X4-019 — `option` n'est servi que sur un devis à DEUX options
+        # (note `option` du contrat) : le devis de ce test n'en a qu'une.
+        attendues = set(contrat['exemple']['effectif']['taille.nb_panneaux']) - {'option'}
+        self.assertIn('option', contrat['notes'])
         devis = _Devis({'taille.nb_panneaux': {
             'valeur': 14, 'origine': 'manuel'}})
         bloc = R.vue_effective(devis, {'taille.nb_panneaux': 12,
