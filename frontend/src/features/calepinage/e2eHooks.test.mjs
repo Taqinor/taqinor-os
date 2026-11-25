@@ -378,6 +378,7 @@ export const ALL_HOOKS = [
   'cal-variante-confirmer',
   'cal-variante-dupliquer',
   'cal-variante-refus', // T4-X9-010
+  'cal-simulation-a-refaire', // T4-X2-002
   'cal-variante-formulaire',
   'cal-variante-nom',
   'cal-variante-nom-erreur',

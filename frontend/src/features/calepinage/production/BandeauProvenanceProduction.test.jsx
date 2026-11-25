@@ -463,6 +463,21 @@ describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () =>
       + `production standard de la ville (étude technique : −${formatNumber(11.5, { decimals: 1 })} %)`))
   })
 
+  // T4-X2-002 (rejeu X9) — la ligne passait de « P50 6 926 kWh/an (simulation) » à l'estimation de l'atelier au seul
+  // enregistrement, sans rien dire : une simulation périmée est DITE, avec le lien pour la relancer.
+  it('T4-X2-002 — simulation périmée : « Simulation à refaire : le toit a changé depuis le dernier calcul » et le lien', async () => {
+    const r = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+    r.data.simule = true
+    r.data.simulation_perimee = true
+    r.data.production = null // CALX70 : production publiée `null` tant que le document a changé
+    calepinageApi.calepinages.resultat.mockResolvedValue(r)
+    rendreAvec(null, false)
+    const ligne = await screen.findByTestId('cal-simulation-a-refaire')
+    expect(ligne).toHaveTextContent('Simulation à refaire : le toit a changé depuis le dernier calcul.')
+    expect(within(ligne).getByRole('link', { name: 'relancer la simulation' })).toBeInTheDocument()
+    expect(screen.getByTestId('calx65-bandeau')).not.toHaveTextContent('avant la simulation')
+  })
+
   it('calepinage enregistré ⇒ rien', async () => {
     simule()
     rendreAvec(pose)

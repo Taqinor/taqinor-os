@@ -7,7 +7,7 @@ import useResource from '../../../hooks/useResource'
 import { formatDate, formatNumber, formatPercent } from '../../../lib/format'
 import { PARAM_ONGLET } from '../atelier/onglets'
 import { estProfilDepart, MENTION_PUBLIEE } from '../reglages/profilDepart'
-import { estIncomplet } from './BandeauProvenanceProduction.helpers'
+import { estIncomplet, SIMULATION_A_REFAIRE, simulationARefaire } from './BandeauProvenanceProduction.helpers'
 import Pourquoi from '../commun/Pourquoi'
 
 /* ============================================================================
@@ -69,7 +69,16 @@ export default function BandeauProvenanceProduction({ calepinageId, chiffrage = 
 
   return (
     <p className="mt-2 text-xs text-foreground" data-testid="calx65-bandeau">
-      <span data-testid="calx65-rapide">{pvgisARepondu(source) ? MENTION_PVGIS : MENTION_ATELIER}</span>
+      <span data-testid="calx65-rapide">{pvgisARepondu(source) ? MENTION_PVGIS
+        : simulationARefaire(data) ? "Estimation rapide de l'atelier" : MENTION_ATELIER}</span>
+      {!aSimulation && simulationARefaire(data) && (
+        <span className="block" data-testid="cal-simulation-a-refaire">
+          {`${SIMULATION_A_REFAIRE} `}
+          <Link to={`/calepinage/${calepinageId}?${PARAM_ONGLET}=production`} className="text-primary-text underline">
+            relancer la simulation
+          </Link>
+        </span>
+      )}
       {aSimulation && (
         <span data-testid="calx65-simulation">
           {' — Simulation : P50 '}

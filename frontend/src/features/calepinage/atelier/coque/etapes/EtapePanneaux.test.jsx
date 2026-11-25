@@ -544,6 +544,20 @@ describe('étape Panneaux — sur la carte', () => {
     expect(puce).not.toHaveTextContent('52 695')
   })
 
+  // T4-X2-002 (rejeu X9) — même pose, simulation faite : après « Enregistrer », la bande passait de « Production la première
+  // année 6 926 kWh » à une autre phrase sans rien dire. La simulation périmée est DITE, avec le geste pour la refaire.
+  it('T4-X2-002 — simulation périmée : la bande dit « Simulation à refaire » et où la relancer, une fois', async () => {
+    servir({ resultat: { simule: true, simulation_perimee: true,
+      production: { total: { p50_kwh: 6926, complete: true } }, pose: { total_modules: 6 } } })
+    monterConstructeur({ prod: '—', cover: '—' })
+    rendre()
+    const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+    await waitFor(() => expect(puce).toHaveTextContent(
+      'Simulation à refaire : le toit a changé depuis le dernier calcul. Relancez-la à l’étape Les résultats.'))
+    expect(puce.textContent.split('Simulation à refaire').length).toBe(2)
+    expect(puce).not.toHaveTextContent('6 926')
+  })
+
   it('ACAL2022 — pendant le dessin : « au prochain enregistrement » à la place de la production, jamais une estimation', () => {
     monterConstructeur({ prod: 'production au prochain enregistrement', cover: '—' })
     rendre()

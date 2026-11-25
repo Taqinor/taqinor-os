@@ -11,7 +11,8 @@ import { BESOIN_MAX, gestes, useConstructeur, usePoseVivante } from './panneaux/
 import { jourMois, ligneModule } from './panneaux/formats'
 import { useCibleFactures } from './panneaux/lectures'
 import ValeurUnite from './panneaux/ValeurUnite'
-import { fmtKwc, modulesServis, productionPubliee } from './panneaux/sources'
+import { fmtKwc, modulesServis, productionPubliee, simulationARefaire } from './panneaux/sources'
+import { SIMULATION_A_REFAIRE } from '../../../production/BandeauProvenanceProduction.helpers' // T4-X2-002
 
 /* ============================================================================
    COQUE — L'ÉCRAN DE L'ÉTAPE « PANNEAUX » (maquettes Panneaux et Tablette).
@@ -86,6 +87,7 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
     entrees: Array.isArray(catalogue?.modules) ? catalogue.modules : [],
     servis: modulesServis(entree),
     publiee: productionPubliee(resultat),
+    aRefaire: simulationARefaire(resultat), // T4-X2-002
   }
 }
 
@@ -339,7 +341,7 @@ function AlerteOmbre({ ombre, g }) {
 /** La puce de la carte. Production publiée FRAÎCHE et COMPLÈTE → la pose simulée et sa production, libellé de l'étape
     Résultats ; sinon la pose du constructeur, son estimation nommée « estimation » et la part production ÷ consommation
     (production estimée ÷ consommation du lead : jamais « de la facture »). */
-function PuceResume({ figures, publiee, site = null }) {
+function PuceResume({ figures, publiee, site = null, aRefaire = false }) {
   // ACAL2022 (T4-X2-009) — le site compte plus que ce pan (champ au sol, autre pan) : la bande dit qu'elle compte CE pan et le total du site est dit.
   const autrePan = !publiee && site?.panneaux > 0 && figures.panneaux > 0 && site.panneaux !== figures.panneaux
   const pan = autrePan ? ' · ce pan' : ''
@@ -364,13 +366,16 @@ function PuceResume({ figures, publiee, site = null }) {
   // T4-X9-006 — tailles différentes : la phrase du constructeur, UNE fois, en texte courant qui revient à la ligne dans la
   // bande (jamais dans une case de chiffre, qui débordait sous la pile de zoom).
   const phrase = publiee ? null : figures.tailles
-  if (lus.length === 0 && !phrase) return null
+  // T4-X2-002 — la simulation enregistrée est périmée : DIT, avec le geste pour la refaire (jamais un silence).
+  const aRefaireTexte = !publiee && aRefaire ? `${SIMULATION_A_REFAIRE} Relancez-la à l’étape Les résultats.` : null
+  if (lus.length === 0 && !phrase && !aRefaireTexte) return null
   return (
     <CarteFlottante className="cal-pan-puce" data-testid="cal-sur-carte-resume">
       {lus.map(([libelle, valeur]) => (
         <Indicateur key={libelle} libelle={libelle} valeur={<ValeurUnite texte={valeur} />} />
       ))}
       {phrase && <p className="cal-pan-puce-phrase">{phrase}</p>}
+      {aRefaireTexte && <p className="cal-pan-puce-phrase">{aRefaireTexte}</p>}
     </CarteFlottante>
   )
 }
@@ -476,7 +481,7 @@ export default function EtapePanneaux({
       <AlerteOmbre key={etat.ombre?.n ?? 0} ombre={etat.ombre} g={g} />
       <AvisOmbresNonComptees manque={parcours?.manque} />
       <SurCarte>
-        <PuceResume figures={etat.figures} publiee={servi.publiee} site={site} />
+        <PuceResume figures={etat.figures} publiee={servi.publiee} site={site} aRefaire={servi.aRefaire} />
         <div className="cal-carte-soleil" data-testid="cal-carte-soleil">
           {etat.soleil.carte && <LegendeSoleil carte={etat.soleil.carte} g={g} />}
           <LecteurSoleil soleil={etat.soleil} g={g} />
