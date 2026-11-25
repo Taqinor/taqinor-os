@@ -837,6 +837,17 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
     expect(zone()).toHaveTextContent('La production simulée de votre pose est ci-dessous.')
   })
 
+  it('T4-X3-009 — la conception compte 8 panneaux de 550 W : la ligne NOMME son panneau, jamais un « 8 » nu', async () => {
+    const d = { ...COMPLET(), conception: sans() }
+    calepinageApi.calepinages.designContext.mockResolvedValue({
+      data: { chiffrage: { kwc: { valeur: 4.4, unite: 'kWc', etat: 'servi' } }, cible: { panneaux: 8, kwc: 4.4, panel_watt: 550 } },
+    })
+    servir(d)
+    rendre()
+    await waitFor(() => expect(zone()).toHaveTextContent(
+      `calculée pour la conception du lead : ${kwc(4.4)} (8 panneaux de 550 W) — votre pose en compte`))
+  })
+
   it('T4-X5-001 — même taille que la pose : UNE ligne, sans renvoi', async () => {
     const d = { ...COMPLET(), conception: sans() }
     calepinageApi.calepinages.designContext.mockResolvedValue(contexteDeTaille(d.pose.kwc, d.pose.total_modules))
