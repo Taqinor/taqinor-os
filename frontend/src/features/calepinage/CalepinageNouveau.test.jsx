@@ -305,6 +305,27 @@ describe('CalepinageNouveau (CAL36)', () => {
     expect(second).toBe(premier)
   })
 
+  it('ACAL2047 — renvoi accueilli par le 409 « en cours » : message dédié et la MÊME clé repart au troisième envoi', async () => {
+    mocks.depuisModele
+      .mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout' })
+      .mockRejectedValueOnce({ response: { status: 409, data: { code: 'idempotency_en_cours', detail: 'Une requête identique est déjà en cours de traitement.' } } })
+    mocks.list.mockResolvedValue({ data: { results: [] } })
+    rendre()
+    allerSurOnglet('Client')
+    await choisirDansCombobox('Client rattaché au calepinage', 'Client d’essai')
+    const creer = () => fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    creer()
+    await waitFor(() => expect(mocks.optionsDepuisModele).toHaveBeenCalledTimes(1))
+    await screen.findByRole('alert')
+    creer()
+    expect(await screen.findByText(/Création en cours/)).toBeInTheDocument()
+    creer()
+    await waitFor(() => expect(mocks.optionsDepuisModele).toHaveBeenCalledTimes(3))
+    const cles = mocks.optionsDepuisModele.mock.calls.map(([o]) => o.idempotencyKey)
+    expect(cles[1]).toBe(cles[0])
+    expect(cles[2]).toBe(cles[0])
+  })
+
   it('T4-X9-011 — pas de réponse et rien de retrouvé : la liste est désignée avant tout nouvel essai', async () => {
     mocks.depuisModele.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout' })
     mocks.list.mockResolvedValue({ data: { results: [] } })
