@@ -29,6 +29,7 @@ export function useApercuEtude(ctx) {
     realBillMad, distributeur, baremeSociete, provenanceMois, leadDuDevis, leads,
     leadId, modeInstallation, clientsConnus, clientId, confirm, fHiver, fEte,
     sizing, dispatchSizing, produits, monthly, realBillSaisi, distributeurChoisi, consoStockee, totals,
+    showSans, showAvec,
   } = ctx
 
   // La capacité batterie se juge sur des lignes DIFFÉRÉES (la frappe reste instantanée).
@@ -146,10 +147,15 @@ export function useApercuEtude(ctx) {
   // chaque option à l'écran (jamais un prix d'achat), envoyé avec l'aperçu.
   const corpsConception = corpsApercuConception({
     leadId, modeInstallation, fHiver, fEte, consommation: consommationImposee,
-    nbPanneaux: comptePanneauxOption(lines, 'sans', produits),
     investissement: { sans: totals?.totalSans, avec: totals?.totalAvec },
   })
-  const conceptionEcran = useConceptionEcran({ leadId, corps: corpsConception })
+  // E7d (CI e2e figures-parite) — les panneaux des lignes par option : la conception
+  // servie doit les porter ; sinon l'aperçu est redemandé au compte imposé.
+  const compte = modeInstallation === 'residentiel' ? {
+    sans: comptePanneauxOption(lines, 'sans', produits), avec: comptePanneauxOption(lines, 'avec', produits),
+    deux: Boolean(showSans && showAvec),
+  } : null
+  const conceptionEcran = useConceptionEcran({ leadId, corps: corpsConception, compte })
   const chiffres = chiffresConception(conceptionEcran.conception)
   // La conception affichée est-elle l'APERÇU de cet écran (payback sur ses lignes) ?
   // La version rangée porte le payback d'un devis de RÉFÉRENCE : jamais affiché ici.
@@ -249,7 +255,14 @@ export function useApercuEtude(ctx) {
     : null
   const batterieInvendableServeur = verdictBatterieServeur
     ? !verdictBatterieServeur.vendable : false
-  const apercuEcoAvec = batterieInvendableServeur ? null : (chiffres?.ecoAvec ?? null)
+  // E7d (CI e2e figures-parite) — les deux options montrées, la conception n'en sert
+  // qu'une (nombre de panneaux imposé : le moteur chiffre une option) : l'option avec
+  // batterie n'est pas chiffrée — l'écran le DIT, jamais les chiffres de l'option sans.
+  const apercuAvecAbsent = chiffres && showSans && showAvec && !valeursServies.avec
+    ? 'Option avec batterie non chiffrée pour ce nombre de panneaux : le moteur chiffre une seule option '
+      + 'quand le nombre de panneaux est imposé. Enregistrez le devis pour recalculer les deux options.'
+    : null
+  const apercuEcoAvec = batterieInvendableServeur || apercuAvecAbsent ? null : (chiffres?.ecoAvec ?? null)
   // AGEN11 — le payback SERVI par option (celui du PDF, sur le devis de
   // référence de la conception rangée) ; absent ⇒ « N/A », jamais recalculé.
   // E7d (M1) — le payback de l'APERÇU, calculé sur le TTC des lignes de l'écran ;
@@ -300,5 +313,6 @@ export function useApercuEtude(ctx) {
     apercuProductionKwh, apercuProductionKwhAvec, apercuEcoSans, verdictBatterieServeur,
     batterieInvendableServeur, apercuEcoAvec, apercuPaybackSans, apercuPaybackAvec, apercuPaybackSansJamais,
     apercuPaybackAvecJamais, signerEcoOuRoi, chartData, apercuPaybackSansAbsent, apercuPaybackAvecAbsent,
+    apercuAvecAbsent,
   }
 }

@@ -989,12 +989,12 @@ export default function DevisGenerator({
     verdictBatterieServeur, batterieInvendableServeur,
     apercuEcoAvec, apercuPaybackSans, apercuPaybackAvec,
     apercuPaybackSansJamais, apercuPaybackAvecJamais,
-    signerEcoOuRoi, chartData, apercuPaybackSansAbsent, apercuPaybackAvecAbsent,
+    signerEcoOuRoi, chartData, apercuPaybackSansAbsent, apercuPaybackAvecAbsent, apercuAvecAbsent,
   } = useApercuEtude({
     lines, kwpLignes, kwpAvec, realBillMode, realBillKwh,
     realBillMad, distributeur, baremeSociete, provenanceMois, leadDuDevis, leads,
     leadId, modeInstallation, clientsConnus, clientId, confirm, editId, fHiver, fEte,
-    sizing, dispatchSizing, produits, monthly, realBillSaisi, distributeurChoisi, consoStockee, totals,
+    sizing, dispatchSizing, produits, monthly, realBillSaisi, distributeurChoisi, consoStockee, totals, showSans, showAvec,
   })
 
   // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──
@@ -2019,7 +2019,7 @@ export default function DevisGenerator({
           verdictBatterieServeur={verdictBatterieServeur} apercuEcoAvec={apercuEcoAvec}
           apercuPaybackAvecJamais={apercuPaybackAvecJamais} apercuPaybackAvec={apercuPaybackAvec} apercuPaybackAvecAbsent={apercuPaybackAvecAbsent}
           capaciteBatterieInconnue={capaciteBatterieInconnue} facturesSaisies={facturesSaisies}
-          chartData={chartData}
+          chartData={chartData} apercuAvecAbsent={apercuAvecAbsent}
           editDevis={editDevis} simulationRepliee={simulationRepliee}
           basculerCarte={basculerCarte}
         />

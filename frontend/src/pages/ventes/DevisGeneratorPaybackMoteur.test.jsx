@@ -147,6 +147,33 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
     expect(figure(container, 'payback_ans')).toBe(`${APERCU.valeurs.sans.payback.valeur} ans`)
   }, 20000)
 
+  // E7d (CI e2e figures-parite, 25/11) — un devis « Les deux » aux champs PV
+  // divergents (8 panneaux sans, 10 avec), rouvert sans rien taper et SANS
+  // version rangée : l'aperçu est demandé sur les valeurs du lead (aucun nombre
+  // de panneaux imposé — l'imposition ne sert qu'UNE option) ; sa conception
+  // porte les mêmes comptes que les lignes ⇒ la production de CHAQUE option.
+  it('« Les deux » divergent sans version rangée : la production de chaque option', async () => {
+    const devis = devisRouvert(RANGEE.lead)
+    devis.data.etude_params = { scenario: 'Les deux' }
+    const [panneau, onduleur] = devis.data.lignes
+    devis.data.lignes = [{ ...panneau, variante: 'sans' }, { ...panneau, id: 3, quantite: '10', variante: 'avec', ordre: 2 },
+      onduleur]
+    ventesApi.getDevisById.mockResolvedValue(devis)
+    ventesApi.getConceptionLead.mockRejectedValue({ response: { status: 404 } })
+    const option = (nb, production) => ({ ...APERCU.valeurs.sans,
+      nb_panneaux: { valeur: nb, unite: 'panneaux', source: 'moteur' },
+      production_annuelle: { valeur: production, unite: 'kWh/an', source: 'moteur' } })
+    const deuxOptions = { ...APERCU, option_retenue: 'avec', valeurs: { sans: option(8, 9000), avec: option(10, 11250) } }
+    const uneOption = { ...APERCU, valeurs: { sans: option(8, 9000) } }
+    ventesApi.apercuConception.mockImplementation((corps) => Promise.resolve({
+      data: corps?.imposes?.nb_panneaux ? uneOption : deuxOptions }))
+    const { container } = renderEdition()
+    const prod = (opt) => container.querySelector(`[data-figure="production_annuelle_kwh"][data-figure-option="${opt}"]`)
+      ?.getAttribute('data-figure-value')?.replace(/\D/g, '')
+    await waitFor(() => expect([prod('sans'), prod('avec')]).toEqual(['9000', '11250']), { timeout: 8000 })
+    expect(ventesApi.apercuConception.mock.calls.every(([c]) => !c?.imposes?.nb_panneaux)).toBe(true)
+  }, 20000)
+
   // E7d (revue lot 4, M2) — un aperçu en ÉCHEC après une saisie est DIT : la phrase du
   // serveur (400 nommant un champ) ou « Aperçu indisponible — Réessayer » (5xx, réseau) ;
   // les cartes ne retombent JAMAIS sur la version rangée comme si elle était à jour.

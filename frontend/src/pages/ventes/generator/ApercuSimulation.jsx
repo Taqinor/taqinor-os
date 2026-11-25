@@ -31,7 +31,7 @@ export default function ApercuSimulation({
   apercuPaybackSans, totals, avecRec, batterieInvendableServeur, verdictBatterieServeur,
   apercuEcoAvec, apercuPaybackAvecJamais, apercuPaybackAvec, capaciteBatterieInconnue,
   apercuPaybackSansAbsent = 'N/A', apercuPaybackAvecAbsent = 'N/A',
-  facturesSaisies, chartData,
+  facturesSaisies, chartData, apercuAvecAbsent = null,
   // EDC9 — repli en Édition complète (état tenu par l'écran, choix mémorisé).
   editDevis = null, simulationRepliee = false, basculerCarte = () => {},
 }) {
@@ -506,16 +506,26 @@ export default function ApercuSimulation({
                     </p>
                   ) : (
                     <>
-                      <CarteMetrique label="Économies"
-                                     valeur={signerEcoOuRoi(fmtNum(Math.round(apercuEcoAvec)))}
-                                     unit="MAD / an"
-                                     figure="economie_annuelle" figureOption="avec" />
-                      <CarteMetrique label="ROI"
-                                     valeur={signerEcoOuRoi(
-                                       apercuPaybackAvecJamais ? 'Non rentabilisé sur 25 ans'
-                                         : apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : apercuPaybackAvecAbsent)}
-                                     unit="retour sur invest." accent
-                                     figure="payback_ans" figureOption="avec" />
+                      {/* E7d — option avec non chiffrée par la conception servie : la
+                          raison à la place de l'économie et du ROI ; le coût (lignes) reste. */}
+                      {apercuAvecAbsent ? (
+                        <p className="text-xs text-muted-foreground" data-testid="apercu-avec-non-chiffree">
+                          {apercuAvecAbsent}
+                        </p>
+                      ) : (
+                        <>
+                          <CarteMetrique label="Économies"
+                                         valeur={signerEcoOuRoi(fmtNum(Math.round(apercuEcoAvec)))}
+                                         unit="MAD / an"
+                                         figure="economie_annuelle" figureOption="avec" />
+                          <CarteMetrique label="ROI"
+                                         valeur={signerEcoOuRoi(
+                                           apercuPaybackAvecJamais ? 'Non rentabilisé sur 25 ans'
+                                             : apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : apercuPaybackAvecAbsent)}
+                                         unit="retour sur invest." accent
+                                         figure="payback_ans" figureOption="avec" />
+                        </>
+                      )}
                       <CarteMetrique label="Coût"
                                      valeur={moteur(fmtNum(Math.round(totals.totalAvec)))}
                                      unit="MAD TTC"

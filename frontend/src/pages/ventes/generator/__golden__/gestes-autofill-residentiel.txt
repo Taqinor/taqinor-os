@@ -368,9 +368,7 @@ Ligne optionnelle (add-on hors total)=on [ ]
         "entrees": {
           "facture_hiver": "3000"
         },
-        "imposes": {
-          "nb_panneaux": 8
-        },
+        "imposes": {},
         "investissement": {
           "sans": 50800,
           "avec": 70000
