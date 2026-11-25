@@ -71,7 +71,10 @@ CHAMPS_CYCLE_DE_VIE = ('statut', 'date_envoi', 'date_acceptation',
 #: Jamais exposés à l'écriture (la référence est numérotée côté serveur, le PDF
 #: est un artefact de rendu).
 JAMAIS_EXPOSES = ('reference', 'fichier_pdf',
-                  'search_vector')  # NTPLT32 — index plein-texte, jamais écrit
+                  'search_vector',  # NTPLT32 — index plein-texte, jamais écrit
+                  # ADEV143 — pointeur vers la conception dont le devis naît, posé
+                  # par le serveur ; jamais écrit par un client, jamais servi.
+                  'conception_source')
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -86,7 +89,7 @@ class SurfaceDeclaree(SimpleTestCase):
                          "redeviendrait écrivable en silence.")
         self.assertIsInstance(DevisWriteSerializer.Meta.fields, list)
 
-    def test_la_surface_couvre_exactement_le_modele_moins_les_deux_exclus(self):
+    def test_la_surface_couvre_exactement_le_modele_moins_les_jamais_exposes(self):
         """AUCUN champ perdu à la bascule ``exclude`` → ``fields``.
 
         C'est le risque propre de cette tâche : oublier un nom, c'est rendre
