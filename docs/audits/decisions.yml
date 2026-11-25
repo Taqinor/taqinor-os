@@ -6012,3 +6012,62 @@ decisions:
     date: "2026-11-25"
     source: "compte rendu de la lane P1 (arrêt avant construction : `core/pompage/kit.py::composer_kit`, rôle `protection_dc` couvrant des pièces séparées, aucune protection AC au rôle pompage — migration 0162) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « DC box + AC protection » ; un article sans prix n'est jamais chiffré (« prix à renseigner ») : le devis de pompage n'est automatique qu'une fois ces articles chiffrés au catalogue par le fondateur"
     taches: []
+  - id: D-ACAL-119
+    question: "Atelier, mode guidé : un panneau ne se retire pas (cliquer un panneau ne le sélectionne pas, Suppr ne fait rien) ; le retrait n'existe qu'en mode Expert (« Un de moins »). Que faire ?"
+    options:
+      - cle: un_bouton
+        texte: "Un bouton « Retirer un panneau » à l'étape Panneaux du mode guidé, qui fait le même geste que « Un de moins » du mode Expert"
+      - cle: cliquer_pour_selectionner
+        texte: "Ouvrir en mode guidé la sélection au clic et la suppression du mode Expert"
+      - cle: laisser_en_expert
+        texte: "Rien ne change : retirer un panneau reste un geste du mode Expert"
+    reponse: un_bouton
+    date: "2026-11-25"
+    source: "constat T4-X7-012 du relecteur X7 ; compte rendu de la lane atelier-divers (poste Reda_Laptop) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Add a button (Recommended) »"
+    taches: []
+  - id: D-ACAL-120
+    question: "Dans le navigateur WebKit du test, les heures s'affichent une heure plus tard que celles écrites par le serveur (15:35 contre 16:35). Le serveur a raison (Maroc à UTC+0 depuis le 20/09/2026, `core/checks_tz.py`) ; les données de fuseau du navigateur de test semblent dater d'avant. Que faire ?"
+    options:
+      - cle: verifier_sur_un_vrai_ipad
+        texte: "Aucun changement de code maintenant ; regarder une heure sur un vrai iPad ou Safari à jour, et ne corriger que si le décalage est réel"
+      - cle: correctif_dans_les_ecrans
+        texte: "Les écrans détectent un navigateur qui ignore la nouvelle heure marocaine et corrigent eux-mêmes (contraire à la règle « l'ERP ne code jamais un décalage en dur »)"
+    reponse: verifier_sur_un_vrai_ipad
+    date: "2026-11-25"
+    source: "constat T4-X7-014 du relecteur X7 ; compte rendu de la lane fiche-lead-retour (poste Reda_Laptop) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Check a real iPad first (Recommended) »"
+    taches: []
+  - id: D-ACAL-121
+    question: "Générateur de devis : « Importer une courbe de charge » n'existe que pour le marché Industriel. Le marché Commercial doit-il l'avoir aussi ?"
+    options:
+      - cle: industriel_seulement
+        texte: "Rien ne change : un devis commercial garde le profil horaire déclaré"
+      - cle: ouvrir_au_commercial
+        texte: "Le même import au panneau Commercial du générateur, vers le même calcul heure par heure"
+    reponse: industriel_seulement
+    date: "2026-11-25"
+    source: "constat T4-X6-014 du relecteur X6 (reste non attribué) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Industriel only (Recommended) »"
+    taches: []
+  - id: D-ACAL-122
+    question: "Les phrases corrigées des PDF du lot 5 s'appliquent aux devis envoyés à partir du 26/11/2026 (date fixe : `regles_calcul.COUPURE_PDF_2511` et `COUPURE_PHRASES_PROFIL`). Si le lot est mis en ligne un autre jour, un devis envoyé entre-temps serait ré-imprimé avec des phrases que son client n'a pas reçues. Quand le lot 5 est-il déployé ?"
+    options:
+      - cle: le_26_11_avant_tout_envoi
+        texte: "Le fondateur lance le déploiement le 26/11/2026 avant qu'aucun devis ne soit envoyé ce jour-là ; la date du code reste telle quelle"
+      - cle: un_autre_jour
+        texte: "Le fondateur donne le jour ; la date du code est déplacée à ce jour avant le déploiement"
+      - cle: independant_du_jour
+        texte: "Une lane remplace la date fixe par le moment où le lot est réellement installé sur le serveur (code neuf dans le moteur de devis)"
+    reponse: le_26_11_avant_tout_envoi
+    date: "2026-11-25"
+    source: "relecture indépendante du lot 5 (moteur de devis), point B1 ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « 26/11, before sending (Recommended) » ; si le déploiement glisse à un autre jour, déplacer les deux dates AVANT de déployer"
+    taches: []
+  - id: D-ACAL-123
+    question: "Le lot 5 ajoute un bouton au panneau du devis ouvert depuis la fiche du lead : quand l'aperçu du PDF est refusé parce que le devis n'a pas d'onduleur, le panneau offre « Voir le devis une page » à la place d'un « Réessayer » inutile (constat T4-X6-017). La règle est que la fiche du lead ne change pas. Le garder ?"
+    options:
+      - cle: garder_le_bouton
+        texte: "Le bouton reste : il n'apparaît que dans ce cas de refus et remplace un « Réessayer » qui ne pouvait pas aboutir"
+      - cle: le_retirer
+        texte: "Le bouton est retiré avant la PR : le panneau revient au message de refus avec « Réessayer », comme sur main"
+    reponse: garder_le_bouton
+    date: "2026-11-25"
+    source: "relecture indépendante du lot 5 (écrans), point B2 ; commit 7ebe4b5bb (lane J1) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Keep the button (Recommended) »"
+    taches: []
