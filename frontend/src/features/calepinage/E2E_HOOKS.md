@@ -678,6 +678,12 @@ retiré plus un hook ajouté.
 | `cal-retour-atelier-lien` | retour atelier lien. |
 | `cal-retour-atelier-onglet` | retour atelier onglet. |
 
+## BuilderPose (`atelier/BuilderPose.jsx`) — T4-X8-008
+
+| Hook | Sémantique |
+|---|---|
+| `cal-placement-libre-ailleurs` | téléphone tactile seulement : « Le placement libre se fait sur une tablette ou au bureau. » (placement libre et « Ajouter un panneau » masqués). |
+
 ## ResumeAtelier (`atelier/ResumeAtelier.jsx`) — ACAL401
 
 | Hook | Sémantique |
