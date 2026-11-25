@@ -56,6 +56,11 @@ function nomDuPan(champs) {
   if (p) return { nom: 'Pente du toit', phrase: 'La pente du toit partira', pluriel: false }
   return { nom: 'Orientation du toit', phrase: 'L’orientation du toit partira', pluriel: false }
 }
+/* T4-X8-001 — les cotes du toit dessiné affichées mais jamais tapées ne partent pas : le message de « Terminer » le dit. */
+function phraseReprises(noms) {
+  if (noms.length === 2) return ' Longueur et largeur reprises du toit dessiné : non envoyées comme mesures.'
+  return noms.length === 1 ? ` ${noms[0]} reprise du toit dessiné : non envoyée comme mesure.` : ''
+}
 const attendre = (ms) => new Promise((r) => { setTimeout(r, ms) })
 
 /* ACAL1812 — le champ fautif d'un refus (clé du serveur ou de la validation locale) → l'identifiant du champ à l'écran. */
@@ -194,15 +199,19 @@ export default function ReleveVisite() {
   }
   const majPente = (p) => { setPente(p); brouillons.garder({ pente: p }) }
   /* ACAL1836 — sans mesure du relevé ni saisie, les cotes du toit DÉJÀ CRÉÉ (pan rectangulaire servi) sont reprises et DITES
-     telles : elles partent avec « Terminer » comme n'importe quelle mesure ; une saisie (même vide) les remplace. */
+     telles ; une saisie (même vide) les remplace. T4-X8-001 — une reprise n'est PAS une mesure : elle ne part jamais avec
+     « Terminer » (le serveur garde la différence entre « mesurée » et « du dessin »), et le message le dit. */
   const cotesToit = useMemo(() => (zone ? cotesDuToit(zone) : null), [zone])
   const repriseDuToit = (nom) => (releve[`saisie${nom}`] === undefined && mesureDesChaines(releve.chaines, nom) === ''
     ? cotesToit?.[nom] ?? null : null)
   const valeurChamp = (nom) => releve[`saisie${nom}`] ?? versVirgule(mesureDesChaines(releve.chaines, nom) || repriseDuToit(nom) || '')
-  const reprises = [LONGUEUR, LARGEUR].some((nom) => repriseDuToit(nom) !== null)
+  const nomsRepris = [LONGUEUR, LARGEUR].filter((nom) => repriseDuToit(nom) !== null)
+  const reprises = nomsRepris.length > 0
+  /* T4-X8-001 — ce que les champs MONTRENT part : une saisie de cette séance ou reprise du brouillon (`saisie<Nom>`, même
+     vide) remplace la chaîne servie ; sans saisie, la chaîne servie reste telle quelle. */
   const chainesEnvoyees = () => [LONGUEUR, LARGEUR].reduce((chaines, nom) => {
-    const reprise = repriseDuToit(nom)
-    return reprise === null ? chaines : avecMesure(chaines, nom, String(reprise))
+    const saisie = releve[`saisie${nom}`]
+    return saisie === undefined ? chaines : avecMesure(chaines, nom, saisie)
   }, releve.chaines)
   const plan = useMemo(() => (doc.etat === 'ok' ? planDessus(doc.document) : null), [doc.etat, doc.document])
 
@@ -303,6 +312,7 @@ export default function ReleveVisite() {
     const tape = versPoint(azimutMain)
     const azimutTape = tape !== '' && Number.isFinite(Number(tape)) && tape !== azimutEcrit ? Number(tape) : null
     const chaines = chainesEnvoyees()
+    const nonEnvoyees = phraseReprises(nomsRepris)
     const fautes = validerAvantEnvoi(chaines, azimut, precision)
     setErreurs(fautes)
     setMessage(null)
@@ -329,7 +339,7 @@ export default function ReleveVisite() {
       if (aGarder) { brouillons.garderPan({ zoneId: zone?.id ?? null, champs: champsPan }); setPanRefuse(false); conflitsPan.current = 0 }
       setReleve((r) => ({ ...r, releveLe: corps.releve_le }))
       setMessage({
-        texte: `Relevé gardé sur ce téléphone : il partira au retour du réseau.${aGarder ? ` ${nomDuPan(champsPan).phrase} avec lui.` : ''}`,
+        texte: `Relevé gardé sur ce téléphone : il partira au retour du réseau.${aGarder ? ` ${nomDuPan(champsPan).phrase} avec lui.` : ''}${nonEnvoyees}`,
         ton: 'ok',
       })
     }
@@ -347,7 +357,7 @@ export default function ReleveVisite() {
       setReleve((r) => ({ ...r, id: nouvelId ?? r.id, releveLe: corps.releve_le }))
       setMessage({
         texte: `${releve.id ? 'Relevé corrigé.' : 'Relevé enregistré.'}${sansPanPourAzimut
-          ? ' L’orientation tapée n’est pas enregistrée : aucun pan dessiné, tracez le toit dans l’atelier.' : ''}`,
+          ? ' L’orientation tapée n’est pas enregistrée : aucun pan dessiné, tracez le toit dans l’atelier.' : ''}${nonEnvoyees}`,
         ton: 'ok',
       })
     } catch (err) {
@@ -428,7 +438,7 @@ export default function ReleveVisite() {
             </div>
             {reprises && (
               <p className="cal-tel-aide" data-testid="releve-cotes-reprises">
-                Reprises du toit dessiné : corrigez-les si votre mesure sur place diffère.
+                Reprises du toit dessiné, jamais mesurées : tapez votre mesure sur place pour l’envoyer avec le relevé.
               </p>
             )}
 

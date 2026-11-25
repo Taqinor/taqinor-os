@@ -411,7 +411,7 @@ describe('ACAL1836 — le relevé sur la maquette v2 : la carte du toit, les cot
     data: { roof_layout: { zones: [{ ...ZONE, id: 'z1', vertices }] }, empreinte_document: 'emp-1' },
   })
 
-  it('un toit rectangle déjà créé préremplit Longueur et Largeur, DITES « reprises du toit » ; elles partent avec « Terminer »', async () => {
+  it('un toit rectangle déjà créé préremplit Longueur et Largeur, DITES « reprises du toit » ; jamais envoyées comme mesures (T4-X8-001)', async () => {
     avecToit(rectangle())
     rendre()
     await waitFor(() => expect(screen.getByTestId('releve-longueur')).toHaveValue('12,4'))
@@ -423,10 +423,9 @@ describe('ACAL1836 — le relevé sur la maquette v2 : la carte du toit, les cot
     expect(screen.getByTestId('releve-cote-largeur')).toHaveTextContent('8,6')
     fireEvent.click(screen.getByTestId('releve-terminer'))
     await waitFor(() => expect(api.corrigerReleve).toHaveBeenCalledTimes(1))
-    expect(api.corrigerReleve.mock.calls[0][2].chaines).toEqual([
-      { nom: 'Longueur', total_mesure: null, tolerance_m: null, cotes: [{ nom: 'Longueur', valeur: 12.4 }] },
-      { nom: 'Largeur', total_mesure: null, tolerance_m: null, cotes: [{ nom: 'Largeur', valeur: 8.6 }] },
-    ])
+    expect(api.corrigerReleve.mock.calls[0][2].chaines).toEqual([])
+    await waitFor(() => expect(screen.getByTestId('releve-message'))
+      .toHaveTextContent('Longueur et largeur reprises du toit dessiné : non envoyées comme mesures.'))
   })
 
   it('une saisie remplace la reprise (et la note disparaît) ; un champ vidé reste vide ; un contour non rectangle ne reprend rien', async () => {
@@ -674,6 +673,66 @@ describe('T4-U4-020..023 — ce qui est tapé n’est jamais perdu, l’écran d
     await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé envoyé.'))
     await waitFor(() => expect(api.releve).toHaveBeenCalledTimes(2))
     expect(screen.getByTestId('releve-longueur')).toHaveValue('9,8')
+  })
+
+  /* T4-X8-001 — ce que les champs MONTRENT à « Terminer » est ce qui part : une mesure reprise du brouillon compte comme
+     tapée ; une cote du toit dessiné jamais touchée n'est pas envoyée comme mesure, et le message le dit. */
+  const toit10x4 = () => {
+    const repere = creerRepere({ origine_lnglat: [-7.6, 33.5], ordre: 'lnglat' })
+    api.layout.mockResolvedValue({ data: { roof_layout: { zones: [{ ...ZONE, vertices: [[0, 0], [10, 0], [10, 4], [0, 4]]
+      .map(([x, y]) => metresVersLngLat(repere, { x, y })) }] }, empreinte_document: 'emp-1' } })
+  }
+  const cote = (nom, valeur) => ({ nom, total_mesure: null, tolerance_m: null, cotes: [{ nom, valeur }] })
+
+  it('X8-001 : hors ligne, Longueur et Largeur tapées, rechargement, seule la Longueur changée : les DEUX partent au retour du réseau', async () => {
+    toit10x4()
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalledTimes(1))
+    enLigne = false
+    await act(async () => { window.dispatchEvent(new Event('offline')) })
+    taper('releve-longueur', '12,4')
+    taper('releve-largeur', '8,1')
+    cleanup()
+    rendre() // rechargement, toujours hors ligne
+    await waitFor(() => expect(screen.getByTestId('releve-largeur')).toHaveValue('8,1'))
+    expect(screen.getByTestId('releve-longueur')).toHaveValue('12,4')
+    taper('releve-longueur', '12,6')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé gardé sur ce téléphone'))
+    enLigne = true
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé envoyé.'))
+    expect(api.corrigerReleve).toHaveBeenCalledTimes(1)
+    expect(api.corrigerReleve.mock.calls[0][2].chaines).toEqual([cote('Longueur', 12.6), cote('Largeur', 8.1)])
+  })
+
+  it('X8-001 : rejoué en ligne (reprise du brouillon puis une seule correction) : les deux mesures partent', async () => {
+    toit10x4()
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalledTimes(1))
+    taper('releve-longueur', '12,6')
+    taper('releve-largeur', '8,2')
+    cleanup()
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('releve-largeur')).toHaveValue('8,2'))
+    taper('releve-longueur', '12,7')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé corrigé.'))
+    expect(api.corrigerReleve.mock.calls[0][2].chaines).toEqual([cote('Longueur', 12.7), cote('Largeur', 8.2)])
+  })
+
+  it('X8-001 : une cote du toit dessiné jamais touchée n’est pas envoyée comme mesure, et le message le dit', async () => {
+    toit10x4()
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('releve-largeur')).toHaveValue('4'))
+    taper('releve-longueur', '12,6')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé corrigé.'))
+    expect(api.corrigerReleve.mock.calls[0][2].chaines).toEqual([cote('Longueur', 12.6)])
+    expect(screen.getByTestId('releve-message'))
+      .toHaveTextContent('Largeur reprise du toit dessiné : non envoyée comme mesure.')
   })
 
   it('U4-021 : un relevé enregistré illisible le dit (jamais des champs vides muets) et « Réessayer » relit', async () => {
