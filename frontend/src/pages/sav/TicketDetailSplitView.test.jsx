@@ -118,7 +118,9 @@ describe('TicketDetail — AERR25 la fiche suit le ticket sélectionné', () => 
     const [id, data] = savApi.updateTicket.mock.calls[0]
     expect(id).toBe(2)
     expect(data.priorite).toBe('normale')
-    expect(data.description).toBe('Panneau fissuré')
+    // Relecture B1 — description non touchée : pas envoyée. Une fiche restée
+    // sur A l'enverrait (« Onduleur HS » ≠ celle de B) : le garde AERR25 tient.
+    expect(data).not.toHaveProperty('description')
   })
 
   it('AERR159 — note tapée puis autre ticket : demande d\'abord', async () => {

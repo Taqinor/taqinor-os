@@ -519,6 +519,34 @@ class TestTicketDescriptionObligatoire(TestCase):
         # Servi en texte (jamais null) : le schéma publié n'est pas nullable.
         self.assertEqual(r.data['description'], '')
 
+    def test_fiche_ancien_ticket_sans_description_enregistre(self):
+        """Relecture B1 — la charge RÉELLE du bouton « Mettre à jour » de la
+        fiche (description non touchée → clé absente) passe sur un ancien
+        ticket sans description."""
+        ancien = Ticket.objects.create(
+            company=self.company, reference='SAV-DESC-2',
+            client=self.client_obj, installation=self.inst)
+        charge = {
+            'type': 'correctif', 'priorite': 'haute', 'sous_garantie': 'non',
+            'equipement': None, 'technicien_responsable': None,
+            'instructions': '', 'cause': None, 'remede': None}
+        r = self.api.patch(f'/api/django/sav/tickets/{ancien.pk}/', charge,
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        ancien.refresh_from_db()
+        self.assertEqual(ancien.priorite, 'haute')
+
+    def test_vider_une_description_existante_refuse(self):
+        r = self._creer(description='Onduleur en défaut')
+        self.assertEqual(r.status_code, 201, r.data)
+        tid = r.data['id']
+        r = self.api.patch(f'/api/django/sav/tickets/{tid}/',
+                           {'description': ''}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('Décrivez le problème', str(r.data['description']))
+        self.assertEqual(Ticket.objects.get(pk=tid).description,
+                         'Onduleur en défaut')
+
 
 class TestTicketPrefillFromEquipement(TestCase):
     """Un ticket ouvert depuis le parc (équipement) porte client + installation
