@@ -334,6 +334,31 @@ def choisir_protections(produits, *, nb_chaines=None, alimentation=None,
     return choix
 
 
+def _lignes_protections(produits, alertes, *, avec_champ, avec_variateur,
+                        **choix_kw):
+    """D-ACAL-118 / D-ACAL-124 — ``[(ligne, produit)]`` des protections du
+    kit (coffret DC avec un champ dimensionné, disjoncteur et parafoudre AC
+    avec un variateur) ; l'hypothèse d'un calibre déduit est DITE (clé
+    ``hypothese`` + alerte INTERNE ``calibre_disjoncteur_deduit``)."""
+    protections = choisir_protections(produits, **choix_kw)
+    hypothese = protections.get("_hypothese_disjoncteur")
+    sortie = []
+    for cle, role, libelle in PROTECTIONS:
+        if not (avec_champ if cle == "coffret_dc" else avec_variateur):
+            continue
+        produit, motif = protections[cle]
+        ligne = _ligne(cle, role, produit, libelle, 1)
+        if motif:
+            ligne["motif"] = motif
+        if cle == "disjoncteur_ac" and hypothese:
+            ligne["hypothese"] = hypothese
+            alertes.append(_alerte("calibre_disjoncteur_deduit",
+                                   "kit.disjoncteur_ac", hypothese,
+                                   interne=True))
+        sortie.append((ligne, produit))
+    return sortie
+
+
 def _quantites_options(*, profondeur_calage_m, marge_cable_m,
                        longueur_conduite_m, volume_bassin_m3):
     """{clé: (quantité, motif)} — quantité ``None`` = à saisir, jamais une
@@ -440,26 +465,12 @@ def composer_kit(*, mode_pompe, pompe=None, variateur=None, panneau=None,
             ajouter(_ligne("cable_dc", "cable_dc", cable_dc,
                            "Câble DC champ → variateur (m)",
                            round(distance, 1)), cable_dc)
-        protections = choisir_protections(
-            produits_options, nb_chaines=nb_chaines,
-            alimentation=alimentation, courant_pompe_a=courant_pompe_a,
-            pompe_kw=pompe_kw, tension_v=tension_pompe_v,
-            motif_chaines=motif_chaines)
-        for cle, role, libelle in PROTECTIONS:
-            if (cle == "coffret_dc" and not nb) or (
-                    cle != "coffret_dc" and variateur is None):
-                continue
-            produit, motif = protections[cle]
-            ligne = _ligne(cle, role, produit, libelle, 1)
-            if motif:
-                ligne["motif"] = motif
-            hypothese = protections.get("_hypothese_disjoncteur")
-            if cle == "disjoncteur_ac" and hypothese:
-                # D-ACAL-124 — l'hypothèse dite à l'écran (alerte INTERNE).
-                ligne["hypothese"] = hypothese
-                alertes.append(_alerte("calibre_disjoncteur_deduit",
-                                       "kit.disjoncteur_ac", hypothese,
-                                       interne=True))
+        for ligne, produit in _lignes_protections(
+                produits_options, alertes, avec_champ=bool(nb),
+                avec_variateur=variateur is not None, nb_chaines=nb_chaines,
+                alimentation=alimentation, courant_pompe_a=courant_pompe_a,
+                pompe_kw=pompe_kw, tension_v=tension_pompe_v,
+                motif_chaines=motif_chaines):
             ajouter(ligne, produit)
         if bareme_saisi(installation_pompage):
             ajouter(_ligne("installation", "installation_pompage",
