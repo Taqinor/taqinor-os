@@ -701,6 +701,23 @@ def point_du_site(document, lire_geo):
         cle: reference[cle] for cle in ('source', 'ville_reference', 'libelle')}
 
 
+#: Ce que le bandeau nomme quand le calcul prendrait le repère GPS du lead.
+LIBELLE_REPERE_LEAD = 'la position GPS de la fiche'
+
+
+def site_de_repli(geo):
+    """Relecture M1 — ce que le calcul fera quand le document n'a PAS de site
+    posé, nommé pour le bandeau « Site non localisé » : le libellé de la ville
+    de référence (``« Casablanca (ville de référence) »``),
+    :data:`LIBELLE_REPERE_LEAD` quand le lead porte un repère, ou ``None``
+    quand le calcul serait refusé. MÊME résolution que :func:`point_du_site`
+    (appelée sur un document sans épingle) — l'écran ne la redérive jamais."""
+    lat, lon, reference = point_du_site({}, lambda: geo or {})
+    if reference is not None:
+        return reference['libelle']
+    return LIBELLE_REPERE_LEAD if lat is not None and lon is not None else None
+
+
 def site_dit(meteo, site):
     """Le bloc ``meteo`` publié : tel quel, sauf quand le site vient d'une
     ville de référence — ``meteo.site`` dit alors sa provenance, son nom, son

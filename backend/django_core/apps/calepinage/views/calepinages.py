@@ -101,6 +101,7 @@ from ..services.layout import (
 from ..services.presentation import image_apercu, reference_calepinage
 # ACAL191 — dérive du GPS du lead : mesure (lecture) et deux gestes versionnés.
 from ..services import repere as service_repere
+from ..services.site import site_de_repli
 from ..services.repere import (
     RepereRefuse, avertissement_derive, etat_derive, repere_du_lead,
 )
@@ -1297,6 +1298,10 @@ def contexte_conception(calepinage, request=None):
             # ``''`` — jamais une clé absente.
             'client_adresse': geo.get('adresse') or '',
             'client_ville': geo.get('ville') or '',
+            # Relecture M1 — ce que le calcul fera SANS site posé (libellé de la
+            # ville de référence, repère GPS de la fiche, ou ``None`` = refus) :
+            # LA résolution du serveur, le bandeau la lit, jamais redérivée.
+            'site_de_repli': site_de_repli(geo),
             # ACAL36 — le devis lié tel que le contexte ventes le décrit
             # ({id, reference, statut, client_nom}), ou ``None``.
             'devis_lie': _devis_lie_resume(contexte_devis),

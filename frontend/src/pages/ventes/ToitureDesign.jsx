@@ -1240,7 +1240,7 @@ function AtelierToiture({
         )}
         {siteNonLocalise && (
           <p className="mt-1 text-sm text-foreground" role="status" data-testid="pv-sans-gps">
-            {phraseSiteNonLocalise(contexte?.calepinage?.client_ville)}
+            {phraseSiteNonLocalise(contexte?.calepinage?.site_de_repli)}
           </p>
         )}
 

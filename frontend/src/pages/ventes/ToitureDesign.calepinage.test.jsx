@@ -715,6 +715,24 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     expect(document.getElementById('rp9-address').value).toBe('')
   })
 
+  /* Relecture M1 — le bandeau « Site non localisé » imprime le site que le SERVEUR prendra
+     (`calepinage.site_de_repli`) ; un client sans lead n'a pas de `client_ville` : avant, le
+     bandeau disait « refusé » alors que le serveur calculait sur la ville de l'adresse. */
+  it.each([
+    ['Casablanca (ville de référence)', /sinon le calcul se fait sur Casablanca \(ville de référence\)\./],
+    [null, /sinon le calcul est refusé\./],
+  ])('site non localisé : le bandeau dit ce que fera le serveur (%s)', async (siteDeRepli, attendu) => {
+    initRoofToolPro8.mockImplementation((options) => { options?.suiviSite?.ecouter?.(null) })
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: {
+      ...CTX_VIDE, carte: CTX.carte,
+      calepinage: { ...CTX_VIDE.calepinage, client_ville: '', site_de_repli: siteDeRepli },
+    } })
+
+    rendreCalepinage(CTX_VIDE.calepinage.id)
+
+    expect(await screen.findByText(attendu)).toBeInTheDocument()
+  })
+
   /* ACAL399 — barre d'enregistrement collée en bas : indicateur d'état + bouton. */
   describe('ACAL399 — barre d’enregistrement', () => {
     const bootHydrate = () => initRoofToolPro8.mockImplementation((options) => {

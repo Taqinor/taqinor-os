@@ -155,7 +155,10 @@ test('T4-U4-013 — siteLocaliseInitial : provenance relue, document ancien, rep
 })
 
 test('T4-U4-013 — phraseSiteNonLocalise : le geste, et ce que fait le calcul sans lui', () => {
-  assert.equal(phraseSiteNonLocalise('Marrakech'),
-    'Site non localisé — carte au niveau Maroc. Cherchez l’adresse du client puis « Localiser », ou zoomez jusqu’au toit avant de le tracer : sinon le calcul se fait sur la ville de la fiche (Marrakech).')
+  // Relecture M1 — le « sinon » imprime le site SERVI (`calepinage.site_de_repli`), tel quel.
+  assert.equal(phraseSiteNonLocalise('Marrakech (ville de référence)'),
+    'Site non localisé — carte au niveau Maroc. Cherchez l’adresse du client puis « Localiser », ou zoomez jusqu’au toit avant de le tracer : sinon le calcul se fait sur Marrakech (ville de référence).')
+  assert.ok(phraseSiteNonLocalise('la position GPS de la fiche').endsWith('sinon le calcul se fait sur la position GPS de la fiche.'))
   assert.ok(phraseSiteNonLocalise('').endsWith('sinon le calcul est refusé.'))
+  assert.ok(phraseSiteNonLocalise(null).endsWith('sinon le calcul est refusé.'))
 })

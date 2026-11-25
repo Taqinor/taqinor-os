@@ -283,6 +283,23 @@ class ContexteConceptionTest(BaseApiCalepinage):
         self.assertEqual(bloc['client_adresse'], '')
         self.assertEqual(bloc['client_ville'], '')
 
+    def test_relecture_m1_site_de_repli_dit_ce_que_fera_le_calcul(self):
+        """Relecture M1 — un calepinage d'un CLIENT sans lead dont l'adresse
+        nomme une ville : le serveur sert la ville qu'il prendra (le bandeau
+        l'imprime) ; rien de résoluble ⇒ ``None`` (le calcul est refusé) ;
+        un lead avec repère ⇒ sa position GPS."""
+        self.assertIsNone(self._contexte(self.nu)['calepinage']['site_de_repli'])
+        self.client_lie.adresse = '12 rue des Fleurs, Casablanca'
+        self.client_lie.save(update_fields=['adresse'])
+        self.assertEqual(self._contexte(self.nu)['calepinage']['site_de_repli'],
+                         'Casablanca (ville de référence)')
+        self.client_lie.adresse = "Route d'El Jadida, Casablanca"
+        self.client_lie.save(update_fields=['adresse'])
+        self.assertIsNone(self._contexte(self.nu)['calepinage']['site_de_repli'])
+        self.assertEqual(
+            self._contexte(self.avec_devis)['calepinage']['site_de_repli'],
+            'la position GPS de la fiche')
+
     def _lead_gps_hors_contour(self):
         """ACAL250 — roof_point A DANS R, GPS corrigé B HORS de R."""
         self.lead_lie.roof_outline = CONTOUR_AUTOUR_DU_REPERE

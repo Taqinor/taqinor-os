@@ -378,11 +378,13 @@ export function siteLocaliseInitial(roofLayout, sourceRepere) {
 }
 
 // T4-U4-013 — la phrase du bandeau quand le site n'est pas localisé : le geste à faire, et ce
-// que le calcul fera sans lui (la ville de la fiche, sinon un refus).
-export function phraseSiteNonLocalise(ville) {
-  const v = typeof ville === 'string' ? ville.trim() : ''
+// que le calcul fera sans lui. Relecture M1 — ce « sinon » est SERVI (`calepinage.site_de_repli` :
+// libellé de la ville de référence ou de la position GPS de la fiche, `null` = refus) : l'écran
+// ne redérive jamais la ville (il lisait `client_ville`, vide pour un client sans lead).
+export function phraseSiteNonLocalise(siteDeRepli) {
+  const v = typeof siteDeRepli === 'string' ? siteDeRepli.trim() : ''
   const sinon = v
-    ? `sinon le calcul se fait sur la ville de la fiche (${v})`
+    ? `sinon le calcul se fait sur ${v}`
     : 'sinon le calcul est refusé'
   return `Site non localisé — carte au niveau Maroc. Cherchez l’adresse du client puis « Localiser », ou zoomez jusqu’au toit avant de le tracer : ${sinon}.`
 }
