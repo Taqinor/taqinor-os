@@ -116,7 +116,7 @@ __all__ = [
     'fuseau_du_site', 'decalage_utc_minutes',
     # T4-U1-003 — jamais un point par défaut anonyme.
     'CENTRES_CARTE_PAR_DEFAUT', 'SOURCE_VILLE_REFERENCE',
-    'epingle_posee', 'point_du_site', 'site_dit',
+    'point_du_site', 'site_dit',
     # T4-U4-013 — la provenance du site portée par le document.
     'CLE_PROVENANCE_SITE', 'PROVENANCES_SITE_POSE', 'RAYON_CENTRE_ANCIEN_M',
 ]
@@ -636,7 +636,7 @@ def _epingle_du_document_posee(document, lire_geo_une_fois):
             and abs(lon - lon_lead) <= TOLERANCE_CENTRE_DEG)
 
 
-def epingle_posee(document, lire_geo):
+def _epingle_posee(document, lire_geo):
     """``(lat, lon, geo)`` — L'épingle du site, au sens unique « site posé ».
 
     Lue par la simulation ET par ``soleil-legal`` (une seule définition, via
@@ -676,12 +676,12 @@ def _reference_du_contexte(geo):
 def point_du_site(document, lire_geo):
     """``(lat, lon, reference)`` du site simulé — T4-U1-003, T4-U4-013.
 
-    L'épingle posée (:func:`epingle_posee`) ; sans elle, la ville de
+    L'épingle posée (:func:`_epingle_posee`) ; sans elle, la ville de
     référence de la ville du lead, sinon de l'adresse du lead ou du client
     (``reference`` = ``{source, ville_reference, libelle}``), sinon
     ``(None, None, None)`` — et l'appelant refuse en disant quoi faire.
     """
-    lat, lon, geo = epingle_posee(document, lire_geo)
+    lat, lon, geo = _epingle_posee(document, lire_geo)
     if lat is not None and lon is not None:
         return lat, lon, None
     reference = _reference_du_contexte(geo if geo is not None

@@ -157,5 +157,5 @@ test('T4-U4-013 — siteLocaliseInitial : provenance relue, document ancien, rep
 test('T4-U4-013 — phraseSiteNonLocalise : le geste, et ce que fait le calcul sans lui', () => {
   assert.equal(phraseSiteNonLocalise('Marrakech'),
     'Site non localisé — carte au niveau Maroc. Cherchez l’adresse du client puis « Localiser », ou zoomez jusqu’au toit avant de le tracer : sinon le calcul se fait sur la ville de la fiche (Marrakech).')
-  assert.match(phraseSiteNonLocalise(''), /sinon le calcul est refusé\.$/)
+  assert.ok(phraseSiteNonLocalise('').endsWith('sinon le calcul est refusé.'))
 })
