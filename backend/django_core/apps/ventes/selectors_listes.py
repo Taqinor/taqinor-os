@@ -11,6 +11,7 @@ interdit la croissance — budget 0 ligne nette.
 """
 from __future__ import annotations
 
+import functools
 import logging
 
 logger = logging.getLogger(__name__)
@@ -138,19 +139,66 @@ def filtrer_liste_devis(qs, company, *, q=None, statut_effectif=None,
 # ``domain.etudes.ranger_totaux_affiches`` (après chaque écriture du devis et
 # de ses lignes, balayage planifié, commande). La synthèse relit l'empreinte et
 # ne sert le total rangé que si elle CONCORDE ; sinon elle recalcule (et ne
-# range rien : un GET n'écrit jamais). L'empreinte couvre chaque ligne de
-# base que le calcul lit sans requête : la ligne du devis (hors horodatage et
-# colonnes rangées), son lead, ses lignes, leurs produits et fiches
-# techniques, le client, la société et son profil. Un changement du MOTEUR
-# lui-même relève ``VERSION_TOTAL_RANGE`` avec le correctif.
-VERSION_TOTAL_RANGE = 1
-_HORS_EMPREINTE = frozenset({'updated_at', 'search_vector',
+# range rien : un GET n'écrit jamais). L'empreinte couvre les DONNÉES que le
+# calcul lit sans requête (la ligne du devis hors horodatage et colonnes
+# rangées, ses lignes, leurs produits hors colonnes de stock, les fiches
+# techniques, le client, la société et son profil) et le CODE : l'empreinte
+# des sources de ``_SOURCES_DU_TOTAL`` — tout déploiement qui y touche
+# périme tous les totaux rangés (le balayage les recalcule).
+_HORS_EMPREINTE = frozenset({'updated_at', 'search_vector', 'lock_version',
                              'total_affiche_range', 'total_affiche_empreinte'})
+# Colonnes de ``stock.Produit`` réécrites par la vie du stock et que le calcul
+# du total ne lit pas (prouvé par ``test_aprf6_liste_sans_conception``) :
+# hors empreinte, sinon un mouvement de stock périmerait tous les devis du
+# panneau courant. Toute AUTRE colonne, présente ou future, est hachée.
+PRODUIT_HORS_EMPREINTE = frozenset({
+    'quantite_stock', 'seuil_alerte', 'date_mise_a_jour',
+    'prix_achat', 'quantite_reappro_cible', 'delai_appro_jours', 'fournisseur_id'})
+# Les sources dont le total affiché dépend : tout ``apps/ventes`` (moteur,
+# options, arrondis, classement, multivilla…), ``core`` (``core.money``),
+# ``apps/parametres`` (profil, tarifs) et la ville de calcul du lead, hors
+# tests et migrations ; ``test_aprf6_liste_sans_conception`` vérifie que chaque
+# fichier du dépôt exécuté par ``display_totals`` y est.
+_SOURCES_DU_TOTAL = ('apps/ventes', 'core', 'apps/parametres', 'apps/crm/devis_selectors.py')
+# Les SEULES colonnes du lead que le calcul lit (``crm.ville_effective``, quand
+# l'étude n'a pas figé sa ville) — relevé par le même test : le reste du lead
+# (score, date de modification…) bouge chaque jour sans rien changer au total.
+LEAD_LU_PAR_LE_TOTAL = ('ville', 'ville_reference')
 PREFETCH_TOTAUX = ('lignes', 'lignes__produit', 'lignes__produit__fiche_technique')
 
 
+def fichiers_du_total():
+    """Les fichiers ``.py`` de ``_SOURCES_DU_TOTAL`` (chemins absolus, triés)."""
+    import os
+
+    from django.conf import settings
+    trouves = []
+    for source in _SOURCES_DU_TOTAL:
+        chemin = os.path.join(str(settings.BASE_DIR), source)
+        if source.endswith('.py'):
+            trouves.append(chemin)
+            continue
+        for racine, dossiers, fichiers in os.walk(chemin):
+            dossiers[:] = sorted(x for x in dossiers if x not in ('tests', 'migrations', '__pycache__'))
+            trouves += [os.path.join(racine, f) for f in fichiers
+                        if f.endswith('.py') and not f.startswith('test')]
+    return sorted(trouves)
+
+
+@functools.lru_cache(maxsize=1)
+def empreinte_du_code():
+    """Le hachage des octets des sources du total, calculé UNE fois par
+    processus (≈ 1 000 fichiers lus au premier appel)."""
+    import hashlib
+    h = hashlib.sha256()
+    for chemin in fichiers_du_total():
+        with open(chemin, 'rb') as f:
+            h.update(f.read())
+    return h.hexdigest()
+
+
 def _sql_empreinte_devis():
-    """Les deux grosses lignes (devis : étude de 60 Ko ; lead) hachées par la
+    """La grosse ligne du devis (étude de 60 Ko) et la ville du lead hachées par la
     base — en Python, 600 études coûtaient 1,4 s de ``repr``."""
     from django.db import connection
 
@@ -160,8 +208,9 @@ def _sql_empreinte_devis():
     colonnes = ', '.join('%s.%s' % (table, q(f.column)) for f in Devis._meta.concrete_fields
                          if f.attname not in _HORS_EMPREINTE)
     lead = q(Devis._meta.get_field('lead').related_model._meta.db_table)
-    return ("md5(ROW(%s)::text) || COALESCE((SELECT md5(ROW(l.*)::text) FROM %s l"
-            " WHERE l.id = %s.%s), '-')" % (colonnes, lead, table, q('lead_id')))
+    lus = ', '.join('l.%s' % q(c) for c in LEAD_LU_PAR_LE_TOTAL)
+    return ("md5(ROW(%s)::text) || COALESCE((SELECT md5(ROW(%s)::text) FROM %s l"
+            " WHERE l.id = %s.%s), '-')" % (colonnes, lus, lead, table, q('lead_id')))
 
 
 def devis_pour_les_totaux(qs, *, leger=False):
@@ -188,28 +237,32 @@ def profil_pour_les_totaux(company):
     return profil
 
 
-def _valeurs(obj):
+def _valeurs(obj, hors=_HORS_EMPREINTE):
     if obj is None:
         return None
     return [f.value_from_object(obj) for f in obj._meta.concrete_fields
-            if f.attname not in _HORS_EMPREINTE]
+            if f.attname not in hors]
 
 
 def empreinte_total_affiche(devis, profil):
     """L'empreinte de ce que ``display_totals`` lit pour ce devis."""
     import hashlib
-    lignes = sorted(((lg.pk, _valeurs(lg), _valeurs(lg.produit if lg.produit_id else None),
+    lignes = sorted(((lg.pk, _valeurs(lg),
+                      _valeurs(lg.produit if lg.produit_id else None,
+                               _HORS_EMPREINTE | PRODUIT_HORS_EMPREINTE),
                       _valeurs(getattr(lg.produit, 'fiche_technique', None)
                                if lg.produit_id else None))
                      for lg in devis.lignes.all()), key=lambda t: t[0])
-    contenu = repr((VERSION_TOTAL_RANGE, devis.empreinte_sql_adev162, lignes,
+    contenu = repr((empreinte_du_code(), devis.empreinte_sql_adev162, lignes,
                     _valeurs(devis.client), _valeurs(devis.company), _valeurs(profil)))
     return hashlib.sha256(contenu.encode('utf-8')).hexdigest()
 
 
-def total_du_moteur(devis, display_totals):
+def total_du_moteur(devis, display_totals, donnees=None):
+    """``donnees`` reste vide quand le moteur a échoué (total de repli)."""
     from decimal import Decimal
-    return Decimal(str(display_totals(devis, lignes_prechargees=True)['total'] or 0))
+    return Decimal(str(display_totals(devis, lignes_prechargees=True,
+                                      donnees=donnees)['total'] or 0))
 
 
 def total_range_valide(devis, profil):

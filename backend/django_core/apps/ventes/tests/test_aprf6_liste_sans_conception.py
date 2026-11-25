@@ -263,11 +263,14 @@ class ListeLegereT4X4005Tests(TestCase):
 
     def test_synthese_200_devis_cache_vide_sans_moteur_par_devis(self):
         """ADEV162 — 200 devis, cache vide : le calcul ne rappelle pas le
-        moteur du devis pour chaque devis, répond sous 2 s, mêmes totaux que
-        la colonne."""
+        moteur du devis pour chaque devis (0 appel, requêtes bornées — des
+        comptes, jamais une horloge), mêmes totaux que la colonne."""
         import time
+        from io import StringIO
         from django.core.cache import cache
         from django.core.management import call_command
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
         for _ in range(200):
             self.n += 1
             d = Devis.objects.create(
@@ -282,19 +285,93 @@ class ListeLegereT4X4005Tests(TestCase):
         debut = time.perf_counter()
         _, avant = self._synthese_espionnee()
         froid_sans_range = time.perf_counter() - debut
-        from io import StringIO
         call_command('ranger_totaux_affiches', stdout=StringIO())
         cache.clear()
         debut = time.perf_counter()
-        data, appels = self._synthese_espionnee()
-        froid_range = time.perf_counter() - debut
+        with CaptureQueriesContext(connection) as requetes:
+            data, appels = self._synthese_espionnee()
         print('\nADEV162 synthese 200 devis : sans rangement=%.2f s (%d moteur) '
-              'range=%.2f s (%d moteur)' % (froid_sans_range, avant, froid_range, appels))
+              'range=%.2f s (%d moteur, %d requetes) — mesure indicative' % (
+                  froid_sans_range, avant, time.perf_counter() - debut, appels,
+                  len(requetes.captured_queries)))
         self.assertEqual(avant, 200)
         self.assertEqual(appels, 0)
-        self.assertLess(froid_range, 2.0)
+        self.assertLessEqual(len(requetes.captured_queries), 14)
         self.assertEqual(data['par_statut']['brouillon']['count'], 200)
         self.assertEqual(data['par_statut']['brouillon']['total'], self._colonne())
+
+    def test_un_deploiement_du_moteur_perime_les_totaux_ranges(self):
+        """ADEV162 (relecture) — le CODE est dans l'empreinte : des sources du
+        total qui changent (un correctif du moteur déployé) et aucun total
+        rangé n'est plus servi ; le balayage les range à nouveau."""
+        from unittest import mock
+        from apps.ventes import selectors_listes
+        from apps.ventes.domain.etudes import ranger_totaux_affiches
+        self._creer(2)
+        self.assertEqual(ranger_totaux_affiches(Devis.objects.all()), 2)
+        self.assertEqual(self._synthese_espionnee()[1], 0)
+        with mock.patch.object(selectors_listes, 'empreinte_du_code', return_value='correctif'):
+            data, appels = self._synthese_espionnee()
+            self.assertEqual(appels, 2)
+            self.assertEqual(data['par_statut']['brouillon']['total'], self._colonne())
+            self.assertEqual(ranger_totaux_affiches(Devis.objects.all()), 2)
+            self.assertEqual(self._synthese_espionnee()[1], 0)
+        # Les sources réelles : tout apps/ventes (moteur, options, arrondis) et core.
+        fichiers = {f.replace('\\', '/') for f in selectors_listes.fichiers_du_total()}
+        for module in ('apps/ventes/quote_engine/builder.py', 'apps/ventes/utils/options.py',
+                       'apps/ventes/domain/noyau_totaux.py', 'apps/ventes/domain/argent.py',
+                       'apps/ventes/quote_engine/lignes_classement.py', 'apps/ventes/multivilla.py',
+                       'apps/ventes/quote_engine/montants.py', 'core/money.py'):
+            self.assertTrue(any(f.endswith(module) for f in fichiers), module)
+
+    def test_total_de_repli_jamais_range(self):
+        """ADEV162 (relecture) — moteur en échec : ``display_totals`` rend un
+        total de REPLI ; il n'est jamais rangé (la synthèse recalculera)."""
+        from unittest import mock
+        from apps.ventes.domain.etudes import ranger_totaux_affiches
+        from apps.ventes.quote_engine import builder
+        (d,) = self._creer(1)
+        with mock.patch.object(builder, 'build_quote_data', side_effect=RuntimeError('moteur')):
+            self.assertEqual(ranger_totaux_affiches(Devis.objects.filter(pk=d.pk)), 0)
+        d.refresh_from_db()
+        self.assertIsNone(d.total_affiche_range)
+        self.assertEqual(d.total_affiche_empreinte, '')
+
+    def test_balayage_sans_changement_ne_charge_pas_les_etudes(self):
+        """ADEV162 (relecture) — rien n'a bougé : le balayage ne lit que la
+        forme légère (aucun relu complet, aucun moteur), en requêtes bornées."""
+        from unittest import mock
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from apps.ventes import selectors_listes
+        from apps.ventes.domain.etudes import ranger_totaux_affiches
+        self._creer(5)
+        ranger_totaux_affiches(Devis.objects.all())
+        with mock.patch.object(selectors_listes, 'devis_pour_les_totaux',
+                               wraps=selectors_listes.devis_pour_les_totaux) as lecture, \
+                CaptureQueriesContext(connection) as requetes:
+            self.assertEqual(ranger_totaux_affiches(Devis.objects.all()), 0)
+        self.assertEqual([c.kwargs.get('leger') for c in lecture.call_args_list], [True])
+        self.assertLessEqual(len(requetes.captured_queries), 6)
+
+    def test_mouvement_de_stock_ne_perime_pas_le_total(self):
+        """ADEV162 (relecture) — une colonne de stock du produit (quantité,
+        verrou, horodatage) bouge : le total rangé reste servi ; son prix de
+        vente bouge : il est recalculé."""
+        from apps.stock.models import Produit
+        from apps.ventes.domain.etudes import ranger_totaux_affiches
+        (d,) = self._creer(1)
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau 580', sku='ADEV162-S',
+            prix_vente=Decimal('1450'), prix_achat=Decimal('1'), quantite_stock=10)
+        self._ligne.objects.filter(devis=d).update(produit=produit)
+        ranger_totaux_affiches(Devis.objects.filter(pk=d.pk))
+        produit.quantite_stock = 3
+        produit.save(update_fields=['quantite_stock'])
+        Produit.objects.filter(pk=produit.pk).update(seuil_alerte=2, prix_achat=Decimal('2'))
+        self.assertEqual(self._synthese_espionnee()[1], 0)
+        Produit.objects.filter(pk=produit.pk).update(prix_vente=Decimal('1500'))
+        self.assertEqual(self._synthese_espionnee()[1], 1)
 
     def test_total_range_jamais_servi_perime(self):
         """ADEV162 — Persistance : chaque écriture qui contourne ``save()``
@@ -358,6 +435,90 @@ class ListeLegereT4X4005Tests(TestCase):
         for cle in ('total_affiche_range', 'total_affiche_empreinte'):
             self.assertNotIn(cle, ligne)
             self.assertNotIn(cle, detail)
+
+    def _devis_espionne(self):
+        """Un devis résidentiel à lead (étude sans ville figée : la branche
+        qui lit le lead) et lignes à produits, relu par le jeu de la synthèse ;
+        ``display_totals`` y est joué sous un relevé des colonnes du lead et
+        des produits qu'il lit, et des fichiers source qu'il exécute."""
+        import sys
+        from apps.crm.models import Lead
+        from apps.stock.models import Produit
+        from apps.ventes.quote_engine.builder import display_totals
+        from apps.ventes.selectors_listes import devis_pour_les_totaux
+        lead = Lead.objects.create(company=self.company, nom='Espion', ville='Casablanca')
+        (d,) = self._creer(1, lead=lead)
+        for k, lg in enumerate(d.lignes.all()[:3]):
+            lg.produit = Produit.objects.create(
+                company=self.company, nom='Panneau 580 Wc %d' % k, sku='ESP-%d' % k,
+                prix_vente=Decimal('1450'), prix_achat=Decimal('900'), quantite_stock=7)
+            lg.save()
+        devis = devis_pour_les_totaux(Devis.objects.filter(pk=d.pk)).get()
+        lus = {'lead': set(), 'produit': set()}
+
+        class Espion:
+            def __init__(self, cible, cle):
+                object.__setattr__(self, '_c', (cible, cle))
+
+            def __getattr__(self, nom):
+                cible, cle = object.__getattribute__(self, '_c')
+                lus[cle].add(nom)
+                return getattr(cible, nom)
+        devis._state.fields_cache['lead'] = Espion(devis.lead, 'lead')
+        for lg in devis.lignes.all():
+            if lg.produit_id:
+                lg._state.fields_cache['produit'] = Espion(lg.produit, 'produit')
+        fichiers = set()
+        sys.setprofile(lambda f, ev, a: fichiers.add(f.f_code.co_filename) if ev == 'call' else None)
+        try:
+            donnees = {}
+            display_totals(devis, lignes_prechargees=True, donnees=donnees)
+        finally:
+            sys.setprofile(None)
+        self.assertTrue(donnees)  # le moteur a vraiment tourné (pas le repli)
+        return lus, fichiers
+
+    #: Les colonnes de ``stock.Produit`` connues au 25/11/2026 : une colonne
+    #: NOUVELLE fait échouer ce test — la décider (hachée par défaut, ou mise
+    #: dans ``PRODUIT_HORS_EMPREINTE`` si le total ne la lit pas).
+    COLONNES_PRODUIT = frozenset({
+        'id', 'company_id', 'nom', 'sku', 'prix_achat', 'prix_vente', 'quantite_stock',
+        'seuil_alerte', 'categorie_id', 'fournisseur_id', 'tva', 'is_archived', 'role_devis',
+        'classe_danger', 'marque', 'description', 'garantie', 'photo_id', 'garantie_mois',
+        'garantie_production_mois', 'prix_fixe_ht', 'prix_par_panneau_ht', 'pompe_cv', 'hmt_m',
+        'pompe_kw', 'tension_v', 'courbe_pompe', 'role_pompage', 'type_pompe', 'alimentation',
+        'courbe_source', 'courbe_frequence_hz', 'role_ci', 'type_pose', 'delai_appro_jours',
+        'paliers_prix_vente', 'date_creation', 'date_mise_a_jour', 'custom_data',
+        'quantite_reappro_cible', 'louable', 'tarif_location_jour', 'tarif_location_semaine',
+        'tarif_location_mois', 'suivi_serie', 'code_barres', 'unite_stock', 'unite_id', 'code_sh',
+        'pays_origine', 'politique_facturation_achat', 'est_recurrent', 'periodicite_defaut',
+        'avertissement_vente', 'avertissement_bloquant', 'lock_version', 'entite_id',
+        'debit_m3j'})
+
+    def test_empreinte_couvre_ce_que_le_total_lit(self):
+        """ADEV162 (relecture) — relevé sur un vrai passage du moteur : aucune
+        colonne du produit lue n'est hors empreinte, les colonnes lues du lead
+        sont celles hachées, et chaque fichier du dépôt exécuté est dans les
+        sources de l'empreinte du code (hors journal d'audit, qui ne calcule
+        rien)."""
+        import os
+        from django.conf import settings
+        from apps.stock.models import Produit
+        from apps.ventes import selectors_listes as sl
+        lus, fichiers = self._devis_espionne()
+        colonnes = {f.attname for f in Produit._meta.concrete_fields}
+        self.assertEqual(colonnes - self.COLONNES_PRODUIT, set(), 'colonne de Produit à décider')
+        lus_produit = {c[:-3] if c.endswith('_id') else c for c in lus['produit']}
+        self.assertEqual(lus_produit & {c[:-3] if c.endswith('_id') else c
+                                        for c in sl.PRODUIT_HORS_EMPREINTE}, set())
+        self.assertLessEqual(lus['lead'] - {'pk', 'id'}, set(sl.LEAD_LU_PAR_LE_TOTAL))
+        racine = os.path.normcase(str(settings.BASE_DIR))
+        couverts = {os.path.normcase(f) for f in sl.fichiers_du_total()}
+        hors = sorted(f for f in fichiers if os.path.normcase(f).startswith(racine)
+                      and os.path.normcase(f) not in couverts
+                      and not os.path.normcase(f).startswith(os.path.join(racine, 'apps', 'audit'))
+                      and os.sep + 'tests' + os.sep not in f)
+        self.assertEqual(hors, [])
 
     def test_synthese_nombre_de_requetes_constant(self):
         """Les cartes par statut : pas de requête par devis (5 devis = 50)."""

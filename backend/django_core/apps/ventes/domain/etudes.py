@@ -745,22 +745,31 @@ def ranger_totaux_affiches(qs):
     l'empreinte a bougé, ``display_totals`` (la seule règle de total) et son
     empreinte, par ``update()`` sur les DEUX colonnes rangées seulement — ni
     ``updated_at``, ni statut, ni rien qu'un client ou un PDF lit (règle #4).
-    Idempotent ; rend le nombre de devis rangés. Jamais appelé par un GET."""
+    Idempotent ; rend le nombre de devis rangés. Jamais appelé par un GET.
+    Lecture légère d'abord (gros JSON laissés en base), relecture complète
+    des seuls devis à recalculer ; un total de REPLI (moteur en échec :
+    ``donnees`` resté vide) n'est jamais rangé."""
     from apps.ventes.models import Devis
     from apps.ventes.quote_engine.builder import display_totals
     from apps.ventes.selectors_listes import (
         devis_pour_les_totaux, empreinte_total_affiche, profil_pour_les_totaux,
         total_du_moteur)
-    profils, ranges = {}, 0
-    for devis in devis_pour_les_totaux(qs).iterator(chunk_size=50):
+    profils, a_ranger, ranges = {}, {}, 0
+    for devis in devis_pour_les_totaux(qs, leger=True).iterator(chunk_size=100):
         if devis.company_id not in profils:
             profils[devis.company_id] = profil_pour_les_totaux(devis.company)
         empreinte = empreinte_total_affiche(devis, profils[devis.company_id])
-        if devis.total_affiche_range is not None and devis.total_affiche_empreinte == empreinte:
+        if devis.total_affiche_range is None or devis.total_affiche_empreinte != empreinte:
+            a_ranger[devis.pk] = empreinte
+    if not a_ranger:
+        return 0
+    for devis in devis_pour_les_totaux(Devis.objects.filter(pk__in=list(a_ranger))).iterator(chunk_size=50):
+        donnees = {}
+        total = total_du_moteur(devis, display_totals, donnees)
+        if not donnees:
             continue
         Devis.objects.filter(pk=devis.pk).update(
-            total_affiche_range=total_du_moteur(devis, display_totals),
-            total_affiche_empreinte=empreinte)
+            total_affiche_range=total, total_affiche_empreinte=a_ranger[devis.pk])
         ranges += 1
     return ranges
 
