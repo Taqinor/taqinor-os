@@ -1379,6 +1379,108 @@ class SimulationAutomatiqueTest(TestCase):
         self.assertEqual(self._etat_servi()['manquants'], [])
 
 
+class SimulationParLeMoteurTest(TestCase):
+    """ACAL2019 (D-ACAL-97, lié au niveau de règles 15 comme ADEV149) — au niveau 15 le bouton
+    « Simuler » est une relance FORCÉE du moteur unique (``relancer(…, forcer=True)``, dans un
+    job du kind ``calepinage`` dont le 202 garde sa forme) et l'enregistrement d'une pose passe
+    par la file du moteur (ADEV139) : un geste = une relance, AUCUNE mise en file directe de
+    ``tasks.simuler_calepinage``. Au niveau 14 rien ne change (``SimulationAutomatiqueTest``)."""
+
+    setUp = SimulationAutomatiqueTest.setUp
+    _enregistrer = SimulationAutomatiqueTest._enregistrer
+    _jobs = SimulationAutomatiqueTest._jobs
+
+    def _niveau(self, niveau):
+        from unittest import mock
+
+        from apps.ventes.domain import regles_calcul as RC
+
+        return mock.patch.object(RC, 'REGLES_COURANTES', niveau)
+
+    def _api(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
+
+        self.user.role, _cree = Role.objects.get_or_create(
+            company=self.societe, nom='Directeur', defaults={'permissions': list(DIRECTEUR_PERMISSIONS)})
+        self.user.save()
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        return api
+
+    def test_niveau_15_enregistrer_une_pose_passe_par_la_file_du_moteur(self):
+        from unittest import mock
+
+        from apps.ventes import tasks as taches_ventes
+
+        with self._niveau(15), mock.patch.object(taches_ventes.task_relancer_conception,
+                                                 'apply_async') as relance_du_moteur:
+            depart = self._enregistrer(LAYOUT)
+        depart.assert_not_called()  # mutant « remettre la mise en file directe » : rouge
+        self.assertEqual(self._jobs().count(), 0)
+        relance_du_moteur.assert_called_once()  # un geste = UNE relance (file dédupliquée)
+        # Porteur = le lead du calepinage (la pose regroupée garde son calepinage dans le marqueur).
+        self.assertEqual(relance_du_moteur.call_args.kwargs['kwargs']['lead_id'], self.calepinage.lead_id)
+
+    def test_niveau_15_le_bouton_relance_le_moteur_force(self):
+        from unittest import mock
+
+        from apps.calepinage import tasks
+        from apps.calepinage.services.simulation_auto import simulation_automatique_en_cours
+
+        from .acal_livrables_helpers import patch_materiel
+
+        self.calepinage.roof_layout = LAYOUT
+        self.calepinage.save()
+        echantillon = json.loads((pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+                                  / 'calepinage_simulation.json').read_text(encoding='utf-8'))
+        api = self._api()
+        with self._niveau(15), patch_materiel(), \
+                mock.patch.object(tasks.simuler_calepinage, 'delay') as simulation_directe, \
+                mock.patch.object(tasks.relancer_moteur_calepinage, 'delay') as depart:
+            reponse = api.post(f'/api/django/calepinage/calepinages/{self.calepinage.pk}/simuler/',
+                               {'forcer': True}, format='json')
+        self.assertEqual(reponse.status_code, 202, reponse.content[:300])
+        simulation_directe.assert_not_called()
+        depart.assert_called_once()
+        job = self._jobs().get()
+        self.assertEqual(reponse.data['job_id'], job.pk)  # l'identifiant est celui du job du moteur
+        self.assertEqual(sorted(reponse.data), sorted(echantillon['exemple_accepte']))
+        self.assertEqual(simulation_automatique_en_cours(self.calepinage), job.pk)
+        # Le job : UNE relance forcée du moteur unique, porteur = ce calepinage.
+        with mock.patch('apps.ventes.services.relancer') as relancer:
+            relancer.return_value = mock.Mock(refus=None)
+            tasks.relancer_moteur_calepinage(job_id=job.pk, company_id=self.societe.pk,
+                                             calepinage_id=self.calepinage.pk)
+        relancer.assert_called_once()
+        self.assertEqual((relancer.call_args.kwargs['forcer'], relancer.call_args.kwargs['calepinage_id'],
+                          relancer.call_args.kwargs['auteur']), (True, self.calepinage.pk, self.user))
+        job.refresh_from_db()
+        self.assertEqual(job.statut, job.STATUT_DONE)
+
+    def test_niveau_14_le_bouton_garde_la_simulation_directe(self):
+        from unittest import mock
+
+        from apps.calepinage import tasks
+
+        from .acal_livrables_helpers import patch_materiel
+
+        self.calepinage.roof_layout = LAYOUT
+        self.calepinage.save()
+        api = self._api()
+        with self._niveau(14), patch_materiel(), \
+                mock.patch.object(tasks.simuler_calepinage, 'delay') as simulation_directe, \
+                mock.patch('apps.ventes.services.relancer') as relancer:
+            reponse = api.post(f'/api/django/calepinage/calepinages/{self.calepinage.pk}/simuler/',
+                               {'forcer': True}, format='json')
+        self.assertEqual(reponse.status_code, 202, reponse.content[:300])
+        simulation_directe.assert_called_once()
+        relancer.assert_not_called()
+
+
 class PosePourMoteurTest(TestCase):
     """ACAL2018 — la façade de la pose pour le moteur unique : pose complète ⇒ production de
     LA simulation (détail au même ``hash_entree``) ; incomplète ⇒ manque nommé, aucune

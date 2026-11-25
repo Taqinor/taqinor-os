@@ -674,3 +674,26 @@ def simuler_apres_enregistrement(calepinage, user):
         lancer_simulation_automatique(relu or calepinage, user=user)
 
     transaction.on_commit(_lancer)
+
+
+def moteur_simule_la_pose():
+    """ACAL2019 (D-ACAL-97) — le moteur unique simule-t-il la pose ? (niveau de règles
+    courant ≥ 15, lu par la porte ``ventes.services``) : alors le bouton et
+    l'enregistrement relancent le MOTEUR, jamais la simulation directe."""
+    from apps.ventes.services import moteur_simule_la_pose as ouverte
+
+    return ouverte()
+
+
+def relancer_le_moteur(calepinage, *, user):
+    """ACAL2019 — le bouton « Relancer » au niveau 15 : LA relance FORCÉE du moteur unique
+    pour ce calepinage (porteur : son lead, sinon lui-même), qui exécute la simulation de la
+    pose (ADEV149) et range sa version. Rend la ``Relance`` du moteur."""
+    from types import SimpleNamespace
+
+    from apps.ventes.services import relancer
+
+    empreinte = getattr(calepinage, 'layout_hash', '') or ''
+    toit = SimpleNamespace(empreinte=empreinte, plafond_panneaux=None) if empreinte else None
+    return relancer(None, company=calepinage.company, declencheur={'origine': 'manuel', 'champs': []},
+                    auteur=user, forcer=True, toit=toit, calepinage_id=calepinage.pk)

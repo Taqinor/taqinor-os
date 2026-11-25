@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = ['KIND_CALEPINAGE', 'NATURE_BALAYAGE', 'NATURE_SIMULATION',
            'balayer_calepinage', 'calculer_calepinage', 'cle_resultat',
-           'cle_job', 'resultat_du_job', 'simuler_calepinage']
+           'cle_job', 'relancer_moteur_calepinage', 'resultat_du_job', 'simuler_calepinage']
 
 #: Type logique du job de fond (``BackgroundJob.kind``) — UN SEUL pour tout le
 #: module, y compris les soumissions multiples.
@@ -306,6 +306,62 @@ def simuler_calepinage(job_id=None, company_id=None, calepinage_id=None,
               'resultat': resume}
     cache_tenant.set(job.company_id, cle_job(job.pk), charge,
                      timeout=DUREE_CACHE_S)
+    job.marquer_termine(cle_job(job.pk))
+    return {'statut': 'done', 'calepinage': calepinage.pk}
+
+
+#: ACAL2019 — le moteur unique n'a rien rangé (dossier hors moteur, porteur introuvable).
+MOTIF_RELANCE_REFUSEE = "Le moteur n'a pas pu recalculer cette conception : %s"
+
+
+@shared_task(name='calepinage.relancer_moteur')
+def relancer_moteur_calepinage(job_id=None, company_id=None, calepinage_id=None,
+                               nature=NATURE_SIMULATION):
+    """ACAL2019 (niveau de règles 15) — le bouton « Relancer le moteur » hors requête :
+    UNE relance FORCÉE du moteur unique (``services.layout.relancer_le_moteur``), qui
+    exécute la simulation de la pose (ADEV149) et écrit ``Calepinage.resultat`` ; le job
+    publie la même charge que ``simuler_calepinage`` (``elements[0]`` + ``resultat``)."""
+    from core import cache as cache_tenant
+    from core.models import BackgroundJob
+
+    from .models import Calepinage
+    from .services.layout import relancer_le_moteur
+    from .services.simulation import CLE_SIMULATION
+
+    job = BackgroundJob.objects.filter(pk=job_id).first()
+    if job is None:
+        logger.info('calepinage.relancer_moteur : job #%s introuvable', job_id)
+        return {'statut': 'inconnu'}
+    calepinage = Calepinage.objects.filter(pk=calepinage_id, company=job.company).first()
+    if calepinage is None:
+        job.marquer_echec('Calepinage introuvable : la relance est abandonnée.')
+        return {'statut': 'failed', 'motif': 'calepinage introuvable'}
+    if _livraison_de_trop(job):
+        _publier_echec(job, calepinage, '', MOTIF_INTERROMPU)
+        return {'statut': 'failed', 'motif': MOTIF_INTERROMPU}
+    job.marquer_progression(5)
+    try:
+        relance = relancer_le_moteur(calepinage, user=job.user)
+    except Exception as erreur:  # l'issue est publiée, pas avalée
+        logger.exception('calepinage.relancer_moteur : calepinage #%s en échec', calepinage_id)
+        champ, motif = _echec_inattendu(erreur)
+        _publier_echec(job, calepinage, champ, motif)
+        return {'statut': 'failed', 'champ': champ, 'motif': motif}
+    refus = getattr(relance, 'refus', None)
+    if refus:
+        motif = MOTIF_RELANCE_REFUSEE % (refus.get('message') or refus.get('code') or 'refus')
+        _publier_echec(job, calepinage, refus.get('champ') or 'conception', motif)
+        return {'statut': 'failed', 'motif': motif}
+    calepinage.refresh_from_db(fields=['resultat'])
+    entete = (calepinage.resultat or {}).get(CLE_SIMULATION) if isinstance(calepinage.resultat, dict) else None
+    entete = entete if isinstance(entete, dict) else {}
+    resume = {'calepinage': calepinage.pk, 'variante': None, 'nature': nature, 'deja_calcule': False,
+              'hash_entree': entete.get('hash_entree'), 'calcule_le': entete.get('calcule_le'),
+              'duree_s': entete.get('duree_s')}
+    charge = {'elements': [{'index': 0, 'repere': str(calepinage.pk), 'statut': 'done', 'motif': '',
+                            'resultat': resume}],
+              'resultat': resume}
+    cache_tenant.set(job.company_id, cle_job(job.pk), charge, timeout=DUREE_CACHE_S)
     job.marquer_termine(cle_job(job.pk))
     return {'statut': 'done', 'calepinage': calepinage.pk}
 
