@@ -304,7 +304,7 @@ def _materiel_du_devis(devis, variante):
     une famille manquée côté référence ferait accuser les autres tailles d'un
     ajout ou d'un retrait imaginaire.
     """
-    from apps.ventes.utils.options import lignes_vendues_de_l_option
+    from apps.ventes.domain.dimensionnement_devis import lignes_vendues_de_l_option
     admises = ('', 'sans') if variante == 'sans' else ('', 'avec')
     materiel, deja_vues, tout_classe = [], set(), True
     # AMOT31 — VENDUES, de CETTE option par la règle des paniers (T4-X4-004).

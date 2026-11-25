@@ -381,6 +381,9 @@ describe('étape Panneaux — panneau de droite', () => {
     await screen.findByTestId('cal-panneaux-option-facture')
     expect(screen.queryByText(/Ville inconnue du moteur/)).toBeNull()
     expect(screen.queryByRole('link', { name: 'Renseigner la facture du lead' })).toBeNull()
+    // Reste de G2 (orchestrateur) : la phrase de repli ne nomme pas « ce lead » quand il n'y en a pas.
+    expect(document.body).not.toHaveTextContent('factures de ce lead')
+    expect(document.body).toHaveTextContent('Ce calepinage n’a pas de lead : aucune taille n’est tirée d’une facture.')
   })
 
   it('ni l’une ni l’autre : aucune carte choisie et « Pose actuelle : N panneaux · kWc »', async () => {

@@ -238,7 +238,10 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   const figuresMax = max ? figures : (memoire.max ?? parTenue)
   const ligneMax = figuresMax?.panneaux ? [compte(figuresMax.panneaux), figuresMax.kwc, part(figuresMax)]
     .filter(Boolean).join(' · ') : ''
-  const raison = servi.motifFacture || 'Aucune taille ne se tire des factures de ce lead.'
+  // T4-X9-013 (reste) — sans lead, la phrase de repli ne nomme pas « ce lead ».
+  const raison = servi.motifFacture || (servi.leadId
+    ? 'Aucune taille ne se tire des factures de ce lead.'
+    : 'Ce calepinage n’a pas de lead : aucune taille n’est tirée d’une facture. Choisissez le nombre de panneaux à poser.')
   return (
     <section className="cal-pan-section">
       <h2 className="cal-pan-titre">Combien de panneaux ?</h2>
