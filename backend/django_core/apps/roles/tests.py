@@ -1565,3 +1565,62 @@ class ActivationTachesAdministrateurTests(TestCase):
                 role_legacy=palier)
             self.assertIsNone(compte.role_id)
             self.assertFalse(compte.has_erp_permission(self.DROIT), palier)
+
+
+class DAcal106TechnicienReleveMigrationTests(TestCase):
+    """D-ACAL-106 — ``0014_dacal106_technicien_releve`` porte les droits du
+    relevé et des visites assignées aux rôles SYSTÈME Technicien / Technicien
+    responsable déjà en base : ajout en fin de liste, idempotent, rôle
+    personnalisé intouché ; le retour retire exactement ces codes."""
+
+    def _migration(self):
+        import importlib
+        return importlib.import_module(
+            'apps.roles.migrations.0014_dacal106_technicien_releve')
+
+    def test_aller_retour(self):
+        from django.apps import apps as django_apps
+
+        societe = Company.objects.create(nom='DACAL106', slug='dacal106-migr')
+        tech = Role.objects.create(company=societe, nom='Technicien',
+                                   est_systeme=True,
+                                   permissions=['sav_voir', 'visites_voir'])
+        chef = Role.objects.create(company=societe, nom='Technicien responsable',
+                                   est_systeme=True, permissions=['sav_voir'])
+        perso = Role.objects.create(company=societe, nom='Poseur',
+                                    est_systeme=False, permissions=['sav_voir'])
+        mig = self._migration()
+        for _ in range(2):  # idempotent
+            mig.ajouter(django_apps, None)
+            for role in (tech, chef, perso):
+                role.refresh_from_db()
+            # Un code déjà porté n'est pas répété ; l'ordre est préservé.
+            self.assertEqual(tech.permissions, [
+                'sav_voir', 'visites_voir', 'visites_modifier',
+                'calepinage_voir', 'calepinage_releve'])
+            self.assertEqual(chef.permissions, [
+                'sav_voir', 'calepinage_voir', 'calepinage_releve'])
+            self.assertEqual(perso.permissions, ['sav_voir'])
+        mig.retirer(django_apps, None)
+        for role in (tech, chef, perso):
+            role.refresh_from_db()
+        self.assertEqual(tech.permissions, ['sav_voir'])
+        self.assertEqual(chef.permissions, ['sav_voir'])
+        self.assertEqual(perso.permissions, ['sav_voir'])
+
+    def test_init_roles_converge_sur_le_registre(self):
+        """Le déploiement relance ``init_roles`` : les rôles système finissent
+        EXACTEMENT sur le registre, qui porte les codes."""
+        from django.core.management import call_command
+        from apps.roles.permissions_registre import (
+            TECHNICIEN_PERMISSIONS, TECHNICIEN_RESP_PERMISSIONS,
+        )
+
+        societe = Company.objects.create(nom='DACAL106 b', slug='dacal106-init')
+        call_command('init_roles', verbosity=0)
+        for nom, attendu in (('Technicien', TECHNICIEN_PERMISSIONS),
+                             ('Technicien responsable', TECHNICIEN_RESP_PERMISSIONS)):
+            role = Role.objects.get(company=societe, nom=nom)
+            self.assertEqual(role.permissions, list(attendu))
+            for code in ('calepinage_voir', 'calepinage_releve'):
+                self.assertIn(code, role.permissions, nom)

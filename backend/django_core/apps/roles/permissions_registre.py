@@ -382,6 +382,14 @@ ALL_PERMISSIONS = [
     # matrice des rôles, jamais par défaut. Préfixe ``calepinage_`` : rattaché
     # au manifeste ``calepinage`` par ``PERMISSION_MODULE`` sans ligne neuve.
     'calepinage_approuver',
+    # ── D-ACAL-106 (fondateur, 25/11/2026) — LE RELEVÉ au téléphone :
+    # ``calepinage_releve`` (source unique ``apps/calepinage/permissions.py::
+    # CAL_RELEVE``) écrit les mesures, la pente, l'orientation et les photos
+    # d'un calepinage — RIEN d'autre (ni le dessin, ni le devis, ni les
+    # réglages). ALTERNATIVE à ``calepinage_gerer`` sur ces seules routes : le
+    # porteur de GÉRER garde tout. Donné au Technicien et au Technicien
+    # responsable (le rôle qui monte sur le toit).
+    'calepinage_releve',
     # ── NTADM39 — permissions fines de apps.adminops. Toutes gardées DERRIÈRE
     # ``IsAdministrateur`` (palier admin déjà requis) — ces codes RESSERRENT
     # encore l'accès au sein de ce palier : un rôle admin-tier CUSTOM
@@ -1189,6 +1197,9 @@ TECHNICIEN_RESP_PERMISSIONS = [
     # est gatée par `visites_voir`). Il ne porte NI `creer` NI `modifier` — il
     # arbitre, il ne relève pas les mesures.
     'visites_voir', 'visites_valider',
+    # D-ACAL-106 — il lit un calepinage et fait le relevé au téléphone ; il ne
+    # dessine pas (jamais ``calepinage_gerer``), ne voit ni devis ni prix.
+    'calepinage_voir', 'calepinage_releve',
     SCOPE_SUBTREE,
     # ASTK16 / D-ASTK-3 — le responsable technique réceptionne les livraisons
     # fournisseur (chantier) ; il ne commande, ne paie ni ne modifie de prix.
@@ -1233,6 +1244,14 @@ TECHNICIEN_PERMISSIONS = [
     # `ux_corbeille_*`/`ux_edition_masse_executer` — restent Responsable+.
     'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
     SCOPE_TEAM,
+    # D-ACAL-106 (fondateur, 25/11/2026) — il monte sur le toit : il ouvre les
+    # visites qui lui sont ASSIGNÉES (sans ``visites_valider``, le serveur ne
+    # lui sert que ``commercial=lui``), les remplit et les clôt ; il lit le
+    # calepinage et fait le relevé au téléphone. Ni ``visites_creer`` (il ne
+    # planifie pas), ni ``visites_valider``, ni ``calepinage_gerer`` ; toujours
+    # aucun ``ventes_*`` : ni devis ni prix.
+    'visites_voir', 'visites_modifier',
+    'calepinage_voir', 'calepinage_releve',
 ]
 
 # Viewer : lecture seule partout dans sa portée ; aucune création/édition/

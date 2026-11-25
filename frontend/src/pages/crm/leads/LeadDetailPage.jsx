@@ -5,6 +5,7 @@ import LeadWorkspace from '../../../features/crm/workspace/LeadWorkspace'
 import FavoriButton from '../../../features/uxviews/FavoriButton'
 import SigneDialog from './SigneDialog'
 import { Spinner, EmptyState, Button } from '../../../ui'
+import { RefusDeDroit, estRefusDeDroit } from '../../../ui/Forbidden'
 
 /* VX22 — Une vraie page lead : route `/crm/leads/:id`.
    ----------------------------------------------------------------------------
@@ -28,6 +29,8 @@ export default function LeadDetailPage() {
   const [notFound, setNotFound] = useState(false)
   // AERR112 — « introuvable » seulement sur un 404 ; toute autre panne = Lecture impossible + Réessayer.
   const [lectureEchec, setLectureEchec] = useState(false)
+  // T4-X8-016 — un 403 est un DROIT manquant, jamais « vérifiez votre connexion ».
+  const [refus, setRefus] = useState(false)
   const [essai, setEssai] = useState(0)
 
   useEffect(() => {
@@ -36,12 +39,14 @@ export default function LeadDetailPage() {
     setLoading(true)
     setNotFound(false)
     setLectureEchec(false)
+    setRefus(false)
     setLead(null)
     crmApi.getLead(id)
       .then((r) => { if (!cancelled) setLead(r.data) })
       .catch((err) => {
         if (cancelled) return
         if (err?.response?.status === 404) setNotFound(true)
+        else if (estRefusDeDroit(err)) setRefus(true)
         else setLectureEchec(true)
       })
       .finally(() => { if (!cancelled) setLoading(false) })
@@ -70,6 +75,8 @@ export default function LeadDetailPage() {
       <p className="page-loading"><Spinner /> Chargement du lead…</p>
     )
   }
+
+  if (refus) return <RefusDeDroit objet="ce lead" />
 
   if (lectureEchec) {
     return (

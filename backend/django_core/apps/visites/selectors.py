@@ -340,8 +340,27 @@ def get_company_visite_version(company, visite_id):
     )
 
 
-def contexte_visite_terrain(visite):
-    """L'agrégat COMPLET d'une visite technique terrain (contrat VT0)."""
+#: D-ACAL-106 — les droits qui lisaient DÉJÀ le panneau devis de la visite
+#: (lecture des devis, planification, arbitrage) : le Technicien, qui n'a que
+#: ``visites_voir``/``visites_modifier``, n'y lit ni devis ni prix.
+DROITS_PANNEAU_DEVIS = ('ventes_voir', 'visites_creer', 'visites_valider')
+
+
+def lit_le_panneau_devis(user):
+    """Vrai si ``user`` lit le panneau devis (montants TTC) d'une visite."""
+    from core.permissions import _user_has_or_legacy
+
+    return user is None or any(
+        _user_has_or_legacy(user, code) for code in DROITS_PANNEAU_DEVIS)
+
+
+def contexte_visite_terrain(visite, user=None):
+    """L'agrégat COMPLET d'une visite technique terrain (contrat VT0).
+
+    ``user`` (D-ACAL-106) : un lecteur sans droit au panneau devis
+    (:func:`lit_le_panneau_devis`) reçoit ``devis: []`` — la forme d'un lead
+    sans devis, jamais un montant.
+    """
     medias = _medias_tries(visite)
     blocs = _visite_checklist(visite, medias)
     mesures_rendues = _visite_mesures(visite)
@@ -384,7 +403,7 @@ def contexte_visite_terrain(visite):
             'manquants': manquants,
         },
         'client_panel': _visite_client_panel(visite.lead),
-        'devis': _visite_devis(visite.lead),
+        'devis': _visite_devis(visite.lead) if lit_le_panneau_devis(user) else [],
         # VTA6 — jalons de progression, horodatés SERVEUR. ``None`` tant que le
         # jalon n'est pas franchi : l'écran affiche « En route » ou « Arrivé »
         # à partir de CE fait, il ne le devine pas.
@@ -1049,6 +1068,23 @@ def visites_visibles(user, *, base=None, mine=False):
     if mine:
         base = base.filter(commercial=user)
     return base
+
+
+def lead_ids_des_visites_assignees(user):
+    """D-ACAL-106 — les identifiants des leads dont une visite est ASSIGNÉE à
+    ``user`` (``commercial=user``, sa société seule), en sous-requête.
+
+    Lu par ``apps.calepinage`` : le technicien qui monte sur le toit ouvre le
+    calepinage du lead de SA visite, même quand ce lead appartient à un
+    commercial hors de sa portée.
+    """
+    from .models import VisiteTerrain
+
+    company_id = getattr(user, 'company_id', None)
+    if company_id is None or not getattr(user, 'pk', None):
+        return VisiteTerrain.objects.none().values('lead_id')
+    return VisiteTerrain.objects.filter(
+        company_id=company_id, commercial_id=user.pk).values('lead_id')
 
 
 def ligne_visite_terrain(visite):

@@ -445,3 +445,100 @@ class SaisieIllisibleTest(SimpleTestCase):
             with self.assertRaises(ReleveRefuse) as capture:
                 _sans_caractere_interdit(valeur, champ)
             self.assertEqual(capture.exception.champ, champ)
+
+
+class TechnicienReleveTest(BaseReleve):
+    """D-ACAL-106 (fondateur, 25/11/2026) — le Technicien ouvre le calepinage
+    du lead de SA visite et y fait le relevé (mesures, pente, orientation,
+    photos), sans jamais dessiner, ni lire un devis ou un montant."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, TECHNICIEN_PERMISSIONS,
+        )
+        from apps.visites.models import VisiteTerrain
+
+        def compte(nom, permissions):
+            role = Role.objects.create(company=self.company, nom=f'r-{nom}',
+                                       permissions=list(permissions))
+            return User.objects.create_user(username=nom, password='x',
+                                            company=self.company, role=role)
+        self.commercial = compte('m4-commercial', COMMERCIAL_PERMISSIONS)
+        self.tech = compte('m4-tech', TECHNICIEN_PERMISSIONS)
+        self.lead.owner = self.commercial
+        self.lead.save(update_fields=['owner'])
+        self.calepinage.roof_layout = {
+            'version': 2, 'zones': [{'id': 'zA', 'label': 'Pan A',
+                                     'pitchDeg': 10,
+                                     'vertices': [[0, 0], [8, 0], [8, 5], [0, 5]]}]}
+        self.calepinage.save(update_fields=['roof_layout'])
+        self.visite = VisiteTerrain.objects.create(
+            company=self.company, lead=self.lead, commercial=self.tech)
+        self.base = f'/api/django/calepinage/calepinages/{self.calepinage.pk}/'
+
+    def _section(self, api, corps):
+        from apps.calepinage.services.layout import empreinte_document
+
+        self.calepinage.refresh_from_db()
+        return api.post(f'{self.base}layout/section/', dict(
+            corps, base_empreinte=empreinte_document(self.calepinage.roof_layout)),
+            format='json')
+
+    def test_lit_le_calepinage_de_sa_visite_seulement(self):
+        api = self._api(self.tech)
+        self.assertEqual(api.get(self.base).status_code, 200)
+        self.assertEqual(api.get(f'{self.base}releve/').status_code, 200)
+        self.visite.commercial = self.commercial
+        self.visite.save(update_fields=['commercial'])
+        self.assertEqual(api.get(self.base).status_code, 404)
+
+    def test_fait_le_releve_mesures_pente_orientation_photos(self):
+        api = self._api(self.tech)
+        cree = api.post(f'{self.base}releve/',
+                        {'releve_le': HIER.isoformat(), 'chaines': []},
+                        format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+        corrige = api.patch(f"{self.base}releve/{cree.data['releve']['id']}/",
+                            {'notes': 'Accès par la terrasse'}, format='json')
+        self.assertEqual(corrige.status_code, 200, corrige.data)
+        pan = self._section(api, {'cle': 'zones', 'zone_id': 'zA', 'champs': {
+            'pitchDeg': 22, 'facingAzimuthDeg': 180, 'facingManual': True,
+            'facingAzimuthSource': 'saisie'}})
+        self.assertEqual(pan.status_code, 200, pan.data)
+        photo = api.post(f'{self.base}photos/', {
+            'photo': SimpleUploadedFile('toit.png', PNG, content_type='image/png'),
+            'prise_le': HIER.isoformat(), 'genre': 'sol'}, format='multipart')
+        self.assertEqual(photo.status_code, 201, photo.data)
+
+    def test_ne_dessine_ni_ne_retire_ni_ne_chiffre(self):
+        api = self._api(self.tech)
+        releve = enregistrer_releve(self.calepinage, {
+            'releve_le': HIER.isoformat(), 'chaines': []}, user=self.user)
+        self.assertEqual(api.delete(f'{self.base}releve/{releve.pk}/').status_code, 403)
+        geometrie = self._section(api, {'cle': 'zones', 'zone_id': 'zA', 'champs': {
+            'vertices': [[0, 0], [9, 0], [9, 5], [0, 5]]}})
+        self.assertEqual(geometrie.status_code, 403)
+        self.assertEqual(self._section(api, {'cle': 'underlay', 'valeur': {}}).status_code, 403)
+        self.assertEqual(api.patch(self.base, {'titre': 'x'}, format='json').status_code, 403)
+        self.assertEqual(api.post(f'{self.base}generer-devis/', {}, format='json').status_code, 403)
+        self.assertEqual(api.get('/api/django/ventes/devis/').status_code, 403)
+        self.assertEqual(api.post('/api/django/ventes/devis/', {'lead': self.lead.pk},
+                                  format='json').status_code, 403)
+
+    def test_aucun_montant_dans_le_contexte_de_conception(self):
+        reponse = self._api(self.tech).get(f'{self.base}design-context/')
+        self.assertEqual(reponse.status_code, 200)
+        economie = reponse.data['chiffrage']['economie_annee1_mad']
+        self.assertIsNone(economie['valeur'])
+        self.assertEqual(economie['etat'], 'non_servi')
+        self.assertIsNone((reponse.data.get('consommation_lead') or {})
+                          .get('facture_mensuelle_mad'))
+
+    def test_qui_gere_garde_le_releve_sans_le_code_du_releve(self):
+        """Le porteur de ``calepinage_gerer`` (Commercial) n'a pas besoin de
+        ``calepinage_releve`` : l'alternative n'enlève rien."""
+        reponse = self._api(self.commercial).post(
+            f'{self.base}releve/', {'releve_le': HIER.isoformat(), 'chaines': []},
+            format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)

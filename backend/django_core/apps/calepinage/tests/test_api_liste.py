@@ -64,9 +64,12 @@ class BaseApiCalepinage(TestCase):
         self.role_autre = Role.objects.create(
             company=self.autre, nom='Directeur',
             permissions=list(DIRECTEUR_PERMISSIONS))
+        # D-ACAL-106 — le Technicien LIT désormais un calepinage : le compte
+        # « sans » garde ses droits, moins tout code ``calepinage_*``.
         self.role_sans = Role.objects.create(
-            company=self.company, nom='Technicien',
-            permissions=list(TECHNICIEN_PERMISSIONS))
+            company=self.company, nom='Technicien sans calepinage',
+            permissions=[c for c in TECHNICIEN_PERMISSIONS
+                         if not c.startswith('calepinage_')])
         self.user = User.objects.create_user(
             username='cal_api', password='x', company=self.company,
             role=self.role)
@@ -183,8 +186,8 @@ class FiltresListeTest(BaseApiCalepinage):
 class ResponsablesPossiblesTest(BaseApiCalepinage):
     """T4-X3-016 — le menu « Responsable » de Nouveau calepinage ne propose que
     des gens qui peuvent OUVRIR un calepinage (même prédicat que le serveur :
-    ``calepinage_voir``, ``ScopedPermission``). Un technicien reçoit 403 sur tout
-    le module : lui confier un calepinage n'a pas de sens."""
+    ``calepinage_voir``, ``ScopedPermission``). Un compte sans ``calepinage_voir``
+    reçoit 403 sur tout le module : lui confier un calepinage n'a pas de sens."""
 
     URL = '/api/django/crm/assignable-users/'
 

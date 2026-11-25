@@ -13,7 +13,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import visitesApi from '../../api/visitesApi'
-import fetchAllPages from '../../utils/fetchAllPages'
 import PageHeader from '../../components/layout/PageHeader'
 import {
   Button, Card, Input, Label, Spinner,
@@ -39,10 +38,10 @@ export default function PlanifierVisitePage() {
   const [erreurs, setErreurs] = useState({})
   const abort = useRef(null)
 
+  // T4-X8-017 — seuls les comptes qui peuvent OUVRIR une visite (`visites_voir`).
   const chargerMembres = useCallback(() => {
-    fetchAllPages((page, { page_size: pageSize } = {}) =>
-      visitesApi.getMembres({ params: { page, page_size: pageSize } }).then((r) => r.data))
-      .then((rows) => setMembres(Array.isArray(rows) ? rows : (rows?.results ?? [])))
+    visitesApi.getAssignables()
+      .then((r) => setMembres(Array.isArray(r?.data) ? r.data : (r?.data?.results ?? [])))
       // Le champ « assigner à » reste alors vide et facultatif : le serveur
       // assignera son défaut. On n'invente pas une liste d'utilisateurs.
       .catch(() => setMembres([]))
@@ -197,7 +196,7 @@ export default function PlanifierVisitePage() {
             <SelectContent>
               {membres.map((m) => (
                 <SelectItem key={m.id} value={String(m.id)}>
-                  {m.nom_affiche || m.full_name || m.username || `Utilisateur ${m.id}`}
+                  {m.nom_affiche || m.full_name || m.first_name || m.username || `Utilisateur ${m.id}`}
                 </SelectItem>
               ))}
             </SelectContent>

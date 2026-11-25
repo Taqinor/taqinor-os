@@ -433,11 +433,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         visite = self.get_object()
         services.expirer_assemblage_perime(visite)
-        return Response(selectors.contexte_visite_terrain(visite))
+        return Response(selectors.contexte_visite_terrain(visite, self.request.user))
 
     def _agregat(self, visite):
         services.expirer_assemblage_perime(visite)
-        return Response(selectors.contexte_visite_terrain(visite))
+        return Response(selectors.contexte_visite_terrain(visite, self.request.user))
 
     # ── Création ─────────────────────────────────────────────────────────────
 
@@ -472,7 +472,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             return Response(erreurs, status=(
                 status.HTTP_409_CONFLICT if date_passee
                 else status.HTTP_400_BAD_REQUEST))
-        return Response(selectors.contexte_visite_terrain(visite),
+        return Response(selectors.contexte_visite_terrain(visite, self.request.user),
                         status=status.HTTP_201_CREATED)
 
     # ── Garde de lecture seule (VT3 : une visite validée est gelée) ───────────
