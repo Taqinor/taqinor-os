@@ -1516,3 +1516,16 @@ conception à UNE option ; un module désigné d'une autre puissance garde le m�
 - FILE D'ATTENTE (trois agents au plus) : E7a fiche du lead (ALEA71, ACAL2021), E7c atelier (ADEV153, ACAL2022,
   ACAL2023), E6c, lanes de correctifs du tour 3 (1 liste des devis, 2 éditeur — APRÈS e7b, mêmes fichiers —, 3, 4, 5),
   relecteurs X5, X3, X6 à X8, relecteur des maquettes.
+
+**Ajout de 05 h 35 UTC.** `lane/t3-relecture` REVENUE (5 corrections) et repliée ; marque « échec attendu » retirée ;
+garde C20 verte (banc du test ADEV151 extrait, exception motivée sur ADEV151) ; contrats et instantané OpenAPI à jour.
+**`dev-lot3` POUSSÉE (troisième passage de CI de la PR brouillon #1555).** AVANT de la passer « prête » et de demander
+la fusion : mettre l'instrument à jour sur `dev-lot3` (worktree `l5t-instr` : `git checkout -B instr-lot3 dev-lot3`,
+build du front avec `VITE_PUBLIC_SITE_URL=http://site-public.invalid`, `bash l5t/lancer.sh serveur`) et REGARDER les
+écrans de l'étape 5 que personne n'a vus (étape Panneaux « calcul en cours », Résultats avec la conception, provenance
+« de la conception » à l'étape Électrique, bandeau du site d'un client sans lead, modification d'un ancien ticket
+après-vente) = acceptation ACAL2028.
+Tour 3 : X2 TERMINÉ (11 constats, 10 rejeux confirmés) — total 49 constats, six lanes de correctifs décrites dans
+`T4/tour3/consolidation.md`. EN VOL : `lane/moteur-e7b`, `lane/moteur-e6c` (consignes `scratchpad/msg-lane-e6c.md`,
+base de test `e6c`). À lancer aux places libres : relecteur X5 puis X3 (sur l'instrument mis à jour), lane F1 (liste
+des devis, `scratchpad/tour3/msg-lane-F1-liste.md`), E7a, E7c, lanes de correctifs 2 à 6.
