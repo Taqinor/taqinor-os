@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   optionTotalsTTC, prixParKwc, discountForTarget, computeBuyCost, multiPropertyPreviewTTC,
-  totauxCanoniquesTtc, optionsDesLignes,
+  totauxCanoniquesTtc, optionsDesLignes, coutAchatOption,
 } from './totaux.js'
 import { PAS_ARRONDI_DEVIS } from '../remise.js'
 
@@ -61,6 +61,32 @@ test('QJR567 computeBuyCost ignore une ligne optionnelle et les sections/notes',
     { produit: '1', designation: 'Note', quantite: '1', prix_unit_ttc: '0', typeLigne: 'note' },
   ]
   assert.equal(computeBuyCost(lines, produits), computeBuyCost([normale], produits))
+})
+
+// T4-X4-020 — la marge d'une option = total de CETTE option − coût d'achat des
+// lignes de CETTE option (jamais le coût des deux paniers face à un seul total).
+test('T4-X4-020 coutAchatOption ne compte que les lignes de l option affichée', () => {
+  const produits = [
+    { id: 1, nom: 'Panneau 550W', prix_achat: '800', tva: '10' },
+    { id: 2, nom: 'Onduleur réseau Deye 5kW', prix_achat: '6000', tva: '20' },
+    { id: 3, nom: 'Onduleur hybride Deye 5kW', prix_achat: '9000', tva: '20' },
+    { id: 4, nom: 'Batterie Dyness 5kWh', prix_achat: '12000', tva: '20' },
+  ]
+  const lines = [
+    { produit: '1', designation: 'Panneau 550W', quantite: '7', prix_unit_ttc: '1100', variante: 'sans' },
+    { produit: '1', designation: 'Panneau 550W', quantite: '11', prix_unit_ttc: '1100', variante: 'avec' },
+    { produit: '2', designation: 'Onduleur réseau Deye 5kW', quantite: '1', prix_unit_ttc: '9000' },
+    { produit: '3', designation: 'Onduleur hybride Deye 5kW', quantite: '1', prix_unit_ttc: '14000' },
+    { produit: '4', designation: 'Batterie Dyness 5kWh', quantite: '1', prix_unit_ttc: '18000' },
+  ]
+  const avec = coutAchatOption(lines, 'avec', produits)
+  assert.equal(avec.option, 'avec')
+  assert.equal(avec.cost, Math.round(11 * 800 * 1.1 + 9000 * 1.2 + 12000 * 1.2))
+  const sans = coutAchatOption(lines, 'sans', produits)
+  assert.equal(sans.cost, Math.round(7 * 800 * 1.1 + 6000 * 1.2))
+  assert.ok(avec.cost < computeBuyCost(lines, produits), 'jamais les deux paniers')
+  // Mono-option : aucune option nommée.
+  assert.equal(coutAchatOption([lines[2]], 'sans', produits).option, null)
 })
 
 // ── QJ31 — Multi-propriétés : aperçu écran (TTC) mode ×N et mode villas ──────

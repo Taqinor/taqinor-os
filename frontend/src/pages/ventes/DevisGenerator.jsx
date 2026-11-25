@@ -104,7 +104,7 @@ import {
 import { _hasPrix } from '../../features/ventes/calc/lignesDefaut.js' // QJR546 — garde « produit tarifé »
 import { useGabaritMarche } from './generator/hooks/useGabaritMarche' // T4-U3-006 — table par marché
 import {
-  optionTotalsTTC, prixParKwc, discountForTarget, computeBuyCostDetail, avecBatterieAvailability,
+  optionTotalsTTC, prixParKwc, discountForTarget, coutAchatOption, avecBatterieAvailability,
   multiPropertyPreviewTTC, lignesRemiseesParPanier,
 } from '../../features/ventes/calc/totaux.js'
 import { MESSAGE_KWH_INCOHERENT, baremeDepuisProfil } from '../../features/ventes/calc/tarifs.js'
@@ -1577,7 +1577,7 @@ export default function DevisGenerator({
 
   // QJR568 / AGNR74 — prix/kWc et prix cible au kWc FACTURÉ de l'option affichée.
   const pkwc = prixParKwc(kpiTotal, optionArgent === 'avec' ? kwpAvec : kwpLignes)
-  const buyDetail = useMemo(() => computeBuyCostDetail(lines, produits), [lines, produits])
+  const buyDetail = useMemo(() => coutAchatOption(lines, optionArgent, produits, { scenario }), [lines, optionArgent, produits, scenario]) // T4-X4-020
   const buyCost = buyDetail.cost
   const marge = buyCost != null ? Math.round(kpiTotal - buyCost) : null
 
@@ -2100,7 +2100,7 @@ export default function DevisGenerator({
             applyPrixCible={applyPrixCible}
             kwp={kwp}
             marge={marge}
-            margeLignesSansAchat={buyDetail.sansAchat}
+            margeLignesSansAchat={buyDetail.sansAchat} margeOption={buyDetail.option}
             kpiTotal={kpiTotal}
           />
         </LigneTable>
@@ -2210,7 +2210,7 @@ export default function DevisGenerator({
             {/* AGNR29 — même composant que le Rail : jamais un % sur un coût
                 partiel (« marge partielle : N ligne(s) sans prix d'achat »). */}
             <MargeIndicative marge={marge} kpiTotal={kpiTotal}
-                             lignesSansAchat={buyDetail.sansAchat} variante="lateral" />
+                             lignesSansAchat={buyDetail.sansAchat} option={buyDetail.option} variante="lateral" />
             <div className="border-t border-border pt-3">
               <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Système</div>
               <RailSysteme lines={lines} produits={produits} kwp={kwp} kwpLignes={kwpLignes} kwpAvec={kwpAvec}

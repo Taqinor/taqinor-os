@@ -401,6 +401,16 @@ export function computeBuyCostDetail(lines, produits) {
   return { cost: any ? Math.round(cost) : null, sansAchat }
 }
 
+// T4-X4-020 — le coût d'achat de L'OPTION dont la marge est affichée : les
+// lignes de `lignesDeLOption` (le panier dont le rail tire `kpiTotal`), jamais
+// les lignes des deux options face au total d'une seule (marge négative
+// fabriquée). `option` est rendu nommé sur un devis à deux options, sinon null.
+export function coutAchatOption(lines, option, produits, { scenario } = {}) {
+  const lignes = lignesDeLOption(lines, option, { scenario, produits })
+  const deux = deuxOptionsDeclarees(lines, { scenario, produits })
+  return { ...computeBuyCostDetail(lignes, produits || []), option: deux ? option : null }
+}
+
 // Appelants inchangés : le seul coût (ou null).
 export function computeBuyCost(lines, produits) {
   return computeBuyCostDetail(lines, produits).cost
