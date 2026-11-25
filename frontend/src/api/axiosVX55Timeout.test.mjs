@@ -75,9 +75,9 @@ test('VX55 : fetchDevis transmet le signal du thunk à chaque page', () => {
   // T4-X4-005 — l'écran Devis demande UNE page (`requete`) : le signal du thunk
   // suit les DEUX chemins (toutes les pages sans requête, une page avec), et la
   // synthèse par statut lue à côté de la page est annulée avec elle.
-  assert.match(fetchDevisBody, /createCancellableThunk\('ventes\/fetchDevis', \(requete, \{ signal \}\)/)
+  assert.match(fetchDevisBody, /createCancellableThunk\('ventes\/fetchDevis', \(requete, \{ signal, dispatch, getState \}\)/)
   assert.match(fetchDevisBody, /ventesApi\.getDevis\(\{ page, page_size: pageSize \}, \{ signal \}\)/)
-  assert.match(fetchDevisBody, /chargerPageDevis\(requete, signal\)/)
+  assert.match(fetchDevisBody, /chargerPageDevis\(requete, signal, \{ dispatch, getState \}\)/)
   const pageBody = VENTES_SLICE_SRC.slice(
     VENTES_SLICE_SRC.indexOf('async function chargerPageDevis'),
     VENTES_SLICE_SRC.indexOf('export const fetchDevis'))
