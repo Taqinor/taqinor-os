@@ -235,7 +235,13 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
       regle_80_pct_respectee: true, taux_autoconso_sans: 0.5, couverture_sans: 0.4, economie_sans_mad: 5000,
       economie_avec_mad: 8614, batterie_disponible: true, payback_sans_annees: 6.89, payback_avec_annees: 8.72,
       taille_du_devis: ['avec'] }
-    const dimensionnement = { tableau: [ligne], recommandation: { panneaux: 8, kwc: 4.4 },
+    const motif = '4.6 kWh refusé : capacité utile 4.60 kWh au-dessus du plafond de remplissage 0.00 kWh '
+      + '(le surplus quotidien du mois 2, le plus faible de l\'année).'
+    const petite = { ...ligne, panneaux: 4, kwc: 2.2, batterie_disponible: false, taille_du_devis: undefined,
+      stockage_refuse: { motif_refus: motif, capacite_kwh: 4.6, remplissage: { pire_mois: { mois: 2, ratio: 0 } } } }
+    const brute = 'meilleur payback (6.9 ans, 2 tailles à égalité à moins de 0.25 an près) — critère « meilleur_payback »'
+    const dimensionnement = { tableau: [petite, ligne], critere: 'meilleur_payback', motivation: brute,
+      recommandation: { panneaux: 8, kwc: 4.4, payback_sans_annees: 6.89, couverture_sans: 0.43 },
       falaise: { cible_kwh_mois: 300 }, meilleure_falaise: { panneaux: 8, kwc: 4.4, batterie_kwh: 4.6,
         payback_annees: 7.66 } }
     ventesApi.getConceptionLead.mockResolvedValue({ data: RANGEE })
@@ -255,6 +261,21 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
     expect(container.querySelector('[data-testid="etude-horaire-meilleure-falaise"]').textContent)
       .toContain('payback 7,7 ans (batterie et prix du moteur)')
     expect(figure(container, 'payback_ans')).toBe('4,2 ans')  // la carte : ce devis
+    // Revue de l'écran (25/11) — la cellule « Éco. avec » : UNE phrase en mots simples ;
+    // la phrase technique à la demande (infobulle), jamais dans la cellule.
+    const raison = container.querySelector('[data-testid="etude-horaire-raison-batterie"]')
+    expect(raison.textContent).toBe('Pas de batterie à cette taille : en février, le surplus solaire d’une '
+      + 'journée ne remplirait la batterie de 4,6 kWh qu’à 0 %.')
+    expect(raison.getAttribute('title')).toBe(motif)
+    // La ligne sous le tableau : nombres français, critère en mots, aucune clé technique.
+    const motivation = container.querySelector('[data-testid="etude-horaire-motivation"]')
+    expect(motivation.textContent).toContain('critère : le retour sur investissement le plus court')
+    expect(motivation.textContent).not.toMatch(/meilleur_payback|\d\.\d/)
+    expect(motivation.getAttribute('title')).toBe(brute)
+    // Les badges : chacun sur sa ligne sous le chiffre kWc, texte entier.
+    const badges = [...container.querySelectorAll('[data-testid="etude-horaire-badges"] > span')]
+      .map((b) => b.textContent.trim())
+    expect(badges).toEqual(['★ Recommandé (sans)', 'taille de ce devis (avec batterie)'])
   }, 20000)
 
   // E7d (revue lot 4, M2) — un aperçu en ÉCHEC après une saisie est DIT : la phrase du

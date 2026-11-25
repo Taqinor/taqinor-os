@@ -10,7 +10,7 @@ import {
   verdictBatteriePourTaille,
   libelleTranche, falaiseAffichable, glitchAnnuel, balayageStockageAffichable,
   estimationConsoAffichable, facturesRecaleesAffichables,
-  donneesHorairesDeConception, serieEconomiesMensuelles,
+  donneesHorairesDeConception, serieEconomiesMensuelles, motivationAffichable,
 } from './etudeHorairePreviewPur.js'
 import { documentContrat } from '../../test/fixtures/contractSamples.js'
 import { isBattery, texteClassement, appartientAuPanierAvec } from './calc/classification.js'
@@ -427,15 +427,38 @@ test('E7d M3 — graphe et blocs lus sur la conception servie ; Σ des mois = la
 // T4-X4-018 — la raison d'une taille sans batterie est CELLE DU SERVEUR (refus du palier
 // de stockage, `stockage_refuse.motif_refus`) avant toute phrase générique ; à la taille
 // d'une option que le devis vend, la ligne le dit (« taille de ce devis »).
-test('T4-X4-018 — raison serveur du refus de stockage, taille du devis marquée', () => {
-  const motif = '5 kWh refusé : la batterie ne serait chargée qu’à 4,8 % en novembre.'
+test('T4-X4-018 — raison du refus de stockage en mots simples (valeurs servies), taille du devis marquée', () => {
+  const motif = '4.6 kWh refusé : capacité utile 4.60 kWh au-dessus du plafond de remplissage 0.00 kWh (le '
+    + 'surplus quotidien du mois 2, le plus faible de l\'année) — la batterie n\'y serait chargée qu\'à 0.0 %.'
   const [refusee, devis] = lignesAffichables({ tableau: [
-    { panneaux: 4, kwc: 2.2, batterie_disponible: false, stockage_refuse: { motif_refus: motif } },
+    { panneaux: 4, kwc: 2.2, batterie_disponible: false, stockage_refuse: { motif_refus: motif, capacite_kwh: 4.6,
+      remplissage: { moyen: 0.2, pire_mois: { mois: 2, ratio: 0.0012 } } } },
     { panneaux: 11, kwc: 6.05, batterie_disponible: true, economie_avec_mad: 8886, taille_du_devis: ['avec'] },
   ] })
-  assert.equal(refusee.raisonBatterie, motif)
+  // UNE phrase courte, nombres français, NOM du mois ; la phrase technique reste disponible à la demande.
+  assert.equal(refusee.raisonBatterie,
+    'Pas de batterie à cette taille : en février, le surplus solaire d’une journée ne remplirait la '
+    + 'batterie de 4,6 kWh qu’à 0 %.')
+  assert.equal(refusee.raisonTechnique, motif)
+  assert.doesNotMatch(refusee.raisonBatterie, /\d\.\d|mois \d/)
   assert.equal(refusee.tailleDuDevis, '')
   assert.equal(devis.tailleDuDevis, 'taille de ce devis (avec batterie)')
   assert.equal(lignesAffichables({ tableau: [{ panneaux: 3, taille_du_devis: ['sans', 'avec'] }] })[0].tailleDuDevis,
     'taille de ce devis (sans et avec batterie)')
+})
+
+// Revue de l'écran (25/11) — la ligne sous le tableau : composée des valeurs servies
+// (recommandation, critère), nombres français, jamais une clé technique.
+test('motivationAffichable : nombres français, critère en mots, phrase technique à part', () => {
+  const brute = 'meilleur payback (6.9 ans, 2 tailles à égalité à moins de 0.25 an près) — critère « meilleur_payback »'
+  const m = motivationAffichable({ critere: 'meilleur_payback', motivation: brute,
+    recommandation: { panneaux: 8, kwc: 4.4, payback_sans_annees: 6.9, couverture_sans: 0.43 } })
+  assert.equal(m.texte, 'Taille conseillée sans batterie : 8 panneaux (4,40 kWc), retour sur investissement '
+    + '6,9 ans, couverture 43 % — critère : le retour sur investissement le plus court.')
+  assert.equal(m.technique, brute)
+  assert.doesNotMatch(m.texte, /meilleur_payback|\d\.\d/)
+  // Sans recommandation (refus du moteur) : sa phrase, telle que servie.
+  assert.deepEqual(motivationAffichable({ recommandation: null, motivation: 'aucune taille recommandable' }),
+    { texte: 'aucune taille recommandable', technique: null })
+  assert.equal(motivationAffichable(null), null)
 })
