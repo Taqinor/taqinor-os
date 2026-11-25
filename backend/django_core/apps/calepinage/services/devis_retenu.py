@@ -261,10 +261,15 @@ def bloc_conception(calepinage):
         return None
     option = conception.get('option_retenue')
     production = ((conception.get('valeurs') or {}).get(option) or {}).get('production_annuelle') or {}
+    from .equipements import devis_lie_et_pose
+
+    # T4-X7-006 — le devis LIÉ (une V2 brouillon comprise) et s'il porte la pose : l'écart
+    # devis ↔ pose reste nommé après une révision (``a_jour`` faux ⇒ « à resynchroniser »).
     return {'production_annuelle_kwh': production.get('valeur'), 'option': option,
             'version': conception.get('version'), 'calcule_le': conception.get('calcule_le'),
             'designations': _phrases_des_designations(conception),
-            'devis_envoye': _devis_envoye_lie(calepinage)}
+            'devis_envoye': _devis_envoye_lie(calepinage),
+            'devis_lie': devis_lie_et_pose(calepinage)}
 
 
 #: D-ACAL-109 / D-ACAL-110 — les champs des suppositions qui parlent du matériel DÉSIGNÉ à

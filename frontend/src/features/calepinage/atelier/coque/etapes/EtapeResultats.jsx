@@ -137,6 +137,10 @@ const LIBELLE_OPTION = { sans: 'option sans batterie', avec: 'option avec batter
 /** Relecture E5 M1 — tant que la conception est servie, la production de la POSE (simulée) porte son nom exact :
     jamais deux productions à l'écran sans que chacune soit nommée. */
 const NOM_PRODUCTION_POSE = 'Production simulée de la pose'
+/** T4-X7-006 — « Réviser le devis » de la conception : ce que le serveur fait réellement. */
+const PHRASE_REVISER_SUR_LA_CONCEPTION = 'Le devis envoyé n’est pas modifié : « Réviser le devis » en crée une '
+  + 'nouvelle version, copie de ce devis remise sur la conception du lead si elle a changé depuis. Votre pose n’y entre '
+  + 'qu’en resynchronisant cette nouvelle version (étape Documents).'
 
 /** ACAL2015 (C4-E5, D-ACAL-96) — LA conception (`conception` de `GET resultat/`) : UN chiffre de production, celui que le
     moteur unique a rangé ; un devis ENVOYÉ dont l'écart servi (`devis_envoye.ecart_devis`, lignes de ventes) porte la
@@ -173,6 +177,7 @@ function ProductionDeLaConception({ bloc, taille = null, pose = null, simulee = 
   // renvoyée à sa propre simulation (jamais deux productions de deux tailles sans le dire). Même taille : une ligne.
   const autreTaille = kwh != null && tailleDifferente(taille?.kwc, pose?.kwc)
   const envoye = bloc.devis_envoye
+  const lie = bloc.devis_lie ?? null
   const ecarts = envoye?.ecart_devis ?? []
   // Relecture E5 M2 — la production QUE LE DEVIS ENVOYÉ A RANGÉE (`devis_envoye.production_annuelle_kwh`, servie par
   // le serveur), comparée au chiffre AFFICHÉ ici : jamais déduite de l'absence d'une ligne d'écart.
@@ -215,8 +220,10 @@ function ProductionDeLaConception({ bloc, taille = null, pose = null, simulee = 
           <p>
             {'Devis '}{lien}{` envoyé${envoye.envoye_le ? ` le ${formatDate(envoye.envoye_le)}` : ''}${option} : ${dit(duDevis)}`}
           </p>
-          <p className="cal-res-sourdine">
-            Le devis envoyé n’est pas modifié : « Réviser le devis » crée une nouvelle version sur la conception.
+          {/* T4-X7-006 — ce que la révision fait VRAIMENT (`reviser_sur_la_conception`) : une copie du devis, remise sur
+              la conception du lead seulement si elle a changé depuis ce devis ; la pose n'y entre qu'en resynchronisant. */}
+          <p className="cal-res-sourdine" data-zone="reviser-explique">
+            {PHRASE_REVISER_SUR_LA_CONCEPTION}
           </p>
           {reviserPossible && (
             <button type="button" className="cal-res-lien" style={{ alignSelf: 'flex-start' }} disabled={enCours}
@@ -225,6 +232,15 @@ function ProductionDeLaConception({ bloc, taille = null, pose = null, simulee = 
             </button>
           )}
         </>
+      )}
+      {/* T4-X7-006 — le devis LIÉ (la V2 brouillon après une révision) qui ne porte pas la pose enregistrée : l'écart
+          reste NOMMÉ (servi `conception.devis_lie.a_jour`, prédicat des empreintes), avec le geste qui le comble. */}
+      {lie && lie.a_jour === false && lie.devis !== envoye?.devis && (
+        <p className="cal-res-sourdine" data-zone="devis-lie-pose">
+          {'Le devis lié '}
+          <Link to={`/ventes/devis?devis=${lie.devis}`} className="cal-res-lien-devis">{lie.reference || 'voir le devis'}</Link>
+          {' ne porte pas votre pose : « Resynchroniser le devis » (étape Documents) le met sur la pose.'}
+        </p>
       )}
     </section>
   )

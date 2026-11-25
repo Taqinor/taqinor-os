@@ -347,6 +347,28 @@ class ResultatsDeLaConceptionTest(_DevisDeuxOptions):
         bloc = self._bloc(self._les_deux('Sans batterie', statut='brouillon'))
         self.assertEqual((bloc['production_annuelle_kwh'], bloc['devis_envoye']), (self.attendu, None))
 
+    def test_t4_x7_006_le_devis_lie_dit_s_il_porte_la_pose(self):
+        """T4-X7-006 — après « Réviser le devis », la V2 (brouillon) liée ne porte pas la pose : le
+        bloc la nomme (``devis_lie``) avec ``a_jour`` faux (empreintes différentes), vrai quand elles
+        sont égales, ``None`` sans empreinte ; ``None`` sans devis lié. Rien n'est écrit."""
+        self.assertIsNone(self._bloc()['devis_lie'])
+        devis = self._les_deux('Sans batterie', statut='brouillon')
+        Devis.objects.filter(pk=devis.pk).update(layout_hash='a' * 64)
+        devis.refresh_from_db()
+        avant = Devis.objects.filter(pk=devis.pk).values().get()
+        lie = self._bloc(devis)['devis_lie']
+        self.assertEqual((lie['devis'], lie['reference'], lie['statut']), (devis.pk, devis.reference, 'brouillon'))
+        self.assertIsNone(lie['a_jour'])  # le calepinage neuf n'a pas d'empreinte : inconnu, jamais « périmé »
+        calepinage = Calepinage.objects.create(company=self.company, lead_id=self.lead_lie.pk, devis=devis,
+                                               titre='QA-T4-X7-006', layout_hash='b' * 64)
+        from apps.calepinage.services.devis_retenu import bloc_conception
+
+        self.assertIs(bloc_conception(calepinage)['devis_lie']['a_jour'], False)
+        Calepinage.objects.filter(pk=calepinage.pk).update(layout_hash='a' * 64)
+        calepinage.refresh_from_db()
+        self.assertIs(bloc_conception(calepinage)['devis_lie']['a_jour'], True)
+        self.assertEqual(Devis.objects.filter(pk=devis.pk).values().get(), avant)
+
     def test_envoye_nomme_le_devis_et_l_ecart_sans_le_toucher(self):
         from django.utils import timezone
 

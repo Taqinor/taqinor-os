@@ -166,6 +166,22 @@ def devis_et_ecart(devis_id, retenue, company_id):
     return devis, ecart_devis(devis, **{'retenue': retenue})
 
 
+def devis_lie_et_pose(calepinage):
+    """T4-X7-006 — ``{devis, reference, statut, a_jour}`` du devis LIÉ à ``calepinage`` (même
+    société), ou ``None`` sans devis lié. ``a_jour`` = LE prédicat des deux empreintes de ventes
+    (``_conception_a_jour``, ACAL46, celui du badge et de ``_ecart_devis``) : ``False`` quand le
+    devis ne porte pas la pose enregistrée, ``None`` quand une empreinte manque. Lecture pure ;
+    le devis est celui déjà lu par la conception retenue (mémo de requête, aucune requête de plus)."""
+    from apps.ventes.selectors_calepinage import _conception_a_jour, devis_lu_par_pk
+
+    devis_id = getattr(calepinage, 'devis_id', None)
+    devis = devis_lu_par_pk(devis_id) if devis_id else None
+    if devis is None or devis.company_id != getattr(calepinage, 'company_id', None):
+        return None
+    return {'devis': devis.pk, 'reference': devis.reference or '', 'statut': devis.statut,
+            'a_jour': _conception_a_jour(devis, calepinage)}
+
+
 #: ACAL2013 — la provenance d'un matériel servi par la conception du moteur unique.
 PROVENANCE_MOTEUR = 'moteur'
 
