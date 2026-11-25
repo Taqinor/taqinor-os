@@ -228,18 +228,49 @@ def phrase_calibre_deduit(pompe_kw, tension_v, courant):
                _fr(courant)))
 
 
+#: Ce qui rend les chaînes vérifiables quand le noyau ne les a pas comptées.
+MOTIF_CHAINES_INCONNUES = ("fiche du variateur (tensions et courant MPPT) à "
+                           "saisir dans Stock")
+
+
+def _choisir_coffret(coffrets, capacite, nb_chaines, motif_chaines):
+    """Revue R3 (F1) — ``(coffret | None, motif | None)`` : un nombre de
+    chaînes INCONNU n'est pas 1 (aucun coffret, le motif dit ce qui manque) ;
+    un coffret qui ne publie aucun nombre de chaînes n'est jamais choisi."""
+    if not coffrets:
+        return None, None
+    besoin = _flottant(nb_chaines)
+    if besoin is None or besoin < 1:
+        return None, ("coffret DC non choisi : nombre de chaînes en parallèle "
+                      "du champ inconnu (%s)"
+                      % (motif_chaines or MOTIF_CHAINES_INCONNUES))
+    besoin = int(besoin)
+    coffret = _plus_petit_suffisant(coffrets, capacite, besoin)
+    if coffret is not None:
+        return coffret, None
+    motifs = []
+    if any(capacite(p) is not None for p in coffrets):
+        motifs.append("aucun coffret DC du catalogue n'accepte %d chaîne%s en "
+                      "parallèle" % (besoin, "s" if besoin > 1 else ""))
+    motifs += ["« %s » ne publie aucun nombre de chaînes (nom de l'article)"
+               % (p.get("nom") or "coffret DC")
+               for p in coffrets if capacite(p) is None]
+    return None, " ; ".join(motifs)
+
+
 def choisir_protections(produits, *, nb_chaines=None, alimentation=None,
-                        courant_pompe_a=None, pompe_kw=None, tension_v=None):
+                        courant_pompe_a=None, pompe_kw=None, tension_v=None,
+                        motif_chaines=None):
     """D-ACAL-118 — ``{cle: (produit | None, motif | None)}`` des trois
     protections du kit, choisies sur les données publiées SEULEMENT :
 
     * coffret DC (rôle ``protection_dc``, « coffret » au nom) : le plus petit
       dont le nombre de chaînes publié au nom (« 2 strings ») couvre les
-      chaînes en parallèle du champ ; sans coffret à capacité publiée qui
-      suffise, un coffret qui n'en publie aucune ;
+      chaînes en parallèle du champ ; chaînes inconnues ou coffret sans
+      nombre publié : aucun (:func:`_choisir_coffret`) ;
     * disjoncteur AC (rôle ``protection_ac``) : de la phase de la pompe ; un
-      seul calibre au catalogue = celui-là (s'il couvre le courant) ;
-      plusieurs = le plus petit calibre ≥ courant de la pompe (Ib ≤ In) —
+      plus petit calibre PUBLIÉ ≥ courant de la pompe (Ib ≤ In), même avec un
+      seul calibre au catalogue ; sans courant, aucun —
       courant PUBLIÉ, sinon déduit de son kW et de sa tension (D-ACAL-124,
       :func:`courant_deduit_pompe`, hypothèse dite) ;
     * parafoudre AC (rôle ``protection_ac``) : de la phase, sinon générique.
@@ -251,15 +282,10 @@ def choisir_protections(produits, *, nb_chaines=None, alimentation=None,
 
     coffrets = [p for p in produits if p.get("role_pompage") == "protection_dc"
                 and "coffret" in _norme(p.get("nom"))]
-    besoin = max(int(_flottant(nb_chaines, 1) or 1), 1)
     capacite = lambda p: _nombre_du_nom(  # noqa: E731
         p, r"(\d+)\s*(?:strings?|chaines?|entrees?)\b")
-    coffret = _plus_petit_suffisant(coffrets, capacite, besoin)
-    if coffret is None:
-        coffret = _premier_price([p for p in coffrets if capacite(p) is None])
-    choix["coffret_dc"] = (coffret, None if coffret is not None else (
-        "aucun coffret DC du catalogue n'accepte %d chaîne%s en parallèle"
-        % (besoin, "s" if besoin > 1 else "") if coffrets else None))
+    choix["coffret_dc"] = _choisir_coffret(coffrets, capacite, nb_chaines,
+                                           motif_chaines)
 
     ac = [p for p in produits if p.get("role_pompage") == "protection_ac"]
     disjoncteurs = _de_la_phase(
@@ -278,21 +304,28 @@ def choisir_protections(produits, *, nb_chaines=None, alimentation=None,
         if courant is not None:
             choix["_hypothese_disjoncteur"] = phrase_calibre_deduit(
                 pompe_kw, tension_v, courant)
+    # Revue R3 (F2) — jamais un disjoncteur sans courant (publié ou déduit),
+    # quel que soit le nombre de calibres ; un article sans calibre publié
+    # n'est jamais choisi ; un courant au-dessus de tout calibre : aucun.
     if not disjoncteurs:
         disjoncteur = None
-    elif len(calibres) == 1 and (courant is None or None in calibres
-                                 or calibres.pop() + 1e-9 >= courant):
-        disjoncteur = _premier_price(disjoncteurs)
-    elif courant is not None and courant > 0:
-        disjoncteur = _plus_petit_suffisant(disjoncteurs, calibre, courant)
-        if disjoncteur is None:
-            motif = ("aucun disjoncteur AC du catalogue n'atteint le courant "
-                     "%s de la pompe (%s A)" % (
-                         "estimé" if choix.get("_hypothese_disjoncteur")
-                         else "nominal", _fr(courant)))
-    else:
+    elif courant is None or courant <= 0:
         disjoncteur = None
         motif = motif_deduit
+    else:
+        disjoncteur = _plus_petit_suffisant(disjoncteurs, calibre, courant)
+        if disjoncteur is None:
+            motifs = []
+            if any(c is not None for c in calibres):
+                motifs.append(
+                    "aucun disjoncteur AC du catalogue n'atteint le courant "
+                    "%s de la pompe (%s A)" % (
+                        "estimé" if choix.get("_hypothese_disjoncteur")
+                        else "nominal", _fr(courant)))
+            motifs += ["« %s » ne publie aucun calibre (nom de l'article)"
+                       % (p.get("nom") or "disjoncteur AC")
+                       for p in disjoncteurs if calibre(p) is None]
+            motif = " ; ".join(motifs)
     choix["disjoncteur_ac"] = (disjoncteur, motif)
 
     parafoudres = _de_la_phase(
@@ -338,7 +371,8 @@ def composer_kit(*, mode_pompe, pompe=None, variateur=None, panneau=None,
                  profondeur_calage_m=None, marge_cable_m=None,
                  longueur_conduite_m=None, volume_bassin_m3=None,
                  options_cochees=None, nb_chaines=None, alimentation=None,
-                 courant_pompe_a=None, pompe_kw=None, tension_pompe_v=None):
+                 courant_pompe_a=None, pompe_kw=None, tension_pompe_v=None,
+                 motif_chaines=None):
     """AGR119 — ``{inclus, options, non_inclus, lignes, total_ttc, alertes}``.
 
     * ``pompe`` : forme ``pompe`` du contrat (sortie AGR117) — ignorée en
@@ -409,7 +443,8 @@ def composer_kit(*, mode_pompe, pompe=None, variateur=None, panneau=None,
         protections = choisir_protections(
             produits_options, nb_chaines=nb_chaines,
             alimentation=alimentation, courant_pompe_a=courant_pompe_a,
-            pompe_kw=pompe_kw, tension_v=tension_pompe_v)
+            pompe_kw=pompe_kw, tension_v=tension_pompe_v,
+            motif_chaines=motif_chaines)
         for cle, role, libelle in PROTECTIONS:
             if (cle == "coffret_dc" and not nb) or (
                     cle != "coffret_dc" and variateur is None):
