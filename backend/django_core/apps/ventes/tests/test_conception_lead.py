@@ -2996,6 +2996,36 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
                 self.assertEqual(ConceptionLead.objects.filter(company=company, lead=lead).count(), 1)
                 self.assertEqual(_rangee(), reference)
 
+    def test_e6e_conception_recalculee_dit_le_materiel_designe(self):
+        """Lane E6e, item 2 — une désignation à l'étape Électrique change la conception : la
+        phrase rangée (lue au chatter du lead et à l'atelier) dit « matériel désigné à
+        l'atelier : <module> / <onduleur> », jamais un « Module désigné X → — » parasite sur
+        un recalcul qui ne touche pas au matériel (filet, fiche modifiée)."""
+        from apps.calepinage.models import Calepinage
+        from apps.calepinage.services.electrique import CLE_ENTREE
+        from apps.stock.models import Produit
+        from apps.ventes.models import ConceptionLead
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        deye = Produit.objects.get(company=company, nom='Onduleur hybride Deye 5kW Monophasé')
+        module = Produit.objects.create(company=company, nom='Panneau Canadian Solar 710W', sku='E6E-710b',
+                                        prix_vente=Decimal('1500'), prix_achat=Decimal('1'), quantite_stock=50)
+        calepinage = self._calepinage_designe(company, lead)
+        self._relancer(lead, company, _declencheur('pose_enregistree'))
+        Calepinage.objects.filter(pk=calepinage.pk).update(
+            resultat={CLE_ENTREE: {'onduleur_produit': deye.pk, 'module_produit': module.pk}})
+        self.assertTrue(self._relancer(lead, company, _declencheur('pose_enregistree')).ecrite)
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertTrue(courante.declencheur['raison'].endswith(
+            " : matériel désigné à l'atelier : Panneau Canadian Solar 710W / Onduleur hybride Deye 5kW Monophasé"),
+            courante.declencheur['raison'])
+        self.assertEqual([c['champ'] for c in courante.declencheur['champs']], ['materiel_designe'])
+
+        self._relancer(lead, company, _declencheur('filet'), forcer=True)  # même matériel : rien à dire de lui
+        courante = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual(courante.declencheur['champs'], [])
+
     def _commande_remplir(self, call_command, company):
         import io
 

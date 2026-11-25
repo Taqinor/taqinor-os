@@ -159,7 +159,27 @@ def _pourquoi(courante, entrees, origine, champs):
     releves = changements(ancienne, entrees.entrees_utilisees, champs)
     if not champs and not releves and origine == 'filet' and format_d_avant(ancienne):
         return 'regles', champs
-    return origine, champs + _declencheur_valide({'origine': origine, 'champs': releves})[1]
+    return origine, champs + _declencheur_valide({'origine': origine, 'champs': _materiel_designe(
+        releves, ancienne, entrees.entrees_utilisees)})[1]
+
+
+#: Lane E6e — les entrées du matériel DÉSIGNÉ à l'étape Électrique, dites en UN morceau.
+DESIGNES = ('module_designe', 'onduleur_designe')
+CHAMP_MATERIEL_DESIGNE = 'materiel_designe'
+
+
+def _materiel_designe(releves, ancienne, nouvelle):
+    """Les changements relevés, ceux du module / onduleur désignés réunis en UN champ
+    ``materiel_designe`` (``avant`` / ``apres`` = « <module> / <onduleur> », un rôle sans
+    désignation dit « matériel du moteur ») ; rien quand la paire n'a pas changé."""
+    autres = [c for c in releves if c['champ'] not in DESIGNES]
+    paires = [tuple(((e or {}).get(cle) or {}).get('valeur') for cle in DESIGNES) for e in (ancienne, nouvelle)]
+    if paires[0] == paires[1]:
+        return autres
+
+    def _dite(paire):
+        return None if not any(paire) else ' / '.join(v or 'matériel du moteur' for v in paire)
+    return autres + [{'champ': CHAMP_MATERIEL_DESIGNE, 'avant': _dite(paires[0]), 'apres': _dite(paires[1])}]
 
 
 def _garde_de_rangement(company, lead, debut):
@@ -398,6 +418,9 @@ def phrase_du_declencheur(lead, champs, origine, quand):
 def _morceau(lead, c):
     from apps.ventes.conception.societe import MOTIFS
 
+    if c['champ'] == CHAMP_MATERIEL_DESIGNE:  # lane E6e : la désignation de l'atelier, en mots
+        return ("matériel désigné à l'atelier : %s" % c['apres'] if c['apres']
+                else "désignation retirée à l'atelier : matériel du moteur")
     if c['champ'] in MOTIFS:  # relecture E4 B1 : un réglage société, dit en mots
         if c['avant'] is None or c['apres'] is None:
             return MOTIFS[c['champ']]
