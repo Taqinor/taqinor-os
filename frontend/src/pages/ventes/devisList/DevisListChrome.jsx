@@ -36,6 +36,9 @@ export function DevisPageHeader({
   // de la pagination (les devis en jeu) et NOMME le reste.
   versionsRemplacees = 0,
   remplaceesVisibles = false,
+  // Recherche, statut ou équipe posés : la pagination compte la page filtrée,
+  // la synthèse toute la portée — l'en-tête le DIT au lieu d'un second compte.
+  filtreActif = false,
   expiringSoon,
   loading,
   error,
@@ -52,6 +55,7 @@ export function DevisPageHeader({
     : remplaceesVisibles
       ? `${total} devis dont ${versions}`
       : `${total - versionsRemplacees} devis · ${versions}`
+  const portee = filtreActif ? `${compte}, sur l’ensemble de vos devis` : compte
   return (
     <EnteteVentes
       icon={FileText}
@@ -61,8 +65,8 @@ export function DevisPageHeader({
         loading && total === 0 && devis.length === 0
           ? 'Chargement des devis…'
           : expiringSoon.length > 0
-          ? `${compte} · ${expiringSoon.length} à relancer (validité ≤ 7 jours)`
-          : compte
+          ? `${portee} · ${expiringSoon.length} à relancer (validité ≤ 7 jours)`
+          : portee
       }
       actions={(
         <>

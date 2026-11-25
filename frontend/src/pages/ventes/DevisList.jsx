@@ -1020,6 +1020,7 @@ export default function DevisList() {
          sans elle, `devisCount` est déjà le compte de la pagination. */
       versionsRemplacees={devisSynthese?.remplaces ?? 0}
       remplaceesVisibles={showSuperseded}
+      filtreActif={!!devisSynthese && (!!qServeur || statutFilter !== 'tous' || !!auteurs)}
       expiringSoon={expiringSoon}
       loading={loading}
       error={error}

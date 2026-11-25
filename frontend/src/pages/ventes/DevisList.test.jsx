@@ -1836,6 +1836,13 @@ describe('DevisList — T4-X4-005 : une page à la fois, filtres et en-tête ser
     expect(screen.getByText('596 devis dont 12 versions remplacées')).toBeTruthy()
   })
 
+  it('T4-X9-015 — filtre posé : l’en-tête dit qu’il compte l’ensemble des devis, pas la page filtrée', () => {
+    const portee = { ...synthese, total: 596, remplaces: 12, a_relancer: [] }
+    renderPage({ devis: [ligne(1)], devisCount: 40, devisSynthese: portee })
+    fireEvent.click(screen.getByRole('radio', { name: 'Envoyé' }))
+    expect(screen.getByText('584 devis · 12 versions remplacées, sur l’ensemble de vos devis')).toBeTruthy()
+  })
+
   it('synthèse en échec : cartes masquées (jamais les totaux d’une seule page), page gardée, Réessayer', () => {
     renderPage({ devis: [ligne(1)], devisCount: 1, devisSyntheseEchec: true })
     expect(screen.getByText('DEV-X4-1')).toBeVisible()
