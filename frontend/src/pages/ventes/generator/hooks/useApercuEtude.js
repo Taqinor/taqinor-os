@@ -9,7 +9,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import crmApi from '../../../../api/crmApi'
 import { toast } from '../../../../ui/confirm'
 import {
-  CHART_MONTHS, comptePanneauxOption, batteryCapaciteInconnue,
+  CHART_MONTHS, batteryCapaciteInconnue,
 } from '../../../../features/ventes/solar'
 import { consoAnnuelleDepuisFactures } from '../../../../features/ventes/calc/tarifs.js'
 import {
@@ -21,7 +21,9 @@ import { decisionSizing } from '../../../../features/ventes/quote/hooks/useSizin
 import { moteur, apercu } from '../../../../features/ventes/quote/valeur'
 import { villeEffectiveLead } from '../../../../features/ventes/quote/ecranDefauts.js'
 import { consommationImposeeDeEtat } from '../../../../features/ventes/quote/etatDevis.js'
-import { chiffresConception, corpsApercuConception, useConceptionEcran } from './useConceptionEcran'
+import {
+  chiffresConception, compositionDesLignes, corpsApercuConception, useConceptionEcran,
+} from './useConceptionEcran'
 
 export function useApercuEtude(ctx) {
   const {
@@ -149,13 +151,15 @@ export function useApercuEtude(ctx) {
     leadId, modeInstallation, fHiver, fEte, consommation: consommationImposee,
     investissement: { sans: totals?.totalSans, avec: totals?.totalAvec },
   })
-  // E7d (CI e2e figures-parite) — les panneaux des lignes par option : la conception
-  // servie doit les porter ; sinon l'aperçu est redemandé au compte imposé.
-  const compte = modeInstallation === 'residentiel' ? {
-    sans: comptePanneauxOption(lines, 'sans', produits), avec: comptePanneauxOption(lines, 'avec', produits),
+  // E7d — la composition des LIGNES par option montrée (compte, panneau, onduleur,
+  // batterie) : la conception servie doit la porter ; sinon l'aperçu est redemandé en
+  // l'imposant (une option par aperçu chez le moteur).
+  const composition = modeInstallation === 'residentiel' ? {
+    sans: showSans ? compositionDesLignes(lines, 'sans', produits) : null,
+    avec: showAvec ? compositionDesLignes(lines, 'avec', produits) : null,
     deux: Boolean(showSans && showAvec),
   } : null
-  const conceptionEcran = useConceptionEcran({ leadId, corps: corpsConception, compte })
+  const conceptionEcran = useConceptionEcran({ leadId, corps: corpsConception, composition })
   const chiffres = chiffresConception(conceptionEcran.conception)
   // La conception affichée est-elle l'APERÇU de cet écran (payback sur ses lignes) ?
   // La version rangée porte le payback d'un devis de RÉFÉRENCE : jamais affiché ici.

@@ -36,7 +36,9 @@ vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDev
 import ventesApi from '../../api/ventesApi'
 import stockApi from '../../api/stockApi'
 import DevisGenerator from './DevisGenerator'
-import { ONDULEUR, PANNEAU, declarerBeforeEachDevis, lignesResidentielles, makeDevisStore } from './devisGenerator.testHelpers.jsx'
+import {
+  ONDULEUR, PANNEAU, declarerBeforeEachDevis, ligneProduit, lignesResidentielles, makeDevisStore,
+} from './devisGenerator.testHelpers.jsx'
 
 const RANGEE = exempleContrat('ventes', 'conception_lead')
 const APERCU = documentContrat('ventes', 'conception_lead').apercu.reponse
@@ -59,7 +61,11 @@ function devisRouvert(lead) {
   }
 }
 
-declarerBeforeEachDevis({ stockApi, ventesApi, produits: [PANNEAU, ONDULEUR], devis: () => devisRouvert(RANGEE.lead), localStorage: true })
+// E7d — un onduleur hybride et une batterie du catalogue (option « avec » des lignes).
+const HYBRIDE = { id: 103, nom: 'Onduleur hybride Deye 5kW Monophasé', prix_vente: 14000, tva: 20, is_archived: false }
+const BATTERIE = { id: 104, nom: 'Batterie Dyness 5 kWh', prix_vente: 16000, tva: 20, is_archived: false }
+
+declarerBeforeEachDevis({ stockApi, ventesApi, produits: [PANNEAU, ONDULEUR, HYBRIDE, BATTERIE], devis: () => devisRouvert(RANGEE.lead), localStorage: true })
 
 function renderEdition() {
   return render(
@@ -162,6 +168,8 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
     ventesApi.getConceptionLead.mockRejectedValue({ response: { status: 404 } })
     const option = (nb, production) => ({ ...APERCU.valeurs.sans,
       nb_panneaux: { valeur: nb, unite: 'panneaux', source: 'moteur' },
+      module_produit: { valeur: PANNEAU.id, unite: null, source: 'moteur' },
+      onduleur_produit: { valeur: ONDULEUR.id, unite: null, source: 'moteur' },
       production_annuelle: { valeur: production, unite: 'kWh/an', source: 'moteur' } })
     const deuxOptions = { ...APERCU, option_retenue: 'avec', valeurs: { sans: option(8, 9000), avec: option(10, 11250) } }
     const uneOption = { ...APERCU, valeurs: { sans: option(8, 9000) } }
@@ -173,6 +181,45 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
     await waitFor(() => expect([prod('sans'), prod('avec')]).toEqual(['9000', '11250']), { timeout: 8000 })
     expect(ventesApi.apercuConception.mock.calls.every(([c]) => !c?.imposes?.nb_panneaux)).toBe(true)
   }, 20000)
+
+  // E7d (revue de l'écran, 25/11, BLOQUANT) — « Les deux » 4 / 8 panneaux, 12 factures
+  // tapées : la conception sur les valeurs du lead re-dimensionne (3 panneaux) ; l'écran
+  // impose alors SA composition — les produits de SES lignes (panneau, onduleur réseau
+  // pour « sans » ; onduleur hybride + batterie pour « avec »), un aperçu par option — et
+  // les cartes des DEUX options se remplissent ; jamais un panneau absent des lignes.
+  it('« Les deux » 4 / 8, factures tapées : composition des lignes imposée par option', async () => {
+    const devis = devisRouvert(RANGEE.lead)
+    devis.data.etude_params = { scenario: 'Les deux' }
+    const [panneau, onduleur] = devis.data.lignes
+    devis.data.lignes = [
+      { ...panneau, quantite: '4', variante: 'sans' },
+      { ...panneau, id: 3, quantite: '8', variante: 'avec', ordre: 1 },
+      { ...onduleur, variante: 'sans' },
+      ligneProduit({ id: 4, produit: HYBRIDE, quantite: '1', prix_unitaire: '14000.00', taux_tva: '20.00', ordre: 3 }),
+      ligneProduit({ id: 5, produit: BATTERIE, quantite: '1', prix_unitaire: '16000.00', taux_tva: '20.00', ordre: 4 }),
+    ].map((l, i) => (i >= 3 ? { ...l, variante: 'avec' } : l))
+    ventesApi.getDevisById.mockResolvedValue(devis)
+    ventesApi.getConceptionLead.mockRejectedValue({ response: { status: 404 } })
+    const une = (opt, production) => ({ ...APERCU, option_retenue: opt, valeurs: { [opt]: { ...APERCU.valeurs.sans,
+      nb_panneaux: { valeur: 3, unite: 'panneaux', source: 'moteur' },
+      production_annuelle: { valeur: production, unite: 'kWh/an', source: 'moteur' } } } })
+    ventesApi.apercuConception.mockImplementation((corps) => Promise.resolve({ data:
+      !corps?.imposes?.nb_panneaux ? une('sans', 2600) : corps.imposes.batterie_produit_id ? une('avec', 7037)
+        : une('sans', 3518) }))
+    const { container } = renderEdition()
+    for (const c of [...container.querySelectorAll('.gen-monthly-grid input')]) {
+      await act(async () => { fireEvent.change(c, { target: { value: '800' } }) })
+    }
+    const prod = (opt) => container.querySelector(`[data-figure="production_annuelle_kwh"][data-figure-option="${opt}"]`)
+      ?.getAttribute('data-figure-value')?.replace(/\D/g, '')
+    await waitFor(() => expect([prod('sans'), prod('avec')]).toEqual(['3518', '7037']), { timeout: 10000 })
+    const imposes = ventesApi.apercuConception.mock.calls.map(([c]) => c.imposes).filter((i) => i.nb_panneaux)
+    expect(imposes).toContainEqual(expect.objectContaining({ nb_panneaux: 4, panneau_produit_id: PANNEAU.id,
+      onduleur_produit_id: ONDULEUR.id }))
+    expect(imposes).toContainEqual(expect.objectContaining({ nb_panneaux: 8, panneau_produit_id: PANNEAU.id,
+      onduleur_produit_id: HYBRIDE.id, batterie_produit_id: BATTERIE.id }))
+    expect(imposes.every((i) => i.consommation?.source === 'factures')).toBe(true)
+  }, 30000)
 
   // E7d (revue lot 4, M2) — un aperçu en ÉCHEC après une saisie est DIT : la phrase du
   // serveur (400 nommant un champ) ou « Aperçu indisponible — Réessayer » (5xx, réseau) ;
