@@ -123,6 +123,11 @@ def restreindre_aux_siens(lignes, user):
         return lignes
     if _user_has_or_legacy(user, CAL_APPROUVER):
         return lignes
+    if lit_par_le_seul_releve(user):
+        # D-ACAL-106 (revue lot 5) — le Technicien ne lit QUE les calepinages de
+        # SES visites : un ET avec la société, jamais un OU ajouté à la portée
+        # d'équipe (qui lui ouvrait les leads de ses pairs).
+        return lignes.filter(_de_ses_visites(user))
     if visible_user_ids(user) is not None:  # ALEC29 (D-ALEC-4) — la portée du rôle suit la lecture
         from apps.crm.selectors import client_base_qs, leads_visibles
         company = getattr(user, 'company', None)
@@ -133,6 +138,20 @@ def restreindre_aux_siens(lignes, user):
     if not vue_restreinte_au_responsable(getattr(user, 'company', None)):
         return lignes
     return lignes.filter(Q(responsable=user) | Q(cree_par=user) | _de_ses_visites(user))
+
+
+def lit_par_le_seul_releve(user):
+    """D-ACAL-106 — Vrai pour un compte qui ne lit le calepinage QUE par le
+    relevé : il porte ``calepinage_releve`` sans ``calepinage_gerer`` (ni
+    ``calepinage_approuver``, déjà servi plus haut). Avant le lot 5, ce compte
+    (Technicien, Technicien responsable) ne portait aucun code calepinage : sa
+    lecture entière vient de la visite qui lui est assignée."""
+    from core.permissions import _user_has_or_legacy
+
+    from .permissions import CAL_GERER, CAL_RELEVE
+
+    return (_user_has_or_legacy(user, CAL_RELEVE)
+            and not _user_has_or_legacy(user, CAL_GERER))
 
 
 def _de_ses_visites(user):

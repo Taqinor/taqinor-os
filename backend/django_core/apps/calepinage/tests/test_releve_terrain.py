@@ -535,6 +535,77 @@ class TechnicienReleveTest(BaseReleve):
         self.assertIsNone((reponse.data.get('consommation_lead') or {})
                           .get('facture_mensuelle_mad'))
 
+    def _pairs_sous_un_directeur(self, permissions_tech):
+        """Revue lot 5 : T (technicien) et C (commercial) rendent compte au même
+        Directeur D ; C possède le lead L et son calepinage K."""
+        directeur = User.objects.create_user(
+            username='m4-directeur', password='x', company=self.company,
+            role=self.role)
+        role = Role.objects.create(company=self.company, nom='r-tech-pair',
+                                   permissions=list(permissions_tech))
+        pair = User.objects.create_user(username='m4-tech-pair', password='x',
+                                        company=self.company, role=role,
+                                        supervisor=directeur)
+        User.objects.filter(pk=self.commercial.pk).update(supervisor=directeur)
+        return pair
+
+    def _sans_lecture_hors_visite(self, tech):
+        api = self._api(tech)
+        self.assertEqual(api.get(self.base).status_code, 404)
+        liste = api.get('/api/django/calepinage/calepinages/')
+        self.assertEqual(liste.status_code, 200)
+        lignes = liste.data.get('results', liste.data)
+        self.assertNotIn(self.calepinage.pk, [ligne['id'] for ligne in lignes])
+        self.assertIn(api.post(f'{self.base}releve/', {
+            'releve_le': HIER.isoformat(), 'chaines': []},
+            format='json').status_code, (403, 404))
+        self.assertIn(api.post(f'{self.base}photos/', {
+            'photo': SimpleUploadedFile('toit.png', PNG, content_type='image/png'),
+            'prise_le': HIER.isoformat(), 'genre': 'sol'},
+            format='multipart').status_code, (403, 404))
+        self.assertIn(self._section(api, {'cle': 'zones', 'zone_id': 'zA', 'champs': {
+            'pitchDeg': 22}}).status_code, (403, 404))
+        self.assertEqual(ReleveTerrain.objects.count(), 0)
+
+    def test_technicien_pair_du_commercial_sans_visite_ne_lit_rien(self):
+        """Revue lot 5 — SCOPE_TEAM ouvrait au Technicien les leads de ses pairs :
+        sans visite assignée sur L, K lui est introuvable partout."""
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+
+        self._sans_lecture_hors_visite(
+            self._pairs_sous_un_directeur(TECHNICIEN_PERMISSIONS))
+
+    def test_technicien_responsable_sans_visite_ne_lit_rien(self):
+        from apps.roles.permissions_registre import TECHNICIEN_RESP_PERMISSIONS
+
+        tech_resp = self._pairs_sous_un_directeur(TECHNICIEN_RESP_PERMISSIONS)
+        User.objects.filter(pk=self.commercial.pk).update(supervisor=tech_resp)
+        self._sans_lecture_hors_visite(tech_resp)
+
+    def test_technicien_pair_avec_sa_visite_lit_et_releve(self):
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.visites.models import VisiteTerrain
+
+        pair = self._pairs_sous_un_directeur(TECHNICIEN_PERMISSIONS)
+        VisiteTerrain.objects.create(company=self.company, lead=self.lead,
+                                     commercial=pair)
+        api = self._api(pair)
+        self.assertEqual(api.get(self.base).status_code, 200)
+        cree = api.post(f'{self.base}releve/',
+                        {'releve_le': HIER.isoformat(), 'chaines': []},
+                        format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+
+    def test_commercial_et_directeur_inchanges(self):
+        """La restriction ne touche que le porteur du seul relevé."""
+        from apps.calepinage.selectors import lit_par_le_seul_releve
+
+        self._pairs_sous_un_directeur(DIRECTEUR_PERMISSIONS)
+        self.assertFalse(lit_par_le_seul_releve(self.commercial))
+        self.assertFalse(lit_par_le_seul_releve(self.user))
+        self.assertTrue(lit_par_le_seul_releve(self.tech))
+        self.assertEqual(self._api(self.commercial).get(self.base).status_code, 200)
+
     def test_qui_gere_garde_le_releve_sans_le_code_du_releve(self):
         """Le porteur de ``calepinage_gerer`` (Commercial) n'a pas besoin de
         ``calepinage_releve`` : l'alternative n'enlève rien."""
