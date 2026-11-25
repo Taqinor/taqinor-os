@@ -5988,3 +5988,14 @@ decisions:
     date: "2026-11-25"
     source: "constat T4-X7-020 du relecteur X7 (25/11/2026) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « One schedule per option (Recommended) » ; nouveaux rendus seulement ; aucune page ajoutée sans son accord"
     taches: []
+  - id: D-ACAL-117
+    question: "Suite de D-ACAL-104 : le droit « approuver un calepinage » n'est porté que par Directeur et Administrateur ; un « Commercial responsable » perd donc l'écriture des réglages société du calepinage. Qui peut les changer ?"
+    options:
+      - cle: directeur_et_administrateur
+        texte: "Comme construit : seuls Directeur et Administrateur écrivent ces réglages ; le Commercial responsable les lit"
+      - cle: aussi_commercial_responsable
+        texte: "Le rôle « Commercial responsable » gagne le droit « approuver un calepinage » au prochain déploiement : il change les réglages société, applique le profil de départ et approuve un calepinage"
+    reponse: aussi_commercial_responsable
+    date: "2026-11-25"
+    source: "compte rendu de la lane K2 (D-ACAL-104) : `calepinage_approuver` n'est porté par aucun rôle métier ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Also Commercial responsable » ; changement de droits additif pour un rôle, appliqué au prochain déploiement (migration de rôles + `init_roles`)"
+    taches: []
