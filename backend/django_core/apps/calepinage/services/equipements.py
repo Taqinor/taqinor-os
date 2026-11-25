@@ -177,15 +177,37 @@ def materiel_de_la_conception(calepinage):
             'longueur': (lu['chaines'] or {}).get('longueur') or None}
 
 
-def options_de_la_conception(options, calepinage, donnees):
+def _panneaux_de_la_conception(calepinage):
+    """Le nombre de panneaux de l'option que la conception courante retient, ou ``None``."""
+    from .devis_retenu import conception_du_calepinage
+
+    conception = conception_du_calepinage(calepinage) or {}
+    valeurs = (conception.get('valeurs') or {}).get(conception.get('option_retenue')) or {}
+    return (valeurs.get('nb_panneaux') or {}).get('valeur')
+
+
+def _panneaux_poses(calepinage, document):
+    from .mesures import mesures_du_document
+
+    document = document if document is not None else getattr(calepinage, 'roof_layout', None)
+    return mesures_du_document(document)['modules'] if isinstance(document, dict) and document else None
+
+
+def options_de_la_conception(options, calepinage, donnees, document=None):
     """ACAL2013 — les options du noyau complétées par la CONCEPTION : sans onduleur
     désigné, le nombre d'onduleurs et la longueur de chaîne sont ceux de la conception
     courante. Une désignation d'onduleur SAISIE garde la main ; une option saisie n'est
-    jamais remplacée."""
+    jamais remplacée. Relecture E5 M4 — imposés SEULEMENT quand la pose (``document``,
+    sinon celui du calepinage) compte autant de panneaux que la conception : une pose
+    d'une autre taille garde ses chaînes calculées (la longueur de la conception reste
+    la référence de l'écart, ``suppositions.reference_de_longueur``)."""
     if (donnees or {}).get('onduleur_produit') not in (None, ''):
         return options
     materiel = materiel_de_la_conception(calepinage)
     if not (materiel.get('produits') or {}).get('onduleur'):
+        return options
+    panneaux = _panneaux_de_la_conception(calepinage)
+    if panneaux is None or _panneaux_poses(calepinage, document) != panneaux:
         return options
     options = dict(options)
     if 'nombre_onduleurs' not in options and (materiel.get('nombre_onduleurs') or 0) >= 1:

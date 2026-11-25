@@ -139,6 +139,42 @@ class MaterielDeLaConception(BaseMateriel):
         self.assertNotIn('module_produit', calepinage.resultat[CLE_ENTREE])
 
 
+class ConceptionSurUnePoseDAutreTaille(BaseMateriel):
+    """Relecture E5 M4 — les chaînes de la conception (12 modules, 1 onduleur) ne sont
+    IMPOSÉES qu'à une pose du MÊME nombre de panneaux ; 16 panneaux posés : chaînes
+    calculées pour la pose réelle, aucun module « en réserve », aucune partition
+    forcée ; la longueur de la conception reste la RÉFÉRENCE de l'écart."""
+
+    def _pose(self, nb):
+        calepinage = self._calepinage()
+        zone = dict(LAYOUT['zones'][0], neededPanels=nb, result={'count': nb})
+        calepinage.roof_layout = {**LAYOUT, 'zones': [zone]}
+        calepinage.save(update_fields=['roof_layout'])
+        return calepinage
+
+    @staticmethod
+    def _textes(conception):
+        return ' | '.join([*conception.alertes, *conception.bloquants,
+                           *(str(getattr(v, 'message', v)) for v in getattr(conception, 'verdicts', ()))])
+
+    def test_seize_panneaux_poses_conception_de_douze(self):
+        from apps.calepinage.services.suppositions import reference_de_longueur
+
+        self._conception(longueur=12)
+        calepinage = self._pose(16)
+        conception, materiel, _d, _doc = conception_du_calepinage(calepinage)
+        self.assertEqual(materiel['provenances']['onduleur'], 'moteur')
+        self.assertEqual(sum(chaine.nb_modules for chaine in conception.chaines), 16)  # mutant forçage : 12
+        self.assertNotIn('en réserve', self._textes(conception))
+        self.assertNotIn('aucune découpe en chaînes ÉGALES', self._textes(conception))
+        self.assertEqual(reference_de_longueur(calepinage), 12)
+
+    def test_meme_taille_la_conception_est_imposee(self):
+        self._conception(longueur=6)
+        conception, _m, _d, _doc = conception_du_calepinage(self._pose(12))
+        self.assertEqual({chaine.nb_modules for chaine in conception.chaines}, {6})
+
+
 class MaterielExplicite(BaseMateriel):
 
     def test_designation_gagne_sur_la_conception(self):

@@ -1390,7 +1390,7 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         # ACAL650 — tolérance d'orientation SAISIE (sourcée) ou None.
         tolerance_orientation_deg=tolerance_orientation_societe(
             parametres_societe(calepinage)),
-        **options_de_la_conception(_options_entree(donnees), calepinage, donnees),  # ACAL2013
+        **options_de_la_conception(_options_entree(donnees), calepinage, donnees, document),  # ACAL2013, E5 M4
         **_options_batterie(calepinage, donnees, materiel))
     return (_nommer_module_pose(conception, materiel, document), materiel, donnees, document)
 
