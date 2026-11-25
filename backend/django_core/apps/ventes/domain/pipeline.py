@@ -1005,7 +1005,7 @@ def champs_du_brouillon(intention):
         roof_layout=intention.layout or None,
         # ADEV143 — la version de conception dont le devis naît (jamais
         # réécrite ensuite ; ``None`` hors devis automatique).
-        conception_source=intention.conception_source,
+        conception_source=getattr(intention, 'conception_source', None),  # E4 C1 : intentions-espions
     )
 
 
