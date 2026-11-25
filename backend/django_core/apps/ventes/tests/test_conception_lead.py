@@ -42,7 +42,7 @@ CLES_RANGEES = {
 }
 CLES_VALEUR = {'valeur', 'unite', 'source'}
 CLES_ENTREES_PAYBACK = set('investissement base investissement_ttc economie_annuelle cout_onduleur_ttc calcul'.split())
-SOURCES_VALEUR = {'moteur', 'pose', 'impose', 'devis', 'defaut'}
+SOURCES_VALEUR = {'moteur', 'pose', 'plan_par_defaut', 'impose', 'devis', 'defaut'}  # ADEV155 : niveau 15
 SOURCES_ENTREE = {'lead', 'calepinage', 'reglage_societe', 'defaut'}
 CLES_SUPPOSITION = {'code', 'champ', 'valeur', 'source', 'message'}
 CLES_DECLENCHEUR = {'raison', 'champs', 'origine'}

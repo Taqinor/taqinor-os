@@ -126,6 +126,10 @@ REGLES_SENSIBILITES_1911 = 14
 #: dit « profil type — estimation », jamais « horaires déclarés »
 #: (``quote_engine/ci/synthese._methode_profil``) ; passée aux nouveaux rendus
 #: par D-ACAL-102 (voir :data:`COUPURE_PHRASES_PROFIL`).
+#: Porte aussi ADEV155 (D-ACAL-108, fondateur 25/11/2026 « Yes, with level 15 ») :
+#: la production d'un lead SANS toit tracé vient de la simulation du plan par
+#: défaut (même cascade que la pose, ``conception/moteur.plan_par_defaut_ouvert``),
+#: allumée le même jour que le reste du niveau 15, jamais avant.
 REGLES_POSE_REELLE_2111 = 15
 #: Niveau 16 (HT24, fondateur 24/11/2026 « With battery now also picks from HV
 #: inverters », DÉCLARÉ, PAS courant — il suit le 15) : l'option C&I « avec

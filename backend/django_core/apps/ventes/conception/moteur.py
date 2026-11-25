@@ -86,6 +86,11 @@ class ResultatConception:
     #: productible servi retenu (``None`` : production de la ville). Jamais servis.
     pose_a_produire: object = None
     productible_pose: object = None
+    #: ADEV155 (D-ACAL-108, niveau 15 seulement) — le lead SANS toit tracé dont le plan par
+    #: défaut sert de BASE aux études (même chemin que la pose), puis ce que le plan suppose
+    #: (pente, pose, production du toit supposé), ajouté aux suppositions. Jamais servis.
+    plan_a_produire: object = None
+    suppositions_plan: list = field(default_factory=list)
     #: Reste d'ACAL2020 — résidentiel : la forme 24 h (somme = 1) de la consommation que le
     #: moteur horaire a utilisée (occupation + équipements), servie par ``valeurs``.
     forme_horaire_24: object = None
@@ -199,6 +204,8 @@ def _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_
         resultat.designations_ecartees = designations_ecartees(company, calepinage_id)
     if pose is not None and pose['complete']:
         resultat.pose_a_produire = (calepinage_id, pose)
+    elif plan_par_defaut_ouvert(calepinage_id, entrees.marche):
+        resultat.plan_a_produire = lead
     refus = refus_localisation(lead)
     if refus is None:
         calcul = {'residentiel': _residentiel, 'agricole': _agricole}.get(entrees.marche, _ci)
@@ -212,7 +219,8 @@ def _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_
     froid = None if entrees.marche == 'agricole' else froid_du_lead(lead)
     resultat.blocs = blocs_du_moteur(resultat.etude_params)
     from apps.ventes.conception.suppositions import suppositions_de
-    resultat.suppositions = suppositions_de(resultat, froid=froid) + resultat.designations_ecartees
+    resultat.suppositions = (suppositions_de(resultat, froid=froid) + resultat.designations_ecartees
+                             + resultat.suppositions_plan)
     resultat.option_retenue, options = V.options(resultat)
     resultat.valeurs = {option: V.valeurs(resultat, option, investissement, froid=froid, company=company)
                         for option in options}
@@ -319,6 +327,53 @@ def pose_reelle(company, calepinage_id, marche):
     return pose if pose and pose.get('nb_panneaux') else None
 
 
+def plan_par_defaut_ouvert(calepinage_id, marche):
+    """ADEV155 (D-ACAL-108, fondateur 25/11/2026 « Yes, with level 15 ») — la production d'un
+    lead SANS toit tracé vient-elle du plan par défaut (``calepinage/services/plan_par_defaut.py``) ?
+    Seulement quand le niveau de règles COURANT est ≥ 15 (``REGLES_POSE_REELLE_2111``, rendu
+    courant par ACAL1001, jamais par cette tâche), aucun toit tracé, marché solaire (le pompage
+    suit sa pose : D-ACAL-46). Au niveau 14 courant : fermé, chemin d'aujourd'hui au bit près."""
+    from apps.ventes.domain import regles_calcul as RC
+
+    return (not calepinage_id and marche != 'agricole'
+            and RC.REGLES_COURANTES >= RC.REGLES_POSE_REELLE_2111)
+
+
+def _materiel_des_lignes(resultat):
+    """``{module, onduleur}`` (identifiants produit) des lignes du moteur : l'onduleur de
+    l'option « avec » d'abord."""
+    from apps.ventes.domain.catalogue import classer_produit
+
+    classes = [(li, classer_produit(getattr(li.produit, 'nom', '') or li.designation) or '')
+               for li in resultat.lignes if li.type_ligne == 'produit' and not li.optionnelle]
+    return {'module': next((li.produit_id for li, c in classes if c == 'panneau'), None),
+            'onduleur': next((li.produit_id for li, c in sorted(
+                classes, key=lambda paire: (paire[0].variante or '') != 'avec') if c.startswith('onduleur')),
+                None)}
+
+
+def _base_du_plan(resultat, devis, company):
+    """ADEV155 — le productible du PLAN PAR DÉFAUT (porte ``productible_du_plan_par_defaut``)
+    au kWc et au matériel des lignes du moteur, posé sur le devis EN MÉMOIRE avant ses études
+    comme celui d'une pose : production, autoconsommation, économies et blocs en viennent tous.
+    Non servi (plan refusé, incomplet, fiche vide) ou en échec : DIT absent, la ville reste."""
+    from apps.ventes.conception.etudes_lignes import puissances_des_lignes
+    from apps.ventes.conception.porte_calepinage import productible_du_plan_par_defaut
+
+    try:
+        servi, suppositions, motif = productible_du_plan_par_defaut(
+            company, resultat.plan_a_produire, puissances_des_lignes(devis, resultat.lignes)[0],
+            _materiel_des_lignes(resultat))
+    except Exception as exc:  # noqa: BLE001 — dite absente, la production de la ville reste (D-ENF22-BLE001)
+        logger.warning('Plan par défaut non simulé (moteur unique)', exc_info=True)
+        servi, suppositions, motif = None, [], 'erreur : %s' % type(exc).__name__
+    if servi is None:
+        resultat.absents['production_plan_par_defaut'] = motif
+        return
+    resultat.productible_pose, resultat.suppositions_plan = servi, suppositions
+    devis.productible_pose_moteur = servi
+
+
 def _base_de_la_pose(resultat, devis, company):
     """Relecture E6 M1 (ADEV149, niveau 15, pose complète) — le productible de LA pose
     (porte ``productible_de_la_pose`` : le résultat rangé du calepinage s'il est à jour,
@@ -328,17 +383,13 @@ def _base_de_la_pose(resultat, devis, company):
     production, autoconsommation, couverture, économies et blocs copiés au devis en
     viennent TOUS. Une lecture qui échoue autrement est DITE absente (production de la ville)."""
     if resultat.pose_a_produire is None:
+        if resultat.plan_a_produire is not None:  # ADEV155, niveau 15 seulement
+            _base_du_plan(resultat, devis, company)
         return
     from apps.ventes.conception.porte_calepinage import SimulationEnCours, productible_de_la_pose
-    from apps.ventes.domain.catalogue import classer_produit
 
     calepinage_id, _pose = resultat.pose_a_produire
-    classes = [(li, classer_produit(getattr(li.produit, 'nom', '') or li.designation) or '')
-               for li in resultat.lignes if li.type_ligne == 'produit' and not li.optionnelle]
-    materiel = {'module': next((li.produit_id for li, c in classes if c == 'panneau'), None),
-                'onduleur': next((li.produit_id for li, c in sorted(
-                    classes, key=lambda paire: (paire[0].variante or '') != 'avec') if c.startswith('onduleur')),
-                    None)}
+    materiel = _materiel_des_lignes(resultat)
     try:
         servi = productible_de_la_pose(company, calepinage_id, materiel)
     except SimulationEnCours:

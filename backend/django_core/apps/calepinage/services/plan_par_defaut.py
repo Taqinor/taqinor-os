@@ -123,7 +123,9 @@ def simuler_plan_par_defaut(company, lat, lon, kwc, *, pente=None, azimut=AZIMUT
     (:func:`_pose_supposee`, toujours dite dans ``suppositions``).
 
     Rend ``{production_annuelle, production_mensuelle, nb_panneaux, kwc, pente_deg,
-    azimut_deg, version_moteur, hash_entree, suppositions, document}``. Lève
+    azimut_deg, version_moteur, hash_entree, complete, suppositions, document}``
+    (``complete`` : le total de la cascade est complet, aucune perte du socle manquante —
+    ADEV155 ne sert au moteur qu'un plan complet). Lève
     ``SimulationRefusee`` (champ nommé) comme la simulation de la pose."""
     from ..models import Calepinage
     from .electrique import resoudre_materiel
@@ -149,6 +151,7 @@ def simuler_plan_par_defaut(company, lat, lon, kwc, *, pente=None, azimut=AZIMUT
         'pente_deg': pente_deg, 'azimut_deg': float(azimut),
         'version_moteur': rendu['blocs'][CLE_SIMULATION]['version_moteur'],
         'hash_entree': rendu['hash_entree'],
+        'complete': (production.get('total') or {}).get('complete') is True,
         'suppositions': ([] if pente is not None else [{
             'code': 'pente_supposee', 'champ': 'inclinaison_deg', 'valeur': PENTE_SUPPOSEE_DEG,
             'source': 'defaut', 'message': MESSAGE_PENTE_SUPPOSEE}]) + [pose_dite]

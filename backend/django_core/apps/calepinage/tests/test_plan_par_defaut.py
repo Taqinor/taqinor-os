@@ -55,6 +55,8 @@ class PlanParDefautTest(TestCase):
         self.assertEqual(plan['production_mensuelle'],
                          [m.get('p50_kwh') for m in pose['blocs']['production']['mensuel']])
         self.assertEqual(plan['version_moteur'], simulation._version_moteur())
+        # ADEV155 — la complétude du total de la cascade, lue telle quelle (jamais recalculée).
+        self.assertIs(plan['complete'], total['complete'] is True)
         # Rappeler rend le même résultat.
         self.assertEqual(self._plan()['production_annuelle'], plan['production_annuelle'])
 
