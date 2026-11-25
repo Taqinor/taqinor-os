@@ -124,6 +124,33 @@ class CrochetsFuzzTests(unittest.TestCase):
                                {'enforce_sso': 'oui'}, mode='NEGATIVE'))
         self.assertEqual(cas.body['enforce_sso'], 'oui')
 
+    def test_validite_du_devis_jamais_dans_le_passe(self):
+        """T4-X4-013 — « date de validité ≥ aujourd'hui » est relative à la date du jour :
+        OpenAPI ne sait pas la dire (``format: date`` seul). Comme les ids réels, le fuzz
+        pose donc une date À VENIR là où il a tiré une date passée ; une date future, un
+        mauvais type et les autres routes restent tels quels."""
+        import datetime
+        aujourdhui = datetime.date.today().isoformat()
+        futur = (datetime.date.today() + datetime.timedelta(days=9)).isoformat()
+        for methode, chemin in (
+                ('POST', '/api/django/ventes/devis/'),
+                ('PUT', '/api/django/ventes/devis/{id}/'),
+                ('PATCH', '/api/django/ventes/devis/{id}/'),
+                ('POST', '/api/django/ventes/devis/atomic/')):
+            with self.subTest(methode=methode, chemin=chemin):
+                cas = self._appel(_cas(self.hooks, methode, chemin,
+                                       {'date_validite': '2020-01-01', 'note': 'x'}))
+                self.assertEqual(cas.body['date_validite'], aujourdhui)
+                self.assertEqual(cas.body['note'], 'x')
+                cas = self._appel(_cas(self.hooks, methode, chemin, {'date_validite': futur}))
+                self.assertEqual(cas.body['date_validite'], futur)
+        cas = self._appel(_cas(self.hooks, 'PATCH', '/api/django/ventes/devis/{id}/',
+                               {'date_validite': 12}, mode='NEGATIVE'))
+        self.assertEqual(cas.body['date_validite'], 12)
+        cas = self._appel(_cas(self.hooks, 'POST', '/api/django/ventes/devis/{id}/accepter/',
+                               {'date_validite': '2020-01-01'}))
+        self.assertEqual(cas.body['date_validite'], '2020-01-01')
+
     def test_politique_reseau_autres_modes_intacts(self):
         for valeur in ('off', 'monitor', 42, None):
             with self.subTest(valeur=valeur):
