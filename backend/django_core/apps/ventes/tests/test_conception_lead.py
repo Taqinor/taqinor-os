@@ -3629,6 +3629,29 @@ class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_rela
         self.assertEqual(api.post(URL_MISE_A_JOUR % retouche.pk).json()['appliquees'], [])  # rien de plus
         self.assertEqual(conception_courante(company, lead.pk)['brouillons_a_mettre_a_jour'], [])
 
+    def test_agen12_raisons_disent_la_conception_du_lead(self):
+        """AGEN12 (constat en direct) — « Mettre à jour » réutilise le chemin
+        réconcilier, qui parle du CALEPINAGE (« La conception 3D porte… »,
+        « Écart de calepinage non entièrement appliqué… ») quand seule la fiche du
+        lead a changé : le vendeur lit désormais ce qui a vraiment changé (la
+        conception du lead et son champ) ; le chemin réconcilier, lui, est intact."""
+        from apps.ventes.domain import pipeline
+
+        company, lead, user, _intact, retouche, _envoye = self._trois_devis()
+        self._nouvelle_version(company, lead)
+        dit_par_le_calepinage = ['La conception 3D porte le devis de 5 à 7 panneaux.',
+                                 'Écart de calepinage non entièrement appliqué : le devis reste « à resynchroniser » '
+                                 '— corrigez la cause ci-dessus puis resynchronisez.', 'Autre avertissement.']
+        with mock.patch.object(pipeline, 'reappliquer_lead', return_value={'avertissements': dit_par_le_calepinage}):
+            corps = self._api(user).post(URL_MISE_A_JOUR % retouche.pk).json()
+        raisons = [n['raison'] for n in corps['non_appliquees'] if n['champ'] == 'composition']
+        self.assertEqual(raisons, [
+            'La conception du lead porte le devis de 5 à 7 panneaux (champ modifié : Facture hiver).',
+            "La conception du lead n'a pas pu être entièrement appliquée (champ modifié : Facture hiver) : "
+            'corrigez la cause ci-dessus puis cliquez de nouveau « Mettre à jour ».',
+            'Autre avertissement.'])
+        self.assertFalse([r for r in raisons if 'calepinage' in r or '3D' in r])
+
     def test_mise_a_jour_meme_garde_que_reprendre_le_lead(self):
         """Relecture E4 M4 — aucun rôle élargi : la garde de « Reprendre les
         valeurs du lead » (rôles RÉELS du registre), 403 en français ; hors
