@@ -126,6 +126,14 @@ export function economieServie(chiffrage: ChiffrageAtelier | null | undefined, k
   return kwc != null && kwcServi != null && Math.abs(kwcServi - kwc) < 0.005 ? eco : null;
 }
 
+/** ACAL2022 — le texte de l'économie de la carte et du Total : site public (`chiffrage` absent) ⇒ l'estimation du
+ *  navigateur ; ERP ⇒ la servie (au kWc posé), sinon « au prochain enregistrement » — jamais l'estimation. */
+export function texteEconomie(chiffrage: ChiffrageAtelier | null | undefined, kwc: number | null | undefined, estime: string): string {
+  if (chiffrage === undefined) return estime;
+  const servie = economieServie(chiffrage, kwc);
+  return servie != null ? `${fmtMad(servie)}/an` : estime.startsWith('—') ? estime : ECONOMIE_AU_PROCHAIN_ENREGISTREMENT;
+}
+
 /** ACAL1612 — le P50 de la simulation À JOUR et l'écart de la production servie. */
 function texteSimulation(kwh: number, chiffrage: ChiffrageAtelier | null | undefined): string {
   const p50 = p50ADate(chiffrage);

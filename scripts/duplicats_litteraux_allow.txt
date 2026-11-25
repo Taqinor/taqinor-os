@@ -131,7 +131,6 @@ d6d924de3905|apps/web/src/pages/ar/équipement.astro,apps/web/src/pages/en/équi
 db02e06834f2|apps/web/src/lib/shadingEngine.test.ts,apps/web/src/scripts/roofPro11/shadingUi.test.ts
 ddb048f236a6|apps/web/src/pages/ar/contact.astro,apps/web/src/pages/contact.astro,apps/web/src/pages/en/contact.astro
 de0dbb4ea9a0|apps/web/src/scripts/roofPro11/captureBoot.ts,apps/web/src/scripts/roofPro11/prefill.ts
-de1da74c93a2|apps/web/src/scripts/roofPro11/batiment.ts,apps/web/src/scripts/roofPro11/scene3d.ts
 de947286be44|apps/web/src/pages/ar/financement.astro,apps/web/src/pages/en/financement.astro,apps/web/src/pages/financement.astro
 df57f0dcb0cd|apps/web/src/pages/ar/guides/combien-de-panneaux-pour-ma-maison.astro,apps/web/src/pages/en/guides/combien-de-panneaux-pour-ma-maison.astro
 dffb2c6e8916|apps/web/src/pages/ar/realisations/index.astro,apps/web/src/pages/en/realisations/index.astro,apps/web/src/pages/realisations/index.astro

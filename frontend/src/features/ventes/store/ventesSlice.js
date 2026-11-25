@@ -41,7 +41,8 @@ const DEVIS_PAGE_CONCURRENCY = 5
 // (tableau de bord, cockpit Ventes) : toutes les pages, comme avant.
 async function chargerPageDevis(requete, signal) {
   const [page, synthese] = await Promise.allSettled([
-    ventesApi.getDevis(requete, { signal }).then((r) => r.data),
+    // L'écran pagine lui-même : il envoie `page` et lit `count` (le total du pager).
+    ventesApi.getDevis({ ...requete, page: requete.page ?? 1 }, { signal }).then((r) => r.data),
     ventesApi.getDevisSynthese({ signal }).then((r) => r.data),
   ])
   if (page.status === 'rejected') throw page.reason
@@ -80,6 +81,7 @@ export const rafraichirDevis = createAsyncThunk('ventes/rafraichirDevis', async 
     dispatch(devisPatched(res.data))
     return res.data
   } catch {
+    // parametres-requete: page, page_size, q, statut_effectif, actifs, auteurs
     dispatch(fetchDevis(getState()?.ventes?.devisRequete ?? undefined))
     return null
   }

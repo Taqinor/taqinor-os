@@ -103,7 +103,7 @@ import {
   type FiltrageAccesSolaire,
 } from './shadingUi'; // CALX115 — le seuil d'accès solaire lu par le posable
 import { $, celluleEconomies, fmt, fmtKwc, fmtMad, renommerDt } from './dom';
-import { AU_PROCHAIN_ENREGISTREMENT, ECONOMIE_AU_PROCHAIN_ENREGISTREMENT, VALEURS_HORS_LIGNE, compteDevis, couvertureServie, economieServie, phraseSurplus, peindreBande, productionServie, quiDuDevis, suiteAuDevis, texteSurDevis } from './affichageErp'; // R2-13/16/17, ACAL2022
+import { AU_PROCHAIN_ENREGISTREMENT, ECONOMIE_AU_PROCHAIN_ENREGISTREMENT, VALEURS_HORS_LIGNE, compteDevis, couvertureServie, phraseSurplus, peindreBande, productionServie, quiDuDevis, suiteAuDevis, texteEconomie, texteSurDevis } from './affichageErp'; // R2-13/16/17, ACAL2022
 import { type CardData, type ChiffrageAtelier, type RenderConfigOpts, type RenderSceneFn } from './types';
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
@@ -310,9 +310,7 @@ const etatEco = (c: Pick<Ctx, 'opts'>) => {
 export function economieAffichee(c: Pick<Ctx, 'opts'>, id: 'carte' | 'total', estime: string, kwc?: number | null): string {
   const e = etatEco(c);
   e.estimes[id] = estime;
-  if (e.chiffrage === undefined) return estime;
-  const servie = economieServie(e.chiffrage, kwc); // ACAL2022 — ERP : la servie (au kWc posé), sinon « au prochain enregistrement » (jamais l'estimation)
-  return servie != null ? `${fmtMad(servie)}/an` : estime.startsWith('—') ? estime : ECONOMIE_AU_PROCHAIN_ENREGISTREMENT;
+  return texteEconomie(e.chiffrage, kwc, estime); // ACAL2022 — ERP : la servie (au kWc posé), sinon « au prochain enregistrement »
 }
 
 /** ACAL80 — le point de rendement PVGIS par défaut (pages publiques d'apps/web). */

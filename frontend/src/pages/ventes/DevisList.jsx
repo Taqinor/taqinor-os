@@ -6,6 +6,7 @@ import {
   Copy, X, AlertTriangle,
 } from 'lucide-react'
 import {
+  // parametres-requete: page, page_size, q, statut_effectif, actifs, auteurs
   fetchDevis,
   rafraichirDevis,
   convertirDevisEnBC,

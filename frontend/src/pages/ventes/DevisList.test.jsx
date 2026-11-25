@@ -76,6 +76,7 @@ vi.mock('../../api/uxviewsApi', async () =>
   (await import('../../test/mocksVentesEcrans.js')).uxviewsApiVide({ id: 1, ecran: 'ventes.devis' }))
 
 import DevisList from './DevisList'
+import { renderListAvecStore } from './devisList.testHelpers.jsx'
 import ventesApi from '../../api/ventesApi'
 import { fetchDevis } from '../../features/ventes/store/ventesSlice'
 import crmApi from '../../api/crmApi'
@@ -1799,13 +1800,7 @@ describe('DevisList — T4-X4-005 : une page à la fois, filtres et en-tête ser
         auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => s,
       },
     })
-    return render(
-      <Provider store={store}>
-        <MemoryRouter initialEntries={['/ventes/devis']}>
-          <ThemeProvider><DevisList /></ThemeProvider>
-        </MemoryRouter>
-      </Provider>,
-    )
+    return renderListAvecStore(store)
   }
 
   it('demande la page 1 de 25, versions remplacées masquées, puis le statut choisi au serveur', () => {
