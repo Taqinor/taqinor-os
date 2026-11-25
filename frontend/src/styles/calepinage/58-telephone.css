@@ -264,6 +264,13 @@
 .cal-tel-saisie-compacte { height: 44px; }
 .cal-tel-saisie-compacte input { font-size: 1rem; }
 .cal-tel-unite { font-size: 0.875rem; color: var(--cal-texte-2); }
+/* T4-X8-004 — « Notes de terrain » : même boîte que les saisies, sur plusieurs lignes. */
+.cal-tel-notes {
+  width: 100%; box-sizing: border-box; min-height: 88px; padding: 10px 14px; resize: vertical;
+  background: var(--cal-surface); border: 1px solid var(--cal-filet-fort); border-radius: var(--cal-rayon-tuile);
+  font-family: inherit; font-size: 1rem; line-height: 1.4; color: var(--cal-texte-1);
+}
+.cal-tel-notes:focus { outline: 0; box-shadow: var(--focus-ring); }
 
 /* Les cartes de mesure (pente, orientation) ne font qu'UNE carte blanche, une ligne chacune, un filet entre. */
 .cal-tel-cartes {

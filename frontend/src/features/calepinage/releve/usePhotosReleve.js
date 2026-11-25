@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
-import { compterEnAttente, deposerOuMettreEnFile, rejouerFile } from '../fileEnvoiPhotos'
+import { compterEnAttente, deposerOuMettreEnFile, genresEnAttente, rejouerFile } from '../fileEnvoiPhotos'
 import { refusServeur } from '../commun/refusServeur'
 import { dateDuJour } from './releveTelephone'
 
@@ -32,15 +32,15 @@ export default function usePhotosReleve(calepinageId) {
     if (!calepinageId || (typeof navigator !== 'undefined' && navigator.onLine === false)) return
     if (rejeuEnCours.current) return
     rejeuEnCours.current = true
-    Promise.resolve(rejouerFile(calepinageId)).finally(() => { rejeuEnCours.current = false }).then((r) => {
+    Promise.resolve(rejouerFile(calepinageId)).finally(() => { rejeuEnCours.current = false }).then(async (r) => {
       setEnAttente(r?.restantes ?? 0)
       if (r?.envoyees) {
-        if (!r.restantes) {
-          const partis = enFileRef.current
-          enFileRef.current = []
-          setGenresEnvoyes((e) => [...e, ...partis])
-          setGenresEnFile([])
-        }
+        // T4-X8-003 — les genres encore en file restent « en attente d'envoi » ; ceux partis passent « envoyée ».
+        const restants = r.restantes ? await Promise.resolve(genresEnAttente(calepinageId)).catch(() => enFileRef.current) : []
+        const partis = enFileRef.current.filter((g) => !(restants ?? []).includes(g))
+        enFileRef.current = restants ?? []
+        setGenresEnvoyes((e) => [...e, ...partis])
+        setGenresEnFile(enFileRef.current)
         recharger()
       }
       if (r?.refusees?.length) setMessage(r.refusees[0].message || 'Une photo gardée a été refusée par le serveur.')
@@ -51,6 +51,13 @@ export default function usePhotosReleve(calepinageId) {
     if (!calepinageId) return undefined
     recharger()
     Promise.resolve(compterEnAttente(calepinageId)).then((n) => setEnAttente(n ?? 0)).catch(() => {})
+    /* T4-X8-003 — après un rechargement, les photos gardées sont relues dans la file : chaque tuile dit « en attente
+       d'envoi » et le compte les porte, jamais une tuile vide qui invite à reprendre la photo. */
+    Promise.resolve(genresEnAttente(calepinageId)).then((genres) => {
+      const enFile = [...new Set([...(genres ?? []), ...enFileRef.current])]
+      enFileRef.current = enFile
+      setGenresEnFile(enFile)
+    }).catch(() => setMessage('Les photos gardées sur ce téléphone n’ont pas pu être relues.'))
     envoyerLaFile()
     window.addEventListener('online', envoyerLaFile)
     return () => window.removeEventListener('online', envoyerLaFile)

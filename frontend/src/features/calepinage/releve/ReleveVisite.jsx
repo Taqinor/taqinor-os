@@ -56,12 +56,18 @@ function nomDuPan(champs) {
   if (p) return { nom: 'Pente du toit', phrase: 'La pente du toit partira', pluriel: false }
   return { nom: 'Orientation du toit', phrase: 'L’orientation du toit partira', pluriel: false }
 }
+/* T4-X8-001 — les cotes du toit dessiné affichées mais jamais tapées ne partent pas : le message de « Terminer » le dit. */
+function phraseReprises(noms) {
+  if (noms.length === 2) return ' Longueur et largeur reprises du toit dessiné : non envoyées comme mesures.'
+  return noms.length === 1 ? ` ${noms[0]} reprise du toit dessiné : non envoyée comme mesure.` : ''
+}
 const attendre = (ms) => new Promise((r) => { setTimeout(r, ms) })
 
 /* ACAL1812 — le champ fautif d'un refus (clé du serveur ou de la validation locale) → l'identifiant du champ à l'écran. */
 function champFautif(champs) {
   const cle = Object.keys(champs ?? {})[0] ?? ''
   if (cle === 'precision_azimut_deg') return 'releve-precision'
+  if (cle === 'notes') return 'releve-notes' // T4-X8-004 — un caractère refusé dans la note ramène la note
   if (cle.startsWith('azimut')) return 'releve-azimut-main'
   const chaine = /^chaines\[(\d+)\]/.exec(cle)
   if (chaine) return Number(chaine[1]) === 1 ? 'releve-largeur' : 'releve-longueur'
@@ -91,6 +97,19 @@ function PastilleHorsLigne() {
   )
 }
 
+/* T4-X8-003 — réseau revenu, file pas encore vidée : la pastille suit le VRAI réseau (jamais « Hors ligne » en ligne). */
+function PastilleEnvoi() {
+  return (
+    <span className="cal-tel-pastille" data-testid="releve-envoi-attente" role="status">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 16V4M7 9l5-5 5 5M5 20h14" />
+      </svg>
+      En attente d’envoi
+    </span>
+  )
+}
+
 export default function ReleveVisite() {
   const { id } = useParams()
   const enLigne = useEnLigne()
@@ -105,7 +124,7 @@ export default function ReleveVisite() {
 
   const [titre, setTitre] = useState('')
   const [releve, setReleve] = useState(() => ({
-    id: null, releveLe: '', notes: '', chaines: [], photoIds: [],
+    id: null, releveLe: '', notes: depart.notes?.texte ?? '', chaines: [], photoIds: [],
     ...(depart.Longueur !== undefined ? { [`saisie${LONGUEUR}`]: depart.Longueur } : {}),
     ...(depart.Largeur !== undefined ? { [`saisie${LARGEUR}`]: depart.Largeur } : {}),
   }))
@@ -135,7 +154,7 @@ export default function ReleveVisite() {
       setMessage((m) => ({ texte: `Relevé envoyé.${m?.envoiPan ? ` ${m.envoiPan}` : ''}`, ton: 'ok' }))
       setEnvois((e) => ({ ...e, releve: true }))
       // T4-U4-021 — le serveur a pris les mesures : le brouillon les rend, l'écran relit CE QUE LE SERVEUR TIENT.
-      brouillonRef.current.oublier([LONGUEUR, LARGEUR, 'boussole'])
+      brouillonRef.current.oublier([LONGUEUR, LARGEUR, 'boussole', 'notes'])
       relireRef.current(false)
       photos.recharger()
     },
@@ -164,7 +183,8 @@ export default function ReleveVisite() {
       const c = champsDuReleve(courant)
       const garde = garderSaisies ? brouillonRef.current.brouillon : {}
       setReleve((r) => ({
-        id: courant.id, releveLe: c.releveLe, notes: c.notes, chaines: chainesSaisies(c.chaines), photoIds: c.photoIds,
+        id: courant.id, releveLe: c.releveLe, notes: garde.notes !== undefined ? r.notes : c.notes,
+        chaines: chainesSaisies(c.chaines), photoIds: c.photoIds,
         ...(garderSaisies ? Object.fromEntries([LONGUEUR, LARGEUR].filter((n) => r[`saisie${n}`] !== undefined)
           .map((n) => [`saisie${n}`, r[`saisie${n}`]])) : {}),
       }))
@@ -192,17 +212,23 @@ export default function ReleveVisite() {
     setReleve((r) => ({ ...r, chaines: avecMesure(r.chaines, nom, valeur), [`saisie${nom}`]: valeur }))
     brouillons.garder({ [nom]: valeur })
   }
+  /* T4-X8-004 — « Notes de terrain » : le MÊME champ `notes` que le relevé du bureau (PanneauReleve), gardé au brouillon (même vidée). */
+  const majNotes = (texte) => { setReleve((r) => ({ ...r, notes: texte })); brouillons.garder({ notes: { texte } }) } // enveloppée : une note vidée reste une saisie
   const majPente = (p) => { setPente(p); brouillons.garder({ pente: p }) }
   /* ACAL1836 — sans mesure du relevé ni saisie, les cotes du toit DÉJÀ CRÉÉ (pan rectangulaire servi) sont reprises et DITES
-     telles : elles partent avec « Terminer » comme n'importe quelle mesure ; une saisie (même vide) les remplace. */
+     telles ; une saisie (même vide) les remplace. T4-X8-001 — une reprise n'est PAS une mesure : elle ne part jamais avec
+     « Terminer » (le serveur garde la différence entre « mesurée » et « du dessin »), et le message le dit. */
   const cotesToit = useMemo(() => (zone ? cotesDuToit(zone) : null), [zone])
   const repriseDuToit = (nom) => (releve[`saisie${nom}`] === undefined && mesureDesChaines(releve.chaines, nom) === ''
     ? cotesToit?.[nom] ?? null : null)
   const valeurChamp = (nom) => releve[`saisie${nom}`] ?? versVirgule(mesureDesChaines(releve.chaines, nom) || repriseDuToit(nom) || '')
-  const reprises = [LONGUEUR, LARGEUR].some((nom) => repriseDuToit(nom) !== null)
+  const nomsRepris = [LONGUEUR, LARGEUR].filter((nom) => repriseDuToit(nom) !== null)
+  const reprises = nomsRepris.length > 0
+  /* T4-X8-001 — ce que les champs MONTRENT part : une saisie de cette séance ou reprise du brouillon (`saisie<Nom>`, même
+     vide) remplace la chaîne servie ; sans saisie, la chaîne servie reste telle quelle. */
   const chainesEnvoyees = () => [LONGUEUR, LARGEUR].reduce((chaines, nom) => {
-    const reprise = repriseDuToit(nom)
-    return reprise === null ? chaines : avecMesure(chaines, nom, String(reprise))
+    const saisie = releve[`saisie${nom}`]
+    return saisie === undefined ? chaines : avecMesure(chaines, nom, saisie)
   }, releve.chaines)
   const plan = useMemo(() => (doc.etat === 'ok' ? planDessus(doc.document) : null), [doc.etat, doc.document])
 
@@ -303,6 +329,7 @@ export default function ReleveVisite() {
     const tape = versPoint(azimutMain)
     const azimutTape = tape !== '' && Number.isFinite(Number(tape)) && tape !== azimutEcrit ? Number(tape) : null
     const chaines = chainesEnvoyees()
+    const nonEnvoyees = phraseReprises(nomsRepris)
     const fautes = validerAvantEnvoi(chaines, azimut, precision)
     setErreurs(fautes)
     setMessage(null)
@@ -329,7 +356,7 @@ export default function ReleveVisite() {
       if (aGarder) { brouillons.garderPan({ zoneId: zone?.id ?? null, champs: champsPan }); setPanRefuse(false); conflitsPan.current = 0 }
       setReleve((r) => ({ ...r, releveLe: corps.releve_le }))
       setMessage({
-        texte: `Relevé gardé sur ce téléphone : il partira au retour du réseau.${aGarder ? ` ${nomDuPan(champsPan).phrase} avec lui.` : ''}`,
+        texte: `Relevé gardé sur ce téléphone : il partira au retour du réseau.${aGarder ? ` ${nomDuPan(champsPan).phrase} avec lui.` : ''}${nonEnvoyees}`,
         ton: 'ok',
       })
     }
@@ -341,13 +368,13 @@ export default function ReleveVisite() {
         : calepinageApi.calepinages.enregistrerReleve(id, corps))
       if (fileReleve.enAttente) await fileReleve.oublier() // l'envoi en ligne a réussi : la copie gardée ne repart pas
       if (!sansPanPourAzimut) brouillons.oublier() // le serveur a tout pris : le brouillon est rendu
-      else brouillons.oublier([LONGUEUR, LARGEUR, 'pente', 'boussole'])
+      else brouillons.oublier([LONGUEUR, LARGEUR, 'pente', 'boussole', 'notes'])
       if (brouillons.pan) brouillons.oublierPan()
       const nouvelId = res?.data?.releve?.id
       setReleve((r) => ({ ...r, id: nouvelId ?? r.id, releveLe: corps.releve_le }))
       setMessage({
         texte: `${releve.id ? 'Relevé corrigé.' : 'Relevé enregistré.'}${sansPanPourAzimut
-          ? ' L’orientation tapée n’est pas enregistrée : aucun pan dessiné, tracez le toit dans l’atelier.' : ''}`,
+          ? ' L’orientation tapée n’est pas enregistrée : aucun pan dessiné, tracez le toit dans l’atelier.' : ''}${nonEnvoyees}`,
         ton: 'ok',
       })
     } catch (err) {
@@ -399,7 +426,7 @@ export default function ReleveVisite() {
           <span className="cal-tel-projet-titre">Relevé de visite</span>
           {titre && <span className="cal-tel-projet-ligne" data-testid="releve-projet">{titre}</span>}
         </div>
-        {(!enLigne || photos.enAttente > 0 || fileReleve.enAttente) && <PastilleHorsLigne />}
+        {!enLigne ? <PastilleHorsLigne /> : (photos.enAttente > 0 || fileReleve.enAttente) && <PastilleEnvoi />}
       </header>
 
       <div className="cal-tel-feuille">
@@ -428,7 +455,7 @@ export default function ReleveVisite() {
             </div>
             {reprises && (
               <p className="cal-tel-aide" data-testid="releve-cotes-reprises">
-                Reprises du toit dessiné : corrigez-les si votre mesure sur place diffère.
+                Reprises du toit dessiné, jamais mesurées : tapez votre mesure sur place pour l’envoyer avec le relevé.
               </p>
             )}
 
@@ -467,6 +494,12 @@ export default function ReleveVisite() {
             {Object.keys(erreurs).filter((c) => c.startsWith('chaines')).map((c) => (
               <p key={c} role="alert" className="cal-tel-erreur">{erreurs[c]}</p>
             ))}
+            <div className="cal-tel-champ">
+              <label htmlFor="releve-notes" className="cal-tel-libelle">Notes de terrain</label>
+              <textarea id="releve-notes" data-testid="releve-notes" className="cal-tel-notes" rows={3}
+                value={releve.notes ?? ''} onChange={(e) => majNotes(e.target.value)} />
+            </div>
+            {erreurs.notes && <p role="alert" className="cal-tel-erreur">{erreurs.notes}</p>}
           </section>
 
           {(photos.enAttente > 0 || fileReleve.enAttente || !enLigne || mesuresGardees > 0) && (
