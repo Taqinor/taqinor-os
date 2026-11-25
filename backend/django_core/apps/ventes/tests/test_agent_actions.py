@@ -20,7 +20,7 @@ Run :
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -63,6 +63,22 @@ def auth(user):
     api = APIClient()
     api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
     return api
+
+
+class KwcDesOptionsArrondiTest(SimpleTestCase):
+    """T4-X6-001 — le kWc servi par option (bandeau « Devis créé ») suit LA
+    règle d'arrondi du PDF (``premium_base.kwc_str``) : 49 × 715 W = 35,035
+    s'écrit 35,03 partout, jamais 35,04 sur le bandeau."""
+
+    def test_meme_arrondi_que_le_pdf(self):
+        from apps.ventes.quote_engine.premium_base import kwc_str
+        from apps.ventes.selectors_assistant import _kwc_arrondi
+        for kwc in (49 * 0.715, 51 * 0.715, 14 * 0.715, 7.1, 130.125):
+            with self.subTest(kwc=kwc):
+                self.assertEqual(kwc_str(_kwc_arrondi(kwc)), kwc_str(kwc))
+                self.assertEqual(_kwc_arrondi(kwc), round(kwc, 2))
+        self.assertEqual(_kwc_arrondi(49 * 0.715), 35.03)
+        self.assertIsNone(_kwc_arrondi(None))
 
 
 class VentesAgentCatalogueTest(TestCase):
