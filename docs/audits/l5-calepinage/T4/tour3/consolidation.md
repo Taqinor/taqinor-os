@@ -65,6 +65,28 @@ gardé ; brouillon intact : il suit (5 → 7 et 8 → 11 panneaux) — même ré
 Couverture X4 : 48 lignes jouées sur 57 ; 6 introuvables (MKT-003, TEC-006, SAV-005, SIM-004, RES-005, ADM-002, condition
 notée) ; 1 bloquée par la liste des devis ; 2 non atteintes.
 
+## X2 — outil de dessin, étapes Toit, Panneaux, Électrique (terminé)
+
+**Ce qui marche.** Les 10 correctifs calepinage rejoués sont confirmés (0 « pas corrigé ») : toit tracé au niveau du
+pays = site non localisé, « + Ajouter un panneau », vue client qui tourne sur elle-même, client créé par un Commercial
+retrouvé, carte de la variante posée, « Enregistré à » identique après rechargement. 43 lignes jouées sur 53.
+
+**Tri des 11 constats** (aucun S1 ; 4 S2).
+
+| Constat | Gravité | Tri de l'orchestrateur | Suite |
+|---|---|---|---|
+| T4-X2-010 | S2 | À ISOLER D'ABORD : sur un calepinage à plusieurs zones (toit + champ au sol + ombrière + parcelle), le toit perd ses 24 panneaux après enregistrement et rechargement, et trois compteurs donnent trois totaux (46 / 22 / 6). Non reproduit avec une seule zone au sol. Perte silencieuse d'une saisie. | lane dédiée : reproduire, puis corriger |
+| T4-X2-001 | S2 | VRAI : la carte « Couvrir la facture » écrit « 5 panneaux 2,75 kWc » (le besoin d'après la facture) à côté de « 5 panneaux · 3,55 kWc » (la pose). | lane atelier |
+| T4-X2-007 | S2 | VRAI : « Montrer au client » dit « 35 % de votre consommation », l'atelier « ≈ 60 % », pour la même pose et la même production. | lane atelier (deux bases de consommation) |
+| T4-X2-009 | S2 | VRAI : avec un champ au sol, la bande de l'étape Panneaux ne compte que le toit (5 · 3,55 kWc) sans le dire ; la barre du projet et le tableau du site disent 23 · 16,33. | lane atelier |
+| T4-X2-003 | S3 | DÉJÀ CORRIGÉ dans le lot 3 (lane de relecture : le bandeau imprime le lieu que le serveur utilisera). | à rejouer |
+| T4-X2-005 | S3 | VRAI : le pas entre rangées est calé sur la latitude de l'épingle brute (centre du pays) quand la simulation se fait sur la ville de référence. Même classe que les températures électriques, corrigées dans le lot 3 ; ce lecteur-ci reste. | lane atelier |
+| T4-X2-002 | S3 | VRAI : la même pose passe de 5 310 à 5 623 kWh/an après rechargement (ombre de la cheminée comptée avant, plus après, avec une carte « ombre pas encore comptée »). | lane atelier |
+| T4-X2-006 | S3 | VRAI : en Expert, « estimation de l'atelier » 21 797 et « simulation » 27 197 kWh/an sur le même écran, une fois la simulation faite. | étape 7 du moteur (ACAL2022) |
+| T4-X2-004 | S3 | VRAI : l'onduleur « proposé pour 5 panneaux » + « Raccorder automatiquement » donnent d'emblée un dossier bloquant. | lane atelier |
+| T4-X2-008 | S3 | VRAI : en Expert, un toit en pente montre les réglages du toit plat ; le bloc de pente reste caché. | lane atelier |
+| T4-X2-011 | S4 | VRAI : deux boutons de la carte en anglais. | lane atelier |
+
 ## Lanes de correctifs du tour 3 (à lancer dès qu'une place se libère ; trois agents de fond au plus sur ce poste)
 
 1. **Liste des devis légère** (T4-X4-005) — serveur `ventes` + écran de la liste.
@@ -78,3 +100,8 @@ notée) ; 1 bloquée par la liste des devis ; 2 non atteintes.
 5. **Fiche du lead** — note automatique « par ? », responsable « Non assigné » (T4-V1-001), et les écarts 4, 5, 6, 8 de
    l'acceptation ACAL2027 (brouillon dupliqué sans pointeur, champ de l'heure de fin, phrases de « Mettre à jour »,
    deux libellés pour un brouillon jamais envoyé).
+6. **Atelier du calepinage** — perte des panneaux d'un toit à plusieurs zones (T4-X2-010, à reproduire d'abord), carte
+   « Couvrir la facture » (001), couverture de la vue client (007), compteurs avec un champ au sol (009), pas entre
+   rangées au bon lieu (005), production avant / après rechargement (002), raccordement automatique bloquant (004),
+   réglages de pente en Expert (008), boutons en anglais (011).
+

@@ -1,0 +1,532 @@
+[
+ {
+  "id": "CAL-DRAW-002",
+  "resultat": "joue",
+  "note": "1971 plat : après des verrous (15 panneaux), « ↺ Réinitialiser » revient à 24 panneaux · 17,04 kWc, note « tout est calé sur la meilleure combinaison » ; barre et total du site suivent",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-003",
+  "resultat": "joue",
+  "note": "1971 : Plein sud → 21 panneaux · 14,91 kWc, Est-Ouest (badge ✓) → 24 · 17,04 ; barre, « Total du site » et « TOTAL — TOUTES LES ZONES » d'accord",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-004",
+  "resultat": "joue",
+  "note": "1971 : 15°, Inclinaison fine 20° (« 20° »), Recommandé : 24 panneaux inchangés partout",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-005",
+  "resultat": "non-atteint",
+  "note": "Groupe Azimut caché sur 1971 en Plein sud comme en Est-Ouest pendant le balayage ; visible après rechargement (xe-reload.png) mais pas cliqué",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-006",
+  "resultat": "joue",
+  "note": "1971 : Paysage 20 · 14,20 kWc, Portrait 21 · 14,91, Auto 21 ; les trois compteurs d'accord",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-007",
+  "resultat": "joue",
+  "note": "1971 : Pleine rive 21, Garder 15 panneaux ; compteurs d'accord",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-008",
+  "resultat": "joue",
+  "note": "1971 : Débord 0,5 → 21 panneaux, retour à 0 → 15 ; compteurs d'accord",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-009",
+  "resultat": "joue",
+  "note": "1970 : « abc » et « 150 » refusés (« Saisissez un nombre entre 0 et 100 »), 80 → « valeur de ce dossier : 80 % », compteurs inchangés ; vidé ensuite",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-010",
+  "resultat": "bloque",
+  "note": "1970 toit 2 pans : « Toit en pente / tuiles » enfoncé mais Pente / Pente fine / Face du pan / Sens de la pente restent cachés, les réglages du toit plat s'affichent (T4-X2-008)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-015",
+  "resultat": "joue",
+  "note": "Cheminée sélectionnée › Poser en série pas 2, 2 colonnes, 1 ligne › Obstacles · 1 → · 2 ; panneaux inchangés",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-017",
+  "resultat": "joue",
+  "note": "Distance 8,88 m (deux fois), Surface 16,3 m², Angle 90°, Terminer la mesure, Annuler ; mesures relues après enregistrement et rechargement",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-018",
+  "resultat": "joue",
+  "note": "Expert : heure 8 h, Saison Été, Carte d'accès solaire allumée (note « vert = plein soleil… », « moyenne du pan 99,2 % ») puis éteinte",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-019",
+  "resultat": "joue",
+  "note": "« + Ajouter une zone » (nouveau pan tracé), Parcelle (« Terminer la parcelle », surface ~35 m²), « Effacer la parcelle » ; « Effacer » (tout le toit) non cliqué. Enchaînement qui a perdu les 24 panneaux du toit à l'enregistrement : T4-X2-010",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-020",
+  "resultat": "introuvable",
+  "note": "Bascules « Toit dessiné » / « Photo réelle » jamais rendues : il faut un contour envoyé par le client ou une visite validée avec photo, absents de mes deux calepinages",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-022",
+  "resultat": "joue",
+  "note": "Angles droits, Aimanter aux pans, Grille : aria-pressed true puis false ; Nord vrai → « Azimut du pan 1 » ; « Caler le fond » sans effet visible ni message (pas d'image de fond sur la pile)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-024",
+  "resultat": "joue",
+  "note": "Genre Champ au sol (pente du terrain, orientation des rangées, inclinaison des tables) et Ombrière (hauteur libre, écoulement, entraxe, section) › Enregistrer le contour tracé : « Champ au sol 1 — 78 m² · 12 modules », « Ombrière 2 — 35 m² · 4 modules » ; relus après rechargement. Retraits latéral/bas/haut (toit) non saisis",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-025",
+  "resultat": "joue",
+  "note": "Case Pan existant + année 2015 : message « pan existant — ses modules ne se modifient pas » ; relus cochés et 2015 après rechargement ; décochée ensuite",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-026",
+  "resultat": "joue",
+  "note": "Bâtiment « Maison X2 » (relu après rechargement), Verrouiller Zone 2 (« Verrouillé ») ; Supprimer et cotes du pan non essayés",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-027",
+  "resultat": "joue",
+  "note": "« Corriger le type d'une arête » + clic sur le faîtage : « Arête nº1 — Faîtage (déduit du tracé) », liste Type d'arête active ; type non changé, « Prendre l'azimut… » non essayé",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-028",
+  "resultat": "joue",
+  "note": "Sans rayon : « Rayon (m) : saisissez un rayon supérieur à 0 » ; avec 1 m : « Accès — X2 accès échelle · 1 m | Retirer » ; Retirer et la tenue après rechargement non vérifiés",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-029",
+  "resultat": "non-atteint",
+  "note": "Champs « Kilomètres par jour… Ajouter une charge à venir » vus en Expert (xc-vue-34.png), non remplis",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-030",
+  "resultat": "joue",
+  "note": "« Déplacer les panneaux » : Panneaux posés 5, Puissance 3,55 kWc, Emplacements libres 0, Couverture besoin 100 % ; d'accord avec la barre tant qu'un seul pan porte des panneaux",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-031",
+  "resultat": "bloque",
+  "note": "« Remplir automatiquement » grisé : « Emplacements libres 0 » même après deux retraits en placement libre",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-032",
+  "resultat": "joue",
+  "note": "« Sélection multiple » : note « Mode sélection : glissez sur le toit pour encadrer des panneaux » ; un glisser Maj sur le plan tactile ne sélectionne rien (« Aucun panneau sélectionné ») ; Effacer la sélection cliqué",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-033",
+  "resultat": "joue",
+  "note": "↶ Annuler → « 4 panneaux posés », ↷ Rétablir → 5 ; Ctrl+Z / Ctrl+Y idem ; la barre projet suit (4 · 2,84 kWc ↔ 5 · 3,55)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-034",
+  "resultat": "joue",
+  "note": "En Expert, « Réglages avancés » ouvert d'office",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-036",
+  "resultat": "joue",
+  "note": "Retrait de rive 30 cm, écart 5 cm : « ces valeurs s'appliquent aux prochains gestes » ; ajout sur toit plein refusé avec distances (ACAL2032)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-037",
+  "resultat": "joue",
+  "note": "− : « Panneau retiré — 3 posés. Le devis suivra ce nombre » ; + ; Rangée (« Mode rangée ») ; réinitialiser (« Disposition optimale restaurée — 5 panneaux »)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-038",
+  "resultat": "joue",
+  "note": "Double-clic sur un panneau du plan : « Panneau déplacé. » ; Ctrl+clic : « Panneau sélectionné — touchez un emplacement libre » ; Échap : « Sélection effacée » ; flèche → sans changement de compte",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-039",
+  "resultat": "joue",
+  "note": "Azimut du pan 180° → + 181° → − 180°, « Disposition personnalisée conservée — 5 panneaux re-positionnés »",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-040",
+  "resultat": "joue",
+  "note": "Dessus, Sud, 3/4, Face aux panneaux : la caméra change (xc-vue-*.png)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-041",
+  "resultat": "joue",
+  "note": "« Raccourcis clavier (?) » ouvre l'aide, Échap la ferme, « ? » la rouvre",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-042",
+  "resultat": "joue",
+  "note": "Vue 3D : glisser bouton droit (inclinaison), molette (zoom) ; « Vue 2D — plan » ramène le plan",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-DRAW-043",
+  "resultat": "joue",
+  "note": "« Vidéo 10 s » : « Enregistrement… (2 s) » puis fichier video-1970-orbite.mp4 téléchargé",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-TOIT-002",
+  "resultat": "joue",
+  "note": "Plan ↔ 3D, glisser et molette sur la scène ; bouton boussole cliqué (nom anglais : T4-X2-011)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-TOIT-006",
+  "resultat": "joue",
+  "note": "1970 en pente : « Modifier la pente » ouvre Pan, En degrés / pourcentage / aux cotes, 22,0° = 40,4 %, Enregistrer la pente ; absent sur le toit plat 1971",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-TOIT-008",
+  "resultat": "joue",
+  "note": "« Sélectionner » rend le mode libre après obstacle et mesure",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-TOIT-010",
+  "resultat": "joue",
+  "note": "Obstacle glissé sur le toit : « Obstacle ajouté — le calepinage l'évite », type Cheminée, hauteur 1,5 m ; relu après rechargement",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-TOIT-011",
+  "resultat": "joue",
+  "note": "Mesurer en Guidé : deux clics sur le toit → « 2 posés »",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-TOIT-012",
+  "resultat": "joue",
+  "note": "Obstacles · 2 → Annuler · 1 → Rétablir · 2",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-TOIT-017",
+  "resultat": "bloque",
+  "note": "Onglet « Détection du toit » : « La détection du toit n'est pas configurée sur ce serveur. Détection automatique non activée : tracez le toit à la main. »",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-PAN-003",
+  "resultat": "introuvable",
+  "note": "Lien rendu seulement pour un lead SANS facture (ou lecture de facture en échec) : mon lead a sa facture, le calepinage 1971 n'a pas de lead (texte sans lien, correct) ; échec de lecture non provocable",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-PAN-006",
+  "resultat": "joue",
+  "note": "Avant simulation : « Production · estimation de la pose » + « Production ÷ consommation » ; après : « Production la première année 5 772 kWh »",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-PAN-007",
+  "resultat": "joue",
+  "note": "« Lire la journée » : 6 h, 8 h, 10 h, 11 h, 13 h défilent, aria-pressed true puis false au second clic",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-PAN-008",
+  "resultat": "joue",
+  "note": "Curseur ← ×3 : « 20 décembre · 9 h »",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-PAN-009",
+  "resultat": "joue",
+  "note": "Été : « 20 juin · 9 h »",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-PAN-010",
+  "resultat": "joue",
+  "note": "Légende « Ensoleillement de chaque panneau » : couleurs retirées puis remises",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-ELEC-005",
+  "resultat": "joue",
+  "note": "« Réglages avancés » ouvre Équipements, Verdict, Cheminement & câbles, Raccordement, Matériel, Saisies, Décisions, Contrôle rapide d'une chaîne",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-ELEC-006",
+  "resultat": "introuvable",
+  "note": "Panneau Calques : « Aucun calque disponible pour le moment » alors que la chaîne est formée ; le calque Électrique demande des organes électriques posés (document `electrical`), non posés ici",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-ELEC-007",
+  "resultat": "bloque",
+  "note": "Schéma : « Conception non conforme » (Isc 18,6 A > 18,0 A) — aucun dessin, la bascule « Schéma détaillé / en blocs » n'est pas rendue",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-ELEC-008",
+  "resultat": "joue",
+  "note": "« Raccordement » ramène à l'étape Électrique (?onglet=verdict-electrique)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-ELEC-010",
+  "resultat": "joue",
+  "note": "« Télécharger (PDF) » : plan de câblage, 1 page (chaîne 1 · 5 modules, Voc 253,8 V, Isc 18,59 A)",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ },
+ {
+  "id": "CAL-ELEC-011",
+  "resultat": "bloque",
+  "note": "Aucun bloc cliquable : schéma non dessiné tant que la conception est non conforme",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440x900",
+  "theme": "clair",
+  "role": "Commercial responsable (anon_resp)"
+ }
+]

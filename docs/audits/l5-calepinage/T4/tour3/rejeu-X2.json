@@ -1,0 +1,68 @@
+[
+ {
+  "id": "T4-U1-006",
+  "verdict": "corrige",
+  "vu": "Calepinage 1970 : module « Canadian 710W » choisi à l'étape Panneaux (« Module posé : … »), Enregistrer ; Électrique › Raccorder automatiquement : plus aucun refus sur le module ; sans onduleur la phrase dit « onduleur non désigné » ; avec l'onduleur Huawei 5 kW la chaîne 1 × 5 est formée, enregistrée et relue après rechargement (barre « 5 panneaux · 3,55 kWc · 1 onduleur 5 kW »). La ligne « Matériel électrique désigné » a disparu. (La configuration formée est déclarée bloquante par le verdict : T4-X2-004.)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X2/e2-racc-reload.png"
+ },
+ {
+  "id": "T4-U2-007",
+  "verdict": "corrige",
+  "vu": "Même geste que T4-U1-006 : le module choisi à l'étape Panneaux suffit au raccordement ; plus de « Aucun changement » ni de « module non désigné ». La simulation est partie seule et l'étape Panneaux affiche « Production la première année 5 772 kWh », sans bandeau « Aucun module ».",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X2/e2-racc.png"
+ },
+ {
+  "id": "T4-U4-007",
+  "verdict": "corrige",
+  "vu": "Étape Électrique, ligne « Dossier électrique — Bloquant : 2 » › Régler : le panneau « Verdict électrique » s'ouvre avec « Ce qui l'empêche : » et les deux motifs (Isc 18,6 A > 18,0 A sur l'entrée MPPT 1 ; justification de continuité de la terre à cocher). L'étape Documents dit « Ces points bloquent le devis » avec « Régler dans Électrique » sur chaque ligne.",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X2/e2-dossier-regler.png"
+ },
+ {
+  "id": "T4-U4-013",
+  "verdict": "corrige",
+  "vu": "Client X2-o (adresse « Casablanca ») › Nouveau calepinage › onglet Client : le champ Adresse de l'atelier est prérempli « Casablanca ». Toit tracé sans « Localiser » : bandeau « Site non localisé — carte au niveau Maroc » ; la simulation est calculée sur « Casablanca (ville de référence) » lat 33,573 / lon −7,59 (réponse /resultat/). Reste : le bandeau annonce « sinon le calcul est refusé » alors qu'il ne l'est pas (T4-X2-003) et l'espacement des rangées est calé sur la latitude 31,79° de l'épingle (T4-X2-005). Rapport d'étude PDF non relu.",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X2/n2-sim-end.png"
+ },
+ {
+  "id": "T4-V2-020",
+  "verdict": "corrige",
+  "vu": "Rejoué sur le calepinage sans lead 1971 (client à Casablanca, sans GPS) faute de lead sans GPS dans ma combinaison : toit tracé au niveau du pays, bandeau « Site non localisé » affiché, épingle enregistrée 31,79 / −7,09, calcul fait sur la ville de référence Casablanca ; plus de toast « Site.pin » ni de 409 sur soleil-legal (200, « Casablanca (ville de référence) »). La carte ne montre toujours pas le toit à Casablanca, mais le bandeau le dit. Contradiction du bandeau : T4-X2-003.",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X2/n1-roof.png"
+ },
+ {
+  "id": "ACAL2032",
+  "verdict": "corrige",
+  "vu": "Expert › Panneaux › Déplacer les panneaux › Placement libre › « + Ajouter un panneau » : le bouton devient « Cliquez sur le toit pour poser le panneau (Échap : annuler) » ; un clic sur le toit plein répond « Impossible de poser un panneau ici : il chevaucherait un autre panneau » avec les distances mesurées ; un glisser hors du toit répond « Déplacement refusé : le panneau sortirait du toit — rien n'a bougé ». Non rejoué : la tenue des panneaux libres après un changement de toit, de module ou d'obstacle (toit plein, aucun emplacement libre obtenu).",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X2/f1-free-add.png"
+ },
+ {
+  "id": "T4-V1-010",
+  "verdict": "corrige",
+  "vu": "Calepinage 1970 › Montrer au client › préparation 3D (≈ 150 s mesurées, pile partagée) › deux glisser de 250 px vers la gauche au centre : la maison tourne sur elle-même et reste au centre, lisible, jamais sous la carte de droite.",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X2/m1-client2.png"
+ },
+ {
+  "id": "T4-V1-011",
+  "verdict": "corrige",
+  "vu": "anon_commercial : CRM › Clients › Nouveau client « X2-o Client Casablanca sans lead » (id 2948, created_by = lui) › Calepinage › Nouveau calepinage › onglet Client › « Casablanca sans » : le client est proposé (recherche {results:[{client 2948…}]}) ; calepinage 1971 créé depuis lui.",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X2/c1-search.png"
+ },
+ {
+  "id": "T4-V1-012",
+  "verdict": "autre",
+  "vu": "Geste d'origine (toit posé, onduleur pas encore choisi, Résultats › Lancer la simulation) sur 1971 : la simulation a abouti en 45 s (27 197 kWh), avec « Simulation en cours… Calcul de fond n°92 — 5 % » pendant l'attente. Aucun dépassement de temps obtenu : le message français avec « Réessayer » n'a pas pu être vu (un seul essai, comme demandé).",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X2/n2-sim-end.png"
+ },
+ {
+  "id": "T4-V2-021",
+  "verdict": "corrige",
+  "vu": "Calepinage 1971, toit plat 10 × 8, Expert › Est-Ouest › « Est-Ouest dos à dos » : la carte de la pose posée dit « 24 panneaux · 17,04 kWc · 21 797 kWh/an » et « TOTAL — TOUTES LES ZONES : 24 × 710 W · 17,04 kWc · 21 797 kWh/an · estimation de l'atelier » (710 W partout) ; l'autre pose est libellée « Densité maximale (plein sud) — Estimation (module de référence 720 Wc) : 21 panneaux · 15,12 kWc ». Reste sur le même écran la production simulée 27 197 kWh/an à côté de l'estimation 21 797 : T4-X2-006.",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X2/w1-ew2full.png"
+ },
+ {
+  "id": "T4-U4-015",
+  "verdict": "corrige",
+  "vu": "1970 enregistré à 03:16 puis 03:22 : après chaque rechargement la barre dit « Enregistré à 03:16 » / « Enregistré à 03:22 » et l'étape Documents « Faits à partir de la version enregistrée à 03:22 ». Sur 1971 (sans épingle), soleil-legal répond 200 et aucun toast « Site.pin » n'apparaît.",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X2/d1-docs.png"
+ }
+]
