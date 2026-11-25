@@ -1045,7 +1045,7 @@ Contre-visite de clôture `vérifie ADEV` du 04/11/2026 (base `e62ca97aa`, dossi
 
 
 ## DONE LOG
-- 2026-11-25 Liste en lecture seule des écarts de production des leads sans toit tracé () — lane moteur-e6c ; jouée par l'orchestrateur sur 40 leads de la copie anonymisée le 25/11 : 6 lignes simulées (+18 à +21,5 %), 39 non simulées (fiche technique du module vide) : ADEV154.
+- 2026-11-25 Liste en lecture seule des écarts de production des leads sans toit tracé (`remplir_conceptions --ecarts-sans-toit`) — lane moteur-e6c ; jouée par l'orchestrateur sur 40 leads de la copie anonymisée le 25/11 : 6 lignes simulées (+18 à +21,5 %), 39 non simulées (fiche technique du module vide) : ADEV154.
 - 2026-11-25 Étape 6 « un seul moteur » (la pose est une entrée du moteur, niveau de règles 15 dormant) — lane moteur-e6 : ADEV149, ADEV150, ADEV151.
 - 2026-11-25 Acceptation en direct des étapes 3 et 4 « un seul moteur » jouée par l'orchestrateur sur la copie anonymisée (enregistrement docs/audits/acceptation/ACAL/2026-11-25-*.md ; onze écarts notés dans la trace, en correction) : ADEV142, ADEV143, ADEV144, ADEV145, ADEV147.
 - 2026-11-24 étape 4 du « moteur unique » — le devis automatique naît de la conception rangée du lead (résidentiel : aucun noyau rappelé ; commerce, industrie et pompage : une seule décision pour composer les lignes, blocs d'étude copiés) ; pointeur du devis vers la version dont il naît (colonne `conception_source`, migration ventes 0162) ; parité : 20 goldens, zéro clé différente, un devis envoyé ou accepté intact ; les brouillons non retouchés suivent une conception recalculée, route de mise à jour d'un brouillon : ADEV142, ADEV143, ADEV144, ADEV147, ADEV148.
