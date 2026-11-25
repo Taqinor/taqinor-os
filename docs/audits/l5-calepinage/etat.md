@@ -1948,7 +1948,7 @@ lot 4 ; relecteurs X3, X6, X7, X8 ; rapport.
   l'obstacle hors toit qui se chevauchent sur la carte (S4), tableau des tailles du devis après la suite d'E7f,
   fiche du lead (retour tracé), calepinage sans lead après G2.
 
-### Point du 25/11, 16 h 10 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 16 h 10 UTC
 
 **LOT 4 FUSIONNÉ** : PR Taqinor/taqinor-os#1556, `main` = `d619459423` (25/11, 15 h 56 UTC), onzième passage de CI
 vert (37 contrôles), file de fusion verte. Relecture finale indépendante avant la mise en file : « fusionner »,
@@ -1988,3 +1988,47 @@ fusion : en file à 16 h 05, à relire.
   listes figées que les lanes ne voient pas — depuis le huitième passage, « paquet des listes figées » en docker
   (`scratchpad/pack_cliquets.txt`), goldens du front (`*olden*.test.jsx`), gardes d'hôte APRÈS le dernier commit,
   `check_except_larges`, `check_contrats_calepinage_deux_moities`, `lint-imports` avant chaque push.
+
+### Point du 25/11, 17 h 00 UTC (le plus récent — REPRENDRE ICI)
+
+**`main` = `d619459423` (lots 1 à 4 fusionnés, NON déployés : c'est à Reda).** Passage de CI de `main` après la
+fusion du lot 4 : un échec e2e (ACAL987, clic pendant le changement d'onglets du rail), relancé vert ; le test est
+durci dans le lot 5.
+
+**LOT 5 — branche locale `dev-lot5`, tête `ece0ca9bae`, RIEN de poussé, pas de PR.** Plié : I5 (réglages du
+calepinage), I3 (PDF C&I, « Devis final » refusé sans la visite exigée), H2 (total affiché rangé sur le devis,
+migration `0163_adev162_total_affiche_range`, tâche périodique 10 min, commande `ranger_totaux_affiches`), I2
+(retour de la fiche du lead en C&I, option « avec » non composée si chaînes infaisables, bouton BOQ sans doublon),
+I1 (écran du devis C&I : un seul retour, aperçu sur les lignes du devis, factures tapées comptées), le test e2e
+ACAL987 durci, et — fait par l'orchestrateur — le mineur 6 de la relecture finale (« Nouveau calepinage » ne
+retrouve qu'un calepinage créé PAR la personne connectée, `cree_par` de la ligne de liste).
+
+**Vérifications jouées sur `dev-lot5` à 16 h 45 (tête `213df5ba4f`)** : gardes d'hôte — toutes vertes SAUF
+`check_forme_code` (`ventes/models.py` +2 lignes : les deux colonnes de H2). Remède prévu, AUCUNE exception à
+écrire : cocher ADEV162 en citant `backend/django_core/apps/ventes/models.py` entre accents graves dans une note de
+fold (son budget « lignes nettes attendues ≤ 80 » couvre alors le fichier). `check_api_shapes --write`,
+`check_money_monodevise --write`, `codemap_fingerprint --write` : aucun fichier changé. Paquet docker (14 modules
+touchés + listes figées + surfaces + golden du moteur + `test_quote_engine`) et tests du front : EN COURS
+(tâches de fond `bdmw42pa6` et `bwh3qmkhd`) — à relire.
+
+**EN VOL (5 agents, le plafond de mémoire)** : J1 (`lane/editeur-restes`, agent a6311371c4d45a84d : restes de X6 sur
+l'écran du devis, consigne `scratchpad/tour3/msg-lane-J1-editeur-restes.md`) ; suite d'I1 (agent a3ec71c931984fded,
+branche `lane/editeur-ci` : l'étude C&I rangée rejouée dès le PREMIER enregistrement, pour que le PDF suive) ; suite 2
+d'I4 (agent a375819ef15513c07, branche `lane/file-a-traiter` : températures de site dans le cache partagé de Django,
+ligne non jugée jamais disparue) ; relecteurs X7 (agent a8c0bce9ca0c7bc1e, WebKit bureau puis tablette) et X8 (agent
+a1e9f64db652e1c8e, téléphone, sombre, Technicien) sur la pile `1cfa550e99` — NE PAS rebâtir la pile tant qu'ils jouent.
+
+**PRÊT À LANCER dès qu'un créneau se libère** : `scratchpad/tour3/msg-lane-E9b-apercu-devis-suite.md` (mineurs 1 et 2
+de la relecture finale, à l'auteur d'E9, agent a1144b5df28380f54, par SendMessage). Reste non attribué : T4-X3-017
+(barre du haut en WebKit tablette : attendre le compte rendu de X7, qui joue cette taille).
+
+**ENSUITE, dans l'ordre** : plier J1, I1 suite, I4 suite, E9b (relire chaque diff) ; trier X7 et X8 ; rebâtir la pile
+(`bash scratchpad/rebatir_pile.sh` — défaut `dev-lot5` désormais) et REGARDER moi-même : en-tête de la liste des devis
+juste après redémarrage (preuve en direct d'ADEV162), écran du devis C&I, tableau des tailles, retour de la fiche du
+lead, calepinage sans lead, écrans de réglages ; cocher ADEV162 et les tâches livrées ; méthode complète d'avant
+push ; UNE PR pour le lot 5 (Auto-fix, archivage automatique éteint), CI, relecture finale indépendante, file de
+fusion ; « mergé — à déployer par toi ». Puis : relecteur des maquettes (planches côte à côte), enregistrements
+d'acceptation ACAL2028 / ACAL2029, rejeux ACAL2034, 2035, 2038, deux tours sans rien de neuf, rapport final.
+
+**Baux de plan** renouvelés à 16 h 50 UTC (propriétaire `DESKTOP-APTAHF6/dev-moteur-unique`, 6 h) : à renouveler vers
+22 h 30, à relâcher après la dernière fusion.
