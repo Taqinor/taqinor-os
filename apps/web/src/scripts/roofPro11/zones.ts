@@ -586,7 +586,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     if (areasTotalKwcEl) areasTotalKwcEl.textContent = kwcTotal == null ? '—' : `${kwcTotal.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc`;
     if (areasTotalProdEl) areasTotalProdEl.textContent = texteTotalProduction(total.annualKwh, kwcTotal, ctx.opts?.chiffrage !== undefined, ctx.opts?.chiffrage); // ACAL1418 — la production servie, comme la carte
     if (ctx.opts?.chiffrage !== undefined) peindrePhraseTailles(areasTotalProdEl?.closest('dl'), 'rp9-areas-tailles', phraseTaillesDuChiffrage(ctx.opts?.chiffrage, kwcTotal)); // T4-X9-007 — UNE fois, sous le Total
-    if (areasTotalSavingsEl) areasTotalSavingsEl.textContent = economieAffichee(ctx, 'total', total.savingsHigh > 0 ? `${fmtMad(total.savingsLow)} – ${fmtMad(total.savingsHigh)}/an` : '—'); // ACAL994
+    if (areasTotalSavingsEl) areasTotalSavingsEl.textContent = economieAffichee(ctx, 'total', total.savingsHigh > 0 ? `${fmtMad(total.savingsLow)} – ${fmtMad(total.savingsHigh)}/an` : '—', kwcTotal); // ACAL994 ; T4-X9-003 — contrôlée au kWc posé
 
     // CAL59 — statistiques par pan + totaux par bâtiment (colonnes toutes CALCULÉES).
     // CALX110 câblage — 3ᵉ argument : le MODULE de chaque pan. Sans lui, deux modèles posés

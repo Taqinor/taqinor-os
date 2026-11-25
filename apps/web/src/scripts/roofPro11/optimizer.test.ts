@@ -1123,7 +1123,8 @@ describe('ACAL975 — le gain bifacial n’existe pas en pose affleurante', () =
 
 // ACAL994 — l'économie SERVIE remplace l'estimation (carte + Total) avec son libellé ; site public inchangé.
 describe('ACAL994 — économie servie, étiquette, majChiffrage', () => {
-  const servi = (valeur: number | null, etat: string) => ({ economie_annee1_mad: { valeur, etat, option: 'sans_batterie' } });
+  // T4-X9-003 — la conception a une TAILLE (`kwc`) : son économie ne se lit qu'à côté d'une pose de cette taille.
+  const servi = (valeur: number | null, etat: string) => ({ kwc: { valeur: 5, etat: 'servi' }, economie_annee1_mad: { valeur, etat, option: 'sans_batterie' } });
   const monter = (chiffrage?: unknown) => {
     const g = globalThis as unknown as { document?: Document };
     const avant = g.document;
@@ -1140,9 +1141,9 @@ describe('ACAL994 — économie servie, étiquette, majChiffrage', () => {
   it('servi : la valeur du serveur est affichée (carte et Total), « au dernier enregistrement »', () => {
     const { ctx, opt, doc, fin } = monter(servi(7420, 'servi'));
     try {
-      expect(economieAffichee(ctx, 'carte', '100 – 200 MAD/an')).toBe(`${fmtMad(7420)}/an`);
+      expect(economieAffichee(ctx, 'carte', '100 – 200 MAD/an', 5)).toBe(`${fmtMad(7420)}/an`);
       opt.majChiffrage(servi(7420, 'servi') as never);
-      expect(economieAffichee(ctx, 'total', '300 – 400 MAD/an')).toBe(`${fmtMad(7420)}/an`);
+      expect(economieAffichee(ctx, 'total', '300 – 400 MAD/an', 5)).toBe(`${fmtMad(7420)}/an`);
       expect(ligne(doc)).toBe('au dernier enregistrement · sans batterie');
     } finally { fin(); }
   });
@@ -1164,8 +1165,8 @@ describe('ACAL994 — économie servie, étiquette, majChiffrage', () => {
     try {
       const carte = doc.getElementById('rp9-reco-savings') as HTMLElement;
       const total = doc.getElementById('tot') as HTMLElement;
-      carte.textContent = economieAffichee(ctx, 'carte', '100 – 200 MAD/an');
-      total.textContent = economieAffichee(ctx, 'total', '300 – 400 MAD/an');
+      carte.textContent = economieAffichee(ctx, 'carte', '100 – 200 MAD/an', 5);
+      total.textContent = economieAffichee(ctx, 'total', '300 – 400 MAD/an', 5);
       opt.majChiffrage(servi(8123, 'servi') as never);
       expect(carte.textContent).toContain('8');
       expect(carte.textContent).not.toContain('100');
@@ -1179,6 +1180,22 @@ describe('ACAL994 — économie servie, étiquette, majChiffrage', () => {
       expect(carte.textContent).toBe('économie au prochain enregistrement');
       expect(total.textContent).toBe('économie au prochain enregistrement');
       expect(ligne(doc)).toBe('économie au prochain enregistrement');
+    } finally { fin(); }
+  });
+
+  // T4-X9-003 — la carte TOTAL alignait « 8 × 710 W · 5,68 kWc » et « 8 886 MAD/an » : l'économie de la conception
+  // (4,40 kWc). Tailles différentes : aucun montant au Total, ni au premier rendu ni après « Enregistrer » (majChiffrage).
+  it('T4-X9-003 — Total : pose d’une autre taille que la conception ⇒ aucun montant ; même taille ⇒ le montant servi', () => {
+    const conception = { kwc: { valeur: 4.4, etat: 'servi' }, economie_annee1_mad: { valeur: 8886, etat: 'servi', option: 'avec_batterie' } };
+    const { ctx, opt, doc, fin } = monter(conception);
+    try {
+      const total = doc.getElementById('tot') as HTMLElement;
+      total.textContent = economieAffichee(ctx, 'total', '300 – 400 MAD/an', 5.68);
+      expect(total.textContent).toBe('—');
+      opt.majChiffrage(conception as never);
+      expect(total.textContent).toBe('—');
+      expect(total.textContent).not.toMatch(/MAD/);
+      expect(economieAffichee(ctx, 'total', '300 – 400 MAD/an', 4.4)).toBe(`${fmtMad(8886)}/an`);
     } finally { fin(); }
   });
 

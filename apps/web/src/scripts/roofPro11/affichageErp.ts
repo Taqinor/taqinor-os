@@ -133,11 +133,11 @@ export function couvertureServie(chiffrage: ChiffrageAtelier | null | undefined,
   return pct != null && memeTaille(serviNb(chiffrage?.kwc), kwc) ? pct : null;
 }
 
-/** ACAL2022 — l'économie SERVIE ; `kwc` fourni : seulement au kWc de la conception (la carte), absent : sans contrôle (le Total). */
+/** ACAL2022 / T4-X9-003 — l'économie SERVIE, seulement au kWc de la conception — la carte ET le Total (avant, sans `kwc`,
+ *  le Total la montrait sans contrôle, à côté d'une pose d'une autre taille). */
 export function economieServie(chiffrage: ChiffrageAtelier | null | undefined, kwc?: number | null): number | null {
   const eco = serviNb(chiffrage?.economie_annee1_mad);
-  if (eco == null || kwc === undefined) return eco;
-  return memeTaille(serviNb(chiffrage?.kwc), kwc) ? eco : null;
+  return eco != null && memeTaille(serviNb(chiffrage?.kwc), kwc) ? eco : null;
 }
 
 /** ACAL2022 — le texte de l'économie de la carte et du Total : site public (`chiffrage` absent) ⇒ l'estimation du
