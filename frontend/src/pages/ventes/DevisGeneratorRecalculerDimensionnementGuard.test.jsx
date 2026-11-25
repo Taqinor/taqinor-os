@@ -83,7 +83,7 @@ import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import DevisGenerator from './DevisGenerator'
-import { PRODUITS_COMPOSITION as PRODUITS, bancCreation } from './devisGenerator.testHelpers.jsx'
+import { PRODUITS_COMPOSITION as PRODUITS, bancCreation, renderGeneratorPage } from './devisGenerator.testHelpers.jsx'
 
 // Catalogue solaire complet (même fixture que DevisGeneratorMarquesPinning.
 // test.jsx) : assez de rôles réels (panneau, onduleur, structures, socles,
@@ -241,6 +241,32 @@ describe('QJR570 — Recalculer fusionne au lieu de remplacer', () => {
     // Annuler : rien n'est dispatché, aucune composition ne part.
     expect(instantaneLignes()).toEqual(avant)
     expect(screen.queryByDisplayValue(/Onduleur réseau Huawei/)).toBeNull()
+    confirmSpy.mockRestore()
+  })
+})
+
+// T4-X6-015 — la taille demandée sur la fiche du lead n'est jamais quittée
+// sans question : la confirmation nomme les DEUX tailles ; Annuler garde tout.
+describe('T4-X6-015 — Recalculer demande avant de quitter la taille demandée sur la fiche', () => {
+  it('lead à 6 kWc (9 panneaux) : la question nomme 6 kWc et la recommandation, Annuler garde les 9 panneaux', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderGeneratorPage(DevisGenerator, {
+      crmApi, stockApi, produits: PRODUITS,
+      leads: [{ id: 42, nom: 'Bennani', prenom: 'Yassine', type_installation: 'residentiel',
+        taille_souhaitee_kwc: 6, facture_hiver: 3000, ville: 'Fès' }],
+      route: '/ventes/devis/nouveau?lead=42',
+    })
+    await screen.findByTestId('gen-taille-lead')
+    await waitFor(() => expect(nbPanneauxField().value).toBe('9'))
+    await waitFor(() => {
+      fireEvent.click(recalcButton())
+      expect(confirmSpy).toHaveBeenCalled()
+    }, { timeout: 10000 })
+    const question = String(confirmSpy.mock.calls[0][0])
+    expect(question).toMatch(/Taille demandée sur la fiche du lead : 6 kWc/)
+    expect(question).toMatch(/21 panneaux · 14,91 kWc/)
+    expect(nbPanneauxField().value).toBe('9')
+    expect(screen.getByTestId('gen-taille-lead')).toBeTruthy()
     confirmSpy.mockRestore()
   })
 })

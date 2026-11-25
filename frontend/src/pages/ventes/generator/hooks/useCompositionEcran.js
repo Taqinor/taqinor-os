@@ -8,7 +8,7 @@ import { roleLabel, tauxTvaOf, tauxTvaOuDefaut, ttcExactFromHt } from '../../../
 import { lignesDepuisKit } from '../../../../features/ventes/quote/etudeMarcheBloc'
 import { tailleAutoRemplirPompage } from '../../../../features/ventes/quote/reouverture'
 import { refusAutoRemplirPompage } from '../../../../features/ventes/etudePompagePreviewPur'
-import { SCENARIO_AVEC, SCENARIO_LES_DEUX } from '../../../../features/ventes/quote/sizingReducer'
+import { SCENARIO_AVEC, SCENARIO_LES_DEUX, tailleDemandeeParLead } from '../../../../features/ventes/quote/sizingReducer'
 import ventesApi from '../../../../api/ventesApi'
 import {
   corpsCiDepuisProfil, lignesDepuisCompositionCi, avertissementsCompositionCi,
@@ -44,7 +44,7 @@ export function useCompositionEcran(ctx) {
     structureProduitId, recalcDimTick, setPompageAutoFilled, setOnduleursIncomplets,
     setAutoFillLoading, setCompositionErreur, profilCi, horsReseau, kwp, selectedLead,
     etudeHoraireDonnees, etudeHoraireChargement, marcheCi, ctxProfilCi, apercuCi, resolveKwcAvec,
-    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard,
+    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard, sizing,
   } = ctx
 
   // U3COMPOSE — l'optimum AXE BATTERIE envoyé au dry-run serveur : même
@@ -418,7 +418,13 @@ export function useCompositionEcran(ctx) {
     // un recalcul qui retombe sur le MÊME compte de panneaux doit quand même
     // relancer la composition (catalogue/marques/scénario ont pu changer).
     // QJR570 — confirmation (quantités figées seulement) AVANT la transition.
-    avecQuantitesFigees(() => dispatchSizing({ type: 'RECALCUL_DEMANDE', retenu }))
+    // T4-X6-015 — la MÊME question nomme la taille demandée sur la fiche que le
+    // recalcul quitterait (jamais remplacée sans le dire).
+    const demandee = modeInstallation === 'residentiel' ? tailleDemandeeParLead(sizing) : null
+    const quitte = demandee != null && String(retenu.nbPanneaux) !== String(sizing?.nbPanneaux)
+    avecQuantitesFigees(() => dispatchSizing({ type: 'RECALCUL_DEMANDE', retenu }), quitte
+      ? { tailleDemandee: { kwc: demandee, panneaux: retenu.nbPanneaux, kwcRetenu: retenu.kwcOptimal } }
+      : undefined)
   }
   // QJR99 — L'UNIQUE effet de composition : « Appliquer cette taille » et
   // « Recalculer le dimensionnement » avancent tous deux `compositionSeq`, et

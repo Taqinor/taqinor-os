@@ -101,6 +101,30 @@ describe('ERR-QAH-VENTES-EDITION-PERD-LEAD — le lead et les factures du devis 
     const cles = await enregistrerEtLireEtude()
     expect(cles.factures_mensuelles_reelles).toEqual(estimerMois(3000, 3000))
   })
+
+  it('T4-X6-015 — un devis qui suit la « taille souhaitée » de la fiche le DIT à la réouverture (8 × 715 W pour 5,5 kWc)', async () => {
+    crmApi.getLead.mockResolvedValue({
+      data: { ...LEAD, type_installation: 'residentiel', taille_souhaitee_kwc: '5.5' },
+    })
+    ventesApi.getDevisById.mockResolvedValue(devisRouvert({
+      etudeParams: { factures_mensuelles_reelles: estimerMois(3000, 3000) },
+    }))
+    renderEdition()
+    expect((await screen.findByTestId('gen-taille-lead')).textContent).toMatch(/5,5 kWc/)
+  })
+
+  it('T4-X6-015 — une taille souhaitée que le devis ne suit pas n’est pas dite', async () => {
+    crmApi.getLead.mockResolvedValue({
+      data: { ...LEAD, type_installation: 'residentiel', taille_souhaitee_kwc: '12' },
+    })
+    ventesApi.getDevisById.mockResolvedValue(devisRouvert({
+      etudeParams: { factures_mensuelles_reelles: estimerMois(3000, 3000) },
+    }))
+    renderEdition()
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
+    await screen.findAllByText(/Khalid Réouvert/)
+    expect(screen.queryByTestId('gen-taille-lead')).toBeNull()
+  })
 })
 
 describe('ERR-QAH-FIG-EDITION-PU-TTC-ARRONDI — prix persistés gardés au centime', () => {
