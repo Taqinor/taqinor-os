@@ -16,7 +16,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='devis',
             name='total_affiche_range',
-            field=models.DecimalField(blank=True, decimal_places=6, editable=False, max_digits=20, null=True),
+            field=models.DecimalField(blank=True, decimal_places=2, editable=False, max_digits=14, null=True),
         ),
         migrations.AddField(
             model_name='devis',

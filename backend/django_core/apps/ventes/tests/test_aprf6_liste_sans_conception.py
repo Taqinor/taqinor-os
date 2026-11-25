@@ -436,6 +436,18 @@ class ListeLegereT4X4005Tests(TestCase):
             self.assertNotIn(cle, ligne)
             self.assertNotIn(cle, detail)
 
+    def test_balayage_planifie_ignore_les_societes_suspendues(self):
+        """ADEV162/AUD415 — le balayage planifié ne range que les devis des
+        sociétés actives : un tenant suspendu n'est plus balayé."""
+        from apps.ventes.scheduled import ranger_totaux_affiches_planifie
+        (d,) = self._creer(1)
+        Company.objects.filter(pk=self.company.pk).update(actif=False)
+        self.assertEqual(ranger_totaux_affiches_planifie(), 0)
+        d.refresh_from_db()
+        self.assertIsNone(d.total_affiche_range)
+        Company.objects.filter(pk=self.company.pk).update(actif=True)
+        self.assertEqual(ranger_totaux_affiches_planifie(), 1)
+
     def _devis_espionne(self):
         """Un devis résidentiel à lead (étude sans ville figée : la branche
         qui lit le lead) et lignes à produits, relu par le jeu de la synthèse ;

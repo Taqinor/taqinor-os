@@ -763,7 +763,9 @@ def ranger_totaux_affiches(qs):
             a_ranger[devis.pk] = empreinte
     if not a_ranger:
         return 0
-    for devis in devis_pour_les_totaux(Devis.objects.filter(pk__in=list(a_ranger))).iterator(chunk_size=50):
+    # Relecture DANS le jeu reçu (sa société, ses filtres) : jamais un
+    # ``Devis.objects`` global qui sortirait du périmètre de l'appelant.
+    for devis in devis_pour_les_totaux(qs.filter(pk__in=list(a_ranger))).iterator(chunk_size=50):
         donnees = {}
         total = total_du_moteur(devis, display_totals, donnees)
         if not donnees:
