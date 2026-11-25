@@ -88,6 +88,43 @@ class ReglesCalculTests(SimpleTestCase):
         for apercu in (None, SimpleNamespace()):
             self.assertTrue(hybrides_ht_ouverts(apercu))
 
+    def test_d_acal_102_phrases_profil_nouveaux_rendus(self):
+        # D-ACAL-102 (fondateur 25/11/2026 « Live now ») — les deux phrases
+        # corrigées du PDF C&I (T4-U2-019 / T4-U2-020) : nouveaux rendus
+        # seulement, sans rendre le niveau 15 courant.
+        from datetime import datetime, timezone
+
+        from apps.ventes.domain.regles_calcul import (
+            COUPURE_PHRASES_PROFIL, drapeaux_phrases_profil, phrases_profil_ouvertes)
+        self.assertEqual(COUPURE_PHRASES_PROFIL, (2026, 11, 26))
+        self.assertEqual(REGLES_COURANTES, REGLES_SENSIBILITES_1911)
+        avant = datetime(2026, 11, 20, 9, 0, tzinfo=timezone.utc)
+        apres = datetime(2026, 11, 26, 8, 0, tzinfo=timezone.utc)
+
+        def devis(**champs):
+            return SimpleNamespace(**dict({'regles_calcul': 14, 'date_creation': avant,
+                                           'mode_installation': 'industriel'}, **champs))
+        self.assertTrue(phrases_profil_ouvertes(devis(statut='brouillon', date_envoi=None)))
+        self.assertFalse(phrases_profil_ouvertes(devis(statut='envoye', date_envoi=avant)))
+        self.assertTrue(phrases_profil_ouvertes(devis(statut='envoye', date_envoi=apres)))
+        self.assertTrue(phrases_profil_ouvertes(devis(regles_calcul=15, statut='envoye', date_envoi=avant)))
+        for apercu in (None, SimpleNamespace()):
+            self.assertTrue(phrases_profil_ouvertes(apercu))
+        # Le drapeau de rendu : posé SEULEMENT pour un devis C&I envoyé avant la
+        # coupure (un brouillon et tout autre marché : charge utile inchangée).
+        self.assertEqual(drapeaux_phrases_profil(devis(statut='envoye', date_envoi=avant)),
+                         {'phrases_profil_historique': True})
+        for ouvert in (devis(statut='brouillon', date_envoi=None),
+                       devis(statut='envoye', date_envoi=apres),
+                       devis(statut='envoye', date_envoi=avant, mode_installation='residentiel')):
+            self.assertEqual(drapeaux_phrases_profil(ouvert), {})
+        # Le builder pose CE drapeau (et seulement lui) dans la charge utile.
+        from apps.ventes.quote_engine.builder import _avec_regles_pose_reelle
+        self.assertEqual(_avec_regles_pose_reelle({}, False, devis(statut='envoye', date_envoi=avant)),
+                         {'phrases_profil_historique': True})
+        self.assertEqual(_avec_regles_pose_reelle({}, False, devis(statut='brouillon', date_envoi=None)), {})
+        self.assertEqual(_avec_regles_pose_reelle({}, True, None), {'regles_pose_reelle': True})
+
     # ── Niveau 3 (corrections résidentielles du 27/10/2026) ──
     def test_devis_envoye_au_niveau_2_hors_corrections_2710(self):
         envoye = SimpleNamespace(regles_calcul=REGLES_CORRIGEES)

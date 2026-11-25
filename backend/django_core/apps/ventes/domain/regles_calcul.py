@@ -124,7 +124,8 @@ REGLES_SENSIBILITES_1911 = 14
 #: imprimée (``renderer._apres_annuel``, ``etude_restitution._facture_avec_affichee``).
 #: Et T4-U2-019 : un profil C&I dont l'heure ou les jours ont été supposés est
 #: dit « profil type — estimation », jamais « horaires déclarés »
-#: (``quote_engine/ci/synthese._methode_profil``).
+#: (``quote_engine/ci/synthese._methode_profil``) ; passée aux nouveaux rendus
+#: par D-ACAL-102 (voir :data:`COUPURE_PHRASES_PROFIL`).
 REGLES_POSE_REELLE_2111 = 15
 #: Niveau 16 (HT24, fondateur 24/11/2026 « With battery now also picks from HV
 #: inverters », DÉCLARÉ, PAS courant — il suit le 15) : l'option C&I « avec
@@ -138,8 +139,54 @@ REGLES_HYBRIDES_HT_2411 = 16
 #: Jour (inclus) à partir duquel un devis ENVOYÉ a pu recevoir la haute tension
 #: (le lendemain de la décision ; rien n'était en ligne avant).
 COUPURE_HYBRIDES_HT = (2026, 11, 25)
+#: D-ACAL-102 (fondateur 25/11/2026 « Live now », « nouveaux rendus
+#: seulement ») : les deux phrases corrigées du PDF C&I du niveau 15 —
+#: T4-U2-019 (horaires SUPPOSÉS dits « profil type — estimation », jamais
+#: « horaires déclarés ») et T4-U2-020 (« bases du calcul ci-dessous » dit
+#: seulement quand le bloc est rendu) — passent aux nouveaux rendus SANS rendre
+#: le niveau 15 courant : :func:`phrases_profil_ouvertes`, ouverte aux
+#: brouillons jamais envoyés et aux devis envoyés à partir de ce jour (le
+#: lendemain de la décision ; rien n'était en ligne avant), fermée aux devis
+#: envoyés avant — ils gardent la phrase reçue. Rien d'autre du niveau 15.
+COUPURE_PHRASES_PROFIL = (2026, 11, 26)
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
 REGLES_COURANTES = REGLES_SENSIBILITES_1911
+
+
+def _ouvert_aux_nouveaux_rendus(devis, niveau, coupure) -> bool:
+    """« Nouveaux rendus seulement » sans niveau courant : vrai pour ``None``
+    (aperçu), une doublure sans champ, un devis au ``niveau``, un BROUILLON
+    jamais envoyé et tout devis envoyé à partir de ``coupure`` ; faux pour un
+    devis sorti du brouillon avant (repère : ``date_envoi``, à défaut
+    ``date_creation``)."""
+    from datetime import date
+    if devis is None or regles_au_moins(devis, niveau):
+        return True
+    envoi = getattr(devis, 'date_envoi', None)
+    if envoi is None and getattr(devis, 'statut', None) in (None, '', 'brouillon'):
+        return True
+    repere = envoi or getattr(devis, 'date_creation', None)
+    if repere is None:
+        return True
+    jour = repere.date() if hasattr(repere, 'date') else repere
+    return jour >= date(*coupure)
+
+
+def phrases_profil_ouvertes(devis) -> bool:
+    """D-ACAL-102 — les deux phrases corrigées du PDF C&I (T4-U2-019,
+    T4-U2-020) pour ce devis ? Voir :data:`COUPURE_PHRASES_PROFIL`."""
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111, COUPURE_PHRASES_PROFIL)
+
+
+def drapeaux_phrases_profil(devis) -> dict:
+    """D-ACAL-102 — le drapeau de RENDU des deux phrases : ``{'phrases_profil_
+    historique': True}`` pour un devis commercial / industriel qui garde la
+    phrase reçue, ``{}`` sinon (brouillon, nouveaux rendus, autre marché : la
+    charge utile du builder ne change pas)."""
+    marche = (getattr(devis, 'mode_installation', None) or '').strip().lower()
+    if marche in ('commercial', 'industriel') and not phrases_profil_ouvertes(devis):
+        return {'phrases_profil_historique': True}
+    return {}
 
 
 def hybrides_ht_ouverts(devis) -> bool:
@@ -153,17 +200,7 @@ def hybrides_ht_ouverts(devis) -> bool:
     du brouillon avant cette date (envoyé, accepté, refusé, expiré — repère :
     ``date_envoi``, à défaut ``date_creation``) : il garde ce qu'il a reçu.
     """
-    from datetime import date
-    if devis is None or regles_au_moins(devis, REGLES_HYBRIDES_HT_2411):
-        return True
-    envoi = getattr(devis, 'date_envoi', None)
-    if envoi is None and getattr(devis, 'statut', None) in (None, '', 'brouillon'):
-        return True
-    repere = envoi or getattr(devis, 'date_creation', None)
-    if repere is None:
-        return True
-    jour = repere.date() if hasattr(repere, 'date') else repere
-    return jour >= date(*COUPURE_HYBRIDES_HT)
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_HYBRIDES_HT_2411, COUPURE_HYBRIDES_HT)
 
 
 def regles_au_moins(devis, niveau: int) -> bool:
