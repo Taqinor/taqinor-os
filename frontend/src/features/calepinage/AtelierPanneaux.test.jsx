@@ -82,6 +82,12 @@ describe('AtelierPanneaux (CAL37)', () => {
       .toHaveAttribute('href', `/calepinage/${CTX.calepinage.id}?onglet=variantes`)
   })
 
+  it('T4-X3-009 — la cible de la feuille Avancé nomme le panneau de la conception, jamais un « 8 » nu', async () => {
+    const contexte = { ...CTX, cible: { ...CTX.cible, panneaux: 8, kwc: 4.4, panel_watt: 550 } }
+    rendre({ contexte })
+    expect(screen.getByTestId('cal-cible-panneaux')).toHaveTextContent(/^8 panneaux de 550 W$/)
+  })
+
   it('cible nulle : « non renseignée », et l’écran le DIT', async () => {
     rendre({ contexte: CTX_VIDE, calepinageId: CTX_VIDE.calepinage.id })
 

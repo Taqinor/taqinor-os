@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { panneauxDuModule } from './atelier/cibleAuModule'
 import { createPortal } from 'react-dom'
 import { Link, useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
@@ -270,7 +271,8 @@ export default function AtelierPanneaux({
       <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
         <div>
           <dd className="fig text-lg text-foreground" data-testid="cal-cible-panneaux">
-            {cible ? valeur(cible.panneaux === null || cible.panneaux === undefined ? null : formatNumber(cible.panneaux, { decimals: 0 })) : 'non renseignée'}
+            {/* T4-X3-009 — le compte de la conception NOMME son panneau (« 8 panneaux de 550 W »), jamais un « 8 » nu. */}
+            {cible ? valeur(cible.panneaux === null || cible.panneaux === undefined ? null : panneauxDuModule(cible.panneaux, cible.panel_watt)) : 'non renseignée'}
           </dd>
           <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Cible — panneaux</dt>
         </div>

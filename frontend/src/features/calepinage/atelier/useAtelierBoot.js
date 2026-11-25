@@ -9,6 +9,8 @@ import { formatNumber } from '../../../lib/format'
 import { demandeMoteur, motifRefus } from '../ModeTerrain.helpers' // ACAL918
 import { fallbackPerKwc } from '@rooflib/productionEngine'
 import { choisirPaletteAcces } from '@rooflib/shadingEngine'
+import { lireModulesDisponibles, moduleDeDepart } from '@roofpro/moduleSelect'
+import { cibleAuModule } from './cibleAuModule'
 import { brouillonPertinent, consommerReprise, purgerBrouillonsOrphelins } from '../brouillon.js'
 import { brouillonLocalAProposer, lireBrouillonServeur } from '../brouillonServeur.js'
 import { lireAvecReprise } from '../delaiReseau'
@@ -519,6 +521,13 @@ export function useAtelierBoot(ctx) {
         if (cancelled) return
         window.__taqinorRoofBooted = true
         const payload = contexteCalepinageVersPayload(ctx)
+        // T4-X3-009 — la première pose automatique pose la cible comptée dans le module DE DÉPART du constructeur
+        // (`moduleDeDepart`, le même lecteur que lui) : le compte servi (`panneaux_selon_watt`), jamais les 8 de 550 W.
+        if (payload?.cible?.panneaux != null && modulesDisponibles) {
+          const depart = moduleDeDepart(lireModulesDisponibles(modulesDisponibles))
+          payload.cible.panneaux = cibleAuModule({ panneaux: payload.cible.panneaux, kwc: ctx?.cible?.kwc,
+            wattConception: payload.cible.panel_watt }, depart?.pmaxWc, modulesDisponibles.panneaux_selon_watt)?.panneaux ?? null
+        }
         if (payload && layoutSubstitue !== undefined) {
           payload.geometrie = { ...payload.geometrie, roof_layout: layoutSubstitue }
         }
