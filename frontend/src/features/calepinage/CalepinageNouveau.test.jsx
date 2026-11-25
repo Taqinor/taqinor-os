@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { ReactReduxContext } from 'react-redux'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* ============================================================================
@@ -61,7 +62,11 @@ vi.mock('../../api/crmApi', () => ({
 
 import CalepinageNouveau from './CalepinageNouveau'
 
-const rendre = () => render(<MemoryRouter><CalepinageNouveau /></MemoryRouter>)
+// La personne connectée (identifiant 7) : lue du magasin, comme la liste (« Mes calepinages »).
+const MAGASIN = { store: { getState: () => ({ auth: { user: { id: 7 } } }), subscribe: () => () => {}, dispatch: () => {} } }
+const rendre = () => render(
+  <ReactReduxContext.Provider value={MAGASIN}><MemoryRouter><CalepinageNouveau /></MemoryRouter></ReactReduxContext.Provider>,
+)
 
 // ACAL251 — chaque lead porte `repere_toit` tel que le SERVEUR le sert
 // (contrat crm/contract_samples/lead_repere_toit.json).
@@ -266,7 +271,7 @@ describe('CalepinageNouveau (CAL36)', () => {
   // « Réessayez » faisait un doublon. La route ne porte pas de clé d'idempotence : l'écran cherche ce qu'il vient de créer.
   it('T4-X9-011 — pas de réponse mais calepinage créé : retrouvé (même client, même nom, créé à l’instant), jamais « Réessayez »', async () => {
     mocks.depuisModele.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 20000ms exceeded' })
-    mocks.list.mockResolvedValue({ data: { results: [{ id: 1975, titre: 'X9-o Calepinage sans lead', reference: 'CAL-2611-1975' }] } })
+    mocks.list.mockResolvedValue({ data: { results: [{ id: 1975, titre: 'X9-o Calepinage sans lead', reference: 'CAL-2611-1975', cree_par: 7 }] } })
     rendre()
     allerSurOnglet('Client')
     await choisirDansCombobox('Client rattaché au calepinage', 'Client d’essai')
@@ -293,6 +298,32 @@ describe('CalepinageNouveau (CAL36)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
     expect(await screen.findByText(/Vérifiez la liste des calepinages avant de recommencer/)).toBeInTheDocument()
     expect(screen.queryByText(/Réessayez dans un instant/)).toBeNull()
+  })
+
+  // Relecture finale du lot 4 (mineur 6) — sans nom tapé, l'écran ouvrait le premier calepinage du même client créé dans
+  // les deux minutes : ce pouvait être celui d'un collègue. Seul un calepinage créé PAR la personne connectée est le sien.
+  it('pas de réponse : le calepinage qu’un collègue vient de créer sur le même client n’est jamais présenté comme le mien', async () => {
+    mocks.depuisModele.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout' })
+    mocks.list.mockResolvedValue({ data: { results: [{ id: 1980, titre: '', reference: 'CAL-2611-1980', cree_par: 12 }] } })
+    rendre()
+    allerSurOnglet('Client')
+    await choisirDansCombobox('Client rattaché au calepinage', 'Client d’essai')
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    expect(await screen.findByText(/Vérifiez la liste des calepinages avant de recommencer/)).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-nouveau-retrouve')).toBeNull()
+  })
+
+  it('pas de réponse, sans nom tapé : le mien (créé par moi) est retrouvé parmi ceux des collègues', async () => {
+    mocks.depuisModele.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout' })
+    mocks.list.mockResolvedValue({ data: { results: [
+      { id: 1980, titre: '', reference: 'CAL-2611-1980', cree_par: 12 },
+      { id: 1981, titre: '', reference: 'CAL-2611-1981', cree_par: 7 },
+    ] } })
+    rendre()
+    allerSurOnglet('Client')
+    await choisirDansCombobox('Client rattaché au calepinage', 'Client d’essai')
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    expect(await screen.findByTestId('cal-nouveau-retrouve')).toHaveTextContent('CAL-2611-1981')
   })
 
   it('le nom facultatif ne part QUE s’il est saisi', async () => {

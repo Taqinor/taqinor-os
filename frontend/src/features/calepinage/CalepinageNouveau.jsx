@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { ReactReduxContext } from 'react-redux'
 import { refusServeur } from './commun/refusServeur'
 import { useNavigate } from 'react-router-dom'
 import { AlertCircle, MapPin, Plus } from 'lucide-react'
@@ -169,6 +170,8 @@ export default function CalepinageNouveau() {
   // vraie liste `?lead=<id>`, ou rendu par un 409 `calepinage_existant`.)
   const [existant, setExistant] = useState(null)
   const [retrouve, setRetrouve] = useState(null) // T4-X9-011 — le calepinage créé malgré une réponse perdue
+  // La personne connectée, lue du magasin (comme « Mes calepinages » de la liste) : seul SON calepinage est « retrouvé ».
+  const idMoi = useContext(ReactReduxContext)?.store?.getState?.()?.auth?.user?.id ?? null
   // Responsable facultatif : VIDE par défaut (le repli est le propriétaire du lead).
   const [responsableId, setResponsableId] = useState('')
   const responsables = useUtilisateursAssignables()
@@ -321,7 +324,9 @@ export default function CalepinageNouveau() {
             lead: surLead ? cibleId : undefined, client: surLead ? undefined : cibleId,
             depuis, ordering: '-created_at', ...pages,
           }))
-          trouve = lignes.find((l) => !nom.trim() || (l?.titre || l?.nom || '') === nom.trim()) ?? null
+          // Créé PAR MOI (`cree_par`) : jamais le calepinage qu'un collègue vient d'ouvrir sur le même lead ou client.
+          const mien = (l) => idMoi != null && (l?.cree_par?.id ?? l?.cree_par) === idMoi
+          trouve = lignes.find((l) => mien(l) && (!nom.trim() || (l?.titre || l?.nom || '') === nom.trim())) ?? null
         } catch {
           trouve = null
         }
