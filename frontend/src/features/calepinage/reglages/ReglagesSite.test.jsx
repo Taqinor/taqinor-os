@@ -40,6 +40,16 @@ beforeEach(() => {
 afterEach(() => { cleanup() })
 
 describe('ReglagesSite (ACAL130)', () => {
+  it('T4-X3-003 — l’altitude saisie dit qu’elle ne sert pas au calcul ni au rapport', () => {
+    render(<ReglagesSite imagerie={SERVI} />)
+    // Cause : `services/simulation.py::_site_du_calepinage` la place dans le
+    // contexte mais aucune étape ne la lit ; le rapport (`rapport/site.py::_altitude`)
+    // imprime celle de la météo, source PVGIS.
+    const bloc = screen.getByTestId('acal130-champ-altitude_m')
+    expect(bloc).toHaveTextContent('n’est pas utilisée')
+    expect(bloc).toHaveTextContent('altitude donnée par la météo')
+  })
+
   it('aller-retour sans geste : section identique', async () => {
     render(<ReglagesSite imagerie={SERVI} />)
 
