@@ -2269,14 +2269,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // PV62 — la pose MIXTE n'existe que sur toit plat (en pente, pose affleurante).
     const mixedChip = document.querySelector<HTMLButtonElement>('[data-orient="mixed"]');
     if (mixedChip) mixedChip.hidden = roofType === 'pitched';
+    if (flatOnlyEl) flatOnlyEl.hidden = roofType !== 'flat'; // T4-X2-008 — au boot aussi : un toit en pente rouvert
+    if (pitchedControlsEl) pitchedControlsEl.hidden = roofType !== 'pitched'; // montrait les réglages du plat
   }
   function setRoofType(t: RoofType) {
     if (roofType === t) return;
     roofType = t;
     // W35 — on masque SEULEMENT les contrôles propres au plat (#rp9-flat-only) ; la pose
-    // et la marge (axes libres en pente) restent visibles. Le bloc pente apparaît en pente.
-    if (flatOnlyEl) flatOnlyEl.hidden = t !== 'flat';
-    if (pitchedControlsEl) pitchedControlsEl.hidden = t !== 'pitched';
+    // et la marge (axes libres en pente) restent visibles. Le bloc pente apparaît en pente (syncRoofTypeChips).
     if (t === 'pitched' && azimuthGroup) azimuthGroup.hidden = true;
     // V6 : la carte « Optimum calculé » est propre au toit plat ; recompute la rouvre
     // en mode plat. Le tableau comparatif est repeuplé selon le mode (plat ou pente).
@@ -2607,8 +2607,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // (la pose se re-résout ensuite via recalc → liveResolvePitched).
     syncFacingChips();
     syncFacingSlider();
-    if (flatOnlyEl) flatOnlyEl.hidden = roofType !== 'flat';
-    if (pitchedControlsEl) pitchedControlsEl.hidden = roofType !== 'pitched';
     if (configPanel) configPanel.hidden = !closed;
     updateAreaReadout();
     if (closed) {
@@ -2658,8 +2656,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     syncRoofTypeChips();
     syncFacingChips();
     syncFacingSlider();
-    if (flatOnlyEl) flatOnlyEl.hidden = roofType !== 'flat';
-    if (pitchedControlsEl) pitchedControlsEl.hidden = roofType !== 'pitched';
   }
 
   /** ACAL308 — la mention « Jeu de réglages <libellé> appliqué aux nouveaux pans » sous la
