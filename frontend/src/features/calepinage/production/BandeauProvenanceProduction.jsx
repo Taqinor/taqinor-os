@@ -6,6 +6,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { formatDate, formatNumber, formatPercent } from '../../../lib/format'
 import { PARAM_ONGLET } from '../atelier/onglets'
+import { ecouterResultat } from '../atelier/simulationFraiche'
 import { estProfilDepart, MENTION_PUBLIEE } from '../reglages/profilDepart'
 import { estIncomplet, SIMULATION_A_REFAIRE, simulationARefaire } from './BandeauProvenanceProduction.helpers'
 import Pourquoi from '../commun/Pourquoi'
@@ -53,7 +54,7 @@ function useSourceCarte() {
 
 export default function BandeauProvenanceProduction({ calepinageId, chiffrage = null, devisLie = false }) {
   const source = useSourceCarte()
-  const { data } = useResource(
+  const { data: lu } = useResource(
     () => calepinageApi.calepinages.resultat(calepinageId), calepinageId,
     {
       select: (r) => r.data,
@@ -61,6 +62,10 @@ export default function BandeauProvenanceProduction({ calepinageId, chiffrage = 
       enabled: Boolean(calepinageId),
     },
   )
+  // T4-X8-013 — le résultat que l'étape Résultats relit prime sur cette lecture (faite parfois avant la simulation).
+  const [publie, setPublie] = useState({ id: null, data: null })
+  useEffect(() => ecouterResultat(calepinageId, (d) => setPublie({ id: calepinageId, data: d })), [calepinageId])
+  const data = publie.id === calepinageId && publie.data ? publie.data : lu
 
   const p50 = data?.production?.total?.p50_kwh
   const aSimulation = p50 !== null && p50 !== undefined

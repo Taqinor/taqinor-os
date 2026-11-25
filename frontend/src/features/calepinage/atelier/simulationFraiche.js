@@ -25,9 +25,29 @@ export function chiffrageAvecSimulation(chiffrage, p50) {
   return { ...(chiffrage ?? {}), simulation: { p50_kwh: p50, a_jour: true } }
 }
 
+/* T4-X8-013 — UN chiffre de production pour une pose : le résultat que l'étape Résultats relit (`GET resultat/`) est
+   PUBLIÉ ici ; chaque `useSimulationFraiche` du même calepinage le reprend (résumé de la feuille « Avancé », Total du
+   constructeur), sans seconde lecture. Avant, le résumé gardait la lecture faite AVANT la simulation. */
+const ecouteursResultat = new Set()
+
+/** Publie le résultat servi que l'étape Résultats vient de lire pour le calepinage `calepinageId`. */
+export function publierResultat(calepinageId, resultat) {
+  ecouteursResultat.forEach((f) => f(calepinageId, resultat))
+}
+
+/** Écoute les résultats publiés pour `calepinageId` (`f(resultat)`) ; rend la fonction qui arrête l'écoute. */
+export function ecouterResultat(calepinageId, f) {
+  if (!calepinageId) return () => {}
+  const ecouter = (id, resultat) => { if (String(id) === String(calepinageId)) f(resultat) }
+  ecouteursResultat.add(ecouter)
+  return () => { ecouteursResultat.delete(ecouter) }
+}
+
 /** Le P50 frais du calepinage, relu à chaque `rechargerLe` (enregistrement) et tant que la simulation tourne. */
 export function useSimulationFraiche(calepinageId, rechargerLe) {
   const [etat, setEtat] = useState({ p50: null, cle: null })
+  useEffect(() => ecouterResultat(calepinageId, (resultat) => setEtat({ p50: p50Frais(resultat), cle: calepinageId })),
+    [calepinageId])
   // Le compteur de relectures appartient à UNE source (calepinage + enregistrement) : une autre source repart de zéro.
   const source = `${calepinageId ?? ''}|${rechargerLe ?? ''}`
   const [relectures, setRelectures] = useState({ source, n: 0 })

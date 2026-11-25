@@ -678,6 +678,12 @@ retiré plus un hook ajouté.
 | `cal-retour-atelier-lien` | retour atelier lien. |
 | `cal-retour-atelier-onglet` | retour atelier onglet. |
 
+## BuilderPose (`atelier/BuilderPose.jsx`) — T4-X8-008
+
+| Hook | Sémantique |
+|---|---|
+| `cal-placement-libre-ailleurs` | téléphone tactile seulement : « Le placement libre se fait sur une tablette ou au bureau. » (placement libre et « Ajouter un panneau » masqués). |
+
 ## ResumeAtelier (`atelier/ResumeAtelier.jsx`) — ACAL401
 
 | Hook | Sémantique |
@@ -685,7 +691,7 @@ retiré plus un hook ajouté.
 | `cal-resume-atelier` | résumé vivant de la barre d'enregistrement (panneaux · kWc · production). |
 | `cal-resume-panneaux` | nombre de panneaux du document sérialisé, « — » si absent. |
 | `cal-resume-kwc` | puissance crête du document sérialisé, « — » si absente. |
-| `cal-resume-production` | « ≈ N kWh/an (estimation) » ou « P50 N kWh/an (simulation) » ; « — » si absente. |
+| `cal-resume-production` | « P50 N kWh/an (simulation) » (la production de l'étape Résultats) ; « — » sans simulation fraîche (T4-X8-013 : jamais l'estimation du constructeur). |
 
 ## PanneauDocuments (`documents/PanneauDocuments.jsx`)
 

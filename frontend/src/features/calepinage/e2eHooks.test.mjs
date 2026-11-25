@@ -564,6 +564,8 @@ export const ALL_HOOKS = [
   'cal-retour-atelier',
   'cal-retour-atelier-lien',
   'cal-retour-atelier-onglet',
+  // ── atelier/BuilderPose.jsx (T4-X8-008) ──
+  'cal-placement-libre-ailleurs',
   // ── atelier/ResumeAtelier.jsx ──
   'cal-resume-atelier',
   'cal-resume-kwc',

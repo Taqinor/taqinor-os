@@ -64,7 +64,7 @@ import BandeauProvenanceProduction from '../../features/calepinage/production/Ba
 import { suivreSimulationDuServeur } from '../../features/calepinage/production/simulationAuto' // ACAL1987
 // CALX68 — brouillon LOCAL de l'atelier (mode calepinage) : minuterie/repli +
 // bandeau de reprise. Logique pure, voir l'en-tête de ce module.
-import { creerGestionnaireBrouillon, estPanneReseau, memoriserReprise } from '../../features/calepinage/brouillon'
+import { construireCle, creerGestionnaireBrouillon, effacerBrouillon, estPanneReseau, memoriserReprise } from '../../features/calepinage/brouillon'
 import { ecrireOuRelire } from '../../features/calepinage/delaiReseau'
 import { creerStockageMiroir, sansVue, empreinteSansVue } from '../../features/calepinage/brouillonServeur' // ACAL400 ; H1 : sans l'état de vue ; ACAL1345
 import { toastInfo } from '../../lib/toast'
@@ -377,17 +377,15 @@ function AtelierToiture({
   // CALX68 — décision du bandeau de reprise : « Reprendre » substitue le
   // layout du brouillon AVANT le boot du constructeur (le seul moment où
   // c'est possible — le builder n'expose aucune méthode de rechargement
-  // post-boot) ; « Ignorer » boote avec le layout SERVEUR, sans y toucher —
-  // le brouillon local n'est PAS effacé pour autant (seul un enregistrement
-  // réussi l'efface, CALX68), mais le document serveur, lui, reste intact
-  // dans les deux cas : ni l'un ni l'autre ne fait le moindre appel réseau.
+  // post-boot) ; « Ignorer » (T4-X8-010 : « Effacer ce brouillon ») boote avec
+  // le layout SERVEUR, sans y toucher — le document serveur reste intact dans
+  // les deux cas.
   // ACAL84 — l'atelier a DÉJÀ booté sur la conception serveur (bandeau non
   // bloquant) : « Reprendre » mémorise le brouillon pour le PROCHAIN boot
   // (sessionStorage, consommé une fois par `useAtelierBoot`) puis recharge —
   // le seul moyen d'hydrater le constructeur sur un autre document.
-  // « Ignorer » ferme seulement le bandeau : la conception serveur est déjà
-  // à l'écran et le brouillon local n'est PAS effacé (seul un enregistrement
-  // réussi l'efface).
+  // « Effacer ce brouillon » ferme le bandeau ET efface ce brouillon (local et
+  // copie serveur) : la conception serveur est déjà à l'écran (T4-X8-010).
   const reprendreBrouillon = () => {
     const brouillon = brouillonPropose
     if (!brouillon) return
@@ -412,7 +410,11 @@ function AtelierToiture({
   }
   const ignorerBrouillon = () => {
     setBrouillonPropose(null)
-    // ACAL400 — « Ignorer » efface la copie SERVEUR (le local reste, CALX68).
+    // T4-X8-010 — « Effacer ce brouillon » efface CE brouillon pour de bon : la copie locale (sa clé, empreinte serveur de
+    // l'ouverture) — sinon le bandeau revenait à chaque ouverture — et, ACAL400, la copie SERVEUR. De nouveaux gestes
+    // écrivent un brouillon plus récent, qui relève le bandeau à l'ouverture suivante.
+    effacerBrouillon(stockageBrouillonLocal(),
+      construireCle({ calepinageId, utilisateurId: utilisateurCourantId, hashBase: hashBaseBrouillon }))
     Promise.resolve(calepinageApi.calepinages.effacerBrouillon?.(calepinageId)).catch(() => {})
   }
 
@@ -1200,7 +1202,7 @@ function AtelierToiture({
         {/* CALX68 — LE BANDEAU DE REPRISE DE BROUILLON. N'existe QUE tant que
             l'utilisateur n'a pas choisi. ACAL84 — NON BLOQUANT : l'atelier a
             déjà booté sur la conception serveur ; « Reprendre » recharge sur
-            le brouillon, « Ignorer » ferme le bandeau — « rien n'est
+            le brouillon, « Effacer ce brouillon » l'efface — « rien n'est
             réhydraté sans le geste ». */}
         {estCalepinage && brouillonPropose && (
           <div className="rounded-xl border border-border bg-card mt-4 border-brass-400/40 p-4"
@@ -1212,7 +1214,7 @@ function AtelierToiture({
               Un brouillon non enregistré du{' '}
               {formaterHeureBrouillon(brouillonPropose.horodatage)} a été
               trouvé {brouillonPropose.serveur ? 'sur le serveur (enregistré par votre compte depuis un autre poste)' : 'sur cet appareil'} — reprendre où vous en étiez, ou
-              l’ignorer et ouvrir la dernière conception enregistrée.
+              l’effacer et garder la dernière conception enregistrée.
             </p>
             <div className="mt-3 flex flex-wrap gap-3">
               <button
@@ -1229,7 +1231,7 @@ function AtelierToiture({
                 data-testid="cal-brouillon-ignorer"
                 className="inline-flex items-center gap-2 px-5 py-3 text-base font-semibold text-muted-foreground"
               >
-                Ignorer
+                Effacer ce brouillon
               </button>
             </div>
           </div>

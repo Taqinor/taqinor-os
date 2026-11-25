@@ -19,6 +19,7 @@ import { memeTaille, phraseTailles, tailleDifferente } from '@roofpro/tailleConc
 import { messageResultatIndisponible } from '../../../delaiReseau'
 import EtatEcranAtelier from '../../EtatEcranAtelier'
 import { useModeExpert } from '../../modeExpert'
+import { publierResultat } from '../../simulationFraiche'
 import PanneauPertes from '../../PanneauPertes'
 import { useLectureServie } from './panneaux/lectures'
 
@@ -313,6 +314,8 @@ export default function EtapeResultats({
     () => calepinageApi.calepinages.resultat(id), id,
     { select: (r) => r.data, errorMessage: messageResultatIndisponible },
   )
+  // T4-X8-013 — le résultat lu ici est celui que reprennent le résumé de la feuille « Avancé » et le Total du constructeur.
+  useEffect(() => { if (data) publierResultat(id, data) }, [id, data])
   // T4-X5-001 — la taille de la conception (lecture partagée du design-context, jamais un second appel en vol).
   const contexte = useLectureServie('contexte', id, { actif: data?.conception != null })
   if (loading || error) {

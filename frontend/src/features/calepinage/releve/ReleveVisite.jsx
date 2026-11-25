@@ -8,7 +8,7 @@ import { messageRefus, refusServeur } from '../commun/refusServeur'
 import { lireConflit } from '../conflitEcriture'
 import { Icone } from '../atelier/coque/primitives'
 import { PlanDessus } from '../client/partiesClient'
-import { planDessus } from '../client/vueClient.helpers'
+import { DEPUIS_RELEVE, planDessus } from '../client/vueClient.helpers'
 import { champsDuReleve, corpsDuReleve, validerAvantEnvoi } from './corpsReleve'
 import {
   LARGEUR, LONGUEUR, avecMesure, chainesSaisies, dateDuJour, mesureDesChaines, mesureDuCapteur,
@@ -528,7 +528,7 @@ export default function ReleveVisite() {
         )}
 
         <footer className="cal-tel-pied">
-          <Link to={`/calepinage/${id}/client`} className="cal-tel-pied-secondaire" data-testid="releve-voir-3d">Voir en 3D</Link>
+          <Link to={`/calepinage/${id}/client`} state={DEPUIS_RELEVE} className="cal-tel-pied-secondaire" data-testid="releve-voir-3d">Voir en 3D</Link>
           <button type="button" className="cal-tel-pied-or" onClick={terminer} disabled={enCours} data-testid="releve-terminer">
             {enCours ? 'Enregistrement…' : 'Terminer le relevé'}
           </button>

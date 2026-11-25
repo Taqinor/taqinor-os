@@ -1,11 +1,32 @@
 // Coque (22/11) — groupe « pose » du DOM du constructeur, DÉPLACÉ VERBATIM depuis
 // BuilderDom.jsx (move only) : `#rp9-layout-window` (personnaliser la disposition) et la
 // ligne d'état `#rp9-status` (`BuilderStatut`). Mêmes ids, même ordre (layoutEditor.ts).
+import { useEffect, useState } from 'react'
 import Pourquoi from '../commun/Pourquoi'
+import { REQUETE_SANS_CLAVIER } from '../RaccourcisAtelier.helpers'
+
+// T4-X8-008 — le TÉLÉPHONE tactile (même seuil que le tiroir de la coque, entrée sans clavier ni souris) : la carte n'y a
+// pas la place d'un geste précis — « Placement libre » (« Cliquez sur le toit… (Échap : annuler) ») n'y est pas offert.
+const REQUETES_TELEPHONE_TACTILE = ['(max-width: 639px)', REQUETE_SANS_CLAVIER]
+
+function useTelephoneTactile() {
+  const lire = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && REQUETES_TELEPHONE_TACTILE.every((q) => Boolean(window.matchMedia(q)?.matches))
+  const [oui, setOui] = useState(lire)
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined
+    const listes = REQUETES_TELEPHONE_TACTILE.map((q) => window.matchMedia(q)).filter((mq) => mq?.addEventListener)
+    const suivre = () => setOui(REQUETES_TELEPHONE_TACTILE.every((q) => Boolean(window.matchMedia(q)?.matches)))
+    listes.forEach((mq) => mq.addEventListener('change', suivre))
+    return () => listes.forEach((mq) => mq.removeEventListener('change', suivre))
+  }, [])
+  return oui
+}
 
 export default function BuilderPose({
   expert = false, // ACAL869 — le niveau expert (publié par le rail) : ouvre « Réglages avancés » d'office
 }) {
+  const telephoneTactile = useTelephoneTactile()
   return (
     <>
           {/* W69 — « Personnaliser la disposition » : porté de apps/web/toiture-3d-pro-11.astro
@@ -109,10 +130,15 @@ export default function BuilderPose({
                   className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text aria-pressed:border-brass-400">
                   ▦ Emplacements validés
                 </button>
-                <button type="button" id="rp9-layout-mode-free" aria-pressed="false"
+                <button type="button" id="rp9-layout-mode-free" aria-pressed="false" hidden={telephoneTactile || undefined}
                   className="border border-border px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-brass-400 hover:text-primary-text">
                   ✥ Placement libre
                 </button>
+                {telephoneTactile && (
+                  <p className="text-xs text-muted-foreground" data-testid="cal-placement-libre-ailleurs">
+                    Le placement libre se fait sur une tablette ou au bureau.
+                  </p>
+                )}
               </div>
 
               <div id="rp9-free-controls" hidden className="space-y-3 border border-brass-400/30 bg-brass-400/5 p-3">
@@ -132,7 +158,7 @@ export default function BuilderPose({
                     className="w-24 border border-border bg-background px-3 py-2 text-sm text-foreground" />
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <button type="button" id="rp9-free-add" aria-pressed="false"
+                  <button type="button" id="rp9-free-add" aria-pressed="false" hidden={telephoneTactile || undefined}
                     className="border border-brass-400 bg-brass-400/10 px-4 py-2.5 text-sm font-bold text-primary-text transition-colors hover:bg-brass-400/20">
                     ＋ Ajouter un panneau
                   </button>

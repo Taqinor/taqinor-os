@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, act, within } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import process from 'node:process'
 import { resolve } from 'node:path'
 import { creerRepere, metresVersLngLat } from '../repere'
@@ -261,6 +261,22 @@ describe('Relevé de visite — « Voir en 3D » ouvre la vue client (ACAL1811)'
     await screen.findByTestId('releve-projet')
     expect(screen.getByTestId('releve-voir-3d').getAttribute('href')).toBe('/calepinage/1/client')
     expect(screen.getByTestId('releve-voir-3d')).toHaveTextContent('Voir en 3D')
+  })
+
+  // T4-X8-007 — la vue client sait qu'on vient du relevé (son « Retour » y ramène) ; ouverte d'ailleurs, elle ramène à l'atelier.
+  it('T4-X8-007 — « Voir en 3D » dit à la vue client qu’on vient du relevé', async () => {
+    const Sonde = () => <p data-testid="sonde-depuis">{useLocation().state?.depuis ?? 'aucune'}</p>
+    render(
+      <MemoryRouter initialEntries={['/calepinage/1/releve']}>
+        <Routes>
+          <Route path="/calepinage/:id/releve" element={<ReleveVisite />} />
+          <Route path="/calepinage/:id/client" element={<Sonde />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await screen.findByTestId('releve-projet')
+    fireEvent.click(screen.getByTestId('releve-voir-3d'))
+    expect(await screen.findByTestId('sonde-depuis')).toHaveTextContent('releve')
   })
 })
 
