@@ -414,8 +414,28 @@ describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () =>
   const simule = () => {
     const r = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
     r.data.production.total.p50_kwh = pose.production_annuelle_kwh.valeur
+    r.data.pose.kwc = kwcPose // la pose a la taille de la conception (71 kWc), sauf quand le test la change
     calepinageApi.calepinages.resultat.mockResolvedValue(r)
   }
+  let kwcPose = 71
+  beforeEach(() => { kwcPose = 71 })
+
+  // T4-X9-004 — « Moteur du devis sur cette pose (aucun devis lié) : 7 037 kWh/an … (étude technique : +31,2 %) » : 7 037 kWh
+  // était la production de la conception (4,40 kWc), pas de la pose (5,68 kWc), et le pourcentage comparait deux tailles.
+  it('T4-X9-004 — pose d’une autre taille : la ligne nomme la conception et sa taille, sans pourcentage contre la simulation', async () => {
+    kwcPose = 5.68
+    simule()
+    for (const devisLie of [false, true]) {
+      const { unmount } = rendreAvec(ville, devisLie)
+      const espaces = (t) => t.replace(/\s/g, ' ')
+      const ligne = await screen.findByTestId('acal995-devis-annonce')
+      expect(espaces(ligne.textContent)).toBe(espaces(
+        `Conception du lead (71,00 kWc) : ${formatNumber(ville.production_annuelle_kwh.valeur, { decimals: 0 })} kWh/an — production standard de la ville`))
+      expect(ligne).not.toHaveTextContent('%')
+      expect(ligne).not.toHaveTextContent('sur cette pose')
+      unmount()
+    }
+  })
 
   // T4-U4-006 — « Le devis annonce » ne parle que d'un devis LIÉ (`calepinage.devis_lie` du contexte).
   const rendreAvec = (chiffrage, devisLie = true) => render(
@@ -453,6 +473,7 @@ describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () =>
   it('ACAL1274 — pose réelle imprimée ≠ simulation ⇒ la ligne nomme les deux nombres', async () => {
     const r = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
     r.data.production.total.p50_kwh = pose.production_annuelle_kwh.valeur * 0.988
+    r.data.pose.kwc = 71 // T4-X9-004 — même taille que la conception : la ligne d'aujourd'hui
     calepinageApi.calepinages.resultat.mockResolvedValue(r)
     rendreAvec(pose)
     const espaces = (t) => t.replace(/\s/g, ' ')

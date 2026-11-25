@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PVGIS_LIVE_LOSS_PCT } from '@rooflib/systemLoss'
+import { tailleDifferente, texteKwc } from '@roofpro/tailleConception' // T4-X9 — LE prédicat de taille
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { formatDate, formatNumber, formatPercent } from '../../../lib/format'
@@ -88,7 +89,8 @@ export default function BandeauProvenanceProduction({ calepinageId, chiffrage = 
         </span>
       )}
       <EcartDevis ecart={data?.ecart_devis} borneHaute={borneHaute} />
-      <DevisAnnonce chiffrage={chiffrage} p50={aSimulation ? p50 : null} borneHaute={borneHaute} devisLie={devisLie} />
+      <DevisAnnonce chiffrage={chiffrage} p50={aSimulation ? p50 : null} borneHaute={borneHaute} devisLie={devisLie}
+        kwcPose={data?.pose?.kwc} />
     </p>
   )
 }
@@ -111,7 +113,7 @@ const ORIGINE_ANNONCE = {
 /* T4-U4-006 / T4-U4-017 — sans devis LIÉ au calepinage, le chiffre est celui du moteur du devis sur CETTE pose (la
    production standard de la ville) : jamais « Le devis annonce », qui faisait lire au vendeur l'estimation de l'atelier
    comme le chiffre envoyé au client. */
-function DevisAnnonce({ chiffrage, p50, borneHaute = null, devisLie = false }) {
+function DevisAnnonce({ chiffrage, p50, borneHaute = null, devisLie = false, kwcPose = null }) {
   const prod = chiffrage?.production_annuelle_kwh
   if (!prod) return null
   if (prod.etat === 'non_servi' || prod.etat === 'indisponible') {
@@ -121,6 +123,16 @@ function DevisAnnonce({ chiffrage, p50, borneHaute = null, devisLie = false }) {
   if (prod.etat !== 'servi' || !ORIGINE_ANNONCE[prod.source] || !prod.valeur) return null
   // ACAL1274 — pose réelle : la ligne ne se tait que si le devis imprime la simulation à l'affichage près.
   if (prod.source === 'calepinage_enregistre' && (typeof p50 !== 'number' || Math.round(p50) === Math.round(prod.valeur))) return null
+  // T4-X9-004 — le bloc `chiffrage` est TOUJOURS celui de la conception du lead (`chiffrer_conception`, devis lié ou non) :
+  // à une autre taille que la pose, la ligne nomme la conception et sa taille, sans écart contre la simulation de la pose.
+  const kwcConception = chiffrage?.kwc?.etat === 'servi' ? chiffrage.kwc.valeur : null
+  if (tailleDifferente(kwcConception, kwcPose)) {
+    return (
+      <span className="block" data-testid="acal995-devis-annonce">
+        {`Conception du lead (${texteKwc(kwcConception)}) : ${formatNumber(prod.valeur, { decimals: 0 })} kWh/an — ${ORIGINE_ANNONCE[prod.source]}`}
+      </span>
+    )
+  }
   const ecart = typeof p50 === 'number' ? ((p50 - prod.valeur) / prod.valeur) * 100 : null
   return (
     <span className="block" data-testid="acal995-devis-annonce">
