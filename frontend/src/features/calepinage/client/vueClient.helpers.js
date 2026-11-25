@@ -113,9 +113,10 @@ export function tuilesClient(document, resultat, chiffrage = null) {
       cle: 'kwh', valeur: formatNumber(Math.round(kwh), { locale: 'fr' }), libelle: 'kWh par an · estimation', marine: true,
       ...(pertesParDefaut ? { nature: 'pertes' } : {}),
     })
-    // T4-X7-002 — la simulation de la pose dit que la conception décrit une AUTRE installation (`taux_source: 'pose'` :
+    // T4-X7-002 — la simulation de la pose a trouvé un écart réel avec la conception (`taux_source: 'autre_installation'` :
     // batterie d'un seul côté, autre puissance) : sa part (76 % avec batterie) n'est pas celle de ces panneaux ⇒ tuile omise.
-    const autreInstallation = resultat?.autoconsommation?.taux_source === 'pose'
+    // `'pose'` (aucun taux de conception au moment de la simulation) ou aucune clé : la part servie, comme avant.
+    const autreInstallation = resultat?.autoconsommation?.taux_source === 'autre_installation'
     const couverture = autreInstallation ? null : servi(chiffrage.couverture_pct)
     if (couverture !== null) tuiles.push({ cle: 'couverture', valeur: `${Math.round(couverture)} %`, libelle: 'de votre consommation' })
     return tuiles

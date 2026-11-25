@@ -135,7 +135,12 @@ DEFINITION_TAUX_AUTRE_POSE = (
     "s'appliquent pas à cette pose. " + DEFINITION_TAUX)
 
 #: T4-X7-002 — ``taux_source`` du bloc : d'où viennent ``taux_autoconsommation`` et ``taux_couverture``.
-TAUX_DE_LA_CONCEPTION, TAUX_DE_LA_POSE = 'conception', 'pose'
+#: ``conception`` : ceux de la conception du lead (ACAL2024) ; ``pose`` : aucun taux de conception
+#: (pas de lead, conception incomplète, agricole, taux absent) — le bilan propre de toujours ;
+#: ``autre_installation`` : SEUL signal d'un écart réel (``ecart_conception_pose``) — les taux de
+#: la pose, et les écrans taisent la part servie de la conception. Un résultat rangé sans la clé
+#: se lit comme avant.
+TAUX_DE_LA_CONCEPTION, TAUX_DE_LA_POSE, TAUX_AUTRE_INSTALLATION = 'conception', 'pose', 'autre_installation'
 
 #: Écart d'ÉGALITÉ de deux puissances (kWc) : l'arrondi d'affichage, comme l'atelier (tailleConception.ts).
 _ECART_KWC = 0.005
@@ -473,7 +478,8 @@ def _publier(serie, bilan, courbe, au_compteur, brute, apres_batterie,
                      taux_couverture=conception['taux_couverture'])
     else:
         definition = DEFINITION_TAUX
-    taux_source = TAUX_DE_LA_CONCEPTION if conception and not ecart else TAUX_DE_LA_POSE
+    taux_source = (TAUX_AUTRE_INSTALLATION if ecart else TAUX_DE_LA_CONCEPTION if conception
+                   else TAUX_DE_LA_POSE)
     bloc_plafond = bilan['plafond']
     if bloc_plafond:
         exports = list(bloc_plafond['surplus_apres_ecretage'])
