@@ -1881,36 +1881,6 @@ def _photo_devis(devis_id):
                   'lignes': list(LigneDevis.objects.filter(devis_id=devis_id).order_by('pk').values())})
 
 
-def _lignes_de_l_option(devis, option):
-    """Les lignes d'UNE option (désignation, quantité, prix, produit), dans l'ordre."""
-    return [(li.designation, li.quantite, li.prix_unitaire, li.produit_id)
-            for li in devis.lignes.filter(variante=option).order_by('ordre', 'pk')]
-
-
-def _corps_de_l_ecran(devis, *, retouche_panneaux, quantite_manuelle):
-    """Le corps de ``replace-lines`` que l'écran envoie (``lignesEcranVersPayload``) pour
-    les lignes en base, la ligne panneau de l'option ``retouche_panneaux`` portée à +2 :
-    verrou de quantité posé (case tapée) ou non (nombre de panneaux recomposé)."""
-    lignes, retouchee = [], False
-    for ordre, li in enumerate(devis.lignes.select_related('produit').order_by('ordre', 'pk')):
-        if li.type_ligne != 'produit':
-            lignes.append({'type_ligne': li.type_ligne, 'ordre': ordre, 'designation': li.designation,
-                           'ligne_composee': None})
-            continue
-        quantite, manuelle = li.quantite, li.quantite_manuelle
-        if not retouchee and li.variante == retouche_panneaux and 'panneau' in li.designation.lower():
-            quantite, manuelle, retouchee = li.quantite + 2, quantite_manuelle, True
-        lignes.append({
-            'produit': li.produit_id, 'designation': li.designation, 'quantite': str(quantite),
-            'prix_unitaire': str(li.prix_unitaire), 'remise': str(li.remise or 0), 'taux_tva': str(li.taux_tva),
-            'groupe_index': None, 'groupe_label': '', 'optionnelle': li.optionnelle, 'type_ligne': 'produit',
-            'ordre': ordre, 'variante': li.variante or '', 'prix_manuel': li.prix_manuel,
-            'quantite_manuelle': manuelle, 'role_devis': li.role_devis or '', 'lot': None,
-            'ligne_composee': li.ligne_composee, 'tva_base_legale': li.tva_base_legale or ''})
-    assert retouchee, 'aucune ligne panneau dans l\'option %s' % retouche_panneaux
-    return {'lignes': lignes}
-
-
 class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
                             _emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_utilisateur', '_residentiel',
                                      '_ci', '_agricole', '_fiches_residentielles', '_site_isole', '_structures',
@@ -4184,50 +4154,6 @@ class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_rela
                     self.assertEqual(rendu['appliquees'], [])
                     self.assertIn('taille', [n['champ'] for n in rendu['non_appliquees']])
                     self.assertEqual(Devis.objects.get(pk=retouche.pk).conception_source['version'], 1)
-
-    def _x6_012_enregistrer_une_retouche_ci(self, verrou):
-        """T4-X6-012 — un brouillon C&I « Les deux » ; la consommation du lead change (v2) ; le
-        vendeur retouche le nombre de panneaux à l'écran et « Enregistre » (replace-lines, comme
-        l'écran) : l'option avec batterie du devis ne bouge pas, même après les tâches mises en
-        file ; la mise à jour reste PROPOSÉE (listée)."""
-        from apps.crm.models import Lead
-        from apps.ventes import tasks
-        from apps.ventes.conception.brouillons import brouillons_a_mettre_a_jour, suivre_la_conception
-        from apps.ventes.models import Devis
-        from apps.ventes.services import build_devis_auto
-
-        company, lead = self._cas('ci_commercial_deux_options')
-        _reglages_de_la_societe(company)
-        user = self._utilisateur(company)
-        with self.captureOnCommitCallbacks(execute=True):
-            devis = build_devis_auto(lead=lead, user=user, company=company)
-        self.assertEqual(sorted({li.variante for li in devis.lignes.all()} - {''}), ['avec', 'sans'])
-        Lead.objects.filter(pk=lead.pk).update(conso_mensuelle_kwh=Decimal('14000'))
-        lead.refresh_from_db()
-        v2 = self._relancer(lead, company, _declencheur('lead_entrees_modifiees')).conception
-        self.assertGreater(v2.version, devis.conception_source['version'])
-        avec_avant = _lignes_de_l_option(devis, 'avec')
-        corps = _corps_de_l_ecran(devis, retouche_panneaux='sans', quantite_manuelle=verrou)
-        self.suivi.reset_mock()
-        with self.captureOnCommitCallbacks(execute=True):
-            reponse = self._api(user).post('/api/django/ventes/devis/%d/replace-lines/' % devis.pk,
-                                           corps, format='json')
-        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
-        for appel in self.suivi.call_args_list:
-            tasks.task_suivre_la_conception(**appel.kwargs['kwargs'])
-        # Le suivi qu'une version rangée plus tard met en file (relance de la lecture, autre
-        # onglet) : le brouillon enregistré par le vendeur ne le suit pas (mutant « aucun
-        # marqueur à l'enregistrement » : l'option avec batterie recomposée, rouge).
-        self.assertEqual(suivre_la_conception(v2), [])
-        relu = Devis.objects.get(pk=devis.pk)
-        self.assertEqual(_lignes_de_l_option(relu, 'avec'), avec_avant)
-        self.assertIn(devis.pk, [b['devis'] for b in brouillons_a_mettre_a_jour(company.pk, lead.pk, v2.version)])
-
-    def test_x6_012_retouche_ci_case_quantite_tapee(self):
-        self._x6_012_enregistrer_une_retouche_ci(True)
-
-    def test_x6_012_retouche_ci_nombre_de_panneaux_recompose(self):
-        self._x6_012_enregistrer_une_retouche_ci(False)
 
     def test_retouche_liste_puis_mis_a_jour_sur_demande(self):
         from authentication.models import Company

@@ -164,3 +164,111 @@ class LeMoteurPoseTrue(_Base):
         self.assertTrue(r.data['lignes'])
         for ligne in r.data['lignes']:
             self.assertIs(ligne['ligne_composee'], True, ligne)
+
+
+# ── T4-X6-012 — des lignes COMPOSÉES enregistrées depuis l'écran sont une retouche ──
+
+def _lignes_de_l_option(devis, option):
+    """Les lignes d'UNE option (désignation, quantité, prix, produit), dans l'ordre."""
+    return [(li.designation, li.quantite, li.prix_unitaire, li.produit_id)
+            for li in devis.lignes.filter(variante=option).order_by('ordre', 'pk')]
+
+
+def _corps_de_l_ecran(devis, *, retouche_panneaux, quantite_manuelle):
+    """Le corps de ``replace-lines`` que l'écran envoie (``lignesEcranVersPayload``) pour
+    les lignes en base, la ligne panneau de l'option ``retouche_panneaux`` portée à +2 :
+    verrou de quantité posé (case tapée) ou non (nombre de panneaux recomposé, provenance
+    « composée » gardée)."""
+    lignes, retouchee = [], False
+    for ordre, li in enumerate(devis.lignes.select_related('produit').order_by('ordre', 'pk')):
+        if li.type_ligne != 'produit':
+            lignes.append({'type_ligne': li.type_ligne, 'ordre': ordre, 'designation': li.designation,
+                           'ligne_composee': None})
+            continue
+        quantite, manuelle = li.quantite, li.quantite_manuelle
+        if not retouchee and li.variante == retouche_panneaux and 'panneau' in li.designation.lower():
+            quantite, manuelle, retouchee = li.quantite + 2, quantite_manuelle, True
+        lignes.append({
+            'produit': li.produit_id, 'designation': li.designation, 'quantite': str(quantite),
+            'prix_unitaire': str(li.prix_unitaire), 'remise': str(li.remise or 0), 'taux_tva': str(li.taux_tva),
+            'groupe_index': None, 'groupe_label': '', 'optionnelle': li.optionnelle, 'type_ligne': 'produit',
+            'ordre': ordre, 'variante': li.variante or '', 'prix_manuel': li.prix_manuel,
+            'quantite_manuelle': manuelle, 'role_devis': li.role_devis or '', 'lot': None,
+            'ligne_composee': li.ligne_composee, 'tva_base_legale': li.tva_base_legale or ''})
+    assert retouchee, "aucune ligne panneau dans l'option %s" % retouche_panneaux
+    return {'lignes': lignes}
+
+
+class EnregistrerUneRetoucheCiTests(TestCase):
+    """T4-X6-012 — un brouillon C&I « Les deux » né d'une conception ; la consommation du
+    lead change (v2) ; le vendeur retouche le nombre de panneaux à l'écran et « Enregistre »
+    (replace-lines, comme l'écran) : l'option avec batterie ne bouge pas, ni après les tâches
+    mises en file ni au suivi d'une version rangée plus tard ; la mise à jour est PROPOSÉE.
+    Fabriques du module de la conception, empruntées à l'appel (jamais importées au niveau
+    du module : le chargeur rejouerait leurs tests)."""
+
+    @staticmethod
+    def _tcl():
+        from apps.ventes.tests import test_conception_lead as tcl
+        return tcl
+
+    def setUp(self):
+        from unittest import mock
+
+        from django.core.cache import cache
+
+        from apps.ventes import tasks
+        self._tcl().FigeageDevisAutoTests.setUp(self)
+        cache.clear()
+        self.addCleanup(cache.clear)
+        patcher = mock.patch.object(tasks.task_suivre_la_conception, 'apply_async')  # jamais le courtier réel
+        self.suivi = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def __getattr__(self, nom):
+        # Les fabriques ``_cas`` / ``_ci`` / ``_patcher`` / ``_utilisateur`` / ``_relancer`` / ``_api``.
+        tcl = self._tcl()
+        for classe in (tcl.FigeageDevisAutoTests, tcl.RelanceConceptionTests, tcl.ServirConceptionTests):
+            for porteur in classe.__mro__:
+                if nom.startswith('_') and nom in porteur.__dict__ and callable(porteur.__dict__[nom]):
+                    return porteur.__dict__[nom].__get__(self)
+        raise AttributeError(nom)
+
+    def _enregistrer_une_retouche_ci(self, verrou):
+        from apps.crm.models import Lead
+        from apps.ventes import tasks
+        from apps.ventes.conception.brouillons import brouillons_a_mettre_a_jour, suivre_la_conception
+        from apps.ventes.models import Devis
+        from apps.ventes.services import build_devis_auto
+
+        tcl = self._tcl()
+        company, lead = self._cas('ci_commercial_deux_options')
+        tcl._reglages_de_la_societe(company)
+        user = self._utilisateur(company)
+        with self.captureOnCommitCallbacks(execute=True):
+            devis = build_devis_auto(lead=lead, user=user, company=company)
+        self.assertEqual(sorted({li.variante for li in devis.lignes.all()} - {''}), ['avec', 'sans'])
+        Lead.objects.filter(pk=lead.pk).update(conso_mensuelle_kwh=Decimal('14000'))
+        lead.refresh_from_db()
+        v2 = self._relancer(lead, company, tcl._declencheur('lead_entrees_modifiees')).conception
+        self.assertGreater(v2.version, devis.conception_source['version'])
+        avec_avant = _lignes_de_l_option(devis, 'avec')
+        corps = _corps_de_l_ecran(devis, retouche_panneaux='sans', quantite_manuelle=verrou)
+        self.suivi.reset_mock()
+        with self.captureOnCommitCallbacks(execute=True):
+            reponse = self._api(user).post('/api/django/ventes/devis/%d/replace-lines/' % devis.pk,
+                                           corps, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        for appel in self.suivi.call_args_list:
+            tasks.task_suivre_la_conception(**appel.kwargs['kwargs'])
+        # Le suivi qu'une version rangée plus tard met en file (relance de la lecture, autre
+        # onglet) : mutant « aucun marqueur à l'enregistrement » : l'option avec recomposée.
+        self.assertEqual(suivre_la_conception(v2), [])
+        self.assertEqual(_lignes_de_l_option(Devis.objects.get(pk=devis.pk), 'avec'), avec_avant)
+        self.assertIn(devis.pk, [b['devis'] for b in brouillons_a_mettre_a_jour(company.pk, lead.pk, v2.version)])
+
+    def test_x6_012_retouche_ci_case_quantite_tapee(self):
+        self._enregistrer_une_retouche_ci(True)
+
+    def test_x6_012_retouche_ci_nombre_de_panneaux_recompose(self):
+        self._enregistrer_une_retouche_ci(False)
