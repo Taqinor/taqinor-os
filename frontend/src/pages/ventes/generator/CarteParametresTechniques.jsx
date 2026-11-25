@@ -9,7 +9,7 @@
 import { RefreshCw, Zap } from 'lucide-react'
 import { Button, Card, CardContent, Label, Segmented } from '../../../ui'
 import { formatNumber } from '../../../lib/format'
-import { roleLabel } from '../../../features/ventes/solar'
+import { roleLabel, comptePanneauxOption, kwcPanneauxOption } from '../../../features/ventes/solar'
 import BandeauDeriveLead from '../../../features/ventes/quote/BandeauDeriveLead'
 import StructureSelector from '../../../features/stock/StructureSelector'
 import { GenCardHeader } from './CarteMetrique'
@@ -22,8 +22,25 @@ export default function CarteParametresTechniques({
   pompageManquants, autoFillLoading, marcheCi, fHiver, recalculerDimensionnement,
   avecQuantitesFigees, handleAutoFill, compositionErreur, editDevis, leadValeursModifiees,
   setLeadValeursModifiees, clear, setRechargeEdit, onduleursIncomplets, pompageAutoFilled,
-  apercuPompage,
+  apercuPompage, lines,
 }) {
+  // T4-V2-018 — ce que les LIGNES chiffrent dans chaque option (même règle que
+  // les totaux : commun + variante de l'option), à côté du conseil du moteur.
+  const chiffre = (option) => ({
+    n: comptePanneauxOption(lines, option, produits),
+    kwc: kwcPanneauxOption(lines, option, panelW, produits),
+  })
+  const ecart = (option, conseil) => {
+    const c = chiffre(option)
+    if (!conseil || !(c.n > 0) || c.n === conseil.nbPanneaux) return null
+    return (
+      <div className="text-xs text-warning" data-testid={`dimensionnement-ecart-${option}`}>
+        Ce devis chiffre {formatNumber(c.n)} panneaux
+        {c.kwc != null && <> · {formatNumber(c.kwc, { decimals: 2 })} kWc</>} dans l’option {option === 'sans' ? 'sans' : 'avec'} batterie
+        {' '}— « Recalculer le dimensionnement » chiffre la taille conseillée.
+      </div>
+    )
+  }
   return (
     <Card id="gen-sec-technique" data-nav-libelle="Technique">
       <GenCardHeader icon={Zap} title={marcheCi ? 'Composition du devis' : 'Paramètres Techniques'} />
@@ -163,16 +180,21 @@ export default function CarteParametresTechniques({
           && ((showSans && deuxValeursDim.sans) || (showAvec && deuxValeursDim.avec)) && (
           <div className="mt-2 grid gap-0.5 text-sm text-foreground"
                data-testid="dimensionnement-deux-valeurs">
+            {/* T4-V2-018 — « Conseillé par le moteur » : jamais « Recommandé », qui
+                nomme LA taille du devis dans la carte des tailles (définition
+                fondateur, offres_tailles.py) ; l'écart avec les lignes est dit. */}
             {showSans && deuxValeursDim.sans && (
               <div>
-                Recommandé sans batterie : <strong>{deuxValeursDim.sans.nbPanneaux} panneaux</strong>
+                Conseillé par le moteur, sans batterie : <strong>{deuxValeursDim.sans.nbPanneaux} panneaux</strong>
                 {' '}· {formatNumber(deuxValeursDim.sans.kwc, { decimals: 2 })} kWc
+                {ecart('sans', deuxValeursDim.sans)}
               </div>
             )}
             {showAvec && deuxValeursDim.avec && (
               <div>
-                Recommandé avec batterie : <strong>{deuxValeursDim.avec.nbPanneaux} panneaux</strong>
+                Conseillé par le moteur, avec batterie : <strong>{deuxValeursDim.avec.nbPanneaux} panneaux</strong>
                 {' '}· {formatNumber(deuxValeursDim.avec.kwc, { decimals: 2 })} kWc
+                {ecart('avec', deuxValeursDim.avec)}
               </div>
             )}
           </div>
