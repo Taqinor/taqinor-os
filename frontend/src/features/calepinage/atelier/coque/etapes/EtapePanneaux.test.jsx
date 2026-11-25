@@ -779,6 +779,32 @@ describe('panneau de droite — grilles suivant la colonne, pas la fenêtre (ACA
   })
 })
 
+/* T4-X8-008 — Expert au téléphone tactile : « Placement libre » demande une carte visible (« Cliquez sur le toit… (Échap) ») ;
+   elle n'a que 63 px sous le tiroir. Le geste n'est pas offert, et UNE phrase dit où il se fait. Rien ne change ailleurs. */
+describe('T4-X8-008 — le placement libre n’est pas offert au téléphone tactile', () => {
+  afterEach(() => { delete window.matchMedia })
+  const doubler = (tactile, telephone) => {
+    window.matchMedia = (q) => ({
+      matches: (q === '(hover: none) and (pointer: coarse)' && tactile) || (q === '(max-width: 639px)' && telephone),
+      media: q, addEventListener() {}, removeEventListener() {},
+    })
+  }
+  for (const [nom, tactile, telephone, offert] of [
+    ['téléphone tactile', true, true, false], ['tablette tactile', true, false, true], ['petite fenêtre à la souris', false, true, true],
+  ]) {
+    it(`${nom} : placement libre ${offert ? 'offert' : 'non offert, la phrase le dit'}`, async () => {
+      doubler(tactile, telephone)
+      const { default: BuilderPose } = await import('../../BuilderPose.jsx')
+      const { container } = render(<MemoryRouter><BuilderPose expert /></MemoryRouter>)
+      expect(container.querySelector('#rp9-layout-mode-free').hidden).toBe(!offert)
+      expect(container.querySelector('#rp9-free-add').hidden).toBe(!offert)
+      const phrase = screen.queryByTestId('cal-placement-libre-ailleurs')
+      if (offert) expect(phrase).toBeNull()
+      else expect(phrase).toHaveTextContent(/^Le placement libre se fait sur une tablette ou au bureau\.$/)
+    })
+  }
+})
+
 describe('retraits du panneau de droite — règle CSS suivant la colonne (ACAL1519)', () => {
   it('.rp9-host .rp9-setbacks : colonnes automatiques, aucune règle de fenêtre ne la redéfinit', async () => {
     // (`?raw` rend '' sous vitest : la feuille est lue du disque puis chargée dans le DOM de test.)
