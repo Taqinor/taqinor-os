@@ -74,19 +74,25 @@ def marquer_retouche_ecran(devis, avant):
     il ne suit plus seul la conception du lead, « Mettre à jour » lui est proposé. Appelé
     sous la transaction de l'écriture, AVANT tout suivi. Rend vrai quand il marque.
 
-    Le statut est RELU sous le verrou de la ligne (``select_for_update``) : un devis
-    parti entre la lecture de l'instance et ce geste n'est ni marqué ni dit marqué."""
+    Le statut ET le pointeur sont RELUS sous le verrou de la ligne (``select_for_update``) :
+    un devis parti entre la lecture de l'instance et ce geste n'est ni marqué ni dit marqué,
+    et un pointeur changé entre-temps par un suivi est gardé (seule la clé est ajoutée)."""
     from django.db import transaction
 
     from apps.ventes.models import Devis
 
-    source = devis.conception_source
-    if not source or source.get(CLE_RETOUCHE_ECRAN) or empreinte_des_lignes(devis) == avant:
+    if not devis.conception_source or empreinte_des_lignes(devis) == avant:
         return False
     with transaction.atomic():
-        statut = (Devis.objects.select_for_update().filter(pk=devis.pk)
-                  .values_list('statut', flat=True).first())
-        if statut != Devis.Statut.BROUILLON:
+        # Le pointeur AUSSI est relu sous le verrou : un suivi de la conception
+        # committé entre la lecture de l'instance et ce geste n'est jamais écrasé
+        # par l'ancien pointeur.
+        ligne = (Devis.objects.select_for_update().filter(pk=devis.pk)
+                 .values('statut', 'conception_source').first())
+        if ligne is None or ligne['statut'] != Devis.Statut.BROUILLON:
+            return False
+        source = ligne['conception_source']
+        if not source or source.get(CLE_RETOUCHE_ECRAN):
             return False
         marque = dict(source, **{CLE_RETOUCHE_ECRAN: True})
         Devis.objects.filter(pk=devis.pk).update(conception_source=marque)

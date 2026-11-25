@@ -300,3 +300,17 @@ class MarquerRetoucheSousVerrouTests(TestCase):
         self.assertNotIn(CLE_RETOUCHE_ECRAN, devis.conception_source)
         devis.refresh_from_db()
         self.assertEqual((devis.statut, devis.conception_source), ('envoye', {'version': 1}))
+
+    def test_pointeur_change_entre_temps_jamais_ecrase(self):
+        """Un suivi de la conception committe un nouveau pointeur (v2) après la lecture
+        de l'instance (encore v1) : le marquage garde v2, jamais l'ancien pointeur."""
+        from apps.ventes.conception.brouillons import CLE_RETOUCHE_ECRAN, marquer_retouche_ecran
+        from apps.ventes.models import Devis
+        devis = self._devis()
+        Devis.objects.filter(pk=devis.pk).update(conception_source={'version': 2})
+        self.assertEqual(devis.conception_source, {'version': 1})  # l'instance périmée
+        self.assertTrue(marquer_retouche_ecran(devis, [('autre',)]))
+        attendu = {'version': 2, CLE_RETOUCHE_ECRAN: True}
+        self.assertEqual(devis.conception_source, attendu)
+        devis.refresh_from_db()
+        self.assertEqual(devis.conception_source, attendu)
