@@ -93,8 +93,10 @@ export function PuceProjet({ titre, sousTitre }) {
 
 /** La mention sous les chiffres, seulement avec ses données servies (jamais un montant). */
 function Mentions({ tuiles, ville }) {
+  const miseAJour = tuiles.find((t) => t.cle === 'miseajour')
   return (
     <>
+      {miseAJour && <span className="cal-client-mention" data-testid="client-mention-miseajour">{miseAJour.libelle}</span>}
       {tuiles.some((t) => t.cle === 'kwh' && !t.nature) && (
         <span className="cal-client-mention">
           {`Estimation pour une année moyenne${ville ? ` à ${ville}` : ''}. Les montants figurent dans le devis.`}
@@ -128,7 +130,7 @@ function Chiffre({ tuile }) {
  */
 export function TuilesClient({ tuiles, ville, bureau = false }) {
   const kwh = tuiles.find((t) => t.cle === 'kwh') ?? null
-  const autres = tuiles.filter((t) => t.cle !== 'kwh')
+  const autres = tuiles.filter((t) => t.cle !== 'kwh' && t.cle !== 'miseajour')
   return (
     <>
       {tuiles.length > 0 && (

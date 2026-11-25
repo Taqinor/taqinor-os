@@ -355,7 +355,9 @@ function PuceResume({ figures, publiee, site = null }) {
       ...(autrePan ? [['Total du site', [`${site.panneaux} panneaux`, site.kwc].filter(Boolean).join(' · ')]] : []),
       // ACAL2022 — la production est celle de la conception SERVIE ; pendant le dessin, « au prochain enregistrement ».
       figures.productionKwh != null ? ['Production · conception', figures.production]
-        : ['Production', figures.production ? 'au prochain enregistrement' : null],
+        // M5 — la raison est celle que dit le constructeur (`affichageErp.raisonSansValeur`) : « au prochain enregistrement » seulement là où il
+        // est vrai, sinon « calculée pour la conception du lead : X kWc — votre pose en compte Y kWc ».
+        : ['Production', figures.production ? figures.production.replace(/^production\s+/i, '') : null],
       ['Production ÷ consommation', figures.couverture ? `≈ ${figures.couverture}` : null],
     ]
   const lus = indicateurs.filter(([, valeur]) => valeur)

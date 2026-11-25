@@ -1241,7 +1241,7 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
     const sansKwc = erp(servi({ kwc: null }));
     try {
       expect(egal.t('rp9-reco-prod')).toBe(`${fmt(12345)} kWh/an`);
-      expect(autreKwc.t('rp9-reco-prod')).toBe(estimation);
+      expect(autreKwc.t('rp9-reco-prod')).toBe('production calculée pour la conception du lead : 6 kWc — votre pose en compte 5,5 kWc'); // M5 — la vraie raison, avec les deux tailles
       expect(nonServi.t('rp9-reco-prod')).toBe(estimation);
       expect(sansKwc.t('rp9-reco-prod')).toBe(estimation);
     } finally { egal.fin(); autreKwc.fin(); nonServi.fin(); sansKwc.fin(); }
@@ -1270,7 +1270,7 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
     try {
       expect(e.t('rp9-reco-savings')).toBe('économie au prochain enregistrement');
       expect(s.t('rp9-reco-savings')).toBe(`${fmtMad(7420)}/an`);
-      expect(autreKwc.t('rp9-reco-savings')).toBe('économie au prochain enregistrement');
+      expect(autreKwc.t('rp9-reco-savings')).toBe('économie calculée pour la conception du lead : 6 kWc — votre pose en compte 5,5 kWc'); // M5
       expect(autreKwc.t('rp9-reco-cover')).toBe('—'); // la part production ÷ consommation n'est pas calculée par le navigateur
       expect(s.t('rp9-reco-cover')).toBe('—'); // servi sans part (clé `couverture_pct` absente) : rien d'inventé
       expect(e.t('rp9-reco-kwc')).toBe('5,50 kWc'); // pendant le dessin : panneaux et kWc posés, seuls
@@ -1280,6 +1280,19 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
       expect(avecPart.t('rp9-reco-cover')).toBe('43 %'); // la part SERVIE de la conception (ACAL2023 : la même que la vue client)
       avecPart.fin();
     } finally { e.fin(); s.fin(); autreKwc.fin(); p.fin(); }
+  });
+
+  it('T4-X5-005 — après un enregistrement, la production et la part production ÷ consommation changent ENSEMBLE (la part n’est jamais celle d’une estimation d’avant)', () => {
+    const e = erp(servi({ production_annuelle_kwh: { valeur: 8619, etat: 'servi' }, couverture_pct: { valeur: 123, etat: 'servi' } }));
+    try {
+      expect(e.t('rp9-reco-prod')).toBe(`${fmt(8619)} kWh/an`);
+      expect(e.t('rp9-reco-cover')).toBe('123 %');
+      e.opt.majChiffrage(servi({ production_annuelle_kwh: { valeur: 9105, etat: 'servi' }, couverture_pct: { valeur: 130, etat: 'servi' } }) as never);
+      expect(e.t('rp9-reco-prod')).toBe(`${fmt(9105)} kWh/an`);
+      expect(e.t('rp9-reco-cover')).toBe('130 %'); // 9 105 ÷ 7 028 : le quotient du bloc servi, pas les 123 % de l'estimation d'avant
+      e.opt.majChiffrage(servi({ production_annuelle_kwh: { valeur: 9105, etat: 'servi' }, couverture_pct: { valeur: null, etat: 'omis' } }) as never);
+      expect(e.t('rp9-reco-cover')).toBe('—'); // production sans part servie : aucun pourcentage gardé d'avant
+    } finally { e.fin(); }
   });
 
   it('« Pose très au-dessus de la consommation » : au-dessus de 2 × la consommation (deux nombres), pas en dessous, jamais sur le site public', () => {

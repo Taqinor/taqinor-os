@@ -103,7 +103,7 @@ import {
   type FiltrageAccesSolaire,
 } from './shadingUi'; // CALX115 — le seuil d'accès solaire lu par le posable
 import { $, celluleEconomies, fmt, fmtKwc, fmtMad, renommerDt } from './dom';
-import { AU_PROCHAIN_ENREGISTREMENT, ECONOMIE_AU_PROCHAIN_ENREGISTREMENT, VALEURS_HORS_LIGNE, compteDevis, couvertureServie, phraseSurplus, peindreBande, productionServie, quiDuDevis, suiteAuDevis, texteEconomie, texteSurDevis } from './affichageErp'; // R2-13/16/17, ACAL2022
+import { raisonSansValeur, VALEURS_HORS_LIGNE, compteDevis, couvertureServie, phraseSurplus, peindreBande, productionServie, quiDuDevis, suiteAuDevis, texteEconomie, texteSurDevis } from './affichageErp'; // R2-13/16/17, ACAL2022
 import { type CardData, type ChiffrageAtelier, type RenderConfigOpts, type RenderSceneFn } from './types';
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
@@ -1098,7 +1098,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const eco = chiffrage?.economie_annee1_mad;
     ligne.textContent = etatEco(ctx).horsLigne ? VALEURS_HORS_LIGNE : eco?.etat === 'servi' && typeof eco.valeur === 'number'
       ? `au dernier enregistrement${eco.option ? ` · ${eco.option.replace(/_/g, ' ')}` : ''}`
-      : ECONOMIE_AU_PROCHAIN_ENREGISTREMENT; // ACAL2022 — l'estimation du navigateur n'est plus montrée en ERP
+      : raisonSansValeur(chiffrage, derniereCarte?.kwc, 'économie'); // ACAL2022 + M5 (la vraie raison, avec les deux tailles) — l'estimation du navigateur n'est plus montrée en ERP
   }
 
   /** ACAL994 — après « Enregistrer » : le bloc relu remplace le précédent ; la carte et le Total sont repeints à l'instant. */
@@ -1135,7 +1135,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     set('rp9-reco-panels', watt ? `${fmt(d.count)} × ${fmt(watt)} W` : `${fmt(d.count)} panneaux`);
     // R2-17 — à kWc égal, la production SERVIE (celle du PDF) remplace l'estimation du navigateur (`prodServieAuKwc`).
     const pServie = modeErp() ? prodServieAuKwc(kwc) : null, cServie = modeErp() ? couvertureServie(etatEco(ctx).chiffrage, kwc) : null;
-    set('rp9-reco-prod', modeErp() ? (pServie != null ? `${fmt(Math.round(pServie))} kWh/an` : AU_PROCHAIN_ENREGISTREMENT) : prodPose != null ? `${fmt(Math.round(prodPose))} kWh/an` : '—');
+    set('rp9-reco-prod', modeErp() ? (pServie != null ? `${fmt(Math.round(pServie))} kWh/an` : raisonSansValeur(etatEco(ctx).chiffrage, kwc, 'production')) : prodPose != null ? `${fmt(Math.round(prodPose))} kWh/an` : '—');
     renommerDt($('rp9-reco-cover'), modeErp() ? 'Production ÷ consommation' : null, true); // R2-05 — l'ERP : jamais « couverture » (mot du PDF)
     set('rp9-reco-cover', modeErp() ? (cServie != null ? `${Math.round(cServie)} %` : '—') : d.pct > 0 ? `${Math.round(d.pct)} %` : '—');
     // R2-08 — l'ERP donne UNE estimation (la borne prudente) : la fourchette 75-100 % n'encadrait rien du calcul du serveur.

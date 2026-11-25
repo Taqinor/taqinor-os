@@ -5,8 +5,8 @@
 // Nouveau fichier car : composant neuf.
 //
 // Run : npx vitest run --pool=threads --maxWorkers=1 src/features/crm/workspace/CarteConception.test.jsx
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
@@ -32,7 +32,45 @@ beforeEach(() => {
   ventesApi.getConceptionLead.mockResolvedValue({ data: CONCEPTION })
 })
 
+afterEach(() => { vi.useRealTimers() })
+
 describe('ALEA71 — carte « Conception » de la fiche du lead', () => {
+  it('m1 — version périmée après la dernière relecture : « Le recalcul n’est pas terminé. » + « Relire » (une lecture de plus, bornée)', async () => {
+    vi.useFakeTimers()
+    ventesApi.getConceptionLead.mockResolvedValue({ data: { ...clone(CONCEPTION), perimee: true } })
+    rendre({ delaiRelectureMs: 1000, maxRelectures: 2 })
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(screen.getByTestId('carte-conception-recalcul')).toHaveTextContent('Recalcul en cours')
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+    expect(ventesApi.getConceptionLead).toHaveBeenCalledTimes(3) // 1 lecture + 2 relectures, puis plus rien
+    expect(screen.queryByTestId('carte-conception-recalcul')).toBeNull()
+    expect(screen.getByTestId('carte-conception-recalcul-long').textContent).toContain("Le recalcul n'est pas terminé.")
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Relire' })); await vi.advanceTimersByTimeAsync(5000) })
+    expect(ventesApi.getConceptionLead).toHaveBeenCalledTimes(4) // une seule lecture de plus
+    expect(screen.getByTestId('carte-conception-recalcul-long')).toBeTruthy()
+    // la relecture donne une version à jour : la phrase disparaît
+    ventesApi.getConceptionLead.mockResolvedValue({ data: CONCEPTION })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Relire' })); await vi.advanceTimersByTimeAsync(10) })
+    expect(screen.queryByTestId('carte-conception-recalcul-long')).toBeNull()
+  })
+
+  it('Q3 — deux options : la colonne de l’option retenue porte « retenue », l’autre non ; une seule option : aucune marque', async () => {
+    const deux = clone(CONCEPTION)
+    deux.option_retenue = 'avec'
+    ventesApi.getConceptionLead.mockResolvedValue({ data: deux })
+    const { unmount } = rendre()
+    await screen.findByTestId('carte-conception')
+    expect(screen.getByTestId('carte-conception-retenue-avec').textContent).toBe('retenue')
+    expect(screen.queryByTestId('carte-conception-retenue-sans')).toBeNull()
+    unmount()
+    const industriel = exempleContrat('ventes', 'conception_lead', 'exemple_industriel')
+    ventesApi.getConceptionLead.mockResolvedValue({ data: industriel })
+    rendre()
+    await screen.findByTestId('carte-conception')
+    expect(screen.queryByTestId('carte-conception-retenue-sans')).toBeNull()
+    expect(screen.queryByTestId('carte-conception-retenue-avec')).toBeNull()
+  })
+
   it('lit les valeurs de la route : taille, production, économies, retour, source du prix', async () => {
     rendre()
     await screen.findByTestId('carte-conception')
@@ -62,7 +100,7 @@ describe('ALEA71 — carte « Conception » de la fiche du lead', () => {
 
   it('« Recalcul en cours » quand la version est périmée, avec les valeurs gardées', async () => {
     ventesApi.getConceptionLead.mockResolvedValue({ data: { ...clone(CONCEPTION), perimee: true } })
-    rendre({ maxRelectures: 0 })
+    rendre({ delaiRelectureMs: 600000 }) // la relecture suivante n'a pas encore eu lieu : le recalcul est en cours
     await screen.findByTestId('carte-conception')
     expect(texte()).toContain('Recalcul en cours')
     expect(texte()).toContain(`${CONCEPTION.valeurs.sans.nb_panneaux.valeur} panneaux`)
