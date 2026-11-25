@@ -51,6 +51,9 @@ _MEMOIRE_CONCEPTION = '_acal2012_conception_courante'
 CODE_CONCEPTION_ABSENTE = 'conception_absente'
 REFUS_CONCEPTION_ABSENTE = ("Conception du lead pas encore calculée par le moteur : elle se calcule dès qu'une "
                             "entrée de la fiche (facture, ville, taille souhaitée…) est enregistrée.")
+#: Relecture E5 B1 — aucune version rangée, son premier calcul est en file : l'atelier attend et relit.
+CODE_CONCEPTION_EN_COURS = 'conception_en_cours'
+REFUS_CONCEPTION_EN_COURS = ("Conception du lead en cours de calcul : elle s'affichera dans quelques secondes.")
 #: Refus gardé tel quel (ACAL194) : le champ d'un lead agricole découle de sa pompe, pas d'une facture.
 REFUS_AGRICOLE = "Lead agricole : le pompage se chiffre depuis l'écran devis agricole."
 
@@ -58,24 +61,35 @@ REFUS_AGRICOLE = "Lead agricole : le pompage se chiffre depuis l'écran devis ag
 def conception_du_calepinage(calepinage):
     """ACAL2012 (D-ACAL-97) — LA conception COURANTE qui sert le calepinage : celle
     de son lead, sinon celle du calepinage lui-même (porteur sans lead, Q3), lue par
-    ``apps.ventes.selectors.conception_courante`` (contrat ``conception_lead.json``) ;
-    ``None`` sans version rangée ou pour un dossier d'appel d'offres (hors moteur).
-    Lue UNE fois par instance ; rien n'est écrit."""
+    la porte de lecture de ventes (``apps.ventes.services.conception_ou_calcul`` →
+    ``conception_courante``, contrat ``conception_lead.json``) ; ``None`` sans version
+    rangée (son premier calcul est alors mis en file : ``calcul_en_cours``) ou pour un
+    dossier d'appel d'offres (hors moteur). Lue UNE fois par instance ; rien n'est écrit."""
+    return _lire_conception(calepinage)[0]
+
+
+def calcul_en_cours(calepinage):
+    """Relecture E5 B1 — vrai quand le lead n'a encore aucune conception rangée et que
+    son premier calcul vient d'être mis en file (ou l'était déjà) : l'atelier attend."""
+    return _lire_conception(calepinage)[1]
+
+
+def _lire_conception(calepinage):
     from django.db.models import Model
 
-    from apps.ventes.selectors import conception_courante
+    from apps.ventes.services import conception_ou_calcul
 
     company = getattr(calepinage, 'company', None)
     # Une société qui n'est pas une ligne enregistrée (double de calcul pur) ne se lit pas en base.
     if not isinstance(company, Model) or not company.pk or getattr(calepinage, 'appel_offre_id', None):
-        return None
+        return None, False
     lead_id = getattr(calepinage, 'lead_id', None)
     cle = (lead_id, getattr(calepinage, 'pk', None))
     memoire = getattr(calepinage, _MEMOIRE_CONCEPTION, None)
     if memoire is not None and memoire[0] == cle:
         return memoire[1]
-    valeur = (conception_courante(company, lead_id) if lead_id
-              else conception_courante(company, calepinage_id=cle[1]) if cle[1] else None)
+    valeur = (conception_ou_calcul(company, lead_id) if lead_id
+              else conception_ou_calcul(company, calepinage_id=cle[1]) if cle[1] else (None, False))
     try:
         setattr(calepinage, _MEMOIRE_CONCEPTION, (cle, valeur))
     except AttributeError:  # double de test sans attributs libres : relu à chaque appel
@@ -118,6 +132,8 @@ def cible_de_la_conception(calepinage):
     if conception is None:
         if not getattr(calepinage, 'lead_id', None):
             return None
+        if calcul_en_cours(calepinage):  # relecture E5 B1 : jamais 0 panneau, l'atelier attend
+            return _refus(REFUS_CONCEPTION_EN_COURS, CODE_CONCEPTION_EN_COURS)
         return _refus(REFUS_CONCEPTION_ABSENTE, CODE_CONCEPTION_ABSENTE)
     if conception.get('marche') == 'agricole':
         return _refus(REFUS_AGRICOLE, None, 'lead')

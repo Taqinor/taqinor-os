@@ -297,6 +297,37 @@ def _annoncer_apres_validation(version):
         transaction.on_commit(lambda: mettre_suivi_en_file(version.company_id, version.lead_id))
 
 
+# ── Relecture E5 B1 — la porte de LECTURE du calepinage (jamais une impasse) ─
+
+def conception_ou_calcul(company, lead_id=None, *, calepinage_id=None):
+    """``(conception, en_cours)`` du porteur : la version COURANTE à la forme du
+    contrat (``selectors_conception.conception_courante``, qui reste une
+    lecture) ; sans version rangée d'un LEAD, UNE relance dédupliquée part en
+    file (``receivers.mettre_en_file``, le mécanisme du filet ADEV140 — jamais
+    une seconde file, jamais un calcul dans la requête ; origine
+    ``remplissage`` : « premier calcul ») et ``en_cours`` dit qu'elle est partie
+    ou déjà en file. Un calepinage SANS lead n'en met aucune : le moteur le
+    refuserait faute de lieu (``moteur.lead_du_calepinage`` ne porte ni ville
+    ni GPS). Lue UNE fois par requête (mémo ``core.request_cache``)."""
+    from core import request_cache
+
+    if company is None or not getattr(company, 'pk', None):
+        return None, False
+    cle = ('ventes.conception.courante', company.pk, lead_id, None if lead_id else calepinage_id)
+    return request_cache.memoize(cle, lambda: _conception_ou_calcul(company, lead_id, calepinage_id))
+
+
+def _conception_ou_calcul(company, lead_id, calepinage_id):
+    from apps.ventes.conception.receivers import mettre_en_file
+    from apps.ventes.selectors_conception import conception_courante
+
+    conception = conception_courante(company, lead_id, calepinage_id=calepinage_id)
+    if conception is not None or not lead_id:
+        return conception, False
+    issue = mettre_en_file(company.pk, lead_id=lead_id, origine='remplissage', champs=[])
+    return None, issue in ('lancee', 'deja_en_file')
+
+
 # ── La phrase « pourquoi » (lue telle quelle au chatter du lead) ─────────────
 
 def phrase_du_declencheur(lead, champs, origine, quand):

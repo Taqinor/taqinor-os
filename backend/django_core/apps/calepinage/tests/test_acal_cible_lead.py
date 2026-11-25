@@ -190,7 +190,7 @@ class CibleDeLaConceptionTest(BaseApiCalepinage):
         self.assertEqual((cible['panneaux'], cible['kwc'], cible['panel_watt']), (48, 26.4, 550))
         self.assertEqual((cible['source'], cible['option'], cible['refus']), ('factures', 'sans', None))
         self.assertEqual(factures, {'cible_factures': {'panneaux': 48, 'kwc': 26.4, 'module_wc': 550.0},
-                                    'refus': ''})
+                                    'refus': '', 'calcul_en_cours': False})
 
     def test_sans_devis_la_conception_du_lead(self):
         lead = self._lead(facture_hiver=Decimal('2400'))
@@ -221,13 +221,35 @@ class CibleDeLaConceptionTest(BaseApiCalepinage):
         cible, factures = self._cibles(calepinage)
         self.assertIsNone(cible['panneaux'])
         self.assertEqual(cible['refus'], 'Moteur unique : facture hiver du lead absente (ACAL2012).')
-        self.assertEqual(factures, {'cible_factures': None, 'refus': cible['refus']})
+        self.assertEqual(factures, {'cible_factures': None, 'refus': cible['refus'], 'calcul_en_cours': False})
         from apps.calepinage.services.devis import taille_non_dimensionnee
         self.assertEqual(taille_non_dimensionnee(calepinage), {'refus': cible['refus']})
 
     def test_conception_absente_refus_nomme_jamais_une_taille(self):
+        """Relecture E5 B1 — sans version rangée, la lecture met le premier calcul en
+        file et dit « en cours » ; la file en panne, la phrase dit quoi faire."""
+        from unittest import mock
+
+        from django.core.cache import cache
+
+        from apps.calepinage.services.devis_retenu import REFUS_CONCEPTION_EN_COURS
+        from apps.ventes import tasks
+
+        cache.clear()
+        self.addCleanup(cache.clear)
         lead = self._lead(facture_hiver=Decimal('1800'))
-        cible, factures = self._cibles(self._calepinage(lead))
+        calepinage = self._calepinage(lead)
+        with mock.patch.object(tasks.task_relancer_conception, 'apply_async') as en_file:
+            cible, factures = self._cibles(calepinage)
+        self.assertEqual(en_file.call_count, 1)
+        self.assertEqual((cible['panneaux'], cible['refus'], cible['calcul_en_cours']),
+                         (None, REFUS_CONCEPTION_EN_COURS, True))
+        self.assertEqual((factures['cible_factures'], factures['calcul_en_cours']), (None, True))
+        cache.clear()
+        with mock.patch.object(tasks.task_relancer_conception, 'apply_async', side_effect=OSError('courtier')), \
+                self.assertLogs('apps.ventes.conception.receivers', level='WARNING'):
+            cible, factures = self._cibles(calepinage)
         self.assertIsNone(cible['panneaux'])
         self.assertIn('Conception du lead pas encore calculée', cible['refus'])
+        self.assertFalse(cible['calcul_en_cours'])
         self.assertIsNone(factures['cible_factures'])

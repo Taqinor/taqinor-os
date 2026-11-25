@@ -7,14 +7,23 @@
       "kwc": 6.96,
       "module_wc": 580
     },
-    "refus": ""
+    "refus": "",
+    "calcul_en_cours": false
   },
   "exemple_vide": {
     "cible_factures": null,
-    "refus": ""
+    "refus": "",
+    "calcul_en_cours": false
   },
   "exemple_refus": {
     "cible_factures": null,
-    "refus": "Lead commercial/industriel : la taille se décide par l'étude C&I de l'écran devis."
-  }
+    "refus": "Lead commercial/industriel : la taille se décide par l'étude C&I de l'écran devis.",
+    "calcul_en_cours": false
+  },
+  "exemple_en_cours": {
+    "cible_factures": null,
+    "refus": "Conception du lead en cours de calcul : elle s'affichera dans quelques secondes.",
+    "calcul_en_cours": true
+  },
+  "e5_b1_note": "Relecture E5 B1 (25/11) — `calcul_en_cours` (bool, toujours présent) : le lead n'a encore aucune conception rangée et son premier calcul vient d'être mis en file (`exemple_en_cours`) ; l'étape relit et ne dit jamais zéro panneau. `false` partout ailleurs. Depuis ACAL2012 la taille est celle de la CONCEPTION courante du lead (C&I compris) : `exemple_refus` ne sert plus qu'aux refus du moteur."
 }

@@ -329,7 +329,7 @@ def taille_non_dimensionnee(calepinage, *, cible=None):
     (``_cible_du_calepinage``), pour ne pas la relire."""
     from apps.ventes.services import MOTIF_FACTURE_ABSENTE
 
-    from .devis_retenu import CODE_CONCEPTION_ABSENTE
+    from .devis_retenu import CODE_CONCEPTION_ABSENTE, CODE_CONCEPTION_EN_COURS
 
     if not getattr(calepinage, 'lead_id', None):
         return {'refus': "Calepinage sans lead : aucune facture ne "
@@ -337,7 +337,7 @@ def taille_non_dimensionnee(calepinage, *, cible=None):
     if cible is None:
         cible = _cible_du_calepinage(calepinage)
     motif = (cible or {}).get('motif_code')
-    if motif == MOTIF_FACTURE_ABSENTE or (motif == CODE_CONCEPTION_ABSENTE
+    if motif == MOTIF_FACTURE_ABSENTE or (motif in (CODE_CONCEPTION_ABSENTE, CODE_CONCEPTION_EN_COURS)
                                           and lead_sans_facture_ni_taille(calepinage)):
         return {'refus': cible.get('refus') or ''}
     return None

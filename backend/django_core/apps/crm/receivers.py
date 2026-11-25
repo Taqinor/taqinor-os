@@ -623,6 +623,15 @@ def _colonnes_du_marche(type_installation):
         return set()
 
 
+def _entrees_par_defaut(lead):
+    """Les colonnes d'entrée d'un lead NEUF à leur valeur par défaut (un
+    booléen à ``False`` n'est pas une entrée portée), sous le marché du lead
+    créé (seules ses colonnes sont comparées)."""
+    avant = {c: Lead._meta.get_field(c).get_default() for c in _colonnes_entrees_du_lead()}
+    avant['type_installation'] = lead.type_installation
+    return avant
+
+
 def _valeur_json(valeur):
     import datetime
     import decimal
@@ -676,7 +685,13 @@ def _emit_lead_entrees_modifiees(sender, instance, created, raw=False,
                                  **kwargs):
     avant = getattr(instance, '_entrees_moteur_avant', None)
     instance._entrees_moteur_avant = None
-    if created or raw or not avant:
+    if raw:
+        return
+    if created:
+        # Relecture E5 B1(b) — un lead CRÉÉ avec au moins une entrée part en
+        # calcul comme une modification : « avant » = la valeur par défaut.
+        avant = _entrees_par_defaut(instance)
+    if not avant:
         return
     from .selectors import lead_efface
     if lead_efface(instance):
@@ -687,7 +702,7 @@ def _emit_lead_entrees_modifiees(sender, instance, created, raw=False,
         pertinentes = (_colonnes_du_marche(avant.get('type_installation'))
                        | _colonnes_du_marche(instance.type_installation))
         champs = [
-            {'champ': c, 'avant': _valeur_json(avant[c]),
+            {'champ': c, 'avant': None if created else _valeur_json(avant[c]),
              'apres': _valeur_json(getattr(instance, c))}
             for c in sorted(pertinentes)
             if c in avant and _differente(c, avant[c], getattr(instance, c))

@@ -90,12 +90,22 @@ class EmissionEntreesModifieesTests(TestCase):
             self.lead.save(update_fields=['nom'])
         self.assertEqual(self.capture.appels, [])
 
-    def test_creation_n_emet_rien(self):
+    def test_creation_avec_une_entree_emet_son_premier_calcul(self):
+        """Relecture E5 B1(b) — un lead CRÉÉ avec au moins une entrée du moteur
+        part en calcul comme une modification (``avant`` nul) ; créé sans
+        aucune entrée, rien n'est émis."""
         with self.captureOnCommitCallbacks(execute=True):
-            Lead.objects.create(
+            neuf = Lead.objects.create(
                 company=self.company, nom='Neuf', prenom='Lead',
                 telephone='+212661680003', facture_hiver=Decimal('500'))
-        self.assertEqual(self.capture.appels, [])
+        self.assertEqual(len(self.capture.appels), 1)  # mutant « création muette » : 0
+        appel = self.capture.appels[0]
+        self.assertEqual((appel['company_id'], appel['lead_id']), (self.company.pk, neuf.pk))
+        self.assertEqual(appel['champs'], [{'champ': 'facture_hiver', 'avant': None, 'apres': 500.0}])
+        with self.captureOnCommitCallbacks(execute=True):
+            Lead.objects.create(company=self.company, nom='Vide', prenom='Lead',
+                                telephone='+212661680004')
+        self.assertEqual(len(self.capture.appels), 1)
 
     def test_abonne_en_echec_ne_casse_pas_l_ecriture(self):
         def _casse(sender, **kwargs):

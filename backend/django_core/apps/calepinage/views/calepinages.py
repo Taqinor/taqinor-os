@@ -1481,6 +1481,7 @@ def _cible(calepinage, contexte_devis, devis=None):
     repli forfaitaire ; ``None`` pour un dossier d'appel d'offres.
     """
     from ..services.devis import _cible_du_calepinage
+    from ..services.devis_retenu import CODE_CONCEPTION_EN_COURS
 
     cible = _cible_du_calepinage(calepinage)
     if cible is None:
@@ -1488,7 +1489,9 @@ def _cible(calepinage, contexte_devis, devis=None):
     # Aucun scénario de devis n'est vendu ici : on ne l'invente pas.
     return {'panneaux': cible['panneaux'], 'kwc': cible['kwc'], 'panel_watt': cible['panel_watt'],
             'scenario': None, 'batterie': cible['option'] == 'avec', 'avertissements': [],
-            'source': cible['source'], 'refus': cible['refus'], 'option': cible['option']}
+            'source': cible['source'], 'refus': cible['refus'], 'option': cible['option'],
+            # Relecture E5 B1 — le premier calcul de la conception est en file : l'atelier attend et relit.
+            'calcul_en_cours': cible.get('motif_code') == CODE_CONCEPTION_EN_COURS}
 
 
 def _raison_lecture_seule(contexte_devis):
