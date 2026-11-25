@@ -1708,7 +1708,7 @@ rejeux ACAL2034, 2035, 2038, comparaison aux maquettes, rapport final.
 appel — tâche ACAL2043) ; décisions 29 à 33 au rapport (vue client sans montant, variante darija, relecture du lot 4,
 ce que montre la vue client quand la pose n'a pas la taille de la conception, NASA POWER).
 
-### Point du 25/11, 08 h 15 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 08 h 15 UTC
 
 **Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** Pliées depuis 07 h 25 : `moteur-e6d` (5 commits),
 F6b `t3-atelier-ecrans` (8 constats dont T4-X5-009), F4 `t3-pompage-pdf` (5 constats ; PDF client derrière le niveau
@@ -1730,3 +1730,46 @@ F6a, F6b) ; relecteurs X3, X6, X7, X8 et rejeu des constats corrigés par des re
 ACAL2028, ACAL2029 ; rejeux ACAL2034, 2035, 2038 ; comparaison aux maquettes ; rapport final.
 **Reste d'une lane à nettoyer** : entrée de remise « f6-item1-src » (lane F6a, changements déjà commités) dans la pile
 de remises PARTAGÉE — ne pas y toucher par `git stash pop` ; la retirer par son étiquette en fin de session.
+
+### Point du 25/11, 10 h 10 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** TOUT ce qui suit est plié en local : e6c, e7a, e7b,
+e7c, e7e, e6d, e7d (+ suite e2e), e8, e6e, t3-liste, F3 (+ 3 correctifs de CI), F4, F6a, F6b, F2a, F2b (+ crochet du
+fuzz). Dernier push : `b51d59a4a8` (09 h 47, cinquième passage de CI). Plié APRÈS ce push, non poussé : F2a
+(`lane/t3-editeur-options`), suite de F2b (crochet `_validite_devis_a_venir` du fuzz), contrats régénérés.
+- **Cinquième passage de CI : rouges lus et attribués** — (1) test de lecture du source des cartes Économies / ROI
+  (`QJR35/QJR426`, frontend-static) → auteur d'e7d ; (2) fuzz : date de validité passée refusée sans être déclarée
+  → corrigé par le crochet de F2b (plié) ; (3) `test_calx390_budgets_requetes` : `resultat/` coûte 25 requêtes avec
+  une conception rangée contre 13 sans (budget 9) et (4) fuzz : `calepinages/a-traiter/` ne répond plus en 10 s →
+  auteur d'e8 (régressions de coût d'e8 ou d'e6e : la conception se relit plusieurs fois, quelque chose du moteur
+  se calcule par ligne de liste).
+- **REGARD DE L'ORCHESTRATEUR sur la pile de revue** (lead synthétique 3731 « ACC-L4 », devis 2880 ; captures dans
+  `scratchpad/acc2027/l4/`, jamais commitées) :
+  - fiche du lead : carte « Conception » à deux colonnes, option « retenue » marquée, 3 518 / 7 037 kWh, 5 486 / 8 886
+    MAD, retour « d'après le devis DEV-… », pastille 4,40 kWc, plus de « par ? » — VU, conforme (la puce des
+    suppositions de la fiche technique vide du panneau est une seule phrase très longue : à condenser, S3) ;
+  - écran devis, onglet Simulation, RIEN de tapé : bandeau « Conception du moteur unique… », cartes égales à la
+    conception rangée — VU ; MAIS trois retours sur investissement pour l'option avec batterie (carte 7,5 ans, tableau
+    8,72 ans, falaise 7,65 ans) et 8 886 contre 8 614 MAD d'économies → auteur d'e7d ;
+  - écran devis, douze factures tapées : BLOQUANT — l'aperçu est remplacé par un refus imprimé DEUX fois sur un
+    panneau de 710 W qui n'est pas dans le devis (l'écran n'impose que le nombre de panneaux : le moteur choisit son
+    module) → auteur d'e7d ;
+  - liste des devis : 25 lignes, « Page 1 sur 24 · 583 devis », page de 90 Ko en 1,0 s — VU ; MAIS la synthèse
+    (`devis/synthese/`) prend 11 à 12,5 s : les cartes par statut tombent en délai dépassé, l'en-tête dit « 0 devis »
+    pendant le chargement, le message de délai s'affiche deux fois → auteur de F3.
+- **EN VOL (auteurs rappelés sur leurs propres branches)** : e7d (4 points : refus sur le mauvais panneau, refus en
+  double, trois retours sur investissement, test QJR35), e8 (2 régressions de coût), F3 (3 points de la liste).
+  Relecteur X9 (rejeu de tous les constats corrigés, Chromium bureau clair) sur la pile `b51d59a4a8`.
+- **PROCHAIN PUSH** : au retour d'e7d et d'e8 (sixième passage, visé vert) ; puis rebâtir l'instrument (`checkout -B
+  instr-lot4 dev-lot4`, `vite build` ≈ 30 s, `lancer.sh serveur`) et REGARDER de nouveau l'onglet Simulation.
+
+**RESTE À FAIRE après ce passage** : lane ACAL2045 (le toit supposé dit sa pose) puis relancer la liste ; restes
+d'e6e (carte « Couvrir la facture » : « Conception recalculée : <raison> » ; avis avant « Générer le devis ») et
+d'e8 (`EcartMesures.jsx` : section « Eau » seulement si servie) ; F2a non corrigés : T4-X4-004 (carte Tailles :
+lignes non étiquetées) et T4-X4-018 (balayage arrêté à 4,40 kWc) ; jumeau serveur `selectors.multi_villa_totaux`
+qui additionne les deux options et nourrit le PDF (à corriger derrière le niveau 15) ; relecteurs X3, X6, X7, X8 ;
+enregistrements ACAL2028 et ACAL2029 ; rejeux ACAL2034, 2035, 2038 ; comparaison aux maquettes ; rapport final ;
+fusion du lot 4 quand CI verte + X9 sans « pas-corrigé » bloquant ; dire « mergé — à déployer par toi ».
+**Décision majeure portée au fondateur (rapport, décision 26)** : la liste « sans toit » annonçait +19 % parce que
+le toit supposé ne dit pas sa pose (échauffement omis) ; corrigé, l'effet serait d'environ +4 % à +8 % (pose
+affleurante) ou +11 % à +16 % (châssis). ADEV155 reste fermé.
