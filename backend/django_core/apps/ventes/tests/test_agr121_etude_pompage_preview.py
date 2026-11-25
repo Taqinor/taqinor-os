@@ -626,6 +626,55 @@ class TensionPlaqueUneSourceAGV14(SimpleTestCase):
         self.assertNotIn('plaque.tension_v', chemins)
 
 
+class OrigineDuDebitEnregistreeTests(SimpleTestCase):
+    """T4-X1-008 — l'éditeur enregistre l'ORIGINE du débit du forage
+    (``source.debit_exploitation_origine`` / ``_date``) : la provenance
+    résolue la garde (« relevé par votre foreur »), au lieu de la remplacer
+    par « saisie au devis » (« déclaré par vous » + « à confirmer »)."""
+
+    def _devis(self, source):
+        from types import SimpleNamespace
+        from datetime import date
+        return SimpleNamespace(etude_params={'source': source},
+                               updated_at=date(2026, 11, 25))
+
+    def test_origine_du_devis_enregistre_gardee(self):
+        res = pompage._Resolution()
+        pompage._couche_devis(res, self._devis({
+            'debit_exploitation_m3h': 30,
+            'debit_exploitation_origine': 'foreur',
+            'debit_exploitation_date': '2026-11-20'}))
+        prov = res.provenance('source.debit_exploitation_m3h')
+        self.assertEqual(prov['detail'], 'foreur')
+        self.assertEqual(prov['date'], '2026-11-20')
+        from apps.ventes.quote_engine.agricole.mentions import cle_provenance
+        self.assertEqual(cle_provenance(prov), 'mesure_foreur')
+
+    def test_origine_du_corps_gardee_sans_date_garde_celle_de_la_couche(self):
+        res = pompage._Resolution()
+        pompage._couche_corps(res, {'source': {
+            'debit_exploitation_m3h': 30,
+            'debit_exploitation_origine': 'essai'}})
+        prov = res.provenance('source.debit_exploitation_m3h')
+        self.assertEqual(prov['detail'], 'essai')
+        self.assertIsNotNone(prov['date'])
+
+    def test_sans_origine_rien_ne_change(self):
+        res = pompage._Resolution()
+        pompage._couche_devis(res, self._devis({'debit_exploitation_m3h': 30}))
+        prov = res.provenance('source.debit_exploitation_m3h')
+        self.assertEqual((prov['origine'], prov['detail'], prov['date']),
+                         ('saisie', 'devis', '2026-11-25'))
+
+    def test_origine_inconnue_ignoree(self):
+        res = pompage._Resolution()
+        pompage._couche_devis(res, self._devis({
+            'debit_exploitation_m3h': 30,
+            'debit_exploitation_origine': 'nimporte'}))
+        self.assertEqual(res.provenance(
+            'source.debit_exploitation_m3h')['detail'], 'devis')
+
+
 class ProfilsAuPlanDesPanneauxTests(SimpleTestCase):
     """ACAL1200 — les journées types au plan RÉEL des panneaux (lectures
     PVGIS doublées). Mutant : moyenne sans pondération ⇒ rouge."""
