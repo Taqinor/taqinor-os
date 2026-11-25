@@ -359,11 +359,21 @@ def _materiel_des_lignes(resultat):
                 None)}
 
 
+#: ADEV155 — le plan par défaut ouvert (niveau 15) mais non simulé : la supposition servie.
+CODE_PLAN_NON_SIMULE = 'plan_par_defaut_non_simule'
+MESSAGE_PLAN_NON_SIMULE = ('Production du toit supposé non simulée (%s) : la production standard de la ville est '
+                           'utilisée — %s, ou tracer le toit au calepinage.')
+GESTE_FICHE, GESTE_RELANCE = 'renseigner la fiche technique du produit dans Stock', 'relancer le calcul'
+
+
 def _base_du_plan(resultat, devis, company):
     """ADEV155 — le productible du PLAN PAR DÉFAUT (porte ``productible_du_plan_par_defaut``)
     au kWc et au matériel des lignes du moteur, posé sur le devis EN MÉMOIRE avant ses études
     comme celui d'une pose : production, autoconsommation, économies et blocs en viennent tous.
-    Non servi (plan refusé, incomplet, fiche vide) ou en échec : DIT absent, la ville reste."""
+    Non servi (plan refusé — météo injoignable comprise —, incomplet, fiche vide) ou en échec :
+    la ville reste, et c'est DIT : ``absents`` (interne) ET une supposition SERVIE
+    (:data:`CODE_PLAN_NON_SIMULE`, relecture lot 5 point 4 : ``absents`` n'est ni rangé ni
+    servi, l'échec était muet à l'écran)."""
     from apps.ventes.conception.etudes_lignes import puissances_des_lignes
     from apps.ventes.conception.porte_calepinage import productible_du_plan_par_defaut
 
@@ -376,6 +386,10 @@ def _base_du_plan(resultat, devis, company):
         servi, suppositions, motif = None, [], 'erreur : %s' % type(exc).__name__
     if servi is None:
         resultat.absents['production_plan_par_defaut'] = motif
+        fiche = 'fiche technique' in motif
+        resultat.suppositions_plan = [{
+            'code': CODE_PLAN_NON_SIMULE, 'champ': 'fiche_technique' if fiche else 'calepinage', 'valeur': None,
+            'source': 'defaut', 'message': MESSAGE_PLAN_NON_SIMULE % (motif, GESTE_FICHE if fiche else GESTE_RELANCE)}]
         return
     resultat.productible_pose, resultat.suppositions_plan = servi, suppositions
     devis.productible_pose_moteur = servi

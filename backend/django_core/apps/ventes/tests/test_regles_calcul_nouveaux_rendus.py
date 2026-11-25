@@ -870,6 +870,14 @@ class MoteurSansToitPlanParDefautTests(TCL._emprunt(TCL.FigeageDevisAutoTests, *
         # Le plan refusé : la ville reste, l'absence est DITE (jamais un refus de la conception).
         self.assertEqual(avant['production_annuelle']['source'], 'moteur')
         self.assertEqual(temoin.absents['production_plan_par_defaut'], 'plan par défaut refusé : fiche vide')
+        # Point 4 de la relecture — l'échec n'est plus muet : une supposition SERVIE le dit (``absents``
+        # n'est ni rangé ni servi). Mutant « absents seulement » : rouge.
+        non_simule = [s for s in temoin.suppositions if s['code'] == 'plan_par_defaut_non_simule']
+        self.assertEqual(len(non_simule), 1, temoin.suppositions)
+        self.assertIn('plan par défaut refusé : fiche vide', non_simule[0]['message'])
+        self.assertIn('production standard de la ville', non_simule[0]['message'])
+        self.assertIn('plan_par_defaut_non_simule', [s['code'] for s in temoin.sortie()['suppositions']])
+        self.assertNotIn('plan_par_defaut_non_simule', codes)
 
     def test_niveau_15_fiche_du_module_vide_jamais_servie(self):
         from apps.ventes.domain.regles_calcul import REGLES_POSE_REELLE_2111 as N15
@@ -881,6 +889,9 @@ class MoteurSansToitPlanParDefautTests(TCL._emprunt(TCL.FigeageDevisAutoTests, *
         self.assertEqual(resultat.valeurs[resultat.option_retenue]['production_annuelle']['source'], 'moteur')
         self.assertIn('fiche technique du module', resultat.absents['production_plan_par_defaut'])
         self.assertNotIn('production_plan_par_defaut', [s['code'] for s in resultat.suppositions])
+        dite = next(s for s in resultat.suppositions if s['code'] == 'plan_par_defaut_non_simule')
+        self.assertEqual(dite['champ'], 'fiche_technique')
+        self.assertIn('renseigner la fiche technique du produit dans Stock', dite['message'])
 
 
 class MoteurSansToitCITests(TCL._emprunt(TCL.FigeageDevisAutoTests, *TCL._FABRIQUES), TestCase):
