@@ -254,6 +254,23 @@ describe('FactureList — AERR1 : relecture en cours ou ratée après un geste',
   })
 })
 
+describe('FactureList — T4-X8-015 : un droit manquant n’est pas une panne', () => {
+  it('403 : « Accès refusé », la phrase du droit, ni Réessayer ni Nouvelle facture', async () => {
+    renderList({ error: { detail: "Vous n'avez pas la permission.", error: { code: 'permission_denied' } } })
+    expect(await screen.findByText('Accès refusé')).toBeInTheDocument()
+    expect(screen.getByText(/Vous n'avez pas le droit d'ouvrir les factures\./)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Réessayer' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Nouvelle facture/ })).toBeNull()
+    expect(screen.queryByText('Erreur de chargement')).toBeNull()
+  })
+
+  it('une autre panne garde « Erreur de chargement » + Réessayer', async () => {
+    renderList({ error: 'Réseau' })
+    expect(await screen.findByText('Erreur de chargement')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+  })
+})
+
 describe('FactureList — WR2b : « Payer en ligne »', () => {
   it('crée le lien de paiement et le copie au presse-papier', async () => {
     const writeText = vi.fn(() => Promise.resolve())
