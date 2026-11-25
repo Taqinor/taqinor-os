@@ -5912,3 +5912,53 @@ decisions:
     date: "2026-11-25"
     source: "rapport, décision 28 (b) ; la règle du 20/08/2026 (taille TAPÉE par la commerciale : arrondi au-dessus, jamais moins que la puissance vendue) reste inchangée pour une taille tapée ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Nearest panel, said (Recommended) »"
     taches: []
+  - id: D-ACAL-111
+    question: "PDF résidentiel, « facture actuelle » : un client qui dit « 900 MAD par mois » lit « ≈ 831 MAD par mois » (tarif par tranches : aucune consommation ne donne exactement 900 MAD, le moteur garde le côté bas). Qu'imprimer ?"
+    options:
+      - cle: garder_et_expliquer
+        texte: "Les chiffres restent ; une ligne sous la facture : « Montant recalculé au tarif par tranches à partir de votre consommation ; il peut différer légèrement de votre facture. »"
+      - cle: imprimer_le_montant_dit
+        texte: "Imprimer 900 MAD et calculer l'économie dessus (moins prudent)"
+      - cle: laisser
+        texte: "Rien ne change"
+    reponse: garder_et_expliquer
+    date: "2026-11-25"
+    source: "rapport L5, décision 1 (test utilisateur, tour 1) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Keep it, add a sentence (Recommended) » ; la phrase approuvée est celle de l'option ; nouveaux rendus seulement, un devis envoyé garde le PDF reçu"
+    taches: []
+  - id: D-ACAL-112
+    question: "PDF pompage : la page 1 imprime toujours l'étape « Pose : pompe, variateur, champ solaire et protections. » alors que la page 3 range « Protections DC/AC » sous « Non inclus » quand l'option n'est pas vendue. Que faire ?"
+    options:
+      - cle: le_dire_seulement_si_vendu
+        texte: "Sans ligne de protection au devis, l'étape lit « Pose : pompe, variateur et champ solaire. » ; aucun prix ne change"
+      - cle: protections_dans_le_kit
+        texte: "Les protections et leur câble entrent dans le kit minimum de tout devis de pompage (change la décision du kit et monte le prix)"
+      - cle: laisser
+        texte: "Rien ne change"
+    reponse: protections_dans_le_kit
+    date: "2026-11-25"
+    source: "rapport L5, décision 16 (test utilisateur) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Protections in the kit » — option NON recommandée par l'orchestrateur, choisie par le fondateur ; MODIFIE la décision D-AGR du 02/10/2026 « kit minimum + options » pour ce poste : les protections DC/AC et leur câble passent de l'option au kit minimum des NOUVEAUX devis de pompage ; un devis déjà créé garde ses lignes"
+    taches: []
+  - id: D-ACAL-113
+    question: "PDF pompage d'un devis FINAL (visite faite) : il imprime encore « pompe plus puissante que le forage — à vérifier à la visite ». Qu'imprimer ?"
+    options:
+      - cle: garder_le_fait_sans_a_verifier
+        texte: "La comparaison pompe / forage reste, « à vérifier à la visite » disparaît une fois la visite enregistrée ; le bandeau « estimation » du volume journalier reste"
+      - cle: retirer_la_ligne
+        texte: "Un devis final ne mentionne plus la comparaison"
+      - cle: laisser
+        texte: "Rien ne change"
+    reponse: garder_le_fait_sans_a_verifier
+    date: "2026-11-25"
+    source: "rapport L5, décision 17 (test utilisateur) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Keep the fact, drop « à vérifier » (Recommended) » ; nouveaux rendus seulement"
+    taches: []
+  - id: D-ACAL-114
+    question: "PDF résidentiel d'un devis à UNE option (lead qui veut une batterie) : il imprime encore le titre « OPTION 2 ». Quel titre ?"
+    options:
+      - cle: sans_numero
+        texte: "Le titre ne porte que le nom de l'option (« Avec batterie »), sans « OPTION 2 »"
+      - cle: numero_1
+        texte: "Le titre lit « OPTION 1 »"
+    reponse: sans_numero
+    date: "2026-11-25"
+    source: "rapport L5, décision 22 (test utilisateur) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « No number (Recommended) » ; nouveaux rendus seulement"
+    taches: []
