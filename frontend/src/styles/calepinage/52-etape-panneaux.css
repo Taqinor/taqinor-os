@@ -67,6 +67,10 @@
 }
 .cal-coque .cal-pan-option-ligne > span { white-space: nowrap; }
 .cal-coque .cal-pan-option-ligne b { font-family: var(--font-display); font-size: 0.9375rem; font-weight: 700; color: var(--cal-texte-1); }
+/* T4-X8-011 — la phrase de la conception sous la ligne des chiffres : elle se replie, jamais coupée (aucun nowrap, aucune ellipse). */
+.cal-coque .cal-pan-option-phrase {
+  font-size: 0.75rem; line-height: 1.45; color: var(--cal-texte-2); white-space: normal; overflow-wrap: anywhere;
+}
 /* Le « · » n'est qu'un séparateur de lecture (texte, lecteurs d'écran) : l'écart de 14 px le remplace à l'œil. */
 .cal-coque .cal-pan-sep { display: none; }
 .cal-coque .cal-pan-badge {

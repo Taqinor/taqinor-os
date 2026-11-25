@@ -40,7 +40,7 @@ function monterConstructeur(o = {}) {
   const racine = document.createElement('div')
   racine.id = 'faux-constructeur'
   racine.innerHTML = `
-    <input id="rp9-need-input" value="${c.besoin}" ${c.besoinDesactive ? 'disabled' : ''}>
+    <input id="rp9-need-input" value="${c.besoin}" ${c.besoinDesactive ? 'disabled' : ''} ${c.lePlus ? 'data-le-plus="1"' : ''}>
     <p id="rp9-need-note">${c.note}</p>
     <p id="rp9-reco-panels">${c.panneaux}</p><p id="rp9-reco-kwc">${c.kwc}</p>
     <p id="rp9-reco-prod">${c.prod}</p><p id="rp9-reco-cover">${c.cover}</p>
@@ -176,13 +176,17 @@ describe('étape Panneaux — panneau de droite', () => {
     document.getElementById('rp9-pan-module-select').value = 'produit-1'
     const catalogue = [{ ...CATALOGUE[0], module: { ...CATALOGUE[0].module, libelle: 'Module 710 Wc', pmaxWc: 710 } }]
     calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({ data: {
-      modules: catalogue, panneaux_selon_watt: { 710: 6, 715: 6 } } })
+      modules: catalogue, panneaux_selon_watt: { 710: 6, 715: 6 }, kwc_selon_watt: { 710: 4.26, 715: 4.29 } } })
     calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: {
       cible_factures: { panneaux: 8, kwc: 4.4, module_wc: 550 }, refus: '', calcul_en_cours: false } })
     rendre()
     const facture = screen.getByTestId('cal-panneaux-option-facture')
-    await waitFor(() => expect(facture).toHaveTextContent(
-      '4,40 kWc — 6 panneaux de 710 W (la conception du lead compte 8 panneaux de 550 W)'))
+    // T4-X8-011 — UN compte et UN kWc qui vont ensemble (6 × 710 W = 4,26 kWc, les deux SERVIS), puis la conception
+    // dite dans une seconde phrase complète — jamais « 4,40 kWc — 6 panneaux de 710 W ».
+    await waitFor(() => expect(facture.querySelector('.cal-pan-option-ligne')).toHaveTextContent('6 panneaux de 710 W · 4,26 kWc'))
+    expect(facture.querySelector('[data-zone="conception-du-lead"]'))
+      .toHaveTextContent('La conception du lead compte 8 panneaux de 550 W, 4,4 kWc.')
+    expect(facture).not.toHaveTextContent('4,40 kWc —')
     fireEvent.click(facture)
     expect(document.getElementById('rp9-need-input').value).toBe('6')
   })
@@ -196,8 +200,36 @@ describe('étape Panneaux — panneau de droite', () => {
       cible_factures: { panneaux: 8, kwc: 4.4, module_wc: 550 }, refus: '', calcul_en_cours: false } })
     rendre()
     const facture = screen.getByTestId('cal-panneaux-option-facture')
-    await waitFor(() => expect(facture).toHaveTextContent('4,40 kWc (la conception du lead compte 8 panneaux de 550 W)'))
+    await waitFor(() => expect(facture.querySelector('[data-zone="conception-du-lead"]'))
+      .toHaveTextContent('La conception du lead compte 8 panneaux de 550 W, 4,4 kWc.'))
+    expect(facture.querySelector('.cal-pan-option-ligne')).toBeNull() // aucun compte servi pour 710 W : aucun compte dit
     expect(facture).toBeDisabled()
+  })
+
+  it('T4-X8-011 — module choisi dont la fiche n’est pas (encore) lue : la puissance POSÉE par le constructeur compte, jamais « 7 panneaux » de 550 W sous un module de 710 W', async () => {
+    monterConstructeur({ besoin: '5', panneaux: '5 × 710 W', kwc: '3,55 kWc' })
+    document.getElementById('rp9-pan-module-select').value = 'produit-1'
+    // le catalogue servi ne porte pas (encore) la fiche du module choisi
+    calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({ data: {
+      modules: [], panneaux_selon_watt: { 710: 5 }, kwc_selon_watt: { 710: 3.55 } } })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: {
+      cible_factures: { panneaux: 7, kwc: 3.85, module_wc: 550 }, refus: '', calcul_en_cours: false } })
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture.querySelector('.cal-pan-option-ligne')).toHaveTextContent('5 panneaux de 710 W · 3,55 kWc'))
+    expect(facture.querySelector('[data-zone="conception-du-lead"]'))
+      .toHaveTextContent('La conception du lead compte 7 panneaux de 550 W, 3,85 kWc.')
+    expect(facture).not.toHaveTextContent('7 panneaux · 3,85 kWc')
+    expect(facture).toHaveAttribute('aria-pressed', 'true') // le besoin posé (5) EST la cible du module : carte choisie
+  })
+
+  it('T4-X8-011 — même module que la conception : une ligne, son compte et son kWc, aucune seconde phrase', async () => {
+    monterConstructeur()
+    document.getElementById('rp9-pan-module-select').value = 'produit-1'
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc · conception'))
+    expect(facture.querySelector('[data-zone="conception-du-lead"]')).toBeNull()
   })
 
   it('lane E9 — la conception recalculée depuis l’ouverture : la carte « Couvrir la facture » dit pourquoi, jamais en silence', async () => {
@@ -384,6 +416,21 @@ describe('étape Panneaux — panneau de droite', () => {
     // Reste de G2 (orchestrateur) : la phrase de repli ne nomme pas « ce lead » quand il n'y en a pas.
     expect(document.body).not.toHaveTextContent('factures de ce lead')
     expect(document.body).toHaveTextContent('Ce calepinage n’a pas de lead : aucune taille n’est tirée d’une facture.')
+  })
+
+  it('T4-X8-012 — « le plus de panneaux » posé : le champ du constructeur dit le besoin de la facture (7 = la cible), la carte choisie reste « Le plus de panneaux »', async () => {
+    monterConstructeur({ besoin: '7', lePlus: true, panneaux: '9 × 580 W', kwc: '5,22 kWc',
+      note: 'Vous avez choisi le plus de panneaux possible : 9 posés. Le besoin de la facture : 7.' })
+    document.getElementById('rp9-pan-module-select').value = 'produit-1'
+    servir({ cible: { panneaux: 7, kwc: 4.06, module_wc: 580 } })
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture).toHaveTextContent('7 panneaux · 4,06 kWc'))
+    expect(facture).toHaveAttribute('aria-pressed', 'false')
+    const max = screen.getByTestId('cal-panneaux-option-max')
+    expect(max).toHaveAttribute('aria-pressed', 'true')
+    expect(max).toHaveTextContent('9 panneaux · 5,22 kWc')
+    expect(document.body).not.toHaveTextContent('400')
   })
 
   it('ni l’une ni l’autre : aucune carte choisie et « Pose actuelle : N panneaux · kWc »', async () => {
@@ -969,6 +1016,30 @@ describe('ACAL1829 — l’étape Panneaux à sa maquette v2', () => {
     expect(cs(max).borderRadius).toBe('14px')
     expect(cs(max).background).toContain('--cal-surface')
     expect(cs(document.querySelector('.cal-pan-badge')).borderRadius).toBe('11px')
+  })
+
+  it('T4-X8-011 — la phrase de la conception se replie : ni troncature ni ligne unique sur une phrase qui porte un nombre', async () => {
+    monterConstructeur({ besoin: '12' })
+    document.getElementById('rp9-pan-module-select').value = 'produit-1'
+    const catalogue = [{ ...CATALOGUE[0], module: { ...CATALOGUE[0].module, pmaxWc: 710 } }]
+    calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({ data: {
+      modules: catalogue, panneaux_selon_watt: { 710: 6 }, kwc_selon_watt: { 710: 4.26 } } })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: {
+      cible_factures: { panneaux: 8, kwc: 4.4, module_wc: 550 }, refus: '', calcul_en_cours: false } })
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    const phrase = await waitFor(() => {
+      const el = facture.querySelector('[data-zone="conception-du-lead"]')
+      expect(el).not.toBeNull()
+      return el
+    })
+    for (const el of [phrase, ...facture.querySelectorAll('.cal-pan-option-ligne > span')]) {
+      expect(el.className).not.toMatch(/truncate|ellipsis/)
+    }
+    expect(cs(phrase).whiteSpace).not.toBe('nowrap')
+    expect(cs(phrase).textOverflow).not.toBe('ellipsis')
+    expect(cs(phrase).overflow).not.toBe('hidden')
+    expect(phrase.closest('.cal-pan-option-ligne')).toBeNull() // jamais dans la ligne des chiffres (ses morceaux ne se coupent pas)
   })
 
   it('sens de pose : pictogrammes portrait et paysage, « Au mieux » sans ; segments de 44 px sur piste v2', () => {

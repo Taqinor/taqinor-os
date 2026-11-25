@@ -12,6 +12,7 @@ import { resnapEnMasse } from './layoutResnap'; // ACAL1900 — même re-snap qu
 import { checkRect, FREE_EDGE_EPS_M, hardViolationsFor, panelCornersFor, rectOfPanel, toUV, type FreeGeom, type FreeLayoutState, type FreePanel } from '../../lib/freeLayout'; // ACAL2032
 import type { LayoutPlan } from './types'; // ACAL2032
 import { DEG2M, DEG2RAD } from './constants'; // ACAL2032
+import { estLePlus } from './affichageErp'; // T4-X8-012
 
 /** ACAL1900 — l'atelier ERP (`opts.chiffrage` défini, `null` compris) affiche une pose à TENIR face à
  *  un recalcul de fond : une disposition posée (relue du document, éditée, remplie) ou un placement libre.
@@ -103,7 +104,7 @@ export function carteDeLaPoseTenue(d: CardData, n: number, fmt: (n: number) => s
 
 /** ACAL1900 — la phrase de l'écart entre la pose RELUE (ou tenue, `rouverte` faux) et la cible, ou `null` (pas de cible, ou égales). */
 export function noteEcartPoseRelue(poses: number, cible: number, fmt: (n: number) => string, rouverte = true, auDevis = ''): string | null {
-  if (!(cible > 0) || !(poses > 0) || poses === cible) return null;
+  if (!(cible > 0) || !(poses > 0) || poses === cible || estLePlus(cible)) return null; // T4-X8-012 — jamais comparé au plafond « le plus »
   const ecart = poses - cible;
   return `${fmt(poses)} posés / ${fmt(cible)} cible${auDevis} — ${rouverte ? 'pose enregistrée rouverte' : 'pose tenue'} telle quelle `
     + `(${fmt(Math.abs(ecart))} de ${ecart > 0 ? 'plus' : 'moins'} que la cible, rien n’est retiré ni ajouté).`;

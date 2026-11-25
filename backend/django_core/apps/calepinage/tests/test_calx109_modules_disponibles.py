@@ -130,7 +130,7 @@ class LExempleEstCeQueLeServiceProduitTest(SimpleTestCase):
                     _FauxCalepinage(), produits)
                 self.assertEqual(
                     sorted(servi),
-                    ['calepinage', 'champs_requis', 'modules',
+                    ['calepinage', 'champs_requis', 'kwc_selon_watt', 'modules',
                      'motif_liste_vide', 'panneaux_selon_watt'])
 
     def test_e9_la_taille_de_la_conception_comptee_dans_chaque_puissance_offerte(self):
@@ -148,9 +148,13 @@ class LExempleEstCeQueLeServiceProduitTest(SimpleTestCase):
         with mock.patch(cible, return_value=conception):
             servi = modules_disponibles_du_calepinage(_FauxCalepinage(), [module(1, 710), module(2, 715)])
         self.assertEqual(servi['panneaux_selon_watt'], {'710': 6, '715': 6})
+        # T4-X8-011 — le kWc de CE compte dans CE module, servi à côté (6 × 710 W = 4,26 kWc) : jamais le kWc de
+        # la conception (4,40) à côté d'un compte d'un autre module, jamais une multiplication dans le navigateur.
+        self.assertEqual(servi['kwc_selon_watt'], {'710': 4.26, '715': 4.29})
         with mock.patch(cible, return_value={'etat': 'refus', 'valeurs': {}}):
             servi = modules_disponibles_du_calepinage(_FauxCalepinage(), [module(1, 710)])
         self.assertEqual(servi['panneaux_selon_watt'], {})
+        self.assertEqual(servi['kwc_selon_watt'], {})
 
     def test_l_identifiant_est_stable_et_derive_du_produit(self):
         entree = entree_module(_produit_complet())
