@@ -8,6 +8,7 @@ import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-li
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { exempleContrat } from '../../../../../test/fixtures/contractSamples'
 import { formatNumber } from '../../../../../lib/format'
+import { readFileSync } from 'node:fs'
 
 vi.mock('../../../../../api/calepinageApi', () => ({
   default: {
@@ -691,6 +692,16 @@ describe('Étape Résultats — production retenue par le devis (ACAL1956)', () 
     expect(screen.getByRole('button', { name: 'Lancer la simulation' })).toBeInTheDocument()
   })
 
+  // T4-X7-010 — au doigt (tablette), le lien du devis mesurait 114 × 18 : une cible d'au moins 44 px de haut.
+  it('T4-X7-010 — au doigt, le lien du devis est une cible de 44 px de haut', async () => {
+    const style = feuilleAuDoigt('src/styles/calepinage/54-etape-resultats.css')
+    try {
+      rendreAvec({ ...JAMAIS(), production_devis: PROD() })
+      const lien = await screen.findByRole('link', { name: PROD().reference })
+      expect(getComputedStyle(lien).minHeight).toBe('44px')
+    } finally { style.remove() }
+  })
+
   it('devis envoyé avec simulation : les deux chiffres côte à côte, chacun nommé', async () => {
     const data = { ...COMPLET(), production_devis: PROD() }
     servir(data)
@@ -963,3 +974,17 @@ describe('Étape Résultats — panneaux posés mais non raccordés (ACAL1912)',
     expect(zone()).toBeNull()
   })
 })
+
+/** T4-X7-010 — les règles `@media (pointer: coarse)` d'une feuille, posées SANS leur requête (jsdom ne lit pas les @media). */
+function feuilleAuDoigt(chemin) {
+  const brut = document.createElement('style')
+  brut.textContent = readFileSync(chemin, 'utf8')
+  document.head.appendChild(brut)
+  const regles = [...brut.sheet.cssRules]
+  brut.remove()
+  const style = document.createElement('style')
+  style.textContent = regles.filter((r) => r.type === 4 && r.conditionText === '(pointer: coarse)')
+    .flatMap((m) => [...m.cssRules].map((r) => r.cssText)).join(' ')
+  document.head.appendChild(style)
+  return style
+}

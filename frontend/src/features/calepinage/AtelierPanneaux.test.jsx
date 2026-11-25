@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { readFileSync } from 'node:fs'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* ============================================================================
@@ -330,3 +331,31 @@ describe('ACAL867 — l’étape Documents guidée porte « Générer le devis �
     expect(screen.getByTestId('cal-generer-devis').classList.contains('cal-bouton-or')).toBe(false)
   }, 30_000)
 })
+
+/* T4-X7-010 — feuille « Avancé » au doigt (tablette) : les liens (« Montrer au client », « Relevé de visite »…) mesuraient
+   20 px de haut. Toute cible de la feuille fait au moins 44 px de haut sur un écran tactile. */
+describe('T4-X7-010 — feuille « Avancé » : cibles de 44 px au doigt', () => {
+  it('un lien de la feuille fait 44 px de haut sous (pointer: coarse)', () => {
+    const style = feuilleAuDoigt('src/styles/calepinage/50-coque-atelier.css')
+    const hote = document.createElement('div')
+    hote.innerHTML = '<div class="cal-coque"><div class="cal-coque-avance"><div class="flex"><a href="#x">Montrer au client</a></div></div></div>'
+    document.body.appendChild(hote)
+    try {
+      expect(getComputedStyle(hote.querySelector('a')).minHeight).toBe('44px')
+    } finally { style.remove(); hote.remove() }
+  })
+})
+
+/** T4-X7-010 — les règles `@media (pointer: coarse)` d'une feuille, posées SANS leur requête (jsdom ne lit pas les @media). */
+function feuilleAuDoigt(chemin) {
+  const brut = document.createElement('style')
+  brut.textContent = readFileSync(chemin, 'utf8')
+  document.head.appendChild(brut)
+  const regles = [...brut.sheet.cssRules]
+  brut.remove()
+  const style = document.createElement('style')
+  style.textContent = regles.filter((r) => r.type === 4 && r.conditionText === '(pointer: coarse)')
+    .flatMap((m) => [...m.cssRules].map((r) => r.cssText)).join(' ')
+  document.head.appendChild(style)
+  return style
+}

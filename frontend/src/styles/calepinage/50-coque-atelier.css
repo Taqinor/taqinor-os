@@ -741,6 +741,10 @@ body[data-cal-atelier] [data-sonner-toaster][data-y-position='bottom'][data-x-po
   font-weight: 600;
   font-size: 0.875rem;
 }
+/* T4-X7-010 — au doigt (tablette, téléphone), les liens de la feuille « Avancé » mesuraient 20 px de haut : 44 px. */
+@media (pointer: coarse) {
+  .cal-coque .cal-coque-avance a { display: inline-flex; align-items: center; min-height: 44px; }
+}
 /* Étape pleine (Résultats, Documents) : le panneau d'étape reste replié, seule la feuille s'affiche. */
 .cal-coque[data-feuille='1'][data-cadre='plein'] .cal-panneau-etape { width: 0; border: 0; }
 .cal-coque[data-feuille='1'][data-cadre='plein'] .cal-panneau-etape > :not(.cal-panneau-etape-corps) { display: none; }
