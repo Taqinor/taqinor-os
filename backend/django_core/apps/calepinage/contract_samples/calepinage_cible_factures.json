@@ -5,7 +5,9 @@
     "cible_factures": {
       "panneaux": 12,
       "kwc": 6.96,
-      "module_wc": 580
+      "module_wc": 580,
+      "version": 2,
+      "raison": "Recalculé le 25/11 à 10 h 05 : matériel désigné à l’atelier : Module 580 Wc / Onduleur 6 kW"
     },
     "refus": "",
     "calcul_en_cours": false
@@ -25,5 +27,6 @@
     "refus": "Conception du lead en cours de calcul : elle s'affichera dans quelques secondes.",
     "calcul_en_cours": true
   },
-  "e5_b1_note": "Relecture E5 B1 (25/11) — `calcul_en_cours` (bool, toujours présent) : le lead n'a encore aucune conception rangée et son premier calcul vient d'être mis en file (`exemple_en_cours`) ; l'étape relit et ne dit jamais zéro panneau. `false` partout ailleurs. Depuis ACAL2012 la taille est celle de la CONCEPTION courante du lead (C&I compris) : `exemple_refus` ne sert plus qu'aux refus du moteur."
+  "e5_b1_note": "Relecture E5 B1 (25/11) — `calcul_en_cours` (bool, toujours présent) : le lead n'a encore aucune conception rangée et son premier calcul vient d'être mis en file (`exemple_en_cours`) ; l'étape relit et ne dit jamais zéro panneau. `false` partout ailleurs. Depuis ACAL2012 la taille est celle de la CONCEPTION courante du lead (C&I compris) : `exemple_refus` ne sert plus qu'aux refus du moteur.",
+  "e9_version_note": "Lane E9 (25/11) — `cible_factures.version` (entier) et `cible_factures.raison` (la phrase de l’utilisateur, `declencheur.raison` de la conception, contrat `apps/ventes/contract_samples/conception_lead.json`) : la version de la conception qui fait CES chiffres et pourquoi elle a été calculée (`services/devis_retenu.py::cible_de_la_conception`, aucune lecture de plus). L’étape Panneaux la compare à `cible.version` du design-context (la conception que l’atelier a ouverte) : différentes ⇒ la carte « Couvrir la facture » dit « Conception recalculée : <raison> »."
 }

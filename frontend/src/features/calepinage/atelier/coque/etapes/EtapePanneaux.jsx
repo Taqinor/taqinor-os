@@ -230,6 +230,13 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
           <span className="cal-pan-option-ligne" data-zone="cible-en-calcul">calcul en cours</span>
         )}
       </button>
+      {/* Lane E9 — la conception a été recalculée depuis l'ouverture : la carte le DIT, jamais en silence. */}
+      {servi.facture.recalculee && (
+        <p className="cal-pan-note" data-zone="conception-recalculee" role="status">
+          {servi.facture.recalculee.raison ? `Conception recalculée : ${servi.facture.recalculee.raison}`
+            : 'Conception recalculée depuis l’ouverture de l’atelier.'}
+        </p>
+      )}
       {posee && <p className="cal-pan-note" data-zone="pose-posee">{posee}</p>}
       {besoin?.auto && <p className="cal-pan-note" data-zone="taille-auto" role="status">{besoin.note}</p>}
       {servi.facture.etat === 'chargement' && (

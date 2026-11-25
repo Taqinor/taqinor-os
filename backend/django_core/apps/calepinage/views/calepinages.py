@@ -1498,6 +1498,8 @@ def _cible(calepinage, contexte_devis, devis=None):
     return {'panneaux': cible['panneaux'], 'kwc': cible['kwc'], 'panel_watt': cible['panel_watt'],
             'scenario': None, 'batterie': _batterie_de_la_cible(calepinage, cible), 'avertissements': [],
             'source': cible['source'], 'refus': cible['refus'], 'option': cible['option'],
+            # Lane E9 — la conception que l'atelier OUVRE (sa version, sa raison) : l'étape Panneaux la compare.
+            'version': cible.get('version'), 'raison': cible.get('raison'),
             # Relecture E5 B1 — le premier calcul de la conception est en file : l'atelier attend et relit.
             'calcul_en_cours': cible.get('motif_code') == CODE_CONCEPTION_EN_COURS}
 

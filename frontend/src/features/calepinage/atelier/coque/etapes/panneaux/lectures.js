@@ -105,7 +105,14 @@ export function useCibleFactures(calepinageId, servi = null, { attendre = false 
     return () => clearTimeout(minuteur)
   }, [calculEnCours, relectures, relireTaille])
   const actualiser = useCallback(() => { setRelectures(0); relireTaille() }, [relireTaille])
+  // Lane E9 — la conception que l'atelier a OUVERTE (`cible.version` du design-context) contre celle qui fait la taille
+  // relue (`cible_factures.version`) : différentes ⇒ la carte dit pourquoi ses chiffres ont changé (`raison` servie).
+  const ouverte = contexte.donnees?.cible?.version
+  const relue = taille.donnees?.cible_factures
+  const recalculee = etat === 'ok' && Number.isInteger(ouverte) && Number.isInteger(relue?.version)
+    && relue.version !== ouverte ? { raison: relue.raison || '' } : null
   return {
+    recalculee,
     calculEnCours,
     calculAbandonne: calculEnCours && relectures >= RELECTURES_CALCUL,
     actualiser,
