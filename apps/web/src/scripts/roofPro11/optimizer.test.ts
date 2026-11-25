@@ -1282,6 +1282,19 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
     } finally { e.fin(); s.fin(); autreKwc.fin(); p.fin(); }
   });
 
+  it('T4-X5-005 — après un enregistrement, la production et la part production ÷ consommation changent ENSEMBLE (la part n’est jamais celle d’une estimation d’avant)', () => {
+    const e = erp(servi({ production_annuelle_kwh: { valeur: 8619, etat: 'servi' }, couverture_pct: { valeur: 123, etat: 'servi' } }));
+    try {
+      expect(e.t('rp9-reco-prod')).toBe(`${fmt(8619)} kWh/an`);
+      expect(e.t('rp9-reco-cover')).toBe('123 %');
+      e.opt.majChiffrage(servi({ production_annuelle_kwh: { valeur: 9105, etat: 'servi' }, couverture_pct: { valeur: 130, etat: 'servi' } }) as never);
+      expect(e.t('rp9-reco-prod')).toBe(`${fmt(9105)} kWh/an`);
+      expect(e.t('rp9-reco-cover')).toBe('130 %'); // 9 105 ÷ 7 028 : le quotient du bloc servi, pas les 123 % de l'estimation d'avant
+      e.opt.majChiffrage(servi({ production_annuelle_kwh: { valeur: 9105, etat: 'servi' }, couverture_pct: { valeur: null, etat: 'omis' } }) as never);
+      expect(e.t('rp9-reco-cover')).toBe('—'); // production sans part servie : aucun pourcentage gardé d'avant
+    } finally { e.fin(); }
+  });
+
   it('« Pose très au-dessus de la consommation » : au-dessus de 2 × la consommation (deux nombres), pas en dessous, jamais sur le site public', () => {
     const prod = prodEstimee();
     const dessus = erp(null, {}, prod / 2.1);
