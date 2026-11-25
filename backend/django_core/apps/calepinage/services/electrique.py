@@ -342,21 +342,20 @@ def temperatures_site(*, pin=None, saisie=None, fournisseur=None,
 
 def temperatures_pour_calepinage(calepinage, *, saisie=None,
                                  fournisseur=None, module_specs=None):
-    """``temperatures_site`` avec l'épingle DU calepinage (lecture bornée).
-
-    L'épingle est lue par ``selectors.contexte_geographique`` — la MÊME
-    lecture que l'atelier, bornée à la société du calepinage, jamais une
-    seconde façon de retrouver un point GPS.
+    """``temperatures_site`` au site DU calepinage — relecture M2 : LE MÊME
+    site que la production (``site.point_du_site`` : épingle posée, sinon
+    repère du lead, sinon ville de référence ; jamais le centre par défaut de
+    la carte), contexte lu par ``selectors.contexte_geographique`` (borné).
     """
     from ..selectors import contexte_geographique
+    from .site import point_du_site
 
-    pin = None
+    lat = lon = None
     if calepinage is not None:
-        layout = getattr(calepinage, 'roof_layout', None)
-        if isinstance(layout, dict) and isinstance(layout.get('pin'), dict):
-            pin = layout['pin']
-        if pin is None:
-            pin = contexte_geographique(calepinage).get('pin')
+        lat, lon, _reference = point_du_site(
+            getattr(calepinage, 'roof_layout', None),
+            lambda: contexte_geographique(calepinage))
+    pin = None if lat is None or lon is None else {'lat': lat, 'lng': lon}
     return temperatures_site(pin=pin, saisie=saisie, fournisseur=fournisseur,
                              module_specs=module_specs)
 
