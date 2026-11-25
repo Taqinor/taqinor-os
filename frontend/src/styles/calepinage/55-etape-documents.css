@@ -24,7 +24,9 @@
   .cdoc-docs-corps { flex-direction: column; flex: none; }
   .cdoc-apercu-col { width: auto; }
   .cdoc-apercu { flex: none; }
-  .cdoc-cartes { overflow-y: visible; }
+  /* T4-X7-009 — la colonne n'a plus de hauteur fixée : la liste prend la hauteur de ses cartes (avec flex-basis 0 elle
+     mesurait 4 px à 1180 × 820 et 820 × 1180, le rapport d'étude ne s'atteignait pas). */
+  .cdoc-cartes { flex: none; overflow-y: visible; }
 }
 @media (max-width: 520px) {
   /* Téléphone : « Régler dans … » passe sous le texte de la ligne, qui garde toute sa largeur. */

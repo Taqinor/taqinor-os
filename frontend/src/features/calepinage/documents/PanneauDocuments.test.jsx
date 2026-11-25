@@ -1032,6 +1032,32 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     }
   })
 
+  // T4-X7-009 — tablette (1180 × 820 et 820 × 1180) : la liste des cartes mesurait 4 px (flex-basis 0 dans une colonne de
+  // hauteur automatique) — le rapport d'étude ne s'atteignait pas. Sous 1 300 px, les cartes prennent leur hauteur.
+  it('T4-X7-009 — sous 1 300 px, la liste des cartes prend la hauteur de ses cartes (jamais une boîte de 4 px)', async () => {
+    const brut = document.createElement('style')
+    brut.textContent = readFileSync('src/styles/calepinage/55-etape-documents.css', 'utf8')
+    document.head.appendChild(brut)
+    const regles = [...brut.sheet.cssRules]
+    const style = document.createElement('style')
+    style.textContent = regles.filter((r) => r.type !== 4).map((r) => r.cssText)
+      .concat(regles.filter((r) => r.type === 4 && /max-width: 1300px/.test(r.conditionText))
+        .flatMap((m) => [...m.cssRules].map((r) => r.cssText))).join(' ')
+    brut.remove()
+    document.head.appendChild(style)
+    try {
+      servir()
+      monter()
+      await screen.findByTestId('cal-docs-liste')
+      const c = getComputedStyle(document.querySelector('.cdoc-cartes'))
+      expect([c.flexGrow, c.flexShrink, c.flexBasis]).toEqual(['0', '0', 'auto'])
+      expect(c.overflowY).toBe('visible')
+      expect(screen.getAllByTestId('cal-docs-carte')).toHaveLength(5)
+    } finally {
+      style.remove()
+    }
+  })
+
   it('ACAL1193 — contrôles visibles de l’écran guidé : au plus 26 (la maquette v2 en dessine 24 ; + les trois lignes de groupe repliées, ACAL1725)', async () => {
     servir()
     const { container } = monter()
