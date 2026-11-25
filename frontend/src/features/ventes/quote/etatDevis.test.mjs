@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { devisVersEtat, etatVersEcritures, facturesHiverEte, entreesDeEtat, etudeDeCreation, serieMixte, erreursBloquantes } from './etatDevis.js'
+import { devisVersEtat, etatVersEcritures, facturesHiverEte, entreesDeEtat, etudeDeCreation, serieMixte, erreursBloquantes, consommationImposeeDeEtat } from './etatDevis.js'
 import { consoAnnuelleDepuisFactures } from '../calc/tarifs.js'
 import { documentContrat } from '../../../test/fixtures/contractSamples.js'
 
@@ -422,6 +422,36 @@ test('etude_envoyee_par_entreesDeEtat', () => {
   // aucune seconde construction dans le hook
   const hook = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'hooks/usePersistanceDevis.js'), 'utf-8')
   assert.equal(/const entreesReellesEcran\b/.test(hook), false)
+})
+
+// E7d / B2 (revue lot 4) — la consommation IMPOSÉE à l'aperçu du moteur sort du
+// MÊME sélecteur que l'enregistrement (`entreesDeEtat`) : pour chaque cas, son
+// `kwh_annuel` égale la `conso_annuelle` enregistrée ; rien de tapé ⇒ rien.
+test('consommation_imposee_de_l_apercu_egale_celle_enregistree', () => {
+  const ecran = (extra) => ({
+    mode: 'residentiel', lignes: [], distributeur: 'onee', distributeurChoisi: false,
+    monthly: Array(12).fill(0), provenanceMois: Array(12).fill('exemple'),
+    facturesSaisies: false, fHiver: '', fEte: '', realBillSaisi: false, realBillMode: 'mad',
+    consoAnnuelleReelle: null, consoStockee: null, bareme: null, ...extra,
+  })
+  const cas = [
+    ['12 × 800 MAD', ecran({ monthly: Array(12).fill(800), provenanceMois: Array(12).fill('tapee'),
+      facturesSaisies: true }), 'factures'],
+    ['facture réelle MAD', ecran({ realBillSaisi: true, realBillMode: 'mad',
+      consoAnnuelleReelle: consoAnnuelleDepuisFactures(Array(12).fill(900), 'onee') }), 'facture_reelle'],
+    ['kWh par mois', ecran({ realBillSaisi: true, realBillMode: 'kwh', consoAnnuelleReelle: 4800 }), 'saisie'],
+    ['conso stockée saisie', ecran({ consoStockee: { valeur: 1282, descendDesFactures: false, factures: null } }),
+      'saisie'],
+  ]
+  for (const [nom, etat, source] of cas) {
+    const imposee = consommationImposeeDeEtat(etat)
+    assert.deepEqual(imposee, { kwh_annuel: entreesDeEtat(etat).conso_annuelle, source }, nom)
+  }
+  assert.equal(consommationImposeeDeEtat(cas[0][1]).kwh_annuel, 5880)
+  // Rien de tapé (valeurs d'exemple, ou facture réelle préremplie par le lead) : le
+  // moteur lit les valeurs du lead, aucune consommation n'est imposée.
+  assert.equal(consommationImposeeDeEtat(ecran({})), null)
+  assert.equal(consommationImposeeDeEtat(ecran({ realBillMode: 'kwh', consoAnnuelleReelle: 3600 })), null)
 })
 
 test('serie_mixte_nommee', () => {

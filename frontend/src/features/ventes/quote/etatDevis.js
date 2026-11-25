@@ -371,31 +371,55 @@ export function serieMixte(provenanceMois) {
  * Conso : facture réelle tapée (COUV-HOR, souveraine) → conso stockée saisie →
  * dérivation des factures au barème → facture réelle de repli.
  */
-export function entreesDeEtat(etat) {
-  const entrees = {}
-  const stockee = etat.consoStockee
+/** Les douze factures ÉMISES comme réelles (tapées à l'écran, ou relues), sinon `null`. */
+function facturesEmises(etat) {
   const ecran = Array.isArray(etat.provenanceMois)
   const tapees = ecran
     ? (etat.provenanceMois.length === 12 && etat.provenanceMois.every(p => p === 'tapee') ? etat.monthly : null)
     : (Array.isArray(etat.monthly) ? etat.monthly : null)
-  const emises = ecran ? tapees : (tapees ?? stockee?.factures ?? null)
+  return ecran ? tapees : (tapees ?? etat.consoStockee?.factures ?? null)
+}
+
+/** LA cascade de la consommation annuelle (une seule, lue par l'enregistrement et
+ *  par l'aperçu) : `{ conso, auBareme, origine }`, `origine` ∈ `reelle_tapee`,
+ *  `stockee`, `factures`, `reelle_repli` (facture réelle non tapée), `null`. */
+export function consoDeEtat(etat, emises = facturesEmises(etat)) {
+  const stockee = etat.consoStockee
+  const factures = emises ?? stockee?.factures ?? null
+  const reelle = etat.consoAnnuelleReelle > 0 ? etat.consoAnnuelleReelle : null
+  const enMad = etat.realBillMode === 'mad'
+  if (etat.realBillSaisi && reelle) return { conso: reelle, auBareme: enMad, origine: 'reelle_tapee' }
+  if (stockee && !stockee.descendDesFactures) return { conso: stockee.valeur, auBareme: false, origine: 'stockee' }
+  if (factures) {
+    const bareme = baremePourDerivation(etat.bareme, stockee, factures)
+    const derivee = consoAnnuelleDepuisFactures(factures, etat.distributeur || 'onee',
+      bareme?.tranches, bareme?.chargesFixes)
+    if (derivee > 0) return { conso: derivee, auBareme: true, origine: 'factures' }
+  }
+  if (reelle) return { conso: reelle, auBareme: enMad, origine: 'reelle_repli' }
+  return { conso: null, auBareme: false, origine: null }
+}
+
+/** E7d (revue lot 4, B2) — la consommation IMPOSÉE à `POST conception/apercu/`
+ *  (`imposes.consommation`, `conception/consommation_imposee.py`) : celle que le
+ *  devis ENREGISTRE (`consoDeEtat`), ou `null` quand rien n'a été tapé (le moteur
+ *  lit alors les valeurs du lead : une facture réelle préremplie n'est pas imposée). */
+export function consommationImposeeDeEtat(etat) {
+  const { conso, origine } = consoDeEtat(etat)
+  if (!(conso > 0) || origine === null || origine === 'reelle_repli') return null
+  const source = origine === 'factures' ? 'factures'
+    : origine === 'reelle_tapee' && etat.realBillMode === 'mad' ? 'facture_reelle' : 'saisie'
+  return { kwh_annuel: Number(conso), source }
+}
+
+export function entreesDeEtat(etat) {
+  const entrees = {}
+  const emises = facturesEmises(etat)
   const deux = etat.facturesHiverEte
     ?? (etat.facturesSaisies ? facturesHiverEte(etat.fHiver, etat.fEte) : null)
   if (emises) entrees.factures_mensuelles_reelles = emises.map(v => parseFloat(v) || 0)
   else if (deux) entrees.factures_hiver_ete = deux
-  const factures = emises ?? stockee?.factures ?? null
-  const reelle = etat.consoAnnuelleReelle > 0 ? etat.consoAnnuelleReelle : null
-  let conso = null
-  let auBareme = false
-  if (etat.realBillSaisi && reelle) { conso = reelle; auBareme = etat.realBillMode === 'mad' }
-  if (conso == null && stockee && !stockee.descendDesFactures) conso = stockee.valeur
-  if (conso == null && factures) {
-    const bareme = baremePourDerivation(etat.bareme, stockee, factures)
-    const derivee = consoAnnuelleDepuisFactures(factures, etat.distributeur || 'onee',
-      bareme?.tranches, bareme?.chargesFixes)
-    if (derivee > 0) { conso = derivee; auBareme = true }
-  }
-  if (conso == null && reelle) { conso = reelle; auBareme = etat.realBillMode === 'mad' }
+  const { conso, auBareme } = consoDeEtat(etat, emises)
   if (conso != null) {
     entrees.conso_annuelle = conso
     if (auBareme || etat.distributeurChoisi) entrees.distributeur = etat.distributeur || 'onee'

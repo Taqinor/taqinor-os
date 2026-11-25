@@ -17,9 +17,12 @@ export const DELAI_APERCU_MS = 500
 const tape = (v) => (v === null || v === undefined ? '' : String(v).trim())
 
 /** Le corps de `POST conception/apercu/` pour ce que l'écran a TAPÉ, ou `null`
- *  (rien de tapé, ou marché agricole : son aperçu est celui du pompage). */
+ *  (rien de tapé, ou marché agricole : son aperçu est celui du pompage).
+ *  E7d (revue lot 4, B2) — `consommation` : celle que le devis ENREGISTRE
+ *  (`etatDevis.consommationImposeeDeEtat`, le sélecteur de l'enregistrement),
+ *  imposée au moteur (`imposes.consommation`) ; `null` ⇒ celle du lead. */
 export function corpsApercuConception({
-  leadId, modeInstallation, fHiver, fEte, realBillMode, realBillKwh, nbPanneaux,
+  leadId, modeInstallation, fHiver, fEte, nbPanneaux, consommation = null,
 }) {
   if (!modeInstallation || modeInstallation === 'agricole') return null
   const entrees = {}
@@ -28,13 +31,13 @@ export function corpsApercuConception({
     entrees.facture_ete = tape(fEte)
     entrees.ete_differente = true
   }
-  if (realBillMode === 'kwh' && tape(realBillKwh)) entrees.conso_mensuelle_kwh = tape(realBillKwh)
   const lead = leadId ? Number(leadId) : null
-  if (!lead && !Object.keys(entrees).length) return null
+  const imposes = modeInstallation === 'residentiel' && nbPanneaux > 0 ? { nb_panneaux: nbPanneaux } : {}
+  if (consommation) imposes.consommation = consommation
+  if (!lead && !Object.keys(entrees).length && !consommation) return null
+  if (lead && !Object.keys(entrees).length && !Object.keys(imposes).length) return null
   // Sans lead, le marché du devis est une valeur tapée de l'écran.
   if (!lead) entrees.type_installation = modeInstallation
-  const imposes = modeInstallation === 'residentiel' && nbPanneaux > 0 ? { nb_panneaux: nbPanneaux } : {}
-  if (lead && !Object.keys(entrees).length && !Object.keys(imposes).length) return null
   return { lead, calepinage: null, entrees, imposes }
 }
 

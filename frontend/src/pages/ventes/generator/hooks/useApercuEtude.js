@@ -27,6 +27,7 @@ import { toucheNbPanneauxPourComposition } from '../../../../features/ventes/quo
 import { useSizingMoteur } from '../../../../features/ventes/quote/hooks/useSizingMoteur'
 import { moteur, apercu } from '../../../../features/ventes/quote/valeur'
 import { villeEffectiveLead } from '../../../../features/ventes/quote/ecranDefauts.js'
+import { consommationImposeeDeEtat } from '../../../../features/ventes/quote/etatDevis.js'
 import { chiffresConception, corpsApercuConception, useConceptionEcran } from './useConceptionEcran'
 
 export function useApercuEtude(ctx) {
@@ -34,7 +35,7 @@ export function useApercuEtude(ctx) {
     lines, kwpLignes, kwpAvec, realBillMode, realBillKwh,
     realBillMad, distributeur, baremeSociete, provenanceMois, leadDuDevis, leads,
     leadId, modeInstallation, clientsConnus, clientId, confirm, editId, fHiver, fEte,
-    sizing, dispatchSizing, produits,
+    sizing, dispatchSizing, produits, monthly, realBillSaisi, distributeurChoisi, consoStockee,
   } = ctx
 
   // La capacité batterie se juge sur des lignes DIFFÉRÉES (la frappe reste instantanée).
@@ -141,8 +142,15 @@ export function useApercuEtude(ctx) {
   // AGEN11 (D-ACAL-97) — LE moteur unique : la conception rangée du lead, puis
   // l'aperçu SANS écriture de ce qui est tapé (`useConceptionEcran`). Aucun
   // calcul local de production, d'économie ni de payback ne subsiste ici.
+  // E7d (revue lot 4, B2) — la consommation de l'aperçu = celle que le devis
+  // ENREGISTRE : le même état, le même sélecteur (`etatDevis.consoDeEtat`).
+  const consommationImposee = consommationImposeeDeEtat({
+    monthly, provenanceMois, facturesSaisies, fHiver, fEte, realBillSaisi, realBillMode,
+    consoAnnuelleReelle, distributeur, distributeurChoisi, consoStockee: consoStockee?.current ?? null,
+    bareme: baremeSociete,
+  })
   const corpsConception = corpsApercuConception({
-    leadId, modeInstallation, fHiver, fEte, realBillMode, realBillKwh,
+    leadId, modeInstallation, fHiver, fEte, consommation: consommationImposee,
     nbPanneaux: comptePanneauxOption(lines, 'sans', produits),
   })
   const conceptionEcran = useConceptionEcran({ leadId, corps: corpsConception })

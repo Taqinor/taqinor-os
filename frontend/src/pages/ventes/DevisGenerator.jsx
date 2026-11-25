@@ -994,7 +994,7 @@ export default function DevisGenerator({
     lines, kwpLignes, kwpAvec, realBillMode, realBillKwh,
     realBillMad, distributeur, baremeSociete, provenanceMois, leadDuDevis, leads,
     leadId, modeInstallation, clientsConnus, clientId, confirm, editId, fHiver, fEte,
-    sizing, dispatchSizing, produits,
+    sizing, dispatchSizing, produits, monthly, realBillSaisi, distributeurChoisi, consoStockee,
   })
 
   // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──
