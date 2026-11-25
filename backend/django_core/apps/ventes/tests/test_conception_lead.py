@@ -3734,6 +3734,44 @@ class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_rela
         return self._relancer(lead, company, _declencheur(
             'lead_entrees_modifiees', facture_hiver=(Decimal('1800'), Decimal('3600')))).conception
 
+    def test_e6e_reviser_sur_la_conception_compose_la_v2_sur_la_conception_courante(self):
+        """Lane E6e, item 4 (T4-X5-011) — « Réviser le devis » de l'atelier (corps
+        ``sur_la_conception``) : la V2 est composée sur la conception COURANTE du lead (la même
+        recomposition que le suivi des brouillons, ``brouillons.appliquer_a_la_demande``), le
+        devis envoyé reste octet pour octet ; sans le drapeau, la révision clone comme avant."""
+        from apps.ventes.conception.brouillons import _comptes
+        from apps.ventes.models import Devis
+
+        company, lead, user, _intact, _retouche, envoye = self._trois_devis()
+
+        def _lignes(devis):
+            return list(devis.lignes.order_by('ordre', 'pk').values_list(
+                'designation', 'quantite', 'prix_unitaire', 'remise', 'variante'))
+        avant, comptes_v1 = _lignes(envoye), _comptes(envoye)
+        version = self._nouvelle_version(company, lead)
+        attendus = {o: v['nb_panneaux']['valeur'] for o, v in version.valeurs.items()}
+        self.assertNotEqual(comptes_v1.get('avec', comptes_v1.get('')), attendus.get('avec'))
+
+        reponse = self._api(user).post('/api/django/ventes/devis/%d/reviser/' % envoye.pk,
+                                       {'sur_la_conception': True}, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        v2 = Devis.objects.get(pk=reponse.data['id'])
+        self.assertEqual({o: _comptes(v2).get(o, _comptes(v2).get('')) for o in attendus}, attendus)
+        self.assertEqual(v2.conception_source['version'], version.version)
+        envoye.refresh_from_db()
+        self.assertEqual((_lignes(envoye), envoye.statut), (avant, 'envoye'))
+
+    def test_e6e_reviser_sans_drapeau_clone(self):
+        from apps.ventes.conception.brouillons import _comptes
+        from apps.ventes.models import Devis
+
+        company, lead, user, _intact, _retouche, envoye = self._trois_devis()
+        comptes_v1 = _comptes(envoye)
+        self._nouvelle_version(company, lead)
+        reponse = self._api(user).post('/api/django/ventes/devis/%d/reviser/' % envoye.pk, {}, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertEqual(_comptes(Devis.objects.get(pk=reponse.data['id'])), comptes_v1)
+
     def test_e6d_duplicata_garde_le_pointeur_suit_ou_est_liste(self):
         """Écart 4 de l'acceptation du 25/11 — un brouillon né de « Dupliquer » garde la version
         de conception de sa source (même contenu, même version) : intact, il SUIT la nouvelle

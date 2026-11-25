@@ -36,7 +36,7 @@ export function conflitDevis(data) {
  * @returns {Promise<object|null>} le devis V2 ; `{conflit, successeur}` sur un
  *   refus qui nomme un autre devis ; null sur tout autre échec
  */
-export async function reviserEtOuvrir({ devis, navigate, onApres, onConflit }) {
+export async function reviserEtOuvrir({ devis, navigate, onApres, onConflit, surLaConception = false }) {
   if (chantierEnCours(devis?.chantier)) {
     toast.warning(
       `Le chantier ${devis.chantier.reference} lié à ${devis.reference} est en cours — sa nomenclature est gelée.`,
@@ -44,7 +44,9 @@ export async function reviserEtOuvrir({ devis, navigate, onApres, onConflit }) {
   }
   let nouveau
   try {
-    const res = await ventesApi.reviserDevis(devis.id)
+    // T4-X5-011 — l'atelier compose la V2 sur la conception courante du lead (corps `sur_la_conception`).
+    const res = await (surLaConception ? ventesApi.reviserDevis(devis.id, { sur_la_conception: true })
+      : ventesApi.reviserDevis(devis.id))
     nouveau = res?.data
   } catch (err) {
     const data = err?.response?.data

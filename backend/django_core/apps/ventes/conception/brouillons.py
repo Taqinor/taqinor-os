@@ -351,6 +351,22 @@ def suivre_la_conception(version):
     return suivis
 
 
+def reviser_sur_la_conception(devis, user):
+    """Lane E6e (T4-X5-011) — « Réviser le devis » de l'atelier : la V2 (``revision.
+    reviser_devis``, le devis envoyé jamais touché) est composée sur la conception COURANTE
+    du lead par LA recomposition des brouillons (:func:`appliquer_a_la_demande`), sous UNE
+    transaction : une recomposition refusée n'a créé aucune V2 (l'exception remonte)."""
+    from django.db import transaction
+
+    from apps.ventes.domain.revision import reviser_devis
+
+    with transaction.atomic():
+        nouveau = reviser_devis(devis, user=user)
+        appliquer_a_la_demande(nouveau, user)
+    nouveau.refresh_from_db()
+    return nouveau
+
+
 class MiseAJourRefusee(ValueError):
     """ADEV148 — le devis n'est pas un brouillon actif (409 « Réviser le devis »)."""
 

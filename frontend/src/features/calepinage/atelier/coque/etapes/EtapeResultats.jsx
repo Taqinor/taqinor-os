@@ -58,7 +58,7 @@ function PertesAvance({ calepinageId, lectureSeule, onEnregistre, sourcesOuverte
     modifié : la révision en crée une V2). Rien n'est recalculé ici. `p50` : la simulation de la pose, seulement quand
     elle est complète (un plafond « au plus » n'est pas un chiffre à comparer). */
 /** « Réviser le devis » (devis reçu : jamais touché, la révision en fait une V2 — même geste que `BoutonDevis`). */
-function useReviser(devis) {
+function useReviser(devis, { surLaConception = false } = {}) {
   const navigate = useNavigate()
   const [enCours, setEnCours] = useState(false)
   const reviser = async () => {
@@ -68,6 +68,7 @@ function useReviser(devis) {
     try {
       await reviserEtOuvrir({
         devis: { id: devis.devis, reference: devis.reference },
+        surLaConception,
         onApres: (nouveau) => { v2 = nouveau },
         navigate: () => { if (v2?.id != null) navigate(`/ventes/devis/${v2.id}/design`) },
       })
@@ -168,7 +169,7 @@ function ProductionDeLaConception({ bloc, taille = null, pose = null, simulee = 
   const different = duDevis != null && (kwh == null || Math.round(duDevis) !== Math.round(kwh))
   const reviserPossible = ecarts.length === 0 || ecarts.some((e) => e?.reviser_possible)
   const option = different && envoye?.option && envoye.option !== bloc.option ? ` (${LIBELLE_OPTION[envoye.option] ?? envoye.option})` : ''
-  const [enCours, reviser] = useReviser(envoye)
+  const [enCours, reviser] = useReviser(envoye, { surLaConception: true })  // T4-X5-011 : V2 sur la conception
   const lien = envoye ? <Link to={`/ventes/devis?devis=${envoye.devis}`}>{envoye.reference || 'voir le devis'}</Link> : null
   return (
     <section className="cal-res-carte flex flex-col gap-1" data-zone="production-conception"
