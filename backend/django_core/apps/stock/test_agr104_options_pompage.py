@@ -321,3 +321,101 @@ class PrixFigesDacal127Tests(SimpleTestCase):
         for sku, ttc in seed_mod.PRIX_TTC_PVG3.items():
             self.assertEqual(figes[sku], seed_mod.ht(ttc), sku)
         self.assertEqual(m0192.PRIX_HT, {'PARA-AC-T2': Decimal('833.33')})
+
+    def test_dacal129_fiches_figees_egales_au_seeder(self):
+        m0193 = importlib.import_module(
+            'apps.stock.migrations.0193_dacal129_fiches_variateurs_veichi')
+        self.assertEqual(m0193.FICHES, seed_mod.FICHES_VARIATEURS_VEICHI)
+        variateurs = {sku for _n, sku, *_r in seed_mod.VEICHI} - {'VEI-SI22-AFF'}
+        self.assertEqual(set(m0193.FICHES), variateurs)
+        self.assertEqual(len(m0193.FICHES), 15)
+        for sku, valeurs in m0193.FICHES.items():
+            self.assertEqual(set(valeurs), {'ond_v_max_abs', 'var_voc_reco_min_v',
+                                            'var_voc_reco_max_v'}, sku)
+            attendu = ('780.0' if sku.endswith('-380') else
+                       '400.0' if sku.startswith('VEI-SI22') else '450.0')
+            self.assertEqual(valeurs['ond_v_max_abs'], Decimal(attendu), sku)
+
+
+class FichesVariateursDacal129Tests(TestCase):
+    """D-ACAL-129 — fiche « variateur de pompage » des variateurs VEICHI :
+    tension DC max et Voc recommandée publiées ; MPPT et courant vides."""
+
+    def setUp(self):
+        from apps.stock.models import FicheTechnique
+        self.Fiche = FicheTechnique
+        self.co = Company.objects.get_or_create(
+            slug='dacal129-co', defaults={'nom': 'DACAL129 Co'})[0]
+
+    def _fiche(self, sku):
+        return self.Fiche.objects.filter(
+            produit__company=self.co, produit__sku=sku).first()
+
+    def test_seeder_cree_les_fiches_publiees(self):
+        _seed(self.co)
+        _seed(self.co)  # idempotent
+        for sku, valeurs in seed_mod.FICHES_VARIATEURS_VEICHI.items():
+            fiche = self._fiche(sku)
+            self.assertEqual(fiche.type_fiche, 'variateur_pompage', sku)
+            for champ, valeur in valeurs.items():
+                self.assertEqual(getattr(fiche, champ), valeur, (sku, champ))
+            self.assertIsNone(fiche.ond_mppt_v_min, sku)
+            self.assertIsNone(fiche.ond_mppt_v_max, sku)
+            self.assertIsNone(fiche.ond_i_max_mppt_a, sku)
+        self.assertIsNone(self._fiche('VEI-SI22-AFF'))
+        self.assertEqual(self._fiche('VEI-SI23-11-380').ond_v_max_abs,
+                         Decimal('780.0'))
+
+    def test_seeder_ne_complete_jamais_une_fiche_existante(self):
+        p = Produit.objects.create(company=self.co, nom='Variateur saisi',
+                                   sku='VEI-SI23-4-380', prix_vente=100)
+        self.Fiche.objects.create(company=self.co, produit=p,
+                                  type_fiche='onduleur')
+        _seed(self.co)
+        fiche = self._fiche('VEI-SI23-4-380')
+        self.assertEqual(fiche.type_fiche, 'onduleur')
+        self.assertIsNone(fiche.ond_v_max_abs)
+        self.assertIsNone(fiche.var_voc_reco_max_v)
+
+    def test_migration_0193_aller_retour(self):
+        m0193 = importlib.import_module(
+            'apps.stock.migrations.0193_dacal129_fiches_variateurs_veichi')
+        _seed(self.co)
+        self.Fiche.objects.filter(produit__sku__in=list(m0193.FICHES)).delete()
+        # Une fiche saisie à la main (autre type) et une fiche partielle.
+        saisie = self.Fiche.objects.create(
+            company=self.co, type_fiche='onduleur',
+            produit=Produit.objects.get(company=self.co, sku='VEI-SI23-4-380'))
+        partielle = self.Fiche.objects.create(
+            company=self.co, type_fiche='variateur_pompage',
+            ond_v_max_abs=Decimal('800.0'),
+            produit=Produit.objects.get(company=self.co, sku='VEI-SI23-7.5-380'))
+        Produit.objects.filter(company=self.co, sku='VEI-SI22-2.2-220').update(
+            sku='vei-si22-2.2-220')  # casse de la prod
+        nb_produits = Produit.objects.count()
+        m0193.creer_fiches(django_apps, None)
+        m0193.creer_fiches(django_apps, None)  # idempotent
+        self.assertEqual(Produit.objects.count(), nb_produits)
+        self.assertEqual(self.Fiche.objects.filter(
+            produit__company=self.co, produit__sku__in=list(m0193.FICHES)).count(),
+            14)  # 12 créées + les 2 existantes (la 13e est au SKU en minuscules)
+        si22 = self._fiche('vei-si22-2.2-220')
+        self.assertEqual((si22.company_id, si22.ond_v_max_abs, si22.var_voc_reco_min_v),
+                         (self.co.id, Decimal('400.0'), Decimal('360.0')))
+        saisie.refresh_from_db()
+        partielle.refresh_from_db()
+        self.assertEqual(saisie.type_fiche, 'onduleur')
+        self.assertIsNone(saisie.ond_v_max_abs)
+        self.assertEqual(partielle.ond_v_max_abs, Decimal('800.0'))
+        self.assertIsNone(partielle.var_voc_reco_min_v)  # jamais complétée
+        # Une fiche de la migration retouchée à la main survit au retour.
+        retouchee = self._fiche('VEI-SI23-11-380')
+        retouchee.var_v_sortie_v = Decimal('380.0')
+        retouchee.save()
+        m0193.supprimer_fiches(django_apps, None)
+        restantes = set(self.Fiche.objects.filter(
+            produit__company=self.co, produit__sku__in=list(m0193.FICHES)
+        ).values_list('produit__sku', flat=True))
+        self.assertEqual(restantes, {'VEI-SI23-4-380', 'VEI-SI23-7.5-380',
+                                     'VEI-SI23-11-380'})
+        self.assertIsNone(self._fiche('vei-si22-2.2-220'))

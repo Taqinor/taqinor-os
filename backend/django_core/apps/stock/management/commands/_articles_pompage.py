@@ -7,6 +7,8 @@ auto-chiffré (même garde que les pompes OSP). Additif, comme tout le seeder : 
 présent est sauté, jamais réécrit (prix, nom, rôle).
 """
 
+from decimal import Decimal
+
 # ── AGR104 — articles des OPTIONS du kit pompage (D-AGR-8), PRIX VIDES ───────
 # Articles GÉNÉRIQUES, sans marque ni caractéristique inventée : le fondateur
 # les renseigne (prix, fournisseur) ; tant que ``prix_vente`` vaut 0 ils sont
@@ -60,3 +62,53 @@ PRIX_TTC_PVG3 = {
     # marocaine fiable lue) ; base existante : migration stock 0192.
     'PARA-AC-T2': 1000,
 }
+
+# D-ACAL-129 (fondateur 25/11/2026, « Yes, 780 V for 380 V models ») — fiches
+# techniques « variateur de pompage » des variateurs VEICHI, valeurs PUBLIÉES
+# par le constructeur seulement :
+#   · SI22 220 V — manuel « si22-solar-pump-inverter-manual-simple-v1-0.pdf »,
+#     §2, tableau p. 2 : entrée DC max 400 V, Voc recommandée 360-400 V ;
+#   · SI23 220 V (D3) — manuel « si23-solar-pump-inverter-manual-complete.pdf »,
+#     §1.4 « Technical Specification » p. 4 : entrée DC max 450 V, Voc
+#     recommandée 360-430 V ;
+#   · SI23 380 V (D5, T3) — même tableau : 800 V imprimé, le manuel fixe le
+#     déclenchement logiciel de surtension à 780 VDC → 780 V retenu par le
+#     fondateur pour TOUS les 380 V ; Voc recommandée 620-750 V.
+# https://www.veichi.com/d/file/download/solar-water-pump-inverter/si22-solar-pump-inverter-manual-simple-v1-0.pdf
+# https://www.veichi.com/d/file/download/solar-water-pump-inverter/si23-solar-pump-inverter-manual-complete.pdf
+# Le constructeur ne publie NI fenêtre MPPT min/max NI courant d'entrée DC :
+# ``ond_mppt_v_min``/``ond_mppt_v_max``/``ond_i_max_mppt_a`` restent VIDES.
+# Une fiche est CRÉÉE seulement pour un variateur qui n'en a aucune (jamais
+# une fiche existante complétée ni réécrite) ; base existante : migration 0193.
+_FICHE_SI22_220 = {'ond_v_max_abs': Decimal('400.0'),
+                   'var_voc_reco_min_v': Decimal('360.0'),
+                   'var_voc_reco_max_v': Decimal('400.0')}
+_FICHE_SI23_220 = {'ond_v_max_abs': Decimal('450.0'),
+                   'var_voc_reco_min_v': Decimal('360.0'),
+                   'var_voc_reco_max_v': Decimal('430.0')}
+_FICHE_SI23_380 = {'ond_v_max_abs': Decimal('780.0'),
+                   'var_voc_reco_min_v': Decimal('620.0'),
+                   'var_voc_reco_max_v': Decimal('750.0')}
+FICHES_VARIATEURS_VEICHI = {
+    'VEI-SI22-2.2-220': _FICHE_SI22_220,
+    'VEI-SI23-2.2-220': _FICHE_SI23_220,
+    **{'VEI-SI23-%s-380' % kw: _FICHE_SI23_380 for kw in (
+        '2.2', '4', '5.5', '7.5', '11', '15', '18', '22', '30', '37', '45',
+        '55', '75')},
+}
+
+
+def semer_fiches_variateurs(company, Produit, FicheTechnique):
+    """D-ACAL-129 — crée la fiche ``variateur_pompage`` des variateurs VEICHI
+    de la société qui n'ont AUCUNE fiche ; rend le nombre de fiches créées."""
+    crees = 0
+    for sku, valeurs in FICHES_VARIATEURS_VEICHI.items():
+        produit = Produit.objects.filter(company=company, sku=sku).first()
+        if produit is None or FicheTechnique.objects.filter(
+                produit=produit).exists():
+            continue
+        FicheTechnique.objects.create(
+            company=company, produit=produit,
+            type_fiche='variateur_pompage', **valeurs)
+        crees += 1
+    return crees
