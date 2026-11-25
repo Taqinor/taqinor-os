@@ -1083,8 +1083,21 @@ def lead_ids_des_visites_assignees(user):
     company_id = getattr(user, 'company_id', None)
     if company_id is None or not getattr(user, 'pk', None):
         return VisiteTerrain.objects.none().values('lead_id')
+    return lead_ids_des_visites_assignees_a(company_id, [user.pk])
+
+
+def lead_ids_des_visites_assignees_a(company_id, user_ids):
+    """D-ACAL-126 — les identifiants des leads dont une visite de ``company_id``
+    est ASSIGNÉE à l'un des comptes ``user_ids`` (l'assigné de la VISITE, jamais
+    le propriétaire du lead), en sous-requête. Société absente ou liste vide :
+    aucune ligne."""
+    from .models import VisiteTerrain
+
+    ids = [pk for pk in (user_ids or ()) if pk]
+    if company_id is None or not ids:
+        return VisiteTerrain.objects.none().values('lead_id')
     return VisiteTerrain.objects.filter(
-        company_id=company_id, commercial_id=user.pk).values('lead_id')
+        company_id=company_id, commercial_id__in=ids).values('lead_id')
 
 
 def ligne_visite_terrain(visite):

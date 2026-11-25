@@ -582,6 +582,65 @@ class TechnicienReleveTest(BaseReleve):
         User.objects.filter(pk=self.commercial.pk).update(supervisor=tech_resp)
         self._sans_lecture_hors_visite(tech_resp)
 
+    def _responsable_et_son_technicien(self):
+        """D-ACAL-126 — R (Technicien responsable) et T2 (Technicien) sous R."""
+        from apps.roles.permissions_registre import (
+            TECHNICIEN_PERMISSIONS, TECHNICIEN_RESP_PERMISSIONS,
+        )
+
+        resp = self._pairs_sous_un_directeur(TECHNICIEN_RESP_PERMISSIONS)
+        role = Role.objects.create(company=self.company, nom='r-tech-equipe',
+                                   permissions=list(TECHNICIEN_PERMISSIONS))
+        tech = User.objects.create_user(username='m4-tech-equipe', password='x',
+                                        company=self.company, role=role,
+                                        supervisor=resp)
+        return resp, tech
+
+    def test_responsable_lit_les_visites_de_son_equipe(self):
+        """D-ACAL-126 — une visite assignée à un technicien de SON sous-arbre :
+        R lit le calepinage, y fait le relevé, et ``du-lead`` le sert."""
+        from apps.visites.models import VisiteTerrain
+
+        resp, tech = self._responsable_et_son_technicien()
+        User.objects.filter(pk=self.commercial.pk).update(supervisor=resp)
+        VisiteTerrain.objects.create(company=self.company, lead=self.lead,
+                                     commercial=tech)
+        api = self._api(resp)
+        self.assertEqual(api.get(self.base).status_code, 200)
+        cree = api.post(f'{self.base}releve/',
+                        {'releve_le': HIER.isoformat(), 'chaines': []},
+                        format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+        du_lead, _contenance = self._routes_du_lead(api, self.lead.pk)
+        self.assertEqual(du_lead.status_code, 200, du_lead.data)
+
+    def test_responsable_ne_lit_pas_la_visite_d_un_technicien_hors_equipe(self):
+        """La visite de ``setUp`` est assignée à ``self.tech``, HORS du
+        sous-arbre de R : introuvable pour R."""
+        resp, _tech = self._responsable_et_son_technicien()
+        api = self._api(resp)
+        self.assertEqual(api.get(self.base).status_code, 404)
+        lignes = api.get('/api/django/calepinage/calepinages/').data
+        lignes = lignes.get('results', lignes)
+        self.assertNotIn(self.calepinage.pk, [ligne['id'] for ligne in lignes])
+
+    def test_technicien_simple_ne_lit_pas_la_visite_de_son_pair(self):
+        """D-ACAL-126 ne vaut que pour le sous-arbre : un Technicien ne lit pas
+        la visite assignée à un autre technicien de la même équipe."""
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.visites.models import VisiteTerrain
+
+        resp, tech = self._responsable_et_son_technicien()
+        role = Role.objects.create(company=self.company, nom='r-tech-pair-2',
+                                   permissions=list(TECHNICIEN_PERMISSIONS))
+        pair = User.objects.create_user(username='m4-tech-pair-2', password='x',
+                                        company=self.company, role=role,
+                                        supervisor=resp)
+        VisiteTerrain.objects.create(company=self.company, lead=self.lead,
+                                     commercial=tech)
+        self.assertEqual(self._api(pair).get(self.base).status_code, 404)
+        self.assertEqual(self._api(tech).get(self.base).status_code, 200)
+
     def test_technicien_pair_avec_sa_visite_lit_et_releve(self):
         from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
         from apps.visites.models import VisiteTerrain
