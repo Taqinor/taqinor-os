@@ -1,0 +1,201 @@
+{
+ "sha": "7c53407f433ec152cfa03ffd4c0e975ff8bb6175",
+ "date": "2026-11-25",
+ "groupe": "ACAL",
+ "verdict": "PASS",
+ "couvre": [
+  "ALEA68",
+  "ALEA69",
+  "ALEA70",
+  "ADEV142",
+  "ADEV143",
+  "ADEV144",
+  "ADEV147",
+  "ADEV145",
+  "ADEV146",
+  "ADEV148",
+  "ACAL2027"
+ ],
+ "couvre_avec_ecart": [],
+ "etapes": [
+  {
+   "id": "A27.1",
+   "taches": [
+    "ALEA68"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/acceptation/ACAL/traces/2026-11-25/acal2027-etapes-3-4.md",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "A27.2",
+   "taches": [
+    "ALEA69"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/acceptation/ACAL/traces/2026-11-25/acal2027-etapes-3-4.md",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "A27.3",
+   "taches": [
+    "ALEA70"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/acceptation/ACAL/traces/2026-11-25/acal2027-etapes-3-4.md",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "A27.4",
+   "taches": [
+    "ADEV142",
+    "ADEV143"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/acceptation/ACAL/traces/2026-11-25/acal2027-etapes-3-4.md",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "A27.5",
+   "taches": [
+    "ADEV144",
+    "ADEV147"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/acceptation/ACAL/traces/2026-11-25/acal2027-etapes-3-4.md",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "A27.6",
+   "taches": [
+    "ADEV145",
+    "ADEV146"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/acceptation/ACAL/traces/2026-11-25/acal2027-etapes-3-4.md",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "A27.7",
+   "taches": [
+    "ADEV148"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/acceptation/ACAL/traces/2026-11-25/acal2027-etapes-3-4.md",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "A27.8",
+   "taches": [
+    "ACAL2027"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "corps": "PASS",
+   "trace": "docs/audits/acceptation/ACAL/traces/2026-11-25/acal2027-etapes-3-4.md",
+   "oracles": {
+    "1": "NA",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  }
+ ]
+}
