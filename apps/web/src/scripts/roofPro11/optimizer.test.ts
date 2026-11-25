@@ -1241,7 +1241,7 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
     const sansKwc = erp(servi({ kwc: null }));
     try {
       expect(egal.t('rp9-reco-prod')).toBe(`${fmt(12345)} kWh/an`);
-      expect(autreKwc.t('rp9-reco-prod')).toBe(estimation);
+      expect(autreKwc.t('rp9-reco-prod')).toBe('production calculée pour la conception du lead : 6 kWc — votre pose en compte 5,5 kWc'); // M5 — la vraie raison, avec les deux tailles
       expect(nonServi.t('rp9-reco-prod')).toBe(estimation);
       expect(sansKwc.t('rp9-reco-prod')).toBe(estimation);
     } finally { egal.fin(); autreKwc.fin(); nonServi.fin(); sansKwc.fin(); }
@@ -1270,7 +1270,7 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
     try {
       expect(e.t('rp9-reco-savings')).toBe('économie au prochain enregistrement');
       expect(s.t('rp9-reco-savings')).toBe(`${fmtMad(7420)}/an`);
-      expect(autreKwc.t('rp9-reco-savings')).toBe('économie au prochain enregistrement');
+      expect(autreKwc.t('rp9-reco-savings')).toBe('économie calculée pour la conception du lead : 6 kWc — votre pose en compte 5,5 kWc'); // M5
       expect(autreKwc.t('rp9-reco-cover')).toBe('—'); // la part production ÷ consommation n'est pas calculée par le navigateur
       expect(s.t('rp9-reco-cover')).toBe('—'); // servi sans part (clé `couverture_pct` absente) : rien d'inventé
       expect(e.t('rp9-reco-kwc')).toBe('5,50 kWc'); // pendant le dessin : panneaux et kWc posés, seuls

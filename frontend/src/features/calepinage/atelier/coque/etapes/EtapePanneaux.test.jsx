@@ -554,6 +554,16 @@ describe('étape Panneaux — sur la carte', () => {
     expect(puce).toHaveTextContent('6,96 kWc') // seuls les panneaux et le kWc posés
   })
 
+  it('M5 — pose d’une autre taille que la conception : la puce dit pour quelle taille la production est calculée, pas « au prochain enregistrement »', () => {
+    monterConstructeur({ prod: 'production calculée pour la conception du lead : 21,6 kWc — votre pose en compte 6,96 kWc', cover: '—' })
+    rendre()
+    const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+    expect(puce).toHaveTextContent('Production')
+    expect(puce).toHaveTextContent('calculée pour la conception du lead : 21,6 kWc — votre pose en compte 6,96 kWc')
+    expect(puce).not.toHaveTextContent('prochain enregistrement')
+    expect(puce).not.toHaveTextContent('Production · conception') // aucune production en kWh n'est servie
+  })
+
   it('ACAL2022 (T4-X2-009) — champ au sol : la bande dit qu’elle compte CE pan et donne le total du site', () => {
     monterConstructeur({ panneaux: '5 × 710 W', kwc: '3,55 kWc' })
     // le document : le toit (5 × 710 W) + un champ au sol de 18 modules — comme la barre projet « 23 panneaux · 16,33 kWc »
