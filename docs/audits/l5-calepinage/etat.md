@@ -1916,7 +1916,7 @@ lot 4 ; relecteurs X3, X6, X7, X8 ; rapport.
   devis qui ne vend que « avec batterie » ne montre plus de carte « Recommandé — sans batterie » (elle affichait
   un prix sans onduleur) ; aucun montant de PDF ne change.
 
-### Point du 25/11, 14 h 45 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 14 h 45 UTC
 
 **Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** Reda, 14 h 15 : « where are you ? » — répondu.
 - **Neuvième passage (`fe1b7982f6`) : rouge sur 2 causes.** (1) `raison_du_verdict` sans appelant hors de son
@@ -1947,3 +1947,44 @@ lot 4 ; relecteurs X3, X6, X7, X8 ; rapport.
   4,26 kWc · 6 926 kWh/an · simulation · — » et UNE phrase — VU en texte. À voir encore : libellés de cote de
   l'obstacle hors toit qui se chevauchent sur la carte (S4), tableau des tailles du devis après la suite d'E7f,
   fiche du lead (retour tracé), calepinage sans lead après G2.
+
+### Point du 25/11, 16 h 10 UTC (le plus récent — REPRENDRE ICI)
+
+**LOT 4 FUSIONNÉ** : PR Taqinor/taqinor-os#1556, `main` = `d619459423` (25/11, 15 h 56 UTC), onzième passage de CI
+vert (37 contrôles), file de fusion verte. Relecture finale indépendante avant la mise en file : « fusionner »,
+aucun bloquant (`controles/revue-lot4-finale-2026-11-25.md`). **NON DÉPLOYÉ : c'est à Reda
+(`scripts/deploy-prod.ps1`). Les lots 1 à 4 attendent tous son déploiement.** Passage de CI sur `main` après
+fusion : en file à 16 h 05, à relire.
+
+**LOT 5 — branche locale `dev-lot5`** (= `main` + ce qui suit ; RIEN de poussé, pas encore de PR) :
+- **Plié** : I5 (`lane/reglages-calepinage`, 14 constats de X3 sur 16 : sources des paramètres, altitude, préréglage
+  fantôme, recherche et tri de la liste, menu Responsable, raison « à refaire », clés brutes, bibliothèque, liens
+  profonds, garde de saisie) ; I3 (`lane/t3-pompage-pdf` : « Devis final » refusé sans la visite exigée — 409 —,
+  production par option au PDF commercial AU NIVEAU 15, kWc à deux décimales pour le bandeau) ; golden du crm
+  re-haché pour deux symboles (`assignable_users`, `__all__` de selectors).
+- **Paquet docker joué sur `dev-lot5`** (548 tests) : vert, sauf `test_empreintes_ast` du crm (corrigé depuis, à
+  rejouer) et `test_actions_devis_ont_appelant` (front non monté, vert en CI).
+- **EN VOL** : I1 (`lane/editeur-ci`, agent a3ec71c931984fded : écran du devis C&I, T4-X6-007 à 012 ; 2 commits vus) ;
+  I2 (`lane/ci-retour-cable`, agent abf185aa2759d2b3f : retour de la fiche du lead en C&I, câble de l'option « avec »,
+  bouton BOQ qui double des lignes) ; H2 (`lane/liste-total`, agent acd5913bf9b7ab14f : corrections demandées par
+  la relecture indépendante — empreinte du CODE du moteur, colonnes volatiles hors de l'empreinte, balayage léger) ;
+  relecteurs X7 (agent a8c0bce9ca0c7bc1e : WebKit bureau puis tablette) et X8 (agent a1e9f64db652e1c8e : téléphone,
+  thème sombre, Technicien) sur la pile `1cfa550e99` (rebâtie à 15 h 30 : tout le lot 4).
+- **À ATTRIBUER dès qu'un créneau se libère (mémoire : 5 agents au plus)** :
+  - majeur de la relecture finale : la file « à traiter » fait disparaître une ligne dont la température de site
+    n'est pas en cache (auteur d'I4, agent a375819ef15513c07) ;
+  - mineurs 1 et 2 : `GET apercu-devis` peut créer une ligne de réglages ; l'aperçu peut différer de la
+    génération (auteur d'e9, agent a1144b5df28380f54) ;
+  - mineur 5 (`reunirOptions`) : à l'auteur d'I1 ; mineur 6 (calepinage d'un collègue ouvert après délai dépassé) ;
+  - restes de X6 : T4-X6-005 (menu de la liste hors écran), 014 (courbe de charge en marché Commercial), 015 / 016
+    (taille souhaitée, deux kWc sur l'écran résidentiel), 017 (panneau « Premium » d'un devis sans onduleur), 018
+    (option imposée par le registre non montrée) ; reste d'I5 : T4-X3-017 (barre du haut en WebKit tablette).
+- **DÉCISIONS POUR REDA nées aujourd'hui** (rapport, décisions 34 à 38, à compléter) : phrases du PDF industriel
+  corrigées seulement au niveau 15 (les rendre actives au niveau 14 ?) ; source des allées et retraits par défaut
+  (un champ « Source » partagé, ou une source par valeur) ; un Commercial peut réécrire tous les réglages société
+  du calepinage mais pas appliquer le profil de départ (laisser, ou aligner les deux droits) ; clause « horaires
+  confirmés à la visite » sur un devis préliminaire (phrase du fondateur requise).
+- **Leçon de méthode du jour (à verser au retour d'expérience)** : trois passages de CI rouges d'affilée sur des
+  listes figées que les lanes ne voient pas — depuis le huitième passage, « paquet des listes figées » en docker
+  (`scratchpad/pack_cliquets.txt`), goldens du front (`*olden*.test.jsx`), gardes d'hôte APRÈS le dernier commit,
+  `check_except_larges`, `check_contrats_calepinage_deux_moities`, `lint-imports` avant chaque push.
