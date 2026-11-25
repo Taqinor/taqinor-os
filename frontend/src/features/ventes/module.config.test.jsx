@@ -81,3 +81,36 @@ describe('ventes — client API sans fonction de facturation morte (VNT94)', () 
     expect(typeof ventesApi.apercuFacturerVente).toBe('function')
   })
 })
+
+// T4-X8-014 — un rôle FIN sans aucun droit devis (le Technicien) n'ouvre plus le
+// générateur ni les écrans Ventes : ni au menu, ni par l'adresse (la garde de
+// route renvoie vers « Accès refusé »). Même règle que le serveur
+// (`LectureDuModule`) : un compte légacy garde son palier.
+describe('ventes — droits des écrans (T4-X8-014)', () => {
+  const TECHNICIEN = ['installation_voir', 'sav_voir', 'stock_voir', 'calepinage_voir', 'visites_voir']
+  const FERMES = ['/ventes/cockpit', '/ventes/devis', '/ventes/devis/nouveau', '/ventes/factures', '/ventes/listes-prix']
+  const OUVERTS = ['/ventes/dossiers-reglementaires', '/ventes/remises-encaissement']
+
+  it('le Technicien : routes et menu fermés, sauf dossiers réglementaires et remises', async () => {
+    const { default: config } = await import('./module.config.jsx')
+    const { estAutoriseEntree } = await import('../../router/moduleGating')
+    const route = (p) => config.routes.find((r) => r.path === p)
+    for (const p of FERMES) {
+      expect(route(p).roles, p).toBeTruthy() // garde de route : roleLoader → /403
+      expect(estAutoriseEntree(route(p), 'normal', TECHNICIEN), p).toBe(false)
+    }
+    for (const p of OUVERTS) expect(estAutoriseEntree({ roles: ['normal'], ...route(p) }, 'normal', TECHNICIEN), p).toBe(true)
+    const visibles = config.nav.items.filter((i) => estAutoriseEntree(i, 'normal', TECHNICIEN)).map((i) => i.to)
+    expect(visibles).toEqual(OUVERTS)
+  })
+
+  it('lecteur des devis sans création : la liste oui, le générateur non ; un légacy garde son palier', async () => {
+    const { default: config } = await import('./module.config.jsx')
+    const { estAutoriseEntree } = await import('../../router/moduleGating')
+    const route = (p) => config.routes.find((r) => r.path === p)
+    expect(estAutoriseEntree(route('/ventes/devis'), 'normal', ['ventes_voir'])).toBe(true)
+    expect(estAutoriseEntree(route('/ventes/devis/nouveau'), 'normal', ['ventes_voir'])).toBe(false)
+    expect(estAutoriseEntree(route('/ventes/devis/nouveau'), 'normal', ['ventes_voir', 'ventes_creer'])).toBe(true)
+    for (const p of FERMES) expect(estAutoriseEntree(route(p), 'normal', []), p).toBe(true)
+  })
+})
