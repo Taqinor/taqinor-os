@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5324, operations: 8178, components: 4101}
+counts: {paths: 5324, operations: 8178, components: 4107}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -10952,6 +10952,7 @@ components:
 - DevisLayoutResponse
 - DevisLectureClient
 - DevisLigneAssistant
+- DevisLigneDeListe
 - DevisLignesAssistantResponse
 - DevisListe
 - DevisListeAssistantLigne
@@ -11000,6 +11001,11 @@ components:
 - DevisStatutEnum
 - DevisSuperiorContactStatus
 - DevisSyncLayoutResponse
+- DevisSyntheseARelancer
+- DevisSyntheseBatterie
+- DevisSyntheseParStatut
+- DevisSyntheseResponse
+- DevisSyntheseStatut
 - DevisVarianteConfigRequestRequest
 - DevisVarianteConfigResponse
 - DevisWhatsappPreviewResponse
@@ -11966,7 +11972,7 @@ components:
 - PaginatedDepartementList
 - PaginatedDepotConsignationList
 - PaginatedDepotPublicList
-- PaginatedDevisListeList
+- PaginatedDevisLigneDeListeList
 - PaginatedDocumentClientPortailList
 - PaginatedDocumentConformiteFournisseurList
 - PaginatedDocumentFournisseurList
