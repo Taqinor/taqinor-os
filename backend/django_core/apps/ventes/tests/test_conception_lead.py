@@ -3067,7 +3067,12 @@ class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_rela
         attendu = {option: valeurs['nb_panneaux']['valeur'] for option, valeurs in v2.valeurs.items()}
         self.assertEqual({option: panneaux.get(option, panneaux.get('')) for option in attendu}, attendu)
         ligne = DevisActivity.objects.filter(devis=relu, body__startswith='Mis à jour : panneaux ').get()
-        self.assertTrue(ligne.body.endswith(' (Facture hiver modifié(s))'), ligne.body)
+        self.assertTrue(ligne.body.endswith(' (champ modifié : Facture hiver)'), ligne.body)  # rejeu E5 (c)
+        from types import SimpleNamespace
+
+        from apps.ventes.conception.brouillons import _ce_qui_a_change
+        deux = SimpleNamespace(lead=lead, declencheur={'champs': [{'champ': 'facture_hiver'}, {'champ': 'ville'}]})
+        self.assertEqual(_ce_qui_a_change(deux), 'champs modifiés : Facture hiver, Ville')
         for pk, photo in photos.items():
             self.assertEqual(_photo_devis(pk), photo)
         # Une seconde relance sans changement ne le touche pas.
