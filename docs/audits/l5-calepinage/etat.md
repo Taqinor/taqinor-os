@@ -2077,7 +2077,7 @@ nom commençant par `_` (posé sur la doublure, jamais sur le devis) ; tout autr
 `T4/couverture.md` et la liste NON COUVERT (407 lignes jouées sur 449 avant X7 et X8) ; `scratchpad/pr-lot5.md`
 (texte de la PR du lot 5, à compléter) ; `scratchpad/rebatir_pile.sh` (défaut `dev-lot5`).
 
-**Ajout de 17 h 40 UTC** — quatre réponses de plus de Reda (questions interactives), au registre et au rapport
+**Ajout de 17 h 35 UTC** — quatre réponses de plus de Reda (questions interactives), au registre et au rapport
 (décisions 26 et 28 répondues) : D-ACAL-107 toit supposé « By roof type » (affleurant pour une maison en pente, sur
 châssis pour un toit plat ou un site C&I, supposition dite) ; D-ACAL-108 bascule sans toit « Yes, with level 15 »
 (ADEV155 DÉBLOQUÉE : construite maintenant, ouverte au niveau 15 seulement, `REGLES_COURANTES` inchangé) ; D-ACAL-109
@@ -2089,7 +2089,7 @@ et liste `--ecarts-sans-toit` avec la pose supposée). APRÈS son pli : l'orches
 Neuf agents en vol : J1, I1 suite, I4 suite 2, K1, M1, M2, M4, N1, relecteur X7. En attente de créneau : M3, K2, E9b, B5.
 Le goulot est le créneau docker unique (le paquet de l'orchestrateur le tient depuis 16 h 48 : phase des rendus PDF).
 
-**Ajout de 18 h 05 UTC** — quatre réponses de plus (D-ACAL-111 à 114, PDF) : ligne sous la « facture actuelle » du PDF
+**Ajout de 17 h 55 UTC** — quatre réponses de plus (D-ACAL-111 à 114, PDF) : ligne sous la « facture actuelle » du PDF
 résidentiel (phrase approuvée au registre) ; PROTECTIONS ET LEUR CÂBLE DANS LE KIT MINIMUM du pompage (choix du
 fondateur, pas ma recommandation : modifie la décision du kit du 02/10, le prix monte) ; devis final de pompage sans
 « à vérifier à la visite » ; option unique sans « OPTION 2 ». Lane **P1** = l'auteur de K1 (agent ab75a7c7a60c1d28c,
