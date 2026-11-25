@@ -1289,6 +1289,22 @@ class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_u
         self.assertEqual((resultat.etat, resultat.refus['code']), ('refus', 'refus_moteur'))
         self.assertTrue(resultat.refus['message'])
 
+    def test_e6d_refus_ci_nomme_l_heure_de_fin_quand_le_debut_est_saisi(self):
+        """Écart 5 de l'acceptation du 25/11 — lead commercial sans activité, jours saisis :
+        sans aucune heure, le refus nomme ``heure_debut`` ; heure de début saisie et fin
+        absente, il nomme ``heure_fin`` (mutant « toujours heure_debut » : rouge)."""
+        from apps.ventes.conception.decisions import MESSAGE_HEURE_FIN
+
+        commun = dict(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale=None, jours_ouverture=[1, 2, 3, 4, 5])
+        company, sans_heure = self._ci(**commun)
+        refus = self._calculer(company, sans_heure).refus
+        self.assertEqual((refus['code'], refus['champ']), ('refus_moteur', 'heure_debut'))
+        type(sans_heure).objects.filter(pk=sans_heure.pk).update(heure_debut=8)
+        sans_heure.refresh_from_db()
+        refus = self._calculer(company, sans_heure).refus
+        self.assertEqual((refus['code'], refus['champ'], refus['message']), ('refus_moteur', 'heure_fin',
+                                                                             MESSAGE_HEURE_FIN))
+
     def test_acal2020_forme_horaire_24_du_moteur_residentiel(self):
         """Reste d'ACAL2020 — la forme 24 h de la consommation que le moteur horaire a utilisée
         est SERVIE (24 parts de somme 1, source de ``forme_horaire``), la même pour chaque option,
@@ -3598,6 +3614,38 @@ class BrouillonsSuiventLaConceptionTests(_emprunt(RelanceConceptionTests, '_rela
         lead.refresh_from_db()
         return self._relancer(lead, company, _declencheur(
             'lead_entrees_modifiees', facture_hiver=(Decimal('1800'), Decimal('3600')))).conception
+
+    def test_e6d_duplicata_garde_le_pointeur_suit_ou_est_liste(self):
+        """Écart 4 de l'acceptation du 25/11 — un brouillon né de « Dupliquer » garde la version
+        de conception de sa source (même contenu, même version) : intact, il SUIT la nouvelle
+        version ; retouché, il est listé « à mettre à jour ». Une source sans conception donne un
+        duplicata sans pointeur (mutant « pointeur jamais copié » : rouge)."""
+        from apps.ventes.conception.brouillons import brouillons_a_mettre_a_jour, suivre_la_conception
+        from apps.ventes.domain.creation_clone import dupliquer_devis
+        from apps.ventes.models import Devis
+
+        from django.core.cache import cache
+
+        company, lead, user, intact, retouche, envoye = self._trois_devis()
+        cache.clear()
+        self.suivi.reset_mock()
+        with self.captureOnCommitCallbacks(execute=True):
+            copie_intacte = dupliquer_devis(intact, user=user)
+        self.assertEqual(self.suivi.call_count, 1)  # le suivi du lead la rattrape si sa version est dépassée
+        copie_retouchee = dupliquer_devis(retouche, user=user)
+        copie_envoyee = dupliquer_devis(envoye, user=user)
+        for source, copie in ((intact, copie_intacte), (retouche, copie_retouchee), (envoye, copie_envoyee)):
+            self.assertEqual(copie.conception_source, source.conception_source)
+            self.assertEqual((copie.statut, copie.lead_id), ('brouillon', lead.pk))
+        v2 = self._nouvelle_version(company, lead)
+        suivis = suivre_la_conception(v2)
+        self.assertIn(copie_intacte.pk, suivis)
+        self.assertIn(copie_envoyee.pk, suivis)  # copie intacte d'un envoyé : un brouillon qui suit
+        self.assertEqual(Devis.objects.get(pk=copie_intacte.pk).conception_source['version'], 2)
+        self.assertIn(copie_retouchee.pk, [b['devis'] for b in brouillons_a_mettre_a_jour(company.pk, lead.pk, 2)])
+        Devis.objects.filter(pk=intact.pk).update(conception_source=None)
+        intact.refresh_from_db()
+        self.assertIsNone(dupliquer_devis(intact, user=user).conception_source)
 
     def test_intact_suit_retouche_et_envoye_ne_bougent_pas(self):
         from apps.ventes.conception.brouillons import suivre_la_conception

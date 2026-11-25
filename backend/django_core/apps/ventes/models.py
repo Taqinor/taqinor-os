@@ -303,8 +303,9 @@ class Devis(VerrouOptimisteMixin, RechercheFTSMixin, models.Model):
     # ADEV143 (D-ACAL-97) — la version de conception du lead dont ce devis est
     # NÉ (``{id, version, empreinte}``), posée à la création par le devis
     # automatique (``pipeline.champs_du_brouillon``, ``creation_auto``) et
-    # jamais réécrite ensuite (envoi, relance, rafraîchissement). Une COPIE ou
-    # une RÉVISION n'en porte pas (ses blocs viennent du devis source). Une
+    # jamais réécrite ensuite (envoi, relance, rafraîchissement). Une RÉVISION
+    # ou une variante n'en porte pas ; un DUPLICATA (« Dupliquer ») garde celui
+    # de sa source (même contenu, écart 4 de l'acceptation du 25/11). Une
     # colonne, pas une clé d'``etude_params`` : jamais servie (exclue de
     # ``DevisSerializer``), jamais imprimée.
     conception_source = models.JSONField(null=True, blank=True, default=None, editable=False)
