@@ -96,7 +96,9 @@ test('QJR35/QJR426 — les 4 cartes Économies/ROI (Sans + Avec batterie) porten
   assert.match(coutSansBloc, /valeur=\{moteur\(/)
 
   // Colonne "Avec batterie" (2ᵉ occurrence).
-  const avecBloc = DG.slice(titleIdxs[1], titleIdxs[1] + 2000)
+  // E7d — la colonne porte désormais la phrase « option avec non chiffrée » avant ses
+  // cartes (comportement inchangé : Économies/ROI signés, Coût `moteur()`) : fenêtre élargie.
+  const avecBloc = DG.slice(titleIdxs[1], titleIdxs[1] + 3200)
   assert.match(avecBloc, /Avec batterie/)
   assert.match(avecBloc, /<CarteMetrique label="Économies"[\s\S]*?valeur=\{signerEcoOuRoi\(/)
   assert.match(avecBloc, /<CarteMetrique label="ROI"[\s\S]*?valeur=\{signerEcoOuRoi\(/)
