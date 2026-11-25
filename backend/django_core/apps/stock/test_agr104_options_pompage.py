@@ -337,16 +337,26 @@ class PrixFigesDacal127Tests(SimpleTestCase):
             self.assertEqual(valeurs['ond_v_max_abs'], Decimal(attendu), sku)
 
     def test_dacal129_cv_figes_et_tension_par_la_phase_du_kit(self):
+        """0194 — table FIGÉE : sa phase égale aujourd'hui la lecture du kit
+        (``alimentation_produit``) sur la désignation ; ses CV, le seeder."""
+        from core.pompage.selection import alimentation_produit
+        from apps.stock.management.commands._articles_pompage import tension_pompe
         m0194 = importlib.import_module(
             'apps.stock.migrations.0194_dacal129_tension_cv_petites_pompes')
-        pompes = {sku: Decimal(cv) for _n, sku, _t, _q, _s, cv, _h, _d in seed_mod.POMPAGE
-                  if sku.startswith('PMP-')}
-        self.assertEqual(len(pompes), 8)
-        self.assertEqual(m0194.POMPES_CV, {**pompes, 'PMP-IMM-2M': None})
-        from apps.stock.management.commands._articles_pompage import tension_pompe
-        for nom, sku, *_r in seed_mod.POMPAGE:
-            if sku.startswith('PMP-'):
-                self.assertEqual(tension_pompe(nom), 220 if sku.endswith('M') else 380, sku)
+        designations = {sku: nom for nom, sku, *_r in seed_mod.POMPAGE
+                        if sku.startswith('PMP-')}
+        self.assertEqual(len(designations), 8)
+        designations['Pmp-imm-2m'] = 'Pompe immergée solaire 2 CV Monophasé'
+        self.assertEqual({s.upper() for s in designations}, set(m0194.POMPES))
+        for sku, nom in designations.items():
+            phase, _cv = m0194.POMPES[sku.upper()]
+            self.assertEqual(alimentation_produit({'nom': nom}), phase, sku)
+            self.assertEqual(tension_pompe(nom), m0194.TENSIONS[phase], sku)
+        cv_seeder = {sku: Decimal(cv) for _n, sku, _t, _q, _s, cv, _h, _d in seed_mod.POMPAGE
+                     if sku.startswith('PMP-')}
+        self.assertEqual({s: cv for s, (_p, cv) in m0194.POMPES.items()},
+                         {**cv_seeder, 'PMP-IMM-2M': None})
+        self.assertEqual(m0194.TENSIONS, {'mono': 220, 'tri': 380})
         self.assertIsNone(tension_pompe('Câble solaire Nexans 6mm² (au mètre)'))
 
 
@@ -459,7 +469,7 @@ class PetitesPompesDacal129Tests(TestCase):
     def test_migration_0194_champs_vides_seulement_aller_retour(self):
         m0194 = importlib.import_module(
             'apps.stock.migrations.0194_dacal129_tension_cv_petites_pompes')
-        skus = [s for s in m0194.POMPES_CV if s != 'PMP-IMM-2M']
+        skus = [s for s in m0194.POMPES if s != 'PMP-IMM-2M']
         Produit.objects.filter(company=self.co, sku__in=skus).update(
             tension_v=None, pompe_cv=None)
         Produit.objects.filter(company=self.co, sku='PMP-IMM-3M').update(
@@ -489,7 +499,7 @@ class PetitesPompesDacal129Tests(TestCase):
                          (None, None))
         deux.refresh_from_db()
         self.assertIsNone(deux.tension_v)
-        # La tension saisie 380 contredit la phase (monophasée) : gardée ; ses
+        # La tension saisie 380 n'est pas celle de la table (220) : gardée ; ses
         # CV saisis (2) ne sont pas ceux de la table (3) : gardés.
         self.assertEqual((self._p('PMP-IMM-3M').tension_v, self._p('PMP-IMM-3M').pompe_cv),
                          (380, Decimal('2.00')))

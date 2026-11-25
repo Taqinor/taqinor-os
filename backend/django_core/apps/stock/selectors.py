@@ -3397,7 +3397,7 @@ def _role_ci_par_fiche(produit, fiche):
     if sans_cote and 'cable_dc' in (produit.role_devis,
                                     getattr(produit, 'role_pompage', '')):
         return 'cable_dc'
-    if fiche is None:
+    if fiche is None or getattr(produit, 'role_pompage', '') not in ('', 'cable_dc'):  # D-ACAL-130 : pompage hors câble
         return None
     t = fiche.type_fiche
     if t == 'onduleur':

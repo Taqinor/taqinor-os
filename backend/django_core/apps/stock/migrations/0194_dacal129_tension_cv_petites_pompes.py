@@ -2,13 +2,13 @@
 petites pompes du lot POMPAGE du seeder (et de ``PMP-IMM-2M``, présente en
 production), restés vides sur les bases existantes.
 
-* ``tension_v`` : 220 V pour une pompe monophasée, 380 V pour une triphasée,
-  la phase étant lue sur la ligne par la MÊME fonction que le kit
-  (``core.pompage.selection.alimentation_produit`` : champ ``alimentation``,
-  sinon nom) — importée seulement quand une ligne est à traiter ; phase
-  illisible : rien n'est écrit ;
-* ``pompe_cv`` : la valeur que le seeder déclare pour ce SKU (table FIGÉE
-  ci-dessous ; rien pour ``PMP-IMM-2M``, que le seeder ne déclare pas).
+* ``tension_v`` : 220 V pour une pompe monophasée, 380 V pour une triphasée ;
+  la phase de chaque SKU est FIGÉE ci-dessous (jamais d'import du code vivant :
+  la migration doit se rejouer sur une base neuve dans des années). Un test
+  sans base vérifie qu'elle égale aujourd'hui ce que lit le kit
+  (``core.pompage.selection.alimentation_produit``) sur la désignation ;
+* ``pompe_cv`` : la valeur que le seeder déclare pour ce SKU (rien pour
+  ``PMP-IMM-2M``, que le seeder ne déclare pas).
 
 Gardes : SKU comparé sans la casse (la production écrit ``Pmp-imm-2m``), dans
 toute société ; chaque champ n'est écrit QUE s'il est vide ; ``pompe_kw`` n'est
@@ -20,42 +20,30 @@ from decimal import Decimal
 
 from django.db import migrations
 
-#: SKU → CV déclarés par le seeder (``None`` = non déclaré).
-POMPES_CV = {
-    'PMP-IMM-1.5M': Decimal('1.5'),
-    'PMP-IMM-3M': Decimal('3'),
-    'PMP-IMM-4T': Decimal('4'),
-    'PMP-IMM-5.5T': Decimal('5.5'),
-    'PMP-IMM-7.5T': Decimal('7.5'),
-    'PMP-IMM-10T': Decimal('10'),
-    'PMP-SUR-1.5M': Decimal('1.5'),
-    'PMP-SUR-3T': Decimal('3'),
-    'PMP-IMM-2M': None,
+#: SKU (comparé sans la casse) → (phase, CV déclarés par le seeder ou ``None``).
+POMPES = {
+    'PMP-IMM-1.5M': ('mono', Decimal('1.5')),
+    'PMP-IMM-3M': ('mono', Decimal('3')),
+    'PMP-IMM-4T': ('tri', Decimal('4')),
+    'PMP-IMM-5.5T': ('tri', Decimal('5.5')),
+    'PMP-IMM-7.5T': ('tri', Decimal('7.5')),
+    'PMP-IMM-10T': ('tri', Decimal('10')),
+    'PMP-SUR-1.5M': ('mono', Decimal('1.5')),
+    'PMP-SUR-3T': ('tri', Decimal('3')),
+    'PMP-IMM-2M': ('mono', None),
 }
-
-
-def _tension_de_la_ligne(produit):
-    from core.pompage.selection import (
-        TENSION_MONO_V, TENSION_TRI_V, alimentation_produit)
-    alimentation = alimentation_produit({
-        'nom': produit.nom, 'alimentation': produit.alimentation,
-        'tension_v': None})
-    return {'mono': TENSION_MONO_V, 'tri': TENSION_TRI_V}.get(alimentation)
-
-
-def _pompes(Produit, sku):
-    return Produit.objects.filter(sku__iexact=sku)
+#: Phase → tension (V).
+TENSIONS = {'mono': 220, 'tri': 380}
 
 
 def poser(apps, schema_editor):
     Produit = apps.get_model('stock', 'Produit')
-    for sku, cv in POMPES_CV.items():
-        for produit in _pompes(Produit, sku):
+    for sku, (phase, cv) in POMPES.items():
+        tension = TENSIONS[phase]
+        for produit in Produit.objects.filter(sku__iexact=sku):
             champs = {}
             if produit.tension_v is None:
-                tension = _tension_de_la_ligne(produit)
-                if tension:
-                    champs['tension_v'] = tension
+                champs['tension_v'] = tension
             if cv is not None and produit.pompe_cv is None:
                 champs['pompe_cv'] = cv
             if champs:
@@ -64,11 +52,11 @@ def poser(apps, schema_editor):
 
 def retirer(apps, schema_editor):
     Produit = apps.get_model('stock', 'Produit')
-    for sku, cv in POMPES_CV.items():
-        for produit in _pompes(Produit, sku):
+    for sku, (phase, cv) in POMPES.items():
+        tension = TENSIONS[phase]
+        for produit in Produit.objects.filter(sku__iexact=sku):
             champs = {}
-            if (produit.tension_v is not None
-                    and produit.tension_v == _tension_de_la_ligne(produit)):
+            if produit.tension_v == tension:
                 champs['tension_v'] = None
             if cv is not None and produit.pompe_cv == cv:
                 champs['pompe_cv'] = None
