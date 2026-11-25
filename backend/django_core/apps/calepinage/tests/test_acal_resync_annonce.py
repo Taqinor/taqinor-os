@@ -182,6 +182,60 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertFalse(CompanyProfile.objects.filter(company=self.company).exists())
         self.assertFalse(TariffSettings.objects.filter(company=self.company).exists())
 
+    def test_e9b_apercu_suit_le_brouillon_que_le_bouton_ouvrirait(self):
+        """Lane E9b — « Générer » RENDRAIT le brouillon de même empreinte (lié, ou réutilisable :
+        ``devis._brouillon_rendu``) au lieu d'en composer un : l'aperçu lit SES lignes et le dit
+        (``source: brouillon_existant`` + sa référence). Mutant « recomposer » ⇒ la ligne
+        retouchée du brouillon n'est pas lue ⇒ rouge."""
+        from apps.ventes.models import Devis
+
+        self.calepinage.refresh_from_db()  # le lien posé par « Générer » du setUp
+        devis = Devis.objects.get(pk=self.calepinage.devis_id)
+        ligne = next(li for li in devis.lignes.all() if 'nduleur' in li.designation)
+        type(ligne).objects.filter(pk=ligne.pk).update(designation='Onduleur du brouillon retouché')
+        for lie in (True, False):  # lié au calepinage, puis réutilisable (même empreinte, délié)
+            with self.subTest(lie=lie):
+                if not lie:
+                    Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=None)
+                reponse = self.api.get(f'{self.base}apercu-devis/')
+                self.assertEqual(reponse.status_code, 200, reponse.data)
+                self.assertEqual((reponse.data['source'], reponse.data['reference']),
+                                 ('brouillon_existant', devis.reference))
+                self.assertEqual([o['onduleur'] for o in reponse.data['options']], ['Onduleur du brouillon retouché'])
+        # Une autre pose : la composition neuve, sans référence.
+        self._nouvelle_pose(panneaux=9)
+        neuve = self.api.get(f'{self.base}apercu-devis/')
+        self.assertEqual((neuve.data['source'], neuve.data['reference']), ('composition', None))
+
+    def test_e9b_apercu_compose_les_surfaces_cochees_comme_la_generation(self):
+        """Lane E9b — ``?surfaces=`` (les cases cochées que « Générer » enverra) passe par LA même
+        fonction (``devis._layout_des_surfaces``) : clé inconnue ⇒ le refus nommé de la génération ;
+        seul le champ coché ⇒ l'onduleur que la génération écrit pour ce champ."""
+        doc = {
+            'scenario': 'reseau',
+            'zones': [{'id': 'z1', 'label': 'Zone 1', 'roofType': 'flat',
+                       'vertices': [[0, 0], [30, 0], [30, 20], [0, 20]],
+                       'geometry': {'count': 42, 'kwc': 23.1, 'azimuthDeg': 180.0, 'tiltDeg': 10.0},
+                       'result': {'count': 42, 'kwc': 23.1}}],
+            'poseSurfaces': [{'id': 's1', 'kind': 'sol', 'label': 'Champ au sol 1', 'moduleWc': 550,
+                              'contourM': [[0, 0], [40, 0], [40, 25], [0, 25]], 'areaM2': 1000,
+                              'rowAzimuthDeg': 90, 'tiltDeg': 25,
+                              'engine': {'modules': 176, 'tables': [], 'rowPitchM': 4.2}}]}
+        from apps.ventes.models import Devis
+
+        calepinage = Calepinage.objects.create(company=self.company, lead_id=self.lead.pk, titre='E9b surfaces')
+        enregistrer_layout(calepinage, doc, user=self.user)
+        base = url_detail(calepinage.pk)
+        inconnue = self.api.get(f'{base}apercu-devis/', {'surfaces': 'inconnue'})
+        self.assertEqual(inconnue.status_code, 200, inconnue.data)
+        self.assertTrue(str(inconnue.data['refus']).startswith('Cochez au moins une surface'), inconnue.data)
+        champ = self.api.get(f'{base}apercu-devis/', {'surfaces': 's1'})
+        genere = self.api.post(f'{base}generer-devis/', {'surfaces_chiffrees': ['s1'], 'creer_autre_devis': True},
+                               format='json')
+        self.assertEqual(genere.status_code, 201, genere.data)
+        lignes = [li.designation for li in Devis.objects.get(pk=genere.data['devis']).lignes.all()]
+        self.assertIn(champ.data['options'][0]['onduleur'], lignes)
+
     def test_e6e_resynchro_refusee_pour_un_onduleur_non_designe_dit_l_issue(self):
         """Le refus de « Resynchroniser » qui juge l'onduleur du DEVIS alors qu'un autre est
         désigné à l'étape Électrique le dit, nomme les deux et propose le geste qui existe :

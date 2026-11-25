@@ -68,25 +68,44 @@ def _ecarts(calepinage, options):
     return phrases
 
 
-def apercu_materiel_du_devis(calepinage):
-    """``{options, ecarts, refus}`` : par option, le module et l'onduleur que « Générer le
-    devis » porterait (dry-run de LA composition), les désignations électriques qu'il ne
-    portera pas (phrase et raison) ; ``refus`` = la phrase de la composition (ou de
-    l'absence de toit) quand rien ne se compose. N'écrit rien."""
-    from .devis import DevisRefuse, _exiger_layout, _lead_et_client
+def _specs_du_brouillon(devis):
+    """Lane E9b — les lignes RÉELLES du brouillon que le bouton ouvrirait, à la forme des specs de
+    composition que lit :func:`_materiel_par_option` (rôle, variante, désignation, produit) : on lit
+    ce que le devis porte, rien n'est recomposé."""
+    return [{'role_devis': ligne.role_devis, 'variante': ligne.variante or '', 'designation': ligne.designation,
+             'produit': ligne.produit_id} for ligne in devis.lignes.all().order_by('ordre', 'pk')]
+
+
+def apercu_materiel_du_devis(calepinage, surfaces=None):
+    """``{options, ecarts, refus, source, reference}`` : par option, le module et l'onduleur que
+    « Générer le devis » porterait, les désignations électriques qu'il ne portera pas (phrase et
+    raison) ; ``refus`` = la phrase de la composition (ou de l'absence de toit, ou de la sélection
+    de surfaces) quand rien ne se compose. Lane E9b — LES décisions de la génération :
+    ``surfaces`` (les clés cochées, ``None`` = tout) passent par ``devis._layout_des_surfaces`` ;
+    le brouillon que le bouton RENDRAIT (``devis._brouillon_rendu``) est lu sur ses lignes
+    (``source: brouillon_existant`` + sa référence), sinon la composition à blanc
+    (``source: composition``), sous des réglages lus sans être créés. N'écrit rien."""
+    from .devis import DevisRefuse, _brouillon_rendu, _empreinte_generee, _exiger_layout, _layout_des_surfaces
+    from .devis import _lead_et_client
     from .equipements import composition_a_blanc
 
-    composer, AutoDevisError = composition_a_blanc()  # lane E9b : réglages lus sans être créés
-
+    composer, AutoDevisError = composition_a_blanc()
+    source, reference = 'composition', None
     try:
-        layout = _exiger_layout(calepinage)
+        layout = _layout_des_surfaces(_exiger_layout(calepinage), surfaces)
         lead, _client = _lead_et_client(calepinage)
-        specs = composer(layout=layout, company=calepinage.company, lead=lead)
+        brouillon = _brouillon_rendu(calepinage, calepinage.company, lead, _empreinte_generee(calepinage, layout))
+        if brouillon is not None:
+            source, reference = 'brouillon_existant', brouillon.reference
+            specs = _specs_du_brouillon(brouillon)
+        else:
+            specs = composer(layout=layout, company=calepinage.company, lead=lead)
     except (AutoDevisError, DevisRefuse) as refus:
-        return {'options': [], 'ecarts': [], 'refus': getattr(refus, 'message', None) or str(refus)}
+        return {'options': [], 'ecarts': [], 'refus': getattr(refus, 'message', None) or str(refus),
+                'source': None, 'reference': None}
     options = _materiel_par_option(specs)
     ecarts = _ecarts(calepinage, options)
     for option in options:
         option.pop('module_produit')
         option.pop('onduleur_produit')
-    return {'options': options, 'ecarts': ecarts, 'refus': None}
+    return {'options': options, 'ecarts': ecarts, 'refus': None, 'source': source, 'reference': reference}
