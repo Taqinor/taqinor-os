@@ -5999,3 +5999,16 @@ decisions:
     date: "2026-11-25"
     source: "compte rendu de la lane K2 (D-ACAL-104) : `calepinage_approuver` n'est porté par aucun rôle métier ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Also Commercial responsable » ; changement de droits additif pour un rôle, appliqué au prochain déploiement (migration de rôles + `init_roles`)"
     taches: []
+  - id: D-ACAL-118
+    question: "Suite de D-ACAL-112 (protections dans le kit minimum du pompage) : quelles pièces font « les protections et leur câble » ? Le catalogue n'a aucun « ensemble de protection » : l'option d'aujourd'hui est UNE ligne qui prend le premier article chiffré parmi des pièces séparées, et aucune protection AC n'a de rôle pompage."
+    options:
+      - cle: un_coffret_dc
+        texte: "UN coffret de protection DC choisi pour le champ, plus le câble DC déjà au kit ; aucune pièce AC"
+      - cle: pieces_separees
+        texte: "Par chaîne : un porte-fusible et deux fusibles gPV ; plus un parafoudre DC et un sectionneur DC ; plus le câble DC"
+      - cle: coffret_dc_et_protection_ac
+        texte: "Le coffret DC, plus un disjoncteur AC et un parafoudre AC entre le variateur et la pompe ; les pièces AC sont d'abord ajoutées au catalogue avec un prix"
+    reponse: coffret_dc_et_protection_ac
+    date: "2026-11-25"
+    source: "compte rendu de la lane P1 (arrêt avant construction : `core/pompage/kit.py::composer_kit`, rôle `protection_dc` couvrant des pièces séparées, aucune protection AC au rôle pompage — migration 0162) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « DC box + AC protection » ; un article sans prix n'est jamais chiffré (« prix à renseigner ») : le devis de pompage n'est automatique qu'une fois ces articles chiffrés au catalogue par le fondateur"
+    taches: []
