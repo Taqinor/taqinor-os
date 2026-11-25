@@ -1347,7 +1347,7 @@ PAS ENCORE JOUÉ : balayages s à w ; rôle Technicien (403) ; agricole avec les
 maquettes B5 ; rejeux d'acceptation des tâches « code livré » (ACAL2027, 2028, 2034, 2035, 2036, 2038 et les tâches
 d'écran) ; mesure des lenteurs AU CALME (les relecteurs ont mesuré une pile saturée par les lanes).
 
-### Point du 25/11, 00 h 40 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 00 h 40 UTC
 
 **Lot 1 — PR Taqinor/taqinor-os#1552 : fusionnée le 24/11, NON déployée** (le fondateur déploie).
 
@@ -1372,3 +1372,46 @@ et tests du moteur en docker (journal `lot2-sweep2.log` du scratchpad), budget d
   mots). Demande le fondateur : T4-V2-006, T4-V2-009, T4-V2-010 côté client (PDF agricole).
 - `lane/devis-2` et `lane/calepinage-2` : EN VOL.
 - Puis étape 6 (ACAL2018-2020, ADEV149-151) par la lane du moteur, sur la base du lot 3.
+
+### Point du 25/11, 01 h 35 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 2 — PR Taqinor/taqinor-os#1554 FUSIONNÉE le 25/11 à 00 h 57 UTC** (CI verte du premier coup : 39 jobs ; file de
+fusion). Lots 1 et 2 NON déployés : « mergé — à déployer par toi : `scripts/deploy-prod.ps1` » dit au fondateur.
+
+**Lot 3 — branche locale `dev-lot3`** (worktree de l'orchestrateur ; sauvegarde `origin/notes-l5-2511`, PAS de PR) =
+`main` (après #1554) + `lane/moteur-e5` + `lane/agri-2` + `lane/devis-2` + `lane/calepinage-2` + l'acceptation
+ACAL2027. **L'étape 5 n'est pas fusionnable en l'état** (relecture indépendante : `scratchpad/revue-e5.md` — B1 un lead
+sans conception rangée tombe sur un refus sans issue ; M1 deux productions sans nom à Résultats ; M2 « le devis envoyé
+porte le même chiffre » parfois faux ; M3 provenance « moteur » sans libellé ; M4 chaînes de la conception forcées sur
+une pose d'une autre taille ; m1-m5 ; tests affaiblis ; coût en requêtes).
+- EN VOL : `lane/moteur-e5-fix` (worktree isolé, base de test `r5`, consignes `scratchpad/msg-lane-e5-fix.md` +
+  ajouts par message : ACAL2025 en dernier, note « par ? », supposition de la facture d'été, accord de la ligne
+  d'historique) ; `lane/moteur-e6` (worktree isolé, base `s6` : identifiants de produit dans la conception, ACAL2016,
+  ACAL2018, ADEV149, ADEV150, ACAL2019, ACAL2020, ADEV151, suite d'ACAL2013, ACAL2026, ADEV154 ; ADEV155 reste GATED ;
+  fait vivant transmis : conception rangée sans chaînes, tension à froid, ratio ni retour sur investissement).
+- La garde `check_ancres_taches.py` est ROUGE sur `dev-lot3` tant qu'ACAL2012 et ACAL2025 ne sont pas cochées (symbole
+  `cible_de_l_option_retenue` supprimé par l'étape 5) : à cocher au pli de `lane/moteur-e5-fix`.
+- À cocher au pli (après relecture) : ACAL2012, 2013, 2014, 2015, 2017, 2025 ; puis l'étape 6.
+- Décisions prises par les lanes, à dire au fondateur (réversibles) : un Commercial voit le client qu'il a créé
+  (`core/scoping.py`) ; un ticket SAV exige une description ; « Enregistré à » = heure de la dernière version ;
+  un toit tracé à un zoom ≥ 17 vaut site localisé ; champ agricole borné à 1,5 fois la puissance de la pompe.
+- Demandent le fondateur (rien de codé) : T4-V2-006, T4-V2-009, T4-V2-010 côté client (PDF agricole) ; lead « avec
+  batterie » = une seule option ; « OPTION 2 » imprimé pour une option unique ; type de toiture « toit plat » et
+  orientation « Est-Ouest » de la fiche (T4-V2-022, trois options) ; auto-remplir « les deux » à la taille du moteur.
+
+**Test utilisateur — tour 3 EN COURS** sur l'instrument `l5t` (branche locale `instr-tour3` du worktree `l5t-instr` =
+`main` après #1554 + agri-2 + devis-2 + calepinage-2, SANS l'étape 5 ; migrations crm 0166, stock 0188-0189 jouées ;
+`LOGIN_RATE_LIMIT=120/minute` posé dans `l5t.env` — la limite de 5 connexions par minute et par adresse bloquait les
+scripts ; serveur à 1 700 Mo).
+- Couverture après deux tours : 188 lignes jouées sur 449 (`scratchpad/remplir_couverture.py`, à lancer avec
+  `--ecrire` à la fin). Listes des lignes jamais jouées par relecteur : `scratchpad/tour3/ids-X1..X5.txt`.
+- EN VOL : X1 (agricole i / j de bout en bout avec prix d'essai + fenêtre des PDF + onglet devis de la fiche) et X4
+  (rejeux des correctifs devis du tour 2 + balayage du générateur + brouillon retouché à l'écran puis facture changée).
+- À LANCER ENSUITE, deux à la fois : X2 (outil de dessin + étapes 1 à 3 + rejeux calepinage T4-U1-006, T4-U2-007,
+  T4-U4-007, T4-U4-013, ACAL2032, T4-V1-006, 010, 011, 012, T4-V2-020, 021), X5 (onglets « Avancé », coque, Résultats,
+  Documents, bouton devis), X3 (réglages, liste, création, routes), puis X6 (commercial et industriel f, g, h + chaîne
+  après le devis), X7 (WebKit bureau + tablette), X8 (téléphone, sombre, rôle Technicien), relecteur des maquettes B5.
+- Lenteurs des tours 1 et 2 remesurées au calme : 0,0 à 0,5 s par route (`T4/tour3/mesure-lenteur-orchestrateur.md`) ;
+  devis automatique 12 à 18 s : c'était la saturation de l'instrument.
+- Constats du tour 2 sans lane : T4-V1-001 (responsable « Non assigné »), T4-V2-022 (fondateur) ; écarts 3 à 11 de la
+  trace d'ACAL2027 (`docs/audits/acceptation/ACAL/traces/2026-11-25/`), dont 4, 5, 6, 8 sans lane.
