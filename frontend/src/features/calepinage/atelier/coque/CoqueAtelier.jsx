@@ -6,7 +6,7 @@ import BarreEnregistrement from '../BarreEnregistrement'
 import { formaterHeureBrouillon } from '../contexteAtelier'
 import { PARAM_MODE, useModeExpert } from '../modeExpert'
 import { PARAM_ONGLET, resoudreOnglet } from '../onglets'
-import { ZOOM_MAX_CADRAGE_ATELIER, hauteurCouverteParTiroir } from '../useAtelierBoot'
+import { cadrerDansZoneLibre } from './cadrageZoneLibre' // T4-X5-017 — sorti tel quel (partagé avec le plein écran)
 import {
   CADRES, ETAPES, ecranCoque, memoriserEtape, premierOngletEtape, useParcours, vueParcours,
 } from '../parcoursGuide'
@@ -77,38 +77,6 @@ const CHOIX_VUE = '.cal-barre-outils-carte [role="group"] button, [data-testid^=
   + '[data-testid="cal-onglet-3d"], [data-testid="cal-onglet-2d"], .maplibregl-ctrl-compass'
 // La carte et le constructeur se posent tard sur un poste chargé : la vue est reposée à ces instants après l'entrée.
 const ESSAIS_PLAN_MS = [0, 1500, 4000, 8000]
-
-const pixels = (v) => (Number.isFinite(v) && v > 0 ? Math.round(v) : 0)
-
-/** ACAL1801 — la carte est le décor (maquettes v2) : les pixels de `#rp9-map` COUVERTS par les pièces qui flottent
-    dessus — bandeau (haut), rail vertical (gauche), panneau d'étape (droite), barre d'outils ou tiroir (bas). Le toit se
-    cadre dans la zone LIBRE. Tout à 0 sans DOM, carte masquée, ou quand une pièce n'est pas posée SUR la carte. */
-function margesCouvertes(racine = typeof document !== 'undefined' ? document : null) {
-  const zero = { haut: 0, bas: 0, gauche: 0, droite: 0 }
-  const carte = racine?.getElementById?.('rp9-map')?.getBoundingClientRect?.()
-  if (!carte || !(carte.width > 0 && carte.height > 0)) return zero
-  const boite = (sel) => {
-    const el = racine.querySelector(sel)
-    return el && !el.closest('[hidden]') ? el.getBoundingClientRect() : null
-  }
-  const rail = boite('[data-testid="cal-rail-etapes"]')
-  return {
-    haut: pixels(boite('[data-testid="cal-barre-projet"]')?.bottom - carte.top),
-    gauche: rail && rail.height > rail.width ? pixels(rail.right - carte.left) : 0,
-    droite: pixels(carte.right - boite('#rp9-studio-inspecteur:not([data-tiroir="1"])')?.left),
-    bas: Math.max(pixels(carte.bottom - boite('[data-testid="cal-barre-outils-carte"]')?.top),
-      hauteurCouverteParTiroir(racine)),
-  }
-}
-
-/** Cadre le toit au-dessus des pièces du bas (`basPx`, lu par le moteur) ; les quatre marges partent aussi en
-    `margesPx` pour centrer dans la zone libre (demande croisée au moteur de dessin, `cadrageToit.ts`). */
-function cadrerDansZoneLibre(builder) {
-  if (typeof builder?.cadrerToit !== 'function') return false
-  const marges = margesCouvertes()
-  const couvre = marges.haut + marges.gauche + marges.droite + marges.bas > 0
-  return builder.cadrerToit({ zoomMax: ZOOM_MAX_CADRAGE_ATELIER, basPx: marges.bas, ...(couvre ? { margesPx: marges } : {}) })
-}
 
 /** Plan + cadrage à l'entrée d'une étape à carte (caméra seule : rien n'est sérialisé, aucun brouillon). */
 function usePlanALEntreeDEtape({ builderRef, actif, cle, builderApiCoque }) {

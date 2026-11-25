@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { exporterImageHd } from '../exportImage'
 import { exporterSceneGltf } from '../exportGltf'
 import { basculerPleinEcran, estEnPleinEcranSur } from '../pleinEcran'
-import { ZOOM_MAX_CADRAGE_ATELIER } from './useAtelierBoot' // T4-X5-017 — le plafond de cadrage de l'atelier
+import { cadrerDansZoneLibre } from './coque/cadrageZoneLibre' // T4-X5-017 — LE cadrage du toit dans la zone libre
 
 export function useAtelierVues({ builderApi, calepinageId, devisId }) {
   // CAL180 — état de l'export image HD (message affiché SOUS le bouton : soit la taille
@@ -64,15 +64,18 @@ export function useAtelierVues({ builderApi, calepinageId, devisId }) {
 
   const basculerPleinEcran3d = () => {
     Promise.resolve(basculerPleinEcran(mapWrapRef.current, document, pleinEcran3d))
-      .then((etat) => {
-        setPleinEcran3d(etat.enPleinEcran)
-        // T4-X5-017 — en plein écran, le toit est recadré sur tout l'écran (le moteur redimensionne la carte avant de
-        // cadrer) ; à l'image suivante, une fois l'enveloppe passée en plein écran. Caméra seule, rien n'est enregistré.
-        if (etat.enPleinEcran) {
-          requestAnimationFrame(() => builderApi?.current?.cadrerToit?.({ zoomMax: ZOOM_MAX_CADRAGE_ATELIER }))
-        }
-      })
+      .then((etat) => setPleinEcran3d(etat.enPleinEcran))
   }
+
+  // T4-X5-017 — à l'entrée ET à la sortie du plein écran (bouton ou Échap), une fois l'enveloppe rendue dans son nouvel
+  // état : le toit est recadré — sur tout l'écran en plein écran (aucune pièce ne couvre la carte), dans la zone libre
+  // sinon. Caméra seule, rien n'est enregistré. Rien au montage.
+  const pleinEcranMonte = useRef(false)
+  useEffect(() => {
+    if (!pleinEcranMonte.current) { pleinEcranMonte.current = true; return undefined }
+    const image = requestAnimationFrame(() => cadrerDansZoneLibre(builderApi?.current))
+    return () => cancelAnimationFrame(image)
+  }, [pleinEcran3d, builderApi])
 
   return {
     vue2d, setVue2d, plan2d, panId2d, ouvrirVue2d,
