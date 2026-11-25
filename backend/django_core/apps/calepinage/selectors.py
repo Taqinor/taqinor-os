@@ -159,9 +159,28 @@ def _de_ses_visites(user):
     le technicien qui monte sur le toit le lit et y fait le relevé."""
     from django.db.models import Q
 
-    from apps.visites.selectors import lead_ids_des_visites_assignees
+    return Q(lead_id__in=lead_ids_de_ses_visites(user))
 
-    return Q(lead_id__in=lead_ids_des_visites_assignees(user))
+
+def lead_ids_de_ses_visites(user):
+    """D-ACAL-106 + D-ACAL-126 — LE prédicat « ses visites », en sous-requête
+    d'identifiants de leads (liste, détail, relevé, photos, ``layout/section``,
+    ``lead_de_l_appelant``, bibliothèque des modèles : tous passent par ici).
+
+    = les leads des visites ASSIGNÉES à ``user`` ; pour un compte qui ne lit
+    le calepinage que par le relevé ET dont la portée est le sous-arbre
+    (Technicien responsable), aussi celles assignées aux comptes de son
+    sous-arbre (``core.scoping.subtree_user_ids``). C'est l'assigné de la
+    VISITE qui compte, jamais le propriétaire du lead. Tout autre compte :
+    ses visites seulement (inchangé)."""
+    from apps.visites.selectors import lead_ids_des_visites_assignees_a
+    from core.scoping import record_scope_for, subtree_user_ids
+
+    ids = [getattr(user, 'pk', None)]
+    if lit_par_le_seul_releve(user) and record_scope_for(user) == 'subtree':
+        ids = list(subtree_user_ids(user))
+    return lead_ids_des_visites_assignees_a(
+        getattr(user, 'company_id', None), ids)
 
 
 def calepinages_visibles(user, *, inclure_archives=False, base=None,
