@@ -298,6 +298,25 @@ class ResultatsDeLaConceptionTest(_DevisDeuxOptions):
         self.assertEqual(bloc['production_annuelle_kwh'], self.attendu)
         self.assertEqual(Devis.objects.filter(pk=devis.pk).values().get(), avant)
 
+    def test_m2_le_devis_envoye_sert_sa_propre_production_et_son_option(self):
+        """Relecture E5 M2 — ``devis_envoye`` porte la production et l'option que le
+        DEVIS a rangées (jamais celles de la conception) : devis « avec » (60 000 kWh),
+        conception « sans » ; un devis sans production rangée sert ``None``. Rien
+        n'est écrit sur le devis. Mutant « option de la conception » : 'sans'."""
+        from django.utils import timezone
+
+        devis = self._les_deux('Avec batterie', etude={'etude_horaire': {'annuel': {'production_kwh': 60000}}},
+                               date_envoi=timezone.now())
+        avant = Devis.objects.filter(pk=devis.pk).values().get()
+        envoye = self._bloc(devis)['devis_envoye']
+        contrat = json.loads((Path(__file__).resolve().parent.parent / 'contract_samples'
+                              / 'calepinage_resultat.json').read_text(encoding='utf-8'))
+        self.assertEqual(sorted(envoye), sorted(contrat['acal2015_conception']['devis_envoye']))
+        self.assertEqual((envoye['option'], envoye['production_annuelle_kwh']), ('avec', 60000.0))
+        self.assertEqual(Devis.objects.filter(pk=devis.pk).values().get(), avant)
+        sans_production = self._bloc(self._les_deux('Sans batterie', date_envoi=timezone.now()))['devis_envoye']
+        self.assertEqual((sans_production['option'], sans_production['production_annuelle_kwh']), ('sans', None))
+
     def test_servi_par_get_resultat_et_contrat(self):
         calepinage = Calepinage.objects.create(company=self.company, lead_id=self.lead_lie.pk,
                                                titre='QA-ACAL2015-get')

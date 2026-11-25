@@ -261,7 +261,10 @@ def bloc_conception(calepinage):
 
 
 def _devis_envoye_lie(calepinage):
-    """``{devis, reference, statut, envoye_le, ecart_devis}`` du devis lié REÇU, ou ``None``."""
+    """``{devis, reference, statut, envoye_le, option, production_annuelle_kwh, ecart_devis}`` du
+    devis lié REÇU, ou ``None``. Relecture E5 M2 — ``option`` et ``production_annuelle_kwh`` sont
+    CEUX DU DEVIS (rangés, ``conception_retenue_du_devis`` ; ``None`` quand il n'en range aucune) :
+    l'écran les compare au chiffre qu'il affiche, jamais à la conception."""
     from apps.ventes.selectors import ecart_devis, get_devis_by_pk
 
     lu = conception_du_devis_lie(calepinage)
@@ -272,7 +275,8 @@ def _devis_envoye_lie(calepinage):
         return None
     envoi = getattr(devis, 'date_envoi', None)
     return {'devis': devis.pk, 'reference': devis.reference or '', 'statut': devis.statut,
-            'envoye_le': envoi.isoformat() if envoi else None, 'ecart_devis': ecart_devis(devis)}
+            'envoye_le': envoi.isoformat() if envoi else None, 'option': lu.get('option'),
+            'production_annuelle_kwh': lu.get('production_annuelle_kwh'), 'ecart_devis': ecart_devis(devis)}
 
 
 def bloc_production_devis(calepinage):
