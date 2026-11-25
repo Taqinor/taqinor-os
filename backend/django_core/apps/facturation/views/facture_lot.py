@@ -52,6 +52,7 @@ class FactureLotActionsMixin:
         'total_en_retard': drf_serializers.CharField(),
         'nb_en_retard': drf_serializers.IntegerField(),
         'total_a_echoir_7j': drf_serializers.CharField(),
+        'nb_a_echoir_7j': drf_serializers.IntegerField(),
     }))
     @action(detail=False, methods=['get'], url_path='kpis',
             permission_classes=[LectureFactures])

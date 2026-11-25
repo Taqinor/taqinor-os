@@ -128,6 +128,23 @@ class TestFacturesKpis(TestCase):
         self.assertEqual(Decimal(resp.data['total_a_echoir_7j']),
                          bientot.montant_du)
         self.assertEqual(Decimal(resp.data['total_du']), Decimal('36000'))
+        # T4-X4-010 — le nombre et le montant de la tuile « À échoir ≤ 7 j »
+        # sortent de la MÊME boucle : une seule facture tombe dans les 7 jours
+        # (celle à +60 jours et celle en retard n'y comptent pas).
+        self.assertEqual(resp.data['nb_a_echoir_7j'], 1)
+
+    def test_t4x4010_facture_a_trente_jours_ne_change_ni_nombre_ni_montant(self):
+        """ROUGE avant le correctif : l'écran comptait toute facture émise non
+        échue (le nombre montait) alors que le montant restait à 0."""
+        aujourdhui = timezone.localdate()
+        self._facture(echeance=aujourdhui + timedelta(days=30))
+        resp = self.api.get('/api/django/ventes/factures/kpis/')
+        self.assertEqual(resp.data['nb_a_echoir_7j'], 0)
+        self.assertEqual(Decimal(resp.data['total_a_echoir_7j']), Decimal('0'))
+        proche = self._facture(echeance=aujourdhui + timedelta(days=7))
+        resp = self.api.get('/api/django/ventes/factures/kpis/')
+        self.assertEqual(resp.data['nb_a_echoir_7j'], 1)
+        self.assertEqual(Decimal(resp.data['total_a_echoir_7j']), proche.montant_du)
 
     def test_payee_non_soldee_hors_encours_et_du_zero(self):
         """ERR-QAH-VENTES-FACTURES-KPI-ENCAISSER — une facture « Payée » (marquage

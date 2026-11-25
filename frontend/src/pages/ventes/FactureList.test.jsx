@@ -70,10 +70,10 @@ import uxviewsApi from '../../api/uxviewsApi'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 // ASEC64 — les gestes d'argent lisent le droit `encaisser` (porté par défaut ici).
-function makeStore({ factures = [], loading = false, error = null, role = 'admin', permissions = ['encaisser'] } = {}) {
+function makeStore({ factures = [], loading = false, error = null, role = 'admin', permissions = ['encaisser'], facturesKpis = undefined } = {}) {
   return configureStore({
     reducer: {
-      ventes: (state = { factures, loading, error }) => state,
+      ventes: (state = { factures, loading, error, facturesKpis }) => state,
       auth: (state = { role, permissions }) => state,
     },
   })
@@ -488,11 +488,9 @@ describe('AERR138 — date du jour au rendu', () => {
     try {
       const user = userEvent.setup()
       renderList({ factures: [{ ...baseFacture, id: 9, client: 9, reference: 'FAC-9', date_echeance: '2099-11-14' }] })
-      expect(screen.getByText(/^1 facture · 7 prochains jours$/)).toBeInTheDocument()
       vi.setSystemTime(new Date('2099-11-15T12:00:00Z'))
       await user.click(screen.getByRole('button', { name: /Kanban/ }))
       expect(screen.getByTestId('fkb-count-en_retard')).toHaveTextContent('1')
-      expect(screen.getByText(/^0 facture · 7 prochains jours$/)).toBeInTheDocument()
       await user.click(screen.getByRole('button', { name: /^Liste/ }))
       await user.click(screen.getByRole('checkbox', { name: 'Tout sélectionner' }))
       const barre = await screen.findByRole('region', { name: 'Actions factures en masse' })
@@ -501,6 +499,29 @@ describe('AERR138 — date du jour au rendu', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+// T4-X4-010 — la tuile « À échoir ≤ 7 j » affichait « 0,00 MAD — 4 factures » :
+// le nombre était compté sur la page chargée (toute facture émise non échue),
+// le montant par le serveur. Les DEUX viennent du serveur (`nb_a_echoir_7j`,
+// `total_a_echoir_7j`, même boucle) ; une facture à 30 jours ne les fait pas bouger.
+describe('FactureList — T4-X4-010 : tuile « À échoir ≤ 7 j » à une seule source', () => {
+  const kpis = (extra) => ({ encaisse_mois: '0', encaisse_mois_precedent: '0', total_du: '0',
+    nb_impayees: 0, total_en_retard: '0', nb_en_retard: 0, total_a_echoir_7j: '0',
+    nb_a_echoir_7j: 0, ...extra })
+
+  it('quatre factures émises à 30 jours : 0 facture, 0 MAD (le serveur dit 0)', () => {
+    const loin = (id) => ({ ...baseFacture, id, reference: `FAC-L-${id}`, statut: 'emise',
+      date_echeance: '2099-12-30' })
+    renderList({ factures: [loin(1), loin(2), loin(3), loin(4)], facturesKpis: kpis() })
+    expect(screen.getByText(/^0 facture · 7 prochains jours$/)).toBeInTheDocument()
+  })
+
+  it('le nombre servi accompagne le montant servi', () => {
+    renderList({ factures: [{ ...baseFacture }],
+      facturesKpis: kpis({ total_a_echoir_7j: '88000.00', nb_a_echoir_7j: 3 }) })
+    expect(screen.getByText(/^3 factures · 7 prochains jours$/)).toBeInTheDocument()
   })
 })
 
