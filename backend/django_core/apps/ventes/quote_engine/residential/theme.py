@@ -456,6 +456,20 @@ def _lignes_onduleur(d, rows, est_onduleur):
     return [] if n is None else [(str(n), "ans", "Onduleur", "garantie fabricant")]
 
 
+def lignes_garantie_onduleur(d):
+    """T4-X1-002 — la garantie onduleur de CHAQUE option (``_lignes_onduleur``)
+    avec le MÊME classement que :func:`warranties_for` : lue par la page
+    « Confiance, garanties » du format avec étude (moteur legacy), pour qu'il
+    n'existe qu'une lecture. Rend ``[(n, "ans", libellé, sous-libellé)]``."""
+    from .. import lignes_classement
+    from apps.ventes.utils.options import texte_classement
+
+    def _est_onduleur(it):
+        return lignes_classement._is_inverter(
+            texte_classement(it.get('designation', ''), it.get('_produit_nom', '')))
+    return _lignes_onduleur(d, _composition_rows(d), _est_onduleur)
+
+
 def warranties_for(d):
     """Bande « Nos garanties » dérivée de la composition réelle du devis.
 

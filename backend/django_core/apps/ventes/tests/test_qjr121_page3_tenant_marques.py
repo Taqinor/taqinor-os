@@ -125,6 +125,48 @@ class TestMarquesDerivees(SimpleTestCase):
                 self.assertNotIn(marque, src)
 
 
+class TestGarantieOnduleurParOption(SimpleTestCase):
+    """T4-X1-002 — page « Confiance, garanties » (format avec étude) : la
+    garantie et la marque de l'onduleur de CHAQUE option, lues sur le produit
+    (même lecture que la bande du PDF premium sans étude), au niveau 15."""
+
+    def _data(self, *, niveau_15, garantie_hybride=60):
+        import copy
+        data = copy.deepcopy(_data())
+        for cle in ("sans_items", "avec_items", "all_items"):
+            for it in data.get(cle) or []:
+                des = it["designation"].lower()
+                if "onduleur réseau" in des:
+                    it["garantie_mois"] = 120
+                elif "onduleur hybride" in des:
+                    it["garantie_mois"] = garantie_hybride
+        if niveau_15:
+            data["regles_pose_reelle"] = True
+        return data
+
+    def test_niveau_14_inchange(self):
+        txt = _visible(_page3(moteur.render_html_for(self._data(niveau_15=False))))
+        self.assertIn("Onduleur 10 ans", txt)
+        self.assertIn("onduleurs Huawei —", txt)
+        self.assertNotIn("option 2", txt)
+
+    def test_niveau_15_chaque_option_sa_garantie_et_sa_marque(self):
+        txt = _visible(_page3(moteur.render_html_for(self._data(niveau_15=True))))
+        self.assertIn("Onduleur (option 1) 10 ans, onduleur (option 2) 5 ans", txt)
+        self.assertIn("onduleurs Huawei &amp; Deye", txt)  # échappé (ERR37)
+        self.assertNotIn("Onduleur 10 ans", txt)
+        # Badges : une carte par option (la batterie garde la sienne).
+        self.assertIn("10 ANS Onduleur (option 1)", txt)
+        self.assertIn("5 ANS Onduleur (option 2)", txt)
+
+    def test_niveau_15_sans_garantie_ecrite_aucune_duree_inventee(self):
+        txt = _visible(_page3(moteur.render_html_for(
+            self._data(niveau_15=True, garantie_hybride=None))))
+        self.assertIn("Onduleur (option 1) 10 ans", txt)
+        self.assertNotIn("option 2", txt)
+        self.assertNotIn("Onduleur 10 ans", txt)
+
+
 class TestSupervisionAdossee(SimpleTestCase):
     """« Suivi en temps réel » n'est promis que si une ligne le porte."""
 
