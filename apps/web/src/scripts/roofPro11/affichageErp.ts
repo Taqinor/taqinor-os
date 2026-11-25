@@ -16,6 +16,9 @@ export function raisonSansValeur(chiffrage: ChiffrageAtelier | null | undefined,
   // T4-X9-007 — tailles différentes : la case d'un chiffre clé dit « — » ; la phrase se lit UNE fois, en texte courant,
   // sous les cartes qu'elle explique (`phraseTaillesDuChiffrage`).
   if (tailleDifferente(serviNb(chiffrage?.kwc), kwc)) return '—';
+  // T4-X2-006 / T4-X9-013 — bloc « non servi » (calepinage sans lead, agricole) : aucune conception ne viendra à
+  // l'enregistrement ; la case dit « — » (la production est celle de la simulation, relayée à part).
+  if (chiffrage?.production_annuelle_kwh?.etat === 'non_servi') return '—';
   return grandeur === 'production' ? AU_PROCHAIN_ENREGISTREMENT : ECONOMIE_AU_PROCHAIN_ENREGISTREMENT;
 }
 

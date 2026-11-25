@@ -125,3 +125,38 @@ describe('F6 — cadrage du toit par l’atelier ERP', () => {
     expect(cadrerToitAtelier({})).toBe(false)
   })
 })
+
+/* T4-X2-006 — calepinage SANS lead, enregistré PUIS simulé (simulation automatique, partie après l'enregistrement) : la
+   vue Expert ne montrait que l'estimation de l'atelier (« ≈ 21 735 kWh/an (estimation) ») et le Total « production au
+   prochain enregistrement », jamais les 27 197 kWh simulés. La lecture est refaite tant que la simulation tourne, et la
+   production simulée fraîche part au constructeur dans le bloc `chiffrage` (case « Production » du Total). */
+describe('T4-X2-006 — la production simulée fraîche de la pose (useSimulationFraiche, chiffrageAvecSimulation)', () => {
+  it('simulation en cours puis faite : le P50 frais est relu, sans geste', async () => {
+    const { useSimulationFraiche, INTERVALLE_SIMULATION_MS } = await import('./simulationFraiche')
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      calepinageApi.calepinages.resultat = vi.fn()
+        .mockResolvedValueOnce({ data: { simule: false, simulation_automatique: { en_cours: true } } })
+        .mockResolvedValue({ data: { simule: true, simulation_perimee: false, production: { total: { p50_kwh: 27197 } } } })
+      const { result } = renderHook(() => useSimulationFraiche(1975, 'enregistre-11h03'))
+      await waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalledTimes(1))
+      expect(result.current).toBeNull()
+      await vi.advanceTimersByTimeAsync(INTERVALLE_SIMULATION_MS)
+      await waitFor(() => expect(result.current).toBe(27197))
+    } finally { vi.useRealTimers() }
+  })
+
+  it('simulation périmée : aucun P50 (jamais un chiffre d’un autre document)', async () => {
+    const { p50Frais } = await import('./simulationFraiche')
+    expect(p50Frais({ simule: true, simulation_perimee: true, production: { total: { p50_kwh: 27197 } } })).toBeNull()
+    expect(p50Frais({ simule: true, simulation_perimee: false, production: { total: { p50_kwh: 27197 } } })).toBe(27197)
+  })
+
+  it('le bloc `chiffrage` du constructeur porte la simulation fraîche ; sans elle, il reste tel quel', async () => {
+    const { chiffrageAvecSimulation } = await import('./simulationFraiche')
+    const sansLead = { production_annuelle_kwh: { valeur: null, etat: 'non_servi' } }
+    expect(chiffrageAvecSimulation(sansLead, 27197)).toEqual({ ...sansLead, simulation: { p50_kwh: 27197, a_jour: true } })
+    expect(chiffrageAvecSimulation(null, 27197)).toEqual({ simulation: { p50_kwh: 27197, a_jour: true } })
+    expect(chiffrageAvecSimulation(sansLead, null)).toBe(sansLead)
+  })
+})

@@ -72,6 +72,7 @@ import { toastInfo } from '../../lib/toast'
 // diverge de la cible vendue du devis.
 import { useConfirmDialog } from '../../ui/confirm'
 import ResumeAtelier from '../../features/calepinage/atelier/ResumeAtelier'
+import { chiffrageAvecSimulation, useSimulationFraiche } from '../../features/calepinage/atelier/simulationFraiche' // T4-X2-006
 import BandeauConceptionRapide from '../../features/calepinage/atelier/BandeauConceptionRapide' // ACAL1007
 import { useDirtyGuard, confirmLeaveIfDirty } from '../../ui/useDirtyGuard'
 import { reviserEtOuvrir } from '../../features/ventes/reviserDevis'
@@ -513,14 +514,17 @@ function AtelierToiture({
 
   // ACAL994 — après « Enregistrer », le contexte relu (rafraichirContexte) porte le chiffrage SERVI : la carte
   // Économies et le Total passent de l'estimation à la valeur du serveur. Mode lead : aucun chiffrage, rien à poser.
+  // T4-X2-006 — la production SIMULÉE fraîche de la pose (relue après chaque enregistrement et tant que la simulation
+  // automatique tourne) : le Total de la vue Expert la lit quand aucune conception ne la chiffre à cette taille.
+  const p50Simulation = useSimulationFraiche(estCalepinage ? calepinageId : null, enregistreLe)
   useEffect(() => {
     // R2-13 — le compte « · K au devis » suit le devis relu ; `cible.panneaux` n'est celui du DEVIS que si `source === 'devis'`.
     if (estCalepinage && contexte) {
       const cibleActive = cibleActiveDuContexte(contexte) // QJR40 : jamais contexte.cible seul
-      builderApi.current?.majChiffrage?.(contexte.chiffrage ?? null,
+      builderApi.current?.majChiffrage?.(chiffrageAvecSimulation(contexte.chiffrage ?? null, p50Simulation),
         cibleActive.source === 'devis' ? (cibleActive.panneaux ?? null) : null)
     }
-  }, [contexte, builderReady, estCalepinage])
+  }, [contexte, builderReady, estCalepinage, p50Simulation])
 
   // ACAL83 — UNE fonction relit design-context après chaque enregistrement
   // réussi : `contexte` (geometrie, avertissements, modifiable, cible) n'était

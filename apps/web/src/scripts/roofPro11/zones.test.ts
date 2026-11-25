@@ -1213,6 +1213,16 @@ describe('M5 — la raison vraie quand la pose n’a pas la taille de la concept
     expect(texteTotalProduction(4362, 1.1, true, null)).toBe('production au prochain enregistrement');
     expect(texteEconomie(null, 1.1, '≈ 5 000 MAD/an')).toBe('économie au prochain enregistrement');
   });
+  // T4-X2-006 / T4-X9-013 — calepinage SANS lead : aucune conception ne viendra (le bloc est « non servi ») ; le Total ne dit
+  // jamais « au prochain enregistrement » : la simulation fraîche de la pose (relayée par la page hôte), sinon « — ».
+  it('sans lead : jamais « au prochain enregistrement » ; la simulation fraîche de la pose quand elle est là', () => {
+    const SANS_LEAD = { production_annuelle_kwh: { valeur: null, etat: 'non_servi' }, economie_annee1_mad: { valeur: null, etat: 'non_servi' }, kwc: { valeur: null, etat: 'non_servi' } } as never;
+    expect(texteTotalProduction(21735, 17.04, true, SANS_LEAD)).toBe('—');
+    expect(texteEconomie(SANS_LEAD, 17.04, '≈ 5 000 MAD/an')).toBe('—');
+    const simule = { ...(SANS_LEAD as object), simulation: { p50_kwh: 27197, a_jour: true } } as never;
+    expect(texteTotalProduction(21735, 17.04, true, simule)).toBe(`${(27197).toLocaleString('fr-FR')} kWh/an · simulation`);
+  });
+
   it('site public (aucun bloc `chiffrage`) : l’estimation, inchangée', () => {
     expect(texteEconomie(undefined, 1.1, '≈ 5 000 MAD/an')).toBe('≈ 5 000 MAD/an');
     expect(texteTotalProduction(4362, 1.1, false, undefined)).toBe(`${(4362).toLocaleString('fr-FR')} kWh/an`);

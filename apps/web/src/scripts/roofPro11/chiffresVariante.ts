@@ -6,7 +6,7 @@
 import { kwcDuPan, MODULE_PAR_DEFAUT_ATELIER, type ModuleDocument } from './moduleSelect';
 
 /** Ce que la carte de la pose affiche : nombre posé, kWc du module posé, watt, production (`null` = rien à dire). */
-export interface ChiffresPose { count: number; kwc: number | null; watt: number | null; annualKwh: number | null }
+export interface ChiffresPose { count: number; kwc: number | null; watt: number | null; annualKwh: number | null; estimee?: boolean }
 
 /** Les chiffres de la pose : kWc au module CHOISI du pan (le défaut sans choix), production SERVIE quand elle l'est
  *  (`prodServie`), sinon l'estimation du navigateur. Une seule définition, lue par la carte et par la variante posée. */
@@ -22,6 +22,7 @@ export function chiffresDeLaPose(
     kwc,
     watt: (choisi ?? MODULE_PAR_DEFAUT_ATELIER).pmaxWc,
     annualKwh: servie != null ? servie : d.annualKwh > 0 ? d.annualKwh : null,
+    estimee: servie == null && d.annualKwh > 0, // T4-X2-006 — la production est l'estimation du navigateur
   };
 }
 
@@ -41,9 +42,13 @@ export function texteChiffresVariante(
   choisi: ModuleDocument | null,
   fmt: Fmt,
   fmtKwc: Fmt,
+  erp = false,
 ): string {
   if (posee) {
-    return `${fmt(posee.count)} panneaux · ${posee.kwc == null ? '—' : `${fmtKwc(posee.kwc)} kWc`} · ${posee.annualKwh == null ? '—' : `${fmt(Math.round(posee.annualKwh))} kWh/an`}`;
+    // T4-X2-006 — atelier ERP : la carte de la variante posée garde l'estimation de l'atelier seulement DITE comme telle
+    // (elle sert à comparer les poses ; la production de la pose est celle de sa simulation, étape Les résultats).
+    const prefixe = erp && posee.estimee ? 'Estimation pour comparer les poses : ' : '';
+    return `${prefixe}${fmt(posee.count)} panneaux · ${posee.kwc == null ? '—' : `${fmtKwc(posee.kwc)} kWc`} · ${posee.annualKwh == null ? '—' : `${fmt(Math.round(posee.annualKwh))} kWh/an`}`;
   }
   const chiffres = `${fmt(c.count)} panneaux · ${fmtKwc(c.kwc)} kWc · ${fmt(Math.round(c.annualKwh))} kWh/an`;
   return autreQueLaReference(choisi)
