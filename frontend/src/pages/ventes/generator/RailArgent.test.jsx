@@ -201,6 +201,22 @@ describe('T4-V2-018 — CarteParametresTechniques : conseil du moteur et taille 
     expect(bloc).not.toMatch(/Recommandé/)
   })
 
+  it('T4-X6-016 — un seul kWc par option : celui des LIGNES, jamais un wattage que le devis ne vend pas', () => {
+    // Rejeu X6-r : le moteur conseille 4 (sans) et 7 (avec) panneaux sur SON wattage ;
+    // le devis vend 4 × 550 W (sans) et 7 × 710 W (avec).
+    rendreCarte({
+      panelW: '710', kwp: 2.84, nbPanneaux: '4', showAvec: true,
+      deuxValeursDim: { sans: { nbPanneaux: 4, kwc: 2.84 }, avec: { nbPanneaux: 7, kwc: 3.85 } },
+      lines: [ligne('Panneau mono 550W', 4, { variante: 'sans' }),
+        ligne('Panneau Canadien Solar 710W', 7, { variante: 'avec' })],
+    })
+    const bloc = screen.getByTestId('dimensionnement-deux-valeurs').textContent.replace(/\s/g, ' ')
+    expect(bloc).toMatch(/sans batterie : 4 panneaux · 2,20 kWc/)
+    expect(bloc).toMatch(/avec batterie : 7 panneaux · 4,97 kWc/)
+    expect(bloc).not.toMatch(/2,84|3,85/)
+    expect(document.querySelector('.gen-kwp').textContent).toBe('2,20 kWp')
+  })
+
   it('les lignes suivent le conseil : aucun écart affiché', () => {
     carte([ligne('Panneau mono 550W', 6), ligne('Panneau mono 550W', 4, { variante: 'avec' })])
     expect(screen.queryByTestId('dimensionnement-ecart-sans')).toBeNull()

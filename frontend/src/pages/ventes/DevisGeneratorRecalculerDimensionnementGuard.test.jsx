@@ -271,6 +271,26 @@ describe('T4-X6-015 — Recalculer demande avant de quitter la taille demandée 
   })
 })
 
+// T4-X6-016 — un panneau écarté par le serveur (compatibilité électrique) n'est
+// jamais dit absent du stock ; les puissances sont en kWc français.
+describe('T4-X6-016 — composition à un autre wattage : la phrase est juste et en français', () => {
+  it('4 × 710 W demandés, 550 W composés : « un panneau 550 W a été composé au lieu de 710 W », 2,2 kWc (et non 2,84 kWc)', async () => {
+    ventesApi.composerDevis.mockResolvedValueOnce({ data: {
+      panel_watt: 550, kwc_reel: 2.2,
+      lignes: [{ produit: 2, designation: 'Panneau Canadien Solar 710W', quantite: 4, prix_unitaire_ht: 1166.67, variante: '' }],
+    } })
+    renderGenerator()
+    await screen.findByDisplayValue('Installation')
+    fireEvent.change(nbPanneauxField(), { target: { value: '4' } })
+    await waitFor(() => expect(nbPanneauxField().value).toBe('4'))
+    fireEvent.click(screen.getByRole('button', { name: /Auto-remplir depuis le stock/i }))
+    const phrase = await screen.findByText(/a été composé au lieu de/)
+    expect(phrase.textContent).toBe('Attention : un panneau 550 W a été composé au lieu de 710 W. La puissance '
+      + 'réelle du système est 2,2 kWc (et non 2,84 kWc). Ajustez le nombre de panneaux ou le wattage pour la cible voulue.')
+    expect(screen.queryByText(/le stock ne propose pas/)).toBeNull()
+  })
+})
+
 // QJR577 (D-QJR5-9) — serveur injoignable : AUCUNE composition de secours,
 // lignes inchangées, erreur dite et « Réessayer » qui rejoue le dry-run.
 describe('QJR577 — dry-run résidentiel en échec : erreur + Réessayer, lignes inchangées', () => {

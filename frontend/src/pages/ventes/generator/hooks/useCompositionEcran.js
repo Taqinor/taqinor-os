@@ -10,6 +10,7 @@ import { tailleAutoRemplirPompage } from '../../../../features/ventes/quote/reou
 import { refusAutoRemplirPompage } from '../../../../features/ventes/etudePompagePreviewPur'
 import { SCENARIO_AVEC, SCENARIO_LES_DEUX, tailleDemandeeParLead } from '../../../../features/ventes/quote/sizingReducer'
 import ventesApi from '../../../../api/ventesApi'
+import { formatKwc, formatNumber } from '../../../../lib/format'
 import {
   corpsCiDepuisProfil, lignesDepuisCompositionCi, avertissementsCompositionCi,
 } from '../../../../features/ventes/quote/profilCi'
@@ -112,9 +113,12 @@ export function useCompositionEcran(ctx) {
     const realW = data.panel_watt
     let mismatch = null
     if (realW && Math.abs(realW - askedW) > 1) {
-      mismatch = `Attention : le stock ne propose pas de panneau ${askedW} W ; `
-        + `un panneau ${realW} W a été retenu. La puissance réelle du système est `
-        + `${data.kwc_reel} kWc (et non ${kwp} kWc). Ajustez le nombre de panneaux ou le `
+      // T4-X6-016 — le serveur peut écarter un panneau EN STOCK (compatibilité
+      // électrique : il le dit dans `avertissements`) : jamais « le stock ne
+      // propose pas » ; la puissance du devis en kWc français (`formatKwc`).
+      mismatch = `Attention : un panneau ${formatNumber(realW)} W a été composé au lieu de `
+        + `${formatNumber(askedW)} W. La puissance réelle du système est `
+        + `${formatKwc(data.kwc_reel)} (et non ${formatKwc(kwp)}). Ajustez le nombre de panneaux ou le `
         + 'wattage pour la cible voulue.'
     }
     const marquesManquantes = data.marques_manquantes || []

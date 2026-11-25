@@ -102,7 +102,7 @@ Puissance cible (kWc)
 Nombre de panneaux*
 Puissance Panneau (W)
 Puissance PV (kWp) — calculée
-8,52 kWp
+5,68 kWp
 Les lignes portent 8 panneaux, la cible en vise 12 — recomposer ? (Auto-remplir)
 Type de Structure
 Acier galvanisé
