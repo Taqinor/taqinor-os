@@ -36,7 +36,10 @@ CLE_CATALOGUE = 'catalogue'
 #: Les réglages société dits dans ``entrees_utilisees`` et la phrase « pourquoi ».
 MOTIFS = {CLE_CATALOGUE: 'catalogue modifié', 'tva_standard': 'TVA modifiée',
           'tva_panneaux': 'TVA des panneaux modifiée'}
-LIBELLES = {CLE_CATALOGUE: 'Catalogue', 'tva_standard': 'TVA standard', 'tva_panneaux': 'TVA des panneaux'}
+LIBELLES = {CLE_CATALOGUE: 'Catalogue', 'tva_standard': 'TVA standard', 'tva_panneaux': 'TVA des panneaux',
+            # Relecture E6 m2 — les entrées IMPOSÉES au calepinage (``valeurs.dire_l_impose``).
+            'module_designe': 'Module désigné', 'onduleur_designe': 'Onduleur désigné',
+            'pose': 'Panneaux posés à la main'}
 
 
 def cle_memo_catalogue(company_id):

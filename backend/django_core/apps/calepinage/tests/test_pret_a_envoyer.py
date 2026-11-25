@@ -312,10 +312,34 @@ class ControlesElectriquesTest(SimpleTestCase):
         self.assertEqual(controle['seuil_source'], 'fourchette de la société')
 
     # ── ACAL2016 — le verdict RANGÉ par le moteur unique, lu tel quel ─────────
-    def _verdicts(self, verdicts, *, ratio=None):
+    def _verdicts(self, verdicts, *, ratio=None, note='', a_recalculer=False):
         with mock.patch('apps.calepinage.services.pret_a_envoyer._verdicts_de_la_conception',
-                        return_value=verdicts):
+                        return_value=(verdicts, note, a_recalculer)):
             return self._controles(ratio=ratio)['ratio_dc_ac']
+
+    def test_e6_pose_d_un_autre_compte_la_ligne_dit_pour_quoi_elle_est_jugee(self):
+        """Relecture E6 M4 — la pose (24) n'a pas le compte de la conception (35) : le verdict
+        est celui de LA règle pour la pose, et la ligne le dit."""
+        verdicts = {'ratio_dc_ac': {'conforme': True, 'valeur': 1.42, 'borne_source': 'règle du devis',
+                                    'detail': '1,42 pour 1,50 au plus (règle du devis)'},
+                    'capacite_hybride': None, 'longueur_chaine': None}
+        note = 'jugé pour la pose : 24 panneaux — la conception du lead en compte 35'
+        controle = self._verdicts(verdicts, note=note)
+        self.assertEqual((controle['etat'], controle['valeur_texte']),
+                         ('ok', '1,42 pour 1,50 au plus (règle du devis) (%s)' % note))
+
+    def test_e6_version_sans_verdicts_conception_a_recalculer_jamais_completer_la_fiche(self):
+        """Relecture E6 m3 — une version rangée avant les verdicts : « conception à
+        recalculer », aucun geste « Compléter la fiche » ; l'« autre option » non plus."""
+        controle = self._verdicts(None, a_recalculer=True)
+        self.assertEqual((controle['etat'], controle['valeur_texte']),
+                         ('info', 'Non calculé : conception à recalculer'))
+        self.assertFalse(controle.get('geste'))
+        autre = self._verdicts({'ratio_dc_ac': None, 'capacite_hybride': None, 'longueur_chaine': None,
+                                'non_calcule': "Conception électrique calculée pour l'autre option seulement "
+                                               '(onduleur différent).'})
+        self.assertEqual(autre['etat'], 'info')
+        self.assertFalse(autre.get('geste'))
 
     def test_hybride_dans_sa_capacite_verdict_conforme_lu_jamais_1_50(self):
         hybride = {'ratio_dc_ac': {'conforme': True, 'valeur': 1.7, 'borne': 1.8,

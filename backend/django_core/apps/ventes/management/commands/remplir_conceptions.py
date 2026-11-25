@@ -23,12 +23,19 @@ et l'économie que le moteur range AUJOURD'HUI (niveau 14) contre celles du nive
 (production de la simulation de la pose, ADEV149 ; pose ajustée souveraine, ADEV150),
 écart en kWh et en %, taille, puis ses devis : un brouillon jamais envoyé « changera »,
 un devis envoyé ou accepté est listé en lecture seule (il ne change jamais). Le niveau
-15 n'est forcé que dans ce processus et tout se passe dans une transaction annulée
-d'office : RIEN n'est écrit (ni conception, ni devis, ni calepinage). Liste à montrer
-au fondateur AVANT de rendre le niveau 15 courant (ACAL1001).
+15 n'est forcé que dans ce processus. Relecture E6 M3 : UNE transaction annulée PAR LEAD
+(jamais une transaction autour du passage : aucun verrou de calepinage tenu pendant les
+appels au service météo) ; le devis en mémoire du moteur porte lui aussi le niveau 15
+(``moteur._devis_neuf``) ; la colonne « actuel » est la conception RANGÉE quand elle existe
+(désignations comprises), calculée seulement sinon ; la simulation de la pose tourne ici
+(commande, jamais une requête) et son écriture est annulée avec le lead. RIEN n'est écrit
+(ni conception, ni devis, ni calepinage) — le cache météo du processus, lui, reste. Liste à
+montrer au fondateur AVANT de rendre le niveau 15 courant (ACAL1001). ``--limite N`` :
+N leads listés au plus ; ``--lead <id>`` : ce lead seul ; une ligne de progression toutes
+les 10 leads sur la sortie d'erreur.
 
     python manage.py remplir_conceptions [--company <id>] [--appliquer]   (--appliquer : --company requis)
-    python manage.py remplir_conceptions --ecarts [--company <id>]
+    python manage.py remplir_conceptions --ecarts [--company <id>] [--limite N] [--lead <id>]
 """
 import logging
 
@@ -38,6 +45,8 @@ from django.db import transaction
 logger = logging.getLogger(__name__)
 
 DECLENCHEUR = {'origine': 'remplissage', 'champs': []}
+#: Relecture E6 M3 — une ligne de progression (sortie d'erreur) tous les N leads examinés.
+PROGRESSION_TOUS = 10
 
 
 def _leads(company):
@@ -71,6 +80,8 @@ class Command(BaseCommand):
         parser.add_argument('--appliquer', action='store_true')
         parser.add_argument('--ecarts', action='store_true',
                             help='ADEV151 : production actuelle contre production de la pose (lecture seule).')
+        parser.add_argument('--limite', type=int, default=None, help='--ecarts : N leads listés au plus.')
+        parser.add_argument('--lead', type=int, default=None, help='--ecarts : ce lead seul.')
 
     def handle(self, *args, **opts):
         from authentication.models import Company
@@ -84,7 +95,7 @@ class Command(BaseCommand):
         for company in societes:
             self.stdout.write(f'Société #{company.pk} {company.nom}')
             if opts['ecarts']:
-                self._ecarts(company)
+                self._ecarts(company, limite=opts['limite'], lead_id=opts['lead'])
             elif opts['appliquer']:
                 self._appliquer(company)
             else:
@@ -150,35 +161,61 @@ class Command(BaseCommand):
         self.stdout.write(f'  APPLIQUÉ : {ecrites} version(s) rangée(s), {inchangees} inchangée(s), '
                           f'{sans_lieu} sans ville ni GPS (non rangés), {erreurs} erreur(s).')
 
-    def _ecarts(self, company):
-        """ADEV151 — la liste des écarts de production des brouillons (lecture seule)."""
-        from types import SimpleNamespace
-
-        from apps.ventes.conception.moteur import calculer_conception
+    def _ecarts(self, company, *, limite=None, lead_id=None):
+        """ADEV151 — la liste des écarts de production des brouillons (lecture seule) ;
+        relecture E6 M3 : une transaction annulée PAR LEAD."""
         from apps.ventes.selectors_calepinage import pose_du_lead
 
-        listes = 0
-        with transaction.atomic():
-            for lead in _leads(company).iterator():
-                calepinage_id, empreinte_pose = pose_du_lead(company, lead.pk)
-                if not calepinage_id:
-                    continue  # sans toit tracé : ADEV154 (--ecarts-sans-toit)
-                toit = SimpleNamespace(empreinte=empreinte_pose, plafond_panneaux=None) if empreinte_pose else None
-                try:
-                    with transaction.atomic():
-                        actuel = calculer_conception(lead, company, toit=toit)
-                        with _niveau_pose_reelle():
-                            pose = calculer_conception(lead, company, toit=toit, calepinage_id=calepinage_id)
-                except Exception as exc:  # noqa: BLE001 — un lead illisible est dit, la liste continue (D-ENF22-BLE001)
-                    logger.warning('remplir_conceptions --ecarts : lead #%s illisible', lead.pk, exc_info=True)
-                    self.stdout.write(f'  lead #{lead.pk} : calcul impossible ({type(exc).__name__})')
-                    continue
-                listes += 1
-                for ligne in _lignes_ecart(lead, calepinage_id, actuel, pose):
-                    self.stdout.write(ligne)
-            transaction.set_rollback(True)  # garantie : la liste n'écrit rien
+        leads = _leads(company)
+        if lead_id:
+            leads = leads.filter(pk=lead_id)
+        listes = examines = 0
+        for lead in leads.iterator():
+            if limite is not None and listes >= limite:
+                break
+            examines += 1
+            if examines % PROGRESSION_TOUS == 0:
+                self.stderr.write(f'  … {examines} lead(s) examiné(s), {listes} listé(s)')
+            calepinage_id, empreinte_pose = pose_du_lead(company, lead.pk)
+            if not calepinage_id:
+                continue  # sans toit tracé : ADEV154 (--ecarts-sans-toit)
+            try:
+                with transaction.atomic():
+                    lignes = _lignes_ecart(lead, calepinage_id, *_actuel_et_pose(
+                        lead, company, calepinage_id, empreinte_pose))
+                    transaction.set_rollback(True)  # garantie : ce lead n'écrit rien
+            except Exception as exc:  # noqa: BLE001 — un lead illisible est dit, la liste continue (D-ENF22-BLE001)
+                logger.warning('remplir_conceptions --ecarts : lead #%s illisible', lead.pk, exc_info=True)
+                self.stdout.write(f'  lead #{lead.pk} : calcul impossible ({type(exc).__name__})')
+                continue
+            listes += 1
+            for ligne in lignes:
+                self.stdout.write(ligne)
         self.stdout.write(f'  ÉCARTS : {listes} lead(s) à toit tracé listé(s) — rien n\'est écrit ; le niveau 15 '
                           'n\'est rendu courant qu\'après lecture de cette liste par le fondateur (ACAL1001).')
+
+
+def _actuel_et_pose(lead, company, calepinage_id, empreinte_pose):
+    """``(actuel, pose)`` d'un lead à toit tracé : la conception RANGÉE courante (sinon
+    calculée au niveau courant, désignations comprises) contre le niveau 15 (pose simulée
+    ICI, jamais dans une requête), désignations comprises."""
+    from types import SimpleNamespace
+
+    from apps.ventes.conception.moteur import calculer_conception
+    from apps.ventes.conception.porte_calepinage import contexte_de_pose, designations_du_calepinage
+    from apps.ventes.models import ConceptionLead
+
+    toit = SimpleNamespace(empreinte=empreinte_pose, plafond_panneaux=None) if empreinte_pose else None
+    designes = designations_du_calepinage(company, calepinage_id) or None
+    rangee = ConceptionLead.objects.filter(company=company, lead=lead, courante=True).first()
+    actuel = (SimpleNamespace(etat=rangee.etat, refus=rangee.refus, valeurs=rangee.valeurs,
+                              option_retenue=rangee.option_retenue or None) if rangee is not None
+              else calculer_conception(lead, company, toit=toit, calepinage_id=calepinage_id, imposes=designes,
+                                       souple=designes is not None))
+    with _niveau_pose_reelle(), contexte_de_pose(simuler=True):
+        pose = calculer_conception(lead, company, toit=toit, calepinage_id=calepinage_id, imposes=designes,
+                                   souple=designes is not None)
+    return actuel, pose
 
 
 def _niveau_pose_reelle():

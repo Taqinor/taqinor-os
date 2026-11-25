@@ -190,6 +190,9 @@ class DesignationEntreeImposee(BaseMateriel):
         from apps.calepinage.services.electrique import enregistrer_entree
         from apps.ventes.conception.service import relancer
 
+        # Relecture E6 B2 : seule une désignation que le catalogue de VENTE du moteur accepte est
+        # imposée — l'onduleur porte un nom que le classement reconnaît (réseau, triphasé).
+        Produit.objects.filter(pk=self.onduleur.pk).update(nom='Onduleur réseau 10 kW Triphasé')
         self._conception()
         calepinage = self._calepinage()
         with mock.patch('apps.ventes.conception.receivers.mettre_en_file') as en_file, \

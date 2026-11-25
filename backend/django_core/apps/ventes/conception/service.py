@@ -102,15 +102,21 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
     if lead_efface(lead):  # relecture E3 B1 (loi 09-08) : rien calculé, rangé ni émis
         return Relance(None, False, None, dict(REFUS_LEAD_EFFACE))
     courante = _courante(ConceptionLead, company, porteur)
+    souple = False
     if imposes is None and calepinage_id:
         from apps.ventes.conception.porte_calepinage import designations_du_calepinage
+        # Relecture E6 B2 : désignations du calepinage = imposition SOUPLE (jamais un refus).
         imposes = designations_du_calepinage(company, calepinage_id) or None
-    with reglages_lus_sans_creer(company):
+        souple = imposes is not None
+    from apps.ventes.conception.porte_calepinage import contexte_de_la_relance
+    # Relecture E6 — jamais de simulation de pose dans une requête (la tâche et la commande
+    # posent ``contexte_de_pose(simuler=True)``) ; une requête la met en file au nom de l'auteur.
+    with reglages_lus_sans_creer(company), contexte_de_la_relance(auteur):
         entrees = entrees_pour(lead, company, toit=toit)
         if courante is not None and courante.empreinte == empreinte_conception(entrees, imposes) and not forcer:
             return Relance(courante, False, None)
         resultat = calculer_conception(lead, company, entrees=entrees, toit=toit, calepinage_id=calepinage_id,
-                                       imposes=imposes)
+                                       imposes=imposes, **({'souple': True} if souple else {}))
     origine, champs = _pourquoi(courante, entrees, origine, champs)
     maintenant = timezone.now()
     version = ConceptionLead.ranger(

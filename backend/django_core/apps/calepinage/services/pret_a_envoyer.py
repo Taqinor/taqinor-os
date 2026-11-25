@@ -456,23 +456,33 @@ def _ratio_juge(conforme, texte, source, *, devis_recu=False, cause=''):
     return controle
 
 
-def _ratio_de_la_conception(verdicts, *, devis_recu=False):
+def _ratio_de_la_conception(jugement, *, devis_recu=False):
     """ACAL2016 (D-ACAL-97) — les verdicts RANGÉS par le moteur unique (``valeurs.verdicts``
     de l'option retenue, contrat ``conception_lead.json``), LUS tels quels : ratio panneaux /
-    onduleur, capacité publiée d'un hybride (D-HYB-1), longueur de chaîne. Rien n'est rejugé
-    ici (la règle ``ratio_devis.juger_ratio`` est appelée UNE fois, par le moteur)."""
+    onduleur, capacité publiée d'un hybride (D-HYB-1), longueur de chaîne. Relecture E6 M4 :
+    une pose d'un AUTRE nombre de panneaux est jugée par la MÊME règle, à la porte du moteur
+    (``ventes.selectors_conception.verdicts_pour_le_calepinage``), et la ligne dit pour quoi.
+    ``jugement`` = ``(verdicts | None, note, a_recalculer)``."""
+    from apps.ventes.selectors_conception import MOTIF_A_RECALCULER
+
+    verdicts, note, a_recalculer = jugement
+    if a_recalculer:  # relecture E6 m3 : version d'avant les verdicts, relance en file
+        return _elec('ratio_dc_ac', LIBELLE_RATIO, 'info', 'Non calculé : %s' % MOTIF_A_RECALCULER)
     if verdicts is None:
         return _elec('ratio_dc_ac', LIBELLE_RATIO, 'info', MOTIF_SANS_CONCEPTION)
     ratio = verdicts.get('ratio_dc_ac') or {}
     if ratio.get('conforme') is None:
+        motif = verdicts.get('non_calcule') or 'onduleur non désigné par la conception'
+        if 'autre option' in motif:  # relecture E6 m3 : rien à compléter, l'option servie est l'autre
+            return _elec('ratio_dc_ac', LIBELLE_RATIO, 'info', 'Non calculé : %s' % motif)
         # Relecture E6 — jamais un « conforme » muet : le moteur DIT ce qui manque et où le remplir.
-        return _elec('ratio_dc_ac', LIBELLE_RATIO, 'a_regler', 'Non calculé : %s' % (
-            verdicts.get('non_calcule') or 'onduleur non désigné par la conception'),
-            geste='Compléter la fiche technique du produit', cible=CIBLE_MATERIEL)
+        return _elec('ratio_dc_ac', LIBELLE_RATIO, 'a_regler', 'Non calculé : %s' % motif,
+                     geste='Compléter la fiche technique du produit', cible=CIBLE_MATERIEL)
     autres = [v for v in (verdicts.get('capacite_hybride'), verdicts.get('longueur_chaine')) if v]
     conforme = ratio['conforme'] and all(v.get('conforme') for v in autres)
     cause = ' ; '.join(v.get('detail') or '' for v in autres if not v.get('conforme'))
-    return _ratio_juge(conforme, ratio.get('detail') or '', ratio.get('borne_source'),
+    texte = ratio.get('detail') or ''
+    return _ratio_juge(conforme, '%s (%s)' % (texte, note) if note else texte, ratio.get('borne_source'),
                        devis_recu=devis_recu, cause=cause)
 
 
@@ -489,15 +499,30 @@ def _chutes(troncons):
 
 
 def _verdicts_de_la_conception(calepinage):
-    """``valeurs.verdicts`` de l'option retenue par la conception COURANTE, ``None`` sans
-    conception complète (ACAL2016)."""
+    """``(verdicts, note, a_recalculer)`` pour CETTE pose face à la conception COURANTE
+    (relecture E6 M4, ``ventes.selectors_conception.verdicts_pour_le_calepinage``) ;
+    ``(None, '', False)`` sans conception complète (ACAL2016)."""
+    from apps.ventes.selectors_conception import verdicts_pour_le_calepinage
+
     from .devis_retenu import conception_du_calepinage
 
     conception = conception_du_calepinage(calepinage)
     if not conception or conception.get('etat') != 'complet':
-        return None
-    valeurs = (conception.get('valeurs') or {}).get(conception.get('option_retenue')) or {}
-    return (valeurs.get('verdicts') or {}).get('valeur') or {}
+        return None, '', False
+    return verdicts_pour_le_calepinage(calepinage.company, conception, _pose_jugee(calepinage))
+
+
+def _pose_jugee(calepinage):
+    """La pose de ce calepinage telle que le contrôle la juge : compte et kWc posés, ratio et
+    chaînes de SA conception électrique, onduleur résolu (lectures déjà faites par lecture)."""
+    from .. import selectors
+
+    mesures = selectors.mesures_du_calepinage(calepinage) or {}
+    _publication, conception, resolu = _rapport(calepinage)
+    return {'nb_panneaux': mesures.get('modules'), 'kwc': mesures.get('kwc'),
+            'ratio': (_resultat(calepinage).get('ratio_dc_ac') or {}).get('valeur'),
+            'onduleur_produit': ((resolu or {}).get('produits') or {}).get('onduleur'),
+            'chaines': [{'nb_modules': c.nb_modules} for c in getattr(conception, 'chaines', None) or ()]}
 
 
 def controles_electriques(calepinage):
