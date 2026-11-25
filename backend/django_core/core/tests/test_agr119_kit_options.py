@@ -62,8 +62,9 @@ class KitMinimal(unittest.TestCase):
     def test_kit_neuf_minimal(self):
         kit = composer_kit(**BASE)
         self.assertEqual(_cles(kit), ["pompe", "variateur", "panneaux",
-                                      "structure", "installation",
-                                      "transport"])
+                                      "structure", "coffret_dc",
+                                      "disjoncteur_ac", "parafoudre_ac",
+                                      "installation", "transport"])
         self.assertEqual(kit["inclus"][2]["quantite"], 14)
         self.assertEqual(kit["inclus"][3]["quantite"], 14)
 
@@ -205,8 +206,9 @@ class Options(unittest.TestCase):
         self.assertIn("marge de câble non réglée", option["motif"])
 
     def test_option_sans_produit_au_catalogue(self):
-        kit = composer_kit(**BASE)
-        option = _option_par_cle(kit, "protection_dc")
+        kit = composer_kit(**dict(BASE, produits_options=[
+            o for o in OPTIONS_SEED if o["role_pompage"] != "clapet"]))
+        option = _option_par_cle(kit, "clapet")
         self.assertIsNone(option["produit"])
         self.assertIn("aucun produit au catalogue", option["motif"])
 
@@ -257,13 +259,116 @@ class Options(unittest.TestCase):
         pompe = dict(POMPE, prix_ttc=10000)
         inst = dict(INST_PMP_VIDE, prix_connu=True, prix_fixe_ht=3000,
                     prix_ttc=3600)
+        protections = [avec_prix(dict(p, prix_connu=True), prix)
+                       for p, prix in zip(PROTECTIONS_SEED, (900, 300, 400))]
         kit = composer_kit(**dict(
             BASE, pompe=pompe, variateur=avec_prix(VARIATEUR, 4000),
             panneau=avec_prix(PANNEAU, 1000),
             structure=avec_prix(STRUCTURE, 200), installation_pompage=inst,
-            transport=avec_prix(TRANSPORT, 500), options_cochees=[]))
+            transport=avec_prix(TRANSPORT, 500), options_cochees=[],
+            produits_options=OPTIONS_SEED + protections, alimentation="tri"))
         self.assertEqual(kit["total_ttc"],
-                         10000 + 4000 + 14 * 1000 + 14 * 200 + 3600 + 500)
+                         10000 + 4000 + 14 * 1000 + 14 * 200 + 900 + 300
+                         + 400 + 3600 + 500)
+
+
+#: Le lot PVG3 du seeder (``seed_catalogue.CABLES_PROTECTIONS_VIDES``), rôles
+#: de ``ROLE_POMPAGE_PVG3`` / migrations 0162 et 0190, prix VIDES.
+PROTECTIONS_SEED = [
+    _option(90, "Coffret DC 2 strings", "protection_dc"),
+    _option(91, "Disjoncteur AC courbe C 16 A tétrapolaire", "protection_ac"),
+    _option(92, "Parafoudre AC type 2", "protection_ac"),
+]
+DISJONCTEURS_SEED = [
+    _option(93, "Disjoncteur AC courbe C 16 A monophasé", "protection_ac"),
+    _option(94, "Disjoncteur AC courbe C 32 A monophasé", "protection_ac"),
+    _option(95, "Disjoncteur AC courbe C 20 A tétrapolaire", "protection_ac"),
+    _option(96, "Disjoncteur AC courbe C 32 A tétrapolaire", "protection_ac"),
+    _option(97, "Fusible gPV 1000 VDC 15 A", "protection_dc"),
+    _option(98, "Sectionneur DC 1000 V 25 A", "protection_dc"),
+]
+
+
+class Protections(unittest.TestCase):
+    """D-ACAL-112 / D-ACAL-118 — coffret DC + disjoncteur AC + parafoudre AC
+    au kit MINIMUM des nouveaux devis, jamais une option."""
+
+    def _kit(self, **surcharge):
+        return composer_kit(**dict(dict(BASE, produits_options=(
+            OPTIONS_SEED + PROTECTIONS_SEED + DISJONCTEURS_SEED),
+            alimentation="tri"), **surcharge))
+
+    def _ligne(self, kit, cle):
+        return next(x for x in kit["inclus"] if x["cle"] == cle)
+
+    def test_plus_une_option_protections(self):
+        self.assertNotIn("protection_dc", [o[0] for o in OPTIONS])
+        self.assertNotIn("protection_dc",
+                         [o["cle"] for o in self._kit()["options"]])
+
+    def test_prix_vides_prix_a_renseigner_jamais_gratuits(self):
+        kit = self._kit(courant_pompe_a=14)
+        for cle in ("coffret_dc", "disjoncteur_ac", "parafoudre_ac"):
+            ligne = self._ligne(kit, cle)
+            self.assertIsNotNone(ligne["produit"], cle)
+            self.assertFalse(ligne["prix_connu"], cle)
+            self.assertTrue(ligne["designation"].endswith(SUFFIXE_PRIX), cle)
+            dans_lignes = next(x for x in kit["lignes"] if x["cle"] == cle)
+            self.assertIsNone(dans_lignes["produit"])
+        self.assertIsNone(kit["total_ttc"])
+
+    def test_coffret_pour_les_chaines_du_champ(self):
+        quatre = _option(99, "Coffret DC 4 strings", "protection_dc", True)
+        produits = OPTIONS_SEED + PROTECTIONS_SEED + [quatre]
+        kit = composer_kit(**dict(BASE, produits_options=produits,
+                                  nb_chaines=1))
+        self.assertEqual(self._ligne(kit, "coffret_dc")["produit"], 90)
+        kit = composer_kit(**dict(BASE, produits_options=produits,
+                                  nb_chaines=3))
+        self.assertEqual(self._ligne(kit, "coffret_dc")["produit"], 99)
+        kit = composer_kit(**dict(BASE, produits_options=produits,
+                                  nb_chaines=5))
+        ligne = self._ligne(kit, "coffret_dc")
+        self.assertIsNone(ligne["produit"])
+        self.assertIn("5 chaînes en parallèle", ligne["motif"])
+
+    def test_disjoncteur_de_la_phase_et_du_courant(self):
+        kit = self._kit(courant_pompe_a=18)
+        self.assertEqual(self._ligne(kit, "disjoncteur_ac")["produit"], 95)
+        kit = self._kit(courant_pompe_a=18, alimentation="mono")
+        self.assertEqual(self._ligne(kit, "disjoncteur_ac")["produit"], 94)
+        kit = self._kit(courant_pompe_a=40)
+        ligne = self._ligne(kit, "disjoncteur_ac")
+        self.assertIsNone(ligne["produit"])
+        self.assertIn("40 A", ligne["motif"])
+
+    def test_calibre_jamais_devine_sans_courant(self):
+        ligne = self._ligne(self._kit(), "disjoncteur_ac")
+        self.assertIsNone(ligne["produit"])
+        self.assertIn("courant nominal de la pompe non publié",
+                      ligne["motif"])
+        # Un seul disjoncteur de la phase : celui-là.
+        kit = composer_kit(**dict(BASE, produits_options=PROTECTIONS_SEED,
+                                  alimentation="tri"))
+        self.assertEqual(self._ligne(kit, "disjoncteur_ac")["produit"], 91)
+
+    def test_jamais_un_fusible_ni_un_sectionneur_pour_coffret(self):
+        kit = composer_kit(**dict(BASE, produits_options=DISJONCTEURS_SEED))
+        ligne = self._ligne(kit, "coffret_dc")
+        self.assertIsNone(ligne["produit"])
+        self.assertTrue(ligne["designation"].startswith(
+            "Coffret de protection DC"))
+
+    def test_sans_champ_ni_variateur_pas_de_protection(self):
+        kit = self._kit(nb_panneaux=None, variateur=None)
+        for cle in ("coffret_dc", "disjoncteur_ac", "parafoudre_ac"):
+            self.assertNotIn(cle, _cles(kit))
+
+    def test_zero_batterie_zero_onduleur_avec_protections(self):
+        for ligne in self._kit(courant_pompe_a=14)["inclus"]:
+            texte = (ligne["designation"] or "").lower()
+            self.assertNotIn("batterie", texte)
+            self.assertNotIn("onduleur", texte)
 
 
 if __name__ == "__main__":

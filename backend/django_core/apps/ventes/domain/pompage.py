@@ -1627,7 +1627,18 @@ ROLES_KIT_MINIMUM = (
     ('panneaux', 'Panneaux'),
     ('structure', 'Structure au sol'),
     ('installation', 'Installation'),
+    # D-ACAL-112 / D-ACAL-118 (fondateur 25/11/2026) — les protections au kit
+    # minimum : le devis de pompage n'est automatique qu'une fois ces articles
+    # chiffrés au catalogue (un article sans prix n'est jamais chiffré).
+    ('coffret_dc', 'Coffret de protection DC'),
+    ('disjoncteur_ac', 'Disjoncteur AC (variateur → pompe)'),
+    ('parafoudre_ac', 'Parafoudre AC (variateur → pompe)'),
 )
+
+#: Les protections que le noyau ne compose qu'avec leur prérequis (champ
+#: dimensionné, variateur retenu) : sans lui, c'est LUI qui est nommé.
+_PREREQUIS_PROTECTION = {'coffret_dc': 'panneaux', 'disjoncteur_ac': 'variateur',
+                         'parafoudre_ac': 'variateur'}
 
 
 #: Rejeu live AGQ41 (24/10) — les alertes du noyau qui laissent le champ
@@ -1676,6 +1687,9 @@ def roles_minimum_manquants(sortie):
         if cle == 'pompe' and existante:
             continue
         ligne = inclus.get(cle)
+        if (ligne is None and cle in _PREREQUIS_PROTECTION
+                and inclus.get(_PREREQUIS_PROTECTION[cle]) is None):
+            continue  # le prérequis manquant est déjà nommé
         if ligne is None:
             if cle in ('panneaux', 'structure') and champ_vide:
                 motif = 'champ solaire non dimensionné — %s' % (
@@ -1692,7 +1706,9 @@ def roles_minimum_manquants(sortie):
             # article de ce rôle n'existe (un article sans prix est une ligne
             # AVEC produit). La pompe placeholder reste « prix à renseigner »
             # (ses candidats existent, sans prix).
-            motif = 'aucun article au catalogue (rôle %s)' % (
+            # D-ACAL-118 — le noyau dit pourquoi aucune protection n'est
+            # retenue (chaînes du champ, calibre du disjoncteur à choisir).
+            motif = ligne.get('motif') or 'aucun article au catalogue (rôle %s)' % (
                 ligne.get('role_pompage') or cle)
         elif not ligne.get('prix_connu') or not ligne.get('produit'):
             motif = 'prix à renseigner au catalogue'

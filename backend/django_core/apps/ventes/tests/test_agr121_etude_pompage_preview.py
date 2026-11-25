@@ -560,7 +560,44 @@ class ArticleSansPrixNommeTests(SimpleTestCase):
              'motif': 'prix à renseigner au catalogue',
              'articles': [{'id': 42, 'nom': 'Structure sol galvanisée'}]},
             {'cle': 'installation', 'libelle': 'Installation',
+             'motif': 'aucun article au catalogue', 'articles': []},
+            # D-ACAL-118 — les protections du kit minimum, absentes du kit.
+            {'cle': 'coffret_dc', 'libelle': 'Coffret de protection DC',
+             'motif': 'aucun article au catalogue', 'articles': []},
+            {'cle': 'disjoncteur_ac',
+             'libelle': 'Disjoncteur AC (variateur → pompe)',
+             'motif': 'aucun article au catalogue', 'articles': []},
+            {'cle': 'parafoudre_ac',
+             'libelle': 'Parafoudre AC (variateur → pompe)',
              'motif': 'aucun article au catalogue', 'articles': []}])
+
+    def test_dacal118_protection_sans_article_dit_le_motif_du_noyau(self):
+        """D-ACAL-118 — le noyau dit pourquoi aucune protection n'est retenue
+        (calibre à choisir) : le refus reprend ce motif ; une protection dont
+        le prérequis manque (variateur) n'est pas nommée en double."""
+        prix = {'prix_connu': True, 'quantite': 1}
+        motif = ('calibre du disjoncteur AC à choisir : courant nominal de la '
+                 'pompe non publié (fiche de la pompe)')
+        sortie = {'pompe': {'mode': 'existante'}, 'champ': {'nb_panneaux': 6},
+                  'kit': {'inclus': [
+                      dict(prix, cle='variateur', produit=1, designation='V'),
+                      {'cle': 'disjoncteur_ac', 'produit': None, 'quantite': 1,
+                       'prix_connu': False, 'role_pompage': 'protection_ac',
+                       'designation': 'Disjoncteur AC', 'motif': motif}]}}
+        manquants = {m['cle']: m['motif']
+                     for m in pompage.roles_minimum_manquants(sortie)}
+        self.assertEqual(manquants['disjoncteur_ac'], motif)
+        sans_variateur = {'pompe': {'mode': 'existante'},
+                          'champ': {'nb_panneaux': 6},
+                          'variateur': {'motif': None},
+                          'kit': {'inclus': [dict(prix, cle='panneaux',
+                                                  produit=2, designation='P')]}}
+        cles = {m['cle'] for m in pompage.roles_minimum_manquants(
+            sans_variateur)}
+        self.assertIn('variateur', cles)
+        self.assertIn('coffret_dc', cles)
+        self.assertNotIn('disjoncteur_ac', cles)
+        self.assertNotIn('parafoudre_ac', cles)
 
     def test_contrat_chaque_role_manquant_porte_ses_articles(self):
         listes = [e['roles_minimum_manquants'] for e in CONTRAT.values()
