@@ -242,6 +242,23 @@ class T4X4001PanneauxRetouchesALEcran(_Base):
         self.assertEqual(q['Structure acier'], Decimal('7'))
         self.assertEqual(q['Socle béton'], Decimal('14'))
 
+    def test_un_devis_commercial_garde_les_quantites_de_son_moteur(self):
+        """CI rouge du 25/11 (``BrouillonsSuiventLaConceptionTests``, cas C&I : structure
+        « 1 lot » réécrite à 162) — la règle des sœurs est celle de la composition
+        résidentielle : sur un devis commercial, industriel ou agricole rien n'est réécrit."""
+        from apps.ventes.domain.pipeline import ecrire_lignes
+        from apps.ventes.models import Devis
+
+        for mode in ('commercial', 'industriel', 'agricole'):
+            with self.subTest(mode=mode):
+                devis, par, specs = self._devis_et_specs()
+                Devis.objects.filter(pk=devis.pk).update(mode_installation=mode)
+                devis.refresh_from_db()
+                par['Panneau Canadian Solar 710W'].update(quantite='7', quantite_manuelle=True)
+                ecrire_lignes(devis, specs, company=self.company)
+                q = self._quantites(devis)
+                self.assertEqual((q['Structure acier'], q['Socle béton']), (Decimal('5'), Decimal('10')))
+
     def test_une_soeur_tapee_a_la_main_est_gardee_et_dite(self):
         from apps.ventes.domain.pipeline import ecrire_lignes
         devis, par, specs = self._devis_et_specs()

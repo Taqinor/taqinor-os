@@ -655,6 +655,11 @@ def _soeurs_suivent_panneaux_retouches(devis, lignes_in, avertissements=None):
     from apps.ventes.domain.catalogue import classer_produit
     if devis is None or getattr(devis, 'pk', None) is None:
         return
+    # CI rouge du 25/11 (brouillon C&I recomposé par le moteur : structure « 1 lot » réécrite à
+    # 162) — la règle des sœurs est celle de la composition RÉSIDENTIELLE ; un devis commercial,
+    # industriel ou agricole porte les quantités que SON moteur a composées.
+    if (getattr(devis, 'mode_installation', None) or 'residentiel') != 'residentiel':
+        return
     avant = _panneaux_par_variante(devis.lignes.all())
     apres = _panneaux_par_variante(lignes_in)
     affleurants = _affleurants_au_niveau(devis, getattr(devis, 'roof_layout', None))
