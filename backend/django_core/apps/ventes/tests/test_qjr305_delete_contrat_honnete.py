@@ -263,3 +263,31 @@ class UnDevisIllisibleRendUneCartePartielle(_Base):
         reponse = self.api.get(self.url(devis))
         self.assertEqual(reponse.status_code, 200)
         self.assertIn('effectif', reponse.data)
+
+
+class T4X4019TailleDUneSeuleOption(_Base):
+    """T4-X4-019 — deux options (7 panneaux « sans », 11 « avec ») : le
+    registre ne rend jamais 18 panneaux (la somme) ; il décrit l'option sans
+    batterie et le DIT (``option: 'sans'``)."""
+
+    def test_deux_options_auto_de_l_option_sans_et_nommee(self):
+        devis = self.devis_neuf(avec_lignes=False)
+        panneau = self.produits['Panneau Canadian Solar 710W']
+        for variante, qte in (('sans', 7), ('avec', 11)):
+            LigneDevis.objects.create(
+                devis=devis, produit=panneau, designation=panneau.nom,
+                quantite=Decimal(qte), prix_unitaire=Decimal('1100'),
+                remise=Decimal('0'), variante=variante)
+        autos = R.autos_du_devis(devis)
+        self.assertEqual(autos['taille.nb_panneaux'], 7)
+        self.assertEqual(autos['taille.kwc'], round(7 * 710 / 1000, 2))
+        effectif = self.api.get(self.url(devis)).data['effectif']
+        self.assertEqual(effectif['taille.nb_panneaux']['auto'], 7)
+        self.assertEqual(effectif['taille.nb_panneaux']['option'], 'sans')
+        self.assertNotIn('option', effectif.get('scenario', {}))
+
+    def test_mono_option_aucune_option_nommee(self):
+        devis = self.devis_neuf()
+        effectif = self.api.get(self.url(devis)).data['effectif']
+        self.assertEqual(effectif['taille.nb_panneaux']['auto'], 14)
+        self.assertNotIn('option', effectif['taille.nb_panneaux'])
