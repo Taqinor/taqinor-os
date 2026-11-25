@@ -103,7 +103,7 @@ import {
   type FiltrageAccesSolaire,
 } from './shadingUi'; // CALX115 — le seuil d'accès solaire lu par le posable
 import { $, celluleEconomies, fmt, fmtKwc, fmtMad, renommerDt } from './dom';
-import { raisonSansValeur, VALEURS_HORS_LIGNE, compteDevis, couvertureServie, phraseSurplus, peindreBande, phraseTaillesDuChiffrage, productionServie, quiDuDevis, suiteAuDevis, texteEconomie, texteSurDevis } from './affichageErp'; import { peindrePhraseTailles } from './tailleConception'; // R2-13/16/17, ACAL2022, T4-X9-007
+import { raisonSansValeur, VALEURS_HORS_LIGNE, compteDevis, couvertureServie, phraseSurplus, peindreBande, phraseTaillesDuChiffrage, productionServie, quiDuDevis, suiteAuDevis, texteEconomie, texteSurDevis } from './affichageErp'; import { peindrePhraseTailles, suiteCouverture } from './tailleConception'; // R2-13/16/17, ACAL2022, T4-X9-007
 import { type CardData, type ChiffrageAtelier, type RenderConfigOpts, type RenderSceneFn } from './types';
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
@@ -1079,8 +1079,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   const cibleDeCarte = (cibleSolveur: number): number => (cibleSolveur > 0 ? cibleSolveur : billToAnnualKwh(factureCarte()));
 
   /** ACAL852 — la phrase de couverture : « ≈ N % de la facture », ou « facture inconnue » quand la cible est absente ou nulle. */
-  const couverture = (target: number, cov: number) =>
-    (target > 0 ? (modeErp() ? ` — production ÷ consommation : ${cov} %` : ` ≈ ${cov} % de la facture`) : '. Facture inconnue — saisissez-la pour voir la couverture');
+  const couverture = (target: number, cov: number) => // T4-X5-005 — ERP : aucun pourcentage dans la phrase (la part est dans sa case)
+    suiteCouverture(target, cov, modeErp());
 
   /** ACAL994/2022 — d'où vient l'économie : servie ⇒ « au dernier enregistrement » (+ option) ; hors ligne ⇒ dernier calcul ; sinon « au prochain enregistrement ». Site public : aucune ligne. */
   function etiquetteEconomie() {

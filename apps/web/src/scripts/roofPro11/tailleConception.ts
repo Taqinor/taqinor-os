@@ -46,6 +46,15 @@ export function peindrePhraseTailles(apres: Element | null | undefined, id: stri
   el.textContent = texte;
 }
 
+/** T4-X5-005 — la suite « couverture » de la phrase de la carte Recommandation. Site public : « ≈ N % de la facture »
+ *  (son estimation, celle que la carte montre). ERP : AUCUN pourcentage — la part production ÷ consommation ne se lit que
+ *  dans sa case (`couverture_pct` servie avec la production qu'elle divise, « — » quand cette production n'est pas
+ *  montrée) ; avant, la phrase portait un rapport tiré d'une estimation montrée nulle part. Facture inconnue : dit. */
+export function suiteCouverture(target: number, cov: number, erp: boolean): string {
+  if (!(target > 0)) return '. Facture inconnue — saisissez-la pour voir la couverture';
+  return erp ? '' : ` ≈ ${cov} % de la facture`;
+}
+
 /** La phrase, en texte courant : « <grandeur> calculée(s) pour la conception du lead : 4,40 kWc — votre pose en compte
  *  5,68 kWc. » La grandeur est nommée par l'appelant (« Production », « Production et économie »…). */
 export function phraseTailles(grandeur: string, kwcConception: number, kwcPose: number, pluriel = false): string {

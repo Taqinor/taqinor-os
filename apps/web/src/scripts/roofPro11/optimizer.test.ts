@@ -30,6 +30,7 @@ import type { Obstacle } from '../../lib/obstacles'; // ACAL2032
 import type { LayoutPlan } from './types'; // ACAL2032
 import { DEG2M as DEG2M_TEST } from './constants'; // ACAL2032
 import { fmt, fmtKwc, fmtMad } from './dom'; // ACAL994 + R2-09
+import { suiteCouverture } from './tailleConception'; // T4-X5-005
 import { phraseSurplus } from './affichageErp'; // R2-17
 import { createZones } from './zones'; // ACAL1418
 import { factureCarteDe, lireFactureSaisie } from './factureCarte'; // ACAL777
@@ -1314,6 +1315,23 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
       e.opt.majChiffrage(servi({ production_annuelle_kwh: { valeur: 9105, etat: 'servi' }, couverture_pct: { valeur: null, etat: 'omis' } }) as never);
       expect(e.t('rp9-reco-cover')).toBe('—'); // production sans part servie : aucun pourcentage gardé d'avant
     } finally { e.fin(); }
+  });
+
+  // T4-X5-005 (rejeu X9) — la phrase de la carte disait « 8 panneaux — production ÷ consommation : 123 % », un rapport tiré
+  // d'une production montrée nulle part (l'estimation du navigateur). En ERP la phrase ne porte plus aucun pourcentage : la
+  // part ne se lit que dans sa case, servie avec la production qu'elle divise (et « — » quand cette production n'est pas montrée).
+  it('T4-X5-005 — ERP : la phrase de la carte ne porte aucun « production ÷ consommation : N % » ; le site public garde « ≈ N % de la facture »', () => {
+    // La suite de la phrase, telle que la carte la compose (toit plat et toit en pente : `optimizer.ts::couverture`).
+    expect(suiteCouverture(6547, 123, true)).toBe('');
+    expect(suiteCouverture(6547, 123, false)).toBe(' ≈ 123 % de la facture');
+    expect(suiteCouverture(0, 0, true)).toBe('. Facture inconnue — saisissez-la pour voir la couverture');
+    // La part, elle, reste dans sa case : servie à même taille, « — » sinon.
+    const memeTailleServie = erp(servi({ couverture_pct: { valeur: 43, etat: 'servi' } }));
+    const autreTaille = erp(servi({ kwc: { valeur: 4.4, etat: 'servi' } }));
+    try {
+      expect(memeTailleServie.t('rp9-reco-cover')).toBe('43 %');
+      expect(autreTaille.t('rp9-reco-cover')).toBe('—');
+    } finally { memeTailleServie.fin(); autreTaille.fin(); }
   });
 
   it('« Pose très au-dessus de la consommation » : au-dessus de 2 × la consommation (deux nombres), pas en dessous, jamais sur le site public', () => {
