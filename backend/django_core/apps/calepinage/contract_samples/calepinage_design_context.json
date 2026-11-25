@@ -135,6 +135,7 @@
       "production_annuelle_kwh": {"valeur": 98576, "unite": "kWh/an", "source": "calepinage_enregistre", "etat": "servi"},
       "economie_annee1_mad": {"valeur": 7420, "unite": "MAD", "source": "devis", "etat": "servi", "option": "sans_batterie"},
       "autoconsommation_pct": {"valeur": 62.0, "unite": "%", "source": "devis", "etat": "servi"},
+      "couverture_pct": {"valeur": 55.0, "unite": "%", "source": "conception", "etat": "servi"},
       "omissions": []
     }
   },
@@ -270,6 +271,7 @@
       "production_annuelle_kwh": {"valeur": 98576, "unite": "kWh/an", "source": "calepinage_enregistre", "etat": "servi"},
       "economie_annee1_mad": {"valeur": 7420, "unite": "MAD", "source": "devis", "etat": "servi", "option": "sans_batterie"},
       "autoconsommation_pct": {"valeur": 62.0, "unite": "%", "source": "devis", "etat": "servi"},
+      "couverture_pct": {"valeur": 55.0, "unite": "%", "source": "conception", "etat": "servi"},
       "omissions": []
     }
   },
@@ -451,11 +453,13 @@
       "production_annuelle_kwh": {"valeur": null, "unite": "kWh/an", "source": null, "etat": "non_servi"},
       "economie_annee1_mad": {"valeur": null, "unite": "MAD", "source": null, "etat": "non_servi", "option": null},
       "autoconsommation_pct": {"valeur": null, "unite": "%", "source": null, "etat": "non_servi"},
+      "couverture_pct": {"valeur": null, "unite": "%", "source": null, "etat": "non_servi"},
       "omissions": [
         {"grandeur": "kwc", "motif": "aucun lead lié : le chiffrage du devis ne peut pas être calculé"},
         {"grandeur": "production_annuelle_kwh", "motif": "aucun lead lié : le chiffrage du devis ne peut pas être calculé"},
         {"grandeur": "economie_annee1_mad", "motif": "aucun lead lié : le chiffrage du devis ne peut pas être calculé"},
-        {"grandeur": "autoconsommation_pct", "motif": "aucun lead lié : le chiffrage du devis ne peut pas être calculé"}
+        {"grandeur": "autoconsommation_pct", "motif": "aucun lead lié : le chiffrage du devis ne peut pas être calculé"},
+        {"grandeur": "couverture_pct", "motif": "aucun lead lié : le chiffrage du devis ne peut pas être calculé"}
       ]
     }
   },

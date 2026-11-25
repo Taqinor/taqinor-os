@@ -436,12 +436,21 @@ class ContexteConceptionTest(BaseApiCalepinage):
         calepinage = Calepinage.objects.create(
             company=self.company, lead_id=self.lead_lie.pk, titre='ACAL993',
             roof_layout=LAYOUT, layout_hash='b' * 64)
-        servi = self._contexte(calepinage)['chiffrage']
-        attendu = chiffrer_conception(calepinage=calepinage, company=self.company)
+        # ADEV153 — le chiffrage LIT la conception rangée du lead (aucun noyau) : ici 6 047 kWh/an rangés.
+        rangee = {'etat': 'complet', 'marche': 'residentiel', 'option_retenue': 'sans', 'niveau_regles': 15,
+                  'entrees_utilisees': {'facture_hiver': {'valeur': 900, 'source': 'lead'}},
+                  'valeurs': {'sans': {
+                      'puissance_kwc': {'valeur': 4.4}, 'production_annuelle': {'valeur': 6047.0, 'source': 'pose'},
+                      'economies_annuelles': {'valeur': 5100.0}, 'autoconsommation': {'valeur': 0.62},
+                      'couverture': {'valeur': 0.55}}}}
+        with mock.patch('apps.ventes.conception.service.conception_ou_calcul', return_value=(rangee, False)):
+            servi = self._contexte(calepinage)['chiffrage']
+            attendu = chiffrer_conception(calepinage=calepinage, company=self.company)
         self.assertEqual(set(servi), set(CONTRAT['exemple']['chiffrage']))
         self.assertEqual(servi['production_annuelle_kwh']['valeur'],
                          attendu['production_annuelle_kwh']['valeur'])
-        self.assertIsNotNone(servi['production_annuelle_kwh']['valeur'])
+        self.assertEqual(servi['production_annuelle_kwh']['valeur'], 6047.0)
+        self.assertEqual(servi['couverture_pct']['valeur'], 55.0)
         sans_lead = self._contexte(self.nu)['chiffrage']
         self.assertEqual({sans_lead[c]['etat'] for c in ('kwc', 'production_annuelle_kwh')}, {'non_servi'})
         self.assertEqual(sans_lead['omissions'], CONTRAT['exemple_vide']['chiffrage']['omissions'])

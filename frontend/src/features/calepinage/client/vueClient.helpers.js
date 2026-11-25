@@ -3,7 +3,6 @@ import { creerRepere, lngLatVersMetres, ORDRE_LNGLAT } from '../repere'
 import { modulesDuDocument } from '@roofpro/modulesGeo'
 import { formatNumber } from '../../../lib/format'
 import { useLectureServie } from '../atelier/coque/etapes/panneaux/lectures'
-import { productionPubliee } from '../atelier/coque/etapes/panneaux/sources'
 
 /* ============================================================================
    « MONTRER AU CLIENT » — lectures pures (maquette TelephoneClient).
@@ -72,47 +71,40 @@ function puissancePose(resultat, panneaux) {
   return Number.isFinite(kwc) && kwc > 0 ? kwc : null
 }
 
-/** ACAL1840 (D-ACAL-88) — l'estimation de la pose : le chiffre que l'atelier affiche déjà comme « Production · estimation de
-    la pose » (`figures.productionKwh`, lu sur le constructeur par `panneaux/constructeur.js::lireFigures`) — même source,
-    aucun calcul ici. `{ kwh }`, ou `null` quand le constructeur n'en publie pas. */
-export function estimationPose(figures) {
-  const kwh = Number(figures?.productionKwh)
-  return Number.isFinite(kwh) && kwh > 0 ? { kwh } : null
-}
+/** ACAL2023 — une grandeur SERVIE du bloc `chiffrage` (`etat: 'servi'` + nombre), sinon `null`. */
+const servi = (g) => (g?.etat === 'servi' && g.valeur != null && Number.isFinite(Number(g.valeur)) ? Number(g.valeur) : null)
+
+/** ACAL2023 — le premier calcul de la conception est en cours : la production est omise pour ce motif (jamais un zéro). */
+const calculEnCours = (chiffrage) => (chiffrage?.omissions ?? [])
+  .some((o) => o?.grandeur === 'production_annuelle_kwh' && /en cours/i.test(o?.motif ?? ''))
 
 /**
  * Les tuiles de la maquette, dans son ordre ; une donnée non servie ⇒ tuile omise.
- * PRODUCTION ET COUVERTURE (H2) : montrées au client SEULEMENT quand le résultat publié est frais ET complet —
- * la règle du devis (`productionPubliee`, `panneaux/sources.js` ; `calepinage/selectors_devis.py`). Un résultat
- * incomplet est une BORNE HAUTE (« au plus » à l'étape Résultats) : jamais présentée au client comme une année
- * moyenne. Restent alors les faits certains : les panneaux posés et la puissance.
- * ACAL1840 (D-ACAL-88) — tant que le résultat n'est pas complet, la tuile de production est l'ESTIMATION DE LA POSE
- * (`estimation`, lue sur l'atelier), dite « estimation de la pose » ; un résultat complet la remplace. Jamais deux
- * chiffres de production à la fois.
+ * ACAL2023 (D-ACAL-97 : un seul moteur) — PRODUCTION ET COUVERTURE : celles de la CONCEPTION COURANTE du lead, lues sur le bloc
+ * `chiffrage` du design-context (`production_annuelle_kwh`, `couverture_pct`) : aucune estimation propre à la vue, aucun calcul,
+ * LA même part « production ÷ consommation » que l'atelier. Les pertes par défaut sont DITES (`nature: 'pertes'` quand la production
+ * n'est pas celle de la pose réelle) ; la conception en cours de calcul ⇒ la tuile « calcul en cours », sans chiffre. Sans conception
+ * servie : restent les faits du document enregistré (panneaux posés, puissance de la pose).
  */
-export function tuilesClient(document, resultat, estimation = null) {
+export function tuilesClient(document, resultat, chiffrage = null) {
   const tuiles = []
   const panneaux = panneauxDuDocument(document)
   if (panneaux !== null) tuiles.push({ cle: 'panneaux', valeur: formatNumber(panneaux, { locale: 'fr' }), libelle: 'panneaux' })
-  const publiee = productionPubliee(resultat)
-  if (publiee && publiee.p50 > 0) {
-    tuiles.push({ cle: 'kwh', valeur: formatNumber(Math.round(publiee.p50), { locale: 'fr' }), libelle: 'kWh par an · estimation', marine: true })
-    const couverture = Number(resultat?.autoconsommation?.taux_couverture)
-    if (resultat?.autoconsommation?.taux_couverture != null && Number.isFinite(couverture)) {
-      tuiles.push({ cle: 'couverture', valeur: `${Math.round(couverture * 100)} %`, libelle: 'de votre consommation' })
-    }
+  const kwh = panneaux === null ? null : servi(chiffrage?.production_annuelle_kwh) // aucun toit enregistré : rien à chiffrer devant le client
+  if (kwh > 0) {
+    const pertesParDefaut = chiffrage.production_annuelle_kwh.source !== 'calepinage_enregistre'
+    tuiles.push({
+      cle: 'kwh', valeur: formatNumber(Math.round(kwh), { locale: 'fr' }), libelle: 'kWh par an · estimation', marine: true,
+      ...(pertesParDefaut ? { nature: 'pertes' } : {}),
+    })
+    const couverture = servi(chiffrage.couverture_pct)
+    if (couverture !== null) tuiles.push({ cle: 'couverture', valeur: `${Math.round(couverture)} %`, libelle: 'de votre consommation' })
     return tuiles
   }
+  if (panneaux !== null && calculEnCours(chiffrage)) tuiles.push({ cle: 'calcul', valeur: 'calcul en cours', libelle: 'production estimée', marine: true })
   const kwc = puissancePose(resultat, panneaux)
-  const kwhEstimes = estimation?.kwh > 0 ? Math.round(estimation.kwh) : null
-  if (kwhEstimes) {
-    tuiles.push({
-      cle: 'kwh', valeur: formatNumber(kwhEstimes, { locale: 'fr' }), libelle: 'kWh par an · estimation de la pose',
-      marine: true, nature: 'estimation',
-    })
-  }
   if (kwc !== null) {
-    tuiles.push({ cle: 'kwc', valeur: formatNumber(kwc, { locale: 'fr', decimals: 2 }), libelle: 'kWc de puissance', marine: !kwhEstimes })
+    tuiles.push({ cle: 'kwc', valeur: formatNumber(kwc, { locale: 'fr', decimals: 2 }), libelle: 'kWc de puissance', marine: true })
   }
   return tuiles
 }
@@ -156,9 +148,8 @@ export function useDonneesClient(id, { contexte: contexteServi = null, lireConte
   return {
     doc,
     plan: ok ? planDessus(document) : null,
-    tuiles: ok ? tuilesClient(document, resultat) : [],
-    // ACAL1840 — les mêmes tuiles avec l'estimation de la pose lue sur l'atelier (3D) : `estimation` = `estimationPose(figures)`.
-    tuilesAvec: (estimation) => (ok ? tuilesClient(document, resultat, estimation) : []),
+    // ACAL2023 — la conception courante servie (bloc `chiffrage` du design-context) : la vue ne calcule rien.
+    tuiles: ok ? tuilesClient(document, resultat, contexte?.chiffrage ?? null) : [],
     // Le nom servi du projet ; sinon le client du devis lié (servi) ; sinon le nom que l'atelier donne lui-même
     // au calepinage (« Calepinage N », coque/projet.js).
     titre: (contexte?.calepinage?.titre ?? '').trim() || (contexte?.calepinage?.devis_lie?.client_nom ?? '').trim()
