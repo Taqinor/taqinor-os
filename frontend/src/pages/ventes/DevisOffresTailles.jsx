@@ -342,6 +342,9 @@ function TierCard({
 export default function DevisOffresTailles({
   devisId, modeInstallation, produits,
   modifiable, raisonNonModifiable, onDevisRecompose, onDevisEcrit,
+  // T4-X4-004 — `updated_at` du devis : un enregistrement de l'écran relit les
+  // cartes (sinon « Recommandé » décrivait le devis d'AVANT l'enregistrement).
+  versionDevis,
 }) {
   const { confirm } = useConfirmDialog()
   const actif = Boolean(devisId) && modeInstallation === 'residentiel'
@@ -363,7 +366,7 @@ export default function DevisOffresTailles({
       .catch(() => setLoadError(
         'Impossible de charger les tailles Éco / Recommandé / Max de ce devis.'))
       .finally(() => setLoading(false))
-  }, [devisId, actif])
+  }, [devisId, actif, versionDevis]) // eslint-disable-line react-hooks/exhaustive-deps -- versionDevis : relecture voulue
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage / changement de devis, même patron que DevisForm.jsx ApprobationPanel (D-ENF22)
   useEffect(() => { charger() }, [charger])

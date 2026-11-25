@@ -113,6 +113,17 @@ describe('DevisOffresTailles — garde-fous de montage', () => {
     expect(ventesApi.getOffresTaillesDevis).not.toHaveBeenCalled()
   })
 
+  it('T4-X4-004 — un enregistrement du devis (updated_at qui change) relit les cartes', async () => {
+    ventesApi.getOffresTaillesDevis.mockResolvedValue({
+      data: { editable: false, raison_non_editable: 'Ce devis ne permet pas encore de dériver des tailles.' },
+    })
+    const { rerender } = renderSection({ versionDevis: '2026-11-25T01:00:00Z' })
+    await waitFor(() => expect(ventesApi.getOffresTaillesDevis).toHaveBeenCalledTimes(1))
+    rerender(<DevisOffresTailles devisId={42} modeInstallation="residentiel" produits={PRODUITS}
+                                 versionDevis="2026-11-25T01:32:41Z" />)
+    await waitFor(() => expect(ventesApi.getOffresTaillesDevis).toHaveBeenCalledTimes(2))
+  })
+
   it('affiche la raison en clair quand le devis n\'est pas dérivable (editable: false)', async () => {
     ventesApi.getOffresTaillesDevis.mockResolvedValue({
       data: { editable: false, raison_non_editable: 'Ce devis ne permet pas encore de dériver des tailles.' },

@@ -639,3 +639,107 @@ class PreparationTests(_Base):
                                            pv._tailles_servies(lien))
                if noyau._section_servie(lien, 'economies') else None)
         self.assertEqual(payload.get('offres_tailles'), ici)
+
+
+class T4X4004OptionSansDuDevisOfficiel(_Base):
+    """T4-X4-004 — le devis DEV-202611-0131 de la revue, tel qu'il était en
+    base quand la carte « Recommandé · Devis officiel » s'est affichée :
+    scénario « Avec batterie », lignes NON étiquetées, AUCUN onduleur réseau.
+    Le panier « sans » du moteur (tout sauf hybride et batterie) n'a alors
+    AUCUN onduleur : c'est lui qui valait 36 900 MAD. Le document client, lui,
+    ne sert que l'option avec batterie."""
+
+    LIGNES = (
+        ('Onduleur hybride Deye 5kW Monophasé', '1', '12500.00', '20'),
+        ('Panneau mono 550W', '8', '2498.18', '10'),
+        ('Batterie Dyness 5 kWh', '1', '11666.67', '20'),
+        ('Structures acier', '8', '416.67', '20'),
+        ('Socles', '16', '67.00', '20'),
+        ('Câble solaire Nexans 6mm² (au mètre)', '60', '10.83', '20'),
+        ('Câble de terre Nexans 6 mm² (au mètre)', '40', '12.00', '20'),
+        ('Accessoires', '1', '416.67', '20'),
+        ('Tableau De Protection AC/DC', '1', '1625.00', '20'),
+        ('Installation', '1', '4000.00', '20'),
+        ('Transport', '1', '900.00', '20'),
+    )
+
+    def _devis_avec_seul(self):
+        company = self._company('t4x4004')
+        client_obj = Client.objects.get_or_create(
+            company=company, nom='Client t4x4004', defaults={})[0]
+        devis = Devis.objects.create(
+            company=company, reference='DEV-T4X4004-01', client=client_obj,
+            statut='brouillon', taux_tva=Decimal('20'),
+            mode_installation='residentiel',
+            etude_params={'scenario': 'Avec batterie'})
+        for nom, qte, pu, tva in self.LIGNES:
+            produit = Produit.objects.create(
+                company=company, nom=nom, prix_vente=pu, quantite_stock=50)
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=nom,
+                quantite=Decimal(qte), prix_unitaire=Decimal(pu),
+                taux_tva=Decimal(tva), remise=Decimal('0'))
+        return devis
+
+    def test_le_36_900_est_le_panier_sans_sans_onduleur(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.utils.options import AVEC_BATTERIE, option_totaux
+        devis = self._devis_avec_seul()
+        data = build_quote_data(devis)
+        self.assertEqual(data['variantes_servables'], ['avec'])
+        self.assertEqual(data['nb_options'], 1)
+        self.assertEqual(data['totaux_sans']['ttc'], 36900.0)
+        self.assertEqual(data['totaux_avec']['ttc'], 65900.0)
+        # Ce que le client reçoit : l'option avec batterie, au total du noyau.
+        self.assertEqual(data['display_total'], 65900.0)
+        self.assertEqual(data['totaux_all']['ttc'], 65900.0)  # format une page
+        self.assertEqual(data['scenario'], 'Avec batterie')  # 3 pages : colonne « sans » masquée
+        self.assertEqual(float(option_totaux(devis, AVEC_BATTERIE)['ttc']), 65900.0)
+
+    def test_la_carte_recommande_ne_sert_pas_une_option_que_le_devis_ne_vend_pas(self):
+        from apps.ventes import offres_tailles as ot
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._devis_avec_seul()
+        data = build_quote_data(devis)
+        contexte = SimpleNamespace(
+            devis=devis, entrees={}, facteur_remise=1.0, corrige=True,
+            toit_max=None, capacite_toit=None, module_batterie_kwh=None)
+        patches = (
+            mock.patch.object(ot, '_contexte', return_value=contexte),
+            mock.patch.object(ot, '_champs_des_tailles', return_value={'recommande': 8}),
+            mock.patch.object(ot, '_annuel_frais', return_value={}),
+            mock.patch.object(ot, '_banque_du_devis', return_value=None),
+            mock.patch.object(ot, '_ajouter_toit'),
+            mock.patch.object(ot, 'cles_tailles_servies', return_value=['recommande']),
+        )
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
+            bloc = ot.deriver(devis, data)
+        reco = next(o for o in bloc['offres'] if o['cle'] == 'recommande')
+        self.assertNotIn('sans', reco)
+        self.assertEqual(reco['avec']['prix_ttc'], 65900.0)
+
+    def test_le_materiel_d_une_option_suit_la_regle_des_paniers(self):
+        from apps.ventes import offres_tailles as ot
+        devis = self._devis_avec_seul()
+        Devis.objects.filter(pk=devis.pk).update(
+            etude_params={'scenario': 'Les deux (Sans + Avec)'})
+        produit = Produit.objects.create(
+            company=devis.company, nom='Onduleur réseau Huawei 5kW Monophasé',
+            prix_vente='11666.67', quantite_stock=5)
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation=produit.nom,
+            quantite=Decimal('1'), prix_unitaire=Decimal('11666.67'),
+            remise=Decimal('0'))
+        devis.refresh_from_db()
+        # Même devis « Les deux » non étiqueté : PDF (builder) = noyau monnaie.
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.utils.options import AVEC_BATTERIE, SANS_BATTERIE, option_totaux
+        data = build_quote_data(devis)
+        self.assertEqual(data['variantes_servables'], ['sans', 'avec'])
+        self.assertEqual(data['totaux_sans']['ttc'], float(option_totaux(devis, SANS_BATTERIE)['ttc']))
+        self.assertEqual(data['totaux_avec']['ttc'], float(option_totaux(devis, AVEC_BATTERIE)['ttc']))
+        self.assertEqual(data['totaux_sans']['ttc'], 50900.0)
+        roles = {e['role'] for e in ot._materiel_du_devis(devis, 'sans')[0]}
+        self.assertNotIn('batterie', roles)
+        self.assertNotIn('onduleur_hybride', roles)
+        self.assertIn('onduleur_reseau', roles)
