@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 VERSION_MOTEUR = 'moteur-unique-2'  # relecture E5 m4 : identifiants produit servis
 CODE_LOCALISATION = 'localisation_inconnue'
 MESSAGE_LOCALISATION = 'Ville inconnue du moteur : renseigner la ville ou le point GPS du lead.'
+#: T4-X9-013 — le même refus pour un calepinage SANS lead : son entrée ne porte aucun lieu.
+MESSAGE_LOCALISATION_SANS_LEAD = ("Sans lead, l'atelier ne calcule pas de conception : la production "
+                                  'vient de la simulation de la pose.')
 CODE_REFUS_MOTEUR = 'refus_moteur'
 #: Relecture E6 — conception électrique non dessinée hors fiche incomplète (portails C&I).
 MOTIF_NON_DESSINABLE = ('Conception électrique non calculée : aucun panneau à répartir en chaînes '
@@ -367,7 +370,9 @@ def lead_du_calepinage(calepinage, company):
     sans ville ni consommation, le moteur rend son refus nommé."""
     from django.apps import apps
     marche = getattr(calepinage.devis, 'mode_installation', None) if calepinage.devis_id else None
-    return apps.get_model('crm', 'Lead')(company=company, type_installation=marche or None)
+    lead = apps.get_model('crm', 'Lead')(company=company, type_installation=marche or None)
+    lead.porteur_calepinage = True  # T4-X9-013 : le refus de lieu le dit sans « du lead »
+    return lead
 
 
 def refus_localisation(lead):
@@ -375,7 +380,9 @@ def refus_localisation(lead):
     if ville_effective(lead) or (getattr(lead, 'gps_lat', None) is not None
                                  and getattr(lead, 'gps_lng', None) is not None):
         return None
-    return {'code': CODE_LOCALISATION, 'champ': 'ville', 'message': MESSAGE_LOCALISATION}
+    sans_lead = getattr(lead, 'porteur_calepinage', False)  # T4-X9-013 : jamais « du lead » sans lead
+    return {'code': CODE_LOCALISATION, 'champ': 'ville',
+            'message': MESSAGE_LOCALISATION_SANS_LEAD if sans_lead else MESSAGE_LOCALISATION}
 
 
 def blocs_du_moteur(etude_params):

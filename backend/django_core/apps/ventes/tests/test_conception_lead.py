@@ -1821,6 +1821,9 @@ class RelanceConceptionTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher'
         self.assertEqual((relue.lead_id, relue.calepinage_id, relue.courante, relue.version),
                          (None, sans_lead.pk, True, 1))
         self.assertEqual((relue.etat, relue.refus['code']), ('refus', 'localisation_inconnue'))
+        # T4-X9-013 — sans lead, le refus ne demande jamais « la ville … du lead ».
+        self.assertEqual(relue.refus['message'], "Sans lead, l'atelier ne calcule pas de conception : "
+                                                 'la production vient de la simulation de la pose.')
         self.assertTrue(relue.declencheur['raison'].endswith(' : premier calcul'))
         meme = self._relancer(None, company, _declencheur('manuel'), calepinage_id=sans_lead.pk)
         self.assertFalse(meme.ecrite)
