@@ -53,8 +53,9 @@ from .test_api_liste import BaseApiCalepinage
 #: ``check_query_budgets.py`` cherche ces chaînes dans ce fichier).
 LISTE = '/api/django/calepinage/calepinages/'
 DETAIL = '/api/django/calepinage/calepinages/<pk>/'
-#: Lot 4 — la file « à traiter » (8 calepinages de 8 leads à conception rangée), mesurée.
-BUDGET_FILE_A_TRAITER = 152
+#: Lot 4 — la file « à traiter » (8 calepinages de 8 leads à conception rangée), mesurée :
+#: 152, puis 122 quand la simulation est LUE sur le stocké (lane I4, résultat servi jamais calculé).
+BUDGET_FILE_A_TRAITER = 122
 RESULTAT = '/api/django/calepinage/calepinages/<pk>/resultat/'
 
 #: Un document de pose minimal (schéma v2) : deux pans posés.
@@ -96,6 +97,50 @@ def budget_du_manifeste(chemin):
 
 def _url(modele, pk):
     return modele.replace('<pk>', str(pk))
+
+
+#: Lane I4 — les huit dossiers de la file « simulée » : frais (simulation qui décrit encore le
+#: document), périmé (empreinte stockée d'un autre document), jamais simulé, et un toit de 60
+#: modules sur un onduleur de 10 kW.
+CAS_FILE_SIMULEE = ('frais', 'perime', 'jamais', 'grand', 'frais', 'sans_resultat', 'perime', 'frais')
+
+
+def semer_file_simulee(test, devis):
+    """Lane I4 — huit calepinages de huit leads, chacun avec un document posé, une entrée
+    électrique et (sauf « jamais » / « sans_resultat ») la simulation déposée par les VRAIS
+    écrivains (``calepinage_simule_reel``). Matériel et réglages : les seams des livrables,
+    posés pour toute la durée de l'essai ; températures : le TMY rejoué (aucun appel PVGIS)."""
+    import copy
+
+    from apps.calepinage.selectors import resultat_servi
+    from apps.calepinage.services.electrique import CLE_SIMULATION, enregistrer_fournisseur_temperatures
+    from apps.crm.models import Lead
+
+    from .acal_livrables_helpers import LAYOUT_SIMULABLE, calepinage_simule_reel, patch_materiel
+    from .test_acal_empreinte_simulation import _tmy_rejoue
+
+    test.addCleanup(enregistrer_fournisseur_temperatures, enregistrer_fournisseur_temperatures(_tmy_rejoue))
+    seams = patch_materiel()
+    seams.start()
+    test.addCleanup(seams.stop)
+    simule = calepinage_simule_reel()
+    grand = copy.deepcopy(LAYOUT_SIMULABLE)
+    grand['zones'][0]['geometry']['count'] = 60
+    calepinages = []
+    for rang, cas in enumerate(CAS_FILE_SIMULEE):
+        resultat = {'sans_resultat': {}, 'jamais': {'entree_electrique': simule.resultat['entree_electrique']}}.get(
+            cas, copy.deepcopy(simule.resultat))
+        if cas == 'perime':
+            resultat[CLE_SIMULATION]['hash_entree'] = 'e' * 64
+        lead = Lead.objects.create(company=test.company, nom='Simulée %d' % rang)
+        calepinage = Calepinage.objects.create(
+            company=test.company, lead_id=lead.pk, devis=devis(), titre='Simulée %d' % rang,
+            roof_layout=copy.deepcopy(grand if cas == 'grand' else LAYOUT_SIMULABLE), resultat=resultat)
+        if cas in ('frais', 'grand'):  # la simulation décrit ENCORE ce document
+            resultat[CLE_SIMULATION]['hash_entree'] = resultat_servi(calepinage)['hash_entree']
+            Calepinage.objects.filter(pk=calepinage.pk).update(resultat=resultat)
+        calepinages.append(calepinage)
+    return calepinages
 
 
 class BudgetsRequetesCalepinageEnBaseTest(
@@ -314,3 +359,45 @@ class BudgetsRequetesCalepinageEnBaseTest(
             requetes, _reponse = self._compte(url)
         self.assertEqual((file.call_count, empreinte.call_count), (0, 0))  # mutant « péremption lue » : rouge
         self.assertLessEqual(requetes, BUDGET_FILE_A_TRAITER, 'GET a-traiter/ : %d requêtes' % requetes)
+
+    def test_la_file_a_traiter_ne_sert_pas_le_resultat_entier(self):
+        """Lane I4 — la file LIT la simulation stockée (empreinte déposée contre celle
+        d'aujourd'hui, P50 stocké) : le résultat servi entier n'est jamais calculé."""
+        from apps.calepinage.services import simulation
+
+        semer_file_simulee(self, self._devis)
+        interdit = AssertionError('la file a calculé le résultat servi entier')
+        url = '/api/django/calepinage/calepinages/a-traiter/?limite=19'
+        with mock.patch('apps.calepinage.selectors.resultat_servi', side_effect=interdit), \
+                mock.patch('apps.calepinage.services.electrique.resultat_calepinage', side_effect=interdit), \
+                mock.patch('apps.calepinage.services.electrique._simulation_servie', side_effect=interdit), \
+                mock.patch.object(simulation, 'empreinte_simulation',
+                                  wraps=simulation.empreinte_simulation) as empreinte:
+            _requetes, reponse = self._compte(url)
+        self.assertGreater(empreinte.call_count, 0)  # la fraîcheur a bien été jugée
+        self.assertIn(['simulation_perimee'], [ligne['signaux'] for ligne in reponse.data['lignes']])
+
+    def test_la_file_a_traiter_garde_les_signaux_du_resultat_servi(self):
+        """Lane I4 — pour chaque dossier de la file simulée, les signaux coûteux lus sur le
+        stocké sont CEUX que donnait le résultat servi entier, et la réponse est identique."""
+        from apps.calepinage import selectors
+        from apps.calepinage.services import assistant
+
+        def avant(calepinage):
+            servi = selectors.resultat_servi(calepinage) or {}
+            return assistant._bloc_production(servi)[3] + assistant._bloc_electrique(calepinage)[1]
+
+        semer_file_simulee(self, self._devis)
+        vus = set()
+        for calepinage in Calepinage.objects.filter(company=self.company, titre__startswith='Simulée'):
+            servi = selectors.resultat_servi(calepinage)
+            with self.subTest(calepinage=calepinage.titre):
+                self.assertEqual(assistant._simulation_stockee(calepinage),
+                                 {cle: servi[cle] for cle in ('simule', 'simulation_perimee')})
+                self.assertEqual(sorted(assistant._signaux_couteux(calepinage)), sorted(avant(calepinage)))
+            vus.add((servi['simule'], servi['simulation_perimee']))
+        self.assertEqual(vus, {(True, False), (False, True), (False, False)})  # frais, périmé, jamais
+        url = '/api/django/calepinage/calepinages/a-traiter/?limite=19'
+        apres = self.api.get(url).data
+        with mock.patch.object(assistant, '_signaux_couteux', side_effect=avant):
+            self.assertEqual(self.api.get(url).data, apres)
