@@ -33,9 +33,11 @@ MESSAGE_PUISSANCE_CONCEPTION = ('Puissance du module prise de la conception (%s 
                                 'la fiche technique du produit dans Stock.')
 MESSAGE_ETAPE_SANS_FICHE = ('Étape « %s » non appliquée : la fiche technique de « %s » ne porte pas « %s » — '
                             'renseigner la fiche technique du produit dans Stock.')
-#: ACAL2045 — ce qu'il faut renseigner pour que la pose ne soit plus supposée.
-A_RENSEIGNER_POSE = 'renseigner « Type de toiture » sur la fiche du lead ou tracer le toit au calepinage'
+#: ACAL2045 — le geste qui lève la pose supposée : tracer le toit (relecture lot 5, tour 4 :
+#: « Type de toiture » ne lève rien, il ne CHANGE la supposition que pour un toit plat).
 A_TRACER_LE_TOIT = 'tracer le toit au calepinage'
+A_RENSEIGNER_POSE = (A_TRACER_LE_TOIT + ' pour la confirmer ; « Type de toiture » sur la fiche du lead ne la '
+                     'change que pour un toit plat (« Terrasse béton » : pose sur châssis)')
 
 
 def _pose_supposee(type_installation=None, type_toiture=None):
@@ -45,10 +47,10 @@ def _pose_supposee(type_installation=None, type_toiture=None):
     posé sur châssis) ; sinon affleurante (toit en pente d'une maison, marché non dit). Le
     document la dit par ``flush`` comme une pose réelle : l'étape « Échauffement des modules »
     la relie à la table société (D-ACAL-84), aucun coefficient n'est posé ici."""
-    # B2 (relecture lot 5) — la phrase nomme le geste qui LÈVE la supposition : « Type de
-    # toiture » seulement quand il est vide et qu'il change la pose (lead résidentiel ou marché
-    # non dit) ; déjà rempli, ou pour un site commercial / industriel / agricole (sur châssis
-    # quel que soit le toit), seul le toit tracé au calepinage la lève.
+    # B2 (relecture lot 5, tours 2 et 4) — la phrase nomme le geste qui LÈVE la supposition :
+    # toujours le toit tracé au calepinage ; « Type de toiture », vide sur un lead résidentiel
+    # (ou de marché non dit), est dit dans son vrai rôle : il ne CHANGE la pose supposée que
+    # pour un toit plat. Rempli, ou site commercial / industriel / agricole : le toit tracé seul.
     if type_toiture == 'terrasse_beton':
         flush, champ, raison, quoi = False, 'type_toiture', 'toit plat déclaré', A_TRACER_LE_TOIT
     elif type_installation in ('commercial', 'industriel', 'agricole'):
@@ -91,15 +93,30 @@ def _taille(kwc, watt_fiche, nb_conception):
     return 0, 0.0, None
 
 
-def _champ_de_fiche(motif, fiche):
+def _chainage_absent(etape, noms, fiche):
+    """Le SEUL faux manque de fiche connu : « Fenêtre MPPT » et « Pertes ohmiques DC » nomment
+    ``fiche_module.vmp_v`` quand le Vmp manque OU quand le chaînage (modules par chaîne) manque
+    (``etapes/mppt.py``, ``etapes/ohmique_dc.py`` : ``if not vmp or not modules…``). Le Vmp lu
+    par le lecteur de ces étapes (``valeurs.nombre``, non nul comme elles l'exigent) ⇒ c'est le
+    chaînage qui manque, pas la fiche."""
+    from .etapes import mppt, ohmique_dc
+    from .valeurs import nombre
+
+    return (etape.get('libelle') in (mppt.LIBELLE, ohmique_dc.LIBELLE) and noms == ['vmp_v']
+            and bool(nombre((fiche or {}).get('vmp_v'))))
+
+
+def _champ_de_fiche(etape, fiche):
     """Le champ manquant d'une étape omise pour une raison ``fiche_module.*`` (le texte entier
     de « Champ manquant : « … » », qui peut nommer aussi le réglage société qui la lève), sinon
-    ``None``. Un champ nommé que la fiche ``fiche`` PORTE n'est pas un manque de la fiche
-    (ex. ``vmp_v`` nommé quand c'est le chaînage qui manque)."""
-    noms = re.findall(r'fiche_module\.(\w+)', motif or '')
-    if not noms or any((fiche or {}).get(nom) not in (None, '') for nom in noms):
+    ``None``. Relecture lot 5 (tour 4) : la valeur brute de la fiche n'est PAS rejugée ici —
+    l'étape l'a lue avec son propre lecteur et l'a refusée (« -0,35 », ``uc_w_m2k: 0``, une
+    technologie faite d'espaces…) : c'est un manque. Seule exception : :func:`_chainage_absent`."""
+    motif = etape.get('motif_omission') or ''
+    noms = re.findall(r'fiche_module\.(\w+)', motif)
+    if not noms or _chainage_absent(etape, noms, fiche):
         return None
-    entier = re.search(r'Champ manquant : « ([^»]*fiche_module\.[^»]*) »', motif or '')
+    entier = re.search(r'Champ manquant : « ([^»]*fiche_module\.[^»]*) »', motif)
     return entier.group(1).strip() if entier is not None else 'fiche_module.' + noms[0]
 
 
@@ -113,7 +130,7 @@ def _suppositions_du_module(rendu, materiel, nb, watt_document):
               'source': 'conception', 'message': MESSAGE_PUISSANCE_CONCEPTION % (
                   '{:g}'.format(watt_document), nb, nom)}] if watt_document else []
     for etape in (rendu['blocs'].get('cascade') or {}).get('etapes') or ():
-        champ = _champ_de_fiche(etape.get('motif_omission'), (materiel or {}).get('module'))
+        champ = _champ_de_fiche(etape, (materiel or {}).get('module'))
         if champ is None:
             continue
         dites.append({'code': 'fiche_module_incomplete', 'champ': 'fiche_technique', 'valeur': champ,
