@@ -91,15 +91,30 @@ def _taille(kwc, watt_fiche, nb_conception):
     return 0, 0.0, None
 
 
-def _champ_de_fiche(motif, fiche):
+def _chainage_absent(etape, noms, fiche):
+    """Le SEUL faux manque de fiche connu : « Fenêtre MPPT » et « Pertes ohmiques DC » nomment
+    ``fiche_module.vmp_v`` quand le Vmp manque OU quand le chaînage (modules par chaîne) manque
+    (``etapes/mppt.py``, ``etapes/ohmique_dc.py`` : ``if not vmp or not modules…``). Le Vmp lu
+    par le lecteur de ces étapes (``valeurs.nombre``, non nul comme elles l'exigent) ⇒ c'est le
+    chaînage qui manque, pas la fiche."""
+    from .etapes import mppt, ohmique_dc
+    from .valeurs import nombre
+
+    return (etape.get('libelle') in (mppt.LIBELLE, ohmique_dc.LIBELLE) and noms == ['vmp_v']
+            and bool(nombre((fiche or {}).get('vmp_v'))))
+
+
+def _champ_de_fiche(etape, fiche):
     """Le champ manquant d'une étape omise pour une raison ``fiche_module.*`` (le texte entier
     de « Champ manquant : « … » », qui peut nommer aussi le réglage société qui la lève), sinon
-    ``None``. Un champ nommé que la fiche ``fiche`` PORTE n'est pas un manque de la fiche
-    (ex. ``vmp_v`` nommé quand c'est le chaînage qui manque)."""
-    noms = re.findall(r'fiche_module\.(\w+)', motif or '')
-    if not noms or any((fiche or {}).get(nom) not in (None, '') for nom in noms):
+    ``None``. Relecture lot 5 (tour 4) : la valeur brute de la fiche n'est PAS rejugée ici —
+    l'étape l'a lue avec son propre lecteur et l'a refusée (« -0,35 », ``uc_w_m2k: 0``, une
+    technologie faite d'espaces…) : c'est un manque. Seule exception : :func:`_chainage_absent`."""
+    motif = etape.get('motif_omission') or ''
+    noms = re.findall(r'fiche_module\.(\w+)', motif)
+    if not noms or _chainage_absent(etape, noms, fiche):
         return None
-    entier = re.search(r'Champ manquant : « ([^»]*fiche_module\.[^»]*) »', motif or '')
+    entier = re.search(r'Champ manquant : « ([^»]*fiche_module\.[^»]*) »', motif)
     return entier.group(1).strip() if entier is not None else 'fiche_module.' + noms[0]
 
 
@@ -113,7 +128,7 @@ def _suppositions_du_module(rendu, materiel, nb, watt_document):
               'source': 'conception', 'message': MESSAGE_PUISSANCE_CONCEPTION % (
                   '{:g}'.format(watt_document), nb, nom)}] if watt_document else []
     for etape in (rendu['blocs'].get('cascade') or {}).get('etapes') or ():
-        champ = _champ_de_fiche(etape.get('motif_omission'), (materiel or {}).get('module'))
+        champ = _champ_de_fiche(etape, (materiel or {}).get('module'))
         if champ is None:
             continue
         dites.append({'code': 'fiche_module_incomplete', 'champ': 'fiche_technique', 'valeur': champ,

@@ -168,6 +168,41 @@ class PlanParDefautTest(TestCase):
         # La fiche complète (table société de l'échauffement) : l'étape n'est pas dite manquante.
         self.assertFalse([s for s in self._plan()['suppositions'] if 'Échauffement' in s.get('message', '')])
 
+    def test_valeur_illisible_de_la_fiche_est_un_manque_dit(self):
+        """Relecture lot 5, tour 4 — la valeur BRUTE n'est plus rejugée : une fiche qui porte
+        « -0,35 » (virgule), ``uc_w_m2k: 0`` sans NOCT ni table, ou une technologie faite
+        d'espaces fait omettre son étape (lue par le lecteur de l'étape) ; le plan le DIT, champ
+        nommé (la porte ne le sert donc pas). Mutant « champ porté = non vide » : rouge."""
+        def manques(module, reglages=REGLAGES_THERMIQUE):
+            plan = self._plan(materiel=dict(MATERIEL, module=dict(MATERIEL['module'], **module)), reglages=reglages)
+            return [s['valeur'] for s in plan['suppositions'] if s['code'] == 'fiche_module_incomplete']
+
+        self.assertIn('fiche_module.temp_coeff_pmax_pct_c', manques({'temp_coeff_pmax_pct_c': '-0,35'}))
+        self.assertTrue(any('fiche_module.uc_w_m2k' in m for m in manques({'uc_w_m2k': 0}, reglages=REGLAGES)))
+        self.assertIn('fiche_module.techno_cellule', manques({'techno_cellule': '   '}))
+
+    def test_seul_faux_manque_le_chainage_absent_des_etapes_mppt_et_ohmique_dc(self):
+        """Le Vmp nommé par « Fenêtre MPPT » / « Pertes ohmiques DC » quand c'est le chaînage
+        qui manque n'est PAS un manque de fiche (Vmp lisible par le lecteur de l'étape) ; un Vmp
+        illisible l'est ; une cascade sans étape omise ne dit rien (plan servi)."""
+        from apps.calepinage.services import etapes
+        from apps.calepinage.services.etapes import mppt, ohmique_dc, thermique
+        from apps.calepinage.services.plan_par_defaut import _suppositions_du_module
+
+        def dites(module, *omises):
+            rendu = {'blocs': {'cascade': {'etapes': [etapes.etape_omise(lib, 'Omise.', champ=champ)
+                                                      for lib, champ in omises]}}}
+            return [s['valeur'] for s in _suppositions_du_module(rendu, {'module': module}, 30, None)]
+
+        lisible = dict(MATERIEL['module'])
+        self.assertEqual(dites(lisible), [])  # fiche lisible, rien d'omis : servi
+        for libelle in (mppt.LIBELLE, ohmique_dc.LIBELLE):
+            self.assertEqual(dites(lisible, (libelle, 'fiche_module.vmp_v')), [], libelle)  # chaînage absent
+            self.assertEqual(dites(dict(lisible, vmp_v='41,5'), (libelle, 'fiche_module.vmp_v')),
+                             ['fiche_module.vmp_v'], libelle)  # Vmp illisible : un vrai manque
+        # Le même champ nommé par une AUTRE étape n'est jamais excusé.
+        self.assertEqual(dites(lisible, (thermique.LIBELLE, 'fiche_module.vmp_v')), ['fiche_module.vmp_v'])
+
     def test_fiche_sans_puissance_sans_compte_de_conception_refuse_comme_avant(self):
         materiel = dict(MATERIEL, module={})
         with self.assertRaises(simulation.SimulationRefusee):
