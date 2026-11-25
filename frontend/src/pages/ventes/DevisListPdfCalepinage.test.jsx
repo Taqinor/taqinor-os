@@ -51,15 +51,17 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 const DEVIS = {
   id: 77, reference: 'DEV-CAL184', client_nom: 'ACME', statut: 'brouillon',
   date_creation: '2026-09-20', total_ttc: 90000, nb_options: 1, version: 1,
+  // T4-X1-007 — la planche cotée n'est proposée que si le devis porte un plan.
+  a_plan_toiture: true,
   // Une ligne d'onduleur classifiable : sans elle l'écran rabat le format sur
   // « une page » (présélection gracieuse), et le bloc n'apparaîtrait pas.
   lignes: [{ id: 1, designation: 'Onduleur hybride 5kW', quantite: '1', prix_unitaire: '24000' }],
 }
 
-function rendre() {
+function rendre(devis = DEVIS) {
   const store = configureStore({
     reducer: {
-      ventes: (state = { devis: [DEVIS], loading: false, error: null }) => state,
+      ventes: (state = { devis: [devis], loading: false, error: null }) => state,
       auth: (state = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => state,
     },
   })
@@ -72,8 +74,8 @@ function rendre() {
   )
 }
 
-async function ouvrirDialoguePdf() {
-  rendre()
+async function ouvrirDialoguePdf(devis) {
+  rendre(devis)
   const ligne = screen.getByText('DEV-CAL184').closest('tr')
   fireEvent.click(within(ligne).getByTitle('Générer le PDF (choix du format)'))
   return screen.findByRole('dialog')
@@ -127,5 +129,25 @@ describe('CAL184 — case « Calepinage » du dialogue PDF', () => {
     delete auto.include_calepinage
     delete non.include_calepinage
     expect(non).toEqual(auto)
+  })
+})
+
+// T4-X1-007 — « Inclure la planche cotée » sur un devis SANS calepinage donnait
+// un PDF identique à celui sans l'option, sans un mot. Sans plan, le choix est
+// grisé et la phrase dit pourquoi ; le serveur reste maître de « Automatique ».
+describe('T4-X1-007 — planche cotée sans calepinage', () => {
+  it('devis sans plan : « Inclure la planche cotée » est grisé, avec sa raison', async () => {
+    const dialog = await ouvrirDialoguePdf({ ...DEVIS, a_plan_toiture: false })
+    const bloc = within(dialog).getByTestId('cal184-calepinage')
+    expect(within(bloc).getByRole('radio', { name: /Inclure la planche cotée/ })).toBeDisabled()
+    expect(within(bloc).getByText('Aucun calepinage lié à ce devis.')).toBeInTheDocument()
+    expect(within(bloc).getByRole('radio', { name: /Ne pas inclure/ })).not.toBeDisabled()
+  })
+
+  it('devis avec plan : le choix reste ouvert, sans phrase d’avertissement', async () => {
+    const dialog = await ouvrirDialoguePdf()
+    const bloc = within(dialog).getByTestId('cal184-calepinage')
+    expect(within(bloc).getByRole('radio', { name: /Inclure la planche cotée/ })).not.toBeDisabled()
+    expect(within(bloc).queryByText('Aucun calepinage lié à ce devis.')).toBeNull()
   })
 })
