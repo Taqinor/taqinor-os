@@ -123,3 +123,48 @@ describe('QP2 — renommer : deux options', () => {
     expect(screen.getByDisplayValue('Smart Meter clone')).toBeInTheDocument()
   })
 })
+
+// T4-X4-015 — le choix du dialogue CONTINUE l'enregistrement qu'il a interrompu :
+// le blur de la désignation (mousedown sur « Créer ») ouvre la fenêtre et avale le clic.
+describe('T4-X4-015 — le choix poursuit l\'enregistrement interrompu', () => {
+  const ouvrirDepuisCreer = async () => {
+    renderGenerator({ role_nom: 'Directeur', permissions: ['stock_creer'] })
+    const input = await findSmartMeterDesignation()
+    const soumis = vi.fn((e) => e.preventDefault())
+    document.getElementById('gen-form').addEventListener('submit', soumis)
+    const creer = screen.getAllByRole('button', { name: /Créer le devis/ })[0]
+    expect(creer).toHaveAttribute('type', 'submit')
+    fireEvent.change(input, { target: { value: 'Smart Meter renommé ici' } })
+    fireEvent.blur(input, { relatedTarget: creer })
+    const dialog = await screen.findByRole('dialog')
+    return { dialog, soumis }
+  }
+
+  it('« Renommer sur ce devis seulement » enregistre ensuite le devis', async () => {
+    const { dialog, soumis } = await ouvrirDepuisCreer()
+    fireEvent.click(within(dialog).getByRole('button', { name: /Renommer sur ce devis seulement/ }))
+    await waitFor(() => expect(soumis).toHaveBeenCalledTimes(1))
+  })
+
+  it('« Créer un nouveau produit » enregistre ensuite le devis', async () => {
+    stockApi.dupliquerProduit.mockResolvedValue({
+      data: { id: 99, nom: 'Smart Meter renommé ici', prix_vente: 1500, tva: 20, prix_achat: 900, is_archived: false },
+    })
+    const { dialog, soumis } = await ouvrirDepuisCreer()
+    fireEvent.click(within(dialog).getByRole('button', { name: /Créer un nouveau produit/ }))
+    await waitFor(() => expect(soumis).toHaveBeenCalledTimes(1))
+  })
+
+  it('une désignation quittée autrement (Tab) ne déclenche aucun enregistrement', async () => {
+    renderGenerator({ role_nom: 'Directeur', permissions: ['stock_creer'] })
+    const input = await findSmartMeterDesignation()
+    const soumis = vi.fn((e) => e.preventDefault())
+    document.getElementById('gen-form').addEventListener('submit', soumis)
+    fireEvent.change(input, { target: { value: 'Smart Meter autre' } })
+    fireEvent.blur(input)
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /Renommer sur ce devis seulement/ }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(soumis).not.toHaveBeenCalled()
+  })
+})

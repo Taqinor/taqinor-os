@@ -179,7 +179,7 @@ export function useLignesEcran(ctx) {
   // (on garde le texte divergent, rien d'autre) ou « créer un nouveau produit
   // dans le stock » (clone serveur via /dupliquer/, puis on relie la ligne au
   // clone). Non bloquant : ne s'ouvre que sur une vraie divergence.
-  const onDesignationBlur = useCallback((key) => {
+  const onDesignationBlur = useCallback((key, evenement) => {
     if (!canRenameLine) return
     const l = lines.find(x => x._key === key)
     if (!l || !l.produit) return
@@ -188,12 +188,27 @@ export function useLignesEcran(ctx) {
     const nouveauNom = (l.designation || '').trim()
     if (!nouveauNom || nouveauNom === (prod.nom || '').trim()) return
     setRenameError(null)
-    setRenameDialog({ key, ancienNom: prod.nom, nouveauNom, produitId: l.produit })
+    // T4-X4-015 — quitter la désignation POUR « Créer » (le focus part sur un bouton
+    // d'envoi) ouvre cette fenêtre et avale le clic : le choix doit le poursuivre.
+    const versEnregistrer = evenement?.relatedTarget?.type === 'submit'
+    setRenameDialog({
+      key, ancienNom: prod.nom, nouveauNom, produitId: l.produit, versEnregistrer,
+    })
   }, [canRenameLine, lines, produits, setRenameError, setRenameDialog])
 
   // Option (a) — « Renommer sur ce devis seulement » : on garde la désignation
   // divergente telle quelle, aucun produit créé. Juste fermer le dialogue.
-  const renameHereOnly = () => setRenameDialog(null)
+  const enregistrerApres = useRef(false)
+  const renameHereOnly = () => {
+    enregistrerApres.current = Boolean(renameDialog?.versEnregistrer)
+    setRenameDialog(null)
+  }
+  // Une fois la fenêtre fermée (lignes à jour), l'enregistrement interrompu repart.
+  useEffect(() => {
+    if (renameDialog || !enregistrerApres.current) return
+    enregistrerApres.current = false
+    document.getElementById('gen-form')?.requestSubmit?.()
+  }, [renameDialog])
 
   // Option (b) — « Créer un nouveau produit dans le stock » : clone SERVEUR du
   // produit de base sous le nouveau nom (prix d'achat copié côté serveur,
@@ -218,6 +233,7 @@ export function useLignesEcran(ctx) {
               prixManuel: true,
             }
           : l))
+      enregistrerApres.current = Boolean(renameDialog.versEnregistrer)
       setRenameDialog(null)
     } catch (err) {
       const detail = err?.response?.data?.detail

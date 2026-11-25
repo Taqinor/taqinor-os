@@ -179,7 +179,7 @@ function DevisLineRowImpl({
                  ? 'Renommer une ligne est réservé au Directeur et au Commercial responsable'
                  : undefined}
                onChange={e => onSetField(l._key, 'designation', e.target.value)}
-               onBlur={() => onDesignationBlur(l._key)}
+               onBlur={(e) => onDesignationBlur(l._key, e)}
                placeholder="Désignation" />
         {designationDivergente && (
           <div className="mt-0.5 text-xs text-warning"
