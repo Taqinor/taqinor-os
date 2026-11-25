@@ -364,6 +364,7 @@ class MaterielRetenuParLeDevis(BaseMateriel):
         return devis
 
     def test_devis_a_un_onduleur_sert_l_onduleur_le_nombre_et_la_provenance(self):
+        self._conception()  # relecture E5 — le calcul lit la CONCEPTION, jamais la ligne du devis
         calepinage = self._calepinage(devis=self._devis(self.module_devis, self.onduleur))
         reponse = self.api.get(url_entree(calepinage.pk))
         self.assertEqual(reponse.status_code, 200, reponse.data)
@@ -372,7 +373,7 @@ class MaterielRetenuParLeDevis(BaseMateriel):
                          (self.onduleur.pk, 1, 'devis'))
         self.assertEqual(bloc['ecarts'], [])
         # ACAL2013 — le bloc du devis informe ; le CALCUL ne lit plus la ligne du devis.
-        self.assertNotEqual((reponse.data['materiel']['onduleur'] or {}).get('provenance'), PROVENANCE_DEVIS)
+        self.assertEqual(reponse.data['materiel']['onduleur']['provenance'], 'moteur')  # mutant « ligne » : devis
         self.assertEqual(sorted(bloc), sorted(json.loads(CONTRAT.read_text(encoding='utf-8'))
                                               ['exemple']['devis_retenu']))
 
