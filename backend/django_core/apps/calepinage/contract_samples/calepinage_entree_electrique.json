@@ -87,7 +87,7 @@
       "onduleur": {
         "produit_id": 901,
         "designation": "Onduleur réseau 10 kW (exemple)",
-        "provenance": "devis",
+        "provenance": "moteur",
         "fiche_complete": true,
         "champs_manquants": []
       },

@@ -22,12 +22,23 @@ def suppositions_de(resultat, *, froid=None):
     sans toit tracé, le calcul ne les applique pas (elles viennent avec la
     simulation de la pose, ADEV149) — rien n'est donc supposé ni dit ici."""
     dites = [{'code': alerte['code'], 'champ': alerte['champ_lead'], 'valeur': _valeur_supposee(resultat, alerte),
-              'source': 'defaut', 'message': alerte['message']}
+              'source': 'defaut', 'message': _message(resultat, alerte)}
              for alerte in resultat.journal.get('alertes') or [] if alerte.get('champ_lead')]
     if froid is not None and froid.source is None and not any('froid' in sup['code'] for sup in dites):
         dites.append({'code': CODE_FROID_SUPPOSE, 'champ': 'gps_lat', 'valeur': froid.valeur_c,
                       'source': 'defaut', 'message': froid.detail})
     return dites
+
+
+def _message(resultat, alerte):
+    """La phrase du journal ; relecture E5 (b) — une facture d'été SAISIE sans « Été
+    différent » : la phrase dit de cocher la case (la renseigner ne servirait à rien)."""
+    ete = (resultat.entrees_utilisees.get('facture_ete') or {}).get('valeur')
+    if alerte['champ_lead'] != 'facture_ete' or not isinstance(ete, (int, float)) or ete <= 0:
+        return alerte['message']
+    montant = ('%d' % ete) if float(ete).is_integer() else ('%s' % ete).replace('.', ',')
+    return ("Facture d'été saisie (%s MAD) mais non prise en compte : cochez « Été différent » sur la fiche "
+            "pour qu'elle compte (sinon l'été est supposé égal à l'hiver)." % montant)
 
 
 def _valeur_supposee(resultat, alerte):

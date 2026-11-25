@@ -192,7 +192,7 @@ class CibleDeLaConceptionTest(BaseApiCalepinage):
         self.assertEqual((cible['panneaux'], cible['kwc'], cible['panel_watt']), (48, 26.4, 550))
         self.assertEqual((cible['source'], cible['option'], cible['refus']), ('factures', 'sans', None))
         self.assertEqual(factures, {'cible_factures': {'panneaux': 48, 'kwc': 26.4, 'module_wc': 550.0},
-                                    'refus': ''})
+                                    'refus': '', 'calcul_en_cours': False})
 
     def test_sans_devis_la_conception_du_lead(self):
         lead = self._lead(facture_hiver=Decimal('2400'))
@@ -208,11 +208,42 @@ class CibleDeLaConceptionTest(BaseApiCalepinage):
         self.assertIsNone(factures['cible_factures'])
 
     def test_sans_lead_la_conception_du_calepinage(self):
+        """Relecture E5 m1/m2 — sans lead, la taille vient de la conception DU CALEPINAGE
+        (source ``conception``) : jamais « factures du lead », aucune question de taille
+        à la génération du devis (« aucune facture ne dimensionne » ne s'applique pas)."""
+        from apps.calepinage.services.devis import _garde_taille, taille_non_dimensionnee
+
         client = Client.objects.create(company=self.company, nom='Client sans lead 2012')
         calepinage = Calepinage.objects.create(company=self.company, client=client, titre='Sans lead 2012')
         ranger_conception(calepinage=calepinage, nb=16)
-        cible, _factures = self._cibles(calepinage)
-        self.assertEqual((cible['panneaux'], cible['source']), (16, 'factures'))
+        cible, factures = self._cibles(calepinage)
+        self.assertEqual((cible['panneaux'], cible['source']), (16, 'conception'))  # mutant : 'factures'
+        self.assertEqual(factures, {'cible_factures': None, 'refus': '', 'calcul_en_cours': False})
+        self.assertIsNone(taille_non_dimensionnee(calepinage))
+        self.assertIsNone(_garde_taille(None, calepinage, False))  # aucune 409 confirmation_taille
+        nu = Calepinage.objects.create(company=self.company, client=client, titre='Sans lead ni conception')
+        self.assertEqual(taille_non_dimensionnee(nu),
+                         {'refus': 'Calepinage sans lead : aucune facture ne dimensionne le système.'})
+
+    def test_m5_sans_conception_la_batterie_suit_le_souhait_du_lead(self):
+        """Relecture E5 m5 — sans conception complète (absente, en calcul, refusée), ``batterie``
+        reflète ``lead.batterie_souhaitee`` ; une conception complète dit son option."""
+        from unittest import mock
+
+        from django.core.cache import cache
+
+        from apps.ventes import tasks
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        lead = self._lead(facture_hiver=Decimal('1800'), batterie_souhaitee='avec')
+        calepinage = self._calepinage(lead)
+        with mock.patch.object(tasks.task_relancer_conception, 'apply_async'):
+            self.assertTrue(self._contexte(calepinage)['cible']['batterie'])  # mutant « forcé False »
+        ranger_conception(lead=lead, etat='refus', refus={'code': 'x', 'champ': 'ville', 'message': 'Lieu.'})
+        self.assertTrue(self._contexte(self._calepinage(lead))['cible']['batterie'])
+        ranger_conception(lead=lead, nb=12, option='sans')
+        self.assertFalse(self._contexte(self._calepinage(lead))['cible']['batterie'])
 
     def test_conception_refusee_rend_le_refus_nomme(self):
         lead = self._lead()
@@ -223,13 +254,35 @@ class CibleDeLaConceptionTest(BaseApiCalepinage):
         cible, factures = self._cibles(calepinage)
         self.assertIsNone(cible['panneaux'])
         self.assertEqual(cible['refus'], 'Moteur unique : facture hiver du lead absente (ACAL2012).')
-        self.assertEqual(factures, {'cible_factures': None, 'refus': cible['refus']})
+        self.assertEqual(factures, {'cible_factures': None, 'refus': cible['refus'], 'calcul_en_cours': False})
         from apps.calepinage.services.devis import taille_non_dimensionnee
         self.assertEqual(taille_non_dimensionnee(calepinage), {'refus': cible['refus']})
 
     def test_conception_absente_refus_nomme_jamais_une_taille(self):
+        """Relecture E5 B1 — sans version rangée, la lecture met le premier calcul en
+        file et dit « en cours » ; la file en panne, la phrase dit quoi faire."""
+        from unittest import mock
+
+        from django.core.cache import cache
+
+        from apps.calepinage.services.devis_retenu import REFUS_CONCEPTION_EN_COURS
+        from apps.ventes import tasks
+
+        cache.clear()
+        self.addCleanup(cache.clear)
         lead = self._lead(facture_hiver=Decimal('1800'))
-        cible, factures = self._cibles(self._calepinage(lead))
+        calepinage = self._calepinage(lead)
+        with mock.patch.object(tasks.task_relancer_conception, 'apply_async') as en_file:
+            cible, factures = self._cibles(calepinage)
+        self.assertEqual(en_file.call_count, 1)
+        self.assertEqual((cible['panneaux'], cible['refus'], cible['calcul_en_cours']),
+                         (None, REFUS_CONCEPTION_EN_COURS, True))
+        self.assertEqual((factures['cible_factures'], factures['calcul_en_cours']), (None, True))
+        cache.clear()
+        with mock.patch.object(tasks.task_relancer_conception, 'apply_async', side_effect=OSError('courtier')), \
+                self.assertLogs('apps.ventes.conception.receivers', level='WARNING'):
+            cible, factures = self._cibles(calepinage)
         self.assertIsNone(cible['panneaux'])
         self.assertIn('Conception du lead pas encore calculée', cible['refus'])
+        self.assertFalse(cible['calcul_en_cours'])
         self.assertIsNone(factures['cible_factures'])

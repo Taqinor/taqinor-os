@@ -220,6 +220,10 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
           {cible && <span className="cal-pan-badge">Recommandé</span>}
         </span>
         {ligneFacture && <span className="cal-pan-option-ligne"><Ligne texte={ligneFacture} /></span>}
+        {/* Relecture E5 B1 — la conception se calcule : jamais « 0 panneau », la cible est dite en cours. */}
+        {!ligneFacture && servi.facture.calculEnCours && (
+          <span className="cal-pan-option-ligne" data-zone="cible-en-calcul">calcul en cours</span>
+        )}
       </button>
       {besoin?.auto && <p className="cal-pan-note" data-zone="taille-auto" role="status">{besoin.note}</p>}
       {servi.facture.etat === 'chargement' && (
@@ -233,7 +237,21 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
           <button type="button" className="cal-pan-lien" onClick={servi.facture.reessayer}>réessayer</button>
         </p>
       )}
-      {servi.facture.etat === 'ok' && !cible && (
+      {servi.facture.etat === 'ok' && !cible && servi.facture.calculEnCours && (
+        <p className="cal-pan-note" data-zone="conception-en-calcul" role="status" aria-live="polite">
+          {servi.facture.calculAbandonne
+            ? 'La conception du lead n’est toujours pas calculée. Modifiez un champ de la fiche du lead (facture, ville…) '
+              + 'pour relancer le calcul, puis cliquez sur « Actualiser ».'
+            : 'La conception du lead est en cours de calcul : la taille s’affichera ici dans quelques secondes.'}
+          {' '}
+          <button type="button" className="cal-pan-lien" onClick={servi.facture.actualiser}
+            data-testid="cal-panneaux-actualiser-conception">Actualiser</button>
+          {servi.facture.calculAbandonne && servi.leadId && (
+            <>{' '}<Link to={`/crm/leads/${servi.leadId}`} className="cal-pan-lien">Ouvrir la fiche du lead</Link></>
+          )}
+        </p>
+      )}
+      {servi.facture.etat === 'ok' && !cible && !servi.facture.calculEnCours && (
         <p className="cal-pan-note">
           {raison}
           {servi.leadId && !(servi.refusFacture && servi.factureSaisie) && (

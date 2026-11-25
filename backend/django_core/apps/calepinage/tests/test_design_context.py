@@ -108,22 +108,57 @@ class ContexteConceptionTest(BaseApiCalepinage):
         self.assertEqual(self.api.get(f'{url_detail(self.etranger.pk)}cible-factures/').status_code, 404)
         self.assertNotIn('cible_factures', self._contexte(self.nu))
 
-    def test_acal1500_lead_industriel_sert_le_refus_nomme(self):
-        """ACAL1500 — un lead commercial avec facture : ``cible_factures`` nul
-        ET ``refus`` NOMMÉ — ACAL2012 : celui de sa conception (ici aucune version
-        rangée) ; un calepinage sans lead sert ``refus`` vide. Mutant : ``refus`` vide ⇒ échec."""
-        from apps.calepinage.services.devis_retenu import REFUS_CONCEPTION_ABSENTE
+    def test_acal1500_lead_commercial_cible_de_sa_conception_calculee(self):
+        """ACAL1500 réaligné par la relecture E5 B1 — un lead commercial AVEC
+        facture et sans conception rangée : la première lecture met UN calcul en
+        file et sert EXACTEMENT ``exemple_en_cours`` du contrat (jamais une
+        impasse, jamais 0 panneau) ; une seconde lecture n'en remet pas ; le
+        calcul fait par le VRAI moteur (la tâche que ferait le worker), la cible
+        est la taille de la conception rangée ; un calepinage sans lead sert
+        ``exemple_vide``. Mutants : porte sans file ⇒ refus « absente » ; cible
+        hors conception ⇒ autre taille."""
+        from django.core.cache import cache
 
-        lead = Lead.objects.create(company=self.company, nom='Boulangerie 1500',
-                                   type_installation='commercial', facture_hiver=1200)
-        ci = Calepinage.objects.create(company=self.company, lead_id=lead.pk,
-                                       titre='Boulangerie')
-        reponse = self.api.get(f'{url_detail(ci.pk)}cible-factures/')
-        self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertEqual(sorted(reponse.data), sorted(CONTRAT_CIBLE['exemple_refus']))
-        self.assertEqual(reponse.data, {'cible_factures': None, 'refus': REFUS_CONCEPTION_ABSENTE})
+        from apps.ventes import tarif_ci, tasks
+        from apps.ventes.domain import etude_ci
+        from apps.ventes.models import ConceptionLead
+        from apps.ventes.tests import test_ciq120_devis_auto_ci as ci_fab
+        from authentication.models import Company
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        fab = type('CatalogueCI', (), {})
+        with mock.patch.object(Company.objects, 'get_or_create', return_value=(self.company, False)):
+            ci_fab._Base.setUpTestData.__func__(fab)  # le catalogue C&I des tests du moteur, sur CETTE société
+        lead = Lead.objects.create(company=self.company, nom='Boulangerie 1500', type_installation='commercial',
+                                   facture_hiver=1200, ville='Casablanca', categorie_commerciale='bureau',
+                                   tension_raccordement='bt', raccordement='triphase', type_toiture='bac_acier')
+        calepinage = Calepinage.objects.create(company=self.company, lead_id=lead.pk, titre='Boulangerie')
+        url = f'{url_detail(calepinage.pk)}cible-factures/'
+        with mock.patch.object(tasks.task_relancer_conception, 'apply_async') as en_file:  # jamais le courtier
+            premiere, seconde = self.api.get(url), self.api.get(url)
+        self.assertEqual(premiere.status_code, 200, premiere.data)
+        self.assertEqual(premiere.data, CONTRAT_CIBLE['exemple_en_cours'])
+        self.assertEqual(seconde.data, CONTRAT_CIBLE['exemple_en_cours'])
+        self.assertEqual(en_file.call_count, 1)  # dédupliqué : une seule tâche pour ce lead
+        self.assertFalse(ConceptionLead.objects.filter(lead=lead).exists())  # rien calculé dans la requête
+
+        with mock.patch.object(etude_ci, 'lire_production', side_effect=ci_fab._production_casablanca), \
+                mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=ci_fab._tarif_grille):
+            rendu = tasks.task_relancer_conception(**en_file.call_args.kwargs['kwargs'])
+        self.assertEqual(rendu, {'version': 1, 'ecrite': True})
+        version = ConceptionLead.objects.get(lead=lead, courante=True)
+        self.assertEqual(version.etat, 'complet', version.refus)
+        valeurs = version.valeurs[version.option_retenue]
+        panneaux, kwc = valeurs['nb_panneaux']['valeur'], valeurs['puissance_kwc']['valeur']
+        self.assertGreater(panneaux, 0)
+        reponse = self.api.get(url)
+        self.assertEqual(sorted(reponse.data), sorted(CONTRAT_CIBLE['exemple']))
+        self.assertEqual(reponse.data, {
+            'cible_factures': {'panneaux': panneaux, 'kwc': kwc, 'module_wc': float(round(kwc * 1000 / panneaux))},
+            'refus': '', 'calcul_en_cours': False})
         sans_lead = self.api.get(f'{url_detail(self.nu.pk)}cible-factures/')
-        self.assertEqual(sans_lead.data['refus'], CONTRAT_CIBLE['exemple_vide']['refus'])
+        self.assertEqual(sans_lead.data, CONTRAT_CIBLE['exemple_vide'])
 
     def test_sans_devis_ni_facture_la_cible_est_nulle(self):
         contexte = self._contexte(self.nu)

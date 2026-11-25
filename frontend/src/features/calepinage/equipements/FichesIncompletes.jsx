@@ -157,6 +157,9 @@ const ROLES_CALCUL = [
 const PROVENANCES = {
   explicite: 'désigné dans l’entrée électrique',
   devis: 'ligne du devis lié',
+  // Relecture E5 M3 — jumeau de `libelleProvenance` (MaterielElectrique.helpers.js).
+  moteur: 'de la conception',
+  pose: 'posé à l’étape Panneaux',
 }
 
 function MaterielDuCalcul({ materiel, panneauDevis }) {

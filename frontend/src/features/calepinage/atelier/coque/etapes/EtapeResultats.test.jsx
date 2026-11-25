@@ -760,13 +760,16 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
   const zone = () => document.querySelector('[data-zone="production-conception"]')
   const sans = () => ({ ...SERVI(), devis_envoye: null })
 
-  it('sans devis : UN seul chiffre, celui de la conception (jamais la pose à côté sans nom)', async () => {
+  it('sans devis : la conception ET la pose simulée, chacune sous son nom exact (relecture E5 M1)', async () => {
     servir({ ...COMPLET(), conception: sans() })
     rendre()
     await screen.findByTestId('cal-resultats-tuiles')
     expect(zone()).toHaveAttribute('data-chiffre', 'un-seul')
     expect(zone()).toHaveTextContent(`Production de la conception : ${kwh(sans().production_annuelle_kwh)}`)
-    expect(document.body).not.toHaveTextContent('Production simulée de la pose')
+    // Mutant « libellé d'avant » : « Production la première année » à côté d'un autre chiffre de production.
+    expect(document.querySelector('[data-tuile="heros"]')).toHaveTextContent('Production simulée de la pose')
+    expect(document.body).not.toHaveTextContent('Production la première année')
+    expect(screen.getByTestId('cal-resultats-mois')).toHaveTextContent('Mois par mois · Production simulée de la pose')
     expect(document.body).not.toHaveTextContent('Production retenue par le devis')
     expect(screen.queryByRole('button', { name: 'Réviser le devis' })).toBeNull()
   })
@@ -783,7 +786,7 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
   })
 
   it('devis envoyé différent : la conception, puis le devis NOMMÉ avec sa date, et « Réviser le devis » crée la V2', async () => {
-    const bloc = SERVI()
+    const bloc = SERVI()  // le devis envoyé range 6 047 kWh (contrat), la conception 8 198
     bloc.devis_envoye.ecart_devis = [LIGNE(), { ...LIGNE(), valeur: 'production_annuelle', devis: 6047, conception: 8198 }]
     servir({ ...JAMAIS(), conception: bloc })
     ventesApi.reviserDevis.mockResolvedValue({ data: { id: 99, reference: 'DEV-V2' } })
@@ -800,12 +803,41 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
   it('devis envoyé au même chiffre de production : UN seul chiffre, pas de bouton', async () => {
     const bloc = SERVI()
     bloc.devis_envoye.ecart_devis = [LIGNE()]
+    bloc.devis_envoye.production_annuelle_kwh = bloc.production_annuelle_kwh
     servir({ ...JAMAIS(), conception: bloc })
     rendre()
     await screen.findByRole('link', { name: bloc.devis_envoye.reference })
     expect(zone()).toHaveAttribute('data-chiffre', 'un-seul')
     expect(zone()).toHaveTextContent(`Production de la conception : ${kwh(bloc.production_annuelle_kwh)}`)
     expect(zone()).not.toHaveTextContent(`Devis ${bloc.devis_envoye.reference} envoyé le`)
+    expect(zone()).toHaveTextContent('porte le même chiffre')
+    expect(screen.queryByRole('button', { name: 'Réviser le devis' })).toBeNull()
+  })
+
+  /* Relecture E5 M2 — « porte le même chiffre » n'est dit que si la production RANGÉE par le devis (servie) l'égale. */
+  it('M2 — aucune ligne d’écart mais le devis a retenu « avec » à 6 047 kWh : les deux chiffres nommés et « Réviser »', async () => {
+    const bloc = SERVI()
+    bloc.devis_envoye.ecart_devis = []  // l'écart de ventes compare l'option DU DEVIS : il peut ne rien dire
+    bloc.devis_envoye.option = 'avec'
+    servir({ ...JAMAIS(), conception: bloc })
+    rendre()
+    await screen.findByRole('link', { name: bloc.devis_envoye.reference })
+    expect(zone()).toHaveAttribute('data-chiffre', 'deux')  // mutant « absence de ligne = même chiffre » : un-seul
+    expect(zone()).not.toHaveTextContent('porte le même chiffre')
+    expect(zone()).toHaveTextContent(
+      `Devis ${bloc.devis_envoye.reference} envoyé le 10/11/2026 (option avec batterie) : ${kwh(6047)}`)
+    expect(screen.getByRole('button', { name: 'Réviser le devis' })).toBeInTheDocument()
+  })
+
+  it('M2 — le devis envoyé ne range aucune production : il le DIT, jamais « le même chiffre »', async () => {
+    const bloc = SERVI()
+    bloc.devis_envoye.ecart_devis = []
+    bloc.devis_envoye.production_annuelle_kwh = null
+    servir({ ...JAMAIS(), conception: bloc })
+    rendre()
+    await screen.findByRole('link', { name: bloc.devis_envoye.reference })
+    expect(zone()).toHaveTextContent(`Le devis envoyé ${bloc.devis_envoye.reference} ne porte pas de production enregistrée.`)
+    expect(zone()).not.toHaveTextContent('porte le même chiffre')
     expect(screen.queryByRole('button', { name: 'Réviser le devis' })).toBeNull()
   })
 })

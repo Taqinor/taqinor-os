@@ -61,8 +61,7 @@ from . import (hors_reseau_declaration as _hors_reseau_declaration,  # ACAL790
                suppositions as _suppositions)  # ACAL980
 from .regle_chaine_publiee import _regle_chaine_publiee  # ACAL645 — extraite
 from .valeurs import nombre as _nombre
-from .devis_retenu import (bloc_conception, bloc_devis_retenu, bloc_production_devis,  # ACAL1952-1956, 2015
-                           produits_retenus)
+from .devis_retenu import bloc_conception, bloc_devis_retenu, bloc_production_devis  # ACAL1952-1956, 2015
 from .equipements import PROVENANCE_MOTEUR, materiel_de_la_conception, options_de_la_conception  # ACAL2013
 
 __all__ = [
@@ -1041,33 +1040,11 @@ PROVENANCE_DEVIS = 'devis'
 #: Les rôles du matériel électrique, et la famille de l'agrégat
 #: ``services/equipements.py`` (LA lecture des lignes du devis) qui les sert.
 ROLES_MATERIEL = ('module', 'onduleur', 'optimiseur')
-FAMILLE_EQUIPEMENT = {'module': 'panneau', 'onduleur': 'onduleur',
-                      'optimiseur': 'optimiseur'}
 LIBELLES_ROLES = {'module': 'module PV', 'onduleur': 'onduleur',
                   'optimiseur': 'optimiseur'}
 
 #: Le GESTE qui lève l'absence — nommé tel que l'écran le montre.
 GESTE_DESIGNATION = "désignez-le dans l'onglet Matériel électrique"
-
-
-def _produits_du_devis(calepinage):
-    """``{rôle: id produit}`` des lignes du devis LIÉ, ou ``{}``.
-
-    LA lecture du devis reste ``services/equipements.py::
-    equipements_du_calepinage`` (sélecteur cross-app ventes, borné société,
-    variante par défaut) — aucune seconde sélection « première ligne » ici.
-    """
-    if calepinage is None or not getattr(calepinage, 'devis_id', None):
-        return {}
-    from .equipements import equipements_du_calepinage
-
-    agregat = equipements_du_calepinage(calepinage) or {}
-    produits = {}
-    for role, famille in FAMILLE_EQUIPEMENT.items():
-        bloc = agregat.get(famille)
-        if isinstance(bloc, dict) and bloc.get('produit') not in (None, ''):
-            produits[role] = bloc['produit']
-    return produits_retenus(calepinage, produits)  # ACAL1952 — l'onduleur de l'option retenue
 
 
 def resoudre_materiel(company, entree, *, calepinage=None):
@@ -1395,7 +1372,7 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         # ACAL650 — tolérance d'orientation SAISIE (sourcée) ou None.
         tolerance_orientation_deg=tolerance_orientation_societe(
             parametres_societe(calepinage)),
-        **options_de_la_conception(_options_entree(donnees), calepinage, donnees),  # ACAL2013
+        **options_de_la_conception(_options_entree(donnees), calepinage, donnees, document),  # ACAL2013, E5 M4
         **_options_batterie(calepinage, donnees, materiel))
     return (_nommer_module_pose(conception, materiel, document), materiel, donnees, document)
 

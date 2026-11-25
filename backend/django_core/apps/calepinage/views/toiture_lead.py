@@ -127,9 +127,13 @@ def cible_factures(calepinage, *, lire_cible=None):
 @extend_schema(responses=forme_du_contrat('CalepinageCibleFactures', 'calepinage_cible_factures.json'))
 @action(detail=True, methods=['get'], url_path='cible-factures', permission_classes=[PeutVoirCalepinage])
 def cible_factures_servie(self, request, pk=None):
-    """La taille tirée des factures du lead (``cible_factures``), ou ``null`` avec le ``refus`` nommé."""
-    cible, refus = cible_factures_et_refus(self.get_object())
-    return Response({'cible_factures': cible, 'refus': refus})
+    """La taille tirée des factures du lead (``cible_factures``), ou ``null`` avec le ``refus`` nommé ;
+    ``calcul_en_cours`` (relecture E5 B1) : le premier calcul de la conception est en file, l'écran relit."""
+    from ..services.devis_retenu import calcul_en_cours
+
+    calepinage = self.get_object()
+    cible, refus = cible_factures_et_refus(calepinage)
+    return Response({'cible_factures': cible, 'refus': refus, 'calcul_en_cours': calcul_en_cours(calepinage)})
 
 
 CalepinageViewSet.cible_factures_servie = cible_factures_servie

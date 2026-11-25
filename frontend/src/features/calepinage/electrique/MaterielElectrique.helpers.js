@@ -11,6 +11,8 @@ export const ROLES = [
 export function libelleProvenance(materiel) {
   if (!materiel) return 'à désigner'
   if (materiel.provenance === 'devis') return 'ligne du devis'
+  // Relecture E5 M3 — le matériel que la conception du lead retient (moteur unique, ACAL2013).
+  if (materiel.provenance === 'moteur') return 'de la conception'
   if (materiel.provenance === 'explicite') return 'désigné'
   if (materiel.provenance === 'pose') return 'posé à l’étape Panneaux' // T4-B4-007 — le module choisi à l'étape 2
   return 'à désigner'

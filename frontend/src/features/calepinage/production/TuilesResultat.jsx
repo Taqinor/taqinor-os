@@ -49,7 +49,7 @@ function MiniBarres({ data }) {
   )
 }
 
-function Heros({ total, data }) {
+function Heros({ total, data, nom }) {
   if (!nombre(total?.p50_kwh)) return null
   const moyenne = total?.portee === 'annee_moyenne'
   const parKwc = nombre(total?.specific_yield_kwh_kwc)
@@ -57,7 +57,7 @@ function Heros({ total, data }) {
     : null
   return (
     <div className="cal-res-tuile cal-res-heros" data-tuile="heros">
-      <span className="cal-res-tuile-label">Production la première année</span>
+      <span className="cal-res-tuile-label">{nom ?? 'Production la première année'}</span>
       <span className="cal-res-tuile-corps cal-res-heros-corps">
         <span className="cal-res-tuile-valeur"><GrosChiffre valeur={total.p50_kwh} decimals={0} unite="kWh" /></span>
         <MiniBarres data={data} />
@@ -174,10 +174,12 @@ function EcartPvgis({ validation }) {
   )
 }
 
-export default function TuilesResultat({ data }) {
+/** `nomProduction` (relecture E5 M1) : le nom exact de la production du héros quand une AUTRE production est à
+    l'écran (la conception) — `null` : le libellé historique. */
+export default function TuilesResultat({ data, nomProduction = null }) {
   return (
     <section className="cal-res-tuiles" data-testid="cal-resultats-tuiles" aria-label="Résultats en un coup d'œil">
-      <Heros total={data?.production?.total} data={data} />
+      <Heros total={data?.production?.total} data={data} nom={nomProduction} />
       <Consommation autoconsommation={data?.autoconsommation} />
       <Pertes total={data?.production?.total} plages={data?.cascade?.plages} />
       <EcartPvgis validation={data?.validation} />

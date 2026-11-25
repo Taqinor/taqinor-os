@@ -48,7 +48,7 @@ describe('ACAL264 — matériel utilisé par le calcul', () => {
     expect(module).toHaveTextContent('désigné dans l’entrée électrique')
     const onduleur = screen.getByTestId('cal-fiches-materiel-onduleur')
     expect(onduleur).toHaveTextContent(ENTREE.materiel.onduleur.designation)
-    expect(onduleur).toHaveTextContent('ligne du devis lié')
+    expect(onduleur).toHaveTextContent('de la conception')  // relecture E5 M3 : provenance `moteur`
     expect(screen.getByTestId('cal-fiches-materiel-optimiseur')).toHaveTextContent('aucun')
   })
 

@@ -137,6 +137,28 @@ class EntreeDuDevis(TestCase):
         devis.refresh_from_db()
         self.assertEqual(devis.electrical_design['source_entree'], source)
 
+    def test_m3_le_devis_est_juge_avec_son_propre_module(self):
+        """Relecture E5 m3 — le calepinage lié porte un lead dont la CONCEPTION retient
+        un autre module (NOCT 60) ; rien n'est désigné : le chaud de cellule du devis
+        est celui de SON module (NOCT 45), jamais celui de la conception."""
+        from apps.calepinage.tests.test_acal_cible_lead import ranger_conception
+        from apps.crm.models import Lead
+
+        devis = self._devis()
+        autre = Produit.objects.create(company=self.company, nom='Module conception 600W', sku='ACAL165-CONC',
+                                       prix_vente=Decimal('1300'), quantite_stock=10)
+        FicheTechnique.objects.create(
+            company=self.company, produit=autre, type_fiche='module', pmax_wc=Decimal('600.00'),
+            voc_v=Decimal('52.0'), isc_a=Decimal('14.5'), vmp_v=Decimal('44.0'), imp_a=Decimal('13.6'),
+            noct_c=Decimal('60.0'), temp_coeff_voc_pct_c=Decimal('-0.270'), temp_coeff_pmax_pct_c=Decimal('-0.350'))
+        lead = Lead.objects.create(company=self.company, nom='Lead ACAL165', ville='Ifrane')
+        ranger_conception(lead=lead, nb=20, watt=600, module=autre.nom)
+        Calepinage.objects.create(company=self.company, devis=devis, lead_id=lead.pk, titre='Ifrane',
+                                  roof_layout={'pin': IFRANE, 'zones': []}, resultat={CLE_ENTREE: {}})
+        entree, source, _lie = es.construire_entree_et_source(devis)
+        self.assertEqual(source['temperatures'], 'calepinage')
+        self.assertAlmostEqual(entree.temp_chaud_c, CHAUD_CELLULE_IFRANE, places=2)  # mutant conception : 83,53
+
     def test_surcharge_du_devis_gagne(self):
         devis = self._devis()
         self._lier_calepinage(devis)

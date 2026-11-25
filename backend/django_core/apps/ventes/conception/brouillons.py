@@ -104,12 +104,15 @@ def _taille_de_la_conception(devis, version):
 
 def _ce_qui_a_change(version):
     """Les entrées nommées par leur libellé (jamais leurs valeurs : une ligne
-    du devis survit à l'effacement du lead), sinon le motif de l'origine."""
+    du devis survit à l'effacement du lead), sinon le motif de l'origine. Relecture E5
+    (c) — accord en français simple, sans « (s) » : « champ modifié : Facture hiver »,
+    « champs modifiés : Facture hiver, Ville » (le genre des libellés n'est pas connu)."""
     from apps.ventes.conception.service import MOTIFS_ORIGINE, libelle_champ
 
     champs = [c.get('champ') for c in (version.declencheur or {}).get('champs') or []]
     if champs:
-        return ', '.join(libelle_champ(version.lead, c) for c in champs) + ' modifié(s)'
+        libelles = ', '.join(libelle_champ(version.lead, c) for c in champs)
+        return ('champ modifié : %s' if len(champs) == 1 else 'champs modifiés : %s') % libelles
     return MOTIFS_ORIGINE.get((version.declencheur or {}).get('origine'), 'conception recalculée')
 
 

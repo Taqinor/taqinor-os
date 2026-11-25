@@ -331,6 +331,8 @@ chiffrer_conception = _chiffrage_conception.chiffrer_conception
 # ADEV135 (D-ACAL-97) — l'écrivain UNIQUE de la conception rangée (``ConceptionLead``).
 from apps.ventes.conception import service as _conception_service  # noqa: E402 — anti-cycle (D-ENF22)
 relancer = _conception_service.relancer
+# Relecture E5 B1 — la porte de lecture du calepinage : version courante, ou premier calcul mis en file.
+conception_ou_calcul = _conception_service.conception_ou_calcul
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -682,6 +684,7 @@ __all__ = [
     'regler_envoi_gamme',
     'rejeter_paiement',
     'relancer',
+    'conception_ou_calcul',
     'renouveler_devis',
     'request_esign_otp',
     'request_otp_lecture',

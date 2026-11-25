@@ -251,6 +251,34 @@ class CibleOptionRetenueTest(_DevisDeuxOptions):
                          {'devis': calepinage.devis_id, 'option': 'sans'})
 
 
+class LignesDuDevisPlusSourceTest(_DevisDeuxOptions):
+    """ACAL2025 (C4-E8) — la cible et le matériel du calepinage viennent de la conception : la
+    conception retenue du DEVIS (ses lignes) n'est plus lue pour l'une ni pour l'autre, et les
+    deux lecteurs morts (``_produits_du_devis``, ``produits_retenus``) n'existent plus."""
+
+    def test_cible_et_materiel_sans_lire_les_lignes_du_devis(self):
+        from unittest import mock
+
+        from apps.calepinage.services import devis_retenu, electrique
+        from apps.calepinage.services.devis import _cible_du_calepinage
+
+        from .test_acal_cible_lead import ranger_conception
+
+        ranger_conception(lead=self.lead_lie, nb=35, option='sans')
+        calepinage = Calepinage.objects.create(company=self.company, lead_id=self.lead_lie.pk,
+                                               devis=self._les_deux('Avec batterie'), titre='QA-ACAL2025')
+        with mock.patch('apps.ventes.selectors_calepinage.conception_retenue_du_devis',
+                        side_effect=AssertionError('lignes du devis lues')) as lu, \
+                mock.patch('apps.ventes.selectors_calepinage.conception_retenue_du_devis_id',
+                           side_effect=AssertionError('lignes du devis lues')) as lu_id:
+            self.assertEqual(_cible_du_calepinage(calepinage)['panneaux'], 35)
+            electrique.resoudre_materiel(self.company, {}, calepinage=calepinage)
+        self.assertEqual((lu.call_count, lu_id.call_count), (0, 0))
+        self.assertFalse(hasattr(electrique, '_produits_du_devis'))  # mutant « rétabli » : rouge
+        self.assertFalse(hasattr(devis_retenu, 'produits_retenus'))
+        self.assertFalse(hasattr(devis_retenu, 'cible_de_l_option_retenue'))
+
+
 class ResultatsDeLaConceptionTest(_DevisDeuxOptions):
     """ACAL2015 (C4-E5, D-ACAL-96) — ``conception`` de ``GET resultat/`` : UN chiffre de
     production (celui de la conception courante) ; un devis lié REÇU par le client
@@ -297,6 +325,25 @@ class ResultatsDeLaConceptionTest(_DevisDeuxOptions):
         self.assertEqual(ecarts['production_annuelle']['devis'], 6047)
         self.assertEqual(bloc['production_annuelle_kwh'], self.attendu)
         self.assertEqual(Devis.objects.filter(pk=devis.pk).values().get(), avant)
+
+    def test_m2_le_devis_envoye_sert_sa_propre_production_et_son_option(self):
+        """Relecture E5 M2 — ``devis_envoye`` porte la production et l'option que le
+        DEVIS a rangées (jamais celles de la conception) : devis « avec » (60 000 kWh),
+        conception « sans » ; un devis sans production rangée sert ``None``. Rien
+        n'est écrit sur le devis. Mutant « option de la conception » : 'sans'."""
+        from django.utils import timezone
+
+        devis = self._les_deux('Avec batterie', etude={'etude_horaire': {'annuel': {'production_kwh': 60000}}},
+                               date_envoi=timezone.now())
+        avant = Devis.objects.filter(pk=devis.pk).values().get()
+        envoye = self._bloc(devis)['devis_envoye']
+        contrat = json.loads((Path(__file__).resolve().parent.parent / 'contract_samples'
+                              / 'calepinage_resultat.json').read_text(encoding='utf-8'))
+        self.assertEqual(sorted(envoye), sorted(contrat['acal2015_conception']['devis_envoye']))
+        self.assertEqual((envoye['option'], envoye['production_annuelle_kwh']), ('avec', 60000.0))
+        self.assertEqual(Devis.objects.filter(pk=devis.pk).values().get(), avant)
+        sans_production = self._bloc(self._les_deux('Sans batterie', date_envoi=timezone.now()))['devis_envoye']
+        self.assertEqual((sans_production['option'], sans_production['production_annuelle_kwh']), ('sans', None))
 
     def test_servi_par_get_resultat_et_contrat(self):
         calepinage = Calepinage.objects.create(company=self.company, lead_id=self.lead_lie.pk,

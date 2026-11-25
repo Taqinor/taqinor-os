@@ -914,6 +914,18 @@ def calepinage_retenu_pour_devis(devis_id, company):
     }
 
 
+def _module_du_devis(donnees, devis_id, company):
+    """Relecture E5 m3 — l'entrée stockée, complétée du module de la ligne DU DEVIS jugé
+    (``conception_retenue_par_id``) quand rien n'est désigné : un devis se juge avec
+    SON module, jamais celui de la conception du lead. Une désignation saisie garde la main."""
+    if donnees.get('module_produit') not in (None, ''):
+        return donnees
+    from .services.equipements import conception_retenue_par_id
+
+    module = ((conception_retenue_par_id(devis_id, company) or {}).get('module') or {}).get('produit')
+    return {**donnees, 'module_produit': module} if module not in (None, '') else donnees
+
+
 def entree_electrique_du_devis(devis_id, company):
     """ACAL165 (C-ACAL-061) — les grandeurs de SITE du calepinage lié à ce
     devis, telles que l'onglet Verdict du calepinage les emploie, pour l'étude
@@ -947,7 +959,7 @@ def entree_electrique_du_devis(devis_id, company):
     temperatures = None
     try:
         try:
-            materiel = resoudre_materiel(company, donnees,
+            materiel = resoudre_materiel(company, _module_du_devis(donnees, devis_id, company),
                                          calepinage=calepinage)
             module_specs = (materiel or {}).get('module') or None
         except Exception:  # sans fiche, pas de NOCT

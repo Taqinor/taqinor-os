@@ -127,6 +127,12 @@ function ProductionDuDevis({ bloc, p50, incomplet = false }) {
   )
 }
 
+/** Relecture E5 M2 — l'option qu'un devis a retenue, en mots du vendeur. */
+const LIBELLE_OPTION = { sans: 'option sans batterie', avec: 'option avec batterie' }
+/** Relecture E5 M1 — tant que la conception est servie, la production de la POSE (simulée) porte son nom exact :
+    jamais deux productions à l'écran sans que chacune soit nommée. */
+const NOM_PRODUCTION_POSE = 'Production simulée de la pose'
+
 /** ACAL2015 (C4-E5, D-ACAL-96) — LA conception (`conception` de `GET resultat/`) : UN chiffre de production, celui que le
     moteur unique a rangé ; un devis ENVOYÉ dont l'écart servi (`devis_envoye.ecart_devis`, lignes de ventes) porte la
     production est NOMMÉ (référence, date d'envoi) avec « Réviser le devis » quand ventes le permet. Rien n'est recalculé. */
@@ -135,23 +141,33 @@ function ProductionDeLaConception({ bloc }) {
   const dit = (n) => `${formatNumber(n, { decimals: 0 })} kWh par an`
   const envoye = bloc.devis_envoye
   const ecarts = envoye?.ecart_devis ?? []
-  const production = ecarts.find((e) => e?.valeur === 'production_annuelle' && typeof e.devis === 'number')
+  // Relecture E5 M2 — la production QUE LE DEVIS ENVOYÉ A RANGÉE (`devis_envoye.production_annuelle_kwh`, servie par
+  // le serveur), comparée au chiffre AFFICHÉ ici : jamais déduite de l'absence d'une ligne d'écart.
+  const duDevis = typeof envoye?.production_annuelle_kwh === 'number' ? envoye.production_annuelle_kwh : null
+  const different = duDevis != null && (kwh == null || Math.round(duDevis) !== Math.round(kwh))
+  const reviserPossible = ecarts.length === 0 || ecarts.some((e) => e?.reviser_possible)
+  const option = different && envoye?.option && envoye.option !== bloc.option ? ` (${LIBELLE_OPTION[envoye.option] ?? envoye.option})` : ''
   const [enCours, reviser] = useReviser(envoye)
   const lien = envoye ? <Link to={`/ventes/devis?devis=${envoye.devis}`}>{envoye.reference || 'voir le devis'}</Link> : null
   return (
     <section className="cal-res-carte flex flex-col gap-1" data-zone="production-conception"
-      data-chiffre={production ? 'deux' : 'un-seul'}>
+      data-chiffre={different ? 'deux' : 'un-seul'}>
       <p>{kwh != null ? `Production de la conception : ${dit(kwh)}` : 'Production de la conception : non calculée'}</p>
-      {envoye && !production && <p className="cal-res-sourdine">{'Le devis envoyé '}{lien}{' porte le même chiffre.'}</p>}
-      {production && (
+      {envoye && duDevis == null && (
+        <p className="cal-res-sourdine">{'Le devis envoyé '}{lien}{' ne porte pas de production enregistrée.'}</p>
+      )}
+      {envoye && duDevis != null && !different && (
+        <p className="cal-res-sourdine">{'Le devis envoyé '}{lien}{' porte le même chiffre.'}</p>
+      )}
+      {different && (
         <>
           <p>
-            {'Devis '}{lien}{` envoyé${envoye.envoye_le ? ` le ${formatDate(envoye.envoye_le)}` : ''} : ${dit(production.devis)}`}
+            {'Devis '}{lien}{` envoyé${envoye.envoye_le ? ` le ${formatDate(envoye.envoye_le)}` : ''}${option} : ${dit(duDevis)}`}
           </p>
           <p className="cal-res-sourdine">
             Le devis envoyé n’est pas modifié : « Réviser le devis » crée une nouvelle version sur la conception.
           </p>
-          {production.reviser_possible && (
+          {reviserPossible && (
             <button type="button" className="cal-res-lien" style={{ alignSelf: 'flex-start' }} disabled={enCours}
               onClick={reviser} data-testid="cal-reviser-devis-ecart">
               {enCours ? 'Révision…' : 'Réviser le devis'}
@@ -288,12 +304,15 @@ export default function EtapeResultats({
         <ResultatAvantSimulation calepinageId={id} data={data} parcours={parcours}
           intervalleMs={intervalleMs} onTermine={refetch} />
       )}
-      {incomplet && <ResultatIncomplet calepinageId={id} data={data} parcours={parcours} onVoirEtapes={voirEtapes} />}
+      {incomplet && (
+        <ResultatIncomplet calepinageId={id} data={data} parcours={parcours} onVoirEtapes={voirEtapes}
+          nomProduction={data?.conception ? NOM_PRODUCTION_POSE : null} />
+      )}
       {complet && (
         <>
-          <TuilesResultat data={data} />
+          <TuilesResultat data={data} nomProduction={data?.conception ? NOM_PRODUCTION_POSE : null} />
           <section className="cal-res-milieu">
-            <MoisParMois data={data} />
+            <MoisParMois data={data} nomProduction={data?.conception ? NOM_PRODUCTION_POSE : null} />
             <DuSoleilAuReseau cascade={data?.cascade} note={note} />
           </section>
         </>
