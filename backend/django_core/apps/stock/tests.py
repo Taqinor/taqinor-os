@@ -11,6 +11,7 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 
 from apps.stock.models import Produit, MouvementStock
+from apps.stock.management.commands.seed_catalogue import PRIX_TTC_PVG3 as _PRIX_PVG3, ht as _ht
 
 
 def make_company(slug='test-cat-co'):
@@ -667,7 +668,7 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(len(skus), 22)
         for sku in skus:
             p = Produit.objects.get(company=self.company, sku=sku)
-            self.assertEqual(p.prix_vente, Decimal('0'), sku)   # à renseigner par le fondateur
+            self.assertEqual(p.prix_vente, _ht(_PRIX_PVG3.get(sku, 0)), sku)  # D-ACAL-127, sinon 0
             self.assertEqual(p.prix_achat, Decimal('0'), sku)
             self.assertGreater(p.quantite_stock, 0, sku)  # stock présent, seul le prix manque
             self.assertTrue(p.description, sku)  # description FR courte saisie
@@ -687,8 +688,7 @@ class TestSeedCatalogue(TestCase):
             first_count)
         self.assertEqual(first_count, 1)
         # Un second run ne crée rien de plus et ne touche pas les prix (0).
-        p = Produit.objects.get(company=self.company, sku='DISJ-AC-C-16-1P')
-        self.assertEqual(p.prix_vente, Decimal('0'))
+        self.assertEqual(Produit.objects.get(company=self.company, sku='PARA-AC-T2').prix_vente, Decimal('0'))
 
     def test_pvg3_priceless_products_excluded_like_osp_guard(self):
         """Même garde que les pompes OSP (apps.ventes.services._has_price) :
@@ -697,7 +697,7 @@ class TestSeedCatalogue(TestCase):
         seed(self.company)
         osp = Produit.objects.get(company=self.company, sku='PMP-OSP-30-8')
         cable = Produit.objects.get(company=self.company, sku='CAB-H1Z2Z2-6-M')
-        disjoncteur = Produit.objects.get(company=self.company, sku='DISJ-AC-C-16-1P')
+        disjoncteur = Produit.objects.get(company=self.company, sku='PARA-AC-T2')  # D-ACAL-127
         self.assertFalse(_has_price(osp))
         self.assertFalse(_has_price(cable))
         self.assertFalse(_has_price(disjoncteur))

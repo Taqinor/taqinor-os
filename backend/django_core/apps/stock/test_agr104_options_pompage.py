@@ -2,11 +2,12 @@
 des articles existants (migration de données gardée sur « rôle vide »).
 """
 import importlib
+from decimal import Decimal
 from io import StringIO
 
 from django.apps import apps as django_apps
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.stock.management.commands import seed_catalogue as seed_mod
 from apps.stock.models import Produit
@@ -69,8 +70,12 @@ class OptionsPompageTests(TestCase):
             p = Produit.objects.get(company=self.co, sku=sku)
             self.assertEqual(p.role_pompage, role, sku)
             self.assertIn(role, ROLES_POMPAGE)
-            self.assertEqual(p.prix_vente, 0, sku)
+            # D-ACAL-127 : prix confirmés posés HT, le parafoudre AC reste à 0.
+            self.assertEqual(p.prix_vente,
+                             seed_mod.ht(seed_mod.PRIX_TTC_PVG3.get(sku, 0)), sku)
             self.assertEqual(p.prix_achat, 0, sku)
+        self.assertEqual(Produit.objects.get(
+            company=self.co, sku='PARA-AC-T2').prix_vente, 0)
         self.assertEqual(
             {s for s, r in seed_mod.ROLE_POMPAGE_PVG3.items()
              if r == 'protection_ac'},
@@ -91,6 +96,32 @@ class OptionsPompageTests(TestCase):
         p = Produit.objects.get(company=self.co, sku='PARA-AC-T2')
         self.assertEqual((p.nom, p.prix_vente, p.role_pompage),
                          ('Parafoudre AC du fondateur', 250, ''))
+
+    def test_dacal127_prix_confirmes_semes_ht(self):
+        """D-ACAL-127 — les neuf prix TTC confirmés (mrelec.ma, 25/11/2026)
+        sont semés HT par la conversion du seeder ; achat jamais touché."""
+        _seed(self.co)
+        attendus = {
+            'DISJ-AC-C-16-1P': '66.67', 'DISJ-AC-C-20-1P': '66.67',
+            'DISJ-AC-C-25-1P': '66.67', 'DISJ-AC-C-32-1P': '69.17',
+            'DISJ-AC-C-16-4P': '106.67', 'DISJ-AC-C-20-4P': '110.00',
+            'DISJ-AC-C-25-4P': '113.33', 'DISJ-AC-C-32-4P': '117.50',
+            'COF-DC-2STR': '1666.67'}
+        for sku, prix in attendus.items():
+            p = Produit.objects.get(company=self.co, sku=sku)
+            self.assertEqual(p.prix_vente, Decimal(prix), sku)
+            self.assertEqual(p.prix_achat, 0, sku)
+            self.assertEqual(p.tva, Decimal('20.00'), sku)
+
+    def test_dacal127_prix_saisi_jamais_reecrit_par_le_seeder(self):
+        Produit.objects.create(
+            company=self.co, nom='Disjoncteur du fondateur',
+            sku='DISJ-AC-C-16-1P', prix_vente=Decimal('250'))
+        _seed(self.co)
+        _seed(self.co)
+        qs = Produit.objects.filter(company=self.co, sku='DISJ-AC-C-16-1P')
+        self.assertEqual(qs.count(), 1)
+        self.assertEqual(qs.get().prix_vente, Decimal('250'))
 
     def test_option_existante_jamais_reecrite(self):
         Produit.objects.create(
@@ -210,3 +241,54 @@ class MigrationRolesTests(TestCase):
         m0190.retirer_roles(django_apps, None)
         self.assertEqual(self._role('PARA-AC-T2'), '')
         self.assertEqual(self._role('DISJ-AC-C-20-4P'), 'cloture')
+
+    def _prix(self, sku):
+        return Produit.objects.get(company=self.co, sku=sku).prix_vente
+
+    def test_dacal127_migration_0191_prix_vides_seulement(self):
+        m0191 = importlib.import_module(
+            'apps.stock.migrations.0191_dacal127_prix_protections_pompage')
+        # État de prod : les neuf articles à 0 ; l'un déjà chiffré à la main.
+        Produit.objects.filter(company=self.co, sku__in=list(m0191.PRIX_HT)
+                               ).update(prix_vente=0)
+        Produit.objects.filter(company=self.co, sku='DISJ-AC-C-25-4P').update(
+            prix_vente=Decimal('199'))
+        autre = Company.objects.get_or_create(
+            slug='agr104-mig-co-2', defaults={'nom': 'AGR104 Mig Co 2'})[0]
+        Produit.objects.create(company=autre, nom='Coffret DC', sku='COF-DC-2STR',
+                               prix_vente=0, prix_achat=Decimal('900'))
+        avant = {p.sku: (p.nom, p.prix_achat, p.quantite_stock, p.role_pompage)
+                 for p in Produit.objects.filter(company=self.co)}
+        nb = Produit.objects.count()
+        m0191.poser_prix(django_apps, None)
+        m0191.poser_prix(django_apps, None)  # idempotent
+        self.assertEqual(Produit.objects.count(), nb)  # aucun article créé
+        self.assertEqual(self._prix('DISJ-AC-C-16-1P'), Decimal('66.67'))
+        self.assertEqual(self._prix('DISJ-AC-C-32-4P'), Decimal('117.50'))
+        self.assertEqual(self._prix('COF-DC-2STR'), Decimal('1666.67'))
+        self.assertEqual(self._prix('DISJ-AC-C-25-4P'), Decimal('199'))  # saisi
+        self.assertEqual(self._prix('PARA-AC-T2'), 0)
+        cof = Produit.objects.get(company=autre, sku='COF-DC-2STR')
+        self.assertEqual((cof.prix_vente, cof.prix_achat),
+                         (Decimal('1666.67'), Decimal('900')))
+        self.assertEqual(avant, {
+            p.sku: (p.nom, p.prix_achat, p.quantite_stock, p.role_pompage)
+            for p in Produit.objects.filter(company=self.co)})
+        m0191.retirer_prix(django_apps, None)
+        self.assertEqual(self._prix('DISJ-AC-C-16-1P'), 0)
+        self.assertEqual(self._prix('DISJ-AC-C-25-4P'), Decimal('199'))
+        self.assertEqual(Produit.objects.get(
+            company=autre, sku='COF-DC-2STR').prix_vente, 0)
+
+
+class PrixFigesDacal127Tests(SimpleTestCase):
+    """D-ACAL-127 — la table HT figée de la migration 0191 égale la
+    conversion du seeder (``ht``) de chaque TTC confirmé — sans base."""
+
+    def test_ht_fige_egale_conversion_du_seeder(self):
+        m0191 = importlib.import_module(
+            'apps.stock.migrations.0191_dacal127_prix_protections_pompage')
+        self.assertEqual(set(m0191.PRIX_HT), set(seed_mod.PRIX_TTC_PVG3))
+        for sku, ttc in seed_mod.PRIX_TTC_PVG3.items():
+            self.assertEqual(m0191.PRIX_HT[sku], seed_mod.ht(ttc), sku)
+        self.assertNotIn('PARA-AC-T2', m0191.PRIX_HT)

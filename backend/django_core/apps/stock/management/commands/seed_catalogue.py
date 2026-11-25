@@ -663,7 +663,7 @@ from apps.stock.management.commands._articles_ci import (  # noqa: E402
 from apps.stock.management.commands._articles_ht import (  # noqa: E402
     ACCESSOIRES_GRAPPE_HT, HYBRIDES_DEYE_HT, semer_haute_tension)
 from apps.stock.management.commands._articles_pompage import (  # noqa: E402
-    OPTIONS_POMPAGE, ROLE_POMPAGE_PVG3)
+    OPTIONS_POMPAGE, PRIX_TTC_PVG3, ROLE_POMPAGE_PVG3)
 
 #: CIQ103 — rôle C&I des articles DÉJÀ seedés (``lim_mode`` laissé vide : la
 #: fiche du Smart Meter ne publie pas son mode de raccordement).
@@ -2108,7 +2108,7 @@ def _semer_prix_vides(company, Produit, MouvementStock, record_stock_movement,
             company=company, nom=nom, sku=sku,
             categorie=get_categorie(classify_categorie(nom)),
             prix_achat=Decimal('0'),
-            prix_vente=Decimal('0'),  # à renseigner par le fondateur
+            prix_vente=ht(PRIX_TTC_PVG3.get(sku, 0)),  # D-ACAL-127 ; sinon 0 = à renseigner
             quantite_stock=qte, seuil_alerte=seuil,
             tva=Decimal('20.00'),
             role_pompage=ROLE_POMPAGE_PVG3.get(sku, ''),
