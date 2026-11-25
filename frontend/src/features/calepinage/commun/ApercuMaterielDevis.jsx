@@ -2,7 +2,8 @@
    Le serveur rejoue À BLANC la composition que la génération écrirait (`GET apercu-devis/`, rien n'est écrit) :
    par option, le module et l'onduleur du devis, puis une phrase par produit désigné à l'étape Électrique que le
    devis ne portera pas, avec sa raison — phrases servies, jamais réécrites ici. Rien n'est affirmé tant que la
-   lecture n'a pas répondu ; un échec se tait (le bouton reste le geste, son refus éventuel parlera). */
+   lecture n'a pas répondu ; un échec se tait (le bouton reste le geste, son refus éventuel parlera).
+   Forme lue : contrat `calepinage_apercu_devis.json` (`options[{libelle, module, onduleur}]`, `ecarts[{message}]`, `refus`). */
 import { useEffect, useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
 
