@@ -4,7 +4,7 @@ import { couleurAccesActive } from '@rooflib/shadingEngine'
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
-import { formatNumber } from '../../../../../lib/format'
+import { formatKwc, formatNumber } from '../../../../../lib/format'
 import { cibleAuModule } from '../../cibleAuModule'
 import { kwh } from '../../../production/ResultatHeros.helpers'
 import { SurCarte } from '../emplacements'
@@ -89,6 +89,7 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
     entrees: Array.isArray(catalogue?.modules) ? catalogue.modules : [],
     // Lane E9 — la taille de la conception comptée dans chaque puissance de la liste (`modules-disponibles/`).
     panneauxSelonWatt: catalogue?.panneaux_selon_watt ?? {},
+    kwcSelonWatt: catalogue?.kwc_selon_watt ?? {}, // T4-X8-011 — le kWc de ce compte dans ce module, servi
     servis: modulesServis(entree),
     publiee: productionPubliee(resultat),
     aRefaire: simulationARefaire(resultat), // T4-X2-002
@@ -179,22 +180,24 @@ function ChoixModule({ etat, entrees, servis, lectureSeule, g }) {
 
 /** Lane E9 (T4-X2-001 / T4-X9-005) — la cible comptée dans le module CHOISI : la conception est une PUISSANCE ; un module
     d'une autre puissance en pose le compte SERVI (`panneaux_selon_watt`, la règle du moteur — jamais calculé ici), et la
-    carte dit les deux. Module absent de la table : la puissance seule, aucun compte (`panneaux: null`) ; sans fiche lue
-    (catalogue en lecture) : la cible telle quelle. */
-function cibleDuModule(cible, module, entrees, table) {
+    carte dit les deux. Module absent de la table : la puissance seule, aucun compte (`panneaux: null`).
+    T4-X8-011 — le compte ET son kWc (`kwc_selon_watt`, servi) vont ensemble : `kwc` devient celui du module posé ; la
+    conception est dite dans sa propre phrase (`conception`). Fiche du module pas (encore) lue : la puissance que le
+    constructeur POSE (`wattPose`, « 5 × 710 W ») — jamais le compte de la conception sous un module d'une autre taille. */
+function cibleDuModule(cible, module, entrees, servi, wattPose) {
   // Aucun module choisi sur le pan : rien à convertir (la carte garde la taille de la conception, comme avant).
   if (!cible || !module?.valeur) return cible
   const fiche = entrees.find((e) => e.module.id === module.valeur)?.module
   const auModule = cibleAuModule({ panneaux: cible.panneaux, kwc: cible.kwc, wattConception: cible.moduleWc },
-    fiche?.pmaxWc, table)  // T4-X3-009 : LE lecteur unique de l'atelier
+    fiche?.pmaxWc ?? wattPose, servi.panneauxSelonWatt, servi.kwcSelonWatt)  // T4-X3-009 : LE lecteur unique de l'atelier
   if (!auModule?.convertie) return cible
-  return { ...cible, panneaux: auModule.panneaux, watt: auModule.watt,
-    conception: `la conception du lead compte ${auModule.conception}` }
+  return { ...cible, panneaux: auModule.panneaux, watt: auModule.watt, kwc: auModule.kwcModule,
+    conception: `La conception du lead compte ${auModule.conception}${cible.kwc != null ? `, ${formatKwc(cible.kwc)}` : ''}.` }
 }
 
 function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   const { besoin, figures, memoire } = etat
-  const cible = cibleDuModule(servi.cible, etat.module, servi.entrees, servi.panneauxSelonWatt)
+  const cible = cibleDuModule(servi.cible, etat.module, servi.entrees, servi, figures.watt)
   // La carte choisie est celle de la cible ACTUELLE ; ni l'une ni l'autre → « Pose actuelle : N panneaux · kWc ».
   const factureChoisie = !!cible && besoin?.valeur === cible.panneaux
   const max = etat.max && !factureChoisie
@@ -218,15 +221,16 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
     ? gardee.texte : null)
   // ACAL2022 (T4-X2-001) — la carte dit la taille de la CONCEPTION (son nombre de panneaux et SON kWc, nommée) : jamais un nombre
   // de panneaux à côté du kWc d'un autre module ; la pose posée se dit à part (« Posé : … »).
-  // Lane E9 — un module d'une autre puissance : « 4,40 kWc — 6 panneaux de 710 W (la conception du lead compte 8 panneaux
-  // de 550 W) » ; sans compte servi pour ce module, la puissance seule.
-  const ligneConversion = cible?.conception && cible.kwc != null
-    ? `${fmtKwc(cible.kwc)}${cible.panneaux ? ` — ${compte(cible.panneaux)} de ${formatNumber(cible.watt)} W` : ''} (${cible.conception})`
+  // T4-X8-011 — un module d'une autre puissance : la ligne dit LE compte servi pour ce module et SON kWc servi (« 6 panneaux
+  // de 710 W · 4,26 kWc »), la conception sa propre phrase complète, sous la ligne ; sans compte servi : la phrase seule.
+  const ligneConversion = cible?.conception && cible.panneaux
+    ? [`${compte(cible.panneaux)} de ${formatNumber(cible.watt)} W`, cible.kwc != null ? formatKwc(cible.kwc) : null, partFacture]
+      .filter(Boolean).join(' · ')
     : null
-  const ligneFacture = cible && (ligneConversion ?? ligneTaille ?? [
+  const ligneFacture = cible && (cible.conception ? (ligneTaille ?? ligneConversion) : (ligneTaille ?? [
     compte(cible.panneaux), cible.kwc != null ? fmtKwc(cible.kwc) : null, 'conception',
     partFacture,
-  ].filter(Boolean).join(' · '))
+  ].filter(Boolean).join(' · ')))
   const posee = factureChoisie && cible && figures.panneaux > 0 && figures.kwc
     && (figures.panneaux !== cible.panneaux || (cible.kwc != null && figures.kwc !== fmtKwc(cible.kwc)))
     ? ['Posé : ' + compte(figures.panneaux), figures.kwc].join(' · ') : null
@@ -254,6 +258,8 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
           {cible && <span className="cal-pan-badge">Recommandé</span>}
         </span>
         {ligneFacture && <span className="cal-pan-option-ligne"><Ligne texte={ligneFacture} /></span>}
+        {/* T4-X8-011 — la conception, dite en entier : une phrase qui se replie, jamais coupée au bord de la carte. */}
+        {cible?.conception && <span className="cal-pan-option-phrase" data-zone="conception-du-lead">{cible.conception}</span>}
         {/* Relecture E5 B1 — la conception se calcule : jamais « 0 panneau », la cible est dite en cours. */}
         {!ligneFacture && servi.facture.calculEnCours && (
           <span className="cal-pan-option-ligne" data-zone="cible-en-calcul">calcul en cours</span>
