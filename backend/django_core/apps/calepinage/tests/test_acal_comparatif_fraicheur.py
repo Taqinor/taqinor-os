@@ -17,7 +17,7 @@ Run :
 import copy
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -104,3 +104,15 @@ class ComparatifFraicheurTest(TestCase):
         self.assertTrue(lignes[intacte.pk]['simulee'])
         self.assertFalse(lignes[changee.pk]['simulee'])
         self.assertIsNone(lignes[changee.pk]['production']['p50_kwh'])
+
+
+class MotifPerimeNommeLesReglagesTest(SimpleTestCase):
+    """T4-X3-012 — un réglage de la société périme aussi la simulation : le motif
+    servi ne dit pas seulement « la conception a changé » (le toit n'a pas bougé)."""
+
+    def test_motifs_perimes_nomment_les_reglages_de_la_societe(self):
+        from apps.calepinage.services.comparaison import MOTIF_PERIMEE
+
+        for motif in (MOTIF_PERIME, MOTIF_PERIMEE):
+            self.assertIn('réglage de votre société', motif)
+            self.assertIn('relancez la simulation', motif)

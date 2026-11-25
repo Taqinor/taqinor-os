@@ -48,7 +48,7 @@ export function nomDePerte(etape, libelleServi = '') {
    reste derrière le « ? ». Code inconnu : le message servi sert de titre, sans ligne — rien n'est perdu. */
 export const MANQUES_CLAIRS = {
   norme_absente: { titre: 'Choisir la norme électrique de votre société', ligne: 'Sans elle, les câbles, les chutes de tension et les protections ne sont pas calculés.' },
-  simulation_perimee: { titre: 'Calcul à refaire', ligne: 'Le calepinage a changé depuis le dernier calcul.', bouton: 'Voir' },
+  simulation_perimee: { titre: 'Calcul à refaire', ligne: 'Le calepinage ou un réglage de votre société a changé depuis le dernier calcul.', bouton: 'Voir' },
   production_non_simulee: { titre: 'Production à calculer', ligne: 'Lancez la simulation pour la connaître.', bouton: 'Voir' },
   coefficients_non_sources: { titre: 'Températures de référence', ligne: 'Des valeurs standard servent en attendant celles du site.' },
   acces_solaire_absent: { titre: 'Ombrage panneau par panneau', ligne: 'Aucune ombre n’est signalée, mais cela ne prouve pas qu’il n’y en a pas.' },

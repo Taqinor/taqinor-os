@@ -67,7 +67,7 @@ MOTIF_NON_SIMULE = (
     "Ce calepinage n'a pas été simulé : aucune production n'est publiée "
     '(les colonnes restent vides, jamais à 0).')
 MOTIF_PERIME = (
-    'La conception de ce calepinage a changé depuis sa dernière simulation : '
+    'La conception de ce calepinage ou un réglage de votre société a changé depuis sa dernière simulation : '
     'la production affichée serait celle d’un autre toit. Elle est donc '
     'traitée comme non simulée — relancez la simulation.')
 MOTIF_INTROUVABLE = (

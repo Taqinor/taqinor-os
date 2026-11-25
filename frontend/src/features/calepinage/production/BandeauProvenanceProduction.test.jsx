@@ -473,7 +473,7 @@ describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () =>
     calepinageApi.calepinages.resultat.mockResolvedValue(r)
     rendreAvec(null, false)
     const ligne = await screen.findByTestId('cal-simulation-a-refaire')
-    expect(ligne).toHaveTextContent('Simulation à refaire : le toit a changé depuis le dernier calcul.')
+    expect(ligne).toHaveTextContent('Simulation à refaire : le toit ou un réglage de votre société a changé depuis le dernier calcul.')
     expect(within(ligne).getByRole('link', { name: 'relancer la simulation' })).toBeInTheDocument()
     expect(screen.getByTestId('calx65-bandeau')).not.toHaveTextContent('avant la simulation')
   })

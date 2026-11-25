@@ -59,7 +59,7 @@ export default function ResultatAvantSimulation({
           </h1>
           <p className="cal-resinc-phrase" data-testid="cal-avant-phrase">
             {perime
-              ? 'Le calepinage a changé depuis le dernier calcul : relancez-le pour retrouver la production.'
+              ? 'Le calepinage ou un réglage de votre société a changé depuis le dernier calcul : relancez-le pour retrouver la production.'
               : 'Le calcul estime ce que vos panneaux produiront chaque année, mois par mois, à partir de leur pose et du soleil du site.'}
           </p>
           <BoutonCalculer calepinageId={calepinageId} data={data} avertissements={[]} manque={[]}
