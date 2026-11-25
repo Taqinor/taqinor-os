@@ -423,3 +423,19 @@ test('E7d M3 — graphe et blocs lus sur la conception servie ; Σ des mois = la
     valeur: 490, source: 'saisie', message }] }
   assert.deepEqual(donneesHorairesDeConception(avecConso).sans.notes, [message])
 })
+
+// T4-X4-018 — la raison d'une taille sans batterie est CELLE DU SERVEUR (refus du palier
+// de stockage, `stockage_refuse.motif_refus`) avant toute phrase générique ; à la taille
+// d'une option que le devis vend, la ligne le dit (« taille de ce devis »).
+test('T4-X4-018 — raison serveur du refus de stockage, taille du devis marquée', () => {
+  const motif = '5 kWh refusé : la batterie ne serait chargée qu’à 4,8 % en novembre.'
+  const [refusee, devis] = lignesAffichables({ tableau: [
+    { panneaux: 4, kwc: 2.2, batterie_disponible: false, stockage_refuse: { motif_refus: motif } },
+    { panneaux: 11, kwc: 6.05, batterie_disponible: true, economie_avec_mad: 8886, taille_du_devis: ['avec'] },
+  ] })
+  assert.equal(refusee.raisonBatterie, motif)
+  assert.equal(refusee.tailleDuDevis, '')
+  assert.equal(devis.tailleDuDevis, 'taille de ce devis (avec batterie)')
+  assert.equal(lignesAffichables({ tableau: [{ panneaux: 3, taille_du_devis: ['sans', 'avec'] }] })[0].tailleDuDevis,
+    'taille de ce devis (sans et avec batterie)')
+})

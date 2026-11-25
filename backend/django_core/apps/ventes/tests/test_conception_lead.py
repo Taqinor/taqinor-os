@@ -2005,6 +2005,56 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
                                         **horaire)['payback_years']
             self.assertEqual(table['payback']['valeur'], attendu, option)
 
+    def test_t4x4018_tableau_de_l_apercu_couvre_la_taille_de_chaque_option(self):
+        """T4-X4-018 — le tableau des tailles (``blocs.dimensionnement.tableau``,
+        ``recommander_taille``) s'arrête à la parité + 1 panneau
+        (``dimensionnement.bornes_candidates``) : la taille de l'option « avec » que la
+        conception vend (panneaux ajoutés pour remplir la batterie) peut être au-delà,
+        donc absente. L'aperçu porte une ligne à la taille de CHAQUE option servie,
+        calculée par le même balayage (une taille), marquée ``taille_du_devis`` ; la
+        version rangée n'est pas touchée (aucune clé ne bouge)."""
+        from apps.ventes.selectors import conception_courante
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        rangee = conception_courante(company, lead.pk)
+        api = self._api(self._utilisateur(company))
+        apercu = api.post(URL_APERCU, {'lead': lead.pk}, format='json').json()
+        tableau = apercu['blocs']['dimensionnement']['tableau']
+        for option, table in apercu['valeurs'].items():
+            with self.subTest(option=option):
+                nb = table['nb_panneaux']['valeur']
+                lignes = [li for li in tableau if li['panneaux'] == nb]
+                self.assertEqual(len(lignes), 1, (option, nb, [li['panneaux'] for li in tableau]))
+                self.assertIn(option, lignes[0]['taille_du_devis'])
+        self.assertEqual([li['panneaux'] for li in tableau], sorted(li['panneaux'] for li in tableau))
+        rangees = rangee['blocs']['dimensionnement']['tableau']
+        self.assertFalse(any('taille_du_devis' in li for li in rangees))  # la version rangée ne bouge pas
+        self.assertEqual(conception_courante(company, lead.pk)['blocs'], rangee['blocs'])
+        # Le cas du constat : un balayage borné SOUS la taille des options (parité + 1
+        # plus petite que l'option avec) ⇒ les tailles des options y sont ajoutées.
+        from unittest import mock as _mock
+
+        from apps.ventes.conception import etudes_lignes as EL
+        vrai = EL.dimensionnement_des_lignes
+
+        def borne_a_deux(*args, **kwargs):
+            etat, bloc = vrai(*args, **kwargs)
+            if isinstance(bloc, dict):
+                bloc = dict(bloc, tableau=[li for li in bloc.get('tableau') or [] if li['panneaux'] <= 2])
+            return etat, bloc
+        with _mock.patch.object(EL, 'dimensionnement_des_lignes', side_effect=borne_a_deux):
+            borne = api.post(URL_APERCU, {'lead': lead.pk}, format='json').json()
+        tableau = borne['blocs']['dimensionnement']['tableau']
+        for option, table in borne['valeurs'].items():
+            with self.subTest(option=option, borne=2):
+                nb = table['nb_panneaux']['valeur']
+                self.assertGreater(nb, 2)
+                ligne = next((li for li in tableau if li['panneaux'] == nb), None)
+                self.assertIsNotNone(ligne, [li['panneaux'] for li in tableau])
+                self.assertIn(option, ligne['taille_du_devis'])
+
     def test_e7d_payback_de_l_apercu_sur_l_investissement_de_l_ecran(self):
         """E7d (revue lot 4, M1) — l'aperçu sert le payback de CE QUE L'ÉCRAN MONTRE :
         ``investissement`` (TTC de vente des lignes de chaque option) entre dans le corps ;

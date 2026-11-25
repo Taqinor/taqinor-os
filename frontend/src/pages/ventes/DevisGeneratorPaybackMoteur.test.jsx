@@ -233,7 +233,8 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
   it('paybacks du tableau et de la falaise : étiquetés « du moteur », au dixième', async () => {
     const ligne = { panneaux: 8, kwc: 4.4, onduleur: 'Onduleur hybride', ratio_onduleur_kwc: 1.1,
       regle_80_pct_respectee: true, taux_autoconso_sans: 0.5, couverture_sans: 0.4, economie_sans_mad: 5000,
-      economie_avec_mad: 8614, batterie_disponible: true, payback_sans_annees: 6.89, payback_avec_annees: 8.72 }
+      economie_avec_mad: 8614, batterie_disponible: true, payback_sans_annees: 6.89, payback_avec_annees: 8.72,
+      taille_du_devis: ['avec'] }
     const dimensionnement = { tableau: [ligne], recommandation: { panneaux: 8, kwc: 4.4 },
       falaise: { cible_kwh_mois: 300 }, meilleure_falaise: { panneaux: 8, kwc: 4.4, batterie_kwh: 4.6,
         payback_annees: 7.66 } }
@@ -248,6 +249,9 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
     expect(tableau).toContain('Payback sans (prix du moteur)')
     expect(tableau).toContain('6,9 ans')
     expect(tableau).not.toContain('6.89')
+    // T4-X4-018 — la ligne à la taille de l'option que le devis vend est marquée.
+    expect(container.querySelector('[data-testid="etude-horaire-taille-devis"]').textContent)
+      .toContain('taille de ce devis (avec batterie)')
     expect(container.querySelector('[data-testid="etude-horaire-meilleure-falaise"]').textContent)
       .toContain('payback 7,7 ans (batterie et prix du moteur)')
     expect(figure(container, 'payback_ans')).toBe('4,2 ans')  // la carte : ce devis

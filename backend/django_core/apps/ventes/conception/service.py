@@ -305,9 +305,42 @@ def apercu_conception(lead, company, *, calepinage_id=None, calepinage=None, sai
     with reglages_lus_sans_creer(company):
         resultat = calculer_conception(copie, company, imposes=imposition_du_corps(imposes or {}) or None,
                                        investissement=prix)
+        _tailles_des_options(resultat)
     for champ in saisies:
         resultat.entrees_utilisees[champ] = {'valeur': _en_json(getattr(copie, champ)), 'source': 'saisie'}
     return sans_cles_interdites(_en_json(resultat.sortie())), None
+
+
+def _tailles_des_options(resultat):
+    """T4-X4-018 — le tableau des tailles de l'APERÇU (``blocs.dimensionnement.tableau``)
+    porte une ligne à la taille de CHAQUE option servie, marquée ``taille_du_devis``
+    (options de cette taille) : ``recommander_taille`` borne son balayage à la parité + 1
+    panneau (``bornes_candidates``) quand l'option avec batterie de la conception monte
+    au-delà pour remplir sa batterie. Une taille absente est calculée par LE même
+    balayage, à cette seule taille (``etudes_lignes.lignes_aux_tailles``). Aperçu
+    seulement : la version rangée n'est pas touchée."""
+    from apps.ventes.conception.etudes_lignes import lignes_aux_tailles
+
+    bloc = (resultat.blocs or {}).get('dimensionnement')
+    if resultat.etat != 'complet' or resultat.marche != 'residentiel' or not isinstance(bloc, dict) \
+            or not resultat.lignes:
+        return
+    tailles = {}
+    for option, table in (resultat.valeurs or {}).items():
+        nb = (table.get('nb_panneaux') or {}).get('valeur')
+        if nb:
+            tailles.setdefault(int(nb), []).append(option)
+    if not tailles:
+        return
+    tableau = [dict(li, taille_du_devis=tailles[li.get('panneaux')]) if li.get('panneaux') in tailles else li
+               for li in bloc.get('tableau') or []]
+    presentes = {li.get('panneaux') for li in tableau}
+    manquantes = [nb for nb in tailles if nb not in presentes]
+    if manquantes:
+        ajoutees = lignes_aux_tailles(resultat.lignes[0].devis, resultat.lignes, manquantes)
+        tableau += [dict(li, taille_du_devis=tailles[li['panneaux']]) for li in ajoutees]
+    resultat.blocs = dict(resultat.blocs, dimensionnement=dict(
+        bloc, tableau=sorted(tableau, key=lambda li: li.get('panneaux') or 0)))
 
 
 def _investissement_valide(brut):
