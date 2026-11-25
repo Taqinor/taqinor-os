@@ -70,12 +70,12 @@ class OptionsPompageTests(TestCase):
             p = Produit.objects.get(company=self.co, sku=sku)
             self.assertEqual(p.role_pompage, role, sku)
             self.assertIn(role, ROLES_POMPAGE)
-            # D-ACAL-127 : prix confirmés posés HT, le parafoudre AC reste à 0.
+            # D-ACAL-127/128 : prix confirmés posés HT (parafoudre AC compris).
             self.assertEqual(p.prix_vente,
                              seed_mod.ht(seed_mod.PRIX_TTC_PVG3.get(sku, 0)), sku)
             self.assertEqual(p.prix_achat, 0, sku)
         self.assertEqual(Produit.objects.get(
-            company=self.co, sku='PARA-AC-T2').prix_vente, 0)
+            company=self.co, sku='PARA-AC-T2').prix_vente, Decimal('833.33'))
         self.assertEqual(
             {s for s, r in seed_mod.ROLE_POMPAGE_PVG3.items()
              if r == 'protection_ac'},
@@ -249,7 +249,7 @@ class MigrationRolesTests(TestCase):
         m0191 = importlib.import_module(
             'apps.stock.migrations.0191_dacal127_prix_protections_pompage')
         # État de prod : les neuf articles à 0 ; l'un déjà chiffré à la main.
-        Produit.objects.filter(company=self.co, sku__in=list(m0191.PRIX_HT)
+        Produit.objects.filter(company=self.co, sku__in=[*m0191.PRIX_HT, 'PARA-AC-T2']
                                ).update(prix_vente=0)
         Produit.objects.filter(company=self.co, sku='DISJ-AC-C-25-4P').update(
             prix_vente=Decimal('199'))
@@ -280,6 +280,31 @@ class MigrationRolesTests(TestCase):
         self.assertEqual(Produit.objects.get(
             company=autre, sku='COF-DC-2STR').prix_vente, 0)
 
+    def test_dacal128_migration_0192_parafoudre_ac(self):
+        m0192 = importlib.import_module(
+            'apps.stock.migrations.0192_dacal128_prix_parafoudre_ac')
+        Produit.objects.filter(company=self.co, sku='PARA-AC-T2').update(prix_vente=0)
+        autre = Company.objects.get_or_create(
+            slug='agr104-mig-co-3', defaults={'nom': 'AGR104 Mig Co 3'})[0]
+        Produit.objects.create(company=autre, nom='Parafoudre saisi', sku='PARA-AC-T2',
+                               prix_vente=Decimal('250'))
+        avant = {p.sku: (p.nom, p.prix_achat, p.quantite_stock, p.role_pompage)
+                 for p in Produit.objects.filter(company=self.co)}
+        nb = Produit.objects.count()
+        m0192.poser_prix(django_apps, None)
+        m0192.poser_prix(django_apps, None)  # idempotent
+        self.assertEqual(Produit.objects.count(), nb)
+        self.assertEqual(self._prix('PARA-AC-T2'), Decimal('833.33'))
+        saisi = Produit.objects.get(company=autre, sku='PARA-AC-T2')
+        self.assertEqual(saisi.prix_vente, Decimal('250'))  # jamais réécrit
+        self.assertEqual(avant, {
+            p.sku: (p.nom, p.prix_achat, p.quantite_stock, p.role_pompage)
+            for p in Produit.objects.filter(company=self.co)})
+        m0192.retirer_prix(django_apps, None)
+        self.assertEqual(self._prix('PARA-AC-T2'), 0)
+        saisi.refresh_from_db()
+        self.assertEqual(saisi.prix_vente, Decimal('250'))
+
 
 class PrixFigesDacal127Tests(SimpleTestCase):
     """D-ACAL-127 — la table HT figée de la migration 0191 égale la
@@ -288,7 +313,229 @@ class PrixFigesDacal127Tests(SimpleTestCase):
     def test_ht_fige_egale_conversion_du_seeder(self):
         m0191 = importlib.import_module(
             'apps.stock.migrations.0191_dacal127_prix_protections_pompage')
-        self.assertEqual(set(m0191.PRIX_HT), set(seed_mod.PRIX_TTC_PVG3))
+        m0192 = importlib.import_module(
+            'apps.stock.migrations.0192_dacal128_prix_parafoudre_ac')
+        figes = {**m0191.PRIX_HT, **m0192.PRIX_HT}
+        self.assertFalse(set(m0191.PRIX_HT) & set(m0192.PRIX_HT))
+        self.assertEqual(set(figes), set(seed_mod.PRIX_TTC_PVG3))
         for sku, ttc in seed_mod.PRIX_TTC_PVG3.items():
-            self.assertEqual(m0191.PRIX_HT[sku], seed_mod.ht(ttc), sku)
-        self.assertNotIn('PARA-AC-T2', m0191.PRIX_HT)
+            self.assertEqual(figes[sku], seed_mod.ht(ttc), sku)
+        self.assertEqual(m0192.PRIX_HT, {'PARA-AC-T2': Decimal('833.33')})
+
+    def test_dacal129_fiches_figees_egales_au_seeder(self):
+        m0193 = importlib.import_module(
+            'apps.stock.migrations.0193_dacal129_fiches_variateurs_veichi')
+        self.assertEqual(m0193.FICHES, seed_mod.FICHES_VARIATEURS_VEICHI)
+        variateurs = {sku for _n, sku, *_r in seed_mod.VEICHI} - {'VEI-SI22-AFF'}
+        self.assertEqual(set(m0193.FICHES), variateurs)
+        self.assertEqual(len(m0193.FICHES), 15)
+        for sku, valeurs in m0193.FICHES.items():
+            self.assertEqual(set(valeurs), {'ond_v_max_abs', 'var_voc_reco_min_v',
+                                            'var_voc_reco_max_v'}, sku)
+            attendu = ('780.0' if sku.endswith('-380') else
+                       '400.0' if sku.startswith('VEI-SI22') else '450.0')
+            self.assertEqual(valeurs['ond_v_max_abs'], Decimal(attendu), sku)
+
+    def test_dacal129_cv_figes_et_tension_par_la_phase_du_kit(self):
+        m0194 = importlib.import_module(
+            'apps.stock.migrations.0194_dacal129_tension_cv_petites_pompes')
+        pompes = {sku: Decimal(cv) for _n, sku, _t, _q, _s, cv, _h, _d in seed_mod.POMPAGE
+                  if sku.startswith('PMP-')}
+        self.assertEqual(len(pompes), 8)
+        self.assertEqual(m0194.POMPES_CV, {**pompes, 'PMP-IMM-2M': None})
+        from apps.stock.management.commands._articles_pompage import tension_pompe
+        for nom, sku, *_r in seed_mod.POMPAGE:
+            if sku.startswith('PMP-'):
+                self.assertEqual(tension_pompe(nom), 220 if sku.endswith('M') else 380, sku)
+        self.assertIsNone(tension_pompe('Câble solaire Nexans 6mm² (au mètre)'))
+
+
+class FichesVariateursDacal129Tests(TestCase):
+    """D-ACAL-129 — fiche « variateur de pompage » des variateurs VEICHI :
+    tension DC max et Voc recommandée publiées ; MPPT et courant vides."""
+
+    def setUp(self):
+        from apps.stock.models import FicheTechnique
+        self.Fiche = FicheTechnique
+        self.co = Company.objects.get_or_create(
+            slug='dacal129-co', defaults={'nom': 'DACAL129 Co'})[0]
+
+    def _fiche(self, sku):
+        return self.Fiche.objects.filter(
+            produit__company=self.co, produit__sku=sku).first()
+
+    def test_seeder_cree_les_fiches_publiees(self):
+        _seed(self.co)
+        _seed(self.co)  # idempotent
+        for sku, valeurs in seed_mod.FICHES_VARIATEURS_VEICHI.items():
+            fiche = self._fiche(sku)
+            self.assertEqual(fiche.type_fiche, 'variateur_pompage', sku)
+            for champ, valeur in valeurs.items():
+                self.assertEqual(getattr(fiche, champ), valeur, (sku, champ))
+            self.assertIsNone(fiche.ond_mppt_v_min, sku)
+            self.assertIsNone(fiche.ond_mppt_v_max, sku)
+            self.assertIsNone(fiche.ond_i_max_mppt_a, sku)
+        self.assertIsNone(self._fiche('VEI-SI22-AFF'))
+        self.assertEqual(self._fiche('VEI-SI23-11-380').ond_v_max_abs,
+                         Decimal('780.0'))
+
+    def test_seeder_ne_complete_jamais_une_fiche_existante(self):
+        p = Produit.objects.create(company=self.co, nom='Variateur saisi',
+                                   sku='VEI-SI23-4-380', prix_vente=100)
+        self.Fiche.objects.create(company=self.co, produit=p,
+                                  type_fiche='onduleur')
+        _seed(self.co)
+        fiche = self._fiche('VEI-SI23-4-380')
+        self.assertEqual(fiche.type_fiche, 'onduleur')
+        self.assertIsNone(fiche.ond_v_max_abs)
+        self.assertIsNone(fiche.var_voc_reco_max_v)
+
+    def test_migration_0193_aller_retour(self):
+        m0193 = importlib.import_module(
+            'apps.stock.migrations.0193_dacal129_fiches_variateurs_veichi')
+        _seed(self.co)
+        self.Fiche.objects.filter(produit__sku__in=list(m0193.FICHES)).delete()
+        # Une fiche saisie à la main (autre type) et une fiche partielle.
+        saisie = self.Fiche.objects.create(
+            company=self.co, type_fiche='onduleur',
+            produit=Produit.objects.get(company=self.co, sku='VEI-SI23-4-380'))
+        partielle = self.Fiche.objects.create(
+            company=self.co, type_fiche='variateur_pompage',
+            ond_v_max_abs=Decimal('800.0'),
+            produit=Produit.objects.get(company=self.co, sku='VEI-SI23-7.5-380'))
+        Produit.objects.filter(company=self.co, sku='VEI-SI22-2.2-220').update(
+            sku='vei-si22-2.2-220')  # casse de la prod
+        nb_produits = Produit.objects.count()
+        m0193.creer_fiches(django_apps, None)
+        m0193.creer_fiches(django_apps, None)  # idempotent
+        self.assertEqual(Produit.objects.count(), nb_produits)
+        self.assertEqual(self.Fiche.objects.filter(
+            produit__company=self.co, produit__sku__in=list(m0193.FICHES)).count(),
+            14)  # 12 créées + les 2 existantes (la 13e est au SKU en minuscules)
+        si22 = self._fiche('vei-si22-2.2-220')
+        self.assertEqual((si22.company_id, si22.ond_v_max_abs, si22.var_voc_reco_min_v),
+                         (self.co.id, Decimal('400.0'), Decimal('360.0')))
+        saisie.refresh_from_db()
+        partielle.refresh_from_db()
+        self.assertEqual(saisie.type_fiche, 'onduleur')
+        self.assertIsNone(saisie.ond_v_max_abs)
+        self.assertEqual(partielle.ond_v_max_abs, Decimal('800.0'))
+        self.assertIsNone(partielle.var_voc_reco_min_v)  # jamais complétée
+        # Une fiche de la migration retouchée à la main survit au retour.
+        retouchee = self._fiche('VEI-SI23-11-380')
+        retouchee.var_v_sortie_v = Decimal('380.0')
+        retouchee.save()
+        m0193.supprimer_fiches(django_apps, None)
+        restantes = set(self.Fiche.objects.filter(
+            produit__company=self.co, produit__sku__in=list(m0193.FICHES)
+        ).values_list('produit__sku', flat=True))
+        self.assertEqual(restantes, {'VEI-SI23-4-380', 'VEI-SI23-7.5-380',
+                                     'VEI-SI23-11-380'})
+        self.assertIsNone(self._fiche('vei-si22-2.2-220'))
+
+
+class PetitesPompesDacal129Tests(TestCase):
+    """D-ACAL-129 — tension 220/380 V et CV des petites pompes du lot POMPAGE."""
+
+    def setUp(self):
+        self.co = Company.objects.get_or_create(
+            slug='dacal129-pmp', defaults={'nom': 'DACAL129 Pompes'})[0]
+        _seed(self.co)
+
+    def _p(self, sku):
+        return Produit.objects.get(company=self.co, sku=sku)
+
+    def test_seeder_pose_la_tension_des_petites_pompes(self):
+        for _n, sku, _t, _q, _s, cv, _h, _d in seed_mod.POMPAGE:
+            if not sku.startswith('PMP-'):
+                continue
+            p = self._p(sku)
+            self.assertEqual(p.tension_v, 220 if sku.endswith('M') else 380, sku)
+            self.assertEqual(p.pompe_cv, Decimal(cv), sku)
+            self.assertIsNone(p.pompe_kw, sku)
+        self.assertEqual(self._p('PMP-OSP-30-8').tension_v, 380)  # OSP intacte
+        self.assertIsNone(self._p('CAB-6MM-M').tension_v)
+
+    def test_migration_0194_champs_vides_seulement_aller_retour(self):
+        m0194 = importlib.import_module(
+            'apps.stock.migrations.0194_dacal129_tension_cv_petites_pompes')
+        skus = [s for s in m0194.POMPES_CV if s != 'PMP-IMM-2M']
+        Produit.objects.filter(company=self.co, sku__in=skus).update(
+            tension_v=None, pompe_cv=None)
+        Produit.objects.filter(company=self.co, sku='PMP-IMM-3M').update(
+            tension_v=380, pompe_cv=Decimal('2'))  # saisis : jamais réécrits
+        deux = Produit.objects.create(
+            company=self.co, nom='Pompe immergée solaire 2 CV Monophasé',
+            sku='Pmp-imm-2m', prix_vente=Decimal('5000'))
+        osp_avant = (self._p('PMP-OSP-30-8').tension_v, self._p('PMP-OSP-30-8').pompe_kw)
+        nb = Produit.objects.count()
+        m0194.poser(django_apps, None)
+        m0194.poser(django_apps, None)  # idempotent
+        self.assertEqual(Produit.objects.count(), nb)
+        self.assertEqual((self._p('PMP-IMM-1.5M').tension_v, self._p('PMP-IMM-1.5M').pompe_cv),
+                         (220, Decimal('1.50')))
+        self.assertEqual((self._p('PMP-IMM-10T').tension_v, self._p('PMP-IMM-10T').pompe_cv),
+                         (380, Decimal('10.00')))
+        self.assertEqual((self._p('PMP-SUR-3T').tension_v, self._p('PMP-SUR-3T').pompe_kw),
+                         (380, None))
+        self.assertEqual((self._p('PMP-IMM-3M').tension_v, self._p('PMP-IMM-3M').pompe_cv),
+                         (380, Decimal('2.00')))
+        deux.refresh_from_db()
+        self.assertEqual((deux.tension_v, deux.pompe_cv, deux.pompe_kw), (220, None, None))
+        self.assertEqual(osp_avant, (self._p('PMP-OSP-30-8').tension_v,
+                                     self._p('PMP-OSP-30-8').pompe_kw))
+        m0194.retirer(django_apps, None)
+        self.assertEqual((self._p('PMP-IMM-4T').tension_v, self._p('PMP-IMM-4T').pompe_cv),
+                         (None, None))
+        deux.refresh_from_db()
+        self.assertIsNone(deux.tension_v)
+        # La tension saisie 380 contredit la phase (monophasée) : gardée ; ses
+        # CV saisis (2) ne sont pas ceux de la table (3) : gardés.
+        self.assertEqual((self._p('PMP-IMM-3M').tension_v, self._p('PMP-IMM-3M').pompe_cv),
+                         (380, Decimal('2.00')))
+
+
+class BaremePoseDacal130Tests(TestCase):
+    """D-ACAL-130 — barème de la pose de pompage INST-PMP (2 000 + 250 HT par
+    panneau) ; prix de vente laissé à 0."""
+
+    def setUp(self):
+        self.co = Company.objects.get_or_create(
+            slug='dacal130-co', defaults={'nom': 'DACAL130 Co'})[0]
+        _seed(self.co)
+
+    def _inst(self, co=None):
+        return Produit.objects.get(company=co or self.co, sku='INST-PMP')
+
+    def test_bareme_fige_egal_au_seeder(self):
+        m0195 = importlib.import_module(
+            'apps.stock.migrations.0195_dacal130_bareme_installation_pompage')
+        self.assertEqual(m0195.BAREMES, seed_mod.BAREME_POMPAGE)
+        inst = self._inst()
+        self.assertEqual((inst.prix_fixe_ht, inst.prix_par_panneau_ht, inst.prix_vente),
+                         (Decimal('2000.00'), Decimal('250.0000'), 0))
+
+    def test_migration_0195_champs_vides_seulement_aller_retour(self):
+        m0195 = importlib.import_module(
+            'apps.stock.migrations.0195_dacal130_bareme_installation_pompage')
+        Produit.objects.filter(company=self.co, sku='INST-PMP').update(
+            prix_fixe_ht=None, prix_par_panneau_ht=0)
+        autre = Company.objects.get_or_create(
+            slug='dacal130-co-2', defaults={'nom': 'DACAL130 Co 2'})[0]
+        Produit.objects.create(company=autre, nom='Pose pompage', sku='INST-PMP',
+                               prix_vente=0, prix_fixe_ht=Decimal('1500'))
+        nb = Produit.objects.count()
+        m0195.poser_bareme(django_apps, None)
+        m0195.poser_bareme(django_apps, None)  # idempotent
+        self.assertEqual(Produit.objects.count(), nb)
+        inst = self._inst()
+        self.assertEqual((inst.prix_fixe_ht, inst.prix_par_panneau_ht, inst.prix_vente),
+                         (Decimal('2000.00'), Decimal('250.0000'), 0))
+        saisi = self._inst(autre)
+        self.assertEqual((saisi.prix_fixe_ht, saisi.prix_par_panneau_ht),
+                         (Decimal('1500.00'), Decimal('250.0000')))
+        m0195.retirer_bareme(django_apps, None)
+        inst, saisi = self._inst(), self._inst(autre)
+        self.assertEqual((inst.prix_fixe_ht, inst.prix_par_panneau_ht), (None, None))
+        self.assertEqual((saisi.prix_fixe_ht, saisi.prix_par_panneau_ht),
+                         (Decimal('1500.00'), None))

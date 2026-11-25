@@ -7,6 +7,8 @@ auto-chiffré (même garde que les pompes OSP). Additif, comme tout le seeder : 
 présent est sauté, jamais réécrit (prix, nom, rôle).
 """
 
+from decimal import Decimal
+
 # ── AGR104 — articles des OPTIONS du kit pompage (D-AGR-8), PRIX VIDES ───────
 # Articles GÉNÉRIQUES, sans marque ni caractéristique inventée : le fondateur
 # les renseigne (prix, fournisseur) ; tant que ``prix_vente`` vaut 0 ils sont
@@ -44,7 +46,6 @@ ROLE_POMPAGE_PVG3 = {
 # Stockés HT par ``seed_catalogue.ht`` (TVA 20 %), à la CRÉATION seulement : un
 # article existant garde son prix (une base déjà semée les reçoit par la
 # migration stock 0191, gardée sur « prix vide »). ``prix_achat`` reste vide.
-# ``PARA-AC-T2`` n'a AUCUN prix fiable au Maroc : il reste à 0, hors table.
 PRIX_TTC_PVG3 = {
     # EATON Xpole « Disjoncteur Modulaire AC 2P » (1P+N, courbe C, 6 kA) —
     # https://mrelec.ma/products/disjoncteur-modulaire-ac-2p
@@ -57,4 +58,80 @@ PRIX_TTC_PVG3 = {
     # Misterelec « Boite de jonction DC », 2 entrées, sur commande —
     # https://mrelec.ma/products/boite-de-jonction-dc
     'COF-DC-2STR': 2000,
+    # D-ACAL-128 — prix donné par le fondateur le 25/11/2026 (aucune annonce
+    # marocaine fiable lue) ; base existante : migration stock 0192.
+    'PARA-AC-T2': 1000,
+}
+
+# D-ACAL-129 (fondateur 25/11/2026, « Yes, 780 V for 380 V models ») — fiches
+# techniques « variateur de pompage » des variateurs VEICHI, valeurs PUBLIÉES
+# par le constructeur seulement :
+#   · SI22 220 V — manuel « si22-solar-pump-inverter-manual-simple-v1-0.pdf »,
+#     §2, tableau p. 2 : entrée DC max 400 V, Voc recommandée 360-400 V ;
+#   · SI23 220 V (D3) — manuel « si23-solar-pump-inverter-manual-complete.pdf »,
+#     §1.4 « Technical Specification » p. 4 : entrée DC max 450 V, Voc
+#     recommandée 360-430 V ;
+#   · SI23 380 V (D5, T3) — même tableau : 800 V imprimé, le manuel fixe le
+#     déclenchement logiciel de surtension à 780 VDC → 780 V retenu par le
+#     fondateur pour TOUS les 380 V ; Voc recommandée 620-750 V.
+# https://www.veichi.com/d/file/download/solar-water-pump-inverter/si22-solar-pump-inverter-manual-simple-v1-0.pdf
+# https://www.veichi.com/d/file/download/solar-water-pump-inverter/si23-solar-pump-inverter-manual-complete.pdf
+# Le constructeur ne publie NI fenêtre MPPT min/max NI courant d'entrée DC :
+# ``ond_mppt_v_min``/``ond_mppt_v_max``/``ond_i_max_mppt_a`` restent VIDES.
+# Une fiche est CRÉÉE seulement pour un variateur qui n'en a aucune (jamais
+# une fiche existante complétée ni réécrite) ; base existante : migration 0193.
+_FICHE_SI22_220 = {'ond_v_max_abs': Decimal('400.0'),
+                   'var_voc_reco_min_v': Decimal('360.0'),
+                   'var_voc_reco_max_v': Decimal('400.0')}
+_FICHE_SI23_220 = {'ond_v_max_abs': Decimal('450.0'),
+                   'var_voc_reco_min_v': Decimal('360.0'),
+                   'var_voc_reco_max_v': Decimal('430.0')}
+_FICHE_SI23_380 = {'ond_v_max_abs': Decimal('780.0'),
+                   'var_voc_reco_min_v': Decimal('620.0'),
+                   'var_voc_reco_max_v': Decimal('750.0')}
+FICHES_VARIATEURS_VEICHI = {
+    'VEI-SI22-2.2-220': _FICHE_SI22_220,
+    'VEI-SI23-2.2-220': _FICHE_SI23_220,
+    **{'VEI-SI23-%s-380' % kw: _FICHE_SI23_380 for kw in (
+        '2.2', '4', '5.5', '7.5', '11', '15', '18', '22', '30', '37', '45',
+        '55', '75')},
+}
+
+
+def semer_fiches_variateurs(company, Produit, FicheTechnique):
+    """D-ACAL-129 — crée la fiche ``variateur_pompage`` des variateurs VEICHI
+    de la société qui n'ont AUCUNE fiche ; rend le nombre de fiches créées."""
+    crees = 0
+    for sku, valeurs in FICHES_VARIATEURS_VEICHI.items():
+        produit = Produit.objects.filter(company=company, sku=sku).first()
+        if produit is None or FicheTechnique.objects.filter(
+                produit=produit).exists():
+            continue
+        FicheTechnique.objects.create(
+            company=company, produit=produit,
+            type_fiche='variateur_pompage', **valeurs)
+        crees += 1
+    return crees
+
+
+def tension_pompe(nom):
+    """D-ACAL-129 (fondateur 25/11/2026, « Yes: 220 V / 380 V ») — la tension
+    d'une petite pompe du lot POMPAGE : 220 V monophasée, 380 V triphasée,
+    phase lue par la MÊME fonction que le kit (``alimentation_produit``) ;
+    ``None`` quand la phase n'est pas lisible."""
+    from core.pompage.selection import (
+        TENSION_MONO_V, TENSION_TRI_V, alimentation_produit)
+    return {'mono': TENSION_MONO_V, 'tri': TENSION_TRI_V}.get(
+        alimentation_produit({'nom': nom}))
+
+
+# D-ACAL-130 — prix confirmés par le fondateur le 25/11/2026 (D-ACAL-130) —
+# pose : barème de l'installation résidentielle (2 000 HT + 250 HT par
+# panneau). Le kit lit ``prix_fixe_ht``/``prix_par_panneau_ht``
+# (``core.pompage.kit.bareme_saisi``) : ``prix_vente`` reste 0, ce qui garde
+# l'article hors du devis résidentiel (``_has_price``). À la création
+# seulement ; base existante : migration stock 0195.
+BAREME_POMPAGE = {
+    'INST-PMP': {'prix_fixe_ht': Decimal('2000'),
+                 'prix_par_panneau_ht': Decimal('250')},
 }
