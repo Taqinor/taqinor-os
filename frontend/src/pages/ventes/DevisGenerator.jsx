@@ -17,7 +17,7 @@ import {
 // (createDevisAtomic / replaceLignesDevis) ; createDevis/addLigneDevis (1+N
 // round-trips non gardés) ne sont plus utilisés ici.
 import {
-  LEAD_TYPE_TO_MODE,
+  LEAD_TYPE_TO_MODE, optionsDepuisComparaison,
   // QJR665 — conso de l'étude C&I = celle du balayage (barème national).
   // QJR308 — même formule que DevisTab.jsx / LeadDevisPanel.jsx : l'avis du
   // palier de 5 kWc, mais affiché ICI au moment RÉEL où `runAutoQuote` déclenche
@@ -364,6 +364,8 @@ export default function DevisGenerator({
       // ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — le total d'AFFICHAGE
       // canonique (celui de la liste et du PDF), pas une somme de lignes.
       total: devisData?.total_affiche ?? devisData?.total_ttc ?? null,
+      // T4-X4-014 — les deux options nommées (vide pour un devis à une option).
+      options: optionsDepuisComparaison(devisData),
       // ALEA51 — devis AUTOMATIQUE lancé d'ici (`?auto=1`) : les alertes du
       // serveur et le retour (économie, postes à chiffrer…) suivent le devis.
       alertes: devisData?.alertes ?? [],

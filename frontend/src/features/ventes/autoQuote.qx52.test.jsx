@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { LEAD_TYPE_TO_MODE, libelleSuccesDevisAuto } from './autoQuote'
+import { render, screen } from '@testing-library/react'
+import { LEAD_TYPE_TO_MODE, libelleSuccesDevisAuto, libelleOptionDevis, optionsDepuisComparaison } from './autoQuote'
+import PanneauSucces from '../../pages/ventes/generator/PanneauSucces'
 import { DAY_USAGE_DEFAULTS } from './solar'
 
 // QX52 — parité mode↔type sur 4 modes (frontend). Aucun mode ne tombe dans le
@@ -87,6 +89,41 @@ describe('T4-V2-013/015 — le bandeau nomme la ou les options', () => {
       reference: 'DEV-1', kwc: 3, total_ttc: 30000, option_unique: { batterie: false, souhait_fiche: false },
     }))
     expect(t).toBe('DEV-1 · 3 kWc · 30 000 MAD TTC · option unique : sans batterie')
+  })
+})
+
+// T4-X4-014 — le panneau « Devis enregistré » du générateur dit de quelle option est
+// chaque montant : la MÊME phrase d'option que le bandeau « Devis créé » (une fonction,
+// deux appelants), lue sur la comparaison que le serveur sert déjà avec le devis.
+describe('T4-X4-014 — le panneau « Devis enregistré » nomme les options', () => {
+  const normaliser = (t) => t.replace(/\s/g, ' ')
+  const COMPARAISON = { nb_options: 2, sans: { ttc: 53800 }, avec: { ttc: 65800 }, roi: {} }
+
+  it('deux options servies : une phrase par option, même fonction que le bandeau', () => {
+    const options = optionsDepuisComparaison({ nb_options: 2, comparaison_options: COMPARAISON })
+    expect(options.map((o) => normaliser(libelleOptionDevis(o))))
+      .toEqual(['Sans batterie : 53 800 MAD TTC', 'Avec batterie : 65 800 MAD TTC'])
+    // Le bandeau du devis automatique s'écrit avec la MÊME phrase d'option.
+    const bandeau = normaliser(libelleSuccesDevisAuto({ reference: 'DEV-1', options: [
+      { variante: 'sans', libelle: 'Sans batterie', kwc: 2.2, total_ttc: '37800.00' },
+      { variante: 'avec', libelle: 'Avec batterie', kwc: 3.85, total_ttc: '61800.00' }] }))
+    expect(bandeau).toContain(normaliser(libelleOptionDevis({ libelle: 'Sans batterie', kwc: 2.2, total_ttc: '37800.00' })))
+  })
+
+  it('une seule option : rien à nommer', () => {
+    expect(optionsDepuisComparaison({ nb_options: 1, comparaison_options: null })).toEqual([])
+    expect(optionsDepuisComparaison(null)).toEqual([])
+  })
+
+  it('le panneau affiche les deux options et pas un total sans nom', () => {
+    const succes = {
+      id: 7, reference: 'DEV-202611-0139', total: 65800,
+      options: optionsDepuisComparaison({ nb_options: 2, comparaison_options: COMPARAISON }),
+    }
+    render(<PanneauSucces succes={succes} navigate={() => {}} />)
+    const bloc = screen.getByTestId('succes-options')
+    expect(normaliser(bloc.textContent)).toContain('Sans batterie : 53 800 MAD TTC')
+    expect(normaliser(bloc.textContent)).toContain('Avec batterie : 65 800 MAD TTC')
   })
 })
 

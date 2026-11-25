@@ -7,7 +7,7 @@
 import { Button, Card, CardContent } from '../../../ui'
 import { Send, Eye } from 'lucide-react'
 import { formatMoney } from '../../../features/ventes/solar'
-import { libelleSuccesDevisAuto } from '../../../features/ventes/autoQuote'
+import { libelleSuccesDevisAuto, libelleOptionDevis } from '../../../features/ventes/autoQuote'
 import AlertesDevisAuto from '../../crm/leads/AlertesDevisAuto'
 
 export default function PanneauSucces({ succes, navigate }) {
@@ -18,7 +18,15 @@ export default function PanneauSucces({ succes, navigate }) {
           <div>
             <p className="text-sm text-muted-foreground">Devis enregistré</p>
             <p className="font-display text-xl font-bold">{succes.reference || '—'}</p>
-            {succes.total != null && (
+            {/* T4-X4-014 — un devis à deux options dit les DEUX montants, chacun
+                avec son nom (jamais un total sans dire de quelle option il est). */}
+            {succes.options?.length === 2 ? (
+              <ul className="mt-1 flex flex-col gap-0.5" data-testid="succes-options">
+                {succes.options.map((o) => (
+                  <li key={o.variante} className="num text-lg font-semibold">{libelleOptionDevis(o)}</li>
+                ))}
+              </ul>
+            ) : succes.total != null && (
               <p className="num mt-1 text-2xl font-semibold">{formatMoney(succes.total)}</p>
             )}
             {succes.resultat && (
