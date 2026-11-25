@@ -1028,6 +1028,9 @@ COMMERCIAL_RESP_PERMISSIONS = [
     'ventes_voir', 'ventes_creer', 'ventes_modifier', 'ventes_supprimer',
     'ventes_valider', 'ventes_pdf', 'ventes_export', 'ventes_reassign',
     'calepinage_voir', 'calepinage_gerer',  # CAL6 — palier ventes.
+    # D-ACAL-117 (fondateur, 25/11/2026, « Also Commercial responsable ») — il change les réglages de
+    # la société, applique le profil de départ, décide l'approbation, déroge à un verdict électrique.
+    'calepinage_approuver',
     'stock_voir', 'stock_creer',  # QG4 — création de produits autorisée.
     'equipement_voir', 'sav_voir', 'sav_gerer', 'sav_export', 'sav_reassign',
     # NTSRV40 — repondait deja au client (il portait `sav_gerer`).
