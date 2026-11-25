@@ -102,6 +102,23 @@ export function concordeAvecLesLignes(conception, composition) {
   return Object.entries(valeurs).every(([opt, table]) => memes(table, composition[opt]))
 }
 
+/** Revue finale du lot — le tableau des tailles des DEUX aperçus imposés : chaque
+ *  taille (panneaux) une fois — la ligne du premier aperçu qui la porte —, les
+ *  options `taille_du_devis` des deux réunies, triées par taille. `null` sans
+ *  tableau dans l'un ni l'autre (le bloc reste celui de l'aperçu « sans »). */
+function reunirTableaux(tSans, tAvec) {
+  if (!Array.isArray(tSans) && !Array.isArray(tAvec)) return null
+  const parTaille = new Map()
+  for (const ligne of [...(tSans || []), ...(tAvec || [])]) {
+    const deja = parTaille.get(ligne?.panneaux)
+    if (!deja) { parTaille.set(ligne?.panneaux, ligne); continue }
+    const options = [...(deja.taille_du_devis || []), ...(ligne.taille_du_devis || [])]
+      .filter((o, i, liste) => liste.indexOf(o) === i)
+    if (options.length) parTaille.set(ligne.panneaux, { ...deja, taille_du_devis: options })
+  }
+  return [...parTaille.values()].sort((a, b) => (Number(a?.panneaux) || 0) - (Number(b?.panneaux) || 0))
+}
+
 /** E7d — une composition imposée est UNE option chez le moteur : les deux options d'un
  *  écran « Les deux » viennent de deux aperçus imposés, réunis ici par option (valeurs,
  *  étude horaire de chacune, dimensionnement du premier) ; un refus l'emporte (le premier). */
@@ -111,12 +128,15 @@ export function reunirOptions(sans, avec) {
   if (avec.etat !== 'complet') return avec
   const premiere = (c) => c.valeurs?.[Object.keys(c.valeurs || {})[0]]
   const messages = new Set()
+  const dimSans = sans.blocs?.dimensionnement
+  const tableau = reunirTableaux(dimSans?.tableau, avec.blocs?.dimensionnement?.tableau)
   return {
     ...sans,
     option_retenue: avec.option_retenue === 'avec' ? 'avec' : sans.option_retenue,
     valeurs: { sans: sans.valeurs?.sans || premiere(sans), avec: avec.valeurs?.avec || premiere(avec) },
     blocs: { ...(sans.blocs || {}), etude_horaire_sans: sans.blocs?.etude_horaire,
-      etude_horaire: avec.blocs?.etude_horaire },
+      etude_horaire: avec.blocs?.etude_horaire,
+      ...(tableau ? { dimensionnement: { ...dimSans, tableau } } : {}) },
     suppositions: [...(sans.suppositions || []), ...(avec.suppositions || [])]
       .filter((x) => !messages.has(x?.message) && messages.add(x?.message)),
   }

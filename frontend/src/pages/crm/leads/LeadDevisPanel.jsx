@@ -23,7 +23,7 @@ import { reviserEtOuvrir } from '../../../features/ventes/reviserDevis'
 // QJR589 — la bannière de dérive lead → devis (mêmes gestes que l'Édition complète).
 import BandeauDeriveLead from '../../../features/ventes/quote/BandeauDeriveLead'
 import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
-import { messageErreurBlob, openPdfInGesture } from '../../../utils/pdfBlob'
+import { champErreurBlob, messageErreurBlob, openPdfInGesture } from '../../../utils/pdfBlob'
 import { toast, useConfirmDialog } from '../../../ui/confirm'
 // EDC6 (suite) — un « pointeur hors panneau » de Radix est-il un vrai geste de sortie ?
 import { estGesteHorsPanneau } from './gesteHorsPanneau'
@@ -243,14 +243,24 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   // en vol (APXTMO : les rendus à froid ~26 s ne s'empilent pas sur gunicorn).
   // ADEV112 — l'aperçu affiche son propre message (le `detail` servi, décodé du Blob par
   // usePdfPreview) : la requête ne déclenche pas en plus le toast global.
+  // T4-X6-017 — le format que le serveur dit encore possible après un refus
+  // (`format_possible`, contrat devis_proposal_refus.json), offert par un bouton.
+  const [formatPossible, setFormatPossible] = useState(null)
   const fetchPreviewBlob = useCallback(
-    (signal) => ventesApi.getProposalPdf(
-      devisId, proposalParams(pdfMode, includeEtude, { devisFinal }), { signal, suppressErrorToast: true })
-      .then((res) => pdfBlob(res.data))
-      .catch(async (err) => {
-        if (err?.response) err.message = await messageErreurBlob(err, { fallback: MESSAGE_APERCU_SERVEUR })
-        throw err
-      }),
+    (signal) => {
+      setFormatPossible(null)
+      return ventesApi.getProposalPdf(
+        devisId, proposalParams(pdfMode, includeEtude, { devisFinal }), { signal, suppressErrorToast: true })
+        .then((res) => pdfBlob(res.data))
+        .catch(async (err) => {
+          if (err?.response) {
+            err.message = await messageErreurBlob(err, { fallback: MESSAGE_APERCU_SERVEUR })
+            const possible = (await champErreurBlob(err, 'format_possible')) === 'onepage' && pdfMode !== 'onepage'
+            setFormatPossible(possible ? 'onepage' : null)
+          }
+          throw err
+        })
+    },
     [devisId, pdfMode, includeEtude, devisFinal])
   const preview = usePdfPreview(fetchPreviewBlob, {
     enabled: phase === 'preview' && !!devisId,
@@ -774,8 +784,14 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                   {...previewBodyProps(preview, reloadPreview)}
                   loadingText="Chargement de l'aperçu… La première génération d'un devis peut prendre ~30 secondes."
                   serverMessage={preview.errorMessage || MESSAGE_APERCU_SERVEUR}
+                  serverReessayable={!formatPossible}
                   serverActions={(
                     <>
+                      {formatPossible === 'onepage' && (
+                        <Button type="button" size="sm" onClick={() => setPdfMode('onepage')}>
+                          Voir le devis une page
+                        </Button>
+                      )}
                       {editable && (
                         <Button type="button" size="sm" onClick={() => setPhase('edit')}>
                           Ouvrir l'édition complète

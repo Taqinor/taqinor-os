@@ -7,6 +7,8 @@ comme la sonde VB r5) ; la vue est réelle.
 
 Test-du-test : remettre ``f'… : {exc}'`` ⇒ le test échoue.
 """
+import json
+from pathlib import Path
 from unittest import mock
 
 from django.test import TestCase
@@ -65,6 +67,15 @@ class ProposalErreurNeutreTests(TestCase):
         self.assertEqual(resp.status_code, 409, resp.content)
         self.assertIn('onduleur', resp.json()['detail'])
         self.assertNotIn('DEV-ADEV31-1', resp.content.decode())
+        # T4-X6-017 — la phrase servie au vendeur ne montre aucun paramètre
+        # d'adresse ; le format possible est un CHAMP (contrat
+        # devis_proposal_refus.json), que l'écran offre par un bouton.
+        self.assertNotIn('pdf_mode', resp.json()['detail'])
+        self.assertNotIn('?', resp.json()['detail'])
+        self.assertEqual(resp.json()['format_possible'], 'onepage')
+        contrat = json.loads((Path(__file__).resolve().parents[1] / 'contract_samples'
+                              / 'devis_proposal_refus.json').read_text(encoding='utf-8'))
+        self.assertEqual(resp.json(), contrat['exemple'])
 
     def test_refus_ci_premium_409_nomme(self):
         # ADEV88 (C-ACI-012) — le refus nommé du rendu C&I (AMOT79) devient

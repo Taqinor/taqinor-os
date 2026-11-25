@@ -33,10 +33,12 @@ logger = logging.getLogger(__name__)
 #: ``ValueError`` dont ce fragment est stable : c'est un refus tenant au
 #: CONTENU du devis (409), pas une panne (500). Le moteur n'est pas touché.
 FRAGMENT_REFUS_SANS_ONDULEUR = 'génération du PDF à options refusée'
+#: T4-X6-017 — une phrase de vendeur (aucun paramètre d'adresse) ; le format
+#: possible est servi en CHAMP (contrat ``devis_proposal_refus.json``).
 MSG_PROPOSITION_SANS_ONDULEUR = (
     "Aucune option de ce devis ne contient d'onduleur : le document à "
-    "options ne peut pas être généré (format une page possible : "
-    "?pdf_mode=onepage).")
+    "options ne peut pas être généré. Le format une page reste possible.")
+FORMAT_POSSIBLE_SANS_ONDULEUR = 'onepage'
 MSG_PROPOSITION_INDISPONIBLE = (
     'Génération de la proposition momentanément indisponible.')
 
@@ -258,7 +260,8 @@ class DevisPdfActionsMixin:
         except Exception as exc:
             if (isinstance(exc, ValueError)
                     and FRAGMENT_REFUS_SANS_ONDULEUR in str(exc)):
-                return Response({'detail': MSG_PROPOSITION_SANS_ONDULEUR},
+                return Response({'detail': MSG_PROPOSITION_SANS_ONDULEUR,
+                                 'format_possible': FORMAT_POSSIBLE_SANS_ONDULEUR},
                                 status=status.HTTP_409_CONFLICT)
             # ADEV88 (C-ACI-012) — refus NOMMÉ du rendu premium C&I (AMOT79,
             # repli legacy fermé) : 409 + motif du builder, jamais un 500.

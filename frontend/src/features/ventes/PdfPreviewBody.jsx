@@ -24,6 +24,9 @@ export default function PdfPreviewBody({
   // repli générique affiche le message de l'erreur.
   serverMessage,
   serverActions,
+  // T4-X6-017 — un refus qui ne peut pas réussir au même format (le serveur
+  // sert l'autre format possible) : pas de « Réessayer » à l'erreur serveur.
+  serverReessayable = true,
   fallbackDescription,
   fallbackActions,
 }) {
@@ -55,7 +58,7 @@ export default function PdfPreviewBody({
           action={(
             <div className="ldp-fallback-actions">
               {serverActions}
-              {reessayer}
+              {serverReessayable && reessayer}
             </div>
           )}
         />

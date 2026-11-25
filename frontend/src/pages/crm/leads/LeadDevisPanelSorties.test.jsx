@@ -598,3 +598,24 @@ describe('Devis final C&I — choix enregistré sur le devis (etude_params.devis
     expect(ventesApi.patchEtudeParams).not.toHaveBeenCalled()
   })
 })
+
+// T4-X6-017 — un devis sans onduleur : le serveur refuse le document à options
+// (409, contrat devis_proposal_refus.json) et sert le format possible en CHAMP.
+// Le panneau l'offre par un bouton en mots de vendeur ; aucun « Réessayer » qui
+// redemanderait le même format, aucun paramètre d'adresse à l'écran.
+describe('T4-X6-017 — devis sans onduleur : le panneau offre le format une page', () => {
+  it('409 « format_possible: onepage » : « Voir le devis une page » bascule en 1 page, sans « Réessayer »', async () => {
+    const refus = exempleContrat('ventes', 'devis_proposal_refus')
+    ventesApi.getProposalPdf.mockImplementation((_id, params) => (params?.pdf_mode === 'onepage'
+      ? new Promise(() => {})
+      : Promise.reject({ response: { status: 409, data: new Blob([JSON.stringify(refus)], { type: 'application/json' }) } })))
+    rendrePanneau({ mode: 'view', existingDevisId: 413 })
+    const alerte = await screen.findByRole('alert')
+    await waitFor(() => expect(alerte).toHaveTextContent(refus.detail))
+    expect(alerte.textContent).not.toMatch(/pdf_mode|\?/)
+    expect(within(alerte).queryByRole('button', { name: /Réessayer/ })).toBeNull()
+    await userEvent.click(within(alerte).getByRole('button', { name: 'Voir le devis une page' }))
+    await waitFor(() => expect(ventesApi.getProposalPdf.mock.calls.at(-1)[1]).toMatchObject({ pdf_mode: 'onepage' }))
+    expect(screen.getByRole('radio', { name: '1 page' })).toBeChecked()
+  })
+})

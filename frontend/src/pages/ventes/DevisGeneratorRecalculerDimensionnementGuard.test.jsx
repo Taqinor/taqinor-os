@@ -83,7 +83,7 @@ import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import DevisGenerator from './DevisGenerator'
-import { PRODUITS_COMPOSITION as PRODUITS, bancCreation } from './devisGenerator.testHelpers.jsx'
+import { PRODUITS_COMPOSITION as PRODUITS, bancCreation, renderGeneratorPage } from './devisGenerator.testHelpers.jsx'
 
 // Catalogue solaire complet (même fixture que DevisGeneratorMarquesPinning.
 // test.jsx) : assez de rôles réels (panneau, onduleur, structures, socles,
@@ -242,6 +242,52 @@ describe('QJR570 — Recalculer fusionne au lieu de remplacer', () => {
     expect(instantaneLignes()).toEqual(avant)
     expect(screen.queryByDisplayValue(/Onduleur réseau Huawei/)).toBeNull()
     confirmSpy.mockRestore()
+  })
+})
+
+// T4-X6-015 — la taille demandée sur la fiche du lead n'est jamais quittée
+// sans question : la confirmation nomme les DEUX tailles ; Annuler garde tout.
+describe('T4-X6-015 — Recalculer demande avant de quitter la taille demandée sur la fiche', () => {
+  it('lead à 6 kWc (9 panneaux) : la question nomme 6 kWc et la recommandation, Annuler garde les 9 panneaux', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderGeneratorPage(DevisGenerator, {
+      crmApi, stockApi, produits: PRODUITS,
+      leads: [{ id: 42, nom: 'Bennani', prenom: 'Yassine', type_installation: 'residentiel',
+        taille_souhaitee_kwc: 6, facture_hiver: 3000, ville: 'Fès' }],
+      route: '/ventes/devis/nouveau?lead=42',
+    })
+    await screen.findByTestId('gen-taille-lead')
+    await waitFor(() => expect(nbPanneauxField().value).toBe('9'))
+    await waitFor(() => {
+      fireEvent.click(recalcButton())
+      expect(confirmSpy).toHaveBeenCalled()
+    }, { timeout: 10000 })
+    const question = String(confirmSpy.mock.calls[0][0])
+    expect(question).toMatch(/Taille demandée sur la fiche du lead : 6 kWc/)
+    expect(question).toMatch(/21 panneaux · 14,91 kWc/)
+    expect(nbPanneauxField().value).toBe('9')
+    expect(screen.getByTestId('gen-taille-lead')).toBeTruthy()
+    confirmSpy.mockRestore()
+  })
+})
+
+// T4-X6-016 — un panneau écarté par le serveur (compatibilité électrique) n'est
+// jamais dit absent du stock ; les puissances sont en kWc français.
+describe('T4-X6-016 — composition à un autre wattage : la phrase est juste et en français', () => {
+  it('4 × 710 W demandés, 550 W composés : « un panneau 550 W a été composé au lieu de 710 W », 2,2 kWc (et non 2,84 kWc)', async () => {
+    ventesApi.composerDevis.mockResolvedValueOnce({ data: {
+      panel_watt: 550, kwc_reel: 2.2,
+      lignes: [{ produit: 2, designation: 'Panneau Canadien Solar 710W', quantite: 4, prix_unitaire_ht: 1166.67, variante: '' }],
+    } })
+    renderGenerator()
+    await screen.findByDisplayValue('Installation')
+    fireEvent.change(nbPanneauxField(), { target: { value: '4' } })
+    await waitFor(() => expect(nbPanneauxField().value).toBe('4'))
+    fireEvent.click(screen.getByRole('button', { name: /Auto-remplir depuis le stock/i }))
+    const phrase = await screen.findByText(/a été composé au lieu de/)
+    expect(phrase.textContent).toBe('Attention : un panneau 550 W a été composé au lieu de 710 W. La puissance '
+      + 'réelle du système est 2,2 kWc (et non 2,84 kWc). Ajustez le nombre de panneaux ou le wattage pour la cible voulue.')
+    expect(screen.queryByText(/le stock ne propose pas/)).toBeNull()
   })
 })
 

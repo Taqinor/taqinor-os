@@ -117,6 +117,16 @@ export async function messageErreurBlob(err, {
   return fallback
 }
 
+/** T4-X6-017 — un CHAMP d'une réponse d'erreur (servie en Blob JSON sous
+ *  `responseType: 'blob'`), sinon `null` ; jamais d'exception. */
+export async function champErreurBlob(err, cle) {
+  let data = err?.response?.data
+  if (data instanceof Blob) {
+    try { data = JSON.parse(await data.text()) } catch { data = null }
+  }
+  return data && typeof data === 'object' && cle in data ? data[cle] : null
+}
+
 // Ouvre/télécharge un blob PDF reçu d'une réponse axios (responseType blob).
 // VX49 — un blob invalide (ou un DOM indisponible) ne doit jamais échouer en
 // silence : toast FR + `revokeObjectURL` garanti en `finally` (sinon fuite

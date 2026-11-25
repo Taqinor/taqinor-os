@@ -39,6 +39,7 @@ import DevisGenerator from './DevisGenerator'
 import {
   ONDULEUR, PANNEAU, declarerBeforeEachDevis, ligneProduit, lignesResidentielles, makeDevisStore,
 } from './devisGenerator.testHelpers.jsx'
+import { reunirOptions } from './generator/hooks/useConceptionEcran'
 
 const RANGEE = exempleContrat('ventes', 'conception_lead')
 const APERCU = documentContrat('ventes', 'conception_lead').apercu.reponse
@@ -328,4 +329,24 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
     expect(container.querySelector('[data-testid="apercu-conception-attente"]').textContent)
       .toContain('Production, économies et retour sur investissement ne sont pas calculés')
   }, 20000)
+})
+
+// Revue finale du lot (résidentiel « Les deux ») — deux aperçus imposés, UN tableau
+// des tailles : les lignes des DEUX aperçus, une taille présente dans les deux
+// marquée pour les deux options, triées par taille (`reunirOptions`).
+describe('reunirOptions — le tableau des tailles réunit les deux aperçus imposés', () => {
+  const apercu = (option, tableau) => ({ ...APERCU, option_retenue: option,
+    valeurs: { [option]: APERCU.valeurs.sans },
+    blocs: { ...APERCU.blocs, dimensionnement: { ...APERCU.blocs?.dimensionnement, tableau } } })
+  it('la ligne de la taille « avec » n’est jamais perdue ; une taille commune porte les deux options', () => {
+    const sans = apercu('sans', [{ panneaux: 4, kwc: 2.2, taille_du_devis: ['sans'] }, { panneaux: 6, kwc: 3.3 }])
+    const avec = apercu('avec', [{ panneaux: 6, kwc: 3.3 }, { panneaux: 8, kwc: 4.4, taille_du_devis: ['avec'] },
+      { panneaux: 4, kwc: 2.2 }])
+    const tableau = reunirOptions(sans, avec).blocs.dimensionnement.tableau
+    expect(tableau.map((l) => l.panneaux)).toEqual([4, 6, 8])
+    expect(tableau.map((l) => l.taille_du_devis)).toEqual([['sans'], undefined, ['avec']])
+    const commun = reunirOptions(apercu('sans', [{ panneaux: 6, kwc: 3.3, taille_du_devis: ['sans'] }]),
+      apercu('avec', [{ panneaux: 6, kwc: 3.3, taille_du_devis: ['avec'] }])).blocs.dimensionnement.tableau
+    expect(commun).toEqual([{ panneaux: 6, kwc: 3.3, taille_du_devis: ['sans', 'avec'] }])
+  })
 })

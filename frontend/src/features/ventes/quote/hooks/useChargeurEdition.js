@@ -115,6 +115,9 @@ export function useChargeurEdition(ctx) {
           // QJR581 — hydratation serveur tardive : re-capture de la référence.
           captureReferenceJusqua.current = Date.now() + FENETRE_REFERENCE_MS
           setLeadDuDevis(lead)
+          // T4-X6-015 — un devis qui suit encore la « taille souhaitée » de la
+          // fiche la DIT (bandeau) et « Recalculer » la nomme avant de la quitter.
+          dispatchSizing({ type: 'TAILLE_LEAD_RELUE', kwc: lead.taille_souhaitee_kwc })
           // T4-V2-002 — un devis AGRICOLE (le devis automatique n'enregistre
           // que taille et alimentation : le reste, le moteur l'a lu sur le
           // lead) se rouvre sur les entrées de pompage du lead, posées dans

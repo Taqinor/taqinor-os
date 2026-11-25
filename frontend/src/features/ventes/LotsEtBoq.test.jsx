@@ -23,7 +23,7 @@ import ventesApi from '../../api/ventesApi'
 import LotsMultiSites from './LotsMultiSites'
 import { useDirtyGuard } from '../../ui/useDirtyGuard'
 import AjouterBoqElectrique from './AjouterBoqElectrique'
-import { bilanBoq, corpsCreationLot, messageErreurLots } from './lotsBoq'
+import { bilanBoq, corpsCreationLot, messageErreurLots, phrasesBoq } from './lotsBoq'
 
 const LIGNES = [
   { id: 412, designation: 'Panneau Canadien Solar 710W', type_ligne: 'produit', lot: null },
@@ -190,6 +190,23 @@ describe('AjouterBoqElectrique', () => {
     await userEvent.click(screen.getByRole('button', { name: /Ajouter le BOQ électrique/ }))
     expect(await screen.findByRole('alert')).toHaveTextContent(refus.detail)
     expect(onAjoute).not.toHaveBeenCalled()
+  })
+
+  it('T4-X6-019 (suite) — les avertissements servis et les lignes remplacées sont DITS sous le bilan', async () => {
+    ventesApi.ajouterBoqElectrique.mockResolvedValue(
+      reponseContrat('ventes', 'devis_boq_electrique'))
+    render(<AjouterBoqElectrique devisId={7} modifiable onAjoute={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /Ajouter le BOQ électrique/ }))
+    const exemple = documentContrat('ventes', 'devis_boq_electrique').exemple
+    const statut = await screen.findByRole('status')
+    const { ancienne, nouvelle } = exemple.remplacees[0]
+    expect(statut).toHaveTextContent(`« ${nouvelle} » remplace « ${ancienne} ».`)
+    expect(statut).toHaveTextContent('Déjà au devis : Tableau De Protection AC/DC')
+    expect(phrasesBoq(exemple)).toEqual([
+      `« ${nouvelle} » remplace « ${ancienne} ».`,
+      `Déjà au devis : ${exemple.avertissements[0].slice('déjà au devis : '.length)}.`,
+    ])
+    expect(phrasesBoq({ creees: 1 })).toEqual([])
   })
 
   it('bilanBoq : rien de neuf sur un second clic', () => {
