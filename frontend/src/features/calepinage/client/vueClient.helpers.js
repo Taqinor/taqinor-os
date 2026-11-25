@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { creerRepere, lngLatVersMetres, ORDRE_LNGLAT } from '../repere'
 import { modulesDuDocument } from '@roofpro/modulesGeo'
+import { memeTaille } from '@roofpro/tailleConception'
 import { formatNumber } from '../../../lib/format'
 import { useLectureServie } from '../atelier/coque/etapes/panneaux/lectures'
 
@@ -98,8 +99,7 @@ export function tuilesClient(document, resultat, chiffrage = null) {
   // TAILLE de la conception ; elles ne se lisent qu'à côté d'une pose de la MÊME taille, jamais à côté d'un autre compte de panneaux.
   const kwcConception = servi(chiffrage?.kwc)
   const kwcPose = puissancePose(resultat, panneaux)
-  const memeTaille = kwcConception !== null && kwcPose !== null && Math.abs(kwcConception - kwcPose) < 0.005
-  if (kwh > 0 && !memeTaille) {
+  if (kwh > 0 && !memeTaille(kwcConception, kwcPose)) { // T4-X9 — LE prédicat de taille de l'atelier
     tuiles.push({ cle: 'miseajour', valeur: '', libelle: PRODUCTION_A_LA_MISE_A_JOUR })
     if (kwcPose !== null) tuiles.push({ cle: 'kwc', valeur: formatNumber(kwcPose, { locale: 'fr', decimals: 2 }), libelle: 'kWc de puissance', marine: true })
     return tuiles

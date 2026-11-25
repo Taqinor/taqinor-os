@@ -103,7 +103,7 @@ import {
   type FiltrageAccesSolaire,
 } from './shadingUi'; // CALX115 — le seuil d'accès solaire lu par le posable
 import { $, celluleEconomies, fmt, fmtKwc, fmtMad, renommerDt } from './dom';
-import { raisonSansValeur, VALEURS_HORS_LIGNE, compteDevis, couvertureServie, phraseSurplus, peindreBande, productionServie, quiDuDevis, suiteAuDevis, texteEconomie, texteSurDevis } from './affichageErp'; // R2-13/16/17, ACAL2022
+import { raisonSansValeur, VALEURS_HORS_LIGNE, compteDevis, couvertureServie, phraseSurplus, peindreBande, phraseTaillesDuChiffrage, productionServie, quiDuDevis, suiteAuDevis, texteEconomie, texteSurDevis } from './affichageErp'; import { peindrePhraseTailles } from './tailleConception'; // R2-13/16/17, ACAL2022, T4-X9-007
 import { type CardData, type ChiffrageAtelier, type RenderConfigOpts, type RenderSceneFn } from './types';
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
@@ -1098,7 +1098,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const eco = chiffrage?.economie_annee1_mad;
     ligne.textContent = etatEco(ctx).horsLigne ? VALEURS_HORS_LIGNE : eco?.etat === 'servi' && typeof eco.valeur === 'number'
       ? `au dernier enregistrement${eco.option ? ` · ${eco.option.replace(/_/g, ' ')}` : ''}`
-      : raisonSansValeur(chiffrage, derniereCarte?.kwc, 'économie'); // ACAL2022 + M5 (la vraie raison, avec les deux tailles) — l'estimation du navigateur n'est plus montrée en ERP
+      : raisonSansValeur(chiffrage, derniereCarte?.kwc, 'économie').replace(/^—$/, ''); // T4-X9-007 (la phrase est sous les cartes) ; ACAL2022 + M5 (la vraie raison, avec les deux tailles) — l'estimation du navigateur n'est plus montrée en ERP
   }
 
   /** ACAL994 — après « Enregistrer » : le bloc relu remplace le précédent ; la carte et le Total sont repeints à l'instant. */
@@ -1139,7 +1139,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     renommerDt($('rp9-reco-cover'), modeErp() ? 'Production ÷ consommation' : null, true); // R2-05 — l'ERP : jamais « couverture » (mot du PDF)
     set('rp9-reco-cover', modeErp() ? (cServie != null ? `${Math.round(cServie)} %` : '—') : d.pct > 0 ? `${Math.round(d.pct)} %` : '—');
     // R2-08 — l'ERP donne UNE estimation (la borne prudente) : la fourchette 75-100 % n'encadrait rien du calcul du serveur.
-    set('rp9-reco-savings', economieAffichee(ctx, 'carte', factureInconnue ? '— facture inconnue' : modeErp() ? `≈ ${fmtMad(d.savingsLow)}/an` : `${fmtMad(d.savingsLow)} – ${fmtMad(d.savingsHigh)}/an`, kwc));
+    set('rp9-reco-savings', economieAffichee(ctx, 'carte', factureInconnue ? '— facture inconnue' : modeErp() ? `≈ ${fmtMad(d.savingsLow)}/an` : `${fmtMad(d.savingsLow)} – ${fmtMad(d.savingsHigh)}/an`, kwc)); if (modeErp()) peindrePhraseTailles($('rp9-reco-savings')?.closest('dl'), 'rp9-reco-tailles', phraseTaillesDuChiffrage(etatEco(ctx).chiffrage, kwc)); // T4-X9-007 — la phrase UNE fois, sous les cartes
     etiquetteEconomie(); if (ctx.matrixResult && ctx.roofType === 'flat') renderVariantCards(); // T4-V2-021 — la variante posée suit la carte
     // ACAL778 — la note « chiffre du devis » seulement si un devis est lié (option `devisLie`, jamais `cibleVendue`).
     const noteEco = $('rp9-reco-savings-note');

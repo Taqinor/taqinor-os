@@ -3,6 +3,7 @@
 import { fmt, fmtMad } from './dom';
 import { annualSavingsMad, degradationFactor, ANNUAL_DEGRADATION, LIFETIME_YEARS } from '../../lib/estimatorBrainV2';
 import { type CardData, type ChiffrageAtelier } from './types';
+import { memeTaille, phraseTailles, tailleDifferente } from './tailleConception'; // T4-X9 — LE prédicat de taille
 
 /** ACAL2022 — ce que l'atelier ERP dit à la place d'un chiffre qu'il ne calcule plus : la production et l'économie sont celles de
  *  la conception SERVIE ; pendant le dessin (kWc posé ≠ kWc servi) il ne montre que panneaux et kWc posés. */
@@ -12,12 +13,17 @@ export const ECONOMIE_AU_PROCHAIN_ENREGISTREMENT = 'économie au prochain enregi
  *  conception : si la taille servie diffère de celle posée, la valeur ne viendra jamais — on le dit avec les deux tailles.
  *  « au prochain enregistrement » ne reste que là où il est vrai (même taille mais bloc pas encore relu ; rien d'enregistré). */
 export function raisonSansValeur(chiffrage: ChiffrageAtelier | null | undefined, kwc: number | null | undefined, grandeur: 'production' | 'économie'): string {
-  const servi = serviNb(chiffrage?.kwc);
-  if (servi != null && kwc != null && Math.abs(servi - kwc) >= 0.005) {
-    const dit = (n: number) => n.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
-    return `${grandeur} calculée pour la conception du lead : ${dit(servi)} kWc — votre pose en compte ${dit(kwc)} kWc`;
-  }
+  // T4-X9-007 — tailles différentes : la case d'un chiffre clé dit « — » ; la phrase se lit UNE fois, en texte courant,
+  // sous les cartes qu'elle explique (`phraseTaillesDuChiffrage`).
+  if (tailleDifferente(serviNb(chiffrage?.kwc), kwc)) return '—';
   return grandeur === 'production' ? AU_PROCHAIN_ENREGISTREMENT : ECONOMIE_AU_PROCHAIN_ENREGISTREMENT;
+}
+
+/** T4-X9-007 — la phrase des deux tailles, en texte courant (« Production et économie calculées pour la conception du
+ *  lead : 4,40 kWc — votre pose en compte 5,68 kWc. »), ou `''` quand les tailles sont égales ou inconnues. */
+export function phraseTaillesDuChiffrage(chiffrage: ChiffrageAtelier | null | undefined, kwc: number | null | undefined): string {
+  const servi = serviNb(chiffrage?.kwc);
+  return tailleDifferente(servi, kwc) ? phraseTailles('Production et économie', servi as number, kwc as number, true) : '';
 }
 /** ACAL2022 — le bloc servi n'a pas pu être relu (hors ligne) : les valeurs gardées sont celles du dernier calcul. */
 export const VALEURS_HORS_LIGNE = 'valeurs du dernier calcul, hors ligne';
@@ -100,8 +106,7 @@ function texteBandeCarte(d: CardData, cible: number, erp: boolean, chiffrage: Ch
 /** R2-17 — la production SERVIE (celle du PDF), seulement à kWc égal : sinon `null` (l'estimation du navigateur reste). */
 export function productionServie(chiffrage: ChiffrageAtelier | null | undefined, kwc: number | null): number | null {
   const prod = serviNb(chiffrage?.production_annuelle_kwh);
-  const kwcServi = serviNb(chiffrage?.kwc);
-  return prod != null && kwcServi != null && kwc != null && Math.abs(kwcServi - kwc) < 0.005 ? prod : null;
+  return prod != null && memeTaille(serviNb(chiffrage?.kwc), kwc) ? prod : null;
 }
 
 /** ACAL1418 — le Total « Production estimée » : la production SERVIE à kWc égal (comme la carte), sinon l'estimation du
@@ -125,16 +130,14 @@ function p50ADate(chiffrage: ChiffrageAtelier | null | undefined): number | null
 /** ACAL2022 / ACAL2023 — la part « production ÷ consommation » SERVIE (`chiffrage.couverture_pct`, % de la conception), à kWc égal. */
 export function couvertureServie(chiffrage: ChiffrageAtelier | null | undefined, kwc: number | null): number | null {
   const pct = serviNb(chiffrage?.couverture_pct);
-  const kwcServi = serviNb(chiffrage?.kwc);
-  return pct != null && kwcServi != null && kwc != null && Math.abs(kwcServi - kwc) < 0.005 ? pct : null;
+  return pct != null && memeTaille(serviNb(chiffrage?.kwc), kwc) ? pct : null;
 }
 
 /** ACAL2022 — l'économie SERVIE ; `kwc` fourni : seulement au kWc de la conception (la carte), absent : sans contrôle (le Total). */
 export function economieServie(chiffrage: ChiffrageAtelier | null | undefined, kwc?: number | null): number | null {
   const eco = serviNb(chiffrage?.economie_annee1_mad);
   if (eco == null || kwc === undefined) return eco;
-  const kwcServi = serviNb(chiffrage?.kwc);
-  return kwc != null && kwcServi != null && Math.abs(kwcServi - kwc) < 0.005 ? eco : null;
+  return memeTaille(serviNb(chiffrage?.kwc), kwc) ? eco : null;
 }
 
 /** ACAL2022 — le texte de l'économie de la carte et du Total : site public (`chiffrage` absent) ⇒ l'estimation du

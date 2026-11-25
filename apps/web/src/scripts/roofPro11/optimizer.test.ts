@@ -1072,7 +1072,7 @@ describe('ACAL777 — factureCarteDe / lireFactureSaisie', () => {
   it('V1-02 : toit en pente sans champ facture — la tuile a sa valeur depuis la facture servie, plus « Facture inconnue »', () => {
     const g = globalThis as unknown as { document?: Document };
     const avant = g.document;
-    const doc = new JSDOM('<!doctype html><body><dd id="rp9-reco-kwc"></dd><dd id="rp9-reco-prod"></dd><dd id="rp9-reco-savings"></dd>'
+    const doc = new JSDOM('<!doctype html><body><dd id="rp9-reco-kwc"></dd><dd id="rp9-reco-prod"></dd><dl><dd id="rp9-reco-savings"></dd></dl>'
       + '<dd id="rp9-reco-cover"></dd><p id="rp9-reco-band"></p><p id="rp9-reco-why"></p></body>').window.document;
     g.document = doc;
     const lancer = (factureServie: number | null, erp = false) => {
@@ -1212,7 +1212,7 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
   const monter = (opts: Record<string, unknown>, ctxOver: Record<string, unknown> = {}, cible = 4000) => {
     const g = globalThis as unknown as { document?: Document };
     const avant = g.document;
-    const doc = new JSDOM('<!doctype html><body><dd id="rp9-reco-kwc"></dd><dd id="rp9-reco-prod"></dd><dd id="rp9-reco-savings"></dd>'
+    const doc = new JSDOM('<!doctype html><body><dd id="rp9-reco-kwc"></dd><dd id="rp9-reco-prod"></dd><dl><dd id="rp9-reco-savings"></dd></dl>'
       + '<div><dd id="rp9-reco-cover"></dd><dt>Couverture<span>?</span></dt></div><p id="rp9-reco-band"></p><p id="rp9-reco-why"></p>'
       + '<p id="rp9-need-note"></p><p data-couverture-max>aucune pose</p></body>').window.document;
     g.document = doc;
@@ -1241,7 +1241,11 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
     const sansKwc = erp(servi({ kwc: null }));
     try {
       expect(egal.t('rp9-reco-prod')).toBe(`${fmt(12345)} kWh/an`);
-      expect(autreKwc.t('rp9-reco-prod')).toBe('production calculée pour la conception du lead : 6 kWc — votre pose en compte 5,5 kWc'); // M5 — la vraie raison, avec les deux tailles
+      // T4-X9-007 — la case du chiffre clé dit « — » ; la phrase (deux décimales) se lit UNE fois, en texte courant, sous les cartes.
+      expect(autreKwc.t('rp9-reco-prod')).toBe('—');
+      expect(autreKwc.t('rp9-reco-tailles')).toBe('Production et économie calculées pour la conception du lead : 6,00 kWc — votre pose en compte 5,50 kWc.');
+      expect(autreKwc.doc.querySelectorAll('[data-phrase-tailles]')).toHaveLength(1);
+      expect(egal.doc.getElementById('rp9-reco-tailles')).toBeNull();
       expect(nonServi.t('rp9-reco-prod')).toBe(estimation);
       expect(sansKwc.t('rp9-reco-prod')).toBe(estimation);
     } finally { egal.fin(); autreKwc.fin(); nonServi.fin(); sansKwc.fin(); }
@@ -1270,7 +1274,7 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
     try {
       expect(e.t('rp9-reco-savings')).toBe('économie au prochain enregistrement');
       expect(s.t('rp9-reco-savings')).toBe(`${fmtMad(7420)}/an`);
-      expect(autreKwc.t('rp9-reco-savings')).toBe('économie calculée pour la conception du lead : 6 kWc — votre pose en compte 5,5 kWc'); // M5
+      expect(autreKwc.t('rp9-reco-savings')).toBe('—'); // T4-X9-007 — la phrase est sous les cartes, pas dans la case
       expect(autreKwc.t('rp9-reco-cover')).toBe('—'); // la part production ÷ consommation n'est pas calculée par le navigateur
       expect(s.t('rp9-reco-cover')).toBe('—'); // servi sans part (clé `couverture_pct` absente) : rien d'inventé
       expect(e.t('rp9-reco-kwc')).toBe('5,50 kWc'); // pendant le dessin : panneaux et kWc posés, seuls
@@ -1391,7 +1395,7 @@ describe('ACAL1418 — chiffrage servi : Total et bande = production servie ; no
   const lire = (opts: Record<string, unknown>) => {
     const g = globalThis as unknown as { document?: Document };
     const avant = g.document;
-    const doc = new JSDOM('<!doctype html><body><dd id="rp9-reco-kwc"></dd><dd id="rp9-reco-prod"></dd><dd id="rp9-reco-savings"></dd>'
+    const doc = new JSDOM('<!doctype html><body><dd id="rp9-reco-kwc"></dd><dd id="rp9-reco-prod"></dd><dl><dd id="rp9-reco-savings"></dd></dl>'
       + '<p id="rp9-reco-band"></p><p id="rp9-reco-why"></p><p id="rp9-need-note"></p><div id="rp9-areas"></div><dd id="tot-prod"></dd></body>').window.document;
     g.document = doc;
     try {
@@ -1433,7 +1437,7 @@ describe('Demande croisée — bande au kWc de la carte ; majChiffrage repeint p
   const monter = (chiffrage: unknown) => {
     const g = globalThis as unknown as { document?: Document };
     const avant = g.document;
-    const doc = new JSDOM('<!doctype html><body><dd id="rp9-reco-kwc"></dd><dd id="rp9-reco-prod"></dd><dd id="rp9-reco-savings"></dd>'
+    const doc = new JSDOM('<!doctype html><body><dd id="rp9-reco-kwc"></dd><dd id="rp9-reco-prod"></dd><dl><dd id="rp9-reco-savings"></dd></dl>'
       + '<p id="rp9-reco-band"></p><p id="rp9-reco-why"></p><p id="rp9-need-note"></p><div id="rp9-areas"></div><dd id="tot-prod"></dd></body>').window.document;
     g.document = doc;
     const pan = { id: 'area-1', label: '', vertices: rectRing(10, 7), obstacles: [], roofType: 'flat', pitchDeg: 22, facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true, result: null, renderPlan: null, moduleId: 'produit-7' };
