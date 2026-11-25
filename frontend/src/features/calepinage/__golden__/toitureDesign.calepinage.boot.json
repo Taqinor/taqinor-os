@@ -104,6 +104,12 @@
           "source": "devis",
           "etat": "servi"
         },
+        "couverture_pct": {
+          "valeur": 55,
+          "unite": "%",
+          "source": "conception",
+          "etat": "servi"
+        },
         "omissions": []
       },
       "onApiReady": "[fn]",
