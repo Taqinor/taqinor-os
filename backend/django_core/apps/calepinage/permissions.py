@@ -42,6 +42,45 @@ CODES = (CAL_VOIR, CAL_GERER)
 #: (CAL6) et ce code-ci n'a volontairement aucun palier.
 CAL_APPROUVER = 'calepinage_approuver'
 
+#: D-ACAL-106 (fondateur, 25/11/2026) — LE RELEVÉ au téléphone : écrire les
+#: mesures, la pente, l'orientation et les photos d'un calepinage, rien
+#: d'autre. ALTERNATIVE à ``calepinage_gerer`` sur ces seules routes (le
+#: porteur de GÉRER garde tout) ; hors ``CODES`` comme ``CAL_APPROUVER``.
+CAL_RELEVE = 'calepinage_releve'
+
+#: Les actions du relevé et les MÉTHODES qu'il y écrit. ``releve_detail`` :
+#: corriger (PATCH) oui, retirer (DELETE) non — cela reste un geste de GÉRER.
+ACTIONS_RELEVE = {
+    'releve': frozenset({'POST'}),
+    'releve_detail': frozenset({'PATCH'}),
+    'photos': frozenset({'POST'}),
+    'layout_section': frozenset({'POST'}),
+}
+
+#: Les champs d'un PAN que le relevé écrit (``releve/ReleveVisite.jsx::
+#: champsDuPan``) : la pente et l'orientation, jamais la géométrie.
+CHAMPS_PAN_RELEVE = frozenset({
+    'pitchDeg', 'pitchSource', 'facingAzimuthDeg', 'facingManual',
+    'facingAzimuthSource', 'facingAzimuthPrecisionDeg',
+})
+
+
+def ecriture_de_releve(request, view):
+    """Vrai si cette requête est une écriture DU RELEVÉ (D-ACAL-106).
+
+    ``layout/section`` n'en est une que pour ``cle == 'zones'`` et des champs
+    tous dans :data:`CHAMPS_PAN_RELEVE` — toute autre section reste à GÉRER.
+    """
+    methodes = ACTIONS_RELEVE.get(getattr(view, 'action', None))
+    if not methodes or request.method not in methodes:
+        return False
+    if view.action != 'layout_section':
+        return True
+    corps = request.data if isinstance(request.data, dict) else {}
+    champs = corps.get('champs')
+    return (corps.get('cle') == 'zones' and isinstance(champs, dict)
+            and bool(champs) and set(champs) <= CHAMPS_PAN_RELEVE)
+
 
 # ── CAL16 — les DEUX gardes DRF par action (jamais un littéral en viewset) ──
 #
@@ -100,6 +139,32 @@ class PeutLireOuEcrireCalepinage(_PermissionCalepinage):
         garde = (PeutVoirCalepinage() if request.method in SAFE_METHODS
                  else PeutGererCalepinage())
         return garde.has_permission(request, view)
+
+
+class PeutLireOuReleverCalepinage(_PermissionCalepinage):
+    """D-ACAL-106 — la garde des routes du RELEVÉ (``releve``,
+    ``releve_detail``, ``photos``, ``layout_section``).
+
+    Lecture : ``calepinage_voir``. Écriture : ``calepinage_gerer`` comme
+    avant, OU ``calepinage_releve`` pour une écriture DU RELEVÉ
+    (:func:`ecriture_de_releve`) — jamais pour le reste de la route.
+    """
+
+    def has_permission(self, request, view):
+        from rest_framework.permissions import SAFE_METHODS
+
+        if request.method in SAFE_METHODS:
+            return PeutVoirCalepinage().has_permission(request, view)
+        if PeutGererCalepinage().has_permission(request, view):
+            return True
+        return (ecriture_de_releve(request, view)
+                and PeutReleverCalepinage().has_permission(request, view))
+
+
+class PeutReleverCalepinage(_PermissionCalepinage):
+    """D-ACAL-106 — le code du relevé (``calepinage_releve``)."""
+
+    code = CAL_RELEVE
 
 
 class PeutApprouverCalepinage(_PermissionCalepinage):

@@ -109,6 +109,40 @@ class PalierVentesTest(SimpleTestCase):
             self.assertNotIn(CAL_GERER, liste)
 
 
+class RoleQuiMonteSurLeToitTest(SimpleTestCase):
+    """D-ACAL-106 (fondateur, 25/11/2026) — le Technicien et le Technicien
+    responsable lisent un calepinage et font le relevé : EXACTEMENT
+    ``calepinage_voir`` + ``calepinage_releve`` — jamais GÉRER ni APPROUVER,
+    toujours aucun ``ventes_*``."""
+
+    def test_code_du_releve_au_catalogue_et_rattache(self):
+        from apps.calepinage.permissions import CAL_RELEVE
+
+        self.assertEqual(CAL_RELEVE, 'calepinage_releve')
+        self.assertEqual(ALL_PERMISSIONS.count(CAL_RELEVE), 1)
+        self.assertEqual(PERMISSION_MODULE.get(CAL_RELEVE), 'calepinage')
+        self.assertNotIn(CAL_RELEVE, ELEVATED_PERMISSIONS)
+
+    def test_technicien_et_technicien_responsable(self):
+        from apps.calepinage.permissions import CAL_APPROUVER, CAL_RELEVE
+        from apps.roles.permissions_registre import (
+            TECHNICIEN_PERMISSIONS, TECHNICIEN_RESP_PERMISSIONS,
+        )
+
+        for liste in (TECHNICIEN_PERMISSIONS, TECHNICIEN_RESP_PERMISSIONS):
+            self.assertIn(CAL_VOIR, liste)
+            self.assertIn(CAL_RELEVE, liste)
+            self.assertNotIn(CAL_GERER, liste)
+            self.assertNotIn(CAL_APPROUVER, liste)
+            self.assertFalse([c for c in liste if c.startswith('ventes_')])
+
+    def test_le_releve_n_est_pas_donne_au_dela(self):
+        from apps.calepinage.permissions import CAL_RELEVE
+
+        for nom, liste in LISTES_LECTURE:
+            self.assertNotIn(CAL_RELEVE, liste, nom)
+
+
 class LitteralUniqueTest(SimpleTestCase):
     """Aucun littéral de permission hors de ``permissions.py`` (patron AO)."""
 
@@ -120,7 +154,7 @@ class LitteralUniqueTest(SimpleTestCase):
             if fichier.parent.name == 'tests':
                 continue
             texte = fichier.read_text(encoding='utf-8')
-            for code in CODES:
+            for code in CODES + ('calepinage_releve',):
                 if f"'{code}'" in texte or f'"{code}"' in texte:
                     coupables.append(f'{fichier.name}: {code}')
         self.assertEqual(

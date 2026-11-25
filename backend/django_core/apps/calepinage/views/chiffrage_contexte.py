@@ -13,13 +13,47 @@ VARIANTE servie, jamais ceux du calepinage de base.
 import copy
 
 
-def avec_chiffrage(contexte, calepinage):
-    """Le contexte de conception + ``chiffrage`` ; les clés existantes intactes."""
+#: D-ACAL-106 — le motif d'un montant retenu pour un lecteur sans devis.
+MOTIF_SANS_DEVIS = "montant réservé aux comptes qui lisent les devis"
+
+
+def avec_chiffrage(contexte, calepinage, user=None):
+    """Le contexte de conception + ``chiffrage`` ; les clés existantes intactes.
+
+    D-ACAL-106 — un lecteur SANS ``ventes_voir`` (le Technicien qui fait le
+    relevé) ne reçoit aucun montant : l'économie en MAD est ``non_servi``
+    (motif dans ``omissions``) et la facture du lead est ``null`` — mêmes
+    formes que le contrat sert déjà sans facture.
+    """
     from apps.ventes.services import chiffrer_conception
 
-    return dict(contexte, chiffrage=chiffrer_conception(
+    servi = dict(contexte, chiffrage=chiffrer_conception(
         calepinage=_conception_servie(contexte, calepinage),
         company=getattr(calepinage, 'company', None)))
+    return servi if _lit_les_devis(user) else _sans_montants(servi)
+
+
+def _lit_les_devis(user):
+    from core.permissions import _user_has_or_legacy
+
+    return user is None or _user_has_or_legacy(user, 'ventes_voir')
+
+
+def _sans_montants(contexte):
+    chiffrage = dict(contexte.get('chiffrage') or {})
+    if 'economie_annee1_mad' in chiffrage:
+        chiffrage['economie_annee1_mad'] = {
+            'valeur': None, 'unite': 'MAD', 'source': None,
+            'etat': 'non_servi', 'option': None}
+        omissions = [o for o in chiffrage.get('omissions') or []
+                     if o.get('grandeur') != 'economie_annee1_mad']
+        chiffrage['omissions'] = omissions + [
+            {'grandeur': 'economie_annee1_mad', 'motif': MOTIF_SANS_DEVIS}]
+    servi = dict(contexte, chiffrage=chiffrage)
+    conso = contexte.get('consommation_lead')
+    if isinstance(conso, dict) and 'facture_mensuelle_mad' in conso:
+        servi['consommation_lead'] = dict(conso, facture_mensuelle_mad=None)
+    return servi
 
 
 def _conception_servie(contexte, calepinage):

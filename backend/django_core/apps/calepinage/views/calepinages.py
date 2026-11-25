@@ -58,15 +58,17 @@ from core.idempotency import (
     _fingerprint,
 )
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
-from core.permissions import ScopedPermission, declared_action_permissions
+from core.permissions import (
+    ScopedPermission, _user_has_or_legacy, declared_action_permissions,
+)
 from core.viewsets import CompanyScopedModelViewSet
 
 from .. import selectors
 from ..models import Calepinage
 from ..permissions import (
-    CAL_APPROUVER, CAL_GERER, CAL_VOIR,
+    CAL_APPROUVER, CAL_GERER, CAL_RELEVE, CAL_VOIR,
     PeutApprouverCalepinage, PeutGererCalepinage, PeutLireOuEcrireCalepinage,
-    PeutVoirCalepinage,
+    PeutLireOuReleverCalepinage, PeutVoirCalepinage, ecriture_de_releve,
 )
 from ..serializers import (
     CalepinageLectureSerializer, CalepinageSerializer,
@@ -345,6 +347,12 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
 
     @property
     def write_permission(self):
+        # D-ACAL-106 — une écriture DU RELEVÉ accepte ``calepinage_releve`` à
+        # la place de GÉRER ; le porteur de GÉRER reste lu sur GÉRER.
+        requete = getattr(self, 'request', None)
+        if (requete is not None and ecriture_de_releve(requete, self)
+                and not _user_has_or_legacy(requete.user, CAL_GERER)):
+            return CAL_RELEVE
         return self.PERMISSIONS_ECRITURE_PAR_ACTION.get(
             getattr(self, 'action', None), CAL_GERER)
 
@@ -703,7 +711,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
             'base_empreinte': drf_serializers.CharField(allow_blank=True)}),
         responses=_FORME_ECRITURE_LAYOUT, extensions=SECTION_RESSERRE)
     @action(detail=True, methods=['post'], url_path='layout/section',
-            permission_classes=[PeutLireOuEcrireCalepinage],
+            permission_classes=[PeutLireOuReleverCalepinage],
             parser_classes=[JSONParser])  # valeur/champs : objets JSON
     def layout_section(self, request, pk=None):
         """ACAL22 (C-ACAL-044) — écrit UNE section du document.
@@ -1023,7 +1031,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         """
         from .chiffrage_contexte import avec_chiffrage  # ACAL993 — + le bloc ``chiffrage``
         calepinage = self.get_object()
-        return Response(avec_chiffrage(contexte_conception(calepinage, request), calepinage))
+        return Response(avec_chiffrage(contexte_conception(calepinage, request), calepinage,
+                                       user=request.user))
 
     def _geste_repere(self, request, geste):
         """ACAL191 — exécute un geste de repère et rend la réponse d'écriture."""

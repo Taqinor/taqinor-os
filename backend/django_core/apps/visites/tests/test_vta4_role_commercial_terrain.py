@@ -25,6 +25,7 @@ from apps.roles.permissions_registre import (
     ALL_PERMISSIONS,
     CANONICAL_SYSTEM_ROLES,
     COMMERCIAL_PERMISSIONS,
+    COMMERCIAL_RESP_PERMISSIONS,
     COMMERCIAL_TERRAIN_PERMISSIONS,
     DIRECTEUR_PERMISSIONS,
     PERMISSION_MODULE,
@@ -120,12 +121,14 @@ class RoleCommercialTerrainTests(TestCase):
 class RolesIntouchesTests(TestCase):
     """Ce que VTA4 ne devait PAS toucher."""
 
-    def test_technicien_reste_sans_droit_visite(self):
-        """Le rôle Technicien porte ~25 droits POST-vente et sa route
-        d'accueil ``/ma-journee`` appartient à ``installations`` : lui greffer
-        la visite terrain mélangerait deux métiers."""
-        self.assertFalse([c for c in TECHNICIEN_PERMISSIONS
-                          if c.startswith('visites_')])
+    def test_technicien_fait_ses_visites_sans_les_planifier_ni_valider(self):
+        """D-ACAL-106 (fondateur, 25/11/2026) remplace l'ancienne règle « le
+        Technicien reste sans droit visite » : il ouvre, remplit et clôt les
+        visites qui lui sont ASSIGNÉES — ni planifier (``visites_creer``) ni
+        se donner le feu vert (``visites_valider``)."""
+        self.assertEqual([c for c in TECHNICIEN_PERMISSIONS
+                          if c.startswith('visites_')],
+                         ['visites_voir', 'visites_modifier'])
         self.assertFalse([c for c in TECHNICIEN_PERMISSIONS
                           if c.startswith('crm_visite_')])
 
@@ -278,3 +281,72 @@ class MesuresHorsLigneDroitTests(TestCase):
         self.assertEqual(ok.data['results'][0]['status'], 'applied', ok.data)
         self.assertEqual(VisiteTerrain.objects.get(pk=self.visite.pk)
                          .mesures['toiture']['longueur_m'], 12.5)
+
+
+class TechnicienVisitesAssigneesTests(TestCase):
+    """D-ACAL-106 (fondateur, 25/11/2026) — le Technicien ouvre, remplit et
+    clôt les visites qui lui sont ASSIGNÉES (le prédicat existant
+    ``selectors.visites_visibles`` : sans ``visites_valider``, ``commercial=lui``),
+    sans jamais y lire un devis ni un prix."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from decimal import Decimal
+
+        from apps.crm.models import Client, Lead
+        from apps.ventes.models import Devis, LigneDevis
+        from apps.visites.models import VisiteTerrain
+
+        cls.company = Company.objects.create(nom='M4 Toits', slug='m4-toits')
+
+        def compte(username, permissions):
+            role = Role.objects.create(company=cls.company, nom=f'r-{username}',
+                                       permissions=list(permissions))
+            return User.objects.create_user(
+                username=username, password='x', company=cls.company,
+                role_legacy='normal', role=role)
+        cls.tech = compte('m4-tech-v', TECHNICIEN_PERMISSIONS)
+        cls.collegue = compte('m4-tech-v2', TECHNICIEN_PERMISSIONS)
+        cls.commercial = compte('m4-com-v', COMMERCIAL_RESP_PERMISSIONS)
+        client = Client.objects.create(company=cls.company, nom='Alaoui')
+        cls.lead = Lead.objects.create(company=cls.company, nom='Alaoui',
+                                       owner=cls.commercial, client=client)
+        devis = Devis.objects.create(company=cls.company, reference='DEV-M4-1',
+                                     client=client, lead=cls.lead,
+                                     taux_tva=Decimal('20.00'))
+        LigneDevis.objects.create(devis=devis, designation='Panneau',
+                                  quantite=Decimal('4'),
+                                  prix_unitaire=Decimal('1850'),
+                                  remise=Decimal('0'))
+        cls.sienne = VisiteTerrain.objects.create(
+            company=cls.company, lead=cls.lead, commercial=cls.tech)
+        cls.autre = VisiteTerrain.objects.create(
+            company=cls.company, lead=cls.lead, commercial=cls.collegue)
+
+    def test_liste_et_detail_de_ses_seules_visites(self):
+        api = auth(self.tech)
+        lignes = api.get('/api/django/visites/visites/').data['results']
+        self.assertEqual([ligne['id'] for ligne in lignes], [self.sienne.id])
+        self.assertEqual(api.get(f'/api/django/visites/visites/{self.autre.id}/')
+                         .status_code, 404)
+
+    def test_il_remplit_sa_visite(self):
+        reponse = auth(self.tech).post(
+            f'/api/django/visites/visites/{self.sienne.id}/demarrer-route/',
+            {}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+
+    def test_ni_devis_ni_prix_dans_sa_visite(self):
+        detail = auth(self.tech).get(f'/api/django/visites/visites/{self.sienne.id}/')
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.data['devis'], [])
+        # Le commercial responsable garde son panneau devis, inchangé.
+        self.assertEqual(len(auth(self.commercial).get(
+            f'/api/django/visites/visites/{self.sienne.id}/').data['devis']), 1)
+
+    def test_il_ne_planifie_ni_ne_valide(self):
+        api = auth(self.tech)
+        self.assertEqual(api.post('/api/django/visites/visites/',
+                                  {'lead': self.lead.id}, format='json').status_code, 403)
+        self.assertEqual(api.post(f'/api/django/visites/visites/{self.sienne.id}/valider/',
+                                  {}, format='json').status_code, 403)

@@ -129,10 +129,20 @@ def restreindre_aux_siens(lignes, user):
         lignes = lignes.filter(
             Q(lead_id__in=leads_visibles(user, company).values('id'))
             | Q(lead_id__isnull=True, client__in=scope_client_queryset(client_base_qs(company), user))
-            | Q(responsable=user) | Q(cree_par=user))
+            | Q(responsable=user) | Q(cree_par=user) | _de_ses_visites(user))
     if not vue_restreinte_au_responsable(getattr(user, 'company', None)):
         return lignes
-    return lignes.filter(Q(responsable=user) | Q(cree_par=user))
+    return lignes.filter(Q(responsable=user) | Q(cree_par=user) | _de_ses_visites(user))
+
+
+def _de_ses_visites(user):
+    """D-ACAL-106 — le calepinage du lead d'une visite ASSIGNÉE à ``user`` :
+    le technicien qui monte sur le toit le lit et y fait le relevé."""
+    from django.db.models import Q
+
+    from apps.visites.selectors import lead_ids_des_visites_assignees
+
+    return Q(lead_id__in=lead_ids_des_visites_assignees(user))
 
 
 def calepinages_visibles(user, *, inclure_archives=False, base=None,
