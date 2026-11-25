@@ -15,6 +15,7 @@ vi.mock('../../../api/ventesApi', () => ({
 
 import ventesApi from '../../../api/ventesApi'
 import BandeauConception from './BandeauConception'
+import BandeauxEdition from './BandeauxEdition'
 
 const CONCEPTION = exempleContrat('ventes', 'conception_lead')
 const MISE_A_JOUR = documentContrat('ventes', 'conception_lead').mettre_a_jour_conception.reponse
@@ -71,5 +72,65 @@ describe('AGEN12 — bandeau « La conception a changé »', () => {
     const { container } = rendre({ id: 5, reference: 'DEV-Y', statut: 'brouillon', lead: null, lignes: [] })
     expect(container.textContent).toBe('')
     expect(ventesApi.getConceptionLead).not.toHaveBeenCalled()
+  })
+})
+
+// E7d (revue lot 4, M4) — « Mettre à jour » ne perd JAMAIS une saisie non enregistrée :
+// avec des modifications à l'écran (`dirty`), il demande d'abord (enregistrer puis mettre à
+// jour, ou annuler) ; il n'efface rien en silence. Les deux branches, sur le vrai bandeau
+// d'édition (`BandeauxEdition`), puis sans modification : aucune question.
+describe('M4 — « Mettre à jour » avec des modifications non enregistrées', () => {
+  const devis = { id: LISTE.devis, reference: LISTE.reference, statut: 'brouillon', lead: CONCEPTION.lead,
+    lignes: panneaux(8) }
+  function rendreEdition({ dirty, choix, enregistre = true }) {
+    const props = {
+      clear: vi.fn(), setRechargeEdit: vi.fn(), confirm: vi.fn(() => Promise.resolve(choix)),
+      enregistrer: vi.fn(() => Promise.resolve(enregistre)),
+    }
+    render(<MemoryRouter><BandeauxEdition editDevis={devis} dirty={dirty} conflitVerrou={null}
+      setConflitVerrou={vi.fn()} forcerSansJetonRef={{ current: false }} handleSubmit={vi.fn()}
+      brouillonProposable={false} restored={null} handleRestoreDraft={vi.fn()} discard={vi.fn()} savedAt={null}
+      refsLoading={false} loadFailed={[]} saleWarnings={[]} {...props} /></MemoryRouter>)
+    return props
+  }
+  const cliquer = async () => {
+    await screen.findByTestId('bandeau-conception')
+    await act(async () => { fireEvent.click(screen.getByTestId('bandeau-conception-mettre-a-jour')) })
+  }
+
+  it('modifications à l’écran + « Annuler » : rien n’est effacé, rien n’est mis à jour', async () => {
+    const p = rendreEdition({ dirty: true, choix: false })
+    await cliquer()
+    expect(p.confirm).toHaveBeenCalledTimes(1)
+    expect(p.confirm.mock.calls[0][0].confirmLabel).toBe('Enregistrer puis mettre à jour')
+    expect(p.enregistrer).not.toHaveBeenCalled()
+    expect(ventesApi.mettreAJourConception).not.toHaveBeenCalled()
+    expect(p.clear).not.toHaveBeenCalled()
+    expect(screen.getByTestId('bandeau-conception')).toBeTruthy()
+  })
+
+  it('modifications à l’écran + « Enregistrer puis mettre à jour » : enregistré AVANT la mise à jour', async () => {
+    const p = rendreEdition({ dirty: true, choix: true })
+    await cliquer()
+    await waitFor(() => expect(ventesApi.mettreAJourConception).toHaveBeenCalledWith(LISTE.devis))
+    expect(p.enregistrer.mock.invocationCallOrder[0])
+      .toBeLessThan(ventesApi.mettreAJourConception.mock.invocationCallOrder[0])
+    expect(p.clear).toHaveBeenCalled()
+    expect(p.setRechargeEdit).toHaveBeenCalled()
+  })
+
+  it('enregistrement refusé (validation) : la mise à jour n’a pas lieu', async () => {
+    const p = rendreEdition({ dirty: true, choix: true, enregistre: false })
+    await cliquer()
+    await waitFor(() => expect(p.enregistrer).toHaveBeenCalled())
+    expect(ventesApi.mettreAJourConception).not.toHaveBeenCalled()
+    expect(p.clear).not.toHaveBeenCalled()
+  })
+
+  it('aucune modification : mise à jour directe, aucune question', async () => {
+    const p = rendreEdition({ dirty: false, choix: false })
+    await cliquer()
+    await waitFor(() => expect(ventesApi.mettreAJourConception).toHaveBeenCalledWith(LISTE.devis))
+    expect(p.confirm).not.toHaveBeenCalled()
   })
 })

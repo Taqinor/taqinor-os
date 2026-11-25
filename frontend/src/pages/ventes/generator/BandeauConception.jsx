@@ -26,7 +26,8 @@ function ecartPanneaux(devis, conception) {
   return cible != null && actuel !== cible ? `panneaux ${actuel} → ${cible}` : ''
 }
 
-export default function BandeauConception({ devis, onMisAJour }) {
+//: `avantMiseAJour` (E7d, M4) : appelé avant le POST ; `false` ⇒ rien n'est fait.
+export default function BandeauConception({ devis, onMisAJour, avantMiseAJour = null }) {
   const navigate = useNavigate()
   const [conception, setConception] = useState(null)
   const [enCours, setEnCours] = useState(false)
@@ -59,6 +60,7 @@ export default function BandeauConception({ devis, onMisAJour }) {
     : []
 
   const mettreAJour = async () => {
+    if (avantMiseAJour && !(await avantMiseAJour())) return
     setEnCours(true)
     setErreur('')
     try {

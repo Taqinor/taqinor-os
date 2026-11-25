@@ -1775,7 +1775,7 @@ export default function DevisGenerator({
           clear={clear} setRechargeEdit={setRechargeEdit} forcerSansJetonRef={forcerSansJetonRef}
           handleSubmit={handleSubmit} brouillonProposable={brouillonProposable} restored={restored}
           handleRestoreDraft={handleRestoreDraft} discard={discard} savedAt={savedAt}
-          refsLoading={refsLoading} loadFailed={loadFailed} saleWarnings={saleWarnings}
+          refsLoading={refsLoading} loadFailed={loadFailed} saleWarnings={saleWarnings} dirty={dirty} confirm={confirm} enregistrer={enregistrerAvantModele}
         />
         {/* ── Mode d'installation (marché) ── */}
         <Card>
