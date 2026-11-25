@@ -391,7 +391,7 @@ DELAI_INSTALLATION = ""
 # client d'une économie estimée sur un tarif de référence. Défaut False =
 # rendu inchangé pour tout appel sans la clé.
 SAVINGS_ESTIMATED = False
-ECONOMIES_SANS_ANCRAGE = REGLES_POSE_REELLE = False  # ACAL1033 (D-ACAL-45) — niveau 15 sans donnée réelle : une page sans économie ; T4-X1-002 — niveau 15
+ECONOMIES_SANS_ANCRAGE = REGLES_POSE_REELLE = UNE_OPTION_SANS_NUMERO = False  # ACAL1033 (D-ACAL-45) — niveau 15 sans donnée réelle : une page sans économie ; T4-X1-002 — niveau 15
 
 # ── DC1 — identité société (multi-tenant) ──────────────────────────────────────
 # Chaque littéral d'identité (nom de marque du footer, coordonnées, ligne légale
@@ -2265,7 +2265,7 @@ def page1():
     <!-- OPTION 1 -->
     <div style="flex:1;min-width:0;overflow:hidden;{_opt1_margin}border:1.5px solid #E8A020;border-radius:6px;padding:28px 12px 12px;display:flex;flex-direction:column;background:#FFFFFF;position:relative;{_s1}">
       {_r1}
-      <div style="font-size:6.5pt;letter-spacing:3px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">{_L("res_option_n").format(n=1)}</div>
+      {"" if UNE_OPTION_SANS_NUMERO else f'<div style="font-size:6.5pt;letter-spacing:3px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">{_L("res_option_n").format(n=1)}</div>'}
       <div style="font-size:13pt;font-weight:500;color:{CN};margin-bottom:2px;">{i18n_labels.nom_option("Sans batterie", LANGUE_SORTIE)}</div>
       <div style="font-size:7pt;color:{CGR};font-weight:600;margin-bottom:7px;">{_L("lg_autoconso_directe")}</div>
       {_ts_price}
@@ -2282,7 +2282,7 @@ def page1():
     <!-- OPTION 2 -->
     <div style="flex:1;min-width:0;overflow:hidden;border:1.5px solid #E8A020;border-radius:6px;padding:28px 12px 12px;display:flex;flex-direction:column;background:#FFF3E0;position:relative;{_s2}">
       {_r2}
-      <div style="font-size:6.5pt;letter-spacing:3px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">{_L("res_option_n").format(n=2)}</div>
+      {"" if UNE_OPTION_SANS_NUMERO else f'<div style="font-size:6.5pt;letter-spacing:3px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">{_L("res_option_n").format(n=2)}</div>'}
       <div style="font-size:13pt;font-weight:500;color:{CN};margin-bottom:2px;">{i18n_labels.nom_option(LIBELLE_AVEC, LANGUE_SORTIE)}</div>
       <div style="font-size:7pt;color:{CGR};font-weight:600;margin-bottom:7px;">{_sous_titre_avec()}</div>
       {_ta_price}
@@ -2433,7 +2433,7 @@ def page2(sans_items, img_roi, img_mon):
     <div style="display:flex;gap:10px;">
 
       <div style="flex:1;min-width:0;{_p2_s1}">
-        <div style="background:{CN};color:white;font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:5px 9px;border-radius:5px 5px 0 0;">{_L("res_option_n_nom").format(n=1, option=i18n_labels.nom_option("Sans batterie", LANGUE_SORTIE))}</div>
+        <div style="background:{CN};color:white;font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:5px 9px;border-radius:5px 5px 0 0;">{i18n_labels.nom_option("Sans batterie", LANGUE_SORTIE) if UNE_OPTION_SANS_NUMERO else _L("res_option_n_nom").format(n=1, option=i18n_labels.nom_option("Sans batterie", LANGUE_SORTIE))}</div>
         <table class="eq">
           <thead><tr>
             <th class="ti"></th><th>{_L("lg_th_designation")}</th>
@@ -2444,7 +2444,7 @@ def page2(sans_items, img_roi, img_mon):
       </div>
 
       <div style="flex:1;min-width:0;{_p2_s2}">
-        <div style="background:{CA};color:{CN};font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:5px 9px;border-radius:5px 5px 0 0;">{_L("res_option_n_nom").format(n=2, option=i18n_labels.nom_option(LIBELLE_AVEC, LANGUE_SORTIE))}</div>
+        <div style="background:{CA};color:{CN};font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:5px 9px;border-radius:5px 5px 0 0;">{i18n_labels.nom_option(LIBELLE_AVEC, LANGUE_SORTIE) if UNE_OPTION_SANS_NUMERO else _L("res_option_n_nom").format(n=2, option=i18n_labels.nom_option(LIBELLE_AVEC, LANGUE_SORTIE))}</div>
         <table class="eq">
           <thead><tr>
             <th class="ti"></th><th>{_L("lg_th_designation")}</th>
@@ -3796,8 +3796,8 @@ def apply_quote_data(data: dict) -> None:
     _dl = data.get("delais") or {}
     from .residential.theme import delai_doc as _dd  # RPDF : délais dans la langue du document
     DELAI_VISITE, DELAI_INSTALLATION = (_dd(data, (_dl.get(k) or "").strip()) for k in ("visite_technique", "installation"))
-    global SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, REGLES_POSE_REELLE  # M10 — estimées ? ACAL1033 — sans ancrage ? niveau 15 ?
-    SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, REGLES_POSE_REELLE = bool(data.get("savings_estimated")), _economies_sans_ancrage(data), bool(data.get("regles_pose_reelle"))
+    global SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, REGLES_POSE_REELLE, UNE_OPTION_SANS_NUMERO  # M10 ; ACAL1033 ; niveau 15 ; D-ACAL-114
+    SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, REGLES_POSE_REELLE, UNE_OPTION_SANS_NUMERO = bool(data.get("savings_estimated")), _economies_sans_ancrage(data), bool(data.get("regles_pose_reelle")), bool(data.get("phrases_pdf_2511")) and data.get("scenario") in ("Avec batterie", "Sans batterie")
     # XSAL14/XSAL5 — structure (sections/notes) + options proposées (rendu seul,
     # hors totaux). Absents → byte-identique. Escapés à l'ingestion (ERR37).
     global LIGNES_STRUCTURE, OPTIONS_PROPOSEES
