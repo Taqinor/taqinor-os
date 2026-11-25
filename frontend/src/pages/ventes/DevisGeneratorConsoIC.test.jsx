@@ -7,7 +7,7 @@
 //
 // Run : npx vitest run src/pages/ventes/DevisGeneratorConsoIC.test.jsx
 import { describe, it, expect, vi } from 'vitest'
-import { screen, waitFor, fireEvent } from '@testing-library/react'
+import { act, screen, waitFor, fireEvent } from '@testing-library/react'
 
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
@@ -235,5 +235,32 @@ describe('T4-X6-008 / 007 — une valeur par option, celle des lignes du devis',
     const [corps] = ventesApi.economieCiPreview.mock.calls.at(-1)
     expect(corps.lignes.map((l) => l.produit).sort()).toEqual([PANNEAU.id, ONDULEUR.id].sort())
     expect(await screen.findByTestId('ci-retour')).toHaveTextContent('5,5 ans')
+  })
+})
+
+describe('T4-X6-010 / 011 — calcul en cours, échec, reprise', () => {
+  it('pendant le calcul les cartes restent sous « Calcul en cours… » ; un échec offre « Réessayer »', async () => {
+    const { container } = rendre()
+    expect(await screen.findByTestId('ci-taille-retenue', {}, { timeout: 5000 })).toBeInTheDocument()
+    let echouer
+    ventesApi.etudeCiPreview.mockImplementation(() => new Promise((_ok, ko) => { echouer = ko }))
+    fireEvent.change(container.querySelector('#gen-ci-kwh-0'), { target: { value: '6001' } })
+    expect(await screen.findByTestId('ci-resultat-calcul', {}, { timeout: 3000 })).toHaveTextContent('Calcul en cours…')
+    expect(screen.getByTestId('ci-taille-retenue')).toBeInTheDocument()
+    await act(async () => { echouer(new Error('Network Error')) })
+    expect(await screen.findByTestId('ci-resultat-erreur')).toHaveTextContent('indisponible')
+    expect(screen.queryByTestId('ci-taille-retenue')).toBeNull()
+    ventesApi.etudeCiPreview.mockResolvedValue(reponseContrat('ventes', 'etude_ci_preview'))
+    fireEvent.click(screen.getByTestId('ci-resultat-reessayer'))
+    expect(await screen.findByTestId('ci-taille-retenue', {}, { timeout: 3000 })).toBeInTheDocument()
+  })
+
+  it('au retour du réseau, un aperçu en échec est redemandé tout seul', async () => {
+    ventesApi.etudeCiPreview.mockRejectedValue(new Error('Network Error'))
+    rendre()
+    expect(await screen.findByTestId('ci-resultat-erreur', {}, { timeout: 5000 })).toBeInTheDocument()
+    ventesApi.etudeCiPreview.mockResolvedValue(reponseContrat('ventes', 'etude_ci_preview'))
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    expect(await screen.findByTestId('ci-taille-retenue', {}, { timeout: 3000 })).toBeInTheDocument()
   })
 })

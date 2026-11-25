@@ -199,6 +199,14 @@ export function corpsCiSurLesLignes(corps, lignes) {
   return produits.length ? { ...corps, lignes: produits } : null
 }
 
+/**
+ * T4-X6-011 — la réponse que les cartes MONTRENT : celle de la saisie courante, sinon,
+ * pendant le calcul, la précédente (affichée sous « Calcul en cours… », jamais lue
+ * comme résultat). `null` après un échec.
+ */
+export const reponseAffichee = (apercu) => apercu?.donnees
+  ?? (apercu?.chargement ? apercu?.precedentes ?? null : null)
+
 const LIBELLES_ORIGINE = {
   saisie: 'saisi',
   lead: 'fiche lead',

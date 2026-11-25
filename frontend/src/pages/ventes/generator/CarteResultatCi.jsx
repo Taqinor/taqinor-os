@@ -14,7 +14,7 @@
 import { Button } from '../../../ui'
 import { formatNumber } from '../../../lib/format'
 import { phraseOnduleurExtension } from '../../../features/ventes/calc/batteriesDepart.js'
-import { alertesAffichables } from '../../../features/ventes/etudeCiPreview'
+import { alertesAffichables, reponseAffichee } from '../../../features/ventes/etudeCiPreview'
 import { PointeurChampLead } from '../../crm/leads/AlertesDevisAuto'
 import {
   COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS,
@@ -115,12 +115,24 @@ function ConseilMoteur({ conseil, vendus, appliquer }) {
 }
 
 export default function CarteResultatCi(apercu) {
-  const { donnees, chargement, erreur, conseil = null, appliquerConseil = null, retourSans = null } = apercu
+  const { chargement, erreur, relancer, conseil = null, appliquerConseil = null, retourSans = null } = apercu
   if (erreur) {
-    return <p className="mt-3 text-xs text-warning" data-testid="ci-resultat-erreur">{erreur}</p>
+    // T4-X6-010 — l'échec est dit, sans anciens chiffres, avec « Réessayer » (rejoué seul au retour du réseau).
+    return (
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-warning" data-testid="ci-resultat-erreur">
+        <span>{erreur}</span>
+        {relancer && (
+          <Button type="button" size="sm" variant="outline" onClick={relancer} data-testid="ci-resultat-reessayer">
+            Réessayer
+          </Button>
+        )}
+      </div>
+    )
   }
+  // T4-X6-011 — pendant le calcul, les cartes restent (réponse précédente) sous « Calcul en cours… ».
+  const donnees = reponseAffichee(apercu)
   if (chargement && !donnees) {
-    return <p className="mt-3 text-xs text-muted-foreground" data-testid="ci-resultat-chargement">Calcul du moteur C&I…</p>
+    return <p className="mt-3 text-xs text-muted-foreground" data-testid="ci-resultat-chargement">Calcul en cours…</p>
   }
   if (!donnees) return null
   const t = donnees.taille || {}
@@ -152,7 +164,10 @@ export default function CarteResultatCi(apercu) {
   const retour = retourSans
   return (
     <div className="mt-4 rounded-lg border border-info/30 bg-info/5 p-3 sm:p-4 grid gap-3"
-         data-testid="ci-resultat">
+         data-testid="ci-resultat" aria-busy={chargement ? 'true' : undefined}>
+      {chargement && (
+        <p className="text-xs text-muted-foreground" data-testid="ci-resultat-calcul">Calcul en cours…</p>
+      )}
       <ConseilMoteur conseil={conseil} vendus={t.nb_panneaux} appliquer={appliquerConseil} />
       {optionAvec && <p className="text-xs font-semibold">Option sans batterie</p>}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="ci-synthese">

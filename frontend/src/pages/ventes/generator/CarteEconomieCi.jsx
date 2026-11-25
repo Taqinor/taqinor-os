@@ -8,8 +8,9 @@
 // d'affichage. Les saisies (TVA récupérable, taux d'actualisation + source)
 // sont tapées telles quelles (`step="any"`, jamais corrigées) ; le taux est un
 // `ChampDecimal` (R1-09 : « 7,5 » se lit 7,5 sur tout navigateur).
-import { Input, Label } from '../../../ui'
+import { Button, Input, Label } from '../../../ui'
 import { formatNumber } from '../../../lib/format'
+import { reponseAffichee } from '../../../features/ventes/etudeCiPreviewPur.js'
 import ChampDecimal from './ChampDecimal'
 // CIQ224 — le volet INTERNE (offre de financement, offre CSE), vendeur seulement.
 import VoletInterneEconomieCi from './VoletInterneEconomieCi'
@@ -136,13 +137,20 @@ function DeuxOptions({ d, avec }) {
 // et la VAN (aperçu `economie_ci`), à la même règle d'arrondi qu'eux ; plus le payback
 // de la conception rangée, calculé sur le devis de RÉFÉRENCE (un autre devis possible).
 export default function CarteEconomieCi({ apercu, eco, setEcoChamp, optionAvec = null, children }) {
-  const { donnees: d, chargement, erreur } = apercu || {}
+  const { chargement, erreur, relancer } = apercu || {}
+  // T4-X6-011 — pendant le calcul, l'économie précédente reste sous « Calcul en cours… ».
+  const d = reponseAffichee(apercu)
   return (
     <div className="mt-4 grid gap-3 rounded-lg border border-border p-3" data-testid="eco-ci">
       <p className="font-display text-sm font-semibold">Économies (moteur serveur)</p>
       {setEcoChamp && <Saisies eco={eco} setEcoChamp={setEcoChamp} />}
-      {erreur && <p className="text-xs text-warning" data-testid="eco-ci-erreur">{erreur}</p>}
-      {chargement && !d && <p className="text-xs text-muted-foreground">Calcul des économies…</p>}
+      {erreur && (
+        <p className="text-xs text-warning" data-testid="eco-ci-erreur">
+          {erreur}{' '}
+          {relancer && <Button type="button" size="sm" variant="outline" onClick={relancer}>Réessayer</Button>}
+        </p>
+      )}
+      {chargement && <p className="text-xs text-muted-foreground">{d ? 'Calcul en cours…' : 'Calcul des économies…'}</p>}
       {d && d.statut === 'omis' && (
         <ul className="text-xs text-warning" data-testid="eco-ci-omis">
           {(d.motifs_omission || []).map((m) => <li key={m}>{m}</li>)}

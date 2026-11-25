@@ -10,7 +10,7 @@ import { corpsCiSurLesLignes } from './etudeCiPreviewPur'
 
 export {
   construireCorpsCi, consommationExprimee, alertesAffichables,
-  libelleProvenance, nombreOuNull, reponseAJour, corpsCiSurLesLignes,
+  libelleProvenance, nombreOuNull, reponseAJour, corpsCiSurLesLignes, reponseAffichee,
 } from './etudeCiPreviewPur'
 
 /**
