@@ -28,10 +28,13 @@ const visitesApi = {
   rechercherLeads: (q, config) =>
     api.get('/visites/leads-recherche/', { params: { q }, ...config }),
 
-  // Membres de la société, pour le champ « assigner à ». Réutilise l'endpoint
-  // de fondation EXISTANT `/users/` (portée société côté serveur) — aucun
-  // nouvel endpoint, aucune donnée CRM.
-  getMembres: (config) => api.get('/users/', config),
+  // T4-X8-017 — le champ « assigner à » ne propose QUE les comptes qui peuvent
+  // ouvrir une visite : le sélecteur de collègues existant, filtré côté serveur
+  // sur `visites_voir` (`apps/crm/collegues.py::filtrer_par_permission`, même
+  // prédicat que le viewset des visites). Comptes actifs de la société, sans
+  // donnée CRM ; une liste nue, sans pagination.
+  getAssignables: (config) =>
+    api.get('/crm/assignable-users/', { ...config, params: { permission: 'visites_voir' } }),
 
   getVisites: (params, config) => api.get('/visites/visites/', { params, ...config }),
   getVisite: (id) => api.get(`/visites/visites/${id}/`),
