@@ -1568,7 +1568,7 @@ la conception porte déjà (puissance par panneau = kWc ÷ panneaux), en supposa
 manquantes. ADEV155 reste GATED (réponse du fondateur après lecture).
 EN VOL : `lane/moteur-e7b`, `lane/t3-liste`, relecteur X5.
 
-### Point du 25/11, 05 h 45 UTC, heure RÉELLE (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 05 h 45 UTC, heure RÉELLE
 
 (Les heures des points précédents de cette nuit sont en avance d'environ 1 h 30 à 1 h 45 sur l'heure réelle : repère
 sûr = les fusions, 00 h 57 UTC pour le lot 2 et 05 h 22 UTC pour le lot 3.)
@@ -1589,3 +1589,45 @@ du lead, devis commercial) — après le retour du relecteur X5 (il utilise l'in
 - FILE : E7c atelier (ADEV153, ACAL2022, ACAL2023), correction du plan par défaut sur le kWc de la conception +
   relance de la liste ADEV154, entrée imposée « consommation », lanes de correctifs 2 à 6 du tour 3, relecteurs X3,
   X6 à X8, relecteur des maquettes ; étape 8 (ACAL2024, ADEP108) ; ADEV155 GATED.
+
+### Point du 25/11, 06 h 50 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 4 — PR Taqinor/taqinor-os#1556 (BROUILLON), branche `dev-lot4`, Auto-fix allumé, auto-archive éteint.** Trois
+lots sur `main` (PR #1552, #1554, #1555), AUCUN déployé.
+- Contenu : fin de l'étape 6 (`lane/moteur-e6c`), étape 7 entière — écran devis (`e7b` : ADEV152, AGEN11 à 13), fiche
+  du lead (`e7a` : ALEA71, ACAL2021 + trois petits défauts), atelier (`e7c` : ADEV153, ACAL2022, ACAL2023) — et la
+  liste des devis légère (`t3-liste`, T4-X4-005). Tâches marquées « code livré, preuve en direct due ».
+- Premier passage de CI (tête `2a9f3e052c`, SANS e7c) : 10 rouges, tous lus. Corrigés et commités en local, PAS
+  ENCORE POUSSÉS : deux tests de lecture du source de la liste, le miroir du productible du site public (la table par
+  ville de l'écran devis est retirée : il se compare au moteur), quatre gardes de `stage-names` (paramètres de requête
+  déclarés, liste qui envoie sa page en clair, bloc de test recopié, deux formes OpenAPI : la liste sert DEUX formes de
+  ligne — `oneOf` — et la synthèse a sa forme), la règle de taille sur `optimizer.ts` (texte de l'économie sorti vers
+  `affichageErp.ts`), l'ancre d'ACAL1239, les deux listes figées des routes du devis (+ `synthese`), le budget de
+  requêtes de la fiche du lead (15 → 16 ; la pastille lit le kWc en UNE requête, `kwc_de_la_conception_courante`).
+- ROUGE RESTANT : `frontend/src/pages/ventes/DevisGenerator.agnrConsoApercu.test.jsx` (AGNR24, « l'aperçu reçoit la
+  consommation que l'écran enregistre »). Le bandeau « Facture réelle ONEE ≈ » venait du modèle local retiré par
+  AGEN13. À TRANCHER avec la relecture : `corpsApercuConception` n'envoie au moteur que la facture d'hiver, celle
+  d'été, les kWh par mois et le nombre de panneaux — PAS les douze factures tapées ni la « Facture réelle » en MAD ;
+  l'aperçu horaire (`etude-horaire/preview`) reste servi en premier. Si l'aperçu de la conception peut montrer des
+  chiffres pour une autre consommation que celle enregistrée, c'est un défaut de l'étape 7 à corriger (lane), pas un
+  test à réaligner.
+- EN COURS : instantané OpenAPI régénéré dans un conteneur (`scratchpad/openapi-write6.log`), à commiter avec les
+  contrats d'API ; puis UN push (deuxième passage de CI, qui portera aussi e7c).
+- EN VOL (trois agents, le plafond de ce poste) : `lane/moteur-e6d` (opus ; consignes `scratchpad/msg-lane-e6d.md` :
+  plan par défaut quand la fiche du module est vide + liste ADEV154 lisible, un seul calcul du coût de l'onduleur,
+  entrée imposée « consommation », écarts 4 et 5 de l'acceptation) ; relecteur X5 (atelier après le toit, sombre) ;
+  relecteur indépendant du lot 4 (opus, lecture seule ; consignes `scratchpad/msg-revue-lot4.md`, rapport attendu
+  `scratchpad/revue-lot4.md`, trois questions précises dont AGNR24).
+- PRÊT À LANCER dès qu'une place se libère : `lane/moteur-e8` (consignes `scratchpad/msg-lane-e8.md` : ACAL2024,
+  reste d'ACAL2025, garde ADEP108) — base `dev-lot4` APRÈS le pli d'e6d (mêmes fichiers du moteur).
+- À FAIRE ENSUITE, dans l'ordre : corriger ce que la relecture trouve (lanes) ; mettre l'instrument sur `dev-lot4`
+  (après le retour de X5 ; recette dans le point de 05 h 45) et REGARDER les écrans de l'étape 7 (listes dans les
+  rapports des lanes e7a, e7b, e7c et t3-liste) ; CI verte ; fusion par la file ; dire « mergé — à déployer par toi ».
+  Puis : liste ADEV154 complète à montrer au fondateur (ADEV155 GATED), relecteurs X3, X6, X7, X8, lanes de correctifs
+  2 à 6 du tour 3, enregistrements d'acceptation ACAL2028 et ACAL2029, les quatre rejeux `@acceptation` de la vague D
+  (ACAL2034, 2035, 2036, 2038), comparaison aux maquettes, rapport final.
+- Vague D (15 tâches) : 5 cochées, 6 « code livré, preuve en direct due », 4 rejeux en direct à jouer par
+  l'orchestrateur.
+- Point laissé au fondateur par la lane e7c : la vue « Montrer au client » ne montre AUCUN montant (garde « rien
+  d'argent » ; mention « Les montants figurent dans le devis ») — la tuile d'économie en MAD demandée par ACAL2023
+  n'est pas posée ; décision à lui demander (au rapport).
