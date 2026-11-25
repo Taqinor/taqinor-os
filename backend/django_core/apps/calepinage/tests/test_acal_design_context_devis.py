@@ -251,6 +251,34 @@ class CibleOptionRetenueTest(_DevisDeuxOptions):
                          {'devis': calepinage.devis_id, 'option': 'sans'})
 
 
+class LignesDuDevisPlusSourceTest(_DevisDeuxOptions):
+    """ACAL2025 (C4-E8) — la cible et le matériel du calepinage viennent de la conception : la
+    conception retenue du DEVIS (ses lignes) n'est plus lue pour l'une ni pour l'autre, et les
+    deux lecteurs morts (``_produits_du_devis``, ``produits_retenus``) n'existent plus."""
+
+    def test_cible_et_materiel_sans_lire_les_lignes_du_devis(self):
+        from unittest import mock
+
+        from apps.calepinage.services import devis_retenu, electrique
+        from apps.calepinage.services.devis import _cible_du_calepinage
+
+        from .test_acal_cible_lead import ranger_conception
+
+        ranger_conception(lead=self.lead_lie, nb=35, option='sans')
+        calepinage = Calepinage.objects.create(company=self.company, lead_id=self.lead_lie.pk,
+                                               devis=self._les_deux('Avec batterie'), titre='QA-ACAL2025')
+        with mock.patch('apps.ventes.selectors_calepinage.conception_retenue_du_devis',
+                        side_effect=AssertionError('lignes du devis lues')) as lu, \
+                mock.patch('apps.ventes.selectors_calepinage.conception_retenue_du_devis_id',
+                           side_effect=AssertionError('lignes du devis lues')) as lu_id:
+            self.assertEqual(_cible_du_calepinage(calepinage)['panneaux'], 35)
+            electrique.resoudre_materiel(self.company, {}, calepinage=calepinage)
+        self.assertEqual((lu.call_count, lu_id.call_count), (0, 0))
+        self.assertFalse(hasattr(electrique, '_produits_du_devis'))  # mutant « rétabli » : rouge
+        self.assertFalse(hasattr(devis_retenu, 'produits_retenus'))
+        self.assertFalse(hasattr(devis_retenu, 'cible_de_l_option_retenue'))
+
+
 class ResultatsDeLaConceptionTest(_DevisDeuxOptions):
     """ACAL2015 (C4-E5, D-ACAL-96) — ``conception`` de ``GET resultat/`` : UN chiffre de
     production (celui de la conception courante) ; un devis lié REÇU par le client

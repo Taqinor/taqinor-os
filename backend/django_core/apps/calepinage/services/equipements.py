@@ -135,6 +135,34 @@ def conception_retenue_par_id(devis_id, company):
     return conception_retenue_du_devis_id(devis_id, company)
 
 
+def conception_ou_calcul(company, lead_id=None, *, calepinage_id=None):
+    """Relecture E5 — LA porte de lecture de la conception (``apps.ventes.services.
+    conception_ou_calcul``), passée par ce module, déjà importateur de ventes : la
+    conception est lue par ``devis_retenu`` sans un importateur de plus (cliquet
+    ``test_imports_croises_ventes``)."""
+    from apps.ventes.services import conception_ou_calcul as porte
+
+    return porte(company, lead_id, calepinage_id=calepinage_id)
+
+
+def motif_facture_absente():
+    """Le motif ``facture_absente`` de ventes (question de taille, ACAL922), par la même porte."""
+    from apps.ventes.services import MOTIF_FACTURE_ABSENTE
+
+    return MOTIF_FACTURE_ABSENTE
+
+
+def devis_et_ecart(devis_id, retenue, company_id):
+    """``(devis, ecart_devis)`` du devis lié de ``company_id`` (``get_devis_by_pk`` / ``apps.ventes.
+    selectors.ecart_devis``, conception retenue déjà lue en ``retenue``) ; ``(None, [])`` hors société."""
+    from apps.ventes.selectors import ecart_devis
+
+    devis = get_devis_by_pk(devis_id)
+    if devis is None or devis.company_id != company_id:
+        return None, []
+    return devis, ecart_devis(devis, retenue=retenue)
+
+
 #: ACAL2013 — la provenance d'un matériel servi par la conception du moteur unique.
 PROVENANCE_MOTEUR = 'moteur'
 

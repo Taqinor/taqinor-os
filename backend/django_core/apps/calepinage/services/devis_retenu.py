@@ -77,7 +77,7 @@ def calcul_en_cours(calepinage):
 def _lire_conception(calepinage):
     from django.db.models import Model
 
-    from apps.ventes.services import conception_ou_calcul
+    from .equipements import conception_ou_calcul  # la porte de ventes, par un importateur existant
 
     company = getattr(calepinage, 'company', None)
     # Une société qui n'est pas une ligne enregistrée (double de calcul pur) ne se lit pas en base.
@@ -125,7 +125,7 @@ def cible_de_la_conception(calepinage):
     calepinage sans lead dont aucune conception n'est rangée (rien ne le dimensionne,
     comme avant). ``motif_code`` vaut ``facture_absente`` quand le refus nomme la
     facture d'hiver (question de taille de la génération, ACAL922)."""
-    from apps.ventes.services import MOTIF_FACTURE_ABSENTE
+    from .equipements import motif_facture_absente
 
     if getattr(calepinage, 'appel_offre_id', None) or getattr(calepinage, 'company', None) is None:
         return None
@@ -140,7 +140,7 @@ def cible_de_la_conception(calepinage):
         return _refus(REFUS_AGRICOLE, None, 'lead')
     if conception.get('etat') != 'complet':
         refus = conception.get('refus') or {}
-        code = MOTIF_FACTURE_ABSENTE if refus.get('champ') == 'facture_hiver' else refus.get('code')
+        code = motif_facture_absente() if refus.get('champ') == 'facture_hiver' else refus.get('code')
         return _refus(refus.get('message') or '', code)
     option = conception.get('option_retenue')
     valeurs = (conception.get('valeurs') or {}).get(option) or {}
@@ -191,23 +191,6 @@ def module_retenu_du_devis(calepinage):
     ou ``None`` sans devis lié ni ligne panneau : le module que l'atelier pose
     d'office, jamais un module d'essai du catalogue de même puissance."""
     return _module_retenu(conception_du_devis_lie(calepinage))
-
-
-def produits_retenus(calepinage, produits):
-    """ACAL1952 — ``{rôle: produit}`` du devis lié : l'onduleur ET le module
-    sont ceux de l'option RETENUE par le devis (plus la première ligne hors
-    « avec ») ; l'optimiseur reste celui de l'agrégat ``equipements``. Une
-    désignation EXPLICITE de l'entrée garde la main (``resoudre_materiel`` ne
-    lit le devis qu'à défaut)."""
-    conception = conception_du_devis_lie(calepinage)
-    retenus = dict(produits)
-    onduleur = _onduleur_retenu(conception)
-    if onduleur:
-        retenus['onduleur'] = onduleur['produit']
-    module = _module_retenu(conception)
-    if module is not None:
-        retenus['module'] = module
-    return retenus
 
 
 def _longueur_du_devis(conception):
@@ -266,19 +249,19 @@ def _devis_envoye_lie(calepinage):
     devis lié REÇU, ou ``None``. Relecture E5 M2 — ``option`` et ``production_annuelle_kwh`` sont
     CEUX DU DEVIS (rangés, ``conception_retenue_du_devis`` ; ``None`` quand il n'en range aucune) :
     l'écran les compare au chiffre qu'il affiche, jamais à la conception."""
-    from apps.ventes.selectors import ecart_devis, get_devis_by_pk
+    from .equipements import devis_et_ecart
 
     lu = conception_du_devis_lie(calepinage)
     if not lu or not lu.get('recu'):
         return None
-    devis = get_devis_by_pk(lu['devis'])
-    if devis is None or devis.company_id != getattr(calepinage, 'company_id', None):
+    devis, ecart = devis_et_ecart(lu['devis'], lu, getattr(calepinage, 'company_id', None))
+    if devis is None:
         return None
     envoi = getattr(devis, 'date_envoi', None)
     return {'devis': devis.pk, 'reference': devis.reference or '', 'statut': devis.statut,
             'envoye_le': envoi.isoformat() if envoi else None, 'option': lu.get('option'),
             'production_annuelle_kwh': lu.get('production_annuelle_kwh'),
-            'ecart_devis': ecart_devis(devis, retenue=lu)}
+            'ecart_devis': ecart}
 
 
 def bloc_production_devis(calepinage):
