@@ -103,6 +103,32 @@ describe('Étape Résultats — résultat complet (maquette Resultats)', () => {
     expect(tuiles).not.toHaveTextContent('non calculée')
   })
 
+  /* T4-X7-005 — 3 panneaux 710 W sur un Deye 5 kW : 0 kWh, pertes 100 %, et aucune phrase sur l'étape ; la cause (tension
+     par forte chaleur sous la plage de l'onduleur) n'était que dans Documents / Électrique. */
+  it('T4-X7-005 — production nulle : la cause servie et le geste (étape Électrique) sont dits sur l’étape', async () => {
+    const d = COMPLET()
+    d.production.total.p50_kwh = 0
+    const raison = 'par forte chaleur, la tension des panneaux (105,4 V) tombe sous la plage de travail de cet onduleur (150,0 V)'
+    d.electrique.verdicts = d.electrique.verdicts.map((v) => (v.code === 'vmp_hot_over_mppt_min'
+      ? { ...v, conforme: false, raison } : v))
+    servir(d)
+    rendre()
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveAttribute('data-zone', 'production-nulle')
+    expect(alerte).toHaveTextContent('La simulation de la pose donne 0 kWh par an.')
+    expect(alerte).toHaveTextContent(`Cause : Par forte chaleur, la tension des panneaux (105,4 V) tombe sous la plage`)
+    fireEvent.click(within(alerte).getByRole('button', { name: 'Aller à l’étape Électrique' }))
+    // le premier panneau de l'étape Électrique (parcoursGuide.premierOngletEtape), comme un clic sur le rail
+    expect(screen.getByTestId('lieu').textContent).toMatch(/onglet=(equipements-electriques|cheminement-cables|raccordement|verdict-electrique|materiel-electrique|saisies-electriques|decisions-electriques|controle-chaine|schema)/)
+  })
+
+  it('T4-X7-005 — production non nulle : aucune alerte de production nulle', async () => {
+    servir(COMPLET())
+    rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    expect(document.querySelector('[data-zone="production-nulle"]')).toBeNull()
+  })
+
   it('pied : année basse et dernière année servies ; bouton = action de l’étape, sinon URL de l’étape Documents', async () => {
     servir(COMPLET())
     const onClick = vi.fn()
@@ -331,7 +357,8 @@ describe('Étape Résultats — résultat complet à la maquette v2 (ACAL1832)',
     expect(mois.querySelectorAll('.cal-res-point')).toHaveLength(12)
     // Repères ronds de l'échelle, au-dessus du plus grand mois servi.
     const reperes = [...mois.querySelectorAll('.cal-res-axe span')].map((s) => s.textContent.replace(/\s/g, ''))
-    expect(reperes).toHaveLength(3)
+    expect(reperes).toHaveLength(4)
+    expect(reperes[0]).toBe('0') // T4-X7-005 — l'axe part de 0
     unmount()
     const sans = COMPLET_MAQUETTE()
     sans.autoconsommation.par_mois = sans.autoconsommation.par_mois.map((m) => ({ ...m, consommation_kwh: null }))

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { panneauxDuModule } from '../../cibleAuModule'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
 import { formatDate, formatNumber } from '../../../../../lib/format'
@@ -19,6 +19,8 @@ import { memeTaille, phraseTailles, tailleDifferente } from '@roofpro/tailleConc
 import { messageResultatIndisponible } from '../../../delaiReseau'
 import EtatEcranAtelier from '../../EtatEcranAtelier'
 import { useModeExpert } from '../../modeExpert'
+import { PARAM_ONGLET } from '../../onglets'
+import { premierOngletEtape } from '../../parcoursGuide'
 import { publierResultat } from '../../simulationFraiche'
 import PanneauPertes from '../../PanneauPertes'
 import { useLectureServie } from './panneaux/lectures'
@@ -274,6 +276,43 @@ function PanneauxNonRaccordes({ data }) {
   )
 }
 
+/** T4-X7-005 — la simulation complète donne 0 kWh : l'étape le DIT, avec la cause servie (la `raison` des contrôles
+    électriques non conformes de `electrique.verdicts`, phrases du serveur telles quelles) et le geste — l'étape Électrique,
+    où se corrigent la longueur des chaînes et l'onduleur. Rien n'est calculé ; sans cause servie, la phrase le dit. */
+function ProductionNulle({ data }) {
+  const [parametres, setParametres] = useSearchParams()
+  const [expert] = useModeExpert()
+  const p50 = data?.production?.total?.p50_kwh
+  if (!(typeof p50 === 'number' && p50 <= 0)) return null
+  const raisons = [...new Set((data?.electrique?.verdicts ?? [])
+    .filter((v) => v?.conforme === false && typeof v.raison === 'string' && v.raison)
+    .map((v) => v.raison))]
+  const onglet = premierOngletEtape('electrique', expert)
+  const allerElectrique = () => {
+    const suivants = new URLSearchParams(parametres)
+    suivants.set(PARAM_ONGLET, onglet)
+    setParametres(suivants, { state: { etapeChoisie: true } })
+  }
+  return (
+    <section className="cal-res-alerte" data-zone="production-nulle" role="alert">
+      <p className="cal-res-alerte-titre">La simulation de la pose donne 0 kWh par an.</p>
+      {raisons.length > 0 ? raisons.map((r) => (
+        <p key={r} className="cal-res-alerte-texte">{`Cause : ${r.charAt(0).toUpperCase()}${r.slice(1)}.`}</p>
+      )) : (
+        <p className="cal-res-alerte-texte">Le calcul ne nomme pas de cause : vérifiez le raccordement des panneaux à l’onduleur.</p>
+      )}
+      <p className="cal-res-alerte-texte">
+        Corrigez la longueur des chaînes ou l’onduleur à l’étape Électrique, puis relancez la simulation.
+      </p>
+      {onglet && (
+        <button type="button" className="cal-res-lien" style={{ alignSelf: 'flex-start' }} onClick={allerElectrique}>
+          Aller à l’étape Électrique
+        </button>
+      )}
+    </section>
+  )
+}
+
 /** ACAL1987 (D-ACAL-90 renversée : « Simulation must start by itself ») — la simulation PARTIE SEULE à l'enregistrement
     d'une pose complète (`simulation_automatique` de `GET resultat/`). En file ou en cours : « Simulation en cours… », sans
     bouton ; `GET resultat/` est relu en silence toutes les `intervalleMs` jusqu'à la fin, puis `onTermine` relit l'écran
@@ -365,6 +404,7 @@ export default function EtapeResultats({
           taille={tailleDeLaConception(contexte.etat === 'ok' ? contexte.donnees : null, data.conception)} />
         : <ProductionDuDevis bloc={blocDuDevis(data)} p50={complet ? total?.p50_kwh : null} incomplet={incomplet} />}
       {simule && <PanneauxNonRaccordes data={data} />}
+      {complet && <ProductionNulle data={data} />}
       {enCours && <SimulationEnCours calepinageId={id} intervalleMs={intervalleMs} onTermine={refetch} />}
       {!simule && !enCours && <SimulationEnAttente manquants={auto?.manquants} />}
       {!simule && !enCours && (
