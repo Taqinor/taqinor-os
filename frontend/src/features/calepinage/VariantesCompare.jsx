@@ -7,6 +7,8 @@ import useResource from '../../hooks/useResource'
 import useSuiviJob from './production/useSuiviJob'
 import Pourquoi from './commun/Pourquoi'
 import { formatNumber } from '../../lib/format'
+import { texteBloquant } from './refusDevis' // T4-X9-010 — LE nettoyage de T4-X5-007 (aucune clé interne à l'écran)
+import { PARAM_ONGLET } from './atelier/onglets'
 import {
   Badge, Button, Card, Input, Spinner,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -348,8 +350,11 @@ export default function VariantesCompare({ onRecharger = null } = {}) {
   // libellé du bouton de création ni pour l'état « aucune variante ».
   const nombreVariantes = lignes.filter((l) => !l.courante).length
 
+  // T4-X9-010 — le refus de « Retenir » se dit À CÔTÉ du bouton cliqué (plus tout en haut de l'onglet, hors de la vue).
+  const [refusRetenir, setRefusRetenir] = useState(null)
   const retenir = async (ligne) => {
     setErreurAction(null)
+    setRefusRetenir(null)
     setEnCours(ligne.id)
     try {
       await calepinageApi.calepinages.retenirVariante(id, ligne.id)
@@ -360,7 +365,8 @@ export default function VariantesCompare({ onRecharger = null } = {}) {
       // retenue » restait jusqu'au rechargement — et « Enregistrer » aurait republié la copie d'avant.
       if (typeof onRecharger === 'function') await onRecharger()
     } catch (e) {
-      setErreurAction(errMsg(e, 'Impossible de retenir cette variante.'))
+      const message = texteBloquant(errMsg(e, 'Impossible de retenir cette variante.'))
+      setRefusRetenir({ id: ligne.id, message, electrique: /électrique/i.test(message) })
     } finally {
       setEnCours(null)
     }
@@ -580,6 +586,17 @@ export default function VariantesCompare({ onRecharger = null } = {}) {
                       Retenir
                     </Button>
                   )}
+                  {refusRetenir?.id === ligne.id ? (
+                    <p role="alert" className="mt-1 max-w-xs text-xs text-destructive"
+                      data-testid={`cal-variante-refus-${ligne.id}`}>
+                      {refusRetenir.message}
+                      {refusRetenir.electrique ? (
+                        <> <Link to={{ search: `?${PARAM_ONGLET}=decisions-electriques` }} className="underline">
+                          Ouvrir l’étape Électrique
+                        </Link></>
+                      ) : null}
+                    </p>
+                  ) : null}
                   <div>
                     <Button
                       size="sm"

@@ -446,6 +446,7 @@ retiré plus un hook ajouté.
 | `cal-tableau-variantes` | tableau variantes. |
 | `cal-variante-confirmer` | variante confirmer. |
 | `cal-variante-dupliquer` | variante dupliquer. |
+| `cal-variante-refus` | Comparer les variantes : refus de « Retenir », dit à côté du bouton cliqué, avec le lien vers l'étape Électrique (T4-X9-010). |
 | `cal-variante-formulaire` | variante formulaire. |
 | `cal-variante-nom` | variante nom. |
 | `cal-variante-nom-erreur` | variante nom message d'erreur. |
