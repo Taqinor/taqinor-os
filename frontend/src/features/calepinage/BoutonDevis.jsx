@@ -459,7 +459,8 @@ export default function BoutonDevis({
       ) : (
         <>
         {/* Lane E9 (T4-X5-010) — avant le bouton : le matériel que chaque option du devis portera. */}
-        {!lectureSeule && <ApercuMaterielDevis calepinageId={calepinageId} signature={detail?.layout_hash ?? ''} />}
+        {!lectureSeule && <ApercuMaterielDevis calepinageId={calepinageId} signature={detail?.layout_hash ?? ''}
+          surfaces={selection.surfaces_chiffrees ?? null} />}
         <button
           type="button"
           onClick={() => generer()}

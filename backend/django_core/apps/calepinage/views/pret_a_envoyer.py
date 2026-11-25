@@ -100,13 +100,25 @@ CalepinageViewSet.pret_a_envoyer = pret_a_envoyer
 # l'onduleur que chaque option du devis PORTERA (dry-run de LA composition, rien d'écrit) et les
 # désignations de l'étape Électrique qu'il ne portera pas. Société bornée par ``get_object()`` (404).
 # Contrat ``contract_samples/calepinage_apercu_devis.json``.
-@extend_schema(responses=forme_du_contrat('CalepinageApercuDevis', 'calepinage_apercu_devis.json'))
+_SURFACES = OpenApiParameter(
+    'surfaces', str, required=False,
+    description="Clés des surfaces cochées (séparées par des virgules), comme ``surfaces_chiffrees`` de "
+                "« Générer le devis » ; absent = tout le document.")
+
+
+@extend_schema(parameters=[_SURFACES],
+               responses=forme_du_contrat('CalepinageApercuDevis', 'calepinage_apercu_devis.json'))
 @action(detail=True, methods=['get'], url_path='apercu-devis', permission_classes=[PeutVoirCalepinage])
 def apercu_devis(self, request, pk=None):
     """Le matériel que « Générer le devis » portera, par option, et les écarts aux désignations."""
     from ..services.devis_apercu import apercu_materiel_du_devis
 
-    return Response(apercu_materiel_du_devis(self.get_object()))
+    calepinage = self.get_object()
+    # Lane E9b — les surfaces COCHÉES que « Générer » enverra (``surfaces_chiffrees``), séparées par
+    # des virgules ; absent = tout le document, comme la génération.
+    brut = request.query_params.get('surfaces')
+    surfaces = None if brut is None else [cle.strip() for cle in brut.split(',') if cle.strip()]
+    return Response(apercu_materiel_du_devis(calepinage, surfaces=surfaces))
 
 
 CalepinageViewSet.apercu_devis = apercu_devis

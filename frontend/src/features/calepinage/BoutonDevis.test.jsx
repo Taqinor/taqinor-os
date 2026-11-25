@@ -105,10 +105,31 @@ describe('Lane E9 — le matériel que le devis portera, dit avant le bouton', (
     expect(within(zone).getByText('Sans batterie : module Module 710 Wc · onduleur Onduleur réseau 6 kW')).toBeInTheDocument()
     expect(within(zone).getByText('Avec batterie : module Module 710 Wc · onduleur Onduleur hybride 6 kW')).toBeInTheDocument()
     expect(within(zone).getByText(apercu.ecarts[0].message)).toHaveAttribute('role', 'status')
-    expect(calepinageApi.calepinages.apercuDevis).toHaveBeenCalledWith(DETAIL_VIDE.id)
+    expect(calepinageApi.calepinages.apercuDevis).toHaveBeenCalledWith(DETAIL_VIDE.id, undefined)
     // Placé AVANT le bouton « Générer le devis ».
     const bouton = screen.getByTestId('cal-generer-devis')
     expect(zone.compareDocumentPosition(bouton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('lane E9b — le brouillon que le bouton ouvrirait : son matériel et une phrase qui le dit', async () => {
+    const brouillon = exempleContrat('calepinage', 'calepinage_apercu_devis', 'exemple_brouillon')
+    calepinageApi.calepinages.apercuDevis.mockResolvedValue({ data: brouillon })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    expect(await screen.findByText(`Un devis brouillon existe déjà (${brouillon.reference}) : le bouton l’ouvre.`))
+      .toBeInTheDocument()
+  })
+
+  it('lane E9b — les surfaces cochées partent avec l’aperçu, comme avec « Générer »', async () => {
+    const surfaces = DETAIL.surfaces_chiffrables.map((s) => ({ ...s, chiffree: null }))
+    const detail = { ...DETAIL_VIDE, surfaces_chiffrables: surfaces }
+    calepinageApi.calepinages.apercuDevis.mockResolvedValue({ data: exempleContrat('calepinage', 'calepinage_apercu_devis') })
+    rendre({ calepinageId: detail.id, detail })
+    await waitFor(() => expect(calepinageApi.calepinages.apercuDevis).toHaveBeenCalledWith(detail.id, undefined))
+    const toit = surfaces.find((s) => s.kind === 'toit')
+    await userEvent.click(screen.getByRole('checkbox', { name: new RegExp(toit.libelle) }))
+    const restantes = surfaces.filter((s) => s.cle !== toit.cle).map((s) => s.cle).join(',')
+    await waitFor(() => expect(calepinageApi.calepinages.apercuDevis)
+      .toHaveBeenLastCalledWith(detail.id, { params: { surfaces: restantes } }))
   })
 
   it('rien ne se compose (refus servi) : rien n’est affirmé', async () => {

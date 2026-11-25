@@ -361,9 +361,9 @@ def panneaux_pour_la_meme_puissance(kwc, watt):
 
 
 def composition_a_blanc():
-    """T4-X5-010 — ``(build_devis_from_layout, AutoDevisError)`` de ``apps.ventes.services`` pour
-    l'aperçu à blanc du devis (``devis_apercu``), passés par ce module déjà importateur de ventes
-    (même cliquet)."""
-    from apps.ventes.services import AutoDevisError, build_devis_from_layout
+    """T4-X5-010 — ``(composer_a_blanc_depuis_layout, AutoDevisError)`` de ``apps.ventes.services``
+    pour l'aperçu à blanc du devis (``devis_apercu``), passés par ce module déjà importateur de
+    ventes (même cliquet). Lane E9b : le dry-run lit les réglages SANS les créer."""
+    from apps.ventes.services import AutoDevisError, composer_a_blanc_depuis_layout
 
-    return build_devis_from_layout, AutoDevisError
+    return composer_a_blanc_depuis_layout, AutoDevisError

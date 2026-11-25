@@ -7,23 +7,30 @@
 import { useEffect, useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
 
-export default function ApercuMaterielDevis({ calepinageId, signature = '' }) {
+/* Lane E9b — `surfaces` : les clés cochées que « Générer » enverra (`surfaces_chiffrees`), `null` quand tout part ;
+   le serveur suit alors la MÊME sélection, et dit s'il ouvrirait un brouillon existant (`source`, `reference`). */
+export default function ApercuMaterielDevis({ calepinageId, signature = '', surfaces = null }) {
   const [apercu, setApercu] = useState({ cle: null, donnees: null })
-  const cle = `${calepinageId}|${signature}`
+  const choix = Array.isArray(surfaces) ? surfaces.join(',') : null
+  const cle = `${calepinageId}|${signature}|${choix ?? '*'}`
   useEffect(() => {
     if (calepinageId == null) return undefined
     let vivant = true
-    Promise.resolve().then(() => calepinageApi.calepinages.apercuDevis(calepinageId)).then(
+    const config = choix == null ? undefined : { params: { surfaces: choix } }
+    Promise.resolve().then(() => calepinageApi.calepinages.apercuDevis(calepinageId, config)).then(
       (res) => { if (vivant) setApercu({ cle, donnees: res?.data ?? null }) },
       () => { if (vivant) setApercu({ cle, donnees: null }) },
     )
     return () => { vivant = false }
-  }, [calepinageId, cle])
+  }, [calepinageId, cle, choix])
   const donnees = apercu.cle === cle ? apercu.donnees : null
   const options = (donnees?.options ?? []).filter((o) => o.module || o.onduleur)
   if (!options.length) return null
   return (
     <div className="text-xs text-foreground" data-zone="apercu-materiel-devis">
+      {donnees.source === 'brouillon_existant' && donnees.reference && (
+        <p data-zone="apercu-brouillon-existant">{`Un devis brouillon existe déjà (${donnees.reference}) : le bouton l’ouvre.`}</p>
+      )}
       <p className="font-semibold">Le devis portera :</p>
       <ul>
         {options.map((o) => (

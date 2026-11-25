@@ -149,6 +149,7 @@ SURFACE_PUBLIQUE = (
     "chiffrer_conception",  # ACAL992 — porte unique de chiffrage d'une conception
     "cible_depuis_lignes",
     "classer_produit",
+    "composer_a_blanc_depuis_layout",  # lane E9b — l'aperçu « Le devis portera », sans écrire
     "composer_devis_residentiel",
     "composition_deux_optimiseurs",
     "composition_residentielle",
