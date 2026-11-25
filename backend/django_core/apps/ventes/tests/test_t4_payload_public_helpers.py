@@ -323,6 +323,23 @@ class SansClesInternesTests(SimpleTestCase):
         self.assertEqual(source, {'_company_id': 7,
                                   'items': [{'_produit_nom': 'X'}]})
 
+    def test_r3_f3_quote_publique_retire_le_pompage_interne(self):
+        from apps.ventes.public.noyau import quote_publique
+        ligne = {'cle': 'disjoncteur_ac', 'hypothese': 'interne', 'quantite': 1}
+        source = {'_company_id': 3, 'etude': {
+            'alertes_pompage': [{'code': 'calibre_disjoncteur_deduit'},
+                                {'code': 'bareme_installation_toiture'},
+                                {'code': 'plafond_forage'}],
+            'kit': {'inclus': [ligne], 'options': []}}}
+        propre = quote_publique(source)
+        self.assertEqual(propre, {'etude': {
+            'alertes_pompage': [{'code': 'plafond_forage'}],
+            'kit': {'inclus': [{'cle': 'disjoncteur_ac', 'quantite': 1}],
+                    'options': []}}})
+        self.assertEqual(ligne['hypothese'], 'interne')  # source intacte
+        self.assertEqual(len(source['etude']['alertes_pompage']), 3)
+        self.assertEqual(quote_publique({'ref': 'X'}), {'ref': 'X'})
+
     def test_les_scalaires_et_les_listes_traversent_inchanges(self):
         from apps.ventes.public.noyau import _sans_cles_internes
         self.assertEqual(_sans_cles_internes([1, 'a', None]), [1, 'a', None])

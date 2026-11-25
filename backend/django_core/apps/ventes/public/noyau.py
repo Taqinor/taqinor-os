@@ -176,6 +176,35 @@ def _sans_cles_internes(obj):
     return obj
 
 
+def quote_publique(data):
+    """Revue R3 (F3) — LA charge utile ``quote`` de la page publique :
+    :func:`_sans_cles_internes`, puis le POMPAGE interne retiré de
+    ``etude`` — ``alertes_pompage`` réduites aux codes publiables au client
+    (``agricole.synthese.CODES_NOTES_CLIENT``, la liste blanche du document ;
+    les alertes stockées ne portent plus leur drapeau ``interne``) et la clé
+    ``hypothese`` des lignes du kit (D-ACAL-124, phrase d'écran). La page
+    publique ne lit ni l'une ni l'autre (elle lit ``synthese_agricole``) ;
+    ``data`` et ``devis.etude_params`` ne sont jamais mutés (copie par
+    :func:`_sans_cles_internes`)."""
+    quote = _sans_cles_internes(data)
+    etude = quote.get('etude') if isinstance(quote, dict) else None
+    if not isinstance(etude, dict):
+        return quote
+    from apps.ventes.quote_engine.agricole.synthese import CODES_NOTES_CLIENT
+    if isinstance(etude.get('alertes_pompage'), list):
+        etude['alertes_pompage'] = [
+            a for a in etude['alertes_pompage']
+            if isinstance(a, dict) and a.get('code') in CODES_NOTES_CLIENT]
+    kit = etude.get('kit')
+    if isinstance(kit, dict):
+        for bloc in ('inclus', 'options'):
+            if isinstance(kit.get(bloc), list):
+                kit[bloc] = [{k: v for k, v in ligne.items() if k != 'hypothese'}
+                             if isinstance(ligne, dict) else ligne
+                             for ligne in kit[bloc]]
+    return quote
+
+
 def _resolve_share_link_by_token(token, *, select_related=()):
     """L-INTPREV (fondateur 25/08/2026) — résout un ShareLink par son jeton
     PUBLIC ou par son jeton INTERNE (aperçu commercial sans notification),

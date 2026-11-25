@@ -28,7 +28,7 @@ from .economies_periodes import construire_economies_periodes
 from .models import ShareLink
 from .public.noyau import (
     PublicLinkRateThrottle, _niveau_lien, _noindex, _not_found,
-    _resolve_proposal_link, _resolve_share_link_by_token, _sans_cles_internes,
+    _resolve_proposal_link, _resolve_share_link_by_token, quote_publique,
     _rendu_memorise_du_lien, _section_servie, _sections_masquees, _strip_confidential_deep, lien_client_sur_brouillon,
 )
 from .public.lecture_views import _notify_open, _stamp_view_si_public
@@ -1400,7 +1400,7 @@ def proposal_data(request, token):
             # publication, et NON sur ``data`` lui-même : les classifications
             # de ce même fichier (``_produit_nom``) lisent encore ``data`` en
             # amont, et les amputer casserait la lecture du matériel.
-            'quote': _sans_cles_internes(data),
+            'quote': quote_publique(data),  # R3 F3 : + pompage interne retiré
             # QX49 — mode d'installation + catégorie commerciale + bloc KPI par
             # mode (whitelist stricte, jamais prix_achat/marge). La page web rend
             # les 4 variantes sans re-calcul client.
