@@ -72,7 +72,12 @@
       "demanderPlanSurface": "[fn]",
       "suiviSite": {
         "initial": "lead",
-        "ecouter": "[fn]"
+        "ecouter": "[fn]",
+        "repli": {
+          "lat": 33.573,
+          "lon": -7.589,
+          "libelle": "Casablanca (ville de référence)"
+        }
       },
       "factureMensuelleMad": 900,
       "devisLie": true,

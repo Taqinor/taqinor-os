@@ -66,8 +66,8 @@ export function optionsPdfDepuisModale({
 export const DELAI_MAX_PDF_MS = 5 * 60 * 1000
 
 // T4-X1-003 — UN sondage qui ne répond pas (20 s sans réponse constatées sur
-// la copie de production) bloquait la boucle à jamais : on n'attend qu'un
-// délai borné chaque réponse, puis on re-sonde (jusqu'au délai ci-dessus).
+// la base de test issue de la production) bloquait la boucle à jamais : chaque réponse est
+// attendue un délai borné, puis le sondage reprend (jusqu'au délai ci-dessus).
 export const DELAI_REPONSE_ETAT_MS = 15 * 1000
 const maintenant = () => Date.now()
 function avecDelai(promesse, ms) {
