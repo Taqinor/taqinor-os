@@ -89,6 +89,66 @@ class AllerRetourHttpTest(TestCase):
         self.assertEqual(self.calepinage.layout_hash, premier_hash)
         self.assertTrue(reimport.data['inchange'])
 
+    def test_reimport_du_fichier_exporte_tel_quel_laisse_la_conception_identique(self):
+        """T4-X5-009 — le FICHIER que « Exporter la conception (JSON) »
+        télécharge est l'enveloppe ``{roof_layout, layout_hash,
+        schema_version}`` ; le réimporter tel quel effaçait le toit (le serveur
+        enregistrait l'enveloppe comme une conception sans pan)."""
+        premier = self.api.post(self.url + 'import-layout/', _DOCUMENT_VALIDE,
+                                format='json')
+        self.assertEqual(premier.status_code, 200, premier.data)
+        self.calepinage.refresh_from_db()
+        hash_avant = self.calepinage.layout_hash
+
+        export = self.api.get(self.url + 'export-layout/')
+        fichier = json.loads(json.dumps(export.data))  # le fichier téléchargé
+        reimport = self.api.post(self.url + 'import-layout/', fichier,
+                                 format='json')
+        self.assertEqual(reimport.status_code, 200, reimport.data)
+        self.assertTrue(reimport.data['inchange'])
+        self.calepinage.refresh_from_db()
+        self.assertEqual(self.calepinage.layout_hash, hash_avant)
+        self.assertEqual(self.calepinage.roof_layout, _DOCUMENT_VALIDE)
+
+    def test_document_sans_toit_sur_conception_dessinee_refuse_sans_ecrire(self):
+        """T4-X5-009 — un document qui ne décrit aucun toit n'écrase jamais
+        une conception qui en a un, sauf confirmation explicite."""
+        premier = self.api.post(self.url + 'import-layout/', _DOCUMENT_VALIDE,
+                                format='json')
+        self.assertEqual(premier.status_code, 200, premier.data)
+        self.calepinage.refresh_from_db()
+        hash_avant = self.calepinage.layout_hash
+
+        sans_toit = {'version': 2, 'zones': [{'vertices': []}]}
+        refus = self.api.post(self.url + 'import-layout/', sans_toit,
+                              format='json')
+        self.assertEqual(refus.status_code, 409, refus.data)
+        self.assertTrue(refus.data['confirmation_requise'])
+        self.assertIn('aucun toit', refus.data['roof_layout'])
+        self.assertIn('Rien n’a été enregistré', refus.data['roof_layout'])
+        self.calepinage.refresh_from_db()
+        self.assertEqual(self.calepinage.layout_hash, hash_avant)
+
+        confirme = self.api.post(
+            self.url + 'import-layout/',
+            {'roof_layout': sans_toit, 'remplacer_toit': True}, format='json')
+        self.assertEqual(confirme.status_code, 200, confirme.data)
+        self.calepinage.refresh_from_db()
+        self.assertNotEqual(self.calepinage.layout_hash, hash_avant)
+
+    def test_fichier_d_export_sans_conception_refuse_en_mots_clairs(self):
+        """T4-X5-009 — l'export d'un calepinage vide (``roof_layout: null``)
+        n'est pas une conception : refus en mots, rien d'écrit."""
+        reponse = self.api.post(
+            self.url + 'import-layout/',
+            {'roof_layout': None, 'layout_hash': '', 'schema_version': 2},
+            format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('ne contient aucune conception',
+                      reponse.data['roof_layout'])
+        self.calepinage.refresh_from_db()
+        self.assertIsNone(self.calepinage.layout_hash or None)
+
     def test_export_sans_conception_rend_roof_layout_none(self):
         # Un calepinage neuf : le bouton « Exporter » ne doit jamais recevoir
         # un objet vide qui se ferait passer pour une conception.

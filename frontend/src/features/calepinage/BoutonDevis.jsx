@@ -283,7 +283,8 @@ export default function BoutonDevis({
     if (!corps.derogation_electrique) setBloquage({ geste: 'generer' })
     dernierCorps.current = corps
     const res = await executer(
-      () => calepinageApi.calepinages.genererDevis(calepinageId, { ...selection, ...corps }))
+      // T4-X5-007 — chaque refus est dit par cet écran (`executer`) : le toast global le répétait.
+      () => calepinageApi.calepinages.genererDevis(calepinageId, { ...selection, ...corps }, { suppressErrorToast: true }))
     const nouveau = res?.data?.devis
     if (!nouveau) return
     setBloquage(null)
@@ -329,7 +330,7 @@ export default function BoutonDevis({
     if (!(await enregistrerDabord())) return
     if (!corps.derogation_electrique) setBloquage({ geste: 'sync' })
     const res = await executer(
-      () => calepinageApi.calepinages.syncDevis(calepinageId, { ...selection, ...corps }))
+      () => calepinageApi.calepinages.syncDevis(calepinageId, { ...selection, ...corps }, { suppressErrorToast: true }))
     if (!res) return
     setBloquage(null)
     setMotif('')
@@ -521,7 +522,7 @@ export default function BoutonDevis({
             {bloquage.bloquants.map((b, i) => (
               <li key={`${b?.code ?? 'b'}-${i}`} data-testid="cal-devis-bloquant">
                 {texteBloquant(b)}
-                {b?.detail && <span className="block text-xs text-muted-foreground">{b.detail}</span>}
+                {b?.detail && <span className="block text-xs text-muted-foreground">{texteBloquant(b.detail)}</span>}
               </li>
             ))}
           </ul>

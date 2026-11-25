@@ -280,6 +280,30 @@ class MotifsLisiblesTest(unittest.TestCase):
         phrase = 'Un facteur 1 supposé se lirait « aucune ombre, vérifié ».'
         self.assertEqual(motif_lisible(phrase), phrase)
 
+    def test_batterie_sans_produit_et_site_raccorde_nomment_la_donnee(self):
+        """T4-X5-013 — l'onglet Batterie lisait « … est OMIS. Une donnée
+        manque » (``batterie.groupes`` sans intitulé) et le bloc voisin « Le
+        bloc une donnée est OMIS » (``hors_reseau``) : la donnée qui manque est
+        nommée, avec l'endroit où la saisir."""
+        from apps.calepinage.services.etapes.batterie import (
+            CLE_CONTEXTE, MOTIF_SANS_DECLARATION, _omission,
+        )
+        from apps.calepinage.services.etapes.hors_reseau import MOTIF_RACCORDE
+        from apps.calepinage.services.rapport.champs_lisibles import (
+            motif_lisible,
+        )
+
+        servi = _omission(MOTIF_SANS_DECLARATION,
+                          champ=f'{CLE_CONTEXTE}.groupes')['motif_absence']
+        batterie = motif_lisible(servi)
+        self.assertNotIn('Une donnée manque', batterie)
+        self.assertNotIn('groupes', batterie)
+        self.assertIn('produit batterie', batterie)
+        self.assertIn('devis lié', batterie)
+        raccorde = motif_lisible(MOTIF_RACCORDE)
+        self.assertIn('« hors réseau »', raccorde)
+        self.assertNotIn('une donnée', raccorde)
+
 
 class FamilleDeMotifsSansNomInterneTest(unittest.TestCase):
     """R3-19 (suite) — aucun motif que les services peuvent produire ne sort

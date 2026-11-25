@@ -316,7 +316,7 @@ function Ligne({ libelle, valeur }) {
   )
 }
 
-export default function VariantesCompare() {
+export default function VariantesCompare({ onRecharger = null } = {}) {
   const { id } = useParams()
   const [erreurAction, setErreurAction] = useState(null)
   const [enCours, setEnCours] = useState(null)
@@ -355,6 +355,10 @@ export default function VariantesCompare() {
       await calepinageApi.calepinages.retenirVariante(id, ligne.id)
       // On RECHARGE : c'est le serveur qui dé-retient la précédente.
       await refetch()
+      // T4-X5-014 — retenir ÉCRIT la conception courante (`services/variantes.py::retenir_variante`) : l'atelier entier
+      // la relit (scène, étape Documents, « Générer le devis »), sinon l'avis « Choisissez d'abord une variante
+      // retenue » restait jusqu'au rechargement — et « Enregistrer » aurait republié la copie d'avant.
+      if (typeof onRecharger === 'function') await onRecharger()
     } catch (e) {
       setErreurAction(errMsg(e, 'Impossible de retenir cette variante.'))
     } finally {

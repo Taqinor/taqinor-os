@@ -18,6 +18,7 @@ import { messageResultatIndisponible } from '../../../delaiReseau'
 import EtatEcranAtelier from '../../EtatEcranAtelier'
 import { useModeExpert } from '../../modeExpert'
 import PanneauPertes from '../../PanneauPertes'
+import { useLectureServie } from './panneaux/lectures'
 
 /* ============================================================================
    L'ÉTAPE « RÉSULTATS » DU PARCOURS GUIDÉ (maquettes Resultats.dc.html et
@@ -136,9 +137,29 @@ const NOM_PRODUCTION_POSE = 'Production simulée de la pose'
 /** ACAL2015 (C4-E5, D-ACAL-96) — LA conception (`conception` de `GET resultat/`) : UN chiffre de production, celui que le
     moteur unique a rangé ; un devis ENVOYÉ dont l'écart servi (`devis_envoye.ecart_devis`, lignes de ventes) porte la
     production est NOMMÉ (référence, date d'envoi) avec « Réviser le devis » quand ventes le permet. Rien n'est recalculé. */
-function ProductionDeLaConception({ bloc }) {
+/** T4-X5-001 — LA taille de la conception : `chiffrage.kwc` servi du design-context (le lecteur de la bande Panneaux et de
+    la vue client) ; le nombre de panneaux est celui de `cible` quand il décrit cette même taille, sinon il est tu. */
+function tailleDeLaConception(contexte) {
+  const kwc = contexte?.chiffrage?.kwc
+  const valeur = kwc?.etat === 'servi' && typeof kwc.valeur === 'number' ? kwc.valeur : null
+  if (valeur == null) return null
+  const cible = contexte?.cible
+  const panneaux = typeof cible?.panneaux === 'number' && typeof cible?.kwc === 'number'
+    && Math.abs(cible.kwc - valeur) < 0.005 ? cible.panneaux : null
+  return { kwc: valeur, panneaux }
+}
+
+/** Le motif de l'atelier (`affichageErp.ts::raisonSansValeur`) : « X kWc », le nombre de panneaux en plus s'il est servi. */
+const ditTaille = ({ panneaux, kwc }) => `${formatNumber(kwc, { decimals: 2 })} kWc${
+  typeof panneaux === 'number' ? ` (${formatNumber(panneaux, { decimals: 0 })} panneau${panneaux > 1 ? 'x' : ''})` : ''}`
+
+function ProductionDeLaConception({ bloc, taille = null, pose = null, simulee = false }) {
   const kwh = typeof bloc.production_annuelle_kwh === 'number' ? bloc.production_annuelle_kwh : null
   const dit = (n) => `${formatNumber(n, { decimals: 0 })} kWh par an`
+  // T4-X5-001 — une pose d'une AUTRE taille que la conception : le chiffre de la conception dit sa taille, la pose est
+  // renvoyée à sa propre simulation (jamais deux productions de deux tailles sans le dire). Même taille : une ligne.
+  const autreTaille = kwh != null && taille != null && typeof pose?.kwc === 'number'
+    && Math.abs(pose.kwc - taille.kwc) >= 0.005
   const envoye = bloc.devis_envoye
   const ecarts = envoye?.ecart_devis ?? []
   // Relecture E5 M2 — la production QUE LE DEVIS ENVOYÉ A RANGÉE (`devis_envoye.production_annuelle_kwh`, servie par
@@ -152,7 +173,20 @@ function ProductionDeLaConception({ bloc }) {
   return (
     <section className="cal-res-carte flex flex-col gap-1" data-zone="production-conception"
       data-chiffre={different ? 'deux' : 'un-seul'}>
-      <p>{kwh != null ? `Production de la conception : ${dit(kwh)}` : 'Production de la conception : non calculée'}</p>
+      {autreTaille ? (
+        <>
+          <p>
+            {`Production de la conception : ${dit(kwh)}, calculée pour la conception du lead : ${ditTaille(taille)} — `
+              + `votre pose en compte ${ditTaille({ panneaux: pose.total_modules, kwc: pose.kwc })}.`}
+          </p>
+          <p className="cal-res-sourdine">
+            {simulee ? 'La production simulée de votre pose est ci-dessous.'
+              : 'La production de votre pose sera celle de sa simulation.'}
+          </p>
+        </>
+      ) : (
+        <p>{kwh != null ? `Production de la conception : ${dit(kwh)}` : 'Production de la conception : non calculée'}</p>
+      )}
       {envoye && duDevis == null && (
         <p className="cal-res-sourdine">{'Le devis envoyé '}{lien}{' ne porte pas de production enregistrée.'}</p>
       )}
@@ -268,6 +302,8 @@ export default function EtapeResultats({
     () => calepinageApi.calepinages.resultat(id), id,
     { select: (r) => r.data, errorMessage: messageResultatIndisponible },
   )
+  // T4-X5-001 — la taille de la conception (lecture partagée du design-context, jamais un second appel en vol).
+  const contexte = useLectureServie('contexte', id, { actif: data?.conception != null })
   if (loading || error) {
     return (
       <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal236-erreur" forme="resultats"
@@ -295,7 +331,8 @@ export default function EtapeResultats({
   return (
     <div className="cal-res" data-zone="etape-resultats">
       {data?.conception
-        ? <ProductionDeLaConception bloc={data.conception} />
+        ? <ProductionDeLaConception bloc={data.conception} pose={data?.pose} simulee={complet}
+          taille={contexte.etat === 'ok' ? tailleDeLaConception(contexte.donnees) : null} />
         : <ProductionDuDevis bloc={blocDuDevis(data)} p50={complet ? total?.p50_kwh : null} incomplet={incomplet} />}
       {simule && <PanneauxNonRaccordes data={data} />}
       {enCours && <SimulationEnCours calepinageId={id} intervalleMs={intervalleMs} onTermine={refetch} />}

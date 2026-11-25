@@ -529,18 +529,27 @@ class EndpointImportProjetEnBaseTest(BaseApiCalepinage):
 
     def test_lead_deja_ouvert_409_nomme_l_existant(self):
         """ACON4 — porte unique (D-ACAL-12) : le lead a déjà C1 ouvert ⇒
-        aperçu ET confirmation 409 nommant C1, rien n'est créé."""
+        la confirmation 409 nommant C1, rien n'est créé. T4-X5-016 — l'APERÇU
+        reste atteignable (rien n'y est écrit) et dit d'avance que l'écriture
+        sera refusée, et quoi faire."""
         from apps.calepinage.models import Calepinage
         from apps.calepinage.selectors import calepinages_ouverts_du_lead
 
         c1 = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='Toiture C1')
-        for apercu in (True, False):
-            reponse = self._post({'projet': fichier(), 'lead': self.lead.pk,
-                                  'apercu': apercu})
-            self.assertEqual(reponse.status_code, 409, reponse.data)
-            self.assertEqual(reponse.data['calepinage_existant'], c1.pk)
-            self.assertIn(f'#{c1.pk}', reponse.data['lead'])
+        apercu = self._post({'projet': fichier(), 'lead': self.lead.pk,
+                             'apercu': True})
+        self.assertEqual(apercu.status_code, 200, apercu.data)
+        self.assertFalse(apercu.data['ecrit'])
+        avis = ' '.join(apercu.data['avertissements'])
+        self.assertIn(f'#{c1.pk}', avis)
+        self.assertIn('Confirmer l’import sera refusé', avis)
+        self.assertIn('client', avis)
+        reponse = self._post({'projet': fichier(), 'lead': self.lead.pk,
+                              'apercu': False})
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(reponse.data['calepinage_existant'], c1.pk)
+        self.assertIn(f'#{c1.pk}', reponse.data['lead'])
         self.assertEqual(
             [c.pk for c in calepinages_ouverts_du_lead(self.company, self.lead.pk)],
             [c1.pk])
