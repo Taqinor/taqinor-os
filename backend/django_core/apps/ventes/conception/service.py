@@ -85,6 +85,11 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
 
     debut = timezone.now()  # relecture E3 Q5 : avant toute lecture des entrées
     origine, champs = _declencheur_valide(declencheur)
+    if lead is not None and calepinage_id is None:
+        # Lane E6e (T4-X5-003) — UNE conception par lead : son calepinage ouvert (pose et
+        # désignations) entre quel que soit le déclencheur, pas seulement côté calepinage.
+        from apps.ventes.conception.porte_calepinage import calepinage_du_lead
+        calepinage_id, toit = calepinage_du_lead(company, lead, None, toit)
     try:
         lead, porteur, refus = _porteur(lead, company, calepinage_id)
     except ValueError:

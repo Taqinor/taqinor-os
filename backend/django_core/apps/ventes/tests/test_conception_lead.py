@@ -2932,6 +2932,76 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
                          {'valeur': onduleur.nom, 'source': 'calepinage'})
         self.assertNotIn('module_designe', lue['entrees_utilisees'])
 
+    def test_e6e_une_conception_quel_que_soit_le_declencheur(self):
+        """Lane E6e, item 1 (T4-X5-003) — un lead dont le calepinage OUVERT porte un onduleur
+        désigné à l'étape Électrique : la conception rangée (empreinte et valeurs) est LA
+        MÊME, que le recalcul parte du calepinage (pose enregistrée) ou du lead (porte de
+        lecture, fiche modifiée, devis automatique, commande de remplissage) ; et, une fois
+        rangée depuis le calepinage, aucun déclencheur du lead ne la refait sans lui."""
+        from types import SimpleNamespace
+
+        from django.core.management import call_command
+
+        from apps.calepinage.models import Calepinage
+        from apps.stock.models import Produit
+        from apps.ventes.conception.receivers import mettre_en_file
+        from apps.ventes.conception.service import conception_ou_calcul
+        from apps.ventes.domain.creation_auto import conception_pour_le_devis
+        from apps.ventes.models import ConceptionLead
+        from apps.ventes.selectors import conception_courante
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        deye = Produit.objects.get(company=company, nom='Onduleur hybride Deye 5kW Monophasé')
+        module = Produit.objects.create(company=company, nom='Panneau Canadian Solar 710W', sku='E6E-710',
+                                        prix_vente=Decimal('1500'), prix_achat=Decimal('1'), quantite_stock=50)
+        calepinage = self._calepinage_designe(company, lead, onduleur_produit=deye.pk, module_produit=module.pk)
+        Calepinage.objects.filter(pk=calepinage.pk).update(layout_hash='h' * 64)
+        user = self._utilisateur(company)
+
+        def _rangee():
+            courante = ConceptionLead.objects.get(company=company, lead=lead, courante=True)
+            retenue = courante.valeurs[courante.option_retenue]
+            return (courante.empreinte, courante.calepinage_id, courante.option_retenue,
+                    retenue['onduleur_produit']['valeur'], retenue['module_produit']['valeur'],
+                    retenue['nb_panneaux']['valeur'], retenue['puissance_kwc']['valeur'])
+
+        toit = SimpleNamespace(empreinte='h' * 64, plafond_panneaux=None)
+        self._relancer(None, company, _declencheur('pose_enregistree'), calepinage_id=calepinage.pk, toit=toit)
+        reference = _rangee()
+        self.assertEqual(reference[3:5], (deye.pk, module.pk))
+
+        def _taches():
+            self._executer_les_taches()
+
+        declencheurs = {
+            'porte_de_lecture': lambda: (conception_ou_calcul(company, lead.pk), _taches()),
+            'fiche_modifiee': lambda: (mettre_en_file(company.pk, lead_id=lead.pk, origine='lead_entrees_modifiees',
+                                                      champs=[]), _taches()),
+            'devis_automatique': lambda: conception_pour_le_devis(lead, company, user),
+            'remplissage': lambda: self._commande_remplir(call_command, company),
+        }
+        for nom, declencher in declencheurs.items():
+            with self.subTest(declencheur=nom, premier=True):  # le lead déclenche le PREMIER calcul
+                ConceptionLead.objects.filter(company=company, lead=lead).delete()
+                declencher()
+                self.assertEqual(_rangee(), reference)
+                self.assertFalse(conception_courante(company, lead.pk)['perimee'])  # le filet lit la même pose
+        for nom, declencher in declencheurs.items():
+            with self.subTest(declencheur=nom, premier=False):  # rangée depuis le calepinage : rien ne bouge
+                ConceptionLead.objects.filter(company=company, lead=lead).delete()
+                self._relancer(None, company, _declencheur('pose_enregistree'), calepinage_id=calepinage.pk,
+                               toit=toit)
+                declencher()
+                self.assertEqual(ConceptionLead.objects.filter(company=company, lead=lead).count(), 1)
+                self.assertEqual(_rangee(), reference)
+
+    def _commande_remplir(self, call_command, company):
+        import io
+
+        with self.captureOnCommitCallbacks(execute=True):
+            call_command('remplir_conceptions', '--company', str(company.pk), '--appliquer', stdout=io.StringIO())
+
 
 # ── ADEV141 — remplir les conceptions des leads existants, liste d'abord ─────
 
