@@ -156,8 +156,9 @@ def devis_et_ecart(devis_id, retenue, company_id):
     """``(devis, ecart_devis)`` du devis lié de ``company_id`` (``get_devis_by_pk`` / ``apps.ventes.
     selectors.ecart_devis``, conception retenue déjà lue en ``retenue``) ; ``(None, [])`` hors société."""
     from apps.ventes.selectors import ecart_devis
+    from apps.ventes.selectors_calepinage import devis_lu_par_pk
 
-    devis = get_devis_by_pk(devis_id)
+    devis = devis_lu_par_pk(devis_id)  # coût des requêtes : déjà lu par la conception retenue
     if devis is None or devis.company_id != company_id:
         return None, []
     # Mot-clé passé par dictionnaire : la garde de surface du champ ``CalepinageVariante.retenue``

@@ -174,16 +174,17 @@ def _empreinte_des_entrees(version):
     toit = SimpleNamespace(empreinte=pose, plafond_panneaux=None) if pose else None
     # Relecture E6 B1 — les désignations à la main du calepinage de la version entrent
     # dans l'empreinte rangée (``service.relancer``) : la lecture les relit par la MÊME porte.
-    imposes, calepinage_id = None, version.calepinage_id
+    imposes, calepinage_id, lu = None, version.calepinage_id, None
     if version.lead_id and not calepinage_id:
         # Lane E6e — la résolution de l'écrivain (``porte_calepinage.calepinage_du_lead``) : une
         # version rangée sans le calepinage ouvert du lead est périmée, une relance la range avec.
-        from .conception.porte_calepinage import calepinage_du_lead
-        calepinage_id, toit = calepinage_du_lead(company, lead, None, toit)
+        # Coût des requêtes : le calepinage lu sert aussi ses désignations (pas de seconde lecture).
+        from .conception.porte_calepinage import calepinage_et_toit_du_lead
+        calepinage_id, toit, lu = calepinage_et_toit_du_lead(company, lead, None, toit)
     if calepinage_id:
         from .conception.moteur import consommation_imposee
         from .conception.porte_calepinage import designations_du_calepinage
-        imposes = designations_du_calepinage(company, calepinage_id) or None
+        imposes = designations_du_calepinage(company, calepinage_id, lu) or None
         # Reste d'ACAL2020 — le relevé collé, relu par LA MÊME porte que l'écrivain (niveau 15).
         lead, _conso = consommation_imposee(lead, company, calepinage_id)
     with reglages_lus_sans_creer(company):
