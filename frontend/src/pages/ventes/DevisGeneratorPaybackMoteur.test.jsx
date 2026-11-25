@@ -36,10 +36,14 @@ vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDev
 import ventesApi from '../../api/ventesApi'
 import stockApi from '../../api/stockApi'
 import DevisGenerator from './DevisGenerator'
-import { ONDULEUR, PANNEAU, declarerBeforeEachDevis, lignesResidentielles, makeDevisStore } from './devisGenerator.testHelpers.jsx'
+import {
+  ONDULEUR, PANNEAU, declarerBeforeEachDevis, ligneProduit, lignesResidentielles, makeDevisStore,
+} from './devisGenerator.testHelpers.jsx'
 
 const RANGEE = exempleContrat('ventes', 'conception_lead')
 const APERCU = documentContrat('ventes', 'conception_lead').apercu.reponse
+//: Un retour en années au format de l'écran (dixième, virgule française).
+const ans = (v) => v.toFixed(1).replace('.', ',')
 // L'aperçu sur l'investissement des lignes de l'écran : son payback diffère de la version rangée.
 const APERCU_SUR_LES_LIGNES = { ...APERCU, valeurs: { sans: { ...APERCU.valeurs.sans,
   payback: { valeur: 4.2, unite: 'ans', source: 'devis' } } } }
@@ -59,7 +63,11 @@ function devisRouvert(lead) {
   }
 }
 
-declarerBeforeEachDevis({ stockApi, ventesApi, produits: [PANNEAU, ONDULEUR], devis: () => devisRouvert(RANGEE.lead), localStorage: true })
+// E7d — un onduleur hybride et une batterie du catalogue (option « avec » des lignes).
+const HYBRIDE = { id: 103, nom: 'Onduleur hybride Deye 5kW Monophasé', prix_vente: 14000, tva: 20, is_archived: false }
+const BATTERIE = { id: 104, nom: 'Batterie Dyness 5 kWh', prix_vente: 16000, tva: 20, is_archived: false }
+
+declarerBeforeEachDevis({ stockApi, ventesApi, produits: [PANNEAU, ONDULEUR, HYBRIDE, BATTERIE], devis: () => devisRouvert(RANGEE.lead), localStorage: true })
 
 function renderEdition() {
   return render(
@@ -103,8 +111,9 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
     // l'écran (envoyé avec le corps), jamais celui du devis de référence de la version rangée.
     const corps = ventesApi.apercuConception.mock.calls.at(-1)[0]
     expect(String(Math.round(corps.investissement.sans))).toBe((figure(container, 'total_ttc') || '').replace(/\D/g, ''))
-    expect(figure(container, 'payback_ans')).toBe(`${APERCU_SUR_LES_LIGNES.valeurs.sans.payback.valeur} ans`)
-    expect(figure(container, 'payback_ans')).not.toBe(`${RANGEE.valeurs.sans.payback.valeur} ans`)
+    // Revue de l'écran (25/11) — une règle d'arrondi : au dixième, virgule française.
+    expect(figure(container, 'payback_ans')).toBe(`${ans(APERCU_SUR_LES_LIGNES.valeurs.sans.payback.valeur)} ans`)
+    expect(figure(container, 'payback_ans')).not.toBe(`${ans(RANGEE.valeurs.sans.payback.valeur)} ans`)
   }, 20000)
 
   it('lignes sans prix : le payback dit « après enregistrement », aucun investissement envoyé', async () => {
@@ -144,7 +153,7 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
     // E7d (M1) — sans lead ni devis de référence, le payback est celui de l'aperçu sur les
     // lignes chiffrées de l'écran (plus « N/A » pour un brouillon aux lignes chiffrées).
     expect(corps.investissement.sans).toBeGreaterThan(0)
-    expect(figure(container, 'payback_ans')).toBe(`${APERCU.valeurs.sans.payback.valeur} ans`)
+    expect(figure(container, 'payback_ans')).toBe(`${ans(APERCU.valeurs.sans.payback.valeur)} ans`)
   }, 20000)
 
   // E7d (CI e2e figures-parite, 25/11) — un devis « Les deux » aux champs PV
@@ -162,6 +171,8 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
     ventesApi.getConceptionLead.mockRejectedValue({ response: { status: 404 } })
     const option = (nb, production) => ({ ...APERCU.valeurs.sans,
       nb_panneaux: { valeur: nb, unite: 'panneaux', source: 'moteur' },
+      module_produit: { valeur: PANNEAU.id, unite: null, source: 'moteur' },
+      onduleur_produit: { valeur: ONDULEUR.id, unite: null, source: 'moteur' },
       production_annuelle: { valeur: production, unite: 'kWh/an', source: 'moteur' } })
     const deuxOptions = { ...APERCU, option_retenue: 'avec', valeurs: { sans: option(8, 9000), avec: option(10, 11250) } }
     const uneOption = { ...APERCU, valeurs: { sans: option(8, 9000) } }
@@ -172,6 +183,74 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
       ?.getAttribute('data-figure-value')?.replace(/\D/g, '')
     await waitFor(() => expect([prod('sans'), prod('avec')]).toEqual(['9000', '11250']), { timeout: 8000 })
     expect(ventesApi.apercuConception.mock.calls.every(([c]) => !c?.imposes?.nb_panneaux)).toBe(true)
+  }, 20000)
+
+  // E7d (revue de l'écran, 25/11, BLOQUANT) — « Les deux » 4 / 8 panneaux, 12 factures
+  // tapées : la conception sur les valeurs du lead re-dimensionne (3 panneaux) ; l'écran
+  // impose alors SA composition — les produits de SES lignes (panneau, onduleur réseau
+  // pour « sans » ; onduleur hybride + batterie pour « avec »), un aperçu par option — et
+  // les cartes des DEUX options se remplissent ; jamais un panneau absent des lignes.
+  it('« Les deux » 4 / 8, factures tapées : composition des lignes imposée par option', async () => {
+    const devis = devisRouvert(RANGEE.lead)
+    devis.data.etude_params = { scenario: 'Les deux' }
+    const [panneau, onduleur] = devis.data.lignes
+    devis.data.lignes = [
+      { ...panneau, quantite: '4', variante: 'sans' },
+      { ...panneau, id: 3, quantite: '8', variante: 'avec', ordre: 1 },
+      { ...onduleur, variante: 'sans' },
+      ligneProduit({ id: 4, produit: HYBRIDE, quantite: '1', prix_unitaire: '14000.00', taux_tva: '20.00', ordre: 3 }),
+      ligneProduit({ id: 5, produit: BATTERIE, quantite: '1', prix_unitaire: '16000.00', taux_tva: '20.00', ordre: 4 }),
+    ].map((l, i) => (i >= 3 ? { ...l, variante: 'avec' } : l))
+    ventesApi.getDevisById.mockResolvedValue(devis)
+    ventesApi.getConceptionLead.mockRejectedValue({ response: { status: 404 } })
+    const une = (opt, production) => ({ ...APERCU, option_retenue: opt, valeurs: { [opt]: { ...APERCU.valeurs.sans,
+      nb_panneaux: { valeur: 3, unite: 'panneaux', source: 'moteur' },
+      production_annuelle: { valeur: production, unite: 'kWh/an', source: 'moteur' } } } })
+    ventesApi.apercuConception.mockImplementation((corps) => Promise.resolve({ data:
+      !corps?.imposes?.nb_panneaux ? une('sans', 2600) : corps.imposes.batterie_produit_id ? une('avec', 7037)
+        : une('sans', 3518) }))
+    const { container } = renderEdition()
+    for (const c of [...container.querySelectorAll('.gen-monthly-grid input')]) {
+      await act(async () => { fireEvent.change(c, { target: { value: '800' } }) })
+    }
+    const prod = (opt) => container.querySelector(`[data-figure="production_annuelle_kwh"][data-figure-option="${opt}"]`)
+      ?.getAttribute('data-figure-value')?.replace(/\D/g, '')
+    const imposesFaits = () => ventesApi.apercuConception.mock.calls.map(([c]) => c.imposes).filter((i) => i.nb_panneaux)
+    // Les deux DERNIERS aperçus imposés portent les 12 factures tapées (la frappe est finie).
+    await waitFor(() => expect(imposesFaits().slice(-2).map((i) => i.consommation?.source))
+      .toEqual(['factures', 'factures']), { timeout: 10000 })
+    await waitFor(() => expect([prod('sans'), prod('avec')]).toEqual(['3518', '7037']), { timeout: 10000 })
+    const imposes = imposesFaits()
+    expect(imposes).toContainEqual(expect.objectContaining({ nb_panneaux: 4, panneau_produit_id: PANNEAU.id,
+      onduleur_produit_id: ONDULEUR.id }))
+    expect(imposes).toContainEqual(expect.objectContaining({ nb_panneaux: 8, panneau_produit_id: PANNEAU.id,
+      onduleur_produit_id: HYBRIDE.id, batterie_produit_id: BATTERIE.id }))
+  }, 30000)
+
+  // Revue de l'écran (25/11) — trois paybacks « avec batterie » sur un même onglet : la
+  // carte (ce devis, ses lignes), le tableau et la falaise (taille, batterie et prix du
+  // MOTEUR). Chacun dit pour quoi il est calculé ; un seul arrondi (dixième, virgule).
+  it('paybacks du tableau et de la falaise : étiquetés « du moteur », au dixième', async () => {
+    const ligne = { panneaux: 8, kwc: 4.4, onduleur: 'Onduleur hybride', ratio_onduleur_kwc: 1.1,
+      regle_80_pct_respectee: true, taux_autoconso_sans: 0.5, couverture_sans: 0.4, economie_sans_mad: 5000,
+      economie_avec_mad: 8614, batterie_disponible: true, payback_sans_annees: 6.89, payback_avec_annees: 8.72 }
+    const dimensionnement = { tableau: [ligne], recommandation: { panneaux: 8, kwc: 4.4 },
+      falaise: { cible_kwh_mois: 300 }, meilleure_falaise: { panneaux: 8, kwc: 4.4, batterie_kwh: 4.6,
+        payback_annees: 7.66 } }
+    ventesApi.getConceptionLead.mockResolvedValue({ data: RANGEE })
+    ventesApi.apercuConception.mockResolvedValue({ data: { ...APERCU_SUR_LES_LIGNES,
+      blocs: { ...APERCU.blocs, dimensionnement } } })
+    const { container } = renderEdition()
+    await act(async () => { fireEvent.change(container.querySelector('#gen-hiver'), { target: { value: '1400' } }) })
+    await waitFor(() => expect(container.querySelector('[data-testid="etude-horaire-dimensionnement"]'))
+      .not.toBeNull(), { timeout: 5000 })
+    const tableau = container.querySelector('[data-testid="etude-horaire-dimensionnement"]').textContent
+    expect(tableau).toContain('Payback sans (prix du moteur)')
+    expect(tableau).toContain('6,9 ans')
+    expect(tableau).not.toContain('6.89')
+    expect(container.querySelector('[data-testid="etude-horaire-meilleure-falaise"]').textContent)
+      .toContain('payback 7,7 ans (batterie et prix du moteur)')
+    expect(figure(container, 'payback_ans')).toBe('4,2 ans')  // la carte : ce devis
   }, 20000)
 
   // E7d (revue lot 4, M2) — un aperçu en ÉCHEC après une saisie est DIT : la phrase du
@@ -217,5 +296,11 @@ describe('AGEN11 — l’aperçu de l’écran devis vient du moteur unique', ()
       .toBe(refus.refus.champ)
     expect(figure(container, 'production_annuelle_kwh')).toBeNull()
     expect(ventesApi.postEtudeHorairePreview).not.toHaveBeenCalled()
+    // Revue de l'écran (25/11) — le refus est dit UNE fois dans le bloc, et les cartes
+    // disent ce qui manque au lieu de disparaître en silence.
+    const bloc = container.querySelector('#gen-sec-simulation-contenu').textContent
+    expect(bloc.split(refus.refus.message).length - 1).toBe(1)
+    expect(container.querySelector('[data-testid="apercu-conception-attente"]').textContent)
+      .toContain('Production, économies et retour sur investissement ne sont pas calculés')
   }, 20000)
 })
