@@ -8,7 +8,7 @@ import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-li
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { exempleContrat } from '../../../../../test/fixtures/contractSamples'
 import { formatNumber } from '../../../../../lib/format'
-import { readFileSync } from 'node:fs'
+import { feuilleAuDoigt } from '../../../__tests__/feuilleAuDoigt'
 
 vi.mock('../../../../../api/calepinageApi', () => ({
   default: {
@@ -1090,17 +1090,3 @@ describe('Étape Résultats — panneaux posés mais non raccordés (ACAL1912)',
     expect(zone()).toBeNull()
   })
 })
-
-/** T4-X7-010 — les règles `@media (pointer: coarse)` d'une feuille, posées SANS leur requête (jsdom ne lit pas les @media). */
-function feuilleAuDoigt(chemin) {
-  const brut = document.createElement('style')
-  brut.textContent = readFileSync(chemin, 'utf8')
-  document.head.appendChild(brut)
-  const regles = [...brut.sheet.cssRules]
-  brut.remove()
-  const style = document.createElement('style')
-  style.textContent = regles.filter((r) => r.type === 4 && r.conditionText === '(pointer: coarse)')
-    .flatMap((m) => [...m.cssRules].map((r) => r.cssText)).join(' ')
-  document.head.appendChild(style)
-  return style
-}
