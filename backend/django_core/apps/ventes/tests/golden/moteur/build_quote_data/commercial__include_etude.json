@@ -1,5 +1,5 @@
 {
-  "sha256": "cb64b2be7d0d50cdc246bf9f273e138156e22309715290414b034b962bd3c06a",
+  "sha256": "6c55562c515d667efe6447171dc0f2054ddb2a7f6cbff25a7a329503597b3dcf",
   "cles": [
     "ref",
     "date",
@@ -123,7 +123,8 @@
     "devise",
     "montants_tranches",
     "economie_ci",
-    "jalons_paiement"
+    "jalons_paiement",
+    "phrases_profil_ouvertes"
   ],
   "sharelinks": 0
 }

@@ -1,5 +1,5 @@
 {
-  "sha256": "464aa2c187675f1417f6e5c94c66bf51bc2d572de102d179156f747913a726fa",
+  "sha256": "1bdfb78c37c621738090d72f4ea0b57ad5ad112a52fdd8e2d4764197a2397ba7",
   "cles": [
     "ref",
     "date",
@@ -128,7 +128,8 @@
     "prod_kwh_multi",
     "eco_s_ann_multi",
     "eco_a_ann_multi",
-    "montants_tranches"
+    "montants_tranches",
+    "phrases_pdf_2511"
   ],
   "sharelinks": 0
 }

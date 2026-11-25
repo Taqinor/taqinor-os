@@ -304,6 +304,12 @@ def build(ctx):
                 'autoconsommés réduisent la facture (loi 82-21) — le surplus '
                 'injecté n\'est pas rémunéré.').format(cov=coverage_pct),
             cov=coverage_pct) + '</div>'
+    # D-ACAL-111 (nouveaux rendus) — la facture « aujourd'hui » est RECALCULÉE au
+    # tarif par tranches (moteur horaire) : la ligne approuvée le dit, sous elle.
+    if (not masquer_eco and d.get("phrases_pdf_2511")
+            and d.get("factures_source") == "etude_horaire"):
+        cov_gap_note += ('<div class="c1-bigcut-note">'
+                         + libelle_cat(d, "res_facture_recalculee_tranches") + '</div>')
 
     kwc_str = decimale(f"{kwc:.2f}".rstrip("0").rstrip("."))
     # ── F1/L-2OPT (26/08/2026) — LE PRIX AU kWc D'UNE OPTION SE CALCULE SUR LE

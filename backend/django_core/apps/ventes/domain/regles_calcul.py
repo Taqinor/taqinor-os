@@ -149,6 +149,13 @@ COUPURE_HYBRIDES_HT = (2026, 11, 25)
 #: lendemain de la décision ; rien n'était en ligne avant), fermée aux devis
 #: envoyés avant — ils gardent la phrase reçue. Rien d'autre du niveau 15.
 COUPURE_PHRASES_PROFIL = (2026, 11, 26)
+#: D-ACAL-111 à 114 (fondateur 25/11/2026, « nouveaux rendus seulement ») :
+#: la ligne sous la facture actuelle recalculée (résidentiel), le titre sans
+#: numéro d'un devis à UNE option (résidentiel), le devis FINAL de pompage
+#: sans « à vérifier à la visite » — UNE coupure, UN prédicat
+#: (:func:`phrases_pdf_2511_ouvertes`), même mécanique que
+#: :data:`COUPURE_PHRASES_PROFIL` ; le niveau 15 n'est pas rendu courant.
+COUPURE_PDF_2511 = (2026, 11, 26)
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
 REGLES_COURANTES = REGLES_SENSIBILITES_1911
 
@@ -190,6 +197,29 @@ def drapeaux_phrases_profil(devis) -> dict:
     if marche in ('commercial', 'industriel') and phrases_profil_ouvertes(devis):
         return {'phrases_profil_ouvertes': True}
     return {}
+
+
+def phrases_pdf_2511_ouvertes(devis) -> bool:
+    """D-ACAL-111 à 114 — les corrections du PDF du 25/11/2026 pour ce devis ?
+    Voir :data:`COUPURE_PDF_2511`."""
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111, COUPURE_PDF_2511)
+
+
+def drapeaux_pdf_2511(devis) -> dict:
+    """D-ACAL-111 à 114 — drapeau de RENDU du cas OUVERT : ``{'phrases_pdf_2511':
+    True}`` pour un devis résidentiel ou agricole dont le rendu change, ``{}``
+    sinon (envoyé avant la coupure, commercial / industriel) : l'empreinte des
+    données bouge exactement pour les devis dont le PDF change."""
+    marche = (getattr(devis, 'mode_installation', None) or '').strip().lower()
+    if marche not in ('commercial', 'industriel') and phrases_pdf_2511_ouvertes(devis):
+        return {'phrases_pdf_2511': True}
+    return {}
+
+
+def drapeaux_nouveaux_rendus(devis) -> dict:
+    """Les drapeaux de rendu « nouveaux rendus seulement » posés par le builder
+    (D-ACAL-102, D-ACAL-111 à 114) : cas OUVERT seulement."""
+    return {**drapeaux_phrases_profil(devis), **drapeaux_pdf_2511(devis)}
 
 
 def hybrides_ht_ouverts(devis) -> bool:
