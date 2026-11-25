@@ -108,7 +108,10 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
         # Relecture E6 B2 : désignations du calepinage = imposition SOUPLE (jamais un refus).
         imposes = designations_du_calepinage(company, calepinage_id) or None
         souple = imposes is not None
-    with reglages_lus_sans_creer(company):
+    from apps.ventes.conception.porte_calepinage import contexte_de_la_relance
+    # Relecture E6 — jamais de simulation de pose dans une requête (la tâche et la commande
+    # posent ``contexte_de_pose(simuler=True)``) ; une requête la met en file au nom de l'auteur.
+    with reglages_lus_sans_creer(company), contexte_de_la_relance(auteur):
         entrees = entrees_pour(lead, company, toit=toit)
         if courante is not None and courante.empreinte == empreinte_conception(entrees, imposes) and not forcer:
             return Relance(courante, False, None)

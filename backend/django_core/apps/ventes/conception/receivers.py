@@ -223,8 +223,10 @@ def executer_relance(company_id, *, lead_id=None, calepinage_id=None, origine, c
         # ADEV147 (relecture E4 M2) — le suivi des brouillons n'est plus fait
         # ici : toute version rangée (tâche, devis demandé, remplissage) met
         # en file ``task_suivre_la_conception`` (``service._annoncer_apres_validation``).
-        relance = relancer(lead, company=company, declencheur={'origine': origine, 'champs': champs or []},
-                           toit=toit, calepinage_id=calepinage_id)
+        from apps.ventes.conception.porte_calepinage import contexte_de_pose
+        with contexte_de_pose(simuler=True):  # relecture E6 : la TÂCHE simule la pose, jamais une requête
+            relance = relancer(lead, company=company, declencheur={'origine': origine, 'champs': champs or []},
+                               toit=toit, calepinage_id=calepinage_id)
         return {'version': getattr(relance.conception, 'version', None), 'ecrite': relance.ecrite}
     except Exception:  # noqa: BLE001 — une relance ratée n'écrit rien ; le filet la rejoue (D-ENF22-BLE001)
         logger.exception('ADEV139 : relance de la conception en échec (lead #%s, calepinage #%s)',

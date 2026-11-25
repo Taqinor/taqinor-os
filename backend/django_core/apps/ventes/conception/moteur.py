@@ -76,6 +76,11 @@ class ResultatConception:
     #: les suppositions des désignations écartées. Jamais servis tels quels.
     imposes_retenus: dict = field(default_factory=dict)
     designations_ecartees: list = field(default_factory=list)
+    #: Relecture E6 M1 — niveau 15 : ``(calepinage_id, pose servie)`` dont la production
+    #: sert de BASE aux études (posée sur le devis en mémoire avant elles), puis le
+    #: productible servi retenu (``None`` : production de la ville). Jamais servis.
+    pose_a_produire: object = None
+    productible_pose: object = None
 
     def sortie(self):
         return {cle: getattr(self, cle) for cle in CLES_SORTIE}
@@ -154,6 +159,8 @@ def _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_
     if calepinage_id:
         from apps.ventes.conception.porte_calepinage import designations_ecartees
         resultat.designations_ecartees = designations_ecartees(company, calepinage_id)
+    if pose is not None and pose['complete']:
+        resultat.pose_a_produire = (calepinage_id, pose)
     refus = refus_localisation(lead)
     if refus is None:
         calcul = {'residentiel': _residentiel, 'agricole': _agricole}.get(entrees.marche, _ci)
@@ -173,8 +180,6 @@ def _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_
                         for option in options}
     V.dire_l_impose(resultat, 'calepinage' if souple or (pose or {}).get('a_la_main') else 'saisie',
                     pose_a_la_main=bool((pose or {}).get('a_la_main')) and entrees.marche == 'residentiel')
-    if pose is not None:
-        _ranger_la_pose(resultat, company, calepinage_id, pose)
     return _sans_cles_interdites_partout(resultat)
 
 
@@ -187,6 +192,7 @@ def _calcul_et_repli(resultat, calcul, porteur, toit, imposes, designes):
     désigné (``designes``) est d'abord imposé (compte complété par le moteur) ; si la
     composition le refuse, la conception est refaite SANS lui et une supposition dit
     pourquoi : une désignation ne rend jamais la conception refusée."""
+    from apps.ventes.conception.porte_calepinage import SimulationEnCours
     from apps.ventes.domain.taille import AutoDevisError
 
     if designes:
@@ -195,6 +201,8 @@ def _calcul_et_repli(resultat, calcul, porteur, toit, imposes, designes):
             calcul(resultat, *porteur, toit=toit, imposes=avec, completer=True)
             resultat.imposes_retenus = avec
             return None
+        except SimulationEnCours:
+            raise
         except AutoDevisError as exc:
             champ = 'onduleur_produit' if str(exc.field or '').startswith('onduleur') or (
                 'panneau_produit_id' not in designes) else 'module_produit'
@@ -205,6 +213,8 @@ def _calcul_et_repli(resultat, calcul, porteur, toit, imposes, designes):
                             'Électrique.' % exc.message.rstrip('. '))})
     try:
         calcul(resultat, *porteur, toit=toit, imposes=imposes)
+    except SimulationEnCours:
+        raise
     except AutoDevisError as exc:
         return {'code': CODE_REFUS_MOTEUR, 'champ': exc.field or '', 'message': exc.message}
     resultat.imposes_retenus = dict(imposes or {})
@@ -253,31 +263,36 @@ def pose_reelle(company, calepinage_id, marche):
     return pose if pose and pose.get('nb_panneaux') else None
 
 
-def _ranger_la_pose(resultat, company, calepinage_id, pose):
-    """ADEV150 : taille souveraine dite ``pose`` ; ADEV149 : pose complète ⇒ la
-    production annuelle et mensuelle de LA simulation de la pose, pour le matériel
-    du moteur, sur les options qui portent ce matériel (source ``pose``). Une
-    simulation qui échoue est DITE absente ; la production du marché reste."""
-    retenue = resultat.valeurs.get(resultat.option_retenue) or {}
-    materiel = {role: (retenue.get('%s_produit' % role) or {}).get('valeur') for role in ('module', 'onduleur')}
-    options = [o for o, v in resultat.valeurs.items()
-               if all((v.get('%s_produit' % r) or {}).get('valeur') == pk for r, pk in materiel.items())]
-    # La taille d'une pose ajustée à la main est dite ``impose`` (relecture E6 m2, ``valeurs.dire_l_impose``).
-    if not pose['complete']:
+def _base_de_la_pose(resultat, devis, company):
+    """Relecture E6 M1 (ADEV149, niveau 15, pose complète) — le productible de LA pose
+    (porte ``productible_de_la_pose`` : le résultat rangé du calepinage s'il est à jour,
+    sinon la simulation — en tâche seulement, ``SimulationEnCours`` dans une requête) pour
+    le matériel des lignes du moteur, posé sur le devis EN MÉMOIRE avant ses études : la
+    base de production de LA maison (``horaire/productible_pose.py``) le lit, donc
+    production, autoconsommation, couverture, économies et blocs copiés au devis en
+    viennent TOUS. Une lecture qui échoue autrement est DITE absente (production de la ville)."""
+    if resultat.pose_a_produire is None:
         return
-    from apps.ventes.conception.porte_calepinage import simuler_la_pose
-    sortie = {}
+    from apps.ventes.conception.porte_calepinage import SimulationEnCours, productible_de_la_pose
+    from apps.ventes.domain.catalogue import classer_produit
 
-    def simuler():
-        sortie.update(simuler_la_pose(company, calepinage_id, materiel) or {})
-    _au_mieux(resultat, 'production_pose', simuler)
-    if not sortie.get('complete') or sortie.get('production_annuelle') is None:
+    calepinage_id, _pose = resultat.pose_a_produire
+    classes = [(li, classer_produit(getattr(li.produit, 'nom', '') or li.designation) or '')
+               for li in resultat.lignes if li.type_ligne == 'produit' and not li.optionnelle]
+    materiel = {'module': next((li.produit_id for li, c in classes if c == 'panneau'), None),
+                'onduleur': next((li.produit_id for li, c in sorted(
+                    classes, key=lambda paire: (paire[0].variante or '') != 'avec') if c.startswith('onduleur')),
+                    None)}
+    try:
+        servi = productible_de_la_pose(company, calepinage_id, materiel)
+    except SimulationEnCours:
+        raise
+    except Exception as exc:  # noqa: BLE001 — dite absente, la production de la ville reste (D-ENF22-BLE001)
+        logger.warning('Productible de la pose non lu (moteur unique)', exc_info=True)
+        resultat.absents['production_pose'] = 'erreur : %s' % type(exc).__name__
         return
-    for option in options:
-        resultat.valeurs[option]['production_annuelle'] = {
-            'valeur': sortie['production_annuelle'], 'unite': 'kWh/an', 'source': 'pose'}
-        resultat.valeurs[option]['production_mensuelle'] = {
-            'valeur': sortie['production_mensuelle'], 'unite': 'kWh', 'source': 'pose'}
+    resultat.productible_pose = servi
+    devis.productible_pose_moteur = servi
 
 
 def sans_cles_interdites(noeud):
@@ -359,10 +374,15 @@ def _devis_neuf(intention, specs, avertissements):
     from apps.ventes.domain.pipeline import champs_du_brouillon
     from apps.ventes.models import Devis
 
+    from apps.ventes.domain.regles_calcul import REGLES_COURANTES
+
     devis = Devis(**champs_du_brouillon(intention))
     # Ce que ``Devis.save`` poserait (``auto_now``) : la couche « devis » des
     # entrées C&I est datée de lui (``etude_ci._couche_devis``).
     devis.updated_at = timezone.now()
+    # Relecture E6 M1 / M3(b) — le devis en mémoire porte le niveau de règles COURANT :
+    # les branches gardées par ``regles_au_moins(devis, …)`` sont celles du devis réel.
+    devis.regles_calcul = REGLES_COURANTES
     lignes = lignes_neuves(devis, specs, intention.company, avertissements=avertissements)
     return devis, DevisAuxLignes(devis, lignes), lignes
 
@@ -414,6 +434,7 @@ def _residentiel(resultat, lead, company, entrees, *, toit, imposes, completer=F
     avertissements = []
     _entrees, _cible, composition = composer_l_intention(None, intention, avertissements)
     devis, contexte, resultat.lignes = _devis_neuf(intention, specs_de_composition(composition), avertissements)
+    _base_de_la_pose(resultat, devis, company)
     _fusion(devis, es.CALEPINAGE, **cles_etude_de_composition(contexte, intention, composition))
     _provenance(devis, contexte, intention)
     _etudes(resultat, devis, contexte)
@@ -466,6 +487,7 @@ def _lignes_du_moteur(resultat, lead, company, params, lignes, *, sortie=None):
                                etude_initiale=params)
     devis, contexte, resultat.lignes = _devis_neuf(
         intention, specs_de_composition(specs_des_lignes_moteur(lignes)), [])
+    _base_de_la_pose(resultat, devis, company)
     _provenance(devis, contexte, intention)
     resultat.conception_electrique = _etudes(resultat, devis, contexte, sortie=sortie)
     _fusion(devis, es.CALEPINAGE, puissance_kwc=puissance_kwc_du_devis(contexte))

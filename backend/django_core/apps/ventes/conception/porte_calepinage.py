@@ -12,9 +12,14 @@ fichier de ``ventes`` en plus au cliquet ACAL1009) :
 * ACAL2018 — la pose du toit tracé et LA simulation de la pose, par la façade
   ``calepinage/services/pose_pour_moteur.py`` (jamais ``simulation.py``).
 
-Lecture pure : rien n'est écrit.
+Rien n'est écrit, sauf LA simulation de la pose (``simuler_la_pose`` : le détail rangé
+dans ``Calepinage.resultat`` comme le bouton), en tâche seulement (relecture E6).
 """
+from contextlib import contextmanager
+from contextvars import ContextVar
 from types import SimpleNamespace
+
+from apps.ventes.domain.taille import AutoDevisError
 
 
 def _nombre(valeur):
@@ -105,6 +110,69 @@ def pose_du_calepinage(company, calepinage_id):
     from apps.calepinage.services.pose_pour_moteur import pose_servie
 
     return pose_servie(company, calepinage_id) if calepinage_id else None
+
+
+class SimulationEnCours(AutoDevisError):
+    """Relecture E6 (règle « jamais de simulation dans une requête ») — la pose doit être
+    simulée et ne l'est pas encore : la simulation est mise en file, rien n'est rangé, le
+    devis automatique répond 409 avec :data:`MESSAGE_SIMULATION_EN_COURS`."""
+
+
+MESSAGE_SIMULATION_EN_COURS = 'La simulation de la pose est en cours : réessayez dans une minute.'
+#: Qui peut simuler la pose dans CE contexte : une tâche, une commande (``simuler``) ;
+#: l'utilisateur de la requête (``auteur``) qui met la simulation en file sinon.
+_CONTEXTE_POSE = ContextVar('ventes_conception_contexte_de_pose', default=None)
+
+
+@contextmanager
+def contexte_de_pose(*, simuler=False, auteur=None):
+    """``simuler=True`` : la tâche du moteur ou la commande — la simulation tourne ici ;
+    sinon (requête web, défaut) la pose non simulée est mise en file au nom d'``auteur``."""
+    jeton = _CONTEXTE_POSE.set({'simuler': simuler, 'auteur': auteur})
+    try:
+        yield
+    finally:
+        _CONTEXTE_POSE.reset(jeton)
+
+
+def contexte_de_la_relance(auteur):
+    """Le contexte d'une relance : celui de l'appelant s'il en a posé un (tâche, commande),
+    sinon celui d'une REQUÊTE au nom d'``auteur`` (aucune simulation, mise en file)."""
+    from contextlib import nullcontext
+    return nullcontext() if _CONTEXTE_POSE.get() is not None else contexte_de_pose(auteur=auteur)
+
+
+def productible_de_la_pose(company, calepinage_id, materiel):
+    """Relecture E6 M1 — le productible posé SERVI du calepinage (contrat
+    ``calepinage_productible_pose.json``, ``selectors_devis.productible_pose_du_calepinage``)
+    quand son résultat rangé est celui de la pose ; une pose jamais simulée ou dont la
+    simulation est périmée est simulée pour ``materiel`` dans une tâche
+    (:func:`contexte_de_pose` ``simuler``), mise en file et dite
+    (:class:`SimulationEnCours`) dans une requête. ``None`` sans calepinage."""
+    from apps.calepinage.selectors_devis import productible_pose_du_calepinage
+    from apps.ventes.coherence.registre import TOLERANCES
+    from apps.ventes.selectors_calepinage import calepinage_de_societe
+
+    calepinage = calepinage_de_societe(calepinage_id, company) if calepinage_id else None
+    if calepinage is None:
+        return None
+
+    def lire():
+        return productible_pose_du_calepinage(calepinage, tolerance_kwc_ratio=TOLERANCES['kwc_calepinage_ratio'])
+    servi = lire()
+    # Jamais simulée, ou simulation d'une AUTRE pose (``kwc_simule`` absent) ; un résultat
+    # incomplet (pertes non saisies) n'est pas refait : la simulation n'y changerait rien.
+    if servi is not None and not (servi.get('perime') and servi.get('kwc_simule') is None):
+        return servi
+    contexte = _CONTEXTE_POSE.get() or {}
+    if contexte.get('simuler'):
+        simuler_la_pose(company, calepinage_id, materiel)
+        calepinage.refresh_from_db()
+        return lire()
+    if contexte.get('auteur') is not None:
+        from apps.calepinage.services.simulation_auto import lancer_simulation_automatique
+        lancer_simulation_automatique(calepinage, user=contexte['auteur'])
+    raise SimulationEnCours(MESSAGE_SIMULATION_EN_COURS, field='calepinage')
 
 
 def simuler_la_pose(company, calepinage_id, materiel):
