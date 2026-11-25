@@ -79,6 +79,21 @@ export function deriverReouverture(lignes, { mode, catalogue = [] } = {}) {
   }
 }
 
+/**
+ * T4-V2-007 — la taille que pose « Auto-remplir » agricole : le nombre de
+ * panneaux du champ SERVI et le wattage du panneau des LIGNES posées (une
+ * seule source : « Puissance Panneau (W) » et « Puissance PV calculée » ne
+ * gardent plus le défaut 710 W quand le kit porte un 715 W).
+ * @returns {{panneaux: number, panel_watt?: number}|null} charge de la
+ *   transition `REOUVERTURE`, `null` sans champ servi.
+ */
+export function tailleAutoRemplirPompage(champ, lignes, catalogue = []) {
+  const nb = Number(champ?.nb_panneaux)
+  if (!Number.isFinite(nb) || nb <= 0) return null
+  const watt = Number(deriverReouverture(lignes, { mode: 'agricole', catalogue }).panelW)
+  return watt > 0 ? { panneaux: nb, panel_watt: watt } : { panneaux: nb }
+}
+
 // ── CIQ222 — `etude_params.tarif_declare` stocké → état d'écran (`?edit=`) ──
 // Inverse exact de `tarifDeclareDepuisSaisie` (etudeMarcheBloc.js) : la date
 // de saisie revient telle quelle, aucun nombre n'est reformaté.
