@@ -1,0 +1,26 @@
+[
+ {
+  "id": "T4-U2-019",
+  "verdict": "non-rejoue",
+  "vu": "derrière le niveau 15 : le commit 6c76c49a16 dit que la phrase « horaires déclarés » ne change qu'au niveau de règles 15 (regles_pose_reelle, nouveaux rendus), niveau non actif sur cette pile",
+  "capture": null
+ },
+ {
+  "id": "T4-U2-020",
+  "verdict": "non-rejoue",
+  "vu": "derrière le niveau 15 : le commit cfacac71ae ne retire l'annonce « bases du calcul ci-dessous » qu'au niveau de règles 15",
+  "capture": null
+ },
+ {
+  "id": "T4-X1-001",
+  "verdict": "non-rejoue",
+  "vu": "derrière le niveau 15 : le commit 6d4078a267 donne à chaque option sa taille et son prix par kWc seulement au niveau de règles 15 (REGLES_POSE_REELLE_2111, nouveaux rendus)",
+  "capture": null
+ },
+ {
+  "id": "T4-X1-002",
+  "verdict": "non-rejoue",
+  "vu": "derrière le niveau 15 : le commit dc08ec1809 imprime la garantie de l'onduleur de chaque option seulement au niveau de règles 15",
+  "capture": null
+ }
+]
