@@ -15,14 +15,28 @@ const LIBELLES_COOPERATIFS = {
   'CooperativeGesturesHandler.MobileHelpText': 'Utilisez deux doigts pour déplacer la carte',
 };
 
-/** Options de carte : gestes coopératifs sur pointeur tactile seulement. */
+/** T4-X2-011 — les noms des boutons de la carte (`default_locale.ts` de maplibre-gl 6.12.0), en français : la boussole
+ *  et « ma position » se lisaient en anglais (lecteur d'écran, infobulle) à côté de « Zoomer » / « Plein écran ». */
+const LIBELLES_BOUTONS = {
+  'NavigationControl.ResetBearing': 'Faire pivoter la carte (glisser) ; cliquer pour revenir au nord',
+  'NavigationControl.ZoomIn': 'Zoomer',
+  'NavigationControl.ZoomOut': 'Dézoomer',
+  'GeolocateControl.FindMyLocation': 'Me localiser',
+  'GeolocateControl.LocationNotAvailable': 'Position non disponible',
+  'FullscreenControl.Enter': 'Plein écran',
+  'FullscreenControl.Exit': 'Quitter le plein écran',
+  'AttributionControl.ToggleAttribution': 'Afficher les sources de la carte',
+  'Popup.Close': 'Fermer',
+};
+
+/** Options de carte : gestes coopératifs sur pointeur tactile seulement ; noms français des boutons partout. */
 export function optionsGestesCarte(fenetre: {
   matchMedia?: (requete: string) => { matches: boolean };
-}): { cooperativeGestures: boolean; locale?: Record<string, string> } {
+}): { cooperativeGestures: boolean; locale: Record<string, string> } {
   const tactile = Boolean(fenetre.matchMedia?.('(pointer: coarse)').matches);
   return tactile
-    ? { cooperativeGestures: true, locale: LIBELLES_COOPERATIFS }
-    : { cooperativeGestures: false };
+    ? { cooperativeGestures: true, locale: { ...LIBELLES_BOUTONS, ...LIBELLES_COOPERATIFS } }
+    : { cooperativeGestures: false, locale: { ...LIBELLES_BOUTONS } };
 }
 
 /**

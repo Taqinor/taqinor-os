@@ -15,6 +15,19 @@ describe('ACAL952 — gestes de la carte au toucher', () => {
     expect(optionsGestesCarte({}).cooperativeGestures).toBe(false);
   });
 
+  // T4-X2-011 — la boussole s'appelait « Drag to rotate map, click to reset north » et son voisin « Find my location » :
+  // textes anglais de la bibliothèque de carte, lus par un lecteur d'écran et en infobulle.
+  it('T4-X2-011 — tactile ou non : les boutons de la carte portent des noms français', () => {
+    for (const fenetre of [{ matchMedia: () => ({ matches: true }) }, { matchMedia: () => ({ matches: false }) }, {}]) {
+      const locale = optionsGestesCarte(fenetre).locale ?? {};
+      expect(locale['NavigationControl.ResetBearing']).toBe('Faire pivoter la carte (glisser) ; cliquer pour revenir au nord');
+      expect(locale['GeolocateControl.FindMyLocation']).toBe('Me localiser');
+      expect(locale['NavigationControl.ZoomIn']).toBe('Zoomer');
+      expect(locale['NavigationControl.ZoomOut']).toBe('Dézoomer');
+      expect(Object.values(locale).join(' ')).not.toMatch(/\b(map|my|location|Zoom in|Zoom out)\b/);
+    }
+  });
+
   it("annule l'événement DOM seulement quand un geste est actif", () => {
     const preventDefault = vi.fn();
     geleDefilementPendantGeste({ originalEvent: { preventDefault } }, false);
