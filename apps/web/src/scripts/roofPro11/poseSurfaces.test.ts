@@ -868,6 +868,27 @@ describe('ACAL918 — le plan du moteur pour la surface enregistrée', () => {
     } finally { m.restaurer(); }
   });
 
+  // T4-X9-012 — la barre du projet comptait la surface (45 panneaux), le tableau du site non (37) jusqu'au rechargement :
+  // la page hôte ne redessinait pas le tableau. Le panneau le redemande (`rendreSite`) aux mêmes instants que la barre change.
+  it('T4-X9-012 — le tableau du site est redessiné à l’enregistrement de la surface ET à l’arrivée du plan du moteur', async () => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="zones"></div></body>').window.document;
+    try {
+      const ctx = {
+        vertices: rectangle(30, 22), areas: [], activeArea: () => undefined, dom: { areasWindowEl: g.document.getElementById('zones') },
+        opts: { demanderPlanSurface: async () => REPONSE },
+      } as unknown as Parameters<typeof monterAtelierPose>[0];
+      const modulesVus: Array<number | null> = [];
+      const rendreSite = vi.fn(() => { modulesVus.push(ctx.surfacesPose?.[0]?.engine?.modules ?? null); });
+      const pose = monterAtelierPose(ctx, { setStatus: vi.fn(), rendreSite })!;
+      pose.enregistrerContour('sol');
+      expect(rendreSite).toHaveBeenCalledTimes(1);
+      await pose.attendrePlan();
+      expect(modulesVus).toEqual([null, 132]); // le second rendu voit les modules du moteur, comme la barre
+    } finally { g.document = avant; }
+  });
+
   it('refus du moteur ⇒ motif sous le bouton, surface gardée sans engine ; option absente ⇒ comme avant', async () => {
     const m = monter(async () => { throw new Error('contour inconstructible'); });
     try {
