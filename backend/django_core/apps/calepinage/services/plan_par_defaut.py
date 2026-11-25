@@ -33,9 +33,11 @@ MESSAGE_PUISSANCE_CONCEPTION = ('Puissance du module prise de la conception (%s 
                                 'la fiche technique du produit dans Stock.')
 MESSAGE_ETAPE_SANS_FICHE = ('Étape « %s » non appliquée : la fiche technique de « %s » ne porte pas « %s » — '
                             'renseigner la fiche technique du produit dans Stock.')
-#: ACAL2045 — ce qu'il faut renseigner pour que la pose ne soit plus supposée.
-A_RENSEIGNER_POSE = 'renseigner « Type de toiture » sur la fiche du lead ou tracer le toit au calepinage'
+#: ACAL2045 — le geste qui lève la pose supposée : tracer le toit (relecture lot 5, tour 4 :
+#: « Type de toiture » ne lève rien, il ne CHANGE la supposition que pour un toit plat).
 A_TRACER_LE_TOIT = 'tracer le toit au calepinage'
+A_RENSEIGNER_POSE = (A_TRACER_LE_TOIT + ' pour la confirmer ; « Type de toiture » sur la fiche du lead ne la '
+                     'change que pour un toit plat (« Terrasse béton » : pose sur châssis)')
 
 
 def _pose_supposee(type_installation=None, type_toiture=None):
@@ -45,10 +47,10 @@ def _pose_supposee(type_installation=None, type_toiture=None):
     posé sur châssis) ; sinon affleurante (toit en pente d'une maison, marché non dit). Le
     document la dit par ``flush`` comme une pose réelle : l'étape « Échauffement des modules »
     la relie à la table société (D-ACAL-84), aucun coefficient n'est posé ici."""
-    # B2 (relecture lot 5) — la phrase nomme le geste qui LÈVE la supposition : « Type de
-    # toiture » seulement quand il est vide et qu'il change la pose (lead résidentiel ou marché
-    # non dit) ; déjà rempli, ou pour un site commercial / industriel / agricole (sur châssis
-    # quel que soit le toit), seul le toit tracé au calepinage la lève.
+    # B2 (relecture lot 5, tours 2 et 4) — la phrase nomme le geste qui LÈVE la supposition :
+    # toujours le toit tracé au calepinage ; « Type de toiture », vide sur un lead résidentiel
+    # (ou de marché non dit), est dit dans son vrai rôle : il ne CHANGE la pose supposée que
+    # pour un toit plat. Rempli, ou site commercial / industriel / agricole : le toit tracé seul.
     if type_toiture == 'terrasse_beton':
         flush, champ, raison, quoi = False, 'type_toiture', 'toit plat déclaré', A_TRACER_LE_TOIT
     elif type_installation in ('commercial', 'industriel', 'agricole'):

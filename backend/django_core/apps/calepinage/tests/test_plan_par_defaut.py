@@ -147,7 +147,12 @@ class PlanParDefautTest(TestCase):
                           'i': [('type_installation', 'sur châssis')], 'x': [('type_toiture', 'affleurante')]})
         # B2 (relecture lot 5) — la phrase nomme le geste qui LÈVE la supposition : « Type de
         # toiture » seulement s'il est vide ; rempli (tuiles), ou site industriel : le toit tracé.
-        self.assertIn('Type de toiture', dites['x'][0]['message'])
+        # Tour 4 — vide : les DEUX gestes dans leur vrai rôle — le toit tracé confirme la pose,
+        # « Type de toiture » ne la change que pour un toit plat (mutant « renseigner … ou tracer » : rouge).
+        self.assertTrue(dites['x'][0]['message'].endswith(
+            ': tracer le toit au calepinage pour la confirmer ; « Type de toiture » sur la fiche du lead ne la '
+            'change que pour un toit plat (« Terrasse béton » : pose sur châssis).'), dites['x'][0]['message'])
+        self.assertNotIn('renseigner « Type de toiture »', dites['x'][0]['message'])
         for nom in ('r', 't', 'i'):
             self.assertNotIn('Type de toiture', dites[nom][0]['message'], nom)  # mutant « phrase d'avant » : rouge
             self.assertTrue(dites[nom][0]['message'].endswith(': tracer le toit au calepinage.'), nom)
