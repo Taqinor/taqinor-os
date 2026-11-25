@@ -2675,6 +2675,49 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
         self.assertEqual(ConceptionLead.objects.filter(company=company).count(), 7)
         self.assertEqual(_photo_devis(devis.pk), photo)
 
+    def test_adev151_ecarts_liste_brouillons_production_pose_zero_ecriture(self):
+        """ADEV151 — ``--ecarts`` : deux leads à toit tracé (un brouillon, un envoyé) listés,
+        production actuelle contre production de la pose (niveau 15 forcé dans le
+        processus), écart en kWh et en % ; un lead sans toit absent ; RIEN d'écrit."""
+        from django.utils import timezone
+
+        from apps.crm.models import Lead
+        from apps.ventes.conception import porte_calepinage as P
+        from apps.ventes.domain import regles_calcul as RC
+        from apps.ventes.models import ConceptionLead, Devis
+        from apps.ventes.services import build_devis_auto
+
+        company, brouillon_lead = self._residentiel(facture_hiver=Decimal('1800'))
+        _reglages_de_la_societe(company)
+        envoye_lead = Lead.objects.create(company=company, nom='Envoyé', prenom='Toit', ville=brouillon_lead.ville,
+                                          facture_hiver=Decimal('2000'))
+        sans_toit = Lead.objects.create(company=company, nom='Sans', prenom='Toit', ville=brouillon_lead.ville,
+                                        facture_hiver=Decimal('1600'))
+        auteur = self._utilisateur(company)
+        brouillon = build_devis_auto(lead=brouillon_lead, user=auteur, company=company)
+        envoye = build_devis_auto(lead=envoye_lead, user=auteur, company=company)
+        Devis.objects.filter(pk=envoye.pk).update(statut='envoye', date_envoi=timezone.now())
+        photos = (_photo_devis(brouillon.pk), _photo_devis(envoye.pk))
+        versions = ConceptionLead.objects.count()
+        toits = {brouillon_lead.pk: (501, 'a' * 64), envoye_lead.pk: (502, 'b' * 64)}
+        pose = {'nb_panneaux': 10, 'kwc': None, 'complete': True, 'a_la_main': False, 'empreinte_pose': '',
+                'manquants': [], 'module_produit': None}
+        with mock.patch('apps.ventes.selectors_calepinage.pose_du_lead',
+                        side_effect=lambda c, pk: toits.get(pk, (None, ''))), \
+                mock.patch.object(P, 'pose_du_calepinage', return_value=pose), \
+                mock.patch.object(P, 'simuler_la_pose', return_value={
+                    'complete': True, 'production_annuelle': 1234.0, 'production_mensuelle': [100.0] * 12}):
+            liste = self._commande('--company', str(company.pk), '--ecarts')
+        self.assertEqual(RC.REGLES_COURANTES, 14)  # le niveau 15 n'est jamais laissé courant
+        self.assertIn(f'lead #{brouillon_lead.pk} (calepinage #501) : production ', liste)
+        self.assertIn('→ 1 234 kWh/an (écart ', liste)
+        self.assertIn(f'{brouillon.reference} brouillon jamais envoyé — changera : oui', liste)
+        self.assertIn(f'{envoye.reference} envoye — lecture seule : ne changera jamais', liste)
+        self.assertNotIn(f'lead #{sans_toit.pk} ', liste)
+        self.assertIn('ÉCARTS : 2 lead(s) à toit tracé listé(s)', liste)
+        self.assertEqual(ConceptionLead.objects.count(), versions, liste)  # mutant « écrire pendant la liste »
+        self.assertEqual((_photo_devis(brouillon.pk), _photo_devis(envoye.pk)), photos)
+
     def test_appliquer_ne_touche_pas_une_version_courante_venue_d_un_toit(self):
         """Relecture E3 M2 — un remplissage, pas un rafraîchissement : le lead
         dont la version courante vient d'une pose (empreinte du toit) n'est
