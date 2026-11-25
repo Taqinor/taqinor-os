@@ -23,7 +23,7 @@ import json
 import pathlib
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest import expectedFailure, mock
+from unittest import mock
 
 from django.test import SimpleTestCase
 
@@ -335,7 +335,6 @@ class PariteLead1742Test(BaseMateriel):
                 self.assertNotIn('contre 16', texte)
                 self.assertNotIn('1,50', texte)
 
-    @expectedFailure  # M4 (lane moteur, pret_a_envoyer.py) : le ratio jugé pour la pose réelle ; retirer au fold
     def test_lead_1742_ratio_juge_pour_la_pose_reelle_ok(self):
         for cas, devis in self._cas().items():
             with self.subTest(cas=cas):
