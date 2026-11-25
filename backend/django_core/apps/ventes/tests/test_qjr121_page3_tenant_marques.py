@@ -159,6 +159,15 @@ class TestGarantieOnduleurParOption(SimpleTestCase):
         self.assertIn("10 ANS Onduleur (option 1)", txt)
         self.assertIn("5 ANS Onduleur (option 2)", txt)
 
+    def test_d_acal_115_nouveau_rendu_sans_niveau_15(self):
+        """D-ACAL-115 — le drapeau des nouveaux rendus (``phrases_pdf_2511``)
+        suffit, sans le niveau 15 ; sans lui (devis envoyé avant), le rendu reçu."""
+        data = self._data(niveau_15=False)
+        data["phrases_pdf_2511"] = True
+        txt = _visible(_page3(moteur.render_html_for(data)))
+        self.assertIn("Onduleur (option 1) 10 ans, onduleur (option 2) 5 ans", txt)
+        self.assertIn("onduleurs Huawei &amp; Deye", txt)
+
     def test_niveau_15_sans_garantie_ecrite_aucune_duree_inventee(self):
         txt = _visible(_page3(moteur.render_html_for(
             self._data(niveau_15=True, garantie_hybride=None))))

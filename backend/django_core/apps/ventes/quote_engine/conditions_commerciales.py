@@ -209,6 +209,32 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
     return cases
 
 
+def echeanciers_par_option(data, deux_options):
+    """D-ACAL-116 (fondateur 25/11/2026, nouveaux rendus ``phrases_pdf_2511``) —
+    le Devis final d'un devis à DEUX options imprime UNE ligne d'échéances par
+    option. Rend ``[("sans", [montants…]), ("avec", [montants…])]`` lus dans
+    ``montants_tranches`` (builder : aucune somme refaite ici), dans l'ordre des
+    cases (Acompte / Matériel / Solde, ou Acompte / Solde quand la tranche
+    matériel est nulle) ; ``None`` sinon — un devis à une option, un devis
+    envoyé avant la coupure, ou deux options aux cases différentes (mêmes
+    pourcentages exigés : l'en-tête des cases vaut pour les deux lignes)."""
+    if not (deux_options and data.get("phrases_pdf_2511")):
+        return None
+    tranches = data.get("montants_tranches") or {}
+    lignes, formes = [], set()
+    for branche in ("sans", "avec"):
+        rep = tranches.get(branche) or {}
+        if not rep:
+            return None
+        if (rep.get("materiel") or 0) > 0:
+            lignes.append((branche, [rep.get("acompte"), rep.get("materiel"), rep.get("solde")]))
+            formes.add((rep.get("pct_a"), rep.get("pct_m"), rep.get("pct_s")))
+        else:
+            lignes.append((branche, [rep.get("acompte"), rep.get("solde2")]))
+            formes.add((rep.get("pct_a"), rep.get("pct_s2")))
+    return lignes if len(formes) == 1 else None
+
+
 def cases_imprimees(data, branche, devis, avertissements):
     """AMOT19 / AGNR66 — les cases de la branche imprimée ; au niveau 12, une
     tranche coupée par la borne ERR76 (``bornees``) est DITE au vendeur dans

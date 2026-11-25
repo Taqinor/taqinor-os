@@ -712,12 +712,12 @@ def _deux_options_document():
 def garanties_onduleur_document(n_premier):
     """Les badges « Onduleur » de ``_garanties_du_devis``. Niveau 14 : la
     garantie du premier onduleur (rendu d'hier, octet-identique). Niveau 15
-    (``regles_pose_reelle``, nouveaux rendus) : la garantie de l'onduleur de
+    (``regles_pose_reelle`` ou ``phrases_pdf_2511``, D-ACAL-115, nouveaux rendus) : la garantie de l'onduleur de
     CHAQUE option, par la lecture de la bande du PDF premium sans étude
     (``theme.lignes_garantie_onduleur``) — « Onduleur (option 1) » /
     « (option 2) » quand elles diffèrent, l'option sans durée écrite omise
     (jamais une durée inventée)."""
-    if not getattr(_g, "REGLES_POSE_REELLE", False):
+    if not getattr(_g, "RENDUS_2511", False):
         return [(n_premier, _g._L("lg_gar_onduleur"))] if n_premier else []
     from .residential.theme import lignes_garantie_onduleur
     if _deux_options_document():
@@ -735,6 +735,26 @@ def lignes_des_marques(rendues):
     lignes de l'option rendue (« onduleurs Huawei » seul sur un document à deux
     options). Niveau 15 : sur un document à deux options, les lignes des DEUX
     options (« onduleurs Huawei & Deye ») — la marque du produit chiffré."""
-    if getattr(_g, "REGLES_POSE_REELLE", False) and _deux_options_document():
+    if getattr(_g, "RENDUS_2511", False) and _deux_options_document():
         return list(_g.SANS_ITEMS or []) + list(_g.AVEC_ITEMS or [])
     return rendues
+
+
+def lignes_echeancier_option():
+    """D-ACAL-116 — Devis final d'un devis à DEUX options, nouveaux rendus :
+    une ligne d'échéances par option, nommée (« Sans batterie : … / … / … MAD »),
+    sous les cases (qui gardent % et libellé) ; '' sinon (rendu d'hier). Montants
+    du builder (``conditions_commerciales.echeanciers_par_option``)."""
+    from . import i18n_labels
+    from .conditions_commerciales import echeanciers_par_option
+    from .montants import fmt_centimes
+    lignes = echeanciers_par_option(
+        {"phrases_pdf_2511": getattr(_g, "RENDUS_2511", False),
+         "montants_tranches": _g.MONTANTS_TRANCHES}, _deux_options_document())
+    noms = {"sans": i18n_labels.nom_option("Sans batterie", _g.LANGUE_SORTIE),
+            "avec": i18n_labels.nom_option(_g.LIBELLE_AVEC, _g.LANGUE_SORTIE)}
+    return "".join(
+        f'<div style="font-size:8pt;color:{_g.CN};font-weight:700;margin-bottom:2px;">'
+        f'{noms[b]} : ' + " / ".join(fmt_centimes(m) for m in montants) + ' MAD</div>'
+        for b, montants in lignes or ())
+

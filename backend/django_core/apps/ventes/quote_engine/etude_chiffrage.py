@@ -34,14 +34,14 @@ def divergence_par_kwc(scal, devis):
     nombre de panneaux mais de modules différents (5 × 550 W / 5 × 710 W) ont
     deux tailles (2,75 / 3,55 kWc). Le drapeau ``divergents`` (comptes seuls)
     restait faux : la page 1 divisait le prix de l'option 1 par la taille de
-    l'option 2 et la page 2 annonçait une seule taille pour les deux. Au niveau
-    de règles 15 (``REGLES_POSE_REELLE_2111``, nouveaux rendus seulement), des
-    kWc différents lus sur les lignes de chaque option suffisent ; au niveau 14
-    le dict sort inchangé (octet-identique)."""
-    from apps.ventes.domain.regles_calcul import REGLES_POSE_REELLE_2111, regles_au_moins
+    l'option 2 et la page 2 annonçait une seule taille pour les deux. Nouveaux
+    rendus (D-ACAL-115, ``phrases_pdf_2511_ouvertes`` : brouillon, envoyé à partir
+    du 26/11/2026, niveau 15) : des kWc différents lus sur les lignes de chaque
+    option suffisent ; un devis envoyé avant garde son dict, octet pour octet."""
+    from apps.ventes.domain.regles_calcul import phrases_pdf_2511_ouvertes
     kwc_s, kwc_a = scal.get("kwc_sans"), scal.get("kwc_avec")
     if (not scal.get("divergents") and kwc_s and kwc_a and abs(float(kwc_s) - float(kwc_a)) > 0.005
-            and regles_au_moins(devis, REGLES_POSE_REELLE_2111)):
+            and phrases_pdf_2511_ouvertes(devis)):
         scal["divergents"] = True
     return scal
 
