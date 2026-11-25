@@ -5864,3 +5864,51 @@ decisions:
     date: "2026-11-25"
     source: "relecteur X8 du test utilisateur (T4-X8-017, téléphone, rôle Technicien, copie anonymisée de la production) : 403 sur /calepinage/<id>, le relevé, la vue client et /visites, et le compte proposé dans « Assigner à » ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Technicien too (Recommended) » ; changement de droits (rôle Technicien) : appliqué au prochain déploiement, à noter au journal du lot"
     taches: []
+  - id: D-ACAL-107
+    question: "Lead sans toit tracé : quelle pose des panneaux le toit supposé du plan par défaut doit-il supposer (l'échauffement des modules, première perte au Maroc, en dépend) ?"
+    options:
+      - cle: selon_le_type_de_toit
+        texte: "Affleurant sur un toit en pente pour une maison (échauffement −13 %, environ 1 660 kWh/kWc à Casablanca) ; sur châssis pour un toit plat ou un site commercial / industriel (−6 %, environ 1 790) ; le devis dit la supposition et le champ à remplir"
+      - cle: toujours_affleurant
+        texte: "Le chiffre le plus prudent partout (environ 1 660 kWh/kWc à Casablanca)"
+      - cle: toujours_sur_chassis
+        texte: "Environ 1 790 kWh/kWc à Casablanca, maisons comprises"
+    reponse: selon_le_type_de_toit
+    date: "2026-11-25"
+    source: "mesure de l'orchestrateur du 25/11/2026 sur la copie anonymisée (rapport, décision 26) : le toit supposé tel que construit ne dit pas sa pose, l'étape « Échauffement des modules » est omise et le rendement monte à 1 912 kWh/kWc à Casablanca (+19 %) — un défaut, pas un chiffre plus réaliste ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « By roof type (Recommended) »"
+    taches: [ACAL2045]
+  - id: D-ACAL-108
+    question: "La liste d'ADEV154 lue (31 leads simulés de la copie : aujourd'hui environ 1 600 kWh/kWc par l'enveloppe de 20 % ; avec le toit supposé +4 % à +8 % en affleurant, +11 % à +16 % sur châssis), brancher le moteur sans toit sur la simulation du plan par défaut (ADEV155) ?"
+    options:
+      - cle: oui_avec_le_niveau_15
+        texte: "Construit maintenant, allumé le même jour que les autres changements de chiffres du niveau de règles 15, après lecture des listes"
+      - cle: oui_au_prochain_deploiement
+        texte: "Les nouveaux devis des leads sans toit tracé changent dès le déploiement, avant le niveau 15"
+      - cle: non
+        texte: "Garder l'enveloppe de 20 % tant que le toit n'est pas tracé"
+    reponse: oui_avec_le_niveau_15
+    date: "2026-11-25"
+    source: "demande du fondateur du 24/11/2026 : « Before any switch that changes numbers, show me the list of quotes whose numbers would change (tasks ADEV154 and ADEV155) and wait for my answer » ; liste montrée au rapport (décision 26) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Yes, with level 15 (Recommended) » ; les devis envoyés ne changent jamais ; `REGLES_COURANTES` n'est pas modifié par cette tâche"
+    taches: [ADEV155]
+  - id: D-ACAL-109
+    question: "Atelier : quand la commerciale désigne un onduleur à la main, la conception du lead ne garde qu'UNE option (hybride = « avec batterie », réseau = « sans batterie ») et l'autre disparaît. Que faire ?"
+    options:
+      - cle: garder_les_deux_options
+        texte: "L'onduleur désigné sert l'option qui lui convient ; l'autre option reste, calculée avec le matériel du moteur ; l'écran dit laquelle est laquelle"
+      - cle: une_option_et_le_dire
+        texte: "Comme aujourd'hui, avec une phrase qui dit que l'autre option a été écartée à cause de l'onduleur désigné"
+    reponse: garder_les_deux_options
+    date: "2026-11-25"
+    source: "rapport, décision 28 (a) ; constat T4-X9-009 du relecteur X9 (une conception à deux options en perd une après la désignation d'un hybride à l'étape Électrique) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Keep both options (Recommended) »"
+    taches: []
+  - id: D-ACAL-110
+    question: "Atelier : un panneau d'une autre puissance désigné à la main garde la même puissance de conception, donc le nombre de panneaux change (4,40 kWc en 710 W = 6 panneaux = 4,26 kWc). Quel arrondi ?"
+    options:
+      - cle: au_plus_proche_et_le_dire
+        texte: "Au panneau le plus proche (au plus près du besoin calculé depuis la facture) ; l'écran dit que le nombre et le kWc ont changé"
+      - cle: au_dessus_comme_le_20_08
+        texte: "Jamais moins que la puissance de la conception (4,40 kWc = 7 panneaux = 4,97 kWc), une seule règle d'arrondi dans l'ERP"
+    reponse: au_plus_proche_et_le_dire
+    date: "2026-11-25"
+    source: "rapport, décision 28 (b) ; la règle du 20/08/2026 (taille TAPÉE par la commerciale : arrondi au-dessus, jamais moins que la puissance vendue) reste inchangée pour une taille tapée ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Nearest panel, said (Recommended) »"
+    taches: []
