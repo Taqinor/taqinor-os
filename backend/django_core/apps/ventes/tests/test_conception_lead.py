@@ -56,7 +56,7 @@ VALEURS_SOLAIRES = {
     'chaines', 'temperature_froid', 'tension_froid', 'ratio_dc_ac',
     'production_annuelle', 'production_mensuelle', 'autoconsommation',
     'couverture', 'economies_annuelles', 'payback', 'consommation_annuelle',
-    'forme_horaire',
+    'forme_horaire', 'module_produit', 'onduleur_produit', 'batterie_produit',
 }
 #: La table §2 en agricole (la pompe remplace taille / matériel / bilan).
 VALEURS_POMPAGE = {'nb_panneaux', 'puissance_kwc', 'pompe', 'variateur', 'm3_jour'}
@@ -1315,6 +1315,16 @@ class MoteurUniqueTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher', '_u
                               'puissance_kwc', 'ville_calcul', 'origine_conception'}, set(resultat.blocs))
         self.assertEqual(set(resultat.valeurs), {'sans', 'avec'})
         self.assertNotEqual(resultat.valeurs['sans']['puissance_kwc'], resultat.valeurs['avec']['puissance_kwc'])
+        # Relecture E5 m4 — le matériel est nommé par l'IDENTIFIANT de sa ligne, jamais par son nom.
+        from apps.ventes.domain.catalogue import classer_produit
+        for option, valeurs in resultat.valeurs.items():
+            with self.subTest(option=option):
+                lignes = {classer_produit(li.produit.nom): li.produit_id for li in resultat.lignes
+                          if li.produit_id and (li.variante or '') in ('', option) and not li.optionnelle}
+                self.assertEqual(valeurs['module_produit']['valeur'], lignes['panneau'])
+                self.assertEqual(valeurs['onduleur_produit']['valeur'], valeurs['onduleurs']['valeur'][0]['produit'])
+                self.assertEqual(valeurs['batterie_produit']['valeur'], lignes.get('batterie'))
+        self.assertIsNotNone(resultat.valeurs['avec']['batterie_produit']['valeur'])
 
     # ── ADEV134 — chaque supposition sort avec le champ de la fiche ─────────
     def _suppositions(self, resultat):

@@ -35,7 +35,17 @@ def _materiel(resultat, option):
     panneaux = [li for li, c in classes if c == 'panneau']
     onduleurs = [{'produit': li.produit_id, 'designation': li.designation, 'quantite': int(li.quantite)}
                  for li, c in classes if c.startswith('onduleur')]
-    return panneaux, panneaux_et_watt_lu(panneaux), onduleurs
+    batteries = [li.produit_id for li, c in classes if c == 'batterie' and li.produit_id]
+    return panneaux, panneaux_et_watt_lu(panneaux), onduleurs, batteries
+
+
+def _produits(panneaux, onduleurs, batteries):
+    """Relecture E5 m4 — l'IDENTIFIANT produit du module, de l'onduleur et de la
+    batterie de l'option (``None`` sans ligne) : le calepinage relit le produit par
+    lui, jamais par son nom."""
+    return {'module_produit': _v(panneaux[0].produit_id if panneaux else None),
+            'onduleur_produit': _v(onduleurs[0]['produit'] if onduleurs else None),
+            'batterie_produit': _v(batteries[0] if batteries else None)}
 
 
 def _electrique(design, onduleurs):
@@ -82,14 +92,15 @@ def valeurs(resultat, option, investissement, *, froid):
                 'm3_jour': _v(params.get('m3_jour'), 'm³/jour')}
     from apps.ventes.quote_engine.lignes_classement import kwc_des_lignes
     from apps.ventes.quote_engine.pricing import payback_publiable
-    panneaux, (nb, watt), onduleurs = _materiel(resultat, option)
+    panneaux, (nb, watt), onduleurs, batteries = _materiel(resultat, option)
     chaines, tension, ratio = _electrique(resultat.conception_electrique, onduleurs)
     production, mensuelle, autoconso, couverture, economies, conso, forme, source_forme = _bilan(resultat, option)
     payback = (payback_publiable(investissement, economies, stockage=option == 'avec')['payback_years']
                if investissement is not None else None)
     devis = resultat.lignes[0].devis if resultat.lignes else None
+    kwc = kwc_des_lignes(panneaux, nb, watt, devis)
     return {
-        'nb_panneaux': _v(nb, 'panneaux'), 'puissance_kwc': _v(kwc_des_lignes(panneaux, nb, watt, devis), 'kWc'),
+        'nb_panneaux': _v(nb, 'panneaux'), 'puissance_kwc': _v(kwc, 'kWc'),
         'module': _v(panneaux[0].designation if panneaux else None), 'onduleurs': _v(onduleurs),
         'nombre_onduleurs': _v(sum(o['quantite'] for o in onduleurs), 'onduleurs'),
         'chaines': _v(chaines, 'panneaux'), 'tension_froid': _v(tension, 'V'), 'ratio_dc_ac': _v(ratio),
@@ -100,4 +111,5 @@ def valeurs(resultat, option, investissement, *, froid):
         'economies_annuelles': _v(economies, 'MAD/an'),
         'payback': _v(payback, 'ans', 'devis' if investissement is not None else 'moteur'),
         'consommation_annuelle': _v(conso, 'kWh/an'), 'forme_horaire': _v(forme, None, source_forme),
+        **_produits(panneaux, onduleurs, batteries),
     }

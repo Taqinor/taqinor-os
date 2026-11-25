@@ -20,7 +20,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-VERSION_MOTEUR = 'moteur-unique-1'
+VERSION_MOTEUR = 'moteur-unique-2'  # relecture E5 m4 : identifiants produit servis
 CODE_LOCALISATION = 'localisation_inconnue'
 MESSAGE_LOCALISATION = 'Ville inconnue du moteur : renseigner la ville ou le point GPS du lead.'
 CODE_REFUS_MOTEUR = 'refus_moteur'

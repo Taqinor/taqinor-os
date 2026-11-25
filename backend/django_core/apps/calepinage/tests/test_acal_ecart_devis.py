@@ -279,7 +279,8 @@ class PariteLead1742Test(BaseMateriel):
             ond_mppt_v_max=950.0, ond_v_max_abs=1100.0, ond_i_max_mppt_a=26.0, ond_ac_kw=12.0, ond_phases=3,
             ond_dc_max_kwc=Decimal('18'))
         hybride = {'produit': self.hybride.pk, 'designation': self.hybride.nom, 'quantite': 1}
-        ranger_conception(lead=self.lead, nb=35, watt=710, module=self.module_devis.nom, onduleur=hybride,
+        ranger_conception(lead=self.lead, nb=35, watt=710, module=self.module_devis.nom,
+                          module_produit=self.module_devis.pk, onduleur=hybride,
                           longueur=12, avec=35, option='sans')
 
     def _lu(self, devis):

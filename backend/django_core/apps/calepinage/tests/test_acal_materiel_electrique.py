@@ -90,7 +90,7 @@ class BaseMateriel(BaseApiCalepinage):
         module = module or self.module_devis
         onduleur = onduleur or self.onduleur
         return ranger_conception(
-            lead=self.lead, nb=12, watt=710, module=module.nom, longueur=longueur,
+            lead=self.lead, nb=12, watt=710, module=module.nom, module_produit=module.pk, longueur=longueur,
             onduleur={'produit': onduleur.pk, 'designation': onduleur.nom, 'quantite': nombre}, **extra)
 
     def _calepinage(self, *, devis=None, entree=None):
@@ -126,6 +126,30 @@ class MaterielDeLaConception(BaseMateriel):
         self.assertNotIn(PROVENANCE_DEVIS, materiel['provenances'].values())
         self.assertIn("module PV non désigné — désignez-le dans l'onglet Matériel électrique",
                       materiel['absents'])
+
+    def test_module_relu_par_son_identifiant_meme_nom_en_double(self):
+        # Relecture E5 m4 — un second produit du même nom ne rend plus le module introuvable.
+        double = self._produit(nom='Double', type_fiche='module', vmp_v=40.0, voc_v=48.0,
+                               isc_a=13.0, imp_a=12.0, pmax_wc=500.0)
+        Produit.objects.filter(pk=double.pk).update(nom=self.module_devis.nom)
+        self._conception()
+        _c, materiel, _d, _doc = conception_du_calepinage(self._calepinage())
+        self.assertEqual((materiel['produits']['module'], materiel['provenances']['module']),
+                         (self.module_devis.pk, 'moteur'))
+
+    def test_produits_archives_de_la_conception_dits_jamais_servis(self):
+        from apps.stock.models import Produit
+
+        self._conception()
+        Produit.objects.filter(pk__in=(self.module_devis.pk, self.onduleur.pk)).update(is_archived=True)
+        _c, materiel, _d, _doc = conception_du_calepinage(self._calepinage())
+        self.assertIsNone(materiel['produits']['onduleur'])
+        self.assertNotEqual(materiel['produits']['module'], self.module_devis.pk)
+        textes = ' | '.join(materiel['absents'])
+        self.assertIn('Le module de la conception (produit n° %s) est introuvable ou archivé' % self.module_devis.pk,
+                      textes)
+        self.assertIn("L'onduleur de la conception (produit n° %s) est introuvable ou archivé" % self.onduleur.pk,
+                      textes)
 
     def test_la_provenance_moteur_n_est_pas_persistee(self):
         self._conception()

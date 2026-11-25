@@ -1098,8 +1098,10 @@ def resoudre_materiel(company, entree, *, calepinage=None):
         identifiant = (entree or {}).get('%s_produit' % role)
         provenance = PROVENANCE_EXPLICITE
         if identifiant in (None, ''):
-            if du_moteur is None:
-                du_moteur = materiel_de_la_conception(calepinage).get('produits') or {}
+            if du_moteur is None:  # relecture E5 m4 : un produit de la conception perdu est DIT
+                lu = materiel_de_la_conception(calepinage)
+                du_moteur = lu.get('produits') or {}
+                absents += lu.get('avertissements') or ()
             identifiant, provenance = repli_materiel(role, du_moteur, calepinage)
             provenance = PROVENANCE_MOTEUR if provenance == PROVENANCE_DEVIS else provenance
         if identifiant in (None, ''):
