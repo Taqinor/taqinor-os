@@ -135,3 +135,13 @@ BAREME_POMPAGE = {
     'INST-PMP': {'prix_fixe_ht': Decimal('2000'),
                  'prix_par_panneau_ht': Decimal('250')},
 }
+
+
+# D-ACAL-130 — prix confirmés par le fondateur le 25/11/2026 (D-ACAL-130) —
+# structure : valeur de CI-STRUCT-PLAT-LEST (540 DH TTC par panneau, la
+# quantité du kit étant le nombre de panneaux). TTC, stocké HT par
+# ``seed_catalogue.ht`` à la création seulement ; base existante : migration
+# stock 0196.
+PRIX_TTC_POMPAGE = {
+    'STR-SOL-PMP': 540,
+}

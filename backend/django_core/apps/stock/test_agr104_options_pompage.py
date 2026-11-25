@@ -148,7 +148,7 @@ class Pompage(TestCase):
         _seed(self.co)
         p = Produit.objects.get(company=self.co, sku='STR-SOL-PMP')
         self.assertEqual(p.role_pompage, 'structure_sol')
-        self.assertEqual(p.prix_vente, 0)
+        self.assertEqual(p.prix_vente, Decimal('450.00'))  # D-ACAL-130 : 540 TTC
         self.assertEqual(p.prix_achat, 0)
         # Jamais lu comme un panneau (puissance crête, décompte de modules).
         self.assertFalse(est_panneau(p.nom))
@@ -164,11 +164,37 @@ class Pompage(TestCase):
     def test_structure_sol_rejouee_sans_doublon_prix_saisi_garde(self):
         _seed(self.co)
         Produit.objects.filter(company=self.co, sku='STR-SOL-PMP').update(
-            prix_vente=450)
+            prix_vente=480)
         _seed(self.co)
         qs = Produit.objects.filter(company=self.co, sku='STR-SOL-PMP')
         self.assertEqual(qs.count(), 1)
-        self.assertEqual(qs.get().prix_vente, 450)
+        self.assertEqual(qs.get().prix_vente, 480)
+
+    def test_dacal130_migration_0196_prix_structure_sol(self):
+        m0196 = importlib.import_module(
+            'apps.stock.migrations.0196_dacal130_prix_structure_sol_pompage')
+        self.assertEqual(m0196.PRIX_HT, {sku: seed_mod.ht(ttc)
+                                         for sku, ttc in seed_mod.PRIX_TTC_POMPAGE.items()})
+        _seed(self.co)
+        qs = Produit.objects.filter(company=self.co, sku='STR-SOL-PMP')
+        qs.update(prix_vente=0)
+        autre = Company.objects.get_or_create(
+            slug='agq36-co-2', defaults={'nom': 'AGQ36 Co 2'})[0]
+        saisi = Produit.objects.create(company=autre, nom='Structure sol', sku='STR-SOL-PMP',
+                                       role_pompage='structure_sol', prix_vente=Decimal('400'))
+        avant = (qs.get().nom, qs.get().prix_achat, qs.get().quantite_stock)
+        nb = Produit.objects.count()
+        m0196.poser_prix(django_apps, None)
+        m0196.poser_prix(django_apps, None)  # idempotent
+        self.assertEqual(Produit.objects.count(), nb)
+        self.assertEqual(qs.get().prix_vente, Decimal('450.00'))
+        self.assertEqual(avant, (qs.get().nom, qs.get().prix_achat, qs.get().quantite_stock))
+        saisi.refresh_from_db()
+        self.assertEqual(saisi.prix_vente, Decimal('400'))
+        m0196.retirer_prix(django_apps, None)
+        self.assertEqual(qs.get().prix_vente, 0)
+        saisi.refresh_from_db()
+        self.assertEqual(saisi.prix_vente, Decimal('400'))
 
 
 class MigrationRolesTests(TestCase):

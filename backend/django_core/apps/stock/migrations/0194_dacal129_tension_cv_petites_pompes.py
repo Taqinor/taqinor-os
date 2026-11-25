@@ -34,13 +34,16 @@ POMPES = {
 }
 #: Phase → tension (V).
 TENSIONS = {'mono': 220, 'tri': 380}
+#: Lignes lues par lots (garde check_safe_migrations) : chaque ligne est mise à
+#: jour par sa seule clé primaire.
+TAILLE_BATCH = 500
 
 
 def poser(apps, schema_editor):
     Produit = apps.get_model('stock', 'Produit')
     for sku, (phase, cv) in POMPES.items():
         tension = TENSIONS[phase]
-        for produit in Produit.objects.filter(sku__iexact=sku):
+        for produit in Produit.objects.filter(sku__iexact=sku).order_by('pk').iterator(chunk_size=TAILLE_BATCH):
             champs = {}
             if produit.tension_v is None:
                 champs['tension_v'] = tension
@@ -54,7 +57,7 @@ def retirer(apps, schema_editor):
     Produit = apps.get_model('stock', 'Produit')
     for sku, (phase, cv) in POMPES.items():
         tension = TENSIONS[phase]
-        for produit in Produit.objects.filter(sku__iexact=sku):
+        for produit in Produit.objects.filter(sku__iexact=sku).order_by('pk').iterator(chunk_size=TAILLE_BATCH):
             champs = {}
             if produit.tension_v == tension:
                 champs['tension_v'] = None

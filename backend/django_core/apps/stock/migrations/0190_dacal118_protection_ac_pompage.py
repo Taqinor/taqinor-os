@@ -34,16 +34,28 @@ SKUS_PROTECTION_AC = [
 ]
 
 
+#: Mise à jour par lots de clés primaires (garde check_safe_migrations) : jamais
+#: un seul UPDATE global sur la table des produits.
+TAILLE_BATCH = 500
+
+
+def _update_par_batch(qs, **valeurs):
+    pks = list(qs.values_list('pk', flat=True).order_by('pk'))
+    for debut in range(0, len(pks), TAILLE_BATCH):
+        batch = pks[debut:debut + TAILLE_BATCH]
+        qs.model.objects.filter(pk__in=batch).update(**valeurs)
+
+
 def declarer_roles(apps, schema_editor):
     Produit = apps.get_model('stock', 'Produit')
-    Produit.objects.filter(sku__in=SKUS_PROTECTION_AC, role_pompage='').update(
-        role_pompage='protection_ac')
+    _update_par_batch(Produit.objects.filter(
+        sku__in=SKUS_PROTECTION_AC, role_pompage=''), role_pompage='protection_ac')
 
 
 def retirer_roles(apps, schema_editor):
     Produit = apps.get_model('stock', 'Produit')
-    Produit.objects.filter(sku__in=SKUS_PROTECTION_AC,
-                           role_pompage='protection_ac').update(role_pompage='')
+    _update_par_batch(Produit.objects.filter(
+        sku__in=SKUS_PROTECTION_AC, role_pompage='protection_ac'), role_pompage='')
 
 
 class Migration(migrations.Migration):

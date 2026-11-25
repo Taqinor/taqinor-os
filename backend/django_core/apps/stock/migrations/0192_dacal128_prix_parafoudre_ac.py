@@ -20,17 +20,29 @@ PRIX_HT = {
 }
 
 
+#: Mise à jour par lots de clés primaires (garde check_safe_migrations) : jamais
+#: un seul UPDATE global sur la table des produits.
+TAILLE_BATCH = 500
+
+
+def _update_par_batch(qs, **valeurs):
+    pks = list(qs.values_list('pk', flat=True).order_by('pk'))
+    for debut in range(0, len(pks), TAILLE_BATCH):
+        batch = pks[debut:debut + TAILLE_BATCH]
+        qs.model.objects.filter(pk__in=batch).update(**valeurs)
+
+
 def poser_prix(apps, schema_editor):
     Produit = apps.get_model('stock', 'Produit')
     for sku, prix in PRIX_HT.items():
-        Produit.objects.filter(sku=sku, prix_vente=0).update(prix_vente=prix)
+        _update_par_batch(Produit.objects.filter(sku=sku, prix_vente=0), prix_vente=prix)
 
 
 def retirer_prix(apps, schema_editor):
     Produit = apps.get_model('stock', 'Produit')
     for sku, prix in PRIX_HT.items():
-        Produit.objects.filter(sku=sku, prix_vente=prix).update(
-            prix_vente=Decimal('0'))
+        _update_par_batch(Produit.objects.filter(sku=sku, prix_vente=prix),
+                          prix_vente=Decimal('0'))
 
 
 class Migration(migrations.Migration):

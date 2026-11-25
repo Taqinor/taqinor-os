@@ -23,20 +23,32 @@ BAREMES = {
 }
 
 
+#: Mise à jour par lots de clés primaires (garde check_safe_migrations) : jamais
+#: un seul UPDATE global sur la table des produits.
+TAILLE_BATCH = 500
+
+
+def _update_par_batch(qs, **valeurs):
+    pks = list(qs.values_list('pk', flat=True).order_by('pk'))
+    for debut in range(0, len(pks), TAILLE_BATCH):
+        batch = pks[debut:debut + TAILLE_BATCH]
+        qs.model.objects.filter(pk__in=batch).update(**valeurs)
+
+
 def poser_bareme(apps, schema_editor):
     Produit = apps.get_model('stock', 'Produit')
     for sku, champs in BAREMES.items():
         for champ, valeur in champs.items():
-            Produit.objects.filter(sku=sku).filter(
-                Q(**{champ: None}) | Q(**{champ: 0})).update(**{champ: valeur})
+            _update_par_batch(Produit.objects.filter(sku=sku).filter(
+                Q(**{champ: None}) | Q(**{champ: 0})), **{champ: valeur})
 
 
 def retirer_bareme(apps, schema_editor):
     Produit = apps.get_model('stock', 'Produit')
     for sku, champs in BAREMES.items():
         for champ, valeur in champs.items():
-            Produit.objects.filter(sku=sku, **{champ: valeur}).update(
-                **{champ: None})
+            _update_par_batch(Produit.objects.filter(sku=sku, **{champ: valeur}),
+                              **{champ: None})
 
 
 class Migration(migrations.Migration):
