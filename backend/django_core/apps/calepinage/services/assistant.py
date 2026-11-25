@@ -778,11 +778,14 @@ def file_a_traiter(user, *, limite=LIMITE_DEFAUT, maintenant=None):
     candidats = (selectors.calepinages_visibles(user)
                  .filter(updated_at__gte=depuis)
                  .order_by('-updated_at', '-id')[:CANDIDATS_MAX])
+    from .devis_retenu import lecture_de_liste
+
     lignes, evalues = [], 0
-    for calepinage in candidats:
-        evaluer = evalues < COUTEUX_MAX
-        evalues += int(evaluer)
-        ligne = _ligne_a_traiter(calepinage, evaluer=evaluer)
-        if ligne is not None:
-            lignes.append(ligne)
+    with lecture_de_liste():  # coût des requêtes (lot 4) : rien du moteur pendant une liste
+        for calepinage in candidats:
+            evaluer = evalues < COUTEUX_MAX
+            evalues += int(evaluer)
+            ligne = _ligne_a_traiter(calepinage, evaluer=evaluer)
+            if ligne is not None:
+                lignes.append(ligne)
     return {'total': len(lignes), 'limite': limite, 'lignes': lignes[:limite]}

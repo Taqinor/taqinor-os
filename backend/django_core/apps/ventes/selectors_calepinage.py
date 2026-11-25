@@ -351,7 +351,32 @@ def conception_retenue_du_devis_id(devis_id, company):
                   .select_related('devis', 'produit').order_by('id'))
     devis = (lignes[0].devis if lignes
              else Devis.objects.filter(pk=devis_id, company=company).first())
+    if devis is not None:
+        _garder_devis_lu(devis)
     return conception_retenue_du_devis(devis, lignes=lignes) if devis is not None else None
+
+
+def _cle_devis_lu(devis_id):
+    return ('ventes.selectors_calepinage.devis_lu', devis_id)
+
+
+def _garder_devis_lu(devis):
+    """Coût des requêtes (lot 4) — le devis que :func:`conception_retenue_du_devis_id` vient de lire
+    est gardé pour la requête (``core.request_cache``, aucun effet hors requête)."""
+    from core import request_cache
+
+    request_cache.memoize(_cle_devis_lu(devis.pk), lambda: devis)
+
+
+def devis_lu_par_pk(devis_id):
+    """Le devis ``devis_id`` (non borné : l'appelant vérifie la société) : celui déjà lu par
+    :func:`conception_retenue_du_devis_id` dans la requête, sinon ``ventes.selectors.get_devis_by_pk``.
+    Lecture pour un écran (écart d'un devis reçu), jamais avant une écriture."""
+    from core import request_cache
+
+    from .selectors import get_devis_by_pk
+
+    return request_cache.memoize(_cle_devis_lu(devis_id), lambda: get_devis_by_pk(devis_id))
 
 
 def conception_retenue_du_devis(devis, lignes=None):

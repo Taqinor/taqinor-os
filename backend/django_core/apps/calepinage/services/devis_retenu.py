@@ -45,6 +45,26 @@ def conception_du_devis_lie(calepinage, devis=None):
     return valeur
 
 
+#: Coût des requêtes (lot 4) — vrai pendant une LISTE (file « à traiter ») : la conception est
+#: lue telle que rangée, sans rien du moteur (péremption, relance), et le devis reçu comparé
+#: est le seul devis lié (aucun repli sur le lead) — la liste n'en lit que ses signaux.
+_EN_LISTE = __import__('contextvars').ContextVar('calepinage_lecture_de_liste', default=False)
+
+
+def lecture_de_liste():
+    """Le bloc ``with`` d'une LISTE de calepinages (voir :data:`_EN_LISTE`)."""
+    import contextlib
+
+    @contextlib.contextmanager
+    def _bloc():
+        jeton = _EN_LISTE.set(True)
+        try:
+            yield
+        finally:
+            _EN_LISTE.reset(jeton)
+    return _bloc()
+
+
 #: ACAL2012 — mémoire de la conception COURANTE lue, posée sur l'instance (une requête).
 _MEMOIRE_CONCEPTION = '_acal2012_conception_courante'
 #: ACAL2012 — le refus NOMMÉ d'un porteur sans version rangée : jamais une taille inventée.
@@ -83,13 +103,14 @@ def _lire_conception(calepinage):
     # Une société qui n'est pas une ligne enregistrée (double de calcul pur) ne se lit pas en base.
     if not isinstance(company, Model) or not company.pk or getattr(calepinage, 'appel_offre_id', None):
         return None, False
-    lead_id = getattr(calepinage, 'lead_id', None)
-    cle = (lead_id, getattr(calepinage, 'pk', None))
+    lead_id, en_liste = getattr(calepinage, 'lead_id', None), _EN_LISTE.get()
+    cle = (lead_id, getattr(calepinage, 'pk', None), en_liste)
     memoire = getattr(calepinage, _MEMOIRE_CONCEPTION, None)
     if memoire is not None and memoire[0] == cle:
         return memoire[1]
-    valeur = (conception_ou_calcul(company, lead_id) if lead_id
-              else conception_ou_calcul(company, calepinage_id=cle[1]) if cle[1] else (None, False))
+    valeur = (conception_ou_calcul(company, lead_id, en_liste=en_liste) if lead_id
+              else conception_ou_calcul(company, calepinage_id=cle[1], en_liste=en_liste) if cle[1]
+              else (None, False))
     try:
         setattr(calepinage, _MEMOIRE_CONCEPTION, (cle, valeur))
     except AttributeError:  # double de test sans attributs libres : relu à chaque appel
@@ -270,8 +291,25 @@ def _devis_recu_du_calepinage(calepinage):
     if lu and lu.get('recu'):
         return lu
     lead_id = getattr(calepinage, 'lead_id', None)
-    if not lead_id or getattr(calepinage, 'company', None) is None:
+    if not lead_id or getattr(calepinage, 'company', None) is None or _EN_LISTE.get():
         return None
+    memoire = getattr(calepinage, _MEMOIRE_RECU_DU_LEAD, None)
+    if memoire is not None and memoire[0] == lead_id:  # bloc_conception et production_devis : UNE lecture
+        return memoire[1]
+    valeur = _devis_recu_du_lead(calepinage, lead_id)
+    try:
+        setattr(calepinage, _MEMOIRE_RECU_DU_LEAD, (lead_id, valeur))
+    except AttributeError:  # double de test sans attributs libres : relu à chaque appel
+        pass
+    return valeur
+
+
+#: Coût des requêtes (lot 4) — le devis reçu du lead lu, posé sur l'instance (une requête).
+_MEMOIRE_RECU_DU_LEAD = '_lot4_devis_recu_du_lead'
+
+
+def _devis_recu_du_lead(calepinage, lead_id):
+    """Le dernier devis reçu du lead (porte de ventes), sa conception retenue, ou ``None``."""
     from .equipements import conception_retenue
     from .liens import dernier_devis_recu
 

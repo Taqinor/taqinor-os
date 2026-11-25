@@ -171,17 +171,16 @@ def calepinages_modeles(company):
 
     if company is None:
         return Calepinage.objects.none()
-    tag = _tag_modele(company)
-    if tag is None:
-        return Calepinage.objects.none()
     ct = ContentType.objects.get_for_model(Calepinage)
+    # Coût des requêtes (lot 4) : le drapeau se lit en SOUS-REQUÊTE (tag joint par son nom),
+    # plus une lecture du tag puis une liste d'identifiants avant la requête qui les emploie.
     ids = TaggedItem.objects.filter(
-        tag=tag, content_type=ct).values_list('object_id', flat=True)
+        tag__company=company, tag__nom=NOM_TAG_MODELE, content_type=ct).values('object_id')
     # ACAL118 — un modèle ARCHIVÉ sort de la bibliothèque.
     from ..selectors import calepinages_actifs
 
     return (calepinages_actifs(company)
-            .filter(pk__in=list(ids))
+            .filter(pk__in=ids)
             .order_by('-created_at', '-id'))
 
 

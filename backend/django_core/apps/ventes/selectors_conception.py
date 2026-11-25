@@ -43,13 +43,16 @@ def _versions(company, lead_id, calepinage_id):
     return ConceptionLead.objects.filter(company=company, **_porteur(lead_id, calepinage_id))
 
 
-def conception_courante(company, lead_id=None, *, calepinage_id=None, suivi_des_devis=True):
+def conception_courante(company, lead_id=None, *, calepinage_id=None, suivi_des_devis=True,
+                        peremption=True):
     """La version COURANTE du porteur (de ``company``), forme du contrat.
     ``suivi_des_devis=False`` (relecture E5, coût des requêtes) : ``ecart_devis`` et
     ``brouillons_a_mettre_a_jour`` servis vides — pour un lecteur qui sert lui-même
-    l'écart du devis qu'il montre (le calepinage, ``devis_retenu.bloc_conception``)."""
+    l'écart du devis qu'il montre (le calepinage, ``devis_retenu.bloc_conception``).
+    ``peremption=False`` (coût d'une LISTE) : ni empreinte des entrées recalculée, ni relance
+    du filet ADEV140 — ``perimee`` servi ``False`` ; réservé aux listes qui n'en lisent rien."""
     version = _versions(company, lead_id, calepinage_id).filter(courante=True).select_related('company').first()
-    return None if version is None else _forme(version, suivi_des_devis=suivi_des_devis)
+    return None if version is None else _forme(version, suivi_des_devis=suivi_des_devis, peremption=peremption)
 
 
 def kwc_de_la_conception_courante(company, lead_id):
@@ -75,14 +78,14 @@ def historique_conception(company, lead_id=None, *, calepinage_id=None):
             for v in _versions(company, lead_id, calepinage_id).order_by('-version')]
 
 
-def _forme(version, suivi_des_devis=True):
+def _forme(version, suivi_des_devis=True, peremption=True):
     from .conception.moteur import CLES_SORTIE
     forme = {cle: getattr(version, cle) for cle in CLES_SORTIE}
     suivi = suivi_des_devis and version.lead_id
     forme.update(
         option_retenue=version.option_retenue or None, lead=version.lead_id, calepinage=version.calepinage_id,
         empreinte_pose=version.empreinte_pose, declencheur=version.declencheur, version=version.version,
-        calcule_le=version.calcule_le.isoformat(), perimee=_perimee(version),
+        calcule_le=version.calcule_le.isoformat(), perimee=_perimee(version) if peremption else False,
         brouillons_a_mettre_a_jour=_brouillons_a_mettre_a_jour(version) if suivi else [],
         ecart_devis=ecart_devis(_devis_envoye_du_lead(version)) if suivi else [])
     forme['valeurs'], forme['payback_devis'] = _payback_servi(version, forme['valeurs'])
@@ -174,16 +177,17 @@ def _empreinte_des_entrees(version):
     toit = SimpleNamespace(empreinte=pose, plafond_panneaux=None) if pose else None
     # Relecture E6 B1 — les désignations à la main du calepinage de la version entrent
     # dans l'empreinte rangée (``service.relancer``) : la lecture les relit par la MÊME porte.
-    imposes, calepinage_id = None, version.calepinage_id
+    imposes, calepinage_id, lu = None, version.calepinage_id, None
     if version.lead_id and not calepinage_id:
         # Lane E6e — la résolution de l'écrivain (``porte_calepinage.calepinage_du_lead``) : une
         # version rangée sans le calepinage ouvert du lead est périmée, une relance la range avec.
-        from .conception.porte_calepinage import calepinage_du_lead
-        calepinage_id, toit = calepinage_du_lead(company, lead, None, toit)
+        # Coût des requêtes : le calepinage lu sert aussi ses désignations (pas de seconde lecture).
+        from .conception.porte_calepinage import calepinage_et_toit_du_lead
+        calepinage_id, toit, lu = calepinage_et_toit_du_lead(company, lead, None, toit)
     if calepinage_id:
         from .conception.moteur import consommation_imposee
         from .conception.porte_calepinage import designations_du_calepinage
-        imposes = designations_du_calepinage(company, calepinage_id) or None
+        imposes = designations_du_calepinage(company, calepinage_id, lu) or None
         # Reste d'ACAL2020 — le relevé collé, relu par LA MÊME porte que l'écrivain (niveau 15).
         lead, _conso = consommation_imposee(lead, company, calepinage_id)
     with reglages_lus_sans_creer(company):
