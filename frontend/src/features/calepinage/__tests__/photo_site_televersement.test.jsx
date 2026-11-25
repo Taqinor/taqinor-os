@@ -26,7 +26,7 @@ vi.mock('leaflet', async () => (await import('./leafletFauxMock')).leafletFauxMo
 vi.mock('leaflet/dist/leaflet.css', () => ({}))
 
 const { default: PhotoSiteCalage } = await import('../PhotoSiteCalage')
-const { rejouerFile } = await import('../fileEnvoiPhotos')
+const { rejouerFile, genresEnAttente } = await import('../fileEnvoiPhotos')
 
 const PHOTO_NEUVE = {
   id: 5, genre: 'drone', legende: '', filename: 'photo.png',
@@ -174,6 +174,7 @@ describe('ACAL892 — photo déposée hors ligne : gardée sur l’appareil, env
     cleanup()
     rendre()
     expect(await screen.findByTestId('acal892-file-attente')).toHaveTextContent('1 photo en attente d’envoi')
+    expect(await genresEnAttente(9)).toEqual(['drone']) // T4-X8-003 — le genre gardé se relit aussi (le relevé au téléphone le montre)
   })
 
   it('refus serveur (400) au retour du réseau ⇒ retirée de la file, champ nommé', async () => {

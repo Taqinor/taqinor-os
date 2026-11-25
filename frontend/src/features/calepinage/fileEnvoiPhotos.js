@@ -34,6 +34,11 @@ export async function compterEnAttente(calepinageId) {
   return miennes(await file().load(), calepinageId).length
 }
 
+/** T4-X8-003 — les genres des photos en attente (dans l'ordre de la file) : survivent au rechargement, l'écran les montre. */
+export async function genresEnAttente(calepinageId) {
+  return miennes(await file().load(), calepinageId).map((o) => o.meta?.genre).filter(Boolean)
+}
+
 async function mettreEnFile(calepinageId, fichier, champs) {
   const bytes = await fichier.arrayBuffer()
   const dispo = await espaceDisponible(bytes.byteLength)

@@ -5,6 +5,16 @@ import { CATEGORIES_PHOTO } from './releveTelephone'
    l'appareil photo quand la catégorie n'a pas encore de photo). Les catégories sont les
    genres RÉELS de `PhotoSite.Genre` (3, pas les 6 sujets d'exemple de la maquette : D-ACAL-68, ACAL1319). */
 
+/* T4-X8-003 — la photo gardée ne montre pas l'appareil photo (qui inviterait à la reprendre) : une flèche d'envoi. */
+function Envoi() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 16V4M7 9l5-5 5 5M5 20h14" />
+    </svg>
+  )
+}
+
 function Appareil() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
@@ -43,10 +53,10 @@ export default function TuilesPhotos({ photos, genresEnFile, genresEnvoyes = [],
           /* T4-U4-023 — la photo gardée (ou envoyée, en relecture) : le genre et son état sur deux lignes, en encre
              de la feuille — jamais une pastille blanche coupée sur fond clair. */
           <div key={t.genre} className="cal-tel-tuile-attente" data-testid={`releve-photo-${t.genre}`}>
-            <Appareil />
+            <Envoi />
             <span className="cal-tel-tuile-attente-genre">{t.libelle}</span>
             <span className="cal-tel-tuile-attente-etat" data-testid={`releve-photo-${t.genre}-etat`}>
-              {t.enFile ? 'en attente' : 'envoyée'}
+              {t.enFile ? 'en attente d’envoi' : 'envoyée'}
             </span>
           </div>
         ) : (

@@ -96,6 +96,19 @@ function PastilleHorsLigne() {
   )
 }
 
+/* T4-X8-003 — réseau revenu, file pas encore vidée : la pastille suit le VRAI réseau (jamais « Hors ligne » en ligne). */
+function PastilleEnvoi() {
+  return (
+    <span className="cal-tel-pastille" data-testid="releve-envoi-attente" role="status">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 16V4M7 9l5-5 5 5M5 20h14" />
+      </svg>
+      En attente d’envoi
+    </span>
+  )
+}
+
 export default function ReleveVisite() {
   const { id } = useParams()
   const enLigne = useEnLigne()
@@ -409,7 +422,7 @@ export default function ReleveVisite() {
           <span className="cal-tel-projet-titre">Relevé de visite</span>
           {titre && <span className="cal-tel-projet-ligne" data-testid="releve-projet">{titre}</span>}
         </div>
-        {(!enLigne || photos.enAttente > 0 || fileReleve.enAttente) && <PastilleHorsLigne />}
+        {!enLigne ? <PastilleHorsLigne /> : (photos.enAttente > 0 || fileReleve.enAttente) && <PastilleEnvoi />}
       </header>
 
       <div className="cal-tel-feuille">

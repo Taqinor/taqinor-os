@@ -22,11 +22,12 @@ const api = {
 vi.mock('../../../api/calepinageApi', () => ({
   default: { calepinages: new Proxy({}, { get: (_, nom) => (...a) => api[nom](...a) }) },
 }))
-const file = { compterEnAttente: vi.fn(), deposerOuMettreEnFile: vi.fn(), rejouerFile: vi.fn() }
+const file = { compterEnAttente: vi.fn(), genresEnAttente: vi.fn(), deposerOuMettreEnFile: vi.fn(), rejouerFile: vi.fn() }
 // Les photos sont simulées ; la file du RELEVÉ (ACAL1810) est la vraie (magasin en mémoire sous jsdom, comme sans IndexedDB).
 vi.mock('../fileEnvoiPhotos', async (importOriginal) => ({
   ...(await importOriginal()),
   compterEnAttente: (...a) => file.compterEnAttente(...a),
+  genresEnAttente: (...a) => file.genresEnAttente(...a),
   deposerOuMettreEnFile: (...a) => file.deposerOuMettreEnFile(...a),
   rejouerFile: (...a) => file.rejouerFile(...a),
 }))
@@ -63,6 +64,7 @@ beforeEach(async () => {
   api.corrigerReleve.mockResolvedValue({ data: { releve: { ...RELEVE_COURANT } } })
   api.enregistrerSectionLayout.mockResolvedValue({ data: { roof_layout: { zones: [ZONE] }, empreinte_document: 'emp-2' } })
   file.compterEnAttente.mockResolvedValue(0)
+  file.genresEnAttente.mockResolvedValue([])
   file.rejouerFile.mockResolvedValue({ envoyees: 0, refusees: [], restantes: 0 })
   capteurs.demarrerCapteurs.mockResolvedValue({ indisponible: true, motif: 'Capteurs absents : saisissez l’azimut et la hauteur à la main.' })
 })
@@ -643,6 +645,36 @@ describe('T4-U4-020..023 — ce qui est tapé n’est jamais perdu, l’écran d
     await act(async () => { servir({ data: { photos: [{ id: 5, genre: 'drone', url: '/a/5/' }, { id: 6, genre: 'oblique', url: '/a/6/' }] } }) })
     await waitFor(() => expect(screen.getByTestId('releve-photo-oblique').querySelector('img')).not.toBeNull())
     expect(screen.getByTestId('releve-photos-compte')).toHaveTextContent('2 sur 3')
+  })
+
+  it('X8-003 : 3 photos gardées, rechargement hors ligne puis retour du réseau : « 3 sur 3 », tuiles « en attente d’envoi », pastille juste', async () => {
+    api.photos.mockResolvedValue({ data: { photos: [] } })
+    file.compterEnAttente.mockResolvedValue(3)
+    file.genresEnAttente.mockResolvedValue(['drone', 'oblique', 'sol'])
+    enLigne = false
+    rendre() // rechargement hors ligne
+    await waitFor(() => expect(screen.getByTestId('releve-photos-compte')).toHaveTextContent('3 sur 3'))
+    for (const g of ['drone', 'oblique', 'sol']) {
+      expect(screen.getByTestId(`releve-photo-${g}-etat`)).toHaveTextContent('en attente d’envoi')
+      expect(screen.getByTestId(`releve-photo-${g}`).querySelector('input[type="file"]')).toBeNull()
+    }
+    expect(screen.getByTestId('releve-hors-ligne')).toHaveTextContent('Hors ligne')
+
+    let liberer
+    file.rejouerFile.mockImplementationOnce(() => new Promise((r) => { liberer = r }))
+    enLigne = true
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    // Pendant l'envoi : rien ne se vide, et la pastille ne dit plus « Hors ligne ».
+    expect(screen.getByTestId('releve-photos-compte')).toHaveTextContent('3 sur 3')
+    expect(screen.getByTestId('releve-photo-sol').querySelector('input[type="file"]')).toBeNull()
+    expect(screen.queryByTestId('releve-hors-ligne')).toBeNull()
+    expect(screen.getByTestId('releve-envoi-attente')).toHaveTextContent('En attente d’envoi')
+    file.genresEnAttente.mockResolvedValue([])
+    api.photos.mockResolvedValue({ data: { photos: ['drone', 'oblique', 'sol'].map((genre, i) => ({ id: 20 + i, genre, url: `/a/${i}/` })) } })
+    await act(async () => { liberer({ envoyees: 3, refusees: [], restantes: 0 }) })
+    await waitFor(() => expect(screen.getByTestId('releve-photo-sol').querySelector('img')).not.toBeNull())
+    expect(screen.getByTestId('releve-photos-compte')).toHaveTextContent('3 sur 3')
+    expect(screen.queryByTestId('releve-envoi-attente')).toBeNull()
   })
 
   it('U4-021 : deux retours du réseau rapprochés ne rejouent la file des photos qu’UNE fois', async () => {
