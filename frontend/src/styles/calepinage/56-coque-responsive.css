@@ -336,6 +336,32 @@
   }
   .cal-coque .cal-coque-alertes-contenu button,
   .cal-coque .cal-coque-alertes-plus { min-height: 44px; }
+  /* T4-X8-006 — « Avancé » au téléphone : une FEUILLE DU BAS (comme celle du relevé, `.cal-tel-feuille` de 58-telephone.css :
+     rayon 26 en haut, ombre vers le haut), posée sur la barre des étapes, haute de son contenu, défilante. Elle vit dans le
+     corps du tiroir : tiroir réduit (guidé), ce corps n'était plus rendu et la feuille mesurait 0 × 0 ; il ne garde
+     alors QUE la feuille, sans place dans le tiroir (elle est fixée à l'écran). */
+  .cal-coque[data-feuille='1'] .cal-coque-avance:not([hidden]) {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: var(--cal-rail-bas);
+    width: auto;
+    max-height: calc(100dvh - var(--cal-rail-bas) - 48px);
+    border-left: 0;
+    border-radius: 26px 26px 0 0;
+    box-shadow: var(--cal-ombre-feuille, var(--shadow-lg));
+  }
+  .cal-coque.cal-coque[data-feuille='1'] .cal-panneau-etape[data-tiroir='1'][data-deplie='0'] .cal-panneau-etape-corps {
+    display: block;
+    position: absolute;
+    width: 0;
+    height: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+  .cal-coque.cal-coque[data-feuille='1'] .cal-panneau-etape[data-tiroir='1'][data-deplie='0'] .cal-panneau-etape-corps > :not(.cal-coque-avance) {
+    display: none;
+  }
 }
 
 /* ── ACAL1835 — TABLETTE (640 à 1 279 px, maquette v2 Tablette 1 180 × 820) : la coque flottante du bloc ≥ 640 px à

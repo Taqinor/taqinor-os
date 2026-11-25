@@ -225,7 +225,8 @@ export default function CoqueAtelier({
   // Expert : l'ancienne disposition entière (contrôles du constructeur, rangées sous la carte, recherche).
   const [avanceOuvert, setAvanceOuvert] = useState(false)
   const avance = expert || avanceOuvert
-  const feuille = !expert && avanceOuvert
+  // T4-X8-006 — au téléphone, la feuille s'ouvre AUSSI en Expert (sous 640 px, l'inspecteur n'a que le tiroir du bas).
+  const feuille = avanceOuvert && (!expert || tiroir)
   const lieu = useLocation()
   useFermetureFeuille(feuille, () => setAvanceOuvert(false), `${lieu.pathname}${lieu.search}`)
   const carteVisible = cadre === CADRES.CARTE
@@ -359,7 +360,7 @@ export default function CoqueAtelier({
         <BandeauAlertes cache={!!presentation}>{alertes}</BandeauAlertes>
         <div id="rp9-studio" className="cal-coque-corps">
           <RailEtapes calepinageId={calepinageId} cache={!!presentation} etapeActive={cleEtape} parcours={parcours} onChoisir={allerA}
-            avance={avance} onAvance={setAvanceOuvert} />
+            avance={feuille || (expert && !tiroir)} onAvance={setAvanceOuvert} />
           <main className="cal-coque-centre">
             <div id="rp9-studio-scene" className="cal-coque-scene" hidden={!carteVisible}>
               {carte}
