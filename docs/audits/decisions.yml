@@ -6141,3 +6141,16 @@ decisions:
     date: "2026-11-25"
     source: "lecture seule de la production du 25/11/2026 (9 pompes chiffrées sans kW ni tension) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Yes: 220 V / 380 V (Recommended) »"
     taches: []
+  - id: D-ACAL-130
+    question: "Deux articles du kit de pompage sont à prix 0 : la structure au sol (STR-SOL-PMP, chiffrée par panneau) et la pose (INST-PMP, barème fixe + par panneau). Le fondateur a demandé de s'inspirer des devis résidentiels et C&I d'aujourd'hui. Quels prix ?"
+    options:
+      - cle: structure_540_ttc_pose_2000_plus_250
+        texte: "Structure : 540 DH TTC par panneau (450 HT, la valeur de la structure lestée C&I CI-STRUCT-PLAT-LEST) ; pose : 2 000 DH HT fixes + 250 DH HT par panneau (le barème de l'installation résidentielle)"
+      - cle: structure_500_ttc
+        texte: "Structure : 500 DH TTC par panneau (416,67 HT, la structure acier résidentielle, pratiquée sur 23 lignes de devis agricoles en douze mois)"
+      - cle: pose_170_par_panneau
+        texte: "Pose : 170 DH HT par panneau (forfaits C&I pose de structure + pose de modules), avec ou sans 1 500 DH fixes"
+    reponse: structure_540_ttc_pose_2000_plus_250
+    date: "2026-11-25"
+    source: "lecture seule de la production du 25/11/2026 (catalogue et lignes de devis des 90 derniers jours et des douze derniers mois, agrégats) ; RÉPONSES DU FONDATEUR le 25/11/2026 (questions interactives), mot pour mot : « 540 DH TTC per panel » et « 2 000 + 250 per panel HT (Recommended) » ; posés au déploiement par migration de données, seulement là où le prix ou le barème est vide"
+    taches: []
