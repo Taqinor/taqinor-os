@@ -561,8 +561,10 @@ def production_mensuelle(*, kwc=None, profils_horaires=None, courbe_pompe=None,
     if courbe_ok and hmt is not None and hmt > 0:
         debit_nominal = _debit_vitesse_relative(courbe_pompe, hmt, 1.0)
     if not courbe_ok and debit_declare is None:
-        sortie["motif"] = ("pompe sans courbe constructeur et sans débit "
-                           "déclaré — aucun m³/jour publié")
+        # T4-V2-012 — « sans débit déclaré » se lisait comme le débit
+        # SOUHAITÉ, pourtant déclaré : c'est le débit de la POMPE qui manque.
+        sortie["motif"] = ("pompe sans courbe constructeur ni débit relevé : "
+                           "son débit à cette hauteur n'est pas connu")
         return sortie
     if courbe_ok and debit_nominal is None:
         sortie["motif"] = "HMT inconnue — production non calculée"

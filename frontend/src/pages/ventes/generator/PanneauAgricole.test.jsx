@@ -250,6 +250,17 @@ describe('résultat serveur (AGR129)', () => {
     expect(majPompage).toHaveBeenCalledWith('taille', 'superieure')
   })
 
+  it('T4-V2-003 — une taille dont la pompe ne délivre pas le débit le dit sur sa carte', () => {
+    const motif = 'ne délivre pas le débit demandé à cette hauteur : 16,1 m³/h à 80 m'
+      + ' pour 20 m³/h demandés — champ limité à 1,5 fois sa puissance, couverture affichée'
+    const reco = REPONSE.tailles.find((t) => t.cle === 'recommandee')
+    const tailles = [{ ...reco, cle: 'inferieure', retenue: false, motif }, ...REPONSE.tailles]
+    render(<PanneauAgricole {...PROPS_VIDES}
+      apercuPompage={{ donnees: { ...REPONSE, tailles, tailles_omises: [] } }} />)
+    expect(screen.getByTestId('taille-inferieure').textContent).toContain(motif)
+    expect(screen.getByTestId('taille-recommandee').textContent).not.toContain('ne délivre pas')
+  })
+
   it('pastilles de couverture : vert 95-120, orange > 120, rouge < 95', () => {
     const donnees = { ...REPONSE, couverture_pct_mois: [99, 169, 80, ...REPONSE.couverture_pct_mois.slice(3)] }
     render(<PanneauAgricole {...PROPS_VIDES} apercuPompage={{ donnees }} />)

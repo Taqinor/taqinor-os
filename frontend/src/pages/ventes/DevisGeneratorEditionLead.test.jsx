@@ -259,6 +259,38 @@ describe('AGR420 — le pompage se pré-remplit des seules entrées du lead', ()
   })
 })
 
+// ── T4-V2-002 — « Modifier » un devis AUTOMATIQUE agricole ──
+// Le devis automatique n'enregistre que la taille et l'alimentation ; le
+// reste, le moteur l'a lu sur le lead : l'édition complète le reprend.
+describe('T4-V2-002 — l’édition complète d’un devis agricole rouvre l’étude du lead', () => {
+  function devisAutoAgricole(etude = {}) {
+    const rouvert = devisRouvert({ lead: LEAD_POMPAGE.id })
+    return { data: { ...rouvert.data, mode_installation: 'agricole',
+      etude_params: { taille: 'recommandee', alim: 'tri', ...etude } } }
+  }
+
+  it('HMT, niveau et distance du lead remplissent les champs vides', async () => {
+    crmApi.getLead.mockResolvedValue({ data: LEAD_POMPAGE })
+    ventesApi.getDevisById.mockResolvedValue(devisAutoAgricole())
+    renderEdition()
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(LEAD_POMPAGE.id))
+    await waitFor(() => expect(document.getElementById('gen-hmt')?.value).toBe('60'), { timeout: 5000 })
+    expect(document.getElementById('gen-distance').value).toBe('25')
+    expect(document.getElementById('gen-farm-static').value).toBe('32')
+  })
+
+  it('une valeur ENREGISTRÉE sur le devis prime sur celle du lead', async () => {
+    crmApi.getLead.mockResolvedValue({ data: LEAD_POMPAGE })
+    ventesApi.getDevisById.mockResolvedValue(devisAutoAgricole({
+      hmt_entrees: { saisie_m: 75 },
+    }))
+    renderEdition()
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(LEAD_POMPAGE.id))
+    await waitFor(() => expect(document.getElementById('gen-distance')?.value).toBe('25'), { timeout: 5000 })
+    expect(document.getElementById('gen-hmt').value).toBe('75')
+  })
+})
+
 // ── AGR421 (D-AGR-9) — bandeau « devis agricole sur un lead non agricole » ──
 const LEAD_INCOHERENT = exempleContrat('crm', 'lead_pompage', 'exemple_incoherent')
 

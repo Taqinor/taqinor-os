@@ -105,6 +105,24 @@ class Installation(unittest.TestCase):
         self.assertTrue(alerte)
         self.assertTrue(alerte[0]["interne"])
 
+    def test_t4v2_004_pose_au_tarif_toiture_dite_en_mots(self):
+        # Ni code article ni « alerte interne » : ce qui est chiffré, où le
+        # saisir, et le droit qu'il faut.
+        kit = composer_kit(**BASE)
+        message = next(a["message"] for a in kit["alertes"]
+                       if a["code"] == "bareme_installation_toiture")
+        self.assertIn("la pose est chiffrée au tarif toiture", message)
+        self.assertIn("Stock, article « Installation pompage solaire »",
+                      message)
+        self.assertIn("Modifier les prix du catalogue", message)
+        for interdit in ("INST-PMP", "alerte interne", "Barème toiture"):
+            self.assertNotIn(interdit, message)
+        sans = composer_kit(**dict(BASE, installation_pompage=None))
+        message = next(a["message"] for a in sans["alertes"]
+                       if a["code"] == "bareme_installation_toiture")
+        self.assertIn("Aucun article de pose du pompage", message)
+        self.assertNotIn("INST-PMP", message)
+
     def test_inst_pmp_price_sans_alerte(self):
         inst = dict(INST_PMP_VIDE, prix_connu=True, prix_fixe_ht=3000)
         kit = composer_kit(**dict(BASE, installation_pompage=inst))
@@ -215,8 +233,12 @@ class Options(unittest.TestCase):
         var = dict(VARIATEUR, fiche={"var_protection_marche_a_sec": None})
         alerte = self._marche_a_sec(variateur=var)
         self.assertEqual(len(alerte), 1)
-        self.assertIn("ne dit pas s'il protège de la marche à sec : à saisir",
+        # T4-V2-010 — la phrase dit OÙ saisir l'information manquante.
+        self.assertIn("ne dit pas s'il protège la pompe de la marche à sec",
                       alerte[0]["message"])
+        self.assertIn("À saisir dans Stock, fiche du variateur",
+                      alerte[0]["message"])
+        self.assertIn("« %s »" % VARIATEUR["nom"], alerte[0]["message"])
 
     def test_acal808_sonde_cochee_ou_protection_publiee_aucune_alerte(self):
         sans = dict(VARIATEUR, fiche={"var_protection_marche_a_sec": False})

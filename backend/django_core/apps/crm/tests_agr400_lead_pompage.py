@@ -271,6 +271,45 @@ class SaisieParLApi(TestCase):
         self.lead.refresh_from_db()
         self.assertIsNone(self.lead.niveau_statique_source)
 
+    def _journal_origine(self):
+        from apps.crm.models import LeadActivity
+        return list(LeadActivity.objects.filter(
+            lead=self.lead, field='debit_forage_source').values_list(
+                'old_value', 'new_value'))
+
+    def test_corriger_la_seule_valeur_garde_l_origine_choisie(self):
+        # T4-V2-001 — « Donné par le foreur » enregistré, puis le débit seul
+        # corrigé (25 → 30) : l'origine reste, et l'historique n'écrit aucun
+        # changement d'origine que l'utilisateur n'a pas fait.
+        self._patch({'debit_forage_m3h': '25', 'debit_forage_source': 'foreur'})
+        journal_avant = self._journal_origine()
+        resp = self._patch({'debit_forage_m3h': '30'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['debit_forage_source'], 'foreur')
+        lu = self.api.get(self.url).data
+        self.assertEqual(lu['debit_forage_m3h'], '30.00')
+        self.assertEqual(lu['debit_forage_source'], 'foreur')
+        self.assertEqual(self._journal_origine(), journal_avant)
+
+    def test_corriger_valeur_et_origine_ensemble_pose_les_deux(self):
+        self._patch({'debit_forage_m3h': '25', 'debit_forage_source': 'foreur'})
+        resp = self._patch({'debit_forage_m3h': '30',
+                            'debit_forage_source': 'essai'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lu = self.api.get(self.url).data
+        self.assertEqual(lu['debit_forage_m3h'], '30.00')
+        self.assertEqual(lu['debit_forage_source'], 'essai')
+
+    def test_retaper_une_valeur_mesuree_en_visite_ne_garde_pas_la_mesure(self):
+        # Une origine posée par un autre chemin (relevé de visite) ne décrit
+        # plus un chiffre retapé sur la fiche : l'origine déclarée la remplace.
+        Lead.objects.filter(pk=self.lead.pk).update(
+            debit_forage_m3h=Decimal('25'), debit_forage_source='mesure_visite')
+        resp = self._patch({'debit_forage_m3h': '30'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.debit_forage_source, 'client')
+
 
 class ReglePret(SimpleTestCase):
     """AGQ9 (D-AGQ-5) — la HMT SAISIE est requise ; le niveau d'eau ne

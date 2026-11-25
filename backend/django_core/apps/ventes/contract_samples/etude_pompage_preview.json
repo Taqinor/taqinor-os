@@ -774,7 +774,7 @@
       {
         "code": "bareme_installation_toiture",
         "champ": "kit.installation",
-        "message": "Barème toiture appliqué à un pompage — renseigner INST-PMP (alerte interne)."
+        "message": "Le tarif de pose du pompage n'est pas saisi : la pose est chiffrée au tarif toiture. À saisir dans Stock, article « Installation pompage solaire » (droit « Modifier les prix du catalogue »)."
       }
     ],
     "hypotheses": [

@@ -587,8 +587,68 @@ def _repli_borne(nb, kwc0, pmax, plaque):
     if nb_borne >= nb:
         return nb, ""
     nb = max(nb_borne, 1)
-    return nb, (" ; borne de %s × la plaque de %s kW (%d panneaux)"
-                % (_fr(bande_max), _fr(plaque), nb))
+    # T4-V2-011 — des mots, plus « borne de 1,5 × la plaque ».
+    return nb, (", limité à %s fois la puissance de la pompe (%s kW), soit %d "
+                "panneaux" % (_fr(bande_max), _fr(plaque), nb))
+
+
+def _recherche_libre(nb, prod, kwc0, pmax, plaque, besoin, params, alertes):
+    """AGR115 / AGM2 — ``(nb, prod)`` : le plus petit champ qui couvre chaque
+    mois d'irrigation (recherche non bornée, D-AGM-2) ; jamais couvert ⇒
+    repli au kWc de départ borné à la bande, et l'alerte. Extrait tel quel de
+    :func:`dimensionner_champ` (garde FONCTION_MUR)."""
+    nb = nb or 1
+    if _couvre(prod, besoin):
+        while nb > 1:
+            essai = _production(nb - 1, pmax, **params)
+            if not _couvre(essai, besoin):
+                break
+            nb, prod = nb - 1, essai
+        return nb, prod
+    for _ in range(_ITERATIONS_MAX):
+        nb += 1
+        prod = _production(nb, pmax, **params)
+        if _couvre(prod, besoin):
+            return nb, prod
+    nb, borne = _repli_borne(nb, kwc0, pmax, plaque)
+    prod = _production(nb, pmax, **params)
+    alertes.append(_alerte(
+        "besoin_non_couvert_champ", "pompe",
+        "Même avec un champ très surdimensionné, la pompe ne couvre pas le "
+        "besoin de chaque mois d'irrigation : champ ramené à l'énergie qu'il "
+        "faut pour monter ce besoin à cette hauteur%s." % borne))
+    return nb, prod
+
+
+def _recherche_bornee(nb, pmax, plaque, besoin, params, alertes):
+    """T4-V2-003 — ``(nb, prod)`` : le plus petit champ qui couvre le besoin
+    SANS dépasser la borne haute de la bande champ/pompe × la plaque ; sinon
+    la borne, couverture affichée, et l'alerte qui le dit en mots. Pour une
+    pompe qui ne délivre pas le débit de conception à cette HMT : sans borne,
+    elle « couvrait » le besoin en pompant plus d'heures sous un champ de 4 à
+    8 fois sa puissance (OSP 30/8 à 80 m : 83 panneaux contre 23 pour la
+    30/11)."""
+    bande_max = valeur("ratio_champ_pompe_bande_alerte").max
+    nb_max = max(int(math.floor(bande_max * plaque * 1000.0 / pmax + 1e-9)), 1)
+    nb = min(nb or 1, nb_max)
+    prod = _production(nb, pmax, **params)
+    while not _couvre(prod, besoin) and nb < nb_max:
+        nb += 1
+        prod = _production(nb, pmax, **params)
+    while _couvre(prod, besoin) and nb > 1:
+        essai = _production(nb - 1, pmax, **params)
+        if not _couvre(essai, besoin):
+            break
+        nb, prod = nb - 1, essai
+    if not _couvre(prod, besoin):
+        alertes.append(_alerte(
+            "besoin_non_couvert_champ", "pompe",
+            "Cette pompe ne délivre pas le débit demandé à cette hauteur : "
+            "même avec un champ de %s fois sa puissance (%d panneaux), elle "
+            "ne couvre pas le besoin de chaque mois d'irrigation. Couverture "
+            "affichée ; choisir une pompe plus puissante pour couvrir le "
+            "besoin." % (_fr(bande_max), nb)))
+    return nb, prod
 
 
 def _cause_champ_non_dimensionne(e_d, besoin, mois, hmt_m):
@@ -630,7 +690,8 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
                        e_d_kwh_kwc_mois=None, temperatures=None,
                        salissure_pct=None, agricole_pump_hours=None,
                        mois_critique=None, coordonnees=None,
-                       reponse_pvgis=None, plafond_m3h=None):
+                       reponse_pvgis=None, plafond_m3h=None,
+                       recherche_bornee=False):
     """AGR115 — nombre de panneaux, chaînes et variateur retenu.
 
     AGQ40 (D-AGQ-9) — ``plafond_m3h`` (débit d'exploitation du forage × part
@@ -721,30 +782,11 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
             "production en borne haute (aucune perte variateur comptée)."
             % (("%s " % variateur.get("nom")) if variateur
                and variateur.get("nom") else "")))
-    if heure_par_heure and mois:
-        nb = nb or 1
-        if _couvre(prod, besoin):
-            while nb > 1:
-                essai = _production(nb - 1, pmax, **params)
-                if not _couvre(essai, besoin):
-                    break
-                nb, prod = nb - 1, essai
-        else:
-            couvert = False
-            for _ in range(_ITERATIONS_MAX):
-                nb += 1
-                prod = _production(nb, pmax, **params)
-                if _couvre(prod, besoin):
-                    couvert = True
-                    break
-            if not couvert:
-                nb, borne = _repli_borne(nb, kwc0, pmax, plaque)
-                prod = _production(nb, pmax, **params)
-                alertes.append(_alerte(
-                    "besoin_non_couvert_champ", "pompe",
-                    "Même avec un champ très surdimensionné, la pompe ne "
-                    "couvre pas le besoin de chaque mois d'irrigation : champ "
-                    "ramené au kWc de départ (énergie hydraulique)%s." % borne))
+    if heure_par_heure and mois and recherche_bornee and (plaque or 0) > 0:
+        nb, prod = _recherche_bornee(nb, pmax, plaque, besoin, params, alertes)
+    elif heure_par_heure and mois:
+        nb, prod = _recherche_libre(nb, prod, kwc0, pmax, plaque, besoin,
+                                    params, alertes)
     elif nb is None:
         cause = _cause_champ_non_dimensionne(e_d, besoin, mois, hmt_m)
         alertes.append(_alerte(cause[0], cause[1],
@@ -758,10 +800,14 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
         # de départ est borné à la plaque comme le repli « non couvert » : une
         # pompe de 22 kW ne consomme jamais 61 kWc.
         nb, borne = _repli_borne(nb, kwc0, pmax, plaque)
+        # T4-V2-011 / T4-V2-012 — UNE chose vraie, sans formule : ce qui
+        # n'est PAS calculé (l'eau livrée par la pompe) et ce qui l'est (le
+        # champ, sur l'énergie du besoin déclaré).
         alertes.append(_alerte(
             "champ_kwc_depart", "champ.nb_panneaux",
-            "Production heure par heure non calculable (%s) : champ au kWc de "
-            "départ E / (η × E_d)%s." % (raison, borne)))
+            "Eau livrée par la pompe non calculée (%s) : aucun m³/jour n'est publié. Le champ est "
+            "dimensionné sur l'énergie qu'il faut pour monter le besoin déclaré à cette hauteur "
+            "(%s kWc%s)." % (raison, _fr(kwc0, 2), borne)))
 
     # Chaînes : variateur retenu, sinon le suivant (courant / fenêtre).
     chaines = _chaines_vides("aucun variateur retenu")

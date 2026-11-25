@@ -43,7 +43,7 @@
    {
     "champ": "kit.options.sonde_niveau",
     "code": "marche_a_sec_non_protegee",
-    "message": "Ni sonde de niveau ni protection marche à sec connue : la fiche du variateur ne dit pas s'il protège de la marche à sec : à saisir"
+    "message": "Ni sonde de niveau cochée ni protection marche à sec connue : la fiche du variateur « VARIATEUR VEICHI SI23 5.5KW 380V » ne dit pas s'il protège la pompe de la marche à sec. À saisir dans Stock, fiche du variateur (protection marche à sec), ou cocher l'option « Sonde de niveau »."
    }
   ],
   "alim": "tri",

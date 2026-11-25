@@ -712,10 +712,19 @@ const PROVENANCES = {
   client: 'déclaré', site_web: 'site web', mesure_visite: 'mesuré en visite', derive: 'calculé',
 }
 
+// T4-V2-001 — colonnes dont l'origine se CHOISIT dans la liste d'à côté : une
+// origine déclarée (« Estimation du client », « Donné par le foreur »…) y est
+// déjà écrite ; la redire en d'autres mots sous le chiffre (« déclaré »)
+// faisait deux étiquettes pour un fait. Seules les origines posées ailleurs
+// (visite, site, calcul) restent dites sous le chiffre.
+const ORIGINE_CHOISIE_A_COTE = new Set(['niveau_statique_m', 'debit_forage_m3h', 'besoin_eau_m3j', 'pompe_hmt_m'])
+const PROVENANCES_DE_LA_LISTE = new Set(['client', 'essai', 'foreur'])
+
 function provenanceDe(state, cle) {
   const entrees = state?.server?.entrees_pompage?.entrees
   const e = Array.isArray(entrees) ? entrees.find((x) => x.colonne === cle) : null
-  return e ? (PROVENANCES[e.provenance] ?? e.provenance) : null
+  if (!e || (ORIGINE_CHOISIE_A_COTE.has(cle) && PROVENANCES_DE_LA_LISTE.has(e.provenance))) return null
+  return PROVENANCES[e.provenance] ?? e.provenance
 }
 
 // Un champ pompage = libellé court (fieldLabels) + question de l'appel (aide)

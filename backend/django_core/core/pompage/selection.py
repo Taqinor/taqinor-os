@@ -476,18 +476,23 @@ def choisir_pompe(pompes, *, hmt_m, debit_conception_m3h, alimentation,
             choisie = pre[0]
             etape = "pre_dimensionnement"
             paliers = [e for e in sans_courbe if prix_connu(e["p"])]
+            # T4-V2-011 — des phrases, plus la formule ni « η EST. » / « AMEE ».
             alerte("pompe_sans_courbe", "pompe",
-                   "Pompe pré-dimensionnée (kW min %s = Q × HMT × 2,725 / "
-                   "(1000 × η %s)) : %s ; aucun m³/jour publié tant que la "
+                   "Pompe choisie sur sa seule puissance : il faut au moins %s "
+                   "kW pour monter ce débit à cette hauteur (%s). Son débit "
+                   "réel est %s ; aucun m³/jour n'est publié tant que la "
                    "courbe manque." % (
                        _fr(choisie["kw_min"]),
-                       "publié" if choisie["rendement_publie"] else "EST.",
+                       "rendement publié sur sa fiche"
+                       if choisie["rendement_publie"] else "rendement estimé",
                        ETIQUETTE_A_CONFIRMER))
             if not choisie["rendement_publie"]:
                 alerte("rendement_non_publie", "pompe.fiche",
-                       "Rendement de « %s » non publié sur sa fiche : kW "
-                       "minimal calculé sur le rendement de groupe EST. "
-                       "(borne basse AMEE)." % choisie["p"].get("nom"))
+                       "Rendement de « %s » non publié sur sa fiche : la "
+                       "puissance minimale est calculée avec un rendement "
+                       "prudent de %s %%. À saisir dans Stock, fiche de la "
+                       "pompe." % (choisie["p"].get("nom"),
+                                   _fr(valeur("rendement_groupe") * 100, 0)))
 
     if choisie is None:
         noms = list(sans_prix_courbe) or [

@@ -4,7 +4,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { deriverReouverture } from './reouverture.js'
+import { deriverReouverture, tailleAutoRemplirPompage } from './reouverture.js'
 
 const L = (designation, quantite, produit = '1') =>
   ({ designation, quantite: String(quantite), produit: String(produit), typeLigne: 'produit' })
@@ -52,6 +52,21 @@ test('agricole : « libre » = aucune pompe', () => {
     .accessoiresOnly, false)
   assert.equal(deriverReouverture([L('Panneau 550W', 10)], { mode: 'agricole' })
     .accessoiresOnly, true)
+})
+
+test('T4-V2-007 — Auto-remplir agricole : le wattage est celui du panneau des LIGNES', () => {
+  // Kit servi : 4 × « Panneau Canadien Solar 715W » ⇒ 2,86 kWc, jamais 4 × 710.
+  const lignes = [
+    L('Pompe immergée solaire 3 CV Monophasé', 1),
+    L('Panneau Canadien Solar 715W', 4),
+    L('Structure au sol', 4),
+  ]
+  assert.deepEqual(tailleAutoRemplirPompage({ nb_panneaux: 4, kwc: 2.86 }, lignes),
+    { panneaux: 4, panel_watt: 715 })
+  // Aucun wattage lisible : seule la taille est posée (le défaut reste).
+  assert.deepEqual(tailleAutoRemplirPompage({ nb_panneaux: 4 }, [L('Pompe 3 CV', 1)]),
+    { panneaux: 4 })
+  assert.equal(tailleAutoRemplirPompage({ nb_panneaux: null }, lignes), null)
 })
 
 test('lignes serveur (type_ligne snake_case) acceptées', () => {
