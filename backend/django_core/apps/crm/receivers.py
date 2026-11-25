@@ -339,7 +339,12 @@ def _noter_conception_recalculee(sender, company_id=None, lead_id=None,
     with transaction.atomic():
         # Double livraison du même événement : le verrou de la ligne du lead
         # sérialise les deux livraisons, la seconde voit la première ligne.
-        Lead.objects.select_for_update().filter(pk=lead.pk).values_list('pk', flat=True).first()
+        # Relecture E4 M5 — le lead est RELU sous ce verrou (celui que prend
+        # le scrub d'``anonymiser_lead``) : effacé entre la lecture ci-dessus et
+        # ce point, rien n'est écrit (la phrase porte les valeurs effacées).
+        from .selectors import lead_efface_sous_verrou
+        if lead_efface_sous_verrou(company_id, lead.pk):
+            return
         if LeadActivity.objects.filter(
                 lead=lead, field='conception_version',
                 new_value=str(version)).exists():

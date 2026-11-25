@@ -8,12 +8,14 @@ aucune seconde lecture de la consommation, du lieu ni de l'occupation : la
 provenance (``entrees_utilisees``, forme du contrat ``conception_lead.json``)
 est relevée sur ce que l'adaptateur a résolu.
 
-* résidentiel : ``empreinte`` = ``empreinte_entrees`` de l'adaptateur, à
-  l'identique (même cache que les blocs des devis) ; ``champ`` = la colonne
+* résidentiel : base de l'``empreinte`` = ``empreinte_entrees`` de
+  l'adaptateur (même cache que les blocs des devis) ; ``champ`` = la colonne
   du lead, ou le réglage société nommé ;
 * C&I et agricole : ``champ`` = l'entrée nommée de la résolution (ses
   feuilles agrègent plusieurs colonnes du lead), ``source`` lue sur sa
-  provenance ; ``empreinte`` = SHA-256 des entrées résolues.
+  provenance ; base de l'``empreinte`` = SHA-256 des entrées résolues ;
+* les trois marchés (relecture E4 B1, :func:`completer`) : la base couvre
+  aussi le raccordement du lead, la TVA et le catalogue de la société.
 
 Lecture pure : rien n'est écrit (règle n° 4).
 """
@@ -114,6 +116,23 @@ def _empreinte(charge):
     return hashlib.sha256(canonique.encode('utf-8')).hexdigest()
 
 
+def completer(empreinte, lead, company, utilisees):
+    """Relecture E4 B1 — ce que les noyaux lisent hors de l'empreinte de
+    l'adaptateur : le RACCORDEMENT du lead (phase du site : l'adaptateur
+    résidentiel le lit sans l'empreindre), la TVA et le CATALOGUE de la société
+    (``conception/societe.py``). Ajoutés à ``utilisees`` (provenance dite) ;
+    rend l'empreinte qui les couvre."""
+    from apps.ventes.conception.societe import entrees_de_la_societe
+
+    raccordement = getattr(lead, 'raccordement', None)
+    if not _vide(raccordement) and 'raccordement' not in utilisees:
+        utilisees['raccordement'] = {'valeur': _json(raccordement), 'source': 'lead'}
+    societe = entrees_de_la_societe(company)
+    utilisees.update(societe)
+    return _empreinte({'entrees': empreinte, 'raccordement': raccordement or '',
+                       'societe': {cle: entree['valeur'] for cle, entree in sorted(societe.items())}})
+
+
 def entrees_pour(lead, company, *, toit=None):
     """L'``EntreesConception`` du lead, par l'adaptateur de son marché.
 
@@ -140,6 +159,7 @@ def entrees_pour(lead, company, *, toit=None):
         resolution = resoudre_entrees(company, {}, lead=lead)
         utilisees = _provenance_resolue(*resolution)
         empreinte = _empreinte({'marche': marche, 'entrees': utilisees})
+    empreinte = completer(empreinte, lead, company, utilisees)
     if empreinte_pose:
         empreinte = _empreinte({'entrees': empreinte, 'pose': empreinte_pose})
     return EntreesConception(marche=marche, moteur=moteur, resolution=resolution,

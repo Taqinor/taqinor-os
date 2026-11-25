@@ -188,6 +188,20 @@ class NoteConceptionRecalculeeTests(TestCase):
             declencheur=DECLENCHEUR)
         self.assertEqual(self._lignes(), [])
 
+    def test_lead_efface_apres_la_lecture_rien_n_est_ecrit(self):
+        """Relecture E4 M5 — le scrub (loi 09-08) valide ENTRE la lecture du
+        lead et le verrou : relu sous verrou, aucune ligne (sa phrase porte les
+        valeurs effacées)."""
+        from unittest import mock
+
+        from apps.crm import selectors
+        from apps.crm.dsr_provider import LEAD_NOM_ANONYMISE
+
+        Lead.objects.filter(pk=self.lead.pk).update(nom=LEAD_NOM_ANONYMISE)
+        with mock.patch.object(selectors, 'lead_efface', return_value=False):  # lu avant le scrub
+            self._envoyer()
+        self.assertEqual(self._lignes(), [])  # mutant « sans relecture sous verrou » : 1 ligne
+
     def test_raison_sans_prefixe_est_prefixee(self):
         self._envoyer(declencheur={**DECLENCHEUR, 'raison': 'pose modifiée'})
         self.assertEqual(self._lignes()[0].body,

@@ -43,6 +43,9 @@ ON_DEMAND_ALLOWLIST = {
     # les abonnés de ``lead_entrees_modifiees`` / ``pose_enregistree`` et par le
     # filet d'empreinte de la lecture ; jamais périodique.
     'ventes.relancer_conception',
+    # ADEV147 (relecture E4 M2) — suivi des brouillons d'un lead, mis en file
+    # après chaque version rangée de sa conception ; jamais périodique.
+    'ventes.suivre_la_conception',
     # ENG18 — génération de variantes créatives : déclenchée à la demande
     # depuis la bibliothèque créative (jamais périodique).
     'adsengine.generate_creative_variants',

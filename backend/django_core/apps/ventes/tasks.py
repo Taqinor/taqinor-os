@@ -970,3 +970,15 @@ def task_relancer_conception(company_id, lead_id=None, calepinage_id=None, origi
 
     return executer_relance(company_id, lead_id=lead_id, calepinage_id=calepinage_id, origine=origine,
                             champs=champs, empreinte_pose=empreinte_pose, jeton=jeton)
+
+
+# ADEV147 (relecture E4 M2) — les brouillons intacts d'un lead suivent sa
+# conception après CHAQUE version rangée (tâche, devis demandé, remplissage) :
+# mise en file après validation par ``conception/service.py``, une par lead ;
+# jamais périodique, aucun retry (« Mettre à jour » reste offert).
+@shared_task(name='ventes.suivre_la_conception', acks_late=True, soft_time_limit=300, time_limit=360)
+def task_suivre_la_conception(company_id, lead_id):
+    """Réaligne les brouillons non retouchés du lead sur sa version courante."""
+    from .conception.receivers import executer_suivi
+
+    return executer_suivi(company_id, lead_id)

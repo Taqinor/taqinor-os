@@ -7,7 +7,7 @@ rafraichir_etudes_du_devis``, ``from ..serializers import OverridesSerializer``
 …) restent dans les corps : les ``mock.patch`` ``apps.ventes.services.*``
 n'interceptent qu'ainsi.
 """
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from . import openapi_docs as D
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 import logging
@@ -569,18 +569,36 @@ class DevisEtudesActionsMixin:
 
 # ── ADEV148 (D-ACAL-97, Q2 du 23/11) — « Mettre à jour » un brouillon retouché ─
 
+class _GardeReprendreLeLead(IsResponsableOrAdmin):
+    """Relecture E4 M4 — LA garde de « Reprendre les valeurs du lead »
+    (``DevisViewSet.reappliquer_lead``) : aucun rôle n'est élargi."""
+    message = ("Votre rôle ne permet pas de mettre à jour un devis sur la conception du lead : "
+               "demandez-le à un responsable.")
+
+
+_MAJ_NOTES = inline_serializer('DevisMiseAJourConceptionNote', {
+    'champ': serializers.CharField(), 'raison': serializers.CharField()}, many=True)
+_MAJ_ERREUR = inline_serializer('DevisMiseAJourConceptionErreur', {
+    'detail': serializers.CharField(), 'code': serializers.CharField(required=False)})
+
+
 @extend_schema(
     request=None,
-    responses={200: serializers.DictField(), 404: serializers.DictField(), 409: serializers.DictField()},
+    responses={200: inline_serializer('DevisMiseAJourConceptionResponse', {
+                   'devis_id': serializers.IntegerField(),
+                   'appliquees': serializers.ListField(child=serializers.CharField()),
+                   'non_appliquees': _MAJ_NOTES}),
+               403: _MAJ_ERREUR, 404: _MAJ_ERREUR, 409: _MAJ_ERREUR},
     summary='ADEV148 — réaligner un brouillon sur la conception courante de son lead',
     description=("Brouillon actif seulement (envoyé, accepté… : 409 « Réviser le devis »). Les quantités "
                  "saisies à la main restent et sont nommées. Forme : apps/ventes/contract_samples/"
                  "conception_lead.json (clé « mettre_a_jour_conception »). 404 hors société ou hors portée."))
 @api_view(['POST'])
-@permission_classes([IsAnyRole, HasPermissionOrLegacy('crm_voir')])
+@permission_classes([IsAnyRole, HasPermissionOrLegacy('crm_voir'), _GardeReprendreLeLead])
 def mettre_a_jour_conception(request, devis_id):
     """Portée des routes de la conception (``crm_voir`` + ``leads_visibles``) :
-    le devis d'un lead que l'appelant ne voit pas répond 404, avant tout."""
+    le devis d'un lead que l'appelant ne voit pas répond 404, avant tout ; la
+    garde de rôle est celle de « Reprendre les valeurs du lead »."""
     from apps.crm.selectors import leads_visibles
 
     from ..conception.brouillons import MiseAJourRefusee, appliquer_a_la_demande
@@ -597,3 +615,9 @@ def mettre_a_jour_conception(request, devis_id):
     except MiseAJourRefusee as exc:
         return Response({'detail': str(exc), 'code': 'reviser_le_devis'}, status=409)
     return Response(resultat)
+
+
+# Une vue-fonction relève du module ``rest_framework`` pour ``module_de_la_vue`` :
+# sans ce module explicite, ``IsResponsableOrAdmin`` refuserait tout rôle fin non
+# administrateur (ASEC11). Même module que ``DevisViewSet`` : ``ventes``.
+mettre_a_jour_conception.cls.permission_module = 'ventes'

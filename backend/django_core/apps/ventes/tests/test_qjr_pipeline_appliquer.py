@@ -409,6 +409,12 @@ CHEMINS_BASCULES = {
     # contrôlé d'abord par la composition imposée. Golden :
     # ``test_agent_actions.TailleComposeeSurDemandeTest``.
     'domain/taille_assistant.py': 1,
+    # ADEV147 (relecture E4 M1/M3) — un brouillon INTACT suit sa conception :
+    # recomposé comme le devis automatique (résidentiel : composer ; C&I /
+    # agricole : ``MODE_ECRIRE`` puis ``MODE_RAFRAICHIR``), devis VERROUILLÉ et
+    # statut RELU sous la transaction. Golden : ``test_conception_lead.
+    # BrouillonsSuiventLaConceptionTests`` (devis frais = brouillon suivi).
+    'conception/brouillons.py': 3,
 }
 
 

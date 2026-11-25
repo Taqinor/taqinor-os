@@ -100,6 +100,7 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
         if courante is not None and courante.empreinte == empreinte_conception(entrees) and not forcer:
             return Relance(courante, False, None)
         resultat = calculer_conception(lead, company, entrees=entrees, toit=toit)
+    origine, champs = _pourquoi(courante, entrees, origine, champs)
     maintenant = timezone.now()
     version = ConceptionLead.ranger(
         lead=porteur.get('lead'), calepinage_id=calepinage_id, company=company,
@@ -114,6 +115,24 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
         return Relance(version, False, resultat)
     _annoncer_apres_validation(version)
     return Relance(version, True, resultat)
+
+
+def _pourquoi(courante, entrees, origine, champs):
+    """Relecture E4 B1 — ce que la phrase DIT : les champs nommés par
+    l'appelant, plus les réglages société changés depuis la version courante
+    (« catalogue modifié », « TVA modifiée ») et, quand l'appelant n'en nomme
+    aucun (filet, devis demandé), les entrées du lead changées (« Raccordement
+    Monophasé → Triphasé »). Une version d'avant ce suivi, sans autre
+    changement, est dite « règles de calcul mises à jour »."""
+    from apps.ventes.conception.societe import changements, format_d_avant
+
+    if courante is None:
+        return origine, champs
+    ancienne = courante.entrees_utilisees
+    releves = changements(ancienne, entrees.entrees_utilisees, champs)
+    if not champs and not releves and origine == 'filet' and format_d_avant(ancienne):
+        return 'regles', champs
+    return origine, champs + _declencheur_valide({'origine': origine, 'champs': releves})[1]
 
 
 def _garde_de_rangement(company, lead, debut):
@@ -272,6 +291,10 @@ def _annoncer_apres_validation(version):
             sender=type(version), company_id=version.company_id, lead_id=version.lead_id,
             calepinage_id=version.calepinage_id, version=version.version, declencheur=version.declencheur)
     transaction.on_commit(annoncer)
+    if version.lead_id and version.etat == 'complet':
+        # Relecture E4 M2 — ADEV147 après CHAQUE écriture, en tâche (jamais dans la requête).
+        from apps.ventes.conception.receivers import mettre_suivi_en_file
+        transaction.on_commit(lambda: mettre_suivi_en_file(version.company_id, version.lead_id))
 
 
 # ── La phrase « pourquoi » (lue telle quelle au chatter du lead) ─────────────
@@ -286,10 +309,20 @@ def phrase_du_declencheur(lead, champs, origine, quand):
     debut = 'Recalculé le %s à %d h %02d' % (moment.strftime('%d/%m'), moment.hour, moment.minute)
     if not champs:
         return '%s : %s' % (debut, MOTIFS_ORIGINE[origine])
-    morceaux = [('%s %s → %s' % (libelle_champ(lead, c['champ']), _lisible(lead, c['champ'], c['avant']),
-                                 _lisible(lead, c['champ'], c['apres']))
-                 + (' ' + UNITES[c['champ']] if c['champ'] in UNITES else '')) for c in champs]
-    return '%s : %s' % (debut, ' ; '.join(morceaux))
+    return '%s : %s' % (debut, ' ; '.join(_morceau(lead, c) for c in champs))
+
+
+def _morceau(lead, c):
+    from apps.ventes.conception.societe import MOTIFS
+
+    if c['champ'] in MOTIFS:  # relecture E4 B1 : un réglage société, dit en mots
+        if c['avant'] is None or c['apres'] is None:
+            return MOTIFS[c['champ']]
+        return '%s (%s → %s %%)' % (MOTIFS[c['champ']], _lisible(lead, c['champ'], c['avant']),
+                                    _lisible(lead, c['champ'], c['apres']))
+    return ('%s %s → %s' % (libelle_champ(lead, c['champ']), _lisible(lead, c['champ'], c['avant']),
+                            _lisible(lead, c['champ'], c['apres']))
+            + (' ' + UNITES[c['champ']] if c['champ'] in UNITES else ''))
 
 
 def _champ_du_modele(lead, champ):
@@ -304,8 +337,9 @@ def _champ_du_modele(lead, champ):
 def libelle_champ(lead, champ):
     # Le libellé de l'historique du lead : la ligne « pourquoi » s'y pose (ALEA69).
     from apps.crm.selectors import libelle_champ_lead
+    from apps.ventes.conception.societe import LIBELLES
 
-    libelle = libelle_champ_lead(champ)
+    libelle = LIBELLES.get(champ) or libelle_champ_lead(champ)
     if libelle:
         return libelle
     modele = _champ_du_modele(lead, champ)

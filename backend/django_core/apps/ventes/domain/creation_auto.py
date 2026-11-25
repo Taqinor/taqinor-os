@@ -361,9 +361,18 @@ def conception_pour_le_devis(lead, company, user):
                        declencheur={'origine': 'filet' if courante is not None else 'remplissage',
                                     'champs': []})
     version = relance.conception
-    if version is None or version.etat != 'complet':
+    if version is None or version.etat != 'complet' or not _decrit_la_taille(version):
         return None, relance
     return version, relance
+
+
+def _decrit_la_taille(version):
+    """Relecture E4 m1 — une version résidentielle rangée ``complet`` sans
+    recommandation de taille (étude ``dimensionnement`` dite absente) ne décrit
+    pas le devis : le chemin d'aujourd'hui, jamais « moteur indisponible »."""
+    if version.marche != 'residentiel':
+        return True
+    return bool(((version.blocs or {}).get('dimensionnement') or {}).get('recommandation'))
 
 
 def marquer_rapide(devis, journal_auto=None):  # ACAL1004 — « Devis automatique » : marque `rapide`
