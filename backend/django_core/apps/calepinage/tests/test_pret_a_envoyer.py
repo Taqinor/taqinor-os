@@ -697,7 +697,8 @@ class KwcCoherentTest(SimpleTestCase):
 
 
 LEAD = 'apps.crm.selectors.get_company_lead'
-CIBLE = 'apps.ventes.selectors.cible_depuis_lead'
+#: ACAL2012 — la cible se lit sur la conception rangée (plus ``cible_depuis_lead``).
+CIBLE = 'apps.calepinage.services.devis_retenu.cible_de_la_conception'
 
 
 def _cible(motif_code=None, refus=None):
@@ -997,7 +998,9 @@ class AgregatTest(SimpleTestCase):
                 (PUBLIABLE, (publication, None, materiel)), (SERVI, {}),
                 (TRONCONS, {}), (DOSSIERS, {'dossiers': []}),
                 (MESURES, {'kwc': None, 'pans': []}), (LEAD, object()),
-                (CIBLE, _cible()), (HYPOTHESES, [])):
+                (CIBLE, _cible()), (HYPOTHESES, []),
+                # ACAL2013 — le matériel par défaut vient de la conception (lue en base).
+                ('apps.calepinage.services.electrique.materiel_de_la_conception', {})):
             pile.enter_context(mock.patch(cible, return_value=valeur))
         return pile
 

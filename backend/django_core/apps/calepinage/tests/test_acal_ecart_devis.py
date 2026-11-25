@@ -35,10 +35,15 @@ from apps.calepinage.services.electrique import (
 from apps.calepinage.services.rapport.production import html_de_section
 from apps.ventes.models import Devis
 
+from .test_acal_cible_lead import ranger_conception
+from .test_acal_materiel_electrique import LAYOUT as LAYOUT_PAN, BaseMateriel
 from .test_api_liste import BaseApiCalepinage
 from .test_calx70_resultat_sert_la_simulation import (
     LAYOUT, LAYOUT_MODIFIE, MATERIEL, SIMULATION,
 )
+
+#: ACAL2017 — la pose du cas 1742 rejoué : 24 panneaux de 710 Wc (17,04 kWc) sur un pan sud.
+LAYOUT_1742 = {**LAYOUT_PAN, 'zones': [dict(LAYOUT_PAN['zones'][0], neededPanels=24, result={'count': 24})]}
 
 ECHANTILLONS = (pathlib.Path(__file__).resolve().parents[1]
                 / 'contract_samples')
@@ -258,3 +263,48 @@ class EcartDevisSansRenduTest(SimpleTestCase):
         """Pompage : aucune production au devis ⇒ aucun écart, jamais un 0."""
         self.assertIsNone(self._ecart(None))
         self.assertEqual(html_de_section({'resultat': {'ecart_devis': None}}).count('production-ecart-devis'), 0)
+
+
+class PariteLead1742Test(BaseMateriel):
+    """ACAL2017 (C4-E5, PARITÉ) — le lead 1742 rejoué en fabrique : résidentiel, deux options,
+    conception rangée à 35 panneaux (option « sans », onduleur HYBRIDE dans sa capacité publiée,
+    chaînes de 12), devis ENVOYÉ à 35. Le calepinage lit la cible, le matériel, la chaîne et
+    les contrôles de la conception : 35, l'hybride de l'option « sans », aucun « contre 16 »,
+    aucune alerte 1,50 — et le même calepinage SANS devis rend les mêmes valeurs."""
+
+    def setUp(self):
+        super().setUp()
+        self.hybride = self._produit(
+            nom='Onduleur hybride Deye 12 kW', type_fiche='onduleur', ond_n_mppt=2, ond_mppt_v_min=160.0,
+            ond_mppt_v_max=950.0, ond_v_max_abs=1100.0, ond_i_max_mppt_a=26.0, ond_ac_kw=12.0, ond_phases=3,
+            ond_dc_max_kwc=Decimal('18'))
+        hybride = {'produit': self.hybride.pk, 'designation': self.hybride.nom, 'quantite': 1}
+        ranger_conception(lead=self.lead, nb=35, watt=710, module=self.module_devis.nom, onduleur=hybride,
+                          longueur=12, avec=35, option='sans')
+
+    def _lu(self, devis):
+        from apps.calepinage.services.devis import _cible_du_calepinage
+        from apps.calepinage.services.electrique import resoudre_materiel
+        from apps.calepinage.services.pret_a_envoyer import controles_electriques
+
+        calepinage = self._calepinage(devis=devis)
+        zone = dict(LAYOUT_1742['zones'][0])
+        calepinage.roof_layout = {**LAYOUT_1742, 'zones': [zone]}
+        calepinage.save(update_fields=['roof_layout'])
+        cible = _cible_du_calepinage(calepinage)
+        materiel = resoudre_materiel(self.company, {}, calepinage=calepinage)
+        servi = resultat_calepinage(calepinage)
+        ratio = next(c for c in controles_electriques(calepinage) if c['code'] == 'ratio_dc_ac')
+        texte = json.dumps([servi, ratio], ensure_ascii=False, default=str)
+        self.assertNotIn('contre 16', texte)
+        self.assertNotIn('1,50', texte)
+        self.assertNotEqual(ratio['etat'], 'a_regler', ratio)
+        return (cible['panneaux'], materiel['produits']['onduleur'], materiel['provenances']['onduleur'],
+                servi['longueur_chaine']['longueur_dossier'], ratio['etat'])
+
+    def test_lead_1742_trente_cinq_hybride_sans_seize_ni_alerte(self):
+        devis = self._devis(self.module_devis, self.hybride)
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ENVOYE)
+        avec_devis = self._lu(Devis.objects.get(pk=devis.pk))
+        self.assertEqual(avec_devis[:4], (35, self.hybride.pk, 'moteur', 12))
+        self.assertEqual(self._lu(None), avec_devis)

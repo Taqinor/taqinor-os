@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
-import { formatNumber } from '../../../../../lib/format'
+import { formatDate, formatNumber } from '../../../../../lib/format'
 import { reviserEtOuvrir } from '../../../../ventes/reviserDevis'
 import { estIncomplet } from '../../../production/BandeauProvenanceProduction.helpers'
 import { DuSoleilAuReseau } from '../../../production/CartePostesPertes'
@@ -56,9 +56,29 @@ function PertesAvance({ calepinageId, lectureSeule, onEnregistre, sourcesOuverte
     sinon les DEUX, chacun nommé, et — pour un devis que le client a reçu — « Réviser le devis » (le devis envoyé n'est jamais
     modifié : la révision en crée une V2). Rien n'est recalculé ici. `p50` : la simulation de la pose, seulement quand
     elle est complète (un plafond « au plus » n'est pas un chiffre à comparer). */
-function ProductionDuDevis({ bloc, p50, incomplet = false }) {
+/** « Réviser le devis » (devis reçu : jamais touché, la révision en fait une V2 — même geste que `BoutonDevis`). */
+function useReviser(devis) {
   const navigate = useNavigate()
   const [enCours, setEnCours] = useState(false)
+  const reviser = async () => {
+    if (enCours) return
+    setEnCours(true)
+    let v2 = null
+    try {
+      await reviserEtOuvrir({
+        devis: { id: devis.devis, reference: devis.reference },
+        onApres: (nouveau) => { v2 = nouveau },
+        navigate: () => { if (v2?.id != null) navigate(`/ventes/devis/${v2.id}/design`) },
+      })
+    } finally {
+      setEnCours(false)
+    }
+  }
+  return [enCours, reviser]
+}
+
+function ProductionDuDevis({ bloc, p50, incomplet = false }) {
+  const [enCours, reviser] = useReviser(bloc)
   if (!bloc) return null
   const kwh = typeof bloc.production_annuelle_kwh === 'number' ? bloc.production_annuelle_kwh : null
   const lien = <Link to={`/ventes/devis?devis=${bloc.devis}`}>{bloc.reference || 'voir le devis'}</Link>
@@ -74,21 +94,6 @@ function ProductionDuDevis({ bloc, p50, incomplet = false }) {
         </p>
       </section>
     )
-  }
-  // Un devis que le client a reçu (envoyé ou accepté) : jamais touché ; la révision en fait une V2 (même geste que `BoutonDevis`).
-  const reviser = async () => {
-    if (enCours) return
-    setEnCours(true)
-    let v2 = null
-    try {
-      await reviserEtOuvrir({
-        devis: { id: bloc.devis, reference: bloc.reference },
-        onApres: (nouveau) => { v2 = nouveau },
-        navigate: () => { if (v2?.id != null) navigate(`/ventes/devis/${v2.id}/design`) },
-      })
-    } finally {
-      setEnCours(false)
-    }
   }
   return (
     <section className="cal-res-carte flex flex-col gap-1" data-zone="production-devis"
@@ -116,6 +121,42 @@ function ProductionDuDevis({ bloc, p50, incomplet = false }) {
             onClick={reviser} data-testid="cal-reviser-devis-ecart">
             {enCours ? 'Révision…' : 'Réviser le devis'}
           </button>
+        </>
+      )}
+    </section>
+  )
+}
+
+/** ACAL2015 (C4-E5, D-ACAL-96) — LA conception (`conception` de `GET resultat/`) : UN chiffre de production, celui que le
+    moteur unique a rangé ; un devis ENVOYÉ dont l'écart servi (`devis_envoye.ecart_devis`, lignes de ventes) porte la
+    production est NOMMÉ (référence, date d'envoi) avec « Réviser le devis » quand ventes le permet. Rien n'est recalculé. */
+function ProductionDeLaConception({ bloc }) {
+  const kwh = typeof bloc.production_annuelle_kwh === 'number' ? bloc.production_annuelle_kwh : null
+  const dit = (n) => `${formatNumber(n, { decimals: 0 })} kWh par an`
+  const envoye = bloc.devis_envoye
+  const ecarts = envoye?.ecart_devis ?? []
+  const production = ecarts.find((e) => e?.valeur === 'production_annuelle' && typeof e.devis === 'number')
+  const [enCours, reviser] = useReviser(envoye)
+  const lien = envoye ? <Link to={`/ventes/devis?devis=${envoye.devis}`}>{envoye.reference || 'voir le devis'}</Link> : null
+  return (
+    <section className="cal-res-carte flex flex-col gap-1" data-zone="production-conception"
+      data-chiffre={production ? 'deux' : 'un-seul'}>
+      <p>{kwh != null ? `Production de la conception : ${dit(kwh)}` : 'Production de la conception : non calculée'}</p>
+      {envoye && !production && <p className="cal-res-sourdine">{'Le devis envoyé '}{lien}{' porte le même chiffre.'}</p>}
+      {production && (
+        <>
+          <p>
+            {'Devis '}{lien}{` envoyé${envoye.envoye_le ? ` le ${formatDate(envoye.envoye_le)}` : ''} : ${dit(production.devis)}`}
+          </p>
+          <p className="cal-res-sourdine">
+            Le devis envoyé n’est pas modifié : « Réviser le devis » crée une nouvelle version sur la conception.
+          </p>
+          {production.reviser_possible && (
+            <button type="button" className="cal-res-lien" style={{ alignSelf: 'flex-start' }} disabled={enCours}
+              onClick={reviser} data-testid="cal-reviser-devis-ecart">
+              {enCours ? 'Révision…' : 'Réviser le devis'}
+            </button>
+          )}
         </>
       )}
     </section>
@@ -237,7 +278,9 @@ export default function EtapeResultats({
 
   return (
     <div className="cal-res" data-zone="etape-resultats">
-      <ProductionDuDevis bloc={blocDuDevis(data)} p50={complet ? total?.p50_kwh : null} incomplet={incomplet} />
+      {data?.conception
+        ? <ProductionDeLaConception bloc={data.conception} />
+        : <ProductionDuDevis bloc={blocDuDevis(data)} p50={complet ? total?.p50_kwh : null} incomplet={incomplet} />}
       {simule && <PanneauxNonRaccordes data={data} />}
       {enCours && <SimulationEnCours calepinageId={id} intervalleMs={intervalleMs} onTermine={refetch} />}
       {!simule && !enCours && <SimulationEnAttente manquants={auto?.manquants} />}

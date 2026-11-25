@@ -45,22 +45,93 @@ def conception_du_devis_lie(calepinage, devis=None):
     return valeur
 
 
-def cible_de_l_option_retenue(contexte_devis, devis):
-    """ACAL1951 — la cible ``source: 'devis'`` de l'atelier : l'option RETENUE
-    par le devis (plus l'option « sans » en dur). ``option`` dit laquelle.
+#: ACAL2012 — mémoire de la conception COURANTE lue, posée sur l'instance (une requête).
+_MEMOIRE_CONCEPTION = '_acal2012_conception_courante'
+#: ACAL2012 — le refus NOMMÉ d'un porteur sans version rangée : jamais une taille inventée.
+CODE_CONCEPTION_ABSENTE = 'conception_absente'
+REFUS_CONCEPTION_ABSENTE = ("Conception du lead pas encore calculée par le moteur : elle se calcule dès qu'une "
+                            "entrée de la fiche (facture, ville, taille souhaitée…) est enregistrée.")
+#: Refus gardé tel quel (ACAL194) : le champ d'un lead agricole découle de sa pompe, pas d'une facture.
+REFUS_AGRICOLE = "Lead agricole : le pompage se chiffre depuis l'écran devis agricole."
 
-    Le contexte ventes sert déjà les deux vues (``cible`` = option sans,
-    ``cible_avec`` = option avec quand elle est servable, CTX3D) : on choisit,
-    on ne recompte pas. Les clés de ``cible`` absentes de ``cible_avec``
-    (``bill_kwh``) sont gardées."""
-    from .equipements import conception_retenue
 
-    conception = conception_retenue(devis)
-    option = (conception or {}).get('option') or 'sans'
-    cible = dict(contexte_devis['cible'])
-    if option == 'avec' and isinstance(contexte_devis.get('cible_avec'), dict):
-        cible.update(contexte_devis['cible_avec'])
-    return dict(cible, source='devis', refus=None, option=option)
+def conception_du_calepinage(calepinage):
+    """ACAL2012 (D-ACAL-97) — LA conception COURANTE qui sert le calepinage : celle
+    de son lead, sinon celle du calepinage lui-même (porteur sans lead, Q3), lue par
+    ``apps.ventes.selectors.conception_courante`` (contrat ``conception_lead.json``) ;
+    ``None`` sans version rangée ou pour un dossier d'appel d'offres (hors moteur).
+    Lue UNE fois par instance ; rien n'est écrit."""
+    from django.db.models import Model
+
+    from apps.ventes.selectors import conception_courante
+
+    company = getattr(calepinage, 'company', None)
+    # Une société qui n'est pas une ligne enregistrée (double de calcul pur) ne se lit pas en base.
+    if not isinstance(company, Model) or not company.pk or getattr(calepinage, 'appel_offre_id', None):
+        return None
+    lead_id = getattr(calepinage, 'lead_id', None)
+    cle = (lead_id, getattr(calepinage, 'pk', None))
+    memoire = getattr(calepinage, _MEMOIRE_CONCEPTION, None)
+    if memoire is not None and memoire[0] == cle:
+        return memoire[1]
+    valeur = (conception_courante(company, lead_id) if lead_id
+              else conception_courante(company, calepinage_id=cle[1]) if cle[1] else None)
+    try:
+        setattr(calepinage, _MEMOIRE_CONCEPTION, (cle, valeur))
+    except AttributeError:  # double de test sans attributs libres : relu à chaque appel
+        pass
+    return valeur
+
+
+def _source_de_la_taille(calepinage):
+    """``'lead'`` quand la taille souhaitée du lead fait la taille (souveraine), sinon ``'factures'``."""
+    from apps.crm.selectors import get_company_lead
+
+    if not getattr(calepinage, 'lead_id', None):
+        return 'factures'
+    lead = get_company_lead(calepinage.company, calepinage.lead_id, avec_corbeille=True)
+    try:
+        return 'lead' if float(getattr(lead, 'taille_souhaitee_kwc', None) or 0) > 0 else 'factures'
+    except (TypeError, ValueError):
+        return 'factures'
+
+
+def _refus(message, code, source='factures'):
+    return {'panneaux': None, 'kwc': None, 'panel_watt': None, 'source': source, 'refus': message,
+            'motif_code': code, 'option': None}
+
+
+def cible_de_la_conception(calepinage):
+    """ACAL2012 — la cible de l'atelier : la taille de la conception COURANTE (option que
+    le moteur retient), avec ou sans devis — un devis lié, même envoyé, n'est plus la
+    source (son écart est servi à part, ACAL2015). ``{panneaux, kwc, panel_watt, source,
+    refus, motif_code, option}`` ; un refus du moteur (ou aucune version rangée) est
+    rendu NOMMÉ, panneaux nuls ; ``None`` pour un dossier d'appel d'offres, ou un
+    calepinage sans lead dont aucune conception n'est rangée (rien ne le dimensionne,
+    comme avant). ``motif_code`` vaut ``facture_absente`` quand le refus nomme la
+    facture d'hiver (question de taille de la génération, ACAL922)."""
+    from apps.ventes.services import MOTIF_FACTURE_ABSENTE
+
+    if getattr(calepinage, 'appel_offre_id', None) or getattr(calepinage, 'company', None) is None:
+        return None
+    conception = conception_du_calepinage(calepinage)
+    if conception is None:
+        if not getattr(calepinage, 'lead_id', None):
+            return None
+        return _refus(REFUS_CONCEPTION_ABSENTE, CODE_CONCEPTION_ABSENTE)
+    if conception.get('marche') == 'agricole':
+        return _refus(REFUS_AGRICOLE, None, 'lead')
+    if conception.get('etat') != 'complet':
+        refus = conception.get('refus') or {}
+        code = MOTIF_FACTURE_ABSENTE if refus.get('champ') == 'facture_hiver' else refus.get('code')
+        return _refus(refus.get('message') or '', code)
+    option = conception.get('option_retenue')
+    valeurs = (conception.get('valeurs') or {}).get(option) or {}
+    panneaux = (valeurs.get('nb_panneaux') or {}).get('valeur')
+    kwc = (valeurs.get('puissance_kwc') or {}).get('valeur')
+    watt = round(float(kwc) * 1000 / panneaux) if panneaux and kwc else None
+    return {'panneaux': panneaux, 'kwc': kwc, 'panel_watt': watt, 'source': _source_de_la_taille(calepinage),
+            'refus': None, 'motif_code': None, 'option': option}
 
 
 def memoriser_option_dessinee(calepinage):
@@ -126,31 +197,6 @@ def _longueur_du_devis(conception):
     return ((conception or {}).get('chaines') or {}).get('longueur') or None
 
 
-def longueur_du_devis_lie(calepinage):
-    """ACAL1953 — la longueur de chaîne du devis lié (conception électrique
-    rangée de l'option retenue), ou ``None`` : sans elle, aucun écart."""
-    return _longueur_du_devis(conception_du_devis_lie(calepinage))
-
-
-def options_avec_devis(options, calepinage, donnees):
-    """ACAL1952 — les options du noyau complétées par le DEVIS : sans saisie,
-    le nombre d'onduleurs et la longueur de chaîne sont ceux du devis lié. Une
-    désignation d'onduleur SAISIE garde la main (le devis ne dimensionne plus
-    un autre appareil) ; une option saisie n'est jamais remplacée."""
-    if (donnees or {}).get('onduleur_produit') not in (None, ''):
-        return options
-    conception = conception_du_devis_lie(calepinage)
-    onduleur = _onduleur_retenu(conception)
-    if onduleur is None:
-        return options
-    options = dict(options)
-    if 'nombre_onduleurs' not in options and onduleur['quantite'] >= 1:
-        options['nombre_onduleurs'] = onduleur['quantite']
-    if 'longueur_forcee' not in options and _longueur_du_devis(conception):
-        options['longueur_forcee'] = _longueur_du_devis(conception)
-    return options
-
-
 def bloc_devis_retenu(calepinage, stockee, resolu):
     """ACAL1952 — le bloc ``devis_retenu`` de ``GET entree-electrique/`` : le
     matériel électrique que le devis lié a retenu (provenance « devis ») et les
@@ -179,6 +225,38 @@ def bloc_devis_retenu(calepinage, stockee, resolu):
                          if onduleur else None),
             'nombre_onduleurs': (onduleur or {}).get('quantite') or None,
             'longueur_chaine': longueur, 'ecarts': ecarts}
+
+
+def bloc_conception(calepinage):
+    """ACAL2015 (D-ACAL-96) — ``conception`` de ``GET resultat/`` : LE chiffre de production
+    de la conception courante (option du moteur) que l'étape Résultats affiche, et — quand le
+    devis lié a été REÇU par le client (envoyé, accepté) — ce devis NOMMÉ (référence, date
+    d'envoi) avec l'écart que ventes sert (``apps.ventes.selectors.ecart_devis``, l'unique
+    comparaison ; « Réviser le devis » quand ``reviser_possible``). Rien n'est recalculé,
+    rien n'est écrit, le devis n'est jamais touché. ``None`` sans conception complète."""
+    conception = conception_du_calepinage(calepinage)
+    if not conception or conception.get('etat') != 'complet':
+        return None
+    option = conception.get('option_retenue')
+    production = ((conception.get('valeurs') or {}).get(option) or {}).get('production_annuelle') or {}
+    return {'production_annuelle_kwh': production.get('valeur'), 'option': option,
+            'version': conception.get('version'), 'calcule_le': conception.get('calcule_le'),
+            'devis_envoye': _devis_envoye_lie(calepinage)}
+
+
+def _devis_envoye_lie(calepinage):
+    """``{devis, reference, statut, envoye_le, ecart_devis}`` du devis lié REÇU, ou ``None``."""
+    from apps.ventes.selectors import ecart_devis, get_devis_by_pk
+
+    lu = conception_du_devis_lie(calepinage)
+    if not lu or not lu.get('recu'):
+        return None
+    devis = get_devis_by_pk(lu['devis'])
+    if devis is None or devis.company_id != getattr(calepinage, 'company_id', None):
+        return None
+    envoi = getattr(devis, 'date_envoi', None)
+    return {'devis': devis.pk, 'reference': devis.reference or '', 'statut': devis.statut,
+            'envoye_le': envoi.isoformat() if envoi else None, 'ecart_devis': ecart_devis(devis)}
 
 
 def bloc_production_devis(calepinage):

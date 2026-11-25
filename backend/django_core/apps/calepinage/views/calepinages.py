@@ -86,7 +86,7 @@ from .releve import ReleveTerrainMixin
 # CAL174 — les SOUS-RESSOURCES de sortie vivent dans leur propre module de vues, greffées ICI.
 from .sorties import SortiesMixin
 from .liste_compteurs import ListeCompteursMixin  # effectifs par statut de la liste
-from ..services.devis_retenu import cible_de_l_option_retenue, memoriser_option_dessinee
+from ..services.devis_retenu import memoriser_option_dessinee
 from ..services.devis import (
     DevisRefuse, generer_devis, reponses_du_corps, resynchroniser_devis,
 )
@@ -1473,65 +1473,22 @@ def _geometrie(calepinage, contexte_devis, geo=None):
 def _cible(calepinage, contexte_devis, devis=None):
     """La cible de puissance, ou ``None`` — JAMAIS une puissance inventée.
 
-    Ordre : la cible du DEVIS lié (celle que l'atelier devis emploie,
-    ``source: 'devis'``), sinon celle que le devis automatique donnerait au
-    LEAD (ACAL194, :func:`_cible_du_lead` : taille souhaitée ``'lead'``, ou
-    moteur horaire depuis les factures ``'factures'``), sinon ``None`` (aucun
-    lead). Un refus du moteur est rendu NOMMÉ dans ``refus``, jamais remplacé
-    par un repli forfaitaire.
+    ACAL2012 (D-ACAL-97) — la taille de la conception COURANTE du lead (ou du
+    calepinage sans lead), lue par LE point de bascule
+    ``services.devis._cible_du_calepinage`` : un devis lié, même envoyé, n'est
+    plus la source (``contexte_devis``/``devis`` gardés pour la signature).
+    Un refus du moteur est rendu NOMMÉ dans ``refus``, jamais remplacé par un
+    repli forfaitaire ; ``None`` pour un dossier d'appel d'offres.
     """
-    if contexte_devis is not None and contexte_devis.get('cible'):
-        return cible_de_l_option_retenue(contexte_devis, devis)  # ACAL1951 — l'option retenue
-    return _cible_du_lead(calepinage)
+    from ..services.devis import _cible_du_calepinage
 
-
-#: ACAL194 — durée de mémorisation de la cible du lead (secondes).
-DUREE_MEMO_CIBLE_LEAD_S = 600
-
-
-def _cible_du_lead(calepinage):
-    """ACAL194 (C-ACAL-004) — la cible du LEAD d'un calepinage sans devis.
-
-    LE MÊME dimensionnement que le devis automatique, lu par le sélecteur
-    mince ``apps.ventes.selectors.cible_depuis_lead`` (taille souhaitée
-    souveraine, sinon ``pipeline.decider_taille`` / moteur horaire) — jamais
-    un second calcul ici. Lecture PURE ; mémorisée 10 min par (lead,
-    ``date_modification``) : une fiche corrigée recalcule. ``None`` sans lead.
-    """
-    from django.core.cache import cache
-
-    from apps.crm.selectors import get_company_lead
-    from apps.ventes.selectors import cible_depuis_lead
-
-    company = getattr(calepinage, 'company', None)
-    if company is None or not getattr(calepinage, 'lead_id', None):
+    cible = _cible_du_calepinage(calepinage)
+    if cible is None:
         return None
-    lead = get_company_lead(company, calepinage.lead_id, avec_corbeille=True)
-    if lead is None:
-        return None
-    modifie = getattr(lead, 'date_modification', None)
-    cle = 'calepinage:cible-lead:%s:%s:%s' % (
-        company.pk, lead.pk, modifie.isoformat() if modifie else '')
-    resultat = cache.get(cle)
-    if resultat is None:
-        resultat = cible_depuis_lead(lead, company)
-        if resultat is not None:
-            cache.set(cle, resultat, DUREE_MEMO_CIBLE_LEAD_S)
-    if resultat is None:
-        return None
-    batterie = (getattr(lead, 'batterie_souhaitee', '') or '') == 'avec'
-    return {
-        'panneaux': resultat['panneaux'],
-        'kwc': resultat['kwc'],
-        'panel_watt': resultat['panel_watt'],
-        # Aucun scénario n'est vendu : on ne l'invente pas.
-        'scenario': None,
-        'batterie': batterie,
-        'avertissements': [],
-        'source': resultat['source'],
-        'refus': resultat['refus'],
-        'option': None,  # ACAL1951 — aucune option de devis
-    }
+    # Aucun scénario de devis n'est vendu ici : on ne l'invente pas.
+    return {'panneaux': cible['panneaux'], 'kwc': cible['kwc'], 'panel_watt': cible['panel_watt'],
+            'scenario': None, 'batterie': cible['option'] == 'avec', 'avertissements': [],
+            'source': cible['source'], 'refus': cible['refus'], 'option': cible['option']}
 
 
 def _raison_lecture_seule(contexte_devis):

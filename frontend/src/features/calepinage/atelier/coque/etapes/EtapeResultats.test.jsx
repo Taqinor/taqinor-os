@@ -750,6 +750,66 @@ describe('Étape Résultats — production retenue par le devis (ACAL1956)', () 
   })
 })
 
+/* ACAL2015 (C4-E5, D-ACAL-96) — Résultats montre LA conception (bloc `conception` de `GET resultat/`) : UN chiffre par valeur
+   sans devis et en brouillon ; un devis ENVOYÉ différent est NOMMÉ (« devis DEV-… envoyé le … : … ») avec « Réviser le devis ».
+   Les lignes d'écart du mock sont construites sur `ecart_devis` du contrat `conception_lead.json` (ventes). */
+describe('Étape Résultats — la conception, et l’écart avec le devis envoyé (ACAL2015)', () => {
+  const kwh = (n) => `${formatNumber(n, { decimals: 0 })} kWh par an`.replace(/\s+/g, ' ')
+  const LIGNE = () => exempleContrat('ventes', 'conception_lead', 'exemple').ecart_devis[0]
+  const SERVI = () => JSON.parse(JSON.stringify(exempleContrat('calepinage', 'calepinage_resultat', 'acal2015_conception')))
+  const zone = () => document.querySelector('[data-zone="production-conception"]')
+  const sans = () => ({ ...SERVI(), devis_envoye: null })
+
+  it('sans devis : UN seul chiffre, celui de la conception (jamais la pose à côté sans nom)', async () => {
+    servir({ ...COMPLET(), conception: sans() })
+    rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    expect(zone()).toHaveAttribute('data-chiffre', 'un-seul')
+    expect(zone()).toHaveTextContent(`Production de la conception : ${kwh(sans().production_annuelle_kwh)}`)
+    expect(document.body).not.toHaveTextContent('Production simulée de la pose')
+    expect(document.body).not.toHaveTextContent('Production retenue par le devis')
+    expect(screen.queryByRole('button', { name: 'Réviser le devis' })).toBeNull()
+  })
+
+  it('brouillon lié (écart de l’atelier servi) : toujours UN seul chiffre, aucun bouton', async () => {
+    const d = { ...COMPLET(), conception: sans() }
+    d.ecart_devis = { devis: 412, reference: 'DEV-202610-0042', production_devis_kwh: 12600, p50_calepinage_kwh: 13000, ecart_pct: 3.2, mention: '' }
+    servir(d)
+    rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    expect(zone()).toHaveAttribute('data-chiffre', 'un-seul')
+    expect(document.body).not.toHaveTextContent('Production retenue par le devis')
+    expect(screen.queryByRole('button', { name: 'Réviser le devis' })).toBeNull()
+  })
+
+  it('devis envoyé différent : la conception, puis le devis NOMMÉ avec sa date, et « Réviser le devis » crée la V2', async () => {
+    const bloc = SERVI()
+    bloc.devis_envoye.ecart_devis = [LIGNE(), { ...LIGNE(), valeur: 'production_annuelle', devis: 6047, conception: 8198 }]
+    servir({ ...JAMAIS(), conception: bloc })
+    ventesApi.reviserDevis.mockResolvedValue({ data: { id: 99, reference: 'DEV-V2' } })
+    rendre()
+    await screen.findByRole('link', { name: bloc.devis_envoye.reference })
+    expect(zone()).toHaveAttribute('data-chiffre', 'deux')
+    expect(zone()).toHaveTextContent(`Production de la conception : ${kwh(bloc.production_annuelle_kwh)}`)
+    expect(zone()).toHaveTextContent(`Devis ${bloc.devis_envoye.reference} envoyé le 10/11/2026 : ${kwh(6047)}`)
+    expect(zone()).toHaveTextContent('Le devis envoyé n’est pas modifié')
+    fireEvent.click(screen.getByRole('button', { name: 'Réviser le devis' }))
+    await waitFor(() => expect(ventesApi.reviserDevis).toHaveBeenCalledWith(bloc.devis_envoye.devis))
+  })
+
+  it('devis envoyé au même chiffre de production : UN seul chiffre, pas de bouton', async () => {
+    const bloc = SERVI()
+    bloc.devis_envoye.ecart_devis = [LIGNE()]
+    servir({ ...JAMAIS(), conception: bloc })
+    rendre()
+    await screen.findByRole('link', { name: bloc.devis_envoye.reference })
+    expect(zone()).toHaveAttribute('data-chiffre', 'un-seul')
+    expect(zone()).toHaveTextContent(`Production de la conception : ${kwh(bloc.production_annuelle_kwh)}`)
+    expect(zone()).not.toHaveTextContent(`Devis ${bloc.devis_envoye.reference} envoyé le`)
+    expect(screen.queryByRole('button', { name: 'Réviser le devis' })).toBeNull()
+  })
+})
+
 /* ACAL1912 (rejeu T3-VAGUEC du 23/11) — Guidé > Résultats dit les panneaux posés mais non raccordés : la phrase SERVIE en tête
    de `avertissements`, et la production rapportée aux panneaux COMPTÉS (jamais « 13 panneaux » à côté d'un productible
    de 9). Tout vient de `GET resultat/` : `production.hors_chaine.modules`, `pose.*`, `production.total.kwc`. */
