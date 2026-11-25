@@ -252,6 +252,28 @@ class DevisFinalAgricole(SimpleTestCase):
             self.assertNotIn(mot, html, mot)
 
 
+class ControleForageDevisFinalD113(SimpleTestCase):
+    """D-ACAL-113 — devis FINAL (visite faite) : la comparaison pompe / forage
+    reste, « à vérifier à la visite » part ; nouveaux rendus seulement
+    (``phrases_pdf_2511``) ; sans la case, la phrase d'hier."""
+
+    def _html(self, **extra):
+        d = data_complete()
+        d['etude']['source']['debit_exploitation_m3h'] = 25
+        d.update(extra)
+        return html_de(d)
+
+    def test_devis_final_nouveau_rendu_le_fait_sans_reserve(self):
+        html = self._html(devis_final=True, phrases_pdf_2511=True)
+        self.assertIn("Pompe 30,5 m³/h &gt; forage 25 m³/h", html)
+        self.assertNotIn("à vérifier à la visite", html)
+
+    def test_sans_case_ou_envoye_avant_la_phrase_d_hier(self):
+        for extra in ({'phrases_pdf_2511': True}, {'devis_final': True}):
+            self.assertIn("Pompe 30,5 m³/h &gt; forage 25 m³/h : à vérifier à la visite",
+                          self._html(**extra))
+
+
 class Renderer(SimpleTestCase):
     """AGQ30 (C-AGQ-028, D-AGQ-11, D-AGR-10) — « Étapes suivantes » sans
     délai chiffré, mise en service mesurée, entretien, acompte après FDA."""
