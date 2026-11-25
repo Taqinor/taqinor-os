@@ -37,6 +37,7 @@ from apps.ventes.domain.catalogue import (
     _prix_ttc_batterie,
     _sans_accents,
     classer_produit,
+    est_article_pompage,
     metre_cable_dc_par_paires,
     metre_cable_terre,
     paires_mppt_du_champ,
@@ -469,7 +470,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # ACAL63 — les fiches TARIFÉES par id, pour les modules désignés.
     tarifes_par_pk = {}
     for produit in produits:
-        if not _has_price(produit):
+        if not _has_price(produit) or est_article_pompage(produit):  # D-ACAL-130
             continue
         tarifes_par_pk[getattr(produit, 'pk', None)] = produit
         # La résolution PAR ID se fait dans la liste ``produits`` DÉJÀ scopée

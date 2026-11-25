@@ -5,7 +5,7 @@
 // D-SPL202-RESTE : `autoFillLines` déjà supprimé par ADEV69 ; son code mort
 // PVMRQ (_filtrerParMarque, _marqueEpinglee, _marqueCorrespond) supprimé.
 
-import { _norm, classifyProduct } from './classification.js'
+import { _norm, classifyProduct, estArticlePompage } from './classification.js'
 import { ligneProduitCatalogue, tauxTvaOf, ttcExactFromHt } from '../solar.js'
 
 // ── PVORD (fondateur 19/08/2026) — ordre PAR DÉFAUT des lignes de devis ──────
@@ -70,6 +70,7 @@ export function deriveRoleOrderFromLines(lines) {
 function indexProduits(produits) {
   const byType = {}
   for (const p of produits) {
+    if (estArticlePompage(p)) continue // D-ACAL-130 — jamais dans la table résidentielle / C&I
     const type = p.role_devis_effectif ?? classifyProduct(p.nom)
     if (!type) continue
     if (!byType[type]) byType[type] = []
