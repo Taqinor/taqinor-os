@@ -245,6 +245,51 @@ class AjouterBoqEndpointTest(TestCase):
         self.assertEqual(resp.status_code, 404)
         self.assertEqual(devis.lignes.count(), 0)
 
+    def _devis_compose(self, statut=Devis.Statut.BROUILLON, **main):
+        """T4-X6-019 — un devis automatique résidentiel : câble DC et tableau de protection
+        déjà au devis (rôles ``cable_dc`` / ``tableau`` figés à la création)."""
+        bom = [BOM[0], {'designation': 'ARM1 — Coffret de protection AC/DC (tableau)',
+                        'quantite': 1, 'spec': 'IP65'}]
+        devis = self._make_devis(statut=statut, bom=bom)
+        Produit.objects.create(company=self.company, categorie=self.cat_prot,
+                               nom='Coffret de protection AC/DC', sku='ARM1-COF',
+                               prix_vente=Decimal('2000'), prix_achat=Decimal('1'))
+        cable = LigneDevis.objects.create(
+            devis=devis, designation='Câble solaire Nexans 6mm² (au mètre)', quantite=60,
+            prix_unitaire=Decimal('13'), role_devis='cable_dc', ligne_composee=True)
+        tableau = LigneDevis.objects.create(
+            devis=devis, designation='Tableau De Protection AC/DC', quantite=1,
+            prix_unitaire=Decimal('2500'), role_devis='tableau', ligne_composee=True, **main)
+        return devis, cable, tableau
+
+    def test_t4x6019_meme_role_remplace_jamais_compte_deux_fois(self):
+        devis, cable, tableau = self._devis_compose()
+        resp = self.api.post(self._url(devis), {}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(LigneDevis.objects.filter(pk__in=[cable.pk, tableau.pk]).exists())
+        for role in ('cable_dc', 'tableau'):
+            self.assertEqual(devis.lignes.filter(role_devis=role).count(), 1, role)
+        self.assertEqual(sorted(r['ancienne'] for r in resp.data['remplacees']),
+                         ['Câble solaire Nexans 6mm² (au mètre)', 'Tableau De Protection AC/DC'])
+        self.assertEqual(resp.data['avertissements'], [])
+
+    def test_t4x6019_ligne_tapee_a_la_main_gardee_et_dite(self):
+        devis, cable, tableau = self._devis_compose(quantite_manuelle=True)
+        resp = self.api.post(self._url(devis), {}, format="json")
+        self.assertTrue(LigneDevis.objects.filter(pk=tableau.pk).exists())  # gardée
+        self.assertFalse(LigneDevis.objects.filter(pk=cable.pk).exists())
+        self.assertEqual(len(resp.data['avertissements']), 1)
+        self.assertIn('déjà au devis : Tableau De Protection AC/DC', resp.data['avertissements'][0])
+        self.assertIn('retirez l’ancienne ligne ou gardez-la', resp.data['avertissements'][0])
+
+    def test_t4x6019_devis_envoye_aucune_ligne_retiree_doublon_dit(self):
+        devis, cable, tableau = self._devis_compose(statut=Devis.Statut.ENVOYE)
+        resp = self.api.post(self._url(devis), {}, format="json")
+        self.assertEqual(resp.status_code, 200)  # comme aujourd'hui : l'ajout reste permis
+        self.assertEqual(LigneDevis.objects.filter(pk__in=[cable.pk, tableau.pk]).count(), 2)
+        self.assertEqual(resp.data['remplacees'], [])
+        self.assertEqual(len(resp.data['avertissements']), 2)
+
     def test_aucun_prix_achat_dans_la_reponse(self):
         devis = self._make_devis()
         resp = self.api.post(self._url(devis), {}, format="json")

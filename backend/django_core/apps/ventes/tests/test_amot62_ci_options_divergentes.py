@@ -31,6 +31,7 @@ from apps.ventes.models import Devis
 from apps.ventes.quote_engine.ci.synthese import (
     MOTIF_ETUDE_AUTRE_PUISSANCE, synthese_ci,
 )
+from apps.ventes.tests import test_conception_lead as tcl
 from apps.ventes.tests.test_ciq210_branchement import _BaseDevis
 
 KWC_AVEC, KWC_SANS = 49.7, 35.5
@@ -159,3 +160,86 @@ class SyntheseUneOptionTests(TestCase):
             'production_kwh_an'])
         self.assertIsNone(synthese_ci(_data(35.5, 37.0))['systeme'][
             'production_kwh_an'])
+
+
+class DevisAutoDeuxOptionsTests(tcl._emprunt(tcl.RelanceConceptionTests, '_relancer'),
+                                tcl._emprunt(tcl.FigeageDevisAutoTests, *tcl._FABRIQUES), TestCase):
+    """T4-X6-006 / T4-X6-013 — le devis AUTOMATIQUE commercial à deux options de tailles
+    différentes (cas ``ci_commercial_deux_options`` des goldens du moteur unique) : le retour
+    lu par la fiche du lead et le câble DC de chaque option."""
+
+    def test_t4x6006_payback_c_et_i_celui_que_le_pdf_imprime(self):
+        """T4-X6-006 — carte « Retour … d'après le devis DEV-… » d'un commercial à deux options :
+        le retour IMPRIMÉ par le PDF du même devis (« sans » : ``synthese_ci`` › ``argent`` de
+        ``economie_ci_pour_devis`` ; « avec » : ``etude_ci.option_avec.retour_simple_ans``), jamais
+        ``payback_publiable`` sur le TTC (6,5 ans servis contre 5,5 imprimés) ; à côté, le montant
+        et l'économie de CE calcul, avec leur base (HT quand la TVA est récupérable)."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.ci.mentions import valeur_option_avec
+        from apps.ventes.quote_engine.ci.synthese import chiffres_cles, synthese_ci
+        from apps.ventes.selectors import conception_courante
+        from apps.ventes.services import build_devis_auto
+
+        company, lead = self._cas('ci_commercial_deux_options')
+        tcl._reglages_de_la_societe(company)
+        self._relancer(lead, company, tcl._declencheur())
+        with self.captureOnCommitCallbacks(execute=True):
+            devis = build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
+        data = build_quote_data(devis, {'pdf_mode': 'full'})
+        imprime = {'sans': chiffres_cles(synthese_ci(data))['payback_ans'],
+                   'avec': valeur_option_avec(data)['retour_simple_ans']}
+        lue = conception_courante(company, lead.pk)
+        self.assertEqual(sorted(lue['valeurs']), ['avec', 'sans'])
+        for option, attendu in imprime.items():
+            with self.subTest(option=option):
+                payback = lue['valeurs'][option]['payback']
+                self.assertIsNotNone(attendu)
+                self.assertEqual((payback['valeur'], payback['source']), (attendu, 'devis'))
+                self.assertEqual(payback['base'], 'HT')
+                self.assertGreater(payback['investissement'], 0)
+                self.assertGreater(payback['economie_annuelle'], 0)
+        self.assertEqual(tcl._cles_interdites(lue), [])
+
+    def test_t4x6013_chaque_option_porte_son_cable_dc(self):
+        """T4-X6-013 — deux options de tailles différentes (lead X6-f : 49 panneaux sans,
+        51 avec, un hybride) : l'option « avec » n'avait AUCUN câble solaire DC. Établi : la
+        fusion (``etude_ci_batterie._fusion_variantee``) garde chaque ligne ; c'est l'option
+        « avec » composée sur des hybrides dont les chaînes ne se câblent pas (bloquant
+        ``OND_CHAINES_NON_FAISABLES``) : ``composer_ci`` met câble DC et protections DC « à
+        chiffrer après la visite » (ADEV87), ``lignes_du_devis_ci`` les écarte, rien ne le dit.
+        Désormais : chaînes câblables ⇒ chaque option SA ligne de câble à SA quantité ; chaînes
+        infaisables ⇒ l'option « avec » n'est pas composée et l'alerte le dit (ADEV87)."""
+        from apps.stock.models import Produit
+        from apps.ventes.moteur_ci import onduleurs as ond
+        from apps.ventes.services import build_devis_auto
+
+        def cables(devis):
+            cable = Produit.objects.get(company=devis.company, role_ci='cable_dc')
+            return {li.variante: li.quantite for li in devis.lignes.filter(produit=cable)}
+
+        company, lead = self._cas('ci_commercial_deux_options')
+        tcl._reglages_de_la_societe(company)
+        user = self._utilisateur(company)
+        with self.captureOnCommitCallbacks(execute=True):
+            devis = build_devis_auto(lead=lead, user=user, company=company)
+        panneaux = {v: devis.lignes.filter(variante=v, designation__startswith='Panneau').get().quantite
+                    for v in ('sans', 'avec')}
+        self.assertNotEqual(panneaux['sans'], panneaux['avec'])
+        self.assertEqual(sorted(cables(devis)), ['avec', 'sans'])  # chaque option SON câble
+        self.assertNotEqual(cables(devis)['sans'], cables(devis)['avec'])
+        vrai = ond._concevoir
+
+        def hybride_infaisable(module, c, nb):  # le cas X6-f : 51 modules sur un hybride 20 kW
+            res = vrai(module, c, nb)
+            if res is not None and 'hybride' in (c.get('nom') or '').lower():
+                res = dict(res, bloquants=['aucune découpe ne raccorde les modules'])
+            return res
+        with tcl.mock.patch.object(ond, '_concevoir', side_effect=hybride_infaisable):
+            with self.captureOnCommitCallbacks(execute=True):
+                journal = {}
+                devis2 = build_devis_auto(lead=lead, user=user, company=company, journal_auto=journal)
+        self.assertFalse(devis2.lignes.filter(variante='avec').exists())  # jamais une option sans son câble
+        self.assertEqual(list(cables(devis2).values()), [cables(devis)['sans']])
+        alertes = [a for a in journal.get('alertes') or [] if a.get('code') == 'OPTION_BATTERIE_NON_COMPOSEE']
+        self.assertEqual(len(alertes), 1, journal.get('alertes'))  # dit au vendeur (alerte du devis créé)
+        self.assertIn('chaînes non câblables', alertes[0]['message'])

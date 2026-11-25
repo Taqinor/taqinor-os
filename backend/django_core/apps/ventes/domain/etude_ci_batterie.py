@@ -941,6 +941,24 @@ def _option_imposee(imposee, contexte):
     return bloc
 
 
+def _sans_chaines_infaisables(resultat):
+    """T4-X6-013 — une option « avec » dont les chaînes ne se câblent pas sur ses hybrides
+    (alerte bloquante ``OND_CHAINES_NON_FAISABLES`` de la combinaison) n'est pas composée :
+    ``composer_ci`` y laisse câble DC, protections et parafoudres DC « à chiffrer après la
+    visite » (ADEV87 : aucune quantité tirée d'une conception impossible) et ces postes
+    sortaient SANS BRUIT du devis (``lignes_du_devis_ci``), l'option chiffrée sans eux.
+    ADEV87 : chaînes infaisables ⇒ refus nommé — même règle que l'option « sans »."""
+    from apps.ventes.moteur_ci.batterie import _cablable
+    evalue = resultat.get('evaluation')
+    if evalue is None or _cablable(evalue.get('onduleurs')):
+        return resultat
+    motifs = [a.get('message') for a in (evalue.get('onduleurs') or {}).get('alertes') or []
+              if a.get('niveau') == 'bloquant' and a.get('message')]
+    return dict(resultat, evaluation=None, prix_a_renseigner=[], motif=(
+        'chaînes non câblables sur les onduleurs hybrides retenus (%s) : câble DC et protections '
+        'DC non chiffrables' % ' ; '.join(motifs or ['combinaison sans chaînes faisables'])))
+
+
 def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, **contexte):
     """``{bloc, prix_a_renseigner, alertes, hypotheses}`` de l'option « avec
     batterie » d'une étude C&I dont l'option « sans » est ``evaluation``.
@@ -1020,10 +1038,11 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
     # HT24 (fondateur 24/11/2026) — la basse tension n'a composé aucune option :
     # la famille HAUTE tension (hybride + grappe en série), même dimensionnement.
     resultat, bat_ht, alertes_ht = essayer_haute_tension(
-        resultat, bat, regles_ht=regles_ht, nb_batteries=nb_batteries,
+        _sans_chaines_infaisables(resultat), bat, regles_ht=regles_ht, nb_batteries=nb_batteries,
         dimensionner=lambda b, batteries_ht, **kw: _dimensionner(
             catalogue, b, batteries_ht, evaluation, production_rasante=production_rasante,
             regles_3010b=regles_3010b, regles_cycles=regles_cycles, **kw, **contexte))
+    resultat = _sans_chaines_infaisables(resultat)
     sortie = dict(vide, prix_a_renseigner=resultat['prix_a_renseigner'],
                   alertes=list(resultat['alertes']), hypotheses=list(resultat['hypotheses']))
     sortie['alertes'].extend(alertes_articles_ecartes(bat) + alertes_ht)

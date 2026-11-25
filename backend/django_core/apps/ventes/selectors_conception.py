@@ -23,6 +23,9 @@ la lecture n'écrit rien. ``brouillons_a_mettre_a_jour`` (ADEV148) : les
 brouillons RETOUCHÉS nés d'une version plus ancienne (un brouillon intact suit
 seul, ADEV147 ; ``conception/brouillons.py``).
 """
+import logging
+
+logger = logging.getLogger(__name__)
 
 #: Les valeurs comparées entre un devis et la conception (clés de ``valeurs``).
 VALEURS_COMPAREES = ('nb_panneaux', 'module', 'nombre_onduleurs', 'production_annuelle')
@@ -128,6 +131,12 @@ def _payback_servi(version, valeurs):
     from .utils.options import AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option, lignes_avec_produit, option_totaux
 
     servies, lignes = copy.deepcopy(valeurs), list(lignes_avec_produit(devis))
+    if version.marche in ('commercial', 'industriel'):
+        # T4-X6-006 — C&I : LE retour que le PDF du devis imprime, lu, jamais recalculé.
+        for option, table in servies.items():
+            if 'payback' in table:
+                table['payback'] = _payback_ci(devis, option, len(servies) > 1)
+        return servies, {'devis_ref': devis.reference, 'motif': None}
     for option, table in servies.items():
         if 'payback' not in table:
             continue
@@ -151,6 +160,61 @@ def _payback_servi(version, valeurs):
                                 **entrees_du_payback(investissement, economie, cout,
                                                      stockage=option == 'avec' and version.marche != 'residentiel'))
     return servies, {'devis_ref': devis.reference, 'motif': None}
+
+
+def _payback_ci(devis, option, deux_options):
+    """T4-X6-006 — le retour C&I de ``option`` tel que le PDF du devis l'imprime : « avec »
+    d'un devis à deux options (ou toute option qui sert ``option_avec``) =
+    ``etude_ci.option_avec.retour_simple_ans`` et son flux ``economie_flux``
+    (``ci/options_cote.lignes_avec``) ; sinon le bloc ``economie_ci_pour_devis`` au dixième
+    (``ci/couverture.retour_dixieme``, CE2E3 — comme la bannière ``_resume_devis_auto``).
+    À côté : montant et économie de l'année 1 de CE flux, sur SA base (HT quand la TVA est
+    récupérable, D-CIQ-3). Rien de servi (flux absent, investissement non chiffré) ⇒ valeur
+    ``None`` et ``calcul`` dit pourquoi — jamais un second calcul."""
+    from .domain.regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
+    from .quote_engine.ci.couverture import retour_dixieme
+
+    etude = (devis.etude_params or {}).get('etude_ci') or {}
+    avec = etude.get('option_avec') if isinstance(etude.get('option_avec'), dict) else None
+    if option == 'avec' and (deux_options or avec):
+        bloc, retour = (avec or {}).get('economie_flux'), (avec or {}).get('retour_simple_ans')
+    else:
+        from .economie_ci import STATUT_CALCULE, economie_ci_pour_devis
+        try:
+            bloc = economie_ci_pour_devis(devis, devis.company) or {}
+        except Exception:  # lecture seule : la carte se passe du retour, le PDF le dira
+            logger.warning('conception : retour C&I du devis %s indisponible', devis.reference, exc_info=True)
+            bloc = {}
+        bloc = bloc if bloc.get('statut') == STATUT_CALCULE else None
+        retour = ((bloc or {}).get('indicateurs') or {}).get('retour_ans')
+        if retour is not None and regles_au_moins(devis, REGLES_CORRIGEES_2710):
+            retour = retour_dixieme(bloc, retour)
+    return dict({'valeur': retour, 'unite': 'ans', 'source': 'devis'}, **_entrees_flux_ci(bloc, retour))
+
+
+def _entrees_flux_ci(bloc, retour):
+    """Montant, économie de l'année 1 et base du flux PRINCIPAL servi (hypothèses de
+    ``economie.flux_de_tresorerie`` : les entrées exactes du retour imprimé)."""
+    from core.money import quantize_mad
+
+    from .economie_ci import BASE_TTC
+
+    bloc = bloc if isinstance(bloc, dict) else {}
+    base = 'TTC' if bloc.get('base') == BASE_TTC else 'HT'
+    flux = bloc.get('flux_ttc' if base == 'TTC' else 'flux_ht') or {}
+    lues = {h.get('cle'): h.get('valeur') for h in flux.get('hypotheses') or [] if isinstance(h, dict)}
+    montant, economie = lues.get('investissement_mad'), lues.get('economie_annee1_mad')
+    remplacements = ', '.join('%s la %de année' % (r.get('equipement'), r.get('annee'))
+                              for r in lues.get('remplacements') or [] if isinstance(r, dict))
+    if retour is None:
+        calcul = 'Retour non chiffré sur ce devis : investissement ou économies non servis.'
+    else:
+        calcul = 'Cumul des économies %s du flux du devis sur %s ans%s jusqu’à couvrir le montant %s.' % (
+            base, lues.get('horizon_ans') or 25, ' (remplacements : %s)' % remplacements if remplacements else '',
+            base)
+    return {'investissement': float(quantize_mad(montant)) if montant else None, 'base': base,
+            'investissement_ttc': None, 'economie_annuelle': float(quantize_mad(economie)) if economie else None,
+            'cout_onduleur_ttc': None, 'calcul': calcul}
 
 
 def _brouillons_a_mettre_a_jour(version):

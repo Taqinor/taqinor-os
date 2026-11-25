@@ -141,7 +141,10 @@ def entrees_du_payback(investissement, economie, cout_onduleur, *, stockage):
         morceaux.append('part stockée au rendement de la batterie (%s %%)' % _pct(pricing.BATTERY_ROUNDTRIP))
     if cout_onduleur:
         morceaux.append('onduleur remplacé la %de année' % pricing.INVERTER_REPLACE_YEAR)
-    return {'investissement_ttc': float(quantize_mad(investissement)) if investissement else None,
+    montant = float(quantize_mad(investissement)) if investissement else None
+    # T4-X6-006 — ``investissement`` + ``base`` : le montant du calcul et SA base (TTC ici ;
+    # HT pour un C&I à TVA récupérable, ``selectors_conception._entrees_flux_ci``).
+    return {'investissement': montant, 'base': 'TTC', 'investissement_ttc': montant,
             'economie_annuelle': economie,
             'cout_onduleur_ttc': float(quantize_mad(cout_onduleur)) if cout_onduleur else None,
             'calcul': 'Cumul des économies sur %d ans (%s) jusqu’à couvrir le montant.' % (
