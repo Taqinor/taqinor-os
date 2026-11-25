@@ -583,6 +583,44 @@ describe('ACAL1523 — renderLiveWinner : châssis et module du pan au re-pavage
   });
 });
 
+// T4-V2-021 — toit plat 10 × 8, « Est-Ouest dos à dos » choisie : la carte de la variante disait « 9 panneaux · 6,48 kWc »
+// (balayage au module de référence 720 Wc) quand la pose et le total disaient « 10 × 710 W · 7,1 kWc ». La carte de la
+// variante POSÉE lit les chiffres de la pose (mêmes panneaux, même module) ; les autres disent qu'elles sont des estimations.
+describe('T4-V2-021 — la carte de la variante posée lit la pose, jamais le module de référence', () => {
+  const m400 = { id: 'produit-7', produitId: 7, libelle: 'Module 400 W', longueurMm: 1700, largeurMm: 1000, epaisseurMm: 33, poidsKg: 20, pmaxWc: 400, source: 'fiche' };
+  const catalogue = { calepinage: 1, modules: [{ module: m400, selectionnable: true, champs_manquants: [], motif: null }], champs_requis: [], motif_liste_vide: null };
+  it('Est-Ouest posée : ses chiffres = ceux de la carte de la pose ; une autre carte est dite estimation', () => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-results"></div><span id="rp9-reco-title"></span><dd id="rp9-reco-panels"></dd><dd id="rp9-reco-kwc"></dd><dd id="rp9-reco-prod"></dd></body>').window.document;
+    try {
+      const vertices = rectRing(10, 8);
+      const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
+      const pan = { id: 'z1', label: 'Pan A', vertices, obstacles: [], roofType: 'flat', moduleId: 'produit-7' };
+      const ctx = {
+        closed: true, vertices, roofType: 'flat', areas: [pan], activeAreaId: 'z1', activeArea: () => pan, opts: { modulesDisponibles: catalogue }, dom: {},
+        centroid: [cLng, cLat], centroidLat: cLat, pinned: new Set<string>(), sel: { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' },
+        v4YieldCache: new Map(), overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], obstacles: [],
+        neededAuto: true, neededPanels: 0, layoutPlan: null, useRecommended: true,
+      } as unknown as Ctx;
+      const deps = { renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+        syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 800, obstructionRings: () => [], obstructionClearances: () => [], setStatus: vi.fn() };
+      createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]).buildMatrix(vertices, 800);
+      const carte = (id: string) => document.querySelector<HTMLButtonElement>(`button.rp9-variant[data-variant="${id}"]`);
+      carte('eastwest')!.click();
+      const posee = carte('eastwest')!;
+      expect(posee.getAttribute('aria-pressed')).toBe('true');
+      const texte = (id: string) => document.getElementById(id)!.textContent ?? '';
+      const n = texte('rp9-reco-panels').match(/^(\d+) × 400 W$/)![1];
+      expect(posee.querySelector('.rp9-variant-figures')!.textContent)
+        .toBe(`${n} panneaux · ${texte('rp9-reco-kwc')} · ${texte('rp9-reco-prod')}`);
+      const autres = Array.from(document.querySelectorAll<HTMLElement>('button.rp9-variant[aria-pressed="false"] .rp9-variant-figures'));
+      expect(autres.length).toBeGreaterThan(0);
+      for (const a of autres) expect(a.textContent).toMatch(/^Estimation \(module de référence 720 Wc\) : /);
+    } finally { g.document = avant; }
+  });
+});
+
 describe('ACAL574 — re-résolution refusée sur un pan existant', () => {
   it('liveResolveFlat / liveResolvePitched : rien n’est re-pavé ni redessiné, le motif nomme le pan', () => {
     const g = globalThis as unknown as { document?: Document };

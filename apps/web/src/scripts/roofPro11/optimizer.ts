@@ -112,7 +112,7 @@ import { maxDuSolveur, phraseCouvertureMax, type MaxDuToit } from './cibleProduc
 import { heatmapAccessValues } from './shadingUi'; // ACAL552
 import { causeDuPanVide, mesurerPanVide, noterMotifPanVide, retraitApplique, type MotifPanVide } from './motifPanVide'; // ACAL549
 import { cotesDePavage } from '../../lib/roofPro2';
-import { carteDeLaPoseTenue, direEcartPoseRelue, motifPanExistant, poseTenue } from './panExistant'; import { noteTailleAuto } from './tailleAuto'; // ACAL574, ACAL1900, ACAL1331
+import { carteDeLaPoseTenue, direEcartPoseRelue, motifPanExistant, poseTenue } from './panExistant'; import { noteTailleAuto } from './tailleAuto'; import { chiffresDeLaPose, texteChiffresVariante } from './chiffresVariante'; // ACAL574, ACAL1900, ACAL1331, T4-V2-021
 
 // ═══════════ PV64 — TROIS VARIANTES LISIBLES DU BALAYAGE DÉJÀ CALCULÉ ═══════════
 // Le balayage V6 (`fineGridMatrixV6`) évalue déjà des centaines de configurations, mais
@@ -466,7 +466,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     if (!moduleId) return null;
     const module = resoudreModuleDuPan(catalogueAvecModulesDuDocument(catalogueModules, ctx.modulesDuDocument).catalogue, moduleId);
     return estRefus(module) ? null : module;
-  };
+  }; const prodServieAuKwc = (k: number | null): number | null => (modeErp() ? productionServie(etatEco(ctx).chiffrage, k) : null); // T4-V2-021 — production servie au kWc posé
 
   /* ═════════ CALX115 — LE SEUIL D'ACCÈS SOLAIRE RETIRE DES EMPLACEMENTS DU POSABLE ═════════
      `optimisation.seuilAccesSolaire` (contrat CALX88) voyage par le DOCUMENT et arrive ici
@@ -1132,19 +1132,17 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // (round(a) + round(b) ≠ round(a+b)) — cf. zones.ts. 2 décimales affichent la
     // valeur exacte (aucune perte), donc la somme affichée == le total affiché.
     // ACAL851 — la puissance du module RÉELLEMENT posé (« 8 × 710 W ») ; sans choix, le défaut.
-    const choisi = moduleDuPanActif();
-    const kwc = choisi ? kwcDuPan(d.count, choisi) : d.kwc;
-    const watt = (choisi ?? MODULE_PAR_DEFAUT_ATELIER).pmaxWc;
+    // T4-V2-021 — UNE définition (chiffresVariante.ts), relue telle quelle par la carte de la variante posée.
+    const { kwc, watt, annualKwh: prodPose } = chiffresDeLaPose(d, moduleDuPanActif(), prodServieAuKwc);
     set('rp9-reco-kwc', kwc == null ? '—' : `${fmtKwc(kwc)} kWc`);
     set('rp9-reco-panels', watt ? `${fmt(d.count)} × ${fmt(watt)} W` : `${fmt(d.count)} panneaux`);
-    // R2-17 — à kWc égal, la production SERVIE (celle du PDF) remplace l'estimation du navigateur.
-    const prodAffichee = modeErp() ? productionServie(etatEco(ctx).chiffrage, kwc) : null;
-    set('rp9-reco-prod', prodAffichee != null ? `${fmt(Math.round(prodAffichee))} kWh/an` : d.annualKwh > 0 ? `${fmt(Math.round(d.annualKwh))} kWh/an` : '—');
+    // R2-17 — à kWc égal, la production SERVIE (celle du PDF) remplace l'estimation du navigateur (`prodServieAuKwc`).
+    set('rp9-reco-prod', prodPose != null ? `${fmt(Math.round(prodPose))} kWh/an` : '—');
     renommerDt($('rp9-reco-cover'), modeErp() ? 'Production ÷ consommation' : null, true); // R2-05 — l'ERP : jamais « couverture » (mot du PDF)
     set('rp9-reco-cover', d.pct > 0 ? `${Math.round(d.pct)} %` : '—');
     // R2-08 — l'ERP donne UNE estimation (la borne prudente) : la fourchette 75-100 % n'encadrait rien du calcul du serveur.
     set('rp9-reco-savings', economieAffichee(ctx, 'carte', factureInconnue ? '— facture inconnue' : modeErp() ? `≈ ${fmtMad(d.savingsLow)}/an` : `${fmtMad(d.savingsLow)} – ${fmtMad(d.savingsHigh)}/an`));
-    etiquetteEconomie();
+    etiquetteEconomie(); if (ctx.matrixResult && ctx.roofType === 'flat') renderVariantCards(); // T4-V2-021 — la variante posée suit la carte
     // ACAL778 — la note « chiffre du devis » seulement si un devis est lié (option `devisLie`, jamais `cibleVendue`).
     const noteEco = $('rp9-reco-savings-note');
     if (noteEco) noteEco.hidden = !ctx.opts?.devisLie;
@@ -1248,7 +1246,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       title.textContent = c.title;
       const figures = document.createElement('span');
       figures.className = 'rp9-variant-figures';
-      figures.textContent = `${fmt(c.count)} panneaux · ${fmtKwc(c.kwc)} kWc · ${fmt(Math.round(c.annualKwh))} kWh/an`;
+      figures.textContent = texteChiffresVariante(c, variantIsCurrent(c) && derniereCarte ? chiffresDeLaPose(derniereCarte, moduleDuPanActif(), prodServieAuKwc) : null, moduleDuPanActif(), fmt, fmtKwc); // T4-V2-021
       const why = document.createElement('span');
       why.className = 'rp9-variant-why';
       why.textContent = c.reason;
