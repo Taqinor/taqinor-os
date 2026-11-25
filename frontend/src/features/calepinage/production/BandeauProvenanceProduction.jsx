@@ -52,7 +52,11 @@ function useSourceCarte() {
   return source
 }
 
-export default function BandeauProvenanceProduction({ calepinageId, chiffrage = null, devisLie = false }) {
+/** `variante` (T4-X7-013, revue) : l'atelier est sur la variante d'un devis (`contexte.variante`, `?devis=`) — `chiffrage`
+    est alors celui du devis de la VARIANTE, alors que `conception.devis_lie` de `GET resultat/` est le devis du calepinage
+    de BASE : jamais sa référence à côté du chiffre d'un autre devis. Le contexte ne sert pour la variante ni référence ni
+    « à jour » : la ligne dit « Le devis annonce » sans nommer de devis, comme avant. */
+export default function BandeauProvenanceProduction({ calepinageId, chiffrage = null, devisLie = false, variante = false }) {
   const source = useSourceCarte()
   const { data: lu } = useResource(
     () => calepinageApi.calepinages.resultat(calepinageId), calepinageId,
@@ -104,7 +108,7 @@ export default function BandeauProvenanceProduction({ calepinageId, chiffrage = 
       )}
       <EcartDevis ecart={data?.ecart_devis} borneHaute={borneHaute} />
       <DevisAnnonce chiffrage={chiffrage} p50={aSimulation ? p50 : null} borneHaute={borneHaute} devisLie={devisLie}
-        kwcPose={data?.pose?.kwc} conception={data?.conception} />
+        kwcPose={data?.pose?.kwc} conception={variante ? null : data?.conception} />
     </p>
   )
 }
