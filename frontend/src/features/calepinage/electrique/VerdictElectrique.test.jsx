@@ -678,6 +678,18 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(carte).not.toHaveTextContent('En stock')
   })
 
+  // T4-X2-004 — « proposé pour 5 panneaux » à côté d'un verdict « Bloquant : 2 » (courant de chaîne au-dessus du maxi).
+  it('T4-X2-004 — un contrôle bloquant échoue : la ligne ne dit plus « proposé », elle dit pourquoi l’onduleur ne convient pas', async () => {
+    const r = resultat()
+    const courant = r.electrique.verdicts.find((v) => v.code === 'courant_par_entree_mppt')
+    Object.assign(courant, { conforme: false, bloquant: true, detail: '18,6 A > 18,0 A maxi' })
+    servirEtape({ r })
+    rendreEtape()
+    const carte = screen.getByTestId('cal-elec-onduleur')
+    await waitFor(() => expect(carte).toHaveTextContent(`ne convient pas pour 12 panneaux : ${courant.libelle} (18,6 A > 18,0 A maxi)`))
+    expect(carte).not.toHaveTextContent('proposé pour')
+  })
+
   it('F3 — lecture en cours : le titre est posé tout de suite, seules les lignes sont grisées, aucun compte inventé', async () => {
     servirEtape()
     calepinageApi.calepinages.pretAEnvoyer.mockReturnValue(new Promise(() => {}))
