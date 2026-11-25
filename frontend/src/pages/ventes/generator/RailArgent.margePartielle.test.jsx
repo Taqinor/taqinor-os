@@ -56,4 +56,20 @@ describe('AGR134 — marge partielle', () => {
     expect(screen.queryByTestId('marge-partielle')).toBeNull()
     expect(screen.getByText('Marge indicative (interne)').parentElement.textContent).toMatch(/\(\d+ %\)/)
   })
+
+  it('T4-X4-020 — deux options : la marge nomme son option, pas de « réduisez la remise » sans remise', () => {
+    const totals = { totalSansBrut: 1000, totalAvecBrut: 1000, totalSans: 1000, totalAvec: 1000 }
+    render(
+      <RailArgent
+        showSans showAvec sansRec={false} avecRec totals={totals}
+        discountPct="0" setDiscountPct={() => {}} remiseMax=""
+        pkwc={null} prixCible="" setPrixCible={() => {}} applyPrixCible={() => {}} kwp={0}
+        marge={-500} kpiTotal={1000} margeLignesSansAchat={0} margeOption="avec"
+      />,
+    )
+    expect(screen.getByText('Marge indicative (interne) — option avec batterie')).toBeTruthy()
+    const alerte = screen.getByText(/vous vendez à perte/).textContent
+    expect(alerte).toMatch(/option avec batterie/)
+    expect(alerte).not.toMatch(/Réduisez la remise/)
+  })
 })

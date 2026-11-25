@@ -9,11 +9,6 @@
    d'étude locale, plus de `createDevisAtomic`. Lit le lead directement (pas d'état React). */
 import ventesApi from '../../api/ventesApi'
 import { formatKwc, formatMAD, formatNumber } from '../../lib/format'
-import {
-  panneauxPourKwc,
-  // QJR576 — UNE conversion panneaux ↔ kWc et UN wattage par défaut.
-  kwcPourPanneaux, PANEL_W_DEFAUT,
-} from './solar'
 import fieldLabels, { CHOIX_BATTERIE_SOUHAITEE, LIBELLES_SECTIONS } from '../crm/workspace/fieldLabels'
 
 // QX52 — parité 4 modes : `commercial` route désormais vers son PROPRE mode
@@ -154,8 +149,11 @@ export async function createAutoQuote({ lead, discountStr, onAlertes, onResultat
     // moteur horaire serveur dimensionne (U3-MOTEUR, `target_kwc` omis).
     const cibleKwc = parseFloat(targetKwc) || 0
     const tailleKwc = cibleKwc > 0 ? cibleKwc : (parseFloat(lead.taille_souhaitee_kwc) || 0)
-    const panels = tailleKwc > 0 ? panneauxPourKwc(tailleKwc, PANEL_W_DEFAUT) : 0
-    const kwpAuto = panels > 0 ? kwcPourPanneaux(panels, PANEL_W_DEFAUT) : 0
+    // T4-X1-004 — la taille tapée part TELLE QUELLE : l'arrondir ici au
+    // panneau de 710 W supposé (3 → 5 × 710 W = 3,55) faisait annoncer
+    // « Taille imposée : 3,55 kWc » pour 3 tapés ; le serveur, qui connaît ses
+    // vrais panneaux, en dérive lui-même le nombre de panneaux.
+    const kwpAuto = tailleKwc > 0 ? tailleKwc : 0
 
     const etudeExtra = {}
     // AGNR34 (D-AGNR-1 option (a)) — plus de série de douze mois ni de conso

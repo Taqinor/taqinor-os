@@ -468,6 +468,9 @@ def ecrire_lignes(devis, composition, *, company, avertissements=None):
     # rôle ``structure`` au lieu de NULL. Un dict passé par l'écran reste
     # TEL QUEL (il porte, ou non, son propre ``role_devis``).
     lignes_in = specs_de_composition(composition)
+    if composition and all(isinstance(s, dict) for s in composition):
+        # T4-X4-001 — panneaux retouchés à l'écran : structure et socles suivent.
+        _soeurs_suivent_panneaux_retouches(devis, lignes_in, avertissements)
     _appliquer_preseance_quantite(devis, lignes_in,
                                   avertissements=avertissements)
     return remplacer_lignes(devis, lignes_in, company,
@@ -616,6 +619,59 @@ def _reecrire_quantites_soeurs(lignes_in, nb_panneaux, affleurants=0):
         categorie = classer_produit(spec.get('designation') or '')
         if categorie in derivees:
             spec['quantite'] = str(derivees[categorie])
+
+
+def _panneaux_par_variante(lignes):
+    """``{variante: nb panneaux}`` de lignes (specs dict ou ``LigneDevis``) :
+    lignes produit non optionnelles que ``classer_produit`` dit ``panneau``."""
+    from apps.ventes.domain.catalogue import classer_produit
+
+    def lire(li, champ, defaut=None):
+        return li.get(champ, defaut) if isinstance(li, dict) else getattr(li, champ, defaut)
+    comptes = {}
+    for li in lignes:
+        if (lire(li, 'type_ligne') or 'produit') != 'produit' or lire(li, 'optionnelle'):
+            continue
+        if classer_produit(lire(li, 'designation') or '') != 'panneau':
+            continue
+        try:
+            q = int(float(lire(li, 'quantite') or 0))
+        except (TypeError, ValueError):
+            q = 0
+        v = lire(li, 'variante') or ''
+        comptes[v] = comptes.get(v, 0) + q
+    return comptes
+
+
+def _soeurs_suivent_panneaux_retouches(devis, lignes_in, avertissements=None):
+    """T4-X4-001 — le vendeur retouche le nombre de panneaux d'une option à
+    l'écran (5 → 7) : structure et socles de CETTE option (même ``variante``)
+    suivent, par LA règle de la composition (:func:`_reecrire_quantites_soeurs`
+    → ``composition.quantites_derivees_du_compte``), jamais une seconde. Une
+    sœur saisie à la main (``quantite_manuelle``, D12) est gardée et DITE dans
+    ``avertissements``. Rien quand le compte de panneaux n'a pas bougé par
+    rapport aux lignes en base (un ré-enregistrement à l'identique ne réécrit
+    rien) ni sur un devis neuf."""
+    from apps.ventes.domain.catalogue import classer_produit
+    if devis is None or getattr(devis, 'pk', None) is None:
+        return
+    avant = _panneaux_par_variante(devis.lignes.all())
+    apres = _panneaux_par_variante(lignes_in)
+    affleurants = _affleurants_au_niveau(devis, getattr(devis, 'roof_layout', None))
+    for variante, nb in apres.items():
+        if variante not in avant or avant[variante] == nb or nb <= 0:
+            continue
+        soeurs = [s for s in lignes_in if isinstance(s, dict)
+                  and (s.get('variante') or '') == variante]
+        _reecrire_quantites_soeurs(soeurs, nb, affleurants)
+        if avertissements is None:
+            continue
+        for s in soeurs:
+            if (s.get('quantite_manuelle') and not s.get('optionnelle')
+                    and classer_produit(s.get('designation') or '') in ('structure', 'socle')):
+                avertissements.append(
+                    f'« {s.get("designation") or "Ligne"} » : quantité saisie à la main '
+                    f'({s.get("quantite")}) gardée pour {nb} panneaux.')
 
 
 def ecrire_etude_params(devis, intention, composition):

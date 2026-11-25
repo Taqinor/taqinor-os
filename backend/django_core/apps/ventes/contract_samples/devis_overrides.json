@@ -3,6 +3,7 @@
   "pourquoi": "QJR1 (M0, audit L3 du 29/08/2026, décision fondateur D12) — PACT10 pour le futur registre unique de surcharges d'un devis (`Devis.overrides`, migration QJR58 — n'existe pas encore sur `main`, ce commit ne pose que le contrat). L'audit a trouvé QUATRE mécanismes de surcharge incompatibles (le mécanisme `saisie_manuelle` noms-seuls, des attributs epars sur `etude_params`, des recalculs silencieux à chaque lecture, et rien du tout pour d'autres champs) qui ne s'accordent jamais sur ce qui a été tapé par le vendeur vs ce que le moteur aurait calculé. Ce contrat est le porteur partagé (front QJR88 `overrides.js`, backend QJR58/QJR59+) : la forme part SEULE avant que les deux moitiés ne l'implémentent, exactement la discipline PACT10 de ce dossier. PATCH sur la MÊME route accepte un sous-ensemble de `overrides` (fusion, jamais un remplacement intégral — voir `notes.fusion`) et renvoie la MÊME forme que ce GET, à jour.",
   "notes": {
     "chemins_non_lus": [],
+    "option": "T4-X4-019 — marqueur `option` sur une entrée `taille.*` d'`effectif` : présent (valeur `sans`) SEULEMENT sur un devis à deux options (lignes `variante` sans/avec) ; `auto` décrit alors l'option SANS batterie (commun + « sans »), jamais la somme des deux options. Absent sur un devis mono-option.",
     "non_lu": "QJR507 (D-QJR5-8) — marqueur `non_lu` sur une entrée d'`effectif` : présent et true SEULEMENT pour un chemin que le moteur ne lit pas, jamais false (une entrée lue n'a pas le marqueur : voir `scenario`). QJR573 a ramené `chemins_non_lus` à [] : chaque chemin non lu a été retiré de `chemins_autorises` (voir `chemins_retires`). Le marqueur ne subsiste que sur une surcharge RETIRÉE déjà posée en base avant QJR573, rendue en lecture seule (voir `tarif.distributeur` dans l'exemple).",
     "chemins_autorises": [
       "taille.nb_panneaux", "taille.panel_watt", "taille.kwc",
@@ -52,8 +53,8 @@
       }
     },
     "effectif": {
-      "taille.nb_panneaux": {"auto": 12, "manuel": 14, "effectif": 14, "source": "manuel"},
-      "taille.kwc": {"auto": 8.52, "manuel": null, "effectif": 8.52, "source": "auto"},
+      "taille.nb_panneaux": {"auto": 12, "manuel": 14, "effectif": 14, "source": "manuel", "option": "sans"},
+      "taille.kwc": {"auto": 8.52, "manuel": null, "effectif": 8.52, "source": "auto", "option": "sans"},
       "scenario": {"auto": "Sans batterie", "manuel": "Les deux (Sans + Avec)", "effectif": "Les deux (Sans + Avec)", "source": "manuel"},
       "tarif.distributeur": {"auto": null, "manuel": "ONEE", "effectif": "ONEE", "source": "import", "non_derivable": true, "non_lu": true}
     },

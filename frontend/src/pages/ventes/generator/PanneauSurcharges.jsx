@@ -85,6 +85,13 @@ export default function PanneauSurcharges({
                       data-testid={`overrides-effectif-row-${chemin}`}>
                     <td className="pr-3 py-1 font-mono">
                       {chemin}
+                      {/* T4-X4-019 — deux options : la taille décrite est nommée. */}
+                      {v.option && (
+                        <span className="ml-1 font-sans text-muted-foreground"
+                              data-testid={`overrides-option-${chemin}`}>
+                          — option {v.option === 'avec' ? 'avec' : 'sans'} batterie
+                        </span>
+                      )}
                       {v.non_lu && (
                         <span className="ml-1 font-sans text-muted-foreground"
                               data-testid={`overrides-non-lu-${chemin}`}>

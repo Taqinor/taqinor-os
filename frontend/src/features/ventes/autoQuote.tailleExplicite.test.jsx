@@ -21,30 +21,30 @@ vi.mock('../../api/ventesApi', () => ({
 
 import ventesApi from '../../api/ventesApi'
 import { createAutoQuote } from './autoQuote'
-import { panneauxPourKwc, kwcPourPanneaux, PANEL_W_DEFAUT } from './solar'
 
 beforeEach(() => { vi.clearAllMocks() })
 
 describe('QJR602 — la taille explicite est souveraine (aucun palier de 5 kWc)', () => {
-  it('résidentiel, lead à 6,5 kWc : le serveur reçoit 10 panneaux de 710 W (7,1 kWc), jamais 5 kWc', async () => {
+  // T4-X1-004 — la taille tapée part TELLE QUELLE : l'écran ne l'arrondit plus
+  // au panneau de 710 W supposé (3 → 3,55), le serveur compose avec ses vrais
+  // panneaux.
+  it('résidentiel, lead à 6,5 kWc : le serveur reçoit 6,5 kWc tel quel, jamais 5 kWc ni un arrondi d écran', async () => {
     const id = await createAutoQuote({
       lead: { id: 1, type_installation: 'residentiel', taille_souhaitee_kwc: '6.5' },
       produits: [], discountStr: '0',
     })
     expect(id).toBe(900)
     const corps = ventesApi.creerDevisAuto.mock.calls[0][0]
-    expect(panneauxPourKwc(6.5, PANEL_W_DEFAUT)).toBe(10)
-    expect(corps.target_kwc).toBe(kwcPourPanneaux(10, PANEL_W_DEFAUT))
+    expect(corps.target_kwc).toBe(6.5)
   })
 
-  it('résidentiel, cible tapée 8 kWc pour CE devis : 12 panneaux (8,52 kWc), jamais le palier 10', async () => {
+  it('résidentiel, cible tapée 3 kWc pour CE devis : 3 kWc envoyés, jamais 3,55 ni le palier 5', async () => {
     await createAutoQuote({
       lead: { id: 2, type_installation: 'residentiel', taille_souhaitee_kwc: '6.5' },
-      produits: [], discountStr: '0', targetKwc: '8',
+      produits: [], discountStr: '0', targetKwc: '3',
     })
     const corps = ventesApi.creerDevisAuto.mock.calls[0][0]
-    expect(corps.target_kwc).toBe(kwcPourPanneaux(panneauxPourKwc(8, PANEL_W_DEFAUT), PANEL_W_DEFAUT))
-    expect(panneauxPourKwc(8, PANEL_W_DEFAUT)).toBe(12)
+    expect(corps.target_kwc).toBe(3)
   })
 
   // CIQ127 — le C&I part au serveur : la taille souhaitée du lead y est lue
