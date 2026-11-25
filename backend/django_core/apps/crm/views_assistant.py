@@ -748,7 +748,7 @@ def lead_whatsapp_devis_apercu(request, lead_id):
     « wa_devis » s'en sert pour appeler le COMMIT ``whatsapp-devis`` au moment
     où elle ouvre WhatsApp (sans lui, le devis reste brouillon et le suivi ne
     démarre jamais). Ne change pas la route de l'écran."""
-    from apps.ventes.utils.whatsapp import build_wa_url
+    from apps.ventes.utils.whatsapp import build_wa_url, langue_effective_devis
 
     from .devis_views import (
         LeadDevisActionsMixin, _refus_pii_whatsapp, _refuser_si_oppose)
@@ -774,6 +774,10 @@ def lead_whatsapp_devis_apercu(request, lead_id):
         'message': message, 'links': links,
         'lead_id': lead.pk, 'devis_ids': [d.pk for d in devis],
         'langue': langue,
+        # T4-X1-010 — même fonction que l'aperçu de l'écran : la langue dans
+        # laquelle le message est RÉELLEMENT écrit (darija sans texte = fr).
+        'langue_effective': langue_effective_devis(
+            lead.company, langue, len(devis)),
     })
 
 
