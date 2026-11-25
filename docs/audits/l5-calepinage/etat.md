@@ -1440,3 +1440,15 @@ ventes à 45 pour 44 (`devis_retenu.py`, étape 5) : confié à la lane `moteur-
   ACAL2023) ; (5) relecteurs X2, X5, X3 du tour 3 (consignes `scratchpad/tour3/msg-X*.md`).
 - Événements de CI reçus à 01 h 45 pour les PR #1552 et #1554 : ils visent d'anciennes têtes de PR DÉJÀ fusionnées —
   rien à faire.
+
+**Ajout de 02 h 25 UTC.** `lane/moteur-e5-fix` REVENUE (13 commits) et repliée dans `dev-lot3` (un conflit de test,
+les deux côtés gardés). **PR brouillon Taqinor/taqinor-os#1555 OUVERTE sur `dev-lot3`** pour faire tourner la CI à la
+place du poste (Auto-fix allumé, pas de fusion automatique demandée). Rouges CONNUS de cette première passe : garde C20
+(`test_conception_lead.py` + 173 lignes : l'exception ne peut être portée que par une tâche COCHÉE par la PR — ADEV151
+dès que sa preuve en direct est jouée : `remplir_conceptions --ecarts` sur la société de démonstration de l'instrument,
+APRÈS la relecture de l'étape 6) ; instantané OpenAPI à régénérer en docker. Tâches des étapes 5 et 6 marquées « code
+livré, preuve en direct due » ; ACAL2025 : une clause restante (`conception_retenue_du_devis` encore lue par cinq
+appelants). Restes de la lane e5-fix : étape Électrique sans phrase « calcul en cours » (27 assertions à déplacer),
+atelier sans relecture automatique, budget de requêtes de `resultat/` à 22 pour 15, tests du front NON joués en local
+(la CI les joue), note « par ? » (source : `crm/serializers.py:129`, `ChatterTimeline.jsx:290`).
+EN VOL à 02 h 25 : relecture de l'étape 6 (lecture seule), X1 et X4. EN PAUSE : relecteur des trois lanes de correctifs.
