@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { fallbackPerKwc } from '@rooflib/productionEngine'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 import api from '../../../api/axios'
@@ -161,6 +161,25 @@ describe('T4-X2-006 — la production simulée fraîche de la pose (useSimulatio
     const { p50Frais } = await import('./simulationFraiche')
     expect(p50Frais({ simule: true, simulation_perimee: true, production: { total: { p50_kwh: 27197 } } })).toBeNull()
     expect(p50Frais({ simule: true, simulation_perimee: false, production: { total: { p50_kwh: 27197 } } })).toBe(27197)
+  })
+
+  /* T4-X8-013 — Résultats montrait « Production simulée de la pose 6 009 kWh » pendant que la feuille « Avancé » disait
+     « ≈ 5 390 kWh/an (estimation) » : la lecture du résumé, faite avant la simulation, n'était jamais refaite. Le résultat
+     que l'étape Résultats relit est PUBLIÉ : le résumé (et le Total du constructeur) le reprennent, sans seconde lecture. */
+  it('T4-X8-013 — le résultat relu par l’étape Résultats met à jour le P50 du résumé ; un autre calepinage, non', async () => {
+    const { useSimulationFraiche, publierResultat } = await import('./simulationFraiche')
+    calepinageApi.calepinages.resultat = vi.fn().mockResolvedValue({ data: { simule: false } })
+    const { result } = renderHook(() => useSimulationFraiche(1978, 'enregistre-15h53'))
+    await waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(result.current).toBeNull())
+    const frais = { simule: true, simulation_perimee: false, production: { total: { p50_kwh: 6009 } } }
+    act(() => publierResultat(9999, frais))
+    expect(result.current).toBeNull()
+    act(() => publierResultat('1978', frais))
+    expect(result.current).toBe(6009)
+    act(() => publierResultat(1978, { ...frais, simulation_perimee: true }))
+    expect(result.current).toBeNull()
+    expect(calepinageApi.calepinages.resultat).toHaveBeenCalledTimes(1)
   })
 
   it('le bloc `chiffrage` du constructeur porte la simulation fraîche ; sans elle, il reste tel quel', async () => {

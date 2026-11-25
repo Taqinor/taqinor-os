@@ -685,7 +685,7 @@ retiré plus un hook ajouté.
 | `cal-resume-atelier` | résumé vivant de la barre d'enregistrement (panneaux · kWc · production). |
 | `cal-resume-panneaux` | nombre de panneaux du document sérialisé, « — » si absent. |
 | `cal-resume-kwc` | puissance crête du document sérialisé, « — » si absente. |
-| `cal-resume-production` | « ≈ N kWh/an (estimation) » ou « P50 N kWh/an (simulation) » ; « — » si absente. |
+| `cal-resume-production` | « P50 N kWh/an (simulation) » (la production de l'étape Résultats) ; « — » sans simulation fraîche (T4-X8-013 : jamais l'estimation du constructeur). |
 
 ## PanneauDocuments (`documents/PanneauDocuments.jsx`)
 

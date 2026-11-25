@@ -341,7 +341,8 @@ etape('PA2.5-ACAL401-resume-vivant', ['ACAL401'], async ({ page, context, suivi 
     await expect(resume, 'résumé dans le volet Avancé').toBeVisible(T)
     await expect(page.locator('#rp9-studio-inspecteur').getByTestId('cal-resume-atelier')).toHaveCount(1)
     await expect(page.getByTestId('cal-resume-panneaux')).toHaveText(/^\d+ panneaux$/, T)
-    await expect(page.getByTestId('cal-resume-production')).toHaveText(/^≈ [\d\s  ]+ kWh\/an \(estimation\)$/, T)
+    // T4-X8-013 — sans simulation fraîche, « — » : jamais l'estimation du constructeur (un second chiffre de la pose).
+    await expect(page.getByTestId('cal-resume-production')).toHaveText('—', T)
     const lire = async () => ({
       panneaux: chiffres(await page.getByTestId('cal-resume-panneaux').innerText()),
       kwc: await page.getByTestId('cal-resume-kwc').innerText(),
@@ -363,13 +364,13 @@ etape('PA2.5-ACAL401-resume-vivant', ['ACAL401'], async ({ page, context, suivi 
     await moins.click()
     await expect.poll(async () => {
       const a = await lire()
-      return a.panneaux !== avant.panneaux && a.kwc !== avant.kwc && a.production !== avant.production
-    }, { timeout: 2_000, intervals: [100], message: 'les trois chiffres changent en moins de 2 s' }).toBe(true)
+      return a.panneaux !== avant.panneaux && a.kwc !== avant.kwc
+    }, { timeout: 2_000, intervals: [100], message: 'panneaux et kWc changent en moins de 2 s' }).toBe(true)
     const apres = await lire()
     console.log(`[ACAL401] après « − » (${Date.now() - t0} ms) : ${JSON.stringify(apres)}`)
     expect(apres.panneaux).toBe(avant.panneaux - 1)
-    expect(apres.production).toMatch(/\(estimation\)$/)
-    await capture(page.getByTestId('cal-resume-atelier'), 'PA2.5-ACAL401', 'estimation')
+    expect(apres.production).toBe('—')
+    await capture(page.getByTestId('cal-resume-atelier'), 'PA2.5-ACAL401', 'sans-simulation')
 
     // Enregistrer, simulation serveur ENREGISTRÉE (ACAL398 = calcul automatique ; sans worker on appelle son service).
     await enregistrer(page, cal.id, bouton)

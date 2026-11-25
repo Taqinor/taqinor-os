@@ -798,7 +798,8 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       const RESULT = exempleContrat('calepinage', 'roof_layout_v2.schema').result
       const texte = (id) => screen.getByTestId(id).textContent.replace(/\s+/g, ' ')
 
-      it('document sérialisé ⇒ panneaux, kWc et production « estimation »', async () => {
+      // T4-X8-013 — sans simulation fraîche, la production est « — » : jamais une seconde estimation (≈ … estimation).
+      it('document sérialisé ⇒ panneaux et kWc ; sans simulation fraîche, production « — »', async () => {
         calepinageApi.calepinages.designContext.mockResolvedValue(
           reponseContrat('calepinage', 'calepinage_design_context'))
         calepinageApi.calepinages.resultat.mockResolvedValue(
@@ -810,7 +811,7 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
         await waitFor(() => expect(texte('cal-resume-panneaux')).toContain(`${RESULT.panels} panneaux`),
           { timeout: 3000 })
         expect(texte('cal-resume-kwc')).toMatch(/14,40 kWc/)
-        expect(texte('cal-resume-production')).toMatch(/≈ 18 771 kWh\/an \(estimation\)/)
+        expect(texte('cal-resume-production')).toBe('—')
 
         serializeLayout.mockReturnValue({ ...LAYOUT, result: { ...RESULT, panels: 19 } })
         await waitFor(() => expect(texte('cal-resume-panneaux')).toContain('19 panneaux'),

@@ -7,7 +7,7 @@
    `apps/calepinage/contract_samples/calepinage_resultat.json` (PACT10/13 —
    `reponseContrat`, jamais une charge utile écrite à la main). */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, within } from '@testing-library/react'
+import { act, render, screen, cleanup, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 import { formatNumber } from '../../../lib/format'
@@ -46,6 +46,19 @@ describe('BandeauProvenanceProduction (CALX65)', () => {
     )
     // UNE SEULE mention (Done) : la moitié « Simulation » n'existe pas.
     expect(within(bandeau).queryByTestId('calx65-simulation')).toBeNull()
+  })
+
+  // T4-X8-013 — lu AVANT la simulation, le bandeau disait « avant la simulation » pendant que l'étape Résultats montrait la
+  // production simulée : il reprend le résultat que Résultats publie, sans seconde lecture.
+  it('T4-X8-013 — le résultat publié par l’étape Résultats remplace une lecture faite avant la simulation', async () => {
+    servir('exemple_vide')
+    const { publierResultat } = await import('../atelier/simulationFraiche')
+    rendre()
+    await screen.findByTestId('calx65-bandeau')
+    expect(screen.queryByTestId('calx65-simulation')).toBeNull()
+    act(() => publierResultat(1, exempleContrat('calepinage', 'calepinage_resultat')))
+    expect(await screen.findByTestId('calx65-simulation')).toHaveTextContent(/P50 13.000 kWh\/an/)
+    expect(calepinageApi.calepinages.resultat).toHaveBeenCalledTimes(1)
   })
 
   /* ACAL894 — la provenance de la carte (`data-source-prod` de #rp9-reco-why). */
