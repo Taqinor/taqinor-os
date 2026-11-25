@@ -580,9 +580,10 @@ def pompe_existante(*, plaque, variateurs, panneau=None,
                  "variateur non choisi")
         alertes.append(_alerte(
             "kw_plaque_a_relever", "plaque.kw",
+            # T4-X1-014 (jumeau) — des mots, plus la formule.
             "kW de plaque de la pompe existante à relever lors de la visite : le "
-            "variateur n'est pas choisi sur le CV (conversion × 0,7355 "
-            "affichée seulement)."))
+            "variateur n'est pas choisi sur les CV (la puissance en kW tirée "
+            "des CV est affichée pour information seulement)."))
         variateur["motif"] = motif
     else:
         compatibles, a_verifier = variateurs_compatibles_plaque(

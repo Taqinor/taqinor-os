@@ -97,6 +97,13 @@ class QuatreCas(unittest.TestCase):
         self.assertIn("pompe_sans_courbe", [a["code"] for a in res["alertes"]])
         self.assertIn("kw_plaque_a_relever",
                       [a["code"] for a in res["alertes"]])
+        # T4-X1-014 — des mots, plus la formule « × 0,7355 » ; le nombre
+        # reste : 1,5 CV = 1,1 kW (moteur normalisé), dit en kW.
+        plaque = [a["message"] for a in res["alertes"]
+                  if a["code"] == "kw_plaque_a_relever"][0]
+        self.assertIn("environ 1,1 kW", plaque)
+        for interdit in ("×", "0,7355"):
+            self.assertNotIn(interdit, plaque)
 
     def test_plus_petite_pompe_a_courbe_qui_couvre(self):
         osp_price = dict(OSP_30_8, prix_connu=True)

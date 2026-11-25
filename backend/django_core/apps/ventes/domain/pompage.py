@@ -910,9 +910,11 @@ def _production_du_champ(champ_complet, plan_irr, alertes_moteur):
     if production and production_brute.get('plafond_atteint'):
         alertes_moteur.append(_alerte(
             'debit_limite_forage', 'source.debit_exploitation_m3h',
+            # T4-X1-014 — des mots, plus la formule ; le nombre reste.
             "Débit limité par votre forage : la pompe livrerait davantage, "
-            "la production de chaque heure est plafonnée à %s m³/h (débit "
-            "d'exploitation × part du réglage société)."
+            "la production de chaque heure est plafonnée à %s m³/h, la part "
+            "du débit d'exploitation du forage que les réglages de la "
+            "société autorisent à pomper."
             % _fr_m3h(production.get('plafond_forage_m3h'))))
     return production
 

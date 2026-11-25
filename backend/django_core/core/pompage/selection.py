@@ -527,9 +527,11 @@ def choisir_pompe(pompes, *, hmt_m, debit_conception_m3h, alimentation,
     if etape == "pre_dimensionnement":
         sortie["etiquette"] = ETIQUETTE_A_CONFIRMER
     if choisie["source_kw"] == "cv":
+        # T4-X1-014 — des mots, plus la formule ; le nombre reste (en kW).
         alerte("kw_plaque_a_relever", "pompe.kw",
-               "kW de plaque de « %s » non saisi : puissance estimée sur le "
-               "CV (× 0,7355)." % p.get("nom"))
+               "kW de plaque de « %s » non saisi : puissance estimée à partir "
+               "de ses chevaux (CV), environ %s kW." % (p.get("nom"),
+                                                        _fr(choisie["kw"])))
 
     for pose in alertes_pose_pompe(_fiche_pompe(p), diametre_tubage_mm=diametre_tubage_mm,
                                    profondeur_calage_m=profondeur_calage_m,
