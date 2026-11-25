@@ -118,14 +118,21 @@ def nom_option(d, option, minuscule=False):
     return nom[:1].lower() + nom[1:] if minuscule else nom
 
 
+def facture_recalculee(d):
+    """D-ACAL-111 — la facture actuelle imprimée est-elle RECALCULÉE au tarif
+    par tranches (moteur horaire, ``factures_source = etude_horaire``) sur un
+    nouveau rendu (``phrases_pdf_2511``) ? Lu par la couverture et par les deux
+    blocs « Comment nous calculons » (premium page 3, format avec étude)."""
+    return bool(d.get("phrases_pdf_2511")) and d.get("factures_source") == "etude_horaire"
+
+
 def _note_facture_recalculee(d, masquer_eco):
     """D-ACAL-111 (nouveaux rendus, ``phrases_pdf_2511``) — sous la facture
     « aujourd'hui » RECALCULÉE au tarif par tranches (moteur horaire,
     ``factures_source = etude_horaire``), la ligne approuvée par le fondateur ;
     '' sous les douze factures saisies, sans économie, ou pour un devis envoyé
     avant la coupure."""
-    if (masquer_eco or not d.get("phrases_pdf_2511")
-            or d.get("factures_source") != "etude_horaire"):
+    if masquer_eco or not facture_recalculee(d):
         return ""
     return ('<div class="c1-bigcut-note">'
             + libelle_cat(d, "res_facture_recalculee_tranches") + '</div>')

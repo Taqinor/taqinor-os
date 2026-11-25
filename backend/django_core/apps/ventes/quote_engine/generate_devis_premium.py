@@ -721,7 +721,7 @@ def _savings_method_html():
     if exemple:
         ex_html = (
             f'<div style="margin-top:4px;font-size:8pt;color:{CN};font-weight:700;">'
-            f'{_esc(exemple) if LANGUE_SORTIE == "fr" else exemple}{approx}</div>')
+            f'{_esc(exemple) if LANGUE_SORTIE == "fr" else exemple}{approx}{(" <span style=font-weight:400;>" + _L("res_facture_recalculee_tranches") + "</span>") if sm.get("note_facture_recalculee") else ""}</div>')
     elif approx:
         ex_html = (
             f'<div style="margin-top:4px;font-size:7.5pt;color:{CG4};'
@@ -3550,8 +3550,8 @@ def apply_quote_data(data: dict) -> None:
     global LANGUE_SORTIE, LIBELLES_DOC  # NTI18N5 — langue + libellés du gabarit
     global SAVINGS_METHOD  # QF3 — bloc « Comment nous calculons vos économies »
     global WATERMARK_STANDARD  # L-NIV — filigrane PDF public niveau standard
-    SAVINGS_METHOD = data.get("savings_method")
-    WATERMARK_STANDARD = data.get("_watermark_standard")
+    from .legacy_etude import methode_note_facture  # D-ACAL-111 — import local (cycle)
+    SAVINGS_METHOD, WATERMARK_STANDARD = methode_note_facture(data), data.get("_watermark_standard")
     # QXMT — un dossier MT sans économies d'étude n'imprime AUCUN chiffre
     # d'économies : ceux disponibles ici sont calculés au barème BASSE TENSION.
     global MASQUER_ECONOMIES, TARIF_MT_MENTION
