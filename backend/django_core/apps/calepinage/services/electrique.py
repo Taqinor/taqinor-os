@@ -3903,9 +3903,7 @@ def _verdict(code, libelle, valeur, borne, sens, *, bloquant, unite,
     (``temperature_c``) avec sa provenance, au lieu de la laisser dans la
     seule phrase de ``detail``.
     """
-    from core.electrique.types import fr
-
-    from .raisons_verdicts import raison_du_verdict  # T4-X9-002 : la raison courte de la liste
+    from .raisons_verdicts import textes_du_verdict  # T4-X9-002 : détail mesuré + raison courte
     temperature = _bloc_temperature(temperatures, temperature_c)
     borne_publiee = _nombre(borne)
     if borne_publiee is None or borne_publiee <= 0:
@@ -3914,12 +3912,7 @@ def _verdict(code, libelle, valeur, borne, sens, *, bloquant, unite,
                           "n'est supposée à sa place", 'raison': None, **temperature}
     conforme = (valeur <= borne_publiee + 1e-9 if sens == 'sous'
                 else valeur >= borne_publiee - 1e-9)
-    mesure, borne_dite = '%s %s' % (fr(valeur, 1), unite), '%s %s' % (fr(borne_publiee, 1), unite)
     return {
         'code': code, 'libelle': libelle, 'conforme': conforme, 'bloquant': bloquant, 'source': 'fiche',
-        'detail': ('%s %s %s' % (mesure, 'sous' if sens == 'sous' else 'au-dessus de', borne_dite) if conforme
-                   else '%s %s la borne de fiche %s' % (mesure, 'au-dessus de' if sens == 'sous' else 'sous',
-                                                        borne_dite)),
-        'raison': None if conforme else raison_du_verdict(code, valeur, borne_publiee, sens, unite),
-        **temperature,
+        **textes_du_verdict(code, valeur, borne_publiee, sens, unite, conforme), **temperature,
     }

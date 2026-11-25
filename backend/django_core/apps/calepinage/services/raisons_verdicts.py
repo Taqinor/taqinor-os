@@ -33,3 +33,15 @@ def raison_du_verdict(code, valeur, borne, sens, unite):
     if modele is None:
         return None
     return modele.format(v='%s %s' % (fr(valeur, 1), unite), b='%s %s' % (fr(borne, 1), unite))
+
+
+def textes_du_verdict(code, valeur, borne, sens, unite, conforme):
+    """``{detail, raison}`` d'un verdict à borne publiée : le détail mesuré que lit l'installateur
+    (phrase d'avant, inchangée) et la raison courte (``None`` quand le contrôle passe). Vit ici :
+    ``electrique.py`` (plus de 2 000 lignes) ne grossit pas."""
+    from core.electrique.types import fr
+
+    mesure, borne_dite = '%s %s' % (fr(valeur, 1), unite), '%s %s' % (fr(borne, 1), unite)
+    detail = ('%s %s %s' % (mesure, 'sous' if sens == 'sous' else 'au-dessus de', borne_dite) if conforme
+              else '%s %s la borne de fiche %s' % (mesure, 'au-dessus de' if sens == 'sous' else 'sous', borne_dite))
+    return {'detail': detail, 'raison': None if conforme else raison_du_verdict(code, valeur, borne, sens, unite)}
