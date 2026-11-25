@@ -518,7 +518,11 @@
      ci-dessous : les 3 grappes (Recherche / Communication / Préférences+compte)
      se lisent comme des groupes distincts sans séparateur dessiné. */
   gap: 0.85rem;
-  flex: 1;
+  /* T4-X3-017 — la grappe de droite garde SA largeur (basis auto, ne rétrécit pas) : c'est le titre
+     (`.header-left`, min-width 0, tronqué par « … ») qui cède la place. Avant, `flex: 1` (basis 0) +
+     `min-width: 0` la laissaient rétrécir sous son contenu à ~1180 px (tablette) : globe, FR, apps,
+     cloche et « Clair » se recouvraient. */
+  flex: 1 0 auto;
   justify-content: flex-end;
   min-width: 0;
 }
@@ -530,6 +534,7 @@
   align-items: center;
   gap: 0.5rem;
   min-width: 0;
+  flex-shrink: 0; /* T4-X3-017 — jamais écrasée sous la largeur de ses icônes */
 }
 
 .header-title {
