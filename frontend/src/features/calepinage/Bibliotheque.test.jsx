@@ -156,7 +156,32 @@ describe('CAL201 — les quatre listes, depuis les DEUX endpoints réels', () =>
     const attendu = REGLAGES.favoris_materiel[cle]
     const ligne = await screen.findByTestId(`cal-biblio-favori-${cle}`)
     expect(ligne).toHaveTextContent(`${attendu.length} produit(s)`)
-    for (const id of attendu) expect(ligne).toHaveTextContent(String(id))
+    // T4-X3-005 — des NOMS de produits (catalogue servi), jamais « #412 ».
+    const noms = CATALOGUE[cle].filter((p) => attendu.includes(p.id)).map((p) => p.libelle)
+    expect(noms).toHaveLength(attendu.length)
+    await waitFor(() => { for (const nom of noms) expect(ligne).toHaveTextContent(nom) })
+    expect(ligne).not.toHaveTextContent('#')
+    expect(ligne).toHaveTextContent('Modules')
+    expect(ligne).not.toHaveTextContent(`${cle} —`)
+  })
+
+  it('T4-X3-005 — un préréglage se lit avec ses libellés et unités, pas ses clés techniques', async () => {
+    mocks.hasPermission.mockReturnValue(false)
+    mocks.getParametres.mockResolvedValue({
+      data: {
+        ...REGLAGES,
+        presets: { 'X3 preset test': { pitchDeg: 15, orientation: 'portrait', source: 'X3 test préréglage' } },
+      },
+    })
+    mocks.getModeles.mockResolvedValue({ data: [] })
+    render(<Bibliotheque />)
+
+    const ligne = await screen.findByTestId('cal-biblio-preset-X3 preset test')
+    expect(ligne).toHaveTextContent('Pente : 15 °')
+    expect(ligne).toHaveTextContent('Orientation du module : portrait')
+    expect(ligne).toHaveTextContent('Source : X3 test préréglage')
+    expect(ligne).not.toHaveTextContent('pitchDeg')
+    expect(ligne).not.toHaveTextContent('source :')
   })
 
   it('aucun kit disponible : le DIT, sans tableau cassé', async () => {

@@ -4,7 +4,9 @@ import useResource from '../../../hooks/useResource'
 import { formatNumber } from '../../../lib/format'
 import { Card, Spinner } from '../../../ui'
 import { ORIGINES, estOrigineDeclaree } from './Provenance.helpers'
-import { NORMES, TYPES_ARETE } from './libellesReglages'
+import {
+  LIBELLES_COEFFICIENTS_NORME, LIBELLES_DEGAGEMENTS, NORMES, TYPES_ARETE,
+} from './libellesReglages'
 
 /* ============================================================================
    CAL165 — LA SOURCE DE CHAQUE PARAMÈTRE NORMATIF, AFFICHÉE AVEC LUI.
@@ -162,6 +164,12 @@ export default function SourcesNormatives() {
   const norme = data?.norme_electrique || {}
   const coefficients = norme.coefficients || {}
   const lestage = data?.lestage || {}
+  // T4-X3-005 — les libellés et unités du lestage sont ceux du registre SERVI (le même qui nomme les lignes de
+  // l'écran de saisie) ; une clé hors registre garde sa forme lisible de repli.
+  const registreLestage = Array.isArray(data?.registre?.lestage) ? data.registre.lestage : []
+  const ligneLestage = (code) => registreLestage.find((r) => r?.cle === code)
+  const libelleLestage = (code) => ligneLestage(code)?.libelle || libelleDeCode(code)
+  const uniteLestage = (code) => ligneLestage(code)?.unite || undefined
   const codesLestage = Object.keys(lestage)
     .filter((c) => !CLES_STRUCTURE_LESTAGE.includes(c))
   const zonesLestage = Array.isArray(lestage.zones) ? lestage.zones : []
@@ -225,7 +233,7 @@ export default function SourcesNormatives() {
           )
           : null}
         {Object.entries(coefficients).map(([code, coefficient]) => (
-          <Ligne key={code} libelle={libelleDeCode(code)}>
+          <Ligne key={code} libelle={LIBELLES_COEFFICIENTS_NORME[code] || libelleDeCode(code)}>
             <ValeurSourcee
               valeur={coefficient?.valeur}
               // La référence du coefficient EST la provenance publiée par
@@ -255,9 +263,10 @@ export default function SourcesNormatives() {
         {codesLestage.map((code) => {
           const parametre = lestage[code]
           return (
-            <Ligne key={code} libelle={libelleDeCode(code)}>
+            <Ligne key={code} libelle={libelleLestage(code)}>
               <ValeurSourcee
                 valeur={parametre?.valeur}
+                unite={uniteLestage(code)}
                 origine={parametre?.source ? 'societe' : undefined}
                 reference={parametre?.source}
                 decimals={2}
@@ -269,10 +278,11 @@ export default function SourcesNormatives() {
           .map(([code, parametre]) => (
             <Ligne
               key={`${zone?.code}:${code}`}
-              libelle={`zone « ${zone?.libelle || zone?.code} » — ${libelleDeCode(code)}`}
+              libelle={`zone « ${zone?.libelle || zone?.code} » — ${libelleLestage(code)}`}
             >
               <ValeurSourcee
                 valeur={parametre?.valeur}
+                unite={uniteLestage(code)}
                 origine={parametre?.source ? 'societe' : undefined}
                 reference={parametre?.source}
                 decimals={2}
@@ -317,7 +327,7 @@ export default function SourcesNormatives() {
           </Ligne>
         ))}
         {codesDegagements.map((code) => (
-          <Ligne key={code} libelle={libelleDeCode(code)}>
+          <Ligne key={code} libelle={LIBELLES_DEGAGEMENTS[code] || libelleDeCode(code)}>
             <ValeurSourcee
               valeur={degagements[code]}
               origine={sourceDegagements ? 'societe' : undefined}
