@@ -128,6 +128,10 @@ def _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_
         marche=entrees.marche, entrees_utilisees=entrees.entrees_utilisees,
         niveau_regles=REGLES_COURANTES, empreinte=empreinte_conception(entrees, imposes))
     pose = pose_reelle(company, calepinage_id, entrees.marche)
+    if pose is not None and pose['a_la_main'] and entrees.marche == 'residentiel':
+        # ADEV150 : la pose souveraine — son compte et le module qu'elle porte (si catalogue).
+        imposes = dict(imposes or {}, nb_panneaux=pose['nb_panneaux'],
+                       **({'panneau_produit_id': pose['module_produit']} if pose.get('module_produit') else {}))
     refus = refus_localisation(lead)
     if refus is None:
         calcul = {'residentiel': _residentiel, 'agricole': _agricole}.get(entrees.marche, _ci)
@@ -167,7 +171,7 @@ def pose_reelle(company, calepinage_id, marche):
 
 
 def _ranger_la_pose(resultat, company, calepinage_id, pose):
-    """ADEV149 : pose complète ⇒ la
+    """ADEV150 : taille souveraine dite ``pose`` ; ADEV149 : pose complète ⇒ la
     production annuelle et mensuelle de LA simulation de la pose, pour le matériel
     du moteur, sur les options qui portent ce matériel (source ``pose``). Une
     simulation qui échoue est DITE absente ; la production du marché reste."""
@@ -175,6 +179,9 @@ def _ranger_la_pose(resultat, company, calepinage_id, pose):
     materiel = {role: (retenue.get('%s_produit' % role) or {}).get('valeur') for role in ('module', 'onduleur')}
     options = [o for o, v in resultat.valeurs.items()
                if all((v.get('%s_produit' % r) or {}).get('valeur') == pk for r, pk in materiel.items())]
+    for option in options if pose['a_la_main'] and resultat.marche == 'residentiel' else ():
+        for cle in ('nb_panneaux', 'puissance_kwc'):
+            resultat.valeurs[option][cle]['source'] = 'pose'
     if not pose['complete']:
         return
     from apps.ventes.conception.porte_calepinage import simuler_la_pose

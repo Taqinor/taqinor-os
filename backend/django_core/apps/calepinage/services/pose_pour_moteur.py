@@ -5,7 +5,8 @@ passe par ces deux fonctions, porte ``services`` du calepinage.
 
 * :func:`pose_servie` — ce que le toit tracé dit au moteur, LU sans rien
   écrire : ``{nb_panneaux, kwc, complete, a_la_main, empreinte_pose,
-  manquants}``. ``complete`` = la simulation peut partir (mêmes manques, mot
+  manquants, module_produit}`` (``module_produit`` : le module posé,
+  ADEV150). ``complete`` = la simulation peut partir (mêmes manques, mot
   pour mot, que ``services/manquants_simulation.py``, plus le module ou
   l'onduleur non désigné) ; ``a_la_main`` = le compte POSÉ diffère du compte
   que le plan a demandé à chaque pan (``neededPanels``, posé par le
@@ -54,6 +55,7 @@ def pose_servie(company, calepinage_id):
     """La pose du calepinage ``calepinage_id`` de ``company`` (``None`` s'il est
     introuvable pour elle), lue sans aucune écriture."""
     from .mesures import mesures_du_document
+    from .modules_pans import _produit_du_module_pose
 
     calepinage = _calepinage(company, calepinage_id)
     if calepinage is None:
@@ -64,7 +66,8 @@ def pose_servie(company, calepinage_id):
     nb, demande = mesures['modules'], _compte_demande(layout)
     return {'nb_panneaux': nb, 'kwc': mesures['kwc'], 'complete': bool(nb) and not manquants,
             'a_la_main': bool(nb) and demande is not None and nb != demande,
-            'empreinte_pose': calepinage.layout_hash or '', 'manquants': manquants}
+            'empreinte_pose': calepinage.layout_hash or '', 'manquants': manquants,
+            'module_produit': _produit_du_module_pose(layout)}
 
 
 def simuler_pose(calepinage, *, materiel=None, client=None):

@@ -3368,6 +3368,28 @@ class PoseReelleTests(_emprunt(RelanceConceptionTests, '_relancer'), _emprunt(Fi
         simulee.assert_not_called()
         self.assertEqual(resultat.valeurs[resultat.option_retenue]['production_annuelle']['source'], 'moteur')
 
+    def test_adev150_pose_a_la_main_souveraine_puis_retiree(self):
+        from apps.ventes.domain.regles_calcul import REGLES_POSE_REELLE_2111
+
+        company, lead = self._cas('res_facture_dirhams')
+        temoin, _l, _s = self._calculer(company, lead, niveau=REGLES_POSE_REELLE_2111, calepinage_id=None)
+        recommande = temoin.valeurs[temoin.option_retenue]['nb_panneaux']['valeur']
+        posee = recommande + 3
+        resultat, _lue, _simulee = self._calculer(company, lead, niveau=REGLES_POSE_REELLE_2111,
+                                                  pose=self._pose(posee, complete=False, a_la_main=True,
+                                                                  module=temoin.valeurs[temoin.option_retenue][
+                                                                      'module_produit']['valeur']))
+        self.assertEqual(resultat.etat, 'complet', resultat.refus)
+        retenue = resultat.valeurs[resultat.option_retenue]
+        self.assertEqual((retenue['nb_panneaux']['valeur'], retenue['nb_panneaux']['source']), (posee, 'pose'))
+        self.assertEqual(retenue['puissance_kwc']['source'], 'pose')
+        self.assertNotEqual(retenue['production_annuelle']['valeur'],
+                            temoin.valeurs[temoin.option_retenue]['production_annuelle']['valeur'])
+        # Pose non ajustée (remplie par le plan) : la facture garde la main.
+        suivie, _l, _s = self._calculer(company, lead, niveau=REGLES_POSE_REELLE_2111,
+                                        pose=self._pose(posee, complete=False))
+        self.assertEqual(suivie.valeurs[suivie.option_retenue]['nb_panneaux']['valeur'], recommande)
+
     def test_relance_passe_le_calepinage_au_moteur_devis_envoye_intact(self):
         from apps.ventes.conception import moteur as M
         from apps.ventes.models import Devis
