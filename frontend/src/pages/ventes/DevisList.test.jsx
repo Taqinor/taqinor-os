@@ -1775,3 +1775,84 @@ describe('DevisList — T4-V2-008 : un PDF qui n’arrive pas est dit, avec Rée
     erreur.mockRestore()
   })
 })
+
+// T4-X4-005 (S2) — sur les données de la production, l'écran chargeait TOUS les
+// devis (pages de 200, ≈ 48 Mo) et ne s'ouvrait jamais. Il demande UNE page au
+// serveur (filtres en paramètres), lit la synthèse SERVIE de son en-tête
+// (contrat `devis_synthese.json`), et relit le devis complet seulement quand
+// un geste en a besoin.
+describe('DevisList — T4-X4-005 : une page à la fois, filtres et en-tête servis', () => {
+  const ligne = (id, extra = {}) => ({
+    id, reference: `DEV-X4-${id}`, client_nom: 'ACME', statut: 'brouillon',
+    date_creation: '2026-07-01', total_ttc: 1000, total_affiche: 1000, nb_options: 1,
+    version: 1, is_active: true, detail_partiel: true, a_plan_toiture: false,
+    etude_resume: { recommended_option: null, gamme_nom: null, a_etude: false }, ...extra,
+  })
+  const synthese = exempleContrat('ventes', 'devis_synthese')
+  function renderPage(ventes) {
+    const store = configureStore({
+      reducer: {
+        ventes: (s = {
+          loading: false, error: null, devisCount: null, devisSynthese: null,
+          devisSyntheseEchec: false, ...ventes,
+        }) => s,
+        auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => s,
+      },
+    })
+    return render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={['/ventes/devis']}>
+          <ThemeProvider><DevisList /></ThemeProvider>
+        </MemoryRouter>
+      </Provider>,
+    )
+  }
+
+  it('demande la page 1 de 25, versions remplacées masquées, puis le statut choisi au serveur', () => {
+    fetchDevis.mockClear()
+    renderPage({ devis: [ligne(1)], devisCount: 1, devisSynthese: synthese })
+    expect(fetchDevis).toHaveBeenLastCalledWith({ page: 1, page_size: 25, actifs: 1 })
+    fireEvent.click(screen.getByRole('radio', { name: 'Envoyé' }))
+    expect(fetchDevis).toHaveBeenLastCalledWith(
+      { page: 1, page_size: 25, actifs: 1, statut_effectif: 'envoye' })
+  })
+
+  it('en-tête lu dans la synthèse servie (toute la portée), pages servies par le serveur', () => {
+    fetchDevis.mockClear()
+    renderPage({ devis: [ligne(1), ligne(2)], devisCount: 60, devisSynthese: synthese })
+    expect(screen.getByText(`${synthese.total} devis · 1 à relancer (validité ≤ 7 jours)`)).toBeTruthy()
+    expect(screen.getByText(/DEV-202611-0042/)).toBeTruthy()
+    const pages = screen.getByTestId('devis-pagination')
+    expect(pages.textContent).toContain('Page 1 sur 3 · 60 devis')
+    fireEvent.click(within(pages).getByRole('button', { name: 'Page suivante' }))
+    expect(fetchDevis).toHaveBeenLastCalledWith({ page: 2, page_size: 25, actifs: 1 })
+  })
+
+  it('synthèse en échec : cartes masquées (jamais les totaux d’une seule page), page gardée, Réessayer', () => {
+    renderPage({ devis: [ligne(1)], devisCount: 1, devisSyntheseEchec: true })
+    expect(screen.getByText('DEV-X4-1')).toBeVisible()
+    const avis = screen.getByTestId('devis-synthese-echec')
+    expect(avis.textContent).toContain('Les totaux par statut n’ont pas pu être calculés')
+    fetchDevis.mockClear()
+    fireEvent.click(within(avis).getByRole('button', { name: 'Réessayer' }))
+    expect(fetchDevis).toHaveBeenLastCalledWith({ page: 1, page_size: 25, actifs: 1 })
+  })
+
+  it('filtre sans résultat après une page servie : barre de filtres et message gardés', () => {
+    renderPage({ devis: [], devisCount: 0, devisSynthese: synthese })
+    expect(screen.getByRole('radio', { name: 'Envoyé' })).toBeTruthy()
+    expect(screen.getByText('Aucun devis ne correspond à ces filtres.')).toBeTruthy()
+    expect(screen.queryByText('Créez votre premier devis depuis le générateur solaire.')).toBeNull()
+  })
+
+  it('le dialogue PDF d’une ligne légère relit d’abord le devis complet (ses lignes)', async () => {
+    ventesApi.getDevisById.mockResolvedValueOnce({ data: {
+      ...ligne(77), detail_partiel: undefined, lignes: [], etude_params: {},
+    } })
+    renderPage({ devis: [ligne(77)], devisCount: 1, devisSynthese: synthese })
+    const row = screen.getByText('DEV-X4-77').closest('tr')
+    fireEvent.click(within(row).getByTitle('Générer le PDF (choix du format)'))
+    expect(await screen.findByText(/Générer le PDF — DEV-X4-77/)).toBeTruthy()
+    expect(ventesApi.getDevisById).toHaveBeenCalledWith(77)
+  })
+})

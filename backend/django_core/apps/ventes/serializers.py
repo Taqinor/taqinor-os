@@ -1090,6 +1090,49 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
                             'updated_at', 'updated_by']  # VX98 — server-side only
 
 
+#: T4-X4-005 — ce que l'écran de liste ne lit pas, retiré de la ligne de liste.
+CHAMPS_RETIRES_LISTE_DEVIS = (
+    'etude_params', 'roof_layout', 'pdf_render_meta', 'electrical_design',
+    'offres_tailles_config', 'overrides', 'clauses_appliquees', 'custom_data')
+
+
+class DevisListeSerializer(DevisSerializer):
+    """T4-X4-005 (S2) — la forme LÉGÈRE d'une ligne de ``GET /ventes/devis/``.
+
+    Sur une copie de la production, une ligne de liste pesait 52 à 82 Ko : le
+    bloc d'étude, les lignes, le calepinage et les registres JSON voyageaient
+    pour un écran qui n'en montre rien. Ils sont retirés ici ; à leur place,
+    trois petites clés disent ce que la ligne montre (``etude_resume``,
+    ``a_plan_toiture``) et ``detail_partiel`` dit qu'un geste qui a besoin du
+    devis complet le relit au clic (``GET /ventes/devis/<id>/``, forme
+    complète, inchangée). ``?forme=complete`` (dialogue « Signé », qui lit les
+    lignes) garde l'ancienne forme. La marge reste masquée par la même règle
+    (``get_marge_snapshot`` hérité)."""
+
+    lignes = None
+    etude_resume = serializers.SerializerMethodField()
+    a_plan_toiture = serializers.SerializerMethodField()
+    detail_partiel = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.DictField())
+    def get_etude_resume(self, obj):
+        etude = obj.etude_params if isinstance(obj.etude_params, dict) else {}
+        gamme = etude.get('gamme') if isinstance(etude.get('gamme'), dict) else {}
+        return {'recommended_option': etude.get('recommended_option'),
+                'gamme_nom': gamme.get('nom'),
+                'a_etude': bool(etude)}
+
+    def get_a_plan_toiture(self, obj) -> bool:
+        return bool(obj.roof_layout)
+
+    def get_detail_partiel(self, obj) -> bool:
+        return True
+
+    class Meta(DevisSerializer.Meta):
+        exclude = DevisSerializer.Meta.exclude + list(
+            CHAMPS_RETIRES_LISTE_DEVIS)
+
+
 class DevisWriteSerializer(IdInconnu404Mixin, DecimalSoupleMixin,
                            SameCompanyFKSerializerMixin,
                            TiersPayeurValidationMixin,

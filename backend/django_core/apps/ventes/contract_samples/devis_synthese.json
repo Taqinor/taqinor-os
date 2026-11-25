@@ -1,0 +1,30 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/synthese/",
+  "pourquoi": "T4-X4-005 (S2) — l'écran Devis ne charge plus TOUS les devis (590 pour un responsable ≈ 48 Mo sur une copie de la production) : il demande une page à la fois. L'en-tête (cartes par statut effectif, devis à relancer, option batterie des acceptés, versions remplacées, nombre total) est donc calculé par le SERVEUR sur toute la portée du rôle (société + visibilité, comme la liste). `par_statut` compte les devis EN JEU (versions remplacées exclues) ; un devis en attente dont la validité est passée compte en « expire » (même règle que `is_expired`). `total` = le total affiché de chaque devis (`display_totals`, la colonne « Total TTC » de la liste), en flottant comme `total_affiche`. `a_relancer` = devis envoyés en jeu, non expirés, dont la validité tombe dans les 7 prochains jours. `batterie` compte l'option retenue des devis acceptés. `total` (racine) = tous les devis de la portée, versions remplacées comprises (le compteur de l'en-tête). La LISTE `GET /api/django/ventes/devis/` sert en parallèle une forme LÉGÈRE par ligne (sans `etude_params`, `lignes`, `roof_layout`, `pdf_render_meta`, `electrical_design`, `offres_tailles_config`, `overrides`, `clauses_appliquees`, `custom_data` ; avec `etude_resume`, `a_plan_toiture`, `detail_partiel: true`) ; `?forme=complete` garde la forme complète.",
+  "exemple": {
+    "total": 6,
+    "remplaces": 1,
+    "par_statut": {
+      "brouillon": {"count": 2, "total": 84000.0},
+      "envoye": {"count": 1, "total": 61000.0},
+      "accepte": {"count": 1, "total": 80000.0},
+      "refuse": {"count": 0, "total": 0.0},
+      "expire": {"count": 1, "total": 42000.0}
+    },
+    "a_relancer": [{"id": 102, "reference": "DEV-202611-0042"}],
+    "batterie": {"avec": 1, "sans": 0}
+  },
+  "exemple_vide": {
+    "total": 0,
+    "remplaces": 0,
+    "par_statut": {
+      "brouillon": {"count": 0, "total": 0.0},
+      "envoye": {"count": 0, "total": 0.0},
+      "accepte": {"count": 0, "total": 0.0},
+      "refuse": {"count": 0, "total": 0.0},
+      "expire": {"count": 0, "total": 0.0}
+    },
+    "a_relancer": [],
+    "batterie": {"avec": 0, "sans": 0}
+  }
+}
