@@ -219,19 +219,40 @@ def _production_du_devis_lie(calepinage):
     devis = _devis_lie_actif(calepinage)
     if devis is None:
         return None
+    from ..devis_retenu import conception_du_devis_lie
+
+    # T4-X5-015 — la TAILLE du devis (modules de sa conception retenue) voyage avec sa production.
+    module = (conception_du_devis_lie(calepinage, devis) or {}).get('module') or {}
     return {'reference': devis.reference,
-            'kwh': production_imprimee_du_devis(devis)}
+            'kwh': production_imprimee_du_devis(devis), 'modules': module.get('quantite') or None}
 
 
-def _page2_html(resultat, motif_perime='', production_devis=None):
+def _taille(modules, kwc):
+    """« 6 module(s) — 4,26 kWc » (le kWc omis quand il n'est pas connu)."""
+    return '%s module(s)%s' % (modules, ' — %s kWc' % nombre_tel_que_servi(kwc) if kwc is not None else '')
+
+
+def _production_du_devis_html(production_devis, totaux):
+    """T4-X5-015 — « celle du devis X (kWh/an, SA taille) » ; quand la pose de la synthèse compte
+    un autre nombre de modules, la phrase le dit : jamais la production d'une taille à côté de la
+    puissance d'une autre sans les deux tailles."""
+    kwh, modules = production_devis.get('kwh'), production_devis.get('modules')
+    details = [('%s kWh/an' % nombre_tel_que_servi(kwh)) if kwh is not None else '',
+               _taille(modules, None) if modules else '']
+    details = ', '.join(d for d in details if d)
+    reference = escape(str(production_devis.get('reference') or ''))
+    texte = 'Production : celle du devis %s%s' % (reference, ' (%s)' % details if details else '')
+    poses = (totaux or {}).get('total_modules')
+    if modules and poses and poses != modules:
+        texte += (' — la pose de cette synthèse compte %s : sa production n’est pas celle du devis'
+                  % _taille(poses, (totaux or {}).get('total_kwc')))
+    return texte
+
+
+def _page2_html(resultat, motif_perime='', production_devis=None, totaux=None):
     if production_devis:
-        kwh = production_devis.get('kwh')
         return ('<section class="page-2" data-section="production">'
-                '<h2>Production</h2><p>Production : celle du devis %s%s</p>'
-                '</section>'
-                % (escape(str(production_devis.get('reference') or '')),
-                   (' (%s kWh/an)' % nombre_tel_que_servi(kwh))
-                   if kwh is not None else ''))
+                '<h2>Production</h2><p>%s</p></section>' % _production_du_devis_html(production_devis, totaux))
     if not resultat:
         return ('<section class="page-2" data-section="production">'
                 '<h2>Production</h2><p class="motif">%s</p></section>'
@@ -285,7 +306,7 @@ def _html_de_presentation(document):
 
     corps = _page1_html(document) + _page2_html(
         document['resultat'], document.get('motif_perime', ''),
-        document.get('production_devis'))
+        document.get('production_devis'), document.get('totaux'))
     return document_html(
         corps, titre='Présentation compacte', styles=document['styles'],
         provenance=document['provenance'], mentions=[MENTION_PAS_UN_DEVIS],
