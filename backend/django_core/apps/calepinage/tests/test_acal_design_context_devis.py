@@ -306,6 +306,27 @@ class ResultatsDeLaConceptionTest(_DevisDeuxOptions):
         return bloc_conception(Calepinage.objects.create(
             company=self.company, lead_id=self.lead_lie.pk, devis=devis, titre='QA-ACAL2015'))
 
+    def test_t4_x5_004_le_devis_envoye_du_lead_non_lie_est_nomme(self):
+        """T4-X5-004 — le devis automatique du lead a été ENVOYÉ sans lien au calepinage : le
+        calepinage du lead le nomme quand même, avec l'écart que ventes sert (« Réviser le
+        devis » possible) ; la production comparée est celle du devis ; le devis n'est pas touché."""
+        from django.utils import timezone
+
+        from apps.calepinage.services.devis_retenu import bloc_conception, bloc_production_devis
+
+        devis = self._les_deux('Sans batterie', etude={'etude_horaire_sans': {
+            'annuel': {'production_kwh': 6047.0}}}, date_envoi=timezone.now())
+        avant = Devis.objects.filter(pk=devis.pk).values().get()
+        calepinage = Calepinage.objects.create(company=self.company, lead_id=self.lead_lie.pk,
+                                               titre='QA-T4-X5-004')  # aucun devis lié
+        envoye = bloc_conception(calepinage)['devis_envoye']
+        self.assertEqual((envoye['devis'], envoye['reference']), (devis.pk, devis.reference))
+        ecarts = {e['valeur']: e for e in envoye['ecart_devis']}
+        self.assertEqual((ecarts['nb_panneaux']['devis'], ecarts['nb_panneaux']['conception']), (35, 48))
+        self.assertTrue(ecarts['nb_panneaux']['reviser_possible'])
+        self.assertEqual(bloc_production_devis(calepinage)['devis'], devis.pk)
+        self.assertEqual(Devis.objects.filter(pk=devis.pk).values().get(), avant)
+
     def test_sans_devis_un_seul_chiffre(self):
         bloc = self._bloc()
         self.assertEqual((bloc['production_annuelle_kwh'], bloc['option'], bloc['devis_envoye']),

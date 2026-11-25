@@ -248,8 +248,8 @@ def _devis_envoye_lie(calepinage):
     l'écran les compare au chiffre qu'il affiche, jamais à la conception."""
     from .equipements import devis_et_ecart
 
-    lu = conception_du_devis_lie(calepinage)
-    if not lu or not lu.get('recu'):
+    lu = _devis_recu_du_calepinage(calepinage)
+    if not lu:
         return None
     devis, ecart = devis_et_ecart(lu['devis'], lu, getattr(calepinage, 'company_id', None))
     if devis is None:
@@ -261,6 +261,25 @@ def _devis_envoye_lie(calepinage):
             'ecart_devis': ecart}
 
 
+def _devis_recu_du_calepinage(calepinage):
+    """T4-X5-004 — la conception retenue du devis que le client a REÇU, à comparer à ce
+    calepinage : son devis lié s'il est reçu, sinon — calepinage DE LEAD — le dernier devis
+    reçu du lead, lié ou non (``liens.dernier_devis_recu``, porte de ventes). ``None`` sinon.
+    Rien n'est écrit, aucun devis n'est touché."""
+    lu = conception_du_devis_lie(calepinage)
+    if lu and lu.get('recu'):
+        return lu
+    lead_id = getattr(calepinage, 'lead_id', None)
+    if not lead_id or getattr(calepinage, 'company', None) is None:
+        return None
+    from .equipements import conception_retenue
+    from .liens import dernier_devis_recu
+
+    devis = dernier_devis_recu(calepinage.company, lead_id)
+    lu = conception_retenue(devis) if devis is not None else None
+    return lu if lu and lu.get('recu') else None
+
+
 def bloc_production_devis(calepinage):
     """ACAL1956 (D-ACAL-90) — ``production_devis`` de ``GET resultat/`` : la
     production annuelle RETENUE PAR LE DEVIS (``conception_retenue_du_devis``,
@@ -268,8 +287,8 @@ def bloc_production_devis(calepinage):
     l'étape Résultats n'est jamais vide, même avant la simulation de la pose.
     ``{devis, reference, statut, production_annuelle_kwh, production_origine}``
     ou ``None`` (sans devis lié, ou devis encore brouillon)."""
-    conception = conception_du_devis_lie(calepinage)
-    if not conception or not conception['recu']:
+    conception = _devis_recu_du_calepinage(calepinage)  # T4-X5-004 : lié, sinon reçu du lead
+    if not conception:
         return None
     return {cle: conception[cle] for cle in ('devis', 'reference', 'statut',
                                              'production_annuelle_kwh', 'production_origine')}
