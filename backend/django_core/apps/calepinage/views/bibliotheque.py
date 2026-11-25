@@ -62,6 +62,13 @@ def modeles(self, request):
     de requête)."""
     company = getattr(request.user, 'company', None)
     lignes = calepinages_modeles(company)
+    from ..selectors import lit_par_le_seul_releve, restreindre_aux_siens
+
+    if lit_par_le_seul_releve(request.user):
+        # D-ACAL-106 (revue lot 5) — un modèle est un calepinage comme un autre
+        # (lead, client, géométrie) : le Technicien ne lit que ceux de SES
+        # visites. Les autres comptes gardent la bibliothèque de la société.
+        lignes = restreindre_aux_siens(lignes, request.user)
     return Response(CalepinageSerializer(lignes, many=True).data)
 
 

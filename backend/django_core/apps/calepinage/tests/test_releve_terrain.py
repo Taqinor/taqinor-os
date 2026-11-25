@@ -628,6 +628,27 @@ class TechnicienReleveTest(BaseReleve):
         # faute de visite validée — c'est le lead qui est atteint).
         self.assertNotEqual(contenance.status_code, 404, contenance.data)
 
+    def test_bibliotheque_des_modeles_bornee_a_ses_visites(self):
+        """Revue lot 5 — ``modeles/`` servait au Technicien TOUS les modèles de
+        la société (lead, client, géométrie), hors de ses visites."""
+        from apps.calepinage.services.modeles import marquer_modele
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.visites.models import VisiteTerrain
+
+        marquer_modele(self.calepinage, user=self.user)
+        url = '/api/django/calepinage/calepinages/modeles/'
+        pair = self._pairs_sous_un_directeur(TECHNICIEN_PERMISSIONS)
+
+        def ids(user):
+            reponse = self._api(user).get(url)
+            self.assertEqual(reponse.status_code, 200, reponse.data)
+            return [ligne['id'] for ligne in reponse.data]
+        self.assertNotIn(self.calepinage.pk, ids(pair))
+        self.assertIn(self.calepinage.pk, ids(self.commercial))
+        VisiteTerrain.objects.create(company=self.company, lead=self.lead,
+                                     commercial=pair)
+        self.assertIn(self.calepinage.pk, ids(pair))
+
     def test_commercial_et_directeur_inchanges(self):
         """La restriction ne touche que le porteur du seul relevé."""
         from apps.calepinage.selectors import lit_par_le_seul_releve
