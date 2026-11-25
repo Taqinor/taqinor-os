@@ -6071,3 +6071,27 @@ decisions:
     date: "2026-11-25"
     source: "relecture indépendante du lot 5 (écrans), point B2 ; commit 7ebe4b5bb (lane J1) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Keep the button (Recommended) »"
     taches: []
+  - id: D-ACAL-124
+    question: "Kit minimum du pompage (D-ACAL-118) : le catalogue porte 4 calibres de disjoncteur AC par phase (16, 20, 25, 32 A) et aucune fiche de pompe ne publie son courant nominal ; le kit ne peut donc pas choisir un disjoncteur. Quelle règle ?"
+    options:
+      - cle: courant_sur_la_fiche
+        texte: "Le courant nominal de chaque pompe est saisi sur sa fiche (donnée publiée) ; le kit prend le plus petit calibre égal ou supérieur ; sans courant, le devis automatique est refusé et le dit"
+      - cle: derive_de_kw_et_tension
+        texte: "Le kit calcule un courant approché depuis les kW et la tension de la pompe ; aucune saisie, mais c'est une valeur supposée, pas une valeur publiée"
+      - cle: un_disjoncteur_par_phase
+        texte: "Les autres calibres sont archivés : un seul disjoncteur monophasé et un seul triphasé restent, le kit prend toujours celui-là"
+    reponse: derive_de_kw_et_tension
+    date: "2026-11-25"
+    source: "compte rendu de la lane kit-pompage-protections (poste Reda_Laptop) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Derive from kW and voltage » — option NON recommandée par l'orchestrateur, choisie par le fondateur ; un courant publié sur la fiche de la pompe l'emporte toujours ; la supposition est dite à l'écran"
+    taches: []
+  - id: D-ACAL-125
+    question: "Avec les protections dans le kit minimum (D-ACAL-112, D-ACAL-118), tout devis automatique de pompage est refusé, article nommé, tant que le coffret DC, le parafoudre AC et les disjoncteurs n'ont pas de prix au catalogue (ils sont à 0 aujourd'hui). Le livrer dans le lot 5 ?"
+    options:
+      - cle: dans_le_lot_5
+        texte: "Livré dans le lot 5 ; le fondateur chiffre les articles (jusqu'à 10) au catalogue ; d'ici là le devis automatique de pompage est refusé avec un message clair ; un devis existant garde ses lignes"
+      - cle: hors_du_lot_5
+        texte: "Retiré du lot 5, gardé sur sa branche, livré plus tard une fois les articles chiffrés"
+    reponse: dans_le_lot_5
+    date: "2026-11-25"
+    source: "compte rendu de la lane kit-pompage-protections (poste Reda_Laptop) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Ship it in lot 5 (Recommended) »"
+    taches: []
