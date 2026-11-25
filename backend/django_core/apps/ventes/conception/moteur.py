@@ -335,8 +335,15 @@ def plan_par_defaut_ouvert(calepinage_id, marche):
     suit sa pose : D-ACAL-46). Au niveau 14 courant : fermé, chemin d'aujourd'hui au bit près."""
     from apps.ventes.domain import regles_calcul as RC
 
-    return (not calepinage_id and marche != 'agricole'
+    return (not calepinage_id and marche_au_plan_par_defaut(marche)
             and RC.REGLES_COURANTES >= RC.REGLES_POSE_REELLE_2111)
+
+
+def marche_au_plan_par_defaut(marche):
+    """ADEV155 — LA règle de marché du plan par défaut (une seule place, lue par le moteur et
+    par la liste ``remplir_conceptions --ecarts-sans-toit``) : tout marché solaire, jamais le
+    pompage (il suit sa pose, D-ACAL-46)."""
+    return marche != 'agricole'
 
 
 def _materiel_des_lignes(resultat):

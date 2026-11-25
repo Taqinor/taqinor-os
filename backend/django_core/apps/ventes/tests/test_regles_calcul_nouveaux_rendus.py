@@ -928,6 +928,41 @@ class MoteurSansToitCITests(TCL._emprunt(TCL.FigeageDevisAutoTests, *TCL._FABRIQ
         self.assertIn('tracer le toit au calepinage', pose[0]['message'])
 
 
+class ListeSansToitHorsPompageTests(TCL._emprunt(TCL.FigeageDevisAutoTests, *TCL._FABRIQUES), TestCase):
+    """Point 3 de la relecture — ``remplir_conceptions --ecarts-sans-toit`` laisse de côté un lead
+    AGRICOLE sans toit par LA règle du moteur (``moteur.marche_au_plan_par_defaut``), le dit dans
+    sa ligne de synthèse, et ne simule jamais son plan. (Dans ce module plutôt que dans
+    ``test_conception_lead.py`` : ce fichier-mur de 4 481 lignes ne peut plus grossir — C20.)"""
+
+    def test_lead_agricole_sans_toit_hors_liste_et_compte(self):
+        import io
+
+        from django.core.management import call_command
+
+        from apps.crm.models import Lead
+
+        company, lead = self._residentiel(facture_hiver=Decimal('1800'))
+        TCL._reglages_de_la_societe(company)
+        agricole = Lead.objects.create(company=company, nom='Agri', prenom='Sans toit', ville=lead.ville,
+                                       type_installation='agricole', facture_hiver=Decimal('1800'))
+        simules = []
+
+        def plan(company_, lat, lon, kwc, **kw):
+            simules.append(kw['lead_id'])
+            return dict(_plan_simule(company_, None, kwc, {}), suppositions=[])
+        sortie = io.StringIO()
+        with mock.patch('apps.calepinage.services.plan_par_defaut.simuler_plan_par_defaut', side_effect=plan):
+            call_command('remplir_conceptions', '--company', str(company.pk), '--ecarts-sans-toit', stdout=sortie,
+                         stderr=io.StringIO())
+        liste = sortie.getvalue()
+        self.assertIn('ÉCARTS SANS TOIT : 1 lead(s) sans toit tracé listé(s), 1 lead(s) agricole(s) laissé(s) '
+                      'de côté', liste)  # mutant « liste sans la règle du moteur » : 2 listés, rouge
+        self.assertIn(f'lead #{lead.pk} (sans toit) option ', liste)
+        self.assertNotIn(f'lead #{agricole.pk} ', liste)
+        self.assertNotIn(agricole.pk, simules)
+        self.assertIn(lead.pk, simules)
+
+
 class ProductibleDuPlanParDefautTests(SimpleTestCase):
     """ADEV155 — la porte ne sert JAMAIS un plan dont une étape a été omise faute de fiche
     (B1, relecture lot 5 : fiche à puissance sans coefficient de température)."""
