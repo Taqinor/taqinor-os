@@ -240,6 +240,52 @@ class ListeLegereT4X4005Tests(TestCase):
         self.assertEqual(
             self.api.get(URL, {'statut_effectif': 'zz'}).status_code, 400)
 
+    def test_synthese_memorise_le_total_par_contenu_du_devis(self):
+        """Revue de la liste : 583 devis = 11 s de moteur. Un devis inchangé
+        n'est pas recalculé ; modifié, il l'est, et le total reste celui de la
+        colonne « Total TTC »."""
+        from unittest import mock
+        from django.core.cache import cache
+        from apps.ventes.quote_engine import builder
+        cache.clear()
+        (d,) = self._creer(1)
+        reel = builder.display_totals
+        with mock.patch.object(builder, 'display_totals', wraps=reel) as espion:
+            premier = self.api.get(URL + 'synthese/').json()
+            appels_froid = espion.call_count
+            self.api.get(URL + 'synthese/')
+            self.assertEqual(espion.call_count, appels_froid)  # rien de recalculé
+            ligne = d.lignes.first()
+            ligne.quantite = ligne.quantite + 1
+            ligne.save()
+            apres = self.api.get(URL + 'synthese/').json()
+            self.assertGreater(espion.call_count, appels_froid)  # contenu changé
+        self.assertEqual(appels_froid, 1)
+        self.assertNotEqual(premier['par_statut']['brouillon']['total'],
+                            apres['par_statut']['brouillon']['total'])
+        page = self._page().json()['results'][0]
+        self.assertAlmostEqual(apres['par_statut']['brouillon']['total'],
+                               float(page['total_affiche']))
+
+    def test_synthese_nombre_de_requetes_constant(self):
+        """Les cartes par statut : pas de requête par devis (5 devis = 50)."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from django.core.cache import cache
+        self._creer(5)
+        self.api.get(URL + 'synthese/')  # premier appel : réglages créés
+        cache.clear()  # à froid : le budget vaut aussi sans totaux mémorisés
+        with CaptureQueriesContext(connection) as a_cinq:
+            self.api.get(URL + 'synthese/')
+        self._creer(45)
+        cache.clear()
+        with CaptureQueriesContext(connection) as a_50:
+            self.api.get(URL + 'synthese/')
+        print('\nSYNTHESE requetes : 5 devis=%d 50 devis=%d' % (
+            len(a_cinq.captured_queries), len(a_50.captured_queries)))
+        self.assertEqual(len(a_cinq.captured_queries),
+                         len(a_50.captured_queries))
+
     def test_synthese_compte_toute_la_portee(self):
         from datetime import timedelta
         from django.utils import timezone
