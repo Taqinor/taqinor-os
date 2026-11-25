@@ -219,6 +219,21 @@ class _OrdreStatutDerive(filters.OrderingFilter):
 
     def filter_queryset(self, request, queryset, view):
         ordre = self.get_ordering(request, queryset, view)
+        if ordre and any(o.lstrip('-') == 'titre' for o in ordre):
+            # T4-X3-011 — « Titre » range le titre AFFICHÉ (client, lead, titre,
+            # repli), sans casse ni accents — jamais la colonne ``titre`` brute.
+            from ..selectors import annoter_titre_tri
+
+            queryset = annoter_titre_tri(queryset)
+            ordre = [('-' if o.startswith('-') else '') + 'titre_tri'
+                     if o.lstrip('-') == 'titre' else o for o in ordre]
+            if any(o.lstrip('-') == 'statut' for o in ordre):
+                from ..services.approbation import annoter_statut_derive
+
+                queryset = annoter_statut_derive(queryset)
+                ordre = [('-' if o.startswith('-') else '') + 'statut_derive'
+                         if o.lstrip('-') == 'statut' else o for o in ordre]
+            return queryset.order_by(*ordre, '-id')
         if ordre and any(o.lstrip('-') == 'statut' for o in ordre):
             from ..services.approbation import annoter_statut_derive
 

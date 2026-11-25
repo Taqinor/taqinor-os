@@ -245,14 +245,43 @@ def _condition_recherche(terme, company, user=None):
     if repli:  # ACAL948 — seul un calepinage SANS titre s'affiche ainsi
         condition |= Q(pk=int(repli.group(1)), titre='')
     if company is not None:
-        from apps.crm.selectors import rechercher_leads_minimal
+        from apps.crm.selectors import ids_leads_pour_recherche
 
-        ids = [lead['id'] for lead in
-               rechercher_leads_minimal(company, terme, limit=50, user=user,
-                                        par_ville=True)]
-        if ids:
-            condition |= Q(lead_id__in=ids)
+        # T4-X3-010 — SOUS-REQUÊTE SQL sur TOUS les leads qui répondent (plus
+        # de plafond à 50 qui perdait les calepinages au-delà, en silence).
+        condition |= Q(lead_id__in=ids_leads_pour_recherche(
+            company, terme, user=user, par_ville=True))
     return condition
+
+
+def annoter_titre_tri(lignes):
+    """T4-X3-011 — ``titre_tri`` : le titre que la carte AFFICHE, en minuscules et
+    sans accents, pour ``?ordering=titre``.
+
+    La carte (``CalepinageList.helpers.js::identiteCarte``) montre, dans l'ordre : le
+    nom du CLIENT rattaché, sinon celui du LEAD, sinon le titre saisi, sinon
+    « Calepinage #N ». Trier la colonne ``titre`` rangeait les titres vides en tête
+    et ignorait tout le reste. Les accents sont retirés quand la base sait le faire
+    (``apps.stock.selectors.recherche_sans_accents_disponible``), sinon seule la
+    casse l'est."""
+    from django.db.models import CharField, Func, TextField, Value
+    from django.db.models.functions import Cast, Coalesce, Concat, Lower, NullIf, Trim
+
+    from apps.crm.selectors import nom_affiche_lead_sous_requete
+    from apps.stock.selectors import recherche_sans_accents_disponible
+
+    nom_client = NullIf(Trim(Concat(
+        Coalesce('client__nom', Value('')), Value(' '),
+        Coalesce('client__prenom', Value('')))), Value(''))
+    affiche = Coalesce(
+        nom_client, nom_affiche_lead_sous_requete(),
+        NullIf('titre', Value('')),
+        Concat(Value('Calepinage #'), Cast('pk', CharField())),
+        output_field=TextField())
+    cle = Lower(affiche)
+    if recherche_sans_accents_disponible():
+        cle = Func(cle, function='public.f_unaccent', output_field=TextField())
+    return lignes.annotate(titre_tri=cle)
 
 
 def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
@@ -273,8 +302,9 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
     sur le modèle), qui survit à la purge de la corbeille.
 
     ACAL196 — ``q`` cherche le TITRE, la RÉFÉRENCE affichée (CAL-AAMM-NNNN,
-    décodée en identifiant), le nom du LEAD rattaché (50 leads au plus, par
-    ``crm.selectors.rechercher_leads_minimal``, borné à ``company``) et le
+    décodée en identifiant), le nom du LEAD rattaché (TOUS les leads qui
+    répondent, en sous-requête ``crm.selectors.ids_leads_pour_recherche``,
+    borné à ``company``, sans plafond) et le
     nom du CLIENT rattaché — plus la VILLE du LEAD (maquette « Liste » :
     « Client, ville ou lead » ; la fiche client n'a pas de champ ville).
 
