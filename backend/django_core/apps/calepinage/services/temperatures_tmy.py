@@ -53,17 +53,55 @@ en laissant le cache partagé par défaut.
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
+
 from .pvgis_serie import (
     BASE_PAR_DEFAUT, ClientPvgis, EntreeInvalide, PvgisIndisponible,
     _Limiteur,
 )
 from .valeurs import nombre as _nombre
 
-__all__ = ['temperatures_tmy']
+__all__ = ['temperatures_sans_reseau', 'temperatures_tmy']
 
 #: Le limiteur de cadence PARTAGÉ par tous les appels TMY de ce fournisseur
 #: (cf. la docstring du module). Sa construction n'ouvre aucune connexion.
 _LIMITEUR = _Limiteur()
+
+#: Lane I4 (api-fuzz : ``a-traiter/`` en délai dépassé) — l'état du mode
+#: « sans réseau » en cours, ou ``None`` hors de ce mode.
+_SANS_RESEAU = contextvars.ContextVar('temperatures_sans_reseau', default=None)
+
+
+class _EtatSansReseau:
+    """Ce que le mode a constaté : ``manques`` = années types ABSENTES du
+    cache, donc non demandées à PVGIS."""
+
+    def __init__(self):
+        self.manques = 0
+
+    def refuser(self, url, timeout_s):
+        """Le transport du mode : compte le manque, n'ouvre aucune connexion."""
+        self.manques += 1
+        raise OSError('mode sans réseau : année type absente du cache')
+
+
+@contextlib.contextmanager
+def temperatures_sans_reseau():
+    """Lane I4 — sous ce mode, :func:`temperatures_tmy` répond du cache SEUL.
+
+    Une année type en cache est servie comme aujourd'hui ; absente, AUCUNE
+    requête n'est faite (le transport du client refuse, par le chemin du client
+    lui-même : ``ClientPvgis._appeler`` lit d'abord le cache), le manque est
+    compté sur l'état rendu (``etat.manques``) et la réponse est ``None``. Une
+    LISTE s'y place : elle ne touche jamais le réseau (même patron que
+    ``devis_retenu.lecture_de_liste``)."""
+    etat = _EtatSansReseau()
+    jeton = _SANS_RESEAU.set(etat)
+    try:
+        yield etat
+    finally:
+        _SANS_RESEAU.reset(jeton)
 
 
 def temperatures_tmy(lat, lon, *, client=None, base=BASE_PAR_DEFAUT):
@@ -91,7 +129,13 @@ def temperatures_tmy(lat, lon, *, client=None, base=BASE_PAR_DEFAUT):
         aucune température. ``None`` = « aucune donnée pour ce point », le
         comportement d'avant CALX61 : le calcul continue, sans source.
     """
-    if client is None:
+    sans_reseau = _SANS_RESEAU.get()
+    if sans_reseau is not None:
+        # Lane I4 — le MÊME cache (celui du client injecté, sinon le partagé),
+        # un transport qui refuse et un limiteur neuf (aucune attente).
+        client = ClientPvgis(sans_reseau.refuser, limiteur=_Limiteur(),
+                             cache=getattr(client, 'cache', None))
+    elif client is None:
         # Cache : celui, PARTAGÉ, de ``ClientPvgis`` (défaut). Limiteur : le
         # nôtre, partagé — voir la docstring du module.
         client = ClientPvgis(limiteur=_LIMITEUR)
