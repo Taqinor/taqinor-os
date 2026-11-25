@@ -2059,7 +2059,7 @@ export default function DevisGenerator({
             modifiabilité servi (QJR516). `produits` réutilise le catalogue
             déjà chargé pour « Auto-remplir » (pas de second aller-retour). */}
         <DevisOffresTailles devisId={editId} modeInstallation={modeInstallation} produits={produits}
-                            modifiable={editDevis?.modifiable}
+                            modifiable={editDevis?.modifiable} versionDevis={editDevis?.updated_at}
                             raisonNonModifiable={editDevis?.raison_non_modifiable}
                             onDevisRecompose={rechargerDevisRecompose}
                             onDevisEcrit={armerJeton} />
