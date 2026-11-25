@@ -298,6 +298,19 @@ def _methode_traduite(d, sm):
                         c=nombres[3]) if nombres else exemple)
 
 
+def _valeur_methode(d, ligne, exemple, approx):
+    """Texte du bloc « Comment nous calculons » : la phrase, puis l'exemple en
+    gras. D-ACAL-111 — un exemple dont la « Facture actuelle » est RECALCULÉE
+    au tarif par tranches (``cover.facture_recalculee``, nouveaux rendus) est
+    suivi de la phrase approuvée, dans le même bloc."""
+    if not exemple:
+        return ligne
+    from .cover import facture_recalculee, libelle_cat
+    note = (" " + libelle_cat(d, "res_facture_recalculee_tranches")
+            if facture_recalculee(d) else "")
+    return f'{ligne} <b>{exemple}{approx}</b>{note}'
+
+
 #: AMOT52 (D-AMOT-1 = a) — phrases « Nos hypothèses » du builder et de
 #: ``pricing`` → clés du catalogue. Le français de chaque clé EST la phrase
 #: servie, ``{…}`` marquant une valeur (nombre, distributeur, sous-phrase).
@@ -501,13 +514,7 @@ def build(ctx) -> str:
     sm_approx = LC(d, "res_approximatif") if sm.get("approximatif") else ""
     method_html = ""
     if sm_line:
-        _v = sm_line
-        if sm_ex:
-            # D-ACAL-111 — « Facture actuelle ≈ … » recalculée : la phrase
-            # approuvée, à la suite (même bloc, aucune ligne de mise en page).
-            from .cover import facture_recalculee
-            _v += f' <b>{sm_ex}{sm_approx}</b>' + (
-                " " + LC(d, "res_facture_recalculee_tranches") if facture_recalculee(d) else "")
+        _v = _valeur_methode(d, sm_line, sm_ex, sm_approx)
         method_html = (
             '<div class="p3-method">'
             '<span class="p3-method-k">' + LC(d, "res_methode_titre")
