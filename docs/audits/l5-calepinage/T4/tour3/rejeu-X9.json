@@ -16,5 +16,137 @@
   "verdict": "pas-corrige",
   "vu": "Étape Panneaux › « Plein écran » : la pile zoom / plein écran suit maintenant le bord (Zoomer passe de x 963 à x 1379), MAIS la boussole reste au milieu de l'écran (x ≈ 985 sur 1 440, à sa place d'avant) et le toit n'est pas recentré (il reste dans la moitié gauche). « Quitter le plein écran » fonctionne",
   "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/e1-fullscreen.png"
+ },
+ {
+  "id": "T4-X5-009",
+  "verdict": "corrige",
+  "vu": "Calepinage 1974 (8 panneaux enregistrés) › Expert › Documents › « Exporter la conception (JSON) » (6 141 octets) › « Importer une conception » avec CE fichier : « Conception importée — identique à celle déjà enregistrée (empreinte inchangée) » (POST import-layout 200, inchange: true) ; après rechargement l'en-tête garde « 8 panneaux · 5,68 kWc », le toit et les panneaux sont là. Fichier sans toit : 409, rien enregistré, avertissement dans la carte « Ce fichier ne décrit aucun toit… » avec les deux boutons « Remplacer le toit par ce fichier » et « Garder le toit actuel » ; « Garder » laisse le toit intact (voir T4-X9 pour le toast en double)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/i3-warning.png"
+ },
+ {
+  "id": "T4-X5-007",
+  "verdict": "corrige",
+  "vu": "Calepinage 1974 › Documents › « Générer le devis » (verdict électrique bloquant) : refus en mots du métier, une seule fois dans un cadre sous le bouton : « Le verdict électrique est bloquant : le devis n'est pas généré. — prise de terre non fournie au marché : la justification de continuité de la terre existante reste à cocher — NF C 15-100 §542 — Dérogation réservée aux approbateurs » ; plus de nom de champ technique, pas de toast par-dessus ; les boutons « Régler dans Électrique » restent au-dessus",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/d1-gen.png"
+ },
+ {
+  "id": "T4-X5-006",
+  "verdict": "corrige",
+  "vu": "Calepinage 1974, toit 2 pans posé par le mode guidé (pan nord vide) › Documents : le groupe Toit ne liste plus « Pans garnis de panneaux — le pan Zone 2 n'a aucun panneau » parmi les points à régler ; il ne reste que « Pentes et faces confirmées — 2 hypothèse(s) à confirmer » avec « Régler dans Toit », et « Autres contrôles — 3 bons · 2 pour information »",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/d1-gen.png"
+ },
+ {
+  "id": "T4-X5-008",
+  "verdict": "corrige",
+  "vu": "Calepinage 1974 › Expert › Électrique › Avancé › « Équipements électriques » : Type « Coffret AC » › « Armer la pose » → message « Pose de « Coffret AC » armée. Cliquez dans l'atelier 3D à l'endroit de l'organe, puis « Enregistrer le calepinage » : il s'ajoutera à cette liste. » ; clic sur la carte, Enregistrer (equipements : Coffret AC 1), recharger, rouvrir l'onglet : la liste montre « Coffret AC 1 — Coffret AC — Aucune fiche produit rattachée — saisie »",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/eq-reopen.png"
+ },
+ {
+  "id": "T4-X2-004",
+  "verdict": "corrige",
+  "vu": "Calepinage 1974 (8 × 710 W) › Électrique › choisir « Onduleur réseau Huawei 5kW Monophasé » : AVANT tout raccordement la ligne dit « 5 kW · 2 entrées · ne convient pas pour 8 panneaux : Courant par entrée MPPT… (18,6 A au-dessus de la borne de fiche 18,0 A) — comparez avec un autre onduleur » + lien « Comparer avec 1 autre onduleur » ; l'onduleur proposé par défaut (Deye 5 kW) dit « proposé pour 8 panneaux ». « Raccorder automatiquement » forme toujours une chaîne bloquante avec cet onduleur, mais l'écran l'a dit d'emblée. Phrase contradictoire relevée en T4-X9-002",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/el-el1.png"
+ },
+ {
+  "id": "T4-X2-001",
+  "verdict": "pas-corrige",
+  "vu": "Calepinage 1974 (lead X9-n) › Poser les panneaux (8 × 710 W) : la carte « Couvrir la facture — Recommandé » dit « 8 panneaux · 4,40 kWc · conception » alors que la bande, l'en-tête et la ligne juste dessous disent « Posé : 8 panneaux · 5,68 kWc ». Le mot « conception » est ajouté mais la carte associe toujours un nombre de panneaux à une puissance qui n'est pas la leur (la conception du lead compte des panneaux de 550 W que l'atelier ne propose pas), sans l'expliquer — voir T4-X9-005",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/c1-saved.png"
+ },
+ {
+  "id": "T4-X2-007",
+  "verdict": "corrige",
+  "vu": "Calepinage 1974 (8 × 710 W, pose ≠ conception) : l'atelier (bande Panneaux) ne montre plus de couverture ; « Montrer au client » montre « 8 panneaux — 5,68 kWc de puissance — Production : calculée à la mise à jour de la conception. » : plus de pourcentage de couverture différent de l'atelier, plus de production d'une autre taille. Reste l'absence de chemin pour obtenir cette production (T4-X9-005)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/cl1-client.png"
+ },
+ {
+  "id": "T4-X5-001",
+  "verdict": "corrige",
+  "vu": "Calepinage 1974 (lead X9-n) › 8 × 710 W › Enregistrer › Résultats : « Production de la conception : 7 037 kWh par an, calculée pour la conception du lead : 4,40 kWc (8 panneaux) — votre pose en compte 5,68 kWc (8 panneaux). La production simulée de votre pose est ci-dessous » puis « Production simulée de la pose 9 234 kWh ». Après Expert › « Un de moins » ×2, Enregistrer, simulation partie seule (54 s) : « … 3 406 kWh … 2,13 kWc (3 panneaux) — votre pose en compte 4,26 kWc (6 panneaux) » et « 6 926 kWh ». Le second chiffre dit sa taille. MAIS la conception elle-même a changé entre les deux (T4-X9-009) et la jauge « De la consommation » est celle de la conception (T4-X9-008)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/mn-res6.png"
+ },
+ {
+  "id": "T4-X5-005",
+  "verdict": "pas-corrige",
+  "vu": "Guidé, bande de l'étape Panneaux : plus de production ni de pourcentage (phrase « calculée pour la conception du lead… »). MAIS dans la même étape en Expert, la carte Recommandation dit encore « Vos choix sont tenus… 8 panneaux — production ÷ consommation : 123 % » : 123 % ne sort d'aucun chiffre affiché (simulation 9 234, conception 7 037, consommation du lead 6 547 kWh → 141 % / 107 %) ; il vient de l'estimation 8 619 kWh enregistrée dans la conception exportée (result.annualKwh), montrée nulle part. Après retrait de 2 panneaux : « 92 % » face à 6 926 simulés (106 %) et à l'estimation 6 464 en bas de colonne (99 %)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/e1-total.png"
+ },
+ {
+  "id": "T4-X5-013",
+  "verdict": "corrige",
+  "vu": "Calepinage 1974 › Expert › Résultats › Avancé › « Batterie » : Stratégie Autoconsommation, Couplage AC, Nombre de packs 1 › « Enregistrer et relancer la simulation » → « Déclaration enregistrée. », « Simulation en cours… », puis l'onglet nomme la donnée et où la saisir : « Champ manquant : « produit batterie : ajoutez la batterie au devis lié, puis relancez la simulation » ». La phrase cassée « Le bloc une donnée est OMIS » est devenue « Le bloc « hors réseau » est OMIS — c'est le bloc « autoconsommation » qui décrit un site raccordé. Une donnée manque. » (dernière phrase encore vague, bloc non applicable). Remarque : ce calepinage n'a aucun devis lié, la consigne renvoie donc à un devis à créer d'abord",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/bt-bat2.png"
+ },
+ {
+  "id": "T4-X5-014",
+  "verdict": "corrige",
+  "vu": "Calepinage 1974 › Résultats › Avancé › Comparer les variantes › créer « X9 variante A » ; Documents : « Choisissez d'abord une variante retenue » et le « Générer le devis » de l'étape grisé ; onglet › « Retenir » (POST retenir 200, la colonne passe à « Retenue ») › retour à Documents SANS recharger : l'avis a disparu, le bouton de l'étape est actif et la phrase dit « Générer le devis chiffre la conception courante : la variante retenue en fait partie ». (Il a d'abord fallu lever le verdict électrique bloquant : voir T4-X9-010)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/v2-docs-after.png"
+ },
+ {
+  "id": "T4-X5-016",
+  "verdict": "corrige",
+  "vu": "Calepinage 1974 (rattaché au lead X9-n) › Expert › Documents › Avancé › « Projet » › « Télécharger » (105 425 octets) › « Importer un projet (JSON) » avec ce fichier : l'aperçu « Aperçu — rien n'est encore écrit » s'affiche (Modules 6, Variantes 1 (retenue : X9 variante A), blocs repris / ignorés avec leur motif) et prévient d'avance : « Confirmer l'import sera refusé : Ce lead a déjà un calepinage ouvert (#1974)… Pour reprendre ce fichier, ouvrez ce calepinage et créez-y une variante, ou importez-le depuis un calepinage rattaché à un client. » (le bouton « Confirmer l'import » reste proposé ; « Conception (roof_layout) » garde un nom technique)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/pj-proj-apercu.png"
+ },
+ {
+  "id": "T4-X2-002",
+  "verdict": "pas-corrige",
+  "vu": "Calepinage 1974 (6 panneaux, simulation faite) › Toit › Obstacles « + Ajouter » (obstacle 1,3 × 1,3 m — tombé hors du toit, l'écran le dit : « il n'a aucun effet ici ») › Poser les panneaux (mêmes 6 panneaux, même place) : la bande dit « Production la première année 6 926 kWh » ; Enregistrer, recharger, même pose : la bande dit « Production — calculée pour la conception du lead : 2,13 kWc — votre pose en compte 4,26 kWc » et, en Expert, la ligne du bas passe de « P50 6 926 kWh/an (simulation) » à « ≈ 6 464 kWh/an (estimation) ». Le chiffre de production de la même pose change (ou disparaît) au seul enregistrement, sans que l'écran dise pourquoi",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/c2-after-pan.png"
+ },
+ {
+  "id": "T4-X2-005",
+  "verdict": "corrige",
+  "vu": "Calepinage 1975 sans lead (client X9-o, Casablanca, site non localisé), toit plat 10 × 8, 24 panneaux, Lancer la simulation (27 197 kWh) › Expert : la note sous « Retrait de joint » dit « pas entre rangées 4,90 m … élévation solaire de 26,2° (soleil de 10 h au solstice d'hiver à la latitude de Casablanca (ville de référence) — site non localisé, le lieu de la simulation, 33,57°) » ; un bandeau en haut dit « Site non localisé … sinon le calcul se fait sur Casablanca (ville de référence) ». Un seul lieu pour l'espacement et la simulation",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/fl-total.png"
+ },
+ {
+  "id": "T4-X2-006",
+  "verdict": "pas-corrige",
+  "vu": "Calepinage 1975, toit plat 10 × 8, 24 panneaux, enregistré à 11:03, simulation faite (étape Résultats « Production la première année 27 197 kWh ») › Expert › Toit : la carte affiche encore « Est-Ouest dos à dos — 24 panneaux · 17,04 kWc · 21 735 kWh/an » et, en bas, « 24 panneaux · 17,04 kWc · ≈ 21 735 kWh/an (estimation) » ; la carte TOTAL dit « production au prochain enregistrement » alors que le calepinage est enregistré et simulé. L'estimation n'est pas retirée après la simulation et la vue Expert ne montre nulle part les 27 197 kWh",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/fl-total.png"
+ },
+ {
+  "id": "T4-X2-010",
+  "verdict": "corrige",
+  "vu": "Calepinage 1975 (toit plat 10 × 8, 24 panneaux enregistrés) › Expert › Toit › « + Ajouter une zone » + 4 clics › Genre Champ au sol (pente 2, rangées 0, tables 25) › Enregistrer le contour tracé › « + Ajouter une zone » + 4 clics › Ombrière › Enregistrer le contour tracé › Parcelle + 4 clics › Effacer la parcelle › Enregistrer le calepinage › recharger (deux fois) : Zone 1 garde « 24 modules · 17,04 kWc », Champ au sol 1 « 13 modules », Ombrière 2 « 8 modules » ; barre « 45 panneaux · 31,95 kWc » = « Total du site : 45 modules · 31,95 kWc » = bande « Total du site 45 panneaux · 31,95 kWc ». Aucun panneau perdu. (Je n'ai pas trouvé de bouton « Voir » pour rendre une autre zone active après rechargement : la zone active à l'enregistrement était la dernière tracée.) Écart des compteurs AVANT rechargement : T4-X9-012",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/zn-guide-pan.png"
+ },
+ {
+  "id": "T4-X2-009",
+  "verdict": "corrige",
+  "vu": "Calepinage 1975 après ajout d'un champ au sol et d'une ombrière, enregistré et rechargé › Guidé › Panneaux : la bande dit « Panneaux · ce pan 24 — Puissance · ce pan 17,04 kWc — Total du site 45 panneaux · 31,95 kWc », la barre projet « 45 panneaux · 31,95 kWc » et le tableau « Total du site : 45 modules · 31,95 kWc » : la bande dit qu'elle compte un pan et donne le total du site",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/zn-guide-pan.png"
+ },
+ {
+  "id": "T4-X1-008",
+  "verdict": "corrige",
+  "vu": "Lead X9-i (débit du forage 30 m³/h « Donné par le foreur ») › Devis auto DEV-202611-0151 › PDF « Document agricole complet » : « Débit d'exploitation du forage : 30 m³/h — relevé par votre foreur (saisi le 25/11/2026) » ; puis fiche › onglet devis › « Modifier » › taille « Supérieure » › « Auto-remplir depuis le stock » › Enregistrer › PDF complet (3 pages) : toujours « relevé par votre foreur », et « À confirmer par la visite » ne cite que niveau statique, niveau dynamique, profondeur, HMT (pas le débit du forage)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/mi-saved.png"
+ },
+ {
+  "id": "T4-X1-009",
+  "verdict": "corrige",
+  "vu": "Lead X9-m (monophasé, HMT 40, débit souhaité 5, forage 8, niveau 20, sans GPS) › Devis auto DEV-202611-0152 › « Modifier » : la carte « Inférieure — Pompe Vells 10/10 2hp · 2,15 kWc · 3 panneaux » dit « ne peut pas monter le débit demandé à cette hauteur : 1,5 kW, alors qu'il faut au moins 1,56 kW (pompe sans courbe constructeur) » ; « Supérieure : aucun palier de pompe chiffrable au-dessus de la recommandée au catalogue »",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/mm-tailles.png"
+ },
+ {
+  "id": "T4-X1-014",
+  "verdict": "corrige",
+  "vu": "Leads X9-i et X9-m › « Devis auto » : plus de formule. X9-i : « Débit limité par votre forage : la pompe livrerait davantage, la production de chaque heure est plafonnée à 30 m³/h, la part du débit d'exploitation du forage que les réglages de la société autorisent à pomper. » X9-m : « kW de plaque … non saisi : puissance estimée à partir de ses chevaux (CV), environ 2,2 kW. » (plus de « × 0,7355 »)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/pm-auto.png"
+ },
+ {
+  "id": "T4-X4-005",
+  "verdict": "corrige",
+  "vu": "Ventes › Devis, 4 ouvertures : la liste s'affiche à chaque fois (« 596 devis », cartes par statut, 25 lignes) ; page 1 = 25 devis, 89 810 octets, servie en 1,7 à 3,3 s ; « Page suivante » → « Page 2 sur 24 » (93 240 octets en 1,2 s) ; filtre « Envoyé » → seules des lignes Envoyé ; recherche « DEV-202611-0150 » → 1 ligne en 0,55 s. Plus d'expiration ni d'écran vide. MAIS les lignes n'apparaissent qu'après l'appel « synthese » des cartes : 14,6 / 18,3 / 21,0 / 21,3 s à l'ouverture (T4-X9-014)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/q4-filt.png"
+ },
+ {
+  "id": "T4-V1-001",
+  "verdict": "corrige",
+  "vu": "Rejoué en Commercial responsable (anon_resp), le rôle de ma combinaison (pas en Commercial) : « + Nouveau lead » propose « anon_resp — Suggéré — modifiable » ; « Créer le lead » ; la fiche affiche « RESPONSABLE anon_resp » dans la carte de gauche et dans Suivi commercial (leads X9-n, X9-m2, X9-i, X9-m). Non rejoué avec le compte Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/nl-fiche1.png"
  }
 ]
