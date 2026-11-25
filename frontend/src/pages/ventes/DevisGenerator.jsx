@@ -64,7 +64,6 @@ import {
   Stat,
   Input, Label, Segmented, Switch,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   // QJR101 — `HelpTip` est parti avec la carte des factures : les trois
   // panneaux réseau l'importent chacun pour leur aide « distributeur ».
   ScrollProgress,
@@ -204,7 +203,7 @@ import {
   FENETRE_REFERENCE_MS, dateValiditeParDefaut, rearmerFenetreReference,
 } from '../../features/ventes/quote/ecranDefauts.js'
 import { useLibelleFil } from '../../components/layout/libelleFil'
-import { AlerteErreur } from '../../ui/AlertesServeur'
+import DialogueRenommage from './generator/DialogueRenommage'
 
 // QX43 — 4 marchés réels : industriel et commercial sont désormais distincts.
 const MODE_OPTIONS = [
@@ -2263,34 +2262,10 @@ export default function DevisGenerator({
         }}
       />
 
-      {/* QP2 — dialogue de renommage : deux choix explicites lorsqu'une ligne
-          est renommée à l'écart du nom du produit lié (rôle autorisé). */}
-      <Dialog open={!!renameDialog} onOpenChange={(o) => { if (!o) setRenameDialog(null) }}>
-        <DialogContent className="grid-cols-[minmax(0,1fr)] break-words sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Désignation modifiée</DialogTitle>
-            <DialogDescription>
-              Vous avez renommé cette ligne
-              {renameDialog ? ` « ${renameDialog.nouveauNom} »` : ''} — elle diffère du
-              produit du stock{renameDialog ? ` « ${renameDialog.ancienNom} »` : ''}.
-              Que souhaitez-vous faire ?
-            </DialogDescription>
-          </DialogHeader>
-          <AlerteErreur error={renameError} />
-          <DialogFooter className="flex-col gap-2 sm:flex-col sm:items-stretch">
-            <Button type="button" variant="outline" className="h-auto min-h-[var(--control-h)] whitespace-normal py-2 text-center"
-                    onClick={renameHereOnly} disabled={renameBusy}>
-              Renommer sur ce devis seulement
-            </Button>
-            <Button type="button" className="h-auto min-h-[var(--control-h)] whitespace-normal py-2 text-center"
-                    onClick={renameAsNewProduct} loading={renameBusy}>
-              {renameBusy
-                ? 'Création…'
-                : `Créer un nouveau produit « ${renameDialog?.nouveauNom ?? ''} » dans le stock`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* QP2 — dialogue de renommage (deux choix) : voir generator/DialogueRenommage.jsx. */}
+      <DialogueRenommage
+        renameDialog={renameDialog} setRenameDialog={setRenameDialog} renameBusy={renameBusy}
+        renameError={renameError} renameHereOnly={renameHereOnly} renameAsNewProduct={renameAsNewProduct} />
     </div>
   )
 }
