@@ -108,6 +108,8 @@ const QUESTIONS_PRO = {
   option_tarifaire_bt: '(posée avec le contrat, force motrice seulement) « Êtes-vous en option normale ou en option bi-horaire ? »',
   raccordement: '« Votre installation électrique est-elle en monophasé ou en triphasé ? C\'est écrit sur votre facture ou sur votre compteur. »',
   compteur_puissance_kva: '« Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat. »',
+  puissance_max_appelee_kva: '« Quelle est la puissance maximale que votre site appelle, en kVA ? »',
+  charge_moyenne_pct: "« Pendant vos heures d'ouverture, le site tourne en moyenne à quel pourcentage de cette puissance maximale ? »",
   puissance_souscrite_source: "(posée avec la puissance) « Vous l'avez trouvée sur la facture, sur le contrat, ou c'est une estimation ? »",
   categorie_commerciale: '« Quelle est votre activité : hôtel, restaurant ou café, commerce, bureaux, santé, école, hammam, boulangerie, froid, ou autre chose ? »',
   reponses_categorie: "Quelques questions propres à l'activité, posées juste après l'avoir choisie.",
@@ -529,6 +531,13 @@ function BlocRaccordement({ ctx }) {
       <div className="form-row">
         <Nombre data-field-anchor="lf-compteur-puissance-kva" cle="compteur_puissance_kva" ctx={cp} placeholder="ex: 60" />
       </div>
+      {/* Fondateur 24/11/2026 — sans facture ni kWh, le devis automatique ESTIME
+          la consommation : kVA max × cos φ × charge moyenne × heures d'ouverture. */}
+      <div className="form-row">
+        <Nombre data-field-anchor="lf-puissance-max-appelee-kva" cle="puissance_max_appelee_kva" ctx={ctx} placeholder="ex: 380" />
+        <Nombre data-field-anchor="lf-charge-moyenne-pct" cle="charge_moyenne_pct" ctx={ctx} placeholder="50" />
+      </div>
+      <p className="gen-hint" data-charge-supposee>Charge moyenne : vide = 50 % supposés.</p>
       <Provenances resume={provenanceResume(state, [
         ['Tension', 'tension_source', TENSION_SOURCE], ['Puissance', 'puissance_souscrite_source', PUISSANCE_SOURCE],
       ])}>

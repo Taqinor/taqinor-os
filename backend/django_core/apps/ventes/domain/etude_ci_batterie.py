@@ -12,8 +12,10 @@ Identification par FICHE et par RÔLE, jamais par le nom seul :
 
 * hybride C&I = rôle ``onduleur_hybride`` (déclaré, sinon catégorie, sinon
   mots-clés — ``core.product_roles.role_effectif``) ET fiche onduleur dont la
-  plage batterie déclarée est BASSE TENSION (≤ 60 V : Deye SG05LP3) — un
-  hybride haute tension (SG02HP3, 160–700 V) n'y entre jamais ;
+  plage batterie déclarée est BASSE TENSION (≤ 60 V : Deye SG05LP3) ; un
+  hybride haute tension (SG02HP3, 160–1000 V) forme la famille HAUTE tension
+  (HT24, ``etude_ci_batterie_ht``), essayée seulement quand la basse tension
+  ne compose aucune option ;
 * batterie C&I = rôle ``batterie_ci`` (C&I) ou ``batterie`` ET fiche batterie
   publiant sa capacité UTILE (``kwh_usable``, sinon nominal × DoD) et une
   tension nominale dans la plage des hybrides — sans fiche, la batterie est
@@ -23,6 +25,7 @@ from __future__ import annotations
 
 import logging
 
+from .etude_ci_batterie_ht import essayer_haute_tension
 from .sensibilites_option_avec import reevaluateur, sensibilites_option_avec
 
 logger = logging.getLogger(__name__)
@@ -188,19 +191,26 @@ def _batterie(produit, specs):
 
 
 def catalogue_batterie_ci(objets):
-    """``{hybrides, batteries, elements, ecartees}`` du catalogue de la
-    société (objets ``catalogue_de_la_societe``) — lecture seule."""
+    """``{hybrides, batteries, elements, ecartees, ht}`` du catalogue de la
+    société (objets ``catalogue_de_la_societe``) — lecture seule. ``ht`` (HT24,
+    fondateur 24/11/2026) : la famille HAUTE tension ``{hybrides, batteries,
+    elements, ecartes}`` (``etude_ci_batterie_ht``) — une batterie dont la
+    fiche déclare une grappe en série n'est jamais lue en basse tension."""
     from apps.stock.selectors import plage_batterie_onduleur, specs_for_produit
     from apps.ventes.moteur_ci.batterie import TENSION_PORT_BT_MAX_V
 
     from ..compatibilites import est_triphase_produit
-    hybrides, batteries, elements, ecartees = [], [], [], []
+    from .etude_ci_batterie_ht import (
+        ROLES_ACCESSOIRES, ajouter_accessoire, ajouter_batterie, ajouter_hybride, famille_vide)
+    hybrides, batteries, elements, ecartees, ht = [], [], [], [], famille_vide()
     for produit in objets:
         role = _role(produit)
         fiche = getattr(produit, 'fiche_technique', None)
         type_fiche = getattr(fiche, 'type_fiche', None)
         if role == 'onduleur_hybride' and type_fiche == 'onduleur':
             plage = plage_batterie_onduleur(produit)
+            if plage and plage[1] > TENSION_PORT_BT_MAX_V:
+                ajouter_hybride(ht, produit, plage, est_triphase_produit(produit))
             if not plage or not 0 < plage[1] <= TENSION_PORT_BT_MAX_V:
                 continue          # hybride haute tension (ou plage non déclarée)
             specs = specs_for_produit(produit) or {}
@@ -210,13 +220,30 @@ def catalogue_batterie_ci(objets):
                 'ond_ac_kw': specs.get('ac_kw')}))
         elif role == 'batterie' or getattr(produit, 'role_ci', '') == 'batterie_ci':
             specs = (specs_for_produit(produit) or {}) if type_fiche == 'batterie' else {}
+            if ajouter_batterie(ht, produit, specs):
+                continue          # pack en série : famille haute tension seule
             batterie = _batterie(produit, specs)
             if not batterie['kwh_utile'] or batterie['v_nominal'] is None:
                 ecartees.append(produit.nom)
                 continue
             batteries.append(batterie)
+        elif getattr(produit, 'role_ci', '') in ROLES_ACCESSOIRES:
+            ajouter_accessoire(ht, produit, produit.role_ci)  # HT24 — boîtier, rack et câblage
     return {'hybrides': hybrides, 'batteries': batteries, 'elements': elements,
-            'ecartees': ecartees}
+            'ecartees': ecartees, 'ht': ht}
+
+
+def alertes_articles_ecartes(bat):
+    """Les batteries BASSE tension que l'option « avec » n'a pas pu prendre
+    (fiche incomplète), NOMMÉES en alerte interne. Les articles haute tension
+    écartés sont nommés par ``etude_ci_batterie_ht`` (HT24), avec leur motif,
+    quand la haute tension est essayée."""
+    alertes = []
+    if bat.get('ecartees'):
+        alertes.append(_alerte('BATTERIE_FICHE_INCOMPLETE', (
+            "Batteries écartées de l'option « avec » (fiche sans capacité utile ni tension "
+            'nominale) : %s.' % ', '.join(bat['ecartees']))))
+    return alertes
 
 
 def elements_socle_ci(objets):
@@ -566,7 +593,7 @@ def _marquer_non_rentable(sortie, verdict):
 
 def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, composer,
                   borne_toit, production_rasante=None, regles_3010b=False, nb_batteries=None,
-                  regles_cycles=True, **noyau):
+                  regles_cycles=True, max_appareils=None, parallele=None, **noyau):
     from apps.ventes.etude_horaire import simuler_batterie_jour
     from apps.ventes.moteur_ci.batterie import (
         MAX_HYBRIDES_PARALLELE, dimensionner_option_avec,
@@ -584,8 +611,8 @@ def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, compo
         kwc_depart=evaluation['kwc'], pmax_wc=(catalogue.get('module') or {}).get('pmax_wc'),
         combiner=lambda kwc: combiner_onduleurs(
             kwc, bat['hybrides'], phase=phase, module=catalogue.get('module_spec'),
-            ac_max_kw=ps_kva, max_appareils=MAX_HYBRIDES_PARALLELE, homogene=True,
-            fiche_fait_foi=True, froid=catalogue.get('froid')),  # ADEV122
+            ac_max_kw=ps_kva, max_appareils=max_appareils or MAX_HYBRIDES_PARALLELE,
+            homogene=True, fiche_fait_foi=True, froid=catalogue.get('froid')),  # ADEV122 ; HT24
         composer=lambda kwc, onduleurs: composer(kwc, onduleurs, bat.get('elements')),
         batteries=batteries, hybrides=bat['hybrides'], kwc_max=(borne_toit or {}).get('kwc'),
         ps_kva=ps_kva, production_de=production_de,
@@ -603,7 +630,7 @@ def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, compo
             kwc, bat['hybrides'], produit, quantite, phase=phase,
             module=catalogue.get('module_spec'), ac_max_kw=ps_kva, fiche_fait_foi=True,
             froid=catalogue.get('froid')),
-        **noyau)
+        parallele=parallele, **noyau)
     if resultat.get('evaluation'):
         resultat['evaluation']['inclinaison_retenue_deg'] = inclinaison_pose(
             resultat['evaluation']['kwc'], bornes_pub)
@@ -730,8 +757,12 @@ def option_imposee_des_lignes(lignes, catalogue, kwc, nb_panneaux=None, devis=No
     banque recommandée à la création (``etude_params.banque_recommandee`` du
     devis des lignes), ``None`` sans elle — hors de ``empreinte`` de
     l'option : la clé stockée entre déjà dans celle du devis
-    (``etude_ci.cles_hors_empreinte``)."""
-    bat = catalogue.get('batterie') or {}
+    (``etude_ci.cles_hors_empreinte``). HT24 — des lignes qui portent un
+    hybride HAUTE tension lisent la famille haute tension (devis qui l'ouvre,
+    ``regles_calcul.hybrides_ht_ouverts``) : ``famille`` la sert à la
+    recomposition ; absente en basse tension (option d'hier, à l'identique)."""
+    from .etude_ci_batterie_ht import banque_des_lignes, famille_des_lignes
+    bat, famille = famille_des_lignes(catalogue.get('batterie') or {}, lignes, devis)
     hybrides = {h['produit']: h for h in bat.get('hybrides') or []}
     batteries = {b['produit']: b for b in bat.get('batteries') or []}
     q_h, q_b = {}, {}
@@ -750,6 +781,8 @@ def option_imposee_des_lignes(lignes, catalogue, kwc, nb_panneaux=None, devis=No
     capacite = sum(batteries[p]['kwh_utile'] * q for p, q in q_b.items())
     banque = dict(batteries[max(sorted(q_b), key=q_b.get)], quantite=total,
                   kwh_utile=capacite / total)
+    if famille:  # HT24 — grappes et accessoires de la banque haute tension des lignes
+        banque = banque_des_lignes(banque, bat)
     return {'kwc': kwc, 'nb_panneaux': nb_panneaux, 'banque': banque,
             'investissement': _investissement_des_lignes(lignes, devis),
             'onduleurs': {'combinaison': [dict(hybrides[p], quantite=q) for p, q in sorted(q_h.items())]},
@@ -757,6 +790,7 @@ def option_imposee_des_lignes(lignes, catalogue, kwc, nb_panneaux=None, devis=No
             'recommandee': _recommandee_des_lignes(lignes, devis),
             'module_spec': catalogue.get('module_spec'),  # D-HYB-5 (chaînes du suffisant)
             'froid': catalogue.get('froid'),  # ADEV122 — posé par l'étude (``option_avec_de_l_etude``)
+            **({'famille': bat} if famille else {}),
             'empreinte': [kwc, sorted(q_h.items()), sorted(q_b.items())] + _jeton_cycles(lignes, devis)}
 
 
@@ -855,7 +889,7 @@ def _recomposer(catalogue, imposee, contexte):
     lignes est GARDÉ (même modèle, même nombre) s'il porte encore le champ."""
     from apps.ventes.moteur_ci.batterie import _composer_avec
     from apps.ventes.moteur_ci.onduleurs import combiner_impose
-    bat = catalogue.get('batterie') or {}
+    bat = imposee.get('famille') or catalogue.get('batterie') or {}  # HT24 : la famille des lignes
     onduleurs = _combinaison_libre(imposee['kwc'], bat.get('hybrides'), contexte,
                                    catalogue.get('module_spec'), catalogue.get('froid'))
     garde = (imposee.get('onduleurs') or {}).get('combinaison') or []
@@ -935,6 +969,7 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
     flux['sensibilites'] = contexte.pop('sensibilites', None)  # niveau 14 (D-SENS-1)
     talon_inconnu = contexte.pop('talon_inconnu', False)
     nb_batteries = contexte.pop('nb_batteries', None)  # D-HYB-4 (options.nb_batteries)
+    regles_ht = contexte.pop('regles_ht', True)  # HT24 (``regles_calcul.hybrides_ht_ouverts``)
     reference_sans = contexte.pop('reference_sans', None) or evaluation
     production_rasante = contexte.pop('production_rasante', None)
     flux['production_rasante'] = production_rasante
@@ -982,12 +1017,17 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
         resultat = {'evaluation': None, 'prix_a_renseigner': [], 'alertes': [], 'hypotheses': [],
                     'motif': 'aucun onduleur hybride basse tension ni batterie basse tension '
                              'à fiche complète au catalogue'}
+    # HT24 (fondateur 24/11/2026) — la basse tension n'a composé aucune option :
+    # la famille HAUTE tension (hybride + grappe en série), même dimensionnement.
+    resultat, bat_ht, alertes_ht = essayer_haute_tension(
+        resultat, bat, regles_ht=regles_ht, nb_batteries=nb_batteries,
+        dimensionner=lambda b, batteries_ht, **kw: _dimensionner(
+            catalogue, b, batteries_ht, evaluation, production_rasante=production_rasante,
+            regles_3010b=regles_3010b, regles_cycles=regles_cycles, **kw, **contexte))
     sortie = dict(vide, prix_a_renseigner=resultat['prix_a_renseigner'],
                   alertes=list(resultat['alertes']), hypotheses=list(resultat['hypotheses']))
-    if bat.get('ecartees'):
-        sortie['alertes'].append(_alerte('BATTERIE_FICHE_INCOMPLETE', (
-            "Batteries écartées de l'option « avec » (fiche sans capacité utile ni tension "
-            'nominale) : %s.' % ', '.join(bat['ecartees']))))
+    sortie['alertes'].extend(alertes_articles_ecartes(bat) + alertes_ht)
+    bat = bat_ht or bat
     if choix != 'avec' and resultat['prix_a_renseigner']:
         # Fondateur 27/10/2026 — « les deux » : un article de l'option « avec »
         # sans prix ne refuse pas le devis ; l'offre réseau part seule, les

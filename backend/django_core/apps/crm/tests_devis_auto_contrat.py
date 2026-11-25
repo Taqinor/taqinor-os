@@ -58,7 +58,7 @@ class TestDevisAutoContrat(TestCase):
         self.assertTrue(bloc['pret'])
         # CIQ404 — groupe pro du contrat CIQ1 (kWh, relevé ou facture MAD).
         self.assertIn(['conso_mensuelle_kwh', 'bill_kwh', 'releve_conso',
-                       'facture_hiver'], bloc['requis'])
+                       'facture_hiver', 'puissance_max_appelee_kva'], bloc['requis'])
 
     def test_qjr603_pro_kwh_seulement_sans_facture_reste_pret(self):
         """QJR603 (D-QJR5-14) — le lead que le devis automatique dimensionne

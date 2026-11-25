@@ -285,6 +285,14 @@ def prix_palier_ht(ligne, taux_tva_pct=None):
     return (ttc / (1 + tva / 100)).quantize(Decimal('0.01'))
 
 
+def ligne_accessoire_grappe(role_ci, article, designation, quantite):
+    """HT24 (fondateur 24/11/2026) — un accessoire de GRAPPE de la batterie
+    haute tension (boîtier de contrôle, rack et câblage) : UN par grappe, au
+    prix de VENTE du catalogue ; sans prix ⇒ « prix à renseigner » nommé (la
+    règle de l'option), jamais un 0. Le rôle de ligne est le rôle C&I."""
+    return _ligne(role_ci, article, designation, quantite, 'u')
+
+
 def ligne_batterie(article, quantite):
     """Option « avec batterie » (fondateur 26/10/2026) : la banque HOMOGÈNE de
     modules, au prix de VENTE du catalogue (palier compris) ; sans prix ⇒

@@ -134,6 +134,43 @@ class TestDevisAutoProCIQ404(SimpleTestCase):
         self.assertEqual(detail[0]['label'], LIB_PRO['industriel'])
         self.assertIsNone(source_conso(lead))
 
+    # ── Fondateur 24/11/2026 — la puissance maximale suffit (conso estimée) ──
+
+    def _hasnaoui(self, **kw):
+        """Lead « Karim Hasnaoui » : industriel MT, 1×8, lun→sam 8-18 h,
+        380 kVA de puissance maximale, AUCUNE autre consommation."""
+        champs = dict(type_installation='industriel', tension_raccordement='mt',
+                      tension_source='facture', regime_equipes='1x8',
+                      jours_ouverture=[1, 2, 3, 4, 5, 6], heure_debut=8, heure_fin=18,
+                      puissance_max_appelee_kva=Decimal('380'))
+        champs.update(kw)
+        return self._lead(**champs)
+
+    def test_puissance_max_seule_pret_exemple_du_contrat(self):
+        lead = self._hasnaoui()
+        self.assertEqual(
+            _bloc_pro(lead),
+            CONTRAT_DEVIS_AUTO['exemple_industriel_puissance_max']['devis_auto'])
+        self.assertEqual(source_conso(lead), 'puissance_max_appelee_kva')
+
+    def test_puissance_max_sans_heures_les_heures_manquent(self):
+        lead = self._hasnaoui(regime_equipes=None, heure_debut=None, heure_fin=None)
+        detail = champs_manquants_detail(lead)
+        self.assertEqual([e['champ'] for e in detail], ['heure_debut'])
+        # Un commerce à archétype (bureau) : la forme de journée ne dit aucune
+        # heure — l'estimation les exige quand même (la conso réelle, non).
+        commerce = self._lead(type_installation='commercial', categorie_commerciale='bureau',
+                              puissance_max_appelee_kva=Decimal('60'))
+        self.assertEqual([e['champ'] for e in champs_manquants_detail(commerce)],
+                         ['jours_ouverture'])
+        commerce.conso_mensuelle_kwh = Decimal('4000')
+        self.assertEqual(champs_manquants(commerce), [])
+
+    def test_une_consommation_reelle_passe_devant_la_puissance(self):
+        lead = self._hasnaoui(conso_mensuelle_kwh=Decimal('20000'))
+        self.assertEqual(source_conso(lead), 'conso_mensuelle_kwh')
+        self.assertEqual(champs_manquants(lead), [])
+
     def test_industriel_releve_seul_pret(self):
         lead = self._lead(type_installation='industriel', releve_conso={
             'mois': [{'mois': '2026-08', 'kwh': '40000.00'}],
@@ -282,9 +319,11 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
             # CIQ404 — groupe pro du contrat CIQ1 ; ALEA47 — + le rythme que
             # le moteur exige (ici tout manque) ; ADEV125/ADEV126 — le contrat et
             # la phase absents sont supposés par le moteur, jamais exigés.
+            # Fondateur 24/11/2026 — + la puissance maximale (conso estimée).
             self.assertEqual(champs_requis(Lead(nom='x', type_installation=mode)),
                              [['conso_mensuelle_kwh', 'bill_kwh',
-                               'releve_conso', 'facture_hiver'],
+                               'releve_conso', 'facture_hiver',
+                               'puissance_max_appelee_kva'],
                               ['jours_ouverture'],
                               ['heure_debut', 'regime_equipes']])
 

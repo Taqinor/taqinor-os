@@ -448,6 +448,12 @@ _CI_AZIMUT_PVGIS = {'sud': 0, 'sud_est': -45, 'sud_ouest': 45, 'est': -90,
 
 _CI_REGISTRES_MT = ('kwh_pointe', 'kwh_pleines', 'kwh_creuses',
                     'puissance_atteinte_kva', 'cos_phi')
+#: Fondateur 24/11/2026 — colonnes de l'estimation par la puissance maximale
+#: → chemin lu par le moteur (``etude_ci.CHEMINS_LEAD``, feuilles privées).
+_CI_ESTIMATION_PUISSANCE = (
+    ('puissance_max_appelee_kva', 'consommation.puissance_max_kva'),
+    ('charge_moyenne_pct', 'consommation.charge_moyenne_pct'),
+)
 
 
 def _ci_nombre(brut):
@@ -517,6 +523,12 @@ def _entrees_consommation(lead, _entree, manquants):
                 source_conso='facture_mad')
     elif not mois_distincts:
         manquants.append('conso_mensuelle_kwh')
+    # Décision fondateur 24/11/2026 — puissance maximale appelée et charge
+    # moyenne, servies telles quelles (facultatives, jamais « manquantes ») :
+    # le moteur n'en ESTIME une consommation qu'en dernier recours.
+    for colonne, chemin in _CI_ESTIMATION_PUISSANCE:
+        if not _entree_vide(getattr(lead, colonne, None)):
+            _entree(colonne, _ci_nombre(getattr(lead, colonne)), 'consommation', chemin)
 
 
 def _entrees_toit(lead, _entree, manquants):
@@ -618,6 +630,7 @@ def entrees_ci_du_lead(lead):
         'releve_conso', 'conso_mensuelle_kwh', 'bill_kwh', 'facture_hiver',
         'tension_raccordement', 'contrat_electricite', 'option_tarifaire_bt',
         'raccordement', 'compteur_puissance_kva',
+        'puissance_max_appelee_kva', 'charge_moyenne_pct',
         'jours_ouverture', 'heure_debut', 'heure_fin', 'regime_equipes',
         'fermeture_mois', 'categorie_commerciale', 'reponses_categorie',
         'equipements_hors_horaires',

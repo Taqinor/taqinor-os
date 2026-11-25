@@ -962,6 +962,23 @@ class DesignationOptionAvecTests(SimpleTestCase):
         self.assertEqual(designation_option_avec('Dyness PowerBrick SC 16 kWh', 'batterie'),
                          'Batterie Dyness PowerBrick SC 16 kWh')
 
+    def test_hybride_haute_tension_range_dans_la_famille_haute_tension(self):
+        """HT24 (24/11/2026) — un hybride 160–1000 V forme la famille HAUTE
+        tension, jamais la basse ; il n'est nommé que si elle est essayée."""
+        from types import SimpleNamespace
+        from apps.ventes.domain import etude_ci_batterie as m
+        fiche = type('Fiche', (), {'__getattr__': lambda self, nom: None})()
+        fiche.__dict__.update(type_fiche='onduleur', ond_bat_v_min=Decimal('160'),
+                              ond_bat_v_max=Decimal('1000'), ond_ac_kw=Decimal('80'), ond_phases=3)
+        produit = SimpleNamespace(id=1, nom='DEYE SUN-80K-SG02HP3-EU-EM6', role_devis='onduleur_hybride',
+                                  categorie=None, fiche_technique=fiche, description='', marque='',
+                                  prix_vente=Decimal('100000'), role_ci='')
+        bat = m.catalogue_batterie_ci([produit])
+        self.assertEqual(bat['hybrides'], [])
+        (hybride,) = bat['ht']['hybrides']
+        self.assertEqual((hybride['nom'], hybride['max_parallele']), (produit.nom, 1))
+        self.assertEqual(m.alertes_articles_ecartes(bat), [])
+
 
 class BanqueRecommandeeD4Tests(SimpleTestCase):
     """D4 (fondateur 17/11/2026) — « moins de batteries au départ, prêt pour

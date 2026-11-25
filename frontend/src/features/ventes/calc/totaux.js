@@ -16,8 +16,9 @@ import {
   tauxTvaOf,
 } from '../solar.js'
 import {
-  _norm, appartientAuPanierAvec, appartientAuPanierSans, isAnyInverter, isBattery, isHybridInverter,
-  isOffgridInverter, isReseauInverter, parseKw, texteClassement,
+  _norm, appartientAuPanierAvec, appartientAuPanierSans, estHybrideCatalogue, isAnyInverter, isBattery,
+  isHybridInverter, isOffgridInverter, isReseauInverter, puissanceAcOnduleur, roleLigneOuProduit,
+  texteClassement,
 } from './classification.js'
 
 // ── QJR402 — QF9 (Smart Meter / clé Wi-Fi Huawei-only) MIROIR DU NOYAU ──────
@@ -397,15 +398,19 @@ export function computeBuyCost(lines, produits) {
 // Composer des hybrides en parallèle est raisonnable jusqu'à MAX_HYBRID_UNITS.
 export const MAX_HYBRID_UNITS = 8
 
-export function avecBatterieAvailability(lines, produits, kwp) {
-  // AGNR36 — chaque ligne classée sur désignation + nom du produit lié.
-  const t = (l) => texteClassement(l, produits)
-  const hasHyb = lines.some(l =>
-    isHybridInverter(t(l)) && parseFloat(l.quantite) > 0)
-  const hasBat = lines.some(l =>
-    isBattery(t(l)) && parseFloat(l.quantite) > 0)
-  const hasRes = lines.some(l =>
-    isReseauInverter(t(l)) && parseFloat(l.quantite) > 0)
+// `ci` (commercial / industriel) : la composition vient du calcul serveur — le
+// message ne conseille alors jamais d'ajouter un produit au catalogue.
+export function avecBatterieAvailability(lines, produits, kwp, { ci = false } = {}) {
+  // AGNR36 — chaque ligne classée sur désignation + nom du produit lié ;
+  // 24/11/2026 — son RÔLE (stocké, sinon celui du produit lié) passe devant.
+  const a = (l, role, parNom) => {
+    if (!(parseFloat(l.quantite) > 0)) return false
+    const r = roleLigneOuProduit(l, produits)
+    return r ? r === role : parNom(texteClassement(l, produits))
+  }
+  const hasHyb = lines.some(l => a(l, 'onduleur_hybride', isHybridInverter))
+  const hasBat = lines.some(l => a(l, 'batterie', isBattery))
+  const hasRes = lines.some(l => a(l, 'onduleur_reseau', isReseauInverter))
   if (hasHyb && hasBat) return { available: true, batterieDifferee: false }
   // BAT-DIFF (fondateur, 17/09/2026) — même règle que le noyau
   // (`utils.options.familles_servables`, testée là-bas et ici par
@@ -415,12 +420,15 @@ export function avecBatterieAvailability(lines, produits, kwp) {
   // ses économies sans stockage. Un hybride SEUL reste mono-option (Z1).
   if (hasHyb && hasRes) return { available: true, batterieDifferee: true }
   // Diagnostic : le plus gros hybride du stock suffit-il, même composé ?
-  const maxKw = Math.max(0, ...produits
-    .filter(p => isHybridInverter(p.nom))
-    .map(p => parseKw(p.nom) || 0))
+  // 24/11/2026 — hybride reconnu par son rôle, puissance lue sur sa fiche.
+  const maxKw = Math.max(0, ...produits.filter(estHybrideCatalogue).map(puissanceAcOnduleur))
   const unitsNeeded = maxKw > 0 ? Math.ceil((kwp || 0) / maxKw) : Infinity
   let reason
-  if (!hasHyb && maxKw > 0 && unitsNeeded > MAX_HYBRID_UNITS) {
+  if (!hasHyb && ci) {
+    reason = "aucun onduleur hybride dans les lignes du devis — en commercial / industriel c'est le calcul "
+      + "qui compose l'option « avec batterie » (s'il ne l'a pas fait, son motif est dans les alertes du "
+      + "résultat) ; vous pouvez aussi ajouter l'hybride et la batterie à la main"
+  } else if (!hasHyb && maxKw > 0 && unitsNeeded > MAX_HYBRID_UNITS) {
     reason = `pour ${formatNumber(Math.round((Number(kwp) || 0) * 100) / 100)} kWc il faudrait ${unitsNeeded} onduleurs hybrides de ${formatNumber(maxKw)} kW `
       + `(au plus ${MAX_HYBRID_UNITS} en parallèle) — réduisez la taille ou ajoutez au catalogue un onduleur hybride plus puissant`
   } else if (!hasHyb) {

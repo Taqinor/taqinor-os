@@ -38,7 +38,16 @@ def prix_connu_ci(produit, role):
 
 LIBELLE_HYBRIDE = 'Onduleur hybride (option avec batterie)'
 LIBELLE_BATTERIE = 'Batterie (option avec batterie)'
+#: HT24 (fondateur 24/11/2026) — la famille HAUTE tension de l'option.
+LIBELLE_HYBRIDE_HT = 'Onduleur hybride haute tension (option avec batterie)'
+LIBELLE_BATTERIE_HT = 'Batterie haute tension (option avec batterie)'
 MOTIF_SANS_PRIX = 'prix de vente non saisi'
+#: HT24 — les champs de fiche d'une grappe en série, aux noms du formulaire.
+CHAMPS_GRAPPE = (('serie_min_modules', 'modules en série par grappe (mini)'),
+                 ('serie_max_modules', 'modules en série par grappe (maxi)'),
+                 ('v_module', "tension d'un module"))
+CHAMPS_PORT_HT = (('bat_nb_entrees', 'entrées batterie'),
+                  ('max_parallele', 'appareils en parallèle (maxi)'))
 
 
 def _role_effectif(produit):
@@ -83,22 +92,53 @@ def _prix_vente_saisi(produit):
     return bool(produit.prix_vente and produit.prix_vente > 0)
 
 
+def _specs_batterie(produit):
+    from .selectors import specs_for_produit
+    fiche = getattr(produit, 'fiche_technique', None)
+    return (specs_for_produit(produit) or {}) if getattr(
+        fiche, 'type_fiche', None) == 'batterie' else {}
+
+
 def _batterie_haute_tension(produit):
-    """Pack HAUTE tension (tension nominale > port BT, ou « haute tension » dans
-    le nom quand la tension est volontairement omise — ``BAT-DYN-HV-16``,
-    ``seed_catalogue`` : la renseigner à 51,2 V ferait entrer le pack dans la
-    fenêtre des hybrides BT) : hors option basse tension, jamais « à
-    compléter » — même repli que ``ventes.domain.catalogue._is_battery_basse_tension``."""
+    """Pack HAUTE tension : fiche qui déclare une grappe en série (HT24), sinon
+    tension nominale > port BT, sinon « haute tension » dans le nom quand la
+    tension est volontairement omise (repli des fiches non complétées —
+    ``BAT-DYN-HV-16``, ``seed_catalogue`` : la renseigner à 51,2 V ferait entrer
+    le pack dans la fenêtre des hybrides BT) — même repli que
+    ``ventes.domain.catalogue._is_battery_basse_tension``."""
     from core.product_roles import TENSION_PORT_BT_MAX_V
 
-    from .selectors import _norme, specs_for_produit
-    fiche = getattr(produit, 'fiche_technique', None)
-    specs = (specs_for_produit(produit) or {}) if getattr(
-        fiche, 'type_fiche', None) == 'batterie' else {}
+    from .selectors import _norme
+    specs = _specs_batterie(produit)
+    if any(specs.get(cle) is not None for cle, _lib in CHAMPS_GRAPPE):
+        return True
     v_nominal = _num(specs.get('v_nominal'))
     if v_nominal is not None:
         return v_nominal > TENSION_PORT_BT_MAX_V
     return 'haute tension' in _norme(getattr(produit, 'nom', ''))
+
+
+def _motif_batterie_ht(produit):
+    """HT24 — ce qui manque à un pack haute tension pour l'option : la
+    grappe en série, la capacité utile, le prix (``None`` = utilisable)."""
+    specs = _specs_batterie(produit)
+    manque = [lib for cle, lib in CHAMPS_GRAPPE if _num(specs.get(cle)) is None]
+    nominal, dod = _num(specs.get('kwh_nominal')), _num(specs.get('dod_pct'))
+    if not (_num(specs.get('kwh_usable')) or (nominal * dod / 100.0 if nominal and dod else None)):
+        manque.append('capacité utile')
+    if manque:
+        return 'fiche incomplète : ' + ', '.join(manque)
+    return None if _prix_vente_saisi(produit) else MOTIF_SANS_PRIX
+
+
+def _motif_port_ht(produit):
+    """HT24 — la fiche d'un hybride haute tension publie-t-elle ses entrées
+    batterie et sa limite de parallèle ? (sans elles, le moteur retient une
+    grappe par appareil et un seul appareil, et le dit)."""
+    from .selectors import specs_for_produit
+    specs = specs_for_produit(produit) or {}
+    manque = [lib for cle, lib in CHAMPS_PORT_HT if specs.get(cle) is None]
+    return 'fiche incomplète : ' + ', '.join(manque) if manque else None
 
 
 def _motif_batterie(produit):
@@ -115,24 +155,27 @@ def _etat(role_ci, libelle, classement, produit, motif):
 
 
 def etat_option_batterie(produit):
-    """L'état d'un onduleur hybride BASSE TENSION ou d'une batterie vis-à-vis
-    de l'option « avec batterie » C&I, à la forme de ``etat_ci_produit`` ; sinon
-    ``None`` (autre produit, ou hybride haute tension — hors option, comme le
-    moteur). Lecture seule, jamais de prix d'achat."""
+    """L'état d'un onduleur hybride ou d'une batterie vis-à-vis de l'option
+    « avec batterie » C&I, à la forme de ``etat_ci_produit`` — basse tension
+    ou, depuis HT24 (24/11/2026), HAUTE tension (libellé dédié, motif = le
+    champ de fiche précis qui manque) ; ``None`` pour un autre produit.
+    Lecture seule, jamais de prix d'achat."""
     from core.product_roles import TENSION_PORT_BT_MAX_V
 
     from .selectors import plage_batterie_onduleur
     role, source = _role_effectif(produit)
     if role == 'onduleur_hybride':
         fiche = getattr(produit, 'fiche_technique', None)
-        motif = None
+        motif, libelle = None, LIBELLE_HYBRIDE
         if getattr(fiche, 'type_fiche', None) != 'onduleur':
             motif = 'fiche onduleur absente'
         else:
             plage = plage_batterie_onduleur(produit)
+            haute = plage is not None and plage[1] > TENSION_PORT_BT_MAX_V
+            libelle = LIBELLE_HYBRIDE_HT if haute else LIBELLE_HYBRIDE
             if plage is None:
                 motif = 'plage de tension batterie non publiée'
-            elif not 0 < plage[1] <= TENSION_PORT_BT_MAX_V:
+            elif not 0 < plage[1]:
                 return None
             elif not (_num(fiche.ond_ac_kw) or 0) > 0:
                 # Revue CCAT2 — ``moteur_ci.onduleurs.combiner_onduleurs``
@@ -142,11 +185,14 @@ def etat_option_batterie(produit):
                 motif = 'phase non publiée'
             elif not _prix_vente_saisi(produit):
                 motif = MOTIF_SANS_PRIX
-        return _etat('onduleur_hybride', LIBELLE_HYBRIDE, source, produit,
-                     motif)
+            elif haute:
+                motif = _motif_port_ht(produit)
+        return _etat('onduleur_hybride', libelle, source, produit, motif)
     if role == 'batterie' or getattr(produit, 'role_ci', '') == 'batterie_ci':
         if _batterie_haute_tension(produit):
-            return None
+            return _etat('batterie', LIBELLE_BATTERIE_HT,
+                         source if role == 'batterie' else 'declare', produit,
+                         _motif_batterie_ht(produit))
         return _etat('batterie', LIBELLE_BATTERIE,
                      source if role == 'batterie' else 'declare', produit,
                      _motif_batterie(produit))
@@ -190,9 +236,13 @@ def etat_ci_complet(produit):
     etat = etat_ci_produit(produit)
     if etat is None:
         return etat_option_batterie(produit) or etat_panneau(produit)
-    if (etat['role_ci'] == 'batterie_ci' and etat['eligible_ci']
-            and not _batterie_haute_tension(produit)):
-        motif = _motif_batterie(produit)
+    if etat['role_ci'] == 'batterie_ci' and etat['eligible_ci']:
+        motif = (_motif_batterie_ht(produit) if _batterie_haute_tension(produit)
+                 else _motif_batterie(produit))
         if motif:
             etat = dict(etat, eligible_ci=False, motif_exclusion=motif)
+    if etat['role_ci'] in ('boitier_batterie_ht', 'rack_batterie_ht') and not etat['prix_connu']:
+        # HT24 — boîtier de contrôle et rack d'une grappe haute tension, composés
+        # en LIGNE de l'option « avec batterie » : sans prix, ils la bloquent.
+        etat = dict(etat, eligible_ci=False, motif_exclusion=MOTIF_SANS_PRIX)
     return etat

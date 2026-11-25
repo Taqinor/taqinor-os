@@ -47,6 +47,21 @@ test('un libellé RENOMMÉ laisse la puce cliquable sur le bon champ', () => {
   assert.equal(chip.section, 'energie')
 })
 
+// Fondateur 24/11/2026 — la puissance maximale SEULE remplit le groupe pro :
+// le serveur dit « prêt » (consommation estimée), l'écran n'en recalcule rien.
+test('puissance maximale seule : aucune puce, section Énergie complète, cible dans « pro »', () => {
+  const bloc = exempleContrat('crm', 'devis_auto_pret', 'exemple_industriel_puissance_max').devis_auto
+  assert.ok(bloc.requis[0].includes('puissance_max_appelee_kva'))
+  const s = etat({
+    stage: PIPELINE_STAGES[0], type_installation: 'industriel',
+    puissance_max_appelee_kva: '380.00', conso_mensuelle_kwh: null, devis_auto: bloc,
+  })
+  assert.deepEqual(chipsAComplete(s), [])
+  assert.equal(sectionAutoRepliee(s, 'energie'), true)
+  assert.deepEqual(missingFieldTarget('puissance_max_appelee_kva', 'industriel'),
+    { field: 'lf-puissance-max-appelee-kva', section: 'pro' })
+})
+
 test('agricole : chaque puce vise son champ de pompage', () => {
   const bloc = exempleContrat('crm', 'devis_auto_pret', 'exemple_agricole').devis_auto
   const chips = chipsAComplete(etat({ stage: PIPELINE_STAGES[0], devis_auto: bloc }))

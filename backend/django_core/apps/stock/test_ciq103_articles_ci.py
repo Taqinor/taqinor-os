@@ -68,6 +68,35 @@ class TestListe(SimpleTestCase):
         for nom, *_x in seed_mod.ARTICLES_CI_PRIX_A_RENSEIGNER:
             self.assertNotIn('panneau', nom.lower())
 
+    def test_articles_haute_tension_semes_a_leurs_prix(self):
+        # HT24 (fondateur 24/11/2026) — achat du devis Solarex S26/001708 + 30 % ;
+        # accessoires déclarés par leur rôle C&I ; 80 kW au prix du fondateur.
+        ht = seed_mod.ht
+        self.assertEqual([(r[1], r[2], ht(r[3]), ht(r[4])) for r in seed_mod.ACCESSOIRES_GRAPPE_HT], [
+            ('DEY-BOSB-PDU-2-A', 'boitier_batterie_ht', Decimal('14560.00'), Decimal('11200.00')),
+            ('DEY-BOSB-RACK', 'rack_batterie_ht', Decimal('7800.00'), Decimal('6000.00'))])
+        self.assertEqual(ht(seed_mod.BATTERIE_DEYE_HV[0][2]), Decimal('36400.00'))
+        (hybride,) = seed_mod.HYBRIDES_DEYE_HT
+        self.assertEqual((hybride[1], ht(hybride[2]), ht(hybride[3])),
+                         ('OND-H-DEY-80T', Decimal('100000.00'), Decimal('0.00')))
+        for _n, sku, *_x in (*seed_mod.ACCESSOIRES_GRAPPE_HT, *seed_mod.HYBRIDES_DEYE_HT):
+            self.assertIn(sku, seed_mod.SKUS_SEMES)
+        boitier = seed_mod.FICHES['DEY-BOSB-PDU-2-A']['description']
+        for texte in ('200 à 1000 Vdc', '180 A', '220 V AC ±10 %, 2 A', '788,6 × 526 × 167,2 mm, 32 kg'):
+            self.assertIn(texte, boitier)
+        self.assertIn('chiffrés à part (un jeu par grappe)', seed_mod.FICHES['BAT-DYN-HV-16']['description'])
+        self.assertNotIn('inclus dans le prix', seed_mod.FICHES['BAT-DYN-HV-16']['description'])
+
+    def test_fiche_80kw_complete_et_sourcee(self):
+        fiche = seed_mod.FICHES_TECHNIQUES['OND-H-DEY-80T']
+        attendu = {'ond_n_mppt': 6, 'ond_chaines_max_par_mppt': 2, 'ond_ac_kw': Decimal('80'),
+                   'ond_phases': 3, 'ond_bat_v_min': Decimal('160'), 'ond_bat_v_max': Decimal('1000'),
+                   'ond_bat_nb_entrees': 2, 'ond_bat_i_max_a': Decimal('80.0'), 'ond_max_parallele': 10,
+                   'ond_dc_max_kwc': Decimal('160.0')}
+        self.assertEqual({c: fiche[c] for c in attendu}, attendu)
+        self.assertNotIn('ond_bat_max_charge_kw', fiche)        # aucune puissance publiée
+        self.assertEqual(seed_mod.FICHES['OND-H-DEY-80T']['garantie'], 'Garantie 5 ans')
+
     def test_skus_semes(self):
         for _n, sku, *_x in seed_mod.ARTICLES_CI_PRIX_A_RENSEIGNER:
             self.assertIn(sku, seed_mod.SKUS_SEMES)

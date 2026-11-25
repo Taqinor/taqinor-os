@@ -21,7 +21,7 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.db import connection
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -38,6 +38,10 @@ from apps.parametres.pvgis_profils import (
 )
 from apps.stock.models import FicheTechnique, Produit
 from apps.ventes.domain import etude_ci
+from apps.ventes.domain.estimation_puissance_ci import (
+    FEUILLE_ESTIMEE, MOTIF_SOUS_RESERVE, estimer_consommation)
+from apps.ventes.domain.suppositions_ci import alertes_pour_la_commerciale
+from apps.ventes.moteur_ci.charge import heures_ouverture_par_mois
 from apps.ventes.moteur_ci.production import (
     CLE_POSE_RASANTE,
     SOURCE_ANGLE_POSE_RASANTE,
@@ -899,3 +903,130 @@ class PoseRasanteR1(_Base):
         self.assertEqual(etude['taille']['raison_arret'], 'taille_explicite')
         self.assertEqual(etude['production']['inclinaison_deg'], data['production']['inclinaison_deg'])
         self.assertEqual(etude['production']['kwh_kwc_mensuel'], data['production']['kwh_kwc_mensuel'])
+
+
+# ── Fondateur 24/11/2026 — consommation estimée par la puissance maximale ─────
+
+#: Lead « Karim Hasnaoui » : 1×8, ouvert du lundi au samedi de 8 h à 18 h.
+RYTHME_HASNAOUI = {'jours_ouverts': [True] * 6 + [False], 'plages': {'ouvre': [[8, 18]]},
+                   'equipes': '1x8'}
+
+
+def _resolution(**feuilles):
+    res = etude_ci._Resolution()
+    for feuille, valeur in feuilles.items():
+        res.poser(feuille, valeur, {'origine': 'lead', 'detail': 'client', 'date': None})
+    return res
+
+
+class EstimationPuissanceMaxTests(SimpleTestCase):
+    """kWh du mois = kVA max × cos φ × charge moyenne × heures d'ouverture du
+    mois — en DERNIER recours, toujours dit."""
+
+    ANNEE = 2025
+
+    def _estimer(self, res):
+        alertes, hypotheses = [], []
+        kwh, feuille = estimer_consommation(res, self.ANNEE, alertes, hypotheses)
+        return kwh, feuille, alertes, hypotheses
+
+    def test_hasnaoui_environ_44_000_kwh_formule_mois_par_mois(self):
+        heures, manquants = heures_ouverture_par_mois(RYTHME_HASNAOUI, annee_reference=self.ANNEE)
+        self.assertEqual(manquants, [])
+        self.assertEqual(heures[0], 270.0)  # janvier 2025 : 27 jours ouverts × 10 h
+        kwh, feuille, alertes, hypotheses = self._estimer(
+            _resolution(_puissance_max_kva=380, **RYTHME_HASNAOUI))
+        self.assertEqual(feuille, FEUILLE_ESTIMEE)
+        self.assertEqual(len(kwh), 12)
+        for mois, h in enumerate(heures):
+            self.assertAlmostEqual(kwh[mois], 380 * 0.9 * 0.5 * h, places=6)
+        self.assertTrue(43000 <= sum(kwh) / 12 <= 46000, sum(kwh) / 12)
+        alerte = next(a for a in alertes if a['code'] == 'consommation_estimee_puissance')
+        self.assertTrue(alerte['interne'])
+        self.assertNotEqual(alerte['niveau'], 'bloquant')
+        for morceau in ('380 kVA', 'cos φ 0,90 (supposé)', 'charge moyenne 50 % (supposée)',
+                        'environ 44 600 kWh/mois', 'Demandez la facture'):
+            self.assertIn(morceau, alerte['message'])
+        hypothese = next(h for h in hypotheses if h['cle'] == 'consommation')
+        self.assertEqual(hypothese['statut'], 'estimation')
+        self.assertTrue(hypothese['source'].startswith('puissance maximale'))
+
+    def test_charge_et_cos_phi_declares_servent(self):
+        heures, _ = heures_ouverture_par_mois(RYTHME_HASNAOUI, annee_reference=self.ANNEE)
+        kwh, _feuille, alertes, _h = self._estimer(_resolution(
+            _puissance_max_kva=380, _charge_moyenne_pct=40, _cos_phi=0.95, **RYTHME_HASNAOUI))
+        for mois, h in enumerate(heures):
+            self.assertAlmostEqual(kwh[mois], 380 * 0.95 * 0.4 * h, places=6)
+        message = alertes[0]['message']
+        self.assertIn('cos φ 0,95 (déclaré)', message)
+        self.assertIn('charge moyenne 40 % (déclarée)', message)
+
+    def test_un_kwh_declare_gagne_aucune_estimation(self):
+        res = _resolution(_puissance_max_kva=380, kwh_mensuels=[1000] * 12, **RYTHME_HASNAOUI)
+        alertes, hypotheses = [], []
+        conso, feuille, _r, _m = etude_ci._consommation_retenue(res, {}, alertes, hypotheses)
+        self.assertEqual((feuille, sum(conso)), ('kwh_mensuels', 12000))
+        self.assertEqual(alertes, [])
+        self.assertEqual(hypotheses, [])
+        # Une facture en MAD non convertie est une donnée réelle : rien estimé.
+        self.assertEqual(estimer_consommation(
+            _resolution(_puissance_max_kva=380, **RYTHME_HASNAOUI), self.ANNEE,
+            [{'code': 'conversion_mad_impossible'}], []), (None, None))
+
+    def test_sans_rythme_aucune_estimation_et_le_refus_nomme_ce_qui_manque(self):
+        for rythme, code, champ in (
+                ({}, 'estimation_puissance_sans_jours', 'jours_ouverture'),
+                ({'jours_ouverts': [True] * 6 + [False]}, 'estimation_puissance_sans_heures',
+                 'heure_debut')):
+            kwh, feuille, alertes, hypotheses = self._estimer(
+                _resolution(_puissance_max_kva=380, **rythme))
+            self.assertEqual((kwh, feuille, hypotheses), (None, None, []), code)
+            self.assertEqual([a['code'] for a in alertes], [code])
+            refus = etude_ci.refus_devis_auto_ci({'alertes': alertes + [
+                {'code': 'consommation_absente', 'niveau': 'bloquant'}]})
+            self.assertEqual(refus[1], champ)
+        # Sans puissance maximale : rien, et rien n'est dit.
+        self.assertEqual(self._estimer(_resolution(**RYTHME_HASNAOUI)), (None, None, [], []))
+
+    def test_la_supposition_porte_son_champ_lead_et_la_reserve_de_visite(self):
+        res = _resolution(_puissance_max_kva=380, **RYTHME_HASNAOUI)
+        _kwh, _f, alertes, hypotheses = self._estimer(res)
+        dites = alertes_pour_la_commerciale({'alertes': alertes, 'hypotheses': hypotheses})
+        self.assertEqual([(a['code'], a['champ_lead']) for a in dites],
+                         [('consommation_estimee_puissance', 'conso_mensuelle_kwh')])
+        reserve = etude_ci._sous_reserve_visite(res, None, 'estimation')
+        self.assertTrue(reserve['valeur'])
+        self.assertIn(MOTIF_SOUS_RESERVE, reserve['motif'])
+        self.assertNotIn('profil horaire non déclaré', reserve['motif'])
+
+
+class EstimationPuissanceMaxLeadTests(_Base):
+    """Le lead Hasnaoui (aucune consommation, 380 kVA) jusqu'à l'étude."""
+
+    def test_lead_puissance_max_seule_etude_estimee_et_dite(self):
+        lead = self._lead(type_installation='industriel', tension_raccordement='mt',
+                          tension_source='facture', contrat_electricite='mt_general',
+                          regime_equipes='1x8', jours_ouverture=[1, 2, 3, 4, 5, 6],
+                          heure_debut=8, heure_fin=18, puissance_max_appelee_kva=Decimal('380'))
+        etude = etude_ci.etudier_ci(self.co, {'mode': 'industriel'}, lead=lead)
+        self.assertEqual(etude['feuille_consommation_retenue'], FEUILLE_ESTIMEE)
+        self.assertEqual(etude['niveau_donnees'], 'estimation')
+        self.assertIn(MOTIF_SOUS_RESERVE, etude['sous_reserve_visite']['motif'])
+        self.assertNotIn('consommation_absente', [a['code'] for a in etude['alertes']])
+        self.assertIn('consommation_estimee_puissance', [a['code'] for a in etude['alertes']])
+        # Les feuilles du lead restent privées : jamais dans les entrées résolues.
+        self.assertFalse([c for c in etude['entrees_resolues'] if 'puissance_max' in c])
+        heures, _ = heures_ouverture_par_mois(
+            RYTHME_HASNAOUI, annee_reference=etude_ci._aujourdhui().year - 1)
+        attendu = sum(380 * 0.9 * 0.5 * h for h in heures)
+        conso = sum(j['nb_jours'] * sum(j['charge_kwh'])
+                    for j in etude['profil_charge']['jours_types'])
+        self.assertAlmostEqual(conso, attendu, delta=1)
+        refus = etude_ci.refus_devis_auto_ci(etude)
+        self.assertNotEqual((refus or (None, None))[1], 'conso_mensuelle_kwh')
+        # Un kWh déclaré au lead remplace l'estimation, qui n'est plus dite.
+        Lead.objects.filter(pk=lead.pk).update(conso_mensuelle_kwh=Decimal('20000'))
+        lead.refresh_from_db()
+        etude = etude_ci.etudier_ci(self.co, {'mode': 'industriel'}, lead=lead)
+        self.assertEqual(etude['feuille_consommation_retenue'], 'kwh_mensuel_declare')
+        self.assertNotIn('consommation_estimee_puissance', [a['code'] for a in etude['alertes']])
