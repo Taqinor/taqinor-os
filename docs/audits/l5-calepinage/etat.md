@@ -1806,7 +1806,7 @@ et 3 (synthèse de la liste : cache par contenu dont profil société et produit
   REGARDER : onglet Simulation du devis (factures tapées), liste des devis (cartes), atelier d'un lead dont la pose
   diffère de la conception, fiche du lead après désignation d'un onduleur hybride.
 
-### Point du 25/11, 11 h 10 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 11 h 10 UTC
 
 **Lot 4 (PR Taqinor/taqinor-os#1556, brouillon) : SIXIÈME PASSAGE DE CI lancé à 11 h 10 sur `cb9d338411`**
 (attente : `scripts/watch-ci.ps1 -Pr 1556`). Dans ce push, en plus du point de 10 h 45 : pliage de `lane/moteur-e8`
@@ -1840,3 +1840,50 @@ Bases de test des lanes : 39 bases, 5,2 Go dans la machine des conteneurs — à
 X9 terminé → rebâtir la pile sur la tête, REGARDER (Simulation du devis avec factures tapées, liste des devis,
 atelier d'un lead dont la pose diffère de la conception, fiche du lead après désignation d'un hybride) ; fusion du
 lot 4 ; relecteurs X3, X6, X7, X8 ; rapport.
+
+### Point du 25/11, 12 h 15 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** Reda, 11 h 50 : « start more lanes ».
+- **Passages de CI** : sixième (`cb9d338411`) rouge sur 4 causes, septième (`e6c6b1263e`) rouge sur 2 causes — TOUTES
+  corrigées en local : forme de la vue effective sans le marqueur `option` ; quantités sœurs réservées au devis
+  résidentiel (un brouillon C&I recomposé voyait sa structure « 1 lot » passer à 162) ; test QJR602 (taille tapée
+  telle quelle) ; `except` muet du cache de la liste ; contrat d'imports M1 (`lignes_vendues_de_l_option` déplacée de
+  `utils/options` vers `domain/dimensionnement_devis`) ; goldens des gestes du générateur (les cartes Tailles se
+  relisent après l'enregistrement). Fuzz et e2e VERTS aux deux passages.
+- **Plié depuis 11 h 10** : E7f (tableau des tailles de la Simulation : la taille de chaque option vendue, raison de
+  refus de batterie en une phrase lisible, pastilles), F2c (T4-X4-004 : la carte « Recommandé — sans batterie »
+  n'est plus servie pour un devis qui ne vend que « avec » — le PDF client n'imprimait PAS de total faux, la page
+  client publique pouvait montrer cette carte), G1 puis G2 (atelier : un seul prédicat « tailles différentes »,
+  inventaire de tous les chiffres, calepinage sans lead, création en double, tableau du site), E9 (ACAL2045 pose du
+  toit supposé, « Conception recalculée : <raison> », aperçu de ce que le devis portera, section Eau, fiche technique
+  regroupée, cible de l'atelier comptée dans le panneau posé).
+- **HUITIÈME PUSH** : dès que gardes d'hôte, tests du front touchés, instantané OpenAPI (route `apercu-devis/`)
+  et empreinte de structure sont passés en local.
+- **EN VOL** : H1 (auteur d'e8, agent afaeb723706ffe3f7 : retour sur investissement de la fiche du lead, obstacle hors
+  du toit, phrase du calepinage sans lead côté serveur, raison de refus de l'onduleur —
+  `scratchpad/tour3/msg-lane-H1-serveur-restes.md`) ; H2 (lane neuve `lane/liste-total`, agent acd5913bf9b7ab14f :
+  ADEV162 total rangé de la liste des devis + T4-X9-015 — `scratchpad/tour3/msg-lane-H2-liste-total.md`) ;
+  relecteurs X6 (agent aafc8b7da92b01fe5 : quatre scénarios C&I de bout en bout) et X3 (agent aac20b788b8e1c4a7 :
+  réglages, liste, création, routes) sur la pile `fc9fa2c7a5` (rebâtie à 12 h 00, E9 et G2 compris).
+- **REGARD DE L'ORCHESTRATEUR (pile `e6c6b1263e`, 11 h 55)** : onglet Simulation du devis 2880, douze factures
+  tapées : plus de refus, « Consommation imposée par le devis (490 kWh par mois, factures saisies) », un aperçu par
+  option avec le matériel des lignes, la taille du devis présente et marquée — VU ; la colonne « Éco. avec » était
+  un mur de texte technique à points décimaux (corrigé par la suite d'E7f, PAS encore revu) ; liste des devis :
+  25 lignes puis cartes « Calcul des totaux… » — VU. À REVOIR sur la pile `fc9fa2c7a5` : tableau des tailles
+  (phrases courtes, pastilles), atelier d'un lead dont la pose diffère de la conception, calepinage sans lead,
+  fiche du lead après désignation d'un hybride, carte « Tailles » après enregistrement.
+- **DISQUE** : 15 Go libres après retrait de 13 dossiers de lanes fusionnées (6 retraits incomplets à finir).
+
+**Tri des constats du relecteur X9 (25 rejeux : 20 corrigés, 5 non ; 17 neufs)** :
+| Constat | Suite |
+|---|---|
+| T4-X9-009 (S2) conception divisée par deux après désignation d'un hybride | corrigé, orchestrateur (438b50856c) ; le reste = décision 28 |
+| T4-X9-003, 004, 008 (S2), 006, 007, 001, 010 ; rejeux T4-X5-005, T4-X5-017 | corrigés, G1 |
+| T4-X9-005 (S2) / T4-X2-001 cible en panneaux de 550 W | corrigé, E9 item 6 ; « comment obtenir les chiffres de la pose » reste ouvert (niveau 15, décision du fondateur) |
+| T4-X2-002 la production disparaît à l'enregistrement | écran : corrigé G1 (« Simulation à refaire ») ; serveur (empreinte) : H1 |
+| T4-X2-006, T4-X9-011, 012, 013 (écran) | corrigés, G2 ; 013 côté serveur : H1 ; clé d'idempotence de la création : tâche à écrire |
+| T4-X9-002 raison de refus de l'onduleur | H1 |
+| T4-X9-014 la liste attend la synthèse | corrigé avant (suite 3 de F3), à revoir en direct |
+| T4-X9-015 deux comptes de devis | H2 |
+| T4-X9-016 retour de 21,4 ans introuvable | H1 |
+| T4-X9-017 trois encarts client sur la fiche du lead | tâche à écrire (plan du lead) |
