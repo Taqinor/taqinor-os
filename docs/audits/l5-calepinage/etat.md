@@ -1774,7 +1774,7 @@ fusion du lot 4 quand CI verte + X9 sans « pas-corrigé » bloquant ; dire « m
 le toit supposé ne dit pas sa pose (échauffement omis) ; corrigé, l'effet serait d'environ +4 % à +8 % (pose
 affleurante) ou +11 % à +16 % (châssis). ADEV155 reste fermé.
 
-### Point du 25/11, 10 h 45 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 10 h 45 UTC
 
 **Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** Plié depuis 10 h 10, non poussé : suite 2 d'e7d
 (composition imposée par option depuis les LIGNES, refus dit une fois, retours libellés, fenêtre QJR35), F3 suites 2
@@ -1805,3 +1805,38 @@ et 3 (synthèse de la liste : cache par contenu dont profil société et produit
   d'hôte (`scratchpad/gardes.sh`), contrats et instantané OpenAPI régénérés ; puis rebâtir la pile de revue et
   REGARDER : onglet Simulation du devis (factures tapées), liste des devis (cartes), atelier d'un lead dont la pose
   diffère de la conception, fiche du lead après désignation d'un onduleur hybride.
+
+### Point du 25/11, 11 h 10 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon) : SIXIÈME PASSAGE DE CI lancé à 11 h 10 sur `cb9d338411`**
+(attente : `scripts/watch-ci.ps1 -Pr 1556`). Dans ce push, en plus du point de 10 h 45 : pliage de `lane/moteur-e8`
+(coût de `resultat/` et de la file « à traiter »), correctif T4-X9-009 (`438b50856c` : rouge « 11 != 13 », vert avec
+ses cinq voisins), deux tests de lecture du source réalignés (`axiosVX55Timeout`, `devisAutoKwc.ez5`), tâche ACAL2046.
+Vérifié avant le push : gardes d'hôte 0 rouge (`scratchpad/gardes.sh`), instantané OpenAPI inchangé, budgets de
+requêtes du calepinage 39 tests OK avec `docs/` monté (`scratchpad/lane-test-docs.sh` — la lane ne voyait pas
+`docs/query-budgets.yml`), `node --test src/**/*.test.mjs` du front : seuls restent rouges en local trois artefacts
+(fins de ligne Windows sur deux tests CIQ126, plafond de poids mesuré sur un vieux `dist/` → ACAL2046).
+
+**EN VOL (auteurs rappelés sur leur branche, rien de poussé)** :
+- `lane/moteur-e9` (agent a1144b5df28380f54) : ACAL2045 commité ; items 2 à 5 ; item 6 = la cible de l'atelier comptée
+  dans le panneau posé (`scratchpad/msg-lane-e9-item6.md`, T4-X2-001 et T4-X9-005).
+- G1 sur `lane/t3-atelier` (agent a0a39b75aa1be319f) : classe « chiffres de la conception à côté d'une pose d'une
+  autre taille » (`scratchpad/tour3/msg-lane-G1-atelier-conception.md`) + T4-X2-002 rejoué pas corrigé + T4-X9-010.
+- F2c sur `lane/t3-editeur-options` (agent a01f644f2f20473ee) : T4-X4-004 — EXPLIQUER le prix « sans batterie »
+  de 36 900 MAD (peut-être aussi imprimé au PDF client), puis corriger sous verrou de niveau 15 avec liste en lecture
+  seule (`scratchpad/tour3/msg-lane-F2c-option-sans.md`).
+- E7f sur `lane/moteur-e7d` (agent a7c564f9b92c99be9) : T4-X4-018 — le tableau des tailles de la Simulation couvre
+  l'option vendue ; retours « 5,7 ans » (`scratchpad/tour3/msg-lane-E7f-simulation-avec.md`).
+- Relecteur X9 (agent a769f787d565e28cf) : 16 rejeux (12 corrigés, 4 pas corrigés), 10 constats neufs, continue sur
+  la pile `b51d59a4a8` — NE PAS rebâtir la pile tant qu'il tourne.
+
+**DISQUE** : C: était à 1,8 Go libres à 11 h 00 (64 dossiers de travail). Retrait des dossiers des lanes déjà
+fusionnées dans `main` (script `scratchpad/menage_worktrees.ps1` : jonctions défaites d'abord, donneur
+`agent-a8dd86f2f627793f9` et lanes actives intacts) : 12 Go libres à 11 h 10, retrait encore en cours. Gardés
+(auteurs à rappeler) : e8, F3, F4, F6b, e6e ; gardés (commits non pliés) : `fix/ci-front` (+5), `fix/ci-gardes` (+8).
+Bases de test des lanes : 39 bases, 5,2 Go dans la machine des conteneurs — à supprimer au démontage.
+
+**ENSUITE** : plier e9, G1, F2c, E7f à leur retour (revue de chaque diff, gardes, UN push = septième passage) ;
+X9 terminé → rebâtir la pile sur la tête, REGARDER (Simulation du devis avec factures tapées, liste des devis,
+atelier d'un lead dont la pose diffère de la conception, fiche du lead après désignation d'un hybride) ; fusion du
+lot 4 ; relecteurs X3, X6, X7, X8 ; rapport.
