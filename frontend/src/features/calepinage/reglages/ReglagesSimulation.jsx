@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import ChoixSurfaceAlbedo from './ChoixSurfaceAlbedo'
+import ChampTableLisible from './ChampTableLisible'
+import { lireTable } from './tablesReglages'
 import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Badge, Button, Card, Spinner } from '../../../ui'
@@ -187,7 +189,7 @@ function validerSection(registre, lignes) {
 const CLASSE_CHAMP = 'mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground'
 
 /** L'aide de TYPE d'une clé, depuis le registre servi (type, bornes). */
-function aideDeType(r) {
+function aideDeType(r, texte) {
   const bornes = r.minimum !== null && r.maximum !== null
     ? ` entre ${r.minimum} et ${r.maximum}`
     : (r.minimum !== null ? ` au moins ${r.minimum}` : (r.maximum !== null ? ` au plus ${r.maximum}` : ''))
@@ -199,7 +201,7 @@ function aideDeType(r) {
     case 'booleen': return 'Oui ou non'
     case 'table_mensuelle': return `Douze valeurs mensuelles (liste), ou une seule pour les douze${bornes}`
     case 'intervalle_annees': return 'Intervalle d’années [début, fin]'
-    case 'table': return 'Table structurée (JSON)'
+    case 'table': return lireTable(r.cle, texte) !== null ? 'Une ligne par entrée, un champ par grandeur' : 'Table structurée (JSON)'
     default: return ''
   }
 }
@@ -243,7 +245,8 @@ function ChampValeur({ r, ligne, disabled, erreur, onChange }) {
 
 function LigneReglage({ r, ligne, erreur, disabled, onChange }) {
   const majer = (champ, valeur) => onChange(r.cle, champ, valeur)
-  const aide = aideDeType(r)
+  const aide = aideDeType(r, ligne.valeurTexte)
+  const tableLisible = r.type === 'table' && lireTable(r.cle, ligne.valeurTexte) !== null
   return (
     <fieldset className="mt-4 border-t border-border/60 pt-4" data-testid={`calx69-ligne-${r.cle}`}>
       <legend className="text-sm font-semibold text-foreground">
@@ -261,10 +264,18 @@ function LigneReglage({ r, ligne, erreur, disabled, onChange }) {
       )}
       {r.cle === 'albedo_mensuel' && <ChoixSurfaceAlbedo cle={r.cle} disabled={disabled} onChoisir={majer} />}
       <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <label className="block" data-testid={`calx69-valeur-${r.cle}`}>
-          <span className="text-xs text-muted-foreground">Valeur</span>
-          <ChampValeur r={r} ligne={ligne} disabled={disabled} erreur={erreur} onChange={majer} />
-        </label>
+        {tableLisible ? (
+          <div className="block sm:col-span-3" data-testid={`calx69-valeur-${r.cle}`}>
+            <span className="text-xs text-muted-foreground">Valeur</span>
+            <ChampTableLisible cle={r.cle} texte={ligne.valeurTexte} disabled={disabled}
+              onTexte={(t) => majer('valeurTexte', t)} />
+          </div>
+        ) : (
+          <label className="block" data-testid={`calx69-valeur-${r.cle}`}>
+            <span className="text-xs text-muted-foreground">Valeur</span>
+            <ChampValeur r={r} ligne={ligne} disabled={disabled} erreur={erreur} onChange={majer} />
+          </label>
+        )}
         <label className="block" data-testid={`calx69-source-${r.cle}`}>
           <span className="text-xs text-muted-foreground">Source</span>
           <select
