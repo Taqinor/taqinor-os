@@ -63,6 +63,22 @@ describe('AGNR33 — refus par champ et normalisations', () => {
     expect(screen.queryByTestId('erreur-champ-date_validite')).toBeNull()
   }, 60000)
 
+  // T4-X1-016 — « Réviser » ouvre le brouillon V2 : le fil d'Ariane nomme le devis révisé,
+  // et sa validité est celle d'un devis neuf (sa date de création + le réglage société).
+  it('T4-X1-016 : un brouillon sans date de validité reçoit la validité par défaut, et le fil nomme le devis', async () => {
+    const vue = await monter(`/ventes/devis/nouveau?edit=${DEVIS_REGISTRE.id}`, {
+      devis: { ...DEVIS_REGISTRE, date_validite: null, date_creation: '2026-10-08T09:00:00Z' },
+      avant: ({ parametresApi }) => {
+        parametresApi.getProfile.mockResolvedValue({ data: { quote_validity_days: 30 } })
+      },
+    })
+    await attendreStable(vue.container, act)
+    await waitFor(() => expect(document.getElementById('gen-validite').value).toBe('2026-11-07'))
+    // Le harnais remet le registre de modules à zéro à chaque scénario : on lit l'instance courante.
+    const { libelleFilPose } = await import('../../components/layout/libelleFil')
+    expect(libelleFilPose()).toBe(`Édition — ${DEVIS_REGISTRE.reference}`)
+  }, 60000)
+
   it('« 12.345 » ⇒ note « 12,345 → 12,35 » sous le champ, et 12.35 part', async () => {
     const vue = await monter(`/ventes/devis/nouveau?edit=${DEVIS_REGISTRE.id}`, { devis: DEVIS_REGISTRE })
     await attendreStable(vue.container, act)

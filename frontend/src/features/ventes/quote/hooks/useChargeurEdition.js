@@ -73,6 +73,7 @@ export function useChargeurEdition(ctx) {
                      statut: d.statut, date_envoi: d.date_envoi ?? null,
                      // T4-X4-013 — la date de validité chargée : inchangée, elle ne se refuse pas.
                      date_validite: d.date_validite ?? null,
+                     date_creation: d.date_creation ?? null,
                      // QJR548 — verdict SERVI (QJR516), relu par les gestes
                      // de l'écran qui disent AVANT le clic s'ils sont permis.
                      modifiable: d.modifiable,

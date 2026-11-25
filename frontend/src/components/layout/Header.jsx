@@ -38,7 +38,8 @@ import LanguageSwitcher from './LanguageSwitcher'
 import AppLauncher from './AppLauncher'
 // ODY4/ODY5 — app active (identité + sections) et chemin du Menu d'accueil.
 import { useActiveApp, HOME_MENU_PATH } from '../../lib/apps/ActiveAppContext'
-import { titleFor } from './routes.meta'
+import { titleFor, breadcrumbsFor } from './routes.meta'
+import { useLibelleFilCourant } from './libelleFil'
 import { ThemeToggle } from '../../design/ThemeToggle'
 import { useTheme } from '../../design/theme-context'
 import { useT } from '../../i18n'
@@ -106,6 +107,8 @@ export default function Header({ onMenu }) {
   // ODY4/ODY5 — app active : identité affichée à gauche (pastille) et 1er
   // segment du fil d'Ariane. `null` hors immersion ⇒ en-tête neutre inchangé.
   const activeApp = useActiveApp()
+  // T4-X1-016 — l'objet que l'écran courant édite (« Réviser » → DEV-…), s'il le nomme.
+  const libelleFil = useLibelleFilCourant()
 
   // Le raccourci clavier global ⌘K / Ctrl+K est capté dans GlobalSearch (monté
   // juste à côté) ; ici on fournit le déclencheur VISIBLE de la palette.
@@ -173,7 +176,11 @@ export default function Header({ onMenu }) {
         <div className="header-heading">
           {/* ODY5 — en immersion, le 1er segment est l'APP et pointe vers son
               cockpit (VX11) ; le fil reste une hiérarchie app › section › fiche. */}
-          <Breadcrumbs pathname={location.pathname} app={activeApp} />
+          <Breadcrumbs pathname={location.pathname} app={activeApp}
+                       crumbs={libelleFil
+                         ? breadcrumbsFor(location.pathname, activeApp)
+                           .map((c) => (c.current ? { ...c, label: libelleFil } : c))
+                         : undefined} />
           {/* Titre de page en élément non-heading : évite la collision de rôle
               `heading` avec le <h2> de chaque page (les tests e2e ciblent le
               titre de page par getByRole('heading')). La classe .header-title

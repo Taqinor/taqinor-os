@@ -201,8 +201,9 @@ import { useBrouillonEcran } from './generator/hooks/useBrouillonEcran'
 // SPL43 — aides de module déplacées (fabrique de lignes, défauts d'écran).
 import {
   partDiurneParDefaut,
-  FENETRE_REFERENCE_MS,
+  FENETRE_REFERENCE_MS, dateValiditeParDefaut, rearmerFenetreReference,
 } from '../../features/ventes/quote/ecranDefauts.js'
+import { useLibelleFil } from '../../components/layout/libelleFil'
 import { AlerteErreur } from '../../ui/AlertesServeur'
 
 // QX43 — 4 marchés réels : industriel et commercial sont désormais distincts.
@@ -1247,16 +1248,15 @@ export default function DevisGenerator({
   // chargée dans les DEUX modes — sinon l'étude I/C était re-persistée au
   // tarif par défaut du code et imprimée.
   const settingsLoaded = useRef(false)
+  const [joursValidite, setJoursValidite] = useState(null) // T4-X1-016 — réglage société « validité du devis »
   useEffect(() => {
     if (settingsLoaded.current) return
     settingsLoaded.current = true
     parametresApi.getProfile().then(({ data }) => {
       const jours = parseInt(data?.quote_validity_days, 10)
+      if (Number.isFinite(jours) && jours > 0) setJoursValidite(jours)
       if (!editId && Number.isFinite(jours) && jours > 0) {
-        const d = new Date()
-        d.setDate(d.getDate() + jours)
-        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1)
-          .padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        const iso = dateValiditeParDefaut(new Date(), jours)
         setDateValidite(prev => prev || iso)
       }
       // AGR208/AGR212 — repères énergie datés et sourcés (simple indication à
@@ -1281,6 +1281,21 @@ export default function DevisGenerator({
       if (Number.isFinite(rmax) && rmax > 0) setRemiseMax(String(rmax))
     }).catch(() => { /* réglages indisponibles → on garde les défauts code */ })
   }, [editId])
+
+  // T4-X1-016 — un brouillon ouvert en édition SANS date de validité (une révision « V2 » :
+  // la date n'est jamais copiée) reçoit la validité par défaut d'un devis neuf : sa date de
+  // création + le réglage société — la dérivation même du serveur (`utils/expiry`), donc
+  // rien ne change pour le client ; la date est seulement montrée, jamais inventée.
+  useEffect(() => {
+    if (!editDevis || editDevis.statut !== 'brouillon' || editDevis.date_validite) return
+    const iso = dateValiditeParDefaut(editDevis.date_creation, joursValidite)
+    if (!iso) return
+    rearmerFenetreReference(captureReferenceJusqua)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- défaut posé une fois que le devis ET le réglage société sont chargés (même motif que l'effet des réglages ci-dessus) (D-ENF22)
+    setDateValidite(prev => prev || iso)
+  }, [editDevis, joursValidite])
+  // T4-X1-016 — le fil d'Ariane nomme le devis que l'écran édite (« Réviser » → DEV-…).
+  useLibelleFil(!embedded && editDevis?.reference ? `Édition — ${editDevis.reference}` : null)
 
   // Arrivée depuis le lead. Pleine page : via l'URL (?lead=…&auto=1&discount=…).
   // Embarqué : via les props (leadId/auto/discount), jamais l'URL.

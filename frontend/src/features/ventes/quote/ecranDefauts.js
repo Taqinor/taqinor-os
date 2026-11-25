@@ -44,5 +44,20 @@ export const ecrireLastTva = (v) => {
 // ses relectures immédiates : lead, réouverture) forment la RÉFÉRENCE « rien
 // n'a changé » de l'Édition complète.
 export const FENETRE_REFERENCE_MS = 1500
+// Ré-arme la fenêtre de référence : un état posé par l'écran lui-même juste après le
+// chargement (T4-X1-016) ne rend pas le formulaire « modifié ».
+export const rearmerFenetreReference = (ref) => { ref.current = Date.now() + FENETRE_REFERENCE_MS }
+
+// T4-X1-016 — LA règle de la date de validité par défaut d'un devis : `base` (aujourd'hui à la
+// création ; la date de création d'une révision ouverte en édition) + `jours`, le réglage
+// société `quote_validity_days` — la même dérivation que le serveur (`utils/expiry`). Rend
+// '' quand la base ou la durée sont inutilisables : on n'invente jamais une date.
+export function dateValiditeParDefaut(base, jours) {
+  const n = Number(jours)
+  const d = base instanceof Date ? new Date(base.getTime()) : new Date(base ?? NaN)
+  if (!Number.isFinite(n) || n <= 0 || Number.isNaN(d.getTime())) return ''
+  d.setDate(d.getDate() + n)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 export const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'

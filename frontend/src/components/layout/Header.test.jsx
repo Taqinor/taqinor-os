@@ -35,6 +35,7 @@ vi.mock('../../design/theme-context', () => ({
 
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 import Header from './Header'
+import { useLibelleFil } from './libelleFil'
 
 function makeStore() {
   return configureStore({
@@ -135,6 +136,32 @@ describe('Header — ODY5 : la topbar dit dans quelle app on est, et comment en 
   it('ODY5 — un titre de sous-route n’est plus masqué par le préfixe générique (/crm/cockpit ≠ « Clients »)', () => {
     const { container } = renderHeader('/crm/forecast')
     expect(container.querySelector('.header-title').textContent).not.toBe('Clients')
+  })
+
+  // T4-X1-016 — un écran qui édite un objet précis (« Réviser » → DEV-…) nomme cet objet
+  // dans le fil d'Ariane au lieu du titre générique de la route (« Nouveau devis solaire »).
+  it('T4-X1-016 — le fil d’Ariane nomme l’objet que l’écran édite, puis redevient générique', () => {
+    function Ecran() {
+      useLibelleFil('Édition — DEV-202611-0142')
+      return null
+    }
+    const { container, rerender } = render(
+      <Provider store={makeStore()}>
+        <MemoryRouter initialEntries={['/ventes/devis/nouveau?edit=142']}>
+          <Header onMenu={() => {}} />
+          <Ecran />
+        </MemoryRouter>
+      </Provider>,
+    )
+    expect(container.querySelector('.breadcrumb-current').textContent).toBe('Édition — DEV-202611-0142')
+    rerender(
+      <Provider store={makeStore()}>
+        <MemoryRouter initialEntries={['/ventes/devis/nouveau?edit=142']}>
+          <Header onMenu={() => {}} />
+        </MemoryRouter>
+      </Provider>,
+    )
+    expect(container.querySelector('.breadcrumb-current').textContent).toBe('Nouveau devis solaire')
   })
 })
 
