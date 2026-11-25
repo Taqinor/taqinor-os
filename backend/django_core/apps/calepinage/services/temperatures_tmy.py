@@ -90,7 +90,7 @@ class _EtatSansReseau:
 def temperatures_sans_reseau():
     """Lane I4 — sous ce mode, :func:`temperatures_tmy` répond du cache SEUL.
 
-    Une année type en cache est servie comme aujourd'hui ; absente, AUCUNE
+    Une année type en cache (partagé, puis du processus) est servie comme aujourd'hui ; absente des deux, AUCUNE
     requête n'est faite (le transport du client refuse, par le chemin du client
     lui-même : ``ClientPvgis._appeler`` lit d'abord le cache), le manque est
     compté sur l'état rendu (``etat.manques``) et la réponse est ``None``. Une
@@ -128,7 +128,51 @@ def temperatures_tmy(lat, lon, *, client=None, base=BASE_PAR_DEFAUT):
         le point est inexploitable, ou quand l'année type reçue ne porte
         aucune température. ``None`` = « aucune donnée pour ce point », le
         comportement d'avant CALX61 : le calcul continue, sans source.
+
+    Lane I4 (revue du lot 4) — le résultat d'un point est d'abord lu dans le
+    cache SYSTÈME PARTAGÉ (``core.cache``, Redis en production, celui que lit
+    déjà le coupe-circuit TMY de ``pvgis_serie``) et y est posé pour
+    :data:`TTL_PARTAGE_S` : tout worker sert le point qu'un autre a demandé, à
+    toute heure. Le cache du processus (``ClientPvgis``) reste le second niveau.
     """
+    from core import cache as cache_systeme
+
+    cle = _cle_partagee(lat, lon, base)
+    partage = cache_systeme.get(None, cle) if cle else None
+    if _temperatures_lisibles(partage):
+        return dict(partage)
+    resultat = _temperatures_du_client(lat, lon, client, base)
+    if cle and resultat is not None:
+        cache_systeme.set(None, cle, resultat, TTL_PARTAGE_S)
+    return resultat
+
+
+#: Lane I4 — durée de vie d'une année type dans le cache partagé : 30 jours
+#: (l'année TYPE d'un point ne change pas d'une semaine à l'autre).
+TTL_PARTAGE_S = 30 * 24 * 60 * 60
+
+
+def _cle_partagee(lat, lon, base):
+    """La clé du cache partagé : base + point arrondi comme ``cle_de_cache``
+    (4 décimales ≈ 11 m), ou ``None`` pour un point illisible."""
+    try:
+        return 'calepinage:tmy:%s:%.4f:%.4f' % (base, round(float(lat), 4), round(float(lon), 4))
+    except (TypeError, ValueError):
+        return None
+
+
+def _temperatures_lisibles(valeur):
+    """Une entrée partagée exploitable : les deux extrêmes, le froid sous le chaud."""
+    if not isinstance(valeur, dict):
+        return False
+    froid = _nombre(valeur.get('temperature_min_c'))
+    chaud = _nombre(valeur.get('temperature_max_c'))
+    return froid is not None and chaud is not None and froid < chaud
+
+
+def _temperatures_du_client(lat, lon, client, base):
+    """Les températures du point par ``ClientPvgis`` (cache du processus, puis
+    PVGIS — sauf sous :func:`temperatures_sans_reseau`), ou ``None``."""
     sans_reseau = _SANS_RESEAU.get()
     if sans_reseau is not None:
         # Lane I4 — le MÊME cache (celui du client injecté, sinon le partagé),

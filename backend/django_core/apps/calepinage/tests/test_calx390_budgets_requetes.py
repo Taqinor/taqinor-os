@@ -403,9 +403,9 @@ class BudgetsRequetesCalepinageEnBaseTest(
             self.assertEqual(self.api.get(url).data, apres)
 
     # ── Lane I4 — la file ne touche jamais le réseau (PVGIS TMY) ─────────────
-    def _fournir_tmy(self, transport, cache=None):
-        """Branche le VRAI ``temperatures_tmy`` sur un client au transport injecté (cache
-        privé ou ``cache``) ; le fournisseur précédent est rendu en fin d'essai."""
+    def _fournir_tmy(self, transport):
+        """Branche le VRAI ``temperatures_tmy`` sur un client au transport injecté et au cache
+        de processus PRIVÉ (un « worker ») ; le fournisseur précédent est rendu en fin d'essai."""
         import functools
 
         from apps.calepinage.services.electrique import enregistrer_fournisseur_temperatures
@@ -413,9 +413,8 @@ class BudgetsRequetesCalepinageEnBaseTest(
 
         from .test_pvgis_serie import client
 
-        options = {} if cache is None else {'cache': cache}
         precedent = enregistrer_fournisseur_temperatures(
-            functools.partial(temperatures_tmy, client=client(transport, **options)))
+            functools.partial(temperatures_tmy, client=client(transport)))
         self.addCleanup(enregistrer_fournisseur_temperatures, precedent)
 
     def _file_au_verdict_espionne(self, vus):
@@ -437,8 +436,12 @@ class BudgetsRequetesCalepinageEnBaseTest(
         """(a) + (c) : année type absente du cache ⇒ aucune requête, ligne NON évaluée, aucun
         signal électrique, le signal de simulation (stocké) reste ; (d) hors de la file, le
         même manque interroge PVGIS comme aujourd'hui."""
+        from django.core.cache import cache
+
         from .test_pvgis_serie import TransportEnregistre
 
+        cache.clear()  # aucun point dans le cache PARTAGÉ (système)
+        self.addCleanup(cache.clear)
         semer_file_simulee(self, self._devis)
         transport = TransportEnregistre(erreur=OSError('la file a appelé PVGIS'))
         self._fournir_tmy(transport)
@@ -456,20 +459,25 @@ class BudgetsRequetesCalepinageEnBaseTest(
 
     def test_la_file_a_traiter_juge_sur_une_annee_type_en_cache(self):
         """(b) : l'année type EN CACHE est servie dans la file — la ligne est évaluée et son
-        verdict électrique est celui calculé hors de la file."""
+        verdict électrique est celui calculé hors de la file. Deux « workers » : le point est
+        demandé par l'un (cache de processus A) et la file tourne sur l'autre (cache B) — seul
+        le cache PARTAGÉ (système) les relie."""
+        from django.core.cache import cache
+
         from apps.calepinage.services import assistant
-        from apps.calepinage.services.pvgis_serie import _Cache
 
         from .test_pvgis_serie import TransportEnregistre, charger
 
+        cache.clear()
+        self.addCleanup(cache.clear)
         semer_file_simulee(self, self._devis)
-        cache, rejoue = _Cache(), TransportEnregistre(charger('tmy_casablanca.json'))
-        self._fournir_tmy(rejoue, cache)
+        rejoue = TransportEnregistre(charger('tmy_casablanca.json'))
+        self._fournir_tmy(rejoue)
         premiers = Calepinage.objects.filter(company=self.company).order_by('-updated_at', '-id')[:5]
         attendus = {calepinage.pk: assistant._bloc_electrique(calepinage)[0] for calepinage in premiers}
         self.assertEqual(len(rejoue.appels), 1)  # hors de la file : PVGIS (rejoué), mis en cache
         refus = TransportEnregistre(erreur=OSError('la file a appelé PVGIS'))
-        self._fournir_tmy(refus, cache)
+        self._fournir_tmy(refus)
         vus = {}
         lignes = self._file_au_verdict_espionne(vus)
         self.assertEqual((refus.appels, vus), ([], attendus))
