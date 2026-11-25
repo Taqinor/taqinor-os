@@ -67,10 +67,11 @@ function Colonne({ option, titre, table, payback, retenue = false }) {
                     d'après le devis {payback.devis_ref}
                   </span>
                 )}
-                {/* T4-X9-016 — le montant et l'économie de CETTE option, servis avec le retour. */}
-                {table.payback.investissement_ttc != null && table.payback.economie_annuelle != null && (
+                {/* T4-X9-016 — le montant et l'économie de CETTE option, servis avec le retour ;
+                    T4-X6-006 — sur SA base (« HT » quand la TVA du client est récupérable). */}
+                {table.payback.investissement != null && table.payback.economie_annuelle != null && (
                   <span className="block text-xs text-muted-foreground" data-testid={`carte-conception-calcul-${option}`}>
-                    {formatMAD(table.payback.investissement_ttc, { decimals: 0 })} pour{' '}
+                    {formatMAD(table.payback.investissement, { decimals: 0 })} {table.payback.base || 'TTC'} pour{' '}
                     {formatMAD(table.payback.economie_annuelle, { decimals: 0 })}/an — {table.payback.calcul}
                   </span>
                 )}
