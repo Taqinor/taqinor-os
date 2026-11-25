@@ -3,7 +3,7 @@ from contextlib import contextmanager
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    extend_schema, extend_schema_view, inline_serializer,
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
 )
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
@@ -102,7 +102,12 @@ def _save_borne_aux_champs(instance, champs):
             instance.save = original
 
 
-@extend_schema(responses=sd.liste('CrmAssignableUser'))
+@extend_schema(
+    parameters=[OpenApiParameter(
+        'permission', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+        description="Code d'une permission ERP : ne propose que les comptes qui la portent "
+                    "(ex. calepinage_voir pour le responsable d'un calepinage).")],
+    responses=sd.liste('CrmAssignableUser'))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def assignable_users(request):
@@ -115,6 +120,15 @@ def assignable_users(request):
     from authentication.avatars import presign_avatar
     from .collegues import collegues_assignables
     qs = collegues_assignables(request.user).order_by('username')
+    # T4-X3-016 — « qui peut OUVRIR ce qu'on lui confie » : même prédicat que le serveur du module
+    # (``ScopedPermission`` → ``_user_has_or_legacy``). Sans le paramètre, la liste reste celle des leads.
+    permission = (request.query_params.get('permission') or '').strip()
+    if permission:
+        from apps.roles.permissions_registre import ALL_PERMISSIONS
+        from core.permissions import _user_has_or_legacy
+        if permission not in ALL_PERMISSIONS:
+            return Response({'permission': 'Permission inconnue.'}, status=400)
+        qs = [u for u in qs.select_related('role') if _user_has_or_legacy(u, permission)]
     return Response([
         {
             'id': u.id,
