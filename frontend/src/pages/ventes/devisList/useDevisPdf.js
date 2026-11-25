@@ -52,6 +52,11 @@ export function optionsPdfDepuisModale({
   return options
 }
 
+// T4-V2-008 — au-delà de ce délai sans fichier, la génération est DITE perdue
+// (« Réessayer ») et le sondage s'arrête : deux demandes du 24/11 ont attendu
+// 300 puis 604 s sans un mot (le serveur ne la classe « échec » qu'à 20 min).
+export const DELAI_MAX_PDF_MS = 5 * 60 * 1000
+
 // `selectedIds` / `setSelectedIds` (sélection du lot) et `devis` restent dans
 // le composant principal : le lot les lit ici.
 export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
@@ -257,9 +262,18 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
       // on continue simplement à interroger, plus espacé (10 s), et on affiche
       // « toujours en cours » au lieu d'abandonner silencieusement.
       const FAST_ATTEMPTS = 15
+      // T4-V2-008 — le délai compté en sondages : 15 × 2 s puis 10 s chacun.
+      const MAX_ATTEMPTS = FAST_ATTEMPTS + Math.ceil((DELAI_MAX_PDF_MS - FAST_ATTEMPTS * 2000) / 10000)
       const poll = async () => {
         // WIR217 — plus AUCUN sondage après démontage de l'écran.
         if (pollAnnule.current) return
+        if (attempts >= MAX_ATTEMPTS) {
+          setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
+          toast.error(`${d.reference} : le PDF n’est toujours pas prêt après 5 minutes — la génération n’a pas abouti.`, {
+            action: { label: 'Réessayer', onClick: () => genererUnPdf(d, { autoOpen }) }, duration: Infinity,
+          })
+          return
+        }
         const slow = attempts >= FAST_ATTEMPTS
         attempts += 1
         if (slow && !slowAnnonce) {
