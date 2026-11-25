@@ -1,6 +1,6 @@
 {
   "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/ecart-mesures/",
-  "pourquoi": "ACAL846 — 12 consommations mensuelles MESURÉES (saisies, jamais enregistrées) comparées à la consommation simulée du calepinage, ramenée à l'année moyenne de la fenêtre météo (resultat.consommation.profil_mensuel ÷ production.total.annees_fenetre) ; écart en % au dixième, null quand le simulé est nul ou la mesure absente. L'eau est MESURÉE seulement (index m³ du SAV par apps.sav.selectors_releves.volumes_mensuels_du_devis) : les m³ simulés ne sont enregistrés nulle part. Garde calepinage_approuver ; kwh[i] négatif ou illisible : 409 qui nomme kwh[i]. Producteur : services/asbuilt.py::ecart_mesures_du_calepinage ; affirmé par apps/calepinage/tests/test_calx366_pose_reelle.py ; écran : ACAL847.",
+  "pourquoi": "ACAL846 — 12 consommations mensuelles MESURÉES (saisies, jamais enregistrées) comparées à la consommation simulée du calepinage, celle de l'année moyenne de la fenêtre météo (resultat.consommation.profil_mensuel, DÉJÀ ramené à l'année moyenne par courbe_charge, lu tel quel — T4-X5-012) ; écart en % au dixième, null quand le simulé est nul ou la mesure absente. eau = null pour un calepinage dont la conception est d'un marché sans pompage (résidentiel, commercial, industriel — T4-X5-012). L'eau est MESURÉE seulement (index m³ du SAV par apps.sav.selectors_releves.volumes_mensuels_du_devis) : les m³ simulés ne sont enregistrés nulle part. Garde calepinage_approuver ; kwh[i] négatif ou illisible : 409 qui nomme kwh[i]. Producteur : services/asbuilt.py::ecart_mesures_du_calepinage ; affirmé par apps/calepinage/tests/test_calx366_pose_reelle.py ; écran : ACAL847.",
   "corps": {
     "kwh": [850, 720, 760, 650, 700, 820, 1010, 990, 760, 700, 690, null],
     "annee": 2025
@@ -34,10 +34,10 @@
   },
   "resultat_simule": {
     "consommation": {"profil_mensuel": [
-      {"mois": 1, "kwh": 1640.0}, {"mois": 2, "kwh": 1520.0}, {"mois": 3, "kwh": 1480.0},
-      {"mois": 4, "kwh": 1360.0}, {"mois": 5, "kwh": 1400.0}, {"mois": 6, "kwh": 1600.0},
-      {"mois": 7, "kwh": 1900.0}, {"mois": 8, "kwh": 1960.0}, {"mois": 9, "kwh": 1500.0},
-      {"mois": 10, "kwh": 1380.0}, {"mois": 11, "kwh": 1420.0}, {"mois": 12, "kwh": 1580.0}
+      {"mois": 1, "kwh": 820.0}, {"mois": 2, "kwh": 760.0}, {"mois": 3, "kwh": 740.0},
+      {"mois": 4, "kwh": 680.0}, {"mois": 5, "kwh": 700.0}, {"mois": 6, "kwh": 800.0},
+      {"mois": 7, "kwh": 950.0}, {"mois": 8, "kwh": 980.0}, {"mois": 9, "kwh": 750.0},
+      {"mois": 10, "kwh": 690.0}, {"mois": 11, "kwh": 710.0}, {"mois": 12, "kwh": 790.0}
     ]},
     "production": {"total": {"annees_fenetre": 2}}
   },
