@@ -1841,7 +1841,7 @@ X9 terminé → rebâtir la pile sur la tête, REGARDER (Simulation du devis ave
 atelier d'un lead dont la pose diffère de la conception, fiche du lead après désignation d'un hybride) ; fusion du
 lot 4 ; relecteurs X3, X6, X7, X8 ; rapport.
 
-### Point du 25/11, 12 h 15 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 12 h 15 UTC
 
 **Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** Reda, 11 h 50 : « start more lanes ».
 - **Passages de CI** : sixième (`cb9d338411`) rouge sur 4 causes, septième (`e6c6b1263e`) rouge sur 2 causes — TOUTES
@@ -1887,3 +1887,31 @@ lot 4 ; relecteurs X3, X6, X7, X8 ; rapport.
 | T4-X9-015 deux comptes de devis | H2 |
 | T4-X9-016 retour de 21,4 ans introuvable | H1 |
 | T4-X9-017 trois encarts client sur la fiche du lead | tâche à écrire (plan du lead) |
+
+### Point du 25/11, 13 h 35 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.**
+- **Huitième passage (`ba939f3814`) : rouge sur 5 causes, TOUTES des listes figées ou des gardes que les lanes e9,
+  F2c et H1 ne pouvaient pas voir** — contrat « aperçu du devis » sans moitié cliente citée ; cliquet des imports
+  calepinage → ventes (46 pour 44 : deux lectures repassées par `equipements.py`) ; golden de la région « cal »
+  (recapturé sur l'hôte) ; surface publique de `ventes.services` ; ré-export de `lignes_vendues_de_l_option` dans la
+  façade `dimensionnement.py`. Fuzz, e2e, vitest et front statique VERTS.
+- **Plié depuis 12 h 15** : suite d'E7f (raison de refus de batterie en une phrase, ligne sous le tableau, pastilles),
+  H1 (retour sur investissement de la fiche du lead servi avec son montant et son économie ; obstacle hors du toit
+  hors de l'empreinte ; phrase du calepinage sans lead ; raison courte de refus de l'onduleur), ligne de l'onduleur
+  qui lit la raison courte (orchestrateur), tâches ACAL2047 et ADEV163.
+- **Avant le neuvième push (méthode changée après trois passages rouges d'affilée)** : « paquet des listes
+  figées » joué en docker sur l'arbre plié (`scratchpad/pack_cliquets.txt` : surfaces de ventes, goldens de
+  découpe, goldens du crm, cliquet des imports, contrats — 266 tests, seul `test_actions_devis_ont_appelant` rouge
+  en local parce qu'il lit `frontend/src`, non monté) ; gardes d'hôte + `check_except_larges` +
+  `check_contrats_calepinage_deux_moities` + `lint-imports` ; `node --test` du front ; garde de taille C20
+  (`electrique.py` : les textes du verdict sont bâtis dans `raisons_verdicts.py`).
+- **EN VOL** : H2 (`lane/liste-total`, agent acd5913bf9b7ab14f, 2 commits vus) ; relecteurs X6 (aafc8b7da92b01fe5)
+  et X3 (aac20b788b8e1c4a7) sur la pile `fc9fa2c7a5` (NE PAS rebâtir tant qu'ils tournent).
+- **PAS ENCORE REVU par l'orchestrateur à l'écran** (mémoire : pas de troisième navigateur à côté des deux
+  relecteurs) : tableau des tailles après la suite d'E7f, atelier « pose ≠ conception » (G1), calepinage sans lead
+  (G2), cible comptée dans le panneau posé (E9), fiche du lead (retour tracé, fiche technique regroupée), carte
+  « Tailles » après enregistrement (F2c). À faire dès qu'un relecteur rend la main, pile rebâtie sur la tête.
+- **Changements que lit un CLIENT dans ce lot (à dire à Reda au moment de la fusion)** : la page publique d'un
+  devis qui ne vend que « avec batterie » ne montre plus de carte « Recommandé — sans batterie » (elle affichait
+  un prix sans onduleur) ; aucun montant de PDF ne change.
