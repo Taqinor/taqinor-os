@@ -758,6 +758,7 @@ retiré plus un hook ajouté.
 | `cal-pompage-bandeau` | pompage bandeau. |
 | `cal-pompage-calculer` | pompage calculer. |
 | `cal-pompage-champ` | pompage champ. |
+| `cal-pompage-repris` | pompage : « Repris de la fiche du lead · provenance » sous un champ prérempli, suffixé de la clé (T4-U3-012). |
 | `cal-pompage-courbe` | pompage courbe. |
 | `cal-pompage-courbe-absente` | pompage courbe absente. |
 | `cal-pompage-debit` | pompage débit. |
@@ -968,6 +969,9 @@ retiré plus un hook ajouté.
 | `cal-pret-erreur` | panneau « Prêt à envoyer ? » : lecture en échec. |
 | `cal-pret-ligne` | une ligne de contrôle (suffixe = `code` du contrôle). |
 | `cal-pret-regler` | bouton « Régler » d’un contrôle (suffixe = `code`) : ouvre `?onglet=&champ=`. |
+| `cal-pret-sans-lead` | « ? » d'un contrôle qui renvoie au lead (taille sur facture), calepinage SANS lead : le geste faisable (T4-U4-014). |
+| `cal-panneaux-ombres-non-comptees` | étape Panneaux : carte « Ombres à compter » quand le toit porte des obstacles ou des voisins dont l'ombre n'est pas encore comptée (T4-U1-023). |
+| `cal-pret-points-dossier` | « ? » de « Dossier électrique » : les motifs servis qui bloquent ou restent à compléter (T4-U4-007). |
 | `cal-pret-reussis` | contrôles réussis repliés (« Voir les n contrôles réussis »). |
 
 ## PhotoSiteCalage — complément L5 (`PhotoSiteCalage.jsx`)

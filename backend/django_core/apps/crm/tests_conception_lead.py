@@ -110,6 +110,17 @@ class EmissionEntreesModifieesTests(TestCase):
         self.assertEqual(self.lead.facture_hiver, Decimal('1600'))
         self.assertEqual(len(self.capture.appels), 1)
 
+    def test_valeurs_egales_apres_normalisation_n_emettent_rien(self):
+        """Relecture m2 — ``Decimal('900.00')`` relu en base et ``900.0``
+        posé par un formulaire, ``''`` et ``None`` : la même valeur."""
+        self._enregistrer(facture_hiver=900.0)
+        self._enregistrer(occupation_jour='')
+        self.assertEqual(self.capture.appels, [])
+        self._enregistrer(facture_hiver=Decimal('1200'))
+        self.assertEqual(len(self.capture.appels), 1)
+        self.assertEqual(self.capture.appels[0]['champs'],
+                         [{'champ': 'facture_hiver', 'avant': 900.0, 'apres': 1200.0}])
+
     def test_champ_hors_marche_n_emet_rien(self):
         """Une colonne de pompage sur un lead résidentiel : pas une entrée."""
         self._enregistrer(pompe_hmt_m=Decimal('40'))
@@ -176,6 +187,20 @@ class NoteConceptionRecalculeeTests(TestCase):
             lead_id=None, calepinage_id=7, version=1,
             declencheur=DECLENCHEUR)
         self.assertEqual(self._lignes(), [])
+
+    def test_lead_efface_apres_la_lecture_rien_n_est_ecrit(self):
+        """Relecture E4 M5 — le scrub (loi 09-08) valide ENTRE la lecture du
+        lead et le verrou : relu sous verrou, aucune ligne (sa phrase porte les
+        valeurs effacées)."""
+        from unittest import mock
+
+        from apps.crm import selectors
+        from apps.crm.dsr_provider import LEAD_NOM_ANONYMISE
+
+        Lead.objects.filter(pk=self.lead.pk).update(nom=LEAD_NOM_ANONYMISE)
+        with mock.patch.object(selectors, 'lead_efface', return_value=False):  # lu avant le scrub
+            self._envoyer()
+        self.assertEqual(self._lignes(), [])  # mutant « sans relecture sous verrou » : 1 ligne
 
     def test_raison_sans_prefixe_est_prefixee(self):
         self._envoyer(declencheur={**DECLENCHEUR, 'raison': 'pose modifiée'})

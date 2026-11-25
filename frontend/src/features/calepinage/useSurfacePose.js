@@ -119,7 +119,7 @@ export default function useSurfacePose({
       .then((res) => {
         setEnCours(false)
         setReponse(res?.data ?? null)
-        setMessage(motifChampVide(res?.data))
+        setMessage(motifChampVide(res?.data, kind)) // T4-U4-019 — les mots du genre de surface
       })
       .catch((e) => {
         setEnCours(false)

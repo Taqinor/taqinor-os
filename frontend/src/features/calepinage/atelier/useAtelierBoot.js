@@ -10,7 +10,7 @@ import { demandeMoteur, motifRefus } from '../ModeTerrain.helpers' // ACAL918
 import { fallbackPerKwc } from '@rooflib/productionEngine'
 import { choisirPaletteAcces } from '@rooflib/shadingEngine'
 import { brouillonPertinent, consommerReprise, purgerBrouillonsOrphelins } from '../brouillon.js'
-import { lireBrouillonServeur } from '../brouillonServeur.js'
+import { brouillonLocalAProposer, lireBrouillonServeur } from '../brouillonServeur.js'
 import { lireAvecReprise } from '../delaiReseau'
 import { contourExploitable } from '../../crm/workspace/traceToit.js'
 import {
@@ -439,7 +439,8 @@ export function useAtelierBoot(ctx) {
       // T4-B4-002 — une lecture restée SANS réponse (délai de 20 s dépassé sur une pile chargée : « annulée » au réseau)
       // est relancée une fois ; seul un second échec (ou un refus servi) rend le catalogue indisponible.
       const modulesPromise = Promise.resolve()
-        .then(() => lireAvecReprise(() => calepinageApi.calepinages.modulesDisponibles(calepinageId)))
+        // T4-U4-026 — l'échec est dit par la barre (« Réessayer ») : aucun toast global en plus.
+        .then(() => lireAvecReprise(() => calepinageApi.calepinages.modulesDisponibles(calepinageId, { suppressErrorToast: true })))
         .then((res) => res.data)
         .catch(() => {
           setCatalogueIndisponible?.(true)
@@ -613,11 +614,12 @@ export function useAtelierBoot(ctx) {
         await poursuivreBootCalepinage(reprise.layout)
         return
       }
-      const brouillon = brouillonPertinent({
+      // T4-U1-013 — un brouillon local IDENTIQUE au document servi (dernier enregistrement) n'est pas proposé.
+      const brouillon = brouillonLocalAProposer(brouillonPertinent({
         storage: stockageBrouillonLocal(),
         ...idsBrouillon,
         hashBase: hashServeur,
-      })
+      }), ctx?.geometrie?.roof_layout ?? null)
       // ACAL400 — sans brouillon LOCAL, le brouillon SERVEUR de l'utilisateur
       // (écrit sur un autre poste) est proposé par le MÊME bandeau, sans
       // retarder le boot.

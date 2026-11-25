@@ -95,12 +95,12 @@ with no rate column at all — mono-MAD in practice.
 | stock | ParametresNegoce | `apps/stock/models_negoce_params.py:16` | cout_rupture_jour_mad |
 | stock | AccordRFAFournisseur | `apps/stock/models_rfa.py:16` | montant_fixe |
 | stock | ExpeditionTransporteur | `apps/stock/models_wms.py:477` | cout_reel |
-| ventes | LigneDevis | `apps/ventes/models.py:600` | prix_manuel, prix_unitaire, remise, taux_tva, tva_base_legale |
-| ventes | AvenantDevis | `apps/ventes/models.py:931` | taux_remise_global |
-| ventes | DevisPreset | `apps/ventes/models.py:1738` | remise_globale, taux_tva |
-| ventes | LignePrixListe | `apps/ventes/models.py:2084` | prix_unitaire |
-| ventes | PalierRemiseVolume | `apps/ventes/models.py:2173` | remise_pct |
-| ventes | PlanCommission | `apps/ventes/models.py:2233` | montant_par_kwc |
+| ventes | LigneDevis | `apps/ventes/models.py:609` | prix_manuel, prix_unitaire, remise, taux_tva, tva_base_legale |
+| ventes | AvenantDevis | `apps/ventes/models.py:940` | taux_remise_global |
+| ventes | DevisPreset | `apps/ventes/models.py:1747` | remise_globale, taux_tva |
+| ventes | LignePrixListe | `apps/ventes/models.py:2093` | prix_unitaire |
+| ventes | PalierRemiseVolume | `apps/ventes/models.py:2182` | remise_pct |
+| ventes | PlanCommission | `apps/ventes/models.py:2242` | montant_par_kwc |
 | ventes | FactureSource | `apps/ventes/models_facturation.py:98` | sous_total_ht |
 | ventes | AffectationPaiement | `apps/ventes/models_facturation.py:418` | montant |
 | ventes | NoteDebit | `apps/ventes/models_facturation.py:452` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |

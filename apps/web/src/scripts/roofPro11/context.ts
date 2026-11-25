@@ -357,6 +357,9 @@ export interface Ctx {
    *  Tant qu'elle est posée, `serializeConsumption` la réémet telle quelle : rouvrir puis
    *  enregistrer sans geste ne réhorodate jamais la saisie. null/absent = aucune relue. */
   consSource?: import('./prefill').SourceConsommation | null;
+  /** T4-U4-025 — l'horodatage de la consommation NON relue, pris à la première sérialisation de la session et réémis
+   *  tel quel ensuite (jamais lu ailleurs : `consSource` garde seule le sens « relue »). */
+  consSignatureSession?: string;
   /** ACAL31 — un geste sur la consommation a-t-il eu lieu dans la session ? Tant que non,
    *  la courbe relue du document n'est jamais recomposée. */
   consGesteSession?: boolean;

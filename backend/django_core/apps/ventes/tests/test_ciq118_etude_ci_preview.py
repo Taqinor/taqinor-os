@@ -395,6 +395,20 @@ class LeadTests(_Base):
         self.assertNotIn('consommation_absente', [a['code'] for a in etude['alertes']])
         self.assertIn('facture_hiver_mad', etude['entrees_resolues'])
 
+    def test_t4_u2_021_site_mt_avec_facture_dit_la_vraie_raison(self):
+        """T4-U2-021 — MT avec une facture de 150 000 MAD/mois, sans kWh : la
+        facture ne dimensionne pas un site MT ; l'alerte le dit (même code)."""
+        def message(**kw):
+            lead = self._lead(type_installation='industriel', categorie_commerciale=None, **kw)
+            etude = etude_ci.etudier_ci(self.co, {'mode': 'industriel'}, lead=lead)
+            return next(a['message'] for a in etude['alertes'] if a['code'] == 'consommation_absente')
+
+        self.assertEqual(message(tension_raccordement='mt', facture_hiver=Decimal('150000')),
+                         'Site en moyenne tension : la facture en MAD ne suffit pas, il faut les kWh '
+                         'des relevés ou la visite. Aucune taille calculée.')
+        self.assertEqual(message(tension_raccordement='mt'),
+                         'Consommation non déclarée : aucune taille calculée.')
+
     def test_couverture_du_lead_pose_declaree_fondateur_2610(self):
         # Fondateur 26/10/2026 — terrasse béton = pose lestée ; tôle et
         # fibrociment = bac acier ; « autre » reste non déclarée.

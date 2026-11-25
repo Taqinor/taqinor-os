@@ -323,7 +323,12 @@ export default function CoqueAtelier({
   // J1 — présentation : ni résultat ni détail pour le bandeau (masqué) — aucune lecture de plus devant le client.
   const resultatServi = useResultatServi(calepinageId, !presentation, enregistreLe)
   // La ligne de pose du bandeau suit la pose de la carte tant que la scène est modifiée (module changé, retraits, remplissage).
-  const poseVivante = usePoseVivante(!presentation && enregistrement?.modifiee === true)
+  // T4-U4-016 / T4-U4-024 — avec le constructeur, à toute heure : le document (pans + sol + ombrières) prime sur le résultat
+  // servi, qui retarde sur l'enregistrement ; un document encore vide (avant l'hydratation) ne dit pas « Aucun panneau ».
+  const documentLisible = Boolean(builderApiCoque) && enregistrement?.hydratee === true // jamais avant l'hydratation (ACAL311)
+  const poseLue = usePoseVivante(!presentation && (enregistrement?.modifiee === true || documentLisible),
+    documentLisible ? builderApiCoque : null)
+  const poseVivante = poseLue && (poseLue.panneaux > 0 || enregistrement?.modifiee === true) ? poseLue : null
   const etatPropre = cleEtape === 'resultats' && !expert ? etatSimulation(resultatServi) : null
   const { le: derniereVersionLe } = useDetailServi(presentation ? null : calepinageId, enregistreLe)
 

@@ -15,9 +15,13 @@ version rangée). Ré-exportés par ``selectors.py``.
 * ``champs_entrees(marche)`` — les colonnes du lead entrées du moteur
   (``conception/champs.py::CHAMPS_ENTREES``), lues par l'émetteur du CRM.
 
-``perimee`` vaut ``False`` tant que le filet d'empreinte (ADEV140) n'existe pas
-et ``brouillons_a_mettre_a_jour`` ``[]`` tant que les brouillons ne suivent pas
-la conception (ADEV147/148) : clés présentes, jamais inventées.
+``perimee`` (ADEV140, le FILET d'empreinte) : l'empreinte des ENTRÉES
+actuelles du porteur (jamais le calcul) comparée à celle de la version ; un
+écart (écriture hors du chemin normal, événement perdu) sert la version telle
+quelle avec ``perimee: true`` et met UNE relance en file (origine ``filet``) —
+la lecture n'écrit rien. ``brouillons_a_mettre_a_jour`` (ADEV148) : les
+brouillons RETOUCHÉS nés d'une version plus ancienne (un brouillon intact suit
+seul, ADEV147 ; ``conception/brouillons.py``).
 """
 
 #: Les valeurs comparées entre un devis et la conception (clés de ``valeurs``).
@@ -60,9 +64,60 @@ def _forme(version):
     forme.update(
         option_retenue=version.option_retenue or None, lead=version.lead_id, calepinage=version.calepinage_id,
         empreinte_pose=version.empreinte_pose, declencheur=version.declencheur, version=version.version,
-        calcule_le=version.calcule_le.isoformat(), perimee=False, brouillons_a_mettre_a_jour=[],
+        calcule_le=version.calcule_le.isoformat(), perimee=_perimee(version),
+        brouillons_a_mettre_a_jour=_brouillons_a_mettre_a_jour(version),
         ecart_devis=ecart_devis(_devis_envoye_du_lead(version)) if version.lead_id else [])
     return forme
+
+
+def _brouillons_a_mettre_a_jour(version):
+    """ADEV148 — les brouillons RETOUCHÉS du lead nés d'une version plus
+    ancienne (``conception/brouillons.py``) ; ``[]`` sans lead."""
+    from .conception.brouillons import brouillons_a_mettre_a_jour
+    if not version.lead_id:
+        return []
+    return brouillons_a_mettre_a_jour(version.company_id, version.lead_id, version.version)
+
+
+def _empreinte_des_entrees(version):
+    """L'empreinte des entrées ACTUELLES du porteur de ``version`` (la pose
+    qu'elle a utilisée comprise), par les mêmes fonctions que l'écrivain —
+    aucune seconde comparaison, aucun calcul, aucune écriture."""
+    from types import SimpleNamespace
+
+    from .conception.entrees import entrees_pour
+    from .conception.moteur import empreinte_conception, reglages_lus_sans_creer
+    from .conception.service import _porteur
+
+    company = version.company
+    lead, _filtre, refus = _porteur(version.lead, company, None if version.lead_id else version.calepinage_id)
+    if refus is not None or lead is None:
+        return None
+    pose = version.empreinte_pose
+    toit = SimpleNamespace(empreinte=pose, plafond_panneaux=None) if pose else None
+    with reglages_lus_sans_creer(company):
+        return empreinte_conception(entrees_pour(lead, company, toit=toit))
+
+
+def _perimee(version):
+    """ADEV140 — ``True`` quand les entrées du porteur ne sont plus celles de
+    la version ; la relance (``conception/receivers.py::mettre_en_file``,
+    dédupliquée) part alors une fois. Une lecture illisible ne dit rien."""
+    import logging
+
+    from .conception.receivers import mettre_en_file
+
+    try:
+        actuelle = _empreinte_des_entrees(version)
+    except Exception:  # noqa: BLE001 — une lecture ne tombe jamais pour le filet (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning('ADEV140 : empreinte des entrées illisible (conception #%s)',
+                                            version.pk, exc_info=True)
+        return False
+    if actuelle is None or actuelle == version.empreinte:
+        return False
+    mettre_en_file(version.company_id, lead_id=version.lead_id,
+                   calepinage_id=None if version.lead_id else version.calepinage_id, origine='filet', champs=[])
+    return True
 
 
 def _devis_envoye_du_lead(version):
@@ -96,21 +151,25 @@ def manques_du_moteur(lead):
 
 def ecart_devis(devis):
     """``[{valeur, devis, conception, devis_ref, reviser_possible,
-    mise_a_jour_proposee}]`` — chaque valeur de :data:`VALEURS_COMPAREES` qui
-    diffère entre ``devis`` (lu tel qu'il est FIGÉ :
-    ``selectors_calepinage.conception_retenue_du_devis``, rien n'est
-    recalculé ni écrit) et la conception courante COMPLÈTE de son lead, pour
-    l'option que le devis a retenue. ``reviser_possible`` : la révision existe
+    mise_a_jour_proposee, courante_refusee}]`` — chaque valeur de
+    :data:`VALEURS_COMPAREES` qui diffère entre ``devis`` (lu tel qu'il est
+    FIGÉ : ``selectors_calepinage.conception_retenue_du_devis``, rien n'est
+    recalculé ni écrit) et la DERNIÈRE version COMPLÈTE de son lead, pour
+    l'option que le devis a retenue. ADEV146 (relecture m5) : une version
+    courante en REFUS ne fait pas disparaître l'écart — il reste comparé à la
+    dernière version complète et ``courante_refusee`` le dit. ``reviser_possible`` : la révision existe
     pour ce devis (actif, pas un brouillon — ``domain/revision.py``) ;
-    ``mise_a_jour_proposee`` : ``False`` tant que le brouillon retouché n'est
-    pas servi (ADEV148). Vide sans devis, sans lead, sans conception."""
+    ``mise_a_jour_proposee`` (ADEV148) : un brouillon actif RETOUCHÉ, né d'une
+    version plus ancienne, propose « Mettre à jour » (rien n'est écrit ici).
+    Vide sans devis, sans lead, sans conception."""
     from .models import ConceptionLead, Devis
     from .selectors_calepinage import conception_retenue_du_devis
 
     if devis is None or not devis.lead_id:
         return []
-    version = ConceptionLead.objects.filter(company_id=devis.company_id, lead_id=devis.lead_id, courante=True,
-                                            etat=ConceptionLead.Etat.COMPLET).first()
+    versions = ConceptionLead.objects.filter(company_id=devis.company_id, lead_id=devis.lead_id)
+    version = versions.filter(etat=ConceptionLead.Etat.COMPLET).order_by('-version').first()
+    courante_refusee = versions.filter(courante=True, etat=ConceptionLead.Etat.REFUS).exists()
     retenue = conception_retenue_du_devis(devis) if version is not None else None
     if not retenue:
         return []
@@ -120,14 +179,24 @@ def ecart_devis(devis):
                 'production_annuelle': retenue.get('production_annuelle_kwh')}
     valeurs = version.valeurs.get(retenue.get('option')) or version.valeurs.get(version.option_retenue) or {}
     revisable = bool(devis.is_active) and devis.statut != Devis.Statut.BROUILLON
+    proposee = _mise_a_jour_proposee(devis, version)
     ecarts = []
     for cle in VALEURS_COMPAREES:
         a, b = du_devis.get(cle), (valeurs.get(cle) or {}).get('valeur')
         if a is None or b is None or _egales(a, b):
             continue
         ecarts.append({'valeur': cle, 'devis': _lisible(a), 'conception': _lisible(b), 'devis_ref': devis.reference,
-                       'reviser_possible': revisable, 'mise_a_jour_proposee': False})
+                       'reviser_possible': revisable, 'mise_a_jour_proposee': proposee,
+                       'courante_refusee': courante_refusee})
     return ecarts
+
+
+def _mise_a_jour_proposee(devis, version):
+    from .conception.brouillons import est_retouche
+    from .models import Devis
+    nee_de = (devis.conception_source or {}).get('version')
+    return bool(devis.statut == Devis.Statut.BROUILLON and devis.is_active and nee_de is not None
+                and nee_de < version.version and est_retouche(devis))
 
 
 def _nombre(valeur):

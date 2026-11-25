@@ -292,10 +292,15 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
     && server.roof_outline.length >= 3
   const roofReady = roofOutlineReady || !!server.roof_point
   const factureReady = server.facture_hiver != null && server.facture_hiver !== ''
+  // T4-U1-022 — une consommation déclarée en kWh (sans facture) est une donnée d'énergie saisie : la puce ne dit
+  // plus « Facture manquante » à côté du « Prêt à deviser » servi. La préparation, elle, reste celle du serveur.
+  const consoKwhSaisie = !factureReady && server.conso_mensuelle_kwh != null && server.conso_mensuelle_kwh !== ''
   // ALEA50 — « prêt » inclut le catalogue C&I (postes fixes sans prix).
   const catalogueBloque = catalogueCiBloque(server.devis_auto)
-  const devisReady = !!(server.devis_auto && server.devis_auto.pret) && !catalogueBloque
-  const devisNotReadyMsg = (catalogueBloque && raisonCatalogueCi(server.devis_auto))
+  // T4-U3-017 — l'avertissement SERVI (kWh contredit par les factures, ACVI97) : pas « prêt », la raison nommée.
+  const kwhContredit = server.avertissements?.kwh_factures || null
+  const devisReady = !!(server.devis_auto && server.devis_auto.pret) && !catalogueBloque && !kwhContredit
+  const devisNotReadyMsg = kwhContredit || (catalogueBloque && raisonCatalogueCi(server.devis_auto))
     || (server.devis_auto && server.devis_auto.message)
     || 'Renseignez la facture du lead pour activer le devis automatique.'
 
@@ -672,10 +677,11 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           {roofOutlineReady ? '⬠ Contour tracé' : `📍 ${roofReady ? 'Toit épinglé' : 'Toit non épinglé'}`}
         </Badge>
         <Badge
-          tone={factureReady ? 'info' : 'neutral'}
-          title={factureReady ? "Une facture d'électricité a été saisie" : "Aucune facture d'électricité saisie"}
+          tone={factureReady || consoKwhSaisie ? 'info' : 'neutral'}
+          title={factureReady ? "Une facture d'électricité a été saisie"
+            : consoKwhSaisie ? 'Une consommation mensuelle (kWh) a été déclarée' : "Aucune facture d'électricité saisie"}
         >
-          🧾 {factureReady ? 'Facture saisie' : 'Facture manquante'}
+          🧾 {factureReady ? 'Facture saisie' : consoKwhSaisie ? 'Consommation saisie (kWh)' : 'Facture manquante'}
         </Badge>
         <Badge
           tone={devisReady ? 'success' : 'neutral'}

@@ -19,12 +19,14 @@ import { optionsPdfDepuisModale } from './useDevisPdf.js'
 // Faux serveur : `post` enregistre {url, corps} et répond 202 ; `get` répond
 // « en_cours » à …/etat-pdf/ et une liste vide ailleurs.
 const recus = vi.hoisted(() => [])
+// T4-U1-009 — le profil société servi par GET /parametres/ (posé par test ; `null` = la route rend une liste vide).
+const profilServi = vi.hoisted(() => ({ courant: null }))
 vi.mock('../../../api/axios', () => ({
   default: {
     post: vi.fn((url, corps) => { recus.push({ url, corps }); return Promise.resolve({ status: 202, data: {} }) }),
     get: vi.fn((url) => Promise.resolve(/etat-pdf\/$/.test(url)
       ? { data: { statut: 'en_cours', fichier_pdf: false, erreur: null, date: null } }
-      : { data: [] })),
+      : url === '/parametres/' && profilServi.courant ? { data: profilServi.courant } : { data: [] })),
   },
 }))
 // Seul `fetchDevis` est neutralisé : le thunk `genererPdfDevis` reste celui du module.
@@ -36,7 +38,7 @@ vi.mock('../../../api/uxviewsApi', async () =>
 import DevisList from '../DevisList'
 import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
 
-afterEach(() => { cleanup(); recus.length = 0 })
+afterEach(() => { cleanup(); recus.length = 0; profilServi.courant = null })
 
 const AGRICOLE = {
   id: 41, reference: 'DEV-AGR-41', client_nom: 'Ferme', statut: 'brouillon',
@@ -146,6 +148,25 @@ describe('AMOT68 — note de calcul FDA demandable', () => {
     dialogue({ targetIsAgricole: false, targetMode: 'residentiel', targetHasEtude: true })
     expect(screen.getByTestId('cal184-calepinage')).toBeInTheDocument()
     expect(screen.getByText(/Inclure l.étude/).textContent).not.toMatch(/industriel/)
+  })
+
+  // T4-U1-009 — « Devis final (paiement + RIB) » : société identifiée SANS RIB ni banque (identite.ligne_rib rend "")
+  // → l'avertissement INTERNE le dit avant de générer ; le PDF, lui, n'est pas touché.
+  it('T4-U1-009 — Devis final coché, profil société sans RIB : avertissement interne avec le chemin', async () => {
+    profilServi.courant = { nom: 'TAQINOR Démo', ice: '001', rib: '', banque: '' }
+    dialogue({ targetIsAgricole: false, targetMode: 'residentiel', devisFinal: true })
+    expect(await screen.findByTestId('pdf-rib-manquant')).toHaveTextContent(
+      'Le RIB de la société n’est pas renseigné : le devis final sortira sans RIB — Paramètres → Société')
+  })
+
+  it('T4-U1-009 — RIB renseigné, ou devis final non coché : aucun avertissement', async () => {
+    profilServi.courant = { nom: 'TAQINOR Démo', rib: '007 780 0001234567890123 45', banque: 'Banque X' }
+    const r = dialogue({ targetIsAgricole: false, targetMode: 'residentiel', devisFinal: true })
+    await waitFor(() => expect(screen.queryByTestId('pdf-rib-manquant')).toBeNull())
+    r.unmount()
+    profilServi.courant = { nom: 'TAQINOR Démo', rib: '', banque: '' }
+    dialogue({ targetIsAgricole: false, targetMode: 'residentiel', devisFinal: false })
+    expect(screen.queryByTestId('pdf-rib-manquant')).toBeNull()
   })
 
   it('aucune case hors agricole', () => {

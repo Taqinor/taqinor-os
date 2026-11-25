@@ -1,0 +1,128 @@
+[
+ {
+  "id": "T4-B4-001",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/r08-1440-1.png",
+  "note": "Montrer au client (calepinage 1960) : glisser souris 250 px à 1440 × 900 et glisser d'un doigt à 390 × 844 (événements tactiles) : la maison tourne dans les deux cas (r08-1440-0/1.png, r10-pair.png). Défaut voisin noté à part : au bureau, le pivot est hors de la maison, qui passe sous la carte des chiffres (T4-V1-010). La vue 3D a mis 94 s (bureau) et 123 s (téléphone) à sortir de « se prépare »."
+ },
+ {
+  "id": "T4-B4-003",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/c11-res1.png",
+  "note": "Résultats (1959, simulé) : « 16 réglages utilisent des valeurs publiées » ; Démarrage rapide : 16 lignes « Posée par le profil (retirable) » + « 48 réglages sans valeur publiée (à saisir par vous) » (dr-dr.png, dr2-full.txt). Les « + 4 / + 1 / + 1 / + 5 étapes non comptées » des pertes portent un autre nom. Plus aucun « N réglages vides » : les réglages de la pile sont remplis, donc le bouton « Voir les valeurs » n'apparaît pas et n'a pas pu être cliqué."
+ },
+ {
+  "id": "T4-B4-005",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/tr2-closed.png",
+  "note": "Tracé à 4 clics refermé en recliquant le 1er coin (1962, admin2) : contour enregistré à 4 sommets (POST layout), Longueur 38,07 / Largeur 22,84 modifiables (tr1-closed.png). Toit étroit (1963, Commercial) : 4e coin posé à ~16 px (~2 m) du 1er = coin ajouté (surface 43 → 82 m²), puis clic sur le 1er coin = fermeture, 4 sommets, 38,07 × 2,16 modifiables."
+ },
+ {
+  "id": "T4-B4-006",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/r07-pan.png",
+  "note": "Tablette portrait 820 × 1180 tactile, étape Panneaux (1960) : « Calepinage 1960 — Casab… » sur une ligne et « 24 panneaux · 17,04 kWc · 1 onduleur … » sur une ligne (coupés par des points de suspension, 212 px de large chacun), aucun débordement (scrollWidth 820 = largeur)."
+ },
+ {
+  "id": "T4-B4-008",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/r03d-toit.png",
+  "note": "Thème sombre, vue Plan, étape Toit (1960) : fond de carte nuit, pilules de cotes 10,0 m / 8,0 m sombres."
+ },
+ {
+  "id": "T4-B4-009",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/c02-saved.png",
+  "note": "Bandeau « Calepinage 1959 — Casablanca » de l'ouverture (c01-open.png) à la fin, avant et après le tracé ; le nom du lead n'y apparaît plus. Plan de pose et rapport d'étude : « Calepinage #1959 » ; vue client : « Calepinage 1960 »."
+ },
+ {
+  "id": "T4-B4-010",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/c12-docs.png",
+  "note": "Documents (1959) : tuile Toit « 2 à régler » = deux lignes Toit dans « Prêt à envoyer ? » (pentes : 1 hypothèse ; pan Zone 2 non pavé) ; Panneaux 1 = 1, Électrique 5 = 5. Même accord sur 1963 (Toit en cours, 1 point)."
+ },
+ {
+  "id": "T4-B4-012",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/ob2-docs.png",
+  "note": "Cheminée posée à cheval sur le bord du pan (1963) : « Cheminée / souche dépasse du pan Zone 1 » — plus de mot doublé."
+ },
+ {
+  "id": "T4-B4-013",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/lst-final1.png",
+  "note": "Liste des calepinages échantillonnée toutes les 0,2 s : « Chargement de la page… » puis « Chargement… » puis « 9 projets » à 13,0 s ; jamais « 0 projet ». Au premier passage de la session, page blanche 30 s (lst-final0.png), compté dans T4-V1-009."
+ },
+ {
+  "id": "T4-U1-017",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/r02-toit.png",
+  "note": "Lead V1-r sans GPS, « Créer le toit » 10 × 8 : contour or, bâtiment et 24 panneaux superposés aux étapes Toit et Panneaux (r02-pan.png), aucun décalage ni panneau hors du contour ; cotes 10,0 / 8,0 m visibles à la réouverture (r03d-toit.png) — juste après la création elles n'étaient pas visibles sous la pose."
+ },
+ {
+  "id": "T4-U4-003",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/r02-pan.png",
+  "note": "Même rejeu que T4-U1-017 (toit 10 × 8 par les champs Dimensions, pose « le plus de panneaux ») : superposé, rien ne dépasse."
+ },
+ {
+  "id": "T4-U1-006",
+  "verdict": "pas corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/c10-regler1.png",
+  "note": "Partie module : CORRIGÉE — sur 1959 le module posé (Canadian 710 W) sert au raccordement, jamais redemandé ; sans onduleur, « Raccorder automatiquement » refuse par « Choisissez d'abord l'onduleur : sans lui, aucune chaîne n'est formée », puis forme 1 × 3 (c09-raccord.png) ; sur 1960, 2 × 12 (r06). Aucun « produit-<id> » à l'écran. Reste : « Régler » de « Dossier électrique — Bloquant : 2 » change l'adresse (?onglet=verdict-electrique) mais rien ne s'ouvre (connu, pas dans ce build)."
+ },
+ {
+  "id": "T4-U2-007",
+  "verdict": "pas corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/c10-regler1.png",
+  "note": "Module : un seul choix, Résultats ne dit plus « Aucun module n'est désigné » (c11-res1.png) ; « Régler » toujours sans effet visible (voir T4-U1-006)."
+ },
+ {
+  "id": "T4-U4-007",
+  "verdict": "pas corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/c10-regler1.png",
+  "note": "« Régler » sur « Dossier électrique — Bloquant : 2 » : l'adresse devient ?onglet=verdict-electrique, l'écran ne change pas (rien ne s'ouvre) ; 2e « Régler » : ?onglet=decisions-electriques, idem."
+ },
+ {
+  "id": "T4-U4-008",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/c09-raccord.png",
+  "note": "Module choisi à l'étape 2 non redemandé : après choix de l'onduleur Huawei 5 kW, « Matériel électrique désigné : Non désigné » disparaît et le raccordement forme « Chaîne 1 · 1 × 3 panneaux »."
+ },
+ {
+  "id": "T4-B4-007",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/c11-res1.png",
+  "note": "Résultats de 1959 : plus de « Aucun module n'est désigné », plus de phrases de développeur dans « Pour un résultat complet » (r04-res1.png sur 1960). Restent les clés brutes « electrique_societe.… » dans la liste des 16 réglages (constat connu T4-U4-009, non refait)."
+ },
+ {
+  "id": "T4-U1-003",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/pdf/r-Rapport_d_-p4.png",
+  "note": "Lead V1-r ville Casablanca sans GPS, toit « Créer le toit » 10 × 8, simulation (26 653 kWh, 1 564 kWh/kWc) : rapport d'étude p. 4 « Coordonnées 33,573, -7,59 », « Source du repère : Casablanca (ville de référence) », « Altitude 44,0 m »."
+ },
+ {
+  "id": "T4-U2-017",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/pdf/r-Rapport_d_-p4.png",
+  "note": "Même rejeu (lead avec ville, sans GPS, toit au centre de la carte) : la simulation porte sur la ville de référence et le dit."
+ },
+ {
+  "id": "T4-U4-013",
+  "verdict": "pas corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/pdf/o-Rapport_d_-p4.png",
+  "note": "Calepinage 1962 créé sans lead depuis l'onglet Client (client sans adresse ; joué en anon_admin2 car le Commercial ne trouve pas son propre client : T4-V1-011), tracé sans épingle : la simulation est partie seule (« la pose enregistrée est complète ») et a donné 289 509 kWh, 1 618 kWh/kWc ; résultat serveur meteo.point 31,79 / -7,09, altitude 737 m ; rapport d'étude « Ville — », « Coordonnées — », « Source du repère : source non renseignée », « Altitude 737,0 m ». Aucun refus. L'écran affiche seulement « Site.pin : épingle du site non posée… »."
+ },
+ {
+  "id": "T4-U1-002",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/ad2-after.png",
+  "note": "Lead V1-c, ville tapée « casa », facture 800 MAD : devis automatique DEV-202611-0116, alerte « Ville du lead « casa » non reconnue telle quelle : calcul fait sur Casablanca (ville de référence) — corrigez « Ville » ou posez le GPS sur la fiche. — À compléter sur la fiche : Ville / quartier ». (La création du lead et la fiche ne le disent toujours pas : « Prêt à deviser ».)"
+ },
+ {
+  "id": "ACAL2032",
+  "verdict": "non rejoué",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/fp3-modchanged.png",
+  "note": "Placement à la main non obtenu : en Expert › Déplacer les panneaux › « Placement libre », deux clics sur « + Ajouter un panneau » ne changent pas le nombre (3 sur 1959, 15 sur 1963) et je n'ai pas trouvé le geste carte qui pose ; les quatre modules proposés ont tous 2,38 × 1,3 m, donc un changement de module ne peut ni déplacer ni retirer. Vu au changement Canadian 710 → 715 W : « Zone 1 : … le calepinage est repavé à ses cotes » et « Plusieurs modèles posés : Panneau Canadien Solar 715W ; Module par défaut de l'atelier (2,384 × 1,303 m, 720 Wc) » alors que les 3 panneaux sont des 715 W (2,15 kWc) — à vérifier."
+ }
+]

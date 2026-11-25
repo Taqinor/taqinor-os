@@ -339,13 +339,32 @@ def _surplus(bilan):
     }
 
 
-def _bloc_energie(etude_ci, langue):
+#: T4-U2-019 — alertes du moteur (``moteur_ci.charge``, D-ACAL-94) qui disent
+#: une heure de début ou des jours ouverts SUPPOSÉS sous un régime d'équipes :
+#: le profil n'est plus « déclaré » pour le client.
+CODES_HORAIRES_SUPPOSES = frozenset({"heure_debut_supposee",
+                                     "jours_ouverts_supposes"})
+
+
+def _methode_profil(etude_ci, alertes, niveau_15):
+    """La méthode du profil de charge servie au client. T4-U2-019 (niveau 15,
+    nouveaux rendus) : un profil « déclaré » dont l'heure ou les jours ont été
+    supposés est dit profil type, estimation ; dessous, celle du moteur."""
+    methode = _dict(etude_ci.get("profil_charge")).get("methode")
+    if niveau_15 and methode == "declare" and any(
+            isinstance(a, dict) and a.get("code") in CODES_HORAIRES_SUPPOSES
+            for a in alertes or []):
+        return "archetype"
+    return methode
+
+
+def _bloc_energie(etude_ci, langue, alertes=None, niveau_15=False):
     bilan = _dict(etude_ci.get("bilan"))
     autoconso = _pct(bilan.get("taux_autoconso"))
     couverture = _pct(bilan.get("taux_couverture"))
     if autoconso is None or couverture is None:
         return None, MOTIF_TAUX_ABSENTS
-    methode = _dict(etude_ci.get("profil_charge")).get("methode")
+    methode = _methode_profil(etude_ci, alertes, niveau_15)
     energie = {
         "taux_autoconso_pct": autoconso,
         "taux_couverture_pct": couverture,
@@ -1022,7 +1041,8 @@ def synthese_ci(data):
         omissions.append({"bloc": "energie",
                           "motif": MOTIF_ETUDE_AUTRE_PUISSANCE})
     else:
-        energie, motif = _bloc_energie(etude_option, langue)
+        energie, motif = _bloc_energie(etude_option, langue, etude_ci.get("alertes"),
+                                       bool(data.get("regles_pose_reelle")))  # T4-U2-019
         if energie is not None:
             synthese["energie"] = energie
         else:

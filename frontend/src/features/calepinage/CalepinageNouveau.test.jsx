@@ -166,6 +166,15 @@ describe('CalepinageNouveau (CAL36)', () => {
     expect(mocks.depuisModele).not.toHaveBeenCalled()
   })
 
+  it('T4-U4-014 — le responsable laissé vide : la phrase suit le rattachement (lead : son propriétaire ; client : aucun)', () => {
+    rendre()
+    expect(screen.getByTestId('cal-nouveau-responsable')).toHaveTextContent('Laissé vide, le responsable est le propriétaire du lead.')
+    allerSurOnglet('Client')
+    const bloc = screen.getByTestId('cal-nouveau-responsable')
+    expect(bloc).toHaveTextContent('Laissé vide, le calepinage reste sans responsable.')
+    expect(bloc).not.toHaveTextContent(/lead/i)
+  })
+
   it('sur l’onglet CLIENT, le champ nommé est « Client », pas « Lead »', async () => {
     rendre()
     allerSurOnglet('Client')

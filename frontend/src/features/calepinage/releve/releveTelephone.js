@@ -151,15 +151,26 @@ export function ligneProjet(detail) {
   return ville && qui && !qui.includes(ville) ? `${qui} — ${ville}` : qui
 }
 
-/** La note hors ligne, avec le compte RÉEL de la file (les photos, et le relevé terminé s'il attend le réseau). */
-export function noteHorsLigne(enAttente, enLigne, releveEnFile = false) {
+/** La note hors ligne, avec le compte RÉEL de la file (les photos, et le relevé terminé s'il attend le réseau) et
+ *  celui des MESURES gardées sur le téléphone (T4-U4-022 : en ligne aussi, une mesure tapée n'est enregistrée
+ *  qu'avec « Terminer le relevé » — l'écran le dit au lieu de le taire). */
+export function noteHorsLigne(enAttente, enLigne, releveEnFile = false, mesures = 0) {
   const n = Number(enAttente) || 0
+  const m = Number(mesures) || 0
   const photos = n === 0 ? ''
     : n === 1 ? '1 photo gardée sur ce téléphone. Elle partira dès le retour du réseau.'
       : `${n} photos gardées sur ce téléphone. Elles partiront dès le retour du réseau.`
-  const mesures = releveEnFile ? 'Le relevé terminé est gardé sur ce téléphone : il partira dès le retour du réseau.'
-    : (enLigne ? '' : 'Les mesures s’enregistrent avec « Terminer le relevé », réseau revenu.')
-  return [photos, mesures].filter(Boolean).join(' ')
+  const compte = m === 1 ? '1 mesure' : `${m} mesures`
+  let texte = ''
+  if (releveEnFile) {
+    texte = `Le relevé terminé est gardé sur ce téléphone${m ? ` (${compte})` : ''} : il partira dès le retour du réseau.`
+  } else if (m) {
+    texte = m === 1 ? '1 mesure gardée sur ce téléphone : elle s’enregistre avec « Terminer le relevé ».'
+      : `${m} mesures gardées sur ce téléphone : elles s’enregistrent avec « Terminer le relevé ».`
+  } else if (!enLigne) {
+    texte = 'Hors ligne : « Terminer le relevé » garde le relevé sur ce téléphone jusqu’au retour du réseau.'
+  }
+  return [photos, texte].filter(Boolean).join(' ')
 }
 
 /** Degrés à l'entier pour l'affichage (« 24° ») ; la valeur stockée reste exacte. */

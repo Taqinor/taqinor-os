@@ -244,8 +244,12 @@ def on_lead_erased(sender, **kwargs):
     if company is None or not lead_id:
         return
     try:
+        from .conception.receivers import oublier_relance
         from .models import ConceptionLead
 
+        # Relecture E3 B1 — la relance en file (marqueur aux valeurs d'avant
+        # le scrub) part avec les versions.
+        oublier_relance(company.pk, lead_id=lead_id)
         ConceptionLead.objects.filter(company=company, lead_id=lead_id).delete()
     except Exception:  # journalisé, jamais propagé
         logger.exception('ADEV131 : conceptions du lead %s non supprimées '

@@ -204,6 +204,12 @@ export function creerGestionnaireBrouillon({
   enPause = () => false,
   // ACAL1345 — l'empreinte de COMPARAISON (le contenu écrit reste `obtenirLayout()` entier) : par défaut, celle du document.
   hacher = hacherLayout,
+  // T4-U4-025 — vrai pendant un enregistrement RÉEL en vol : aucune écriture automatique (tic, geste) ; ce qui change
+  // pendant ce temps part après la réponse (la référence est alors le document ENREGISTRÉ, `effacerEtAmorcer(layout)`).
+  enregistrementEnCours = () => false,
+  // T4-U4-025 — l'empreinte de référence connue de l'appelant (le dernier document enregistré), prise par `demarrer()`
+  // à la place de la scène courante : une modification faite pendant l'enregistrement reste à brouillonner.
+  referenceInitiale = () => null,
   minuteur = {
     definir: (fn, ms) => setInterval(fn, ms),
     annuler: (id) => clearInterval(id),
@@ -215,6 +221,9 @@ export function creerGestionnaireBrouillon({
   // ACAL84 — `null` tant qu'aucune sérialisation n'a été vue : la PREMIÈRE
   // vue AMORCE la référence (la scène telle qu'hydratée), jamais une écriture.
   let dernierHashEcrit = null
+  // T4-U4-025 — le sondage de repli est ANTI-REBOND : un changement vu à un tic ne s'écrit qu'au tic suivant s'il n'a
+  // plus bougé. Un document qui change à chaque lecture (horodatage recalculé) n'envoie donc jamais un PUT par tic.
+  let hashEnAttente = null
 
   const lireLayout = () => {
     try {
@@ -247,7 +256,34 @@ export function creerGestionnaireBrouillon({
     // quoi le même geste écrirait deux fois (une fois par le tic, une fois
     // par l'appel direct).
     if (intervalleActif) return false
+    if (enregistrementEnCours()) return false // T4-U4-025
     return ecrireSiChange()
+  }
+
+  /* T4-U4-025 — un tic de la minuterie RÉGLÉE : jamais pendant un enregistrement réel. */
+  const ticIntervalle = () => (enregistrementEnCours() ? false : ecrireSiChange())
+
+  /* T4-U4-025 — un tic du sondage de repli : n'écrit qu'un document changé ET stable depuis le tic précédent. */
+  const sonder = () => {
+    if (enPause() || enregistrementEnCours()) return false
+    const layout = lireLayout()
+    if (layout == null) return false
+    const h = hacher(layout)
+    if (dernierHashEcrit === null) {
+      dernierHashEcrit = h
+      return false
+    }
+    if (h === dernierHashEcrit) {
+      hashEnAttente = null
+      return false
+    }
+    if (h !== hashEnAttente) {
+      hashEnAttente = h
+      return false
+    }
+    hashEnAttente = null
+    dernierHashEcrit = h
+    return ecrireBrouillon(storage, cle, layout)
   }
 
   return {
@@ -256,12 +292,16 @@ export function creerGestionnaireBrouillon({
       if (idMinuteur != null) return
       // ACAL84 — amorce la référence sur la scène d'ouverture (aucune écriture).
       if (dernierHashEcrit === null) {
-        const layout = lireLayout()
-        if (layout != null) dernierHashEcrit = hacher(layout)
+        const reference = referenceInitiale()
+        if (typeof reference === 'string' && reference) dernierHashEcrit = reference // T4-U4-025
+        else {
+          const layout = lireLayout()
+          if (layout != null) dernierHashEcrit = hacher(layout)
+        }
       }
       idMinuteur = intervalleActif
-        ? minuteur.definir(enregistrerMaintenant, intervalleSecondes * 1000)
-        : minuteur.definir(notifierGeste, PERIODE_SONDAGE_REPLI_MS)
+        ? minuteur.definir(ticIntervalle, intervalleSecondes * 1000)
+        : minuteur.definir(sonder, PERIODE_SONDAGE_REPLI_MS)
     },
     arreter() {
       if (idMinuteur != null) {
@@ -277,9 +317,13 @@ export function creerGestionnaireBrouillon({
        document changé » depuis son dernier tic, le réécrit et le renvoie au serveur APRÈS le DELETE : un brouillon
        fantôme qui revient comme « brouillon d'un autre poste ». (`effacer` seul garde la référence : le renvoi
        après panne réseau doit, lui, laisser re-brouillonner ce qui a été modifié depuis.) */
-    effacerEtAmorcer() {
+    effacerEtAmorcer(layoutEnregistre) {
       const ok = effacerBrouillon(storage, cle)
-      if (!enPause()) {
+      hashEnAttente = null
+      // T4-U4-025 — la référence est le document ENREGISTRÉ quand l'appelant le donne : ce qui a changé pendant
+      // l'enregistrement part au tic suivant. Sans lui, la scène courante (comportement ACAL1248).
+      if (layoutEnregistre != null) dernierHashEcrit = hacher(layoutEnregistre)
+      else if (!enPause()) {
         const layout = lireLayout()
         if (layout != null) dernierHashEcrit = hacher(layout)
       }

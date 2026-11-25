@@ -153,7 +153,7 @@
 - frontend/src/api/crmApi.js :: synchroniserClient -> /api/django/crm/leads/<>/synchroniser-client
     champs_mis_a_jour:inconnu, client_ecart:inconnu, detail:texte
 - frontend/src/api/crmApi.js :: villeStatut -> /api/django/crm/leads/ville-statut
-    candidats:inconnu, gps_hors_zone:inconnu, position:inconnu, proches:inconnu, statut:inconnu, ville_canonique:inconnu
+    candidats:inconnu, gps_hors_zone:inconnu, position:inconnu, preselection:inconnu, proches:inconnu, raison:inconnu, statut:inconnu, ville_canonique:inconnu
 - frontend/src/api/crmApi.js :: whatsappRelanceEtape -> /api/django/crm/relance-etapes/<>/whatsapp
     crochets:inconnu, etape:inconnu, langue:inconnu, mailto_url:inconnu, message:inconnu, objet:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
 - frontend/src/api/crmApi.js :: whatsappRelanceEtapeLangue -> /api/django/crm/relance-etapes/<>/whatsapp

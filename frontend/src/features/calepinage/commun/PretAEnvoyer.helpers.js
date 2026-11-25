@@ -27,6 +27,7 @@ export const ETAPE_DU_CODE = {
   verdict_electrique: 'electrique',
   materiel_designe: 'electrique',
   tension_froid: 'electrique',
+  tension_chaud: 'electrique', // T4-U4-012 — jumeau du froid : « Tension des chaînes par forte chaleur »
   orientation_mppt: 'electrique',
   ratio_dc_ac: 'electrique',
   chutes_tension: 'electrique',
@@ -68,4 +69,24 @@ export function rangerControles(controles) {
     .map((c, i) => [c, i])
     .sort(([a, i], [b, j]) => ((RANG_LISTE[a.etat] ?? 4) - (RANG_LISTE[b.etat] ?? 4)) || (i - j))
     .map(([c]) => c)
+}
+
+/* T4-U4-007 (moitié serveur, pli 4cb986f8d2) — « Dossier électrique » SERT ses points (`controles[].points[]` =
+   {code, phrase, geste, cible}). Une phrase servie peut finir par une clé interne entre parenthèses
+   (« … (terre.justification_continuite) ») : retirée avant affichage, jamais imprimée. */
+const CLE_INTERNE_FINALE = /\s*\((?:[A-Za-z_][\w-]*\.)+[\w-]+\)(?=[.\s]*$)/
+
+export const sansCleInterne = (phrase) => (typeof phrase === 'string' ? phrase.replace(CLE_INTERNE_FINALE, '').trim() : '')
+
+/** Les points servis d'un contrôle (phrase nettoyée), `[]` quand le serveur n'en sert pas. */
+export function pointsServis(controle) {
+  return (Array.isArray(controle?.points) ? controle.points : [])
+    .filter((p) => p && typeof p === 'object')
+    .map((p) => ({ ...p, phrase: sansCleInterne(p.phrase) }))
+    .filter((p) => p.phrase)
+}
+
+/** La cible de « Régler » : celle du premier point servi quand il en porte une, sinon celle du contrôle. */
+export function cibleDuReglage(controle) {
+  return pointsServis(controle).find((p) => p.cible?.onglet)?.cible ?? controle?.cible
 }

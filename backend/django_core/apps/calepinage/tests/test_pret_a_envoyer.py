@@ -210,7 +210,7 @@ class ControlesElectriquesTest(SimpleTestCase):
         self.assertEqual(verdict['etat'], 'a_regler')
         # ACAL1539 : « À compléter » seul — le détail des motifs est au Verdict.
         self.assertEqual(verdict['valeur_texte'], 'À compléter')
-        self.assertEqual(len(controles), 7)
+        self.assertEqual(len(controles), 8)
 
     def test_materiel_choisi_fiche_incomplete_dit_la_vraie_cause(self):
         """ACAL1704 — panneau ET onduleur choisis, fiche du module sans Vmp :
@@ -264,6 +264,36 @@ class ControlesElectriquesTest(SimpleTestCase):
                          'Bloquant : 2')
         self.assertEqual(self._controles()['verdict_electrique']['etat'], 'ok')
 
+    def test_t4_u4_007_bloquant_sert_ses_points_et_le_geste(self):
+        """T4-U4-007 — « Bloquant : N » sert ses N points : code, phrase du
+        verdict, geste et l'onglet qui le règle ; « À compléter » sert les
+        points à compléter ; un dossier prêt n'en sert aucun."""
+        terre = {'code': 'TERRE_JUSTIFICATION_MANQUANTE', 'statut': 'bloquant',
+                 'libelle': 'prise de terre non fournie au marché', 'source': 'NF C 15-100'}
+        froid = {'code': 'voc_cold_under_vmax', 'statut': 'bloquant',
+                 'libelle': 'Voc à froid 1 050 V au-dessus de 1 000 V', 'source': 'fiche'}
+        omis = {'code': 'TRONCON_NON_CALCULABLE', 'statut': 'omis',
+                'libelle': 'longueur du câble DC non saisie', 'source': ''}
+        verdict = self._controles(motifs=[terre, omis, froid], etat='bloquant',
+                                  points=2)['verdict_electrique']
+        self.assertEqual(verdict['valeur_texte'], 'Bloquant : 2')
+        self.assertEqual(verdict['points'], [
+            {'code': 'TERRE_JUSTIFICATION_MANQUANTE', 'phrase': terre['libelle'],
+             'geste': 'Compléter la check-list de terre',
+             'cible': {'etape': 'electrique', 'onglet': 'decisions-electriques', 'champ': ''}},
+            {'code': 'voc_cold_under_vmax', 'phrase': froid['libelle'],
+             'geste': 'Revoir les chaînes',
+             'cible': {'etape': 'electrique', 'onglet': 'verdict-electrique', 'champ': ''}}])
+        self.assertEqual(verdict['cause'], terre['libelle'])
+        fiche = {'code': 'FICHE_INCOMPLETE', 'statut': 'non_verifiable',
+                 'libelle': 'onduleur : puissance AC', 'source': ''}
+        a_completer = self._controles(motifs=[fiche, omis], etat='a_completer', points=2,
+                                      materiel={'absents': ()})['verdict_electrique']
+        self.assertEqual([(p['code'], p['geste'], p['cible']['onglet']) for p in a_completer['points']], [
+            ('FICHE_INCOMPLETE', 'Compléter la fiche de l’onduleur', 'materiel-electrique'),
+            ('TRONCON_NON_CALCULABLE', 'Revoir les sections de câble', 'cheminement-cables')])
+        self.assertEqual(self._controles()['verdict_electrique']['points'], [])
+
     def test_ratio_juge_par_la_regle_du_devis_jamais_bon_au_dessus(self):
         # ACAL1954 (D-ACAL-91) — 4,26 sur un onduleur réseau : « à régler », jamais « Bon ».
         ratio = {'valeur': 1.25, 'borne': 1.35, 'dans_bornes': True,
@@ -298,6 +328,60 @@ class ControlesElectriquesTest(SimpleTestCase):
         refuse = dict(ligne, conforme=False)
         self.assertEqual(self._controles(
             verdicts=[refuse])['tension_froid']['etat'], 'bloquant')
+
+    def test_tension_chaud_quatre_jinko_sur_deye_5k_le_dit(self):
+        """T4-U4-012 — 4 × Jinko 710 W en UNE chaîne sur le Deye 5 kW mono (fiches du
+        ``seed_catalogue``) : la VRAIE conception (``concevoir_par_pan``) et ses VRAIS
+        verdicts (``_verdicts_electriques``) ; Vmp à 70 °C = 4 × 35,3 = 141,4 V sous les
+        150 V du bas de plage MPPT. La simulation retire ces heures (« Fenêtre MPPT ») :
+        le contrôle doit le dire, jamais se taire (mutant : retirer ``_tension_chaud``
+        ⇒ ``KeyError``)."""
+        from apps.calepinage.services.chaines import concevoir_par_pan
+        from apps.calepinage.services.electrique import (
+            _verdicts_electriques, temperatures_site,
+        )
+        from apps.calepinage.services.pret_a_envoyer import GESTE_TENSION_CHAUD
+
+        jinko = {'pmax_wc': 710.0, 'voc_v': 48.73, 'isc_a': 18.53, 'vmp_v': 40.65,
+                 'imp_a': 17.47, 'temp_coeff_pmax_pct_c': -0.29,
+                 'temp_coeff_voc_pct_c': -0.25}
+        deye = {'n_mppt': 2, 'mppt_v_min': 150.0, 'mppt_v_max': 425.0,
+                'v_max_abs': 500.0, 'i_max_mppt_a': 22.0, 'ac_kw': 5.0, 'phases': 1,
+                'rendement_euro_pct': 96.5, 'v_demarrage_v': 125.0,
+                'isc_max_mppt_a': 22.0}
+        layout = {'version': 2, 'zones': [{'id': 'z1', 'label': 'PAN-1', 'geometry': {
+            'count': 4, 'azimuthDeg': 180.0, 'tiltDeg': 15.0}}]}
+        conception = concevoir_par_pan(
+            layout, module_specs=jinko, onduleur_specs=deye,
+            temperatures=temperatures_site(), module_designation='Panneau Jinko 710W',
+            onduleur_designation='Onduleur hybride Deye 5kW Monophasé')
+        self.assertEqual([c.nb_modules for c in conception.chaines], [4])
+        verdicts = _verdicts_electriques(conception)
+        controles = self._controles(verdicts=list(verdicts))
+        self.assertEqual(controles['tension_froid']['etat'], 'ok')
+        chaud = controles['tension_chaud']
+        self.assertEqual(chaud['libelle'], 'Tension des chaînes par forte chaleur')
+        self.assertEqual(chaud['etat'], 'a_regler')
+        self.assertEqual(chaud['valeur_texte'],
+                         '141,4 V sous la borne de fiche 150,0 V à 70,0 °C')
+        self.assertEqual(chaud['geste'], GESTE_TENSION_CHAUD)
+        self.assertIn('trop courte', chaud['cause'])
+        self.assertEqual(chaud['seuil_source'], 'fiche')
+
+    def test_tension_chaud_borne_absente_non_calcule_jamais_vert(self):
+        sans_borne = {'code': 'vmp_hot_over_mppt_min', 'conforme': None,
+                      'bloquant': False, 'source': None, 'detail': 'borne non publiée',
+                      'temperature_c': 70.0, 'temperature_mention': ''}
+        controle = self._controles(verdicts=[sans_borne])['tension_chaud']
+        self.assertEqual(controle['etat'], 'info')
+        self.assertEqual(controle['valeur_texte'], 'Non calculé : bas de la plage MPPT '
+                         'manquant sur la fiche de l’onduleur')
+        self.assertEqual(controle['geste'], 'Compléter la fiche de l’onduleur')
+        dans = dict(sans_borne, conforme=True, source='fiche',
+                    detail='171,8 V au-dessus de 150,0 V')
+        self.assertEqual(self._controles(verdicts=[dans])['tension_chaud']['etat'], 'ok')
+        self.assertEqual(self._controles()['tension_chaud']['valeur_texte'],
+                         'Non évaluée : chaînes non calculées')
 
     def test_chutes_et_terre_lues(self):
         troncons = {'verdicts': [{'conforme': False, 'bloquant': False,

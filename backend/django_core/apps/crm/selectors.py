@@ -212,3 +212,35 @@ def cibles_du_sujet(company, subject_identifier):
     from .dsr_provider import cibles_du_sujet as _cibles
 
     return _cibles(company, subject_identifier)
+
+
+def libelle_champ_lead(champ):
+    """Le libellé d'une colonne du lead dans son historique
+    (``activity.TRACKED_FIELDS``), ou ``None`` : lu par la phrase « pourquoi »
+    de la conception (ventes, relecture m3) sans importer ``crm.activity``."""
+    from .activity import TRACKED_FIELDS
+
+    return TRACKED_FIELDS.get(champ)
+
+
+def lead_efface(lead):
+    """Relecture E3 B1 — le lead a-t-il été effacé (loi 09-08, DSR ou
+    rétention) ? ``anonymiser_lead`` pose ``nom`` AVANT le save du scrub :
+    l'état de l'instance suffit (aucun drapeau de fil). Lu par la relance de la
+    conception (ventes) pour ne jamais recopier une valeur effacée."""
+    from .dsr_provider import LEAD_NOM_ANONYMISE
+
+    return lead is not None and getattr(lead, 'nom', None) == LEAD_NOM_ANONYMISE
+
+
+def lead_efface_sous_verrou(company, lead_id):
+    """Relecture E3 B1(b) — VERROUILLE la ligne du lead de ``company``
+    (``select_for_update``, corbeille comprise) et dit s'il est effacé ou
+    disparu. À appeler dans une transaction : l'UPDATE du scrub
+    d'``anonymiser_lead`` prend ce même verrou, les deux se sérialisent."""
+    from .dsr_provider import LEAD_NOM_ANONYMISE
+    from .models import Lead
+
+    nom = (Lead.all_objects.select_for_update().filter(company=company, pk=lead_id)
+           .values_list('nom', flat=True).first())
+    return nom is None or nom == LEAD_NOM_ANONYMISE

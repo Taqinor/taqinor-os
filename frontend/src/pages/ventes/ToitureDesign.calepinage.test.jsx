@@ -119,7 +119,7 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
 
     await waitFor(() => expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel)
       .toHaveBeenCalledWith(String(CTX.calepinage.id), LAYOUT,
-        CTX.geometrie.empreinte_document))
+        CTX.geometrie.empreinte_document, { suppressErrorToast: true })) // T4-U4-027 — l'écran dit lui-même les refus
     await waitFor(() => expect(calepinageApi.calepinages.envoyerImage)
       .toHaveBeenCalledTimes(1))
     expect(calepinageApi.calepinages.envoyerImage.mock.calls[0][0])
@@ -403,8 +403,14 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Enregistrer le calepinage/ }))
 
     const banniere = await screen.findByTestId('cal-document-modifie')
-    expect(banniere).toHaveTextContent(/modifiée ailleurs/)
+    // T4-U4-027 — la phrase SERVIE, une fois, en entier (plus de seconde phrase locale dans le même bandeau)…
     expect(banniere).toHaveTextContent(conflit.detail)
+    expect(document.body.textContent.split(conflit.detail).length - 1).toBe(1)
+    expect(banniere).not.toHaveTextContent('(onglet, autre navigateur)')
+    // … aucun toast global en plus (l'écran gère le refus), et la barre dit le refus, jamais « Enregistré ».
+    expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mock.calls[0][3]).toEqual({ suppressErrorToast: true })
+    expect(screen.getByTestId('cal-etat-enregistrement')).toHaveTextContent('Non enregistré : modifié ailleurs')
+    expect(screen.queryByText(/Enregistré à/)).toBeNull()
     expect(screen.getByTestId('cal-document-modifie-recharger')).toHaveTextContent('Recharger')
     expect(screen.queryByTestId('cal-conflit-lecture-seule')).toBeNull()
     expect(calepinageApi.calepinages.envoyerImage).not.toHaveBeenCalled()

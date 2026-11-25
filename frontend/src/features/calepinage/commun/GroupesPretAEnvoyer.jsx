@@ -1,8 +1,11 @@
+import { createContext, useContext } from 'react'
 import { ChevronRight, Info } from 'lucide-react'
+import calepinageApi from '../../../api/calepinageApi'
+import useResource from '../../../hooks/useResource'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../ui/Popover'
 import { Icone as Picto } from '../atelier/coque/primitives'
 import { ETAPES, etapeDeOnglet } from '../atelier/parcoursGuide'
-import { phraseDesBons, rangerControles } from './PretAEnvoyer.helpers'
+import { cibleDuReglage, phraseDesBons, pointsServis, rangerControles, sansCleInterne } from './PretAEnvoyer.helpers'
 import useExplications, { remplirPhrase } from './useExplications'
 
 /* ACAL1193 — la présentation « par étape » de « Prêt à envoyer ? » (maquette `Documents.dc.html`,
@@ -63,8 +66,61 @@ function Anneau({ bons, total }) {
   )
 }
 
+/* T4-U4-007 — le calepinage de la liste, pour le « ? » du dossier électrique (qui relit ses motifs servis). */
+const CalepinageDeLaListe = createContext(null)
+const BLOQUE = new Set(['bloquant'])
+const A_COMPLETER = new Set(['non_verifiable', 'omis', 'sans_source'])
+const MAX_POINTS = 4
+
+/** T4-U4-007 — « Dossier électrique » : le serveur ne sert que « Bloquant : 1 » ; le « ? » NOMME le ou les points en
+    relisant les motifs du verdict publiable (`evaluer-electrique`, corps vide — la lecture de l'onglet Verdict), mot
+    pour mot : bloquant ⇒ motifs bloquants ; à compléter ⇒ motifs non vérifiables, omis ou sans source. */
+function PointsDossier({ calepinageId, etat }) {
+  const { data, loading, error } = useResource(
+    (id) => calepinageApi.calepinages.evaluerElectrique(id, {}), calepinageId,
+    { select: (r) => r?.data?.publication ?? null, errorMessage: 'Les points n’ont pas pu être lus.' },
+  )
+  const retenus = etat === 'bloquant' ? BLOQUE : A_COMPLETER
+  // Une phrase servie deux fois (deux producteurs du même motif) ne se lit qu'une fois ; quatre au plus dans la bulle.
+  const points = [...new Set((Array.isArray(data?.motifs) ? data.motifs : [])
+    .filter((m) => retenus.has(m?.statut) && m.libelle).map((m) => m.libelle))]
+  const visibles = points.slice(0, MAX_POINTS)
+  const titre = etat === 'bloquant' ? 'Ce qui bloque :' : 'À compléter :'
+  return (
+    <div data-testid="cal-pret-points-dossier">
+      {loading && <p className="text-muted-foreground">Lecture des points du dossier…</p>}
+      {!loading && error && <p className="text-muted-foreground">{`${error} « Régler » ouvre le verdict détaillé.`}</p>}
+      {!loading && !error && points.length > 0 && (
+        <>
+          <p className="font-medium">{titre}</p>
+          <ul className="list-disc pl-5">{visibles.map((libelle) => <li key={libelle}>{libelle}</li>)}</ul>
+          {points.length > visibles.length && (
+            <p className="text-muted-foreground">{`… et ${points.length - visibles.length} autre${points.length - visibles.length > 1 ? 's' : ''} : « Régler » ouvre la liste complète.`}</p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+/* T4-U4-014 — les contrôles dont le geste servi renvoie au lead (« saisissez la facture du lead », « Saisir la
+   facture ») : sur un calepinage SANS lead (créé depuis un client), la bulle relit le rattachement servi
+   (`GET calepinages/<pk>/`) et dit le geste faisable à la place. */
+const GESTE_SANS_LEAD = {
+  taille_sans_facture: 'Ce calepinage n’a pas de lead : aucune facture à lire. Choisissez le nombre de panneaux à '
+    + 'l’étape Panneaux, ou rattachez un lead pour dimensionner sur sa facture.',
+}
+function useSansLead(calepinageId, actif) {
+  const { data } = useResource(
+    (id) => calepinageApi.calepinages.get(id), actif ? calepinageId : null,
+    { select: (r) => r?.data ?? null, enabled: actif && calepinageId != null },
+  )
+  return data ? data.lead == null : null
+}
+
 /** Le « ? » de la ligne : cause servie + phrase du registre + geste, dans UNE bulle. Rien à dire ⇒ rien. */
 function Pourquoi({ controle }) {
+  const calepinageId = useContext(CalepinageDeLaListe)
   const entrees = useExplications()
   const entree = entrees?.find((e) => e.cle === `controle.${controle.code}`) ?? null
   const cause = controle.etat !== 'ok' ? controle.cause : ''
@@ -82,21 +138,65 @@ function Pourquoi({ controle }) {
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-80 text-sm leading-relaxed text-foreground normal-case tracking-normal">
-        <div className="flex flex-col gap-2">
-          {cause && <p>{cause}</p>}
-          {entree && <p>{remplirPhrase(entree, controle)}</p>}
-          {controle.seuil_source && <p className="text-muted-foreground">{`Source du seuil : ${controle.seuil_source}.`}</p>}
-          {gesteServi && <p className="text-muted-foreground">{gesteServi}</p>}
-          {entree?.geste && <p className="text-muted-foreground">{entree.geste}</p>}
-        </div>
+        <ContenuPourquoi controle={controle} calepinageId={calepinageId} cause={cause} entree={entree} gesteServi={gesteServi} />
       </PopoverContent>
     </Popover>
   )
 }
 
+/** T4-U4-007 — les points SERVIS par « Prêt à envoyer » (`controles[].points[]`) : phrase (clé interne retirée) et
+    geste, mot pour mot, quatre au plus dans la bulle. */
+function PointsServis({ points, etat }) {
+  const visibles = points.slice(0, MAX_POINTS)
+  return (
+    <div data-testid="cal-pret-points-dossier" data-source="servi">
+      <p className="font-medium">{etat === 'bloquant' ? 'Ce qui bloque :' : 'À compléter :'}</p>
+      <ul className="list-disc pl-5">
+        {visibles.map((p, i) => (
+          <li key={`${p.code}-${i}`}>
+            {p.phrase}
+            {p.geste ? <span className="text-muted-foreground">{` — ${p.geste}`}</span> : null}
+          </li>
+        ))}
+      </ul>
+      {points.length > visibles.length && (
+        <p className="text-muted-foreground">{`… et ${points.length - visibles.length} autre${points.length - visibles.length > 1 ? 's' : ''} : « Régler » ouvre la liste complète.`}</p>
+      )}
+    </div>
+  )
+}
+
+/* Monté à l'ouverture de la bulle seulement : la lecture du rattachement (T4-U4-014) ne part qu'à ce moment. */
+function ContenuPourquoi({ controle, calepinageId, cause, entree, gesteServi }) {
+  const gesteSansLead = controle.etat !== 'ok' ? GESTE_SANS_LEAD[controle.code] : null
+  const sansLead = useSansLead(calepinageId, Boolean(gesteSansLead))
+  const remplace = Boolean(gesteSansLead) && sansLead === true
+  const dossier = controle.code === 'verdict_electrique' && controle.etat !== 'ok'
+  // Points SERVIS d'abord ; la relecture d'`evaluer-electrique` n'est plus qu'un repli quand le serveur n'en sert pas.
+  const points = dossier ? pointsServis(controle) : []
+  const causeLue = sansCleInterne(cause)
+  // `cause` = la phrase du premier point servi : jamais dite deux fois.
+  const causeAffichee = causeLue && !points.some((p) => p.phrase === causeLue) ? causeLue : ''
+  return (
+        <div className="flex flex-col gap-2">
+          {points.length > 0 && <PointsServis points={points} etat={controle.etat} />}
+          {dossier && points.length === 0 && calepinageId != null && (
+            <PointsDossier calepinageId={calepinageId} etat={controle.etat} />
+          )}
+          {causeAffichee && <p>{causeAffichee}</p>}
+          {entree && !remplace && <p>{remplirPhrase(entree, controle)}</p>}
+          {controle.seuil_source && <p className="text-muted-foreground">{`Source du seuil : ${controle.seuil_source}.`}</p>}
+          {remplace && <p className="text-muted-foreground" data-testid="cal-pret-sans-lead">{gesteSansLead}</p>}
+          {gesteServi && !remplace && <p className="text-muted-foreground">{gesteServi}</p>}
+          {entree?.geste && !remplace && <p className="text-muted-foreground">{entree.geste}</p>}
+        </div>
+  )
+}
+
 function Ligne({ controle, onRegler }) {
-  const aRegler = (controle.etat === 'a_regler' || controle.etat === 'bloquant') && Boolean(controle.cible?.onglet)
-  const etape = libelleEtape(controle.cible)
+  const cible = cibleDuReglage(controle) // T4-U4-007 — la cible du point servi
+  const aRegler = (controle.etat === 'a_regler' || controle.etat === 'bloquant') && Boolean(cible?.onglet)
+  const etape = libelleEtape(cible)
   return (
     <li data-testid={`cal-pret-ligne-${controle.code}`} data-etat={controle.etat} className="cdoc-ligne">
       <Pastille etat={controle.etat} />
@@ -107,7 +207,7 @@ function Ligne({ controle, onRegler }) {
       <Pourquoi controle={controle} />
       {aRegler && (
         <button type="button" data-testid={`cal-pret-regler-${controle.code}`} className="cdoc-regler"
-          onClick={() => onRegler(controle.cible)}>
+          onClick={() => onRegler(cible)}>
           {etape ? `Régler dans ${etape}` : 'Régler'}
         </button>
       )}
@@ -179,7 +279,8 @@ function messagePied(controles) {
    la liste rangée ; les suivants, discrets) ; puis la section « Contrôles · N bons » REPLIÉE (coches vertes, « ? » rond).
    Tous les contrôles servis restent à l'écran (rien n'est retiré) ; aucun compte n'est calculé hors des états servis. */
 function LigneCourte({ c, premierARegler, onRegler }) {
-  const aRegler = (c.etat === 'a_regler' || c.etat === 'bloquant') && Boolean(c.cible?.onglet)
+  const cible = cibleDuReglage(c) // T4-U4-007 — la cible du point servi
+  const aRegler = (c.etat === 'a_regler' || c.etat === 'bloquant') && Boolean(cible?.onglet)
   return (
     <li data-testid={`cal-pret-ligne-${c.code}`} data-etat={c.etat} className="cel-pret-ligne">
       {c.etat === 'ok'
@@ -193,7 +294,7 @@ function LigneCourte({ c, premierARegler, onRegler }) {
       {aRegler && (
         <button type="button" data-testid={`cal-pret-regler-${c.code}`} className="cel-pret-regler"
           data-recommande={c.code === premierARegler ? 'oui' : 'non'}
-          onClick={() => onRegler(c.cible)}>
+          onClick={() => onRegler(cible)}>
           Régler
         </button>
       )}
@@ -272,7 +373,15 @@ function AttenteGroupes({ avis, attente, pied }) {
   )
 }
 
-export default function GroupesPretAEnvoyer({
+export default function GroupesPretAEnvoyer({ calepinageId = null, ...props }) {
+  return (
+    <CalepinageDeLaListe.Provider value={calepinageId}>
+      <Groupes {...props} />
+    </CalepinageDeLaListe.Provider>
+  )
+}
+
+function Groupes({
   groupes, testIdCompte, pied, onRegler, court = false, controles = [], attente = false, avis = null,
 }) {
   if (court) return <ListeCourte controles={controles} testIdCompte={testIdCompte} onRegler={onRegler} attente={attente} avis={avis} />

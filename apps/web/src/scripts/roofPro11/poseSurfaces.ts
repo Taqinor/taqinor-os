@@ -1403,3 +1403,13 @@ export function construireMaillagesPose(
   return out;
 }
 
+/**
+ * T4-U4-019 — une ombrière se dit avec SES mots : des travées, jamais des « tables » de champ au sol.
+ * Réécrit la seule phrase « non mesuré » que le champ au sol et l'ombrière partagent.
+ */
+export function enMotsDOmbriere<T extends { nonMesure: string[] }>(pose: T): T {
+  return {
+    ...pose,
+    nonMesure: pose.nonMesure.map((m) => (m === 'aucune table rendue par le moteur' ? 'aucune travée rendue par le moteur' : m)),
+  };
+}

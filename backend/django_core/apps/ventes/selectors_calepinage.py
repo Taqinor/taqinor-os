@@ -105,6 +105,18 @@ def _calepinage_ouvert_mesure(company, lead_id, avec_kwc=True):
         return None
 
 
+def pose_du_lead(company, lead_id):
+    """Relecture E3 M2 — ``(calepinage_id, empreinte_pose)`` du calepinage
+    OUVERT du lead (``calepinage_ouvert_du_lead``) quand une pose y est
+    enregistrée (``layout_hash`` : l'empreinte que ``pose_enregistree``
+    transporte), sinon ``(None, '')``. Lecture seule."""
+    from apps.calepinage.selectors import calepinage_ouvert_du_lead
+    calepinage = calepinage_ouvert_du_lead(company, lead_id)
+    if calepinage is None or not (calepinage.layout_hash or '').strip():
+        return None, ''
+    return calepinage.pk, calepinage.layout_hash
+
+
 def calepinage_de_societe(calepinage_id, company):
     """ADEV136 — UN calepinage borné SOCIÉTÉ (appelants système), ou ``None`` ;
     passe par ``apps.calepinage.selectors.calepinage_detail``."""

@@ -114,6 +114,38 @@ class ManqueRegroupeTest(unittest.TestCase):
         # Les autres étapes gardent leurs avertissements regroupés.
         self.assertIn('simulation_perimee', [ligne['code'] for ligne in lignes])
 
+    def test_obstacles_poses_sans_ombre_enregistree_ne_disent_pas_aucune_ombre(self):
+        """T4-U1-023 — toit à cheminée de 1,5 m et bâtiment voisin de 6 m, aucune
+        lecture d'ombre enregistrée : la ligne servie NOMME les objets qui portent
+        une ombre et le geste, jamais « acces_solaire_absent » (que l'écran lit
+        « Aucune ombre n'est signalée »). Sans objet haut, la ligne reste celle d'avant."""
+        from apps.calepinage.services.ombrage_chaines import MOTIF_SANS_ACCES
+
+        layout = {'version': 2, 'zones': [
+            {'id': 'sud', 'label': 'Pan sud', 'obstacles': [
+                {'id': 'o1', 'type': 'cheminee', 'lengthM': 0.8, 'widthM': 0.8,
+                 'heightM': 1.5},
+                {'id': 'o2', 'type': 'antenne'}]},
+            {'id': 'nord', 'label': 'Pan nord', 'obstacles': []}],
+            'environment': [{'id': 'b1', 'kind': 'batiment', 'heightM': 6.0,
+                             'lengthM': 8.0, 'widthM': 5.0}]}
+        ligne, = regrouper_manque([MOTIF_SANS_ACCES], layout=layout)
+        self.assertEqual(ligne['code'], 'ombres_non_mesurees')
+        self.assertEqual(ligne['gravite'], 'a_regler')
+        self.assertEqual(ligne['etape'], 'resultats')
+        self.assertEqual(ligne['message'],
+                         'Ce toit porte 1 obstacle et 1 objet voisin qui font de '
+                         'l’ombre, mais cette ombre n’est pas encore comptée sur les '
+                         'panneaux posés : ouvrez le calcul des ombres du toit, puis '
+                         'enregistrez et relancez la simulation.')
+        self.assertNotIn('Aucune ombre', ligne['message'])
+        plat = {'version': 2, 'zones': [{'id': 'sud', 'obstacles': [
+            {'id': 'o2', 'type': 'antenne'}]}]}
+        ligne, = regrouper_manque([MOTIF_SANS_ACCES], layout=plat)
+        self.assertEqual(ligne['code'], 'acces_solaire_absent')
+        ligne, = regrouper_manque([MOTIF_SANS_ACCES])
+        self.assertEqual(ligne['code'], 'acces_solaire_absent')
+
     def test_forme_des_lignes_egale_celle_du_contrat(self):
         modele = CONTRAT['exemple']['manque'][0]
         ligne = regrouper_manque([NORME])[0]

@@ -1,3 +1,5 @@
+import { estPanTrace } from './surfacePose'
+
 // ENF22 — helpers extraits de Ombriere.jsx (react-refresh/only-export-components) : le fichier composant n'exporte plus que des composants.
 
 /**
@@ -19,7 +21,8 @@ export function totauxParBatiment(layout) {
     if (genre === 'sol') courant.sols += 1
     total.set(cle, courant)
   }
-  for (const zone of layout?.zones ?? []) {
+  // T4-U4-016 — la MÊME règle que le compte de la barre (`surfacePose.js::totalPose`) : un pan vide ne compte pas.
+  for (const zone of (layout?.zones ?? []).filter(estPanTrace)) {
     ajouter(zone?.buildingId, Number(zone?.geometry?.count), 'pan')
   }
   for (const surface of layout?.poseSurfaces ?? []) {

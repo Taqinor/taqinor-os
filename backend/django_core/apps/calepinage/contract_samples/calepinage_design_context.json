@@ -113,6 +113,12 @@
       "ombrage_notes": "palmier côté ouest",
       "mode_pose": null
     },
+    "prefill_lead": {"lead": 1490, "pompage": {
+      "niveau_statique_m": {"valeur": 40.0, "origine": "mesure_visite", "origine_libelle": "Mesuré en visite"},
+      "hmt_saisie": {"valeur": 80.0, "origine": "declaree", "origine_libelle": "Déclarée"},
+      "debit_exploitation_m3h": {"valeur": 25.0, "origine": "essai", "origine_libelle": "Essai de pompage"},
+      "debit_souhaite_m3h": {"valeur": 20.0, "origine": null, "origine_libelle": null}
+    }},
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -241,6 +247,7 @@
       "ombrage_notes": "palmier côté ouest",
       "mode_pose": null
     },
+    "prefill_lead": null,
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -354,6 +361,7 @@
       "ombrage_notes": null,
       "mode_pose": null
     },
+    "prefill_lead": null,
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -422,6 +430,7 @@
       "ombrage_notes": null,
       "mode_pose": null
     },
+    "prefill_lead": null,
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -541,6 +550,7 @@
       "ombrage_notes": "palmier côté ouest",
       "mode_pose": null
     },
+    "prefill_lead": null,
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -651,6 +661,7 @@
       "ombrage_notes": null,
       "mode_pose": null
     },
+    "prefill_lead": null,
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -761,6 +772,7 @@
       "ombrage_notes": null,
       "mode_pose": null
     },
+    "prefill_lead": null,
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -880,6 +892,7 @@
       "ombrage_notes": "palmier côté ouest",
       "mode_pose": null
     },
+    "prefill_lead": null,
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -999,6 +1012,7 @@
       "ombrage_notes": "palmier côté ouest",
       "mode_pose": null
     },
+    "prefill_lead": null,
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -1118,6 +1132,7 @@
       "ombrage_notes": "palmier côté ouest",
       "mode_pose": null
     },
+    "prefill_lead": null,
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -1237,6 +1252,7 @@
       "ombrage_notes": "palmier côté ouest",
       "mode_pose": null
     },
+    "prefill_lead": null,
     "natures_zones": [
       "ENVELOPPE",
       "INTERDITE",
@@ -1248,6 +1264,7 @@
   "acal312_note": "ACAL312 (D-ACAL-20) — clé racine ADDITIVE `natures_zones` (liste, toujours présente) : les natures de zone d'exclusion ADMISES, servies depuis `services.zones.natures_admises` (le noyau `core.calepinage.types.NatureZone`) — l'atelier lit ICI son sélecteur de nature, jamais une constante recopiée ; POST layout/ et import-layout/ refusent toute autre nature au chemin `exclusionZones.<i>.nature`.",
   "acon80_note": "ACON80 (D-ACON-2) — `variante` : `null` hors variante ; avec `?devis=<id>` d'un devis porté par une VARIANTE de ce calepinage (second devis actif du lead, ACON6), `{id, nom, devis}` de la variante, et `geometrie` décrit le document de LA VARIANTE (`roof_layout`, `empreinte_document`), `devis_lie` / `modifiable` ceux du devis porté (`exemple_variante`). L'atelier enregistre alors la variante (PATCH variantes/<id>/, puis sync-devis avec `devis`), jamais le calepinage. Le document est lu par `selectors.conception_du_devis` (contrat calepinage_conception_du_devis.json).",
   "cible_factures_note": "H3 (22/11) — la clé `cible_factures` (taille tirée des FACTURES du lead, posée ici le 22/11 par la maquette Panneaux) est SORTIE du design-context le même jour : son dimensionnement horaire coûtait ~1,9 s et ~28 requêtes de plus à chaque ouverture de l'atelier (mesuré, calepinage 5 de la pile de revue). Elle est servie par `GET calepinages/<pk>/cible-factures/` (contrat `calepinage_cible_factures.json`, `views/toiture_lead.py`), lue par `panneaux/lectures.js::useCibleFactures`.",
+  "prefill_lead_note": "T4-U3-012 — clé racine ADDITIVE `prefill_lead`, toujours présente : le pompage DÉCLARÉ sur le lead, à PRÉREMPLIR dans le panneau Pompage (rien n'est écrit ; `views/toiture_lead.py::prefill_du_lead`, lead lu par `apps.crm.selectors`). `prefill_lead.pompage.<clé>` où <clé> est EXACTEMENT la clé du champ du panneau (`niveau_statique_m`, `hmt_saisie`, `debit_exploitation_m3h`, `debit_souhaite_m3h`), chacune `{valeur, origine, origine_libelle}` : `valeur` null quand la question n'a pas été posée ; `origine` la provenance telle que la fiche la garde (`declare` / `site_web` / `mesure_visite` pour le niveau statique, `declaree` / `site_web` pour la HMT, `essai` / `foreur` / `client` / `mesure_visite` pour le débit du forage), null pour le débit souhaité (la fiche n'en garde pas). `prefill_lead` vaut null sans lead ou pour un lead d'une autre société.",
   "toiture_lead_note": "R2-15 / R2-01 (recette du 22/11, décision Q1) — clé racine ADDITIVE `toiture_lead`, toujours présente : ce que la fiche du lead dit de sa toiture et de son site (section « Toiture & site »), lu par `apps.crm.selectors` (`views/toiture_lead.py::toiture_du_lead`). Champs à choix servis par leur LIBELLÉ de fiche (type_surface, type_toiture, orientation, ombrage, structure_pref), nombres en réel (surface_toiture_m2, inclinaison_deg, nb_etages, roof_age), ombrage_notes en texte ; CHAQUE champ vaut null quand le lead ne le dit pas (sans lead, lead d'une autre société ou à la corbeille : tous null). L'atelier les AFFICHE en lecture (« Le lead déclare : … ») et n'en préremplit AUCUN (D-ACAL-7). `mode_pose` est le mode que le serveur a posé dans le DOCUMENT à la création (CIQ112, `modePoseDeclare`, ex. `toiture_inclinee` pour des tuiles) et que le traducteur applique aux pans ; null quand le document ne le porte pas (calepinage né d'un devis, comme ici). Seul ce mode agit : l'atelier pose « Toit en pente » sur un pan VIERGE quand il vaut bac_acier ou toiture_inclinee.",
   "acal1951_note": "ACAL1951 — `cible.option` (`sans` | `avec`) : pour une cible `source: 'devis'`, l'option que le devis a RETENUE (deux options ⇒ la recommandée, `conception_retenue_du_devis`, contrat `calepinage_conception_retenue.json`) ; c'est elle que l'atelier dessine — plus l'option « sans » en dur. `null` pour une cible estimée depuis le lead (aucune option vendue). L'enregistrement du dessin range `{devis, option}` dans `resultat.option_dessinee`."
 }

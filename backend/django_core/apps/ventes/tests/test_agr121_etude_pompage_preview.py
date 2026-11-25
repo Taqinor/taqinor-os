@@ -539,6 +539,37 @@ class MotifVariateurAbsentTests(SimpleTestCase):
                              'aucun article au catalogue')
 
 
+class ArticleSansPrixNommeTests(SimpleTestCase):
+    """T4-U3-021 — « Structure au sol : prix à renseigner au catalogue » sert
+    l'article en cause (id + nom, jamais un prix) ; un rôle sans article n'en
+    sert aucun."""
+
+    def test_article_sans_prix_nomme_sans_prix(self):
+        from core.pompage.kit import SUFFIXE_PRIX
+
+        prix = {'prix_connu': True, 'quantite': 1}
+        sortie = {'pompe': {'mode': 'existante'}, 'champ': {'nb_panneaux': 6},
+                  'kit': {'inclus': [
+                      dict(prix, cle='variateur', produit=1, designation='VEICHI SI23'),
+                      dict(prix, cle='panneaux', produit=2, designation='Jinko 710'),
+                      {'cle': 'structure', 'produit': 42, 'quantite': 1, 'prix_connu': False,
+                       'role_pompage': 'structure_sol',
+                       'designation': 'Structure sol galvanisée' + SUFFIXE_PRIX}]}}
+        self.assertEqual(pompage.roles_minimum_manquants(sortie), [
+            {'cle': 'structure', 'libelle': 'Structure au sol',
+             'motif': 'prix à renseigner au catalogue',
+             'articles': [{'id': 42, 'nom': 'Structure sol galvanisée'}]},
+            {'cle': 'installation', 'libelle': 'Installation',
+             'motif': 'aucun article au catalogue', 'articles': []}])
+
+    def test_contrat_chaque_role_manquant_porte_ses_articles(self):
+        listes = [e['roles_minimum_manquants'] for e in CONTRAT.values()
+                  if isinstance(e, dict) and isinstance(e.get('roles_minimum_manquants'), list)]
+        self.assertTrue(any(listes))
+        for manquant in (m for liste in listes for m in liste):
+            self.assertEqual(set(manquant), {'cle', 'libelle', 'motif', 'articles'})
+
+
 class ModeEtTypePompeAlertesTests(SimpleTestCase):
     """AGM6 — jamais de bascule silencieuse : un mode de pompe inconnu et un
     type de pompe absent sont DITS au vendeur (SimpleTestCase : catalogue,

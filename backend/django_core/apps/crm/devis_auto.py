@@ -214,8 +214,13 @@ def champs_requis(lead) -> list[list[str]]:
         if 'raccordement' not in supposes:
             requis.append(['raccordement'])
         return requis + _groupes_rythme(lead)
-    requis = [['facture_hiver']]
-    if lead.ete_differente:
+    # ALEA70 (constat T4-U1-022) — le moteur résidentiel calcule sur le kWh
+    # mensuel DÉCLARÉ aussi bien que sur la facture d'hiver (``horaire/conso.
+    # profil_depuis_factures`` : kWh saisi en priorité « 1 bis », la facture ne
+    # sert qu'à défaut) : l'un vaut l'autre. La facture d'été distincte n'est
+    # exigée que si c'est la facture qui dimensionne (sans kWh déclaré).
+    requis = [['facture_hiver', 'conso_mensuelle_kwh']]
+    if lead.ete_differente and not _rempli(lead, 'conso_mensuelle_kwh'):
         requis.append(['facture_ete'])
     requis.append(list(GROUPE_LOCALISATION))  # ALEA67
     return requis

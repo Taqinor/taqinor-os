@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { formatNumber } from '../../../lib/format'
 import fs from 'node:fs'
 import path from 'node:path'
 import {
@@ -147,6 +148,21 @@ describe('CAL91 — la hauteur libre est saisie ou absente, jamais supposée', (
     expect(documentOmbriere(SAISIE, REPONSE).clearHeightM).toBe(2.5)
   })
 
+  it('T4-U4-019 — saisie ⇒ « Couverture posée à 2,5 m » : la virgule française, comme le reste de l’écran', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplir()
+    await waitFor(() => expect(screen.getByTestId('cal-ombriere-hauteur')).toHaveTextContent('Couverture posée à 2,5 m'))
+  })
+
+  it('T4-U4-019 — aucune travée posée : les mots de l’ombrière (travées, emprise), jamais « table » ni « terrain »', async () => {
+    const { motifChampVide } = await import('../ModeTerrain.helpers')
+    const motif = motifChampVide({ plans: [{ modules: 0, tables: [] }] }, 'ombriere')
+    expect(motif).toBe('Aucune travée ne tient dans cette emprise avec cette saisie : le moteur n’a posé aucun module. '
+      + 'Réduisez le nombre de modules par travée ou agrandissez l’emprise.')
+    expect(motif).not.toMatch(/table|terrain/)
+  })
+
   it('absente ⇒ null (aucune hauteur par défaut) et l’écran le dit', async () => {
     expect(documentOmbriere({ ...SAISIE, clearHeightM: '' }, REPONSE).clearHeightM).toBeNull()
     monter()
@@ -218,6 +234,14 @@ describe('CAL91 — l’ombrière se totalise avec le site, par bâtiment', () =
     expect(c.pans).toBe(1)
   })
 
+  it('T4-U4-016 — un pan VIDE (aucun contour tracé) n’est ni compté dans « Pans » ni dans les modules', () => {
+    const t = totauxParBatiment({
+      zones: [{ id: 'area-1', vertices: [], geometry: null }],
+      poseSurfaces: [{ kind: 'sol', engine: { modules: 28 } }, { kind: 'ombriere', engine: { modules: 16 } }],
+    })
+    expect(t).toEqual([{ batiment: '(bâtiment unique)', modules: 44, pans: 0, ombrieres: 1, sols: 1 }])
+  })
+
   it('sans `buildingId`, tout tombe dans le bâtiment unique', () => {
     const t = totauxParBatiment({
       zones: [{ id: 'P', geometry: { count: 5 } }],
@@ -242,9 +266,9 @@ describe('CAL91 — l’écran pose l’ombrière et la montre dans les totaux',
       expect(screen.getByTestId('cal-ombriere-modules').textContent)
         .toContain(String(REPONSE.plans[0].modules))
     })
-    // L'écran arrondit le pas au dixième (`auDixieme`), comme le composant.
+    // L'écran arrondit le pas au dixième avec le formateur de la maison (T4-U4-019 : virgule française).
     expect(screen.getByTestId('cal-ombriere-pas').textContent)
-      .toContain(String(Math.round(PAS_REPONSE * 10) / 10))
+      .toContain(formatNumber(PAS_REPONSE, { maxDecimals: 1 }))
   })
 
   it('l’ombrière apparaît dans le total de SON bâtiment, à côté du pan', async () => {

@@ -1129,7 +1129,7 @@ contre « 82 % de votre facture » de la maquette (formulation = décision du fo
 partagés `erp-agentique-django_core-1` et `erp-agentique-fastapi_ia-1` arrêtés pour libérer la mémoire (à relancer au
 démontage).
 
-### Point du 24/11, 17 h 15 UTC (le plus récent — REPRENDRE ICI)
+### Point du 24/11, 17 h 15 UTC
 
 **Branche de lot `dev-ecrans-v2` (locale, tête `9ff02bfaa9` + ce point) — PAS encore de PR (une seule PR pour tout le lot)**
 Pliés depuis le point précédent : lane `suites-ecrans` (six correctifs d'écran, ACAL2031 cochée, ACAL2032 « code
@@ -1172,3 +1172,203 @@ articles de pompage (choix A par défaut) AVANT le tour 2 ; mise à jour de l'in
 **Constats pour le fondateur ajoutés ce jour (production intacte)** : le catalogue copié porte de nombreux articles
 actifs sans prix de vente (11 pompes à courbe, disjoncteurs, fusibles, parafoudres, sectionneurs, lignes de
 prestation C&I) et six articles au nom aléatoire (« DFASFA », « dsafsdg », « feaf », « gsdg », « sdadg », « SDVGDS »).
+
+### Point du 24/11, 19 h 05 UTC
+
+**PR Taqinor/taqinor-os#1552** — branche `dev-ecrans-v2`, tête `127a07c862` : LE lot du jour (écrans v2, correctifs
+du tour 1 des lanes B4 / site-facture / agri, moteur étape 2 + relectures, portée du rôle). Auto-fix allumé, fusion
+automatique demandée. **CI ROUGE, 1er tour — liste complète, à corriger en UN seul push :**
+- gardes : ENF22 (`except` silencieux `conception/service.py::_champ_du_modele`, `::_nombre`), ENF23 (deux `skipTest`
+  non signés, `HORS_PARITE`), PACT159 (promesse en prose `frontend/.../calc/totaux.js` ~185), QJR6 (deux écritures en
+  bloc d'`etude_params` dans `conception/moteur.py` — objets en mémoire) ;
+- tests backend (4 sur ~27 000) : cliquet des imports ventes → calepinage (24 pour 22), `test_qjr243` (site d'appel
+  déplacé par l'extraction), grep « prix carburant » sur un commentaire de `crm/serializers.py:1252`, garde de portée
+  ADEV41 (deux routes de la conception à classer « sondées ») ;
+- api-fuzz : `POST ventes/conception/apercu/` refuse un corps conforme au schéma déclaré ;
+- front : `web-build-test` (4 tests de tracé : le correctif B4-005 « fermer au premier coin » avale probablement un
+  4e coin — régression de code à corriger, pas les tests), `frontend-static` (classe héritée du site public ;
+  golden de geste « deux clics »), vitest (bandeau « 7,1 kWc », golden DOM de `ToitureDesign`), **e2e : la page
+  « Démarrage rapide » est BLANCHE** (`/calepinage/reglages/demarrage-rapide`).
+- Deux correcteurs EN VOL, chacun dans son worktree isolé, branches `fix/ci-gardes` (gardes + tests backend + fuzz)
+  et `fix/ci-front` (front + page blanche), parties de `origin/dev-ecrans-v2`. À leur retour : plier les deux dans
+  `dev-ecrans-v2` (le worktree de l'orchestrateur est sur `dev-lot2` : `git checkout dev-ecrans-v2` d'abord),
+  régénérer l'instantané OpenAPI si un composant nommé est ajouté (commande docker du point 17 h 15), pousser UNE
+  fois, puis refondre `dev-ecrans-v2` dans `dev-lot2`.
+- Journaux de la CI : `%TEMP%/ci1552-*.log`.
+
+**Lot suivant — branche locale `dev-lot2`** (PAS poussée) = `dev-ecrans-v2` + étape 3 du moteur (ADEV139, 140, 141,
+145, 146, ALEA70, corrections m1-m5 — cochées) + lane `calepinage-serveur` (5 correctifs). **L'étape 3 n'est PAS
+fusionnable en l'état** (relecture adverse indépendante) : BLOQUANT — un effacement légal (loi 09-08) est défait
+5 s après par la relance en file (l'ancien GPS réécrit dans `ConceptionLead` et au chatter) ; MAJEURS — calepinage
+archivé = conception figée pour toujours ; `remplir_conceptions --appliquer` écrase une version née d'une pose ; le
+remplissage écrit une ligne d'historique sur chaque lead et relance l'horloge de conservation ; ALEA70 change ce
+que l'utilisateur peut faire (lead en kWh sans facture = prêt) sans décision enregistrée.
+- EN VOL : lane moteur E4 relancée en worktree ISOLÉ (branche `lane/moteur-e4b`, base de test `x4`) : d'abord ces
+  corrections, puis ADEV142 + 143 ensemble, 144, 147, 148. Arbitrage de l'orchestrateur pour le C&I et l'agricole :
+  la conception rangée ne porte pas les lignes du devis ; le devis automatique rejoue UNE décision pour composer
+  les lignes et copie les blocs rangés (même moteur, mêmes entrées, parité testée) — à dire au fondateur.
+- Leçon : une lane lancée SANS `isolation: worktree` peut se voir refuser l'écriture dans un autre worktree ;
+  lancer les lanes qui écrivent avec `isolation: worktree` puis `git checkout -b <branche> dev-lot2`.
+- EN VOL aussi : `atelier-suite` (worktree `agent-a60912ec13b275fe4`, 11 constats + 4 suites du serveur) et
+  `front-suite` (worktree `agent-a18395c2b0287c783` : relevé au téléphone hors ligne, liste des leads, SAV,
+  acceptation, garde kWh, dialogue de ville, RIB, petits).
+
+**Test utilisateur**
+- Tour 1 TERMINÉ : 101 constats (2 S1, 30 S2, 51 S3, 18 S4), rapports `T4/tour1/U1.md` à `U4.md`, consolidation
+  `T4/tour1/consolidation.md`. La pile était saturée (quatre relecteurs + lanes) : scénarios b, c, d, f, g, h, j
+  coupés. LEÇON : deux relecteurs à la fois, pas quatre.
+- Instrument `l5t` mis à jour à 18 h 40 sur `dev-ecrans-v2@127a07c862` (gunicorn 2 × 6 fils), `SITE_URL` et
+  `VITE_PUBLIC_SITE_URL` = `http://site-public.invalid` (un relecteur avait ouvert UNE page publique de production
+  par « Ouvrir la page client » : aucune donnée envoyée, jeton local inconnu là-bas).
+- Prix d'essai posés sur la copie (19 articles de pompage, sources publiques, `T4/preremplissage.md` § 8). Restent
+  sans source : tarif de pose « Installation pompage solaire » et courbes des pompes monophasées → le devis
+  automatique agricole ne peut pas aboutir sans le fondateur.
+- Tour 2 PAS ENCORE LANCÉ (attend la fin des correcteurs de CI : ressources) : V1 = rejeu des correctifs côté
+  calepinage + scénario b ; V2 = rejeu des correctifs devis / lead / agricole + scénarios c, d ; puis agricole
+  avec prix d'essai, balayages s-w, relecteur des maquettes B5.
+
+**Décisions à porter au fondateur** (liste tenue dans `T4/tour1/consolidation.md`) + : ALEA70 (lead en kWh sans
+facture prêt à deviser — recommandé : garder) ; origines de mesure « essai / foreur » choisissables sur la fiche
+(revient sur AGR400) ; bandeau de l'atelier au nom du calepinage (revient sur ACAL1730) ; `rafraichir_etudes_du_devis`
+réécrit le bloc de dimensionnement d'un devis ENVOYÉ quand la facture du lead change (QJR5 contre D-ACAL-97) ; rôle
+Technicien : 403 sur le calepinage et le relevé ; tarif de pose du pompage ; clé de carte.
+
+### Point du 24/11, 20 h 50 UTC
+
+**PR Taqinor/taqinor-os#1552 FUSIONNÉE à 20 h 40 UTC** (lot 1 : écrans v2, correctifs du tour 1 des lanes B4 /
+site-facture / agri, moteur étape 2 + portée du rôle). Trois tours de CI : (1) gardes ENF22 / ENF23 / PACT159 / QJR6,
+quatre tests backend, api-fuzz, tests web du tracé (vraie régression du correctif B4-005, corrigée dans le CODE),
+goldens front, page « Démarrage rapide » plein écran inconnue de la fumée des écrans ; (2) budget du bundle (4 162,2
+pour 4 160 → 4 175) ; (3) un test e2e instable (`calepinage-parcours.spec.js` ACAL987 : onglet recouvert pendant un
+re-rendu) — vert à la relance du seul job. **À déployer par le fondateur : `scripts/deploy-prod.ps1`.** Non déployé.
+Leçon du fondateur : corriger une CI rouge avec AUTANT de lanes parallèles que possible (six correcteurs lancés).
+Leçon de l'orchestrateur : avant d'ouvrir une PR, jouer les familles qui ont rougi — `node --test "src/**/*.test.mjs"`
+(repères hors contrat, classes héritées), tests front LIÉS aux fichiers changés (`vitest related`) et tous les goldens,
+budget du bundle, gardes hôte (`check_except_larges`, `check_tests_sautes_environnement`, `check_override_registry`,
+`check_services_appeles`, `test_check_choices_declares`), et en docker les tests-cliquets (`test_imports_croises_ventes`,
+`test_adev41_garde_portee_ventes`, `tests_scission_golden`, `test_event_coverage`).
+
+**Lot 2 — branche locale `dev-lot2`** (PAS poussée, PAS de PR) : étape 3 du moteur (ADEV139, 140, 141, 145, 146,
+ALEA70) + ses corrections de relecture (9 commits) ; lanes `calepinage-serveur` (5), `atelier-suite` (15),
+`front-suite` (18 commits) ; repère de test déclaré. Budget du bundle mesuré en local : 4 169,7 Ko pour 4 175
+(roof-tool 645,1 pour 650).
+- **Étape 3 toujours NON fusionnable** — seconde relecture indépendante des corrections : BLOQUANT, une ligne du
+  chatter écrite AVANT l'effacement garde les coordonnées GPS (`_caviarder_historique` ne réécrit pas les lignes
+  `conception_version`) ; MAJEUR, une tâche déjà en cours pendant l'effacement range encore une version avec les
+  anciennes données (verrouiller la ligne du lead dans la transaction de `ranger`) ; MAJEUR, le remplissage calcule la
+  première version sans le toit d'un calepinage déjà posé ; mineurs (arguments de la tâche porteurs de valeurs, tests
+  qui n'épinglent que deux gardes sur cinq, tâche ancienne qui écrase une récente). Tout est parti à la lane du moteur.
+- EN VOL : lane moteur `lane/moteur-e4b` (worktree isolé `agent-ae36ffd66221266fc`, base de test `x4`) — ces
+  corrections puis ADEV142 + 143, 144, 147, 148 ; lane `lane/serveur-suite` (worktree isolé, base `n` : phrases du PDF
+  industriel au niveau 15, blocage électrique qui nomme sa cause, article nommé dans le refus agricole, motif MT ;
+  « sol et ombrière » CONTESTÉ côté serveur : ils sont câblés) ; correcteur `fix/lot2-front` (balayage front avant PR :
+  golden `ToitureDesign` rouge connu) ; relecteurs du tour 2 V1 (rejeux calepinage + scénario b) et V2 (rejeux devis /
+  lead / agricole + scénarios c, d) sur l'instrument à `6633028331`.
+- AVANT la PR du lot 2 : plier `lane/serveur-suite`, `fix/lot2-front`, les corrections de la lane moteur ; intégrer
+  `origin/main` ; CODEMAP (modules neufs : `conception/receivers.py`, tâche `ventes.relancer_conception`, commande
+  `remplir_conceptions`, `calepinage/services/site.py`, `crm/provenances_pompage.py`, `ventes/selectors_calepinage.py`)
+  puis `codemap_fingerprint.py --write` ; `check_api_shapes.py --write` ; instantané OpenAPI en docker ; balayage
+  backend en docker (liste de la leçon ci-dessus + `test_conception_lead`, `tests_devis_auto`, `tests_vref_villes`,
+  `test_pret_a_envoyer`, `test_design_context`, `test_calx297_rapport_etude`, `test_cal223_contrats`).
+
+**Garde morte trouvée** : `frontend/src/features/calepinage/budget.test.mjs` (CAL224) ne joue son contrôle de poids
+que si `dist/` existe, donc jamais en CI ; son budget (73 Ko) date de septembre, le module pèse 133,6 Ko.
+
+**Tâche de 9 h vue par le fondateur** : c'était la lane d'extraction du matin, tenue en vie par deux boucles d'attente
+sur un journal terminé ; boucles arrêtées. Le serveur du front de l'instrument (5251) reste, exprès.
+
+### Point du 24/11, 23 h 00 UTC
+
+**Lot 2 — branche locale `dev-lot2`** (PAS poussée, PAS de PR) contient maintenant : étape 3 du moteur + ses deux vagues
+de corrections de relecture (effacement légal fermé sur tous les chemins lus : lignes du chatter caviardées, lead relu
+sous verrou dans `ranger`, tâche aux seuls identifiants, une garde = un test) ; **étape 4** (ADEV142 le devis
+automatique naît de la conception rangée, ADEV143 colonne `Devis.conception_source` — **migration ventes 0162** —,
+ADEV144 parité 20 goldens zéro clé différente, ADEV147 + ADEV148 brouillons qui suivent, route
+`POST ventes/devis/<id>/mettre-a-jour-conception/`) ; lanes `calepinage-serveur`, `atelier-suite`, `front-suite`,
+`serveur-suite` ; CODEMAP à jour pour l'étape 3 (PAS encore pour l'étape 4 ni la route neuve).
+Gardes hôte vertes sur la branche (`check_forme_code` avec deux exceptions C20 motivées sur ADEV139 et ADEV143).
+Balayage backend en docker vert (403 tests + les deux relancés avec le dossier front monté).
+- EN VOL : relecteur adverse NEUF de l'étape 4 (lecture seule) ; lane moteur **E5** (`lane/moteur-e5`, worktree
+  isolé, base de test `x5` : ACAL2012 à ACAL2017 — le calepinage lit la conception) ; correcteur `fix/lot2-front`
+  (balayage front avant PR + trois ajouts : avis faux « sol et ombrière pas encore raccordés » à retirer, points
+  servis du blocage électrique, article nommé du kit agricole) ; relecteur V2 du tour 2.
+- AVANT la PR du lot 2 : verdict du relecteur de l'étape 4 (et ses corrections) ; plier `fix/lot2-front` ; CODEMAP
+  (étape 4, route neuve) + `codemap_fingerprint.py --write` ; `check_api_shapes.py --write` ; instantané OpenAPI en
+  docker (route neuve) ; garde de portée ADEV41 (la route neuve doit être sondée : la lane dit l'avoir fait ?
+  À VÉRIFIER : `test_adev41_garde_portee_ventes`) ; rejouer en docker `test_conception_lead`, `test_devis_auto`,
+  `test_split_devis_domaine`, `test_adev41_garde_portee_ventes`, `test_imports_croises_ventes`.
+- **Parité sur données réelles (à faire avant toute bascule visible)** : quand V2 a fini, mettre l'instrument `l5t`
+  sur `dev-lot2` (migration 0162) et rejouer, transaction annulée, le devis automatique par l'ancien chemin et par la
+  conception sur les leads de la copie ; ne sortir que des comptes et des noms de clés (aucun montant).
+
+**Tour 2 du test utilisateur** : V1 rendu (`T4/tour2/V1.md`) — 16 rejeux « corrigé » sur 21 ; scénario b joué
+jusqu'au SAV ; 12 constats (3 S2). « Pas corrigé » qui compte : T4-U4-013 — un calepinage SANS lead, tracé à l'échelle
+du pays sans épingle, simule encore au milieu du Maroc (les coordonnées du tracé ne sont pas le centre exact : le
+serveur ne peut pas les distinguer d'une épingle posée → il faut que l'atelier dise si l'épingle a été posée).
+V2 en cours (rejeux : 12 corrigés, 4 « autre », 1 pas corrigé déjà traité dans le lot 2).
+Constats du tour 2 à donner aux prochaines lanes de correction : T4-U4-013 (suite), T4-V1-002 (sélecteur de produit
+qui ne filtre pas, Entrée ajoute le premier article), T4-V1-003 (deux totaux du même nom), T4-V1-005 (saison perdue :
+étape E5), T4-V1-006 (bloc du plan de pose coupé), T4-V1-007 (reste de la liste des devis), T4-V1-008 (ticket SAV
+sans description), T4-V1-010 (pivot de la vue client), T4-V1-011 (le commercial ne trouve pas son client),
+T4-V1-012 (« SoftTimeLimitExceeded() » brut), T4-V1-004, ACAL2032 (placement libre : « + Ajouter un panneau » sans
+effet vu).
+
+### Point du 24/11, 23 h 40 UTC
+
+**PR Taqinor/taqinor-os#1554 — BROUILLON** (branche `dev-lot2` poussée, Auto-fix allumé, PAS de fusion automatique) :
+lot 2 = étapes 3 et 4 du moteur + lanes `calepinage-serveur`, `atelier-suite`, `front-suite`, `serveur-suite`, balayage
+front. Ouverte en brouillon pour connaître la liste des rouges pendant que les corrections se font. Rouges ATTENDUS :
+schéma OpenAPI (un avertissement sur `mettre_a_jour_conception` : `DictField()` nu), garde de portée ADEV41 (route
+neuve non classée). **Ne pas fusionner avant** : les corrections de la relecture adverse de l'étape 4.
+- Relecture adverse de l'étape 4 (lecture seule) : BLOQUANT — l'empreinte de la conception ne couvre ni la phase du site
+  (`raccordement`), ni le catalogue, ni la TVA : un devis automatique neuf pouvait sortir sur des entrées périmées ;
+  MAJEURS — brouillon envoyé pendant un réalignement réécrit (pas de verrou ni de re-contrôle), le suivi des brouillons
+  ne part que si la TÂCHE a écrit, brouillons C&I / agricoles dont le pointeur avance sans que les lignes suivent, route
+  de mise à jour ouverte à `crm_voir` (la route voisine exige responsable ou administrateur : même garde posée, décision
+  à confirmer par le fondateur), ligne du chatter écrite après un effacement.
+- EN VOL (worktrees isolés, partis de `dev-lot2`) : `lane/moteur-e4-fix` (ces corrections + schéma de la route, base de
+  test `x4`) ; `lane/moteur-e5` (ACAL2012 fait ; 2013 à 2017 ; base `x5`) ; correctifs du tour 2 — `lane/agri-2`
+  (pompage : trois pompes proposées incohérentes, origine remise à zéro, étude vide à la modification… base `p1`,
+  port 5270), `lane/devis-2` (sélecteur de produit, totaux, bandeau des options, clic mort d'envoi, restes à payer,
+  révision, SAV, dialogue PDF ; base `p2`, port 5271), `lane/calepinage-2` (épingle réellement posée — T4-U4-013 —,
+  message de délai, pivot de la vue client, est-ouest, placement libre, plan de pose coupé, recherche de client ;
+  base `q`, port 5272). Brief commun : `<scratchpad>/brief-lane-correctifs-tour2.md`.
+- À leur retour : plier dans `dev-lot2`, rejouer les gardes hôte + l'instantané OpenAPI + `--strict` en docker, pousser
+  UNE fois (corrections de CI comprises), passer la PR « prête », `gh pr merge --auto --merge`.
+
+**Instrument `l5t`** : sur `dev-lot2@4f73d97828` depuis 23 h 25 (migration ventes 0162 appliquée, serveur relancé,
+front rebâti, `l5t-django` à 1 700 Mo). ATTENTION : cette version porte encore le défaut d'empreinte de l'étape 4.
+
+**Tour 2 TERMINÉ** : V1 (12 constats) + V2 (25 constats) = 37, aucun S1, 10 S2 ; rejeux : 28 « corrigé », 5 « pas
+corrigé » (dont 3 déjà traités dans le lot 2), 4 « autre », 1 non rejoué. Rapports `T4/tour2/V1.md`, `V2.md`.
+Scénarios joués jusqu'au bout ou presque : a (tour 1), b (jusqu'au SAV), c (jusqu'à l'acompte), e (tour 1) ; d arrêté
+aux résultats ; f, g, h arrêtés après les PDF ; i joué sans pompe ; j, k, l, m partiels ; n à r joués (tour 1).
+PAS ENCORE JOUÉ : balayages s à w ; rôle Technicien (403) ; agricole avec les prix d'essai jusqu'au bout ; relecteur des
+maquettes B5 ; rejeux d'acceptation des tâches « code livré » (ACAL2027, 2028, 2034, 2035, 2036, 2038 et les tâches
+d'écran) ; mesure des lenteurs AU CALME (les relecteurs ont mesuré une pile saturée par les lanes).
+
+### Point du 25/11, 00 h 40 UTC (le plus récent — REPRENDRE ICI)
+
+**Lot 1 — PR Taqinor/taqinor-os#1552 : fusionnée le 24/11, NON déployée** (le fondateur déploie).
+
+**Lot 2 — PR brouillon Taqinor/taqinor-os#1554, branche `dev-lot2`.** Contenu : étapes 3 et 4 du moteur unique et
+leurs corrections de relecture (dont `lane/moteur-e4-fix` repliée EN ENTIER, commit de suite `a770f1f050` compris :
+l'étude d'un brouillon C&I / agricole renaît par l'écrivain unique, plus aucune entrée au registre des écritures en
+bloc), lanes `calepinage-serveur`, `atelier-suite`, `front-suite`, `serveur-suite`, balayage front, correctif EZ16.
+`origin/main` (25 commits : hybrides haute tension, puissance maximale appelée, niveau de règles 16 dormant) intégré —
+un conflit d'imports dans `ventes/domain/etude_ci.py` (les deux côtés gardés) et l'empreinte de CODEMAP recalculée.
+Gardes hôte toutes vertes. Avant le push unique : instantané OpenAPI régénéré + `--strict` en docker, tests-cliquets
+et tests du moteur en docker (journal `lot2-sweep2.log` du scratchpad), budget du bundle à remesurer (4 169,7 Ko pour
+4 175 AVANT l'intégration de main, qui ajoute ~100 lignes de front).
+
+**Lot 3 — pas encore de branche** (à créer depuis `dev-lot2` une fois le lot 2 poussé) :
+- `lane/moteur-e5` (6 commits, étape 5 : ACAL2012, 2013 partiel, 2014, 2015, 2017 ; ACAL2016 CONTESTÉE — la conception
+  ne sert pas de verdict, seulement `ratio_dc_ac`). Relecture adverse indépendante EN VOL. Doutes de la lane à trancher
+  avant de plier : un lead SANS conception rangée voit « Conception du lead pas encore calculée… » dans l'atelier (tous
+  les leads existants juste après un déploiement) ; module rapproché du catalogue par sa désignation ; longueur de
+  chaîne de la conception appliquée au nombre de panneaux de la pose réelle ; +76 lignes pour un budget de 60.
+- `lane/agri-2` (10 commits, relus par l'orchestrateur : champ borné à 1,5 fois la puissance de la pompe quand elle ne
+  délivre pas le débit demandé, origine du forage gardée, « Modifier » rouvre l'étude de pompage, phrases vendeur en
+  mots). Demande le fondateur : T4-V2-006, T4-V2-009, T4-V2-010 côté client (PDF agricole).
+- `lane/devis-2` et `lane/calepinage-2` : EN VOL.
+- Puis étape 6 (ACAL2018-2020, ADEV149-151) par la lane du moteur, sur la base du lot 3.

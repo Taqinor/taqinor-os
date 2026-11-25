@@ -256,8 +256,10 @@ class DevisAutoAgricoleTests(TestCase):
         lead = self._lead()
         rep = self._post(lead)
         self.assertEqual(rep.status_code, 409, rep.data)
+        # T4-U3-021 — l'article en cause est NOMMÉ (le vendeur sait quoi chiffrer).
         self.assertEqual(rep.data['detail'],
-                         'Structure au sol : prix à renseigner au catalogue')
+                         'Structure au sol : prix à renseigner au catalogue'
+                         ' — article « Structure au sol acier »')
         self.assertEqual(rep.data['field'], 'kit.structure')
         self.assertFalse(Devis.objects.filter(lead=lead).exists())
 

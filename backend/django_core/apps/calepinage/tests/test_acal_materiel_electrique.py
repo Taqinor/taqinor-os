@@ -191,6 +191,33 @@ class ModulePose(BaseMateriel):
                          PROVENANCE_EXPLICITE)
 
 
+class SurfacesDePoseSeules(BaseMateriel):
+    """T4-U4-018 — un champ au sol (28) et une ombrière (16), aucun pan de
+    toit : « Raccorder automatiquement » (POST entree-electrique) câble les
+    44 modules, chaque ligne nommée par sa surface."""
+
+    def test_post_entree_cable_le_sol_et_l_ombriere(self):
+        calepinage = self._calepinage()
+        calepinage.roof_layout = {'pin': LAYOUT['pin'], 'zones': [], 'poseSurfaces': [
+            {'kind': 'sol', 'id': 'sol-1', 'label': 'Champ au sol', 'moduleWc': 710,
+             'engine': {'modules': 28}},
+            {'kind': 'ombriere', 'id': 'omb-1', 'label': 'Ombrière parking',
+             'moduleWc': 710, 'engine': {'modules': 16}}]}
+        calepinage.save(update_fields=['roof_layout'])
+        onduleur = self._produit(
+            nom='Deye 30kW Triphasé', type_fiche='onduleur', ond_n_mppt=3,
+            ond_mppt_v_min=200.0, ond_mppt_v_max=850.0, ond_v_max_abs=1000.0,
+            ond_i_max_mppt_a=32.0, ond_ac_kw=30.0, ond_phases=3)
+        reponse = self.api.post(url_entree(calepinage.pk), {
+            'module_produit': self.module_devis.pk, 'onduleur_produit': onduleur.pk},
+            format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        lignes = reponse.data['electrique']['affectation']
+        self.assertEqual(len(lignes), 44)
+        self.assertEqual({ligne['pan'] for ligne in lignes if ligne['chaine'] is not None},
+                         {'Champ au sol', 'Ombrière parking'})
+
+
 class GetEntree(BaseMateriel):
 
     def test_forme_du_contrat(self):

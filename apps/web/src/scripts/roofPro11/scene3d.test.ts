@@ -963,6 +963,35 @@ describe('ACAL410 — puces de forme : 4 pans, L refusé sur contour convexe', (
   });
 });
 
+describe('T4-U4-019 — l’ombrière se dit avec ses mots', () => {
+  it('aucune travée posée : « aucune travée rendue par le moteur », jamais « table »', () => {
+    const champ = construireOmbriere({ modules: 0, tables: [], rangees: [] } as never, { hauteurLibreM: 2.5 } as never);
+    expect(champ.nonMesure).toContain('aucune travée rendue par le moteur');
+    expect(champ.nonMesure.join(' ')).not.toMatch(/table/);
+  });
+});
+
+describe('T4-U2-005 — la forme se choisit AVANT « Créer le toit » (ordre de la maquette : Forme puis Dimensions)', () => {
+  it('sans contour : la forme est retenue et dite ; à la création du toit, il est découpé dans cette forme', () => {
+    let contour: [number, number][] = [];
+    let appels = 0;
+    let statut = '';
+    const f = monterFormesToit({
+      ancre: null, contour: () => contour, pente: () => 30, existants: () => [{ id: 'area-1' }], obstacles: () => 0,
+      appliquer: (pans) => void (appels += pans.length), setStatus: (m) => void (statut = m),
+    });
+    f.cliquer('gable');
+    expect(appels).toBe(0);
+    expect(statut).toBe('Forme « 2 pans » choisie : saisissez la longueur et la largeur puis « Créer le toit » — il sera découpé dans cette forme.');
+    contour = rectRing(10, 6); // « Créer le toit » ferme le contour
+    f.rafraichir();
+    expect(appels).toBe(2);
+    expect(statut).toBe('Toit découpé en 2 pans.');
+    f.rafraichir(); // une seule fois
+    expect(appels).toBe(2);
+  });
+});
+
 describe('ACAL435 : cibleVue', () => {
   it('les quatre cibles, cap = azimut + 180 mod 360, saut sous reduced-motion', () => {
     expect(cibleVue('dessus', 150)).toEqual({ pitch: 0, bearing: 0 });

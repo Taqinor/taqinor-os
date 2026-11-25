@@ -60,7 +60,7 @@ describe('CALX109 câblage — le catalogue de modules atteint le constructeur',
 
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(calepinageApi.calepinages.modulesDisponibles)
-      .toHaveBeenCalledWith(String(CTX.calepinage.id))
+      .toHaveBeenCalledWith(String(CTX.calepinage.id), { suppressErrorToast: true }) // T4-U4-026 — l'écran dit l'échec
     expect(initRoofToolPro8.mock.calls[0][0].modulesDisponibles).toEqual(MODULES)
   })
 
@@ -83,6 +83,17 @@ describe('CALX109 câblage — le catalogue de modules atteint le constructeur',
     // T4-B4-002 — jamais un message mort : « Réessayer » relit le catalogue (le tracé est gardé pour la reprise).
     expect(screen.getByRole('button', { name: 'Réessayer' })).toBeTruthy()
     expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel).not.toHaveBeenCalled()
+  })
+
+  // T4-U4-026 — la lecture ratée se dit DÈS l'ouverture (avec « Réessayer »), pas seulement au clic sur Enregistrer.
+  it('T4-U4-026 — catalogue en échec : « Catalogue des modules indisponible » et « Réessayer » dès l’ouverture', async () => {
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context'))
+    calepinageApi.calepinages.modulesDisponibles.mockRejectedValue(new Error('403'))
+    rendreCalepinage(CTX.calepinage.id)
+    const refus = await screen.findByTestId('cal-erreur-enregistrement')
+    expect(refus.textContent).toMatch(/Catalogue des modules indisponible/)
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeTruthy()
   })
 
   // T4-B4-002 — sur une pile chargée, la première lecture du catalogue restait SANS réponse (délai de 20 s, « annulée »
@@ -132,7 +143,7 @@ describe('CALX109 câblage — le catalogue de modules atteint le constructeur',
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(calepinageApi.calepinages.depuisModele).toHaveBeenCalledWith({ devis_id: 9 })
     expect(calepinageApi.calepinages.modulesDisponibles)
-      .toHaveBeenCalledWith(String(CTX.calepinage.id))
+      .toHaveBeenCalledWith(String(CTX.calepinage.id), { suppressErrorToast: true })
     expect(initRoofToolPro8.mock.calls[0][0].modulesDisponibles).toEqual(MODULES)
   })
 })

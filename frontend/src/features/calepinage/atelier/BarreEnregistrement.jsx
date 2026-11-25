@@ -30,17 +30,18 @@ export default function BarreEnregistrement({
   actionErreur = null, // T4-B4-002 — `{libelle, onClick}` : le geste qui lève l'erreur (jamais un message mort)
   etatPropre = null,
   derniereVersionLe = null, // l'heure de la DERNIÈRE VERSION servie (`versions.derniere_le`), tant que la session n'a rien écrit
+  refus = null, // T4-U4-027 — l'enregistrement REFUSÉ (409 modifié ailleurs) : la barre le dit, jamais « ✓ Enregistré »
 }) {
   const heure = enregistreLe || derniereVersionLe
-  const propre = !modifiee && !enCours
+  const propre = !modifiee && !enCours && !refus
   const textePropre = etatPropre || texteEnregistre(heure)
   // Scène propre et état connu : l'état SE LIT comme la maquette (« ✓ Enregistré à HH:MM ») et porte le geste.
   const etatSeul = propre && !!textePropre
   return (
     <div className="cal-barre-enregistrement" data-testid="cal-enregistrer-calepinage">
-      {modifiee && (
+      {(modifiee || refus) && (
         <p className="cal-etat-modifie" role="status" data-testid="cal-etat-enregistrement">
-          Modifications non enregistrées
+          {refus || 'Modifications non enregistrées'}
         </p>
       )}
       <button type="button" onClick={onEnregistrer} disabled={desactive}

@@ -1,15 +1,14 @@
 import useResource from '../../../hooks/useResource'
 import calepinageApi from '../../../api/calepinageApi'
 import { useModeExpert } from '../atelier/modeExpert'
-import { libelleReglage } from '../reglages/profilDepart'
-import { reglagesPublies } from './LigneValeursPubliees.helpers'
+import { nomDuReglage, reglagesPublies } from './LigneValeursPubliees.helpers'
 
 /* ACAL698 — « n réglages utilisent des valeurs publiées, non mesurées sur ce
    chantier (…) · Voir les sources ». Le compte est celui des réglages FIGÉS au
    calcul (`simulation.reglages_utilises`) dont la `reference` commence par le
    préfixe du profil de départ (ACAL405) — jamais un compte de toutes les clés.
-   Libellés lus dans le registre servi par `GET parametres/` (clé brute si le
-   registre manque). Aucun réglage de ce type : la ligne est ABSENTE. Niveau
+   Libellés : `nomDuReglage` (registre `GET parametres/`, puis profil de départ, avec et sans le préfixe de section ;
+   jamais la clé brute — item 15). Aucun réglage de ce type : la ligne est ABSENTE. Niveau
    expert. « Voir les sources » ouvre « Réglages utilisés » (`onVoirSources`). */
 
 function libellesDuRegistre(donnees) {
@@ -37,10 +36,8 @@ function LigneAvecRegistre({ publiees, onVoirSources, enNote = false }) {
   // Les mots de tous les jours du profil de départ (« Reflets du verre », « Écarts entre panneaux »…) ;
   // une clé qui n'y est pas garde le libellé du registre servi, puis la clé.
   // La ligne experte garde les libellés du registre (le terme technique).
-  const noms = [...new Set(publiees.map((cle) => {
-    const { nom } = libelleReglage(cle)
-    return enNote && nom !== 'Autre réglage' ? nom.toLowerCase() : (libelles[cle] || cle)
-  }))].join(', ')
+  // Item 15 — UN résolveur (avec et sans le préfixe de section), jamais la clé brute.
+  const noms = [...new Set(publiees.map((cle) => nomDuReglage(cle, { registre: libelles, courant: enNote })))].join(', ')
   if (enNote) {
     // Étape Résultats guidée : la même phrase, DANS la note de « Du soleil au réseau ».
     return (

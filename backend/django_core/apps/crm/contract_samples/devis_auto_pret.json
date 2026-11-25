@@ -132,7 +132,8 @@
       "manquants_detail": [],
       "requis": [
         [
-          "facture_hiver"
+          "facture_hiver",
+          "conso_mensuelle_kwh"
         ],
         [
           "ville",

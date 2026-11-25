@@ -21,6 +21,20 @@ function rendre(lead = { id: 5 }) {
   return { setField, vue }
 }
 
+describe('T4-U1-022 — l’été dans l’unité de l’hiver', () => {
+  it('hiver déclaré en kWh, « été différent » coché : la fiche dit que l’été en kWh ne se saisit pas encore', () => {
+    rendre({ id: 6, conso_mensuelle_kwh: 450, facture_hiver: null, ete_differente: true })
+    expect(screen.getByTestId('energie-ete-kwh-absent'))
+      .toHaveTextContent('La consommation d’été en kWh ne peut pas encore être saisie')
+  })
+
+  it('hiver déclaré en MAD : la facture d’été en MAD, sans avertissement', () => {
+    rendre({ id: 7, facture_hiver: '650', ete_differente: true })
+    expect(document.getElementById('lf-facture-ete')).not.toBeNull()
+    expect(screen.queryByTestId('energie-ete-kwh-absent')).toBeNull()
+  })
+})
+
 describe('CAD158 — la facture est enregistrée au mois', () => {
   it('la règle pure est celle du serveur (même exemple de contrat)', () => {
     expect(factureAuMois(CONTRAT.corps.facture_hiver, CONTRAT.corps.facture_periodicite))

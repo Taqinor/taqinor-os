@@ -415,9 +415,19 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
                                   scenario=None, etude_extra=None, plafond_toit=None,
                                   journal_auto=None, origine=None,
                                   structure_produit_id=None, structure_type=None,
-                                  imposition=None):
+                                  imposition=None, conception=None, resultat_moteur=None):
     """Le corps RÉSIDENTIEL de :func:`creation_auto.build_devis_auto`
     (déplacé tel quel ; voir la docstring du dispatcher).
+
+    ``conception`` (ADEV142, D-ACAL-97) — la version COURANTE et à jour de la
+    conception du lead (``ConceptionLead``) : le moteur horaire n'est PAS
+    appelé, sa recommandation est LUE dans le bloc ``dimensionnement`` rangé
+    (:func:`dimensionneur_de_la_conception`) et les blocs rangés sont apportés
+    à la création (``etude_initiale``) : les rafraîchisseurs les trouvent à
+    jour par leurs empreintes. ``resultat_moteur`` : le résultat du moteur quand
+    il vient de tourner DANS CETTE requête (conception absente ou périmée) — sa
+    sortie du moteur horaire est relue telle quelle. ``None`` (LE DÉFAUT) ⇒
+    corps inchangé.
 
     ``imposition`` (COP2-V3, ``composition_imposee.Imposition``) — le kit
     IMPOSÉ, déjà résolu et contrôlé par
@@ -436,8 +446,10 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     decision = decider_taille_residentielle(
         lead=lead, company=company, target_kwc=target_kwc, scenario=scenario,
         plafond_toit=plafond_toit, imposition=imposition,
-        # Le moteur horaire lu dans CE module (cible des ``patch`` des tests).
-        dimensionner=_panneaux_dimensionnement_horaire)
+        # Le moteur horaire lu dans CE module (cible des ``patch`` des tests) ;
+        # ADEV142 — sa recommandation RANGÉE quand la conception est à jour.
+        dimensionner=(_panneaux_dimensionnement_horaire if conception is None
+                      else dimensionneur_de_la_conception(conception, resultat_moteur)))
     _verser_au_journal(journal_auto, decision.journal)
     structure_produit_id, structure_type = verifier_composition_residentielle(
         decision, lead=lead, company=company, taux_tva=taux_tva,
@@ -497,7 +509,9 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
         imposition=imposition,
         completer_etude=(_completer_etude
                          if isinstance(etude_extra, dict) and etude_extra
-                         else None))
+                         else None),
+        blocs_conception=blocs_a_apporter(conception),
+        conception_source=pointeur_de_conception(conception))
     panneaux, kwc = intention.cible.nb_panneaux, intention.cible.kwc
     resultat = appliquer(None, intention)
     devis = resultat['devis']
@@ -550,17 +564,44 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     return devis
 
 
+def dimensionneur_de_la_conception(conception, resultat_moteur=None):
+    """ADEV142 — le ``dimensionner`` de ``decider_taille_residentielle`` qui
+    LIT la sortie du moteur horaire au lieu de la recalculer : celle que le
+    moteur vient de rendre dans cette requête (``resultat_moteur.taille_moteur``),
+    sinon la recommandation du bloc ``dimensionnement`` rangé
+    (``recommandation`` / ``recommandation_avec``, sortie de
+    ``recommander_taille``). Même forme que :func:`_panneaux_dimensionnement_horaire`."""
+    from apps.ventes.domain.taille import MOTIF_MOTEUR_INDISPONIBLE, ResultatTaille, _recommandation_avec_rendue
+
+    def dimensionner(*, lead, company, phase):
+        if getattr(resultat_moteur, 'taille_moteur', None) is not None:
+            return resultat_moteur.taille_moteur
+        bloc = (getattr(conception, 'blocs', None) or {}).get('dimensionnement') or {}
+        recommandation, avec = bloc.get('recommandation'), bloc.get('recommandation_avec')
+        if not recommandation:  # jamais servi : l'appelant ne lit que des conceptions complètes
+            return ResultatTaille((0, None, MOTIF_MOTEUR_INDISPONIBLE, None))
+        return ResultatTaille(
+            (int(recommandation['panneaux']), recommandation.get('panel_watt'), 'moteur_horaire',
+             _recommandation_avec_rendue(avec)),
+            hors_residentiel=any((ligne or {}).get('hors_residentiel') for ligne in (recommandation, avec)))
+    return dimensionner
+
+
 def intention_auto_residentielle(decision, *, lead, company, taux_tva, user=None,
                                  remise_globale=Decimal('0'), origine=None,
                                  structure_produit_id=None, structure_type=None,
-                                 imposition=None, completer_etude=None, entrees=None):
+                                 imposition=None, completer_etude=None, entrees=None,
+                                 blocs_conception=None, conception_source=None):
     """ADEV133 (D-ACAL-97) — l'``IntentionDevis`` du devis automatique
     résidentiel, arrêtée depuis la décision pure : le LAYOUT lu par le lecteur
     du calepinage 3D (``_calepinage_range`` : le tracé du client est une donnée
     réelle), l'arbitrage du compte, et la cible SOUVERAINE (une puissance
     demandée gagne sur le moteur sans jamais réécrire le lead ni passer par
     ``Devis.overrides``). Partagée avec le moteur unique ; aucune écriture.
-    ``entrees`` : l'``EntreesMoteur`` déjà lu (QJR42), sinon lu ici."""
+    ``entrees`` : l'``EntreesMoteur`` déjà lu (QJR42), sinon lu ici.
+    ``blocs_conception`` (ADEV142) : les blocs de la conception rangée,
+    apportés à la création sous ce que le calepinage apporte lui-même ;
+    ``conception_source`` (ADEV143) : le pointeur posé sur le devis créé."""
     from apps.ventes.models import Devis
 
     layout = decision.layout
@@ -571,6 +612,8 @@ def intention_auto_residentielle(decision, *, lead, company, taux_tva, user=None
         layout, decision.panneaux, decision.kwc, company=company) if imposition is None
         else (decision.panneaux, decision.kwc))
     layout_range, etude_initiale = _calepinage_range(layout, toiture, kwc)
+    if blocs_conception:
+        etude_initiale = dict(blocs_conception, **(etude_initiale or {}))
     return IntentionDevis(
         origine=origine or ORIGINE_AUTO, company=company, user=user, lead=lead,
         mode_installation=Devis.ModeInstallation.RESIDENTIEL,
@@ -587,7 +630,7 @@ def intention_auto_residentielle(decision, *, lead, company, taux_tva, user=None
         phase=decision.phase, hors_reseau=decision.hors_reseau,
         # STKCAT8 — la MÊME structure que le contrôle à blanc.
         structure_produit_id=structure_produit_id, structure_type=structure_type,
-        completer_etude=completer_etude)
+        completer_etude=completer_etude, conception_source=conception_source)
 
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
@@ -601,6 +644,7 @@ from apps.ventes.domain.pipeline import (  # noqa: E402 — fin de module (anti-
     CibleDevis,
     IntentionDevis,
     appliquer,
+    pointeur_de_conception,
 )
 from apps.ventes.domain.etape_composer import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     COMPOSITION_AVEC,
@@ -624,4 +668,7 @@ from apps.ventes.domain.creation_calepinage import (  # noqa: E402 — fin de mo
     _arbitrage_du_calepinage,
     _calepinage_range,
 )
-from apps.ventes.domain.creation_auto import SCENARIOS_DEMANDABLES  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.creation_auto import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    SCENARIOS_DEMANDABLES,
+    blocs_a_apporter,
+)

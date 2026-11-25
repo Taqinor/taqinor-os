@@ -13,6 +13,7 @@ import {
   avancerGlisseEnvironnement,
   deplacementSommetAdmis, // ACAL77
   MOTIF_SOMMET_CROISE, // ACAL77
+  obstacleHorsDesPans, // T4-U1-024
 } from './obstaclesUi';
 import {
   newEnvironmentObject,
@@ -724,5 +725,20 @@ describe('ACAL533 — lignesObjetsSite', () => {
     ouvrirObjet({ id: 'p3', panId: 'a2' }, 'a1', deps);
     ouvrirObjet({ id: 'o4', panId: 'a1' }, 'a1', deps);
     expect(appels).toEqual(['pan:a2', 'obs:p3', 'obs:o4']);
+  });
+});
+
+/* T4-U1-024 — une cheminée posée À CÔTÉ du toit était acceptée « le calepinage l'évite », sans avertissement. */
+describe('T4-U1-024 — obstacleHorsDesPans : un obstacle dont le centre n’est sur aucun pan est signalé', () => {
+  const pan = { id: 'area-1', vertices: [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001], [-7.6, 33.5001]] as [number, number][] };
+  const sur = { centerLng: -7.59995, centerLat: 33.50005 };
+  const aCote = { centerLng: -7.5997, centerLat: 33.50005 };
+  it('sur le pan : non ; à côté : oui', () => {
+    expect(obstacleHorsDesPans(sur, [pan])).toBe(false);
+    expect(obstacleHorsDesPans(aCote, [pan])).toBe(true);
+  });
+  it('un pan vide (moins de trois sommets) ne contient rien ; aucun pan tracé : rien n’est signalé (rien à éviter)', () => {
+    expect(obstacleHorsDesPans(sur, [{ id: 'z', vertices: [] }])).toBe(false);
+    expect(obstacleHorsDesPans(sur, [])).toBe(false);
   });
 });

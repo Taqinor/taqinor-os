@@ -271,6 +271,22 @@ const SENS_AVEC_PICTO = SENS_DE_POSE.map((o) => ({
   ...o, libelle: <>{o.valeur === 'portrait' ? PICTO_PORTRAIT : o.valeur === 'landscape' ? PICTO_PAYSAGE : null}{o.libelle}</>,
 }))
 
+/** Item 14 (T4-U1-023) — le toit porte des objets qui font de l'ombre mais l'ombre n'est pas comptée : la phrase SERVIE
+    (`parcours.manque`, code `ombres_non_mesurees`) — avant, l'étape n'en disait rien. */
+function AvisOmbresNonComptees({ manque }) {
+  const ligne = (Array.isArray(manque) ? manque : []).find((m) => m?.code === 'ombres_non_mesurees')
+  if (!ligne?.message) return null
+  return (
+    <section className="cal-pan-alerte" data-testid="cal-panneaux-ombres-non-comptees" role="status">
+      <h2 className="cal-pan-alerte-titre">
+        <span className="cal-pan-alerte-pastille" aria-hidden="true"><span /><span /></span>
+        Ombres à compter
+      </h2>
+      <p className="cal-pan-alerte-texte">{ligne.message}</p>
+    </section>
+  )
+}
+
 /** L'alerte bleu-gris : seulement quand l'avis d'ombrage du constructeur propose de retirer des modules. */
 function AlerteOmbre({ ombre, g }) {
   const [garde, setGarde] = useState(false)
@@ -384,7 +400,9 @@ function useEnsoleillementALEntree(carteLue, rafraichir) {
   }, [carteLue, rafraichir])
 }
 
-export default function EtapePanneaux({ calepinageId, lectureSeule = false, enregistreLe = null, contexte = null, contexteEnCours = false }) {
+export default function EtapePanneaux({
+  calepinageId, lectureSeule = false, enregistreLe = null, contexte = null, contexteEnCours = false, parcours = null,
+}) {
   const [etat, rafraichir] = useConstructeur()
   // Chaque geste part au vrai contrôle, puis la lecture est refaite tout de suite (sinon elle suit 0,4 s plus tard).
   const g = Object.fromEntries(Object.entries(gestes).map(([nom, geste]) => [
@@ -418,6 +436,7 @@ export default function EtapePanneaux({ calepinageId, lectureSeule = false, enre
         )}
       </section>
       <AlerteOmbre key={etat.ombre?.n ?? 0} ombre={etat.ombre} g={g} />
+      <AvisOmbresNonComptees manque={parcours?.manque} />
       <SurCarte>
         <PuceResume figures={etat.figures} publiee={servi.publiee} />
         <div className="cal-carte-soleil" data-testid="cal-carte-soleil">

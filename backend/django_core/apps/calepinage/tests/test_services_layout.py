@@ -255,10 +255,10 @@ class EvenementsDuMoteurUniqueTest(SimpleTestCase):
 
     # Retirés d'``event_coverage.NO_STATIC_EMITTER`` au fil des émetteurs :
     # ALEA68 (lead_entrees_modifiees), ACAL2011 (pose_enregistree).
-    # ADEV135 a posé le dernier émetteur : ``conception/service.py::relancer``.
+    # ADEV135 a posé le dernier : ``conception/service.py::relancer``.
     SANS_EMETTEUR_STATIQUE = set()
-    # Réservés jusqu'à ADEV139 (abonné ventes) ; ALEA69 a abonné le CRM.
-    SANS_ABONNE = {'lead_entrees_modifiees', 'pose_enregistree'}
+    # ADEV139 a abonné ventes aux deux premiers ; ALEA69 a abonné le CRM au troisième.
+    SANS_ABONNE = set()
     NOMS = {'lead_entrees_modifiees': 'lead', 'pose_enregistree': 'calepinage',
             'conception_recalculee': 'devis'}
 

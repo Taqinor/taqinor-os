@@ -13,7 +13,7 @@ sortie du moteur, dont ``blocs`` = le contenu COMPLET de ``etude_params`` tel
 que le devis automatique né de cette conception le porterait (sans les notes
 vendeur ``journal_auto``), et ``declencheur`` dont la ``raison`` est LA phrase
 que lit l'utilisateur (« Recalculé le 23/11 à 14 h 05 : Facture hiver 900 →
-1 200 »), recopiée telle quelle par le chatter du CRM. Aucune clé d'achat ni de
+1 200 MAD »), recopiée telle quelle par le chatter du CRM. Aucune clé d'achat ni de
 marge n'entre dans ``valeurs`` ni ``blocs`` (parcours récursif). Aucun devis
 n'est lu ni écrit ici : un devis envoyé ou accepté ne bouge jamais.
 """
@@ -21,7 +21,13 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 import json
+import logging
 
+logger = logging.getLogger(__name__)
+
+#: Unité dite après « avant → après » (relecture m4 : « … 900 → 1 200 MAD ») ;
+#: les colonnes en kWh portent déjà l'unité dans leur libellé.
+UNITES = {'facture_hiver': 'MAD', 'facture_ete': 'MAD'}
 #: Origines admises d'un déclencheur (contrat, clé ``declencheur.origine``).
 ORIGINES = ('lead_entrees_modifiees', 'pose_enregistree', 'regles', 'remplissage', 'manuel', 'filet')
 #: La fin de la phrase « pourquoi » quand aucun champ n'est nommé.
@@ -68,28 +74,101 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
     from apps.ventes.conception.moteur import calculer_conception, empreinte_conception, reglages_lus_sans_creer
     from apps.ventes.models import ConceptionLead
 
+    from apps.crm.selectors import lead_efface
+
+    debut = timezone.now()  # relecture E3 Q5 : avant toute lecture des entrées
     origine, champs = _declencheur_valide(declencheur)
-    lead, porteur, refus = _porteur(lead, company, calepinage_id)
+    try:
+        lead, porteur, refus = _porteur(lead, company, calepinage_id)
+    except ValueError:
+        if lead is None or calepinage_id is None:
+            raise
+        # Relecture E3 M1 — porteur LEAD : son calepinage archivé, illisible
+        # ou relié à un autre lead n'est pas une erreur ; la conception du lead
+        # continue SANS cette pose (sinon elle ne bougerait plus jamais).
+        logger.warning('Conception du lead #%s : calepinage #%s archivé ou relié ailleurs, '
+                       'recalcul sans cette pose', getattr(lead, 'pk', None), calepinage_id)
+        calepinage_id, toit = None, None
+        lead, porteur, refus = _porteur(lead, company, None)
     if refus is not None:
         return Relance(None, False, None, refus)
-    courante = ConceptionLead.objects.filter(company=company, courante=True, **porteur).first()
+    if lead_efface(lead):  # relecture E3 B1 (loi 09-08) : rien calculé, rangé ni émis
+        return Relance(None, False, None, dict(REFUS_LEAD_EFFACE))
+    courante = _courante(ConceptionLead, company, porteur)
     with reglages_lus_sans_creer(company):
         entrees = entrees_pour(lead, company, toit=toit)
         if courante is not None and courante.empreinte == empreinte_conception(entrees) and not forcer:
             return Relance(courante, False, None)
         resultat = calculer_conception(lead, company, entrees=entrees, toit=toit)
+    origine, champs = _pourquoi(courante, entrees, origine, champs)
     maintenant = timezone.now()
     version = ConceptionLead.ranger(
         lead=porteur.get('lead'), calepinage_id=calepinage_id, company=company,
         calcule_le=maintenant, calcule_par=auteur,
         declencheur={'raison': phrase_du_declencheur(porteur.get('lead'), champs, origine, maintenant),
                      'champs': champs, 'origine': origine},
-        empreinte_pose=entrees.empreinte_pose, **_champs_ranges(resultat))
+        empreinte_pose=entrees.empreinte_pose, sauf_empreinte=None if forcer else resultat.empreinte,
+        garde=_garde_de_rangement(company, porteur.get('lead'), debut), **_champs_ranges(resultat))
+    if version is None:  # lead effacé entre-temps, ou version plus récente déjà rangée : rien
+        return Relance(None, False, resultat)
+    if not version.ecrite:  # relance simultanée des mêmes entrées : déjà rangée (relecture m1)
+        return Relance(version, False, resultat)
     _annoncer_apres_validation(version)
     return Relance(version, True, resultat)
 
 
+def _pourquoi(courante, entrees, origine, champs):
+    """Relecture E4 B1 — ce que la phrase DIT : les champs nommés par
+    l'appelant, plus les réglages société changés depuis la version courante
+    (« catalogue modifié », « TVA modifiée ») et, quand l'appelant n'en nomme
+    aucun (filet, devis demandé), les entrées du lead changées (« Raccordement
+    Monophasé → Triphasé »). Une version d'avant ce suivi, sans autre
+    changement, est dite « règles de calcul mises à jour »."""
+    from apps.ventes.conception.societe import changements, format_d_avant
+
+    if courante is None:
+        return origine, champs
+    ancienne = courante.entrees_utilisees
+    releves = changements(ancienne, entrees.entrees_utilisees, champs)
+    if not champs and not releves and origine == 'filet' and format_d_avant(ancienne):
+        return 'regles', champs
+    return origine, champs + _declencheur_valide({'origine': origine, 'champs': releves})[1]
+
+
+def _garde_de_rangement(company, lead, debut):
+    """La garde de ``ConceptionLead.ranger``, SOUS sa transaction :
+
+    * relecture E3 B1(b) — la ligne du lead est VERROUILLÉE et relue : effacé
+      (ou disparu) pendant le calcul ⇒ rien n'est rangé (le scrub prend le
+      même verrou : il passe avant ou après, jamais au milieu) ;
+    * relecture E3 Q5 — une version courante calculée APRÈS le début de cette
+      relance (une relance plus récente, d'autres entrées) n'est jamais
+      recouverte par des entrées plus anciennes."""
+    from apps.crm.selectors import lead_efface_sous_verrou
+
+    def garde(deja):
+        if lead is not None and lead_efface_sous_verrou(company, lead.pk):
+            logger.info('Conception du lead #%s non rangée : lead effacé pendant le calcul', lead.pk)
+            return False
+        courante = deja.filter(courante=True).only('pk', 'calcule_le').first()
+        if courante is not None and courante.calcule_le is not None and courante.calcule_le > debut:
+            logger.info('Conception non rangée : la version #%s, plus récente, est déjà courante', courante.pk)
+            return False
+        return True
+    return garde
+
+
+def _courante(modele, company, porteur):
+    """La version courante lue AVANT le calcul (sans verrou : la décision
+    d'écrire est reprise sous verrou par ``ConceptionLead.ranger``)."""
+    return modele.objects.filter(company=company, courante=True, **porteur).first()
+
+
 CODE_APPEL_OFFRES = 'appel_offres_hors_moteur'
+#: Relecture E3 B1 — un lead effacé (loi 09-08) n'a plus de conception : ses
+#: entrées effacées ne sont jamais recopiées dans une version.
+REFUS_LEAD_EFFACE = {'code': 'lead_efface', 'champ': 'nom',
+                     'message': 'Lead effacé (loi 09-08) : aucune conception.'}
 
 
 def _porteur(lead, company, calepinage_id, calepinage=None):
@@ -212,12 +291,16 @@ def _annoncer_apres_validation(version):
             sender=type(version), company_id=version.company_id, lead_id=version.lead_id,
             calepinage_id=version.calepinage_id, version=version.version, declencheur=version.declencheur)
     transaction.on_commit(annoncer)
+    if version.lead_id and version.etat == 'complet':
+        # Relecture E4 M2 — ADEV147 après CHAQUE écriture, en tâche (jamais dans la requête).
+        from apps.ventes.conception.receivers import mettre_suivi_en_file
+        transaction.on_commit(lambda: mettre_suivi_en_file(version.company_id, version.lead_id))
 
 
 # ── La phrase « pourquoi » (lue telle quelle au chatter du lead) ─────────────
 
 def phrase_du_declencheur(lead, champs, origine, quand):
-    """« Recalculé le 23/11 à 14 h 05 : Facture hiver 900 → 1 200 » — date et
+    """« Recalculé le 23/11 à 14 h 05 : Facture hiver 900 → 1 200 MAD » — date et
     heure locales, chaque champ changé sous le libellé que montrent la fiche et
     l'historique du lead (``crm.activity.TRACKED_FIELDS``), avant → après."""
     from django.utils import timezone
@@ -226,9 +309,20 @@ def phrase_du_declencheur(lead, champs, origine, quand):
     debut = 'Recalculé le %s à %d h %02d' % (moment.strftime('%d/%m'), moment.hour, moment.minute)
     if not champs:
         return '%s : %s' % (debut, MOTIFS_ORIGINE[origine])
-    morceaux = ['%s %s → %s' % (libelle_champ(lead, c['champ']), _lisible(lead, c['champ'], c['avant']),
-                                _lisible(lead, c['champ'], c['apres'])) for c in champs]
-    return '%s : %s' % (debut, ' ; '.join(morceaux))
+    return '%s : %s' % (debut, ' ; '.join(_morceau(lead, c) for c in champs))
+
+
+def _morceau(lead, c):
+    from apps.ventes.conception.societe import MOTIFS
+
+    if c['champ'] in MOTIFS:  # relecture E4 B1 : un réglage société, dit en mots
+        if c['avant'] is None or c['apres'] is None:
+            return MOTIFS[c['champ']]
+        return '%s (%s → %s %%)' % (MOTIFS[c['champ']], _lisible(lead, c['champ'], c['avant']),
+                                    _lisible(lead, c['champ'], c['apres']))
+    return ('%s %s → %s' % (libelle_champ(lead, c['champ']), _lisible(lead, c['champ'], c['avant']),
+                            _lisible(lead, c['champ'], c['apres']))
+            + (' ' + UNITES[c['champ']] if c['champ'] in UNITES else ''))
 
 
 def _champ_du_modele(lead, champ):
@@ -242,10 +336,12 @@ def _champ_du_modele(lead, champ):
 
 def libelle_champ(lead, champ):
     # Le libellé de l'historique du lead : la ligne « pourquoi » s'y pose (ALEA69).
-    from apps.crm.activity import TRACKED_FIELDS
+    from apps.crm.selectors import libelle_champ_lead
+    from apps.ventes.conception.societe import LIBELLES
 
-    if champ in TRACKED_FIELDS:
-        return TRACKED_FIELDS[champ]
+    libelle = LIBELLES.get(champ) or libelle_champ_lead(champ)
+    if libelle:
+        return libelle
     modele = _champ_du_modele(lead, champ)
     return str(modele.verbose_name).capitalize() if modele is not None else champ
 

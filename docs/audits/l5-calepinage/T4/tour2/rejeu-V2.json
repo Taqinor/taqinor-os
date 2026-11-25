@@ -1,0 +1,104 @@
+[
+ {
+  "id": "T4-U3-002",
+  "verdict": "autre",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/i1-o4-after-edit.png",
+  "note": "Lead V2-i1 : origine « Donné par le foreur » gardée à la réouverture, historique juste (« Estimation du client → Donné par le foreur ») ; « Mesuré en visite » et « Saisi sur le site » grisés, le libellé de l'option dit « posé par le relevé de la visite technique ». MAIS corriger ensuite le seul débit (25 → 30) remet l'origine à « Estimation du client » sans rien dire, au nom de l'utilisateur dans l'historique : nouveau constat T4-V2-001 (S2). Avant : i1-o3-reopen.png"
+ },
+ {
+  "id": "T4-U3-007",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/i1-s17-after-Copierlelien.png",
+  "note": "Ligne « Smart Meter » qté 1 à 0 MAD : alerte du générateur « Prix à 0 : « Smart Meter » — saisissez un prix ou retirez la ligne… ne pourra pas être envoyé » (i1-z-z1-price0.png) ; brouillon DEV-202611-0117 enregistré ; « Envoyer au client » → « Copier le lien » refusé 409 « Envoi refusé : cette ligne a un prix à 0 : « Smart Meter ». … saisissez un prix ou retirez la ligne du devis, puis renvoyez. » ; prix mis à 1 800 → l'envoi passe (lien affiché, i1-s17c). Seul canal jouable : WhatsApp et e-mail grisés (lead sans téléphone ni e-mail). Un clic sur « Copier le lien » n'a rien fait une fois (aucune requête), le rejeu a marché : non retenu."
+ },
+ {
+  "id": "T4-U3-006",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/i1-gen-s5.png",
+  "note": "Générateur « Agricole (pompage) » : lignes de départ Pompe, Variateur, Afficheur, Panneaux, Structure au sol, Câble solaire, Protections DC/AC, Installation pompage — aucun onduleur ni batterie. Changer de marché sur un tableau rempli demande « Changer de marché ? L'étude et les lignes déjà remplies pour ce devis seront réinitialisées. Annuler / Changer de marché » (i1-g2-a5-switch.png). Restes notés à part : T4-V2-002 (édition d'un devis auto agricole = étude vide), T4-V2-006 (câble et protections disparaissent à l'auto-remplissage)."
+ },
+ {
+  "id": "T4-U3-008",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/i1-lib-l3-banner.png",
+  "note": "Composition libre + variateur : 1er clic sur « Créer le devis » (carte du bas, puis rail de droite) → aucune requête, bandeau « 8 lignes sans produit ne seront pas enregistrées : … sinon confirmez ci-dessous » avec son propre bouton « Créer sans ces lignes », amené dans la vue (y = 434 px) ; ce bouton crée DEV-202611-0117."
+ },
+ {
+  "id": "T4-U3-004",
+  "verdict": "autre",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/i2-sz-hh.png",
+  "note": "Le cas « pompe sans prix » n'existe plus sur cette copie : site monophasé (V2-i2, HMT 40 m, 5 m³/h) → le devis auto passe (DEV-202611-0114, 23 200 MAD) avec « Pompe immergée solaire 3 CV Monophasé » (prix, sans courbe) ; l'écran nomme la pompe retenue et dit « à confirmer sur la courbe constructeur ; aucun m³/jour publié tant que la courbe manque », sans dire qui peut saisir la courbe, et affirme « sans débit déclaré » alors que 5 m³/h est déclaré (T4-V2-012), en formules (T4-V2-011). Triphasé HMT 80 m / 20 m³/h (V2-i1, DEV-202611-0113) : pompe OSP 30/11 12,5 CV / 9,3 kW, 30,8 m³/h à 80 m, variateur VEICHI SI23 11 kW 380 V, 23 panneaux 715 W = 16,45 kWc, 154,4 m³/jour en novembre (5 h équivalentes), 104 600 MAD TTC — mêmes chiffres au bandeau, au générateur, au PDF complet (p.1, p.3), au 1 page (≈ 154 m³) et à la note de calcul (p.4). Les trois pompes proposées sont incohérentes (T4-V2-003)."
+ },
+ {
+  "id": "T4-U3-009",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/i1-list-1page-dlg.png",
+  "note": "Fenêtre PDF d'un devis agricole : Format complet / Version courte (1 page) / Joindre la note de calcul / Devis Final — plus de choix « Calepinage ». Chaque option change le PDF : complet 3 p., 1 page 1 p., note de calcul 4 p. (annexe FDA), devis final 3 p. sans « À confirmer par la visite » ni l'étape de visite. Restes : T4-V2-008 (2 demandes sur 7 jamais livrées, sans message), T4-V2-009 (devis final garde « à vérifier à la visite »)."
+ },
+ {
+  "id": "T4-U2-003",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/i1-s17c-after-Copierlelien.png",
+  "note": "« Copier le lien » sans presse-papiers : « Copie impossible : sélectionnez le lien ci-dessous et copiez-le. » + champ « Lien de la page client » qui contient l'adresse (http://site-public.invalid/proposition/…)."
+ },
+ {
+  "id": "T4-U3-011",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/i1-s17c-after-Copierlelien.png",
+  "note": "Même rejeu : lien affiché dans un champ ; dans la fenêtre, « WhatsApp indisponible : aucun numéro de téléphone sur la fiche du lead. » et « E-mail indisponible : aucune adresse e-mail sur la fiche du lead. » + « Complétez la fiche du lead, ou copiez le lien pour l'envoyer vous-même. »"
+ },
+ {
+  "id": "T4-U3-001",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/i2-k2-landed.png",
+  "note": "Création : pas d'astérisque, mais la note dit « Les champs requis pour le devis automatique sont calculés par le serveur : ils seront marqués d'un * dès la fiche créée ». Sur la fiche : * sur Besoin en eau, Débit souhaité, HMT, Débit de la pompe actuelle, et « Saisi ailleurs : Raccordement * (phase du site…) — section « Profil énergétique » » (bouton). Refus du devis auto (V2-i2) : « Relevé du point d'eau à faire avant le devis… » + bouton « Compléter : Niveau d'eau statique (m) » qui ouvre la section Pompage et met le curseur dans le champ (focus lf-niveau-statique)."
+ },
+ {
+  "id": "T4-U3-003",
+  "verdict": "autre",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/i1-auto-done.png",
+  "note": "Fiche du lead : plus de « D-AGR-4 » ni « mesure_visite = » (refus en mots, aide en mots). Restent ailleurs : « renseigner INST-PMP (alerte interne) » au devis auto et au générateur (T4-V2-004), formules « kW min 1,56 = Q × HMT × 2,725 / (1000 × η EST.) », « E / (η × E_d) », « borne basse AMEE » au générateur (T4-V2-011)."
+ },
+ {
+  "id": "T4-U3-013",
+  "verdict": "pas corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/i2-t-toast.png",
+  "note": "Atelier du calepinage d'un lead agricole sans GPS : le toast « Site.pin : épingle du site non posée : la longitude est inconnue, aucune heure solaire n'est calculée » s'affiche encore (deux fois dans la page) et soleil-legal répond 409 à l'ouverture. Le résultat de pompage n'est plus dans le calepinage (toast « Lead agricole : le pompage se chiffre depuis l'écran devis agricole ») : le texte « core/electrique/types.py » n'est plus atteignable."
+ },
+ {
+  "id": "T4-U3-005",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/i1-g2-a4-selector.png",
+  "note": "Sélecteur « OSP 30 » : nom complet « Pompe immergée OSP 30/11 — 12.5 CV / 9.3 kW (3\", 380V) », prix, « 12.5 CV · HMT d'arrêt 125 m · courbe constructeur », aucune ligne coupée (scrollWidth = clientWidth). Option grisée (recherche « Mono », i2-gm-m3-selector.png) : « Disjoncteur AC courbe C 16 A monophasé — prix à renseigner — Protection sans prix de vente : non sélectionnable » + infobulle « …tant que son prix n'est pas saisi dans Stock »."
+ },
+ {
+  "id": "T4-U2-011",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/r1-sm-w1-line.png",
+  "note": "DEV-202611-0118 (résidentiel, deux options) → « Modifier » → « Ajouter ligne » → « Smart Meter » qté 2 : la ligne porte l'étiquette « Option sans batterie » ; Total sans batterie 38 800 → 42 400 MAD, avec batterie inchangé 62 800. « Wifi Dongle » n'a pas pu être rejoué : la recherche « Wifi » répond « Aucun produit pour « Wifi » » (le devis auto porte pourtant une ligne Wifi Dongle). Une ligne sans étiquette (Transport, qté 1 → 2) a fait monter les deux totaux de 1 000 MAD."
+ },
+ {
+  "id": "T4-U1-010",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/r1-sm-w1-line.png",
+  "note": "Même rejeu que T4-U2-011 (Smart Meter au lieu de Wifi Dongle, introuvable au sélecteur)."
+ },
+ {
+  "id": "T4-U1-026",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/r1-auto-done.png",
+  "note": "Bandeau « 3,85 kWc · 61 800 MAD TTC » = PDF Premium p.2 « Puissance 3,85 kWc » / « TOTAL TTC 61 800,00 MAD » (option avec batterie) ; agricole : bandeau 16,45 kWc = PDF 16,45 kWc."
+ },
+ {
+  "id": "T4-U3-024",
+  "verdict": "autre",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/r1-auto-done.png",
+  "note": "Puissance exacte (3,85, plus d'arrondi), mais le bandeau ne dit toujours pas de quelle option il s'agit et ne montre pas l'autre (2,2 kWc · 37 800 MAD) : T4-V2-013."
+ },
+ {
+  "id": "T4-U1-031",
+  "verdict": "corrigé",
+  "preuve": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/r1-contact.png",
+  "note": "Lead V2-r1 (ville « casa ») : « Vérifier la ville » sous le champ Ville (x 550, y 324, 103 × 32), libellé « Email » à (752, 253) : aucun chevauchement. Joué en clair / Commercial (le constat d'origine était en sombre / Commercial responsable)."
+ }
+]

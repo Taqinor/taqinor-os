@@ -203,7 +203,8 @@ class TestDevisAutoProCIQ404(SimpleTestCase):
             lead = self._lead(type_installation=mode)
             self.assertIsNone(visite_avant_devis(lead), mode)
             self.assertIsNone(source_conso(lead), mode)
-        self.assertEqual(champs_requis(self._lead()), [['facture_hiver'], ['ville', 'gps_lat']])
+        self.assertEqual(champs_requis(self._lead()),
+                         [['facture_hiver', 'conso_mensuelle_kwh'], ['ville', 'gps_lat']])
 
     def test_exemples_commercial_et_industriel_du_contrat(self):
         # ALEA47 — contrat BT déclaré, rythme manquant (aucune activité).
@@ -309,10 +310,11 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
             self.assertIsNone(visite_point_eau_avant_devis(lead), mode)
 
     def test_non_regression_residentiel_et_pro(self):
-        self.assertEqual(champs_requis(Lead(nom='x')), [['facture_hiver'], ['ville', 'gps_lat']])
+        self.assertEqual(champs_requis(Lead(nom='x')),
+                         [['facture_hiver', 'conso_mensuelle_kwh'], ['ville', 'gps_lat']])
         self.assertEqual(
             champs_requis(Lead(nom='x', ete_differente=True)),
-            [['facture_hiver'], ['facture_ete'], ['ville', 'gps_lat']])
+            [['facture_hiver', 'conso_mensuelle_kwh'], ['facture_ete'], ['ville', 'gps_lat']])
         for mode in ('industriel', 'commercial'):
             # CIQ404 — groupe pro du contrat CIQ1 ; ALEA47 — + le rythme que
             # le moteur exige (ici tout manque) ; ADEV125/ADEV126 — le contrat et

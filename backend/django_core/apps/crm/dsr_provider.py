@@ -34,6 +34,9 @@ PROVIDER_NAME = 'crm'
 #: à ``Client``) : c'est ce nom qui fait foi, une seule fois, à un seul
 #: endroit.
 LEAD_NOM_ANONYMISE = 'Anonymisé'
+#: Relecture E3 B1(f) — le corps d'une ligne « Conception recalculée » d'un
+#: lead effacé : sans aucune valeur d'entrée.
+CORPS_CONCEPTION_CAVIARDE = 'Conception recalculée'
 
 #: ACRM19 (C-ACRM-012) — ce qui remplace une copie brute d'intake effacée.
 PAYLOAD_CAVIARDE = {'caviarde': True,
@@ -268,6 +271,11 @@ def _caviarder_historique(company, lead, identifiants, champs_effaces):
         for identifiant in identifiants:
             lignes.filter(body__contains=identifiant).update(body=Replace(
                 'body', Value(identifiant), Value(LEAD_NOM_ANONYMISE)))
+        # Relecture E3 B1(f) — la phrase « Conception recalculée : GPS
+        # latitude 33,57 → 33,58 » (ALEA69) porte des VALEURS d'entrée (GPS,
+        # factures, consommation) : sans valeur, la ligne reste.
+        lignes.filter(field='conception_version').update(
+            body=CORPS_CONCEPTION_CAVIARDE, old_value=None, new_value=None)
 
 
 def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
@@ -520,8 +528,12 @@ def prospects_hors_duree(now=None):
             .distinct()
             .exclude(stage=stages.SIGNED)
             .exclude(nom=LEAD_NOM_ANONYMISE)
-            .annotate(dernier_contact=Coalesce(Max('activites__created_at'),
-                                               'date_creation'))
+            # Relecture E3 M3 — la ligne SYSTÈME de la conception (« Conception
+            # recalculée », ALEA69) n'est le contact de personne.
+            .annotate(dernier_contact=Coalesce(
+                Max('activites__created_at',
+                    filter=~Q(activites__field='conception_version')),
+                'date_creation'))
             .filter(dernier_contact__lt=limite))
 
 

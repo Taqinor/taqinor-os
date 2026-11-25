@@ -300,6 +300,15 @@ class Devis(VerrouOptimisteMixin, RechercheFTSMixin, models.Model):
     electrical_design_hash = models.CharField(
         max_length=64, blank=True, null=True, db_index=True)
 
+    # ADEV143 (D-ACAL-97) — la version de conception du lead dont ce devis est
+    # NÉ (``{id, version, empreinte}``), posée à la création par le devis
+    # automatique (``pipeline.champs_du_brouillon``, ``creation_auto``) et
+    # jamais réécrite ensuite (envoi, relance, rafraîchissement). Une COPIE ou
+    # une RÉVISION n'en porte pas (ses blocs viennent du devis source). Une
+    # colonne, pas une clé d'``etude_params`` : jamais servie (exclue de
+    # ``DevisSerializer``), jamais imprimée.
+    conception_source = models.JSONField(null=True, blank=True, default=None, editable=False)
+
     # ── QX23be — instantané de MARGE (usage manager UNIQUEMENT) ──
     # Marge HT figée au save/envoi = Σ(HT lignes) − Σ(qté × prix_achat produit).
     # NULLABLE (les devis dont aucun produit lié n'a de prix_achat gardent None).

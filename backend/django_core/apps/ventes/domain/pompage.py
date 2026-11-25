@@ -1680,8 +1680,23 @@ def roles_minimum_manquants(sortie):
             motif = 'prix à renseigner au catalogue'
         else:
             continue
-        manquants.append({'cle': cle, 'libelle': libelle, 'motif': motif})
+        manquants.append({'cle': cle, 'libelle': libelle, 'motif': motif,
+                          'articles': _article_de_la_ligne(ligne)})
     return manquants
+
+
+def _article_de_la_ligne(ligne):
+    """T4-U3-021 — l'article du catalogue en cause (``[{id, nom}]``, jamais un
+    prix) : celui de la ligne du kit, lu dans le catalogue de la société
+    (``produits_pompage``) ; ``[]`` sans article."""
+    from core.pompage.kit import SUFFIXE_PRIX
+
+    if not ligne or not ligne.get('produit'):
+        return []
+    nom = str(ligne.get('designation') or '')
+    if nom.endswith(SUFFIXE_PRIX):
+        nom = nom[:-len(SUFFIXE_PRIX)]
+    return [{'id': ligne['produit'], 'nom': nom}]
 
 
 def lignes_kit_auto(sortie):

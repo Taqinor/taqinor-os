@@ -67,6 +67,8 @@ class VentesConfig(AppConfig):
         # les récepteurs du bus d'événements (M6). Import local, jamais
         # d'effet de bord à l'import du module.
         import_module(f'{self.name}.receivers')
+        # ADEV139 — la conception rangée se relance quand une entrée change.
+        import_module(f'{self.name}.conception.receivers')
         # QJR550 — plus de signal LigneDevis : l'instantané de configuration
         # (NTCPQ20) est pris une fois par geste (domain.cycle_vie).
         # QX36 — abonne le handler email entrant (réponse client → chatter +

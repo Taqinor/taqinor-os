@@ -331,6 +331,11 @@ def decider_agricole(*, lead, company):
     if manquants:
         premier = manquants[0]
         message = '%s : %s' % (premier['libelle'], premier['motif'])
+        # T4-U3-021 — l'article en cause NOMMÉ (catalogue de la société, jamais
+        # un prix) ; sans article servi, la phrase reste celle d'avant.
+        noms = [a['nom'] for a in premier.get('articles') or [] if a.get('nom')]
+        if noms:
+            message += ' — article%s %s' % ('s' if len(noms) > 1 else '', ', '.join('« %s »' % n for n in noms))
         if premier['cle'] == 'variateur' and premier['motif'] == 'aucun article au catalogue':
             message = 'Variateur : aucun modèle compatible au catalogue (%s kW %s)' % (
                 A._fr_nombre((sortie.get('puissance_retenue') or {}).get('kw')), alim)

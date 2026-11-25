@@ -94,6 +94,10 @@ import { useAtelierVues } from '../../features/calepinage/atelier/useAtelierVues
 import { useAtelierBoot, pousserAffectationAtelier, MESSAGE_ACCES_REFUSE } from '../../features/calepinage/atelier/useAtelierBoot.js'
 import '../../styles/roofbuilder.css'
 const MESSAGE_INTROUVABLE = 'Calepinage introuvable.' // = le texte posé par useAtelierBoot sur un 404
+// T4-U4-027 — l'écriture du document : l'écran dit lui-même chaque refus (bannière 409, message sous la barre) — pas de toast.
+const SANS_TOAST = { suppressErrorToast: true }
+// T4-U4-027 — la phrase de l'écran quand le serveur n'en sert aucune (une seule phrase, en entier).
+const MESSAGE_DOCUMENT_MODIFIE = 'La conception a été modifiée ailleurs (onglet, autre navigateur) : rien n’est écrasé — rechargez avant d’enregistrer.'
 const MESSAGE_CATALOGUE_INDISPONIBLE = 'Catalogue des modules indisponible : rien n’est enregistré. « Réessayer » le relit sans perdre votre tracé.'
 /** Lot 2 critique #23 — la conception est enregistrée, la resynchro du devis
  *  est refusée : le motif SERVEUR, jamais un « données invalides » générique. */
@@ -268,6 +272,7 @@ function AtelierToiture({
   const [hashBaseBrouillon, setHashBaseBrouillon] = useState(null)
   const [brouillonPropose, setBrouillonPropose] = useState(null)
   const gestionnaireBrouillonRef = useRef(null)
+  const enregistrementEnVolRef = useRef(false) // T4-U4-025 — aucun brouillon pendant un enregistrement réel
   // ACAL85 — la scène est HYDRATÉE (`onHydrationTerminee`, posé par le boot dans
   // les trois modes). `onApiReady` arrive avant l'hydratation : toute référence
   // « non modifiée » (garde de sortie, amorce du brouillon) se prend APRÈS.
@@ -411,6 +416,8 @@ function AtelierToiture({
   // rien à reprendre (aucun enregistrement possible).
   // Lot 2 critique #27 — `lectureSeuleImposee` : l'utilisateur n'a que le
   // droit de VOIR (403 sur la porte de résolution) ; aucun brouillon non plus.
+  // T4-U4-026 — un catalogue illisible se dit dès l'ouverture (avec « Réessayer »), pas seulement au clic sur Enregistrer.
+  const erreurBarre = genError ?? (catalogueIndisponible ? MESSAGE_CATALOGUE_INDISPONIBLE : null)
   const lectureSeuleContexte = (contexte != null && !contexte.modifiable)
     || lectureSeuleImposee
 
@@ -437,6 +444,8 @@ function AtelierToiture({
       obtenirLayout: () => sansVue(builderApi.current?.serializeLayout?.() ?? null), // H1 — jamais un brouillon de vue
       enPause: () => builderApi.current?.ajoutDePanEnCours?.() === true, // ACAL1329 — rien avant le dernier point
       hacher: empreinteSansVue, // ACAL1345 — choisir un pan dans la liste n'écrit aucun brouillon
+      enregistrementEnCours: () => enregistrementEnVolRef.current, // T4-U4-025
+      referenceInitiale: () => hashSceneReferenceRef.current, // T4-U4-025 — clé neuve : référence = document enregistré
     })
     gestionnaireBrouillonRef.current = gestionnaire
     gestionnaire.demarrer()
@@ -753,6 +762,7 @@ function AtelierToiture({
       return false
     }
     setSending(true)
+    enregistrementEnVolRef.current = true // T4-U4-025
     setGenStatus('Enregistrement du calepinage…')
     try {
       const layout = apiTool.serializeLayout()
@@ -765,7 +775,7 @@ function AtelierToiture({
           ? await calepinageApi.calepinages.modifierVariante(calepinageId, varianteId, { roof_layout: layout })
           // ACAL1905 — réponse trop lente : l'écran RELIT l'empreinte du serveur (l'écriture a pu aboutir) avant de parler.
           : await ecrireOuRelire(() => calepinageApi.calepinages
-            .enregistrerLayoutCalepinageConditionnel(calepinageId, layout, empreinteDocument), calepinageId, empreinteDocument,
+            .enregistrerLayoutCalepinageConditionnel(calepinageId, layout, empreinteDocument, SANS_TOAST), calepinageId, empreinteDocument,
           (relu) => relu != null && empreinteSansVue(relu) === empreinteSansVue(layout)) // la NÔTRE, pas celle d'un autre onglet
         resultat = varianteId ? {} : (res?.data ?? {})
         heureReponse = res?.headers?.date || new Date().toISOString() // ACAL399
@@ -786,7 +796,7 @@ function AtelierToiture({
           // n'est PAS le verrou (bannière distincte, seule sortie : Recharger).
           setDocumentModifie({
             detail: typeof data.detail === 'string' && data.detail.trim()
-              ? data.detail : 'La conception a été modifiée ailleurs.',
+              ? data.detail : MESSAGE_DOCUMENT_MODIFIE,
           })
           return false
         }
@@ -826,7 +836,7 @@ function AtelierToiture({
         // serveur sert déjà : le brouillon local ne porte donc plus rien de
         // plus récent, il s'efface (repli sur `layout` si `serializeLayout()`
         // n'est déjà plus joignable).
-        gestionnaireBrouillonRef.current?.effacerEtAmorcer()
+        gestionnaireBrouillonRef.current?.effacerEtAmorcer(sansVue(layout)) // T4-U4-025 — référence = document enregistré
         setHashBaseBrouillon(resultat?.empreinte_document || hashBaseBrouillon) // ACAL84
         if (!silencieux) toastInfo('Aucun changement')
         setGenStatus(null)
@@ -849,7 +859,7 @@ function AtelierToiture({
       // vient de changer (nouvelle version) : son empreinte change avec lui,
       // ce qui fait démarrer une minuterie/clé neuve pour la suite de la
       // session (l'effet dédié plus haut réagit à `hashBaseBrouillon`).
-      gestionnaireBrouillonRef.current?.effacerEtAmorcer()
+      gestionnaireBrouillonRef.current?.effacerEtAmorcer(sansVue(layout)) // T4-U4-025 — référence = document enregistré
       // ACAL84 — la clé suivante est l'empreinte SERVEUR rendue par l'écriture.
       setHashBaseBrouillon(resultat?.empreinte_document || hashBaseBrouillon)
       setGenStatus(null)
@@ -873,6 +883,8 @@ function AtelierToiture({
         : 'Erreur réseau pendant l’enregistrement. Vérifiez votre connexion puis réessayez.')
       setSending(false)
       return false
+    } finally {
+      enregistrementEnVolRef.current = false // T4-U4-025
     }
   }
 
@@ -880,7 +892,7 @@ function AtelierToiture({
   const renvoyerApresPanne = useEffectEvent(async ({ layout, empreinte }) => {
     setRenvoiReseau(null)
     try {
-      const res = await calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel(calepinageId, layout, empreinte)
+      const res = await calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel(calepinageId, layout, empreinte, SANS_TOAST)
       const nouvelle = res?.data?.empreinte_document
       if (nouvelle) setEmpreinteEcrite(nouvelle)
       gestionnaireBrouillonRef.current?.effacer()
@@ -892,7 +904,7 @@ function AtelierToiture({
     } catch (err) {
       const data = err?.response?.data
       setGenStatus(null)
-      if (err?.response?.status === 409 && data?.code === 'document_modifie') setDocumentModifie({ detail: data.detail || 'La conception a été modifiée ailleurs.' })
+      if (err?.response?.status === 409 && data?.code === 'document_modifie') setDocumentModifie({ detail: data.detail || MESSAGE_DOCUMENT_MODIFIE })
       else setGenError(httpMessage(err?.response?.status ?? 0, data))
     }
   })
@@ -1391,8 +1403,10 @@ function AtelierToiture({
         enregistrement={lectureSeule ? null : {
           libelle: devisSynchronise ? 'Enregistrer la conception' : 'Enregistrer le calepinage',
           enCours: sending, desactive: sending || !sceneHydratee || !!loadError, onEnregistrer: enregistrerCalepinage,
-          modifiee: sceneModifiee && !loadError, enregistreLe, statut: genStatus, erreur: genError,
-          actionErreur: genError === MESSAGE_CATALOGUE_INDISPONIBLE ? { libelle: 'Réessayer', onClick: reessayerCatalogue } : null,
+          modifiee: sceneModifiee && !loadError, enregistreLe, statut: genStatus, erreur: erreurBarre,
+          refus: documentModifie ? 'Non enregistré : modifié ailleurs' : null, // T4-U4-027 — jamais « ✓ Enregistré » à côté du refus
+          hydratee: sceneHydratee && !loadError, // T4-U4-016 — la barre ne lit le document qu'une fois la scène hydratée
+          actionErreur: erreurBarre === MESSAGE_CATALOGUE_INDISPONIBLE ? { libelle: 'Réessayer', onClick: reessayerCatalogue } : null,
         }}
         proprietesBuilder={proprietesBuilder} enregistreLe={enregistreLe} onEtape={setEtapeAtelier} onFermer={fermer}
         ecranProps={{
@@ -1422,7 +1436,8 @@ function AtelierToiture({
             UNIQUEMENT : dit laquelle des deux productions on regarde, sans
             jamais toucher un seul chiffre de `rp9-results` ci-dessus. */}
         {estCalepinage && calepinageId && (
-          <BandeauProvenanceProduction calepinageId={calepinageId} chiffrage={contexte?.chiffrage} />
+          <BandeauProvenanceProduction calepinageId={calepinageId} chiffrage={contexte?.chiffrage}
+            devisLie={Boolean(contexte?.calepinage?.devis_lie || contexte?.calepinage?.devis || contexte?.variante?.devis)} />
         )}
             <OutilsVue builderReady={builderReady} utilisateurCourantId={utilisateurCourantId}
               builderApiActuel={builderApiActuel} builderApi={builderApi} chipClass={chipClass}

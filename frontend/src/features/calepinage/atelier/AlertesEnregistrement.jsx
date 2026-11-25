@@ -59,12 +59,9 @@ export default function AlertesEnregistrement({
           {/* ACAL23 — 409 `document_modifie` : modifiée AILLEURS, rien n'est
               écrasé ; distinct du verrou ci-dessous. */}
           {documentModifie && (
-            <div className="mt-4 border border-brass-400/40 p-4" data-testid="cal-document-modifie">
-              <p className="text-sm text-primary-text" role="alert">
-                La conception a été modifiée ailleurs (onglet, autre navigateur) — rechargez avant
-                d’enregistrer.
-              </p>
-              <p className="mt-1 text-xs text-foreground">{documentModifie.detail}</p>
+            <div className="cal-alerte-entiere mt-4 border border-brass-400/40 p-4" data-testid="cal-document-modifie">
+              {/* T4-U4-027 — UNE phrase, en entier : celle du serveur, sinon celle de l'écran (jamais les deux). */}
+              <p className="text-sm text-primary-text" role="alert">{documentModifie.detail}</p>
               <button type="button" onClick={rechargerAtelier}
                 className="mt-3 inline-flex items-center border border-brass-400/60 px-4 py-2 text-sm font-semibold text-primary-text"
                 data-testid="cal-document-modifie-recharger">

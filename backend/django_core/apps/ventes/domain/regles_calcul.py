@@ -122,6 +122,9 @@ REGLES_SENSIBILITES_1911 = 14
 #: Porte aussi T4-U1-019 : une économie résidentielle, un arrondi — la facture
 #: « avec solaire » (page 1 et exemple de la page 4) = « avant » − l'économie
 #: imprimée (``renderer._apres_annuel``, ``etude_restitution._facture_avec_affichee``).
+#: Et T4-U2-019 : un profil C&I dont l'heure ou les jours ont été supposés est
+#: dit « profil type — estimation », jamais « horaires déclarés »
+#: (``quote_engine/ci/synthese._methode_profil``).
 REGLES_POSE_REELLE_2111 = 15
 #: Niveau 16 (HT24, fondateur 24/11/2026 « With battery now also picks from HV
 #: inverters », DÉCLARÉ, PAS courant — il suit le 15) : l'option C&I « avec

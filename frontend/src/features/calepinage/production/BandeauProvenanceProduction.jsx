@@ -50,7 +50,7 @@ function useSourceCarte() {
   return source
 }
 
-export default function BandeauProvenanceProduction({ calepinageId, chiffrage = null }) {
+export default function BandeauProvenanceProduction({ calepinageId, chiffrage = null, devisLie = false }) {
   const source = useSourceCarte()
   const { data } = useResource(
     () => calepinageApi.calepinages.resultat(calepinageId), calepinageId,
@@ -88,7 +88,7 @@ export default function BandeauProvenanceProduction({ calepinageId, chiffrage = 
         </span>
       )}
       <EcartDevis ecart={data?.ecart_devis} borneHaute={borneHaute} />
-      <DevisAnnonce chiffrage={chiffrage} p50={aSimulation ? p50 : null} borneHaute={borneHaute} />
+      <DevisAnnonce chiffrage={chiffrage} p50={aSimulation ? p50 : null} borneHaute={borneHaute} devisLie={devisLie} />
     </p>
   )
 }
@@ -108,7 +108,10 @@ const ORIGINE_ANNONCE = {
   standard_ville: 'production standard de la ville',
   calepinage_enregistre: 'pose réelle recalculée par le moteur du devis',
 }
-function DevisAnnonce({ chiffrage, p50, borneHaute = null }) {
+/* T4-U4-006 / T4-U4-017 — sans devis LIÉ au calepinage, le chiffre est celui du moteur du devis sur CETTE pose (la
+   production standard de la ville) : jamais « Le devis annonce », qui faisait lire au vendeur l'estimation de l'atelier
+   comme le chiffre envoyé au client. */
+function DevisAnnonce({ chiffrage, p50, borneHaute = null, devisLie = false }) {
   const prod = chiffrage?.production_annuelle_kwh
   if (!prod) return null
   if (prod.etat === 'non_servi' || prod.etat === 'indisponible') {
@@ -121,7 +124,9 @@ function DevisAnnonce({ chiffrage, p50, borneHaute = null }) {
   const ecart = typeof p50 === 'number' ? ((p50 - prod.valeur) / prod.valeur) * 100 : null
   return (
     <span className="block" data-testid="acal995-devis-annonce">
-      {`Le devis annonce : ${formatNumber(prod.valeur, { decimals: 0 })} kWh/an — ${ORIGINE_ANNONCE[prod.source]}`}
+      {devisLie
+        ? `Le devis annonce : ${formatNumber(prod.valeur, { decimals: 0 })} kWh/an — ${ORIGINE_ANNONCE[prod.source]}`
+        : `Moteur du devis sur cette pose (aucun devis lié) : ${formatNumber(prod.valeur, { decimals: 0 })} kWh/an — ${ORIGINE_ANNONCE[prod.source]}`}
       {ecart !== null && ` (étude technique : ${ecart < 0 ? '−' : '+'}${formatNumber(Math.abs(ecart), { decimals: 1 })} %${borneHaute ? ` — ${borneHaute}` : ''})`}
     </span>
   )

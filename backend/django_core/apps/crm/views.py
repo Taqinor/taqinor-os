@@ -1148,6 +1148,13 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         return Response({
             'statut': resultat['statut'],
             'ville_canonique': resultat['ville'],
+            # T4-U3-020 — la phrase que l'écran imprime à côté du champ.
+            'raison': resultat['raison'],
+            # T4-U3-019 — la seule ville que l'écran peut cocher d'avance : une
+            # ville RECONNUE ; sinon ``null`` (les proches restent des
+            # suggestions, jamais un choix fait à la place de l'utilisateur).
+            'preselection': (resultat['ville'] if resultat['statut']
+                             in ('exacte', 'corrigee') else None),
             'candidats': resultat['candidats'],
             'position': ({'lat': position[0], 'lng': position[1]}
                          if position else None),

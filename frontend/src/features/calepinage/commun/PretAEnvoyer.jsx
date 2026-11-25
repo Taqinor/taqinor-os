@@ -11,7 +11,7 @@ import { libelleEtat } from '../electrique/etatVerdict'
 import { lienManque } from '../production/lienManque'
 import Pourquoi from './Pourquoi'
 import {
-  GROUPES, GROUPE_AUTRES, MESSAGE_ECHEC, MESSAGE_LENT, estDelaiDepasse, groupeDuControle, heureDe,
+  GROUPES, GROUPE_AUTRES, MESSAGE_ECHEC, MESSAGE_LENT, cibleDuReglage, estDelaiDepasse, groupeDuControle, heureDe,
 } from './PretAEnvoyer.helpers'
 import GroupesPretAEnvoyer from './GroupesPretAEnvoyer'
 
@@ -58,7 +58,8 @@ function pastille(controle) {
 
 function Ligne({ controle, onRegler }) {
   const marque = pastille(controle)
-  const aRegler = Boolean(TON[controle.etat]) && Boolean(controle.cible?.onglet)
+  const cible = cibleDuReglage(controle) // T4-U4-007 — la cible du point servi
+  const aRegler = Boolean(TON[controle.etat]) && Boolean(cible?.onglet)
   const pastilleAffichee = Boolean(marque) && controle.etat !== 'ok'
   return (
     <li data-testid={`cal-pret-ligne-${controle.code}`}
@@ -72,7 +73,7 @@ function Ligne({ controle, onRegler }) {
       <Pourquoi cle={`controle.${controle.code}`} valeurs={controle} />
       {aRegler && (
         <button type="button" data-testid={`cal-pret-regler-${controle.code}`}
-          onClick={() => onRegler(controle.cible)}
+          onClick={() => onRegler(cible)}
           className="ml-auto inline-flex min-h-11 items-center rounded-md px-3 text-sm font-medium text-primary hover:underline focus-ring">
           Régler
         </button>
@@ -111,6 +112,9 @@ function AvisLent({ lueA, onReessayer }) {
 
 export default function PretAEnvoyer({
   calepinageId, testIdCompte, groupes = false, filtre = null, pied = null, court = false,
+  // T4-U4-007 — l'écran qui monte la liste peut régler une cible LUI-MÊME (rend `true`) : l'étape Électrique déplie
+  // « Verdict », que l'URL ne peut pas redemander puisque c'est déjà son onglet d'ouverture.
+  surRegler = null,
 }) {
   const [parametres, setParametres] = useSearchParams()
   const naviguer = useNavigate()
@@ -161,6 +165,7 @@ export default function PretAEnvoyer({
   const reussis = controles.filter((c) => c.etat === 'ok')
 
   const regler = (cible) => {
+    if (surRegler?.(cible) === true) return
     // ACAL1703 — `reglages` n'est pas un onglet de l'atelier : c'est la route nommée des réglages
     // (même lien que « Ce qui manque encore », `lienManque`), jamais `?onglet=reglages`.
     if (cible.onglet === 'reglages') {
@@ -175,13 +180,13 @@ export default function PretAEnvoyer({
   }
 
   if (court) {
-    return <GroupesPretAEnvoyer court attente={loading} avis={avis} controles={controles} testIdCompte={testIdCompte} onRegler={regler} />
+    return <GroupesPretAEnvoyer court attente={loading} avis={avis} controles={controles} testIdCompte={testIdCompte} onRegler={regler} calepinageId={calepinageId} />
   }
   if (groupes) {
     const rangees = [...GROUPES, GROUPE_AUTRES]
       .map((g) => ({ ...g, controles: controles.filter((c) => groupeDuControle(c) === g.cle) }))
       .filter((g) => g.controles.length > 0)
-    return <GroupesPretAEnvoyer groupes={rangees} avis={avis} testIdCompte={testIdCompte} pied={pied} onRegler={regler} />
+    return <GroupesPretAEnvoyer groupes={rangees} avis={avis} testIdCompte={testIdCompte} pied={pied} onRegler={regler} calepinageId={calepinageId} />
   }
 
   return (

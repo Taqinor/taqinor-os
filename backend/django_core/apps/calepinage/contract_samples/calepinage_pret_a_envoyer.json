@@ -10,6 +10,7 @@
     "verdict_electrique": "ACAL858",
     "materiel_designe": "ACAL858",
     "tension_froid": "ACAL858",
+    "tension_chaud": "T4-U4-012 (lit electrique.verdicts[vmp_hot_over_mppt_min], jumeau de tension_froid)",
     "orientation_mppt": "ACAL858",
     "ratio_dc_ac": "ACAL858",
     "chutes_tension": "ACAL858",
@@ -45,6 +46,7 @@
     "verdict_electrique": "electrique",
     "materiel_designe": "electrique",
     "tension_froid": "electrique",
+    "tension_chaud": "electrique",
     "orientation_mppt": "electrique",
     "ratio_dc_ac": "electrique",
     "chutes_tension": "electrique",
@@ -69,7 +71,8 @@
         "cause": "Le devis ne peut pas être généré ni resynchronisé : la visite technique du lead n'a pas encore reçu le feu vert du bureau d'études.",
         "geste": "Faire valider la visite",
         "cible": {"etape": "documents", "onglet": "releve", "champ": ""},
-        "seuil_source": null
+        "seuil_source": null,
+        "points": []
       },
       {
         "code": "simulation_fraiche",
@@ -79,7 +82,8 @@
         "cause": "La production affichée ne correspond plus au toit dessiné.",
         "geste": "Relancer la simulation",
         "cible": {"etape": "resultats", "onglet": "production", "champ": ""},
-        "seuil_source": null
+        "seuil_source": null,
+        "points": []
       },
       {
         "code": "ratio_dc_ac",
@@ -89,7 +93,8 @@
         "cause": "Aucun seuil saisi par votre société : la valeur est donnée sans verdict.",
         "geste": "Saisir un seuil dans les réglages pour obtenir un verdict",
         "cible": {"etape": "electrique", "onglet": "schema", "champ": ""},
-        "seuil_source": null
+        "seuil_source": null,
+        "points": []
       },
       {
         "code": "tension_froid",
@@ -99,7 +104,8 @@
         "cause": "",
         "geste": "",
         "cible": {"etape": "electrique", "onglet": "schema", "champ": ""},
-        "seuil_source": "fiche technique de l'onduleur (exemple)"
+        "seuil_source": "fiche technique de l'onduleur (exemple)",
+        "points": []
       }
     ]
   },
@@ -110,5 +116,26 @@
     "nombre_bloquants": 0,
     "nombre_a_regler": 0,
     "controles": []
+  },
+  "exemple_points": {
+    "pourquoi": "T4-U4-007 — chaque contrôle porte `points` (liste, vide sauf `verdict_electrique`). Pour `verdict_electrique` à `bloquant` ou `a_regler`, `points[]` = les points que « Bloquant : N » / « À compléter » comptent (les bloquants s'il y en a, sinon ceux à compléter), dans l'ordre du verdict : `code` (code du motif), `phrase` (la phrase du verdict électrique, servie telle quelle), `geste` (quoi faire) et `cible` {etape, onglet, champ} (l'onglet qui le règle). `cause` = la phrase du premier point. Valeurs : des PLACEHOLDERS de forme.",
+    "controle": {
+      "code": "verdict_electrique",
+      "libelle": "Dossier électrique",
+      "etat": "bloquant",
+      "valeur_texte": "Bloquant : 1",
+      "cause": "Phrase du verdict électrique (exemple)",
+      "geste": "Corriger le dossier électrique",
+      "cible": {"etape": "electrique", "onglet": "verdict-electrique", "champ": ""},
+      "seuil_source": null,
+      "points": [
+        {
+          "code": "TERRE_JUSTIFICATION_MANQUANTE",
+          "phrase": "Phrase du verdict électrique (exemple)",
+          "geste": "Compléter la check-list de terre",
+          "cible": {"etape": "electrique", "onglet": "decisions-electriques", "champ": ""}
+        }
+      ]
+    }
   }
 }

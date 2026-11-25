@@ -43,6 +43,14 @@ function courbeDeBase(ctx: Ctx, appareils: Appliance[], consHandEdited: boolean)
   return jour > 0 ? composeConsumption(baselineCurve(jour), appareils) : emptyCurve();
 }
 
+/** T4-U4-025 — la signature d'une consommation non relue, prise UNE fois par session : deux sérialisations sans geste
+ *  rendent le même document (avant, `new Date()` à chaque lecture : le sondage du brouillon voyait « un changement »
+ *  toutes les 4 s et envoyait un PUT, et la barre restait « Modifications non enregistrées » après l'enregistrement). */
+function signatureSession(ctx: Ctx): string {
+  if (typeof ctx.consSignatureSession !== 'string') ctx.consSignatureSession = new Date().toISOString();
+  return ctx.consSignatureSession;
+}
+
 /** Le bloc `consumption` d'un `Ctx` « touché » (l'appelant a déjà écarté le cas vierge). */
 export function construireConsommation(
   ctx: Ctx,
@@ -67,7 +75,7 @@ export function construireConsommation(
       ctx.consSource && typeof ctx.consSource.origine === 'string' && typeof ctx.consSource.saisi_le === 'string'
         ? { origine: ctx.consSource.origine, saisi_le: ctx.consSource.saisi_le,
             ...(typeof ctx.consSource.bareme === 'string' ? { bareme: ctx.consSource.bareme } : {}) } // ACAL311
-        : { origine: 'atelier', saisi_le: new Date().toISOString() },
+        : { origine: 'atelier', saisi_le: signatureSession(ctx) },
   };
 
   const summerFactor =

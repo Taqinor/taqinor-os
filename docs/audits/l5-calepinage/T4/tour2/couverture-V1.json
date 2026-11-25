@@ -1,0 +1,752 @@
+[
+ {
+  "id": "LEAD-DEV-039",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "grisé « Manque : facture hiver, facture été » puis « Manque : facture été »"
+ },
+ {
+  "id": "LEAD-DEV-002",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "DEV-202611-0112 (14 s), DEV-202611-0116 (98 s)"
+ },
+ {
+  "id": "LEAD-DEV-033",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-030",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-016",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-017",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "V2 DEV-202611-0115 créée malgré « La réponse n’est pas arrivée »"
+ },
+ {
+  "id": "LEAD-DEV-011",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "« Remplacé par DEV-202611-0115 »"
+ },
+ {
+  "id": "LEAD-DEV-013",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "LEAD-DEV-025",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "copier le lien ; page client non ouverte (adresse volontairement non résolue)"
+ },
+ {
+  "id": "LEAD-DEV-019",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Prix convenu / Acompte / Facturé / Reste à facturer / Reste à payer"
+ },
+ {
+  "id": "LEAD-DEV-021",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "🏗 CHT-202611-0006"
+ },
+ {
+  "id": "LEAD-DEV-041",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "« Dessiner le toit » ouvre /calepinage/1959"
+ },
+ {
+  "id": "LEAD-DEV-042",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-BAR-003",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-BAR-006",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Enregistrer (replace-lines 7 s)"
+ },
+ {
+  "id": "GEN-LIG-001",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "quantité câble 60 → 40, prix socles 80,4 → 200"
+ },
+ {
+  "id": "GEN-LIG-002",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "ligne ajoutée (Wifi Dongle) ; voir T4-V1-002"
+ },
+ {
+  "id": "GEN-LIG-003",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "ligne « Câble de terre » supprimée"
+ },
+ {
+  "id": "GEN-ARG-001",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "voir T4-V1-003"
+ },
+ {
+  "id": "GEN-ARG-002",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "réduction 3 %"
+ },
+ {
+  "id": "GEN-ARG-004",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "prix / kWc lu"
+ },
+ {
+  "id": "GEN-ARG-005",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "GEN-SIM-001",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "lu, non modifié"
+ },
+ {
+  "id": "GEN-DOC-003",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "« Les deux » lu"
+ },
+ {
+  "id": "PDF-001",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "1 échec sur 2 (délai 20 s), voir T4-V1-009"
+ },
+ {
+  "id": "PDF-003",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "PDF-004",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "4 pages"
+ },
+ {
+  "id": "PDF-005",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "1 page"
+ },
+ {
+  "id": "PDF-007",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "voir T4-V1-004"
+ },
+ {
+  "id": "PDF-008",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "4 pages"
+ },
+ {
+  "id": "PDF-011",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "4 pages, échéancier 30/60/10"
+ },
+ {
+  "id": "PDF-009",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "non-atteint",
+  "note": "planche cotée non générée après le calepinage (temps)"
+ },
+ {
+  "id": "CAL-ATL-002",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-ATL-003",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Guidé / Expert"
+ },
+ {
+  "id": "CAL-ATL-004",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Montrer au client (lien)"
+ },
+ {
+  "id": "CAL-ATL-006",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "« Modifications non enregistrées » encore affiché juste après « Conception enregistrée » (connu T4-U1-013)"
+ },
+ {
+  "id": "CAL-ATL-008",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-TOIT-003",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "2 pans (grisé avant création), Plat"
+ },
+ {
+  "id": "CAL-TOIT-004",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "10 × 8 → 2 pans 10 × 4"
+ },
+ {
+  "id": "CAL-TOIT-005",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "22° face sud, Confirmer"
+ },
+ {
+  "id": "CAL-TOIT-007",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "cheminée 0,8 × 0,8 × 1,5"
+ },
+ {
+  "id": "CAL-TOIT-009",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "tracé à 4 clics"
+ },
+ {
+  "id": "CAL-TOIT-013",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Plan"
+ },
+ {
+  "id": "CAL-TOIT-013",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "sombre",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Plan sombre"
+ },
+ {
+  "id": "CAL-DRAW-011",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-DRAW-012",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Cheminée"
+ },
+ {
+  "id": "CAL-DRAW-013",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Déclaré par le client"
+ },
+ {
+  "id": "CAL-DRAW-014",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-DRAW-016",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "bâtiment voisin 6 m, 8 × 5, à l’ouest (Expert)"
+ },
+ {
+  "id": "CAL-DRAW-021",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "fermeture par le 1er coin"
+ },
+ {
+  "id": "CAL-DRAW-035",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "bloque",
+  "note": "« Placement libre » choisi, « + Ajouter un panneau » sans effet visible"
+ },
+ {
+  "id": "CAL-PAN-001",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Canadian 710 → 715 W"
+ },
+ {
+  "id": "CAL-PAN-002",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-PAN-011",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-PAN-011",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1180",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "tablette portrait 820 × 1180"
+ },
+ {
+  "id": "CAL-ELEC-001",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Huawei 5 kW (1959), 15 kW (1960)"
+ },
+ {
+  "id": "CAL-ELEC-002",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Chaîne 1"
+ },
+ {
+  "id": "CAL-RES-001",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "170 s"
+ },
+ {
+  "id": "CAL-RES-002",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "3 482 kWh au calepinage, 2 639 / 5 277 au devis : deux chiffres (moteur unique en cours)"
+ },
+ {
+  "id": "CAL-RES-006",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-DOC-001",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "« Régler » : bloqué (sans effet visible)"
+ },
+ {
+  "id": "CAL-DOC-003",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-DOC-004",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Rapport d’étude 35 s / 113 s, Plan de pose 3 s"
+ },
+ {
+  "id": "CAL-DOC-005",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "« Préparation en cours : jusqu’à 2 minutes »"
+ },
+ {
+  "id": "CAL-CLI-001",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "3D prête après 94 s"
+ },
+ {
+  "id": "CAL-CLI-001",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "390",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "3D prête après 123 s, tactile"
+ },
+ {
+  "id": "CAL-CLI-002",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-CLI-003",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "« Envoyer le lien » grisé, bulle vers la fiche du lead"
+ },
+ {
+  "id": "CAL-LST-008",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "chargement « Chargement… » puis 9 projets"
+ },
+ {
+  "id": "CAL-NOU-001",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "bloque",
+  "note": "onglet Client : le client créé par le Commercial introuvable (T4-V1-011)"
+ },
+ {
+  "id": "CAL-NOU-003",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "client trouvé en Administrateur"
+ },
+ {
+  "id": "CAL-NOU-005",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-NOU-011",
+  "scenario": "o",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-REG-001",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue"
+ },
+ {
+  "id": "CAL-REG-002",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "16 posés par le profil, 48 sans valeur publiée"
+ },
+ {
+  "id": "CAL-DEV-002",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "non-atteint",
+  "note": "V2 faite par « Réviser » depuis la fiche, pas depuis le calepinage"
+ },
+ {
+  "id": "CAL-AV-024",
+  "scenario": "b",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "bloque",
+  "note": "« Régler » pose ?onglet=verdict-electrique sans rien ouvrir"
+ }
+]
