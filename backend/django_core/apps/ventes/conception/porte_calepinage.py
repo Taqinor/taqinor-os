@@ -189,12 +189,17 @@ def production_du_plan_par_defaut(company, lead, kwc, produits):
     """ADEV154 / ACAL2026 — la production du PLAN PAR DÉFAUT d'un lead sans toit tracé
     (``calepinage/services/plan_par_defaut.py``, sans écriture) : ``kwc`` du moteur, son
     matériel (``{module, onduleur}`` : identifiants produit), le point du lead et sa pente
-    déclarée (``Lead.inclinaison_deg``, sinon 30° dite). Lève ``SimulationRefusee``."""
+    déclarée (``Lead.inclinaison_deg``, sinon 30° dite). Une simulation refusée rend
+    ``{refus: <motif nommé>}`` (aucun autre fichier de ventes n'importe le calepinage)."""
     from apps.calepinage.services.plan_par_defaut import simuler_plan_par_defaut
+    from apps.calepinage.services.simulation import SimulationRefusee
 
     pente = getattr(lead, 'inclinaison_deg', None)
-    return simuler_plan_par_defaut(company, None, None, kwc, lead_id=lead.pk, produits=produits,
-                                   pente=float(pente) if pente is not None else None)
+    try:
+        return simuler_plan_par_defaut(company, None, None, kwc, lead_id=lead.pk, produits=produits,
+                                       pente=float(pente) if pente is not None else None)
+    except SimulationRefusee as refus:
+        return {'refus': refus.motif or str(refus)}
 
 
 #: Relecture E6 B2 — une désignation que le catalogue de vente du moteur refuse.

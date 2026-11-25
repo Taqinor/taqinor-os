@@ -340,7 +340,6 @@ def _ecarts_du_plan_par_defaut(lead, company):
     """``(lignes, écarts)`` d'un lead sans toit : une ligne par option de sa conception
     (rangée courante, sinon calculée), production d'aujourd'hui contre le plan par défaut
     au kWc et au matériel de l'option ; ``écarts`` = ``[{lead, option, kwh, pct}]``."""
-    from apps.calepinage.services.simulation import SimulationRefusee
     from apps.ventes.conception.moteur import calculer_conception
     from apps.ventes.conception.porte_calepinage import production_du_plan_par_defaut
     from apps.ventes.models import ConceptionLead
@@ -356,11 +355,10 @@ def _ecarts_du_plan_par_defaut(lead, company):
             return (valeurs.get(cle) or {}).get('valeur')
         avant, kwc = valeur('production_annuelle'), valeur('puissance_kwc')
         tete = f'  lead #{lead.pk} (sans toit) option {option} : {kwc} kWc, production {_nombre(avant)} → '
-        try:
-            plan = production_du_plan_par_defaut(company, lead, kwc, {
-                'module': valeur('module_produit'), 'onduleur': valeur('onduleur_produit')})
-        except SimulationRefusee as refus:
-            lignes.append(tete + f'— kWh/an : plan par défaut non simulé ({refus.motif})')
+        plan = production_du_plan_par_defaut(company, lead, kwc, {
+            'module': valeur('module_produit'), 'onduleur': valeur('onduleur_produit')})
+        if plan.get('refus'):
+            lignes.append(tete + f'— kWh/an : plan par défaut non simulé ({plan["refus"]})')
             continue
         apres = plan['production_annuelle']
         if avant is None or apres is None:
