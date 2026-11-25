@@ -31,6 +31,11 @@ export function DevisPageHeader({
   // T4-X4-005 — le nombre de devis de la portée (servi par la synthèse) :
   // l'écran ne tient plus qu'une page de `devis`.
   nombreTotal,
+  // T4-X9-015 — UN compte de devis à l'écran : `nombreTotal` (synthèse)
+  // compte aussi les versions remplacées ; masquées, l'en-tête dit le nombre
+  // de la pagination (les devis en jeu) et NOMME le reste.
+  versionsRemplacees = 0,
+  remplaceesVisibles = false,
   expiringSoon,
   loading,
   error,
@@ -41,6 +46,12 @@ export function DevisPageHeader({
   peutCreer = true,
 }) {
   const total = nombreTotal ?? devis.length
+  const versions = `${versionsRemplacees} version${versionsRemplacees > 1 ? 's' : ''} remplacée${versionsRemplacees > 1 ? 's' : ''}`
+  const compte = versionsRemplacees <= 0
+    ? `${total} devis`
+    : remplaceesVisibles
+      ? `${total} devis dont ${versions}`
+      : `${total - versionsRemplacees} devis · ${versions}`
   return (
     <EnteteVentes
       icon={FileText}
@@ -50,8 +61,8 @@ export function DevisPageHeader({
         loading && total === 0 && devis.length === 0
           ? 'Chargement des devis…'
           : expiringSoon.length > 0
-          ? `${total} devis · ${expiringSoon.length} à relancer (validité ≤ 7 jours)`
-          : `${total} devis`
+          ? `${compte} · ${expiringSoon.length} à relancer (validité ≤ 7 jours)`
+          : compte
       }
       actions={(
         <>
