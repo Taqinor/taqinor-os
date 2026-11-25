@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { fichierContrat } from '../../../test/fixtures/contractSamples'
 
 /* ============================================================================
@@ -53,6 +53,24 @@ const TOUS = builderApiAvec([...CALQUE_IDS])
 
 beforeEach(() => {
   vi.clearAllMocks()
+})
+
+describe('T4-X7-015 — la liste est relue quand le panneau devient visible', () => {
+  it('vide à la première lecture (carte pas dessinée), remplie quand la feuille s’ouvre', () => {
+    let rappel = null
+    const ancien = globalThis.ResizeObserver
+    globalThis.ResizeObserver = class { constructor(cb) { rappel = cb } observe() {} disconnect() {} }
+    const prises = { ids: [] }
+    const api = { calquesDisponibles: () => prises.ids }
+    render(<PanneauCalques utilisateurId="u1" stockage={memStore()} builderApi={api} onChange={vi.fn()} />)
+    expect(screen.getByTestId('pc-vide')).toBeTruthy()
+    prises.ids = ['zones', 'panneaux']
+    Object.defineProperty(screen.getByTestId('pc-panneau'), 'offsetWidth', { configurable: true, value: 300 })
+    act(() => rappel())
+    expect(screen.queryByTestId('pc-vide')).toBeNull()
+    expect(screen.getByTestId('pc-calque-zones')).toBeTruthy()
+    globalThis.ResizeObserver = ancien
+  })
 })
 
 describe('CAL103 — ordre de superposition déterminé', () => {
