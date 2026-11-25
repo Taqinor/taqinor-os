@@ -383,9 +383,9 @@ class DepuisModeleEnBase(BaseApiCalepinage):
                                 HTTP_IDEMPOTENCY_KEY='cle-partagee')
         self.assertEqual(premier.status_code, 201, premier.data)
         voisin = Client.objects.create(company=self.autre, nom='Voisin')
-        reponse = self.api_autre.post(URL_DEPUIS_MODELE, {'client_id': voisin.pk},
-                                format='json',
-                                HTTP_IDEMPOTENCY_KEY='cle-partagee')
+        reponse = self.api_autre.post(
+            URL_DEPUIS_MODELE, {'client_id': voisin.pk}, format='json',
+            HTTP_IDEMPOTENCY_KEY='cle-partagee')
         self.assertNotEqual(reponse.data.get('id'), premier.data['id'])
 
     def test_sans_rattachement_refus_nomme(self):

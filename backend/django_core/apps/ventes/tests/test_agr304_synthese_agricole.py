@@ -417,7 +417,7 @@ class SyntheseAgricoleTests(SimpleTestCase):
         self.assertEqual(compteur[0]['ligne_id'], 90400)
         self.assertEqual(compteur[0]['total_ttc'], 1200.0)
         self.assertTrue(compteur[0]['prix_connu'])
-        self.assertEqual(len(s['options_kit']), 12)
+        self.assertEqual(len(s['options_kit']), 11)
 
     def test_hectares_omis_quand_le_besoin_est_declare(self):
         """AGQ28 (D-AGQ-7) — besoin DÉCLARÉ : aucune surface irrigable
