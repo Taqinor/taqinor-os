@@ -2691,6 +2691,28 @@ class RelanceEnTacheTests(_emprunt(RelanceConceptionTests, '_relancer'),
                           or 'n° %s' % module.pk in t or 'Produit %s' % module.pk in t])
         self.assertFalse(lue['perimee'])
 
+    def test_e6b1_m2_materiel_designe_dit_impose(self):
+        """Relecture E6 m2 — l'onduleur DÉSIGNÉ à la main est porté par la conception avec
+        la source ``impose`` (contrat ``source_valeur``) et figure dans ``entrees_utilisees``
+        avec sa provenance ; le reste reste ``moteur``. Mutant « source moteur » : rouge."""
+        from apps.stock.models import Produit
+        from apps.ventes.selectors import conception_courante
+
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        onduleur = Produit.objects.get(company=company, nom='Onduleur réseau Huawei 5kW Monophasé')
+        calepinage = self._calepinage_designe(company, lead, onduleur_produit=onduleur.pk)
+        self._relancer(lead, company, _declencheur('pose_enregistree'), calepinage_id=calepinage.pk)
+        lue = conception_courante(company, lead.pk)
+        self.assertEqual(lue['etat'], 'complet', lue['refus'])
+        retenue = lue['valeurs'][lue['option_retenue']]
+        self.assertEqual(retenue['onduleur_produit'], {'valeur': onduleur.pk, 'unite': None, 'source': 'impose'})
+        self.assertEqual(retenue['onduleurs']['source'], 'impose')
+        self.assertEqual((retenue['module']['source'], retenue['nb_panneaux']['source']), ('moteur', 'moteur'))
+        self.assertEqual(lue['entrees_utilisees']['onduleur_designe'],
+                         {'valeur': onduleur.nom, 'source': 'calepinage'})
+        self.assertNotIn('module_designe', lue['entrees_utilisees'])
+
 
 # ── ADEV141 — remplir les conceptions des leads existants, liste d'abord ─────
 
@@ -3527,8 +3549,10 @@ class PoseReelleTests(_emprunt(RelanceConceptionTests, '_relancer'), _emprunt(Fi
                                                                       'module_produit']['valeur']))
         self.assertEqual(resultat.etat, 'complet', resultat.refus)
         retenue = resultat.valeurs[resultat.option_retenue]
-        self.assertEqual((retenue['nb_panneaux']['valeur'], retenue['nb_panneaux']['source']), (posee, 'pose'))
-        self.assertEqual(retenue['puissance_kwc']['source'], 'pose')
+        # Relecture E6 m2 — une pose AJUSTÉE À LA MAIN est imposée par un humain : ``impose``.
+        self.assertEqual((retenue['nb_panneaux']['valeur'], retenue['nb_panneaux']['source']), (posee, 'impose'))
+        self.assertEqual(retenue['puissance_kwc']['source'], 'impose')
+        self.assertEqual(resultat.entrees_utilisees['pose'], {'valeur': posee, 'source': 'calepinage'})
         self.assertNotEqual(retenue['production_annuelle']['valeur'],
                             temoin.valeurs[temoin.option_retenue]['production_annuelle']['valeur'])
         # Pose non ajustée (remplie par le plan) : la facture garde la main.

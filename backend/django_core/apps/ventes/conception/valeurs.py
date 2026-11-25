@@ -118,6 +118,41 @@ def valeurs(resultat, option, investissement, *, froid, company=None):
     }
 
 
+#: Relecture E6 m2 — champ imposé → (clé ``*_produit`` comparée, valeurs dites ``impose``,
+#: entrée nommée dans ``entrees_utilisees``, clé de la valeur qui porte le NOM du produit).
+_IMPOSES = (('panneau_produit_id', 'module_produit', ('module', 'module_produit'), 'module_designe', 'module'),
+            ('onduleur_produit_id', 'onduleur_produit', ('onduleurs', 'onduleur_produit'),
+             'onduleur_designe', 'onduleurs'))
+
+
+def dire_l_impose(resultat, provenance, *, pose_a_la_main=False):
+    """Relecture E6 m2 — chaque valeur posée par un humain (``resultat.imposes_retenus`` :
+    matériel désigné, compte d'une pose ajustée à la main) porte la source ``impose`` sur
+    les options qui la portent, et l'entrée figure dans ``entrees_utilisees`` (le produit
+    par son NOM ; ``provenance`` : ``calepinage`` ou ``saisie`` pour l'aperçu)."""
+    imposes = resultat.imposes_retenus or {}
+    for cle, produit, cles, entree, nom in _IMPOSES:
+        try:
+            pk = int(imposes.get(cle))
+        except (TypeError, ValueError):
+            continue
+        portees = [v for v in resultat.valeurs.values() if (v.get(produit) or {}).get('valeur') == pk]
+        for v in portees:
+            for c in cles:
+                v[c]['source'] = 'impose'
+        if portees:
+            lu = portees[0][nom]['valeur']
+            resultat.entrees_utilisees[entree] = {
+                'valeur': (lu[0].get('designation') if isinstance(lu, list) and lu else lu), 'source': provenance}
+    nombre = imposes.get('nb_panneaux') if pose_a_la_main else None
+    if nombre:
+        for v in resultat.valeurs.values():
+            if (v.get('nb_panneaux') or {}).get('valeur') == nombre:
+                for c in ('nb_panneaux', 'puissance_kwc'):
+                    v[c]['source'] = 'impose'
+        resultat.entrees_utilisees['pose'] = {'valeur': nombre, 'source': provenance}
+
+
 def _verdicts(resultat, onduleurs, kwc, chaines, company):
     """ACAL2016 — jugés pour l'option dont la conception électrique porte l'onduleur ;
     sinon les trois verdicts valent ``None`` et ``non_calcule`` DIT pourquoi (jamais un

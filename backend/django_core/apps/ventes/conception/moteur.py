@@ -171,6 +171,8 @@ def _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_
     resultat.option_retenue, options = V.options(resultat)
     resultat.valeurs = {option: V.valeurs(resultat, option, investissement, froid=froid, company=company)
                         for option in options}
+    V.dire_l_impose(resultat, 'calepinage' if souple or (pose or {}).get('a_la_main') else 'saisie',
+                    pose_a_la_main=bool((pose or {}).get('a_la_main')) and entrees.marche == 'residentiel')
     if pose is not None:
         _ranger_la_pose(resultat, company, calepinage_id, pose)
     return _sans_cles_interdites_partout(resultat)
@@ -220,18 +222,22 @@ def _compte_designe(lead, company, toit, imposes, dimensionner):
 
     decision = decider_taille_residentielle(lead=lead, company=company, plafond_toit=getattr(
         toit, 'plafond_panneaux', None), dimensionner=dimensionner)
-    nombre = decision.panneaux
+    nombre, complets = decision.panneaux, {}
     panneau = (rc.entree_du_produit(company, imposes['panneau_produit_id'])
                if imposes.get('panneau_produit_id') else None)
     watt = float(getattr(panneau, 'wc', None) or 0)
     if watt and abs(watt - float(decision.watt or 0)) >= 0.5:
         nombre = max(1, int(round(decision.kwc * 1000 / watt)))
+    if panneau is None:  # le module du moteur (sa puissance, par LE résolveur), jamais le défaut 710 Wc
+        resolution = rc.resoudre_panneau(company, rc.vivier(company), wc=decision.watt)
+        if resolution.statut == rc.STATUT_UNIQUE:
+            complets['panneau_produit_id'] = resolution.produit.pk
     onduleur = (rc.entree_du_produit(company, imposes['onduleur_produit_id'])
                 if imposes.get('onduleur_produit_id') else None)
     familles = {rc.FAMILLE_HYBRIDE: 'avec', rc.FAMILLE_RESEAU: 'sans'}
     scenario = (familles.get(onduleur.famille) if onduleur is not None
                 else ('avec' if decision.avec_batterie else 'sans'))
-    return dict(imposes, nb_panneaux=nombre), scenario
+    return dict(imposes, nb_panneaux=nombre, **complets), scenario
 
 
 def pose_reelle(company, calepinage_id, marche):
@@ -256,9 +262,7 @@ def _ranger_la_pose(resultat, company, calepinage_id, pose):
     materiel = {role: (retenue.get('%s_produit' % role) or {}).get('valeur') for role in ('module', 'onduleur')}
     options = [o for o, v in resultat.valeurs.items()
                if all((v.get('%s_produit' % r) or {}).get('valeur') == pk for r, pk in materiel.items())]
-    for option in options if pose['a_la_main'] and resultat.marche == 'residentiel' else ():
-        for cle in ('nb_panneaux', 'puissance_kwc'):
-            resultat.valeurs[option][cle]['source'] = 'pose'
+    # La taille d'une pose ajustée à la main est dite ``impose`` (relecture E6 m2, ``valeurs.dire_l_impose``).
     if not pose['complete']:
         return
     from apps.ventes.conception.porte_calepinage import simuler_la_pose
