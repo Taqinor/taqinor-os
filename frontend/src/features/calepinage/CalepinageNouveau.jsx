@@ -324,7 +324,14 @@ export default function CalepinageNouveau() {
       if (id) navigate(`/calepinage/${id}`)
       else setErreurs({ global: 'Le serveur n’a pas renvoyé l’identifiant du calepinage créé.' })
     } catch (err) {
-      if (err?.response) creationRef.current = null // refus servi : corriger puis renvoyer = nouvelle création
+      // ACAL2047 — le 409 `{code: 'idempotency_en_cours'}` (core/idempotency.py::IdempotencyEnCours, `code` servi à la
+      // racine) : la MÊME création tourne encore. La clé est GARDÉE (le renvoi rejouera sa réponse) et l'écran le dit.
+      const enCours = err?.response?.status === 409 && err.response.data?.code === 'idempotency_en_cours'
+      if (err?.response && !enCours) creationRef.current = null // autre refus : corriger puis renvoyer = nouvelle création
+      if (enCours) {
+        setErreurs({ global: 'Création en cours… le serveur termine ce calepinage. Patientez quelques secondes puis appuyez de nouveau sur « Créer le calepinage » : la même demande sera reprise, sans doublon.' })
+        return
+      }
       const existantServi = err?.response?.status === 409
         ? err.response.data?.calepinage_existant : null
       if (existantServi) {
