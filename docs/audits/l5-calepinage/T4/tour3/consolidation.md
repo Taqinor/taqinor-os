@@ -105,3 +105,14 @@ retrouvé, carte de la variante posée, « Enregistré à » identique après re
    rangées au bon lieu (005), production avant / après rechargement (002), raccordement automatique bloquant (004),
    réglages de pente en Expert (008), boutons en anglais (011).
 
+## État des corrections du tour 3 (25/11, 05 h 55 UTC)
+
+- **Corrigé, à rejouer par un relecteur neuf** : T4-X4-005 (liste des devis : 25 devis = 78 Ko au lieu de 1,8 Mo, une
+  page à la fois, total et cartes par statut servis à part — lane `t3-liste`) ; T4-X4-016 et T4-X4-008 (l'écran devis
+  lit la conception servie, bandeau « La conception a changé » et « Mettre à jour », avis sur la carte du devis de la
+  fiche — lane `moteur-e7b`) ; T4-X2-003 (bandeau du site : lieu servi par le serveur — lot 3, fusionné).
+- **En cours** : T4-V1-001, note « par ? », libellé du brouillon jamais envoyé (lane `moteur-e7a`) ; T4-X2-001, 006,
+  007, 009 (lane `moteur-e7c`).
+- **Pas encore de lane** : lanes 2 (reste de l'éditeur : 001, 004, 011, 018, 019, 020, 021, petits), 3, 4, 5 (restes),
+  6 (atelier : 010 d'abord, 002, 004, 005, 008, 011).
+
