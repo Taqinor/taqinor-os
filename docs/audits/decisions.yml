@@ -6106,3 +6106,38 @@ decisions:
     date: "2026-11-25"
     source: "compte rendu de la lane technicien-ses-visites (poste Reda_Laptop) ; RÉPONSE DU FONDATEUR le 25/11/2026 (en discussion), mot pour mot : « Technicien responsable should see his team's calepinages too »"
     taches: []
+  - id: D-ACAL-127
+    question: "Kit de pompage (D-ACAL-118, D-ACAL-125) : les dix articles de protection sont à prix 0 au catalogue. Le fondateur a demandé que l'orchestrateur propose des prix, à confirmer un par un. Quels prix publics ?"
+    options:
+      - cle: prix_lus_et_confirmes
+        texte: "Prix TTC lus le 25/11/2026 sur mrelec.ma, sans marge ajoutée : disjoncteurs monophasés 16/20/25/32 A = 80/80/80/83 DH (EATON Xpole 1P+N courbe C) ; disjoncteurs tétrapolaires 16/20/25/32 A = 128/132/136/141 DH (CHINT NXB-63 4P, courbe non précisée sur l'annonce) ; coffret DC 2 chaînes = 2 000 DH (boîte de jonction DC 2 entrées, sur commande) ; parafoudre AC type 2 = 1 000 DH (chiffre donné par le fondateur, aucune annonce marocaine fiable lue)"
+      - cle: prix_du_fondateur
+        texte: "Les articles restent à 0 ; le fondateur saisit ses prix au catalogue"
+    reponse: prix_lus_et_confirmes
+    date: "2026-11-25"
+    source: "recherche de prix (poste Reda_Laptop) : https://mrelec.ma/products/disjoncteur-modulaire-ac-2p , https://mrelec.ma/products/disjoncteur-modulaire-chint-4p-220v , https://mrelec.ma/products/boite-de-jonction-dc ; RÉPONSES DU FONDATEUR le 25/11/2026 (questions interactives), mot pour mot : « Yes: 80 / 80 / 80 / 83 DH », « Yes: 128 / 132 / 136 / 141 DH », « Yes: 2 000 DH », « use 1000 » ; posés au déploiement par migration de données, seulement là où le prix est vide ; le prix d'achat n'est pas renseigné"
+    taches: []
+  - id: D-ACAL-128
+    question: "Aucun des 15 variateurs VEICHI n'a de fiche technique en production : le kit de pompage ne peut pas vérifier les chaînes de panneaux. Les manuels VEICHI publient la tension DC maximale d'entrée : SI22 220 V = 400 V ; SI23 220 V = 450 V ; SI23 380 V = 800 V au tableau, coupure logicielle à 780 V. Les écrire sur les 15 variateurs ?"
+    options:
+      - cle: oui_780_pour_les_380
+        texte: "Oui : 400 V et 450 V comme publiés, et 780 V (la coupure réelle) pour tous les modèles 380 V"
+      - cle: oui_800_comme_imprime
+        texte: "Oui : 400 / 450 / 800 V comme le tableau les imprime"
+      - cle: non
+        texte: "Rien n'est écrit ; le fondateur crée les fiches dans Stock"
+    reponse: oui_780_pour_les_380
+    date: "2026-11-25"
+    source: "manuels VEICHI SI22 (§2, p. 2) et SI23 (§1.4, p. 4), veichi.com ; le constructeur ne publie ni fenêtre MPPT ni courant d'entrée : ces champs restent vides ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Yes, 780 V for 380 V models (Recommended) »"
+    taches: []
+  - id: D-ACAL-129
+    question: "Les petites pompes chiffrées (1,5 à 10 CV) n'ont pas de tension au catalogue ; leur nom dit seulement Monophasé ou Triphasé. Le calibre du disjoncteur a besoin d'une tension. Écrire 220 V sur les monophasées et 380 V sur les triphasées ?"
+    options:
+      - cle: oui_220_380
+        texte: "Oui, seulement là où la tension est vide ; les CV du catalogue de départ sont aussi complétés là où ils manquent en production"
+      - cle: non
+        texte: "Rien n'est écrit ; le fondateur saisit kW et tension sur chaque pompe"
+    reponse: oui_220_380
+    date: "2026-11-25"
+    source: "lecture seule de la production du 25/11/2026 (9 pompes chiffrées sans kW ni tension) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Yes: 220 V / 380 V (Recommended) »"
+    taches: []
