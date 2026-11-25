@@ -234,7 +234,7 @@ import {
 import { creerCoucheElectrique } from './roofPro11/electrique3d';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
 import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
-import { deplacerEpingleALaMain, localiserSiTraceVisible, oublierEpingleDeplacee } from './roofPro11/provenanceEpingle'; // ACAL593 — sorti de prefill.ts ; T4-U4-013
+import { deplacerEpingleALaMain, latitudeDuCalcul, localiserSiTraceVisible, oublierEpingleDeplacee } from './roofPro11/provenanceEpingle'; // ACAL593 — sorti de prefill.ts ; T4-U4-013, T4-X2-005
 import { masquerMarqueur, retirerMarqueur } from './roofPro11/epingleClient'; // ACAL972
 import { createReperesUi } from './roofPro11/reperesChantier'; // ACAL593
 import { refleterPrioriteRemplissage } from './roofPro11/prioriteRemplissage'; import { anneauxCoupuresDuPanActif, monterChampsCoupures } from './roofPro11/coupuresPavage'; import { monterChampPortee } from './roofPro11/piedsChassis'; import { monterChampsChassis } from './roofPro11/chassisPavage'; import { grouperStructurePose } from './roofPro11/structurePose'; // ACAL576, ACAL579, ACAL585, ACAL1522
@@ -953,7 +953,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       prodPanels = v;
     },
     get centroidLat() {
-      return centroidLat;
+      return latitudeDuCalcul(ctx, centroidLat); // T4-X2-005 — site non localisé : le lieu de la simulation
     },
     set centroidLat(v) {
       centroidLat = v;
@@ -2249,7 +2249,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     }
     const ring: LngLat[] = [...vertices];
     const pins = currentPins();
-    const re = reoptimize(pins, ring, centroidLat, monthlyBill(), obstructionRings());
+    const re = reoptimize(pins, ring, ctx.centroidLat, monthlyBill(), obstructionRings());
     const w = re.winner;
     useRecommended = false;
     sel = { family: w.family, tilt: w.tiltDeg, orient: w.orientation, azimuth: w.azimuth, margin: w.margin };
@@ -2298,7 +2298,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     const bill = monthlyBill();
     // W1 : la marge de rive courante (toggle) entre dans le cerveau, et pro-5 ACTIVE
     // le balayage d'azimut aligné-toit (opt-in ; pro-4 ne l'active pas → inchangé).
-    rec = recommend(ring, centroidLat, bill, obstructionRings(), { setbackM: setbackOf(), enableRoofAligned: true });
+    rec = recommend(ring, ctx.centroidLat, bill, obstructionRings(), { setbackM: setbackOf(), enableRoofAligned: true });
     pvgisPerKwc = null;
     // W1 : (ré)affiche/masque le groupe AZIMUT selon que le toit est tourné, et
     // repose les badges « Recommandé » de chaque groupe depuis rec.recommendedOptions.
@@ -2308,7 +2308,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // figé. INDÉPENDANT des obstacles — eux ne changent que « ce qui tient », pas le
     // besoin énergétique — donc une édition d'obstacle ne réécrit jamais ce nombre.
     if (neededAuto) {
-      const n = neededPanelsForTarget(rec.targetAnnualKwh, centroidLat);
+      const n = neededPanelsForTarget(rec.targetAnnualKwh, ctx.centroidLat);
       neededPanels = n > 0 ? clampNeeded(n) : besoinAutoRelu(ctx.documentRelu, activeAreaId, bill);
     }
     // FIX 2 (V6) — la MATRICE complète remplace les ~6 lignes : balayage estimé
@@ -3916,7 +3916,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
         soleilBtns.jourBtn.setAttribute('aria-pressed', 'false');
         return;
       }
-      const bounds = sunriseSunsetHours(centroidLat, ctx.sunDay);
+      const bounds = sunriseSunsetHours(ctx.centroidLat, ctx.sunDay);
       if (!bounds) {
         if (soleilBtns.noteEl) soleilBtns.noteEl.textContent = 'Le soleil ne se lève pas à cette latitude et cette date — aucune lecture possible.';
         return;

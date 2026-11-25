@@ -641,4 +641,26 @@ describe('T4-U4-013 — la provenance du site suit les gestes', () => {
     tracer(draw);
     expect('siteLocalise' in documentEmis(ctx)).toBe(false);
   });
+
+  // T4-X2-005 — toit tracé sans « Localiser » (épingle au centre du pays, 31,79°) : le pas entre rangées était calé sur
+  // 31,79° quand la simulation du même calepinage se fait sur Casablanca (33,573°). Un seul lieu pour tous les calculs.
+  it('T4-X2-005 — site non localisé : les calculs prennent le point de repli servi, et la note du pas le nomme', async () => {
+    const { latitudeDuCalcul, lieuDeRepli } = await import('./provenanceEpingle');
+    const { describeRowPitch } = await import('../../lib/roofPro2');
+    const { draw, ctx } = monter(6, true);
+    (ctx.opts as unknown as { suiviSite: Record<string, unknown> }).suiviSite.repli = { lat: 33.573, lon: -7.589, libelle: 'Casablanca (ville de référence)' };
+    tracer(draw);
+    expect(latitudeDuCalcul(ctx, 31.79)).toBe(33.573);
+    const note = describeRowPitch({ rowPitchM: 4.9, latitudeDeg: latitudeDuCalcul(ctx, 31.79), lieu: lieuDeRepli(ctx)?.libelle });
+    expect(note.label).toContain('à la latitude de Casablanca (ville de référence)');
+    expect(note.label).toContain('33,57°');
+    // Site localisé ensuite (adresse retenue) : la latitude du tracé reprend la main, la note redit « du site ».
+    await draw.geocode('31.6295, -7.9811', true);
+    expect(latitudeDuCalcul(ctx, 31.79)).toBe(31.79);
+    expect(lieuDeRepli(ctx)).toBeNull();
+    // Site public (aucun suivi) : la latitude du tracé, comme avant.
+    const publicSite = monter(6, false);
+    tracer(publicSite.draw);
+    expect(latitudeDuCalcul(publicSite.ctx, 31.79)).toBe(31.79);
+  });
 });
