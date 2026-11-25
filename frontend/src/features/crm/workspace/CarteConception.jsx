@@ -8,6 +8,7 @@
 // Un lead tout neuf n'a pas encore de conception (404 quelques secondes) :
 // la carte le dit et relit d'elle-même, un nombre BORNÉ de fois.
 import { useEffect, useState } from 'react'
+import { Button } from '../../../ui'
 import ventesApi from '../../../api/ventesApi'
 import { formatKwc, formatMAD, formatNumber } from '../../../lib/format'
 
@@ -25,7 +26,7 @@ function Ligne({ libelle, children, testId }) {
   )
 }
 
-function Colonne({ option, titre, table, payback }) {
+function Colonne({ option, titre, table, payback, retenue = false }) {
   const panneaux = lire(table, 'nb_panneaux')
   const kwc = lire(table, 'puissance_kwc')
   const production = lire(table, 'production_annuelle')
@@ -34,7 +35,15 @@ function Colonne({ option, titre, table, payback }) {
   const retour = lire(table, 'payback')
   return (
     <div className="min-w-0 flex-1" data-testid={`carte-conception-option-${option}`}>
-      {titre && <div className="mb-1 text-xs font-semibold text-foreground">{titre}</div>}
+      {titre && (
+        <div className="mb-1 text-xs font-semibold text-foreground">
+          {titre}
+          {retenue && (
+            <span className="ml-2 rounded border border-border px-1 text-xs font-normal text-muted-foreground"
+              data-testid={`carte-conception-retenue-${option}`}>retenue</span>
+          )}
+        </div>
+      )}
       <dl className="m-0 flex flex-col gap-1">
         {panneaux != null && (
           <Ligne libelle="Taille">
@@ -79,6 +88,7 @@ function phrasesNonCalcule(valeurs) {
 
 export default function CarteConception({ leadId, delaiRelectureMs = 4000, maxRelectures = 6 }) {
   const [etat, setEtat] = useState({ statut: 'charge', conception: null })
+  const [relance, setRelance] = useState(0) // m1 — « Relire » : une lecture de plus, jamais une chaîne
 
   useEffect(() => {
     let vivant = true
@@ -90,7 +100,7 @@ export default function CarteConception({ leadId, delaiRelectureMs = 4000, maxRe
         if (!vivant) return
         const conception = data?.etat ? data : null
         suite = conception?.perimee ? 'perimee' : (conception ? null : 'attente')
-        setEtat({ statut: conception ? 'ok' : 'absente', conception })
+        setEtat({ statut: conception ? 'ok' : 'absente', conception, epuisee: false })
       } catch (err) {
         if (!vivant) return
         if (err?.response?.status === 404) {
@@ -104,11 +114,13 @@ export default function CarteConception({ leadId, delaiRelectureMs = 4000, maxRe
         minuterie = setTimeout(() => relire(fait + 1), delaiRelectureMs)
       } else if (suite === 'attente') {
         setEtat({ statut: 'vide', conception: null })
+      } else if (suite === 'perimee') {
+        setEtat((e) => ({ ...e, epuisee: true })) // m1 — plus de relecture automatique : la carte le dit
       }
     }
-    if (leadId) relire(0)
+    if (leadId) relire(relance > 0 ? maxRelectures : 0)
     return () => { vivant = false; if (minuterie) clearTimeout(minuterie) }
-  }, [leadId, delaiRelectureMs, maxRelectures])
+  }, [leadId, delaiRelectureMs, maxRelectures, relance])
 
   const { statut, conception } = etat
   if (!leadId || statut === 'charge') return null
@@ -164,16 +176,22 @@ export default function CarteConception({ leadId, delaiRelectureMs = 4000, maxRe
     <section className={boite} data-testid="carte-conception">
       <div className="mb-2 flex items-center justify-between gap-2">
         <h3 className="m-0 text-sm font-semibold text-foreground">Conception</h3>
-        {conception.perimee && (
+        {conception.perimee && !etat.epuisee && (
           <span className="text-xs text-warning" role="status" data-testid="carte-conception-recalcul">
             Recalcul en cours
+          </span>
+        )}
+        {conception.perimee && etat.epuisee && (
+          <span className="flex items-center gap-2 text-xs text-warning" role="status" data-testid="carte-conception-recalcul-long">
+            Le recalcul n'est pas terminé.
+            <Button type="button" size="sm" variant="outline" onClick={() => setRelance((n) => n + 1)}>Relire</Button>
           </span>
         )}
       </div>
       <div className="flex flex-wrap gap-3">
         {colonnes.map(([cle, libelle]) => (
           <Colonne key={cle} option={cle} titre={deux ? libelle : ''} table={valeurs[cle]}
-            payback={conception.payback_devis} />
+            payback={conception.payback_devis} retenue={deux && conception.option_retenue === cle} />
         ))}
       </div>
       {(conception.suppositions?.length > 0 || nonCalcules.length > 0) && (
