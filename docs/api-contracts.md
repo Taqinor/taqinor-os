@@ -594,6 +594,8 @@
     buckets:inconnu, mode:texte, rows:inconnu, total_en_cours:inconnu
 - frontend/src/api/ventesApi.js :: getDevisActionBoard -> /api/django/ventes/devis/action-requise
     buckets:inconnu, devis:inconnu, wa_drafts:inconnu
+- frontend/src/api/ventesApi.js :: getDevisSynthese -> /api/django/ventes/devis/synthese
+    a_relancer:inconnu, batterie:inconnu, par_statut:inconnu, remplaces:inconnu, total:inconnu
 - frontend/src/api/ventesApi.js :: getLectureClientDevis -> /api/django/ventes/devis/<>/lecture-client
     friction:inconnu, sections:inconnu
 - frontend/src/api/ventesApi.js :: getPrefillSite -> /api/django/ventes/devis/prefill-site
