@@ -123,6 +123,7 @@ def _payback_servi(version, valeurs):
         return valeurs, {'devis_ref': None, 'motif': MOTIF_PAYBACK_SANS_DEVIS}
     from . import offres_tailles
     from .domain.catalogue import classer_produit
+    from .conception.valeurs import entrees_du_payback
     from .quote_engine.pricing import payback_publiable
     from .utils.options import AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option, lignes_avec_produit, option_totaux
 
@@ -144,9 +145,11 @@ def _payback_servi(version, valeurs):
         # Modèle HORAIRE (résidentiel) : l'économie « avec » est déjà nette du rendement de la batterie,
         # le cashflow n'en re-déduit rien (part stockée 0, comme le PDF, AMOT58).
         horaire = {'part_batterie': 0} if version.marche == 'residentiel' else {}
-        table['payback'] = {'valeur': payback_publiable(investissement, economie, stockage=option == 'avec',
-                                                        cout_onduleur_ttc=cout, **horaire)['payback_years'],
-                            'unite': 'ans', 'source': 'devis'}
+        table['payback'] = dict({'valeur': payback_publiable(investissement, economie, stockage=option == 'avec',
+                                                             cout_onduleur_ttc=cout, **horaire)['payback_years'],
+                                 'unite': 'ans', 'source': 'devis'},
+                                **entrees_du_payback(investissement, economie, cout,
+                                                     stockage=option == 'avec' and version.marche != 'residentiel'))
     return servies, {'devis_ref': devis.reference, 'motif': None}
 
 

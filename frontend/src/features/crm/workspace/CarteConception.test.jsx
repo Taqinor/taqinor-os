@@ -83,6 +83,11 @@ describe('ALEA71 — carte « Conception » de la fiche du lead', () => {
       expect(sansEspaces(colonne)).toContain(fr(v.production_annuelle.valeur))
       expect(sansEspaces(colonne)).toContain(fr(v.economies_annuelles.valeur))
       expect(colonne).toContain(`${v.payback.valeur} ans`)
+      // T4-X9-016 — le montant et l'économie de CETTE option, et la phrase du calcul.
+      const calcul = screen.getByTestId(`carte-conception-calcul-${option}`).textContent
+      expect(sansEspaces(calcul)).toContain(fr(v.payback.investissement_ttc))
+      expect(sansEspaces(calcul)).toContain(fr(v.payback.economie_annuelle))
+      expect(calcul).toContain(v.payback.calcul)
     }
     expect(texte()).toContain(`d'après le devis ${CONCEPTION.payback_devis.devis_ref}`)
   })

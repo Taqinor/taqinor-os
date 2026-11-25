@@ -132,6 +132,60 @@ class EmpreinteDocumentPureTest(SimpleTestCase):
         self.assertEqual(len(empreinte_document({})), 64)
 
 
+class ObstacleHorsToitTest(SimpleTestCase):
+    """T4-X2-002 — un obstacle ENTIÈREMENT hors de tout pan (« il n'a aucun effet ici ») n'entre
+    pas dans l'empreinte « document » ; l'empreinte de tout autre document ne bouge pas d'un bit."""
+
+    PAN = [[-7.6000, 33.5000], [-7.5998, 33.5000], [-7.5998, 33.5001], [-7.6000, 33.5001]]
+
+    def _doc(self, *obstacles):
+        return {'version': 2, 'zones': [{'id': 'z1', 'vertices': self.PAN, 'obstacles': list(obstacles)}]}
+
+    @staticmethod
+    def _ancienne(document):
+        """L'empreinte d'avant T4-X2-002 : le JSON trié du document sans les clés volatiles."""
+        import hashlib
+
+        from apps.calepinage.services.layout import _document_sans_volatiles
+        return hashlib.sha256(json.dumps(_document_sans_volatiles(document), sort_keys=True,
+                                         separators=(',', ':'), ensure_ascii=False,
+                                         default=str).encode('utf-8')).hexdigest()
+
+    def test_un_obstacle_hors_du_toit_ne_change_pas_l_empreinte(self):
+        loin = {'type': 'cheminee', 'centerLat': 33.5010, 'centerLng': -7.6010, 'lengthM': 1.3, 'widthM': 1.3}
+        self.assertEqual(empreinte_document(self._doc(loin)), empreinte_document(self._doc()))
+        self.assertNotEqual(self._ancienne(self._doc(loin)), self._ancienne(self._doc()))  # le défaut d'avant
+
+    def test_un_obstacle_sur_le_toit_ou_a_cheval_compte(self):
+        dedans = {'type': 'cheminee', 'centerLat': 33.50005, 'centerLng': -7.5999, 'lengthM': 1.0, 'widthM': 1.0}
+        a_cheval = dict(dedans, centerLng=-7.60000)  # centré sur le bord ouest du pan
+        geant = dict(dedans, lengthM=100.0, widthM=100.0)  # couvre le pan sans qu'un coin y tombe
+        for obstacle in (dedans, a_cheval, geant):
+            self.assertNotEqual(empreinte_document(self._doc(obstacle)), empreinte_document(self._doc()))
+
+    def test_les_documents_sans_obstacle_hors_toit_gardent_leur_empreinte_au_bit_pres(self):
+        """Tous les documents des échantillons de contrat (et D0) : empreinte d'avant = d'aujourd'hui."""
+        import pathlib
+
+        documents = [D0]
+
+        def recolter(noeud):
+            if isinstance(noeud, dict):
+                if isinstance(noeud.get('zones'), list):
+                    documents.append(noeud)
+                for valeur in noeud.values():
+                    recolter(valeur)
+            elif isinstance(noeud, list):
+                for valeur in noeud:
+                    recolter(valeur)
+        racine = pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+        for chemin in sorted(racine.glob('*.json')):
+            recolter(json.loads(chemin.read_text(encoding='utf-8')))
+        self.assertGreater(len(documents), 10)
+        for document in documents:
+            self.assertEqual(empreinte_document(document), self._ancienne(document))
+
+
 class EmpreinteDocumentEnBaseTest(BaseApiCalepinage):
 
     def setUp(self):

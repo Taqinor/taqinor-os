@@ -32,6 +32,7 @@ from __future__ import annotations
 
 
 import hashlib
+import math
 import json
 
 from core.conflit_etat import ConflitEtat
@@ -142,10 +143,68 @@ def empreinte_document(roof_layout):
     """
     if roof_layout is None:
         return ''
-    canonique = json.dumps(_document_sans_volatiles(roof_layout),
+    canonique = json.dumps(_sans_obstacles_hors_toit(_document_sans_volatiles(roof_layout)),
                            sort_keys=True, separators=(',', ':'),
                            ensure_ascii=False, default=str)
     return hashlib.sha256(canonique.encode('utf-8')).hexdigest()
+
+
+def _segments_se_coupent(a, b, c, d):
+    """Les segments [a, b] et [c, d] (mètres) se coupent-ils (contact compris) ?"""
+    def orient(p, q, r):
+        return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+
+    def sur(p, q, r):
+        return min(p[0], q[0]) <= r[0] <= max(p[0], q[0]) and min(p[1], q[1]) <= r[1] <= max(p[1], q[1])
+
+    o1, o2, o3, o4 = orient(a, b, c), orient(a, b, d), orient(c, d, a), orient(c, d, b)
+    if (o1 > 0) != (o2 > 0) and (o3 > 0) != (o4 > 0) and 0 not in (o1, o2, o3, o4):
+        return True
+    return any(o == 0 and sur(p, q, r) for o, p, q, r in ((o1, a, b, c), (o2, a, b, d), (o3, c, d, a), (o4, c, d, b)))
+
+
+def _disjoints(obstacle, pan):
+    """Deux contours (mètres) sans aucun point commun : aucun sommet de l'un dans l'autre,
+    aucune arête qui en coupe une autre."""
+    from core.calepinage.geometrie import point_dans_polygone
+
+    if any(point_dans_polygone(p, pan) for p in obstacle) or any(
+            point_dans_polygone(p, obstacle) for p in pan):
+        return False
+    aretes = [(obstacle[i], obstacle[i - 1]) for i in range(len(obstacle))]
+    return not any(_segments_se_coupent(a, b, pan[j], pan[j - 1]) for a, b in aretes for j in range(len(pan)))
+
+
+def _sans_obstacles_hors_toit(document):
+    """T4-X2-002 — le document de l'EMPREINTE, privé des obstacles ENTIÈREMENT hors de tout pan
+    (l'atelier le dit : « il n'a aucun effet ici »). Géométrie illisible, sans projection ou
+    obstacle qui touche un pan : rien n'est retiré. Un document sans tel obstacle est rendu TEL
+    QUEL (même objet) : son empreinte ne bouge pas d'un bit."""
+    from .planche import _points_geo, _projection, _zones
+    from .pret_a_envoyer import _points_de_l_obstacle
+
+    zones = _zones(document) if isinstance(document, dict) else []
+    projection = _projection(document) if zones else None
+    if projection is None:
+        return document
+    pans = [[projection.vers_local(lat, lng) for lat, lng in _points_geo(z.get('vertices'), 'lnglat')]
+            for z in zones]
+    pans = [pan for pan in pans if len(pan) >= 3]
+
+    def hors_toit(obstacle):
+        points = _points_de_l_obstacle(obstacle, projection.vers_local) if isinstance(obstacle, dict) else None
+        if not pans or not points or len(points) < 3:
+            return False
+        if obstacle.get('forme') != 'polygone':  # rectangle, disque : sommets remis dans l'ordre du tour
+            cx, cy = sum(p[0] for p in points) / len(points), sum(p[1] for p in points) / len(points)
+            points = sorted(points, key=lambda p: math.atan2(p[1] - cy, p[0] - cx))
+        return all(_disjoints(points, pan) for pan in pans)
+    if not any(hors_toit(o) for z in zones if isinstance(z.get('obstacles'), list) for o in z['obstacles']):
+        return document
+    for zone in zones:
+        if isinstance(zone.get('obstacles'), list):
+            zone['obstacles'] = [o for o in zone['obstacles'] if not hors_toit(o)]
+    return document
 
 
 def _est_nombre(valeur):

@@ -41,6 +41,7 @@ CLES_RANGEES = {
     'payback_devis',  # relecture E6 : le devis de référence du payback servi à la lecture
 }
 CLES_VALEUR = {'valeur', 'unite', 'source'}
+CLES_ENTREES_PAYBACK = {'investissement_ttc', 'economie_annuelle', 'cout_onduleur_ttc', 'calcul'}  # T4-X9-016
 SOURCES_VALEUR = {'moteur', 'pose', 'impose', 'devis', 'defaut'}
 SOURCES_ENTREE = {'lead', 'calepinage', 'reglage_societe', 'defaut'}
 CLES_SUPPOSITION = {'code', 'champ', 'valeur', 'source', 'message'}
@@ -129,7 +130,10 @@ class ContratConceptionLeadTests(SimpleTestCase):
                     self.assertIn(option, {'sans', 'avec'})
                     self.assertEqual(set(valeurs), attendues)
                     for cle, valeur in valeurs.items():
-                        self.assertEqual(set(valeur), CLES_VALEUR, cle)
+                        # T4-X9-016 — le payback servi d'un devis porte aussi ses entrées.
+                        attendu = (CLES_VALEUR | CLES_ENTREES_PAYBACK
+                                   if cle == 'payback' and valeur.get('source') == 'devis' else CLES_VALEUR)
+                        self.assertEqual(set(valeur), attendu, cle)
                         self.assertIn(valeur['source'], SOURCES_VALEUR, cle)
 
     def test_suppositions_entrees_et_declencheur(self):
@@ -1821,6 +1825,9 @@ class RelanceConceptionTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher'
         self.assertEqual((relue.lead_id, relue.calepinage_id, relue.courante, relue.version),
                          (None, sans_lead.pk, True, 1))
         self.assertEqual((relue.etat, relue.refus['code']), ('refus', 'localisation_inconnue'))
+        # T4-X9-013 — sans lead, le refus ne demande jamais « la ville … du lead ».
+        self.assertEqual(relue.refus['message'], "Sans lead, l'atelier ne calcule pas de conception : "
+                                                 'la production vient de la simulation de la pose.')
         self.assertTrue(relue.declencheur['raison'].endswith(' : premier calcul'))
         meme = self._relancer(None, company, _declencheur('manuel'), calepinage_id=sans_lead.pk)
         self.assertFalse(meme.ecrite)
@@ -1954,6 +1961,35 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
         self.assertEqual(_cles_interdites(lue), [])
         self.assertEqual(_photo_devis(devis.pk), avant)  # le devis envoyé n'est jamais écrit
         self.assertEqual(_json(ConceptionLead.objects.filter(lead=lead).values()[0]), rangee)  # jamais rangé
+
+    def test_t4x9016_le_payback_servi_porte_son_montant_et_son_economie(self):
+        """T4-X9-016 — « Retour 21,4 ans — d'après le devis DEV-… » sans dire quel montant ni
+        quelle économie : le payback servi porte À CÔTÉ de lui l'investissement TTC de SON option
+        et l'économie annuelle de la MÊME option (celle de la colonne), et la phrase du calcul
+        (cumul de 25 ans, baisse de production, remplacement de l'onduleur) quand ce n'est pas un
+        simple quotient. Établi : 65 900 MAD et 6 397 MAD/an donnent 10,6 ans
+        (``payback_publiable``, résidentiel, part stockée 0) — jamais 21,4."""
+        from apps.ventes.quote_engine.pricing import payback_publiable
+        from apps.ventes.selectors import conception_courante
+        from apps.ventes.services import build_devis_auto
+
+        self.assertEqual(payback_publiable(65900, 6397, stockage=True, part_batterie=0,
+                                           cout_onduleur_ttc=15000)['payback_years'], 10.6)
+        company, lead = self._cas('res_facture_dirhams')
+        _reglages_de_la_societe(company)
+        self._relancer(lead, company, _declencheur())
+        with self.captureOnCommitCallbacks(execute=True):
+            build_devis_auto(lead=lead, user=self._utilisateur(company), company=company)
+        lue = conception_courante(company, lead.pk)
+        for option, table in lue['valeurs'].items():
+            payback = table['payback']
+            self.assertEqual(payback['economie_annuelle'], table['economies_annuelles']['valeur'], option)
+            self.assertGreater(payback['investissement_ttc'], 0, option)
+            self.assertEqual(payback['valeur'], payback_publiable(
+                payback['investissement_ttc'], payback['economie_annuelle'], stockage=option == 'avec',
+                cout_onduleur_ttc=payback.get('cout_onduleur_ttc'), part_batterie=0)['payback_years'], option)
+            self.assertIn('25 ans', payback['calcul'], option)
+        self.assertEqual(_cles_interdites(lue), [])
 
     def test_e6d_cout_onduleur_un_seul_calcul_payback_servi_au_centime(self):
         """Lane E6d — la provision d'onduleur du payback servi est calculée par LA fonction des
