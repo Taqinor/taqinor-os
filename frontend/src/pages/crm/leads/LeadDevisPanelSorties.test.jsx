@@ -334,8 +334,9 @@ describe('ALEA51 — devis automatique créé : bannière de succès', () => {
     })
     const banniere = await screen.findByTestId('ldp-succes-auto')
     // T4-U1-026 — l'échantillon sert kwc = 7.1 : le bandeau dit la puissance du devis, jamais l'entier arrondi.
+    // T4-V2-015 — l'échantillon est une option unique avec batterie (imposée, pas un souhait de la fiche).
     expect(normaliser(banniere.textContent)).toContain(
-      `${BASE.reference} · 7,1 kWc · 73 000 MAD TTC · économie ≈ 102 000 MAD/an · 3 postes à chiffrer après la visite`)
+      `${BASE.reference} · 7,1 kWc · 73 000 MAD TTC · option unique : avec batterie · économie ≈ 102 000 MAD/an · 3 postes à chiffrer après la visite`)
     // retour_ans null (investissement incomplet) ⇒ aucun « retour » inventé.
     expect(banniere.textContent).not.toMatch(/retour/)
     const alertes = screen.getByTestId('ldp-alertes-auto')
