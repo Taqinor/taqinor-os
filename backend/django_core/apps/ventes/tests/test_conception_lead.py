@@ -3004,13 +3004,15 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
         company, toit_lead, _envoye_lead, sans_toit, _b, _e, _toits = self._banc_des_ecarts()
         pentu = type(sans_toit).objects.create(company=company, nom='Pentu', prenom='Sans toit', ville=sans_toit.ville,
                                                facture_hiver=Decimal('2200'), inclinaison_deg=Decimal('18'))
+        sans_ville = type(sans_toit).objects.create(company=company, nom='Sans', prenom='Ville', ville='',
+                                                    facture_hiver=Decimal('1800'))
         attendus = {lead.pk: calculer_conception(lead, company) for lead in (sans_toit, pentu)}
         instantane = (_json(list(ConceptionLead.objects.order_by('pk').values())),
                       _json(list(Calepinage.objects.order_by('pk').values())))
         appels = []
 
         def plan(company_, lat, lon, kwc, **kw):
-            appels.append((kw['lead_id'], kwc, kw['pente'], kw['produits']))
+            appels.append((kw['lead_id'], kwc, kw['pente'], kw['produits'], kw['nb_panneaux']))
             return {'production_annuelle': kwc * 1500.0,
                     'suppositions': [] if kw['pente'] is not None else [{'champ': 'inclinaison_deg'}]}
         sortie = io.StringIO()
@@ -3019,19 +3021,32 @@ class RemplirConceptionsTests(_emprunt(FigeageDevisAutoTests, 'setUp', '_patcher
                          stderr=io.StringIO())
         liste = sortie.getvalue()
         lignes = liste.splitlines()
-        self.assertTrue(lignes[1].startswith('  ÉCART MOYEN : '), liste)  # en tête, avant les leads
-        self.assertIn('PLUS GRAND : lead #', lignes[1])
+        options = sum(len(attendus[lead.pk].valeurs) for lead in (sans_toit, pentu))
+        # Les COMPTES d'abord, puis la moyenne et le plus grand écart, avant les leads.
+        self.assertEqual(lignes[1], f"  COMPTES : 3 lead(s) sans toit listé(s) ; {options} ligne(s) d'option "
+                                    "simulée(s) ; 0 non simulée(s) : aucune ; 1 lead(s) refusé(s) par le moteur : "
+                                    "1 × localisation_inconnue", liste)
+        self.assertTrue(lignes[2].startswith('  ÉCART MOYEN : '), liste)
+        self.assertIn('PLUS GRAND : lead #', lignes[2])
         self.assertNotIn(f'lead #{toit_lead.pk} ', liste)
-        self.assertIn('ÉCARTS SANS TOIT : 2 lead(s) sans toit tracé listé(s)', liste)
+        self.assertIn('ÉCARTS SANS TOIT : 3 lead(s) sans toit tracé listé(s)', liste)
+        # Le lead refusé n'est PAS un écart : un seul bloc, à la fin, après toutes les options.
+        bloc = lignes.index('  LEADS REFUSÉS PAR LE MOTEUR (1, pas des écarts) :')
+        self.assertTrue(lignes[bloc + 1].startswith(f'    lead #{sans_ville.pk} : localisation_inconnue — '))
+        self.assertFalse([li for li in lignes[bloc:] if '(sans toit) option' in li])
         for lead in (sans_toit, pentu):
             conception = attendus[lead.pk]
             for option, valeurs in conception.valeurs.items():
                 kwc, avant = valeurs['puissance_kwc']['valeur'], valeurs['production_annuelle']['valeur']
                 self.assertIn((lead.pk, kwc, 18.0 if lead is pentu else None,
                                {'module': valeurs['module_produit']['valeur'],
-                                'onduleur': valeurs['onduleur_produit']['valeur']}), appels)
+                                'onduleur': valeurs['onduleur_produit']['valeur']},
+                               valeurs['nb_panneaux']['valeur']), appels)
                 ligne = next(li for li in lignes if li.startswith(f'  lead #{lead.pk} (sans toit) option {option} '))
+                self.assertLess(lignes.index(ligne), bloc)
                 ecart = kwc * 1500.0 - avant
+                # Le RENDEMENT avant → après (kWh/kWc) : c'est lui qui bouge, pas la taille.
+                self.assertIn('rendement %s → 1 500 kWh/kWc' % '{:,.0f}'.format(avant / kwc).replace(',', ' '), ligne)
                 self.assertIn('production %s → %s kWh/an (écart %s kWh, %+.1f %%' % (
                     '{:,.0f}'.format(avant).replace(',', ' '), '{:,.0f}'.format(kwc * 1500.0).replace(',', ' '),
                     '{:+,.0f}'.format(ecart).replace(',', ' '), ecart / avant * 100), ligne)

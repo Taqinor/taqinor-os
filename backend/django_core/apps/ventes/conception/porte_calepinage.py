@@ -185,18 +185,21 @@ def simuler_la_pose(company, calepinage_id, materiel):
     return simuler_pose(calepinage, materiel=materiel) if calepinage is not None else None
 
 
-def production_du_plan_par_defaut(company, lead, kwc, produits):
+def production_du_plan_par_defaut(company, lead, kwc, produits, nb_panneaux=None):
     """ADEV154 / ACAL2026 — la production du PLAN PAR DÉFAUT d'un lead sans toit tracé
     (``calepinage/services/plan_par_defaut.py``, sans écriture) : ``kwc`` du moteur, son
     matériel (``{module, onduleur}`` : identifiants produit), le point du lead et sa pente
-    déclarée (``Lead.inclinaison_deg``, sinon 30° dite). Une simulation refusée rend
-    ``{refus: <motif nommé>}`` (aucun autre fichier de ventes n'importe le calepinage)."""
+    déclarée (``Lead.inclinaison_deg``, sinon 30° dite) ; ``nb_panneaux`` : le compte de la
+    conception, qui pose le plan à SA taille quand la fiche du module ne porte aucune
+    puissance (correction d'ACAL2026). Une simulation refusée rend ``{refus: <motif
+    nommé>}`` (aucun autre fichier de ventes n'importe le calepinage)."""
     from apps.calepinage.services.plan_par_defaut import simuler_plan_par_defaut
     from apps.calepinage.services.simulation import SimulationRefusee
 
     pente = getattr(lead, 'inclinaison_deg', None)
     try:
         return simuler_plan_par_defaut(company, None, None, kwc, lead_id=lead.pk, produits=produits,
+                                       nb_panneaux=nb_panneaux,
                                        pente=float(pente) if pente is not None else None)
     except SimulationRefusee as refus:
         return {'refus': refus.motif or str(refus)}
