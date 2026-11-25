@@ -1908,6 +1908,53 @@ describe('DevisList — T4-X4-005 : une page à la fois, filtres et en-tête ser
   })
 })
 
+// M6 (revue du lot 4) — la liste ne charge qu'une page, la sélection survit au
+// changement de page : « Générer les PDF » doit traiter EXACTEMENT les devis
+// que la barre compte, y compris ceux cochés sur une autre page.
+describe('DevisList — M6 : « Générer les PDF » agit sur toute la sélection, sur deux pages', () => {
+  async function lot({ selection, page, relire }) {
+    const { renderHook } = await import('@testing-library/react')
+    const { useDevisPdf } = await import('./devisList/useDevisPdf.js')
+    ventesApi.getDevisById.mockClear()
+    ventesApi.getDevisById.mockImplementation(relire)
+    const dispatch = vi.fn(() => ({ unwrap: () => Promise.resolve({ demande: 'D' }) }))
+    const setSelectedIds = vi.fn()
+    const rendu = renderHook(() => useDevisPdf({ dispatch, devis: page, selectedIds: selection, setSelectedIds }))
+    await act(async () => { await rendu.result.current.handleGenererPdfLot() })
+    return { dispatch, setSelectedIds, ...rendu }
+  }
+  const sur = (id) => ({ id, reference: `DEV-${id}`, mode_installation: 'residentiel' })
+
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => {
+    vi.runOnlyPendingTimers(); vi.useRealTimers()
+    // Remet la réponse par défaut du fichier (les autres suites la lisent).
+    ventesApi.getDevisById.mockImplementation(() => Promise.resolve({ data: { fichier_pdf: '/media/devis/DEV-PDF-AUTO.pdf' } }))
+  })
+
+  it('trois cochés dont un sur l’autre page : les trois PDF sont lancés, l’absent est relu', async () => {
+    const { dispatch, setSelectedIds } = await lot({
+      selection: [1, 2, 9], page: [sur(1), sur(2)],
+      relire: (id) => Promise.resolve({ data: sur(id) }),
+    })
+    expect(ventesApi.getDevisById).toHaveBeenCalledTimes(1)
+    expect(ventesApi.getDevisById).toHaveBeenCalledWith(9)
+    expect(dispatch).toHaveBeenCalledTimes(3)
+    expect(setSelectedIds).toHaveBeenCalledWith([])
+  })
+
+  it('un coché illisible n’est pas perdu en silence : dit, et il reste coché', async () => {
+    const erreur = vi.spyOn(toast, 'error')
+    const { dispatch, setSelectedIds } = await lot({
+      selection: [1, 9], page: [sur(1)], relire: () => Promise.reject(new Error('404')),
+    })
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(erreur).toHaveBeenCalledWith(expect.stringContaining('1 devis coché n’a pas pu être relu'))
+    expect(setSelectedIds).toHaveBeenCalledWith([9])
+    erreur.mockRestore()
+  })
+})
+
 // T4-X4-009 — « Envoyer » sur un devis dont la fiche n'a aucun numéro : un toast
 // « Numéro de téléphone invalide. » seul. Il dit maintenant ce qui manque et
 // offre de copier le lien (le geste de la fenêtre « Envoyer au client » du lead).

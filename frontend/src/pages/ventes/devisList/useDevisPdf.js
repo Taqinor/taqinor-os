@@ -396,14 +396,39 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
   // QG1 — pas d'ouverture automatique par lot (N devis => N ouvertures serait
   // intrusif) : chacun reste téléchargeable via son bouton vert une fois prêt.
   const handleGenererPdfLot = async () => {
-    const cibles = devis.filter(d => selectedIds.includes(d.id))
+    // M6 (revue du lot 4) — la liste ne charge qu'UNE page, mais la sélection
+    // survit au changement de page : la barre compte « N devis », le geste doit
+    // agir sur EXACTEMENT ces N. Un devis coché sur une autre page est relu
+    // (`getDevisById`, détail complet) ; aucun n'est écarté sans un mot.
     setBatchPdf(false)
+    const surLaPage = new Map(devis.map(d => [d.id, d]))
+    const cibles = []
+    const illisiblesIds = []
+    for (const id of selectedIds) {
+      let d = surLaPage.get(id)
+      if (!d) {
+        try {
+          d = (await ventesApi.getDevisById(id))?.data
+        } catch (err) {
+          console.warn('useDevisPdf.handleGenererPdfLot : devis coché relu en échec', err)
+        }
+      }
+      if (d?.id) cibles.push(d)
+      else illisiblesIds.push(id)
+    }
     let ok = 0
     for (const d of cibles) {
       if (await genererUnPdf(d, { autoOpen: false })) ok += 1
     }
     if (ok > 0) toast.success(`Génération lancée pour ${ok} devis.`)
-    setSelectedIds([])
+    const illisibles = illisiblesIds.length
+    if (illisibles > 0) {
+      toast.error(`${illisibles} devis coché${illisibles > 1 ? 's' : ''} n’${illisibles > 1 ? 'ont' : 'a'} pas pu être relu${illisibles > 1 ? 's' : ''} : `
+        + 'aucun PDF lancé pour '
+        + `${illisibles > 1 ? 'eux' : 'lui'}. Ils restent cochés : réessayez.`)
+    }
+    // Seuls les devis réellement traités quittent la sélection.
+    setSelectedIds(illisiblesIds)
   }
 
   // WIR103/XFAC10 — Proforma PDF : document sans aucun impact comptable
