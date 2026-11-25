@@ -241,9 +241,8 @@ def _panneaux_selon_watt(calepinage, entrees):
     LA règle du moteur (``apps.ventes.services.panneaux_pour_la_meme_puissance``, décision 28
     ouverte) — jamais calculée dans le navigateur. ``{}`` sans conception complète. Aucune
     lecture de plus : la conception est celle que ``_module_de_la_conception`` a déjà lue."""
-    from apps.ventes.services import panneaux_pour_la_meme_puissance
-
     from .devis_retenu import conception_du_calepinage
+    from .equipements import panneaux_pour_la_meme_puissance
 
     conception = conception_du_calepinage(calepinage) or {}
     valeurs = (conception.get('valeurs') or {}).get(conception.get('option_retenue')) or {}

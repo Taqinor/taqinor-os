@@ -237,6 +237,9 @@ SURFACE_PUBLIQUE = (
     "orientation_du_pan",
     # CIQ618 — ouverture automatique du dossier 82-21 (domain/dossier_8221.py).
     "ouvrir_dossier_8221",
+    # Lane E9 (T4-X2-001, 25/11/2026) — LA règle « même puissance dans un autre module », lue
+    # par le calepinage (cible de l'atelier) : une seule définition, celle du moteur.
+    "panneaux_pour_la_meme_puissance",
     "pans_du_document",
     # Critique D1 (22/11) — les pans vendus, sans les pans existants.
     "pans_vendus",

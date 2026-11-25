@@ -73,9 +73,10 @@ def apercu_materiel_du_devis(calepinage):
     devis » porterait (dry-run de LA composition), les désignations électriques qu'il ne
     portera pas (phrase et raison) ; ``refus`` = la phrase de la composition (ou de
     l'absence de toit) quand rien ne se compose. N'écrit rien."""
-    from apps.ventes.services import AutoDevisError, build_devis_from_layout
-
     from .devis import DevisRefuse, _exiger_layout, _lead_et_client
+    from .equipements import composition_a_blanc
+
+    build_devis_from_layout, AutoDevisError = composition_a_blanc()
 
     try:
         layout = _exiger_layout(calepinage)
