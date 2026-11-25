@@ -1891,7 +1891,10 @@ export default function DevisGenerator({
             <div className="grid gap-1.5">
               <Label htmlFor="gen-validite">Date de validité</Label>
               <Input id="gen-validite" type="date" value={dateValidite}
-                     onChange={e => setDateValidite(e.target.value)} />
+                     onChange={e => {
+                       setDateValidite(e.target.value)
+                       if (erreursChamps.date_validite) setErreursChamps(c => ({ ...c, date_validite: undefined }))
+                     }} />
               {erreursChamps.date_validite && (
                 <p className="text-xs text-destructive" data-testid="erreur-champ-date_validite">
                   {erreursChamps.date_validite}
