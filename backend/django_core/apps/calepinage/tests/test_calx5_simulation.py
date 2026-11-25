@@ -1558,8 +1558,19 @@ class PosePourMoteurTest(TestCase):
 
         from .acal_livrables_helpers import patch_materiel
 
-        self._poser(neededPanels=10)
+        def geometrie(pose_manuelle):
+            return dict(LAYOUT['zones'][0]['geometry'], poseManuelle=pose_manuelle)
+
         with patch_materiel():
+            # Relecture E6 M2 — la marque ÉCRITE par l'outil de toiture fait foi : un toit trop
+            # petit pour la cible (12 posés sur 20 demandés) rempli automatiquement N'EST PAS
+            # posé à la main (mutant « ancienne règle » : rouge) ; une pose ajustée l'est.
+            self._poser(neededPanels=20, geometry=geometrie(False))
+            self.assertIs(pose_servie(self.societe, self.calepinage.pk)['a_la_main'], False)
+            self._poser(neededPanels=12, geometry=geometrie(True))
+            self.assertIs(pose_servie(self.societe, self.calepinage.pk)['a_la_main'], True)
+            # Un document enregistré AVANT la marque garde la règle d'avant (compte ≠ cible).
+            self._poser(neededPanels=10)
             self.assertIs(pose_servie(self.societe, self.calepinage.pk)['a_la_main'], True)
             self._poser(neededPanels=12)
             self.assertIs(pose_servie(self.societe, self.calepinage.pk)['a_la_main'], False)

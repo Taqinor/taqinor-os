@@ -688,3 +688,30 @@ describe('ACAL608 — la pose du pan (`panelOrientation`, `orient`) écrite à l
     expect(sortie(pl, [{ cx: 0, cy: 0 }, { cx: 1, cy: 0, angleDeg: 0 }]).panelOrientation).toBe('landscape');
   });
 });
+
+describe('Relecture E6 M2 — `geometry.poseManuelle` écrite à l’export (lue par pose_pour_moteur.pose_servie)', () => {
+  const planDe = (nb: number) => ({
+    pack: { origin: [-7.6, 33.59] as [number, number], azimuthDeg: 180 },
+    grid: { panels: Array.from({ length: nb }, (_, i) => ({ cx: i, cy: 0 })), kwc: nb * 0.5 },
+    tiltDeg: 13, family: 'south', flush: false, count: nb,
+  }) as unknown as AreaRecord['renderPlan'];
+  const occupation = (nb: number, occupes: number[]) => ({
+    layoutState: { cells: Array.from({ length: nb }, (_, i) => ({ cx: i, cy: 0 })), occupied: new Set(occupes) },
+  });
+  const marque = (ctx: Ctx) => serializeLayout(ctx).zones[0].geometry?.poseManuelle;
+
+  it('remplissage automatique (même un toit trop petit pour la cible) : false', () => {
+    const ctx = makeCtx([zone('z1', { renderPlan: planDe(6), neededPanels: 20 })]);
+    expect(marque(ctx)).toBe(false);
+    Object.assign(ctx, occupation(6, [0, 1, 2, 3, 4, 5]));
+    expect(marque(ctx)).toBe(false);
+  });
+
+  it('un panneau retiré ou déplacé à la main, ou un placement libre : true', () => {
+    const ctx = makeCtx([zone('z1', { renderPlan: planDe(6) })]);
+    Object.assign(ctx, occupation(6, [0, 1, 2, 3, 5]));
+    expect(marque(ctx)).toBe(true); // mutant « jamais écrite » : undefined
+    Object.assign(ctx, { layoutState: null, freeMode: true, freeState: { panels: [{ cx: 0.4, cy: 0 }] } });
+    expect(marque(ctx)).toBe(true);
+  });
+});
