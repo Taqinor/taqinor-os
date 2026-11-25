@@ -11,6 +11,10 @@ interdit la croissance — budget 0 ligne nette.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def prefetch_devis_liste_leads(prefixe='devis'):
     """AOOM1 — LE préchargement des devis d'une LISTE de leads, SANS leur
@@ -162,15 +166,16 @@ def _total_affiche_memorise(devis, display_totals, marqueur_societe=None):
         hashlib.sha1(repr(lignes).encode('utf-8'), usedforsecurity=False).hexdigest())
     try:
         trouve = cache.get(cle)
-    except Exception:  # cache indisponible : on calcule, comme avant
+    except Exception:  # noqa: BLE001 — cache indisponible : on calcule, comme avant (D-ENF22-BLE001)
+        logger.warning('Total mémorisé du devis non lu : cache indisponible', exc_info=True)
         trouve = None
     if trouve is not None:
         return Decimal(trouve)
     total = Decimal(str(display_totals(devis, lignes_prechargees=True)['total'] or 0))
     try:
         cache.set(cle, str(total), DUREE_TOTAL_MEMORISE_S)
-    except Exception:
-        pass
+    except Exception:  # noqa: BLE001 — le total est rendu quand même (D-ENF22-BLE001)
+        logger.warning('Total mémorisé du devis non rangé : cache indisponible', exc_info=True)
     return total
 
 
