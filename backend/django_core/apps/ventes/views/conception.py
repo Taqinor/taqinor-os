@@ -120,7 +120,8 @@ def apercu_conception(request):
         return Response({'detail': 'Champ imposé inconnu : %s.' % ', '.join(inconnus), 'champ': inconnus[0]},
                         status=400)
     try:
-        sortie, refus = apercu(lead, company, calepinage=calepinage, saisies=entrees, imposes=imposes)
+        sortie, refus = apercu(lead, company, calepinage=calepinage, saisies=entrees, imposes=imposes,
+                               investissement=corps.get('investissement'))  # E7d (M1)
     except SaisieRefusee as exc:
         return Response({'detail': str(exc), 'champ': exc.champ}, status=400)
     if refus is not None:

@@ -457,9 +457,84 @@
 </div>
 <div class="p-4 sm:p-5 sm:pt-0 gen-preview-body pt-4" id="gen-sec-simulation-contenu" hidden="">
 <div class="mb-4" data-testid="etude-horaire-block">
-<p class="mb-2 text-xs text-muted-foreground" data-testid="etude-horaire-source">Calcul du moteur horaire en cours…</p>
+<p class="mb-2 text-xs font-medium text-success" data-testid="etude-horaire-source">Chiffres du moteur horaire (serveur) — PVGIS réel × consommation réelle du client.</p>
 </div>
-<p class="text-center text-sm text-muted-foreground" data-testid="apercu-conception-attente">Renseignez le nombre de panneaux et les factures, puis la simulation s'actualise automatiquement.</p>
+<div class="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success" data-testid="bandeau-modele-conception">Conception du moteur unique : chiffres calculés sur les valeurs de l’écran (aperçu, rien n’est enregistré).</div>
+<div class="gen-metrics-grid">
+<div class="gen-metric gen-metric-accent">
+<div class="gen-metric-label">Production annuelle</div>
+<div class="gen-metric-value">12 000<span data-figure="production_annuelle_kwh" data-figure-value="12 000" hidden="">
+</span>
+</div>
+<div class="gen-metric-unit">kWh / an</div>
+</div>
+<div class="gen-metric">
+<div class="gen-metric-label">Taux d'autoconsommation (sans)</div>
+<div class="gen-metric-value">50 %</div>
+<div class="gen-metric-unit">part de la production consommée</div>
+</div>
+<div class="gen-metric">
+<div class="gen-metric-label">Taux de couverture (sans)</div>
+<div class="gen-metric-value">60 %<span data-figure="couverture_pct" data-figure-option="sans" data-figure-value="60 %" hidden="">
+</span>
+</div>
+<div class="gen-metric-unit">part de la conso couverte</div>
+</div>
+</div>
+<div class="gen-compare-grid">
+<div class="gen-compare-col gen-compare-col-rec">
+<div class="gen-compare-col-title">Sans batterie<span class="gen-rec-badge">★ Recommandé</span>
+</div>
+<div class="gen-metric">
+<div class="gen-metric-label">Économies</div>
+<div class="gen-metric-value">6 000<span data-figure="economie_annuelle" data-figure-option="sans" data-figure-value="6 000" hidden="">
+</span>
+</div>
+<div class="gen-metric-unit">MAD / an</div>
+</div>
+<div class="gen-metric gen-metric-accent">
+<div class="gen-metric-label">ROI</div>
+<div class="gen-metric-value">6 ans<span data-figure="payback_ans" data-figure-option="sans" data-figure-value="6 ans" hidden="">
+</span>
+</div>
+<div class="gen-metric-unit">retour sur invest.</div>
+</div>
+<div class="gen-metric">
+<div class="gen-metric-label">Coût</div>
+<div class="gen-metric-value">24 900<span data-figure="total_ttc" data-figure-option="sans" data-figure-value="24 900" hidden="">
+</span>
+</div>
+<div class="gen-metric-unit">MAD TTC</div>
+</div>
+</div>
+<div class="gen-compare-col">
+<div class="gen-compare-col-title">Avec batterie</div>
+<div class="gen-metric">
+<div class="gen-metric-label">Économies</div>
+<div class="gen-metric-value">6 000<span data-figure="economie_annuelle" data-figure-option="avec" data-figure-value="6 000" hidden="">
+</span>
+</div>
+<div class="gen-metric-unit">MAD / an</div>
+</div>
+<div class="gen-metric gen-metric-accent">
+<div class="gen-metric-label">ROI</div>
+<div class="gen-metric-value">6 ans<span data-figure="payback_ans" data-figure-option="avec" data-figure-value="6 ans" hidden="">
+</span>
+</div>
+<div class="gen-metric-unit">retour sur invest.</div>
+</div>
+<div class="gen-metric">
+<div class="gen-metric-label">Coût</div>
+<div class="gen-metric-value">50 100<span data-figure="total_ttc" data-figure-option="avec" data-figure-value="50 100" hidden="">
+</span>
+</div>
+<div class="gen-metric-unit">MAD TTC</div>
+</div>
+</div>
+</div>
+<div class="gen-chart-title">Économies mensuelles estimées (MAD / mois)</div>
+<div class="recharts-responsive-container" style="width: 100%; height: 260px; min-width: 0px;">
+</div>
 </div>
 </div>
 <div class="rounded-xl border border-border bg-card text-card-foreground shadow-card" data-testid="offres-tailles-section">

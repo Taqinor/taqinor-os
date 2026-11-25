@@ -65,13 +65,15 @@ vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDev
         },
       })
     }),
-    postEtudeHorairePreview: vi.fn((body) => {
-      const n = Number(body?.facture_hiver) >= 2500 ? 21 : 9
+    // E7d (M3) — la recommandation vient de la conception du moteur unique
+    // (`POST conception/apercu/`, `blocs.dimensionnement`), plus de l'aperçu horaire.
+    getConceptionLead: vi.fn(() => Promise.reject(new Error('404'))),
+    apercuConception: vi.fn((body) => {
+      const n = Number(body?.entrees?.facture_hiver) >= 2500 ? 21 : 9
       return Promise.resolve({
         data: {
-          dimensionnement: {
-            recommandation: { panneaux: n, kwc: (n * 710) / 1000, panel_watt: 710 },
-          },
+          etat: 'complet', marche: 'residentiel', option_retenue: 'sans', valeurs: { sans: {} }, suppositions: [],
+          blocs: { dimensionnement: { recommandation: { panneaux: n, kwc: (n * 710) / 1000, panel_watt: 710 } } },
         },
       })
     }),
@@ -185,8 +187,8 @@ describe('F1 — le garde-fou nbPanneauxTouched est restauré à sa valeur EXACT
     // NOUVELLE facture soit parti (le débounce de 500 ms écoulé et l'appel
     // émis). Sans cette preuve, le test passerait à vide.
     await waitFor(() => {
-      const appels = ventesApi.postEtudeHorairePreview.mock.calls
-      expect(appels.some(([corps]) => Number(corps?.facture_hiver) === 3000)).toBe(true)
+      const appels = ventesApi.apercuConception.mock.calls
+      expect(appels.some(([corps]) => Number(corps?.entrees?.facture_hiver) === 3000)).toBe(true)
     }, { timeout: 5000 })
     expect(nbPanneauxField().value).toBe(apresClic)
   })

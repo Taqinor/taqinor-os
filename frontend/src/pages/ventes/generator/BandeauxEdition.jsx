@@ -11,13 +11,28 @@ import BandeauConception from './BandeauConception'
 export default function BandeauxEdition({
   editDevis, conflitVerrou, setConflitVerrou, clear, setRechargeEdit, forcerSansJetonRef,
   handleSubmit, brouillonProposable, restored, handleRestoreDraft, discard, savedAt, refsLoading,
-  loadFailed, saleWarnings,
+  loadFailed, saleWarnings, dirty = false, confirm = null, enregistrer = null,
 }) {
+  // E7d (revue lot 4, M4) — des modifications NON enregistrées à l'écran : « Mettre à
+  // jour » (qui recharge le brouillon ENREGISTRÉ) demande d'abord — enregistrer puis
+  // mettre à jour, ou annuler — et n'efface jamais une saisie en silence.
+  const avantMiseAJour = async () => {
+    if (!dirty) return true
+    const ok = confirm ? await confirm({
+      title: 'Enregistrer vos modifications d’abord ?',
+      description: 'Des modifications de cet écran ne sont pas enregistrées. « Mettre à jour » repart du '
+        + 'brouillon enregistré : enregistrez-les d’abord, ou annulez pour les garder à l’écran.',
+      confirmLabel: 'Enregistrer puis mettre à jour',
+    }) : false
+    if (!ok) return false
+    return enregistrer ? Boolean(await enregistrer()) : false
+  }
   return (
     <>
       {/* AGEN12 — la conception du lead a bougé : « Mettre à jour » (brouillon
           retouché) ou « Réviser le devis » (envoyé) ; puis l'écran se recharge. */}
-      <BandeauConception devis={editDevis} onMisAJour={() => { clear(); setRechargeEdit((n) => n + 1) }} />
+      <BandeauConception devis={editDevis} avantMiseAJour={avantMiseAJour}
+                         onMisAJour={() => { clear(); setRechargeEdit((n) => n + 1) }} />
       {editDevis?.statut === 'envoye' && (
         <div
           data-testid="devis-envoye-banner"

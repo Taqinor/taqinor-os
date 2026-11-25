@@ -202,8 +202,9 @@ test('QJR426 — Économies/ROI/Coût (Sans puis Avec) gardent leurs expressions
   assert.ok(economies[1].includes('fmtNum(Math.round(apercuEcoAvec))'))
 
   const roi = tousLesBlocsDeLabel('ROI')
-  assert.ok(roi[0].includes("apercuPaybackSans != null ? apercuPaybackSans + ' ans' : 'N/A'"))
-  assert.ok(roi[1].includes("apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : 'N/A'"))
+  // E7d (M1) — sans payback de l'aperçu, la carte dit pourquoi (« après enregistrement »…).
+  assert.ok(roi[0].includes("apercuPaybackSans != null ? apercuPaybackSans + ' ans' : apercuPaybackSansAbsent"))
+  assert.ok(roi[1].includes("apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : apercuPaybackAvecAbsent"))
 
   const cout = tousLesBlocsDeLabel('Coût')
   assert.ok(cout[0].includes('fmtNum(Math.round(totals.totalSans))'))

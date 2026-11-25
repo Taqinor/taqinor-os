@@ -19,6 +19,7 @@ import { configureStore } from '@reduxjs/toolkit'
 import authReducer from '../../features/auth/store/authSlice'
 import ventesReducer from '../../features/ventes/store/ventesSlice'
 import { estimerMois } from '../../features/ventes/solar'
+import { documentContrat } from '../../test/fixtures/contractSamples'
 
 //: La date figée de toutes les captures (Date.now / new Date de l'écran).
 export const DATE_FIGEE = new Date('2026-10-08T09:00:00Z')
@@ -194,12 +195,13 @@ export const REGISTRE_NON_VIDE = {
 }
 
 //: (i) résidentiel rouvert, aperçu d'étude horaire servi par le serveur.
+//  E7d (M3) — rattaché au lead : sa conception (rangée puis aperçu) est servie.
 export const DEVIS_ETUDE_HORAIRE = devisBase(37, 'residentiel', {
   scenario: 'Sans batterie',
 }, [
   ligne(1, PANNEAU, 8, 1200, 10),
   ligne(2, OND_RESEAU, 1, 9000, 20),
-])
+], { lead: LEAD.id })
 
 // ── Normalisation et sérialisation ──────────────────────────────────────────
 /** Le HTML rendu, jetons `useId` de React remplacés par un ordinal stable. */
@@ -271,8 +273,20 @@ export async function charger() {
 }
 
 export function configurer({ crmApi, stockApi, parametresApi, ventesApi }, {
-  devis, registre, etudeHoraire, historique = [], leads = [LEAD], clients = [CLIENT],
+  devis, registre, historique = [], leads = [LEAD], clients = [CLIENT], conception,
 } = {}) {
+  // E7d (M3) — la conception du moteur unique (version rangée ET aperçu) : la
+  // SEULE source des blocs de l'aperçu ; l'aperçu horaire n'est plus appelé.
+  // m3 — `conception: 'contrat'` sert le contrat committé `conception_lead.json`
+  // (version rangée `exemple` du lead, réponse d'aperçu `apercu.reponse`, PACT10).
+  if (conception === 'contrat') {
+    const doc = documentContrat('ventes', 'conception_lead')
+    ventesApi.getConceptionLead.mockResolvedValue({ data: { ...doc.exemple, lead: LEAD.id } })
+    ventesApi.apercuConception.mockResolvedValue({ data: doc.apercu.reponse })
+  } else if (conception) {
+    ventesApi.getConceptionLead.mockResolvedValue({ data: conception })
+    ventesApi.apercuConception.mockResolvedValue({ data: conception })
+  }
   crmApi.getClients.mockResolvedValue({ data: clients })
   crmApi.getLeads.mockResolvedValue({ data: leads })
   crmApi.getLead.mockImplementation((id) => Promise.resolve({
@@ -286,8 +300,6 @@ export function configurer({ crmApi, stockApi, parametresApi, ventesApi }, {
   ventesApi.getHistoriqueConfigurationDevis.mockResolvedValue({ data: historique })
   ventesApi.getLotsDevis.mockResolvedValue({ data: [] })
   if (devis) ventesApi.getDevisById.mockResolvedValue({ data: devis })
-  ventesApi.postEtudeHorairePreview.mockImplementation(() => (etudeHoraire
-    ? Promise.resolve({ data: etudeHoraire }) : new Promise(() => {})))
   ventesApi.etudeCiPreview.mockImplementation(() => new Promise(() => {}))
   ventesApi.economieCiPreview.mockImplementation(() => new Promise(() => {}))
   ventesApi.economiePompagePreview.mockImplementation(() => new Promise(() => {}))

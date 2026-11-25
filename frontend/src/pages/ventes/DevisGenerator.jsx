@@ -989,12 +989,12 @@ export default function DevisGenerator({
     verdictBatterieServeur, batterieInvendableServeur,
     apercuEcoAvec, apercuPaybackSans, apercuPaybackAvec,
     apercuPaybackSansJamais, apercuPaybackAvecJamais,
-    signerEcoOuRoi, chartData, paybackServi,
+    signerEcoOuRoi, chartData, apercuPaybackSansAbsent, apercuPaybackAvecAbsent,
   } = useApercuEtude({
     lines, kwpLignes, kwpAvec, realBillMode, realBillKwh,
     realBillMad, distributeur, baremeSociete, provenanceMois, leadDuDevis, leads,
     leadId, modeInstallation, clientsConnus, clientId, confirm, editId, fHiver, fEte,
-    sizing, dispatchSizing, produits,
+    sizing, dispatchSizing, produits, monthly, realBillSaisi, distributeurChoisi, consoStockee, totals,
   })
 
   // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──
@@ -1710,7 +1710,7 @@ export default function DevisGenerator({
   // CIQ125 — le profil déclaré C&I + la réponse du moteur serveur.
   const socleEtudeReseau = {
     profilCi, apercuCi, tarifSaisie, setChampCi: ci.setChampCi, setTarifChamp: ci.setTarifChamp, reprisLead: ci.reprisLead,
-    apercuEcoCi, ecoCi, setEcoChamp, paybackServi,
+    apercuEcoCi, ecoCi, setEcoChamp,
   }
 
   return (
@@ -1775,7 +1775,7 @@ export default function DevisGenerator({
           clear={clear} setRechargeEdit={setRechargeEdit} forcerSansJetonRef={forcerSansJetonRef}
           handleSubmit={handleSubmit} brouillonProposable={brouillonProposable} restored={restored}
           handleRestoreDraft={handleRestoreDraft} discard={discard} savedAt={savedAt}
-          refsLoading={refsLoading} loadFailed={loadFailed} saleWarnings={saleWarnings}
+          refsLoading={refsLoading} loadFailed={loadFailed} saleWarnings={saleWarnings} dirty={dirty} confirm={confirm} enregistrer={enregistrerAvantModele}
         />
         {/* ── Mode d'installation (marché) ── */}
         <Card>
@@ -2014,10 +2014,10 @@ export default function DevisGenerator({
           etudeHoraireAnnuelAvec={etudeHoraireAnnuelAvec} distributeur={distributeur}
           apercuProductionKwh={apercuProductionKwh} apercuProductionKwhAvec={apercuProductionKwhAvec} showSans={showSans}
           signerEcoOuRoi={signerEcoOuRoi} apercuEcoSans={apercuEcoSans}
-          apercuPaybackSansJamais={apercuPaybackSansJamais} apercuPaybackSans={apercuPaybackSans}
+          apercuPaybackSansJamais={apercuPaybackSansJamais} apercuPaybackSans={apercuPaybackSans} apercuPaybackSansAbsent={apercuPaybackSansAbsent}
           totals={totals} avecRec={avecRec} batterieInvendableServeur={batterieInvendableServeur}
           verdictBatterieServeur={verdictBatterieServeur} apercuEcoAvec={apercuEcoAvec}
-          apercuPaybackAvecJamais={apercuPaybackAvecJamais} apercuPaybackAvec={apercuPaybackAvec}
+          apercuPaybackAvecJamais={apercuPaybackAvecJamais} apercuPaybackAvec={apercuPaybackAvec} apercuPaybackAvecAbsent={apercuPaybackAvecAbsent}
           capaciteBatterieInconnue={capaciteBatterieInconnue} facturesSaisies={facturesSaisies}
           chartData={chartData}
           editDevis={editDevis} simulationRepliee={simulationRepliee}

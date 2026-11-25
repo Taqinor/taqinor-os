@@ -10,7 +10,9 @@ import {
   verdictBatteriePourTaille,
   libelleTranche, falaiseAffichable, glitchAnnuel, balayageStockageAffichable,
   estimationConsoAffichable, facturesRecaleesAffichables,
+  donneesHorairesDeConception, serieEconomiesMensuelles,
 } from './etudeHorairePreviewPur.js'
+import { documentContrat } from '../../test/fixtures/contractSamples.js'
 import { isBattery, texteClassement, appartientAuPanierAvec } from './calc/classification.js'
 
 test('construireCorpsPreview : null hors résidentiel, même avec facture', () => {
@@ -393,4 +395,31 @@ test('facturesRecaleesAffichables : hors saut (clé absente) rien n\'est dit', (
   assert.deepEqual(facturesRecaleesAffichables({ methode: 'inversion_bareme_tranches' }, { facture_hiver: 1300 }), [])
   assert.deepEqual(facturesRecaleesAffichables(undefined), [])
   assert.deepEqual(facturesRecaleesAffichables({ montants_dans_un_saut: 'x' }), [])
+})
+
+// E7d (revue lot 4, M3) — UNE source par bloc : quand la conception du moteur
+// unique sert les cartes, le graphe, la falaise, le verdict batterie et le
+// tableau sortent de la MÊME réponse (`blocs` de la conception). AGNR23 (son test
+// `solar.agnrSerieMensuelle` est parti avec computeROI, AGEN13) : Σ des 12 mois du
+// graphe = la carte « Économies » (valeur servie), mois de production = la carte.
+test('E7d M3 — graphe et blocs lus sur la conception servie ; Σ des mois = la carte', () => {
+  const conception = documentContrat('ventes', 'conception_lead').apercu.reponse
+  const d = donneesHorairesDeConception(conception)
+  assert.ok(d && d.sans && d.avec, 'réponse résidentielle complète : blocs servis')
+  assert.equal(d.sans.etude, conception.blocs.etude_horaire)
+  const serie = serieEconomiesMensuelles(d.sans, d.avec)
+  assert.equal(serie.length, 12)
+  const carte = conception.valeurs.sans
+  assert.equal(serie.reduce((s, m) => s + m.ecoSans, 0), carte.economies_annuelles.valeur)
+  assert.deepEqual(d.sans.etude.mois.map((m) => m.production_kwh), carte.production_mensuelle.valeur)
+  // Un refus, un autre marché, ou rien de servi : aucune donnée d'une autre source.
+  assert.equal(donneesHorairesDeConception(documentContrat('ventes', 'conception_lead').exemple_refus), null)
+  assert.equal(donneesHorairesDeConception({ ...conception, marche: 'industriel' }), null)
+  assert.equal(donneesHorairesDeConception(null), null)
+  assert.deepEqual(serieEconomiesMensuelles(null, null), [])
+  // La phrase du moteur sur la consommation imposée est servie telle quelle.
+  const message = 'Consommation imposée par le devis (490 kWh par mois, factures saisies).'
+  const avecConso = { ...conception, suppositions: [{ code: 'consommation_imposee', champ: 'conso_mensuelle_kwh',
+    valeur: 490, source: 'saisie', message }] }
+  assert.deepEqual(donneesHorairesDeConception(avecConso).sans.notes, [message])
 })

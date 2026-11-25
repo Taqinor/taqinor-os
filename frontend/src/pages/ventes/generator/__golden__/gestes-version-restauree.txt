@@ -109,7 +109,6 @@ Recalculer le dimensionnement
 Auto-remplir depuis le stock
 Aperçu de la Simulation
 Déplier
-Calcul du moteur horaire en cours…
 Renseignez le nombre de panneaux et les factures, puis la simulation s'actualise automatiquement.
 Tailles Éco / Recommandé / Max
 Les tailles ne sont pas encore disponibles pour ce devis.
@@ -320,27 +319,6 @@ gen-cond-acompte-financeur=
   "ventesApi.lireOverrides": [
     [
       36
-    ]
-  ],
-  "ventesApi.postEtudeHorairePreview": [
-    [
-      {
-        "dimensionner": true,
-        "devis": 36
-      },
-      {
-        "signal": {}
-      }
-    ],
-    [
-      {
-        "dimensionner": true,
-        "devis": 36,
-        "kwc": 5.72
-      },
-      {
-        "signal": {}
-      }
     ]
   ],
   "ventesApi.replaceLignesDevis": [
