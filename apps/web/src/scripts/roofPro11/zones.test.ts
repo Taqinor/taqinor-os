@@ -1155,28 +1155,32 @@ describe('ACAL853 — liveActiveResult reprend le kWh de la carte peinte', () =>
 // « TOUTES LES ZONES » dit « estimation de l'atelier » en nommant le P50 de la simulation et l'écart.
 describe('ACAL1612 — bande sans taux inventé ; Total qui nomme la simulation', () => {
   const carte = { annualKwh: 4362, kwc: 3.6, count: 5, savingsLow: 5000, savingsHigh: 6000, target: 4000 } as unknown as CardData;
-  const bande = (erp: boolean) => {
+  const SERVI = { kwc: { valeur: 3.6, etat: 'servi' }, production_annuelle_kwh: { valeur: 5000, etat: 'servi' } } as never;
+  const bande = (erp: boolean, chiffrage: unknown = null) => {
     const el = new JSDOM('<!doctype html><p></p>').window.document.querySelector('p') as HTMLElement;
-    peindreBande(el, carte, 4000, erp, null, false);
+    peindreBande(el, carte, 4000, erp, chiffrage as never, false);
     return el.textContent ?? '';
   };
-  it('fiche sans dégradation (ERP) : aucun taux affiché, la raison est dite, l’année 1 reste', () => {
-    expect(bande(true)).not.toMatch(/%\/an/);
-    expect(bande(true)).toContain(`Année 1 ~${(4362).toLocaleString('fr-FR')} kWh/an`);
-    expect(bande(true)).toContain('la fiche du module ne porte pas sa dégradation');
-    expect(bande(true)).not.toContain('Année 25');
+  it('fiche sans dégradation (ERP) : aucun taux affiché, la raison est dite, l’année 1 est la SERVIE (ACAL2022 : jamais l’estimation)', () => {
+    expect(bande(true, SERVI)).not.toMatch(/%\/an/);
+    expect(bande(true, SERVI)).toContain(`Année 1 ~${(5000).toLocaleString('fr-FR')} kWh/an`);
+    expect(bande(true, SERVI)).toContain('la fiche du module ne porte pas sa dégradation');
+    expect(bande(true, SERVI)).not.toContain('Année 25');
+    expect(bande(true)).toContain('Année 1 : production au prochain enregistrement'); // pendant le dessin : rien d'estimé
+    expect(bande(true)).not.toContain('4');
   });
   it('site public : le texte d’avant (taux du barème, inchangé)', () => {
     expect(bande(false)).toContain('dégradation ~0,5 %/an');
   });
-  it('Total : 4 362 « estimation de l’atelier » + « simulation : 5 131 kWh/an (écart − 15 %) » quand une simulation à jour existe', () => {
+  it('Total (ACAL2022, T4-X2-006) : la simulation à jour remplace l’estimation ; sans simulation « production au prochain enregistrement » ; servi : la production servie', () => {
     const sim = { simulation: { p50_kwh: 5131, a_jour: true } };
-    expect(texteTotalProduction(4362, 3.6, true, sim as never)).toBe(
-      `${(4362).toLocaleString('fr-FR')} kWh/an · estimation de l’atelier · simulation : ${(5131).toLocaleString('fr-FR')} kWh/an (écart − 15 %)`);
-    expect(texteTotalProduction(4362, 3.6, true, { simulation: { p50_kwh: 5131, a_jour: false } } as never)).toBe(
-      `${(4362).toLocaleString('fr-FR')} kWh/an · estimation de l’atelier`);
-    expect(texteTotalProduction(4362, 3.6, true, null)).toBe(`${(4362).toLocaleString('fr-FR')} kWh/an · estimation de l’atelier`);
-    expect(texteTotalProduction(4362, 3.6, false, sim as never)).toBe(`${(4362).toLocaleString('fr-FR')} kWh/an`);
+    expect(texteTotalProduction(4362, 3.6, true, sim as never)).toBe(`${(5131).toLocaleString('fr-FR')} kWh/an · simulation`);
+    expect(texteTotalProduction(4362, 3.6, true, { simulation: { p50_kwh: 5131, a_jour: false } } as never)).toBe('production au prochain enregistrement');
+    expect(texteTotalProduction(4362, 3.6, true, null)).toBe('production au prochain enregistrement');
+    expect(texteTotalProduction(0, 3.6, true, null)).toBe('—');
+    expect(texteTotalProduction(4362, 3.6, true, { ...(SERVI as object), ...sim } as never)).toBe(
+      `${(5000).toLocaleString('fr-FR')} kWh/an · simulation : ${(5131).toLocaleString('fr-FR')} kWh/an (écart − 3 %)`);
+    expect(texteTotalProduction(4362, 3.6, false, sim as never)).toBe(`${(4362).toLocaleString('fr-FR')} kWh/an`); // site public : le texte d'avant
   });
 });
 

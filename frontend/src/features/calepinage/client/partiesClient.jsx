@@ -100,9 +100,9 @@ function Mentions({ tuiles, ville }) {
           {`Estimation pour une année moyenne${ville ? ` à ${ville}` : ''}. Les montants figurent dans le devis.`}
         </span>
       )}
-      {tuiles.some((t) => t.nature === 'estimation') && (
-        <span className="cal-client-mention" data-testid="client-mention-estimation">
-          {'Estimation de la pose, avant le calcul complet. Les montants figurent dans le devis.'}
+      {tuiles.some((t) => t.nature === 'pertes') && (
+        <span className="cal-client-mention" data-testid="client-mention-pertes">
+          {'Estimation : pertes par défaut. Les montants figurent dans le devis.'}
         </span>
       )}
     </>

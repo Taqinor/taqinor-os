@@ -1075,10 +1075,10 @@ describe('ACAL777 — factureCarteDe / lireFactureSaisie', () => {
     const doc = new JSDOM('<!doctype html><body><dd id="rp9-reco-kwc"></dd><dd id="rp9-reco-prod"></dd><dd id="rp9-reco-savings"></dd>'
       + '<dd id="rp9-reco-cover"></dd><p id="rp9-reco-band"></p><p id="rp9-reco-why"></p></body>').window.document;
     g.document = doc;
-    const lancer = (factureServie: number | null) => {
+    const lancer = (factureServie: number | null, erp = false) => {
       const ctx = {
         closed: true, vertices: rectRing(10, 8), roofType: 'pitched', pitchDeg: 25, facingAzimuthDeg: 200, centroidLat: 33.5,
-        areas: [], activeAreaId: null, opts: { chiffrage: null }, neededAuto: true, neededPanels: 0, pinned: new Set(),
+        areas: [], activeAreaId: null, opts: erp ? { chiffrage: null } : {}, neededAuto: true, neededPanels: 0, pinned: new Set(),
         pitchedYieldCache: new Map(), pitchedLocks: {}, overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], obstacles: [],
         activeArea: () => null, dom: {}, centroid: [-7, 33],
       } as unknown as Ctx;
@@ -1097,6 +1097,10 @@ describe('ACAL777 — factureCarteDe / lireFactureSaisie', () => {
       const sansFacture = lancer(null);
       expect(sansFacture('rp9-reco-cover')).toBe('—'); // rien inventé sans facture
       expect(sansFacture('rp9-reco-why')).toContain('Facture inconnue');
+      // ACAL2022 — en ERP la part « production ÷ consommation » est celle de la conception SERVIE (rien de servi : « — »), la facture reste lue.
+      const erpAvec = lancer(1350, true);
+      expect(erpAvec('rp9-reco-cover')).toBe('—');
+      expect(erpAvec('rp9-reco-why')).not.toContain('Facture inconnue');
     } finally { g.document = avant; }
   });
   it('lireFactureSaisie : espaces et virgule décimale lus, vide ou illisible = 0', () => {
@@ -1143,18 +1147,19 @@ describe('ACAL994 — économie servie, étiquette, majChiffrage', () => {
     } finally { fin(); }
   });
 
-  it('non servi ou hors ligne : l’estimation du navigateur reste et dit « estimation — recalculée à l’enregistrement »', () => {
+  it('non servi (ACAL2022) : plus d’estimation en ERP — « économie au prochain enregistrement » ; site public : l’estimation', () => {
     for (const chiffrage of [servi(null, 'non_servi'), null]) {
       const { ctx, opt, doc, fin } = monter(chiffrage);
       try {
-        expect(economieAffichee(ctx, 'carte', '100 – 200 MAD/an')).toBe('100 – 200 MAD/an');
+        expect(economieAffichee(ctx, 'carte', '100 – 200 MAD/an')).toBe('économie au prochain enregistrement');
+        expect(economieAffichee(ctx, 'carte', '— facture inconnue')).toBe('— facture inconnue');
         opt.majChiffrage(chiffrage as never);
-        expect(ligne(doc)).toBe('estimation — recalculée à l’enregistrement');
+        expect(ligne(doc)).toBe('économie au prochain enregistrement');
       } finally { fin(); }
     }
   });
 
-  it('après enregistrement : la valeur servie remplace l’estimation (carte et Total), et revient à l’estimation si retirée', () => {
+  it('après enregistrement : la valeur servie remplace « au prochain enregistrement » ; hors ligne ensuite : les valeurs du dernier calcul, dites (ACAL2022)', () => {
     const { ctx, opt, doc, fin } = monter(null);
     try {
       const carte = doc.getElementById('rp9-reco-savings') as HTMLElement;
@@ -1166,9 +1171,14 @@ describe('ACAL994 — économie servie, étiquette, majChiffrage', () => {
       expect(carte.textContent).not.toContain('100');
       expect(total.textContent).toBe(carte.textContent);
       expect(ligne(doc)).toBe('au dernier enregistrement · sans batterie');
-      opt.majChiffrage(servi(null, 'non_servi') as never);
-      expect(carte.textContent).toBe('100 – 200 MAD/an');
-      expect(total.textContent).toBe('300 – 400 MAD/an');
+      opt.majChiffrage(null); // la relecture échoue (hors ligne) : les valeurs du dernier calcul restent, et c'est dit
+      expect(carte.textContent).toBe(`${fmtMad(8123)}/an`);
+      expect(total.textContent).toBe(`${fmtMad(8123)}/an`);
+      expect(ligne(doc)).toBe('valeurs du dernier calcul, hors ligne');
+      opt.majChiffrage(servi(null, 'non_servi') as never); // le serveur retire la valeur : plus d'estimation du navigateur
+      expect(carte.textContent).toBe('économie au prochain enregistrement');
+      expect(total.textContent).toBe('économie au prochain enregistrement');
+      expect(ligne(doc)).toBe('économie au prochain enregistrement');
     } finally { fin(); }
   });
 
@@ -1218,13 +1228,13 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
   };
   const erp = (chiffrage: unknown, ctxOver: Record<string, unknown> = {}, cible = 4000) => monter({ chiffrage }, ctxOver, cible);
   const MAD = /MAD\/an/g;
-  const prodEstimee = (): number => { const b = erp(null); const v = b.t('rp9-reco-prod'); b.fin(); return Number(v.replace(/\D/g, '')); };
+  const prodEstimee = (): number => { const b = monter({}); const v = b.t('rp9-reco-prod'); b.fin(); return Number(v.replace(/\D/g, '')); }; // ACAL2022 — l'estimation locale ne se lit plus qu'en mode public
 
   it('PRODUCTION : la production SERVIE à kWc égal ; l’estimation sinon (jamais une valeur servie pour un autre kWc)', () => {
     const base = erp(null);
     const estimation = base.t('rp9-reco-prod');
     base.fin();
-    expect(estimation).not.toBe(`${fmt(12345)} kWh/an`);
+    expect(estimation).toBe('production au prochain enregistrement'); // ACAL2022 — jamais l'estimation locale en ERP
     const egal = erp(servi());
     const autreKwc = erp(servi({ kwc: { valeur: 6, etat: 'servi' } }));
     const nonServi = erp(servi({ production_annuelle_kwh: { valeur: 12345, etat: 'non_servi' } }));
@@ -1237,7 +1247,7 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
     } finally { egal.fin(); autreKwc.fin(); nonServi.fin(); sansKwc.fin(); }
   });
 
-  it('BANDE : l’économie SERVIE à l’année 1 ; non servi : l’estimation prudente ; l’année 25 jamais inventée (ACAL1612)', () => {
+  it('BANDE : l’économie SERVIE à l’année 1 ; non servie : aucun montant ; l’année 25 jamais inventée (ACAL1612, ACAL2022)', () => {
     const s = erp(servi());
     const n = erp(servi({ economie_annee1_mad: { valeur: null, etat: 'non_servi' } }));
     try {
@@ -1246,18 +1256,30 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
       expect(bande.match(MAD)).toHaveLength(1);
       expect(bande).not.toContain('Année 25'); // ACAL1612 — la fiche ne porte pas sa dégradation : omise avec sa raison
       expect(bande).toContain('la fiche du module ne porte pas sa dégradation');
-      expect(n.t('rp9-reco-band').match(MAD)).toHaveLength(1);
+      expect(n.t('rp9-reco-band')).toContain(`Année 1 ~${fmt(12345)} kWh/an.`); // ACAL2022 — économie non servie : aucun montant estimé
+      expect(n.t('rp9-reco-band')).not.toMatch(MAD);
       expect(n.t('rp9-reco-band')).not.toMatch(/%\/an/);
     } finally { s.fin(); n.fin(); }
   });
 
-  it('une seule estimation d’économie en ERP (« ≈ X MAD/an »), la fourchette seulement sur le site public', () => {
+  it('ACAL2022 — en ERP l’économie est la servie au kWc posé ou « économie au prochain enregistrement » ; la fourchette seulement sur le site public', () => {
     const e = erp(null);
+    const s = erp(servi());
+    const autreKwc = erp(servi({ kwc: { valeur: 6, etat: 'servi' } })); // pendant le dessin : kWc posé ≠ kWc servi
     const p = monter({});
     try {
-      expect(e.t('rp9-reco-savings')).toMatch(/^≈ [^–]+ MAD\/an$/);
+      expect(e.t('rp9-reco-savings')).toBe('économie au prochain enregistrement');
+      expect(s.t('rp9-reco-savings')).toBe(`${fmtMad(7420)}/an`);
+      expect(autreKwc.t('rp9-reco-savings')).toBe('économie au prochain enregistrement');
+      expect(autreKwc.t('rp9-reco-cover')).toBe('—'); // la part production ÷ consommation n'est pas calculée par le navigateur
+      expect(s.t('rp9-reco-cover')).toBe('—'); // servi sans part (clé `couverture_pct` absente) : rien d'inventé
+      expect(e.t('rp9-reco-kwc')).toBe('5,50 kWc'); // pendant le dessin : panneaux et kWc posés, seuls
+
       expect(p.t('rp9-reco-savings')).toMatch(/^[^≈]+ – [^≈]+ MAD\/an$/);
-    } finally { e.fin(); p.fin(); }
+      const avecPart = erp(servi({ couverture_pct: { valeur: 43, etat: 'servi' } }));
+      expect(avecPart.t('rp9-reco-cover')).toBe('43 %'); // la part SERVIE de la conception (ACAL2023 : la même que la vue client)
+      avecPart.fin();
+    } finally { e.fin(); s.fin(); autreKwc.fin(); p.fin(); }
   });
 
   it('« Pose très au-dessus de la consommation » : au-dessus de 2 × la consommation (deux nombres), pas en dessous, jamais sur le site public', () => {
@@ -1382,8 +1404,8 @@ describe('ACAL1418 — chiffrage servi : Total et bande = production servie ; no
     expect(r.bande).toContain(`Année 1 ~${fmt(4636)} kWh/an`);
   });
 
-  it('non servi (ERP) : le Total dit « estimation » ; site public : le texte d’avant', () => {
-    expect(lire({ chiffrage: null }).total).toBe(`${fmt(4362)} kWh/an · estimation de l’atelier`); // ACAL1612
+  it('non servi (ERP) : le Total dit « production au prochain enregistrement » ; site public : le texte d’avant', () => {
+    expect(lire({ chiffrage: null }).total).toBe('production au prochain enregistrement'); // ACAL2022 (ex-ACAL1612 : « estimation de l’atelier »)
     expect(lire({}).total).toBe(`${fmt(4362)} kWh/an`);
   });
 });
