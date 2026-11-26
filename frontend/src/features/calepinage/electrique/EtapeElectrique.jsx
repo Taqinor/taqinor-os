@@ -265,7 +265,9 @@ export default function EtapeElectrique(props) {
           <Icone nom="retour" taille={18} epaisseur={2} />
           Raccordement
         </button>
-        <AffectationChaines calepinageId={id} lectureSeule={lectureSeule} />
+        {/* S3 — « Raccorder automatiquement » (barre ci-dessus) efface l'affectation manuelle et fait `relire` : sans
+            cette clé, l'éditeur gardait SA copie du résultat (anciennes chaînes, ancien verdict) jusqu'au rechargement. */}
+        <AffectationChaines key={relecture} calepinageId={id} lectureSeule={lectureSeule} />
       </div>
     )
   }

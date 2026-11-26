@@ -1002,6 +1002,27 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(await within(carte).findByText('Aucun onduleur désigné : chaînage impossible.')).toBeTruthy()
   })
 
+  it('S3 — « Raccorder automatiquement » lancé depuis l’éditeur d’affectation le rafraîchit (plus d’ancien état jusqu’au rechargement)', async () => {
+    const avant = resultat()
+    const apres = resultat()
+    apres.electrique.affectation.forEach((l) => { if (l.chaine != null) l.chaine = 3 })
+    let reclame = false
+    servirEtape({ r: avant })
+    calepinageApi.calepinages.resultat.mockImplementation(() => Promise.resolve({ data: reclame ? apres : avant }))
+    calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({ data: { modules_sous_seuil: [] } })
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockImplementation(() => {
+      reclame = true
+      return Promise.resolve({ data: apres })
+    })
+    const carte = rendreEtape()
+    fireEvent.click(await within(carte).findByRole('button', { name: 'Modifier une chaîne' }))
+    const legende = await screen.findByTestId('cal234-legende')
+    await waitFor(() => expect(legende).toHaveTextContent('Chaîne 1'))
+    fireEvent.click(within(carte).getByRole('button', { name: 'Raccorder automatiquement' }))
+    await waitFor(() => expect(screen.getByTestId('cal234-legende')).toHaveTextContent('Chaîne 3'))
+    expect(screen.getByTestId('cal234-legende')).not.toHaveTextContent('Chaîne 1')
+  })
+
   it('« Modifier une chaîne » ouvre l’écran d’affectation existant dans le panneau, avec un retour', async () => {
     servirEtape()
     calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({ data: { modules_sous_seuil: [] } })
