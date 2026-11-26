@@ -92,7 +92,7 @@ test('SPL292 — sans fichier de fragment, la ligne de spread reste telle quelle
   }
 })
 
-test('SPL292 — dépôt réel : façade + `_base.js`, 147 clés (ACAL1508 +1 `sldPdf`, T4-X5-010 +1 `apercuDevis`, H3 +1, ACAL840 +2, ACAL887 +2, ACAL847 +1, ACAL860 +1, ACAL871 +1, ACAL761 +1, ACAL617/628/631 +3, ACAL536 +1, ACAL719 +1, ACAL600 +1, ACAL559 +4, ACAL535 +1, ACAL960 +1, ACAL466 +1, ACAL488 +2, ACAL469 +1, ACAL242 +4, ACAL268 +1, ACAL203 +2, ACAL364 −1, ACAL311 +1, ACAL400 +3, ACAL392 +1, ACAL405 +3), la racine `pivot` est lisible', () => {
+test('SPL292 — dépôt réel : façade + `_base.js`, 148 clés (ACAL1320 +1 `apercuResync`, ACAL1508 +1 `sldPdf`, T4-X5-010 +1 `apercuDevis`, H3 +1, ACAL840 +2, ACAL887 +2, ACAL847 +1, ACAL860 +1, ACAL871 +1, ACAL761 +1, ACAL617/628/631 +3, ACAL536 +1, ACAL719 +1, ACAL600 +1, ACAL559 +4, ACAL535 +1, ACAL960 +1, ACAL466 +1, ACAL488 +2, ACAL469 +1, ACAL242 +4, ACAL268 +1, ACAL203 +2, ACAL364 −1, ACAL311 +1, ACAL400 +3, ACAL392 +1, ACAL405 +3), la racine `pivot` est lisible', () => {
   const facade = readFileSync(join(here, 'calepinageApi.js'), 'utf8')
   const base = readFileSync(join(here, 'calepinage', '_base.js'), 'utf8')
   const texte = lireSourceCalepinageApi()
@@ -108,7 +108,7 @@ test('SPL292 — dépôt réel : façade + `_base.js`, 147 clés (ACAL1508 +1 `s
     assert.ok(corps.length > 0 && texte.includes(corps.join('\n')), `corps de ${nom} spliçé`)
   }
   assert.ok(texte.endsWith(base))
-  assert.equal(extraireCles(texte).length, 147)
+  assert.equal(extraireCles(texte).length, 148)
   assert.match(texte, /const pivot = \(id\) => `\/calepinage\/calepinages\/\$\{id\}\/`/)
   // Aucun jumeau : `pivot` n'est plus DÉFINI dans la façade.
   assert.doesNotMatch(facade, /const pivot =/)

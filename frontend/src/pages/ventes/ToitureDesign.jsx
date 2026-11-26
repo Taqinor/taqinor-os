@@ -763,8 +763,11 @@ function AtelierToiture({
 
   // ACAL1275 — `{ silencieux: true }` (« Générer / Resynchroniser » : enregistrement préalable) : un document inchangé
   // ne montre pas « Aucun changement » avant la réponse du devis ; le bouton « Enregistrer » (événement) le garde.
+  // ACAL1320 (D-ACAL-73) — `{ sansDevis: true }` (« Resynchroniser le devis ») : la conception est rangée, le devis lié
+  // n'est PAS resynchronisé ici — il le sera après l'aperçu, à la confirmation (rien d'écrit au devis avant).
   const enregistrerCalepinage = async (options) => {
     const silencieux = options?.silencieux === true
+    const sansDevis = options?.sansDevis === true
     if (sending) return false
     setGenError(null)
     setApercuMessage(null) // ACAL87
@@ -873,7 +876,7 @@ function AtelierToiture({
         marquerSceneEnregistree(layout) // ACAL85
         setEnregistreLe(heureReponse) // ACAL399
         await rafraichirContexte() // ACAL83
-        return resynchroniserDevisLie() // ACAL37
+        return sansDevis ? true : resynchroniserDevisLie() // ACAL37 ; ACAL1320 : sansDevis
       }
 
       // L'aperçu de toiture, même patron que les autres modes (best-effort,
@@ -901,7 +904,7 @@ function AtelierToiture({
       marquerSceneEnregistree(layout) // ACAL85
       setEnregistreLe(heureReponse) // ACAL399
       await rafraichirContexte() // ACAL83
-      return resynchroniserDevisLie() // ACAL37
+      return sansDevis ? true : resynchroniserDevisLie() // ACAL37 ; ACAL1320 : sansDevis
     } catch (err) {
       setGenStatus(null)
       // ACAL64 — un document que l'atelier REFUSE d'émettre (pans de même identifiant) porte

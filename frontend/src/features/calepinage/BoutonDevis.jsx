@@ -5,6 +5,7 @@ import ApercuMaterielDevis from './commun/ApercuMaterielDevis'
 import { Icone } from './atelier/coque/primitives'
 import { libelleEtat } from './electrique/etatVerdict'
 import calepinageApi from '../../api/calepinageApi'
+import { formatMAD, formatNumber } from '../../lib/format'
 import { toastWarning } from '../../lib/toast'
 import { reviserEtOuvrir } from '../ventes/reviserDevis'
 import {
@@ -123,6 +124,80 @@ function messageDevisNonModifie(motif, devis = null) {
   return `La conception est enregistrée, mais ${quel} n’a pas été modifié${texte ? ` : ${texte}` : '.'}`
 }
 
+/* ACAL1320 (D-ACAL-73 = corriger_dire) — « Resynchroniser le devis » DIT d'abord ce qu'il changera
+   (`apercu-resync`, contrat `calepinage_apercu_resync.json` : la resynchronisation réelle jouée puis
+   annulée par le serveur), puis demande de confirmer ; rien n'est écrit avant la confirmation. Un devis
+   ENVOYÉ est corrigé sur place (règle QJR5) : la carte le dit avant d'agir. */
+export const MESSAGE_RIEN_A_CHANGER = 'Rien à changer : le devis porte déjà cette conception. Rien n’a été écrit.'
+export const MESSAGE_ENVOYE_CORRIGE = 'Ce devis a déjà été envoyé au client : il sera corrigé sur place. Sa page et '
+  + 'son PDF montreront la version corrigée, et la correction sera notée sur le devis.'
+export const MESSAGE_ENVOYE_INVISIBLE = 'Ce devis a déjà été envoyé au client : ce qu’il voit ne change pas ; le devis '
+  + 'suit la conception.'
+export const MESSAGE_BROUILLON_MIS_A_JOUR = 'Le devis brouillon sera mis à jour.'
+
+function phraseStatutApercu(apercu) {
+  if (apercu?.statut === 'envoye') return apercu.corrige_apres_envoi ? MESSAGE_ENVOYE_CORRIGE : MESSAGE_ENVOYE_INVISIBLE
+  return MESSAGE_BROUILLON_MIS_A_JOUR
+}
+
+const quantite = (q) => (q == null ? '?' : formatNumber(q, { maxDecimals: 2 }))
+const montant = (avant, apres) => (avant == null && apres == null ? ''
+  : ` · ${avant == null ? '' : `${formatMAD(avant)} → `}${apres == null ? '' : formatMAD(apres)} HT`)
+
+function lignesApercu(apercu) {
+  const lignes = []
+  for (const c of apercu?.changements ?? []) {
+    const nom = c.designation_avant === c.designation_apres ? c.designation_apres
+      : `${c.designation_avant} → ${c.designation_apres}`
+    lignes.push(`${nom} : quantité ${quantite(c.quantite_avant)} → ${quantite(c.quantite_apres)}`
+      + montant(c.total_ht_avant, c.total_ht_apres))
+  }
+  for (const a of apercu?.ajouts ?? []) {
+    lignes.push(`Ajoutée : ${a.designation} × ${quantite(a.quantite)}${a.total_ht == null ? '' : ` · ${formatMAD(a.total_ht)} HT`}`)
+  }
+  for (const r of apercu?.retraits ?? []) {
+    lignes.push(`Retirée : ${r.designation} × ${quantite(r.quantite)}${r.total_ht == null ? '' : ` · ${formatMAD(r.total_ht)} HT`}`)
+  }
+  return lignes
+}
+
+function ApercuResync({ apercu, enCours, onConfirmer, onAnnuler }) {
+  const lignes = lignesApercu(apercu)
+  const totaux = apercu?.totaux
+  const avertissements = (apercu?.avertissements ?? []).filter((m) => typeof m === 'string' && m.trim())
+  return (
+    <div className="border border-warning/40 bg-warning/10 p-3" data-testid="cal-devis-resync-apercu">
+      <p className="text-sm font-semibold text-foreground" role="alert" data-testid="cal-devis-resync-statut">
+        {apercu?.reference ? `Devis ${apercu.reference} — ` : ''}{phraseStatutApercu(apercu)}
+      </p>
+      <ul className="mt-2 space-y-1 text-sm text-foreground">
+        {lignes.length > 0 ? lignes.map((l) => <li key={l}>{l}</li>)
+          : <li>Aucune ligne du devis ne change.</li>}
+      </ul>
+      {totaux?.avant && totaux?.apres && (
+        <p className="mt-2 text-sm text-foreground">
+          {`Total TTC : ${formatMAD(totaux.avant.ttc)} → ${formatMAD(totaux.apres.ttc)}`}
+        </p>
+      )}
+      {avertissements.length > 0 && (
+        <ul className="mt-2 space-y-1 text-xs text-primary-text">
+          {avertissements.map((m) => <li key={m}>{m}</li>)}
+        </ul>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" onClick={onConfirmer} disabled={enCours} data-testid="cal-devis-resync-confirmer"
+          className="inline-flex min-h-[44px] items-center border border-brass-400 px-4 py-2 text-sm font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60">
+          {apercu?.statut === 'envoye' ? 'Corriger le devis envoyé' : 'Confirmer et resynchroniser'}
+        </button>
+        <button type="button" onClick={onAnnuler} disabled={enCours} data-testid="cal-devis-resync-annuler"
+          className="inline-flex min-h-[44px] items-center border border-border px-4 py-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-60">
+          Annuler
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function BoutonDevisCalepinage({
   calepinageId, detail = null, lectureSeule = false, onRecharger, onRelire,
   enregistrerAvant = null, aDesRetouches = null, revisionPossible = false,
@@ -160,6 +235,8 @@ function BoutonDevisCalepinage({
   // ACAL95 — le retour du serveur à LIRE avant de poursuivre :
   // `{messages, lignes, inchange, devisId, suite: 'recharger' | 'ouvrir' | null}`.
   const [retour, setRetour] = useState(null)
+  // ACAL1320 — l'aperçu servi de la resynchronisation, à confirmer (`null` : rien en attente).
+  const [apercuResync, setApercuResync] = useState(null)
   // ACAL94 — avertissement (jamais un refus) avant une révision.
   const [retouches, setRetouches] = useState(false)
   const [refusRevision, setRefusRevision] = useState(null) // T4-X7-016 — `{texte, successeur}`
@@ -264,14 +341,17 @@ function BoutonDevisCalepinage({
   }
 
   // ACAL94 — range l'écran d'abord ; `false` = rien ne part au serveur.
-  const enregistrerDabord = async () => {
+  // ACAL1320 — `sansDevis` (resynchroniser) : l'enregistrement ne touche pas au devis lié (la route devis le
+  // resynchronisait en même temps) ; le devis attend l'aperçu et la confirmation.
+  const enregistrerDabord = async ({ sansDevis = false } = {}) => {
     if (typeof enregistrerAvant !== 'function') return true
     setRefus(null)
     setConflit(null)
     setRetour(null)
     let resultat = false
     try {
-      resultat = await enregistrerAvant({ silencieux: true }) // ACAL1275 — pas de toast « Aucun changement » avant le devis
+      // ACAL1275 — pas de toast « Aucun changement » avant le devis.
+      resultat = await enregistrerAvant(sansDevis ? { silencieux: true, sansDevis: true } : { silencieux: true })
     } catch {
       resultat = false
     }
@@ -336,8 +416,27 @@ function BoutonDevisCalepinage({
     await onRecharger?.()
   }
 
+  // ACAL1320 — 1er temps : enregistrer l'écran (sans toucher au devis), lire l'aperçu, le montrer. Rien d'écrit au
+  // devis. « Rien à changer » se dit et s'arrête là.
+  const apercevoir = unSeulGeste(async () => {
+    setApercuResync(null)
+    if (!(await enregistrerDabord({ sansDevis: true }))) return
+    const params = selection.surfaces_chiffrees ? { surfaces: selection.surfaces_chiffrees.join(',') } : null
+    const res = await executer(() => calepinageApi.calepinages.apercuResync(calepinageId,
+      params ? { params, suppressErrorToast: true } : { suppressErrorToast: true }))
+    if (!res) return
+    const data = res.data ?? {}
+    if (data.inchange) {
+      setRetour({ messages: messagesDuServeur(data, ['avertissements']), manquantes: [], etatTitre: null, lignes: null,
+        inchange: true, texteInchange: MESSAGE_RIEN_A_CHANGER, devisId: null, suite: null })
+      return
+    }
+    setApercuResync(data)
+  })
+
+  // 2d temps (confirmé) : la resynchronisation réelle, `sync-devis`, avec ou sans dérogation électrique.
   const resynchroniser = unSeulGeste(async (corps = {}) => {
-    if (!(await enregistrerDabord())) return
+    setApercuResync(null)
     if (!corps.derogation_electrique) setBloquage({ geste: 'sync' })
     const res = await executer(
       () => calepinageApi.calepinages.syncDevis(calepinageId, { ...selection, ...corps }, { suppressErrorToast: true }))
@@ -478,7 +577,7 @@ function BoutonDevisCalepinage({
       {devisLie ? (
         <button
           type="button"
-          onClick={() => resynchroniser()}
+          onClick={() => apercevoir()}
           disabled={desactive}
           data-testid="cal-resynchroniser-devis"
           className={classeDuBouton}
@@ -604,6 +703,12 @@ function BoutonDevisCalepinage({
         </p>
       )}
 
+      {/* ACAL1320 — ce que la resynchronisation changera, DIT avant d'agir ; rien n'est écrit avant « Confirmer ». */}
+      {apercuResync && (
+        <ApercuResync apercu={apercuResync} enCours={enCours}
+          onConfirmer={() => resynchroniser()} onAnnuler={() => setApercuResync(null)} />
+      )}
+
       {/* ACAL95 — le retour du serveur, LU avant de poursuivre. */}
       {retour && retour.suite === 'ouvrir' && retour.devisId && (
         <CarteDevisCree
@@ -635,7 +740,7 @@ function BoutonDevisCalepinage({
       {retour && !(retour.suite === 'ouvrir' && retour.devisId) && (
         <div className="border border-brass-400/40 p-3" data-testid="cal-devis-avertissements">
           {retour.inchange && (
-            <p className="text-sm text-foreground" role="status">Aucun changement</p>
+            <p className="text-sm text-foreground" role="status">{retour.texteInchange ?? 'Aucun changement'}</p>
           )}
           {retour.lignes && (
             <p className="text-sm text-foreground" role="status">{retour.lignes}</p>

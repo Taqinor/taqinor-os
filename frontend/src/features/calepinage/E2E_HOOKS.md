@@ -117,6 +117,10 @@ retiré plus un hook ajouté.
 | `cal-devis-retouches` | devis retouches non enregistrées / lignes ajoutées (ACAL94/95). |
 | `cal-devis-avertissements` | devis avertissements et marques manquantes (ACAL95). |
 | `cal-devis-j-ai-lu` | devis « J'ai lu » avant rechargement (ACAL95). |
+| `cal-devis-resync-apercu` | devis : ce que « Resynchroniser le devis » changera, dit avant d'agir (aperçu servi, rien d'écrit ; ACAL1320). |
+| `cal-devis-resync-statut` | devis : la phrase de l'aperçu selon le statut (envoyé ⇒ corrigé sur place, page et PDF du client compris ; ACAL1320). |
+| `cal-devis-resync-confirmer` | devis : « Corriger le devis envoyé » / « Confirmer et resynchroniser » — seul geste qui écrit (ACAL1320). |
+| `cal-devis-resync-annuler` | devis : « Annuler » l'aperçu, rien n'est envoyé (ACAL1320). |
 | `cal-devis-cree` | devis : carte « Devis … créé » après la génération (ACAL866). |
 | `cal-devis-alertes` | devis : avertissements de composition lisibles sur la carte du devis créé, jamais repliés (T4-X7-008). |
 | `cal-devis-details-technicien` | devis : détails techniques repliés sous la carte (ACAL866). |

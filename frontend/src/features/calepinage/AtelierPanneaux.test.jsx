@@ -141,8 +141,12 @@ describe('AtelierPanneaux (CAL37)', () => {
           contexte={{ ...CTX, calepinage: { ...CTX.calepinage, devis_lie: { ...lie, statut: 'envoye' } } }} />
       </MemoryRouter>,
     )
-    expect(screen.getByTestId('cal-devis-perime'))
-      .toHaveTextContent('Devis envoyé : la resynchronisation le corrigera, et la correction sera notée sur le devis')
+    // ACAL1320 (D-ACAL-73) — la phrase de l'envoyé dit ce que le geste FAIT : aperçu d'abord, puis correction
+    // sur place du devis reçu par le client ; jamais « ne sera pas modifié ».
+    expect(screen.getByTestId('cal-devis-perime')).toHaveTextContent(
+      'Devis envoyé : « Resynchroniser le devis » montre d’abord ce qui change, puis corrige sur place le devis déjà '
+      + 'reçu par le client (sa page et son PDF montreront la version corrigée)')
+    expect(screen.getByTestId('cal-devis-perime')).not.toHaveTextContent('ne sera pas modifié')
     rerender(
       <MemoryRouter>
         <AtelierPanneaux calepinageId={CTX.calepinage.id}
