@@ -167,11 +167,14 @@ export default function PanneauDetectionToit({ calepinageId, builderApi = null, 
               <legend className="text-sm font-medium">Obstacles proposés</legend>
               {obstacles.map((o, i) => (
                 <label key={i} className="flex min-h-11 items-center gap-2 text-sm">
-                  <input
-                    type="checkbox" className="size-5" data-testid="cal-detection-obstacle"
-                    checked={coches.includes(i)} disabled={!actif}
-                    onChange={(e) => setCoches((c) => (e.target.checked ? [...c, i] : c.filter((x) => x !== i)))}
-                  />
+                  {/* ACAL1446 — zone cliquable 44 × 44 autour de la case (dessin 20 px inchangé). */}
+                  <span className="inline-flex size-11 shrink-0 items-center justify-center" data-testid="cal-detection-obstacle-cible">
+                    <input
+                      type="checkbox" className="size-5" data-testid="cal-detection-obstacle"
+                      checked={coches.includes(i)} disabled={!actif}
+                      onChange={(e) => setCoches((c) => (e.target.checked ? [...c, i] : c.filter((x) => x !== i)))}
+                    />
+                  </span>
                   <span>{libelleObstacle(o, i)} <span className="text-muted-foreground">— proposé par l’IA — à vérifier sur le toit</span></span>
                 </label>
               ))}

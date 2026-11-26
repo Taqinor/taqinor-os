@@ -67,6 +67,7 @@ import { suivreSimulationDuServeur } from '../../features/calepinage/production/
 import { construireCle, creerGestionnaireBrouillon, effacerBrouillon, estPanneReseau, memoriserReprise } from '../../features/calepinage/brouillon'
 import { ecrireOuRelire } from '../../features/calepinage/delaiReseau'
 import { creerStockageMiroir, sansVue, empreinteSansVue } from '../../features/calepinage/brouillonServeur' // ACAL400 ; H1 : sans l'état de vue ; ACAL1345
+import { appliquerSectionEcrite } from '../../features/calepinage/useDocumentCalepinage' // ACAL1816
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis.
@@ -992,13 +993,20 @@ function AtelierToiture({
   // ACAL23 — le document VIVANT confié aux onglets du Rail : le jeton
   // d'écriture courant, et la façon d'appliquer à la scène une section qu'un
   // onglet vient d'écrire (`layout/section/`) en reprenant le jeton rendu.
+  // ACAL1816 — une section écrite est enregistrée : référence de scène reprise (si elle était propre).
   const documentVivant = useMemo(() => ({
     empreinte: empreinteDocument,
-    appliquerSection: (cle, valeur, empreinteApres) => {
-      builderApi.current?.appliquerSection?.(cle, valeur)
-      if (empreinteApres) setEmpreinteEcrite(empreinteApres)
-    },
-  }), [empreinteDocument])
+    appliquerSection: (cle, valeur, empreinteApres) => appliquerSectionEcrite({
+      appliquerALaScene: (c, v) => builderApi.current?.appliquerSection?.(c, v),
+      poserEmpreinte: setEmpreinteEcrite,
+      sceneModifiee: () => sceneHydratee && sceneEstModifiee(),
+      rebaserScene: () => {
+        hashSceneReferenceRef.current = hacherScene()
+        setSceneModifiee(false)
+        setEnregistreLe(new Date().toISOString())
+      },
+    }, cle, valeur, empreinteApres),
+  }), [empreinteDocument, sceneHydratee, sceneEstModifiee, hacherScene])
 
   // PVHEAL — le bandeau d'avertissements du serveur, partagé par les deux
   // modes. Il reste affiché APRÈS le passage au bloc « Prêt à envoyer » : un
