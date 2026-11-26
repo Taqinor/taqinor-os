@@ -1082,3 +1082,31 @@ describe('ACAL1317 — un pan « existant » n’envoie aucun câble neuf', () =
     expect(couche.etatTraces('eq1').pansSansTrace).toEqual([]);
   });
 });
+
+describe('ACAL1317 — un pan refusé reste dit, même si le suivant réussit', () => {
+  const COS = Math.cos((ORIGINE[1] * Math.PI) / 180);
+  const M = (Math.PI / 180) * 6378137;
+  const lngLat = (e: number, n: number): [number, number] => [ORIGINE[0] + e / (M * COS), ORIGINE[1] + n / M];
+  const pan = (id: string, ring: [number, number][]) => ({
+    id, renderPlan: { pack: { origin: ORIGINE, azimuthDeg: 180, ringENU: ring }, grid: { rowWidthM: 2, panels: [3, 5, 7].map((cx) => ({ cx, cy: 6 })) } },
+  });
+  const atelier = () => creerCoucheElectrique({
+    electrical: null, sceneOrigin: ORIGINE, activeAreaId: 'z1',
+    areas: [pan('z1', []), pan('z3', [[22, 0], [40, 0], [40, 12], [22, 12]])], // z1 sans rive : son tracé est refusé
+  });
+  it('toucher de la carte : z1 refusé puis z3 tracé ⇒ le refus de z1 est le dernier refus du geste', () => {
+    const couche = atelier();
+    couche.armerPose('onduleur', { suivreTrace: true });
+    couche.clicCarte(lngLat(20, 2));
+    expect((couche.documentElectrique()!.cheminements ?? []).map((c) => c.de)).toEqual(['z3']);
+    expect(couche.dernierRefus()?.message).toMatch(/Aucune rive de toit exploitable/);
+  });
+  it('flèches : même refus, rendu par `refusTrace` ET gardé par `dernierRefus`', () => {
+    const couche = atelier();
+    couche.armerPose('onduleur', { suivreTrace: true });
+    couche.clicCarte(lngLat(20, 2));
+    const r = couche.pousser('eq1', 0, 0.25);
+    expect(r.ok && r.refusTrace?.message).toMatch(/Aucune rive de toit exploitable/);
+    expect(couche.dernierRefus()?.message).toMatch(/Aucune rive de toit exploitable/);
+  });
+});

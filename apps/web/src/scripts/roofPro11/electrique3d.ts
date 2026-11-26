@@ -1161,6 +1161,9 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
       const r = proposerCheminement(l);
       if (r.ok) traces.push(r.cheminement.id); else refusTrace = r;
     }
+    // Un tracé réussi APRÈS un refus effaçait le refus : le geste le garde, pour que le toucher de la carte
+    // (`dernierRefus`) et les flèches (`refusTrace`) disent la même chose.
+    if (refusTrace) refus = refusTrace;
     return { traces, refusTrace };
   }
 

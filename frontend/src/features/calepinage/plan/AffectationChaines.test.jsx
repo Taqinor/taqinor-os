@@ -1068,3 +1068,18 @@ describe('OutilsOnduleur (ACAL1317, revue, point 5) — « Annuler » joint l’
     expect(screen.getByTestId('cal-elec-onduleur-annuler')).toBeDisabled()
   })
 })
+
+describe('useOnduleurSurCarte (ACAL1317, revue 2, point C) — le message du toucher de la carte ne ment pas', () => {
+  it('un pan refusé puis un pan tracé : le message dit le refus, jamais « le tracé du câble a suivi »', () => {
+    const pan = (id, ring) => ({ id, renderPlan: { pack: { origin: ORIGINE_ESSAI, azimuthDeg: 180, ringENU: ring },
+      grid: { rowWidthM: 2, panels: [3, 5, 7].map((cx) => ({ cx, cy: 6 })) } } })
+    const couche = creerCoucheElectrique({ electrical: null, sceneOrigin: ORIGINE_ESSAI, activeAreaId: 'z1',
+      areas: [pan('z1', []), pan('z3', [[22, 0], [40, 0], [40, 12], [22, 12]])] })
+    render(<BarreAvecOnduleur couche={couche} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Placer l’onduleur' }))
+    act(() => { couche.clicCarte(versLngLat(20, 2)) })
+    const message = screen.getByTestId('cal-elec-onduleur-message')
+    expect(message).toHaveTextContent('Onduleur placé, mais aucune rive de toit exploitable')
+    expect(message).not.toHaveTextContent('le tracé du câble a suivi')
+  })
+})
