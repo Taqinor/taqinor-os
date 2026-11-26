@@ -431,6 +431,10 @@ def modules_numerotes(roof_layout, geometrie, affectation=None):
     ``chaine`` vaut ``None`` — jamais une chaîne inventée."""
     from .documents.plan_cablage import _modules_du_plan
 
+    # Le nom IMPRIMÉ du pan (``planche`` : ``libelle``), celui que l'équipe lit ;
+    # sans nom, le repère du pan.
+    noms = {pan.get('repere'): pan.get('libelle')
+            for pan in geometrie.get('pans') or ()}
     table = {ligne['module']: ligne.get('chaine')
              for ligne in (affectation or ())
              if isinstance(ligne, dict)
@@ -442,22 +446,28 @@ def modules_numerotes(roof_layout, geometrie, affectation=None):
         except (IndexError, ValueError):
             numero = None
         modules.append(dict(module, numero=numero,
+                            pan=noms.get(module['pan']) or module['pan'],
                             chaine=table.get(module['module'])))
     return modules
 
 
 def affectation_pour_dxf(calepinage):
-    """ACAL1721 — la table d'affectation PUBLIÉE, ou ``()`` quand le câblage
-    est bloqué (températures illisibles…) : le plan de pose ne se refuse pas
-    pour autant (comme avant), il dit « chaîne vide » — jamais une chaîne
-    devinée."""
+    """ACAL1721 — la table d'affectation PUBLIÉE, ou ``()`` quand sa lecture
+    est refusée : le plan de pose sort TOUJOURS, chaîne vide (jamais devinée).
+
+    Refus tolérés : ceux de la vue ``resultat/`` (``_REFUS_DE_LECTURE``,
+    données enregistrées invalides) et ``RapportRefuse`` du pare-feu de
+    montants — le DXF ne lit que ``module`` et ``chaine`` de la table, aucune
+    grandeur de coût n'y entre : ce refus ne protège rien ici."""
+    from ..views.electrique import _REFUS_DE_LECTURE
     from .documents.plan_cablage import (
         PlanCablageRefuse, _affectation_publiee_du_calepinage,
     )
+    from .rapport.contrat import RapportRefuse
 
     try:
         return _affectation_publiee_du_calepinage(calepinage)
-    except PlanCablageRefuse:
+    except (PlanCablageRefuse, RapportRefuse, *_REFUS_DE_LECTURE):
         return ()
 
 

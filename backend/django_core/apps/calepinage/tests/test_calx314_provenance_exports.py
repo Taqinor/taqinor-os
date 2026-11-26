@@ -228,16 +228,24 @@ class DxfPlanNumeroPanChaineTest(unittest.TestCase):
                 for e in document.modelspace()
                 if e.dxftype() == 'INSERT' and e.dxf.layer == 'NUMEROS']
 
-    def test_le_dxf_du_plan_porte_n_pan_et_chaine_par_module(self):
+    @staticmethod
+    def _objet():
         objet = calepinage()
-        objet.roof_layout['zones'][0]['geometry']['panels'][0]['n'] = 7
-        objet.roof_layout['zones'][0]['geometry']['panels'][1]['n'] = 9
-        affectation = [{'module': 'z1#7', 'pan': 'z1', 'chaine': 2,
+        zone = objet.roof_layout['zones'][0]
+        zone['id'], zone['label'] = 'area-1', 'Pan Sud'
+        zone['geometry']['panels'][0]['n'] = 7
+        zone['geometry']['panels'][1]['n'] = 9
+        return objet
+
+    def test_le_dxf_du_plan_porte_n_pan_et_chaine_par_module(self):
+        affectation = [{'module': 'area-1#7', 'pan': 'Pan Sud', 'chaine': 2,
                         'onduleur': 1, 'mppt': 1, 'source': 'automatique'}]
-        attributs = self._inserts(exporter_dxf(objet, affectation=affectation))
+        attributs = self._inserts(
+            exporter_dxf(self._objet(), affectation=affectation))
+        # PAN = le nom imprimé sur le plan, jamais l'identifiant interne.
         self.assertEqual(
             sorted((a['N'], a['PAN'], a['CHAINE']) for a in attributs),
-            [('7', 'z1', '2'), ('9', 'z1', '')])
+            [('7', 'Pan Sud', '2'), ('9', 'Pan Sud', '')])
 
     def test_sans_affectation_la_chaine_est_vide_jamais_devinee(self):
         attributs = self._inserts(exporter_dxf(calepinage()))
@@ -253,6 +261,41 @@ class DxfPlanNumeroPanChaineTest(unittest.TestCase):
     def test_sans_le_parametre_modules_aucun_calque_numeros(self):
         document = relire_dxf(octets_dxf(geometrie_de_planche(LAYOUT)))
         self.assertNotIn('NUMEROS', document.layers)
+
+    def test_chaque_refus_de_lecture_donne_un_dxf_a_chaine_vide(self):
+        from apps.calepinage.services.electrique import TemperaturesInvalides
+        from apps.calepinage.services.export_dxf import affectation_pour_dxf
+        from apps.calepinage.services.protections import DecisionInvalide
+        from apps.calepinage.services.rapport.contrat import RapportRefuse
+        from apps.calepinage.services.terre import TerreInvalide
+
+        for refus in (TemperaturesInvalides('t'), DecisionInvalide('d'),
+                      TerreInvalide('e'), RapportRefuse('r', champ='x')):
+            with self.subTest(refus=type(refus).__name__), mock.patch(
+                    'apps.calepinage.services.documents.plan_cablage.'
+                    '_affectation_publiee_du_calepinage', side_effect=refus):
+                objet = self._objet()
+                octets = exporter_dxf(
+                    objet, affectation=affectation_pour_dxf(objet))
+                attributs = self._inserts(octets)
+                self.assertEqual(len(attributs), 2)
+                self.assertEqual({a['CHAINE'] for a in attributs}, {''})
+
+    def test_la_vue_export_dxf_passe_l_affectation_publiee(self):
+        from apps.calepinage.views import sorties
+
+        affectation = [{'module': 'area-1#7', 'chaine': 3}]
+        objet = self._objet()
+        vue = sorties.SortiesMixin()
+        vue.get_object = lambda: objet
+        with mock.patch.object(sorties, 'porte_execution'), mock.patch(
+                'apps.calepinage.services.export_dxf.affectation_pour_dxf',
+                return_value=affectation):
+            reponse = vue.export_dxf(SimpleNamespace(), pk=7)
+        self.assertEqual(reponse.status_code, 200)
+        attributs = self._inserts(reponse.content)
+        self.assertEqual(sorted((a['N'], a['CHAINE']) for a in attributs),
+                         [('7', '3'), ('9', '')])
 
 
 if __name__ == '__main__':  # pragma: no cover
