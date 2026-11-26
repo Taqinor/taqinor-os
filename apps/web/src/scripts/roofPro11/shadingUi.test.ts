@@ -805,6 +805,32 @@ describe('ACAL1436 — heure solaire « 10,5 »', () => {
   });
 });
 
+// ACAL1921 — le seuil d'accès solaire saisi se RELIT à la réouverture : l'atelier se monte (champ vide), PUIS le
+// document est relu (`deserializeLayout` → `semerOptimisationDepuisDocument`) ; l'hydratation d'un document relu
+// rafraîchit le champ (roof-tool-pro11 : `rafraichirOmbres` aussi quand `documentRelu`, même sans ombre tracée).
+// Mutant : ne rafraîchir qu'avec des ombres tracées ⇒ champ vide.
+describe('ACAL1921 — seuil d’accès solaire relu à la réouverture', () => {
+  it('document relu avec un seuil de 98 % ⇒ le champ lit 98 ; la ligne d’hydratation le rafraîchit sans ombres tracées', async () => {
+    const { semerOptimisationDepuisDocument } = await import('./optimisationDocument');
+    document.body.innerHTML = '<input id="rp9-seuil-acces"><p id="rp9-seuil-acces-erreur"></p><p id="rp9-seuil-acces-note"></p>';
+    const ctx = {
+      areas: [], activeAreaId: '', vertices: [], closed: false, obstacles: [], batiments: [], shadeObstructions: [],
+      environment: [], activeArea: () => null, pushWorkshopHistory: () => {},
+    } as unknown as Ctx;
+    const map = new Proxy({}, { get: () => () => undefined }) as never;
+    try {
+      const ui = createShadingUi(ctx, { map, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {} });
+      const champ = document.getElementById('rp9-seuil-acces') as HTMLInputElement;
+      expect(champ.value).toBe('');
+      semerOptimisationDepuisDocument({ optimisation: { seuilAccesSolaire: 0.98 } });
+      ui.rafraichirOmbres();
+      expect(champ.value).toBe('98');
+    } finally { semerOptimisationDepuisDocument({}); }
+    const source = (await import('node:fs')).readFileSync((await import('node:path')).resolve(process.cwd(), 'src/scripts/roof-tool-pro11.ts'), 'utf8');
+    expect(source).toContain('if (h.shadeObstructions !== undefined || h.documentRelu) shadingUi.rafraichirOmbres();');
+  });
+});
+
 // ACAL504 — la hauteur du bâtiment saisie SANS provenance est refusée sous le champ ET dans la barre d'état.
 describe('ACAL504 — refus d’une hauteur sans provenance', () => {
   function monter() {
