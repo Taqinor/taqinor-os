@@ -54,12 +54,15 @@ export function refusDepuisErreur(erreur) {
   }
   const [champ, valeur] = Object.entries(corps)[0] || []
   const motif = Array.isArray(valeur) ? valeur[0] : valeur
+  // ACAL940 — TOUS les manques servis en un seul 409 ({champ, motif, cible}).
+  const manquants = Array.isArray(corps.manquants)
+    ? corps.manquants.filter((l) => l && typeof l.motif === 'string') : []
   return {
     champ: champ || '',
     motif: (typeof motif === 'string' && motif) || 'Simulation refusée par le serveur.',
-    // ACAL940 — TOUS les manques servis en un seul 409 ({champ, motif, cible}).
-    manquants: Array.isArray(corps.manquants)
-      ? corps.manquants.filter((l) => l && typeof l.motif === 'string') : [],
+    manquants,
+    // ACAL1639 — la cible SERVIE du manque de ce champ (`{etape, onglet, champ}` ou `null`).
+    cible: manquants.find((l) => l.champ === champ)?.cible ?? null,
   }
 }
 
@@ -85,6 +88,17 @@ const CIBLES_HORS_REGLAGES = {
 export function cibleHorsReglages(champ) {
   return typeof champ === 'string' && Object.hasOwn(CIBLES_HORS_REGLAGES, champ)
     ? CIBLES_HORS_REGLAGES[champ] : null
+}
+
+// ACAL1639 — l'étape que le SERVEUR nomme pour un manque (`services/manquants_simulation.py::_cible_sans_module` :
+// aucun pan → `toit`, pan sans module → `panneaux`) prime sur la table par champ ; cible nulle ou absente : la table.
+const GESTES_ETAPE = { toit: 'Tracer le toit', panneaux: 'Poser les panneaux' }
+
+/** `{etape, libelle}` quand la cible servie nomme une étape connue, sinon `cibleHorsReglages(champ)`. */
+export function cibleDuManque(champ, cible) {
+  const etape = cible?.etape
+  return typeof etape === 'string' && Object.hasOwn(GESTES_ETAPE, etape)
+    ? { etape, libelle: GESTES_ETAPE[etape] } : cibleHorsReglages(champ)
 }
 
 /** L'issue d'un sondage `moteur/resultat/<job>/` :
