@@ -593,6 +593,9 @@ export interface ContexteCoucheElectrique {
   electrical?: DocumentElectrique | null;
   /** Origine géographique du repère de la scène 3D. */
   sceneOrigin?: LngLat;
+  /** T4-X7-015 (calque Électrique) — la table d'affectation SERVIE (ACAL286) : des chaînes formées sont, elles aussi, de l'électrique à montrer ou
+   *  à masquer, même quand aucun organe n'est encore posé. Lecture seule ; absente (estimateur public) ⇒ rien de plus. */
+  affectationColoration?: { labelByModule?: { readonly size: number } } | null;
   /** Les pans de l'atelier : une extrémité de cheminement peut les désigner. */
   areas?: ReadonlyArray<{
     id: string;
@@ -655,7 +658,7 @@ export interface CoucheElectrique {
   rafraichir: () => void;
   /** Ce qui a été ignoré au dernier rafraîchissement, nommé en français. */
   avertissements: () => string[];
-  /** CALX221 — le calque n'existe QUE si le document porte `electrical`. */
+  /** CALX221 — le calque n'existe QUE si le document porte `electrical` (T4-X7-015 : ou si des chaînes sont formées). */
   calqueDisponible: () => boolean;
   /** CALX221 — visibilité + opacité, comme les autres calques de l'atelier. */
   setLayerState: (id: string, etat: { visible: boolean; opacite?: number }) => boolean;
@@ -734,6 +737,20 @@ function prochainId(prefixe: string, existants: readonly { id: string }[]): stri
     if (m && m[1] === prefixe) max = Math.max(max, Number(m[2]));
   }
   return `${prefixe}${max + 1}`;
+}
+
+/** T4-X7-015 (calque Électrique) — la case « Électrique » est-elle cochée ? Un seul état : celui de `setLayerState`, que la
+ *  couche inscrit sur son groupe. Sans couche (estimateur public) ⇒ vrai : rien n'est masqué. */
+export const calqueElectriqueVisible = (groupe: { userData: Record<string, unknown> } | null | undefined): boolean =>
+  groupe?.userData.calqueVisible !== false;
+
+/** T4-X7-015 — la scène s'inscrit auprès de la couche : à chaque changement de la case, `siChange` puis `apres` (étiquettes
+ *  et teintes redites). Rattache aussitôt (`siChange`) ; sans couche, rattache seulement. */
+export function brancherCalqueElectrique(
+  groupe: { userData: Record<string, unknown> } | null, siChange: () => void, apres: () => void,
+): void {
+  if (groupe) groupe.userData.siEtatChange = () => { siChange(); apres(); };
+  siChange();
 }
 
 /**
@@ -819,6 +836,7 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
 
   function appliquerEtat(): void {
     groupe.visible = etat.visible;
+    groupe.userData.calqueVisible = etat.visible; // T4-X7-015 — l'état du calque : la scène le relit pour les étiquettes et les teintes
     groupe.traverse((o) => {
       const mat = (o as { material?: THREE.Material | THREE.Material[] }).material;
       const liste = Array.isArray(mat) ? mat : mat ? [mat] : [];
@@ -1292,6 +1310,7 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
       opacite: nombreFini(patch?.opacite) ? Math.max(0, Math.min(1, patch.opacite as number)) : etat.opacite,
     };
     appliquerEtat();
+    (groupe.userData.siEtatChange as (() => void) | undefined)?.(); // T4-X7-015 — la scène redit étiquettes « Chaîne n » et teintes
     return true;
   }
 
@@ -1304,7 +1323,7 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     avertissements: () => [...ignores],
     // CALX221 — un calque n'est PROPOSÉ que s'il existe : sans couche électrique
     // au document, il n'y a rien à allumer ni à éteindre.
-    calqueDisponible: () => document() != null,
+    calqueDisponible: () => document() != null || (ctx.affectationColoration?.labelByModule?.size ?? 0) > 0, // T4-X7-015 — ou des chaînes formées
     setLayerState,
     etatCalque: () => ({ ...etat }),
     armerPose: (type, options) => {
