@@ -72,6 +72,57 @@ class TestKpiAlerteCrud(KpiAlerteBase):
             f'/api/django/reporting/kpi-alertes/{stock.id}/').data['derniere_valeur'])),
             Decimal('98765.43'))
 
+    def test_dacal165_technicien_ne_cree_ni_ne_vise_la_valeur_de_stock(self):
+        """D-ACAL-165 — le Technicien responsable livré passe la garde de la
+        vue mais ne peut ni CRÉER une alerte « Valeur de stock totale » ni en
+        viser une (400 sous `kpi`) ; un autre KPI reste créable par lui."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_RESP_PERMISSIONS
+        role = Role.objects.create(company=self.company, nom='Technicien responsable',
+                                   permissions=list(TECHNICIEN_RESP_PERMISSIONS))
+        chef = User.objects.create_user(username='xplt6_chef2', password='x',
+                                        company=self.company, role=role)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(chef)}')
+        url = '/api/django/reporting/kpi-alertes/'
+        resp = api.post(url, {'nom': 'Sonde', 'kpi': KpiAlerte.Kpi.VALEUR_STOCK_TOTALE,
+                              'operateur': KpiAlerte.Operateur.SUP, 'seuil': '0'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('Voir les prix de vente', str(resp.data['kpi']))
+        self.assertFalse(KpiAlerte.objects.filter(company=self.company).exists())
+        autre = self.api.post(url, {'nom': 'Encours', 'kpi': KpiAlerte.Kpi.ENCOURS_ECHU_TOTAL,
+                                    'operateur': KpiAlerte.Operateur.SUP, 'seuil': '10'},
+                              format='json')
+        self.assertEqual(autre.status_code, 201, autre.data)
+        resp = api.patch(f"{url}{autre.data['id']}/",
+                         {'kpi': KpiAlerte.Kpi.VALEUR_STOCK_TOTALE}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('kpi', resp.data)
+
+    def test_dacal165_notification_sans_chiffre_pour_qui_ne_voit_pas_les_prix(self):
+        """D-ACAL-165 — corps construit PAR DESTINATAIRE : le technicien reçoit
+        « seuil franchi » sans aucun chiffre ; le responsable légacy, le corps
+        d'aujourd'hui (valeur + seuil)."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        role = Role.objects.create(company=self.company, nom='Technicien',
+                                   permissions=list(TECHNICIEN_PERMISSIONS))
+        tech = User.objects.create_user(username='xplt6_tech', password='x',
+                                        company=self.company, role=role)
+        alerte = KpiAlerte.objects.create(
+            company=self.company, kpi=KpiAlerte.Kpi.VALEUR_STOCK_TOTALE,
+            operateur=KpiAlerte.Operateur.SUP, seuil=Decimal('60'))
+        alerte.destinataires_utilisateurs.add(self.user, tech)
+        with mock.patch('apps.reporting.kpi_alertes._compute_valeur_stock_totale',
+                        return_value=Decimal('98765.43')), \
+                mock.patch('apps.notifications.services.notify') as notify:
+            evaluate_kpi_alerte(alerte)
+        corps = {appel.args[0].pk: appel.kwargs['body'] for appel in notify.call_args_list}
+        self.assertIn('98765.43', corps[self.user.pk])
+        self.assertIn('60', corps[self.user.pk])
+        self.assertTrue(corps[tech.pk].endswith('— seuil franchi.'), corps[tech.pk])
+        self.assertFalse(any(ch.isdigit() for ch in corps[tech.pk]), corps[tech.pk])
+
     def test_gated_to_responsable_or_admin(self):
         limited = User.objects.create_user(
             username='limited_kpi', password='x', company=self.company)

@@ -323,10 +323,15 @@ def stock_report(request):
         for societe in societes:
             val_achat += sum(
                 valeur_stock_par_produit(societe).values(), Decimal('0.00'))
+    # D-ACAL-165 (fondateur, 26/11/2026) — sans « voir les prix de vente »
+    # (Technicien, Technicien responsable), AUCUNE valorisation de vente : ni
+    # clé JSON, ni colonne XLSX, ni ligne / colonne PDF, ni même l'ORDRE des
+    # catégories par valeur (trié par nom) ; le bas stock reste.
+    voit_vente = bool(getattr(request.user, 'can_view_sale_prices', True))
     par_categorie = list(
         qs.values('categorie__nom')
         .annotate(nb=Count('id'), valeur_vente=sum_vente)
-        .order_by('-valeur_vente'))
+        .order_by('-valeur_vente' if voit_vente else 'categorie__nom'))
     # ERR57 — `seuil_alerte=0` signifie « aucun seuil » : exclu de la liste bas
     # stock (cohérent avec le dashboard), sinon tout produit à 0 en stock par
     # défaut serait faussement signalé.
@@ -335,10 +340,6 @@ def stock_report(request):
         .filter(quantite_stock__lte=F('seuil_alerte'))
         .values('nom', 'sku', 'quantite_stock', 'seuil_alerte')[:200])
 
-    # D-ACAL-165 (fondateur, 26/11/2026) — sans « voir les prix de vente »
-    # (Technicien, Technicien responsable), AUCUNE valorisation de vente : ni
-    # clé JSON, ni colonne XLSX, ni ligne / colonne PDF ; le bas stock reste.
-    voit_vente = bool(getattr(request.user, 'can_view_sale_prices', True))
     rows = [[c['categorie__nom'] or '—', c['nb'], str(c['valeur_vente'])][:3 if voit_vente else 2]
             for c in par_categorie]
     x = _maybe_xlsx(request, 'rapport-stock.xlsx',

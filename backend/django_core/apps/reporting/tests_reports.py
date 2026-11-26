@@ -159,6 +159,17 @@ class TestStockReport(ReportsBase):
         self.assertNotIn('Valeur vente HT', lignes[0])
         self.assertNotIn('98765', str(lignes))
         self.assertIn('valorisation_vente', self.api.get('/api/django/reporting/reports/stock/').data)
+        # Ni l'ORDRE par valeur : catégories triées par nom pour lui.
+        from apps.stock.models import Categorie
+        for nom, prix in (('Zinc', Decimal('9000')), ('Acier', Decimal('1'))):
+            Produit.objects.create(company=self.company, nom=f'P-{nom}', sku=f'D165-{nom}',
+                                   prix_vente=prix, quantite_stock=1,
+                                   categorie=Categorie.objects.create(company=self.company, nom=nom))
+        noms = [c['categorie__nom'] for c in api.get('/api/django/reporting/reports/stock/').data['par_categorie']]
+        self.assertEqual([n for n in noms if n], ['Acier', 'Zinc'])
+        noms_admin = [c['categorie__nom'] for c in
+                      self.api.get('/api/django/reporting/reports/stock/').data['par_categorie']]
+        self.assertEqual([n for n in noms_admin if n], ['Zinc', 'Acier'])  # par valeur, inchangé
 
     def test_low_stock_excludes_zero_threshold(self):
         """ERR57 — un produit à seuil_alerte=0 (aucun seuil) n'est PAS signalé
