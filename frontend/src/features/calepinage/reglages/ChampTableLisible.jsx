@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button } from '../../../ui'
-import { SPECS_TABLES, lireTable, ecrireTable } from './tablesReglages'
+import { SPECS_TABLES, lireTable, ecrireTable, identifiantProduit } from './tablesReglages'
 
 /* ============================================================================
    T4-X3-019 — LES TABLES DES RÉGLAGES, EN CHAMPS LISIBLES (plus de JSON brut).
@@ -17,8 +17,9 @@ import { SPECS_TABLES, lireTable, ecrireTable } from './tablesReglages'
                                   pinces_supplement, crochets_par_module,
                                   crochets_minimum, source?}
      * `consigne_dc_plan_cablage` {texte}
-   Une clé dont la forme n'est pas connue avec certitude (ex. correspondances
-   de nomenclature : repères libres → identifiant texte OU entier), ou une
+     * `correspondances_nomenclature` {repère: identifiant produit, texte OU entier}
+                                  — une ligne par correspondance (mode `paires`)
+   Une clé dont la forme n'est pas connue avec certitude, ou une
    valeur tapée qui ne se lit pas dans la forme attendue, RESTE sur l'éditeur
    JSON : on ne devine jamais des champs.
    Les nombres : `type="number"` `step="any"`, sans borne HTML — rien ne saute,
@@ -128,6 +129,43 @@ export default function ChampTableLisible({ cle, texte, disabled, onTexte }) {
         {!disabled && (
           <Button type="button" size="sm" variant="outline" data-testid={`calx69-table-${cle}-ajouter`}
             onClick={() => onTexte(JSON.stringify([...valeur, { debut: '', fin: '' }].map((l) => ({ ...l }))))}>
+            {spec.ajout}
+          </Button>
+        )}
+      </div>
+    )
+  }
+
+  if (spec.mode === 'paires') {
+    const lignes = Object.entries(valeur)
+    const ecrire = (nouvelles) => onTexte(ecrireTable(spec, Object.fromEntries(nouvelles)))
+    return (
+      <div id={id} tabIndex={-1} className="mt-0.5 space-y-2" data-testid={`calx69-table-${cle}`}>
+        {lignes.map(([k, v], i) => (
+          <div key={i} className="border border-border/60 p-2" data-testid={`calx69-table-${cle}-${i}`}>
+            <p className="text-xs font-semibold text-foreground">{`${spec.nom} ${i + 1}`}</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <CaseTexte id={`${id}-${i}-cle`} testid={`${id}-${i}-cle`} label={spec.cle.label} valeur={k} disabled={disabled}
+                onChange={(nouvelle) => {
+                  // Un repère déjà pris par une autre ligne n'est pas écrit (il effacerait cette ligne).
+                  if (nouvelle !== k && nouvelle in valeur) return
+                  ecrire(lignes.map(([kk, vv], j) => (j === i ? [nouvelle, vv] : [kk, vv])))
+                }} />
+              <CaseTexte id={`${id}-${i}-valeur`} testid={`${id}-${i}-valeur`} label={spec.valeur.label} valeur={String(v)}
+                disabled={disabled}
+                onChange={(t) => ecrire(lignes.map(([kk, vv], j) => (j === i ? [kk, identifiantProduit(t)] : [kk, vv])))} />
+            </div>
+            {!disabled && (
+              <Button type="button" size="sm" variant="outline" className="mt-2"
+                onClick={() => ecrire(lignes.filter((_, j) => j !== i))}>
+                Retirer cette ligne
+              </Button>
+            )}
+          </div>
+        ))}
+        {!disabled && (
+          <Button type="button" size="sm" variant="outline" data-testid={`calx69-table-${cle}-ajouter`}
+            disabled={'' in valeur} onClick={() => ecrire([...lignes, ['', '']])}>
             {spec.ajout}
           </Button>
         )}
