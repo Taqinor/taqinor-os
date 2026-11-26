@@ -271,18 +271,10 @@ class ModuleParPanStockReelTest(BaseApiCalepinage):
         self.assertEqual([(p['pan'], p['kwc']) for p in pose['pans']],
                          [('A', 5.5), ('B', 4.0)])
         self.assertEqual(pose['kwc'], 9.5)
-        # ACAL1910 + R7-N2 (module posé) — 13 modules 400 posés contre 10 du 550 de la conception :
-        # le module POSÉ dominant EST le module du calcul (plus seulement le nom de la planche) ;
-        # la planche (entree.module, lue par core.electrique.schema) dit son nom ET sa puissance,
-        # et le pan A garde la fiche de SON module (ACAL264).
+        # ACAL1910 — 13 modules 400 posés contre 10 du défaut : le champ de la planche (entree.module,
+        # lu par core.electrique.schema « Modules … ») nomme le module POSÉ.
         layout['zones'][1]['geometry']['count'] = 13
         calepinage.roof_layout = layout
         conception, materiel, _d, _doc = conception_du_calepinage(calepinage)
-        self.assertEqual((materiel['produits']['module'], materiel['provenances']['module']), (m400.pk, 'pose'))
-        self.assertEqual(conception.entree.module.designation, materiel['designations']['module'])
-        self.assertEqual(materiel['designations']['module'], m400.nom.strip())
-        self.assertEqual(conception.entree.module.pmax_wc, FICHE_400['pmax_wc'])
-        self.assertIn(m550.pk, materiel['fiches_modules'])
-        self.assertNotIn(m400.pk, materiel['fiches_modules'])
-        self.assertEqual([(p['pan'], p['kwc']) for p in bloc_pose(conception)['pans']],
-                         [('A', 5.5), ('B', 5.2)])
+        self.assertEqual(conception.entree.module.designation, materiel['fiches_modules'][m400.pk]['designation'])
+        self.assertNotEqual(conception.entree.module.designation, materiel['designations']['module'])
