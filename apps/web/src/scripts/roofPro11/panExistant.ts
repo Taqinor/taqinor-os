@@ -7,6 +7,7 @@ import { areaLabel } from '../../lib/roofAreas';
 import type { AreaRecord, CardData } from './types';
 import { annualSavingsMad } from '../../lib/estimatorBrainV2'; // ACAL1900 — économies de la pose tenue, plafonnées
 import type { Ctx } from './context';
+import { cibleDeLAtelier } from './affichageErp'; // T4-X8-012 (une cible)
 import { createLayoutState, type LayoutState } from '../../lib/layoutVariability'; // ACAL1900
 import { resnapEnMasse } from './layoutResnap'; // ACAL1900 — même re-snap que W79
 import { checkRect, FREE_EDGE_EPS_M, hardViolationsFor, panelCornersFor, rectOfPanel, toUV, type FreeGeom, type FreeLayoutState, type FreePanel } from '../../lib/freeLayout'; // ACAL2032
@@ -131,4 +132,11 @@ export function direEcartPoseRelue(poses: number, cible: number, fmt: (n: number
   const note = noteEcartPoseRelue(poses, cible, fmt, rouverte, auDevis);
   const el = note && typeof document !== 'undefined' ? document.getElementById('rp9-need-note') : null;
   if (el && note) el.textContent = note;
+}
+
+/** T4-X8-012 (une cible) — `direEcartPoseRelue` contre LA cible servie (comptée dans le module posé `watt`) et sa source, dans les
+ *  mots de la carte « Cible — panneaux » ; sans cible servie : le nombre à poser, comme avant. `suite` = « · K au devis… ». */
+export function direEcartALaPose(poses: number, ctx: Pick<Ctx, 'neededPanels'> & Parameters<typeof cibleDeLAtelier>[0], watt: number | null | undefined, fmt: (n: number) => string, rouverte: boolean, suite: string): void {
+  const c = cibleDeLAtelier(ctx, watt);
+  direEcartPoseRelue(poses, c ? c.panneaux : ctx.neededPanels, fmt, rouverte, `${c ? ` (${c.origine})` : ''}${suite}`);
 }

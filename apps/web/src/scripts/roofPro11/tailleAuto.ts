@@ -10,7 +10,9 @@ import type { AreaRecord } from './types';
 import { fmt, fmtKwc } from './dom';
 import { poseTenue } from './panExistant';
 
-/** D'où vient la cible servie (`design-context` → `cible.source`, projeté par l'ERP en `origineCible`). */
+/** D'où vient la cible servie (`design-context` → `cible.source`, projeté par l'ERP en `origineCible`). T4-X8-012 (une cible) — les MOTS viennent
+ *  du payload (`libelleApresOrigineCible`, la table de l'ERP `contexteAtelier.js::LIBELLES_APRES_SOURCE_CIBLE`, la même que la carte) ; ceci n'est
+ *  que le repli d'un payload sans ce mot. */
 const ORIGINES: Record<string, string> = { devis: 'le devis', factures: 'la facture', lead: 'la taille souhaitée du lead' };
 
 type CtxTaille = Parameters<typeof poseTenue>[0] & Pick<Ctx, 'neededPanels'> & {
@@ -26,13 +28,14 @@ export function documentVierge(doc: unknown): boolean {
 
 /** La taille posée d'elle-même, si elle est EN VIGUEUR : atelier ERP, payload de boot à cible servie d'origine connue,
  *  document vierge, nombre voulu = cible, pose non tenue. `null` sinon (ajustée, relue, site public). */
-export function tailleAutoEnVigueur(ctx: CtxTaille): { panneaux: number; origine: string } | null {
+export function tailleAutoEnVigueur(ctx: CtxTaille): { panneaux: number; origine: string; apres: string } | null {
   if (ctx.opts?.chiffrage === undefined) return null;
   const p = ctx.opts?.hydrate?.devis;
   const origine = typeof p?.origineCible === 'string' && ORIGINES[p.origineCible] ? p.origineCible : null;
   const panneaux = Math.round(Number((p?.cible as { panneaux?: unknown } | null | undefined)?.panneaux));
   if (!origine || !(panneaux > 0) || !documentVierge((p?.geometrie as { roof_layout?: unknown } | null)?.roof_layout)) return null;
-  return ctx.neededPanels === panneaux && !poseTenue(ctx) ? { panneaux, origine } : null;
+  const mots = typeof p?.libelleApresOrigineCible === 'string' ? p.libelleApresOrigineCible.trim() : '';
+  return ctx.neededPanels === panneaux && !poseTenue(ctx) ? { panneaux, origine, apres: mots || ORIGINES[origine] } : null;
 }
 
 /** La note du nombre de panneaux (`rp9-need-note`) quand la taille posée est celle de la cible : « Posé d'après la
@@ -42,7 +45,7 @@ export function noteTailleAuto(ctx: CtxTaille, placed: number, carte: { count: n
   const t = tailleAutoEnVigueur(ctx);
   if (!t || !(placed > 0)) return note;
   const kwc = carte && carte.count > 0 ? ` · ${fmtKwc((carte.kwc * placed) / carte.count)} kWc` : '';
-  const tete = `Posé d’après ${ORIGINES[t.origine]} : ${fmt(placed)} panneaux${kwc}`;
+  const tete = `Posé d’après ${t.apres} : ${fmt(placed)} panneaux${kwc}`;
   if (placed >= t.panneaux) return `${tete} — ajustez si besoin.`;
   const raison = note.startsWith(prefixe) ? note.slice(prefixe.length).replace(/\.$/, '') : '';
   return `${tete} sur ${fmt(t.panneaux)}${raison} ; ajustez si besoin.`;
