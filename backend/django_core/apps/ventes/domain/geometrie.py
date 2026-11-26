@@ -82,8 +82,26 @@ def _aspect_vers_azimut_boussole(aspect):
     return aspect_vers_boussole(aspect)
 
 
-def orientation_du_pan(zone):
+#: D-ACAL-149 — ce qui est DIT quand la lecture corrigée ne trouve pas
+#: l'inclinaison des tables d'un toit plat (champ de la conception qui la lève).
+SUPPOSITION_INCLINAISON_TOIT_PLAT = {
+    'code': 'inclinaison_toit_plat_supposee',
+    'champ': 'geometry.tiltDeg',
+    'message': ("Toit plat sans inclinaison des tables posées : la production est "
+                "calculée à l'« Inclinaison par défaut » des réglages de la société. "
+                "Posez les panneaux dans le calepinage pour la remplacer."),
+}
+
+
+def orientation_du_pan(zone, *, toit_plat_corrige=False):
     """ACAL58 — l'orientation d'un pan : celle des modules POSÉS d'abord.
+
+    D-ACAL-149 — ``toit_plat_corrige`` (FAUX par défaut : lecture d'avant au
+    bit près, celle de la simulation et des chaînes du calepinage, dont les
+    empreintes stockées ne bougent pas) : sur un toit ``flat`` sans
+    ``geometry.tiltDeg``, ``pitchDeg`` n'est que le curseur mémorisé ; aucune
+    inclinaison n'est rendue (``None`` → la cascade prend l'« Inclinaison par
+    défaut » de la société) et ``inclinaison_supposee`` vaut ``True``.
 
     Un toit plat (``pitchDeg: 0``) porte des tables inclinées : la pente du
     TOIT n'est pas celle des MODULES. Le bloc ``geometry`` de la zone (WJ24 :
@@ -121,10 +139,13 @@ def orientation_du_pan(zone):
     pitch = zone.get('pitchDeg')
     if pitch is None:
         pitch = zone.get('pitch')
+    suppose = False
+    if toit_plat_corrige and zone.get('roofType') == 'flat':
+        pitch, suppose = None, True
 
     source = 'toit'
     if geo.get('tiltDeg') is not None:
-        pitch = geo.get('tiltDeg')
+        pitch, suppose = geo.get('tiltDeg'), False
         source = 'pose'
     if geo.get('azimuthDeg') is not None:
         azimut_boussole = geo.get('azimuthDeg')
@@ -136,6 +157,8 @@ def orientation_du_pan(zone):
         'aspect_pvgis': aspect_pvgis,
         'source_orientation': source,
     }
+    if suppose:
+        orientation['inclinaison_supposee'] = True
     if geo.get('family') == 'eastwest':
         orientation['faces'] = _faces_est_ouest(geo, azimut_boussole, pitch)
     return orientation
@@ -167,9 +190,16 @@ def _faces_est_ouest(geo, azimut, inclinaison):
             if not total or comptes[face]]
 
 
-def extract_roof_config(layout):
+def extract_roof_config(layout, *, toit_plat_corrige=False):
     """FG248 — extrait la config TOITURE d'un layout 3D (roofPro11) en un dict
     plat, JSON-sérialisable, indépendant de la version de l'outil.
+
+    D-ACAL-149 — ``toit_plat_corrige`` passe à :func:`orientation_du_pan`
+    (FAUX par défaut, lecture d'avant au bit près). Vrai, et quand
+    l'inclinaison PRINCIPALE n'est pas connue faute de tables posées sur un
+    toit plat, ``suppositions`` porte :data:`SUPPOSITION_INCLINAISON_TOIT_PLAT`
+    (clé racine seulement : ``pans`` — futur ``_pans_geometry`` — n'en reçoit
+    aucune).
 
     Lit les PANS de toiture (``areas``/``zones``/``pans``) — chacun portant
     ``roofType``, ``pitchDeg``/``pitch``, ``facingAzimuthDeg``/``aspect`` et un
@@ -249,7 +279,7 @@ def extract_roof_config(layout):
         #
         # ACAL58 — l'orientation POSÉE d'abord : voir :func:`orientation_du_pan`
         # (seule lecture de l'orientation côté ventes).
-        orientation = orientation_du_pan(a)
+        orientation = orientation_du_pan(a, toit_plat_corrige=toit_plat_corrige)
         azimut_boussole = orientation['azimut_deg']
         aspect_pvgis = orientation['aspect_pvgis']
         pitch = orientation['inclinaison_deg']
@@ -294,7 +324,7 @@ def extract_roof_config(layout):
         # Critique D7 — le pan est comparé par son kWc ENTIER (une pose
         # est-ouest n'est pas la moitié d'elle-même) ; ``pan`` le décrit.
         if best is None or kwc > best[0]:
-            best = (kwc, pan)
+            best = (kwc, pan, orientation.get('inclinaison_supposee') is True)
 
     if not pans:
         return {}
@@ -310,6 +340,8 @@ def extract_roof_config(layout):
         cfg['orientation_principale'] = best[1]['orientation']
         cfg['azimut_deg'] = best[1]['azimut_deg']
         cfg['inclinaison_deg'] = best[1]['inclinaison_deg']
+        if best[2]:  # D-ACAL-149 — lecture corrigée seulement
+            cfg['suppositions'] = [dict(SUPPOSITION_INCLINAISON_TOIT_PLAT)]
     return cfg
 
 
@@ -499,10 +531,14 @@ def _entier_pose(valeur):
     return int(round(v))
 
 
-def pans_du_document(layout):
+def pans_du_document(layout, *, toit_plat_corrige=False):
     """ACAL59 (C-ACAL-035, C-ACAL-118, D-ACAL-5) — LA primitive PURE : les
     pans d'un document de pose, toit ET surfaces de pose (champ au sol,
     ombrière, façade — chacune est un pan à part entière).
+
+    D-ACAL-149 — ``toit_plat_corrige`` passe à :func:`orientation_du_pan`
+    (FAUX par défaut : la simulation et les chaînes du calepinage gardent la
+    lecture d'avant, leurs empreintes stockées ne bougent pas).
 
     Rend ``[{cle, kind, libelle, modules, kwc, inclinaison_deg, azimut_deg,
     source}]`` (+ ``avertissement`` pour un pan non pavé, + ``refus`` pour
@@ -559,7 +595,7 @@ def pans_du_document(layout):
         kwc = _nombre_fini(geo.get('kwc')) or _nombre_fini(res.get('kwc'))
         if kwc is None and modules and (watt_pan or watt_annonce):
             kwc = modules * (watt_pan or watt_annonce) / 1000.0
-        orientation = orientation_du_pan(zone)
+        orientation = orientation_du_pan(zone, toit_plat_corrige=toit_plat_corrige)
         pan = {
             'cle': str(zone.get('id') or 'zone-%d' % (index + 1)),
             'kind': 'toit',
@@ -716,8 +752,12 @@ def refus_des_pans(pans):
     return [p['refus'] for p in pans or () if p.get('refus')]
 
 
-def lire_layout(layout, *, toiture=None, compte=None, kwc=None):
+def lire_layout(layout, *, toiture=None, compte=None, kwc=None,
+                toit_plat_corrige=False):
     """QJR165 — L'UNIQUE lecture d'un layout 3D : compte, watt, kWc, scénario.
+
+    D-ACAL-149 — ``toit_plat_corrige`` passe à :func:`extract_roof_config`
+    quand ``toiture`` est calculée ici (FAUX par défaut, lecture d'avant).
 
     POURQUOI CETTE FONCTION EXISTE. Ce dépôt lisait le MÊME blob de deux
     façons : la resynchronisation par ``_cible_panneaux_du_layout`` /
@@ -746,7 +786,7 @@ def lire_layout(layout, *, toiture=None, compte=None, kwc=None):
     """
     layout = layout if isinstance(layout, dict) else {}
     if toiture is None:
-        toiture = extract_roof_config(layout) or {}
+        toiture = extract_roof_config(layout, toit_plat_corrige=toit_plat_corrige) or {}
     result = dict(layout.get('result') or {})
 
     # ── ACAL59 (C-ACAL-035, D-ACAL-5) — LA SOMME DES PANS POSÉS ────────────
