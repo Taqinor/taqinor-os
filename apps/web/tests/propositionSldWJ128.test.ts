@@ -432,6 +432,8 @@ describe('BarreSoleil.astro — rendu (LOT 6)', () => {
     for (const hook of ['data-soleil-lecture', 'data-soleil-heure', 'data-soleil-saison="hiver"', 'data-soleil-saison="ete"']) {
       expect(html).toMatch(new RegExp(`${hook}[^>]*disabled`));
     }
+    expect(html).toMatch(/id="roof3d-soleil"[^>]*\bhidden\b/); // C3 — cachée jusqu'au branchement
+    expect(html).toMatch(/data-soleil-quand[^>]*data-en="20 December · 16:00 \(solar time\)"[^>]*data-ar="20 دجنبر · الساعة 16 \(بالتوقيت الشمسي\)"/);
     expect(html).toContain('data-aria-label-ar="تشغيل مسار الشمس خلال اليوم"');
     expect(html).toContain('data-aria-label-en="Solar time of day"');
     expect(html).toContain('data-ar="الصيف"');

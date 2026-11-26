@@ -469,7 +469,7 @@ describe('visionneuse au soleil — libellé, bornes de carte, légende, teinte'
 });
 
 describe('attacherSoleil — la barre pilote la poignée (jsdom)', () => {
-  const BARRE = `<div id="roof3d-soleil"><div data-soleil-legende></div>
+  const BARRE = `<div id="roof3d-soleil" hidden><div data-soleil-legende></div>
     <button data-soleil-lecture disabled></button><strong data-soleil-quand></strong><p data-soleil-journee></p>
     <input type="range" data-soleil-heure disabled /><button data-soleil-saison="hiver" disabled></button><button data-soleil-saison="ete" disabled></button></div>`;
   function monter(over: Partial<Parameters<typeof attacherSoleil>[0]> = {}, payload = payloadSoleil()) {
@@ -485,6 +485,15 @@ describe('attacherSoleil — la barre pilote la poignée (jsdom)', () => {
   afterEach(() => {
     vi.useRealTimers();
     document.documentElement.lang = 'fr';
+  });
+
+  it('C3 — rendue cachée, montrée au branchement ; débranchée : cachée, plus aucun reste de légende', () => {
+    const { barre, q, debrancher } = monter();
+    expect(barre.hidden).toBe(false);
+    expect(q('[data-soleil-legende]').hasAttribute('data-soleil-visible')).toBe(true);
+    debrancher();
+    expect(barre.hidden).toBe(true);
+    expect(q('[data-soleil-legende]').hasAttribute('data-soleil-visible')).toBe(false);
   });
 
   it('branchée : contrôles actifs, teinte posée, légende visible, carte bornée, instant affiché', () => {

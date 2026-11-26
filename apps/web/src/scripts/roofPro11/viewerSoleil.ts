@@ -154,6 +154,7 @@ export function attacherSoleil(o: OptionsSoleil): () => void {
   for (const c of controles) c.disabled = false;
   barre.dataset.soleilPret = '';
   afficher();
+  barre.hidden = false; // rendue `hidden` : montrée seulement une fois branchée sur la scène
 
   return () => {
     player.stop();
@@ -161,5 +162,8 @@ export function attacherSoleil(o: OptionsSoleil): () => void {
     observateur.disconnect();
     for (const c of controles) c.disabled = true;
     delete barre.dataset.soleilPret;
+    // Démontée (autre taille choisie, départ de la page) : aucun reste de légende ni de barre inerte.
+    q<HTMLElement>('[data-soleil-legende]')?.removeAttribute('data-soleil-visible');
+    barre.hidden = true;
   };
 }

@@ -9106,7 +9106,6 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               // LOT 6 — barre au soleil chargée APRÈS la visionneuse ; tout échec la masque et laisse la visionneuse.
               const courant = handle, s = soleil, barre = barreSoleil;
               if (s && barre) {
-                barre.hidden = false;
                 import('../../scripts/roofPro11/viewerSoleil').then((m) => {
                   if (handle !== courant) return; // démontée entre-temps (autre taille choisie)
                   const debrancher = m.attacherSoleil({ barre, poignee: fullHandle, soleil: s, layout: fullLayout, avecTeinte: fullLayout === layoutRacine, reducedMotion: reduced });

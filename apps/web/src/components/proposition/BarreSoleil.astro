@@ -3,8 +3,8 @@
  * LOT 6 (D-ACAL-132 à 138) — la barre de la visionneuse au soleil, sous la scène 3D des liens de confiance :
  * légende « Ensoleillement de chaque panneau sur l'année » (Ombragé → Plein soleil), lecture de la journée,
  * curseur d'heure (lever → coucher) avec la date et l'heure, Hiver / Été — la barre de l'écran Panneaux de
- * l'atelier. Rendue par la page SEULEMENT quand `visionneuse_soleil` est servie ; ses contrôles restent
- * inertes (`disabled`) jusqu'à ce que `scripts/roofPro11/viewerSoleil.ts` les branche sur la scène.
+ * l'atelier. Rendue par la page SEULEMENT quand `visionneuse_soleil` est servie, et `hidden` (contrôles
+ * `disabled`) jusqu'à ce que `scripts/roofPro11/viewerSoleil.ts` la branche sur la scène et la montre.
  *
  * Aucun chiffre neuf : la teinte ne s'affiche qu'en couleur ; sans valeur enregistrée, pas de légende du
  * tout (D-ACAL-136). Trois langues (`data-fr/en/ar`, arabe à faire relire) ; à l'impression, la barre
@@ -30,7 +30,7 @@ const T = {
 };
 const avecLegende = soleil.zones.length > 0;
 ---
-<div id="roof3d-soleil" class="soleil-barre" data-soleil>
+<div id="roof3d-soleil" class="soleil-barre" data-soleil hidden>
   {avecLegende && (
     <div class="soleil-legende" data-soleil-legende>
       <p class="soleil-titre" data-i18n data-fr={T.legende.fr} data-en={T.legende.en} data-ar={T.legende.ar}>{T.legende.fr}</p>
@@ -49,7 +49,7 @@ const avecLegende = soleil.zones.length > 0;
     </button>
     <div class="soleil-curseur">
       <div class="soleil-tete">
-        <strong data-soleil-quand>{libelleInstant(jour, heure, 'fr')}</strong>
+        <strong data-soleil-quand data-i18n data-fr={libelleInstant(jour, heure, 'fr')} data-en={libelleInstant(jour, heure, 'en')} data-ar={libelleInstant(jour, heure, 'ar')}>{libelleInstant(jour, heure, 'fr')}</strong>
       </div>
       <input type="range" class="soleil-heure" data-soleil-heure min="0" max="24" step="1" value={String(Math.round(heure))} disabled
         aria-label={T.heure.fr} data-aria-label-fr={T.heure.fr} data-aria-label-en={T.heure.en} data-aria-label-ar={T.heure.ar} />
