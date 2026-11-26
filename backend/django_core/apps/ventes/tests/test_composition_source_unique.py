@@ -713,3 +713,94 @@ class LesPairesMpptSuiventLeChamp(_Base):
             regles_calcul=REGLES_CORRIGEES_2710)
         devis.refresh_from_db()
         self.assertTrue(contexte_sonde_du_devis(devis).regles_2710)
+
+
+class LePanneauParDefautDecideLesChoixAutomatiques(_Base):
+    """D-ACAL-169 (fondateur 26/11/2026 : « always use 715w everywhere ») — le
+    panneau DÉSIGNÉ au stock donne la puissance ET le produit de tout choix
+    automatique d'un devis NOUVEAU ; une puissance tapée reste souveraine ;
+    sans désigné, rien ne change (le Canadien 710 W d'aujourd'hui)."""
+
+    slug = 'dacal169-defaut'
+
+    def setUp(self):
+        super().setUp()
+        # Deux 715 W : sans le défaut, « Canadien » gagnerait l'égalité.
+        Produit.objects.create(
+            company=self.company, nom='Panneau Canadien Solar 715W', sku='PAN715C-%s' % self.company.pk,
+            prix_vente=Decimal('1480'), prix_achat=Decimal('1'), quantite_stock=1000)
+        self.defaut = Produit.objects.create(
+            company=self.company, nom='Panneau Longi 715W', sku='PAN715L-%s' % self.company.pk,
+            prix_vente=Decimal('1500'), prix_achat=Decimal('1'), quantite_stock=1000)
+
+    def designer(self, **champs):
+        Produit.objects.filter(pk=self.defaut.pk).update(panneau_par_defaut=True, **champs)
+
+    @staticmethod
+    def panneaux(charge):
+        return {li['designation']: li['quantite'] for li in charge['lignes'] if li['role'] == 'panneau'}
+
+    def test_dry_run_sans_puissance_tapee_compose_le_panneau_par_defaut(self):
+        self.designer()
+        reponse = self.api.post(COMPO_URL, {'kwc': 5}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['panel_watt'], 715)
+        self.assertEqual(set(self.panneaux(reponse.data)), {'Panneau Longi 715W'})
+        self.assertEqual(reponse.data['nb_panneaux'], 7)  # plafond(5 000 / 715) — jamais 7 × 710
+        self.assertEqual(reponse.data['panneau_par_defaut'], {
+            'produit_id': self.defaut.pk, 'nom': 'Panneau Longi 715W', 'pmax_wc': 715,
+            'source': 'designe', 'motif': None})
+
+    def test_une_puissance_tapee_reste_souveraine(self):
+        self.designer()
+        reponse = self.api.post(COMPO_URL, {'kwc': 5, 'panel_watt': 550}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(set(self.panneaux(reponse.data)), {'Panneau Jinko 550W'})
+        tapee_715 = self.api.post(COMPO_URL, {'kwc': 5, 'panel_watt': 715}, format='json')
+        self.assertEqual(set(self.panneaux(tapee_715.data)), {'Panneau Longi 715W'})
+
+    def test_sans_panneau_designe_rien_ne_change(self):
+        reponse = self.api.post(COMPO_URL, {'kwc': 5}, format='json')
+        tapee = self.api.post(COMPO_URL, {'kwc': 5, 'panel_watt': 710}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(self._empreinte_dry_run(reponse.data), self._empreinte_dry_run(tapee.data))
+        self.assertEqual(set(self.panneaux(reponse.data)), {'Panneau Canadien Solar 710W'})
+        self.assertEqual(reponse.data['avertissements'], tapee.data['avertissements'])
+        self.assertEqual(reponse.data['panneau_par_defaut']['source'], 'aucun')
+        self.assertIsNone(reponse.data['panneau_par_defaut']['pmax_wc'])
+
+    def test_designe_archive_regle_d_aujourd_hui_et_motif_dit(self):
+        self.designer(is_archived=True)
+        reponse = self.api.post(COMPO_URL, {'kwc': 5}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['panel_watt'], 710)
+        self.assertEqual(set(self.panneaux(reponse.data)), {'Panneau Canadien Solar 710W'})
+        self.assertEqual(reponse.data['panneau_par_defaut']['source'], 'archive')
+        self.assertIn(reponse.data['panneau_par_defaut']['motif'], reponse.data['avertissements'])
+
+    def test_devis_automatique_compose_le_panneau_par_defaut(self):
+        from apps.ventes.models import Devis
+        self.designer()
+        cree = self.api.post(AUTO_URL, {'lead': self.lead(taille_souhaitee_kwc=Decimal('5')).id}, format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+        devis = Devis.objects.get(pk=cree.data['id'])
+        panneaux = {li.designation for li in devis.lignes.all() if 'Panneau' in li.designation}
+        self.assertEqual(panneaux, {'Panneau Longi 715W'})
+        self.assertEqual({int(li.quantite) for li in devis.lignes.all() if 'Panneau' in li.designation}, {7})
+        alertes = (devis.etude_params or {}).get('journal_auto', {}).get('alertes', [])
+        self.assertNotIn('panneau_par_defaut', [a.get('code') for a in alertes])
+
+    def test_resolveur_assistant_et_cible_du_lead_suivent_le_defaut(self):
+        from apps.ventes.domain.resolution_catalogue import STATUT_UNIQUE, resoudre_panneau, vivier
+        from apps.ventes.selectors import cible_depuis_lead
+        from apps.ventes.selectors_assistant import panneau_par_defaut_id
+        sans = panneau_par_defaut_id(self.company)
+        self.assertNotEqual(sans, self.defaut.pk)  # le Canadien 710 W d'aujourd'hui
+        self.designer()
+        self.assertEqual(panneau_par_defaut_id(self.company), self.defaut.pk)
+        resolution = resoudre_panneau(self.company, vivier(self.company))
+        self.assertEqual((resolution.statut, resolution.produit.pk), (STATUT_UNIQUE, self.defaut.pk))
+        self.assertEqual(resoudre_panneau(self.company, vivier(self.company), wc=550).produit.nom,
+                         'Panneau Jinko 550W')
+        cible = cible_depuis_lead(self.lead(taille_souhaitee_kwc=Decimal('5')), self.company)
+        self.assertEqual((cible['panneaux'], cible['panel_watt']), (7, 715))

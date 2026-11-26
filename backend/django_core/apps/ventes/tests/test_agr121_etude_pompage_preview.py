@@ -779,3 +779,50 @@ class ProfilsAuPlanDesPanneauxTests(SimpleTestCase):
     def test_sans_gps_none(self):
         from apps.ventes.domain.pompage_pose import profils_horaires_pose
         self.assertIsNone(profils_horaires_pose(lat=None, lon=None, plan=self.PLAN))
+
+
+class PanneauParDefautPompageTests(SimpleTestCase):
+    """D-ACAL-169 — le panneau de l'étude de pompage : le panneau par défaut d'abord s'il passe
+    l'acceptation du moteur (tarifé ET fiche électrique complète), sinon la règle d'aujourd'hui
+    (tarifé, complet, plus haute Pmax, plus petit id) et la phrase dans les alertes. Catalogue et
+    fiches simulés (aucune base)."""
+
+    COMPLETE = {'vmp_v': 41.0, 'voc_v': 49.0, 'isc_a': 18.0, 'imp_a': 17.0,
+                'temp_coeff_voc_pct_c': None, 'temp_coeff_pmax_pct_c': None}
+
+    def _catalogue(self, panneau_defaut, prix_defaut='1500', fiche_defaut=True):
+        from types import SimpleNamespace
+
+        def produit(pk, nom, prix):
+            return SimpleNamespace(pk=pk, id=pk, nom=nom, sku='', prix_vente=Decimal(prix) if prix else None,
+                                   role_devis='panneau')
+        produits = [produit(1, 'Panneau 720W', '1600'), produit(42, 'Panneau Longi 715W', prix_defaut)]
+        incomplete = dict(self.COMPLETE, pmax_wc=715.0, vmp_v=None, voc_v=None, isc_a=None, imp_a=None)
+        specs = {1: dict(self.COMPLETE, pmax_wc=720.0),
+                 42: dict(self.COMPLETE, pmax_wc=715.0) if fiche_defaut else incomplete}
+        alertes = []
+        with mock.patch('apps.stock.selectors.produits_pompage', return_value=[]), \
+                mock.patch('apps.ventes.domain.catalogue.catalogue_de_la_societe', return_value=produits), \
+                mock.patch.object(pompage, '_specs_module', side_effect=lambda p: specs[p.pk]):
+            catalogue = pompage.lire_catalogue(object(), panneau_defaut=panneau_defaut, alertes=alertes)
+        return catalogue['panneau'], alertes
+
+    def _auto(self):
+        from apps.ventes.domain.panneau_defaut import PanneauAuto
+        return PanneauAuto(produit_id=42, watt=715, nom='Panneau Longi 715W', source='designe')
+
+    def test_sans_defaut_la_regle_d_aujourd_hui_et_rien_n_est_dit(self):
+        panneau, alertes = self._catalogue(None)
+        self.assertEqual((panneau['id'], alertes), (1, []))
+
+    def test_le_defaut_accepte_passe_devant(self):
+        panneau, alertes = self._catalogue(self._auto())
+        self.assertEqual((panneau['id'], panneau['pmax_wc'], alertes), (42, 715.0, []))
+
+    def test_le_defaut_sans_prix_ou_fiche_incomplete_regle_d_aujourd_hui_dite(self):
+        for options in ({'prix_defaut': None}, {'fiche_defaut': False}):
+            with self.subTest(**options):
+                panneau, alertes = self._catalogue(self._auto(), **options)
+                self.assertEqual(panneau['id'], 1)
+                self.assertEqual([a['code'] for a in alertes], ['panneau_par_defaut'])
+                self.assertIn("l'étude de pompage", alertes[0]['message'])

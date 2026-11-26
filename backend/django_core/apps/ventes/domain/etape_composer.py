@@ -145,6 +145,10 @@ class IntentionComposition:
     #: ADEV156 (D-ACAL-80) — le froid du SITE (``compatibilites.froid_du_lead``)
     #: du verdict panneau / onduleur. ``None`` (LE DÉFAUT) ⇒ −5 °C, inchangé.
     froid: object = None
+    #: D-ACAL-169 — le panneau PAR DÉFAUT de la société (id ``stock.Produit``),
+    #: posé SEULEMENT par un appelant qui compose un devis NOUVEAU à la
+    #: puissance de ce panneau. ``None`` (LE DÉFAUT) ⇒ choix au wattage inchangé.
+    panneau_prefere_id: object = None
 
 
 @dataclass(frozen=True)
@@ -219,6 +223,7 @@ def composer(intention):
         regles_2710=getattr(intention, 'regles_2710', True),
         modules_affleurants=getattr(intention, 'modules_affleurants', 0),  # ACAL927
         froid=getattr(intention, 'froid', None),  # ADEV156
+        panneau_prefere_id=getattr(intention, 'panneau_prefere_id', None),  # D-ACAL-169
     )
     catalogue = reglages.catalogue
     kwc = float(intention.kwc or 0)
@@ -354,6 +359,30 @@ class ContexteSonde:
     regles_2710: bool = True
     #: ADEV156 — cf. ``IntentionComposition.froid`` (même froid que le pipeline).
     froid: object = None
+    #: D-ACAL-169 — le ``panneau_defaut.PanneauAuto`` d'un balayage NEUF
+    #: (:func:`contexte_sonde_neuf`, aucun devis) ; ``None`` (LE DÉFAUT, et tout
+    #: contexte d'un devis existant) ⇒ la sonde d'aujourd'hui.
+    panneau_defaut: object = None
+
+
+def contexte_sonde_neuf(*, devis=None, **champs):
+    """D-ACAL-169 — le ``ContexteSonde`` d'un balayage de tailles : avec un
+    ``devis`` (existant), tel quel ; sans devis (une composition à naître), il
+    porte le panneau par défaut que la composition accepte
+    (``panneau_defaut.panneau_auto_composition``, sur SES ``reglages``)."""
+    contexte = ContexteSonde(**champs)
+    if devis is not None:
+        return contexte
+    from apps.ventes.domain.panneau_defaut import panneau_auto_composition
+    return dataclasses.replace(contexte, panneau_defaut=panneau_auto_composition(
+        contexte.company, reglages=contexte.reglages, gamme_nom_devis=contexte.gamme_nom_devis))
+
+
+def _panneau_prefere(contexte, watt):
+    """D-ACAL-169 — l'id du panneau par défaut du contexte quand ``watt`` est SA
+    puissance, sinon ``None`` (aucun défaut, ou une autre puissance)."""
+    defaut = getattr(contexte, 'panneau_defaut', None)
+    return defaut.prefere(watt) if defaut is not None else None
 
 
 def _mppt_paires_du_devis(devis):
@@ -444,16 +473,22 @@ def composer_sonde(contexte, nb_panneaux, *, avec_batterie, cible_kwh=None,
         batterie_module_kwh=module_kwh,
         reglages=contexte.reglages,
         regles_2710=getattr(contexte, 'regles_2710', True),
-        froid=getattr(contexte, 'froid', None)))
+        froid=getattr(contexte, 'froid', None),
+        panneau_prefere_id=_panneau_prefere(contexte, watt)))  # D-ACAL-169
 
 
 def sonder_wattage(contexte):
     """LA sonde de wattage : le Wc du panneau RÉELLEMENT retenu par le
     catalogue pour ce contexte (un panneau composé au wattage de référence),
     ou ``0``. Le hors-réseau n'y entre pas : le panneau retenu n'en dépend
-    pas, et un catalogue sans onduleur autonome ne doit pas masquer le Wc."""
+    pas, et un catalogue sans onduleur autonome ne doit pas masquer le Wc.
+
+    D-ACAL-169 — un contexte NEUF qui porte un panneau par défaut accepté
+    (``panneau_defaut``) sonde à SA puissance, et la composition le retient."""
+    defaut = getattr(contexte, 'panneau_defaut', None)
     sonde = composer_sonde(
-        dataclasses.replace(contexte, panel_watt=_AUTO_PANEL_WATT,
+        dataclasses.replace(contexte, panel_watt=(defaut.watt if defaut is not None and defaut.designe
+                                                  else _AUTO_PANEL_WATT),
                             hors_reseau=False), 1,
         avec_batterie=False)
     try:

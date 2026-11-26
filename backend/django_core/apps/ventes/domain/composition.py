@@ -517,8 +517,12 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
                                  mppt_paires=1, phase=None, modeles=None,
                                  batterie_module_kwh=None,
                                  regles_2710=True, modules_affleurants=0,
-                                 froid=None, onduleur_designe=None, batterie_designee=None):
+                                 froid=None, onduleur_designe=None, batterie_designee=None,
+                                 panneau_prefere_id=None):
     """L-2OPT — LE devis « Les deux » quand les deux optimums DIVERGENT.
+
+    ``panneau_prefere_id`` (D-ACAL-169) — le panneau par défaut, transmis TEL
+    QUEL aux deux kits (``composition_residentielle``) ; ``None`` ⇒ inchangé.
 
     Compose DEUX kits complets par ``composition_residentielle`` (la source de
     vérité — aucune règle de composition n'est réécrite ici) :
@@ -577,7 +581,8 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
         ordre_lignes=ordre_lignes, mppt_paires=mppt_paires, phase=phase,
         # RSIZ2/RSIZ5 — les deux kits suivent les mêmes règles (27/10).
         regles_2710=regles_2710, modules_affleurants=modules_affleurants,  # ACAL927
-        froid=froid)  # ADEV156 — le froid du site, aux deux kits
+        froid=froid,  # ADEV156 — le froid du site, aux deux kits
+        panneau_prefere_id=panneau_prefere_id)  # D-ACAL-169
 
     if not regles_2710:
         # Règles d'origine (< 3) : un devis envoyé garde ses lignes servies.

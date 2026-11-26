@@ -21,8 +21,13 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
                                gamme_nom_devis=None, phase=None,
                                dimensionnement_avec=None,
                                hors_reseau=False, ville='', modeles=None,
-                               onduleur_impose=None, batterie_imposee=None):
+                               onduleur_impose=None, batterie_imposee=None,
+                               panneau_prefere_id=None):
     """U3 — LE DRY-RUN : compose sans RIEN créer, et rend le résultat en clair.
+
+    ``panneau_prefere_id`` (D-ACAL-169) — le panneau par défaut de la société
+    quand ``panel_watt`` est SA puissance (posé par l'appelant, jamais lu ici) ;
+    ``None`` (LE DÉFAUT) ⇒ dry-run strictement inchangé.
 
     ``modeles`` / ``onduleur_impose`` / ``batterie_imposee`` (COP2-V3) — la
     composition IMPOSÉE, déjà résolue par
@@ -144,6 +149,7 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
         modeles=modeles,
         onduleur_impose=onduleur_impose,
         batterie_imposee=batterie_imposee,
+        panneau_prefere_id=panneau_prefere_id,  # D-ACAL-169
     ))
 
     roles = list(getattr(lignes, 'roles', ()) or ())
@@ -622,6 +628,7 @@ def intention_auto_residentielle(decision, *, lead, company, taux_tva, user=None
         cible=CibleDevis(
             nb_panneaux=panneaux, panel_watt=decision.watt, kwc=kwc, source=decision.source,
             dimensionnement_avec=decision.optimum_avec,
+            panneau_prefere_id=getattr(decision, 'panneau_prefere_id', None),  # D-ACAL-169
             # COP2-V3 — le kit IMPOSÉ ({} hors imposition : cible inchangée).
             **_champs_imposes(imposition)),
         scenario=decision.scenario_composition(),
