@@ -776,6 +776,16 @@ describe('planDepuisDocument — le document schema_electrique (lot 6)', () => {
     expect(blocs).toHaveTextContent('SUN-20K-SG05LP3')
   })
 
+  it('deux dessins montés ensemble : un identifiant de flèche par instance', () => {
+    const plan = planDepuisDocument(doc('avec_batterie'))
+    render(<><SchemaEnBlocs plan={plan} /><SchemaEnBlocs plan={plan} /></>)
+    const ids = [...document.querySelectorAll('marker')].map((m) => m.id)
+    expect(ids).toHaveLength(2)
+    expect(new Set(ids).size).toBe(2)
+    const liens = [...document.querySelectorAll('[data-testid="csch-lien-batterie"]')]
+    expect(liens.map((l) => l.getAttribute('marker-end'))).toEqual(ids.map((i) => `url(#${i})`))
+  })
+
   it('aucun onduleur servi : aucun bloc onduleur inventé (pas de plan)', () => {
     const d = doc('avec_batterie')
     d.onduleurs = []

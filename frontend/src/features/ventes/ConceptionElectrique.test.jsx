@@ -123,6 +123,8 @@ describe('ConceptionElectrique (PV43)', () => {
     expect(within(planche).getByRole('button', { name: 'Avec batterie' })).toHaveAttribute('aria-pressed', 'true')
     expect(within(planche).getByTestId('csch-bloc-batterie')).toHaveTextContent('Dyness BX51100')
     expect(planche).toHaveTextContent('Chaîne 4 · 12 panneaux')
+    // L'en-tête de la carte dit « Schéma électrique ».
+    expect(screen.getByText('Schéma électrique', { selector: 'p' })).toBeInTheDocument()
     // L'esquisse historique n'est plus affichée.
     expect(document.querySelector('[role="img"][aria-label="Schéma unifilaire"]')).toBeNull()
 

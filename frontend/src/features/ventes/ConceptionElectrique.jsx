@@ -289,7 +289,7 @@ export default function ConceptionElectrique({ devisId }) {
       {/* Aperçu du schéma unifilaire */}
       <div>
         <div className="mb-1.5 flex items-center justify-between gap-2">
-          <p className="text-xs font-medium text-muted-foreground">Schéma unifilaire</p>
+          <p className="text-xs font-medium text-muted-foreground">Schéma électrique</p>
           <Button size="sm" variant="outline" onClick={handleTelechargerPdf} disabled={pdfBusy}>
             {pdfBusy ? <Spinner className="size-3.5" /> : <Download className="size-3.5" aria-hidden="true" />}
             Télécharger le PDF
