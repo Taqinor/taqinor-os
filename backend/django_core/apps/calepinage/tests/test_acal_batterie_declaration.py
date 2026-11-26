@@ -464,19 +464,12 @@ class BatterieDesigneeD_ACAL_157(SimpleTestCase):
         self.assertEqual(drapeau_hybride('module', resolu), {})
         self.assertEqual(drapeau_hybride('optimiseur', resolu), {})
 
-    def test_batterie_sur_onduleur_hybride_acceptee_et_effacement_admis(self):
+    def test_batterie_acceptee_quel_que_soit_l_onduleur_et_effacement_admis(self):
+        # Pas de jugement sur l'onduleur à l'écriture : une batterie derrière son onduleur-chargeur est légitime.
         self._valider({'batterie': {'produit': 905, 'packs': 2}}, produit=self._produit(), onduleur_hybride=True)
+        self._valider({'batterie': {'produit': 905}}, produit=self._produit(), onduleur_hybride=False)
         self._valider({'batterie': {'produit': None}}, produit=None)
         self._valider({'batterie': {'produit': ''}}, produit=None)
-
-    def test_batterie_sur_onduleur_reseau_refusee_sous_le_champ_avec_une_phrase_claire(self):
-        from apps.calepinage.services.electrique import EntreeInvalide
-
-        with self.assertRaises(EntreeInvalide) as refus:
-            self._valider({'batterie': {'produit': 905}}, produit=self._produit(), onduleur_hybride=False)
-        self.assertEqual(refus.exception.champ, 'batterie.produit')
-        self.assertIn("n'est pas un onduleur hybride", str(refus.exception))
-        self.assertIn('retirez la batterie', str(refus.exception))
 
     def test_valider_batterie_appelle_la_designation_quand_le_calepinage_est_donne(self):
         from apps.calepinage.services.electrique import EntreeInvalide
@@ -498,8 +491,7 @@ class BatterieDesigneeD_ACAL_157(SimpleTestCase):
             self._valider({'batterie': {'produit': 8}}, produit=self._produit('module'), onduleur_hybride=True)
         self.assertIn("n'est pas une batterie", str(module.exception))
 
-    def test_sans_onduleur_resolu_ou_sans_batterie_rien_n_est_juge(self):
-        self._valider({'batterie': {'produit': 905}}, produit=self._produit(), onduleur_present=False)
+    def test_sans_batterie_rien_n_est_juge(self):
         self._valider({'dc_m': 12}, produit=None)                    # une saisie sans batterie : aucun effet
         self._valider({'batterie': {'strategie': 'autoconsommation'}}, produit=None)  # sans produit : aucun effet
 
