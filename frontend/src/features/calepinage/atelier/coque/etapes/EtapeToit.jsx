@@ -4,8 +4,8 @@ import { PARAM_CHAMP } from '../../ouvrirChamp'
 import SaisiePente from '../../../SaisiePente'
 import { panParDefaut, sourceDePente, zonesDuDocument } from '../../../SaisiePente.helpers'
 import useDocumentCalepinage from '../../../useDocumentCalepinage'
-import { SurCarte } from '../emplacements'
-import { BoutonMarine, CarteFlottante, Icone, Indicateur, SectionEtape, Segmente } from '../primitives'
+import { PiedEtape, SurCarte } from '../emplacements'
+import { BoutonMarine, BoutonOr, CarteFlottante, Icone, Indicateur, SectionEtape, Segmente } from '../primitives'
 import {
   GESTES, ajoutTermine, annulerAjoutPan, appliquerCotes, commencerAjoutPan, confirmerPenteVivante, degres, enregistrerPentePan, estObjet, nomFace,
   selectionnerObstacle, texteBesoin, useEtatToit,
@@ -32,6 +32,7 @@ import ValeurUnite from './panneaux/ValeurUnite'
 const auDoigt = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
   && !!window.matchMedia('(pointer: coarse)')?.matches
 const astuceContour = () => `Glissez un coin pour le déplacer. ${auDoigt() ? 'Touchez deux fois' : 'Double-cliquez'} un bord pour ajouter un point.`
+const MOTIF_ECHELLE = 'Retracez d’abord le toit à la bonne échelle : le tracé actuel n’est pas utilisable.'
 const ALERTE_ECHELLE = 'Le tracé semble à la mauvaise échelle : une surface si grande ne tient aucune rangée. Effacez-le et retracez le toit de près.'
 const ASTUCE_AJOUT = 'Cliquez sur la carte pour poser chaque coin du pan, double-cliquez pour le fermer. Échap annule l’ajout.'
 const DUREE_BULLE_MS = 8000
@@ -479,6 +480,7 @@ function ResumeCarte({ surface, pans, besoin }) {
 
 export default function EtapeToit({
   calepinageId, builderApi = null, documentVivant = null, lectureSeule = false, enregistreLe = null, contexte: servi = null, contexteEnCours = false,
+  action = null,
 }) {
   const [etat, relire] = useEtatToit()
   // La taille des factures : l'accesseur PARTAGÉ avec l'étape Panneaux (trois états ; le design-context de
@@ -494,6 +496,16 @@ export default function EtapeToit({
     coque.dataset.sansToit = '1'
     return () => { delete coque.dataset.sansToit }
   }, [sansToit])
+  // T4-X7-018 — un tracé signalé « à la mauvaise échelle » : la phrase du script qui le contredit (« Surface trop petite pour une
+  // rangée ») est masquée (`data-contredit`, 50-coque-atelier.css), aucune surface absurde n'est imprimée (puce de la carte) et
+  // l'action suivante est désactivée avec son motif — jamais un chiffre inventé à la place.
+  const horsEchelle = etat.horsEchelle
+  useEffect(() => {
+    if (!horsEchelle) return undefined
+    const statut = document.getElementById('rp9-status')
+    statut?.setAttribute('data-contredit', '1')
+    return () => statut?.removeAttribute('data-contredit')
+  }, [horsEchelle])
   return (
     <div className="cal-etape-toit">
       <div className="cal-toit-bloc cal-toit-bloc-forme">
@@ -507,8 +519,16 @@ export default function EtapeToit({
         </SectionEtape>
       </div>
       <Obstacles obstacles={etat.obstacles} relire={relire} />
+      {horsEchelle && action && (
+        <PiedEtape>
+          <BoutonOr plein fleche disabled title={MOTIF_ECHELLE} aria-describedby="cal-toit-motif-echelle" data-testid="cal-action-etape-suivante">
+            {action.libelle}
+          </BoutonOr>
+          <span id="cal-toit-motif-echelle" className="sr-only">{MOTIF_ECHELLE}</span>
+        </PiedEtape>
+      )}
       <SurCarte>
-        <ResumeCarte surface={etat.surface} pans={etat.pans} besoin={besoinAffiche(facture)} />
+        {!horsEchelle && <ResumeCarte surface={etat.surface} pans={etat.pans} besoin={besoinAffiche(facture)} />}
         <BulleContour contourFerme={etat.contourFerme} ferme={etat.outils.ferme} historique={etat.outils.annuler} ajout={ajout} horsEchelle={etat.horsEchelle} />
         <BarreOutils outils={etat.outils} builderApi={builderApi} relire={relire} ajout={ajout} onAjout={basculerAjout} />
         <BlocSoleil soleil={etat.soleil} />

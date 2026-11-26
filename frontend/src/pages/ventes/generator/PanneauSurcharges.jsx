@@ -115,6 +115,22 @@ export default function PanneauSurcharges({
                     </td>
                   </tr>
                 ))}
+                {/* T4-X4-019 (suite) — l'option « avec batterie » sous son nom : valeurs SERVIES
+                    (`par_option`, lues sur ses lignes), jamais recalculées ici ; informatif, sans surcharge. */}
+                {Object.entries(overridesReg.effectif).filter(([, v]) => v.par_option?.avec != null).map(([chemin, v]) => (
+                  <tr key={`${chemin}-avec`} className="border-t border-border"
+                      data-testid={`overrides-effectif-row-${chemin}-avec`}>
+                    <td className="pr-3 py-1 font-mono">
+                      {chemin}
+                      <span className="ml-1 font-sans text-muted-foreground">— option avec batterie</span>
+                    </td>
+                    <td className="pr-3 py-1">{JSON.stringify(v.par_option.avec)}</td>
+                    <td className="pr-3 py-1">—</td>
+                    <td className="pr-3 py-1 font-medium">—</td>
+                    <td className="pr-3 py-1">—</td>
+                    <td className="py-1" />
+                  </tr>
+                ))}
               </TableauLignes>
             )}
           </CardContent>

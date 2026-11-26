@@ -6,14 +6,16 @@ import crmApi from '../../api/crmApi'
  * partagée par l'écran Nouveau et la fiche. `actif` faux ⇒ aucun appel ;
  * `cle` relance la lecture quand le document change. Échec ⇒ liste vide.
  */
-export default function useUtilisateursAssignables(actif = true, cle = null) {
+export default function useUtilisateursAssignables(actif = true, cle = null, leadId = null) {
   const [responsables, setResponsables] = useState([])
   useEffect(() => {
     if (!actif) return undefined
     let annule = false
     Promise.resolve()
       // T4-X3-016 — seulement ceux qui peuvent OUVRIR un calepinage (même droit que le serveur du module).
-      .then(() => crmApi.getAssignableUsers({ permission: 'calepinage_voir' }))
+      // `lead` : le serveur y ajoute un compte qui n'a de visite que sur CE lead (rien ne change sans lead).
+      .then(() => crmApi.getAssignableUsers(leadId
+        ? { permission: 'calepinage_voir', lead: leadId } : { permission: 'calepinage_voir' }))
       .then((res) => {
         if (annule) return
         const brut = res?.data
@@ -21,6 +23,6 @@ export default function useUtilisateursAssignables(actif = true, cle = null) {
       })
       .catch(() => { if (!annule) setResponsables([]) })
     return () => { annule = true }
-  }, [actif, cle])
+  }, [actif, cle, leadId])
   return responsables
 }

@@ -7,6 +7,7 @@ import { demarrerCapteurs, lireInclinaison, lireVisee, arreter as arreterCapteur
 import { messageRefus, refusServeur } from '../commun/refusServeur'
 import { lireConflit } from '../conflitEcriture'
 import { Icone } from '../atelier/coque/primitives'
+import { RefusDeDroit } from '../../../ui/Forbidden'
 import { PlanDessus } from '../client/partiesClient'
 import { DEPUIS_RELEVE, planDessus, useMoteurToit } from '../client/vueClient.helpers'
 import { champsDuReleve, corpsDuReleve, validerAvantEnvoi } from './corpsReleve'
@@ -138,6 +139,7 @@ export default function ReleveVisite() {
   const [capteursActifs, setCapteursActifs] = useState(false)
   const [manuel, setManuel] = useState(() => ({ pente: !!depart.pente && !depart.pente.capteur, azimut: !!depart.azimutMain }))
   const [lecture, setLecture] = useState('ok') // T4-U4-021 — le relevé enregistré a-t-il pu être relu ?
+  const [accesRefuse, setAccesRefuse] = useState(false) // D-ACAL-106 — le serveur ne livre pas ce calepinage (403 / introuvable) : un refus, pas un formulaire vide
   const [envois, setEnvois] = useState({}) // T4-U4-020 — ce qui est PARTI depuis l'ouverture : { releve: true, pan: nom }
   const [panRefuse, setPanRefuse] = useState(false)
   const panEnVol = useRef(false)
@@ -193,7 +195,14 @@ export default function ReleveVisite() {
         setAzimutDeg(c.azimutDeg)
         setPrecisionDeg(c.precisionDeg)
       }
-    }).catch(() => { if (vivantRef.current) setLecture('erreur') })
+    }).catch((err) => {
+      if (!vivantRef.current) return
+      // Le serveur est l'autorité : 403 ou « introuvable » (un calepinage hors des visites assignées au Technicien répond 404 —
+      // selectors.calepinages_visibles) = pas d'accès ; toute autre panne reste « relecture impossible » + Réessayer.
+      const statut = err?.response?.status
+      if (statut === 403 || statut === 404) setAccesRefuse(true)
+      else setLecture('erreur')
+    })
   }
   const relireRef = useRef(relire)
   useEffect(() => { relireRef.current = relire })
@@ -411,6 +420,17 @@ export default function ReleveVisite() {
   ].filter(Boolean)
   const longueur = valeurChamp(LONGUEUR)
   const largeur = valeurChamp(LARGEUR)
+  if (accesRefuse) {
+    return (
+      <div className="cal-tel cal-tel-releve" data-testid="cal-releve" data-acces="refuse">
+        <header className="cal-tel-entete">
+          <Link to="/calepinage" aria-label="Retour" className="cal-tel-retour"><Icone nom="retour" taille={22} epaisseur={2} /></Link>
+          <div className="cal-tel-projet"><span className="cal-tel-projet-titre">Relevé de visite</span></div>
+        </header>
+        <RefusDeDroit objet="ce relevé" className="m-4" />
+      </div>
+    )
+  }
   return (
     <div className="cal-tel cal-tel-releve" data-testid="cal-releve" data-feuille-reduite={feuilleReduite ? '1' : undefined}>
       {/* ACAL1836 — le toit relevé, derrière la feuille : son plan servi (le même que « Montrer au client »), ses cotes. */}

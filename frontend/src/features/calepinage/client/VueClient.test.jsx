@@ -757,3 +757,53 @@ describe('ACAL1353 — la vue client n’importe plus le moteur du toit statique
     expect(evaluationsMoteur).toEqual({ geo: 1, taille: 1 })
   })
 })
+
+describe('Vue client — « Envoyer le lien » selon le droit (D-ACAL-106)', () => {
+  it('sans `calepinage_gerer` (Technicien) ni le bouton ni sa raison ; avec, le bouton désactivé et sa raison', async () => {
+    const { Provider } = await import('react-redux')
+    const { configureStore } = await import('@reduxjs/toolkit')
+    const boutique = (permissions) => configureStore({ reducer: { auth: (s = { role: 'technicien', permissions }) => s } })
+    const { PiedClient, TuilesClient } = await import('./partiesClient')
+    const monter = (permissions) => render(
+      <Provider store={boutique(permissions)}>
+        <MemoryRouter><PiedClient id={7} /><TuilesClient tuiles={[]} ville="" /></MemoryRouter>
+      </Provider>,
+    )
+    const { unmount } = monter(['calepinage_voir'])
+    expect(screen.queryByTestId('client-envoyer-lien')).toBeNull()
+    expect(screen.queryByTestId('client-lien-raison')).toBeNull()
+    unmount()
+    monter(['calepinage_voir', 'calepinage_gerer'])
+    expect(screen.getByTestId('client-envoyer-lien')).toBeDisabled()
+    expect(screen.getByTestId('client-lien-raison')).toBeInTheDocument()
+  })
+})
+
+/* R5D-N1 — téléphone en PAYSAGE (844 × 390) : deux colonnes, la scène à gauche, la feuille défilante à droite. Les règles du bloc
+   (orientation: landscape) sont lues dans la feuille et appliquées par `matches` (jsdom ne lit pas les requêtes de média). */
+describe('R5D-N1 — vue client en paysage court', () => {
+  it('la scène prend la colonne de gauche sur toute la hauteur ; la feuille des chiffres défile à droite, le pied dessous', async () => {
+    const { readFileSync } = await import('node:fs')
+    const source = document.createElement('style')
+    source.textContent = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/58-telephone.css`, 'utf8')
+    document.head.appendChild(source)
+    const paysage = [...source.sheet.cssRules].find((r) => r.media && /orientation:\s*landscape/.test(r.media.mediaText)
+      && /max-height:\s*520px/.test(r.media.mediaText))
+    expect(paysage, 'bloc paysage court').toBeTruthy()
+    const regles = [...paysage.cssRules]
+    const hote = document.createElement('div')
+    hote.innerHTML = '<div class="cal-tel"><div class="cal-client-scene"></div><div class="cal-client-corps"></div>'
+      + '<footer class="cal-tel-pied"></footer></div>'
+    document.body.appendChild(hote)
+    try {
+      const valeur = (sel, nom) => regles.filter((r) => r.selectorText && hote.querySelector(sel)?.matches(r.selectorText))
+        .map((r) => r.style.getPropertyValue(nom)).filter(Boolean).pop()
+      expect(valeur('.cal-tel', 'display')).toBe('grid')
+      expect(valeur('.cal-client-scene', 'grid-row')).toBe('1 / span 2')
+      expect(valeur('.cal-client-scene', 'height')).toBe('auto')
+      expect(valeur('.cal-client-corps', 'overflow-y')).toBe('auto')
+      expect(valeur('.cal-client-corps', 'grid-column')).toBe('2')
+      expect(valeur('.cal-tel-pied', 'grid-row')).toBe('2')
+    } finally { source.remove(); hote.remove() }
+  })
+})

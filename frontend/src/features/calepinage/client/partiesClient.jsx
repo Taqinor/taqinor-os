@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
+import usePeutGenererDevis from '../usePeutGenererDevis'
 import { Icone } from '../atelier/coque/primitives'
 import { DEPUIS_RELEVE } from './vueClient.helpers'
 
@@ -142,6 +143,7 @@ function Chiffre({ tuile }) {
  * donnée non servie est omise, jamais fabriquée. Au bureau, le sur-titre et les mentions entrent dans la carte.
  */
 export function TuilesClient({ tuiles, ville, bureau = false }) {
+  const peutDevis = usePeutGenererDevis() // D-ACAL-106 — l'envoi du lien au client relève du devis, que le Technicien n'a pas
   const kwh = tuiles.find((t) => t.cle === 'kwh') ?? null
   const autres = tuiles.filter((t) => t.cle !== 'kwh' && t.cle !== 'miseajour')
   return (
@@ -170,7 +172,7 @@ export function TuilesClient({ tuiles, ville, bureau = false }) {
           {!bureau && <Mentions tuiles={tuiles} ville={ville} />}
         </div>
       )}
-      <p id="client-lien-raison" className="cal-client-mention cal-client-raison" data-testid="client-lien-raison">{RAISON_LIEN}</p>
+      {peutDevis && <p id="client-lien-raison" className="cal-client-mention cal-client-raison" data-testid="client-lien-raison">{RAISON_LIEN}</p>}
     </>
   )
 }
@@ -179,6 +181,7 @@ export function TuilesClient({ tuiles, ville, bureau = false }) {
     ouverte directement : « Retour à l'atelier », au téléphone comme au bureau) + « Envoyer le lien » doré, désactivé avec
     sa raison. */
 export function PiedClient({ id }) {
+  const peutDevis = usePeutGenererDevis()
   const depuisReleve = useLocation().state?.depuis === DEPUIS_RELEVE.depuis
   return (
     <footer className="cal-tel-pied" data-vue-client="">
@@ -193,11 +196,13 @@ export function PiedClient({ id }) {
           Retour au relevé
         </Link>
       )}
-      <button type="button" className="cal-tel-pied-or" disabled aria-describedby="client-lien-raison"
-        data-testid="client-envoyer-lien">
-        <Icone nom="partager" taille={18} epaisseur={2} />
-        Envoyer le lien
-      </button>
+      {peutDevis && (
+        <button type="button" className="cal-tel-pied-or" disabled aria-describedby="client-lien-raison"
+          data-testid="client-envoyer-lien">
+          <Icone nom="partager" taille={18} epaisseur={2} />
+          Envoyer le lien
+        </button>
+      )}
     </footer>
   )
 }

@@ -179,6 +179,8 @@
     transition: height 0.2s ease;
   }
   .cal-coque .cal-panneau-etape[data-tiroir='1'][data-deplie='1']:not([hidden]) { height: calc(100% - 24px); }
+  /* T4-X8-011 — le balayage du tiroir (PanneauEtape.jsx::useGesteTiroir) : sans ceci le navigateur prend le geste pour un défilement. */
+  .cal-coque .cal-panneau-etape[data-tiroir='1'] :is(.cal-tiroir-poignee, .cal-panneau-etape-tete) { touch-action: none; }
   .cal-coque .cal-tiroir-poignee {
     grid-area: poignee;
     justify-self: center;
@@ -233,7 +235,7 @@
   .cal-coque { --cal-tiroir: 300px; --cal-haut-barre: 0px; --cal-rail-bas: calc(64px + env(safe-area-inset-bottom, 0px)); }
   /* ACAL1807 — GUIDÉ : le toit d'abord. Le tiroir s'ouvre RÉDUIT (poignée, « Étape n sur 5 · titre », bouton or : 96 px)
      et la carte garde tout le reste ; la poignée l'ouvre en pleine hauteur. Les calques de la carte (chiffres, barre
-     d'outils, soleil, état) se posent dans la zone libre AU-DESSUS de ce tiroir réduit. Expert garde ses 300 px. */
+     d'outils, soleil, état) se posent dans la zone libre AU-DESSUS de ce tiroir réduit. Expert s'ouvre réduit lui aussi (voir plus bas, T4-X8-008) : la poignée l'agrandit. */
   .cal-coque[data-expert='0'] { --cal-tiroir: 96px; }
   .cal-coque .cal-coque-corps { flex-direction: column; }
   .cal-coque .cal-coque-sur-carte .cal-carte-flottante { max-width: calc(100vw - 24px); overflow-x: auto; }
@@ -350,6 +352,30 @@
   }
   .cal-coque .cal-coque-alertes-contenu button,
   .cal-coque .cal-coque-alertes-plus { min-height: 44px; }
+  /* T4-X8-008 / T4-X8-006 / R5D-N4 (rejeu R5D) — EXPERT au téléphone : le tiroir ne couvrait plus la carte sans moyen de la
+     réduire (300 px fixes, la poignée ne faisait qu'agrandir) et les puces du tracé (« Caler le fond », `#rp9-trace-chips`)
+     débordaient du centre sur la barre des étapes. Même mécanisme que le guidé (poignée, `data-deplie`) : le tiroir s'ouvre
+     RÉDUIT (96 px, poignée + titre + bouton) et la poignée l'ouvre ; le centre défile DANS ses limites (rien ne déborde sur le
+     rail) en gardant la hauteur du tiroir libre en bas ; la barre des étapes passe AU-DESSUS du reste (elle reçoit les touchers). */
+  .cal-coque[data-expert='1'] { --cal-tiroir: 96px; }
+  .cal-coque[data-expert='1'] .cal-panneau-etape[data-tiroir='1'][data-deplie='0']:not([hidden]) {
+    height: var(--cal-tiroir);
+    grid-template-areas: "poignee poignee" "tete pied";
+    grid-template-rows: auto minmax(0, 1fr);
+    row-gap: 4px;
+    padding: 8px 16px 12px;
+  }
+  .cal-coque[data-expert='1'] .cal-panneau-etape[data-tiroir='1'][data-deplie='0'] :is(.cal-panneau-etape-controle, .cal-panneau-etape-corps) {
+    display: none;
+  }
+  .cal-coque[data-expert='1'] .cal-coque-centre { overflow-y: auto; padding-bottom: var(--cal-tiroir); }
+  .cal-coque[data-expert='1'] .cal-coque-scene { flex: 1 0 auto; }
+  .cal-coque[data-expert='1'] .cal-coque-scene .rp9-map-wrap:not([data-plein-ecran='1']) { min-height: 300px; }
+  .cal-coque .cal-rail { position: relative; z-index: calc(var(--z-base) + 40); }
+  /* Le plein écran de REPLI de la carte (iPhone, `roofbuilder.css` : `position: fixed; inset: 0`, sans z-index) passe AU-DESSUS de la barre des
+     étapes (+40) et du tiroir (+30), sous la feuille « Avancé » (+45) et sous les fenêtres, menus et messages (--z-modal 1300 et au-delà).
+     Portée : l'atelier ERP seulement (`.cal-coque`) ; roofbuilder.css est dans frontend/, jamais partagé avec le site public. */
+  .cal-coque .rp9-map-wrap[data-plein-ecran='1'] { z-index: calc(var(--z-base) + 42); }
   /* T4-X8-006 — « Avancé » au téléphone : une FEUILLE DU BAS (comme celle du relevé, `.cal-tel-feuille` de 58-telephone.css :
      rayon 26 en haut, ombre vers le haut), posée sur la barre des étapes, haute de son contenu, défilante. Elle vit dans le
      corps du tiroir : tiroir réduit (guidé), ce corps n'était plus rendu et la feuille mesurait 0 × 0 ; il ne garde

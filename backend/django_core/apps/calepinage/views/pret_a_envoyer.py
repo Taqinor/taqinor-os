@@ -111,6 +111,8 @@ _SURFACES = OpenApiParameter(
 @action(detail=True, methods=['get'], url_path='apercu-devis', permission_classes=[PeutVoirCalepinage])
 def apercu_devis(self, request, pk=None):
     """Le matériel que « Générer le devis » portera, par option, et les écarts aux désignations."""
+    from apps.ventes.selectors_assistant import lit_les_devis
+
     from ..services.devis_apercu import apercu_materiel_du_devis
 
     calepinage = self.get_object()
@@ -118,7 +120,10 @@ def apercu_devis(self, request, pk=None):
     # des virgules ; absent = tout le document, comme la génération.
     brut = request.query_params.get('surfaces')
     surfaces = None if brut is None else [cle.strip() for cle in brut.split(',') if cle.strip()]
-    return Response(apercu_materiel_du_devis(calepinage, surfaces=surfaces))
+    # Lot 8 (D-ACAL-106) — un devis n'est jamais NOMMÉ à qui ne peut pas le lire (garde de lecture
+    # des devis, ``DevisViewSet`` list/retrieve, via ``ventes.selectors_assistant.lit_les_devis``).
+    return Response(apercu_materiel_du_devis(calepinage, surfaces=surfaces,
+                                             lit_les_devis=lit_les_devis(request.user)))
 
 
 CalepinageViewSet.apercu_devis = apercu_devis

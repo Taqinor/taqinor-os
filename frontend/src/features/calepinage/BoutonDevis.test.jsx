@@ -841,3 +841,21 @@ describe('ACAL1414 — la réouverture relit les surfaces que le devis lié chif
     expect(screen.getByRole('checkbox', { name: new RegExp(toit.libelle) })).not.toBeChecked()
   })
 })
+
+describe('D-ACAL-106 — « Générer le devis » selon le droit de la route generer-devis (calepinage_gerer)', () => {
+  it('Technicien (calepinage_voir + calepinage_releve) : aucun bouton ; avec calepinage_gerer : le bouton', async () => {
+    const { Provider } = await import('react-redux')
+    const { configureStore } = await import('@reduxjs/toolkit')
+    const boutique = (permissions) => configureStore({ reducer: { auth: (s = { role: 'technicien', permissions }) => s } })
+    const monter = (permissions) => render(
+      <Provider store={boutique(permissions)}>
+        <MemoryRouter><BoutonDevis calepinageId={DETAIL_VIDE.id} detail={DETAIL_VIDE} actionEtape /></MemoryRouter>
+      </Provider>,
+    )
+    const { unmount } = monter(['calepinage_voir', 'calepinage_releve'])
+    expect(screen.queryByTestId('cal-generer-devis')).toBeNull()
+    unmount()
+    monter(['calepinage_voir', 'calepinage_gerer'])
+    expect(await screen.findByTestId('cal-generer-devis')).toBeInTheDocument()
+  })
+})

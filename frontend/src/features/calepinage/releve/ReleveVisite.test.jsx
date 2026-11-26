@@ -968,6 +968,15 @@ describe('T4-U4-020..023 — ce qui est tapé n’est jamais perdu, l’écran d
     expect(api.corrigerReleve.mock.calls[0][2].notes).toBe('Tuiles fragiles côté rue')
   })
 
+  it('D-ACAL-106 — un calepinage hors des visites du Technicien (404 / 403 du serveur) : un refus, jamais un formulaire vide avec « Terminer le relevé »', async () => {
+    api.releve.mockRejectedValueOnce({ response: { status: 404, data: { detail: 'Introuvable.' } } })
+    rendre()
+    const refus = await screen.findByText(/Vous n'avez pas le droit d'ouvrir ce relevé\./)
+    expect(refus).toBeInTheDocument()
+    expect(screen.queryByTestId('releve-terminer')).toBeNull()
+    expect(screen.queryByTestId('releve-lecture-erreur')).toBeNull()
+  })
+
   it('U4-021 : un relevé enregistré illisible le dit (jamais des champs vides muets) et « Réessayer » relit', async () => {
     api.releve.mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout of 20000ms exceeded' })
     rendre()

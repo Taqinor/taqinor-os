@@ -456,6 +456,27 @@ class RecetteR2SansBaseTest(SimpleTestCase):
                            return_value=lignes):
             service._garde_taille(devis, SimpleNamespace(lead_id=3, company=None), confirmer)
 
+    def test_lot8_ordre_de_generation_lie_avant_brouillon_libre(self):
+        """Lot 8 (B1) — l'ordre partagé par « Générer » et l'aperçu : un lien actif tranche AVANT
+        tout brouillon libre (rendu s'il est le brouillon rendu, sinon « déjà rattaché ») ; les
+        brouillons libres ne sont lus qu'en l'absence de lien et de brouillon rendu."""
+        from apps.calepinage.services.devis import (
+            ISSUE_BROUILLON_LIBRE, ISSUE_COMPOSER, ISSUE_DEJA_RATTACHE, ISSUE_RENDU, _ordre_de_generation,
+        )
+
+        lie, rendu, libre = object(), object(), object()
+        lus = []
+
+        def libres():
+            lus.append(1)
+            return [libre]
+        self.assertEqual(_ordre_de_generation(lie, lie, libres), (ISSUE_RENDU, lie))
+        self.assertEqual(_ordre_de_generation(lie, None, libres), (ISSUE_DEJA_RATTACHE, lie))
+        self.assertEqual(_ordre_de_generation(None, rendu, libres), (ISSUE_RENDU, rendu))
+        self.assertEqual(lus, [])
+        self.assertEqual(_ordre_de_generation(None, None, libres), (ISSUE_BROUILLON_LIBRE, [libre]))
+        self.assertEqual(_ordre_de_generation(None, None, list), (ISSUE_COMPOSER, None))
+
     def test_r2_17_pose_au_dela_de_deux_fois_la_cible_pose_la_question(self):
         from apps.calepinage.services.devis import FACTEUR_POSE_SUR_CIBLE, DevisRefuse
 

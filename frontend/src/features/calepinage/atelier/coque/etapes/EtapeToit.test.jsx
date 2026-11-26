@@ -74,6 +74,7 @@ const CONSTRUCTEUR = `
 const ZONE = { id: 'area-1', label: 'Pan 1', pitchDeg: 22, facingAzimuthDeg: 180, roofType: 'pitched' }
 const $ = (id) => document.getElementById(id)
 let surCarte
+let pied
 let builderApi
 
 /** ACAL1971 — l'URL courante du routeur, lue pour prouver que `champ` est retiré une fois consommé. */
@@ -93,8 +94,10 @@ function rendre(props = {}, avant = null, url = '/') {
   hote.appendChild(surCarte)
   const panneau = document.createElement('div')
   hote.appendChild(panneau)
+  pied = document.createElement('div')
+  hote.appendChild(pied)
   document.body.appendChild(hote)
-  const coque = { noeuds: { surCarte, panneau: null, pied: null }, prendrePied: () => () => {} }
+  const coque = { noeuds: { surCarte, panneau: null, pied }, prendrePied: () => () => {} }
   return render(
     <MemoryRouter initialEntries={[url]}>
       <ContexteCoque.Provider value={coque}>
@@ -422,6 +425,36 @@ describe('Étape Toit — sur la carte', () => {
     $('rp9-area-value').textContent = '~120 534 611 780 m²'
     statut.textContent = 'Calcul prêt.'
     expect(H.traceHorsEchelle(document, H.lireSurface(document))).toBe(false)
+  })
+
+  it('T4-X7-018 — tracé hors échelle : aucune surface absurde, la phrase contradictoire masquée, « Poser les panneaux » désactivé avec son motif', async () => {
+    rendre({ action: { libelle: 'Poser les panneaux', onClick: vi.fn() } }, (hote) => {
+      const statut = document.createElement('p')
+      statut.id = 'rp9-status'
+      statut.textContent = 'Surface trop petite pour une rangée — élargissez le tracé.'
+      hote.appendChild(statut)
+      hote.querySelectorAll('[data-pan-stat]').forEach((n) => n.remove())
+      hote.querySelector('#rp9-area-value').textContent = '~868 298 030 010 m²'
+    })
+    const action = await within(pied).findByTestId('cal-action-etape-suivante')
+    expect(action).toBeDisabled()
+    expect(action).toHaveAttribute('title', expect.stringContaining('Retracez'))
+    expect(within(surCarte).queryByText(/868/)).toBeNull() // aucune surface absurde imprimée par l'atelier
+    expect(within(surCarte).queryByTestId('cal-sur-carte-resume')).toBeNull()
+    await waitFor(() => expect($('rp9-status')).toHaveAttribute('data-contredit', '1'))
+    // Le même message avec une vraie petite surface : rien n'est masqué, ni désactivé, la puce garde son chiffre.
+    cleanup(); document.body.innerHTML = ''
+    rendre({ action: { libelle: 'Poser les panneaux', onClick: vi.fn() } }, (hote) => {
+      const statut = document.createElement('p')
+      statut.id = 'rp9-status'
+      statut.textContent = 'Surface trop petite pour une rangée — élargissez le tracé.'
+      hote.appendChild(statut)
+      hote.querySelectorAll('[data-pan-stat]').forEach((n) => n.remove())
+      hote.querySelector('#rp9-area-value').textContent = '~3 m²'
+    })
+    expect(within(pied).queryByTestId('cal-action-etape-suivante')).toBeNull()
+    expect(within(surCarte).getByTestId('cal-sur-carte-resume')).toBeInTheDocument()
+    expect($('rp9-status')).not.toHaveAttribute('data-contredit')
   })
 
   it('T4-X7-018 — au doigt, l’aide du contour dit « Touchez deux fois », jamais « Double-cliquez »', () => {
@@ -1182,6 +1215,107 @@ describe('T4-X7-019 — la bulle de consigne n’est jamais sous le bandeau', ()
       expect(bloc).toMatch(/top: calc\(var\(--cal-libre-haut\) \+ 84px\) !important;/)
       expect(bloc).toMatch(/left: calc\(.*\) !important;/)
     } finally { source.remove(); hote.remove() }
+  })
+})
+
+/* T4-X8-008 / T4-X8-006 / R5D-N4 — Expert au téléphone : le tiroir se réduit comme en guidé, le centre défile dans ses limites
+   (les puces du tracé ne passent plus sur la barre des étapes), la barre des étapes est au-dessus. Règles lues dans la feuille
+   et appliquées aux éléments par `matches` (jsdom ne lit pas les requêtes de média). */
+describe('T4-X8-008 — Expert au téléphone : tiroir réductible, rien ne déborde sur la barre des étapes', () => {
+  it('le tiroir Expert réduit mesure --cal-tiroir (96 px), centre défilant, rail au-dessus', () => {
+    const source = document.createElement('style')
+    source.textContent = readFileSync(resolve(process.cwd(), 'src/styles/calepinage/56-coque-responsive.css'), 'utf8')
+    document.head.appendChild(source)
+    const tel = [...source.sheet.cssRules].filter((r) => r.media && r.media.mediaText === '(max-width: 639px)')
+      .flatMap((r) => [...r.cssRules])
+    const hote = document.createElement('div')
+    hote.innerHTML = '<div class="cal-coque" data-expert="1"><div class="cal-coque-corps"><div class="cal-coque-centre">'
+      + '<div class="cal-coque-scene"><div class="rp9-map-wrap" data-plein-ecran="1"></div></div></div><nav class="cal-rail"></nav>'
+      + '<aside class="cal-panneau-etape" data-tiroir="1" data-deplie="0"><div class="cal-panneau-etape-corps"></div></aside></div></div>'
+    document.body.appendChild(hote)
+    try {
+      const prop = (el, nom) => tel.filter((r) => r.selectorText && r.style.getPropertyValue(nom) && el.matches(r.selectorText))
+        .map((r) => r.style.getPropertyValue(nom))
+      expect(prop(hote.querySelector('.cal-coque'), '--cal-tiroir').pop()).toBe('96px')
+      expect(prop(hote.querySelector('.cal-panneau-etape'), 'height')).toContain('var(--cal-tiroir)')
+      expect(prop(hote.querySelector('.cal-panneau-etape-corps'), 'display')).toContain('none')
+      expect(prop(hote.querySelector('.cal-coque-centre'), 'overflow-y')).toContain('auto')
+      expect(prop(hote.querySelector('.cal-rail'), 'z-index').pop()).toBe('calc(var(--z-base) + 40)')
+      // Le plein écran de repli de la carte passe au-dessus du rail (+40) et sous la feuille « Avancé » (+45).
+      expect(prop(hote.querySelector('.rp9-map-wrap'), 'z-index').pop()).toBe('calc(var(--z-base) + 42)')
+      // Déplié : le tiroir n'est plus réduit (la hauteur pleine du bloc téléphone s'applique seule).
+      hote.querySelector('.cal-panneau-etape').setAttribute('data-deplie', '1')
+      expect(prop(hote.querySelector('.cal-panneau-etape-corps'), 'display')).not.toContain('none')
+    } finally { source.remove(); hote.remove() }
+  })
+})
+
+/* T4-X8-011 — le tiroir du bas se déplie au toucher ET au balayage (la poignée de 96 × 20 px était la seule prise, sans geste). */
+describe('T4-X8-011 — geste du tiroir', () => {
+  it('décision : balayage haut ≥ 40 px ouvre, bas ≥ 40 px referme, toucher < 10 px bascule, entre les deux rien', async () => {
+    const { decisionGesteTiroir } = await import('../gesteTiroir')
+    expect(decisionGesteTiroir({ dy: -60, deplie: false })).toBe('ouvrir')
+    expect(decisionGesteTiroir({ dy: -60, deplie: true })).toBeNull()
+    expect(decisionGesteTiroir({ dy: 60, deplie: true })).toBe('fermer')
+    expect(decisionGesteTiroir({ dy: 60, deplie: false })).toBeNull()
+    expect(decisionGesteTiroir({ dy: 3, deplie: false })).toBe('basculer')
+    expect(decisionGesteTiroir({ dy: -25, deplie: false })).toBeNull()
+    expect(decisionGesteTiroir({ dy: Number.NaN, deplie: false })).toBeNull()
+  })
+
+  it('le composant : toucher de la poignée ou du titre bascule, balayage haut ouvre (sans double bascule), le bureau n’a aucun geste', async () => {
+    const { default: PanneauEtape } = await import('../PanneauEtape')
+    const onDeplier = vi.fn()
+    const monter = (props) => render(<PanneauEtape titre="Les panneaux" refCorps={() => {}} refPied={() => {}} {...props} />)
+    const { unmount } = monter({ tiroir: true, deplie: false, onDeplier })
+    const poignee = screen.getByRole('button', { name: 'Agrandir ou réduire le panneau du bas' })
+    // toucher sur la poignée : son clic
+    fireEvent.click(poignee)
+    expect(onDeplier).toHaveBeenLastCalledWith(true)
+    // balayage vers le haut sur la poignée : ouvre UNE fois, le clic qui suit est avalé
+    onDeplier.mockClear()
+    fireEvent.pointerDown(poignee, { clientY: 700, pointerId: 1 })
+    fireEvent.pointerUp(poignee, { clientY: 640, pointerId: 1 })
+    fireEvent.click(poignee, { detail: 1 }) // un vrai click de pointeur (detail >= 1)
+    expect(onDeplier.mock.calls).toEqual([[true]])
+    // toucher et balayage sur la rangée du titre
+    onDeplier.mockClear()
+    const tete = screen.getByTestId('cal-panneau-etape-titre').parentElement
+    fireEvent.pointerDown(tete, { clientY: 700, pointerId: 2 })
+    fireEvent.pointerUp(tete, { clientY: 698, pointerId: 2 })
+    expect(onDeplier.mock.calls).toEqual([[true]])
+    onDeplier.mockClear()
+    fireEvent.pointerDown(tete, { clientY: 700, pointerId: 3 })
+    fireEvent.pointerUp(tete, { clientY: 650, pointerId: 3 })
+    expect(onDeplier.mock.calls).toEqual([[true]])
+    // un balayage sur le titre, puis l'activation AU CLAVIER de la poignée (click sans pointerdown, detail 0) : elle bascule
+    onDeplier.mockClear()
+    fireEvent.pointerDown(tete, { clientY: 700, pointerId: 5 })
+    fireEvent.pointerUp(tete, { clientY: 650, pointerId: 5 })
+    expect(onDeplier.mock.calls).toEqual([[true]])
+    onDeplier.mockClear()
+    fireEvent.click(poignee, { detail: 0 })
+    expect(onDeplier.mock.calls).toEqual([[true]])
+    // un balayage tactile sur la poignée SANS click derrière, puis le drapeau retombe : le click suivant (même avec detail 1) bascule
+    onDeplier.mockClear()
+    vi.useFakeTimers()
+    try {
+      fireEvent.pointerDown(poignee, { clientY: 700, pointerId: 6 })
+      fireEvent.pointerUp(poignee, { clientY: 640, pointerId: 6 })
+      expect(onDeplier.mock.calls).toEqual([[true]])
+      vi.advanceTimersByTime(400)
+      onDeplier.mockClear()
+      fireEvent.click(poignee, { detail: 1 })
+      expect(onDeplier.mock.calls).toEqual([[true]])
+    } finally { vi.useRealTimers() }
+    unmount()
+    // hors tiroir (bureau, tablette) : ni poignée ni geste
+    onDeplier.mockClear()
+    monter({ tiroir: false, onDeplier })
+    const tete2 = screen.getByTestId('cal-panneau-etape-titre').parentElement
+    fireEvent.pointerDown(tete2, { clientY: 700, pointerId: 4 })
+    fireEvent.pointerUp(tete2, { clientY: 700, pointerId: 4 })
+    expect(onDeplier).not.toHaveBeenCalled()
   })
 })
 
