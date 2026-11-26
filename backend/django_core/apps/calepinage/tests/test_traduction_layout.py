@@ -307,6 +307,18 @@ class LaLatitudeDuSiteEstDeclaree(SimpleTestCase):
         self.assertEqual(politiques['z1'].code, 'ANTI_OMBRAGE')
         self.assertEqual(politiques['z2'].code, 'AFFLEURANT')
 
+    def test_un_toit_plat_au_curseur_garde_ses_rangees(self):
+        """D-ACAL-149 — sur un toit plat, ``pitchDeg`` (22 par défaut) n'est que
+        le curseur mémorisé : la pente traduite vaut 0 et le pan garde
+        l'espacement anti-ombrage, jamais une pose affleurante."""
+        document = _document_or()
+        for pan in document['zones']:
+            pan['roofType'] = 'flat'
+            pan['pitchDeg'] = 22.0
+        traduction = entree_depuis_layout(document)
+        self.assertEqual({p.code for _, p in traduction.politiques}, {'ANTI_OMBRAGE'})
+        self.assertEqual({s['pente_deg'] for s in traduction.document['surfaces']}, {0.0})
+
 
 class UneSeuleProjectionPourToutLeDocument(SimpleTestCase):
 
