@@ -160,6 +160,24 @@ describe('ConceptionElectrique (PV43)', () => {
     expect(await screen.findByText('Schéma indisponible.')).toBeInTheDocument()
   })
 
+  it('le badge ne dit pas « tout va bien » quand des alertes sont servies : 0 alerte, 1 alerte, plusieurs', async () => {
+    const rendre = async (alertes) => {
+      cleanup()
+      const data = structuredClone(DESIGN)
+      data.conformite = { conforme: true, bloquants: [], alertes }
+      ventesApi.getConceptionElectrique.mockResolvedValue({ data })
+      ventesApi.getSchemaUnifilaireDevis.mockResolvedValue({ data: { params: {}, svg: SVG } })
+      render(<ConceptionElectrique devisId={42} />)
+      return screen.findByTestId('conception-conformite-badge')
+    }
+    const sans = await rendre([])
+    expect(sans.textContent.trim()).toBe('Conforme')
+    const une = await rendre(['entrée MPPT 1 : Isc cumulé 22,3 A > courant d’entrée admissible 20,0 A'])
+    expect(une.textContent.trim()).toBe('Conforme · 1 point à regarder')
+    const deux = await rendre(['a', 'b'])
+    expect(deux.textContent.trim()).toBe('Conforme · 2 points à regarder')
+  })
+
   it('un devis sans étude calculable affiche un état vide plutôt qu\'un plantage', async () => {
     ventesApi.getConceptionElectrique.mockResolvedValue({
       data: {
