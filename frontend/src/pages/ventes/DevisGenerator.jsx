@@ -120,7 +120,7 @@ import { todayLocalIso } from '../../lib/format'
 import {
   sizingReducer, ETAT_INITIAL,
   SCENARIO_LES_DEUX, SCENARIO_SANS, SCENARIO_AVEC,
-  toucheNbPanneauxPourComposition,
+  toucheNbPanneauxPourComposition, causeNbPanneauxPourComposition,
 } from '../../features/ventes/quote/sizingReducer'
 // QJR215 — la liste blanche du registre d'overrides (contrat QJR1), DÉRIVÉE
 // du même module que le client API (QJR214) : jamais une liste recopiée ici.
@@ -2000,7 +2000,7 @@ export default function DevisGenerator({
           kwp={kwp} panneauxLignes={panneauxLignes} produits={produits}
           structureProduitId={structureProduitId} structureType={structureType}
           sizingInfo={sizingInfo} modeInstallation={modeInstallation} showSans={showSans}
-          deuxValeursDim={deuxValeursDim} showAvec={showAvec} nbSaisiPourLesDeux={toucheNbPanneauxPourComposition(sizing)}
+          deuxValeursDim={deuxValeursDim} showAvec={showAvec} nbSaisiPourLesDeux={causeNbPanneauxPourComposition(sizing)}
           sizingServeurMessage={sizingServeurMessage} dayUsage={dayUsage}
           errors={errors} pompageManquants={pompageManquants} autoFillLoading={autoFillLoading}
           marcheCi={marcheCi} fHiver={fHiver}

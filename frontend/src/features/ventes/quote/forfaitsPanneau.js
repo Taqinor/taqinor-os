@@ -182,6 +182,12 @@ export function suivreQuantitesPanneauxEcran(lines, produits) {
   return change ? sortie : lines
 }
 
+/** R5A-N2 — UNE façon de nommer la cause : `cause` = `causeNbPanneauxPourComposition` (`'lead'` = taille de la fiche ; tout autre
+    motif vrai, dont `true`, = compte saisi). */
+export const sujetCompteValantPourLesDeux = (cause) => (cause === 'lead'
+  ? 'la taille demandée sur la fiche du lead'
+  : 'le nombre de panneaux saisi')
+
 /* R5A-N2 — « Auto-remplir » recompose l'option AVEC batterie à la taille SANS quand le nombre de panneaux a été saisi à la
    main (règle voulue : un compte saisi vaut pour les deux options, `resolveKwcAvec`). Un devis de 8 panneaux « avec batterie »
    retombait à 6 sans que rien ne le dise au moment où ça arrive. Rend `{ avant, apres }` quand l'option avec perd des panneaux,
@@ -198,7 +204,7 @@ export function reductionOptionAvec(avant, apres, produits = []) {
 export function phraseReductionOptionAvec(avant, apres, produits, nbSaisi) {
   const reduction = nbSaisi ? reductionOptionAvec(avant, apres, produits) : null
   return reduction
-    ? `L'option avec batterie passe de ${reduction.avant} à ${reduction.apres} panneaux : le nombre de panneaux saisi vaut pour les deux options.`
+    ? `L'option avec batterie passe de ${reduction.avant} à ${reduction.apres} panneaux : ${sujetCompteValantPourLesDeux(nbSaisi)} vaut pour les deux options.`
     : null
 }
 
@@ -209,7 +215,7 @@ export function phraseAvantAutoRemplirAvec(nbSaisi, conseilAvec, nbChamp) {
   const conseil = Number(conseilAvec)
   const champ = parseInt(nbChamp, 10)
   return nbSaisi && conseil > 0 && champ > 0 && champ !== conseil
-    ? `« Auto-remplir » posera l'option avec batterie à ${champ} panneaux, pas aux ${conseil} conseillés : le nombre de panneaux saisi vaut pour les deux options (« Recalculer le dimensionnement » reprend le conseil).`
+    ? `« Auto-remplir » posera l'option avec batterie à ${champ} panneaux, pas aux ${conseil} conseillés : ${sujetCompteValantPourLesDeux(nbSaisi)} vaut pour les deux options (« Recalculer le dimensionnement » reprend le conseil).`
     : null
 }
 

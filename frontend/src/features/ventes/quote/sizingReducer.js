@@ -514,6 +514,16 @@ export const toucheNbPanneauxPourComposition = (etat) =>
     : (etat.touche.nbPanneaux || tailleDemandeeParLead(etat) != null))
 
 /**
+ * R5A-N2 — QUI décide du compte pour la composition, avec la MÊME lecture que
+ * `toucheNbPanneauxPourComposition` : `'saisi'` (compte tapé), `'lead'` (taille
+ * demandée sur la fiche, rien de tapé), sinon `null`.
+ */
+export const causeNbPanneauxPourComposition = (etat) => {
+  if (!toucheNbPanneauxPourComposition(etat)) return null
+  return etat.touche.nbPanneaux ? 'saisi' : 'lead'
+}
+
+/**
  * RGEN3 — la taille (kWc) demandée sur la fiche du lead qui décide ENCORE du
  * compte de panneaux, sinon `null`. Comme le devis automatique
  * (`creation_auto_residentiel`, source « taille_demandee ») : elle vaut pour
