@@ -106,6 +106,8 @@ logger = logging.getLogger(__name__)
 #: * ``sim-3`` (ACAL128, 06/10/2026) — ratio de performance sur
 #:   l'irradiation INCIDENTE capturée avant la chaîne (plus celle de la série
 #:   finale, réécrite par les étapes optiques).
+#: * sans bump (ACAL1715, 26/11 — la version périmerait tout) : série transposée = soleil des étapes à l'instant
+#:   de la transposition ; trace ``meteo.transposition.instant_soleil`` (absente = étapes à HH:00).
 VERSION_SIMULATION = 'sim-3'
 
 #: ACAL48 — les saisies de l'entrée électrique enregistrée qui ENTRENT dans
