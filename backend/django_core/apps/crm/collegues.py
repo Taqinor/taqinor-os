@@ -91,11 +91,14 @@ def chercher_collegues(user, q='', limite=20):
     return len(trouves), [_ligne(c) for c in trouves[:limite]], proches
 
 
-PARAMETRE_LEAD = OpenApiParameter(
+PARAMETRES_MENU = [OpenApiParameter(
+    'permission', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+    description="Code d'une permission ERP : ne propose que les comptes qui la portent "
+                "(ex. calepinage_voir pour le responsable d'un calepinage)."), OpenApiParameter(
     'lead', OpenApiTypes.INT, OpenApiParameter.QUERY, required=False,
     description="Lead du calepinage qu'on confie (avec permission=calepinage_voir) : un compte qui ne lit que "
                 "par sa visite n'est proposé que s'il a une visite sur ce lead. Un identifiant inconnu ou d'une "
-                "autre société est ignoré, comme l'absence de lead.")
+                "autre société est ignoré, comme l'absence de lead.")]
 
 
 def lead_du_menu(user, brut):

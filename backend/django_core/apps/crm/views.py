@@ -2,9 +2,7 @@ import logging
 from contextlib import contextmanager
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
-)
+from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import APIException
@@ -20,7 +18,7 @@ from .params_requete import (
     CORPS_NOTER_JSON, CORPS_NOTER_MULTIPART, CORPS_REORDER_VUE, CORPS_RESOUDRE_GPS, CORPS_VILLE_STATUT,
     NOTER_REPERE, RESOUDRE_GPS_REPERE, booleen_param, corps_lu, corps_objet, liste_ids,
     refus_page_reorder, texte_param, texte_verifie)
-from .collegues import PARAMETRE_LEAD
+from .collegues import PARAMETRES_MENU
 from .models import (
     LeadActivity, Lead, LeadTag, MotifPerte, Canal, SavedView, SiteProfile,
     WebsiteLeadPayload,
@@ -104,10 +102,7 @@ def _save_borne_aux_champs(instance, champs):
 
 
 @extend_schema(
-    parameters=[OpenApiParameter(
-        'permission', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
-        description="Code d'une permission ERP : ne propose que les comptes qui la portent "
-                    "(ex. calepinage_voir pour le responsable d'un calepinage)."), PARAMETRE_LEAD],
+    parameters=PARAMETRES_MENU,
     responses=sd.liste('CrmAssignableUser'))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
