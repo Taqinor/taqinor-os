@@ -39,6 +39,7 @@ from apps.calepinage.selectors import (
     SECTIONS_LECTURE_SEULE,
     SECTIONS_PARAMETRES,
     parametres_de_societe,
+    registre_des_reglages,
 )
 from apps.calepinage.services.parametres import (
     ReglageInvalide,
@@ -445,7 +446,15 @@ class ProfilDepartFichierTest(SimpleTestCase):
         sans = {(v['section'], v['cle']) for v in profil['sans_source']}
         tout = {(s, c[0]) for s, lignes in REGISTRES.items() for c in lignes}
         self.assertEqual(proposees & sans, set())
-        self.assertEqual(proposees | sans, tout)
+        # ACAL1624 — le registre SERVI (``GET parametres/``) porte aussi les
+        # douze clés de lestage : chacune est comptée, aucune valeur proposée.
+        servi = {(s, ligne['cle']) for s, lignes in registre_des_reglages().items()
+                 for ligne in lignes}
+        self.assertTrue(tout < servi)
+        self.assertEqual(proposees | sans, servi)
+        self.assertEqual({c for s, c in sans if s == 'lestage'},
+                         {c for s, c in servi if s == 'lestage'})
+        self.assertFalse(any(s == 'lestage' for s, _c in proposees))
 
     def test_acal404_chaque_ligne_lisible_sourcee_et_comptee_une_fois(self):
         # ACAL404 — la valeur passe la validation de TYPE du registre, la
@@ -479,8 +488,9 @@ class ProfilDepartFichierTest(SimpleTestCase):
             for ligne in profil['valeurs'] + profil['sans_source']:
                 cle = (ligne['section'], ligne['cle'])
                 comptes[cle] = comptes.get(cle, 0) + 1
-            tout = {(s, c[0]) for s, lignes in REGISTRES.items()
-                    for c in lignes}
+            # ACAL1624 — le registre SERVI, lestage compris (douze clés).
+            tout = {(s, ligne['cle']) for s, lignes in registre_des_reglages().items()
+                    for ligne in lignes}
             self.assertEqual(set(comptes), tout)
             self.assertEqual(set(comptes.values()), {1})
 
@@ -490,6 +500,12 @@ class ProfilDepartFichierTest(SimpleTestCase):
         mutant = json.loads(json.dumps(profil))
         del mutant['valeurs'][0]['url']
         with self.assertRaises((AssertionError, KeyError)):
+            verifier(mutant)
+        # Mutant ACAL1624 : une clé de lestage retirée ⇒ échec.
+        mutant = json.loads(json.dumps(profil))
+        mutant['sans_source'] = [ligne for ligne in mutant['sans_source']
+                                 if ligne['cle'] != 'charge_neige_kn_m2']
+        with self.assertRaises(AssertionError):
             verifier(mutant)
 
     def test_reference_ecrite_dit_page_date_et_valeur_publiee(self):
