@@ -64,7 +64,7 @@ const PAS_CLAVIER = 40
    bloc reste un clic (et un glisser n'en déclenche aucun). */
 const SEUIL_GLISSER = 4
 
-export function PlancheSchema({ balisage, dessin = null, largeurDessin = null, actions = null, note = null, children = null }) {
+export function PlancheSchema({ balisage, dessin = null, largeurDessin = null, hauteurDessin = null, actions = null, note = null, children = null }) {
   // S2 (tablette) — `largeurDessin` : la largeur du schéma en blocs ; l'échelle de DÉPART le fait tenir en entier dans
   // le cadre mesuré (jamais coupé). Le zoom de l'utilisateur prend ensuite la main.
   const [ajuste, setAjuste] = useState(1)
@@ -85,13 +85,13 @@ export function PlancheSchema({ balisage, dessin = null, largeurDessin = null, a
   useEffect(() => {
     const noeud = vue.current
     if (!noeud || !mesurable) return undefined
-    const mesurer = () => setAjuste(echelleAjustee(noeud.clientWidth, largeurDessin))
+    const mesurer = () => setAjuste(echelleAjustee(noeud.clientWidth, largeurDessin, noeud.clientHeight, hauteurDessin))
     mesurer()
     if (typeof ResizeObserver === 'undefined') return undefined
     const observateur = new ResizeObserver(mesurer)
     observateur.observe(noeud)
     return () => observateur.disconnect()
-  }, [mesurable, largeurDessin])
+  }, [mesurable, largeurDessin, hauteurDessin])
   const zoomer = (facteur) => {
     const suivante = Math.min(ZOOM_MAX, Math.max(zoomMin, echelle * facteur))
     setZoomUtilisateur(suivante)
@@ -129,6 +129,7 @@ export function PlancheSchema({ balisage, dessin = null, largeurDessin = null, a
           <div className="csch-vue" ref={vue} tabIndex={0} role={dessin ? 'group' : 'img'}
             aria-label={dessin ? 'Schéma en blocs : glisser ou utiliser les flèches pour le déplacer'
               : 'Schéma unifilaire : glisser ou utiliser les flèches pour le déplacer'}
+            style={mesure && hauteurDessin ? { '--csch-h-dessin': `${Math.ceil(hauteurDessin * base)}px` } : undefined}
             data-testid="csch-vue" data-echelle={echelle} data-vue={dessin ? 'blocs' : 'detaille'} onKeyDown={auClavier}
             onPointerDown={(e) => {
               aGlisse.current = false
