@@ -615,8 +615,12 @@ MSG_RESYNC_BATTERIE_A_LA_MAIN = ('« %s » a été posée à la main à la place
 MSG_RESYNC_AVANT_LA_REGLE = ('Le calepinage désigne %s à l’étape Électrique : ce devis, créé avant que le devis '
                              'suive la désignation, ne la suit pas ; un nouveau devis généré depuis le calepinage '
                              'la suivra.')
-MSG_RESYNC_ENVOYE = ('Le calepinage désigne %s à l’étape Électrique : la désignation n’est pas appliquée à un devis '
-                     'envoyé — révisez-le (V2) pour l’appliquer.')
+#: ACAL1320 (D-ACAL-73 = corriger_dire, 26/11/2026) — les statuts dont la resynchronisation corrige
+#: le devis SUR PLACE (règle QJR5 ; un envoyé, sa trace « corrigé après envoi » posée, et l'écran le
+#: dit AVANT d'agir par l'aperçu) : un devis né sous la règle y suit la désignation. La phrase
+#: « révisez-le (V2) » d'un envoyé est retirée : elle n'était vraie pour aucun devis (une V2 d'un devis
+#: sans marqueur n'en porte pas davantage).
+STATUTS_CORRIGES_SUR_PLACE = ('brouillon', 'envoye')
 MSG_RESYNC_BATTERIE_SUIT = 'La batterie suit la désignation de l’étape Électrique : « %s » (%d pack(s)).'
 MSG_RESYNC_BATTERIE_RETIREE = ('La batterie « %s » n’est plus désignée à l’étape Électrique : la '
                                'resynchronisation reprend le choix automatique de la batterie.')
@@ -777,8 +781,10 @@ def appliquer_designations_a_la_resynchro(verrou, intention, layout, veut_batter
     verrou, AVANT qu'il lise ses lignes et applique ses propres règles : il relit ce qui vient d'être
     écrit.
 
-    Relecture, point 1 (règle de l'orchestrateur) — appliquée SEULEMENT à un BROUILLON NÉ sous la
-    règle (:func:`suit_les_designations`). Un devis envoyé, ou créé avant (sans marqueur) : rien
+    Relecture, point 1 — appliquée SEULEMENT à un devis NÉ sous la règle
+    (:func:`suit_les_designations`) ; ACAL1320 (D-ACAL-73) — brouillon OU envoyé
+    (:data:`STATUTS_CORRIGES_SUR_PLACE` : l'envoyé est corrigé sur place, l'aperçu de la
+    resynchronisation le dit avant la confirmation). Un devis créé avant (sans marqueur) : rien
     n'est appliqué (aucune écriture de plus, le court-circuit « inchangé » reste pris comme avant)
     et UNE phrase dit pourquoi.
 
@@ -797,10 +803,9 @@ def appliquer_designations_a_la_resynchro(verrou, intention, layout, veut_batter
     if getattr(cible, 'source', '') != SOURCE_DESIGNATIONS:
         return _resynchro_inchangee(veut_batterie, stocke)
     quoi = _quoi_est_designe(cible)
-    if getattr(verrou, 'statut', '') != 'brouillon' or stocke is None:
-        if quoi:
-            avertissements.append((MSG_RESYNC_ENVOYE if getattr(verrou, 'statut', '') != 'brouillon'
-                                   else MSG_RESYNC_AVANT_LA_REGLE) % quoi)
+    if stocke is None or getattr(verrou, 'statut', '') not in STATUTS_CORRIGES_SUR_PLACE:
+        if quoi and stocke is None:  # un autre statut n'arrive pas ici (``reconcilier`` le refuse avant)
+            avertissements.append(MSG_RESYNC_AVANT_LA_REGLE % quoi)
         return _resynchro_inchangee(veut_batterie, stocke)
     from apps.ventes.domain.lignes import _lignes_produit
 

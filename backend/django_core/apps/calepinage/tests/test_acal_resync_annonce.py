@@ -786,7 +786,9 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertIn('L’onduleur suit la désignation de l’étape Électrique : « Onduleur réseau Huawei 5kW '
                       'Monophasé » remplace « Onduleur réseau Growatt 8kW Monophasé ».', data['avertissements'])
 
-    def _sans_marqueur_ou_envoye(self, *, envoye):
+    def _sans_marqueur_ou_envoye(self, *, envoye, marqueur=None, apercu=None):
+        """``marqueur`` (défaut : vrai pour un envoyé, faux pour un brouillon) — le devis est-il né
+        sous la règle ? ``apercu`` : une liste où ranger l'aperçu lu AVANT la resynchronisation."""
         from apps.ventes.models import Devis
 
         self._growatt_8()
@@ -796,10 +798,14 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         devis = Devis.objects.get(pk=self.calepinage.devis_id)
         if envoye:
             Devis.objects.filter(pk=devis.pk).update(statut='envoye')
-        else:  # un devis créé AVANT la règle : aucun marqueur
+        if not (envoye if marqueur is None else marqueur):  # un devis créé AVANT la règle : aucun marqueur
             Devis.objects.filter(pk=devis.pk).update(roof_layout={
                 k: v for k, v in devis.roof_layout.items() if k != '_designations'})
         self._designer('Onduleur réseau Huawei 5kW Monophasé', nombre_onduleurs=1)
+        if apercu is not None:
+            lu = self._apercu_resync()
+            self.assertEqual(lu.status_code, 200, lu.data)
+            apercu.append(lu.data)
         return self._resynchroniser()
 
     def test_a_brouillon_cree_avant_la_regle_ne_suit_pas_la_designation_et_le_dit(self):
@@ -810,11 +816,35 @@ class ResyncAnnonceTest(BaseApiCalepinage):
                       'devis suive la désignation, ne la suit pas ; un nouveau devis généré depuis le calepinage '
                       'la suivra.', data['avertissements'])
 
-    def test_a_devis_envoye_ne_recoit_pas_la_designation_et_le_dit(self):
-        data, onduleurs, _b = self._sans_marqueur_ou_envoye(envoye=True)
+    def test_acal1320_devis_envoye_ne_sous_la_regle_suit_la_designation_annoncee_avant(self):
+        """D-ACAL-73 (corriger_dire) — un ENVOYÉ né sous la règle (marqueur) reçoit l'onduleur désigné
+        à la resynchronisation confirmée, comme un brouillon ; l'aperçu l'a dit AVANT, montants
+        compris, et le devis reçu par le client est corrigé sur place (trace posée). Remplace le
+        refus « révisez-le (V2) » posé faute d'aperçu."""
+        from apps.ventes.models import Devis
+
+        lus = []
+        data, onduleurs, _b = self._sans_marqueur_ou_envoye(envoye=True, apercu=lus)
+        self.assertEqual(onduleurs, [('Onduleur réseau Huawei 5kW Monophasé', 1)])
+        self.assertFalse(any('révisez-le (V2)' in m for m in data['avertissements']), data)
+        apercu = lus[0]
+        self.assertEqual((apercu['statut'], apercu['corrige_apres_envoi']), ('envoye', True))
+        onduleur = next(c for c in apercu['changements'] if c['designation_avant'] != c['designation_apres'])
+        self.assertEqual((onduleur['designation_avant'], onduleur['designation_apres']),
+                         ('Onduleur réseau Growatt 8kW Monophasé', 'Onduleur réseau Huawei 5kW Monophasé'))
+        self.assertIsNotNone(onduleur['prix_unitaire_apres'])
+        self.assertNotEqual(onduleur['total_ht_avant'], onduleur['total_ht_apres'])
+        self.assertEqual(apercu['avertissements'], data['avertissements'])  # mêmes phrases, avant et pendant
+        devis = Devis.objects.get(pk=self.calepinage.devis_id)
+        self.assertEqual(devis.statut, 'envoye')
+        self.assertTrue(devis.activites.filter(field='correction_apres_envoi').exists())
+
+    def test_acal1320_devis_envoye_cree_avant_la_regle_ne_suit_pas_et_le_dit(self):
+        data, onduleurs, _b = self._sans_marqueur_ou_envoye(envoye=True, marqueur=False)
         self.assertEqual(onduleurs, [('Onduleur réseau Growatt 8kW Monophasé', 1)])
-        self.assertIn('Le calepinage désigne un onduleur à l’étape Électrique : la désignation n’est pas '
-                      'appliquée à un devis envoyé — révisez-le (V2) pour l’appliquer.', data['avertissements'])
+        self.assertIn('Le calepinage désigne un onduleur à l’étape Électrique : ce devis, créé avant que le '
+                      'devis suive la désignation, ne la suit pas ; un nouveau devis généré depuis le calepinage '
+                      'la suivra.', data['avertissements'])
 
     def test_a_onduleur_change_a_la_main_garde_et_dit_une_fois(self):
         from apps.stock.models import Produit

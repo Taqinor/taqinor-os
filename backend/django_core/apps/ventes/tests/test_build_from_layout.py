@@ -456,20 +456,21 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
         self.assertEqual(avertissements, [])
         self.assertIsNone(marqueur_stocke(SimpleNamespace(roof_layout={})))
 
-    def test_a_point_1_seul_un_brouillon_ne_sous_la_regle_recoit_les_designations(self):
-        """Relecture round 4, point 1 — envoyé (marqueur ou non) ou brouillon sans marqueur : rien
-        n'est appliqué, le court-circuit reste permis, UNE phrase ; rien de désigné : aucune phrase."""
+    def test_a_point_1_seul_un_devis_ne_sous_la_regle_recoit_les_designations(self):
+        """Relecture round 4, point 1 — un devis SANS marqueur (créé avant la règle), brouillon ou
+        envoyé : rien n'est appliqué, le court-circuit reste permis, UNE phrase vraie ; rien de
+        désigné : aucune phrase. ACAL1320 (D-ACAL-73) — un ENVOYÉ né sous la règle n'est plus
+        refusé ici (il suit la désignation, l'aperçu le dit avant) : seul le marqueur décide."""
         from types import SimpleNamespace
 
         from apps.ventes.domain.creation_calepinage import (
-            CLE_DESIGNATIONS, MSG_RESYNC_AVANT_LA_REGLE, MSG_RESYNC_ENVOYE, SOURCE_DESIGNATIONS,
+            MSG_RESYNC_AVANT_LA_REGLE, SOURCE_DESIGNATIONS, CLE_DESIGNATIONS,
             appliquer_designations_a_la_resynchro, suit_les_designations)
 
         cible = SimpleNamespace(source=SOURCE_DESIGNATIONS, onduleur_impose={'produit_id': 3, 'nombre': 1},
                                 batterie_imposee={'produit_id': 4, 'packs': 1})
         vide = SimpleNamespace(source=SOURCE_DESIGNATIONS, onduleur_impose=None, batterie_imposee=None)
-        for statut, layout, attendu in (('envoye', {CLE_DESIGNATIONS: {'onduleur': 3}}, MSG_RESYNC_ENVOYE),
-                                        ('envoye', {}, MSG_RESYNC_ENVOYE),
+        for statut, layout, attendu in (('envoye', {}, MSG_RESYNC_AVANT_LA_REGLE),
                                         ('brouillon', {}, MSG_RESYNC_AVANT_LA_REGLE)):
             with self.subTest(statut=statut, marqueur=bool(layout)):
                 verrou = SimpleNamespace(statut=statut, roof_layout=layout)
