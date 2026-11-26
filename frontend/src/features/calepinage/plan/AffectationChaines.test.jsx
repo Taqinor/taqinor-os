@@ -995,3 +995,25 @@ describe('useOnduleurSurCarte (ACAL1317, revue) — un armement ne survit pas à
     expect(couche.clicCarte(versLngLat(10, 2))).toBe(false)
   })
 })
+
+describe('OutilsOnduleur (ACAL1317, revue, point 3) — les flèches et Échap ne fuient pas vers le constructeur', () => {
+  it('le plan clavier du constructeur, à l’écoute du document, ne reçoit ni les flèches ni Échap traitées par la barre', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    const constructeur = vi.fn()
+    document.addEventListener('keydown', constructeur) // comme `mapDraw.ts` (plan clavier sur le document)
+    try {
+      render(<BarreAvecOnduleur couche={couche} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Déplacer l’onduleur' }))
+      const fleches = screen.getByTestId('cal-elec-onduleur-fleches')
+      fireEvent.keyDown(fleches, { key: 'ArrowRight' })
+      expect(couche.documentElectrique().equipements[0].lng).toBeGreaterThan(onduleurEssai('eqA', 19, 2).lng)
+      fireEvent.keyDown(fleches, { key: 'Escape' })
+      expect(couche.deplacementArme()).toBeNull()
+      expect(constructeur).not.toHaveBeenCalled()
+      fireEvent.keyDown(screen.getByRole('button', { name: 'Déplacer l’onduleur' }), { key: 'a' })
+      expect(constructeur).toHaveBeenCalledTimes(1) // une touche que la barre ne traite pas continue son chemin
+    } finally {
+      document.removeEventListener('keydown', constructeur)
+    }
+  })
+})

@@ -22,9 +22,14 @@ export default function OutilsOnduleur({ onduleur, lectureSeule = false, motifLe
   const titre = lectureSeule ? motifLectureSeule : undefined
   // Le pas d'une flèche est celui de la couche électrique (`pasDeplacementM`) : l'écran n'en invente aucun.
   const pousser = ([de, dn]) => onduleur.pousser(de * onduleur.pas, dn * onduleur.pas)
+  // Les touches TRAITÉES ici s'arrêtent ici : le plan clavier du constructeur (`mapDraw.ts`, à l'écoute du document,
+  // mode « trace » à cette étape) déplacerait sinon son curseur de contour, et Échap fermerait la feuille ou l'aide.
   const auClavier = (e) => {
     const fleche = FLECHES.find((f) => f.touche === e.key)
-    if (fleche) { e.preventDefault(); pousser(fleche.d) } else if (e.key === 'Escape') onduleur.terminer()
+    if (!fleche && e.key !== 'Escape') return
+    e.preventDefault()
+    e.stopPropagation()
+    if (fleche) pousser(fleche.d); else onduleur.terminer()
   }
   return (
     <>
