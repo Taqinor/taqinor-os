@@ -11,6 +11,7 @@ import { refusEtape } from '../raisonsFroid'
 import { STAGE_LABELS, CONVERSION_STAGE } from '../stages'
 import { toastWithUndo } from '../../../lib/toast'
 import { getPrefetched } from './leadPrefetch'
+import { relireConceptionLead } from './useConceptionLead'
 import fieldLabels from './fieldLabels'
 import { ecrireStockage, retirerStockage } from '../../../lib/stockageBestEffort.js'
 
@@ -193,6 +194,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       if (res && res.id === st.leadId) {
         setOpenedAt(st.leadId, res.date_modification)
         clearMirror(st.leadId)
+        relireConceptionLead(st.leadId)  // R5A-N6 — une fiche enregistrée peut créer/périmer la conception : relue une fois
         onSavedRef.current?.(res)
       }
       return true
@@ -343,6 +345,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       const res = (await crmApi.getLead(st.leadId)).data
       dispatch({ type: 'SET_SERVER', res })
       if (res) setOpenedAt(res.id, res.date_modification)
+      relireConceptionLead(st.leadId)  // R5A-N6 — devis/facture/fusion : la conception rangée a pu changer
       onSavedRef.current?.()
     } catch { console.warn('useLeadDraft (setOpenedAt) : best-effort') }
   }, [])

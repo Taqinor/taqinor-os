@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { LEAD_A, mockMatchMedia } from '../../../test/leadWorkspaceMocks'
-import { render, screen, cleanup, act } from '@testing-library/react'
+import { render, screen, cleanup, act, fireEvent, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
@@ -19,7 +19,21 @@ import LeadWorkspace from './LeadWorkspace'
 vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => null }))
 
-vi.mock('../../../api/crmApi', async () => (await import('../../../test/leadWorkspaceMocks')).crmApiLeadWorkspace())
+vi.mock('../../../api/crmApi', async () => (await import('../../../test/leadWorkspaceMocks')).crmApiLeadWorkspace({
+  // R5A-N5b / R5A-N6 — les sections et rails RÉELS (derniers tests du fichier) lisent aussi ces deux routes.
+  getLeadPhotoToit: vi.fn(() => Promise.resolve({ data: { visite_id: null, url: null, texture_calage: null } })),
+  villeStatut: vi.fn(() => Promise.resolve({ data: { statut: 'connue' } })),
+}))
+vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
+// R5A-N6 — le serveur répond 404 « conception_absente » : réponse normale, comptée ici.
+const { conception404 } = vi.hoisted(() => ({
+  conception404: vi.fn(() => Promise.reject(Object.assign(new Error('404'), { response: { status: 404 } }))),
+}))
+vi.mock('../../../api/ventesApi', () => ({
+  default: new Proxy({}, {
+    get: (cible, cle) => (cle === 'getConceptionLead' ? conception404 : vi.fn(() => Promise.resolve({ data: [] }))),
+  }),
+}))
 
 const LEAD_B_ROW = { id: 2, nom: 'Karim', stage: 'NEW' } // ligne PARTIELLE de liste
 
@@ -32,6 +46,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  try { sessionStorage.clear() } catch { /* noop */ }
   crmApi.getLead.mockImplementation(() => Promise.resolve({ data: {} }))
 })
 
@@ -106,4 +121,88 @@ describe('LW24 — pré-chargement en idle des voisins de file', () => {
       vi.useRealTimers()
     }
   })
+})
+
+/* R5A-N5b / R5A-N6 — ouvrir une fiche SANS rien taper (rails et sections RÉELS) : jamais « sale », aucune écriture, une seule
+   lecture de la conception. */
+// Un lead tel que le sérialiseur le sert : décimaux en CHAÎNES, dates ISO, nulls, '' , 0, booléens, listes.
+const LEAD_SERVI = {
+  id: 1, nom: 'Ali', prenom: 'Ben', societe: '', email: 'ali@example.ma', telephone: '0612345678', whatsapp: null,
+  adresse: '', ville: 'Casablanca', ville_reference: null, gps_lat: '33.573110', gps_lng: '-7.589843',
+  stage: 'NEW', is_archived: false, owner: 3, owner_nom: 'Sami', priorite: 'normale', canal: 'meta_ads',
+  facture_hiver: '800.00', facture_ete: '1200.50', ete_differente: true, surface_toit: '0', roof_age: 0,
+  montant_estime: null, relance_date: '2026-11-30', date_cloture_prevue: null, tags: 'chaud, villa',
+  type_installation: '', raccordement: null, note: '', custom_data: {}, jours_ouverture: [1, 2, 3], heure_debut: 8,
+  compteur_puissance_kva: '12.00', chatter_recent: [], devis: [], date_modification: '2026-11-26T09:00:00Z',
+}
+
+const quitterBloque = () => {
+  const ev = new Event('beforeunload', { cancelable: true })
+  window.dispatchEvent(ev)
+  return ev.defaultPrevented
+}
+
+function ouvrir() {
+  return render(
+    <Provider store={configureStore({ reducer: { crm: crmReducer, auth: (s = { user: { id: 42 }, role: 'admin' }) => s } })}>
+      <MemoryRouter>
+        <LeadWorkspace lead={{ ...LEAD_SERVI }} onClose={vi.fn()} onSaved={vi.fn()} />
+      </MemoryRouter>
+    </Provider>,
+  )
+}
+
+describe('R5A-N5b — une fiche ouverte sans rien taper n’est jamais « sale »', () => {
+  beforeEach(() => {
+    crmApi.getLead.mockImplementation(() => Promise.resolve({ data: { ...LEAD_SERVI } }))
+    crmApi.updateLead.mockImplementation(() => Promise.resolve({ data: { ...LEAD_SERVI } }))
+  })
+
+  it('lead servi avec décimaux, dates, null, 0 : aucune écriture, aucune garde, aucun brouillon en mémoire', async () => {
+    ouvrir()
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalled())
+    await screen.findByDisplayValue('chaud, villa')
+    await new Promise((r) => { setTimeout(r, 2200) }) // au-delà du debounce d'autosauvegarde (1,5 s)
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+    expect(quitterBloque()).toBe(false)
+    expect(sessionStorage.getItem('taqinor.lead.draft.1')).toBeNull()
+  }, 15000)
+
+  it('R5A-N6 — la conception du lead est demandée UNE fois par fiche ouverte (carte + avis brouillons), 404 sans toast ni relecture', async () => {
+    ouvrir()
+    await screen.findByDisplayValue('chaud, villa')
+    await new Promise((r) => { setTimeout(r, 4600) }) // au-delà de l'ancien rythme de relecture (4 s)
+    expect(conception404).toHaveBeenCalledTimes(1)
+    expect(conception404).toHaveBeenCalledWith(1)
+  }, 15000)
+
+  it('une vraie saisie arme la garde, puis part en PATCH partiel', async () => {
+    ouvrir()
+    await screen.findByDisplayValue('chaud, villa')
+    fireEvent.change(document.querySelector('#lf-tags'), { target: { value: 'chaud' } })
+    await waitFor(() => expect(quitterBloque()).toBe(true))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(1, { tags: 'chaud' }), { timeout: 4000 })
+  }, 15000)
+
+  it('un brouillon de session qui ne diffère pas du lead servi ne rend pas la fiche « sale »', async () => {
+    sessionStorage.setItem('taqinor.lead.draft.1', JSON.stringify({
+      draft: { facture_hiver: '800', tags: 'chaud, villa', surface_toit: 0 }, note: '',
+    }))
+    ouvrir()
+    await screen.findByDisplayValue('chaud, villa')
+    await new Promise((r) => { setTimeout(r, 2200) })
+    expect(quitterBloque()).toBe(false)
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+  }, 15000)
+
+  it('un brouillon restauré qui DIFFÈRE reste protégé (garde armée) mais ne part pas tout seul ; il part au premier geste', async () => {
+    sessionStorage.setItem('taqinor.lead.draft.1', JSON.stringify({ draft: { tags: 'froid' }, note: '' }))
+    ouvrir()
+    await screen.findByDisplayValue('froid')
+    await new Promise((r) => { setTimeout(r, 2200) })
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+    expect(quitterBloque()).toBe(true) // du vrai travail non envoyé : la sortie reste gardée
+    fireEvent.change(document.querySelector('#lf-tags'), { target: { value: 'froid, villa' } })
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(1, { tags: 'froid, villa' }), { timeout: 4000 })
+  }, 15000)
 })
