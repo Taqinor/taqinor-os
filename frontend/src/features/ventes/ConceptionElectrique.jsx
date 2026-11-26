@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Check, Download, RefreshCw } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import {
@@ -12,6 +12,8 @@ import { filenameFromResponse } from '../../utils/downloadBlob'
 // PV40 `schema_unifilaire_devis`) ne s'injecte QUE si `isTrustedSvg` le juge
 // sûr (aucun `<script`, gestionnaire `on...=`, ou `javascript:`).
 import { renderTrustedSvg } from '../../lib/trustedSvg'
+import { SchemaEnBlocs } from '../calepinage/SchemaUnifilairePanel'
+import { planDepuisDocument } from '../calepinage/SchemaUnifilairePanel.helpers'
 
 /* ============================================================================
    PV43 — Panneau « Conception électrique » de la fiche devis.
@@ -54,12 +56,54 @@ const GRANDEURS_SOURCE = [
   ['regime', 'Régime de neutre'],
 ]
 
+// LOT 6 — le schéma de la fiche devis est celui du calepinage (`SchemaEnBlocs`), lu sur l'enveloppe
+// `schema_electrique = {options: {sans_batterie, avec_batterie}}` de la même réponse : un dessin par option.
+// L'option « avec batterie » d'abord ; une option à `null` n'a pas de bouton (jamais le dessin de l'autre).
+const OPTIONS_SCHEMA = [['avec_batterie', 'Avec batterie'], ['sans_batterie', 'Sans batterie']]
+
+function PlancheSchemaDevis({ enveloppe }) {
+  const [option, setOption] = useState(null)
+  const options = OPTIONS_SCHEMA.filter(([cle]) => enveloppe?.options?.[cle])
+  const choisie = (options.find(([cle]) => cle === option) ?? options[0])?.[0] ?? null
+  const doc = choisie ? enveloppe.options[choisie] : null
+  const plan = useMemo(() => planDepuisDocument(doc), [doc])
+  if (!plan) return <p className="text-xs text-muted-foreground">Schéma indisponible.</p>
+  return (
+    <div className="space-y-2" data-testid="schema-electrique-devis">
+      {options.length > 1 && (
+        <div role="group" aria-label="Option du schéma" className="flex gap-1.5">
+          {options.map(([cle, libelle]) => (
+            <Button key={cle} type="button" size="sm" variant={cle === choisie ? 'default' : 'outline'}
+              aria-pressed={cle === choisie} onClick={() => setOption(cle)}>
+              {libelle}
+            </Button>
+          ))}
+        </div>
+      )}
+      <div className="csch-devis" role="group" aria-label="Schéma électrique">
+        <SchemaEnBlocs plan={plan}
+          coteReseau={doc.cote_reseau?.motif ? { texte: doc.cote_reseau.motif, onOuvrir: null } : null} />
+      </div>
+      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground" data-testid="schema-electrique-legende">
+        {plan.legende.map((l) => (
+          <li key={l.cle} className="flex items-center gap-1.5">
+            <span aria-hidden="true" className="inline-block h-[3px] w-5 rounded bg-muted-foreground"
+              style={l.couleur ? { background: l.couleur } : undefined} />
+            {l.libelle}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export default function ConceptionElectrique({ devisId }) {
   const [design, setDesign] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [recalculating, setRecalculating] = useState(false)
   const [svg, setSvg] = useState(null)
+  const [schemaElectrique, setSchemaElectrique] = useState(null)
   const [svgLoading, setSvgLoading] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
   const [dcM, setDcM] = useState('')
@@ -70,8 +114,11 @@ export default function ConceptionElectrique({ devisId }) {
   // du schéma après un recalcul (setSvgLoading géré par l'appelant : effet ou
   // handler, jamais deux fois pour le même appel).
   const chargerSchema = useCallback(() => ventesApi.getSchemaUnifilaireDevis(devisId)
-    .then((res) => setSvg(res.data?.svg || null))
-    .catch(() => setSvg(null))
+    .then((res) => {
+      setSvg(res.data?.svg || null)
+      setSchemaElectrique(res.data?.schema_electrique ?? null)
+    })
+    .catch(() => { setSvg(null); setSchemaElectrique(null) })
     .finally(() => setSvgLoading(false)), [devisId])
 
   useEffect(() => {
@@ -250,6 +297,8 @@ export default function ConceptionElectrique({ devisId }) {
         </div>
         {svgLoading ? (
           <p className="text-xs text-muted-foreground">Chargement du schéma…</p>
+        ) : schemaElectrique ? (
+          <PlancheSchemaDevis enveloppe={schemaElectrique} />
         ) : renderTrustedSvg(svg) ? (
           <div
             role="img"
