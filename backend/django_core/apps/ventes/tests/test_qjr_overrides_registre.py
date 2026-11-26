@@ -110,7 +110,7 @@ class EffectifTests(SimpleTestCase):
         contrat = json.loads(CONTRAT.read_text(encoding='utf-8'))
         # T4-X4-019 — `option` n'est servi que sur un devis à DEUX options
         # (note `option` du contrat) : le devis de ce test n'en a qu'une.
-        attendues = set(contrat['exemple']['effectif']['taille.nb_panneaux']) - {'option'}
+        attendues = set(contrat['exemple']['effectif']['taille.nb_panneaux']) - {'option', 'par_option'}
         self.assertIn('option', contrat['notes'])
         devis = _Devis({'taille.nb_panneaux': {
             'valeur': 14, 'origine': 'manuel'}})

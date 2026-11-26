@@ -80,4 +80,18 @@ describe('QJR571 — le registre dit les chemins sans effet sur le document', ()
       .toBe('— option sans batterie')
     expect(screen.queryByTestId('overrides-option-scenario')).toBeNull()
   })
+
+  it('T4-X4-019 (suite) — l option avec batterie est listée sous son nom, valeurs servies ; rien sans par_option', async () => {
+    ventesApi.lireOverrides.mockResolvedValue({ data: { ...REGISTRE, effectif: {
+      ...REGISTRE.effectif,
+      'taille.nb_panneaux': { auto: 8, manuel: null, effectif: 8, source: 'auto', option: 'sans', par_option: { sans: 8, avec: 11 } },
+      'taille.kwc': { auto: 5.68, manuel: null, effectif: 5.68, source: 'auto', option: 'sans', par_option: { sans: 5.68, avec: 7.81 } },
+    } } })
+    renderGenerator()
+    const ligne = await screen.findByTestId('overrides-effectif-row-taille.nb_panneaux-avec')
+    expect(ligne.textContent).toContain('option avec batterie')
+    expect(ligne.textContent).toContain('11')
+    expect(screen.getByTestId('overrides-effectif-row-taille.kwc-avec').textContent).toContain('7.81')
+    expect(screen.queryByTestId('overrides-effectif-row-scenario-avec')).toBeNull()
+  })
 })
