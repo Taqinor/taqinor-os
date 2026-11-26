@@ -36,8 +36,24 @@ __all__ = [
     # CALX233-235 (crochet de phase 2) — l'API PUBLIQUE du dessin, pour que
     # les services applicatifs cessent d'importer les privés de ce module.
     "GeometrieSchema", "GEOMETRIE", "places_du_schema", "bloc_svg", "MENTION_A_CONFIRMER", "MENTION_DECOUPLAGE",
-    "blocs_etage_mt",
+    "blocs_etage_mt", "PALETTE_CHAINES",
 ]
+
+#: ACAL285 / SCHEL-B1 — la teinte des chaînes et des entrées MPPT : SOURCE
+#: UNIQUE, ici dans le noyau depuis le lot 6 (le document « schéma électrique »
+#: du noyau colore ses chaînes avec elle ; ``apps/calepinage/services/
+#: chaines.py`` l'importe). Les quatre premières sont celles de la capture du
+#: fondateur : bleu, orange, vert, magenta.
+PALETTE_CHAINES = (
+    'rgb(36, 130, 214)',   # bleu
+    'rgb(232, 125, 33)',   # orange
+    'rgb(46, 163, 89)',    # vert
+    'rgb(184, 64, 158)',   # magenta
+    'rgb(0, 153, 158)',    # sarcelle
+    'rgb(212, 61, 71)',    # rouge
+    'rgb(115, 102, 199)',  # violet
+    'rgb(153, 133, 26)',   # ocre
+)
 
 #: Formats de planche, en pixels CSS à 96 ppp (A4 paysage 297 × 210 mm,
 #: A3 paysage 420 × 297 mm). Le viewBox est fixe pour un format donné.
