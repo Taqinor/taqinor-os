@@ -2600,9 +2600,9 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   /** Lot 8 — le SOLEIL seul (lumière, cadre d'ombre, ciel) à `ctx.sunDay`/`ctx.sunHour`, sans reconstruire un maillage. */
   function poserSoleil(repeindre = true) {
     if (!sun || !cadreSoleil) return;
-    const realSun = sunDirection(cadreSoleil.lat, ctx.sunDay, ctx.sunHour);
+    const lat = cadreSoleil.lat, realSun = sunDirection(lat, ctx.sunDay, ctx.sunHour); // W87 — le VRAI soleil
     if (cielSuitLeSoleil(readOnly, opts)) appliquerCiel(map, realSun.elevationDeg, lowEnd); // ACAL431 — ciel selon le soleil ; visionneuse standard et bas de gamme : inchangés
-    placerSoleilScene(sun, cadreSoleil, realSun);
+    placerSoleilScene(sun, cadreSoleil, { azimuthDeg: realSun.azimuthDeg, elevationDeg: realSun.elevationDeg });
     if (repeindre) map.triggerRepaint();
   }
 
