@@ -131,3 +131,12 @@ export const LIBELLE_BOUTON = {
   perime: 'Relancer (document modifié)',
   frais: 'Recalculer',
 }
+
+/** ACAL1647 — le libellé du bouton : quand le serveur démontre que la péremption vient d'un
+    réglage de la société (son motif l'ouvre ainsi), « Relancer (réglages modifiés) » ; sinon
+    le libellé de l'état. Seul le motif servi porte la cause : aucune cause n'est devinée ici. */
+export function libelleBouton(etat, motif) {
+  if (etat === 'perime' && typeof motif === 'string'
+    && motif.startsWith('simulation périmée : un réglage de la société')) return 'Relancer (réglages modifiés)'
+  return LIBELLE_BOUTON[etat]
+}

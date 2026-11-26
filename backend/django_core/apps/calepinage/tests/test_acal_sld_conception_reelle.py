@@ -233,6 +233,68 @@ class ConceptionReelle(BaseConceptionReelle):
                                   cartouche=cartouche))
 
 
+class CoupureUrgenceDcDessineeTest(SimpleTestCase):
+    """ACAL1551 — « arrêt rapide exigé : oui » ajoute SOC1 « Coupure
+    d'urgence DC (arrêt rapide) » : il est DESSINÉ côté continu (bloc
+    ``organe_dc``, après le sectionneur, relié), servi au document « schéma
+    électrique », et la planche ne le dit plus « non dessiné »."""
+
+    MODULE = {'vmp_v': 41.4, 'voc_v': 49.3, 'isc_a': 18.59, 'imp_a': 17.59,
+              'pmax_wc': 710.0}
+    ONDULEUR = {'n_mppt': 2, 'mppt_v_min': 160.0, 'mppt_v_max': 950.0,
+                'v_max_abs': 1100.0, 'i_max_mppt_a': 26.0, 'ac_kw': 10.0,
+                'phases': 3}
+
+    def _planche(self, arret_rapide):
+        from core.electrique.schema_electrique import document_schema_electrique
+
+        from apps.calepinage.services import sld
+        from apps.calepinage.services.chaines import concevoir_par_pan
+        from apps.calepinage.services.electrique import temperatures_site
+        from apps.calepinage.services.norme import norme_applicable
+
+        conception = concevoir_par_pan(
+            {'version': 2, 'zones': [{'id': 'z1', 'label': 'Sud', 'geometry': {
+                'count': 12, 'azimuthDeg': 180.0, 'tiltDeg': 15.0}}]},
+            module_specs=self.MODULE, onduleur_specs=self.ONDULEUR,
+            temperatures=temperatures_site(saisie={
+                'temperature_min_c': -5.0, 'temperature_max_c': 70.0}),
+            regime='TT')
+        donnees = {'protections': {'exigences': {'arret_rapide': arret_rapide}}}
+        norme = norme_applicable({'norme_electrique': {'norme': 'nf_c_15_100'}})
+        resultat, gabarit = sld.resultat_et_gabarit_decides(
+            conception, donnees, norme, reglages={})
+        dessin = rendu_du_schema(conception.entree, resultat, gabarit=gabarit)
+        document = document_schema_electrique(conception.entree, resultat)
+        return dessin, gabarit, document
+
+    def test_oui_pose_le_bloc_soc1_cote_continu_relie(self):
+        from apps.calepinage.services.protections import (
+            DESIGNATION_ARRET_RAPIDE, MENTION_SOCIETE)
+
+        dessin, gabarit, document = self._planche('oui')
+        clefs = [bloc['clef'] for bloc in dessin['blocs']]
+        organe = next(bloc for bloc in dessin['blocs']
+                      if bloc['clef'] == 'organe_dc')
+        self.assertEqual((organe['repere'], organe['titre'],
+                          organe['sous_titre']),
+                         ('SOC1', DESIGNATION_ARRET_RAPIDE, MENTION_SOCIETE))
+        self.assertEqual(clefs.index('organe_dc'),
+                         clefs.index('sectionneur_dc') + 1)
+        self.assertIn('data-repere="SOC1"', dessin['svg'])
+        sans, _gabarit, _document = self._planche('non')
+        self.assertEqual(len(dessin['liaisons']), len(sans['liaisons']) + 1)
+        self.assertNotIn('SOC1', gabarit.get('bandeau') or '')
+        self.assertIn('organe_dc', [o['clef'] for o in
+                                    document['coffret_dc']['organes']])
+
+    def test_non_rien_de_plus_que_la_planche_d_avant(self):
+        dessin, gabarit, document = self._planche('non')
+        self.assertNotIn('organe_dc', [b['clef'] for b in dessin['blocs']])
+        self.assertNotIn('organe_dc', [o['clef'] for o in
+                                       document['coffret_dc']['organes']])
+
+
 class ReglagesSocieteDeLaPlancheTest(SimpleTestCase):
     """REP-676b — la planche lit la check-list décidée AVEC les réglages
     société (réglage foudre…), comme le résultat électrique."""

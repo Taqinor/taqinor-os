@@ -17,6 +17,8 @@ import json
 import pathlib
 from decimal import Decimal
 
+from django.test import SimpleTestCase
+
 from apps.calepinage.models import Calepinage, ParametresCalepinage
 from apps.calepinage.services.electrique import (
     CLE_ENTREE, EntreeInvalide, enregistrer_entree,
@@ -199,6 +201,53 @@ class Ecriture(BaseValidation):
                 reponse = self.api.post(url_entree(self.calepinage.pk),
                                         contrat[cle], format='json')
                 self.assertEqual(reponse.status_code, 200, reponse.data)
+
+
+class AffectationManuelleEcrite(BaseValidation):
+    """ACAL1627 — un drapeau « optimiseur » non booléen est refusé à
+    l'ÉCRITURE (400 nommant le champ et le module), rien n'est stocké ;
+    ``true`` / ``false`` / absent sont acceptés."""
+
+    def _ligne(self, **extra):
+        return dict({'module': 'z1#2', 'chaine': 1, 'mppt': 1,
+                     'onduleur': 1}, **extra)
+
+    def test_optimiseur_oui_400_et_rien_n_est_stocke(self):
+        avant = dict(self.calepinage.resultat[CLE_ENTREE])
+        reponse = self.api.post(url_entree(self.calepinage.pk), {
+            'affectation_manuelle': [self._ligne(optimiseur='oui')]},
+            format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('optimiseur', reponse.data)
+        self.assertIn('z1#2', reponse.data['optimiseur'])
+        self.calepinage.refresh_from_db()
+        self.assertEqual(self.calepinage.resultat[CLE_ENTREE], avant)
+
+    def test_vrai_faux_ou_absent_acceptes(self):
+        for extra in ({'optimiseur': True}, {'optimiseur': False}, {}):
+            with self.subTest(extra=extra):
+                reponse = self.api.post(url_entree(self.calepinage.pk), {
+                    'affectation_manuelle': [self._ligne(**extra)]},
+                    format='json')
+                self.assertEqual(reponse.status_code, 200, reponse.data)
+
+
+class AffectationManuelleEcriteSansBase(SimpleTestCase):
+    """ACAL1627 — la même règle, jugée par ``_valider_entree`` seul."""
+
+    def test_le_refus_nomme_le_champ_et_le_module(self):
+        from apps.calepinage.services.electrique import _valider_entree
+
+        lignes = [{'module': 'area-2#48', 'chaine': 1, 'optimiseur': 'oui'}]
+        saisie = {'temperature_min_c': -5.0, 'temperature_max_c': 70.0}
+        with self.assertRaises(EntreeInvalide) as refus:
+            _valider_entree(None, dict(saisie, affectation_manuelle=lignes),
+                            {'affectation_manuelle': lignes})
+        self.assertEqual(refus.exception.champ, 'optimiseur')
+        self.assertIn('area-2#48', str(refus.exception))
+        lignes[0]['optimiseur'] = True
+        _valider_entree(None, dict(saisie, affectation_manuelle=lignes),
+                        {'affectation_manuelle': lignes})
 
 
 class EvaluationAChaud(BaseValidation):
