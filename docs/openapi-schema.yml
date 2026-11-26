@@ -8385,7 +8385,7 @@ query_params:
   get /api/django/crm/appareils-equipe/: ordering page page_size search
   get /api/django/crm/appointments/: lead ordering page page_size search
   get /api/django/crm/apporteurs/: ordering page page_size search
-  get /api/django/crm/assignable-users/: permission
+  get /api/django/crm/assignable-users/: lead permission
   get /api/django/crm/assistant/a-relancer/: portee
   get /api/django/crm/assistant/collegues/: limite q
   get /api/django/crm/assistant/leads/: etape limite q
@@ -9237,7 +9237,7 @@ query_params:
   get /api/v1/crm/appareils-equipe/: ordering page page_size search
   get /api/v1/crm/appointments/: lead ordering page page_size search
   get /api/v1/crm/apporteurs/: ordering page page_size search
-  get /api/v1/crm/assignable-users/: permission
+  get /api/v1/crm/assignable-users/: lead permission
   get /api/v1/crm/assistant/a-relancer/: portee
   get /api/v1/crm/assistant/collegues/: limite q
   get /api/v1/crm/assistant/leads/: etape limite q
