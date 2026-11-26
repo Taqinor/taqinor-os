@@ -39,6 +39,7 @@ import { getField, usersAvecResponsable } from './draftCore'
 import { sectionDuChamp } from './missingFields'
 import { jumpToField } from './jumpToField'
 import fieldLabels, { LIBELLES_SECTIONS } from './fieldLabels'
+import { devisIntent } from './devisTabLogique'
 import IdentityRail from './IdentityRail'
 import SectionsPane from './SectionsPane'
 import ContextRail from './ContextRail'
@@ -284,6 +285,14 @@ export default function LeadWorkspace({
   // quand le commercial en a tapé une. Vit à côté du mode (et non DANS lui)
   // pour que `devisPanel` reste la chaîne que tout le reste compare.
   const [devisKwc, setDevisKwc] = useState(null)
+  // D-ACAL-154 — la taille visée TAPÉE dans l'onglet Devis (seul endroit qui la
+  // modifie : DevisTab) est portée ici pour que les TROIS entrées « Devis
+  // automatique » (bouton de l'onglet, rail, palette) la lisent. Rattachée à un
+  // lead : valeur d'un autre lead = vide (jamais de fuite d'une fiche à l'autre).
+  const [kwcSaisie, setKwcSaisie] = useState({ leadId: null, valeur: '' })
+  const kwcCible = kwcSaisie.leadId === leadId ? kwcSaisie.valeur : ''
+  const onKwcCibleChange = useCallback(
+    (valeur) => setKwcSaisie({ leadId, valeur }), [leadId])
   // ALEA55 — format du PDF demandé sur la carte d'un devis EXISTANT ('onepage' |
   // null = premium) : un format, jamais un second devis.
   const [panelPdf, setPanelPdf] = useState(null)
@@ -467,7 +476,11 @@ export default function LeadWorkspace({
       // s'ouvre désormais APRÈS le flush de la fiche (leaveGuard, comme
       // « toiture-3d »).
       case 'open-devis': {
-        const intent = (payload && typeof payload === 'object') ? payload : { mode: payload }
+        // D-ACAL-154 — un mode nu (rail, palette) reprend la taille tapée, par le
+        // MÊME analyseur que le bouton de l'onglet (devisIntent) ; un objet vient
+        // déjà de l'onglet, avec sa cible.
+        const brut = (payload && typeof payload === 'object') ? payload : devisIntent(payload, kwcCible)
+        const intent = (brut && typeof brut === 'object') ? brut : { mode: brut }
         return leaveGuard(() => {
           setDevisKwc(intent.targetKwc || null)
           setDevisPanel(intent.mode || 'auto')
@@ -541,7 +554,7 @@ export default function LeadWorkspace({
       case 'close': return leaveGuard(onClose)
       default: return undefined
     }
-  }, [doArchive, leaveGuard, draft, onClose, setField, leadId,
+  }, [doArchive, leaveGuard, draft, onClose, setField, leadId, kwcCible,
     changeStageConfirme, ouvrirConceptionToiture, demanderSaisie])
 
   // ── File de rafale (◀▶ + J/K), gardée par leaveGuard (draft flushé) ───────
@@ -938,6 +951,8 @@ export default function LeadWorkspace({
                 // réducteur — le repli local de ContextRail devient inactif et
                 // le miroir sessionStorage anti-perte couvre aussi la note.
                 dispatch={draft.dispatch}
+                kwcCible={kwcCible}
+                onKwcCibleChange={onKwcCibleChange}
               />
             )}
           </div>
@@ -955,6 +970,8 @@ export default function LeadWorkspace({
               refreshHistorique={refreshHistorique}
               onAction={onAction}
               dispatch={draft.dispatch}
+              kwcCible={kwcCible}
+              onKwcCibleChange={onKwcCibleChange}
             />
           </SheetContent>
         </Sheet>

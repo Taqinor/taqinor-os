@@ -10,6 +10,7 @@ import { PARAM_ONGLET, ongletParCle } from '../atelier/onglets'
 import { PARAM_CHAMP } from '../atelier/ouvrirChamp'
 import PretAEnvoyer from '../commun/PretAEnvoyer'
 import AffectationChaines, { BarreRaccordement } from '../plan/AffectationChaines'
+import CarteBatterie from './CarteBatterie'
 import ConfigurationsOnduleur from './ConfigurationsOnduleur'
 import DevisRetenu from './DevisRetenu'
 import { refusParChamp } from './entreeElectrique'
@@ -281,6 +282,7 @@ export default function EtapeElectrique(props) {
         surRegler={reglerIci} />
       <CarteOnduleur id={id} entree={entree} configs={configs} resultat={resultat} lectureSeule={lectureSeule}
         onApplique={relire} />
+      <CarteBatterie id={id} entree={entree} lectureSeule={lectureSeule} onApplique={relire} />
       <section className="cel-schema" data-testid="cal-elec-schema-voir">
         <span className="cel-schema-picto" aria-hidden="true">
           <svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" strokeWidth="1.8"

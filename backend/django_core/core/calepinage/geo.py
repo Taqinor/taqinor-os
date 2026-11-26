@@ -26,6 +26,7 @@ __all__ = [
     'projeteur_local', 'deprojeteur_local', 'anneau_local',
     'aire_anneau_m2', 'aire_contour_m2',
     'boussole_vers_aspect', 'aspect_vers_boussole',
+    'pente_effective_du_pan',
 ]
 
 #: Demi-grand axe WGS84, utilisé comme rayon de SPHÈRE (convention partagée).
@@ -156,3 +157,27 @@ def aspect_vers_boussole(aspect):
     if valeur is None:
         return None
     return (valeur + 180.0) % 360.0
+
+
+def pente_effective_du_pan(zone):
+    """D-ACAL-149 — LA pente d'un pan du document : 0 sur un toit plat.
+
+    Sur un pan ``roofType: flat``, ``pitchDeg`` n'est PAS une pente : c'est la
+    valeur mémorisée du curseur (22 par défaut) ; l'inclinaison des tables vit
+    dans ``geometry.tiltDeg``. Ailleurs, ``pitchDeg`` lu fini (``None`` si
+    absent ou illisible, jamais un booléen). Écrite ici, une fois, pour que
+    ``apps.calepinage`` (``services/valeurs.pente_du_pan``) et ``apps.ventes``
+    la lisent sans s'importer l'une l'autre.
+    """
+    if not isinstance(zone, dict):
+        return None
+    if zone.get('roofType') == 'flat':
+        return 0.0
+    valeur = zone.get('pitchDeg')
+    if valeur is None or isinstance(valeur, bool):
+        return None
+    try:
+        nombre = float(valeur)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return nombre if math.isfinite(nombre) else None

@@ -606,7 +606,7 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     rendreEtape()
     const ecran = screen.getByTestId('cal-etape-electrique-ecran')
     // Le nom désigné et la ligne SERVIE de la configuration retenue (6 kW, 2 entrées) + panneaux du chaînage servi.
-    await waitFor(() => expect(screen.getByTestId('cal-elec-onduleur')).toHaveTextContent('Onduleur réseau 10 kW (exemple)'))
+    await waitFor(() => expect(screen.getByTestId('cal-elec-onduleur')).toHaveTextContent('Onduleur hybride 10 kW (exemple)'))
     await waitFor(() => expect(screen.getByTestId('cal-elec-onduleur')).toHaveTextContent('6 kW · 2 entrées · proposé pour 12 panneaux'))
     // N = configurations servies autres que la retenue (2 dans l'échantillon).
     expect(screen.getByRole('button', { name: 'Comparer avec 2 autres onduleurs' })).toBeTruthy()
@@ -1049,6 +1049,121 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     fireEvent.click(within(carte).getByRole('button', { name: 'Raccorder automatiquement' }))
     await waitFor(() => expect(screen.getByTestId('cal234-legende')).toHaveTextContent('Chaîne 3'))
     expect(screen.getByTestId('cal234-legende')).not.toHaveTextContent('Chaîne 1')
+  })
+
+  describe('D-ACAL-157 — désigner une batterie (sélecteur à côté de celui de l’onduleur)', () => {
+    beforeEach(() => { calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} }) })
+    const entreeAvec = ({ hybride, batterie = null }) => {
+      const e = entree()
+      e.materiel.onduleur.hybride = hybride
+      e.entree.batterie = batterie
+      return e
+    }
+
+    it('onduleur réseau, aucune batterie désignée : aucun sélecteur de batterie', async () => {
+      servirEtape({ e: entreeAvec({ hybride: false }) })
+      rendreEtape()
+      await screen.findByTestId('cal-elec-onduleur')
+      expect(screen.queryByTestId('cal-elec-batterie')).toBeNull()
+      expect(screen.queryByTestId('cal-elec-batterie-inapplicable')).toBeNull()
+    })
+
+    it('onduleur hybride : sélecteur « Aucune » par défaut, candidats sans prix ; le choix envoie l’objet batterie COMPLET', async () => {
+      servirEtape({ e: entreeAvec({ hybride: true, batterie: { packs: 2, strategie: 'autoconsommation' } }) })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      const choix = within(carte).getByRole('combobox')
+      expect(choix).toHaveValue('')
+      expect(within(carte).getByRole('option', { name: 'Aucune' })).toBeTruthy()
+      expect(carte.textContent).not.toMatch(/MAD|DH|prix/i)
+      const lectures = calepinageApi.calepinages.entreeElectrique.mock.calls.length
+      fireEvent.change(choix, { target: { value: '905' } })
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique).toHaveBeenCalledWith(
+        7, { batterie: { packs: 2, strategie: 'autoconsommation', produit: 905 } }))
+      await waitFor(() => expect(calepinageApi.calepinages.entreeElectrique.mock.calls.length).toBeGreaterThan(lectures))
+    })
+
+    it('un refus du serveur (onduleur non hybride) est dit tel quel sous le sélecteur', async () => {
+      servirEtape({ e: entreeAvec({ hybride: true }) })
+      calepinageApi.calepinages.enregistrerEntreeElectrique.mockRejectedValueOnce({
+        response: { data: { 'batterie.produit': 'L’onduleur désigné n’est pas un onduleur hybride.' } } })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      fireEvent.change(within(carte).getByRole('combobox'), { target: { value: '905' } })
+      expect(await within(carte).findByRole('alert')).toHaveTextContent('n’est pas un onduleur hybride')
+    })
+
+    it('batterie désignée puis onduleur devenu non hybride : l’écran le dit, propose de la retirer, ne l’efface pas', async () => {
+      servirEtape({ e: entreeAvec({ hybride: false, batterie: { produit: 905, packs: 3 } }) })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie-inapplicable')
+      expect(carte).toHaveTextContent('la batterie « Batterie 5,1 kWh (exemple) » ne s’applique plus')
+      expect(calepinageApi.calepinages.enregistrerEntreeElectrique).not.toHaveBeenCalled()
+      fireEvent.click(within(carte).getByRole('button', { name: 'Retirer la batterie' }))
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique)
+        .toHaveBeenCalledWith(7, { batterie: null }))  // plus rien d'autre de saisi : retour à « jamais désignée »
+    })
+
+    it('retirer une batterie dont la déclaration porte d’autres saisies garde ces saisies, sans produit ni packs', async () => {
+      servirEtape({ e: entreeAvec({ hybride: true, batterie: { produit: 905, packs: 2, strategie: 'autoconsommation' } }) })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      fireEvent.change(within(carte).getByRole('combobox'), { target: { value: '' } })
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique)
+        .toHaveBeenCalledWith(7, { batterie: { strategie: 'autoconsommation', produit: null } }))
+    })
+
+    it('première désignation : `packs` part explicitement (1) pour que stocké, écran et dessin comptent pareil', async () => {
+      servirEtape({ e: entreeAvec({ hybride: true }) })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      fireEvent.change(within(carte).getByRole('combobox'), { target: { value: '905' } })
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique)
+        .toHaveBeenCalledWith(7, { batterie: { produit: 905, packs: 1 } }))
+    })
+
+    it('sans batterie désignée mais avec une ligne batterie au devis : la carte le dit, jamais un « Aucune » muet', async () => {
+      const e = entreeAvec({ hybride: true })
+      e.candidats.batterie_du_devis = { produit_id: 905, designation: 'Batterie du devis', packs: 3 }
+      servirEtape({ e })
+      rendreEtape()
+      const note = await screen.findByTestId('cal-elec-batterie-du-devis')
+      expect(note).toHaveTextContent('le schéma montre la batterie du devis (« Batterie du devis », 3 unités)')
+    })
+
+    it('ancienne entrée sans packs : la carte affiche ce que le dessin compte (la quantité du devis), pas 1', async () => {
+      const e = entreeAvec({ hybride: true, batterie: { produit: 905 } })
+      e.candidats.batterie_du_devis = { produit_id: 905, designation: 'Batterie du devis', packs: 3 }
+      servirEtape({ e })
+      rendreEtape()
+      expect(await screen.findByTestId('cal-elec-batterie-packs')).toHaveTextContent('3 batteries')
+    })
+
+    it('une batterie que le juge dit incompatible est grisée avec SES raisons ; « inconnu » reste proposée', async () => {
+      const e = entreeAvec({ hybride: true })
+      e.candidats.batteries = [
+        { id: 905, libelle: 'Batterie 48 V', marque: 'M', favori: false, fiche_complete: true, champs_manquants: [],
+          compatibilite: { statut: 'incompatible', raisons: ['tension nominale 48 V hors de la plage 150-500 V'] } },
+        { id: 906, libelle: 'Batterie sans tension', marque: 'M', favori: false, fiche_complete: true, champs_manquants: [],
+          compatibilite: { statut: 'inconnu', raisons: ['tension nominale inconnue'] } },
+      ]
+      servirEtape({ e })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      const incompatible = within(carte).getByRole('option', { name: /Batterie 48 V — incompatible : tension nominale 48 V hors de la plage 150-500 V/ })
+      expect(incompatible).toBeDisabled()
+      expect(within(carte).getByRole('option', { name: 'Batterie sans tension (M)' })).not.toBeDisabled()
+    })
+
+    it('batterie désignée : le nombre de batteries se règle par pas, avec l’objet complet', async () => {
+      servirEtape({ e: entreeAvec({ hybride: true, batterie: { produit: 905, packs: 2, couplage: 'dc' } }) })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      expect(within(carte).getByTestId('cal-elec-batterie-packs')).toHaveTextContent('2 batteries')
+      fireEvent.click(within(carte).getByRole('button', { name: 'Une batterie de plus' }))
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique)
+        .toHaveBeenCalledWith(7, { batterie: { produit: 905, packs: 3, couplage: 'dc' } }))
+    })
   })
 
   describe('S3 — « Raccorder automatiquement » depuis l’éditeur : brouillon non enregistré', () => {
