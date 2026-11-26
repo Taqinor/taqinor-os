@@ -154,14 +154,16 @@ class ReglesCalculTests(SimpleTestCase):
     def test_t4_v2_010_protection_marche_a_sec_prouvee_par_la_fiche(self):
         # T4-V2-010 — le PDF n'imprime « protection marche à sec » sur la ligne
         # du variateur que si sa fiche la publie ; nouveaux rendus seulement.
-        from datetime import datetime, timezone
+        from datetime import datetime, timedelta, timezone
 
         from apps.ventes.domain.regles_calcul import (
             COUPURE_PROTECTION_FICHE, protection_fiche_ouverte)
         from apps.ventes.quote_engine.lignes_classement import _item_du_devis
+        # La garde : la date bouge avec le déploiement (le lendemain), et SEUL
+        # ce littéral bouge avec elle ; ``avant`` / ``apres`` en dérivent.
         self.assertEqual(COUPURE_PROTECTION_FICHE, (2026, 11, 27))
-        avant = datetime(2026, 11, 26, 9, 0, tzinfo=timezone.utc)
-        apres = datetime(2026, 11, 27, 8, 0, tzinfo=timezone.utc)
+        apres = datetime(*COUPURE_PROTECTION_FICHE, 8, 0, tzinfo=timezone.utc)
+        avant = apres - timedelta(days=1)
         desc = ('Variateur solaire dédié pompage : MPPT intégré, entrée PV directe\n'
                 'Pilotage automatique lever/coucher du soleil, protection marche à sec\n'
                 'Compatible pompes AC triphasées/monophasées standards')
