@@ -20,13 +20,14 @@ Run :
 import copy
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.export_csv import (
     LIBELLE_EMPREINTE_LAYOUT, LIBELLE_EMPREINTE_SIMULATION, NON_CALCULEE,
+    ExportImpossible, export_csv,
 )
 from apps.calepinage.services.provenance_document import (
     NON_PUBLIEE, lignes_de_provenance,
@@ -126,3 +127,13 @@ class ExportFraicheurTest(TestCase):
         # du document d'aujourd'hui.
         self.assertIn(LIBELLE_EMPREINTE_LAYOUT, lignes)
         self.assertIn(LIBELLE_EMPREINTE_SIMULATION, lignes)
+
+
+class ConsigneOmbrageParModuleTest(SimpleTestCase):
+    def test_ombrage_par_module_sans_acces_donne_la_consigne_reelle(self):
+        """ACAL1637 — le refus dit quoi faire dans l'atelier, plus « calculez l'ombrage » (bouton absent)."""
+        with self.assertRaises(ExportImpossible) as capture:
+            export_csv({'acces_modules': {}}, quoi='ombrage_modules')
+        self.assertIn("saisissez un obstacle avec sa hauteur dans l'atelier puis enregistrez",
+                      capture.exception.motif)
+        self.assertNotIn('calculez', capture.exception.motif)

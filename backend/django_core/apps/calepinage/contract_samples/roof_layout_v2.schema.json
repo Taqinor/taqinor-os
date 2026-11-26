@@ -2595,7 +2595,7 @@
       "additionalProperties": false,
       "required": ["code", "message", "mesures"],
       "properties": {
-        "code": {"type": "string", "enum": ["retrait_rive", "obstacles", "seuil_acces_solaire", "module_trop_grand", "inconnue"]},
+        "code": {"type": "string", "enum": ["retrait_rive", "obstacles", "seuil_acces_solaire", "module_trop_grand", "orientation_nord", "inconnue"], "description": "ACAL1969 — `orientation_nord` : toit en pente tourné au nord, aucun module posé ; mesures `azimutDeg` (0 = nord) et `penteDeg` du pan."},
         "message": {"type": "string", "minLength": 1, "maxLength": 200, "pattern": "\\S"},
         "mesures": {
           "type": "object",
@@ -2603,14 +2603,16 @@
           "properties": {
             "retraitM": {"type": "number"}, "largeurPanM": {"type": "number"}, "largeurUtileM": {"type": "number"},
             "surfacePosableM2": {"type": "number"}, "seuil": {"type": "number"}, "ecartes": {"type": "number"},
-            "coteModuleM": {"type": "number"}
+            "coteModuleM": {"type": "number"},
+            "azimutDeg": {"type": "number", "minimum": 0, "exclusiveMaximum": 360}, "penteDeg": {"type": "number", "minimum": 0, "maximum": 90}
           }
         }
       }
     }
   },
   "exemple_motifs_pans_vides": {
-    "pan-nord": {"code": "retrait_rive", "message": "Le retrait de rive (0,5 m de chaque côté) laisse 0,9 m utiles : moins qu'un module (1,13 m).", "mesures": {"retraitM": 0.5, "largeurPanM": 1.9, "largeurUtileM": 0.9, "coteModuleM": 1.134}}
+    "pan-nord": {"code": "retrait_rive", "message": "Le retrait de rive (0,5 m de chaque côté) laisse 0,9 m utiles : moins qu'un module (1,13 m).", "mesures": {"retraitM": 0.5, "largeurPanM": 1.9, "largeurUtileM": 0.9, "coteModuleM": 1.134}},
+    "pan-nord-pente": {"code": "orientation_nord", "message": "Aucun module : pan en pente (22°) orienté au nord (azimut 0°).", "mesures": {"azimutDeg": 0, "penteDeg": 22}}
   },
   "exemple_environnement_etendu": [
     {"id": "env-poteau", "kind": "poteau", "centerLng": -7.6201, "centerLat": 33.5001, "heightM": 9, "diameterM": 0.3},

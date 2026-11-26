@@ -396,6 +396,7 @@ _LIBELLES = (
     ("bande_ac", "Côté réseau · courant alternatif",
      "Grid side · alternating current", "جهة الشبكة · تيار متناوب"),
     ("chaine", "Chaîne", "String", "سلسلة"),
+    ("chaines", "chaînes", "strings", "سلاسل"),
     ("panneau", "panneau", "panel", "لوح"),
     ("panneaux", "panneaux", "panels", "ألواح"),
     ("entree", "entrée", "input", "مدخل"),
@@ -416,6 +417,7 @@ _LIBELLES = (
     ("reseau", "Réseau du distributeur", "Distribution grid", "شبكة الموزع"),
     ("a_calculer", "à calculer", "to be sized", "قيد الحساب"),
     ("a_confirmer", "à confirmer", "to be confirmed", "يجب التأكيد"),
+    ("etage_mt", "Étage moyenne tension", "Medium-voltage stage", "مرحلة الجهد المتوسط"),
     ("terre", "Liaison à la terre", "Earth connection", "الربط بالأرض"),
     ("terre_detail", "Terre : coffrets, onduleur et structure",
      "Earth: boxes, inverter and structure", "الأرضي: العلب والعاكس والهيكل"),
@@ -526,7 +528,16 @@ def _rangees(doc, langue):
         morceaux.append(_t(26.0, 100.0, _libelle("non_reparti", langue), 9.0,
                            couleur=_SECONDAIRE))
         return "".join(morceaux), [(None, 79.0)], 124.0
-    pas = 92.0 if len(chaines) <= 2 else (60.0 if len(chaines) <= 6 else 44.0)
+    chaines, reste = _chaines_visibles(doc)
+    lignes = len(chaines) + (1 if reste else 0)
+    pas = 92.0 if lignes <= 2 else 60.0
+    if reste:
+        y = 44.0 + len(chaines) * pas
+        morceaux.append(_t(16.0, y + 11.0, _texte_reste(reste, langue), 10.5, "700"))
+        for k, couleur in enumerate(reste["couleurs"]):
+            morceaux.append('<rect x="%.1f" y="%.1f" width="18" height="12" fill="%s"/>'
+                            % (16.0 + k * 22.0, y + 16.0, couleur))
+        fils.append(({"couleur": _TRAIT, "entree": None}, y + 22.0))
     for rang, chaine in enumerate(chaines):
         y = 44.0 + rang * pas
         nombre = chaine["nb_panneaux"]
@@ -543,12 +554,37 @@ def _rangees(doc, langue):
         if wc and pas > 50:
             morceaux.append(_t(16.0, y + h + 30.0, "%d × %s Wc" % (
                 nombre, _nombre_txt(wc, langue)), 9.0, couleur=_SECONDAIRE))
-        fils.append((chaine, y + 16.0 + h / 2.0))
-    return "".join(morceaux), fils, 44.0 + len(chaines) * pas
+        fils.insert(rang, (chaine, y + 16.0 + h / 2.0))
+    return "".join(morceaux), fils, 44.0 + lignes * pas
 
 
-def _carte_coffret(x, y, h, titre, organes, langue, creux=False):
-    morceaux = [_boite(x, y, _L_COFFRET, h, creux=creux)]
+#: SCHEL-B4 — rangées de chaînes DESSINÉES au plus : au-delà, les premières
+#: chaînes puis UNE ligne de suite qui porte les vrais totaux des autres — la
+#: planche reste bornée sur sa page d'annexe, aucune chaîne n'est perdue
+#: (le document, lui, les porte toutes). Convention de mise en page.
+_RANGEES_MAX = 4
+
+
+def _chaines_visibles(doc):
+    """``(chaînes dessinées, reste)`` — ``reste`` ``{nombre, nb_panneaux,
+    couleurs}`` des chaînes résumées sur la ligne de suite, ou ``None``."""
+    chaines = list(doc.get("chaines") or [])
+    if len(chaines) <= _RANGEES_MAX:
+        return chaines, None
+    visibles, autres = chaines[:_RANGEES_MAX - 1], chaines[_RANGEES_MAX - 1:]
+    return visibles, {"nombre": len(autres),
+                      "nb_panneaux": sum(c["nb_panneaux"] for c in autres),
+                      "couleurs": [c["couleur"] for c in autres][:len(PALETTE_CHAINES)]}
+
+
+def _texte_reste(reste, langue):
+    """« + 27 chaînes · 324 panneaux » — les vrais totaux des chaînes résumées."""
+    return "+ %d %s · %d %s" % (reste["nombre"], _libelle("chaines", langue),
+                                reste["nb_panneaux"], _libelle("panneaux", langue))
+
+
+def _carte_coffret(x, y, h, titre, organes, langue, creux=False, largeur=_L_COFFRET):
+    morceaux = [_boite(x, y, largeur, h, creux=creux)]
     morceaux.append(_t(x + 10.0, y + 18.0, titre, 10.5, "700",
                        _CREUX if creux else _TRAIT))
     if creux:
@@ -679,13 +715,43 @@ def _blocs_ac(doc, langue):
     if doc.get("tgbt"):
         blocs.append(("tgbt", _libelle("tgbt", langue),
                       doc["tgbt"].get("detail") or "", (), False))
-    for bloc in doc.get("etage_mt") or ():
-        blocs.append((bloc.get("clef"), bloc.get("titre") or "",
-                      _libelle("a_confirmer", langue), (), False))
+    etage = [b.get("titre") or "" for b in doc.get("etage_mt") or ()]
+    if etage:
+        # UN bloc pour tout l'étage MT : ses organes nommés, chacun « à confirmer »
+        # (cinq blocs étroits ne tiendraient pas entre la marge et l'onduleur).
+        blocs.append(("etage_mt", _libelle("etage_mt", langue),
+                      "%s : %s" % (_libelle("a_confirmer", langue), ", ".join(etage)),
+                      (), False))
     if doc.get("reseau"):
         blocs.append(("reseau", _libelle("reseau", langue),
                       doc["reseau"].get("titre") or "", (), False))
     return blocs
+
+
+def _couper(texte, largeur, lignes):
+    """Mots entiers sur ``lignes`` lignes d'au plus ``largeur`` signes (… au
+    bout, comme ``couperTexte`` de l'écran) — un texte, jamais un chiffre."""
+    sortie = []
+    for mot in str(texte or "").split():
+        if sortie and len(sortie[-1]) + 1 + len(mot) <= largeur:
+            sortie[-1] += " " + mot
+        else:
+            sortie.append(mot)
+    if len(sortie) > lignes:
+        sortie = sortie[:lignes]
+        sortie[-1] = sortie[-1][:max(1, largeur - 1)] + "…"
+    return sortie
+
+
+def _largeurs_ac(blocs):
+    """La largeur de chaque bloc AC : tous tiennent entre la marge et
+    l'onduleur, le coffret (qui liste ses organes) au plus large."""
+    disponible = _X_ONDULEUR - 16.0 - _ECART_AC * len(blocs)
+    if blocs[0][3] and len(blocs) > 1:
+        premier = min(_L_COFFRET, disponible * 0.4)
+        autres = min(_L_COFFRET, (disponible - premier) / (len(blocs) - 1))
+        return [premier] + [autres] * (len(blocs) - 1)
+    return [min(_L_COFFRET, disponible / len(blocs))] * len(blocs)
 
 
 def _cote_ac_svg(doc, y_ac, langue):
@@ -693,13 +759,12 @@ def _cote_ac_svg(doc, y_ac, langue):
     blocs = _blocs_ac(doc, langue)
     if not blocs:
         return ""
-    disponible = _X_ONDULEUR - 16.0 - _ECART_AC * len(blocs)
-    largeur = max(70.0, min(_L_COFFRET, disponible / len(blocs)))
     y = y_ac + 44.0
     lien = y + _H_BLOC_AC / 2.0
     morceaux, curseur = [], _X_ONDULEUR
     section = _section_txt((doc.get("liaisons") or {}).get("ac"), langue)
-    for rang, (_clef, titre, detail, organes, creux) in enumerate(blocs):
+    for rang, (largeur, (_clef, titre, detail, organes, creux)) in enumerate(
+            zip(_largeurs_ac(blocs), blocs)):
         x = curseur - _ECART_AC - largeur
         trait = "4 3" if creux else ""
         morceaux.append(_ligne(x + largeur + 7.0, lien, curseur, lien,
@@ -710,18 +775,20 @@ def _cote_ac_svg(doc, y_ac, langue):
             morceaux.append(_t(x + largeur + 4.0, lien - 6.0, section, 8.0,
                                couleur=_SECONDAIRE))
         if organes:
-            morceaux.append(_carte_coffret(x, y, _H_BLOC_AC, titre, organes, langue))
+            morceaux.append(_carte_coffret(x, y, _H_BLOC_AC, titre, organes, langue,
+                                           largeur=largeur))
         else:
+            caracteres = max(6, int((largeur - 12.0) / 5.6))
             morceaux.append(_boite(x, y, largeur, _H_BLOC_AC, creux=creux))
-            morceaux.append(_t(x + 8.0, y + 20.0, titre[:24], 9.5, "700",
-                               _CREUX if creux else _TRAIT))
-            if detail:
-                morceaux.append(_t(x + 8.0, y + 38.0, detail[:28], 8.5,
-                                   couleur=_SECONDAIRE))
-            if creux:
-                morceaux.append(_t(x + 8.0, y + 38.0,
-                                   _libelle("a_calculer", langue), 8.5,
-                                   couleur=_CREUX))
+            texte = _couper(titre, caracteres, 2)
+            for k, ligne in enumerate(texte):
+                morceaux.append(_t(x + 6.0, y + 18.0 + k * 12.0, ligne, 9.5, "700",
+                                   _CREUX if creux else _TRAIT))
+            dessous = _couper(_libelle("a_calculer", langue) if creux else detail,
+                              caracteres + 2, 3)
+            for k, ligne in enumerate(dessous):
+                morceaux.append(_t(x + 6.0, y + 22.0 + len(texte) * 12.0 + k * 11.0,
+                                   ligne, 8.5, couleur=_CREUX if creux else _SECONDAIRE))
         curseur = x
     return "".join(morceaux)
 
@@ -729,10 +796,13 @@ def _cote_ac_svg(doc, y_ac, langue):
 def _legende(doc, y, langue):
     """Une ligne par chaîne, puis le côté réseau, la batterie, la terre et la
     section — chacune SEULEMENT quand le dessin la porte."""
+    visibles, reste = _chaines_visibles(doc)
     items = [("chaine", c["couleur"], "%s %d%s" % (
         _libelle("chaine", langue), c["numero"],
         (" · %s %d" % (_libelle("entree", langue), c["entree"]))
-        if c.get("entree") else "")) for c in doc.get("chaines") or ()]
+        if c.get("entree") else "")) for c in visibles]
+    if reste:
+        items.append(("chaine", _TRAIT, _texte_reste(reste, langue)))
     if doc.get("coffret_ac"):
         items.append(("plein", _TRAIT, _libelle("legende_ac", langue)))
     if doc.get("batterie"):

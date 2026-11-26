@@ -60,3 +60,83 @@ class FicheDegradationGarantieTests(TestCase):
         for key in ('degradation_annuelle_pct', 'degradation_annee1_pct',
                     'garantie_pct_a_10_ans', 'garantie_pct_a_25_ans'):
             self.assertNotIn(key, specs)
+
+
+class FicheDegradationServieParApiTests(TestCase):
+    """ACAL1600 — les champs que la simulation lit (dégradation, garanties,
+    entrées et rendement de l'optimiseur) se relisent après un PATCH ; ROUGE
+    avant : absents de ``FicheTechniqueSerializer.Meta.fields``, le PATCH
+    rendait 200 puis les ignorait en silence."""
+
+    URL = '/api/django/stock/fiches-techniques/'
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        self.co = Company.objects.get_or_create(
+            slug='acal1600-co', defaults={'nom': 'ACAL1600'})[0]
+        user = get_user_model().objects.create_user(
+            username='acal1600', password='x', company=self.co,
+            is_staff=True, is_superuser=True)
+        self.client = APIClient()
+        self.client.force_authenticate(user)
+
+        def fiche(sku, type_fiche):
+            produit = Produit.objects.create(
+                company=self.co, nom=sku, sku=sku, prix_achat=Decimal('1'),
+                prix_vente=Decimal('2'), quantite_stock=1)
+            return FicheTechnique.objects.create(
+                company=self.co, produit=produit, type_fiche=type_fiche)
+        self.module = fiche('ACAL1600-MOD', 'module')
+        self.optimiseur = fiche('ACAL1600-OPT', 'optimiseur')
+
+    def _url(self, fiche):
+        return f'{self.URL}{fiche.pk}/'
+
+    def _patch_puis_get(self, fiche, corps):
+        resp = self.client.patch(self._url(fiche), corps, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        return self.client.get(self._url(fiche)).data
+
+    def test_patch_puis_get_relit_la_degradation(self):
+        avant = self.client.get(self._url(self.module)).data
+        data = self._patch_puis_get(self.module, {
+            'degradation_annuelle_pct': 0.45, 'degradation_annee1_pct': 1.0,
+            'garantie_pct_a_10_ans': 92, 'garantie_pct_a_25_ans': 84.8})
+        self.assertEqual(Decimal(data['degradation_annuelle_pct']), Decimal('0.45'))
+        self.assertEqual(Decimal(data['degradation_annee1_pct']), Decimal('1.00'))
+        self.assertEqual(Decimal(data['garantie_pct_a_10_ans']), Decimal('92.0'))
+        self.assertEqual(Decimal(data['garantie_pct_a_25_ans']), Decimal('84.8'))
+        # Rien d'autre ne change dans la réponse.
+        modifies = {'degradation_annuelle_pct', 'degradation_annee1_pct',
+                    'garantie_pct_a_10_ans', 'garantie_pct_a_25_ans',
+                    'date_mise_a_jour'}
+        self.assertEqual({k: v for k, v in data.items() if k not in modifies},
+                         {k: v for k, v in avant.items() if k not in modifies})
+
+    def test_patch_puis_get_relit_l_optimiseur(self):
+        data = self._patch_puis_get(self.optimiseur, {
+            'opt_rendement_pct': 99, 'opt_modules_par_optimiseur': 2,
+            'opt_pmax_in_w': 600, 'opt_v_in_min': 8, 'opt_v_in_max': 80,
+            'opt_i_in_max_a': 15})
+        self.assertEqual(Decimal(data['opt_rendement_pct']), Decimal('99.0'))
+        self.assertEqual(data['opt_modules_par_optimiseur'], 2)
+        self.assertEqual(Decimal(data['opt_pmax_in_w']), Decimal('600'))
+        self.assertEqual(Decimal(data['opt_v_in_min']), Decimal('8'))
+        self.assertEqual(Decimal(data['opt_v_in_max']), Decimal('80'))
+        self.assertEqual(Decimal(data['opt_i_in_max_a']), Decimal('15'))
+
+    def test_valeur_hors_bornes_du_modele_refusee_en_400_nommee(self):
+        """Bornes = celles du modèle (``max_digits``, entier positif) : aucune
+        seconde validation ; le refus nomme le champ et rien n'est écrit."""
+        for champ, valeur in (('degradation_annuelle_pct', 150),
+                              ('opt_rendement_pct', 1000),
+                              ('opt_modules_par_optimiseur', -1)):
+            fiche = (self.optimiseur if champ.startswith('opt_')
+                     else self.module)
+            resp = self.client.patch(self._url(fiche), {champ: valeur},
+                                     format='json')
+            self.assertEqual(resp.status_code, 400, (champ, resp.content))
+            self.assertIn(champ, resp.data, resp.data)
+            fiche.refresh_from_db()
+            self.assertIsNone(getattr(fiche, champ))

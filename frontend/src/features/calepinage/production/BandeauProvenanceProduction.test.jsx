@@ -386,8 +386,9 @@ describe('Suppose — « Ce qui est supposé » (ACAL980)', () => {
     render(<Suppose suppose={contrat} />)
     const bloc = screen.getByTestId('acal980-suppose')
     expect(bloc).toHaveTextContent('Ce qui est supposé')
+    // ACAL1648 — la phrase que le serveur sert (`services/suppositions.py::_libelle_longueur`, onduleur à choisir).
     expect(within(bloc).getByTestId('acal980-longueur_chaine_dossier')).toHaveTextContent(
-      "16 modules par chaîne (longueur retenue au dossier : fiche du module ou de l'onduleur incomplète)",
+      "Choisissez l'onduleur pour vérifier la longueur des chaînes (16 modules par défaut, à confirmer)",
     )
     expect(within(bloc).getByTestId('acal980-allee_par_defaut')).toHaveTextContent(
       "À renseigner : panneau Allées de l'atelier (largeur de l'allée technique)",

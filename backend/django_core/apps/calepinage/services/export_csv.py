@@ -420,8 +420,9 @@ def _export_ombrage_modules(document):
     acces = (document or {}).get('acces_modules')
     if not isinstance(acces, dict) or not acces:
         raise ExportImpossible(
-            "Aucun accès solaire par module n'est enregistré : calculez "
-            "l'ombrage dans l'atelier.", champ='acces_modules')
+            "Aucun accès solaire par module n'est enregistré : saisissez "
+            "un obstacle avec sa hauteur dans l'atelier puis enregistrez.",
+            champ='acces_modules')  # ACAL1637 — la consigne réelle (celle de Documents)
     lignes = _lignes_de_provenance(document)
     lignes.insert(len(lignes) - 1, [
         'Résolution', 'accès solaire annuel, une valeur par module — le '

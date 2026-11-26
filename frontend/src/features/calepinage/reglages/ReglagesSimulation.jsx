@@ -65,6 +65,20 @@ const TITRES = { simulation: 'Simulation', electrique_societe: 'Électrique — 
 
 const LIGNE_VIDE = { valeurTexte: '', source: '', reference: '' }
 
+/** ACAL1736 — une valeur tapée sur une ligne SANS source la préremplit « Saisie » (modifiable : choisir une source la
+ *  garde) ; vider la valeur retire cette source préremplie, jamais une source choisie. Une ligne jamais entamée reste
+ *  vide et omise de l'envoi. */
+function avecSourceParDefaut(ligne, champ, valeur) {
+  // `sourceAuto` n'existe que le temps d'une source préremplie : une ligne revenue à l'état servi est IDENTIQUE à
+  // celle d'origine (le garde « saisie non enregistrée » compare les lignes).
+  const { sourceAuto, ...suivante } = { ...ligne, [champ]: valeur }
+  if (champ !== 'valeurTexte') return champ === 'source' || !sourceAuto ? suivante : { ...suivante, sourceAuto }
+  const tapee = String(valeur ?? '').trim() !== ''
+  if (tapee && !ligne.source) return { ...suivante, source: 'saisie', sourceAuto: true }
+  if (!tapee && sourceAuto) return { ...suivante, source: '' }
+  return sourceAuto ? { ...suivante, sourceAuto } : suivante
+}
+
 /** Le libellé français d'une clé, cherché dans le registre SERVI. */
 function libelleDe(cle, registres) {
   for (const registre of Object.values(registres)) {
@@ -582,7 +596,7 @@ export default function ReglagesSimulation() {
     ...courant,
     [section]: {
       ...courant[section],
-      [cle]: { ...(courant[section][cle] || LIGNE_VIDE), [champ]: valeur },
+      [cle]: avecSourceParDefaut(courant[section][cle] || LIGNE_VIDE, champ, valeur),
     },
   }))
 

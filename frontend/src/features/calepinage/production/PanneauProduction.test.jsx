@@ -372,8 +372,30 @@ describe('PanneauProduction — bouton de calcul (CALX48, ACAL125)', () => {
     ])
   })
 
-  it('ACAL774 — « aucun module » ouvre l’onglet Matériel électrique ; l’épingle ouvre l’atelier', async () => {
+  // ACAL1639 — le serveur nomme l'étape où agir (`cible.etape`, contrat `exemple_refus_sans_pan_equipe`) : le refus y
+  // mène (« Tracer le toit » / « Poser les panneaux ») ; cible nulle (modules posés) : l'onglet Matériel, comme avant.
+  it.each([
+    ['toit', 'Tracer le toit', '/calepinage/1?onglet=pente'],
+    ['panneaux', 'Poser les panneaux', '/calepinage/1?onglet=fiches'],
+    [null, 'Ouvrir le matériel électrique', '/calepinage/1?onglet=materiel-electrique'],
+  ])('ACAL1639 — refus « sans module », cible servie %s : le lien suit la cible servie', async (etape, libelle, href) => {
     const sansPan = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_refus_sans_pan_equipe')
+    const servi = etape === 'toit' ? sansPan : { ...sansPan, manquants: sansPan.manquants.map((m) => ({
+      ...m, cible: etape ? { ...m.cible, etape } : null })) }
+    calepinageApi.calepinages.resultat.mockResolvedValue(vide())
+    calepinageApi.calepinages.simuler.mockRejectedValue({ response: { data: servi } })
+    rendre()
+    await screen.findByTestId('cal236-panneau')
+    fireEvent.click(screen.getByTestId('calx48-lancer-bouton'))
+    const lien = within(await screen.findByTestId('calx48-refus')).getByTestId('acal774-lien')
+    expect(lien).toHaveTextContent(libelle)
+    expect(lien).toHaveAttribute('href', href)
+  })
+
+  it('ACAL774 — sans cible servie, « aucun module » ouvre l’onglet Matériel électrique ; l’épingle ouvre l’atelier', async () => {
+    const contrat = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_refus_sans_pan_equipe')
+    // Serveur d'avant ACAL1639 (aucune `cible` sur la ligne) : la table par champ fait foi.
+    const sansPan = { ...contrat, manquants: contrat.manquants.map((m) => ({ champ: m.champ, motif: m.motif })) }
     calepinageApi.calepinages.resultat.mockResolvedValue(vide())
     calepinageApi.calepinages.simuler.mockRejectedValue({ response: { data: sansPan } })
     rendre()

@@ -1022,6 +1022,16 @@ def schema_electrique_du_calepinage(calepinage):
         return None
 
 
+def acces_solaire_par_module(layout):
+    """D-ACAL-132 (lot 6) — ``{repère du pan: [accès solaire | None, …]}`` LU
+    dans le document (``zones[].geometry.solarAccess.values``, CAL248) pour la
+    visionneuse au soleil de la page client (``apps.ventes``). Le lecteur
+    unique ``services.ombrage_chaines.acces_par_module`` : jamais un calcul
+    d'ombrage. Lecture pure, sans base."""
+    from .services.ombrage_chaines import acces_par_module
+    return acces_par_module(layout)
+
+
 def entree_electrique_du_devis(devis_id, company):
     """ACAL165 (C-ACAL-061) — les grandeurs de SITE du calepinage lié à ce
     devis, telles que l'onglet Verdict du calepinage les emploie, pour l'étude

@@ -48,6 +48,14 @@ export function dateDuJourDeScene(jour, annee = new Date().getFullYear()) {
   return `${annee}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
 }
 
+/** T5 (suite d'ACAL1640) — l'année du champ date de la barre du soleil (`#rp9-sun-date`, écrit par le script avec son
+    année de dessin), sinon l'année en cours : LA seule année que disent la phrase d'heure légale et la course du soleil. */
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé, testé directement (D-ENF22)
+export function anneeDuChampSoleil() {
+  const m = /^(\d{4})-\d{2}-\d{2}$/.exec(document.getElementById('rp9-sun-date')?.value ?? '')
+  return m ? Number(m[1]) : new Date().getFullYear()
+}
+
 // eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé, testé directement (D-ENF22)
 export function useHeureLegale(calepinageId, date) {
   const [lu, setLu] = useState({ cle: '', etat: 'chargement', ecart: null })

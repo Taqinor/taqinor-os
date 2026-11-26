@@ -6,7 +6,7 @@ import { LegendeCourbes } from './LegendeCourbes'
 import { sunDirection as sunPosition, WINTER_SOLSTICE_DAY as JOUR_SOLSTICE_HIVER } from '@rooflib/roofPro2'
 import { HAUTEUR_TOIT_HYPOTHESE_M, centroideDuContour, obstructionsDuPan } from './obstructionMath'
 import RetourAtelier from './atelier/RetourAtelier'
-import { PhraseHeureIndisponible, dateDuJourDeScene, formaterHeureLegale, useHeureLegale } from './HeureLegale'
+import { PhraseHeureIndisponible, anneeDuChampSoleil, dateDuJourDeScene, formaterHeureLegale, useHeureLegale } from './HeureLegale'
 
 /* ============================================================================
    CAL96 — LA COURSE DU SOLEIL, PAR PAN.
@@ -110,8 +110,11 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
     && typeof layout?.scene?.sunHour === 'number' && Number.isFinite(layout.scene.sunHour)
   const sceneSunDay = sceneEnregistree ? layout.scene.sunDay : JOUR_SOLSTICE_HIVER
   const sceneSunHour = sceneEnregistree ? layout.scene.sunHour : SCENE_SUN_HOUR_DEFAUT
-  // ACAL719 — l'heure légale du repère (écart servi par le serveur, jour → date de l'année en cours) ; absente ⇒ la phrase dit pourquoi.
-  const dateScene = dateDuJourDeScene(sceneSunDay)
+  // ACAL719 — l'heure légale du repère (écart servi par le serveur) ; absente ⇒ la phrase dit pourquoi.
+  // T5 (suite d'ACAL1640) — l'année est CELLE de la barre du soleil, comme la phrase d'heure légale de la barre
+  // (`anneeDuChampSoleil`) : jamais deux années (ni deux jours, l'année de dessin étant bissextile) pour un même soleil.
+  const anneeScene = anneeDuChampSoleil()
+  const dateScene = dateDuJourDeScene(sceneSunDay, anneeScene)
   const legale = useHeureLegale(calepinageId, dateScene)
   const legaleScene = legale.etat === 'ok' && legale.ecart != null ? formaterHeureLegale(sceneSunHour, legale.ecart) : null
   const soleilCourant = latitudeDeg === null ? null : sunPosition(latitudeDeg, sceneSunDay, sceneSunHour)
@@ -212,7 +215,7 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
               document n'en porte aucun (jamais un 21 juin supposé silencieusement). */}
           <p className="mt-1 text-xs text-muted-foreground" data-testid="cal-course-soleil-scene">
             {sceneEnregistree
-              ? `Soleil affiché : jour ${sceneSunDay} de l’année (${dateScene}, année en cours), ${sceneSunHour} h solaire — instant enregistré dans l’atelier 3D.`
+              ? `Soleil affiché : jour ${sceneSunDay} de l’année (${dateScene}${anneeScene === new Date().getFullYear() ? ', année en cours' : ''}), ${sceneSunHour} h solaire — instant enregistré dans l’atelier 3D.`
               : `Soleil affiché : solstice d’hiver, midi (jour ${JOUR_SOLSTICE_HIVER}, ${SCENE_SUN_HOUR_DEFAUT} h) — aucun instant enregistré, comportement d’aujourd’hui.`}
             {latitudeDeg !== null && soleilSousHorizon
               ? ' Le soleil est sous l’horizon à cet instant : aucun repère tracé.'

@@ -9,10 +9,12 @@ Run:
     powershell -File scripts/test-backend.ps1 -RestoreDb \
         -Modules "apps.ventes.tests.test_acal_liste_blanche_3d_publique"
 """
+import copy
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.ventes.public_views import _safe_roof_layout
 from apps.ventes.tests._quote_engine_common import (
@@ -166,3 +168,44 @@ class ListeBlanche3DPublique(TestCase):
         self.devis.roof_layout = {'version': 2, 'zones': []}
         self.devis.save(update_fields=['roof_layout'])
         self.assertIsNone(_safe_roof_layout(self.devis))
+
+
+class ListeBlancheVisionneuseSoleil(SimpleTestCase):
+    """D-ACAL-132/137 — la clé ``visionneuse_soleil`` est une liste blanche :
+    à AUCUNE profondeur un libellé, un prix, un prix d'achat, un ``produitId``,
+    l'``id`` d'un objet voisin, la méthode ou les hypothèses du calcul d'accès.
+    Sans base (``SimpleTestCase`` refuse toute requête : la fonction n'en fait
+    aucune)."""
+
+    def test_aucune_cle_interdite_a_aucune_profondeur(self):
+        from apps.ventes.models import ShareLink
+        from apps.ventes.public.visionneuse_soleil import (
+            visionneuse_soleil_publique)
+        layout = copy.deepcopy(LAYOUT)
+        geo = layout['zones'][0]['geometry']
+        geo['solarAccess'] = {'values': [0.5, 0.25], 'method': 'm-interne',
+                              'assumptions': ['h-interne'], 'prix': 1,
+                              'computedAt': '2026-11-20T09:14:05.000Z'}
+        layout['environment'] = [{
+            'id': 'env-1', 'label': 'Jinko voisin', 'kind': 'batiment',
+            'centerLng': -7.6, 'centerLat': 33.5, 'heightM': 9, 'prix': 99,
+            'prix_achat': 2100, 'produitId': 575, 'marge': 12,
+            'footprint': [[-7.6, 33.5], [-7.59, 33.5], [-7.59, 33.49]]}]
+        layout['scene'] = {'sunDay': 172, 'sunHour': 12, 'prix_vente': 3500}
+        devis = SimpleNamespace(roof_layout=layout, statut='envoye', pk=None)
+        cle = visionneuse_soleil_publique(devis, _safe_roof_layout(devis),
+                                          ShareLink.NIVEAU_CONFIANCE)
+        self.assertEqual(cle['zones'][0]['acces'], [0.5, 0.25])
+        self.assertEqual(len(cle['environnement']), 1)
+        cles = set(_cles(cle))
+        for interdite in INTERDITES + ('label', 'method', 'assumptions',
+                                       'values', 'solarAccess'):
+            self.assertNotIn(interdite, cles)
+        texte = json.dumps(cle, ensure_ascii=False)
+        for fuite in ('Jinko', 'env-1', 'm-interne', 'h-interne', '575', '2100'):
+            self.assertNotIn(fuite, texte)
+        self.assertLessEqual(cles, {
+            'version', 'zones', 'environnement', 'instant_choisi', 'index',
+            'id', 'acces', 'calcule_le', 'kind', 'centerLng', 'centerLat',
+            'heightM', 'crownDiameterM', 'evergreen', 'footprint', 'lengthM',
+            'widthM', 'diameterM', 'trace', 'epaisseurM', 'jour', 'heure'})
