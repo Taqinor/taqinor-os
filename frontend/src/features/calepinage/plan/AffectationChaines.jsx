@@ -340,12 +340,23 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
     if (Object.keys(erreurs).length > 0) return
     // ACAL725 — « inchangé » garde le drapeau que le module porte déjà (absent s'il n'en a pas).
     const actuel = new Map(lignes.map((l) => [l.module, drapeauOptimiseur(l)]))
+    const actuelles = new Map(lignes.map((l) => [l.module, l]))
+    // ACAL1642 — le drapeau seul (trois numéros vides, optimiseur oui/non) MARQUE les modules et GARDE leur câblage ;
+    // « décâbler » reste le geste « numéros vides, optimiseur inchangé ».
+    const drapeauSeul = numeroChaine === null && numeroMppt === null && numeroOnduleur === null
+      && optimiseur !== 'inchange'
     setEditions((precedente) => {
       const suivante = new Map(precedente)
       selection.forEach((module) => {
         const valeur = { oui: true, non: false }[optimiseur] ?? actuel.get(module)
+        const base = drapeauSeul ? (suivante.get(module) ?? actuelles.get(module) ?? {}) : null
         const [ligne] = marquerModules(
-          [{ module, chaine: numeroChaine, mppt: numeroMppt, onduleur: numeroOnduleur }], valeur)
+          [{
+            module,
+            chaine: base ? base.chaine : numeroChaine,
+            mppt: base ? base.mppt : numeroMppt,
+            onduleur: base ? base.onduleur : numeroOnduleur,
+          }], valeur)
         suivante.set(module, ligne)
       })
       return suivante

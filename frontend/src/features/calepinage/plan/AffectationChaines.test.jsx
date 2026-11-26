@@ -583,6 +583,26 @@ describe('AffectationChaines (ACAL725) — le drapeau « optimiseur » par modul
     expect(parModule[B2].optimiseur).toBe(false)
   })
 
+  it('ACAL1642 : Optimiseur = Oui seul (numéros vides) marque les modules, garde leur chaîne, active l’enregistrement', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue(contratResultat())
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+    const avant = Object.fromEntries(contratResultat().data.electrique.affectation.map((l) => [l.module, l]))
+    glisserSur([B1, B2, B3])
+    fireEvent.change(screen.getByTestId('cal234-champ-optimiseur'), { target: { value: 'oui' } })
+    fireEvent.click(screen.getByTestId('cal234-affecter'))
+    for (const m of [B1, B2, B3]) {
+      expect(screen.getByTestId(`cal234-module-${m}`)).toHaveAttribute('data-optimiseur', 'oui')
+    }
+    const corps = await corpsEnregistre()
+    const parModule = Object.fromEntries(corps.affectation_manuelle.map((l) => [l.module, l]))
+    for (const m of [B1, B2, B3]) {
+      expect(parModule[m].optimiseur).toBe(true)
+      expect(parModule[m].chaine).toBe(avant[m].chaine ?? null)
+      expect(parModule[m].mppt).toBe(avant[m].mppt ?? null)
+    }
+  })
+
   it('`marquerModules` marque une liste de six modules d’un seul geste', () => {
     const six = ['P#1', 'P#2', 'P#3', 'P#4', 'P#5', 'P#6'].map((module, i) => (
       { module, chaine: 1, mppt: 1, onduleur: 1, cx: i }))
