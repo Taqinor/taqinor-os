@@ -318,6 +318,15 @@ class SpecOnduleur:
     #: une seule entrée LOGIQUE (un suiveur). ``None`` = non publié ⇒ les
     #: ``n_mppt`` entrées restent indépendantes (comportement d'avant).
     mppt_independants: Optional[bool] = None
+    #: D-HYB-1 (fondateur 24/11/2026 : « un produit se reconnaît à son rôle et à sa
+    #: fiche avant son nom ») — le rôle de devis DÉCLARÉ ou de CATÉGORIE du produit
+    #: (« onduleur_hybride », « onduleur_reseau »…) ; ``""`` = non dit : la fiche,
+    #: puis le nom, disent si l'appareil est hybride (``onduleurs.onduleur_est_hybride``).
+    role: str = ""
+    #: Le PORT BATTERIE publié par la fiche (kW) : un onduleur qui en publie un est
+    #: hybride. Ne participe à aucun autre calcul du noyau.
+    bat_max_charge_kw: Optional[float] = None
+    bat_max_decharge_kw: Optional[float] = None
 
     @property
     def tension_demarrage_v(self):

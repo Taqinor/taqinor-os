@@ -32,7 +32,7 @@ __all__ = [
     "BorneRatio", "BornesDcAc", "bornes_dc_ac",
     "EvaluationOnduleurs", "ratios", "nombre_onduleurs",
     "dimensionner_onduleurs", "puissance_a_temperature",
-    "est_onduleur_hybride", "capacite_publiee_hybride",
+    "est_onduleur_hybride", "onduleur_est_hybride", "capacite_publiee_hybride",
     "dc_max_publie_kwc", "capacite_dc_appareil_kwc",
 ]
 
@@ -237,9 +237,34 @@ def puissance_a_temperature(ac_kw, debut_c, pente_pct_c, temperature_c):
     return max(0.0, float(ac_kw) * (1.0 - float(pente_pct_c) * exces / 100.0))
 
 
-def est_onduleur_hybride(designation):
-    """ACAL1954 — l'appareil se dit-il hybride (« hybride », « hybrid ») ?"""
+#: D-HYB-1 — le rôle de devis d'un onduleur hybride (vocabulaire ``core.product_roles``,
+#: recopié ici en littéral : ``core.electrique`` reste un noyau sans dépendance).
+ROLE_ONDULEUR_HYBRIDE = "onduleur_hybride"
+
+
+def est_onduleur_hybride(designation, *, role="", ports_batterie_kw=()):
+    """ACAL1954 / D-HYB-1 — l'appareil est-il hybride ? Fondateur 24/11/2026 :
+    « un produit se reconnaît à son rôle et à sa fiche avant son nom ».
+
+    1. ``role`` (déclaré ou de catégorie) : un rôle d'ONDULEUR tranche
+       (``onduleur_hybride`` ⇒ oui, ``onduleur_reseau``/``onduleur_offgrid`` ⇒ non) ;
+    2. la FICHE : un port batterie publié (``ports_batterie_kw``, kW > 0) ⇒ oui ;
+    3. le NOM, en dernier : « hybride », « hybrid ». Fonction PURE."""
+    role = str(role or "").strip()
+    if role.startswith("onduleur_"):
+        return role == ROLE_ONDULEUR_HYBRIDE
+    if any(dc_max_publie_kwc(p) is not None for p in ports_batterie_kw or ()):
+        return True
     return "hybrid" in str(designation or "").lower()
+
+
+def onduleur_est_hybride(onduleur):
+    """D-HYB-1 — :func:`est_onduleur_hybride` lu sur un ``SpecOnduleur`` (ou tout
+    objet qui en porte les attributs : ``role``, ports batterie, ``designation``)."""
+    return est_onduleur_hybride(
+        getattr(onduleur, "designation", ""), role=getattr(onduleur, "role", ""),
+        ports_batterie_kw=(getattr(onduleur, "bat_max_charge_kw", None),
+                           getattr(onduleur, "bat_max_decharge_kw", None)))
 
 
 def dc_max_publie_kwc(valeur):
@@ -275,7 +300,7 @@ def capacite_publiee_hybride(onduleur, nombre=1):
 
     Rend des kWc, ou ``None`` (onduleur réseau, ou capacité non publiée : la
     borne de ratio habituelle s'applique). Fonction PURE."""
-    if not est_onduleur_hybride(getattr(onduleur, "designation", "")):
+    if onduleur is None or not onduleur_est_hybride(onduleur):
         return None
     dc_max = dc_max_publie_kwc(getattr(onduleur, "dc_max_kwc", None))
     if dc_max is None:

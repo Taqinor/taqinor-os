@@ -1364,6 +1364,7 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         onduleur_specs=materiel['onduleur'], temperatures=temperatures,
         module_designation=materiel['designations']['module'],
         onduleur_designation=materiel['designations']['onduleur'],
+        onduleur_role=role_de_l_onduleur(company, (materiel.get('produits') or {}).get('onduleur')),  # D-HYB-1
         # ACAL162 — un micro-onduleur seul suffit à câbler le champ.
         optimiseur_specs=materiel.get('optimiseur'),
         fiches_modules=materiel.get('fiches_modules'),
@@ -3741,6 +3742,7 @@ def _verdicts_electriques(conception, optimiseur_specs=None,
 from .ratio_devis import (  # noqa: E402 — ACAL1954 : LE verdict du ratio (D-ACAL-91)
     SOURCE_BORNE_CAPACITE, SOURCE_BORNE_DEVIS, SOURCE_BORNE_MARCHE, SOURCE_BORNE_SOCIETE,
     bornes_du_verdict, bornes_ratio as _bornes_ratio, detail_ratio, juger_ratio, motif_capacite_non_publiee,
+    role_de_l_onduleur,
 )
 
 # ── CALX172 — LES DEUX PHRASES DE L'ÉCRÊTAGE, ET ELLES SONT UNIQUES ──────

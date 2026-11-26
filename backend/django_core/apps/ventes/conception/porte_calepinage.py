@@ -79,6 +79,14 @@ def _verdict_longueur(chaines):
                 '/'.join(str(n) for n in sorted(set(longueurs))), 'toutes' if conforme else 'pas toutes')}
 
 
+def _role_onduleur(company, produit_id):
+    """D-HYB-1 — le rôle de devis de l'onduleur, par LA lecture du calepinage
+    (``ratio_devis.role_de_l_onduleur``) : une seule règle des deux côtés."""
+    from apps.calepinage.services.ratio_devis import role_de_l_onduleur
+
+    return role_de_l_onduleur(company, produit_id)
+
+
 def verdicts_electriques(company, design, onduleurs, puissance_kwc):
     """ACAL2016 — ``{ratio_dc_ac, capacite_hybride, longueur_chaine}`` de l'option dont la
     conception électrique ``design`` porte l'onduleur (``onduleurs`` : ses lignes, forme
@@ -92,8 +100,12 @@ def verdicts_electriques(company, design, onduleurs, puissance_kwc):
     nombre = sum(int(o.get('quantite') or 0) for o in onduleurs) or 1
     # D-HYB-1 (lead 1742) — une pose jugée sur un onduleur absent des lignes de la conception
     # arrive sans désignation : le NOM du produit dit s'il est hybride, jamais « réseau » par défaut.
+    # D-HYB-1 (fondateur 24/11/2026) — le RÔLE, puis le port batterie de la fiche, puis le nom.
     onduleur = SimpleNamespace(designation=(materiel.get('designation') or onduleurs[0].get('designation')
                                             or _nom_produit(company, onduleurs[0].get('produit'))),
+                               role=_role_onduleur(company, onduleurs[0].get('produit')),
+                               bat_max_charge_kw=fiche.get('bat_max_charge_kw'),
+                               bat_max_decharge_kw=fiche.get('bat_max_decharge_kw'),
                                dc_max_kwc=fiche.get('dc_max_kwc'))
     ac_kw = _nombre(materiel.get('ac_kw')) or _nombre(fiche.get('ac_kw')) or 0.0
     evaluation = SimpleNamespace(nombre=nombre, puissance_ac_kw=nombre * ac_kw)

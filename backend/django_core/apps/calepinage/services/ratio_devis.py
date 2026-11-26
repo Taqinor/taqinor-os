@@ -91,15 +91,34 @@ def motif_capacite_non_publiee(conception, source=None):
     ``conception`` est un hybride dont la fiche ne publie pas ``dc_max_kwc`` (la
     borne de ratio le juge alors), ``''`` sinon — et ``''`` quand la borne qui
     juge (``source``, si donnée) est une exigence de marché. Fonction PURE."""
-    from core.electrique.onduleurs import dc_max_publie_kwc, est_onduleur_hybride
+    from core.electrique.onduleurs import dc_max_publie_kwc, onduleur_est_hybride
 
     if source is not None and source not in (SOURCE_BORNE_DEVIS, SOURCE_BORNE_SOCIETE):
         return ''
     onduleur = getattr(getattr(conception, 'entree', None), 'onduleur', None)
-    if onduleur is None or not est_onduleur_hybride(getattr(onduleur, 'designation', '')):
+    if onduleur is None or not onduleur_est_hybride(onduleur):
         return ''
     publie = dc_max_publie_kwc(getattr(onduleur, 'dc_max_kwc', None)) is not None
     return '' if publie else MOTIF_HYBRIDE_SANS_CAPACITE
+
+
+def role_de_l_onduleur(company, produit_id):
+    """D-HYB-1 (fondateur 24/11/2026 : « un produit se reconnaît à son rôle et à sa fiche
+    avant son nom ») — le rôle de devis DÉCLARÉ, sinon celui de sa CATÉGORIE, de l'onduleur
+    ``produit_id`` de ``company`` (``core.product_roles.role_effectif``, rangs 1 et 2 : le
+    nom reste le DERNIER rang, celui de ``onduleur_est_hybride``) ; ``''`` sinon. Lu par le
+    sélecteur du stock, borné société."""
+    from apps.stock.selectors import get_produit_scoped
+    from core.product_roles import role_effectif
+
+    try:
+        produit = get_produit_scoped(company, int(produit_id)) if company is not None else None
+    except (TypeError, ValueError):
+        produit = None
+    if produit is None:
+        return ''
+    categorie = getattr(produit, 'categorie', None)
+    return role_effectif(getattr(produit, 'role_devis', None), getattr(categorie, 'type_equipement', None))[0] or ''
 
 
 def juger_ratio(valeur, bornes, reglages=None):
