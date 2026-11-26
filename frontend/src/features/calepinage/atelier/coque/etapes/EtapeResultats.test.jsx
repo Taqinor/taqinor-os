@@ -5,7 +5,7 @@
    aucun code technique à l'écran, le pied et son bouton, la carte « au plus » du résultat incomplet. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-library/react'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { exempleContrat } from '../../../../../test/fixtures/contractSamples'
 import { formatNumber } from '../../../../../lib/format'
 import { feuilleAuDoigt } from '../../../__tests__/feuilleAuDoigt'
@@ -26,6 +26,7 @@ vi.mock('../../../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn(
 import calepinageApi from '../../../../../api/calepinageApi'
 import ventesApi from '../../../../../api/ventesApi'
 import EtapeResultats from './EtapeResultats'
+import BarreEnregistrement from '../../BarreEnregistrement'
 import { oublierLecturesServies } from './panneaux/lectures'
 import PanneauPertesUnifie from '../../PanneauPertesUnifie'
 
@@ -715,6 +716,32 @@ describe('Étape Résultats — la simulation part seule (ACAL1987)', () => {
     await screen.findByTestId('cal-avant-simulation')
     expect(document.querySelector('[data-zone="simulation-manque"]')).toBeNull()
     expect(document.querySelector('[data-zone="simulation-en-cours"]')).toBeNull()
+  })
+})
+
+/* ACAL1653 — à la fin d'une simulation, le bandeau d'enregistrement passe à « Simulation à jour · HH:MM » sans recharger :
+   la barre écoute le résultat publié par l'étape (même canal que le résumé Expert). */
+describe('Étape Résultats — le bandeau suit la fin du calcul (ACAL1653)', () => {
+  it('fin de simulation : « Enregistré à… » devient « Simulation à jour · HH:MM », sans rechargement', async () => {
+    const enCours = { ...JAMAIS(), simulation_automatique: { ...JAMAIS().simulation_automatique, en_cours: true, job_id: 7 } }
+    const fini = { ...COMPLET(), simulation_perimee: false, calcule_le: '2026-11-26T14:32:00Z' }
+    calepinageApi.calepinages.resultat
+      .mockResolvedValueOnce({ data: enCours })
+      .mockResolvedValueOnce({ data: enCours })
+      .mockResolvedValue({ data: fini })
+    render(
+      <MemoryRouter initialEntries={['/calepinage/1?onglet=production']}>
+        <Routes><Route path="/calepinage/:id" element={(
+          <>
+            <BarreEnregistrement libelle="Enregistrer le calepinage" enregistreLe="2026-11-26T14:00:00Z" />
+            <EtapeResultats calepinageId={1} intervalleMs={5} />
+          </>
+        )} /></Routes>
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('cal-etat-enregistrement')).toHaveTextContent(/^Enregistré/)
+    await screen.findByTestId('cal-resultats-tuiles')
+    await waitFor(() => expect(screen.getByTestId('cal-etat-enregistrement')).toHaveTextContent(/Simulation à jour · \d{2}:\d{2}/))
   })
 })
 

@@ -1,4 +1,10 @@
+import { useEffect, useState } from 'react'
+import { useLocation, useParams } from 'react-router-dom'
 import { formaterHeureBrouillon } from './contexteAtelier'
+import { useModeExpert } from './modeExpert'
+import { PARAM_ONGLET } from './onglets'
+import { etapeDeOnglet } from './parcoursGuide'
+import { ecouterResultat } from './simulationFraiche'
 import { Icone } from './coque/primitives'
 
 /* ACAL399 — l'enregistrement du calepinage et l'état de la scène (« Modifications non
@@ -37,7 +43,18 @@ export default function BarreEnregistrement({
   // n'enregistre rien : l'heure reste celle de la version — la même qu'à la réouverture.
   const heure = derniereVersionLe || enregistreLe
   const propre = !modifiee && !enCours && !refus
-  const textePropre = etatPropre || texteEnregistre(heure)
+  // ACAL1653 — la fin d'une simulation (résultat publié par l'étape Résultats) met le bandeau à « Simulation à jour · HH:MM »
+  // sans recharger ; valable pour l'enregistrement en cours seulement (un nouvel enregistrement l'invalide).
+  const { id } = useParams()
+  const { search } = useLocation()
+  const [expert] = useModeExpert()
+  const [fraiche, setFraiche] = useState(null)
+  useEffect(() => ecouterResultat(id, (r) => setFraiche(r?.calcule_le && r?.simulation_perimee === false
+    ? { texte: `Simulation à jour · ${formaterHeureBrouillon(r.calcule_le)}`, version: enregistreLe } : null)),
+  [id, enregistreLe])
+  const surResultats = etapeDeOnglet(new URLSearchParams(search).get(PARAM_ONGLET)) === 'resultats' && !expert
+  const texteFrais = surResultats && fraiche?.version === enregistreLe ? fraiche.texte : null
+  const textePropre = etatPropre || texteFrais || texteEnregistre(heure)
   // Scène propre et état connu : l'état SE LIT comme la maquette (« ✓ Enregistré à HH:MM ») et porte le geste.
   const etatSeul = propre && !!textePropre
   return (
