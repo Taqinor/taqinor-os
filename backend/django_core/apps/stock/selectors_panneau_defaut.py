@@ -6,8 +6,9 @@ panneau ; ce module dit aux appelants (devis automatique, assistant, C&I, pompag
 est UTILISABLE, et sinon POURQUOI. Contrat : ``contract_samples/panneau_par_defaut.json``.
 
 Utilisable = désigné ET non archivé ET tarifé (prix de vente > 0, ``etat_ci._prix_vente_saisi``) ET toujours reconnu
-comme un panneau. Sinon : ``None`` — l'appelant garde SA règle d'aujourd'hui (aucun 710 ni 715 écrit ici). Aucun prix
-ne sort d'ici : un appelant qui veut le prix le lit par les sélecteurs qu'il utilise déjà.
+comme un panneau ET sans contradiction entre le watt du nom et celui de la fiche (``desaccord_watt``). Sinon :
+``None`` — l'appelant garde SA règle d'aujourd'hui (aucun 710 ni 715 écrit ici). Aucun prix ne sort d'ici :
+un appelant qui veut le prix le lit par les sélecteurs qu'il utilise déjà.
 """
 from __future__ import annotations
 
@@ -20,7 +21,8 @@ AUCUN = 'aucun'
 ARCHIVE = 'archive'
 SANS_PRIX = 'sans_prix'
 PAS_UN_PANNEAU = 'pas_un_panneau'
-SOURCES = (DESIGNE, AUCUN, ARCHIVE, SANS_PRIX, PAS_UN_PANNEAU)
+WATT_CONTRADICTOIRE = 'watt_contradictoire'
+SOURCES = (DESIGNE, AUCUN, ARCHIVE, SANS_PRIX, PAS_UN_PANNEAU, WATT_CONTRADICTOIRE)
 
 _REGLE_DU_JOUR = "les choix automatiques gardent leur règle d'aujourd'hui."
 MOTIF_AUCUN = "Aucun panneau par défaut n'est désigné : " + _REGLE_DU_JOUR
@@ -60,25 +62,67 @@ def source_du_produit(produit) -> str:
         return SANS_PRIX
     if not est_un_panneau(produit):
         return PAS_UN_PANNEAU
+    if desaccord_watt(produit) is not None:
+        return WATT_CONTRADICTOIRE
     return DESIGNE
 
 
-def watt_du_panneau(produit):
-    """Puissance du panneau : ``pmax_wc`` de sa fiche MODULE, sinon le wattage lu au nom par le lecteur existant
-    (``apps.ventes.solar_classification.parse_watt``, la regex unique de ``core.product_roles``), sinon ``None``."""
-    from apps.ventes.solar_classification import parse_watt
+def _nombre(valeur):
+    valeur = float(valeur)
+    return int(valeur) if valeur.is_integer() else valeur
 
+
+def watt_au_nom(produit):
+    """Le wattage écrit dans le NOM (« 710 W », « 715Wc »), par la regex unique de la fondation
+    (``core.product_roles.WATT_RE`` — ``solar_classification._WATT_RE`` en est l'alias), sinon ``None``."""
+    from core.product_roles import WATT_RE
+
+    trouve = WATT_RE.search(getattr(produit, 'nom', '') or '')
+    return int(trouve.group(1)) if trouve else None
+
+
+def watt_de_fiche(produit):
+    """La puissance ``pmax_wc`` publiée sur la fiche technique MODULE (> 0), sinon ``None``."""
     from .selectors_fiche_technique import specs_for_produit
 
     try:
         pmax = (specs_for_produit(produit) or {}).get('pmax_wc')
     except Exception:  # fiche illisible : même repli que etat_ci.etat_panneau
         logger.warning('Fiche illisible pour le produit %s', getattr(produit, 'pk', None), exc_info=True)
-        pmax = None
-    if pmax is not None and float(pmax) > 0:
-        valeur = float(pmax)
-        return int(valeur) if valeur.is_integer() else valeur
-    return parse_watt(getattr(produit, 'nom', '') or '')
+        return None
+    return _nombre(pmax) if pmax is not None and float(pmax) > 0 else None
+
+
+def desaccord_watt(produit):
+    """``(watt du nom, watt de la fiche)`` quand le produit porte LES DEUX et qu'ils diffèrent, sinon ``None``.
+
+    Les moteurs de devis ne lisent pas le watt dans le même ordre (le résolveur résidentiel lit le nom d'abord,
+    le C&I la seule fiche) : un « … 710 W » dont la fiche dit 715 vaudrait 710 pour l'un et 715 pour l'autre. Un
+    tel produit ne peut donc pas être LE panneau par défaut."""
+    au_nom, de_fiche = watt_au_nom(produit), watt_de_fiche(produit)
+    if au_nom is None or de_fiche is None or float(au_nom) == float(de_fiche):
+        return None
+    return au_nom, de_fiche
+
+
+def _texte(valeur):
+    return str(valeur).replace('.', ',')
+
+
+def phrase_desaccord_watt(au_nom, de_fiche):
+    """La phrase (refus de l'action ET motif du résumé) qui nomme les deux valeurs et dit quoi corriger."""
+    return (f"Le nom de ce produit dit {_texte(au_nom)} W et sa fiche technique {_texte(de_fiche)} Wc : "
+            "corrigez l'un des deux, puis désignez-le.")
+
+
+def watt_du_panneau(produit):
+    """Puissance du panneau : ``pmax_wc`` de sa fiche MODULE, sinon le wattage lu au nom, sinon ``None``.
+
+    Pour un panneau UTILISABLE les deux sources ne se contredisent jamais (``desaccord_watt`` le refuse) : l'ordre
+    fiche-puis-nom donne alors la même valeur que nom-puis-fiche. Un moteur de devis prend malgré tout le watt de SA
+    propre lecture de ce produit (son résolveur), jamais d'ici seulement."""
+    de_fiche = watt_de_fiche(produit)
+    return de_fiche if de_fiche is not None else watt_au_nom(produit)
 
 
 def _produit_designe(company):
@@ -106,7 +150,12 @@ def resume_du_produit(produit):
     """La forme du contrat pour le produit désigné (ou ``None``). Cinq clés, toujours."""
     source = source_du_produit(produit)
     if source != DESIGNE:
-        motif = MOTIF_AUCUN if produit is None else _MOTIFS[source].format(nom=produit.nom)
+        if produit is None:
+            motif = MOTIF_AUCUN
+        elif source == WATT_CONTRADICTOIRE:
+            motif = phrase_desaccord_watt(*desaccord_watt(produit))
+        else:
+            motif = _MOTIFS[source].format(nom=produit.nom)
         return {'produit_id': None, 'nom': None, 'pmax_wc': None, 'source': source, 'motif': motif}
     return {'produit_id': produit.pk, 'nom': produit.nom, 'pmax_wc': watt_du_panneau(produit),
             'source': source, 'motif': None}

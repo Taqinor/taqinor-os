@@ -166,7 +166,7 @@ export default function ContextRail({
   return (
     <aside className="lw-zone lw-rail-context" data-testid="lw-context-rail">
       {/* ALEA71 — la conception RANGÉE du lead (moteur unique), lue, jamais calculée. */}
-      <CarteConception key={leadId} leadId={leadId} />
+      <CarteConception key={leadId} leadId={leadId} creeLe={state.server?.date_creation ?? null} />
       <Tabs value={tab} onValueChange={changeTab}>
         <TabsList className="lw-context-tabs">
           <TabsTrigger value="historique">Historique</TabsTrigger>

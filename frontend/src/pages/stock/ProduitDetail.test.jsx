@@ -703,6 +703,19 @@ describe('D-ACAL-169 — panneau par défaut sur la fiche produit', () => {
     expect(within(zone).queryByRole('button')).toBeNull()
   })
 
+  it('la fiche passe à un autre produit sans se refermer : l’état suit le produit affiché', () => {
+    const { rerender } = render(
+      <ProduitDetail produit={panneau({ panneau_par_defaut: true })} onClose={() => {}} />,
+      { wrapper: RESPONSABLE })
+    expect(within(screen.getByTestId('panneau-par-defaut-action')).getByText('Panneau par défaut'))
+      .toBeInTheDocument()
+    rerender(<ProduitDetail produit={panneau({ id: contrat.produit_id + 1, nom: 'Panneau Jinko 710W' })}
+                            onClose={() => {}} />)
+    const zone = screen.getByTestId('panneau-par-defaut-action')
+    expect(within(zone).queryByText('Panneau par défaut')).toBeNull()
+    expect(within(zone).getByRole('button', { name: 'Définir comme panneau par défaut' })).toBeInTheDocument()
+  })
+
   it('produit qui n’est pas un panneau : rien', () => {
     render(<ProduitDetail produit={panneau({ role_devis_effectif: 'onduleur_reseau' })} onClose={() => {}} />,
       { wrapper: RESPONSABLE })

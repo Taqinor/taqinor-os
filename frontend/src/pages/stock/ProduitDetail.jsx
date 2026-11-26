@@ -909,7 +909,10 @@ export function ProduitDetail({ produit, onClose, onEdit, onRebut, onPanneauParD
 
         {/* D-ACAL-169 — rien pour un produit qui n'est pas un panneau ; le geste
             seulement pour qui porte `catalogue_prix_modifier` (droit du serveur). */}
-        <ActionPanneauParDefaut produit={produit} onChange={onPanneauParDefaut} />
+        {/* La clé = produit + drapeau SERVI : un autre produit (ou le même relu avec
+            un autre drapeau) remonte l'action, jamais un état d'un produit précédent. */}
+        <ActionPanneauParDefaut key={`${produit.id}:${Boolean(produit.panneau_par_defaut)}`}
+                                produit={produit} onChange={onPanneauParDefaut} />
 
         {/* VX159/VX250 — RelationCounters : réutilise `produit.bcf_sources_en_commande`
             déjà chargé (prop, ZÉRO appel réseau nouveau).
