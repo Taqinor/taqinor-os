@@ -751,6 +751,25 @@
   .cal-coque .cal-barre-entree-texte { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
 
+/* R5D-N1 — vue client, TÉLÉPHONE EN PAYSAGE (844 × 390) : la scène de 464 px et la feuille s'empilaient dans 390 px (lecteur du
+   soleil coupé, 3D réduite à ~230 px, cartes des chiffres hors de vue). En paysage court, deux colonnes : la scène 3D à gauche sur
+   toute la hauteur, à droite la feuille (soleil, chiffres), qui DÉFILE, et le pied dessous. Même disposition pour la vue dans la
+   coque (`data-presentation`) et pour le repli 2D (`.cal-tel`). Aucune pièce ajoutée, rien n'est masqué. */
+@media (orientation: landscape) and (max-height: 520px) and (max-width: 1023px) {
+  .cal-coque[data-presentation='1'], .cal-tel:not(.cal-tel-releve) {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .cal-coque[data-presentation='1'] .cal-coque-corps, .cal-tel:not(.cal-tel-releve) .cal-client-scene {
+    grid-column: 1; grid-row: 1 / span 2; height: auto; min-height: 0;
+  }
+  :is(.cal-coque[data-presentation='1'], .cal-tel:not(.cal-tel-releve)) .cal-client-corps {
+    grid-column: 2; grid-row: 1; margin-top: 0; border-radius: 0; min-height: 0; overflow-y: auto;
+  }
+  :is(.cal-coque[data-presentation='1'], .cal-tel:not(.cal-tel-releve)) .cal-tel-pied { grid-column: 2; grid-row: 2; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cal-tel *, .cal-tel *::before, .cal-tel *::after { transition: none !important; animation: none !important; }
 }
