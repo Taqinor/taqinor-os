@@ -6370,3 +6370,14 @@ decisions:
     date: "2026-11-26"
     source: "lane lot6/acal-toit-plat-pente (26/11/2026) : lecteurs `apps/calepinage/services/traduction.py::_pente_et_azimut`, `services/planche.py`, `apps/ventes/domain/geometrie.py::orientation_du_pan` et `::_zone_villa_depuis_pan`"
     taches: [ACAL1923]
+  - id: D-ACAL-150
+    question: "Un calepinage sans facture ni socle où l'utilisateur ne déclare qu'une charge (voiture électrique, pompe à chaleur) : les anciens documents portent une courbe de base de 24 zéros, les nouveaux n'en portent plus. Les deux doivent-ils donner le même résultat ?"
+    options:
+      - cle: meme_regle
+        texte: "(recommandée) Oui : courbe absente et courbe toute à zéro sont la même chose. Avec une charge déclarée et aucune autre source, la consommation est bâtie sur la charge, base à 0 kWh, avec l'avertissement « aucune consommation de base n'est connue » ; sans charge, le bloc est omis avec son motif. La charge déclarée n'est jamais abandonnée en silence"
+      - cle: selon_le_document
+        texte: "Garder deux comportements selon l'âge du document"
+    reponse: meme_regle
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; relecture finale du lot 7 : deux lanes justes chacune, deux résultats différents pour la même saisie selon l'âge du document (ACAL1962)"
+    taches: [ACAL1962]

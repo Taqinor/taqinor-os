@@ -2326,3 +2326,14 @@ lot assemblé ; gardes d'hôte ; mesure du bundle. Puis une PR, Auto-fix, file d
 **Après le lot 7** : rebâtir la pile sur `main`, second regard (visionneuse au soleil avec accès solaire enregistré,
 hybride + batterie, deux options, tablette), paquets D, E, F, reproductions en direct dues (ACAL1659, ACAL1921, ACAL1330,
 T4-X7-012, R5A-N1, R5C-N1, R5C-N8, ACAL1661), comparaison aux maquettes, enregistrements d'acceptation, contrat de sortie.
+
+**Ajout de 15 h UTC — relecture finale du lot assemblé (un relecteur neuf sur tout `dev-lot7`).** Aucune entorse aux règles
+dures (aucune empreinte stockée ne bouge, aucun devis envoyé ne change, rien d'argent hors `apps/ventes`, écran du lead
+intact). Six constats que seule la vue d'ensemble montrait : (1) courbe de base absente contre toute à zéro — deux
+résultats pour la même saisie selon l'âge du document : une seule règle (D-ACAL-150) ; (2) ACAL1720 RETIRÉE du lot (la
+numérotation qui repart de 1 faisait appliquer en silence une affectation manuelle stockée à d'autres modules) ; (3) une
+phrase du générateur attribuait tout écart de taille à l'arrondi au panneau ; (4) deux phrases jumelles disaient encore « le
+document a changé » ; (5) trois assertions lisaient le source d'un fichier (retirées) ; (6) tenue du plan (ACAL1923
+re-cadrée dite sur sa ligne, journal du paquet C). Pliées depuis la note de 12 h : `lot6/r5c-corrections`,
+`lot6/acal-module-substitue` ; `lot6/web-hero-3d` n'a rien changé (le bandeau est l'image de fond voulue de la page, grise
+sur la pile faute d'imagerie) ; `lot6/acal-schema-visuel` relue, en correction.
