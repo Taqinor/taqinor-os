@@ -472,6 +472,28 @@ class PerteSystemeTest(SimpleTestCase):
     def test_le_motif_dit_a_pertes_systeme_egales(self):
         self.assertIn('à pertes système égales', v.MOTIF_ECART_INFORMATIF)
 
+    def test_la_chaleur_omise_n_est_pas_a_pertes_egales(self):
+        """ACAL1933 — la chaleur des panneaux omise (fiche sans NOCT ni Uc) :
+        les deux pourcentages coïncident, mais PVGIS compte une perte que la
+        chaîne ne compte pas ⇒ ``egales`` faux et l'étape nommée."""
+        omise = dict(CASCADE_SYSTEME['etapes'][3], kwh_apres=912.38,
+                     perte_kwh=0.0, perte_pct=0.0,
+                     motif_omission='Ni NOCT ni Uc sur la fiche.')
+        cascade = {'total_pct': 11.4, 'etapes_omises': ['thermique'],
+                   'etapes': [*CASCADE_SYSTEME['etapes'][:3], omise,
+                              CASCADE_SYSTEME['etapes'][4]]}
+        pertes = v._pertes_totales(cascade, {'loss_pct': 6.8})
+        self.assertAlmostEqual(pertes['chaine_pct'], 6.8, delta=0.05)
+        self.assertFalse(pertes['egales'])
+        self.assertEqual(pertes['omises_vs_pvgis'], [{
+            'etape': 'thermique', 'libelle': 'Échauffement des modules',
+            'designation': 'la chaleur des panneaux'}])
+        self.assertEqual(v._pertes_totales(CASCADE_SYSTEME, {'loss_pct': 6.8})
+                         ['omises_vs_pvgis'], [])
+        motif = v._motif_pertes(pertes)
+        self.assertNotIn('à pertes système égales', motif)
+        self.assertIn('sans la chaleur des panneaux, que PVGIS compte', motif)
+
 
 class FormePvcalcMensuelleTest(SimpleTestCase):
     """La réponse ``PVcalc`` (mensuelle) est lue comme la série horaire.
