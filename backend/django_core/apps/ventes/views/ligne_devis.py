@@ -4,6 +4,7 @@ from rest_framework.parsers import JSONParser
 from rest_framework import viewsets
 from ..models import LigneDevis
 from ..serializers import LigneDevisSerializer
+from ..gardes_lecture import SansMontantsVenteMixin  # D-ACAL-165
 from authentication.permissions import (
     LectureDuModule,
     IsResponsableOrAdmin,
@@ -94,7 +95,7 @@ def _instantane(devis, user):
     create=extend_schema(extensions=D.CORPS_LIGNE_DEVIS_ECRITURE),
     update=extend_schema(extensions=D.CORPS_LIGNE_DEVIS_ECRITURE),
     partial_update=extend_schema(extensions=D.CORPS_LIGNE_DEVIS_MODIF))
-class LigneDevisViewSet(CompanyScopedModelViewSet):
+class LigneDevisViewSet(SansMontantsVenteMixin, CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # ARC5 — sweep TenantMixin : base transverse unique. LigneDevis N'A PAS de
     # champ `company` (elle est scopée via son parent `devis__company`), donc la
