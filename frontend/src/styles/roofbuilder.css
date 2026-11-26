@@ -147,6 +147,10 @@
 /* ── Compas + dimensionnement de la carte (FONCTIONNEL) ─────────────────── */
 .rp9-host #rp9-map { position: relative; }
 .rp9-host #rp9-map .maplibregl-map { position: absolute; inset: 0; }
+/* ACAL1813 — le voile coopératif de MapLibre (« Utilisez deux doigts… », z-index 99999) vit dans le conteneur du canvas :
+   sans contexte d'empilement il passait par-dessus le tiroir et le bandeau. Le conteneur isolé le borne à la carte ;
+   les contrôles de la carte (z-index 2) restent au-dessus. Voile MapLibre réutilisé, aucun voile maison. */
+.rp9-host #rp9-map .maplibregl-canvas-container.maplibregl-cooperative-gestures { isolation: isolate; }
 .rp9-host .rp9-compass {
   position: absolute;
   top: 12px;
