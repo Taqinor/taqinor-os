@@ -2648,3 +2648,5 @@ B = 30 × « …CS7N-715TB » (rôle `panneau`, pas de « 715 W » dans le nom),
 Aussi laissés sur les mots-clés : `overrides._auto_scenario`, `_autos_banque_batterie`, `scenario.ligne_panneau_dominante`,
 `conception/moteur._materiel_des_lignes`, `brouillons._comptes`, `payload_batterie` (l.580).
 Fusion : aucun conflit avec `dev-lot9` ; `_poser_produit` fusionné correct. Tests avec base non joués.
+
+**Jumeau NON corrigé du 500 d'api-fuzz (à faire au lot 9)** : `apps/stock/permissions.py::MasquePrixVenteReponseMixin.finalize_response` (D-ACAL-152, lot 8) appelle `cache_prix_vente(request)`, qui lit `request.user` : sur `/api/django/stock/produits/0.5/` et `/api/django/stock/kits/0.5/` avec un en-tête Authorization mal formé, l'authentification part hors du gestionnaire d'exceptions de DRF → 500 au lieu de 404 (lu dans le code, non signalé par l'api-fuzz du 1er passage). Même correctif que `apps/ventes/gardes_lecture.py` (commit f3056a536) : ne rien faire quand `response.exception` est posé, lire `vars(request).get('_user')`. `MasqueAchatRapportsProduitMixin` (déjà sur main) porte le même motif latent. Aucune donnée exposée : une erreur 500 à la place d'un 404.
