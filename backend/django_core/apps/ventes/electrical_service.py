@@ -272,7 +272,7 @@ def _option_choisie(devis):
     imposee = _VARIANTE_IMPOSEE.get()
     if imposee in (VARIANTE_SANS, VARIANTE_AVEC):
         from apps.ventes.utils.options import filter_lines_for_option
-        return (filter_lines_for_option(toutes, _cle_option(imposee), devis),
+        return (filter_lines_for_option(toutes, _cle_option(imposee), devis=devis),
                 imposee)
     if avec_servable:
         return avec, VARIANTE_AVEC
@@ -1506,7 +1506,7 @@ def _lignes_de_l_option(devis, variante):
     stocké, puis mots-clés — ADVS5, ``utils.options.filter_lines_for_option``) :
     celle de l'argent, du PDF et de la page."""
     from apps.ventes.utils.options import filter_lines_for_option
-    return filter_lines_for_option(_lignes_du_devis(devis), _cle_option(variante), devis)
+    return filter_lines_for_option(_lignes_du_devis(devis), _cle_option(variante), devis=devis)
 
 
 def _est_onduleur(ligne):
