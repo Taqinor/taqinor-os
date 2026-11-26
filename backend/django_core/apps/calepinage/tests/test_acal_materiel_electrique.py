@@ -15,13 +15,19 @@ import json
 import pathlib
 from decimal import Decimal
 
+from django.test import SimpleTestCase
+
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.electrique import (
     CLE_ENTREE, PROVENANCE_DEVIS, PROVENANCE_EXPLICITE,
     conception_du_calepinage,
 )
+from apps.calepinage.services.layout import empreinte_document, enregistrer_layout
 from apps.calepinage.services.modules_pans import PROVENANCE_POSE
 from apps.calepinage.services.simulation import construire_contexte
+from apps.calepinage.services.suivi_module_pose import (
+    PHRASE_SUIVI, _lister_calepinages_au_module_divergent, _module_a_suivre,
+)
 from apps.stock.models import FicheTechnique, Produit
 from apps.ventes.models import Devis, LigneDevis
 
@@ -538,3 +544,165 @@ class MaterielRetenuParLeDevis(BaseMateriel):
         self.assertNotIn('au dossier (écart', texte)
         if calcul != 14:
             self.assertIn('calculée %s contre 14 à la conception' % calcul, texte)
+
+
+def _document_pose(*pans):
+    """D-ACAL-169 — un toit posé : ``pans`` = ``(produit_id, modules)`` ;
+    ``produit_id`` ``None`` ⇒ pan posé sans modèle du catalogue."""
+    modules, zones = [], []
+    for index, (produit_id, nombre) in enumerate(pans):
+        geometrie = {'panels': [{'n': i + 1} for i in range(nombre)]}
+        if produit_id is not None:
+            ident = 'produit-%s' % produit_id
+            if ident not in [module['id'] for module in modules]:
+                modules.append({'id': ident, 'produitId': produit_id,
+                                'libelle': 'Module %s' % produit_id,
+                                'source': 'fiche produit',
+                                'longueurMm': 2384.0, 'largeurMm': 1303.0,
+                                'pmaxWc': 715.0})
+            geometrie['moduleId'] = ident
+        zones.append({'id': 'z%d' % index, 'label': 'Pan %d' % index,
+                      'facingAzimuthDeg': 180.0, 'pitchDeg': 15.0,
+                      'geometry': geometrie})
+    return {'pin': LAYOUT['pin'], 'modules': modules, 'zones': zones}
+
+
+class ModuleASuivre(SimpleTestCase):
+    """D-ACAL-169 (point 3) — la règle PURE : quelle désignation stockée ne
+    suit plus le toit, et par quel module la remplacer."""
+
+    def test_module_change_sur_le_toit_le_module_pose_dominant(self):
+        document = _document_pose((715, 12), (716, 2))
+        self.assertEqual(_module_a_suivre(document, {'module_produit': 710}), 715)
+
+    def test_toit_mixte_le_module_encore_pose_reste(self):
+        document = _document_pose((710, 4), (715, 8))
+        self.assertIsNone(_module_a_suivre(document, {'module_produit': 710}))
+        self.assertIsNone(_module_a_suivre(document, {'module_produit': '710'}))
+
+    def test_toit_sans_module_pose_rien(self):
+        self.assertIsNone(_module_a_suivre(_document_pose((715, 0)),
+                                           {'module_produit': 710}))
+        self.assertIsNone(_module_a_suivre(dict(LAYOUT, zones=[]),
+                                           {'module_produit': 710}))
+
+    def test_pan_pose_sans_produit_la_designation_est_son_defaut(self):
+        document = _document_pose((None, 12), (715, 4))
+        self.assertIsNone(_module_a_suivre(document, {'module_produit': 710}))
+
+    def test_sans_designation_rien(self):
+        document = _document_pose((715, 12))
+        for entree in (None, {}, {'module_produit': None}, {'module_produit': ''}):
+            self.assertIsNone(_module_a_suivre(document, entree))
+
+    def test_liste_en_lecture_seule_les_seuls_identifiants_concernes(self):
+        lignes = [
+            (1, _document_pose((715, 12)), {CLE_ENTREE: {'module_produit': 710}}),
+            (2, _document_pose((710, 4), (715, 8)), {CLE_ENTREE: {'module_produit': 710}}),
+            (3, _document_pose((715, 12)), {CLE_ENTREE: {}}),
+            (4, _document_pose((715, 12)), None),
+        ]
+        self.assertEqual(_lister_calepinages_au_module_divergent(lignes), [1])
+
+
+class EntreeSuitLeModulePose(BaseMateriel):
+    """D-ACAL-169 (point 3) — base de données (CI) : ``enregistrer_layout``
+    réel ; l'entrée suit le module posé dans la MÊME transaction et le chatter
+    le dit ; ni ``layout_hash`` ni l'empreinte document ne bougent."""
+
+    def setUp(self):
+        super().setUp()
+        self.module_715 = self._produit(
+            nom='Module 715', type_fiche='module', vmp_v=41.6,
+            voc_v=49.5, isc_a=18.65, imp_a=17.19, pmax_wc=715.0)
+
+    def _notes(self, calepinage):
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.records.models import Activity
+
+        return list(Activity.objects.filter(
+            content_type=ContentType.objects.get_for_model(Calepinage),
+            object_id=calepinage.pk, kind=Activity.Kind.NOTE)
+            .values_list('body', flat=True))
+
+    def test_module_change_l_entree_suit_et_le_dit(self):
+        from apps.ventes.services import layout_hash
+
+        devis = self._devis(self.module_devis)
+        devis.electrical_design_hash = 'empreinte-figee'
+        devis.save(update_fields=['electrical_design_hash'])
+        calepinage = self._calepinage(
+            devis=devis, entree={'module_produit': self.module_devis.pk})
+        document = _document_pose((self.module_715.pk, 12))
+        rendu = enregistrer_layout(calepinage, document, user=self.user)
+        calepinage.refresh_from_db()
+        self.assertEqual(calepinage.resultat[CLE_ENTREE]['module_produit'],
+                         self.module_715.pk)
+        self.assertEqual(calepinage.resultat[CLE_ENTREE]['temperature_min_c'],
+                         TEMPERATURES['temperature_min_c'])
+        self.assertIn(PHRASE_SUIVI % ('Module devis 710', 'Module 715'),
+                      self._notes(calepinage))
+        # Les empreintes stockées ne lisent que le document : elles ne bougent pas.
+        self.assertEqual(calepinage.layout_hash, layout_hash(document))
+        self.assertEqual(rendu['empreinte_document'], empreinte_document(document))
+        devis.refresh_from_db()
+        self.assertEqual(devis.electrical_design_hash, 'empreinte-figee')
+        _c, materiel, _d, _doc = conception_du_calepinage(calepinage)
+        self.assertEqual(materiel['produits']['module'], self.module_715.pk)
+
+    def test_toit_mixte_entree_intacte(self):
+        calepinage = self._calepinage(
+            entree={'module_produit': self.module_devis.pk})
+        enregistrer_layout(calepinage, _document_pose(
+            (self.module_devis.pk, 4), (self.module_715.pk, 8)), user=self.user)
+        calepinage.refresh_from_db()
+        self.assertEqual(calepinage.resultat[CLE_ENTREE]['module_produit'],
+                         self.module_devis.pk)
+        self.assertFalse([n for n in self._notes(calepinage) if 'suit maintenant' in n])
+
+    def test_toit_sans_module_pose_entree_intacte(self):
+        calepinage = self._calepinage(
+            entree={'module_produit': self.module_devis.pk})
+        enregistrer_layout(calepinage, _document_pose((self.module_715.pk, 0)),
+                           user=self.user)
+        calepinage.refresh_from_db()
+        self.assertEqual(calepinage.resultat[CLE_ENTREE]['module_produit'],
+                         self.module_devis.pk)
+
+    def test_renvoi_a_l_identique_octet_pour_octet(self):
+        calepinage = self._calepinage(
+            entree={'module_produit': self.module_715.pk})
+        document = _document_pose((self.module_715.pk, 12))
+        enregistrer_layout(calepinage, document, user=self.user)
+        calepinage.refresh_from_db()
+        avant = (json.dumps(calepinage.resultat, sort_keys=True),
+                 calepinage.layout_hash, empreinte_document(calepinage.roof_layout))
+        notes = self._notes(calepinage)
+        rendu = enregistrer_layout(calepinage, json.loads(json.dumps(document)),
+                                   user=self.user)
+        self.assertTrue(rendu['inchange'])
+        calepinage.refresh_from_db()
+        self.assertEqual((json.dumps(calepinage.resultat, sort_keys=True),
+                          calepinage.layout_hash,
+                          empreinte_document(calepinage.roof_layout)), avant)
+        self.assertEqual(self._notes(calepinage), notes)
+
+    def test_entree_perimee_non_touchee_garde_son_panneau(self):
+        # D-ACAL-169 (4) — un calepinage enregistré dont l'entrée est déjà
+        # périmée, renvoyé à l'identique : rien n'est réécrit (lecture seule).
+        calepinage = self._calepinage()
+        document = _document_pose((self.module_715.pk, 12))
+        enregistrer_layout(calepinage, document, user=self.user)
+        Calepinage.objects.filter(pk=calepinage.pk).update(resultat={
+            CLE_ENTREE: dict(TEMPERATURES, module_produit=self.module_devis.pk)})
+        calepinage.refresh_from_db()
+        avant = json.dumps(calepinage.resultat, sort_keys=True)
+        rendu = enregistrer_layout(calepinage, json.loads(json.dumps(document)),
+                                   user=self.user)
+        self.assertTrue(rendu['inchange'])
+        calepinage.refresh_from_db()
+        self.assertEqual(json.dumps(calepinage.resultat, sort_keys=True), avant)
+        self.assertEqual(_lister_calepinages_au_module_divergent(
+            Calepinage.objects.filter(pk=calepinage.pk).values_list(
+                'pk', 'roof_layout', 'resultat')), [calepinage.pk])
