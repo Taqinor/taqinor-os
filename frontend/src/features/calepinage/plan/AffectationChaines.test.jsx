@@ -823,7 +823,7 @@ function coucheEssai(equipements = []) {
       prevenir()
       return { ok: true, tracesGardees: [] }
     }),
-    etatTraces: vi.fn(() => ({ proposes: ['ch1'], aLaMain: [], decales: [] })),
+    etatTraces: vi.fn(() => ({ proposes: ['ch1'], autres: [], decales: [], pansSansTrace: [] })),
     ecouter: (f) => { ecouteurs.add(f); return () => ecouteurs.delete(f) },
     /** Le toucher de la carte (le constructeur appelle `clicCarte`) : pose ou déplace l'organe armé. */
     toucher: () => {
@@ -923,13 +923,16 @@ describe('BarreRaccordement (ACAL1317) — l’onduleur se place, se déplace et
 
 describe('provenanceCable (ACAL1317) — d’où vient la longueur sous « Câble côté panneaux »', () => {
   it('tracé proposé seul ⇒ la position de l’onduleur ; à mesurer tant que rien n’est enregistré', () => {
-    const etat = { proposes: ['ch1'], aLaMain: [], decales: [] }
+    const etat = { proposes: ['ch1'], autres: [], decales: [], pansSansTrace: [] }
     expect(provenanceCable(etat, false)).toBe(PROVENANCE_TRACE_PROPOSE)
     expect(provenanceCable(etat, true)).toBe(`${PROVENANCE_TRACE_PROPOSE} — longueur mesurée à l’enregistrement`)
   })
-  it('tracé à la main décalé ⇒ il le dit ; tracé à la main qui aboutit, ou aucun onduleur ⇒ rien', () => {
-    expect(provenanceCable({ proposes: [], aLaMain: ['ch1'], decales: ['ch1'] }, false)).toBe('tracé dessiné à la main — n’aboutit plus à l’onduleur')
-    expect(provenanceCable({ proposes: [], aLaMain: ['ch1'], decales: [] }, false)).toBeNull()
+  it('tracé non reconnu décalé ⇒ il le dit SANS dire qui l’a tracé ; non reconnu qui aboutit, ou aucun onduleur ⇒ rien', () => {
+    expect(provenanceCable({ proposes: [], autres: ['ch1'], decales: ['ch1'], pansSansTrace: [] }, false)).toBe('tracé enregistré — n’aboutit plus à l’onduleur')
+    expect(provenanceCable({ proposes: [], autres: ['ch1'], decales: [], pansSansTrace: [] }, false)).toBeNull()
     expect(provenanceCable(null, true)).toBeNull()
+  })
+  it('un pan à modules sans tracé vers l’onduleur ⇒ « tracé partiel », jamais la provenance complète', () => {
+    expect(provenanceCable({ proposes: ['ch1'], autres: [], decales: [], pansSansTrace: ['z2'] }, false)).toBe('tracé partiel : 1 pan sans tracé vers l’onduleur')
   })
 })

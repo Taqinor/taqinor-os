@@ -868,7 +868,7 @@ describe('ACAL1317 — déplacer l’onduleur, le tracé suit', () => {
     expect(apres).toHaveLength(1);
     const bout = apres[0].points![apres[0].points!.length - 1];
     expect(pres(enu(bout), [1, 5])).toBe(true); // le tracé aboutit à la NOUVELLE position
-    expect(couche.etatTraces('eqA')).toEqual({ proposes: [apres[0].id], aLaMain: [], decales: [] });
+    expect(couche.etatTraces('eqA')).toEqual({ proposes: [apres[0].id], autres: [], decales: [], pansSansTrace: [] });
   });
 
   it('un déplacement et son tracé sont UN cran d’annulation', () => {
@@ -893,14 +893,14 @@ describe('ACAL1317 — déplacer l’onduleur, le tracé suit', () => {
     expect(couche.pousser('eqX', 1, 0).ok).toBe(false);
   });
 
-  it('un tracé dessiné À LA MAIN n’est jamais remplacé ; il est dit décalé quand il n’aboutit plus', () => {
+  it('un tracé NON reconnu (ici tracé point par point) n’est jamais remplacé ; il est dit décalé quand il n’aboutit plus', () => {
     const couche = atelier();
     expect(couche.demarrerCheminement({ cote: 'dc', de: 'z1' })).toBe(true);
     couche.ajouterPointCheminement(lngLat(10, 5));
     couche.ajouterPointCheminement(lngLat(19, 5));
     expect(couche.terminerCheminement('eqA').ok).toBe(true);
     const main = JSON.stringify(traces(couche));
-    expect(couche.etatTraces('eqA')).toEqual({ proposes: [], aLaMain: ['ch1'], decales: [] });
+    expect(couche.etatTraces('eqA')).toEqual({ proposes: [], autres: ['ch1'], decales: [], pansSansTrace: [] });
     couche.armerDeplacement('eqA');
     couche.clicCarte(lngLat(1, 5));
     expect(JSON.stringify(traces(couche))).toBe(main); // ni remplacé, ni doublé d'un tracé proposé
@@ -951,5 +951,86 @@ describe('ACAL1317 — déplacer l’onduleur, le tracé suit', () => {
     fin();
     expect(JSON.stringify(couche.ecrireDansDocument({}).electrical)).toBe(avant);
     expect(appels).toHaveLength(1); // le rafraîchissement prévient l'écran, sans rien écrire
+  });
+});
+
+/* ACAL1317 (revue) — le tracé proposé se RECONNAÎT après une retouche du toit (sommets alignés retirés, au
+   centimètre), chaque pan à modules reçoit son tracé, et la couche refuse elle-même d'écrire en lecture seule. */
+describe('ACAL1317 — tracé reconnu après retouche, un tracé par pan, lecture seule', () => {
+  const COS = Math.cos((ORIGINE[1] * Math.PI) / 180);
+  const M = (Math.PI / 180) * 6378137;
+  const lngLat = (e: number, n: number): [number, number] => [ORIGINE[0] + e / (M * COS), ORIGINE[1] + n / M];
+  const enu = (p: { lng: number; lat: number }): [number, number] => [(p.lng - ORIGINE[0]) * M * COS, (p.lat - ORIGINE[1]) * M];
+  /** Le cas du relecteur : toit 20 × 12 m, trois rangées (y = 3, 6, 9) de huit modules (cx 3 à 17). */
+  const modules = (premier: number, dernier: number) => [3, 6, 9].flatMap((cy) => {
+    const out = [];
+    for (let cx = premier; cx <= dernier; cx += 2) out.push({ cx, cy });
+    return out;
+  });
+  const pan = (id: string, ring: [number, number][], panels = modules(3, 17)) => ({
+    id, renderPlan: { pack: { origin: ORIGINE, azimuthDeg: 180, ringENU: ring }, grid: { rowWidthM: 2, panels } },
+  });
+  const TOIT: [number, number][] = [[0, 0], [20, 0], [20, 12], [0, 12]];
+  const atelier = (areas = [pan('z1', TOIT)]) => {
+    const ctx = { electrical: null as DocumentElectrique | null, sceneOrigin: ORIGINE, areas, activeAreaId: 'z1' };
+    const couche = creerCoucheElectrique(ctx);
+    couche.armerPose('onduleur', { suivreTrace: true });
+    couche.clicCarte(lngLat(20, 2));
+    return { ctx, couche };
+  };
+  const traces = (c: ReturnType<typeof creerCoucheElectrique>) => c.documentElectrique()?.cheminements ?? [];
+
+  it('un module retiré au bout de chaque rangée ajoute un sommet ALIGNÉ : le tracé reste reconnu et suit le déplacement', () => {
+    const { ctx, couche } = atelier();
+    const id = traces(couche)[0].id;
+    ctx.areas[0].renderPlan.grid.panels = modules(5, 15); // la retouche du relecteur
+    expect(couche.etatTraces('eq1')).toEqual({ proposes: [id], autres: [], decales: [], pansSansTrace: [] });
+    couche.armerDeplacement('eq1');
+    couche.clicCarte(lngLat(19, 1));
+    expect(traces(couche)).toHaveLength(1);
+    const pts = traces(couche)[0].points!;
+    const bout = enu(pts[pts.length - 1]);
+    expect(Math.hypot(bout[0] - 19, bout[1] - 1)).toBeLessThan(1e-6);
+    expect(couche.etatTraces('eq1').proposes).toHaveLength(1);
+  });
+
+  it('un toit qui change le TRAJET : le tracé n’est plus reconnu, n’est pas remplacé, et se dit décalé après un déplacement', () => {
+    const { ctx, couche } = atelier();
+    const avant = JSON.stringify(traces(couche));
+    ctx.areas[0].renderPlan.pack.ringENU = [[0, -4], [20, -4], [20, 12], [0, 12]];
+    expect(couche.etatTraces('eq1')).toEqual({ proposes: [], autres: ['ch1'], decales: [], pansSansTrace: [] });
+    couche.armerDeplacement('eq1');
+    couche.clicCarte(lngLat(19, 1));
+    expect(JSON.stringify(traces(couche))).toBe(avant);
+    expect(couche.etatTraces('eq1').decales).toEqual(['ch1']);
+  });
+
+  it('deux pans à modules : un tracé DC par pan vers l’onduleur ; un pan sans module n’en reçoit pas', () => {
+    const { couche } = atelier([pan('z1', TOIT), pan('z2', [[0, 14], [20, 14], [20, 26], [0, 26]], []), pan('z3', [[22, 0], [40, 0], [40, 12], [22, 12]])]);
+    expect(traces(couche).map((c) => [c.cote, c.de, c.vers])).toEqual([['dc', 'z1', 'eq1'], ['dc', 'z3', 'eq1']]);
+    expect(couche.etatTraces('eq1').pansSansTrace).toEqual([]);
+    expect(couche.retirer('ch2')).toBe(true);
+    expect(couche.etatTraces('eq1').pansSansTrace).toEqual(['z3']); // tracé partiel : l'écran le dit
+  });
+
+  it('lecture seule : la COUCHE désarme et refuse pose, déplacement, retrait, tracé et annulation', () => {
+    const { couche } = atelier();
+    const avant = JSON.stringify(couche.documentElectrique());
+    couche.armerDeplacement('eq1');
+    couche.definirLectureSeule(true);
+    expect(couche.deplacementArme()).toBeNull();
+    expect(couche.clicCarte(lngLat(1, 5))).toBe(false);
+    expect(couche.armerPose('onduleur')).toBe(false);
+    expect(couche.armerDeplacement('eq1')).toBe(false);
+    expect(couche.pousser('eq1', 1, 0).ok).toBe(false);
+    expect(couche.deplacer('eq1', lngLat(1, 5)).ok).toBe(false);
+    expect(couche.retirerAvecTraces('eq1').ok).toBe(false);
+    expect(couche.retirer('eq1')).toBe(false);
+    expect(couche.proposerCheminement({ cote: 'dc', de: 'z1', vers: 'eq1' }).ok).toBe(false);
+    expect(couche.annuler()).toBe(false);
+    expect(couche.dernierRefus()?.message).toMatch(/lecture seule/);
+    expect(JSON.stringify(couche.documentElectrique())).toBe(avant);
+    couche.definirLectureSeule(false);
+    expect(couche.pousser('eq1', 1, 0).ok).toBe(true);
   });
 });

@@ -13,7 +13,9 @@ import { useEffect, useRef, useState } from 'react'
    ========================================================================== */
 
 export const PROVENANCE_TRACE_PROPOSE = 'tracé proposé le long des rangées (position de l’onduleur)'
-export const PHRASE_TRACE_DECALE = 'Le tracé dessiné à la main n’aboutit plus à l’onduleur : il n’est jamais remplacé, retracez-le.'
+// L'écran ne sait PAS qui a tracé un tracé non reconnu (point par point, saisi, ou proposé sur un toit qui a changé) :
+// il ne dit que ce qu'il sait.
+export const PHRASE_TRACE_DECALE = 'Le tracé enregistré n’aboutit plus à l’onduleur ; il n’a pas été remplacé.'
 
 /** Les gestes dont l'écran a besoin : sans eux (constructeur absent ou ancien), rien n'est proposé. */
 const GESTES = ['documentElectrique', 'armerPose', 'armerDeplacement', 'deplacementArme', 'typeArme', 'pousser',
@@ -25,11 +27,14 @@ function coucheUtilisable(builderApi) {
     && Number.isFinite(couche.pasDeplacementM) && couche.pasDeplacementM > 0 ? couche : null
 }
 
-/** La provenance affichée sous la longueur du câble : `null` quand le tracé n'est pas celui que l'onduleur porte. */
+/** La provenance affichée sous la longueur du câble : `null` quand le tracé n'est pas (seulement) celui que la barre
+    a proposé. Un pan à modules sans tracé vers l'onduleur rend la longueur PARTIELLE, et c'est dit. */
 export function provenanceCable(etat, aEnregistrer) {
   if (!etat) return null
-  if (etat.decales?.length) return 'tracé dessiné à la main — n’aboutit plus à l’onduleur'
-  if (!etat.proposes?.length || etat.aLaMain?.length) return null
+  if (etat.decales?.length) return 'tracé enregistré — n’aboutit plus à l’onduleur'
+  if (!etat.proposes?.length || etat.autres?.length) return null
+  const n = etat.pansSansTrace?.length ?? 0
+  if (n) return `tracé partiel : ${n} pan${n > 1 ? 's' : ''} sans tracé vers l’onduleur`
   return aEnregistrer ? `${PROVENANCE_TRACE_PROPOSE} — longueur mesurée à l’enregistrement` : PROVENANCE_TRACE_PROPOSE
 }
 
@@ -123,7 +128,7 @@ export function useOnduleurSurCarte({ builderApi, enregistreLe = null, nombreAtt
     setChoisiId(null)
     const n = r.tracesGardees.length
     setMessage(n
-      ? `Onduleur retiré. ${n} tracé${n > 1 ? 's' : ''} dessiné${n > 1 ? 's' : ''} à la main vers lui reste${n > 1 ? 'nt' : ''} sur le plan.`
+      ? `Onduleur retiré. ${n} autre${n > 1 ? 's' : ''} tracé${n > 1 ? 's' : ''} vers lui reste${n > 1 ? 'nt' : ''} sur le plan : il${n > 1 ? 's n’ont' : ' n’a'} pas été retiré${n > 1 ? 's' : ''}.`
       : 'Onduleur retiré du plan.')
   }
 
