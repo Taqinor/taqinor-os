@@ -8,7 +8,7 @@ import { messageRefus, refusServeur } from '../commun/refusServeur'
 import { lireConflit } from '../conflitEcriture'
 import { Icone } from '../atelier/coque/primitives'
 import { PlanDessus } from '../client/partiesClient'
-import { DEPUIS_RELEVE, planDessus } from '../client/vueClient.helpers'
+import { DEPUIS_RELEVE, planDessus, useMoteurToit } from '../client/vueClient.helpers'
 import { champsDuReleve, corpsDuReleve, validerAvantEnvoi } from './corpsReleve'
 import {
   LARGEUR, LONGUEUR, avecMesure, chainesSaisies, dateDuJour, mesureDesChaines, mesureDuCapteur,
@@ -230,7 +230,8 @@ export default function ReleveVisite() {
     const saisie = releve[`saisie${nom}`]
     return saisie === undefined ? chaines : avecMesure(chaines, nom, saisie)
   }, releve.chaines)
-  const plan = useMemo(() => (doc.etat === 'ok' ? planDessus(doc.document) : null), [doc.etat, doc.document])
+  const { moteur: moteurToit } = useMoteurToit() // ACAL1353 — le moteur se charge à part ; sans lui, les pans seuls
+  const plan = useMemo(() => (doc.etat === 'ok' ? planDessus(doc.document, moteurToit) : null), [doc.etat, doc.document, moteurToit])
 
   /* Le capteur, démarré par le geste ; refusé ou absent ⇒ la saisie à la main, dite telle. */
   const lireCapteur = async (champ) => {

@@ -25,7 +25,7 @@ export function PlanDessus({ plan }) {
   return (
     <svg className="cal-client-plan" viewBox={`0 0 ${larg.toFixed(2)} ${haut.toFixed(2)}`}
       preserveAspectRatio="xMidYMid meet" role="img" data-testid="client-plan"
-      aria-label={`Le toit vu de dessus : ${plan.pans.length} pan${plan.pans.length > 1 ? 's' : ''}, ${plan.modules.length} panneau${plan.modules.length > 1 ? 'x' : ''} dessiné${plan.modules.length > 1 ? 's' : ''}`}>
+      aria-label={`Le toit vu de dessus : ${plan.pans.length} pan${plan.pans.length > 1 ? 's' : ''}${plan.sansModules ? '' : `, ${plan.modules.length} panneau${plan.modules.length > 1 ? 'x' : ''} dessiné${plan.modules.length > 1 ? 's' : ''}`}`}>
       {plan.pans.map((pan, i) => <polygon key={`p${i}`} className="cal-client-pan" points={pan.map(pt).join(' ')} />)}
       {plan.modules.map((q, i) => <polygon key={`m${i}`} className="cal-client-module" points={q.map(pt).join(' ')} />)}
     </svg>
