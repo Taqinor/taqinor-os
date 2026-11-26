@@ -1033,6 +1033,7 @@ retiré plus un hook ajouté.
 | `cal-elec-devis-retenu` | étape Électrique : « Repris du devis <référence> (option …) » sous la carte de l’onduleur, avec l’écart d’une saisie contraire (ACAL1952). |
 | `cal-elec-onduleur` | étape Électrique : carte de l’onduleur. |
 | `cal-elec-batterie` | étape Électrique : sélecteur de batterie (seulement quand l’onduleur désigné est un hybride, D-ACAL-157). |
+| `cal-elec-batterie-du-devis` | étape Électrique : « le schéma montre la batterie du devis » quand aucune batterie n’est désignée ici. |
 | `cal-elec-batterie-packs` | étape Électrique : le nombre de batteries désignées (pas − / +). |
 | `cal-elec-batterie-inapplicable` | étape Électrique : « la batterie ne s’applique plus » (onduleur devenu non hybride) avec « Retirer la batterie ». |
 | `cal-elec-schema-voir` | étape Électrique : carte « Schéma électrique — Voir ». |
