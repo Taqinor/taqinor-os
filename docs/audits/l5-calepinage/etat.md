@@ -2463,3 +2463,43 @@ simulée sans avertissement), R6-N3, R6-N4, T4-U1-009 / T4-X7-020 (PDF « devis 
 
 **Disque** : commande « clean the disk » du dépôt lancée (16 Go libres vers 15 h, 6,8 au départ) ; rapport de mesure dans le
 dossier de travail de la session (`disque/rapport.md`) : arbres de travail 53 Go dont 104 déjà dans `main`, caches 23 Go.
+
+### Point du 26/11, 18 h 30 UTC — LOT 8 ASSEMBLÉ (26 branches), RÉPARATIONS DE PRÉ-CI EN COURS, LOT 9 EN FILE (le plus récent — REPRENDRE ICI)
+
+**Branche du lot 8** : `dev-lot8`, tête `14fc3b383` (poussée). Rien n'est en PR. `dev-lot9` = même commit (les lanes du lot 9 partent de là).
+Coupures du lot 8 : `COUPURE_PROTECTION_FICHE`, `COUPURE_TOIT_PLAT`, `COUPURE_PDF_2611` = 28/11 → **le lot 8 doit être déployé avant le 28/11**
+(le lot 7, fusionné, n'est pas déployé non plus).
+
+**Pliées depuis le point précédent** : `lot8/onduleur-position` (ACAL1317, D-ACAL-70), `lot8/faux-non-enregistre` (fiche lead : historique
+et conception relus après un geste ; demande du fondateur du 26/11 sur l'action « Être rappelé » invisible).
+
+**Pré-CI sur un runner** (workflow temporaire `zz-scratch`, branches supprimées après usage ; journaux dans le dossier de travail de la
+session, `preci-dl/` et `preci2/`) :
+- 1er passage (apps.ventes, 11 580 tests) : 15 rouges, 3 causes de test corrigées (`34afe686b`) ; garde QJR6 corrigée (`87a7b8de8`).
+- 2e passage (calepinage, stock, roles, sav, reporting, crm, core, parametres, installations) : stock, reporting, installations verts.
+  Rouges attribués au lot 8, en réparation sur deux branches : `lot8/reparations-cal` (2 tests de `test_acal_resync_annonce` — la phrase
+  « toit plat 20° supposés » s'ajoute aux écarts de l'aperçu ; entrée `batterie.produit` absente ; fixture `A194-PAN` de `test_acal1268` ;
+  cliquet des imports calepinage → ventes : 47 fichiers pour un plafond de 44) et `lot8/reparations-ventes` (message de la batterie désignée
+  absent en « deux options » ; golden AST `crm/views.py::assignable_users`).
+  Environ 400 erreurs de sav / roles / core / parametres ont la forme d'un artefact du passage (clés étrangères vers des `ContentType`
+  absents, après plusieurs `manage.py test --keepdb` enchaînés dans un même job) : **hypothèse non vérifiée**, confiée au tri de
+  `lot8/reparations-ventes` ; la vraie CI tranchera.
+- Image de référence du PDF industriel, page 2 : écart de 38 %. La page passe de « un tableau + encadré option avec batterie » à « deux
+  options chiffrées côte à côte ». **Origine pas encore établie** (enquête en lecture seule lancée) : ne PAS committer la nouvelle image
+  (`base2/industriel_full_etude_p2.png` du dossier de travail) avant de savoir si le changement est voulu et s'il épargne les devis envoyés.
+
+**Reste avant la PR du lot 8** : plier les deux réparations ; trancher l'image du PDF ; mesure du bundle (en cours) ; relecture finale du
+lot assemblé (une passe Fable) ; PR `dev-lot8` → `main`, Auto-fix, file de fusion ; rendre les baux ; dire à Reda de déployer.
+
+**Lot 9** (branches poussées, aucune pliée) : prêtes — `lot8/module-pose-suivi`, `lot8/atelier-r6`, `lot9/historique-devis-public`,
+`lot9/panneau-defaut-calepinage` (le panneau par défaut passe avant les favoris), `lot9/reviser-etudes` (relecture lancée),
+`lot8/droits-technicien` (relecture lancée). En correction après relecture : `lot8/numerotation-stable` (un numéro provisoire pouvait être
+engagé sur un second panneau ; plafond perdu à la restauration d'une version et à « Retenir »), `lot8/panneau-defaut-stock` (journal
+d'audit, frontière stock → ventes, un seul watt par panneau par défaut), `lot8/resync-apercu` (un devis envoyé pouvait encore être corrigé
+sans la carte d'aperçu par « Enregistrer la conception » ; montant dans un avertissement ; confirmation non liée à l'aperçu),
+`lot8/pdf-devis-final-rib` (tests du nombre de pages, libellé du format une page), `lot8/liaison-dc-tracee` (ligne d'affichage).
+En écriture : `lot9/panneau-defaut-ventes`, `lot9/lecteurs-aval`, `lot9/une-cible` (texte dans le script du toit partagé).
+Constats à garder : la révision d'un devis par NÉGOCIATION de prix reste calculée sans l'ombrage (V2 acceptée dans la transaction) ;
+`apps/web` garde un module de repli codé en dur à 720 Wc quand aucun catalogue n'est servi (`moduleSelect.ts::MODULE_PAR_DEFAUT_ATELIER`) ;
+lenteur de « Réviser » et des cartes de la liste des devis : mesure à faire sur la pile (`mesure_lenteurs.py` du dossier de travail),
+piste : lancer `manage.py ranger_totaux_affiches` après `migrate` au déploiement.
