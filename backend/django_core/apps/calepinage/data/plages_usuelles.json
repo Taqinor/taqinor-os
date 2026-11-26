@@ -1,6 +1,19 @@
 {
-  "pourquoi": "ACAL701 — bandes de pertes « usuelles » par étape, recopiées d'une page PUBLIÉE relue (url, date). Une étape sans bande sourcée reste ABSENTE de « bandes » et figure dans « sans_bande » avec son motif (D-CALX 7 : zéro chiffre inventé).",
-  "bandes": [],
+  "pourquoi": "ACAL701 — bandes de pertes « usuelles » par étape, recopiées d'une page PUBLIÉE relue (url, date). Une étape sans bande sourcée reste ABSENTE de « bandes » et figure dans « sans_bande » avec son motif (D-CALX 7 : zéro chiffre inventé). ACAL1625 — une bande retenue porte AUSSI « citation » : la phrase de la page, mot pour mot ; une bande sans url ni citation n'est pas lue.",
+  "bandes": [
+    {
+      "etape": "lid",
+      "min": 1.0,
+      "max": 3.0,
+      "unite": "%",
+      "grandeur": "perte_pct_etape",
+      "source": "texte",
+      "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/lid-loss.html",
+      "date_lecture": "2026-11-26",
+      "citation": "LID loss is related to wafer manufacturing quality and typically ranges from 1% to 3% (or more).",
+      "note": "Bande « usuelle » de la page ; « (or more) » : au-delà de 3 % la perte est dite inhabituelle, jamais refusée."
+    }
+  ],
   "total": null,
   "sans_bande": [
     {
@@ -163,8 +176,12 @@
     },
     {
       "etape": "thermique",
-      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "motif": "La page PVsyst des pertes thermiques n'imprime qu'un taux par degré (« about −0.2 to −0.4 % / °C »), pas une part de l'énergie qui entre dans l'étape. Relue le 26/11/2026 (ACAL1625). Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
       "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/array-thermal-losses/index.html",
+          "date_lecture": "2026-11-26"
+        },
         {
           "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
           "date_lecture": "2026-11-21"
@@ -177,22 +194,12 @@
     },
     {
       "etape": "qualite_module",
-      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "motif": "La page PVsyst de la qualité des modules donne une règle de calcul (« PVsyst uses one-quarter of the difference between these values. »), aucune bande (minimum ; maximum). Relue le 26/11/2026 (ACAL1625). Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
       "pages_lues": [
         {
-          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
-          "date_lecture": "2026-11-21"
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/module-quality-losses.html",
+          "date_lecture": "2026-11-26"
         },
-        {
-          "url": "https://help-center.helioscope.com/hc/en-us/articles/8198852043027-Typical-Loss-Factors",
-          "date_lecture": "2026-11-21"
-        }
-      ]
-    },
-    {
-      "etape": "lid",
-      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
-      "pages_lues": [
         {
           "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
           "date_lecture": "2026-11-21"
@@ -205,8 +212,12 @@
     },
     {
       "etape": "mismatch_fabricant",
-      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "motif": "La page PVsyst du mismatch n'imprime qu'un plafond par défaut (« PVsyst considers a maximum default value of 2%, for classic strings length. ») et un tableau par nombre de modules, aucune bande (minimum ; maximum). Relue le 26/11/2026 (ACAL1625). Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
       "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/array-mismatch-losses/index.html",
+          "date_lecture": "2026-11-26"
+        },
         {
           "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
           "date_lecture": "2026-11-21"
@@ -247,8 +258,12 @@
     },
     {
       "etape": "ohmique_dc",
-      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "motif": "La page PVsyst des pertes ohmiques DC n'imprime qu'une valeur par défaut (« In PVsyst we have chosen a default initial value of 1.5% (at STC) for this usual loss. »), aucune bande (minimum ; maximum). Relue le 26/11/2026 (ACAL1625). Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
       "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/ohmic-losses/array-ohmic-wiring-loss.html",
+          "date_lecture": "2026-11-26"
+        },
         {
           "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
           "date_lecture": "2026-11-21"
@@ -303,8 +318,12 @@
     },
     {
       "etape": "ohmique_ac",
-      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "motif": "La page PVsyst des pertes ohmiques AC n'imprime aucun pourcentage. Relue le 26/11/2026 (ACAL1625). Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
       "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/ohmic-losses/ac-ohmic-loss-inverter-to-injections.html",
+          "date_lecture": "2026-11-26"
+        },
         {
           "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
           "date_lecture": "2026-11-21"
@@ -345,8 +364,12 @@
     },
     {
       "etape": "indisponibilite",
-      "motif": "Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
+      "motif": "La page PVsyst de l'indisponibilité n'imprime aucun pourcentage. Relue le 26/11/2026 (ACAL1625). Aucune page publiée relue n'imprime une bande (minimum ; maximum) de cette perte définie comme part de l'énergie qui entre dans l'étape : PVsyst (page des pertes) ne publie aucune valeur chiffrée ; la page HelioScope « Typical Loss Factors » refuse les lecteurs automatiques (HTTP 403, non contournée). Aucune bande n'est recopiée de mémoire.",
       "pages_lues": [
+        {
+          "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/unavailability-loss.html",
+          "date_lecture": "2026-11-26"
+        },
         {
           "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/index.html",
           "date_lecture": "2026-11-21"

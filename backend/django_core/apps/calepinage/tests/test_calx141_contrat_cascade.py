@@ -309,14 +309,16 @@ class PlagesTest(unittest.TestCase):
     BANDES = {'bandes': [
         {'etape': 'thermique', 'min': 5.0, 'max': 9.0, 'unite': '%',
          'url': 'https://exemple.invalid/thermique',
-         'date_lecture': '2026-11-21'},
+         'date_lecture': '2026-11-21', 'citation': 'phrase de test'},
         {'etape': 'ohmique_dc', 'min': 0.2, 'max': 0.5, 'unite': '%',
-         'url': 'https://exemple.invalid/dc', 'date_lecture': '2026-11-21'},
+         'url': 'https://exemple.invalid/dc', 'date_lecture': '2026-11-21',
+         'citation': 'phrase de test'},
         {'etape': 'bifacial', 'min': 0.0, 'max': 1.0, 'unite': '%',
-         'url': 'https://exemple.invalid/bif', 'date_lecture': '2026-11-21'},
+         'url': 'https://exemple.invalid/bif', 'date_lecture': '2026-11-21',
+         'citation': 'phrase de test'},
     ], 'total': {'min': 1.0, 'max': 5.0, 'unite': '%',
                  'url': 'https://exemple.invalid/total',
-                 'date_lecture': '2026-11-21'}}
+                 'date_lecture': '2026-11-21', 'citation': 'phrase de test'}}
 
     def _attendu(self, valeur, bas, haut):
         return 'dans_la_plage' if bas <= valeur <= haut else 'inhabituel'
@@ -342,6 +344,31 @@ class PlagesTest(unittest.TestCase):
         self.assertEqual(plages['total']['statut'], 'inhabituel')
         self.assertEqual(plages['etapes']['thermique']['url'],
                          'https://exemple.invalid/thermique')
+
+    def test_acal1625_une_bande_servie_porte_url_et_citation(self):
+        # Le FICHIER réel porte au moins une bande citée mot pour mot (LID,
+        # PVsyst) ; servie, elle dit son url et sa phrase. Mutant : une bande
+        # sans citation n'est pas lue (aucune pastille, motif d'absence).
+        from apps.calepinage.services.plages_usuelles import charger, evaluer
+
+        bandes = charger()['bandes']
+        self.assertTrue(bandes)
+        for bande in bandes:
+            self.assertTrue(bande['url'].startswith('https://'), bande['etape'])
+            self.assertTrue(bande['citation'].strip(), bande['etape'])
+        lid = next(b for b in bandes if b['etape'] == 'lid')
+        self.assertIn('typically ranges from 1% to 3%', lid['citation'])
+        cascade = {'etapes': [{'etape': 'lid', 'perte_pct': 2.0, 'motif_omission': '',
+                               'gain': False}], 'total_pct': None}
+        plages = evaluer(cascade)
+        self.assertEqual(plages['etapes']['lid']['statut'], 'dans_la_plage')
+        self.assertEqual(plages['etapes']['lid']['url'], lid['url'])
+        self.assertEqual(plages['etapes']['lid']['citation'], lid['citation'])
+        self.assertEqual(plages['motif_absence'], '')
+        sans_citation = {'bandes': [dict(lid, citation='')]}
+        plages = evaluer(cascade, sans_citation)
+        self.assertEqual(plages['etapes'], {})
+        self.assertEqual(plages['motif_absence'], 'aucune bande sourcée')
 
     def test_fichier_vide_aucune_pastille(self):
         from apps.calepinage.services.plages_usuelles import evaluer

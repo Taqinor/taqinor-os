@@ -39,7 +39,15 @@ def _pastille(valeur, bande):
     statut = 'dans_la_plage' if bas <= valeur <= haut else 'inhabituel'
     return {'statut': statut, 'min': bas, 'max': haut,
             'unite': bande.get('unite'), 'url': bande.get('url'),
-            'date_lecture': bande.get('date_lecture')}
+            'date_lecture': bande.get('date_lecture'),
+            'citation': bande.get('citation')}  # ACAL1625 — la phrase de la page
+
+
+def _citee(bande):
+    """ACAL1625 — une bande n'est lue que si elle porte son url ET la phrase
+    citée de la page : jamais un chiffre sans sa page."""
+    return (isinstance(bande, dict) and str(bande.get('url') or '').startswith('https://')
+            and bool(str(bande.get('citation') or '').strip()))
 
 
 def evaluer(cascade, donnees=None):
@@ -47,7 +55,7 @@ def evaluer(cascade, donnees=None):
     donnees = charger() if donnees is None else (donnees or {})
     bandes = {bande.get('etape'): bande
               for bande in donnees.get('bandes') or ()
-              if isinstance(bande, dict)}
+              if _citee(bande)}
     etapes = {}
     for etape in (cascade or {}).get('etapes') or ():
         bande = bandes.get(etape.get('etape'))
@@ -58,6 +66,6 @@ def evaluer(cascade, donnees=None):
             etapes[etape['etape']] = pastille
     total = donnees.get('total')
     total = (_pastille(_nombre((cascade or {}).get('total_pct')), total)
-             if isinstance(total, dict) else None)
+             if _citee(total) else None)
     return {'etapes': etapes, 'total': total,
             'motif_absence': '' if bandes else MOTIF_AUCUNE_BANDE}
