@@ -16,6 +16,7 @@ import {
 } from './releveTelephone'
 import usePhotosReleve from './usePhotosReleve'
 import useReleveEnFile from './useReleveEnFile'
+import AnciennesEnFile from './AnciennesEnFile'
 import useBrouillonReleve, { compterMesures } from './useBrouillonReleve'
 import TuilesPhotos from './TuilesPhotos'
 import { CarteMesure, ChampDecimal, PictoBoussole } from './CarteMesure'
@@ -509,6 +510,7 @@ export default function ReleveVisite() {
               <span>{noteHorsLigne(photos.enAttente, enLigne, fileReleve.enAttente, mesuresGardees)}</span>
             </section>
           )}
+          <AnciennesEnFile calepinageId={id} onApres={() => { Promise.resolve(fileReleve.renvoyer()).catch(() => {}) }} />
           {brouillons.stockageIndisponible && (
             <section className="cal-tel-note" data-testid="releve-stockage-indisponible" role="status">
               <span>Ce téléphone ne peut pas garder vos mesures : terminez le relevé tant que vous avez du réseau.</span>

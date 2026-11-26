@@ -40,8 +40,8 @@ vi.mock('../capteursTelephone', () => ({
 }))
 
 const {
-  OP_PHOTO_CALEPINAGE, OP_RELEVE_CALEPINAGE, mettreReleveEnFile, oublierReleveEnFile, rejouerReleve, releveEnAttente,
-  viderRelevesEnFile,
+  OP_PHOTO_CALEPINAGE, OP_RELEVE_CALEPINAGE, anciennesEnFile, mettreReleveEnFile, oublierReleveEnFile, rejouerReleve,
+  releveEnAttente, supprimerAnciennes, viderRelevesEnFile,
 } = await import('../fileEnvoiPhotos')
 const { TYPES_BINAIRES_VIDES_A_LA_DECONNEXION, emitAuthLogout } = await import('../../../providers/session-bridge')
 const { store } = await import('../../../store')
@@ -60,6 +60,8 @@ const taper = (testId, valeur) => fireEvent.change(screen.getByTestId(testId), {
 beforeEach(async () => {
   vi.clearAllMocks()
   window.localStorage.clear()
+  // Revue ACAL1949 — la file n'appartient qu'à un utilisateur CONNECTÉ : sans session, rien n'y est rejoué.
+  store.dispatch(setCredentials({ user: { id: 1 } }))
   await oublierReleveEnFile('1')
   enLigne = true
   Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => enLigne })
@@ -484,6 +486,52 @@ describe('ACAL1949 — le relevé gardé est celui de SON utilisateur, porte sa 
     const conflit = await rejouerReleve('1')
     expect(conflit.refus).not.toBeNull()
     expect(conflit.restantes).toBe(0)
+  })
+
+  describe('un relevé gardé AVANT la règle (aucun utilisateur noté) : montré, jamais envoyé seul ni jeté en silence', () => {
+    const garderAncien = async () => {
+      store.dispatch(logout()) // gardé sans utilisateur : la forme d'une entrée d'avant la mise à jour
+      await mettreReleveEnFile('1', { corps: CORPS })
+      connecter(1)
+    }
+    const RELEVE_SANS_ID = { data: { releves: [], releve_courant_id: null } }
+
+    it('« Envoyer sous mon compte » l’envoie UNE fois, avec sa clé ; rien ne partait avant le geste', async () => {
+      await garderAncien()
+      api.releve.mockResolvedValue(RELEVE_SANS_ID)
+      api.enregistrerReleve.mockResolvedValue({ data: { releve: { id: 30 } } })
+      rendre()
+      expect(await screen.findByTestId('releve-anciennes')).toHaveTextContent('Relevé enregistré avant la mise à jour — à vérifier')
+      expect(api.enregistrerReleve).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByTestId('releve-anciennes-envoyer'))
+      await waitFor(() => expect(api.enregistrerReleve).toHaveBeenCalledTimes(1))
+      const [calepinage, corps, options] = api.enregistrerReleve.mock.calls[0]
+      expect([calepinage, corps]).toEqual(['1', CORPS])
+      expect(options.idempotencyKey).toEqual(expect.any(String))
+      await waitFor(() => expect(screen.queryByTestId('releve-anciennes')).toBeNull())
+      expect((await anciennesEnFile('1')).releve).toBe(false)
+    })
+
+    it('« Supprimer » le retire sans rien envoyer', async () => {
+      await garderAncien()
+      rendre()
+      await screen.findByTestId('releve-anciennes')
+      fireEvent.click(screen.getByTestId('releve-anciennes-supprimer'))
+      await waitFor(() => expect(screen.queryByTestId('releve-anciennes')).toBeNull())
+      expect((await anciennesEnFile('1')).releve).toBe(false)
+      expect(api.enregistrerReleve).not.toHaveBeenCalled()
+      expect(api.corrigerReleve).not.toHaveBeenCalled()
+    })
+
+    it('sans session connue (démarrage), rien n’est proposé, envoyé ni retiré', async () => {
+      await garderAncien()
+      store.dispatch(logout())
+      expect(await anciennesEnFile('1')).toEqual({ releve: false })
+      await supprimerAnciennes('1')
+      expect(await rejouerReleve('1')).toMatchObject({ envoye: false, restantes: 0 })
+      connecter(1)
+      expect((await anciennesEnFile('1')).releve).toBe(true) // toujours là, la session revenue
+    })
   })
 
   it('la purge centrale connaît les types de CETTE file (photos et relevé)', () => {

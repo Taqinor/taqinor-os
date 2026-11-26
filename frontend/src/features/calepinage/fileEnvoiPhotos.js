@@ -105,9 +105,40 @@ export async function rejouerFile(calepinageId) {
    poste partagé, B ne voit, ne remplace ni ne rejoue jamais le relevé de A ; celui-ci repart à la reconnexion de A, avec
    sa clé (`client_op_id`, en `Idempotency-Key`). La déconnexion vide les relevés gardés (poste partagé, LW45). */
 const utilisateurCourant = () => { try { return store.getState()?.auth?.user?.id ?? null } catch { return null } }
-const releveDuCompte = (o, id) => miennes([o], id, OP_RELEVE_CALEPINAGE).length > 0
-  && String(o.meta?.utilisateurId ?? '') === String(utilisateurCourant() ?? '')
+/** Revue ACAL1949 (point 3) — une entrée gardée SANS utilisateur (avant cette règle, ou sans session connue) est une
+    « ancienne » : jamais rejouée seule, jamais jetée en silence ; l'utilisateur connecté la voit et choisit (l'envoyer
+    sous son compte, ou la supprimer). */
+const estAncienne = (o) => o?.meta?.utilisateurId == null
+/** Gardée par l'utilisateur connecté. Session pas encore connue (`null`) : RIEN n'est à lui — rien n'est rejoué,
+    retiré ni proposé tant que la session n'est pas là (point 5). */
+const duCompte = (o) => {
+  const u = utilisateurCourant()
+  return u != null && !estAncienne(o) && String(o.meta.utilisateurId) === String(u)
+}
+const releveDuCompte = (o, id) => miennes([o], id, OP_RELEVE_CALEPINAGE).length > 0 && duCompte(o)
 const relevesDuCompte = (ops, id) => ops.filter((o) => releveDuCompte(o, id))
+const ancienneDe = (o, id) => estAncienne(o) && miennes([o], id, OP_RELEVE_CALEPINAGE).length > 0
+
+/** Les entrées « anciennes » de ce calepinage : `{ releve: bool }` (rien sans session connue). */
+export async function anciennesEnFile(calepinageId) {
+  if (utilisateurCourant() == null) return { releve: false }
+  return { releve: (await file().load()).some((o) => ancienneDe(o, calepinageId)) }
+}
+
+/** « Envoyer sous mon compte » : les anciennes de ce calepinage deviennent celles de l'utilisateur connecté (même clé
+    d'idempotence) ; le rejeu ordinaire les envoie ensuite. */
+export async function adopterAnciennes(calepinageId) {
+  const u = utilisateurCourant()
+  if (u == null) return
+  await majAtomique(file(), (cur) => cur.map((o) => (ancienneDe(o, calepinageId)
+    ? { ...o, meta: { ...o.meta, utilisateurId: u } } : o)))
+}
+
+/** « Supprimer » : retire les anciennes de ce calepinage, sur le geste explicite de l'utilisateur connecté. */
+export async function supprimerAnciennes(calepinageId) {
+  if (utilisateurCourant() == null) return
+  await majAtomique(file(), (cur) => cur.filter((o) => !ancienneDe(o, calepinageId)))
+}
 
 /** ACAL1810 — garde le relevé terminé (corps de `corpsDuReleve`, id du relevé à corriger ou `null` pour en créer un) :
     le relevé déjà en file de ce calepinage (et de cet utilisateur) est REMPLACÉ, jamais doublé. Pas d'octets : le corps
