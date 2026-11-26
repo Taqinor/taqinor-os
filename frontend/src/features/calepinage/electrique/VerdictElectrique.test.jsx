@@ -1101,7 +1101,58 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
       expect(calepinageApi.calepinages.enregistrerEntreeElectrique).not.toHaveBeenCalled()
       fireEvent.click(within(carte).getByRole('button', { name: 'Retirer la batterie' }))
       await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique)
-        .toHaveBeenCalledWith(7, { batterie: { produit: null, packs: 3 } }))
+        .toHaveBeenCalledWith(7, { batterie: null }))  // plus rien d'autre de saisi : retour à « jamais désignée »
+    })
+
+    it('retirer une batterie dont la déclaration porte d’autres saisies garde ces saisies, sans produit ni packs', async () => {
+      servirEtape({ e: entreeAvec({ hybride: true, batterie: { produit: 905, packs: 2, strategie: 'autoconsommation' } }) })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      fireEvent.change(within(carte).getByRole('combobox'), { target: { value: '' } })
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique)
+        .toHaveBeenCalledWith(7, { batterie: { strategie: 'autoconsommation', produit: null } }))
+    })
+
+    it('première désignation : `packs` part explicitement (1) pour que stocké, écran et dessin comptent pareil', async () => {
+      servirEtape({ e: entreeAvec({ hybride: true }) })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      fireEvent.change(within(carte).getByRole('combobox'), { target: { value: '905' } })
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique)
+        .toHaveBeenCalledWith(7, { batterie: { produit: 905, packs: 1 } }))
+    })
+
+    it('sans batterie désignée mais avec une ligne batterie au devis : la carte le dit, jamais un « Aucune » muet', async () => {
+      const e = entreeAvec({ hybride: true })
+      e.candidats.batterie_du_devis = { produit_id: 905, designation: 'Batterie du devis', packs: 3 }
+      servirEtape({ e })
+      rendreEtape()
+      const note = await screen.findByTestId('cal-elec-batterie-du-devis')
+      expect(note).toHaveTextContent('le schéma montre la batterie du devis (« Batterie du devis », 3 unités)')
+    })
+
+    it('ancienne entrée sans packs : la carte affiche ce que le dessin compte (la quantité du devis), pas 1', async () => {
+      const e = entreeAvec({ hybride: true, batterie: { produit: 905 } })
+      e.candidats.batterie_du_devis = { produit_id: 905, designation: 'Batterie du devis', packs: 3 }
+      servirEtape({ e })
+      rendreEtape()
+      expect(await screen.findByTestId('cal-elec-batterie-packs')).toHaveTextContent('3 batteries')
+    })
+
+    it('une batterie que le juge dit incompatible est grisée avec SES raisons ; « inconnu » reste proposée', async () => {
+      const e = entreeAvec({ hybride: true })
+      e.candidats.batteries = [
+        { id: 905, libelle: 'Batterie 48 V', marque: 'M', favori: false, fiche_complete: true, champs_manquants: [],
+          compatibilite: { statut: 'incompatible', raisons: ['tension nominale 48 V hors de la plage 150-500 V'] } },
+        { id: 906, libelle: 'Batterie sans tension', marque: 'M', favori: false, fiche_complete: true, champs_manquants: [],
+          compatibilite: { statut: 'inconnu', raisons: ['tension nominale inconnue'] } },
+      ]
+      servirEtape({ e })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      const incompatible = within(carte).getByRole('option', { name: /Batterie 48 V — incompatible : tension nominale 48 V hors de la plage 150-500 V/ })
+      expect(incompatible).toBeDisabled()
+      expect(within(carte).getByRole('option', { name: 'Batterie sans tension (M)' })).not.toBeDisabled()
     })
 
     it('batterie désignée : le nombre de batteries se règle par pas, avec l’objet complet', async () => {
