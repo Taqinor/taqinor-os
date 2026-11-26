@@ -717,6 +717,17 @@ describe('planDepuisDocument — le document schema_electrique (lot 6)', () => {
     expect(dessiner(plan)).toHaveTextContent('Protection foudre toit')
   })
 
+  it('ACAL1551 — la coupure d’urgence DC servie (organe_dc) est dessinée dans le coffret DC sous SA désignation', () => {
+    const d = doc('avec_batterie')
+    d.coffret_dc.organes.push({ clef: 'organe_dc', repere: 'SOC1', titre: 'Coupure d’urgence DC (arrêt rapide)', calibre: null, quantite: 1 })
+    const plan = planDepuisDocument(d)
+    const organe = plan.coffretDc.organes.find((o) => o.clef === 'organe_dc')
+    expect(organe.nom).toBe('Coupure d’urgence DC (arrêt rapide)')
+    expect(organe.detail).toBe('décision société')
+    expect(plan.coffretDc.organes.map((o) => o.clef).at(-1)).toBe('organe_dc')
+    expect(dessiner(plan)).toHaveTextContent('Coupure d’urgence DC (arrêt rapide)')
+  })
+
   it.each([100, 400])('champ de %i panneaux : tuiles bornées et lisibles, le nombre écrit reste le vrai', (n) => {
     const d = doc('sans_batterie', 'exemple_champ_sans_repartition')
     d.panneaux.nombre = n

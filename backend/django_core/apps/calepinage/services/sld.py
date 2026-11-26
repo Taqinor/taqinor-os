@@ -554,10 +554,16 @@ def resultat_et_gabarit_decides(conception, donnees, norme, *,
                                          reglages=reglages)
     resultat = resultat_electrique_complet(conception, norme=norme,
                                            checklist=checklist)
+    from core.electrique.schema import organes_dc_hors_chaine
+
     gabarit = dict(gabarit if gabarit is not None
                    else gabarit_de_schema(norme))
+    # ACAL1551 — un organe société côté continu est DESSINÉ (bloc
+    # ``organe_dc``) : seuls les autres restent « non dessinés ».
+    dessines = {p.repere for p in organes_dc_hors_chaine(resultat)}
     ajoutes = [ligne for ligne in organes_retenus(checklist)
-               if ligne.get('origine') == ORIGINE_SOCIETE]
+               if ligne.get('origine') == ORIGINE_SOCIETE
+               and ligne.get('repere') not in dessines]
     if ajoutes:
         mention = ('Organe(s) ajouté(s) par décision société, non dessiné(s) '
                    'sur la planche : %s.'

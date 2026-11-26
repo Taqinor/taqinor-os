@@ -144,7 +144,9 @@ export function lignesLegende(svg) {
 
 const chiffre = (v, d = 0) => formatNumber(v, { decimals: d, locale: 'fr' })
 const fini = (v) => typeof v === 'number' && Number.isFinite(v)
-const DC_ORGANES = ['fusibles', 'parafoudre_dc', 'sectionneur_dc']
+// ACAL1551 — `organe_dc` (`organe_dc#2`…) : un organe côté continu retenu hors chaîne canonique (la coupure
+// d'urgence DC exigée par le dossier) ; son nom est le titre SERVI (sa désignation).
+const DC_ORGANES = ['fusibles', 'parafoudre_dc', 'sectionneur_dc', 'organe_dc']
 const AC_ORGANES = ['disjoncteur_ac', 'parafoudre_ac', 'ddr']
 /* Nom court de l'organe dans son coffret + ce qu'il fait (aucun chiffre). La 2e ligne est le
    calibre SERVI (`sous_titre`) quand il existe ; sinon cette phrase. */
@@ -152,6 +154,7 @@ const ORGANES = {
   fusibles: { nom: 'Fusibles', role: 'protègent chaque chaîne', picto: 'fusible' },
   parafoudre_dc: { nom: 'Parafoudre', role: 'protège de la foudre', picto: 'parafoudre' },
   sectionneur_dc: { nom: 'Sectionneur', role: 'coupe les panneaux', picto: 'sectionneur' },
+  organe_dc: { nom: null, role: 'décision société', picto: 'sectionneur' },
   disjoncteur_ac: { nom: 'Disjoncteur', role: 'calibre : note de calcul', picto: 'disjoncteur' },
   parafoudre_ac: { nom: 'Parafoudre', role: 'protège de la foudre', picto: 'parafoudre' },
   ddr: { nom: 'Différentiel', role: 'protège les personnes', picto: 'disjoncteur' },
@@ -203,13 +206,18 @@ function sectionDuCote(troncons, cote) {
   return sections.size === 1 ? duCote[0].section_mm2 : null
 }
 
+const familleDe = (clef) => String(clef ?? '').split('#')[0]
+
 function organesDe(blocs, clefs, libelles) {
-  return clefs.map((clef) => blocs.find((b) => b.clef === clef)).filter(Boolean).map((b) => ({
-    clef: b.clef,
-    nom: libelles[b.clef] ? b.titre : ORGANES[b.clef].nom,
-    detail: String(b.sous_titre ?? '').trim() || ORGANES[b.clef].role,
-    picto: ORGANES[b.clef].picto,
-  }))
+  return clefs.flatMap((clef) => blocs.filter((b) => familleDe(b.clef) === clef)).map((b) => {
+    const organe = ORGANES[familleDe(b.clef)]
+    return {
+      clef: b.clef,
+      nom: libelles[b.clef] || !organe.nom ? b.titre : organe.nom,
+      detail: String(b.sous_titre ?? '').trim() || organe.role,
+      picto: organe.picto,
+    }
+  })
 }
 
 /**
