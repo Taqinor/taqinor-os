@@ -30,7 +30,7 @@ import math
 import pathlib
 import unittest
 
-from apps.calepinage.services.valeurs import nombre
+from apps.calepinage.services.valeurs import nombre, pente_du_pan
 
 APP = pathlib.Path(__file__).resolve().parents[1]
 NOMS = ('_nombre', '_flottant')
@@ -93,3 +93,14 @@ class NombreUniqueTest(unittest.TestCase):
                         chemin.relative_to(APP).as_posix(), noeud.lineno))
         self.assertEqual(copies, [], 'une copie privée de la lecture des '
                          'nombres est revenue : appelez services/valeurs.nombre')
+
+    def test_pente_du_pan_plat_vaut_zero(self):
+        """ACAL1923 — un toit plat qui porte la valeur du curseur (22) se lit 0,
+        exactement comme un toit plat à 0 ; un toit en pente garde sa pente."""
+        self.assertEqual(pente_du_pan({'roofType': 'flat', 'pitchDeg': 22}), 0.0)
+        self.assertEqual(pente_du_pan({'roofType': 'flat', 'pitchDeg': 0}), 0.0)
+        self.assertEqual(pente_du_pan({'roofType': 'flat'}), 0.0)
+        self.assertEqual(pente_du_pan({'roofType': 'pitched', 'pitchDeg': 22}), 22.0)
+        self.assertEqual(pente_du_pan({'pitchDeg': '15'}), 15.0)
+        self.assertIsNone(pente_du_pan({'roofType': 'pitched'}))
+        self.assertIsNone(pente_du_pan(None))
