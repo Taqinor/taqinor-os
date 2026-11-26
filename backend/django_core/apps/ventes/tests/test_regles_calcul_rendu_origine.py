@@ -657,3 +657,86 @@ class ToitPlatNouveauxRendusTests(SimpleTestCase):
                         mock.patch.object(cal_services, 'rendre_planche_svg', return_value='') as rendu:
                     artefacts_rendu._planche_calepinage(devis)
                 self.assertIs(rendu.call_args.kwargs['toit_plat_corrige'], attendu)
+
+
+class AnnexeParOptionTests(SimpleTestCase):
+    """D-ACAL-166 (fondateur, 26/11/2026) — l'annexe technique d'un devis à deux
+    options dont les DEUX conceptions sont rangées (D-ACAL-158) : une page par
+    option, chacune avec SON schéma, SA nomenclature et SES repères ; tout
+    autre devis garde l'annexe d'une page, octet pour octet."""
+
+    DESIGN_SANS = {'chaines': [{'pan': 1, 'mppt': 1, 'nb_modules': 7}],
+                   'parametres': {'phases': 1, 'regime': 'TT'},
+                   'conformite': {'conforme': True, 'bloquants': [], 'alertes': []},
+                   'bom': [{'designation': 'Composant SANS', 'quantite': 1, 'spec': 'réseau'}]}
+    DESIGN_AVEC = {'chaines': [{'pan': 1, 'mppt': 1, 'nb_modules': 7}, {'pan': 1, 'mppt': 2, 'nb_modules': 7}],
+                   'parametres': {'phases': 3, 'regime': 'TN'},
+                   'conformite': {'conforme': True, 'bloquants': [], 'alertes': []},
+                   'bom': [{'designation': 'Composant AVEC', 'quantite': 1, 'spec': 'hybride'}]}
+
+    def _options(self):
+        return [{'option': 'sans_batterie', 'electrical_design': self.DESIGN_SANS, 'sld_svg': '<svg>SANS</svg>'},
+                {'option': 'avec_batterie', 'electrical_design': self.DESIGN_AVEC, 'sld_svg': '<svg>AVEC</svg>'}]
+
+    def _donnees(self, **sur):
+        from apps.ventes.tests import _moteur_fixtures as F
+        return F.donnees_legacy(pdf_mode='full', electrical_design=self.DESIGN_AVEC,
+                                include_annexe_technique=True, sld_svg='<svg>AVEC</svg>', **sur)
+
+    def test_le_builder_ne_sert_les_pages_par_option_qu_aux_nouveaux_rendus(self):
+        from types import SimpleNamespace
+        from apps.ventes.quote_engine import artefacts_rendu
+        opts = {'include_calepinage': False, 'include_annexe_technique': True}
+        for statut, envoi, servi in (('envoye', datetime.datetime(2026, 11, 20, 9, 0), False),
+                                     ('brouillon', None, True)):
+            devis = SimpleNamespace(statut=statut, date_envoi=envoi, date_creation=None, regles_calcul=1,
+                                    mode_installation='residentiel', roof_image=None,
+                                    electrical_design={'materiel': {'nb_modules': 1}})
+            for retour in ([], self._options()):
+                data = {}
+                with mock.patch.object(artefacts_rendu, '_sld_svg', return_value='<svg>hier</svg>'), \
+                        mock.patch.object(artefacts_rendu, '_schema_electrique_svg', return_value='<svg>neuf</svg>'), \
+                        mock.patch('apps.ventes.electrical_service.annexes_par_option', return_value=retour):
+                    artefacts_rendu.ajouter_artefacts_rendu(data, devis, opts, {}, False, [])
+                self.assertEqual('annexes_options' in data, servi and bool(retour), (statut, retour))
+
+    def test_une_page_par_option_chacune_avec_sa_nomenclature_et_ses_reperes(self):
+        from apps.ventes.quote_engine import annexe_options
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        G.apply_quote_data(self._donnees(annexes_options=self._options()))
+        pages = annexe_options.pages_annexe_technique(G).split('<div class="page">')[1:]
+        self.assertEqual(len(pages), 2)
+        sans, avec = pages
+        self.assertIn('Annexe technique — Sans batterie', sans)
+        self.assertIn('Annexe technique — Avec batterie', avec)
+        self.assertIn('<svg>SANS</svg>', sans)
+        self.assertIn('Composant SANS', sans)
+        self.assertNotIn('Composant AVEC', sans)
+        self.assertIn('Composant AVEC', avec)
+        self.assertIn('TT', sans)
+        self.assertIn('TN', avec)
+        self.assertEqual(annexe_options.nombre_pages_annexe(self._options()), 2)
+        self.assertEqual(G.render_html_for(self._donnees(annexes_options=self._options()))
+                         .count('<div class="page">') - G.render_html_for(self._donnees())
+                         .count('<div class="page">'), 1)
+        self.assertEqual(G.PAGES_TOTAL, 4)
+
+    def test_sans_l_entree_rangee_l_annexe_est_octet_pour_octet_celle_d_hier(self):
+        from apps.ventes.quote_engine import annexe_options
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        hier = G.render_html_for(self._donnees())
+        self.assertEqual(G.render_html_for(self._donnees(annexes_options=self._options()[1:])), hier)
+        G.apply_quote_data(self._donnees())
+        self.assertEqual(annexe_options.pages_annexe_technique(G), G.page_annexe_technique())
+        self.assertEqual(G.page_annexe_technique(), G.page_annexe_technique(None, None, ''))
+
+    def test_deux_options_et_l_annexe_font_une_page_de_plus(self):
+        """Compte de pages WeasyPrint (CI) : 4 avec l'annexe d'aujourd'hui, 5 avec
+        une page par option (le compte d'aujourd'hui, 3 / 4, est épinglé par
+        ``test_quote_engine_formats``)."""
+        from weasyprint import HTML
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        for options, attendu in (([], 4), (self._options(), 5)):
+            html = G.render_html_for(self._donnees(annexes_options=options))
+            self.assertEqual(len(HTML(string=html).render().pages), attendu)
+            self.assertEqual(G.PAGES_TOTAL, attendu)
