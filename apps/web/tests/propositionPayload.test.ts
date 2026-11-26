@@ -295,7 +295,8 @@ describe('QJW11 — l’omission est HÉRITÉE, jamais comblée', () => {
 // feuille dans une COPIE EN MÉMOIRE, jamais dans le fichier.
 
 /**
- * LES SEPT BLOCS QUI ONT LEUR PROPRE CONTRAT PACT10. L'échantillon les reprend
+ * LES BLOCS QUI ONT LEUR PROPRE CONTRAT PACT10 (leur nombre = la longueur de cette liste,
+ * jamais écrit en dur ailleurs). L'échantillon les reprend
  * « en version COMPACTE, illustrative de la NATURE seulement — le contrat
  * dédié fait foi sur la forme complète » (`notes.cles_avec_contrat_dedie`).
  * Descendre dedans fabriquerait des justifications pour des clés dont la forme
@@ -308,6 +309,8 @@ const CONTRAT_DEDIE = [
   'conception_electrique', 'fiche_batterie',
   // D-ACAL-132 (lot 6) — `visionneuse_soleil.json`, désigné par la note depuis 188d9613c.
   'visionneuse_soleil',
+  // SCHEL-B3 (lot 6) — `schema_electrique.json`, désigné par la note (même lot).
+  'schema_electrique',
 ] as const;
 
 /** Les trois exemples du contrat — la charge utile ; le reste est de la prose. */
@@ -426,7 +429,7 @@ const NON_LU: Readonly<Record<string, string>> = {
   // ── QJR536 (contrat QJR501) ──────────────────────────────────────────────
   'remplace_par': 'Version qui remplace ce devis : lue par `resolveRemplacement` / `resolveOfferState` (état « retirée », plus de signature, lien vers la version en vigueur) dans le frontmatter — jamais par le lecteur typé du devis. Garde propre : `tests/propositionRemplacee.test.ts`.',
 
-  // ── Les sept blocs à CONTRAT DÉDIÉ (voir `CONTRAT_DEDIE`) ────────────────
+  // ── Les blocs à CONTRAT DÉDIÉ (voir `CONTRAT_DEDIE`) ─────────────────────
   'conception_electrique': 'Conception électrique : sa forme complète est gardée par son propre contrat PACT10 `conception_electrique.json` ; ici elle n’est qu’illustrative.',
   'offres_tailles': 'Les trois tailles proposées : forme gardée par `offres_tailles.json` et lue par `lib/offresTailles.ts`, pas par le lecteur typé.',
   'calepinage_options': 'Calepinage par taille : forme gardée par `calepinage_options.json` ; la page la lit pour la visionneuse 3D, pas `lireProposal`.',
@@ -434,6 +437,7 @@ const NON_LU: Readonly<Record<string, string>> = {
   'fiche_batterie': 'ACAL173 — rendement aller-retour et DoD de la FICHE de la batterie vendue : forme gardée par `couverture_batterie.json` (clé `fiche_batterie`), lue par `batterySim.readFicheBatterie` pour le simulateur de repli, pas par le lecteur typé.',
   'paliers_batterie[]': 'Paliers de dimensionnement batterie : forme gardée par `paliers_batterie.json`, lue par le curseur batterie.',
   'profils_comparatifs': 'Simulation par profil d’occupation : forme gardée par `profils_comparatifs.json`, rendue par le frontmatter.',
+  'schema_electrique': 'SCHEL-B3 — schéma électrique du devis, un document par option servie : forme gardée par `schema_electrique.json`, lue par `lib/schemaElectrique.ts::choisirSld` dans le frontmatter (section #sld, `SchemaElectrique.astro`), jamais par le lecteur typé.',
   'visionneuse_soleil': 'D-ACAL-132 — visionneuse au soleil des liens de confiance : forme gardée par `visionneuse_soleil.json`, lue par `lib/visionneuseSoleil.ts::lireVisionneuseSoleil` dans le frontmatter (barre sous la scène 3D, puis `scripts/roofPro11/viewerSoleil.ts`), jamais par le lecteur typé.',
 
   // ── `quote` — l'objet INTERNE du moteur, hors périmètre de ce contrat ────
@@ -752,8 +756,8 @@ describe('QJW20 — chaque feuille de `proposal_data` est soit LUE, soit REFUSÉ
     }
   });
 
-  it('les sept blocs à contrat dédié sont ceux que le contrat lui-même désigne', () => {
-    // Si un huitième bloc gagnait son propre contrat PACT10, la note bougerait
+  it(`les ${CONTRAT_DEDIE.length} blocs à contrat dédié sont ceux que le contrat lui-même désigne`, () => {
+    // Si un bloc de plus gagnait son propre contrat PACT10, la note bougerait
     // et cette liste devrait bouger avec elle — jamais l’inverse.
     const note = String((CONTRAT.notes as Record<string, unknown>).cles_avec_contrat_dedie);
     for (const cle of CONTRAT_DEDIE) {
