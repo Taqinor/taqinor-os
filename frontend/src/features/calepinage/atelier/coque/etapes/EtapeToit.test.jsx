@@ -1230,7 +1230,7 @@ describe('T4-X8-008 — Expert au téléphone : tiroir réductible, rien ne déb
       .flatMap((r) => [...r.cssRules])
     const hote = document.createElement('div')
     hote.innerHTML = '<div class="cal-coque" data-expert="1"><div class="cal-coque-corps"><div class="cal-coque-centre">'
-      + '<div class="cal-coque-scene"></div></div><nav class="cal-rail"></nav>'
+      + '<div class="cal-coque-scene"><div class="rp9-map-wrap" data-plein-ecran="1"></div></div></div><nav class="cal-rail"></nav>'
       + '<aside class="cal-panneau-etape" data-tiroir="1" data-deplie="0"><div class="cal-panneau-etape-corps"></div></aside></div></div>'
     document.body.appendChild(hote)
     try {
@@ -1241,6 +1241,8 @@ describe('T4-X8-008 — Expert au téléphone : tiroir réductible, rien ne déb
       expect(prop(hote.querySelector('.cal-panneau-etape-corps'), 'display')).toContain('none')
       expect(prop(hote.querySelector('.cal-coque-centre'), 'overflow-y')).toContain('auto')
       expect(prop(hote.querySelector('.cal-rail'), 'z-index').pop()).toBe('calc(var(--z-base) + 40)')
+      // Le plein écran de repli de la carte passe au-dessus du rail (+40) et sous la feuille « Avancé » (+45).
+      expect(prop(hote.querySelector('.rp9-map-wrap'), 'z-index').pop()).toBe('calc(var(--z-base) + 42)')
       // Déplié : le tiroir n'est plus réduit (la hauteur pleine du bloc téléphone s'applique seule).
       hote.querySelector('.cal-panneau-etape').setAttribute('data-deplie', '1')
       expect(prop(hote.querySelector('.cal-panneau-etape-corps'), 'display')).not.toContain('none')
