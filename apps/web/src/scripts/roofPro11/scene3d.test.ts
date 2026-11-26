@@ -2,7 +2,7 @@
 // GÉNÈRE les pans depuis un contour fermé + une pente saisie, au lieu du choix binaire
 // plat/pente par zone. Testé hors DOM/Three (pure geometry in, geometry out).
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { numeroterDocument, registreAtelier } from './numerotation'; // R3 (visuel lot 7)
+import { numeroterDocument, poserEtiquettesNumeros, registreAtelier } from './numerotation'; // R3 (visuel lot 7)
 import { identifiantsModulesParCellule, numerosStablesDuPan } from './libellesAffectation'; // R3 (visuel lot 7)
 import { creerCanalTeinte } from './canalTeinte'; // ACAL1621
 import { cibleVue, appliquerVue } from './vuesCamera';
@@ -484,6 +484,46 @@ describe('R3 — la clé de module de la scène est celle du serveur (`panels[].
     }
     expect(numerosStablesDuPan([{ n: 3 }, { n: 0 }])).toEqual([]);
     expect(numerosStablesDuPan(null)).toEqual([]);
+  });
+
+  // R3 point 2 — appariement par EMPLACEMENT. Le document stocké est dans un ordre ≠ celui des instances.
+  const stockeMelange = (id: string, places: [number, number][], numeros: (number | undefined)[]) => ({
+    zones: [{ id, geometry: { panels: places.map(([cx, cy], i) => ({ cx, cy, ...(numeros[i] === undefined ? {} : { n: numeros[i] }) })) } }],
+  });
+
+  it('chaîne réelle (rendu → coloration) : stocké dans un AUTRE ordre, chaque module prend la couleur de SA ligne', () => {
+    const rendus = plage(0, 40).map((i) => ({ cx: (i % 10) * 1.2, cy: Math.floor(i / 10) * 2.1 }));
+    const ordre = plage(0, 40).reverse(); // document écrit à l'envers
+    const nDe = (i: number) => 2236 + i; // le module rendu i porte n = 2236 + i
+    registreAtelier.absorberDocument(stockeMelange('rendu-reel', ordre.map((i) => [rendus[i].cx, rendus[i].cy]), ordre.map(nDe)));
+    poserEtiquettesNumeros({ three: THREE, racine: new THREE.Group(), panId: 'rendu-reel', modules: rendus, matrices: [], zoom: null });
+    const cellules = plage(0, 40).map((i) => 3 * i + 1); // cellules de lattice, ordre des instances
+    const coloring = buildAffectationColoring(lignesServies('rendu-reel', plage(2236, 40), 8), 'chaine');
+    const fn = couleurParAffectation(coloring, cellules, 'rendu-reel')!;
+    cellules.forEach((cellule, i) => expect(fn(cellule)).toEqual(lireCouleurServie(COULEURS[Math.floor(i / 8)])));
+  });
+
+  it('une cellule sans panneau stocké à son emplacement est GRISE, jamais nommée par un rang d’un autre module', () => {
+    // Stocké : n = 1, 2, 3 à x = 1,2 / 2,4 / 3,6 ; à l'écran un module de plus à x = 0 (pose non enregistrée).
+    registreAtelier.absorberDocument(stockeMelange('neuf', [[1.2, 0], [2.4, 0], [3.6, 0]], [1, 2, 3]));
+    const rendus = [{ cx: 0, cy: 0 }, { cx: 1.2, cy: 0 }, { cx: 2.4, cy: 0 }, { cx: 3.6, cy: 0 }];
+    const ids = identifiantsModulesParCellule([0, 1, 2, 3], 'neuf', rendus);
+    expect(ids).toEqual([undefined, 'neuf#1', 'neuf#2', 'neuf#3']);
+    const lignes = [1, 2, 3].map((n) => ({ module: `neuf#${n}`, chaine: n, mppt: 1, couleur_chaine: COULEURS[n - 1] }));
+    const fn = affectationColorFn(buildAffectationColoring(lignes, 'chaine'), ids)!;
+    expect([0, 1, 2, 3].map(fn)).toEqual([AFFECTATION_UNASSIGNED, ...[0, 1, 2].map((k) => lireCouleurServie(COULEURS[k]))]);
+  });
+
+  it('document ancien sans n : la clé est le rang AU DOCUMENT du panneau au même endroit (règle serveur)', () => {
+    registreAtelier.absorberDocument(stockeMelange('ancien', [[2.4, 0], [0, 0], [1.2, 0]], [undefined, 7, undefined]));
+    const ids = identifiantsModulesParCellule([0, 1, 2], 'ancien', [{ cx: 0, cy: 0 }, { cx: 1.2, cy: 0 }, { cx: 2.4, cy: 0 }]);
+    expect(ids).toEqual(['ancien#2', 'ancien#3', 'ancien#1']);
+  });
+
+  it('placement libre : cellules = index de `freeState.panels`, positions hors lattice, appariées par emplacement', () => {
+    const libres = [{ cx: 0.37, cy: 1.91 }, { cx: 2.05, cy: 0.12 }, { cx: 4.4, cy: 3.33 }];
+    registreAtelier.absorberDocument(stockeMelange('libre', [[4.4, 3.33], [0.37, 1.91], [2.05, 0.12]], [12, 10, 11]));
+    expect(identifiantsModulesParCellule([0, 1, 2], 'libre', libres)).toEqual(['libre#10', 'libre#11', 'libre#12']);
   });
 
   it('sans table servie (estimateur public) : aucune teinte, comme avant', () => {
