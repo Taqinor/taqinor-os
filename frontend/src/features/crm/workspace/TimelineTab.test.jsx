@@ -3,7 +3,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event'
 import { initState } from './draftCore'
 import TimelineTab from './TimelineTab'
-import { matchesTimelineFilter, TIMELINE_FILTERS } from './timelineFiltres'
+import { matchesTimelineFilter, nombreMasquesPlusRecents, TIMELINE_FILTERS } from './timelineFiltres'
 
 /* LW20 — `TimelineTab` : en-tête multi-touch (points-contact/, silencieux si
    vide), filtre par type persisté, notes épinglées en tête (📌) avec action
@@ -73,6 +73,37 @@ describe('LW20 — logique pure du filtre (co-localisée, testable sans DOM)', (
     expect(matchesTimelineFilter('creation', 'systeme')).toBe(true)
     expect(matchesTimelineFilter('modification', 'systeme')).toBe(true)
     expect(matchesTimelineFilter('note', 'tous')).toBe(true)
+  })
+  it('le filtre « Devis » laisse passer chaque action du client sur la page du devis (notes système déjà stockées)', () => {
+    const corps = [
+      'Le client a ouvert le devis DEV-TEST-1',
+      'Le client a rouvert le devis DEV-TEST-1 — 3ᵉ consultation',
+      'Le client a commencé à lire la proposition DEV-TEST-1 en détail.',
+      'Le client relit la section « Prix » de la proposition DEV-TEST-1 — un appel peut débloquer la décision.',
+      'Le client demande à être contacté (DEV-TEST-1) — rappel',
+      'Le client décline la proposition DEV-TEST-1 — motif : le prix. Aucun statut changé : à vous de relancer, réviser ou refuser.',
+      'Ancienne version DEV-TEST-1 (remplacée par DEV-TEST-2) ouverte par le client — la relance porte sur la version en vigueur.',
+      "Rappel demandé — opposition loi 09-08 active : la lever sur la fiche après l'appel",
+    ]
+    for (const body of corps) {
+      expect(matchesTimelineFilter('note', 'devis', body)).toBe(true)
+      expect(matchesTimelineFilter('note', 'tous', body)).toBe(true)
+      expect(matchesTimelineFilter('note', 'notes', body)).toBe(true)
+      expect(matchesTimelineFilter('note', 'appels', body)).toBe(false)
+    }
+  })
+  it('une note sans rapport avec la page du devis reste cachée sous « Devis »', () => {
+    expect(matchesTimelineFilter('note', 'devis', 'Appel de suivi : client intéressé')).toBe(false)
+    expect(matchesTimelineFilter('note', 'devis', 'Le client a recontacté (WhatsApp).')).toBe(false)
+    expect(matchesTimelineFilter('note', 'devis')).toBe(false)
+    expect(matchesTimelineFilter('appel', 'devis', 'Le client a ouvert le devis DEV-TEST-1')).toBe(false)
+  })
+  it("le bandeau « masqués par le filtre » compte avec la même règle (une action client sous « Devis » n'est pas masquée)", () => {
+    const entrees = [
+      { id: 1, kind: 'note', body: 'Le client demande à être contacté (DEV-TEST-1)', created_at: '2026-11-26T10:00:00Z' },
+      { id: 2, kind: 'note', body: 'Note libre', created_at: '2026-11-26T11:00:00Z' },
+    ]
+    expect(nombreMasquesPlusRecents(entrees, 'devis')).toBe(1)
   })
   it('TIMELINE_FILTERS liste les 6 filtres attendus', () => {
     expect(TIMELINE_FILTERS.map((f) => f.key)).toEqual(['tous', 'notes', 'appels', 'emails', 'devis', 'systeme'])

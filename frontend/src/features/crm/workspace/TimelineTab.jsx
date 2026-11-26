@@ -107,7 +107,7 @@ export default function TimelineTab({
   const [choix, setChoix] = useState({ leadId, filtre: 'tous' })
   const filter = choix.leadId === leadId ? choix.filtre : 'tous'
   const changeFilter = useCallback((key) => setChoix({ leadId, filtre: key }), [leadId])
-  const filtered = entries.filter((a) => matchesTimelineFilter(a.kind, filter))
+  const filtered = entries.filter((a) => matchesTimelineFilter(a.kind, filter, a.body))
   const nbMasquesRecents = nombreMasquesPlusRecents(entries, filter)
 
   // FG204 — en-tête « 1er contact / dernier contact / N touches ». GET
