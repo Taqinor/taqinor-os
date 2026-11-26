@@ -319,6 +319,22 @@ def dernier_devis_recu_du_lead(company, lead_id):
             .order_by('-date_envoi', '-id').first())
 
 
+def autre_famille_d_onduleur_par_nom(nom):
+    """D-HYB-1 — la famille d'onduleur AUTRE qu'hybride que le classifieur du catalogue lit
+    dans le NOM d'un produit : ``'micro_onduleur'`` (``solar_classification.est_micro_onduleur``),
+    ``'onduleur_offgrid'`` (``domain.catalogue.classer_produit``), ``''`` sinon — et ``''``
+    quand le nom dit « onduleur hybride » (un micro-onduleur hybride reste hybride, ADCG45)."""
+    from .domain.catalogue import classer_produit
+    from .solar_classification import est_micro_onduleur
+
+    classe = classer_produit(nom or '')
+    if classe == 'onduleur_hybride':
+        return ''
+    if est_micro_onduleur(nom or ''):
+        return 'micro_onduleur'
+    return classe if classe == 'onduleur_offgrid' else ''
+
+
 def borne_dc_ac_du_moteur_devis(mode_installation=None):
     """ACAL1954 / D-ACAL-91 — la borne haute du ratio DC/AC que le MOTEUR DE
     DEVIS applique quand la société n'a réglé aucune fourchette, LUE à sa

@@ -29,12 +29,13 @@ def _nombre(valeur):
         return None
 
 
-def _fiche_onduleur(company, produit_id):
-    """La fiche (bloc plat) de l'onduleur ``produit_id`` de ``company``, ``{}`` sinon."""
+def _onduleur_lu(company, produit_id):
+    """``(fiche, produit)`` : la fiche (bloc plat) de l'onduleur ``produit_id`` de ``company``
+    et le produit, UNE lecture (D-HYB-1 : son nom et son rôle servent aussi) ; ``({}, None)`` sinon."""
     from apps.stock.selectors import get_produit_scoped, specs_for_produit
 
     produit = get_produit_scoped(company, produit_id) if company is not None and produit_id else None
-    return (specs_for_produit(produit) or {}) if produit is not None else {}
+    return ((specs_for_produit(produit) or {}) if produit is not None else {}), produit
 
 
 def _reglages_electriques(company):
@@ -52,7 +53,8 @@ def _verdict_ratio(ratio, evaluation, conception, reglages):
     bornes = bornes_du_verdict(bornes_ratio(reglages=reglages), evaluation, conception)
     conforme = juger_ratio(ratio, bornes, reglages)
     return {'conforme': conforme, 'valeur': ratio, 'borne': bornes[0], 'borne_source': bornes[2],
-            'detail': detail_ratio(fr(ratio, 2), conforme, bornes, valeur=ratio, reglages=reglages)}
+            'detail': detail_ratio(fr(ratio, 2), conforme, bornes, valeur=ratio, reglages=reglages,
+                                   conception=conception)}
 
 
 def _verdict_capacite(onduleur, nombre, puissance_kwc):
@@ -86,10 +88,20 @@ def verdicts_electriques(company, design, onduleurs, puissance_kwc):
     capacité non publiée pour la capacité ; aucune chaîne pour la longueur)."""
     if not design or not onduleurs:
         return None
-    fiche = _fiche_onduleur(company, onduleurs[0].get('produit'))
+    from apps.calepinage.services.ratio_devis import famille_de_l_onduleur
+
+    fiche, produit = _onduleur_lu(company, onduleurs[0].get('produit'))
+    role, famille_par_nom = famille_de_l_onduleur(produit)  # D-HYB-1 : la règle du calepinage
     materiel = (design.get('materiel') or {}).get('onduleur') or {}
     nombre = sum(int(o.get('quantite') or 0) for o in onduleurs) or 1
-    onduleur = SimpleNamespace(designation=materiel.get('designation') or onduleurs[0].get('designation'),
+    # D-HYB-1 (lead 1742) — une pose jugée sur un onduleur absent des lignes de la conception
+    # arrive sans désignation : le NOM du produit dit s'il est hybride, jamais « réseau » par défaut.
+    # D-HYB-1 (fondateur 24/11/2026) — le RÔLE, puis le port batterie de la fiche, puis le nom.
+    onduleur = SimpleNamespace(designation=(materiel.get('designation') or onduleurs[0].get('designation')
+                                            or getattr(produit, 'nom', None)),
+                               role=role, famille_par_nom=famille_par_nom,
+                               bat_max_charge_kw=fiche.get('bat_max_charge_kw'),
+                               bat_max_decharge_kw=fiche.get('bat_max_decharge_kw'),
                                dc_max_kwc=fiche.get('dc_max_kwc'))
     ac_kw = _nombre(materiel.get('ac_kw')) or _nombre(fiche.get('ac_kw')) or 0.0
     evaluation = SimpleNamespace(nombre=nombre, puissance_ac_kw=nombre * ac_kw)
@@ -316,7 +328,7 @@ def _designations(company, calepinage_id, lu=None):
 def _nom_produit(company, produit_id):
     from apps.stock.selectors import get_produit_scoped
     try:
-        produit = get_produit_scoped(company, int(produit_id))
+        produit = get_produit_scoped(company, int(produit_id)) if company is not None else None
     except (TypeError, ValueError):
         produit = None
     return getattr(produit, 'nom', None) or None
