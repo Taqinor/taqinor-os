@@ -84,6 +84,10 @@ function PlancheSchemaDevis({ enveloppe }) {
         <SchemaEnBlocs plan={plan}
           coteReseau={doc.cote_reseau?.motif ? { texte: doc.cote_reseau.motif, onOuvrir: null } : null} />
       </div>
+      {/* D-ACAL-158 — la phrase du serveur quand le client ne voit pas le schéma de CETTE option (fiche ERP seulement). */}
+      {enveloppe?.avis_client?.[choisie] && (
+        <p className="text-xs text-muted-foreground">{enveloppe.avis_client[choisie]}</p>
+      )}
       <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground" data-testid="schema-electrique-legende">
         {plan.legende.map((l) => (
           <li key={l.cle} className="flex items-center gap-1.5">

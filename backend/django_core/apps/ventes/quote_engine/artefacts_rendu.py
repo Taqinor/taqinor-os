@@ -186,6 +186,23 @@ def _schema_electrique_svg(devis, data, opts) -> str:
         return ""
 
 
+def _annexes_par_option(devis, data, opts) -> list:
+    """D-ACAL-166 — ``[{option, electrical_design, sld_svg}]`` des options dont
+    la conception est RANGÉE (``electrical_service.annexes_par_option``), ``[]``
+    hors devis à deux options rangées ou en cas d'échec (l'annexe d'une page,
+    jamais un PDF cassé). Aucun montant (règle #4)."""
+    try:
+        from apps.ventes.electrical_service import annexes_par_option
+        langue = (data.get("langue_sortie") or (opts or {}).get("langue_sortie")
+                  or "fr")
+        return annexes_par_option(devis, langue=str(langue).strip().lower()[:2],
+                                  largeur_px=SCHEMA_ELECTRIQUE_LARGEUR_PX)
+    except Exception:  # noqa: BLE001 — l'annexe garde sa page unique (D-ENF22-BLE001)
+        logger.warning("D-ACAL-166: annexes par option indisponibles pour le devis %s",
+                       getattr(devis, "pk", None))
+        return []
+
+
 #: CAL182 — largeur/hauteur (px) sous lesquelles la planche A3 PAYSAGE est
 #: réduite pour tenir dans la colonne de contenu d'une page A4 PORTRAIT du
 #: devis. Le ``viewBox`` du SVG n'est PAS touché : c'est la même planche,
@@ -387,6 +404,12 @@ def ajouter_artefacts_rendu(data, devis, opts, pdf_options, layout_stale,
         data.update(_drapeaux_schema)
         data["sld_svg"] = ((_schema_electrique_svg(devis, data, opts)
                             if _drapeaux_schema else "") or _sld_svg(devis))
+        # D-ACAL-166 — devis à deux options dont les DEUX conceptions sont
+        # rangées (D-ACAL-158) : une page d'annexe par option. Sans l'entrée
+        # rangée à l'envoi, aucune clé nouvelle : annexe d'aujourd'hui.
+        _par_option = _annexes_par_option(devis, data, opts) if _drapeaux_schema else []
+        if _par_option:
+            data["annexes_options"] = _par_option
     # ── CAL182 — LA PLANCHE EST UN ARTEFACT DE RENDU (leçon CALEPDF/A8) ──────
     # Même discipline que l'affiche : ``build_quote_data`` alimente AUSSI la
     # charge utile JSON de la proposition publique, et deux raisons interdisent
