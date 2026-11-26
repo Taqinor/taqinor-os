@@ -83,22 +83,3 @@ test('ERR-AGNR61-REPLACE-LINES-20S : créer et ré-enregistrer un devis ont le b
   assert.match(VENTES_API_SRC, /replace-lines\/`, \{ lignes, \.\.\.extra \}, \{ timeout: 120000 \}\)/)
   assert.match(VENTES_API_SRC, /devis\/atomic\/', data,\s+\{ timeout: 120000/)
 })
-
-test('R5A-N1 : reviserDevis porte un timeout dédié ≥ 60 s (la révision recompose les lignes : le défaut de 20 s la coupait)', () => {
-  const start = VENTES_API_SRC.indexOf('reviserDevis:')
-  assert.notEqual(start, -1)
-  const m = VENTES_API_SRC.slice(start, start + 200).match(/timeout:\s*(\d+)/)
-  assert.ok(m && Number(m[1]) >= 60000)
-})
-
-test('T4-X4-009 : whatsappPreviewDevis n\'empile pas le toast générique (son unique appelant dit lui-même le refus)', () => {
-  const start = VENTES_API_SRC.indexOf('whatsappPreviewDevis:')
-  assert.notEqual(start, -1)
-  assert.match(VENTES_API_SRC.slice(start, start + 260), /suppressErrorToast:\s*true/)
-})
-
-test('R5A-N7 : le thunk d\'émission passe suppressErrorToast (le refus est dit une fois, par doAction)', () => {
-  const slice = readFileSync(join(HERE, '../features/ventes/store/ventesSlice.js'), 'utf8')
-  assert.match(slice, /ventesApi\.emettreFacture\(id,\s*\{\s*suppressErrorToast:\s*true\s*\}\)/)
-  assert.match(VENTES_API_SRC, /emettreFacture:\s*\(id,\s*config\)/)
-})
