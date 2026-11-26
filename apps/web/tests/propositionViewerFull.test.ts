@@ -13,8 +13,9 @@
 //   4. le CONTRAT lecture seule du boot (aucun écouteur de geste d'édition,
 //      aucun module d'édition importé) — garde de source, même convention que
 //      mobilePerfWJ18.test.ts.
-// Aucun DOM, aucun Three.js, aucun MapLibre : modules purs seulement.
-import { afterEach, describe, expect, it, vi } from 'vitest';
+// Sections 1-6 : modules purs. Section 7 : jsdom (la barre au soleil). Sections 8-9 (lot 8) : le VRAI Three.js et
+// la vraie scène `scene3d.ts`, sur une carte MapLibre et un WebGLRenderer FACTICES (déclarés plus bas).
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseRoofLayout, type RoofLayout } from '../src/lib/proposition';
@@ -34,6 +35,72 @@ import { couleurAccesActive } from '../src/lib/shadingEngine';
 import { attacherSoleil, bornesJournee, couleurParPanneau } from '../src/scripts/roofPro11/viewerSoleil';
 import type { ViewerFullHandle } from '../src/scripts/roofPro11/viewerFullBoot';
 import { ecrireTeintesPanneaux, GAIN_TEINTE_PANNEAU } from '../src/scripts/roofPro11/scene3d';
+import { DELAIS_RELANCE_PHOTO_MS, ESSAIS_PHOTO_MAX } from '../src/scripts/roofPro11/relancePhoto';
+import { TEINTES_PRESENTATION } from '../src/scripts/roofPro11/jeuPresentation';
+
+// Section 8 — une carte MapLibre et un WebGLRenderer FACTICES (jsdom n'a ni GPU ni MapLibre) ; tout le
+// reste (Three.js, scene3d, le contexte du boot) est le vrai code. Les sections 1-7 n'en dépendent pas.
+const carteFactice = vi.hoisted(() => {
+  const cartes: FakeMap[] = [];
+  const rendus: unknown[] = [];
+  type Ecouteur = (e?: unknown) => void;
+  type Couche = { onAdd?: (m: unknown, gl: unknown) => void; onRemove?: (m: unknown, gl: unknown) => void; render: (gl: unknown, args: unknown) => void };
+  class FakeMap {
+    ecouteurs = new Map<string, Ecouteur[]>();
+    couches: Couche[] = [];
+    retiree = false;
+    repeints = 0;
+    canevas = document.createElement('canvas');
+    constructor(public options: unknown) { cartes.push(this); }
+    on(ev: string, fn: Ecouteur) { this.ecouteurs.set(ev, [...(this.ecouteurs.get(ev) ?? []), fn]); return this; }
+    once(ev: string, fn: Ecouteur) { const w: Ecouteur = (e) => { this.off(ev, w); fn(e); }; return this.on(ev, w); }
+    off(ev: string, fn: Ecouteur) { this.ecouteurs.set(ev, (this.ecouteurs.get(ev) ?? []).filter((f) => f !== fn)); return this; }
+    fire(ev: string, e?: unknown) { for (const fn of [...(this.ecouteurs.get(ev) ?? [])]) fn(e); }
+    addControl() { return this; }
+    ajouts = 0;
+    styleCharge = true;
+    addLayer(c: Couche) { this.ajouts++; this.couches.push(c); c.onAdd?.(this, {}); return this; }
+    isStyleLoaded() { return this.styleCharge; }
+    /** Comme MapLibre à la perte du contexte : le style est détruit, couches personnalisées comprises ; à la
+     *  restauration il revient SANS elles (ici : `styleCharge` faux jusqu'à `style.load`). */
+    perdreContexte() { for (const c of this.couches) c.onRemove?.(this, {}); this.couches = []; this.styleCharge = false; this.fire('webglcontextlost'); }
+    resize() { return this; }
+    getZoom() { return 19; }
+    getPitch() { return 58; }
+    getBearing() { return 0; }
+    getCanvas() { return this.canevas; }
+    getLayer(id?: string) { return this.couches.find((c) => (c as { id?: string }).id === id); }
+    triggerRepaint() { this.repeints++; }
+    ciels: unknown[] = [];
+    setSky(s: unknown) { this.ciels.push(s); }
+    setMaxBounds() {}
+    setMinZoom() {}
+    setMaxPitch() {}
+    remove() { this.retiree = true; for (const c of this.couches) c.onRemove?.(this, {}); this.couches = []; }
+  }
+  class FakeRenderer {
+    shadowMap = { enabled: false, type: 0 };
+    resetState() {}
+    setViewport() {}
+    render(scene: unknown) { rendus.push(scene); }
+    dispose() {}
+  }
+  return { cartes, rendus, FakeMap, FakeRenderer, maillages: { n: 0 } };
+});
+vi.mock('maplibre-gl', () => {
+  class NavigationControl {}
+  const MercatorCoordinate = { fromLngLat: () => ({ x: 0, y: 0, z: 0, meterInMercatorCoordinateUnits: () => 1e-7 }) };
+  const api = { Map: carteFactice.FakeMap, NavigationControl, MercatorCoordinate };
+  return { default: api, ...api };
+});
+vi.mock('maplibre-gl/dist/maplibre-gl.css?url', () => ({ default: 'maplibre-gl.css' }));
+vi.mock('three', async (origine) => {
+  const t = await origine<typeof import('three')>();
+  // Les maillages construits sont COMPTÉS (lot 8, B3 : un pas de soleil n'en construit aucun).
+  class Mesh extends t.Mesh { constructor(...a: ConstructorParameters<typeof t.Mesh>) { super(...a); carteFactice.maillages.n++; } }
+  class InstancedMesh extends t.InstancedMesh { constructor(...a: ConstructorParameters<typeof t.InstancedMesh>) { super(...a); carteFactice.maillages.n++; } }
+  return { ...t, WebGLRenderer: carteFactice.FakeRenderer, Mesh, InstancedMesh };
+});
 
 // ── Un toit carré réaliste au Maroc (Casablanca), convention x=Est / y=Nord ──
 const LAT0 = 33.5;
@@ -571,5 +638,665 @@ describe('attacherSoleil — la barre pilote la poignée (jsdom)', () => {
     expect(q<HTMLButtonElement>('[data-soleil-lecture]').disabled).toBe(true);
     q<HTMLButtonElement>('[data-soleil-saison="ete"]').click();
     expect(poignee.poserInstant).not.toHaveBeenCalled();
+  });
+});
+
+// ── 8. Premier rendu RÉEL : la scène de l'ERP + le contexte EXACT du boot (lot 8) ──
+// Le constat du fondateur (26/11) : sur un lien de confiance, « lecture » ne changeait rien. Ce bloc
+// rejoue le VRAI `bootViewerFull` (son contexte, sa scène `scene3d.ts`) sur la carte et le
+// WebGLRenderer factices du haut du fichier : le premier rendu, puis un pas de soleil.
+
+/** Toit plat réel : 35 modules (5 rangées × 7) sur châssis, aucun obstacle, soleil du 21 décembre 16 h 15. */
+const RANGEES_PLAT = Array.from({ length: 5 }, (_, r) => columns(PORTRAIT_PITCH, 7, (r - 2) * 3.2)).flat();
+const LAYOUT_PLAT_35 = layoutOf(rawZone({ geometry: { ...(rawZone().geometry as object), count: 35, panels: RANGEES_PLAT } }));
+const INSTANT_REEL = { jour: 356, heure: 16.25 };
+type CarteFactice = InstanceType<typeof carteFactice.FakeMap>;
+type Position = { x: number; y: number; z: number };
+
+/** Tout texte peint dans un canevas (étiquette de cote, numéro de module…) pendant la construction de la scène. */
+const textesPeints: string[] = [];
+function contexte2dFactice() {
+  const degrade = { addColorStop() {} };
+  return new Proxy({}, {
+    get(_t, prop) {
+      if (prop === 'fillText' || prop === 'strokeText') return (texte: unknown) => { textesPeints.push(String(texte)); };
+      if (prop === 'createLinearGradient' || prop === 'createRadialGradient' || prop === 'createPattern') return () => degrade;
+      if (prop === 'getImageData') return () => ({ data: new Uint8ClampedArray(4) });
+      if (prop === 'measureText') return () => ({ width: 0 });
+      if (prop === 'canvas') return { width: 512, height: 280 };
+      return () => undefined;
+    },
+    set() { return true; },
+  });
+}
+
+/** Rend une image comme MapLibre le ferait, et renvoie la position du soleil (DirectionalLight) dessiné. */
+function soleilDessine(carte: CarteFactice): Position | null {
+  const identite = new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  carte.couches[0]?.render({ drawingBufferWidth: 800, drawingBufferHeight: 600 }, { defaultProjectionData: { mainMatrix: identite } });
+  const scene = carteFactice.rendus.at(-1) as { traverse: (f: (o: { isDirectionalLight?: boolean; position: Position }) => void) => void } | undefined;
+  let soleil: Position | null = null;
+  scene?.traverse((o) => { if (o.isDirectionalLight) soleil = { x: o.position.x, y: o.position.y, z: o.position.z }; });
+  return soleil;
+}
+
+describe('visionneuse pleine — premier rendu réel (scene3d + contexte du boot)', () => {
+  const getContextOrigine = HTMLCanvasElement.prototype.getContext;
+  beforeEach(() => {
+    carteFactice.cartes.length = 0;
+    carteFactice.rendus.length = 0;
+    textesPeints.length = 0;
+    const c2d = contexte2dFactice();
+    (HTMLCanvasElement.prototype as unknown as { getContext: () => unknown }).getContext = () => c2d;
+  });
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = getContextOrigine;
+    vi.restoreAllMocks();
+    document.body.innerHTML = '';
+  });
+
+  async function demarrer(opts: Record<string, unknown> = {}) {
+    const { bootViewerFull } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const onReady = vi.fn();
+    const onFail = vi.fn();
+    const poignee = bootViewerFull(el, LAYOUT_PLAT_35, { maptilerKey: 'cle-test', reducedMotion: true, instant: INSTANT_REEL, onReady, onFail, ...opts });
+    expect(poignee).not.toBeNull();
+    return { poignee: poignee!, carte: carteFactice.cartes[0], onReady, onFail };
+  }
+
+  it('le premier rendu passe : onReady, aucun échec, la scène est dessinée avec ses 35 modules', async () => {
+    const { poignee, carte, onReady, onFail } = await demarrer();
+    expect(poignee.panelCount).toBe(35);
+    carte.fire('load');
+    expect(onFail).not.toHaveBeenCalled();
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(carte.retiree).toBe(false);
+    expect(soleilDessine(carte)).not.toBeNull();
+  });
+
+  it('un pas de soleil rejoue la scène : la lumière bouge entre deux heures, un repeint est demandé', async () => {
+    const { poignee, carte, onFail } = await demarrer();
+    carte.fire('load');
+    const avant = soleilDessine(carte)!;
+    const repeints = carte.repeints;
+    poignee.poserInstant(INSTANT_REEL.jour, 10);
+    expect(onFail).not.toHaveBeenCalled();
+    expect(carte.repeints).toBeGreaterThan(repeints);
+    const apres = soleilDessine(carte)!;
+    // 16 h 15 : soleil au sud-ouest ; 10 h : au sud-est — la lumière passe de l'autre côté du toit.
+    expect(Math.sign(apres.x - avant.x)).toBe(1);
+    expect(Math.hypot(apres.x - avant.x, apres.y - avant.y, apres.z - avant.z)).toBeGreaterThan(1);
+  });
+
+  it('toutes les branches lecture seule rendues sans jeter : second pan en pente, obstacle, voisins, teinte', async () => {
+    const [lngC, latC] = at(0, 0);
+    const pente = rawZone({ id: 'zone-2', vertices: squareLngLat(4).map(([x, y]) => [x + 0.0004, y] as [number, number]), roofType: 'pitched', pitchDeg: 25,
+      geometry: { ...(rawZone().geometry as object), origin: [LNG0 + 0.0004, LAT0], count: 2, panels: columns(PORTRAIT_PITCH, 2) } });
+    const actif = rawZone({ obstacles: [{ centerLng: lngC, centerLat: latC + 0.00008, lengthM: 1, widthM: 1 }], geometry: { ...(rawZone().geometry as object), count: 35, panels: RANGEES_PLAT } });
+    const voisins = [
+      { id: 'v-0', kind: 'arbre', centerLng: lngC, centerLat: latC - 0.0002, heightM: 7.5, crownDiameterM: 5, evergreen: true },
+      { id: 'v-1', kind: 'batiment', centerLng: lngC + 0.0002, centerLat: latC, heightM: 9, lengthM: 8, widthM: 6 },
+    ];
+    const { bootViewerFull } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    const el = document.body.appendChild(document.createElement('div'));
+    const onReady = vi.fn();
+    const onFail = vi.fn();
+    const poignee = bootViewerFull(el, layoutOf(actif, pente), { maptilerKey: 'cle-test', instant: INSTANT_REEL, environnement: voisins as never, indexTeintes: [0], onReady, onFail })!;
+    const carte = carteFactice.cartes[0];
+    carte.fire('load');
+    poignee.teinter(() => ({ r: 0.9, g: 0.2, b: 0.1 }));
+    poignee.poserInstant(172, 9);
+    expect(soleilDessine(carte)).not.toBeNull();
+    const geometries = new Set<string>();
+    (carteFactice.rendus.at(-1) as { traverse: (f: (o: { geometry?: { type: string } }) => void) => void }).traverse((o) => { if (o.geometry) geometries.add(o.geometry.type); });
+    expect(geometries.has('CylinderGeometry')).toBe(true); // l'arbre voisin est bien dessiné
+    expect(onFail).not.toHaveBeenCalled();
+    expect(onReady).toHaveBeenCalledTimes(1);
+    poignee.destroy();
+    expect(carte.retiree).toBe(true);
+  });
+
+  it('lien de confiance : la teinte des accès enregistrés et l’obstacle servi sont dessinés', async () => {
+    const [lngC, latC] = at(0, 0);
+    const actif = rawZone({ obstacles: [{ centerLng: lngC + 0.00004, centerLat: latC + 0.00011, lengthM: 4, widthM: 1 }], geometry: { ...(rawZone().geometry as object), count: 35, panels: RANGEES_PLAT } });
+    const layout = layoutOf(actif);
+    const payload = { visionneuse_soleil: { version: 1, zones: [{ index: 0, id: 'zone-1', acces: RANGEES_PLAT.map((_, i) => 0.84 + i * 0.004) }], environnement: [], instant_choisi: { jour: 356, heure: 16.25 } } };
+    const soleil = lireVisionneuseSoleil(payload, layout)!;
+    const { bootViewerFull } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    const el = document.body.appendChild(document.createElement('div'));
+    const poignee = bootViewerFull(el, layout, { maptilerKey: 'cle-test', instant: soleil.ouverture, indexTeintes: [0] })!;
+    const carte = carteFactice.cartes[0];
+    carte.fire('load');
+    poignee.teinter(couleurParPanneau(soleil, poignee.indexActif)!);
+    poignee.poserInstant(356, 12);
+    soleilDessine(carte);
+    let teintes = 0;
+    let obstacle = false;
+    (carteFactice.rendus.at(-1) as { traverse: (f: (o: Record<string, any>) => void) => void }).traverse((o) => {
+      if (o.isInstancedMesh && o.instanceColor) teintes += Array.from(o.instanceColor.array as Float32Array).filter((v) => v !== 1).length;
+      if (o.isMesh && !o.isInstancedMesh && o.material?.color?.getHex?.() === 0xff6b6b) obstacle = true;
+    });
+    expect(teintes).toBeGreaterThan(0); // les 35 modules portent la couleur de leur accès solaire
+    expect(obstacle).toBe(true); // l'obstacle de 4 m du layout servi
+  });
+
+  it('B1 — lien de confiance : habit « Montrer au client » (murs clairs, ciel qui suit le soleil), teinte gardée ; standard : inchangé', async () => {
+    const couleursDe = (scene: unknown) => {
+      const c = new Set<number>();
+      (scene as { traverse: (f: (o: Record<string, any>) => void) => void }).traverse((o) => { const m = o.material; if (o.isMesh && m && !Array.isArray(m) && m.color) c.add(m.color.getHex()); });
+      return c;
+    };
+    const confiance = await demarrer({ presentationClient: true, indexTeintes: [0] });
+    confiance.carte.fire('load');
+    confiance.poignee.teinter(() => ({ r: 0.9, g: 0.2, b: 0.1 }));
+    soleilDessine(confiance.carte);
+    const sceneConfiance = carteFactice.rendus.at(-1);
+    expect(couleursDe(sceneConfiance).has(TEINTES_PRESENTATION.mur)).toBe(true);
+    expect(couleursDe(sceneConfiance).has(TEINTES_PRESENTATION.beton)).toBe(true); // toit plat : dalle béton
+    expect(confiance.carte.ciels.length).toBeGreaterThan(0);
+    let teintes = 0;
+    (sceneConfiance as { traverse: (f: (o: Record<string, any>) => void) => void }).traverse((o) => {
+      if (o.isInstancedMesh && o.instanceColor) teintes += Array.from(o.instanceColor.array as Float32Array).filter((v) => v !== 1).length;
+    });
+    expect(teintes).toBeGreaterThan(0);
+    confiance.poignee.destroy();
+
+    carteFactice.cartes.length = 0;
+    const standard = await demarrer();
+    standard.carte.fire('load');
+    soleilDessine(standard.carte);
+    expect(couleursDe(carteFactice.rendus.at(-1)).has(TEINTES_PRESENTATION.mur)).toBe(false);
+    expect(standard.carte.ciels).toHaveLength(0);
+  });
+
+  it('B3 — un pas de soleil ne construit AUCUN maillage : même scène, lumière et ciel déplacés, teinte gardée', async () => {
+    const { poignee, carte } = await demarrer({ presentationClient: true, indexTeintes: [0] });
+    carte.fire('load');
+    poignee.teinter(() => ({ r: 0.9, g: 0.2, b: 0.1 }));
+    const avant = soleilDessine(carte)!;
+    const scene = carteFactice.rendus.at(-1) as { traverse: (f: (o: Record<string, any>) => void) => void };
+    const objets = (): unknown[] => { const l: unknown[] = []; scene.traverse((o) => l.push(o)); return l; };
+    const objetsAvant = objets();
+    const maillages = carteFactice.maillages.n;
+    const ciels = carte.ciels.length;
+    const repeints = carte.repeints;
+    for (let h = 7; h < 17; h++) poignee.poserInstant(INSTANT_REEL.jour, h);
+    expect(carteFactice.maillages.n).toBe(maillages); // aucun Mesh ni InstancedMesh construit en dix pas
+    expect(objets()).toEqual(objetsAvant); // les mêmes objets, aucun retiré ni ajouté
+    expect(carte.repeints - repeints).toBe(10); // un repeint par pas
+    expect(carte.ciels.length - ciels).toBe(10); // le ciel suit chaque pas
+    expect(soleilDessine(carte)).not.toEqual(avant);
+    let teintes = 0;
+    scene.traverse((o) => { if (o.isInstancedMesh && o.instanceColor) teintes += Array.from(o.instanceColor.array as Float32Array).filter((v) => v !== 1).length; });
+    expect(teintes).toBeGreaterThan(0);
+  });
+
+  it('B2 — sol d’ombre sur le lien de confiance : l’ombre la plus longue de l’après-midi d’hiver n’est pas coupée', async () => {
+    const { poignee, carte } = await demarrer({ presentationClient: true });
+    carte.fire('load');
+    const lever = bornesJournee(LAT0, INSTANT_REEL.jour)!;
+    poignee.poserInstant(INSTANT_REEL.jour, lever.setHour); // dernière heure de la lecture : soleil le plus bas
+    soleilDessine(carte);
+    let sol: Record<string, any> | null = null;
+    let lumiere: Record<string, any> | null = null;
+    (carteFactice.rendus.at(-1) as { traverse: (f: (o: Record<string, any>) => void) => void }).traverse((o) => {
+      if (o.name === 'sol-ombre-client') sol = o;
+      if (o.isDirectionalLight) lumiere = o;
+    });
+    expect(sol).not.toBeNull();
+    const s = sol as unknown as Record<string, any>;
+    const l = lumiere as unknown as Record<string, any>;
+    expect(s.material.isShadowMaterial).toBe(true);
+    // Le coin haut du bâtiment (6 m de dessin + châssis) projette son ombre à l'opposé du soleil.
+    const d = { x: l.position.x - l.target.position.x, y: l.position.y - l.target.position.y, z: l.position.z - l.target.position.z };
+    const n = Math.hypot(d.x, d.y, d.z);
+    const h = Math.hypot(d.x, d.y);
+    const elevation = Math.atan2(d.z, h);
+    const longueur = (6 + 1.5) / Math.tan(elevation);
+    const ring = buildViewerFullPlan(LAYOUT_PLAT_35)!.zones[0].plan!.pack.ringENU;
+    const demiPlan = s.geometry.parameters.width / 2;
+    const right = l.shadow.camera.right as number;
+    for (const [x, y] of ring) {
+      const bout = { x: x - (d.x / h) * longueur, y: y - (d.y / h) * longueur, z: 0 };
+      expect(Math.max(Math.abs(bout.x - s.position.x), Math.abs(bout.y - s.position.y))).toBeLessThanOrEqual(demiPlan); // sur le sol
+      const v = { x: bout.x - l.target.position.x, y: bout.y - l.target.position.y, z: bout.z - l.target.position.z };
+      const p = (v.x * d.x + v.y * d.y + v.z * d.z) / n;
+      expect(Math.hypot(v.x - (p * d.x) / n, v.y - (p * d.y) / n, v.z - (p * d.z) / n)).toBeLessThanOrEqual(right); // dans le cadre d'ombre
+    }
+    poignee.destroy();
+    carteFactice.cartes.length = 0;
+    const standard = await demarrer();
+    standard.carte.fire('load');
+    soleilDessine(standard.carte);
+    let solStandard = false;
+    (carteFactice.rendus.at(-1) as { traverse: (f: (o: Record<string, any>) => void) => void }).traverse((o) => { if (o.name === 'sol-ombre-client') solStandard = true; });
+    expect(solStandard).toBe(false);
+  });
+
+  it('B4 — scène de confiance RÉELLE (obstacle + voisins + teinte) : aucun objet porteur de texte, aucune commande, aucun montant', async () => {
+    const [lngC, latC] = at(0, 0);
+    const layout = layoutOf(rawZone({ obstacles: [{ centerLng: lngC, centerLat: latC + 0.0001, lengthM: 4, widthM: 1 }], geometry: { ...(rawZone().geometry as object), count: 35, panels: RANGEES_PLAT } }));
+    const payload = { visionneuse_soleil: { version: 1, zones: [{ index: 0, id: 'zone-1', acces: RANGEES_PLAT.map(() => 0.9) }], instant_choisi: { jour: 356, heure: 16.25 },
+      environnement: [{ kind: 'arbre', centerLng: lngC, centerLat: latC - 0.0002, heightM: 7.5, crownDiameterM: 5, evergreen: true }, { kind: 'batiment', centerLng: lngC + 0.0002, centerLat: latC, heightM: 9, lengthM: 8, widthM: 6 }] } };
+    const soleil = lireVisionneuseSoleil(payload, layout)!;
+    expect(soleil.environnement).toHaveLength(2);
+    // Témoin : le détecteur de texte peint fonctionne.
+    (document.createElement('canvas').getContext('2d') as CanvasRenderingContext2D).fillText('témoin', 0, 0);
+    expect(textesPeints.splice(0)).toEqual(['témoin']);
+    const { bootViewerFull } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    document.body.innerHTML = '<section id="roof3d"><div id="roof3d-stage"></div></section>';
+    const poignee = bootViewerFull(document.getElementById('roof3d-stage'), layout, { maptilerKey: 'cle-test', instant: soleil.ouverture, environnement: soleil.environnement, indexTeintes: [0], presentationClient: true })!;
+    const carte = carteFactice.cartes[0];
+    carte.fire('load');
+    poignee.teinter(couleurParPanneau(soleil, poignee.indexActif)!);
+    for (let h = 8; h <= 16; h++) poignee.poserInstant(soleil.ouverture.jour, h);
+    soleilDessine(carte);
+    const porteurs: string[] = [];
+    let arbre = false;
+    let obstacle: Record<string, any> | null = null;
+    (carteFactice.rendus.at(-1) as { traverse: (f: (o: Record<string, any>) => void) => void }).traverse((o) => {
+      if (o.isSprite || o.isCSS2DObject || o.isCSS3DObject || o.element instanceof HTMLElement) porteurs.push(o.type);
+      const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+      for (const m of mats) if (m.isSpriteMaterial) porteurs.push('SpriteMaterial');
+      if (o.geometry?.type === 'CylinderGeometry') arbre = true;
+      if (o.isMesh && !o.isInstancedMesh && o.material?.color?.getHex?.() === TEINTES_PRESENTATION.cheminee) obstacle = o;
+    });
+    expect(arbre).toBe(true); // la scène construite porte bien les voisins
+    expect(obstacle).not.toBeNull(); // et l'obstacle de 4 m, en brique (habit client)
+    expect(porteurs).toEqual([]); // ni sprite (cote, numéro, poignée), ni surimpression HTML
+    expect(textesPeints).toEqual([]); // aucun texte peint dans un canevas (étiquette en texture)
+    // La page : rien de monté par la scène (contrôle de numérotation, note de pas inter-rangées), aucun champ, aucun montant.
+    expect(document.getElementById('rp11-numerotation')).toBeNull();
+    expect(document.getElementById('rp9-row-pitch')).toBeNull();
+    expect(document.querySelector('input, select, textarea, button, [contenteditable]')).toBeNull();
+    expect(document.body.textContent ?? '').toBe('');
+  });
+
+  it('les obstacles portent et reçoivent les ombres sur le lien de confiance ; lien standard : sans ombre, comme avant', async () => {
+    const [lngC, latC] = at(0, 0);
+    const layout = layoutOf(rawZone({ obstacles: [{ centerLng: lngC, centerLat: latC + 0.0001, lengthM: 4, widthM: 1 }], geometry: { ...(rawZone().geometry as object), count: 35, panels: RANGEES_PLAT } }));
+    const { bootViewerFull } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    const ombresObstacle = (opts: Record<string, unknown>, teinte: number) => {
+      carteFactice.cartes.length = 0;
+      const el = document.body.appendChild(document.createElement('div'));
+      const p = bootViewerFull(el, layout, { maptilerKey: 'cle-test', instant: INSTANT_REEL, ...opts })!;
+      carteFactice.cartes[0].fire('load');
+      soleilDessine(carteFactice.cartes[0]);
+      let o: Record<string, any> | null = null;
+      (carteFactice.rendus.at(-1) as { traverse: (f: (x: Record<string, any>) => void) => void }).traverse((x) => { if (x.isMesh && !x.isInstancedMesh && x.material?.color?.getHex?.() === teinte) o = x; });
+      p.destroy();
+      const m = o as unknown as Record<string, any>;
+      return [m.castShadow, m.receiveShadow];
+    };
+    expect(ombresObstacle({ presentationClient: true }, TEINTES_PRESENTATION.cheminee)).toEqual([true, true]);
+    expect(ombresObstacle({}, 0xff6b6b)).toEqual([false, false]);
+  });
+
+  /** Démarre avec un token Mapbox et compte les demandes de la photo du toit ; `images` = les <img> demandées. */
+  async function photoDuToit() {
+    const images: HTMLImageElement[] = [];
+    const desc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src')!;
+    vi.spyOn(HTMLImageElement.prototype, 'src', 'set').mockImplementation(function (this: HTMLImageElement, v: string) {
+      if (v.includes('api.mapbox.com')) images.push(this);
+      desc.set!.call(this, v);
+    });
+    const d = await demarrer({ mapboxToken: 'pk.test' });
+    d.carte.fire('load');
+    const dixPas = () => { for (let h = 7; h < 17; h++) d.poignee.poserInstant(INSTANT_REEL.jour, h); };
+    return { ...d, images, dixPas };
+  }
+
+  it('photo du toit réussie : UNE demande sur dix pas de soleil', async () => {
+    const { images, dixPas } = await photoDuToit();
+    images[0].onload?.(new Event('load'));
+    dixPas();
+    expect(images).toHaveLength(1);
+  });
+
+  it('photo refusée une fois (429) : redemandée plus tard, pas à chaque pas ; réussie ensuite, plus rien', async () => {
+    vi.useFakeTimers();
+    try {
+      const { images, dixPas } = await photoDuToit();
+      images[0].onerror?.(new Event('error'));
+      dixPas();
+      expect(images).toHaveLength(1); // aucun pas ne relance
+      vi.advanceTimersByTime(DELAIS_RELANCE_PHOTO_MS[0]);
+      expect(images).toHaveLength(2); // un second essai, après le délai
+      images[1].onload?.(new Event('load'));
+      dixPas();
+      vi.advanceTimersByTime(60_000);
+      expect(images).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('photo toujours refusée : essais plafonnés, puis plus jamais', async () => {
+    vi.useFakeTimers();
+    try {
+      const { images, dixPas } = await photoDuToit();
+      for (let i = 0; i < 10; i++) {
+        images.at(-1)!.onerror?.(new Event('error'));
+        dixPas();
+        vi.advanceTimersByTime(60_000);
+      }
+      expect(images).toHaveLength(ESSAIS_PHOTO_MAX);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// ── 9. Aucune commande morte : la barre n'apparaît qu'une fois la scène VRAIMENT rendue (lot 8) ──
+
+describe('monterVisionneusePleine — barre au soleil branchée après le rendu, repli si la scène jette', () => {
+  const BARRE = `<div id="roof3d-soleil" hidden><div data-soleil-legende></div>
+    <button data-soleil-lecture disabled></button><strong data-soleil-quand></strong><p data-soleil-journee></p>
+    <input type="range" data-soleil-heure disabled /><button data-soleil-saison="hiver" disabled></button><button data-soleil-saison="ete" disabled></button></div>`;
+  // L'aide des gestes de la page (#roof3d-hint), telle que la visionneuse simplifiée la sert.
+  const AIDE_SIMPLE = { fr: 'Faites glisser pour tourner', en: 'Drag to rotate', ar: 'اسحبوا للتدوير' };
+  const AIDE = `<p id="aide" hidden data-i18n data-fr="${AIDE_SIMPLE.fr}" data-en="${AIDE_SIMPLE.en}" data-ar="${AIDE_SIMPLE.ar}">${AIDE_SIMPLE.fr}</p>`;
+  const PAYLOAD_REEL = { visionneuse_soleil: { version: 1, zones: [], environnement: [], instant_choisi: { jour: 356, heure: 16.25 } } };
+  const getContextOrigine = HTMLCanvasElement.prototype.getContext;
+  beforeEach(() => {
+    carteFactice.cartes.length = 0;
+    carteFactice.rendus.length = 0;
+    textesPeints.length = 0;
+    const c2d = contexte2dFactice();
+    (HTMLCanvasElement.prototype as unknown as { getContext: () => unknown }).getContext = () => c2d;
+  });
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = getContextOrigine;
+    vi.restoreAllMocks();
+    document.body.innerHTML = '';
+  });
+
+  async function monter(extra: Record<string, unknown> = {}) {
+    const { monterVisionneusePleine } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    document.body.innerHTML = `<div id="scene" class="roof3d-stage"></div>${BARRE}${AIDE}`;
+    const barre = document.getElementById('roof3d-soleil')!;
+    const soleil = lireVisionneuseSoleil(PAYLOAD_REEL, LAYOUT_PLAT_35)!;
+    const onReady = vi.fn();
+    const replier = vi.fn();
+    const avertir = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const brancherSoleil = vi.fn(async (poignee: ViewerFullHandle) =>
+      attacherSoleil({ barre, poignee, soleil, layout: LAYOUT_PLAT_35, avecTeinte: true, reducedMotion: true }));
+    const vue = monterVisionneusePleine(document.getElementById('scene'), LAYOUT_PLAT_35, { maptilerKey: 'cle-test', reducedMotion: true, instant: soleil.ouverture, onReady, ...extra }, { barre, brancherSoleil, replier, scene: document.getElementById('scene'), aide: document.getElementById('aide') });
+    const q = <T extends HTMLElement>(s: string) => barre.querySelector<T>(s)!;
+    const scene = document.getElementById('scene')!;
+    const aide = document.getElementById('aide')!;
+    return { vue, barre, carte: carteFactice.cartes[0], onReady, replier, brancherSoleil, avertir, q, scene, aide };
+  }
+  const attendre = () => new Promise((r) => setTimeout(r, 0));
+
+  it('scène rendue → barre montrée ; « lecture » fait un pas qui DÉPLACE la lumière, libellé en heure solaire', async () => {
+    const { vue, barre, carte, onReady, replier, brancherSoleil, q } = await monter();
+    expect(vue).not.toBeNull();
+    expect(barre.hidden).toBe(true);
+    expect(brancherSoleil).not.toHaveBeenCalled(); // rien de branché avant le premier rendu
+    carte.fire('load');
+    await attendre();
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(barre.hidden).toBe(false);
+    expect(replier).not.toHaveBeenCalled();
+    expect(q('[data-soleil-quand]').textContent).toBe('21 décembre · 16 h (heure solaire)');
+    const avant = soleilDessine(carte)!;
+    const repeints = carte.repeints;
+    q<HTMLButtonElement>('[data-soleil-lecture]').click(); // reduced-motion : UN pas (16 h 15 → lever, après le coucher de 17 h)
+    expect(carte.repeints).toBeGreaterThan(repeints);
+    expect(q('[data-soleil-quand]').textContent).toMatch(/^21 décembre · [0-9]+ h \(heure solaire\)$/);
+    const apres = soleilDessine(carte)!;
+    expect(Math.hypot(apres.x - avant.x, apres.y - avant.y, apres.z - avant.z)).toBeGreaterThan(1);
+    vue!.dispose();
+    expect(barre.hidden).toBe(true);
+  });
+
+  it('le premier rendu jette → barre jamais montrée, carte démontée, repli monté, un seul avertissement', async () => {
+    const { barre, carte, onReady, replier, brancherSoleil, avertir } = await monter();
+    carte.getZoom = () => { throw new Error('rendu impossible'); }; // lu par buildZoneMeshes, au cœur du rendu
+    expect(() => carte.fire('load')).not.toThrow();
+    await attendre();
+    expect(onReady).not.toHaveBeenCalled();
+    expect(brancherSoleil).not.toHaveBeenCalled();
+    expect(barre.hidden).toBe(true);
+    expect(carte.retiree).toBe(true);
+    expect(replier).toHaveBeenCalledTimes(1);
+    expect(avertir).toHaveBeenCalledTimes(1);
+  });
+
+  it('un pas de soleil qui jette après coup → barre débranchée et cachée, cadre et aide rendus au repli', async () => {
+    const { barre, carte, replier, q, scene, aide } = await monter();
+    carte.fire('load');
+    await attendre();
+    expect(barre.hidden).toBe(false);
+    // Habillé pour la carte au rendu : cadre « carte » (un doigt fait défiler la page) et aide des gestes carte.
+    expect(scene.classList.contains('roof3d-stage--map')).toBe(true);
+    expect(aide.hidden).toBe(false);
+    expect(aide.dataset.fr).toMatch(/^Deux doigts/);
+    carte.triggerRepaint = () => { throw new Error('rendu impossible'); }; // appelé par le pas de soleil (B3 : soleil seul)
+    const curseur = q<HTMLInputElement>('[data-soleil-heure]');
+    curseur.value = '10';
+    curseur.dispatchEvent(new Event('input'));
+    expect(barre.hidden).toBe(true);
+    expect(curseur.disabled).toBe(true);
+    expect(carte.retiree).toBe(true);
+    expect(replier).toHaveBeenCalledTimes(1);
+    // Le repli (visionneuse simplifiée) retrouve SON cadre et SON aide.
+    expect(scene.classList.contains('roof3d-stage--map')).toBe(false);
+    expect(scene.classList.contains('roof3d-stage--sky')).toBe(false);
+    expect(scene.classList.contains('roof3d-stage')).toBe(true);
+    expect(aide.hidden).toBe(true);
+    expect([aide.dataset.fr, aide.dataset.en, aide.dataset.ar, aide.textContent]).toEqual([AIDE_SIMPLE.fr, AIDE_SIMPLE.en, AIDE_SIMPLE.ar, AIDE_SIMPLE.fr]);
+  });
+
+  it('B0 — une tuile refusée (429) ou une réponse HTTP ne retire pas la barre ; une panne de style, si (repli, carte démontée)', async () => {
+    const onMapError = vi.fn();
+    const { barre, carte, replier } = await monter({ onMapError });
+    carte.fire('load');
+    await attendre();
+    carte.fire('error', { sourceId: 'satellite', tile: {}, error: { status: 429, message: 'Too Many Requests' } });
+    carte.fire('error', { error: { status: 404, message: 'glyphes absents' } });
+    expect(replier).not.toHaveBeenCalled();
+    expect(barre.hidden).toBe(false);
+    carte.fire('error', { error: new Error('Style is not done loading') });
+    expect(replier).toHaveBeenCalledTimes(1);
+    expect(barre.hidden).toBe(true);
+    expect(carte.retiree).toBe(true); // plus de carte devant la photo ou la visionneuse simplifiée
+    expect(onMapError).not.toHaveBeenCalled(); // avec onFail, la panne passe par le repli
+  });
+
+  it('B0 — contexte WebGL perdu puis restauré : la couche 3D est reposée UNE fois et la scène rejouée au même instant', async () => {
+    vi.useFakeTimers();
+    try {
+      const { DELAI_RESTAURATION_GL_MS } = await import('../src/scripts/roofPro11/viewerFullBoot');
+      const { carte, replier, barre, q } = await monter();
+      carte.fire('load');
+      await vi.advanceTimersByTimeAsync(1);
+      const curseur = q<HTMLInputElement>('[data-soleil-heure]');
+      curseur.value = '10';
+      curseur.dispatchEvent(new Event('input'));
+      const soleilAvant = soleilDessine(carte);
+      expect(carte.ajouts).toBe(1);
+      carte.perdreContexte(); // MapLibre détruit le style, couche 3D comprise
+      expect(carte.couches).toHaveLength(0);
+      carte.fire('webglcontextrestored'); // le style revient… plus tard
+      expect(carte.ajouts).toBe(1);
+      const repeints = carte.repeints;
+      carte.styleCharge = true;
+      carte.fire('style.load');
+      expect(carte.ajouts).toBe(2); // reposée une fois
+      expect(carte.couches).toHaveLength(1);
+      expect(carte.repeints).toBeGreaterThan(repeints);
+      expect(soleilDessine(carte)).toEqual(soleilAvant); // même instant (10 h) qu'avant la perte
+      vi.advanceTimersByTime(DELAI_RESTAURATION_GL_MS * 3);
+      expect(replier).not.toHaveBeenCalled();
+      expect(barre.hidden).toBe(false);
+      expect(carte.retiree).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('B0 — contexte restauré mais couche non reposée, style jamais revenu, ou contexte jamais restauré : repli, une fois', async () => {
+    vi.useFakeTimers();
+    try {
+      const { DELAI_RESTAURATION_GL_MS } = await import('../src/scripts/roofPro11/viewerFullBoot');
+      // a) la couche refuse de revenir
+      const a = await monter();
+      a.carte.fire('load');
+      a.carte.perdreContexte();
+      a.carte.addLayer = function () { this.ajouts++; return this; }; // ne pose rien
+      a.carte.styleCharge = true;
+      a.carte.fire('webglcontextrestored');
+      expect(a.replier).toHaveBeenCalledTimes(1);
+      expect(a.carte.retiree).toBe(true);
+      expect(a.barre.hidden).toBe(true);
+      vi.advanceTimersByTime(DELAI_RESTAURATION_GL_MS * 3);
+      expect(a.replier).toHaveBeenCalledTimes(1);
+      // b) le style ne revient jamais après la restauration
+      carteFactice.cartes.length = 0;
+      const b = await monter();
+      b.carte.fire('load');
+      b.carte.perdreContexte();
+      b.carte.fire('webglcontextrestored');
+      vi.advanceTimersByTime(DELAI_RESTAURATION_GL_MS + 1);
+      expect(b.replier).toHaveBeenCalledTimes(1);
+      expect(b.carte.retiree).toBe(true);
+      // c) le contexte n'est jamais restauré
+      carteFactice.cartes.length = 0;
+      const c = await monter();
+      c.carte.fire('load');
+      c.carte.perdreContexte();
+      vi.advanceTimersByTime(DELAI_RESTAURATION_GL_MS + 1);
+      expect(c.replier).toHaveBeenCalledTimes(1);
+      expect(c.carte.retiree).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('style de carte refusé (403) avant le chargement : repli IMMÉDIAT, carte démontée, barre jamais montrée, aucun rendu', async () => {
+    const { erreurDeStyle } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    const { barre, carte, replier, onReady, brancherSoleil, scene } = await monter();
+    const style = (carte.options as { style: unknown }).style as string;
+    expect(typeof style).toBe('string'); // clé MapTiler seule : le style est une adresse
+    // Une tuile refusée avant le chargement n'est pas un refus de style : on attend encore.
+    carte.fire('error', { sourceId: 'satellite', tile: {}, error: { status: 403, url: 'https://tuiles/1/2/3.jpg' } });
+    expect(replier).not.toHaveBeenCalled();
+    expect(erreurDeStyle({ error: { status: 403, url: style } }, style)).toBe(true);
+    carte.fire('error', { error: { status: 403, message: 'Forbidden', url: style } });
+    await attendre();
+    expect(replier).toHaveBeenCalledTimes(1);
+    expect(carte.retiree).toBe(true); // la boîte sombre de la carte quitte la scène : la photo ou la simplifiée se voient
+    expect(onReady).not.toHaveBeenCalled();
+    expect(brancherSoleil).not.toHaveBeenCalled();
+    expect(barre.hidden).toBe(true);
+    expect(scene.classList.contains('roof3d-stage--map')).toBe(false);
+    carte.fire('load'); // une carte démontée ne rend plus rien
+    expect(onReady).not.toHaveBeenCalled();
+  });
+
+  it('carte LENTE dont le style est arrivé : aucun repli au délai, la visionneuse pleine et la barre arrivent avec `load` (40 s)', async () => {
+    vi.useFakeTimers();
+    try {
+      const { barre, carte, replier, onReady } = await monter({ loadTimeoutMs: 15_000 });
+      carte.fire('styledata'); // le style est là ; les tuiles satellite traînent
+      await vi.advanceTimersByTimeAsync(40_000);
+      expect(replier).not.toHaveBeenCalled();
+      expect(carte.retiree).toBe(false);
+      carte.fire('load');
+      await vi.advanceTimersByTimeAsync(1);
+      expect(onReady).toHaveBeenCalledTimes(1);
+      expect(barre.hidden).toBe(false);
+      expect(replier).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('carte qui ne charge JAMAIS : au délai, repli (plus d’attente devant une boîte vide)', async () => {
+    vi.useFakeTimers();
+    try {
+      const { barre, carte, replier, onReady } = await monter({ loadTimeoutMs: 15_000 });
+      vi.advanceTimersByTime(14_999);
+      expect(replier).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(2);
+      expect(replier).toHaveBeenCalledTimes(1);
+      expect(carte.retiree).toBe(true);
+      expect(onReady).not.toHaveBeenCalled();
+      expect(barre.hidden).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// ── 10. L'aide des gestes suit la langue de la page (lot 8) ──
+// La page pose dans chaque nœud `data-i18n` trois portées fr / en / ar (son `prepareI18n`) puis son sélecteur ne fait que
+// les montrer ou les cacher (`applyLang`). Ces deux fonctions vivent dans le script de la page : le fixture reproduit le
+// DOM EXACT qu'elles produisent, et `habillerPourCarte` (la vraie) est jouée dessus.
+describe('habillerPourCarte — l’aide des gestes suit la langue de la page, et revient telle quelle au repli', () => {
+  const SIMPLE = { fr: 'Faites glisser pour tourner', en: 'Drag to rotate', ar: 'اسحبوا للتدوير' };
+  const CARTE = { fr: /^Deux doigts/, en: /^Two fingers/, ar: /^إصبعان/ };
+  /** Le nœud tel que `prepareI18n` le laisse, puis `applyLang(langue)`. */
+  function aidePreparee(langue: 'fr' | 'en' | 'ar') {
+    document.body.innerHTML = `<div id="scene"></div><p id="aide" hidden data-i18n data-fr="${SIMPLE.fr}" data-en="${SIMPLE.en}" data-ar="${SIMPLE.ar}"></p>`;
+    const aide = document.getElementById('aide')!;
+    const portees = (['fr', 'en', 'ar'] as const).map((l) => Object.assign(document.createElement('span'), { textContent: SIMPLE[l] }));
+    aide.append(...portees);
+    const appliquer = (l: 'fr' | 'en' | 'ar') => {
+      portees.forEach((p, i) => { p.hidden = ['fr', 'en', 'ar'][i] !== l; });
+      document.documentElement.lang = l;
+    };
+    appliquer(langue);
+    const visible = () => portees.find((p) => !p.hidden)!.textContent;
+    return { aide, portees, appliquer, visible, scene: document.getElementById('scene')! };
+  }
+  afterEach(() => {
+    document.documentElement.lang = 'fr';
+    document.body.innerHTML = '';
+  });
+
+  it.each(['fr', 'en', 'ar'] as const)('page en %s : l’aide carte est dans cette langue, puis suit chaque bascule', async (langue) => {
+    const { habillerPourCarte } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    const { aide, portees, appliquer, visible, scene } = aidePreparee(langue);
+    habillerPourCarte(scene, aide);
+    expect(aide.hidden).toBe(false);
+    expect(visible()).toMatch(CARTE[langue]);
+    expect([...aide.children]).toEqual(portees); // les MÊMES portées : le sélecteur les tient toujours
+    for (const l of ['ar', 'en', 'fr'] as const) {
+      appliquer(l);
+      expect(visible()).toMatch(CARTE[l]);
+    }
+    expect(aide.dataset.en).toMatch(CARTE.en);
+  });
+
+  it('repli : l’aide simplifiée revient dans ses trois portées, et suit encore les bascules', async () => {
+    const { habillerPourCarte } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    const { aide, portees, appliquer, visible, scene } = aidePreparee('ar');
+    const defaire = habillerPourCarte(scene, aide);
+    appliquer('en');
+    defaire();
+    expect(aide.hidden).toBe(true);
+    expect([...aide.children]).toEqual(portees);
+    expect(portees.map((p) => p.textContent)).toEqual([SIMPLE.fr, SIMPLE.en, SIMPLE.ar]);
+    expect([aide.dataset.fr, aide.dataset.en, aide.dataset.ar]).toEqual([SIMPLE.fr, SIMPLE.en, SIMPLE.ar]);
+    expect(visible()).toBe(SIMPLE.en);
+    appliquer('ar');
+    expect(visible()).toBe(SIMPLE.ar);
+  });
+
+  it('nœud non préparé : le texte de la langue de la page, et le texte d’origine au repli', async () => {
+    const { habillerPourCarte } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    document.body.innerHTML = `<div id="scene"></div><p id="aide" hidden data-fr="${SIMPLE.fr}">${SIMPLE.fr}</p>`;
+    document.documentElement.lang = 'ar';
+    const aide = document.getElementById('aide')!;
+    const defaire = habillerPourCarte(document.getElementById('scene'), aide);
+    expect(aide.textContent).toMatch(CARTE.ar);
+    defaire();
+    expect(aide.textContent).toBe(SIMPLE.fr);
+    expect(aide.dataset.en).toBeUndefined();
   });
 });

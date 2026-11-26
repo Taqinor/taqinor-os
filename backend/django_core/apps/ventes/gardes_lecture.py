@@ -125,7 +125,13 @@ class SansMontantsVenteMixin:
     ``montants_vente_masques(user)`` ; tout autre lecteur : réponse inchangée."""
 
     def finalize_response(self, request, response, *args, **kwargs):
+        # CI #1564 api-fuzz (``devis-lignes/0.5/`` → 500) : une réponse d'erreur
+        # née AVANT l'authentification (suffixe « .5 » lu comme format → 404 de
+        # négociation) ne porte aucun montant ; lire ``request.user`` ici
+        # déclenchait l'authentification hors du gestionnaire d'exceptions de
+        # DRF. Seul l'utilisateur DÉJÀ authentifié est lu, jamais ré-authentifié.
         champs = MONTANTS_VENTE_PAR_VUE.get(type(self).__name__, ())
-        if champs and montants_vente_masques(getattr(request, 'user', None)):
+        if (champs and not getattr(response, 'exception', False)
+                and montants_vente_masques(vars(request).get('_user'))):
             _retirer(getattr(response, 'data', None), champs)
         return super().finalize_response(request, response, *args, **kwargs)

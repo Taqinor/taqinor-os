@@ -21,7 +21,7 @@ import * as maplibregl from 'maplibre-gl';
 import { creerPoignees3d, type PoigneeEcran } from './poigneesSommets3d'; // ACAL1185
 import * as THREE from 'three';
 import { enuSharedEdgeOverlapM } from './edgeOverlap'; import { lieuDeRepli } from './provenanceEpingle'; // T4-X2-005
-import { makeCompose, configureShadowRenderer, ringsBBox, fitShadowCamera } from './threeShared';
+import { makeCompose, configureShadowRenderer, ringsBBox, placerSoleilScene, type CadreSoleil } from './threeShared'; // lot 8 : placerSoleilScene
 import { PANEL2_THICK_M, sunDirection, describeRowPitch } from '../../lib/roofPro2';
 import { rowSelfShading } from '../../lib/shadingEngine';
 import {
@@ -55,7 +55,7 @@ import { makeCanadianPanelTexture, type JeuPanneau } from './panelTexture';
 import { aplatirEnPlan, poserOeil, verreEtOeilAtelier } from './oeilCamera'; // ACAL1984, T4-U1-017, LOT 6
 import { boiteObstacle } from './obstacle3d'; // ACAL1820
 import { etiquettesChaines, calqueElectriqueVisible, brancherCalqueElectrique, type ChaineAPoser } from './electrique3d'; // ACAL1944 ; T4-X7-015
-import { teintesBatiment, eclatPresentation, TEINTES_PRESENTATION } from './jeuPresentation'; // ACAL1839
+import { teintesBatiment, eclatPresentation, TEINTES_PRESENTATION, jeuDeLaScene, cadreOmbreClient, solOmbreClient, ombresObstacles } from './jeuPresentation'; // ACAL1839 ; lot 8
 import { geometrieJupe } from './jupePignon'; // ACAL1839
 import { enPresentation, montreALEtape, surEtape, surPresentation } from './presentationCarte'; // ACAL1839 ; suites v2 — l'étape
 import { type Ctx } from './context';
@@ -82,7 +82,8 @@ import { construireMaillagesPose, enMotsDOmbriere } from './poseSurfaces'; // CA
 
 import { teinterAllees } from './teinteAllees'; // CALX403
 import { creerCanalTeinte, type CouleurDe } from './canalTeinte'; // ACAL1621
-import { appliquerCiel } from './ciel'; // ACAL431
+import { appliquerCiel, cielSuitLeSoleil } from './ciel'; // ACAL431 ; lot 8
+import { creerRelancePhoto } from './relancePhoto'; // lot 8
 import { porteeAppliquee, poserTrianglesDeRangee } from './piedsChassis'; // ACAL579 — boucle des tronçons sortie
 import { affectationGroupKey, affectationGroupLabel, identifiantsModulesParCellule, libelleModuleAffecte } from './libellesAffectation'; // ACAL729
 
@@ -127,6 +128,8 @@ export interface Scene3d {
   appendOtherZones: (activeOrigin: LngLat) => [number, number][][];
   /** Rendu complet de la zone ACTIVE (bâtiment + dalle + panneaux + obstacles + soleil). */
   renderScene: RenderSceneFn;
+  /** Lot 8 — repose le SOLEIL seul (`ctx.sunDay`/`ctx.sunHour` : lumière, ombres, ciel) et repeint, sans reconstruire un maillage. */
+  poserSoleil: () => void;
   /** ACAL1839 — sommets du volume de la maison `[lng, lat, hauteur m]` (atelier ERP ; vide sinon) : le cadrage du volume. */
   volumeScene: () => [number, number, number][];
   /** Réinitialise la photo de toit + la matrice modèle (appelé par clearEditorState). */
@@ -1319,6 +1322,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   let threeCamera: THREE.Camera | null = null;
   let sun: THREE.DirectionalLight | null = null;
   let modelMatrix: THREE.Matrix4 | null = null;
+  let cadreSoleil: CadreSoleil | null = null; // lot 8 — où viser le soleil, posé par le dernier rendu complet
   const panelTex = makeCanadianPanelTexture();
   // ACAL433 — une texture de verre par rapport de panneau (arrondi 0,01), partagée ; lowEnd : l'unique d'avant.
   const panelTexParRapport = new Map<number, THREE.Texture>();
@@ -1337,7 +1341,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     return t;
   };
   /** ACAL1839 — le jeu de matériaux de la scène : « presentation » quand la carte est montrée au client. */
-  const jeuScene = (): JeuPanneau => (atelierErp && enPresentation(map) ? 'presentation' : 'atelier');
+  const jeuScene = (): JeuPanneau => jeuDeLaScene(opts, atelierErp && enPresentation(map)); // lot 8 : aussi le lien de confiance
   // Texture du profilé galvanisé PERFORÉ, PARTAGÉE par toutes les pièces de structure et
   // bakée une seule fois (patron W71 : jamais dans le chemin de rendu). En mode bas de
   // gamme on ne la fabrique PAS — le profilé garde une couleur galva unie : zéro canvas,
@@ -1350,6 +1354,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   let roofTex: THREE.Texture | null = null;
   let roofTexKey = '';
   let deckMaterial: THREE.MeshStandardMaterial | null = null;
+  const relancePhoto = creerRelancePhoto(); // lot 8 — une photo refusée est redemandée quelques fois, jamais à chaque rendu
   // W107 — lift de faîtière commune par zone (id → mètres), recalculé à chaque renderScene
   // dans la frame ENU de la zone active. Vide / 0 → rendu inchangé (pans isolés, toit plat).
   let ridgeLifts = new Map<string, number>();
@@ -1689,16 +1694,16 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     const req = roofImageRequest(ringBBox(ctx.vertices));
     setDeckUVs(deck.geometry, origin, req.extent);
     const key = req.extent.map((n) => n.toFixed(6)).join(',');
-    if (roofTex && roofTexKey === key) {
-      mat.map = roofTex;
-      mat.color.set(0xffffff);
-      mat.needsUpdate = true;
+    if (roofTexKey === key) { // lot 8 — UNE demande par emprise : en vol, chargée ou refusée, jamais redemandée à chaque rendu
+      if (roofTex) Object.assign(mat, { map: roofTex, needsUpdate: true }).color.set(0xffffff);
       return;
     }
+    roofTex?.dispose(); roofTex = null; roofTexKey = key; // l'ancienne emprise n'est plus montée (deck reconstruit) : libérée
     const url = mapboxStaticRoofImageUrl(opts.mapboxToken, req.center, req.zoom, req.w, req.h);
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
+      if (roofTexKey !== key) return; // une autre emprise a été demandée depuis (retracé) : image périmée
       const tex = new THREE.Texture(img);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = 8;
@@ -1709,7 +1714,6 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       // recomposition du matériau — la libérer ici corromprait le rendu en cours.
       if (roofTex && roofTex !== tex && roofTex !== deckMaterial?.map) roofTex.dispose();
       roofTex = tex;
-      roofTexKey = key;
       // Réapplique sur le deck COURANT (un bascule a pu le recréer entre-temps).
       if (deckMaterial) {
         deckMaterial.map = tex;
@@ -1718,9 +1722,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         map.triggerRepaint();
       }
     };
-    img.onerror = () => {
-      /* imagerie indisponible → on garde le deck gris, sans erreur visible */
-    };
+    img.onerror = () => relancePhoto.echec(key, () => { if (roofTexKey === key && renderer) img.src = url; }); // indisponible : deck gris ; quelques essais espacés et plafonnés (relancePhoto.ts)
     img.src = url;
   }
 
@@ -2209,7 +2211,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         const oy = (o.centerLat - pack.origin[1]) * DEG2M + offY;
         const tint = dim ? 0xc06464 : 0xff6b6b;
         // CAL66 — hauteur SAISIE, sinon le repli visuel ; ACAL1820 — assise sur la dalle et ombres (atelier ERP).
-        const mesh = boiteObstacle(o, { x: ox, y: oy, murM: wallH, dessusDalleM: dessusDalle(ox, oy), teinte: tint, opacite: dim ? 0.3 : 0.42, opaciteAretes: dim ? 0.6 : 0.95, ombres: atelierErp });
+        const mesh = boiteObstacle(o, { x: ox, y: oy, murM: wallH, dessusDalleM: dessusDalle(ox, oy), teinte: tint, opacite: dim ? 0.3 : 0.42, opaciteAretes: dim ? 0.6 : 0.95, ombres: ombresObstacles(opts) });
         sceneRoot!.add(mesh);
       }
     }
@@ -2489,7 +2491,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         // CAL66 — hauteur SAISIE, sinon le repli visuel ; ACAL1820 — assise sur la dalle, porte et reçoit les ombres (ERP).
         const boxH = o.heightM ?? OBSTACLE_BOX_H_M;
         const client = jeuScene() === 'presentation'; // ACAL1839 — au client : une cheminée en brique, sans cote
-        const mesh = boiteObstacle(o, { x: ox, y: oy, murM: wallH, dessusDalleM: built.dessusDalle?.(ox, oy), teinte: client ? TEINTES_PRESENTATION.cheminee : tint, opacite: client ? 1 : selected ? 0.5 : 0.42, ombres: atelierErp });
+        const mesh = boiteObstacle(o, { x: ox, y: oy, murM: wallH, dessusDalleM: built.dessusDalle?.(ox, oy), teinte: client ? TEINTES_PRESENTATION.cheminee : tint, opacite: client ? 1 : selected ? 0.5 : 0.42, ombres: ombresObstacles(opts) });
         // Change B : taille affichée SUR la boîte, en 3D (plus de libellé « en
         // dessous » sur la carte). Enfant du mesh → suit la boîte au déplacement.
         // VISIONNEUSE : aucune étiquette de cote — c'est une aide au PLACEMENT
@@ -2586,33 +2588,22 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // visible autour du bâtiment, qui se lit comme un volume 3D posé dans son
     // contexte, son toit texturé sur le dessus (détouré au tracé). La photo du toit
     // (surélevée) et le sol viennent de la même imagerie source.
-    const roofZ = wallH + 0.5;
-    // W87 — VRAI soleil : position astronomique à la latitude du toit, pour l'heure
-    // solaire (ctx.sunHour) et le jour (ctx.sunDay) choisis. Défaut = midi au solstice
-    // d'hiver (jour 355), où l'élévation rejoint l'élévation de design de l'espacement
-    // anti-ombrage → les rangées se dégagent VISIBLEMENT (l'ombre portée prouve le pas).
-    // Plus de soleil arbitraire (ancien « visée − 45° » + élévation factice) : l'ombre
-    // rendue correspond désormais à une vraie heure. On garde le soleil au moins à 6°
-    // au-dessus de l'horizon pour que la scène reste éclairée si l'utilisateur choisit
-    // une heure proche du lever/coucher (ombres longues mais lisibles, jamais noir).
-    const lat = pack.origin[1];
-    const realSun = sunDirection(lat, ctx.sunDay, ctx.sunHour);
-    if (!readOnly) appliquerCiel(map, realSun.elevationDeg, lowEnd); // ACAL431 — ciel selon le soleil ; visionneuse client et bas de gamme : inchangés
-    const dispElevDeg = Math.max(6, realSun.elevationDeg);
-    // Azimut RÉEL du soleil, ramené dans le repère ENU de la scène (0 = Nord, sens
-    // horaire vers l'Est) — même convention que pack.azimuthDeg.
-    const dispAzDeg = realSun.azimuthDeg;
-    const azR = dispAzDeg * DEG2RAD;
-    const elR = dispElevDeg * DEG2RAD;
-    const dist = span * 2.5;
-    sun.target.position.set(cxm, cym, roofZ);
-    sun.position.set(cxm + Math.sin(azR) * Math.cos(elR) * dist, cym + Math.cos(azR) * Math.cos(elR) * dist, roofZ + Math.sin(elR) * dist);
-    fitShadowCamera(sun, span, dist * 2);
+    cadreSoleil = { cx: cxm, cy: cym, z: wallH + 0.5, span: cadreOmbreClient(opts, span, shadowRings, wallH), lat: pack.origin[1] }; // W87 ; lot 8 : élargi au sol (confiance)
+    poserSoleil(false); // lot 8 — le soleil seul (threeShared.ts::placerSoleilScene) : un pas de lecture ne rejoue que lui
 
     attacherCoucheElectrique(); // CALX219 câblage — la couche électrique revient sur la scène
     if (scene) poignees3d.poser(scene, !readOnly && ctx.closed ? ctx.vertices : [], pack.origin, wallH); // ACAL1185
-    for (const m of construireMaillagesPose(ctx.surfacesPose, pack.origin, readOnly)) sceneRoot!.add(m); // CALX124 — surfaces de pose (sol/ombrière) : volumes et ombres portées ; aucune surface ⇒ rien d'ajouté
+    for (const m of [...construireMaillagesPose(ctx.surfacesPose, pack.origin, readOnly), ...solOmbreClient(opts, shadowRings, wallH)]) sceneRoot!.add(m); // CALX124 — surfaces de pose : volumes et ombres portées ; aucune surface ⇒ rien d'ajouté ; lot 8 — sol qui reçoit les ombres (lien de confiance)
     map.triggerRepaint();
+  }
+
+  /** Lot 8 — le SOLEIL seul (lumière, cadre d'ombre, ciel) à `ctx.sunDay`/`ctx.sunHour`, sans reconstruire un maillage. */
+  function poserSoleil(repeindre = true) {
+    if (!sun || !cadreSoleil) return;
+    const lat = cadreSoleil.lat, realSun = sunDirection(lat, ctx.sunDay, ctx.sunHour); // W87 — le VRAI soleil
+    if (cielSuitLeSoleil(readOnly, opts)) appliquerCiel(map, realSun.elevationDeg, lowEnd); // ACAL431 — ciel selon le soleil ; visionneuse standard et bas de gamme : inchangés
+    placerSoleilScene(sun, cadreSoleil, { azimuthDeg: realSun.azimuthDeg, elevationDeg: realSun.elevationDeg });
+    if (repeindre) map.triggerRepaint();
   }
 
   /** Réinitialise la photo de toit + la matrice modèle (« Effacer »/clearEditorState).
@@ -2861,7 +2852,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     }
     return points;
   };
-  return { volumeScene, customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setCoucheElectrique, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, rafraichirAffectation, snapshot, renderOffscreen, exporterSceneGltf, positionsPoigneesEcran: poignees3d.ecran };
+  return { volumeScene, customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, poserSoleil: () => poserSoleil(), resetTextures, setCoucheElectrique, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, rafraichirAffectation, snapshot, renderOffscreen, exporterSceneGltf, positionsPoigneesEcran: poignees3d.ecran };
 }
 
 /* ════════════════════════════════════════════════════════════════════════════

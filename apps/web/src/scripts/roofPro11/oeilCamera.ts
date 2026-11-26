@@ -4,6 +4,7 @@
 // `poserOeil` retrouve l'œil RÉEL (le point que la matrice envoie à w = 0, x = y = 0) et répartit la même matrice en
 // vue (translation vers l'œil) × projection : l'image est identique au pixel près, l'éclairage devient juste.
 import * as THREE from 'three';
+import { presentationClient } from './jeuPresentation';
 
 /** Pose sur `camera` l'œil réel de `modeleVersClip` (perspective) ; rend faux (caméra inchangée) si la matrice
  *  n'est pas inversible ou n'est pas une perspective (œil à l'infini). */
@@ -23,8 +24,8 @@ export function poserOeil(camera: THREE.Camera, modeleVersClip: THREE.Matrix4): 
 /** LOT 6 (D-ACAL-136) — le verre SANS vernis et l'œil réel (ACAL1984) : l'atelier ERP (`productionAtelier`), ou la
  *  visionneuse au soleil des liens de confiance quand elle teinte le pan actif (`teinteAccesVisible`, posé par
  *  `viewerFullBoot.ts` seulement) — sans quoi la teinte reste invisible. Absents : site public inchangé. */
-export function verreEtOeilAtelier(opts: { productionAtelier?: unknown; teinteAccesVisible?: boolean } | null | undefined): boolean {
-  return opts?.productionAtelier !== undefined || opts?.teinteAccesVisible === true;
+export function verreEtOeilAtelier(opts: { productionAtelier?: unknown; teinteAccesVisible?: boolean; presentationClient?: boolean } | null | undefined): boolean {
+  return opts?.productionAtelier !== undefined || opts?.teinteAccesVisible === true || presentationClient(opts); // lot 8 : lien de confiance
 }
 
 /** T4-U1-017 — pente de carte (degrés) jusqu'à laquelle les hauteurs remontent progressivement (pas de saut au passage

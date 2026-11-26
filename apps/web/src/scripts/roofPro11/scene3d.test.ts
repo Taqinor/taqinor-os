@@ -7,7 +7,9 @@ import { identifiantsModulesParCellule, numerosStablesDuPan } from './libellesAf
 import { creerCanalTeinte } from './canalTeinte'; // ACAL1621
 import { cibleVue, appliquerVue } from './vuesCamera';
 import { dimensionsTexture, makeCanadianPanelTexture } from './panelTexture'; // ACAL1839
-import { teintesBatiment, TEINTES_PRESENTATION } from './jeuPresentation'; // ACAL1839
+import { teintesBatiment, TEINTES_PRESENTATION, jeuDeLaScene, presentationClient, ombresObstacles, porteeOmbreSolM, solOmbreClient, cadreOmbreClient, MARGE_POSE_M, PORTEE_OMBRE_SOL_MAX_M } from './jeuPresentation'; // ACAL1839, lot 8
+import { ELEVATION_AFFICHAGE_MIN_DEG } from './threeShared'; // lot 8
+import { cielSuitLeSoleil } from './ciel'; // lot 8
 import * as THREE from 'three'; // ACAL1984
 import { aplatirEnPlan, poserOeil, verreEtOeilAtelier } from './oeilCamera'; // ACAL1984, T4-U1-017, LOT 6
 import { boiteObstacle } from './obstacle3d'; // ACAL1820
@@ -605,6 +607,54 @@ describe('ACAL1408 — la teinte d’accès modifie la couleur effective du pann
     expect(params(materiauVerre(null, verreEtOeilAtelier({ teinteAccesVisible: true })))).toEqual([0, 0.08, 0.22, 0.1]);
     // ERP : inchangé (toujours le verre de l'atelier, avec ou sans le drapeau).
     expect(verreEtOeilAtelier({ productionAtelier: null })).toBe(true);
+  });
+
+  it('lot 8 — `presentationClient` : l’habit client sur le lien de confiance ; l’ERP IGNORE le drapeau, le standard est inchangé', () => {
+    const erp = { productionAtelier: null, presentationClient: true };
+    // ERP : son jeu ne dépend QUE de son interrupteur « Montrer au client » (enPresentation), jamais du drapeau.
+    expect(presentationClient(erp)).toBe(false);
+    expect(jeuDeLaScene(erp, false)).toBe('atelier');
+    expect(jeuDeLaScene(erp, true)).toBe('presentation');
+    expect(jeuDeLaScene({ productionAtelier: null }, false)).toBe('atelier');
+    expect(cielSuitLeSoleil(false, erp)).toBe(true); // l'atelier a toujours son ciel
+    // Lien de confiance (lecture seule) : jeu « presentation », ciel qui suit le soleil, verre sans vernis.
+    expect(jeuDeLaScene({ presentationClient: true }, false)).toBe('presentation');
+    expect(cielSuitLeSoleil(true, { presentationClient: true })).toBe(true);
+    expect(verreEtOeilAtelier({ presentationClient: true })).toBe(true);
+    // Lien standard : rien ne change.
+    expect(jeuDeLaScene({}, false)).toBe('atelier');
+    expect(cielSuitLeSoleil(true, {})).toBe(false);
+    expect(verreEtOeilAtelier({ presentationClient: false })).toBe(false);
+  });
+
+  it('lot 8 — ombres des obstacles : ERP oui (inchangé), lien de confiance oui, lien standard non (inchangé)', () => {
+    expect(ombresObstacles({ productionAtelier: null })).toBe(true);
+    expect(ombresObstacles({ productionAtelier: null, presentationClient: false })).toBe(true);
+    expect(ombresObstacles({ presentationClient: true })).toBe(true);
+    expect(ombresObstacles({})).toBe(false);
+    expect(ombresObstacles(undefined)).toBe(false);
+  });
+
+  it('lot 8 (B2) — sol d’ombre : lien de confiance seulement, ombre seule, étendue = ombre la plus longue plafonnée', () => {
+    const anneau: [number, number][] = [[-12, -12], [12, -12], [12, 12], [-12, 12]];
+    // L'ombre la plus longue : (mur + pose) ÷ tan(soleil le plus bas affiché), plafonnée.
+    expect(porteeOmbreSolM(6)).toBeCloseTo((6 + MARGE_POSE_M) / Math.tan((ELEVATION_AFFICHAGE_MIN_DEG * Math.PI) / 180), 6);
+    expect(porteeOmbreSolM(40)).toBe(PORTEE_OMBRE_SOL_MAX_M);
+    // ERP (même avec le drapeau) et liens standard : aucun sol, cadre d'ombre inchangé.
+    for (const o of [{}, { productionAtelier: null, presentationClient: true }]) {
+      expect(solOmbreClient(o, [anneau], 6)).toEqual([]);
+      expect(cadreOmbreClient(o, 32, [anneau], 6)).toBe(32);
+    }
+    const [sol] = solOmbreClient({ presentationClient: true }, [anneau], 6);
+    const mat = sol.material as THREE.ShadowMaterial;
+    expect(mat.isShadowMaterial).toBe(true); // transparent hors de l'ombre : l'imagerie n'est ni couverte ni teintée
+    expect(mat.transparent).toBe(true);
+    expect(mat.depthWrite).toBe(false);
+    expect(sol.receiveShadow && !sol.castShadow).toBe(true);
+    const demi = Math.hypot(24, 24) / 2 + porteeOmbreSolM(6);
+    const g = (sol.geometry as THREE.PlaneGeometry).parameters;
+    expect(g.width / 2).toBeCloseTo(demi, 6);
+    expect(cadreOmbreClient({ presentationClient: true }, 32, [anneau], 6)).toBeCloseTo(demi, 6);
   });
 
   it('la teinte de chaîne (setStringColoring, même canal) est gainée de la même façon', () => {

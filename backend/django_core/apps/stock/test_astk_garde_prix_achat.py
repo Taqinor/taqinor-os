@@ -23,7 +23,7 @@ import re
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -548,6 +548,50 @@ def cles_prix_vente(payload):
         for valeur in payload:
             trouvees |= cles_prix_vente(valeur)
     return trouvees
+
+
+class MasquePrixVenteSansBase(SimpleTestCase):
+    """CI #1564 api-fuzz — le masque D-ACAL-152 d'une RÉPONSE ne déclenche jamais
+    l'authentification (``stock/produits/0.5/`` répondait 500 au lieu de 404)."""
+
+    def _vue(self):
+        from apps.stock.permissions import MasquePrixVenteReponseMixin
+
+        class Base:
+            def finalize_response(self, request, response, *args, **kwargs):
+                return response
+
+        class Vue(MasquePrixVenteReponseMixin, Base):
+            pass
+
+        return Vue()
+
+    def test_reponse_avant_authentification_inchangee_sans_lire_user(self):
+        from rest_framework.response import Response
+
+        class RequeteNonAuthentifiee:
+            @property
+            def user(self):
+                raise AssertionError('authentification déclenchée par le masque')
+
+        erreur = Response({'detail': 'Non trouvé.'}, status=404)
+        self.assertIs(self._vue().finalize_response(RequeteNonAuthentifiee(), erreur), erreur)
+        self.assertEqual(erreur.data, {'detail': 'Non trouvé.'})
+
+    def test_utilisateur_deja_authentifie_sans_le_droit_perd_les_prix(self):
+        from types import SimpleNamespace
+
+        from rest_framework.response import Response
+
+        def requete(voit):
+            return SimpleNamespace(_user=SimpleNamespace(is_authenticated=True, can_view_sale_prices=voit))
+
+        masquee = Response({'nom': 'Panneau', 'prix_vente': '1500'}, status=200)
+        self._vue().finalize_response(requete(False), masquee)
+        self.assertEqual(masquee.data, {'nom': 'Panneau'})
+        entiere = Response({'nom': 'Panneau', 'prix_vente': '1500'}, status=200)
+        self._vue().finalize_response(requete(True), entiere)
+        self.assertEqual(entiere.data, {'nom': 'Panneau', 'prix_vente': '1500'})
 
 
 class GardePrixVente(TestCase):
