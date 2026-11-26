@@ -29,7 +29,7 @@ import {
   VIEWER_FULL_MAX_ZOOM,
   VIEWER_FULL_MIN_ZOOM,
 } from '../src/scripts/roofPro11/viewerFullModel';
-import { bornesCarte, degradeLegende, libelleInstant, lireVisionneuseSoleil } from '../src/lib/visionneuseSoleil';
+import { bornesCarte, degradeLegende, libelleInstant, libelleJournee, lireVisionneuseSoleil } from '../src/lib/visionneuseSoleil';
 import { couleurAccesActive } from '../src/lib/shadingEngine';
 import { attacherSoleil, bornesJournee, couleurParPanneau } from '../src/scripts/roofPro11/viewerSoleil';
 import type { ViewerFullHandle } from '../src/scripts/roofPro11/viewerFullBoot';
@@ -415,9 +415,15 @@ describe('lireVisionneuseSoleil — absent ou malformé → null, jamais un thro
 
 describe('visionneuse au soleil — libellé, bornes de carte, légende, teinte', () => {
   it('libellé de l’instant dans l’année de dessin 2028 de l’atelier, trois langues', () => {
-    expect(libelleInstant(355, 12, 'fr')).toBe('20 décembre · 12 h');
-    expect(libelleInstant(172, 16, 'en')).toBe('20 June · 16:00');
-    expect(libelleInstant(172, 16, 'ar')).toBe('20 يونيو · الساعة 16');
+    expect(libelleInstant(355, 12, 'fr')).toBe('20 décembre · 12 h (heure solaire)');
+    expect(libelleInstant(172, 16, 'en')).toBe('20 June · 16:00 (solar time)');
+    expect(libelleInstant(172, 16, 'ar')).toBe('20 يونيو · الساعة 16 (بالتوقيت الشمسي)');
+  });
+
+  it('les bornes du curseur disent aussi l’heure SOLAIRE, trois langues (jamais une heure de montre)', () => {
+    expect(libelleJournee(7, 17, 'fr')).toBe('Lever 7 h · coucher 17 h (heure solaire)');
+    expect(libelleJournee(7, 17, 'en')).toBe('Sunrise 7:00 · sunset 17:00 (solar time)');
+    expect(libelleJournee(7, 17, 'ar')).toBe('الشروق الساعة 7 · الغروب الساعة 17 (بالتوقيت الشمسي)');
   });
 
   it('bornes : emprise des sommets + 150 m, zoom mini = zoom initial − 2 (D-ACAL-138)', () => {
@@ -464,7 +470,7 @@ describe('visionneuse au soleil — libellé, bornes de carte, légende, teinte'
 
 describe('attacherSoleil — la barre pilote la poignée (jsdom)', () => {
   const BARRE = `<div id="roof3d-soleil"><div data-soleil-legende></div>
-    <button data-soleil-lecture disabled></button><span data-soleil-min></span><strong data-soleil-quand></strong><span data-soleil-max></span>
+    <button data-soleil-lecture disabled></button><strong data-soleil-quand></strong><p data-soleil-journee></p>
     <input type="range" data-soleil-heure disabled /><button data-soleil-saison="hiver" disabled></button><button data-soleil-saison="ete" disabled></button></div>`;
   function monter(over: Partial<Parameters<typeof attacherSoleil>[0]> = {}, payload = payloadSoleil()) {
     document.body.innerHTML = BARRE;
@@ -490,7 +496,9 @@ describe('attacherSoleil — la barre pilote la poignée (jsdom)', () => {
     expect(carte.setMaxBounds).toHaveBeenCalledWith(bornesCarte(LAYOUT_SOLEIL, 19)!.bornes);
     expect(carte.setMinZoom).toHaveBeenCalledWith(17);
     expect(carte.setMaxPitch).toHaveBeenCalledWith(60);
-    expect(q('[data-soleil-quand]').textContent).toBe('20 décembre · 16 h');
+    expect(q('[data-soleil-quand]').textContent).toBe('20 décembre · 16 h (heure solaire)');
+    const b = bornesJournee(LAYOUT_SOLEIL.zones[0].vertices[0][1], 355)!;
+    expect(q('[data-soleil-journee]').textContent).toBe(libelleJournee(b.riseHour, b.setHour, 'fr'));
     expect(q('[data-soleil-saison="hiver"]').getAttribute('aria-pressed')).toBe('true');
   });
 
@@ -537,14 +545,14 @@ describe('attacherSoleil — la barre pilote la poignée (jsdom)', () => {
     q<HTMLButtonElement>('[data-soleil-saison="ete"]').click();
     expect(poignee.poserInstant).toHaveBeenLastCalledWith(172, 10);
     expect(q('[data-soleil-saison="ete"]').getAttribute('aria-pressed')).toBe('true');
-    expect(q('[data-soleil-quand]').textContent).toBe('20 juin · 10 h');
+    expect(q('[data-soleil-quand]').textContent).toBe('20 juin · 10 h (heure solaire)');
   });
 
   it('la langue de la page change : le libellé suit ; débranchée : contrôles inertes', async () => {
     const { q, debrancher, poignee } = monter();
     document.documentElement.lang = 'ar';
     await new Promise((r) => setTimeout(r, 0));
-    expect(q('[data-soleil-quand]').textContent).toBe('20 دجنبر · الساعة 16');
+    expect(q('[data-soleil-quand]').textContent).toBe('20 دجنبر · الساعة 16 (بالتوقيت الشمسي)');
     debrancher();
     expect(q<HTMLButtonElement>('[data-soleil-lecture]').disabled).toBe(true);
     q<HTMLButtonElement>('[data-soleil-saison="ete"]').click();

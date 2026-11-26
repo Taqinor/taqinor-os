@@ -12,7 +12,7 @@
  */
 import { couleurAccesActive } from '../../lib/shadingEngine';
 import type { RoofLayout } from '../../lib/proposition';
-import { bornesCarte, JOUR_ETE, JOUR_HIVER, libelleInstant, type LangueSoleil, type VisionneuseSoleil } from '../../lib/visionneuseSoleil';
+import { bornesCarte, JOUR_ETE, JOUR_HIVER, libelleInstant, libelleJournee, type LangueSoleil, type VisionneuseSoleil } from '../../lib/visionneuseSoleil';
 import { createSoleilPlayer, sunriseSunsetHours, type SunriseSunset } from './soleilPlay';
 import type { ViewerFullHandle } from './viewerFullBoot';
 
@@ -87,10 +87,8 @@ export function attacherSoleil(o: OptionsSoleil): () => void {
       const rempli = ((Number(curseur.value) - bornes.riseHour) / (bornes.setHour - bornes.riseHour)) * 100;
       curseur.style.setProperty('--soleil-rempli', `${Math.max(0, Math.min(100, rempli))}%`);
     }
-    for (const [cle, el] of [['min', bornes?.riseHour], ['max', bornes?.setHour]] as const) {
-      const n = q<HTMLElement>(`[data-soleil-${cle}]`);
-      if (n) n.textContent = el == null ? '' : langue() === 'fr' ? `${el} h` : `${el}:00`;
-    }
+    const journee = q<HTMLElement>('[data-soleil-journee]');
+    if (journee) journee.textContent = bornes ? libelleJournee(bornes.riseHour, bornes.setHour, langue()) : '';
     for (const b of saisons) b.setAttribute('aria-pressed', String((b.dataset.soleilSaison === 'ete' ? JOUR_ETE : JOUR_HIVER) === jour));
     if (lecture) {
       lecture.setAttribute('aria-pressed', String(player.playing));

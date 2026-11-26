@@ -421,7 +421,7 @@ describe('BarreSoleil.astro — rendu (LOT 6)', () => {
     expect(html).toContain('Ensoleillement de chaque panneau sur l’année');
     expect(html).toContain('Ombragé');
     expect(html).toContain('Plein soleil');
-    expect(html).toContain('20 décembre · 16 h');
+    expect(html).toContain('20 décembre · 16 h (heure solaire)');
     expect(html).toMatch(/data-soleil-saison="hiver"[^>]*aria-pressed="true"/);
     expect(html).toContain('data-soleil-lecture');
     expect(html).toContain('type="range"');
@@ -433,7 +433,7 @@ describe('BarreSoleil.astro — rendu (LOT 6)', () => {
       expect(html).toMatch(new RegExp(`${hook}[^>]*disabled`));
     }
     expect(html).toContain('data-aria-label-ar="تشغيل مسار الشمس خلال اليوم"');
-    expect(html).toContain('data-aria-label-en="Time of day"');
+    expect(html).toContain('data-aria-label-en="Solar time of day"');
     expect(html).toContain('data-ar="الصيف"');
   });
 
@@ -441,7 +441,7 @@ describe('BarreSoleil.astro — rendu (LOT 6)', () => {
     const html = await rendreBarre(lu('exemple_sans_mesure'));
     expect(html).not.toContain('data-soleil-legende');
     expect(html).not.toContain('Ombragé');
-    expect(html).toContain('20 juin · 12 h');
+    expect(html).toContain('20 juin · 12 h (heure solaire)');
   });
 
   it('rien d’inventé ni d’incertain : aucun pourcentage, aucun prix, aucun « à confirmer » / « estimation »', async () => {

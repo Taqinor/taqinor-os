@@ -23,7 +23,7 @@ const T = {
   ombre: { fr: 'Ombragé', en: 'Shaded', ar: 'مظلَّل' },
   plein: { fr: 'Plein soleil', en: 'Full sun', ar: 'شمس كاملة' },
   lecture: { fr: 'Lire la journée du soleil', en: 'Play the sun’s day', ar: 'تشغيل مسار الشمس خلال اليوم' },
-  heure: { fr: 'Heure du soleil', en: 'Time of day', ar: 'ساعة الشمس' },
+  heure: { fr: 'Heure solaire du soleil', en: 'Solar time of day', ar: 'الساعة بالتوقيت الشمسي' },
   saison: { fr: 'Saison', en: 'Season', ar: 'الفصل' },
   hiver: { fr: 'Hiver', en: 'Winter', ar: 'الشتاء' },
   ete: { fr: 'Été', en: 'Summer', ar: 'الصيف' },
@@ -49,12 +49,11 @@ const avecLegende = soleil.zones.length > 0;
     </button>
     <div class="soleil-curseur">
       <div class="soleil-tete">
-        <span data-soleil-min></span>
         <strong data-soleil-quand>{libelleInstant(jour, heure, 'fr')}</strong>
-        <span data-soleil-max></span>
       </div>
       <input type="range" class="soleil-heure" data-soleil-heure min="0" max="24" step="1" value={String(Math.round(heure))} disabled
         aria-label={T.heure.fr} data-aria-label-fr={T.heure.fr} data-aria-label-en={T.heure.en} data-aria-label-ar={T.heure.ar} />
+      <p class="soleil-journee" data-soleil-journee></p>
     </div>
     <div class="soleil-saisons" role="group" aria-label={T.saison.fr} data-aria-label-fr={T.saison.fr} data-aria-label-en={T.saison.en} data-aria-label-ar={T.saison.ar}>
       <button type="button" data-soleil-saison="hiver" disabled aria-pressed={jour === JOUR_HIVER ? 'true' : 'false'}
@@ -79,7 +78,8 @@ const avecLegende = soleil.zones.length > 0;
   .soleil-lecture .soleil-icone-pause, .soleil-lecture[aria-pressed='true'] .soleil-icone-lire { display: none; }
   .soleil-lecture[aria-pressed='true'] .soleil-icone-pause { display: block; }
   .soleil-curseur { flex: 1 1 10rem; min-width: 0; }
-  .soleil-tete { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.75rem; color: var(--color-lune-faint, #9aa3b4); }
+  .soleil-tete { display: flex; justify-content: center; font-size: 0.75rem; color: var(--color-lune-faint, #9aa3b4); }
+  .soleil-journee { min-height: 1rem; font-size: 0.75rem; text-align: center; color: var(--color-lune-faint, #9aa3b4); }
   .soleil-tete strong { color: var(--color-lune, #eef2f8); font-weight: 600; text-align: center; }
   .soleil-heure { width: 100%; min-height: 44px; accent-color: var(--color-brass-400, #d6a84a); }
   .soleil-saisons { display: inline-flex; gap: 0.5rem; }
@@ -88,7 +88,7 @@ const avecLegende = soleil.zones.length > 0;
   button:disabled, input:disabled { opacity: 0.5; cursor: default; }
   button:focus-visible, input:focus-visible { outline: 2px solid var(--color-brass-300, #e2bd6c); outline-offset: 2px; }
   @media print {
-    .soleil-lecture, .soleil-heure, .soleil-saisons, [data-soleil-min], [data-soleil-max] { display: none !important; }
+    .soleil-lecture, .soleil-heure, .soleil-saisons, .soleil-journee { display: none !important; }
     .soleil-barre, .soleil-tete strong, .soleil-titre, .soleil-bornes { color: #111 !important; border-color: #999 !important; }
   }
 </style>
