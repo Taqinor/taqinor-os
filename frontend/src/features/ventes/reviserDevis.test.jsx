@@ -31,6 +31,25 @@ describe('QJR533 — reviserEtOuvrir', () => {
     expect(navigate).not.toHaveBeenCalled()
   })
 
+  it('R5A-N1 — un refus qui nomme la version déjà créée : le toast offre « Ouvrir <réf> » (ouvre cette version)', async () => {
+    const erreur = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    const navigate = vi.fn()
+    ventesApi.reviserDevis.mockRejectedValue({
+      response: { status: 409, data: { code: 'version_remplacee', detail: 'Déjà remplacé par DEV-202609-0013.', successeur: { id: 13, reference: 'DEV-202609-0013' } } },
+    })
+    await reviserEtOuvrir({ devis: DEVIS, navigate })
+    expect(erreur).toHaveBeenCalledWith('Déjà remplacé par DEV-202609-0013.', expect.objectContaining({ action: expect.objectContaining({ label: 'Ouvrir DEV-202609-0013' }) }))
+    erreur.mock.calls[0][1].action.onClick()
+    expect(navigate).toHaveBeenCalledWith('/ventes/devis/nouveau?edit=13')
+  })
+
+  it('R5A-N1 — requête sans réponse (coupée) : le message dit que la version a peut-être été créée', async () => {
+    const erreur = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    ventesApi.reviserDevis.mockRejectedValue(Object.assign(new Error('timeout'), { code: 'ECONNABORTED' }))
+    await reviserEtOuvrir({ devis: DEVIS, navigate: vi.fn() })
+    expect(erreur).toHaveBeenCalledWith(expect.stringContaining('peut-être été créée'))
+  })
+
   it('échec sans message → texte de repli, pas de navigation', async () => {
     const erreur = vi.spyOn(toast, 'error').mockImplementation(() => {})
     const navigate = vi.fn()
@@ -102,6 +121,7 @@ describe('VNT80 — conflit nommant un autre devis', () => {
     ventesApi.reviserDevis.mockRejectedValue(refus(ERREURS.vente_active_existante))
     const r = await reviserEtOuvrir({ devis: DEVIS, navigate: vi.fn() })
     expect(r.successeur).toEqual(ERREURS.vente_active_existante.vente_active)
-    expect(erreur).toHaveBeenCalledWith(ERREURS.vente_active_existante.detail)
+    // R5A-N1 — le message serveur reste mot pour mot ; le toast offre en plus d'ouvrir la vente active.
+    expect(erreur).toHaveBeenCalledWith(ERREURS.vente_active_existante.detail, expect.objectContaining({ action: expect.any(Object) }))
   })
 })
