@@ -14,7 +14,7 @@
 //      aucun module d'édition importé) — garde de source, même convention que
 //      mobilePerfWJ18.test.ts.
 // Aucun DOM, aucun Three.js, aucun MapLibre : modules purs seulement.
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseRoofLayout, type RoofLayout } from '../src/lib/proposition';
@@ -34,6 +34,56 @@ import { couleurAccesActive } from '../src/lib/shadingEngine';
 import { attacherSoleil, bornesJournee, couleurParPanneau } from '../src/scripts/roofPro11/viewerSoleil';
 import type { ViewerFullHandle } from '../src/scripts/roofPro11/viewerFullBoot';
 import { ecrireTeintesPanneaux, GAIN_TEINTE_PANNEAU } from '../src/scripts/roofPro11/scene3d';
+
+// Section 8 — une carte MapLibre et un WebGLRenderer FACTICES (jsdom n'a ni GPU ni MapLibre) ; tout le
+// reste (Three.js, scene3d, le contexte du boot) est le vrai code. Les sections 1-7 n'en dépendent pas.
+const carteFactice = vi.hoisted(() => {
+  const cartes: FakeMap[] = [];
+  const rendus: unknown[] = [];
+  type Ecouteur = (e?: unknown) => void;
+  type Couche = { onAdd?: (m: unknown, gl: unknown) => void; onRemove?: (m: unknown, gl: unknown) => void; render: (gl: unknown, args: unknown) => void };
+  class FakeMap {
+    ecouteurs = new Map<string, Ecouteur[]>();
+    couches: Couche[] = [];
+    retiree = false;
+    repeints = 0;
+    canevas = document.createElement('canvas');
+    constructor(public options: unknown) { cartes.push(this); }
+    on(ev: string, fn: Ecouteur) { this.ecouteurs.set(ev, [...(this.ecouteurs.get(ev) ?? []), fn]); return this; }
+    once(ev: string, fn: Ecouteur) { const w: Ecouteur = (e) => { this.off(ev, w); fn(e); }; return this.on(ev, w); }
+    off(ev: string, fn: Ecouteur) { this.ecouteurs.set(ev, (this.ecouteurs.get(ev) ?? []).filter((f) => f !== fn)); return this; }
+    fire(ev: string, e?: unknown) { for (const fn of [...(this.ecouteurs.get(ev) ?? [])]) fn(e); }
+    addControl() { return this; }
+    addLayer(c: Couche) { this.couches.push(c); c.onAdd?.(this, {}); return this; }
+    resize() { return this; }
+    getZoom() { return 19; }
+    getPitch() { return 58; }
+    getBearing() { return 0; }
+    getCanvas() { return this.canevas; }
+    getLayer() { return undefined; }
+    triggerRepaint() { this.repeints++; }
+    setMaxBounds() {}
+    setMinZoom() {}
+    setMaxPitch() {}
+    remove() { this.retiree = true; for (const c of this.couches) c.onRemove?.(this, {}); this.couches = []; }
+  }
+  class FakeRenderer {
+    shadowMap = { enabled: false, type: 0 };
+    resetState() {}
+    setViewport() {}
+    render(scene: unknown) { rendus.push(scene); }
+    dispose() {}
+  }
+  return { cartes, rendus, FakeMap, FakeRenderer };
+});
+vi.mock('maplibre-gl', () => {
+  class NavigationControl {}
+  const MercatorCoordinate = { fromLngLat: () => ({ x: 0, y: 0, z: 0, meterInMercatorCoordinateUnits: () => 1e-7 }) };
+  const api = { Map: carteFactice.FakeMap, NavigationControl, MercatorCoordinate };
+  return { default: api, ...api };
+});
+vi.mock('maplibre-gl/dist/maplibre-gl.css?url', () => ({ default: 'maplibre-gl.css' }));
+vi.mock('three', async (origine) => ({ ...(await origine<typeof import('three')>()), WebGLRenderer: carteFactice.FakeRenderer }));
 
 // ── Un toit carré réaliste au Maroc (Casablanca), convention x=Est / y=Nord ──
 const LAT0 = 33.5;
@@ -571,5 +621,119 @@ describe('attacherSoleil — la barre pilote la poignée (jsdom)', () => {
     expect(q<HTMLButtonElement>('[data-soleil-lecture]').disabled).toBe(true);
     q<HTMLButtonElement>('[data-soleil-saison="ete"]').click();
     expect(poignee.poserInstant).not.toHaveBeenCalled();
+  });
+});
+
+// ── 8. Premier rendu RÉEL : la scène de l'ERP + le contexte EXACT du boot (lot 8) ──
+// Le constat du fondateur (26/11) : sur un lien de confiance, « lecture » ne changeait rien. Ce bloc
+// rejoue le VRAI `bootViewerFull` (son contexte, sa scène `scene3d.ts`) sur la carte et le
+// WebGLRenderer factices du haut du fichier : le premier rendu, puis un pas de soleil.
+
+/** Toit plat réel : 35 modules (5 rangées × 7) sur châssis, aucun obstacle, soleil du 21 décembre 16 h 15. */
+const RANGEES_PLAT = Array.from({ length: 5 }, (_, r) => columns(PORTRAIT_PITCH, 7, (r - 2) * 3.2)).flat();
+const LAYOUT_PLAT_35 = layoutOf(rawZone({ geometry: { ...(rawZone().geometry as object), count: 35, panels: RANGEES_PLAT } }));
+const INSTANT_REEL = { jour: 356, heure: 16.25 };
+type CarteFactice = InstanceType<typeof carteFactice.FakeMap>;
+type Position = { x: number; y: number; z: number };
+
+function contexte2dFactice() {
+  const degrade = { addColorStop() {} };
+  return new Proxy({}, {
+    get(_t, prop) {
+      if (prop === 'createLinearGradient' || prop === 'createRadialGradient' || prop === 'createPattern') return () => degrade;
+      if (prop === 'getImageData') return () => ({ data: new Uint8ClampedArray(4) });
+      if (prop === 'measureText') return () => ({ width: 0 });
+      if (prop === 'canvas') return { width: 512, height: 280 };
+      return () => undefined;
+    },
+    set() { return true; },
+  });
+}
+
+/** Rend une image comme MapLibre le ferait, et renvoie la position du soleil (DirectionalLight) dessiné. */
+function soleilDessine(carte: CarteFactice): Position | null {
+  const identite = new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  carte.couches[0]?.render({ drawingBufferWidth: 800, drawingBufferHeight: 600 }, { defaultProjectionData: { mainMatrix: identite } });
+  const scene = carteFactice.rendus.at(-1) as { traverse: (f: (o: { isDirectionalLight?: boolean; position: Position }) => void) => void } | undefined;
+  let soleil: Position | null = null;
+  scene?.traverse((o) => { if (o.isDirectionalLight) soleil = { x: o.position.x, y: o.position.y, z: o.position.z }; });
+  return soleil;
+}
+
+describe('visionneuse pleine — premier rendu réel (scene3d + contexte du boot)', () => {
+  const getContextOrigine = HTMLCanvasElement.prototype.getContext;
+  beforeEach(() => {
+    carteFactice.cartes.length = 0;
+    carteFactice.rendus.length = 0;
+    const c2d = contexte2dFactice();
+    (HTMLCanvasElement.prototype as unknown as { getContext: () => unknown }).getContext = () => c2d;
+  });
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = getContextOrigine;
+    vi.restoreAllMocks();
+    document.body.innerHTML = '';
+  });
+
+  async function demarrer(opts: Record<string, unknown> = {}) {
+    const { bootViewerFull } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const onReady = vi.fn();
+    const onFail = vi.fn();
+    const poignee = bootViewerFull(el, LAYOUT_PLAT_35, { maptilerKey: 'cle-test', reducedMotion: true, instant: INSTANT_REEL, onReady, onFail, ...opts });
+    expect(poignee).not.toBeNull();
+    return { poignee: poignee!, carte: carteFactice.cartes[0], onReady, onFail };
+  }
+
+  it('le premier rendu passe : onReady, aucun échec, la scène est dessinée avec ses 35 modules', async () => {
+    const { poignee, carte, onReady, onFail } = await demarrer();
+    expect(poignee.panelCount).toBe(35);
+    carte.fire('load');
+    expect(onFail).not.toHaveBeenCalled();
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(carte.retiree).toBe(false);
+    expect(soleilDessine(carte)).not.toBeNull();
+  });
+
+  it('un pas de soleil rejoue la scène : la lumière bouge entre deux heures, un repeint est demandé', async () => {
+    const { poignee, carte, onFail } = await demarrer();
+    carte.fire('load');
+    const avant = soleilDessine(carte)!;
+    const repeints = carte.repeints;
+    poignee.poserInstant(INSTANT_REEL.jour, 10);
+    expect(onFail).not.toHaveBeenCalled();
+    expect(carte.repeints).toBeGreaterThan(repeints);
+    const apres = soleilDessine(carte)!;
+    // 16 h 15 : soleil au sud-ouest ; 10 h : au sud-est — la lumière passe de l'autre côté du toit.
+    expect(Math.sign(apres.x - avant.x)).toBe(1);
+    expect(Math.hypot(apres.x - avant.x, apres.y - avant.y, apres.z - avant.z)).toBeGreaterThan(1);
+  });
+
+  it('toutes les branches lecture seule rendues sans jeter : second pan en pente, obstacle, voisins, teinte', async () => {
+    const [lngC, latC] = at(0, 0);
+    const pente = rawZone({ id: 'zone-2', vertices: squareLngLat(4).map(([x, y]) => [x + 0.0004, y] as [number, number]), roofType: 'pitched', pitchDeg: 25,
+      geometry: { ...(rawZone().geometry as object), origin: [LNG0 + 0.0004, LAT0], count: 2, panels: columns(PORTRAIT_PITCH, 2) } });
+    const actif = rawZone({ obstacles: [{ centerLng: lngC, centerLat: latC + 0.00008, lengthM: 1, widthM: 1 }], geometry: { ...(rawZone().geometry as object), count: 35, panels: RANGEES_PLAT } });
+    const voisins = [
+      { id: 'v-0', kind: 'arbre', centerLng: lngC, centerLat: latC - 0.0002, heightM: 7.5, crownDiameterM: 5, evergreen: true },
+      { id: 'v-1', kind: 'batiment', centerLng: lngC + 0.0002, centerLat: latC, heightM: 9, lengthM: 8, widthM: 6 },
+    ];
+    const { bootViewerFull } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    const el = document.body.appendChild(document.createElement('div'));
+    const onReady = vi.fn();
+    const onFail = vi.fn();
+    const poignee = bootViewerFull(el, layoutOf(actif, pente), { maptilerKey: 'cle-test', instant: INSTANT_REEL, environnement: voisins as never, indexTeintes: [0], onReady, onFail })!;
+    const carte = carteFactice.cartes[0];
+    carte.fire('load');
+    poignee.teinter(() => ({ r: 0.9, g: 0.2, b: 0.1 }));
+    poignee.poserInstant(172, 9);
+    expect(soleilDessine(carte)).not.toBeNull();
+    const geometries = new Set<string>();
+    (carteFactice.rendus.at(-1) as { traverse: (f: (o: { geometry?: { type: string } }) => void) => void }).traverse((o) => { if (o.geometry) geometries.add(o.geometry.type); });
+    expect(geometries.has('CylinderGeometry')).toBe(true); // l'arbre voisin est bien dessiné
+    expect(onFail).not.toHaveBeenCalled();
+    expect(onReady).toHaveBeenCalledTimes(1);
+    poignee.destroy();
+    expect(carte.retiree).toBe(true);
   });
 });
