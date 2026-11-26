@@ -31,6 +31,8 @@ import {
 } from '../src/lib/proposition';
 import { packConfig, type PanelGrid } from '../src/lib/estimatorBrainV2';
 import { PANEL2_LONG_M, PANEL2_SHORT_M, PANEL2_THICK_M } from '../src/lib/roofPro2';
+import * as THREE from 'three';
+import { matricesPiedsChassis } from '../src/scripts/roofPro11/viewerOnly';
 
 // ── Aides géo : un toit rectangulaire réaliste au Maroc ─────────────────────
 const LAT0 = 33.5;
@@ -381,5 +383,45 @@ describe('WJ130 — repli illustratif (aucune geometry) : comportement d’avant
       const ancien = zone.panelDepthM / Math.cos((zone.tiltDeg * Math.PI) / 180);
       expect(zone.panelSlopeM).toBeCloseTo(ancien, 9);
     }
+  });
+});
+
+// ── Lot 8 — la visionneuse simplifiée pose ses panneaux inclinés sur des pieds (toit plat) ──
+describe('lot 8 — pieds de châssis de la visionneuse simplifiée : tirés de la pose dessinée, jamais inventés', () => {
+  const t = 13;
+  const L = 2.279;
+  /** La matrice d'un panneau telle que la visionneuse la compose (inclinaison autour de l'axe des rangées). */
+  const pose = (x: number, tiltDeg: number) => new THREE.Matrix4().compose(
+    new THREE.Vector3(x, 0, 6 + 0.1 + (L * Math.sin((tiltDeg * Math.PI) / 180)) / 2 + 0.07),
+    new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), (tiltDeg * Math.PI) / 180),
+    new THREE.Vector3(1, 1, 1),
+  );
+  const hauteurs = (ms: THREE.Matrix4[]) => ms.map((m) => new THREE.Vector3().setFromMatrixScale(m).z);
+
+  it('toit plat, pose inclinée : un pied avant et un pied arrière par panneau, l’arrière plus haut de L·sin(t)', () => {
+    const pieds = matricesPiedsChassis({ flush: false, roofType: 'flat', tiltDeg: t }, [pose(0, t), pose(1.4, t)], L);
+    expect(pieds).toHaveLength(4);
+    const [h1, h2] = hauteurs(pieds);
+    expect(Math.max(h1, h2) - Math.min(h1, h2)).toBeCloseTo(L * Math.sin((t * Math.PI) / 180), 6);
+    expect(Math.min(h1, h2)).toBeGreaterThan(0);
+  });
+
+  it('aucun pied : pose affleurante, pan en pente, inclinaison absente ou nulle', () => {
+    expect(matricesPiedsChassis({ flush: true, roofType: 'flat', tiltDeg: t }, [pose(0, t)], L)).toEqual([]);
+    expect(matricesPiedsChassis({ flush: false, roofType: 'pitched', tiltDeg: t }, [pose(0, t)], L)).toEqual([]);
+    expect(matricesPiedsChassis({ flush: false, roofType: 'flat', tiltDeg: 0 }, [pose(0, 0)], L)).toEqual([]);
+    expect(matricesPiedsChassis({ flush: false, roofType: 'flat', tiltDeg: Number.NaN }, [pose(0, 0)], L)).toEqual([]);
+  });
+
+  it('zone servie : toit plat à châssis (flush: false) → pieds ; pan en pente affleurant → aucun', () => {
+    const zoneDe = (roofType: 'flat' | 'pitched', flush: boolean) => buildViewerModel(parseRoofLayout({ version: 2, zones: [{
+      id: 'z', label: 'P', vertices: rectLngLat(12, 12), obstacles: [], roofType, pitchDeg: roofType === 'pitched' ? 20 : 0, facingAzimuthDeg: 180, neededPanels: 0,
+      geometry: { azimuthDeg: 180, tiltDeg: roofType === 'pitched' ? 20 : t, family: 'south', flush, count: 2, origin: [LNG0, LAT0], panels: [{ cx: -0.7, cy: 0 }, { cx: 0.7, cy: 0 }] },
+    }] })!)!.zones[0];
+    const plat = zoneDe('flat', false);
+    expect(plat.flush).toBe(false);
+    expect(matricesPiedsChassis(plat, [pose(0, plat.tiltDeg)], plat.panelSlopeM)).toHaveLength(2);
+    const pente = zoneDe('pitched', true);
+    expect(matricesPiedsChassis(pente, [pose(0, pente.tiltDeg)], pente.panelSlopeM)).toEqual([]);
   });
 });
