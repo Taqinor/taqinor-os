@@ -361,6 +361,26 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
                 self.assertIsNone(decision['impose'])
                 self.assertIn(attendu, decision['message'])
 
+    def test_le_raccordement_du_client_n_est_pas_contourne(self):
+        """Relecture, point 5 — la règle de phase du catalogue (L-TRI ; triphasé écarté chez un
+        monophasé) vaut pour l'onduleur désigné ; ``triphase`` lu par la VRAIE fonction de fiche/nom."""
+        from types import SimpleNamespace
+
+        from apps.ventes.compatibilites import PHASE_MONO, PHASE_TRI, est_triphase_produit
+
+        mono = est_triphase_produit(SimpleNamespace(nom='Onduleur réseau Huawei 5kW Monophasé', pk=None))
+        tri = est_triphase_produit(SimpleNamespace(nom='Onduleur réseau Huawei 10kW Triphasé', pk=None))
+        self.assertEqual((mono, tri), (False, True))
+        for phase, triphase, attendu in ((PHASE_TRI, mono, 'il est monophasé'), (PHASE_MONO, tri, 'il est triphasé')):
+            with self.subTest(phase=phase):
+                decision = self._decision('onduleur_reseau', 'sans', phase_client=phase, triphase=triphase)
+                self.assertIsNone(decision['impose'])
+                self.assertIn(attendu, decision['message'])
+        for phase, triphase in ((PHASE_TRI, tri), (PHASE_MONO, mono), (None, tri)):
+            with self.subTest(phase=phase, triphase=triphase):
+                self.assertIsNotNone(self._decision('onduleur_reseau', 'sans', phase_client=phase,
+                                                    triphase=triphase)['impose'])
+
     def test_un_nom_muet_n_est_pas_impose(self):
         """Relecture, point 2 — reconnu hybride par son rôle ou sa fiche, mais un nom que le PDF et
         la resynchronisation (lecture au nom) ne classent pas : repli annoncé, jamais imposé."""

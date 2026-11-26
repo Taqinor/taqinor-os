@@ -153,6 +153,9 @@ MOTIFS_REPLI_ONDULEUR = {
     'batterie_incompatible': 'aucune batterie tarifée du catalogue ne se raccorde à cet onduleur',
     'nom_muet': ('son nom ne dit pas qu’il s’agit d’un onduleur %s : le PDF du devis et la '
                  'resynchronisation reconnaissent un onduleur à son nom'),
+    'mono_sur_tri': ('il est monophasé et le raccordement du client est triphasé (le devis ne cote jamais '
+                     'un monophasé à un client triphasé)'),
+    'tri_sur_mono': 'il est triphasé et le raccordement du client est monophasé',
     'nombre_illisible': 'le nombre d’onduleurs saisi à l’étape Électrique n’est pas un entier d’au moins 1',
     'nombre_inconnu': ('le nombre d’onduleurs n’est ni accepté à l’étape Électrique ni établi par le schéma '
                        'du calepinage'),
@@ -214,7 +217,8 @@ def famille_lue_au_nom(nom):
 
 
 def decision_onduleur_designe(*, produit_id, nom, etat, famille, famille_au_nom, scenario, hors_reseau,
-                              batterie_compatible=True, nombre=None, nombre_illisible=False):
+                              batterie_compatible=True, nombre=None, nombre_illisible=False,
+                              phase_client=None, triphase=None):
     """D-ACAL-148 — que fait le devis de l'onduleur DÉSIGNÉ ? Fonction PURE.
 
     ``etat`` : ``'tarife'`` (au catalogue, avec un prix de vente) ou la clé du motif de repli
@@ -234,6 +238,12 @@ def decision_onduleur_designe(*, produit_id, nom, etat, famille, famille_au_nom,
     ``famille_au_nom`` (:func:`famille_lue_au_nom`) — une famille de rôle / fiche que le NOM ne
     dit pas n'est pas imposée : le PDF ne rendrait pas l'option, la resynchronisation en
     ajouterait un second (repli annoncé, « son nom ne dit pas… »).
+
+    ``phase_client`` (``'monophase'`` / ``'triphase'`` / ``None``) et ``triphase`` (le produit,
+    ``compatibilites.est_triphase_produit``) — la règle du raccordement que le choix du catalogue
+    applique (``composition._vivier_onduleurs_par_phase`` : L-TRI, jamais de monophasé chez un
+    client triphasé ; un triphasé écarté chez un client monophasé) : un onduleur désigné ne la
+    contourne pas (repli annoncé).
 
     ``nombre`` — le nombre d'onduleurs que le CALEPINAGE retient (accepté à l'étape Électrique,
     sinon celui de son schéma), jamais la règle du catalogue : sans lui (``None``) ou illisible
@@ -255,6 +265,10 @@ def decision_onduleur_designe(*, produit_id, nom, etat, famille, famille_au_nom,
             motif = 'hybride_sans_batterie'
     if motif is None and famille != 'onduleur_reseau' and not batterie_compatible:
         motif = 'batterie_incompatible'
+    if motif is None and phase_client == 'triphase' and triphase is False:
+        motif = 'mono_sur_tri'
+    elif motif is None and phase_client == 'monophase' and triphase:
+        motif = 'tri_sur_mono'
     if motif is None and (nombre_illisible or not _nombre_valide(nombre)):
         motif = 'nombre_illisible' if nombre_illisible else 'nombre_inconnu'
     if motif is not None:
@@ -275,11 +289,13 @@ def _nombre_valide(nombre):
     return isinstance(nombre, int) and not isinstance(nombre, bool) and nombre >= 1
 
 
-def onduleur_designe_pour_le_devis(company, designe, *, scenario, hors_reseau):
+def onduleur_designe_pour_le_devis(company, designe, *, scenario, hors_reseau, phase=None):
     """D-ACAL-148 — la décision (:func:`decision_onduleur_designe`) pour l'onduleur désigné
     ``designe`` (``{'produit_id', 'nombre'}`` de l'étape Électrique), lue sur le catalogue de
     vente de la société (le vivier de la composition : produits de la société et globaux, non
-    archivés), sa fiche et ses batteries. ``None`` sans désignation. Lecture seule."""
+    archivés), sa fiche et ses batteries. ``None`` sans désignation. Lecture seule. ``phase`` : le
+    raccordement du lead (celui que reçoit la composition)."""
+    from apps.ventes.compatibilites import est_triphase_produit, normaliser_phase
     from apps.stock.selectors import get_produit_scoped, specs_for_produit
 
     from apps.ventes.domain.catalogue import _pick_batterie, est_article_pompage
@@ -305,6 +321,8 @@ def onduleur_designe_pour_le_devis(company, designe, *, scenario, hors_reseau):
         scenario=scenario,
         hors_reseau=hors_reseau, nombre=(designe or {}).get('nombre'),
         nombre_illisible=bool((designe or {}).get('nombre_illisible')),
+        phase_client=normaliser_phase(phase),
+        triphase=bool(est_triphase_produit(produit)) if produit is not None else None,
         batterie_compatible=(not porte_la_batterie
                              or _pick_batterie(company, onduleur=produit) is not None))
 
@@ -506,7 +524,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
             raise AutoDevisError(refus_isole[0], field='hors_reseau')
     # D-ACAL-148 — l'onduleur désigné, jugé sur la forme RETENUE (scénario, site isolé).
     designe = (onduleur_designe_pour_le_devis(company, onduleur_designe, scenario=scenario,
-                                              hors_reseau=hors_reseau)
+                                              hors_reseau=hors_reseau, phase=phase)
                if onduleur_designe else None)
     if journal is not None and designe is not None:
         journal['onduleur_designe'] = designe
