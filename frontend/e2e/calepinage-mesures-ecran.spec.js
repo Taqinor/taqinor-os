@@ -576,3 +576,91 @@ test('ACAL1817: relevé à 1180 × 820 — deux colonnes, barre du bas pleine la
     await contexte.close()
   }
 })
+
+// ACAL1824 — K-COUCHE-FIXE (docs/audits/l5-calepinage/T2/classes/K-COUCHE-FIXE.md) : aucune pièce fixe ou flottante ne
+// recouvre une réponse, une consigne ou une commande. `document.elementFromPoint` au centre de l'élément rend l'élément
+// lui-même ou un descendant ; un centre hors de la fenêtre (null) est lui aussi refusé : la réponse doit être EN VUE.
+const TAILLES_COUCHE = [
+  { cle: '1440x900', largeur: 1440, hauteur: 900 },
+  { cle: '1180x820', largeur: 1180, hauteur: 820 },
+  { cle: '390x664', largeur: 390, hauteur: 664 },
+]
+// Les éléments visibles de `css` dont le centre est recouvert (ou hors fenêtre) : une ligne par élément, qui le NOMME.
+async function recouverts(page, css, { defiler = false } = {}) {
+  const cibles = page.locator(css)
+  const n = await cibles.count()
+  const fautes = []
+  for (let i = 0; i < n; i += 1) {
+    const el = cibles.nth(i)
+    if (!(await el.isVisible())) continue
+    if (defiler) await el.scrollIntoViewIfNeeded()
+    const lecture = await el.evaluate((node) => {
+      const r = node.getBoundingClientRect()
+      const x = r.left + r.width / 2
+      const y = r.top + r.height / 2
+      const dessus = document.elementFromPoint(x, y)
+      return {
+        ok: Boolean(dessus) && (dessus === node || node.contains(dessus)),
+        y: Math.round(y),
+        vh: window.innerHeight,
+        dessus: dessus ? `${dessus.tagName.toLowerCase()}${dessus.dataset?.testid ? `[${dessus.dataset.testid}]` : ''}` : 'hors fenêtre',
+      }
+    })
+    if (!lecture.ok) fautes.push(`${css} #${i + 1} : centre à y ${lecture.y} sur ${lecture.vh}, recouvert par ${lecture.dessus}`)
+  }
+  return fautes
+}
+
+test('ACAL1824: la garde K-COUCHE-FIXE nomme l’élément recouvert', async ({ page }) => {
+  await page.setContent('<button id="a" style="position:fixed;top:10px;left:10px;width:80px;height:40px">A</button>'
+    + '<div style="position:fixed;top:0;left:0;width:200px;height:100px"></div>'
+    + '<button id="b" style="position:fixed;top:300px;left:10px;width:80px;height:40px">B</button>')
+  expect(await recouverts(page, '#a')).toHaveLength(1)
+  expect(await recouverts(page, '#b')).toEqual([])
+})
+
+test('ACAL1824: K-COUCHE-FIXE — rien ne recouvre consigne, réponse, commande, à 1440 × 900, 1180 × 820 et 390 × 664', async ({ page }) => {
+  test.setTimeout(900_000)
+  await carteRefusee(page.context())
+  await amorcerSession(page)
+  const vide = await calepinageParApi(page.request, 'ACAL1824 Vide')
+  const trace = await calepinageParApi(page.request, 'ACAL1824 Toit', { layout: true })
+  const fautes = []
+  const noter = (ecran, taille, liste) => fautes.push(...liste.map((f) => `${ecran} à ${taille.cle} — ${f}`))
+  for (const taille of TAILLES_COUCHE) {
+    // Atelier, étape Toit, avant le tracé : la consigne et « Terminer le tracé ».
+    await ouvrirAtelier(page, vide, taille)
+    await expect(page.locator('#rp9-etat-vide')).toBeVisible()
+    noter('atelier Toit (avant le tracé)', taille, await recouverts(page, '#rp9-etat-vide, #rp9-finish'))
+
+    // Atelier, toit posé : résumé, barre d'enregistrement, « Générer le devis », bouton de pied de l'étape.
+    await ouvrirAtelier(page, trace, taille)
+    await expect(page.getByTestId('cal-resume-panneaux')).toHaveText(/^[1-9]\d*\s+panneau/)
+    const commandes = '[data-testid="cal-enregistrer-calepinage"] button, [data-testid="cal-generer-devis-haut"], [data-testid="cal-action-etape-suivante"]'
+    noter('atelier Toit (toit posé)', taille, await recouverts(page, `[data-testid="cal-resume-atelier"], ${commandes}`, { defiler: true }))
+    await page.getByTestId('cal-etape-panneaux').click()
+    await expect(page.getByTestId('cal-etape-panneaux')).toHaveAttribute('aria-current', 'step')
+    noter('atelier Panneaux', taille, await recouverts(page, commandes, { defiler: true }))
+
+    // Horizon (Expert) : le message d'enregistrement ne recouvre pas la commande.
+    await page.goto(`/calepinage/${trace}?onglet=horizon&mode=expert`)
+    await expect(page.getByTestId('cal-horizon')).toBeVisible({ timeout: 120_000 })
+    noter('Horizon', taille, await recouverts(page, '[data-testid="cal-horizon"] button, [data-testid="cal-horizon"] [role="status"]', { defiler: true }))
+
+    // Relevé de visite : « Terminer le relevé » puis sa réponse, qui doit rester au-dessus de la barre du bas.
+    await page.goto(`/calepinage/${trace}/releve`)
+    await expect(page.getByTestId('releve-mesures')).toBeVisible({ timeout: 120_000 })
+    const terminer = page.getByTestId('releve-terminer')
+    if (await terminer.count() > 0) {
+      await terminer.click()
+      await expect(page.getByTestId('releve-message')).toBeVisible({ timeout: 60_000 })
+      noter('relevé après Terminer', taille, await recouverts(page, '[data-testid="releve-message"], [data-testid="releve-terminer"]'))
+    }
+
+    // Vue client : messages et commandes de la page.
+    await page.goto(`/calepinage/${trace}/client`)
+    await expect(page.locator('[data-testid^="client-"]').first()).toBeVisible({ timeout: 120_000 })
+    noter('vue client', taille, await recouverts(page, '[data-testid^="client-"] button, [data-testid^="client-"][role="status"], [data-testid="client-lien-raison"]', { defiler: true }))
+  }
+  expect(fautes, 'pièce fixe ou flottante qui recouvre une réponse, une consigne ou une commande').toEqual([])
+})
