@@ -732,6 +732,37 @@ describe('planDepuisDocument — le document schema_electrique (lot 6)', () => {
     expect(tuiles.every((t) => Number(t.getAttribute('width')) > 0)).toBe(true)
   })
 
+  it('étage moyenne tension : ses blocs entre le coffret et le compteur, « à confirmer », sans rien recouvrir', () => {
+    const d = doc('avec_batterie')
+    d.etage_mt = [
+      { clef: 'cellule_mt', titre: 'Cellule MT', detail: 'à confirmer' },
+      { clef: 'transfo', titre: 'Transformateur MT/BT', detail: 'à confirmer' }]
+    const base = planDepuisDocument(doc('avec_batterie'))
+    const plan = planDepuisDocument(d)
+    expect(plan.blocsAc.map((b) => b.cle)).toEqual(['coffret_ac', 'mt-cellule_mt', 'mt-transfo', 'compteur', 'tgbt', 'reseau'])
+    // Aucun recouvrement horizontal dans la chaîne alternative, de la gauche vers l'onduleur.
+    const rangee = [...plan.blocsAc].sort((a, b) => a.x - b.x)
+    rangee.forEach((b, i) => {
+      const suivant = rangee[i + 1] ?? plan.onduleur
+      expect(b.x + b.l).toBeLessThan(suivant.x)
+    })
+    expect(Math.min(...plan.blocsAc.map((b) => b.x))).toBeGreaterThanOrEqual(0)
+    // Les blocs côté réseau n'ont pas bougé ; l'onduleur et la batterie ont glissé de la largeur ajoutée.
+    expect(plan.blocsAc.find((b) => b.cle === 'reseau').x).toBe(base.blocsAc.find((b) => b.cle === 'reseau').x)
+    const w = plan.largeur - base.largeur
+    expect(plan.onduleur.x - base.onduleur.x).toBe(w)
+    expect(plan.batterie.x - base.batterie.x).toBe(w)
+    // Chaque liaison alternative relie deux blocs voisins ; les entrées des chaînes atteignent l'onduleur déplacé.
+    expect(plan.liaisons.filter((l) => /^ac\d/.test(l.cle))).toHaveLength(6)
+    expect(plan.liaisons.filter((l) => l.couleur).map((l) => l.points.at(-1)[0]).filter((x) => x === plan.onduleur.x).length).toBeGreaterThan(0)
+    const blocs = dessiner(plan)
+    expect(blocs).toHaveTextContent('Cellule MT')
+    expect(blocs).toHaveTextContent('Transformateur')
+    expect(screen.getByTestId('csch-bloc-mt-cellule_mt')).toHaveTextContent('à confirmer')
+    // Basse tension : aucun bloc MT.
+    expect(base.blocsAc.some((b) => b.aConfirmer)).toBe(false)
+  })
+
   it('plusieurs groupes d\'onduleurs : tous listés, aucun total ni puissance d\'un seul groupe', () => {
     const d = doc('avec_batterie')
     d.onduleurs.push({ designation: 'Huawei SUN2000-10KTL', puissance_kw: 10, nombre: 2, nb_entrees: 2 })

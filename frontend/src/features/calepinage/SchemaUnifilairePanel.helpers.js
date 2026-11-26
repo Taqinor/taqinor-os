@@ -444,6 +444,43 @@ function carteBatterie(batterie, onduleur) {
   return { x, y, l, h: 44 + lignes.length * 16, lignes, lien: [[x + l, y + 40], [cx, y + 40], [cx, onduleur.y]] }
 }
 
+/** L'étage moyenne tension (`etage_mt`), inséré dans la chaîne alternative : onduleur → coffret → [blocs MT] →
+    compteur → TGBT → réseau. Chaque bloc porte « à confirmer » (le contrat les dit tous à confirmer). Le
+    côté onduleur (onduleur, batterie, entrées des chaînes, terre) glisse vers la droite de la largeur ajoutée ;
+    les blocs côté réseau ne bougent pas. Les liaisons alternatives sont retracées. */
+function insererEtageMt(plan, etage) {
+  if (!etage.length) return
+  const { onduleur, blocsAc } = plan
+  const k = blocsAc[0]?.cle === 'coffret_ac' ? 1 : 0
+  const lienY = plan.bandes[1].y + 123
+  const neufs = etage.map((b) => ({
+    cle: `mt-${b.clef}`, aConfirmer: true, l: 128, h: 128, ecart: 32, y: lienY - 64,
+    titre: couperTexte(b.titre, 14, 2), detail: couperTexte(b.detail, 16, 2),
+  }))
+  const w = neufs.reduce((s, b) => s + b.l + b.ecart, 0)
+  const ancienOx = onduleur.x
+  const centreCoffret = k ? blocsAc[0].x + blocsAc[0].l / 2 : null
+  const etiquette = plan.liaisons.find((l) => l.cle === 'ac0')?.etiquette ?? null
+  onduleur.x += w
+  if (plan.batterie) { plan.batterie.x += w; plan.batterie.lien.forEach((p) => { p[0] += w }) }
+  plan.liaisons.forEach((l) => { if (l.couleur) l.points.forEach((p) => { if (p[0] === ancienOx) p[0] += w }) })
+  blocsAc.slice(0, k).forEach((b) => { b.x += w })
+  let curseur = k ? blocsAc[0].x : onduleur.x
+  neufs.forEach((b) => { b.x = curseur - b.ecart - b.l; curseur = b.x })
+  blocsAc.splice(k, 0, ...neufs)
+  plan.liaisons = plan.liaisons.filter((l) => !/^ac\d+$/.test(l.cle))
+  let depart = onduleur.x
+  blocsAc.forEach((b, i) => {
+    plan.liaisons.push({ cle: `ac${i}`, couleur: null, aCalculer: Boolean(b.aCalculer),
+      points: [[b.x + b.l, lienY], [depart, lienY]],
+      etiquette: i === 0 && etiquette && !b.aCalculer ? { ...etiquette, x: b.x + b.l + 6 } : null })
+    depart = b.x
+  })
+  if (plan.terre) plan.terre.descentes = plan.terre.descentes.map(([x, y]) => ((x >= ancienOx || x === centreCoffret) ? [x + w, y] : [x, y]))
+  plan.largeur += w
+  plan.etageMt = true
+}
+
 /** Plusieurs groupes d'onduleurs : la carte les liste TOUS (« N × désignation · X kW »), sans total inventé ni
     puissance / entrées d'un seul groupe attribuées à l'ensemble. */
 function listerOnduleurs(plan, groupes) {
@@ -489,6 +526,7 @@ export function planDepuisDocument(doc, libelles = {}) {
     const i = plan.legende.findIndex((l) => l.cle === 'ac')
     plan.legende.splice(i < 0 ? plan.chaines.length : i, 0, { cle: 'batterie', trait: 'batterie', libelle: 'Liaison batterie' })
   }
+  insererEtageMt(plan, doc.etage_mt ?? [])
   return plan
 }
 

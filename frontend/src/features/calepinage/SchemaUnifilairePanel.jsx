@@ -261,7 +261,7 @@ function BlocAc({ b, onOuvrir }) {
   if (b.cle === 'coffret_ac') return <Coffret titre="Coffret côté réseau" boite={b} onOuvrir={onOuvrir} cleCible={CIBLE_DU_BLOC.coffret} />
   const titre = b.titre ?? []
   const detail = b.detail ?? []
-  const icone = b.cle === 'tgbt' ? 0 : 40
+  const icone = b.cle === 'tgbt' || b.aConfirmer ? 0 : 40
   const total = icone + (icone ? 6 : 0) + titre.length * 17 + detail.length * 16
   const y0 = b.y + (b.h - total) / 2
   return (
@@ -280,6 +280,13 @@ function BlocAc({ b, onOuvrir }) {
       )}
       <Lignes x={cx} y={y0 + icone + (icone ? 6 : 0) + 14} lignes={titre} pas={17} className="csch-t14" ancre="middle" />
       <Lignes x={cx} y={y0 + icone + (icone ? 6 : 0) + titre.length * 17 + 12} lignes={detail} pas={16} className="csch-t12 csch-attenue" ancre="middle" />
+      {/* Étage moyenne tension : bloc servi mais « à confirmer » — la pastille le dit. */}
+      {b.aConfirmer && (
+        <>
+          <rect x={cx - 46} y={b.y + b.h - 30} width="92" height="22" rx="11" className="csch-pilule" />
+          <text x={cx} y={b.y + b.h - 15} textAnchor="middle" className="csch-t12 csch-pilule-texte">à confirmer</text>
+        </>
+      )}
     </Element>
   )
 }
