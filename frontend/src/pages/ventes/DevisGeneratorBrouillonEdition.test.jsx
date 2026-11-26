@@ -73,6 +73,18 @@ describe('QJR581 — brouillon local en Édition complète', () => {
     expect(quitterBloque()).toBe(false)
   }, 15000)
 
+  it('R5A-N5 — lead résolu très tard (5 s, hors toute fenêtre), sans geste : rien d’armé ; un geste puis une saisie, si', async () => {
+    crmApi.getLead.mockImplementation(() => new Promise(r => setTimeout(() => r({ data: LEAD }), 5000)))
+    renderEdition()
+    await screen.findByRole('button', { name: /Enregistrer les modifications/ })
+    await new Promise(r => setTimeout(r, 6500))
+    expect(quitterBloque()).toBe(false)
+    expect(window.localStorage.getItem(CLE)).toBeNull()
+    // Course : la saisie suit son propre geste, même dans la première seconde — elle se voit.
+    fireEvent.change(screen.getByPlaceholderText(/Conditions particulières/), { target: { value: 'Acompte 30 %' } })
+    await waitFor(() => expect(quitterBloque()).toBe(true))
+  }, 20000)
+
   it('brouillon local à updated_at ancien : aucun bandeau « Reprendre », brouillon purgé', async () => {
     window.localStorage.setItem(CLE, JSON.stringify({
       savedAt: '2026-09-29T08:00:00Z', version: '2026-09-29T07:00:00Z', data: { note: 'vieux' },
