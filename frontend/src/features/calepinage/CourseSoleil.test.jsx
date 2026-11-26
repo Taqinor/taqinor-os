@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { espions } from '../../test/fixtures/calepinageApiMock'
 
@@ -50,6 +50,24 @@ describe('CourseSoleil — onglet monté', () => {
     const scene = screen.getByTestId('cal-course-soleil-scene')
     expect(scene).toHaveTextContent('jour 172 de l’année (2028-06-20)')
     expect(scene).not.toHaveTextContent('année en cours')
+    barre.remove()
+  })
+
+  it('T5 — le champ de la barre écrit APRÈS le montage (puis changé sans événement) : les deux phrases suivent la même année', async () => {
+    const { default: HeureLegale } = await import('./HeureLegale')
+    espions.layout.mockResolvedValue({ data: { roof_layout: {
+      pin: { lat: 33.6, lng: -7.6 }, zones: [ZONE], scene: { sunDay: 172, sunHour: 14 } } } })
+    render(<MemoryRouter><HeureLegale calepinageId={7} /><CourseSoleil calepinageId={7} /></MemoryRouter>)
+    const scene = await screen.findByTestId('cal-course-soleil-scene')
+    expect(scene).toHaveTextContent(`(${new Date().getFullYear()}-`) // champ absent : l'année en cours
+    const barre = document.createElement('div')
+    barre.innerHTML = '<input id="rp9-sun-hour" value="14"><input id="rp9-sun-date" type="date" value="2028-06-20">'
+    document.body.appendChild(barre) // le script crée la barre après le montage
+    await waitFor(() => expect(screen.getByTestId('cal-course-soleil-scene')).toHaveTextContent('(2028-06-20)'))
+    await waitFor(() => expect(document.getElementById('rp9-sun-legal')).toHaveTextContent('20 juin 2028'))
+    document.getElementById('rp9-sun-date').value = '2032-06-20' // écriture programmatique : aucun événement
+    await waitFor(() => expect(screen.getByTestId('cal-course-soleil-scene')).toHaveTextContent('(2032-06-20)'), { timeout: 4000 })
+    await waitFor(() => expect(document.getElementById('rp9-sun-legal')).toHaveTextContent('20 juin 2032'), { timeout: 4000 })
     barre.remove()
   })
 
