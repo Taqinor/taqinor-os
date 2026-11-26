@@ -5,6 +5,8 @@ import useResource from '../../../hooks/useResource'
 import { formatNumber } from '../../../lib/format'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ErrorBoundary, Spinner } from '../../../ui'
 import { SurCarte } from '../atelier/coque/emplacements'
+import { estAtelierPompage } from '../atelier/contexteAtelier'
+import OutilPosePompage from '../atelier/OutilPosePompage'
 import { CarteFlottante, Icone, Indicateur } from '../atelier/coque/primitives'
 import { PARAM_ONGLET, ongletParCle } from '../atelier/onglets'
 import { PARAM_CHAMP } from '../atelier/ouvrirChamp'
@@ -258,6 +260,17 @@ export default function EtapeElectrique(props) {
     <CalquesCarte id={id} resultat={resultat} couleursDessinees={peutColorer} lectureSeule={lectureSeule} nonEnregistre={editeur && editeurModifie}
       onRaccorde={relire} onModifier={() => setEditeur(true)} />
   )
+
+  // ACAL1268 (D-ACAL-66 = outil_pose) — un pompage n'a ni onduleur ni batterie ni raccordement au réseau : l'étape ne les
+  // présente pas et renvoie au devis agricole, où se chiffre le pompage.
+  if (estAtelierPompage(propsDuRail.contexte)) {
+    return (
+      <div data-testid="cal-etape-electrique-ecran" className="cel-ecran">
+        <OutilPosePompage contexte={propsDuRail.contexte}
+          phrase="Un système de pompage n’a ni onduleur ni batterie : l’électrique de la pompe se règle au devis agricole." />
+      </div>
+    )
+  }
 
   if (editeur) {
     return (

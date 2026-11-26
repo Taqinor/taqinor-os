@@ -577,7 +577,7 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
   function TemoinUrl() {
     return <p data-testid="temoin-url">{useLocation().search}</p>
   }
-  const rendreEtape = ({ builderApi = null, id = 7 } = {}) => {
+  const rendreEtape = ({ builderApi = null, id = 7, contexte = undefined } = {}) => {
     const surCarte = document.createElement('div')
     document.body.appendChild(surCarte)
     const coque = { noeuds: { surCarte, panneau: null, pied: null }, prendrePied: () => () => {} }
@@ -586,7 +586,7 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
         <Routes>
           <Route path="/calepinage/:id" element={(
             <ContexteCoque.Provider value={coque}>
-              <EtapeElectrique calepinageId={id} builderApi={api} ouvert="verdict-electrique"
+              <EtapeElectrique calepinageId={id} builderApi={api} contexte={contexte} ouvert="verdict-electrique"
                 action={{ libelle: 'Voir les résultats', onClick: () => {} }} />
               <TemoinUrl />
             </ContexteCoque.Provider>
@@ -853,6 +853,22 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     fireEvent.click(within(ligne).getByRole('button', { name: 'Régler' }))
     await waitFor(() => expect(new URLSearchParams(screen.getByTestId('temoin-url').textContent).get('onglet'))
       .toBe('decisions-electriques'))
+  })
+
+  it('ACAL1268 — lead de pompage : ni onduleur, ni batterie, ni schéma réseau ; un renvoi au devis agricole. Autre marché : inchangé', async () => {
+    servirEtape()
+    const contexte = (marche) => ({ calepinage: { lead: 5 }, chiffrage: { marche } })
+    rendreEtape({ contexte: contexte('agricole') })
+    const ecran = screen.getByTestId('cal-etape-electrique-ecran')
+    expect(within(ecran).getByRole('link', { name: 'Ouvrir le devis agricole' })).toHaveAttribute('href', '/ventes/devis/nouveau?lead=5')
+    expect(ecran).toHaveTextContent('ni onduleur ni batterie')
+    for (const absent of ['cal-elec-onduleur', 'cal-elec-schema-voir', 'cal-electrique-avances']) {
+      expect(screen.queryByTestId(absent)).toBeNull()
+    }
+    cleanup()
+    rendreEtape({ contexte: contexte('residentiel') })
+    await waitFor(() => expect(screen.getByTestId('cal-elec-onduleur')).toBeTruthy())
+    expect(document.querySelector('[data-zone="pompage-outil-pose"]')).toBeNull()
   })
 
   it('T4-U4-007 — une étape ouverte sur une section (« Régler » d’un autre point) la déplie et y met le focus', async () => {

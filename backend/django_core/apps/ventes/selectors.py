@@ -928,6 +928,31 @@ def devis_par_mode_pour_lead(lead_id, company):
                 .values('id', 'reference', 'mode_installation', 'statut'))
 
 
+def cible_du_devis_agricole_du_lead(lead_id, company):
+    """ACAL1268 (D-ACAL-66 = outil_pose) — le CHAMP DE PANNEAUX du devis agricole
+    du lead : ``{panneaux, kwc, panel_watt}`` lus dans les lignes du devis
+    agricole courant (ni refusé, ni expiré, ni remplacé) le plus récent, ou
+    ``None`` quand le lead n'en a aucun ou qu'il ne porte aucun panneau. La
+    MÊME lecture que l'atelier devis (``cible_depuis_lignes``) : aucun second
+    dimensionnement. Lecture seule, bornée par ``company``."""
+    from .models import Devis
+    if not lead_id or company is None:
+        return None
+    devis = (devis_en_jeu(Devis.objects.filter(
+        company=company, lead_id=lead_id,
+        mode_installation=Devis.ModeInstallation.AGRICOLE))
+        .exclude(statut__in=[Devis.Statut.REFUSE, Devis.Statut.EXPIRE])
+        .order_by('-id').first())
+    if devis is None:
+        return None
+    from .services import cible_depuis_lignes
+    cible = cible_depuis_lignes(devis)
+    if not cible.get('panneaux'):
+        return None
+    return {'panneaux': int(cible['panneaux']), 'kwc': cible.get('kwc'),
+            'panel_watt': cible.get('panel_watt')}
+
+
 def devis_envoyes_par_lead(company, lead_ids):
     """AGR540 — les devis SORTIS du brouillon (``date_envoi`` posée) des
     leads ``lead_ids``, en lecture mince : ``[{lead_id, mode_installation,

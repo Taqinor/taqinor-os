@@ -1532,6 +1532,7 @@ def _cible(calepinage, contexte_devis, devis=None):
     cible = _cible_du_calepinage(calepinage)
     if cible is None:
         return None
+    cible = _cible_du_devis_agricole(calepinage, cible)
     # Aucun scénario de devis n'est vendu ici : on ne l'invente pas.
     return {'panneaux': cible['panneaux'], 'kwc': cible['kwc'], 'panel_watt': cible['panel_watt'],
             'scenario': None, 'batterie': _batterie_de_la_cible(calepinage, cible), 'avertissements': [],
@@ -1540,6 +1541,26 @@ def _cible(calepinage, contexte_devis, devis=None):
             'version': cible.get('version'), 'raison': cible.get('raison'),
             # Relecture E5 B1 — le premier calcul de la conception est en file : l'atelier attend et relit.
             'calcul_en_cours': cible.get('motif_code') == CODE_CONCEPTION_EN_COURS}
+
+
+def _cible_du_devis_agricole(calepinage, cible):
+    """ACAL1268 (D-ACAL-66 = outil_pose) — un lead de POMPAGE n'a pas de taille tirée
+    des factures (refus nommé) : l'atelier pose alors le champ de panneaux du DEVIS
+    AGRICOLE du lead, par la cible vendue d'un devis (``source: 'devis'``) — le même
+    mécanisme que le résidentiel, jamais un second compte. Sans devis agricole
+    portant des panneaux, la cible reste le refus nommé."""
+    from ..services.devis_retenu import REFUS_AGRICOLE
+
+    if cible.get('refus') != REFUS_AGRICOLE:
+        return cible
+    from apps.ventes.selectors import cible_du_devis_agricole_du_lead
+
+    champ = cible_du_devis_agricole_du_lead(
+        getattr(calepinage, 'lead_id', None), getattr(calepinage, 'company', None))
+    if champ is None:
+        return cible
+    return dict(cible, panneaux=champ['panneaux'], kwc=champ['kwc'],
+                panel_watt=champ['panel_watt'], source='devis', refus=None)
 
 
 def _batterie_de_la_cible(calepinage, cible):
