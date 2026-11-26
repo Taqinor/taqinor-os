@@ -31,7 +31,8 @@ from ..corps_achats import ProduitDecoupeCorps, valider_corps
 from ..erreurs_achats import ConflitEtat, IntrouvableMetier
 from ..models import Produit, Categorie, Fournisseur, MouvementStock, EmplacementStock, RegleCodeBarres
 from ..serializers import ProduitSerializer, PrixFournisseurSerializer
-from ..permissions import MasqueAchatRapportsProduitMixin, PeutSupprimerStock, PeutVoirPrixAchat
+from ..permissions import (MasqueAchatRapportsProduitMixin, MasquePrixVenteProduitMixin, PeutSupprimerStock,
+                           PeutVoirPrixAchat, cache_prix_vente)  # D-ACAL-152
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC70
 from authentication.permissions import (
     LectureDuModule,
@@ -330,7 +331,8 @@ def _texte_references(comptes):
                                                      'true pour inclure les produits archivés', ['true', 'false']),
                                                    P('entite', ID_OU_VIDE, False,
                                                      'Filtre optionnel par entité juridique (NTADM2)')]))
-class ProduitViewSet(MasqueAchatRapportsProduitMixin, ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
+class ProduitViewSet(MasquePrixVenteProduitMixin,  # D-ACAL-152 — prix de vente masqués
+                     MasqueAchatRapportsProduitMixin, ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                      IdempotentCreateMixin, CompanyScopedModelViewSet):
     # YOPSB13 — le FournisseurSerializer imbriqué (ProduitSerializer.fournisseur)
     # lit contacts.all() + nb_produits/nb_bons_commande (repli .count()) PAR
@@ -670,7 +672,7 @@ class ProduitViewSet(MasqueAchatRapportsProduitMixin, ScmProduitTcoMixin, AtpPro
                             status=status.HTTP_400_BAD_REQUEST)
         produits = (Produit.objects.filter(company=request.user.company, id__in=ids)
                     .select_related('categorie').order_by('nom'))
-        return export_products_xlsx(produits)
+        return export_products_xlsx(produits, sans_prix_vente=cache_prix_vente(request))  # D-ACAL-152
 
     @extend_schema(responses=OBJET)
     @action(detail=False, methods=['get'], url_path='valorisation',

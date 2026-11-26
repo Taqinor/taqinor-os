@@ -21,7 +21,7 @@ from authentication.permissions import (
 )
 from core.champs_stricts import MOTIF_SANS_NUL
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
-from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat
+from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat, cache_prix_vente, retirer_cles
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC92
 from ..openapi_helpers import BOOL, ID_OU_VIDE, INT, P, STR, choix_ou_vide, corps
 from core.viewsets import CompanyScopedModelViewSet
@@ -574,12 +574,15 @@ def catalogue_b2b_view(request):
             return Response({'detail': 'Client introuvable dans cette '
                                        'société.'},
                             status=status.HTTP_404_NOT_FOUND)
-    return Response(catalogue_b2b(
+    donnees = catalogue_b2b(
         company, client,
         categorie=id_requete_ou_400(request, 'categorie'),
         marque=request.query_params.get('marque'),
         recherche=request.query_params.get('q') or '',
-        limite=limite, offset=offset))
+        limite=limite, offset=offset)
+    if cache_prix_vente(request):  # D-ACAL-152 — `prix` = prix de VENTE appliqué
+        retirer_cles(donnees['produits'], ('prix',))
+    return Response(donnees)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

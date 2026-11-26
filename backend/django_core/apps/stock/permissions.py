@@ -130,3 +130,70 @@ class MasqueAchatRapportsProduitMixin:
         if champs and cache_montants_achat(request):
             retirer_cles(getattr(response, 'data', None), champs)
         return super().finalize_response(request, response, *args, **kwargs)
+
+
+# ── D-ACAL-152 (fondateur, 26/11/2026) — prix de VENTE masqués ──────────────
+#: LA liste des clés de prix de vente que le stock RETIRE pour un compte sans
+#: ``prix_vente_voir`` (``User.can_view_sale_prices`` : Technicien et
+#: Technicien responsable par défaut). Champs du produit, puis clés dérivées
+#: des actions (étiquette TTC, kits explosés / structure).
+PRIX_VENTE_CHAMPS = (
+    'prix_vente', 'paliers_prix_vente', 'prix_fixe_ht', 'prix_par_panneau_ht',
+    'tarif_location_jour', 'tarif_location_semaine', 'tarif_location_mois',
+    'prix_ttc', 'prix_vente_unitaire', 'prix_vente_total',
+)
+MESSAGE_PRIX_VENTE = "Permission « prix_vente_voir » requise (prix de vente)."
+
+
+def cache_prix_vente(requete):
+    """D-ACAL-152 — vrai quand la réponse à ``requete`` doit perdre ses prix de
+    VENTE. Sans requête ou sans utilisateur (usage service) : faux, la donnée
+    reste entière."""
+    user = getattr(requete, 'user', None)
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    return not getattr(user, 'can_view_sale_prices', True)
+
+
+class MasquePrixVenteMixin:
+    """D-ACAL-152 — sérialiseur du stock : sans ``prix_vente_voir``, les champs
+    de ``PRIX_VENTE_CHAMPS`` sont RETIRÉS de ``get_fields`` (même mécanisme que
+    ``prix_achat``) : absents de la lecture, et un prix envoyé est ignoré,
+    jamais écrit. Une CRÉATION garde ses champs (le prix est requis par le
+    modèle). À placer AVANT les autres bases."""
+
+    def get_fields(self):
+        fields = super().get_fields()
+        creation = self.instance is None and hasattr(self, 'initial_data')
+        if not creation and cache_prix_vente(self.context.get('request')):
+            for champ in PRIX_VENTE_CHAMPS:
+                fields.pop(champ, None)
+        return fields
+
+
+class MasquePrixVenteReponseMixin:
+    """D-ACAL-152 — viewset du stock : sans ``prix_vente_voir``, les clés de
+    ``PRIX_VENTE_CHAMPS`` sont retirées de TOUTE réponse JSON (liste, détail,
+    recherche, actions, dictionnaires imbriqués) ; les actions de
+    ``actions_reservees_prix_vente`` (une sortie qui n'est QU'un prix, ex.
+    l'étiquette prix) répondent 403."""
+
+    actions_reservees_prix_vente = ()
+
+    def check_permissions(self, request):
+        super().check_permissions(request)
+        if (getattr(self, 'action', None) in self.actions_reservees_prix_vente
+                and cache_prix_vente(request)):
+            self.permission_denied(request, message=MESSAGE_PRIX_VENTE)
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        if cache_prix_vente(request):
+            retirer_cles(getattr(response, 'data', None), PRIX_VENTE_CHAMPS)
+        return super().finalize_response(request, response, *args, **kwargs)
+
+
+class MasquePrixVenteProduitMixin(MasquePrixVenteReponseMixin):
+    """D-ACAL-152 — ``ProduitViewSet`` : l'étiquette PRIX de rayon n'existe que
+    pour son prix TTC → réservée à ``prix_vente_voir``."""
+
+    actions_reservees_prix_vente = ('etiquettes_prix',)

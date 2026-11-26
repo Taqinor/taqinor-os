@@ -23,6 +23,7 @@ from .erreurs_achats import (
     CapaciteMontantsBcfMixin, CapaciteMontantsFactureMixin, ConflitEtat, IdInconnu404LignesMixin,
     refus_corps_ou_etat)
 from .openapi_helpers import ChampsStrictsProduitMixin, ChampsStrictsSouplesMixin, DecimalLie
+from .permissions import MasquePrixVenteMixin  # D-ACAL-152 — prix de vente masqués
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
     BonCommandeFournisseur, LigneBonCommandeFournisseur,
@@ -339,7 +340,8 @@ def _company_du_contexte(serializer):
     return company
 
 
-class ProduitSerializer(CompanyScopedRelationsMixin,
+class ProduitSerializer(MasquePrixVenteMixin,  # D-ACAL-152
+                        CompanyScopedRelationsMixin,
                         ChampsStrictsProduitMixin,
                         VerrouOptimisteSerializerMixin,  # NTPLT17 — opt-in
                         serializers.ModelSerializer):
@@ -390,13 +392,14 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         # Feature D — le prix d'achat (et donc la marge) ne s'expose qu'aux rôles
         # autorisés (Directeur/Admin par défaut ; repli historique pour comptes
         # légacy). Jamais sur un document client. Retiré pour les autres.
-        user = getattr(request, 'user', None)
-        if user is not None and not getattr(user, 'can_view_buy_prices', True):
+        # (``_u`` = l'utilisateur de la requête, lu une fois plus haut.)
+        if _u is not None and not getattr(_u, 'can_view_buy_prices', True):
             fields.pop('prix_achat', None)
         # FG20 — l'indicateur de MARGE (calculé) est une donnée sensible gardée
         # par ``marge_voir`` (Directeur/Admin par défaut). Sans la permission, le
         # champ est retiré complètement — jamais sur un document client.
-        if user is not None and not getattr(user, 'can_view_marge', True):
+        # D-ACAL-152 — les prix de VENTE sont retirés par ``MasquePrixVenteMixin``.
+        if _u is not None and not getattr(_u, 'can_view_marge', True):
             fields.pop('marge_pct', None)
         return fields
     # YHARD4 — variantes localisées (repli FR octet-identique par défaut si
@@ -2471,7 +2474,8 @@ class InventaireSessionSerializer(ChampsTexteBooleenStricts, serializers.ModelSe
 
 # ── FG66 / DC36 — Kit / nomenclature (BOM) ────────────────────────────────────
 
-class KitComposantSerializer(CompanyScopedRelationsMixin,
+class KitComposantSerializer(MasquePrixVenteMixin,  # D-ACAL-152
+                             CompanyScopedRelationsMixin,
                              ChampsStrictsSouplesMixin, serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
