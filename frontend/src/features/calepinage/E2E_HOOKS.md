@@ -1025,6 +1025,7 @@ retiré plus un hook ajouté.
 | `cal-toit-obstacles` | étape Toit : liste des obstacles et « + Ajouter ». |
 | `cal-toit-soleil` | étape Toit : bloc « Soleil » (jour et heure du soleil du constructeur) à droite de la barre d’outils. |
 | `cal-panneaux-module` | étape Panneaux : carte du modèle de panneau. |
+| `cal-pan-par-defaut` | étape Panneaux : pastille « Par défaut » du panneau par défaut de la société dans la liste des modèles (D-ACAL-169). |
 | `cal-panneaux-option-facture` | étape Panneaux : option « Couvrir la facture ». |
 | `cal-panneaux-actualiser-conception` | étape Panneaux : « Actualiser » pendant le premier calcul de la conception du lead (relecture E5 B1). |
 | `cal-panneaux-option-max` | étape Panneaux : option « Le plus de panneaux ». |

@@ -192,6 +192,19 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(within(carte).getAllByRole('option')[2]).not.toHaveTextContent(/stock/i)
   })
 
+  it('D-ACAL-169 — le panneau par défaut de la société porte la pastille « Par défaut », les autres modèles aucune', async () => {
+    monterConstructeur()
+    calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({
+      data: { modules: [{ ...CATALOGUE[0], par_defaut: true }, CATALOGUE[1]] },
+    })
+    rendre()
+    const carte = screen.getByTestId('cal-panneaux-module')
+    fireEvent.click(within(carte).getByRole('button', { name: /Module par défaut/ }))
+    await waitFor(() => expect(within(within(carte).getAllByRole('option')[1]).getByTestId('cal-pan-par-defaut')).toHaveTextContent('Par défaut'))
+    expect(within(carte).getAllByTestId('cal-pan-par-defaut')).toHaveLength(1)
+    expect(within(carte).getAllByRole('option')[2]).not.toHaveTextContent('Par défaut')
+  })
+
   it('lane E9 (T4-X2-001) — module de 710 W pour une conception de 8 × 550 W : la carte dit la puissance et le compte servi, la pose reçoit 6', async () => {
     monterConstructeur({ besoin: '12' })
     document.getElementById('rp9-pan-module-select').value = 'produit-1'
