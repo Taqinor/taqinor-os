@@ -39,7 +39,16 @@ describe('ACAL719 — HeureLegale', () => {
     expect(ligne.closest('#rp9-sun-legal')).toHaveTextContent('12 h solaire (13 h 45 heure légale)')
     expect(ligne.closest('#rp9-sun-legal')).toHaveTextContent('heure solaire vraie')
     expect(screen.getByText('solaire')).toHaveAttribute('title', 'heure vraie du lieu : midi = soleil au plus haut')
-    expect(soleilLegal).toHaveBeenCalledWith('7', { date: `${new Date().getFullYear()}-02-11` }, { suppressErrorToast: true })
+    expect(soleilLegal).toHaveBeenCalledWith('7', { date: '2028-02-11' }, { suppressErrorToast: true })
+  })
+
+  it('ACAL1640 — la phrase porte la même année que le champ date de la barre', async () => {
+    soleilLegal.mockResolvedValue({ data: SERVI })
+    barre({ date: '2028-12-20' })
+    rendre()
+    const ligne = await screen.findByText(/13 h 45 heure légale/)
+    expect(ligne.closest('#rp9-sun-legal')).toHaveTextContent('calculé pour le 20 décembre 2028')
+    expect(ligne.closest('#rp9-sun-legal')).not.toHaveTextContent('année en cours')
   })
 
   it('un seul appel pour deux changements d’heure ; la ligne suit le curseur', async () => {
