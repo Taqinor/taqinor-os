@@ -703,7 +703,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         try:
             resultat = enregistrer_layout(calepinage, payload,
                                           user=request.user,
-                                          base_empreinte=base)
+                                          base_empreinte=base,
+                                          valider_factures=True)  # ACAL1927
         except DocumentModifie as conflit:
             return Response(conflit.corps(), status=status.HTTP_409_CONFLICT)
         except LayoutRefuse as refus:

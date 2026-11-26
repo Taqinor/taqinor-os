@@ -7,7 +7,7 @@ import { sunDirection as sunPosition, WINTER_SOLSTICE_DAY as JOUR_SOLSTICE_HIVER
 import { HAUTEUR_TOIT_HYPOTHESE_M, centroideDuContour, obstructionsDuPan } from './obstructionMath'
 import { idBatimentDuPan } from '@roofpro/batiment'
 import RetourAtelier from './atelier/RetourAtelier'
-import { PhraseHeureIndisponible, anneeDuChampSoleil, dateDuJourDeScene, formaterHeureLegale, useHeureLegale } from './HeureLegale'
+import { PhraseHeureIndisponible, dateDuJourDeScene, formaterHeureLegale, useAnneeSoleil, useHeureLegale } from './HeureLegale'
 
 /* ============================================================================
    CAL96 — LA COURSE DU SOLEIL, PAR PAN.
@@ -114,7 +114,7 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
   // ACAL719 — l'heure légale du repère (écart servi par le serveur) ; absente ⇒ la phrase dit pourquoi.
   // T5 (suite d'ACAL1640) — l'année est CELLE de la barre du soleil, comme la phrase d'heure légale de la barre
   // (`anneeDuChampSoleil`) : jamais deux années (ni deux jours, l'année de dessin étant bissextile) pour un même soleil.
-  const anneeScene = anneeDuChampSoleil()
+  const anneeScene = useAnneeSoleil()
   const dateScene = dateDuJourDeScene(sceneSunDay, anneeScene)
   const legale = useHeureLegale(calepinageId, dateScene)
   const legaleScene = legale.etat === 'ok' && legale.ecart != null ? formaterHeureLegale(sceneSunHour, legale.ecart) : null

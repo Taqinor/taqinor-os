@@ -1,4 +1,4 @@
-import { createModuleOutboxStore } from '../lib/offlineStore'
+import { createBinaryOutboxStore, createModuleOutboxStore } from '../lib/offlineStore'
 
 // L57 — Pont entre la couche axios et le SessionProvider React. La couche API
 // ne connaît pas React ; quand une session expire (401 non rejouable), elle
@@ -86,6 +86,11 @@ export const SW_MEDIA_CACHE = 'taqinor-media-v1'
 // rien du module n'est importé (préfixes de clés et nom de file seulement : le paquet initial ne grossit pas).
 export const PREFIXES_VIDES_A_LA_DECONNEXION = ['taches:', 'taqinor:draft:taches:']
 export const FILES_VIDEES_A_LA_DECONNEXION = ['taches']
+// ACAL1949 (revue) — photos et relevés de visite gardés hors ligne par le CALEPINAGE (file binaire partagée) : vidés à
+// chaque déconnexion, même quand aucun écran du calepinage n'a été ouvert depuis le rechargement (son module n'est
+// atteint que par des écrans chargés à la demande). Types seulement : rien du module n'est importé ; les entrées des
+// autres modules dans la même file ne sont pas touchées.
+export const TYPES_BINAIRES_VIDES_A_LA_DECONNEXION = ['calepinage.photo', 'calepinage.releve']
 
 function viderStockagesPersonnels() {
   try {
@@ -102,6 +107,12 @@ function viderStockagesPersonnels() {
       createModuleOutboxStore(module).save([])?.catch?.(() => {})
     } catch { /* magasin indisponible : rien à vider */ }
   }
+  try {
+    const { store } = createBinaryOutboxStore()
+    const garder = (ops) => ops.filter((o) => !TYPES_BINAIRES_VIDES_A_LA_DECONNEXION.includes(o?.op_type))
+    Promise.resolve(store.update ? store.update(garder) : store.load().then((ops) => store.save(garder(ops))))
+      .catch(() => {})
+  } catch { /* magasin indisponible : rien à vider */ }
 }
 
 /** Signale que CET onglet vient de se déconnecter (local ou propagé). */

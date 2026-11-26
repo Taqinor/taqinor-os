@@ -344,11 +344,18 @@ export async function enregistrerPentePan({ calepinageId, doc, documentVivant = 
     })
     const apres = res?.data?.empreinte_document ?? null
     const rendues = res?.data?.roof_layout?.zones
-    // ACAL1922 — la confirmation écrite reste lue : un pan rendu sans `pitchSource` objet reprend celui qu'on vient d'écrire.
-    const mises = Array.isArray(rendues)
-      ? rendues.map((z) => (String(z.id) === String(zone.id) && champs.pitchSource && !estObjet(z.pitchSource)
-        ? { ...z, pitchSource: champs.pitchSource } : z))
-      : zones.map((z) => (String(z.id) === String(zone.id) ? { ...z, ...champs } : z))
+    const mises = Array.isArray(rendues) ? rendues : zones.map((z) => (
+      String(z.id) === String(zone.id) ? { ...z, ...champs } : z))
+    // ACAL1922 — le serveur écrit le pan ENTIER (`zone.update`) et rend le document stocké : un pan rendu sans
+    // `pitchSource` objet alors qu'on vient de l'écrire = écriture NON retenue. Jamais d'écho « confirmé » : la
+    // conception est relue et le refus est dit (la carte garde « À confirmer »).
+    if (Array.isArray(rendues) && champs.pitchSource) {
+      const rendu = rendues.find((z) => String(z.id) === String(zone.id))
+      if (rendu && !estObjet(rendu.pitchSource)) {
+        doc.recharger()
+        return { ok: false, message: 'La confirmation n’a pas été retenue par le serveur : la conception est relue, recommencez.' }
+      }
+    }
     doc.appliquerSection('zones', mises, apres)
     documentVivant?.appliquerSection?.('zones', mises, apres)
     const nom = zone.label || zone.id

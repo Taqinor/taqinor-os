@@ -944,16 +944,18 @@ def _edition_publiee(edition, dessin):
     return publiee
 
 
-def document_electrique_du_calepinage(calepinage):
+def document_electrique_du_calepinage(calepinage, *, lecture=None):
     """SCHEL-B2 — le seul document « schéma électrique » de CE calepinage, sans
     planche SVG (la porte de ``selectors.schema_electrique_du_calepinage``) ;
     ``None`` dans les mêmes cas que ``svg`` (fiche muette, bloquant, micro seul).
-    Lecture seule."""
+    Lecture seule. ``lecture`` : le 4-uplet déjà rendu par ``conception_du_calepinage``
+    (l'appelant qui l'a lu ne le fait pas recalculer)."""
     from .electrique import (
         _reglages_electrique_societe, conception_du_calepinage,
     )
 
-    conception, materiel, donnees, document = conception_du_calepinage(calepinage)
+    conception, materiel, donnees, document = (
+        lecture or conception_du_calepinage(calepinage))
     if (getattr(conception, 'manquantes', ()) or bloquants_du_cablage(conception, donnees)
             or getattr(conception, 'micro_seul', False)):
         return None

@@ -88,5 +88,5 @@ export default function usePhotosReleve(calepinageId) {
     }
   }
 
-  return { photos, enAttente, genresEnFile, genresEnvoyes, enCours, message, deposer, recharger }
+  return { photos, enAttente, genresEnFile, genresEnvoyes, enCours, message, deposer, recharger, envoyer: envoyerLaFile }
 }
