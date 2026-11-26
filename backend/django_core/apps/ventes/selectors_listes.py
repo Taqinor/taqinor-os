@@ -209,7 +209,12 @@ def _sql_empreinte_devis():
                          if f.attname not in _HORS_EMPREINTE)
     lead = q(Devis._meta.get_field('lead').related_model._meta.db_table)
     lus = ', '.join('l.%s' % q(c) for c in LEAD_LU_PAR_LE_TOTAL)
-    return ("md5(ROW(%s)::text) || COALESCE((SELECT md5(ROW(%s)::text) FROM %s l"
+    # Sûr (bandit B608) : les cinq morceaux interpolés sont des IDENTIFIANTS, tous
+    # passés par ``quote_name`` — table et colonnes tirées de ``Devis._meta``, table
+    # du lead de ``_meta`` du modèle lié, colonnes du lead de la constante de module
+    # ``LEAD_LU_PAR_LE_TOTAL``, ``lead_id`` littéral ; aucune valeur de requête,
+    # de réglage ni de contenu de base.
+    return ("md5(ROW(%s)::text) || COALESCE((SELECT md5(ROW(%s)::text) FROM %s l"  # nosec B608
             " WHERE l.id = %s.%s), '-')" % (colonnes, lus, lead, table, q('lead_id')))
 
 
@@ -221,9 +226,11 @@ def devis_pour_les_totaux(qs, *, leger=False):
     from django.db.models.expressions import RawSQL
 
     from .serializers import CHAMPS_RETIRES_LISTE_DEVIS
+    # Sûr (bandit B611) : SQL fait des seuls identifiants cités de _sql_empreinte_devis, sans paramètre.
+    empreinte = RawSQL(_sql_empreinte_devis(), ())  # nosec B611
     qs = (qs.select_related('client', 'lead', 'company').order_by('pk')
           .prefetch_related(None).prefetch_related(*PREFETCH_TOTAUX)
-          .annotate(empreinte_sql_adev162=RawSQL(_sql_empreinte_devis(), ())))
+          .annotate(empreinte_sql_adev162=empreinte))
     return qs.defer(*CHAMPS_RETIRES_LISTE_DEVIS) if leger else qs
 
 
