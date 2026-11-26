@@ -103,7 +103,7 @@ ETUDE_AGRICOLE = {
 #: message dit si l'empreinte SANS ces clés égale encore le golden — « egal »
 #: prouve que seule la table des libellés a bougé (aucune valeur du devis).
 #: Vider après la re-capture.
-LIBELLES_AJOUTES_DEPUIS_LA_CAPTURE = ('cgv_tarifs_bareme_national',)  # ACAL1221 (D-ACAL-111 recapturé)
+LIBELLES_AJOUTES_DEPUIS_LA_CAPTURE = ()  # vidée après la re-capture du lot 8 (ACAL1221, runner CI du 26/11/2026)
 
 #: Jeux d'options (nom → pdf_options). Les drapeaux ``_embed_*`` sont SERVEUR
 #: (hors liste blanche) : passés ici comme le fait ``generate_premium_devis_pdf``.

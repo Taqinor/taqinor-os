@@ -681,6 +681,17 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(carte).not.toHaveTextContent('En stock')
   })
 
+  it('D-ACAL-71 — le menu de l’onduleur (étape guidée) dit « En stock » sur la ligne servie, rien sur l’autre', async () => {
+    const e = entree()
+    const servi = { ...e.candidats.onduleurs[0], id: 9101, libelle: 'Onduleur A', fiche_complete: true, champs_manquants: [], en_stock: true }
+    e.candidats.onduleurs = [servi, { ...servi, id: 9102, libelle: 'Onduleur B', en_stock: null }]
+    servirEtape({ e })
+    rendreEtape()
+    const menu = await screen.findByLabelText('Onduleur')
+    await waitFor(() => expect(within(menu).getByRole('option', { name: /Onduleur A/ })).toHaveTextContent('· En stock'))
+    expect(within(menu).getByRole('option', { name: /Onduleur B/ })).not.toHaveTextContent(/stock|rupture/i)
+  })
+
   // T4-X2-004 — « proposé pour 5 panneaux » à côté d'un verdict « Bloquant : 2 » (courant de chaîne au-dessus du maxi).
   it('T4-X2-004 — un contrôle bloquant échoue : la ligne ne dit plus « proposé », elle dit pourquoi l’onduleur ne convient pas', async () => {
     const r = resultat()
