@@ -60,6 +60,13 @@ CSS_SECTION = (
     '.diagramme-pertes{margin-top:4mm;page-break-inside:avoid;'
     'break-inside:avoid;}'
     '.diagramme-pertes svg{display:block;}'
+    # ACAL1635 — rien ne sort de la page : le schéma « où va l'énergie »
+    # (768 px de dessin) tient dans la largeur, et une référence sans espace
+    # (URL) se coupe dans sa cellule au lieu de pousser la colonne hors page.
+    '.diagramme-energie svg{display:block;width:100%;height:auto;}'
+    '.pertes-cascade{width:100%;}'
+    '.pertes-cascade td,.pertes-cascade th{word-wrap:break-word;'
+    'overflow-wrap:anywhere;}'
 )
 
 #: La mention de repli — la cascade n'existe pas, la liste plate si.

@@ -606,6 +606,46 @@ class MiseEnPageTest(unittest.TestCase):
         self.assertIn('Document demandé en arabe', html)
 
 
+class PagesDixOnzeTest(unittest.TestCase):
+    """ACAL1635 — « où va l'énergie » : chaque poste porte le motif de SA
+    grandeur, aucune ligne de texte ne dépasse son bloc, le schéma et la table
+    de la cascade tiennent dans la largeur de la page."""
+
+    MOTIF_HORIZON = 'Aucun profil d horizon joint au document.'
+    MOTIF_OMBRAGE = 'Aucune matrice d ombrage proche publiée pour ce pan ' * 3
+
+    def _svg(self):
+        from apps.calepinage.services.diagramme_energie import svg_d_energie
+
+        poste = {'poste': 'ombres_proches', 'libelle': 'Ombres proches',
+                 'statut': 'non_compte', 'perte_kwh': None, 'etapes': [
+                     {'etape': 'horizon', 'motif_omission': self.MOTIF_HORIZON},
+                     {'etape': 'ombrage_proche',
+                      'motif_omission': self.MOTIF_OMBRAGE.strip()}]}
+        return svg_d_energie({'cascade': {'postes_lisibles': {
+            'depart_kwh': 6380.0, 'arrivee_kwh': 5000.0, 'postes': [poste]}}})
+
+    def test_ombres_proches_porte_le_motif_de_l_ombrage_proche(self):
+        texte = re.sub(r'<[^>]+>', '\n', self._svg())
+        self.assertIn('Aucune matrice d ombrage proche', texte)
+        self.assertNotIn(self.MOTIF_HORIZON, texte)
+
+    def test_aucune_ligne_ne_depasse_son_bloc(self):
+        from apps.calepinage.services.diagramme_energie import CARACTERES_LIGNE
+
+        lignes = re.findall(r'<text [^>]*>([^<]*)</text>', self._svg())
+        self.assertGreater(len(lignes), 4)  # le long motif est réparti
+        for ligne in lignes:
+            self.assertLessEqual(len(ligne), CARACTERES_LIGNE + len(' kWh'), ligne)
+        self.assertIn('6 380,0 kWh', self._svg())
+
+    def test_schema_et_table_tiennent_dans_la_page(self):
+        from apps.calepinage.services.rapport.pertes import CSS_SECTION
+
+        self.assertIn('.diagramme-energie svg{display:block;width:100%', CSS_SECTION)
+        self.assertIn('overflow-wrap:anywhere', CSS_SECTION)
+
+
 class RenduPartageTest(unittest.TestCase):
     OPTIONS = dict(resultat=None, site=SITE, identite=IDENTITE, styles=STYLES)
 
