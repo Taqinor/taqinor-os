@@ -452,6 +452,20 @@ describe('PanneauProduction — bouton de calcul (CALX48, ACAL125)', () => {
     expect(screen.getByTestId('calx48-lancer-bouton')).toHaveTextContent('Relancer (document modifié)')
   })
 
+  it('ACAL1647 — périmé par un réglage de la société : « Relancer (réglages modifiés) »', async () => {
+    const servi = exempleContrat('calepinage', 'calepinage_resultat', 'exemple_perime')
+    calepinageApi.calepinages.resultat.mockResolvedValue({
+      data: {
+        ...servi,
+        motif: 'simulation périmée : un réglage de la société a changé depuis le calcul du 19/09/2026',
+      },
+    })
+    rendre()
+
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.getByTestId('calx48-lancer-bouton')).toHaveTextContent('Relancer (réglages modifiés)')
+  })
+
   it('sans la permission de gestion : aucun bouton de calcul', async () => {
     permission.gerer = false
     servir('exemple_vide')
