@@ -634,3 +634,26 @@ class ToitPlatNouveauxRendusTests(SimpleTestCase):
         self.assertFalse(toit_plat_ouvert(self._devis(envoi=veille)))
         self.assertFalse(toit_plat_ouvert(
             self._devis(statut='accepte', creation=veille)))
+
+    def test_la_planche_du_pdf_suit_la_coupure(self):
+        """La planche du PDF /proposal d'un devis envoyé avant la coupure est
+        demandée avec la lecture d'avant ; un brouillon ou un envoi depuis la
+        coupure avec la pente 0 (conception courante et conception figée)."""
+        from apps.calepinage import selectors as cal_selectors
+        from apps.calepinage import services as cal_services
+        from apps.ventes.quote_engine import artefacts_rendu
+        jour, veille = self._instants()
+        calepinage = mock.Mock(layout_hash='c' * 64, version_moteur='v1')
+        figees = (None, {'roof_layout': {'zones': []}, 'layout_hash': 'f' * 64})
+        for figee in figees:
+            for devis, attendu in ((self._devis(envoi=veille), False),
+                                   (self._devis(envoi=jour), True),
+                                   (self._devis(statut='brouillon'), True)):
+                devis.pk, devis.company, devis.roof_layout = 7, None, None
+                with mock.patch.object(cal_selectors, 'calepinage_du_devis', return_value=calepinage), \
+                        mock.patch.object(cal_selectors, 'conception_figee_du_devis', return_value=figee), \
+                        mock.patch('apps.ventes.selectors_calepinage.surfaces_chiffrees_du_devis',
+                                   return_value=None), \
+                        mock.patch.object(cal_services, 'rendre_planche_svg', return_value='') as rendu:
+                    artefacts_rendu._planche_calepinage(devis)
+                self.assertIs(rendu.call_args.kwargs['toit_plat_corrige'], attendu)
