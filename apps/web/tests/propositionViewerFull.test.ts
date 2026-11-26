@@ -79,7 +79,7 @@ const carteFactice = vi.hoisted(() => {
     render(scene: unknown) { rendus.push(scene); }
     dispose() {}
   }
-  return { cartes, rendus, FakeMap, FakeRenderer };
+  return { cartes, rendus, FakeMap, FakeRenderer, maillages: { n: 0 } };
 });
 vi.mock('maplibre-gl', () => {
   class NavigationControl {}
@@ -88,7 +88,13 @@ vi.mock('maplibre-gl', () => {
   return { default: api, ...api };
 });
 vi.mock('maplibre-gl/dist/maplibre-gl.css?url', () => ({ default: 'maplibre-gl.css' }));
-vi.mock('three', async (origine) => ({ ...(await origine<typeof import('three')>()), WebGLRenderer: carteFactice.FakeRenderer }));
+vi.mock('three', async (origine) => {
+  const t = await origine<typeof import('three')>();
+  // Les maillages construits sont COMPTÉS (lot 8, B3 : un pas de soleil n'en construit aucun).
+  class Mesh extends t.Mesh { constructor(...a: ConstructorParameters<typeof t.Mesh>) { super(...a); carteFactice.maillages.n++; } }
+  class InstancedMesh extends t.InstancedMesh { constructor(...a: ConstructorParameters<typeof t.InstancedMesh>) { super(...a); carteFactice.maillages.n++; } }
+  return { ...t, WebGLRenderer: carteFactice.FakeRenderer, Mesh, InstancedMesh };
+});
 
 // ── Un toit carré réaliste au Maroc (Casablanca), convention x=Est / y=Nord ──
 const LAT0 = 33.5;
@@ -795,6 +801,28 @@ describe('visionneuse pleine — premier rendu réel (scene3d + contexte du boot
     expect(standard.carte.ciels).toHaveLength(0);
   });
 
+  it('B3 — un pas de soleil ne construit AUCUN maillage : même scène, lumière et ciel déplacés, teinte gardée', async () => {
+    const { poignee, carte } = await demarrer({ presentationClient: true, indexTeintes: [0] });
+    carte.fire('load');
+    poignee.teinter(() => ({ r: 0.9, g: 0.2, b: 0.1 }));
+    const avant = soleilDessine(carte)!;
+    const scene = carteFactice.rendus.at(-1) as { traverse: (f: (o: Record<string, any>) => void) => void };
+    const objets = (): unknown[] => { const l: unknown[] = []; scene.traverse((o) => l.push(o)); return l; };
+    const objetsAvant = objets();
+    const maillages = carteFactice.maillages.n;
+    const ciels = carte.ciels.length;
+    const repeints = carte.repeints;
+    for (let h = 7; h < 17; h++) poignee.poserInstant(INSTANT_REEL.jour, h);
+    expect(carteFactice.maillages.n).toBe(maillages); // aucun Mesh ni InstancedMesh construit en dix pas
+    expect(objets()).toEqual(objetsAvant); // les mêmes objets, aucun retiré ni ajouté
+    expect(carte.repeints - repeints).toBe(10); // un repeint par pas
+    expect(carte.ciels.length - ciels).toBe(10); // le ciel suit chaque pas
+    expect(soleilDessine(carte)).not.toEqual(avant);
+    let teintes = 0;
+    scene.traverse((o) => { if (o.isInstancedMesh && o.instanceColor) teintes += Array.from(o.instanceColor.array as Float32Array).filter((v) => v !== 1).length; });
+    expect(teintes).toBeGreaterThan(0);
+  });
+
   /** Démarre avec un token Mapbox et compte les demandes de la photo du toit ; `images` = les <img> demandées. */
   async function photoDuToit() {
     const images: HTMLImageElement[] = [];
@@ -935,7 +963,7 @@ describe('monterVisionneusePleine — barre au soleil branchée après le rendu,
     expect(scene.classList.contains('roof3d-stage--map')).toBe(true);
     expect(aide.hidden).toBe(false);
     expect(aide.dataset.fr).toMatch(/^Deux doigts/);
-    carte.getZoom = () => { throw new Error('rendu impossible'); };
+    carte.triggerRepaint = () => { throw new Error('rendu impossible'); }; // appelé par le pas de soleil (B3 : soleil seul)
     const curseur = q<HTMLInputElement>('[data-soleil-heure]');
     curseur.value = '10';
     curseur.dispatchEvent(new Event('input'));

@@ -1,6 +1,7 @@
 // ENF19 — briques Three.js communes à roof-tool-pro.ts et roofPro11/scene3d.ts :
 // jusque-là recopiées à l'identique. Aucun changement de comportement.
 import * as THREE from 'three';
+import { DEG2RAD } from './constants';
 
 const AXIS_X = new THREE.Vector3(1, 0, 0);
 const AXIS_Z = new THREE.Vector3(0, 0, 1);
@@ -56,4 +57,26 @@ export function fitShadowCamera(sun: THREE.DirectionalLight, span: number, far: 
   sc.near = 0.5;
   sc.far = far;
   sc.updateProjectionMatrix();
+}
+
+/** W87 — élévation d'AFFICHAGE minimale du soleil (°) : près du lever ou du coucher la scène reste éclairée (ombres
+ *  longues mais lisibles, jamais noire). C'est aussi l'élévation la plus basse que la lecture de la journée atteint. */
+export const ELEVATION_AFFICHAGE_MIN_DEG = 6;
+
+/** Où poser le soleil : centre et hauteur de visée (repère ENU de la scène, m), demi-côté du cadre d'ombre, latitude. */
+export interface CadreSoleil { cx: number; cy: number; z: number; span: number; lat: number }
+
+/**
+ * W87 — le VRAI soleil (azimut et élévation astronomiques de `sunDirection`, à l'heure solaire et au jour choisis) posé
+ * sur la lumière directionnelle : azimut dans le repère ENU de la scène (0 = Nord, sens horaire vers l'Est, même
+ * convention que `pack.azimuthDeg`), élévation jamais sous `ELEVATION_AFFICHAGE_MIN_DEG`, caméra d'ombre recadrée.
+ * Lot 8 — extrait tel quel de `scene3d.ts::renderScene`, pour qu'un pas de soleil ne reconstruise AUCUN maillage.
+ */
+export function placerSoleilScene(sun: THREE.DirectionalLight, cadre: CadreSoleil, dir: { azimuthDeg: number; elevationDeg: number }): void {
+  const azR = dir.azimuthDeg * DEG2RAD;
+  const elR = Math.max(ELEVATION_AFFICHAGE_MIN_DEG, dir.elevationDeg) * DEG2RAD;
+  const dist = cadre.span * 2.5;
+  sun.target.position.set(cadre.cx, cadre.cy, cadre.z);
+  sun.position.set(cadre.cx + Math.sin(azR) * Math.cos(elR) * dist, cadre.cy + Math.cos(azR) * Math.cos(elR) * dist, cadre.z + Math.sin(elR) * dist);
+  fitShadowCamera(sun, cadre.span, dist * 2);
 }

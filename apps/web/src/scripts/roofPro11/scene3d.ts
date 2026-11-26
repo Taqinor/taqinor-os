@@ -21,7 +21,7 @@ import * as maplibregl from 'maplibre-gl';
 import { creerPoignees3d, type PoigneeEcran } from './poigneesSommets3d'; // ACAL1185
 import * as THREE from 'three';
 import { enuSharedEdgeOverlapM } from './edgeOverlap'; import { lieuDeRepli } from './provenanceEpingle'; // T4-X2-005
-import { makeCompose, configureShadowRenderer, ringsBBox, fitShadowCamera } from './threeShared';
+import { makeCompose, configureShadowRenderer, ringsBBox, placerSoleilScene, type CadreSoleil } from './threeShared'; // lot 8 : placerSoleilScene
 import { PANEL2_THICK_M, sunDirection, describeRowPitch } from '../../lib/roofPro2';
 import { rowSelfShading } from '../../lib/shadingEngine';
 import {
@@ -128,6 +128,8 @@ export interface Scene3d {
   appendOtherZones: (activeOrigin: LngLat) => [number, number][][];
   /** Rendu complet de la zone ACTIVE (bâtiment + dalle + panneaux + obstacles + soleil). */
   renderScene: RenderSceneFn;
+  /** Lot 8 — repose le SOLEIL seul (`ctx.sunDay`/`ctx.sunHour` : lumière, ombres, ciel) et repeint, sans reconstruire un maillage. */
+  poserSoleil: () => void;
   /** ACAL1839 — sommets du volume de la maison `[lng, lat, hauteur m]` (atelier ERP ; vide sinon) : le cadrage du volume. */
   volumeScene: () => [number, number, number][];
   /** Réinitialise la photo de toit + la matrice modèle (appelé par clearEditorState). */
@@ -1320,6 +1322,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   let threeCamera: THREE.Camera | null = null;
   let sun: THREE.DirectionalLight | null = null;
   let modelMatrix: THREE.Matrix4 | null = null;
+  let cadreSoleil: CadreSoleil | null = null; // lot 8 — où viser le soleil, posé par le dernier rendu complet
   const panelTex = makeCanadianPanelTexture();
   // ACAL433 — une texture de verre par rapport de panneau (arrondi 0,01), partagée ; lowEnd : l'unique d'avant.
   const panelTexParRapport = new Map<number, THREE.Texture>();
@@ -2585,33 +2588,22 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // visible autour du bâtiment, qui se lit comme un volume 3D posé dans son
     // contexte, son toit texturé sur le dessus (détouré au tracé). La photo du toit
     // (surélevée) et le sol viennent de la même imagerie source.
-    const roofZ = wallH + 0.5;
-    // W87 — VRAI soleil : position astronomique à la latitude du toit, pour l'heure
-    // solaire (ctx.sunHour) et le jour (ctx.sunDay) choisis. Défaut = midi au solstice
-    // d'hiver (jour 355), où l'élévation rejoint l'élévation de design de l'espacement
-    // anti-ombrage → les rangées se dégagent VISIBLEMENT (l'ombre portée prouve le pas).
-    // Plus de soleil arbitraire (ancien « visée − 45° » + élévation factice) : l'ombre
-    // rendue correspond désormais à une vraie heure. On garde le soleil au moins à 6°
-    // au-dessus de l'horizon pour que la scène reste éclairée si l'utilisateur choisit
-    // une heure proche du lever/coucher (ombres longues mais lisibles, jamais noir).
-    const lat = pack.origin[1];
-    const realSun = sunDirection(lat, ctx.sunDay, ctx.sunHour);
-    if (cielSuitLeSoleil(readOnly, opts)) appliquerCiel(map, realSun.elevationDeg, lowEnd); // ACAL431 — ciel selon le soleil ; visionneuse standard et bas de gamme : inchangés
-    const dispElevDeg = Math.max(6, realSun.elevationDeg);
-    // Azimut RÉEL du soleil, ramené dans le repère ENU de la scène (0 = Nord, sens
-    // horaire vers l'Est) — même convention que pack.azimuthDeg.
-    const dispAzDeg = realSun.azimuthDeg;
-    const azR = dispAzDeg * DEG2RAD;
-    const elR = dispElevDeg * DEG2RAD;
-    const dist = span * 2.5;
-    sun.target.position.set(cxm, cym, roofZ);
-    sun.position.set(cxm + Math.sin(azR) * Math.cos(elR) * dist, cym + Math.cos(azR) * Math.cos(elR) * dist, roofZ + Math.sin(elR) * dist);
-    fitShadowCamera(sun, span, dist * 2);
+    cadreSoleil = { cx: cxm, cy: cym, z: wallH + 0.5, span, lat: pack.origin[1] }; // W87 — soleil visé au-dessus du toit
+    poserSoleil(false); // lot 8 — le soleil seul (threeShared.ts::placerSoleilScene) : un pas de lecture ne rejoue que lui
 
     attacherCoucheElectrique(); // CALX219 câblage — la couche électrique revient sur la scène
     if (scene) poignees3d.poser(scene, !readOnly && ctx.closed ? ctx.vertices : [], pack.origin, wallH); // ACAL1185
     for (const m of construireMaillagesPose(ctx.surfacesPose, pack.origin, readOnly)) sceneRoot!.add(m); // CALX124 — surfaces de pose (sol/ombrière) : volumes et ombres portées ; aucune surface ⇒ rien d'ajouté
     map.triggerRepaint();
+  }
+
+  /** Lot 8 — le SOLEIL seul (lumière, cadre d'ombre, ciel) à `ctx.sunDay`/`ctx.sunHour`, sans reconstruire un maillage. */
+  function poserSoleil(repeindre = true) {
+    if (!sun || !cadreSoleil) return;
+    const realSun = sunDirection(cadreSoleil.lat, ctx.sunDay, ctx.sunHour);
+    if (cielSuitLeSoleil(readOnly, opts)) appliquerCiel(map, realSun.elevationDeg, lowEnd); // ACAL431 — ciel selon le soleil ; visionneuse standard et bas de gamme : inchangés
+    placerSoleilScene(sun, cadreSoleil, realSun);
+    if (repeindre) map.triggerRepaint();
   }
 
   /** Réinitialise la photo de toit + la matrice modèle (« Effacer »/clearEditorState).
@@ -2860,7 +2852,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     }
     return points;
   };
-  return { volumeScene, customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setCoucheElectrique, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, rafraichirAffectation, snapshot, renderOffscreen, exporterSceneGltf, positionsPoigneesEcran: poignees3d.ecran };
+  return { volumeScene, customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, poserSoleil: () => poserSoleil(), resetTextures, setCoucheElectrique, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, rafraichirAffectation, snapshot, renderOffscreen, exporterSceneGltf, positionsPoigneesEcran: poignees3d.ecran };
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
