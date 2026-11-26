@@ -2043,7 +2043,7 @@ export default function DevisGenerator({
           verdictBatterieServeur={verdictBatterieServeur} apercuEcoAvec={apercuEcoAvec}
           apercuPaybackAvecJamais={apercuPaybackAvecJamais} apercuPaybackAvec={apercuPaybackAvec} apercuPaybackAvecAbsent={apercuPaybackAvecAbsent}
           capaciteBatterieInconnue={capaciteBatterieInconnue} facturesSaisies={facturesSaisies}
-          chartData={chartData} apercuAvecAbsent={apercuAvecAbsent}
+          chartData={chartData} apercuAvecAbsent={apercuAvecAbsent} leadId={leadId}
           editDevis={editDevis} simulationRepliee={simulationRepliee}
           basculerCarte={basculerCarte}
         />

@@ -9,6 +9,7 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
+import { Link } from 'react-router-dom'
 import { BarChart3 } from 'lucide-react'
 import { Button, Card, CardContent, BarreDefilementCollante } from '../../../ui'
 import { formatNumber, formatMAD } from '../../../lib/format'
@@ -35,7 +36,7 @@ export default function ApercuSimulation({
   apercuPaybackSans, totals, avecRec, batterieInvendableServeur, verdictBatterieServeur,
   apercuEcoAvec, apercuPaybackAvecJamais, apercuPaybackAvec, capaciteBatterieInconnue,
   apercuPaybackSansAbsent = 'N/A', apercuPaybackAvecAbsent = 'N/A',
-  facturesSaisies, chartData, apercuAvecAbsent = null,
+  facturesSaisies, chartData, apercuAvecAbsent = null, leadId = '',
   // EDC9 — repli en Édition complète (état tenu par l'écran, choix mémorisé).
   editDevis = null, simulationRepliee = false, basculerCarte = () => {},
 }) {
@@ -619,9 +620,9 @@ export default function ApercuSimulation({
               </ResponsiveContainer>
             ) : (
               <p className="py-6 text-center text-sm text-muted-foreground" data-testid="chart-no-bills">
-                Graphique masqué — exemple sans saisie réelle. Renseignez vos
-                factures (hiver/été ou détail mensuel ci-dessus) pour voir vos
-                économies mensuelles réelles.
+                Graphique masqué — exemple sans saisie réelle. Renseignez la Facture Hiver/Été (MAD/mois){' '}
+                {leadId ? <Link to={`/crm/leads/${leadId}`} className="underline">de la fiche du lead</Link> : 'de la fiche du lead'}
+                {' '}(ou le détail mensuel ci-dessus) pour voir vos économies mensuelles réelles.
               </p>
             )}
           </>

@@ -138,3 +138,15 @@ test('ACAL1204 — lignes par défaut sans panneau ⇒ aucun retour chiffré, «
     'la garde « au moins un panneau » est absente de `chiffre`')
   assert.match(HOOK, /à chiffrer : ajoutez les panneaux/)
 })
+
+// ACAL1211 — sans facture, l'aperçu NOMME le champ de la fiche du lead (règle du
+// 17/11 : tout ce qui est supposé est dit avec le champ) et mène à la fiche.
+test('ACAL1211 — sans facture ⇒ « Facture Hiver/Été (MAD/mois) » nommée, avec un lien vers la fiche du lead', () => {
+  const APERCU = readFileSync(join(HERE, 'generator/ApercuSimulation.jsx'), 'utf8')
+  const bloc = APERCU.slice(APERCU.indexOf('data-testid="chart-no-bills"'))
+  assert.match(bloc.slice(0, 900), /Facture Hiver\/Été \(MAD\/mois\)/,
+    'le champ de la fiche du lead doit être nommé')
+  assert.match(bloc.slice(0, 900), /to=\{`\/crm\/leads\/\$\{leadId\}`\}/,
+    'le lien vers la fiche du lead est absent')
+  assert.match(APERCU, /apercuAvecAbsent = null,\s*leadId = ''/)
+})
