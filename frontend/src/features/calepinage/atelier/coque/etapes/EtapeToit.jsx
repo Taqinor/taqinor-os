@@ -52,7 +52,7 @@ function Champ({ id, libelle, valeur, onChange, onBlur, desactive }) {
 /** Longueur / largeur : les champs de « Créer le toit » avant tout contour, les cotes du pan actif ensuite.
     La saisie en cours n'est jamais réécrite sous le curseur ; Entrée (ou la sortie du champ, contour fermé)
     la pose dans le vrai contrôle du script, qui la valide. */
-function Dimensions({ cotes, relire }) {
+function Dimensions({ cotes, relire, pans = null }) {
   const [brouillon, setBrouillon] = useState(null)
   const valeurs = brouillon ?? cotes
   const desactive = cotes.mode === 'aucun' || cotes.desactive
@@ -75,6 +75,11 @@ function Dimensions({ cotes, relire }) {
             onBlur={surSortie} desactive={desactive} />
           {cotes.mode === 'creer' && <button type="submit" className="cal-bouton-contour cal-toit-creer">Créer le toit</button>}
         </form>
+        {/* R5B-N7 (rejeu 26/11) — toit 10 × 8 créé en 2 pans : « Largeur » relisait 4 (la largeur du PAN sélectionné) sans
+            le dire. Les champs gardent leurs libellés (maquette) ; la ligne dit de quoi ils sont les cotes. */}
+        {cotes.mode === 'pan' && pans > 1 && (
+          <p className="cal-pan-note" data-zone="cotes-du-pan">{`Cotes du pan sélectionné — le toit en compte ${pans}.`}</p>
+        )}
       </SectionEtape>
     </div>
   )
@@ -494,7 +499,7 @@ export default function EtapeToit({
       <div className="cal-toit-bloc cal-toit-bloc-forme">
         <SectionEtape titre="Forme" />
       </div>
-      <Dimensions cotes={ajout ? { ...ajout.cotes, desactive: true } : etat.cotes} relire={relire} />
+      <Dimensions cotes={ajout ? { ...ajout.cotes, desactive: true } : etat.cotes} relire={relire} pans={etat.pans} />
       <div className="cal-toit-bloc cal-toit-bloc-pente">
         <SectionEtape titre="Pente et orientation">
           <CartePente calepinageId={calepinageId} builderApi={builderApi} documentVivant={documentVivant}
