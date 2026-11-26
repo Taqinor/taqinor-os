@@ -20,6 +20,18 @@ export function libelleOrigine(origine) {
   return LIBELLES_ORIGINE[origine] ?? `origine « ${origine} »`
 }
 
+const LIBELLES_CHAMP = {
+  'electrical.cheminements': 'le cheminement des câbles',
+  section_mm2: 'la section du câble',
+}
+
+/** ACAL1938 — le champ d'une omission en mots : jamais une clé pointée ou en soulignés ; inconnue ⇒ rien (le motif suffit). */
+export function libelleChamp(champ) {
+  if (!champ) return null
+  if (LIBELLES_CHAMP[champ]) return LIBELLES_CHAMP[champ]
+  return /[._]/.test(champ) ? null : champ
+}
+
 /** Le contenu de la cellule « longueur » : le nombre ET sa provenance ensemble. */
 export function celluleLongueur(troncon) {
   if (troncon?.longueur_m === null || troncon?.longueur_m === undefined) return '—'
