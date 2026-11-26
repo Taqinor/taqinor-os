@@ -143,7 +143,7 @@ import {
   profilCiVide, corpsCiDepuisProfil, profilCiAncre,
 } from '../../features/ventes/quote/profilCi'
 // Forfaits au panneau (barème du catalogue) : l'écran pose le prix que le serveur écrira.
-import { retarifierForfaitsEcran, suivreQuantitesPanneauxEcran } from '../../features/ventes/quote/forfaitsPanneau'
+import { ajusterAuxPanneauxEcran } from '../../features/ventes/quote/forfaitsPanneau'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
 // seul déballeur d'une valeur signée ; `LigneTable` possède la table de lignes
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
@@ -832,9 +832,7 @@ export default function DevisGenerator({
   // lignes (`retarifer_forfaits_par_panneau` du serveur), ajusté PENDANT le
   // rendu (jamais un rendu affiché au mauvais prix) ; le même tableau revient
   // quand rien ne change, donc aucune boucle.
-  if (retarifierForfaitsEcran(lines, produits) !== lines) setLines(ls => retarifierForfaitsEcran(ls, produits))
-  // T4-X4-001 — structures et socles suivent le compte de panneaux (ou disent qu'ils ne le suivent pas).
-  if (suivreQuantitesPanneauxEcran(lines, produits) !== lines) setLines(ls => suivreQuantitesPanneauxEcran(ls, produits))
+  if (ajusterAuxPanneauxEcran(lines, produits) !== lines) setLines(ls => ajusterAuxPanneauxEcran(ls, produits)) // T4-X4-001 : + structures / socles
 
   // QJR576 — LA conversion partagée ; compte ENTIER (plancher explicite).
   const kwp = kwcPourPanneaux(Math.floor(parseFloat(nbPanneaux) || 0), panelW)

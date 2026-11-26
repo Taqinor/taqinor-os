@@ -209,3 +209,7 @@ export function reductionOptionAvec(avant, apres, produits = []) {
   const b = comptesPanneauxEcran(apres, produits).avec
   return a > 0 && b > 0 && b < a ? { avant: a, apres: b } : null
 }
+
+/** Prix des forfaits au panneau PUIS quantités structure / socle : UN seul passage, le même tableau quand rien ne change
+    (appelé pendant le rendu du générateur, sans boucle). */
+export const ajusterAuxPanneauxEcran = (lines, produits) => suivreQuantitesPanneauxEcran(retarifierForfaitsEcran(lines, produits), produits)
