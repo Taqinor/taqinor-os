@@ -522,7 +522,14 @@ def _banque_automatique(intention, produit):
     """Point 4 — le nombre de modules que la RÈGLE AUTOMATIQUE poserait pour cette même batterie :
     la vraie composition « avec », sans banque imposée, calibre épinglé sur celui de la batterie
     (``batterie_module_kwh``, le pin BATHOMO de la composition). ``None`` sans calibre lisible ou
-    sans batterie composée. Lecture seule."""
+    sans batterie composée. Lecture seule.
+
+    Pré-CI lot 8 — la règle est jugée sur CETTE batterie seule : le vivier de la composition préfère
+    les Dyness (et suit la marque de batterie épinglée), si bien qu'une autre batterie désignée n'y
+    entrait jamais, le pin restait sans correspondance et l'écart n'était pas dit. Le catalogue de
+    l'essai ne garde donc, comme batterie, que la désignée ; tout le reste (cible, onduleur, plafond)
+    est la vraie composition."""
+    from apps.ventes.domain.etape_composer import reglages_de_composition
     from apps.ventes.domain.kwh_lecture import _parse_kwh
     from apps.ventes.domain.pipeline import intention_de_composition
 
@@ -532,7 +539,11 @@ def _banque_automatique(intention, produit):
     cible = replace(intention.cible, batterie_imposee=None)
     essai = intention_de_composition(replace(intention, scenario=COMPOSITION_AVEC, cible=cible), cible,
                                      avertissements=[], devis=None)
-    lignes = composer(replace(essai, batterie_module_kwh=calibre))
+    base = reglages_de_composition(essai.company, essai.gamme_nom_devis)
+    seule = replace(base, marques={r: m for r, m in (base.marques or {}).items() if r != 'batterie'},
+                    catalogue=[p for p in base.catalogue if getattr(p, 'pk', None) == produit.pk
+                               or classer_produit(getattr(p, 'nom', '') or '') != 'batterie'])
+    lignes = composer(replace(essai, batterie_module_kwh=calibre, reglages=seule))
     roles = list(getattr(lignes, 'roles', ()) or ())
     return sum(int(ligne.quantite) for role, ligne in zip(roles, lignes) if role == 'batterie') or None
 
