@@ -994,6 +994,28 @@ _FORBIDDEN_COLUMNS = (
 _PRICE_TABLES = ("stock_produit", "ventes_devis", "stock_mouvementstock",  # ASTK44 : cout interne
                  "sav_ticket")  # ALEC15 : sav.Ticket.cout
 
+# D-ACAL-165 (fondateur, 26/11/2026) — famille PRIX DE VENTE : refusee a qui ne
+# porte pas `prix_vente_voir` (Technicien, Technicien responsable), meme garde
+# que le prix d'achat ci-dessus (colonne nommee OU ligne entiere). Colonnes du
+# catalogue (stock.Produit) et montants des devis / lignes de devis (verifies
+# sur les modeles Django : LigneDevis.prix_unitaire/remise, Devis.remise_globale,
+# prix_cible_kwc, prix_par_kwc, total_affiche_range). Compte sans role fin et
+# superuser : regle inchangee (`_permet_prix_vente`).
+_SALE_PRICE_COLUMNS = (
+    "prix_vente", "paliers_prix_vente", "prix_fixe_ht", "prix_par_panneau_ht",
+    "tarif_location_jour", "tarif_location_semaine", "tarif_location_mois",
+    "prix_unitaire", "remise", "remise_globale", "prix_cible_kwc",
+    "prix_par_kwc", "total_affiche_range",
+)
+_SALE_PRICE_TABLES = ("stock_produit", "ventes_lignedevis", "ventes_devis")
+
+
+def _permet_prix_vente(permissions) -> bool:
+    """D-ACAL-165 — `permissions=None` (superuser, compte sans role fin, appel
+    direct) : inchange ; sinon le code `prix_vente_voir` decide."""
+    return permissions is None or "prix_vente_voir" in permissions
+
+
 # ALEC15 (C-ALEC-013) — montants et lignes des factures fournisseur de toute la
 # societe (contourne APFS46) : refusee a TOUTE mention sans `prix_achat_voir`.
 _PRICE_ONLY_TABLES = frozenset({"ia_ocr_document"})
@@ -1036,7 +1058,7 @@ def _select_sources(select: exp.Select) -> list:
 
 
 def _references_forbidden_column(sql: str, allow_price: bool = False,
-                                 allow_pii: bool = True) -> bool:
+                                 allow_pii: bool = True, allow_sale: bool = True) -> bool:
     """True si la requete peut RESTITUER une colonne confidentielle — secret de
     compte (toujours) ou prix d'achat / marge (sauf `allow_price`) — qu'elle
     soit NOMMEE ou emportee par une projection LIGNE ENTIERE d'une table qui la
@@ -1053,6 +1075,9 @@ def _references_forbidden_column(sql: str, allow_price: bool = False,
     if not allow_price:
         colonnes |= set(_FORBIDDEN_COLUMNS)
         tables |= set(_PRICE_TABLES)
+    if not allow_sale:  # D-ACAL-165
+        colonnes |= set(_SALE_PRICE_COLUMNS)
+        tables |= set(_SALE_PRICE_TABLES)
     noms = {t.name.lower() for t in tree.find_all(exp.Table)}
     if not allow_price and noms & _PRICE_ONLY_TABLES:
         return True
@@ -1184,6 +1209,10 @@ def _validate_and_secure(sql: str, company_id: int,
             sql, allow_price=True, allow_pii=False):
         raise RefusDeDroit(
             "Donnee personnelle du client (client_pii_voir) — lecture refusee.")
+    if not _permet_prix_vente(permissions) and _references_forbidden_column(
+            sql, allow_price=True, allow_sale=False):
+        raise RefusDeDroit(
+            "Prix de vente (prix_vente_voir) — lecture refusee.")
     _verifier_module_et_portee(sql, permissions)
     return _inject_company_filter(sql, company_id)
 
