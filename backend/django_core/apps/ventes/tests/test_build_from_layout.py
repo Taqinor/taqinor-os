@@ -438,6 +438,53 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
         self.assertEqual(_imposition_resolue(tarifes, designe, None, deux_options=False, hors_reseau=False,
                                              avec_batterie=False)['categorie'], 'onduleur_hybride')
 
+    def test_a_resynchro_sans_designations_rien_ne_bouge(self):
+        """A — une resynchro qui ne vient pas du calepinage (apply-taille, réparation) : aucune
+        décision, le marqueur stocké est gardé tel quel, le court-circuit « inchangé » reste permis."""
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.creation_calepinage import (
+            CLE_DESIGNATIONS, appliquer_designations_a_la_resynchro, marqueur_stocke)
+
+        verrou = SimpleNamespace(roof_layout={CLE_DESIGNATIONS: {'onduleur': 7}})
+        avertissements = []
+        for cible in (None, SimpleNamespace(source='calepinage', onduleur_impose=None)):
+            with self.subTest(cible=cible):
+                rendu = appliquer_designations_a_la_resynchro(
+                    verrou, SimpleNamespace(cible=cible), {}, [], False, avertissements)
+                self.assertEqual(rendu, (False, {'modifiees': 0, 'a_ecrire': False, 'marqueur': {'onduleur': 7}}))
+        self.assertEqual(avertissements, [])
+        self.assertIsNone(marqueur_stocke(SimpleNamespace(roof_layout={})))
+
+    def test_a_poser_le_produit_respecte_prix_et_quantite_saisis(self):
+        from decimal import Decimal as D
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.creation_calepinage import _poser_produit
+
+        produit = SimpleNamespace(pk=9, nom='Onduleur réseau Growatt 8kW', prix_vente=D('16000'))
+
+        def ligne(**extra):
+            base = dict(produit_id=3, designation='Onduleur réseau Huawei 5kW', prix_unitaire=D('14000'),
+                        role_devis='onduleur_reseau', quantite=D('1'), prix_manuel=False, quantite_manuelle=False)
+            base.update(extra)
+            objet = SimpleNamespace(**base)
+            objet.save = lambda update_fields: setattr(objet, 'enregistre', sorted(update_fields))
+            return objet
+
+        avertissements = []
+        manuelle = ligne(prix_manuel=True)
+        self.assertFalse(_poser_produit(manuelle, produit, 'onduleur_reseau', avertissements))
+        self.assertEqual((manuelle.produit_id, len(avertissements)), (3, 1))
+        posee = ligne(quantite_manuelle=True)
+        self.assertTrue(_poser_produit(posee, produit, 'onduleur_reseau', avertissements, nombre=2))
+        self.assertEqual((posee.designation, posee.prix_unitaire, posee.quantite),
+                         ('Onduleur réseau Growatt 8kW', D('16000'), D('1')))  # quantité saisie gardée
+        self.assertEqual(posee.enregistre, ['designation', 'prix_unitaire', 'produit'])
+        nombre = ligne()
+        self.assertTrue(_poser_produit(nombre, produit, 'onduleur_hybride', avertissements, nombre=2))
+        self.assertEqual((nombre.quantite, nombre.role_devis), (D('2'), 'onduleur_hybride'))
+
     def test_famille_role_puis_fiche_puis_nom(self):
         from types import SimpleNamespace
 

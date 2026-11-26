@@ -1196,7 +1196,9 @@ def resynchroniser_devis(calepinage, *, user=None,
         resultat = resynchroniser_conception(
             devis, layout, user, emettre=True,
             roof_image=None if variante is not None else (
-                getattr(calepinage, 'roof_image', None) or None))
+                getattr(calepinage, 'roof_image', None) or None),
+            # D-ACAL-148 / 159 — la MÊME décision que « Générer le devis » (ventes la juge).
+            designations={'onduleur': _onduleur_designe(variante or calepinage)})
     except SyncLayoutError as refus:
         detail = refus.detail + _onduleur_juge(calepinage, devis, refus)
         raise DevisRefuse(
