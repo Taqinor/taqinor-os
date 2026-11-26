@@ -11,7 +11,13 @@
       "url": "https://www.pvsyst.com/help/project-design/array-and-system-losses/lid-loss.html",
       "date_lecture": "2026-11-26",
       "citation": "LID loss is related to wafer manufacturing quality and typically ranges from 1% to 3% (or more).",
-      "note": "Bande « usuelle » de la page ; « (or more) » : au-delà de 3 % la perte est dite inhabituelle, jamais refusée."
+      "note": "Bande « usuelle » de la page ; « (or more) » : au-delà de 3 % la perte est dite inhabituelle, jamais refusée. Revue lot 6 : selon la même page (relue pour etapes/lid.py::REFERENCE), le LID ne concerne que le cristallin dopé bore de type p, les technologies de type n n'étant pas affectées — la bande ne juge donc QUE la ligne « perc » de la table société ; une autre technologie (TOPCon, HJT, inconnue) n'est pas jugée.",
+      "applicable_si": {
+        "entree": "ligne_retenue",
+        "valeurs": [
+          "perc"
+        ]
+      }
     }
   ],
   "total": null,

@@ -365,8 +365,11 @@ def _phrases_uniques(texte):
     return texte if len(uniques) == len(phrases) else ' '.join(uniques)
 
 
-#: ACAL1654 — la provenance SERVIE d'une étape, en mots (les codes que l'écran
-#: ne nomme pas déjà) ; ACAL1656 réutilise la MÊME table à l'impression.
+#: ACAL1656 — la provenance IMPRIMÉE d'une étape (rapport d'étude), en mots,
+#: pour les codes que le glossaire de la note ne nomme pas. À l'ÉCRAN, le code
+#: ``source`` est servi TEL QUEL et l'écran le nomme par SA table
+#: (``DiagrammePertes.jsx::SOURCE_LABELS``, revue lot 6 : une seule table par
+#: support, jamais un mot traduit deux fois).
 SOURCES_LISIBLES = {
     'texte': 'page publiée',
     'societe': 'réglage société',
@@ -376,14 +379,12 @@ SOURCES_LISIBLES = {
 
 
 def _etape_servie(etape):
-    """ACAL1654 — l'étape SERVIE : motif lisible (étape omise), source en
-    mots, référence sans code de tâche ni chemin ; la MÊME étape si rien ne
-    change."""
+    """ACAL1654 — l'étape SERVIE : motif lisible (étape omise) et référence
+    sans code de tâche ni chemin ; le code ``source`` reste celui du moteur
+    (l'écran le nomme). La MÊME étape si rien ne change."""
     servie = dict(etape)
     if etape.get('motif_omission'):
         servie['motif_lisible'] = motif_lisible(etape['motif_omission'])
-    if isinstance(etape.get('source'), str) and etape['source'] in SOURCES_LISIBLES:
-        servie['source'] = SOURCES_LISIBLES[etape['source']]
     if isinstance(etape.get('reference'), str) and etape['reference']:
         servie['reference'] = motif_lisible(etape['reference'])
     return servie if servie != etape else etape

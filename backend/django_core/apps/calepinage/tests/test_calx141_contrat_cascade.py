@@ -233,7 +233,9 @@ class MotifServiLisibleTest(unittest.TestCase):
         avant = copy.deepcopy(stocke)
         thermique, horizon, iam = avec_motifs_lisibles(stocke)['cascade']['etapes']
         self.assertEqual(thermique['motif_lisible'], 'Aucune fiche thermique publiée.')
-        self.assertEqual(horizon['source'], 'page publiée')
+        # Revue lot 6 — le code est servi tel quel : l'écran le nomme par SA
+        # table (« Page publiée », DiagrammePertes.jsx::SOURCE_LABELS).
+        self.assertEqual(horizon['source'], 'texte')
         self.assertEqual(horizon['reference'], 'position du soleil')
         self.assertEqual((iam['source'], iam['reference']),
                          ('fiche', 'https://www.pvsyst.com/help/iam.html'))
@@ -418,12 +420,20 @@ class PlagesTest(unittest.TestCase):
         lid = next(b for b in bandes if b['etape'] == 'lid')
         self.assertIn('typically ranges from 1% to 3%', lid['citation'])
         cascade = {'etapes': [{'etape': 'lid', 'perte_pct': 2.0, 'motif_omission': '',
-                               'gain': False}], 'total_pct': None}
+                               'gain': False, 'entree': {'ligne_retenue': 'perc'}}],
+                   'total_pct': None}
         plages = evaluer(cascade)
         self.assertEqual(plages['etapes']['lid']['statut'], 'dans_la_plage')
         self.assertEqual(plages['etapes']['lid']['url'], lid['url'])
         self.assertEqual(plages['etapes']['lid']['citation'], lid['citation'])
         self.assertEqual(plages['motif_absence'], '')
+        # Revue lot 6 — la bande ne juge que la ligne où sa source s'applique :
+        # un module de type n (TOPCon) à 0,5 % n'est PAS « inhabituel ».
+        for ligne in ('topcon', 'hjt', 'inconnue', None):
+            with self.subTest(ligne=ligne):
+                type_n = {'etapes': [dict(cascade['etapes'][0], perte_pct=0.5,
+                                          entree={'ligne_retenue': ligne})], 'total_pct': None}
+                self.assertNotIn('lid', evaluer(type_n)['etapes'])
         sans_citation = {'bandes': [dict(lid, citation='')]}
         plages = evaluer(cascade, sans_citation)
         self.assertEqual(plages['etapes'], {})

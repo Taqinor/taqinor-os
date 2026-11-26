@@ -78,6 +78,7 @@ function construireCascade(pertes) {
   return etapes
 }
 
+/* LA table de l'écran : le serveur sert le CODE de source tel quel (revue lot 6 — aucun mot traduit deux fois). */
 const SOURCE_LABELS = {
   fiche: 'Fiche technique',
   saisie: 'Saisie',
@@ -85,6 +86,9 @@ const SOURCE_LABELS = {
   mesure: 'Mesure',
   hypothese: 'Hypothèse',
   societe: 'Réglage société',
+  texte: 'Page publiée',
+  document: 'Document du calepinage',
+  materiel: 'Matériel du calepinage',
 }
 
 const libelleSource = (source) => (source ? (SOURCE_LABELS[source] || source) : '—')

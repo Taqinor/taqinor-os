@@ -50,6 +50,20 @@ def _citee(bande):
             and bool(str(bande.get('citation') or '').strip()))
 
 
+def _s_applique(bande, etape):
+    """Revue lot 6 (ACAL1625) — la bande ne juge que là où sa source s'applique :
+    ``applicable_si = {entree, valeurs}`` exige que ``etape.entree[entree]``
+    soit l'une des ``valeurs`` (le LID de PVsyst : la seule ligne « perc ») ;
+    sans condition, la bande s'applique ; une condition illisible ne juge pas."""
+    condition = bande.get('applicable_si')
+    if condition is None:
+        return True
+    if not isinstance(condition, dict):
+        return False
+    entree = etape.get('entree') if isinstance(etape.get('entree'), dict) else {}
+    return entree.get(condition.get('entree')) in (condition.get('valeurs') or ())
+
+
 def evaluer(cascade, donnees=None):
     """``{etapes: {<etape>: pastille}, total, motif_absence}``."""
     donnees = charger() if donnees is None else (donnees or {})
@@ -59,7 +73,8 @@ def evaluer(cascade, donnees=None):
     etapes = {}
     for etape in (cascade or {}).get('etapes') or ():
         bande = bandes.get(etape.get('etape'))
-        if bande is None or etape.get('motif_omission') or etape.get('gain'):
+        if (bande is None or etape.get('motif_omission') or etape.get('gain')
+                or not _s_applique(bande, etape)):
             continue
         pastille = _pastille(_nombre(etape.get('perte_pct')), bande)
         if pastille is not None:

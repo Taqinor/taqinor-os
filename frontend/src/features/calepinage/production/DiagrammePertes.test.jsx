@@ -396,6 +396,23 @@ describe('DiagrammePertes — barres depuis les énergies servies (ACAL140)', ()
     expect(lignes[3].valeur).toBeCloseTo(81, 6)
   })
 
+  it('revue lot 6 — la source servie en CODE se nomme par la table de l’écran (« texte » → « Page publiée »)', async () => {
+    const etapes = [
+      { ...deuxEtapes[0], source: 'texte' },
+      { ...deuxEtapes[1], source: 'societe' },
+    ]
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: {
+      ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple'),
+      cascade: { ...exempleContrat('calepinage', 'calepinage_pertes_cascade', 'exemple').cascade,
+        etapes, total_pct: 19 },
+    } })
+    rendre()
+    const table = within(await screen.findByTestId('calx48-cascade-detaillee')).getByRole('table')
+    expect(within(table).getByText('Page publiée')).toBeInTheDocument()
+    expect(within(table).getByText('Réglage société')).toBeInTheDocument()
+    expect(within(table).queryByText('texte')).toBeNull()
+  })
+
   it("R3-19 — une étape omise montre le texte lisible du serveur, jamais le chemin du motif", () => {
     const etapes = [
       { rang: 1, etape: 'a', libelle: 'Étape A', kwh_avant: 100, kwh_apres: 90, perte_pct: 10, gain: false, source: 'fiche', motif_omission: '' },
