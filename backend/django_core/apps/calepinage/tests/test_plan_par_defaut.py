@@ -184,7 +184,15 @@ class PlanParDefautTest(TestCase):
 
         self.assertIn('fiche_module.temp_coeff_pmax_pct_c', manques({'temp_coeff_pmax_pct_c': '-0,35'}))
         self.assertTrue(any('fiche_module.uc_w_m2k' in m for m in manques({'uc_w_m2k': 0}, reglages=REGLAGES)))
-        self.assertIn('fiche_module.techno_cellule', manques({'techno_cellule': '   '}))
+        # Technologie faite d'espaces : l'étape LID ne lit la fiche QU'AVEC une table société
+        # (sans elle, elle s'omet d'abord sur `simulation.lid_par_techno`, cause réglage, pas
+        # fiche) ; table posée sans ligne « inconnue » ⇒ `strip()` vide = technologie non dite ⇒
+        # omise sur `fiche_module.techno_cellule`. (Avec la ligne « inconnue », l'étape applique
+        # cette ligne DITE supposée — `entree.supposee`, `mention` — : rien à refuser.)
+        lid = {**REGLAGES_THERMIQUE, 'simulation': {**REGLAGES_THERMIQUE['simulation'], 'lid_par_techno': {
+            'source': 'profil de départ', 'valeur': {'p-type PERC': {'pct': 1.5, 'source': 'texte'}}}}}
+        self.assertIn('fiche_module.techno_cellule', manques({'techno_cellule': '   '}, reglages=lid))
+        self.assertNotIn('fiche_module.techno_cellule', manques({'techno_cellule': 'p-type PERC'}, reglages=lid))
 
     def test_seul_faux_manque_le_chainage_absent_des_etapes_mppt_et_ohmique_dc(self):
         """Le Vmp nommé par « Fenêtre MPPT » / « Pertes ohmiques DC » quand c'est le chaînage
