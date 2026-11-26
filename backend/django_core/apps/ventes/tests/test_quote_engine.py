@@ -347,13 +347,6 @@ class RibDevisFinalPagesTest(SimpleTestCase):
     PROFIL = {'nom': 'SOCIETE RIB SARL', 'ice': '002222222000022',
               'rib': '011 780 0000123456789012 34', 'banque': 'Banque Exemple'}
 
-    def setUp(self):
-        try:
-            __import__('fitz')
-            __import__('weasyprint')
-        except Exception:  # pragma: no cover - libs natives absentes
-            self.skipTest('weasyprint / PyMuPDF indisponible')
-
     def _verifier(self, renderer, data, pages):
         import fitz
         from apps.ventes.quote_engine.rib_devis_final import CLE
