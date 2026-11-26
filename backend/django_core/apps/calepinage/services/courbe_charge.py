@@ -67,7 +67,7 @@ from __future__ import annotations
 from .autoconsommation import MOTIF_SANS_COURBE as MOTIF_AUTOCONSOMMATION
 from .charges import (ChargeInvalide, ajouter_charges, courbe_pac,
                       courbe_vehicule)
-from .consommation import profil_depuis_layout
+from .consommation import courbe24_est_nulle, profil_depuis_layout
 from .profils_types import courbe_journaliere
 
 __all__ = ['CourbeChargeInvalide', 'MOTIF_AUTOCONSOMMATION',
@@ -558,7 +558,27 @@ def _courbe_de_base(points, declaration, avertissements, annees=1):
         courbe = fabrique(points, declaration, avertissements, *arguments)
         if courbe is not None:
             return courbe, origine
+    if declaration.get('charges') and _layout_a_courbe_nulle(declaration):
+        # ACAL1962 (suite lecture) — aucune source n'a donné de base, mais
+        # l'atelier porte 24 zéros rangés et des charges sont déclarées : on
+        # garde le comportement d'avant (les charges sur une base nulle),
+        # en DISANT qu'aucune consommation de base n'est connue.
+        avertissements.append(MOTIF_BASE_NULLE)
+        return [0.0] * len(points), 'layout'
     return None, None
+
+
+#: ACAL1962 (suite lecture) — la base nulle gardée à dessein.
+MOTIF_BASE_NULLE = (
+    "Aucune consommation de base n'est connue (l'atelier ne porte que 24 "
+    'zéros, ni relevé importé, ni kWh saisis, ni facture exploitable) : la '
+    'courbe ne contient que les charges ajoutées, sur une base de 0 kWh.')
+
+
+def _layout_a_courbe_nulle(declaration):
+    layout = declaration.get('layout')
+    conso = layout.get('consumption') if isinstance(layout, dict) else None
+    return isinstance(conso, dict) and courbe24_est_nulle(conso.get('courbe24'))
 
 
 # ── les charges déclarées ────────────────────────────────────────────────
