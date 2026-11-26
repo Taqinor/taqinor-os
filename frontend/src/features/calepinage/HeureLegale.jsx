@@ -19,7 +19,7 @@ function lire(id, date) {
     // T4-U4-015 — la phrase de l'écran dit le refus : aucun toast global « Site.pin : … » en plus.
     const config = { suppressErrorToast: true }
     cache.set(cle, Promise.resolve().then(() => calepinageApi.calepinages.soleilLegal(id, { date }, config)).then(
-      // T4-U4-018 — aucune position du site : le serveur le DIT (200 `absence`), sans refus ni erreur à chaque ouverture.
+      // T4-U1-018 — aucune position du site : le serveur le DIT (200 `absence`), sans refus ni erreur à chaque ouverture.
       (r) => (r?.data?.absence?.champ === 'site.pin'
         ? { etat: 'pin' }
         : { etat: 'ok', ecart: r?.data?.ecart_legal_moins_solaire_min ?? null }),

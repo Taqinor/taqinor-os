@@ -53,7 +53,7 @@ class SoleilLegalApiTests(BaseApiCalepinage):
         self.cal.roof_layout = {'version': 2}
         self.cal.save(update_fields=['roof_layout'])
         r = self.api.get(_url(self.cal.pk, '2026-02-11'))
-        self.assertEqual(r.status_code, 200, r.data)  # T4-U4-018 : plus de 409 à chaque ouverture
+        self.assertEqual(r.status_code, 200, r.data)  # T4-U1-018 : plus de 409 à chaque ouverture
         self.assertEqual(r.data, {'date': '2026-02-11', 'absence': {
             'champ': 'site.pin', 'motif': MOTIF_SANS_EPINGLE}})
 
@@ -66,7 +66,7 @@ class SoleilLegalApiTests(BaseApiCalepinage):
             'lat': 31.789999999984182, 'lng': -7.089999999999918}}
         self.cal.save(update_fields=['roof_layout'])
         r = self.api.get(_url(self.cal.pk, '2026-02-11'))
-        self.assertEqual(r.status_code, 200, r.data)  # T4-U4-018 : plus de 409 à chaque ouverture
+        self.assertEqual(r.status_code, 200, r.data)  # T4-U1-018 : plus de 409 à chaque ouverture
         self.assertEqual(r.data, {'date': '2026-02-11', 'absence': {
             'champ': 'site.pin', 'motif': MOTIF_SANS_EPINGLE}})
 

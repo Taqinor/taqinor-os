@@ -70,7 +70,7 @@ def soleil_legal(self, request, pk=None):
         return Response(correspondance_du_jour(calepinage, jour))
     except SoleilLegalRefuse as refus:
         if refus.champ == 'site.pin' and refus.motif == MOTIF_SANS_EPINGLE:
-            # T4-U4-018 — aucune position du site : l'absence est servie (200), pas refusée.
+            # T4-U1-018 — aucune position du site : l'absence est servie (200), pas refusée.
             return Response({'date': jour.isoformat(),
                              'absence': {'champ': refus.champ, 'motif': refus.motif}})
         return Response({refus.champ: [refus.motif]},
