@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { creerCanalTeinte } from './canalTeinte'; // ACAL1621
 import { cibleVue, appliquerVue } from './vuesCamera';
 import { dimensionsTexture, makeCanadianPanelTexture } from './panelTexture'; // ACAL1839
-import { teintesBatiment, TEINTES_PRESENTATION } from './jeuPresentation'; // ACAL1839
+import { teintesBatiment, TEINTES_PRESENTATION, jeuDeLaScene, presentationClient } from './jeuPresentation'; // ACAL1839, lot 8
+import { cielSuitLeSoleil } from './ciel'; // lot 8
 import * as THREE from 'three'; // ACAL1984
 import { aplatirEnPlan, poserOeil, verreEtOeilAtelier } from './oeilCamera'; // ACAL1984, T4-U1-017, LOT 6
 import { boiteObstacle } from './obstacle3d'; // ACAL1820
@@ -464,6 +465,24 @@ describe('ACAL1408 — la teinte d’accès modifie la couleur effective du pann
     expect(params(materiauVerre(null, verreEtOeilAtelier({ teinteAccesVisible: true })))).toEqual([0, 0.08, 0.22, 0.1]);
     // ERP : inchangé (toujours le verre de l'atelier, avec ou sans le drapeau).
     expect(verreEtOeilAtelier({ productionAtelier: null })).toBe(true);
+  });
+
+  it('lot 8 — `presentationClient` : l’habit client sur le lien de confiance ; l’ERP IGNORE le drapeau, le standard est inchangé', () => {
+    const erp = { productionAtelier: null, presentationClient: true };
+    // ERP : son jeu ne dépend QUE de son interrupteur « Montrer au client » (enPresentation), jamais du drapeau.
+    expect(presentationClient(erp)).toBe(false);
+    expect(jeuDeLaScene(erp, false)).toBe('atelier');
+    expect(jeuDeLaScene(erp, true)).toBe('presentation');
+    expect(jeuDeLaScene({ productionAtelier: null }, false)).toBe('atelier');
+    expect(cielSuitLeSoleil(false, erp)).toBe(true); // l'atelier a toujours son ciel
+    // Lien de confiance (lecture seule) : jeu « presentation », ciel qui suit le soleil, verre sans vernis.
+    expect(jeuDeLaScene({ presentationClient: true }, false)).toBe('presentation');
+    expect(cielSuitLeSoleil(true, { presentationClient: true })).toBe(true);
+    expect(verreEtOeilAtelier({ presentationClient: true })).toBe(true);
+    // Lien standard : rien ne change.
+    expect(jeuDeLaScene({}, false)).toBe('atelier');
+    expect(cielSuitLeSoleil(true, {})).toBe(false);
+    expect(verreEtOeilAtelier({ presentationClient: false })).toBe(false);
   });
 
   it('la teinte de chaîne (setStringColoring, même canal) est gainée de la même façon', () => {

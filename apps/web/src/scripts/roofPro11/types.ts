@@ -163,6 +163,10 @@ export interface InitOptions {
   /** LOT 6 (D-ACAL-136) — posé par la seule visionneuse au soleil (`viewerFullBoot.ts`) quand elle teintera le pan
    *  actif : verre et œil de l'atelier (`oeilCamera.ts::verreEtOeilAtelier`). Absent = rendu inchangé. */
   teinteAccesVisible?: boolean;
+  /** Lot 8 (D-ACAL-132) — posé par la seule visionneuse pleine des liens de CONFIANCE (`viewerFullBoot.ts`, quand
+   *  `visionneuse_soleil` est servie) : l'habit « Montrer au client » de l'ERP (jeu « presentation », ciel qui suit le
+   *  soleil, verre sans vernis, sol qui reçoit les ombres). Ignoré par l'ERP (`productionAtelier`). Absent = inchangé. */
+  presentationClient?: boolean;
 
   // CALX104/CALX403 — les deux sections des réglages société que l'ATELIER consomme
   // (`zones_types` pour les gabarits d'obstacle, `degagements` pour la largeur d'allée

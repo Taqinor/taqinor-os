@@ -55,7 +55,7 @@ import { makeCanadianPanelTexture, type JeuPanneau } from './panelTexture';
 import { aplatirEnPlan, poserOeil, verreEtOeilAtelier } from './oeilCamera'; // ACAL1984, T4-U1-017, LOT 6
 import { boiteObstacle } from './obstacle3d'; // ACAL1820
 import { etiquettesChaines, type ChaineAPoser } from './electrique3d'; // ACAL1944
-import { teintesBatiment, eclatPresentation, TEINTES_PRESENTATION } from './jeuPresentation'; // ACAL1839
+import { teintesBatiment, eclatPresentation, TEINTES_PRESENTATION, jeuDeLaScene } from './jeuPresentation'; // ACAL1839 ; lot 8
 import { geometrieJupe } from './jupePignon'; // ACAL1839
 import { enPresentation, montreALEtape, surEtape, surPresentation } from './presentationCarte'; // ACAL1839 ; suites v2 — l'étape
 import { type Ctx } from './context';
@@ -82,7 +82,7 @@ import { construireMaillagesPose, enMotsDOmbriere } from './poseSurfaces'; // CA
 
 import { teinterAllees } from './teinteAllees'; // CALX403
 import { creerCanalTeinte, type CouleurDe } from './canalTeinte'; // ACAL1621
-import { appliquerCiel } from './ciel'; // ACAL431
+import { appliquerCiel, cielSuitLeSoleil } from './ciel'; // ACAL431 ; lot 8
 import { porteeAppliquee, poserTrianglesDeRangee } from './piedsChassis'; // ACAL579 — boucle des tronçons sortie
 import { affectationGroupKey, affectationGroupLabel, identifiantsModulesParCellule, libelleModuleAffecte } from './libellesAffectation'; // ACAL729
 
@@ -1337,7 +1337,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     return t;
   };
   /** ACAL1839 — le jeu de matériaux de la scène : « presentation » quand la carte est montrée au client. */
-  const jeuScene = (): JeuPanneau => (atelierErp && enPresentation(map) ? 'presentation' : 'atelier');
+  const jeuScene = (): JeuPanneau => jeuDeLaScene(opts, atelierErp && enPresentation(map)); // lot 8 : aussi le lien de confiance
   // Texture du profilé galvanisé PERFORÉ, PARTAGÉE par toutes les pièces de structure et
   // bakée une seule fois (patron W71 : jamais dans le chemin de rendu). En mode bas de
   // gamme on ne la fabrique PAS — le profilé garde une couleur galva unie : zéro canvas,
@@ -2596,7 +2596,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // une heure proche du lever/coucher (ombres longues mais lisibles, jamais noir).
     const lat = pack.origin[1];
     const realSun = sunDirection(lat, ctx.sunDay, ctx.sunHour);
-    if (!readOnly) appliquerCiel(map, realSun.elevationDeg, lowEnd); // ACAL431 — ciel selon le soleil ; visionneuse client et bas de gamme : inchangés
+    if (cielSuitLeSoleil(readOnly, opts)) appliquerCiel(map, realSun.elevationDeg, lowEnd); // ACAL431 — ciel selon le soleil ; visionneuse standard et bas de gamme : inchangés
     const dispElevDeg = Math.max(6, realSun.elevationDeg);
     // Azimut RÉEL du soleil, ramené dans le repère ENU de la scène (0 = Nord, sens
     // horaire vers l'Est) — même convention que pack.azimuthDeg.

@@ -34,6 +34,7 @@ import { couleurAccesActive } from '../src/lib/shadingEngine';
 import { attacherSoleil, bornesJournee, couleurParPanneau } from '../src/scripts/roofPro11/viewerSoleil';
 import type { ViewerFullHandle } from '../src/scripts/roofPro11/viewerFullBoot';
 import { ecrireTeintesPanneaux, GAIN_TEINTE_PANNEAU } from '../src/scripts/roofPro11/scene3d';
+import { TEINTES_PRESENTATION } from '../src/scripts/roofPro11/jeuPresentation';
 
 // Section 8 — une carte MapLibre et un WebGLRenderer FACTICES (jsdom n'a ni GPU ni MapLibre) ; tout le
 // reste (Three.js, scene3d, le contexte du boot) est le vrai code. Les sections 1-7 n'en dépendent pas.
@@ -62,6 +63,8 @@ const carteFactice = vi.hoisted(() => {
     getCanvas() { return this.canevas; }
     getLayer() { return undefined; }
     triggerRepaint() { this.repeints++; }
+    ciels: unknown[] = [];
+    setSky(s: unknown) { this.ciels.push(s); }
     setMaxBounds() {}
     setMinZoom() {}
     setMaxPitch() {}
@@ -759,6 +762,35 @@ describe('visionneuse pleine — premier rendu réel (scene3d + contexte du boot
     });
     expect(teintes).toBeGreaterThan(0); // les 35 modules portent la couleur de leur accès solaire
     expect(obstacle).toBe(true); // l'obstacle de 4 m du layout servi
+  });
+
+  it('B1 — lien de confiance : habit « Montrer au client » (murs clairs, ciel qui suit le soleil), teinte gardée ; standard : inchangé', async () => {
+    const couleursDe = (scene: unknown) => {
+      const c = new Set<number>();
+      (scene as { traverse: (f: (o: Record<string, any>) => void) => void }).traverse((o) => { const m = o.material; if (o.isMesh && m && !Array.isArray(m) && m.color) c.add(m.color.getHex()); });
+      return c;
+    };
+    const confiance = await demarrer({ presentationClient: true, indexTeintes: [0] });
+    confiance.carte.fire('load');
+    confiance.poignee.teinter(() => ({ r: 0.9, g: 0.2, b: 0.1 }));
+    soleilDessine(confiance.carte);
+    const sceneConfiance = carteFactice.rendus.at(-1);
+    expect(couleursDe(sceneConfiance).has(TEINTES_PRESENTATION.mur)).toBe(true);
+    expect(couleursDe(sceneConfiance).has(TEINTES_PRESENTATION.beton)).toBe(true); // toit plat : dalle béton
+    expect(confiance.carte.ciels.length).toBeGreaterThan(0);
+    let teintes = 0;
+    (sceneConfiance as { traverse: (f: (o: Record<string, any>) => void) => void }).traverse((o) => {
+      if (o.isInstancedMesh && o.instanceColor) teintes += Array.from(o.instanceColor.array as Float32Array).filter((v) => v !== 1).length;
+    });
+    expect(teintes).toBeGreaterThan(0);
+    confiance.poignee.destroy();
+
+    carteFactice.cartes.length = 0;
+    const standard = await demarrer();
+    standard.carte.fire('load');
+    soleilDessine(standard.carte);
+    expect(couleursDe(carteFactice.rendus.at(-1)).has(TEINTES_PRESENTATION.mur)).toBe(false);
+    expect(standard.carte.ciels).toHaveLength(0);
   });
 
   it('la photo satellite du toit est demandée UNE fois, jamais à chaque pas de soleil', async () => {
