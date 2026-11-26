@@ -969,8 +969,14 @@ def moteur_calepinage_actif():
     return bool(getattr(settings, DRAPEAU_MOTEUR_CALEPINAGE, False))
 
 
-def _zone_villa_depuis_pan(pan):
+def _zone_villa_depuis_pan(pan, *, toit_plat_corrige=True):
     """``AreaRecord`` roofPro11 -> ``AreaRecord`` attendu par l'adaptateur villa.
+
+    D-ACAL-149 — ``tilt`` est la pente du TOIT : sur un toit plat,
+    ``pitchDeg`` n'est que le curseur mémorisé (22° par défaut), lu 0 par
+    ``core.calepinage.geo.pente_effective_du_pan`` (rangées anti-ombrage au
+    lieu d'une pose affleurante). ``toit_plat_corrige=False`` garde la lecture
+    d'avant (devis envoyé avant ``regles_calcul.COUPURE_TOIT_PLAT``).
 
     roofPro11 sérialise ``vertices: LngLat[]`` (``[lng, lat]``) et des obstacles
     ``{centerLng, centerLat, lengthM (nord-sud), widthM (est-ouest)}``.
@@ -1009,6 +1015,12 @@ def _zone_villa_depuis_pan(pan):
     pente = pan.get('pitchDeg')
     if pente is None:
         pente = pan.get('pitch') or 0.0
+    if toit_plat_corrige:
+        from core.calepinage.geo import pente_effective_du_pan
+
+        effective = pente_effective_du_pan(pan)
+        if effective is not None:
+            pente = effective
     azimut = pan.get('facingAzimuthDeg')
     if azimut is None:
         azimut = pan.get('aspect')
@@ -1157,12 +1169,17 @@ def compte_moteur_du_layout(layout, *, company=None, devis=None,
                     and allee_doc.get('largeurM'))):
             parametres_traduction = sections
 
+    # D-ACAL-149 — un devis envoyé avant la coupure garde la lecture d'avant
+    # de la pente d'un toit plat ; sans devis (création), la lecture corrigée.
+    from .regles_calcul import toit_plat_ouvert
+    toit_plat = toit_plat_ouvert(devis)
+
     modules = 0
     detail = []
     for pan in pans:
         # Critique D1 — un pan existant n'est jamais recompté par le moteur.
         zone = (None if isinstance(pan, dict) and pan.get('existant') is True
-                else _zone_villa_depuis_pan(pan))
+                else _zone_villa_depuis_pan(pan, toit_plat_corrige=toit_plat))
         if zone is None:
             continue
         sortie = None
