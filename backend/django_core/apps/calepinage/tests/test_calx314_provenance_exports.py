@@ -218,5 +218,42 @@ class FormeDesSortiesTest(unittest.TestCase):
             self.assertNotIn(mot, texte)
 
 
+class DxfPlanNumeroPanChaineTest(unittest.TestCase):
+    """ACAL1721 — le DXF du plan porte, par module, N, PAN et CHAINE."""
+
+    @staticmethod
+    def _inserts(octets):
+        document = relire_dxf(octets)
+        return [{a.dxf.tag: a.dxf.text for a in e.attribs}
+                for e in document.modelspace()
+                if e.dxftype() == 'INSERT' and e.dxf.layer == 'NUMEROS']
+
+    def test_le_dxf_du_plan_porte_n_pan_et_chaine_par_module(self):
+        objet = calepinage()
+        objet.roof_layout['zones'][0]['geometry']['panels'][0]['n'] = 7
+        objet.roof_layout['zones'][0]['geometry']['panels'][1]['n'] = 9
+        affectation = [{'module': 'z1#7', 'pan': 'z1', 'chaine': 2,
+                        'onduleur': 1, 'mppt': 1, 'source': 'automatique'}]
+        attributs = self._inserts(exporter_dxf(objet, affectation=affectation))
+        self.assertEqual(
+            sorted((a['N'], a['PAN'], a['CHAINE']) for a in attributs),
+            [('7', 'z1', '2'), ('9', 'z1', '')])
+
+    def test_sans_affectation_la_chaine_est_vide_jamais_devinee(self):
+        attributs = self._inserts(exporter_dxf(calepinage()))
+        self.assertEqual(len(attributs), 2)
+        self.assertEqual({a['CHAINE'] for a in attributs}, {''})
+        self.assertEqual(sorted(a['N'] for a in attributs), ['1', '2'])
+
+    def test_le_calque_modules_garde_ses_polylignes(self):
+        document = relire_dxf(exporter_dxf(calepinage()))
+        self.assertEqual(len([e for e in document.modelspace()
+                              if e.dxf.layer == CALQUE_MODULES]), 2)
+
+    def test_sans_le_parametre_modules_aucun_calque_numeros(self):
+        document = relire_dxf(octets_dxf(geometrie_de_planche(LAYOUT)))
+        self.assertNotIn('NUMEROS', document.layers)
+
+
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()

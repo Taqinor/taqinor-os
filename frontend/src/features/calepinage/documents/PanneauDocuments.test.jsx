@@ -57,6 +57,7 @@ import { OPTIONS_TELECHARGEMENT } from './telechargement'
 import PanneauDocuments from './PanneauDocuments'
 import EtapeDocuments from './EtapeDocuments'
 import PretAEnvoyer from '../commun/PretAEnvoyer'
+import { cartesGuide } from './cartesGuide'
 
 const APP = 'calepinage'
 const NOM = 'calepinage_documents'
@@ -1213,5 +1214,21 @@ describe('EtapeDocuments — la carte « Schéma électrique » livre le schéma
     expect(onglet.close).toHaveBeenCalledTimes(1)
     ouvrir.mockRestore()
     minuteurs.mockRestore()
+  })
+})
+
+describe('cartesGuide — la carte DXF ne promet pas une chaîne absente (ACAL1721)', () => {
+  const sorties = [{ code: 'dxf', disponible: true, format: 'dxf' }]
+  const carteDxf = (documents) => cartesGuide(documents, sorties).find((c) => c.cle === 'dxf')
+
+  it('avec un câblage publié, la carte promet le pan ET la chaîne', () => {
+    const { description } = carteDxf([{ code: 'plan_cablage', disponible: true }])
+    expect(description.includes('son pan et sa chaîne')).toBe(true)
+  })
+
+  it('sans câblage publié, la carte promet le numéro et le pan, jamais la chaîne', () => {
+    const { description } = carteDxf([{ code: 'plan_cablage', disponible: false }])
+    expect(description.includes('chaîne')).toBe(false)
+    expect(description.includes('avec son pan')).toBe(true)
   })
 })

@@ -58,6 +58,8 @@ __all__ = [
     'CALQUE_CHAINES',
     # CALX314
     'CALQUE_PROVENANCE',
+    # ACAL1721
+    'CALQUE_NUMEROS', 'modules_numerotes', 'affectation_pour_dxf',
 ]
 
 CALQUE_TOITURE = 'TOITURE'
@@ -97,7 +99,7 @@ def _sommets(points):
     return frozenset((round(x, 4), round(y, 4)) for x, y in points)
 
 
-def _document_dxf(geometrie, *, chaines=None, provenance=None):
+def _document_dxf(geometrie, *, chaines=None, provenance=None, modules=None):
     """``geometrie_de_planche(...)`` -> un document ``ezdxf`` prêt à écrire.
 
     L'import d'``ezdxf`` est FONCTION-LOCAL : la bibliothèque n'a aucune raison
@@ -112,6 +114,10 @@ def _document_dxf(geometrie, *, chaines=None, provenance=None):
     CALX314 — ``provenance`` (les lignes ``(libellé, valeur)`` de
     ``provenance_document.lignes_de_provenance``) ajoute le calque
     ``PROVENANCE``, non imprimable. ``None`` (le défaut) : aucun calque de plus.
+
+    ACAL1721 — ``modules`` (``[{module, pan, numero, chaine, centre, coins}]``,
+    voir ``modules_numerotes``) ajoute le calque ``NUMEROS`` : un bloc
+    ``MODULE_POSE`` par module, attributs ``PAN``, ``N``, ``CHAINE``.
     """
     import ezdxf
     from ezdxf import units
@@ -177,6 +183,8 @@ def _document_dxf(geometrie, *, chaines=None, provenance=None):
     _surfaces_de_pose(document, espace, geometrie)
     if chaines is not None:
         _calque_chaines(document, espace, chaines)
+    if modules is not None:
+        _calque_numeros(document, espace, modules)
     if provenance is not None:
         _calque_provenance(document, espace, provenance,
                            geometrie.get('etendue'))
@@ -261,8 +269,16 @@ def _calque_provenance(document, espace, lignes, etendue):
 BLOC_MODULE = 'MODULE'
 ATTRIBUTS_MODULE = ('CHAINE', 'MPPT', 'ONDULEUR', 'N')
 
+#: ACAL1721 — le plan de POSE : numéro (``panels[].n``), pan, chaîne.
+BLOC_MODULE_POSE = 'MODULE_POSE'
+ATTRIBUTS_MODULE_POSE = ('PAN', 'N', 'CHAINE')
+CALQUE_NUMEROS = 'NUMEROS'
+COULEUR_CALQUE_NUMEROS = 2
 
-def _inserer_module(document, espace, module, blocs, attributs):
+
+def _inserer_module(document, espace, module, blocs, attributs, *,
+                    balises=ATTRIBUTS_MODULE, valeurs=None,
+                    prefixe=BLOC_MODULE):
     """Insère le bloc ``MODULE`` au centre du module, tourné comme lui, avec
     CHAINE / MPPT / ONDULEUR (l'affectation publiée) et N (le numéro dans
     SA chaîne), sur le calque et dans la couleur de la chaîne
@@ -276,14 +292,13 @@ def _inserer_module(document, espace, module, blocs, attributs):
     profondeur = math.hypot(cx_ - bx, cy_ - by)
     cle = (round(largeur, 4), round(profondeur, 4))
     if cle not in blocs:
-        nom = BLOC_MODULE if not blocs else '%s_%d' % (BLOC_MODULE,
-                                                       len(blocs) + 1)
+        nom = prefixe if not blocs else '%s_%d' % (prefixe, len(blocs) + 1)
         bloc = document.blocks.new(name=nom)
         demi_l, demi_p = largeur / 2.0, profondeur / 2.0
         bloc.add_lwpolyline(
             [(-demi_l, -demi_p), (demi_l, -demi_p), (demi_l, demi_p),
              (-demi_l, demi_p)], close=True)
-        for rang, balise in enumerate(ATTRIBUTS_MODULE):
+        for rang, balise in enumerate(balises):
             bloc.add_attdef(
                 balise, (0.0, -demi_p - HAUTEUR_REPERE_CHAINE_M * (rang + 1)),
                 dxfattribs={'height': HAUTEUR_REPERE_CHAINE_M, 'flags': 1})
@@ -293,11 +308,35 @@ def _inserer_module(document, espace, module, blocs, attributs):
         blocs[cle], centre, dxfattribs=dict(
             attributs,
             rotation=math.degrees(math.atan2(by - ay, bx - ax))))
-    valeurs = (module.get('chaine'), module.get('mppt'),
-               module.get('onduleur'), module.get('rang'))
+    if valeurs is None:
+        valeurs = dict(zip(ATTRIBUTS_MODULE, (
+            module.get('chaine'), module.get('mppt'),
+            module.get('onduleur'), module.get('rang'))))
     insert.add_auto_attribs({
-        balise: '' if valeur is None else str(valeur)
-        for balise, valeur in zip(ATTRIBUTS_MODULE, valeurs)})
+        balise: '' if valeurs.get(balise) is None else str(valeurs[balise])
+        for balise in balises})
+
+
+def _calque_numeros(document, espace, modules):
+    """ACAL1721 — un bloc ``MODULE_POSE`` par module dessiné : ``PAN``, ``N``
+    (le numéro STABLE du document), ``CHAINE`` (vide si non affecté, jamais
+    devinée). Un module sans emprise sourcée porte un texte « N<n> <pan> »."""
+    document.layers.add(name=CALQUE_NUMEROS, color=COULEUR_CALQUE_NUMEROS)
+    blocs = {}
+    attributs = {'layer': CALQUE_NUMEROS}
+    for module in modules:
+        valeurs = {'PAN': module.get('pan'), 'N': module.get('numero'),
+                   'CHAINE': module.get('chaine')}
+        if module.get('coins') is None:
+            centre = module['centre']
+            espace.add_text(
+                'N%s %s' % (valeurs['N'], valeurs['PAN']),
+                height=HAUTEUR_REPERE_CHAINE_M,
+                dxfattribs=attributs).set_placement((centre[0], centre[1]))
+            continue
+        _inserer_module(document, espace, module, blocs, attributs,
+                        balises=ATTRIBUTS_MODULE_POSE, valeurs=valeurs,
+                        prefixe=BLOC_MODULE_POSE)
 
 
 def _calque_chaines(document, espace, chaines):
@@ -370,7 +409,7 @@ def _coter(espace, etendue, etendue_toit=None):
             (x0 - decalage * 1.6, (ty0 + ty1) / 2.0))
 
 
-def octets_dxf(geometrie, *, chaines=None, provenance=None):
+def octets_dxf(geometrie, *, chaines=None, provenance=None, modules=None):
     """Le DXF en OCTETS (utf-8) — aucun fichier n'est écrit sur le disque.
 
     ``chaines`` : voir ``document_dxf`` (CALX310, calque ``CHAINES``) ;
@@ -379,22 +418,64 @@ def octets_dxf(geometrie, *, chaines=None, provenance=None):
     import io
 
     tampon = io.StringIO()
-    _document_dxf(geometrie, chaines=chaines,
-                  provenance=provenance).write(tampon)
+    _document_dxf(geometrie, chaines=chaines, provenance=provenance,
+                  modules=modules).write(tampon)
     return tampon.getvalue().encode('utf-8')
 
 
-def exporter_dxf(calepinage):
+def modules_numerotes(roof_layout, geometrie, affectation=None):
+    """ACAL1721 — les modules dessinés avec leur ``numero``, leur ``pan`` et
+    leur ``chaine``, depuis la MÊME source que l'écran et le schéma : la clé
+    ``<pan>#<n>`` de ``plan_cablage._modules_du_plan`` (``panels[].n``) et la
+    table d'affectation PUBLIÉE. Sans affectation (ou module non affecté) :
+    ``chaine`` vaut ``None`` — jamais une chaîne inventée."""
+    from .documents.plan_cablage import _modules_du_plan
+
+    table = {ligne['module']: ligne.get('chaine')
+             for ligne in (affectation or ())
+             if isinstance(ligne, dict)
+             and isinstance(ligne.get('module'), str)}
+    modules = []
+    for module in _modules_du_plan(roof_layout, geometrie):
+        try:
+            numero = int(module['module'].rsplit('#', 1)[1])
+        except (IndexError, ValueError):
+            numero = None
+        modules.append(dict(module, numero=numero,
+                            chaine=table.get(module['module'])))
+    return modules
+
+
+def affectation_pour_dxf(calepinage):
+    """ACAL1721 — la table d'affectation PUBLIÉE, ou ``()`` quand le câblage
+    est bloqué (températures illisibles…) : le plan de pose ne se refuse pas
+    pour autant (comme avant), il dit « chaîne vide » — jamais une chaîne
+    devinée."""
+    from .documents.plan_cablage import (
+        PlanCablageRefuse, _affectation_publiee_du_calepinage,
+    )
+
+    try:
+        return _affectation_publiee_du_calepinage(calepinage)
+    except PlanCablageRefuse:
+        return ()
+
+
+def exporter_dxf(calepinage, *, affectation=None):
     """Le DXF d'un ``Calepinage``. Lève ``PlancheRefusee`` sans conception.
 
     La géométrie est celle de la planche : le DXF et le PDF ne peuvent pas
     diverger, parce qu'il n'y a qu'une seule projection. CALX314 — le calque
     ``PROVENANCE`` (non imprimable) porte les lignes de la fonction PARTAGÉE
-    ``provenance_document.lignes_de_provenance``.
+    ``provenance_document.lignes_de_provenance``. ACAL1721 — le calque
+    ``NUMEROS`` porte, par module, son numéro, son pan et sa chaîne
+    (``affectation`` : la table publiée, ``None`` = aucune chaîne connue).
     """
     from .planche import geometrie_de_planche
     from .provenance_document import lignes_de_provenance
 
+    roof_layout = getattr(calepinage, 'roof_layout', None)
+    geometrie = geometrie_de_planche(roof_layout)
     return octets_dxf(
-        geometrie_de_planche(getattr(calepinage, 'roof_layout', None)),
-        provenance=lignes_de_provenance(calepinage))
+        geometrie, provenance=lignes_de_provenance(calepinage),
+        modules=modules_numerotes(roof_layout, geometrie, affectation))
