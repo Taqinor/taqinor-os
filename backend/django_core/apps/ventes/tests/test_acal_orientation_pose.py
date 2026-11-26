@@ -171,7 +171,8 @@ class ToitPlatAuCurseurTest(SimpleTestCase):
         self.assertIsNone(o['inclinaison_deg'])
         self.assertTrue(o['inclinaison_supposee'])
         cfg = extract_roof_config(_toit_plat_vide(), toit_plat_corrige=True)
-        self.assertIsNone(cfg['inclinaison_deg'])
+        # D-ACAL-168 (fondateur, 26/11/2026) — la production prend 20°, plus « aucune inclinaison ».
+        self.assertEqual(cfg['inclinaison_deg'], 20)
         self.assertEqual(cfg['suppositions'], [SUPPOSITION_INCLINAISON_TOIT_PLAT])
         self.assertNotIn('inclinaison_supposee', cfg['pans'][0])
         self.assertIsNone(pans_du_document(_toit_plat_vide(), toit_plat_corrige=True)[0]['inclinaison_deg'])
@@ -207,6 +208,91 @@ class ToitPlatAuCurseurTest(SimpleTestCase):
                 self.assertEqual(pente, 22.0)
 
 
+class ToitPlatPartieDeuxTest(SimpleTestCase):
+    """D-ACAL-149 (ii) / D-ACAL-168 — création et resynchro : 20° supposés pour la production, dits
+    au vendeur, jamais rangés ni imprimés pour le client."""
+
+    def _plat_avec_compte(self):
+        layout = _toit_plat_vide()
+        layout['zones'][0]['result'] = {'count': 10, 'kwc': 7.1, 'areaM2': 30}  # estimé, sans tables
+        return layout
+
+    def test_la_lecture_corrigee_prend_20_degres_nommes(self):
+        from apps.ventes.domain.geometrie import SUPPOSITION_INCLINAISON_TOIT_PLAT
+        from apps.ventes.domain.regles_calcul import INCLINAISON_TOIT_PLAT_SUPPOSEE_DEG
+
+        self.assertEqual(INCLINAISON_TOIT_PLAT_SUPPOSEE_DEG, 20)
+        cfg = extract_roof_config(self._plat_avec_compte(), toit_plat_corrige=True)
+        self.assertEqual((cfg['pans'][0]['inclinaison_deg'], cfg['inclinaison_deg']), (20, 20))
+        self.assertIn('20°', SUPPOSITION_INCLINAISON_TOIT_PLAT['message'])
+        self.assertIn('Posez les panneaux dans le calepinage', SUPPOSITION_INCLINAISON_TOIT_PLAT['message'])
+        # Un toit en pente à 22° ne change nulle part.
+        pente = _toit_plat_vide()
+        pente['zones'][0]['roofType'] = 'pitched'
+        for corrige in (False, True):
+            cfg_pente = extract_roof_config(pente, toit_plat_corrige=corrige)
+            self.assertEqual((cfg_pente['inclinaison_deg'], 'suppositions' in cfg_pente), (22, False))
+
+    def test_la_supposition_n_est_pas_rangee_et_va_au_vendeur(self):
+        from apps.ventes.domain.creation_calepinage import phrases_des_suppositions, toiture_sans_suppositions
+        from apps.ventes.domain.geometrie import SUPPOSITION_INCLINAISON_TOIT_PLAT
+
+        toiture = extract_roof_config(self._plat_avec_compte(), toit_plat_corrige=True)
+        stocke, etude = _calepinage_range(self._plat_avec_compte(), toiture, 7.1)
+        self.assertNotIn('suppositions', etude['toiture'])
+        self.assertNotIn('suppositions', toiture_sans_suppositions(toiture))
+        self.assertEqual(phrases_des_suppositions(toiture), [SUPPOSITION_INCLINAISON_TOIT_PLAT['message']])
+        from apps.ventes.domain.geometrie import CLE_INCLINAISON_SUPPOSEE, layout_hash
+
+        for pan in stocke['_pans_geometry']:
+            # Round 4, point 3 — seule trace : le drapeau PRIVÉ (préfixe « _ »), jamais la phrase.
+            self.assertFalse({'suppositions', 'inclinaison_supposee'} & set(pan))
+            self.assertIs(pan[CLE_INCLINAISON_SUPPOSEE], True)
+        texte = repr(etude) + repr(stocke)
+        self.assertNotIn(SUPPOSITION_INCLINAISON_TOIT_PLAT['message'], texte)
+        self.assertNotIn(CLE_INCLINAISON_SUPPOSEE, repr(etude))
+        # etude_params est servi au client (data['etude']) : la valeur supposée n'y est pas.
+        self.assertNotIn('inclinaison_deg', etude['toiture'])
+        self.assertNotIn('inclinaison_deg', etude['toiture']['pans'][0])
+        self.assertEqual(stocke['_pans_geometry'][0]['inclinaison_deg'], 20)  # la production la garde
+        # Hors empreintes : layout_hash et les groupes de l'étude électrique ne lisent pas le drapeau.
+        from types import SimpleNamespace
+
+        from apps.ventes.electrical_service import groupes_du_devis
+        sans = dict(stocke, _pans_geometry=[{k: v for k, v in pan.items() if k != CLE_INCLINAISON_SUPPOSEE}
+                                            for pan in stocke['_pans_geometry']])
+        self.assertEqual(layout_hash(stocke), layout_hash(sans))
+        self.assertEqual(groupes_du_devis(SimpleNamespace(roof_layout=stocke)),
+                         groupes_du_devis(SimpleNamespace(roof_layout=sans)))
+
+    def test_l_annexe_client_n_imprime_pas_l_inclinaison_supposee(self):
+        from types import SimpleNamespace
+
+        from apps.ventes.public_views import _safe_roof_layout
+
+        # Round 4, point 3 — masqué SUR LE DRAPEAU, avec ou sans modules (le cas avec modules est celui
+        # où 20° entre en production) ; jamais imprimé, ni à l'annexe ni à la 3D publique.
+        for layout in (_toit_plat_vide(), self._plat_avec_compte()):
+            pans = extract_roof_config(layout, toit_plat_corrige=True)['pans']
+            self.assertEqual(pans[0]['inclinaison_deg'], 20)
+            self.assertNotIn('inclinaison_deg', _pan_principal({'pans': pans}, toit_plat_corrige=True))
+            public = _safe_roof_layout(SimpleNamespace(roof_layout=dict(layout, _pans_geometry=pans),
+                                                       statut='envoye', pk=None))
+            self.assertNotIn('inclinaison_deg', public['pans'][0])
+            self.assertNotIn('inclinaison_deg', _pan_principal(public, toit_plat_corrige=True))
+        poses = extract_roof_config(_layout(_zone_plate_inclinee()), toit_plat_corrige=True)['pans']
+        self.assertEqual(_pan_principal({'pans': poses}, toit_plat_corrige=True)['inclinaison_deg'], 10)
+
+    def test_l_etude_electrique_recoit_la_pente_de_la_production(self):
+        """Point 5 — un pan plat AVEC modules et sans ``tiltDeg`` : l'étude électrique lit 20°, la
+        valeur de la production, jamais 0,0 par accident (``_flottant(None, 0.0)``)."""
+        from apps.ventes.electrical_service import _flottant
+
+        pan = extract_roof_config(self._plat_avec_compte(), toit_plat_corrige=True)['pans'][0]
+        self.assertGreater(pan['nb_panneaux'], 0)
+        self.assertEqual(_flottant(pan['inclinaison_deg'], 0.0), 20.0)
+
+
 class ZonesEtudeDuDevisTest(TestCase):
     def setUp(self):
         self.co = Company.objects.create(nom='ACAL58', slug='acal58')
@@ -229,6 +315,36 @@ class ZonesEtudeDuDevisTest(TestCase):
         self.assertEqual(len(zones), 1)
         self.assertEqual(zones[0]['tilt'], 10.0)
         self.assertEqual(zones[0]['azimuth'], 0.0)   # PVGIS : 0 = Sud
+
+    def test_devis_cree_d_un_toit_plat_sans_tables_20_degres_dits_au_vendeur(self):
+        """D-ACAL-149 (ii) / D-ACAL-168 — la création lit corrigé : production à 20°, la phrase dans
+        ``avertissements``, rien de la supposition dans ``etude_params`` ni ``_pans_geometry``."""
+        from django.contrib.auth import get_user_model
+
+        from apps.crm.models import Lead
+        from apps.ventes.domain.geometrie import SUPPOSITION_INCLINAISON_TOIT_PLAT
+        from apps.ventes.services import build_devis_from_layout
+        from apps.ventes.tests.test_build_from_layout import seed_catalogue
+
+        seed_catalogue(self.co)
+        user = get_user_model().objects.create_user(username='acal149ii', password='x', role_legacy='responsable',
+                                                    company=self.co)
+        lead = Lead.objects.create(company=self.co, nom='Plat', prenom='Toit', email='plat149@ex.com')
+        layout = _toit_plat_vide()
+        layout['zones'][0]['result'] = {'count': 10, 'kwc': 5.5, 'areaM2': 30}
+        layout['result'] = {'panels': 10, 'kwc': 5.5}
+        journal = {}
+        devis = build_devis_from_layout(layout=layout, user=user, company=self.co, lead=lead, journal=journal)
+        devis.refresh_from_db()
+        self.assertIn(SUPPOSITION_INCLINAISON_TOIT_PLAT['message'], journal['avertissements'])
+        self.assertEqual([p['inclinaison_deg'] for p in devis.roof_layout['_pans_geometry']], [20])
+        self.assertEqual(zones_etude_du_devis(devis)[0]['tilt'], 20.0)
+        from apps.ventes.public_views import _safe_roof_layout
+
+        texte = repr(devis.etude_params) + repr(devis.roof_layout.get('_pans_geometry'))
+        for interdit in ("'suppositions'", "'inclinaison_supposee'", SUPPOSITION_INCLINAISON_TOIT_PLAT['message']):
+            self.assertNotIn(interdit, texte)
+        self.assertNotIn('inclinaison_deg', (_safe_roof_layout(devis) or {}).get('pans', [{}])[0])
 
     def test_dry_run_liste_le_devis_envoye_sans_le_reecrire(self):
         layout = _layout(_zone_plate_inclinee())
