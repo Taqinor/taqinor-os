@@ -89,4 +89,6 @@ EN_ATTENTE_SIMULATION = {
 EN_ATTENTE_RESULTAT = {
     **EN_ATTENTE_SIMULATION,
     'pose.pans[].module_id': 'ACAL264',
+    # Revue lot 6 — contrat d'abord ; retiré par le commit producteur.
+    'panneaux_non_raccordes': 'ACAL1623',
 }
