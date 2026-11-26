@@ -297,6 +297,16 @@ def options_de_la_conception(options, calepinage, donnees, document=None):
     return options
 
 
+def autre_famille_d_onduleur(nom):
+    """D-HYB-1 — la famille d'onduleur AUTRE qu'hybride (``'onduleur_offgrid'``,
+    ``'micro_onduleur'``, ``''``) que le classifieur du CATALOGUE lit dans un nom (porte
+    ``apps.ventes.selectors_calepinage.autre_famille_d_onduleur_par_nom``) : ce module est
+    LA lecture de ventes par le calepinage pour le matériel (ACAL1009)."""
+    from apps.ventes.selectors_calepinage import autre_famille_d_onduleur_par_nom
+
+    return autre_famille_d_onduleur_par_nom(nom)
+
+
 def borne_dc_ac_devis(mode_installation=None):
     """ACAL1954 — la borne DC/AC du MOTEUR DE DEVIS (porte de lecture
     ``apps.ventes.selectors_calepinage.borne_dc_ac_du_moteur_devis``)."""
