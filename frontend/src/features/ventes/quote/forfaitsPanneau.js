@@ -199,3 +199,13 @@ export function suivreQuantitesPanneauxEcran(lines, produits) {
   })
   return change ? sortie : lines
 }
+
+/* R5A-N2 — « Auto-remplir » recompose l'option AVEC batterie à la taille SANS quand le nombre de panneaux a été saisi à la
+   main (règle voulue : un compte saisi vaut pour les deux options, `resolveKwcAvec`). Un devis de 8 panneaux « avec batterie »
+   retombait à 6 sans que rien ne le dise au moment où ça arrive. Rend `{ avant, apres }` quand l'option avec perd des panneaux,
+   sinon `null` ; l'écran le dit alors, en nommant les deux comptes. */
+export function reductionOptionAvec(avant, apres, produits = []) {
+  const a = comptesPanneauxEcran(avant, produits).avec
+  const b = comptesPanneauxEcran(apres, produits).avec
+  return a > 0 && b > 0 && b < a ? { avant: a, apres: b } : null
+}

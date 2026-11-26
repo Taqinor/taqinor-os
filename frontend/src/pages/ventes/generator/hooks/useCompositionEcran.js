@@ -7,6 +7,7 @@
 import { roleLabel, tauxTvaOf, tauxTvaOuDefaut, ttcExactFromHt } from '../../../../features/ventes/solar'
 import { lignesDepuisKit } from '../../../../features/ventes/quote/etudeMarcheBloc'
 import { tailleAutoRemplirPompage } from '../../../../features/ventes/quote/reouverture'
+import { reductionOptionAvec } from '../../../../features/ventes/quote/forfaitsPanneau'
 import { refusAutoRemplirPompage } from '../../../../features/ventes/etudePompagePreviewPur'
 import { SCENARIO_AVEC, SCENARIO_LES_DEUX, tailleDemandeeParLead } from '../../../../features/ventes/quote/sizingReducer'
 import ventesApi from '../../../../api/ventesApi'
@@ -45,7 +46,7 @@ export function useCompositionEcran(ctx) {
     structureProduitId, recalcDimTick, setPompageAutoFilled, setOnduleursIncomplets,
     setAutoFillLoading, setCompositionErreur, profilCi, horsReseau, kwp, selectedLead,
     etudeHoraireDonnees, etudeHoraireChargement, marcheCi, ctxProfilCi, apercuCi, resolveKwcAvec,
-    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard, sizing,
+    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard, sizing, lines,
   } = ctx
 
   // U3COMPOSE — l'optimum AXE BATTERIE envoyé au dry-run serveur : même
@@ -135,10 +136,12 @@ export function useCompositionEcran(ctx) {
     // affichait localement pour un onduleur incomplet, un rôle absent, etc. —
     // rendus tels quels dans le même bandeau, jamais tus.
     const avertissementsMsg = (data.avertissements || []).join(' ') || null
+    const reduction = reductionOptionAvec(lines, generated, produits)
     setErrors(e => ({
       ...e,
       autofill: [manquantsMsg, avertissementsMsg].filter(Boolean).join(' ') || null,
-      autofillKwc: mismatch,
+      // R5A-N2 — l'option « avec batterie » qui perd des panneaux le dit au moment où ça arrive, les deux comptes nommés.
+      autofillKwc: [mismatch, reduction ? `L'option avec batterie passe de ${reduction.avant} à ${reduction.apres} panneaux : le nombre de panneaux saisi vaut pour les deux options.` : null].filter(Boolean).join(' ') || null,
       marquesManquantes: marquesMsg,
     }))
     recomposerLignes(generated)

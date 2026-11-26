@@ -6,7 +6,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  prixForfaitHt, porteBaremeParPanneau, comptesPanneauxEcran, retarifierForfaitsEcran, suivreQuantitesPanneauxEcran,
+  prixForfaitHt, porteBaremeParPanneau, comptesPanneauxEcran, retarifierForfaitsEcran, suivreQuantitesPanneauxEcran, reductionOptionAvec,
 } from './forfaitsPanneau.js'
 import { lignesEcranVersPayload } from './lignesEcran.js'
 
@@ -185,4 +185,13 @@ test('suivreQuantitesPanneauxEcran — une ligne jamais en phase, ou retouchée 
   assert.equal(suivreQuantitesPanneauxEcran(horsPhase, PRODUITS_FIX)[1].quantite, '5')
   const recomposee = [ligneFix(PAN, 10), ligneFix(STRUCT, 10, { suitPanneaux: 6 }), ligneFix(SOCLE, 20, { suitPanneaux: 6 })]
   assert.deepEqual(suivreQuantitesPanneauxEcran(recomposee, PRODUITS_FIX).map((l) => l.suitPanneaux), [undefined, 10, 10])
+})
+
+test('reductionOptionAvec — l option avec batterie qui passe de 8 à 6 panneaux est nommée ; sinon null', () => {
+  const sans = (q) => ({ produit: PAN.id, designation: PAN.nom, quantite: q, variante: 'sans' })
+  const avec = (q) => ({ produit: PAN.id, designation: PAN.nom, quantite: q, variante: 'avec' })
+  assert.deepEqual(reductionOptionAvec([sans('6'), avec('8')], [sans('6'), avec('6')], [PAN]), { avant: 8, apres: 6 })
+  assert.equal(reductionOptionAvec([sans('6'), avec('8')], [sans('6'), avec('8')], [PAN]), null)
+  assert.equal(reductionOptionAvec([sans('6'), avec('6')], [sans('6'), avec('8')], [PAN]), null, 'une hausse n est pas une réduction')
+  assert.equal(reductionOptionAvec([], [sans('6'), avec('6')], [PAN]), null)
 })

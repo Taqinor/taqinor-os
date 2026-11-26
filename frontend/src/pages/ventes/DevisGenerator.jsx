@@ -1505,7 +1505,7 @@ export default function DevisGenerator({
     structureProduitId, recalcDimTick, setPompageAutoFilled, setOnduleursIncomplets,
     setAutoFillLoading, setCompositionErreur, profilCi, horsReseau, kwp, selectedLead,
     etudeHoraireDonnees, etudeHoraireChargement, marcheCi, ctxProfilCi, apercuCi, resolveKwcAvec,
-    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard: quoteLogic.tvaStandard, sizing,
+    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard: quoteLogic.tvaStandard, sizing, lines,
   })
 
   const selectedClient = clientsConnus.find(c => String(c.id) === String(clientId))
