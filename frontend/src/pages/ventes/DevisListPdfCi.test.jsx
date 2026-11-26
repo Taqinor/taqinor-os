@@ -60,7 +60,7 @@ describe('CIQ325 — dialogue PDF d\'un devis C&I', () => {
     expect(within(dialog).getByText(
       'Document industriel (4 pages — synthèse, équipements, rentabilité, conditions et signature)',
     )).toBeInTheDocument()
-    expect(within(dialog).queryByText(/Devis premium \(3 pages/)).toBeNull()
+    expect(within(dialog).queryByText(/Devis premium — options/)).toBeNull()
     expect(within(dialog).queryByText(/Inclure l'étude/)).toBeNull()
     expect(within(dialog).queryByText(/Économies mensuelles/)).toBeNull()
     for (const case_ of within(dialog).queryAllByRole('checkbox')) {
@@ -77,10 +77,10 @@ describe('CIQ325 — dialogue PDF d\'un devis C&I', () => {
     expect(within(dialog).queryByText(/Économies mensuelles/)).toBeNull()
   })
 
-  it('résidentiel : inchangé (libellé premium, case étude et économies mensuelles)', async () => {
+  it('résidentiel : libellé premium sans nombre de pages (ACAL1222), case étude et économies mensuelles', async () => {
     const dialog = await ouvrirDialogue(RESIDENTIEL)
     expect(within(dialog).getByText(
-      'Devis premium (3 pages — options, analyse, garanties)',
+      'Devis premium — options, analyse, garanties',
     )).toBeInTheDocument()
     expect(within(dialog).getByText(/Inclure l'étude/)).toBeInTheDocument()
     expect(within(dialog).getByText(/Économies mensuelles/)).toBeInTheDocument()
@@ -91,7 +91,10 @@ describe('CIQ325 — dialogue PDF d\'un devis C&I', () => {
       .toMatch(/Document agricole complet \(3 pages/)
     expect(libelleFormatComplet({ targetIsAgricole: false, targetMode: 'industriel' })).toMatch(/4 pages/)
     expect(libelleFormatComplet({ targetIsAgricole: false, targetMode: 'commercial' })).toMatch(/3 pages/)
+    // ACAL1222 (D-AMOT-8 = trois_ou_quatre) — le premium résidentiel rend 3 OU 4 pages
+    // (rentabilité sur sa page au-delà de ≈ 9 lignes) : le libellé n'en promet aucun.
     expect(libelleFormatComplet({ targetIsAgricole: false, targetMode: 'residentiel' }))
-      .toMatch(/Devis premium \(3 pages/)
+      .toBe('Devis premium — options, analyse, garanties')
+    expect(libelleFormatComplet({ targetIsAgricole: false, targetMode: 'residentiel' })).not.toMatch(/\d\s*pages?/)
   })
 })

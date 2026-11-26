@@ -310,7 +310,7 @@ hover:bg-muted/30 transition-colors rounded-lg" aria-expanded="false">
 Modèles de devis
 Texte pour le client (imprimé sur le devis)
 Création du Devis
-Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).
+Vérifiez les informations ci-dessus puis créez le devis. Le PDF premium se génère ensuite depuis la liste des devis (bouton « PDF »).
 Total TTC
 0 MAD
 Réinitialiser

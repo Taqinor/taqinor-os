@@ -63,7 +63,7 @@ from .options_pdf import (
 from .options_pdf import DEFAULT_PDF_OPTIONS  # noqa: F401
 # SPL166 — la phase D2 (restitution de l'étude) vit dans ``etude_restitution``
 # (move only) ; builder n'importe ici que ce qu'il utilise lui-même.
-from .etude_restitution import cle_factures_exactes, restituer_etude
+from .etude_restitution import cle_factures_exactes, economie_unique_ouverte, restituer_etude
 # SPL166 — ré-export (noqa: F401) pour d'autres propriétaires : test devis
 # test_qjr156_tarif_estime (ligne_tarif_hypothese).
 from .etude_restitution import ligne_tarif_hypothese  # noqa: F401
@@ -1535,7 +1535,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         _corrige=_corrige, _utility=_utility, etude=etude, _bareme_horaire=_regles_2710(devis),
         puissance_kwc=puissance_kwc, roi=roi, savings_model=savings_model,
         libelle_avec=libelle_avec if avec_batterie_differee else None,  # BAT-DIFF seul (ERR-AMOT21)
-        savings_model_avec=savings_model_avec, _economie_unique=regles_au_moins(devis, REGLES_POSE_REELLE_2111),
+        savings_model_avec=savings_model_avec, _economie_unique=economie_unique_ouverte(devis),
         savings_model_sans=savings_model_sans, scenario=scenario, recommended=_regles_2710(devis) and recommended)
 
     # SPL164 — phase E1 : ``conditions_commerciales.delais_validite_et_kit``.

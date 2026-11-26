@@ -34,7 +34,7 @@ from ..montants import decimale, regles_avant_2710
 # AMOT90 — l'énergie mois par mois (SVG en ligne, données servies).
 from ..ci.graphiques import bloc_energie_mensuelle, cede, css_graphique
 # Fondateur 19/11/2026 — la page à DEUX options (poids égal).
-from . import finance_deux
+from . import bases_courtes, finance_deux  # D-ACAL-167 : la ligne courte des bases
 
 #: Années des jalons (D-CIQ-10) — l'ordre d'impression, pas un calcul.
 JALONS_ANS = (5, 10, 15, 20, 25)
@@ -1058,7 +1058,7 @@ def build(ctx):
         etiquette_sans, bande_avec = _option_avec_finance(d, L, fmt)
         # Fondateur 19/11/2026 — deux options entièrement chiffrées : la page
         # à poids égal (``finance_deux``) ; sinon la page de l'offre servie.
-        corps = finance_deux.corps(ctx, argent) or f"""
+        corps = bases_courtes.avec_bases(d, finance_deux.corps(ctx, argent) or f"""
   {etiquette_sans if kpis else ""}{kpis}
   {bande_avec}
   {revente_html}
@@ -1072,10 +1072,10 @@ def build(ctx):
     {(om_txt + '. ') if om_txt else ''}{pied}.
     {L("ci_ind_methode_tri_client", "TRI et délai de retour calculés sur ces flux annuels (méthode actuarielle).")}
     {mt_source}
-  </div>"""
+  </div>""", argent, fmt, fmt_mad, L)
         # T4-U2-020 (D-ACAL-102, nouveaux rendus) — l'annonce « bases du calcul
         # ci-dessous » seulement si le bloc est rendu (page simple ou deux options).
-        if d.get("phrases_profil_ouvertes") and 'data-graphique="hypotheses"' not in corps:
+        if d.get("phrases_profil_ouvertes") and not bases_courtes.annoncees(corps):  # D-ACAL-167
             lead_txt = L("ci_cpdf_lead_finance_sans_bases",
                          "Projection sur {n} ans : flux annuels, délai de "
                          "retour et TRI tirés de la même série.", n=horizon_txt)
