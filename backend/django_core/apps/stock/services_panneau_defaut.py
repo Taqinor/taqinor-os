@@ -5,7 +5,8 @@ Patron « un défaut par portée, posé par une action dédiée qui retire les a
 corps de la requête) ; la ligne ``authentication.Company`` est verrouillée le temps du geste, si bien que deux gestes
 simultanés ne laissent jamais deux défauts (la contrainte ``stock_produit_un_panneau_defaut_par_societe`` le garantit
 de toute façon en base). Le geste ne RECALCULE rien : aucun devis, aucun calepinage, aucun choix automatique n'est
-touché — les écritures passent par ``update()`` (ni signal, ni ``produit_modifie``, ni ``lock_version``).
+touché — les écritures passent par ``update()`` (ni signal, ni ``produit_modifie``, ni ``lock_version``) ;
+le journal d'audit du produit (« Historique ») est donc écrit ici, dans la même transaction (``_tracer``).
 """
 from __future__ import annotations
 
@@ -43,6 +44,16 @@ def _verrouiller_societe(company):
     Company.objects.select_for_update().filter(pk=company.pk).first()
 
 
+def _tracer(produit, company, user, ancien, nouveau, detail):
+    """Une ligne au journal d'audit du produit (son onglet « Historique ») : les écritures passent par ``update()``,
+    qui ne déclenche aucun ``post_save`` — le journal est donc écrit ici, comme le remplacement de masse de
+    ``services.py`` (``core.audit_registry.record``, best-effort, jamais bloquant)."""
+    from core.audit_registry import record
+
+    record('update', instance=produit, company=company, user=user, detail=detail,
+           changes=[{'field': CHAMP, 'old': ancien, 'new': nouveau}])
+
+
 def definir_panneau_par_defaut(company, produit, user=None):
     """Fait de ``produit`` (de ``company``) LE panneau par défaut ; rend le résumé du contrat. 400 nommé sinon."""
     from .models import Produit
@@ -54,9 +65,16 @@ def definir_panneau_par_defaut(company, produit, user=None):
         raise ValidationError({CHAMP: [motif]})
     with transaction.atomic():
         _verrouiller_societe(company)
-        (Produit.objects.filter(company=company, panneau_par_defaut=True)
-         .exclude(pk=produit.pk).update(panneau_par_defaut=False))
-        Produit.objects.filter(pk=produit.pk, company=company).update(panneau_par_defaut=True)
+        if not Produit.objects.filter(pk=produit.pk, company=company, panneau_par_defaut=True).exists():
+            anciens = list(Produit.objects.filter(company=company, panneau_par_defaut=True)
+                           .exclude(pk=produit.pk))
+            Produit.objects.filter(pk__in=[a.pk for a in anciens]).update(panneau_par_defaut=False)
+            Produit.objects.filter(pk=produit.pk, company=company).update(panneau_par_defaut=True)
+            remplace = f" (remplace « {anciens[0].nom} »)" if anciens else ''
+            _tracer(produit, company, user, False, True, f"Panneau par défaut : « {produit.nom} »{remplace}.")
+            for ancien in anciens:
+                _tracer(ancien, company, user, True, False,
+                        f"N'est plus le panneau par défaut : remplacé par « {produit.nom} ».")
     logger.info('D-ACAL-169 : panneau par défaut de la société %s = produit %s (par %s)',
                 company.pk, produit.pk, getattr(user, 'pk', None))
     return resume_panneau_par_defaut(company)
@@ -70,6 +88,9 @@ def retirer_panneau_par_defaut(company, produit, user=None):
         _verrouiller_societe(company)
         retire = Produit.objects.filter(
             pk=produit.pk, company=company, panneau_par_defaut=True).update(panneau_par_defaut=False)
+        if retire:
+            _tracer(produit, company, user, True, False,
+                    f"N'est plus le panneau par défaut : « {produit.nom} » retiré (aucun panneau par défaut).")
     if retire:
         logger.info('D-ACAL-169 : panneau par défaut retiré (société %s, produit %s, par %s)',
                     company.pk, produit.pk, getattr(user, 'pk', None))

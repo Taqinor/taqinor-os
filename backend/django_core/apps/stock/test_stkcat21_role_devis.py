@@ -507,6 +507,36 @@ class TestPanneauParDefautApi(TestCase):
         self.assertEqual(rep.status_code, 200, rep.content)
         self.assertEqual(self._drapeaux(), set())
 
+    def _journal(self, produit):
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.audit.models import AuditLog
+
+        return list(AuditLog.objects.filter(
+            content_type=ContentType.objects.get_for_model(Produit), object_id=str(produit.pk),
+            action='update', detail__icontains='panneau par défaut').order_by('pk'))
+
+    def test_journal_d_audit_qui_et_quel_produit(self):
+        """« Historique » du produit : définir, remplacer, retirer laissent chacun leur ligne (qui, quel produit)."""
+        directeur = self.users['Directeur']
+        self._definir(self.p710)
+        self._definir(self.p715)  # remplace p710
+        self._definir(self.p715)  # déjà le défaut : aucune ligne de plus
+        self._retirer(self.p715)
+        lignes_715, lignes_710 = self._journal(self.p715), self._journal(self.p710)
+        self.assertEqual([ligne.detail for ligne in lignes_715], [
+            f'Panneau par défaut : « {self.p715.nom} » (remplace « {self.p710.nom} »).',
+            f"N'est plus le panneau par défaut : « {self.p715.nom} » retiré (aucun panneau par défaut).",
+        ])
+        self.assertEqual([ligne.detail for ligne in lignes_710], [
+            f'Panneau par défaut : « {self.p710.nom} ».',
+            f"N'est plus le panneau par défaut : remplacé par « {self.p715.nom} ».",
+        ])
+        for ligne in lignes_715 + lignes_710:
+            self.assertEqual(ligne.user_id, directeur.pk)
+            self.assertEqual(ligne.company_id, self.company.pk)
+        self.assertEqual(lignes_715[0].changes, [{'field': 'panneau_par_defaut', 'old': False, 'new': True}])
+
     def test_selecteur_archive_apres_designation_rend_none(self):
         self._definir(self.p715)
         Produit.objects.filter(pk=self.p715.pk).update(is_archived=True)
