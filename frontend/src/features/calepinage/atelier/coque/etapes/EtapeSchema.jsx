@@ -9,7 +9,7 @@ import { OPTIONS_TELECHARGEMENT, erreurDeTelechargement } from '../../../documen
 import { phraseRaccordement } from '../../../electrique/resumeRaccordement'
 import { MotifsSchema, PlancheSchema, SchemaEnBlocs } from '../../../SchemaUnifilairePanel'
 import {
-  lignesCartouche, lignesLegende, motifDuRefusDxf, nomFichierSchema, phraseCoteReseau, planSchemaEnBlocs,
+  lignesCartouche, lignesLegende, motifDuRefusDxf, nomFichierSchema, phraseCoteReseau, planDepuisDocument, planSchemaEnBlocs,
 } from '../../../SchemaUnifilairePanel.helpers'
 import { PARAM_ONGLET } from '../../onglets'
 import { PARAM_CHAMP } from '../../ouvrirChamp'
@@ -31,7 +31,7 @@ import { BoutonOr, Icone } from '../primitives'
    des libellés et les exports PNG/SVG restent dans l'onglet expert (`?mode=expert&onglet=schema`).
    ========================================================================== */
 
-const TRAITS = { plein: 'csch-trait', chaine: 'csch-trait', pointille: 'csch-trait csch-trait-pointille' }
+const TRAITS = { plein: 'csch-trait', chaine: 'csch-trait', batterie: 'csch-trait csch-trait-batterie', pointille: 'csch-trait csch-trait-pointille' }
 
 function Legende({ lignes }) {
   return (
@@ -132,7 +132,11 @@ export default function EtapeSchema({ calepinageId: id }) {
   const balisage = renderTrustedSvg(schema?.svg)
   // F3 — le schéma EN BLOCS (maquette) à partir des données servies ; le SVG détaillé du serveur
   // reste consultable (« Schéma détaillé ») et c'est lui que livrent PDF et DXF.
-  const plan = balisage ? planSchemaEnBlocs(schema, resultat) : null
+  // LOT 6 — le document structuré `schema_electrique` (chaînes, batterie, côté réseau) quand le serveur le
+  // sert ; sinon (serveur plus ancien) le plan composé des deux réponses, comme avant.
+  const doc = schema?.schema_electrique ?? null
+  const plan = planDepuisDocument(doc) ?? (balisage ? planSchemaEnBlocs(schema, resultat) : null)
+  const motifCoteReseau = doc?.cote_reseau?.etat === 'a_calculer' ? doc.cote_reseau.motif : null
   const enBlocs = Boolean(plan) && !detaille
   const legende = enBlocs ? plan.legende : (balisage ? lignesLegende(schema.svg) : [])
   const cartouche = lignesCartouche(detail)
@@ -148,7 +152,7 @@ export default function EtapeSchema({ calepinageId: id }) {
     <div className="csch-ecran" data-testid="csch-ecran">
       <PlancheSchema balisage={balisage} note={balisage ? phraseRaccordement(resultat) : null}
         dessin={enBlocs ? <SchemaEnBlocs plan={plan} onOuvrir={ouvrirOnglet}
-          coteReseau={{ texte: phraseCoteReseau(resultat), onOuvrir: resultat?.simule === true ? null : () => ouvrirOnglet('production') }} /> : null}
+          coteReseau={{ texte: motifCoteReseau ?? phraseCoteReseau(resultat), onOuvrir: resultat?.simule === true ? null : () => ouvrirOnglet('production') }} /> : null}
         actions={(
           <>
             {plan && (

@@ -224,4 +224,32 @@ describe('EtapeSchema — sous-écran « Schéma électrique » (ACAL1301)', () 
     fireEvent.click(screen.getByRole('button', { name: 'Raccordement' }))
     expect(new URLSearchParams(screen.getByTestId('temoin-url').textContent).get('onglet')).toBe('verdict-electrique')
   })
+
+  // LOT 6 — le serveur sert le document `schema_electrique` (7e clé) : le dessin le lit, batterie comprise.
+  it('document schema_electrique servi : quatre chaînes en quatre couleurs, la batterie et sa ligne de légende', async () => {
+    servir()
+    const options = exempleContrat('ventes', 'schema_electrique').schema_electrique.options
+    calepinageApi.calepinages.schemaUnifilaire.mockResolvedValue({ data: { ...sld(), schema_electrique: structuredClone(options.avec_batterie) } })
+    const { panneau } = rendre()
+    const blocs = await screen.findByTestId('csch-blocs')
+    for (const texte of ['Chaîne 4 · 12 panneaux', 'Batterie', 'Dyness BX51100', '3 unités', '15,36 kWh au total', '51,2 V', 'Deye SUN-20K-SG05LP3']) {
+      expect(blocs).toHaveTextContent(texte)
+    }
+    const lignes = [...within(panneau).getByTestId('cal-schema-legende').querySelectorAll('li')].map((li) => li.textContent)
+    expect(lignes.slice(0, 4)).toEqual(['Chaîne 1 · entrée 1', 'Chaîne 2 · entrée 1', 'Chaîne 3 · entrée 2', 'Chaîne 4 · entrée 2'])
+    expect(lignes).toContain('Liaison batterie')
+    // Clic sur la batterie : l'onglet Matériel électrique (où elle se règle) s'ouvre.
+    fireEvent.click(screen.getByTestId('csch-bloc-batterie'))
+    expect(new URLSearchParams(screen.getByTestId('temoin-url').textContent).get('onglet')).toBe('materiel-electrique')
+  })
+
+  it('document sans batterie : aucune carte batterie', async () => {
+    servir()
+    const options = exempleContrat('ventes', 'schema_electrique').schema_electrique.options
+    calepinageApi.calepinages.schemaUnifilaire.mockResolvedValue({ data: { ...sld(), schema_electrique: structuredClone(options.sans_batterie) } })
+    rendre()
+    const blocs = await screen.findByTestId('csch-blocs')
+    await waitFor(() => expect(blocs).toHaveTextContent('Chaîne 2 · 17 panneaux'))
+    expect(screen.queryByTestId('csch-bloc-batterie')).toBeNull()
+  })
 })
