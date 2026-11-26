@@ -4,24 +4,32 @@
    hooks — et que chaque geste part au VRAI contrôle ; les replis honnêtes (sans facture, sans avis d'ombrage). */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, renderHook, screen, cleanup, within, fireEvent, waitFor, act } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../../../../../api/calepinageApi', () => ({
   default: { calepinages: {
     designContext: vi.fn(), cibleFactures: vi.fn(), modulesDisponibles: vi.fn(), entreeElectrique: vi.fn(), resultat: vi.fn(),
+    explications: vi.fn(), // ACAL1728 — le registre des « ? »
   } },
 }))
 
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
 import { choisirPaletteAcces } from '@rooflib/shadingEngine'
 import calepinageApi from '../../../../../api/calepinageApi'
-import { exempleContrat, reponseContrat } from '../../../../../test/fixtures/contractSamples'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { exempleContrat, fichierContrat, reponseContrat } from '../../../../../test/fixtures/contractSamples'
 import { ContexteCoque } from '../contexteCoque'
 import { sousTitrePose } from '../projet'
 import EtapePanneaux from './EtapePanneaux'
 import { usePoseVivante } from './panneaux/constructeur'
 import { jourMois, ligneModule } from './panneaux/formats'
 import { lireServi, oublierLecturesServies } from './panneaux/lectures'
+
+// ACAL1728 — le registre SERVI des « ? » (`data/explications.json`, lu comme `explications.garde.test.js`).
+const REGISTRE = JSON.parse(readFileSync(
+  join(fichierContrat('calepinage', 'x'), '..', '..', 'data', 'explications.json'), 'utf8')).entrees
 
 const CATALOGUE = [
   { module: { id: 'produit-1', libelle: 'Jinko Tiger Neo 580 Wc', pmaxWc: 580, longueurMm: 2278, largeurMm: 1134 },
@@ -95,6 +103,7 @@ function servir({
   calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({ data: { modules: CATALOGUE } })
   calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: { materiel } })
   calepinageApi.calepinages.resultat.mockResolvedValue({ data: resultat })
+  calepinageApi.calepinages.explications.mockResolvedValue({ data: { entrees: REGISTRE } })
 }
 
 beforeEach(() => servir())
@@ -616,6 +625,29 @@ describe('étape Panneaux — panneau de droite', () => {
     await waitFor(() => expect(screen.queryByTestId('cal-panneaux-ombre')).toBeNull())
     expect(retirer).toHaveBeenCalledTimes(1)
   })
+
+  // ACAL1728 (reprise d'ACAL869) — l'étape guidée n'offrait ni l'alignement des rangées ni Annuler / Rétablir dans son panneau.
+  it('ACAL1728 — « Personnaliser la disposition » : alignement des rangées, Annuler et Rétablir renvoyés aux vrais contrôles', () => {
+    const { racine, espion } = monterConstructeur()
+    racine.insertAdjacentHTML('beforeend', `
+      <button id="rp9-layout-undo">u</button><button id="rp9-layout-redo" disabled>r</button>
+      <select id="rp9-alignement-select"><option value="gauche">Gauche (pavage d’origine)</option>
+        <option value="centre">Centre</option><option value="droite">Droite</option>
+        <option value="justifie">Justifié (jeux égaux)</option></select>`)
+    const annuler = espion('#rp9-layout-undo')
+    const aligne = espion('#rp9-alignement-select', 'change')
+    rendre()
+    const bloc = screen.getByTestId('cal-panneaux-disposition')
+    expect(within(bloc).getByText('Personnaliser la disposition')).toBeInTheDocument()
+    const rangees = within(bloc).getByRole('group', { name: 'Alignement des rangées' })
+    expect(within(rangees).getAllByRole('button').map((b) => b.textContent)).toEqual(['Gauche', 'Centre', 'Droite', 'Justifié'])
+    fireEvent.click(within(rangees).getByRole('button', { name: 'Centre' }))
+    expect(document.getElementById('rp9-alignement-select').value).toBe('centre')
+    expect(aligne).toHaveBeenCalledTimes(1)
+    fireEvent.click(within(bloc).getByRole('button', { name: 'Annuler' }))
+    expect(annuler).toHaveBeenCalledTimes(1)
+    expect(within(bloc).getByRole('button', { name: 'Rétablir' })).toBeDisabled() // le vrai contrôle est désactivé
+  })
 })
 
 describe('étape Panneaux — sur la carte', () => {
@@ -659,6 +691,26 @@ describe('étape Panneaux — sur la carte', () => {
       expect(puce).toHaveTextContent('≈ 82 %')
     })
   }
+
+  /* ACAL1728 (reprise d'ACAL876) — aucun « ? » sur la barre de chiffres de l'étape guidée : chacun a le sien (phrase du
+     registre servi), qui s'ouvre à Entrée comme à Espace. */
+  it('ACAL1728 — un « ? » par chiffre de la barre, ouvert à Entrée et à Espace avec la phrase servie', async () => {
+    const user = userEvent.setup()
+    monterConstructeur()
+    rendre()
+    const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+    const aides = () => within(puce).queryAllByRole('button', { name: 'Pourquoi ce chiffre ?' })
+    await waitFor(() => expect(aides().map((b) => b.dataset.grandeur))
+      .toEqual(['toit.reco_panneaux', 'toit.reco_puissance', 'toit.reco_production', 'toit.reco_couverture']))
+    const phrase = (cle) => REGISTRE.find((e) => e.cle === cle).phrase
+    aides()[3].focus()
+    await user.keyboard('{Enter}')
+    expect(await screen.findByText(phrase('toit.reco_couverture'))).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    aides()[0].focus()
+    await user.keyboard(' ')
+    expect(await screen.findByText(phrase('toit.reco_panneaux'))).toBeInTheDocument()
+  })
 
   it('puce : les quatre chiffres lus ; un chiffre absent est omis', () => {
     monterConstructeur()
