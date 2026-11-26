@@ -84,6 +84,19 @@ describe('ComparerModules (ACAL600)', () => {
     expect(screen.getByTestId('cal-comparer-modules-valider')).toBeEnabled()
   })
 
+  it('D-ACAL-71 : « En stock » et les cotes seulement quand le stock est servi ; rien d’inventé sinon', async () => {
+    mocks.modulesDisponibles.mockResolvedValue({ data: {
+      ...TROIS,
+      modules: TROIS.modules.map((e, i) => ({ ...e, en_stock: i === 0 ? true : null })), // 1 servi en stock, les autres non servis
+    } })
+    rendre()
+    fireEvent.click(await screen.findByTestId('cal-comparer-modules'))
+    await screen.findByTestId(`cal-comparer-module-${COMPLET.id}`)
+    expect(screen.getAllByText(/^En stock · 580 Wc/)).toHaveLength(1)
+    expect(screen.getAllByText(/^580 Wc/)).toHaveLength(2) // non servi : les cotes seules, jamais « 0 » ni « rupture »
+    expect(screen.queryByText(/rupture/i)).toBeNull()
+  })
+
   it('refus du serveur affiché sous le module', async () => {
     const libelle = 'Module B 430 Wc'
     mocks.variantesParModule.mockRejectedValue({

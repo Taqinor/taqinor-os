@@ -150,7 +150,7 @@ export default function MaterielElectrique({ calepinageId, lectureSeule = false,
                       >
                         {incomplet
                           ? `${c.libelle} — fiche incomplète : ${(c.champs_manquants ?? []).map((k) => libelleChampManquant(k, role.role)).join(', ')}`
-                          : `${c.libelle}${c.marque ? ` (${c.marque})` : ''}${c.favori ? ' ★' : ''}`}
+                          : `${c.libelle}${c.marque ? ` (${c.marque})` : ''}${c.favori ? ' ★' : ''}${c.en_stock ? ' · En stock' : ''}`}
                       </option>
                     )
                   })}
