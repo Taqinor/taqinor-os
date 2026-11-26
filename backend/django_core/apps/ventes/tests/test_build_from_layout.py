@@ -533,6 +533,7 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
             return decision_batterie_designee(**options)
 
         self.assertEqual(decision()['impose'], {'produit_id': 4, 'nombre': 2, 'designee': True})
+        self.assertIsNotNone(decision(plafond=2)['impose'])  # au plafond : composable
         self.assertEqual(decision(scenario='les_deux')['option'], 'avec')
         for attendu, extra in (('n’est pas mise au devis', {'scenario': 'sans'}),
                                ('son nom ne dit pas qu’il s’agit d’une batterie', {'nom': bos}),
@@ -540,7 +541,8 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
                                ('aucun onduleur hybride ni autonome', {'hybride_nom': None}),
                                ('aucun nombre de packs', {'packs': None}),
                                ('n’est pas un entier', {'packs': None, 'packs_illisible': True}),
-                               ('pas de prix de vente', {'etat': 'sans_prix'})):
+                               ('pas de prix de vente', {'etat': 'sans_prix'}),
+                               ('dépasse les 4 modules par banc', {'packs': 6, 'plafond': 4})):
             with self.subTest(attendu=attendu):
                 rendu = decision(**extra)
                 self.assertIsNone(rendu['impose'])
@@ -672,7 +674,10 @@ class OnduleurDesigneDuCalepinage(TestCase):
             with self.subTest(**extra):
                 _o, journal = self._devis(batterie_designee=batterie, **extra)
                 self.assertEqual(self._batteries(), [('Batterie Lithium 7 kWh', 2, variante)])
-                self.assertIsNone(journal['batterie_designee']['message'])
+                # Point 4 — vendue aux 2 packs désignés ; la règle automatique (5 kWh visés) en placerait 1.
+                self.assertEqual(journal['batterie_designee']['message'],
+                                 'La batterie désignée « Batterie Lithium 7 kWh » est vendue à 2 pack(s), le nombre '
+                                 'saisi à l’étape Électrique ; la règle automatique du devis en placerait 1.')
 
     def test_b_batterie_designee_sur_pose_sans_et_sans_hybride_n_est_pas_mise_et_le_dit(self):
         batterie = {'produit_id': self._id('Batterie Dyness 5 kWh'), 'packs': 1, 'packs_illisible': False}

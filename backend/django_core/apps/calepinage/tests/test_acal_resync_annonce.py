@@ -750,7 +750,11 @@ class ResyncAnnonceTest(BaseApiCalepinage):
                        batterie={'produit': batterie.pk, 'packs': 2})
         apercu, genere, onduleurs = self._apercu_puis_generation()
         self.assertEqual(onduleurs, {None: ('Onduleur hybride Deye 5kW Monophasé', 'onduleur_hybride')})
-        self.assertNotIn('batterie.produit', [e['champ'] for e in apercu['ecarts']])  # chiffrée : rien à dire
+        # Chiffrée ; point 4 — seule phrase : les 2 packs désignés face à la règle automatique (1), la même
+        # à l'aperçu et à la génération.
+        phrase = next(e['message'] for e in apercu['ecarts'] if e['champ'] == 'batterie.produit')
+        self.assertIn('est vendue à 2 pack(s)', phrase)
+        self.assertIn(phrase, genere['avertissements'])
         _data, _ond, batteries = self._resynchroniser()
         self.assertEqual([(b.designation, int(b.quantite)) for b in batteries], [('Batterie Lithium 7 kWh', 2)])
         self._designer('Onduleur hybride Deye 5kW Monophasé', nombre_onduleurs=1,

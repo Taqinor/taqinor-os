@@ -421,11 +421,17 @@ MOTIFS_REPLI_BATTERIE = {
     'incompatible': 'elle ne convient pas à l’onduleur « %s » (plage batterie de sa fiche)',
     'packs_illisible': 'le nombre de packs saisi à l’étape Électrique n’est pas un entier d’au moins 1',
     'packs_inconnu': 'aucun nombre de packs n’est saisi à l’étape Électrique',
+    'packs_plafond': ('le nombre de packs saisi (%d) dépasse les %d modules par banc de sa fiche : la '
+                      'composition ne pose jamais un tel banc'),
 }
+#: Relecture round 4, point 4 — le nombre DÉSIGNÉ est vendu (D-ACAL-164) ; quand la règle automatique
+#: poserait un autre nombre de modules de cette même batterie, les deux nombres sont dits.
+MESSAGE_PACKS_ECART = ('La batterie désignée « %s » est vendue à %d pack(s), le nombre saisi à l’étape Électrique ; '
+                       'la règle automatique du devis en placerait %d.')
 
 
 def decision_batterie_designee(*, produit_id, nom, etat, nom_dit_batterie, scenario, hybride_nom, compatible,
-                               packs=None, packs_illisible=False):
+                               packs=None, packs_illisible=False, plafond=None):
     """D-ACAL-164 — que fait le devis de la batterie DÉSIGNÉE ? Fonction PURE, sœur de
     :func:`decision_onduleur_designe`. ``scenario`` : celui que le devis COMPOSE (après la décision
     de l'onduleur, D-ACAL-159 compris) ; ``hybride_nom`` : l'onduleur qui la porterait (désigné, sinon
@@ -452,8 +458,11 @@ def decision_batterie_designee(*, produit_id, nom, etat, nom_dit_batterie, scena
             motif = 'packs_illisible'
         elif not _nombre_valide(packs):
             motif = 'packs_inconnu'
+        elif plafond is not None and packs > plafond:  # point 4 — ``catalogue._max_modules_par_banc``
+            motif = 'packs_plafond'
     if motif is not None:
-        texte = MOTIFS_REPLI_BATTERIE[motif] % ((hybride_nom,) if motif == 'incompatible' else ())
+        texte = MOTIFS_REPLI_BATTERIE[motif] % ((hybride_nom,) if motif == 'incompatible'
+                                                else (packs, plafond) if motif == 'packs_plafond' else ())
         return {'impose': None, 'option': None, 'motif': motif, 'nom': nom, 'raison': texte,
                 'message': MESSAGE_BATTERIE_NON_CHIFFREE % (nom, texte)}
     return {'impose': {'produit_id': int(produit_id), 'nombre': int(packs), 'designee': True}, 'nom': nom,
@@ -468,7 +477,7 @@ def batterie_designee_pour_le_devis(company, designe, *, scenario, hybride):
     from apps.stock.selectors import get_produit_scoped
 
     from apps.ventes.domain.catalogue import (
-        _batterie_compatible, _is_battery, _plage_batterie_de_l_onduleur, est_article_pompage)
+        _batterie_compatible, _is_battery, _max_modules_par_banc, _plage_batterie_de_l_onduleur, est_article_pompage)
     from apps.ventes.utils.options import texte_classement
 
     if not designe:
@@ -490,7 +499,8 @@ def batterie_designee_pour_le_devis(company, designe, *, scenario, hybride):
     return decision_batterie_designee(
         produit_id=cle, nom=nom, etat=etat, nom_dit_batterie=_is_battery(texte_classement(nom, nom)),
         scenario=scenario, hybride_nom=getattr(hybride, 'nom', None), compatible=bool(compatible),
-        packs=designe.get('packs'), packs_illisible=bool(designe.get('packs_illisible')))
+        packs=designe.get('packs'), packs_illisible=bool(designe.get('packs_illisible')),
+        plafond=_max_modules_par_banc(produit) if etat == 'tarife' else None)
 
 
 def _onduleur_de_stockage_compose(intention):
@@ -508,13 +518,41 @@ def _onduleur_de_stockage_compose(intention):
                  if role in ('onduleur_hybride', 'onduleur_offgrid')), None)
 
 
+def _banque_automatique(intention, produit):
+    """Point 4 — le nombre de modules que la RÈGLE AUTOMATIQUE poserait pour cette même batterie :
+    la vraie composition « avec », sans banque imposée, calibre épinglé sur celui de la batterie
+    (``batterie_module_kwh``, le pin BATHOMO de la composition). ``None`` sans calibre lisible ou
+    sans batterie composée. Lecture seule."""
+    from apps.ventes.domain.kwh_lecture import _parse_kwh
+    from apps.ventes.domain.pipeline import intention_de_composition
+
+    calibre = _parse_kwh(getattr(produit, 'nom', '') or '')
+    if not calibre:
+        return None
+    cible = replace(intention.cible, batterie_imposee=None)
+    essai = intention_de_composition(replace(intention, scenario=COMPOSITION_AVEC, cible=cible), cible,
+                                     avertissements=[], devis=None)
+    lignes = composer(replace(essai, batterie_module_kwh=calibre))
+    roles = list(getattr(lignes, 'roles', ()) or ())
+    return sum(int(ligne.quantite) for role, ligne in zip(roles, lignes) if role == 'batterie') or None
+
+
 def _decider_la_batterie(intention, brute):
-    """La décision batterie de la création, jugée sur l'onduleur que CE devis porterait."""
+    """La décision batterie de la création, jugée sur l'onduleur que CE devis porterait ; point 4 —
+    les packs désignés sont vendus, et l'écart à la règle automatique est dit."""
+    from apps.ventes.domain.etape_composer import _fiche_tarifee
+
     if not brute:
         return None
     scenario = (intention.scenario or '').strip().lower()
     hybride = None if scenario == COMPOSITION_SANS else _onduleur_de_stockage_compose(intention)
-    return batterie_designee_pour_le_devis(intention.company, brute, scenario=scenario, hybride=hybride)
+    decision = batterie_designee_pour_le_devis(intention.company, brute, scenario=scenario, hybride=hybride)
+    if decision is not None and decision['impose']:
+        auto = _banque_automatique(intention, _fiche_tarifee(intention.company, decision['impose']['produit_id']))
+        if auto is not None and auto != decision['impose']['nombre']:
+            decision = dict(decision, message=MESSAGE_PACKS_ECART % (decision['nom'], decision['impose']['nombre'],
+                                                                     auto))
+    return decision
 
 
 def _avec_la_batterie(intention, batterie):
