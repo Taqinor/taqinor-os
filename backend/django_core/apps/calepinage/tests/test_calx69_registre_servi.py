@@ -184,11 +184,11 @@ class ValeursNonServiesTest(SimpleTestCase):
     """ACAL770 — chaque valeur déclarée « non servie » l'est VRAIMENT : le vrai
     comportement est exercé, jamais le seul texte du motif."""
 
-    def test_le_registre_sert_les_deux_declarations(self):
+    def test_le_registre_sert_ses_declarations(self):
         lignes = {ligne['cle']: ligne
                   for ligne in registre_des_reglages()[SECTION_SIMULATION]}
-        self.assertEqual(list(lignes['mode_meteo']['valeurs_non_servies']),
-                         ['tmy'])
+        # ACAL1715 — l'année type est servie (transposée) : plus « non servie ».
+        self.assertNotIn('valeurs_non_servies', lignes['mode_meteo'])
         self.assertEqual(list(lignes['modele_iam']['valeurs_non_servies']),
                          ['martin_ruiz'])
         self.assertTrue(all(motif for ligne in lignes.values()
@@ -205,18 +205,27 @@ class ValeursNonServiesTest(SimpleTestCase):
             self.assertIn(valeur,
                           type_de_cle(SECTION_SIMULATION, cle)['valeurs'])
 
-    def test_tmy_sans_fichier_est_refuse_par_la_simulation(self):
+    def test_tmy_sans_fichier_exige_la_transposition_saisie(self):
+        # ACAL1715 — avant : refus sur « mode_meteo » (année type non servie
+        # sans fichier). Désormais l'année type PVGIS est transposée : sans
+        # modèle ni albédo, le refus nomme CES réglages ; avec eux, simulable.
         from apps.calepinage.services.simulation import (
             SimulationRefusee, verifier_simulable)
 
-        contexte = {
-            'site': {'lat': 33.5, 'lon': -7.6},
-            'reglages_simulation': {'mode_meteo': {
-                'valeur': 'tmy', 'source': 'societe'}}}
+        reglages = {'mode_meteo': {'valeur': 'tmy', 'source': 'societe'}}
+        contexte = {'site': {'lat': 33.5, 'lon': -7.6},
+                    'reglages_simulation': reglages}
         with self.assertRaises(SimulationRefusee) as refus:
             verifier_simulable(contexte, {'plans_equipes': 1})
         self.assertEqual(refus.exception.champ,
-                         'parametres.simulation.mode_meteo')
+                         'parametres.simulation.modele_transposition')
+        self.assertEqual([ligne['champ'] for ligne in refus.exception.manquants],
+                         ['parametres.simulation.modele_transposition',
+                          'parametres.simulation.albedo_mensuel'])
+        reglages['modele_transposition'] = {'valeur': 'perez', 'source': 'societe'}
+        reglages['albedo_mensuel'] = {'valeur': 0.2, 'source': 'societe'}
+        self.assertEqual(verifier_simulable(contexte, {'plans_equipes': 1})['mode'],
+                         'tmy')
 
     def test_martin_ruiz_retombe_sur_fresnel(self):
         from apps.calepinage.services.etapes import iam
@@ -233,5 +242,4 @@ class ValeursNonServiesTest(SimpleTestCase):
         declarees = {(cle, valeur)
                      for cles in VALEURS_NON_SERVIES.values()
                      for cle, valeurs in cles.items() for valeur in valeurs}
-        self.assertEqual(declarees, {('mode_meteo', 'tmy'),
-                                     ('modele_iam', 'martin_ruiz')})
+        self.assertEqual(declarees, {('modele_iam', 'martin_ruiz')})
