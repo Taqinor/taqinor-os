@@ -13,7 +13,8 @@
 //   4. le CONTRAT lecture seule du boot (aucun écouteur de geste d'édition,
 //      aucun module d'édition importé) — garde de source, même convention que
 //      mobilePerfWJ18.test.ts.
-// Aucun DOM, aucun Three.js, aucun MapLibre : modules purs seulement.
+// Sections 1-6 : modules purs. Section 7 : jsdom (la barre au soleil). Sections 8-9 (lot 8) : le VRAI Three.js et
+// la vraie scène `scene3d.ts`, sur une carte MapLibre et un WebGLRenderer FACTICES (déclarés plus bas).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -35,6 +36,7 @@ import { attacherSoleil, bornesJournee, couleurParPanneau } from '../src/scripts
 import type { ViewerFullHandle } from '../src/scripts/roofPro11/viewerFullBoot';
 import { ecrireTeintesPanneaux, GAIN_TEINTE_PANNEAU } from '../src/scripts/roofPro11/scene3d';
 import { TEINTES_PRESENTATION } from '../src/scripts/roofPro11/jeuPresentation';
+import { DELAIS_RELANCE_PHOTO_MS, ESSAIS_PHOTO_MAX } from '../src/scripts/roofPro11/relancePhoto';
 
 // Section 8 — une carte MapLibre et un WebGLRenderer FACTICES (jsdom n'a ni GPU ni MapLibre) ; tout le
 // reste (Three.js, scene3d, le contexte du boot) est le vrai code. Les sections 1-7 n'en dépendent pas.
@@ -880,14 +882,58 @@ describe('visionneuse pleine — premier rendu réel (scene3d + contexte du boot
     expect(document.body.textContent ?? '').not.toMatch(/MAD|DH|prix|€/i);
   });
 
-  it('la photo satellite du toit est demandée UNE fois, jamais à chaque pas de soleil', async () => {
-    const sources: string[] = [];
+  /** Démarre avec un token Mapbox et compte les demandes de la photo du toit ; `images` = les <img> demandées. */
+  async function photoDuToit() {
+    const images: HTMLImageElement[] = [];
     const desc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src')!;
-    vi.spyOn(HTMLImageElement.prototype, 'src', 'set').mockImplementation(function (this: HTMLImageElement, v: string) { sources.push(v); desc.set!.call(this, v); });
-    const { poignee, carte } = await demarrer({ mapboxToken: 'pk.test' });
-    carte.fire('load');
-    for (let h = 7; h < 17; h++) poignee.poserInstant(INSTANT_REEL.jour, h);
-    expect(sources.filter((s) => s.includes('api.mapbox.com'))).toHaveLength(1);
+    vi.spyOn(HTMLImageElement.prototype, 'src', 'set').mockImplementation(function (this: HTMLImageElement, v: string) {
+      if (v.includes('api.mapbox.com')) images.push(this);
+      desc.set!.call(this, v);
+    });
+    const d = await demarrer({ mapboxToken: 'pk.test' });
+    d.carte.fire('load');
+    const dixPas = () => { for (let h = 7; h < 17; h++) d.poignee.poserInstant(INSTANT_REEL.jour, h); };
+    return { ...d, images, dixPas };
+  }
+
+  it('photo du toit réussie : UNE demande sur dix pas de soleil', async () => {
+    const { images, dixPas } = await photoDuToit();
+    images[0].onload?.(new Event('load'));
+    dixPas();
+    expect(images).toHaveLength(1);
+  });
+
+  it('photo refusée une fois (429) : redemandée plus tard, pas à chaque pas ; réussie ensuite, plus rien', async () => {
+    vi.useFakeTimers();
+    try {
+      const { images, dixPas } = await photoDuToit();
+      images[0].onerror?.(new Event('error'));
+      dixPas();
+      expect(images).toHaveLength(1); // aucun pas ne relance
+      vi.advanceTimersByTime(DELAIS_RELANCE_PHOTO_MS[0]);
+      expect(images).toHaveLength(2); // un second essai, après le délai
+      images[1].onload?.(new Event('load'));
+      dixPas();
+      vi.advanceTimersByTime(60_000);
+      expect(images).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('photo toujours refusée : essais plafonnés, puis plus jamais', async () => {
+    vi.useFakeTimers();
+    try {
+      const { images, dixPas } = await photoDuToit();
+      for (let i = 0; i < 10; i++) {
+        images.at(-1)!.onerror?.(new Event('error'));
+        dixPas();
+        vi.advanceTimersByTime(60_000);
+      }
+      expect(images).toHaveLength(ESSAIS_PHOTO_MAX);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

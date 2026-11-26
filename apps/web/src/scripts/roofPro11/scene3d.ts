@@ -83,6 +83,7 @@ import { construireMaillagesPose, enMotsDOmbriere } from './poseSurfaces'; // CA
 import { teinterAllees } from './teinteAllees'; // CALX403
 import { creerCanalTeinte, type CouleurDe } from './canalTeinte'; // ACAL1621
 import { appliquerCiel, cielSuitLeSoleil } from './ciel'; // ACAL431 ; lot 8
+import { creerRelancePhoto } from './relancePhoto'; // lot 8
 import { porteeAppliquee, poserTrianglesDeRangee } from './piedsChassis'; // ACAL579 — boucle des tronçons sortie
 import { affectationGroupKey, affectationGroupLabel, identifiantsModulesParCellule, libelleModuleAffecte } from './libellesAffectation'; // ACAL729
 
@@ -1353,6 +1354,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   let roofTex: THREE.Texture | null = null;
   let roofTexKey = '';
   let deckMaterial: THREE.MeshStandardMaterial | null = null;
+  const relancePhoto = creerRelancePhoto(); // lot 8 — une photo refusée est redemandée quelques fois, jamais à chaque rendu
   // W107 — lift de faîtière commune par zone (id → mètres), recalculé à chaque renderScene
   // dans la frame ENU de la zone active. Vide / 0 → rendu inchangé (pans isolés, toit plat).
   let ridgeLifts = new Map<string, number>();
@@ -1720,9 +1722,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         map.triggerRepaint();
       }
     };
-    img.onerror = () => {
-      /* imagerie indisponible → on garde le deck gris, sans erreur visible */
-    };
+    img.onerror = () => relancePhoto.echec(key, () => { if (roofTexKey === key && renderer) img.src = url; }); // indisponible : deck gris ; quelques essais espacés et plafonnés (relancePhoto.ts)
     img.src = url;
   }
 
