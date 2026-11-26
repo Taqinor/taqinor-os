@@ -471,6 +471,19 @@ class ControlesElectriquesTest(SimpleTestCase):
         self.assertEqual(self._controles(verdicts=[dict(ok, conforme=None)])['courant_entree']['etat'], 'info')
         self.assertEqual(self._controles()['courant_entree']['valeur_texte'], 'Non évalué : chaînes non calculées')
 
+    def test_micro_onduleurs_seuls_le_detail_servi_pas_une_fiche_incomplete(self):
+        """Relecture — conception micro-onduleurs seuls : les verdicts de chaîne sont servis ``conforme: None`` avec
+        ``detail = MOTIF_MICRO_SEUL`` ; la fiche n'est pas incomplète, aucun geste « Compléter la fiche »."""
+        from apps.calepinage.services.chaines import MOTIF_MICRO_SEUL
+
+        verdicts = [{'code': code, 'conforme': None, 'bloquant': False, 'source': None, 'detail': MOTIF_MICRO_SEUL}
+                    for code in ('vmp_hot_over_mppt_min', 'courant_par_entree_mppt')]
+        controles = self._controles(verdicts=verdicts)
+        for code in ('tension_chaud', 'courant_entree'):
+            with self.subTest(code=code):
+                self.assertEqual((controles[code]['etat'], controles[code]['valeur_texte'], controles[code]['geste']),
+                                 ('info', MOTIF_MICRO_SEUL, ''))
+
     def test_tension_chaud_borne_absente_non_calcule_jamais_vert(self):
         sans_borne = {'code': 'vmp_hot_over_mppt_min', 'conforme': None,
                       'bloquant': False, 'source': None, 'detail': 'borne non publiée',

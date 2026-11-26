@@ -353,6 +353,19 @@ def _phrase_du_verdict(ligne, repli):
     return raison[:1].upper() + raison[1:]
 
 
+def _non_calcule(code, libelle, ligne, motif_fiche):
+    """Le contrôle d'un verdict servi SANS jugement (``conforme`` None) : en régime micro-onduleurs le serveur sert
+    ``detail = MOTIF_MICRO_SEUL`` (aucun onduleur de chaîne) — la fiche n'est PAS incomplète, on dit ce détail servi,
+    sans geste (comme ``_tension_froid``) ; sinon la borne manque à la fiche de l'onduleur : ``motif_fiche`` + geste.
+    UN seul helper pour la chaleur et le courant."""
+    from .chaines import MOTIF_MICRO_SEUL
+
+    if ligne.get('detail') == MOTIF_MICRO_SEUL:
+        return _elec(code, libelle, 'info', MOTIF_MICRO_SEUL)
+    return _elec(code, libelle, 'info', motif_fiche,
+                 geste='Compléter la fiche de l’onduleur', cible=CIBLE_MATERIEL)
+
+
 def _courant_entree(verdicts):
     """R5C-N3 — le courant des panneaux face à l'entrée de l'onduleur (verdict servi
     ``courant_par_entree_mppt``) : jusqu'ici absent des contrôles, « Contrôles · 7 bons » se taisait alors que
@@ -364,9 +377,8 @@ def _courant_entree(verdicts):
     if ligne is None:
         return _elec('courant_entree', libelle, 'info', 'Non évalué : chaînes non calculées')
     if ligne.get('conforme') is None:
-        return _elec('courant_entree', libelle, 'info',
-                     'Non calculé : courant admissible manquant sur la fiche de l’onduleur',
-                     geste='Compléter la fiche de l’onduleur', cible=CIBLE_MATERIEL)
+        return _non_calcule('courant_entree', libelle, ligne,
+                            'Non calculé : courant admissible manquant sur la fiche de l’onduleur')
     if ligne.get('conforme'):
         etat = 'ok'
     else:
@@ -429,10 +441,9 @@ def _tension_chaud(verdicts):
         return _elec('tension_chaud', libelle, 'info',
                      'Non évaluée : chaînes non calculées')
     if ligne.get('conforme') is None:
-        return _elec('tension_chaud', libelle, 'info',
-                     'Non calculé : bas de la plage MPPT manquant sur la fiche '
-                     'de l’onduleur', geste='Compléter la fiche de l’onduleur',
-                     cible=CIBLE_MATERIEL)
+        return _non_calcule('tension_chaud', libelle, ligne,
+                            'Non calculé : bas de la plage MPPT manquant sur la fiche '
+                            'de l’onduleur')
     if ligne.get('conforme'):
         etat = 'ok'
     else:
@@ -566,7 +577,7 @@ def _pose_jugee(calepinage):
 
 
 def controles_electriques(calepinage):
-    """ACAL858 — les huit contrôles électriques (T4-U4-012 : la chaleur), LUS. Ne lève pas.
+    """ACAL858 — les neuf contrôles électriques (T4-U4-012 : la chaleur), LUS. Ne lève pas.
 
     Le verdict est celui de ``verdict_publiable`` (``_rapport_publication``
     en est le seul calcul : son matériel est gardé pour ACAL906)."""
