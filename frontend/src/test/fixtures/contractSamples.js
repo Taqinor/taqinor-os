@@ -56,6 +56,19 @@ export function documentContrat(app, nom) {
 }
 
 /**
+ * T4-X8-016 — le registre des droits tel que le golden COMMITTÉ le fige
+ * (`apps/roles/golden/registre_permissions.json`, vérifié contre
+ * `permissions_registre.py` par `apps/roles/tests_spl300_registre_golden.py`) :
+ * `PERMISSION_MODULE`, rôles système… Un test de droits du front lit CE fichier,
+ * jamais une liste de codes recopiée à la main.
+ */
+export function registrePermissions() {
+  const chemin = join(racineDepot(), 'backend', 'django_core', 'apps', 'roles',
+    'golden', 'registre_permissions.json')
+  return JSON.parse(readFileSync(chemin, 'utf8'))
+}
+
+/**
  * La charge utile d'exemple. `variante` sélectionne une clé alternative du
  * document (ex. `'exemple_vide'` pour l'état « utilisateur sans société »),
  * qui décrit un AUTRE ÉTAT DU SERVEUR — jamais une autre FORME.
