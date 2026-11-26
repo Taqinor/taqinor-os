@@ -282,9 +282,16 @@ export function bootViewerFull(
   let hasRenderedOnce = false;
   // Chien de garde : une carte qui ne charge JAMAIS (réseau muet, style
   // injoignable) ne doit pas laisser le visiteur devant un voile éternel.
+  // Lot 8 — seulement si la carte n'a fait AUCUN progrès (ni style ni source reçus) : une carte lente dont le style
+  // est arrivé (tuiles satellite sur un téléphone en 3G) continue de charger jusqu'à `load`, sans autre délai,
+  // comme avant — la visionneuse pleine et la barre au soleil arrivent alors en retard, jamais retirées.
+  let progres = false;
+  const marquerProgres = () => { progres = true; };
+  map.once('styledata', marquerProgres);
+  map.once('sourcedata', marquerProgres);
   let loadTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
     loadTimer = null;
-    if (!hasRenderedOnce) panneCarte('carte jamais chargée');
+    if (!hasRenderedOnce && !progres) panneCarte('carte jamais chargée');
   }, opts.loadTimeoutMs ?? 15_000);
   const clearLoadTimer = () => {
     if (loadTimer !== null) {

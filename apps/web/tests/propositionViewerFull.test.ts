@@ -1141,6 +1141,24 @@ describe('monterVisionneusePleine — barre au soleil branchée après le rendu,
     expect(onReady).not.toHaveBeenCalled();
   });
 
+  it('carte LENTE dont le style est arrivé : aucun repli au délai, la visionneuse pleine et la barre arrivent avec `load` (40 s)', async () => {
+    vi.useFakeTimers();
+    try {
+      const { barre, carte, replier, onReady } = await monter({ loadTimeoutMs: 15_000 });
+      carte.fire('styledata'); // le style est là ; les tuiles satellite traînent
+      await vi.advanceTimersByTimeAsync(40_000);
+      expect(replier).not.toHaveBeenCalled();
+      expect(carte.retiree).toBe(false);
+      carte.fire('load');
+      await vi.advanceTimersByTimeAsync(1);
+      expect(onReady).toHaveBeenCalledTimes(1);
+      expect(barre.hidden).toBe(false);
+      expect(replier).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('carte qui ne charge JAMAIS : au délai, repli (plus d’attente devant une boîte vide)', async () => {
     vi.useFakeTimers();
     try {
