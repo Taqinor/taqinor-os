@@ -278,3 +278,44 @@ class T4X4001PanneauxRetouchesALEcran(_Base):
         par['Structure acier']['quantite'] = '6'
         ecrire_lignes(devis, specs, company=self.company)
         self.assertEqual(self._quantites(devis)['Structure acier'], Decimal('6'))
+
+
+class T4X6008DeuxOptionsLaLigneAvecNEstPasReecrite(SimpleTestCase):
+    """T4-X6-008 — épicerie à deux options (22 panneaux « sans », 23 « avec »)
+    portant ``taille.nb_panneaux = 22`` : l'enregistrement ramenait en silence
+    la ligne « avec » (la plus grande, donc « dominante ») à 22. Le compte de
+    niveau devis décrit l'option SANS batterie (T4-X4-019) : seule elle peut
+    être réécrite, avec ses sœurs ; l'option « avec » garde les siennes."""
+
+    def _specs(self):
+        return [
+            {'designation': 'Panneau Canadian Solar 715W', 'quantite': '22', 'variante': 'sans'},
+            {'designation': 'Structure acier', 'quantite': '22', 'variante': 'sans'},
+            {'designation': 'Panneau Canadian Solar 715W', 'quantite': '23', 'variante': 'avec'},
+            {'designation': 'Structure acier', 'quantite': '23', 'variante': 'avec'},
+        ]
+
+    def _appliquer(self, specs, cible):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        def preseance(_devis, dominante, **_k):
+            return SimpleNamespace(quantite_ligne=cible)
+        with mock.patch('apps.ventes.domain.overrides.cible_dimensionnement_du_devis',
+                        return_value=cible), \
+                mock.patch('apps.ventes.domain.overrides.preseance_nb_panneaux', side_effect=preseance):
+            _appliquer_preseance_quantite(SimpleNamespace(regles_calcul=14, roof_layout=None), specs)
+        return [(s['variante'], s['designation'], s['quantite']) for s in specs]
+
+    def test_compte_egal_a_l_option_sans_rien_ne_bouge(self):
+        specs = self._specs()
+        avant = [dict(s) for s in specs]
+        self._appliquer(specs, 22)
+        self.assertEqual(specs, avant)
+
+    def test_compte_different_ne_reecrit_que_l_option_sans(self):
+        lu = self._appliquer(self._specs(), 20)
+        self.assertEqual(lu, [('sans', 'Panneau Canadian Solar 715W', '20'),
+                              ('sans', 'Structure acier', '20'),
+                              ('avec', 'Panneau Canadian Solar 715W', '23'),
+                              ('avec', 'Structure acier', '23')])

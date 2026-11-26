@@ -565,11 +565,18 @@ def _appliquer_preseance_quantite(devis, lignes_in, *, avertissements=None):
     try:
         if cible_dimensionnement_du_devis(devis) is None:
             return
+        # T4-X6-008 — sur un devis à DEUX options, ``taille.nb_panneaux`` décrit
+        # l'option SANS batterie (``overrides.option_decrite_par_taille``,
+        # T4-X4-019) : la ligne « avec » n'est jamais la dominante qu'elle
+        # réécrit (épicerie : 23 panneaux « avec » ramenés en silence aux 22
+        # de l'option sans batterie à l'enregistrement).
+        deux_options = _deux_options(lignes_in)
         vues = [_SpecCommeLigne(index, spec)
                 for index, spec in enumerate(lignes_in)
                 if isinstance(spec, dict)
                 and (spec.get('type_ligne') or 'produit') == 'produit'
-                and not spec.get('optionnelle')]
+                and not spec.get('optionnelle')
+                and not (deux_options and spec.get('variante') == 'avec')]
         dominante, quantite = quantite_ligne_panneau(
             devis, vues, avertissements=avertissements)
     except Exception:  # noqa: BLE001 — un arbitrage raté n'écrit rien (D-ENF22-BLE001)
@@ -580,8 +587,18 @@ def _appliquer_preseance_quantite(devis, lignes_in, *, avertissements=None):
         return
     if quantite != dominante.quantite:
         lignes_in[dominante.index]['quantite'] = str(quantite)
-        _reecrire_quantites_soeurs(lignes_in, quantite, _affleurants_au_niveau(
+        soeurs = [s for s in lignes_in if not (
+            deux_options and isinstance(s, dict) and s.get('variante') == 'avec')]
+        _reecrire_quantites_soeurs(soeurs, quantite, _affleurants_au_niveau(
             devis, getattr(devis, 'roof_layout', None)))
+
+
+def _deux_options(lignes_in):
+    """T4-X6-008 — les specs portent-elles deux options (``variante``
+    'sans'/'avec') ? Même prédicat que ``overrides.option_decrite_par_taille``,
+    sur des specs de l'écrivain."""
+    return any(isinstance(s, dict) and (s.get('variante') or '') in ('sans', 'avec')
+               for s in lignes_in)
 
 
 def _reecrire_quantites_soeurs(lignes_in, nb_panneaux, affleurants=0):
