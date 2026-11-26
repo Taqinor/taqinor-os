@@ -5,6 +5,7 @@ import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
 import { formatDate, formatNumber } from '../../../../../lib/format'
 import { reviserEtOuvrir } from '../../../../ventes/reviserDevis'
+import { Suppose } from '../../../production/BandeauProvenanceProduction'
 import { estIncomplet } from '../../../production/BandeauProvenanceProduction.helpers'
 import { DuSoleilAuReseau } from '../../../production/CartePostesPertes'
 import DiagrammePertes from '../../../production/DiagrammePertes'
@@ -503,6 +504,8 @@ export default function EtapeResultats({
           </section>
         </>
       )}
+      {/* ACAL1630 — les replis cachés du moteur, servis (`suppose[]`), sous la production ; vide ⇒ rien. */}
+      <Suppose suppose={data?.suppose} />
       {/* ACAL1958 — le bouton de l'étape est là dans les TROIS états (avant simulation, incomplet, complet) ;
           la phrase de durée ne lit que les valeurs d'un résultat complet. */}
       <PiedResultats production={complet ? data?.production : null} action={action} />

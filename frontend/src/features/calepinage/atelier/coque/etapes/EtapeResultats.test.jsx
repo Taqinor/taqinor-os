@@ -256,7 +256,8 @@ describe('Étape Résultats — résultat complet, bloc par bloc (maquette Resul
       'Année basse (9 fois sur 10 au-dessus) : 11 900 kWh · Dans 2 ans : 12 929 kWhPréparer les documents')
     // Ordre global : tuiles, milieu (mois puis pertes), pied.
     const ordre = [...racine.children].map((n) => n.getAttribute('data-testid') || n.className)
-    expect(ordre.slice(0, 3)).toEqual(['cal-resultats-tuiles', 'cal-res-milieu', 'cal-resultats-pied'])
+    // ACAL1630 : l'exemple du contrat sert une supposition (`suppose[]`) — sa section vient entre le milieu et le pied.
+    expect(ordre.slice(0, 4)).toEqual(['cal-resultats-tuiles', 'cal-res-milieu', 'acal980-suppose', 'cal-resultats-pied'])
   })
 })
 
@@ -1187,5 +1188,33 @@ describe('ACAL1268 (D-ACAL-66 = outil_pose) — l’étape Résultats d’un lea
     await screen.findByTestId('cal-resultats-tuiles')
     expect(autre.innerHTML).toBe(sansContexte)
     expect(document.querySelector('[data-zone="pompage-outil-pose"]')).toBeNull()
+  })
+})
+
+/* ACAL1630 — « Ce qui est supposé » (`suppose[]` de `GET resultat/`) rendu par l'étape Résultats, sous la production. */
+describe('Étape Résultats — ce qui est supposé (ACAL1630)', () => {
+  it('suppose servi ⇒ section rendue sous la production, une ligne par repli avec son champ à renseigner', async () => {
+    const d = COMPLET()
+    d.suppose = [
+      { code: 'longueur_chaine_dossier', libelle: 'Longueur de chaîne de dossier : 16 modules', valeur: 16, champ: 'fiche technique du module et de l’onduleur' },
+      { code: 'allee_par_defaut', libelle: 'Allée : 0,60 m', valeur: 0.6, champ: 'panneau Allées de l’atelier' },
+    ]
+    servir(d)
+    rendre()
+    const section = await screen.findByTestId('acal980-suppose')
+    expect(section).toHaveTextContent('Ce qui est supposé')
+    expect(within(section).getAllByRole('listitem')).toHaveLength(2)
+    expect(screen.getByTestId('acal980-longueur_chaine_dossier')).toHaveTextContent('Longueur de chaîne de dossier : 16 modules')
+    expect(screen.getByTestId('acal980-allee_par_defaut')).toHaveTextContent('À renseigner : panneau Allées de l’atelier')
+    expect(screen.getByTestId('cal-resultats-tuiles').compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('aucune supposition servie ⇒ aucune section', async () => {
+    const d = COMPLET()
+    d.suppose = []
+    servir(d)
+    rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    expect(screen.queryByTestId('acal980-suppose')).toBeNull()
   })
 })
