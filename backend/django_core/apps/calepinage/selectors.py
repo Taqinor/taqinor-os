@@ -154,6 +154,30 @@ def lit_par_le_seul_releve(user):
             and not _user_has_or_legacy(user, CAL_GERER))
 
 
+def peut_ouvrir_une_fois_responsable(user, lead_id=None):
+    """T4-X3-016 — ``user`` pourrait-il OUVRIR un calepinage qu'on lui confie ?
+
+    Même prédicat que ``restreindre_aux_siens`` (aucune règle de droits n'est
+    changée, D-ACAL-106/126) : un compte qui ne lit le calepinage que par le
+    relevé (Technicien, Technicien responsable) ne l'ouvre QUE par une visite
+    qui lui est assignée — être « responsable » ne lui ouvre rien. Il n'est
+    donc admis que si le lead du calepinage est celui d'une de ses visites
+    (``lead_ids_de_ses_visites``) ; sans lead (menu avant création, calepinage
+    d'un client) il ne l'est jamais. Tout autre compte qui porte
+    ``calepinage_voir`` l'ouvre (``responsable`` compte dans sa portée)."""
+    from core.permissions import _user_has_or_legacy
+
+    from .permissions import CAL_VOIR
+
+    if not _user_has_or_legacy(user, CAL_VOIR):
+        return False
+    if not lit_par_le_seul_releve(user):
+        return True
+    if not lead_id:
+        return False
+    return lead_ids_de_ses_visites(user).filter(lead_id=lead_id).exists()
+
+
 def _de_ses_visites(user):
     """D-ACAL-106 — le calepinage du lead d'une visite ASSIGNÉE à ``user`` :
     le technicien qui monte sur le toit le lit et y fait le relevé."""

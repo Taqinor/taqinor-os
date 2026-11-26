@@ -104,4 +104,11 @@ def filtrer_par_permission(collegues, permission):
 
     if permission not in ALL_PERMISSIONS:
         raise ValidationError({'permission': 'Permission inconnue.'})
-    return [u for u in collegues.select_related('role') if _user_has_or_legacy(u, permission)]
+    porteurs = [u for u in collegues.select_related('role') if _user_has_or_legacy(u, permission)]
+    if permission == 'calepinage_voir':
+        # Porter le code ne suffit pas : un compte qui ne lit que par le relevé n'ouvre un calepinage
+        # que par SA visite (D-ACAL-106/126) — le menu ne propose que qui l'ouvrira (la règle vit au module).
+        from apps.calepinage.selectors import peut_ouvrir_une_fois_responsable
+
+        porteurs = [u for u in porteurs if peut_ouvrir_une_fois_responsable(u)]
+    return porteurs
