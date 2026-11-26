@@ -23,7 +23,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
     LectureDuModule, IsAdminRole, HasPermissionOrLegacy,
 )
-from ..permissions import PeutSupprimerStock  # ADRG44
+from ..permissions import MasquePrixVenteReponseMixin, PeutSupprimerStock  # ADRG44, D-ACAL-152
 
 from ..models import KitProduit
 from ..serializers import KitComposantSerializer, KitProduitSerializer
@@ -61,7 +61,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update', 'dupliquer',
                                                      'Inclure la disponibilité potentielle')]),
                     retrieve=extend_schema(parameters=[P('avec_disponibilite', BOOL, False,
                                                          'Inclure la disponibilité potentielle')]))
-class KitProduitViewSet(CompanyScopedModelViewSet):
+class KitProduitViewSet(MasquePrixVenteReponseMixin, CompanyScopedModelViewSet):  # D-ACAL-152
     queryset = KitProduit.objects.all().prefetch_related('composants__produit')
     serializer_class = KitProduitSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]

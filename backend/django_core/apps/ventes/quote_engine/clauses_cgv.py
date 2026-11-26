@@ -54,7 +54,7 @@ def bloc_clauses_html(clauses, *, couleur_titre="#0f2a44",
         f'{"".join(lignes)}</div>')
 
 
-def cgv_bullets_defaut(langue=None, mode=None):
+def cgv_bullets_defaut(langue=None, mode=None, neuf=False):
     """APDF10 — puces CGV PAR DÉFAUT dans la langue du document : fr →
     ``DEFAULT_DOC_TEXTS['cgv_bullets']`` (octet pour octet) ; en/ar → les clés
     ``cgv_*`` d'``i18n_labels``, mêmes marqueurs, mêmes pourcentages.
@@ -62,7 +62,12 @@ def cgv_bullets_defaut(langue=None, mode=None):
     APDF13 × AGR310 — un devis AGRICOLE ne cite aucun barème ONEE/SRM
     (« aucune mécanique résidentielle ») : la dernière puce par défaut
     (« Tarifs de référence ») est retirée pour ce mode, sur le PDF comme sur
-    la page publique (même fonction)."""
+    la page publique (même fonction).
+
+    ACAL1221 (D-AMOT-10) — ``neuf`` (nouveaux rendus, drapeau
+    ``phrases_pdf_2611``) : la puce « Tarifs de référence » dit le barème
+    national de référence (``cgv_tarifs_bareme_national``) dans les trois
+    langues ; sans lui, la puce d'hier."""
     if i18n_labels.normaliser(langue) == "fr":
         puces = DEFAULT_DOC_TEXTS["cgv_bullets"]
     else:
@@ -73,14 +78,17 @@ def cgv_bullets_defaut(langue=None, mode=None):
             "{tva_note}", i18n_labels.libelle("cgv_tarifs_reference", langue)]
     if (mode or "").strip().lower() == "agricole":
         return puces[:-1]
+    if neuf:
+        return list(puces[:-1]) + [i18n_labels.libelle("cgv_tarifs_bareme_national", langue)]
     return puces
 
 
-def _puces_cgv(bullets, langue, mode=None):
+def _puces_cgv(bullets, langue, mode=None, neuf=False):
     """APDF10 — puces saisies (souveraines) ou, à défaut, celles du moteur
-    dans la langue du document (et du mode, APDF13 × AGR310)."""
+    dans la langue du document (et du mode, APDF13 × AGR310 ; ``neuf`` :
+    ACAL1221, nouveaux rendus)."""
     if not bullets or bullets == DEFAULT_DOC_TEXTS["cgv_bullets"]:
-        return cgv_bullets_defaut(langue, mode)
+        return cgv_bullets_defaut(langue, mode, neuf)
     return bullets
 
 
@@ -204,7 +212,8 @@ def cgv_bullets_remplies(data, bullets=None):
     if bullets is None:
         bullets = _puces_cgv(surcharges.get("cgv_bullets")
                              if isinstance(surcharges, dict) else None,
-                             langue, data.get("mode_installation"))
+                             langue, data.get("mode_installation"),
+                             bool(data.get("phrases_pdf_2611")))
     terms = data.get("payment_terms") or {}
     try:
         brut = data.get("taux_tva")

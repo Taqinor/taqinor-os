@@ -122,7 +122,7 @@ export function useDevisListSynthese(devis, effStatutOf) {
   return { summary, expiringSoon, batteryInsight }
 }
 
-/** CIQ325 — le libellé du format complet annonce le VRAI nombre de pages. */
+/** CIQ325 — le libellé du format complet annonce le VRAI nombre de pages ; ACAL1222 (D-AMOT-8) : le premium résidentiel en rend 3 ou 4, il n'en promet aucun. */
 export function libelleFormatComplet({ targetIsAgricole, targetMode }) {
   if (targetIsAgricole) {
     return 'Document agricole complet (3 pages — eau et argent, fonctionnement, équipement et signature)'
@@ -133,5 +133,5 @@ export function libelleFormatComplet({ targetIsAgricole, targetMode }) {
   if (targetMode === 'industriel') {
     return 'Document industriel (4 pages — synthèse, équipements, rentabilité, conditions et signature)'
   }
-  return 'Devis premium (3 pages — options, analyse, garanties)'
+  return 'Devis premium — options, analyse, garanties'
 }

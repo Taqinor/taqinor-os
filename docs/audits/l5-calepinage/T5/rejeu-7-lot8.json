@@ -1,0 +1,160 @@
+[
+ {
+  "id": "L1",
+  "verdict": "ok",
+  "vu": "Calepinage R7-cal-35x715 (lead R7-1 avec facture 900 MAD, 35 panneaux Canadian Solar 715 W, en-tete 25,03 kWc). Generer le devis : POST generer-devis = 201 Created apres derogation electrique motivee (MPPT 66,9 A > 22 A) puis Confirmer et generer (garde taille : 35 panneaux contre 5 de la cible). Plus de refus d arrondi. Reserve : le message de garde ecrit 25,02 kWc alors que l en-tete dit 25,03 kWc (25,025).",
+  "preuve": "logs/nightly-qa/playwright/r7-l1-genere.png ; r7-l1-generer3.png",
+  "console": "3 erreurs : maptiler 403 x2 (ignores) + 409 attendus de la garde"
+ },
+ {
+  "id": "L2",
+  "verdict": "ok",
+  "vu": "Leads R7-2 et R7-3, onglet Devis, champ Puissance cible. Rail Devis auto avec 8 saisi : POST /ventes/devis/auto/ = {lead:1270, remise_globale:0, target_kwc:8}, devis cree 8,52 kWc avec phrase Vous avez demande 8 kWc. Palette (Ctrl+K, Devis automatique) avec 6 saisi sur l autre lead : POST {lead:1271, target_kwc:6}. Bascule SPA vers l autre lead : champ vide, valeur non reportee. Reserve : le palette lance avec la fenetre devis deja ouverte n a rien declenche (pas de 2e POST), comportement a clarifier.",
+  "preuve": "logs/nightly-qa/playwright/r7-l2-palette.png",
+  "console": "7 x 404 ventes/conception/<lead>/ sur lead neuf sans conception (bruit, voir R7-N1)"
+ },
+ {
+  "id": "R7-N1",
+  "verdict": "défaut",
+  "gravite": "S4",
+  "vu": "Sur une fiche lead neuve sans conception, la console enregistre 7 erreurs 404 GET /ventes/conception/<id>/ repetees (sonde de conception) : bruit, pas de blocage visible."
+ },
+ {
+  "id": "L3",
+  "verdict": "ok",
+  "vu": "Calepinage 22, mode Expert, inspecteur : le champ s intitule PANNEAUX A POSER (label for rp9-need-input) ; plus aucune occurrence de Panneaux necessaires sur la page.",
+  "preuve": "logs/nightly-qa/playwright/r7-l3-expert.png",
+  "console": "rien de neuf"
+ },
+ {
+  "id": "L4",
+  "verdict": "ok",
+  "vu": "Calepinage R7 24 (35 panneaux), etape Electrique : avec Huawei reseau 25 kW le selecteur Batterie est absent ; avec Deye hybride (5 kW puis 30 kW) il apparait, Aucune par defaut, libelles sans prix. Avec Deye 30 kW HT les 3 Dyness sont grises avec motif tension nominale 51,2 V hors de la plage batterie 160-800 V ; BOS-B Pro choisie : le schema electrique dessine Batterie Deye BOS-B Pro 1 unite 16,08 kWh ; remise sur Aucune : le schema redevient sans bloc batterie. Reserve : il n y a pas de bouton nomme Retirer, le retrait se fait par l option Aucune. Aussi : sur cal 22 le schema refuse de se dessiner tant que la conception est non conforme (voir R7-N3).",
+  "preuve": "logs/nightly-qa/playwright/r7-l4-schema-batterie.png ; r7-l4-schema-avant.png",
+  "console": "rien de neuf"
+ },
+ {
+  "id": "R7-N2",
+  "verdict": "défaut",
+  "gravite": "S3",
+  "vu": "Calepinage 24 (35 panneaux Canadian Solar 715 W) : le schema electrique ecrit 7 x 710 Wc par chaine, alors que la pose est en 715 W (en-tete 25,03 kWc = 35 x 715). Incoherence de puissance unitaire entre schema et calepinage (a confirmer : le schema prend peut-etre le module du lead).",
+  "preuve": "logs/nightly-qa/playwright/r7-l4-schema-avant.png"
+ },
+ {
+  "id": "L5",
+  "verdict": "partiel",
+  "vu": "Calepinage 22 (40 panneaux, 5 chaines), Expert, etape Electrique, Vue 3D puis 3/4 : les 40 panneaux sont tous teintes, 5 couleurs (vert, bleu, violet, orange, turquoise) qui suivent les chaines du plan 2D ; aucun panneau gris. Reserve : en survolant la 3D a 12 positions de souris je n ai vu aucun infobulle (aucun texte nouveau dans la page), donc le nom de la chaine dans l infobulle n est pas constate.",
+  "preuve": "logs/nightly-qa/playwright/r7-l5-3d.png",
+  "console": "rien de neuf"
+ },
+ {
+  "id": "L6",
+  "verdict": "partiel",
+  "vu": "Menu Panneau (Panneaux, calepinage 22) : Canadian Solar 710W et Jinko 710W affichent En stock, sans prix ni quantite ; le 715 W (id 1165) n a pas la mention. Menu Batterie (Electrique) : En stock sur BOS-B Pro, Dyness 5 kWh, PowerBrick SC 16 kWh (stock reel 492 pour Dyness 5), sans prix. Menu Onduleur : AUCUNE ligne En stock alors que l API stock donne 500 pour Deye 10 kW, Huawei 25 kW, etc. (voir R7-N3).",
+  "preuve": "logs/nightly-qa/playwright/r7-l6-panneau.png ; r7-l4-electrique.png"
+ },
+ {
+  "id": "R7-N3",
+  "verdict": "défaut",
+  "gravite": "S3",
+  "vu": "Etape Electrique : le menu Onduleur n affiche jamais En stock (aucune des 18 lignes), alors que la meme etape l affiche pour les batteries et que /stock/produits donne 500 en stock pour Huawei 25 kW et Deye 10/20 kW. Contredit la ligne L6 (menus onduleur/module).",
+  "preuve": "logs/nightly-qa/playwright/r7-l4-electrique.png"
+ },
+ {
+  "id": "L7",
+  "verdict": "partiel",
+  "vu": "Lead agricole R5F-5 (devis agricole existant DEV-202611-0127), calepinage R7-cal-pompage (34 pan.) : en Guide, etapes Panneaux, Electrique, Resultats, Documents portent la carte Atelier d un lead de pompage : un outil de pose seulement, sans economies ni energie du reseau + lien Ouvrir le devis agricole DEV-202611-0127 (href /ventes/devis?devis=632, ouvre la liste des devis sur DEV-202611-0127 en surbrillance) ; Electrique : Un systeme de pompage n a ni onduleur ni batterie. Vue client /calepinage/25/client : seulement 34 panneaux, 24,31 kWc, aucun kWh ni economie. DEFAUT en mode Expert (inspecteur du Toit) : restent affiches + gain bifacial ~1 769 kWh/an, Estimation 55 panneaux 39,60 kWc 53 844 kWh/an, et le texte qui promet que les economies se recalculent.",
+  "preuve": "logs/nightly-qa/playwright/r7-l7-expert.png ; r7-l7-g-Rés.png ; r7-l7-client.png ; r7-l7-devis.png"
+ },
+ {
+  "id": "R7-N4",
+  "verdict": "défaut",
+  "gravite": "S3",
+  "vu": "Lead de pompage, calepinage R7-cal-pompage, mode Expert, etape Toit : l inspecteur affiche encore des kWh de reseau (gain bifacial ~1 769 kWh/an ; Estimation 55 panneaux 39,60 kWc 53 844 kWh/an ; 51 panneaux 36,72 kWc 49 517 kWh/an), contre la regle D-ACAL-66.",
+  "preuve": "logs/nightly-qa/playwright/r7-l7-expert.png"
+ },
+ {
+  "id": "L8",
+  "verdict": "ok",
+  "vu": "Calepinage 1 (simule, 16 panneaux), mode Expert, etape Toit : bandeau Annee 1 ~17 971 kWh/an (simulation) ; carte TOTAL TOUTES LES ZONES : 17 971 kWh/an simulation ; ligne Simulation : P50 17 971 kWh/an. Memes chiffres partout.",
+  "preuve": "logs/nightly-qa/playwright/r7-l8-expert.png"
+ },
+ {
+  "id": "L9",
+  "verdict": "ok",
+  "vu": "Edition du devis DEV-202611-0138/0139 (2 options, 9 panneaux chiffres, conseil moteur 3 et 5), onglet Technique : en tapant 12 dans Nombre de panneaux, AVANT tout clic, apparait la phrase : « Auto-remplir » posera l option avec batterie a 12 panneaux, pas aux 5 conseilles : le nombre de panneaux saisi vaut pour les deux options (« Recalculer le dimensionnement » reprend le conseil).",
+  "preuve": "logs/nightly-qa/playwright/r7-l9-12.png"
+ },
+ {
+  "id": "L10",
+  "verdict": "ok",
+  "vu": "Fenetre 390x844, calepinage 16 : Avance > Releve de visite ouvre /calepinage/16/releve ; clic Terminer le releve : PATCH /calepinage/16/releve/2/ = 200 puis retour sur /calepinage/16 (atelier d ou le releve avait ete ouvert).",
+  "preuve": "logs/nightly-qa/playwright/r7-l10-apres.png ; r7-l10-releve.png"
+ },
+ {
+  "id": "L11",
+  "verdict": "ok",
+  "vu": "Calepinage 24, Electrique > Reglages avances > Raccordement : 99999999 dans Puissance souscrite puis Enregistrer le raccordement : message non bloquant sous le champ « La puissance souscrite saisie (99 999 999 kVA) depasse 3 333 333 fois la puissance des onduleurs (30 kW) : verifiez la saisie. Elle est gardee. » ; apres rechargement le champ relit 99999999 (sauvegarde). Pret a envoyer (calepinage 13 sans facture) : le controle s appelle Facture ou taille souhaitee renseignee.",
+  "preuve": "logs/nightly-qa/playwright/r7-l11-raccordement.png ; r7-l11-pret.png"
+ },
+ {
+  "id": "L12-T4-X3-019",
+  "verdict": "ok",
+  "vu": "/calepinage/reglages (anon_admin2) : Correspondances de nomenclature du bordereau s affiche avec « Une ligne par entrée, un champ par grandeur », champ Valeur et bouton Ajouter une correspondance ; plus de Table structuree (JSON). LID, Uc/Uv et fenetres d arret restent lisibles.",
+  "preuve": "(texte lu a l ecran, pas de capture)"
+ },
+ {
+  "id": "L12-T4-X8-012",
+  "verdict": "partiel",
+  "vu": "Calepinage 16, Expert (Chromium, pas WebKit telephone) : le champ est PANNEAUX A POSER et plus de 400 ; mais le bloc Recommandation dit « 16 posés / 16 cible. » alors que la carte du meme ecran dit CIBLE — PANNEAUX 7 panneaux de 710 W, 4,97 kWc, Factures du lead : deux cibles (16 et 7) subsistent.",
+  "preuve": "logs/nightly-qa/playwright/r7-l12-x8-012.png"
+ },
+ {
+  "id": "L12-T4-U3-023",
+  "verdict": "ok",
+  "vu": "Lead pompage R5F-5 (plaque 7,5 kW, 380 V, triphase) : la fiche n affiche plus « A completer : Phase du site » / « Manque » ; elle dit « Saisi ailleurs : Raccordement * (phase du site, monophase ou triphase) — section Profil energetique » a cote de Plaque : phases. Reserve : je n ai pas relu si l explication pourquoi la plaque ne suffit pas existe.",
+  "preuve": "logs/nightly-qa/playwright/r7-l12-u3-023.png"
+ },
+ {
+  "id": "L12-T4-X7-009",
+  "verdict": "ok",
+  "vu": "anon_tech, calepinage 16, Documents, fenetre 1180x820 (Chromium) : la zone cdoc-cartes mesure 656/656 px et liste les 5 cartes : Plan de pose pour l equipe, Schema electrique, Note de calcul, Rapport d etude, Plan au format DXF (avant : 468 x 4 px, 1 seule carte).",
+  "preuve": "logs/nightly-qa/playwright/r7-l12-tech-docs.png"
+ },
+ {
+  "id": "L12-R5E-X2",
+  "verdict": "ok",
+  "vu": "anon_tech, calepinage 16 (visite assignee) : plus aucun bouton Generer le devis (0 occurrence sur Documents), plus la phrase « il est cree a partir du devis, avec ses prix », plus de toast de permission a l ouverture ; la barre d en-tete ne porte que Montrer au client.",
+  "preuve": "logs/nightly-qa/playwright/r7-l12-tech-docs.png"
+ },
+ {
+  "id": "L12-T4-X8-016",
+  "verdict": "ok",
+  "vu": "anon_tech, /crm/leads : titre Acces refuse + « Vous n avez pas le droit d ouvrir les leads. Contactez un administrateur si vous pensez que c est une erreur. » (plus de Reessayer). Reserve : le menu CRM complet reste affiche et la page empile encore des phrases « Vous n avez pas la permission d effectuer cette action » / « Acces reserve aux roles du module », 7 a 9 erreurs console 403.",
+  "preuve": "logs/nightly-qa/playwright/r7-l12-tech-leads.png"
+ },
+ {
+  "id": "L12-R5E-X1/T4-X8-014",
+  "verdict": "défaut",
+  "vu": "anon_tech : GET /stock/produits/ repond toujours 200 avec prix_vente, prix_fixe_ht, prix_par_panneau_ht et paliers_prix_vente ; prix_achat absent. Prix de vente toujours servis au Technicien (non corrige, ou decision a confirmer).",
+  "preuve": "(reponse API lue, pas de capture)"
+ },
+ {
+  "id": "L12-T4-X3-016",
+  "verdict": "défaut",
+  "vu": "anon_tech : le calepinage 19 (cree avec Responsable = anon_tech) repond toujours 404 et la liste du Technicien ne contient que le 16 ; l attribution a un Technicien reste inoperante (a confirmer cote ecran Non assigne, non rejoue).",
+  "preuve": "(reponses API lues)"
+ },
+ {
+  "id": "L12-reste",
+  "verdict": "non rejouable",
+  "vu": "Non rejoues faute de temps ou de moyen : lignes tactiles WebKit (T4-X8-002, X8-006, X8-008, X8-011, D T4-X7-018, D-ACAL-106 ecran), PDF (T4-U2-020, T4-V2-010, D-ACAL-112, D-ACAL-113), devis (T4-U3-021, T4-X6-008, T4-X6-012, T4-X4-019), droits (D-ACAL-117 approuver, D-ACAL-126, R5E-X3 sauf constat repris dans T4-X8-016). Le navigateur de ce tour est Chromium, pas WebKit.",
+  "preuve": ""
+ },
+ {
+  "id": "L13",
+  "verdict": "ok",
+  "vu": "Calepinage 21 (residentiel, 34 panneaux, 24,31 kWc) : Toit, Panneaux, Electrique, Resultats, Documents parcourus : aucun panneau vide (texte 905 a 2295 caracteres par etape), aucun undefined / NaN / [object] a l ecran, 0 erreur console hors fournisseur de carte. Edition du devis DEV-202611-0138 : 13 324 caracteres de texte, aucun undefined/NaN, 0 erreur console. Limite : la sweep etait de ~10 min mais les onglets du devis ne se cliquent pas par role bouton, donc l ecran a ete lu d un bloc.",
+  "preuve": "logs/nightly-qa/playwright/r7-l13-Rés.png ; r7-l13-devis.png"
+ }
+]

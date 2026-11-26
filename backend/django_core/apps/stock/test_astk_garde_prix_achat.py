@@ -533,3 +533,213 @@ class GardePrixAchat(TestCase):
         # ALEC11 — masque à null : rien de servi ; 0 reste un montant nommé.
         self.assertEqual(cles_interdites({'cout_total': None}), set())
         self.assertEqual(cles_interdites({'cout_total': 0}), {'cout_total'})
+
+
+def cles_prix_vente(payload):
+    """D-ACAL-152 — clés de prix de VENTE servies avec une valeur (récursif)."""
+    from apps.stock.permissions import PRIX_VENTE_CHAMPS
+    trouvees = set()
+    if isinstance(payload, dict):
+        for cle, valeur in payload.items():
+            if valeur is not None and cle in PRIX_VENTE_CHAMPS:
+                trouvees.add(cle)
+            trouvees |= cles_prix_vente(valeur)
+    elif isinstance(payload, list):
+        for valeur in payload:
+            trouvees |= cles_prix_vente(valeur)
+    return trouvees
+
+
+class GardePrixVente(TestCase):
+    """D-ACAL-152 (fondateur, 26/11/2026) — Technicien et Technicien
+    responsable (sans ``prix_vente_voir``) ne reçoivent AUCUN prix de vente du
+    stock : liste, détail, recherche, kits imbriqués, explosion, structure,
+    export XLSX, étiquettes prix, catalogue B2B ; l'Administrateur les reçoit
+    tous, comme avant. Balayage des routes GET de ``apps.stock.urls``."""
+
+    def setUp(self):
+        from apps.stock.models import KitComposant, KitProduit
+        self.company = Company.objects.create(nom='DACAL152', slug='dacal152-stock')
+        perms = dict(CANONICAL_SYSTEM_ROLES)
+
+        def _role_user(nom):
+            role = Role.objects.create(company=self.company, nom=nom, permissions=perms[nom])
+            return User.objects.create_user(
+                username=f'dacal152-{nom.lower().replace(" ", "-")}', password='x',
+                company=self.company, role=role)
+
+        self.tech = _role_user('Technicien')
+        self.chef = _role_user('Technicien responsable')
+        self.admin = _role_user('Administrateur')
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Panneau DACAL152', sku='D152-1',
+            prix_vente=Decimal('1500'), prix_achat=Decimal('900'),
+            prix_fixe_ht=Decimal('100'), prix_par_panneau_ht=Decimal('10'),
+            paliers_prix_vente=[{'seuil_min': 1, 'seuil_max': None, 'prix_vente_ttc': '1700.00'}],
+            louable=True, tarif_location_jour=Decimal('50'))
+        self.kit = KitProduit.objects.create(company=self.company, nom='Kit D152', sku='KD152')
+        KitComposant.objects.create(kit=self.kit, produit=self.produit, quantite=Decimal('2'))
+
+    def _urls_json(self):
+        p, k = self.produit.id, self.kit.id
+        return ['/api/django/stock/produits/', f'/api/django/stock/produits/{p}/',
+                '/api/django/stock/produits/?search=DACAL152',
+                '/api/django/stock/kits/', f'/api/django/stock/kits/{k}/',
+                f'/api/django/stock/kits/{k}/exploser/', f'/api/django/stock/kits/{k}/structure/',
+                '/api/django/stock/catalogue-b2b/']
+
+    def test_technicien_sans_aucun_prix_de_vente(self):
+        self.assertEqual((self.tech.can_view_sale_prices, self.chef.can_view_sale_prices,
+                          self.admin.can_view_sale_prices), (False, False, True))
+        for user in (self.tech, self.chef):
+            api = _api(user)
+            for url in self._urls_json():
+                rep = api.get(url)
+                self.assertEqual(rep.status_code, 200, (user.username, url))
+                donnees = rep.json()
+                self.assertEqual(cles_prix_vente(donnees), set(), (user.username, url))
+                if url.endswith('catalogue-b2b/'):
+                    self.assertNotIn('prix', donnees['produits'][0])
+            # Le reste du produit est servi (stock, nom) : le flux technicien marche.
+            detail = api.get(f'/api/django/stock/produits/{self.produit.id}/').json()
+            self.assertEqual((detail['nom'], detail['quantite_stock']), ('Panneau DACAL152', 0))
+            rep = api.get('/api/django/stock/produits/etiquettes-prix/',
+                          {'ids': self.produit.id, 'sortie': 'html'})
+            self.assertEqual(rep.status_code, 403, user.username)
+            self.assertIn('prix_vente_voir', str(rep.data['detail']))
+
+    def test_administrateur_garde_tous_les_prix(self):
+        from apps.stock.permissions import PRIX_VENTE_CHAMPS
+        api = _api(self.admin)
+        detail = api.get(f'/api/django/stock/produits/{self.produit.id}/').json()
+        champs = {c for c in PRIX_VENTE_CHAMPS if c in detail}
+        self.assertEqual(champs, {'prix_vente', 'paliers_prix_vente', 'prix_fixe_ht',
+                                  'prix_par_panneau_ht', 'tarif_location_jour',
+                                  'tarif_location_semaine', 'tarif_location_mois'})
+        self.assertEqual(Decimal(str(detail['prix_vente'])), Decimal('1500'))
+        kit = api.get(f'/api/django/stock/kits/{self.kit.id}/').json()
+        self.assertEqual(Decimal(str(kit['composants'][0]['prix_vente'])), Decimal('1500'))
+        lignes = api.get(f'/api/django/stock/kits/{self.kit.id}/exploser/').json()['lignes']
+        self.assertIn('prix_vente_unitaire', lignes[0])
+        self.assertIn('prix_vente_total', api.get(f'/api/django/stock/kits/{self.kit.id}/structure/').json())
+        self.assertIn('prix', api.get('/api/django/stock/catalogue-b2b/').json()['produits'][0])
+        rep = api.get('/api/django/stock/produits/etiquettes-prix/',
+                      {'ids': self.produit.id, 'sortie': 'html'})
+        self.assertEqual(rep.status_code, 200)
+
+    def test_export_xlsx_sans_colonne_prix_pour_le_technicien_responsable(self):
+        from io import BytesIO
+        from openpyxl import load_workbook
+        from apps.stock.services import PRODUCT_EXPORT_HEADERS
+
+        def entetes(user):
+            rep = _api(user).post('/api/django/stock/produits/export-xlsx/',
+                                  {'ids': [self.produit.id]}, format='json')
+            self.assertEqual(rep.status_code, 200, user.username)
+            feuille = load_workbook(BytesIO(rep.content), read_only=True).active
+            return [list(r) for r in feuille.iter_rows(max_row=2, values_only=True)]
+
+        admin = entetes(self.admin)
+        self.assertEqual(admin[0], PRODUCT_EXPORT_HEADERS)  # inchangé avec le droit
+        self.assertIn('1500.00', admin[1])
+        chef = entetes(self.chef)  # stock_export, sans prix_vente_voir
+        self.assertEqual(chef[0], [h for h in PRODUCT_EXPORT_HEADERS if h != 'Prix vente HT'])
+        self.assertNotIn('1500.00', chef[1])
+
+    def test_ecriture_inchangee_prix_vide_du_formulaire_sans_effet(self):
+        """Le Technicien responsable (stock_modifier, ni catalogue_prix_modifier
+        ni prix_vente_voir) : son formulaire, servi sans prix, renvoie des prix
+        VIDES → le seuil est écrit, aucun prix ne bouge ; changer un prix reste
+        le 403 d'ASTK20 (contrat d'écriture inchangé)."""
+        url = f'/api/django/stock/produits/{self.produit.id}/'
+        api = _api(self.chef)
+        rep = api.patch(url, {'seuil_alerte': 3, 'prix_vente': '', 'prix_fixe_ht': None,
+                              'paliers_prix_vente': []}, format='json')
+        self.assertEqual(rep.status_code, 200, getattr(rep, 'data', ''))
+        self.assertEqual(cles_prix_vente(rep.json()), set())
+        self.produit.refresh_from_db()
+        self.assertEqual((self.produit.seuil_alerte, self.produit.prix_vente,
+                          self.produit.prix_fixe_ht), (3, Decimal('1500'), Decimal('100')))
+        self.assertEqual(len(self.produit.paliers_prix_vente), 1)
+        rep = api.patch(url, {'prix_vente': '1'}, format='json')
+        self.assertEqual(rep.status_code, 403, getattr(rep, 'data', ''))
+        self.assertIn('catalogue_prix_modifier', str(rep.data['detail']))
+        # D-ACAL-165 — un tarif de location qu'il ne voit pas : vide = sans effet,
+        # non vide = 403 « prix_vente_voir » (avant : ÉCRIT, puis masqué en lecture).
+        rep = api.patch(url, {'tarif_location_jour': '', 'tarif_location_mois': None}, format='json')
+        self.assertEqual(rep.status_code, 200, getattr(rep, 'data', ''))
+        rep = api.patch(url, {'tarif_location_jour': '1'}, format='json')
+        self.assertEqual(rep.status_code, 403, getattr(rep, 'data', ''))
+        self.assertIn('prix_vente_voir', str(rep.data['detail']))
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.tarif_location_jour, Decimal('50'))
+        # Avec le droit : l'écriture du tarif est inchangée.
+        rep = _api(self.admin).patch(url, {'tarif_location_jour': '55'}, format='json')
+        self.assertEqual(rep.status_code, 200, getattr(rep, 'data', ''))
+        self.assertEqual(Decimal(str(rep.json()['tarif_location_jour'])), Decimal('55'))
+
+    def test_balayage_des_routes_stock_sans_aucun_montant_de_vente(self):
+        """Garde de CLASSE, par les VALEURS (D-ACAL-165) : un prix de vente et
+        un total de devis REPÉRABLES sont semés ; aucune réponse d'aucune route
+        GET de ``apps.stock.urls`` lue par le Technicien ou le Technicien
+        responsable ne les contient, sous quelque nom de clé que ce soit. Le
+        corps de TOUTE réponse est scanné (non-200 compris, XLSX ouvert) ; les
+        routes non-200 et les gabarits de détail sans objet sont NOMMÉS dans
+        le message, jamais sautés en silence."""
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis, LigneDevis
+        Produit.objects.filter(pk=self.produit.pk).update(
+            prix_vente=Decimal('98765.43'), prix_fixe_ht=Decimal('87654.32'),
+            prix_par_panneau_ht=Decimal('76543.21'), tarif_location_jour=Decimal('65432.19'),
+            paliers_prix_vente=[{'seuil_min': 1, 'seuil_max': None, 'prix_vente_ttc': '54321.98'}])
+        client = Client.objects.create(company=self.company, nom='Client D165', prenom='',
+                                       email='d165@example.com', telephone='+212600000165')
+        devis = Devis.objects.create(company=self.company, reference='DEV-D165-1', client=client,
+                                     created_by=self.admin, statut=Devis.Statut.ENVOYE,
+                                     taux_tva=Decimal('20'))
+        LigneDevis.objects.create(devis=devis, produit=self.produit, designation='Panneau D165',
+                                  quantite=Decimal('3'), prix_unitaire=Decimal('98765.43'))
+        devis.refresh_from_db()
+        aiguilles = ['98765.4', '87654.3', '76543.2', '65432.1', '54321.9', '118518.5']
+        if devis.total_ttc:
+            aiguilles.append(str(devis.total_ttc).split('.')[0])
+        # Contrôle positif : l'Administrateur LIT bien ces valeurs (garde non aveugle).
+        admin = _api(self.admin).get(f'/api/django/stock/produits/{self.produit.id}/')
+        self.assertIn('98765.4', admin.content.decode('utf-8'))
+        routes = [(u, k) for u, k in routes_get() if u.startswith('/api/django/stock/')]
+
+        def texte(rep):
+            if 'spreadsheetml' in (rep.get('Content-Type') or ''):
+                classeur = load_workbook(BytesIO(rep.content), read_only=True)
+                return ' '.join(str(c) for ws in classeur.worksheets
+                                for ligne in ws.iter_rows(values_only=True) for c in ligne)
+            return rep.content.decode('utf-8', 'replace')
+
+        for user in (self.tech, self.chef):
+            api, ids, fuites, non_200, sans_objet = _api(user), {}, [], [], []
+            for url, kind in sorted(routes, key=lambda r: r[1] != 'list'):
+                pk = ids.get(url.split('{pk}')[0]) if '{pk}' in url else ''
+                if pk is None:
+                    sans_objet.append(url)
+                    continue
+                rep = api.get(url.replace('{pk}', str(pk)))
+                corps = texte(rep)
+                if trouvees := [a for a in aiguilles if a in corps]:
+                    fuites.append(f'GET {url} (HTTP {rep.status_code}) -> {trouvees}')
+                if rep.status_code != 200:
+                    non_200.append(f'{url} -> HTTP {rep.status_code}')
+                    continue
+                if kind == 'list' and 'json' in (rep.get('Content-Type') or ''):
+                    donnees = rep.json()
+                    lignes = donnees.get('results') if isinstance(donnees, dict) else donnees
+                    if isinstance(lignes, list) and lignes and isinstance(lignes[0], dict):
+                        ids[url] = lignes[0].get('id')
+            rapport = (f'\n{user.username} — non-200 ({len(non_200)}) : ' + '; '.join(non_200)
+                       + f'\nsans objet ({len(sans_objet)}) : ' + '; '.join(sans_objet))
+            print(rapport)
+            self.assertEqual(fuites, [], '\n'.join(fuites) + rapport)
+            self.assertGreater(len(routes) - len(non_200) - len(sans_objet), 5, rapport)

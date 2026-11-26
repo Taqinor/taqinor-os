@@ -371,3 +371,14 @@ def _refus_brouillon(link):
     return _noindex(Response(
         {'detail': BROUILLON_REFUS, 'code': 'brouillon'},
         status=status.HTTP_409_CONFLICT))
+
+
+def pan_geometrique_public(pan, cles):
+    """QJ26 / D-ACAL-168 (relecture round 4, point 3) — un pan de ``_pans_geometry`` réduit à la liste
+    blanche ``cles`` de la page client, SANS ``inclinaison_deg`` quand c'est la valeur supposée de la
+    production (drapeau privé ``geometrie.CLE_INCLINAISON_SUPPOSEE``, que la liste blanche ne recopie
+    pas) : une valeur supposée n'est jamais imprimée pour le client."""
+    from ..domain.geometrie import CLE_INCLINAISON_SUPPOSEE
+
+    suppose = bool(pan.get(CLE_INCLINAISON_SUPPOSEE))
+    return {cle: pan.get(cle) for cle in cles if cle in pan and not (suppose and cle == 'inclinaison_deg')}

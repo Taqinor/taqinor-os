@@ -134,6 +134,7 @@ describe('ToitureDesign — mode devis (PV20)', () => {
     expect(document.getElementById('rp9-reco-prod').parentElement).toHaveAttribute('hidden')
     expect(document.getElementById('rp9-reco-cover').parentElement).toHaveAttribute('hidden')
     expect(document.getElementById('rp9-cible-kwh')).toHaveAttribute('hidden')
+    for (const id of ['rp9-reco-band', 'rp9-reco-why', 'rp9-reco-bifacial']) expect(document.getElementById(id)).toHaveAttribute('hidden')
     expect(document.getElementById('rp9-areas-total-savings').parentElement).toHaveAttribute('hidden')
     // La cible du devis agricole (servie par le serveur : 7 panneaux, source « devis ») est CELLE que reçoit l'atelier :
     // le mécanisme d'un devis vendu, avec le nombre servi — pas la cible de l'exemple.
@@ -150,6 +151,7 @@ describe('ToitureDesign — mode devis (PV20)', () => {
     expect(document.getElementById('rp9-reco-savings').closest('dl')).not.toHaveAttribute('hidden')
     expect(document.getElementById('rp9-reco-prod').parentElement).not.toHaveAttribute('hidden')
     expect(document.getElementById('rp9-cible-kwh')).not.toHaveAttribute('hidden')
+    for (const id of ['rp9-reco-band', 'rp9-reco-why', 'rp9-reco-bifacial']) expect(document.getElementById(id)).not.toHaveAttribute('hidden')
     expect(document.querySelector('[data-zone="pompage-outil-pose"]')).toBeNull()
   })
 
