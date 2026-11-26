@@ -13,8 +13,9 @@
 //   4. le CONTRAT lecture seule du boot (aucun écouteur de geste d'édition,
 //      aucun module d'édition importé) — garde de source, même convention que
 //      mobilePerfWJ18.test.ts.
-// Aucun DOM, aucun Three.js, aucun MapLibre : modules purs seulement.
-import { afterEach, describe, expect, it, vi } from 'vitest';
+// Sections 1-6 : modules purs. Section 7 : jsdom (la barre au soleil). Sections 8-9 (lot 8) : le VRAI Three.js et
+// la vraie scène `scene3d.ts`, sur une carte MapLibre et un WebGLRenderer FACTICES (déclarés plus bas).
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseRoofLayout, type RoofLayout } from '../src/lib/proposition';
@@ -34,6 +35,57 @@ import { couleurAccesActive } from '../src/lib/shadingEngine';
 import { attacherSoleil, bornesJournee, couleurParPanneau } from '../src/scripts/roofPro11/viewerSoleil';
 import type { ViewerFullHandle } from '../src/scripts/roofPro11/viewerFullBoot';
 import { ecrireTeintesPanneaux, GAIN_TEINTE_PANNEAU } from '../src/scripts/roofPro11/scene3d';
+import { DELAIS_RELANCE_PHOTO_MS, ESSAIS_PHOTO_MAX } from '../src/scripts/roofPro11/relancePhoto';
+
+// Section 8 — une carte MapLibre et un WebGLRenderer FACTICES (jsdom n'a ni GPU ni MapLibre) ; tout le
+// reste (Three.js, scene3d, le contexte du boot) est le vrai code. Les sections 1-7 n'en dépendent pas.
+const carteFactice = vi.hoisted(() => {
+  const cartes: FakeMap[] = [];
+  const rendus: unknown[] = [];
+  type Ecouteur = (e?: unknown) => void;
+  type Couche = { onAdd?: (m: unknown, gl: unknown) => void; onRemove?: (m: unknown, gl: unknown) => void; render: (gl: unknown, args: unknown) => void };
+  class FakeMap {
+    ecouteurs = new Map<string, Ecouteur[]>();
+    couches: Couche[] = [];
+    retiree = false;
+    repeints = 0;
+    canevas = document.createElement('canvas');
+    constructor(public options: unknown) { cartes.push(this); }
+    on(ev: string, fn: Ecouteur) { this.ecouteurs.set(ev, [...(this.ecouteurs.get(ev) ?? []), fn]); return this; }
+    once(ev: string, fn: Ecouteur) { const w: Ecouteur = (e) => { this.off(ev, w); fn(e); }; return this.on(ev, w); }
+    off(ev: string, fn: Ecouteur) { this.ecouteurs.set(ev, (this.ecouteurs.get(ev) ?? []).filter((f) => f !== fn)); return this; }
+    fire(ev: string, e?: unknown) { for (const fn of [...(this.ecouteurs.get(ev) ?? [])]) fn(e); }
+    addControl() { return this; }
+    addLayer(c: Couche) { this.couches.push(c); c.onAdd?.(this, {}); return this; }
+    resize() { return this; }
+    getZoom() { return 19; }
+    getPitch() { return 58; }
+    getBearing() { return 0; }
+    getCanvas() { return this.canevas; }
+    getLayer() { return undefined; }
+    triggerRepaint() { this.repeints++; }
+    setMaxBounds() {}
+    setMinZoom() {}
+    setMaxPitch() {}
+    remove() { this.retiree = true; for (const c of this.couches) c.onRemove?.(this, {}); this.couches = []; }
+  }
+  class FakeRenderer {
+    shadowMap = { enabled: false, type: 0 };
+    resetState() {}
+    setViewport() {}
+    render(scene: unknown) { rendus.push(scene); }
+    dispose() {}
+  }
+  return { cartes, rendus, FakeMap, FakeRenderer };
+});
+vi.mock('maplibre-gl', () => {
+  class NavigationControl {}
+  const MercatorCoordinate = { fromLngLat: () => ({ x: 0, y: 0, z: 0, meterInMercatorCoordinateUnits: () => 1e-7 }) };
+  const api = { Map: carteFactice.FakeMap, NavigationControl, MercatorCoordinate };
+  return { default: api, ...api };
+});
+vi.mock('maplibre-gl/dist/maplibre-gl.css?url', () => ({ default: 'maplibre-gl.css' }));
+vi.mock('three', async (origine) => ({ ...(await origine<typeof import('three')>()), WebGLRenderer: carteFactice.FakeRenderer }));
 
 // ── Un toit carré réaliste au Maroc (Casablanca), convention x=Est / y=Nord ──
 const LAT0 = 33.5;
@@ -571,5 +623,299 @@ describe('attacherSoleil — la barre pilote la poignée (jsdom)', () => {
     expect(q<HTMLButtonElement>('[data-soleil-lecture]').disabled).toBe(true);
     q<HTMLButtonElement>('[data-soleil-saison="ete"]').click();
     expect(poignee.poserInstant).not.toHaveBeenCalled();
+  });
+});
+
+// ── 8. Premier rendu RÉEL : la scène de l'ERP + le contexte EXACT du boot (lot 8) ──
+// Le constat du fondateur (26/11) : sur un lien de confiance, « lecture » ne changeait rien. Ce bloc
+// rejoue le VRAI `bootViewerFull` (son contexte, sa scène `scene3d.ts`) sur la carte et le
+// WebGLRenderer factices du haut du fichier : le premier rendu, puis un pas de soleil.
+
+/** Toit plat réel : 35 modules (5 rangées × 7) sur châssis, aucun obstacle, soleil du 21 décembre 16 h 15. */
+const RANGEES_PLAT = Array.from({ length: 5 }, (_, r) => columns(PORTRAIT_PITCH, 7, (r - 2) * 3.2)).flat();
+const LAYOUT_PLAT_35 = layoutOf(rawZone({ geometry: { ...(rawZone().geometry as object), count: 35, panels: RANGEES_PLAT } }));
+const INSTANT_REEL = { jour: 356, heure: 16.25 };
+type CarteFactice = InstanceType<typeof carteFactice.FakeMap>;
+type Position = { x: number; y: number; z: number };
+
+function contexte2dFactice() {
+  const degrade = { addColorStop() {} };
+  return new Proxy({}, {
+    get(_t, prop) {
+      if (prop === 'createLinearGradient' || prop === 'createRadialGradient' || prop === 'createPattern') return () => degrade;
+      if (prop === 'getImageData') return () => ({ data: new Uint8ClampedArray(4) });
+      if (prop === 'measureText') return () => ({ width: 0 });
+      if (prop === 'canvas') return { width: 512, height: 280 };
+      return () => undefined;
+    },
+    set() { return true; },
+  });
+}
+
+/** Rend une image comme MapLibre le ferait, et renvoie la position du soleil (DirectionalLight) dessiné. */
+function soleilDessine(carte: CarteFactice): Position | null {
+  const identite = new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  carte.couches[0]?.render({ drawingBufferWidth: 800, drawingBufferHeight: 600 }, { defaultProjectionData: { mainMatrix: identite } });
+  const scene = carteFactice.rendus.at(-1) as { traverse: (f: (o: { isDirectionalLight?: boolean; position: Position }) => void) => void } | undefined;
+  let soleil: Position | null = null;
+  scene?.traverse((o) => { if (o.isDirectionalLight) soleil = { x: o.position.x, y: o.position.y, z: o.position.z }; });
+  return soleil;
+}
+
+describe('visionneuse pleine — premier rendu réel (scene3d + contexte du boot)', () => {
+  const getContextOrigine = HTMLCanvasElement.prototype.getContext;
+  beforeEach(() => {
+    carteFactice.cartes.length = 0;
+    carteFactice.rendus.length = 0;
+    const c2d = contexte2dFactice();
+    (HTMLCanvasElement.prototype as unknown as { getContext: () => unknown }).getContext = () => c2d;
+  });
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = getContextOrigine;
+    vi.restoreAllMocks();
+    document.body.innerHTML = '';
+  });
+
+  async function demarrer(opts: Record<string, unknown> = {}) {
+    const { bootViewerFull } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const onReady = vi.fn();
+    const onFail = vi.fn();
+    const poignee = bootViewerFull(el, LAYOUT_PLAT_35, { maptilerKey: 'cle-test', reducedMotion: true, instant: INSTANT_REEL, onReady, onFail, ...opts });
+    expect(poignee).not.toBeNull();
+    return { poignee: poignee!, carte: carteFactice.cartes[0], onReady, onFail };
+  }
+
+  it('le premier rendu passe : onReady, aucun échec, la scène est dessinée avec ses 35 modules', async () => {
+    const { poignee, carte, onReady, onFail } = await demarrer();
+    expect(poignee.panelCount).toBe(35);
+    carte.fire('load');
+    expect(onFail).not.toHaveBeenCalled();
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(carte.retiree).toBe(false);
+    expect(soleilDessine(carte)).not.toBeNull();
+  });
+
+  it('un pas de soleil rejoue la scène : la lumière bouge entre deux heures, un repeint est demandé', async () => {
+    const { poignee, carte, onFail } = await demarrer();
+    carte.fire('load');
+    const avant = soleilDessine(carte)!;
+    const repeints = carte.repeints;
+    poignee.poserInstant(INSTANT_REEL.jour, 10);
+    expect(onFail).not.toHaveBeenCalled();
+    expect(carte.repeints).toBeGreaterThan(repeints);
+    const apres = soleilDessine(carte)!;
+    // 16 h 15 : soleil au sud-ouest ; 10 h : au sud-est — la lumière passe de l'autre côté du toit.
+    expect(Math.sign(apres.x - avant.x)).toBe(1);
+    expect(Math.hypot(apres.x - avant.x, apres.y - avant.y, apres.z - avant.z)).toBeGreaterThan(1);
+  });
+
+  it('toutes les branches lecture seule rendues sans jeter : second pan en pente, obstacle, voisins, teinte', async () => {
+    const [lngC, latC] = at(0, 0);
+    const pente = rawZone({ id: 'zone-2', vertices: squareLngLat(4).map(([x, y]) => [x + 0.0004, y] as [number, number]), roofType: 'pitched', pitchDeg: 25,
+      geometry: { ...(rawZone().geometry as object), origin: [LNG0 + 0.0004, LAT0], count: 2, panels: columns(PORTRAIT_PITCH, 2) } });
+    const actif = rawZone({ obstacles: [{ centerLng: lngC, centerLat: latC + 0.00008, lengthM: 1, widthM: 1 }], geometry: { ...(rawZone().geometry as object), count: 35, panels: RANGEES_PLAT } });
+    const voisins = [
+      { id: 'v-0', kind: 'arbre', centerLng: lngC, centerLat: latC - 0.0002, heightM: 7.5, crownDiameterM: 5, evergreen: true },
+      { id: 'v-1', kind: 'batiment', centerLng: lngC + 0.0002, centerLat: latC, heightM: 9, lengthM: 8, widthM: 6 },
+    ];
+    const { bootViewerFull } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    const el = document.body.appendChild(document.createElement('div'));
+    const onReady = vi.fn();
+    const onFail = vi.fn();
+    const poignee = bootViewerFull(el, layoutOf(actif, pente), { maptilerKey: 'cle-test', instant: INSTANT_REEL, environnement: voisins as never, indexTeintes: [0], onReady, onFail })!;
+    const carte = carteFactice.cartes[0];
+    carte.fire('load');
+    poignee.teinter(() => ({ r: 0.9, g: 0.2, b: 0.1 }));
+    poignee.poserInstant(172, 9);
+    expect(soleilDessine(carte)).not.toBeNull();
+    const geometries = new Set<string>();
+    (carteFactice.rendus.at(-1) as { traverse: (f: (o: { geometry?: { type: string } }) => void) => void }).traverse((o) => { if (o.geometry) geometries.add(o.geometry.type); });
+    expect(geometries.has('CylinderGeometry')).toBe(true); // l'arbre voisin est bien dessiné
+    expect(onFail).not.toHaveBeenCalled();
+    expect(onReady).toHaveBeenCalledTimes(1);
+    poignee.destroy();
+    expect(carte.retiree).toBe(true);
+  });
+
+  it('lien de confiance : la teinte des accès enregistrés et l’obstacle servi sont dessinés', async () => {
+    const [lngC, latC] = at(0, 0);
+    const actif = rawZone({ obstacles: [{ centerLng: lngC + 0.00004, centerLat: latC + 0.00011, lengthM: 4, widthM: 1 }], geometry: { ...(rawZone().geometry as object), count: 35, panels: RANGEES_PLAT } });
+    const layout = layoutOf(actif);
+    const payload = { visionneuse_soleil: { version: 1, zones: [{ index: 0, id: 'zone-1', acces: RANGEES_PLAT.map((_, i) => 0.84 + i * 0.004) }], environnement: [], instant_choisi: { jour: 356, heure: 16.25 } } };
+    const soleil = lireVisionneuseSoleil(payload, layout)!;
+    const { bootViewerFull } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    const el = document.body.appendChild(document.createElement('div'));
+    const poignee = bootViewerFull(el, layout, { maptilerKey: 'cle-test', instant: soleil.ouverture, indexTeintes: [0] })!;
+    const carte = carteFactice.cartes[0];
+    carte.fire('load');
+    poignee.teinter(couleurParPanneau(soleil, poignee.indexActif)!);
+    poignee.poserInstant(356, 12);
+    soleilDessine(carte);
+    let teintes = 0;
+    let obstacle = false;
+    (carteFactice.rendus.at(-1) as { traverse: (f: (o: Record<string, any>) => void) => void }).traverse((o) => {
+      if (o.isInstancedMesh && o.instanceColor) teintes += Array.from(o.instanceColor.array as Float32Array).filter((v) => v !== 1).length;
+      if (o.isMesh && !o.isInstancedMesh && o.material?.color?.getHex?.() === 0xff6b6b) obstacle = true;
+    });
+    expect(teintes).toBeGreaterThan(0); // les 35 modules portent la couleur de leur accès solaire
+    expect(obstacle).toBe(true); // l'obstacle de 4 m du layout servi
+  });
+
+  /** Démarre avec un token Mapbox et compte les demandes de la photo du toit ; `images` = les <img> demandées. */
+  async function photoDuToit() {
+    const images: HTMLImageElement[] = [];
+    const desc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src')!;
+    vi.spyOn(HTMLImageElement.prototype, 'src', 'set').mockImplementation(function (this: HTMLImageElement, v: string) {
+      if (v.includes('api.mapbox.com')) images.push(this);
+      desc.set!.call(this, v);
+    });
+    const d = await demarrer({ mapboxToken: 'pk.test' });
+    d.carte.fire('load');
+    const dixPas = () => { for (let h = 7; h < 17; h++) d.poignee.poserInstant(INSTANT_REEL.jour, h); };
+    return { ...d, images, dixPas };
+  }
+
+  it('photo du toit réussie : UNE demande sur dix pas de soleil', async () => {
+    const { images, dixPas } = await photoDuToit();
+    images[0].onload?.(new Event('load'));
+    dixPas();
+    expect(images).toHaveLength(1);
+  });
+
+  it('photo refusée une fois (429) : redemandée plus tard, pas à chaque pas ; réussie ensuite, plus rien', async () => {
+    vi.useFakeTimers();
+    try {
+      const { images, dixPas } = await photoDuToit();
+      images[0].onerror?.(new Event('error'));
+      dixPas();
+      expect(images).toHaveLength(1); // aucun pas ne relance
+      vi.advanceTimersByTime(DELAIS_RELANCE_PHOTO_MS[0]);
+      expect(images).toHaveLength(2); // un second essai, après le délai
+      images[1].onload?.(new Event('load'));
+      dixPas();
+      vi.advanceTimersByTime(60_000);
+      expect(images).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('photo toujours refusée : essais plafonnés, puis plus jamais', async () => {
+    vi.useFakeTimers();
+    try {
+      const { images, dixPas } = await photoDuToit();
+      for (let i = 0; i < 10; i++) {
+        images.at(-1)!.onerror?.(new Event('error'));
+        dixPas();
+        vi.advanceTimersByTime(60_000);
+      }
+      expect(images).toHaveLength(ESSAIS_PHOTO_MAX);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// ── 9. Aucune commande morte : la barre n'apparaît qu'une fois la scène VRAIMENT rendue (lot 8) ──
+
+describe('monterVisionneusePleine — barre au soleil branchée après le rendu, repli si la scène jette', () => {
+  const BARRE = `<div id="roof3d-soleil" hidden><div data-soleil-legende></div>
+    <button data-soleil-lecture disabled></button><strong data-soleil-quand></strong><p data-soleil-journee></p>
+    <input type="range" data-soleil-heure disabled /><button data-soleil-saison="hiver" disabled></button><button data-soleil-saison="ete" disabled></button></div>`;
+  // L'aide des gestes de la page (#roof3d-hint), telle que la visionneuse simplifiée la sert.
+  const AIDE_SIMPLE = { fr: 'Faites glisser pour tourner', en: 'Drag to rotate', ar: 'اسحبوا للتدوير' };
+  const AIDE = `<p id="aide" hidden data-i18n data-fr="${AIDE_SIMPLE.fr}" data-en="${AIDE_SIMPLE.en}" data-ar="${AIDE_SIMPLE.ar}">${AIDE_SIMPLE.fr}</p>`;
+  const PAYLOAD_REEL = { visionneuse_soleil: { version: 1, zones: [], environnement: [], instant_choisi: { jour: 356, heure: 16.25 } } };
+  const getContextOrigine = HTMLCanvasElement.prototype.getContext;
+  beforeEach(() => {
+    carteFactice.cartes.length = 0;
+    carteFactice.rendus.length = 0;
+    const c2d = contexte2dFactice();
+    (HTMLCanvasElement.prototype as unknown as { getContext: () => unknown }).getContext = () => c2d;
+  });
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = getContextOrigine;
+    vi.restoreAllMocks();
+    document.body.innerHTML = '';
+  });
+
+  async function monter() {
+    const { monterVisionneusePleine } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    document.body.innerHTML = `<div id="scene" class="roof3d-stage"></div>${BARRE}${AIDE}`;
+    const barre = document.getElementById('roof3d-soleil')!;
+    const soleil = lireVisionneuseSoleil(PAYLOAD_REEL, LAYOUT_PLAT_35)!;
+    const onReady = vi.fn();
+    const replier = vi.fn();
+    const avertir = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const brancherSoleil = vi.fn(async (poignee: ViewerFullHandle) =>
+      attacherSoleil({ barre, poignee, soleil, layout: LAYOUT_PLAT_35, avecTeinte: true, reducedMotion: true }));
+    const vue = monterVisionneusePleine(document.getElementById('scene'), LAYOUT_PLAT_35, { maptilerKey: 'cle-test', reducedMotion: true, instant: soleil.ouverture, onReady }, { barre, brancherSoleil, replier, scene: document.getElementById('scene'), aide: document.getElementById('aide') });
+    const q = <T extends HTMLElement>(s: string) => barre.querySelector<T>(s)!;
+    const scene = document.getElementById('scene')!;
+    const aide = document.getElementById('aide')!;
+    return { vue, barre, carte: carteFactice.cartes[0], onReady, replier, brancherSoleil, avertir, q, scene, aide };
+  }
+  const attendre = () => new Promise((r) => setTimeout(r, 0));
+
+  it('scène rendue → barre montrée ; « lecture » fait un pas qui DÉPLACE la lumière, libellé en heure solaire', async () => {
+    const { vue, barre, carte, onReady, replier, brancherSoleil, q } = await monter();
+    expect(vue).not.toBeNull();
+    expect(barre.hidden).toBe(true);
+    expect(brancherSoleil).not.toHaveBeenCalled(); // rien de branché avant le premier rendu
+    carte.fire('load');
+    await attendre();
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(barre.hidden).toBe(false);
+    expect(replier).not.toHaveBeenCalled();
+    expect(q('[data-soleil-quand]').textContent).toBe('21 décembre · 16 h (heure solaire)');
+    const avant = soleilDessine(carte)!;
+    const repeints = carte.repeints;
+    q<HTMLButtonElement>('[data-soleil-lecture]').click(); // reduced-motion : UN pas (16 h 15 → lever, après le coucher de 17 h)
+    expect(carte.repeints).toBeGreaterThan(repeints);
+    expect(q('[data-soleil-quand]').textContent).toMatch(/^21 décembre · [0-9]+ h \(heure solaire\)$/);
+    const apres = soleilDessine(carte)!;
+    expect(Math.hypot(apres.x - avant.x, apres.y - avant.y, apres.z - avant.z)).toBeGreaterThan(1);
+    vue!.dispose();
+    expect(barre.hidden).toBe(true);
+  });
+
+  it('le premier rendu jette → barre jamais montrée, carte démontée, repli monté, un seul avertissement', async () => {
+    const { barre, carte, onReady, replier, brancherSoleil, avertir } = await monter();
+    carte.getZoom = () => { throw new Error('rendu impossible'); }; // lu par buildZoneMeshes, au cœur du rendu
+    expect(() => carte.fire('load')).not.toThrow();
+    await attendre();
+    expect(onReady).not.toHaveBeenCalled();
+    expect(brancherSoleil).not.toHaveBeenCalled();
+    expect(barre.hidden).toBe(true);
+    expect(carte.retiree).toBe(true);
+    expect(replier).toHaveBeenCalledTimes(1);
+    expect(avertir).toHaveBeenCalledTimes(1);
+  });
+
+  it('un pas de soleil qui jette après coup → barre débranchée et cachée, cadre et aide rendus au repli', async () => {
+    const { barre, carte, replier, q, scene, aide } = await monter();
+    carte.fire('load');
+    await attendre();
+    expect(barre.hidden).toBe(false);
+    // Habillé pour la carte au rendu : cadre « carte » (un doigt fait défiler la page) et aide des gestes carte.
+    expect(scene.classList.contains('roof3d-stage--map')).toBe(true);
+    expect(aide.hidden).toBe(false);
+    expect(aide.dataset.fr).toMatch(/^Deux doigts/);
+    carte.getZoom = () => { throw new Error('rendu impossible'); };
+    const curseur = q<HTMLInputElement>('[data-soleil-heure]');
+    curseur.value = '10';
+    curseur.dispatchEvent(new Event('input'));
+    expect(barre.hidden).toBe(true);
+    expect(curseur.disabled).toBe(true);
+    expect(carte.retiree).toBe(true);
+    expect(replier).toHaveBeenCalledTimes(1);
+    // Le repli (visionneuse simplifiée) retrouve SON cadre et SON aide.
+    expect(scene.classList.contains('roof3d-stage--map')).toBe(false);
+    expect(scene.classList.contains('roof3d-stage--sky')).toBe(false);
+    expect(scene.classList.contains('roof3d-stage')).toBe(true);
+    expect(aide.hidden).toBe(true);
+    expect([aide.dataset.fr, aide.dataset.en, aide.dataset.ar, aide.textContent]).toEqual([AIDE_SIMPLE.fr, AIDE_SIMPLE.en, AIDE_SIMPLE.ar, AIDE_SIMPLE.fr]);
   });
 });
