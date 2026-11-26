@@ -54,8 +54,14 @@ const BANDEAU_RETENIR = 'Retenir rend cette variante conception courante : c’e
 /* R6-N2 — « Retenir » sur une variante JAMAIS simulée reste permis (le vendeur décide), mais l'écran le DIT, avant le geste et
    après : la production affichée n'est alors qu'une estimation de l'atelier, la simulation est à refaire. Mots déjà ceux de
    l'atelier : « Non simulée » (badge), « estimation », « Simulation à refaire » (T4-X2-002), étape « Les résultats ». */
-const AVANT_RETENIR_SANS_SIMULATION = 'Non simulée : une fois retenue, sa production n’est qu’une estimation de l’atelier. Simulation à refaire à l’étape Les résultats.'
-const apresRetenirSansSimulation = (nom) => `« ${nom} » est retenue sans simulation : la production affichée n’est qu’une estimation de l’atelier, et la simulation de l’ancienne retenue ne s’applique plus. Simulation à refaire à l’étape Les résultats.`
+const AVANT_RETENIR_SANS_SIMULATION = 'Non simulée : une fois retenue, sa production peut n’être qu’une estimation de l’atelier. Simulation à refaire à l’étape Les résultats.'
+/* Dite d'après les lignes RELUES : la phrase n'affirme « la simulation de la conception précédente ne s'applique plus » que si
+   le serveur la sert périmée (ligne `courante` : `simulation_perimee`) ; une variante dupliquée de la conception courante
+   garde la simulation en vigueur, et sans retenue antérieure il n'y a pas de « précédente » — rien n'est alors affirmé. */
+const apresRetenirSansSimulation = (nom, simulationPerimee) => `« ${nom} » est retenue sans simulation propre`
+  + (simulationPerimee
+    ? ' : la production affichée n’est qu’une estimation de l’atelier, et la simulation de la conception précédente ne s’applique plus. Simulation à refaire à l’étape Les résultats.'
+    : '.')
 
 /** Une grandeur non mesurée s'écrit « — », jamais `0`. */
 const ou = (valeur, rendu) => (valeur === null || valeur === undefined ? '—' : rendu(valeur))
@@ -358,17 +364,21 @@ export default function VariantesCompare({ onRecharger = null } = {}) {
 
   // T4-X9-010 — le refus de « Retenir » se dit À CÔTÉ du bouton cliqué (plus tout en haut de l'onglet, hors de la vue).
   const [refusRetenir, setRefusRetenir] = useState(null)
-  // R6-N2 — le nom de la variante retenue SANS simulation : la phrase reste tant qu'un autre geste n'a pas eu lieu.
-  const [retenueSansSimulation, setRetenueSansSimulation] = useState(null)
+  // R6-N2 — l'identifiant de la variante qu'on vient de retenir SANS simulation ; la phrase est DÉRIVÉE des lignes relues
+  // (affichée tant que cette ligne est encore retenue et non simulée) : simuler la variante, ou en retenir une autre, l'éteint.
+  const [retenueSansSimulationId, setRetenueSansSimulationId] = useState(null)
+  const retenueSansSimulation = retenueSansSimulationId == null ? null
+    : lignes.find((l) => l.id === retenueSansSimulationId && l.est_retenue && !l.simulee) ?? null
+  const simulationPerimee = lignes.find((l) => l.courante)?.simulation_perimee === true
   const retenir = async (ligne) => {
     setErreurAction(null)
     setRefusRetenir(null)
-    setRetenueSansSimulation(null)
+    setRetenueSansSimulationId(null)
     setEnCours(ligne.id)
     try {
       // T4-X9-010 — le refus est dit sous le bouton : le toast global (qui imprimait la clé interne) est coupé.
       await calepinageApi.calepinages.retenirVariante(id, ligne.id, { suppressErrorToast: true })
-      if (!ligne.simulee) setRetenueSansSimulation(ligne.nom)
+      if (!ligne.simulee) setRetenueSansSimulationId(ligne.id)
       // On RECHARGE : c'est le serveur qui dé-retient la précédente.
       await refetch()
       // T4-X5-014 — retenir ÉCRIT la conception courante (`services/variantes.py::retenir_variante`) : l'atelier entier
@@ -463,7 +473,7 @@ export default function VariantesCompare({ onRecharger = null } = {}) {
 
       {retenueSansSimulation ? (
         <Card className="p-3 text-sm" role="status" data-testid="cal-variante-retenue-sans-simulation">
-          {apresRetenirSansSimulation(retenueSansSimulation)}
+          {apresRetenirSansSimulation(retenueSansSimulation.nom, simulationPerimee)}
         </Card>
       ) : null}
 
