@@ -2705,8 +2705,8 @@
     },
     {
      "cle": "taille_explicite_kwc",
-     "source": "D-QJR5-13 — taille saisie souveraine",
-     "statut": "declare",
+     "source": "taille calculée à la création (règle des 10 ans), relue sur les lignes du devis",
+     "statut": "calcule",
      "valeur": 55.38
     },
     {

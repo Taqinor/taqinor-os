@@ -164,6 +164,28 @@ class TailleCITests(unittest.TestCase):
         self.assertIn('taille_au_dela_du_toit', codes)
         self.assertIn('taille_au_dela_ps', codes)
 
+    def test_acal1226_taille_du_verdict_de_creation_dite_calculee(self):
+        # ACAL1226 — devis 90 : la taille relue sur les lignes vient du
+        # balayage de création ⇒ « calcule », jamais « taille saisie ».
+        def hyp(r):
+            return next(h for h in r['hypotheses'] if h['cle'] == 'taille_explicite_kwc')
+        r = self._taille('hotel', 20000, taille_explicite_kwc=120, taille_issue_creation=True)
+        self.assertEqual(hyp(r)['statut'], 'calcule')
+        self.assertEqual(hyp(r)['source'], 'taille calculée à la création (règle des %d ans), '
+                                           'relue sur les lignes du devis' % H)
+        saisie = hyp(self._taille('hotel', 20000, taille_explicite_kwc=120))
+        self.assertEqual((saisie['statut'], saisie['source']),
+                         ('declare', 'D-QJR5-13 — taille saisie souveraine'))
+
+    def test_acal1226_drapeau_lu_du_verdict_de_creation(self):
+        from apps.ventes.domain.etude_ci import taille_issue_de_creation
+        verdict = {'retenue_kwc': 55.38, 'raison_arret': 'horizon_marginal'}
+        self.assertTrue(taille_issue_de_creation(verdict, 55.38))
+        self.assertFalse(taille_issue_de_creation(verdict, 56.09))   # lignes changées
+        self.assertFalse(taille_issue_de_creation(None, 55.38))      # taille saisie
+        self.assertFalse(taille_issue_de_creation(
+            {'retenue_kwc': 55.38, 'raison_arret': 'taille_explicite'}, 55.38))
+
     def test_unite_de_la_puissance_ac_comparee_a_la_ps(self):
         # CLD10 — S max non publiée (Huawei seedés) : la puissance comparée à
         # la PS est en kW AC, jamais libellée « kVA » ; publiée : en kVA.

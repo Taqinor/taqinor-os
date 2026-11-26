@@ -945,6 +945,15 @@ def verdict_taille_creation(etude):
             'toit': {k: toit.get(k) for k in ('kwc', 'kwc_30', 'kwc_10', 'surface_m2')}}
 
 
+def taille_issue_de_creation(verdict, kwc):
+    """ACAL1226 — la taille explicite relue sur les lignes EST celle que le
+    balayage de création a calculée (``taille_creation_ci``, kWc inchangé)."""
+    if not isinstance(verdict, dict) or verdict.get('raison_arret') in (None, 'taille_explicite'):
+        return False
+    cree, pose = _num(verdict.get('retenue_kwc')), _num(kwc)
+    return cree is not None and pose is not None and abs(cree - pose) < 1e-6
+
+
 def _relire_verdict_toit(taille, verdict, hypotheses):
     """R1 (B1) — l'étude STOCKÉE est rafraîchie depuis les LIGNES (taille
     explicite) : le verdict « limitée par le toit » calculé à la création est
@@ -1475,6 +1484,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
                                  'document suit D-CIQ-3, economie_ci)'})
     borne_toit = _borne_toit(res, devis, catalogue['module'], alertes)
     _charge_toiture(res, catalogue, alertes)
+    kwc_explicite = _taille_en_panneaux_entiers(res.valeur('taille_explicite_kwc'), catalogue['module'], hypotheses)
     resultat = dimensionner_ci(
         charge_jours_types=jours_types, production_jours_types=production_pour_bilan(production),
         tension=tension, combiner=combiner, composer=composer, valoriser=valoriser,
@@ -1483,8 +1493,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
                           if phase == 'tri' else 'phase : voir la combinaison d’onduleurs'}},
         puissance_souscrite_kva=res.valeur('puissance_souscrite_kva'),
         revente_choisie=revente,
-        taille_explicite_kwc=_taille_en_panneaux_entiers(
-            res.valeur('taille_explicite_kwc'), catalogue['module'], hypotheses),
+        taille_explicite_kwc=kwc_explicite,
+        taille_issue_creation=taille_issue_de_creation(verdict_creation, kwc_explicite),
         # ADEV79 — TTC des paliers → HT : TVA de l'article, à défaut le taux
         # standard SAISI de la société (lecture seule), jamais un 20 codé.
         taux_tva_pct=getattr(reglages, 'tva_standard', None), pmax_wc=(catalogue['module'] or {}).get('pmax_wc'),
