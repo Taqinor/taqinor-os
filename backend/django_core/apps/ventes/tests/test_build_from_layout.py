@@ -666,17 +666,19 @@ class OnduleurDesigneDuCalepinage(TestCase):
 
     def test_b_batterie_designee_vendue_au_nombre_de_packs_meme_hors_stock(self):
         """D-ACAL-164 — vendue au nombre de packs saisi ; comme l'onduleur désigné, un prix suffit (la
-        banque imposée de la composition ne lit pas le stock)."""
-        Produit.objects.create(company=self.company, nom='Batterie Lithium 7 kWh', sku=f'A164-B7-{self.company.pk}',
+        banque imposée de la composition ne lit pas le stock). Une Dyness : le catalogue amorcé en porte, et la
+        règle automatique ne compose alors QUE des Dyness (``vivier_compat``) — une autre marque n'y aurait aucun
+        nombre de modules à comparer (``_banque_automatique`` rend ``None``, aucune phrase d'écart)."""
+        Produit.objects.create(company=self.company, nom='Batterie Dyness 7 kWh', sku=f'A164-B7-{self.company.pk}',
                                prix_vente=Decimal('21000'), prix_achat=Decimal('1'), quantite_stock=0)
-        batterie = {'produit_id': self._id('Batterie Lithium 7 kWh'), 'packs': 2, 'packs_illisible': False}
+        batterie = {'produit_id': self._id('Batterie Dyness 7 kWh'), 'packs': 2, 'packs_illisible': False}
         for extra, variante in (({'scenario': 'avec_batterie'}, ''), ({'deux_options': True}, 'avec')):
             with self.subTest(**extra):
                 _o, journal = self._devis(batterie_designee=batterie, **extra)
-                self.assertEqual(self._batteries(), [('Batterie Lithium 7 kWh', 2, variante)])
+                self.assertEqual(self._batteries(), [('Batterie Dyness 7 kWh', 2, variante)])
                 # Point 4 — vendue aux 2 packs désignés ; la règle automatique (5 kWh visés) en placerait 1.
                 self.assertEqual(journal['batterie_designee']['message'],
-                                 'La batterie désignée « Batterie Lithium 7 kWh » est vendue à 2 pack(s), le nombre '
+                                 'La batterie désignée « Batterie Dyness 7 kWh » est vendue à 2 pack(s), le nombre '
                                  'saisi à l’étape Électrique ; la règle automatique du devis en placerait 1.')
 
     def test_b_batterie_designee_sur_pose_sans_et_sans_hybride_n_est_pas_mise_et_le_dit(self):
