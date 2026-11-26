@@ -121,3 +121,39 @@ describe('ModeTerrain — pente du relief (ACAL466, contrat calepinage_pente_ter
     expect(await screen.findByTestId('cal-terrain-relief-ancrage')).toHaveTextContent(/épingle du site/)
   })
 })
+
+describe('ModeTerrain — champ enregistré depuis un contour tracé (ACAL1425)', () => {
+  const TRACE = {
+    kind: 'sol', id: 'sol-1', label: 'Champ au sol 1', areaM2: 183.4,
+    vertices: [[-7.59, 33.57], [-7.58, 33.57], [-7.58, 33.56], [-7.585, 33.555], [-7.59, 33.56]],
+    contourM: [[0, 0], [20, 0], [20, 9], [10, 12], [0, 9]],
+    engine: { modules: 50, tables: [] },
+  }
+
+  it('la surface tracée est reconnue : relief actif, surface dite, largeur × profondeur sans objet', async () => {
+    espions.layout.mockResolvedValue({
+      data: { roof_layout: { zones: [{ id: 'PAN-A' }], poseSurfaces: [TRACE] }, empreinte_document: 'E0' },
+    })
+    monter()
+    await waitFor(() => expect(screen.getByTestId('cal-terrain-relief-lire')).not.toBeDisabled())
+    expect(screen.queryByTestId('cal-terrain-relief-aide')).toBeNull()
+    const mention = await screen.findByTestId('cal-terrain-contour-trace')
+    expect(mention).toHaveTextContent('Champ enregistré — contour tracé, 183 m²')
+    expect(mention).toHaveTextContent('ne s’appliquent pas')
+  })
+
+  it('un champ saisi au rectangle ne porte pas la mention du contour tracé', async () => {
+    espions.layout.mockResolvedValue({
+      data: {
+        roof_layout: {
+          zones: [{ id: 'PAN-A' }],
+          poseSurfaces: [{ ...TRACE, id: 'TERRAIN', contourM: [[0, 0], [30, 0], [30, 22], [0, 22]] }],
+        },
+        empreinte_document: 'E0',
+      },
+    })
+    monter()
+    await waitFor(() => expect(screen.getByTestId('cal-terrain-relief-lire')).not.toBeDisabled())
+    expect(screen.queryByTestId('cal-terrain-contour-trace')).toBeNull()
+  })
+})

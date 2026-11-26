@@ -224,6 +224,13 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
     })
     : null
   const vue = vueDuChamp(champ, plan, saisie)
+  // ACAL1425 — un champ enregistré depuis le contour TRACÉ sur la carte (pas un rectangle
+  // largeur × profondeur) : sa surface est lue sur la surface persistée, jamais redemandée.
+  const surfaceCourante = (pose.surfaces || []).find((s) => s.id === pose.repereCourant) ?? null
+  const contourTrace = surfaceCourante && Array.isArray(surfaceCourante.contourM)
+    && surfaceCourante.contourM.length > 0 && surfaceCourante.contourM.length !== 4
+    && Number.isFinite(Number(surfaceCourante.areaM2))
+    ? Math.round(Number(surfaceCourante.areaM2)) : null
 
   return (
     <>
@@ -262,6 +269,13 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
             </label>
           ))}
         </div>
+
+        {contourTrace !== null && (
+          <p className="mt-3 text-sm text-foreground" data-testid="cal-terrain-contour-trace">
+            Champ enregistré — contour tracé, {formatNumber(contourTrace)} m². Largeur et profondeur ne
+            s’appliquent pas à un contour tracé.
+          </p>
+        )}
 
         <PenteRelief
           key={pose.repereCourant}
