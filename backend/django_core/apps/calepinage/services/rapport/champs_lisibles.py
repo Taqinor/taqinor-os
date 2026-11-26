@@ -322,7 +322,40 @@ def motif_lisible(motif):
     texte = _FICHIER.sub('', texte) if '.py' in texte else texte
     texte = _ENTRE_GUILLEMETS_TECH.sub(_guillemets_techniques, texte)
     texte = _TECHNIQUE.sub(_technique_en_prose, texte)
-    return texte if texte == brut else _nettoyer(texte)
+    texte = texte if texte == brut else _nettoyer(texte)
+    return _phrases_uniques(texte)
+
+
+def _phrases_uniques(texte):
+    """ACAL1654 — une phrase répétée (motifs concaténés) ne s'imprime qu'une
+    fois ; un texte sans répétition est rendu tel quel."""
+    phrases = re.split(r'(?<=[.!?])\s+', texte)
+    uniques = list(dict.fromkeys(phrases))
+    return texte if len(uniques) == len(phrases) else ' '.join(uniques)
+
+
+#: ACAL1654 — la provenance SERVIE d'une étape, en mots (les codes que l'écran
+#: ne nomme pas déjà) ; ACAL1656 réutilise la MÊME table à l'impression.
+SOURCES_LISIBLES = {
+    'texte': 'page publiée',
+    'societe': 'réglage société',
+    'document': 'document du calepinage',
+    'materiel': 'matériel du calepinage',
+}
+
+
+def _etape_servie(etape):
+    """ACAL1654 — l'étape SERVIE : motif lisible (étape omise), source en
+    mots, référence sans code de tâche ni chemin ; la MÊME étape si rien ne
+    change."""
+    servie = dict(etape)
+    if etape.get('motif_omission'):
+        servie['motif_lisible'] = motif_lisible(etape['motif_omission'])
+    if isinstance(etape.get('source'), str) and etape['source'] in SOURCES_LISIBLES:
+        servie['source'] = SOURCES_LISIBLES[etape['source']]
+    if isinstance(etape.get('reference'), str) and etape['reference']:
+        servie['reference'] = motif_lisible(etape['reference'])
+    return servie if servie != etape else etape
 
 
 #: ACAL1323 — les motifs SERVIS à l'écran, où qu'ils soient dans le résultat.
@@ -368,9 +401,7 @@ def avec_motifs_lisibles(resultat):
     cascade = resultat.get('cascade') if isinstance(resultat, dict) else None
     etapes = cascade.get('etapes') if isinstance(cascade, dict) else None
     if isinstance(etapes, list):
-        lues = [dict(e, motif_lisible=motif_lisible(e['motif_omission']))
-                if isinstance(e, dict) and e.get('motif_omission') else e
-                for e in etapes]
+        lues = [_etape_servie(e) if isinstance(e, dict) else e for e in etapes]
         ailleurs = _servis_lisibles(cascade.get('a_renseigner'), {'motif'})
         cascade = dict(cascade, etapes=lues, **(
             {'a_renseigner': ailleurs} if 'a_renseigner' in cascade else {}))

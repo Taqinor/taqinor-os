@@ -211,6 +211,36 @@ class MotifServiLisibleTest(unittest.TestCase):
         for texte in textes(servi):
             self.assertIsNone(chemin.search(texte), texte)
 
+    def test_acal1654_aucun_code_servi_source_lisible_motif_unique(self):
+        # Ni « (CALX170) » ni « core.calepinage.soleil (CALX146) », la source
+        # « texte » se lit « page publiée », une phrase n'est servie qu'une
+        # fois ; le stocké ne bouge pas. Mutant : code servi ⇒ échec.
+        import copy
+        import re
+
+        from apps.calepinage.services.rapport.champs_lisibles import (
+            avec_motifs_lisibles,
+        )
+
+        phrase = 'Aucune fiche thermique publiée (CALX170).'
+        stocke = {'cascade': {'etapes': [
+            {'etape': 'thermique', 'motif_omission': ' '.join([phrase] * 5),
+             'source': None},
+            {'etape': 'horizon', 'motif_omission': '', 'source': 'texte',
+             'reference': 'core.calepinage.soleil (CALX146)'},
+            {'etape': 'iam', 'motif_omission': '', 'source': 'fiche',
+             'reference': 'https://www.pvsyst.com/help/iam.html'}]}}
+        avant = copy.deepcopy(stocke)
+        thermique, horizon, iam = avec_motifs_lisibles(stocke)['cascade']['etapes']
+        self.assertEqual(thermique['motif_lisible'], 'Aucune fiche thermique publiée.')
+        self.assertEqual(horizon['source'], 'page publiée')
+        self.assertEqual(horizon['reference'], 'position du soleil')
+        self.assertEqual((iam['source'], iam['reference']),
+                         ('fiche', 'https://www.pvsyst.com/help/iam.html'))
+        for etape in (thermique, horizon):
+            self.assertIsNone(re.search(r'CALX\d+', str(etape)), etape)
+        self.assertEqual(stocke, avant, 'le résultat stocké ne bouge pas')
+
 
 class PasDeDeriveTest(unittest.TestCase):
     """Le bloc détaillé ici reste celui que CALX4 annonce, et `pertes` reste
