@@ -5,6 +5,7 @@
 // à côté du champ de recherche. PURE : aucun DOM, aucune carte.
 import { describe, expect, it, vi } from 'vitest';
 import { methodesCarteInertes } from './harnaisAtelier';
+import { epingleAReposer } from './epingleSite'; // ACAL1926
 import {
   GEOCODE_DEFAULT_COUNTRY,
   geocodeCountry,
@@ -662,5 +663,16 @@ describe('T4-U4-013 — la provenance du site suit les gestes', () => {
     const publicSite = monter(6, false);
     tracer(publicSite.draw);
     expect(latitudeDuCalcul(publicSite.ctx, 31.79)).toBe(31.79);
+  });
+});
+
+describe('ACAL1926 — Effacer sur un calepinage rouvert repose l’épingle', () => {
+  it('document rouvert avec son toit (aucun repère planté) ⇒ le point de l’épingle du document', () => {
+    expect(epingleAReposer(false, { pin: { lat: 33.5, lng: -7.6 } })).toEqual([-7.6, 33.5]);
+  });
+  it('un repère existe déjà, ou le document n’a pas d’épingle ⇒ rien à poser', () => {
+    expect(epingleAReposer(true, { pin: { lat: 33.5, lng: -7.6 } })).toBeNull();
+    expect(epingleAReposer(false, { pin: null })).toBeNull();
+    expect(epingleAReposer(false, null)).toBeNull();
   });
 });

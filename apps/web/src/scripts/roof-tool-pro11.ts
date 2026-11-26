@@ -153,6 +153,7 @@ import { affectationDesPans, lireModulesDisponibles, moduleDeDepart } from './ro
 import { remplacerParPanVierge } from './roofPro11/repriseModule'; // ACAL1416
 import { cibleFermetureToit } from './roofPro11/vueFermetureToit'; // ACAL1422
 import { reafficherEpingleApresEffacement } from './roofPro11/repriseEpingle'; // ACAL1423
+import { epingleAReposer } from './roofPro11/epingleSite'; // ACAL1926
 import { enregistrerOrbite } from './roofPro11/videoOrbite'; // ACAL896
 import { factureCarteDe, lireFactureSaisie } from './roofPro11/factureCarte'; // ACAL777
 import { bandesDuPan, enveloppeAccesSolaire, type MemoAcces } from './roofPro11/bandesAcces'; // ACAL721
@@ -2525,6 +2526,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   function reset() {
     clearEditorState();
     reafficherEpingleApresEffacement(clientPinMarker); // ACAL1423 — « Effacer » SEUL rend le repère du lead masqué à la fermeture (jamais retiré)
+    const aReposer = epingleAReposer(!!clientPinMarker, ctx.documentRelu); // ACAL1926 — document rouvert avec son toit : aucun repère planté au chargement
+    if (aReposer) planterClientPinMarker(aReposer);
     shadingUi.reset(); // WJ19/ACAL357 — les ombres et la matrice appartiennent au SITE : « Effacer » seul les vide
     oublierEpingleDeplacee(ctx); // ACAL193 — un site vierge n'a plus d'épingle déplacée
     // ACAL26 — « Effacer » repart d'un site vierge : la consommation du site (courbe,
