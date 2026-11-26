@@ -535,13 +535,19 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertTrue(any('ni établi par le schéma' in m for m in genere['avertissements']), genere)
         self.assertEqual(onduleurs, {None: ('Onduleur réseau Growatt 8kW Monophasé', 'onduleur_reseau')})
 
-    def test_d_acal_148_hybride_sur_pose_sans_batterie_reste_en_repli_dit(self):
+    def test_d_acal_159_hybride_sur_pose_sans_batterie_le_devis_passe_avec_batterie(self):
+        """D-ACAL-159 (fondateur, 26/11/2026) — l'hybride désigné ET une batterie (celle que la
+        composition pose) ; la phrase est dite à la génération."""
+        from apps.ventes.models import Devis
+
         self._nouvelle_pose()
-        self._designer('Onduleur hybride Deye 5kW Monophasé')
-        apercu, genere, onduleurs = self._apercu_puis_generation()
-        self.assertIn('la pose est sans batterie', apercu['ecarts'][0]['message'])
-        self.assertTrue(any('la pose est sans batterie' in m for m in genere['avertissements']), genere)
-        self.assertEqual(onduleurs, {None: ('Onduleur réseau Huawei 5kW Monophasé', 'onduleur_reseau')})
+        self._designer('Onduleur hybride Deye 5kW Monophasé', nombre_onduleurs=1)
+        _apercu, genere, onduleurs = self._apercu_puis_generation()
+        phrase = ('Le devis passe en « avec batterie » : l’onduleur désigné « Onduleur hybride Deye 5kW '
+                  'Monophasé » est un hybride.')
+        self.assertIn(phrase, genere['avertissements'], genere)
+        self.assertEqual(onduleurs, {None: ('Onduleur hybride Deye 5kW Monophasé', 'onduleur_hybride')})
+        self.assertTrue(Devis.objects.get(pk=genere['devis']).lignes.filter(role_devis='batterie').exists())
 
     def test_d_acal_148_deux_options_l_hybride_designe_va_a_l_option_avec(self):
         from apps.ventes.models import Devis

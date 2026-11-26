@@ -140,6 +140,9 @@ FAMILLES_ONDULEUR_DESIGNABLES = ('onduleur_reseau', 'onduleur_hybride', 'onduleu
 SUITE_REPLI_ONDULEUR = 'le devis garde l’onduleur de la conception du lead'
 MESSAGE_ONDULEUR_NON_CHIFFRE = ('L’onduleur désigné à l’étape Électrique (« %s ») n’est pas chiffré : %s ; '
                                 + SUITE_REPLI_ONDULEUR + '.')
+#: D-ACAL-159 (fondateur, 26/11/2026) — un hybride désigné sur un devis « sans batterie » le fait
+#: passer en « avec batterie » ; la phrase dite au vendeur (génération et aperçu).
+MESSAGE_BASCULE_AVEC_BATTERIE = 'Le devis passe en « avec batterie » : l’onduleur désigné « %s » est un hybride.'
 MOTIFS_REPLI_ONDULEUR = {
     'introuvable': 'il n’est pas au catalogue de vente de la société (inconnu ou archivé)',
     'sans_prix': 'il n’a pas de prix de vente au catalogue',
@@ -149,8 +152,6 @@ MOTIFS_REPLI_ONDULEUR = {
     'site_isole': 'le site est hors réseau : seul un onduleur hors réseau (autonome) peut être chiffré',
     'autonome_raccorde': 'c’est un onduleur hors réseau et le site est raccordé au réseau',
     'reseau_avec_batterie': 'c’est un onduleur réseau : il ne porte pas la batterie de ce devis',
-    'hybride_sans_batterie': ('c’est un onduleur hybride et la pose est sans batterie : un hybride sans '
-                              'batterie n’est pas chiffré automatiquement'),
     'batterie_non_composee': ('la règle de composition du devis ne pose aucune batterie avec lui (en stock, '
                               'tarifée, compatible)'),
     'nom_muet': ('son nom ne dit pas qu’il s’agit d’un onduleur %s : le PDF du devis et la '
@@ -245,9 +246,10 @@ def decision_onduleur_designe(*, produit_id, nom, etat, famille, famille_au_nom,
       batterie par la composition elle-même (:func:`_batterie_composee`), et se replie si elle
       n'en pose aucune (relecture, point 3 : jamais une option « avec » sans batterie).
 
-    Ce qu'une forme peut porter : site isolé ⇒ l'autonome seul ; « sans » ⇒ un onduleur réseau
-    (un hybride sans batterie reste en repli : non tranché) ; « avec » ⇒ un hybride servi par une
-    batterie tarifée ; « les deux » ⇒ le réseau à l'option sans, l'hybride à l'option avec.
+    Ce qu'une forme peut porter : site isolé ⇒ l'autonome seul ; « sans » ⇒ un onduleur réseau, et
+    un hybride y fait passer le devis « avec batterie » (D-ACAL-159 : ``scenario`` rendu =
+    ``'avec'``, ``message`` = :data:`MESSAGE_BASCULE_AVEC_BATTERIE`) ; « avec » ⇒ un hybride ;
+    « les deux » ⇒ le réseau à l'option sans, l'hybride à l'option avec (inchangé).
 
     ``famille_au_nom`` (:func:`famille_lue_au_nom`) — une famille de rôle / fiche que le NOM ne
     dit pas n'est pas imposée : le PDF ne rendrait pas l'option, la resynchronisation en
@@ -275,8 +277,6 @@ def decision_onduleur_designe(*, produit_id, nom, etat, famille, famille_au_nom,
             motif = 'autonome_raccorde'
         elif famille == 'onduleur_reseau' and scenario == COMPOSITION_AVEC:
             motif = 'reseau_avec_batterie'
-        elif famille == 'onduleur_hybride' and scenario == COMPOSITION_SANS:
-            motif = 'hybride_sans_batterie'
     if motif is None and phase_client == 'triphase' and triphase is False:
         motif = 'mono_sur_tri'
     elif motif is None and phase_client == 'monophase' and triphase:
@@ -288,11 +288,15 @@ def decision_onduleur_designe(*, produit_id, nom, etat, famille, famille_au_nom,
     option = ''
     if scenario == COMPOSITION_LES_DEUX and not hors_reseau:
         option = 'sans' if famille == 'onduleur_reseau' else 'avec'
+    # D-ACAL-159 — un hybride sur un devis « sans batterie » le fait passer « avec batterie » (la
+    # batterie : celle que la composition pose par sa propre règle, jugée par la génération).
+    bascule = famille == 'onduleur_hybride' and scenario == COMPOSITION_SANS and not hors_reseau
+    compose = COMPOSITION_AVEC if bascule else scenario
     porte_la_batterie = famille in ('onduleur_hybride', 'onduleur_offgrid') and (
-        hors_reseau or scenario in (COMPOSITION_AVEC, COMPOSITION_LES_DEUX))
+        hors_reseau or compose in (COMPOSITION_AVEC, COMPOSITION_LES_DEUX))
     return {'impose': {'produit_id': int(produit_id), 'categorie': famille, 'nombre': int(nombre)},
-            'option': option, 'nom': nom, 'batterie_a_verifier': porte_la_batterie,
-            'motif': None, 'message': None}
+            'option': option, 'nom': nom, 'batterie_a_verifier': porte_la_batterie, 'scenario': compose,
+            'motif': None, 'message': MESSAGE_BASCULE_AVEC_BATTERIE % nom if bascule else None}
 
 
 def _batterie_composee(intention):
@@ -583,7 +587,8 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         # composait alors une option SANS un devis que le pré-vol venait de
         # vérifier sur DEUX. ``deux_options`` reste souverain quand
         # l'appelant le demande explicitement.
-        scenario=scenario,
+        # D-ACAL-159 — l'hybride désigné d'un devis « sans » le fait passer « avec ».
+        scenario=(designe['scenario'] if designe is not None and designe['impose'] else scenario),
         layout=stored_layout,
         etude_initiale=etude_initiale or None,
         taux_tva=taux_tva,
