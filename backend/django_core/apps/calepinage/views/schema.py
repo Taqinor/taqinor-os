@@ -76,8 +76,10 @@ __all__ = ['SchemaUnifilaireMixin']
 #: deux — ``blocs`` (les organes dessinés, un par bloc) et ``edition`` (ce que
 #: l'utilisateur a changé) — et n'en retire aucune ; le contrat CALX204
 #: (``contract_samples/calepinage_sld.json``) les fige toutes les six.
+#: SCHEL-B2 (lot 6) — 7e clé ``schema_electrique`` : le document du noyau
+#: (``core/electrique/schema_electrique.py``), ``null`` quand ``svg`` l'est.
 CLES_SCHEMA = ('calepinage', 'svg', 'blocs', 'edition', 'bloquants',
-               'manquantes')
+               'manquantes', 'schema_electrique')
 
 
 _FORME_SLD = forme_du_contrat('CalepinageSchemaUnifilaire',
