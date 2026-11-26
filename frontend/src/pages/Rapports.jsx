@@ -757,17 +757,18 @@ export function Component() {
         <TabsContent value="stock">
           {peutStock && renderReportCard('stock', 'Stock', () => (
             <ReportCard title="Stock" kind="stock" params={periodParams} exportable={peutExporterStock}>
-              <p className="text-sm">
+              {/* D-ACAL-165 — sans « voir les prix de vente », le serveur ne sert aucune valorisation de vente. */}
+              {stock.valorisation_vente != null && <p className="text-sm">
                 Valorisation (vente) : <strong className="tabular-nums">{fmt(stock.valorisation_vente)} DH</strong>
                 {/* AANA26 — clé servie seulement à can_view_buy_prices. */}
                 {stock.valorisation_achat != null && (
                   <>{' · '}achat (interne) : <span className="tabular-nums">{fmt(stock.valorisation_achat)} DH</span></>
                 )}
-              </p>
+              </p>}
               <Subhead>Par catégorie</Subhead>
               {/* VX148 — valeur vente HT par catégorie, en graphe (la table
                   garde le détail nb articles + total). */}
-              {stock.par_categorie.length > 0 ? (
+              {stock.valorisation_vente == null ? null : stock.par_categorie.length > 0 ? (
                 <BarArrondie
                   data={stock.par_categorie.map((c) => ({ label: c.categorie__nom || '—', value: Number(c.valeur_vente) || 0 }))}
                   layout="vertical"
@@ -780,9 +781,15 @@ export function Component() {
               ) : (
                 <ChartEmpty title="Aucune catégorie" />
               )}
-              <Table headers={['Catégorie', 'Articles', 'Valeur vente HT']}
-                     rows={stock.par_categorie.map(c => [c.categorie__nom || '—', fmt(c.nb), fmt(c.valeur_vente)])}
-                     footer={['Total', fmt(sumBy(stock.par_categorie, 'nb')), fmt(sumBy(stock.par_categorie, 'valeur_vente'))]} />
+              {stock.valorisation_vente != null ? (
+                <Table headers={['Catégorie', 'Articles', 'Valeur vente HT']}
+                       rows={stock.par_categorie.map(c => [c.categorie__nom || '—', fmt(c.nb), fmt(c.valeur_vente)])}
+                       footer={['Total', fmt(sumBy(stock.par_categorie, 'nb')), fmt(sumBy(stock.par_categorie, 'valeur_vente'))]} />
+              ) : (
+                <Table headers={['Catégorie', 'Articles']}
+                       rows={stock.par_categorie.map(c => [c.categorie__nom || '—', fmt(c.nb)])}
+                       footer={['Total', fmt(sumBy(stock.par_categorie, 'nb'))]} />
+              )}
               <Subhead>Stock bas</Subhead>
               {/* FG101 — clic sur produit → liste stock filtrée par recherche */}
               <Table headers={['Produit', 'SKU', 'Stock', 'Seuil']}
