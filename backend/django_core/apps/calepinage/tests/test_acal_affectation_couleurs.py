@@ -2,8 +2,8 @@
 """ACAL285 — la teinte de chaque chaîne et de chaque entrée MPPT, SERVIE.
 
 ``electrique.affectation[]`` porte ``couleur_chaine`` et ``couleur_mppt``
-(source unique ``services/chaines.py::PALETTE_CHAINES``), par ordre de
-première apparition, recalculées après l'affectation manuelle ; le plan de
+(source unique ``services/chaines.py::PALETTE_CHAINES``), la couleur d'une chaîne étant liée à son
+NUMÉRO (``couleur_de_chaine``) et non à l'ordre des modules (S3), recalculées après l'affectation manuelle ; le plan de
 câblage garde EXACTEMENT ses teintes. Conception réelle (service), aucun mock.
 """
 from __future__ import annotations
@@ -66,7 +66,7 @@ class AffectationCouleurs(unittest.TestCase):
         self.assertEqual(teinte(avant), teinte(apres))
         self.assertEqual(teinte(apres), {1: PALETTE_CHAINES[0], 2: PALETTE_CHAINES[1], 3: PALETTE_CHAINES[2]})
 
-    def test_lignes_portent_couleur_chaine_et_mppt_dans_l_ordre_de_premiere_apparition(self):
+    def test_lignes_portent_couleur_chaine_par_numero_et_couleur_mppt_par_premiere_apparition(self):
         lignes = affectation(_conception())
         self.assertGreaterEqual(len({ligne['chaine'] for ligne in lignes
                                      if ligne['chaine'] is not None}), 2)
