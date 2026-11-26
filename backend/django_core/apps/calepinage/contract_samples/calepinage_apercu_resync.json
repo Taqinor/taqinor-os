@@ -33,8 +33,14 @@
       }
     ],
     "totaux": {
-      "avant": {"ht": "29916.67", "ttc": "35900.00"},
-      "apres": {"ht": "24250.00", "ttc": "29100.00"}
+      "avant": {
+        "ht": "29916.67",
+        "ttc": "35900.00"
+      },
+      "apres": {
+        "ht": "24250.00",
+        "ttc": "29100.00"
+      }
     },
     "avertissements": [
       "L’onduleur suit la désignation de l’étape Électrique : « Onduleur réseau 5 kW » remplace « Onduleur réseau 8 kW »."
@@ -42,7 +48,8 @@
     "panneaux": 2,
     "kwc": 1.42,
     "scenario": "reseau",
-    "batterie": false
+    "batterie": false,
+    "jeton": "0000000000000000000000000000000000000000000000000000000000000000"
   },
   "exemple_inchange": {
     "inchange": true,
@@ -53,14 +60,21 @@
     "retraits": [],
     "changements": [],
     "totaux": {
-      "avant": {"ht": "29916.67", "ttc": "35900.00"},
-      "apres": {"ht": "29916.67", "ttc": "35900.00"}
+      "avant": {
+        "ht": "29916.67",
+        "ttc": "35900.00"
+      },
+      "apres": {
+        "ht": "29916.67",
+        "ttc": "35900.00"
+      }
     },
     "avertissements": [],
     "panneaux": 3,
     "kwc": 2.13,
     "scenario": "reseau",
-    "batterie": false
+    "batterie": false,
+    "jeton": "0000000000000000000000000000000000000000000000000000000000000000"
   },
   "exemple_sans_lecture_devis": {
     "inchange": false,
@@ -87,10 +101,17 @@
     "panneaux": 2,
     "kwc": 1.42,
     "scenario": "reseau",
-    "batterie": false
+    "batterie": false,
+    "jeton": "0000000000000000000000000000000000000000000000000000000000000000"
   },
   "corps_confirmation_note": "Revue du 26/11 (D-ACAL-73, « le dire AVANT d'agir » quel que soit le bouton) — POST calepinages/<pk>/sync-devis/ accepte `apercu_confirme` (booléen, défaut faux) : SEUL le bouton de confirmation de la carte d'aperçu l'envoie. Sans lui, sur un devis ENVOYÉ, l'onduleur et la batterie désignés à l'étape Électrique ne sont PAS appliqués (une phrase dit d'utiliser « Resynchroniser le devis » pour voir le changement et le confirmer) ; avec lui, ils le sont comme sur un brouillon né sous la règle. Un brouillon ne dépend pas du drapeau. Les autres chemins de la resynchronisation (sync-layout et POST layout du devis, assistant, rattachement, taille appliquée) ne l'envoient jamais. L'aperçu montre ce que la resynchronisation CONFIRMÉE écrirait.",
   "corps_confirmation": {
-    "apercu_confirme": true
+    "apercu_confirme": true,
+    "jeton_apercu": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "jeton_note": "Revue du 26/11 — la confirmation est LIÉE à ce que l'aperçu a montré : `jeton` (64 caractères hexadécimaux) est l'empreinte des ENTRÉES que l'aperçu a lues (document du calepinage aux surfaces chiffrées, onduleur et batterie désignés, état du devis : statut, empreinte de pose, marqueur des désignations, scénario, lignes) — rien n'est stocké. La carte le renvoie avec `apercu_confirme` (`jeton_apercu`, obligatoire avec lui : sinon 400 nommant `jeton_apercu`) ; s'il ne correspond plus (autre onglet, autre utilisateur, re-simulation automatique, conception retouchée), sync-devis répond 409 `reponse_409_apercu_perime` et n'écrit rien : la carte relance l'aperçu. Le verdict électrique est jugé à la confirmation (la carte le dit). Valeurs : des PLACEHOLDERS de forme.",
+  "reponse_409_apercu_perime": {
+    "detail": "L'aperçu a changé depuis son affichage : relancez-le avant de confirmer.",
+    "code": "apercu_perime"
   }
 }
