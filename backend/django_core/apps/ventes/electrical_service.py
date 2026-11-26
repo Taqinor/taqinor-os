@@ -830,6 +830,8 @@ def empreinte_entree(devis, entree, source=None):
     """
     import dataclasses
 
+    from core.electrique.types import spec_onduleur_pour_empreinte
+
     charge = {
         # L-1V — le FORMAT fait partie des entrées : sans lui, un artefact rangé
         # sous l'ancien format (sans ``materiel``, sans ``version_moteur``)
@@ -838,7 +840,8 @@ def empreinte_entree(devis, entree, source=None):
         "format_contrat": FORMAT_CONTRAT,
         "layout_hash": getattr(devis, "layout_hash", None) or "",
         "module": dataclasses.asdict(entree.module),
-        "onduleur": dataclasses.asdict(entree.onduleur),
+        # D-HYB-1 — les champs qui reconnaissent un hybride n'entrent pas : empreinte d'avant inchangée.
+        "onduleur": spec_onduleur_pour_empreinte(entree.onduleur),
         "groupes": [dataclasses.asdict(g) for g in entree.groupes],
         "dc_m": entree.dc_m,
         "ac_m": entree.ac_m,

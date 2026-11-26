@@ -343,6 +343,23 @@ class SpecOnduleur:
         return self.isc_max_mppt_a
 
 
+#: D-HYB-1 (26/11/2026) — les champs de :class:`SpecOnduleur` qui ne servent qu'à
+#: RECONNAÎTRE un hybride. Ils restent HORS de toute empreinte d'entrée : sans quoi
+#: chaque ``electrical_design`` rangé — devis envoyés compris — changerait
+#: d'empreinte et serait recalculé à sa prochaine lecture (« un devis envoyé garde
+#: ce que le client a reçu »).
+CHAMPS_SPEC_ONDULEUR_HORS_EMPREINTE = ("role", "bat_max_charge_kw", "bat_max_decharge_kw")
+
+
+def spec_onduleur_pour_empreinte(onduleur):
+    """Le ``dataclasses.asdict`` d'un :class:`SpecOnduleur` SANS
+    :data:`CHAMPS_SPEC_ONDULEUR_HORS_EMPREINTE` : exactement les clés d'avant D-HYB-1."""
+    from dataclasses import asdict
+
+    return {cle: valeur for cle, valeur in asdict(onduleur).items()
+            if cle not in CHAMPS_SPEC_ONDULEUR_HORS_EMPREINTE}
+
+
 @dataclass(frozen=True)
 class GroupePan:
     """Un PAN de toiture : les modules d'une même orientation.
