@@ -786,7 +786,7 @@ describe('ACAL1803 — tête et pied du panneau d’étape (maquettes v2)', () =
     const titre = screen.getByTestId('cal-panneau-etape-titre')
     expect(titre).toHaveTextContent('Les panneaux')
     expect(cs(titre).fontSize).toBe('1.5rem')
-    expect(cs(titre).fontFamily).toBe('var(--font-display)')
+    expect(cs(titre).fontFamily).toBe('var(--cal-police-titre)') // ACAL1941 — Archivo en tête (49-jetons-v2.css)
     const bouton = screen.getByRole('button', { name: 'Raccorder les panneaux' })
     expect(cs(bouton).height).toBe('52px')
     expect(cs(bouton).borderRadius).toBe('var(--cal-rayon-pile)')

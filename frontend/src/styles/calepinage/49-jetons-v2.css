@@ -72,6 +72,9 @@
   --cal-rayon-outils: 18px;
   --cal-rayon-panneau: 20px;
   --cal-rayon-carte: 22px;
+  /* ACAL1941 — Archivo EN TÊTE des titres et des boutons d'option : la pile globale --font-display met « Noto Sans
+     Arabic » d'abord (NTI18N7) ; ici l'arabe reste servi par Noto, en repli glyphe par glyphe. */
+  --cal-police-titre: 'Archivo', 'Noto Sans Arabic', 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
   --cal-police-chiffres: var(--font-display);
   --cal-chiffres: tabular-nums;
 }
