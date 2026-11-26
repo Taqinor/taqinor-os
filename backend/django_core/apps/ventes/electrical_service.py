@@ -1873,6 +1873,14 @@ def _conception_de_l_option(devis, variante, figee=None, surcharges=None):
             return figee
         if motifs_fiche_incomplete(devis) or not entree.groupes:
             return None
+        # Revue D-ACAL-158 (2) — les groupes viennent des pans du calepinage,
+        # sans égard à l'option : une option qui ne pose pas ce nombre de
+        # panneaux (8 « sans », 12 « avec ») n'est pas rangée — jamais un dessin
+        # incertain chez le client (D-ACAL-142). Même test que les chaînes du
+        # calepinage (``_chaines_du_calepinage``).
+        from apps.ventes.domain.dimensionnement_devis import comptes_panneaux_valides
+        if sum(g.nb_modules for g in entree.groupes) not in comptes_panneaux_valides(devis, variante):
+            return None
         design = _etude_dessinable(
             devis, projeter_contrat(entree, concevoir(entree), source_entree=source))
     return None if design is None else {"design": design, "hash": empreinte}

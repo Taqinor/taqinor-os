@@ -470,6 +470,23 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
         es.build_electrical_design(devis, overrides={"temp_froid_c": -10})
         self.assertEqual(es.figer_conceptions_des_options(devis), {})
 
+    def test_d_acal_158_option_a_un_autre_nombre_de_panneaux_non_rangee(self):
+        """Revue D-ACAL-158 (2) — 30 panneaux posés au toit, l'option « sans » en
+        vend 20 : son dessin serait celui de 30, elle n'est pas rangée."""
+        avec_30, sans_20 = (_FausseLigne("Panneau PV 710 Wc", 30, produit=_panneau()),
+                            _FausseLigne("Panneau PV 710 Wc", 20, produit=_panneau()))
+        avec_30.variante, sans_20.variante = "avec", "sans"
+        devis = _FauxDevis(lignes=[
+            avec_30, sans_20,
+            _FausseLigne("Onduleur réseau 15kW triphasé", 1, produit=_onduleur_reseau()),
+            _FausseLigne("Onduleur hybride 15kW triphasé", 1, produit=_onduleur_hybride()),
+            _FausseLigne("Batterie lithium 15,4 kWh", 1, produit=_batterie())], roof_layout=_roof(30))
+        es.build_electrical_design(devis)
+        devis.statut, devis.clauses_appliquees = "envoye", []
+        self.assertEqual(es.figer_conceptions_des_options(devis), {})
+        sans_20.quantite = Decimal("30")
+        self.assertEqual(set(es.figer_conceptions_des_options(devis)), {"sans_batterie"})
+
     def test_d_acal_158_envoye_avant_brouillon_et_mono_option_inchanges(self):
         devis = _devis_deux_options_servables()
         es.build_electrical_design(devis)
