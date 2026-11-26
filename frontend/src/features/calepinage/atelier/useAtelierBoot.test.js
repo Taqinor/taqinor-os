@@ -105,6 +105,17 @@ describe('ACAL1421 — `imagery` passé à initRoofToolPro8', () => {
     const vide = exempleContrat('calepinage', 'site_imagerie', 'exemple_section_declaree_sans_valeur').imagerie
     expect(imageryDesReglages(reglagesAtelierDesParametres({ imagerie: vide }))).toBeUndefined()
   })
+
+  // ACAL1754 (correctif) — une société qui n'a réglé que l'attribution ou les fournisseurs admis n'a PAS de pays :
+  // aucun contexte (un contexte sans pays changerait le fond de carte) ; avec le pays, `pays` reste dans le contexte.
+  it('attribution ou fournisseurs admis SANS pays : aucun contexte ; avec pays, pays est gardé', () => {
+    const seule = reglagesAtelierDesParametres({ imagerie: { attribution: '© Société' } })
+    expect(imageryDesReglages(seule)).toBeUndefined()
+    const admis = reglagesAtelierDesParametres({ imagerie: { fournisseurs_autorises: ['mapbox'] } })
+    expect(imageryDesReglages(admis)).toBeUndefined()
+    const avecPays = reglagesAtelierDesParametres({ imagerie: { pays: 'ma', attribution: '© Société' } })
+    expect(imageryDesReglages(avecPays)).toEqual({ pays: 'ma', attribution: '© Société' })
+  })
 })
 
 describe('R2-03 / R2-20', () => {

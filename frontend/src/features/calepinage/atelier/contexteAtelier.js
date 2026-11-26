@@ -182,7 +182,7 @@ export function libelleCibleEstimee(cible, { sansLead = false } = {}) {
   if (!Number.isFinite(n) || n <= 0) return null
   const origine = cible.source === 'lead'
     ? 'la taille souhaitée du lead' : 'les factures du lead'
-  return `Cible estimée depuis ${origine} : ${n} panneaux (estimation)` // ACAL1733 — « (non vendue) » ne s'expliquait pas
+  return `Cible estimée depuis ${origine} : ${n} panneaux` // ACAL1733 — « estimée » le dit déjà : jamais « (estimation) » en plus
 }
 
 // R2-15 / R2-01 (décision Q1, 22/11) — « Le lead déclare : tuiles · pente 25° · sud-ouest · ombrage partiel
@@ -298,6 +298,9 @@ export function reglagesAtelierDesParametres(p) {
 // fournisseurs admis (dans son ordre) et mention légale saisie — seulement les clés renseignées ; `null` si rien.
 // Avant, seul `pays` passait : l'atelier affichait le premier fournisseur disponible, pas celui de la société.
 function imagerieReglee(imagerie, pays) {
+  // Sans pays réglé : AUCUN contexte (comportement historique) — un contexte sans `pays` ferait passer le fond de carte
+  // au premier fournisseur déclaré (`useAtelierBoot.js::imageryDesReglages`) : l'attribution seule ne le change pas.
+  if (pays === null) return null
   const texte = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null)
   const autorises = Array.isArray(imagerie?.fournisseurs_autorises)
     ? imagerie.fournisseurs_autorises.filter((id) => texte(id)) : []

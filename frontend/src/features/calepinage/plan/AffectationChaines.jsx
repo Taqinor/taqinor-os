@@ -333,6 +333,14 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
     if (numeroOnduleur === undefined) {
       erreurs.onduleur = 'Le numéro d’onduleur doit être un entier strictement positif.'
     }
+    // Des numéros À MOITIÉ saisis : rien n'est écrit en silence à `null` — l'erreur nomme le champ vide.
+    const saisis = [numeroChaine, numeroMppt, numeroOnduleur].filter((n) => n !== null && n !== undefined).length
+    if (saisis > 0 && saisis < 3) {
+      const manque = 'Renseignez aussi ce numéro (ou videz les trois champs) : un champ vide décâblerait le module.'
+      if (numeroChaine === null) erreurs.chaine = manque
+      if (numeroMppt === null) erreurs.mppt = manque
+      if (numeroOnduleur === null) erreurs.onduleur = manque
+    }
     if (selection.size === 0) {
       erreurs.selection = 'Aucun module sélectionné : glissez sur les modules à affecter.'
     }
@@ -342,11 +350,17 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
     const actuel = new Map(lignes.map((l) => [l.module, drapeauOptimiseur(l)]))
     const actuelles = new Map(lignes.map((l) => [l.module, l]))
     // ACAL1642 — le drapeau seul (trois numéros vides, optimiseur oui/non) MARQUE les modules et GARDE leur câblage ;
-    // « décâbler » reste le geste « numéros vides, optimiseur inchangé ».
+    // « décâbler » reste le geste « numéros vides, optimiseur inchangé ». Le serveur compte la longueur d'une chaîne
+    // sur les lignes IMPOSÉES seules : le drapeau seul écrit donc la table AFFICHÉE complète (comme « Les équiper »).
     const drapeauSeul = numeroChaine === null && numeroMppt === null && numeroOnduleur === null
       && optimiseur !== 'inchange'
     setEditions((precedente) => {
       const suivante = new Map(precedente)
+      if (drapeauSeul) {
+        lignes.forEach((l) => {
+          if (!suivante.has(l.module)) suivante.set(l.module, marquerModules([l], drapeauOptimiseur(l))[0])
+        })
+      }
       selection.forEach((module) => {
         const valeur = { oui: true, non: false }[optimiseur] ?? actuel.get(module)
         const base = drapeauSeul ? (suivante.get(module) ?? actuelles.get(module) ?? {}) : null
