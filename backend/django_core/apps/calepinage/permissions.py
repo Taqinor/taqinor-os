@@ -22,6 +22,7 @@ ni ``marge_voir``, ni ``roles_gerer``. Le module n'expose aucune donnée de
 coût de revient, donc il n'a besoin d'aucun code élevé.
 """
 from __future__ import annotations
+from rest_framework.exceptions import ParseError, UnsupportedMediaType
 from rest_framework.permissions import BasePermission
 from core.permissions import _user_has_or_legacy
 
@@ -76,7 +77,17 @@ def ecriture_de_releve(request, view):
         return False
     if view.action != 'layout_section':
         return True
-    corps = request.data if isinstance(request.data, dict) else {}
+    # Le corps n'est lu qu'ICI, pendant la vérification des droits : un corps
+    # illisible (type de contenu refusé, JSON cassé) n'est PAS une écriture du
+    # relevé — la garde tombe sur GÉRER (403 sans le droit) et l'objet reste
+    # cherché avant toute négociation du corps (404 pour un id étranger,
+    # balayage ``test_isolation_societe``). Le porteur légitime reçoit son 415
+    # du gestionnaire, après ``get_object``.
+    try:
+        donnees = request.data
+    except (ParseError, UnsupportedMediaType):
+        return False
+    corps = donnees if isinstance(donnees, dict) else {}
     champs = corps.get('champs')
     return (corps.get('cle') == 'zones' and isinstance(champs, dict)
             and bool(champs) and set(champs) <= CHAMPS_PAN_RELEVE)
