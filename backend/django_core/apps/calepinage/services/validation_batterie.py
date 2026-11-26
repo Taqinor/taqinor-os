@@ -77,18 +77,23 @@ def drapeau_hybride(role, resolu):
 
 def _valider_batterie_designee(calepinage, fusionnee, postee):
     """D-ACAL-157 — ``batterie.produit`` POSTÉ : un produit de la société (jamais celui d'une autre : même
-    message qu'un id absent), de fiche « batterie ». AUCUN jugement sur l'onduleur à
-    l'écriture : une batterie derrière son propre onduleur-chargeur, sur un onduleur réseau, est une configuration
-    légitime et modélisée (``services/batterie.py`` : couplage ``ac`` par défaut) ; D-ACAL-157 ne demande que de
-    PROPOSER le sélecteur pour un hybride (garde d'ÉCRAN). Un refus NOMME ``batterie.produit`` ; ``None`` / ``''``
-    effacent la désignation (admis)."""
-    from apps.stock.selectors import get_produit_scoped
+    message qu'un id absent) ET membre de la MÊME liste que les candidats servis (``produits_par_type_fiche_qs``
+    « batterie » : fiche batterie, actif) — un câble ou un produit sans fiche ne passe plus pour une batterie. Une
+    désignation INCHANGÉE (le ``produit`` déjà stocké) n'est pas rejugée : une entrée ou une fixture qui porte une
+    batterie sans fiche reste réenregistrable. AUCUN jugement sur l'onduleur à l'écriture : une batterie derrière son
+    propre onduleur-chargeur, sur un onduleur réseau, est une configuration légitime et modélisée
+    (``services/batterie.py`` : couplage ``ac`` par défaut) ; D-ACAL-157 ne demande que de PROPOSER le sélecteur
+    pour un hybride (garde d'ÉCRAN). Un refus NOMME ``batterie.produit`` ; ``None`` / ``''`` effacent."""
+    from apps.stock.selectors import get_produit_scoped, produits_par_type_fiche_qs
 
-    from .electrique import EntreeInvalide
+    from .electrique import EntreeInvalide, entree_stockee
 
     saisie = (postee or {}).get('batterie')
     identifiant = saisie.get('produit') if isinstance(saisie, dict) else None
     if identifiant in (None, ''):
+        return
+    deja = (entree_stockee(calepinage).get('batterie') or {}).get('produit')
+    if deja not in (None, '') and str(deja) == str(identifiant):
         return
     company = getattr(calepinage, 'company', None)
     try:
@@ -98,7 +103,6 @@ def _valider_batterie_designee(calepinage, fusionnee, postee):
     if produit is None:
         raise EntreeInvalide('Produit introuvable dans votre catalogue (#%s).' % identifiant,
                              champ='batterie.produit', introuvable=True)
-    fiche = getattr(produit, 'fiche_technique', None)
-    if getattr(fiche, 'type_fiche', 'batterie') != 'batterie':
-        raise EntreeInvalide("« %s » n'est pas une batterie : choisissez un produit de la catégorie Batterie."
-                             % (getattr(produit, 'nom', '') or identifiant), champ='batterie.produit')
+    if not produits_par_type_fiche_qs(company, 'batterie').filter(pk=produit.pk).exists():
+        raise EntreeInvalide("« %s » n'est pas une batterie du catalogue : choisissez un produit actif de la catégorie "
+                             "Batterie." % (getattr(produit, 'nom', '') or identifiant), champ='batterie.produit')
