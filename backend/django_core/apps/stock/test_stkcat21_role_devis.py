@@ -344,6 +344,24 @@ class TestPanneauParDefautSelecteurs(SimpleTestCase):
         self.assertEqual(spd.watt_du_panneau(_panneau_memoire(nom='Panneau 710 W')), 710)
         self.assertIsNone(spd.watt_du_panneau(_panneau_memoire(nom='Panneau bifacial')))
 
+    def test_un_watt_par_panneau_nom_et_fiche_en_desaccord(self):
+        """Nom « 710 W » + fiche 715 Wc : deux moteurs liraient deux puissances — pas utilisable, phrase du contrat."""
+        produit = _panneau_memoire(nom='Panneau Jinko 710 W', pmax=715)
+        self.assertEqual(spd.desaccord_watt(produit), (710, 715))
+        self.assertEqual(spd.source_du_produit(produit), spd.WATT_CONTRADICTOIRE)
+        self.assertEqual(spd.resume_du_produit(produit), _CONTRAT_PANNEAU['exemple_watt_contradictoire'])
+        self.assertIn(spd.phrase_desaccord_watt(710, 715), _CONTRAT_PANNEAU['exemple_watt_contradictoire']['motif'])
+        self.assertEqual(spd.phrase_desaccord_watt(710, 712.5),
+                         "Le nom de ce produit dit 710 W et sa fiche technique 712,5 Wc : corrigez l'un des deux, "
+                         "puis désignez-le.")
+        # Accord, ou une seule des deux sources : aucun désaccord, et la même valeur dans les deux ordres.
+        for accord in (_panneau_memoire(nom='Panneau 715 Wc', pmax=715), _panneau_memoire(nom='Panneau 715 Wc'),
+                       _panneau_memoire(nom='Réf. XK-9', pmax=715)):
+            with self.subTest(nom=accord.nom):
+                self.assertIsNone(spd.desaccord_watt(accord))
+                self.assertEqual(spd.watt_du_panneau(accord), 715)
+                self.assertEqual(spd.watt_au_nom(accord) or spd.watt_de_fiche(accord), 715)
+
     def test_sans_societe_rien(self):
         self.assertIsNone(spd.panneau_par_defaut(None))
         self.assertIsNone(spd.watt_panneau_par_defaut(None))
@@ -536,6 +554,25 @@ class TestPanneauParDefautApi(TestCase):
             self.assertEqual(ligne.user_id, directeur.pk)
             self.assertEqual(ligne.company_id, self.company.pk)
         self.assertEqual(lignes_715[0].changes, [{'field': 'panneau_par_defaut', 'old': False, 'new': True}])
+
+    def test_refus_nom_et_fiche_en_desaccord(self):
+        contradictoire = Produit.objects.create(company=self.company, nom='Panneau Jinko 710 W',
+                                                prix_vente=Decimal('1100'))
+        FicheTechnique.objects.create(company=self.company, produit=contradictoire, type_fiche='module',
+                                      pmax_wc=Decimal('715'))
+        rep = self._definir(contradictoire)
+        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertEqual(rep.json()['panneau_par_defaut'],
+                         [_CONTRAT_PANNEAU['exemple_watt_contradictoire']['motif']])
+        self.assertEqual(self._drapeaux(), set())
+
+    def test_nom_modifie_apres_designation_rend_none(self):
+        self._definir(self.p715)
+        Produit.objects.filter(pk=self.p715.pk).update(nom='Panneau Canadian Solar 710 W')
+        self.assertIsNone(spd.panneau_par_defaut(self.company))
+        self.assertIsNone(spd.watt_panneau_par_defaut(self.company))
+        rep = self._api('Technicien').get(self.URL_LECTURE)
+        self.assertEqual(rep.json(), _CONTRAT_PANNEAU['exemple_watt_contradictoire'])
 
     def test_selecteur_archive_apres_designation_rend_none(self):
         self._definir(self.p715)

@@ -15,7 +15,8 @@ import logging
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
-from .selectors_panneau_defaut import est_un_panneau, resume_panneau_par_defaut
+from .selectors_panneau_defaut import (desaccord_watt, est_un_panneau, phrase_desaccord_watt,
+                                       resume_panneau_par_defaut)
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,11 @@ def _refus(produit):
         return REFUS_ARCHIVE.format(nom=produit.nom)
     if not _prix_vente_saisi(produit):
         return REFUS_SANS_PRIX.format(nom=produit.nom)
+    desaccord = desaccord_watt(produit)
+    if desaccord is not None:
+        # Un watt par panneau par défaut : sinon le résolveur résidentiel (nom d'abord) et le C&I (fiche seule)
+        # liraient deux puissances différentes pour LE MÊME panneau.
+        return phrase_desaccord_watt(*desaccord)
     return None
 
 
