@@ -826,6 +826,36 @@ describe('ACAL1436 — heure solaire « 10,5 »', () => {
   });
 });
 
+// ACAL1921 (revue) — GARDE du chemin de relecture du seuil, pas une preuve de correctif : sur le boot d'un DOCUMENT,
+// `hydrateFromDevis` rend `shadeObstructions` (tableau, vide compris) ⇒ l'entrée du constructeur appelle déjà
+// `rafraichirOmbres` (`if (h.shadeObstructions !== undefined)`), et le champ relit le seuil semé par
+// `deserializeLayout`. La cause du champ vide observé sur le calepinage 2051 est donc AILLEURS (à rejouer en direct).
+describe('ACAL1921 — garde : le boot d’un document relit le seuil d’accès solaire', () => {
+  it('document (seuil 98 %, aucune ombre tracée) : l’hydratation porte `shadeObstructions` et le rafraîchissement lit 98', async () => {
+    const { semerOptimisationDepuisDocument } = await import('./optimisationDocument');
+    const { exempleRoofLayoutV2, ouvrirAtelier } = await import('./harnaisDocument');
+    document.body.innerHTML = '<input id="rp9-seuil-acces"><p id="rp9-seuil-acces-erreur"></p><p id="rp9-seuil-acces-note"></p>';
+    const ctx = {
+      areas: [], activeAreaId: '', vertices: [], closed: false, obstacles: [], batiments: [], shadeObstructions: [],
+      environment: [], activeArea: () => null, pushWorkshopHistory: () => {},
+    } as unknown as Ctx;
+    const map = new Proxy({}, { get: () => () => undefined }) as never;
+    try {
+      semerOptimisationDepuisDocument({});
+      const ui = createShadingUi(ctx, { map, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {} });
+      const champ = document.getElementById('rp9-seuil-acces') as HTMLInputElement;
+      expect(champ.value).toBe('');
+      const doc = JSON.parse(JSON.stringify(exempleRoofLayoutV2())) as Record<string, unknown>;
+      delete doc.shadeObstructions;
+      doc.optimisation = { seuilAccesSolaire: 0.98 };
+      const { h } = ouvrirAtelier({ id: null, geometrie: { roof_layout: doc as never }, cibleVendue: false });
+      expect(h.shadeObstructions).toEqual([]); // défini ⇒ la ligne de l'entrée rafraîchit
+      ui.rafraichirOmbres();
+      expect(champ.value).toBe('98');
+    } finally { semerOptimisationDepuisDocument({}); }
+  });
+});
+
 // ACAL504 — la hauteur du bâtiment saisie SANS provenance est refusée sous le champ ET dans la barre d'état.
 describe('ACAL504 — refus d’une hauteur sans provenance', () => {
   function monter() {
