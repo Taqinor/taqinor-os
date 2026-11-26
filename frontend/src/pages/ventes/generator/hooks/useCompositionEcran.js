@@ -214,7 +214,12 @@ export function useCompositionEcran(ctx) {
     // pour ces marchés — comportement local strictement inchangé.
     if (modeInstallation === 'residentiel') {
       if (kwp <= 0) {
-        setErrors(e => ({ ...e, autofill: 'Entrez le nombre de panneaux' }))
+        // ACAL1206 — le refus nomme les DEUX gestes : la facture du lead (lien vers sa fiche) ou les panneaux.
+        const ficheLead = selectedLead?.id
+          ? createElement(Link, { to: `/crm/leads/${selectedLead.id}`, className: 'underline' }, 'fiche du lead')
+          : 'fiche du lead'
+        setErrors(e => ({ ...e, autofill: createElement(Fragment, null,
+          'Aucune taille : saisissez la facture hiver/été du lead (', ficheLead, ') ou un nombre de panneaux') }))
         return
       }
       // ACAL1205 — la taille « avec batterie » vient de l'étude horaire : pendant son chargement

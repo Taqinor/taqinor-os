@@ -111,7 +111,22 @@ async function bancAutoFill() {
   return { etat, composerDevis, etudeCiPreview, ctx, monte }
 }
 
-describe('ACAL1205 — Auto-remplir attend l\'étude horaire (taille « avec batterie »)', () => {
+describe('ACAL1206 — le refus faute de taille nomme les deux gestes possibles', () => {
+  it('sans taille ⇒ rien composé ; message nommant la facture hiver/été (lien vers la fiche du lead) ET le nombre de panneaux', async () => {
+    const { render } = await import('@testing-library/react')
+    const { MemoryRouter } = await import('react-router-dom')
+    const { createElement } = await import('react')
+    const { etat, composerDevis, ctx, monte } = await bancAutoFill()
+    const { result } = monte(ctx({ kwp: 0, selectedLead: { id: 7 } }))
+    await act(async () => { await result.current.handleAutoFill() })
+    expect(composerDevis).not.toHaveBeenCalled()
+    const { container } = render(createElement(MemoryRouter, null, etat.erreurs.autofill))
+    expect(container.textContent).toMatch(/Aucune taille : saisissez la facture hiver\/été du lead \(fiche du lead\) ou un nombre de panneaux/)
+    expect(container.querySelector('a[href="/crm/leads/7"]')).not.toBeNull()
+  })
+})
+
+describe('ACAL1205 —Auto-remplir attend l\'étude horaire (taille « avec batterie »)', () => {
   it('clic pendant le chargement de l\'étude ⇒ rien composé + « en cours » ; après l\'étude ⇒ la composition porte la taille avec batterie', async () => {
     const { etat, composerDevis, ctx, monte } = await bancAutoFill()
     const { result, rerender } = monte(ctx({ etudeHoraireChargement: true }))
