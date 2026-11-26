@@ -12,11 +12,10 @@ import { useEffect, useRef, useState } from 'react'
    `services/troncons.py` mesure chaque tronçon tracé, en dimensionne la SECTION et en calcule la CHUTE de tension,
    puis prononce un verdict DC et AC sur les cumuls (CALX224-226, `resultat.troncons`, pastille « Câble côté
    panneaux ») ; `services/bordereau_calepinage.py` prend son métré de câble sur les mêmes tronçons (CALX227). Ces
-   verdicts et ce métré bougent donc avec l'onduleur. CE QU'IL NE CHANGE PAS (décision du 26/11, option 2) : `dc_m`
-   de l'entrée électrique, la perte câbles de la SIMULATION (`cables_du_calepinage`, qui lit le cheminement saisi —
-   son alignement est l'affaire d'une autre tâche), et rien de ce que lit `apps/ventes` (le devis ne lit que `dc_m`
-   SAISI, `selectors.entree_electrique_du_devis`). L'empreinte du document porte `electrical` : enregistrer un
-   déplacement rend la simulation « à refaire », comme tout geste sur le toit — l'écran le dit après le geste.
+   verdicts et ce métré bougent donc avec l'onduleur. CE QU'IL NE CHANGE JAMAIS : `dc_m` de l'entrée électrique, et
+   rien de ce que lit `apps/ventes` (le devis ne lit que `dc_m` SAISI, `selectors.entree_electrique_du_devis`).
+   L'empreinte du document porte `electrical` : enregistrer un déplacement rend une simulation existante « à refaire »,
+   comme tout geste sur le toit — l'écran le dit après le geste.
    ========================================================================== */
 
 export const PROVENANCE_TRACE_PROPOSE = 'tracé proposé le long des rangées (position de l’onduleur)'
@@ -69,12 +68,17 @@ export function provenanceCable(etat) {
   return PROVENANCE_TRACE_PROPOSE
 }
 
-function phraseApresGeste(couche, id, verbe) {
+/** La phrase de la simulation périmée, seulement quand le calepinage A une simulation (« depuis le dernier calcul »
+    serait faux sans calcul). */
+const suiteSimulation = (simulationExiste) => (simulationExiste ? ` ${PHRASE_SIMULATION_A_REFAIRE}` : '')
+
+function phraseApresGeste(couche, id, verbe, simulationExiste) {
+  const suite = suiteSimulation(simulationExiste)
   const refus = couche.dernierRefus?.()
-  if (refus) return `Onduleur ${verbe}, mais ${refus.message.charAt(0).toLowerCase()}${refus.message.slice(1)} ${PHRASE_SIMULATION_A_REFAIRE}`
+  if (refus) return `Onduleur ${verbe}, mais ${refus.message.charAt(0).toLowerCase()}${refus.message.slice(1)}${suite}`
   const etat = id ? couche.etatTraces(id) : null
-  if (etat?.decales?.length) return `${PHRASE_TRACE_DECALE} ${PHRASE_SIMULATION_A_REFAIRE}`
-  return `Onduleur ${verbe} : le tracé du câble a suivi. Enregistrez le calepinage pour mesurer sa longueur. ${PHRASE_SIMULATION_A_REFAIRE}`
+  if (etat?.decales?.length) return `${PHRASE_TRACE_DECALE}${suite}`
+  return `Onduleur ${verbe} : le tracé du câble a suivi. Enregistrez le calepinage pour mesurer sa longueur.${suite}`
 }
 
 /**
@@ -82,7 +86,9 @@ function phraseApresGeste(couche, id, verbe) {
  * (`nombre_onduleurs`, 1 par défaut) : la barre n'en pose jamais plus. Plusieurs onduleurs au document : les gestes
  * visent celui CHOISI (`choisir`), le premier par défaut.
  */
-export function useOnduleurSurCarte({ builderApi, enregistreLe = null, nombreAttendu = 1, lectureSeule = false } = {}) {
+export function useOnduleurSurCarte({
+  builderApi, enregistreLe = null, nombreAttendu = 1, lectureSeule = false, simulationExiste = false,
+} = {}) {
   const couche = coucheUtilisable(builderApi)
   const [, setVersion] = useState(0)
   const [choisiId, setChoisiId] = useState(null)
@@ -91,6 +97,8 @@ export function useOnduleurSurCarte({ builderApi, enregistreLe = null, nombreAtt
   const [gesteDepuis, setGesteDepuis] = useState(undefined)
   const enregistreRef = useRef(enregistreLe)
   useEffect(() => { enregistreRef.current = enregistreLe }, [enregistreLe])
+  const simulationRef = useRef(simulationExiste) // lu par l'écouteur du toucher de la carte (abonné une fois)
+  useEffect(() => { simulationRef.current = simulationExiste }, [simulationExiste])
   const marquerGeste = () => setGesteDepuis(enregistreRef.current)
   const aEnregistrer = gesteDepuis !== undefined && gesteDepuis === enregistreLe
   const attente = useRef(null) // le geste armé par la barre, que le clic sur la carte achèvera
@@ -108,7 +116,7 @@ export function useOnduleurSurCarte({ builderApi, enregistreLe = null, nombreAtt
           : armeParBarre.id
         if (pose && id) setChoisiId(id)
         setGesteDepuis(enregistreRef.current)
-        setMessage(phraseApresGeste(couche, id, armeParBarre.verbe))
+        setMessage(phraseApresGeste(couche, id, armeParBarre.verbe, simulationRef.current))
       }
     })
   }, [couche])
@@ -148,7 +156,9 @@ export function useOnduleurSurCarte({ builderApi, enregistreLe = null, nombreAtt
     const r = couche.pousser(choisi.id, dEstM, dNordM)
     if (!r.ok) { setMessage(r.message); return }
     marquerGeste()
-    setMessage(r.refusTrace ? `Onduleur déplacé, mais ${r.refusTrace.message} ${PHRASE_SIMULATION_A_REFAIRE}` : phraseApresGeste(couche, choisi.id, 'déplacé'))
+    setMessage(r.refusTrace
+      ? `Onduleur déplacé, mais ${r.refusTrace.message}${suiteSimulation(simulationExiste)}`
+      : phraseApresGeste(couche, choisi.id, 'déplacé', simulationExiste))
   }
   const terminer = () => {
     if (!couche) return
@@ -158,9 +168,12 @@ export function useOnduleurSurCarte({ builderApi, enregistreLe = null, nombreAtt
     setMessage(null)
     setVersion((v) => v + 1)
   }
+  // Annuler / rétablir DÉSARMENT aussi la pose ou le déplacement en attente : sinon le prochain toucher de la carte
+  // posait l'onduleur sans message ni marque de geste (la pastille remontrait l'ancienne longueur).
   const annuler = () => {
     if (!couche || lectureSeule) return
     attente.current = null
+    desarmer(couche)
     if (!couche.annuler()) { setMessage('Rien à annuler dans le raccordement.'); return }
     marquerGeste()
     setMessage('Dernier geste du raccordement annulé.')
@@ -168,6 +181,7 @@ export function useOnduleurSurCarte({ builderApi, enregistreLe = null, nombreAtt
   const retablir = () => {
     if (!couche || lectureSeule) return
     attente.current = null
+    desarmer(couche)
     if (!couche.retablir()) { setMessage('Rien à rétablir dans le raccordement.'); return }
     marquerGeste()
     setMessage('Geste du raccordement rétabli.')
@@ -180,9 +194,9 @@ export function useOnduleurSurCarte({ builderApi, enregistreLe = null, nombreAtt
     marquerGeste()
     setChoisiId(null)
     const n = r.tracesGardees.length
-    setMessage(n
+    setMessage((n
       ? `Onduleur retiré. ${n} autre${n > 1 ? 's' : ''} tracé${n > 1 ? 's' : ''} vers lui reste${n > 1 ? 'nt' : ''} sur le plan : il${n > 1 ? 's n’ont' : ' n’a'} pas été retiré${n > 1 ? 's' : ''}.`
-      : `Onduleur retiré du plan. ${PHRASE_SIMULATION_A_REFAIRE}`)
+      : 'Onduleur retiré du plan.') + suiteSimulation(simulationExiste))
   }
 
   return {

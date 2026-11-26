@@ -844,8 +844,8 @@ function coucheEssai(equipements = []) {
   return couche
 }
 const ONDULEUR = { id: 'eqA', type: 'onduleur', label: 'Onduleur 1', lng: -7.6, lat: 33.5, source: 'saisie' }
-function BarreAvecOnduleur({ couche, lectureSeule = false, nombreAttendu = 1, enregistreLe = null }) {
-  const onduleur = useOnduleurSurCarte({ builderApi: couche ? { electrique: couche } : null, nombreAttendu, lectureSeule, enregistreLe })
+function BarreAvecOnduleur({ couche, lectureSeule = false, nombreAttendu = 1, enregistreLe = null, simulationExiste = false }) {
+  const onduleur = useOnduleurSurCarte({ builderApi: couche ? { electrique: couche } : null, nombreAttendu, lectureSeule, enregistreLe, simulationExiste })
   return <BarreRaccordement calepinageId={1} onRaccorde={() => {}} onModifier={() => {}} lectureSeule={lectureSeule} onduleur={onduleur} />
 }
 const GESTES_ECRITS = ['armerPose', 'armerDeplacement', 'pousser', 'retirerAvecTraces']
@@ -859,7 +859,7 @@ describe('BarreRaccordement (ACAL1317) — l’onduleur se place, se déplace et
 
   it('aucun onduleur posé : « Placer l’onduleur » arme la pose avec suivi du tracé ; le toucher de la carte le pose', () => {
     const couche = coucheEssai()
-    render(<BarreAvecOnduleur couche={couche} />)
+    render(<BarreAvecOnduleur couche={couche} simulationExiste />)
     fireEvent.click(screen.getByRole('button', { name: 'Placer l’onduleur' }))
     expect(couche.armerPose).toHaveBeenCalledWith('onduleur', { suivreTrace: true })
     expect(screen.getByTestId('cal-elec-onduleur-message')).toHaveTextContent('Touchez la carte à l’endroit de l’onduleur.')
@@ -1081,5 +1081,43 @@ describe('useOnduleurSurCarte (ACAL1317, revue 2, point C) — le message du tou
     const message = screen.getByTestId('cal-elec-onduleur-message')
     expect(message).toHaveTextContent('Onduleur placé, mais aucune rive de toit exploitable')
     expect(message).not.toHaveTextContent('le tracé du câble a suivi')
+  })
+})
+
+describe('useOnduleurSurCarte (ACAL1317, revue 2, point D) — « Annuler » désarme une pose en attente', () => {
+  it('« Placer » armé puis « Annuler » : le toucher suivant de la carte ne pose rien', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    couche.pousser('eqA', 0, 0.25) // un geste à annuler : « Annuler » est actif
+    render(<BarreAvecOnduleur couche={couche} nombreAttendu={2} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Placer l’onduleur' }))
+    expect(couche.typeArme()).toBe('onduleur')
+    fireEvent.click(screen.getByTestId('cal-elec-onduleur-annuler'))
+    expect(couche.typeArme()).toBeNull()
+    expect(couche.clicCarte(versLngLat(1, 2))).toBe(false)
+    expect(couche.documentElectrique().equipements.map((e) => e.id)).toEqual(['eqA'])
+  })
+
+  it('Ctrl+Z dans la barre pendant un « Placer » armé désarme aussi la pose', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    couche.pousser('eqA', 0, 0.25)
+    render(<BarreAvecOnduleur couche={couche} nombreAttendu={2} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Placer l’onduleur' }))
+    expect(couche.typeArme()).toBe('onduleur')
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Raccorder automatiquement' }), { key: 'z', ctrlKey: true })
+    expect(couche.typeArme()).toBeNull()
+    expect(couche.deplacementArme()).toBeNull()
+  })
+
+  it('« Simulation à refaire » n’est dite que si le calepinage a une simulation ; le retrait la dit aussi', () => {
+    const sans = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    const { unmount } = render(<BarreAvecOnduleur couche={sans} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Retirer l’onduleur' }))
+    expect(screen.getByTestId('cal-elec-onduleur-message')).toHaveTextContent('Onduleur retiré du plan.')
+    expect(screen.getByTestId('cal-elec-onduleur-message')).not.toHaveTextContent('Simulation à refaire')
+    unmount()
+    const avec = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    render(<BarreAvecOnduleur couche={avec} simulationExiste />)
+    fireEvent.click(screen.getByRole('button', { name: 'Retirer l’onduleur' }))
+    expect(screen.getByTestId('cal-elec-onduleur-message')).toHaveTextContent('Onduleur retiré du plan. Après l’enregistrement : Simulation à refaire')
   })
 })

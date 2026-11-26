@@ -172,7 +172,9 @@ function CalquesCarte({
   enregistreLe = null, nombreOnduleurs = 1, resultatAJour = true,
 }) {
   // ACAL1317 — l'onduleur posé sur la carte (document), ses gestes et la provenance du tracé de son câble.
-  const onduleur = useOnduleurSurCarte({ builderApi, enregistreLe, nombreAttendu: nombreOnduleurs, lectureSeule })
+  const onduleur = useOnduleurSurCarte({
+    builderApi, enregistreLe, nombreAttendu: nombreOnduleurs, lectureSeule, simulationExiste: resultat?.simule === true,
+  })
   // Après un geste sur l'onduleur, la longueur servie est celle de l'ANCIEN tracé tant que l'atelier n'est pas
   // enregistré ET relu : elle n'est pas montrée (« à mesurer à l'enregistrement »), jamais un ancien chiffre.
   const cases = casesPastille(resultat, { cableEnAttente: onduleur.aGeste && (onduleur.aEnregistrer || !resultatAJour) })
