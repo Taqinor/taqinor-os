@@ -70,7 +70,10 @@ export const sorties = {
     // GET rend l'historique (`releves`) ; POST enregistre une chaîne ET rend
     // le relevé créé PLUS l'historique à jour (contrat `calepinage_releve.json`).
     releve: (id) => api.get(`${pivot(id)}releve/`, { silencieuxExpiration: true, timeout: 60000 }), // J3 : lecture lente du relevé
-    enregistrerReleve: (id, corps) => api.post(`${pivot(id)}releve/`, corps),
+    // ACAL1949 — `idempotencyKey` (celle du relevé gardé hors ligne, la même au rejeu) part en `Idempotency-Key` : un
+    // rejeu coupé après la réponse du serveur ne crée pas de second relevé. Sans clé, l'appel reste celui d'avant.
+    enregistrerReleve: (id, corps, { idempotencyKey } = {}) =>
+      api.post(`${pivot(id)}releve/`, corps, idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : undefined),
     // ACAL204/205 — corriger (PATCH, le MÊME relevé) ou retirer (DELETE) un
     // relevé de saisie ; GET releve/ rend aussi `releve_courant_id`.
     corrigerReleve: (id, releveId, corps) => api.patch(`${pivot(id)}releve/${releveId}/`, corps),

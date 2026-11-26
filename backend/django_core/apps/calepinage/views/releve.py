@@ -78,24 +78,30 @@ class ReleveTerrainMixin:
                 'releves': releves_terrain(calepinage),
                 'releve_courant_id': releve_courant_id(calepinage)})
 
-        try:
-            releve = enregistrer_releve(
-                calepinage,
-                request.data if isinstance(request.data, dict) else None,
-                user=request.user)
-        except ReleveRefuse as refus:
-            if refus.champ == 'releve_le' and 'futur' in str(refus):
-                # ENF11 — règle d'HORLOGE, que le schéma ne peut pas dire.
-                raise ConflitEtat(str(refus))
-            return Response({refus.champ or 'detail': str(refus)},
-                            status=_statut_refus_releve(refus))
+        def enregistrer():
+            try:
+                releve = enregistrer_releve(
+                    calepinage,
+                    request.data if isinstance(request.data, dict) else None,
+                    user=request.user)
+            except ReleveRefuse as refus:
+                if refus.champ == 'releve_le' and 'futur' in str(refus):
+                    # ENF11 — règle d'HORLOGE, que le schéma ne peut pas dire.
+                    raise ConflitEtat(str(refus))
+                return Response({refus.champ or 'detail': str(refus)},
+                                status=_statut_refus_releve(refus))
 
-        from ..services.releve import releve_en_ligne
+            from ..services.releve import releve_en_ligne
 
-        return Response({'releve': releve_en_ligne(releve),
-                         'releves': releves_terrain(calepinage),
-                         'releve_courant_id': releve_courant_id(calepinage)},
-                        status=status.HTTP_201_CREATED)
+            return Response({'releve': releve_en_ligne(releve),
+                             'releves': releves_terrain(calepinage),
+                             'releve_courant_id': releve_courant_id(calepinage)},
+                            status=status.HTTP_201_CREATED)
+
+        # ACAL1949 — un relevé gardé hors ligne repart avec SA clé
+        # (``Idempotency-Key``) : un rejeu coupé après la réponse du serveur
+        # rejoue la réponse mémorisée, jamais un second relevé (CAL21).
+        return self.executer_idempotent(request, enregistrer)
 
     @extend_schema(
         parameters=[OpenApiParameter(
