@@ -7,6 +7,7 @@ import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
 import { formatKwc, formatNumber } from '../../../../../lib/format'
 import { cibleAuModule } from '../../cibleAuModule'
+import { libelleSourceCible } from '../../contexteAtelier' // T4-X8-012 (une cible) — UNE table de mots pour la source de la cible
 import { kwh } from '../../../production/ResultatHeros.helpers'
 import { SurCarte } from '../emplacements'
 import { BoutonMarine, CarteFlottante, Icone, Indicateur, Segmente } from '../primitives'
@@ -231,8 +232,12 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   const max = etat.max && !factureChoisie
   // La taille des factures n'est promise que si elle tient sur le toit : « seuls N tiennent » (note du constructeur).
   const tient = cible && besoin?.tiennent != null && besoin.tiennent < cible.panneaux ? besoin.tiennent : null
+  // T4-X8-012 (une cible) — la cible dite comme la note du constructeur (« N posés / T cible (source) · k de moins que la cible ») :
+  // ce qui tient, LA cible et sa source (`cible_factures` n'est servie que pour une cible tirée des factures), l'écart.
+  const sourceCible = libelleSourceCible('factures')
   const ligneTaille = tient == null ? null : [
-    compte(tient), cible.kwc != null ? fmtKwc((cible.kwc * tient) / cible.panneaux) : null, `sur ${cible.panneaux} nécessaires`,
+    compte(tient), cible.kwc != null ? fmtKwc((cible.kwc * tient) / cible.panneaux) : null,
+    `${cible.panneaux} cible (${sourceCible})`, `${cible.panneaux - tient} de moins que la cible`,
   ].filter(Boolean).join(' · ')
   // Le % n'est dit qu'à côté de la taille pour laquelle il est calculé. T4-X7-002 — ce % est la part SERVIE de la conception
   // (`chiffrage.couverture_pct` = énergie AUTOCONSOMMÉE ÷ consommation, la grandeur ET le nom de la tuile « De la consommation »
@@ -259,7 +264,7 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
       .filter(Boolean).join(' · ')
     : null
   const ligneFacture = cible && (cible.conception ? (ligneTaille ?? ligneConversion) : (ligneTaille ?? [
-    compte(cible.panneaux), cible.kwc != null ? fmtKwc(cible.kwc) : null, 'conception',
+    compte(cible.panneaux), cible.kwc != null ? fmtKwc(cible.kwc) : null, sourceCible,
     partFacture,
   ].filter(Boolean).join(' · ')))
   const posee = factureChoisie && cible && figures.panneaux > 0 && figures.kwc
