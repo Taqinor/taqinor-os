@@ -590,10 +590,12 @@ describe('Étape Résultats — pas encore simulé (jamais lancé)', () => {
     expect(lignes.map((l) => texte(l.querySelector('.cal-resinc-nom')))).toEqual([
       'Choisir la norme électrique de votre société?', 'Ombrage panneau par panneau?', 'Températures de référence?'])
     expect(lignes.map((l) => l.querySelector('.cal-resinc-rang').textContent)).toEqual(['1', '2', '3'])
+    // R5B-N5 (rejeu 26/11) — la ligne des ombres menait à `?onglet=production`, l'écran même : « Renseigner » ne faisait
+    // rien de visible. Elle ouvre l'étape Panneaux (premier onglet `fiches`), où l'ombre de chaque panneau se calcule.
     expect(lignes.map((l) => l.querySelector('[data-testid="cal-avant-renseigner"]').getAttribute('href'))).toEqual([
-      '/calepinage/reglages#norme', '/calepinage/5?onglet=production', '/calepinage/reglages'])
+      '/calepinage/reglages#norme', '/calepinage/5?onglet=fiches', '/calepinage/reglages'])
     expect(lignes.map((l) => l.querySelector('[data-testid="cal-avant-renseigner"]').textContent)).toEqual([
-      'Renseigner', 'Renseigner', 'Renseigner'])
+      'Renseigner', 'Voir les ombres', 'Renseigner'])
     // « Production à calculer — Voir » doublait le bouton « Lancer la simulation » de la carte sombre : retirée de la liste.
     expect(screen.queryByText('Production à calculer')).toBeNull()
     // La phrase servie est gardée, derrière le « ? » (infobulle + révélée au clic), jamais dans la ligne.

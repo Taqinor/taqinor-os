@@ -4,6 +4,7 @@ import { lienManque } from './lienManque'
 import { manqueClair } from './nomsPertes'
 import { CeQuiEstSur } from './ResultatIncomplet'
 import { BoutonCalculer } from './PanneauProduction'
+import { premierOngletEtape } from '../atelier/parcoursGuide' // R5B-N5 — l'onglet qui ouvre une étape
 
 /* L'ÉTAT « PAS ENCORE SIMULÉ » (jamais lancé, ou calcul périmé) — même langage visuel que le résultat
    incomplet (ResultatsIncomplet.dc.html) : à gauche la carte sombre et le bouton de calcul (LE bouton
@@ -19,7 +20,10 @@ const DOUBLON_DU_BOUTON = ['production_non_simulee', 'simulation_perimee']
 
 function Ligne({ rang, m, calepinageId }) {
   const [ouvert, setOuvert] = useState(false)
-  const { titre, ligne, bouton, technique } = manqueClair(m)
+  const { titre, ligne, bouton, technique, etape } = manqueClair(m)
+  // R5B-N5 — une ligne qui nomme son ÉTAPE (ombres) ouvre l'écran de cette étape (`state.etapeChoisie`, comme le clic sur
+  // l'étape : jamais la feuille « Avancé »), sinon la cible servie, comme avant.
+  const vers = etape ? lienManque(calepinageId, { onglet: premierOngletEtape(etape) }) : lienManque(calepinageId, m.cible)
   return (
     <li className="cal-resinc-ligne" data-testid="cal-avant-ligne" data-code={m.code}>
       <span className="cal-resinc-rang" aria-hidden="true">{rang}</span>
@@ -34,7 +38,8 @@ function Ligne({ rang, m, calepinageId }) {
         {ligne && <span className="cal-resinc-raison">{ligne}</span>}
         {technique && ouvert && <span className="cal-resinc-raison" data-testid="cal-avant-servi">{technique}</span>}
       </span>
-      <Link to={lienManque(calepinageId, m.cible)} className="cal-resinc-bouton" data-testid="cal-avant-renseigner">
+      <Link to={vers} state={etape ? { etapeChoisie: true } : undefined} className="cal-resinc-bouton"
+        data-testid="cal-avant-renseigner">
         {bouton}
       </Link>
     </li>
