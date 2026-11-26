@@ -253,6 +253,23 @@ describe('DiagrammePertes — cascade séquentielle (CALX48)', () => {
     expect(within(lignes2).queryByTestId('acal735-sous-demarrage')).toBeNull()
   })
 
+  it('ACAL1948 : la ligne « Reflet sur la vitre » dépliée dit l’entrée servie en objet, en phrase', async () => {
+    const d = donneesAvecCascadeDetaillee()
+    d.cascade = { ...d.cascade, etapes: [
+      ...d.cascade.etapes,
+      { ...d.cascade.etapes[2], etape: 'iam', libelle: 'IAM', rang: 98,
+        entree: { modele: 'fresnel', indice_verre: 1.526, revetement_ar: true, table_iam: [{ angle_deg: 0, facteur: 1 }] } },
+    ] }
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: d })
+    rendre()
+    const lignes = within(await screen.findByTestId('calx48-cascade-detaillee')).getByTestId('acal444-lignes')
+    fireEvent.click(within(within(lignes).getByTestId('acal444-ligne-iam')).getByRole('button'))
+    const detail = within(lignes).getByTestId('acal444-detail-iam')
+    expect(within(detail).getByText('Entrée')).toBeInTheDocument()
+    expect(detail.textContent).toContain('Modèle de reflet Fresnel ; indice du verre 1,526 ; revêtement antireflet : oui')
+    expect(detail.textContent).not.toContain('[object Object]')
+  })
+
   /* ACAL1671 / ACAL1968 — la mention SERVIE d'une entrée (pose retenue du thermique, valeur supposée d'une perte)
      s'affiche telle quelle sous la ligne dépliée ; une entrée non supposée et sans mention n'ajoute rien. */
   const avecEntrees = (entrees) => {
