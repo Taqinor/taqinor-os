@@ -1356,6 +1356,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     ``provenance_corps`` : voir :func:`resoudre_entrees` (défaut « saisie »).
     """
     from apps.ventes import tarif_ci
+    from apps.ventes.domain.suppositions_ci import alerte_facture_ete_non_lue
     from apps.ventes.moteur_ci.composition import composer_ci
     from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
     from apps.ventes.moteur_ci.production import (
@@ -1387,6 +1388,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     conso, feuille_retenue, registres, mesuree = _consommation_retenue(
         res, tarif, alertes, hypotheses)
     _garde_kwh_factures(res, tarif, alertes)
+    alertes.extend(alerte_facture_ete_non_lue(lead, feuille_retenue))  # ACAL1227
 
     site = res.valeur('site') or {}
     toit_declare, toit_serie = _toit_declare(res)

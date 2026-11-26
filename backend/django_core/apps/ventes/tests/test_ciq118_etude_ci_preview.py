@@ -40,7 +40,8 @@ from apps.stock.models import FicheTechnique, Produit
 from apps.ventes.domain import etude_ci
 from apps.ventes.domain.estimation_puissance_ci import (
     FEUILLE_ESTIMEE, MOTIF_SOUS_RESERVE, estimer_consommation)
-from apps.ventes.domain.suppositions_ci import alertes_pour_la_commerciale
+from apps.ventes.domain.suppositions_ci import (
+    MESSAGE_FACTURE_ETE_NON_LUE, alerte_facture_ete_non_lue, alertes_pour_la_commerciale)
 from apps.ventes.moteur_ci.charge import heures_ouverture_par_mois
 from apps.ventes.moteur_ci.production import (
     CLE_POSE_RASANTE,
@@ -360,6 +361,19 @@ class LeadTests(_Base):
         res = etude_ci.resoudre_entrees(self._corps_lead(lead), lead=lead)
         conso, feuille = etude_ci._consommation(res, {}, [], [])
         self.assertEqual((feuille, sum(conso)), ('kwh_mensuel_declare', 48000))
+
+    def test_acal1227_ete_different_alerte_nommant_facture_ete_sans_changer_un_chiffre(self):
+        # ACAL1227 — hôtel 117 : été 1,4 × hiver déclaré, feuille facture_hiver_mad.
+        commun = dict(facture_hiver=Decimal('5000'), categorie_commerciale='hotel',
+                      tension_raccordement='bt', contrat_electricite='bt_patente')
+        avec = self.post(self._corps_lead(self._lead(
+            facture_ete=Decimal('7000'), ete_differente=True, **commun)))
+        sans = self.post(self._corps_lead(self._lead(**commun)))
+        alerte = next(a for a in avec['alertes'] if a['champ_lead'] == 'facture_ete')
+        self.assertEqual(alerte['message'], MESSAGE_FACTURE_ETE_NON_LUE)
+        self.assertTrue(alerte['interne'])
+        self.assertNotIn('facture_ete', [a['champ_lead'] for a in sans['alertes']])
+        self.assertEqual(avec['bilan']['par_mois'], sans['bilan']['par_mois'])
 
     def test_lead_kwh_seulement_meme_taille_aperçu_et_moteur(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale='bureau')
@@ -1004,6 +1018,25 @@ class EstimationPuissanceMaxTests(SimpleTestCase):
         self.assertTrue(reserve['valeur'])
         self.assertIn(MOTIF_SOUS_RESERVE, reserve['motif'])
         self.assertNotIn('profil horaire non déclaré', reserve['motif'])
+
+
+class FactureEteNonLueAcal1227(SimpleTestCase):
+    """ACAL1227 — l'été déclaré n'entre pas dans la consommation C&I : DIT."""
+
+    def test_ete_different_sur_la_feuille_d_hiver_dit_avec_facture_ete(self):
+        from types import SimpleNamespace
+        lead = SimpleNamespace(ete_differente=True, facture_ete=Decimal('1400'))
+        alertes = alerte_facture_ete_non_lue(lead, 'facture_hiver_mad')
+        dites = alertes_pour_la_commerciale({'alertes': alertes, 'hypotheses': []})
+        self.assertEqual([(a['champ_lead'], a['message'], a['interne']) for a in dites],
+                         [('facture_ete', "Facture d'été non prise en compte : la consommation "
+                                          "répète la facture d'hiver sur 12 mois", True)])
+        for lead_, feuille in ((lead, 'kwh_mensuel_declare'), (None, 'facture_hiver_mad'),
+                               (SimpleNamespace(ete_differente=False, facture_ete=Decimal('1400')),
+                                'facture_hiver_mad'),
+                               (SimpleNamespace(ete_differente=True, facture_ete=None),
+                                'facture_hiver_mad')):
+            self.assertEqual(alerte_facture_ete_non_lue(lead_, feuille), [], feuille)
 
 
 class EstimationPuissanceMaxLeadTests(_Base):
