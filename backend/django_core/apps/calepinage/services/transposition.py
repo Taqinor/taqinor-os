@@ -18,9 +18,10 @@ import math
 from core.calepinage.soleil import position_solaire
 
 from . import etapes as _etapes
-from .pvgis_serie import EntreeInvalide, _bloc_serie
+from .pvgis_serie import BASE_HEURE_UTC, CONVENTION_AZIMUT, EntreeInvalide, _bloc_serie
 
-__all__ = ['MODELES_TRANSPOSITION', 'transposer_serie_horizontale']
+__all__ = ['MODELES_TRANSPOSITION', 'transposer_annee_type',
+           'transposer_serie_horizontale', 'refus_de_reglages']
 
 CHAMP_MODELE = 'parametres.simulation.modele_transposition'
 CHAMP_ALBEDO = 'parametres.simulation.albedo_mensuel'
@@ -79,6 +80,52 @@ def _decalage_minutes(serie):
             'place du fichier décalerait le soleil en silence.',
             champ=CHAMP_DECALAGE)
     return int(decalages[0])
+
+
+def refus_de_reglages(contexte):
+    """ACAL1715 — les refus (``EntreeInvalide``) du modèle et de l'albédo NON
+    saisis, dans cet ordre ; liste vide = transposable. Lu AVANT tout appel
+    réseau par ``manquants_simulation``."""
+    refus = []
+    for lecteur in (_modele, _albedos):
+        try:
+            lecteur(contexte)
+        except EntreeInvalide as manque:
+            refus.append(manque)
+    return refus
+
+
+def transposer_annee_type(client, plan, contexte, horizon, compteur):
+    """ACAL1715 — l'année météo TYPE de PVGIS (``ClientPvgis.tmy`` : global,
+    direct normal et diffus HORIZONTAUX, heures UTC) transposée sur ``plan`` par
+    :func:`transposer_serie_horizontale`. Un profil d'horizon du document reste
+    à l'étape « horizon » (``usehorizon=0``, origine ``aucun``) ; sans lui, le
+    modèle de terrain de PVGIS s'applique (``dem_pvgis``) — jamais les deux."""
+    lat, lon = plan.get('lat'), plan.get('lon')
+    rendu = client.tmy(lat=lat, lon=lon, utiliser_horizon=horizon is None)
+    if not rendu.get('depuis_cache'):
+        compteur['appels'] += 1
+    points = [{'annee': p.get('annee'), 'mois': p['mois'], 'jour': p['jour'],
+               'heure': p['heure'], 'ghi_w_m2': p.get('gh_w_m2'),
+               'dni_w_m2': p.get('gb_n_w_m2'), 'dhi_w_m2': p.get('gd_h_w_m2'),
+               't2m_c': p.get('t2m_c'), 'ws10m': p.get('ws10m')}
+              for p in rendu.get('points') or []]
+    meteo = {'service': 'tmy', 'base_rayonnement': rendu.get('base'),
+             'base_demandee': rendu.get('base_demandee'),
+             'base_meteo': rendu.get('base_meteo'), 'mode': 'tmy',
+             'fenetre_annees': rendu.get('fenetre_annees'), 'annees': [],
+             'point': {'lat': lat, 'lon': lon, 'altitude_m': None},
+             'horizon': {'origine': 'aucun' if horizon is not None else 'dem_pvgis',
+                         'hauteur_max_deg': None, 'base_horizon': None},
+             'url': rendu.get('url'), 'obtenue_le': None,
+             'depuis_cache': bool(rendu.get('depuis_cache')),
+             'convention_azimut': CONVENTION_AZIMUT,
+             'heure': {'base': BASE_HEURE_UTC, 'fuseau_site': None,
+                       'decalage_minutes': [0]}}
+    sortie = transposer_serie_horizontale(
+        {'points': points, 'annees': [], 'meteo': meteo}, plan, contexte)
+    return dict(sortie, service='tmy', url=rendu.get('url'),
+                depuis_cache=bool(rendu.get('depuis_cache')))
 
 
 def transposer_serie_horizontale(serie, plan, contexte):
@@ -156,6 +203,13 @@ def transposer_serie_horizontale(serie, plan, contexte):
                 'gd_i_w_m2': 'poa_sky_diffuse', 'gr_i_w_m2': 'poa_ground_diffuse'}
     valeurs = {nous: np.asarray(rendu[eux], dtype=float)
                for nous, eux in colonnes.items()}
+    # ACAL1715 — Perez divise par le diffus horizontal : à une heure sans diffus
+    # (lever d'une année type), la part du ciel, qui lui est proportionnelle,
+    # vaut EXACTEMENT 0 — le global du plan est alors direct + sol.
+    sans_diffus = np.array([p['dhi_w_m2'] for p in points], dtype=float) == 0
+    valeurs['gd_i_w_m2'] = np.where(sans_diffus, 0.0, valeurs['gd_i_w_m2'])
+    valeurs['gi_w_m2'] = np.where(
+        sans_diffus, valeurs['gb_i_w_m2'] + valeurs['gr_i_w_m2'], valeurs['gi_w_m2'])
     sortie = []
     for rang, point in enumerate(points):
         transpose = {cle: point[cle] for cle in ('annee', 'mois', 'jour', 'heure')}
