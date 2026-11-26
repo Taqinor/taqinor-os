@@ -478,6 +478,15 @@ class BatterieDesigneeD_ACAL_157(SimpleTestCase):
         self.assertIn("n'est pas un onduleur hybride", str(refus.exception))
         self.assertIn('retirez la batterie', str(refus.exception))
 
+    def test_valider_batterie_appelle_la_designation_quand_le_calepinage_est_donne(self):
+        from apps.calepinage.services.electrique import EntreeInvalide
+
+        calepinage = mock.Mock(company=object())
+        with mock.patch('apps.stock.selectors.get_produit_scoped', return_value=None):
+            valider_batterie({'produit': 7})  # sans calepinage : la forme seule (comportement d'avant)
+            with self.assertRaises(EntreeInvalide):
+                valider_batterie({'produit': 7}, calepinage, {})
+
     def test_produit_d_une_autre_societe_ou_non_batterie_refuse(self):
         from apps.calepinage.services.electrique import EntreeInvalide
 

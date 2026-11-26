@@ -811,8 +811,7 @@ def _valider_entree(calepinage, fusionnee, postee):
                 % (cle, type(valeur).__name__), champ=cle)
     _validation_transformateur.valider_transformateur(
         postee.get('transformateur'))
-    _validation_batterie.valider_batterie(postee.get('batterie'))  # ACAL166
-    _validation_batterie.valider_batterie_designee(calepinage, fusionnee, postee)  # D-ACAL-157
+    _validation_batterie.valider_batterie(postee.get('batterie'), calepinage, fusionnee)  # ACAL166, D-ACAL-157
     _batterie_declaration.valider_secours(postee.get('batterie'))  # ACAL786
     _hors_reseau_declaration.valider_hors_reseau(postee.get('hors_reseau'))  # ACAL166, ACAL790
     if 'affectation_manuelle' in postee:

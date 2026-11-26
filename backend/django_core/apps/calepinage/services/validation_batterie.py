@@ -6,7 +6,7 @@ Extraite de ``services/electrique.py`` : ``electrique`` ré-importe le module
 from .valeurs import nombre as _nombre
 
 
-def valider_batterie(saisie):
+def valider_batterie(saisie, calepinage=None, fusionnee=None):
     """ACAL166 — la FORME de la déclaration de batterie, refusée en NOMMANT
     le champ (``batterie.<champ>``). Aucune stratégie n'est supposée : une
     stratégie absente reste absente, et la simulation OMET le bloc en le
@@ -60,6 +60,8 @@ def valider_batterie(saisie):
                        or not 0 <= h <= 23 for h in heures)):
             _refus_champ("« %s » doit être une liste d'heures entières "
                          "comprises entre 0 et 23." % cle, 'batterie.%s' % cle)
+    if calepinage is not None:  # D-ACAL-157 — la désignation d'un produit batterie (écriture de l'entrée)
+        valider_batterie_designee(calepinage, fusionnee or {}, {'batterie': saisie})
 
 
 def drapeau_hybride(role, resolu):
