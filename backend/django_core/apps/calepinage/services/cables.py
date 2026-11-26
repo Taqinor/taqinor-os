@@ -58,8 +58,12 @@ ORIGINE_MIXTE = 'plan et saisie'
 #: Les longueurs SAISIES (course jusqu'au point de collecte + descente +
 #: coffret → onduleur) — la règle d'avant, toujours prioritaire.
 SOURCE_DC_SAISIE = 'saisie'
-#: Le tracé DC MESURÉ du pan jusqu'à l'onduleur (``liaison_dc_tracee``).
+#: Le plan seul : course depuis le module le plus éloigné, tracé DC jusqu'à
+#: l'onduleur et dénivelé de ses deux bouts (``liaison_dc_tracee``).
 SOURCE_DC_TRACE = 'trace'
+#: Le tracé est ENTRÉ dans la longueur, avec au moins une longueur SAISIE
+#: (descente, ou coffret → onduleur à la place du tracé).
+SOURCE_DC_TRACE_ET_SAISIE = 'trace_et_saisie'
 #: Aucune longueur connue : aucune section DC ; la perte ohmique DC prend la
 #: valeur de conception de la société quand elle en a une (ACAL1968).
 SOURCE_DC_DEFAUT = 'defaut'
@@ -290,9 +294,13 @@ def longueur_dc(layout, cheminement, *, tracees=None):
     le détail DIT que le trajet le long des modules n'a pas été parcouru.
 
     Liaison DC tracée (suite ACAL1317) — ``tracees`` (``{clé de pan:
-    Longueur}``, ``liaison_dc_tracee.courses_tracees``) n'est passé que si RIEN
-    n'est saisi : un pan tracé prend son tracé jusqu'à l'onduleur, un pan sans
-    tracé garde la règle ci-dessus ; tous tracés ⇒ la plus longue des liaisons.
+    CheminTrace}``, ``liaison_dc_tracee.courses_tracees``) : un pan tracé
+    remplace par son tracé la seule partie HORIZONTALE (course depuis le module
+    le plus éloigné jusqu'au départ du tracé + le tracé, ou le coffret →
+    onduleur saisi), la descente saisie (ou le dénivelé du tracé) fait la
+    partie verticale (``liaison_dc_tracee.liaison_du_pan``) ; un pan sans
+    tracé, ou dont point de collecte ET coffret → onduleur sont saisis, garde
+    la règle ci-dessus.
     """
     from .production import cle_de_pan
 
@@ -302,6 +310,8 @@ def longueur_dc(layout, cheminement, *, tracees=None):
     zones = zones if isinstance(zones, (list, tuple)) else []
     points = (cheminement.get('pans') or {}) if isinstance(
         cheminement.get('pans'), dict) else {}
+    descente = _nombre(cheminement.get('descente_m'))
+    vers_onduleur = _nombre(cheminement.get('coffret_vers_onduleur_m'))
 
     courses = []
     for rang, zone in enumerate(zones, start=1):
@@ -314,11 +324,21 @@ def longueur_dc(layout, cheminement, *, tracees=None):
         geometrie = zone.get('geometry')
         if not isinstance(geometrie, dict) or not geometrie.get('panels'):
             continue
-        tracee = (tracees or {}).get(cle)
-        if tracee is not None:
-            courses.append((libelle, tracee.valeur_m, tracee))
-            continue
         saisie_du_pan = points.get(cle) or {}
+        chemin = (tracees or {}).get(cle)
+        if chemin is not None and not (vers_onduleur is not None
+                                       and _point_saisi(saisie_du_pan.get('point_collecte'))):
+            from .liaison_dc_tracee import liaison_du_pan
+            try:
+                tracee, motif = liaison_du_pan(zone, chemin, saisie_du_pan, descente, vers_onduleur)
+            except MotifDeParcoursInvalide as refus:
+                manques.append("pan « %s » : %s" % (libelle, refus))
+                continue
+            if tracee is None:
+                manques.append("pan « %s » : %s" % (libelle, motif))
+            else:
+                courses.append((libelle, tracee.valeur_m, tracee))
+            continue
         try:
             course, detail = _course_du_pan(
                 zone, saisie_du_pan.get('point_collecte'),
@@ -334,13 +354,9 @@ def longueur_dc(layout, cheminement, *, tracees=None):
             continue
         courses.append((libelle, course, detail))
 
-    tracees_du_plan = [triplet for triplet in courses if isinstance(triplet[2], Longueur)]
-    if tracees_du_plan:
-        from .liaison_dc_tracee import liaison_la_plus_longue
-        if len(tracees_du_plan) == len(courses) and not manques:
-            return (liaison_la_plus_longue(max(courses, key=lambda triplet: triplet[1])[2]), ())
-        manques.append(MOTIF_PAN_SANS_TRACE)
-        return (None, tuple(manques))
+    if any(isinstance(triplet[2], Longueur) for triplet in courses):
+        from .liaison_dc_tracee import liaison_retenue
+        return liaison_retenue(courses, manques, descente, vers_onduleur)
 
     if not courses:
         if not manques:
@@ -348,8 +364,6 @@ def longueur_dc(layout, cheminement, *, tracees=None):
                            "la course DC n'est pas mesurable")
         return (None, tuple(manques))
 
-    descente = _nombre(cheminement.get('descente_m'))
-    vers_onduleur = _nombre(cheminement.get('coffret_vers_onduleur_m'))
     if descente is None:
         manques.append("descente verticale non saisie (m) — elle ne se lit "
                        "sur aucun plan")
@@ -455,8 +469,10 @@ def cables_du_calepinage(conception, *, cheminement=None, norme=None,
         jour: la date du calcul (aujourd'hui par défaut) — liaison DC tracée
             (suite ACAL1317) : un calcul fait à partir de
             ``regles_calcul.COUPURE_LIAISON_DC_TRACEE`` prend le tracé DC du
-            plan quand rien n'est saisi (``_tracees``) ; ``longueurs.source_dc``
-            dit laquelle a servi (``saisie`` / ``trace`` / ``defaut``).
+            plan pour sa partie horizontale (``_tracees``) ; ``longueurs.source_dc``
+            dit ce qui a servi (``saisie`` / ``trace`` / ``trace_et_saisie`` /
+            ``defaut``). Une LECTURE passe la date de la simulation servie
+            (:func:`jour_du_calcul_servi`).
 
     Returns:
         ``{cables, longueurs, omissions, noyau}`` — ``omissions`` dit, en
@@ -598,31 +614,40 @@ def jour_du_calcul_servi(porteur, perimee, calcule_le):
 
 
 def _tracees(document, cheminement, entree, jour=None):
-    """Liaison DC tracée (suite ACAL1317) — les liaisons TRACÉES par pan, ou ``None``.
+    """Liaison DC tracée (suite ACAL1317) — les chemins TRACÉS par pan, ou ``None``.
 
-    ``None`` (la règle des longueurs saisies, inchangée) dès qu'une longueur
-    est SAISIE — descente, coffret → onduleur ou ``dc_m`` de l'entrée : la
-    saisie l'emporte toujours — ou que le calcul précède la coupure
-    ``regles_calcul.COUPURE_LIAISON_DC_TRACEE`` (lue par le sélecteur ventes).
+    ``None`` (la règle des longueurs saisies, inchangée) quand ``dc_m`` est
+    SAISI dans l'entrée (> 0 : il garde son sens d'aujourd'hui) ou que le
+    calcul précède la coupure ``regles_calcul.COUPURE_LIAISON_DC_TRACEE`` (lue
+    par le sélecteur ventes). Descente et coffret → onduleur saisis
+    n'éteignent PAS le tracé : chacun l'emporte pour SA part
+    (``liaison_dc_tracee.liaison_du_pan``).
     """
     from apps.ventes.selectors_calepinage import liaison_dc_tracee_ouverte
 
     from .liaison_dc_tracee import courses_tracees
 
-    saisi = cheminement if isinstance(cheminement, dict) else {}
-    if any(_nombre(saisi.get(cle)) is not None for cle in ('descente_m', 'coffret_vers_onduleur_m')) \
-            or (_nombre(getattr(entree, 'dc_m', None)) or 0) > 0 or not liaison_dc_tracee_ouverte(jour):
+    if (_nombre(getattr(entree, 'dc_m', None)) or 0) > 0 or not liaison_dc_tracee_ouverte(jour):
         return None
     return courses_tracees(document) or None
 
 
+def _point_saisi(point):
+    """Le point de collecte d'un pan est-il SAISI (``cx`` et ``cy`` numériques) ?"""
+    return isinstance(point, dict) and _nombre(point.get('cx')) is not None \
+        and _nombre(point.get('cy')) is not None
+
+
 def _source_dc(dc):
-    """``saisie`` / ``trace`` / ``defaut`` — la source de la liaison DC retenue."""
+    """``saisie`` / ``trace`` / ``trace_et_saisie`` / ``defaut`` — d'où vient la liaison DC retenue."""
     from .liaison_dc_tracee import PREFIXE_DETAIL_TRACE
 
     if dc is None:
         return SOURCE_DC_DEFAUT
-    return SOURCE_DC_TRACE if dc.detail.startswith(PREFIXE_DETAIL_TRACE) else SOURCE_DC_SAISIE
+    if not dc.detail.startswith(PREFIXE_DETAIL_TRACE):
+        return SOURCE_DC_SAISIE
+    saisie = any(origine != ORIGINE_PLAN for _poste, _valeur, origine in dc.composantes)
+    return SOURCE_DC_TRACE_ET_SAISIE if saisie else SOURCE_DC_TRACE
 
 
 def _sans_norme():

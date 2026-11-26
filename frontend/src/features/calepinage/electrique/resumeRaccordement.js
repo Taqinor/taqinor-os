@@ -69,14 +69,18 @@ export function longueurCableDc(resultat) {
 export function provenanceLiaisonDc(resultat) {
   const source = resultat?.longueurs?.source_dc
   const metres = resultat?.longueurs?.dc?.valeur_m
-  if (source === 'defaut') return 'La simulation ne compte aucune longueur de câble côté panneaux'
+  // Sans longueur, la perte du câble est la valeur de conception de la société (`ohmique_dc_conception_pct`,
+  // dite « supposé ») quand elle en a une — jamais « aucune » : on ne le dit donc pas.
+  if (source === 'defaut') return 'Longueur inconnue de la simulation : la perte de ce câble y est supposée, ou non comptée'
   if (!estNombre(metres)) return null
-  if (source === 'saisie') return `La simulation compte les longueurs saisies : ${nb(metres)} m`
-  if (source !== 'trace') return null
-  const pastille = longueurCableDc(resultat)
-  return pastille !== null && Math.abs(pastille - metres) < 0.01
-    ? 'Longueur du tracé, comptée par la simulation'
-    : `La simulation compte la liaison tracée la plus longue : ${nb(metres)} m`
+  // La liaison comptée est la PIRE (module le plus éloigné → onduleur, descente comprise) : elle n'est pas la
+  // somme des tronçons de la pastille, et n'y est jamais comparée.
+  const textes = {
+    saisie: 'les longueurs saisies',
+    trace: 'le tracé, la course dans le pan et le dénivelé du tracé',
+    trace_et_saisie: 'le tracé, la course dans le pan et les longueurs saisies',
+  }
+  return Object.hasOwn(textes, source) ? `La simulation compte ${nb(metres)} m : ${textes[source]}` : null
 }
 
 /** Les trois cases de la pastille de carte (« Chaînes | Onduleur | Câble côté panneaux ») : seules les

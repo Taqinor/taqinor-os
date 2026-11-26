@@ -17,7 +17,7 @@ Run :
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.cables import (
-    ORIGINE_MIXTE, ORIGINE_PLAN, ORIGINE_SAISIE, cables_du_calepinage, longueur_ac,
+    ORIGINE_MIXTE, ORIGINE_SAISIE, cables_du_calepinage, longueur_ac,
     longueur_dc,
 )
 from apps.calepinage.services.chaines import concevoir_par_pan
@@ -168,13 +168,28 @@ class CablesPubliesTest(SimpleTestCase):
         self.assertIn("pas de liaison", resultat['omissions'][0])
 
 
-# ─── Liaison DC tracée (suite ACAL1317) — UNE longueur DC : celle du tracé ───
+# ─── Liaison DC tracée (suite ACAL1317) — UNE longueur DC, avec le tracé ───
 #
-# Le plan porte un onduleur ``eq1`` et un coffret DC ``eq2`` ; PAN-A est tracé
-# droit jusqu'à l'onduleur, PAN-B passe par le coffret. Les longueurs ATTENDUES
-# sont celles que ``troncons.py`` publie (la pastille « Câble côté panneaux ») :
-# jamais recalculées ici.
-def _point(lng, lat, altitude=None):
+# Les tracés ont la FORME que l'atelier écrit (``electrique3d.ts::
+# pointsProposes``) : ils partent du CENTRE du pan et portent des points
+# ``{lng, lat}`` SANS altitude. Le plan est posé en mètres autour de l'origine
+# de chaque pan (``geometry.origin``, repère des ``panels[].cx/cy``) :
+#   PAN-A : modules x = 0 … 6 m, centre (3, 0) ; tracé (3, 0) → (3, −10) →
+#           onduleur eq1 (12, −10), soit 10 + 9 = 19 m à plat ;
+#   PAN-B : modules x = 10 … 16 m, centre (13, 0) ; tracé (13, 0) → coffret
+#           eq2 (13, −10) → eq1 (12, −10), soit 10 + 1 = 11 m à plat.
+# Module le plus éloigné du départ : 3 m sur chacun des deux pans.
+ORIGINE_PLAN_LNGLAT = (-7.6000, 33.5000)
+
+
+def _lnglat(est_m, nord_m):
+    from core.calepinage.geo import deprojeteur_local
+
+    return deprojeteur_local(ORIGINE_PLAN_LNGLAT)((est_m, nord_m))
+
+
+def _point(est_m, nord_m, altitude=None):
+    lng, lat = _lnglat(est_m, nord_m)
     point = {'lng': lng, 'lat': lat}
     if altitude is not None:
         point['altitudeM'] = altitude
@@ -186,29 +201,35 @@ def _trace(identifiant, de, vers, *points):
             'points': list(points), 'origine': 'plan'}
 
 
-EQUIPEMENTS = [
-    {'id': 'eq1', 'type': 'onduleur', 'lng': -7.6002, 'lat': 33.5001},
-    {'id': 'eq2', 'type': 'coffret_dc', 'lng': -7.6003, 'lat': 33.5002},
-]
+def _organe(identifiant, type_organe, est_m, nord_m):
+    lng, lat = _lnglat(est_m, nord_m)
+    return {'id': identifiant, 'type': type_organe, 'lng': lng, 'lat': lat}
+
+
+EQUIPEMENTS = [_organe('eq1', 'onduleur', 12.0, -10.0),
+               _organe('eq2', 'coffret_dc', 13.0, -10.0)]
 TRACES = [
-    _trace('chA', 'PAN-A', 'eq1', _point(-7.6001, 33.5003, 6.0),
-           _point(-7.6002, 33.5003, 6.0), _point(-7.6002, 33.5001, 0.0)),
-    _trace('chB', 'PAN-B', 'eq2', _point(-7.6006, 33.5004),
-           _point(-7.6003, 33.5002)),
-    _trace('chB2', 'eq2', 'eq1', _point(-7.6003, 33.5002),
-           _point(-7.6002, 33.5001)),
+    _trace('chA', 'PAN-A', 'eq1', _point(3.0, 0.0), _point(3.0, -10.0), _point(12.0, -10.0)),
+    _trace('chB', 'PAN-B', 'eq2', _point(13.0, 0.0), _point(13.0, -10.0)),
+    _trace('chB2', 'eq2', 'eq1', _point(13.0, -10.0), _point(12.0, -10.0)),
 ]
+COURSE_DANS_LE_PAN_M = 3.0
+TRACE_A_M, TRACE_B_M = 19.0, 11.0
 
 
 def _avec_electrique(equipements=EQUIPEMENTS, cheminements=TRACES):
-    return dict(LAYOUT, electrical={'equipements': list(equipements),
-                                    'cheminements': list(cheminements)})
+    zones = [dict(zone, geometry=dict(zone['geometry'], origin=list(ORIGINE_PLAN_LNGLAT)))
+             for zone in LAYOUT['zones']]
+    return dict(LAYOUT, zones=zones, electrical={'equipements': list(equipements),
+                                                 'cheminements': list(cheminements)})
 
 
 LAYOUT_TRACE = _avec_electrique()
 
 #: Rien de SAISI côté DC (ni descente, ni coffret → onduleur) : seul le TGBT.
 NON_SAISI = {'pans': CHEMINEMENT['pans'], 'onduleur_vers_tgbt_m': 12.0}
+#: La descente seule est saisie : le tracé fait l'horizontal, elle le vertical.
+AVEC_DESCENTE = dict(NON_SAISI, descente_m=6.0)
 
 
 def _jour_de_coupure(decalage_jours=0):
@@ -237,99 +258,104 @@ def _sans_noyau(resultat):
     return {cle: valeur for cle, valeur in resultat.items() if cle != 'noyau'}
 
 
+def _w1(resultat):
+    return {c['repere']: c for c in resultat['cables']}.get('W1')
+
+
 class LiaisonDcTraceeTest(SimpleTestCase):
-    """Le tracé mesuré sert la simulation et la chute — quand rien n'est saisi."""
+    """Le tracé remplace la seule partie HORIZONTALE de la liaison DC."""
 
-    def test_le_trace_mesure_sert_quand_rien_n_est_saisi(self):
-        from apps.calepinage.services.cables import SOURCE_DC_TRACE
-        from apps.calepinage.services.liaison_dc_tracee import PREFIXE_DETAIL_TRACE
+    def test_trace_sans_altitude_ni_descente_la_liaison_reste_inconnue(self):
+        from apps.calepinage.services.cables import SOURCE_DC_DEFAUT
 
-        mesures = _longueurs_des_troncons(LAYOUT_TRACE)
         resultat = _cables(LAYOUT_TRACE, NON_SAISI, _jour_de_coupure())
-        w1 = {c['repere']: c for c in resultat['cables']}['W1']
 
-        # Chaque pan prend SON tracé ; la liaison retenue est la plus longue
-        # (PAN-B : chB + chB2, par le coffret), à la même mesure que les tronçons.
-        # (Somme de deux tronçons publiés au centième : ± 1 cm d'arrondi.)
-        attendu = max(mesures['chA'], mesures['chB'] + mesures['chB2'])
-        self.assertAlmostEqual(w1['longueur_m'], attendu, delta=0.01)
+        self.assertIsNone(_w1(resultat))
+        self.assertEqual(resultat['longueurs']['source_dc'], SOURCE_DC_DEFAUT)
+        self.assertTrue(any('descente verticale non saisie' in motif for motif in resultat['omissions']))
+
+    def test_trace_et_descente_saisie_course_trace_et_descente(self):
+        from apps.calepinage.services.cables import SOURCE_DC_TRACE_ET_SAISIE
+
+        resultat = _cables(LAYOUT_TRACE, AVEC_DESCENTE, _jour_de_coupure())
+        w1, dc = _w1(resultat), resultat['longueurs']['dc']
+
+        # La pire liaison : PAN-A, 3 m (module le plus éloigné → départ) + 19 m de tracé + 6 m de descente.
+        self.assertAlmostEqual(w1['longueur_m'], COURSE_DANS_LE_PAN_M + TRACE_A_M + 6.0, delta=0.05)
+        self.assertEqual([c['origine'] for c in dc['composantes']], ['plan', 'plan', 'saisie'])
+        self.assertAlmostEqual(dc['composantes'][0]['valeur_m'], COURSE_DANS_LE_PAN_M, delta=0.05)
+        self.assertEqual(resultat['longueurs']['source_dc'], SOURCE_DC_TRACE_ET_SAISIE)
         self.assertGreater(w1['section_mm2'], 0)
-        self.assertIsNotNone(w1['chute_tension_pct'])
-        self.assertTrue(w1['longueur_detail'].startswith(PREFIXE_DETAIL_TRACE))
+
+    def test_la_partie_tracee_est_la_mesure_de_la_pastille(self):
+        mesures = _longueurs_des_troncons(LAYOUT_TRACE)
+        dc = _cables(LAYOUT_TRACE, AVEC_DESCENTE, _jour_de_coupure())['longueurs']['dc']
+
+        self.assertEqual(dc['composantes'][1]['valeur_m'], mesures['chA'])
+
+    def test_les_altitudes_des_deux_bouts_font_la_partie_verticale(self):
+        from apps.calepinage.services.cables import SOURCE_DC_TRACE
+
+        # Les deux chemins portent l'altitude de leurs deux BOUTS (PAN-B : départ de chB, arrivée de chB2).
+        en_altitude = [dict(TRACES[0], points=[_point(3.0, 0.0, 6.0), _point(3.0, -10.0),
+                                               _point(12.0, -10.0, 0.0)]),
+                       dict(TRACES[1], points=[_point(13.0, 0.0, 6.0), _point(13.0, -10.0)]),
+                       dict(TRACES[2], points=[_point(13.0, -10.0), _point(12.0, -10.0, 0.0)])]
+        resultat = _cables(_avec_electrique(cheminements=en_altitude), NON_SAISI, _jour_de_coupure())
+        dc = resultat['longueurs']['dc']
+
+        # Le tracé reste compté À PLAT (19 m) ; le dénivelé de ses bouts (6 m) s'ajoute une fois.
+        self.assertAlmostEqual(dc['valeur_m'], COURSE_DANS_LE_PAN_M + TRACE_A_M + 6.0, delta=0.05)
         self.assertEqual(resultat['longueurs']['source_dc'], SOURCE_DC_TRACE)
-        self.assertEqual(resultat['longueurs']['dc']['origine'], ORIGINE_PLAN)
-        self.assertNotIn('W1', ' '.join(resultat['omissions']))
+        # Une seule extrémité en altitude : aucun dénivelé n'est deviné, la liaison reste inconnue.
+        un_bout = [dict(en_altitude[0], points=[_point(3.0, 0.0, 6.0), _point(12.0, -10.0)])] + en_altitude[1:]
+        self.assertIsNone(_w1(_cables(_avec_electrique(cheminements=un_bout), NON_SAISI,
+                                      _jour_de_coupure())))
 
-    def test_un_seul_pan_trace_droit_vaut_la_pastille(self):
-        document = _avec_electrique(cheminements=TRACES[:1])
-        document = dict(document, zones=document['zones'][:1])
-        mesures = _longueurs_des_troncons(document)
+    def test_le_coffret_vers_onduleur_saisi_l_emporte_sur_le_trace_pour_sa_part(self):
+        from apps.calepinage.services.cables import SOURCE_DC_TRACE_ET_SAISIE
 
-        w1 = {c['repere']: c for c in _cables(
-            document, NON_SAISI, _jour_de_coupure())['cables']}['W1']
+        sans_point = {'descente_m': 6.0, 'coffret_vers_onduleur_m': 4.0, 'onduleur_vers_tgbt_m': 12.0}
+        resultat = _cables(LAYOUT_TRACE, sans_point, _jour_de_coupure())
 
-        self.assertEqual(w1['longueur_m'], mesures['chA'])
+        self.assertAlmostEqual(_w1(resultat)['longueur_m'], COURSE_DANS_LE_PAN_M + 4.0 + 6.0, delta=0.05)
+        self.assertEqual(resultat['longueurs']['source_dc'], SOURCE_DC_TRACE_ET_SAISIE)
 
-    def test_le_producteur_sert_l_exemple_du_contrat(self):
-        import json
-        import pathlib
+    def test_tout_saisi_ou_dc_m_saisi_les_chiffres_d_aujourd_hui(self):
+        import dataclasses
 
-        contrat = json.loads((pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
-                              / 'calepinage_resultat.json').read_text(encoding='utf-8'))
-        attendu = contrat['liaison_dc_tracee']
-        document = _avec_electrique(cheminements=TRACES[:1])
-        document = dict(document, zones=document['zones'][:1])
-
-        servi = _cables(document, NON_SAISI, _jour_de_coupure())
-        w1 = {c['repere']: c for c in servi['cables']}['W1']
-
-        self.assertEqual(servi['longueurs'], attendu['longueurs'])
-        self.assertEqual({cle: w1[cle] for cle in attendu['cables'][0]}, attendu['cables'][0])
-        self.assertEqual(_longueurs_des_troncons(document)['chA'],
-                         attendu['troncons']['troncons'][0]['longueur_m'])
-
-    def test_une_longueur_saisie_l_emporte_toujours(self):
         from apps.calepinage.services.cables import SOURCE_DC_SAISIE
 
         jour = _jour_de_coupure()
-        for cheminement in (CHEMINEMENT,
-                            dict(NON_SAISI, descente_m=6.0),
-                            dict(NON_SAISI, coffret_vers_onduleur_m=4.0)):
-            with self.subTest(cheminement=sorted(cheminement)):
-                self.assertEqual(_sans_noyau(_cables(LAYOUT_TRACE, cheminement, jour)),
-                                 _sans_noyau(_cables(LAYOUT, cheminement, jour)))
+        self.assertEqual(_sans_noyau(_cables(LAYOUT_TRACE, CHEMINEMENT, jour)),
+                         _sans_noyau(_cables(LAYOUT, CHEMINEMENT, jour)))
         self.assertEqual(_cables(LAYOUT_TRACE, CHEMINEMENT, jour)['longueurs']['source_dc'],
                          SOURCE_DC_SAISIE)
-        # ``dc_m`` SAISI dans l'entrée : le tracé n'est pas substitué non plus.
-        import dataclasses
         base = _conception()
         saisie_dc = dataclasses.replace(base, entree=dataclasses.replace(base.entree, dc_m=25.0))
-        self.assertEqual(_sans_noyau(_cables(LAYOUT_TRACE, NON_SAISI, jour, saisie_dc)),
-                         _sans_noyau(_cables(LAYOUT, NON_SAISI, jour, saisie_dc)))
+        self.assertEqual(_sans_noyau(_cables(LAYOUT_TRACE, AVEC_DESCENTE, jour, saisie_dc)),
+                         _sans_noyau(_cables(LAYOUT, AVEC_DESCENTE, jour, saisie_dc)))
 
     def test_sans_trace_les_chiffres_d_aujourd_hui_octet_pour_octet(self):
         import json
 
         avant, apres = _jour_de_coupure(-1), _jour_de_coupure()
-        for cheminement in (CHEMINEMENT, NON_SAISI):
+        for cheminement in (CHEMINEMENT, NON_SAISI, AVEC_DESCENTE):
             with self.subTest(cheminement=sorted(cheminement)):
                 self.assertEqual(
                     json.dumps(_sans_noyau(_cables(LAYOUT, cheminement, apres)), sort_keys=True),
                     json.dumps(_sans_noyau(_cables(LAYOUT, cheminement, avant)), sort_keys=True))
 
     def test_avant_la_coupure_le_trace_ne_sert_pas(self):
-        from apps.calepinage.services.cables import SOURCE_DC_DEFAUT
-
         avant = _jour_de_coupure(-1)
-        resultat = _cables(LAYOUT_TRACE, NON_SAISI, avant)
-
-        self.assertEqual(_sans_noyau(resultat), _sans_noyau(_cables(LAYOUT, NON_SAISI, avant)))
-        self.assertNotIn('W1', [c['repere'] for c in resultat['cables']])
-        self.assertEqual(resultat['longueurs']['source_dc'], SOURCE_DC_DEFAUT)
+        for cheminement in (NON_SAISI, AVEC_DESCENTE):
+            with self.subTest(cheminement=sorted(cheminement)):
+                self.assertEqual(_sans_noyau(_cables(LAYOUT_TRACE, cheminement, avant)),
+                                 _sans_noyau(_cables(LAYOUT, cheminement, avant)))
 
     def test_un_trace_qui_n_aboutit_pas_a_un_onduleur_est_ignore(self):
         jour = _jour_de_coupure()
-        temoin = _sans_noyau(_cables(LAYOUT, NON_SAISI, jour))
+        temoin = _sans_noyau(_cables(LAYOUT, AVEC_DESCENTE, jour))
         orphelins = (
             _avec_electrique(cheminements=[TRACES[1]]),  # s'arrête au coffret
             _avec_electrique(cheminements=[_trace('chX', 'PAN-A', 'eq9', *TRACES[0]['points']),
@@ -338,15 +364,15 @@ class LiaisonDcTraceeTest(SimpleTestCase):
         )
         for document in orphelins:
             with self.subTest(document=document['electrical']):
-                self.assertEqual(_sans_noyau(_cables(document, NON_SAISI, jour)), temoin)
+                self.assertEqual(_sans_noyau(_cables(document, AVEC_DESCENTE, jour)), temoin)
 
     def test_un_pan_sans_trace_garde_la_regle_des_longueurs_saisies(self):
         from apps.calepinage.services.cables import MOTIF_PAN_SANS_TRACE
 
-        resultat = _cables(_avec_electrique(cheminements=TRACES[:1]), NON_SAISI,
+        resultat = _cables(_avec_electrique(cheminements=TRACES[:1]), AVEC_DESCENTE,
                            _jour_de_coupure())
 
-        self.assertNotIn('W1', [c['repere'] for c in resultat['cables']])
+        self.assertIsNone(_w1(resultat))
         self.assertIsNone(resultat['longueurs']['dc'])
         self.assertIn(MOTIF_PAN_SANS_TRACE, resultat['omissions'])
 
@@ -358,6 +384,23 @@ class LiaisonDcTraceeTest(SimpleTestCase):
 
         self.assertEqual(empreinte_document(LAYOUT_TRACE), empreinte_document(_avec_electrique()))
         self.assertNotEqual(empreinte_document(LAYOUT_TRACE), empreinte_document(deplace))
+
+    def test_le_producteur_sert_l_exemple_du_contrat(self):
+        import json
+        import pathlib
+
+        contrat = json.loads((pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+                              / 'calepinage_resultat.json').read_text(encoding='utf-8'))
+        attendu = contrat['liaison_dc_tracee']
+        document = _avec_electrique(cheminements=TRACES[:1])
+        document = dict(document, zones=document['zones'][:1])
+
+        servi = _cables(document, AVEC_DESCENTE, _jour_de_coupure())
+
+        self.assertEqual(servi['longueurs'], attendu['longueurs'])
+        self.assertEqual({cle: _w1(servi)[cle] for cle in attendu['cables'][0]}, attendu['cables'][0])
+        self.assertEqual(_longueurs_des_troncons(document)['chA'],
+                         attendu['troncons']['troncons'][0]['longueur_m'])
 
 
 class LeDevisNeBougePasTest(SimpleTestCase):
@@ -427,7 +470,7 @@ class LaLectureMontreCeQueLaSimulationACalcule(SimpleTestCase):
 
         from apps.calepinage.services.electrique import CLE_ENTREE, CLE_SIMULATION, resultat_calepinage
 
-        stocke = {CLE_ENTREE: {'cheminement': NON_SAISI, 'temperature_min_c': -5.0,
+        stocke = {CLE_ENTREE: {'cheminement': AVEC_DESCENTE, 'temperature_min_c': -5.0,
                                'temperature_max_c': 70.0}}
         if simulation is not None:
             stocke[CLE_SIMULATION] = simulation

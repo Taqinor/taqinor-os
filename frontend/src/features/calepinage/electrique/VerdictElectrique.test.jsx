@@ -1250,23 +1250,26 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
 describe('provenanceLiaisonDc — quelle longueur la simulation compte', () => {
   const servi = () => structuredClone(exempleContrat('calepinage', 'calepinage_resultat', 'liaison_dc_tracee'))
 
-  it('tracé servi, égal à la pastille : la longueur du tracé est celle de la simulation', () => {
-    expect(provenanceLiaisonDc(servi())).toBe('Longueur du tracé, comptée par la simulation')
+  it('tracé + descente saisie (le tracé tel que l’atelier l’écrit) : la longueur comptée et ses parts', () => {
+    // 28 m servis = 3 m dans le pan + 19 m de tracé (la pastille) + 6 m de descente : jamais la pastille seule.
+    expect(provenanceLiaisonDc(servi()))
+      .toBe('La simulation compte 28 m : le tracé, la course dans le pan et les longueurs saisies')
   })
 
-  it('plusieurs pans : la liaison tracée la plus longue est nommée avec sa longueur', () => {
-    const r = servi()
-    r.troncons.troncons.push({ ...r.troncons.troncons[0], id: 'chB', de: 'PAN-B', longueur_m: 10 })
-    expect(provenanceLiaisonDc(r)).toBe('La simulation compte la liaison tracée la plus longue : 32 m')
-  })
-
-  it('longueurs saisies, aucune longueur, ou rien de servi', () => {
+  it('plan seul, longueurs saisies, aucune longueur, ou rien de servi', () => {
+    const plan = servi()
+    plan.longueurs.source_dc = 'trace'
+    expect(provenanceLiaisonDc(plan)).toBe('La simulation compte 28 m : le tracé, la course dans le pan et le dénivelé du tracé')
     const saisie = servi()
     saisie.longueurs.source_dc = 'saisie'
-    expect(provenanceLiaisonDc(saisie)).toBe('La simulation compte les longueurs saisies : 32 m')
+    expect(provenanceLiaisonDc(saisie)).toBe('La simulation compte 28 m : les longueurs saisies')
     const defaut = servi()
     defaut.longueurs = { dc: null, ac: null, source_dc: 'defaut' }
-    expect(provenanceLiaisonDc(defaut)).toBe('La simulation ne compte aucune longueur de câble côté panneaux')
+    expect(provenanceLiaisonDc(defaut))
+      .toBe('Longueur inconnue de la simulation : la perte de ce câble y est supposée, ou non comptée')
+    const inconnue = servi()
+    inconnue.longueurs.source_dc = 'toString'
+    expect(provenanceLiaisonDc(inconnue)).toBeNull()
     expect(provenanceLiaisonDc({ troncons: servi().troncons })).toBeNull()
     expect(provenanceLiaisonDc(null)).toBeNull()
   })
