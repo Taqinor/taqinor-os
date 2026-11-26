@@ -168,7 +168,9 @@ export function bootViewerFull(
   //   sceneOrigin, obstacleMeshes, activePanel*, selectedObsId, layout*, sunHour,
   //   sunDay, shadeObstructions). On caste un objet partiel, MÊME procédé que
   //   `captureBoot.ts` : aucun autre champ n'existe dans ce mode.
-  const toolOpts: InitOptions = { maptilerKey, mapboxToken, reducedMotion };
+  // LOT 6 (P1) — verre et œil de l'atelier SEULEMENT quand le pan actif sera teinté (ACAL1984) ; sinon aucune clé.
+  const teinteAccesVisible = opts.indexTeintes?.includes(plan.activeIndex) === true;
+  const toolOpts: InitOptions = { maptilerKey, mapboxToken, reducedMotion, ...(teinteAccesVisible ? { teinteAccesVisible } : {}) };
   const areas = viewerAreaRecords(plan);
   const ctx = {
     opts: toolOpts,
@@ -262,8 +264,7 @@ export function bootViewerFull(
   map.on('error', onError);
 
   // — Scène 3D : le module de l'ERP, en lecture seule —
-  const teinteAccesVisible = opts.indexTeintes?.includes(plan.activeIndex) === true;
-  const scene3d = createScene3d(ctx, { map, lowEnd, shadowSize, readOnly: true, ...(teinteAccesVisible ? { teinteAccesVisible } : {}) });
+  const scene3d = createScene3d(ctx, { map, lowEnd, shadowSize, readOnly: true });
 
   let charge = false;
   let teinte: CouleurDe = null;

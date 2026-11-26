@@ -52,7 +52,7 @@ import {
 } from './constants';
 import { type AreaRecord, type ZoneRenderPlan, type RenderSceneFn } from './types';
 import { makeCanadianPanelTexture, type JeuPanneau } from './panelTexture';
-import { aplatirEnPlan, poserOeil } from './oeilCamera'; // ACAL1984, T4-U1-017
+import { aplatirEnPlan, poserOeil, verreEtOeilAtelier } from './oeilCamera'; // ACAL1984, T4-U1-017, LOT 6
 import { boiteObstacle } from './obstacle3d'; // ACAL1820
 import { etiquettesChaines, type ChaineAPoser } from './electrique3d'; // ACAL1944
 import { teintesBatiment, eclatPresentation, TEINTES_PRESENTATION } from './jeuPresentation'; // ACAL1839
@@ -107,13 +107,6 @@ export interface Scene3dDeps {
    *     l'aide au placement) ne sont plus dessinées — les boîtes, elles, restent.
    */
   readOnly?: boolean;
-  /**
-   * LOT 6 (D-ACAL-136) — la visionneuse au soleil des liens de confiance TEINTE le pan actif par son accès
-   * enregistré : elle demande le verre et l'œil de l'atelier ERP (ACAL1984 : verre sans vernis + œil réel tiré de
-   * la matrice de la carte), sans quoi la teinte reste invisible. Additif, défaut false : sans lui (ERP, autres
-   * pages publiques, page sans la clé, visionneuse simplifiée) rien ne change.
-   */
-  teinteAccesVisible?: boolean;
   /**
    * CALX101 — les quatre retraits de rive RÉGLÉS dans l'atelier (CAL76), lus à la demande
    * comme l'optimiseur les lit (`optimizer.ts` `setbacksOf`). Seul `parapetM` sert ici :
@@ -1056,10 +1049,6 @@ export function formeDuContour(ring: readonly (readonly [number, number])[]): TH
  *  `oeilCamera.ts`) : le shader place l'œil sous le toit, la vue du verre est rasante et le Fresnel du vernis (`clearcoat`)
  *  vaut 1 — il éteint toute couleur de base, teinte comprise. L'atelier ERP (`erp`) pose un verre SANS vernis ; le site
  *  public garde le sien, rendu inchangé. Seul matériau physique de la scène (garde W71). */
-/** LOT 6 — verre et œil de l'atelier (ACAL1984) : l'atelier ERP, ou une visionneuse qui demande `teinteAccesVisible`. */
-export const verreEtOeilAtelier = (productionAtelier: unknown, teinteAccesVisible?: boolean): boolean =>
-  productionAtelier !== undefined || teinteAccesVisible === true;
-
 export function materiauVerre(map: THREE.Texture | null, erp: boolean): THREE.MeshPhysicalMaterial {
   return new THREE.MeshPhysicalMaterial({ map, color: 0xffffff, metalness: 0.1, roughness: 0.22, clearcoat: erp ? 0 : 1, clearcoatRoughness: 0.08 });
 }
@@ -1321,8 +1310,6 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   const poignees3d = creerPoignees3d(map); // ACAL1185 — poignées des coins au haut des murs
   const opts = ctx.opts;
   const atelierErp = opts?.productionAtelier !== undefined; // ACAL1984 — `productionAtelier` : ERP seul (types.ts) ; site public : rendu inchangé
-  const verreAtelier = verreEtOeilAtelier(opts?.productionAtelier, deps.teinteAccesVisible); // LOT 6 — verre + œil seulement
-
   const fmt1 = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const dimsLabel = (o: Obstacle) => `${fmt1(o.lengthM)} × ${fmt1(o.widthM)} m`;
 
@@ -1440,7 +1427,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     socleMat: THREE.MeshStandardMaterial;
   }
   const buildPanelMatSet = (dim: boolean, rapport: number, jeu: JeuPanneau = 'atelier'): PanelMatSet => {
-    const glassMat = materiauVerre(panelTexOf(rapport, jeu), verreAtelier); // ACAL1984, LOT 6
+    const glassMat = materiauVerre(panelTexOf(rapport, jeu), verreEtOeilAtelier(opts)); // ACAL1984, LOT 6 (oeilCamera.ts)
     const frameMat = jeu === 'presentation' // ACAL1839 — cadre alu clair, pas un métal noirci sans reflet
       ? new THREE.MeshStandardMaterial({ color: TEINTES_PRESENTATION.cadre, metalness: 0.2, roughness: 0.5 })
       : new THREE.MeshStandardMaterial({ color: 0x9aa0aa, metalness: 0.85, roughness: 0.35 });
@@ -1595,7 +1582,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       const m = new THREE.Matrix4().fromArray(Array.from(args.defaultProjectionData.mainMatrix)).multiply(modelMatrix)
         .multiply(aplatirEnPlan(map.getPitch())); // T4-U1-017 — en Plan, la dalle retombe sur le contour tracé au sol
       poignees3d.suivre(m.elements);
-      if (!(verreAtelier && poserOeil(threeCamera, m))) threeCamera.projectionMatrix = m; // ACAL1984 — l'œil réel (oeilCamera.ts) ; LOT 6
+      if (!(verreEtOeilAtelier(opts) && poserOeil(threeCamera, m))) threeCamera.projectionMatrix = m; // ACAL1984 — l'œil réel (oeilCamera.ts) ; LOT 6
       renderer.resetState(); renderer.setViewport(0, 0, _gl.drawingBufferWidth, _gl.drawingBufferHeight); // H1 : la carte a pu changer de taille
       renderer.render(scene, threeCamera);
     },
