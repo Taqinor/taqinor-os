@@ -41,7 +41,8 @@ import {
   type ExclusionZone,
 } from './zones';
 import { deserializeLayout, hydrateFromDevis, serializeLayout, selectionSansChangement, type SerializedLayout } from './prefill';
-import { heriterDuPanDecoupe } from './tailleAuto'; // ACAL1707 // ACAL64, ACAL1415, ACAL1916
+import { heriterDuPanDecoupe } from './tailleAuto'; // ACAL1707
+import { propagerPenteDecoupe } from './formesToit'; // ACAL1735 // ACAL64, ACAL1415, ACAL1916
 import { MENTION_MODULE_DE_DEPART, affectationDesPans } from './moduleSelect'; // ACAL1415
 import { panAuModuleChoisi, remplacerParPanVierge, reprendreModuleChoisi } from './repriseModule'; // ACAL1416
 import { type Ctx } from './context'; // ACAL64
@@ -1551,5 +1552,26 @@ describe('ACAL1707 — « 2 pans » sur un toit à 4 panneaux garde 4 panneaux',
     const publics = [pan('area-2', -7.6, 0.0002, 180), pan('area-3', -7.5998, 0.0002, 180)];
     heriterDuPanDecoupe(null, { neededPanels: 4, neededAuto: false }, publics as never, false);
     expect(publics.map((p) => p.neededPanels)).toEqual([0, 0]);
+  });
+});
+
+describe('ACAL1735 — confirmer la pente d’un pan la confirme pour la même découpe', () => {
+  const p = (id: string, pitchDeg: number, extra: object = {}) => ({ id, roofType: 'pitched' as const, pitchDeg, ...extra });
+  it('les pans de la même découpe, de même pente et sans provenance, suivent', () => {
+    const pans = [p('area-2', 22, { pitchSource: { mode: 'degres', degres: 22 } }), p('area-3', 22)];
+    const src = { mode: 'degres', degres: 22 };
+    expect(propagerPenteDecoupe(pans, new Set(['area-2', 'area-3']), 'area-2', 22, 22, src)).toEqual(['area-3']);
+    expect((pans[1] as { pitchSource?: unknown }).pitchSource).toEqual(src);
+  });
+  it('un pan d’une autre découpe, d’une autre pente ou déjà confirmé n’est pas touché', () => {
+    const pans = [p('area-2', 22), p('area-3', 30), p('area-4', 22), p('area-5', 22, { pitchSource: { mode: 'mesure' } })];
+    const src = { mode: 'degres', degres: 22 };
+    expect(propagerPenteDecoupe(pans, new Set(['area-2', 'area-3', 'area-5']), 'area-2', 22, 22, src)).toEqual([]);
+    expect(propagerPenteDecoupe(pans, new Set(['area-3']), 'area-2', 22, 22, src)).toEqual([]);
+  });
+  it('la pente changée est suivie par les pans qui l’avaient', () => {
+    const pans = [p('area-2', 30), p('area-3', 22)];
+    expect(propagerPenteDecoupe(pans, new Set(['area-2', 'area-3']), 'area-2', 22, 30, { mode: 'degres', degres: 30 })).toEqual(['area-3']);
+    expect(pans[1].pitchDeg).toBe(30);
   });
 });

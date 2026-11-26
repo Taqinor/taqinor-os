@@ -203,7 +203,7 @@ import { type ModeClavier } from './roofPro11/clavier'; // CALX128 câblage
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
 import { createEdgesUi } from './roofPro11/edgesUi'; // CALX94 câblage
-import { monterFormesToit } from './roofPro11/formesToit'; // ACAL410
+import { monterFormesToit, propagerPenteDecoupe } from './roofPro11/formesToit'; // ACAL410, ACAL1735
 import { creerBarreSelection } from './roofPro11/barreSelection'; // ACAL411
 import { creerAnnulerAtelier } from './roofPro11/annulerAtelier'; // ACAL412
 import { appliquerHypotheses, etatHypotheses, sourcePenteClic, type EtatHypotheses } from './roofPro11/hypotheses'; // ACAL417
@@ -1175,10 +1175,12 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     creer: (anneau) => { localiserSiTraceVisible(ctx, typeof map.getZoom === 'function' ? map.getZoom() : Number.NaN); vertices = anneau; close(); }, // T4-U4-013 — créé sur le toit VU : site localisé
   });
   // ACAL410 — « Forme du toit » : un clic remplace le pan actif par les pans de la forme.
+  let idsDecoupe = new Set<string>(); // ACAL1735 — les pans de la dernière découpe : une confirmation de pente vaut pour eux
   const formesToit = monterFormesToit({
     ancre: addAreaBtn, contour: () => (closed ? vertices : []), pente: () => pitchDeg, existants: () => areas,
     obstacles: () => obstacles.length, setStatus: (m) => setStatus(m),
     appliquer: (pans) => { heriterDuPanDecoupe(activeArea(), { neededPanels, neededAuto }, pans, opts.chiffrage !== undefined); // ACAL1448 — taille et module du pan découpé
+      idsDecoupe = new Set(pans.length > 1 ? pans.map((p) => p.id) : []);
       areas.splice(Math.max(0, areas.findIndex((a) => a.id === activeAreaId)), 1, ...pans);
       activeAreaId = pans[0].id;
       loadArea(pans[0]);
@@ -3683,13 +3685,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     else if (facingManual) facingNoteEl.textContent = 'Face réglée à la main (votre choix est tenu pour cette zone).';
     else facingNoteEl.textContent = etatHypotheses(h).noteFace;
   }
-  const confirmerPente = () => { const a = activeArea(); if (a) a.pitchSource = sourcePenteClic(pitchDeg); };
+  const confirmerPente = (avantDeg: number = pitchDeg) => { const a = activeArea(); if (a) { a.pitchSource = sourcePenteClic(pitchDeg); propagerPenteDecoupe(areas, idsDecoupe, a.id, avantDeg, pitchDeg, a.pitchSource as Record<string, unknown>); } }; // ACAL1735
   document.querySelectorAll<HTMLButtonElement>('[data-pitch]').forEach((b) => {
     b.addEventListener('click', () => {
+      const avant = pitchDeg;
       pitchDeg = Number(b.dataset.pitch);
       if (pitchRangeEl) pitchRangeEl.value = String(Math.round(pitchDeg));
       if (pitchValueEl) pitchValueEl.textContent = `${Math.round(pitchDeg)}°`;
-      confirmerPente();
+      confirmerPente(avant);
       syncPitchChips();
       if (roofType === 'pitched' && closed) pitchedRecompute();
     });
@@ -3697,9 +3700,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   pitchRangeEl?.addEventListener('input', () => {
     const v = Number(pitchRangeEl.value);
     if (!Number.isFinite(v)) return;
+    const avant = pitchDeg;
     pitchDeg = v;
     if (pitchValueEl) pitchValueEl.textContent = `${Math.round(v)}°`;
-    confirmerPente();
+    confirmerPente(avant);
     syncPitchChips();
     if (roofType === 'pitched' && closed) pitchedRecompute();
   });
