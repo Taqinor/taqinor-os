@@ -51,6 +51,14 @@ test("ACAL438 : aucun texte de l'atelier sous 12 px", () => {
   for (const m of css.matchAll(/font(?:-size)?:\s*(?:[0-9]+\s+)?(0?\.\d+)rem/g)) assert.ok(parseFloat(m[1]) >= 0.75, `roofbuilder.css : ${m[0]} < 0,75 rem`)
 })
 
+// ACAL1746 — K-COLONNE-ETROITE (règle d'ACAL1519, une définition) étendue au bas du panneau droit de l'atelier Expert :
+// la grille des chiffres de la cible (`AtelierPanneaux.jsx`) suit la colonne, jamais un point de rupture de la fenêtre.
+test('ACAL1746 : AtelierPanneaux.jsx — aucune grille à point de rupture de fenêtre dans la colonne de 340 px', () => {
+  const source = readFileSync(join(SRC, C + 'AtelierPanneaux.jsx'), 'utf8')
+  assert.deepEqual(source.match(/(?:^|[\s"'`])(?:sm|md|lg|xl|2xl):grid-cols-\d+/g) ?? [], [], 'grille liée à la largeur de la fenêtre')
+  assert.ok(source.includes('grid-cols-[repeat(auto-fit,minmax(7rem,1fr))]'), 'colonnes automatiques absentes')
+})
+
 // ACAL969 — GARDE « K-STYLE » : toute classe `rp9-*` posée par le constructeur (`className = '…'` dans
 // `apps/web/src/scripts/roof-tool-pro11.ts`) a une règle dans `roofbuilder.css`, un seul état « choisi »
 // (`[aria-pressed='true']`, fond doré), un survol réservé aux pointeurs qui survolent, un badge « recommandé »
