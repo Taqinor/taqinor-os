@@ -667,6 +667,50 @@ class PagesDixOnzeTest(unittest.TestCase):
         self.assertIn('overflow-wrap:anywhere', CSS_SECTION)
 
 
+class PertesNonRenseigneesEnMotsTest(unittest.TestCase):
+    """ACAL1928 — pages 3 et 12 et écran : aucun code de poste (« ohmique_dc »)
+    ni chemin pointé (« electrique_societe.seuil_bas_dc_ac ») n'est imprimé ;
+    la donnée stockée, relue par ``a_renseigner``, ne change pas. Mutant :
+    formater les codes bruts ⇒ échec."""
+
+    POSTES = 'salissure, lid, ohmique_dc, ohmique_ac, qualite_module, indisponibilite'
+
+    def _motif(self):
+        from apps.calepinage.services.chaine_pertes import MOTIF_SOCLE_MANQUANT
+
+        return MOTIF_SOCLE_MANQUANT.format(postes=self.POSTES)
+
+    def _sans_code(self, texte):
+        self.assertIn('LID (première exposition)', texte)
+        self.assertIn('pertes ohmiques DC', texte)
+        for code in ('ohmique_dc', 'qualite_module', 'indisponibilite,', ' lid,'):
+            self.assertNotIn(code, texte)
+
+    def test_page_de_synthese_et_production(self):
+        from apps.calepinage.services.rapport.production import texte_non_publie
+        from apps.calepinage.services.rapport.synthese import _valeur
+
+        self._sans_code(_valeur(None, self._motif()))
+        total = {'p75_kwh_motif': self._motif(), 'p50_kwh': 1000.0,
+                 'portee': 'borne_haute', 'mention': 'borne haute'}
+        with mock.patch('apps.calepinage.services.rapport.production._resultat_incomplet',
+                        return_value=True):
+            self._sans_code(texte_non_publie(total, 'p75_kwh'))
+
+    def test_ecran_production_sans_chemin_pointe_stocke_intact(self):
+        from apps.calepinage.services.rapport.champs_lisibles import avec_motifs_lisibles
+
+        stocke = {'production': {'total': {
+            'p75_kwh_motif': self._motif(),
+            'performance_ratio_motif': ('Réglages à saisir : electrique_societe.'
+                                        'seuil_bas_dc_ac')}}}
+        avant = copy.deepcopy(stocke)
+        total = avec_motifs_lisibles(stocke)['production']['total']
+        self._sans_code(total['p75_kwh_motif'])
+        self.assertNotIn('electrique_societe.', total['performance_ratio_motif'])
+        self.assertEqual(stocke, avant)
+
+
 class ProvenanceDesPostesTest(unittest.TestCase):
     """ACAL1656 — pp. 7-9 et 19 : chaque poste dit sa provenance réelle, aucun
     chemin de code ni nom de tâche."""

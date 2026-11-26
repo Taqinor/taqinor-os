@@ -386,6 +386,13 @@ def _phrases_lisibles(phrases):
     return phrases if lues == phrases else lues
 
 
+def _cle_de_motif(cle, cles):
+    """ACAL1928 — une clé de motif servie : celles de ``cles``, et (au parcours
+    du résultat entier) toute clé ``*_motif`` (« p75_kwh_motif » porte
+    « Pertes non renseignées (salissure, lid…) »)."""
+    return cle in cles or (cles is _CLES_MOTIF_SERVI and str(cle).endswith('_motif'))
+
+
 def _servis_lisibles(noeud, cles=_CLES_MOTIF_SERVI):
     """``noeud`` dont chaque motif servi est rendu lisible (même objet s'il
     n'en porte aucun : rien n'est recopié pour rien)."""
@@ -394,7 +401,7 @@ def _servis_lisibles(noeud, cles=_CLES_MOTIF_SERVI):
         return lus if any(a is not b for a, b in zip(lus, noeud)) else noeud
     if not isinstance(noeud, dict):
         return noeud
-    lus = {c: (motif_lisible(v) if c in cles and isinstance(v, str) and v
+    lus = {c: (motif_lisible(v) if _cle_de_motif(c, cles) and isinstance(v, str) and v
                else _phrases_lisibles(v)
                if c in _CLES_PHRASES_SERVIES and isinstance(v, list)
                and cles is _CLES_MOTIF_SERVI
