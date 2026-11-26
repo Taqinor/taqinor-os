@@ -606,7 +606,7 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     rendreEtape()
     const ecran = screen.getByTestId('cal-etape-electrique-ecran')
     // Le nom désigné et la ligne SERVIE de la configuration retenue (6 kW, 2 entrées) + panneaux du chaînage servi.
-    await waitFor(() => expect(screen.getByTestId('cal-elec-onduleur')).toHaveTextContent('Onduleur réseau 10 kW (exemple)'))
+    await waitFor(() => expect(screen.getByTestId('cal-elec-onduleur')).toHaveTextContent('Onduleur hybride 10 kW (exemple)'))
     await waitFor(() => expect(screen.getByTestId('cal-elec-onduleur')).toHaveTextContent('6 kW · 2 entrées · proposé pour 12 panneaux'))
     // N = configurations servies autres que la retenue (2 dans l'échantillon).
     expect(screen.getByRole('button', { name: 'Comparer avec 2 autres onduleurs' })).toBeTruthy()
