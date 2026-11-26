@@ -28,6 +28,7 @@ export const ETAPE_DU_CODE = {
   materiel_designe: 'electrique',
   tension_froid: 'electrique',
   tension_chaud: 'electrique', // T4-U4-012 — jumeau du froid : « Tension des chaînes par forte chaleur »
+  courant_entree: 'electrique', // R5C-N3 — le courant des panneaux face à l'entrée de l'onduleur (jumeau de la chaleur)
   orientation_mppt: 'electrique',
   ratio_dc_ac: 'electrique',
   chutes_tension: 'electrique',

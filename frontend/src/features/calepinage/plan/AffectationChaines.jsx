@@ -30,7 +30,10 @@ const REFUS_AUTO = 'Rétablissement refusé par le serveur.'
 function alertesDuRaccordement(electrique) {
   const verdicts = (Array.isArray(electrique?.verdicts) ? electrique.verdicts : [])
     .filter((v) => v && v.conforme === false)
-    .map((v) => (typeof v.detail === 'string' && v.detail.trim()) || v.libelle)
+    // R5C-N3 — la phrase SERVIE du refus (`raison` : de quoi on parle et ce que l'onduleur admet) d'abord ; la mesure
+    // brute (`detail`, « … borne de fiche … ») n'est qu'un repli quand le serveur n'en dit pas.
+    .map((v) => (typeof v.raison === 'string' && v.raison.trim())
+      || (typeof v.detail === 'string' && v.detail.trim()) || v.libelle)
   const alertes = (Array.isArray(electrique?.alertes) ? electrique.alertes : [])
     .map((a) => (typeof a === 'string' ? a : (a?.libelle || a?.detail || null)))
   return [...new Set([...verdicts, ...alertes].filter((t) => typeof t === 'string' && t.trim()))]

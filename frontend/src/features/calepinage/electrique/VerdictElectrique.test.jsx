@@ -950,6 +950,19 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     await waitFor(() => expect(calepinageApi.calepinages.entreeElectrique).toHaveBeenCalledTimes(2))
   })
 
+  it('R5C-N2 — un onduleur à fiche incomplète nomme le champ en mots, jamais sa clé (v_max_abs)', async () => {
+    const e = entree()
+    e.candidats.onduleurs = [
+      { id: 903, libelle: 'Onduleur injection 30kW', marque: '', favori: false, fiche_complete: false, champs_manquants: ['v_max_abs'] },
+    ]
+    servirEtape({ e })
+    rendreEtape()
+    const choix = await screen.findByLabelText('Onduleur')
+    const option = within(choix).getByRole('option', { name: /Onduleur injection 30kW/ })
+    expect(option).toHaveTextContent('fiche incomplète : Tension maximale absolue (V)')
+    expect(option).not.toHaveTextContent('v_max_abs')
+  })
+
   it('« Comparer avec N autres onduleurs » ouvre la comparaison existante, sans seconde lecture', async () => {
     servirEtape()
     rendreEtape()

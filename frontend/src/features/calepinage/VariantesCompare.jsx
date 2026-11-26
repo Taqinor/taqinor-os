@@ -357,7 +357,8 @@ export default function VariantesCompare({ onRecharger = null } = {}) {
     setRefusRetenir(null)
     setEnCours(ligne.id)
     try {
-      await calepinageApi.calepinages.retenirVariante(id, ligne.id)
+      // T4-X9-010 — le refus est dit sous le bouton : le toast global (qui imprimait la clé interne) est coupé.
+      await calepinageApi.calepinages.retenirVariante(id, ligne.id, { suppressErrorToast: true })
       // On RECHARGE : c'est le serveur qui dé-retient la précédente.
       await refetch()
       // T4-X5-014 — retenir ÉCRIT la conception courante (`services/variantes.py::retenir_variante`) : l'atelier entier

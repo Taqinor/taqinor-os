@@ -689,6 +689,21 @@ describe('BarreRaccordement (ACAL1536) — dire pourquoi rien n’est raccordé'
     expect(await screen.findByText(/Choisissez d’abord le module de ce toit/)).toBeInTheDocument()
   })
 
+  it('R5C-N3 — chaînes formées mais verdict refusé : la phrase servie (le courant des panneaux), jamais « borne de fiche »', async () => {
+    const resultat = contratResultat()
+    resultat.data.electrique.verdicts = [{
+      code: 'courant_par_entree_mppt', libelle: 'Courant par entrée MPPT sous le courant admissible',
+      conforme: false, bloquant: false, detail: '17,6 A au-dessus de la borne de fiche 13,5 A',
+      raison: 'le courant des panneaux (17,6 A) dépasse ce qu’une entrée de cet onduleur accepte (13,5 A)',
+    }]
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue(resultat)
+    render(<BarreRaccordement calepinageId={1} onRaccorde={() => {}} onModifier={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Raccorder automatiquement' }))
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveTextContent('le courant des panneaux (17,6 A) dépasse ce qu’une entrée de cet onduleur accepte (13,5 A)')
+    expect(alerte).not.toHaveTextContent('borne de fiche')
+  })
+
   it('des chaînes apparaissent ⇒ aucune phrase de cause', async () => {
     calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue(contratResultat())
     const onRaccorde = vi.fn()
