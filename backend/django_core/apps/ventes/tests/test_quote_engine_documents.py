@@ -115,7 +115,10 @@ class TestDocLiteralTemplates(TestCase):
         self.assertIn('Acompte à la commande : 30%', doc)
         self.assertIn('60% à la réception du matériel', doc)
         self.assertIn('10% après la mise en marche', doc)
-        self.assertIn('Tarifs de référence : barème ONEE/SRM', doc)
+        # ACAL1221 (D-AMOT-10) — un brouillon est un nouveau rendu : le barème
+        # national de référence, plus « ONEE/SRM » figé.
+        self.assertIn('Tarifs de référence : barème national de référence', doc)
+        self.assertNotIn('ONEE/SRM', doc)
         # Q5 — le délai est INDICATIF et hors des Conditions.
         self.assertNotIn("Délai d'installation :", doc)
         self.assertIn('7-14 jours ouvrés (indicatif)', doc)
@@ -868,6 +871,33 @@ class CgvTousFormatsHtmlTests(SimpleTestCase):
                     self.assertNotIn('ONEE', html)
                 else:
                     self.assertIn('Tarifs de référence', html)
+
+    def test_acal1221_bareme_national_aux_nouveaux_rendus(self):
+        """ACAL1221 (D-AMOT-10 = bareme_national) — nouveaux rendus
+        (``phrases_pdf_2611``) : « barème national de référence », jamais un
+        distributeur figé, dans les trois langues et tous les gabarits (le
+        legacy plein format compris) ; sans le drapeau, la puce d'hier."""
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.quote_engine.clauses_cgv import cgv_imprimees
+        from apps.ventes.tests import _moteur_fixtures as mf
+        neufs = _html_formats(phrases_pdf_2611=True)
+        neufs['legacy'] = G.render_html_for(mf.donnees_legacy('deux', phrases_pdf_2611=True))
+        for nom, html in neufs.items():
+            with self.subTest(gabarit=nom):
+                self.assertNotIn('ONEE/SRM', html)
+                if nom != 'agricole':
+                    self.assertIn('Tarifs de référence&#160;: barème national de référence', html)
+        hier = _html_formats()
+        hier['legacy'] = G.render_html_for(mf.donnees_legacy('deux'))
+        for nom in ('residentiel', 'une_page', 'legacy'):
+            with self.subTest(gabarit=nom, rendu='hier'):
+                self.assertIn('barème ONEE/SRM', hier[nom])
+        for langue, attendu in (('en', 'Reference tariffs: national reference schedule'),
+                                ('ar', 'التعريفات المرجعية: الجدول الوطني المرجعي')):
+            puces = cgv_imprimees({'langue_sortie': langue, 'phrases_pdf_2611': True})['puces']
+            self.assertEqual(puces[-1], attendu)
+            self.assertNotIn('ONEE', ' '.join(puces))
+            self.assertIn('ONEE/SRM', cgv_imprimees({'langue_sortie': langue})['puces'][-1])
 
     def test_residentiel_plus_de_ligne_paiement_composee(self):
         html = _html_formats()['residentiel']

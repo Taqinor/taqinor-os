@@ -38,7 +38,7 @@ import { toastError, toastSuccess, toastWithUndo } from '../../lib/toast'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import { useCanCreateProduit, useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
+import { usePermissionAchats, useVoitPrixVente } from '../../features/stock/useVoitPrixAchat'
 import {
   Button, Badge, Input, Spinner, Skeleton, Dialog, DialogContent, DialogHeader,
   DialogTitle, DialogDescription, DialogFooter, AlertDialog, EmptyState,
@@ -737,6 +737,10 @@ export default function StockList() {
   const canExport = hasFinePermissions ? canExportViaPerm : canWriteViaRole
   // ASTK21 (D-ASTK-3) — édition en place du prix de vente du catalogue.
   const canEditPrix = usePermissionAchats('catalogue_prix_modifier')
+  // D-ACAL-152 — sans « voir les prix de vente » (Technicien, Technicien
+  // responsable), le serveur ne sert aucun prix de vente : colonnes, filtre
+  // « Sans prix », jauge et compteur de prix ne sont pas rendus.
+  const voitPrixVente = useVoitPrixVente([...(produits ?? []), ...(produitsArchived ?? [])])
   const canDelete = useIsAdmin()
   // ADRG106 — « Supprimer » suit la route (PeutSupprimerStock) : administrateur ou `stock_supprimer`.
   const peutSupprimer = useHasPermission('stock_supprimer') || canDelete
@@ -992,7 +996,8 @@ export default function StockList() {
     // drapeau serveur `is_low_stock` est calculé sur `seuil_alerte > 0`, donc
     // un produit à {stock:0, seuil:0} (rupture) n'était jamais compté.
     let list = filterLow ? actifs.filter(p => severiteStock(p) !== SEV_OK) : actifs
-    if (filterNoPrice) list = list.filter(p => sansPrix(p))
+    // D-ACAL-152 — prix non servis : une vue enregistrée « Sans prix » ne vide pas la liste.
+    if (filterNoPrice && voitPrixVente) list = list.filter(p => sansPrix(p))
     if (filterNoSku) list = list.filter(p => !(p.sku ?? '').trim())
     if (filterMarque) list = list.filter(p => ((p.marque || '').trim() || 'Génériques') === filterMarque)
     if (filterEmplacement) list = list.filter(p => produitDansEmplacement(p, filterEmplacement))
@@ -1004,7 +1009,7 @@ export default function StockList() {
     }
     list = searchCatalogue(list, search)
     return list
-  }, [actifs, search, searching, filterLow, filterNoPrice, filterNoSku, filterMarque, filterEmplacement, activeCatIds])
+  }, [actifs, search, searching, filterLow, filterNoPrice, voitPrixVente, filterNoSku, filterMarque, filterEmplacement, activeCatIds])
 
   // Compteurs des filtres rail (sur le catalogue actif complet).
   const noPriceCount = useMemo(() => actifs.filter(p => sansPrix(p)).length, [actifs])
@@ -1137,10 +1142,10 @@ export default function StockList() {
             ? `${new Date(p.premiere_date_mouvement).toLocaleDateString('fr-FR')} → ${new Date(p.derniere_date_mouvement).toLocaleDateString('fr-FR')}`
             : ''}>{v}</span>
         : '—') },
-    { id: 'prix_vente', header: 'Prix vente HT', align: 'right', width: 120, searchable: false,
+    ...(voitPrixVente ? [{ id: 'prix_vente', header: 'Prix vente HT', align: 'right', width: 120, searchable: false,
       accessor: (p) => p.prix_vente,
-      cell: (v) => `${formatMAD(v, { withSymbol: false })} DH` },
-  ], [])
+      cell: (v) => `${formatMAD(v, { withSymbol: false })} DH` }] : []),
+  ], [voitPrixVente])
 
   const archivedRowActions = (p) => [
     { id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => openEdit(p) },
@@ -1184,10 +1189,10 @@ export default function StockList() {
       label: 'Stock bas', value: lowCount, icon: AlertTriangle,
       hint: "Rupture ou sous le seuil d'alerte",
     },
-    {
+    ...(voitPrixVente ? [{
       label: 'Sans prix', value: noPriceCount, icon: Wallet,
       hint: `${pctAvecPrix}% du catalogue avec prix`,
-    },
+    }] : []),
     {
       label: 'Sans SKU', value: noSkuCount, icon: QrCode,
       hint: `${pctAvecSku}% du catalogue avec SKU`,
@@ -1509,13 +1514,13 @@ export default function StockList() {
               <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Santé catalogue
               </span>
-              <div className="flex flex-col gap-1">
+              {voitPrixVente && <div className="flex flex-col gap-1">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>Prix renseigné</span>
                   <span className="font-medium tabular-nums text-foreground">{pctAvecPrix}%</span>
                 </div>
                 <Progress value={pctAvecPrix} tone={toneSante(pctAvecPrix)} aria-label="Part du catalogue avec un prix renseigné" />
-              </div>
+              </div>}
               <div className="flex flex-col gap-1">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>SKU renseigné</span>
@@ -1556,13 +1561,13 @@ export default function StockList() {
               quand leur compteur est à zéro. */}
           <div className="mt-3 flex flex-col gap-1 border-t border-border pt-3">
             <span className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Filtres</span>
-            <button type="button" disabled={noPriceCount === 0}
+            {voitPrixVente && <button type="button" disabled={noPriceCount === 0}
                     title={noPriceCount === 0 ? 'Aucun produit sans prix.' : undefined}
                     className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${filterNoPrice ? 'bg-warning/15 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
                     onClick={() => setFilterNoPrice(v => !v)}>
               <span>Sans prix (à renseigner)</span>
               <Badge tone="warning">{noPriceCount}</Badge>
-            </button>
+            </button>}
             <button type="button" disabled={noSkuCount === 0}
                     title={noSkuCount === 0 ? 'Aucun produit sans SKU.' : undefined}
                     className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${filterNoSku ? 'bg-warning/15 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
@@ -1613,6 +1618,7 @@ export default function StockList() {
               loading={loading}
               canWrite={canWrite}
               canEditPrix={canEditPrix}
+              voitPrixVente={voitPrixVente}
               canDelete={peutSupprimer}
               onEdit={openEdit}
               onDelete={handleDelete}

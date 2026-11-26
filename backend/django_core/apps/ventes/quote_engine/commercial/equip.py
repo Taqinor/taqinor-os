@@ -261,9 +261,15 @@ def _cedables_hors_page1(html):
 #: 3. (``None``) tout autre bloc cédable encore posé sur une page qui
 #:    déborde — tableau des hypothèses, fiche « Votre installation en bref »,
 #:    rangée des prochaines étapes ;
+#: 4. D-ACAL-167 — la ligne courte « Bases du calcul » du document industriel
+#:    (``industriel.bases_courtes``), posée seulement une fois le tableau des
+#:    hypothèses cédé : si elle ne tient pas, son retrait rend EXACTEMENT le
+#:    document de l'étape 3 (aucun autre bloc perdu) ; étape sans candidat
+#:    (tout autre document) ⇒ sautée, rien ne change ;
 #: puis, en dernier recours, tous les blocs cédables du document.
 ORDRE_CEDABLES = (frozenset({"energie_mensuelle"}),
-                  frozenset({"courbe_cumul"}), None)
+                  frozenset({"courbe_cumul"}), None,
+                  frozenset({"bases_courtes"}))
 
 
 def _cedables_des_pages_debordantes(html, doc):

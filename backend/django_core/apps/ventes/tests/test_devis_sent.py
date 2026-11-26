@@ -52,6 +52,78 @@ class TestMarkDevisSentService(TestCase):
             company=self.company, reference=f'DEV-{statut}-{id(statut)}',
             client=self.client_obj, lead=lead, statut=statut)
 
+    def _devis_deux_options(self, reference):
+        """Un VRAI devis à deux options (réseau / hybride + batterie), fiches
+        techniques complètes, 30 panneaux au toit et en ligne."""
+        from decimal import Decimal
+        from apps.stock.models import FicheTechnique, Produit
+        from apps.ventes.models import LigneDevis
+        devis = Devis.objects.create(
+            company=self.company, reference=reference, client=self.client_obj,
+            roof_layout={'_pans_geometry': [{'label': 'Sud', 'nb_panneaux': 30,
+                                             'azimut_deg': 180, 'inclinaison_deg': 20}]})
+        onduleur = dict(ond_n_mppt=2, ond_mppt_v_min=Decimal('200.0'), ond_mppt_v_max=Decimal('650.0'),
+                        ond_v_max_abs=Decimal('800.0'), ond_i_max_mppt_a=Decimal('26.0'),
+                        ond_ac_kw=Decimal('15'), ond_phases=3, ond_rendement_euro_pct=Decimal('97.0'))
+        materiel = (
+            ('Panneau Canadien Solar 710W', 'Canadien Solar', 30, 'module', dict(
+                pmax_wc=Decimal('710.00'), voc_v=Decimal('48.30'), isc_a=Decimal('18.59'),
+                vmp_v=Decimal('40.40'), imp_a=Decimal('17.59'),
+                temp_coeff_voc_pct_c=Decimal('-0.250'), temp_coeff_pmax_pct_c=Decimal('-0.290'))),
+            ('Onduleur réseau Huawei 15kW Triphasé', 'Huawei', 1, 'onduleur', onduleur),
+            ('Onduleur hybride Deye 15kW Triphasé', 'Deye', 1, 'onduleur', onduleur),
+            ('Batterie Dyness 15,4 kWh', 'Dyness', 1, 'batterie', dict(
+                bat_kwh_nominal=Decimal('15.36'), bat_v_nominal=Decimal('51.2'))))
+        for rang, (nom, marque, quantite, type_fiche, fiche) in enumerate(materiel):
+            produit = Produit.objects.create(company=self.company, nom=nom, marque=marque,
+                                             sku=f'{reference}-{rang}', prix_vente=Decimal('1000'))
+            FicheTechnique.objects.create(company=self.company, produit=produit,
+                                          type_fiche=type_fiche, **fiche)
+            LigneDevis.objects.create(devis=devis, produit=produit, designation=nom,
+                                      quantite=Decimal(quantite), prix_unitaire=Decimal('1000'),
+                                      remise=Decimal('0'))
+        return devis
+
+    def test_d_acal_158_un_vrai_envoi_range_une_vraie_conception_par_option(self):
+        """D-ACAL-158 — un vrai envoi (aucun calcul simulé) range la conception
+        de l'option que ``electrical_design`` ne porte pas ; la page client sert
+        alors les deux options, l'étude rangée et son empreinte n'ont pas bougé."""
+        from apps.ventes import electrical_service as es
+        devis = self._devis_deux_options('DEV-ACAL158-1')
+        es.build_electrical_design(devis)
+        devis.refresh_from_db()
+        design, empreinte = devis.electrical_design, devis.electrical_design_hash
+        self.assertIsNotNone(design)
+        mark_devis_sent(devis=devis, user=None)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertEqual((devis.electrical_design, devis.electrical_design_hash), (design, empreinte))
+        entree = [c for c in devis.clauses_appliquees if c.get('type') == 'conceptions_options_figees']
+        self.assertEqual(len(entree), 1)
+        self.assertEqual(set(entree[0]['options']), {'sans_batterie'})
+        sans = entree[0]['options']['sans_batterie']
+        self.assertEqual(sans['design']['materiel']['nb_modules'], 30)
+        self.assertTrue(sans['design']['chaines'])
+        self.assertEqual(len(sans['hash']), 64)
+        public = es.schema_electrique_public(devis, standard=False, option_totals={
+            'sans_batterie': {'ttc': 1}, 'avec_batterie': {'ttc': 1}})['options']
+        self.assertIn('Huawei', public['sans_batterie']['onduleurs'][0]['designation'])
+        self.assertIsNone(public['sans_batterie']['batterie'])
+        self.assertIn('Deye', public['avec_batterie']['onduleurs'][0]['designation'])
+        self.assertIsNotNone(public['avec_batterie']['batterie'])
+
+    def test_d_acal_158_un_calcul_qui_leve_n_arrete_pas_l_envoi(self):
+        from unittest import mock
+        from apps.ventes import conceptions_options
+        devis = self._devis_deux_options('DEV-ACAL158-2')
+        with mock.patch.object(conceptions_options, '_conception_de_l_option',
+                               side_effect=RuntimeError('fiche absente')):
+            mark_devis_sent(devis=devis, user=None)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        entree = [c for c in devis.clauses_appliquees if c.get('type') == 'conceptions_options_figees']
+        self.assertEqual([e['options'] for e in entree], [{}])
+
     def test_kwh_incoherent_factures_refuse_l_envoi(self):
         """ADVS48 (règle fondateur 30/09) — un brouillon au kWh déclaré contredit
         par les factures ne part par aucun geste : 409 nommé, brouillon, 0 mail ;

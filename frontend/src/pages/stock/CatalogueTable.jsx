@@ -156,6 +156,10 @@ export function CatalogueTable({
   // ASTK21 (D-ASTK-3) — édition en place du prix de vente réservée au code
   // `catalogue_prix_modifier` (calculé par l'écran, qui a le store).
   canEditPrix = true,
+  // D-ACAL-152 — faux pour un compte sans « voir les prix de vente »
+  // (Technicien) : les colonnes « Prix vente HT » / « Prix TTC » et le
+  // sous-total de valeur ne sont PAS rendus (jamais une colonne de « — »).
+  voitPrixVente = true,
   onDetail,
   // WIR221/XSTK10 — mise au rebut (motif obligatoire).
   onRebut,
@@ -201,8 +205,8 @@ export function CatalogueTable({
     () => (produits ?? []).some((p) => !p?.is_archived && roleDuProduitPompage(p)),
     [produits])
   const aCompleter = useMemo(
-    () => produitsPompageACompleter(produits, fichesParProduit),
-    [produits, fichesParProduit])
+    () => produitsPompageACompleter(produits, fichesParProduit, { prixMasques: !voitPrixVente }),
+    [produits, fichesParProduit, voitPrixVente])
   const kitPompage = useMemo(
     () => kitPompageChiffrable(produits, fichesParProduit),
     [produits, fichesParProduit])
@@ -341,7 +345,7 @@ export function CatalogueTable({
       cell: (fiche) => <BadgeCompletudeFiche fiche={fiche} />,
       exportValue: (p) => LABEL_FICHE[completudeFiche(fichesParProduit?.get(p.id)).statut],
     },
-    {
+    ...(voitPrixVente ? [{
       id: 'prix_vente',
       header: 'Prix vente HT',
       align: 'right',
@@ -414,7 +418,7 @@ export function CatalogueTable({
           )
       ),
       exportValue: (p) => prixTtc(p),
-    },
+    }] : []),
     {
       id: 'quantite_stock',
       header: 'Stock',
@@ -504,7 +508,7 @@ export function CatalogueTable({
       },
       exportValue: (p) => p.seuil_alerte,
     },
-  ], [editable, canWrite, canEditPrix, onInlineSave, onAjusterStock, selectable, selected, onToggleSelect, fichesParProduit])
+  ], [editable, canWrite, canEditPrix, voitPrixVente, onInlineSave, onAjusterStock, selectable, selected, onToggleSelect, fichesParProduit])
 
   // Actions de ligne (≤2 rapides + menu kebab) — historique / éditer / supprimer.
   const rowActions = (p) => {
@@ -539,7 +543,8 @@ export function CatalogueTable({
 
   // Ligne de sous-totaux : valeur de vente HT du catalogue affiché. La clé
   // correspond à la colonne `prix_vente`, où summaryFormat/summaryRender la rendent.
-  const summary = useMemo(() => ({ prix_vente: (values, rows) => valeurVente(rows) }), [])
+  const summary = useMemo(
+    () => (voitPrixVente ? { prix_vente: (values, rows) => valeurVente(rows) } : undefined), [voitPrixVente])
 
   // Le moteur gère lui-même le vide ET le chargement (squelettes calqués sur la
   // vraie disposition). useDelayedLoading n'arme le squelette que si l'attente
@@ -574,7 +579,7 @@ export function CatalogueTable({
           <Layers /> {grouped ? 'Catégories groupées' : 'Grouper par catégorie'}
         </Button>
       </div>
-      {aDuPompage && (
+      {aDuPompage && voitPrixVente && (
         <div role="status" data-testid="bandeau-kit-pompage"
              className="rounded-lg border border-border bg-muted/40 p-3 text-sm">
           <span className="font-medium">
