@@ -1235,10 +1235,7 @@ def _corps_feuille_surface(surface, *, titre='', pied='',
                 trait=TRAIT_MODULE))
     poteaux, ligne_poteaux = _poteaux_de_surface(surface)
     if contenu in (CONTENU_IMPLANTATION, CONTENU_POSE):
-        for numero, position in enumerate(poteaux, start=1):  # ACAL580 — P1…Pn
-            fx, fy = vers_feuille(position)
-            morceaux.append('<text x="%s" y="%s" font-size="2.5" fill="%s" text-anchor="middle">P%d</text>'
-                            % (_n(fx), _n(fy), NOIR, numero))
+        morceaux.extend(_reperes_de_poteaux(poteaux, surface['contour'], vers_feuille))
     x0, y0, x1, y1 = etendue
     morceaux.append(_cote_horizontale(x0, x1, y0, vers_feuille))
     morceaux.append(_cote_verticale(y0, y1, x0, vers_feuille))
@@ -1257,6 +1254,38 @@ def _corps_feuille_surface(surface, *, titre='', pied='',
                                  contenu))
     morceaux.append(_pied_svg(pied))
     return morceaux
+
+
+#: ACAL1718 — repère de poteau : corps 3,2 mm (≈ 9 pt), disque de 1 mm de rayon, texte décalé de
+#: 1,5 mm du disque, vers l'EXTÉRIEUR du contour pour que son trait ne traverse jamais le texte.
+CORPS_REPERE_POTEAU_MM = 3.2
+RAYON_SYMBOLE_POTEAU_MM = 1.0
+DECALAGE_REPERE_POTEAU_MM = 1.5
+
+
+def _reperes_de_poteaux(poteaux, contour, vers_feuille):
+    """ACAL580/ACAL1718 — un disque par poteau et son repère ``Pn`` à côté, hors du trait."""
+    if not poteaux:
+        return []
+    centre = [vers_feuille(point) for point in (contour or poteaux)]
+    cx = sum(p[0] for p in centre) / len(centre)
+    cy = sum(p[1] for p in centre) / len(centre)
+    sortie = []
+    for numero, position in enumerate(poteaux, start=1):
+        fx, fy = vers_feuille(position)
+        dx, dy = fx - cx, fy - cy
+        norme = math.hypot(dx, dy) or 1.0
+        ux, uy = dx / norme, dy / norme
+        ecart = RAYON_SYMBOLE_POTEAU_MM + DECALAGE_REPERE_POTEAU_MM
+        # Le texte part du disque vers l'extérieur ; ancré à son bord proche.
+        tx = fx + ux * ecart
+        ty = fy + uy * ecart + CORPS_REPERE_POTEAU_MM * (0.35 + 0.35 * uy)
+        ancre = 'start' if ux >= 0 else 'end'
+        sortie.append('<circle cx="%s" cy="%s" r="%s" fill="%s" stroke="%s" stroke-width="0.2" />'
+                      % (_n(fx), _n(fy), _n(RAYON_SYMBOLE_POTEAU_MM), GRIS_TEXTE, NOIR))
+        sortie.append('<text x="%s" y="%s" font-size="%s" fill="%s" text-anchor="%s">P%d</text>'
+                      % (_n(tx), _n(ty), _n(CORPS_REPERE_POTEAU_MM), NOIR, ancre, numero))
+    return sortie
 
 
 def _poteaux_de_surface(surface):

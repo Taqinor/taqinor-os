@@ -15,6 +15,7 @@ Run :
 """
 import importlib
 import copy
+import math
 
 from django.test import SimpleTestCase
 
@@ -154,6 +155,22 @@ class PoteauxDOmbriereTest(SimpleTestCase):
             self.assertIn('>P%d</text>' % numero, svg)
         self.assertNotIn('>P0</text>', svg)
         self.assertNotIn('>P14</text>', svg)
+
+    def test_repere_de_poteau_lisible_et_pose_sur_son_symbole(self):
+        """ACAL1718 — chaque poteau : un disque, un repère de 9 pt au moins (3,175 mm), décalé du disque
+        vers l'extérieur ; mutant « remettre 7 pt / pas de disque » ⇒ échec."""
+        import re
+
+        svg = self.svg(ombriere(pasM=2.5, sectionM=0.2))
+        textes = re.findall(r'<text x="([\d.-]+)" y="([\d.-]+)" font-size="([\d.]+)"[^>]*>P(\d+)</text>', svg)
+        disques = re.findall(r'<circle cx="([\d.-]+)" cy="([\d.-]+)" r="1"', svg)
+        self.assertEqual(len(textes), 13)
+        self.assertEqual(len(disques), 13)
+        for x, y, corps, _numero in textes:
+            self.assertGreaterEqual(float(corps) * 72 / 25.4, 9.0)
+        # le repère n'est jamais posé AU centre du disque : décalé d'au moins 1,5 mm
+        for (x, y, _c, _n), (cx, cy) in zip(textes, disques):
+            self.assertGreaterEqual(math.hypot(float(x) - float(cx), float(y) - float(cy)), 1.5)
 
     def test_entraxe_absent_non_decrits_sans_repere(self):
         svg = self.svg(ombriere(sectionM=0.2))
