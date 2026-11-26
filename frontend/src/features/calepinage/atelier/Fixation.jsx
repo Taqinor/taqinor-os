@@ -4,6 +4,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { downloadBlob, filenameFromResponse } from '../../../utils/downloadBlob'
 import { Button, Card, Spinner } from '../../../ui'
+import { formatNumber } from '../../../lib/format'
 import { OPTIONS_TELECHARGEMENT, erreurDeTelechargement } from '../documents/telechargement'
 
 /* ============================================================================
@@ -90,7 +91,7 @@ function LigneNomenclature({ ligne }) {
             {ligne.manquant}
           </span>
         ) : (
-          `${ligne.quantite} ${ligne.unite || ''}`.trim()
+          `${formatNumber(ligne.quantite, { maxDecimals: 2 })} ${ligne.unite || ''}`.trim()
         )}
       </td>
     </tr>
@@ -192,8 +193,8 @@ export default function Fixation({ calepinageId: idPropose = null }) {
   const alertes = Array.isArray(data.alertes) ? data.alertes : []
 
   return (
-    <div className="space-y-4" data-testid="calx360-panneau">
-      <Card className="p-4" data-testid="calx360-systeme">
+    <div className="min-w-0 max-w-full space-y-4" data-testid="calx360-panneau">
+      <Card className="min-w-0 max-w-full p-4" data-testid="calx360-systeme">
         <h3 className="text-sm font-semibold">Choix du système</h3>
         {data.systeme ? (
           <p className="mt-1 text-sm" data-testid="calx360-systeme-applique">
@@ -225,7 +226,7 @@ export default function Fixation({ calepinageId: idPropose = null }) {
             value={valeurChamp}
             onChange={(e) => setSystemeSaisi(e.target.value)}
             data-testid="acal82-champ-systeme"
-            className="min-h-11 rounded border border-input bg-card px-2 text-sm"
+            className="min-h-11 min-w-0 max-w-full rounded border border-input bg-card px-2 text-sm"
           >
             <option value="">Aucun (le système unique actif s’applique)</option>
             {options.map((s) => (
@@ -279,14 +280,15 @@ export default function Fixation({ calepinageId: idPropose = null }) {
         )}
       </Card>
 
-      <Card className="p-4" data-testid="calx360-nomenclature">
+      <Card className="min-w-0 max-w-full p-4" data-testid="calx360-nomenclature">
         <h3 className="text-sm font-semibold">Nomenclature de fixation</h3>
         {lignes.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground" data-testid="calx360-vide">
             {refus[0]?.message || 'Aucun composant à afficher.'}
           </p>
         ) : (
-          <table className="mt-2 w-full text-left text-sm" data-testid="calx360-tableau">
+          <div className="mt-2 max-w-full overflow-x-auto">
+          <table className="w-full text-left text-sm [overflow-wrap:anywhere]" data-testid="calx360-tableau">
             <thead>
               <tr className="text-xs uppercase text-muted-foreground">
                 <th scope="col" className="py-1">Composant</th>
@@ -301,15 +303,17 @@ export default function Fixation({ calepinageId: idPropose = null }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
 
-      <Card className="p-4" data-testid="calx360-telechargement">
+      <Card className="min-w-0 max-w-full p-4" data-testid="calx360-telechargement">
         <h3 className="text-sm font-semibold">Classeur</h3>
         {entreeClasseur?.disponible ? (
           <Button
             type="button"
             variant="outline"
+            className="h-auto max-w-full whitespace-normal text-left"
             disabled={telechargementEnCours}
             onClick={telecharger}
             data-testid="calx360-telecharger"

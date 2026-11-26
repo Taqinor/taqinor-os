@@ -94,6 +94,21 @@ describe('Fixation (CALX360) — système et lignes', () => {
   })
 })
 
+describe('Fixation (ACAL1518) — quantité à la française', () => {
+  it('la quantité 13.24 s’écrit « 13,24 m », jamais le nombre brut', async () => {
+    const reponse = reponseContrat('calepinage', 'calepinage_fixation_bom', 'exemple')
+    reponse.data.lignes = reponse.data.lignes.map((l, i) => (
+      i === 0 ? { ...l, quantite: 13.24, unite: 'm' } : l))
+    calepinageApi.calepinages.bomFixation.mockResolvedValue(reponse)
+    servirSorties('exemple')
+    rendre()
+    await screen.findByTestId('calx360-panneau')
+    const cellule = screen.getByTestId(`calx360-quantite-${reponse.data.lignes[0].role}`)
+    expect(cellule.textContent).toBe('13,24 m')
+    expect(screen.getByTestId('calx360-panneau').className).toContain('min-w-0')
+  })
+})
+
 describe('Fixation (CALX360) — catalogue vide', () => {
   it('affiche l’état vide nommant le réglage à remplir', async () => {
     servir('exemple_vide')
