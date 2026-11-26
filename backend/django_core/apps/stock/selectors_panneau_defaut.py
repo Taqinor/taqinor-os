@@ -64,9 +64,10 @@ def source_du_produit(produit) -> str:
 
 
 def watt_du_panneau(produit):
-    """Puissance du panneau : ``pmax_wc`` de sa fiche MODULE, sinon le wattage lu au nom par le lecteur existant
-    (``apps.ventes.solar_classification.parse_watt``, la regex unique de ``core.product_roles``), sinon ``None``."""
-    from apps.ventes.solar_classification import parse_watt
+    """Puissance du panneau : ``pmax_wc`` de sa fiche MODULE, sinon le wattage lu au nom par la regex unique de la
+    fondation (``core.product_roles.WATT_RE`` — ``solar_classification._WATT_RE`` en est l'alias : même résultat),
+    sinon ``None``."""
+    from core.product_roles import WATT_RE
 
     from .selectors_fiche_technique import specs_for_produit
 
@@ -78,7 +79,8 @@ def watt_du_panneau(produit):
     if pmax is not None and float(pmax) > 0:
         valeur = float(pmax)
         return int(valeur) if valeur.is_integer() else valeur
-    return parse_watt(getattr(produit, 'nom', '') or '')
+    trouve = WATT_RE.search(getattr(produit, 'nom', '') or '')
+    return int(trouve.group(1)) if trouve else None
 
 
 def _produit_designe(company):
