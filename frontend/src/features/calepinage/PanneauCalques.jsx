@@ -65,6 +65,10 @@ const CALQUES_DU_PANNEAU = [...ORDRE_CALQUES, CALQUE_ELECTRIQUE]
  *  — le comportement d'aujourd'hui, jamais un réglage inventé. */
 const ETAT_PAR_DEFAUT = { visible: true, opacite: 1 }
 
+/** T4-X7-015 (rejeu) — relecture bornée d'un panneau visible encore vide (carte pas encore dessinée). */
+const RELECTURE_MS = 500
+const RELECTURES_MAX = 20
+
 /**
  * @param {{calquesDisponibles?: () => string[]}|null} [builderApi]  l'API du
  *        constructeur (CALX3, `builderApiActuel` côté écran) : SEULE source des
@@ -105,6 +109,19 @@ export default function PanneauCalques({ builderApi, onChange, utilisateurId, st
     // Ne se relit QUE quand `builderApi` change d'identité (le builder devient
     // prêt) — jamais à chaque rendu : sinon la carte serait interrogée en boucle.
   }, [builderApi, lecture])
+
+  // T4-X7-015 (rejeu R5B, 26/11) — ouverte par un lien profond juste après le chargement, la feuille devient visible AVANT
+  // que la carte n'ait installé ses couches : la relecture d'ouverture tombait sur une liste vide et plus rien ne la
+  // relisait (« Aucun calque disponible », 4 calques par le bouton Avancé). Tant que le panneau est VISIBLE et VIDE : relu
+  // toutes les 500 ms, au plus 20 fois (10 s) — borné, arrêté dès qu'un calque paraît ou que le panneau se cache.
+  const essais = useRef(0)
+  useEffect(() => {
+    const noeud = racine.current
+    const visible = Boolean(noeud) && (noeud.offsetWidth > 0 || noeud.offsetHeight > 0)
+    if (!visible || disponibles.length > 0 || essais.current >= RELECTURES_MAX) return undefined
+    const minuteur = setTimeout(() => { essais.current += 1; setLecture((n) => n + 1) }, RELECTURE_MS)
+    return () => clearTimeout(minuteur)
+  }, [lecture, disponibles])
 
   const listes = useMemo(
     () => CALQUES_DU_PANNEAU.filter((c) => disponibles.includes(c.id)),

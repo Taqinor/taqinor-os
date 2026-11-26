@@ -853,3 +853,44 @@ describe('ACAL1280 — pièces de la coque : clavier et rôles', () => {
     expect(screen.queryAllByRole('button')).toHaveLength(0)
   })
 })
+
+/* T4-U1-023 (rejeu R5B, 26/11) — cheminée et voisin posés PUIS enregistrés : l'Expert les voyait, l'étape Panneaux et les
+   Résultats disaient encore « aucune ombre signalée » — le parcours n'était lu qu'à l'ouverture. Relu à chaque enregistrement. */
+describe('useParcours — relu à chaque enregistrement (T4-U1-023)', () => {
+  it('une nouvelle heure d’enregistrement relit « ce qui manque » : la ligne des ombres posées remplace l’ancienne', async () => {
+    const { renderHook } = await import('@testing-library/react')
+    const { useParcours } = await import('./parcoursGuide')
+    const ligne = (code) => ({ code, message: code, etape: 'resultats', gravite: 'a_regler', nombre: 1, cible: { onglet: '', champ: '' } })
+    mocks.parcours.mockReset()
+    mocks.parcours.mockResolvedValueOnce({ data: { etapes: [], manque: [ligne('acces_solaire_absent')] } })
+    mocks.parcours.mockResolvedValueOnce({ data: { etapes: [], manque: [ligne('ombres_non_mesurees')] } })
+    const { result, rerender } = renderHook(({ le }) => useParcours(ID, le), { initialProps: { le: null } })
+    await waitFor(() => expect(result.current.manque.map((m) => m.code)).toEqual(['acces_solaire_absent']))
+    rerender({ le: '2026-11-26T10:00:00Z' })
+    await waitFor(() => expect(result.current.manque.map((m) => m.code)).toEqual(['ombres_non_mesurees']))
+    expect(mocks.parcours).toHaveBeenCalledTimes(2)
+    mocks.parcours.mockReset()
+  })
+
+  /* Revue de T4-U1-023 (26/11) — la relecture après un enregistrement nourrit `etapeActive` (coque : `cleEtape`, `onEtape`) :
+     sans `?onglet=` ni étape mémorisée, un enregistrement qui marque le Toit « fait » faisait passer l'écran à Panneaux
+     sans un clic. Le choix automatique est fait UNE fois (première réponse), puis tenu. */
+  it('sans étape mémorisée : un enregistrement qui rend le Toit « fait » laisse l’étape active sur le Toit', async () => {
+    const { renderHook } = await import('@testing-library/react')
+    const { useParcours, etapeActive } = await import('./parcoursGuide')
+    window.localStorage.removeItem(`calepinage.etape.${ID}`)
+    const etapes = (toit, panneaux) => ({ data: { etapes: [{ cle: 'toit', etat: toit }, { cle: 'panneaux', etat: panneaux }], manque: [] } })
+    mocks.parcours.mockReset()
+    mocks.parcours.mockResolvedValueOnce(etapes('en_cours', 'a_faire'))
+    mocks.parcours.mockResolvedValueOnce(etapes('fait', 'en_cours'))
+    const { result, rerender } = renderHook(({ le }) => useParcours(ID, le), { initialProps: { le: null } })
+    const active = () => etapeActive(null, result.current.etats, result.current.memorisee)
+    await waitFor(() => expect(result.current.etats.toit).toBe('en_cours'))
+    expect(active()).toBe('toit')
+    rerender({ le: '2026-11-26T11:00:00Z' }) // l'enregistrement : le Toit devient « fait »
+    await waitFor(() => expect(result.current.etats.toit).toBe('fait'))
+    expect(result.current.etats.panneaux).toBe('en_cours') // les états, eux, sont à jour (pastilles)
+    expect(active()).toBe('toit')
+    mocks.parcours.mockReset()
+  })
+})

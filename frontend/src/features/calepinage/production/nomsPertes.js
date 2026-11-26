@@ -51,9 +51,12 @@ export const MANQUES_CLAIRS = {
   simulation_perimee: { titre: 'Calcul à refaire', ligne: 'Le calepinage ou un réglage de votre société a changé depuis le dernier calcul.', bouton: 'Voir' },
   production_non_simulee: { titre: 'Production à calculer', ligne: 'Lancez la simulation pour la connaître.', bouton: 'Voir' },
   coefficients_non_sources: { titre: 'Températures de référence', ligne: 'Des valeurs standard servent en attendant celles du site.' },
-  acces_solaire_absent: { titre: 'Ombrage panneau par panneau', ligne: 'Aucune ombre n’est signalée, mais cela ne prouve pas qu’il n’y en a pas.' },
+  // R5B-N5 (rejeu 26/11) — la cible servie de ces deux lignes est l'onglet Production, l'écran même où on lit la ligne :
+  // « Renseigner » ne faisait rien de visible. L'ombre par panneau se calcule à l'étape Panneaux (carte « Ensoleillement de
+  // chaque panneau », allumée à l'entrée, ACAL1981) : le bouton y mène (`etape`).
+  acces_solaire_absent: { titre: 'Ombrage panneau par panneau', ligne: 'Aucune ombre n’est signalée, mais cela ne prouve pas qu’il n’y en a pas.', bouton: 'Voir les ombres', etape: 'panneaux' },
   // Item 14 (T4-U1-023) — des obstacles / voisins hauts sont posés : la phrase SERVIE les nomme et dit le geste.
-  ombres_non_mesurees: (m) => ({ titre: 'Ombres à compter sur les panneaux', ligne: m?.message || 'Des objets font de l’ombre : leur ombre n’est pas encore comptée.' }),
+  ombres_non_mesurees: (m) => ({ titre: 'Ombres à compter sur les panneaux', ligne: m?.message || 'Des objets font de l’ombre : leur ombre n’est pas encore comptée.', bouton: 'Voir les ombres', etape: 'panneaux' }),
   ratio_dc_ac: { titre: 'Rapport panneaux / onduleur', ligne: 'À vérifier dans l’étape Électrique.' },
   longueur_chaine: { titre: 'Longueur des chaînes de panneaux', ligne: 'À vérifier dans l’étape Électrique.' },
   reglage_manquant: { titre: 'Réglage de la société à saisir', ligne: 'Nécessaire au calcul.' },
@@ -88,5 +91,6 @@ export function manqueClair(m) {
   const clair = typeof entree === 'function' ? entree(m) : entree
   const servi = m?.message || ''
   if (!clair) return { titre: servi, ligne: '', bouton: 'Renseigner', technique: '' }
-  return { titre: clair.titre, ligne: clair.ligne, bouton: clair.bouton || 'Renseigner', technique: servi === clair.ligne ? '' : servi }
+  return { titre: clair.titre, ligne: clair.ligne, bouton: clair.bouton || 'Renseigner', technique: servi === clair.ligne ? '' : servi,
+    etape: clair.etape ?? null }
 }

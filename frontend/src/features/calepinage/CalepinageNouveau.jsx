@@ -179,7 +179,6 @@ export default function CalepinageNouveau() {
   // (renvoi après délai dépassé), une neuve dès qu'une réponse est reçue ou que le corps change.
   const creationRef = useRef(null)
   const refLead = useRef(null)
-  const refClient = useRef(null)
   // CALX352 — partir d'un MODÈLE et/ou d'un JEU DE RÉGLAGES société. Rien
   // de choisi (le défaut) ⇒ la création d'aujourd'hui, strictement identique.
   const [modeles, setModeles] = useState(null)
@@ -245,17 +244,6 @@ export default function CalepinageNouveau() {
     }))
   }
 
-  const chercherClients = async (q) => {
-    const res = await crmApi.searchClients(q)
-    const lignes = unwrapList(res)
-    refClient.current = lignes
-    return lignes.map((c) => ({
-      value: String(c.id),
-      label: [c.nom, c.prenom].filter(Boolean).join(' ') || `Client ${c.id}`,
-      description: c.adresse || undefined,
-    }))
-  }
-
   const choisirLead = (valeur) => {
     setLeadId(valeur)
     setExistant(null)
@@ -263,9 +251,12 @@ export default function CalepinageNouveau() {
     setErreurs((e) => ({ ...e, lead: undefined, global: undefined }))
   }
 
-  const choisirClient = (valeur) => {
+  // R5B-N1 (rejeu 26/11) — la recherche des clients est CELLE du sélecteur partagé (`SelecteurRattachement`, T4-V1-011 :
+  // seules les lignes `source: 'client'` de `clients/search/`) ; l'ancienne recherche locale proposait aussi les LEADS,
+  // dont l'id partait en `client_id` (404 « Client introuvable (#1238) »). La ligne choisie vient du sélecteur.
+  const choisirClient = (valeur, ligne = null) => {
     setClientId(valeur)
-    setClientChoisi((refClient.current || []).find((c) => String(c.id) === String(valeur)) || null)
+    setClientChoisi(ligne)
     setErreurs((e) => ({ ...e, client: undefined, global: undefined }))
   }
 
@@ -440,7 +431,6 @@ export default function CalepinageNouveau() {
                 id="cal-nouveau-client"
                 valeur={clientId}
                 onChange={choisirClient}
-                onSearch={chercherClients}
                 invalid={Boolean(erreurs.client)}
               />
               {erreurs.client ? (

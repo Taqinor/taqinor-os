@@ -1319,11 +1319,15 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
 
   // T4-X2-006 (rejeu X9) — « Est-Ouest dos à dos — 24 panneaux · 17,04 kWc · 21 735 kWh/an » : la carte de la variante
   // posée gardait l'estimation de l'atelier sans le dire, après la simulation (27 197 kWh). ERP : elle est DITE estimation.
-  it('T4-X2-006 — variante posée : l’estimation de l’atelier est dite « Estimation pour comparer les poses » (ERP) ; servie : sans préfixe', async () => {
+  // Rejeu R5B (26/11) — « Estimation pour comparer les poses : … 21 735 kWh/an » restait à côté du Total « 27 305 kWh/an ·
+  // simulation » : deux productions pour la même pose. ERP : la variante posée ne dit plus de production estimée.
+  it('T4-X2-006 — variante posée (ERP) : aucune production estimée, renvoi au Total ; servie : son chiffre ; autre pose : « Estimation »', async () => {
     const { chiffresDeLaPose, texteChiffresVariante } = await import('./chiffresVariante');
     const carte = { count: 24, kwc: 17.04, annualKwh: 21735 };
     const estimee = chiffresDeLaPose(carte, null, () => null);
-    expect(texteChiffresVariante(carte, estimee, null, fmt, fmtKwc, true)).toBe(`Estimation pour comparer les poses : 24 panneaux · 17,04 kWc · ${fmt(21735)} kWh/an`);
+    expect(texteChiffresVariante(carte, estimee, null, fmt, fmtKwc, true)).toBe('24 panneaux · 17,04 kWc · production : voir le Total');
+    expect(texteChiffresVariante(carte, estimee, null, fmt, fmtKwc, true)).not.toContain(fmt(21735));
+    expect(texteChiffresVariante(carte, null, null, fmt, fmtKwc, true)).toBe(`Estimation : 24 panneaux · 17,04 kWc · ${fmt(21735)} kWh/an`);
     expect(texteChiffresVariante(carte, estimee, null, fmt, fmtKwc)).toBe(`24 panneaux · 17,04 kWc · ${fmt(21735)} kWh/an`); // site public : inchangé
     const servie = chiffresDeLaPose(carte, null, () => 22000);
     expect(texteChiffresVariante(carte, servie, null, fmt, fmtKwc, true)).toBe(`24 panneaux · 17,04 kWc · ${fmt(22000)} kWh/an`);
