@@ -461,6 +461,26 @@ describe('AffectationChaines (CALX53) — coefficients non sourcés', () => {
   })
 })
 
+describe('AffectationChaines (ACAL1662) — l’avertissement « aucune norme » dit une fois', () => {
+  it('trois fois le même motif servi : une phrase courte avec son lien, le détail replié, rien en double', async () => {
+    const motif = "Aucune norme électrique n'est choisie : les câbles et les protections ne sont pas calculés. "
+      + 'Choisissez une norme dans les réglages du calepinage de votre société pour les calculer.'
+    const donnees = JSON.parse(JSON.stringify(contratResultat().data))
+    donnees.avertissements = [motif, motif, motif, 'Autre phrase servie.']
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donnees })
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    expect(screen.getAllByTestId('acal1662-norme')).toHaveLength(1)
+    const bloc = screen.getByTestId('acal1662-norme')
+    expect(bloc).toHaveTextContent('Choisissez la norme électrique dans les réglages')
+    expect(bloc.querySelector('a')).toHaveAttribute('href', '/calepinage/reglages')
+    expect(bloc.tagName).toBe('DETAILS')
+    expect(bloc.open).toBe(false)
+    expect(screen.getAllByTestId('calx53-avertissement')).toHaveLength(2) // le détail replié + l'autre phrase
+  })
+})
+
 /* ── CALX16 — LA CHAÎNE LA PLUS FAIBLE EN OMBRAGE ──────────────────────────
    Ce qui est prouvé : la chaîne DÉSIGNÉE par le serveur est teintée, sa
    méthode est recopiée, la légende dit que c'est un signal de CÂBLAGE et
@@ -581,6 +601,26 @@ describe('AffectationChaines (ACAL725) — le drapeau « optimiseur » par modul
     const parModule = Object.fromEntries(corps.affectation_manuelle.map((l) => [l.module, l]))
     expect(parModule[B1].optimiseur).toBe(true)
     expect(parModule[B2].optimiseur).toBe(false)
+  })
+
+  it('ACAL1642 : Optimiseur = Oui seul (numéros vides) marque les modules, garde leur chaîne, active l’enregistrement', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue(contratResultat())
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+    const avant = Object.fromEntries(contratResultat().data.electrique.affectation.map((l) => [l.module, l]))
+    glisserSur([B1, B2, B3])
+    fireEvent.change(screen.getByTestId('cal234-champ-optimiseur'), { target: { value: 'oui' } })
+    fireEvent.click(screen.getByTestId('cal234-affecter'))
+    for (const m of [B1, B2, B3]) {
+      expect(screen.getByTestId(`cal234-module-${m}`)).toHaveAttribute('data-optimiseur', 'oui')
+    }
+    const corps = await corpsEnregistre()
+    const parModule = Object.fromEntries(corps.affectation_manuelle.map((l) => [l.module, l]))
+    for (const m of [B1, B2, B3]) {
+      expect(parModule[m].optimiseur).toBe(true)
+      expect(parModule[m].chaine).toBe(avant[m].chaine ?? null)
+      expect(parModule[m].mppt).toBe(avant[m].mppt ?? null)
+    }
   })
 
   it('`marquerModules` marque une liste de six modules d’un seul geste', () => {

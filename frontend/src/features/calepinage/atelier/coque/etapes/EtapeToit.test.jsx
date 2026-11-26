@@ -269,6 +269,20 @@ describe('ACAL1429 — toit plat jamais confirmé', () => {
     expect(within(carte).getByText('Toit plat')).toBeInTheDocument()
   })
 
+  it('ACAL1922 : le serveur rend le pan SANS pitchSource ⇒ la carte perd « À confirmer » et lit « confirmé » quand même', async () => {
+    layout.mockResolvedValue({ data: { roof_layout: { zones: [PLAT] }, empreinte_document: 'jeton-1' } })
+    enregistrerSectionLayout.mockImplementation(async () => ({ data: {
+      empreinte_document: 'jeton-2', roof_layout: { zones: [PLAT] } } }))
+    rendre()
+    const carte = screen.getByTestId('cal-toit-pente-carte')
+    await waitFor(() => expect(within(carte).getByText('Toit plat')).toBeInTheDocument())
+    expect(screen.queryByTestId('cal-toit-plat-confirme')).toBeNull()
+    fireEvent.click(screen.getByTestId('cal-toit-pente-confirmer'))
+    await waitFor(() => expect(within(carte).queryByText('À confirmer')).toBeNull())
+    expect(within(carte).getByTestId('cal-toit-plat-confirme')).toHaveTextContent('confirmé')
+    expect(screen.queryByTestId('cal-toit-pente-confirmer')).toBeNull()
+  })
+
   it('un plat déjà confirmé (pitchSource plat) : ni pastille ni actions', async () => {
     layout.mockResolvedValue({ data: { roof_layout: { zones: [{ ...PLAT, pitchSource: { mode: 'plat' } }] }, empreinte_document: 'jeton-1' } })
     rendre()

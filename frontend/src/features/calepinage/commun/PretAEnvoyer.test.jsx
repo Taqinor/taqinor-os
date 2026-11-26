@@ -298,3 +298,53 @@ describe('PretAEnvoyer — un calepinage sans lead ne parle pas du lead (T4-U4-0
     cleanup()
   })
 })
+
+/* ACAL1983 — « Fiche incomplète » : le bouton dit « Compléter la fiche du module », pas « Régler dans … ». */
+describe('PretAEnvoyer — le bouton d’une fiche incomplète (ACAL1983)', () => {
+  it('le geste servi nomme le bouton ; un autre contrôle garde « Régler dans … »', async () => {
+    const fiche = {
+      ...ligne(modeleARegler, 'materiel_designe'), libelle: 'Matériel électrique désigné',
+      valeur_texte: 'Fiche incomplète : tension au point de puissance maximale (Vmp) du module',
+      geste: 'Compléter la fiche du module', cible: { etape: 'electrique', onglet: 'materiel', champ: '' },
+    }
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi([fiche, ligne(modeleARegler, 'chutes_tension')]))
+    monter({ calepinageId: 208, groupes: true })
+    const bouton = await screen.findByTestId('cal-pret-regler-materiel_designe')
+    expect(bouton).toHaveTextContent('Compléter la fiche du module')
+    expect(bouton).not.toHaveTextContent('Régler dans')
+    expect(screen.getByTestId('cal-pret-regler-chutes_tension')).toHaveTextContent(/^Régler/)
+    cleanup()
+  })
+})
+
+/* ACAL1729 — le « ? » (Pourquoi) s'ouvre à la touche Entrée comme à la touche Espace ; Échap le ferme. */
+describe('PretAEnvoyer — le « ? » au clavier (ACAL1729)', () => {
+  const taille = { ...ligne(modeleARegler, 'taille_clavier'), libelle: 'Pentes et faces confirmées', valeur_texte: '4 pans' }
+  const registre = { entrees: [{ cle: 'controle.taille_clavier', phrase: 'Phrase servie.', geste: '', valeurs: {} }] }
+  const monterClavier = async () => {
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi([taille]))
+    calepinageApi.calepinages.explications.mockResolvedValue({ data: registre })
+    calepinageApi.calepinages.get.mockResolvedValue({ data: { id: 207, lead: 4, client: null } })
+    monter({ calepinageId: 207, groupes: true })
+    const ligneTaille = await screen.findByTestId('cal-pret-ligne-taille_clavier')
+    const bouton = await within(ligneTaille).findByRole('button', { name: /Pourquoi/ })
+    bouton.focus()
+    return bouton
+  }
+
+  it('Entrée ouvre (aria-expanded vrai), Échap ferme et rend le focus au « ? »', async () => {
+    const bouton = await monterClavier()
+    await userEvent.keyboard('{Enter}')
+    expect(bouton).toHaveAttribute('aria-expanded', 'true')
+    await userEvent.keyboard('{Escape}')
+    expect(bouton).toHaveAttribute('aria-expanded', 'false')
+    cleanup()
+  })
+
+  it('Espace ouvre aussi', async () => {
+    const bouton = await monterClavier()
+    await userEvent.keyboard(' ')
+    expect(bouton).toHaveAttribute('aria-expanded', 'true')
+    cleanup()
+  })
+})

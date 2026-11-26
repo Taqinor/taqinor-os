@@ -318,6 +318,8 @@ export function useEtatToit(intervalle = 500) {
   return [etat, relire]
 }
 
+export const estObjet = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+
 /**
  * L'écriture de la pente d'UN pan par la primitive de section (`layout/section/`, clé `zones`) —
  * la MÊME requête pour « Enregistrer la pente » (onglet Pente, `SaisiePente.jsx`) et « Confirmer » (carte « Pente et
@@ -342,8 +344,11 @@ export async function enregistrerPentePan({ calepinageId, doc, documentVivant = 
     })
     const apres = res?.data?.empreinte_document ?? null
     const rendues = res?.data?.roof_layout?.zones
-    const mises = Array.isArray(rendues) ? rendues : zones.map((z) => (
-      String(z.id) === String(zone.id) ? { ...z, ...champs } : z))
+    // ACAL1922 — la confirmation écrite reste lue : un pan rendu sans `pitchSource` objet reprend celui qu'on vient d'écrire.
+    const mises = Array.isArray(rendues)
+      ? rendues.map((z) => (String(z.id) === String(zone.id) && champs.pitchSource && !estObjet(z.pitchSource)
+        ? { ...z, pitchSource: champs.pitchSource } : z))
+      : zones.map((z) => (String(z.id) === String(zone.id) ? { ...z, ...champs } : z))
     doc.appliquerSection('zones', mises, apres)
     documentVivant?.appliquerSection?.('zones', mises, apres)
     const nom = zone.label || zone.id

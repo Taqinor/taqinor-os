@@ -5,7 +5,7 @@ import useDocumentCalepinage from '../../../useDocumentCalepinage'
 import { SurCarte } from '../emplacements'
 import { BoutonMarine, CarteFlottante, Icone, Indicateur, SectionEtape, Segmente } from '../primitives'
 import {
-  GESTES, ajoutTermine, annulerAjoutPan, appliquerCotes, commencerAjoutPan, confirmerPenteVivante, degres, enregistrerPentePan, nomFace,
+  GESTES, ajoutTermine, annulerAjoutPan, appliquerCotes, commencerAjoutPan, confirmerPenteVivante, degres, enregistrerPentePan, estObjet, nomFace,
   selectionnerObstacle, texteBesoin, useEtatToit,
 } from './EtapeToit.helpers'
 import { jourMois } from './panneaux/formats'
@@ -33,8 +33,6 @@ const astuceContour = () => `Glissez un coin pour le déplacer. ${auDoigt() ? 'T
 const ALERTE_ECHELLE = 'Le tracé semble à la mauvaise échelle : une surface si grande ne tient aucune rangée. Effacez-le et retracez le toit de près.'
 const ASTUCE_AJOUT = 'Cliquez sur la carte pour poser chaque coin du pan, double-cliquez pour le fermer. Échap annule l’ajout.'
 const DUREE_BULLE_MS = 8000
-
-const estObjet = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 
 function Champ({ id, libelle, valeur, onChange, onBlur, desactive }) {
   return (
@@ -148,6 +146,8 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
             <div className="cal-toit-pente-tete">
               <span className="cal-toit-pente-valeur">{titre}</span>
               {aConfirmer && <span className="cal-toit-pente-tag">À confirmer</span>}
+              {/* ACAL1922 — « Toit plat · confirmé » : le tag suit la valeur, jamais dans son texte. */}
+              {!aConfirmer && vue.plat && <span className="cal-toit-pente-tag" data-testid="cal-toit-plat-confirme">· confirmé</span>}
             </div>
             {aConfirmer && !inconnue && (
               <p className="cal-toit-pente-texte">

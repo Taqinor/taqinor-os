@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { Button, Card, Spinner } from '../../../ui'
@@ -340,12 +340,23 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
     if (Object.keys(erreurs).length > 0) return
     // ACAL725 — « inchangé » garde le drapeau que le module porte déjà (absent s'il n'en a pas).
     const actuel = new Map(lignes.map((l) => [l.module, drapeauOptimiseur(l)]))
+    const actuelles = new Map(lignes.map((l) => [l.module, l]))
+    // ACAL1642 — le drapeau seul (trois numéros vides, optimiseur oui/non) MARQUE les modules et GARDE leur câblage ;
+    // « décâbler » reste le geste « numéros vides, optimiseur inchangé ».
+    const drapeauSeul = numeroChaine === null && numeroMppt === null && numeroOnduleur === null
+      && optimiseur !== 'inchange'
     setEditions((precedente) => {
       const suivante = new Map(precedente)
       selection.forEach((module) => {
         const valeur = { oui: true, non: false }[optimiseur] ?? actuel.get(module)
+        const base = drapeauSeul ? (suivante.get(module) ?? actuelles.get(module) ?? {}) : null
         const [ligne] = marquerModules(
-          [{ module, chaine: numeroChaine, mppt: numeroMppt, onduleur: numeroOnduleur }], valeur)
+          [{
+            module,
+            chaine: base ? base.chaine : numeroChaine,
+            mppt: base ? base.mppt : numeroMppt,
+            onduleur: base ? base.onduleur : numeroOnduleur,
+          }], valeur)
         suivante.set(module, ligne)
       })
       return suivante
@@ -491,15 +502,30 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
       {avertissements.length
         ? (
           <section className="flex flex-col gap-1" data-testid="calx53-avertissements">
-            {avertissements.map((message) => (
-              <p
-                key={message}
-                className="rounded border border-border bg-muted/40 px-2 py-1 text-xs text-muted-foreground"
-                data-testid="calx53-avertissement"
-              >
-                {message}
-              </p>
-            ))}
+            {/* ACAL1662 — chaque phrase UNE fois ; « aucune norme » = une phrase courte + le lien, le détail replié. */}
+            {[...new Set(avertissements)].map((message) => (String(message).startsWith('Aucune norme électrique')
+              ? (
+                <details
+                  key={message}
+                  className="rounded border border-border bg-muted/40 px-2 py-1 text-xs text-muted-foreground"
+                  data-testid="acal1662-norme"
+                >
+                  <summary className="cursor-pointer">
+                    Choisissez la norme électrique dans les{' '}
+                    <Link to="/calepinage/reglages" className="underline">réglages</Link>.
+                  </summary>
+                  <p data-testid="calx53-avertissement">{message}</p>
+                </details>
+              )
+              : (
+                <p
+                  key={message}
+                  className="rounded border border-border bg-muted/40 px-2 py-1 text-xs text-muted-foreground"
+                  data-testid="calx53-avertissement"
+                >
+                  {message}
+                </p>
+              )))}
           </section>
         )
         : null}
