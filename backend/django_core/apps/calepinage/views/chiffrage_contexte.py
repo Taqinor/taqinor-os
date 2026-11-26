@@ -43,12 +43,13 @@ def _nomme_les_devis(user):
 
 
 def _sans_devis_nomme(contexte):
-    """``cible.devis_agricole`` (``{id, reference}``, ACAL1268) vaut ``null`` — la forme que le contrat
-    sert déjà sans devis agricole ; le champ de panneaux repris du devis reste (la pose en a besoin)."""
+    """``cible.devis_agricole`` (``{id, reference}``, ACAL1268) devient ``{id: null, reference: null}`` :
+    l'écran dit qu'un devis agricole existe, sans le nommer ni le lier ; le champ de panneaux repris du
+    devis reste (la pose en a besoin). Sans devis agricole (``null``) : inchangé."""
     cible = contexte.get('cible')
     if not isinstance(cible, dict) or cible.get('devis_agricole') is None:
         return contexte
-    return dict(contexte, cible=dict(cible, devis_agricole=None))
+    return dict(contexte, cible=dict(cible, devis_agricole={'id': None, 'reference': None}))
 
 
 def _lit_les_devis(user):

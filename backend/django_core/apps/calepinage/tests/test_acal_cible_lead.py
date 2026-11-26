@@ -335,7 +335,8 @@ class CibleDeLaConceptionTest(BaseApiCalepinage):
         self.assertEqual(self._contexte(calepinage)['cible']['devis_agricole']['id'], devis.pk)
         self.assertIsNone(sans_devis['devis_agricole'])
         # Lot 8, relecture finale (D-ACAL-106) — un Technicien (sa visite, aucun code ``ventes_*``) reçoit
-        # le même champ de panneaux, jamais le devis nommé. Mutant « sans _sans_devis_nomme » ⇒ rouge.
+        # le même champ de panneaux, un devis agricole qui existe sans être nommé ni lié. Mutant « sans
+        # _sans_devis_nomme » ⇒ rouge.
         from django.contrib.auth import get_user_model
 
         from apps.roles.models import Role
@@ -350,5 +351,6 @@ class CibleDeLaConceptionTest(BaseApiCalepinage):
         reponse = self._client(tech).get(url_contexte(calepinage.pk))
         self.assertEqual(reponse.status_code, 200, reponse.data)
         lu = reponse.data['cible']
-        self.assertEqual((lu['panneaux'], lu['source'], lu['devis_agricole']), (7, 'devis', None))
+        self.assertEqual((lu['panneaux'], lu['source'], lu['devis_agricole']),
+                         (7, 'devis', {'id': None, 'reference': None}))
         self.assertNotIn('DEV-202611-1268', str(reponse.data['cible']))
