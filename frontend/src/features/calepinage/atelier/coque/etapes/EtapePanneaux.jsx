@@ -174,11 +174,15 @@ function ChoixModule({ etat, entrees, servis, lectureSeule, g }) {
             onKeyDown={(e) => { if (e.key === 'Escape') setOuvert(false) }}>
             {options.map((o) => {
               const entree = fiches.get(o.valeur)
+              const intitule = <span className="cal-pan-module-nom">{nom(o)}</span>
               return (
                 <li key={o.valeur || 'defaut'} role="option" aria-selected={o.valeur === module.valeur}>
                   <button type="button" disabled={o.grise} onClick={() => choisir(o.valeur)}
                     className="cal-pan-option">
-                    <span className="cal-pan-module-nom">{nom(o)}</span>
+                    {/* D-ACAL-169 — le panneau par défaut de la société (désigné au stock, servi `par_defaut`) porte une pastille. */}
+                    {entree?.par_defaut
+                      ? <span className="cal-pan-option-tete">{intitule}<span className="cal-pan-badge" data-testid="cal-pan-par-defaut">Par défaut</span></span>
+                      : intitule}
                     <span className="cal-pan-module-ligne">
                       {o.grise ? (entree?.motif || 'fiche produit incomplète') : [entree?.en_stock ? 'En stock' : '', ligneModule(fiche(o.valeur))].filter(Boolean).join(' · ')}
                     </span>
