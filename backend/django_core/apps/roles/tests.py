@@ -1679,3 +1679,89 @@ class DAcal117CommercialResponsableApprouverTests(TestCase):
         self.assertEqual(role.permissions, list(COMMERCIAL_RESP_PERMISSIONS))
         self.assertIn(self.CODE, role.permissions)
         self.assertNotIn(self.CODE, Role.objects.get(company=societe, nom='Commercial').permissions)
+
+
+class DAcal152PrixVenteVoirTests(TestCase):
+    """D-ACAL-152 (fondateur, 26/11/2026) — « voir les prix de vente » : porté
+    par tous les rôles système internes sauf Technicien et Technicien
+    responsable ; ``0016_dacal152_prix_vente_voir`` le donne à tout rôle déjà
+    en base (personnalisé compris) sauf ces deux rôles système, les rôles
+    portail et les rôles à liste vide ; le retour le retire partout."""
+
+    CODE = 'prix_vente_voir'
+
+    def _migration(self):
+        import importlib
+        return importlib.import_module(
+            'apps.roles.migrations.0016_dacal152_prix_vente_voir')
+
+    def test_le_registre_le_donne_a_tous_sauf_techniciens_et_portail(self):
+        from apps.roles.permissions_registre import (
+            CANONICAL_PORTAIL_ROLES, CANONICAL_SYSTEM_ROLES,
+        )
+
+        sans = sorted(nom for nom, codes in CANONICAL_SYSTEM_ROLES if self.CODE not in codes)
+        portail = [nom for nom, _ in CANONICAL_PORTAIL_ROLES]
+        self.assertEqual(sans, sorted(['Technicien', 'Technicien responsable', *portail]))
+        self.assertIn(self.CODE, ALL_PERMISSIONS)
+
+    def test_aller_retour_de_la_migration(self):
+        from django.apps import apps as django_apps
+
+        societe = Company.objects.create(nom='DACAL152', slug='dacal152-migr')
+        tech = Role.objects.create(company=societe, nom='Technicien', est_systeme=True,
+                                   permissions=['stock_voir'])
+        chef = Role.objects.create(company=societe, nom='Technicien responsable',
+                                   est_systeme=True, permissions=['stock_voir'])
+        commercial = Role.objects.create(company=societe, nom='Commercial', est_systeme=True,
+                                         permissions=['crm_voir'])
+        autre = Company.objects.create(nom='DACAL152 perso', slug='dacal152-perso')
+        perso = Role.objects.create(company=autre, nom='Technicien', est_systeme=False,
+                                    permissions=['stock_voir'])
+        portail = Role.objects.create(company=societe, nom='Portail client', est_systeme=True,
+                                      permissions=['portail_client_acces'])
+        vide = Role.objects.create(company=societe, nom='Vide', est_systeme=False, permissions=[])
+        roles = (tech, chef, commercial, perso, portail, vide)
+        mig = self._migration()
+        for _ in range(2):  # idempotent
+            mig.ajouter(django_apps, None)
+            for role in roles:
+                role.refresh_from_db()
+            self.assertEqual(tech.permissions, ['stock_voir'])
+            self.assertEqual(chef.permissions, ['stock_voir'])
+            self.assertEqual(commercial.permissions, ['crm_voir', self.CODE])
+            # Rôle PERSONNALISÉ : il garde les prix de vente, même nommé « Technicien ».
+            self.assertEqual(perso.permissions, ['stock_voir', self.CODE])
+            self.assertEqual(portail.permissions, ['portail_client_acces'])
+            self.assertEqual(vide.permissions, [])
+        mig.retirer(django_apps, None)
+        for role in roles:
+            role.refresh_from_db()
+        self.assertEqual(commercial.permissions, ['crm_voir'])
+        self.assertEqual(perso.permissions, ['stock_voir'])
+
+    def test_init_roles_converge_sur_le_registre(self):
+        from django.core.management import call_command
+
+        societe = Company.objects.create(nom='DACAL152 b', slug='dacal152-init')
+        call_command('init_roles', verbosity=0)
+        portes = {r.nom: self.CODE in (r.permissions or [])
+                  for r in Role.objects.filter(company=societe, est_systeme=True)}
+        self.assertFalse(portes['Technicien'])
+        self.assertFalse(portes['Technicien responsable'])
+        for nom in ('Directeur', 'Administrateur', 'Commercial responsable', 'Commercial',
+                    'Commercial terrain', 'Viewer', 'Admin Ventes'):
+            self.assertTrue(portes[nom], nom)
+
+    def test_propriete_can_view_sale_prices(self):
+        societe = Company.objects.create(nom='DACAL152 c', slug='dacal152-prop')
+        avec = Role.objects.create(company=societe, nom='Avec', permissions=['stock_voir', self.CODE])
+        sans = Role.objects.create(company=societe, nom='Sans', permissions=['stock_voir'])
+        u_avec = User.objects.create_user(username='d152_avec', password=None,
+                                          company=societe, role=avec)
+        u_sans = User.objects.create_user(username='d152_sans', password=None,
+                                          company=societe, role=sans)
+        u_legacy = User.objects.create_user(username='d152_legacy', password=None, company=societe)
+        self.assertTrue(u_avec.can_view_sale_prices)
+        self.assertFalse(u_sans.can_view_sale_prices)
+        self.assertTrue(u_legacy.can_view_sale_prices)  # repli historique (aucun rôle fin)

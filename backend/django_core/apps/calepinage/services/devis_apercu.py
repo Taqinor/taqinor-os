@@ -7,9 +7,13 @@ aucune seconde composition), et l'étape Documents lit, par option, le module et
 l'onduleur que le devis portera. Quand un produit DÉSIGNÉ à l'étape Électrique n'est
 pas celui-là, une phrase le dit et dit pourquoi : la raison rangée par la conception
 (``designations_ecartees``) quand elle existe, sinon le fait — le devis de l'atelier
-compose son matériel depuis la pose, la désignation électrique n'y entre pas.
-Aucune règle n'est inventée sur ce que la désignation DEVRAIT faire (non tranché).
-Lecture seule ; aucun prix servi.
+compose son module depuis la pose. Lecture seule ; aucun prix servi.
+
+D-ACAL-148 (fondateur, 26/11/2026) — l'ONDULEUR désigné est chiffré par le devis quand il est
+au catalogue avec un prix et que la forme du devis le porte (décision de ``ventes``,
+``creation_calepinage.decision_onduleur_designe``, rendue par la composition à blanc) : la
+phrase devient l'EXCEPTION — le repli, avec sa raison. Devis « les deux » : seule l'option qui
+le porte (réseau ⇒ sans, hybride ⇒ avec) est jugée.
 
 Lot 8 (26/11) — la génération ne compose PAS toujours : quand le lead a un brouillon libre
 antérieur, elle pose la question R2-22 et, rattaché, ce brouillon garde son onduleur ; l'aperçu
@@ -23,6 +27,17 @@ ROLES_DESIGNES = (('module_produit', 'module', 'Le module'), ('onduleur_produit'
 CODES_ECARTEES = ('designation_hors_catalogue', 'designation_ecartee')
 RAISON_PAR_DEFAUT = ('le devis généré depuis l’atelier compose son matériel d’après la pose du toit : '
                      'la désignation de l’étape Électrique n’y entre pas')
+#: D-ACAL-148 — le brouillon que « Générer » rendrait garde les produits qu'il porte (PV18) : son
+#: onduleur n'est pas re-choisi d'après la désignation.
+#: Round 4, point 6 a — vraie selon le cas : brouillon NÉ sous la règle (marqueur) ⇒ « Resynchroniser »
+#: lui appliquera la désignation ; créé avant ⇒ il ne la suivra pas.
+RAISON_BROUILLON_SOUS_LA_REGLE = ('ce devis existe déjà : « Générer le devis » l’ouvre tel quel, et « Resynchroniser '
+                                  'le devis » lui appliquera la désignation')
+RAISON_BROUILLON_AVANT_LA_REGLE = ('ce devis, créé avant que le devis suive la désignation, garde les produits qu’il '
+                                   'porte ; un nouveau devis généré depuis le calepinage la suivra')
+#: Relecture D-ACAL-148, point 4 — l'onduleur imposé que la composition n'a pourtant pas posé sur
+#: l'option qui doit le porter (aucun cas connu ; jamais la raison par défaut, fausse depuis D-ACAL-148).
+RAISON_IMPOSE_NON_POSE = 'la composition du devis ne l’a pas posé sur cette option'
 MESSAGE_ECART = '%s désigné à l’étape Électrique (« %s ») n’est pas celui que le devis portera (« %s ») : %s'
 LIBELLE_OPTION = {'': 'Devis', 'sans': 'Sans batterie', 'avec': 'Avec batterie'}
 
@@ -42,8 +57,16 @@ def _materiel_par_option(specs):
     return options
 
 
-def _ecarts(calepinage, options):
-    """Une phrase par produit désigné à l'étape Électrique qu'une option ne portera pas."""
+def _ecarts(calepinage, options, decision_onduleur=None, *, brouillon=False, sous_la_regle=False):
+    """Une phrase par produit désigné à l'étape Électrique qu'une option ne portera pas.
+    ``decision_onduleur`` (D-ACAL-148) : la décision de la composition pour l'onduleur désigné
+    (``journal['onduleur_designe']``) — chiffré, seule l'option qui le porte est jugée ; en
+    repli, sa raison remplace la raison par défaut. ``brouillon`` : les options sont les lignes
+    d'un brouillon existant (son onduleur n'est jamais re-choisi).
+
+    Relecture, point 4 — pour l'onduleur, chaque issue dit SA vérité, la même phrase que la
+    génération : la phrase de la décision (repli, ou passage « avec batterie » D-ACAL-159) telle
+    quelle ; imposé et posé, rien ; imposé mais pas posé, :data:`RAISON_IMPOSE_NON_POSE`."""
     from apps.stock.selectors import get_produit_scoped
 
     from .devis_retenu import conception_du_calepinage
@@ -57,7 +80,14 @@ def _ecarts(calepinage, options):
         designe = entree.get(champ)
         if designe in (None, ''):
             continue
-        portes = [o for o in options if str(o[f'{cle}_produit']) != str(designe)]
+        if champ == 'onduleur_produit' and decision_onduleur and decision_onduleur.get('message'):
+            phrases.append({'champ': champ, 'message': decision_onduleur['message']})
+            continue
+        jugees = options
+        if champ == 'onduleur_produit' and decision_onduleur and decision_onduleur.get('impose'):
+            option = decision_onduleur.get('option') or None
+            jugees = [o for o in options if option is None or o['option'] in (None, option)]
+        portes = [o for o in jugees if str(o[f'{cle}_produit']) != str(designe)]
         if not portes:
             continue
         try:
@@ -65,11 +95,29 @@ def _ecarts(calepinage, options):
         except (TypeError, ValueError):
             produit = None
         raison = next((s.get('message') for s in rangees if s.get('champ') == champ), None)
+        if champ == 'onduleur_produit' and decision_onduleur:
+            raison = RAISON_IMPOSE_NON_POSE
+        elif champ == 'onduleur_produit' and brouillon:
+            raison = RAISON_BROUILLON_SOUS_LA_REGLE if sous_la_regle else RAISON_BROUILLON_AVANT_LA_REGLE
         porte = ' / '.join(sorted({o[cle] or 'aucun' for o in portes}))
         nom = getattr(produit, 'nom', None) or 'produit inconnu'
         motif = (raison or RAISON_PAR_DEFAUT).rstrip('. ') + '.'
         phrases.append({'champ': champ, 'message': MESSAGE_ECART % (sujet, nom, porte, motif)})
     return phrases
+
+
+def _suit_les_designations(devis):
+    """Le brouillon rendu est-il né sous la règle des désignations (lecture ``ventes``) ?"""
+    from apps.ventes.selectors_calepinage import devis_suit_les_designations
+
+    return devis_suit_les_designations(devis)
+
+
+def _ecart_batterie(decision):
+    """D-ACAL-164 — la phrase de la décision sur la batterie désignée (repli, ou « sans batterie »),
+    LA MÊME que la génération met dans ``avertissements`` ; ``[]`` quand elle est chiffrée."""
+    return ([{'champ': 'batterie.produit', 'message': decision['message']}]
+            if decision and decision.get('message') else [])
 
 
 def _role_de_ligne(ligne):
@@ -174,8 +222,11 @@ def _apercu_complet(calepinage, surfaces):
     )
     from .equipements import composition_a_blanc
 
+    from .devis import _batterie_designee, _onduleur_designe
+
     composer, AutoDevisError = composition_a_blanc()
     source, reference, libre, issue = 'composition', None, None, None
+    journal = {}
     company = calepinage.company
     try:
         layout = _layout_des_surfaces(_exiger_layout(calepinage), surfaces)
@@ -190,14 +241,20 @@ def _apercu_complet(calepinage, surfaces):
             source, reference = 'brouillon_existant', retenu.reference
             specs = _specs_du_brouillon(retenu)
         else:
-            specs = composer(layout=layout, company=company, lead=lead)
+            specs = composer(layout=layout, company=company, lead=lead,
+                             onduleur_designe=_onduleur_designe(calepinage), journal=journal,
+                             batterie_designee=_batterie_designee(calepinage))
             if issue == ISSUE_BROUILLON_LIBRE:
                 libre = _ecart_brouillon_libre(retenu[0])
     except (AutoDevisError, DevisRefuse) as refus:
         return {'options': [], 'ecarts': [], 'refus': getattr(refus, 'message', None) or str(refus),
                 'source': None, 'reference': None}, issue
     options = _materiel_par_option(specs)
-    ecarts = _ecarts(calepinage, options) + ([libre] if libre else [])
+    sous_la_regle = source == 'brouillon_existant' and _suit_les_designations(retenu)
+    ecarts = (_ecarts(calepinage, options, journal.get('onduleur_designe'), brouillon=source == 'brouillon_existant',
+                      sous_la_regle=sous_la_regle)
+              + ([libre] if libre else []) + _ecart_batterie(journal.get('batterie_designee'))
+              + [{'champ': 'geometry.tiltDeg', 'message': m} for m in journal.get('suppositions_toit') or ()])
     for option in options:
         option.pop('module_produit')
         option.pop('onduleur_produit')

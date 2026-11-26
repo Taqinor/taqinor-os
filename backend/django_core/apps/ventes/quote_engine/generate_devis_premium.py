@@ -951,7 +951,7 @@ def _cgv_bullets_html():
     aussi. Défaut → puces identiques au caractère près.
     """
     bullets = _puces_cgv(_doc_text("cgv_bullets"), LANGUE_SORTIE,
-                         globals().get("MODE_INSTALLATION"))
+                         globals().get("MODE_INSTALLATION"), globals().get("RENDUS_2611", False))  # ACAL1221
     out = ""
     for txt in remplir_cgv_bullets(
             bullets, acompte=PAY_A, materiel=PAY_M, solde=PAY_S,
@@ -3796,8 +3796,8 @@ def apply_quote_data(data: dict) -> None:
     _dl = data.get("delais") or {}
     from .residential.theme import delai_doc as _dd  # RPDF : délais dans la langue du document
     DELAI_VISITE, DELAI_INSTALLATION = (_dd(data, (_dl.get(k) or "").strip()) for k in ("visite_technique", "installation"))
-    global SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, RENDUS_2511, UNE_OPTION_SANS_NUMERO  # M10 ; ACAL1033 ; niveau 15 ; D-ACAL-114
-    SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, RENDUS_2511, UNE_OPTION_SANS_NUMERO = bool(data.get("savings_estimated")), _economies_sans_ancrage(data), bool(data.get("regles_pose_reelle") or data.get("phrases_pdf_2511")), bool(data.get("phrases_pdf_2511")) and data.get("scenario") in ("Avec batterie", "Sans batterie")
+    global SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, RENDUS_2511, UNE_OPTION_SANS_NUMERO, RENDUS_2611  # M10 ; ACAL1033 ; niveau 15 ; D-ACAL-114 ; ACAL1221
+    SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, RENDUS_2511, UNE_OPTION_SANS_NUMERO, RENDUS_2611 = bool(data.get("savings_estimated")), _economies_sans_ancrage(data), bool(data.get("regles_pose_reelle") or data.get("phrases_pdf_2511")), bool(data.get("phrases_pdf_2511")) and data.get("scenario") in ("Avec batterie", "Sans batterie"), bool(data.get("phrases_pdf_2611"))
     # XSAL14/XSAL5 — structure (sections/notes) + options proposées (rendu seul,
     # hors totaux). Absents → byte-identique. Escapés à l'ingestion (ERR37).
     global LIGNES_STRUCTURE, OPTIONS_PROPOSEES

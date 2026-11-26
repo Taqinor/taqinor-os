@@ -127,6 +127,50 @@ class TestStockReport(ReportsBase):
         self.assertEqual(resp.data['valorisation_vente'], '10000.00')
         self.assertEqual(resp.data['valorisation_achat'], '6000.00')
 
+    def test_dacal165_technicien_responsable_sans_valorisation_de_vente(self):
+        """D-ACAL-165 — le Technicien responsable livré (palier responsable,
+        stock + exports, sans `prix_vente_voir`) : JSON sans valorisation ni
+        valeur par catégorie, XLSX sans la colonne ; le bas stock reste. Le
+        responsable légacy (ReportsBase) garde `valorisation_vente`."""
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_RESP_PERMISSIONS
+        Produit.objects.create(company=self.company, nom='Bas', sku='D165-1',
+                               prix_vente=Decimal('98765.43'), quantite_stock=1, seuil_alerte=5)
+        role = Role.objects.create(company=self.company, nom='Technicien responsable',
+                                   permissions=list(TECHNICIEN_RESP_PERMISSIONS))
+        chef = User.objects.create_user(username='rep_chef', password='x',
+                                        company=self.company, role=role)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(chef)}')
+        resp = api.get('/api/django/reporting/reports/stock/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertNotIn('valorisation_vente', resp.data)
+        self.assertEqual([set(c) for c in resp.data['par_categorie']], [{'categorie__nom', 'nb'}])
+        self.assertEqual([p['nom'] for p in resp.data['bas_stock']], ['Bas'])
+        self.assertNotIn('98765', str(resp.data))
+        xlsx = api.get('/api/django/reporting/reports/stock/?export=xlsx')
+        self.assertEqual(xlsx.status_code, 200)
+        feuille = load_workbook(BytesIO(xlsx.content), read_only=True).active
+        lignes = [list(r) for r in feuille.iter_rows(values_only=True)]
+        self.assertNotIn('Valeur vente HT', lignes[0])
+        self.assertNotIn('98765', str(lignes))
+        self.assertIn('valorisation_vente', self.api.get('/api/django/reporting/reports/stock/').data)
+        # Ni l'ORDRE par valeur : catégories triées par nom pour lui.
+        from apps.stock.models import Categorie
+        for nom, prix in (('Zinc', Decimal('9000')), ('Acier', Decimal('1'))):
+            Produit.objects.create(company=self.company, nom=f'P-{nom}', sku=f'D165-{nom}',
+                                   prix_vente=prix, quantite_stock=1,
+                                   categorie=Categorie.objects.create(company=self.company, nom=nom))
+        noms = [c['categorie__nom'] for c in api.get('/api/django/reporting/reports/stock/').data['par_categorie']]
+        self.assertEqual([n for n in noms if n], ['Acier', 'Zinc'])
+        noms_admin = [c['categorie__nom'] for c in
+                      self.api.get('/api/django/reporting/reports/stock/').data['par_categorie']]
+        self.assertEqual([n for n in noms_admin if n], ['Zinc', 'Acier'])  # par valeur, inchangé
+
     def test_low_stock_excludes_zero_threshold(self):
         """ERR57 — un produit à seuil_alerte=0 (aucun seuil) n'est PAS signalé
         bas stock, même à 0 en stock ; un produit avec seuil renseigné l'est."""

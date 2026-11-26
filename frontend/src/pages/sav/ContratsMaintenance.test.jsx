@@ -137,6 +137,20 @@ describe('ContratsMaintenance — Tournée préventive (WIR230)', () => {
   })
 })
 
+describe('ContratsMaintenance — D-ACAL-165 contrat servi sans prix (Technicien)', () => {
+  it('le contrat est listé ; ni « NaN » ni « 0 DH » quand `prix` est absent', async () => {
+    getContrats.mockResolvedValue({ data: [{
+      id: 7, client: 3, client_nom: 'Client D165', periodicite: 'annuelle', actif: true,
+      due: false, prochaine_visite: null, prestations: [],
+    }] })
+    renderPage(['sav_voir'], 'normal')
+    expect((await screen.findAllByText(/Client D165/)).length).toBeGreaterThan(0)
+    const texte = document.body.textContent
+    expect(texte).not.toMatch(/NaN/)
+    expect(texte).not.toMatch(/(^|\D)0(,00)? DH/)
+  })
+})
+
 describe('ContratsMaintenance — ACNC35 génération des visites dues', () => {
   it('« Générer les visites dues » désactivé pendant genererVisitesDues', async () => {
     let finir

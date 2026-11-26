@@ -225,6 +225,10 @@ CLES_HORS_RENDU_ORIGINE = (
     # ouvert (nouveaux rendus : un brouillon jamais envoyé les porte) et la
     # phrase approuvée sous la facture recalculée : des textes, aucun chiffre.
     ('phrases_profil_ouvertes',), ('phrases_pdf_2511',), ('echeancier_option_signee',),
+    # Lot 8 (D-AMOT-9/10, D-ACAL-167, 26/11/2026) — drapeau de RENDU du cas ouvert et
+    # libellé de la puce CGV : des textes ; l'économie unique (un chiffre) exige les
+    # règles COURANTES, jamais posée sur ces devis au niveau 1.
+    ('phrases_pdf_2611',), ('libelles_document', 'cgv_tarifs_bareme_national'),
     # SCHEL-B4 (26/11/2026) — drapeau de RENDU du cas ouvert de l'annexe : le
     # schéma électrique (nouveaux rendus seulement), un texte de dessin, aucun
     # chiffre de devis. Posé seulement quand l'annexe est demandée.

@@ -95,6 +95,43 @@ class Ciq342Jalons(SimpleTestCase):
                     self.assertNotIn(annonce, texte)
                     self.assertIn("délai de retour et TRI tirés de la même série.", texte)
 
+    def test_d_acal_167_bases_courtes_quand_le_tableau_cede(self):
+        """D-ACAL-167 (fondateur 26/11/2026, constat T4-U2-020) — nouveaux
+        rendus (``phrases_pdf_2611``) : le tableau des hypothèses cédé, la
+        page imprime la ligne courte « Bases du calcul » (horizon,
+        indexation, dégradation, tarif retenu), chaque élément tiré du MÊME
+        constructeur que le tableau, et garde l'annonce ; la ligne cède à
+        son tour (jamais une 5ᵉ page) ; sans le drapeau, la page d'hier."""
+        d = dict(_data(), phrases_profil_ouvertes=True, phrases_pdf_2611=True)
+        complet = _pages(d)[3]
+        self.assertNotIn('data-graphique="bases_courtes"', complet)
+        lignes_completes = {_texte(li).strip() for li in re.findall(
+            r'<div class="i2-hyp-i">(.*?)</div>', complet, re.S)}
+        cede = _pages(dict(d, _sans_graphiques={"hypotheses"}))[3]
+        court = re.search(r'<div class="i2-foot" data-graphique="bases_courtes">'
+                          r'<b>Bases du calcul</b>&#160;: (.*?)</div>', cede, re.S)
+        self.assertIsNotNone(court)
+        elements = [_texte(e).strip() for e in court.group(1).split(" · ")]
+        self.assertTrue(elements[0].startswith("Horizon : 25 ans"))
+        self.assertTrue(any(e.startswith("Indexation du tarif") for e in elements))
+        self.assertTrue(any(e.startswith("Dégradation des panneaux") for e in elements))
+        self.assertTrue(any(e.startswith("Prix du kWh : ") for e in elements))
+        self.assertLessEqual(set(elements), lignes_completes)
+        self.assertNotIn("Remplacement", court.group(1))
+        self.assertIn("bases du calcul ci-dessous", _texte(cede))
+        for retire in ({"hypotheses", "bases_courtes"}, True):
+            page = _pages(dict(d, _sans_graphiques=retire))[3]
+            self.assertNotIn("Bases du calcul", _texte(page))
+            self.assertNotIn("bases du calcul ci-dessous", _texte(page))
+        dernier_recours = _pages(dict(d, _sans_graphiques={"hypotheses"}, _cgv_max=0))[3]
+        self.assertNotIn('data-graphique="bases_courtes"', dernier_recours)
+        hier = _pages(dict(_data(), phrases_profil_ouvertes=True, _sans_graphiques={"hypotheses"}))[3]
+        self.assertNotIn("Bases du calcul", _texte(hier))
+        for langue, titre in (("en", "Calculation basis"), ("ar", "أسس الحساب")):
+            page = _pages(dict(d, _sans_graphiques={"hypotheses"}, langue_sortie=langue))[3]
+            ligne = re.search(r'data-graphique="bases_courtes"><b>(.*?)</b>', page, re.S)
+            self.assertEqual(_texte(ligne.group(1)).strip(), titre)
+
     def test_aucun_solveur_prive(self):
         self.assertFalse(hasattr(finance, "irr_flat"))
         self.assertFalse(hasattr(finance, "irr_series"))
@@ -800,3 +837,40 @@ class Amot94TableauVingtCinqAns(SimpleTestCase):
             None, frozenset({"energie_mensuelle"}),
             frozenset({"energie_mensuelle", "courbe_cumul"}),
             frozenset({"energie_mensuelle", "courbe_cumul", "hypotheses"})])
+
+    def test_d_acal_167_la_ligne_courte_cede_en_dernier_sans_rien_couter(self):
+        """D-ACAL-167 — la ligne courte « Bases du calcul » (posée une fois le
+        tableau des hypothèses cédé) qui ne tient pas cède SEULE à son tour :
+        le document livré est celui d'hier (le bloc de la page 1 reste), jamais
+        le repli « tous les blocs des pages 2+ », jamais une page de plus."""
+        from unittest import mock
+
+        from apps.ventes.quote_engine.ci.graphiques import cede
+        from apps.ventes.quote_engine.commercial import equip
+        essais = []
+
+        def _build(donnees):
+            essais.append(donnees.get("_sans_graphiques"))
+            noms = [nom for nom in ("courbe_cumul", "hypotheses", "energie_mensuelle")
+                    if not cede(donnees, nom)]
+            if cede(donnees, "hypotheses") and not cede(donnees, "bases_courtes"):
+                noms.append("bases_courtes")
+            blocs = "".join(f'<div data-graphique="{nom}"></div>' for nom in noms)
+            return ('<div class="page"><div data-graphique="etapes"></div>'
+                    '</div><div class="page">' + blocs + '</div>')
+
+        class _Doc:
+            pages = ["p1", "p2"]
+
+        def _tient(html, _doc):
+            return 'data-graphique="' not in html.split('<div class="page">')[2]
+
+        with mock.patch.object(equip, "deborde", lambda page: page == "p2"), \
+                mock.patch.object(equip, "_tient", _tient):
+            doc = equip.document_adaptatif({}, _build, lambda _html: _Doc())
+        self.assertIsNotNone(doc)
+        tous = frozenset({"energie_mensuelle", "courbe_cumul", "hypotheses"})
+        self.assertEqual(essais, [None, frozenset({"energie_mensuelle"}),
+                                  frozenset({"energie_mensuelle", "courbe_cumul"}),
+                                  tous, tous | {"bases_courtes"}])
+        self.assertNotIn("etapes", essais[-1])

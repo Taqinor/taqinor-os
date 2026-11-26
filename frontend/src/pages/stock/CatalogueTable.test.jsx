@@ -131,6 +131,24 @@ describe('CatalogueTable (J142)', () => {
       .toBeGreaterThan(0)
   })
 
+  it('D-ACAL-152 — sans « voir les prix de vente » : aucune colonne de prix (ni « — »), le stock reste servi', () => {
+    const { prix_vente: _pv, ...sansPrixServi } = baseProduit()
+    renderTable({ produits: [sansPrixServi], voitPrixVente: false })
+    const entetes = screen.getAllByRole('columnheader').map((h) => h.textContent)
+    expect(entetes.some((t) => /Prix vente HT|Prix TTC/.test(t))).toBe(false)
+    expect(screen.queryByText(/prix à renseigner/)).toBeNull()
+    expect(screen.queryByText(/NaN/)).toBeNull()
+    expect(screen.getAllByText(/Panneau 550 Wc/).length).toBeGreaterThan(0)
+    expect(entetes.some((t) => /Stock/.test(t))).toBe(true)
+  })
+
+  it('D-ACAL-152 — avec le droit (défaut) : les deux colonnes de prix sont rendues', () => {
+    renderTable()
+    const entetes = screen.getAllByRole('columnheader').map((h) => h.textContent)
+    expect(entetes.some((t) => /Prix vente HT/.test(t))).toBe(true)
+    expect(entetes.some((t) => /Prix TTC/.test(t))).toBe(true)
+  })
+
   it('en lecture seule (canWrite=false) les cellules ne sont pas editables', () => {
     renderTable({ canWrite: false, onInlineSave: null, onToggleSelect: null })
     expect(screen.queryByTitle('Double-cliquez pour modifier')).toBeNull()

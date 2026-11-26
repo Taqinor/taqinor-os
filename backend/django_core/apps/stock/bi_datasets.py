@@ -60,6 +60,13 @@ PRODUITS_GATED = {
     'prix_achat': 'can_view_buy_prices',
     'valeur_achat': 'can_view_buy_prices',
 }
+# D-ACAL-165 (fondateur, 26/11/2026) — le prix de VENTE est masqué au LECTEUR
+# sans ``prix_vente_voir`` (Technicien, Technicien responsable : ils portent
+# ``stock_voir`` + ``reporting_voir``). ``masques_lecteur`` et non
+# ``gated_fields`` : une tâche sans acteur et les sorties de rapport d'un
+# propriétaire autorisé GARDENT la colonne (``gated_fields`` les retire
+# toujours, règle AANA25 du prix d'achat).
+PRODUITS_MASQUES_LECTEUR = {'prix_vente': 'can_view_sale_prices'}
 
 MOUVEMENTS_DATASET = 'stock_mouvements'
 MOUVEMENTS_FIELDS = [
@@ -211,7 +218,8 @@ def register_dataset():
 
     data_explorer.register_dataset(
         PRODUITS_DATASET, 'Produits', PRODUITS_FIELDS, produits_queryset,
-        gated_fields=PRODUITS_GATED, field_meta=PRODUITS_FIELD_META)
+        gated_fields=PRODUITS_GATED, field_meta=PRODUITS_FIELD_META,
+        masques_lecteur=PRODUITS_MASQUES_LECTEUR)
     data_explorer.register_dataset(
         MOUVEMENTS_DATASET, 'Mouvements de stock', MOUVEMENTS_FIELDS,
         mouvements_queryset, field_meta=MOUVEMENTS_FIELD_META)
