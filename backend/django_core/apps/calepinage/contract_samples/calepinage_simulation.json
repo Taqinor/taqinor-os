@@ -1069,6 +1069,7 @@
     },
     "hors_reseau": {
       "heures": 8760,
+      "portee_heures": "annee_moyenne",
       "consommation_kwh": 9600.0,
       "production_kwh": 13000.0,
       "servi_kwh": 9350.0,
@@ -1481,6 +1482,7 @@
     },
     "hors_reseau": {
       "heures": null,
+      "portee_heures": null,
       "consommation_kwh": null,
       "production_kwh": null,
       "servi_kwh": null,
@@ -2566,6 +2568,7 @@
     },
     "hors_reseau": {
       "heures": 8760,
+      "portee_heures": "annee_moyenne",
       "consommation_kwh": 9600.0,
       "production_kwh": 13000.0,
       "servi_kwh": 9350.0,
@@ -3732,6 +3735,7 @@
     },
     "hors_reseau": {
       "heures": 8760,
+      "portee_heures": "annee_moyenne",
       "consommation_kwh": 9600.0,
       "production_kwh": 13000.0,
       "servi_kwh": 9350.0,

@@ -109,6 +109,8 @@ class ProprieteMonotoneTest(SimpleTestCase):
                              for point in _serie()['points']]
         _apres, etape = ecretage.appliquer(dix_ans, _contexte(ac_kw=5.0))
         self.assertEqual(etape['entree']['heures_ecretees'], 30)
+        # Revue lot 6 — la portée des heures publiées est DITE.
+        self.assertEqual(etape['entree']['portee_heures'], 'annee_moyenne')
         for annees, attendu in ((10, 3.0), (1, 30)):
             blocs = {'production': {'total': {'annees_fenetre': annees}},
                      'cascade': {'etapes': [copy.deepcopy(etape)]}}

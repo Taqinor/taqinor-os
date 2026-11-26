@@ -162,7 +162,12 @@ class ContenuPublieTest(SimpleTestCase):
         contexte = contexte_de_test(heures=1440, jours=1.0)
         self.assertEqual(bloc.bloc_hors_reseau(serie, contexte)[1]['heures'], 1440)
         contexte[chaine_pertes.CLE_ANNEES_FENETRE] = 2
-        self.assertEqual(bloc.bloc_hors_reseau(serie, contexte)[1]['heures'], 720)
+        rendu = bloc.bloc_hors_reseau(serie, contexte)[1]
+        self.assertEqual(rendu['heures'], 720)
+        # Revue lot 6 — la portée est DITE ; un bloc omis la laisse nulle.
+        self.assertEqual(rendu['portee_heures'], 'annee_moyenne')
+        omis = bloc.bloc_hors_reseau(serie, contexte_de_test(heures=1440))[1]
+        self.assertIsNone(omis['portee_heures'])
 
     def test_le_soc_minimal_est_publie_et_borne(self):
         serie = serie_de_test(heures=720)

@@ -160,7 +160,7 @@ def _omission(motif, *, champ=''):
     if champ:
         texte = f'{texte} Champ manquant : « {champ} ».'
     return {
-        'heures': None, 'consommation_kwh': None, 'production_kwh': None,
+        'heures': None, 'portee_heures': None, 'consommation_kwh': None, 'production_kwh': None,
         'servi_kwh': None, 'defaillance_kwh': None,
         'heures_defaillantes': None, 'taux_defaillance': None,
         'surplus_perdu_kwh': None, 'soc_minimal_pct': None,
@@ -357,6 +357,9 @@ def _publier(serie, rendu, courbe, mention, annees=1, banque_mois=(None, '')):
     pire = simulation['mois_le_plus_defavorable']
     return suite, {
         'heures': _par_an(simulation['heures'], annees),  # ACAL1960 — heures par an
+        # Revue lot 6 — la portée des heures et énergies du bloc, DITE (absente
+        # d'un résultat rangé avant : un total de fenêtre ne s'y confond pas).
+        'portee_heures': 'annee_moyenne',
         'consommation_kwh': _par_an(simulation['consommation_kwh'], annees),
         'production_kwh': _par_an(simulation['production_kwh'], annees),
         'servi_kwh': _par_an(simulation['servi_kwh'], annees),
