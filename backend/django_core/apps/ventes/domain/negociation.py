@@ -319,7 +319,8 @@ def appliquer_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user,
     from apps.ventes.domain.modifiabilite import (
         CODE_VERSION_REMPLACEE, corps_version_remplacee)
     from apps.ventes.domain.revision import (
-        RevisionError, rattacher_aval_financier_revision, reviser_devis)
+        ETUDES_AVANT_ACCEPTATION, RevisionError,
+        rattacher_aval_financier_revision, reviser_devis)
     from apps.ventes.utils.options import option_totaux
 
     with transaction.atomic():
@@ -327,7 +328,11 @@ def appliquer_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user,
             devis, prix_ttc=prix_ttc, remise_pct=remise_pct, user=user,
             exiger_confirmation=True, confirmer_avoir=confirmer_avoir)
         try:
-            v2 = reviser_devis(devis, user=user)
+            # R6-N1 (suite) — la V2 est acceptée ci-dessous et jamais
+            # réécrite ensuite : son calepinage lui est re-lié AVANT le calcul
+            # des études qu'elle portera (sans calepinage : comme hier).
+            v2 = reviser_devis(devis, user=user,
+                               etudes=ETUDES_AVANT_ACCEPTATION)
         except RevisionError as exc:
             corps = corps_version_remplacee(devis)
             raise PrixNegocieRefuse(

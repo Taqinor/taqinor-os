@@ -402,13 +402,18 @@ def reviser_sur_la_conception(devis, user):
     """Lane E6e (T4-X5-011) — « Réviser le devis » de l'atelier : la V2 (``revision.
     reviser_devis``, le devis envoyé jamais touché) est composée sur la conception COURANTE
     du lead par LA recomposition des brouillons (:func:`appliquer_a_la_demande`), sous UNE
-    transaction : une recomposition refusée n'a créé aucune V2 (l'exception remonte)."""
+    transaction : une recomposition refusée n'a créé aucune V2 (l'exception remonte).
+
+    R6-N1 (suite) — avec un calepinage lié à la V1, le clonage ne calcule plus d'études
+    (la recomposition les refait, et le calcul forcé du commit, après la re-liaison, a le
+    dernier mot) : UN calcul forcé, hors du verrou de la V1, sur la V2 recomposée et re-liée.
+    Sans calepinage : comme hier."""
     from django.db import transaction
 
-    from apps.ventes.domain.revision import reviser_devis
+    from apps.ventes.domain.revision import ETUDES_APRES_RECOMPOSITION, reviser_devis
 
     with transaction.atomic():
-        nouveau = reviser_devis(devis, user=user)
+        nouveau = reviser_devis(devis, user=user, etudes=ETUDES_APRES_RECOMPOSITION)
         appliquer_a_la_demande(nouveau, user)
     nouveau.refresh_from_db()
     return nouveau
