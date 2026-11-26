@@ -559,6 +559,10 @@ class SchemaPdfRevueTest(SimpleTestCase):
             largeur, hauteur = [float(v) for v in re.findall(r'(?:width|height):([\d.]+)mm', style)]
             self.assertLessEqual(largeur, e._FEUILLE_LARGEUR_MM)
             self.assertLessEqual(hauteur, e._DESSIN_MM)
+            # Centré verticalement dans la place libre : la marge haute + le dessin tiennent, le vide est partagé.
+            haut = float(re.search(r'margin:([\d.]+)mm auto 0', style).group(1))
+            self.assertLessEqual(haut + hauteur, e._DESSIN_MM + 0.1)
+            self.assertAlmostEqual(haut, (e._DESSIN_MM - hauteur) / 2.0, delta=0.1)
             self.assertAlmostEqual(largeur / hauteur, 1040 / float(viewbox.split()[-1]), places=2)
         self.assertIn('width:420.0mm', e._style_du_dessin('<svg viewBox="0 0 1040 520">'))
         self.assertEqual(e._style_du_dessin('<svg>'), 'svg{width:100%;}')
