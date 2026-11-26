@@ -4,7 +4,7 @@ Ce qui est prouvé ici (HTTP réels, jamais une doublure) :
 
 * une ligne « client seul » porte ``reference`` (égale à celle du détail),
   ``image`` (chemin RELATIF du proxy Django, aucune signature par ligne),
-  ``modifie_le`` (ISO) et ``client_apercu {id, nom, ville}`` — toutes les clés
+  ``modifie_le`` (ISO) et ``client_apercu {id, nom}`` — toutes les clés
   du contrat ``calepinage_liste.json`` ;
 * ``?q=`` trouve la ligne par le TITRE, par la RÉFÉRENCE affichée
   (CAL-AAMM-NNNN), par le NOM DU LEAD rattaché et par le NOM DU CLIENT ;
@@ -73,8 +73,8 @@ class FormeDeLaListeTest(BaseApiCalepinage):
         self.assertEqual(ligne['client'], self.client_a.pk)
         self.assertEqual(ligne['client_apercu']['id'], self.client_a.pk)
         self.assertEqual(ligne['client_apercu']['nom'], 'Bâtiment Atlas')
-        self.assertEqual(sorted(ligne['client_apercu']),
-                         ['id', 'nom', 'ville'])
+        # ACAL1750 — pas de clé morte `ville` : le client n'a pas de colonne ville.
+        self.assertEqual(sorted(ligne['client_apercu']), ['id', 'nom'])
 
     def test_sans_rendu_ni_client_trois_null_et_client_apercu_nul(self):
         calepinage = Calepinage.objects.create(
@@ -92,7 +92,7 @@ class FormeDeLaListeTest(BaseApiCalepinage):
 
         reponse = self.api.patch(
             url_detail(calepinage.pk),
-            {'client_apercu': {'id': 1, 'nom': 'x', 'ville': None}},
+            {'client_apercu': {'id': 1, 'nom': 'x'}},
             format='json')
 
         self.assertEqual(reponse.status_code, 400)

@@ -78,14 +78,14 @@ export function PhraseHeureIndisponible({ etat }) {
 export default function HeureLegale({ calepinageId } = {}) {
   const correspondance = useMatch({ path: '/calepinage/:id', end: false })
   const id = calepinageId ?? correspondance?.params?.id
-  const [bar, setBar] = useState({ heure: null, md: null })
+  const [bar, setBar] = useState({ heure: null, md: null, annee: null })
 
   const relire = useCallback(() => {
     const h = Number(document.getElementById('rp9-sun-hour')?.value)
     const v = document.getElementById('rp9-sun-date')?.value ?? ''
-    const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(v)
-    const suivant = { heure: Number.isFinite(h) ? h : null, md: m ? `${m[1]}-${m[2]}` : null }
-    setBar((prec) => (prec.heure === suivant.heure && prec.md === suivant.md ? prec : suivant))
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v)
+    const suivant = { heure: Number.isFinite(h) ? h : null, md: m ? `${m[2]}-${m[3]}` : null, annee: m ? Number(m[1]) : null }
+    setBar((prec) => (prec.heure === suivant.heure && prec.md === suivant.md && prec.annee === suivant.annee ? prec : suivant))
   }, [])
 
   useEffect(() => {
@@ -110,7 +110,8 @@ export default function HeureLegale({ calepinageId } = {}) {
     }
   }, [relire])
 
-  const annee = new Date().getFullYear()
+  // ACAL1640 — une seule année : celle du champ de la barre du soleil, pour la phrase comme pour l'écart servi
+  const annee = bar.annee ?? new Date().getFullYear()
   const date = bar.md ? `${annee}-${bar.md}` : null
   const { etat, ecart } = useHeureLegale(id, date)
   if (!id || bar.heure === null) return null
@@ -123,7 +124,7 @@ export default function HeureLegale({ calepinageId } = {}) {
       {solaire}
       {legale ? <> ({legale})</> : null}
       {etat !== 'ok' && etat !== 'chargement' ? <> — <PhraseHeureIndisponible etat={etat} /></> : null}
-      {' '}· L’atelier compte en heure solaire vraie{jour ? ` · calculé pour le ${jour} (année en cours)` : ''}.
+      {' '}· L’atelier compte en heure solaire vraie{jour ? ` · calculé pour le ${jour}${annee === new Date().getFullYear() ? ' (année en cours)' : ''}` : ''}.
     </p>
   )
 }
