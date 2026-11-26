@@ -19,6 +19,8 @@ Run :
 """
 from unittest import mock
 
+from django.test import SimpleTestCase
+
 from core.models import BackgroundJob
 
 from .test_api_liste import BaseApiCalepinage
@@ -142,6 +144,29 @@ class TacheDeFondTest(BaseApiCalepinage):
         job.refresh_from_db()
         self.assertEqual(job.statut, BackgroundJob.STATUT_FAILED)
 
+    def test_compteurs_de_livraison_anciens_supprimes_numerotation_intacte(self):
+        # Revue lot 6 (ACAL1963) — la table reste bornée : un compteur de
+        # livraison sans livraison depuis 48 h est supprimé à la livraison
+        # suivante ; une séquence d'un autre usage n'est jamais touchée.
+        import datetime
+
+        from django.utils import timezone
+
+        from core.models import SequenceCounter
+
+        from apps.calepinage import tasks
+
+        vieux = SequenceCounter.objects.create(
+            company=self.company, cle=tasks.PREFIXE_COMPTEUR_LIVRAISONS + '1:1', dernier=2)
+        autre = SequenceCounter.objects.create(company=self.company, cle='job', dernier=7)
+        SequenceCounter.objects.filter(pk__in=[vieux.pk, autre.pk]).update(
+            updated_at=timezone.now() - datetime.timedelta(hours=72))
+        job = BackgroundJob.objects.create(
+            company=self.company, user=self.user, kind='calepinage')
+        self.assertEqual(tasks._livraison_de_trop(job), '')
+        self.assertFalse(SequenceCounter.objects.filter(pk=vieux.pk).exists())
+        self.assertTrue(SequenceCounter.objects.filter(pk=autre.pk).exists())
+
     def test_job_d_une_autre_societe_introuvable(self):
         job = BackgroundJob.objects.create(
             company=self.autre, user=self.user_autre, kind='calepinage')
@@ -153,3 +178,35 @@ class TacheDeFondTest(BaseApiCalepinage):
             company=self.company, user=self.user, kind='calepinage')
         reponse = self.api_sans.get(url_resultat(job.pk))
         self.assertEqual(reponse.status_code, 403)
+
+
+class LivraisonSansBaseTest(SimpleTestCase):
+    """Revue lot 6 (ACAL1963) — une erreur de base pendant le compte des
+    livraisons est un échec DIT, jamais une exception qui laisse le job « en
+    cours » à 5 % ; le compte au-delà de la borne dit l'interruption."""
+
+    def _job(self):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(pk=7, company=object(), company_id=3, created_at=None)
+
+    def test_erreur_de_base_echec_dit(self):
+        from django.db import DatabaseError
+
+        from apps.calepinage import tasks
+
+        with mock.patch('core.models.SequenceCounter.next',
+                        side_effect=DatabaseError('hors ligne')):
+            self.assertEqual(tasks._livraison_de_trop(self._job()),
+                             tasks.MOTIF_COMPTE_INDISPONIBLE)
+
+    def test_au_dela_de_la_borne_interrompu_sinon_rien(self):
+        from apps.calepinage import tasks
+
+        with mock.patch('core.models.SequenceCounter.next', side_effect=[1, 3]), \
+                mock.patch('core.models.SequenceCounter.objects') as objets:
+            self.assertEqual(tasks._livraison_de_trop(self._job()), '')
+            self.assertEqual(tasks._livraison_de_trop(self._job()), tasks.MOTIF_INTERROMPU)
+        filtre = objets.filter.call_args.kwargs
+        self.assertEqual(filtre['cle__startswith'], tasks.PREFIXE_COMPTEUR_LIVRAISONS)
+        self.assertEqual(filtre['company_id'], 3)
