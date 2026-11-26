@@ -535,6 +535,18 @@ class CustomUser(AbstractUser):
         return True  # compte légacy sans rôle fin → comportement historique
 
     @property
+    def can_view_sale_prices(self):
+        """D-ACAL-152 — voir les prix de VENTE du catalogue (permission
+        ``prix_vente_voir``, portée par tous les rôles système sauf Technicien
+        et Technicien responsable). Même repli que ``can_view_buy_prices`` :
+        un compte légacy SANS rôle fin garde l'accès historique."""
+        if self.is_superuser:
+            return True
+        if self.role_id:
+            return 'prix_vente_voir' in (self.role.permissions or [])
+        return True  # compte légacy sans rôle fin → comportement historique
+
+    @property
     def can_view_marge(self):
         """FG20 — voir la marge interne calculée (donnée sensible). Permission
         explicite ``marge_voir`` (Directeur/Admin par défaut), avec repli
