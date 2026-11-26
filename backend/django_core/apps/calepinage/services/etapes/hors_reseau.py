@@ -356,7 +356,7 @@ def _publier(serie, rendu, courbe, mention, annees=1, banque_mois=(None, '')):
 
     pire = simulation['mois_le_plus_defavorable']
     return suite, {
-        'heures': simulation['heures'],
+        'heures': _par_an(simulation['heures'], annees),  # ACAL1960 — heures par an
         'consommation_kwh': _par_an(simulation['consommation_kwh'], annees),
         'production_kwh': _par_an(simulation['production_kwh'], annees),
         'servi_kwh': _par_an(simulation['servi_kwh'], annees),

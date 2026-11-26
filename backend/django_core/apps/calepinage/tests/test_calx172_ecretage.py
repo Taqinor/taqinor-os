@@ -25,6 +25,8 @@ moitiés sont vérifiées ici :
 Run :
     python manage.py test apps.calepinage.tests.test_calx172_ecretage -v2
 """
+import copy
+
 from django.test import SimpleTestCase
 
 from apps.calepinage.services import etapes
@@ -95,6 +97,24 @@ class ProprieteMonotoneTest(SimpleTestCase):
 
         for precedente, suivante in zip(ecretees, ecretees[1:]):
             self.assertLessEqual(suivante, precedente + 1e-9)
+
+    def test_acal1960_heures_ecretees_publiees_par_an(self):
+        # La série de dix ans (dix fois la même journée) compte dix fois ses
+        # heures ; publiées, elles sont l'année moyenne (÷ 10). Fenêtre d'un
+        # an : inchangé. Mutant : ne pas diviser ⇒ 30 au lieu de 3.
+        from apps.calepinage.services import annee_moyenne
+
+        dix_ans = _serie()
+        dix_ans['points'] = [dict(point, annee=annee) for annee in range(2014, 2024)
+                             for point in _serie()['points']]
+        _apres, etape = ecretage.appliquer(dix_ans, _contexte(ac_kw=5.0))
+        self.assertEqual(etape['entree']['heures_ecretees'], 30)
+        for annees, attendu in ((10, 3.0), (1, 30)):
+            blocs = {'production': {'total': {'annees_fenetre': annees}},
+                     'cascade': {'etapes': [copy.deepcopy(etape)]}}
+            annee_moyenne.publier_a_l_annee_moyenne(blocs)
+            self.assertEqual(
+                blocs['cascade']['etapes'][0]['entree']['heures_ecretees'], attendu)
 
     def test_l_ecretage_atteint_zero_au_dessus_du_maximum_de_la_serie(self):
         avant = _serie()
