@@ -554,7 +554,9 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         phrase = ('Le devis passe en « avec batterie » : l’onduleur désigné « Onduleur hybride Deye 5kW '
                   'Monophasé » est un hybride.')
         self.assertIn(phrase, genere['avertissements'], genere)
-        self.assertEqual(apercu['ecarts'], [{'champ': 'onduleur_produit', 'message': phrase}])  # même phrase
+        self.assertEqual(_materiel(apercu), [{'champ': 'onduleur_produit', 'message': phrase}])  # même phrase
+        # ``TOIT`` est un toit plat sans tables : la phrase des 20° supposés (D-ACAL-168) y est VRAIE, seule à côté.
+        self.assertEqual([e['champ'] for e in apercu['ecarts']], ['onduleur_produit', 'geometry.tiltDeg'])
         self.assertEqual([o['onduleur'] for o in apercu['options']], ['Onduleur hybride Deye 5kW Monophasé'])
         self.assertEqual(onduleurs, {None: ('Onduleur hybride Deye 5kW Monophasé', 'onduleur_hybride')})
         self.assertTrue(Devis.objects.get(pk=genere['devis']).lignes.filter(role_devis='batterie').exists())
