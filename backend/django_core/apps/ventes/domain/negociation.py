@@ -329,8 +329,9 @@ def appliquer_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user,
             exiger_confirmation=True, confirmer_avoir=confirmer_avoir)
         try:
             # R6-N1 (suite) — la V2 est acceptée ci-dessous et jamais
-            # réécrite ensuite : son calepinage lui est re-lié AVANT le calcul
-            # des études qu'elle portera (sans calepinage : comme hier).
+            # réécrite ensuite : le clonage ne calcule rien, son calepinage
+            # lui est re-lié ; ses études sont calculées plus bas, AU PRIX
+            # NÉGOCIÉ.
             v2 = reviser_devis(devis, user=user,
                                etudes=ETUDES_AVANT_ACCEPTATION)
         except RevisionError as exc:
@@ -345,6 +346,13 @@ def appliquer_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user,
         # 409 ``{echeancier}`` (tout le geste annulé, aucune V2).
         from apps.ventes.domain.modifiabilite import rebaser_echeancier_ou_409
         rebaser_echeancier_ou_409(v2)
+        # R6-N1 (suite, décision de l'orchestrateur du 26/11) — LES études que
+        # la V2 acceptée portera, calculées UNE fois, APRÈS la remise négociée
+        # et AVANT l'acceptation : l'option « avec batterie » C&I lit
+        # ``option_totaux`` (investissement, retour, flux) — hier, elle gardait
+        # le prix d'AVANT la négociation. Forcé : le clonage n'a rien calculé.
+        from apps.ventes.domain.etudes import rafraichir_etudes_du_devis
+        rafraichir_etudes_du_devis(v2, force=True)
         nom = (devis.accepte_par_nom or 'Client').strip()
         try:
             v2 = accept_devis(

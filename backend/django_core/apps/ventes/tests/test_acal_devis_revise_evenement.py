@@ -109,7 +109,7 @@ def espionner_etudes(test, journal, mesure=None):
     force, mesure(devis))`` dans ``journal`` puis appelle la vraie fonction."""
     from unittest import mock
 
-    from apps.ventes.domain import creation_clone, revision
+    from apps.ventes.domain import creation_clone, etudes, revision
     from apps.ventes.domain.etudes import rafraichir_etudes_du_devis as reelle
 
     def _espion(devis, **kwargs):
@@ -117,7 +117,8 @@ def espionner_etudes(test, journal, mesure=None):
                         mesure(devis) if mesure else None))
         return reelle(devis, **kwargs)
 
-    for module in (creation_clone, revision):
+    # R6-N1 (suite) — ``etudes`` aussi : le prix négocié l'importe à l'appel.
+    for module in (creation_clone, revision, etudes):
         patch = mock.patch.object(module, 'rafraichir_etudes_du_devis',
                                   side_effect=_espion)
         patch.start()
@@ -221,26 +222,51 @@ class EtudesDeLaRevision(TestCase):
                 'designation', 'quantite', 'prix_unitaire', 'remise'))
         self.assertEqual(_lignes(v2), _lignes(hier))
 
-    def test_trois_modes_sans_calepinage_comme_hier(self):
-        """R6-N1 (suite) — prix négocié, atelier, visite C&I : sans calepinage
-        lié à la V1, le même journal que le chemin d'hier sous transaction."""
+    def test_modes_sans_calepinage(self):
+        """R6-N1 (suite) — atelier, visite C&I : sans calepinage lié à la V1,
+        le même journal que le chemin d'hier sous transaction. Prix négocié :
+        AUCUN calcul par la révision (l'appelant calcule au prix négocié)."""
         from apps.ventes.domain import revision
 
+        attendus = {
+            revision.ETUDES_AVANT_ACCEPTATION: lambda v2: [('abonne', v2.pk)],
+            revision.ETUDES_APRES_RECOMPOSITION: lambda v2: [
+                ('etudes', v2.pk, True, None), ('abonne', v2.pk)],
+            revision.ETUDES_PAR_L_APPELANT: lambda v2: [
+                ('etudes', v2.pk, True, None), ('abonne', v2.pk)],
+        }
         v1 = self.v1
-        for mode in (revision.ETUDES_AVANT_ACCEPTATION,
-                     revision.ETUDES_APRES_RECOMPOSITION,
-                     revision.ETUDES_PAR_L_APPELANT):
+        for mode, attendu in attendus.items():
             with self.subTest(mode=mode):
                 journal = []
                 espionner_etudes(self, journal)
                 self._abonne_temoin(journal)
                 with self.captureOnCommitCallbacks(execute=True):
                     v2 = reviser_devis(v1, user=self.user, etudes=mode)
-                self.assertEqual(journal, [('etudes', v2.pk, True, None),
-                                           ('abonne', v2.pk)])
+                self.assertEqual(journal, attendu(v2))
             # La V2 envoyée devient la V1 du mode suivant (même chaîne).
             Devis.objects.filter(pk=v2.pk).update(statut=Devis.Statut.ENVOYE)
             v1 = Devis.objects.get(pk=v2.pk)
+
+    def test_avant_acceptation_meme_prix_memes_etudes_que_la_revision(self):
+        """R6-N1 (suite) — le chemin du prix négocié (clonage sans calcul,
+        puis UN calcul forcé de l'appelant) SANS changer le prix donne,
+        à l'octet, les études réelles de la révision ordinaire."""
+        from apps.ventes.domain.etudes import rafraichir_etudes_du_devis
+        from apps.ventes.domain.revision import ETUDES_AVANT_ACCEPTATION
+
+        self._etudier_v1()
+        jumelle = self._jumelle()
+        with self.captureOnCommitCallbacks(execute=True):
+            hier = reviser_devis(jumelle, user=self.user)
+        with self.captureOnCommitCallbacks(execute=True):
+            v2 = reviser_devis(self.v1, user=self.user,
+                               etudes=ETUDES_AVANT_ACCEPTATION)
+            rafraichir_etudes_du_devis(v2, force=True)
+        hier.refresh_from_db()
+        v2.refresh_from_db()
+        self.assertIsNotNone((hier.etude_params or {}).get('etude_horaire'))
+        self.assertEqual(v2.etude_params, hier.etude_params)
 
     def test_reponse_201_de_reviser_porte_les_etudes(self):
         """R6-N1 (suite) — la vue « Réviser » (autocommit : son ``on_commit``

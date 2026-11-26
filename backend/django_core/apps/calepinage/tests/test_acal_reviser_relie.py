@@ -429,10 +429,12 @@ class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
 
     def test_avant_acceptation_un_calcul_relie_dans_la_transaction(self):
         """Prix négocié : AVANT le commit (là où la V2 est acceptée), le
-        calepinage est déjà sur la V2 et ses études sont calculées UNE fois,
-        avec l'ombrage du calepinage ; au commit, rien n'est refait (V2
-        acceptée) et une SEULE version figée existe. ROUGE AVANT : un calcul
-        dans le clonage, perte ``None``, et la V2 acceptée le gardait."""
+        calepinage est déjà sur la V2 ; la révision ne calcule rien, le calcul
+        de l'appelant (au prix négocié) voit l'ombrage du calepinage ; au
+        commit, rien n'est refait (V2 acceptée) et une SEULE version figée
+        existe. ROUGE AVANT : un calcul dans le clonage, perte ``None``, et la
+        V2 acceptée le gardait."""
+        from apps.ventes.domain import etudes
         from apps.ventes.domain.revision import ETUDES_AVANT_ACCEPTATION
 
         journal = self._espion()
@@ -441,6 +443,8 @@ class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
                                etudes=ETUDES_AVANT_ACCEPTATION)
             self.c.refresh_from_db()
             self.assertEqual(self.c.devis_id, v2.pk)
+            self.assertEqual([a for a in journal if a[1] == v2.pk], [])
+            etudes.rafraichir_etudes_du_devis(v2, force=True)  # l'appelant
             avant = [a for a in journal if a[1] == v2.pk]
             self.assertEqual(len(avant), 1, avant)
             self.assertTrue(avant[0][2])  # force

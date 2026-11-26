@@ -360,6 +360,54 @@ class PrixNegocieApercu(TestCase):
         self.assertEqual(r['factures_annulees'],
                          [{'reference': brouillon.reference}])
 
+    def test_appliquer_etudes_au_prix_negocie_avant_acceptation(self, *_):
+        """R6-N1 (suite, décision du 26/11) — les études que la V2 acceptée
+        porte sont calculées UNE fois, forcées, la V2 encore brouillon et la
+        remise négociée DÉJÀ posée. Relevé au moment du calcul par les VRAIES
+        fonctions : le total (``option_totaux``) et l'investissement que
+        l'option « avec batterie » C&I lit (``_investissement_des_lignes``),
+        comparés à ceux de la V2 finale (prix négocié) et de la V1. ROUGE
+        AVANT : un calcul dans le clonage, au prix d'avant la négociation."""
+        from apps.ventes.domain import creation_clone, etudes, revision
+        from apps.ventes.domain.etude_ci_batterie import (
+            _investissement_des_lignes)
+        from apps.ventes.utils.options import AVEC_BATTERIE
+
+        v1, _a, _b = self._vente_avec_acompte_paye_et_brouillon()
+        vraie = etudes.rafraichir_etudes_du_devis
+        releves = []
+
+        def _espion(devis, **kwargs):
+            releves.append((devis.pk, devis.statut, kwargs.get('force'),
+                            _ttc(devis),
+                            _investissement_des_lignes([], devis)))
+            return vraie(devis, **kwargs)
+
+        with mock.patch.object(etudes, 'rafraichir_etudes_du_devis',
+                               side_effect=_espion), \
+                mock.patch.object(creation_clone, 'rafraichir_etudes_du_devis',
+                                  side_effect=_espion), \
+                mock.patch.object(revision, 'rafraichir_etudes_du_devis',
+                                  side_effect=_espion):
+            r = self._appliquer(v1, prix_ttc='49000')
+        v2 = Devis.objects.get(pk=r['devis_v2']['id'])
+        self.assertEqual(v2.statut, Devis.Statut.ACCEPTE)
+        self.assertEqual(len(releves), 1, releves)
+        pk, statut, force, ttc, investissement = releves[0]
+        self.assertEqual((pk, statut, force), (v2.pk, Devis.Statut.BROUILLON,
+                                               True))
+        self.assertEqual(ttc, Decimal(r['total_ttc']))
+        self.assertEqual(ttc, _ttc(v2))
+        # ``cout_vente_ht`` = le HT de l'option « avec » (``option_totaux``)
+        # au moment du calcul ; la V2 acceptée « sans » ne se relit plus par
+        # ``_investissement_des_lignes`` (option suivie), d'où le total.
+        self.assertIsNotNone(investissement)
+        self.assertEqual(investissement['cout_vente_ht'],
+                         float(option_totaux(v2, AVEC_BATTERIE)['ht']))
+        avant = option_totaux(Devis.objects.get(pk=v1.pk), AVEC_BATTERIE)
+        self.assertNotEqual(investissement['cout_vente_ht'],
+                            float(avant['ht']))
+
     def test_appliquer_incident_de_rattachement_annule_tout(self, *_):
         v1, _acompte, brouillon = (
             self._vente_avec_acompte_paye_et_brouillon())

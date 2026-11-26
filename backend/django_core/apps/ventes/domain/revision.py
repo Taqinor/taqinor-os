@@ -180,9 +180,11 @@ class RevisionError(Exception):
 #: commit si un calepinage est re-lié à une V+1 restée brouillon).
 ETUDES_REVISION = 'revision'
 #: « Prix négocié » : la V+1 est ACCEPTÉE dans la transaction de l'appelant et
-#: rien n'est réécrit après l'acceptation. Le calepinage lié à la V1 est
-#: re-lié à la V+1 DANS la transaction, puis ses études sont calculées UNE
-#: fois, avant le retour (donc avant l'acceptation).
+#: rien n'est réécrit après l'acceptation. Le clonage ne calcule RIEN (avec ou
+#: sans calepinage) ; le calepinage lié à la V1 est re-lié à la V+1 DANS la
+#: transaction ; l'APPELANT calcule les études UNE fois, après avoir posé le
+#: prix négocié et avant l'acceptation (l'option « avec batterie » C&I lit
+#: ``option_totaux``). Rien au commit.
 ETUDES_AVANT_ACCEPTATION = 'avant_acceptation'
 #: « Réviser le devis » de l'atelier : l'appelant recompose la V+1. Quand un
 #: calepinage lié à la V1 va être re-lié, le clonage ne calcule rien : UN
@@ -227,7 +229,9 @@ def reviser_devis(devis, *, user=None, etudes=ETUDES_REVISION):
 
     R6-N1 (suite) — ``etudes`` (:data:`ETUDES_REVISION` par défaut) : les
     trois appelants qui tiennent une transaction disent qui calcule. Sans
-    calepinage lié à la V1, les trois modes sont le défaut, à l'octet."""
+    calepinage lié à la V1, l'atelier et la visite sont le défaut, à l'octet ;
+    le prix négocié ne calcule jamais au clonage (l'appelant calcule au prix
+    négocié, décision de l'orchestrateur du 26/11)."""
     from django.db import transaction
     from apps.ventes.models import Devis
     from apps.ventes import activity
@@ -254,8 +258,8 @@ def reviser_devis(devis, *, user=None, etudes=ETUDES_REVISION):
         # ``au_commit`` dit le calcul qui reste à faire au commit (None :
         # aucun), ``au_clonage`` si le clonage calcule.
         a_relier = etudes != ETUDES_REVISION and _calepinage_a_relier(old)
-        au_clonage = not differees and not (a_relier and etudes in (
-            ETUDES_AVANT_ACCEPTATION, ETUDES_APRES_RECOMPOSITION))
+        au_clonage = (not differees and etudes != ETUDES_AVANT_ACCEPTATION
+                      and not (a_relier and etudes == ETUDES_APRES_RECOMPOSITION))
         # QJR558 — ``revision=True`` : la V+1 garde le travail manuel
         # (toiture 3D, registre D12, tailles explorées, rendu toiture).
         nd = cloner_devis(
@@ -271,10 +275,10 @@ def reviser_devis(devis, *, user=None, etudes=ETUDES_REVISION):
         activity.log_devis_note(
             nd, user, f'Révision de {old.reference}.')
         if a_relier and etudes == ETUDES_AVANT_ACCEPTATION:
-            # V1 inactive : la re-liaison est permise ; les études de la V+1
-            # (celles que son acceptation portera) voient SON calepinage.
+            # V1 inactive : la re-liaison est permise ; les études que
+            # l'appelant calculera (celles que l'acceptation portera) voient
+            # SON calepinage.
             relier_calepinage_de_la_revision(old, nd, user=user)
-            rafraichir_etudes_du_devis(nd, force=True)
         au_commit = _calcul_au_commit(etudes, a_relier, differees)
 
     # ACAL91 (C-ACAL-115) — l'événement de domaine ``devis_revise`` part APRÈS
@@ -319,12 +323,15 @@ _AU_COMMIT_TOUJOURS = 'toujours'
 
 def _calcul_au_commit(etudes, a_relier, differees):
     """R6-N1 (suite) — le calcul que ``_emettre_devis_revise`` fait après les
-    abonnés, ou ``None``. Avant l'acceptation, les études sont déjà faites
-    (re-liées) ; l'appelant de la visite les refait lui-même : rien. Après la
-    recomposition de l'atelier : LE calcul de la V+1. Sinon : hier."""
+    abonnés, ou ``None``. Avant l'acceptation, l'appelant les calcule au prix
+    négocié, dans sa transaction : rien. L'appelant de la visite les refait
+    lui-même : rien. Après la recomposition de l'atelier : LE calcul de la
+    V+1. Sinon : hier."""
     if differees:
         return _AU_COMMIT_TOUJOURS
-    if a_relier and etudes in (ETUDES_AVANT_ACCEPTATION, ETUDES_PAR_L_APPELANT):
+    if etudes == ETUDES_AVANT_ACCEPTATION:
+        return None
+    if a_relier and etudes == ETUDES_PAR_L_APPELANT:
         return None
     if a_relier and etudes == ETUDES_APRES_RECOMPOSITION:
         return _AU_COMMIT_TOUJOURS
