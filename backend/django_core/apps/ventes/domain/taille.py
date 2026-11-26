@@ -172,8 +172,13 @@ class ResultatTaille(tuple):
         return self
 
 
-def _panneaux_dimensionnement_horaire(*, lead, company, phase):
+def _panneaux_dimensionnement_horaire(*, lead, company, phase, panneau=None):
     """``(nb_panneaux, panel_watt, source, avec)`` recommandés par le moteur.
+
+    ``panneau`` (D-ACAL-169) — le panneau de la sonde (``panneau_defaut.
+    PanneauAuto``) quand la taille concerne un devis EXISTANT (sa ligne panneau,
+    ou rien pour un devis envoyé) ; ``None`` (LE DÉFAUT) ⇒ un devis à naître,
+    sondé au panneau par défaut de la société.
 
     C'EST LE SEUL DIMENSIONNEMENT du devis automatique quand aucune puissance
     n'est demandée (ordre fondateur du 29/08/2026). Il n'exige PAS un profil
@@ -243,7 +248,8 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
             tranches=entrees.tranches,
             charges_fixes_mad=entrees.charges_fixes_mad,
             # ERR-QJR605 — site isolé : le tableau compose off-grid.
-            hors_reseau=entrees.hors_reseau)
+            hors_reseau=entrees.hors_reseau,
+            **({'panneau': panneau} if panneau is not None else {}))  # D-ACAL-169
         recommandation = resultat.get('recommandation')
         if not recommandation:
             # Le tableau est vide pour DEUX raisons distinctes, et le

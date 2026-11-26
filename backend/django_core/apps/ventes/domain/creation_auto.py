@@ -21,7 +21,8 @@ NOM DU LOGGER FIGÉ sur ``apps.ventes.services`` : des tests capturent ce nom.
 from decimal import Decimal
 import logging
 
-from apps.ventes.domain.taille import _AUTO_PANEL_WATT
+from apps.stock.selectors import get_produit_scoped
+from apps.ventes.domain.panneau_defaut import panneau_auto_composition
 
 logger = logging.getLogger("apps.ventes.services")
 
@@ -575,8 +576,11 @@ def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
     # CRÉÉ, jamais d'une tentative.
     try:
         # Lectures pures (catalogue + géométrie du tracé) — hors transaction.
-        produit_panneau, _societe = _panneau_pour_calepinage(
-            {'panelWatt': _AUTO_PANEL_WATT}, company=company, devis=None)
+        # D-ACAL-169 — le plafond du toit se calcule sur le panneau que le devis
+        # vendra : le panneau par défaut accepté, sinon le choix à 710 Wc d'hier.
+        auto = panneau_auto_composition(company)
+        produit_panneau = (auto.designe and get_produit_scoped(company, auto.produit_id)) or _panneau_pour_calepinage(
+            {'panelWatt': auto.watt}, company=company, devis=None)[0]
         plafond = plafond_physique_du_contour(
             contour_client_lnglat(lead), produit_panneau)
         with transaction.atomic():

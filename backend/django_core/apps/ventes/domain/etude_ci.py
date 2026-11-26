@@ -36,6 +36,7 @@ from decimal import Decimal
 from apps.ventes.moteur_ci.taille import HORIZON_MARGINAL_CI
 
 from .etude_ci_batterie import CLE as CLE_OPTION_AVEC, CLE_BANQUE_RECOMMANDEE, option_avec_de_l_etude
+from .panneau_defaut import panneau_pour_etude  # D-ACAL-169
 from .sensibilites_option_avec import scenarios_du_devis
 from .regles_calcul import (
     REGLES_CORRIGEES_2710, REGLES_CYCLES_BATTERIE_1911, REGLES_RETOURS_3010B, hybrides_ht_ouverts, regles_au_moins)
@@ -702,15 +703,18 @@ def _profil_societe(company, mode, cle):
             'courbe': choisi.get('courbes'), 'provenance': choisi.get('provenance')}
 
 
-def lire_catalogue_ci(company):
+def lire_catalogue_ci(company, panneau_defaut=None, alertes=None):
     """Catalogue C&I (``stock.selectors.produits_ci``) + prix de VENTE HT du
-    catalogue de la société + module retenu. Jamais ``prix_achat``."""
-    from apps.calepinage.services.chaines import specs_module, specs_onduleur
+    catalogue de la société + module retenu. Jamais ``prix_achat``.
+    ``panneau_defaut`` / ``alertes`` : D-ACAL-169 (``etude_ci_module``) ;
+    ``None`` (LE DÉFAUT) ⇒ module d'aujourd'hui, rien n'est dit."""
+    from apps.calepinage.services.chaines import specs_onduleur
     from apps.stock.selectors import produits_ci, specs_for_produit
     from core.product_roles import ROLES_CI_BAREME_COFFRET, ROLES_ONDULEUR_CI
 
     from ..compatibilites import est_triphase_produit
-    from .catalogue import catalogue_de_la_societe, classer_produit
+    from .catalogue import catalogue_de_la_societe
+    from .etude_ci_module import module_ci_retenu
 
     objets = {p.id: p for p in catalogue_de_la_societe(company)}
     elements = []
@@ -762,38 +766,8 @@ def lire_catalogue_ci(company):
             'spec': specs_onduleur(specs, element.get('nom') or '')[0] if specs else None,
         })
 
-    module = module_spec = None
-    candidats = []
-    for produit in objets.values():
-        role = getattr(produit, 'role_devis', None) or classer_produit(produit.nom)
-        if role != 'panneau':
-            continue
-        try:
-            specs = specs_for_produit(produit) or {}
-        except Exception:  # fiche illisible
-            logger.warning("etude_ci.lire_catalogue_ci : erreur ignorée (mode dégradé)", exc_info=True)
-            specs = {}
-        pmax = _num(specs.get('pmax_wc'))
-        prix = bool(produit.prix_vente and produit.prix_vente > 0)
-        # ADEV78 — un module à puissance PUBLIÉE passe devant un module tarifé
-        # sans Pmax (sans Pmax, aucun panneau ne se compte).
-        candidats.append(((bool(pmax), prix, pmax or 0, -produit.id), produit, specs))
-    if candidats:
-        _cle, produit, specs = max(candidats, key=lambda c: c[0])
-        module = {
-            'produit': produit.id, 'designation': produit.nom,
-            'pmax_wc': _num(specs.get('pmax_wc')),
-            'prix_connu': bool(produit.prix_vente and produit.prix_vente > 0),
-            'prix_vente_ht': produit.prix_vente,
-            'tva_pct': getattr(produit, 'tva', None),
-            # ADEV82 — le module porte aussi ses paliers (prix de la taille).
-            'paliers_prix_vente': list(getattr(produit, 'paliers_prix_vente', None) or []),
-            'longueur_mm': _num(specs.get('longueur_mm')),
-            'largeur_mm': _num(specs.get('largeur_mm')),
-            'poids_kg': _num(specs.get('poids_kg')),
-        }
-        # ADEV87 — la fiche électrique du module retenu (chaînes).
-        module_spec = specs_module(specs, produit.nom)[0] if specs else None
+    # Le module retenu (ADEV78/82/87, D-ACAL-169 : le panneau par défaut d'abord).
+    module, module_spec = module_ci_retenu(objets, panneau_defaut=panneau_defaut, alertes=alertes)
     # Fondateur 26/10/2026 — hybrides BT et batteries de l'option « avec » ;
     # D-SOC-1 (17/11/2026) — l'article « Socles » du résidentiel (toit plat lesté).
     from .etude_ci_batterie import catalogue_batterie_ci, elements_socle_ci
@@ -1471,7 +1445,10 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
                      'archetype': prov_charge.get('archetype'),
                      'jours_types': jours_types, 'talon': prov_charge.get('talon')}
 
-    catalogue = dict(lire_catalogue_ci(company), froid=froid_du_site(_point_du_site(site)))  # ADEV122
+    # D-ACAL-169 — devis à naître : le panneau par défaut ; devis BROUILLON : SA ligne panneau (jamais « la plus
+    # haute Pmax » d'un autre module) ; devis envoyé : le module d'aujourd'hui (panneau_defaut.panneau_pour_etude).
+    catalogue = dict(lire_catalogue_ci(company, panneau_defaut=panneau_pour_etude(company, devis),
+                                       alertes=alertes), froid=froid_du_site(_point_du_site(site)))  # ADEV122
     reglages = _reglages_societe(company)
     forfaits = getattr(reglages, 'forfaits_ci', None) or {}
     phase = res.valeur('phases')
