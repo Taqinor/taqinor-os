@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
@@ -8,7 +8,7 @@ import { Button, Card, Input, Label } from '../../ui'
 import RetourAtelier from './atelier/RetourAtelier'
 import { telechargerBlob } from './exportImage'
 import {
-  CIBLE_DU_BLOC, corpsEdition, couperTexte, exporterSchemaPng, exporterSchemaSvg, motifDuRefusDxf, nomFichierSchema,
+  CIBLE_DU_BLOC, corpsEdition, couperTexte, echelleAjustee, exporterSchemaPng, exporterSchemaSvg, motifDuRefusDxf, nomFichierSchema,
 } from './SchemaUnifilairePanel.helpers'
 import EtatEcranAtelier from './atelier/EtatEcranAtelier'
 import { OPTIONS_TELECHARGEMENT } from './documents/telechargement'
@@ -64,15 +64,33 @@ const PAS_CLAVIER = 40
    bloc reste un clic (et un glisser n'en déclenche aucun). */
 const SEUIL_GLISSER = 4
 
-export function PlancheSchema({ balisage, dessin = null, actions = null, note = null, children = null }) {
-  const [echelle, setEchelle] = useState(1)
+export function PlancheSchema({ balisage, dessin = null, largeurDessin = null, actions = null, note = null, children = null }) {
+  // S2 (tablette) — `largeurDessin` : la largeur du schéma en blocs ; l'échelle de DÉPART le fait tenir en entier dans
+  // le cadre mesuré (jamais coupé). Le zoom de l'utilisateur prend ensuite la main.
+  const [ajuste, setAjuste] = useState(1)
+  const [zoomUtilisateur, setZoomUtilisateur] = useState(null)
   const [decalage, setDecalage] = useState({ x: 0, y: 0 })
+  const vue = useRef(null)
   const glisse = useRef(null)
   const aGlisse = useRef(false)
+  const base = dessin && largeurDessin ? ajuste : 1
+  const echelle = zoomUtilisateur ?? base
+  const zoomMin = Math.min(ZOOM_MIN, base)
+  const mesurable = Boolean(dessin) && Boolean(largeurDessin)
+  useEffect(() => {
+    const noeud = vue.current
+    if (!noeud || !mesurable) return undefined
+    const mesurer = () => setAjuste(echelleAjustee(noeud.clientWidth, largeurDessin))
+    mesurer()
+    if (typeof ResizeObserver === 'undefined') return undefined
+    const observateur = new ResizeObserver(mesurer)
+    observateur.observe(noeud)
+    return () => observateur.disconnect()
+  }, [mesurable, largeurDessin])
   const zoomer = (facteur) => {
-    const suivante = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, echelle * facteur))
-    setEchelle(suivante)
-    if (Math.abs(suivante - 1) < 1e-9) setDecalage({ x: 0, y: 0 })
+    const suivante = Math.min(ZOOM_MAX, Math.max(zoomMin, echelle * facteur))
+    setZoomUtilisateur(suivante)
+    if (Math.abs(suivante - base) < 1e-9) setDecalage({ x: 0, y: 0 })
   }
   const deplacer = (dx, dy) => setDecalage((d) => ({ x: d.x + dx, y: d.y + dy }))
   const auClavier = (e) => {
@@ -94,7 +112,7 @@ export function PlancheSchema({ balisage, dessin = null, actions = null, note = 
               <button type="button" aria-label="Zoomer" onClick={() => zoomer(PAS_ZOOM)} disabled={echelle >= ZOOM_MAX}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
               </button>
-              <button type="button" aria-label="Dézoomer" onClick={() => zoomer(1 / PAS_ZOOM)} disabled={echelle <= ZOOM_MIN}>
+              <button type="button" aria-label="Dézoomer" onClick={() => zoomer(1 / PAS_ZOOM)} disabled={echelle <= zoomMin}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M5 12h14" /></svg>
               </button>
             </div>
@@ -103,7 +121,7 @@ export function PlancheSchema({ balisage, dessin = null, actions = null, note = 
       </div>
       {(dessin || balisage)
         ? (
-          <div className="csch-vue" tabIndex={0} role={dessin ? 'group' : 'img'}
+          <div className="csch-vue" ref={vue} tabIndex={0} role={dessin ? 'group' : 'img'}
             aria-label={dessin ? 'Schéma en blocs : glisser ou utiliser les flèches pour le déplacer'
               : 'Schéma unifilaire : glisser ou utiliser les flèches pour le déplacer'}
             data-testid="csch-vue" data-echelle={echelle} data-vue={dessin ? 'blocs' : 'detaille'} onKeyDown={auClavier}
@@ -126,7 +144,10 @@ export function PlancheSchema({ balisage, dessin = null, actions = null, note = 
             {dessin
               ? (
                 <div className="csch-dessin csch-dessin-blocs" data-testid="csch-blocs"
-                  style={{ transform: `translate(${decalage.x}px, ${decalage.y}px) scale(${echelle})` }}>
+                  style={{
+                    transform: `translate(${decalage.x}px, ${decalage.y}px) scale(${echelle})`,
+                    ...(largeurDessin ? { width: largeurDessin, marginLeft: -largeurDessin / 2 } : null),
+                  }}>
                   {dessin}
                 </div>
               )

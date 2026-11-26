@@ -169,6 +169,15 @@ export const CIBLE_DU_BLOC = {
   batterie: 'materiel-electrique',
 }
 
+/** S2 (tablette) — l'échelle de DÉPART du schéma en blocs : tout le dessin tient dans la largeur du cadre (jamais
+    coupé), sans jamais agrandir au-delà de 1 ; sans mesure exploitable (cadre pas encore mesuré), 1. */
+export function echelleAjustee(largeurCadre, largeurDessin) {
+  const cadre = Number(largeurCadre)
+  const dessin = Number(largeurDessin)
+  if (!Number.isFinite(cadre) || !Number.isFinite(dessin) || cadre <= 0 || dessin <= 0) return 1
+  return Math.min(1, Math.floor((cadre / dessin) * 1000) / 1000)
+}
+
 /** Coupe un texte en lignes d'au plus `max` caractères (mots entiers), `n` lignes au plus (… au bout). */
 export function couperTexte(texte, max, n = 2) {
   const mots = String(texte ?? '').trim().split(/\s+/).filter(Boolean)

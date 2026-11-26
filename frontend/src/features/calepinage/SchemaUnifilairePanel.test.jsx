@@ -5,7 +5,7 @@
    jamais un cadre vide — les motifs du serveur (`manquantes`, `bloquants`)
    sont rendus AU CARACTÈRE PRÈS, jamais reformulés côté écran. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, within } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
@@ -24,7 +24,7 @@ vi.mock('./exportImage', () => ({
 import calepinageApi from '../../api/calepinageApi'
 import SchemaUnifilairePanel, { PlancheSchema, SchemaEnBlocs } from './SchemaUnifilairePanel'
 import {
-  motifDuRefusDxf, corpsEdition, couperTexte, estHorsReseau, lignesCartouche, lignesLegende, phraseCoteReseau, planDepuisDocument, planSchemaEnBlocs,
+  motifDuRefusDxf, corpsEdition, couperTexte, echelleAjustee, estHorsReseau, lignesCartouche, lignesLegende, phraseCoteReseau, planDepuisDocument, planSchemaEnBlocs,
 } from './SchemaUnifilairePanel.helpers'
 import { documentContrat, exempleContrat } from '../../test/fixtures/contractSamples'
 import { OPTIONS_TELECHARGEMENT } from './documents/telechargement'
@@ -425,6 +425,35 @@ describe('PlancheSchema, légende et cartouche (ACAL1301)', () => {
     await u.keyboard('{ArrowLeft}')
     expect(screen.getByTestId('csch-svg').style.transform).toContain('translate(40px, 0px)')
     expect(screen.getByText(/2 chaînes de 6 panneaux/)).toBeTruthy()
+  })
+
+  it('S2 — echelleAjustee : tout le dessin tient dans le cadre, jamais agrandi, 1 sans mesure', () => {
+    expect(echelleAjustee(296, 872)).toBe(0.339)
+    expect(echelleAjustee(436, 872)).toBe(0.5)
+    expect(echelleAjustee(1200, 872)).toBe(1)
+    expect(echelleAjustee(0, 872)).toBe(1)
+    expect(echelleAjustee(undefined, 872)).toBe(1)
+    expect(echelleAjustee(300, null)).toBe(1)
+  })
+
+  it('S2 — dans un cadre étroit (tablette), le schéma en blocs démarre à l’échelle qui le fait tenir, puis le zoom reprend', async () => {
+    const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(436)
+    const ancien = globalThis.ResizeObserver
+    globalThis.ResizeObserver = class { observe() {} disconnect() {} }
+    try {
+      render(<PlancheSchema dessin={<svg />} largeurDessin={872} />)
+      const vue = screen.getByTestId('csch-vue')
+      await waitFor(() => expect(vue).toHaveAttribute('data-echelle', '0.5'))
+      expect(screen.getByTestId('csch-blocs').style.width).toBe('872px')
+      const u = userEvent.setup()
+      await u.click(screen.getByRole('button', { name: 'Zoomer' }))
+      expect(vue).toHaveAttribute('data-echelle', '0.625')
+      // Dézoomer sous l'échelle de départ est permis (le départ n'est jamais un plancher plus haut que 0,5).
+      expect(screen.getByRole('button', { name: 'Dézoomer' })).not.toBeDisabled()
+    } finally {
+      clientWidth.mockRestore()
+      globalThis.ResizeObserver = ancien
+    }
   })
 
   it('sans SVG : pas de zoom, les motifs (enfants) à la place', () => {
