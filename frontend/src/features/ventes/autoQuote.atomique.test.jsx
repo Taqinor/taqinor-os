@@ -122,6 +122,19 @@ describe('CIQ127 — devis automatique non résidentiel : UN appel serveur', () 
     expect(champ).toEqual({ detail: 'Facture manquante.', field: 'facture_hiver' })
   })
 
+  it('ACAL1325 — industriel / commercial / résidentiel : la création coupe le toast global (l\'écran dit seul le résultat) ; un délai dépassé = « peut-être créé »', async () => {
+    for (const type of ['industriel', 'commercial', 'residentiel']) {
+      api.creerDevisAuto.mockClear()
+      api.creerDevisAuto.mockResolvedValueOnce({ data: { id: 136 } })
+      await createAutoQuote({ lead: { id: 312, type_installation: type, facture_hiver: '20000' }, discountStr: '0' })
+      expect(api.creerDevisAuto.mock.calls[0][1]).toMatchObject({ suppressErrorToast: true })
+    }
+    api.creerDevisAuto.mockRejectedValueOnce(Object.assign(new Error('timeout'), { code: 'ECONNABORTED' }))
+    const delai = await createAutoQuote({ lead: { id: 312, type_installation: 'industriel' }, discountStr: '0' })
+      .then(() => null, (e) => e)
+    expect(delai.delaiDepasse).toBe(true)
+  })
+
   it('commercial : un 422 du moteur C&I remonte TEL QUEL (champ nommé), aucun devis créé', async () => {
     const detail = 'Consommation du site absente : renseignez les kWh mensuels ou une taille.'
     api.creerDevisAuto.mockRejectedValueOnce({
