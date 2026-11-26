@@ -141,7 +141,7 @@ function CarteOnduleur({ id, entree, configs, resultat, lectureSeule, onApplique
             <option key={c.id} value={c.id} disabled={c.fiche_complete === false}>
               {c.fiche_complete === false
                 ? `${c.libelle} — fiche incomplète : ${(c.champs_manquants ?? []).map((k) => libelleChampManquant(k, 'onduleur')).join(', ')}`
-                : `${c.libelle}${c.marque ? ` (${c.marque})` : ''}`}
+                : `${c.libelle}${c.marque ? ` (${c.marque})` : ''}${c.en_stock ? ' · En stock' : ''}`}
             </option>
           ))}
         </select>
