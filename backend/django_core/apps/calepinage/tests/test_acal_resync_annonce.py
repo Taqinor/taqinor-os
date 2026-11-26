@@ -136,7 +136,9 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertEqual([o['onduleur'] for o in reponse.data['options']], ['Onduleur réseau Huawei 5kW Monophasé'])
         self.assertEqual([e['champ'] for e in reponse.data['ecarts']], ['onduleur_produit'])
         self.assertIn('« Onduleur hybride Deye 5kW Monophasé »', reponse.data['ecarts'][0]['message'])
-        self.assertIn('« Onduleur réseau Huawei 5kW Monophasé »', reponse.data['ecarts'][0]['message'])
+        # D-ACAL-148 (relecture, point 4) — la phrase est celle de la décision (ici : aucun nombre
+        # d'onduleurs accepté ni établi par un schéma sans fiche) ; l'onduleur porté est lu dans ``options``.
+        self.assertIn('le devis garde l’onduleur de la conception du lead', reponse.data['ecarts'][0]['message'])
         self.assertIsNone(reponse.data['refus'])
         self.assertNotIn('prix', json.dumps(reponse.data))
         self.calepinage.refresh_from_db()
@@ -542,10 +544,12 @@ class ResyncAnnonceTest(BaseApiCalepinage):
 
         self._nouvelle_pose()
         self._designer('Onduleur hybride Deye 5kW Monophasé', nombre_onduleurs=1)
-        _apercu, genere, onduleurs = self._apercu_puis_generation()
+        apercu, genere, onduleurs = self._apercu_puis_generation()
         phrase = ('Le devis passe en « avec batterie » : l’onduleur désigné « Onduleur hybride Deye 5kW '
                   'Monophasé » est un hybride.')
         self.assertIn(phrase, genere['avertissements'], genere)
+        self.assertEqual(apercu['ecarts'], [{'champ': 'onduleur_produit', 'message': phrase}])  # même phrase
+        self.assertEqual([o['onduleur'] for o in apercu['options']], ['Onduleur hybride Deye 5kW Monophasé'])
         self.assertEqual(onduleurs, {None: ('Onduleur hybride Deye 5kW Monophasé', 'onduleur_hybride')})
         self.assertTrue(Devis.objects.get(pk=genere['devis']).lignes.filter(role_devis='batterie').exists())
 
@@ -569,6 +573,37 @@ class ResyncAnnonceTest(BaseApiCalepinage):
 
 class ApercuBrouillonLibreSansBaseTest(SimpleTestCase):
     """Lot 8 (B2) — sans base : le rôle d'une ligne de brouillon et la phrase R2-22."""
+
+    def test_d_acal_148_point_4_chaque_issue_dit_sa_raison(self):
+        """Relecture, point 4 — jamais « la désignation n'y entre pas » pour l'onduleur : la phrase de
+        la décision (la même que la génération, produite par la VRAIE fonction de ventes), rien
+        quand il est posé, et une raison vraie quand l'imposé n'est pas posé."""
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services import devis_apercu as service
+        from apps.ventes.domain.creation_calepinage import decision_onduleur_designe, repli_onduleur_designe
+
+        nom = 'Onduleur hybride Deye 5kW'
+        bascule = decision_onduleur_designe(produit_id=9, nom=nom, etat='tarife', famille='onduleur_hybride',
+                                            famille_au_nom='onduleur_hybride', scenario='sans',
+                                            hors_reseau=False, nombre=1)
+        repli = repli_onduleur_designe(nom, 'sans_prix')
+        impose = dict(bascule, message=None)
+        porte = [{'option': None, 'onduleur': nom, 'onduleur_produit': 9, 'module': None, 'module_produit': None}]
+        autre = [dict(porte[0], onduleur='Onduleur réseau Huawei 5kW', onduleur_produit=3)]
+        calepinage = SimpleNamespace(company=None)
+        with (mock.patch('apps.calepinage.services.electrique.entree_stockee', return_value={'onduleur_produit': 9}),
+              mock.patch('apps.calepinage.services.devis_retenu.conception_du_calepinage', return_value={}),
+              mock.patch('apps.stock.selectors.get_produit_scoped', return_value=SimpleNamespace(nom=nom))):
+            self.assertEqual(service._ecarts(calepinage, porte, bascule),
+                             [{'champ': 'onduleur_produit', 'message': bascule['message']}])
+            self.assertEqual(service._ecarts(calepinage, autre, repli),
+                             [{'champ': 'onduleur_produit', 'message': repli['message']}])
+            self.assertEqual(service._ecarts(calepinage, porte, impose), [])
+            non_pose = service._ecarts(calepinage, autre, impose)
+        self.assertIn(service.RAISON_IMPOSE_NON_POSE, non_pose[0]['message'])
+        self.assertNotIn(service.RAISON_PAR_DEFAUT, non_pose[0]['message'])
 
     def test_role_fige_puis_mots_cles_et_aucun_onduleur(self):
         from types import SimpleNamespace

@@ -31,6 +31,9 @@ RAISON_PAR_DEFAUT = ('le devis généré depuis l’atelier compose son matérie
 #: onduleur n'est pas re-choisi d'après la désignation.
 RAISON_BROUILLON_EXISTANT = ('ce devis existe déjà et garde les produits qu’il porte : « Générer le devis » '
                              'l’ouvre tel quel, la désignation ne vaut que pour un devis neuf')
+#: Relecture D-ACAL-148, point 4 — l'onduleur imposé que la composition n'a pourtant pas posé sur
+#: l'option qui doit le porter (aucun cas connu ; jamais la raison par défaut, fausse depuis D-ACAL-148).
+RAISON_IMPOSE_NON_POSE = 'la composition du devis ne l’a pas posé sur cette option'
 MESSAGE_ECART = '%s désigné à l’étape Électrique (« %s ») n’est pas celui que le devis portera (« %s ») : %s'
 LIBELLE_OPTION = {'': 'Devis', 'sans': 'Sans batterie', 'avec': 'Avec batterie'}
 
@@ -55,7 +58,11 @@ def _ecarts(calepinage, options, decision_onduleur=None, *, brouillon=False):
     ``decision_onduleur`` (D-ACAL-148) : la décision de la composition pour l'onduleur désigné
     (``journal['onduleur_designe']``) — chiffré, seule l'option qui le porte est jugée ; en
     repli, sa raison remplace la raison par défaut. ``brouillon`` : les options sont les lignes
-    d'un brouillon existant (son onduleur n'est jamais re-choisi)."""
+    d'un brouillon existant (son onduleur n'est jamais re-choisi).
+
+    Relecture, point 4 — pour l'onduleur, chaque issue dit SA vérité, la même phrase que la
+    génération : la phrase de la décision (repli, ou passage « avec batterie » D-ACAL-159) telle
+    quelle ; imposé et posé, rien ; imposé mais pas posé, :data:`RAISON_IMPOSE_NON_POSE`."""
     from apps.stock.selectors import get_produit_scoped
 
     from .devis_retenu import conception_du_calepinage
@@ -69,6 +76,9 @@ def _ecarts(calepinage, options, decision_onduleur=None, *, brouillon=False):
         designe = entree.get(champ)
         if designe in (None, ''):
             continue
+        if champ == 'onduleur_produit' and decision_onduleur and decision_onduleur.get('message'):
+            phrases.append({'champ': champ, 'message': decision_onduleur['message']})
+            continue
         jugees = options
         if champ == 'onduleur_produit' and decision_onduleur and decision_onduleur.get('impose'):
             option = decision_onduleur.get('option') or None
@@ -81,8 +91,8 @@ def _ecarts(calepinage, options, decision_onduleur=None, *, brouillon=False):
         except (TypeError, ValueError):
             produit = None
         raison = next((s.get('message') for s in rangees if s.get('champ') == champ), None)
-        if champ == 'onduleur_produit' and decision_onduleur and decision_onduleur.get('motif'):
-            raison = decision_onduleur['motif']
+        if champ == 'onduleur_produit' and decision_onduleur:
+            raison = RAISON_IMPOSE_NON_POSE
         elif champ == 'onduleur_produit' and brouillon:
             raison = RAISON_BROUILLON_EXISTANT
         porte = ' / '.join(sorted({o[cle] or 'aucun' for o in portes}))
