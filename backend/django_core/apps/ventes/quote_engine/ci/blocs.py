@@ -405,13 +405,17 @@ def bloc_echeancier(synthese, prefixe, couleur_titre="#0F1E35",
             f'<div style="margin-top:1px;">{_libelle_jalon(doc, j)}</div>'
             f'{montant_html}</td>')
     titre = libelle(doc, "ci_cpdf_echeancier", TITRE_ECHEANCIER)
+    # T4-U1-009 — « Devis final » : le RIB du profil sous les jalons (nouveaux
+    # rendus, clé ``rib_sous_echeancier`` du builder) ; sinon rien.
+    from ..rib_devis_final import bloc_ci as _bloc_rib
     return (f'<div class="{prefixe}-ech" style="margin-top:12px;'
             f'font-size:7.5pt;color:{couleur_texte};line-height:1.3;">'
             f'<div style="font-size:9pt;font-weight:700;'
             f'color:{couleur_titre};">{titre}</div>'
             f'<table style="width:100%;border-collapse:separate;'
             f'border-spacing:5px 0;margin:4px -5px 0 -5px;table-layout:fixed;">'
-            f'<tr>{"".join(cellules)}</tr></table></div>')
+            f'<tr>{"".join(cellules)}</tr></table>'
+            f'{_bloc_rib(doc, prefixe, couleur_titre)}</div>')
 
 
 # ── CIQ318 — bloc « Offre de financement » ──────────────────────────────────
