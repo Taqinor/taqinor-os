@@ -162,7 +162,8 @@ class UnSeulVerdictTest(SimpleTestCase):
         bloc, messages, verdict, controle = self._trois(_conception(48, 20.0, **hybride))
         self.assertIs(verdict['conforme'], True)
         self.assertEqual(bloc['borne_source'], SOURCE_BORNE_CAPACITE)
-        self.assertIn("dans la capacité publiée de l'onduleur (40 kWc)", verdict['detail'])
+        self.assertIn("dans la capacité publiée de l'onduleur (fiche constructeur : 40 kWc au plus)",
+                      verdict['detail'])
         self.assertEqual(controle['etat'], 'ok')
         self.assertNotIn("seuil d'alerte", '\n'.join(messages))
         self.assertGreater(bloc['valeur'], 1.35)  # la borne de ratio l'aurait refusé
@@ -172,14 +173,42 @@ class UnSeulVerdictTest(SimpleTestCase):
             48, 20.0, designation=hybride['designation'], dc_max_kwc=float(petite)))
         self.assertIs(verdict['conforme'], False)
         self.assertEqual(controle['etat'], 'a_regler')
-        self.assertIn("au-delà de la capacité publiée de l'onduleur (%d kWc)" % petite, verdict['detail'])
+        self.assertIn("au-delà de la capacité publiée de l'onduleur (fiche constructeur : %d kWc au plus)"
+                      % petite, verdict['detail'])
 
     def test_onduleur_reseau_et_fiche_sans_capacite_inchanges(self):
-        for fiche in ({'designation': 'Onduleur réseau 20 kW', 'dc_max_kwc': 40.0},
-                      {'designation': 'Onduleur hybride 20 kW'}):
-            bloc, _m, verdict, _c = self._trois(_conception(48, 20.0, **fiche))
+        from apps.calepinage.services.ratio_devis import MOTIF_HYBRIDE_SANS_CAPACITE
+
+        for fiche, dit in (({'designation': 'Onduleur réseau 20 kW', 'dc_max_kwc': 40.0}, False),
+                           ({'designation': 'Onduleur hybride 20 kW'}, True)):
+            from apps.calepinage.services.pret_a_envoyer import _ratio_dc_ac
+
+            bloc, messages, verdict, _c = self._trois(_conception(48, 20.0, **fiche))
             self.assertEqual(bloc['borne_source'], SOURCE_BORNE_DEVIS)
             self.assertIs(verdict['conforme'], False)  # 1,70 > 1,35
+            # D-HYB-1 (lead 1742) — l'hybride sans capacité publiée : la phrase dit que la fiche
+            # ne publie rien et nomme le champ ; jamais pour un onduleur réseau.
+            controle = _ratio_dc_ac(bloc, verdict=verdict)  # comme ``controles_electriques``
+            for texte in (verdict['detail'], controle['valeur_texte'], ' | '.join(messages)):
+                self.assertEqual(MOTIF_HYBRIDE_SANS_CAPACITE in texte, dit, texte)
+
+    def test_meme_verdict_que_le_moteur_de_devis(self):
+        """D-HYB-1 (lead 1742) — même module, même compte, même hybride : le calepinage et le
+        moteur de devis C&I (``moteur_ci.onduleurs._capacite_kwc``, LA règle du noyau) disent
+        tous deux oui ou tous deux non, la capacité publiée au-dessus, au-dessous ou absente."""
+        from apps.ventes.moteur_ci.onduleurs import _capacite_kwc
+        from core.electrique.onduleurs import bornes_dc_ac
+
+        haute = bornes_dc_ac().borne_usuelle.valeur
+        for dc_max in (40.0, 30.0, None):
+            fiche = {} if dc_max is None else {'dc_max_kwc': dc_max}
+            bloc, _m, verdict, controle = self._trois(_conception(
+                48, 20.0, designation='Onduleur hybride Deye 20 kW', **fiche))
+            devis = _capacite_kwc({'kw_ac': 20.0, 'dc_max_kwc': dc_max, '_fiche_fait_foi': True},
+                                  haute)[0] >= bloc['puissance_dc_kwc'] - 1e-9
+            self.assertEqual(verdict['conforme'], devis, dc_max)
+            self.assertEqual(bloc['dans_bornes'], devis, dc_max)
+            self.assertEqual(controle['etat'], 'ok' if devis else 'a_regler', dc_max)
 
     def test_sous_le_seuil_bas_la_borne_franchie_est_dite_aux_deux_ecrans(self):
         """Rejeu T3-VAGUEC2 — « 0,99 pour 1,35 au plus (règle du devis) » était

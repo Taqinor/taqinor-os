@@ -52,7 +52,8 @@ def _verdict_ratio(ratio, evaluation, conception, reglages):
     bornes = bornes_du_verdict(bornes_ratio(reglages=reglages), evaluation, conception)
     conforme = juger_ratio(ratio, bornes, reglages)
     return {'conforme': conforme, 'valeur': ratio, 'borne': bornes[0], 'borne_source': bornes[2],
-            'detail': detail_ratio(fr(ratio, 2), conforme, bornes, valeur=ratio, reglages=reglages)}
+            'detail': detail_ratio(fr(ratio, 2), conforme, bornes, valeur=ratio, reglages=reglages,
+                                   conception=conception)}
 
 
 def _verdict_capacite(onduleur, nombre, puissance_kwc):
