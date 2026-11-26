@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { creerCanalTeinte } from './canalTeinte'; // ACAL1621
 import { cibleVue, appliquerVue } from './vuesCamera';
 import { dimensionsTexture, makeCanadianPanelTexture } from './panelTexture'; // ACAL1839
-import { teintesBatiment, TEINTES_PRESENTATION, jeuDeLaScene, presentationClient } from './jeuPresentation'; // ACAL1839, lot 8
+import { teintesBatiment, TEINTES_PRESENTATION, jeuDeLaScene, presentationClient, porteeOmbreSolM, solOmbreClient, cadreOmbreClient, MARGE_POSE_M, PORTEE_OMBRE_SOL_MAX_M } from './jeuPresentation'; // ACAL1839, lot 8
+import { ELEVATION_AFFICHAGE_MIN_DEG } from './threeShared'; // lot 8
 import { cielSuitLeSoleil } from './ciel'; // lot 8
 import * as THREE from 'three'; // ACAL1984
 import { aplatirEnPlan, poserOeil, verreEtOeilAtelier } from './oeilCamera'; // ACAL1984, T4-U1-017, LOT 6
@@ -483,6 +484,28 @@ describe('ACAL1408 — la teinte d’accès modifie la couleur effective du pann
     expect(jeuDeLaScene({}, false)).toBe('atelier');
     expect(cielSuitLeSoleil(true, {})).toBe(false);
     expect(verreEtOeilAtelier({ presentationClient: false })).toBe(false);
+  });
+
+  it('lot 8 (B2) — sol d’ombre : lien de confiance seulement, ombre seule, étendue = ombre la plus longue plafonnée', () => {
+    const anneau: [number, number][] = [[-12, -12], [12, -12], [12, 12], [-12, 12]];
+    // L'ombre la plus longue : (mur + pose) ÷ tan(soleil le plus bas affiché), plafonnée.
+    expect(porteeOmbreSolM(6)).toBeCloseTo((6 + MARGE_POSE_M) / Math.tan((ELEVATION_AFFICHAGE_MIN_DEG * Math.PI) / 180), 6);
+    expect(porteeOmbreSolM(40)).toBe(PORTEE_OMBRE_SOL_MAX_M);
+    // ERP (même avec le drapeau) et liens standard : aucun sol, cadre d'ombre inchangé.
+    for (const o of [{}, { productionAtelier: null, presentationClient: true }]) {
+      expect(solOmbreClient(o, [anneau], 6)).toEqual([]);
+      expect(cadreOmbreClient(o, 32, [anneau], 6)).toBe(32);
+    }
+    const [sol] = solOmbreClient({ presentationClient: true }, [anneau], 6);
+    const mat = sol.material as THREE.ShadowMaterial;
+    expect(mat.isShadowMaterial).toBe(true); // transparent hors de l'ombre : l'imagerie n'est ni couverte ni teintée
+    expect(mat.transparent).toBe(true);
+    expect(mat.depthWrite).toBe(false);
+    expect(sol.receiveShadow && !sol.castShadow).toBe(true);
+    const demi = Math.hypot(24, 24) / 2 + porteeOmbreSolM(6);
+    const g = (sol.geometry as THREE.PlaneGeometry).parameters;
+    expect(g.width / 2).toBeCloseTo(demi, 6);
+    expect(cadreOmbreClient({ presentationClient: true }, 32, [anneau], 6)).toBeCloseTo(demi, 6);
   });
 
   it('la teinte de chaîne (setStringColoring, même canal) est gainée de la même façon', () => {
