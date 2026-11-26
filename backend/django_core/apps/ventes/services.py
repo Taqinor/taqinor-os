@@ -386,6 +386,7 @@ SCENARIO_LES_DEUX = _scenario.SCENARIO_LES_DEUX
 scenario_effectif = _scenario.scenario_effectif
 recommended_option_effective = _scenario.recommended_option_effective
 puissance_kwc_du_devis = _scenario.puissance_kwc_du_devis
+panneaux_composes_du_devis = _scenario.panneaux_composes_du_devis
 poser_puissance_kwc = _scenario.poser_puissance_kwc
 
 
@@ -685,6 +686,7 @@ __all__ = [
     'prix_applicable',
     'prix_forfait_ht',
     'public_url',
+    'panneaux_composes_du_devis',
     'puissance_kwc_du_devis',
     'qr_svg_for_facture_pdf',
     'rafraichir_dimensionnement_devis',
