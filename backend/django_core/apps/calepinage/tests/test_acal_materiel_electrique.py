@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 import pathlib
 from decimal import Decimal
+from types import SimpleNamespace
+from unittest import mock
 
 from django.test import SimpleTestCase
 
@@ -23,7 +25,7 @@ from apps.calepinage.services.electrique import (
     conception_du_calepinage,
 )
 from apps.calepinage.services.layout import empreinte_document, enregistrer_layout
-from apps.calepinage.services.modules_pans import PROVENANCE_POSE, _produit_du_module_pose
+from apps.calepinage.services.modules_pans import PROVENANCE_POSE, _produit_du_module_pose, repli_materiel
 from apps.calepinage.services.simulation import construire_contexte
 from apps.calepinage.services.suivi_module_pose import (
     PHRASE_SUIVI, _lister_calepinages_au_module_divergent, _module_a_suivre,
@@ -621,6 +623,132 @@ class ModuleASuivre(SimpleTestCase):
             (4, _document_pose((715, 12)), None),
         ]
         self.assertEqual(_lister_calepinages_au_module_divergent(lignes), [1])
+
+
+class ModulePoseAvantConception(SimpleTestCase):
+    """R7-N2 (module posé) — la règle PURE de ``repli_materiel`` (sans désignation
+    explicite) : le module POSÉ sur le toit passe avant celui de la conception ;
+    rien de posé ⇒ la conception, comme avant. ``company`` absent : aucune lecture."""
+
+    @staticmethod
+    def _repli(document, conception, role='module'):
+        return repli_materiel(role, {role: conception} if conception is not None else {},
+                              SimpleNamespace(roof_layout=document))
+
+    def test_pose_715_conception_710_le_pose_gagne(self):
+        self.assertEqual(self._repli(_document_pose((715, 35)), 710), (715, PROVENANCE_POSE))
+
+    def test_rien_de_pose_la_conception_comme_avant(self):
+        for document in (_document_pose((715, 0)), dict(LAYOUT), None, _document_pose((None, 12))):
+            self.assertEqual(self._repli(document, 710), (710, 'devis'))
+        self.assertEqual(self._repli(dict(LAYOUT), None), (None, 'devis'))
+
+    def test_pose_egal_conception_identique(self):
+        self.assertEqual(self._repli(_document_pose((710, 12)), 710), (710, 'devis'))
+        # Identifiant texte dans le document : la valeur de la conception est rendue telle quelle.
+        self.assertEqual(self._repli(_document_pose(('710', 12)), 710), (710, 'devis'))
+
+    def test_toit_mixte_le_module_dominant_egalite_a_la_conception(self):
+        self.assertEqual(self._repli(_document_pose((710, 4), (715, 8)), 710), (715, PROVENANCE_POSE))
+        self.assertEqual(self._repli(_document_pose((715, 6), (710, 6)), 710), (710, 'devis'))
+        # Égalité sans le module de la conception : le premier pan du document.
+        self.assertEqual(self._repli(_document_pose((716, 6), (715, 6)), 710), (716, PROVENANCE_POSE))
+
+    def test_pans_existants_ecartes_regle_d_avant_sans_conception(self):
+        self.assertEqual(self._repli(_document_pose((999, 20, True), (715, 12)), 710),
+                         (715, PROVENANCE_POSE))
+        self.assertEqual(self._repli(_document_pose((999, 20, True)), 710), (710, 'devis'))
+        self.assertEqual(self._repli(_document_pose((999, 20, True)), None), (999, PROVENANCE_POSE))
+
+    def test_l_onduleur_reste_celui_de_la_conception(self):
+        self.assertEqual(self._repli(_document_pose((715, 12)), 42, role='onduleur'), (42, 'devis'))
+
+    def test_module_pose_hors_catalogue_la_conception_garde_la_main(self):
+        calepinage = SimpleNamespace(roof_layout=_document_pose((715, 12)))
+        with mock.patch('apps.stock.selectors.get_produit_scoped', return_value=None) as lecture:
+            self.assertEqual(repli_materiel('module', {'module': 710}, calepinage, company=object()),
+                             (710, 'devis'))
+        lecture.assert_called_once()
+        self.assertEqual(lecture.call_args.args[1], 715)
+        with mock.patch('apps.stock.selectors.get_produit_scoped', side_effect=ValueError):
+            self.assertEqual(repli_materiel('module', {'module': 710}, calepinage, company=object()),
+                             (710, 'devis'))
+        with mock.patch('apps.stock.selectors.get_produit_scoped', return_value=object()):
+            self.assertEqual(repli_materiel('module', {'module': 710}, calepinage, company=object()),
+                             (715, PROVENANCE_POSE))
+
+
+class CalculSurLeModulePose(BaseMateriel):
+    """R7-N2 (module posé) — base de données (CI) : calepinage 24 du 26/11, 715 W posés,
+    conception à 710 W. Le calcul électrique, son schéma et la planche disent 715 ;
+    une désignation explicite garde la main ; rien de posé ⇒ la conception."""
+
+    def setUp(self):
+        super().setUp()
+        self.module_715 = self._produit(
+            nom='Module 715', type_fiche='module', vmp_v=41.6,
+            voc_v=49.5, isc_a=18.65, imp_a=17.19, pmax_wc=715.0)
+
+    def _pose(self, document, entree=None):
+        self._conception()  # module 710 de la conception du lead
+        calepinage = self._calepinage(entree=entree)
+        calepinage.roof_layout = document
+        calepinage.save(update_fields=['roof_layout'])
+        return calepinage
+
+    def test_pose_715_le_calcul_et_le_schema_disent_715(self):
+        from apps.calepinage.selectors import schema_electrique_du_calepinage
+        from core.electrique.schema_electrique import rendre_schema_electrique_svg
+
+        calepinage = self._pose(_document_pose((self.module_715.pk, 12)))
+        conception, materiel, _d, _doc = conception_du_calepinage(calepinage)
+        self.assertEqual((materiel['produits']['module'], materiel['provenances']['module']),
+                         (self.module_715.pk, PROVENANCE_POSE))
+        self.assertEqual(materiel['provenances']['onduleur'], 'moteur')
+        self.assertEqual(materiel['module'].get('pmax_wc'), 715.0)
+        self.assertEqual(conception.entree.module.pmax_wc, 715.0)
+        self.assertFalse(materiel.get('fiches_modules'))  # mono-module : aucun pan d'un autre produit
+        doc = schema_electrique_du_calepinage(calepinage)
+        self.assertIsNotNone(doc)
+        self.assertEqual(doc['panneaux']['module']['puissance_wc'], 715.0)
+        svg = rendre_schema_electrique_svg(doc)
+        self.assertRegex(svg, r'715(,0)? Wc')  # « n × P Wc » par chaîne (ou « N panneaux · P Wc »)
+        self.assertNotRegex(svg, r'710(,0)? Wc')
+        reponse = self.api.get(url_entree(calepinage.pk))
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['materiel']['module']['produit_id'], self.module_715.pk)
+        self.assertEqual(reponse.data['materiel']['module']['provenance'], PROVENANCE_POSE)
+        # Lu, jamais écrit.
+        calepinage.refresh_from_db()
+        self.assertNotIn('module_produit', calepinage.resultat[CLE_ENTREE])
+
+    def test_designation_explicite_gagne(self):
+        calepinage = self._pose(_document_pose((self.module_715.pk, 12)),
+                                entree={'module_produit': self.module_explicite.pk})
+        _c, materiel, _d, _doc = conception_du_calepinage(calepinage)
+        self.assertEqual((materiel['produits']['module'], materiel['provenances']['module']),
+                         (self.module_explicite.pk, PROVENANCE_EXPLICITE))
+
+    def test_rien_de_pose_la_conception_comme_avant(self):
+        calepinage = self._pose(dict(LAYOUT))  # aucun ``geometry.moduleId`` : rien de posé
+        conception, materiel, _d, _doc = conception_du_calepinage(calepinage)
+        self.assertEqual((materiel['produits']['module'], materiel['provenances']['module']),
+                         (self.module_devis.pk, 'moteur'))
+        self.assertEqual(conception.entree.module.pmax_wc, 710.0)
+
+    def test_pose_egal_conception_resultat_identique(self):
+        calepinage = self._pose(_document_pose((self.module_devis.pk, 12)))
+        _c, materiel, _d, _doc = conception_du_calepinage(calepinage)
+        self.assertEqual(materiel['provenances'], {'module': 'moteur', 'onduleur': 'moteur', 'optimiseur': None})
+        self.assertEqual(materiel['produits']['module'], self.module_devis.pk)
+
+    def test_module_pose_d_une_autre_societe_la_conception_garde_la_main(self):
+        etranger = Produit.objects.create(company=self.autre, nom='Module 715 autre', sku='R7N2-AUTRE',
+                                          prix_achat=Decimal('1'), prix_vente=Decimal('2'), quantite_stock=1)
+        calepinage = self._pose(_document_pose((etranger.pk, 12)))
+        _c, materiel, _d, _doc = conception_du_calepinage(calepinage)
+        self.assertEqual((materiel['produits']['module'], materiel['provenances']['module']),
+                         (self.module_devis.pk, 'moteur'))
 
 
 class EntreeSuitLeModulePose(BaseMateriel):

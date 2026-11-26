@@ -1059,10 +1059,10 @@ def resoudre_materiel(company, entree, *, calepinage=None):
     """Les blocs de fiche technique du matériel RETENU, bornés société.
 
     D-ACAL-10 / ACAL56 / ACAL2013 — par rôle : la désignation EXPLICITE de
-    l'entrée (``<rôle>_produit``) d'abord ; sinon le matériel de la CONCEPTION
-    courante (provenance ``'moteur'``, ``equipements.materiel_de_la_conception`` :
-    le devis lié n'est plus lu) ; sinon le module POSÉ ; sinon le rôle est ABSENT
-    et le message nomme le geste. L'optimiseur n'est jamais réclamé.
+    l'entrée (``<rôle>_produit``) d'abord ; R7-N2 : pour le module, le module POSÉ
+    sur le toit ensuite (``modules_pans.repli_materiel``) ; sinon le matériel de la
+    CONCEPTION (provenance ``'moteur'``, ``equipements.materiel_de_la_conception``) ;
+    sinon le rôle est ABSENT et le message nomme le geste. L'optimiseur n'est jamais réclamé.
 
     Lecture cross-app par SÉLECTEUR (``apps.stock.selectors``) uniquement :
     ``get_produit_scoped`` (donc jamais un produit d'une autre société) puis
@@ -1074,7 +1074,7 @@ def resoudre_materiel(company, entree, *, calepinage=None):
     — ``absents`` nomme EN FRANÇAIS le matériel manquant ou introuvable.
     """
     from apps.stock.selectors import get_produit_scoped, specs_for_produit
-    from .modules_pans import repli_materiel  # T4-B4-007 : conception, puis module posé
+    from .modules_pans import repli_materiel  # R7-N2 : module posé, puis conception
 
     blocs = {'module': {}, 'onduleur': {}, 'optimiseur': None}
     designations, familles = {role: '' for role in ROLES_MATERIEL}, {}  # D-HYB-1 : familles du produit lu
@@ -1090,7 +1090,7 @@ def resoudre_materiel(company, entree, *, calepinage=None):
                 lu = materiel_de_la_conception(calepinage)
                 du_moteur = lu.get('produits') or {}
                 absents += lu.get('avertissements') or ()
-            identifiant, provenance = repli_materiel(role, du_moteur, calepinage)
+            identifiant, provenance = repli_materiel(role, du_moteur, calepinage, company=company)
             provenance = PROVENANCE_MOTEUR if provenance == PROVENANCE_DEVIS else provenance
         if identifiant in (None, ''):
             if role != 'optimiseur':
