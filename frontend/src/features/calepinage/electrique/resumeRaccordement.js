@@ -63,6 +63,22 @@ export function longueurCableDc(resultat) {
   return dc.reduce((somme, t) => somme + t.longueur_m, 0)
 }
 
+/** Liaison DC tracée (suite ACAL1317) — la ligne de provenance sous « Câble côté panneaux » : quelle longueur la
+    simulation et la chute de tension COMPTENT (`longueurs.source_dc` et `longueurs.dc.valeur_m` de `GET resultat/`,
+    contrat `calepinage_resultat.json` › `liaison_dc_tracee`). `null` quand le serveur ne le dit pas. */
+export function provenanceLiaisonDc(resultat) {
+  const source = resultat?.longueurs?.source_dc
+  const metres = resultat?.longueurs?.dc?.valeur_m
+  if (source === 'defaut') return 'La simulation ne compte aucune longueur de câble côté panneaux'
+  if (!estNombre(metres)) return null
+  if (source === 'saisie') return `La simulation compte les longueurs saisies : ${nb(metres)} m`
+  if (source !== 'trace') return null
+  const pastille = longueurCableDc(resultat)
+  return pastille !== null && Math.abs(pastille - metres) < 0.01
+    ? 'Longueur du tracé, comptée par la simulation'
+    : `La simulation compte la liaison tracée la plus longue : ${nb(metres)} m`
+}
+
 /** Les trois cases de la pastille de carte (« Chaînes | Onduleur | Câble côté panneaux ») : seules les
     cases servies, `[{libelle, valeur}]`. */
 export function casesPastille(resultat) {

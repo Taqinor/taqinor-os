@@ -61,6 +61,7 @@ import {
   statutAbstention, statutRefuse, tonStatut,
 } from './VerdictElectrique.helpers'
 import LIBELLES_CODES from './libellesCodesVerdict.json'
+import { provenanceLiaisonDc } from './resumeRaccordement'
 
 /** Un motif, dans la forme EXACTE de `_motif_publication` — quatre clés. */
 const motif = (code, statut, libelle, source = '') => ({
@@ -1230,5 +1231,32 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(await screen.findByTestId('cal234-ecran')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Raccordement' }))
     expect(await screen.findByTestId('cal-elec-onduleur')).toBeTruthy()
+  })
+})
+
+/* Liaison DC tracée (suite ACAL1317) — la provenance de la longueur que la simulation compte, lue sur le fragment
+   COMMITTÉ du contrat (`calepinage_resultat.json` › `liaison_dc_tracee`), jamais sur une charge inventée. */
+describe('provenanceLiaisonDc — quelle longueur la simulation compte', () => {
+  const servi = () => structuredClone(exempleContrat('calepinage', 'calepinage_resultat', 'liaison_dc_tracee'))
+
+  it('tracé servi, égal à la pastille : la longueur du tracé est celle de la simulation', () => {
+    expect(provenanceLiaisonDc(servi())).toBe('Longueur du tracé, comptée par la simulation')
+  })
+
+  it('plusieurs pans : la liaison tracée la plus longue est nommée avec sa longueur', () => {
+    const r = servi()
+    r.troncons.troncons.push({ ...r.troncons.troncons[0], id: 'chB', de: 'PAN-B', longueur_m: 10 })
+    expect(provenanceLiaisonDc(r)).toBe('La simulation compte la liaison tracée la plus longue : 32 m')
+  })
+
+  it('longueurs saisies, aucune longueur, ou rien de servi', () => {
+    const saisie = servi()
+    saisie.longueurs.source_dc = 'saisie'
+    expect(provenanceLiaisonDc(saisie)).toBe('La simulation compte les longueurs saisies : 32 m')
+    const defaut = servi()
+    defaut.longueurs = { dc: null, ac: null, source_dc: 'defaut' }
+    expect(provenanceLiaisonDc(defaut)).toBe('La simulation ne compte aucune longueur de câble côté panneaux')
+    expect(provenanceLiaisonDc({ troncons: servi().troncons })).toBeNull()
+    expect(provenanceLiaisonDc(null)).toBeNull()
   })
 })
