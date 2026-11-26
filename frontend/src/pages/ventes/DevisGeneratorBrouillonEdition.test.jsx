@@ -73,6 +73,23 @@ describe('QJR581 — brouillon local en Édition complète', () => {
     expect(quitterBloque()).toBe(false)
   }, 15000)
 
+  // R5A-N5 — CE QUE CE TEST PROUVE, ET CE QU'IL NE PROUVE PAS. Il prouve : lead relu tard (5 s), aucun geste ⇒ rien d'armé ;
+  // puis une saisie (son propre geste) ⇒ armé. Il ne prouve PAS le suivi des gestes contre une écriture tardive : la relecture
+  // du lead RÉ-ARME elle-même la fenêtre de 1,5 s (`useChargeurEdition` › `captureReferenceJusqua`), et aucune écriture de
+  // l'écran n'arrive ici après cette fenêtre — ce test passe aussi sur le code d'avant R5A-N5 (constaté au commit e92689de2).
+  // L'écriture tardive vue sur la vraie pile n'est pas reproduite dans jsdom : la preuve reste un rejeu en direct.
+  it('R5A-N5 — lead relu tard (5 s, la relecture ré-arme la fenêtre), sans geste : rien d’armé ; une saisie après son geste : armé', async () => {
+    crmApi.getLead.mockImplementation(() => new Promise(r => setTimeout(() => r({ data: LEAD }), 5000)))
+    renderEdition()
+    await screen.findByRole('button', { name: /Enregistrer les modifications/ })
+    await new Promise(r => setTimeout(r, 6500))
+    expect(quitterBloque()).toBe(false)
+    expect(window.localStorage.getItem(CLE)).toBeNull()
+    // Course : la saisie suit son propre geste, même dans la première seconde — elle se voit.
+    fireEvent.change(screen.getByPlaceholderText(/Conditions particulières/), { target: { value: 'Acompte 30 %' } })
+    await waitFor(() => expect(quitterBloque()).toBe(true))
+  }, 20000)
+
   it('brouillon local à updated_at ancien : aucun bandeau « Reprendre », brouillon purgé', async () => {
     window.localStorage.setItem(CLE, JSON.stringify({
       savedAt: '2026-09-29T08:00:00Z', version: '2026-09-29T07:00:00Z', data: { note: 'vieux' },

@@ -21,6 +21,7 @@ vi.mock('../../api/ventesApi', () => ({
 
 import ventesApi from '../../api/ventesApi'
 import { createAutoQuote } from './autoQuote'
+import { exempleContrat } from '../../test/fixtures/contractSamples'
 
 beforeEach(() => { vi.clearAllMocks() })
 
@@ -78,5 +79,37 @@ describe('AGNR34 — devis auto résidentiel : deux factures, aucune série fabr
     })
     const corps = ventesApi.creerDevisAuto.mock.calls[0][0]
     expect(corps).toEqual({ lead: 5, remise_globale: '0', etude_params: { distributeur: 'onee' } })
+  })
+})
+
+describe('T4-X1-004 — la taille réelle est dite quand elle diffère de la cible tapée', () => {
+  it('3 kWc tapés, devis servi à 3,55 kWc : une alerte nomme les deux tailles et pourquoi', async () => {
+    // La réponse servie (contrat committé), à 3,55 kWc et avec l'alerte « Taille imposée » que le serveur pose.
+    ventesApi.creerDevisAuto.mockResolvedValueOnce({ data: { ...exempleContrat('ventes', 'assistant_devis_cree'), kwc: 3.55, alertes: [{ code: 'taille_demandee', message: 'Taille imposée pour ce devis : 3 kWc' }] } })
+    const onAlertes = vi.fn()
+    await createAutoQuote({ lead: { id: 4, type_installation: 'residentiel' }, produits: [], discountStr: '0', targetKwc: '3', onAlertes })
+    const alertes = onAlertes.mock.calls[0][0]
+    expect(alertes).toHaveLength(2)
+    expect(alertes[1].message).toMatch(/3 kWc.*3,55 kWc.*panneaux est entier/)
+  })
+
+  it('deux options servies à 3,55 kWc : chacune nommée ; taille servie égale à la cible : aucune alerte en plus', async () => {
+    const { alerteTailleArrondie } = await import('./autoQuote')
+    const deux = alerteTailleArrondie(3, { options: [{ variante: 'sans', libelle: 'Sans batterie', kwc: 3.55 }, { variante: 'avec', libelle: 'Avec batterie', kwc: 3.55 }] })
+    expect(deux.message).toContain('Sans batterie : 3,55 kWc')
+    expect(deux.message).toContain('Avec batterie : 3,55 kWc')
+    expect(alerteTailleArrondie(3.55, { kwc: 3.55 })).toBeNull()
+    expect(alerteTailleArrondie(3, { })).toBeNull()
+    expect(alerteTailleArrondie(0, { kwc: 3.55 })).toBeNull()
+  })
+
+  it('« jamais en dessous de la demande » n’est dit que si chaque taille servie est ≥ la cible', async () => {
+    const { alerteTailleArrondie } = await import('./autoQuote')
+    expect(alerteTailleArrondie(3, { kwc: 3.55 }).message).toContain('(jamais en dessous de la demande)')
+    const dessous = alerteTailleArrondie(3, { kwc: 2.84 })
+    expect(dessous.message).toContain('le devis est à 2,84 kWc')
+    expect(dessous.message).not.toMatch(/jamais en dessous/)
+    const mixte = alerteTailleArrondie(3, { options: [{ variante: 'sans', libelle: 'Sans batterie', kwc: 2.84 }, { variante: 'avec', libelle: 'Avec batterie', kwc: 3.55 }] })
+    expect(mixte.message).not.toMatch(/jamais en dessous/)
   })
 })

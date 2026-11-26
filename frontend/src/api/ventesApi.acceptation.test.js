@@ -42,3 +42,22 @@ describe('envoyerEmailFacture', () => {
     expect(api.post).toHaveBeenLastCalledWith('/ventes/factures/7/envoyer-email/', {})
   })
 })
+
+// R5A-N1 / T4-X4-009 / R5A-N7 — la configuration réellement passée à axios (le code est EXÉCUTÉ, axios simulé).
+describe('budgets et toasts des appels de révision, d’aperçu WhatsApp et d’émission', () => {
+  it('R5A-N1 : reviserDevis a son propre délai (≥ 60 s : la révision recompose les lignes, le défaut de 20 s la coupait)', async () => {
+    await ventesApi.reviserDevis(12, { motif: 'x' })
+    const [url, corps, config] = api.post.mock.lastCall
+    expect(url).toBe('/ventes/devis/12/reviser/')
+    expect(corps).toEqual({ motif: 'x' })
+    expect(config.timeout).toBeGreaterThanOrEqual(60000)
+  })
+  it('T4-X4-009 : whatsappPreviewDevis ne lève pas le toast générique (son appelant dit lui-même le refus)', async () => {
+    await ventesApi.whatsappPreviewDevis(12, { canal: 'wa' })
+    expect(api.post).toHaveBeenLastCalledWith('/ventes/devis/12/whatsapp-preview/', { canal: 'wa' }, { suppressErrorToast: true })
+  })
+  it('R5A-N7 : emettreFacture transmet la configuration de son appelant à axios', async () => {
+    await ventesApi.emettreFacture(5, { suppressErrorToast: true })
+    expect(api.post).toHaveBeenLastCalledWith('/ventes/factures/5/emettre/', undefined, { suppressErrorToast: true })
+  })
+})

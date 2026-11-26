@@ -325,3 +325,33 @@ describe('QJR577 — dry-run résidentiel en échec : erreur + Réessayer, ligne
     await waitFor(() => expect(screen.queryByTestId('composition-erreur')).toBeNull())
   })
 })
+
+// T4-X6-016 (revue du rejeu) — LE MÊME prédicat pour le clic et pour le message : le hook RÉEL (`useCompositionEcran`), son
+// `setErrors` observé. Avant : le message « n'a pas pu chiffrer » tombait dès qu'UNE recommandation (même avec batterie seule)
+// arrivait, et un clic arrivé avant les données disparaissait sans rien dire.
+describe('T4-X6-016 — « Recalculer » : le message suit ce que le clic retiendrait maintenant', () => {
+  it('clic pendant le calcul → « en cours » ; avec batterie seule → « n’a pas pu chiffrer » reste ; taille servie → « prêt — réessayez » ; second clic → appliqué', async () => {
+    const { renderHook } = await import('@testing-library/react')
+    const { useCompositionEcran } = await import('./generator/hooks/useCompositionEcran')
+    const { SCENARIO_LES_DEUX } = await import('../../features/ventes/quote/scenarios.js')
+    let erreurs = {}
+    const setErrors = (f) => { erreurs = typeof f === 'function' ? f(erreurs) : f }
+    const dispatchSizing = vi.fn()
+    const ctx = (etudeHoraireDonnees, etudeHoraireChargement = false) => ({
+      produits: [], setErrors, dispatchSizing, panelW: '710', scenario: SCENARIO_LES_DEUX, modeInstallation: 'residentiel',
+      recalcDimTick: 0, etudeHoraireDonnees, etudeHoraireChargement, marcheCi: false, apercuCi: {},
+      avecQuantitesFigees: (f) => f(), sizing: { nbPanneaux: '6', touche: {} }, lines: [],
+    })
+    const { result, rerender } = renderHook((props) => useCompositionEcran(props), { initialProps: ctx(null, true) })
+    act(() => result.current.recalculerDimensionnement())
+    expect(erreurs.recalcDim).toBe('Dimensionnement en cours de calcul — réessayez dans un instant.')
+    expect(dispatchSizing).not.toHaveBeenCalled()
+    await act(async () => { rerender(ctx({ dimensionnement: { recommandation: { panneaux: 0 }, recommandation_avec: { panneaux: 8 } } })) })
+    expect(erreurs.recalcDim).toMatch(/n'a pas pu chiffrer de recommandation/)
+    await act(async () => { rerender(ctx({ dimensionnement: { recommandation: { panneaux: 6, kwc: 4.26 } } })) })
+    expect(erreurs.recalcDim).toBe('Dimensionnement prêt — réessayez pour l’appliquer.')
+    act(() => result.current.recalculerDimensionnement())
+    expect(erreurs.recalcDim).toBeNull()
+    expect(dispatchSizing).toHaveBeenCalledWith({ type: 'RECALCUL_DEMANDE', retenu: { nbPanneaux: 6, kwcOptimal: 4.26 } })
+  })
+})

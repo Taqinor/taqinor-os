@@ -42,14 +42,17 @@ export default function DevisPdfDialog({
     && !(pdfTarget.a_plan_toiture ?? !!pdfTarget.roof_layout)
   const [profil, setProfil] = useState(null)
   useEffect(() => {
-    if (!ouvert || !devisFinal) return undefined
+    if (!ouvert) return undefined // T4-U1-009 / T4-X7-020 : lu dès l'ouverture, pour que l'intitulé ne promette pas un RIB absent
     let vivant = true
     Promise.resolve(parametresApi.getProfile())
       .then((r) => { if (vivant) setProfil(r?.data ?? null) })
       .catch(() => {})
     return () => { vivant = false }
-  }, [ouvert, devisFinal])
-  const ribManquant = devisFinal && !targetIsCi && !targetIsAgricole && ribSocieteManquant(profil)
+  }, [ouvert])
+  const ribAbsent = !targetIsCi && !targetIsAgricole && ribSocieteManquant(profil)
+  const ribManquant = devisFinal && ribAbsent
+  // T4-U1-009 / T4-X7-020 — l'intitulé ne promet « + RIB » que si le profil de la société en a un.
+  const plusRib = ribAbsent ? '' : ' + RIB'
   return (
     <ResponsiveDialog
       open={ouvert}
@@ -197,15 +200,15 @@ export default function DevisPdfDialog({
 
           <label className="flex items-start gap-2 text-sm">
             <Checkbox checked={devisFinal} onCheckedChange={v => setDevisFinal(!!v)} className="mt-0.5" />
-            <span>Devis Final <span className="text-muted-foreground">{batchPdf ? '(ajoute modalités de paiement + RIB)'
+            <span>Devis Final <span className="text-muted-foreground">{batchPdf ? `(ajoute modalités de paiement${plusRib})`
               : targetIsCi ? '(visite faite — retire la mention « Devis préliminaire »)'
                 : targetIsAgricole ? '(visite faite — retire « à confirmer par la visite »)'
-                  : '(ajoute modalités de paiement + RIB)'}</span></span>
+                  : `(ajoute modalités de paiement${plusRib})`}</span></span>
           </label>
 
           {ribManquant && (
             <p role="status" className="text-xs text-warning" data-testid="pdf-rib-manquant">
-              Le RIB de la société n’est pas renseigné : le devis final sortira sans RIB —{' '}
+              RIB non renseigné dans le profil de la société : le devis final sortira sans RIB —{' '}
               <a href="/parametres" className="underline">Paramètres → Société</a>
             </p>
           )}

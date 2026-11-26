@@ -4,9 +4,10 @@
 // brouillon périmé / proposable, `marquerEnregistre`, `handleRestoreDraft`.
 // Corps verbatim ; `ctx` porte, nom par nom, ce que le corps lit du
 // composant. Appelé à la MÊME position (ordre des hooks inchangé).
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from '../../../../ui/confirm'
 import { useDirtyGuard } from '../../../../ui/useDirtyGuard'
+import { suivreGestes } from '../../../../ui/suivreGestes'
 import { useDraftAutosave } from '../../../../ui/useDraftAutosave'
 import { DEFAULT_MONTHLY_BILLS } from '../../../../features/ventes/solar'
 import { withKeys } from '../../../../features/ventes/quote/ligneFabrique.js'
@@ -120,12 +121,24 @@ export function useBrouillonEcran(ctx) {
   // même après un enregistrement réussi.
   const snapshotJson = useMemo(() => JSON.stringify(draftSnapshot), [draftSnapshot])
   const [referenceEcran, setReferenceEcran] = useState(null)
+  // R5A-N5 — en ÉDITION, « modifié » ne compte qu'à partir d'un vrai geste de l'utilisateur : jusque-là la référence suit
+  // l'écran (le mappeur `?edit=`, les réglages société et les relectures qui se posent APRÈS la fenêtre de 1,5 s ne
+  // sont pas ses retouches). Au premier geste (capture, avant qu'il n'agisse) la référence est figée à l'écran d'avant lui.
+  const gestesRef = useRef(null)
+  const snapshotRef = useRef(snapshotJson)
+  snapshotRef.current = snapshotJson // eslint-disable-line react-hooks/refs -- dernier écran rendu, lu au geste (D-ENF22)
   useEffect(() => {
-    if (Date.now() < captureReferenceJusqua.current) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- captureReferenceJusqua : useRef de la coquille reçu du ctx (même effet qu'avant SPL54) (D-ENF22)
+    if (!editId) return undefined
+    const suivi = suivreGestes(document, () => setReferenceEcran(snapshotRef.current))
+    gestesRef.current = suivi
+    return () => { suivi.arreter(); gestesRef.current = null }
+  }, [editId])
+  useEffect(() => {
+    const sansGeste = Boolean(editId) && gestesRef.current != null && !gestesRef.current.aGeste()
+    if (sansGeste || Date.now() < captureReferenceJusqua.current) {
       setReferenceEcran(snapshotJson)
     }
-  }, [snapshotJson]) // eslint-disable-line react-hooks/exhaustive-deps -- captureReferenceJusqua est un ref (stable) (D-ENF22)
+  }, [snapshotJson, editId]) // eslint-disable-line react-hooks/exhaustive-deps -- captureReferenceJusqua est un ref (stable) (D-ENF22)
   const dirty = referenceEcran != null
     ? snapshotJson !== referenceEcran
     : (editId ? false : formulaireNonVierge)

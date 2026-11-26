@@ -76,6 +76,12 @@ describe('FactureRow — AFAC10 : actions d’encaissement pilotées par le serv
     expect(await screen.findByRole('menuitem', { name: /Remettre en brouillon/ })).toBeInTheDocument()
   })
 
+  it('R5A-N7 — les mentions manquantes sont ÉPELÉES sous le badge, pas seulement comptées', () => {
+    rendre({ ...CONTRAT.exemple, mentions_manquantes: ['ICE du client', 'Date de livraison'] })
+    expect(screen.getByText('2 mention(s) manquante(s)')).toBeInTheDocument()
+    expect(screen.getByTestId('mentions-manquantes-liste')).toHaveTextContent('ICE du client · Date de livraison')
+  })
+
   it('ADRG3 — l’échéance d’une émise n’est un bouton qu’avec `encaisser`', () => {
     const { unmount } = rendre(CONTRAT.exemple)
     expect(screen.getByRole('button', { name: /Modifier l’échéance/ })).toBeInTheDocument()

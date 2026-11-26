@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Icone, Segmente } from '../atelier/coque/primitives'
 import { gestes, useConstructeur } from '../atelier/coque/etapes/panneaux/constructeur'
 import { jourMois } from '../atelier/coque/etapes/panneaux/formats'
-import { AttenteScene, AvisEchec3D, PastilleAttente, PiedClient, PlanDessus, PuceProjet, TuilesClient, IconeTourner } from './partiesClient'
+import { AttenteScene, AvisEchec3D, AvisMoteurEchec, PastilleAttente, PiedClient, PlanDessus, PuceProjet, TuilesClient, IconeTourner } from './partiesClient'
 import { instantSoleilChoisi, useBureau } from './vueClient.helpers'
 import { useHorsVueClientInerte } from './inerteHorsClient'
 
@@ -195,6 +195,7 @@ export default function HabillageClient({
       )}
       <div className="cal-client-corps" data-testid="cal-vue-client" data-vue-client="">
         <LecteurSoleil bureau={bureau} />
+        {donnees.moteurEchec && <AvisMoteurEchec />}
         <TuilesClient tuiles={tuiles} ville={donnees.ville} bureau={bureau} />
       </div>
       <PiedClient id={calepinageId} />

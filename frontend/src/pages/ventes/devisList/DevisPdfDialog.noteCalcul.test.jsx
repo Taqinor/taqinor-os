@@ -168,7 +168,18 @@ describe('AMOT68 — note de calcul FDA demandable', () => {
     profilServi.courant = { nom: 'TAQINOR Démo', ice: '001', rib: '', banque: '' }
     dialogue({ targetIsAgricole: false, targetMode: 'residentiel', devisFinal: true })
     expect(await screen.findByTestId('pdf-rib-manquant')).toHaveTextContent(
-      'Le RIB de la société n’est pas renseigné : le devis final sortira sans RIB — Paramètres → Société')
+      'RIB non renseigné dans le profil de la société : le devis final sortira sans RIB — Paramètres → Société')
+  })
+
+  // T4-X7-020 — l'intitulé de la case ne promet pas un RIB que le profil n'a pas, même avant de cocher.
+  it('T4-X7-020 — profil sans RIB : l’intitulé ne dit plus « + RIB » ; avec un RIB il le dit', async () => {
+    profilServi.courant = { nom: 'TAQINOR Démo', ice: '001', rib: '', banque: '' }
+    const r = dialogue({ targetIsAgricole: false, targetMode: 'residentiel' })
+    expect(await screen.findByText('(ajoute modalités de paiement)')).toBeInTheDocument()
+    r.unmount()
+    profilServi.courant = { nom: 'TAQINOR Démo', ice: '001', rib: '007 780 0001234567890123 45', banque: 'Banque X' }
+    dialogue({ targetIsAgricole: false, targetMode: 'residentiel' })
+    expect(await screen.findByText('(ajoute modalités de paiement + RIB)')).toBeInTheDocument()
   })
 
   it('T4-U1-009 — RIB renseigné, ou devis final non coché : aucun avertissement', async () => {
