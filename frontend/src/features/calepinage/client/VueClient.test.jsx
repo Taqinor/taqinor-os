@@ -86,7 +86,7 @@ describe('Montrer au client — repli 2D, avec les seules données servies', () 
     rendre()
     const plan = await screen.findByTestId('client-plan')
     expect(plan.querySelectorAll('.cal-client-pan')).toHaveLength(1)
-    expect(plan.querySelectorAll('.cal-client-module')).toHaveLength(2)
+    await waitFor(() => expect(plan.querySelectorAll('.cal-client-module')).toHaveLength(2)) // ACAL1353 : le moteur se charge à part
     expect(await screen.findByTestId('client-projet')).toHaveTextContent('Villa Bennani')
     // J1 — l'orientation lue sur la face SERVIE du pan (azimut 180°), jamais son libellé.
     expect(screen.getByTestId('client-projet')).toHaveTextContent('Casablanca · pan sud')
@@ -422,12 +422,20 @@ describe('J1 — tuiles tenues hors de l’atelier, orientation certaine', () =>
 /* ACAL2023 (D-ACAL-97 : un seul moteur ; T4-X2-007) — « Montrer au client » montre la conception COURANTE du lead : sa production et sa
    part « de votre consommation » sont celles du bloc `chiffrage` servi (les mêmes que l'atelier), pertes par défaut dites ; aucune
    estimation propre à la vue, ni lue sur l'atelier, ni calculée ; conception en cours : « calcul en cours », sans chiffre. */
+/* ACAL1353 — le moteur du toit n'est plus importé statiquement : ces tests le chargent comme le fait la vue (UN import
+   dynamique) et le passent aux fonctions pures ; leurs assertions sont inchangées. */
+async function tuilesAvecMoteur() {
+  const { tuilesClient, chargerMoteur } = await import('./vueClient.helpers')
+  const moteur = await chargerMoteur()
+  return { tuilesClient: (d, r, c = null) => tuilesClient(d, r, c, moteur) }
+}
+
 describe('ACAL2023 — la vue client lit la conception courante servie', () => {
   const INCOMPLET = { ...RESULTAT, production: { total: { p50_kwh: 52695.1, complete: false } }, autoconsommation: { taux_couverture: 0.35 } }
   const sans = (cle) => Object.fromEntries(Object.entries(CHIFFRAGE).filter(([k]) => k !== cle))
 
   it('tuilesClient : production et part de la conception servie, JAMAIS celles du résultat publié (35 % ≠ 82 %) ni une estimation', async () => {
-    const { tuilesClient } = await import('./vueClient.helpers')
+    const { tuilesClient } = await tuilesAvecMoteur()
     const document = { zones: [ZONE] }
     const tuiles = tuilesClient(document, RESULTAT, CHIFFRAGE)
     expect(tuiles.map((t) => t.cle)).toEqual(['panneaux', 'kwh', 'couverture'])
@@ -452,7 +460,7 @@ describe('ACAL2023 — la vue client lit la conception courante servie', () => {
   })
 
   it('T4-X7-002 — écart réel trouvé par la simulation (`autre_installation`, batterie) : aucune part « de votre consommation »', async () => {
-    const { tuilesClient } = await import('./vueClient.helpers')
+    const { tuilesClient } = await tuilesAvecMoteur()
     const document = { zones: [ZONE] }
     const autrePose = { ...RESULTAT, autoconsommation: { taux_couverture: 0.474, taux_source: 'autre_installation' } }
     const tuiles = tuilesClient(document, autrePose, CHIFFRAGE)
@@ -464,7 +472,7 @@ describe('ACAL2023 — la vue client lit la conception courante servie', () => {
   })
 
   it('T4-X7-002 — aucun taux de conception à la simulation (`pose`), ou résultat rangé sans clé : la part servie reste dite', async () => {
-    const { tuilesClient } = await import('./vueClient.helpers')
+    const { tuilesClient } = await tuilesAvecMoteur()
     const document = { zones: [ZONE] }
     // ce que le serveur sert quand la conception n'était pas complète au moment de la simulation : le bilan propre, `pose`
     const sansTaux = { ...RESULTAT, autoconsommation: { taux_couverture: 0.35, taux_source: 'pose' } }
@@ -474,7 +482,7 @@ describe('ACAL2023 — la vue client lit la conception courante servie', () => {
   })
 
   it('B1 — conception d’une AUTRE taille que la pose : aucun nombre de production ni de couverture, une phrase vraie ; même taille : les nombres', async () => {
-    const { tuilesClient } = await import('./vueClient.helpers')
+    const { tuilesClient } = await tuilesAvecMoteur()
     const document = { zones: [ZONE] } // 2 panneaux posés, pose de 1,1 kWc
     const autre = { ...CHIFFRAGE, kwc: { ...CHIFFRAGE.kwc, valeur: 21.6 } } // conception de 48 panneaux
     const tuiles = tuilesClient(document, RESULTAT, autre)
@@ -662,5 +670,44 @@ describe('ACAL1838 — le grand écran sur sa maquette v2', () => {
     act(() => prete())
     expect(await screen.findByTestId('client-aide-geste')).toHaveTextContent(/^Glissez pour tourner autour$/)
     expect(await screen.findByTestId('client-retour-atelier')).toBeInTheDocument()
+  })
+})
+
+describe('ACAL1353 — la vue client n’importe plus le moteur du toit statiquement', () => {
+  it('garde de source : aucun import statique de @roofpro dans le dossier client (le moteur passe par `import()` dans chargerMoteur)', async () => {
+    const { readFileSync, readdirSync } = await import('node:fs')
+    const dossier = `${globalThis.process.cwd()}/src/features/calepinage/client`
+    const fichiers = readdirSync(dossier).filter((f) => /\.(js|jsx)$/.test(f) && !/\.test\./.test(f))
+    expect(fichiers).toContain('vueClient.helpers.js')
+    fichiers.forEach((f) => {
+      const statiques = readFileSync(`${dossier}/${f}`, 'utf8').split('\n').filter((l) => /^\s*(import|export)\b[^(]*from\s+['"]@roofpro\//.test(l))
+      expect(statiques, f).toEqual([])
+    })
+    expect(readFileSync(`${dossier}/vueClient.helpers.js`, 'utf8')).toMatch(/import\('@roofpro\/modulesGeo'\)/)
+  })
+
+  it('échec du chargement : le hook dit l’échec (plan 2D des pans seul), « Réessayer » relance et le moteur arrive', async () => {
+    const { useMoteurToit, planDessus } = await import('./vueClient.helpers')
+    const { renderHook } = await import('@testing-library/react')
+    const moteurSimule = { modulesDuDocument: () => [], memeTaille: () => true }
+    const charger = vi.fn().mockRejectedValueOnce(new Error('chunk perdu')).mockResolvedValue(moteurSimule)
+    const { result } = renderHook(() => useMoteurToit(charger))
+    await waitFor(() => expect(result.current.echec).toBe(true))
+    expect(result.current.moteur).toBeNull()
+    expect(planDessus({ zones: [ZONE] }, result.current.moteur).sansModules).toBe(true)
+    act(() => result.current.reessayer())
+    await waitFor(() => expect(result.current.moteur).toBe(moteurSimule))
+    expect(result.current.echec).toBe(false)
+    expect(charger).toHaveBeenCalledTimes(2)
+  })
+
+  it('sans moteur : le plan 2D des pans seul (aucun module deviné) et des tuiles sans production ni part', async () => {
+    const { planDessus, tuilesClient } = await import('./vueClient.helpers')
+    const document = { zones: [ZONE] }
+    const plan = planDessus(document)
+    expect(plan.pans).toHaveLength(1)
+    expect(plan.modules).toEqual([])
+    expect(plan.sansModules).toBe(true)
+    expect(tuilesClient(document, RESULTAT, CHIFFRAGE).map((t) => t.cle)).toEqual(['panneaux', 'kwc'])
   })
 })
