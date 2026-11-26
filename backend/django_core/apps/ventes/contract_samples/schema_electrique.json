@@ -1,0 +1,442 @@
+{
+  "endpoint": "GET /api/django/public/proposal/<token>/data/",
+  "forme_serveur": "partielle",
+  "pourquoi": "LOT 6 (fondateur, 26/11/2026 : le schéma unifilaire du devis est remplacé par le schéma électrique du calepinage — chaînes de panneaux en couleurs, onduleur, réseau, et la batterie quand il y en a une). UN document structuré, le « schéma électrique » (`Doc` ci-dessous), pour QUATRE surfaces : le sous-écran Schéma du calepinage (`frontend/src/features/calepinage/SchemaUnifilairePanel.jsx::SchemaEnBlocs`), la fiche devis de l'ERP (`frontend/src/features/ventes/ConceptionElectrique.jsx`), la page client (`apps/web/src/pages/proposition/[...token].astro`, section #sld) et l'annexe technique PV46 du PDF (SVG rendu côté serveur, nouveaux rendus seulement). Les trois dessins lisent CE document et rien d'autre : aucune surface ne recompose chaînes, couleurs ou organes. Ce fichier documente la clé ADDITIVE `schema_electrique` de la charge publique (ABSENTE — jamais `null` — quand la case « Schéma unifilaire » du dialogue d'envoi est décochée ou quand aucune option n'a de document). Le MÊME `Doc` est servi en 7e clé `schema_electrique` de GET calepinage/calepinages/<pk>/schema-unifilaire/ (un seul `Doc`, celui de la conception du calepinage ; `null` quand `svg` est `null`) et sous `schema_electrique` de GET ventes/devis/<pk>/schema-unifilaire/?format=json (même enveloppe `{options}` que la page, niveau « confiance »). Aucun montant, aucun prix d'achat, aucune hypothèse interne : désignations, quantités, repères, calibres et sections seulement (règle #4 — le moteur `core.electrique` ne connaît aucun prix). Conception : docs/audits/l5-calepinage/schema-electrique-devis.md ; règle de source : D-ACAL-131 (docs/audits/decisions.yml).",
+  "notes": {
+    "enveloppe_publique": "`schema_electrique = {options: {sans_batterie: Doc|null, avec_batterie: Doc|null}}` — les clés d'option sont celles de `option_totals`. Un devis à une seule option porte un `Doc` sous SA clé et `null` sous l'autre. Quand le client change d'option, la page montre le `Doc` de cette option ; une option à `null` ne montre aucun schéma (jamais celui de l'autre option sous son nom).",
+    "doc_toujours_complet": "Toutes les clés d'un `Doc` sont TOUJOURS présentes (PACT10, leçon du 03/08/2026). Une grandeur non calculée ou non publiée par une fiche vaut `null` (un objet absent vaut `null`, une liste vide `[]`) et l'écran OMET la case : jamais un chiffre deviné, jamais un zéro de remplissage.",
+    "source": "`calepinage` : les chaînes RÉELLES du calepinage lié (table d'affectation `apps/calepinage/services/chaines.py::affectation`, affectation manuelle comprise), seulement quand la conception du devis est celle du calepinage (`apps/ventes/selectors_calepinage.py::_conception_a_jour` vrai : empreintes `layout_hash` égales) ET que l'option dessinée est celle que la conception du calepinage retient. `conception_devis` : la conception électrique RANGÉE de l'option (`chaines[]` de `core.electrique.concevoir`, via `Devis.electrical_design`), dans le MÊME dessin. `lignes_devis` : aucune conception ne répartit les panneaux de cette option — le champ est dessiné SANS découpage (`chaines_reparties: false`, `chaines: []`), jamais une répartition inventée.",
+    "chaines": "Une entrée par chaîne, rangée par `numero`. `couleur_index` = rang de PREMIÈRE apparition de la chaîne modulo 8 ; `couleur` = `apps/calepinage/services/chaines.py::PALETTE_CHAINES[couleur_index]` (source UNIQUE, ACAL285 : la carte, la 3D et le plan de câblage colorent avec les MÊMES valeurs ; les quatre premières sont bleu, orange, vert, magenta). `entree` = l'entrée MPPT de l'onduleur (1, 2…), `null` si non servie ; `onduleur` = rang de l'exemplaire d'onduleur (1…N) quand la conception le rattache, sinon `null` (la conception du devis ne rattache aucune chaîne à un exemplaire).",
+    "organes": "`coffret_dc.organes` (fusibles, parafoudre_dc, sectionneur_dc) et `coffret_ac.organes` (disjoncteur_ac, parafoudre_ac, ddr) : les organes RETENUS, dans l'ordre de `core/electrique/schema.py::blocs_du_schema` ; `clef` = `Bloc.clef`, `repere` de la protection, `titre` (libellé édité appliqué côté calepinage), `calibre` = `Protection.calibre`, `quantite`. Un coffret sans organe retenu vaut `null`. `calibres_masques: true` (niveau de partage « standard », L-NIV) : tous les `calibre`, `liaisons.*.section_mm2`, `liaisons.*.longueur_m` et `batterie.tension_v` valent `null`.",
+    "onduleurs": "Un élément par groupe d'onduleurs IDENTIQUES : `designation`, `puissance_kw` (puissance AC de la fiche), `nombre` (devis : quantité de la ligne onduleur de l'option ; calepinage : `evaluer_onduleurs(conception).nombre`), `nb_entrees` (entrées MPPT de la fiche). Une valeur non publiée vaut `null`.",
+    "batterie": "`null` quand l'option dessinée n'a pas de batterie. Sinon : `designation` (marque + modèle), `unites` (devis : somme des quantités des lignes batterie de l'option ; calepinage : packs de `batterie_du_calepinage`), `capacite_kwh` = capacité NOMINALE publiée par la fiche × unités (convention de `apps/ventes/electrical_service.py::_batterie_du_devis`), `null` si la fiche ne la publie pas ; `tension_v` = tension nominale de la fiche ou `null` ; `protection` = l'organe de protection CALCULÉ pour le parc, `{repere, titre, calibre}`, ou `null` — aujourd'hui toujours `null` (décision fondateur du 19/08/2026, `core/electrique/protections.py` § 9 : aucun fusible ni sectionneur batterie posé). Jamais une valeur inventée.",
+    "cote_reseau": "`etat` = `calcule` (blocs AC servis), `a_calculer` (raccordé au réseau mais côté alternatif non dimensionné : aucune norme choisie, pas de simulation, ou pas d'étude pour cette option — blocs dessinés en creux, sans calibre) ou `hors_reseau` (site déclaré hors réseau : ni compteur ni réseau). `motif` = la phrase SERVIE qui dit pourquoi (`a_calculer`), sinon `null`.",
+    "etage_mt": "Les blocs de l'étage moyenne tension (`core/electrique/schema.py::blocs_etage_mt`) : `[{clef, titre, detail}]`, chacun « à confirmer » ; `[]` en basse tension.",
+    "liaisons": "Section commune à TOUS les tronçons d'un côté (`dc` / `ac`), sinon `null` ; longueur seulement quand le côté n'a qu'UN tronçon, sinon `null` (règle de `frontend/src/features/calepinage/SchemaUnifilairePanel.helpers.js::sectionDuCote`, désormais appliquée UNE fois, par le serveur).",
+    "terre": "`true` quand le moteur dessine la barrette de terre (`core/electrique/schema.py::_barrette_de_terre`), `false` sinon."
+  },
+  "exemple": {
+    "schema_electrique": {
+      "options": {
+        "sans_batterie": {
+          "version": 1,
+          "source": "conception_devis",
+          "option": "sans_batterie",
+          "calibres_masques": false,
+          "panneaux": {
+            "nombre": 35,
+            "module": {
+              "designation": "Canadian Solar TOPBiHiKu7 715 Wc",
+              "puissance_wc": 715
+            }
+          },
+          "chaines_reparties": true,
+          "chaines": [
+            {
+              "numero": 1,
+              "couleur_index": 0,
+              "couleur": "rgb(36, 130, 214)",
+              "nb_panneaux": 18,
+              "onduleur": null,
+              "entree": 1
+            },
+            {
+              "numero": 2,
+              "couleur_index": 1,
+              "couleur": "rgb(232, 125, 33)",
+              "nb_panneaux": 17,
+              "onduleur": null,
+              "entree": 2
+            }
+          ],
+          "coffret_dc": {
+            "organes": [
+              {
+                "clef": "parafoudre_dc",
+                "repere": "PDC1",
+                "titre": "Parafoudre DC Type 2",
+                "calibre": "In 20 kA, Up ≤ 4 kV",
+                "quantite": 1
+              },
+              {
+                "clef": "sectionneur_dc",
+                "repere": "QDC1",
+                "titre": "Sectionneur DC",
+                "calibre": "1000 V DC · 32 A",
+                "quantite": 1
+              }
+            ]
+          },
+          "onduleurs": [
+            {
+              "designation": "Huawei SUN2000-20KTL-M2",
+              "puissance_kw": 20,
+              "nombre": 1,
+              "nb_entrees": 2
+            }
+          ],
+          "batterie": null,
+          "coffret_ac": {
+            "organes": [
+              {
+                "clef": "disjoncteur_ac",
+                "repere": "QAC1",
+                "titre": "Disjoncteur AC",
+                "calibre": "32 A / 400 V",
+                "quantite": 1
+              },
+              {
+                "clef": "parafoudre_ac",
+                "repere": "PAC1",
+                "titre": "Parafoudre AC Type 2",
+                "calibre": "In 20 kA, Up ≤ 1,5 kV",
+                "quantite": 1
+              }
+            ]
+          },
+          "compteur_production": {
+            "titre": "Compteur de production",
+            "detail": "énergie produite"
+          },
+          "tgbt": {
+            "titre": "TGBT",
+            "detail": "3P + N + T · 400 V"
+          },
+          "etage_mt": [],
+          "reseau": {
+            "titre": "Compteur ONEE",
+            "detail": "injection / soutirage"
+          },
+          "cote_reseau": {
+            "etat": "calcule",
+            "motif": null
+          },
+          "liaisons": {
+            "dc": {
+              "section_mm2": 6,
+              "longueur_m": null
+            },
+            "ac": {
+              "section_mm2": 10,
+              "longueur_m": 15
+            }
+          },
+          "terre": true
+        },
+        "avec_batterie": {
+          "version": 1,
+          "source": "calepinage",
+          "option": "avec_batterie",
+          "calibres_masques": false,
+          "panneaux": {
+            "nombre": 48,
+            "module": {
+              "designation": "Canadian Solar TOPBiHiKu7 715 Wc",
+              "puissance_wc": 715
+            }
+          },
+          "chaines_reparties": true,
+          "chaines": [
+            {
+              "numero": 1,
+              "couleur_index": 0,
+              "couleur": "rgb(36, 130, 214)",
+              "nb_panneaux": 12,
+              "onduleur": 1,
+              "entree": 1
+            },
+            {
+              "numero": 2,
+              "couleur_index": 1,
+              "couleur": "rgb(232, 125, 33)",
+              "nb_panneaux": 12,
+              "onduleur": 1,
+              "entree": 1
+            },
+            {
+              "numero": 3,
+              "couleur_index": 2,
+              "couleur": "rgb(46, 163, 89)",
+              "nb_panneaux": 12,
+              "onduleur": 1,
+              "entree": 2
+            },
+            {
+              "numero": 4,
+              "couleur_index": 3,
+              "couleur": "rgb(184, 64, 158)",
+              "nb_panneaux": 12,
+              "onduleur": 1,
+              "entree": 2
+            }
+          ],
+          "coffret_dc": {
+            "organes": [
+              {
+                "clef": "fusibles",
+                "repere": "F1",
+                "titre": "Fusibles gPV",
+                "calibre": "25 A",
+                "quantite": 8
+              },
+              {
+                "clef": "parafoudre_dc",
+                "repere": "PDC1",
+                "titre": "Parafoudre DC Type 2",
+                "calibre": "In 20 kA, Up ≤ 4 kV",
+                "quantite": 1
+              },
+              {
+                "clef": "sectionneur_dc",
+                "repere": "QDC1",
+                "titre": "Sectionneur DC",
+                "calibre": "1000 V DC · 45 A",
+                "quantite": 1
+              }
+            ]
+          },
+          "onduleurs": [
+            {
+              "designation": "Deye SUN-20K-SG05LP3",
+              "puissance_kw": 20,
+              "nombre": 1,
+              "nb_entrees": 2
+            }
+          ],
+          "batterie": {
+            "designation": "Dyness BX51100",
+            "unites": 3,
+            "capacite_kwh": 15.36,
+            "tension_v": 51.2,
+            "protection": null
+          },
+          "coffret_ac": {
+            "organes": [
+              {
+                "clef": "disjoncteur_ac",
+                "repere": "QAC1",
+                "titre": "Disjoncteur AC",
+                "calibre": "32 A / 400 V",
+                "quantite": 1
+              },
+              {
+                "clef": "parafoudre_ac",
+                "repere": "PAC1",
+                "titre": "Parafoudre AC Type 2",
+                "calibre": "In 20 kA, Up ≤ 1,5 kV",
+                "quantite": 1
+              }
+            ]
+          },
+          "compteur_production": {
+            "titre": "Compteur de production",
+            "detail": "énergie produite"
+          },
+          "tgbt": {
+            "titre": "TGBT",
+            "detail": "3P + N + T · 400 V"
+          },
+          "etage_mt": [],
+          "reseau": {
+            "titre": "Compteur ONEE",
+            "detail": "injection / soutirage"
+          },
+          "cote_reseau": {
+            "etat": "calcule",
+            "motif": null
+          },
+          "liaisons": {
+            "dc": {
+              "section_mm2": 6,
+              "longueur_m": null
+            },
+            "ac": {
+              "section_mm2": 10,
+              "longueur_m": 15
+            }
+          },
+          "terre": true
+        }
+      }
+    }
+  },
+  "exemple_standard": {
+    "schema_electrique": {
+      "options": {
+        "sans_batterie": null,
+        "avec_batterie": {
+          "version": 1,
+          "source": "conception_devis",
+          "option": "avec_batterie",
+          "calibres_masques": true,
+          "panneaux": {
+            "nombre": 48,
+            "module": {
+              "designation": "Canadian Solar TOPBiHiKu7 715 Wc",
+              "puissance_wc": 715
+            }
+          },
+          "chaines_reparties": true,
+          "chaines": [
+            {
+              "numero": 1,
+              "couleur_index": 0,
+              "couleur": "rgb(36, 130, 214)",
+              "nb_panneaux": 12,
+              "onduleur": null,
+              "entree": 1
+            },
+            {
+              "numero": 2,
+              "couleur_index": 1,
+              "couleur": "rgb(232, 125, 33)",
+              "nb_panneaux": 12,
+              "onduleur": null,
+              "entree": 1
+            },
+            {
+              "numero": 3,
+              "couleur_index": 2,
+              "couleur": "rgb(46, 163, 89)",
+              "nb_panneaux": 12,
+              "onduleur": null,
+              "entree": 2
+            },
+            {
+              "numero": 4,
+              "couleur_index": 3,
+              "couleur": "rgb(184, 64, 158)",
+              "nb_panneaux": 12,
+              "onduleur": null,
+              "entree": 2
+            }
+          ],
+          "coffret_dc": {
+            "organes": [
+              {
+                "clef": "fusibles",
+                "repere": "F1",
+                "titre": "Fusibles gPV",
+                "calibre": null,
+                "quantite": 8
+              },
+              {
+                "clef": "sectionneur_dc",
+                "repere": "QDC1",
+                "titre": "Sectionneur DC",
+                "calibre": null,
+                "quantite": 1
+              }
+            ]
+          },
+          "onduleurs": [
+            {
+              "designation": "Deye SUN-20K-SG05LP3",
+              "puissance_kw": 20,
+              "nombre": 1,
+              "nb_entrees": 2
+            }
+          ],
+          "batterie": {
+            "designation": "Dyness BX51100",
+            "unites": 3,
+            "capacite_kwh": 15.36,
+            "tension_v": null,
+            "protection": null
+          },
+          "coffret_ac": {
+            "organes": [
+              {
+                "clef": "disjoncteur_ac",
+                "repere": "QAC1",
+                "titre": "Disjoncteur AC",
+                "calibre": null,
+                "quantite": 1
+              }
+            ]
+          },
+          "compteur_production": {
+            "titre": "Compteur de production",
+            "detail": "énergie produite"
+          },
+          "tgbt": {
+            "titre": "TGBT",
+            "detail": "3P + N + T · 400 V"
+          },
+          "etage_mt": [],
+          "reseau": {
+            "titre": "Compteur ONEE",
+            "detail": "injection / soutirage"
+          },
+          "cote_reseau": {
+            "etat": "calcule",
+            "motif": null
+          },
+          "liaisons": {
+            "dc": {
+              "section_mm2": null,
+              "longueur_m": null
+            },
+            "ac": {
+              "section_mm2": null,
+              "longueur_m": null
+            }
+          },
+          "terre": true
+        }
+      }
+    }
+  },
+  "exemple_champ_sans_repartition": {
+    "schema_electrique": {
+      "options": {
+        "sans_batterie": {
+          "version": 1,
+          "source": "lignes_devis",
+          "option": "sans_batterie",
+          "calibres_masques": false,
+          "panneaux": {
+            "nombre": 35,
+            "module": {
+              "designation": "Canadian Solar TOPBiHiKu7 715 Wc",
+              "puissance_wc": 715
+            }
+          },
+          "chaines_reparties": false,
+          "chaines": [],
+          "coffret_dc": null,
+          "onduleurs": [
+            {
+              "designation": "Huawei SUN2000-20KTL-M2",
+              "puissance_kw": null,
+              "nombre": 1,
+              "nb_entrees": null
+            }
+          ],
+          "batterie": null,
+          "coffret_ac": null,
+          "compteur_production": null,
+          "tgbt": null,
+          "etage_mt": [],
+          "reseau": null,
+          "cote_reseau": {
+            "etat": "a_calculer",
+            "motif": "Le côté réseau de cette option n'est pas encore dimensionné : aucune étude électrique n'a été faite pour elle."
+          },
+          "liaisons": {
+            "dc": {
+              "section_mm2": null,
+              "longueur_m": null
+            },
+            "ac": {
+              "section_mm2": null,
+              "longueur_m": null
+            }
+          },
+          "terre": false
+        },
+        "avec_batterie": null
+      }
+    }
+  }
+}
