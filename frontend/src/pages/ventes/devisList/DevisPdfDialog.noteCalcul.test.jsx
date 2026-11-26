@@ -149,6 +149,36 @@ describe('AMOT68 — note de calcul FDA demandable', () => {
     expect(screen.getByText('(ajoute modalités de paiement)')).toBeInTheDocument()
   })
 
+  // T4-U1-009 (revue) — la une page n'imprime ni échéancier ni RIB (`legacy_onepage` : « Devis final » n'y retire
+  // que « Devis préliminaire » du C&I) ; un lot ne promet que ce qui vaut pour chacun de ses devis.
+  it('T4-U1-009 — une page et lot : l’indice ne promet jamais un RIB ou un échéancier non imprimé', async () => {
+    const UNE_PAGE = '(le format une page n’imprime ni échéancier ni RIB)'
+    profilServi.courant = { nom: 'TAQINOR Démo', ice: '001', rib: '007 780 0001234567890123 45', banque: 'Banque X' }
+    for (const props of [{ targetIsAgricole: false, targetMode: 'residentiel' },
+      { targetIsAgricole: true, targetMode: 'agricole' }]) {
+      const r = dialogue({ ...props, pdfMode: 'onepage' })
+      await new Promise((fin) => { setTimeout(fin, 0) }) // le profil (avec RIB) est lu
+      expect(screen.getByText(UNE_PAGE)).toBeInTheDocument()
+      expect(screen.queryByText(/\+ RIB|modalités de paiement/)).toBeNull()
+      r.unmount()
+    }
+    const ci = dialogue({ targetIsAgricole: false, targetIsCi: true, targetMode: 'commercial', pdfMode: 'onepage' })
+    expect(screen.getByText('(visite faite — retire la mention « Devis préliminaire »)')).toBeInTheDocument()
+    ci.unmount()
+    const lot = { pdfTarget: null, batchPdf: true, selectedIds: [1, 2], targetIsAgricole: false, targetMode: 'residentiel' }
+    const r1 = dialogue(lot)
+    expect(await screen.findByText('(selon le devis : modalités de paiement, RIB s’il est au profil société)'))
+      .toBeInTheDocument()
+    expect(screen.queryByText(/\+ RIB/)).toBeNull()
+    r1.unmount()
+    profilServi.courant = { nom: 'TAQINOR Démo', ice: '001', rib: '', banque: '' }
+    const r2 = dialogue(lot)
+    expect(await screen.findByText('(selon le devis : modalités de paiement)')).toBeInTheDocument()
+    r2.unmount()
+    dialogue({ ...lot, pdfMode: 'onepage' })
+    expect(screen.getByText(UNE_PAGE)).toBeInTheDocument()
+  })
+
   it('T4-U3-009 — seules les options qui agissent sur le document du marché sont proposées', () => {
     // Agricole : le document de 3 pages n'a ni page calepinage ni page étude.
     const r1 = dialogue({ targetIsAgricole: true, targetMode: 'agricole' })

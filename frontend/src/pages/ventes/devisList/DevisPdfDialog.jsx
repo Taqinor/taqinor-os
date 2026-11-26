@@ -26,6 +26,21 @@ function ribSocieteManquant(profil) {
   return !rempli(profil.rib) && !rempli(profil.banque) && IDENTITE_SOCIETE.some((k) => rempli(profil[k]))
 }
 
+/* T4-U1-009 — l'indice de « Devis final » ne dit que ce que le PDF fera. Une page (`legacy_onepage`) : aucun
+   échéancier ni RIB, la case n'y retire que « Devis préliminaire » du C&I. Lot : seul ce qui vaut pour CHAQUE devis
+   (le C&I / l'agricole n'impriment le RIB qu'aux nouveaux rendus). « + RIB » : seulement sur un profil LU qui en a un. */
+const CI_PRELIMINAIRE = '(visite faite — retire la mention « Devis préliminaire »)'
+function indiceDevisFinal({ batchPdf, pdfMode, targetIsCi, targetIsAgricole, profil }) {
+  if (pdfMode !== 'full') return !batchPdf && targetIsCi ? CI_PRELIMINAIRE : '(le format une page n’imprime ni échéancier ni RIB)'
+  if (batchPdf) {
+    return ribSocieteManquant(profil) ? '(selon le devis : modalités de paiement)'
+      : '(selon le devis : modalités de paiement, RIB s’il est au profil société)'
+  }
+  if (targetIsCi) return CI_PRELIMINAIRE
+  if (targetIsAgricole) return '(visite faite — retire « à confirmer par la visite »)'
+  return `(ajoute modalités de paiement${profilLu(profil) && !ribSocieteManquant(profil) ? ' + RIB' : ''})`
+}
+
 export default function DevisPdfDialog({
   pdfTarget, batchPdf, selectedIds,
   pdfMode, setPdfMode, pdfModeAutoOnepage, targetIsAgricole,
@@ -54,9 +69,8 @@ export default function DevisPdfDialog({
   }, [ouvert])
   const ribAbsent = !targetIsCi && !targetIsAgricole && ribSocieteManquant(profil)
   const ribManquant = devisFinal && ribAbsent
-  // T4-U1-009 / T4-X7-020 — l'intitulé ne promet « + RIB » que si le profil LU de la société en a un : ni avant la
-  // lecture (fenêtre tout juste ouverte), ni quand elle a échoué.
-  const plusRib = profilLu(profil) && !ribSocieteManquant(profil) ? ' + RIB' : ''
+  // T4-U1-009 / T4-X7-020 — ni avant la lecture du profil, ni quand elle a échoué, ni sur la une page.
+  const indice = indiceDevisFinal({ batchPdf, pdfMode, targetIsCi, targetIsAgricole, profil })
   return (
     <ResponsiveDialog
       open={ouvert}
@@ -204,10 +218,7 @@ export default function DevisPdfDialog({
 
           <label className="flex items-start gap-2 text-sm">
             <Checkbox checked={devisFinal} onCheckedChange={v => setDevisFinal(!!v)} className="mt-0.5" />
-            <span>Devis Final <span className="text-muted-foreground">{batchPdf ? `(ajoute modalités de paiement${plusRib})`
-              : targetIsCi ? '(visite faite — retire la mention « Devis préliminaire »)'
-                : targetIsAgricole ? '(visite faite — retire « à confirmer par la visite »)'
-                  : `(ajoute modalités de paiement${plusRib})`}</span></span>
+            <span>Devis Final <span className="text-muted-foreground">{indice}</span></span>
           </label>
 
           {ribManquant && (
