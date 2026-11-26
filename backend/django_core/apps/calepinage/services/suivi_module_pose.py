@@ -43,8 +43,7 @@ def _module_a_suivre(document, entree, conception=None):
     ``entree`` = l'entrée électrique stockée. R7-N2 — ``conception`` = le
     ``produit_id`` du module de la conception du lead, que la lecture prend quand
     rien n'est stocké : il est jugé comme une désignation stockée."""
-    from apps.ventes.services import pans_du_document
-
+    from .equipements import pans_du_document
     from .modules_pans import _produit_du_module_pose
 
     stocke = entree.get('module_produit') if isinstance(entree, dict) else None

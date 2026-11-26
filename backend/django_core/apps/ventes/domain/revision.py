@@ -342,8 +342,8 @@ def _calepinage_a_relier(ancien):
     """R6-N1 (suite) — vrai quand un calepinage est lié DIRECTEMENT à
     ``ancien`` : celui que l'abonné ``devis_revise`` du calepinage re-lie à
     la V+1 (même test que lui, ``calepinage.devis_id == ancien.pk``)."""
-    from apps.calepinage.selectors import calepinage_du_devis
-    calepinage = calepinage_du_devis(ancien.pk, ancien.company)
+    from apps.ventes.conception.porte_calepinage import calepinage_lie_au_devis
+    calepinage = calepinage_lie_au_devis(ancien.pk, ancien.company)
     return calepinage is not None and calepinage.devis_id == ancien.pk
 
 
@@ -360,12 +360,13 @@ def relier_calepinage_de_la_revision(ancien, nouveau, *, user=None):
     retente). Rend vrai quand ``nouveau`` porte désormais ce calepinage."""
     from django.db import transaction
 
-    from apps.calepinage import services as calepinage_services
-    from apps.calepinage.selectors import calepinage_du_devis
+    from apps.ventes.conception.porte_calepinage import (
+        calepinage_lie_au_devis as calepinage_du_devis,
+        relier_calepinage_au_devis_revise)
 
     try:
         with transaction.atomic():
-            calepinage_services.relier_au_devis_revise(
+            relier_calepinage_au_devis_revise(
                 ancien, nouveau, user=user)
     except Exception:  # noqa: BLE001 — la révision ne casse jamais sur une re-liaison (D-ENF22-BLE001)
         logger.exception('R6-N1 : re-liaison du calepinage en échec (%s -> %s)',
@@ -394,7 +395,8 @@ def _etudes_apres_reliaison(nd, *, differees, exiger_calepinage=True):
     try:
         cible = nd
         if not differees:
-            from apps.calepinage.selectors import calepinage_du_devis
+            from apps.ventes.conception.porte_calepinage import (
+                calepinage_lie_au_devis as calepinage_du_devis)
             if exiger_calepinage and calepinage_du_devis(
                     nd.pk, nd.company) is None:
                 return
