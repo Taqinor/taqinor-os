@@ -88,15 +88,9 @@ MESSAGE_BROUILLON_LIBRE = ('Ce lead a déjà le devis %s (brouillon), créé ava
                            'panneaux et le scénario de la pose ; le matériel ci-dessus est celui d’un autre devis.')
 
 
-def _ecart_brouillon_libre(calepinage, lead):
-    """La phrase R2-22 quand « Générer » demandera de rattacher un brouillon libre (le plus récent,
-    comme le 409 ``devis_existant``), ``None`` sinon. Ce que ce brouillon porte est lu sur SES lignes."""
-    from .devis import _brouillons_libres_anterieurs
-
-    libres = _brouillons_libres_anterieurs(calepinage, calepinage.company, lead) if lead is not None else []
-    if not libres:
-        return None
-    libre = libres[0]
+def _ecart_brouillon_libre(libre):
+    """L'entrée ``ecarts`` R2-22 pour le brouillon libre que « Générer » proposera de rattacher (le
+    plus récent, comme le 409 ``devis_existant``). Ce qu'il porte est lu sur SES lignes."""
     porte = ' / '.join(sorted({o['onduleur'] for o in _materiel_par_option(_specs_du_brouillon(libre))
                                if o['onduleur']})) or 'aucun'
     return {'champ': 'rattacher_devis',
@@ -111,25 +105,35 @@ def apercu_materiel_du_devis(calepinage, surfaces=None):
     ``surfaces`` (les clés cochées, ``None`` = tout) passent par ``devis._layout_des_surfaces`` ;
     le brouillon que le bouton RENDRAIT (``devis._brouillon_rendu``) est lu sur ses lignes
     (``source: brouillon_existant`` + sa référence), sinon la composition à blanc
-    (``source: composition``), sous des réglages lus sans être créés. N'écrit rien."""
-    from .devis import DevisRefuse, _brouillon_rendu, _empreinte_generee, _exiger_layout, _layout_des_surfaces
-    from .devis import _lead_et_client
+    (``source: composition``), sous des réglages lus sans être créés. Lot 8 (B1) — l'ORDRE est
+    celui de la génération (``devis._ordre_de_generation``) : lié à un devis non réutilisable ⇒
+    ``refus`` = le 409 que la génération rendrait ; brouillon libre ⇒ la phrase R2-22. N'écrit rien."""
+    from .devis import (
+        ISSUE_BROUILLON_LIBRE, ISSUE_DEJA_RATTACHE, ISSUE_RENDU, DevisRefuse, _brouillon_rendu,
+        _brouillons_libres_anterieurs, _devis_lie_actif, _empreinte_generee, _exiger_layout,
+        _layout_des_surfaces, _lead_et_client, _ordre_de_generation, _refus_deja_rattache,
+    )
     from .equipements import composition_a_blanc
 
     composer, AutoDevisError = composition_a_blanc()
     source, reference, libre = 'composition', None, None
+    company = calepinage.company
     try:
         layout = _layout_des_surfaces(_exiger_layout(calepinage), surfaces)
         lead, _client = _lead_et_client(calepinage)
-        brouillon = _brouillon_rendu(calepinage, calepinage.company, lead, _empreinte_generee(calepinage, layout))
-        if brouillon is not None:
-            source, reference = 'brouillon_existant', brouillon.reference
-            specs = _specs_du_brouillon(brouillon)
+        lie = _devis_lie_actif(calepinage)
+        rendu = _brouillon_rendu(calepinage, company, lead, _empreinte_generee(calepinage, layout), lie=lie)
+        issue, retenu = _ordre_de_generation(lie, rendu, lambda: (
+            _brouillons_libres_anterieurs(calepinage, company, lead) if lead is not None else []))
+        if issue == ISSUE_DEJA_RATTACHE:
+            raise _refus_deja_rattache(retenu)
+        if issue == ISSUE_RENDU:
+            source, reference = 'brouillon_existant', retenu.reference
+            specs = _specs_du_brouillon(retenu)
         else:
-            specs = composer(layout=layout, company=calepinage.company, lead=lead)
-            # Lot 8 — comme ``_generer_sous_verrou`` : sans brouillon rendu, un brouillon libre du lead
-            # fait poser la question R2-22 avant toute composition.
-            libre = _ecart_brouillon_libre(calepinage, lead)
+            specs = composer(layout=layout, company=company, lead=lead)
+            if issue == ISSUE_BROUILLON_LIBRE:
+                libre = _ecart_brouillon_libre(retenu[0])
     except (AutoDevisError, DevisRefuse) as refus:
         return {'options': [], 'ecarts': [], 'refus': getattr(refus, 'message', None) or str(refus),
                 'source': None, 'reference': None}

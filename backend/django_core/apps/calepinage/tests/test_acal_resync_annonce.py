@@ -282,6 +282,30 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         sans = self.api.get(f'{self.base}apercu-devis/')
         self.assertNotIn('rattacher_devis', [e['champ'] for e in sans.data['ecarts']])
 
+    def test_lot8_b1_lie_non_reutilisable_jamais_la_phrase_du_brouillon_libre(self):
+        """Lot 8 (B1) — le lead a un brouillon manuel D1 né avant ce calepinage, la première
+        génération a lié D2 (setUp), le toit change : « Générer » répond « déjà rattaché à D2 »
+        (409), jamais la question sur D1. L'aperçu dit CE refus, sans phrase sur D1."""
+        from datetime import timedelta
+
+        from apps.ventes.models import Devis
+
+        self.calepinage.refresh_from_db()
+        d2 = Devis.objects.get(pk=self.calepinage.devis_id)
+        d1 = Devis.objects.create(company=self.company, client=d2.client, lead=self.lead, reference='DEV-L8B1-0001')
+        Devis.objects.filter(pk=d1.pk).update(date_creation=self.calepinage.created_at - timedelta(days=1))
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 10
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        apercu = self.api.get(f'{self.base}apercu-devis/')
+        self.assertEqual(apercu.status_code, 200, apercu.data)
+        self.assertNotIn('DEV-L8B1-0001', str(apercu.data))
+        self.assertEqual((apercu.data['options'], apercu.data['ecarts']), ([], []))
+        genere = self.api.post(f'{self.base}generer-devis/', {'confirmer_taille': True}, format='json')
+        self.assertEqual(genere.status_code, 409, genere.data)
+        self.assertEqual(apercu.data['refus'], str(genere.data['detail']))
+        self.assertIn(d2.reference, apercu.data['refus'])
+
     def test_e9b_apercu_compose_les_surfaces_cochees_comme_la_generation(self):
         """Lane E9b — ``?surfaces=`` (les cases cochées que « Générer » enverra) passe par LA même
         fonction (``devis._layout_des_surfaces``) : clé inconnue ⇒ le refus nommé de la génération ;
