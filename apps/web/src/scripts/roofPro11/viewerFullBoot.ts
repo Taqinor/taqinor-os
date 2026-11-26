@@ -114,6 +114,22 @@ export interface ViewerFullHandle {
   teinter: (colorFor: CouleurDe) => void;
 }
 
+/** Lot 8 (B0) — délai laissé au navigateur pour restaurer un contexte WebGL perdu avant de déclarer la scène morte. */
+export const DELAI_RESTAURATION_GL_MS = 5_000;
+
+/**
+ * Lot 8 (B0) — une erreur MapLibre rend-elle la scène INUTILISABLE ? Non pour ce qui touche une source ou une
+ * tuile (`sourceId`, `tile` : une image satellite manquante, un 429 du fournisseur) ni pour une réponse HTTP
+ * (`error.status` : glyphe, sprite, tuile) — la carte et la 3D continuent. Oui pour le reste (style qui ne se
+ * charge plus, panne interne sans source).
+ */
+export function erreurCarteFatale(e: unknown): boolean {
+  if (!e || typeof e !== 'object') return true;
+  const ev = e as { sourceId?: unknown; tile?: unknown; error?: { status?: unknown } | null };
+  if (ev.sourceId != null || ev.tile != null) return false;
+  return typeof ev.error?.status !== 'number';
+}
+
 /** La feuille MapLibre n'est injectée qu'UNE fois par document (idempotent). */
 function ensureMaplibreCss(): void {
   if (typeof document === 'undefined') return;
@@ -266,9 +282,22 @@ export function bootViewerFull(
   const onError = (e: unknown) => {
     const msg = (e as { error?: { message?: string } } | undefined)?.error?.message ?? e;
     console.warn('[visionneuse-toit] erreur carte :', msg);
-    if (hasRenderedOnce) opts.onMapError?.();
+    // Lot 8 (B0) — une tuile refusée (429, réseau) laisse la scène utilisable : seule une panne qui la rend
+    // inutilisable replie la page (et cache la barre au soleil).
+    if (hasRenderedOnce && erreurCarteFatale(e)) opts.onMapError?.();
   };
   map.on('error', onError);
+  // Contexte WebGL perdu : la scène se reconstruit à la restauration (W89) ; jamais restauré = scène morte.
+  let perteGl: ReturnType<typeof setTimeout> | null = null;
+  const surPerteGl = () => {
+    if (perteGl === null) perteGl = setTimeout(() => opts.onMapError?.(), DELAI_RESTAURATION_GL_MS);
+  };
+  const surRestaurationGl = () => {
+    if (perteGl !== null) clearTimeout(perteGl);
+    perteGl = null;
+  };
+  map.on('webglcontextlost', surPerteGl);
+  map.on('webglcontextrestored', surRestaurationGl);
 
   // — Scène 3D : le module de l'ERP, en lecture seule —
   const scene3d = createScene3d(ctx, { map, lowEnd, shadowSize, readOnly: true });
@@ -345,7 +374,10 @@ export function bootViewerFull(
       if (destroyed) return;
       destroyed = true;
       clearLoadTimer();
+      surRestaurationGl();
       map.off('error', onError);
+      map.off('webglcontextlost', surPerteGl);
+      map.off('webglcontextrestored', surRestaurationGl);
       try {
         // `remove()` retire les couches → `onRemove` de scene3d libère meshes,
         // matériaux, textures partagées et le WebGLRenderer (garde W70).
