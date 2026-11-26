@@ -486,6 +486,26 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
         self.assertEqual(es.schema_electrique_du_devis(devis)["avis_client"],
                          {"sans_batterie": None, "avec_batterie": None})
 
+    def test_d_acal_166_annexe_une_page_par_option_rangee_seulement(self):
+        """D-ACAL-166 — l'annexe PDF reçoit une entrée par option RANGÉE (sans,
+        puis avec), chacune avec SA conception et SON schéma ; sans l'entrée
+        rangée à l'envoi, rien (l'annexe d'une page d'aujourd'hui)."""
+        devis = _devis_deux_options_servables()
+        es.build_electrical_design(devis)
+        devis.statut, devis.clauses_appliquees = "envoye", []
+        self.assertEqual(es.annexes_par_option(devis), [])            # envoyé avant la règle
+        es.figer_conceptions_des_options(devis)
+        sans, avec = es.annexes_par_option(devis, langue="fr", largeur_px=680)
+        self.assertEqual((sans["option"], avec["option"]), ("sans_batterie", "avec_batterie"))
+        self.assertIs(avec["electrical_design"], devis.electrical_design)
+        self.assertIs(sans["electrical_design"], es._conceptions_figees(devis)["sans_batterie"]["design"])
+        self.assertIn("Huawei", sans["sld_svg"])
+        self.assertNotIn("Batterie", sans["sld_svg"])
+        self.assertIn("Deye", avec["sld_svg"])
+        self.assertIn("Batterie", avec["sld_svg"])
+        devis.statut = "brouillon"
+        self.assertEqual(es.annexes_par_option(devis), [])
+
     def test_d_acal_158_option_a_un_autre_nombre_de_panneaux_non_rangee(self):
         """Revue D-ACAL-158 (2) — 30 panneaux posés au toit, l'option « sans » en
         vend 20 : son dessin serait celui de 30, elle n'est pas rangée."""

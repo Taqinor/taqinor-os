@@ -1770,6 +1770,33 @@ def rendre_schema_electrique_du_devis(devis, *, langue="fr", largeur_px=None):
     return rendre_schema_electrique_svg(documents[_cle_option(variante)], langue, largeur_px)
 
 
+def annexes_par_option(devis, *, langue="fr", largeur_px=None):
+    """D-ACAL-166 — l'annexe PV46 d'un devis à deux options : une page par
+    option, ``[{option, electrical_design, sld_svg}]`` dans l'ordre des options
+    (sans, puis avec), SEULEMENT quand le devis porte l'entrée rangée à l'envoi
+    (D-ACAL-158) et que les DEUX options ont une conception RANGÉE dessinable
+    (D-ACAL-140 : jamais un calcul à la lecture). Sinon ``[]`` : l'annexe reste
+    celle d'aujourd'hui, octet pour octet. Chaînes du calepinage par option
+    (D-ACAL-141). Lecture pure, ne lève pas sur une donnée absente."""
+    from core.electrique.schema_electrique import (
+        OPTIONS, SOURCE_LIGNES_DEVIS, rendre_schema_electrique_svg)
+
+    figees = _conceptions_figees(devis)
+    if not figees:
+        return []
+    documents, origines = _documents_du_devis(devis, False, avec_calepinage=True)
+    designs = {_cle_option(v): (figees.get(_cle_option(v), {}).get("design") if imposee
+                                else conception_electrique_stockee(devis))
+               for v, imposee in _variantes_du_schema(devis)}
+    rangees = [cle for cle in OPTIONS if (documents.get(cle) or {}).get("source") not in (None, SOURCE_LIGNES_DEVIS)
+               and origines.get(cle) == _ORIGINE_RANGEE and designs.get(cle)]
+    if len(rangees) < 2:
+        return []
+    return [{"option": cle, "electrical_design": designs[cle],
+             "sld_svg": rendre_schema_electrique_svg(documents[cle], langue, largeur_px)}
+            for cle in rangees]
+
+
 def schema_electrique_public(devis, *, standard, option_totals):
     """SCHEL-B3 + D1 — l'enveloppe de la page client. Une option n'y porte un
     document que s'il vient de l'étude RANGÉE, côté réseau calculé, et que la
