@@ -167,6 +167,14 @@ COUPURE_PDF_2511 = (2026, 11, 26)
 #: courant. Le lendemain de la décision (comme D-ACAL-102), À CONFIRMER avec
 #: Reda : un devis envoyé avant garde l'annexe qu'il a reçue.
 COUPURE_SCHEMA_ELECTRIQUE = (2026, 11, 27)
+#: D-ACAL-139 (orchestrateur 26/11/2026, À CONFIRMER avec Reda) : l'étude
+#: électrique du devis (``electrical_service`` → ``core.electrique.concevoir``)
+#: câble des chaînes INÉGALES d'une entrée MPPT à l'autre quand la partition
+#: égale ne tient pas (35 × 715 Wc sur un hybride 2 entrées à 54 A : 12 + 12 |
+#: 11, plus 5 × 7 hors spécification). Calculs NEUFS seulement : même mécanique
+#: que :data:`COUPURE_SCHEMA_ELECTRIQUE`, le niveau 15 n'est pas rendu courant ;
+#: un devis envoyé avant garde son étude, son annexe et son bordereau.
+COUPURE_CHAINES_INEGALES = (2026, 11, 27)
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
 REGLES_COURANTES = REGLES_SENSIBILITES_1911
 
@@ -232,6 +240,14 @@ def schema_electrique_ouvert(devis) -> bool:
     électrique ? Voir :data:`COUPURE_SCHEMA_ELECTRIQUE`."""
     return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111,
                                        COUPURE_SCHEMA_ELECTRIQUE)
+
+
+def chaines_inegales_ouvertes(devis) -> bool:
+    """D-ACAL-139 — l'étude électrique de ce devis peut-elle câbler des chaînes
+    inégales entre entrées MPPT ? Voir :data:`COUPURE_CHAINES_INEGALES`. Hors
+    de toute empreinte : une étude rangée n'est jamais recalculée pour ça."""
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111,
+                                       COUPURE_CHAINES_INEGALES)
 
 
 def drapeaux_schema_electrique(devis) -> dict:

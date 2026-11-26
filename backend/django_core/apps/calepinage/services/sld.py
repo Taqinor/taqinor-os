@@ -488,6 +488,17 @@ def enregistrer_edition_sld(calepinage, corps, *, dessin=None):
     return modifier_resultat(calepinage, _poser)
 
 
+def bloquants_du_cablage(conception, donnees):
+    """Les bloquants NOMMÉS du câblage EFFECTIF (affectation manuelle comprise,
+    ``tensions_chaines.conception_cablee``), jamais ceux des seules chaînes
+    automatiques qu'elle remplace. Lecture seule : rien n'est écrit."""
+    from .electrique import bloquants_nommes
+    from .tensions_chaines import conception_cablee, imposee_et_refus
+
+    imposee = imposee_et_refus((donnees or {}).get('affectation_manuelle'))[0]
+    return bloquants_nommes(conception_cablee(conception, imposee))
+
+
 def _Porteur(resultat):  # noqa: N802 — nom historique
     """Un ``resultat`` relu, présenté à :func:`edition_sld`."""
     return SimpleNamespace(resultat=resultat)
@@ -500,14 +511,13 @@ def _dessin_du_calepinage(calepinage):
     alors aucun organe à nommer, et toute clef sera refusée en la nommant.
     """
     from .electrique import (
-        _reglages_electrique_societe, bloquants_nommes,
-        conception_du_calepinage,
+        _reglages_electrique_societe, conception_du_calepinage,
     )
 
     conception, _materiel, donnees, _document = conception_du_calepinage(
         calepinage)
     if (list(getattr(conception, 'manquantes', ()) or ())
-            or list(bloquants_nommes(conception) or ())
+            or list(bloquants_du_cablage(conception, donnees) or ())
             or getattr(conception, 'micro_seul', False)):
         return {'svg': None, 'blocs': (), 'liaisons': ()}
     norme = _norme_du_calepinage(calepinage)
@@ -934,12 +944,11 @@ def document_electrique_du_calepinage(calepinage):
     ``None`` dans les mêmes cas que ``svg`` (fiche muette, bloquant, micro seul).
     Lecture seule."""
     from .electrique import (
-        _reglages_electrique_societe, bloquants_nommes,
-        conception_du_calepinage,
+        _reglages_electrique_societe, conception_du_calepinage,
     )
 
     conception, materiel, donnees, document = conception_du_calepinage(calepinage)
-    if (getattr(conception, 'manquantes', ()) or bloquants_nommes(conception)
+    if (getattr(conception, 'manquantes', ()) or bloquants_du_cablage(conception, donnees)
             or getattr(conception, 'micro_seul', False)):
         return None
     norme = _norme_du_calepinage(calepinage)
@@ -963,14 +972,13 @@ def schema_du_calepinage(calepinage):
     l'est).
     """
     from .electrique import (
-        _reglages_electrique_societe, bloquants_nommes,
-        conception_du_calepinage,
+        _reglages_electrique_societe, conception_du_calepinage,
     )
 
     conception, materiel, donnees, document = conception_du_calepinage(
         calepinage)
     manquantes = list(getattr(conception, 'manquantes', ()) or ())
-    bloquants = list(bloquants_nommes(conception) or ())
+    bloquants = list(bloquants_du_cablage(conception, donnees) or ())
     reponse = {
         'calepinage': getattr(calepinage, 'pk', None),
         'svg': None,

@@ -252,6 +252,25 @@ class VerdictTest(unittest.TestCase):
         self.assertTrue(any('Entrée MPPT' in message for message in refus))
         self.assertTrue(any('maximum 1' in message for message in refus))
 
+    def test_chaines_inegales_en_parallele_sur_une_entree_refusees(self):
+        refus = self._verdict([
+            {'module': 'PAN-A#1', 'chaine': 1, 'mppt': 1, 'onduleur': 1},
+            {'module': 'PAN-A#2', 'chaine': 1, 'mppt': 1, 'onduleur': 1},
+            {'module': 'PAN-B#1', 'chaine': 3, 'mppt': 1, 'onduleur': 1},
+        ])
+        self.assertIn(
+            "Entrée MPPT 1 : chaînes 1, 3 en parallèle de 2 et 1 modules — des "
+            "chaînes en parallèle sur une même entrée doivent avoir la même "
+            "longueur (des entrées différentes peuvent différer).", refus)
+
+    def test_longueurs_differentes_sur_des_entrees_differentes_admises(self):
+        refus = self._verdict([
+            {'module': 'PAN-A#1', 'chaine': 1, 'mppt': 1, 'onduleur': 1},
+            {'module': 'PAN-A#2', 'chaine': 1, 'mppt': 1, 'onduleur': 1},
+            {'module': 'PAN-B#1', 'chaine': 3, 'mppt': 2, 'onduleur': 1},
+        ])
+        self.assertEqual([m for m in refus if 'en parallèle' in m], [])
+
     def test_fiche_muette_ne_produit_aucun_faux_rouge(self):
         # Sans ``chaines_max_par_mppt`` publié, on ne SUPPOSE pas une limite.
         refus = self._verdict([

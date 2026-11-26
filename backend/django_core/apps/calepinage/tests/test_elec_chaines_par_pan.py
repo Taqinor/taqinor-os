@@ -399,6 +399,16 @@ class Deye20kTrenteCinqModulesTest(SimpleTestCase):
         self.assertTrue(any('entrée MPPT 1' in b and 'CH1, CH2, CH3' in b
                             and '66,9 A' in b for b in bloquants), bloquants)
 
+    def test_douze_et_onze_en_parallele_sur_l_entree_1_refuses(self):
+        bloquants = self._evaluer((12, 1), (12, 1), (11, 1))['bloquants']
+        self.assertIn(
+            "Entrée MPPT 1 : chaînes 1, 2, 3 en parallèle de 12 et 11 modules "
+            "— des chaînes en parallèle sur une même entrée doivent avoir la "
+            "même longueur (des entrées différentes peuvent différer).",
+            bloquants)
+        self.assertFalse(any('en parallèle de' in b for b in self._evaluer(
+            (12, 1), (12, 1), (11, 2))['bloquants']))
+
     def test_chaine_de_vingt_refusee_avec_la_vraie_borne(self):
         verdict = self._evaluer((20, 1), (15, 2))
         refus = [b for b in verdict['bloquants'] if b.startswith('Chaîne 1 ')]
@@ -409,6 +419,34 @@ class Deye20kTrenteCinqModulesTest(SimpleTestCase):
         self.assertIn('(15 modules au plus)', refus[0])
         self.assertFalse(any(b.startswith('Chaîne 2 ')
                              for b in verdict['bloquants']))
+
+    def test_le_schema_juge_et_dessine_le_cablage_manuel(self):
+        """Les portails du schéma (``sld.bloquants_du_cablage`` : planche,
+        document « schéma électrique », export DXF) jugent le câblage EFFECTIF,
+        et le document dessine ses chaînes : ici l'automatique est FORCÉ à 7
+        (5 × 7 → 66,9 A sur l'entrée 1), le manuel 12 + 12 | 11 tient."""
+        from apps.calepinage.services.sld import (
+            _chaines_de_l_affectation, bloquants_du_cablage)
+
+        conception = concevoir_par_pan(
+            _layout(35), module_specs=self.MODULE_715,
+            onduleur_specs=self.DEYE_20K, temperatures=_temperatures(),
+            longueur_forcee=7)
+        self.assertTrue(any('66,9 A' in b for b in bloquants_du_cablage(
+            conception, {})))
+        lignes, rang = [], 0
+        for numero, (longueur, mppt) in enumerate(((12, 1), (12, 1), (11, 2)),
+                                                  start=1):
+            for _ in range(longueur):
+                rang += 1
+                lignes.append({'module': 'z1#%d' % rang, 'chaine': numero,
+                               'mppt': mppt, 'onduleur': 1})
+        donnees = {'affectation_manuelle': lignes}
+        self.assertEqual(list(bloquants_du_cablage(conception, donnees)), [])
+        self.assertEqual(
+            [(c['nb_panneaux'], c['entree'])
+             for c in _chaines_de_l_affectation(conception, donnees)],
+            [(12, 1), (12, 1), (11, 2)])
 
     def test_les_codes_du_cablage_sont_ceux_du_noyau(self):
         import inspect

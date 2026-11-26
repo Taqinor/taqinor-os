@@ -767,6 +767,8 @@ def construire_entree_et_source(devis, overrides=None, *,
         EntreeElectrique, REGIME_TT, REGIMES_CONNUS,
         TEMP_CHAUD_DEFAUT_C, TEMP_FROID_DEFAUT_C)
 
+    from apps.ventes.domain.regles_calcul import chaines_inegales_ouvertes
+
     reglages = {clef: valeur for clef, valeur in (overrides or {}).items()
                 if clef in OVERRIDES_CONNUS}
     site = _site_du_calepinage(devis) if avec_calepinage else None
@@ -843,6 +845,9 @@ def construire_entree_et_source(devis, overrides=None, *,
         longueur_chaine_forcee=longueur_forcee,
         zone_keraunique=bool(reglages.get("zone_keraunique")),
         inclure_prise_terre=bool(reglages.get("inclure_prise_terre")),
+        # D-ACAL-139 — calculs NEUFS seulement (envoyé avant la coupure : le
+        # calcul d'avant) ; hors de ``empreinte_entree``, qui énumère ses clés.
+        chaines_inegales_entre_entrees=chaines_inegales_ouvertes(devis),
     )
 
     if "dc_m" in reglages:

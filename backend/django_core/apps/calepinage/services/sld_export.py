@@ -113,17 +113,20 @@ def _point(x, y, hauteur_px):
     return (_mm(x), _mm(hauteur_px - y))
 
 
-def _refuser_si_empeche(conception):
+def _refuser_si_empeche(conception, donnees):
     """Le refus commun au DXF et au PDF : fiche muette, bloquant, micro seul.
+
+    Les bloquants sont ceux du câblage EFFECTIF (``donnees`` porte
+    l'affectation manuelle enregistrée — ``sld.bloquants_du_cablage``), jamais
+    ceux des seules chaînes automatiques qu'elle remplace.
 
     Raises:
         SldRefuse: aucune pièce n'est produite, et le refus NOMME le champ.
     """
-    from .electrique import bloquants_nommes
-    from .sld import SldRefuse
+    from .sld import SldRefuse, bloquants_du_cablage
 
     empechements = (list(getattr(conception, 'manquantes', ()) or ())
-                    + list(bloquants_nommes(conception) or ()))
+                    + list(bloquants_du_cablage(conception, donnees) or ()))
     if getattr(conception, 'micro_seul', False):
         from .sld import MOTIF_SCHEMA_MICRO_SEUL
 
@@ -161,7 +164,7 @@ def _dessin_et_tableau(calepinage):
 
     conception, _materiel, donnees, _document = conception_du_calepinage(
         calepinage)
-    _refuser_si_empeche(conception)
+    _refuser_si_empeche(conception, donnees)
 
     norme = norme_applicable(parametres_societe(calepinage))
     # ACAL55 — le DXF transpose un ``ResultatElectrique`` COMPLET (le tableau
@@ -349,8 +352,9 @@ def exporter_sld_pdf(calepinage, *, company=None, document=None,
     )
 
     if document is None:
-        conception = conception_du_calepinage(calepinage)[0]
-        _refuser_si_empeche(conception)
+        conception, _materiel, donnees, _document = conception_du_calepinage(
+            calepinage)
+        _refuser_si_empeche(conception, donnees)
         document = document_electrique_du_calepinage(calepinage)
         cartouche = cartouche_du_calepinage(calepinage)
     if not document or not document.get('onduleurs'):

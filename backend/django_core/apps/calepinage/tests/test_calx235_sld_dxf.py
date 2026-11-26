@@ -267,6 +267,91 @@ class FicheIncompleteTest(SimpleTestCase):
         self.assertIn('Aucun fichier', str(refus.exception))
 
 
+class CablageEffectifTest(SimpleTestCase):
+    """DXF et PDF refusent et acceptent dans les MÊMES cas, jugés sur le
+    câblage EFFECTIF (``sld_export._refuser_si_empeche`` →
+    ``sld.bloquants_du_cablage``) : automatique forcé à 7 (5 × 7, 66,9 A sur
+    l'entrée 1 d'un hybride 2 entrées à 54 A), manuel 12 + 12 | 11 valide."""
+
+    MODULE_715 = {'vmp_v': 41.0, 'voc_v': 49.1, 'isc_a': 22.3, 'imp_a': 17.44,
+                  'pmax_wc': 715.0, 'temp_coeff_voc_pct_c': -0.25,
+                  'temp_coeff_pmax_pct_c': -0.35}
+    DEYE_20K = {'n_mppt': 2, 'mppt_v_min': 150.0, 'mppt_v_max': 750.0,
+                'v_max_abs': 800.0, 'i_max_mppt_a': 36.0, 'ac_kw': 20.0,
+                'phases': 3, 'isc_max_mppt_a': 54.0}
+
+    def _conception(self):
+        from apps.calepinage.services.chaines import concevoir_par_pan
+        from apps.calepinage.services.electrique import temperatures_site
+
+        return concevoir_par_pan(
+            {'version': 2, 'zones': [{'id': 'z1', 'label': 'PAN-1', 'geometry': {
+                'count': 35, 'azimuthDeg': 180.0, 'tiltDeg': 15.0}}]},
+            module_specs=self.MODULE_715, onduleur_specs=self.DEYE_20K,
+            temperatures=temperatures_site(saisie={
+                'temperature_min_c': -5.0, 'temperature_max_c': 70.0}),
+            longueur_forcee=7)
+
+    def _manuel(self):
+        lignes, rang = [], 0
+        for numero, (longueur, mppt) in enumerate(((12, 1), (12, 1), (11, 2)),
+                                                  start=1):
+            for _ in range(longueur):
+                rang += 1
+                lignes.append({'module': 'z1#%d' % rang, 'chaine': numero,
+                               'mppt': mppt, 'onduleur': 1})
+        return {'affectation_manuelle': lignes}
+
+    def _exporter(self, format_, donnees):
+        """``'produit'``, ou l'exception ``SldRefuse`` levée."""
+        from unittest import mock
+
+        from apps.calepinage.services import electrique as _electrique
+        from apps.calepinage.services import sld as _sld
+        from apps.calepinage.services.sld_export import exporter_sld_pdf
+
+        class _Passe(Exception):
+            pass
+
+        def _passe(*_args, **_kwargs):
+            raise _Passe()
+
+        with mock.patch.object(_electrique, 'conception_du_calepinage',
+                               return_value=(self._conception(), {}, donnees,
+                                             None)), \
+                mock.patch.object(_electrique, 'parametres_societe',
+                                  return_value={}), \
+                mock.patch.object(_electrique, '_reglages_electrique_societe',
+                                  return_value={}), \
+                mock.patch.object(_sld, 'resultat_et_gabarit_decides',
+                                  side_effect=_passe), \
+                mock.patch.object(_sld, 'document_electrique_du_calepinage',
+                                  side_effect=_passe):
+            try:
+                (exporter_sld_dxf if format_ == 'dxf' else exporter_sld_pdf)(
+                    object())
+            except _Passe:
+                return 'produit'   # la garde est passée : la pièce se compose
+            except SldRefuse as refus:
+                return refus
+        raise AssertionError('ni produit ni refusé')
+
+    def test_manuel_valide_sur_automatique_bloque_le_dxf_et_le_pdf_sortent(self):
+        for format_ in ('dxf', 'pdf'):
+            with self.subTest(format_=format_):
+                self.assertEqual(self._exporter(format_, self._manuel()),
+                                 'produit')
+
+    def test_cablage_effectif_bloquant_refuse_les_deux_en_nommant(self):
+        for format_ in ('dxf', 'pdf'):
+            with self.subTest(format_=format_):
+                refus = self._exporter(format_, {})
+                self.assertIsInstance(refus, SldRefuse)
+                self.assertEqual(refus.champ, 'Isc')
+                self.assertIn('66,9 A', str(refus))
+                self.assertIn('Aucun fichier', str(refus))
+
+
 class PorteHttpDxfTest(SimpleTestCase):
     """La route existe, en GET, gardée en LECTURE."""
 
