@@ -2594,3 +2594,31 @@ ACAL1330, ACAL1346 / 1815 / 1813, ACAL1347, ACAL2038, lenteurs de « Réviser »
 **Leçons de la soirée** (pour la rétro) : laisser FINIR `ci_guards.py stage-names` avant d'ouvrir une PR ; le budget du bundle se mesure
 sur la PR reconstruite sur `main`, pas sur la branche seule ; api-fuzz voit les 500 sur un identifiant non entier ; un test « contenu
 exact d'un rôle » existe hors de `apps/roles` (visites) ; compter les lanes qui ÉCRIVENT (relecteurs exclus).
+
+**Rejeu en direct n° 8 — RENDU (pile locale, `dev-lot8` à d542cf7c2, copie anonymisée)** : relevé `docs/audits/l5-calepinage/T5/rejeu-8-lot8.json`.
+- Bons : L1 (la demande « Être rappelé » du client apparaît dans l'historique du lead en ~10 s sans recharger ; pas de ligne « masqués »),
+  L2 (plus de faux « en cours de calcul » ; 3 lectures 404 au lieu de 7 à 9), L8 (« En stock » sur panneau, onduleur, batterie ; pompage en
+  mode Expert sans kWh de réseau), L10 (devis envoyé le 24/11 rendu à nouveau : total, économie et production identiques au stocké),
+  L6 pour les prix (aucun prix de vente servi au Technicien ; rôles vérifiés en base après `init_roles`).
+- Partiels : L3 (position de l'onduleur : marche en Guidé — poser, déplacer, annuler, enregistrer, 33 m de câble ; le mode Expert n'a pas
+  « Placer l'onduleur » ; pan « existant » et deux onduleurs non rejoués), L4 (hybride désigné → devis « avec batterie » dit avant et
+  après ; mais une batterie désignée APRÈS la création du brouillon n'atteint pas le devis : R8-N4), L9 (PDF : une seule économie,
+  « barème national », « Bases du calcul » ; R8-N6), L6 pour le menu CRM du Technicien (corrigé dans le lot 9 : `lot8/droits-technicien`).
+- Attendu au lot 9 : L7 (calepinage dont le responsable ne peut pas l'ouvrir : dit par `lot8/droits-technicien`).
+- Non rejouable : L5 (toit plat sans tables : l'écran pose toujours des tables).
+- Mesures : ACAL1330 — sur le calepinage 5 (module explicite), 24 enregistrés ⇒ 24 à l'écran, enregistrer sans geste ⇒ 24, retirer un ⇒ 23 :
+  le défaut restant n'est PAS reproduit (aucun pan sans module sur la copie) ; ACAL1813 — CONFIRMÉ : à 390 × 664, sans geste, l'écran
+  « deux doigts » de la carte passe à opacité 1 vers 2,8 s pendant ~1,5 s et couvre le bandeau, la barre d'outils et le haut du tiroir ;
+  ACAL1815 — la puce « Caler le fond » ne recouvre pas la barre du bas mais est hors écran (défilement du panneau central) ;
+  ACAL1346 — aucune carte ne déborde en Guidé ; ACAL1347 — glisser de la CARTE avec 630 panneaux : 16,7 ms médian, aucune tâche longue
+  (le glisser des modules n'a pas été mesuré) ; ACAL2038 — non reproduit (« Enregistré à … », pas de « Brouillon d'un autre poste »).
+- Lenteurs : cartes de la liste des devis ~13 s (appel `synthese` 18 à 20 s) : 546 totaux jamais rangés + 29 périmés sur 576 ;
+  `synthese_liste_devis` 62,7 s et 1 482 requêtes dans la mesure hors requête ; empreinte de code identique Django / Celery ;
+  « Réviser » : 4,4 s (profils comparatifs 4,2 s). Piste confirmée : ranger les totaux (`ranger_totaux_affiches`) après chaque déploiement.
+- Défauts NEUFS (aucun corrigé) : R8-N1 la prochaine relance n'est pas rafraîchie à l'écran après la demande du client (jusqu'au
+  rechargement) ; R8-N2 la carte Conception du lead 1267 cite un autre montant et une autre puissance que le devis affiché ; R8-N3 message
+  « Onduleur placé… » rendu en colonne étroite, un mot par ligne ; R8-N4 batterie désignée après le brouillon : « Générer » répond
+  « créé » (dédupliqué) sans changer le devis ni le dire ; R8-N5 après « Retirer un panneau » la carte du haut garde l'ancien compte
+  jusqu'à l'enregistrement ; R8-N6 PDF industriel : TRI « — » au scénario central mais 15,5 % au scénario défavorable ; R8-N7 la ligne
+  « Bases du calcul » imprime le champ « Source » des hypothèses (même texte que le tableau complet déjà sur `main` ; brouillé sur la copie) :
+  pas une fuite, à relire en production ; R8-N8 avec 630 panneaux et 70 chaînes, la légende des chaînes (1 558 px) recouvre l'en-tête.
