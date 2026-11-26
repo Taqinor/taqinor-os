@@ -224,18 +224,25 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
     })
     : null
   const vue = vueDuChamp(champ, plan, saisie)
+  // ACAL1425 — un champ enregistré depuis le contour TRACÉ sur la carte (pas un rectangle
+  // largeur × profondeur) : sa surface est lue sur la surface persistée, jamais redemandée.
+  const surfaceCourante = (pose.surfaces || []).find((s) => s.id === pose.repereCourant) ?? null
+  const contourTrace = surfaceCourante && Array.isArray(surfaceCourante.contourM)
+    && surfaceCourante.contourM.length > 0 && surfaceCourante.contourM.length !== 4
+    && Number.isFinite(Number(surfaceCourante.areaM2))
+    ? Math.round(Number(surfaceCourante.areaM2)) : null
 
   return (
     <>
       <RetourAtelier calepinageId={calepinageId} />
-      <div className="rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-terrain">
+      <div className="@container rounded-xl border border-border bg-card mt-6 p-6" data-testid="cal-terrain">
         <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Mode terrain — centrale au sol</p>
         <p className="mt-2 text-xs text-muted-foreground">
           Les dimensions sont saisies ; les tables, le compte et le pas
           inter-rangées viennent du moteur. Le mode toiture n’est pas touché.
         </p>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 @lg:grid-cols-3">
           {CHAMPS.map(([cle, label]) => (
             // ACAL75 — la pente du terrain n'entre PAS dans le calcul (la demande
             // part avec `pente_deg: 0`) : le champ est grisé et le dit ; la valeur
@@ -262,6 +269,13 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
             </label>
           ))}
         </div>
+
+        {contourTrace !== null && (
+          <p className="mt-3 text-sm text-foreground" data-testid="cal-terrain-contour-trace">
+            Champ enregistré — contour tracé, {formatNumber(contourTrace)} m². Largeur et profondeur ne
+            s’appliquent pas à un contour tracé.
+          </p>
+        )}
 
         <PenteRelief
           key={pose.repereCourant}
@@ -307,7 +321,7 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
         )}
 
         {plan && (
-          <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-border pt-4 sm:grid-cols-5">
+          <dl className="mt-5 grid grid-cols-1 gap-x-6 gap-y-3 border-t border-border pt-4 @xs:grid-cols-2 @3xl:grid-cols-5">
             <div data-testid="cal-terrain-modules">
               <dd className="fig text-lg text-foreground">{plan.modules ?? '—'}</dd>
               <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Modules posés (moteur)</dt>
