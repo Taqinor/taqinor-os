@@ -339,8 +339,7 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
                 ('la pose est sans batterie', 'onduleur_hybride', 'sans', {}),
                 ('il ne porte pas la batterie', 'onduleur_reseau', 'avec', {}),
                 ('site est hors réseau', 'onduleur_hybride', 'avec', {'hors_reseau': True}),
-                ('le site est raccordé', 'onduleur_offgrid', 'avec', {}),
-                ('aucune batterie tarifée', 'onduleur_hybride', 'les_deux', {'batterie_compatible': False})):
+                ('le site est raccordé', 'onduleur_offgrid', 'avec', {})):
             with self.subTest(attendu=attendu):
                 decision = self._decision(famille, scenario, **extra)
                 self.assertIsNone(decision['impose'])
@@ -393,8 +392,21 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
         self.assertIn('son nom ne dit pas qu’il s’agit d’un onduleur hybride', decision['message'])
         self.assertIn('« DEYE SUN-80K-SG02HP3-EU-EM6 »', decision['message'])
 
-    def test_un_reseau_n_attend_aucune_batterie(self):
-        self.assertIsNotNone(self._decision('onduleur_reseau', 'les_deux', batterie_compatible=False)['impose'])
+    def test_la_batterie_est_jugee_par_la_composition(self):
+        """Relecture, point 3 — la décision ne juge plus la batterie elle-même : elle dit à la
+        génération de la faire juger par la composition (``batterie_a_verifier``), et le repli
+        « aucune batterie » nomme l'onduleur désigné."""
+        from apps.ventes.domain.creation_calepinage import repli_onduleur_designe
+
+        for famille, scenario, attendu in (('onduleur_reseau', 'sans', False), ('onduleur_reseau', 'les_deux', False),
+                                           ('onduleur_hybride', 'avec', True), ('onduleur_hybride', 'les_deux', True)):
+            with self.subTest(famille=famille, scenario=scenario):
+                self.assertIs(self._decision(famille, scenario)['batterie_a_verifier'], attendu)
+        self.assertTrue(self._decision('onduleur_offgrid', 'avec', hors_reseau=True)['batterie_a_verifier'])
+        repli = repli_onduleur_designe('Onduleur hybride Deye 5kW', 'batterie_non_composee')
+        self.assertIsNone(repli['impose'])
+        self.assertIn('« Onduleur hybride Deye 5kW »', repli['message'])
+        self.assertIn('ne pose aucune batterie', repli['message'])
 
     def test_famille_role_puis_fiche_puis_nom(self):
         from types import SimpleNamespace
@@ -470,6 +482,24 @@ class OnduleurDesigneDuCalepinage(TestCase):
                 onduleurs, journal = self._devis(designe={'produit_id': self._id(designe), 'nombre': 1})
                 self.assertEqual(onduleurs, [('Onduleur réseau Growatt 8kW Monophasé', 'onduleur_reseau', '', 1)])
                 self.assertTrue(any(attendu in m for m in journal['avertissements']), journal)
+
+    def test_aucune_batterie_composee_avec_l_hybride_designe_repli_dit(self):
+        """Point 3 — la composition ne pose une batterie qu'en stock et en module de 5 ou 10 kWh :
+        un 16 kWh seul en stock ne sert pas l'option « avec ». Le devis garde le choix du catalogue
+        et le dit, en nommant l'hybride désigné ; jamais « avec » sans batterie ni option retirée
+        en silence."""
+        Produit.objects.filter(company=self.company, nom='Batterie Dyness 5 kWh').update(quantite_stock=0)
+        Produit.objects.create(company=self.company, nom='Batterie Deye BOS-B Pack 16 kWh',
+                               sku=f'A148-B16-{self.company.pk}', prix_vente=Decimal('36400'),
+                               prix_achat=Decimal('1'), quantite_stock=10)
+        designe = {'produit_id': self._id('Onduleur hybride Deye 5kW Monophasé'), 'nombre': 1}
+        for extra in ({'scenario': 'avec_batterie'}, {'deux_options': True}):
+            with self.subTest(**extra):
+                onduleurs, journal = self._devis(designe=designe, **extra)
+                self.assertNotIn('Onduleur hybride Deye 5kW Monophasé', [d for d, *_ in onduleurs])
+                self.assertIsNone(journal['onduleur_designe']['impose'])
+                self.assertTrue(any('« Onduleur hybride Deye 5kW Monophasé »' in m and 'ne pose aucune batterie' in m
+                                    for m in journal['avertissements']), journal)
 
     def test_deux_options_chaque_onduleur_va_a_son_option_jamais_un_500(self):
         onduleurs, _j = self._devis(designe={'produit_id': self._id('Onduleur hybride Deye 5kW Monophasé'),

@@ -17,6 +17,7 @@ Déplacement pur : corps octet-identiques, prouvé par
 
 NOM DU LOGGER FIGÉ sur ``apps.ventes.services`` : des tests capturent ce nom.
 """
+from dataclasses import replace
 from decimal import Decimal
 import logging
 
@@ -150,7 +151,8 @@ MOTIFS_REPLI_ONDULEUR = {
     'reseau_avec_batterie': 'c’est un onduleur réseau : il ne porte pas la batterie de ce devis',
     'hybride_sans_batterie': ('c’est un onduleur hybride et la pose est sans batterie : un hybride sans '
                               'batterie n’est pas chiffré automatiquement'),
-    'batterie_incompatible': 'aucune batterie tarifée du catalogue ne se raccorde à cet onduleur',
+    'batterie_non_composee': ('la règle de composition du devis ne pose aucune batterie avec lui (en stock, '
+                              'tarifée, compatible)'),
     'nom_muet': ('son nom ne dit pas qu’il s’agit d’un onduleur %s : le PDF du devis et la '
                  'resynchronisation reconnaissent un onduleur à son nom'),
     'mono_sur_tri': ('il est monophasé et le raccordement du client est triphasé (le devis ne cote jamais '
@@ -216,9 +218,18 @@ def famille_lue_au_nom(nom):
     return None
 
 
+def repli_onduleur_designe(nom, motif, famille=None):
+    """La décision de REPLI (la composition d'aujourd'hui) et sa phrase. Fonction PURE."""
+    texte = MOTIFS_REPLI_ONDULEUR[motif]
+    if motif == 'nom_muet':
+        texte = texte % LIBELLE_FAMILLE_ONDULEUR[famille]
+    return {'impose': None, 'option': None, 'nom': nom, 'batterie_a_verifier': False,
+            'motif': '%s ; %s' % (texte, SUITE_REPLI_ONDULEUR),
+            'message': MESSAGE_ONDULEUR_NON_CHIFFRE % (nom, texte)}
+
+
 def decision_onduleur_designe(*, produit_id, nom, etat, famille, famille_au_nom, scenario, hors_reseau,
-                              batterie_compatible=True, nombre=None, nombre_illisible=False,
-                              phase_client=None, triphase=None):
+                              nombre=None, nombre_illisible=False, phase_client=None, triphase=None):
     """D-ACAL-148 — que fait le devis de l'onduleur DÉSIGNÉ ? Fonction PURE.
 
     ``etat`` : ``'tarife'`` (au catalogue, avec un prix de vente) ou la clé du motif de repli
@@ -229,7 +240,10 @@ def decision_onduleur_designe(*, produit_id, nom, etat, famille, famille_au_nom,
     * ``option`` — l'option qui le porte : ``''`` (devis à une option), ``'sans'`` (onduleur
       réseau d'un devis « les deux »), ``'avec'`` (hybride d'un devis « les deux ») ;
     * ``motif`` / ``message`` — en repli seulement, la raison (sans sujet, pour l'aperçu) et
-      la phrase complète (journal de la génération).
+      la phrase complète (journal de la génération) ;
+    * ``batterie_a_verifier`` — l'onduleur porte la batterie du devis : la génération JUGE la
+      batterie par la composition elle-même (:func:`_batterie_composee`), et se replie si elle
+      n'en pose aucune (relecture, point 3 : jamais une option « avec » sans batterie).
 
     Ce qu'une forme peut porter : site isolé ⇒ l'autonome seul ; « sans » ⇒ un onduleur réseau
     (un hybride sans batterie reste en repli : non tranché) ; « avec » ⇒ un hybride servi par une
@@ -263,8 +277,6 @@ def decision_onduleur_designe(*, produit_id, nom, etat, famille, famille_au_nom,
             motif = 'reseau_avec_batterie'
         elif famille == 'onduleur_hybride' and scenario == COMPOSITION_SANS:
             motif = 'hybride_sans_batterie'
-    if motif is None and famille != 'onduleur_reseau' and not batterie_compatible:
-        motif = 'batterie_incompatible'
     if motif is None and phase_client == 'triphase' and triphase is False:
         motif = 'mono_sur_tri'
     elif motif is None and phase_client == 'monophase' and triphase:
@@ -272,16 +284,28 @@ def decision_onduleur_designe(*, produit_id, nom, etat, famille, famille_au_nom,
     if motif is None and (nombre_illisible or not _nombre_valide(nombre)):
         motif = 'nombre_illisible' if nombre_illisible else 'nombre_inconnu'
     if motif is not None:
-        texte = MOTIFS_REPLI_ONDULEUR[motif]
-        if motif == 'nom_muet':
-            texte = texte % LIBELLE_FAMILLE_ONDULEUR[famille]
-        return {'impose': None, 'option': None, 'motif': '%s ; %s' % (texte, SUITE_REPLI_ONDULEUR),
-                'message': MESSAGE_ONDULEUR_NON_CHIFFRE % (nom, texte)}
+        return repli_onduleur_designe(nom, motif, famille)
     option = ''
     if scenario == COMPOSITION_LES_DEUX and not hors_reseau:
         option = 'sans' if famille == 'onduleur_reseau' else 'avec'
+    porte_la_batterie = famille in ('onduleur_hybride', 'onduleur_offgrid') and (
+        hors_reseau or scenario in (COMPOSITION_AVEC, COMPOSITION_LES_DEUX))
     return {'impose': {'produit_id': int(produit_id), 'categorie': famille, 'nombre': int(nombre)},
-            'option': option, 'motif': None, 'message': None}
+            'option': option, 'nom': nom, 'batterie_a_verifier': porte_la_batterie,
+            'motif': None, 'message': None}
+
+
+def _batterie_composee(intention):
+    """Relecture D-ACAL-148, point 3 — la composition (``etape_composer.composer``, sur
+    l'intention que ``pipeline.intention_de_composition`` traduit) pose-t-elle une batterie avec
+    l'onduleur désigné ? Scénario « avec » : le kit de l'option « avec » d'un devis « les deux »
+    est cette même composition mono-option (``composition_deux_optimiseurs``). Aucune règle de
+    batterie n'est recopiée ici ; lecture seule."""
+    from apps.ventes.domain.pipeline import intention_de_composition
+
+    essai = intention_de_composition(replace(intention, scenario=COMPOSITION_AVEC), intention.cible,
+                                     avertissements=[], devis=None)
+    return 'batterie' in (getattr(composer(essai), 'roles', ()) or ())
 
 
 def _nombre_valide(nombre):
@@ -298,12 +322,14 @@ def onduleur_designe_pour_le_devis(company, designe, *, scenario, hors_reseau, p
     from apps.ventes.compatibilites import est_triphase_produit, normaliser_phase
     from apps.stock.selectors import get_produit_scoped, specs_for_produit
 
-    from apps.ventes.domain.catalogue import _pick_batterie, est_article_pompage
+    from apps.ventes.domain.catalogue import est_article_pompage
 
-    try:
-        cle = int((designe or {}).get('produit_id'))
-    except (TypeError, ValueError):
+    if not designe:
         return None
+    try:
+        cle = int(designe.get('produit_id'))
+    except (TypeError, ValueError):
+        return repli_onduleur_designe('fiche produit %s' % designe.get('produit_id'), 'introuvable')
     produit = next((p for p in catalogue_de_la_societe(company) if getattr(p, 'pk', None) == cle), None)
     if produit is None:
         lu = get_produit_scoped(company, cle)
@@ -314,17 +340,13 @@ def onduleur_designe_pour_le_devis(company, designe, *, scenario, hors_reseau, p
                 else 'pompage' if est_article_pompage(produit) else 'tarife')
     famille = (famille_onduleur_du_produit(produit, specs_for_produit(produit) or {})
                if etat == 'tarife' else None)
-    porte_la_batterie = famille in ('onduleur_hybride', 'onduleur_offgrid') and (
-        hors_reseau or scenario in (COMPOSITION_AVEC, COMPOSITION_LES_DEUX))
     return decision_onduleur_designe(
         produit_id=cle, nom=nom, etat=etat, famille=famille, famille_au_nom=famille_lue_au_nom(nom),
         scenario=scenario,
         hors_reseau=hors_reseau, nombre=(designe or {}).get('nombre'),
         nombre_illisible=bool((designe or {}).get('nombre_illisible')),
         phase_client=normaliser_phase(phase),
-        triphase=bool(est_triphase_produit(produit)) if produit is not None else None,
-        batterie_compatible=(not porte_la_batterie
-                             or _pick_batterie(company, onduleur=produit) is not None))
+        triphase=bool(est_triphase_produit(produit)) if produit is not None else None)
 
 
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
@@ -526,9 +548,6 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     designe = (onduleur_designe_pour_le_devis(company, onduleur_designe, scenario=scenario,
                                               hors_reseau=hors_reseau, phase=phase)
                if onduleur_designe else None)
-    if journal is not None and designe is not None:
-        journal['onduleur_designe'] = designe
-    annonces = [designe['message']] if designe is not None and designe['message'] else []
 
     # ── QJR95 — LE PIPELINE, DANS SON ORDRE UNIQUE ─────────────────────────
     # La cible est SOUVERAINE : elle vient du toit que le commercial a dessiné,
@@ -577,6 +596,15 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         phase=phase,
         hors_reseau=hors_reseau,
     )
+    if (designe is not None and designe['impose'] and designe['batterie_a_verifier']
+            and not _batterie_composee(intention)):
+        # Point 3 — la composition ne poserait aucune batterie : jamais une option « avec »
+        # sans batterie ni une option retirée en silence ; le choix du catalogue, dit.
+        designe = repli_onduleur_designe(designe['nom'], 'batterie_non_composee')
+        intention = replace(intention, scenario=scenario, cible=replace(intention.cible, onduleur_impose=None))
+    if journal is not None and designe is not None:
+        journal['onduleur_designe'] = designe
+    annonces = [designe['message']] if designe is not None and designe['message'] else []
     if a_blanc:
         from apps.ventes.domain.pipeline import composer_l_intention, specs_de_composition
 
@@ -666,6 +694,7 @@ from apps.ventes.domain.pipeline import (  # noqa: E402 — fin de module (anti-
     appliquer,
 )
 from apps.ventes.domain.etape_composer import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    composer,
     COMPOSITION_AVEC,
     COMPOSITION_LES_DEUX,
     COMPOSITION_SANS,
