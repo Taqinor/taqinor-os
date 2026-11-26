@@ -7,6 +7,7 @@
 import { roleLabel, tauxTvaOf, tauxTvaOuDefaut, ttcExactFromHt } from '../../../../features/ventes/solar'
 import { lignesDepuisKit } from '../../../../features/ventes/quote/etudeMarcheBloc'
 import { tailleAutoRemplirPompage } from '../../../../features/ventes/quote/reouverture'
+import { laisserLeServeurChoisirLeWatt, motifRefusComposition } from '../../../../features/ventes/quote/panneauDefautEcran'
 import { phraseReductionOptionAvec } from '../../../../features/ventes/quote/forfaitsPanneau'
 import { DIMENSIONNEMENT_PRET, issueRecalculDimensionnement } from '../../../../features/ventes/quote/paireDimensionnement'
 import { refusAutoRemplirPompage } from '../../../../features/ventes/etudePompagePreviewPur'
@@ -50,6 +51,7 @@ export function useCompositionEcran(ctx) {
     setAutoFillLoading, setCompositionErreur, profilCi, horsReseau, kwp, selectedLead,
     etudeHoraireDonnees, etudeHoraireChargement, marcheCi, ctxProfilCi, apercuCi, resolveKwcAvec,
     recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard, sizing, lines,
+    panneauDefaut = null,
   } = ctx
 
   // U3COMPOSE — l'optimum AXE BATTERIE envoyé au dry-run serveur : même
@@ -144,7 +146,8 @@ export function useCompositionEcran(ctx) {
     setErrors(e => ({
       ...e,
       autofill: [manquantsMsg, avertissementsMsg].filter(Boolean).join(' ') || null,
-      autofillKwc: [mismatch, reduction].filter(Boolean).join(' ') || null,
+      // D-ACAL-169 — le panneau par défaut que la composition n'a pas pu retenir : son motif, tel quel.
+      autofillKwc: [mismatch, motifRefusComposition(data), reduction].filter(Boolean).join(' ') || null,
       marquesManquantes: marquesMsg,
     }))
     recomposerLignes(generated)
@@ -218,7 +221,11 @@ export function useCompositionEcran(ctx) {
       try {
         const body = {
           kwc: kwp,
-          panel_watt: parseFloat(panelW) || 710,
+          // D-ACAL-169 — écran resté sur le panneau par défaut de la société : aucun wattage
+          // n'est envoyé, le serveur applique SA règle (wattage ET produit de la même source) ;
+          // un wattage tapé / relu d'un devis / du moteur part toujours. Sans défaut : inchangé.
+          ...(laisserLeServeurChoisirLeWatt(panneauDefaut, sizing?.panelWFixe)
+            ? {} : { panel_watt: parseFloat(panelW) || 710 }),
           // STKCAT1/STKCAT7 — `structure_type` reste envoyé comme ALIAS
           // DÉPRÉCIÉ (compatibilité descendante ET repli quand aucun produit
           // n'est choisi) ; `structure_produit_id`, quand il est là, est
