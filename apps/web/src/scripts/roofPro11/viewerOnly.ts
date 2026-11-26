@@ -98,6 +98,10 @@ export interface ViewerInitOptions {
   /** Photo satellite du toit du visiteur (buildPublicRoofImageSpec). Absent ou
    *  null → rendu abstrait actuel, strictement inchangé. */
   roofImage?: RoofImageSpec | null;
+  /** Lot 8 — pieds de châssis sous les panneaux inclinés d'un toit plat (`matricesPiedsChassis`). Posé par la page
+   *  client SEULEMENT pour un lien de confiance (D-ACAL-134 : un lien standard et les pages d'estimation gardent la
+   *  visionneuse d'aujourd'hui au bit près). Absent = aucun pied. */
+  piedsChassis?: boolean;
 }
 
 export interface ViewerHandle {
@@ -505,11 +509,12 @@ function buildGroundPlane(
 }
 
 /** Construit tous les meshes d'une zone dans `root`. Renvoie les ressources à libérer. */
-function buildZone(
+export function buildZone(
   root: THREE.Group,
   zone: ViewerZone,
   disposables: Array<{ dispose: () => void }>,
   drape: RoofDrape | null = null,
+  avecPieds = false, // lot 8 — lien de confiance seulement (ViewerInitOptions.piedsChassis)
 ): void {
   const ring = zone.ringENU;
   if (ring.length < 3) return;
@@ -642,7 +647,7 @@ function buildZone(
     disposables.push(panelGeo, panelMat, im);
     // Lot 8 — châssis de toit plat : un pied AVANT et un pied ARRIÈRE sous chaque panneau incliné (plus de verre
     // qui flotte au-dessus de la dalle). Aucun pied en pose affleurante, sur un pan en pente ou sans inclinaison servie.
-    const pieds = matricesPiedsChassis(zone, poses, slopeLenM);
+    const pieds = avecPieds ? matricesPiedsChassis(zone, poses, slopeLenM) : [];
     if (pieds.length) {
       const piedGeo = new THREE.BoxGeometry(PIED_SECTION_M, PIED_SECTION_M, 1);
       const piedMat = new THREE.MeshStandardMaterial({ color: 0xb0b7be, roughness: 0.38, metalness: 0.78 });
@@ -759,7 +764,7 @@ export function createRoofViewer(
     disposables.push(drape.texture);
     buildGroundPlane(root, drape, disposables);
   }
-  for (const zone of model.zones) buildZone(root, zone, disposables, drape);
+  for (const zone of model.zones) buildZone(root, zone, disposables, drape, opts.piedsChassis === true);
 
   const radius = Math.max(model.radiusM, 6);
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, radius * 40);

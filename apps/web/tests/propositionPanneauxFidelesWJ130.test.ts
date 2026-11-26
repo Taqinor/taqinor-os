@@ -32,7 +32,7 @@ import {
 import { packConfig, type PanelGrid } from '../src/lib/estimatorBrainV2';
 import { PANEL2_LONG_M, PANEL2_SHORT_M, PANEL2_THICK_M } from '../src/lib/roofPro2';
 import * as THREE from 'three';
-import { matricesPiedsChassis } from '../src/scripts/roofPro11/viewerOnly';
+import { buildZone, matricesPiedsChassis } from '../src/scripts/roofPro11/viewerOnly';
 
 // ── Aides géo : un toit rectangulaire réaliste au Maroc ─────────────────────
 const LAT0 = 33.5;
@@ -423,5 +423,26 @@ describe('lot 8 — pieds de châssis de la visionneuse simplifiée : tirés de 
     expect(matricesPiedsChassis(plat, [pose(0, plat.tiltDeg)], plat.panelSlopeM)).toHaveLength(2);
     const pente = zoneDe('pitched', true);
     expect(matricesPiedsChassis(pente, [pose(0, pente.tiltDeg)], pente.panelSlopeM)).toEqual([]);
+  });
+
+  it('les pieds ne sont dessinés QUE sur demande (lien de confiance) : lien standard et pages d’estimation inchangés', () => {
+    const plat = buildViewerModel(parseRoofLayout({ version: 2, zones: [{
+      id: 'z', label: 'P', vertices: rectLngLat(12, 12), obstacles: [], roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180, neededPanels: 0,
+      geometry: { azimuthDeg: 180, tiltDeg: t, family: 'south', flush: false, count: 2, origin: [LNG0, LAT0], panels: [{ cx: -0.7, cy: 0 }, { cx: 0.7, cy: 0 }] },
+    }] })!)!.zones[0];
+    const repli = buildViewerModel(parseRoofLayout({ version: 2, zones: [{ id: 'z', label: 'P', vertices: rectLngLat(9, 9), obstacles: [], roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180, neededPanels: 8 }] })!)!.zones[0];
+    const dessiner = (zone: typeof plat, ...option: [] | [boolean]) => {
+      const racine = new THREE.Group();
+      buildZone(racine, zone, [], null, ...option);
+      const instances = racine.children.filter((o) => (o as THREE.InstancedMesh).isInstancedMesh) as THREE.InstancedMesh[];
+      return { enfants: racine.children.length, instances: instances.map((im) => im.count) };
+    };
+    // Sans l'option (lien standard, devis/mon-toit en FR/EN/AR) : un seul InstancedMesh, les panneaux — comme avant.
+    expect(dessiner(plat)).toEqual({ enfants: dessiner(plat, false).enfants, instances: [2] });
+    expect(dessiner(repli).instances).toEqual([repli.panels.length]); // repli illustratif à 15° : aucun pied
+    // Avec l'option (lien de confiance) : un InstancedMesh de plus, deux pieds par panneau.
+    const confiance = dessiner(plat, true);
+    expect(confiance.instances).toEqual([2, 4]);
+    expect(confiance.enfants).toBe(dessiner(plat).enfants + 1);
   });
 });

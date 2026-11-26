@@ -9141,6 +9141,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         reducedMotion: reduced,
         lowEnd: strategy.lowEnd,
         roofImage,
+        piedsChassis: soleil !== null, // lot 8 — pieds de châssis : lien de confiance seulement (D-ACAL-134)
         onReady: () => {
           if (overlay) overlay.hidden = true;
           if (hintEl) hintEl.hidden = false;
