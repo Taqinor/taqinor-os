@@ -187,6 +187,12 @@ export default function FactureRow({ f, ctx }) {
             </PopoverContent>
           </Popover>
         )}
+        {/* R5A-N7 — les mentions manquantes ÉPELÉES sous le badge (le décompte seul ne dit pas lesquelles). */}
+        {Array.isArray(f.mentions_manquantes) && f.mentions_manquantes.length > 0 && (
+          <div className="mt-0.5 text-xs text-warning" data-testid="mentions-manquantes-liste">
+            {f.mentions_manquantes.join(' · ')}
+          </div>
+        )}
         {/* VX97 — journal des changements (qui/quand/ancien→nouveau), repliable. */}
         <div className="mt-0.5">
           <button

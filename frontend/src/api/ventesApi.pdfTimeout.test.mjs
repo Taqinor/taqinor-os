@@ -96,3 +96,9 @@ test('T4-X4-009 : whatsappPreviewDevis n\'empile pas le toast générique (son u
   assert.notEqual(start, -1)
   assert.match(VENTES_API_SRC.slice(start, start + 260), /suppressErrorToast:\s*true/)
 })
+
+test('R5A-N7 : le thunk d\'émission passe suppressErrorToast (le refus est dit une fois, par doAction)', () => {
+  const slice = readFileSync(join(HERE, '../features/ventes/store/ventesSlice.js'), 'utf8')
+  assert.match(slice, /ventesApi\.emettreFacture\(id,\s*\{\s*suppressErrorToast:\s*true\s*\}\)/)
+  assert.match(VENTES_API_SRC, /emettreFacture:\s*\(id,\s*config\)/)
+})

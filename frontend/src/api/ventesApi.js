@@ -466,7 +466,9 @@ const ventesApi = {
   telechargerUbl: (id) => api.get(`/ventes/factures/${id}/ubl/`, { responseType: 'blob' }),
   // N31 — audit admin de la numérotation séquentielle (trous/doublons).
   auditNumerotation: () => api.get('/ventes/numerotation-audit/'),
-  emettreFacture: (id) => api.post(`/ventes/factures/${id}/emettre/`),
+  // R5A-N7 — `config` : le thunk de la liste passe `suppressErrorToast` (il toaste lui-même le refus ; sans cela le même
+  // message s'affichait deux fois : intercepteur + doAction).
+  emettreFacture: (id, config) => api.post(`/ventes/factures/${id}/emettre/`, undefined, config),
   // AUD124 — motif OBLIGATOIRE : marquer une facture payée sans encaissement
   // la sort de la balance âgée et des relances ; le serveur refuse (400) sans
   // justification, et trace l'auteur + le motif dans le chatter.
