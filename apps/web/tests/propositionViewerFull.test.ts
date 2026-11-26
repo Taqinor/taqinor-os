@@ -647,10 +647,13 @@ const INSTANT_REEL = { jour: 356, heure: 16.25 };
 type CarteFactice = InstanceType<typeof carteFactice.FakeMap>;
 type Position = { x: number; y: number; z: number };
 
+/** Tout texte peint dans un canevas (étiquette de cote, numéro de module…) pendant la construction de la scène. */
+const textesPeints: string[] = [];
 function contexte2dFactice() {
   const degrade = { addColorStop() {} };
   return new Proxy({}, {
     get(_t, prop) {
+      if (prop === 'fillText' || prop === 'strokeText') return (texte: unknown) => { textesPeints.push(String(texte)); };
       if (prop === 'createLinearGradient' || prop === 'createRadialGradient' || prop === 'createPattern') return () => degrade;
       if (prop === 'getImageData') return () => ({ data: new Uint8ClampedArray(4) });
       if (prop === 'measureText') return () => ({ width: 0 });
@@ -676,6 +679,7 @@ describe('visionneuse pleine — premier rendu réel (scene3d + contexte du boot
   beforeEach(() => {
     carteFactice.cartes.length = 0;
     carteFactice.rendus.length = 0;
+    textesPeints.length = 0;
     const c2d = contexte2dFactice();
     (HTMLCanvasElement.prototype as unknown as { getContext: () => unknown }).getContext = () => c2d;
   });
@@ -865,21 +869,63 @@ describe('visionneuse pleine — premier rendu réel (scene3d + contexte du boot
     expect(solStandard).toBe(false);
   });
 
-  it('B4 — lien de confiance : aucune étiquette ni commande d’édition dans la scène ou la page', async () => {
+  it('B4 — scène de confiance RÉELLE (obstacle + voisins + teinte) : aucun objet porteur de texte, aucune commande, aucun montant', async () => {
     const [lngC, latC] = at(0, 0);
-    const avecObstacle = layoutOf(rawZone({ obstacles: [{ centerLng: lngC, centerLat: latC + 0.0001, lengthM: 4, widthM: 1 }], geometry: { ...(rawZone().geometry as object), count: 35, panels: RANGEES_PLAT } }));
+    const layout = layoutOf(rawZone({ obstacles: [{ centerLng: lngC, centerLat: latC + 0.0001, lengthM: 4, widthM: 1 }], geometry: { ...(rawZone().geometry as object), count: 35, panels: RANGEES_PLAT } }));
+    const payload = { visionneuse_soleil: { version: 1, zones: [{ index: 0, id: 'zone-1', acces: RANGEES_PLAT.map(() => 0.9) }], instant_choisi: { jour: 356, heure: 16.25 },
+      environnement: [{ kind: 'arbre', centerLng: lngC, centerLat: latC - 0.0002, heightM: 7.5, crownDiameterM: 5, evergreen: true }, { kind: 'batiment', centerLng: lngC + 0.0002, centerLat: latC, heightM: 9, lengthM: 8, widthM: 6 }] } };
+    const soleil = lireVisionneuseSoleil(payload, layout)!;
+    expect(soleil.environnement).toHaveLength(2);
+    // Témoin : le détecteur de texte peint fonctionne.
+    (document.createElement('canvas').getContext('2d') as CanvasRenderingContext2D).fillText('témoin', 0, 0);
+    expect(textesPeints.splice(0)).toEqual(['témoin']);
     const { bootViewerFull } = await import('../src/scripts/roofPro11/viewerFullBoot');
-    const el = document.body.appendChild(document.createElement('div'));
-    const poignee = bootViewerFull(el, avecObstacle, { maptilerKey: 'cle-test', instant: INSTANT_REEL, presentationClient: true })!;
+    document.body.innerHTML = '<section id="roof3d"><div id="roof3d-stage"></div></section>';
+    const poignee = bootViewerFull(document.getElementById('roof3d-stage'), layout, { maptilerKey: 'cle-test', instant: soleil.ouverture, environnement: soleil.environnement, indexTeintes: [0], presentationClient: true })!;
     const carte = carteFactice.cartes[0];
     carte.fire('load');
-    poignee.poserInstant(INSTANT_REEL.jour, 12);
+    poignee.teinter(couleurParPanneau(soleil, poignee.indexActif)!);
+    for (let h = 8; h <= 16; h++) poignee.poserInstant(soleil.ouverture.jour, h);
     soleilDessine(carte);
-    const genres = new Set<string>();
-    (carteFactice.rendus.at(-1) as { traverse: (f: (o: Record<string, any>) => void) => void }).traverse((o) => { if (o.isSprite) genres.add('sprite'); });
-    expect(genres.has('sprite')).toBe(false); // ni cote d'obstacle, ni numéro de module, ni poignée
-    expect(document.querySelector('input, select, textarea, [contenteditable]')).toBeNull(); // aucun contrôle de saisie monté
-    expect(document.body.textContent ?? '').not.toMatch(/MAD|DH|prix|€/i);
+    const porteurs: string[] = [];
+    let arbre = false;
+    let obstacle: Record<string, any> | null = null;
+    (carteFactice.rendus.at(-1) as { traverse: (f: (o: Record<string, any>) => void) => void }).traverse((o) => {
+      if (o.isSprite || o.isCSS2DObject || o.isCSS3DObject || o.element instanceof HTMLElement) porteurs.push(o.type);
+      const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+      for (const m of mats) if (m.isSpriteMaterial) porteurs.push('SpriteMaterial');
+      if (o.geometry?.type === 'CylinderGeometry') arbre = true;
+      if (o.isMesh && !o.isInstancedMesh && o.material?.color?.getHex?.() === TEINTES_PRESENTATION.cheminee) obstacle = o;
+    });
+    expect(arbre).toBe(true); // la scène construite porte bien les voisins
+    expect(obstacle).not.toBeNull(); // et l'obstacle de 4 m, en brique (habit client)
+    expect(porteurs).toEqual([]); // ni sprite (cote, numéro, poignée), ni surimpression HTML
+    expect(textesPeints).toEqual([]); // aucun texte peint dans un canevas (étiquette en texture)
+    // La page : rien de monté par la scène (contrôle de numérotation, note de pas inter-rangées), aucun champ, aucun montant.
+    expect(document.getElementById('rp11-numerotation')).toBeNull();
+    expect(document.getElementById('rp9-row-pitch')).toBeNull();
+    expect(document.querySelector('input, select, textarea, button, [contenteditable]')).toBeNull();
+    expect(document.body.textContent ?? '').toBe('');
+  });
+
+  it('les obstacles portent et reçoivent les ombres sur le lien de confiance ; lien standard : sans ombre, comme avant', async () => {
+    const [lngC, latC] = at(0, 0);
+    const layout = layoutOf(rawZone({ obstacles: [{ centerLng: lngC, centerLat: latC + 0.0001, lengthM: 4, widthM: 1 }], geometry: { ...(rawZone().geometry as object), count: 35, panels: RANGEES_PLAT } }));
+    const { bootViewerFull } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    const ombresObstacle = (opts: Record<string, unknown>, teinte: number) => {
+      carteFactice.cartes.length = 0;
+      const el = document.body.appendChild(document.createElement('div'));
+      const p = bootViewerFull(el, layout, { maptilerKey: 'cle-test', instant: INSTANT_REEL, ...opts })!;
+      carteFactice.cartes[0].fire('load');
+      soleilDessine(carteFactice.cartes[0]);
+      let o: Record<string, any> | null = null;
+      (carteFactice.rendus.at(-1) as { traverse: (f: (x: Record<string, any>) => void) => void }).traverse((x) => { if (x.isMesh && !x.isInstancedMesh && x.material?.color?.getHex?.() === teinte) o = x; });
+      p.destroy();
+      const m = o as unknown as Record<string, any>;
+      return [m.castShadow, m.receiveShadow];
+    };
+    expect(ombresObstacle({ presentationClient: true }, TEINTES_PRESENTATION.cheminee)).toEqual([true, true]);
+    expect(ombresObstacle({}, 0xff6b6b)).toEqual([false, false]);
   });
 
   /** Démarre avec un token Mapbox et compte les demandes de la photo du toit ; `images` = les <img> demandées. */
@@ -951,6 +997,7 @@ describe('monterVisionneusePleine — barre au soleil branchée après le rendu,
   beforeEach(() => {
     carteFactice.cartes.length = 0;
     carteFactice.rendus.length = 0;
+    textesPeints.length = 0;
     const c2d = contexte2dFactice();
     (HTMLCanvasElement.prototype as unknown as { getContext: () => unknown }).getContext = () => c2d;
   });
