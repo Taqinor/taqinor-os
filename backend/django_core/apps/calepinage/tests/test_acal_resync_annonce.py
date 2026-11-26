@@ -10,6 +10,8 @@ Run :
 import copy
 from decimal import Decimal
 
+from django.test import SimpleTestCase
+
 from core import events
 
 from apps.calepinage.models import Calepinage, CalepinageVersion
@@ -207,6 +209,192 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         neuve = self.api.get(f'{self.base}apercu-devis/')
         self.assertEqual((neuve.data['source'], neuve.data['reference']), ('composition', None))
 
+    def test_lot8_apercu_et_generation_meme_onduleur_autour_des_paliers(self):
+        """Lot 8 (aperçu ≠ devis, 26/11) — autour des paliers 20 / 25 / 30 kW, triphasé et monophasé,
+        dont le cas signalé (34 × 715 W triphasé) : l'onduleur que l'aperçu nomme est la ligne onduleur
+        du devis que « Générer » écrit ensuite (mêmes entrées : layout, société, lead ; la génération
+        n'ajoute que TVA / remise, que l'écran n'envoie pas)."""
+        from apps.stock.models import Produit
+        from apps.ventes.models import Devis
+
+        for nom, prix in (('Panneau Jinko 715W', 1400), ('Onduleur réseau Huawei 20kW Triphasé', 30000),
+                          ('Onduleur réseau Huawei 25kW Triphasé', 35000),
+                          ('Onduleur réseau Huawei 30kW Triphasé', 40000)):
+            Produit.objects.create(company=self.company, nom=nom, sku=f'L8-{nom[-14:]}-{self.company.pk}',
+                                   prix_vente=Decimal(prix), prix_achat=Decimal('1'), quantite_stock=100)
+        for phase, panneaux in (('triphase', 28), ('triphase', 34), ('triphase', 35), ('triphase', 42),
+                                ('monophase', 7)):
+            with self.subTest(phase=phase, panneaux=panneaux):
+                self.lead.raccordement = phase
+                self.lead.save(update_fields=['raccordement'])
+                calepinage = Calepinage.objects.create(company=self.company, lead_id=self.lead.pk,
+                                                       titre=f'L8 {phase} {panneaux}')
+                toit = copy.deepcopy(TOIT)
+                toit['result'] = {'panels': panneaux, 'kwc': round(panneaux * 0.715, 3),
+                                  'annualKwh': 1600 * panneaux, 'savings': 1200 * panneaux}
+                enregistrer_layout(calepinage, toit, user=self.user)
+                base = url_detail(calepinage.pk)
+                apercu = self.api.get(f'{base}apercu-devis/')
+                self.assertEqual(apercu.status_code, 200, apercu.data)
+                self.assertIsNone(apercu.data['refus'], apercu.data)
+                genere = self.api.post(f'{base}generer-devis/', {'creer_autre_devis': True, 'confirmer_taille': True},
+                                       format='json')
+                self.assertEqual(genere.status_code, 201, genere.data)
+                lignes = Devis.objects.get(pk=genere.data['devis']).lignes.all()
+                onduleurs = sorted(li.designation for li in lignes if str(li.role_devis or '').startswith('onduleur_'))
+                self.assertEqual(sorted(o['onduleur'] for o in apercu.data['options']), onduleurs, apercu.data)
+
+    def test_lot8_apercu_dit_le_brouillon_libre_que_generer_rattacherait(self):
+        """Lot 8 — le lead a un brouillon LIBRE né avant ce calepinage : « Générer » ne compose pas, il
+        demande (409 ``devis_existant``) ; rattaché, ce brouillon GARDE son onduleur (PV18). L'aperçu le
+        dit (``ecarts`` champ ``rattacher_devis``, référence et onduleur du brouillon) au lieu de
+        présenter la composition comme LE devis. Mutant « aperçu sans cette branche » ⇒ rouge."""
+        from datetime import timedelta
+
+        from apps.ventes.models import Devis
+
+        self.calepinage.refresh_from_db()
+        libre = Devis.objects.get(pk=self.calepinage.devis_id)
+        ligne = next(li for li in libre.lignes.all() if str(li.role_devis or '').startswith('onduleur_'))
+        type(ligne).objects.filter(pk=ligne.pk).update(designation='Onduleur du brouillon libre')
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=None)
+        self.calepinage.refresh_from_db()
+        Devis.objects.filter(pk=libre.pk).update(date_creation=self.calepinage.created_at - timedelta(days=1))
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 10  # une autre pose : le brouillon n'est pas « rendu »
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        reponse = self.api.get(f'{self.base}apercu-devis/')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['source'], 'composition')
+        phrase = next((e['message'] for e in reponse.data['ecarts'] if e['champ'] == 'rattacher_devis'), None)
+        self.assertIsNotNone(phrase, reponse.data)
+        self.assertIn(libre.reference, phrase)
+        self.assertIn('« Onduleur du brouillon libre »', phrase)
+        question = self.api.post(f'{self.base}generer-devis/', {'confirmer_taille': True}, format='json')
+        self.assertEqual((question.status_code, question.data.get('code')), (409, 'devis_existant'), question.data)
+        rattache = self.api.post(f'{self.base}generer-devis/', {'rattacher_devis': libre.pk, 'confirmer_taille': True},
+                                 format='json')
+        self.assertEqual(rattache.status_code, 200, rattache.data)
+        onduleurs = [li.designation for li in Devis.objects.get(pk=libre.pk).lignes.all()
+                     if str(li.role_devis or '').startswith('onduleur_')]
+        self.assertEqual(onduleurs, ['Onduleur du brouillon libre'])
+        # Sans brouillon libre (créer un autre devis tranché ailleurs) : aucune phrase de rattachement.
+        Devis.objects.filter(pk=libre.pk).update(is_active=False)
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=None)
+        sans = self.api.get(f'{self.base}apercu-devis/')
+        self.assertNotIn('rattacher_devis', [e['champ'] for e in sans.data['ecarts']])
+
+    def test_lot8_b1_lie_non_reutilisable_jamais_la_phrase_du_brouillon_libre(self):
+        """Lot 8 (B1) — le lead a un brouillon manuel D1 né avant ce calepinage, la première
+        génération a lié D2 (setUp), le toit change : « Générer » répond « déjà rattaché à D2 »
+        (409), jamais la question sur D1. L'aperçu dit CE refus, sans phrase sur D1."""
+        from datetime import timedelta
+
+        from apps.ventes.models import Devis
+
+        self.calepinage.refresh_from_db()
+        d2 = Devis.objects.get(pk=self.calepinage.devis_id)
+        d1 = Devis.objects.create(company=self.company, client=d2.client, lead=self.lead, reference='DEV-L8B1-0001')
+        Devis.objects.filter(pk=d1.pk).update(date_creation=self.calepinage.created_at - timedelta(days=1))
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 10
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        apercu = self.api.get(f'{self.base}apercu-devis/')
+        self.assertEqual(apercu.status_code, 200, apercu.data)
+        self.assertNotIn('DEV-L8B1-0001', str(apercu.data))
+        self.assertEqual((apercu.data['options'], apercu.data['ecarts']), ([], []))
+        genere = self.api.post(f'{self.base}generer-devis/', {'confirmer_taille': True}, format='json')
+        self.assertEqual(genere.status_code, 409, genere.data)
+        self.assertEqual(apercu.data['refus'], str(genere.data['detail']))
+        self.assertIn(d2.reference, apercu.data['refus'])
+
+    def test_lot8_b2_onduleur_du_brouillon_libre_sans_role_fige(self):
+        """Lot 8 (B2) — brouillon libre dont la ligne onduleur n'a pas de rôle figé : le rôle est
+        résolu (produit, puis mots-clés) et l'onduleur nommé ; sans onduleur établi, la phrase ne
+        dit rien de l'onduleur (jamais « aucun »)."""
+        from datetime import timedelta
+
+        from apps.ventes.models import Devis
+
+        self.calepinage.refresh_from_db()
+        libre = Devis.objects.get(pk=self.calepinage.devis_id)
+        ligne = next(li for li in libre.lignes.all() if str(li.role_devis or '').startswith('onduleur_'))
+        type(ligne).objects.filter(pk=ligne.pk).update(role_devis=None, produit=None,
+                                                       designation='Onduleur réseau Huawei 20 kW')
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=None)
+        self.calepinage.refresh_from_db()
+        Devis.objects.filter(pk=libre.pk).update(date_creation=self.calepinage.created_at - timedelta(days=1))
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 10
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+
+        def phrase():
+            reponse = self.api.get(f'{self.base}apercu-devis/')
+            self.assertEqual(reponse.status_code, 200, reponse.data)
+            return next(e['message'] for e in reponse.data['ecarts'] if e['champ'] == 'rattacher_devis')
+        self.assertIn('(onduleur « Onduleur réseau Huawei 20 kW »)', phrase())
+        type(ligne).objects.filter(pk=ligne.pk).delete()
+        sans = phrase()
+        self.assertIn(libre.reference, sans)
+        self.assertNotIn('onduleur', sans)
+        self.assertNotIn('aucun', sans)
+
+    def test_lot8_d_acal_106_technicien_ne_lit_aucun_devis_dans_l_apercu(self):
+        """Lot 8 (D-ACAL-106 « toujours aucun devis ni aucun prix ») — un Technicien (sa visite, sans
+        aucun code ``ventes_*``) lit l'aperçu sans qu'aucun devis y soit NOMMÉ, dans les trois cas :
+        brouillon rendu, devis lié non réutilisable, brouillon libre antérieur. Le Directeur reçoit la
+        réponse complète, identique à l'appel direct du service. Mutant « vue sans lit_les_devis » ⇒ rouge."""
+        from datetime import timedelta
+
+        from django.contrib.auth import get_user_model
+
+        from apps.calepinage.services.devis_apercu import (
+            MESSAGE_BROUILLON_LIBRE_CAVIARDE, MESSAGE_DEJA_RATTACHE_CAVIARDE, MESSAGE_DEVIS_EXISTANT_CAVIARDE,
+            apercu_materiel_du_devis,
+        )
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.ventes.models import Devis
+        from apps.visites.models import VisiteTerrain
+
+        role = Role.objects.create(company=self.company, nom='L8 Technicien', permissions=list(TECHNICIEN_PERMISSIONS))
+        tech = get_user_model().objects.create_user(username='l8-tech', password='x', company=self.company, role=role)
+        VisiteTerrain.objects.create(company=self.company, lead=self.lead, commercial=tech)
+        api_tech = self._client(tech)
+        self.calepinage.refresh_from_db()
+        devis = Devis.objects.get(pk=self.calepinage.devis_id)
+
+        def lire():
+            directeur = self.api.get(f'{self.base}apercu-devis/')
+            technicien = api_tech.get(f'{self.base}apercu-devis/')
+            self.assertEqual((directeur.status_code, technicien.status_code), (200, 200), technicien.data)
+            self.calepinage.refresh_from_db()
+            self.assertEqual(directeur.data, apercu_materiel_du_devis(self.calepinage))  # lecteur : inchangé
+            self.assertEqual(set(technicien.data), set(directeur.data))
+            self.assertIsNone(technicien.data['reference'])
+            self.assertNotIn(devis.reference, str(technicien.data))
+            return directeur.data, technicien.data
+
+        # 1. Brouillon rendu (lié, même empreinte).
+        directeur, technicien = lire()
+        self.assertEqual(directeur['reference'], devis.reference)
+        self.assertEqual((technicien['options'], technicien['refus']), ([], MESSAGE_DEVIS_EXISTANT_CAVIARDE))
+        # 2. Lié, non réutilisable (le toit a changé).
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 10
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        directeur, technicien = lire()
+        self.assertIn(devis.reference, directeur['refus'])
+        self.assertEqual(technicien['refus'], MESSAGE_DEJA_RATTACHE_CAVIARDE)
+        # 3. Brouillon libre antérieur (délié, antidaté).
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=None)
+        self.calepinage.refresh_from_db()
+        Devis.objects.filter(pk=devis.pk).update(date_creation=self.calepinage.created_at - timedelta(days=1))
+        directeur, technicien = lire()
+        self.assertEqual(technicien['options'], directeur['options'])  # la composition du calepinage reste
+        phrase = next(e['message'] for e in technicien['ecarts'] if e['champ'] == 'rattacher_devis')
+        self.assertEqual(phrase, MESSAGE_BROUILLON_LIBRE_CAVIARDE)
+
     def test_e9b_apercu_compose_les_surfaces_cochees_comme_la_generation(self):
         """Lane E9b — ``?surfaces=`` (les cases cochées que « Générer » enverra) passe par LA même
         fonction (``devis._layout_des_surfaces``) : clé inconnue ⇒ le refus nommé de la génération ;
@@ -288,3 +476,82 @@ class ResyncAnnonceTest(BaseApiCalepinage):
                         side_effect=SyncLayoutError('Refus du serveur.', revision_possible=False)):
             reponse = self.api.post(f'{self.base}sync-devis/', {}, format='json')
         self.assertEqual((reponse.status_code, str(reponse.data['detail'])), (409, 'Refus du serveur.'))
+
+
+class ApercuBrouillonLibreSansBaseTest(SimpleTestCase):
+    """Lot 8 (B2) — sans base : le rôle d'une ligne de brouillon et la phrase R2-22."""
+
+    def test_role_fige_puis_mots_cles_et_aucun_onduleur(self):
+        from types import SimpleNamespace
+
+        from apps.calepinage.services.devis_apercu import _role_de_ligne
+
+        def ligne(role, designation, produit=None):
+            return SimpleNamespace(role_devis=role, designation=designation, produit=produit)
+        self.assertEqual(_role_de_ligne(ligne('onduleur_hybride', 'Désignation libre')), 'onduleur_hybride')
+        produit = SimpleNamespace(role_devis='onduleur_reseau')
+        self.assertEqual(_role_de_ligne(ligne(None, 'Désignation libre', produit)), 'onduleur_reseau')
+        self.assertEqual(_role_de_ligne(ligne(None, 'Onduleur réseau Huawei 20 kW')), 'onduleur_reseau')
+        self.assertEqual(_role_de_ligne(ligne('', 'Onduleur hybride Deye 5kW Monophasé')), 'onduleur_hybride')
+        self.assertFalse(str(_role_de_ligne(ligne(None, 'Pompe immergée 4 pouces')) or '').startswith('onduleur_'))
+
+    def test_phrase_ne_dit_jamais_aucun_onduleur(self):
+        from apps.calepinage.services.devis_apercu import _phrase_brouillon_libre
+
+        avec = _phrase_brouillon_libre('DEV-1', ['Onduleur réseau Huawei 20 kW', None])
+        self.assertIn('(onduleur « Onduleur réseau Huawei 20 kW »)', avec)
+        sans = _phrase_brouillon_libre('DEV-1', [None])
+        self.assertIn('DEV-1', sans)
+        self.assertNotIn('onduleur', sans)
+        self.assertNotIn('aucun', sans)
+
+    def test_d_acal_106_caviardage_trois_cas_avec_et_sans_droit(self):
+        """Lot 8 (D-ACAL-106) — brouillon rendu, devis lié du refus, brouillon libre : avec le droit de
+        lire les devis la réponse est l'OBJET même du calcul complet ; sans, aucune référence, aucun
+        statut, aucun onduleur lu sur un devis — la composition et les désignations du calepinage restent."""
+        from unittest import mock
+
+        from apps.calepinage.services import devis_apercu as service
+        from apps.calepinage.services.devis import ISSUE_BROUILLON_LIBRE, ISSUE_DEJA_RATTACHE, ISSUE_RENDU
+
+        option = {'option': None, 'libelle': 'Devis', 'module': 'Module 715 Wc', 'onduleur': 'Onduleur A'}
+        designe = {'champ': 'onduleur_produit', 'message': 'L’onduleur désigné (« Onduleur A ») : raison.'}
+        libre = {'champ': 'rattacher_devis', 'message': service._phrase_brouillon_libre('DEV-1', ['Onduleur du devis'])}
+        cas = {
+            ISSUE_RENDU: {'options': [dict(option, onduleur='Onduleur du devis')], 'ecarts': [designe],
+                          'refus': None, 'source': 'brouillon_existant', 'reference': 'DEV-1'},
+            ISSUE_DEJA_RATTACHE: {'options': [], 'ecarts': [], 'source': None, 'reference': None,
+                                  'refus': 'Ce calepinage est déjà rattaché au devis DEV-1 (Envoyé) : utilisez …'},
+            ISSUE_BROUILLON_LIBRE: {'options': [option], 'ecarts': [designe, libre], 'refus': None,
+                                    'source': 'composition', 'reference': None},
+        }
+        for issue, complet in cas.items():
+            with self.subTest(issue=issue), \
+                    mock.patch.object(service, '_apercu_complet', return_value=(complet, issue)):
+                self.assertIs(service.apercu_materiel_du_devis(object()), complet)
+                cache = service.apercu_materiel_du_devis(object(), lit_les_devis=False)
+                self.assertEqual(set(cache), set(complet))
+                self.assertIsNone(cache['reference'])
+                for nomme in ('DEV-1', 'Onduleur du devis', 'Envoyé'):
+                    self.assertNotIn(nomme, str(cache))
+        cache = service._caviarder(cas[ISSUE_BROUILLON_LIBRE], ISSUE_BROUILLON_LIBRE)
+        self.assertEqual(cache['options'], [option])
+        self.assertIn(designe, cache['ecarts'])
+
+    def test_d_acal_106_lit_les_devis_suit_la_garde_des_devis(self):
+        """``ventes.selectors_assistant.lit_les_devis`` = ``LectureVentes`` de ``DevisViewSet`` : le
+        Technicien (aucun code ``ventes_*``) ne lit pas, le Commercial et le Directeur lisent."""
+        from types import SimpleNamespace
+
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, DIRECTEUR_PERMISSIONS, TECHNICIEN_PERMISSIONS,
+        )
+        from apps.ventes.selectors_assistant import lit_les_devis
+
+        def compte(permissions):
+            return SimpleNamespace(is_authenticated=True, is_superuser=False, is_admin_role=False,
+                                   portee='interne', role_id=1, role=SimpleNamespace(permissions=list(permissions)))
+        self.assertFalse(lit_les_devis(compte(TECHNICIEN_PERMISSIONS)))
+        self.assertTrue(lit_les_devis(compte(COMMERCIAL_PERMISSIONS)))
+        self.assertTrue(lit_les_devis(compte(DIRECTEUR_PERMISSIONS)))
+        self.assertFalse(lit_les_devis(None))

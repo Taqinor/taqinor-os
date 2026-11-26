@@ -210,6 +210,24 @@ def _brouillon_rendu(calepinage, company, lead, empreinte, *, lie=None):
     return _brouillon_reutilisable(company, lead, empreinte, calepinage) if lead is not None else None
 
 
+#: Lot 8 (B1) — les issues de « Générer le devis », dans l'ordre où ``_generer_sous_verrou`` les tranche.
+ISSUE_RENDU, ISSUE_DEJA_RATTACHE, ISSUE_BROUILLON_LIBRE, ISSUE_COMPOSER = (
+    'rendu', 'deja_rattache', 'brouillon_libre', 'composer')
+
+
+def _ordre_de_generation(lie, rendu, libres_lus):
+    """Lot 8 (B1) — ``(issue, objet)`` : L'ORDRE des décisions de « Générer », partagé par la
+    génération et l'aperçu. Lié actif d'abord (rendu s'il est ce brouillon, sinon 409 « déjà
+    rattaché ») ; puis le brouillon rendu ; puis les brouillons libres du lead (question R2-22,
+    ``libres_lus()`` lu seulement à ce rang) ; sinon composer. Pur : n'écrit ni ne lit rien."""
+    if lie is not None:
+        return (ISSUE_RENDU, lie) if rendu is not None else (ISSUE_DEJA_RATTACHE, lie)
+    if rendu is not None:
+        return ISSUE_RENDU, rendu
+    libres = libres_lus()
+    return (ISSUE_BROUILLON_LIBRE, libres) if libres else (ISSUE_COMPOSER, None)
+
+
 def _brouillon_reutilisable(company, lead, empreinte, calepinage):
     """ACAL89 — le brouillon de même empreinte, SEULEMENT s'il n'est lié à
     aucun AUTRE calepinage (la copie d'un calepinage ne vole jamais le devis
@@ -664,18 +682,21 @@ def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
     lie = _devis_lie_actif(calepinage)
     # Lane E9b — LA décision « le brouillon rendu au lieu d'un devis neuf », lue aussi par l'aperçu.
     rendu = _brouillon_rendu(calepinage, company, lead, empreinte, lie=lie)
-    if lie is not None:
-        # ACAL33 — un calepinage lié à un devis ACTIF n'est jamais re-pointé :
-        # le même brouillon à la même empreinte est rendu (dédup, double clic,
-        # client seul compris), tout autre cas est un 409 NOMMÉ avant toute
-        # création (jamais un devis orphelin ni un 500).
-        if rendu is not None:
-            _refuser_autre_marche(lie, lead)  # ACON90
-            _refuser_montants_differents(lie, montants)  # ACON49
-            return lie, False
-        raise _refus_deja_rattache(lie)
+    # Lot 8 (B1) — L'ORDRE des issues, partagé avec l'aperçu (``_ordre_de_generation``) ; la
+    # question R2-22 reste posée plus bas, selon le choix de l'utilisateur.
+    issue, retenu = _ordre_de_generation(lie, rendu, list)
+    # ACAL33 — un calepinage lié à un devis ACTIF n'est jamais re-pointé :
+    # le même brouillon à la même empreinte est rendu (dédup, double clic,
+    # client seul compris), tout autre cas est un 409 NOMMÉ avant toute
+    # création (jamais un devis orphelin ni un 500).
+    if issue == ISSUE_DEJA_RATTACHE:
+        raise _refus_deja_rattache(retenu)
+    if issue == ISSUE_RENDU and lie is not None:
+        _refuser_autre_marche(lie, lead)  # ACON90
+        _refuser_montants_differents(lie, montants)  # ACON49
+        return lie, False
     if lead is not None:
-        deja = rendu
+        deja = retenu if issue == ISSUE_RENDU else None
         if deja is not None:
             _refuser_autre_marche(deja, lead)  # ACON90
             _refuser_montants_differents(deja, montants)  # ACON49
