@@ -323,6 +323,10 @@ class SpecOnduleur:
     #: (« onduleur_hybride », « onduleur_reseau »…) ; ``""`` = non dit : la fiche,
     #: puis le nom, disent si l'appareil est hybride (``onduleurs.onduleur_est_hybride``).
     role: str = ""
+    #: D-HYB-1 — la famille d'onduleur AUTRE qu'hybride que le classifieur du catalogue lit
+    #: dans le NOM (« onduleur_offgrid », « micro_onduleur »), ``""`` sinon : un onduleur-
+    #: chargeur hors réseau ou un micro-onduleur qui publie un port batterie n'est pas hybride.
+    famille_par_nom: str = ""
     #: Le PORT BATTERIE publié par la fiche (kW) : un onduleur qui en publie un est
     #: hybride. Ne participe à aucun autre calcul du noyau.
     bat_max_charge_kw: Optional[float] = None
@@ -348,7 +352,7 @@ class SpecOnduleur:
 #: chaque ``electrical_design`` rangé — devis envoyés compris — changerait
 #: d'empreinte et serait recalculé à sa prochaine lecture (« un devis envoyé garde
 #: ce que le client a reçu »).
-CHAMPS_SPEC_ONDULEUR_HORS_EMPREINTE = ("role", "bat_max_charge_kw", "bat_max_decharge_kw")
+CHAMPS_SPEC_ONDULEUR_HORS_EMPREINTE = ("role", "famille_par_nom", "bat_max_charge_kw", "bat_max_decharge_kw")
 
 
 def spec_onduleur_pour_empreinte(onduleur):

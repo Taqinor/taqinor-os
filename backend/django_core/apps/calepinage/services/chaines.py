@@ -501,7 +501,7 @@ def specs_module(specs, designation=''):
         coefficients_sources=tuple(sources), **optionnels), ())
 
 
-def _specs_onduleur(specs, designation='', role=''):
+def _specs_onduleur(specs, designation='', famille=()):
     """``(SpecOnduleur | None, manquantes)`` depuis un bloc ``onduleur``.
 
     CALX213 (crochet posé par la phase 2 du lot 4) — ``s_max_kva`` et
@@ -512,9 +512,9 @@ def _specs_onduleur(specs, designation='', role=''):
     raccordement (``services/raccordement.py``) ne pouvaient les lire. Elles
     restent OPTIONNELLES : une fiche muette ne déclenche aucun contrôle.
 
-    D-HYB-1 (fondateur 24/11/2026) — ``role`` (rôle de devis déclaré ou de
-    catégorie, ``ratio_devis.role_de_l_onduleur``) et le port batterie publié
-    disent si l'appareil est hybride AVANT son nom (``onduleur_est_hybride``).
+    D-HYB-1 (fondateur 24/11/2026) — ``famille`` = ``(role, famille_par_nom)`` du
+    produit (``ratio_devis.famille_de_l_onduleur``) et le port batterie publié disent
+    si l'appareil est hybride AVANT son nom (``onduleur_est_hybride``).
     """
     manquantes = _manquantes(specs, CHAMPS_ONDULEUR)
     if manquantes:
@@ -536,15 +536,16 @@ def _specs_onduleur(specs, designation='', role=''):
         v_max_abs=float(specs['v_max_abs']),
         i_max_mppt_a=float(specs['i_max_mppt_a']),
         ac_kw=float(specs['ac_kw']), phases=phases or 1,
-        designation=designation or '', role=str(role or ''), **optionnels), ())
+        designation=designation or '', role=str((tuple(famille) + ('', ''))[0] or ''),
+        famille_par_nom=str((tuple(famille) + ('', ''))[1] or ''), **optionnels), ())
 
 
-def specs_onduleur(specs, designation='', role=''):
+def specs_onduleur(specs, designation='', famille=()):
     """ADEV87 — ``(SpecOnduleur | None, manquantes)`` depuis un bloc
     ``onduleur`` de ``apps.stock.selectors.specs_for_produit`` : l'enveloppe
     PUBLIQUE de :func:`_specs_onduleur` (même règle, aucune copie) pour les
     lecteurs hors calepinage (moteur C&I de ``apps.ventes``)."""
-    return _specs_onduleur(specs, designation, role)
+    return _specs_onduleur(specs, designation, famille)
 
 
 def _chaines_max_par_mppt(specs):
@@ -969,7 +970,7 @@ def _ecarts_de_module(pans, fiches_par_pan, module_designation):
 
 
 def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
-                      module_designation='', onduleur_designation='', onduleur_role='',
+                      module_designation='', onduleur_designation='', onduleur_famille=(),
                       optimiseur_specs=None, fiches_modules=None,
                       produits_sans_fiche=(), **options):
     """CAL124 — le chaînage COMPLET d'un document de conception.
@@ -1001,7 +1002,7 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
             pan.cle_stable)) for pan in pans)
     module, manque_module = specs_module(module_specs, module_designation)
     onduleur, manque_onduleur = _specs_onduleur(onduleur_specs,
-                                                onduleur_designation, onduleur_role)
+                                                onduleur_designation, onduleur_famille)
     if nombre_onduleurs and onduleur is not None:
         # ACAL633 — N onduleurs acceptés : N × les entrées MPPT du modèle.
         onduleur = replace(

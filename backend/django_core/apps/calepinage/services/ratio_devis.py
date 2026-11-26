@@ -102,23 +102,25 @@ def motif_capacite_non_publiee(conception, source=None):
     return '' if publie else MOTIF_HYBRIDE_SANS_CAPACITE
 
 
-def role_de_l_onduleur(company, produit_id):
+def famille_de_l_onduleur(produit):
     """D-HYB-1 (fondateur 24/11/2026 : « un produit se reconnaît à son rôle et à sa fiche
-    avant son nom ») — le rôle de devis DÉCLARÉ, sinon celui de sa CATÉGORIE, de l'onduleur
-    ``produit_id`` de ``company`` (``core.product_roles.role_effectif``, rangs 1 et 2 : le
-    nom reste le DERNIER rang, celui de ``onduleur_est_hybride``) ; ``''`` sinon. Lu par le
-    sélecteur du stock, borné société."""
-    from apps.stock.selectors import get_produit_scoped
-    from core.product_roles import role_effectif
+    avant son nom ») — ``(role, famille_par_nom)`` d'un produit DÉJÀ LU (aucune requête) :
 
-    try:
-        produit = get_produit_scoped(company, int(produit_id)) if company is not None else None
-    except (TypeError, ValueError):
-        produit = None
+    * ``role`` : le rôle de devis DÉCLARÉ (``core.product_roles.role_declare``), ``''``
+      sinon — la famille de catégorie « onduleur » est ambiguë (``FAMILLE_VERS_ROLE``) et
+      ne donne jamais de rôle d'onduleur ;
+    * ``famille_par_nom`` : la famille d'onduleur AUTRE qu'hybride que le classifieur du
+      catalogue lit dans son nom (``ventes.selectors_calepinage.autre_famille_d_onduleur_par_nom``).
+
+    Rangés sur le ``SpecOnduleur`` (``role``, ``famille_par_nom``), lus par
+    ``core.electrique.onduleurs.onduleur_est_hybride``."""
+    from apps.ventes.selectors_calepinage import autre_famille_d_onduleur_par_nom
+    from core.product_roles import role_declare
+
     if produit is None:
-        return ''
-    categorie = getattr(produit, 'categorie', None)
-    return role_effectif(getattr(produit, 'role_devis', None), getattr(categorie, 'type_equipement', None))[0] or ''
+        return ('', '')
+    return (role_declare(getattr(produit, 'role_devis', None)) or '',
+            autre_famille_d_onduleur_par_nom(getattr(produit, 'nom', '') or ''))
 
 
 def juger_ratio(valeur, bornes, reglages=None):

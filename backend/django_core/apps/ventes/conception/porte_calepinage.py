@@ -29,12 +29,13 @@ def _nombre(valeur):
         return None
 
 
-def _fiche_onduleur(company, produit_id):
-    """La fiche (bloc plat) de l'onduleur ``produit_id`` de ``company``, ``{}`` sinon."""
+def _onduleur_lu(company, produit_id):
+    """``(fiche, produit)`` : la fiche (bloc plat) de l'onduleur ``produit_id`` de ``company``
+    et le produit, UNE lecture (D-HYB-1 : son nom et son rôle servent aussi) ; ``({}, None)`` sinon."""
     from apps.stock.selectors import get_produit_scoped, specs_for_produit
 
     produit = get_produit_scoped(company, produit_id) if company is not None and produit_id else None
-    return (specs_for_produit(produit) or {}) if produit is not None else {}
+    return ((specs_for_produit(produit) or {}) if produit is not None else {}), produit
 
 
 def _reglages_electriques(company):
@@ -79,14 +80,6 @@ def _verdict_longueur(chaines):
                 '/'.join(str(n) for n in sorted(set(longueurs))), 'toutes' if conforme else 'pas toutes')}
 
 
-def _role_onduleur(company, produit_id):
-    """D-HYB-1 — le rôle de devis de l'onduleur, par LA lecture du calepinage
-    (``ratio_devis.role_de_l_onduleur``) : une seule règle des deux côtés."""
-    from apps.calepinage.services.ratio_devis import role_de_l_onduleur
-
-    return role_de_l_onduleur(company, produit_id)
-
-
 def verdicts_electriques(company, design, onduleurs, puissance_kwc):
     """ACAL2016 — ``{ratio_dc_ac, capacite_hybride, longueur_chaine}`` de l'option dont la
     conception électrique ``design`` porte l'onduleur (``onduleurs`` : ses lignes, forme
@@ -95,15 +88,18 @@ def verdicts_electriques(company, design, onduleurs, puissance_kwc):
     capacité non publiée pour la capacité ; aucune chaîne pour la longueur)."""
     if not design or not onduleurs:
         return None
-    fiche = _fiche_onduleur(company, onduleurs[0].get('produit'))
+    from apps.calepinage.services.ratio_devis import famille_de_l_onduleur
+
+    fiche, produit = _onduleur_lu(company, onduleurs[0].get('produit'))
+    role, famille_par_nom = famille_de_l_onduleur(produit)  # D-HYB-1 : la règle du calepinage
     materiel = (design.get('materiel') or {}).get('onduleur') or {}
     nombre = sum(int(o.get('quantite') or 0) for o in onduleurs) or 1
     # D-HYB-1 (lead 1742) — une pose jugée sur un onduleur absent des lignes de la conception
     # arrive sans désignation : le NOM du produit dit s'il est hybride, jamais « réseau » par défaut.
     # D-HYB-1 (fondateur 24/11/2026) — le RÔLE, puis le port batterie de la fiche, puis le nom.
     onduleur = SimpleNamespace(designation=(materiel.get('designation') or onduleurs[0].get('designation')
-                                            or _nom_produit(company, onduleurs[0].get('produit'))),
-                               role=_role_onduleur(company, onduleurs[0].get('produit')),
+                                            or getattr(produit, 'nom', None)),
+                               role=role, famille_par_nom=famille_par_nom,
                                bat_max_charge_kw=fiche.get('bat_max_charge_kw'),
                                bat_max_decharge_kw=fiche.get('bat_max_decharge_kw'),
                                dc_max_kwc=fiche.get('dc_max_kwc'))

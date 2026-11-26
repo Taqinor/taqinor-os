@@ -242,18 +242,22 @@ def puissance_a_temperature(ac_kw, debut_c, pente_pct_c, temperature_c):
 ROLE_ONDULEUR_HYBRIDE = "onduleur_hybride"
 
 
-def est_onduleur_hybride(designation, *, role="", ports_batterie_kw=()):
+def est_onduleur_hybride(designation, *, role="", ports_batterie_kw=(), autre_famille_par_nom=""):
     """ACAL1954 / D-HYB-1 — l'appareil est-il hybride ? Fondateur 24/11/2026 :
     « un produit se reconnaît à son rôle et à sa fiche avant son nom ».
 
     1. ``role`` (déclaré ou de catégorie) : un rôle d'ONDULEUR tranche
        (``onduleur_hybride`` ⇒ oui, ``onduleur_reseau``/``onduleur_offgrid`` ⇒ non) ;
-    2. la FICHE : un port batterie publié (``ports_batterie_kw``, kW > 0) ⇒ oui ;
+    2. la FICHE : un port batterie publié (``ports_batterie_kw``, kW > 0) ⇒ oui — sauf
+       quand le classifieur du catalogue range le NOM dans une AUTRE famille
+       d'onduleur (``autre_famille_par_nom`` : onduleur-chargeur hors réseau,
+       micro-onduleur), qui porte aussi un port batterie sans être hybride ;
     3. le NOM, en dernier : « hybride », « hybrid ». Fonction PURE."""
     role = str(role or "").strip()
     if role.startswith("onduleur_"):
         return role == ROLE_ONDULEUR_HYBRIDE
-    if any(dc_max_publie_kwc(p) is not None for p in ports_batterie_kw or ()):
+    if not str(autre_famille_par_nom or "").strip() and any(
+            dc_max_publie_kwc(p) is not None for p in ports_batterie_kw or ()):
         return True
     return "hybrid" in str(designation or "").lower()
 
@@ -264,7 +268,8 @@ def onduleur_est_hybride(onduleur):
     return est_onduleur_hybride(
         getattr(onduleur, "designation", ""), role=getattr(onduleur, "role", ""),
         ports_batterie_kw=(getattr(onduleur, "bat_max_charge_kw", None),
-                           getattr(onduleur, "bat_max_decharge_kw", None)))
+                           getattr(onduleur, "bat_max_decharge_kw", None)),
+        autre_famille_par_nom=getattr(onduleur, "famille_par_nom", ""))
 
 
 def dc_max_publie_kwc(valeur):

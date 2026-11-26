@@ -34,7 +34,7 @@ def _onduleur(ac_kw, **fiche):
             'phases': 3, **fiche}
 
 
-def _conception(modules, ac_kw, designation='Onduleur d essai', role='', **fiche):
+def _conception(modules, ac_kw, designation='Onduleur d essai', role='', famille='', **fiche):
     layout = {'version': 2, 'zones': [
         {'label': 'PAN-A',
          'geometry': {'count': modules, 'azimuthDeg': 180.0,
@@ -43,7 +43,7 @@ def _conception(modules, ac_kw, designation='Onduleur d essai', role='', **fiche
         layout, module_specs=MODULE, onduleur_specs=_onduleur(ac_kw, **fiche),
         temperatures=temperatures_site(
             saisie={'temperature_min_c': -5.0, 'temperature_max_c': 70.0}),
-        onduleur_designation=designation, onduleur_role=role)
+        onduleur_designation=designation, onduleur_famille=(role, famille))
 
 
 class BornesLuesTest(SimpleTestCase):
@@ -259,6 +259,7 @@ class PoseSurUnAutreOnduleurTest(SimpleTestCase):
     est hybride ; avant, un hybride publiant sa capacité était jugé à la borne 1,35."""
 
     def test_hybride_sans_designation_juge_a_sa_fiche(self):
+        from types import SimpleNamespace
         from unittest import mock
 
         from apps.ventes.conception import porte_calepinage as porte
@@ -266,10 +267,9 @@ class PoseSurUnAutreOnduleurTest(SimpleTestCase):
         design = {'ratio_dc_ac': 1.72, 'chaines': [], 'materiel': {'onduleur': {'designation': None}}}
         lignes = [{'produit': 7, 'designation': None, 'quantite': 1}]
         fiche = {'ac_kw': 20.0, 'dc_max_kwc': 40.0}
-        with mock.patch.object(porte, '_fiche_onduleur', return_value=fiche), mock.patch.object(
-                porte, '_nom_produit', return_value='Deye hybride 20 kW'), mock.patch.object(
-                porte, '_reglages_electriques', return_value={}), mock.patch.object(
-                porte, '_role_onduleur', return_value=''):
+        produit = SimpleNamespace(nom='Deye hybride 20 kW', role_devis='')
+        with mock.patch.object(porte, '_onduleur_lu', return_value=(fiche, produit)), mock.patch.object(
+                porte, '_reglages_electriques', return_value={}):
             verdicts = porte.verdicts_electriques(object(), design, lignes, 34.32)
         self.assertIs(verdicts['ratio_dc_ac']['conforme'], True)
         self.assertEqual(verdicts['ratio_dc_ac']['borne_source'], SOURCE_BORNE_CAPACITE)
@@ -307,23 +307,41 @@ class HybrideParRoleEtFicheTest(SimpleTestCase):
             48, 20.0, designation='Onduleur hybride 20 kW', role='onduleur_reseau', dc_max_kwc=40.0))
         self.assertEqual((bloc['borne_source'], verdict['conforme']), (SOURCE_BORNE_DEVIS, False))
 
-    def test_role_lu_par_le_selecteur_du_stock(self):
+    def test_famille_lue_sur_le_produit_deja_lu(self):
         from types import SimpleNamespace
-        from unittest import mock
 
-        from apps.calepinage.services.ratio_devis import role_de_l_onduleur
+        from apps.calepinage.services.ratio_devis import famille_de_l_onduleur
 
-        # Famille « onduleur » : ambiguë (``FAMILLE_VERS_ROLE``), elle ne dit rien ⇒ fiche puis nom.
-        produit = SimpleNamespace(role_devis='', categorie=SimpleNamespace(type_equipement='onduleur'))
-        with mock.patch('apps.stock.selectors.get_produit_scoped', return_value=produit) as lu:
-            self.assertEqual(role_de_l_onduleur('societe', 7), '')
-        lu.assert_called_once_with('societe', 7)
-        with mock.patch('apps.stock.selectors.get_produit_scoped',
-                        return_value=SimpleNamespace(role_devis='onduleur_hybride', categorie=None)):
-            self.assertEqual(role_de_l_onduleur('societe', 7), 'onduleur_hybride')
-        self.assertEqual(role_de_l_onduleur(None, 7), '')
+        self.assertEqual(famille_de_l_onduleur(SimpleNamespace(role_devis='onduleur_hybride', nom=self.NOM)),
+                         ('onduleur_hybride', ''))
+        self.assertEqual(famille_de_l_onduleur(SimpleNamespace(role_devis='', nom=self.NOM)), ('', ''))
+        self.assertEqual(famille_de_l_onduleur(SimpleNamespace(role_devis='inconnu', nom='Onduleur off-grid 5 kW')),
+                         ('', 'onduleur_offgrid'))
+        self.assertEqual(famille_de_l_onduleur(SimpleNamespace(role_devis='', nom='Micro-onduleur 800W')),
+                         ('', 'micro_onduleur'))
+        self.assertEqual(famille_de_l_onduleur(None), ('', ''))
+
+    def test_port_batterie_d_une_autre_famille_n_est_pas_hybride(self):
+        """Relecture : un onduleur-chargeur hors réseau ou un micro-onduleur, sans rôle
+        déclaré, qui publie un port batterie, n'est PAS hybride ; un Deye sans rôle dont le
+        nom ne dit pas « hybride » mais qui publie un port batterie l'est toujours."""
+        from apps.ventes.selectors_calepinage import autre_famille_d_onduleur_par_nom
+        from core.electrique.onduleurs import est_onduleur_hybride
+
+        for nom in ('Onduleur off-grid Growatt SPF 5000', 'Micro-onduleur Hoymiles 800W'):
+            famille = autre_famille_d_onduleur_par_nom(nom)
+            self.assertTrue(famille, nom)
+            self.assertFalse(est_onduleur_hybride(nom, ports_batterie_kw=(25.0,), autre_famille_par_nom=famille))
+            bloc, _m, verdict, _c = UnSeulVerdictTest._trois(self, _conception(
+                48, 20.0, designation=nom, famille=famille, dc_max_kwc=40.0, bat_max_charge_kw=25.0))
+            self.assertEqual((bloc['borne_source'], verdict['conforme']), (SOURCE_BORNE_DEVIS, False), nom)
+        self.assertEqual(autre_famille_d_onduleur_par_nom(self.NOM), '')
+        bloc, _m, verdict, _c = UnSeulVerdictTest._trois(self, _conception(
+            48, 20.0, designation=self.NOM, famille='', dc_max_kwc=40.0, bat_max_decharge_kw=25.0))
+        self.assertEqual((bloc['borne_source'], verdict['conforme']), (SOURCE_BORNE_CAPACITE, True))
 
     def test_pose_sur_un_autre_onduleur_par_son_role(self):
+        from types import SimpleNamespace
         from unittest import mock
 
         from apps.ventes.conception import porte_calepinage as porte
@@ -331,10 +349,11 @@ class HybrideParRoleEtFicheTest(SimpleTestCase):
         design = {'ratio_dc_ac': 1.72, 'chaines': [], 'materiel': {'onduleur': {'designation': self.NOM}}}
         lignes = [{'produit': 7, 'designation': self.NOM, 'quantite': 1}]
         fiche = {'ac_kw': 20.0, 'dc_max_kwc': 40.0}
-        with mock.patch.object(porte, '_fiche_onduleur', return_value=fiche), mock.patch.object(
-                porte, '_role_onduleur', return_value='onduleur_hybride'), mock.patch.object(
+        produit = SimpleNamespace(nom=self.NOM, role_devis='onduleur_hybride')
+        with mock.patch.object(porte, '_onduleur_lu', return_value=(fiche, produit)) as lu, mock.patch.object(
                 porte, '_reglages_electriques', return_value={}):
             verdicts = porte.verdicts_electriques(object(), design, lignes, 34.32)
+        self.assertEqual(lu.call_count, 1)  # une seule lecture du produit (fiche, nom, rôle)
         self.assertIs(verdicts['ratio_dc_ac']['conforme'], True)
         self.assertEqual(verdicts['ratio_dc_ac']['borne_source'], SOURCE_BORNE_CAPACITE)
         self.assertIs(verdicts['capacite_hybride']['conforme'], True)
