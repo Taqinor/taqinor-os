@@ -518,7 +518,7 @@ def _chiffres_distincts(dessine, compose):
     montreraient identiques : un refus n'imprime jamais deux chiffres égaux."""
     from core.electrique.types import fr
 
-    for decimales in (2, 3):
+    for decimales in (2, 3, 4):
         a, b = fr(dessine, decimales), fr(compose, decimales)
         if a != b:
             break
@@ -542,6 +542,8 @@ def _garde_module_substitue(devis, layout):
     """ACAL914 — 409 ``module_substitue`` quand la composition chiffre un
     autre module que le dessin (kWc composé ≠ kWc dessiné), sous la
     transaction de la création (devis annulé)."""
+    from decimal import Decimal
+
     from core.electrique.types import fr
 
     from apps.ventes.selectors_calepinage import lignes_produits_calepinage
@@ -574,7 +576,18 @@ def _garde_module_substitue(devis, layout):
         return
     if not module_est_substitue(dessine, compose, dessine_wc):
         return
-    affiche_dessine, affiche_compose = _chiffres_distincts(dessine, float(compose))
+    # Le refus imprime les chiffres COMPARÉS : le total compte × puissance quand c'est lui qui a
+    # refusé (le champ ``kwc`` stocké d'un pan peut être périmé et égal au composé), sinon les kWc.
+    vendus_wc = [p for p in pans if p['modules'] > 0 and not p.get('existant')]
+    if dessine_wc is not None:
+        affiche_dessine, affiche_compose = _chiffres_distincts(float(dessine_wc) / 1000.0, float(compose))
+        nombre_vendus = sum(p['modules'] for p in vendus_wc)
+        watts_vendus = {Decimal(str(p['module_wc'])) for p in vendus_wc}
+        precision = ('%d panneaux de %s W, soit ' % (nombre_vendus, fr(float(next(iter(watts_vendus))), 0))
+                     if len(watts_vendus) == 1 else '%d panneaux, soit ' % nombre_vendus)
+        affiche_dessine = precision + affiche_dessine
+    else:
+        affiche_dessine, affiche_compose = _chiffres_distincts(dessine, float(compose))
     panneau = next((ligne['designation'] for ligne in
                     lignes_produits_calepinage(devis)
                     if 'panneau' in (ligne['designation'] or '').lower()), '')

@@ -347,6 +347,35 @@ class ModuleSubstitueArrondiSansBaseTest(SimpleTestCase):
         figures = re.findall(r'(\d+,\d+) kWc', proche.exception.donnees['detail'])
         self.assertNotEqual(figures[0], figures[1])
 
+    def test_refus_imprime_les_chiffres_comparés_jamais_deux_chiffres_égaux(self):
+        from apps.calepinage.services.devis import DevisRefuse
+
+        perime = self._doc(35, 710, kwc_arrondi=25.025)  # kwc stocké périmé = le composé, module 710 W posé
+        mixte = {'scenario': 'reseau', 'modules': [{'id': 'm1', 'pmaxWc': 715}, {'id': 'm2', 'pmaxWc': 710}],
+                 'zones': [{'id': 'A', 'label': 'A', 'geometry': {'moduleId': 'm1', 'panels': [{}] * 20}},
+                           {'id': 'B', 'label': 'B', 'geometry': {'moduleId': 'm2', 'panels': [{}] * 15}}]}
+        sans_module = {'scenario': 'reseau', 'zones': [
+            {'id': 'A', 'label': 'A', 'geometry': {'count': 50, 'kwc': 36.0}}]}
+        cas = [('même compte, autre watt', self._doc(35, 715, kwc_arrondi=25.02), 35 * 710, 'soit'),
+               ('kwc périmé égal au composé', perime, 25025, 'soit'),
+               ('modules mêlés', mixte, 25000, 'soit'),
+               ('repli sans puissance unitaire', sans_module, 35500, 'porte')]
+        for nom, doc, compose_wc, marque in cas:
+            with self.subTest(nom), self.assertRaises(DevisRefuse) as refus:
+                self._garde(doc, compose_wc)
+            detail = refus.exception.donnees['detail']
+            figures = re.findall(r'(?:soit|porte) (\d+,\d+) kWc ; le catalogue compose (\d+,\d+) kWc', detail)
+            self.assertEqual(len(figures), 1, detail)
+            self.assertNotEqual(*figures[0], detail)
+            self.assertIn(marque, detail)
+        with self.assertRaises(DevisRefuse) as refus:
+            self._garde(perime, 25025)
+        self.assertIn('Le dessin porte 35 panneaux de 710 W, soit 24,85 kWc ; le catalogue compose 25,02 kWc',
+                      refus.exception.donnees['detail'])
+        with self.assertRaises(DevisRefuse) as refus:
+            self._garde(mixte, 25000)
+        self.assertIn('Le dessin porte 35 panneaux, soit 24,95 kWc', refus.exception.donnees['detail'])
+
     def test_fonction_pure_repli_sans_compte_ni_puissance(self):
         from apps.calepinage.services.devis import _chiffres_distincts, module_est_substitue
 
