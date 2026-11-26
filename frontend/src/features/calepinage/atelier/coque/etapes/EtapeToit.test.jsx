@@ -1274,7 +1274,7 @@ describe('T4-X8-011 — geste du tiroir', () => {
     onDeplier.mockClear()
     fireEvent.pointerDown(poignee, { clientY: 700, pointerId: 1 })
     fireEvent.pointerUp(poignee, { clientY: 640, pointerId: 1 })
-    fireEvent.click(poignee)
+    fireEvent.click(poignee, { detail: 1 }) // un vrai click de pointeur (detail >= 1)
     expect(onDeplier.mock.calls).toEqual([[true]])
     // toucher et balayage sur la rangée du titre
     onDeplier.mockClear()
@@ -1286,6 +1286,26 @@ describe('T4-X8-011 — geste du tiroir', () => {
     fireEvent.pointerDown(tete, { clientY: 700, pointerId: 3 })
     fireEvent.pointerUp(tete, { clientY: 650, pointerId: 3 })
     expect(onDeplier.mock.calls).toEqual([[true]])
+    // un balayage sur le titre, puis l'activation AU CLAVIER de la poignée (click sans pointerdown, detail 0) : elle bascule
+    onDeplier.mockClear()
+    fireEvent.pointerDown(tete, { clientY: 700, pointerId: 5 })
+    fireEvent.pointerUp(tete, { clientY: 650, pointerId: 5 })
+    expect(onDeplier.mock.calls).toEqual([[true]])
+    onDeplier.mockClear()
+    fireEvent.click(poignee, { detail: 0 })
+    expect(onDeplier.mock.calls).toEqual([[true]])
+    // un balayage tactile sur la poignée SANS click derrière, puis le drapeau retombe : le click suivant (même avec detail 1) bascule
+    onDeplier.mockClear()
+    vi.useFakeTimers()
+    try {
+      fireEvent.pointerDown(poignee, { clientY: 700, pointerId: 6 })
+      fireEvent.pointerUp(poignee, { clientY: 640, pointerId: 6 })
+      expect(onDeplier.mock.calls).toEqual([[true]])
+      vi.advanceTimersByTime(400)
+      onDeplier.mockClear()
+      fireEvent.click(poignee, { detail: 1 })
+      expect(onDeplier.mock.calls).toEqual([[true]])
+    } finally { vi.useRealTimers() }
     unmount()
     // hors tiroir (bureau, tablette) : ni poignée ni geste
     onDeplier.mockClear()

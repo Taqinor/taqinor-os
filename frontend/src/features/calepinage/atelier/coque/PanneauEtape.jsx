@@ -46,6 +46,9 @@ function useGesteTiroir({ tiroir, deplie, onDeplier }) {
     depart.current = null
     if (decision === 'basculer') { if (toucher) appliquer(decision); return }
     balaye.current = true
+    // Le `click` qui suit un balayage tombe dans l'instant ; passé ce délai (un balayage tactile n'en émet aucun), le drapeau
+    // retombe : l'activation suivante (clavier, lecteur d'écran) n'est jamais avalée.
+    window.setTimeout(() => { balaye.current = false }, 350)
     appliquer(decision)
   }
   if (!tiroir) return {}
@@ -54,7 +57,7 @@ function useGesteTiroir({ tiroir, deplie, onDeplier }) {
       onPointerDown: bas,
       onPointerUp: (e) => lever(e, { toucher: false }),
       onPointerCancel: () => { depart.current = null },
-      onClick: () => { if (balaye.current) { balaye.current = false; return } onDeplier?.(!deplie) },
+      onClick: (e) => { if (balaye.current && e.detail !== 0) { balaye.current = false; return } balaye.current = false; onDeplier?.(!deplie) }, // detail 0 = clavier / lecteur d'écran : jamais avalé
     },
     tete: {
       onPointerDown: bas,
