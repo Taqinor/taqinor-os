@@ -5,7 +5,12 @@ changement de comportement hors des points de relecture (valeur mensuelle, plan
 de production, froid supposé).
 """
 
+from core.pompage.kit import CODE_CABLE_DC_NON_CHIFFRE
+
 CODE_FROID_SUPPOSE = 'froid_suppose'
+#: D-ACAL-156 — alertes qui nomment un champ du lead SANS rien supposer (un
+#: poste non chiffré, faute de la donnée) : jamais rangées parmi les suppositions.
+CODES_MANQUE_SANS_SUPPOSITION = (CODE_CABLE_DC_NON_CHIFFRE,)
 
 
 def suppositions_de(resultat, *, froid=None):
@@ -23,7 +28,8 @@ def suppositions_de(resultat, *, froid=None):
     simulation de la pose, ADEV149) — rien n'est donc supposé ni dit ici."""
     dites = [{'code': alerte['code'], 'champ': alerte['champ_lead'], 'valeur': _valeur_supposee(resultat, alerte),
               'source': 'defaut', 'message': _message(resultat, alerte)}
-             for alerte in resultat.journal.get('alertes') or [] if alerte.get('champ_lead')]
+             for alerte in resultat.journal.get('alertes') or [] if alerte.get('champ_lead')
+             and alerte.get('code') not in CODES_MANQUE_SANS_SUPPOSITION]
     if froid is not None and froid.source is None and not any('froid' in sup['code'] for sup in dites):
         dites.append({'code': CODE_FROID_SUPPOSE, 'champ': 'gps_lat', 'valeur': froid.valeur_c,
                       'source': 'defaut', 'message': froid.detail})

@@ -49,6 +49,15 @@ from core.pompage.selection import prix_connu
 NON_INCLUS = ("forage", "genie_civil")
 SUFFIXE_PRIX = " — prix à renseigner"
 MENTION_COMPTEUR = "exigé par la loi 36-15 et le dossier FDA 2024"
+#: D-ACAL-156 (fondateur 26/11/2026, « alerte_nommant_le_champ ») — sans
+#: distance forage → champ, le devis est créé SANS ligne de câble DC et le
+#: vendeur le lit ; aucune longueur n'est jamais supposée. ``champ_lead`` = la
+#: colonne du lead que l'écran nomme par son libellé (``fieldLabels``).
+MESSAGE_CABLE_DC_NON_CHIFFRE = (
+    "Câble DC non chiffré : renseignez la distance forage → champ de panneaux "
+    "sur la fiche du lead ; aucune longueur n'est supposée.")
+CHAMP_LEAD_DISTANCE = "distance_forage_champ_m"
+CODE_CABLE_DC_NON_CHIFFRE = "cable_dc_non_chiffre"
 
 #: (clé, rôle ``role_pompage``, libellé) — ordre d'affichage des options.
 #: D-ACAL-112 / D-ACAL-118 (fondateur 25/11/2026) : l'ancienne option
@@ -477,6 +486,12 @@ def composer_kit(*, mode_pompe, pompe=None, variateur=None, panneau=None,
             ajouter(_ligne("cable_dc", "cable_dc", cable_dc,
                            "Câble DC champ → variateur (m)",
                            round(distance, 1)), cable_dc)
+        elif nb:
+            # D-ACAL-156 — alerte VENDEUR (jamais imprimée au client : hors de
+            # ``CODES_NOTES_CLIENT``), nommant le champ du lead.
+            alertes.append(dict(_alerte(CODE_CABLE_DC_NON_CHIFFRE, "kit.cable_dc",
+                                        MESSAGE_CABLE_DC_NON_CHIFFRE, interne=True),
+                                champ_lead=CHAMP_LEAD_DISTANCE))
         for ligne, produit in _lignes_protections(
                 produits_options, alertes, avec_champ=bool(nb),
                 avec_variateur=variateur is not None, nb_chaines=nb_chaines,
