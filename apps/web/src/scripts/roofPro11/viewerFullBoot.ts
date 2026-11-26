@@ -83,6 +83,9 @@ export interface ViewerFullOptions {
    * de chargement éternel. La page peut alors replier sur sa photo d'étude.
    */
   onMapError?: () => void;
+  /** Lot 8 — la SCÈNE a jeté (premier rendu ou pas de soleil) : la visionneuse s'est déjà démontée et
+   *  `onReady` n'est pas (ou plus) appelé ; l'appelant monte son repli. Appelé une fois au plus. */
+  onFail?: (raison: unknown) => void;
   /** Délai au-delà duquel une carte qui n'a pas chargé est déclarée en panne
    *  (ms, défaut 15 000 — même ordre que le fetch de config du parcours). */
   loadTimeoutMs?: number;
@@ -289,20 +292,42 @@ export function bootViewerFull(
     if (teinte) scene3d.setSolarAccessHeatmap(teinte);
   };
 
+  let destroyed = false;
+  // Lot 8 — une scène qui jette ne reste JAMAIS à moitié bâtie derrière des commandes vivantes : on la
+  // démonte, on le dit une fois dans la console, et l'appelant replie (visionneuse simplifiée ou photo).
+  const echouer = (raison: unknown) => {
+    if (destroyed) return;
+    console.warn('[visionneuse-toit] rendu 3D impossible, repli :', raison);
+    poignee.destroy();
+    opts.onFail?.(raison);
+  };
+  const essayer = (geste: () => void) => {
+    if (!charge || destroyed) return;
+    try {
+      geste();
+    } catch (e) {
+      echouer(e);
+    }
+  };
+
   map.on('load', () => {
-    // `addLayer` déclenche `onAdd` (renderer + scène + soleil) : renderScene ne
-    // peut être appelé qu'APRÈS.
-    map.addLayer(scene3d.customLayer);
-    // Le conteneur peut n'avoir sa taille finale qu'à l'ouverture du bloc 3D
-    // (voile masqué, section dépliée) — même précaution qu'à l'hydratation ERP.
-    map.resize();
-    rendre();
+    try {
+      // `addLayer` déclenche `onAdd` (renderer + scène + soleil) : renderScene ne
+      // peut être appelé qu'APRÈS.
+      map.addLayer(scene3d.customLayer);
+      // Le conteneur peut n'avoir sa taille finale qu'à l'ouverture du bloc 3D
+      // (voile masqué, section dépliée) — même précaution qu'à l'hydratation ERP.
+      map.resize();
+      rendre();
+    } catch (e) {
+      echouer(e);
+      return;
+    }
     charge = true;
     opts.onReady?.();
   });
 
-  let destroyed = false;
-  return {
+  const poignee: ViewerFullHandle = {
     panelCount: plan.totalPanels,
     carte: map,
     zoomInitial: zoom,
@@ -310,11 +335,11 @@ export function bootViewerFull(
     poserInstant(jour, heure) {
       ctx.sunDay = jour;
       ctx.sunHour = heure;
-      if (charge && !destroyed) rendre();
+      essayer(rendre);
     },
     teinter(colorFor) {
       teinte = colorFor;
-      if (charge && !destroyed) scene3d.setSolarAccessHeatmap(colorFor);
+      essayer(() => scene3d.setSolarAccessHeatmap(colorFor));
     },
     destroy() {
       if (destroyed) return;
@@ -328,6 +353,66 @@ export function bootViewerFull(
       } catch {
         /* carte déjà démontée : rien à libérer */
       }
+    },
+  };
+  return poignee;
+}
+
+/** Lot 8 — ce que la page branche autour de la visionneuse pleine. */
+export interface SuiteVisionneuse {
+  /** Barre au soleil (liens de confiance) : cachée tant que la scène n'a pas VRAIMENT rendu, recachée au repli. */
+  barre?: HTMLElement | null;
+  /** Branche la barre sur la poignée (`viewerSoleil.attacherSoleil`), appelé SEULEMENT après `onReady` ; renvoie le débrancheur. */
+  brancherSoleil?: (poignee: ViewerFullHandle) => Promise<() => void>;
+  /** La scène a échoué après son démarrage : la page monte son repli, comme sans WebGL ni clé d'imagerie. */
+  replier: (raison: unknown) => void;
+}
+
+/**
+ * Lot 8 — la visionneuse pleine ET sa barre au soleil, sans commande morte : la barre n'est branchée (donc
+ * montrée, `attacherSoleil` la démasque) qu'une fois la scène rendue ; une scène qui jette la débranche, la
+ * cache et passe la main au repli. `null` = refus propre de `bootViewerFull` (l'appelant replie tout de suite).
+ */
+export function monterVisionneusePleine(
+  el: HTMLElement | null,
+  layout: RoofLayout | null | undefined,
+  opts: ViewerFullOptions,
+  suite: SuiteVisionneuse,
+): { dispose: () => void } | null {
+  let fini = false;
+  let debrancher: (() => void) | null = null;
+  let poignee: ViewerFullHandle | null = null;
+  const cacherBarre = () => {
+    if (suite.barre) suite.barre.hidden = true;
+  };
+  const arreterSoleil = () => {
+    debrancher?.();
+    debrancher = null;
+  };
+  poignee = bootViewerFull(el, layout, {
+    ...opts,
+    onReady: () => {
+      opts.onReady?.();
+      const p = poignee;
+      if (!p || fini || !suite.brancherSoleil) return;
+      suite.brancherSoleil(p).then((d) => (fini ? d() : (debrancher = d)), cacherBarre);
+    },
+    onFail: (raison) => {
+      if (fini) return;
+      fini = true;
+      arreterSoleil();
+      cacherBarre();
+      opts.onFail?.(raison);
+      suite.replier(raison);
+    },
+  });
+  if (!poignee) return null;
+  const monte = poignee;
+  return {
+    dispose: () => {
+      fini = true;
+      arreterSoleil();
+      monte.destroy();
     },
   };
 }
