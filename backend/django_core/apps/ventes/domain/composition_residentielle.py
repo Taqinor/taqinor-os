@@ -201,12 +201,14 @@ def _id_onduleur_impose(onduleur_impose):
 def _quantite_imposee(onduleur_impose):
     """La quantité d'un onduleur imposé : 1 pour le devis automatique (COP2-V3,
     inchangé) ; pour l'onduleur DÉSIGNÉ (D-ACAL-148), le nombre d'onduleurs
-    accepté à l'étape Électrique (``nombre`` ≥ 1), sinon ``None`` (la règle de
-    la composition décide, comme pour un onduleur choisi au catalogue)."""
+    retenu par le calepinage (``nombre`` entier ≥ 1, posé par
+    ``creation_calepinage.decision_onduleur_designe``) — jamais la règle du
+    catalogue, qui contredirait le schéma ; illisible ⇒ 1."""
     if not isinstance(onduleur_impose, dict):
         return 1
-    nombre = _entier_ou_none(onduleur_impose.get('nombre'))
-    return nombre if nombre is not None and nombre >= 1 else None
+    nombre = onduleur_impose.get('nombre')
+    valide = isinstance(nombre, int) and not isinstance(nombre, bool) and nombre >= 1
+    return nombre if valide else 1
 
 
 def _quantite_onduleur(onduleur_impose, kw, seuil, kwp):

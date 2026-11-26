@@ -237,7 +237,29 @@ def _onduleur_designe(calepinage):
     entree = entree_stockee(calepinage)
     if entree.get('onduleur_produit') in (None, ''):
         return None
-    return {'produit_id': entree['onduleur_produit'], 'nombre': entree.get('nombre_onduleurs')}
+    brut = entree.get('nombre_onduleurs')
+    if brut in (None, ''):  # aucun nombre accepté : celui que le SCHÉMA dessine
+        return {'produit_id': entree['onduleur_produit'], 'nombre': _nombre_du_schema(calepinage),
+                'nombre_illisible': False}
+    entier = (int(brut) if isinstance(brut, (int, float)) and not isinstance(brut, bool)
+              and float(brut).is_integer() and brut >= 1 else None)
+    return {'produit_id': entree['onduleur_produit'], 'nombre': entier, 'nombre_illisible': entier is None}
+
+
+def _nombre_du_schema(calepinage):
+    """D-ACAL-148 (relecture, point 1) — le nombre d'onduleurs que le schéma du calepinage
+    dessine (``chaines.evaluer_onduleurs`` sur ``electrique.conception_du_calepinage``, la source
+    de la table d'affectation), ``None`` quand il n'est pas établi (fiche incomplète…)."""
+    from .chaines import evaluer_onduleurs
+    from .electrique import conception_du_calepinage
+
+    try:
+        evaluation = evaluer_onduleurs(conception_du_calepinage(calepinage)[0])
+    except Exception:  # noqa: BLE001 — conception illisible : nombre non établi, repli annoncé (D-ENF22-BLE001)
+        logger.warning('onduleur désigné : nombre du schéma illisible', exc_info=True)
+        return None
+    nombre = getattr(evaluation, 'nombre', None)
+    return int(nombre) if isinstance(nombre, int) and nombre >= 1 else None
 
 
 def _brouillon_reutilisable(company, lead, empreinte, calepinage):

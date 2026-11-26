@@ -151,6 +151,9 @@ MOTIFS_REPLI_ONDULEUR = {
     'hybride_sans_batterie': ('c’est un onduleur hybride et la pose est sans batterie : un hybride sans '
                               'batterie n’est pas chiffré automatiquement'),
     'batterie_incompatible': 'aucune batterie tarifée du catalogue ne se raccorde à cet onduleur',
+    'nombre_illisible': 'le nombre d’onduleurs saisi à l’étape Électrique n’est pas un entier d’au moins 1',
+    'nombre_inconnu': ('le nombre d’onduleurs n’est ni accepté à l’étape Électrique ni établi par le schéma '
+                       'du calepinage'),
 }
 
 
@@ -185,7 +188,7 @@ def famille_onduleur_du_produit(produit, specs=None):
 
 
 def decision_onduleur_designe(*, produit_id, nom, etat, famille, scenario, hors_reseau,
-                              batterie_compatible=True, nombre=None):
+                              batterie_compatible=True, nombre=None, nombre_illisible=False):
     """D-ACAL-148 — que fait le devis de l'onduleur DÉSIGNÉ ? Fonction PURE.
 
     ``etat`` : ``'tarife'`` (au catalogue, avec un prix de vente) ou la clé du motif de repli
@@ -200,7 +203,11 @@ def decision_onduleur_designe(*, produit_id, nom, etat, famille, scenario, hors_
 
     Ce qu'une forme peut porter : site isolé ⇒ l'autonome seul ; « sans » ⇒ un onduleur réseau
     (un hybride sans batterie reste en repli : non tranché) ; « avec » ⇒ un hybride servi par une
-    batterie tarifée ; « les deux » ⇒ le réseau à l'option sans, l'hybride à l'option avec."""
+    batterie tarifée ; « les deux » ⇒ le réseau à l'option sans, l'hybride à l'option avec.
+
+    ``nombre`` — le nombre d'onduleurs que le CALEPINAGE retient (accepté à l'étape Électrique,
+    sinon celui de son schéma), jamais la règle du catalogue : sans lui (``None``) ou illisible
+    (``nombre_illisible``), repli annoncé — le devis et le schéma ne se contrediront pas."""
     motif = None if etat == 'tarife' else etat
     if motif is None:
         if famille is None:
@@ -215,6 +222,8 @@ def decision_onduleur_designe(*, produit_id, nom, etat, famille, scenario, hors_
             motif = 'hybride_sans_batterie'
     if motif is None and famille != 'onduleur_reseau' and not batterie_compatible:
         motif = 'batterie_incompatible'
+    if motif is None and (nombre_illisible or not _nombre_valide(nombre)):
+        motif = 'nombre_illisible' if nombre_illisible else 'nombre_inconnu'
     if motif is not None:
         texte = MOTIFS_REPLI_ONDULEUR[motif]
         return {'impose': None, 'option': None, 'motif': '%s ; %s' % (texte, SUITE_REPLI_ONDULEUR),
@@ -222,8 +231,13 @@ def decision_onduleur_designe(*, produit_id, nom, etat, famille, scenario, hors_
     option = ''
     if scenario == COMPOSITION_LES_DEUX and not hors_reseau:
         option = 'sans' if famille == 'onduleur_reseau' else 'avec'
-    return {'impose': {'produit_id': int(produit_id), 'categorie': famille, 'nombre': nombre},
+    return {'impose': {'produit_id': int(produit_id), 'categorie': famille, 'nombre': int(nombre)},
             'option': option, 'motif': None, 'message': None}
+
+
+def _nombre_valide(nombre):
+    """Un nombre d'onduleurs exploitable : un entier (jamais un booléen) d'au moins 1."""
+    return isinstance(nombre, int) and not isinstance(nombre, bool) and nombre >= 1
 
 
 def onduleur_designe_pour_le_devis(company, designe, *, scenario, hors_reseau):
@@ -254,6 +268,7 @@ def onduleur_designe_pour_le_devis(company, designe, *, scenario, hors_reseau):
     return decision_onduleur_designe(
         produit_id=cle, nom=nom, etat=etat, famille=famille, scenario=scenario,
         hors_reseau=hors_reseau, nombre=(designe or {}).get('nombre'),
+        nombre_illisible=bool((designe or {}).get('nombre_illisible')),
         batterie_compatible=(not porte_la_batterie
                              or _pick_batterie(company, onduleur=produit) is not None))
 

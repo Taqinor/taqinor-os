@@ -310,7 +310,7 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
     def _decision(self, famille, scenario, **extra):
         from apps.ventes.domain.creation_calepinage import decision_onduleur_designe
         options = dict(produit_id=7, nom='Onduleur X', etat='tarife', famille=famille,
-                       scenario=scenario, hors_reseau=False)
+                       scenario=scenario, hors_reseau=False, nombre=1)
         options.update(extra)
         return decision_onduleur_designe(**options)
 
@@ -342,6 +342,18 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
                 self.assertIn(attendu, decision['motif'])
                 self.assertTrue(decision['motif'].endswith('le devis garde l’onduleur de la conception du lead'))
                 self.assertIn('« Onduleur X »', decision['message'])
+                self.assertIn(attendu, decision['message'])
+
+    def test_le_nombre_vient_du_calepinage_jamais_de_la_regle_du_catalogue(self):
+        """Relecture D-ACAL-148, point 1 — sans nombre établi par le calepinage, ou un nombre
+        illisible (0, texte, 2,5 tronqué, booléen), le devis ne chiffre pas l'onduleur désigné et
+        le dit ; jamais ⌈kWc ÷ kW⌉ ni un nombre tronqué."""
+        for extra, attendu in (({'nombre': None}, 'ni établi par le schéma'),
+                               ({'nombre': True}, 'ni établi par le schéma'),
+                               ({'nombre': None, 'nombre_illisible': True}, 'pas un entier')):
+            with self.subTest(extra=extra):
+                decision = self._decision('onduleur_reseau', 'sans', **extra)
+                self.assertIsNone(decision['impose'])
                 self.assertIn(attendu, decision['message'])
 
     def test_un_reseau_n_attend_aucune_batterie(self):
@@ -403,7 +415,8 @@ class OnduleurDesigneDuCalepinage(TestCase):
         self.assertNotIn('onduleur_designe', journal)
 
     def test_reseau_designe_tarife_est_chiffre(self):
-        onduleurs, journal = self._devis(designe={'produit_id': self._id('Onduleur réseau Huawei 5kW Monophasé')})
+        onduleurs, journal = self._devis(designe={
+            'produit_id': self._id('Onduleur réseau Huawei 5kW Monophasé'), 'nombre': 1})
         self.assertEqual(onduleurs, [('Onduleur réseau Huawei 5kW Monophasé', 'onduleur_reseau', '', 1)])
         self.assertIsNone(journal['onduleur_designe']['motif'])
 
@@ -417,24 +430,24 @@ class OnduleurDesigneDuCalepinage(TestCase):
         for designe, attendu in (('Onduleur réseau Huawei 5kW Monophasé', 'pas de prix de vente'),
                                  ('Onduleur hybride Deye 5kW Monophasé', 'la pose est sans batterie')):
             with self.subTest(designe=designe):
-                onduleurs, journal = self._devis(designe={'produit_id': self._id(designe)})
+                onduleurs, journal = self._devis(designe={'produit_id': self._id(designe), 'nombre': 1})
                 self.assertEqual(onduleurs, [('Onduleur réseau Growatt 8kW Monophasé', 'onduleur_reseau', '', 1)])
                 self.assertTrue(any(attendu in m for m in journal['avertissements']), journal)
 
     def test_deux_options_chaque_onduleur_va_a_son_option_jamais_un_500(self):
-        onduleurs, _j = self._devis(designe={'produit_id': self._id('Onduleur hybride Deye 5kW Monophasé')},
-                                    deux_options=True)
+        onduleurs, _j = self._devis(designe={'produit_id': self._id('Onduleur hybride Deye 5kW Monophasé'),
+                                             'nombre': 1}, deux_options=True)
         self.assertIn(('Onduleur hybride Deye 5kW Monophasé', 'onduleur_hybride', 'avec', 1), onduleurs)
         self.assertIn(('Onduleur réseau Growatt 8kW Monophasé', 'onduleur_reseau', 'sans', 1), onduleurs)
-        onduleurs, _j = self._devis(designe={'produit_id': self._id('Onduleur réseau Huawei 5kW Monophasé')},
-                                    deux_options=True)
+        onduleurs, _j = self._devis(designe={'produit_id': self._id('Onduleur réseau Huawei 5kW Monophasé'),
+                                             'nombre': 1}, deux_options=True)
         self.assertIn(('Onduleur réseau Huawei 5kW Monophasé', 'onduleur_reseau', 'sans', 1), onduleurs)
         self.assertIn(('Onduleur hybride Growatt 8kW Monophasé', 'onduleur_hybride', 'avec', 1), onduleurs)
 
     def test_apercu_a_blanc_meme_composition_que_la_creation(self):
         from apps.ventes.services import composer_a_blanc_depuis_layout
 
-        designe = {'produit_id': self._id('Onduleur hybride Deye 5kW Monophasé')}
+        designe = {'produit_id': self._id('Onduleur hybride Deye 5kW Monophasé'), 'nombre': 1}
         journal = {}
         specs = composer_a_blanc_depuis_layout(layout=dict(self.LAYOUT, scenario='avec_batterie'),
                                                company=self.company, lead=self.lead,

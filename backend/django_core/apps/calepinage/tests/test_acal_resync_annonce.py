@@ -78,13 +78,14 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertNotIn('_pans_geometry', self.calepinage.roof_layout)
 
     # ── Lane E6e, item 3 (T4-X5-010) — le devis né de l'atelier et l'onduleur désigné ──
-    def _designer(self, nom):
+    def _designer(self, nom, **saisie):
         from apps.calepinage.services.electrique import CLE_ENTREE
         from apps.stock.models import Produit
 
         produit = Produit.objects.get(company=self.company, nom=nom)
         self.calepinage.refresh_from_db()
-        resultat = dict(self.calepinage.resultat or {}, **{CLE_ENTREE: {'onduleur_produit': produit.pk}})
+        resultat = dict(self.calepinage.resultat or {},
+                        **{CLE_ENTREE: {'onduleur_produit': produit.pk, **saisie}})
         Calepinage.objects.filter(pk=self.calepinage.pk).update(resultat=resultat)
         self.calepinage.refresh_from_db()
         return produit
@@ -498,7 +499,7 @@ class ResyncAnnonceTest(BaseApiCalepinage):
                                    sku=f'A148-G{kw}-{self.company.pk}', prix_vente=Decimal(prix),
                                    prix_achat=Decimal('1'), quantite_stock=5)
         self._nouvelle_pose()
-        self._designer('Onduleur réseau Growatt 8kW Monophasé')
+        self._designer('Onduleur réseau Growatt 8kW Monophasé', nombre_onduleurs=1)
         apercu, _genere, onduleurs = self._apercu_puis_generation()
         self.assertEqual([o['onduleur'] for o in apercu['options']], ['Onduleur réseau Growatt 8kW Monophasé'])
         self.assertEqual(apercu['ecarts'], [])
@@ -511,13 +512,28 @@ class ResyncAnnonceTest(BaseApiCalepinage):
                                sku=f'A148-G3-{self.company.pk}', prix_vente=Decimal('0'),
                                prix_achat=Decimal('1'), quantite_stock=5)
         self._nouvelle_pose()
-        self._designer('Onduleur réseau Growatt 3kW Monophasé')
+        self._designer('Onduleur réseau Growatt 3kW Monophasé', nombre_onduleurs=1)
         apercu, genere, onduleurs = self._apercu_puis_generation()
         self.assertEqual([o['onduleur'] for o in apercu['options']], ['Onduleur réseau Huawei 5kW Monophasé'])
         self.assertEqual([e['champ'] for e in apercu['ecarts']], ['onduleur_produit'])
         self.assertIn('pas de prix de vente', apercu['ecarts'][0]['message'])
         self.assertTrue(any('pas de prix de vente' in m for m in genere['avertissements']), genere)
         self.assertEqual(onduleurs, {None: ('Onduleur réseau Huawei 5kW Monophasé', 'onduleur_reseau')})
+
+    def test_d_acal_148_sans_nombre_ni_schema_le_repli_est_dit(self):
+        """Relecture, point 1 — aucun nombre accepté et un schéma sans fiche (aucun nombre établi) :
+        le devis garde le choix du catalogue et le dit, jamais ⌈kWc ÷ kW⌉."""
+        from apps.stock.models import Produit
+
+        Produit.objects.create(company=self.company, nom='Onduleur réseau Growatt 8kW Monophasé',
+                               sku=f'A148-N8-{self.company.pk}', prix_vente=Decimal('16000'),
+                               prix_achat=Decimal('1'), quantite_stock=5)
+        self._nouvelle_pose()  # sans désignation, le catalogue prend le 8 kW (≥ 80 % de 6,6 kWc)
+        self._designer('Onduleur réseau Huawei 5kW Monophasé')
+        apercu, genere, onduleurs = self._apercu_puis_generation()
+        self.assertIn('ni établi par le schéma', apercu['ecarts'][0]['message'])
+        self.assertTrue(any('ni établi par le schéma' in m for m in genere['avertissements']), genere)
+        self.assertEqual(onduleurs, {None: ('Onduleur réseau Growatt 8kW Monophasé', 'onduleur_reseau')})
 
     def test_d_acal_148_hybride_sur_pose_sans_batterie_reste_en_repli_dit(self):
         self._nouvelle_pose()
@@ -535,7 +551,7 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.calepinage.refresh_from_db()
         enregistrer_layout(self.calepinage, dict(copy.deepcopy(TOIT), scenario='les_deux'), user=self.user)
         self.calepinage.refresh_from_db()
-        self._designer('Onduleur hybride Deye 5kW Monophasé')
+        self._designer('Onduleur hybride Deye 5kW Monophasé', nombre_onduleurs=1)
         apercu, _genere, onduleurs = self._apercu_puis_generation()
         self.assertEqual({o['option']: o['onduleur'] for o in apercu['options']},
                          {'sans': 'Onduleur réseau Huawei 5kW Monophasé',
