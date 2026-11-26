@@ -124,12 +124,12 @@ def _dessin_et_tableau(calepinage):
     from core.electrique.schema import lignes_tableau
 
     from .electrique import (
-        _reglages_electrique_societe, bloquants_nommes,
-        conception_du_calepinage, parametres_societe,
+        _reglages_electrique_societe, conception_du_calepinage,
+        parametres_societe,
     )
     from .norme import norme_applicable
     from .sld import (
-        SldRefuse, branches_onduleur_de_la_conception,
+        SldRefuse, bloquants_du_cablage, branches_onduleur_de_la_conception,
         cartouche_du_calepinage, edition_sld, gabarit_de_schema,
         rendu_du_schema, resultat_et_gabarit_decides,
     )
@@ -137,7 +137,7 @@ def _dessin_et_tableau(calepinage):
     conception, _materiel, donnees, _document = conception_du_calepinage(
         calepinage)
     empechements = (list(getattr(conception, 'manquantes', ()) or ())
-                    + list(bloquants_nommes(conception) or ()))
+                    + list(bloquants_du_cablage(conception, donnees) or ()))
     if getattr(conception, 'micro_seul', False):
         from .sld import MOTIF_SCHEMA_MICRO_SEUL
 
