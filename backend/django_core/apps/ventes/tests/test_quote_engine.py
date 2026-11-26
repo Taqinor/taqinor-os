@@ -235,7 +235,8 @@ class RpdfLegacyMiseEnPageTest(SimpleTestCase):
                     if etude:
                         d['etude'] = etude
                     html = G.render_html_for(d)
-                    self.assertIn("Sans batterie : ", html)
+                    # Nom d'option traduit par LA fonction du code (catalogue res_opt_sans).
+                    self.assertIn(i18n_labels.nom_option("Sans batterie", langue) + " : ", html)
                     self.assertEqual(len(HTML(string=html).render().pages), attendu)
 
     def test_d_acal_111_phrase_facture_recalculee_aucune_page_ajoutee(self):
