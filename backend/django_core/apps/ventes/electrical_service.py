@@ -1464,16 +1464,21 @@ def rafraichir_conception_electrique_devis(devis):
     étude. Rend le contrat rangé, ou ``None``.
     """
     try:
-        if not conception_electrique_dessinable(devis):
-            return None
-        return build_electrical_design(devis)
+        rangee = (build_electrical_design(devis)
+                  if conception_electrique_dessinable(devis) else None)
     except Exception:  # noqa: BLE001 — une étude ratée n'empêche jamais un (D-ENF22-BLE001)
         # enregistrement de devis/lignes (même contrat que les rafraîchisseurs
         # de ``services.py``).
         logger.warning(
             "rafraichir_conception_electrique_devis indisponible sur %s",
             getattr(devis, "reference", "?"), exc_info=True)
-        return None
+        rangee = None
+    # D-ACAL-158 — un devis envoyé SOUS cette règle (il porte l'entrée) corrigé
+    # sur place : la conception de l'autre option suit ses lignes, comme
+    # l'étude rangée. Un brouillon ou un devis envoyé avant n'en a aucune.
+    if _entree_conceptions_figees(devis) is not None:
+        figer_conceptions_des_options(devis, garder=True)
+    return rangee
 
 
 # ── LOT 6 (SCHEL-B3) — LE SCHÉMA ÉLECTRIQUE DU DEVIS, UN DOCUMENT PAR OPTION ──
@@ -1632,7 +1637,9 @@ def _document_de_l_option(devis, variante, imposee, standard):
     if nombre is None:
         return None, None            # aucun onduleur (pompage) : aucun schéma
     with _variante_imposee(variante if imposee else None):
-        calculee = None if imposee else conception_electrique_stockee(devis)
+        # D-ACAL-158 — l'option imposée lit SA conception rangée à l'envoi.
+        calculee = (_conceptions_figees(devis).get(cle, {}).get("design") if imposee
+                    else conception_electrique_stockee(devis))
         design, origine = _etude_dessinable(devis, calculee), _ORIGINE_RANGEE
         if design is None:
             calculee = _etude_a_la_lecture(devis)
@@ -1761,3 +1768,128 @@ def schema_electrique_public(devis, *, standard, option_totals):
                    and (option_totals or {}).get(cle))
         publiees[cle] = dict(doc, cote_reseau={"etat": ETAT_CALCULE, "motif": None}) if sur else None
     return {"options": publiees} if any(publiees.values()) else None
+
+
+# ── D-ACAL-158 — UNE CONCEPTION RANGÉE PAR OPTION, À L'ENVOI ────────────────
+#
+# Fondateur, 26/11/2026 : à l'envoi d'un devis à deux options, la conception de
+# l'option que ``electrical_design`` ne porte pas est rangée aussi, dans une
+# entrée INTERNE de ``clauses_appliquees`` (même mécanique que les réglages
+# figés, ADVS2) : ``electrical_design``, ``electrical_design_hash`` et la
+# fonction d'empreinte ne changent pas. Écrite seulement au passage d'un
+# brouillon vers envoyé/accepté (``domain.envoi.geler_document_engage``) puis
+# suivie par les corrections sur place d'un devis qui la porte : un devis
+# envoyé avant n'en reçoit jamais, sa page et son PDF restent ceux reçus.
+
+def _entree_conceptions_figees(devis):
+    """L'entrée rangée à l'envoi, ou ``None`` : brouillon (même une V2 qui l'a
+    héritée de sa V1), devis mono-option ou envoyé avant D-ACAL-158."""
+    from apps.ventes.domain.envoi import TYPE_CONCEPTIONS_OPTIONS_FIGEES
+    if getattr(devis, "statut", None) == "brouillon":
+        return None
+    for c in (getattr(devis, "clauses_appliquees", None) or []):
+        if isinstance(c, dict) and c.get("type") == TYPE_CONCEPTIONS_OPTIONS_FIGEES:
+            return c
+    return None
+
+
+def _conceptions_figees(devis):
+    """``{clé d'option: {design, hash}}`` rangées à l'envoi (``{}`` sinon)."""
+    options = (_entree_conceptions_figees(devis) or {}).get("options")
+    if not isinstance(options, dict):
+        return {}
+    return {cle: valeur for cle, valeur in options.items()
+            if isinstance(valeur, dict) and isinstance(valeur.get("design"), dict)}
+
+
+def _conception_de_l_option(devis, variante, figee=None):
+    """``{design, hash}`` de l'option ``variante``, par les fonctions de l'étude
+    rangée (``construire_entree_et_source`` → ``concevoir`` →
+    ``projeter_contrat``, empreinte ``empreinte_entree``) sous la variante
+    imposée ; ``None`` quand elle n'est pas dessinable (fiche incomplète, aucun
+    module, bloquant). ``figee`` (celle déjà rangée) est rendue telle quelle
+    quand les entrées n'ont pas bougé — ou, comme ACAL165, quand seule la
+    source calepinage est arrivée depuis."""
+    from core.electrique import concevoir
+
+    with _variante_imposee(variante):
+        entree, source, lie = construire_entree_et_source(devis)
+        empreinte = empreinte_entree(devis, entree, source if lie else None)
+        hash_fige = (figee or {}).get("hash")
+        if hash_fige and (hash_fige == empreinte or (lie and empreinte_entree(
+                devis, construire_entree_et_source(devis, None, avec_calepinage=False)[0]) == hash_fige)):
+            return figee
+        if motifs_fiche_incomplete(devis) or not entree.groupes:
+            return None
+        design = _etude_dessinable(
+            devis, projeter_contrat(entree, concevoir(entree), source_entree=source))
+    return None if design is None else {"design": design, "hash": empreinte}
+
+
+def _ranger_conceptions_figees(devis, entree):
+    """Remplace l'entrée dans ``clauses_appliquees`` relu EN BASE (une
+    correction re-gèle les clauses sur une autre instance) ; aucune écriture
+    quand rien ne change. Rend ``True`` quand la liste a été réécrite."""
+    from apps.ventes.domain.envoi import TYPE_CONCEPTIONS_OPTIONS_FIGEES
+    base = getattr(devis, "clauses_appliquees", None)
+    if entree is None and not any(
+            isinstance(c, dict) and c.get("type") == TYPE_CONCEPTIONS_OPTIONS_FIGEES
+            for c in (base or [])):
+        return False                 # mono-option : rien à écrire ni à relire
+    if getattr(devis, "pk", None):
+        from apps.ventes.models import Devis
+        base = (Devis.objects.filter(pk=devis.pk)
+                .values_list("clauses_appliquees", flat=True).first())
+    base = list(base or [])
+    cible = [c for c in base if not (
+        isinstance(c, dict) and c.get("type") == TYPE_CONCEPTIONS_OPTIONS_FIGEES)]
+    cible += [entree] if entree is not None else []
+    devis.clauses_appliquees = cible
+    if cible == base:
+        return False
+    if getattr(devis, "pk", None):
+        devis.save(update_fields=["clauses_appliquees"])
+    return True
+
+
+def figer_conceptions_des_options(devis, *, garder=False):
+    """D-ACAL-158 — range la conception de chaque option IMPOSÉE (celle que
+    ``electrical_design`` ne porte pas) d'un devis à deux options ; rend
+    ``{clé: {design, hash}}``. Mono-option : aucune entrée (une entrée héritée
+    d'une V1 est retirée). Une option incalculable n'est pas rangée — la page
+    client ne montre alors rien pour elle (D-ACAL-142) — et l'envoi ne
+    s'arrête jamais : ne lève pas, journalise. ``garder`` (correction sur place)
+    reprend les conceptions déjà rangées dont les entrées n'ont pas bougé ; à
+    l'envoi, tout est recalculé (une V2 range les conceptions de SON envoi).
+    Aucun statut, aucune ligne, aucun prix (règle #4)."""
+    from apps.ventes.domain.envoi import TYPE_CONCEPTIONS_OPTIONS_FIGEES
+    reference = getattr(devis, "reference", "?")
+    try:
+        imposees = [v for v, imposee in _variantes_du_schema(devis) if imposee]
+    except Exception:  # noqa: BLE001 — journalisé, l'envoi continue (D-ENF22-BLE001)
+        logger.warning("D-ACAL-158 : options du devis %s illisibles", reference, exc_info=True)
+        return {}
+    anciennes = _conceptions_figees(devis) if garder else {}
+    options = {}
+    for variante in imposees:
+        cle = _cle_option(variante)
+        try:
+            conception = _conception_de_l_option(devis, variante, anciennes.get(cle))
+        except Exception:  # noqa: BLE001 — journalisé, l'option n'est pas rangée (D-ENF22-BLE001)
+            logger.warning("D-ACAL-158 : conception « %s » impossible pour %s",
+                           cle, reference, exc_info=True)
+            conception = None
+        if conception is None:
+            logger.warning("D-ACAL-158 : conception électrique « %s » non rangée pour le "
+                           "devis %s (option non dessinable)", cle, reference)
+            continue
+        options[cle] = conception
+    entree = ({"type": TYPE_CONCEPTIONS_OPTIONS_FIGEES, "options": options}
+              if imposees else None)
+    try:
+        _ranger_conceptions_figees(devis, entree)
+    except Exception:  # noqa: BLE001 — journalisé, l'envoi continue (D-ENF22-BLE001)
+        logger.warning("D-ACAL-158 : conceptions des options non rangées pour %s",
+                       reference, exc_info=True)
+        return {}
+    return options

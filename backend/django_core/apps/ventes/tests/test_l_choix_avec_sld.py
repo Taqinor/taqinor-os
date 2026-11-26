@@ -418,6 +418,92 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
             public = es.schema_electrique_public(devis, standard=False, option_totals=_TOTAUX)
         self.assertIsNotNone(public["options"]["avec_batterie"])
 
+    def test_d_acal_158_envoi_range_l_autre_option_et_la_page_montre_les_deux(self):
+        """D-ACAL-158 — envoyé : l'option imposée est rangée ; la page client sert
+        DEUX documents, chacun avec son onduleur et sa batterie ; l'étude rangée,
+        son empreinte et l'annexe PDF (option rangée seule) ne bougent pas."""
+        import copy
+        devis = _devis_deux_options_servables()
+        es.build_electrical_design(devis)
+        design, empreinte = devis.electrical_design, devis.electrical_design_hash
+        avant, annexe = copy.deepcopy(design), es.rendre_schema_electrique_du_devis(devis)
+        devis.statut, devis.clauses_appliquees = "envoye", []
+        figees = es.figer_conceptions_des_options(devis)
+        self.assertEqual(set(figees), {"sans_batterie"})            # « avec » = electrical_design
+        self.assertEqual(devis.clauses_appliquees[0]["type"], "conceptions_options_figees")
+        from apps.ventes.domain.envoi import est_gel_interne
+        self.assertTrue(est_gel_interne(devis.clauses_appliquees[0]))   # jamais imprimée
+        self.assertIs(devis.electrical_design, design)
+        self.assertEqual(devis.electrical_design, avant)
+        self.assertEqual(devis.electrical_design_hash, empreinte)
+        self.assertEqual(es.empreinte_entree(devis, es.construire_entree(devis)), empreinte)
+        public = es.schema_electrique_public(devis, standard=False, option_totals=_TOTAUX)["options"]
+        sans, avec = public["sans_batterie"], public["avec_batterie"]
+        self.assertIn("Huawei", sans["onduleurs"][0]["designation"])
+        self.assertIsNone(sans["batterie"])
+        self.assertIn("Deye", avec["onduleurs"][0]["designation"])
+        self.assertEqual(avec["batterie"]["unites"], 1)
+        for doc in (sans, avec):
+            self.assertEqual(doc["cote_reseau"], {"etat": "calcule", "motif": None})
+        self.assertEqual(es.rendre_schema_electrique_du_devis(devis), annexe)
+        # Correction sans changement d'entrée : la conception rangée est gardée telle quelle.
+        rangee = devis.clauses_appliquees[0]["options"]["sans_batterie"]
+        self.assertIs(es.figer_conceptions_des_options(devis, garder=True)["sans_batterie"], rangee)
+
+    def test_d_acal_158_envoye_avant_brouillon_et_mono_option_inchanges(self):
+        devis = _devis_deux_options_servables()
+        es.build_electrical_design(devis)
+        devis.statut, devis.clauses_appliquees = "envoye", []          # envoyé avant la règle
+        avant = es.schema_electrique_public(devis, standard=False, option_totals=_TOTAUX)
+        self.assertIsNone(avant["options"]["sans_batterie"])
+        es.figer_conceptions_des_options(devis)
+        devis.statut = "brouillon"                                    # V2 qui hérite de l'entrée
+        self.assertEqual(es.schema_electrique_public(devis, standard=False, option_totals=_TOTAUX), avant)
+        mono = _FauxDevis(lignes=[
+            _FausseLigne("Panneau PV 710 Wc", 14, produit=_panneau()),
+            _FausseLigne("Onduleur réseau 15kW triphasé", 1, produit=_onduleur_reseau())],
+            roof_layout=_roof(14))
+        es.build_electrical_design(mono)
+        mono.statut, mono.clauses_appliquees = "envoye", None
+        charge = es.schema_electrique_public(mono, standard=False, option_totals=_TOTAUX)
+        self.assertEqual(es.figer_conceptions_des_options(mono), {})
+        self.assertIsNone(mono.clauses_appliquees)                    # rien écrit
+        self.assertEqual(es.schema_electrique_public(mono, standard=False, option_totals=_TOTAUX), charge)
+
+    def test_d_acal_158_option_incalculable_non_rangee_sans_lever(self):
+        from unittest import mock
+        devis = _FauxDevis(lignes=[
+            _FausseLigne("Panneau PV 710 Wc", 30, produit=_panneau()),
+            _FausseLigne("Onduleur réseau 15kW triphasé", 1,
+                         produit=_FauxProduit("Onduleur réseau Huawei 15kW")),   # sans fiche
+            _FausseLigne("Onduleur hybride 15kW triphasé", 1, produit=_onduleur_hybride()),
+            _FausseLigne("Batterie lithium 15,4 kWh", 1, produit=_batterie())], roof_layout=_roof(30))
+        es.build_electrical_design(devis)
+        devis.statut, devis.clauses_appliquees = "envoye", []
+        with self.assertLogs("apps.ventes.electrical_service", level="WARNING"):
+            self.assertEqual(es.figer_conceptions_des_options(devis), {})
+        self.assertEqual(devis.clauses_appliquees[0]["options"], {})
+        public = es.schema_electrique_public(devis, standard=False, option_totals=_TOTAUX)["options"]
+        self.assertIsNone(public["sans_batterie"])
+        self.assertIsNotNone(public["avec_batterie"])
+        with mock.patch.object(es, "_conception_de_l_option", side_effect=RuntimeError("panne")):
+            self.assertEqual(es.figer_conceptions_des_options(devis), {})
+
+    def test_d_acal_158_chaines_du_calepinage_a_l_option_de_son_onduleur(self):
+        """D-ACAL-141 par option : les deux conceptions rangées, le calepinage ne
+        remplace que les chaînes de l'option dont l'onduleur est le sien."""
+        devis = _devis_deux_options_servables()
+        es.build_electrical_design(devis)
+        devis.statut, devis.clauses_appliquees = "envoye", []
+        es.figer_conceptions_des_options(devis)
+        options = es.schema_electrique_du_devis(devis, avec_calepinage=False)["options"]
+        for cle, autre in (("sans_batterie", "avec_batterie"), ("avec_batterie", "sans_batterie")):
+            a, b, c = self._avec_calepinage(self._plan(options[cle]))
+            with a, b, c:
+                docs = es.schema_electrique_du_devis(devis)["options"]
+            self.assertEqual(docs[cle]["source"], "calepinage", cle)
+            self.assertEqual(docs[autre]["source"], "conception_devis", cle)
+
     def test_point7_le_chemin_calepinage_ne_journalise_aucune_erreur(self):
         """Une panne du chemin calepinage ne se cache plus derrière son ``except`` :
         sur un devis sain, AUCUN avertissement n'est journalisé ; et une erreur

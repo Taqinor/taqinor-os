@@ -52,6 +52,40 @@ class TestMarkDevisSentService(TestCase):
             company=self.company, reference=f'DEV-{statut}-{id(statut)}',
             client=self.client_obj, lead=lead, statut=statut)
 
+    def _devis_deux_options(self, reference):
+        from decimal import Decimal
+        from apps.ventes.models import LigneDevis
+        devis = Devis.objects.create(company=self.company, reference=reference,
+                                     client=self.client_obj)
+        for designation in ('Panneau PV 710 Wc', 'Onduleur réseau 15kW triphasé',
+                            'Onduleur hybride 15kW triphasé', 'Batterie lithium 15,4 kWh'):
+            LigneDevis.objects.create(devis=devis, designation=designation, quantite=Decimal('1'),
+                                      prix_unitaire=Decimal('1000'), remise=Decimal('0'))
+        return devis
+
+    def test_d_acal_158_l_envoi_range_l_autre_option_et_n_echoue_jamais(self):
+        """D-ACAL-158 — l'envoi d'un devis à deux options range la conception de
+        l'option que ``electrical_design`` ne porte pas (« avec » est retenue) ;
+        une option incalculable n'est pas rangée et l'envoi réussit."""
+        from unittest import mock
+        from apps.ventes import electrical_service as es
+        for reference, effet in (('DEV-ACAL158-1', lambda d, v, f=None: {'design': {'v': v}, 'hash': v}),
+                                 ('DEV-ACAL158-2', RuntimeError('fiche absente'))):
+            with self.subTest(reference=reference):
+                devis = self._devis_deux_options(reference)
+                with mock.patch.object(es, '_conception_de_l_option', side_effect=effet):
+                    mark_devis_sent(devis=devis, user=None)
+                devis.refresh_from_db()
+                self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+                self.assertIsNone(devis.electrical_design)
+                self.assertIsNone(devis.electrical_design_hash)
+                entree = [c for c in devis.clauses_appliquees
+                          if c.get('type') == 'conceptions_options_figees']
+                self.assertEqual(len(entree), 1)
+                self.assertEqual(entree[0]['options'], (
+                    {'sans_batterie': {'design': {'v': 'sans'}, 'hash': 'sans'}}
+                    if callable(effet) else {}))
+
     def test_kwh_incoherent_factures_refuse_l_envoi(self):
         """ADVS48 (règle fondateur 30/09) — un brouillon au kWh déclaré contredit
         par les factures ne part par aucun geste : 409 nommé, brouillon, 0 mail ;
