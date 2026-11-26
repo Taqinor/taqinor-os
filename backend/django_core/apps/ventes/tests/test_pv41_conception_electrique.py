@@ -497,7 +497,7 @@ def _etude_du_moteur(devis, inegales):
     from core.electrique import concevoir
 
     entree, source, _lie = es.construire_entree_et_source(devis)
-    entree = dataclasses.replace(entree, chaines_inegales_entre_entrees=inegales)
+    entree = dataclasses.replace(entree, chaines_inegales_sur_bloquant_seul=inegales)
     return es.projeter_contrat(entree, concevoir(entree), source_entree=source)
 
 
@@ -532,10 +532,10 @@ class ChainesInegalesDuDevisTest(SimpleTestCase):
 
         devis = _devis_deye(35)
         entree = es.construire_entree(devis)
-        self.assertTrue(entree.chaines_inegales_entre_entrees)
+        self.assertTrue(entree.chaines_inegales_sur_bloquant_seul)
         self.assertEqual(es.empreinte_entree(devis, entree), es.empreinte_entree(
             devis, dataclasses.replace(entree,
-                                       chaines_inegales_entre_entrees=False)))
+                                       chaines_inegales_sur_bloquant_seul=False)))
 
     def test_une_etude_rangee_n_est_jamais_recalculee_pour_ca(self):
         devis = _devis_deye(35)
@@ -544,6 +544,20 @@ class ChainesInegalesDuDevisTest(SimpleTestCase):
         devis.electrical_design_hash = es.empreinte_entree(
             devis, es.construire_entree(devis))
         self.assertIs(es.build_electrical_design(devis), rangee)
+
+    def test_une_simple_alerte_d_ecretage_ne_change_pas_le_devis(self):
+        """Scope D-ACAL-139 : seule une partition égale BLOQUANTE déclenche
+        des chaînes inégales au devis ; 48 modules en 4 × 12 sur une entrée à
+        30 A (Imp 34,9 A ⇒ écrêtage, ALERTE, sans Isc publié) ressort à
+        l'identique après la coupure (le calepinage, lui, câble autrement)."""
+        neuf, avant = (_devis_deye(48), _devis_deye(48, envoye_le=(2026, 11, 20)))
+        for devis in (neuf, avant):
+            fiche = devis.lignes.all()[1].produit.fiche_technique
+            fiche.ond_i_max_mppt_a, fiche.ond_isc_max_mppt_a = Decimal("30"), None
+        design = es.build_electrical_design(neuf)
+        self.assertEqual(design, es.build_electrical_design(avant))
+        self.assertTrue(any("ÉCRÊTAGE" in a for a in design["conformite"]["alertes"]))
+        self.assertEqual([c["nb_modules"] for c in design["chaines"]], [12] * 4)
 
     def test_une_conception_egale_valide_est_identique(self):
         neuf = es.build_electrical_design(_devis_deye(48))
