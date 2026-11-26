@@ -275,3 +275,21 @@ test('ACAL1942 : « Localiser » et « Recalculer » sont des boutons à contour
     assert.ok(/var\(--cal-filet-fort\)/.test(d.border ?? ''), `${f} : filet`)
   }
 })
+
+// ACAL1978 — « Montrer au client » à 1440 × 900 : la mise en page grand écran existe (58-telephone.css, @media ≥ 1024 px) —
+// pied « Retour à l'atelier / Envoyer le lien » posé en haut à droite, sans barre ; la carte de production flotte. Le libellé
+// vient de `PiedClient` (VueClient.test.jsx). Ce cas fige la règle : sans elle la vue client redevient la colonne du téléphone.
+test('ACAL1978 : au bureau (≥ 1024 px) le pied de la vue client est posé en haut à droite, sans barre', () => {
+  const source = readFileSync(new URL('../../styles/calepinage/58-telephone.css', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+  const debut = source.indexOf('@media (min-width: 1024px)')
+  assert.ok(debut >= 0, 'bloc @media (min-width: 1024px) absent')
+  const bloc = source.slice(debut, source.indexOf('\n}\n', debut))
+  const regle = regles(bloc).find((r) => /\.cal-tel-pied\s*$/.test(r.sel))
+  assert.ok(regle, 'aucune règle .cal-tel-pied dans le bloc grand écran')
+  const d = declarations(regle.corps)
+  assert.equal(d.position, 'absolute')
+  assert.equal(d.top, '28px')
+  assert.equal(d.right, '28px')
+  assert.equal(d.background, 'transparent')
+})
