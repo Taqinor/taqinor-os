@@ -8,9 +8,10 @@ import assert from 'node:assert/strict'
 import {
   prixForfaitHt, porteBaremeParPanneau, comptesPanneauxEcran, retarifierForfaitsEcran, suivreQuantitesPanneauxEcran, reductionOptionAvec,
   phraseReductionOptionAvec,
+  phraseAvantAutoRemplirAvec,
 } from './forfaitsPanneau.js'
 import { lignesEcranVersPayload } from './lignesEcran.js'
-import { ETAT_INITIAL, sizingReducer, toucheNbPanneauxPourComposition } from './sizingReducer.js'
+import { ETAT_INITIAL, sizingReducer, toucheNbPanneauxPourComposition, causeNbPanneauxPourComposition } from './sizingReducer.js'
 
 // Mêmes barèmes que `apps/ventes/tests/test_pvkit_composition.py::BAREMES_FORFAIT`
 // (chaînes telles que DRF les sert : DecimalField 2 et 4 décimales).
@@ -220,4 +221,37 @@ test('R5A-N2 (revue) — « le nombre de panneaux saisi » n est la raison QUE s
   // Rien de tapé : `resolveKwcAvec` a rendu la taille sans batterie (moteur sans `recommandation_avec`, ou la sienne plus petite).
   assert.equal(toucheNbPanneauxPourComposition(ETAT_INITIAL), false)
   assert.equal(phraseReductionOptionAvec(avant, apres, [PAN], toucheNbPanneauxPourComposition(ETAT_INITIAL)), null)
+})
+
+test('R5A-N2 — la phrase d AVANT le geste : 8 conseillés, 6 saisis ⇒ dite ; rien de saisi, mêmes comptes, ou pas de conseil ⇒ null', () => {
+  const saisi = sizingReducer(ETAT_INITIAL, { type: 'SAISI', champ: 'nbPanneaux', valeur: '6' })
+  const nbSaisi = toucheNbPanneauxPourComposition(saisi)
+  assert.match(phraseAvantAutoRemplirAvec(nbSaisi, 8, '6'), /posera l'option avec batterie à 6 panneaux, pas aux 8 conseillés/)
+  assert.equal(phraseAvantAutoRemplirAvec(toucheNbPanneauxPourComposition(ETAT_INITIAL), 8, '6'), null, 'rien de saisi : le conseil est appliqué')
+  assert.equal(phraseAvantAutoRemplirAvec(nbSaisi, 6, '6'), null)
+  assert.equal(phraseAvantAutoRemplirAvec(nbSaisi, undefined, '6'), null)
+  assert.equal(phraseAvantAutoRemplirAvec(nbSaisi, 8, ''), null)
+})
+
+test('R5A-N2 — taille demandée par le LEAD (rien de tapé) : les deux phrases nomment la fiche du lead, jamais « saisi » ; « Recalculer » éteint les deux causes', () => {
+  const sans = (q) => ({ produit: PAN.id, designation: PAN.nom, quantite: q, variante: 'sans' })
+  const avec = (q) => ({ produit: PAN.id, designation: PAN.nom, quantite: q, variante: 'avec' })
+  const lead = sizingReducer(ETAT_INITIAL, { type: 'LEAD_APPLIQUE', lead: { type_installation: 'residentiel', taille_souhaitee_kwc: '4.26' } })
+  assert.equal(lead.touche.nbPanneaux, false, 'rien de tapé')
+  assert.equal(causeNbPanneauxPourComposition(lead), 'lead')
+  assert.equal(toucheNbPanneauxPourComposition(lead), true)
+  const saisi = sizingReducer(ETAT_INITIAL, { type: 'SAISI', champ: 'nbPanneaux', valeur: '6' })
+  assert.equal(causeNbPanneauxPourComposition(saisi), 'saisi')
+  assert.equal(causeNbPanneauxPourComposition(ETAT_INITIAL), null)
+  const cause = causeNbPanneauxPourComposition(lead)
+  const avant = phraseAvantAutoRemplirAvec(cause, 8, '6')
+  assert.match(avant, /la taille demandée sur la fiche du lead vaut pour les deux options \(« Recalculer le dimensionnement » reprend le conseil\)/)
+  assert.doesNotMatch(avant, /saisi/)
+  const apres = phraseReductionOptionAvec([sans('6'), avec('8')], [sans('6'), avec('6')], [PAN], cause)
+  assert.equal(apres, "L'option avec batterie passe de 8 à 6 panneaux : la taille demandée sur la fiche du lead vaut pour les deux options.")
+  // « Recalculer » : la fiche ne décide plus, et la fenêtre de composition ignore le drapeau tapé.
+  const recalc = sizingReducer(lead, { type: 'RECALCUL_DEMANDE', retenu: { nbPanneaux: 8, kwcOptimal: 5.68 } })
+  assert.equal(causeNbPanneauxPourComposition(recalc), null)
+  const recalcSaisi = sizingReducer(saisi, { type: 'RECALCUL_DEMANDE', retenu: { nbPanneaux: 8, kwcOptimal: 5.68 } })
+  assert.equal(causeNbPanneauxPourComposition(recalcSaisi), null)
 })

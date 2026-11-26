@@ -11,7 +11,7 @@ import { phraseReductionOptionAvec } from '../../../../features/ventes/quote/for
 import { DIMENSIONNEMENT_PRET, issueRecalculDimensionnement } from '../../../../features/ventes/quote/paireDimensionnement'
 import { refusAutoRemplirPompage } from '../../../../features/ventes/etudePompagePreviewPur'
 import {
-  SCENARIO_AVEC, SCENARIO_LES_DEUX, tailleDemandeeParLead, toucheNbPanneauxPourComposition,
+  SCENARIO_AVEC, SCENARIO_LES_DEUX, tailleDemandeeParLead, causeNbPanneauxPourComposition,
 } from '../../../../features/ventes/quote/sizingReducer'
 import ventesApi from '../../../../api/ventesApi'
 import { formatKwc, formatNumber } from '../../../../lib/format'
@@ -140,7 +140,7 @@ export function useCompositionEcran(ctx) {
     // rendus tels quels dans le même bandeau, jamais tus.
     const avertissementsMsg = (data.avertissements || []).join(' ') || null
     // R5A-N2 — l'option « avec batterie » qui perd des panneaux À CAUSE d'un compte saisi le dit, les deux comptes nommés.
-    const reduction = phraseReductionOptionAvec(lines, generated, produits, toucheNbPanneauxPourComposition(sizing))
+    const reduction = phraseReductionOptionAvec(lines, generated, produits, causeNbPanneauxPourComposition(sizing))
     setErrors(e => ({
       ...e,
       autofill: [manquantsMsg, avertissementsMsg].filter(Boolean).join(' ') || null,

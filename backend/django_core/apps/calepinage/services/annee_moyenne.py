@@ -111,7 +111,7 @@ def _arrivee_de_la_cascade(cascade):
     return float(premiere) if _est_nombre(premiere) else None
 
 
-def etat_des_energies(resultat):
+def _etat_des_energies(resultat):
     """Q2 (lecture seule) — ce que dit un ``resultat`` RANGÉ : ``None`` sans
     simulation ou en année type (N = 1) ; sinon ``{annees, mode, calcule_le,
     p50_kwh, arrivee_kwh, fenetre_entiere}``. ``fenetre_entiere`` est vrai
@@ -138,3 +138,101 @@ def etat_des_energies(resultat):
         'arrivee_kwh': arrivee,
         'fenetre_entiere': fenetre_entiere,
     }
+
+
+#: ACAL1252 (D-ACAL-64 = lister_et_montrer) — les deux listes du relevé.
+CONCERNE, INDETERMINE = 'concerne', 'indetermine'
+
+
+def _a_des_energies(resultat):
+    total = (resultat.get('production') or {}).get('total') or {}
+    return (_est_nombre(total.get('p50_kwh'))
+            or _arrivee_de_la_cascade(resultat.get('cascade')) is not None)
+
+
+def _classer(resultat):
+    """``(statut, etat, motif)`` d'un résultat RANGÉ, décidé sur sa seule
+    trace ; ``None`` quand il n'est pas concerné : aucune énergie rangée
+    (jamais simulé), année type (N = 1 rangé) ou déjà à l'année moyenne."""
+    resultat = resultat if isinstance(resultat, dict) else {}
+    if not _a_des_energies(resultat):
+        return None
+    annees = ((resultat.get('production') or {}).get('total')
+              or {}).get('annees_fenetre')
+    mode = (resultat.get('meteo') or {}).get('mode')
+    if not (_est_nombre(annees) and annees >= 1):
+        return (INDETERMINE, {'annees': None, 'mode': mode, 'p50_kwh': None,
+                              'arrivee_kwh': None, 'calcule_le': (
+                                  resultat.get('simulation') or {}
+                              ).get('calcule_le')},
+                "nombre d'années de la fenêtre non rangé dans la trace")
+    etat = _etat_des_energies(resultat)
+    if etat is None or etat['fenetre_entiere'] is False:
+        return None
+    if etat['fenetre_entiere'] is None:
+        return (INDETERMINE, etat,
+                'P50 ou arrivée de la cascade absents : somme ou moyenne '
+                'impossible à prouver')
+    return CONCERNE, etat, ''
+
+
+def _date_iso(valeur):
+    if valeur is None or isinstance(valeur, str):
+        return valeur or None
+    return valeur.isoformat()
+
+
+def lister_pluriannuels(entrees):
+    """Relevé LECTURE SEULE des simulations rangées et documents remis dont
+    les énergies sont la somme des N années (mode pluriannuel). Fonction
+    PURE : ni requête, ni écriture.
+
+    ``entrees`` : itérable de ``{company_id, calepinage_id, objet
+    ('calepinage' | 'variante'), objet_id, resultat, documents: [{nom,
+    remis_le}]}`` (``documents`` : les versions remises du calepinage).
+    Rend ``{'concernes': [...], 'indetermines': [...], 'comptes': {...}}`` ;
+    chaque ligne : ``company_id, calepinage_id, objet, objet_id, document,
+    date, mode, annees, energie_rangee_kwh (arrivée de la cascade),
+    energie_par_an_kwh (÷ N), p50_kwh, motif``. Aucun nom, téléphone,
+    e-mail, adresse ni GPS. Un document remis AVANT le calcul rangé a été
+    produit sur un calcul antérieur : il va aux indéterminés."""
+    concernes, indetermines = [], []
+    comptes = {'lus': 0, CONCERNE: 0, INDETERMINE: 0}
+    for entree in entrees:
+        comptes['lus'] += 1
+        classe = _classer(entree.get('resultat'))
+        if classe is None:
+            continue
+        statut, etat, motif = classe
+        comptes[statut] += 1
+        annees, arrivee = etat['annees'], etat['arrivee_kwh']
+        base = {
+            'company_id': entree.get('company_id'),
+            'calepinage_id': entree.get('calepinage_id'),
+            'objet': entree.get('objet') or 'calepinage',
+            'objet_id': entree.get('objet_id'),
+            'mode': etat['mode'], 'annees': annees,
+            'energie_rangee_kwh': arrivee,
+            'energie_par_an_kwh': (moyenne(arrivee, annees)
+                                   if statut == CONCERNE else None),
+            'p50_kwh': etat['p50_kwh'],
+        }
+        calcule_le = etat.get('calcule_le')
+        cible = concernes if statut == CONCERNE else indetermines
+        cible.append(dict(base, document=None, date=_date_iso(calcule_le),
+                          motif=motif))
+        for document in entree.get('documents') or ():
+            remis_le = _date_iso(document.get('remis_le'))
+            avant = bool(remis_le and calcule_le
+                         and remis_le[:19] < str(calcule_le)[:19])
+            ligne = dict(base, document=document.get('nom'), date=remis_le,
+                         motif=motif)
+            if avant:
+                ligne.update(energie_par_an_kwh=None, motif=(
+                    'remis avant le calcul rangé (%s) : mode à la remise '
+                    'inconnu' % calcule_le))
+                indetermines.append(ligne)
+            else:
+                cible.append(ligne)
+    return {'concernes': concernes, 'indetermines': indetermines,
+            'comptes': comptes}

@@ -6576,3 +6576,29 @@ decisions:
     date: "2026-11-26"
     source: "fondateur, questions interactives du 26/11/2026 (quatrième séance) ; tour 5 du L5, paquet F, T4-U2-020"
     taches: []
+  - id: D-ACAL-168
+    question: "Toit plat sur lequel aucun panneau n'est encore posé au calepinage : quelle inclinaison des panneaux supposer pour la production du devis (annoncée au vendeur comme supposée) ?"
+    options:
+      - cle: dix_degres
+        texte: "(recommandée) 10°, l'inclinaison des châssis de toit plat de l'ERP"
+      - cle: defaut_societe
+        texte: "Le réglage « Inclinaison par défaut » de la société (30° aujourd'hui)"
+      - cle: vingt_degres
+        texte: "20° (réponse libre du fondateur)"
+    reponse: vingt_degres
+    date: "2026-11-26"
+    source: "fondateur, questions interactives du 26/11/2026 (cinquième séance), réponse tapée mot pour mot : « 20 degrees » ; ni la recommandation ni l'autre option ; suite de D-ACAL-149 (partie création et resynchronisation) ; la valeur n'est jamais imprimée au client comme une donnée (annexe : inclinaison omise)"
+    taches: []
+  - id: D-ACAL-169
+    question: "L'entrée électrique du calepinage peut garder un ANCIEN modèle de panneau (vu : 710 W stocké alors que la pose utilise des 715 W). Lequel fait foi ?"
+    options:
+      - cle: panneau_pose
+        texte: "(recommandée) Le panneau posé sur le toit ; l'étape Électrique le suit et le dit"
+      - cle: demander
+        texte: "Demander au vendeur à chaque fois"
+      - cle: un_panneau_par_defaut_partout
+        texte: "Un seul panneau par défaut pour tout l'ERP (le 715 W aujourd'hui), montré dans le stock (réponse libre du fondateur)"
+    reponse: un_panneau_par_defaut_partout
+    date: "2026-11-26"
+    source: "fondateur, questions interactives du 26/11/2026 (cinquième séance), réponse tapée mot pour mot : « always use 715w everywhere, and have somewhere in the stock to show the default used pannels ». Lecture de l'orchestrateur, à confirmer : (1) UN panneau par défaut par société, désigné sur la fiche produit du stock (drapeau unique, action réservée à qui modifie les produits), lu par tous les choix automatiques — devis automatique et tailles (aujourd'hui 710 en dur : ventes/domain/taille.py::_AUTO_PANEL_WATT), assistant, C&I et pompage (panneau désigné d'abord s'il est tarifé et sa fiche complète), premier module d'un nouveau pan au calepinage, valeur de départ du générateur ; (2) le stock le montre (pastille « Panneau par défaut » et ligne « Panneau par défaut : X ») ; (3) l'entrée électrique d'un calepinage suit le panneau POSÉ quand il change, et le dit ; (4) rien d'existant n'est recalculé : devis enregistrés ou envoyés, calepinages enregistrés gardent LEUR panneau ; (5) sans panneau désigné, tarifé et non archivé : la règle d'aujourd'hui s'applique et l'écran le dit. Choix pris par l'orchestrateur, à confirmer : les estimateurs du site public passent aussi au panneau par défaut (les textes d'installations réelles ne changent pas) ; les calepinages de production dont le panneau stocké diffère du toit sont d'abord LISTÉS en lecture seule. Désigner le 715 W en production reste un geste du fondateur. Note de conception : inventaire des 16 endroits (session du 26/11)"
+    taches: []
