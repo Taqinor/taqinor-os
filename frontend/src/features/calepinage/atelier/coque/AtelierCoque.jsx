@@ -39,7 +39,7 @@ export default function AtelierCoque({
         outils: <BuilderOutils {...proprietesBuilder} />,
         toit: <BuilderToit {...proprietesBuilder} />,
         // La recommandation du constructeur (`rp9-results`, cible, besoin) accompagne la pose (étape Panneaux).
-        pose: <><BuilderPose {...proprietesBuilder} /><InspecteurBuilder estCalepinage sansReseau={estAtelierPompage(contexte)} /></>,
+        pose: <><BuilderPose {...proprietesBuilder} sansReseau={estAtelierPompage(contexte)} /><InspecteurBuilder estCalepinage sansReseau={estAtelierPompage(contexte)} /></>,
       }}
       alertes={alertes}
       avance={avance}

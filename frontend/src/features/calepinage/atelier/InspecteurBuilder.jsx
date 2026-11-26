@@ -47,9 +47,9 @@ export default function InspecteurBuilder({ estCalepinage = false, sansReseau = 
               <p id="rp9-reco-savings-note" hidden className="mt-1 text-xs text-muted-foreground">Le chiffre du devis est dans l’onglet Économie</p>
             </div>
           </dl>
-          <p id="rp9-reco-why" className="mt-5 min-h-[3.5rem] text-xs text-foreground"></p>
-          <p id="rp9-reco-bifacial" className="mt-2 text-xs text-muted-foreground"></p>
-          <p id="rp9-reco-band" className="mt-2 min-h-[2.5rem] text-xs text-muted-foreground" aria-live="polite"></p>
+          <p id="rp9-reco-why" hidden={sansReseau} className="mt-5 min-h-[3.5rem] text-xs text-foreground"></p>
+          <p id="rp9-reco-bifacial" hidden={sansReseau} className="mt-2 text-xs text-muted-foreground"></p>
+          <p id="rp9-reco-band" hidden={sansReseau} className="mt-2 min-h-[2.5rem] text-xs text-muted-foreground" aria-live="polite"></p>
           <p id="rp9-maxline" className="mt-3 text-xs text-muted-foreground"></p>
         </div>
 
