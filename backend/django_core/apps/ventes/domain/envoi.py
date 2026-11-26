@@ -504,12 +504,18 @@ def geler_document_engage(devis, user, *, statut=None, acceptation=False):
             raise
         from apps.ventes.domain.cycle_vie import AcceptError
         raise AcceptError(exc.message, code='approbation_requise') from exc
+    # ACAL1237 — la base de production que le BROUILLON imprime, lue AVANT la bascule.
+    from apps.ventes.horaire.productible_pose import CLE_BASE_ENVOI, base_a_ranger_a_l_envoi
+    base_envoi = base_a_ranger_a_l_envoi(devis)
     champs = ['date_envoi']
     if statut is not None:
         devis.statut = statut
         champs.insert(0, 'statut')
     devis.date_envoi = timezone.now()
     devis.save(update_fields=champs)
+    if base_envoi or CLE_BASE_ENVOI in (devis.etude_params or {}):  # une clé héritée sans base : retirée
+        from apps.ventes.domain.etude_schema import ENVOI, ecrire
+        ecrire(devis, proprietaire=ENVOI, **{CLE_BASE_ENVOI: base_envoi})
     # QX23be — fige la marge interne au moment de l'envoi (manager-only).
     refresh_marge_snapshot(devis)
     # QJR668 — fige les clauses/CGV de l'affaire au moment de l'envoi.
