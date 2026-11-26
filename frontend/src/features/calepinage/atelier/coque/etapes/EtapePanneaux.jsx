@@ -275,8 +275,13 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   const ligneMax = figuresMax?.panneaux ? [compte(figuresMax.panneaux), figuresMax.kwc, part(figuresMax)]
     .filter(Boolean).join(' · ') : ''
   // T4-X9-013 (reste) — sans lead, la phrase de repli ne nomme pas « ce lead ».
+  // R6-N4 — un lead qui PORTE une facture ne se voit jamais dire « aucune taille ne se tire des factures » (le serveur nomme
+  // d'ordinaire la cause dans `refus` : taille souhaitée, C&I…) : à défaut de cause servie, la phrase dit ce qui est vrai.
+  const factureSansCause = Boolean(servi.leadId) && servi.factureSaisie && !servi.motifFacture
   const raison = servi.motifFacture || (servi.leadId
-    ? 'Aucune taille ne se tire des factures de ce lead.'
+    ? (factureSansCause
+      ? 'La facture de ce lead est renseignée, mais le moteur n’en a tiré aucune taille pour l’instant. Choisissez le nombre de panneaux à poser.'
+      : 'Aucune taille ne se tire des factures de ce lead.')
     : 'Ce calepinage n’a pas de lead : aucune taille n’est tirée d’une facture. Choisissez le nombre de panneaux à poser.')
   return (
     <section className="cal-pan-section">
@@ -333,7 +338,7 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
       {servi.facture.etat === 'ok' && !cible && !servi.facture.calculEnCours && (
         <p className="cal-pan-note">
           {raison}
-          {servi.leadId && !(servi.refusFacture && servi.factureSaisie) && (
+          {servi.leadId && !(servi.refusFacture && servi.factureSaisie) && !factureSansCause && (
             <>{' '}<Link to={`/crm/leads/${servi.leadId}`} className="cal-pan-lien">Renseigner la facture du lead</Link></>
           )}
         </p>

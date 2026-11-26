@@ -107,7 +107,21 @@ def cible_factures_et_refus(calepinage, *, lire_cible=None):
                  'module_wc': nombre(cible.get('panel_watt')),
                  # Lane E9 — la version de la conception qui fait ces chiffres et la raison de son calcul.
                  'version': cible.get('version'), 'raison': cible.get('raison')}, '')
+    if cible and cible.get('source') == 'lead' and cible.get('panneaux'):
+        return None, _refus_taille_souhaitee(cible)
     return None, str((cible or {}).get('refus') or '')
+
+
+def _refus_taille_souhaitee(cible):
+    """R6-N4 — la taille souhaitée du lead est SOUVERAINE (``cible_depuis_lead`` : ``source`` ``'lead'``) : le moteur
+    n'a donc rien lu dans les factures, et ``cible_factures`` reste ``null``. Sans phrase, l'étape Panneaux retombait
+    sur « Aucune taille ne se tire des factures de ce lead », fausse pour un lead qui porte une facture ET une taille.
+    La phrase dit ce qui fait la taille, avec la pose servie."""
+    from core.electrique.types import fr
+
+    n, kwc = int(cible['panneaux']), nombre(cible.get('kwc'))
+    pose = '%d panneau%s' % (n, 'x' if n > 1 else '') + (' · %s kWc' % fr(kwc) if kwc else '')
+    return 'La taille de ce lead vient de la taille qu’il a souhaitée (%s), pas de ses factures.' % pose
 
 
 def cible_factures(calepinage, *, lire_cible=None):
