@@ -71,8 +71,15 @@ export async function deposerOuMettreEnFile(calepinageId, fichier, champs) {
 }
 
 /** Une réponse qui ne juge pas l'envoi (session expirée, serveur en cours de redémarrage, trop de requêtes) : la garder
-    en file et réessayer plus tard. */
-const reponsePassagere = (statut) => statut === 401 || statut === 408 || statut === 429 || statut >= 500
+    en file et réessayer plus tard. ACAL1949 (revue) — de même le 409 « la MÊME requête est déjà en cours » que
+    `core/idempotency.py::IdempotencyEnCours` sert avec `code: 'idempotency_en_cours'` (deux onglets rejouent la même
+    clé) : l'autre envoi peut encore échouer, l'entrée reste ; le rejeu suivant reçoit la réponse mémorisée. Tout AUTRE
+    409 (même clé, corps différent : `IdempotencyConflict`, sans ce code) reste un vrai refus, dit à l'écran. */
+const reponsePassagere = (reponse) => {
+  const statut = reponse?.status
+  if (statut === 409) return reponse?.data?.code === 'idempotency_en_cours'
+  return statut === 401 || statut === 408 || statut === 429 || statut >= 500
+}
 
 /** Rejoue DANS L'ORDRE : `{ envoyees, refusees: [{message, champs}], restantes }` ; sans réseau ou sur une réponse
     PASSAGÈRE (ACAL1974 : un 502 pendant un deploy rangeait la photo parmi les « refusées »), on s'arrête et la file
@@ -86,7 +93,7 @@ export async function rejouerFile(calepinageId) {
       await calepinageApi.calepinages.ajouterPhoto(op.meta.calepinageId, corpsPhoto(fichier, op.meta))
       envoyees += 1
     } catch (err) {
-      if (!err?.response || reponsePassagere(err.response.status)) break
+      if (!err?.response || reponsePassagere(err.response)) break
       refusees.push(refusServeur(err))
     }
     await majAtomique(file(), (cur) => cur.filter((o) => o.client_op_id !== op.client_op_id))
@@ -160,7 +167,7 @@ export function rejouerReleve(calepinageId) {
         // Sans réponse (réseau coupé) ou sur une réponse PASSAGÈRE (session expirée, serveur en cours de
         // redémarrage, trop de requêtes) : le relevé RESTE en file et repartira ; seul un vrai refus du serveur
         // le retire et le dit (critique de la vague B : un 502 pendant un deploy effaçait le relevé).
-        if (!err?.response || reponsePassagere(err.response.status)) break
+        if (!err?.response || reponsePassagere(err.response)) break
         refus = refusServeur(err)
       }
       await majAtomique(file(), (cur) => cur.filter((o) => o.client_op_id !== op.client_op_id))

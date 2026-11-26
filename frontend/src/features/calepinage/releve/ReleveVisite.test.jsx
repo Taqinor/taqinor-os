@@ -466,6 +466,26 @@ describe('ACAL1949 — le relevé gardé est celui de SON utilisateur, porte sa 
     expect(await releveEnAttente('1')).toBe(false)
   })
 
+  it('deux onglets : le 409 « en cours » garde le relevé (aucun refus) ; la réponse mémorisée le retire ; un vrai conflit est dit', async () => {
+    connecter(1)
+    await mettreReleveEnFile('1', { corps: CORPS })
+    // Corps servi par core/idempotency.py::IdempotencyEnCours (code à la racine).
+    api.enregistrerReleve.mockRejectedValueOnce({ response: { status: 409, data: {
+      detail: 'Une requête identique est déjà en cours de traitement — réessayez dans quelques secondes.',
+      code: 'idempotency_en_cours' } } })
+    expect(await rejouerReleve('1')).toEqual({ envoye: false, releve: null, refus: null, restantes: 1 })
+    api.enregistrerReleve.mockResolvedValueOnce({ data: { releve: { id: 12 } } }) // la réponse mémorisée du 1er onglet
+    expect(await rejouerReleve('1')).toMatchObject({ envoye: true, releve: { id: 12 }, refus: null, restantes: 0 })
+
+    await mettreReleveEnFile('1', { corps: CORPS })
+    // IdempotencyConflict (même clé, corps différent) : un 409 SANS ce code, vrai refus.
+    api.enregistrerReleve.mockRejectedValueOnce({ response: { status: 409, data: {
+      detail: 'Cette « Idempotency-Key » a déjà été utilisée avec un corps de requête différent.' } } })
+    const conflit = await rejouerReleve('1')
+    expect(conflit.refus).not.toBeNull()
+    expect(conflit.restantes).toBe(0)
+  })
+
   it('la purge centrale connaît les types de CETTE file (photos et relevé)', () => {
     expect(TYPES_BINAIRES_VIDES_A_LA_DECONNEXION).toEqual(
       expect.arrayContaining([OP_PHOTO_CALEPINAGE, OP_RELEVE_CALEPINAGE]))
