@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSimulationFraiche } from './simulationFraiche' // T4-X2-006 — relue aussi tant que la simulation tourne
 import { formatNumber } from '../../../lib/format'
+import { totalPose } from '../surfacePose' // R5B-N2 — le total du site, celui de la barre
 
 /* ACAL401 — résumé vivant de l'atelier, passé en `children` de la barre d'enregistrement :
    panneaux · kWc relus sur le document SÉRIALISÉ (`result.panels`, `result.kwc` —
@@ -12,9 +13,15 @@ import { formatNumber } from '../../../lib/format'
 const PERIODE_MS = 1000
 const nombre = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 
+/* R5B-N2 (rejeu 26/11) — `result.panels`/`result.kwc` ne comptent que le pan de toit : à côté de la barre (« 49 panneaux ·
+   34,79 kWc » : toit + champ au sol + ombrière), le résumé disait « 5 panneaux · 3,55 kWc ». UN compte pour tout le
+   calepinage : `surfacePose.js::totalPose`, LE total que lit la barre (`usePoseVivante`) ; sans pose comptée, `result`. */
 function lireResultat(lireLayout) {
-  let r = null
-  try { r = lireLayout?.()?.result } catch { r = null }
+  let layout = null
+  try { layout = lireLayout?.() ?? null } catch { layout = null }
+  const total = totalPose(layout)
+  if (total?.panneaux > 0) return { panneaux: nombre(total.panneaux), kwc: nombre(total.kwc) }
+  const r = layout?.result
   return { panneaux: nombre(r?.panels), kwc: nombre(r?.kwc) }
 }
 
