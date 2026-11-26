@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { creerCanalTeinte } from './canalTeinte'; // ACAL1621
 import { cibleVue, appliquerVue } from './vuesCamera';
 import { dimensionsTexture, makeCanadianPanelTexture } from './panelTexture'; // ACAL1839
-import { teintesBatiment, TEINTES_PRESENTATION, jeuDeLaScene, presentationClient, porteeOmbreSolM, solOmbreClient, cadreOmbreClient, MARGE_POSE_M, PORTEE_OMBRE_SOL_MAX_M } from './jeuPresentation'; // ACAL1839, lot 8
+import { teintesBatiment, TEINTES_PRESENTATION, jeuDeLaScene, presentationClient, ombresObstacles, porteeOmbreSolM, solOmbreClient, cadreOmbreClient, MARGE_POSE_M, PORTEE_OMBRE_SOL_MAX_M } from './jeuPresentation'; // ACAL1839, lot 8
 import { ELEVATION_AFFICHAGE_MIN_DEG } from './threeShared'; // lot 8
 import { cielSuitLeSoleil } from './ciel'; // lot 8
 import * as THREE from 'three'; // ACAL1984
@@ -484,6 +484,14 @@ describe('ACAL1408 — la teinte d’accès modifie la couleur effective du pann
     expect(jeuDeLaScene({}, false)).toBe('atelier');
     expect(cielSuitLeSoleil(true, {})).toBe(false);
     expect(verreEtOeilAtelier({ presentationClient: false })).toBe(false);
+  });
+
+  it('lot 8 — ombres des obstacles : ERP oui (inchangé), lien de confiance oui, lien standard non (inchangé)', () => {
+    expect(ombresObstacles({ productionAtelier: null })).toBe(true);
+    expect(ombresObstacles({ productionAtelier: null, presentationClient: false })).toBe(true);
+    expect(ombresObstacles({ presentationClient: true })).toBe(true);
+    expect(ombresObstacles({})).toBe(false);
+    expect(ombresObstacles(undefined)).toBe(false);
   });
 
   it('lot 8 (B2) — sol d’ombre : lien de confiance seulement, ombre seule, étendue = ombre la plus longue plafonnée', () => {

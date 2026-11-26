@@ -24,6 +24,12 @@ export function presentationClient(opts: OptsPresentation): boolean {
   return opts?.productionAtelier === undefined && opts?.presentationClient === true;
 }
 
+/** Les boîtes d'obstacle portent et reçoivent les ombres (assises sur la dalle) : l'atelier ERP, et le lien de confiance
+ *  (lot 8 — sans quoi un panneau teinté « ombragé » n'a aucune cause visible). Lien standard : inchangé, sans ombre. */
+export function ombresObstacles(opts: OptsPresentation): boolean {
+  return opts?.productionAtelier !== undefined || presentationClient(opts);
+}
+
 /** Le jeu de matériaux de la scène : « presentation » dans l'ERP montré au client, ou sur un lien de confiance. */
 export function jeuDeLaScene(opts: OptsPresentation, erpEnPresentation: boolean): JeuPanneau {
   return erpEnPresentation || presentationClient(opts) ? 'presentation' : 'atelier';

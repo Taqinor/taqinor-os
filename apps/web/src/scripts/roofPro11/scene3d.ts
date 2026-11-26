@@ -55,7 +55,7 @@ import { makeCanadianPanelTexture, type JeuPanneau } from './panelTexture';
 import { aplatirEnPlan, poserOeil, verreEtOeilAtelier } from './oeilCamera'; // ACAL1984, T4-U1-017, LOT 6
 import { boiteObstacle } from './obstacle3d'; // ACAL1820
 import { etiquettesChaines, type ChaineAPoser } from './electrique3d'; // ACAL1944
-import { teintesBatiment, eclatPresentation, TEINTES_PRESENTATION, jeuDeLaScene, cadreOmbreClient, solOmbreClient } from './jeuPresentation'; // ACAL1839 ; lot 8
+import { teintesBatiment, eclatPresentation, TEINTES_PRESENTATION, jeuDeLaScene, cadreOmbreClient, solOmbreClient, ombresObstacles } from './jeuPresentation'; // ACAL1839 ; lot 8
 import { geometrieJupe } from './jupePignon'; // ACAL1839
 import { enPresentation, montreALEtape, surEtape, surPresentation } from './presentationCarte'; // ACAL1839 ; suites v2 — l'étape
 import { type Ctx } from './context';
@@ -2211,7 +2211,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         const oy = (o.centerLat - pack.origin[1]) * DEG2M + offY;
         const tint = dim ? 0xc06464 : 0xff6b6b;
         // CAL66 — hauteur SAISIE, sinon le repli visuel ; ACAL1820 — assise sur la dalle et ombres (atelier ERP).
-        const mesh = boiteObstacle(o, { x: ox, y: oy, murM: wallH, dessusDalleM: dessusDalle(ox, oy), teinte: tint, opacite: dim ? 0.3 : 0.42, opaciteAretes: dim ? 0.6 : 0.95, ombres: atelierErp });
+        const mesh = boiteObstacle(o, { x: ox, y: oy, murM: wallH, dessusDalleM: dessusDalle(ox, oy), teinte: tint, opacite: dim ? 0.3 : 0.42, opaciteAretes: dim ? 0.6 : 0.95, ombres: ombresObstacles(opts) });
         sceneRoot!.add(mesh);
       }
     }
@@ -2491,7 +2491,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         // CAL66 — hauteur SAISIE, sinon le repli visuel ; ACAL1820 — assise sur la dalle, porte et reçoit les ombres (ERP).
         const boxH = o.heightM ?? OBSTACLE_BOX_H_M;
         const client = jeuScene() === 'presentation'; // ACAL1839 — au client : une cheminée en brique, sans cote
-        const mesh = boiteObstacle(o, { x: ox, y: oy, murM: wallH, dessusDalleM: built.dessusDalle?.(ox, oy), teinte: client ? TEINTES_PRESENTATION.cheminee : tint, opacite: client ? 1 : selected ? 0.5 : 0.42, ombres: atelierErp });
+        const mesh = boiteObstacle(o, { x: ox, y: oy, murM: wallH, dessusDalleM: built.dessusDalle?.(ox, oy), teinte: client ? TEINTES_PRESENTATION.cheminee : tint, opacite: client ? 1 : selected ? 0.5 : 0.42, ombres: ombresObstacles(opts) });
         // Change B : taille affichée SUR la boîte, en 3D (plus de libellé « en
         // dessous » sur la carte). Enfant du mesh → suit la boîte au déplacement.
         // VISIONNEUSE : aucune étiquette de cote — c'est une aide au PLACEMENT
