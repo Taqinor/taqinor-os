@@ -390,7 +390,7 @@ export default function CalepinageList() {
   const calme = (actif) => `h-11 gap-2 rounded-full text-sm text-muted-foreground ${actif ? 'px-3' : 'w-11 px-0'}`
 
   return (
-    <div className="cliste space-y-4">
+    <div className="cliste cliste-page space-y-4">
       <div className="flex flex-wrap items-center gap-4">
         <div className="cliste-tete-titre flex flex-1 items-baseline gap-3">
           <h1 className="cliste-titre">Calepinages</h1>

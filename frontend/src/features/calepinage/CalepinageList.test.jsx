@@ -287,6 +287,20 @@ describe('CalepinageList (CAL35)', () => {
     expect(jetons).toMatch(/\.dark \.cliste,[^{]*\{[^}]*--cal-texte-2:/)
   })
 
+  // ACAL1825 — la page de la liste est posée sur le papier de la maquette v2 ; cartes et puces lisent les jetons d'ombre
+  // posée et d'actif (49-jetons-v2.css), plus l'ombre locale `--cliste-ombre`.
+  it('la page de liste porte la classe de fond papier ; ombres et pastille active par les jetons', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { container } = rendre()
+    await screen.findByTestId('liste-compteur')
+    expect(container.querySelector('.cliste')).toHaveClass('cliste-page')
+    const css = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/57-liste.css`, 'utf8')
+    expect(css).toMatch(/\.cliste-page\s*\{[^}]*background:\s*var\(--cal-papier\)/)
+    expect(css).not.toContain('--cliste-ombre')
+    expect(css).toMatch(/\.cliste-carte\s*\{[^}]*box-shadow:\s*var\(--cal-ombre-posee\)/)
+    expect(css).toMatch(/\.cliste-puce\[aria-pressed='true'\]\s*\{[^}]*background:\s*var\(--cal-actif\)/)
+  })
+
   // ACAL1819 — au téléphone (≤ 639 px) : titre + « + » 44 × 44 sur une ligne, recherche puis « Filtres », les pastilles
   // d'état derrière « Filtres » : la première carte se lit dans le premier écran. Le DOM garde tout (jsdom n'applique pas le CSS).
   it('ACAL1819 — les pastilles sont repliées derrière « Filtres » (donnée), le libellé du bouton « Nouveau calepinage » reste son nom', async () => {
