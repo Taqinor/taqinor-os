@@ -309,10 +309,16 @@ def _panneau_auto_du_vivier(company, vivier_marque, *, marque=None):
     du résolveur (tarifé, classé panneau, marque retenue) ; sinon la règle
     d'aujourd'hui — DITE quand rien ne l'explique, muette quand l'appelant a
     lui-même demandé une autre ``marque``."""
+    from dataclasses import replace
+
     from apps.ventes.domain.panneau_defaut import aucun_panneau_auto, panneau_auto
     auto = panneau_auto(company)
-    if not auto.designe or any(e.produit.pk == auto.produit_id for e in vivier_marque):
+    if not auto.designe:
         return auto
+    entree = next((e for e in vivier_marque if e.produit.pk == auto.produit_id), None)
+    if entree is not None:
+        # Contrat du stock : le watt de LA lecture du résolveur (nom, puis fiche), jamais un second.
+        return replace(auto, watt=entree.wc or auto.watt)
     if marque:
         return aucun_panneau_auto()
     return auto.refus('le catalogue des devis', "il n'est pas parmi ses panneaux tarifés de la marque retenue")

@@ -5,8 +5,9 @@ pannels ». Le stock désigne UN panneau par société (``apps.stock.selectors_p
 pour les choix automatiques de ventes, avec UNE règle contre le piège des deux sources : la puissance et le produit
 viennent TOUJOURS du même endroit —
 
-* un panneau désigné UTILISABLE (non archivé, tarifé, reconnu comme panneau, puissance lisible) : sa puissance ET
-  son produit ;
+* un panneau désigné UTILISABLE (non archivé, tarifé, reconnu comme panneau, nom et fiche d'accord sur le watt,
+  puissance lisible) : sa puissance ET son produit — la puissance lue par CHAQUE moteur à sa façon (composition :
+  le nom ; résolveur : son entrée ; C&I et pompage : la fiche), jamais un second chiffre ;
 * sinon : la règle d'aujourd'hui, inchangée (``taille._AUTO_PANEL_WATT`` et le choix du catalogue à cette
   puissance) ; ``motif`` dit pourquoi au vendeur quand un panneau EST désigné mais inutilisable, et vaut ``None``
   quand aucun n'est désigné (rien n'est dit, rien ne change).
@@ -15,7 +16,7 @@ Aucune valeur de puissance n'est écrite ici : elle vient du produit désigné. 
 compositions NOUVELLES (création, aperçu d'un devis à naître) : chaque appelant le passe explicitement, un devis
 existant ne le lit jamais.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import logging
 
 logger = logging.getLogger(__name__)
@@ -124,7 +125,10 @@ def panneau_auto_composition(company, *, reglages=None, gamme_nom_devis=None):
     marque = str((reglages.marques or {}).get('panneau') or '').strip()
     if marque and not _marque_correspond(produit, marque):
         return auto.refus('la composition', 'la marque épinglée des panneaux est « %s »' % marque)
-    return auto
+    # Contrat du stock : chaque moteur prend le watt de SA lecture du produit — la composition lit le NOM
+    # (``catalogue._parse_watt``), à défaut la puissance du stock (nom et fiche ne se contredisent jamais).
+    from apps.ventes.domain.catalogue import _parse_watt
+    return replace(auto, watt=_parse_watt(getattr(produit, 'nom', '') or '') or auto.watt)
 
 
 def panneaux_de_la_taille(company, taille_kwc):

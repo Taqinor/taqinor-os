@@ -100,7 +100,7 @@ class PanneauAutoDuStock(SimpleTestCase):
 
     def test_designe_inutilisable_rend_la_regle_d_aujourd_hui_et_dit_pourquoi(self):
         from apps.ventes.domain.taille import _AUTO_PANEL_WATT
-        for source in ('archive', 'sans_prix', 'pas_un_panneau'):
+        for source in ('archive', 'sans_prix', 'pas_un_panneau', 'watt_contradictoire'):
             with self.subTest(source=source):
                 auto = _auto(_resume(source=source, motif='Le panneau désigné est %s.' % source))
                 self.assertEqual((auto.produit_id, auto.watt), (None, _AUTO_PANEL_WATT))
@@ -136,15 +136,22 @@ class PanneauAutoDuStock(SimpleTestCase):
 class LaCompositionAccepteLePanneauParDefaut(SimpleTestCase):
     """``panneau_auto_composition`` : l'acceptation de la composition résidentielle."""
 
-    def _auto(self, catalogue, marques=None):
+    def _auto(self, catalogue, marques=None, resume=None):
         from apps.ventes.domain.panneau_defaut import panneau_auto_composition
         reglages = SimpleNamespace(catalogue=catalogue, marques=marques or {}, ordre_lignes=None)
-        with mock.patch(_RESUME, return_value=_resume()):
+        with mock.patch(_RESUME, return_value=resume or _resume()):
             return panneau_auto_composition(SimpleNamespace(pk=1), reglages=reglages)
 
     def test_au_catalogue_tarife_et_classe_panneau(self):
         auto = self._auto([_produit(42, 'Panneau Longi 715W')])
         self.assertEqual((auto.produit_id, auto.watt), (42, 715))
+
+    def test_le_watt_vient_de_la_lecture_de_la_composition(self):
+        # Contrat du stock : chaque moteur lit le watt du produit à SA façon (ici le nom).
+        auto = self._auto([_produit(42, 'Panneau Longi 715W')], resume=_resume(pmax_wc=716))
+        self.assertEqual(auto.watt, 715)
+        sans_watt_au_nom = self._auto([_produit(42, 'Panneau Longi bifacial')], resume=_resume(pmax_wc=716))
+        self.assertEqual(sans_watt_au_nom.watt, 716)
 
     def test_absent_ou_non_tarife_regle_d_aujourd_hui_dite(self):
         from apps.ventes.domain.taille import _AUTO_PANEL_WATT
