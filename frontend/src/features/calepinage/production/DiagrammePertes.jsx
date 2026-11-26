@@ -13,7 +13,7 @@ import { ChartFrame, ChartTooltip, ChartEmpty } from '../../../ui/charts'
 import {
   CHART_TOKENS, CHART_GRID_STYLE, BAR_RADIUS, animationDuration, CHART_ANIM_EASING,
 } from '../../../ui/charts/chart-theme.js'
-import { CASCADE_ARRIVEE, CASCADE_DEPART, construireCascadeDetaillee } from './DiagrammePertes.helpers'
+import { CASCADE_ARRIVEE, CASCADE_DEPART, construireCascadeDetaillee, libelleSource } from './DiagrammePertes.helpers'
 import CascadePertesLignes from './CascadePertesLignes'
 import EtatEcranAtelier from '../atelier/EtatEcranAtelier'
 import useExpertParUrl from './useExpertParUrl'
@@ -78,20 +78,6 @@ function construireCascade(pertes) {
   return etapes
 }
 
-/* LA table de l'écran : le serveur sert le CODE de source tel quel (revue lot 6 — aucun mot traduit deux fois). */
-const SOURCE_LABELS = {
-  fiche: 'Fiche technique',
-  saisie: 'Saisie',
-  pvgis: 'PVGIS',
-  mesure: 'Mesure',
-  hypothese: 'Hypothèse',
-  societe: 'Réglage société',
-  texte: 'Page publiée',
-  document: 'Document du calepinage',
-  materiel: 'Matériel du calepinage',
-}
-
-const libelleSource = (source) => (source ? (SOURCE_LABELS[source] || source) : '—')
 
 /** `perte_pct` d'une étape omise s'affiche VIDE (Done CALX48), jamais « — »
     ni `0 %` : une cellule vide qui appelle l'œil vers la colonne Motif. */

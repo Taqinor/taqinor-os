@@ -270,6 +270,19 @@ describe('DiagrammePertes — cascade séquentielle (CALX48)', () => {
     expect(detail.textContent).not.toContain('[object Object]')
   })
 
+  it('revue lot 6 (ACAL1654) : la ligne dépliée nomme la source par la table de l’écran — « Page publiée », jamais « texte »', async () => {
+    const d = donneesAvecCascadeDetaillee()
+    d.cascade = { ...d.cascade, etapes: d.cascade.etapes.map((e) => (e.etape === 'thermique' ? { ...e, source: 'texte' } : e)) }
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: d })
+    rendre()
+    const lignes = within(await screen.findByTestId('calx48-cascade-detaillee')).getByTestId('acal444-lignes')
+    fireEvent.click(within(within(lignes).getByTestId('acal444-ligne-thermique')).getByRole('button'))
+    const detail = within(lignes).getByTestId('acal444-detail-thermique')
+    const source = within(detail).getByText('Source').nextElementSibling
+    expect(source).toHaveTextContent('Page publiée')
+    expect(source.textContent).not.toBe('texte')
+  })
+
   /* ACAL1671 / ACAL1968 — la mention SERVIE d'une entrée (pose retenue du thermique, valeur supposée d'une perte)
      s'affiche telle quelle sous la ligne dépliée ; une entrée non supposée et sans mention n'ajoute rien. */
   const avecEntrees = (entrees) => {
