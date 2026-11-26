@@ -41,7 +41,7 @@ pydyf==0.13.0
 Jinja2==3.1.6
 
 # Premium quote-PDF engine (apps.ventes.quote_engine) — ROI/savings charts
-numpy==1.26.4
+numpy==2.5.4
 matplotlib==3.9.2
 
 # FG361 — Prévision de ventes / demande (séries temporelles). Holt-Winters /
