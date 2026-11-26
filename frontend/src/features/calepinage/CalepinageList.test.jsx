@@ -273,6 +273,20 @@ describe('CalepinageList (CAL35)', () => {
     expect(await screen.findByText('2 projets')).toBeInTheDocument()
   })
 
+  // ACAL1747 — le compteur est posé sur le jeton de texte secondaire de l'écran (pas sur le gris pâle du thème).
+  it('le compteur « N projets » porte la classe du jeton --cal-texte-2, défini en clair et en sombre', async () => {
+    const { readFileSync } = await import('node:fs')
+    rendre()
+    const compteur = await screen.findByTestId('liste-compteur')
+    expect(compteur).toHaveClass('cliste-compteur')
+    expect(compteur).not.toHaveClass('text-muted-foreground')
+    const racine = `${globalThis.process.cwd()}/src/styles/calepinage`
+    expect(readFileSync(`${racine}/57-liste.css`, 'utf8')).toMatch(/\.cliste-compteur\s*\{\s*color:\s*var\(--cal-texte-2\);?\s*\}/)
+    const jetons = readFileSync(`${racine}/49-jetons-v2.css`, 'utf8')
+    expect(jetons).toMatch(/\.cliste,[^{]*\{[^}]*--cal-texte-2:/)
+    expect(jetons).toMatch(/\.dark \.cliste,[^{]*\{[^}]*--cal-texte-2:/)
+  })
+
   it('un échec qui dure propose « Réessayer », qui relance la lecture', async () => {
     mocks.list.mockRejectedValue({ response: { status: 503, data: { detail: 'Service indisponible.' } } })
     rendre()

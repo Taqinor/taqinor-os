@@ -3,6 +3,10 @@
    action dorée. Jetons seulement (aucune couleur littérale) : le thème sombre suit par les jetons. */
 
 .cliste { --cliste-ombre: color-mix(in oklch, var(--foreground) 8%, transparent); }
+/* ACAL1747 — le compteur « N projets » / « Chargement… » : le jeton de texte secondaire de l'écran (≈ 7,4 : 1 en
+   clair, ≈ 8,3 : 1 en sombre sur le papier de la liste), pas le gris pâle du thème que l'apparition de la liste
+   (fondu) faisait passer sous 4,5 : 1. */
+.cliste-compteur { color: var(--cal-texte-2); }
 .cliste-titre {
   margin: 0;
   font-family: var(--font-display);

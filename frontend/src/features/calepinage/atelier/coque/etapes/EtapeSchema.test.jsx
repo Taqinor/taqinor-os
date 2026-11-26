@@ -3,8 +3,8 @@
 
    Ce qui est prouvé : le schéma SERVI est au centre (zoom ±), le panneau lit « Légende » (signes du
    SVG servi) et « Cartouche » (détail servi), la note bleue est là ; au pied, « Télécharger (PDF) »
-   et « DXF » appellent les téléchargements EXISTANTS de l'inventaire `documents/` (même délai, mêmes
-   textes d'erreur) ; « ← Raccordement » rouvre l'étape Électrique. Toutes les charges utiles viennent
+   et « DXF » livrent le schéma unifilaire dessiné (`sldPdf` / `sldDxf`, ACAL1508 — jamais le plan de
+   câblage de l'inventaire `documents/`) ; « ← Raccordement » rouvre l'étape Électrique. Toutes les charges utiles viennent
    des échantillons de contrat. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
@@ -14,7 +14,7 @@ import { exempleContrat } from '../../../../../test/fixtures/contractSamples'
 vi.mock('../../../../../api/calepinageApi', () => ({
   default: { calepinages: {
     schemaUnifilaire: vi.fn(), get: vi.fn(), resultat: vi.fn(), documents: vi.fn(),
-    telechargerDocument: vi.fn(), sldDxf: vi.fn(),
+    telechargerDocument: vi.fn(), sldDxf: vi.fn(), sldPdf: vi.fn(),
   } },
 }))
 const downloadBlob = vi.fn()
@@ -182,35 +182,50 @@ describe('EtapeSchema — sous-écran « Schéma électrique » (ACAL1301)', () 
     expect(screen.queryByRole('button', { name: 'Schéma détaillé' })).toBeNull()
   })
 
-  it('« Télécharger (PDF) » et « DXF » : le plan de câblage servi et son autre format, mêmes options', async () => {
-    const piece = servir()
+  it('ACAL1508 — « Télécharger (PDF) » et « DXF » livrent le schéma unifilaire dessiné, jamais le plan de câblage', async () => {
+    servir()
+    calepinageApi.calepinages.sldPdf.mockResolvedValue({ data: new Blob(['%PDF']) })
+    calepinageApi.calepinages.sldDxf.mockResolvedValue({ data: new Blob(['0']) })
     const { pied } = rendre()
     const pdf = within(pied).getByRole('button', { name: 'Télécharger (PDF)' })
     await waitFor(() => expect(pdf).not.toBeDisabled())
     fireEvent.click(pdf)
-    await waitFor(() => expect(calepinageApi.calepinages.telechargerDocument)
-      .toHaveBeenCalledWith(piece.endpoint, undefined, OPTIONS_TELECHARGEMENT))
-    await waitFor(() => expect(downloadBlob).toHaveBeenCalledWith(expect.any(Blob), 'plan_cablage.pdf'))
-    fireEvent.click(within(pied).getByRole('button', { name: 'DXF' }))
-    await waitFor(() => expect(calepinageApi.calepinages.telechargerDocument)
-      .toHaveBeenCalledWith(piece.autres_formats[0].endpoint, undefined, OPTIONS_TELECHARGEMENT))
-  })
-
-  it('pièce indisponible : PDF désactivé avec le motif SERVI ; le DXF du schéma reste possible', async () => {
-    const piece = servir({ disponible: false })
-    calepinageApi.calepinages.sldDxf.mockResolvedValue({ data: new Blob(['0']) })
-    const { pied } = rendre()
-    await waitFor(() => expect(pied).toHaveTextContent(piece.motif_indisponible))
-    expect(within(pied).getByRole('button', { name: 'Télécharger (PDF)' })).toBeDisabled()
+    await waitFor(() => expect(calepinageApi.calepinages.sldPdf).toHaveBeenCalledWith(5, OPTIONS_TELECHARGEMENT))
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledWith(expect.any(Blob), 'calepinage-1-schema-unifilaire.pdf'))
     const dxf = within(pied).getByRole('button', { name: 'DXF' })
     await waitFor(() => expect(dxf).not.toBeDisabled())
     fireEvent.click(dxf)
     await waitFor(() => expect(calepinageApi.calepinages.sldDxf).toHaveBeenCalledWith(5, OPTIONS_TELECHARGEMENT))
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledWith(expect.any(Blob), 'calepinage-1-schema-unifilaire.dxf'))
+    // La pièce « plan de câblage » de l'inventaire n'est plus lue par ce pied.
+    expect(calepinageApi.calepinages.telechargerDocument).not.toHaveBeenCalled()
+    expect(calepinageApi.calepinages.documents).not.toHaveBeenCalled()
+  })
+
+  it('schéma non dessinable (svg null) : PDF et DXF désactivés, le motif du serveur reste affiché', async () => {
+    servir()
+    calepinageApi.calepinages.schemaUnifilaire.mockResolvedValue({ data: {
+      ...sld(), svg: null, blocs: [], schema_electrique: null, manquantes: ['onduleur : aucune fiche onduleur n’est désignée.'] } })
+    const { pied } = rendre()
+    await screen.findByText(/aucune fiche onduleur/)
+    expect(within(pied).getByRole('button', { name: 'Télécharger (PDF)' })).toBeDisabled()
+    expect(within(pied).getByRole('button', { name: 'DXF' })).toBeDisabled()
+  })
+
+  it('un refus du serveur sur le PDF est dit mot pour mot, sous les boutons', async () => {
+    servir()
+    const refus = new Blob([JSON.stringify({ onduleur: 'Le schéma unifilaire n’est pas exportable : fiche muette.' })])
+    calepinageApi.calepinages.sldPdf.mockRejectedValueOnce({ response: { status: 409, data: refus } })
+    const { pied } = rendre()
+    const pdf = within(pied).getByRole('button', { name: 'Télécharger (PDF)' })
+    await waitFor(() => expect(pdf).not.toBeDisabled())
+    fireEvent.click(pdf)
+    expect(await within(pied).findByText(/n’est pas exportable : fiche muette/)).toBeTruthy()
   })
 
   it('un délai dépassé dit quoi faire, avec le texte des documents', async () => {
     servir()
-    calepinageApi.calepinages.telechargerDocument.mockRejectedValueOnce({ code: 'ECONNABORTED' })
+    calepinageApi.calepinages.sldPdf.mockRejectedValueOnce({ code: 'ECONNABORTED' })
     const { pied } = rendre()
     const pdf = within(pied).getByRole('button', { name: 'Télécharger (PDF)' })
     await waitFor(() => expect(pdf).not.toBeDisabled())

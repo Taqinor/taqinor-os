@@ -971,3 +971,53 @@ class LeDessinDuSchemaElectrique(unittest.TestCase):
         self.assertIn("à calculer", _textes(svg))
         self.assertIn("répartition en chaînes non calculée", _textes(svg))
         self.assertEqual(rendre_schema_electrique_svg(None), "")
+
+
+class LeBandeauTientDansLaPlanche(unittest.TestCase):
+    """ACAL1713 — le bandeau d'omission est replié, et la nomenclature sans
+    norme (niveau « standard ») liste quand même les équipements."""
+
+    PHRASE = (
+        "Calibres et sections non calculés (ma) : aucune norme électrique "
+        "n'est choisie — choisissez-la dans « Norme électrique » des "
+        "réglages. Cette planche ne montre que les appareils, leur nombre et "
+        "leurs repères. Côté alternatif non dessiné (disjoncteur AC, "
+        "compteur de production, TGBT, compteur du réseau) : il dépend de la "
+        "norme.")
+
+    def _lignes_du_bandeau(self, entree):
+        svg = rendre_schema(entree, concevoir(entree), bandeau=self.PHRASE,
+                            standard=True)
+        largeur = float(re.search(r'viewBox="0 0 ([\d.]+)', svg).group(1))
+        lignes = re.findall(
+            r'<text[^>]*font-size="10.0"[^>]*fill="#9a3412">([^<]+)</text>',
+            svg)
+        return lignes, largeur
+
+    def test_le_bandeau_est_replie_sur_trois_lignes_au_plus_et_se_lit_entier(self):
+        lignes, largeur = self._lignes_du_bandeau(_mono_reseau())
+        self.assertTrue(1 < len(lignes) <= 3, lignes)
+        self.assertEqual(" ".join(lignes).replace("&#x27;", "'"),
+                         self.PHRASE.replace("&", "&amp;"))
+        for ligne in lignes:
+            # ~0,58 em par signe en gras à 10 px : la ligne reste dans la planche.
+            self.assertLessEqual(len(ligne) * 5.8 + 28.0, largeur, ligne)
+        self.assertTrue(any("« Norme électrique »" in ligne
+                            for ligne in lignes), lignes)
+
+    def test_une_phrase_courte_reste_sur_une_ligne(self):
+        entree = _mono_reseau()
+        svg = rendre_schema(entree, concevoir(entree), bandeau="Calibres OMIS")
+        self.assertEqual(svg.count("Calibres OMIS"), 1)
+
+    def test_la_nomenclature_sans_norme_liste_reperes_et_quantites(self):
+        entree = _mono_reseau()
+        resultat = concevoir(entree)
+        lignes = lignes_tableau(resultat, standard=True)
+        self.assertTrue(lignes)
+        textes = _textes(rendre_schema(entree, resultat, standard=True))
+        for repere, designation, calibre, quantite in lignes:
+            # La désignation est tronquée à la colonne : le repère la nomme.
+            self.assertIn(repere, textes)
+            self.assertEqual(calibre, "")
+            self.assertIn(quantite, textes)

@@ -746,6 +746,27 @@ export default function PanneauDocuments({
     }
   }
 
+  // ACAL1723 — la carte « Schéma électrique » de l'écran guidé livre le schéma unifilaire dessiné (`sldPdf`) :
+  // même état (`enCours`, `erreurs`) et mêmes textes d'erreur que les autres pièces, sous le code de sa carte.
+  async function schemaPdf(carte, ouvrir) {
+    const code = carte.code
+    setErreurs((precedent) => ({ ...precedent, [code]: null }))
+    setEnCours(code)
+    try {
+      const reponse = await calepinageApi.calepinages.sldPdf(id, OPTIONS_TELECHARGEMENT)
+      if (ouvrir) {
+        window.open(URL.createObjectURL(new Blob([reponse.data], { type: 'application/pdf' })), '_blank', 'noopener')
+      } else {
+        downloadBlob(reponse.data, filenameFromResponse(reponse, `calepinage-${id}-schema-unifilaire.pdf`))
+      }
+    } catch (erreur) {
+      const details = await erreurDeTelechargement(erreur, { delai: true })
+      setErreurs((precedent) => ({ ...precedent, [code]: details }))
+    } finally {
+      setEnCours(null)
+    }
+  }
+
   // ACAL223 — la REMISE explicite (POST remettre-document) : crée la version
   // « Dernière version vN » ; l'inventaire est relu ensuite.
   async function remettre(code) {
@@ -1002,8 +1023,14 @@ export default function PanneauDocuments({
         enregistreLe={enregistreLe}
         enCoursDe={(c) => (estDocument(c) ? enCours === c.code : enCoursSortie === c.code)}
         erreursDe={(c) => (estDocument(c) ? erreurs[c.code] : erreursSorties[c.code])}
-        onTelecharger={(c) => (estDocument(c) ? telecharger(c.code) : telechargerSortie(c.entree))}
-        onApercu={(c) => (c.apercu === 'html' ? apercu(c.code) : apercuSortie(c.entree))}
+        onTelecharger={(c) => {
+          if (c.livre === 'schema_unifilaire') return schemaPdf(c, false) // ACAL1723
+          return estDocument(c) ? telecharger(c.code) : telechargerSortie(c.entree)
+        }}
+        onApercu={(c) => {
+          if (c.livre === 'schema_unifilaire') return schemaPdf(c, true) // ACAL1723
+          return c.apercu === 'html' ? apercu(c.code) : apercuSortie(c.entree)
+        }}
         // ACAL1726 — la première page réelle d'une pièce à aperçu HTML : le MÊME appel que « Aperçu », lu sans erreur affichée.
         chargerHtml={(c) => calepinageApi.calepinages
           .apercuDocument(id, c.code, { langue: langueDe(c.entree) }).then((r) => r.data)}

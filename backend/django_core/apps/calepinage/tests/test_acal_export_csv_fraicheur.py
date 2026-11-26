@@ -26,7 +26,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.export_csv import (
-    LIBELLE_EMPREINTE_LAYOUT, LIBELLE_EMPREINTE_SIMULATION, NON_CALCULEE,
+    LIBELLE_EMPREINTE_LAYOUT, LIBELLE_EMPREINTE_SIMULATION,
+    MOTIF_PERTE_NON_CONSERVEE, MOTIF_POSTES_ABSENTS, NON_CALCULEE,
     ExportImpossible, export_csv,
 )
 from apps.calepinage.services.provenance_document import (
@@ -121,8 +122,9 @@ class ExportFraicheurTest(TestCase):
         with patch_materiel():
             lignes = dict(lignes_de_provenance(self.calepinage))
         self.assertEqual(lignes['Base de rayonnement'], NON_PUBLIEE)
-        self.assertEqual(lignes['Pertes passées à PVGIS (%)'], NON_PUBLIEE)
-        self.assertEqual(lignes['Détail des pertes'], 'aucun poste publié')
+        # ACAL1929 — l'absence dit POURQUOI (la perte envoyée n'est stockée nulle part).
+        self.assertEqual(lignes['Pertes passées à PVGIS (%)'], MOTIF_PERTE_NON_CONSERVEE)
+        self.assertEqual(lignes['Détail des pertes'], MOTIF_POSTES_ABSENTS)
         # Les empreintes restent : celle de la simulation périmée, et celle
         # du document d'aujourd'hui.
         self.assertIn(LIBELLE_EMPREINTE_LAYOUT, lignes)
