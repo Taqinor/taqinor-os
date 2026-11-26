@@ -709,10 +709,10 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertEqual(onduleurs['sans'], ('Onduleur réseau Huawei 5kW Monophasé', 'onduleur_reseau'))
 
     # ── D-ACAL-148 / 159 (relecture, A) — « Resynchroniser » ne défait pas une désignation ──
-    def _resynchroniser(self):
+    def _resynchroniser(self, corps=None):
         from apps.ventes.models import Devis
 
-        reponse = self.api.post(f'{self.base}sync-devis/', {}, format='json')
+        reponse = self.api.post(f'{self.base}sync-devis/', corps or {}, format='json')
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.calepinage.refresh_from_db()
         lignes = Devis.objects.get(pk=self.calepinage.devis_id).lignes.all()
@@ -787,9 +787,10 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertIn('L’onduleur suit la désignation de l’étape Électrique : « Onduleur réseau Huawei 5kW '
                       'Monophasé » remplace « Onduleur réseau Growatt 8kW Monophasé ».', data['avertissements'])
 
-    def _sans_marqueur_ou_envoye(self, *, envoye, marqueur=None, apercu=None):
+    def _sans_marqueur_ou_envoye(self, *, envoye, marqueur=None, apercu=None, corps=None):
         """``marqueur`` (défaut : vrai pour un envoyé, faux pour un brouillon) — le devis est-il né
-        sous la règle ? ``apercu`` : une liste où ranger l'aperçu lu AVANT la resynchronisation."""
+        sous la règle ? ``apercu`` : une liste où ranger l'aperçu lu AVANT la resynchronisation ;
+        ``corps`` : le corps de ``sync-devis`` (``{'apercu_confirme': True}`` = la carte confirmée)."""
         from apps.ventes.models import Devis
 
         self._growatt_8()
@@ -807,7 +808,7 @@ class ResyncAnnonceTest(BaseApiCalepinage):
             lu = self._apercu_resync()
             self.assertEqual(lu.status_code, 200, lu.data)
             apercu.append(lu.data)
-        return self._resynchroniser()
+        return self._resynchroniser(corps)
 
     def test_a_brouillon_cree_avant_la_regle_ne_suit_pas_la_designation_et_le_dit(self):
         data, onduleurs, _b = self._sans_marqueur_ou_envoye(envoye=False)
@@ -825,7 +826,8 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         from apps.ventes.models import Devis
 
         lus = []
-        data, onduleurs, _b = self._sans_marqueur_ou_envoye(envoye=True, apercu=lus)
+        data, onduleurs, _b = self._sans_marqueur_ou_envoye(envoye=True, apercu=lus,
+                                                            corps={'apercu_confirme': True})
         self.assertEqual(onduleurs, [('Onduleur réseau Huawei 5kW Monophasé', 1)])
         self.assertFalse(any('révisez-le (V2)' in m for m in data['avertissements']), data)
         apercu = lus[0]
@@ -839,6 +841,32 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         devis = Devis.objects.get(pk=self.calepinage.devis_id)
         self.assertEqual(devis.statut, 'envoye')
         self.assertTrue(devis.activites.filter(field='correction_apres_envoi').exists())
+
+    def test_revue_envoye_sans_la_carte_ne_recoit_pas_la_designation_et_le_dit(self):
+        """Revue du 26/11 (D-ACAL-73 « le dire AVANT ») — un envoyé né sous la règle, resynchronisé SANS
+        la confirmation de l'aperçu (``sync-devis`` sans ``apercu_confirme``, ou ``sync-layout`` /
+        POST layout du devis : ``ecrire_conception_du_devis``) : la désignation n'est pas appliquée,
+        une phrase dit d'utiliser « Resynchroniser le devis ». Mutant « drapeau ignoré » ⇒ rouge."""
+        from apps.ventes.domain.creation_calepinage import MSG_RESYNC_ENVOYE_SANS_APERCU
+        from apps.ventes.domain.resynchronisation import ecrire_conception_du_devis
+        from apps.ventes.models import Devis
+
+        phrase = MSG_RESYNC_ENVOYE_SANS_APERCU % 'un onduleur'
+        data, onduleurs, _b = self._sans_marqueur_ou_envoye(envoye=True)
+        self.assertEqual(onduleurs, [('Onduleur réseau Growatt 8kW Monophasé', 1)])
+        self.assertIn(phrase, data['avertissements'])
+        # Le jumeau de la route devis (sync-layout / POST layout) ne passe jamais le drapeau.
+        self.calepinage.refresh_from_db()
+        devis = Devis.objects.get(pk=self.calepinage.devis_id)
+        rendu = ecrire_conception_du_devis(devis, copy.deepcopy(self.calepinage.roof_layout), self.user)
+        devis.refresh_from_db()
+        self.assertEqual(sorted(li.designation for li in devis.lignes.all() if 'nduleur' in li.designation),
+                         ['Onduleur réseau Growatt 8kW Monophasé'])
+        self.assertIn(phrase, rendu['avertissements'])
+        # Avec la carte confirmée : appliquée, et la correction tracée.
+        data, onduleurs, _b = self._resynchroniser({'apercu_confirme': True})
+        self.assertEqual(onduleurs, [('Onduleur réseau Huawei 5kW Monophasé', 1)])
+        self.assertTrue(Devis.objects.get(pk=devis.pk).activites.filter(field='correction_apres_envoi').exists())
 
     def test_acal1320_devis_envoye_cree_avant_la_regle_ne_suit_pas_et_le_dit(self):
         data, onduleurs, _b = self._sans_marqueur_ou_envoye(envoye=True, marqueur=False)

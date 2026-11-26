@@ -43,8 +43,9 @@ def apercu_resynchronisation(calepinage, *, user=None, devis_id=None, surfaces_c
     variante, layout = _avant_resynchro(calepinage, devis_id)
     devis, layout = _devis_a_resynchroniser(calepinage, variante, layout, surfaces_chiffrees)
     try:
-        reponse = apercu_de_resynchronisation(devis, layout, user,
-                                              designations=_designations_de(variante or calepinage))
+        # Revue du 26/11 — l'aperçu montre ce que la resynchro CONFIRMÉE écrirait (``apercu_confirme``).
+        reponse = apercu_de_resynchronisation(
+            devis, layout, user, designations=_designations_de(variante or calepinage, apercu_confirme=True))
     except SyncLayoutError as refus:
         raise _refus_de_resynchro(calepinage, devis, refus) from refus
     return reponse if lit_les_devis else _caviarder(reponse)

@@ -819,7 +819,9 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
                 required=False),
             # ACON80 — le devis porté par une variante de ce calepinage.
             'devis': drf_serializers.IntegerField(required=False),
-            'surfaces_chiffrees': drf_serializers.JSONField(required=False)}),  # ACAL968
+            'surfaces_chiffrees': drf_serializers.JSONField(required=False),  # ACAL968
+            # Revue du 26/11 (D-ACAL-73) — envoyé SEULEMENT par la carte d'aperçu confirmée.
+            'apercu_confirme': drf_serializers.BooleanField(required=False)}),
         responses={200: forme_reponse(
             'CalepinageSyncDevis', 'inchange', 'panneaux', 'kwc', 'scenario',
             'batterie', 'lignes_modifiees', 'lignes_ajoutees',
@@ -846,7 +848,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
                 calepinage, user=request.user,
                 derogation_electrique=corps.get('derogation_electrique'),
                 devis_id=_entier_ou_none(corps.get('devis')),
-                surfaces_chiffrees=corps.get('surfaces_chiffrees'))
+                surfaces_chiffrees=corps.get('surfaces_chiffrees'),
+                apercu_confirme=corps.get('apercu_confirme') is True)
         except DevisRefuse as refus:
             return Response(_refus_devis(refus),
                             status=_statut_refus_devis(refus))

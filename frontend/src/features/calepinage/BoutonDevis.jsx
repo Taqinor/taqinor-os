@@ -232,6 +232,8 @@ function BoutonDevisCalepinage({
   const [devisExistant, setDevisExistant] = useState(null)
   // Le corps du dernier « Générer » : une réponse à une question le complète, sans perdre l'autre.
   const dernierCorps = useRef({})
+  // Revue du 26/11 — le corps de la dernière resynchro CONFIRMÉE (sans dérogation), rejoué par « Passer outre ».
+  const dernierCorpsSync = useRef({})
   // ACAL95 — le retour du serveur à LIRE avant de poursuivre :
   // `{messages, lignes, inchange, devisId, suite: 'recharger' | 'ouvrir' | null}`.
   const [retour, setRetour] = useState(null)
@@ -435,8 +437,12 @@ function BoutonDevisCalepinage({
   })
 
   // 2d temps (confirmé) : la resynchronisation réelle, `sync-devis`, avec ou sans dérogation électrique.
+  // Revue du 26/11 (D-ACAL-73) — `apercu_confirme` n'est envoyé QUE d'ici (carte confirmée) : sans lui, le
+  // serveur n'applique pas les désignations à un devis envoyé. « Passer outre » rejoue le même corps.
   const resynchroniser = unSeulGeste(async (corps = {}) => {
     setApercuResync(null)
+    const { derogation_electrique: _derogation, ...confirmation } = corps
+    dernierCorpsSync.current = confirmation
     if (!corps.derogation_electrique) setBloquage({ geste: 'sync' })
     const res = await executer(
       () => calepinageApi.calepinages.syncDevis(calepinageId, { ...selection, ...corps }, { suppressErrorToast: true }))
@@ -471,7 +477,7 @@ function BoutonDevisCalepinage({
     }
     setMotifErreur(null)
     const corps = { derogation_electrique: { motif: saisi } }
-    if (bloquage?.geste === 'sync') await resynchroniser(corps)
+    if (bloquage?.geste === 'sync') await resynchroniser({ ...dernierCorpsSync.current, ...corps })
     else await generer(corps)
   }
 
@@ -706,7 +712,7 @@ function BoutonDevisCalepinage({
       {/* ACAL1320 — ce que la resynchronisation changera, DIT avant d'agir ; rien n'est écrit avant « Confirmer ». */}
       {apercuResync && (
         <ApercuResync apercu={apercuResync} enCours={enCours}
-          onConfirmer={() => resynchroniser()} onAnnuler={() => setApercuResync(null)} />
+          onConfirmer={() => resynchroniser({ apercu_confirme: true })} onAnnuler={() => setApercuResync(null)} />
       )}
 
       {/* ACAL95 — le retour du serveur, LU avant de poursuivre. */}

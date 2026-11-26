@@ -588,6 +588,10 @@ def _appliquer_les_designations(intention, designe, batterie_brute, scenario, jo
 #: ``CibleDevis.source`` d'une resynchronisation qui porte les désignations BRUTES du calepinage
 #: (mode « réconcilier » : ``reconcilier`` est le seul lecteur de la cible).
 SOURCE_DESIGNATIONS = 'designations_calepinage'
+#: Revue du 26/11 (D-ACAL-73) — les mêmes désignations, portées par une resynchronisation que le vendeur a
+#: CONFIRMÉE sur la carte d'aperçu (``apercu_confirme``) : seule celle-ci les applique à un devis ENVOYÉ.
+SOURCE_DESIGNATIONS_CONFIRMEES = 'designations_calepinage_confirmees'
+SOURCES_DESIGNATIONS = (SOURCE_DESIGNATIONS, SOURCE_DESIGNATIONS_CONFIRMEES)
 MSG_RESYNC_SUIT = 'L’onduleur suit la désignation de l’étape Électrique : « %s » remplace « %s ».'
 MSG_RESYNC_CHANGE = 'La désignation de l’onduleur a changé à l’étape Électrique : « %s » remplace « %s ».'
 MSG_RESYNC_RETIREE = ('L’onduleur « %s » n’est plus désigné à l’étape Électrique : la resynchronisation '
@@ -619,8 +623,12 @@ MSG_RESYNC_AVANT_LA_REGLE = ('Le calepinage désigne %s à l’étape Électriqu
 #: le devis SUR PLACE (règle QJR5 ; un envoyé, sa trace « corrigé après envoi » posée, et l'écran le
 #: dit AVANT d'agir par l'aperçu) : un devis né sous la règle y suit la désignation. La phrase
 #: « révisez-le (V2) » d'un envoyé est retirée : elle n'était vraie pour aucun devis (une V2 d'un devis
-#: sans marqueur n'en porte pas davantage).
+#: sans marqueur n'en porte pas davantage). Revue du 26/11 — l'envoyé ne la suit QUE par une
+#: resynchronisation confirmée sur l'aperçu (:data:`SOURCE_DESIGNATIONS_CONFIRMEES`).
 STATUTS_CORRIGES_SUR_PLACE = ('brouillon', 'envoye')
+MSG_RESYNC_ENVOYE_SANS_APERCU = ('Le calepinage désigne %s à l’étape Électrique : sur un devis envoyé, la '
+                                 'désignation n’est appliquée qu’après son aperçu — utilisez « Resynchroniser le '
+                                 'devis » dans l’atelier pour voir le changement et le confirmer.')
 MSG_RESYNC_BATTERIE_SUIT = 'La batterie suit la désignation de l’étape Électrique : « %s » (%d pack(s)).'
 MSG_RESYNC_BATTERIE_RETIREE = ('La batterie « %s » n’est plus désignée à l’étape Électrique : la '
                                'resynchronisation reprend le choix automatique de la batterie.')
@@ -631,12 +639,13 @@ MSG_RESYNC_BATTERIE_NON_APPLIQUEE = ('La batterie désignée à l’étape Élec
                                      '%s.')
 
 
-def cible_des_designations(onduleur_designe, batterie_designee=None):
+def cible_des_designations(onduleur_designe, batterie_designee=None, *, apercu_confirme=False):
     """La ``CibleDevis`` d'une resynchronisation depuis le calepinage : les désignations BRUTES
     (``calepinage.services.devis._onduleur_designe`` / ``_batterie_designee``), jugées dans
-    ``reconcilier`` par :func:`appliquer_designations_a_la_resynchro`."""
-    return CibleDevis(source=SOURCE_DESIGNATIONS, onduleur_impose=onduleur_designe,
-                      batterie_imposee=batterie_designee)
+    ``reconcilier`` par :func:`appliquer_designations_a_la_resynchro`. ``apercu_confirme`` : la
+    resynchronisation a été confirmée sur la carte d'aperçu (seule à pouvoir corriger un envoyé)."""
+    return CibleDevis(source=SOURCE_DESIGNATIONS_CONFIRMEES if apercu_confirme else SOURCE_DESIGNATIONS,
+                      onduleur_impose=onduleur_designe, batterie_imposee=batterie_designee)
 
 
 def marqueur_stocke(devis):
@@ -800,12 +809,19 @@ def appliquer_designations_a_la_resynchro(verrou, intention, layout, veut_batter
     court-circuit « inchangé » de ``reconcilier`` ; ``marqueur`` : le :data:`CLE_DESIGNATIONS` à ranger."""
     stocke = marqueur_stocke(verrou)
     cible = getattr(intention, 'cible', None)
-    if getattr(cible, 'source', '') != SOURCE_DESIGNATIONS:
+    source = getattr(cible, 'source', '')
+    if source not in SOURCES_DESIGNATIONS:
         return _resynchro_inchangee(veut_batterie, stocke)
     quoi = _quoi_est_designe(cible)
-    if stocke is None or getattr(verrou, 'statut', '') not in STATUTS_CORRIGES_SUR_PLACE:
+    statut = getattr(verrou, 'statut', '')
+    # Revue du 26/11 (D-ACAL-73) — un ENVOYÉ ne suit la désignation que sur une resynchronisation
+    # CONFIRMÉE sur l'aperçu ; autrement (enregistrer, sync-layout, assistant…) : rien, une phrase vraie.
+    envoye_sans_apercu = statut == 'envoye' and source != SOURCE_DESIGNATIONS_CONFIRMEES
+    if stocke is None or statut not in STATUTS_CORRIGES_SUR_PLACE or envoye_sans_apercu:
         if quoi and stocke is None:  # un autre statut n'arrive pas ici (``reconcilier`` le refuse avant)
             avertissements.append(MSG_RESYNC_AVANT_LA_REGLE % quoi)
+        elif quoi and envoye_sans_apercu:
+            avertissements.append(MSG_RESYNC_ENVOYE_SANS_APERCU % quoi)
         return _resynchro_inchangee(veut_batterie, stocke)
     from apps.ventes.domain.lignes import _lignes_produit
 

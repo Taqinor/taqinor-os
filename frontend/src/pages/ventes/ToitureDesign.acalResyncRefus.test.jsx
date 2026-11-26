@@ -106,6 +106,18 @@ describe('Resynchro du devis lié refusée — motif serveur décodé', () => {
     expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
   })
 
+  // Revue du 26/11 (D-ACAL-73, « le dire AVANT » quel que soit le bouton) — devis lié ENVOYÉ : « Enregistrer la
+  // conception » range la conception SANS corriger le devis (plus aucun sync-devis) et renvoie à la carte.
+  it('Revue — devis envoyé : « Enregistrer la conception » ne corrige pas le devis, l’écran renvoie à « Resynchroniser »', async () => {
+    const lie = { ...CTX.calepinage.devis_lie, statut: 'envoye' }
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      { data: { ...CTX, calepinage: { ...CTX.calepinage, devis_lie: lie } } })
+    await enregistrer()
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText(/Le devis envoyé n’est pas modifié par l’enregistrement/)).toBeInTheDocument()
+    expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
+  })
+
   // D-ACAL-73 — devis ENVOYÉ : l'écran DIT avant d'agir que le devis reçu par le client sera corrigé, puis
   // seulement « Corriger le devis envoyé » écrit (sync-devis).
   it('ACAL1320 — devis envoyé : l’aperçu dit la correction avant d’agir, sync-devis seulement à la confirmation', async () => {

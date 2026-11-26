@@ -1184,10 +1184,12 @@ def _devis_a_resynchroniser(calepinage, variante, layout, surfaces_chiffrees):
     return devis, layout
 
 
-def _designations_de(porteur):
+def _designations_de(porteur, *, apercu_confirme=False):
     """D-ACAL-148 / 159 / 164 — les désignations de l'étape Électrique que la resynchro (et son
-    aperçu) transmet à ``ventes``, qui les juge."""
-    return {'onduleur': _onduleur_designe(porteur), 'batterie': _batterie_designee(porteur)}
+    aperçu) transmet à ``ventes``, qui les juge. Revue du 26/11 (D-ACAL-73) — ``apercu_confirme`` :
+    la resynchro a été confirmée sur la carte d'aperçu ; sans lui, un devis ENVOYÉ ne les reçoit pas."""
+    return {'onduleur': _onduleur_designe(porteur), 'batterie': _batterie_designee(porteur),
+            'apercu_confirme': bool(apercu_confirme)}
 
 
 def _refus_de_resynchro(calepinage, devis, refus):
@@ -1200,8 +1202,12 @@ def _refus_de_resynchro(calepinage, devis, refus):
 
 def resynchroniser_devis(calepinage, *, user=None,
                          derogation_electrique=None, devis_id=None,
-                         surfaces_chiffrees=None):
+                         surfaces_chiffrees=None, apercu_confirme=False):
     """CAL25 — resynchronise le devis lié sur la conception COURANTE.
+
+    Revue du 26/11 (D-ACAL-73) — ``apercu_confirme`` : vrai SEULEMENT quand le vendeur confirme la
+    carte d'aperçu (vue ``sync-devis``) ; faux (tous les autres appelants), un devis ENVOYÉ ne reçoit
+    pas l'onduleur / la batterie désignés et une phrase le dit.
 
     ACAL968 — ``surfaces_chiffrees`` absent : la sélection ÉCRITE au devis
     (``choixConception.surfacesChiffrees``) est relue ; aucune ⇒ tout.
@@ -1249,7 +1255,7 @@ def resynchroniser_devis(calepinage, *, user=None,
             roof_image=None if variante is not None else (
                 getattr(calepinage, 'roof_image', None) or None),
             # D-ACAL-148 / 159 — la MÊME décision que « Générer le devis » (ventes la juge).
-            designations=_designations_de(variante or calepinage))
+            designations=_designations_de(variante or calepinage, apercu_confirme=apercu_confirme))
     except SyncLayoutError as refus:
         raise _refus_de_resynchro(calepinage, devis, refus) from refus
     resultat = dict(resultat or {})

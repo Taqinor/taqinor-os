@@ -884,8 +884,10 @@ describe('ACAL1320 — l’aperçu avant « Resynchroniser le devis »', () => {
 
     await userEvent.click(within(carte).getByTestId('cal-devis-resync-confirmer'))
     await waitFor(() => expect(calepinageApi.calepinages.syncDevis).toHaveBeenCalledTimes(1))
+    // Revue du 26/11 — SEULE la carte confirmée envoie `apercu_confirme` (contrat `corps_confirmation`).
     expect(calepinageApi.calepinages.syncDevis).toHaveBeenCalledWith(DETAIL.id,
-      { surfaces_chiffrees: [DETAIL.surfaces_chiffrables.find((s) => s.chiffree).cle] }, SANS_TOAST)
+      { surfaces_chiffrees: [DETAIL.surfaces_chiffrables.find((s) => s.chiffree).cle],
+        ...exempleContrat('calepinage', 'calepinage_apercu_resync', 'corps_confirmation') }, SANS_TOAST)
     expect(screen.queryByTestId('cal-devis-resync-apercu')).toBeNull()
   })
 

@@ -484,6 +484,18 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
                 self.assertEqual(avertissements, [])
         self.assertTrue(suit_les_designations(SimpleNamespace(roof_layout={CLE_DESIGNATIONS: {}})))
         self.assertFalse(suit_les_designations(SimpleNamespace(roof_layout={})))
+        # Revue du 26/11 (D-ACAL-73) — un ENVOYÉ né sous la règle, sans la carte d'aperçu confirmée
+        # (source non confirmée) : rien n'est appliqué, la phrase renvoie à « Resynchroniser le devis ».
+        from apps.ventes.domain.creation_calepinage import MSG_RESYNC_ENVOYE_SANS_APERCU, cible_des_designations
+        avertissements = []
+        verrou = SimpleNamespace(statut='envoye', roof_layout={CLE_DESIGNATIONS: {'onduleur': 3}})
+        veut, rendu = appliquer_designations_a_la_resynchro(
+            verrou, SimpleNamespace(cible=cible), {}, False, avertissements)
+        self.assertEqual((veut, rendu['modifiees'], rendu['a_ecrire']), (False, 0, False))
+        self.assertEqual(avertissements, [MSG_RESYNC_ENVOYE_SANS_APERCU % 'un onduleur et une batterie'])
+        self.assertEqual(cible_des_designations(None, apercu_confirme=True).source,
+                         'designations_calepinage_confirmees')
+        self.assertEqual(cible_des_designations(None).source, SOURCE_DESIGNATIONS)
 
     def test_a_poser_le_produit_respecte_prix_et_quantite_saisis(self):
         from decimal import Decimal as D
