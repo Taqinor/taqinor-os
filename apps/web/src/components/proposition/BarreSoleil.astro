@@ -1,0 +1,94 @@
+---
+/**
+ * LOT 6 (D-ACAL-132 à 138) — la barre de la visionneuse au soleil, sous la scène 3D des liens de confiance :
+ * légende « Ensoleillement de chaque panneau sur l'année » (Ombragé → Plein soleil), lecture de la journée,
+ * curseur d'heure (lever → coucher) avec la date et l'heure, Hiver / Été — la barre de l'écran Panneaux de
+ * l'atelier. Rendue par la page SEULEMENT quand `visionneuse_soleil` est servie ; ses contrôles restent
+ * inertes (`disabled`) jusqu'à ce que `scripts/roofPro11/viewerSoleil.ts` les branche sur la scène.
+ *
+ * Aucun chiffre neuf : la teinte ne s'affiche qu'en couleur ; sans valeur enregistrée, pas de légende du
+ * tout (D-ACAL-136). Trois langues (`data-fr/en/ar`, arabe à faire relire) ; à l'impression, la barre
+ * garde la date et l'heure de l'image et la légende, jamais les contrôles.
+ */
+import { degradeLegende, JOUR_ETE, JOUR_HIVER, libelleInstant, type VisionneuseSoleil } from '../../lib/visionneuseSoleil';
+
+interface Props {
+  soleil: VisionneuseSoleil;
+}
+
+const { soleil } = Astro.props;
+const { jour, heure } = soleil.ouverture;
+const T = {
+  legende: { fr: 'Ensoleillement de chaque panneau sur l’année', en: 'Sunlight on each panel over the year', ar: 'تشمّس كل لوح على مدار السنة' },
+  ombre: { fr: 'Ombragé', en: 'Shaded', ar: 'مظلَّل' },
+  plein: { fr: 'Plein soleil', en: 'Full sun', ar: 'شمس كاملة' },
+  lecture: { fr: 'Lire la journée du soleil', en: 'Play the sun’s day', ar: 'تشغيل مسار الشمس خلال اليوم' },
+  heure: { fr: 'Heure du soleil', en: 'Time of day', ar: 'ساعة الشمس' },
+  saison: { fr: 'Saison', en: 'Season', ar: 'الفصل' },
+  hiver: { fr: 'Hiver', en: 'Winter', ar: 'الشتاء' },
+  ete: { fr: 'Été', en: 'Summer', ar: 'الصيف' },
+};
+const avecLegende = soleil.zones.length > 0;
+---
+<div id="roof3d-soleil" class="soleil-barre" data-soleil>
+  {avecLegende && (
+    <div class="soleil-legende" data-soleil-legende>
+      <p class="soleil-titre" data-i18n data-fr={T.legende.fr} data-en={T.legende.en} data-ar={T.legende.ar}>{T.legende.fr}</p>
+      <div dir="ltr" class="soleil-degrade" style={`background: ${degradeLegende()}`} aria-hidden="true"></div>
+      <div dir="ltr" class="soleil-bornes">
+        <span data-i18n data-fr={T.ombre.fr} data-en={T.ombre.en} data-ar={T.ombre.ar}>{T.ombre.fr}</span>
+        <span data-i18n data-fr={T.plein.fr} data-en={T.plein.en} data-ar={T.plein.ar}>{T.plein.fr}</span>
+      </div>
+    </div>
+  )}
+  <div class="soleil-lecteur">
+    <button type="button" class="soleil-lecture" data-soleil-lecture disabled aria-pressed="false"
+      aria-label={T.lecture.fr} data-aria-label-fr={T.lecture.fr} data-aria-label-en={T.lecture.en} data-aria-label-ar={T.lecture.ar}>
+      <svg class="soleil-icone-lire" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor" /></svg>
+      <svg class="soleil-icone-pause" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z" fill="currentColor" /></svg>
+    </button>
+    <div class="soleil-curseur">
+      <div class="soleil-tete">
+        <span data-soleil-min></span>
+        <strong data-soleil-quand>{libelleInstant(jour, heure, 'fr')}</strong>
+        <span data-soleil-max></span>
+      </div>
+      <input type="range" class="soleil-heure" data-soleil-heure min="0" max="24" step="1" value={String(Math.round(heure))} disabled
+        aria-label={T.heure.fr} data-aria-label-fr={T.heure.fr} data-aria-label-en={T.heure.en} data-aria-label-ar={T.heure.ar} />
+    </div>
+    <div class="soleil-saisons" role="group" aria-label={T.saison.fr} data-aria-label-fr={T.saison.fr} data-aria-label-en={T.saison.en} data-aria-label-ar={T.saison.ar}>
+      <button type="button" data-soleil-saison="hiver" disabled aria-pressed={String(jour === JOUR_HIVER)}
+        data-i18n data-fr={T.hiver.fr} data-en={T.hiver.en} data-ar={T.hiver.ar}>{T.hiver.fr}</button>
+      <button type="button" data-soleil-saison="ete" disabled aria-pressed={String(jour === JOUR_ETE)}
+        data-i18n data-fr={T.ete.fr} data-en={T.ete.en} data-ar={T.ete.ar}>{T.ete.fr}</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .soleil-barre { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; padding: 0.75rem 1.25rem; border-top: 1px solid rgb(255 255 255 / 0.08); }
+  .soleil-barre[hidden] { display: none; }
+  .soleil-legende { flex: 1 1 14rem; min-width: 0; visibility: hidden; }
+  .soleil-legende[data-soleil-visible] { visibility: visible; }
+  .soleil-titre { font-size: 0.8rem; color: var(--color-lune-soft, #c8d0e0); }
+  .soleil-degrade { height: 0.5rem; margin-top: 0.35rem; border-radius: 999px; }
+  .soleil-bornes { display: flex; justify-content: space-between; margin-top: 0.25rem; font-size: 0.75rem; color: var(--color-lune-faint, #9aa3b4); }
+  .soleil-lecteur { flex: 2 1 18rem; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
+  .soleil-lecture, .soleil-saisons button { min-height: 44px; min-width: 44px; border-radius: 999px; border: 1px solid rgb(255 255 255 / 0.2); color: inherit; background: transparent; }
+  .soleil-lecture { display: inline-flex; align-items: center; justify-content: center; background: var(--color-brass-400, #d6a84a); color: var(--color-nuit, #0b1220); border-color: transparent; }
+  .soleil-lecture .soleil-icone-pause, .soleil-lecture[aria-pressed='true'] .soleil-icone-lire { display: none; }
+  .soleil-lecture[aria-pressed='true'] .soleil-icone-pause { display: block; }
+  .soleil-curseur { flex: 1 1 10rem; min-width: 0; }
+  .soleil-tete { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.75rem; color: var(--color-lune-faint, #9aa3b4); }
+  .soleil-tete strong { color: var(--color-lune, #eef2f8); font-weight: 600; text-align: center; }
+  .soleil-heure { width: 100%; min-height: 44px; accent-color: var(--color-brass-400, #d6a84a); }
+  .soleil-saisons { display: inline-flex; gap: 0.5rem; }
+  .soleil-saisons button { padding: 0 1rem; font-size: 0.875rem; }
+  .soleil-saisons button[aria-pressed='true'] { background: var(--color-brass-400, #d6a84a); color: var(--color-nuit, #0b1220); border-color: transparent; }
+  button:disabled, input:disabled { opacity: 0.5; cursor: default; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--color-brass-300, #e2bd6c); outline-offset: 2px; }
+  @media print {
+    .soleil-lecture, .soleil-heure, .soleil-saisons, [data-soleil-min], [data-soleil-max] { display: none !important; }
+    .soleil-barre, .soleil-tete strong, .soleil-titre, .soleil-bornes { color: #111 !important; border-color: #999 !important; }
+  }
+</style>
