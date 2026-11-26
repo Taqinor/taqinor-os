@@ -717,6 +717,21 @@ describe('planDepuisDocument — le document schema_electrique (lot 6)', () => {
     expect(dessiner(plan)).toHaveTextContent('Protection foudre toit')
   })
 
+  it.each([100, 400])('champ de %i panneaux : tuiles bornées et lisibles, le nombre écrit reste le vrai', (n) => {
+    const d = doc('sans_batterie', 'exemple_champ_sans_repartition')
+    d.panneaux.nombre = n
+    const plan = planDepuisDocument(d)
+    const g = plan.chaines[0].glyphes
+    expect(g.n).toBeLessThanOrEqual(24)
+    expect(g.l).toBeGreaterThan(3)
+    expect(plan.chaines[0].libelle).toBe(`Champ · ${n} panneaux`)
+    expect(plan.chaines[0].detail).toBe(`${n} × 715 Wc`)
+    const blocs = dessiner(plan)
+    const tuiles = [...blocs.querySelectorAll('rect.csch-glyphe')]
+    expect(tuiles).toHaveLength(g.n)
+    expect(tuiles.every((t) => Number(t.getAttribute('width')) > 0)).toBe(true)
+  })
+
   it('aucun onduleur servi : aucun bloc onduleur inventé (pas de plan)', () => {
     const d = doc('avec_batterie')
     d.onduleurs = []

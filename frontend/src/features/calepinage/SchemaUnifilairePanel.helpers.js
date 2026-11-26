@@ -444,6 +444,16 @@ function carteBatterie(batterie, onduleur) {
   return { x, y, l, h: 44 + lignes.length * 16, lignes, lien: [[x + l, y + 40], [cx, y + 40], [cx, onduleur.y]] }
 }
 
+const TUILES_MAX = 24
+
+/** Au-delà de ~50 panneaux dans une rangée, la largeur d'une tuile devient nulle ou négative : on dessine au plus
+    `TUILES_MAX` tuiles ; le NOMBRE écrit (libellé, détail) reste le nombre réel. */
+function tuilesBornees(g) {
+  if (g.l >= 4) return g
+  const n = Math.min(g.n, TUILES_MAX)
+  return { n, gap: 3, l: Math.min(28, (198 - 3 * (n - 1)) / n) }
+}
+
 /**
  * Le modèle du schéma en blocs lu sur le document `schema_electrique`, ou `null` quand il n'y a ni
  * panneau ni onduleur à dessiner. `plan.batterie` n'existe que si le document porte une batterie.
@@ -453,6 +463,7 @@ export function planDepuisDocument(doc, libelles = {}) {
   const { schema, resultat } = entreesDuDocument(doc, libelles ?? {})
   const plan = planSchemaEnBlocs(schema, resultat)
   if (!plan) return null
+  plan.chaines.forEach((c) => { c.glyphes = tuilesBornees(c.glyphes) })
   if (!avecChaines(doc)) {
     const n = plan.chaines[0].nombre
     plan.chaines[0].libelle = `Champ · ${n} panneau${n > 1 ? 'x' : ''}`
