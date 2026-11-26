@@ -169,11 +169,13 @@ function CarteOnduleur({ id, entree, configs, resultat, lectureSeule, onApplique
     colore), la barre d'actions du bas. */
 function CalquesCarte({
   id, resultat, couleursDessinees, lectureSeule, nonEnregistre = false, onRaccorde, onModifier, builderApi = null,
-  enregistreLe = null, nombreOnduleurs = 1,
+  enregistreLe = null, nombreOnduleurs = 1, resultatAJour = true,
 }) {
-  const cases = casesPastille(resultat)
   // ACAL1317 — l'onduleur posé sur la carte (document), ses gestes et la provenance du tracé de son câble.
   const onduleur = useOnduleurSurCarte({ builderApi, enregistreLe, nombreAttendu: nombreOnduleurs, lectureSeule })
+  // Après un geste sur l'onduleur, la longueur servie est celle de l'ANCIEN tracé tant que l'atelier n'est pas
+  // enregistré ET relu : elle n'est pas montrée (« à mesurer à l'enregistrement »), jamais un ancien chiffre.
+  const cases = casesPastille(resultat, { cableEnAttente: onduleur.aGeste && (onduleur.aEnregistrer || !resultatAJour) })
   const chaines = couleursDessinees ? chainesServies(resultat).filter((c) => c.couleur) : []
   const manuelles = (resultat?.electrique?.affectation ?? []).some((l) => l?.source === 'affectation manuelle')
   return (
@@ -222,7 +224,13 @@ export default function EtapeElectrique(props) {
   const [editeurModifie, setEditeurModifie] = useState(false) // S3 — brouillon non enregistré de l'éditeur d'affectation
   const relire = () => setRelecture((n) => n + 1)
   const cle = { id, relecture, enregistreLe } // ACAL1317 — un enregistrement de l'atelier relit la longueur mesurée
-  const { data: resultat } = useResource((p) => calepinageApi.calepinages.resultat(p.id), cle, { select: (r) => r?.data ?? null })
+  // ACAL1317 — le résultat garde l'enregistrement de l'atelier pour lequel il a été LU : la longueur mesurée n'est
+  // montrée que lue après le dernier enregistrement (relecture en cours ⇒ « à mesurer »).
+  const { data: resultatLu, loading: resultatEnCours } = useResource(
+    (p) => Promise.resolve(calepinageApi.calepinages.resultat(p.id)).then((r) => ({ data: r?.data ?? null, le: p.enregistreLe })),
+    cle)
+  const resultat = resultatLu?.data ?? null
+  const resultatAJour = !resultatEnCours && String(resultatLu?.le ?? null) === String(enregistreLe ?? null)
   const { data: entree } = useResource((p) => calepinageApi.calepinages.entreeElectrique(p.id), cle, { select: (r) => r?.data ?? null })
   const { data: configs } = useResource((p) => calepinageApi.calepinages.configurationsOnduleur(p.id), cle, { select: (r) => r?.data ?? null })
 
@@ -268,7 +276,7 @@ export default function EtapeElectrique(props) {
   const calques = (
     <CalquesCarte id={id} resultat={resultat} couleursDessinees={peutColorer} lectureSeule={lectureSeule} nonEnregistre={editeur && editeurModifie}
       onRaccorde={relire} onModifier={() => setEditeur(true)} builderApi={builderApi} enregistreLe={enregistreLe}
-      nombreOnduleurs={entree?.entree?.nombre_onduleurs ?? 1} />
+      nombreOnduleurs={entree?.entree?.nombre_onduleurs ?? 1} resultatAJour={resultatAJour} />
   )
 
   // ACAL1268 (D-ACAL-66 = outil_pose) — un pompage n'a ni onduleur ni batterie ni raccordement au réseau : l'étape ne les

@@ -36,13 +36,13 @@ function coucheUtilisable(builderApi) {
 
 /** La provenance affichée sous la longueur du câble : `null` quand le tracé n'est pas (seulement) celui que la barre
     a proposé. Un pan à modules sans tracé vers l'onduleur rend la longueur PARTIELLE, et c'est dit. */
-export function provenanceCable(etat, aEnregistrer) {
+export function provenanceCable(etat) {
   if (!etat) return null
   if (etat.decales?.length) return 'tracé enregistré — n’aboutit plus à l’onduleur'
   if (!etat.proposes?.length || etat.autres?.length) return null
   const n = etat.pansSansTrace?.length ?? 0
   if (n) return `tracé partiel : ${n} pan${n > 1 ? 's' : ''} sans tracé vers l’onduleur`
-  return aEnregistrer ? `${PROVENANCE_TRACE_PROPOSE} — longueur mesurée à l’enregistrement` : PROVENANCE_TRACE_PROPOSE
+  return PROVENANCE_TRACE_PROPOSE
 }
 
 function phraseApresGeste(couche, id, verbe) {
@@ -165,7 +165,10 @@ export function useOnduleurSurCarte({ builderApi, enregistreLe = null, nombreAtt
     enDeplacement,
     enPose,
     message,
-    provenance: provenanceCable(etat, aEnregistrer),
+    provenance: provenanceCable(etat),
+    // Un geste depuis l'ouverture de l'étape, et s'il attend encore l'enregistrement de l'atelier.
+    aGeste: gesteDepuis !== undefined,
+    aEnregistrer,
     placer,
     deplacer,
     pousser,

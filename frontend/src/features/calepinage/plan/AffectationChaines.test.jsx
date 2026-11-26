@@ -924,10 +924,9 @@ describe('BarreRaccordement (ACAL1317) — l’onduleur se place, se déplace et
 })
 
 describe('provenanceCable (ACAL1317) — d’où vient la longueur sous « Câble côté panneaux »', () => {
-  it('tracé proposé seul ⇒ la position de l’onduleur ; à mesurer tant que rien n’est enregistré', () => {
+  it('tracé proposé seul ⇒ la position de l’onduleur (la longueur à mesurer se dit dans la case, plus ici)', () => {
     const etat = { proposes: ['ch1'], autres: [], decales: [], pansSansTrace: [] }
-    expect(provenanceCable(etat, false)).toBe(PROVENANCE_TRACE_PROPOSE)
-    expect(provenanceCable(etat, true)).toBe(`${PROVENANCE_TRACE_PROPOSE} — longueur mesurée à l’enregistrement`)
+    expect(provenanceCable(etat)).toBe(PROVENANCE_TRACE_PROPOSE)
   })
   it('tracé non reconnu décalé ⇒ il le dit SANS dire qui l’a tracé ; non reconnu qui aboutit, ou aucun onduleur ⇒ rien', () => {
     expect(provenanceCable({ proposes: [], autres: ['ch1'], decales: ['ch1'], pansSansTrace: [] }, false)).toBe('tracé enregistré — n’aboutit plus à l’onduleur')
