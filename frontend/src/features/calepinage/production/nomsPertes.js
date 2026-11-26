@@ -25,7 +25,7 @@ export const NOMS_PERTES = {
   diodes: 'Diodes de chaîne',
   optimiseur: 'Optimiseurs de puissance',
   ohmique_dc: 'Câbles en courant continu',
-  mppt: 'Réglage de la puissance de l’onduleur',
+  mppt: 'Plage de tension de l’onduleur',
   onduleur: 'Rendement de l’onduleur',
   ecretage: 'Plafond de l’onduleur',
   ohmique_ac: 'Câbles en courant alternatif',
