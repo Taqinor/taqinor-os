@@ -1751,13 +1751,17 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
 
     # CAL130/CAL131 — la norme applicable commande ce qui peut être publié :
     # sans elle, sections et chutes de tension sont OMISES (règle D5).
-    from .cables import cables_du_calepinage
+    from .cables import cables_du_calepinage, jour_du_calcul_servi
     from .norme import norme_applicable
 
     norme = norme_applicable(reglages)
     cables = cables_du_calepinage(
         conception, cheminement=donnees.get('cheminement'), norme=norme,
         layout=document,
+        # Liaison DC tracée — W1 suit la DATE de la simulation servie : ce qui
+        # est montré est ce qu'elle a calculé (aujourd'hui sans simulation fraîche).
+        jour=jour_du_calcul_servi(porteur_simulation if porteur_simulation is not None
+                                  else calepinage, perimee, calcule_le),
         # CALX209/CALX210 (crochet de phase 2) — en régime micro-onduleurs,
         # les ``W2.1 … W2.N`` REMPLACENT la liaison AC unique dans
         # ``resultat['cables']`` : jusqu'ici elles n'existaient que dans le
