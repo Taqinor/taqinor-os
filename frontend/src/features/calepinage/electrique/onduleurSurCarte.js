@@ -19,7 +19,7 @@ export const PHRASE_TRACE_DECALE = 'Le tracé enregistré n’aboutit plus à l�
 
 /** Les gestes dont l'écran a besoin : sans eux (constructeur absent ou ancien), rien n'est proposé. */
 const GESTES = ['documentElectrique', 'armerPose', 'armerDeplacement', 'deplacementArme', 'typeArme', 'pousser',
-  'retirerAvecTraces', 'etatTraces', 'ecouter', 'definirLectureSeule']
+  'retirerAvecTraces', 'etatTraces', 'ecouter', 'definirLectureSeule', 'annuler', 'retablir', 'profondeurHistorique']
 
 /** Désarme ce que la couche attend d'un toucher de la carte : la scène route le clic de carte vers `clicCarte` à
     TOUTES les étapes, un armement oublié poserait un onduleur à l'étape Toit. */
@@ -32,6 +32,20 @@ function coucheUtilisable(builderApi) {
   const couche = builderApi?.electrique ?? null
   return couche && GESTES.every((g) => typeof couche[g] === 'function')
     && Number.isFinite(couche.pasDeplacementM) && couche.pasDeplacementM > 0 ? couche : null
+}
+
+/** Ctrl+Z / Ctrl+Y (⌘ sur Mac) pressés dans la barre : c'est l'historique ÉLECTRIQUE de la couche qui répond, et la
+    touche s'arrête là — sans cela l'atelier (`annulerAtelier.ts`, à l'écoute du document) annulait une action du PLAN,
+    sans rapport, en silence. Rend vrai quand la touche est prise. */
+export function toucheAnnulation(e, onduleur) {
+  if (!onduleur?.disponible || !(e.ctrlKey || e.metaKey)) return false
+  const k = String(e.key).toLowerCase()
+  const retablir = k === 'y' || (k === 'z' && e.shiftKey)
+  if (k !== 'z' && !retablir) return false
+  e.preventDefault()
+  e.stopPropagation()
+  if (retablir) onduleur.retablir(); else onduleur.annuler()
+  return true
 }
 
 /** La provenance affichée sous la longueur du câble : `null` quand le tracé n'est pas (seulement) celui que la barre
@@ -134,6 +148,20 @@ export function useOnduleurSurCarte({ builderApi, enregistreLe = null, nombreAtt
     setMessage(null)
     setVersion((v) => v + 1)
   }
+  const annuler = () => {
+    if (!couche || lectureSeule) return
+    attente.current = null
+    if (!couche.annuler()) { setMessage('Rien à annuler dans le raccordement.'); return }
+    marquerGeste()
+    setMessage('Dernier geste du raccordement annulé.')
+  }
+  const retablir = () => {
+    if (!couche || lectureSeule) return
+    attente.current = null
+    if (!couche.retablir()) { setMessage('Rien à rétablir dans le raccordement.'); return }
+    marquerGeste()
+    setMessage('Geste du raccordement rétabli.')
+  }
   const retirer = () => {
     if (!couche || !choisi) return
     attente.current = null
@@ -174,5 +202,8 @@ export function useOnduleurSurCarte({ builderApi, enregistreLe = null, nombreAtt
     pousser,
     terminer,
     retirer,
+    annuler,
+    retablir,
+    peutAnnuler: !!couche && !lectureSeule && (couche.profondeurHistorique()?.undo ?? 0) > 0,
   }
 }

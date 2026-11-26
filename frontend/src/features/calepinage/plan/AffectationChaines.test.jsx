@@ -827,6 +827,9 @@ function coucheEssai(equipements = []) {
     etatTraces: vi.fn(() => ({ proposes: ['ch1'], autres: [], decales: [], pansSansTrace: [] })),
     ecouter: (f) => { ecouteurs.add(f); return () => ecouteurs.delete(f) },
     definirLectureSeule: vi.fn(),
+    annuler: vi.fn(() => false),
+    retablir: vi.fn(() => false),
+    profondeurHistorique: () => ({ undo: 0, redo: 0 }),
     /** Le toucher de la carte (le constructeur appelle `clicCarte`) : pose ou déplace l'organe armé. */
     toucher: () => {
       if (vise) {
@@ -1014,5 +1017,44 @@ describe('OutilsOnduleur (ACAL1317, revue, point 3) — les flèches et Échap n
     } finally {
       document.removeEventListener('keydown', constructeur)
     }
+  })
+})
+
+describe('OutilsOnduleur (ACAL1317, revue, point 5) — « Annuler » joint l’historique électrique de la couche', () => {
+  it('rien à annuler ⇒ « Annuler » désactivé ; après « Retirer l’onduleur », « Annuler » le remet à sa place', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    render(<BarreAvecOnduleur couche={couche} />)
+    expect(screen.getByTestId('cal-elec-onduleur-annuler')).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Retirer l’onduleur' }))
+    expect(couche.documentElectrique().equipements).toHaveLength(0)
+    const annuler = screen.getByTestId('cal-elec-onduleur-annuler')
+    expect(annuler).toBeEnabled()
+    fireEvent.click(annuler)
+    expect(couche.documentElectrique().equipements.map((e) => e.id)).toEqual(['eqA'])
+    expect(screen.getByTestId('cal-elec-onduleur-message')).toHaveTextContent('Dernier geste du raccordement annulé.')
+  })
+
+  it('Ctrl+Z dans la barre annule le geste ÉLECTRIQUE et n’atteint pas l’annulation du plan (écoutée sur le document)', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    const annulationDuPlan = vi.fn()
+    document.addEventListener('keydown', annulationDuPlan) // comme `annulerAtelier.ts`
+    try {
+      render(<BarreAvecOnduleur couche={couche} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Retirer l’onduleur' }))
+      fireEvent.keyDown(screen.getByRole('button', { name: 'Raccorder automatiquement' }), { key: 'z', ctrlKey: true })
+      expect(couche.documentElectrique().equipements.map((e) => e.id)).toEqual(['eqA'])
+      expect(annulationDuPlan).not.toHaveBeenCalled()
+    } finally {
+      document.removeEventListener('keydown', annulationDuPlan)
+    }
+  })
+
+  it('lecture seule : « Annuler » et « Terminer » sont désactivés', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    const { rerender } = render(<BarreAvecOnduleur couche={couche} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Déplacer l’onduleur' }))
+    expect(screen.getByRole('button', { name: 'Terminer' })).toBeEnabled()
+    rerender(<BarreAvecOnduleur couche={couche} lectureSeule />)
+    expect(screen.getByTestId('cal-elec-onduleur-annuler')).toBeDisabled()
   })
 })

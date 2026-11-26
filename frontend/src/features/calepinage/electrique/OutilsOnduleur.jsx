@@ -63,6 +63,11 @@ export default function OutilsOnduleur({ onduleur, lectureSeule = false, motifLe
           <button type="button" className="cel-barre-texte" onClick={onduleur.terminer}>Terminer</button>
         </div>
       )}
+      <button type="button" className="cel-barre-texte" data-testid="cal-elec-onduleur-annuler"
+        aria-label="Annuler le dernier geste du raccordement (onduleur, tracé)" onClick={onduleur.annuler}
+        disabled={lectureSeule || !onduleur.peutAnnuler} title={titre}>
+        Annuler
+      </button>
       {choisi && (
         <button type="button" className="cel-barre-texte" data-testid="cal-elec-onduleur-retirer"
           onClick={onduleur.retirer} disabled={lectureSeule} title={titre}>

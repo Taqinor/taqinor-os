@@ -892,6 +892,7 @@ export const ALL_HOOKS = [
   'cal-elec-onduleur-deplacer',
   'cal-elec-onduleur-fleches',
   'cal-elec-onduleur-retirer',
+  'cal-elec-onduleur-annuler',
   'cal-elec-onduleur-choix',
   'cal-elec-onduleur-message',
   'cal-elec-cable-provenance',

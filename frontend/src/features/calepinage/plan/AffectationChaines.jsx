@@ -9,6 +9,7 @@ import { phrasesChaines } from '../electrique/tensionsChaines'
 import { etatAffiche, libelleEtat } from '../electrique/etatVerdict'
 import ImportAffectation from './ImportAffectation'
 import OutilsOnduleur from '../electrique/OutilsOnduleur'
+import { toucheAnnulation } from '../electrique/onduleurSurCarte'
 
 /* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
 const MOTIF_LECTURE_SEULE = 'Conception figée : révisez le devis (nouvelle version) pour la modifier.'
@@ -112,7 +113,9 @@ export function BarreRaccordement({
           {(refus ?? []).map((m) => <p key={m} className="cel-refus font-semibold">{m}</p>)}
         </div>
       )}
-      <div role="toolbar" aria-label="Outils du raccordement" className="cel-barre-outils">
+      {/* ACAL1317 — Ctrl+Z dans la barre annule le dernier geste ÉLECTRIQUE (jamais une action du plan en silence). */}
+      <div role="toolbar" aria-label="Outils du raccordement" className="cel-barre-outils"
+        onKeyDown={onduleur?.disponible ? (e) => toucheAnnulation(e, onduleur) : undefined}>
         <button type="button" className="cel-barre-principal" onClick={raccorder}
           disabled={lectureSeule || enCours} title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}>
           {arme ? (nonEnregistre && !manuelles ? 'Confirmer : perdre mes modifications' : 'Confirmer : effacer l’affectation manuelle') : 'Raccorder automatiquement'}
