@@ -645,3 +645,76 @@ class PlafondParOnduleur(unittest.TestCase):
         self.assertEqual(evaluation.nombre, 2)
         self.assertAlmostEqual(evaluation.puissance_ac_kw, 100.0, places=6)
         self.assertAlmostEqual(evaluation.dc_par_onduleur_kwc, 55.0, places=6)
+
+
+class ChainesInegalesEntreEntrees(unittest.TestCase):
+    """Incident prod 26/11/2026 : 35 × 715 Wc sur un Deye 20 kW triphasé
+    (2 entrées, Isc 54,0 A publié, 800 V). Des chaînes en parallèle sur UNE
+    entrée sont égales ; deux entrées distinctes peuvent différer."""
+
+    MODULE = SpecModule(vmp_v=41.0, voc_v=49.1, isc_a=22.3, imp_a=17.44,
+                        pmax_wc=715.0, temp_coeff_voc_pct_c=-0.25,
+                        temp_coeff_pmax_pct_c=-0.35)
+    DEYE_20K = SpecOnduleur(n_mppt=2, mppt_v_min=150.0, mppt_v_max=750.0,
+                            v_max_abs=800.0, i_max_mppt_a=36.0, ac_kw=20.0,
+                            phases=3, isc_max_mppt_a=54.0)
+
+    def _concevoir(self, nb_modules, inegales=True, onduleur=None):
+        return concevoir_chaines(EntreeElectrique(
+            module=self.MODULE, onduleur=onduleur or self.DEYE_20K,
+            groupes=(GroupePan("Zone 1", nb_modules, 180.0, 15.0),),
+            temp_froid_c=-5.0, temp_chaud_c=70.0,
+            chaines_inegales_entre_entrees=inegales))
+
+    def test_35_modules_douze_douze_sur_l_entree_1_onze_sur_la_2(self):
+        resultat = self._concevoir(35)
+        self.assertEqual([(c.nb_modules, c.mppt) for c in resultat.chaines],
+                         [(12, 1), (12, 1), (11, 2)])
+        self.assertEqual(resultat.bloquants, ())
+        self.assertEqual(resultat.reste_total, 0)
+        for entree_mppt in (1, 2):
+            lot = [c for c in resultat.chaines if c.mppt == entree_mppt]
+            self.assertLessEqual(sum(c.isc_a for c in lot), 54.0)
+            self.assertEqual(len({c.nb_modules for c in lot}), 1)
+        for chaine in resultat.chaines:
+            self.assertTrue(resultat.fenetre.admet(chaine.nb_modules))
+            self.assertLessEqual(chaine.voc_froid_v, 800.0)
+        self.assertEqual(
+            [(r.nb_chaines, r.longueur_chaine, r.mppt)
+             for r in resultat.repartitions], [(2, 12, (1,)), (1, 11, (2,))])
+
+    def test_sans_le_drapeau_la_partition_egale_d_avant_reste_posee(self):
+        resultat = self._concevoir(35, inegales=False)
+        self.assertEqual([(c.nb_modules, c.mppt) for c in resultat.chaines],
+                         [(7, 1), (7, 1), (7, 1), (7, 2), (7, 2)])
+        self.assertTrue(any("66,9 A" in b for b in resultat.bloquants))
+
+    def test_aucune_repartition_ne_tient_le_moteur_le_dit_sans_inventer(self):
+        # 61 modules : 2 chaînes par entrée au plus (3 × 22,3 A > 54 A), 15
+        # modules par chaîne au plus → 60 modules câblables, jamais 61.
+        resultat = self._concevoir(61)
+        self.assertEqual(resultat, dataclasses.replace(
+            self._concevoir(61, inegales=False), alertes=resultat.alertes,
+            verdicts=resultat.verdicts))
+        codes = [v.code for v in resultat.verdicts]
+        self.assertIn("CH_AUCUNE_REPARTITION_ENTRE_ENTREES", codes)
+        self.assertIn("CH_PARTITION_NON_EGALE", codes)
+
+    def test_une_conception_egale_valide_est_identique_octet_pour_octet(self):
+        self.assertEqual(self._concevoir(48), self._concevoir(48, False))
+        self.assertEqual([c.nb_modules for c in self._concevoir(48).chaines],
+                         [12, 12, 12, 12])
+
+    def test_balayage_toute_conception_egale_valide_est_inchangee(self):
+        onduleurs = (self.DEYE_20K,
+                     dataclasses.replace(self.DEYE_20K, n_mppt=3),
+                     dataclasses.replace(self.DEYE_20K, isc_max_mppt_a=None),
+                     dataclasses.replace(self.DEYE_20K, n_mppt=1))
+        for onduleur in onduleurs:
+            for nb_modules in range(1, 121):
+                avant = self._concevoir(nb_modules, False, onduleur)
+                if avant.bloquants or avant.alertes:
+                    continue
+                with self.subTest(n_mppt=onduleur.n_mppt, n=nb_modules):
+                    self.assertEqual(
+                        self._concevoir(nb_modules, True, onduleur), avant)

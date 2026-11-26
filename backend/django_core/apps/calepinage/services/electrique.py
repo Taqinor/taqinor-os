@@ -2162,15 +2162,13 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
     enregistré.
     """
     from .boucles_chaines import alertes_de_boucles, boucles_des_chaines
-    from .chaines import (
-        AffectationInvalide, affectation, normaliser_affectation_imposee,
-        verdict_affectation,
-    )
+    from .chaines import affectation, verdict_affectation
     from .etat_dossier_electrique import etat_a_chaud
     from .onduleurs_minimum import onduleurs_suggeres
     from .ombrage_chaines import modules_sous_seuil
     from .raccordement import _reglage
-    from .tensions_chaines import tensions_par_chaine
+    from .tensions_chaines import (
+        conception_cablee, imposee_et_refus, tensions_par_chaine)
 
     conception, materiel_resolu, donnees, _document = conception_du_calepinage(
         calepinage, entree=entree, layout=layout, materiel=materiel)
@@ -2208,15 +2206,13 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
             'boucles_dc': [],
             'modules_sous_seuil': [],
         }
-    bloquants = list(bloquants_nommes(conception))
-    try:
-        imposee = normaliser_affectation_imposee(
-            donnees.get('affectation_manuelle'))
-    except AffectationInvalide as refus:
-        # Une proposition MALFORMÉE est un bloquant NOMMÉ, pas une erreur 500 :
-        # l'atelier envoie sa proposition à chaud, il doit lire pourquoi elle
-        # ne tient pas.
-        imposee, bloquants = (), bloquants + [str(refus)]
+    # Une proposition MALFORMÉE est un bloquant NOMMÉ, pas une erreur 500 :
+    # l'atelier envoie sa proposition à chaud, il doit lire pourquoi elle ne
+    # tient pas. Isc, V_max et écrêtage se jugent sur le câblage EFFECTIF
+    # (l'entrée MPPT saisie à la main), jamais sur l'automatique qu'il remplace.
+    imposee, invalide = imposee_et_refus(donnees.get('affectation_manuelle'))
+    cablee = conception_cablee(conception, imposee)
+    bloquants = list(bloquants_nommes(cablee)) + invalide
     bloquants.extend(verdict_affectation(
         conception, imposee,
         specs_onduleur=materiel_resolu.get('onduleur'),
@@ -2238,7 +2234,7 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
         conception, materiel_resolu.get('optimiseur'),
         materiel_resolu['designations'].get('optimiseur', ''),
         (materiel_resolu.get('skus') or {}).get('onduleur'))
-    alertes = list(_alertes_nommees(conception))
+    alertes = list(_alertes_nommees(cablee))
     alertes.extend(obsoletes)
     alertes.extend(poly['alertes'])
     # CALX209 — une borne de branche NON VÉRIFIABLE est une alerte nommée,
@@ -2736,7 +2732,9 @@ def _rapport_publication(calepinage, *, layout=None):
     norme = norme_applicable(parametres_societe(calepinage))
     reglages = _reglages_electrique_societe(calepinage)
 
-    motifs = list(_motifs_de_la_conception(conception))
+    from .tensions_chaines import conception_cablee, imposee_et_refus  # le câblage EFFECTIF
+    motifs = list(_motifs_de_la_conception(conception_cablee(
+        conception, imposee_et_refus(donnees.get('affectation_manuelle'))[0])))
     motifs.extend(_motifs_de_la_norme(norme))
     # ACAL155 — LA saisie de raccordement (celle de l'écran), jamais une clé
     # ``raccordement`` de l'entrée électrique qu'aucun écrivain ne pose.
@@ -2891,13 +2889,14 @@ def _longueur_chaine_retenue(conception, longueur_devis=None):
     longueur de la CONCEPTION pour un lead, celle du cahier des charges pour un
     dossier d'appel d'offres ; c'est aussi le repli d'une fiche muette (ACAL980).
     """
-    par_pan = {r.pan: r.longueur_chaine for r in conception.repartitions}
+    from .chaines import longueurs_retenues
+
+    par_pan, longueurs = longueurs_retenues(conception.repartitions)
 
     if conception.fiche_incomplete or not par_pan:
         return _suppositions.repli_longueur_dossier(
             longueur_devis, ORIGINE_LONGUEUR_DOSSIER)  # ACAL980
 
-    longueurs = set(par_pan.values())
     longueur = longueurs.pop() if len(longueurs) == 1 else None
     reference = longueur if longueur is not None else max(par_pan.values())
     ecart = reference - longueur_devis if longueur_devis else None
