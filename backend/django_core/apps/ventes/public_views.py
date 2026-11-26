@@ -1561,6 +1561,15 @@ def proposal_data(request, token):
         # ``quote`` : la page lit ``synthese_ci`` (même fonction que le PDF),
         # qui suit la case « économies » et le segment (D-CIQ-10).
         payload['quote'].pop('economie_ci', None)
+        # SCHEL-B3 (lot 6, D-ACAL-131) — le schéma électrique, un document par option
+        # publiée (clés de ``option_totals``), sans prix ; ABSENT si la case
+        # « Schéma unifilaire » est décochée ou si aucune option n'a de document.
+        if _section_servie(link, 'sld'):
+            from .electrical_service import schema_electrique_public
+            _schema_el = schema_electrique_public(devis, standard=est_standard,
+                                                  option_totals=payload['option_totals'])
+            if _schema_el is not None:
+                payload['schema_electrique'] = _strip_confidential_deep(_schema_el)
         # PV77 — titre de l'étude bancable (P50 + économies 25 ans). La clé
         # n'est AJOUTÉE que lorsque le devis porte une simulation : sans elle,
         # la charge utile publique est exactement celle d'aujourd'hui.
