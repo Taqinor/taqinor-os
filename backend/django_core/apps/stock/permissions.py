@@ -16,6 +16,8 @@ que la case correspondante soit administrable dans l'éditeur de rôles.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from rest_framework.permissions import BasePermission
 
 from authentication.permissions import HasPermission, IsAdminRole
@@ -126,9 +128,15 @@ class MasqueAchatRapportsProduitMixin:
     }
 
     def finalize_response(self, request, response, *args, **kwargs):
+        # Jumeau de 17b278df9 / f3056a536 : une réponse d'erreur n'a rien à masquer, et lire
+        # ``request.user`` ici authentifiait hors du gestionnaire d'exceptions de DRF (en-tête
+        # ``Authorization`` mal formé → 500 au lieu de 401). Seul l'utilisateur DÉJÀ authentifié
+        # (``Request._user``) est lu.
         champs = self.champs_achat_par_action.get(getattr(self, 'action', None))
-        if champs and cache_montants_achat(request):
-            retirer_cles(getattr(response, 'data', None), champs)
+        if champs and not getattr(response, 'exception', False):
+            user = vars(request).get('_user') if hasattr(request, '__dict__') else None
+            if cache_montants_achat(SimpleNamespace(user=user)):
+                retirer_cles(getattr(response, 'data', None), champs)
         return super().finalize_response(request, response, *args, **kwargs)
 
 
