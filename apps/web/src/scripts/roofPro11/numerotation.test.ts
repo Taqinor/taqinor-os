@@ -490,3 +490,92 @@ describe('Numérotation stable — seul l’enregistrement engage des numéros',
     expect(registreAtelier.historique('z1').numeros.has(cleEmplacement(0.05, 0))).toBe(false);
   });
 });
+
+// Numérotation stable (suite ACAL1720) — le document porte le PLAFOND d'un pan dont les modules du haut sont
+// retirés (`plafondsNumerotation`) : rouvert, il ne redonne jamais ces numéros à d'autres modules — sinon une
+// affectation manuelle de chaîne enregistrée par `<pan>#<n>` (chaines.py) désignait d'autres panneaux.
+describe('Numérotation stable — le plafond voyage avec le document', () => {
+  const grille20 = (): ModulePose[] => Array.from({ length: 20 }, (_, i) => ({ cx: (i % 10) * 1.2, cy: Math.floor(i / 10) * 2.1 }));
+  const numeros = (doc: ReturnType<typeof serializeLayout>) => (doc.zones[0].geometry!.panels as ModuleNumerote[]).map((m) => m.n);
+  const enregistrer = (cellules: ModulePose[], relu?: Record<string, unknown>) =>
+    JSON.parse(JSON.stringify(serializeLayout(ctxPave(cellules, relu), null, { engagerNumeros: true }))) as Record<string, unknown> & ReturnType<typeof serializeLayout>;
+  const rouvrir = (doc: Record<string, unknown>) => {
+    reinitialiserNumerotation();
+    hydrateFromDevis({ id: 1, geometrie: { roof_layout: JSON.parse(JSON.stringify(doc)) }, cibleVendue: false });
+  };
+
+  it('défaut (2) — retirer 15…20, enregistrer, rouvrir : les modules neufs prennent 21…, jamais 15…20', () => {
+    const vingt = enregistrer(grille20());
+    expect(numeros(vingt)).toEqual(Array.from({ length: 20 }, (_, i) => i + 1));
+    expect('plafondsNumerotation' in vingt).toBe(false); // aucun retrait : aucune clé
+    rouvrir(vingt);
+    const quatorze = enregistrer(grille20().slice(0, 14), vingt);
+    expect(quatorze.plafondsNumerotation).toEqual({ z1: 20 });
+    rouvrir(quatorze);
+    expect(registreAtelier.historique('z1').plafond).toBe(20);
+    const neufs = Array.from({ length: 6 }, (_, i) => ({ cx: i * 1.2, cy: 8.4 }));
+    const apres = enregistrer([...grille20().slice(0, 14), ...neufs], quatorze);
+    expect(numeros(apres)).toEqual([...Array.from({ length: 14 }, (_, i) => i + 1), 21, 22, 23, 24, 25, 26]);
+    expect('plafondsNumerotation' in apres).toBe(false); // 26 est posé : le plafond est lisible sans la clé
+  });
+
+  it('la lecture (sondage) écrit la MÊME clé que l’enregistrement : l’empreinte ne bat pas', () => {
+    const vingt = enregistrer(grille20());
+    rouvrir(vingt);
+    const lu = serializeLayout(ctxPave(grille20().slice(0, 14), vingt));
+    expect(lu.plafondsNumerotation).toEqual({ z1: 20 });
+    expect(registreAtelier.historique('z1').plafond).toBe(20);
+  });
+
+  it('document qui porte la clé, rouvert et enregistré sans geste : identique, clé comprise', () => {
+    const vingt = enregistrer(grille20());
+    rouvrir(vingt);
+    const quatorze = enregistrer(grille20().slice(0, 14), vingt);
+    rouvrir(quatorze);
+    expect(JSON.stringify(enregistrer(grille20().slice(0, 14), quatorze))).toBe(JSON.stringify(quatorze));
+  });
+
+  it('retirer un module du MILIEU n’écrit aucune clé (le plus haut n posé suffit)', () => {
+    const vingt = enregistrer(grille20());
+    rouvrir(vingt);
+    const troue = enregistrer(grille20().filter((_, i) => i !== 4), vingt);
+    expect(numeros(troue)).not.toContain(5);
+    expect('plafondsNumerotation' in troue).toBe(false);
+  });
+});
+
+// Numérotation stable (suite ACAL1720) — C : les numéros DÉJÀ stockés ne sont jamais réécrits. Un calepinage réel
+// (n = 2236…2275), une inclinaison changée puis remise, quelques modules ajoutés, enregistré : chaque module gardé
+// garde SON n, les neufs passent au-delà du plafond, et les clés serveur `<pan>#<n>` désignent les mêmes places.
+import { identifiantsModulesParCellule } from './libellesAffectation';
+
+describe('Numérotation stable — un calepinage stocké n’est jamais renuméroté', () => {
+  const quarante = (dx = 0): ModulePose[] => Array.from({ length: 40 }, (_, i) => ({ cx: (i % 10) * 1.2 + dx, cy: Math.floor(i / 10) * 2.1 }));
+  const numeros = (doc: { zones: Array<{ geometry?: { panels?: unknown[] } }> }) => (doc.zones[0].geometry!.panels as ModuleNumerote[]).map((m) => m.n);
+  /** Le document stocké : les 40 modules portent n = 2236…2275 (le compteur d'avant ce correctif). */
+  function stocke(): Record<string, unknown> {
+    const doc = JSON.parse(JSON.stringify(serializeLayout(ctxPave(quarante()), null, { engagerNumeros: true })));
+    (doc.zones[0].geometry.panels as ModuleNumerote[]).forEach((p, i) => { p.n = 2236 + i; });
+    reinitialiserNumerotation();
+    hydrateFromDevis({ id: 1, geometrie: { roof_layout: JSON.parse(JSON.stringify(doc)) }, cibleVendue: false });
+    return doc;
+  }
+  /** Clé serveur de chaque module, par emplacement (la lecture de l'atelier, `identifiantsModulesParCellule`). */
+  const clesParPlace = (poses: ModulePose[]) => {
+    const ids = identifiantsModulesParCellule(poses.map((_, i) => i), 'z1', poses);
+    return new Map(poses.map((p, i) => [cleEmplacement(p.cx, p.cy), ids[i]]));
+  };
+
+  it('inclinaison changée puis remise, 2 modules ajoutés, enregistré : aucun n réécrit, neufs au-delà de 2275', () => {
+    const relu = stocke();
+    const avant = clesParPlace(quarante());
+    expect(avant.get(cleEmplacement(0, 0))).toBe('z1#2236');
+    for (const dx of [0.04, 0.08, 0.12, 0.08, 0.04]) serializeLayout(ctxPave(quarante(dx), relu)); // le glissement
+    const ajoutes = [{ cx: 12, cy: 0 }, { cx: 12, cy: 2.1 }];
+    const enregistre = serializeLayout(ctxPave([...quarante(), ...ajoutes], relu), null, { engagerNumeros: true });
+    expect(numeros(enregistre)).toEqual([...Array.from({ length: 40 }, (_, i) => 2236 + i), 2276, 2277]);
+    const apres = clesParPlace([...quarante(), ...ajoutes]);
+    for (const [place, cle] of avant) expect(apres.get(place)).toBe(cle); // chaque ligne manuelle vise la même place
+    expect(registreAtelier.historique('z1').plafond).toBe(2277);
+  });
+});

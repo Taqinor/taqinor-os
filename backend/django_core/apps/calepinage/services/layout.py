@@ -50,7 +50,11 @@ from core.events import pose_enregistree
 #: * ``zones[].geometry.solarAccess.computedAt`` — l'horodatage d'un calcul,
 #:   pas son résultat ;
 #: * ``consumption.source.saisi_le`` — l'horodatage d'une saisie, pas la
-#:   saisie.
+#:   saisie ;
+#: * ``plafondsNumerotation`` — numérotation stable (suite ACAL1720) : le plus
+#:   haut numéro de module jamais attribué par pan, TENUE DE COMPTE de
+#:   l'atelier (aucun module, aucun chiffre) ; elle ne bouge qu'avec un retrait
+#:   de modules, déjà versionné par ``zones``.
 #:
 #: ``pin`` n'y est PAS : un recentrage de l'épingle est versionné (D-ACAL-13).
 CLES_VOLATILES = (
@@ -58,6 +62,7 @@ CLES_VOLATILES = (
     'scene',
     'zones[].geometry.solarAccess.computedAt',
     'consumption.source.saisi_le',
+    'plafondsNumerotation',
 )
 
 _ALIAS_PANS = ('zones', 'areas', 'pans')

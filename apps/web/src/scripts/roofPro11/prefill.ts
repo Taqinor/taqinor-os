@@ -864,6 +864,9 @@ export interface SerializedLayout {
    * figée par `roof_layout_v2.schema.json` (`$defs/consumption`).
    */
   consumption?: SerializedConsumption;
+  /** Suite ACAL1720 — par pan, le plus haut numéro de module JAMAIS attribué, quand il dépasse le plus haut `n`
+   *  encore posé (`numerotation.ts::ecrirePlafonds`). Absente = le plafond est le plus haut `n` posé. */
+  plafondsNumerotation?: Record<string, number>;
 }
 
 /** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
@@ -1218,6 +1221,7 @@ const CLES_RACINE_ATELIER = new Set([
   'environment', 'exclusionZones', 'setbacksM', 'horizonProfile', 'scene', 'buildings', 'underlay', 'imageCapture',
   'poseSurfaces', 'consumption', 'modules', 'optimisation', 'motifsPansVides', 'electrical', 'parcelle', 'alleeTechnique',
   'pinSource', 'repereAcquitte', // ACAL193 — réémises par `emettreProvenanceEpingle`
+  'plafondsNumerotation', // suite ACAL1720 — réémise (ou retirée) par `numeroterDocument`, jamais recopiée telle quelle
 ]);
 /** Clés de PAN que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */
 const CLES_PAN_ATELIER = new Set([

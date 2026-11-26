@@ -116,6 +116,11 @@ export const HISTORIQUE_VIDE: HistoriqueNumerotation = { numeros: new Map(), pla
 /** Numérotation stable (suite ACAL1720) — aucun numéro provisoire. */
 const AUCUN_PROVISOIRE: ReadonlyMap<string, number> = new Map();
 
+/** Numérotation stable (suite ACAL1720) — clé RACINE du document (`roof_layout_v2.schema.json`) : par pan, le plus
+ *  haut numéro JAMAIS attribué, écrite SEULEMENT quand il dépasse le plus haut `n` encore posé (modules du haut
+ *  retirés, pan supprimé). Sans elle, rouvrir le document redonnait ces numéros à d'autres modules. */
+export const CLE_PLAFONDS = 'plafondsNumerotation';
+
 // ════════════════════════════ Conventions de DESSIN ════════════════════════════
 // Aucune de ces valeurs ne décrit un module : elles disent seulement à partir de quand un
 // chiffre reste lisible, et à quelle finesse deux centres sont le même emplacement.
@@ -370,10 +375,12 @@ interface PanDocument {
 }
 interface DocumentNumerotable {
   zones?: PanDocument[];
+  [CLE_PLAFONDS]?: unknown;
 }
 
 export interface RegistreNumerotation {
-  /** Sème la mémoire ENGAGÉE depuis un document qui porte déjà des `n` (idempotent). */
+  /** Sème la mémoire ENGAGÉE depuis un document qui porte déjà des `n` (idempotent) — et, suite ACAL1720,
+   *  depuis sa clé racine `plafondsNumerotation` (plafond d'un pan dont les modules du haut sont retirés). */
   absorberDocument(document: unknown): void;
   /** La mémoire ENGAGÉE du pan (document rouvert + enregistrements) — jamais un numéro provisoire. */
   historique(panId: string): HistoriqueNumerotation;
@@ -420,10 +427,10 @@ export function creerRegistre(depuis?: EtatRegistre): RegistreNumerotation {
   const engages = new Map(depuis?.engages);
   const provisoires = new Map(depuis?.provisoires);
 
-  const memoriser = (panId: string, modules: readonly ModuleNumerote[]) => {
+  const memoriser = (panId: string, modules: readonly ModuleNumerote[], plafondLu = 0) => {
     const courant = historiques.get(panId) ?? HISTORIQUE_VIDE;
     const numeros = new Map(courant.numeros);
-    let plafond = courant.plafond;
+    let plafond = Math.max(courant.plafond, plafondLu);
     for (const module of modules) {
       const n = module.n;
       if (typeof n !== 'number' || !Number.isInteger(n) || n < 1) continue;
@@ -445,6 +452,12 @@ export function creerRegistre(depuis?: EtatRegistre): RegistreNumerotation {
   const registre: RegistreNumerotation = {
     absorberDocument(document: unknown) {
       const doc = document as DocumentNumerotable | null;
+      const plafondsLus = doc?.[CLE_PLAFONDS];
+      if (plafondsLus && typeof plafondsLus === 'object' && !Array.isArray(plafondsLus)) {
+        for (const [panId, valeur] of Object.entries(plafondsLus as Record<string, unknown>)) {
+          if (typeof valeur === 'number' && Number.isInteger(valeur) && valeur >= 1) memoriser(panId, [], valeur);
+        }
+      }
       const zones = doc?.zones;
       if (!Array.isArray(zones)) return;
       for (const zone of zones) {
@@ -618,7 +631,9 @@ export function conventionDuPan(
  * toute autre sérialisation (sondage « modifié ? » de 1,5 s, capture du pan quitté, accès solaire) travaille
  * sur une COPIE du registre et n'en garde que ce qu'elle a montré (numéros provisoires, jamais engagés) —
  * glisser une inclinaison ne dépense plus de numéros. Les deux passages rendent les MÊMES numéros pour la
- * même pose (l'enregistrement engage ce que l'écran montrait).
+ * même pose (l'enregistrement engage ce que l'écran montrait). Puis la clé racine `plafondsNumerotation`
+ * garde le plafond d'un pan dont les modules du haut sont retirés : un numéro n'est jamais redonné, même
+ * après réouverture. Elle n'est écrite que dans ce cas — un document qui ne la porte pas ressort identique.
  */
 export function numeroterDocument(
   document: unknown,
@@ -628,8 +643,34 @@ export function numeroterDocument(
 ): RefusNumerotation | null {
   const travail = options.engager === true ? registre : registre.cloner();
   const refus = numeroterSur(document, etat, travail, options.pansPaves);
+  ecrirePlafonds(document, travail);
   if (travail !== registre) registre.retenirLecture(travail);
   return refus;
+}
+
+/** Suite ACAL1720 — la clé racine `plafondsNumerotation` : par pan, le plafond ENGAGÉ quand il dépasse le plus
+ *  haut `n` encore posé (modules du haut retirés, ou pan supprimé) ; aucun pan dans ce cas ⇒ aucune clé. Les
+ *  numéros provisoires sont tous posés : ils ne la font jamais apparaître (lecture et enregistrement concordent). */
+function ecrirePlafonds(document: unknown, registre: RegistreNumerotation): void {
+  if (!document || typeof document !== 'object') return;
+  const doc = document as DocumentNumerotable & Record<string, unknown>;
+  const plusHaut = new Map<string, number>();
+  for (const zone of Array.isArray(doc.zones) ? doc.zones : []) {
+    if (!zone?.id) continue;
+    let haut = plusHaut.get(zone.id) ?? 0;
+    const panneaux = zone.geometry?.panels;
+    for (const module of Array.isArray(panneaux) ? panneaux : []) {
+      if (typeof module?.n === 'number' && Number.isInteger(module.n) && module.n > haut) haut = module.n;
+    }
+    plusHaut.set(zone.id, haut);
+  }
+  const plafonds: Record<string, number> = {};
+  for (const panId of registre.pans().sort()) {
+    const plafond = registre.historique(panId).plafond;
+    if (plafond > (plusHaut.get(panId) ?? 0)) plafonds[panId] = plafond;
+  }
+  if (Object.keys(plafonds).length) doc[CLE_PLAFONDS] = plafonds;
+  else delete doc[CLE_PLAFONDS];
 }
 
 function numeroterSur(
