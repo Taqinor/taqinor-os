@@ -81,16 +81,16 @@ with no rate column at all — mono-MAD in practice.
 | stock | AchatsParametres | `apps/stock/models.py:427` | ras_tva_actif, seuil_deviation_prix_pct, tolerance_prix_absolu_mad, tolerance_prix_pct |
 | stock | ToleranceRapprochementCategorie | `apps/stock/models.py:577` | tolerance_prix_absolu_mad, tolerance_prix_pct |
 | stock | Produit | `apps/stock/models.py:705` | paliers_prix_vente, prix_achat, prix_fixe_ht, prix_par_panneau_ht, prix_vente, tva |
-| stock | MouvementStock | `apps/stock/models.py:1303` | cout_unitaire |
-| stock | PalierPrixFournisseur | `apps/stock/models.py:1670` | prix |
-| stock | EcheanceFactureFournisseur | `apps/stock/models.py:1703` | montant |
-| stock | AcompteFournisseur | `apps/stock/models.py:1738` | montant, montant_consomme |
-| stock | AvoirFournisseur | `apps/stock/models.py:1799` | montant_ht, montant_impute, montant_ttc, montant_tva |
-| stock | ImputationAvoirFournisseur | `apps/stock/models.py:1860` | montant, montant_ras_tva |
-| stock | InventaireAnnuel | `apps/stock/models.py:1961` | total_valeur |
-| stock | RevalorisationStock | `apps/stock/models.py:2000` | ancien_cout, nouveau_cout |
-| stock | BudgetDepartement | `apps/stock/models.py:2339` | montant_alloue |
-| stock | EngagementBudget | `apps/stock/models.py:2399` | montant |
+| stock | MouvementStock | `apps/stock/models.py:1322` | cout_unitaire |
+| stock | PalierPrixFournisseur | `apps/stock/models.py:1689` | prix |
+| stock | EcheanceFactureFournisseur | `apps/stock/models.py:1722` | montant |
+| stock | AcompteFournisseur | `apps/stock/models.py:1757` | montant, montant_consomme |
+| stock | AvoirFournisseur | `apps/stock/models.py:1818` | montant_ht, montant_impute, montant_ttc, montant_tva |
+| stock | ImputationAvoirFournisseur | `apps/stock/models.py:1879` | montant, montant_ras_tva |
+| stock | InventaireAnnuel | `apps/stock/models.py:1980` | total_valeur |
+| stock | RevalorisationStock | `apps/stock/models.py:2019` | ancien_cout, nouveau_cout |
+| stock | BudgetDepartement | `apps/stock/models.py:2358` | montant_alloue |
+| stock | EngagementBudget | `apps/stock/models.py:2418` | montant |
 | stock | IncidentQualiteFournisseur | `apps/stock/models_incident_fournisseur.py:18` | cout_impact_mad |
 | stock | ParametresNegoce | `apps/stock/models_negoce_params.py:16` | cout_rupture_jour_mad |
 | stock | AccordRFAFournisseur | `apps/stock/models_rfa.py:16` | montant_fixe |
