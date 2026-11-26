@@ -14,6 +14,8 @@ français qui NOMME le champ fautif (règle maison).
 """
 import re
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter
 from rest_framework.exceptions import ValidationError
 from rest_framework.fields import empty
 
@@ -323,3 +325,14 @@ def _corps_noter():
 
 
 CORPS_NOTER_JSON, CORPS_NOTER_MULTIPART, NOTER_REPERE = _corps_noter()
+
+
+# T4-X3-016 — les paramètres de ``crm/assignable-users/`` (déclarés ici : ``views.py`` est un fichier-mur).
+PARAMETRES_MENU = [OpenApiParameter(
+    'permission', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+    description="Code d'une permission ERP : ne propose que les comptes qui la portent "
+                "(ex. calepinage_voir pour le responsable d'un calepinage)."), OpenApiParameter(
+    'lead', OpenApiTypes.INT, OpenApiParameter.QUERY, required=False,
+    description="Lead du calepinage qu'on confie (avec permission=calepinage_voir) : un compte qui ne lit que "
+                "par sa visite n'est proposé que s'il a une visite sur ce lead. Un identifiant inconnu ou d'une "
+                "autre société est ignoré, comme l'absence de lead.")]

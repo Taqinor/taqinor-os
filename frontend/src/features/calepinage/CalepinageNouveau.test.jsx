@@ -152,6 +152,14 @@ describe('CalepinageNouveau (CAL36)', () => {
     await waitFor(() => expect(mocks.getAssignableUsers).toHaveBeenCalledWith({ permission: 'calepinage_voir' }))
   })
 
+  it('T4-X3-016 — une fois le lead choisi, le menu « Responsable » est relu avec CE lead (visite du technicien)', async () => {
+    rendre()
+    await waitFor(() => expect(mocks.getAssignableUsers).toHaveBeenCalledWith({ permission: 'calepinage_voir' }))
+    await choisirDansCombobox('Lead rattaché au calepinage', 'Lead d’essai')
+    await waitFor(() => expect(mocks.getAssignableUsers)
+      .toHaveBeenCalledWith({ permission: 'calepinage_voir', lead: String(LEAD_AVEC_EPINGLE.id) }))
+  })
+
   it('la recherche de LEADS part au SERVEUR (seul bornage société possible)', async () => {
     rendre()
     fireEvent.click(screen.getByRole('combobox', { name: 'Lead rattaché au calepinage' }))

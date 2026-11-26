@@ -432,21 +432,58 @@ describe('T4-X3-019 — les tables se saisissent en champs lisibles, pas en JSON
       .toEqual([{ debut: '2026-01-05', fin: '2026-01-07', motif: 'Maintenance' }])
   })
 
-  it('correspondances de nomenclature (forme libre) reste sur l’éditeur JSON ; une valeur illisible aussi', async () => {
+  it('une valeur illisible dans la forme attendue reste sur l’éditeur JSON', async () => {
     servirTable({ lid_par_techno: { valeur: [1, 2], source: 'texte', reference: '' } })
     rendre()
     await screen.findByTestId('calx69-ligne-correspondances_nomenclature')
-    expect(screen.queryByTestId('calx69-table-correspondances_nomenclature')).toBeNull()
-    expect(champValeur('correspondances_nomenclature').tagName).toBe('INPUT')
     expect(screen.queryByTestId('calx69-table-lid_par_techno')).toBeNull()
     expect(champValeur('lid_par_techno')).toHaveValue('[1,2]')
+  })
+
+  it('correspondances de nomenclature : une ligne par correspondance, forme servie renvoyée à l’identique sans geste', async () => {
+    const servie = { rails: 12, coffret_dc: 'REF-7' }
+    const servi = reponseContrat('calepinage', 'parametres_calepinage', 'exemple_vide')
+    servi.data.electrique_societe = { correspondances_nomenclature: { valeur: servie, source: 'texte', reference: '' } }
+    mocks.getParametres.mockResolvedValue(servi)
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES_VIDES })
+    rendre()
+    await screen.findByTestId('calx69-ligne-correspondances_nomenclature')
+    expect(screen.getByTestId('calx69-table-correspondances_nomenclature')).toBeInTheDocument()
+    expect(screen.getByTestId('calx69-correspondances_nomenclature-0-cle')).toHaveValue('rails')
+    expect(screen.getByTestId('calx69-correspondances_nomenclature-0-valeur')).toHaveValue('12')
+    expect(screen.getByTestId('calx69-correspondances_nomenclature-1-valeur')).toHaveValue('REF-7')
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    const envoye = mocks.putParametres.mock.calls[0][0].electrique_societe.correspondances_nomenclature.valeur
+    expect(envoye).toEqual(servie)
+    expect(JSON.stringify(envoye)).toBe(JSON.stringify(servie))
+    expect(typeof envoye.rails).toBe('number')
+  })
+
+  it('correspondances : ajouter une ligne laissée à moitié est refusé sous le champ, complétée elle part', async () => {
+    const servi = reponseContrat('calepinage', 'parametres_calepinage', 'exemple_vide')
+    servi.data.electrique_societe = {}
+    mocks.getParametres.mockResolvedValue(servi)
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES_VIDES })
+    rendre()
+    await screen.findByTestId('calx69-ligne-correspondances_nomenclature')
+    fireEvent.click(screen.getByTestId('calx69-table-correspondances_nomenclature-ajouter'))
+    fireEvent.change(screen.getByTestId('calx69-correspondances_nomenclature-0-cle'), { target: { value: 'rails' } })
+    fireEvent.change(champSource('correspondances_nomenclature'), { target: { value: 'texte' } })
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+    expect(await screen.findByTestId('calx69-erreur-correspondances_nomenclature')).toHaveTextContent('à moitié remplie')
+    expect(mocks.putParametres).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByTestId('calx69-correspondances_nomenclature-0-valeur'), { target: { value: '45' } })
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    expect(mocks.putParametres.mock.calls[0][0].electrique_societe.correspondances_nomenclature.valeur).toEqual({ rails: 45 })
   })
 
   it('chaque table convertie monte son ancre #calx69-<clé> (liens « Renseigner »), focalisable, sans doublon d’id', async () => {
     servirTable({})
     rendre()
     await screen.findByTestId('calx69-ligne-lid_par_techno')
-    for (const cle of ['lid_par_techno', 'thermique_par_pose', 'indisponibilite_fenetres', 'regle_bom_structure', 'consigne_dc_plan_cablage']) {
+    for (const cle of ['lid_par_techno', 'thermique_par_pose', 'indisponibilite_fenetres', 'regle_bom_structure', 'consigne_dc_plan_cablage', 'correspondances_nomenclature']) {
       const ancres = document.querySelectorAll(`[id="calx69-${cle}"]`)
       expect(ancres.length, cle).toBe(1)
       expect(ancres[0], cle).toHaveAttribute('tabindex', '-1')

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import ChoixSurfaceAlbedo from './ChoixSurfaceAlbedo'
 import ChampTableLisible from './ChampTableLisible'
-import { lireTable } from './tablesReglages'
+import { lireTable, erreurTable } from './tablesReglages'
 import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Badge, Button, Card, Spinner } from '../../../ui'
@@ -186,6 +186,11 @@ function validerSection(registre, lignes) {
       erreurs[cle] = `« ${libelle} » doit porter sa provenance « source » : `
         + 'aucune valeur n’est admise sans elle. Provenances admises : '
         + 'societe, mesure, saisie, texte.'
+      continue
+    }
+    const aMoitie = erreurTable(cle, valeurDepuisTexte(valeurTexte))
+    if (aMoitie) {
+      erreurs[cle] = `« ${libelle} » : ${aMoitie}`
       continue
     }
     // Ligne NON TOUCHÉE : la valeur d'origine telle que servie (un texte

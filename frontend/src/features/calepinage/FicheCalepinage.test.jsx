@@ -106,6 +106,14 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup() })
 
+describe('FicheCalepinage — T4-X3-016 le menu Responsable connaît le lead', () => {
+  it('relit les responsables possibles AVEC le lead du calepinage', async () => {
+    rendre(DETAIL)
+    await waitFor(() => expect(crmApi.getAssignableUsers)
+      .toHaveBeenCalledWith({ permission: 'calepinage_voir', lead: DETAIL.lead.id }))
+  })
+})
+
 describe('FicheCalepinage — l’agrégat CAL17 est lu EN ENTIER', () => {
   it('rend une clé du contrat, et le contrat en publie bien vingt-six (vingt-quatre rendues)', () => {
     // Garde de dérive : si le contrat grossit, la liste ci-dessous grossit avec

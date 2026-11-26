@@ -43,6 +43,14 @@ export const SPECS_TABLES = {
       { k: 'source', label: 'Source du texte' },
     ],
   },
+  // {repère ou catégorie: identifiant produit (texte OU entier)} — services/parametres_cles.py::FORMES_TABLES.
+  correspondances_nomenclature: {
+    mode: 'paires',
+    nom: 'Correspondance',
+    ajout: 'Ajouter une correspondance',
+    cle: { label: 'Repère ou catégorie' },
+    valeur: { label: 'Identifiant du produit' },
+  },
   consigne_dc_plan_cablage: {
     mode: 'objet',
     champs: [{ k: 'texte', label: 'Texte imprimé sur le plan de câblage' }],
@@ -60,6 +68,12 @@ export function lireTable(cle, texte) {
   if (!brut) return spec.mode === 'liste' ? [] : {}
   let valeur
   try { valeur = JSON.parse(brut) } catch { return null }
+  if (spec.mode === 'paires') {
+    // Les clés « entières » seraient réordonnées par JS : la ligne reste alors sur l'éditeur JSON (rien ne bouge).
+    const bonne = estObjet(valeur) && Object.entries(valeur).every(([k, v]) => !/^\d+$/.test(k)
+      && (typeof v === 'string' || Number.isInteger(v)))
+    return bonne ? valeur : null
+  }
   const connus = new Set(spec.champs.map((c) => c.k))
   const ligneOk = (o) => estObjet(o) && Object.keys(o).every((k) => connus.has(k))
     && spec.champs.every((c) => o[c.k] === undefined || (c.nombre ? typeof o[c.k] === 'number' : typeof o[c.k] === 'string'))
@@ -71,6 +85,7 @@ export function lireTable(cle, texte) {
 /** Réécrit la table EDITÉE en texte JSON ; une ligne vidée disparaît, une
  *  table vide donne un texte vide (= clé non saisie, comme avant). */
 export function ecrireTable(spec, valeur) {
+  if (spec.mode === 'paires') return Object.keys(valeur).length ? JSON.stringify(valeur) : ''
   const net = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== ''))
   if (spec.mode === 'liste') {
     return valeur.length ? JSON.stringify(valeur.map(net)) : ''
@@ -87,3 +102,15 @@ export function ecrireTable(spec, valeur) {
   return Object.keys(o).length ? JSON.stringify(o) : ''
 }
 
+
+/** Un identifiant produit tapé : entier strict (sans zéro de tête) → nombre, sinon texte, comme l'accepte le serveur. */
+export const identifiantProduit = (texte) => (/^[1-9]\d*$/.test(texte) ? Number(texte) : texte)
+
+/** Une ligne de correspondance laissée à moitié (repère ou identifiant vide) : la phrase qui le dit, sous le champ. */
+export function erreurTable(cle, valeur) {
+  if (SPECS_TABLES[cle]?.mode !== 'paires' || !estObjet(valeur)) return null
+  const vide = Object.entries(valeur).some(([k, v]) => k.trim() === '' || (typeof v === 'string' && v.trim() === ''))
+  return vide
+    ? 'Une correspondance est à moitié remplie : indiquez son repère ET l’identifiant du produit, ou retirez la ligne.'
+    : null
+}
