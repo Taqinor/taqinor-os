@@ -305,3 +305,49 @@ class PlafondsNumerotationTest(SimpleTestCase):
         change['zones'][0]['geometry']['panels'][2]['n'] = 5
         self.assertNotEqual(layout_hash(change), layout_hash(sans))
         self.assertNotEqual(empreinte_document(change), empreinte_document(sans))
+
+
+class PlafondsGardesAuRemplacementTest(SimpleTestCase):
+    """Revue lot 8 (suite ACAL1720) — ``layout.avec_plafonds_gardes`` : un
+    document qui en REMPLACE un autre (version restaurée, variante retenue)
+    garde le plus haut plafond des deux, sans bouger aucune empreinte."""
+
+    @staticmethod
+    def _doc(numeros, plafond=None):
+        document = {'version': 2, 'zones': [{'id': 'P', 'geometry': {'panels': [
+            {'cx': i * 1.2, 'cy': 0.0, 'n': n} for i, n in enumerate(numeros)]}}]}
+        if plafond is not None:
+            document['plafondsNumerotation'] = {'P': plafond}
+        return document
+
+    def test_les_numeros_depenses_depuis_restent_couverts(self):
+        from apps.calepinage.services.layout import avec_plafonds_gardes
+
+        courant, ancien = self._doc([1, 2, 3, 4, 5]), self._doc([1, 2, 3])
+        rendu = avec_plafonds_gardes(courant, ancien)
+        self.assertEqual(rendu['plafondsNumerotation'], {'P': 5})
+        self.assertEqual(rendu['zones'], ancien['zones'])
+        self.assertNotIn('plafondsNumerotation', ancien)  # l'entrant n'est jamais modifié
+        # La clé du document remplacé compte aussi (modules du haut déjà retirés).
+        self.assertEqual(avec_plafonds_gardes(self._doc([1, 2], plafond=9), ancien)
+                         ['plafondsNumerotation'], {'P': 9})
+        self.assertEqual(avec_plafonds_gardes(courant, self._doc([1], plafond=7))
+                         ['plafondsNumerotation'], {'P': 7})
+
+    def test_rien_a_garder_rend_le_document_lui_meme(self):
+        from apps.calepinage.services.layout import avec_plafonds_gardes
+
+        entrant = self._doc([1, 2, 3, 4, 5])
+        self.assertIs(avec_plafonds_gardes(self._doc([1, 2, 3]), entrant), entrant)
+        self.assertIs(avec_plafonds_gardes(None, entrant), entrant)
+        sans_numeros = {'version': 2, 'result': {'panels': 10}}
+        self.assertIs(avec_plafonds_gardes({'version': 2}, sans_numeros), sans_numeros)
+
+    def test_aucune_empreinte_ne_bouge(self):
+        from apps.calepinage.services.layout import avec_plafonds_gardes, empreinte_document
+        from apps.ventes.domain.geometrie import layout_hash
+
+        ancien = self._doc([1, 2, 3])
+        rendu = avec_plafonds_gardes(self._doc([1, 2, 3, 4, 5]), ancien)
+        self.assertEqual(empreinte_document(rendu), empreinte_document(ancien))
+        self.assertEqual(layout_hash(rendu), layout_hash(ancien))

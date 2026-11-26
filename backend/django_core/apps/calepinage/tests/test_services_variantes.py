@@ -32,6 +32,12 @@ from authentication.models import Company
 LAYOUT = {'zones': [{'id': 'z1', 'panels': 10}], 'result': {'kwc': 5.75}}
 
 
+def _doc_numerote(numeros):
+    """Revue lot 8 (suite ACAL1720) — un pan ``P`` dont les modules portent ``numeros``."""
+    return {'version': 2, 'zones': [{'id': 'P', 'geometry': {'panels': [
+        {'cx': i * 1.2, 'cy': 0.0, 'n': n} for i, n in enumerate(numeros)]}}]}
+
+
 class BaseVariantes(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom='Variantes Co',
@@ -165,6 +171,26 @@ class RetenirTest(BaseVariantes):
         retenir_variante(self.a)
         ailleurs.refresh_from_db()
         self.assertTrue(ailleurs.retenue)
+
+    def test_retenir_garde_le_plafond_des_numeros_depenses(self):
+        """Revue lot 8 (suite ACAL1720) — retenir une variante dessinée AVANT
+        des numéros dépensés (4, 5) : sa conception devient la courante, le
+        plafond reste 5 ; aucune empreinte ne bouge (clé volatile)."""
+        from apps.calepinage.services.layout import empreinte_document
+        from apps.ventes.domain.geometrie import layout_hash
+
+        Calepinage.objects.filter(pk=self.pivot.pk).update(
+            roof_layout=_doc_numerote([1, 2, 3, 4, 5]))
+        self.pivot.refresh_from_db()
+        variante = creer_variante(self.pivot, nom='Option ancienne',
+                                  roof_layout=_doc_numerote([1, 2, 3]))
+        retenir_variante(variante)
+        self.pivot.refresh_from_db()
+        self.assertEqual(self.pivot.roof_layout['zones'], _doc_numerote([1, 2, 3])['zones'])
+        self.assertEqual(self.pivot.roof_layout['plafondsNumerotation'], {'P': 5})
+        self.assertEqual(empreinte_document(self.pivot.roof_layout),
+                         empreinte_document(_doc_numerote([1, 2, 3])))
+        self.assertEqual(self.pivot.layout_hash, layout_hash(_doc_numerote([1, 2, 3])))
 
 
 class DupliquerTest(BaseVariantes):
