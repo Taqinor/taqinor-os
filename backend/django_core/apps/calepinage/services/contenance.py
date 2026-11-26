@@ -27,7 +27,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from .assistant import RefusAssistant
-from .valeurs import nombre as _nombre
+from .valeurs import nombre as _nombre, pente_du_pan
 
 ORIGINES = ('visite', 'trace', 'dicte')
 #: Bornes des dimensions dictées (contrat).
@@ -184,7 +184,7 @@ def _zones_du_trace(ouvert, produit, parametres, wc):
             raise RefusAssistant(str(refus), refus.champ or 'origine', 'trace_illisible') from None
         traduction, modules = sortie['traduction'], int(sortie['resultat'].modules)
         code = POLITIQUES.get(getattr(traduction.politique, 'code', ''), 'affleurante')
-        pente = _nombre(pan.get('pitchDeg')) or 0.0
+        pente = pente_du_pan(pan) or 0.0  # ACAL1923 : toit plat → 0
         lignes.append(_ligne(str(pan.get('label') or pan.get('id') or f'Pan {rang + 1}')[:80],
                              None, None, pente, code == 'anti_ombrage',
                              (modules, modules, code, bool(sortie['resultat'].optimal)), wc))

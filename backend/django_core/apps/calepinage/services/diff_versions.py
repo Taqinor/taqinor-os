@@ -35,7 +35,7 @@ Module PUR : aucune base, aucun réseau ; il lit des attributs
 from __future__ import annotations
 
 from types import SimpleNamespace
-from .valeurs import nombre as _nombre
+from .valeurs import nombre as _nombre, pente_du_pan
 
 __all__ = [
     'CHAMPS_FIXES', 'LIBELLE_ETAT_COURANT', 'comparer_versions',
@@ -77,7 +77,7 @@ def _orientation(zone):
                      else zone.get('facingAzimuthDeg'))
     inclinaison = _nombre(geometrie.get('tiltDeg')
                           if 'tiltDeg' in geometrie
-                          else zone.get('pitchDeg'))
+                          else pente_du_pan(zone))  # ACAL1923 : toit plat → 0
     return azimut, inclinaison
 
 
