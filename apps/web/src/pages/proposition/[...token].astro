@@ -9088,7 +9088,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               mapboxToken: cfg.mapboxToken,
               reducedMotion: reduced,
               lowEnd: strategy.lowEnd,
-              ...(soleil ? { instant: soleil.ouverture, environnement: soleil.environnement, indexTeintes: fullLayout === layoutRacine ? soleil.zones.map((z) => z.index) : [] } : {}),
+              ...(soleil ? { instant: soleil.ouverture, environnement: soleil.environnement, indexTeintes: fullLayout === layoutRacine ? soleil.zones.map((z) => z.index) : [], presentationClient: true } : {}),
               onReady: () => {
                 if (overlay) overlay.hidden = true;
               },
@@ -9105,6 +9105,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               replier: () => {
                 if (handle !== pleine) return; // démontée entre-temps (autre taille choisie)
                 handle = null;
+                // Échec TARDIF : onReady avait caché le voile ; il porte la note de showFallback si rien ne se rend.
+                if (overlay) overlay.hidden = false;
                 monterLegere(mod, strategy).catch(() => showFallback('Vue 3D momentanément indisponible — voici la photo de votre étude.'));
               },
             });
