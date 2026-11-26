@@ -435,10 +435,11 @@ def _specs_module(produit):
         'temp_coeff_voc_pct_c', 'temp_coeff_pmax_pct_c')}
 
 
-def _panneau_auto(company):
-    """D-ACAL-169 — le panneau par défaut de la société (``panneau_defaut``)."""
-    from .panneau_defaut import panneau_auto
-    return panneau_auto(company)
+def _panneau_de_l_etude(company, devis):
+    """D-ACAL-169 — devis à naître : le panneau par défaut ; devis BROUILLON : SA ligne panneau ; devis envoyé :
+    le panneau d'aujourd'hui (``panneau_defaut.panneau_pour_etude``)."""
+    from .panneau_defaut import panneau_pour_etude
+    return panneau_pour_etude(company, devis)
 
 
 def _dict_catalogue(produit, **extra):
@@ -1011,8 +1012,8 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
     hmt = _hmt(res, debit_hmt)
     hmt_m = hmt.get('valeur_m')
 
-    catalogue = lire_catalogue(  # D-ACAL-169 — une étude SANS devis lit le panneau par défaut
-        company, panneau_defaut=None if devis is not None else _panneau_auto(company), alertes=alertes_entree)
+    catalogue = lire_catalogue(  # D-ACAL-169 — le panneau de l'étude : défaut (à naître) ou celui du devis
+        company, panneau_defaut=_panneau_de_l_etude(company, devis), alertes=alertes_entree)
     produits = catalogue['pompage']
     pompes = [p for p in produits if p.get('role_pompage') == 'pompe']
     variateurs = [p for p in produits

@@ -36,7 +36,7 @@ from decimal import Decimal
 from apps.ventes.moteur_ci.taille import HORIZON_MARGINAL_CI
 
 from .etude_ci_batterie import CLE as CLE_OPTION_AVEC, CLE_BANQUE_RECOMMANDEE, option_avec_de_l_etude
-from .panneau_defaut import panneau_auto  # D-ACAL-169
+from .panneau_defaut import panneau_pour_etude  # D-ACAL-169
 from .sensibilites_option_avec import scenarios_du_devis
 from .regles_calcul import (
     REGLES_CORRIGEES_2710, REGLES_CYCLES_BATTERIE_1911, REGLES_RETOURS_3010B, hybrides_ht_ouverts, regles_au_moins)
@@ -1445,8 +1445,9 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
                      'archetype': prov_charge.get('archetype'),
                      'jours_types': jours_types, 'talon': prov_charge.get('talon')}
 
-    # D-ACAL-169 — une étude SANS devis (à naître) lit le panneau par défaut ; un devis garde son module.
-    catalogue = dict(lire_catalogue_ci(company, panneau_defaut=None if devis is not None else panneau_auto(company),
+    # D-ACAL-169 — devis à naître : le panneau par défaut ; devis BROUILLON : SA ligne panneau (jamais « la plus
+    # haute Pmax » d'un autre module) ; devis envoyé : le module d'aujourd'hui (panneau_defaut.panneau_pour_etude).
+    catalogue = dict(lire_catalogue_ci(company, panneau_defaut=panneau_pour_etude(company, devis),
                                        alertes=alertes), froid=froid_du_site(_point_du_site(site)))  # ADEV122
     reglages = _reglages_societe(company)
     forfaits = getattr(reglages, 'forfaits_ci', None) or {}

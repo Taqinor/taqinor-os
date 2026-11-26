@@ -819,6 +819,37 @@ class PanneauParDefautPompageTests(SimpleTestCase):
         panneau, alertes = self._catalogue(self._auto())
         self.assertEqual((panneau['id'], panneau['pmax_wc'], alertes), (42, 715.0, []))
 
+    def test_le_systeme_facture_lit_le_panneau_des_lignes_du_devis(self):
+        """Revue 2 — un devis EXISTANT : le champ facturé (``facture_du_devis``) vient de SES lignes, jamais du
+        panneau que le catalogue proposerait (ici le 720 W)."""
+        from types import SimpleNamespace
+
+        panneau_devis = SimpleNamespace(pk=7, id=7, nom='Panneau Jinko 550W', sku='', role_devis='panneau',
+                                        prix_vente=Decimal('900'))
+        ligne = SimpleNamespace(produit=panneau_devis, quantite=Decimal('12'), optionnelle=False)
+
+        class _Lignes:
+            def select_related(self, *_a):
+                return self
+
+            def order_by(self, *_a):
+                return [ligne]
+        catalogue = {'pompage': [], 'panneau': {'id': 1, 'nom': 'Panneau 720W'}}
+        with mock.patch.object(pompage, '_specs_module', return_value=dict(self.COMPLETE, pmax_wc=550.0)):
+            facture = pompage.facture_du_devis(SimpleNamespace(lignes=_Lignes()), catalogue)
+        self.assertEqual((facture['panneau']['id'], facture['nb_panneaux']), (7, 12))
+
+    def test_le_panneau_de_l_etude_suit_la_regle(self):
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.panneau_defaut import aucun_panneau_auto
+        panneau_devis = SimpleNamespace(pk=7, id=7, nom='Panneau Jinko 550W')
+        with mock.patch('apps.ventes.domain.geometrie._produit_panneau_du_devis', return_value=panneau_devis):
+            brouillon = pompage._panneau_de_l_etude(object(), SimpleNamespace(pk=3, statut='brouillon'))
+            envoye = pompage._panneau_de_l_etude(object(), SimpleNamespace(pk=3, statut='envoye'))
+        self.assertEqual((brouillon.produit_id, brouillon.watt), (7, 550))
+        self.assertEqual(envoye, aucun_panneau_auto())
+
     def test_le_defaut_sans_prix_ou_fiche_incomplete_regle_d_aujourd_hui_dite(self):
         for options in ({'prix_defaut': None}, {'fiche_defaut': False}):
             with self.subTest(**options):
