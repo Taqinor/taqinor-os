@@ -1558,23 +1558,6 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
       .toHaveTextContent('Modifications non enregistrées'), { timeout: 5000 })
   }, 20000)
 
-  it('ACAL1661 — ouvrir sans rien toucher : ce que l’outil réécrit seul n’est pas « modifié » ; un geste puis une retouche, si', async () => {
-    amorcer()
-    calepinageApi.calepinages.get.mockResolvedValue({ data: { versions: { derniere_le: new Date().toISOString() } } })
-    rendreCalepinage(CTX.calepinage.id)
-    const barre = await screen.findByTestId('cal-enregistrer-calepinage')
-    await waitFor(() => expect(within(barre).getByTestId('cal-etat-enregistrement')).toHaveTextContent(/^Enregistré/))
-    // La pose se recalcule d'elle-même APRÈS l'ouverture (aucun geste) : plus d'un sondage de 1,5 s, toujours « Enregistré ».
-    serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 9 } })
-    await new Promise((r) => { setTimeout(r, 3300) })
-    expect(within(barre).getByTestId('cal-etat-enregistrement')).toHaveTextContent(/^Enregistré/)
-    // Course : le geste de l'utilisateur fige la référence d'avant lui ; sa retouche suivante se voit.
-    fireEvent.keyDown(document.body, { key: 'a' })
-    serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 12 } })
-    await waitFor(() => expect(within(barre).getByTestId('cal-etat-enregistrement'))
-      .toHaveTextContent('Modifications non enregistrées'), { timeout: 5000 })
-  }, 20000)
-
   it('H1 — lecture de démarrage sans réponse (délai de 20 s dépassé) : relancée UNE fois, l’atelier démarre sans erreur', async () => {
     calepinageApi.calepinages.designContext
       .mockRejectedValueOnce(Object.assign(new Error('timeout of 20000ms exceeded'), { code: 'ECONNABORTED' }))

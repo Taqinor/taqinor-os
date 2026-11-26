@@ -228,6 +228,24 @@ describe('ToitureDesign — mode devis (PV20)', () => {
       }
     })
 
+    it('ACAL1661 — sans geste, ce que l’outil réécrit seul n’arme rien ; un geste puis une retouche, si (course comprise)', async () => {
+      servirConceptionDevis(
+        reponseContrat('calepinage', 'calepinage_design_context'))
+      bootHydrate()
+      rendreDevis(DEVIS_ID)
+      await screen.findByTestId('cal-retour-liste')
+      await waitFor(() => expect(serializeLayout).toHaveBeenCalled())
+      // La pose se recalcule d'elle-même après l'ouverture : plus de deux sondages (1,5 s) sans geste, rien d'armé.
+      serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 9 } })
+      await new Promise((r) => { setTimeout(r, 3300) })
+      expect(beforeunloadArme()).toBe(false)
+      // Le geste fige la référence d'avant lui ; la retouche qui le suit se voit.
+      fireEvent.keyDown(document.body, { key: 'a' })
+      expect(beforeunloadArme()).toBe(false)
+      serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 12 } })
+      await waitFor(() => expect(beforeunloadArme()).toBe(true), { timeout: 5000 })
+    }, 20000)
+
     it('scène inchangée → Fermer sans confirmation, beforeunload désarmé', async () => {
       servirConceptionDevis(
         reponseContrat('calepinage', 'calepinage_design_context'))
