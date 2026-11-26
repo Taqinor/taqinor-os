@@ -61,7 +61,9 @@ class DupliquerProduitCompletTests(TestCase):
         (ex. `tva`) cesserait de copier un champ métier en silence."""
         self.assertEqual(CHAMPS_DUPLICATION_EXCLUS, frozenset({
             'id', 'company', 'nom', 'sku', 'code_barres', 'quantite_stock',
-            'is_archived', 'date_creation', 'date_mise_a_jour', 'photo'}))
+            'is_archived', 'date_creation', 'date_mise_a_jour', 'photo',
+            # D-ACAL-169 — un clone n'est jamais un second panneau par défaut.
+            'panneau_par_defaut'}))
 
     def test_clone_copie_tous_les_champs(self):
         clone = self._dupliquer()  # relu depuis la base
