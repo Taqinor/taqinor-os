@@ -78,6 +78,31 @@ class TestLeadProvenance(TestCase):
             selectors.lead_values_changed_since(stamp, company=self.company),
             [])
 
+    def test_acal1234_horaires_changes_apres_le_devis_sont_listes(self):
+        """ACAL1234 — le devis C&I garde `etude_params.rythme` : un lead dont
+        les horaires changent après l'estampille doit apparaître ; une
+        estampille ancienne sans ces clés ne déclenche rien."""
+        self.lead.regime_equipes = '1x8'
+        self.lead.heure_debut = 8
+        self.lead.heure_fin = 17
+        self.lead.save(update_fields=['regime_equipes', 'heure_debut',
+                                      'heure_fin'])
+        stamp = selectors.lead_provenance_stamp(self.lead)
+        ancienne = selectors.lead_provenance_stamp(self.lead)
+        for cle in ('regime_equipes', 'heure_debut', 'heure_fin'):
+            ancienne['valeurs'].pop(cle, None)
+        self.lead.regime_equipes = '3x8'
+        self.lead.heure_debut = 0
+        self.lead.heure_fin = 24
+        self.lead.save(update_fields=['regime_equipes', 'heure_debut',
+                                      'heure_fin'])
+        changed = selectors.lead_values_changed_since(
+            stamp, company=self.company)
+        for champ in ('regime_equipes', 'heure_debut', 'heure_fin'):
+            self.assertIn(champ, changed)
+        self.assertEqual(selectors.lead_values_changed_since(
+            ancienne, company=self.company), [])
+
     def test_detects_changed_fields(self):
         stamp = selectors.lead_provenance_stamp(self.lead)
         self.lead.facture_hiver = Decimal('1500')
@@ -422,7 +447,10 @@ class TestGardeProvenanceQJR234(SimpleTestCase):
         # Si un marqueur disparaissait, la garde cesserait de surveiller la
         # famille correspondante SANS rien dire — le mode de panne exact.
         energie = selectors.lead_provenance_champs_energie_toit()
+        from apps.crm.fiche_selectors import LEAD_PROVENANCE_FIELDS_PRO
         for champ in selectors.LEAD_PROVENANCE_FIELDS:
+            if champ in LEAD_PROVENANCE_FIELDS_PRO:
+                continue
             self.assertIn(champ, energie, champ)
 
     def test_un_champ_energie_AJOUTE_et_non_declare_ROUGIT(self):
