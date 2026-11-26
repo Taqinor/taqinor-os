@@ -39,6 +39,7 @@ import ViewSwitcher, { VIEWS } from './ViewSwitcher'
 import ArchivedSearchHint from './ArchivedSearchHint'
 import useDeepLinkedLead from './useDeepLinkedLead'
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
+import { RefusDeDroit, estRefusDeDroit } from '../../../ui/Forbidden'
 // VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) filtre la liste sur les
 // membres de cette équipe — filtre client-side, aucun endpoint nouveau.
 import { useEquipeMembreIds } from '../../../hooks/useEquipeMembreIds'
@@ -922,6 +923,14 @@ export default function LeadsPage() {
       leadsQueue={showForm ? filtered : null}
       onNavigateLead={showForm ? onOpenLead : null}
     />
+  )
+  // T4-X8-016 — un 403 dit le droit manquant (jamais « Erreur » + « Réessayer » : réessayer ne donne pas le droit) ; la fiche
+  // ouverte par son lien, elle, reste montée comme pour toute autre erreur de la liste.
+  if (error && estRefusDeDroit(error)) return (
+    <>
+      <RefusDeDroit objet="les leads" />
+      {fiche}
+    </>
   )
   if (error) return (
     <>
