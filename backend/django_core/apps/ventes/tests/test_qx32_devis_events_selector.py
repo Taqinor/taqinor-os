@@ -61,6 +61,21 @@ class Qx32DevisEventsTests(TestCase):
         signed = [e for e in events if e['kind'] == 'signed']
         self.assertEqual(signed[0]['at'], quand.isoformat())
 
+    def test_acal1235_signe_porte_le_nom_de_l_acteur(self):
+        """ACAL1235 — `user_nom` = nom de l'utilisateur de l'acceptation."""
+        from django.contrib.auth import get_user_model
+        from apps.ventes.activity import log_devis_acceptance
+        u = get_user_model().objects.create_user(
+            username='acal1235', password='x', company=self.company)
+
+        d = self._devis(
+            f'DEV-{MONTH}-QX3206', statut=Devis.Statut.ACCEPTE,
+            date_acceptation=timezone.localdate())
+        log_devis_acceptance(d, u, '', d.date_acceptation)
+        events = devis_events_for_lead(self.lead.id, self.company)
+        signed = [e for e in events if e['kind'] == 'signed'][0]
+        self.assertEqual(signed['user_nom'], 'acal1235')
+
     def test_opened_event_carries_engagement(self):
         d = self._devis(
             f'DEV-{MONTH}-QX3202', statut=Devis.Statut.ENVOYE,

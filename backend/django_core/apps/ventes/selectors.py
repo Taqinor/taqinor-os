@@ -720,7 +720,7 @@ def devis_events_for_lead(lead_id, company):
 
     # ACAL1233 — dernière activité d'acceptation par devis (plus récente d'abord).
     acceptations = {}
-    for act in (DevisActivity.objects
+    for act in (DevisActivity.objects.select_related('user')
                 .filter(devis__lead_id=lead_id, company=company,
                         field_label='Acceptation')
                 .order_by('devis_id', '-created_at')):
@@ -750,6 +750,10 @@ def devis_events_for_lead(lead_id, company):
                 'devis_id': devis.id, 'reference': ref, 'kind': 'signed',
                 'label': 'Devis signé',
                 'at': _iso(acte.created_at if acte else devis.date_acceptation),
+                # ACAL1235 — l'auteur de l'acceptation (nom d'utilisateur,
+                # comme le chatter) ; None sans acteur connu.
+                'user_nom': getattr(getattr(acte, 'user', None),
+                                    'username', None),
                 'engagement': None,
             })
         if devis.statut == 'refuse' and devis.date_refus is not None:

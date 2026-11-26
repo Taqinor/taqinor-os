@@ -716,7 +716,7 @@ def lead_jalons_devis(lead):
             'created_at': evenement.get('at'),
             'devis_id': evenement.get('devis_id'),
             'reference': reference,
-            'user_nom': None,
+            'user_nom': evenement.get('user_nom'),
             'pinned': False,
         })
     return lignes
