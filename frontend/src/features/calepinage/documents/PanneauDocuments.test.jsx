@@ -533,7 +533,7 @@ describe('PanneauDocuments — joindre la carte de chaleur (CALX302)', () => {
     await utilisateur.click(await screen.findByTestId('cal-doc-bouton-joindre-ombrage'))
 
     await waitFor(() => {
-      expect(screen.getByTestId('cal-doc-images')).toHaveTextContent('Aucune ombre saisie : rien à teinter')
+      expect(screen.getByTestId('cal-doc-images')).toHaveTextContent('Rien à teinter : saisissez une ombre ou un obstacle avec sa hauteur, et posez les panneaux.')
     })
     expect(calepinageApi.calepinages.deposerImageDocument).not.toHaveBeenCalled()
   })

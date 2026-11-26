@@ -77,7 +77,8 @@ export async function deposerCarteDeChaleur(calepinageId, builderApi, { scale = 
     ? { renderImageHd: (s) => api.renderCarteAccesHd(s) } : null
   const { rendu, echec } = await rendreImageHd(carte, scale, {
     motifEchec: 'Le rendu de la carte de chaleur a échoué sur ce navigateur.',
-    motifVide: 'Aucune ombre saisie : rien à teinter — saisissez une ombre ou un obstacle avec sa hauteur.',
+    // ACAL1621 — deux causes possibles (aucune ombre saisie, ou aucun panneau posé à teinter) : la phrase couvre les deux.
+    motifVide: 'Rien à teinter : saisissez une ombre ou un obstacle avec sa hauteur, et posez les panneaux.',
   })
   if (echec) return echec
   return deposerImageDocument(calepinageId, { genre: 'ombrage', blob: rendu.blob })
