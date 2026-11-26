@@ -17,6 +17,9 @@
  *   • un module posé à un emplacement NEUF prend le premier numéro libre AU-DELÀ du plus
  *     haut jamais attribué sur ce pan — jamais un numéro libéré par un retrait ;
  *   • un module reposé à un emplacement DÉJÀ numéroté retrouve SON numéro.
+ * INVARIANT (revue du lot 8, suite ACAL1720) : un numéro ENGAGÉ désigne UNE place pour toujours. Seul un
+ * enregistrement engage ; un document ne peut jamais engager un numéro que la mémoire engagée donne à une autre
+ * place, ni un numéro au plus égal au plafond engagé pour une place inconnue (`assainirNumerosPortes`).
  * Rien n'est attribué tant que la bascule « Numéroter » est éteinte (défaut) : le document
  * et le rendu restent alors ceux d'aujourd'hui, octet pour octet.
  *
@@ -101,14 +104,25 @@ export interface ResultatAttribution {
   modules: ModuleNumerote[];
   /** La convention à écrire dans le document, ou `null` si rien n'a été attribué. */
   numerotation: ConventionNumerotation | null;
-  /** La mémoire du pan APRÈS ce passage (inchangée en cas de refus). */
+  /** La mémoire du pan APRÈS ce passage, SI ce passage est enregistré (inchangée en cas de refus). */
   historique: HistoriqueNumerotation;
+  /** Numérotation stable (suite ACAL1720) — les numéros PROVISOIRES après ce passage : les
+   *  emplacements numérotés ici qui ne sont pas dans `historique` d'entrée (rien n'est engagé). */
+  provisoires: ReadonlyMap<string, number>;
   /** Le champ manquant qui a empêché l'attribution, ou `null`. */
   refus: RefusNumerotation | null;
 }
 
 /** Mémoire vide d'un pan qui n'a jamais été numéroté. */
 export const HISTORIQUE_VIDE: HistoriqueNumerotation = { numeros: new Map(), plafond: 0 };
+
+/** Numérotation stable (suite ACAL1720) — aucun numéro provisoire. */
+const AUCUN_PROVISOIRE: ReadonlyMap<string, number> = new Map();
+
+/** Numérotation stable (suite ACAL1720) — clé RACINE du document (`roof_layout_v2.schema.json`) : par pan, le plus
+ *  haut numéro JAMAIS attribué, écrite SEULEMENT quand il dépasse le plus haut `n` encore posé (modules du haut
+ *  retirés, pan supprimé). Sans elle, rouvrir le document redonnait ces numéros à d'autres modules. */
+export const CLE_PLAFONDS = 'plafondsNumerotation';
 
 // ════════════════════════════ Conventions de DESSIN ════════════════════════════
 // Aucune de ces valeurs ne décrit un module : elles disent seulement à partir de quand un
@@ -233,17 +247,25 @@ export function ordreAttribution<T extends ModulePose>(
  *    passage) : un numéro libéré par un retrait n'est JAMAIS redonné à un autre module ;
  *  • les modules sortent dans l'ORDRE D'ENTRÉE — `solarAccess` (CAL248) s'aligne sur cet
  *    ordre, le décaler contredirait le document.
+ *
+ * Numérotation stable (suite ACAL1720) — `provisoires` : les numéros montrés à l'écran depuis le dernier
+ * enregistrement, que RIEN de stocké ne désigne encore. Un emplacement provisoire GARDE le sien (retirer un
+ * module neuf ne renumérote pas ses voisins) ; un emplacement neuf prend le numéro qui suit le plus haut
+ * numéro VIVANT (engagé ou provisoire) — jamais au-delà des numéros d'une pose qui n'est plus à l'écran :
+ * faire glisser une inclinaison ne dépense donc plus rien. Seul `historique` est la mémoire engagée.
  */
 export function attribuerNumeros(
   poses: readonly ModulePose[],
   historique: HistoriqueNumerotation,
   convention: ConventionNumerotation,
   azimutDeg: number,
+  provisoires: ReadonlyMap<string, number> = AUCUN_PROVISOIRE,
 ): ResultatAttribution {
   const inchange = (refus: RefusNumerotation | null): ResultatAttribution => ({
     modules: poses.map((module) => ({ ...module })),
     numerotation: null,
     historique,
+    provisoires,
     refus,
   });
   if (!convention.sens) {
@@ -263,17 +285,40 @@ export function attribuerNumeros(
 
   const numeros = new Map(historique.numeros);
   let plafond = historique.plafond;
-  let suivant = Math.max(plafond + 1, typeof depart === 'number' ? depart : 1);
+  // Le premier numéro qu'un emplacement neuf peut prendre (le `depart` saisi au tout premier passage).
+  const base = Math.max(plafond, (typeof depart === 'number' ? depart : 1) - 1);
   const attribues = new Map<string, number>();
   const rangees = new Map<string, string>();
-  for (const { module, rangee } of ordreAttribution(poses, azimutDeg, convention.sens)) {
+  const ordre = ordreAttribution(poses, azimutDeg, convention.sens);
+  const pris = new Set<number>();
+  const retenir = (cle: string, numero: number) => {
+    attribues.set(cle, numero);
+    pris.add(numero);
+  };
+  // 1) les numéros ENGAGÉS, 2) les numéros PROVISOIRES encore libres (au-delà de `base`), dans l'ordre.
+  for (const { module, rangee } of ordre) {
     const cle = cleEmplacement(module.cx, module.cy);
     rangees.set(cle, rangee);
-    if (attribues.has(cle)) continue; // deux modules au même endroit : le premier fait foi
     const connu = numeros.get(cle);
-    const numero = typeof connu === 'number' ? connu : suivant++;
+    if (!attribues.has(cle) && typeof connu === 'number') retenir(cle, connu);
+  }
+  for (const { module } of ordre) {
+    const cle = cleEmplacement(module.cx, module.cy);
+    const provisoire = provisoires.get(cle);
+    if (!attribues.has(cle) && typeof provisoire === 'number' && provisoire > base && !pris.has(provisoire)) {
+      retenir(cle, provisoire);
+    }
+  }
+  // 3) les emplacements neufs : au-delà du plus haut numéro vivant (deux modules au même endroit : le premier fait foi).
+  let suivant = Math.max(base, ...pris) + 1;
+  const nouveauxProvisoires = new Map(provisoires);
+  for (const { module } of ordre) {
+    const cle = cleEmplacement(module.cx, module.cy);
+    if (!attribues.has(cle)) retenir(cle, suivant++);
+  }
+  for (const [cle, numero] of attribues) {
+    if (!historique.numeros.has(cle)) nouveauxProvisoires.set(cle, numero);
     numeros.set(cle, numero);
-    attribues.set(cle, numero);
     if (numero > plafond) plafond = numero;
   }
 
@@ -298,7 +343,7 @@ export function attribuerNumeros(
   if (convention.attribution) numerotation.attribution = convention.attribution;
   else if (historique.plafond < 1) numerotation.attribution = 'initiale';
 
-  return { modules, numerotation, historique: { numeros, plafond }, refus: null };
+  return { modules, numerotation, historique: { numeros, plafond }, provisoires: nouveauxProvisoires, refus: null };
 }
 
 /**
@@ -333,35 +378,62 @@ interface PanDocument {
 }
 interface DocumentNumerotable {
   zones?: PanDocument[];
+  [CLE_PLAFONDS]?: unknown;
 }
 
 export interface RegistreNumerotation {
-  /** Sème la mémoire depuis un document qui porte déjà des `n` (idempotent). */
+  /** Sème la mémoire ENGAGÉE depuis un document qui porte déjà des `n` (idempotent) — et, suite ACAL1720,
+   *  depuis sa clé racine `plafondsNumerotation` (plafond d'un pan dont les modules du haut sont retirés). */
   absorberDocument(document: unknown): void;
+  /** La mémoire ENGAGÉE du pan (document rouvert + enregistrements) — jamais un numéro provisoire. */
   historique(panId: string): HistoriqueNumerotation;
   /** La convention DÉJÀ en vigueur sur ce pan, ou `null`. */
   convention(panId: string): ConventionNumerotation | null;
-  /** Les modules numérotés du dernier passage sur ce pan (pour les étiquettes). */
+  /** Les modules numérotés du dernier passage sur ce pan (pour les étiquettes) — provisoires compris. */
   modules(panId: string): ModuleNumerote[];
-  /** Attribue et mémorise ; renvoie le résultat PUR de `attribuerNumeros`. */
+  /** Suite ACAL1720 — les modules ENGAGÉS du pan (document absorbé ou enregistré) : seuls réécrits par ACAL31. */
+  modulesEngages(panId: string): ModuleNumerote[];
+  /** Suite ACAL1720 — emplacement → numéro AFFICHÉ (engagé, ou provisoire du dernier passage). */
+  numerosAffiches(panId: string): ReadonlyMap<string, number>;
+  /** Suite ACAL1720 — emplacement → numéro PROVISOIRE (montré, rien de stocké ne le désigne). */
+  provisoires(panId: string): ReadonlyMap<string, number>;
+  /** Suite ACAL1720 — les pans dont la mémoire engagée est connue. */
+  pans(): string[];
+  /** Attribue et mémorise (ENGAGE) ; renvoie le résultat PUR de `attribuerNumeros`. */
   appliquer(
     panId: string,
     poses: readonly ModulePose[],
     convention: ConventionNumerotation,
     azimutDeg: number,
   ): ResultatAttribution;
+  /** Suite ACAL1720 — une COPIE indépendante (une sérialisation de lecture travaille dessus). */
+  cloner(): RegistreNumerotation;
+  /** Suite ACAL1720 — reprend d'une copie de LECTURE ce qu'elle a montré : ses modules affichés, et comme
+   *  PROVISOIRES les numéros qu'elle a attribués hors de la mémoire engagée. Rien n'est engagé. */
+  retenirLecture(copie: RegistreNumerotation): void;
   oublier(): void;
 }
 
-export function creerRegistre(): RegistreNumerotation {
-  const historiques = new Map<string, HistoriqueNumerotation>();
-  const conventions = new Map<string, ConventionNumerotation>();
-  const derniers = new Map<string, ModuleNumerote[]>();
+/** L'état d'un registre (suite ACAL1720 — recopié par `cloner`). */
+interface EtatRegistre {
+  historiques: Map<string, HistoriqueNumerotation>;
+  conventions: Map<string, ConventionNumerotation>;
+  derniers: Map<string, ModuleNumerote[]>;
+  engages: Map<string, ReadonlyMap<string, ModuleNumerote>>;
+  provisoires: Map<string, ReadonlyMap<string, number>>;
+}
 
-  const memoriser = (panId: string, modules: readonly ModuleNumerote[]) => {
+export function creerRegistre(depuis?: EtatRegistre): RegistreNumerotation {
+  const historiques = new Map(depuis?.historiques);
+  const conventions = new Map(depuis?.conventions);
+  const derniers = new Map(depuis?.derniers);
+  const engages = new Map(depuis?.engages);
+  const provisoires = new Map(depuis?.provisoires);
+
+  const memoriser = (panId: string, modules: readonly ModuleNumerote[], plafondLu = 0) => {
     const courant = historiques.get(panId) ?? HISTORIQUE_VIDE;
     const numeros = new Map(courant.numeros);
-    let plafond = courant.plafond;
+    let plafond = Math.max(courant.plafond, plafondLu);
     for (const module of modules) {
       const n = module.n;
       if (typeof n !== 'number' || !Number.isInteger(n) || n < 1) continue;
@@ -370,10 +442,26 @@ export function creerRegistre(): RegistreNumerotation {
     }
     historiques.set(panId, { numeros, plafond });
   };
+  /** Suite ACAL1720 — les modules ENGAGÉS, par emplacement, jamais purgés (comme `numeros`) : une pose ramenée à
+   *  celle du document relu retrouve ses `n` même après un passage ailleurs. */
+  const engager = (panId: string, modules: readonly ModuleNumerote[]) => {
+    const parPlace = new Map(engages.get(panId));
+    for (const module of modules) {
+      if (typeof module.n === 'number' || typeof module.rangee === 'string') parPlace.set(cleEmplacement(module.cx, module.cy), module);
+    }
+    engages.set(panId, parPlace);
+  };
 
-  return {
+  const registre: RegistreNumerotation = {
     absorberDocument(document: unknown) {
-      const zones = (document as DocumentNumerotable | null)?.zones;
+      const doc = document as DocumentNumerotable | null;
+      const plafondsLus = doc?.[CLE_PLAFONDS];
+      if (plafondsLus && typeof plafondsLus === 'object' && !Array.isArray(plafondsLus)) {
+        for (const [panId, valeur] of Object.entries(plafondsLus as Record<string, unknown>)) {
+          if (typeof valeur === 'number' && Number.isInteger(valeur) && valeur >= 1) memoriser(panId, [], valeur);
+        }
+      }
+      const zones = doc?.zones;
       if (!Array.isArray(zones)) return;
       for (const zone of zones) {
         const panId = zone?.id;
@@ -382,7 +470,9 @@ export function creerRegistre(): RegistreNumerotation {
         const numerotes = geometrie.panels.filter((module) => typeof module?.n === 'number');
         if (numerotes.length) {
           memoriser(panId, numerotes);
-          derniers.set(panId, geometrie.panels.map((module) => ({ ...module })));
+          const copie = geometrie.panels.map((module) => ({ ...module }));
+          derniers.set(panId, copie);
+          engager(panId, copie);
         }
         if (geometrie.numerotation && typeof geometrie.numerotation === 'object') {
           conventions.set(panId, { ...geometrie.numerotation });
@@ -398,20 +488,60 @@ export function creerRegistre(): RegistreNumerotation {
     modules(panId: string) {
       return derniers.get(panId) ?? [];
     },
+    modulesEngages(panId: string) {
+      return [...(engages.get(panId)?.values() ?? [])];
+    },
+    numerosAffiches(panId: string) {
+      const affiches = new Map((historiques.get(panId) ?? HISTORIQUE_VIDE).numeros);
+      for (const module of derniers.get(panId) ?? []) {
+        if (typeof module.n === 'number' && Number.isInteger(module.n) && module.n >= 1) {
+          affiches.set(cleEmplacement(module.cx, module.cy), module.n);
+        }
+      }
+      return affiches;
+    },
+    provisoires(panId: string) {
+      return provisoires.get(panId) ?? AUCUN_PROVISOIRE;
+    },
+    pans() {
+      return [...historiques.keys()];
+    },
     appliquer(panId, poses, convention, azimutDeg) {
-      const resultat = attribuerNumeros(poses, historiques.get(panId) ?? HISTORIQUE_VIDE, convention, azimutDeg);
+      const resultat = attribuerNumeros(
+        poses, historiques.get(panId) ?? HISTORIQUE_VIDE, convention, azimutDeg, provisoires.get(panId),
+      );
       if (resultat.refus) return resultat;
       historiques.set(panId, resultat.historique);
       derniers.set(panId, resultat.modules);
+      engager(panId, resultat.modules);
       if (resultat.numerotation) conventions.set(panId, resultat.numerotation);
       return resultat;
+    },
+    cloner() {
+      // Les valeurs (historiques, listes) ne sont jamais modifiées en place : copier les cartes suffit.
+      return creerRegistre({ historiques, conventions, derniers, engages, provisoires });
+    },
+    retenirLecture(copie: RegistreNumerotation) {
+      for (const panId of copie.pans()) {
+        const engagesPan = (historiques.get(panId) ?? HISTORIQUE_VIDE).numeros;
+        const suite = new Map(copie.provisoires(panId));
+        for (const [cle, numero] of copie.historique(panId).numeros) {
+          if (!engagesPan.has(cle)) suite.set(cle, numero);
+        }
+        if (suite.size) provisoires.set(panId, suite);
+        const affiches = copie.modules(panId);
+        if (affiches.length) derniers.set(panId, affiches.map((module) => ({ ...module })));
+      }
     },
     oublier() {
       historiques.clear();
       conventions.clear();
       derniers.clear();
+      engages.clear();
+      provisoires.clear();
     },
   };
+  return registre;
 }
 
 /** La mémoire de L'ATELIER (une seule par page). */
@@ -499,13 +629,108 @@ export function conventionDuPan(
  * Bascule ÉTEINTE (défaut) : le document ressort tel quel, octet pour octet — la mémoire
  * est seulement SEMÉE par ce qu'il porte déjà. Bascule allumée mais `depart`/`sens` non
  * saisis : rien n'est écrit non plus, et `refus` nomme le champ manquant.
+ *
+ * Numérotation stable (suite ACAL1720) — SEUL un enregistrement (`engager: true`) engage des numéros :
+ * toute autre sérialisation (sondage « modifié ? » de 1,5 s, capture du pan quitté, accès solaire) travaille
+ * sur une COPIE du registre et n'en garde que ce qu'elle a montré (numéros provisoires, jamais engagés) —
+ * glisser une inclinaison ne dépense plus de numéros. Les deux passages rendent les MÊMES numéros pour la
+ * même pose (l'enregistrement engage ce que l'écran montrait). Puis la clé racine `plafondsNumerotation`
+ * garde le plafond d'un pan dont les modules du haut sont retirés : un numéro n'est jamais redonné, même
+ * après réouverture. Elle n'est écrite que dans ce cas — un document qui ne la porte pas ressort identique.
  */
 export function numeroterDocument(
   document: unknown,
   etat: SaisieNumerotation = saisie,
   registre: RegistreNumerotation = registreAtelier,
-  options: { pansPaves?: ReadonlySet<string> } = {},
+  options: { pansPaves?: ReadonlySet<string>; engager?: boolean } = {},
 ): RefusNumerotation | null {
+  const travail = options.engager === true ? registre : registre.cloner();
+  const refus = numeroterSur(document, etat, travail, options.pansPaves);
+  ecrirePlafonds(document, travail);
+  if (travail !== registre) registre.retenirLecture(travail);
+  return refus;
+}
+
+/** Suite ACAL1720 — la clé racine `plafondsNumerotation` : par pan, le plafond ENGAGÉ quand il dépasse le plus
+ *  haut `n` encore posé (modules du haut retirés, ou pan supprimé) ; aucun pan dans ce cas ⇒ aucune clé. Les
+ *  numéros provisoires sont tous posés : ils ne la font jamais apparaître (lecture et enregistrement concordent). */
+function ecrirePlafonds(document: unknown, registre: RegistreNumerotation): void {
+  if (!document || typeof document !== 'object') return;
+  const doc = document as DocumentNumerotable & Record<string, unknown>;
+  const plusHaut = new Map<string, number>();
+  for (const zone of Array.isArray(doc.zones) ? doc.zones : []) {
+    if (!zone?.id) continue;
+    let haut = plusHaut.get(zone.id) ?? 0;
+    const panneaux = zone.geometry?.panels;
+    for (const module of Array.isArray(panneaux) ? panneaux : []) {
+      if (typeof module?.n === 'number' && Number.isInteger(module.n) && module.n > haut) haut = module.n;
+    }
+    plusHaut.set(zone.id, haut);
+  }
+  const plafonds: Record<string, number> = {};
+  for (const panId of registre.pans().sort()) {
+    const plafond = registre.historique(panId).plafond;
+    if (plafond > (plusHaut.get(panId) ?? 0)) plafonds[panId] = plafond;
+  }
+  if (Object.keys(plafonds).length) doc[CLE_PLAFONDS] = plafonds;
+  else delete doc[CLE_PLAFONDS];
+}
+
+/**
+ * Revue du lot 8 (suite ACAL1720) — INVARIANT : un numéro ENGAGÉ désigne UNE place pour toujours. Un document
+ * ne peut donc jamais engager un numéro que la mémoire engagée donne à une AUTRE place, ni un numéro au plus
+ * égal au plafond engagé pour une place qu'elle ne connaît pas (un numéro montré seulement à titre provisoire,
+ * puis redonné et engagé ailleurs, revenait par une géométrie capturée ou une photo d'annulation).
+ * Un `n` porté par le document n'est gardé que :
+ *   • à la place où la mémoire engagée le donne ;
+ *   • ou à une place qu'elle ne connaît pas, au-delà de son plafond, et une seule fois par pan.
+ * Sinon il est retiré et le pan est renuméroté (ajouté aux pans pavés). Appliqué aux DEUX passages (lecture et
+ * enregistrement) : l'écran montre ce que l'enregistrement engagera. Rend les pans pavés, complétés.
+ */
+function assainirNumerosPortes(
+  document: unknown,
+  registre: RegistreNumerotation,
+  pansPaves: ReadonlySet<string> | undefined,
+): ReadonlySet<string> | undefined {
+  const zones = (document as DocumentNumerotable | null)?.zones;
+  if (!Array.isArray(zones)) return pansPaves;
+  let paves = pansPaves;
+  for (const zone of zones) {
+    const panId = zone?.id;
+    const panneaux = zone?.geometry?.panels;
+    if (!panId || !Array.isArray(panneaux)) continue;
+    const engage = registre.historique(panId);
+    const gardes = new Set<number>();
+    let retire = false;
+    const assainis = panneaux.map((module) => {
+      const n = module?.n;
+      if (typeof n !== 'number') return module;
+      const connu = engage.numeros.get(cleEmplacement(module.cx, module.cy));
+      const valide = Number.isInteger(n) && n >= 1 && !gardes.has(n)
+        && (connu === n || (connu === undefined && n > engage.plafond));
+      if (valide) {
+        gardes.add(n);
+        return module;
+      }
+      retire = true;
+      const sansNumero: ModuleNumerote = { ...module };
+      delete sansNumero.n;
+      return sansNumero;
+    });
+    if (!retire) continue;
+    zone.geometry!.panels = assainis;
+    paves = new Set([...(paves ?? []), panId]);
+  }
+  return paves;
+}
+
+function numeroterSur(
+  document: unknown,
+  etat: SaisieNumerotation,
+  registre: RegistreNumerotation,
+  pansPaves: ReadonlySet<string> | undefined,
+): RefusNumerotation | null {
+  pansPaves = assainirNumerosPortes(document, registre, pansPaves); // revue lot 8 — jamais deux places pour un numéro
   registre.absorberDocument(document);
   if (!etat.actif) {
     // ACAL31 — bascule éteinte : LECTURE SEULE. Les numéros déjà absorbés (document rouvert)
@@ -516,7 +741,6 @@ export function numeroterDocument(
     // repavage, désigné par l'appelant) reçoit ses numéros sans geste de numérotation, avec
     // la convention par défaut ; un module gardé garde son `n`. Un document rouvert et
     // enregistré sans geste n'est jamais numéroté ici (aucun pan pavé).
-    const pansPaves = options.pansPaves;
     if (pansPaves && pansPaves.size) {
       const zones = (document as DocumentNumerotable | null)?.zones;
       if (Array.isArray(zones)) {
@@ -575,7 +799,7 @@ function reecrireNumerosAbsorbes(document: unknown, registre: RegistreNumerotati
     const panId = zone?.id;
     const geometrie = zone?.geometry;
     if (!panId || !geometrie || !Array.isArray(geometrie.panels)) continue;
-    const absorbes = registre.modules(panId);
+    const absorbes = registre.modulesEngages(panId); // suite ACAL1720 — jamais un numéro provisoire
     if (absorbes.length) {
       const parPlace = new Map(absorbes.map((m) => [cleEmplacement(m.cx, m.cy), m]));
       geometrie.panels = geometrie.panels.map((p) => {
@@ -759,7 +983,7 @@ export function poserEtiquettesNumeros(demande: DemandeEtiquettes3d): void {
   const registre = demande.registre ?? registreAtelier;
   const aPoser = etiquettes3d(
     demande.modules,
-    registre.historique(demande.panId).numeros,
+    registre.numerosAffiches(demande.panId), // suite ACAL1720 — provisoires compris (ils sont au document montré)
     registre.convention(demande.panId),
     demande.zoom,
   );

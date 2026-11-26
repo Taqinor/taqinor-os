@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { panneauxDuModule } from './atelier/cibleAuModule'
+import { libelleSourceCible } from './atelier/contexteAtelier' // T4-X8-012 (une cible) — UNE table de mots pour la source de la cible
 import { createPortal } from 'react-dom'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
@@ -78,12 +79,6 @@ function valeur(brut, suffixe = '') {
   return `${brut}${suffixe}`
 }
 
-/** ACAL406 — la source de la cible en mots ; une valeur inconnue reste telle quelle. */
-const LIBELLES_SOURCE_CIBLE = {
-  devis: 'Devis lié',
-  lead: 'Taille souhaitée sur la fiche du lead',
-  factures: 'Factures du lead',
-}
 
 /* ============================================================================
    ACAL42 — LE BANDEAU DE LECTURE SEULE : LE MOTIF DU SERVEUR, AUCUNE PORTE.
@@ -286,7 +281,7 @@ export default function AtelierPanneaux({
           <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Cible — puissance</dt>
         </div>
         <div>
-          <dd className="fig text-lg text-foreground">{valeur(LIBELLES_SOURCE_CIBLE[cible?.source] ?? cible?.source)}</dd>
+          <dd className="fig text-lg text-foreground">{valeur(libelleSourceCible(cible?.source))}</dd>
           <dt className="text-xs font-semibold uppercase tracking-wide mt-0.5 text-muted-foreground">Source de la cible</dt>
         </div>
         <div>

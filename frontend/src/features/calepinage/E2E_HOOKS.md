@@ -192,6 +192,7 @@ retiré plus un hook ajouté.
 | `cal-fiche-nom-enregistrer` | fiche nom enregistrer. |
 | `cal-fiche-nom-erreur` | fiche nom message d'erreur. |
 | `cal-fiche-restaurer` | fiche restaurer. |
+| `cal-fiche-responsable-sans-acces` | fiche — le responsable ne peut pas ouvrir ce calepinage (donnée d'avant le lot 8, T4-X3-016). |
 | `cal-fiche-custom-data-saisie` | fiche — saisie des champs personnalisés du calepinage (ACAL294). |
 | `cal-fiche-custom-data-enregistrer` | fiche — bouton d'enregistrement des champs personnalisés (ACAL294). |
 | `cal-fiche-custom_data-erreur` | fiche — refus `custom_data` du serveur, sous la saisie (ACAL294). |
@@ -458,6 +459,8 @@ retiré plus un hook ajouté.
 | `cal-variante-dupliquer` | variante dupliquer. |
 | `cal-simulation-a-refaire` | Expert, ligne de provenance de la production : « Simulation à refaire : le toit a changé depuis le dernier calcul. » et le lien pour la relancer (T4-X2-002). |
 | `cal-variante-refus` | Comparer les variantes : refus de « Retenir », dit à côté du bouton cliqué, avec le lien vers l'étape Électrique (T4-X9-010). |
+| `cal-variante-retenue-sans-simulation` | Comparer les variantes : après « Retenir » d'une variante jamais simulée, la phrase qui dit que sa production n'est qu'une estimation et que la simulation est à refaire (R6-N2). |
+| `cal-variante-sans-simulation` | Comparer les variantes : sous « Retenir » d'une variante jamais simulée, l'avertissement dit AVANT le geste (R6-N2). |
 | `cal-variante-formulaire` | variante formulaire. |
 | `cal-variante-nom` | variante nom. |
 | `cal-variante-nom-erreur` | variante nom message d'erreur. |
@@ -1029,6 +1032,7 @@ retiré plus un hook ajouté.
 | `cal-toit-obstacles` | étape Toit : liste des obstacles et « + Ajouter ». |
 | `cal-toit-soleil` | étape Toit : bloc « Soleil » (jour et heure du soleil du constructeur) à droite de la barre d’outils. |
 | `cal-panneaux-module` | étape Panneaux : carte du modèle de panneau. |
+| `cal-pan-par-defaut` | étape Panneaux : pastille « Par défaut » du panneau par défaut de la société dans la liste des modèles (D-ACAL-169). |
 | `cal-panneaux-option-facture` | étape Panneaux : option « Couvrir la facture ». |
 | `cal-panneaux-actualiser-conception` | étape Panneaux : « Actualiser » pendant le premier calcul de la conception du lead (relecture E5 B1). |
 | `cal-panneaux-option-max` | étape Panneaux : option « Le plus de panneaux ». |
@@ -1046,6 +1050,7 @@ retiré plus un hook ajouté.
 | `cal-elec-onduleur-choix` | étape Électrique, barre de la carte : l’onduleur visé quand le document en porte plusieurs (ACAL1317). |
 | `cal-elec-onduleur-message` | étape Électrique, barre de la carte : ce que le geste sur l’onduleur a fait (tracé suivi, tracé enregistré décalé, refus — ACAL1317). |
 | `cal-elec-cable-provenance` | étape Électrique, pastille de carte : sous « Câble côté panneaux », la provenance du tracé (« tracé proposé le long des rangées (position de l’onduleur) » — ACAL1317). |
+| `cal-elec-cable-simulation` | étape Électrique, pastille de carte : sous « Câble côté panneaux », la longueur DC que la simulation compte (W1), ses parts et leur source (`longueurs.source_dc` de `GET resultat/` — liaison DC tracée, suite ACAL1317) ; absente tant qu’un geste sur l’onduleur n’est pas enregistré et relu. |
 | `cal-elec-batterie` | étape Électrique : sélecteur de batterie (seulement quand l’onduleur désigné est un hybride, D-ACAL-157). |
 | `cal-elec-batterie-du-devis` | étape Électrique : « le schéma montre la batterie du devis » quand aucune batterie n’est désignée ici. |
 | `cal-elec-batterie-packs` | étape Électrique : le nombre de batteries désignées (pas − / +). |

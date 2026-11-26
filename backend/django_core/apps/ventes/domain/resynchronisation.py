@@ -284,6 +284,13 @@ def _designations(verrou, intention, layout, veut_batterie, avertissements):
     return appliquer_designations_a_la_resynchro(verrou, intention, layout, veut_batterie, avertissements)
 
 
+def _option_gardee(verrou, intention, lignes, veut_batterie, avertissements):
+    """Lot 8, relecture finale — porte de :func:`creation_calepinage.option_batterie_gardee`."""
+    from apps.ventes.domain.creation_calepinage import option_batterie_gardee
+
+    return option_batterie_gardee(verrou, intention, lignes, veut_batterie, avertissements)
+
+
 def reconcilier(devis, intention):
     """QJR97 — L'ÉTAPE « RÉCONCILIER » du pipeline (``MODE_RECONCILIER``).
 
@@ -537,6 +544,9 @@ def reconcilier(devis, intention):
             }
 
         lignes_modifiees = designations['modifiees']
+        # Lot 8, relecture finale — une resynchro qui n'applique pas les désignations ne bascule jamais
+        # l'option d'un devis né « avec batterie » par un hybride désigné (D-ACAL-159).
+        veut_batterie = _option_gardee(verrou, intention, lignes, veut_batterie, avertissements)
         # F8 — vrai UNIQUEMENT quand le compte de panneaux a réellement bougé
         # (ligne créée, ou ligne dominante réajustée) : c'est ce qui déclenche
         # la resynchro des câbles plus bas, jamais un layout qui ne change

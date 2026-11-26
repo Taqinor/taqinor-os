@@ -854,8 +854,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         except DevisRefuse as refus:
             return Response(_refus_devis(refus),
                             status=_statut_refus_devis(refus))
-        from apps.ventes.selectors_assistant import lit_les_devis
-        from apps.ventes.services import avertissements_sans_montant
+        from ..services.devis import avertissements_sans_montant, lit_les_devis
         if not lit_les_devis(request.user):  # D-ACAL-106/165 — aucun montant de vente à qui ne lit pas les devis
             resultat = dict(resultat, avertissements=avertissements_sans_montant(resultat.get('avertissements')))
         return Response(resultat)
@@ -1647,6 +1646,8 @@ def detail_calepinage(calepinage, request=None):
         'modifie_le': _horodatage(getattr(calepinage, 'updated_at', None)),
         'cree_par': _personne(getattr(calepinage, 'cree_par', None)),
         'responsable': _responsable(calepinage, company),
+        # T4-X3-016 — le responsable ne peut pas l'ouvrir (donnée d'avant lot 8) : la fiche le dit.
+        'responsable_sans_acces': cal_selectors.responsable_sans_acces(calepinage),
         'lead': _lead(calepinage, company),
         'client': _client(calepinage),
         'devis': _devis(devis_lie),

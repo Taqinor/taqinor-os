@@ -112,7 +112,7 @@ def _ecarts(calepinage, options, decision_onduleur=None, *, brouillon=False, sou
 
 def _suit_les_designations(devis):
     """Le brouillon rendu est-il né sous la règle des désignations (lecture ``ventes``) ?"""
-    from apps.ventes.selectors_calepinage import devis_suit_les_designations
+    from .devis import devis_suit_les_designations
 
     return devis_suit_les_designations(devis)
 
@@ -131,7 +131,7 @@ def _role_de_ligne(ligne):
     ``core.product_roles.role_effectif``, celui de ventes injecté (``ventes.selectors``)."""
     from core.product_roles import role_effectif
 
-    from apps.ventes.selectors import classer_produit_nom
+    from .equipements import classer_produit_nom
 
     declare = ligne.role_devis or getattr(getattr(ligne, 'produit', None), 'role_devis', None)
     return role_effectif(declare, None, ligne.designation or '', classer_nom=classer_produit_nom)[0]

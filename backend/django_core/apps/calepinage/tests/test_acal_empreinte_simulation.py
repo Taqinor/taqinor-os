@@ -226,6 +226,18 @@ class EmpreinteSimulationTest(SimpleTestCase):
             self.assertFalse(servi['simulation_perimee'])
             self.assertTrue(_simuler(cas)['deja_calcule'])
 
+    def test_plafonds_de_numerotation_ne_perime_pas(self):
+        """Numérotation stable (suite ACAL1720) — `plafondsNumerotation` (le
+        plus haut numéro jamais attribué par pan) est une tenue de compte : la
+        simulation reste fraîche et n'est pas relancée."""
+        pivot = _pivot_simule()
+        _document(pivot, lambda d: d.update(plafondsNumerotation={'z1': 99}))
+
+        servi = _servi(pivot)
+
+        self.assertFalse(servi['simulation_perimee'])
+        self.assertTrue(_simuler(pivot)['deja_calcule'])
+
     def test_panne_tmy_ne_perime_pas(self):
         def tmy_disponible(lat, lon):
             return {'temp_min_c': 2.0, 'temp_max_c': 38.0,

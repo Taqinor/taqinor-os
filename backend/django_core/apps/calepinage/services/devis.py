@@ -162,6 +162,43 @@ def _refuser_autre_marche(devis, lead):
         raise DevisRefuse(motif, champ='devis', statut=409)
 
 
+def lit_les_devis(user):
+    """Lot 8 (D-ACAL-106) — LA garde de lecture d'un devis (``apps.ventes.selectors_assistant.
+    lit_les_devis``), passée par ce module déjà importateur de ventes (cliquet
+    ``test_imports_croises_ventes``)."""
+    from apps.ventes.selectors_assistant import lit_les_devis as garde
+
+    return garde(user)
+
+
+def avertissements_sans_montant(avertissements):
+    """Revue du 26/11 (D-ACAL-106/165) — les avertissements d'une resynchronisation sans montant de vente
+    (``apps.ventes.services.avertissements_sans_montant``), passés par ce module déjà importateur de
+    ventes (cliquet ``test_imports_croises_ventes``)."""
+    from apps.ventes.services import avertissements_sans_montant as sans_montant
+
+    return sans_montant(avertissements)
+
+
+def _apercu_de_ventes(devis, layout, user, designations):
+    """ACAL1320 — la resynchronisation jouée puis annulée par ventes (``apercu_de_resynchronisation``) et
+    son refus de statut (``SyncLayoutError``), passés par ce module (même cliquet)."""
+    from apps.ventes.services import SyncLayoutError, apercu_de_resynchronisation
+
+    try:
+        return apercu_de_resynchronisation(devis, layout, user, designations=designations), None
+    except SyncLayoutError as refus:
+        return None, refus
+
+
+def devis_suit_les_designations(devis):
+    """Relecture D-ACAL-148 round 4 — le devis est-il né sous la règle des désignations
+    (``apps.ventes.selectors_calepinage.devis_suit_les_designations``) ? Même cliquet."""
+    from apps.ventes.selectors_calepinage import devis_suit_les_designations as suit
+
+    return suit(devis)
+
+
 def _refus_deja_rattache(lie):
     """ACAL89 — 409 NOMMÉ ``{detail, devis, reference, revision_possible}``.
 

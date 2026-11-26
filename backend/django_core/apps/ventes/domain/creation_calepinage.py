@@ -522,7 +522,14 @@ def _banque_automatique(intention, produit):
     """Point 4 — le nombre de modules que la RÈGLE AUTOMATIQUE poserait pour cette même batterie :
     la vraie composition « avec », sans banque imposée, calibre épinglé sur celui de la batterie
     (``batterie_module_kwh``, le pin BATHOMO de la composition). ``None`` sans calibre lisible ou
-    sans batterie composée. Lecture seule."""
+    sans batterie composée. Lecture seule.
+
+    Pré-CI lot 8 — la règle est jugée sur CETTE batterie seule : le vivier de la composition préfère
+    les Dyness (et suit la marque de batterie épinglée), si bien qu'une autre batterie désignée n'y
+    entrait jamais, le pin restait sans correspondance et l'écart n'était pas dit. Le catalogue de
+    l'essai ne garde donc, comme batterie, que la désignée ; tout le reste (cible, onduleur, plafond)
+    est la vraie composition."""
+    from apps.ventes.domain.etape_composer import reglages_de_composition
     from apps.ventes.domain.kwh_lecture import _parse_kwh
     from apps.ventes.domain.pipeline import intention_de_composition
 
@@ -532,7 +539,11 @@ def _banque_automatique(intention, produit):
     cible = replace(intention.cible, batterie_imposee=None)
     essai = intention_de_composition(replace(intention, scenario=COMPOSITION_AVEC, cible=cible), cible,
                                      avertissements=[], devis=None)
-    lignes = composer(replace(essai, batterie_module_kwh=calibre))
+    base = reglages_de_composition(essai.company, essai.gamme_nom_devis)
+    seule = replace(base, marques={r: m for r, m in (base.marques or {}).items() if r != 'batterie'},
+                    catalogue=[p for p in base.catalogue if getattr(p, 'pk', None) == produit.pk
+                               or classer_produit(getattr(p, 'nom', '') or '') != 'batterie'])
+    lignes = composer(replace(essai, batterie_module_kwh=calibre, reglages=seule))
     roles = list(getattr(lignes, 'roles', ()) or ())
     return sum(int(ligne.quantite) for role, ligne in zip(roles, lignes) if role == 'batterie') or None
 
@@ -712,7 +723,7 @@ def _poser_produit(ligne, produit, famille, avertissements, *, nombre=None):
     """Pose ``produit`` sur une ligne (produit, désignation, prix catalogue, rôle, et le nombre
     désigné hors quantité saisie à la main) ; un prix saisi à la main n'est jamais écrasé
     (abstention DITE, comme ``reconcilier._permuter_onduleur``). Rend vrai si la ligne a bougé."""
-    from apps.ventes.domain.lignes import poser_prix_unitaire
+    from apps.ventes.domain.lignes import porter_quantite, poser_prix_unitaire
 
     if getattr(ligne, 'prix_manuel', False) and ligne.produit_id != produit.pk:
         avertissements.append(MSG_RESYNC_PRIX_MANUEL % (ligne.designation or 'ligne sans désignation',
@@ -726,11 +737,11 @@ def _poser_produit(ligne, produit, famille, avertissements, *, nombre=None):
     if getattr(ligne, 'role_devis', '') and ligne.role_devis != famille:
         ligne.role_devis = famille
         champs.append('role_devis')
-    if nombre and not getattr(ligne, 'quantite_manuelle', False) and ligne.quantite != Decimal(nombre):
-        ligne.quantite = Decimal(nombre)
-        champs.append('quantite')
     if champs:
         ligne.save(update_fields=champs)
+    if nombre and not getattr(ligne, 'quantite_manuelle', False) and ligne.quantite != Decimal(nombre):
+        porter_quantite(ligne, Decimal(nombre))  # QJR6 : l'écrivain sanctionné d'une quantité recalculée
+        return True
     return bool(champs)
 
 
@@ -783,6 +794,50 @@ def _resynchro_inchangee(veut_batterie, stocke):
     return veut_batterie, {'modifiees': 0, 'a_ecrire': False, 'marqueur': stocke}
 
 
+def designations_appliquees(verrou, intention):
+    """Relecture, point 1 — la règle en UN prédicat : la resynchronisation applique les désignations
+    seulement quand elles viennent du calepinage (:data:`SOURCES_DESIGNATIONS`) à un devis NÉ sous la
+    règle (:func:`suit_les_designations`) : un BROUILLON (toute source du calepinage), ou — ACAL1320
+    (D-ACAL-73 = corriger_dire) — un ENVOYÉ seulement par une resynchronisation CONFIRMÉE sur la carte
+    d'aperçu (:data:`SOURCE_DESIGNATIONS_CONFIRMEES`). Aucun autre statut (:data:`STATUTS_CORRIGES_SUR_PLACE`)."""
+    source = getattr(getattr(intention, 'cible', None), 'source', '')
+    statut = getattr(verrou, 'statut', '')
+    if source not in SOURCES_DESIGNATIONS or statut not in STATUTS_CORRIGES_SUR_PLACE \
+            or marqueur_stocke(verrou) is None:
+        return False
+    return statut == 'brouillon' or source == SOURCE_DESIGNATIONS_CONFIRMEES
+
+
+#: Lot 8, relecture finale — la phrase de :func:`option_batterie_gardee`, vraie dans l'état.
+MSG_RESYNC_OPTION_GARDEE = ('Le devis garde l’onduleur hybride « %s » et sa batterie, posés à sa création par la '
+                            'désignation de l’étape Électrique : la resynchronisation ne retire ni l’un ni l’autre.')
+
+
+def option_batterie_gardee(verrou, intention, lignes, veut_batterie, avertissements):
+    """Lot 8, relecture finale — L'INVARIANT : une resynchronisation qui n'applique PAS les désignations
+    (:func:`designations_appliquees` faux : devis envoyé, brouillon d'avant la règle, resynchro hors
+    calepinage — apply-taille, brouillon libre rattaché) ne bascule JAMAIS l'option batterie d'un devis
+    né « avec batterie » par un hybride désigné (D-ACAL-159) : le marqueur nomme un onduleur qu'une
+    ligne d'hybride porte encore et le devis porte une batterie ⇒ ``veut_batterie`` reste vrai (aucune
+    batterie retirée, aucun onduleur permuté) et la phrase est dite. Seul un brouillon né sous la règle,
+    dont la désignation change, change son option. Un layout qui veut déjà une batterie, un devis sans
+    marqueur ou sans onduleur désigné, un hybride changé à la main : ``veut_batterie`` inchangé, rien
+    dit (résultat d'hier). ``lignes`` : les lignes produit que ``reconcilier`` vient de lire."""
+    if veut_batterie or designations_appliquees(verrou, intention):
+        return veut_batterie
+    designe = (marqueur_stocke(verrou) or {}).get('onduleur')
+    if not designe:
+        return veut_batterie
+    from apps.ventes.domain.catalogue import _is_battery, _is_hybrid_inverter
+    from apps.ventes.domain.lignes import _classe_ligne
+
+    hybride = next((li for li in lignes if li.produit_id == designe and _classe_ligne(li, _is_hybrid_inverter)), None)
+    if hybride is None or not any(_classe_ligne(li, _is_battery) for li in lignes):
+        return veut_batterie
+    avertissements.append(MSG_RESYNC_OPTION_GARDEE % (hybride.designation or ''))
+    return True
+
+
 def appliquer_designations_a_la_resynchro(verrou, intention, layout, veut_batterie, avertissements):
     """D-ACAL-148 / 159 / 164 (relecture, A) — « Resynchroniser » applique la MÊME décision que la
     création (:func:`onduleur_designe_pour_le_devis`, :func:`juger_la_batterie`,
@@ -809,18 +864,13 @@ def appliquer_designations_a_la_resynchro(verrou, intention, layout, veut_batter
     court-circuit « inchangé » de ``reconcilier`` ; ``marqueur`` : le :data:`CLE_DESIGNATIONS` à ranger."""
     stocke = marqueur_stocke(verrou)
     cible = getattr(intention, 'cible', None)
-    source = getattr(cible, 'source', '')
-    if source not in SOURCES_DESIGNATIONS:
-        return _resynchro_inchangee(veut_batterie, stocke)
-    quoi = _quoi_est_designe(cible)
-    statut = getattr(verrou, 'statut', '')
-    # Revue du 26/11 (D-ACAL-73) — un ENVOYÉ ne suit la désignation que sur une resynchronisation
-    # CONFIRMÉE sur l'aperçu ; autrement (enregistrer, sync-layout, assistant…) : rien, une phrase vraie.
-    envoye_sans_apercu = statut == 'envoye' and source != SOURCE_DESIGNATIONS_CONFIRMEES
-    if stocke is None or statut not in STATUTS_CORRIGES_SUR_PLACE or envoye_sans_apercu:
-        if quoi and stocke is None:  # un autre statut n'arrive pas ici (``reconcilier`` le refuse avant)
+    if not designations_appliquees(verrou, intention):
+        # La phrase vraie de ce qui n'a PAS été fait (seulement quand le calepinage désigne quelque chose) :
+        # devis d'avant la règle (sans marqueur) ; envoyé sans la carte d'aperçu confirmée (D-ACAL-73).
+        quoi = _quoi_est_designe(cible) if getattr(cible, 'source', '') in SOURCES_DESIGNATIONS else None
+        if quoi and stocke is None:
             avertissements.append(MSG_RESYNC_AVANT_LA_REGLE % quoi)
-        elif quoi and envoye_sans_apercu:
+        elif quoi and getattr(verrou, 'statut', '') == 'envoye':
             avertissements.append(MSG_RESYNC_ENVOYE_SANS_APERCU % quoi)
         return _resynchro_inchangee(veut_batterie, stocke)
     from apps.ventes.domain.lignes import _lignes_produit

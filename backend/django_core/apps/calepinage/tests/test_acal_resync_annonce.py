@@ -722,7 +722,9 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         phrase = ('Le devis passe en « avec batterie » : l’onduleur désigné « Onduleur hybride Deye 5kW '
                   'Monophasé » est un hybride.')
         self.assertIn(phrase, genere['avertissements'], genere)
-        self.assertEqual(apercu['ecarts'], [{'champ': 'onduleur_produit', 'message': phrase}])  # même phrase
+        self.assertEqual(_materiel(apercu), [{'champ': 'onduleur_produit', 'message': phrase}])  # même phrase
+        # ``TOIT`` est un toit plat sans tables : la phrase des 20° supposés (D-ACAL-168) y est VRAIE, seule à côté.
+        self.assertEqual([e['champ'] for e in apercu['ecarts']], ['onduleur_produit', 'geometry.tiltDeg'])
         self.assertEqual([o['onduleur'] for o in apercu['options']], ['Onduleur hybride Deye 5kW Monophasé'])
         self.assertEqual(onduleurs, {None: ('Onduleur hybride Deye 5kW Monophasé', 'onduleur_hybride')})
         self.assertTrue(Devis.objects.get(pk=genere['devis']).lignes.filter(role_devis='batterie').exists())
@@ -1000,6 +1002,142 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         data, _o, batteries = self._resynchroniser()
         self.assertTrue(batteries)
         self.assertFalse(any('Le devis passe en « avec batterie »' in m for m in data['avertissements']), data)
+
+    # ── Lot 8, relecture finale — un devis né « avec batterie » par l'hybride désigné ne la perd pas ──
+    HYBRIDE = 'Onduleur hybride Deye 5kW Monophasé'
+
+    def _ne_d_acal_159(self):
+        """« Générer » sur une pose « sans » avec l'hybride désigné : le devis né « avec batterie »,
+        et son état (onduleurs, batteries, panneaux) relu de la base."""
+        from apps.ventes.models import Devis
+
+        self._nouvelle_pose()
+        self._designer(self.HYBRIDE, nombre_onduleurs=1)
+        _apercu, genere, _o = self._apercu_puis_generation()
+        devis = Devis.objects.get(pk=genere['devis'])
+        etat = self._etat(devis)
+        self.assertEqual((etat['onduleurs'], etat['panneaux']), ([self.HYBRIDE], 10))
+        self.assertTrue(etat['batteries'])
+        return devis, etat
+
+    def _etat(self, devis):
+        from apps.ventes.services import _is_panel
+
+        lignes = list(type(devis).objects.get(pk=devis.pk).lignes.all())
+        return {'onduleurs': sorted(li.designation for li in lignes if 'nduleur' in li.designation),
+                'batteries': sorted((li.designation, int(li.quantite)) for li in lignes if li.role_devis == 'batterie'),
+                'panneaux': sum(int(li.quantite) for li in lignes if _is_panel(li.designation or ''))}
+
+    def _toit_de(self, panneaux):
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = panneaux
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        self.calepinage.refresh_from_db()
+
+    def test_relecture_finale_devis_envoye_ne_d_acal_159_garde_hybride_et_batterie(self):
+        """Pose « sans », hybride désigné → devis « avec batterie » → ENVOYÉ → le toit gagne un panneau →
+        « Resynchroniser le devis » : le panneau suit le toit, l'hybride et la batterie (même quantité)
+        restent, et la phrase dit ce qui s'est passé. Mutant « sans option_batterie_gardee » ⇒ la batterie
+        est retirée et l'hybride permuté en réseau ⇒ rouge."""
+        from apps.ventes.domain.creation_calepinage import MSG_RESYNC_ENVOYE_SANS_APERCU, MSG_RESYNC_OPTION_GARDEE
+        from apps.ventes.models import Devis
+
+        devis, avant = self._ne_d_acal_159()
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye')
+        self._toit_de(11)
+        data, _o, _b = self._resynchroniser()
+        apres = self._etat(devis)
+        self.assertEqual(apres, dict(avant, panneaux=11))
+        self.assertEqual((data['scenario'], data['batterie']), ('avec_batterie', True), data)
+        self.assertIn(MSG_RESYNC_OPTION_GARDEE % self.HYBRIDE, data['avertissements'])
+        self.assertIn(MSG_RESYNC_ENVOYE_SANS_APERCU % 'un onduleur', data['avertissements'])  # sans la carte
+
+    def test_revue_envoye_ne_d_acal_159_carte_confirmee_garde_l_option_et_l_apercu_le_montre(self):
+        """Cas 4 de la règle combinée — le même devis envoyé né « avec batterie » par l'hybride désigné ;
+        le vendeur a seulement bougé un panneau (désignation INCHANGÉE) et confirme la carte : l'aperçu
+        ne montre AUCUN changement d'onduleur ni de batterie (seule la ligne de panneaux), et la
+        resynchronisation confirmée (désignations appliquées, D-ACAL-159 : l'hybride garde « avec ») écrit
+        exactement cela. Mutant « l'envoyé confirmé bascule en sans » ⇒ batterie retirée ⇒ rouge."""
+        from apps.ventes.models import Devis
+
+        devis, avant = self._ne_d_acal_159()
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye')
+        self._toit_de(11)
+        lu = self._apercu_resync()
+        self.assertEqual(lu.status_code, 200, lu.data)
+        apercu = lu.data
+        self.assertEqual(apercu['retraits'], [], apercu)
+        self.assertFalse([c for c in apercu['changements'] if c['designation_avant'] != c['designation_apres']], apercu)
+        self.assertFalse([c for c in apercu['changements'] if 'nduleur' in c['designation_apres']
+                          or 'atterie' in c['designation_apres']], apercu)
+        data, _o, _b = self._resynchroniser({'apercu_confirme': True, 'jeton_apercu': apercu['jeton']})
+        self.assertEqual(self._etat(devis), dict(avant, panneaux=11))
+        self.assertEqual((data['scenario'], data['batterie']), ('avec_batterie', True), data)
+        self.assertEqual(data['avertissements'], apercu['avertissements'])  # la carte a dit ce qui est écrit
+
+    def test_relecture_finale_brouillon_libre_rattache_garde_hybride_et_batterie(self):
+        """Le brouillon né « avec batterie » par l'hybride désigné, devenu LIBRE (plus lié, né avant le
+        calepinage), rattaché à « Générer » (``_rattacher_au_brouillon``, sans désignations) : il garde
+        l'hybride et la batterie, ses panneaux suivent le toit."""
+        from datetime import timedelta
+
+        from apps.ventes.domain.creation_calepinage import MSG_RESYNC_OPTION_GARDEE
+        from apps.ventes.models import Devis
+
+        devis, avant = self._ne_d_acal_159()
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=None)
+        self.calepinage.refresh_from_db()
+        Devis.objects.filter(pk=devis.pk).update(date_creation=self.calepinage.created_at - timedelta(days=1))
+        self._toit_de(11)
+        rattache = self.api.post(f'{self.base}generer-devis/', {'rattacher_devis': devis.pk, 'confirmer_taille': True},
+                                 format='json')
+        self.assertEqual(rattache.status_code, 200, rattache.data)
+        self.assertEqual(self._etat(devis), dict(avant, panneaux=11))
+        self.assertIn(MSG_RESYNC_OPTION_GARDEE % self.HYBRIDE, rattache.data['avertissements'])
+
+    def test_relecture_finale_devis_envoye_sans_marqueur_inchange(self):
+        """Le même devis SANS le marqueur (créé avant la règle) : la resynchro d'hier, à l'identique —
+        la pose « sans » retire la batterie au prix catalogue, aucune phrase d'option gardée."""
+        from apps.ventes.domain.creation_calepinage import CLE_DESIGNATIONS, MSG_RESYNC_OPTION_GARDEE
+        from apps.ventes.models import Devis
+
+        devis, _avant = self._ne_d_acal_159()
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye', roof_layout={
+            k: v for k, v in devis.roof_layout.items() if k != CLE_DESIGNATIONS})
+        self._toit_de(11)
+        data, _o, batteries = self._resynchroniser()
+        self.assertEqual(batteries, [])
+        self.assertFalse(any(m == MSG_RESYNC_OPTION_GARDEE % self.HYBRIDE for m in data['avertissements']), data)
+
+    def test_relecture_finale_miroir_reseau_designe_sur_pose_avec_rien_ne_bascule(self):
+        """Miroir — un onduleur RÉSEAU désigné sur une pose « avec batterie » n'est pas chiffré (repli) :
+        le devis naît hybride + batterie ; envoyé puis resynchronisé, il ne perd rien et n'ajoute aucun
+        onduleur réseau ni seconde batterie."""
+        from apps.ventes.models import Devis
+
+        Devis.objects.filter(pk=self.calepinage.devis_id).update(is_active=False)
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=None)
+        self.calepinage.refresh_from_db()
+
+        def pose_avec(panneaux):
+            avec = dict(copy.deepcopy(TOIT), scenario='avec_batterie')
+            avec['result']['panels'] = panneaux
+            self.calepinage.refresh_from_db()
+            enregistrer_layout(self.calepinage, avec, user=self.user)
+            self.calepinage.refresh_from_db()
+
+        pose_avec(10)
+        self._designer('Onduleur réseau Huawei 5kW Monophasé', nombre_onduleurs=1)
+        _apercu, genere, _o = self._apercu_puis_generation()
+        devis = Devis.objects.get(pk=genere['devis'])
+        avant = self._etat(devis)
+        self.assertTrue(avant['batteries'])
+        self.assertEqual(len(avant['onduleurs']), 1, avant)
+        self.assertIn('hybride', avant['onduleurs'][0].lower())
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye')
+        pose_avec(11)
+        self._resynchroniser()
+        self.assertEqual(self._etat(devis), dict(avant, panneaux=11))
 
     def test_6_b_batterie_sur_devis_redevenu_sans_une_seule_phrase_vraie(self):
         from apps.stock.models import Produit

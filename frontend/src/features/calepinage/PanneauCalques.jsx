@@ -123,6 +123,17 @@ export default function PanneauCalques({ builderApi, onChange, utilisateurId, st
     return () => clearTimeout(minuteur)
   }, [lecture, disponibles])
 
+  // T4-X7-015 (rejeu R6) — la bascule « Électrique » n'apparaissait pas : la liste est lue à l'ouverture de la feuille, or le
+  // premier organe se pose (Équipements électriques) PENDANT que la feuille reste ouverte — rien ne relisait la liste. À
+  // l'approche du panneau (survol, focus), la disponibilité de la couche est relue ; la liste ne l'est que si elle a changé.
+  // Événement d'interface, aucune minuterie, aucun sondage.
+  const electriqueListee = disponibles.includes(CALQUE_ELECTRIQUE.id)
+  const relireElectrique = () => {
+    let disponible = false
+    try { disponible = Boolean(builderApi?.electrique?.calqueDisponible?.()) } catch { disponible = false }
+    if (disponible !== electriqueListee) setLecture((n) => n + 1)
+  }
+
   const listes = useMemo(
     () => CALQUES_DU_PANNEAU.filter((c) => disponibles.includes(c.id)),
     [disponibles],
@@ -134,7 +145,14 @@ export default function PanneauCalques({ builderApi, onChange, utilisateurId, st
   // carte afficherait l'état par défaut pendant que le panneau montre l'état
   // mémorisé.
   const restituer = useEffectEvent(() => {
-    for (const c of listes) onChange?.(c.id, etat[c.id] ?? ETAT_PAR_DEFAUT)
+    for (const c of listes) {
+      const e = etat[c.id] ?? ETAT_PAR_DEFAUT
+      // T4-X7-015 — la couche électrique a sa propre règle d'étape (la scène l'affiche à l'étape Électrique seulement) :
+      // son état PAR DÉFAUT n'est jamais poussé à l'ouverture (il la montrerait à une étape où la scène la cache). Seul un
+      // réglage de l'utilisateur (masquée, opacité) est restitué ; aucun changement visible avant qu'il ne touche à la case.
+      if (c.id === CALQUE_ELECTRIQUE.id && e.visible && e.opacite === 1) continue
+      onChange?.(c.id, e)
+    }
   })
   useEffect(() => { restituer() }, [listes])
 
@@ -151,7 +169,8 @@ export default function PanneauCalques({ builderApi, onChange, utilisateurId, st
   )
 
   return (
-    <section ref={racine} data-testid="pc-panneau" aria-label="Calques" className="border border-border bg-card p-3">
+    <section ref={racine} data-testid="pc-panneau" aria-label="Calques" className="border border-border bg-card p-3"
+      onPointerEnter={relireElectrique} onFocusCapture={relireElectrique}>
       <h3 className="text-xs font-semibold uppercase tracking-wide mb-2 text-muted-foreground">Calques</h3>
       {listes.length === 0 ? (
         // CALX54 — état vide EXPLICITE : le constructeur n'est pas encore prêt,

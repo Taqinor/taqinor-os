@@ -324,11 +324,15 @@ def retenir_variante(variante, *, user=None, appliquer=True):
                 variante.retenue = True
                 variante.save(update_fields=['retenue', 'updated_at'])
         if appliquer:
-            from .layout import LayoutRefuse, enregistrer_layout
+            from .layout import LayoutRefuse, avec_plafonds_gardes, enregistrer_layout
 
+            # Revue lot 8 (suite ACAL1720) — la variante devient la conception avec le plafond de numérotation
+            # COURANT (document du pivot verrouillé) : un numéro dépensé depuis n'est jamais redonné.
+            courant = (Calepinage.objects.filter(pk=variante.calepinage_id)
+                       .values_list('roof_layout', flat=True).first())
             try:
                 enregistrer_layout(
-                    calepinage, document, user=user,
+                    calepinage, avec_plafonds_gardes(courant, document), user=user,
                     libelle=f'Variante « {variante.nom} » retenue')
             except LayoutRefuse as refus:
                 raise VarianteRefusee(

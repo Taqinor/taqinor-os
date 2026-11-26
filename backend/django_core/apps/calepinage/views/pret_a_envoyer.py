@@ -111,8 +111,7 @@ _SURFACES = OpenApiParameter(
 @action(detail=True, methods=['get'], url_path='apercu-devis', permission_classes=[PeutVoirCalepinage])
 def apercu_devis(self, request, pk=None):
     """Le matériel que « Générer le devis » portera, par option, et les écarts aux désignations."""
-    from apps.ventes.selectors_assistant import lit_les_devis
-
+    from ..services.devis import lit_les_devis
     from ..services.devis_apercu import apercu_materiel_du_devis
 
     calepinage = self.get_object()
@@ -146,9 +145,7 @@ _DEVIS_VARIANTE = OpenApiParameter(
 @action(detail=True, methods=['get'], url_path='apercu-resync', permission_classes=[PeutGererCalepinage])
 def apercu_resync(self, request, pk=None):
     """Ce que « Resynchroniser le devis » changerait au devis lié, sans rien écrire."""
-    from apps.ventes.selectors_assistant import lit_les_devis
-
-    from ..services.devis import DevisRefuse
+    from ..services.devis import DevisRefuse, lit_les_devis  # porte de ventes (cliquet des imports croisés)
     from ..services.devis_resync_apercu import apercu_resynchronisation
     from .calepinages import _entier_ou_none, _refus_devis, _statut_refus_devis
 

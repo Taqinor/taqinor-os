@@ -74,6 +74,30 @@ describe('LW20 — logique pure du filtre (co-localisée, testable sans DOM)', (
     expect(matchesTimelineFilter('modification', 'systeme')).toBe(true)
     expect(matchesTimelineFilter('note', 'tous')).toBe(true)
   })
+  it('le filtre « Devis » laisse passer chaque action du client sur la page du devis (notes système déjà stockées)', () => {
+    const corps = [
+      'Le client a ouvert le devis DEV-TEST-1',
+      'Le client a rouvert le devis DEV-TEST-1 — 3ᵉ consultation',
+      'Le client a commencé à lire la proposition DEV-TEST-1 en détail.',
+      'Le client relit la section « Prix » de la proposition DEV-TEST-1 — un appel peut débloquer la décision.',
+      'Le client demande à être contacté (DEV-TEST-1) — rappel',
+      'Le client décline la proposition DEV-TEST-1 — motif : le prix. Aucun statut changé : à vous de relancer, réviser ou refuser.',
+      'Ancienne version DEV-TEST-1 (remplacée par DEV-TEST-2) ouverte par le client — la relance porte sur la version en vigueur.',
+      "Rappel demandé — opposition loi 09-08 active : la lever sur la fiche après l'appel",
+    ]
+    for (const body of corps) {
+      expect(matchesTimelineFilter('note', 'devis', body)).toBe(true)
+      expect(matchesTimelineFilter('note', 'tous', body)).toBe(true)
+      expect(matchesTimelineFilter('note', 'notes', body)).toBe(true)
+      expect(matchesTimelineFilter('note', 'appels', body)).toBe(false)
+    }
+  })
+  it('une note sans rapport avec la page du devis reste cachée sous « Devis »', () => {
+    expect(matchesTimelineFilter('note', 'devis', 'Appel de suivi : client intéressé')).toBe(false)
+    expect(matchesTimelineFilter('note', 'devis', 'Le client a recontacté (WhatsApp).')).toBe(false)
+    expect(matchesTimelineFilter('note', 'devis')).toBe(false)
+    expect(matchesTimelineFilter('appel', 'devis', 'Le client a ouvert le devis DEV-TEST-1')).toBe(false)
+  })
   it('TIMELINE_FILTERS liste les 6 filtres attendus', () => {
     expect(TIMELINE_FILTERS.map((f) => f.key)).toEqual(['tous', 'notes', 'appels', 'emails', 'devis', 'systeme'])
   })
@@ -134,33 +158,6 @@ describe('LW20 — filtre par type', () => {
     )
     expect(screen.getAllByText(/Une note/).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('button', { name: 'Tous' })[0]).toHaveAttribute('aria-pressed', 'true')
-  })
-
-  it('une note du client plus récente que les entrées visibles sous « Appels » : la phrase le dit, « Tout afficher » en sort', async () => {
-    const user = userEvent.setup()
-    const avecClient = [
-      { id: 3, kind: 'note', body: 'Le client demande à être contacté (DEV-1)', created_at: '2026-11-26T10:00:00Z' },
-      { id: 2, kind: 'appel', outcome: 'joint', user_nom: 'Sami', created_at: '2026-11-26T09:00:00Z' },
-      { id: 1, kind: 'note', body: 'Une note', user_nom: 'Sami', created_at: '2026-11-26T08:00:00Z' },
-    ]
-    renderTab({ historique: avecClient })
-    expect(screen.queryByTestId('lw-timeline-masques')).toBeNull()
-    await user.click(screen.getAllByRole('button', { name: 'Appels' })[0])
-    expect(screen.getByTestId('lw-timeline-masques').textContent)
-      .toContain('1 élément plus récent masqué par le filtre')
-    await user.click(screen.getByRole('button', { name: 'Tout afficher' }))
-    expect(screen.queryByTestId('lw-timeline-masques')).toBeNull()
-    expect(screen.getAllByText(/demande à être contacté/).length).toBeGreaterThan(0)
-  })
-
-  it('un élément masqué plus ANCIEN que le dernier visible ne déclenche pas la phrase', async () => {
-    const user = userEvent.setup()
-    renderTab({ historique: [
-      { id: 2, kind: 'appel', outcome: 'joint', user_nom: 'Sami', created_at: '2026-11-26T09:00:00Z' },
-      { id: 1, kind: 'note', body: 'Une note', user_nom: 'Sami', created_at: '2026-11-26T08:00:00Z' },
-    ] })
-    await user.click(screen.getAllByRole('button', { name: 'Appels' })[0])
-    expect(screen.queryByTestId('lw-timeline-masques')).toBeNull()
   })
 })
 

@@ -89,6 +89,9 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       cibleVendue: true,
       // ACAL1331 — l'origine de la cible servie (ici le devis lié) : l'atelier la dit à la pose.
       origineCible: CTX.cible.source,
+      // T4-X8-012 (une cible) — la même source dans les mots de la carte « Cible — panneaux ».
+      libelleOrigineCible: 'Devis lié',
+      libelleApresOrigineCible: 'le devis lié',
       // ACAL1951 — le devis lié et l'option servie : l'atelier les NOMME dans sa note (« 7 au devis DEV-… (option avec batterie) »).
       referenceDevis: CTX.calepinage.devis_lie.reference,
       optionCible: CTX.cible.option,
@@ -527,6 +530,8 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     const devis = initRoofToolPro8.mock.calls[0][0].hydrate.devis
     expect(FACTURES.cible.source).toBe('factures')
     expect([devis.cible.panneaux, devis.cibleVendue, devis.origineCible]).toEqual([FACTURES.cible.panneaux, false, 'factures'])
+    expect(devis.libelleOrigineCible).toBe('Factures du lead') // T4-X8-012 (une cible) — les mots de la carte « Source de la cible »
+    expect(devis.libelleApresOrigineCible).toBe('les factures du lead')
 
     cleanup(); vi.clearAllMocks(); reinitialiserBoot()
     calepinageApi.calepinages.designContext.mockResolvedValue(
@@ -535,6 +540,8 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     const sans = initRoofToolPro8.mock.calls[0][0].hydrate.devis
     expect([sans.cible.panneaux, sans.origineCible]).toEqual([null, null])
+    expect(sans.libelleOrigineCible).toBeNull()
+    expect(sans.libelleApresOrigineCible).toBeNull()
   })
 
   /* ACAL84 — brouillon local : rien en lecture seule ; jamais bloquant. */

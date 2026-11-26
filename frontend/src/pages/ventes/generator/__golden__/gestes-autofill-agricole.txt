@@ -439,6 +439,9 @@ Ligne optionnelle (add-on hors total)=on [ ]
       }
     ]
   ],
+  "stockApi.getPanneauParDefaut": [
+    []
+  ],
   "stockApi.getProduits": [
     [
       {

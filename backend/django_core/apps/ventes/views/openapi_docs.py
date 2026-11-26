@@ -578,6 +578,14 @@ CompositionResponse = _ser('DevisCompositionResponse', {
         'marque': s.CharField(),
         'libelle_role': s.CharField(),
     }), required=False),
+    # D-ACAL-169 — forme de stock/contract_samples/panneau_par_defaut.json (+ source « refuse »).
+    'panneau_par_defaut': _ser('DevisCompositionPanneauParDefaut', {
+        'produit_id': s.IntegerField(allow_null=True),
+        'nom': s.CharField(allow_null=True),
+        'pmax_wc': s.FloatField(allow_null=True),
+        'source': s.CharField(),
+        'motif': s.CharField(allow_null=True),
+    }, required=False),
 })
 ErreurComposition = _ser('DevisErreurComposition', {
     'detail': s.CharField(),

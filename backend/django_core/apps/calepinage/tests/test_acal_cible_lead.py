@@ -320,7 +320,10 @@ class CibleDeLaConceptionTest(BaseApiCalepinage):
         client = Client.objects.create(company=self.company, nom='Client 1268')
         devis = Devis.objects.create(company=self.company, client=client, lead=lead, reference='DEV-202611-1268',
                                      mode_installation=Devis.ModeInstallation.AGRICOLE)
-        LigneDevis.objects.create(devis=devis, produit=Produit.objects.get(sku='A194-PAN'),
+        # Cette classe n'a pas le catalogue de ``CibleDuLeadTest`` : le panneau du devis est créé ici.
+        panneau = Produit.objects.create(company=self.company, nom='Panneau Jinko 550W', sku='A1268-PAN',
+                                         prix_vente=Decimal('1100'), prix_achat=Decimal('1'), quantite_stock=100)
+        LigneDevis.objects.create(devis=devis, produit=panneau,
                                   designation='Panneau Jinko 550W', quantite=Decimal(7), prix_unitaire=Decimal('1100'))
         cible = self._contexte(calepinage)['cible']
         self.assertEqual((cible['panneaux'], cible['source'], cible['refus']), (7, 'devis', None))
@@ -331,3 +334,23 @@ class CibleDeLaConceptionTest(BaseApiCalepinage):
                              mode_installation=Devis.ModeInstallation.AGRICOLE)
         self.assertEqual(self._contexte(calepinage)['cible']['devis_agricole']['id'], devis.pk)
         self.assertIsNone(sans_devis['devis_agricole'])
+        # Lot 8, relecture finale (D-ACAL-106) — un Technicien (sa visite, aucun code ``ventes_*``) reçoit
+        # le même champ de panneaux, un devis agricole qui existe sans être nommé ni lié. Mutant « sans
+        # _sans_devis_nomme » ⇒ rouge.
+        from django.contrib.auth import get_user_model
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.visites.models import VisiteTerrain
+
+        role = Role.objects.create(company=self.company, nom='A1268 Technicien',
+                                   permissions=list(TECHNICIEN_PERMISSIONS))
+        tech = get_user_model().objects.create_user(username='a1268-tech', password='x', company=self.company,
+                                                    role=role)
+        VisiteTerrain.objects.create(company=self.company, lead=lead, commercial=tech)
+        reponse = self._client(tech).get(url_contexte(calepinage.pk))
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        lu = reponse.data['cible']
+        self.assertEqual((lu['panneaux'], lu['source'], lu['devis_agricole']),
+                         (7, 'devis', {'id': None, 'reference': None}))
+        self.assertNotIn('DEV-202611-1268', str(reponse.data['cible']))

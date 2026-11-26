@@ -353,7 +353,7 @@ def importer_layout(calepinage, document, *, user=None, remplacer_toit=False):
     """
     valider_document(document)
 
-    from .layout import enregistrer_layout, layout_decrit_une_geometrie
+    from .layout import avec_plafonds_gardes, enregistrer_layout, layout_decrit_une_geometrie
 
     if (not remplacer_toit
             and layout_decrit_une_geometrie(calepinage.roof_layout)
@@ -365,4 +365,5 @@ def importer_layout(calepinage, document, *, user=None, remplacer_toit=False):
             'conception (JSON) », ou confirmez que vous voulez remplacer le '
             'toit par ce fichier.', champ='roof_layout')
 
-    return enregistrer_layout(calepinage, document, user=user)
+    # Revue lot 8 (suite ACAL1720) — un export plus ancien revient avec le plafond de numérotation COURANT.
+    return enregistrer_layout(calepinage, avec_plafonds_gardes(calepinage.roof_layout, document), user=user)
