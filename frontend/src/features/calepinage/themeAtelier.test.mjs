@@ -254,3 +254,24 @@ test('ACAL1985 : aucune règle ne redessine le bouton de BoutonDevis par-dessus 
   }
   assert.deepEqual(fautives, [], `bouton de BoutonDevis redessiné : ${fautives.join(' | ')}`)
 })
+
+// ACAL1942 — un seul aplat doré par écran, réservé à l'action suivante (K8). « Localiser » (Toit sans contour, à côté de
+// « Poser les panneaux ») et « Recalculer » (Expert > Pertes, résultat frais : plus d'action suivante) passent au gabarit
+// contour (surface + filet), sans fond d'or. Mutant : remettre `background: var(--cal-action)` / `var(--primary)` ⇒ échec.
+test('ACAL1942 : « Localiser » et « Recalculer » sont des boutons à contour, jamais un aplat doré', () => {
+  const feuille = (f) => regles(readFileSync(new URL(`../../styles/calepinage/${f}`, import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, ''))
+  const OR = /var\(--(cal-action|primary|cal-production|cal-or[\w-]*)\)|brass/
+  const cibles = [
+    ['50-coque-atelier.css', (s) => s.includes('#rp9-search') && s.includes("button[type='submit']")],
+    ['54-etape-resultats.css', (s) => s.includes('calx48-lancer-bouton') && s.includes("data-etat='frais'")],
+  ]
+  for (const [f, vise] of cibles) {
+    const regs = feuille(f).filter((r) => r.sel.split(',').some((s) => vise(s) && !s.includes(':hover')))
+    assert.ok(regs.length > 0, `${f} : aucune règle ne vise le bouton secondaire`)
+    const d = Object.assign({}, ...regs.map((r) => declarations(r.corps)))
+    assert.equal(d.background, 'var(--cal-surface)', `${f} : fond`)
+    assert.ok(!OR.test(d.background), `${f} : fond doré`)
+    assert.ok(/var\(--cal-filet-fort\)/.test(d.border ?? ''), `${f} : filet`)
+  }
+})
