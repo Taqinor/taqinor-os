@@ -1,0 +1,182 @@
+{
+ "avant": "origin/main 5e24d76d7",
+ "apres": "0245b6d34",
+ "ports": {
+  "avant": 4411,
+  "apres": 4412
+ },
+ "console": {
+  "avant": [
+   "pageerror areasWindowEl (640 and 642)",
+   "MapLibre Worker failed to load (dev-server artefact)",
+   "THREE PCFSoftShadowMap warning"
+  ],
+  "apres": [
+   "no areasWindowEl",
+   "MapLibre Worker failed to load",
+   "THREE PCFSoftShadowMap warning"
+  ]
+ },
+ "pixels_apres_1440": {
+  "640": {
+   "h8": 20451,
+   "h12": 42392,
+   "h16": 42382,
+   "ete": 53685,
+   "hiver": 53685,
+   "play_2s_steps": [
+    16432,
+    14832,
+    41914,
+    0,
+    0,
+    0
+   ]
+  },
+  "642": {
+   "h8": 78115,
+   "h12": 78115,
+   "h16": 78067,
+   "hiver": 56277,
+   "play_2s_steps": [
+    35428,
+    34892,
+    78937,
+    0,
+    0,
+    0
+   ]
+  }
+ },
+ "pixels_avant_1440": {
+  "640": {
+   "all": 0,
+   "play": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  "642": {
+   "all": 0,
+   "play": [
+    1058,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  }
+ },
+ "pixels_apres_phone_390": {
+  "640": {
+   "h": [
+    5143,
+    10650,
+    10652
+   ],
+   "ete": 13576,
+   "play": [
+    9781,
+    1136,
+    9767,
+    0,
+    0,
+    0
+   ]
+  },
+  "642": {
+   "h": [
+    19335,
+    19335,
+    19317
+   ],
+   "hiver": 14086,
+   "play": [
+    19571,
+    245,
+    19546,
+    0,
+    0,
+    0
+   ]
+  }
+ },
+ "standard_page_diff_640": {
+  "height": [
+   8255,
+   8295
+  ],
+  "above_3d_px_diff": 523,
+  "below_3d_px_diff_after_40px_shift": 0
+ },
+ "links_restored": "640 and 642 set to standard then back to confiance (same tokens)",
+ "ship_305a1c48a": {
+  "build": "astro build ok (50 s); astro preview on 127.0.0.1:4413 works (trailing slash 301 on /proposition/<token>)",
+  "console": "no areasWindowEl; no Worker failed (it was a dev artefact); only THREE PCFSoft warning",
+  "bar642_built": "visible at 5 s (stays), 640 visible at 5 s",
+  "pixels_1440": {
+   "640": {
+    "h": [
+     20451,
+     42392,
+     42382
+    ],
+    "ete": 53685,
+    "hiver": 53685,
+    "play": [
+     39032,
+     3755,
+     38963,
+     0,
+     0,
+     0
+    ]
+   },
+   "642": {
+    "h": [
+     78115,
+     78115,
+     78067
+    ],
+    "hiver": 56277,
+    "play": [
+     78981,
+     1226,
+     78584,
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  "pixels_390_640": {
+   "h": [
+    5143,
+    10650,
+    10652
+   ],
+   "ete": 13576,
+   "play": [
+    4041,
+    3675,
+    10531,
+    0,
+    0,
+    0
+   ]
+  },
+  "network": "1 toiture img request (642), 0 on 640; 0 fetches; 1 maptiler style.json",
+  "hint": "FR shown; EN and AR NOT translated (stays French)",
+  "a5": "not verified end to end",
+  "fallbacks": {
+   "nogl": "poster message, no bar",
+   "style403": "disabled Explorer button until ~16 s then 'Vue 3D interrompue' on empty dark stage at 20 s"
+  },
+  "standard": "3D renders, no bar element, no error; link restored to confiance"
+ }
+}
