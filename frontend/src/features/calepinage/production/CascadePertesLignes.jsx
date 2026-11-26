@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { formatNumber, formatPercent } from '../../../lib/format'
 import { CHART_TOKENS } from '../../../ui/charts/chart-theme.js'
 import { useModeExpert } from '../atelier/modeExpert'
+import { libelleSource } from './DiagrammePertes.helpers'
 
 /* ACAL444 — la cascade de pertes en LIGNES horizontales, une par étape, dans
    l'ordre servi (`rang`). Aucun calcul : `niveau`, `base`, `valeur` viennent de
@@ -85,7 +86,7 @@ function Detail({ ligne, id }) {
   const champs = [
     ['Valeur', ligne.pertePct === null || ligne.pertePct === undefined
       ? '—' : formatPercent(ligne.pertePct, { decimals: 1 })],
-    ['Source', ligne.source || '—'],
+    ['Source', libelleSource(ligne.source)],
     ...(entree ? [['Entrée', entree]] : []),
     ['Référence', ligne.reference || '—'],
     ['Énergie avant', kwh(ligne.kwhAvant)],

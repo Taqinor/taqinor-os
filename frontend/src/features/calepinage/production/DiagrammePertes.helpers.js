@@ -6,6 +6,23 @@ export const CASCADE_DEPART = 'Irradiance incidente'
 
 export const CASCADE_ARRIVEE = 'Énergie livrée'
 
+/* LA table de l'écran pour la source d'une étape de la cascade : le serveur sert le CODE tel quel (revue lot 6 —
+   aucun mot traduit deux fois). Tout endroit de l'écran qui imprime la source d'une étape passe par `libelleSource`
+   (tableau et barres de DiagrammePertes, détail d'une ligne CascadePertesLignes, PourquoiProduction). */
+export const SOURCE_LABELS = {
+  fiche: 'Fiche technique',
+  saisie: 'Saisie',
+  pvgis: 'PVGIS',
+  mesure: 'Mesure',
+  hypothese: 'Hypothèse',
+  societe: 'Réglage société',
+  texte: 'Page publiée',
+  document: 'Document du calepinage',
+  materiel: 'Matériel du calepinage',
+}
+
+export const libelleSource = (source) => (source ? (SOURCE_LABELS[source] || source) : '—')
+
 /**
  * CALX48 / ACAL140 — la cascade construite depuis `resultat['cascade'].etapes`
  * (CALX141), PAS depuis la liste plate. Les barres viennent des ÉNERGIES

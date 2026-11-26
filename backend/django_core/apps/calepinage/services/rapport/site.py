@@ -202,6 +202,10 @@ def _modele_d_etape(cascade, code_etape):
 
 def _transposition(meteo):
     bloc = meteo.get('transposition')
+    if (not isinstance(bloc, dict) or not bloc.get('modele')) and meteo.get('service') == 'seriescalc':
+        # ACAL1636 — PVGIS (seriescalc) sert DÉJÀ l'irradiance sur le plan des
+        # modules : c'est lui qui a transposé, et la ligne le dit.
+        return "Calculée par PVGIS : l'irradiance sur le plan des modules est servie par PVGIS"
     if not isinstance(bloc, dict) or not bloc.get('modele'):
         return ("Non nommée : l'irradiance sur le plan vient de la source "
                 "météo")

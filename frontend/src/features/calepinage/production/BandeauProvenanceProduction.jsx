@@ -430,6 +430,10 @@ export function EcartNasaPower({ comparaison }) {
   )
 }
 
+/* Revue lot 6 (ACAL1715) — le mode météo dans les mots de l'écran des réglages (registre `mode_meteo`,
+   `parametres_cles.LIBELLES_ENUM`), jamais le code brut « tmy ». Un mode inconnu reste tel que servi. */
+const LIBELLES_MODE_METEO = { tmy: 'Année type (TMY)', pluriannuel: 'Plusieurs années réelles' }
+
 export function SourceMeteo({ meteo }) {
   if (!meteo?.service) return null
   const horizon = meteo.horizon?.origine
@@ -442,7 +446,7 @@ export function SourceMeteo({ meteo }) {
     ['Service PVGIS', meteo.service],
     ['Base de rayonnement', meteo.base_rayonnement],
     ['Base météo', meteo.base_meteo],
-    ['Mode', meteo.mode],
+    ['Mode', LIBELLES_MODE_METEO[meteo.mode] ?? meteo.mode],
     ['Fenêtre', meteo.fenetre_annees],
     ['Horizon', horizon],
     ['Fuseau du site', meteo.heure?.fuseau_site],

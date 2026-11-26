@@ -236,6 +236,37 @@ class AucunMontantTest(unittest.TestCase):
             verifier_etancheite(resultat)
 
 
+class AccesEnPourcentTest(unittest.TestCase):
+    """ACAL1660 — l'accès mesuré (fraction [0 ; 1]) s'imprime en %, une
+    décimale au plus : « 89 % », « 80 % », « 79,7 % » (jamais « 0,9 » ni
+    seize décimales). Mutant : fraction brute ⇒ échec."""
+
+    def test_acces_imprime_en_pourcent_arrondi(self):
+        roof_layout = {
+            'shading12x24': MATRICE_12X24,
+            'zones': [{'id': 'PAN-A', 'label': 'PAN-A',
+                       'geometry': {'solarAccess': {'values': [0.8, 0.98]}}}],
+        }
+        chaine = {'chaine': 1, 'pan': 'PAN-A', 'module': 'PAN-A#1',
+                  'acces_solaire': 0.7968412048994717, 'raison': 'module le plus ombré'}
+        resultat = _resultat(
+            [PANS_DEUX[0]],
+            ombrage_par_pan=[{'pan': 'PAN-A', 'acces_solaire_moyen_pct': 89.0,
+                              'motif_omission': ''}],
+            production_par_pan=[{'pan': 'PAN-A', 'tof': 0.9, 'tsrf': 0.8}],
+            electrique={'chaine_la_plus_faible': chaine})
+        rapport = rapport_ombrage._construire_rapport_ombrage(
+            FauxCalepinage(roof_layout=roof_layout), resultat=resultat, etat={})
+        bloc = rapport['blocs'][0]
+        self.assertEqual((bloc['acces_solaire_moyen_pct'], bloc['acces_solaire_min_pct']),
+                         (89, 80))
+        html = rapport_ombrage._table_blocs(rapport['blocs'], 'fr')
+        self.assertIn('Accès solaire moyen (%)</th><td>89</td>', html)
+        self.assertIn('Accès solaire minimum (%)</th><td>80</td>', html)
+        self.assertIn('accès solaire 79,7 %', html)
+        self.assertNotIn('0,7968', html)
+
+
 class ChaineLaPlusFaibleTest(unittest.TestCase):
     def test_chaine_la_plus_faible_apparait_sur_son_pan(self):
         roof_layout = {

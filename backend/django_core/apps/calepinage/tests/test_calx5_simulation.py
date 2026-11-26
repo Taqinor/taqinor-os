@@ -296,7 +296,9 @@ class RefusTest(SimpleTestCase):
         self.assertEqual(refus.exception.champ,
                          'parametres.simulation.mode_meteo')
 
-    def test_le_mode_annee_type_est_refuse_en_nommant_l_irradiance(self):
+    def test_le_mode_annee_type_sans_transposition_nomme_le_reglage(self):
+        # ACAL1715 — l'année type se transpose : sans modèle saisi, le refus
+        # nomme LE réglage (jamais « la chaîne ne peut pas démarrer »).
         reglages = dict(REGLAGES, simulation={
             'mode_meteo': {'valeur': 'tmy', 'source': 'note interne'},
         })
@@ -305,8 +307,41 @@ class RefusTest(SimpleTestCase):
             _simuler(reglages=reglages)
 
         self.assertEqual(refus.exception.champ,
-                         'parametres.simulation.mode_meteo')
-        self.assertIn('horizontale', refus.exception.motif.lower())
+                         'parametres.simulation.modele_transposition')
+        self.assertEqual([ligne['champ'] for ligne in refus.exception.manquants],
+                         ['parametres.simulation.modele_transposition',
+                          'parametres.simulation.albedo_mensuel'])
+        self.assertNotIn('ne peut pas démarrer', refus.exception.motif)
+
+    def test_le_mode_annee_type_transpose_aboutit(self):
+        # ACAL1715 — l'année type PVGIS (enregistrée) est transposée sur le
+        # pan ; le modèle et l'albédo sont nommés, aucune année n'est publiée.
+        from apps.calepinage.services.pvgis_serie import ClientPvgis, _Cache
+        from apps.calepinage.tests.test_calx153_tmy_vs_pluriannuel import (
+            TransportEnregistre, charger)
+
+        pvgis = ClientPvgis(TransportEnregistre(charger('tmy_casablanca.json')),
+                            cache=_Cache(), dormir=lambda _s: None)
+        client = _ClientRejoue()
+        client.tmy = pvgis.tmy
+        reglages = dict(REGLAGES, simulation={
+            'mode_meteo': {'valeur': 'tmy', 'source': 'note interne'},
+            'modele_transposition': {'valeur': 'perez', 'source': 'note'},
+            'albedo_mensuel': {'valeur': 0.2, 'source': 'note'},
+        })
+
+        blocs = _simuler(client=client, reglages=reglages)['blocs']
+        meteo = blocs['meteo']
+
+        self.assertEqual(meteo['mode'], 'tmy')
+        self.assertEqual(meteo['annees'], [])
+        self.assertEqual(meteo['service'], 'tmy')
+        self.assertEqual(meteo['transposition']['modele'], 'perez')
+        self.assertEqual(meteo['transposition']['albedo']['source'], 'note')
+        self.assertGreater(blocs['production']['total']['p50_kwh'], 0)
+        # Revue lot 6 — une année type reste UNE année (jamais « pluriannuelle »).
+        from apps.calepinage.services.performance import PERIODE_ANNEE_TYPE
+        self.assertEqual(blocs['performance']['periode'], PERIODE_ANNEE_TYPE)
 
     def test_sans_pan_equipe_le_refus_nomme_les_plans(self):
         vide = dict(LAYOUT, zones=[])

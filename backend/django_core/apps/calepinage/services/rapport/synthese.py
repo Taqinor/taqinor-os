@@ -17,6 +17,7 @@ from decimal import Decimal
 from html import escape
 
 from . import nombre_tel_que_servi, valeur_au_chemin
+from .champs_lisibles import motif_lisible
 from .production import mention_borne_haute, texte_non_publie
 
 __all__ = ['CSS_SECTION', 'NON_CALCULEE', 'html_de_section', 'pourcentage']
@@ -48,7 +49,7 @@ def _valeur(valeur, motif=None, *, unite=''):
     if valeur is None:
         texte = NON_CALCULEE
         if motif:
-            texte += ' — %s' % escape(str(motif))
+            texte += ' — %s' % escape(motif_lisible(str(motif)))  # ACAL1928
         return texte
     return nombre_tel_que_servi(valeur) + unite
 

@@ -1057,13 +1057,17 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
    de `avertissements`, et la production rapportée aux panneaux COMPTÉS (jamais « 13 panneaux » à côté d'un productible
    de 9). Tout vient de `GET resultat/` : `production.hors_chaine.modules`, `pose.*`, `production.total.kwc`. */
 describe('Étape Résultats — panneaux posés mais non raccordés (ACAL1912)', () => {
-  const PHRASE = '4 panneaux ne sont raccordés à aucun onduleur : ils ne sont pas comptés dans la production (leur énergie possible est donnée à part, « hors chaîne »).'
+  // Revue lot 6 (ACAL1623) — l'exemple du contrat : la phrase sur SA clé, la « borne haute » EN TÊTE des avertissements.
+  const SERVI = exempleContrat('calepinage', 'calepinage_resultat', 'acal1623_non_raccordes')
+  const PHRASE = SERVI.panneaux_non_raccordes.phrase
+  const BORNE = SERVI.avertissements[0]
   const NON_RACCORDES = () => {
     const d = COMPLET()
     d.pose = { ...d.pose, total_modules: 13, kwc: 9.23 }
     d.production.total.kwc = 6.39
     d.production.hors_chaine = { modules: 4, p50_kwh: 3300 }
-    d.avertissements = [PHRASE, 'Longueur de chaîne à vérifier.']
+    d.panneaux_non_raccordes = SERVI.panneaux_non_raccordes
+    d.avertissements = [...SERVI.avertissements, 'Longueur de chaîne à vérifier.']
     return d
   }
   const zone = () => document.querySelector('[data-zone="non-raccordes"]')
@@ -1087,6 +1091,9 @@ describe('Étape Résultats — panneaux posés mais non raccordés (ACAL1912)',
     await screen.findByTestId('acal700-incomplet')
     expect(zone()).toHaveTextContent(PHRASE)
     expect(zone()).toHaveTextContent('13 panneaux posés')
+    // La « borne haute » est en tête des avertissements : elle ne titre jamais ce bloc.
+    expect(BORNE).not.toBe(PHRASE)
+    expect(zone()).not.toHaveTextContent(BORNE)
   })
 
   it('tous les panneaux raccordés (ou rien de servi) : aucun bloc', async () => {

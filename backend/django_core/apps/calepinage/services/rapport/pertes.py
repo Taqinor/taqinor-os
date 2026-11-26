@@ -43,7 +43,7 @@ from __future__ import annotations
 from html import escape
 
 from . import nombre_tel_que_servi
-from .champs_lisibles import libelle_de_poste, motif_lisible
+from .champs_lisibles import SOURCES_LISIBLES, libelle_de_poste, motif_lisible
 
 __all__ = ['CSS_SECTION', 'MENTION_CASCADE_ABSENTE',
            'html_de_section']
@@ -60,6 +60,13 @@ CSS_SECTION = (
     '.diagramme-pertes{margin-top:4mm;page-break-inside:avoid;'
     'break-inside:avoid;}'
     '.diagramme-pertes svg{display:block;}'
+    # ACAL1635 — rien ne sort de la page : le schéma « où va l'énergie »
+    # (768 px de dessin) tient dans la largeur, et une référence sans espace
+    # (URL) se coupe dans sa cellule au lieu de pousser la colonne hors page.
+    '.diagramme-energie svg{display:block;width:100%;height:auto;}'
+    '.pertes-cascade{width:100%;}'
+    '.pertes-cascade td,.pertes-cascade th{word-wrap:break-word;'
+    'overflow-wrap:anywhere;}'
 )
 
 #: La mention de repli — la cascade n'existe pas, la liste plate si.
@@ -86,12 +93,33 @@ def _source(contexte, etape):
     code = str(etape.get('source') or '').strip()
     if not code:
         return escape(_libelle(contexte, 'source_non_renseignee'))
-    texte = LIBELLE_SOURCE.get(code.lower(), code)
-    reference = str(etape.get('reference') or '').strip()
+    # ACAL1656 — un poste SAISI sur le calepinage se dit tel ; sinon la table
+    # d'ACAL1654 (« texte » → « page publiée »…), puis le glossaire de la note.
+    texte = ('saisie du calepinage' if _du_calepinage(contexte, etape, code)
+             else SOURCES_LISIBLES.get(code.lower()) or LIBELLE_SOURCE.get(code.lower(), code))
+    reference = motif_lisible(str(etape.get('reference') or '').strip())
     if reference:
         return '%s<span class="detail">%s</span>' % (
             escape(texte), escape(reference))
     return escape(texte)
+
+
+def _du_calepinage(contexte, etape, code):
+    """ACAL1656 — l'étape tient sa valeur d'un poste saisi sur le calepinage :
+    elle le publie (``entree.origine_du_reglage``), ou son poste du catalogue
+    figure dans les postes saisis servis (``resultat.pertes``) avec la MÊME
+    source."""
+    from ..chaine_pertes import POSTE_PAR_ETAPE
+    from ..etapes import ORIGINE_POSTE_CALEPINAGE
+
+    entree = etape.get('entree') if isinstance(etape.get('entree'), dict) else {}
+    if entree.get('origine_du_reglage') == ORIGINE_POSTE_CALEPINAGE:
+        return True
+    poste = POSTE_PAR_ETAPE.get(etape.get('etape'))
+    saisis = (contexte.get('resultat') or {}).get('pertes') or ()
+    return bool(poste) and any(
+        isinstance(p, dict) and p.get('poste') == poste
+        and str(p.get('source') or '').strip() == code for p in saisis)
 
 
 def _etapes(cascade):

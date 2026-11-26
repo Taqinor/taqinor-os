@@ -267,12 +267,13 @@ function blocDuDevis(data) {
   return { devis: ecart.devis, reference: ecart.reference, statut: null, production_annuelle_kwh: ecart.production_devis_kwh }
 }
 
-/** ACAL1912 — des panneaux posés mais raccordés à aucun onduleur : la phrase SERVIE en tête de `avertissements` (le même texte
-    que l'Expert), et la production rapportée aux panneaux COMPTÉS — jamais « 13 panneaux » à côté d'un productible calculé
-    sur 9. Omis quand `production.hors_chaine.modules` n'est pas un nombre > 0. Rien n'est calculé : `posés − hors chaîne`. */
+/** ACAL1912 — des panneaux posés mais raccordés à aucun onduleur : la phrase SERVIE sur sa clé `panneaux_non_raccordes`
+    (revue lot 6, ACAL1623 : jamais un rang de `avertissements`, où la « borne haute » la précède), et la production rapportée
+    aux panneaux COMPTÉS — jamais « 13 panneaux » à côté d'un productible calculé sur 9. Omis sans la clé ou quand
+    `production.hors_chaine.modules` n'est pas un nombre > 0. Rien n'est calculé : `posés − hors chaîne`. */
 function PanneauxNonRaccordes({ data }) {
   const horsChaine = data?.production?.hors_chaine?.modules
-  const phrase = data?.avertissements?.[0]
+  const phrase = data?.panneaux_non_raccordes?.phrase
   if (!(typeof horsChaine === 'number' && horsChaine > 0) || typeof phrase !== 'string' || !phrase) return null
   const poses = data?.pose?.total_modules
   const kwcPose = data?.pose?.kwc

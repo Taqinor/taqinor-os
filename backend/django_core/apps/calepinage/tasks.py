@@ -108,9 +108,10 @@ def calculer_calepinage(job_id=None, company_id=None, entree=None,
     company = job.company
     elements = []
     reussites = 0
-    if _livraison_de_trop(job):  # ACAL1622 — même borne que la simulation
-        job.marquer_echec(MOTIF_INTERROMPU)
-        return {'statut': 'failed', 'motif': MOTIF_INTERROMPU}
+    motif_livraison = _livraison_de_trop(job)  # ACAL1622 — même borne que la simulation
+    if motif_livraison:
+        job.marquer_echec(motif_livraison)
+        return {'statut': 'failed', 'motif': motif_livraison}
     job.marquer_progression(5)
     for index, document in enumerate(documents):
         repere = document.get('repere') or f'#{index + 1}'
@@ -197,19 +198,53 @@ def _echec_inattendu(erreur):
     return '', MOTIF_ERREUR_INATTENDUE
 
 
-def _livraison_de_trop(job):
-    """ACAL1622 — compte la livraison du job (cache société, 24 h) ; vrai
-    au-delà de :data:`LIVRAISONS_MAX`. Un job encore « en file » est une
-    PREMIÈRE livraison (le compte repart de 1) ; le cache perdu recompte
-    depuis 1 : au pire un essai de plus, jamais un échec prononcé à tort."""
-    from core import cache as cache_tenant
+#: Revue lot 6 (ACAL1963) — la base n'a pas pu compter la livraison : le
+#: calcul n'est pas lancé et l'échec est DIT, jamais un job bloqué « en cours ».
+MOTIF_COMPTE_INDISPONIBLE = (
+    "le calcul n'a pas pu démarrer (base momentanément indisponible) : "
+    'relancez-le dans un instant')
 
-    cle = 'calepinage:livraisons:%s:%s' % (
-        job.pk, getattr(job, 'created_at', None) and job.created_at.timestamp())
-    rang = (1 if job.statut == job.STATUT_QUEUED
-            else int(cache_tenant.get(job.company_id, cle) or 0) + 1)
-    cache_tenant.set(job.company_id, cle, rang, timeout=DUREE_CACHE_S)
-    return rang > LIVRAISONS_MAX
+#: Le préfixe des compteurs de livraison (``core.SequenceCounter.cle``), et
+#: leur durée de vie sans nouvelle livraison : au-delà, la ligne est supprimée.
+PREFIXE_COMPTEUR_LIVRAISONS = 'calepinage:livraisons:'
+HEURES_COMPTEUR_LIVRAISONS = 48
+
+
+def _livraison_de_trop(job):
+    """ACAL1622 — le MOTIF d'échec de cette livraison, ``''`` si elle peut
+    calculer : au-delà de :data:`LIVRAISONS_MAX` livraisons d'un même job,
+    :data:`MOTIF_INTERROMPU`. ACAL1963 — le compte est DURABLE (une ligne
+    ``core.SequenceCounter`` par job, incrémentée sous verrou de ligne) : un
+    cache vidé ne le remet plus à 1. Revue lot 6 — une erreur de base pendant
+    le compte est un échec DIT (:data:`MOTIF_COMPTE_INDISPONIBLE`) ; et la
+    table reste bornée : les compteurs de livraison de la société restés sans
+    livraison depuis :data:`HEURES_COMPTEUR_LIVRAISONS` heures sont supprimés
+    (seul ce préfixe : jamais une séquence de numérotation)."""
+    import datetime
+
+    from django.db import DatabaseError
+    from django.utils import timezone
+
+    from core.models import SequenceCounter
+
+    cree = getattr(job, 'created_at', None)
+    cle = '%s%s:%s' % (PREFIXE_COMPTEUR_LIVRAISONS, job.pk,
+                       int(cree.timestamp()) if cree else '')
+    limite = timezone.now() - datetime.timedelta(hours=HEURES_COMPTEUR_LIVRAISONS)
+    try:
+        rang = SequenceCounter.next(job.company, cle)
+    except DatabaseError:
+        logger.exception('calepinage : compte des livraisons du job #%s impossible', job.pk)
+        return MOTIF_COMPTE_INDISPONIBLE
+    try:
+        # Revue lot 6 — le ménage a SON try : un verrou ou un interblocage entre
+        # deux purges est journalisé et ne change jamais le verdict du compte.
+        SequenceCounter.objects.filter(
+            company_id=job.company_id, cle__startswith=PREFIXE_COMPTEUR_LIVRAISONS,
+            updated_at__lt=limite).delete()
+    except DatabaseError:
+        logger.exception('calepinage : purge des compteurs de livraison impossible (job #%s)', job.pk)
+    return MOTIF_INTERROMPU if rang > LIVRAISONS_MAX else ''
 
 
 def _publier_echec(job, calepinage, champ, motif):
@@ -270,9 +305,10 @@ def simuler_calepinage(job_id=None, company_id=None, calepinage_id=None,
                               'abandonnée.')
             return {'statut': 'failed', 'motif': 'variante introuvable'}
 
-    if _livraison_de_trop(job):
-        _publier_echec(job, calepinage, '', MOTIF_INTERROMPU)
-        return {'statut': 'failed', 'motif': MOTIF_INTERROMPU}
+    motif_livraison = _livraison_de_trop(job)
+    if motif_livraison:
+        _publier_echec(job, calepinage, '', motif_livraison)
+        return {'statut': 'failed', 'motif': motif_livraison}
     job.marquer_progression(5)
     try:
         rendu = service_simulation.simuler_calepinage(
@@ -336,9 +372,10 @@ def relancer_moteur_calepinage(job_id=None, company_id=None, calepinage_id=None,
     if calepinage is None:
         job.marquer_echec('Calepinage introuvable : la relance est abandonnée.')
         return {'statut': 'failed', 'motif': 'calepinage introuvable'}
-    if _livraison_de_trop(job):
-        _publier_echec(job, calepinage, '', MOTIF_INTERROMPU)
-        return {'statut': 'failed', 'motif': MOTIF_INTERROMPU}
+    motif_livraison = _livraison_de_trop(job)
+    if motif_livraison:
+        _publier_echec(job, calepinage, '', motif_livraison)
+        return {'statut': 'failed', 'motif': motif_livraison}
     job.marquer_progression(5)
     try:
         relance = relancer_le_moteur(calepinage, user=job.user)
@@ -397,9 +434,10 @@ def balayer_calepinage(job_id=None, company_id=None, calepinage_id=None,
                           'abandonné.')
         return {'statut': 'failed', 'motif': 'calepinage introuvable'}
 
-    if _livraison_de_trop(job):  # ACAL1622 — même borne que la simulation
-        _publier_echec(job, calepinage, '', MOTIF_INTERROMPU)
-        return {'statut': 'failed', 'motif': MOTIF_INTERROMPU}
+    motif_livraison = _livraison_de_trop(job)  # ACAL1622 — même borne que la simulation
+    if motif_livraison:
+        _publier_echec(job, calepinage, '', motif_livraison)
+        return {'statut': 'failed', 'motif': motif_livraison}
     job.marquer_progression(5)
     try:
         # ACAL835 : un objectif de couverture cherche N sur la série stockée.
