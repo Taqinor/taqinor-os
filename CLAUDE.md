@@ -120,13 +120,13 @@ repo yet, the rule still applies to any future integration.
 - **Quote PDFs.** The one vendored engine
   (`apps/ventes/quote_engine/generate_devis_premium.py`) renders all formats, selected via
   the list's PDF dialog → `generer-pdf` body / `/proposal` query params (whitelist in
-  `clean_pdf_options`): premium 'full' = 3 pages (commercial: 3, étude intégrée, `include_etude` no effect —
+  `clean_pdf_options`): premium 'full' = 3 pages — 4 for a residential quote whose profitability block needs its own page (about 9+ lines, RPDF23 ; D-AMOT-8, 26/11/2026 : the PDF dialog promises no page count) — (commercial: 3, étude intégrée, `include_etude` no effect —
   CIQ332; industriel: 4, étude intégrée, `include_etude` no effect — D-QJR5-12, CIQ340; agricole: the dedicated
   3-page document of `quote_engine/agricole/`, `include_etude`/`include_calepinage` no effect — D-AGR-2, AGR312;
   +1 page only for an EXPLICIT `include_note_calcul` — FDA design note, AGR319), residential +`include_etude` = 4
   (degrades to 3 without étude data), 'onepage' = 1 (adaptive density, never overflows); residential premium
   +1 page only for an EXPLICIT `include_calepinage` (planche; `devis_final`/`show_monthly`/langue
-  never add a page — QJR666). PDFs show
+  never add a page — QJR666). The technical annex (an EXPLICIT `include_annexe_technique`, +1 page) exists only in the documents the older engine renders — a residential quote with `include_etude` (or one the redesigned renderer refused) — never the redesigned 3-page residential document, commercial, industrial, agricole or one-page; on a two-option quote sent after `COUPURE_SCHEMA_ELECTRIQUE` whose two electrical designs were both stored at the send (D-ACAL-158), the annex is ONE PAGE PER OPTION (one more page — D-ACAL-166, 26/11/2026) ; every quote sent before, and every one-option quote, keeps its single annex page. PDFs show
   per-line P.U./Total HT with a visible Sous-total HT → Remise → Total HT → TVA → Total TTC
   chain, a system summary (kWc/production/économie/prix-kWc, or pompe/débit/HMT), and product
   sheets from `Produit.marque/description/garantie`. Page counts enforced in

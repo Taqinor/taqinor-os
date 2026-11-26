@@ -232,10 +232,20 @@ def composer(intention):
         cle: getattr(intention, cle, None)
         for cle in ('onduleur_impose', 'batterie_imposee')
         if getattr(intention, cle, None) is not None}
-    if deux_options and imposition:
+    # D-ACAL-148 — l'onduleur DÉSIGNÉ par le calepinage (forme dict) sert aussi
+    # un devis « les deux » : il va au kit de SA famille (``composition_deux_
+    # optimiseurs``) ; toute autre imposition reste mono-option.
+    designe = (imposition.get('onduleur_impose')
+               if isinstance(imposition.get('onduleur_impose'), dict) else None)
+    # D-ACAL-164 — la batterie DÉSIGNÉE (``designee``) va, elle, au kit « avec ».
+    batterie_designee = (imposition.get('batterie_imposee')
+                         if (imposition.get('batterie_imposee') or {}).get('designee') else None)
+    if deux_options and imposition and len(imposition) != (designe is not None) + (batterie_designee is not None):
         # COP2-V3 — une composition imposée est MONO-OPTION (le devis auto
         # refuse ``les_deux`` en amont) : jamais une imposition ignorée.
         raise ValueError('Composition imposée : forme mono-option seulement.')
+    if deux_options and (designe or batterie_designee) is not None and not (avec or commun['regles_2710']):
+        imposition = {}  # règles d'origine (< 3) : jamais un devis neuf du calepinage
     if deux_options and (avec or commun['regles_2710']):
         avec = avec or {}
         lignes = composition_deux_optimiseurs(
@@ -248,6 +258,7 @@ def composer(intention):
             batterie_cible_kwh=avec.get('batterie_kwh'),
             modeles=getattr(intention, 'modeles', None),
             batterie_module_kwh=getattr(intention, 'batterie_module_kwh', None),
+            onduleur_designe=designe, batterie_designee=batterie_designee,
             **commun)
     else:
         lignes = composition_residentielle(
@@ -576,6 +587,8 @@ def _verifier_impose(intention, erreurs):
     company = intention.company
     onduleur_impose = getattr(intention, 'onduleur_impose', None)
     batterie_imposee = getattr(intention, 'batterie_imposee', None)
+    if isinstance(onduleur_impose, dict) or (batterie_imposee or {}).get('designee'):
+        return _verifier_designe(intention, erreurs)
     erreurs.extend(refus_produits_imposes(
         company, onduleur_impose, batterie_imposee))
     scenario = (intention.scenario or '').strip().lower()
@@ -605,6 +618,49 @@ def _verifier_impose(intention, erreurs):
             plage = _plage_batterie_de_l_onduleur(onduleur)
             erreurs.append(message_batterie_incompatible(plage)
                            if plage and plage[1] > 0 else MSG_SANS_BATTERIE)
+    return erreurs or None
+
+
+def _verifier_designe(intention, erreurs):
+    """D-ACAL-148 — l'étape ``verifier`` d'un onduleur DÉSIGNÉ par le calepinage
+    (``{'produit_id', 'categorie', 'nombre'}``) : il remplace le choix catalogue
+    de SA famille seulement ; l'autre famille d'un devis « les deux » et la
+    batterie gardent l'exigence ordinaire (la batterie jugée sur l'onduleur qui
+    la porte)."""
+    company = intention.company
+    designe = intention.onduleur_impose if isinstance(intention.onduleur_impose, dict) else {}
+    batterie_imposee = getattr(intention, 'batterie_imposee', None)
+    erreurs.extend(refus_produits_imposes(company, None, batterie_imposee))
+    produit = _fiche_tarifee(company, designe.get('produit_id')) if designe else None
+    if designe and produit is None:
+        erreurs.extend(refus_produits_imposes(company, designe.get('produit_id'), None))
+    categorie = designe.get('categorie')
+    scenario = (intention.scenario or '').strip().lower()
+    hors_reseau = bool(getattr(intention, 'hors_reseau', False))
+    gamme = intention.gamme_nom_devis
+
+    def _onduleur(famille, predicat, message, **options):
+        if famille == categorie:
+            return produit
+        choisi = _pick_product(company, predicat, **options)
+        if choisi is None:
+            erreurs.append(message)
+        return choisi
+
+    if hors_reseau:
+        stockage = _onduleur('onduleur_offgrid', _is_offgrid_inverter, MSG_SANS_ONDULEUR_OFFGRID)
+    else:
+        if scenario in (COMPOSITION_SANS, COMPOSITION_LES_DEUX):
+            _onduleur('onduleur_reseau', _is_reseau_inverter, MSG_SANS_ONDULEUR_RESEAU,
+                      role='onduleur_reseau', gamme=gamme)
+        stockage = (_onduleur('onduleur_hybride', _is_hybrid_inverter, MSG_SANS_ONDULEUR_HYBRIDE,
+                              role='onduleur_hybride', gamme=gamme)
+                    if scenario in (COMPOSITION_AVEC, COMPOSITION_LES_DEUX) else None)
+    veut_stockage = hors_reseau or scenario in (COMPOSITION_AVEC, COMPOSITION_LES_DEUX)
+    if veut_stockage and batterie_imposee is None and _pick_batterie(company, onduleur=stockage) is None:
+        plage = _plage_batterie_de_l_onduleur(stockage)
+        erreurs.append(message_batterie_incompatible(plage)
+                       if plage and plage[1] > 0 else MSG_SANS_BATTERIE)
     return erreurs or None
 
 

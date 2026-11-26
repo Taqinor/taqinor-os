@@ -170,6 +170,40 @@ class LaVerificationImposeeJugeLesProduitsImposes(SimpleTestCase):
             [etape_composer.MSG_SANS_BATTERIE])
 
 
+class LOnduleurDesigneNeRemplaceQueSaFamille(SimpleTestCase):
+    """D-ACAL-148 — l'onduleur DÉSIGNÉ par le calepinage (forme dict) remplace le
+    choix catalogue de SA famille seulement : l'autre famille d'un devis « les
+    deux » garde l'exigence ordinaire, la batterie est jugée sur l'onduleur qui
+    la porte."""
+
+    def _verifier(self, scenario, categorie, *, fiche=True, **catalogue):
+        ancien = etape_composer._fiche_tarifee
+        etape_composer._fiche_tarifee = lambda company, pid: object() if fiche else None
+        try:
+            with _CatalogueFictif(**catalogue):
+                return etape_composer.verifier(etape_composer.IntentionComposition(
+                    company=object(), nb_panneaux=10, kwc=7.1, scenario=scenario,
+                    onduleur_impose={'produit_id': 88, 'categorie': categorie, 'nombre': None}))
+        finally:
+            etape_composer._fiche_tarifee = ancien
+
+    def test_les_deux_hybride_designe_exige_encore_le_reseau(self):
+        self.assertIsNone(self._verifier('les_deux', 'onduleur_hybride', hybride=False))
+        self.assertEqual(self._verifier('les_deux', 'onduleur_hybride', reseau=False),
+                         [etape_composer.MSG_SANS_ONDULEUR_RESEAU])
+
+    def test_les_deux_reseau_designe_exige_encore_hybride_et_batterie(self):
+        self.assertIsNone(self._verifier('les_deux', 'onduleur_reseau', reseau=False))
+        self.assertEqual(self._verifier('les_deux', 'onduleur_reseau', hybride=False, batterie=False),
+                         [etape_composer.MSG_SANS_ONDULEUR_HYBRIDE, etape_composer.MSG_SANS_BATTERIE])
+
+    def test_mono_le_designe_suffit_et_introuvable_est_nomme(self):
+        self.assertIsNone(self._verifier('sans', 'onduleur_reseau', reseau=False, hybride=False))
+        erreurs = self._verifier('sans', 'onduleur_reseau', fiche=False)
+        self.assertEqual(len(erreurs), 1)
+        self.assertIn('#88', erreurs[0])
+
+
 class LeScenarioSeLitDansLeLayout(SimpleTestCase):
     """L'adaptateur 3D traduit un layout dans le vocabulaire du pipeline."""
 

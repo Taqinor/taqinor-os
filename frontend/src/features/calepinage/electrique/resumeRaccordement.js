@@ -63,14 +63,21 @@ export function longueurCableDc(resultat) {
   return dc.reduce((somme, t) => somme + t.longueur_m, 0)
 }
 
+/** ACAL1317 — le libellé de la case du câble : la provenance du tracé de l'onduleur s'y range dessous. */
+export const CASE_CABLE = 'Câble côté panneaux'
+
+/** ACAL1317 — la valeur de la case du câble tant qu'un geste sur l'onduleur n'est pas enregistré et relu. */
+export const CABLE_A_MESURER = 'à mesurer à l’enregistrement'
+
 /** Les trois cases de la pastille de carte (« Chaînes | Onduleur | Câble côté panneaux ») : seules les
-    cases servies, `[{libelle, valeur}]`. */
-export function casesPastille(resultat) {
-  const metres = longueurCableDc(resultat)
+    cases servies, `[{libelle, valeur}]`. `cableEnAttente` (ACAL1317) : la longueur servie décrit l'ancien tracé,
+    elle est retenue. */
+export function casesPastille(resultat, { cableEnAttente = false } = {}) {
+  const metres = cableEnAttente ? null : longueurCableDc(resultat)
   return [
     { libelle: 'Chaînes', valeur: texteChaines(chainesServies(resultat)) },
     { libelle: 'Onduleur', valeur: texteOnduleur(resultat) },
-    { libelle: 'Câble côté panneaux', valeur: metres === null ? null : `${nb(metres)} m` },
+    { libelle: CASE_CABLE, valeur: cableEnAttente ? CABLE_A_MESURER : metres === null ? null : `${nb(metres)} m` },
   ].filter((c) => c.valeur)
 }
 

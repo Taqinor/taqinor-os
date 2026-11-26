@@ -1,5 +1,5 @@
 {
-  "sha256": "d596c6598e393ff6629c148ac504fa82d6be3ad8973e7742cd71fd742a5001a8",
+  "sha256": "38d5818bb0c3899ee91357f8cc83af911a5fb6321d366e2529ba3c8d4be90dbc",
   "cles": [
     "ref",
     "date",
@@ -129,7 +129,8 @@
     "eco_s_ann_multi",
     "eco_a_ann_multi",
     "montants_tranches",
-    "phrases_pdf_2511"
+    "phrases_pdf_2511",
+    "phrases_pdf_2611"
   ],
   "sharelinks": 0
 }

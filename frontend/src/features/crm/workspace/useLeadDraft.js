@@ -11,6 +11,7 @@ import { refusEtape } from '../raisonsFroid'
 import { STAGE_LABELS, CONVERSION_STAGE } from '../stages'
 import { toastWithUndo } from '../../../lib/toast'
 import { getPrefetched } from './leadPrefetch'
+import { relireConceptionLead } from './useConceptionLead'
 import fieldLabels from './fieldLabels'
 import { ecrireStockage, retirerStockage } from '../../../lib/stockageBestEffort.js'
 
@@ -193,6 +194,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       if (res && res.id === st.leadId) {
         setOpenedAt(st.leadId, res.date_modification)
         clearMirror(st.leadId)
+        relireConceptionLead(st.leadId)  // R5A-N6 — une fiche enregistrée peut créer/périmer la conception : relue une fois
         onSavedRef.current?.(res)
       }
       return true
@@ -343,6 +345,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       const res = (await crmApi.getLead(st.leadId)).data
       dispatch({ type: 'SET_SERVER', res })
       if (res) setOpenedAt(res.id, res.date_modification)
+      relireConceptionLead(st.leadId)  // R5A-N6 — devis/facture/fusion : la conception rangée a pu changer
       onSavedRef.current?.()
     } catch { console.warn('useLeadDraft (setOpenedAt) : best-effort') }
   }, [])
@@ -398,9 +401,12 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
     // réémet pas (un seul PATCH, un seul toast par refus). « Réessayer »
     // (flush forcé) reste possible ; toute modification change la signature.
     if (chargeRefusee) return undefined
+    // R5A-N5b — un brouillon RESTAURÉ de la session n'est envoyé qu'après un geste de l'utilisateur sur la fiche (saisie, ou
+    // « OK » du chip) : l'ouvrir ne doit écrire aucune requête (le miroir le garde, le garde de sortie reste armé).
+    if (state.restored && !state.touched) return undefined
     const t = setTimeout(() => { flush({}) }, AUTOSAVE_DEBOUNCE_MS)
     return () => clearTimeout(t)
-  }, [state.mode, state.draft, draftDirty, state.inflight, chargeRefusee, flush])
+  }, [state.mode, state.draft, draftDirty, state.inflight, chargeRefusee, state.restored, state.touched, flush])
 
   // ── AERR108 — démontage / changement de lead : le brouillon part ───────────
   // Une frappe de < 1,5 s suivie d'un démontage (raccourci, clic de menu,
@@ -413,6 +419,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
     if (abandonneRef.current) { abandonneRef.current = false; return }
     if (st.mode !== 'edit' || !isDirty(st)) return
     if (st.refused && st.refused === signatureCharge(st)) return  // ALEA18
+    if (st.restored && !st.touched) return  // R5A-N5b — brouillon restauré, aucun geste : rien ne part, le miroir le garde
     flushRef.current({})
   }, [lead?.id, mode])
 

@@ -573,7 +573,7 @@ def pareto_pannes(company, *, group_by='produit', date_debut=None,
 
 # ── XSAV15 — MTBF / MTTR / coût cumulé par équipement ────────────────────────
 
-def fiabilite_equipement(equipement, *, include_couts=False):
+def fiabilite_equipement(equipement, *, include_couts=False, include_prix_vente=True):
     """XSAV15 — MTBF / MTTR / coût cumulé pour UN équipement.
 
     * MTBF (jours) = écart MOYEN entre les ``date_ouverture`` de tickets
@@ -645,13 +645,14 @@ def fiabilite_equipement(equipement, *, include_couts=False):
         'cout_cumule': float(cout_cumule),
         'cout_tickets': float(cout_tickets),
         'cout_pieces': float(cout_pieces),
-        'prix_catalogue': float(prix_vente) if prix_vente is not None else None,
+        # D-ACAL-165 — le prix de VENTE catalogue exige aussi « voir les prix de vente ».
+        'prix_catalogue': float(prix_vente) if prix_vente is not None and include_prix_vente else None,
         'reparer_vs_remplacer': reparer_vs_remplacer,
     })
     return result
 
 
-def fiabilite_equipements(company, *, include_couts=False, limit=None):
+def fiabilite_equipements(company, *, include_couts=False, limit=None, include_prix_vente=True):
     """XSAV15 — Fiabilité (MTBF/MTTR/coût) de TOUS les équipements de la
     société ayant au moins un ticket correctif, triée par coût cumulé
     décroissant (si ``include_couts``) sinon par nombre de tickets
@@ -662,7 +663,7 @@ def fiabilite_equipements(company, *, include_couts=False, limit=None):
           .select_related('produit')
           .distinct())
     rows = [
-        fiabilite_equipement(eq, include_couts=include_couts) for eq in qs
+        fiabilite_equipement(eq, include_couts=include_couts, include_prix_vente=include_prix_vente) for eq in qs
     ]
     for row, eq in zip(rows, qs):
         row['produit_nom'] = getattr(eq.produit, 'nom', '') or ''

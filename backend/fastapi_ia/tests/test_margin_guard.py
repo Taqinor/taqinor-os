@@ -116,6 +116,47 @@ class MarginGuardTests(unittest.TestCase):
         sql = "SELECT nom, prix_vente, quantite FROM stock_produit"
         self.assertFalse(svc._references_forbidden_column(sql))
 
+    def test_dacal165_prix_de_vente_refuse_sans_prix_vente_voir(self):
+        """D-ACAL-165 — registre LIVRE : Technicien et Technicien responsable
+        (sans `prix_vente_voir`) ne lisent aucun prix de vente (catalogue,
+        lignes et montants de devis), nomme ou par ligne entiere ; Directeur,
+        Commercial et compte sans role fin (`permissions=None`) : inchanges."""
+        import importlib.util
+        chemin = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__)))),
+            "django_core", "apps", "roles", "permissions_registre.py")
+        spec = importlib.util.spec_from_file_location("_registre_livre_d165", chemin)
+        registre = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(registre)
+        roles = dict(registre.CANONICAL_SYSTEM_ROLES)
+        refusees = (
+            "SELECT nom, prix_vente FROM stock_produit",
+            "SELECT p.TARIF_LOCATION_JOUR FROM stock_produit p",
+            "SELECT nom, paliers_prix_vente, prix_fixe_ht FROM stock_produit",
+            "SELECT SUM(prix_vente * quantite_stock) FROM stock_produit",
+        )
+        for nom in ("Technicien", "Technicien responsable"):
+            for sql in refusees:
+                with self.subTest(role=nom, sql=sql), self.assertRaisesRegex(
+                        svc.RefusDeDroit, "prix_vente_voir"):
+                    svc._validate_and_secure(sql, 7, allow_price=False,
+                                             permissions=list(roles[nom]))
+        # Une lecture sans prix reste servie au technicien.
+        self.assertIn("company_id", svc._validate_and_secure(
+            "SELECT nom, quantite_stock FROM stock_produit", 7,
+            permissions=list(roles["Technicien"])))
+        # Lignes de devis : un role personnalise ventes SANS le code.
+        with self.assertRaisesRegex(svc.RefusDeDroit, "prix_vente_voir"):
+            svc._validate_and_secure(
+                "SELECT designation, quantite, prix_unitaire, remise FROM ventes_lignedevis",
+                7, permissions=["ventes_voir"])
+        for permissions in (list(roles["Directeur"]), list(roles["Commercial"]), None):
+            self.assertIn("company_id", svc._validate_and_secure(
+                "SELECT nom, prix_vente FROM stock_produit", 7, permissions=permissions))
+        self.assertTrue(svc._references_forbidden_column(
+            "SELECT * FROM ventes_lignedevis", allow_price=True, allow_sale=False))
+
     def test_refusal_reply_hides_value(self):
         # Le message de refus ne fuit jamais la colonne / la donnee interdite.
         self.assertNotIn("prix_achat", svc._FORBIDDEN_TOOL_REPLY.lower())

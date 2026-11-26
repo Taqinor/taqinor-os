@@ -42,18 +42,20 @@ export function texteChiffresVariante(
   choisi: ModuleDocument | null,
   fmt: Fmt,
   fmtKwc: Fmt,
-  erp = false,
+  erp: boolean | 'pompage' = false, // ACAL1268 — 'pompage' : atelier ERP d'un lead de pompage, jamais de kWh de réseau
 ): string {
+  const pompage = erp === 'pompage';
   if (posee) {
     // T4-X2-006 (rejeu R5B, 26/11) — atelier ERP : la variante posée EST la pose ; son estimation de navigateur faisait un
     // second chiffre à côté du Total (« 21 735 » contre « 27 305 · simulation », mêmes 24 panneaux). Règle D-ACAL-86 / 97
     // (un seul chiffre par valeur ; pendant le dessin, panneaux et kWc seulement) : la carte ne dit plus de production
     // estimée pour la pose, elle renvoie au Total ; les AUTRES cartes restent « Estimation » (autres poses, pour comparer).
     const kwc = posee.kwc == null ? '—' : `${fmtKwc(posee.kwc)} kWc`;
+    if (pompage) return `${fmt(posee.count)} panneaux · ${kwc}`;
     if (erp && posee.estimee) return `${fmt(posee.count)} panneaux · ${kwc} · production : voir le Total`;
     return `${fmt(posee.count)} panneaux · ${kwc} · ${posee.annualKwh == null ? '—' : `${fmt(Math.round(posee.annualKwh))} kWh/an`}`;
   }
-  const chiffres = `${fmt(c.count)} panneaux · ${fmtKwc(c.kwc)} kWc · ${fmt(Math.round(c.annualKwh))} kWh/an`;
+  const chiffres = `${fmt(c.count)} panneaux · ${fmtKwc(c.kwc)} kWc${pompage ? '' : ` · ${fmt(Math.round(c.annualKwh))} kWh/an`}`;
   return autreQueLaReference(choisi)
     ? `Estimation (module de référence ${fmt(MODULE_PAR_DEFAUT_ATELIER.pmaxWc as number)} Wc) : ${chiffres}`
     : `Estimation : ${chiffres}`;
