@@ -157,7 +157,7 @@ test('ACAL1941 : le jeton de police des titres commence par Archivo ; coque, té
   const feuille = (f) => regles(readFileSync(new URL(`../../styles/calepinage/${f}`, import.meta.url), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, ''))
   const titres = {
-    '50-coque-atelier.css': ['.cal-coque .cal-projet-titre', '.cal-coque .cal-panneau-etape-titre'],
+    '50-coque-atelier.css': ['.cal-coque .cal-projet-titre', '.cal-coque .cal-panneau-etape-titre', '.cal-coque .cal-rail-etape'],
     '58-telephone.css': ['.cal-tel-projet-titre', '.cal-tel-h', '.cal-client-puce-titre'],
   }
   for (const [f, selecteurs] of Object.entries(titres)) {

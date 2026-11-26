@@ -227,6 +227,7 @@ body[data-cal-atelier] [data-sonner-toaster][data-y-position='bottom'][data-x-po
   border-radius: var(--cal-rayon-pile);
   background: transparent;
   color: var(--cal-texte-2);
+  font-family: var(--cal-police-titre); /* ACAL1941 — boutons d'étape du rail */
   font-weight: 500;
   font-size: 0.75rem;
 }
