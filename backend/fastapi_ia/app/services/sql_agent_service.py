@@ -42,7 +42,7 @@ except ImportError:  # pragma: no cover - langchain >= 1.0 a deplace le module
 if TYPE_CHECKING:  # eviter un import circulaire au runtime
     from app.services.action_tools import ActionContext
 
-from app.services import prompt_copilote
+from app.services import garde_prix_vente, prompt_copilote
 from app.services.cartes import construire_cartes
 from app.core.config import (
     CHAT_HISTORY_MAX,
@@ -994,28 +994,6 @@ _FORBIDDEN_COLUMNS = (
 _PRICE_TABLES = ("stock_produit", "ventes_devis", "stock_mouvementstock",  # ASTK44 : cout interne
                  "sav_ticket")  # ALEC15 : sav.Ticket.cout
 
-# D-ACAL-165 (fondateur, 26/11/2026) — famille PRIX DE VENTE : refusee a qui ne
-# porte pas `prix_vente_voir` (Technicien, Technicien responsable), meme garde
-# que le prix d'achat ci-dessus (colonne nommee OU ligne entiere). Colonnes du
-# catalogue (stock.Produit) et montants des devis / lignes de devis (verifies
-# sur les modeles Django : LigneDevis.prix_unitaire/remise, Devis.remise_globale,
-# prix_cible_kwc, prix_par_kwc, total_affiche_range). Compte sans role fin et
-# superuser : regle inchangee (`_permet_prix_vente`).
-_SALE_PRICE_COLUMNS = (
-    "prix_vente", "paliers_prix_vente", "prix_fixe_ht", "prix_par_panneau_ht",
-    "tarif_location_jour", "tarif_location_semaine", "tarif_location_mois",
-    "prix_unitaire", "remise", "remise_globale", "prix_cible_kwc",
-    "prix_par_kwc", "total_affiche_range",
-)
-_SALE_PRICE_TABLES = ("stock_produit", "ventes_lignedevis", "ventes_devis")
-
-
-def _permet_prix_vente(permissions) -> bool:
-    """D-ACAL-165 — `permissions=None` (superuser, compte sans role fin, appel
-    direct) : inchange ; sinon le code `prix_vente_voir` decide."""
-    return permissions is None or "prix_vente_voir" in permissions
-
-
 # ALEC15 (C-ALEC-013) — montants et lignes des factures fournisseur de toute la
 # societe (contourne APFS46) : refusee a TOUTE mention sans `prix_achat_voir`.
 _PRICE_ONLY_TABLES = frozenset({"ia_ocr_document"})
@@ -1070,14 +1048,13 @@ def _references_forbidden_column(sql: str, allow_price: bool = False,
         tree = _parse_single_query(sql)
     except SQLSecurityError:
         return True
-    colonnes = set(_SECRET_COLUMNS)
-    tables = set(_SECRET_TABLES) | set(_TABLES_LIGNE_SECRETE)
+    # D-ACAL-165 — `allow_sale=False` ajoute la famille prix de vente (garde_prix_vente).
+    colonnes = set(_SECRET_COLUMNS) | (set() if allow_sale else set(garde_prix_vente.COLONNES))
+    tables = (set(_SECRET_TABLES) | set(_TABLES_LIGNE_SECRETE)
+              | (set() if allow_sale else set(garde_prix_vente.TABLES)))
     if not allow_price:
         colonnes |= set(_FORBIDDEN_COLUMNS)
         tables |= set(_PRICE_TABLES)
-    if not allow_sale:  # D-ACAL-165
-        colonnes |= set(_SALE_PRICE_COLUMNS)
-        tables |= set(_SALE_PRICE_TABLES)
     noms = {t.name.lower() for t in tree.find_all(exp.Table)}
     if not allow_price and noms & _PRICE_ONLY_TABLES:
         return True
@@ -1209,11 +1186,7 @@ def _validate_and_secure(sql: str, company_id: int,
             sql, allow_price=True, allow_pii=False):
         raise RefusDeDroit(
             "Donnee personnelle du client (client_pii_voir) — lecture refusee.")
-    if not _permet_prix_vente(permissions) and _references_forbidden_column(
-            sql, allow_price=True, allow_sale=False):
-        raise RefusDeDroit(
-            "Prix de vente (prix_vente_voir) — lecture refusee.")
-    _verifier_module_et_portee(sql, permissions)
+    garde_prix_vente.verifier_droits_de_lecture(sql, permissions)  # D-ACAL-165 + ALEC16
     return _inject_company_filter(sql, company_id)
 
 
