@@ -717,7 +717,7 @@ export function deserializeEnvironment(json: unknown): EnvironmentObject[] {
  */
 export interface SerializedConsumption {
   /** Courbe horaire (kWh/h) EFFECTIVEMENT utilisée, 24 valeurs — `ctx.consCurve`. */
-  courbe24: number[];
+  courbe24?: number[];
   /** W95 — facteurs multiplicatifs saisonniers SAISIS (`ctx.consSummerFactor` /
    *  `ctx.consWinterFactor`). Omis quand la modulation saisonnière n'a pas été activée. */
   saisons?: { ete: number; hiver: number };

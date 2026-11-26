@@ -591,7 +591,7 @@ describe('ACAL1609 — charge seule ⇒ pas de base nulle', () => {
     const { baselineCurve } = await import('../../lib/applianceConsumption');
     const conso = serializeConsumption(ctxChargeSeule({ opts: { factureMensuelleMad: 900 } })).consumption!;
     expect(conso.charges).toEqual([VOITURE]);
-    expect(somme(conso.courbe24)).toBeGreaterThan(0);
+    expect(somme(conso.courbe24 ?? [])).toBeGreaterThan(0);
     expect(conso.courbe24).toEqual(baselineCurve(billToAnnualKwh(900) / 365));
     expect(conso.methode).toBe('facture');
   });
@@ -599,8 +599,25 @@ describe('ACAL1609 — charge seule ⇒ pas de base nulle', () => {
   it('un socle de session (12 kWh/j) prime ; une courbe éditée à la main reste telle quelle', async () => {
     const { serializeConsumption } = await import('./prefill');
     const conso = serializeConsumption(ctxChargeSeule({ consDailyTarget: 12, opts: { factureMensuelleMad: 900 } })).consumption!;
-    expect(somme(conso.courbe24)).toBeCloseTo(12, 9);
+    expect(somme(conso.courbe24 ?? [])).toBeCloseTo(12, 9);
     const main = serializeConsumption(ctxChargeSeule({ consHandEdited: true })).consumption!;
     expect(main.courbe24).toEqual(emptyCurve());
+  });
+
+  // ACAL1962 — ni facture ni socle : aucune courbe de base (clé omise), la charge seule est écrite.
+  it('sans facture ni socle : pas de courbe24 (jamais 24 zéros), la charge est écrite ; un document relu qui portait ses zéros les garde', async () => {
+    const { serializeConsumption } = await import('./prefill');
+    const conso = serializeConsumption(ctxChargeSeule({})).consumption!;
+    expect('courbe24' in conso).toBe(false);
+    expect(conso.charges).toEqual([VOITURE]);
+    const relu = serializeConsumption(
+      ctxChargeSeule({ documentRelu: { consumption: { courbe24: emptyCurve(), methode: 'facture' } } }),
+    ).consumption!;
+    expect(relu.courbe24).toEqual(emptyCurve());
+    // Une courbe RÉELLE relue, retombée à zéro par un geste, sans facture ni socle : pas de zéros fantômes.
+    const tombee = serializeConsumption(
+      ctxChargeSeule({ documentRelu: { consumption: { courbe24: Array(24).fill(0.3), methode: 'courbe' } } }),
+    ).consumption!;
+    expect('courbe24' in tombee).toBe(false);
   });
 });

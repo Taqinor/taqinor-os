@@ -32,15 +32,22 @@ export function chargesAEcrire(ctx: Ctx): ChargeAvenir[] | null {
  * qu'elle a été éditée à la main) ; sinon la courbe de la facture, composée comme
  * `consumption.ts::rebuildConsCurve` — socle de la session, à défaut la facture du lead servie
  * à l'atelier (`opts.factureMensuelleMad`, convertie comme la carte « Recommandation »). Une
- * charge ajoutée seule n'écrit plus une maison à zéro. Aucune facture connue : courbe nulle.
+ * charge ajoutée seule n'écrit plus une maison à zéro. Aucune facture ni socle (ACAL1962) : AUCUNE courbe (`undefined`, clé omise) — jamais 24 zéros
+ * lus comme une valeur saisie ; seul un document RELU qui portait déjà sa courbe nulle la réémet telle quelle
+ * (rouvrir puis enregistrer sans geste ne change aucun octet).
  */
-function courbeDeBase(ctx: Ctx, appareils: Appliance[], consHandEdited: boolean): number[] {
+function courbeDeBase(ctx: Ctx, appareils: Appliance[], consHandEdited: boolean): number[] | undefined {
   const ecran = Array.isArray(ctx.consCurve) && ctx.consCurve.length === 24 ? ctx.consCurve : null;
   if (ecran && (consHandEdited || ecran.some((v) => v > 0))) return ecran.slice();
   const socle = typeof ctx.consDailyTarget === 'number' && ctx.consDailyTarget > 0 ? ctx.consDailyTarget : 0;
   const facture = socle > 0 ? 0 : factureCarteDe(0, ctx.opts?.factureMensuelleMad);
   const jour = socle > 0 ? socle : facture > 0 ? billToAnnualKwh(facture) / 365 : 0;
-  return jour > 0 ? composeConsumption(baselineCurve(jour), appareils) : emptyCurve();
+  if (jour > 0) return composeConsumption(baselineCurve(jour), appareils);
+  const relue = (ctx.documentRelu?.consumption as { courbe24?: unknown } | undefined)?.courbe24;
+  // Seul un document relu qui portait DÉJÀ 24 zéros les réémet (aucun octet ne bouge sans geste) ; une courbe
+  // réelle relue puis tombée à zéro par un geste n'écrit pas de zéros fantômes.
+  const zerosStockes = Array.isArray(relue) && relue.length === 24 && relue.every((v) => v === 0);
+  return zerosStockes ? emptyCurve() : undefined;
 }
 
 /** T4-U4-025 — la signature d'une consommation non relue, prise UNE fois par session : deux sérialisations sans geste
@@ -65,7 +72,7 @@ export function construireConsommation(
       ? 'appareils'
       : 'facture';
   const consumption: SerializedConsumption = {
-    courbe24,
+    ...(courbe24 ? { courbe24 } : {}),
     methode,
     // ACAL26 — la provenance RELUE du document (`ctx.consSource`, posée par
     // `appliquerHydratationAuCtx`) voyage telle quelle : rouvrir puis enregistrer sans
