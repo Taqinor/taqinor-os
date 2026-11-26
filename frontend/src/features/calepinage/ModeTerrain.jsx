@@ -227,8 +227,10 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
   // ACAL1425 — un champ enregistré depuis le contour TRACÉ sur la carte (pas un rectangle
   // largeur × profondeur) : sa surface est lue sur la surface persistée, jamais redemandée.
   const surfaceCourante = (pose.surfaces || []).find((s) => s.id === pose.repereCourant) ?? null
-  const contourTrace = surfaceCourante && Array.isArray(surfaceCourante.contourM)
-    && surfaceCourante.contourM.length > 0 && surfaceCourante.contourM.length !== 4
+  // Le marqueur PERSISTÉ du tracé : `vertices` (contrat poseSurface : « présent quand le terrain a été tracé sur la
+  // carte ») — un rectangle largeur × profondeur n'en écrit jamais ; le nombre de coins ne dit rien.
+  const contourTrace = surfaceCourante && Array.isArray(surfaceCourante.vertices)
+    && surfaceCourante.vertices.length >= 3
     && Number.isFinite(Number(surfaceCourante.areaM2))
     ? Math.round(Number(surfaceCourante.areaM2)) : null
 

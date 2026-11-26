@@ -1095,3 +1095,10 @@ retiré plus un hook ajouté.
 | `cal-document-modifie` | 409 `document_modifie` : la conception a été modifiée ailleurs. |
 | `cal-document-modifie-recharger` | bouton « Recharger » de ce bandeau. |
 | `cal-conflit-lecture-seule` | 409 : le devis lié est figé (motif du serveur). |
+| `cal-horizon-enregistrer-rangee` | rangée du bouton « Enregistrer l'horizon » et de sa phrase d'état (horizon). |
+| `cal-terrain-contour-trace` | terrain — mention « Champ enregistré — contour tracé, N m² » (surface lue sur le contour persisté, ACAL1425). |
+| `cal-sundiagram-graduation` | diagramme solaire — une graduation d'élévation (0°, 30°, 60°, 90°). |
+| `cal-detection-obstacle-cible` | détection du toit : zone tactile 44 px de la case d'un obstacle proposé. |
+| `cal-panneaux-disposition` | étape Panneaux — bloc repliable « Disposition » (réglages de pose). |
+| `cal-toit-plat-confirme` | étape Toit — tag « · confirmé » d'un toit plat dont la confirmation est enregistrée (ACAL1922). |
+| `cal-doc-sorties-apercu` | documents — bouton « Aperçu » d'une sortie technique (préfixe, suffixé du code de la sortie). |

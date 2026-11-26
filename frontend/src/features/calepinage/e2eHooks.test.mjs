@@ -937,6 +937,14 @@ export const ALL_HOOKS = [
   'cal-signal',
   'cal-releve',
   'cal-vue-client',
+  // ── Lot 6 (hooks lus par les tests d'écran) ──
+  'cal-horizon-enregistrer-rangee',
+  'cal-terrain-contour-trace',
+  'cal-sundiagram-graduation',
+  'cal-detection-obstacle-cible',
+  'cal-panneaux-disposition',
+  'cal-toit-plat-confirme',
+  'cal-doc-sorties-apercu',
 ]
 
 function readDoc() {

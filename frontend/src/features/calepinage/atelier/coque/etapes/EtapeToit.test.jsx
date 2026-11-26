@@ -7,7 +7,7 @@
    contrôles, et la feuille 51-etape-toit.css sans couleur littérale (thème sombre par les jetons). */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, renderHook, screen, cleanup, within, fireEvent, waitFor, act } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import process from 'node:process'
@@ -76,6 +76,11 @@ const $ = (id) => document.getElementById(id)
 let surCarte
 let builderApi
 
+/** ACAL1971 — l'URL courante du routeur, lue pour prouver que `champ` est retiré une fois consommé. */
+function SondeUrl() {
+  return <span data-testid="sonde-url" hidden>{useLocation().search}</span>
+}
+
 function rendre(props = {}, avant = null, url = '/') {
   const hote = document.createElement('div')
   hote.className = 'rp9-host cal-coque'
@@ -94,6 +99,7 @@ function rendre(props = {}, avant = null, url = '/') {
     <MemoryRouter initialEntries={[url]}>
       <ContexteCoque.Provider value={coque}>
         <EtapeToit calepinageId={7} builderApi={builderApi} documentVivant={null} {...props} />
+        <SondeUrl />
       </ContexteCoque.Provider>
     </MemoryRouter>,
     { container: panneau },
@@ -176,6 +182,20 @@ describe('ACAL1971 — « Régler » d’un obstacle fautif', () => {
     await waitFor(() => expect(surLigne).toHaveBeenCalledTimes(1))
     expect(screen.getAllByRole('option')[1]).toHaveAttribute('aria-selected', 'true')
     expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'false')
+  })
+
+  it('après l’arrivée : ↓ avance depuis l’obstacle visé, et `champ` est retiré de l’URL (onglet gardé) pour qu’un remontage ne le rejoue pas', async () => {
+    const surLigne = vi.fn()
+    rendre({}, (hote) => hote.querySelector('[data-objet="o2"]').addEventListener('click', surLigne), '/?onglet=pente&champ=o1')
+    const liste = await screen.findByRole('listbox')
+    await waitFor(() => expect(screen.getByTestId('sonde-url')).toHaveTextContent('?onglet=pente'))
+    expect(screen.getByTestId('sonde-url').textContent).not.toContain('champ')
+    expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'true')
+    fireEvent.keyDown(liste, { key: 'ArrowDown' })
+    expect(liste).toHaveAttribute('aria-activedescendant', 'cal-toit-obstacle-1')
+    fireEvent.keyDown(liste, { key: 'Enter' })
+    expect(surLigne).toHaveBeenCalledTimes(1)
+    expect(screen.getAllByRole('option')[1]).toHaveAttribute('aria-selected', 'true')
   })
 
   it('un champ qui n’est pas un obstacle ne sélectionne rien', async () => {
@@ -285,14 +305,28 @@ describe('ACAL1429 — toit plat jamais confirmé', () => {
     expect(within(carte).getByText('Toit plat')).toBeInTheDocument()
   })
 
-  it('ACAL1922 : le serveur rend le pan SANS pitchSource ⇒ la carte perd « À confirmer » et lit « confirmé » quand même', async () => {
+  it('ACAL1922 : le serveur rend le pan SANS pitchSource = écriture non retenue : la carte GARDE « À confirmer », le refus est dit, la conception est relue', async () => {
     layout.mockResolvedValue({ data: { roof_layout: { zones: [PLAT] }, empreinte_document: 'jeton-1' } })
     enregistrerSectionLayout.mockImplementation(async () => ({ data: {
       empreinte_document: 'jeton-2', roof_layout: { zones: [PLAT] } } }))
     rendre()
     const carte = screen.getByTestId('cal-toit-pente-carte')
     await waitFor(() => expect(within(carte).getByText('Toit plat')).toBeInTheDocument())
+    const lectures = layout.mock.calls.length
+    fireEvent.click(screen.getByTestId('cal-toit-pente-confirmer'))
+    await waitFor(() => expect(within(carte).getByRole('status')).toHaveTextContent('n’a pas été retenue'))
+    expect(within(carte).getByText('À confirmer')).toBeInTheDocument()
     expect(screen.queryByTestId('cal-toit-plat-confirme')).toBeNull()
+    await waitFor(() => expect(layout.mock.calls.length).toBeGreaterThan(lectures)) // relu, pas un écho
+  })
+
+  it('ACAL1922 : le serveur rend le pan avec pitchSource ⇒ « Toit plat · confirmé », sans bouton', async () => {
+    layout.mockResolvedValue({ data: { roof_layout: { zones: [PLAT] }, empreinte_document: 'jeton-1' } })
+    enregistrerSectionLayout.mockImplementation(async (_id, corps) => ({ data: {
+      empreinte_document: 'jeton-2', roof_layout: { zones: [{ ...PLAT, ...corps.champs }] } } }))
+    rendre()
+    const carte = screen.getByTestId('cal-toit-pente-carte')
+    await waitFor(() => expect(within(carte).getByText('Toit plat')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('cal-toit-pente-confirmer'))
     await waitFor(() => expect(within(carte).queryByText('À confirmer')).toBeNull())
     expect(within(carte).getByTestId('cal-toit-plat-confirme')).toHaveTextContent('confirmé')

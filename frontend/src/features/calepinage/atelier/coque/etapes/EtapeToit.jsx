@@ -219,23 +219,31 @@ function Cadran({ azimut }) {
 /** Les obstacles du toit (lus dans le tableau « Objets du site » du script) ; un clic sur une ligne la
     sélectionne comme ce tableau le fait. Liste à une seule tabulation (flèches + Entrée). */
 function Obstacles({ obstacles, relire }) {
-  const [actifManuel, setActif] = useState(0)
-  const [choisiManuel, setChoisi] = useState(null)
-  // ACAL1971 — « Régler » sur « Obstacles dans leur pan » arrive avec `?champ=<id de l'obstacle fautif>` : la ligne
-  // visée est la ligne choisie tant que l'utilisateur n'en a pas choisi une autre, et le script reçoit UNE fois le même
-  // clic que sur sa ligne du tableau « Objets du site ».
-  const [parametres] = useSearchParams()
+  const [actif, setActif] = useState(0)
+  const [choisi, setChoisi] = useState(null)
+  // ACAL1971 — « Régler » sur « Obstacles dans leur pan » arrive avec `?champ=<id de l'obstacle fautif>` : l'état est
+  // AMORCÉ une fois (ligne active + choisie) et le script reçoit UNE fois le même clic que sur sa ligne du tableau
+  // « Objets du site » ; le paramètre est ensuite retiré (replace : « Retour » ne le rejoue pas, un remontage non plus).
+  const [parametres, setParametres] = useSearchParams()
   const visee = parametres.get(PARAM_CHAMP)
   const iVisee = visee ? obstacles.findIndex((o) => o.id === visee) : -1
-  const choisi = choisiManuel ?? (iVisee >= 0 ? obstacles[iVisee].id : null)
-  const actif = choisiManuel == null && iVisee >= 0 ? iVisee : actifManuel
-  const dejaVisee = useRef(null)
+  // Amorçage pendant le rendu (« ajuster l'état » de React) : une seule fois par paramètre reçu, sans effet qui pose l'état.
+  const [amorce, setAmorce] = useState(null)
+  if (iVisee >= 0 && amorce !== visee) {
+    setAmorce(visee)
+    setActif(iVisee)
+    setChoisi(obstacles[iVisee].id)
+  }
   useEffect(() => {
-    if (iVisee < 0 || dejaVisee.current === visee) return
-    dejaVisee.current = visee
+    if (iVisee < 0) return
     selectionnerObstacle(document, obstacles[iVisee])
     relire()
-  }, [visee, iVisee, obstacles, relire])
+    setParametres((precedents) => {
+      const suivants = new URLSearchParams(precedents)
+      suivants.delete(PARAM_CHAMP)
+      return suivants
+    }, { replace: true })
+  }, [iVisee, obstacles, relire, setParametres])
   const choisir = (o, i) => {
     setActif(i)
     setChoisi(o.id)
