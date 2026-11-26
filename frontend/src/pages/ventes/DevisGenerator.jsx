@@ -191,7 +191,6 @@ import { usePersistanceDevis } from '../../features/ventes/quote/hooks/usePersis
 import { normaliserNombreEntete } from '../../features/ventes/quote/etatDevis'
 import { lignesNonEnvoyees } from '../../features/ventes/quote/lignesEcran'
 import { useChargeurEdition } from '../../features/ventes/quote/hooks/useChargeurEdition'
-import { usePanneauParDefautDepart } from '../../features/ventes/quote/panneauDefautEcran' // D-ACAL-169
 import { useRegistreOverrides } from '../../features/ventes/quote/hooks/useRegistreOverrides'
 import { useLignesEcran } from './generator/hooks/useLignesEcran'
 import { useCompositionEcran } from './generator/hooks/useCompositionEcran'
@@ -382,10 +381,6 @@ export default function DevisGenerator({
   // EN PLACE (mêmes référence et statut) au lieu d'une création.
   const editId = embedded ? editIdProp : searchParams.get('edit')
   const [editDevis, setEditDevis] = useState(null)
-  // D-ACAL-169 — le panneau par défaut de la société : UNE lecture à l'ouverture d'un devis
-  // NEUF (jamais d'un devis rouvert), qui pose la puissance de départ. Précédence : voir
-  // `ETAT_INITIAL.panelW` (sizingReducer.js). Ne bloque jamais l'écran.
-  const panneauDefaut = usePanneauParDefautDepart({ editId, dispatchSizing })
   // AGNR21 — l'enregistrement PARTIEL (lignes écrites, étude ou registre
   // refusés) : bandeau persistant, l'écran reste sur le formulaire.
   const [reserveEnregistrement, setReserveEnregistrement] = useState(null)
@@ -1502,14 +1497,13 @@ export default function DevisGenerator({
 
   // SPL48 — composition, Auto-remplir et recalcul du dimensionnement (déplacés tels quels dans le hook).
   const {
-    handleAutoFill, appliquerTailleDimensionnement, recalculerDimensionnement,
+    handleAutoFill, appliquerTailleDimensionnement, recalculerDimensionnement, panneauDefaut,
   } = useCompositionEcran({
     produits, setErrors, dispatchSizing, panelW, scenario, modeInstallation, structureType,
     structureProduitId, recalcDimTick, setPompageAutoFilled, setOnduleursIncomplets,
     setAutoFillLoading, setCompositionErreur, profilCi, horsReseau, kwp, selectedLead,
     etudeHoraireDonnees, etudeHoraireChargement, marcheCi, ctxProfilCi, apercuCi, resolveKwcAvec,
-    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard: quoteLogic.tvaStandard, sizing, lines,
-    panneauDefaut,
+    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard: quoteLogic.tvaStandard, sizing, lines, editId,
   })
 
   const selectedClient = clientsConnus.find(c => String(c.id) === String(clientId))
@@ -2002,8 +1996,7 @@ export default function DevisGenerator({
         {/* ── Paramètres techniques ── */}
         <CarteParametresTechniques
           kwcCible={kwcCible} onKwcCibleChange={onKwcCibleChange} nbPanneaux={nbPanneaux}
-          onNbPanneauxChange={onNbPanneauxChange} panelW={panelW} dispatchSizing={dispatchSizing}
-          panneauDefaut={panneauDefaut}
+          onNbPanneauxChange={onNbPanneauxChange} panelW={panelW} dispatchSizing={dispatchSizing} panneauDefaut={panneauDefaut}
           kwp={kwp} panneauxLignes={panneauxLignes} produits={produits}
           structureProduitId={structureProduitId} structureType={structureType}
           sizingInfo={sizingInfo} modeInstallation={modeInstallation} showSans={showSans}
