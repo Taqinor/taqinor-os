@@ -31,6 +31,7 @@ from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
 from ..serializers import forme_du_contrat
+from ..services.disponibilite_stock import marquer_en_stock
 from ..services.modules_stock import modules_disponibles_du_calepinage
 from .calepinages import CalepinageViewSet
 
@@ -47,8 +48,10 @@ def modules_disponibles(self, request, pk=None):
 
     calepinage = self.get_object()
     produits = produits_modules_qs(getattr(calepinage, 'company', None))
-    return Response(
-        modules_disponibles_du_calepinage(calepinage, produits))
+    servi = modules_disponibles_du_calepinage(calepinage, produits)
+    marquer_en_stock(getattr(calepinage, 'company', None), servi['modules'],  # D-ACAL-71
+                     lambda entree: entree['module']['produitId'])
+    return Response(servi)
 
 
 CalepinageViewSet.modules_disponibles = modules_disponibles
