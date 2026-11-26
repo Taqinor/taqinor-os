@@ -450,6 +450,26 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
         rangee = devis.clauses_appliquees[0]["options"]["sans_batterie"]
         self.assertIs(es.figer_conceptions_des_options(devis, garder=True)["sans_batterie"], rangee)
 
+    def test_d_acal_158_surcharges_de_site_reportees_sur_l_autre_option(self):
+        """Revue D-ACAL-158 (1) — le site saisi par le vendeur (régime, longueurs,
+        prise de terre) vaut pour les DEUX options ; des températures saisies,
+        dont les valeurs ne sont pas rangées, ne fabriquent pas une option sur
+        un autre site : elle n'est pas rangée."""
+        devis = _devis_deux_options_servables()
+        es.build_electrical_design(devis, overrides={
+            "regime": "TN", "dc_m": 8, "ac_m": 22, "inclure_prise_terre": True})
+        self.assertEqual(devis.electrical_design["source_entree"]["regime"], "surcharge")
+        devis.statut, devis.clauses_appliquees = "envoye", []
+        sans = es.figer_conceptions_des_options(devis)["sans_batterie"]["design"]
+        self.assertEqual(sans["parametres"]["regime"], "TN")
+        self.assertEqual((sans["parametres"]["dc_m"], sans["parametres"]["ac_m"]), (8.0, 22.0))
+        self.assertEqual(sans["source_entree"], devis.electrical_design["source_entree"])
+        self.assertIn("T1", {p["repere"] for p in sans["protections"]})
+        self.assertEqual(es._surcharges_de_site(devis.electrical_design),
+                         {"regime": "TN", "dc_m": 8.0, "ac_m": 22.0, "inclure_prise_terre": True})
+        es.build_electrical_design(devis, overrides={"temp_froid_c": -10})
+        self.assertEqual(es.figer_conceptions_des_options(devis), {})
+
     def test_d_acal_158_envoye_avant_brouillon_et_mono_option_inchanges(self):
         devis = _devis_deux_options_servables()
         es.build_electrical_design(devis)

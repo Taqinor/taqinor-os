@@ -1473,12 +1473,17 @@ def rafraichir_conception_electrique_devis(devis):
             "rafraichir_conception_electrique_devis indisponible sur %s",
             getattr(devis, "reference", "?"), exc_info=True)
         rangee = None
-    # D-ACAL-158 — un devis envoyé SOUS cette règle (il porte l'entrée) corrigé
-    # sur place : la conception de l'autre option suit ses lignes, comme
-    # l'étude rangée. Un brouillon ou un devis envoyé avant n'en a aucune.
+    suivre_conceptions_figees(devis)
+    return rangee
+
+
+def suivre_conceptions_figees(devis):
+    """D-ACAL-158 — un devis envoyé SOUS cette règle (il porte l'entrée) dont
+    l'étude rangée vient d'être refaite (lignes corrigées sur place, surcharges
+    POSTées) : la conception de l'autre option suit, sur le même site. Un
+    brouillon ou un devis envoyé avant n'en a aucune : rien. Ne lève jamais."""
     if _entree_conceptions_figees(devis) is not None:
         figer_conceptions_des_options(devis, garder=True)
-    return rangee
 
 
 # ── LOT 6 (SCHEL-B3) — LE SCHÉMA ÉLECTRIQUE DU DEVIS, UN DOCUMENT PAR OPTION ──
@@ -1802,21 +1807,68 @@ def _conceptions_figees(devis):
             if isinstance(valeur, dict) and isinstance(valeur.get("design"), dict)}
 
 
-def _conception_de_l_option(devis, variante, figee=None):
+#: Repères posés par ``core/electrique/protections.py`` pour deux surcharges de
+#: SITE que ``source_entree`` ne nomme pas : la prise de terre (posée seulement
+#: sur ``inclure_prise_terre``) et le parafoudre DC (posé, liaison DC sous son
+#: seuil, seulement sur ``zone_keraunique``).
+_REPERE_PRISE_TERRE = "T1"
+_REPERE_PARAFOUDRE_DC = "PDC1"
+
+
+class SurchargesIrreproductibles(Exception):
+    """Les surcharges de l'étude rangée ne se relisent pas sur elle."""
+
+
+def _surcharges_de_site(design):
+    """Les surcharges de SITE de l'étude rangée (POST ``conception-electrique``),
+    relues sur ELLE — la seule source : régime et longueurs quand
+    ``source_entree`` les dit « surcharge » (valeurs de ``parametres``), prise
+    de terre et zone kéraunique par les organes qu'elles seules posent. Les
+    grandeurs propres à l'onduleur ou au stockage d'une option (``phases``,
+    ``batterie``, ``plafond_kwc_par_onduleur``, ``longueur_chaine_forcee``) ne
+    passent jamais d'une option à l'autre. Lève ``SurchargesIrreproductibles``
+    quand des températures ont été saisies : leurs valeurs ne sont pas rangées,
+    l'autre option ne peut pas être conçue sur le même site."""
+    from core.electrique.protections import LONGUEUR_DC_SANS_PARAFOUDRE_M
+
+    if not isinstance(design, dict) or not design:
+        return {}
+    source = design.get("source_entree") if isinstance(design.get("source_entree"), dict) else {}
+    parametres = design.get("parametres") if isinstance(design.get("parametres"), dict) else {}
+    if source.get("temperatures") == SOURCE_SURCHARGE:
+        raise SurchargesIrreproductibles("températures saisies non rangées sur l'étude")
+    surcharges = {}
+    if source.get("regime") == SOURCE_SURCHARGE and parametres.get("regime"):
+        surcharges["regime"] = parametres["regime"]
+    if source.get("longueurs") == SOURCE_SURCHARGE:
+        surcharges.update({cle: parametres[cle] for cle in ("dc_m", "ac_m")
+                           if parametres.get(cle) is not None})
+    reperes = {str((p or {}).get("repere") or "") for p in (design.get("protections") or [])
+               if isinstance(p, dict)}
+    if _REPERE_PRISE_TERRE in reperes:
+        surcharges["inclure_prise_terre"] = True
+    if (_REPERE_PARAFOUDRE_DC in reperes
+            and _flottant(parametres.get("dc_m"), 0.0) <= LONGUEUR_DC_SANS_PARAFOUDRE_M):
+        surcharges["zone_keraunique"] = True
+    return surcharges
+
+
+def _conception_de_l_option(devis, variante, figee=None, surcharges=None):
     """``{design, hash}`` de l'option ``variante``, par les fonctions de l'étude
     rangée (``construire_entree_et_source`` → ``concevoir`` →
     ``projeter_contrat``, empreinte ``empreinte_entree``) sous la variante
-    imposée ; ``None`` quand elle n'est pas dessinable (fiche incomplète, aucun
-    module, bloquant). ``figee`` (celle déjà rangée) est rendue telle quelle
-    quand les entrées n'ont pas bougé — ou, comme ACAL165, quand seule la
-    source calepinage est arrivée depuis."""
+    imposée et avec les ``surcharges`` de site de l'étude rangée ; ``None``
+    quand elle n'est pas dessinable (fiche incomplète, aucun module, bloquant).
+    ``figee`` (celle déjà rangée) est rendue telle quelle quand les entrées
+    n'ont pas bougé — ou, comme ACAL165 (sans surcharge), quand seule la source
+    calepinage est arrivée depuis."""
     from core.electrique import concevoir
 
     with _variante_imposee(variante):
-        entree, source, lie = construire_entree_et_source(devis)
+        entree, source, lie = construire_entree_et_source(devis, surcharges or None)
         empreinte = empreinte_entree(devis, entree, source if lie else None)
         hash_fige = (figee or {}).get("hash")
-        if hash_fige and (hash_fige == empreinte or (lie and empreinte_entree(
+        if hash_fige and (hash_fige == empreinte or (lie and not surcharges and empreinte_entree(
                 devis, construire_entree_et_source(devis, None, avec_calepinage=False)[0]) == hash_fige)):
             return figee
         if motifs_fiche_incomplete(devis) or not entree.groupes:
@@ -1871,10 +1923,16 @@ def figer_conceptions_des_options(devis, *, garder=False):
         return {}
     anciennes = _conceptions_figees(devis) if garder else {}
     options = {}
-    for variante in imposees:
+    a_concevoir = imposees
+    try:
+        surcharges = _surcharges_de_site(conception_electrique_stockee(devis))
+    except SurchargesIrreproductibles as raison:
+        logger.warning("D-ACAL-158 : aucune autre option rangée pour %s (%s)", reference, raison)
+        a_concevoir, surcharges = [], {}
+    for variante in a_concevoir:
         cle = _cle_option(variante)
         try:
-            conception = _conception_de_l_option(devis, variante, anciennes.get(cle))
+            conception = _conception_de_l_option(devis, variante, anciennes.get(cle), surcharges)
         except Exception:  # noqa: BLE001 — journalisé, l'option n'est pas rangée (D-ENF22-BLE001)
             logger.warning("D-ACAL-158 : conception « %s » impossible pour %s",
                            cle, reference, exc_info=True)
