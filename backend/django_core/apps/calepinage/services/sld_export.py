@@ -113,8 +113,10 @@ def _point(x, y, hauteur_px):
     return (_mm(x), _mm(hauteur_px - y))
 
 
-def _refuser_si_empeche(conception, donnees):
+def _refuser_si_empeche(conception, donnees, fichier='DXF'):
     """Le refus commun au DXF et au PDF : fiche muette, bloquant, micro seul.
+
+    ``fichier`` : le fichier réellement demandé (« DXF » ou « PDF »), nommé dans la phrase.
 
     Les bloquants sont ceux du câblage EFFECTIF (``donnees`` porte
     l'affectation manuelle enregistrée — ``sld.bloquants_du_cablage``), jamais
@@ -136,8 +138,8 @@ def _refuser_si_empeche(conception, donnees):
         champ = premier.split(' : ', 1)[0] if ' : ' in premier else 'schema'
         raise SldRefuse(
             "Le schéma unifilaire n'est pas exportable : %s Aucun fichier "
-            "n'est produit — un DXF d'aspect officiel bâti sur une "
-            "caractéristique devinée est un défaut invisible." % premier,
+            "n'est produit — un %s d'aspect officiel bâti sur une "
+            "caractéristique devinée est un défaut invisible." % (premier, fichier),
             champ=champ)
 
 
@@ -296,16 +298,19 @@ def exporter_sld_dxf(calepinage, *, dessin=None, lignes=None):
 
 # ── ACAL1507 — le MÊME schéma, en PDF A3 paysage ──────────────────────────
 #: La planche tient dans UNE feuille A3 paysage (420 × 297 mm) : le cartouche
-#: prend ``_CARTOUCHE_MM``, le dessin le reste, sans seconde page.
+#: prend ``_CARTOUCHE_MM``, le dessin ``_DESSIN_MM``, et ``_SECURITE_MM`` restent
+#: libres : un arrondi du moteur PDF ne peut pas pousser une seconde page vide.
 _CARTOUCHE_MM = 16
 _FEUILLE_HAUTEUR_MM = 297
+_SECURITE_MM = 6
+_DESSIN_MM = _FEUILLE_HAUTEUR_MM - _CARTOUCHE_MM - _SECURITE_MM
 _STYLE_PDF = (
     '.cartouche{height:%(c)dmm;box-sizing:border-box;padding:3mm 8mm 0;'
     'font:11pt Helvetica,Arial,sans-serif;color:#1f2937;}'
     '.cartouche b{font-size:14pt;}'
     '.cartouche span{margin-left:10mm;}'
     'svg{width:100%%;height:%(h)dmm;}'
-) % {'c': _CARTOUCHE_MM, 'h': _FEUILLE_HAUTEUR_MM - _CARTOUCHE_MM}
+) % {'c': _CARTOUCHE_MM, 'h': _DESSIN_MM}
 
 
 def _html_du_schema_pdf(document, cartouche):
@@ -352,12 +357,19 @@ def exporter_sld_pdf(calepinage, *, company=None, document=None,
     )
 
     if document is None:
-        conception, _materiel, donnees, _document = conception_du_calepinage(
-            calepinage)
-        _refuser_si_empeche(conception, donnees)
-        document = document_electrique_du_calepinage(calepinage)
+        # UNE seule lecture de la conception : refus et document la partagent.
+        lecture = conception_du_calepinage(calepinage)
+        _refuser_si_empeche(lecture[0], lecture[2], fichier='PDF')
+        document = document_electrique_du_calepinage(calepinage, lecture=lecture)
         cartouche = cartouche_du_calepinage(calepinage)
-    if not document or not document.get('onduleurs'):
+        if document is None:
+            # Aucun empêchement connu, et pourtant pas de document : sa construction a
+            # échoué (l'exception est journalisée par ``sld._document_electrique_tolerant``).
+            raise SldRefuse(
+                "Le schéma unifilaire n'est pas exportable : le schéma n'a pas pu être "
+                "construit (erreur interne, journalisée). Aucun fichier n'est produit ; "
+                "réessayez, et signalez-le si cela se répète.", champ='schema')
+    if not document.get('onduleurs'):
         raise SldRefuse(
             "Le schéma unifilaire n'est pas exportable : aucun onduleur "
             "n'est retenu par la conception. Aucun fichier n'est produit.",

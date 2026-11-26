@@ -157,6 +157,8 @@ _TEINTES = (
 #: pixels CSS à 96 ppp comme tout ce module — aucune norme ne les fixe.
 _BANDEAU_TAILLE = 10.0
 _BANDEAU_COULEUR = "#9a3412"
+#: ACAL1713 — interligne du bandeau replié (px).
+_PAS_BANDEAU = _BANDEAU_TAILLE + 3.0
 
 _A_LA_TERRE = ("champ", "onduleur", "tgbt")
 
@@ -803,11 +805,15 @@ def _liaison_des_chaines(depart, arrivee, couleurs):
                    for rang, (_libelle, couleur) in enumerate(couleurs)) + _pointe(xb, yb + _BLOC_H / 2, "droite")
 
 
-def _legende_des_chaines(couleurs, hauteur):
-    """ACAL1337 — « Chaîne 1 · Chaîne 2 … » au pied de la planche, au-dessus du bandeau."""
+def _legende_des_chaines(couleurs, hauteur, remontee=0.0):
+    """ACAL1337 — « Chaîne 1 · Chaîne 2 … » au pied de la planche, au-dessus du bandeau.
+
+    ``remontee`` (ACAL1713) : la hauteur des lignes du bandeau EN PLUS de la première
+    — la légende monte d'autant, pour que bandeau replié et légende ne partagent
+    jamais une boîte."""
     morceaux = []
     for rang, (libelle, couleur) in enumerate(couleurs):
-        x, y = _MARGE + (rang % 8) * 72.0, hauteur - _MARGE - 24.0 - (rang // 8) * 14.0
+        x, y = _MARGE + (rang % 8) * 72.0, hauteur - _MARGE - 24.0 - remontee - (rang // 8) * 14.0
         morceaux.append(_trait_de_chaine(rang, couleur, x, x + 16.0, y - 3.0))
         morceaux.append('<text x="%s" y="%s" font-size="9" fill="%s">%s</text>'
                         % (_n(x + 20.0), _n(y), _TRAIT, _esc(libelle)))
@@ -855,7 +861,7 @@ def _bandeau_svg(texte, hauteur, largeur=None):
     dernière ligne reste sur la marge basse ; les suivantes montent.
     """
     lignes = (_lignes_du_bandeau(texte, largeur) if largeur else [texte])
-    pas = _BANDEAU_TAILLE + 3.0
+    pas = _PAS_BANDEAU
     return "".join(
         '<text x="%.1f" y="%.1f" font-size="%.1f" font-weight="700" '
         'fill="%s">%s</text>'
@@ -924,7 +930,10 @@ def rendre_schema(entree, resultat, cartouche=None, positions=None,
         svg.append(_liaison_des_chaines(depart, arrivee, couleurs_chaines)
                    if depart[0].clef == "champ" else _liaison(depart, arrivee))
     if couleurs_chaines:
-        svg.append(_legende_des_chaines(couleurs_chaines, hauteur))
+        lignes_bandeau = _lignes_du_bandeau(bandeau, largeur) if bandeau else ()
+        svg.append(_legende_des_chaines(
+            couleurs_chaines, hauteur,
+            max(0, len(lignes_bandeau) - 1) * _PAS_BANDEAU))
 
     svg.append(_branches(places))
     svg.append(_amorces_mppt(entree, resultat, places))
