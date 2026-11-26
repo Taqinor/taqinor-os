@@ -563,7 +563,7 @@ def option_totaux(devis, option=None, lignes=None) -> dict:
 
 # ── Repli SANS MOTEUR — l'affichage de la liste (PVAB, fondateur 20/08) ──────
 
-def deux_options_declarees(devis) -> bool:
+def deux_options_declarees(devis, *, lignes=None) -> bool:
     """QJR55 — LE prédicat « devis à deux options ». Il n'y en a plus qu'un.
 
     Miroir volontairement PRUDENT de la décision de ``build_quote_data``
@@ -627,9 +627,13 @@ def deux_options_declarees(devis) -> bool:
     Le moteur PDF consomme les mêmes fonctions (:func:`familles_servables`,
     :func:`deux_options_depuis_paniers`, :func:`scenario_declare`) : ses
     recalculs ont été SUPPRIMÉS dans le même commit (règle permanente 2).
+
+    ``lignes`` (facultatif) : les lignes du devis AVEC leur produit que l'appelant a DÉJÀ lues
+    (``lignes_avec_produit``) — le même verdict sans relire la base (budget de requêtes de
+    ``resultat/``, CI du 25/11 : +1 requête par ``selectors_conception._payback_servi``).
     """
     try:
-        lignes = [li for li in lignes_avec_produit(devis)
+        lignes = [li for li in (lignes_avec_produit(devis) if lignes is None else lignes)
                   if li.compte_dans_totaux]
     except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser ici (D-ENF22-BLE001)
         logger.warning("options.deux_options_declarees : erreur ignorée (mode dégradé)", exc_info=True)
