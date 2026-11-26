@@ -919,6 +919,33 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     expect(droite.querySelectorAll('[data-vignette]')).toHaveLength(6) // cinq cartes + la feuille de l'aperçu
   })
 
+  it('ACAL1931 : inventaire des plans illisible — les cinq cartes restent, les pièces de sorties grisées avec leur motif', async () => {
+    servir()
+    calepinageApi.calepinages.sorties.mockRejectedValue(new Error('500'))
+    monter()
+    const droite = await screen.findByTestId('cal-docs-liste')
+    await waitFor(() => expect(within(droite).getAllByTestId('cal-docs-carte')).toHaveLength(5))
+    const cartes = within(droite).getAllByTestId('cal-docs-carte')
+    expect(cartes.map((c) => c.dataset.document)).toEqual(['plan_pose', 'schema', 'note_calcul', 'rapport_etude', 'dxf'])
+    for (const cle of ['plan_pose', 'note_calcul', 'dxf']) {
+      expect(screen.getByTestId(`cal-docs-telecharger-${cle}`)).toBeDisabled()
+      expect(screen.getByTestId(`cal-docs-motif-${cle}`)).toHaveTextContent('n’a pas pu être lue')
+    }
+  })
+
+  it('ACAL1931 : un nouvel enregistrement relit l’inventaire des plans', async () => {
+    servir()
+    const { rerender } = monter({ enregistreLe: '2026-11-23T11:18:00Z' })
+    await screen.findByTestId('cal-docs-liste')
+    const avant = calepinageApi.calepinages.sorties.mock.calls.length
+    rerender(
+      <MemoryRouter>
+        <EtapeDocuments calepinageId={1} enregistreLe="2026-11-23T12:40:00Z" actionDevis={<button type="button">Générer le devis</button>} />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(calepinageApi.calepinages.sorties.mock.calls.length).toBeGreaterThan(avant))
+  })
+
   it('ACAL1726 : la colonne d’aperçu montre le document choisi ; un clic sur une carte le change, la note bleue est dans la colonne', async () => {
     servir()
     const utilisateur = userEvent.setup()

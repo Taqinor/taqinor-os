@@ -633,8 +633,9 @@ export default function PanneauDocuments({
 
   // ACAL228 — l'inventaire `sorties/` (distinct de `documents/`). Une erreur
   // de ce second inventaire n'abat jamais le panneau : la section manque.
-  const { data: inventaireSorties } = useResource(
-    () => calepinageApi.calepinages.sorties(id), id,
+  // ACAL1931 — relu à chaque enregistrement (`enregistreLe`) : une conception changée n'est pas lue sur l'inventaire d'avant.
+  const { data: inventaireSorties, error: erreurSorties } = useResource(
+    () => calepinageApi.calepinages.sorties(id), { id, enregistreLe },
     { select: (r) => r?.data ?? null },
   )
   const [enCoursSortie, setEnCoursSortie] = useState(null)
@@ -991,7 +992,8 @@ export default function PanneauDocuments({
   )
   if (!guide) return vueExpert
 
-  const cartes = cartesGuide(documents, inventaireSorties?.sorties)
+  const cartes = cartesGuide(documents, inventaireSorties?.sorties,
+    { sortiesIllisibles: Boolean(erreurSorties) && !inventaireSorties })
   const estDocument = (carte) => carte.source === 'document'
   return (
     <>
