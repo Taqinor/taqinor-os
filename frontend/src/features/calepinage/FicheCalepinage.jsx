@@ -688,6 +688,17 @@ export default function FicheCalepinage({ detail, onRelire }) {
               <span>{personne(detail.responsable)}</span>
             </span>
           ) : personne(detail.responsable)}
+          {/* T4-X3-016 (lot 8) — confié avant que le menu et le serveur ne le refusent : le serveur
+              dit que ce responsable ne peut pas l'ouvrir (le menu, qui ne le propose plus, lit
+              « Non assigné ») ; aucune règle de droits n'est changée (D-ACAL-106/126). */}
+          {detail.responsable_sans_acces === true && detail.responsable && (
+            <span className="mt-1 block text-xs text-destructive" role="status"
+              data-testid="cal-fiche-responsable-sans-acces">
+              {`${personne(detail.responsable)} est responsable de ce calepinage mais ne peut pas `
+                + "l'ouvrir avec ses droits (un technicien n'ouvre que les calepinages des visites "
+                + 'qui lui sont assignées). Choisissez un autre responsable.'}
+            </span>
+          )}
           {erreurRattachement('responsable')}
         </Champ>
 

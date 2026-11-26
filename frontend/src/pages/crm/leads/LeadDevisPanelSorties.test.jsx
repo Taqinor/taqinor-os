@@ -568,11 +568,12 @@ describe('Devis final C&I — choix enregistré sur le devis (etude_params.devis
     expect(screen.getByTestId('ldp-devis-final')).toHaveAttribute('aria-checked', 'false')
   })
 
-  it('résidentiel : la même case enregistre (Premium seulement), indice « paiement + RIB »', async () => {
+  it('résidentiel : la même case enregistre (Premium seulement), indice « paiement + RIB s’il est renseigné »', async () => {
     await ouvrirApercu('residentiel', { devis_final: true })
     const c = await boite()
     expect(c).toHaveAttribute('aria-checked', 'true')
-    expect(c.closest('label')).toHaveTextContent('(paiement + RIB)')
+    // T4-U1-009 — le RIB n'est imprimé que s'il est au profil société : jamais promis sans condition.
+    expect(c.closest('label')).toHaveTextContent('(paiement + RIB s’il est renseigné au profil société)')
     ventesApi.patchEtudeParams.mockResolvedValueOnce({ data: {} })
     ventesApi.getDevisById.mockResolvedValue(devisServi('residentiel', {}))
     await userEvent.click(c)

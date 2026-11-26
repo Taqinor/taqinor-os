@@ -836,12 +836,15 @@ class ProduitSerializer(MasquePrixVenteMixin,  # D-ACAL-152
             'quantite_en_commande', 'bcf_sources_en_commande',
             # ASTK207 — quantité suggérée nette (lecture seule)
             'quantite_suggeree',
+            # D-ACAL-169 — LE panneau par défaut de la société (lecture seule :
+            # posé par l'action dédiée, jamais par un corps POST/PATCH).
+            'panneau_par_defaut',
         ]
         # company est posé côté serveur (TenantMixin) — jamais accepté du corps.
         # ARC27 — ``unite`` est un MIROIR (posé par le backfill), lecture seule :
         # jamais accepté du corps (évite tout choix d'unité d'une autre société).
         read_only_fields = ['company', 'date_creation', 'date_mise_a_jour',
-                            'unite']
+                            'unite', 'panneau_par_defaut']
         # Le schéma publie ces deux JSON comme nullables (« non publié ») :
         # ``validate_courbe_source`` / ``validate_paliers_prix_vente``
         # normalisent déjà ``null`` (dict vide / liste vide) — DRF le refusait

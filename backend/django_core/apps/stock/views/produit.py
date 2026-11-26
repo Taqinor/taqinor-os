@@ -97,6 +97,9 @@ CHAMPS_PRODUIT_SUIVIS_DEVIS = (
 CHAMPS_DUPLICATION_EXCLUS = frozenset({
     'id', 'company', 'nom', 'sku', 'code_barres', 'quantite_stock',
     'is_archived', 'date_creation', 'date_mise_a_jour', 'photo',
+    # D-ACAL-169 — un clone n'est JAMAIS un second panneau par défaut (au plus
+    # un par société, contrainte de base) : il naît à False.
+    'panneau_par_defaut',
 })
 
 

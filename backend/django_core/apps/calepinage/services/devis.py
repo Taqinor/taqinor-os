@@ -162,6 +162,23 @@ def _refuser_autre_marche(devis, lead):
         raise DevisRefuse(motif, champ='devis', statut=409)
 
 
+def lit_les_devis(user):
+    """Lot 8 (D-ACAL-106) — LA garde de lecture d'un devis (``apps.ventes.selectors_assistant.
+    lit_les_devis``), passée par ce module déjà importateur de ventes (cliquet
+    ``test_imports_croises_ventes``)."""
+    from apps.ventes.selectors_assistant import lit_les_devis as garde
+
+    return garde(user)
+
+
+def devis_suit_les_designations(devis):
+    """Relecture D-ACAL-148 round 4 — le devis est-il né sous la règle des désignations
+    (``apps.ventes.selectors_calepinage.devis_suit_les_designations``) ? Même cliquet."""
+    from apps.ventes.selectors_calepinage import devis_suit_les_designations as suit
+
+    return suit(devis)
+
+
 def _refus_deja_rattache(lie):
     """ACAL89 — 409 NOMMÉ ``{detail, devis, reference, revision_possible}``.
 

@@ -320,7 +320,10 @@ class CibleDeLaConceptionTest(BaseApiCalepinage):
         client = Client.objects.create(company=self.company, nom='Client 1268')
         devis = Devis.objects.create(company=self.company, client=client, lead=lead, reference='DEV-202611-1268',
                                      mode_installation=Devis.ModeInstallation.AGRICOLE)
-        LigneDevis.objects.create(devis=devis, produit=Produit.objects.get(sku='A194-PAN'),
+        # Cette classe n'a pas le catalogue de ``CibleDuLeadTest`` : le panneau du devis est créé ici.
+        panneau = Produit.objects.create(company=self.company, nom='Panneau Jinko 550W', sku='A1268-PAN',
+                                         prix_vente=Decimal('1100'), prix_achat=Decimal('1'), quantite_stock=100)
+        LigneDevis.objects.create(devis=devis, produit=panneau,
                                   designation='Panneau Jinko 550W', quantite=Decimal(7), prix_unitaire=Decimal('1100'))
         cible = self._contexte(calepinage)['cible']
         self.assertEqual((cible['panneaux'], cible['source'], cible['refus']), (7, 'devis', None))

@@ -190,7 +190,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     ? '(visite faite — sans « Devis préliminaire »)'
     : marcheDevis === 'agricole'
       ? '(visite faite — sans « à confirmer par la visite »)'
-      : '(paiement + RIB)'
+      : '(paiement + RIB s’il est renseigné au profil société)' // T4-U1-009 : jamais un RIB promis sans condition
   const [devisFinalCiEnCours, setDevisFinalCiEnCours] = useState(false)
   const [devisFinalCiErreur, setDevisFinalCiErreur] = useState(null)
   const changerDevisFinalCi = async (coche) => {

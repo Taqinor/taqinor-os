@@ -902,6 +902,15 @@ describe('R2-09 / R2-05 — fenêtre de pose : kWc au format français, « Posé
     expect(pub.kwc).toMatch(/^\d+,\d{2} kWc$/);
   });
 
+  // T4-X8-012 (une cible) — « Posés ÷ cible » se divise par LA cible servie (le nombre à poser, 6, est un autre champ) ; sans cible servie : d'avant.
+  it('T4-X8-012 (une cible) : « Posés ÷ cible » compte contre la cible servie dans le module posé ; sans cible servie, contre le nombre à poser ; public inchangé', () => {
+    const servie = (n: number, watt = 720) => ({ chiffrage: null, hydrate: { devis: { origineCible: 'factures', libelleOrigineCible: 'Factures du lead', cible: { panneaux: n, panel_watt: watt } } } });
+    expect(rendre(servie(4)).cover).toBe('75 %'); // 3 posés / 4 servis (le nombre à poser, 6, donnerait 50 %)
+    expect(rendre({ chiffrage: null }).cover).toBe('50 %');
+    expect(rendre(servie(4, 550)).cover).toBe('50 %'); // aucun compte servi pour ce module : le nombre à poser, comme avant
+    expect(rendre({ hydrate: servie(4).hydrate }).cover).toBe('50 %'); // site public : jamais lu
+  });
+
   // ACAL1520 — la puissance du bandeau suit le module DÉSIGNÉ du pan (comme la pastille), pas le 720 Wc par défaut.
   it('ACAL1520 — 5 panneaux de 710 Wc lisent « 3,55 kWc » ; sans module désigné : 3,60 (défaut 720 Wc)', () => {
     const module710 = { id: 'm710', libelle: 'Module 710', source: 'catalogue', longueurMm: 2384, largeurMm: 1303, pmaxWc: 710 };
