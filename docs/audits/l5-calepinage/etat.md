@@ -2622,3 +2622,29 @@ exact d'un rôle » existe hors de `apps/roles` (visites) ; compter les lanes qu
   jusqu'à l'enregistrement ; R8-N6 PDF industriel : TRI « — » au scénario central mais 15,5 % au scénario défavorable ; R8-N7 la ligne
   « Bases du calcul » imprime le champ « Source » des hypothèses (même texte que le tableau complet déjà sur `main` ; brouillé sur la copie) :
   pas une fuite, à relire en production ; R8-N8 avec 630 panneaux et 70 chaînes, la légende des chaînes (1 558 px) recouvre l'en-tête.
+
+**Verdict de la 2e relecture de `lot9/lecteurs-aval` (470433f48) — NE PAS PLIER telle quelle.** Les lecteurs convertis s'accordent entre
+eux et leur branche fermée (devis envoyé avant la coupure) est l'ancienne expression exacte ; ce qui casse, c'est la rencontre avec les
+lecteurs laissés sur les mots-clés, dont deux écrivent de l'argent ou le scénario du client. Il reste environ une lane (une douzaine de
+lecteurs) avant de pouvoir plier. Cas de preuve : A = batterie « Deye BOS-B Pro-A3 16 kWh » (rôle rangé `batterie`, nom sans mot-clé),
+B = 30 × « …CS7N-715TB » (rôle `panneau`, pas de « 715 W » dans le nom), C = hybride « DEYE SUN-80K-SG02HP3 » (rôle rangé).
+1. `offres_tailles` (`_porter_modules_batterie`, `_compter_modules_du_devis`, `_compter_panneaux_du_devis`, `_role_de_la_ligne`) reste sur
+   les mots-clés alors que la resynchronisation lit le rôle : appliquer une taille n'applique pas le nombre de modules de batterie, et la
+   resynchronisation peut SUPPRIMER la ligne de batterie d'un devis à une option (argent). À convertir avec `classe_ligne.est` /
+   `role_de_ligne` + `devis`.
+2. `pipeline.cles_etude_de_composition` (~l.753) déduit le `scenario` des mots-clés des désignations et non des rôles émis
+   (`composition.roles`) : création « Sans batterie », puis la première resynchronisation passe « Avec batterie » sans geste.
+3. La porte dépend du chemin d'appel : `domain/lignes.py::comptes_panneaux_du_devis` charge les lignes sans le devis (lecture par
+   mots-clés) alors que `retarifer_forfaits_par_panneau` lit `devis.lignes.all()` (lecture par rôle) → 0 puis 30 panneaux à chaque geste,
+   forfait re-tarifé, faux avertissements, règle nocturne `CAL_MODULES_DEVIS_VS_CALEPINAGE` fausse. Le test
+   `test_cas_b_panneaux_ranges_tous_les_comptes_d_accord` est un FAUX VERT (lignes `SimpleNamespace`, jamais le vrai point d'entrée).
+4. Textes du PDF restés sur les mots-clés : `conditions_commerciales._bullets` (l.690 / 706 / 711 — utiliser `_role_puce`),
+   `commercial/equip.py` (l.334 / 347) : une option « Avec batterie » dont la carte ne liste aucune batterie, pas de puce « 30 panneaux ».
+5. Parité de chiffres rouverte : `etude_horaire_view._batterie_de_l_apercu` (l.714), `horaire/batterie_apercu.py` (l.61),
+   `selectors_conception._payback_servi` (l.155) : deux retours sur investissement pour un même devis (écran vs PDF).
+6. Les écrivains n'appliquent pas tous le même rang : l'assistant (`lignes_assistant.produit_vendable`, sans jointure de la fiche) et la
+   création d'une ligne seule par l'API rangent NULL là où le générateur range le rôle. Plus petit correctif : `select_related('fiche_technique')`.
+   À noter : la fiche réelle du 80K ne publie pas de port batterie — seul son rôle déclaré le rend hybride.
+Aussi laissés sur les mots-clés : `overrides._auto_scenario`, `_autos_banque_batterie`, `scenario.ligne_panneau_dominante`,
+`conception/moteur._materiel_des_lignes`, `brouillons._comptes`, `payload_batterie` (l.580).
+Fusion : aucun conflit avec `dev-lot9` ; `_poser_produit` fusionné correct. Tests avec base non joués.
