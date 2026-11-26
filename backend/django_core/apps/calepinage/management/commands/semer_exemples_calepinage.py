@@ -58,6 +58,8 @@ class Command(BaseCommand):
                             help="Identifiant de la société.")
         parser.add_argument('--apply', action='store_true',
                             help='Écrit réellement (sinon : liste seule).')
+        parser.add_argument('--confirmer-production', action='store_true',
+                            help="Requis pour --apply sur un environnement de production (D-ACAL-42).")
 
     def handle(self, *args, **options):
         from django.db import transaction
@@ -73,6 +75,11 @@ class Command(BaseCommand):
             raise CommandError(
                 "Société introuvable : %s." % options['societe'])
         appliquer = options['apply']
+        from core.checks import environnement_de_production
+
+        if appliquer and environnement_de_production() and not options['confirmer_production']:
+            raise CommandError(  # ACAL1751 — D-ACAL-42 : la production ne reçoit ces lignes que sur geste explicite
+                "Environnement de production : ajoutez --confirmer-production pour écrire. Rien n'a été écrit.")
         crees = 0
         for fichier, titre in MODELES:
             existe = Calepinage.objects.filter(
