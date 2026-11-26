@@ -125,3 +125,16 @@ test('QJR35 — rejoué : au montage (aucune facture saisie, aucune étude serve
   assert.equal(apercuEstimationExemple(false, true), false)
   assert.equal(apercuEstimationExemple(true, true), false)
 })
+
+// ACAL1204 — lignes par défaut (panneaux à 0) ⇒ aucun retour chiffré (« ROI 0,9 an »
+// sur une composition sans panneau) : « à chiffrer : ajoutez les panneaux ».
+test('ACAL1204 — lignes par défaut sans panneau ⇒ aucun retour chiffré, « à chiffrer : ajoutez les panneaux »', () => {
+  const HOOK = readFileSync(join(HERE, 'generator/hooks/useApercuEtude.js'), 'utf8')
+  assert.match(HOOK, /comptePanneauxOption\(\s*lines,\s*'sans'/,
+    'le compte des panneaux de l\'option sans doit garder le retour')
+  assert.match(HOOK, /comptePanneauxOption\(\s*lines,\s*'avec'/,
+    'le compte des panneaux de l\'option avec doit garder le retour')
+  assert.match(HOOK, /const chiffre = \(total, v, panneaux\) => \(surApercu && panneaux > 0 && /,
+    'la garde « au moins un panneau » est absente de `chiffre`')
+  assert.match(HOOK, /à chiffrer : ajoutez les panneaux/)
+})

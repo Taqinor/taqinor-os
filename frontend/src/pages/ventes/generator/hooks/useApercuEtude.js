@@ -10,7 +10,7 @@ import crmApi from '../../../../api/crmApi'
 import { toast } from '../../../../ui/confirm'
 import { formatNumber } from '../../../../lib/format'
 import {
-  CHART_MONTHS, batteryCapaciteInconnue,
+  CHART_MONTHS, batteryCapaciteInconnue, comptePanneauxOption,
 } from '../../../../features/ventes/solar'
 import { consoAnnuelleDepuisFactures } from '../../../../features/ventes/calc/tarifs.js'
 import {
@@ -273,14 +273,19 @@ export function useApercuEtude(ctx) {
   // E7d (M1) — le payback de l'APERÇU, calculé sur le TTC des lignes de l'écran ;
   // sans prix sur les lignes : « après enregistrement » ; jamais celui d'un autre devis.
   // Au dixième, virgule française (règle unique de l'aperçu, `ApercuSimulation.ansFr`).
-  const chiffre = (total, v) => (surApercu && Number(total) > 0 && v != null
+  // ACAL1204 — aucune ligne panneau (quantité > 0) dans l'option : jamais de retour
+  // chiffré sur les lignes par défaut (onduleur seul) ; « à chiffrer ».
+  const panneauxSans = comptePanneauxOption(lines, 'sans', produits)
+  const panneauxAvec = comptePanneauxOption(lines, 'avec', produits)
+  const chiffre = (total, v, panneaux) => (surApercu && panneaux > 0 && Number(total) > 0 && v != null
     ? formatNumber(v, { decimals: 1 }) : null)
-  const apercuPaybackSans = chiffre(totals?.totalSans, chiffres?.paybackSans)
-  const apercuPaybackAvec = chiffre(totals?.totalAvec, chiffres?.paybackAvec)
-  const paybackAbsent = (total) => (!(Number(total) > 0) ? 'après enregistrement'
-    : conceptionEcran.chargement ? 'calcul en cours…' : 'N/A')
-  const apercuPaybackSansAbsent = paybackAbsent(totals?.totalSans)
-  const apercuPaybackAvecAbsent = paybackAbsent(totals?.totalAvec)
+  const apercuPaybackSans = chiffre(totals?.totalSans, chiffres?.paybackSans, panneauxSans)
+  const apercuPaybackAvec = chiffre(totals?.totalAvec, chiffres?.paybackAvec, panneauxAvec)
+  const paybackAbsent = (total, panneaux) => (!(panneaux > 0) ? 'à chiffrer : ajoutez les panneaux'
+    : !(Number(total) > 0) ? 'après enregistrement'
+      : conceptionEcran.chargement ? 'calcul en cours…' : 'N/A')
+  const apercuPaybackSansAbsent = paybackAbsent(totals?.totalSans, panneauxSans)
+  const apercuPaybackAvecAbsent = paybackAbsent(totals?.totalAvec, panneauxAvec)
   const apercuPaybackSansJamais = false
   const apercuPaybackAvecJamais = false
   // L'état de l'aperçu servi, lu par la carte : `modele` (« conception »,
