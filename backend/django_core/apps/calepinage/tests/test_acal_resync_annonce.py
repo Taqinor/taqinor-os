@@ -339,6 +339,62 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertNotIn('onduleur', sans)
         self.assertNotIn('aucun', sans)
 
+    def test_lot8_d_acal_106_technicien_ne_lit_aucun_devis_dans_l_apercu(self):
+        """Lot 8 (D-ACAL-106 « toujours aucun devis ni aucun prix ») — un Technicien (sa visite, sans
+        aucun code ``ventes_*``) lit l'aperçu sans qu'aucun devis y soit NOMMÉ, dans les trois cas :
+        brouillon rendu, devis lié non réutilisable, brouillon libre antérieur. Le Directeur reçoit la
+        réponse complète, identique à l'appel direct du service. Mutant « vue sans lit_les_devis » ⇒ rouge."""
+        from datetime import timedelta
+
+        from django.contrib.auth import get_user_model
+
+        from apps.calepinage.services.devis_apercu import (
+            MESSAGE_BROUILLON_LIBRE_CAVIARDE, MESSAGE_DEJA_RATTACHE_CAVIARDE, MESSAGE_DEVIS_EXISTANT_CAVIARDE,
+            apercu_materiel_du_devis,
+        )
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.ventes.models import Devis
+        from apps.visites.models import VisiteTerrain
+
+        role = Role.objects.create(company=self.company, nom='L8 Technicien', permissions=list(TECHNICIEN_PERMISSIONS))
+        tech = get_user_model().objects.create_user(username='l8-tech', password='x', company=self.company, role=role)
+        VisiteTerrain.objects.create(company=self.company, lead=self.lead, commercial=tech)
+        api_tech = self._client(tech)
+        self.calepinage.refresh_from_db()
+        devis = Devis.objects.get(pk=self.calepinage.devis_id)
+
+        def lire():
+            directeur = self.api.get(f'{self.base}apercu-devis/')
+            technicien = api_tech.get(f'{self.base}apercu-devis/')
+            self.assertEqual((directeur.status_code, technicien.status_code), (200, 200), technicien.data)
+            self.calepinage.refresh_from_db()
+            self.assertEqual(directeur.data, apercu_materiel_du_devis(self.calepinage))  # lecteur : inchangé
+            self.assertEqual(set(technicien.data), set(directeur.data))
+            self.assertIsNone(technicien.data['reference'])
+            self.assertNotIn(devis.reference, str(technicien.data))
+            return directeur.data, technicien.data
+
+        # 1. Brouillon rendu (lié, même empreinte).
+        directeur, technicien = lire()
+        self.assertEqual(directeur['reference'], devis.reference)
+        self.assertEqual((technicien['options'], technicien['refus']), ([], MESSAGE_DEVIS_EXISTANT_CAVIARDE))
+        # 2. Lié, non réutilisable (le toit a changé).
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 10
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        directeur, technicien = lire()
+        self.assertIn(devis.reference, directeur['refus'])
+        self.assertEqual(technicien['refus'], MESSAGE_DEJA_RATTACHE_CAVIARDE)
+        # 3. Brouillon libre antérieur (délié, antidaté).
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=None)
+        self.calepinage.refresh_from_db()
+        Devis.objects.filter(pk=devis.pk).update(date_creation=self.calepinage.created_at - timedelta(days=1))
+        directeur, technicien = lire()
+        self.assertEqual(technicien['options'], directeur['options'])  # la composition du calepinage reste
+        phrase = next(e['message'] for e in technicien['ecarts'] if e['champ'] == 'rattacher_devis')
+        self.assertEqual(phrase, MESSAGE_BROUILLON_LIBRE_CAVIARDE)
+
     def test_e9b_apercu_compose_les_surfaces_cochees_comme_la_generation(self):
         """Lane E9b — ``?surfaces=`` (les cases cochées que « Générer » enverra) passe par LA même
         fonction (``devis._layout_des_surfaces``) : clé inconnue ⇒ le refus nommé de la génération ;
@@ -448,3 +504,54 @@ class ApercuBrouillonLibreSansBaseTest(SimpleTestCase):
         self.assertIn('DEV-1', sans)
         self.assertNotIn('onduleur', sans)
         self.assertNotIn('aucun', sans)
+
+    def test_d_acal_106_caviardage_trois_cas_avec_et_sans_droit(self):
+        """Lot 8 (D-ACAL-106) — brouillon rendu, devis lié du refus, brouillon libre : avec le droit de
+        lire les devis la réponse est l'OBJET même du calcul complet ; sans, aucune référence, aucun
+        statut, aucun onduleur lu sur un devis — la composition et les désignations du calepinage restent."""
+        from unittest import mock
+
+        from apps.calepinage.services import devis_apercu as service
+        from apps.calepinage.services.devis import ISSUE_BROUILLON_LIBRE, ISSUE_DEJA_RATTACHE, ISSUE_RENDU
+
+        option = {'option': None, 'libelle': 'Devis', 'module': 'Module 715 Wc', 'onduleur': 'Onduleur A'}
+        designe = {'champ': 'onduleur_produit', 'message': 'L’onduleur désigné (« Onduleur A ») : raison.'}
+        libre = {'champ': 'rattacher_devis', 'message': service._phrase_brouillon_libre('DEV-1', ['Onduleur du devis'])}
+        cas = {
+            ISSUE_RENDU: {'options': [dict(option, onduleur='Onduleur du devis')], 'ecarts': [designe],
+                          'refus': None, 'source': 'brouillon_existant', 'reference': 'DEV-1'},
+            ISSUE_DEJA_RATTACHE: {'options': [], 'ecarts': [], 'source': None, 'reference': None,
+                                  'refus': 'Ce calepinage est déjà rattaché au devis DEV-1 (Envoyé) : utilisez …'},
+            ISSUE_BROUILLON_LIBRE: {'options': [option], 'ecarts': [designe, libre], 'refus': None,
+                                    'source': 'composition', 'reference': None},
+        }
+        for issue, complet in cas.items():
+            with self.subTest(issue=issue), \
+                    mock.patch.object(service, '_apercu_complet', return_value=(complet, issue)):
+                self.assertIs(service.apercu_materiel_du_devis(object()), complet)
+                cache = service.apercu_materiel_du_devis(object(), lit_les_devis=False)
+                self.assertEqual(set(cache), set(complet))
+                self.assertIsNone(cache['reference'])
+                for nomme in ('DEV-1', 'Onduleur du devis', 'Envoyé'):
+                    self.assertNotIn(nomme, str(cache))
+        cache = service._caviarder(cas[ISSUE_BROUILLON_LIBRE], ISSUE_BROUILLON_LIBRE)
+        self.assertEqual(cache['options'], [option])
+        self.assertIn(designe, cache['ecarts'])
+
+    def test_d_acal_106_lit_les_devis_suit_la_garde_des_devis(self):
+        """``ventes.selectors_assistant.lit_les_devis`` = ``LectureVentes`` de ``DevisViewSet`` : le
+        Technicien (aucun code ``ventes_*``) ne lit pas, le Commercial et le Directeur lisent."""
+        from types import SimpleNamespace
+
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, DIRECTEUR_PERMISSIONS, TECHNICIEN_PERMISSIONS,
+        )
+        from apps.ventes.selectors_assistant import lit_les_devis
+
+        def compte(permissions):
+            return SimpleNamespace(is_authenticated=True, is_superuser=False, is_admin_role=False,
+                                   portee='interne', role_id=1, role=SimpleNamespace(permissions=list(permissions)))
+        self.assertFalse(lit_les_devis(compte(TECHNICIEN_PERMISSIONS)))
+        self.assertTrue(lit_les_devis(compte(COMMERCIAL_PERMISSIONS)))
+        self.assertTrue(lit_les_devis(compte(DIRECTEUR_PERMISSIONS)))
+        self.assertFalse(lit_les_devis(None))

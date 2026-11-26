@@ -117,8 +117,47 @@ def _ecart_brouillon_libre(libre):
             'message': _phrase_brouillon_libre(libre.reference or f'#{libre.pk}', onduleurs)}
 
 
-def apercu_materiel_du_devis(calepinage, surfaces=None):
-    """``{options, ecarts, refus, source, reference}`` : par option, le module et l'onduleur que
+#: Lot 8 (D-ACAL-106 « toujours aucun devis ni aucun prix ») — ce que dit l'aperçu à qui ne peut pas
+#: LIRE un devis (``ventes.selectors_assistant.lit_les_devis``) : qu'un devis existe, jamais lequel
+#: (ni référence, ni statut, ni montant, ni matériel lu sur ses lignes). Le motif est celui de la garde
+#: de lecture des devis (``LectureVentes.message``).
+MOTIF_LECTURE_VENTES = 'accès réservé aux rôles du module Ventes'
+MESSAGE_DEVIS_EXISTANT_CAVIARDE = f'Un devis brouillon existe déjà pour ce calepinage ({MOTIF_LECTURE_VENTES}).'
+MESSAGE_DEJA_RATTACHE_CAVIARDE = f'Ce calepinage est déjà rattaché à un devis ({MOTIF_LECTURE_VENTES}).'
+MESSAGE_BROUILLON_LIBRE_CAVIARDE = ('Ce lead a déjà un devis brouillon, créé avant ce calepinage : '
+                                    '« Générer le devis » proposera de lui rattacher ce calepinage '
+                                    f'({MOTIF_LECTURE_VENTES}).')
+
+
+def _caviarder(reponse, issue):
+    """Lot 8 (D-ACAL-106) — la réponse pour un utilisateur SANS droit de lecture des devis. Pure.
+    Mêmes clés ; ce qui décrit le calepinage (composition du catalogue, désignations) reste ; ce qui
+    NOMME un devis part : brouillon rendu (ses lignes et sa référence), devis lié du refus « déjà
+    rattaché », brouillon libre de la phrase R2-22."""
+    from .devis import ISSUE_BROUILLON_LIBRE, ISSUE_DEJA_RATTACHE, ISSUE_RENDU
+
+    if issue == ISSUE_RENDU:
+        return {'options': [], 'ecarts': [], 'refus': MESSAGE_DEVIS_EXISTANT_CAVIARDE,
+                'source': reponse['source'], 'reference': None}
+    if issue == ISSUE_DEJA_RATTACHE:
+        return dict(reponse, refus=MESSAGE_DEJA_RATTACHE_CAVIARDE, reference=None)
+    if issue == ISSUE_BROUILLON_LIBRE:
+        ecarts = [dict(e, message=MESSAGE_BROUILLON_LIBRE_CAVIARDE) if e.get('champ') == 'rattacher_devis' else e
+                  for e in reponse['ecarts']]
+        return dict(reponse, ecarts=ecarts, reference=None)
+    return reponse
+
+
+def apercu_materiel_du_devis(calepinage, surfaces=None, *, lit_les_devis=True):
+    """``{options, ecarts, refus, source, reference}`` — voir :func:`_apercu_complet`. Lot 8
+    (D-ACAL-106) — ``lit_les_devis`` (la vue passe ``ventes.selectors_assistant.lit_les_devis`` de
+    l'utilisateur) : faux ⇒ :func:`_caviarder` ; vrai ⇒ la réponse complète, inchangée."""
+    reponse, issue = _apercu_complet(calepinage, surfaces)
+    return reponse if lit_les_devis else _caviarder(reponse, issue)
+
+
+def _apercu_complet(calepinage, surfaces):
+    """``({options, ecarts, refus, source, reference}, issue)`` : par option, le module et l'onduleur que
     « Générer le devis » porterait, les désignations électriques qu'il ne portera pas (phrase et
     raison) ; ``refus`` = la phrase de la composition (ou de l'absence de toit, ou de la sélection
     de surfaces) quand rien ne se compose. Lane E9b — LES décisions de la génération :
@@ -136,7 +175,7 @@ def apercu_materiel_du_devis(calepinage, surfaces=None):
     from .equipements import composition_a_blanc
 
     composer, AutoDevisError = composition_a_blanc()
-    source, reference, libre = 'composition', None, None
+    source, reference, libre, issue = 'composition', None, None, None
     company = calepinage.company
     try:
         layout = _layout_des_surfaces(_exiger_layout(calepinage), surfaces)
@@ -156,10 +195,10 @@ def apercu_materiel_du_devis(calepinage, surfaces=None):
                 libre = _ecart_brouillon_libre(retenu[0])
     except (AutoDevisError, DevisRefuse) as refus:
         return {'options': [], 'ecarts': [], 'refus': getattr(refus, 'message', None) or str(refus),
-                'source': None, 'reference': None}
+                'source': None, 'reference': None}, issue
     options = _materiel_par_option(specs)
     ecarts = _ecarts(calepinage, options) + ([libre] if libre else [])
     for option in options:
         option.pop('module_produit')
         option.pop('onduleur_produit')
-    return {'options': options, 'ecarts': ecarts, 'refus': None, 'source': source, 'reference': reference}
+    return {'options': options, 'ecarts': ecarts, 'refus': None, 'source': source, 'reference': reference}, issue

@@ -305,6 +305,22 @@ def lit_les_factures(user):
                 and not is_portal_user(user) and peut_lire_module(user, 'ventes'))
 
 
+def lit_les_devis(user):
+    """Lot 8 (D-ACAL-106) — LA garde de LECTURE d'un devis, évaluée telle quelle : celle de
+    ``views/devis.py::DevisViewSet.get_permissions`` pour ``list`` / ``retrieve``, soit
+    ``gardes_lecture.py::LectureVentes`` (``LectureDuModule``, module figé ``ventes``, octrois
+    ``OCTROIS_LECTURE`` de la vue ``DevisViewSet`` compris). Sans requête ; ``False`` hors
+    session. Lu par le calepinage pour ne jamais NOMMER un devis à qui ne peut pas le lire."""
+    from types import SimpleNamespace
+
+    from .gardes_lecture import LectureVentes
+
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    vue = type('DevisViewSet', (), {'__module__': 'apps.ventes.views.devis'})()
+    return bool(LectureVentes().has_permission(SimpleNamespace(method='GET', user=user), vue))
+
+
 def brief_ventes(user, aujourdhui=None):
     """Sélecteur PUBLIC du point du matin (lu par ``apps/crm``, BRF1) : le bloc
     ``impayes`` de ``crm/contract_samples/assistant_digest_matin.json``
