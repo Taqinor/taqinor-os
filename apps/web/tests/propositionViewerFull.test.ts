@@ -1118,3 +1118,71 @@ describe('monterVisionneusePleine — barre au soleil branchée après le rendu,
     }
   });
 });
+
+// ── 10. L'aide des gestes suit la langue de la page (lot 8) ──
+// La page pose dans chaque nœud `data-i18n` trois portées fr / en / ar (son `prepareI18n`) puis son sélecteur ne fait que
+// les montrer ou les cacher (`applyLang`). Ces deux fonctions vivent dans le script de la page : le fixture reproduit le
+// DOM EXACT qu'elles produisent, et `habillerPourCarte` (la vraie) est jouée dessus.
+describe('habillerPourCarte — l’aide des gestes suit la langue de la page, et revient telle quelle au repli', () => {
+  const SIMPLE = { fr: 'Faites glisser pour tourner', en: 'Drag to rotate', ar: 'اسحبوا للتدوير' };
+  const CARTE = { fr: /^Deux doigts/, en: /^Two fingers/, ar: /^إصبعان/ };
+  /** Le nœud tel que `prepareI18n` le laisse, puis `applyLang(langue)`. */
+  function aidePreparee(langue: 'fr' | 'en' | 'ar') {
+    document.body.innerHTML = `<div id="scene"></div><p id="aide" hidden data-i18n data-fr="${SIMPLE.fr}" data-en="${SIMPLE.en}" data-ar="${SIMPLE.ar}"></p>`;
+    const aide = document.getElementById('aide')!;
+    const portees = (['fr', 'en', 'ar'] as const).map((l) => Object.assign(document.createElement('span'), { textContent: SIMPLE[l] }));
+    aide.append(...portees);
+    const appliquer = (l: 'fr' | 'en' | 'ar') => {
+      portees.forEach((p, i) => { p.hidden = ['fr', 'en', 'ar'][i] !== l; });
+      document.documentElement.lang = l;
+    };
+    appliquer(langue);
+    const visible = () => portees.find((p) => !p.hidden)!.textContent;
+    return { aide, portees, appliquer, visible, scene: document.getElementById('scene')! };
+  }
+  afterEach(() => {
+    document.documentElement.lang = 'fr';
+    document.body.innerHTML = '';
+  });
+
+  it.each(['fr', 'en', 'ar'] as const)('page en %s : l’aide carte est dans cette langue, puis suit chaque bascule', async (langue) => {
+    const { habillerPourCarte } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    const { aide, portees, appliquer, visible, scene } = aidePreparee(langue);
+    habillerPourCarte(scene, aide);
+    expect(aide.hidden).toBe(false);
+    expect(visible()).toMatch(CARTE[langue]);
+    expect([...aide.children]).toEqual(portees); // les MÊMES portées : le sélecteur les tient toujours
+    for (const l of ['ar', 'en', 'fr'] as const) {
+      appliquer(l);
+      expect(visible()).toMatch(CARTE[l]);
+    }
+    expect(aide.dataset.en).toMatch(CARTE.en);
+  });
+
+  it('repli : l’aide simplifiée revient dans ses trois portées, et suit encore les bascules', async () => {
+    const { habillerPourCarte } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    const { aide, portees, appliquer, visible, scene } = aidePreparee('ar');
+    const defaire = habillerPourCarte(scene, aide);
+    appliquer('en');
+    defaire();
+    expect(aide.hidden).toBe(true);
+    expect([...aide.children]).toEqual(portees);
+    expect(portees.map((p) => p.textContent)).toEqual([SIMPLE.fr, SIMPLE.en, SIMPLE.ar]);
+    expect([aide.dataset.fr, aide.dataset.en, aide.dataset.ar]).toEqual([SIMPLE.fr, SIMPLE.en, SIMPLE.ar]);
+    expect(visible()).toBe(SIMPLE.en);
+    appliquer('ar');
+    expect(visible()).toBe(SIMPLE.ar);
+  });
+
+  it('nœud non préparé : le texte de la langue de la page, et le texte d’origine au repli', async () => {
+    const { habillerPourCarte } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    document.body.innerHTML = `<div id="scene"></div><p id="aide" hidden data-fr="${SIMPLE.fr}">${SIMPLE.fr}</p>`;
+    document.documentElement.lang = 'ar';
+    const aide = document.getElementById('aide')!;
+    const defaire = habillerPourCarte(document.getElementById('scene'), aide);
+    expect(aide.textContent).toMatch(CARTE.ar);
+    defaire();
+    expect(aide.textContent).toBe(SIMPLE.fr);
+    expect(aide.dataset.en).toBeUndefined();
+  });
+});

@@ -417,26 +417,51 @@ const AIDE_GESTES_CARTE = {
 } as const;
 const CLASSES_CARTE = ['roof3d-stage--sky', 'roof3d-stage--map'] as const;
 
-/** Habille la scène pour la carte (classes du cadre, aide des gestes réécrite : data-i18n ET texte, sinon le sélecteur
- *  de langue remet l'ancien libellé) ; renvoie la fonction qui remet le cadre et l'aide exactement comme avant. */
+const LANGUES_AIDE = ['fr', 'en', 'ar'] as const;
+type TextesAide = { fr?: string; en?: string; ar?: string };
+
+/** Les trois portées de langue que la page pose dans un nœud `data-i18n` (`prepareI18n` : fr, en, ar, dans cet ordre ;
+ *  son sélecteur de langue ne fait ensuite que les montrer ou les cacher). `null` si le nœud n'a pas été préparé. */
+function porteesDeLangue(el: HTMLElement): HTMLElement[] | null {
+  const k = [...el.children] as HTMLElement[];
+  return el.childNodes.length === 3 && k.length === 3 && k.every((c) => c.tagName === 'SPAN') ? k : null;
+}
+
+/** La langue affichée par la page (attribut `lang` du document, posé par son sélecteur). */
+function langueDeLaPage(): 'fr' | 'en' | 'ar' {
+  const l = typeof document !== 'undefined' ? document.documentElement.lang : '';
+  return l === 'en' || l === 'ar' ? l : 'fr';
+}
+
+/** Écrit l'aide : data-i18n, puis les trois portées EN PLACE quand la page les a posées (le sélecteur de langue continue
+ *  de les basculer), sinon `texteNu` ou le texte de la langue de la page. */
+function ecrireAide(el: HTMLElement, textes: TextesAide, portees: readonly string[] | null, texteNu: string | null): void {
+  for (const l of LANGUES_AIDE) {
+    if (textes[l] === undefined) delete el.dataset[l];
+    else el.dataset[l] = textes[l];
+  }
+  const cibles = porteesDeLangue(el);
+  if (cibles) cibles.forEach((c, i) => { c.textContent = portees?.[i] ?? textes[LANGUES_AIDE[i]] ?? ''; });
+  else el.textContent = texteNu ?? textes[langueDeLaPage()] ?? textes.fr ?? '';
+}
+
+/** Habille la scène pour la carte (classes du cadre ; aide des gestes CARTE dans les trois langues, qui suit la langue
+ *  de la page au chargement comme après une bascule) ; renvoie la fonction qui remet le cadre et l'aide comme avant. */
 export function habillerPourCarte(scene: HTMLElement | null | undefined, aide: HTMLElement | null | undefined): () => void {
-  const avant = aide ? { hidden: aide.hidden, fr: aide.dataset.fr, en: aide.dataset.en, ar: aide.dataset.ar, texte: aide.textContent } : null;
+  const avant = aide
+    ? { hidden: aide.hidden, textes: { fr: aide.dataset.fr, en: aide.dataset.en, ar: aide.dataset.ar }, portees: porteesDeLangue(aide)?.map((p) => p.textContent ?? '') ?? null, texte: aide.textContent }
+    : null;
   const avaitClasse = CLASSES_CARTE.map((c) => scene?.classList.contains(c) === true);
   if (aide) {
     aide.hidden = false;
-    Object.assign(aide.dataset, AIDE_GESTES_CARTE);
-    aide.textContent = AIDE_GESTES_CARTE.fr;
+    ecrireAide(aide, AIDE_GESTES_CARTE, null, null);
   }
   scene?.classList.add(...CLASSES_CARTE);
   return () => {
     CLASSES_CARTE.forEach((c, i) => { if (!avaitClasse[i]) scene?.classList.remove(c); });
     if (!aide || !avant) return;
     aide.hidden = avant.hidden;
-    for (const l of ['fr', 'en', 'ar'] as const) {
-      if (avant[l] === undefined) delete aide.dataset[l];
-      else aide.dataset[l] = avant[l];
-    }
-    aide.textContent = avant.texte;
+    ecrireAide(aide, avant.textes, avant.portees, avant.texte);
   };
 }
 
