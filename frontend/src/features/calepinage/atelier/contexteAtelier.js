@@ -289,7 +289,9 @@ export function reglagesAtelierDesParametres(p) {
     zones_types: p.zones_types ?? null,
     degagements: p.degagements ?? null,
     pays,
-    imagerie: imagerieReglee(p.imagerie, pays),
+    // La clé n'existe QUE s'il y a un vrai réglage d'imagerie (fournisseur, fournisseurs admis, attribution) : sinon le
+    // builder reçoit exactement ce qu'il recevait avant (`pays` seul, `useAtelierBoot.js` en fait le contexte).
+    ...(imagerieReglee(p.imagerie, pays) ? { imagerie: imagerieReglee(p.imagerie, pays) } : {}),
     simulation: Object.values(simulation).some((v) => v !== null) ? simulation : null,
   }
 }
@@ -304,13 +306,12 @@ function imagerieReglee(imagerie, pays) {
   const texte = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null)
   const autorises = Array.isArray(imagerie?.fournisseurs_autorises)
     ? imagerie.fournisseurs_autorises.filter((id) => texte(id)) : []
-  const regle = Object.entries({
-    pays,
+  const autres = Object.entries({
     fournisseur_imagerie: texte(imagerie?.fournisseur_imagerie),
     fournisseurs_autorises: autorises.length ? autorises : null,
     attribution: texte(imagerie?.attribution),
   }).filter(([, v]) => v !== null)
-  return regle.length ? Object.fromEntries(regle) : null
+  return autres.length ? { pays, ...Object.fromEntries(autres) } : null
 }
 
 // CALX107 câblage — la taille du plan de fond, telle que `GET …/plan-importe/`
