@@ -484,6 +484,39 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
         self.assertTrue(suit_les_designations(SimpleNamespace(roof_layout={CLE_DESIGNATIONS: {}})))
         self.assertFalse(suit_les_designations(SimpleNamespace(roof_layout={})))
 
+    def test_relecture_finale_option_batterie_gardee_hors_designations_appliquees(self):
+        """Lot 8, relecture finale — l'invariant : une resynchro qui n'applique pas les désignations
+        (envoyé, ou hors calepinage) garde « avec batterie » au devis né par l'hybride désigné ; un
+        brouillon né sous la règle qui les reçoit, un layout « avec », un devis sans marqueur, un hybride
+        changé à la main ou sans batterie : rien ne change, rien n'est dit."""
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.creation_calepinage import (
+            CLE_DESIGNATIONS, MSG_RESYNC_OPTION_GARDEE, SOURCE_DESIGNATIONS, option_batterie_gardee)
+
+        hybride = SimpleNamespace(produit_id=5, produit=None, designation='Onduleur hybride Deye 5kW Monophasé')
+        batterie = SimpleNamespace(produit_id=6, produit=None, designation='Batterie Dyness 5 kWh')
+        calepinage = SimpleNamespace(cible=SimpleNamespace(source=SOURCE_DESIGNATIONS))
+        hors = SimpleNamespace(cible=None)
+        marque = {CLE_DESIGNATIONS: {'onduleur': 5, 'batterie': None}}
+        phrase = MSG_RESYNC_OPTION_GARDEE % hybride.designation
+        for statut, layout, intention, lignes, veut, attendu in (
+                ('envoye', marque, calepinage, [hybride, batterie], False, (True, [phrase])),
+                ('brouillon', marque, hors, [hybride, batterie], False, (True, [phrase])),
+                ('envoye', marque, hors, [hybride, batterie], False, (True, [phrase])),
+                ('brouillon', marque, calepinage, [hybride, batterie], False, (False, [])),
+                ('envoye', marque, calepinage, [hybride, batterie], True, (True, [])),
+                ('envoye', {}, calepinage, [hybride, batterie], False, (False, [])),
+                ('envoye', {CLE_DESIGNATIONS: {}}, calepinage, [hybride, batterie], False, (False, [])),
+                ('envoye', marque, calepinage, [SimpleNamespace(**dict(vars(hybride), produit_id=9)), batterie],
+                 False, (False, [])),
+                ('envoye', marque, calepinage, [hybride], False, (False, []))):
+            with self.subTest(statut=statut, layout=layout, lignes=len(lignes), veut=veut):
+                avertissements = []
+                rendu = option_batterie_gardee(SimpleNamespace(statut=statut, roof_layout=layout), intention,
+                                               lignes, veut, avertissements)
+                self.assertEqual((rendu, avertissements), attendu)
+
     def test_a_poser_le_produit_respecte_prix_et_quantite_saisis(self):
         from decimal import Decimal as D
         from types import SimpleNamespace
@@ -641,6 +674,39 @@ class OnduleurDesigneDuCalepinage(TestCase):
         self.assertTrue(any('Le devis passe en « avec batterie » : l’onduleur désigné « Onduleur hybride '
                             'Deye 5kW Monophasé » est un hybride.' == m for m in journal['avertissements']), journal)
         self.assertEqual(journal['onduleur_designe']['scenario'], 'avec')
+
+    def test_relecture_finale_envoye_ne_d_acal_159_resynchronise_garde_son_option(self):
+        """Lot 8, relecture finale — le devis né « avec batterie » par l'hybride désigné (layout stocké
+        « sans »), ENVOYÉ, resynchronisé sur un toit d'un panneau de plus, avec puis sans les désignations
+        du calepinage : le compte suit le toit, l'hybride, la batterie et sa quantité restent, le marqueur
+        aussi. Mutant « sans option_batterie_gardee » ⇒ batterie retirée, hybride permuté ⇒ rouge."""
+        from apps.ventes.domain.creation_calepinage import CLE_DESIGNATIONS, MSG_RESYNC_OPTION_GARDEE
+        from apps.ventes.models import Devis
+        from apps.ventes.services import _is_panel, sync_devis_from_layout
+
+        nom = 'Onduleur hybride Deye 5kW Monophasé'
+        designe = {'produit_id': self._id(nom), 'nombre': 1}
+        self._devis(designe=designe)
+        devis = self.dernier
+        marqueur = devis.roof_layout[CLE_DESIGNATIONS]
+        batteries = self._batteries()
+        self.assertTrue(batteries)
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye')
+        for panneaux, designations in ((13, {'onduleur': designe, 'batterie': None}), (14, None)):
+            with self.subTest(designations=designations):
+                layout = dict(self.LAYOUT, result=dict(self.LAYOUT['result'], panels=panneaux,
+                                                       kwc=round(panneaux * 0.55, 3)))
+                resultat = sync_devis_from_layout(Devis.objects.get(pk=devis.pk), layout, self.user,
+                                                  designations=designations)
+                self.dernier = Devis.objects.get(pk=devis.pk)
+                lignes = list(self.dernier.lignes.all())
+                self.assertEqual([li.designation for li in lignes if str(li.role_devis or '').startswith('onduleur_')],
+                                 [nom])
+                self.assertEqual(self._batteries(), batteries)
+                self.assertEqual(sum(int(li.quantite) for li in lignes if _is_panel(li.designation or '')), panneaux)
+                self.assertEqual((resultat['scenario'], resultat['batterie']), ('avec_batterie', True), resultat)
+                self.assertIn(MSG_RESYNC_OPTION_GARDEE % nom, resultat['avertissements'])
+                self.assertEqual(self.dernier.roof_layout[CLE_DESIGNATIONS], marqueur)
 
     def test_aucune_batterie_composee_avec_l_hybride_designe_repli_dit(self):
         """Point 3 — la composition ne pose une batterie qu'en stock et en module de 5 ou 10 kWh :
