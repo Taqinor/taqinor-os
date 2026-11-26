@@ -228,6 +228,38 @@ class AnneeMoyenneTest(SimpleTestCase):
         self.assertEqual(avec['production']['total']['specific_yield_kwh_kwc'],
                          rendement, 'la valeur est publiée telle quelle')
 
+    def test_borne_haute_franchie_avertissement_servi(self):
+        # ACAL1623 — la phrase écrite par la simulation FRAÎCHE arrive dans
+        # ``avertissements`` de ``GET resultat/`` (elle s'y perdait : le
+        # résultat servi ne portait que ceux du verdict électrique) ; sans
+        # borne saisie, rien. Mutant : ne pas servir ceux de la simulation.
+        from apps.calepinage.services.electrique import (
+            CLE_SIMULATION, resultat_calepinage)
+        from .test_calx70_resultat_sert_la_simulation import (
+            _Calepinage as _Pivot)
+
+        prefixe = MOTIF_RENDEMENT_INVRAISEMBLABLE.split('{')[0]
+
+        def servis(reglages):
+            pivot = _Pivot(copy.deepcopy(LAYOUT))
+            empreinte = resultat_calepinage(pivot, materiel=MATERIEL)['hash_entree']
+            blocs = simuler_calepinage(
+                _Calepinage(layout=copy.deepcopy(LAYOUT)), client=_ClientRejoue(),
+                materiel=MATERIEL, reglages=reglages, enregistrer=False)['blocs']
+            blocs[CLE_SIMULATION]['hash_entree'] = empreinte
+            pivot.resultat = blocs
+            servi = resultat_calepinage(pivot, materiel=MATERIEL)
+            self.assertTrue(servi['simule'])
+            return [texte for texte in servi['avertissements'] if texte.startswith(prefixe)]
+
+        self.assertEqual(servis(REGLAGES), [])
+        avec = copy.deepcopy(REGLAGES)
+        avec['simulation']['rendement_specifique_max_kwh_kwc'] = {
+            'valeur': 1.0, 'source': 'Saisie', 'reference': 'Cas ACAL1623'}
+        signales = servis(avec)
+        self.assertEqual(len(signales), 1)
+        self.assertIn('hors de la plage vraisemblable', signales[0])
+
     def test_borne_sans_source_n_est_pas_lue(self):
         from apps.calepinage.services.rendement_plausible import (
             avertissement_de_rendement)

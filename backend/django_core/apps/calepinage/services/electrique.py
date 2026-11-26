@@ -1574,10 +1574,15 @@ def _simulation_servie(calepinage, empreinte, *, defauts=None):
 
     # Fraîche : chaque bloc est publié TEL QUEL. Le dictionnaire servi est
     # détaché du document stocké (``deepcopy``) — sans quoi un appelant qui
-    # remanie la réponse remanierait la base.
-    blocs = {cle: (copy.deepcopy(stocke[cle]) if cle in stocke
-                   else defauts.get(cle))
-             for cle in BLOCS_SIMULATION}
+    # remanie la réponse remanierait la base. ACAL1623 — les avertissements
+    # que la simulation FRAÎCHE a écrits (borne haute, rendement hors de la
+    # plage vraisemblable, panneaux non raccordés…) voyagent avec ses blocs :
+    # ``resultat_calepinage`` les sert EN TÊTE, dans l'ordre de la simulation.
+    blocs = dict({cle: (copy.deepcopy(stocke[cle]) if cle in stocke
+                        else defauts.get(cle))
+                  for cle in BLOCS_SIMULATION},
+                 avertissements=[texte for texte in stocke.get('avertissements') or ()
+                                 if isinstance(texte, str) and texte])
     return blocs, False, '', simulation.get('calcule_le')
 
 
@@ -1781,7 +1786,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         donnees.get('plafond_kwc_par_onduleur'),
         pose.get('puissance_module_wc')))
 
-    messages = list(avertissements) + list(messages_ratio)
+    messages = list(blocs.get('avertissements') or ()) + list(avertissements) + list(messages_ratio)
     messages.extend(poly['bloquants'])
     messages.extend(poly['alertes'])
     messages.extend(micro['omissions'])

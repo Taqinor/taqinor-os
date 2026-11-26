@@ -1659,6 +1659,9 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         'calcule_le': calcule_le,
         'duree_s': round(time.monotonic() - depart, 3),
     }
+    # ACAL1623 — une simulation SANS avertissement efface ceux de la précédente
+    # (servis en tête de ``GET resultat/`` tant que la simulation est fraîche).
+    blocs.setdefault('avertissements', [])
     if enregistrer and variante is not None:
         # ACAL112 — la fusion PROPRE à la variante (jamais celle du
         # calepinage) : relue sous verrou de ligne, clés fusionnées.
