@@ -614,5 +614,10 @@ describe('ACAL1609 — charge seule ⇒ pas de base nulle', () => {
       ctxChargeSeule({ documentRelu: { consumption: { courbe24: emptyCurve(), methode: 'facture' } } }),
     ).consumption!;
     expect(relu.courbe24).toEqual(emptyCurve());
+    // Une courbe RÉELLE relue, retombée à zéro par un geste, sans facture ni socle : pas de zéros fantômes.
+    const tombee = serializeConsumption(
+      ctxChargeSeule({ documentRelu: { consumption: { courbe24: Array(24).fill(0.3), methode: 'courbe' } } }),
+    ).consumption!;
+    expect('courbe24' in tombee).toBe(false);
   });
 });

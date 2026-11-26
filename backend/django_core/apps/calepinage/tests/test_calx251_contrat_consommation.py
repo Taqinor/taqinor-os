@@ -20,8 +20,8 @@ Deux promesses sont affirmées ici (le Done littéral de CALX251) :
    reste valide lui aussi.
 2. **Le schéma est bien formé et l'`exemple` committé valide contre lui.**
 
-`courbe24`/`methode`/`source` voyagent TOUJOURS ensemble (un producteur qui émet
-le bloc les émet tous les trois) ; `saisons` (W95) et `appareils` sont chacun
+`methode`/`source` sont TOUJOURS émises avec le bloc ; `courbe24` (ACAL1962), `saisons` (W95)
+et `appareils` sont chacun
 OMIS quand ils n'apportent rien — jamais une valeur inventée (D-CALX 7).
 
 Fonction PURE : ce test n'a besoin d'AUCUNE base de données ni d'aucun import
@@ -126,8 +126,8 @@ class CleAdditiveTest(unittest.TestCase):
 
 
 class FormeDuBlocTest(unittest.TestCase):
-    """`courbe24`/`methode`/`source` voyagent TOUJOURS ensemble (CALX253) ;
-    `saisons`/`appareils` sont chacun omis quand ils n'apportent rien."""
+    """`methode`/`source` sont TOUJOURS présentes (CALX253) ; `courbe24` (ACAL1962),
+    `saisons` et `appareils` sont chacun omis quand ils n'apportent rien."""
 
     def test_methode_source_sont_obligatoires_courbe24_est_optionnelle(self):
         # ACAL1962 — sans facture ni socle, aucune courbe de base n'est écrite.

@@ -44,7 +44,10 @@ function courbeDeBase(ctx: Ctx, appareils: Appliance[], consHandEdited: boolean)
   const jour = socle > 0 ? socle : facture > 0 ? billToAnnualKwh(facture) / 365 : 0;
   if (jour > 0) return composeConsumption(baselineCurve(jour), appareils);
   const relue = (ctx.documentRelu?.consumption as { courbe24?: unknown } | undefined)?.courbe24;
-  return Array.isArray(relue) ? emptyCurve() : undefined;
+  // Seul un document relu qui portait DÉJÀ 24 zéros les réémet (aucun octet ne bouge sans geste) ; une courbe
+  // réelle relue puis tombée à zéro par un geste n'écrit pas de zéros fantômes.
+  const zerosStockes = Array.isArray(relue) && relue.length === 24 && relue.every((v) => v === 0);
+  return zerosStockes ? emptyCurve() : undefined;
 }
 
 /** T4-U4-025 — la signature d'une consommation non relue, prise UNE fois par session : deux sérialisations sans geste
