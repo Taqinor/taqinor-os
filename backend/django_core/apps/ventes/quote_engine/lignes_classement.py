@@ -256,6 +256,9 @@ def _item_marque(it) -> str:
 #: ADVS7 — les champs de fiche produit figés à l'envoi (ADVS2).
 _CHAMPS_FICHE_FIGEE = ("marque", "description", "garantie", "garantie_mois",
                        "garantie_production_mois")
+#: T4-V2-010 — la preuve figée à l'envoi (``envoi.figer_reglages_rendu``) de la
+#: protection marche à sec ; absente d'un instantané plus ancien.
+_PREUVE_FIGEE = "protection_marche_a_sec"
 
 
 def fiches_figees(devis) -> dict:
@@ -273,19 +276,20 @@ _PROTECTION_MARCHE_A_SEC_RE = re.compile(
     r",?\s*protection\s+(?:contre\s+la\s+)?marche\s+[àa]\s+sec", re.IGNORECASE)
 
 
-def _description_prouvee(description: str, produit) -> str:
+def _description_prouvee(description: str, produit, protection) -> str:
     """T4-V2-010 — ``description`` sans « protection marche à sec » quand le
-    produit est un variateur de pompage dont la fiche ne PUBLIE pas cette
-    protection (``var_protection_marche_a_sec`` vide ou faux) : le PDF
-    n'affirme rien que la fiche ne prouve, comme l'écran du devis qui dit « la
-    fiche ne dit pas s'il protège la pompe ». Toute autre description revient
-    telle quelle ; une ligne vidée par le retrait disparaît."""
+    produit est un variateur de pompage et que la preuve ``protection`` (le
+    champ ``var_protection_marche_a_sec`` de sa fiche : figé à l'envoi, sinon
+    celui du jour) n'est pas vraie : le PDF n'affirme rien que la fiche ne
+    prouve, comme l'écran du devis qui dit « la fiche ne dit pas s'il protège
+    la pompe ». Toute autre description revient telle quelle ; une ligne vidée
+    par le retrait disparaît."""
     if not description or not _PROTECTION_MARCHE_A_SEC_RE.search(description):
         return description
     fiche = getattr(produit, "fiche_technique", None)
     variateur = ((getattr(produit, "role_pompage", None) or "") == "variateur_pompage"
                  or (getattr(fiche, "type_fiche", None) or "") == "variateur_pompage")
-    if not variateur or getattr(fiche, "var_protection_marche_a_sec", None) is True:
+    if not variateur or protection is True:
         return description
     lignes = [_PROTECTION_MARCHE_A_SEC_RE.sub("", ligne).rstrip(" ,;")
               for ligne in description.split("\n")]
@@ -384,7 +388,13 @@ def _line_to_item(ligne, taux_tva: Decimal, fiches=None, *,
     # nouveaux rendus seulement) : la description, fiche figée comprise,
     # n'affirme pas une protection que la fiche technique ne publie pas.
     if protection_fiche and item.get("description"):
-        item["description"] = _description_prouvee(item["description"], produit)
+        # La preuve FIGÉE à l'envoi quand l'instantané la porte (un envoyé
+        # relit ce que son client a reçu, quoi qu'il arrive à la fiche) ; la
+        # fiche du jour pour un brouillon ou un instantané plus ancien.
+        protection = (fiche[_PREUVE_FIGEE] if fiche and _PREUVE_FIGEE in fiche
+                      else getattr(getattr(produit, "fiche_technique", None),
+                                   "var_protection_marche_a_sec", None))
+        item["description"] = _description_prouvee(item["description"], produit, protection)
     return item
 
 

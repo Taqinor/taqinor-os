@@ -202,6 +202,45 @@ class ReglesCalculTests(SimpleTestCase):
         sonde.produit.fiche_technique = None
         self.assertEqual(_item_du_devis(sonde, Decimal('20'), ouvert)['description'], desc)
 
+    def test_t4_v2_010_la_preuve_est_figee_a_l_envoi(self):
+        # Revue du 26/11 — la description est figée à l'envoi ; la PREUVE de la
+        # protection aussi (``envoi.figer_reglages_rendu``) : un devis envoyé
+        # garde la ligne que son client a reçue quand la fiche change ensuite.
+        from datetime import datetime, timedelta, timezone
+
+        from apps.ventes.domain.regles_calcul import COUPURE_PROTECTION_FICHE
+        from apps.ventes.quote_engine.lignes_classement import _item_du_devis
+        apres = datetime(*COUPURE_PROTECTION_FICHE, 8, 0, tzinfo=timezone.utc)
+        avant = apres - timedelta(days=1)
+        desc = 'Pilotage automatique lever/coucher du soleil, protection marche à sec'
+
+        def ligne(protection_du_jour):
+            fiche = SimpleNamespace(type_fiche='variateur_pompage',
+                                    var_protection_marche_a_sec=protection_du_jour)
+            produit = SimpleNamespace(pk=7, nom='VEICHI SI23', marque='VEICHI', description=desc,
+                                      garantie='', role_pompage='variateur_pompage', fiche_technique=fiche)
+            return SimpleNamespace(designation=produit.nom, produit=produit, quantite=1,
+                                   prix_unitaire=Decimal('1'), remise=0, taux_tva=20)
+
+        def envoye(date_envoi, **fige):
+            produit = dict({'marque': 'VEICHI', 'description': desc, 'garantie': '',
+                            'garantie_mois': None, 'garantie_production_mois': None}, **fige)
+            return SimpleNamespace(regles_calcul=14, statut='envoye', date_envoi=date_envoi,
+                                   date_creation=date_envoi, mode_installation='agricole',
+                                   clauses_appliquees=[{'type': 'reglages_figes', 'produits': {'7': produit}}])
+
+        def texte(devis, protection_du_jour):
+            return _item_du_devis(ligne(protection_du_jour), Decimal('20'), devis)['description']
+        # Envoyé avant la coupure (instantané sans la clé, d'avant ce gel) : octet-identique.
+        self.assertEqual(texte(envoye(avant), None), desc)
+        self.assertEqual(texte(envoye(avant), True), desc)
+        # Envoyé après, fiche muette à l'envoi, remplie ensuite : toujours SANS la phrase.
+        self.assertEqual(texte(envoye(apres, protection_marche_a_sec=None), True),
+                         'Pilotage automatique lever/coucher du soleil')
+        # Envoyé après, fiche vraie à l'envoi, vidée ensuite : toujours AVEC la phrase.
+        self.assertEqual(texte(envoye(apres, protection_marche_a_sec=True), None), desc)
+        self.assertEqual(texte(envoye(apres, protection_marche_a_sec=True), False), desc)
+
     # ── Niveau 3 (corrections résidentielles du 27/10/2026) ──
     def test_devis_envoye_au_niveau_2_hors_corrections_2710(self):
         envoye = SimpleNamespace(regles_calcul=REGLES_CORRIGEES)
