@@ -23,7 +23,7 @@ from apps.calepinage.services.electrique import (
     conception_du_calepinage,
 )
 from apps.calepinage.services.layout import empreinte_document, enregistrer_layout
-from apps.calepinage.services.modules_pans import PROVENANCE_POSE
+from apps.calepinage.services.modules_pans import PROVENANCE_POSE, _produit_du_module_pose
 from apps.calepinage.services.simulation import construire_contexte
 from apps.calepinage.services.suivi_module_pose import (
     PHRASE_SUIVI, _lister_calepinages_au_module_divergent, _module_a_suivre,
@@ -548,9 +548,10 @@ class MaterielRetenuParLeDevis(BaseMateriel):
 
 def _document_pose(*pans):
     """D-ACAL-169 — un toit posé : ``pans`` = ``(produit_id, modules)`` ;
-    ``produit_id`` ``None`` ⇒ pan posé sans modèle du catalogue."""
+    ``produit_id`` ``None`` ⇒ pan posé sans modèle du catalogue ; un 3e
+    élément vrai ⇒ pan « existant » (ACAL573)."""
     modules, zones = [], []
-    for index, (produit_id, nombre) in enumerate(pans):
+    for index, (produit_id, nombre, *existant) in enumerate(pans):
         geometrie = {'panels': [{'n': i + 1} for i in range(nombre)]}
         if produit_id is not None:
             ident = 'produit-%s' % produit_id
@@ -563,7 +564,8 @@ def _document_pose(*pans):
             geometrie['moduleId'] = ident
         zones.append({'id': 'z%d' % index, 'label': 'Pan %d' % index,
                       'facingAzimuthDeg': 180.0, 'pitchDeg': 15.0,
-                      'geometry': geometrie})
+                      'geometry': geometrie,
+                      **({'existant': True} if any(existant) else {})})
     return {'pin': LAYOUT['pin'], 'modules': modules, 'zones': zones}
 
 
@@ -589,6 +591,22 @@ class ModuleASuivre(SimpleTestCase):
     def test_pan_pose_sans_produit_la_designation_est_son_defaut(self):
         document = _document_pose((None, 12), (715, 4))
         self.assertIsNone(_module_a_suivre(document, {'module_produit': 710}))
+
+    def test_pan_existant_sans_produit_n_empeche_pas_de_suivre(self):
+        # Revue lot 8 — l'atelier ne pose aucun module sur un pan « existant » :
+        # 6 modules existants sans produit + 12 neufs en 715, entrée 710 ⇒ 715.
+        document = _document_pose((None, 6, True), (715, 12))
+        self.assertEqual(_module_a_suivre(document, {'module_produit': 710}), 715)
+        self.assertEqual(_lister_calepinages_au_module_divergent(
+            [(7, document, {CLE_ENTREE: {'module_produit': 710}})]), [7])
+
+    def test_pan_existant_jamais_module_dominant(self):
+        # Un pan existant de 20 modules d'un produit 999 ne gagne jamais.
+        document = _document_pose((999, 20, True), (715, 12))
+        self.assertEqual(_module_a_suivre(document, {'module_produit': 710}), 715)
+        self.assertEqual(_module_a_suivre(document, {'module_produit': 999}), 715)
+        # Les autres appelants lisent ce qu'ils lisaient (défaut inchangé).
+        self.assertEqual(_produit_du_module_pose(document), 999)
 
     def test_sans_designation_rien(self):
         document = _document_pose((715, 12))

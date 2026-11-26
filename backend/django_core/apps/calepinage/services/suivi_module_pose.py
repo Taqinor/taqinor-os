@@ -41,13 +41,15 @@ def _module_a_suivre(document, entree):
     stocke = entree.get('module_produit') if isinstance(entree, dict) else None
     if stocke in (None, ''):
         return None
+    # Un pan « existant » (ACAL573) n'est jamais pavé par l'atelier : il ne
+    # porte pas le module de l'étape Électrique et ne compte pas ici.
     poses = [pan for pan in pans_du_document(document)
-             if int(pan.get('modules') or 0) > 0]
+             if int(pan.get('modules') or 0) > 0 and not pan.get('existant')]
     if not poses or any(pan.get('produit_id') in (None, '') for pan in poses):
         return None
     if any(str(pan.get('produit_id')) == str(stocke) for pan in poses):
         return None
-    return _produit_du_module_pose(document)
+    return _produit_du_module_pose(document, sans_existants=True)
 
 
 def _produit(company, identifiant):
