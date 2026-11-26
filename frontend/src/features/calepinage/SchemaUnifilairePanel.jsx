@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
@@ -218,6 +218,27 @@ function Onduleur({ o, onOuvrir }) {
   )
 }
 
+/* LOT 6 — la batterie : une carte du même langage que les autres, reliée à l'onduleur par une liaison NEUTRE à
+   double flèche (charge / décharge). Seules les lignes servies existent (`plan.batterie.lignes`) : aucune valeur
+   absente n'est remplacée. Aucune protection : le serveur n'en calcule aucune. */
+function Batterie({ b, onOuvrir, idFleche }) {
+  const lib = ['Batterie', ...b.lignes].join(', ')
+  return (
+    <>
+      <polyline points={b.lien.map((p) => p.join(',')).join(' ')} className="csch-liaison csch-liaison-batterie"
+        markerStart={`url(#${idFleche})`} markerEnd={`url(#${idFleche})`} data-testid="csch-lien-batterie" />
+      <Element cible={CIBLE_DU_BLOC.batterie} onOuvrir={onOuvrir} testId="csch-bloc-batterie" libelle={lib}>
+        <rect x={b.x} y={b.y} width={b.l} height={b.h} rx="10" className="csch-boite" />
+        <g transform={`translate(${b.x + 12} ${b.y + 10})`} className="csch-picto">
+          <rect x="1" y="4" width="20" height="11" rx="2" /><path d="M23 7v5M5 8v3M9 8v3M13 8v3" />
+        </g>
+        <text x={b.x + 44} y={b.y + 24} className="csch-t14">Batterie</text>
+        <Lignes x={b.x + 12} y={b.y + 52} lignes={b.lignes} pas={16} className="csch-t12 csch-attenue" />
+      </Element>
+    </>
+  )
+}
+
 /* Côté réseau pas encore servi : la boîte en creux (pointillés), son nom, « à calculer » — aucune valeur. */
 function BlocACalculer({ b }) {
   const cx = b.x + b.l / 2
@@ -240,7 +261,7 @@ function BlocAc({ b, onOuvrir }) {
   if (b.cle === 'coffret_ac') return <Coffret titre="Coffret côté réseau" boite={b} onOuvrir={onOuvrir} cleCible={CIBLE_DU_BLOC.coffret} />
   const titre = b.titre ?? []
   const detail = b.detail ?? []
-  const icone = b.cle === 'tgbt' ? 0 : 40
+  const icone = b.cle === 'tgbt' || b.aConfirmer ? 0 : 40
   const total = icone + (icone ? 6 : 0) + titre.length * 17 + detail.length * 16
   const y0 = b.y + (b.h - total) / 2
   return (
@@ -259,6 +280,13 @@ function BlocAc({ b, onOuvrir }) {
       )}
       <Lignes x={cx} y={y0 + icone + (icone ? 6 : 0) + 14} lignes={titre} pas={17} className="csch-t14" ancre="middle" />
       <Lignes x={cx} y={y0 + icone + (icone ? 6 : 0) + titre.length * 17 + 12} lignes={detail} pas={16} className="csch-t12 csch-attenue" ancre="middle" />
+      {/* Étage moyenne tension : bloc servi mais « à confirmer » — la pastille le dit. */}
+      {b.aConfirmer && (
+        <>
+          <rect x={cx - 46} y={b.y + b.h - 30} width="92" height="22" rx="11" className="csch-pilule" />
+          <text x={cx} y={b.y + b.h - 15} textAnchor="middle" className="csch-t12 csch-pilule-texte">à confirmer</text>
+        </>
+      )}
     </Element>
   )
 }
@@ -267,9 +295,18 @@ function BlocAc({ b, onOuvrir }) {
 export function SchemaEnBlocs({ plan, onOuvrir = null, coteReseau = null }) {
   const { largeur, hauteur, bandes, chaines, coffretDc, onduleur, blocsAc, liaisons, terre } = plan
   const xMax = terre ? Math.max(...terre.descentes.map(([x]) => x)) : 0
+  // Plusieurs dessins peuvent être montés ensemble (fiches devis ouvertes) : un identifiant de flèche par instance.
+  const idFleche = `csch-fleche-${useId().replace(/:/g, '')}`
   return (
     <svg width={largeur} height={hauteur} viewBox={`0 0 ${largeur} ${hauteur}`} className="csch-blocs-svg"
       xmlns="http://www.w3.org/2000/svg">
+      {plan.batterie && (
+        <defs>
+          <marker id={idFleche} viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 1L10 5L0 9z" className="csch-fleche" />
+          </marker>
+        </defs>
+      )}
       {bandes.map((b) => (
         <g key={b.cle}>
           <rect x="0.5" y={b.y + 0.5} width={largeur - 1} height={b.h - 1} rx="10" className="csch-bande" />
@@ -319,6 +356,7 @@ export function SchemaEnBlocs({ plan, onOuvrir = null, coteReseau = null }) {
       ))}
       {coffretDc && <Coffret titre="Coffret côté panneaux" boite={coffretDc} onOuvrir={onOuvrir} cleCible={CIBLE_DU_BLOC.coffret} />}
       <Onduleur o={onduleur} onOuvrir={onOuvrir} />
+      {plan.batterie && <Batterie b={plan.batterie} onOuvrir={onOuvrir} idFleche={idFleche} />}
       {blocsAc.map((b) => <BlocAc key={b.cle} b={b} onOuvrir={onOuvrir} />)}
       {terre && <text x={terre.x1 + 20} y={terre.y + 19} className="csch-t12 csch-gras csch-etiquette csch-terre-texte">{terre.libelle}</text>}
     </svg>
