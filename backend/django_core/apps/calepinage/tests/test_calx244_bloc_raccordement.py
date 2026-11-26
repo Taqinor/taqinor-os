@@ -95,7 +95,7 @@ class FormeDuDocumentTest(SimpleTestCase):
 
         # ACAL157 — la proposition du lead est la quatrième clé racine.
         # ACAL782 — + ``regime`` ; ACAL783 — + ``injection`` et son motif.
-        self.assertEqual(sorted(bloc), ['calcul', 'injection',
+        self.assertEqual(sorted(bloc), ['avertissements', 'calcul', 'injection',
                                         'injection_motif', 'proposition_lead',
                                         'regime', 'saisie', 'verdicts'],
                          "Le contrat CALX205 publie TROIS blocs : une clé "
@@ -251,6 +251,30 @@ class RegimeDuSiteTest(SimpleTestCase):
 
         self.assertTrue(regime['a_qualifier'])
         self.assertIsNone(regime['code'])
+
+
+class AvertissementDixFoisTest(SimpleTestCase):
+    """ACAL1251 (D-ACAL-63) — au-delà de dix fois l'attendu : gardé et signalé."""
+
+    def _avertissements(self, souscrite, ac):
+        bloc = bloc_raccordement(None, dict(SAISIE, puissance_souscrite_kva=souscrite),
+                                 [], {}, puissance_ac_kw=ac)
+        self.assertEqual(bloc['saisie']['puissance_souscrite_kva'], souscrite)  # jamais refusée
+        return bloc['avertissements']
+
+    def test_99_999_999_kva_face_a_dix_kw_est_signale(self):
+        (avert,) = self._avertissements(99999999.0, 10.0)
+        self.assertEqual(avert['champ'], 'puissance_souscrite_kva')
+        self.assertIn('10 000 000', avert['message'])
+        self.assertIn('99 999 999 kVA', avert['message'])
+        self.assertIn('10 kW', avert['message'])
+
+    def test_jusqu_a_dix_fois_aucun_avertissement(self):
+        self.assertEqual(self._avertissements(100.0, 10.0), [])
+        self.assertEqual(self._avertissements(12.0, 10.0), [])
+
+    def test_sans_onduleur_resolu_aucune_reference_aucun_avertissement(self):
+        self.assertEqual(self._avertissements(99999999.0, None), [])
 
 
 class InjectionFaceAuPlafondTest(SimpleTestCase):
