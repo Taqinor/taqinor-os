@@ -82,6 +82,17 @@ describe('CheminementCables (CALX229)', () => {
     expect(await screen.findByTestId('calx229-omission-0')).toHaveTextContent(omission.motif)
   })
 
+  it('ACAL1938 : aucune clé pointée dans la ligne des omissions — le champ est dit en mots', async () => {
+    servir(CONTRAT.exemple_vide)
+
+    rendre()
+
+    const ligne = await screen.findByTestId('calx229-omission-0')
+    expect(ligne).toHaveTextContent('le cheminement des câbles')
+    expect(ligne.textContent).not.toContain('electrical.cheminements')
+    servir(CONTRAT.exemple)
+  })
+
   it('métré par section : une ligne par section, section absente NOMMÉE', async () => {
     servir(CONTRAT.exemple)
 

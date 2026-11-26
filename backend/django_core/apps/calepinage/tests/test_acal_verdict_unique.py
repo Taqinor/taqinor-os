@@ -134,6 +134,33 @@ class VerdictUnique(BaseApiCalepinage):
                     evaluation_electrique(calepinage)['publiable'],
                     verdict_publiable(calepinage)['publiable'])
 
+    def test_d_hyb_1_hybride_reconnu_par_son_role_sur_le_vrai_chemin(self):
+        """D-HYB-1 (fondateur 24/11/2026 : « un produit se reconnaît à son rôle et à sa fiche
+        avant son nom ») — vrai chemin ``resoudre_materiel`` → ``conception_du_calepinage`` :
+        un onduleur au rôle DÉCLARÉ ``onduleur_hybride``, nommé sans « hybride », publiant sa
+        puissance PV maximale, est jugé à elle (24 × 710 Wc = 17,04 kWc sur 10 kW : 1,70)."""
+        from apps.calepinage.services.electrique import (
+            SOURCE_BORNE_CAPACITE, SOURCE_BORNE_DEVIS, _bloc_ratio_dc_ac, conception_du_calepinage,
+        )
+
+        champs = dict(ond_n_mppt=2, ond_mppt_v_min=120.0, ond_mppt_v_max=500.0, ond_v_max_abs=600.0,
+                      ond_i_max_mppt_a=26.0, ond_ac_kw=10.0, ond_phases=3, ond_dc_max_kwc=Decimal('20'))
+        for role, source, conforme in (('onduleur_hybride', SOURCE_BORNE_CAPACITE, True),
+                                       ('', SOURCE_BORNE_DEVIS, False)):
+            with self.subTest(role=role):
+                # Nom SANS « hybride » (ni le rôle écrit dedans : le nom est le dernier rang).
+                onduleur = self._produit(nom='Deye SUN-10K-SG04 %s' % ('A' if role else 'B'),
+                                         type_fiche='onduleur', **champs)
+                Produit.objects.filter(pk=onduleur.pk).update(role_devis=role)
+                # ``conception_du_calepinage`` rend ``(conception, materiel, donnees, document)``.
+                conception, materiel, _donnees, _document = conception_du_calepinage(
+                    self._calepinage(onduleur_produit=onduleur.pk))
+                self.assertEqual(materiel['familles']['onduleur'], (role, ''))  # lu par resoudre_materiel
+                self.assertEqual(conception.entree.onduleur.role, role)
+                bloc, _avertissements = _bloc_ratio_dc_ac(conception)
+                self.assertEqual((bloc['borne_source'], bloc['dans_bornes']), (source, conforme))
+                self.assertGreater(bloc['valeur'], 1.35)  # la borne de ratio l'aurait refusé
+
     # ACAL616 — retenu + voisins de puissance, évalués à chaud, sans écrire.
     def _onduleur(self, nom, ac_kw):
         champs = dict(ond_n_mppt=2, ond_mppt_v_min=120.0, ond_mppt_v_max=500.0,

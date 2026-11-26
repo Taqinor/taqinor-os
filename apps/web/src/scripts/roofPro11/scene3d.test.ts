@@ -7,7 +7,7 @@ import { cibleVue, appliquerVue } from './vuesCamera';
 import { dimensionsTexture, makeCanadianPanelTexture } from './panelTexture'; // ACAL1839
 import { teintesBatiment, TEINTES_PRESENTATION } from './jeuPresentation'; // ACAL1839
 import * as THREE from 'three'; // ACAL1984
-import { aplatirEnPlan, poserOeil } from './oeilCamera'; // ACAL1984, T4-U1-017
+import { aplatirEnPlan, poserOeil, verreEtOeilAtelier } from './oeilCamera'; // ACAL1984, T4-U1-017, LOT 6
 import { boiteObstacle } from './obstacle3d'; // ACAL1820
 import {
   generateRoofShapePans,
@@ -449,6 +449,21 @@ describe('ACAL1408 — la teinte d’accès modifie la couleur effective du pann
     const pub = materiauVerre(null, false);
     expect([pub.clearcoat, pub.clearcoatRoughness, pub.roughness, pub.metalness]).toEqual([1, 0.08, 0.22, 0.1]);
     expect(lum(rendu(pub, [or.r, or.g, or.b]))).toBeLessThan(0.01); // la panne d'origine, gardée hors ERP
+  });
+
+  it('LOT 6 — `teinteAccesVisible` (visionneuse au soleil) prend le verre sans vernis ; absent, le site public garde le sien', () => {
+    const params = (m: { clearcoat: number; clearcoatRoughness: number; roughness: number; metalness: number }) =>
+      [m.clearcoat, m.clearcoatRoughness, m.roughness, m.metalness];
+    // Défaut (pages publiques, page sans la clé, visionneuse simplifiée) : inchangé.
+    expect(verreEtOeilAtelier(undefined)).toBe(false);
+    expect(verreEtOeilAtelier({})).toBe(false);
+    expect(verreEtOeilAtelier({ teinteAccesVisible: false })).toBe(false);
+    expect(params(materiauVerre(null, verreEtOeilAtelier({})))).toEqual([1, 0.08, 0.22, 0.1]);
+    // Visionneuse au soleil qui teinte : le verre de l'atelier, la teinte devient lisible.
+    expect(verreEtOeilAtelier({ teinteAccesVisible: true })).toBe(true);
+    expect(params(materiauVerre(null, verreEtOeilAtelier({ teinteAccesVisible: true })))).toEqual([0, 0.08, 0.22, 0.1]);
+    // ERP : inchangé (toujours le verre de l'atelier, avec ou sans le drapeau).
+    expect(verreEtOeilAtelier({ productionAtelier: null })).toBe(true);
   });
 
   it('la teinte de chaîne (setStringColoring, même canal) est gainée de la même façon', () => {

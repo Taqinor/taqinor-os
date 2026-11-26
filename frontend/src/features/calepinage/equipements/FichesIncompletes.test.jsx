@@ -28,7 +28,7 @@ vi.mock('../../../api/calepinageApi', () => ({
 }))
 
 const { default: FichesIncompletes } = await import('./FichesIncompletes')
-const { impactChamp } = await import('./FichesIncompletes.helpers')
+const { impactChamp, libelleChamp } = await import('./FichesIncompletes.helpers')
 
 const rendre = () => render(
   <MemoryRouter><FichesIncompletes calepinageId={1} /></MemoryRouter>,
@@ -76,8 +76,24 @@ describe('CAL121 — rendu sur une fiche TROUÉE', () => {
     for (const famille of ['panneau', 'onduleur']) {
       for (const champ of AGREGAT[famille].champs_manquants) {
         const ligne = screen.getByTestId(`cal-fiche-manquant-${famille}-${champ}`)
-        expect(ligne).toHaveTextContent(champ)
+        expect(ligne).toHaveTextContent(libelleChamp(champ, famille))
         expect(ligne).toHaveTextContent(impactChamp(famille, champ))
+      }
+    }
+  })
+
+  it('ACAL1740 — aucun nom de clé (minuscules à underscores) à l’écran', async () => {
+    equipements.mockResolvedValue({ data: AGREGAT })
+    rendre()
+    const bloc = await screen.findByTestId('cal-fiches-incompletes')
+    expect(bloc).toHaveTextContent('Température nominale de la cellule')
+    for (const famille of ['panneau', 'onduleur']) {
+      for (const champ of AGREGAT[famille].champs_manquants) {
+        if (!champ.includes('_')) continue
+        const ligne = screen.getByTestId(`cal-fiche-manquant-${famille}-${champ}`)
+        // le libellé est en français ; la clé brute n'apparaît que dans le data-testid
+        expect(ligne.textContent).not.toMatch(/[a-z]+_[a-z0-9_]+/)
+        expect(libelleChamp(champ, famille)).not.toBe(champ)
       }
     }
   })

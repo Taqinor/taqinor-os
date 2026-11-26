@@ -162,6 +162,30 @@ def _sld_svg(devis) -> str:
         return ""
 
 
+#: SCHEL-B4 — largeur (px CSS) du schéma électrique dans la colonne de
+#: contenu de la page d'annexe A4 portrait (celle des graphes de la page 2) ;
+#: la hauteur suit le ``viewBox``, jamais déformée.
+SCHEMA_ELECTRIQUE_LARGEUR_PX = 680
+
+
+def _schema_electrique_svg(devis, data, opts) -> str:
+    """SCHEL-B4 — le schéma électrique de l'option rangée (même option que la
+    planche d'hier), dans la langue du document (fr / en / ar). '' en cas
+    d'échec : l'annexe retombe alors sur la planche d'hier, jamais sur un PDF
+    cassé. Aucun montant (règle #4 — le noyau n'en connaît aucun)."""
+    try:
+        from apps.ventes.electrical_service import rendre_schema_electrique_du_devis
+        langue = (data.get("langue_sortie") or (opts or {}).get("langue_sortie")
+                  or "fr")
+        return rendre_schema_electrique_du_devis(
+            devis, langue=str(langue).strip().lower()[:2],
+            largeur_px=SCHEMA_ELECTRIQUE_LARGEUR_PX) or ""
+    except Exception:  # noqa: BLE001 — un schéma absent ne casse jamais un devis (D-ENF22-BLE001)
+        logger.warning("SCHEL-B4: schéma électrique indisponible pour le devis %s",
+                       getattr(devis, "pk", None))
+        return ""
+
+
 #: CAL182 — largeur/hauteur (px) sous lesquelles la planche A3 PAYSAGE est
 #: réduite pour tenir dans la colonne de contenu d'une page A4 PORTRAIT du
 #: devis. Le ``viewBox`` du SVG n'est PAS touché : c'est la même planche,
@@ -348,7 +372,14 @@ def ajouter_artefacts_rendu(data, devis, opts, pdf_options, layout_stale,
     if _veut_annexe and _design is not None:
         data["include_annexe_technique"] = True
         data["electrical_design"] = _design
-        data["sld_svg"] = _sld_svg(devis)
+        # SCHEL-B4 (lot 6) — NOUVEAUX RENDUS seulement : l'annexe d'un devis
+        # ouvert dessine le schéma électrique ; un devis envoyé avant la coupure
+        # garde la planche qu'il a reçue (``regles_calcul.schema_electrique_ouvert``).
+        from apps.ventes.domain.regles_calcul import drapeaux_schema_electrique
+        _drapeaux_schema = drapeaux_schema_electrique(devis)
+        data.update(_drapeaux_schema)
+        data["sld_svg"] = ((_schema_electrique_svg(devis, data, opts)
+                            if _drapeaux_schema else "") or _sld_svg(devis))
     # ── CAL182 — LA PLANCHE EST UN ARTEFACT DE RENDU (leçon CALEPDF/A8) ──────
     # Même discipline que l'affiche : ``build_quote_data`` alimente AUSSI la
     # charge utile JSON de la proposition publique, et deux raisons interdisent

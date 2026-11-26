@@ -400,3 +400,54 @@ class CotesDuToitSeulTest(SimpleTestCase):
         x0, y0, x1, y1 = geometrie['etendue']
         self.assertIn('>%s</text>' % texte_de_longueur(x1 - x0),
                       svg_de_planche(geometrie))
+
+
+# ── ACAL1969 — motif `orientation_nord` d'un pan vide (contrat du document) ──
+
+class MotifOrientationNordTest(SimpleTestCase):
+    """Le schéma v2 accepte `orientation_nord` (exemple du contrat), refuse un
+    code inconnu en NOMMANT le champ, et la planche (ACAL550) l'imprime."""
+
+    def setUp(self):
+        import copy
+        import json
+        import pathlib
+
+        chemin = (pathlib.Path(__file__).resolve().parents[1]
+                  / 'contract_samples' / 'roof_layout_v2.schema.json')
+        schema = json.loads(chemin.read_text(encoding='utf-8'))
+        self.motif = copy.deepcopy(
+            schema['exemple_motifs_pans_vides']['pan-nord-pente'])
+        self.document = copy.deepcopy(schema['exemple'])
+        self.document['motifsPansVides'] = {'pan-nord-pente': self.motif}
+
+    def test_orientation_nord_conforme_au_schema(self):
+        from apps.calepinage.services.io_layout import valider_document
+
+        self.assertEqual(self.motif['code'], 'orientation_nord')
+        valider_document(self.document)
+
+    def test_code_inconnu_refuse_en_nommant_le_champ(self):
+        from apps.calepinage.services.io_layout import (
+            ImportLayoutRefuse, valider_document)
+
+        self.motif['code'] = 'autre'
+        with self.assertRaises(ImportLayoutRefuse) as capture:
+            valider_document(self.document)
+        self.assertEqual(capture.exception.champ,
+                         'motifsPansVides.pan-nord-pente.code')
+
+    def test_la_planche_imprime_le_motif_d_un_pan_nord_vide(self):
+        import copy
+
+        from apps.calepinage.services.planche import CONTENU_POSE
+
+        layout = copy.deepcopy(LAYOUT)
+        geometrie = layout['zones'][0]['geometry']
+        geometrie.update(azimuthDeg=0.0, tiltDeg=22.0, count=0, panels=[])
+        layout['motifsPansVides'] = {'z1': self.motif}
+        planche = geometrie_de_planche(layout)
+        self.assertEqual(planche['pans'][0]['motif_vide'], self.motif['message'])
+        # Le plan de pose (CAL211) est la feuille qui imprime le motif.
+        self.assertIn(self.motif['message'],
+                      svg_de_planche(planche, contenu=CONTENU_POSE))

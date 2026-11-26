@@ -318,6 +318,8 @@ export function useEtatToit(intervalle = 500) {
   return [etat, relire]
 }
 
+export const estObjet = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+
 /**
  * L'écriture de la pente d'UN pan par la primitive de section (`layout/section/`, clé `zones`) —
  * la MÊME requête pour « Enregistrer la pente » (onglet Pente, `SaisiePente.jsx`) et « Confirmer » (carte « Pente et
@@ -344,6 +346,16 @@ export async function enregistrerPentePan({ calepinageId, doc, documentVivant = 
     const rendues = res?.data?.roof_layout?.zones
     const mises = Array.isArray(rendues) ? rendues : zones.map((z) => (
       String(z.id) === String(zone.id) ? { ...z, ...champs } : z))
+    // ACAL1922 — le serveur écrit le pan ENTIER (`zone.update`) et rend le document stocké : un pan rendu sans
+    // `pitchSource` objet alors qu'on vient de l'écrire = écriture NON retenue. Jamais d'écho « confirmé » : la
+    // conception est relue et le refus est dit (la carte garde « À confirmer »).
+    if (Array.isArray(rendues) && champs.pitchSource) {
+      const rendu = rendues.find((z) => String(z.id) === String(zone.id))
+      if (rendu && !estObjet(rendu.pitchSource)) {
+        doc.recharger()
+        return { ok: false, message: 'La confirmation n’a pas été retenue par le serveur : la conception est relue, recommencez.' }
+      }
+    }
     doc.appliquerSection('zones', mises, apres)
     documentVivant?.appliquerSection?.('zones', mises, apres)
     const nom = zone.label || zone.id

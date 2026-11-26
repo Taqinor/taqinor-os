@@ -163,6 +163,7 @@ export const CIBLE_DU_BLOC = {
   onduleur: 'materiel-electrique',
   reseau: 'raccordement',
   cable: 'cheminement-cables',
+  batterie: 'materiel-electrique',
 }
 
 /** Coupe un texte en lignes d'au plus `max` caractères (mots entiers), `n` lignes au plus (… au bout). */
@@ -364,6 +365,169 @@ export function planSchemaEnBlocs(schema, resultat) {
     legende,
     coteReseauACalculer: aCalculer,
   }
+}
+
+/* ============================================================================
+   LOT 6 (fondateur, 26/11/2026) — LE MÊME DESSIN, LU SUR LE DOCUMENT `schema_electrique`.
+   Le serveur sert désormais UN document structuré (contrat `ventes/schema_electrique.json`, clé
+   `schema_electrique`) : chaînes (couleur, entrée), organes, onduleurs, BATTERIE, côté réseau.
+   `planDepuisDocument` le traduit vers les entrées que `planSchemaEnBlocs` sait déjà dessiner
+   (UNE seule géométrie, aucune copie) puis ajoute la carte batterie. Une grandeur `null` est omise.
+   ========================================================================== */
+
+const nombreFr = (v) => String(Math.round(v * 100) / 100).replace('.', ',')
+const bloc = (clef, titre, sous_titre = '') => ({ clef, titre, sous_titre: sous_titre ?? '', repere: '' })
+
+/** Les blocs « servis » que `planSchemaEnBlocs` lit, tirés du document. */
+function blocsDuDocument(doc) {
+  const organes = (c) => (c?.organes ?? []).map((o) => bloc(o.clef, o.titre, o.calibre))
+  const simple = (clef, b) => (b ? [bloc(clef, b.titre, b.detail)] : [])
+  // Un onduleur n'est dessiné que si le document en sert au moins un (rien d'inventé).
+  return [
+    ...(doc.onduleurs?.length ? [bloc('onduleur', doc.onduleurs[0].designation ?? 'Onduleur')] : []),
+    ...organes(doc.coffret_dc),
+    ...organes(doc.coffret_ac),
+    ...simple('compteur_production', doc.compteur_production),
+    ...simple('tgbt', doc.tgbt),
+    ...simple('reseau', doc.reseau),
+  ]
+}
+
+const avecChaines = (doc) => Boolean(doc.chaines_reparties) && doc.chaines.length > 0
+
+/** Les chaînes du document (ou, SANS découpage servi, UN champ de panneaux au nombre réel). */
+function affectationDuDocument(doc) {
+  if (avecChaines(doc)) {
+    return doc.chaines.flatMap((c) => Array.from({ length: c.nb_panneaux ?? 0 }, () => (
+      { chaine: c.numero, mppt: c.entree, couleur_chaine: c.couleur })))
+  }
+  return Array.from({ length: doc.panneaux?.nombre ?? 0 }, () => ({ chaine: 1, mppt: null, couleur_chaine: null }))
+}
+
+/** Le document traduit vers les deux réponses (`schema-unifilaire/`, `resultat/`) que lit `planSchemaEnBlocs`. */
+function entreesDuDocument(doc, libelles) {
+  const o = doc.onduleurs?.[0] ?? null
+  // Libellé ÉDITÉ (`edition.libelles`, servi avec le dessin) : il l'emporte sur le titre du document.
+  const blocs = blocsDuDocument(doc).map((b) => (libelles[b.clef] ? { ...b, titre: libelles[b.clef] } : b))
+  return {
+    // `svg` ne sert à `planSchemaEnBlocs` qu'à savoir si une terre est tracée.
+    schema: { blocs, edition: { libelles }, svg: doc.terre ? '<line stroke-dasharray="1"/>' : '' },
+    resultat: {
+      electrique: {
+        affectation: affectationDuDocument(doc),
+        onduleurs: o ? [{ taille_kw: o.puissance_kw, nombre: o.nombre, n_mppt: o.nb_entrees }] : [],
+        chainage: { puissance_module_wc: doc.panneaux?.module?.puissance_wc },
+      },
+      troncons: {
+        troncons: ['dc', 'ac'].map((cote) => ({
+          cote, section_mm2: doc.liaisons?.[cote]?.section_mm2, longueur_m: doc.liaisons?.[cote]?.longueur_m,
+        })),
+      },
+      hors_reseau: doc.cote_reseau?.etat === 'hors_reseau' ? { banque: null } : null,
+      simule: false,
+    },
+  }
+}
+
+/** La carte batterie (bande courant continu, à gauche de l'onduleur) et sa liaison neutre à double flèche. */
+function carteBatterie(batterie, onduleur) {
+  const lignes = [
+    ...couperTexte(batterie.designation, 20, 2),
+    ...(fini(batterie.unites) ? [`${batterie.unites} unité${batterie.unites > 1 ? 's' : ''}`] : []),
+    ...(fini(batterie.capacite_kwh) ? [`${nombreFr(batterie.capacite_kwh)} kWh au total`] : []),
+    ...(fini(batterie.tension_v) ? [`${nombreFr(batterie.tension_v)} V`] : []),
+  ]
+  const l = 150
+  const x = onduleur.x - 24 - l
+  const y = 34
+  const cx = onduleur.x + onduleur.l / 2
+  return { x, y, l, h: 44 + lignes.length * 16, lignes, lien: [[x + l, y + 40], [cx, y + 40], [cx, onduleur.y]] }
+}
+
+/** L'étage moyenne tension (`etage_mt`), inséré dans la chaîne alternative : onduleur → coffret → [blocs MT] →
+    compteur → TGBT → réseau. Chaque bloc porte « à confirmer » (le contrat les dit tous à confirmer). Le
+    côté onduleur (onduleur, batterie, entrées des chaînes, terre) glisse vers la droite de la largeur ajoutée ;
+    les blocs côté réseau ne bougent pas. Les liaisons alternatives sont retracées. */
+function insererEtageMt(plan, etage) {
+  if (!etage.length) return
+  const { onduleur, blocsAc } = plan
+  const k = blocsAc[0]?.cle === 'coffret_ac' ? 1 : 0
+  const lienY = plan.bandes[1].y + 123
+  const neufs = etage.map((b) => ({
+    cle: `mt-${b.clef}`, aConfirmer: true, l: 128, h: 128, ecart: 32, y: lienY - 64,
+    titre: couperTexte(b.titre, 14, 2), detail: couperTexte(b.detail, 16, 2),
+  }))
+  const w = neufs.reduce((s, b) => s + b.l + b.ecart, 0)
+  const ancienOx = onduleur.x
+  const centreCoffret = k ? blocsAc[0].x + blocsAc[0].l / 2 : null
+  const etiquette = plan.liaisons.find((l) => l.cle === 'ac0')?.etiquette ?? null
+  onduleur.x += w
+  if (plan.batterie) { plan.batterie.x += w; plan.batterie.lien.forEach((p) => { p[0] += w }) }
+  plan.liaisons.forEach((l) => { if (l.couleur) l.points.forEach((p) => { if (p[0] === ancienOx) p[0] += w }) })
+  blocsAc.slice(0, k).forEach((b) => { b.x += w })
+  let curseur = k ? blocsAc[0].x : onduleur.x
+  neufs.forEach((b) => { b.x = curseur - b.ecart - b.l; curseur = b.x })
+  blocsAc.splice(k, 0, ...neufs)
+  plan.liaisons = plan.liaisons.filter((l) => !/^ac\d+$/.test(l.cle))
+  let depart = onduleur.x
+  blocsAc.forEach((b, i) => {
+    plan.liaisons.push({ cle: `ac${i}`, couleur: null, aCalculer: Boolean(b.aCalculer),
+      points: [[b.x + b.l, lienY], [depart, lienY]],
+      etiquette: i === 0 && etiquette && !b.aCalculer ? { ...etiquette, x: b.x + b.l + 6 } : null })
+    depart = b.x
+  })
+  if (plan.terre) plan.terre.descentes = plan.terre.descentes.map(([x, y]) => ((x >= ancienOx || x === centreCoffret) ? [x + w, y] : [x, y]))
+  plan.largeur += w
+  plan.etageMt = true
+}
+
+/** Plusieurs groupes d'onduleurs : la carte les liste TOUS (« N × désignation · X kW »), sans total inventé ni
+    puissance / entrées d'un seul groupe attribuées à l'ensemble. */
+function listerOnduleurs(plan, groupes) {
+  if (groupes.length < 2) return
+  const ligne = (g) => [
+    [fini(g.nombre) ? `${g.nombre} ×` : null, g.designation].filter(Boolean).join(' '),
+    fini(g.puissance_kw) ? `${nombreFr(g.puissance_kw)} kW` : null,
+  ].filter(Boolean).join(' · ')
+  plan.onduleur.puissance = null
+  plan.onduleur.entrees = null
+  plan.onduleur.designation = groupes.map(ligne).filter(Boolean).flatMap((t) => couperTexte(t, 22, 3))
+}
+
+const TUILES_MAX = 24
+
+/** Au-delà de ~50 panneaux dans une rangée, la largeur d'une tuile devient nulle ou négative : on dessine au plus
+    `TUILES_MAX` tuiles ; le NOMBRE écrit (libellé, détail) reste le nombre réel. */
+function tuilesBornees(g) {
+  if (g.l >= 4) return g
+  const n = Math.min(g.n, TUILES_MAX)
+  return { n, gap: 3, l: Math.min(28, (198 - 3 * (n - 1)) / n) }
+}
+
+/**
+ * Le modèle du schéma en blocs lu sur le document `schema_electrique`, ou `null` quand il n'y a ni
+ * panneau ni onduleur à dessiner. `plan.batterie` n'existe que si le document porte une batterie.
+ */
+export function planDepuisDocument(doc, libelles = {}) {
+  if (!doc || typeof doc !== 'object' || !Array.isArray(doc.chaines)) return null
+  const { schema, resultat } = entreesDuDocument(doc, libelles ?? {})
+  const plan = planSchemaEnBlocs(schema, resultat)
+  if (!plan) return null
+  plan.chaines.forEach((c) => { c.glyphes = tuilesBornees(c.glyphes) })
+  listerOnduleurs(plan, doc.onduleurs ?? [])
+  if (!avecChaines(doc)) {
+    const n = plan.chaines[0].nombre
+    plan.chaines[0].libelle = `Champ · ${n} panneau${n > 1 ? 'x' : ''}`
+    plan.chaines[0].legende = 'Champ de panneaux'
+    plan.legende[0].libelle = 'Champ de panneaux'
+  }
+  if (doc.batterie) {
+    plan.batterie = carteBatterie(doc.batterie, plan.onduleur)
+    const i = plan.legende.findIndex((l) => l.cle === 'ac')
+    plan.legende.splice(i < 0 ? plan.chaines.length : i, 0, { cle: 'batterie', trait: 'batterie', libelle: 'Liaison batterie' })
+  }
+  insererEtageMt(plan, doc.etage_mt ?? [])
+  return plan
 }
 
 const date = (iso) => new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })

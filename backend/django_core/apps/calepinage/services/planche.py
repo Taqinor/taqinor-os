@@ -703,16 +703,22 @@ def _cote_horizontale(x0, x1, y, vers_feuille, *, couleur=NOIR):
          escape(texte_de_longueur(abs(x1 - x0))))
 
 
+#: ACAL1935 — le texte d'une cote verticale (corps 3,2, tourné) occupe [x − 3,2 ; x] : il reste à 1 mm au
+#: moins du bord gauche de la feuille ; sinon la cote entière se décale vers la droite (jamais coupée).
+_X_MIN_TEXTE_COTE_VERTICALE = 3.2 + 1.0
+
+
 def _cote_verticale(y0, y1, x, vers_feuille, *, couleur=NOIR):
     a, b = vers_feuille((x, y0)), vers_feuille((x, y1))
     milieu_y = (a[1] + b[1]) / 2.0
+    decalage = max(0.0, _X_MIN_TEXTE_COTE_VERTICALE - (a[0] - 7.2))
     return (
         '<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" stroke-width="%s" />'
         '<text x="%s" y="%s" font-size="3.2" text-anchor="middle" fill="%s" '
         'transform="rotate(-90 %s %s)">%s</text>'
-    ) % (_n(a[0] - 6.0), _n(a[1]), _n(b[0] - 6.0), _n(b[1]), couleur,
-         _n(TRAIT_COTE), _n(a[0] - 7.2), _n(milieu_y), couleur,
-         _n(a[0] - 7.2), _n(milieu_y), escape(texte_de_longueur(abs(y1 - y0))))
+    ) % (_n(a[0] - 6.0 + decalage), _n(a[1]), _n(b[0] - 6.0 + decalage), _n(b[1]), couleur,
+         _n(TRAIT_COTE), _n(a[0] - 7.2 + decalage), _n(milieu_y), couleur,
+         _n(a[0] - 7.2 + decalage), _n(milieu_y), escape(texte_de_longueur(abs(y1 - y0))))
 
 
 #: Les poses que le document enregistre (``geometry.panelOrientation`` et
@@ -1235,10 +1241,7 @@ def _corps_feuille_surface(surface, *, titre='', pied='',
                 trait=TRAIT_MODULE))
     poteaux, ligne_poteaux = _poteaux_de_surface(surface)
     if contenu in (CONTENU_IMPLANTATION, CONTENU_POSE):
-        for numero, position in enumerate(poteaux, start=1):  # ACAL580 — P1…Pn
-            fx, fy = vers_feuille(position)
-            morceaux.append('<text x="%s" y="%s" font-size="2.5" fill="%s" text-anchor="middle">P%d</text>'
-                            % (_n(fx), _n(fy), NOIR, numero))
+        morceaux.extend(_reperes_de_poteaux(poteaux, surface['contour'], vers_feuille))
     x0, y0, x1, y1 = etendue
     morceaux.append(_cote_horizontale(x0, x1, y0, vers_feuille))
     morceaux.append(_cote_verticale(y0, y1, x0, vers_feuille))
@@ -1257,6 +1260,38 @@ def _corps_feuille_surface(surface, *, titre='', pied='',
                                  contenu))
     morceaux.append(_pied_svg(pied))
     return morceaux
+
+
+#: ACAL1718 — repère de poteau : corps 3,2 mm (≈ 9 pt), disque de 1 mm de rayon, texte décalé de
+#: 1,5 mm du disque, vers l'EXTÉRIEUR du contour pour que son trait ne traverse jamais le texte.
+CORPS_REPERE_POTEAU_MM = 3.2
+RAYON_SYMBOLE_POTEAU_MM = 1.0
+DECALAGE_REPERE_POTEAU_MM = 1.5
+
+
+def _reperes_de_poteaux(poteaux, contour, vers_feuille):
+    """ACAL580/ACAL1718 — un disque par poteau et son repère ``Pn`` à côté, hors du trait."""
+    if not poteaux:
+        return []
+    centre = [vers_feuille(point) for point in (contour or poteaux)]
+    cx = sum(p[0] for p in centre) / len(centre)
+    cy = sum(p[1] for p in centre) / len(centre)
+    sortie = []
+    for numero, position in enumerate(poteaux, start=1):
+        fx, fy = vers_feuille(position)
+        dx, dy = fx - cx, fy - cy
+        norme = math.hypot(dx, dy) or 1.0
+        ux, uy = dx / norme, dy / norme
+        ecart = RAYON_SYMBOLE_POTEAU_MM + DECALAGE_REPERE_POTEAU_MM
+        # Le texte part du disque vers l'extérieur ; ancré à son bord proche.
+        tx = fx + ux * ecart
+        ty = fy + uy * ecart + CORPS_REPERE_POTEAU_MM * (0.35 + 0.35 * uy)
+        ancre = 'start' if ux >= 0 else 'end'
+        sortie.append('<circle cx="%s" cy="%s" r="%s" fill="%s" stroke="%s" stroke-width="0.2" />'
+                      % (_n(fx), _n(fy), _n(RAYON_SYMBOLE_POTEAU_MM), GRIS_TEXTE, NOIR))
+        sortie.append('<text x="%s" y="%s" font-size="%s" fill="%s" text-anchor="%s">P%d</text>'
+                      % (_n(tx), _n(ty), _n(CORPS_REPERE_POTEAU_MM), NOIR, ancre, numero))
+    return sortie
 
 
 def _poteaux_de_surface(surface):
@@ -1397,16 +1432,24 @@ def _bandeau_svg(titre, sous_titre, lignes, geometrie,
            _n(FORMAT_A3_MM[1] - MARGE_MM), GRIS_TEXTE, _n(TRAIT_COTE)),
     ]
     y = MARGE_MM + 6.0
+    # ACAL1717 — le titre (corps 5, gras) et le sous-titre se replient aux mots
+    # dans la largeur du bandeau, comme les lignes plus bas : « Villa Essaou »
+    # coupé par le bord de la feuille. Aucun mot n'est changé.
     if titre:
-        morceaux.append(
-            '<text x="%s" y="%s" font-size="5" font-weight="bold" fill="%s">'
-            '%s</text>' % (_n(x), _n(y), NOIR, escape(titre)))
-        y += 5.5
+        for morceau in textwrap.wrap(
+                titre, CARACTERES_PAR_LIGNE_TITRE_BANDEAU,
+                break_long_words=False) or [titre]:
+            morceaux.append(
+                '<text x="%s" y="%s" font-size="5" font-weight="bold" '
+                'fill="%s">%s</text>' % (_n(x), _n(y), NOIR, escape(morceau)))
+            y += 5.5
     if sous_titre:
-        morceaux.append('<text x="%s" y="%s" font-size="3.4" fill="%s">%s'
-                        '</text>' % (_n(x), _n(y), GRIS_TEXTE,
-                                     escape(sous_titre)))
-        y += 6.0
+        for morceau in _lignes_du_bandeau(sous_titre):
+            morceaux.append('<text x="%s" y="%s" font-size="3.4" fill="%s">%s'
+                            '</text>' % (_n(x), _n(y), GRIS_TEXTE,
+                                         escape(morceau)))
+            y += 4.2
+        y += 1.8
 
     entrees = _entrees_de_legende(geometrie, contenu)
     if entrees:
@@ -1448,6 +1491,12 @@ def _bandeau_svg(titre, sous_titre, lignes, geometrie,
 #: caractère ≈ 0,6 × le corps (DejaVu Sans), comme la légende.
 CARACTERES_PAR_LIGNE_BANDEAU = int(
     (LARGEUR_BANDEAU_MM - 3.0 - 3.0 - 2.0) / (0.6 * 3.4))
+
+
+#: ACAL1717 — idem pour le titre : corps 5 en gras, ≈ 0,68 × le corps par
+#: caractère (DejaVu Sans Bold).
+CARACTERES_PAR_LIGNE_TITRE_BANDEAU = int(
+    (LARGEUR_BANDEAU_MM - 3.0 - 3.0 - 2.0) / (0.68 * 5.0))
 
 
 def _lignes_du_bandeau(texte):

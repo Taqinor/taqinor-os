@@ -15,6 +15,8 @@ Ce qui est prouvé ici :
 Run :
     python manage.py test apps.calepinage.tests.test_api_layout -v2
 """
+from django.test import SimpleTestCase
+
 from apps.calepinage.models import Calepinage, CalepinageVersion
 
 from .test_api_liste import BaseApiCalepinage, url_detail
@@ -90,6 +92,40 @@ class ActionLayoutTest(BaseApiCalepinage):
         self._poster(self.calepinage.pk, LAYOUT)
         self.calepinage.refresh_from_db()
         self.assertEqual(self.calepinage.statut, avant)
+
+    def test_acal1927_factures_mois_hors_contrat_refusees_champ_nomme(self):
+        for facture, champ in (({'mois': 13, 'valeur': 520, 'unite': 'kwh'}, 'mois'),
+                               ({'mois': 4, 'valeur': 400, 'unite': 'w'}, 'unite'),
+                               ({'mois': 4, 'valeur': -1, 'unite': 'kwh'}, 'valeur')):
+            with self.subTest(champ=champ):
+                corps = dict(LAYOUT, consumption={'factures_mois': [facture]})
+                reponse = self._poster(self.calepinage.pk, corps)
+                self.assertEqual(reponse.status_code, 400, reponse.data)
+                self.assertIn(f'consumption.factures_mois.0.{champ}', reponse.data)
+        self.calepinage.refresh_from_db()
+        self.assertIsNone(self.calepinage.roof_layout)
+
+    def test_acal1927_un_document_deja_stocke_hors_contrat_se_re_enregistre(self):
+        from apps.calepinage.services.layout import enregistrer_layout
+
+        mauvais = dict(LAYOUT, consumption={'factures_mois': [{'mois': 13, 'valeur': 5, 'unite': 'kwh'}]})
+        enregistrer_layout(self.calepinage, mauvais)  # écrivain interne : restauration, copie, sync
+        self.calepinage.refresh_from_db()
+        self.assertEqual(self.calepinage.roof_layout, mauvais)
+        reponse = self._poster(self.calepinage.pk, mauvais)  # le client, lui, est refusé
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('Facture mensuelle refusée', reponse.data['consumption.factures_mois.0.mois'])
+
+    def test_acal1927_le_409_du_verrou_passe_avant_le_400_des_factures(self):
+        from unittest import mock
+
+        from apps.calepinage.services.verrou import VerrouilleRefuse
+
+        mauvais = dict(LAYOUT, consumption={'factures_mois': [{'mois': 13, 'valeur': 5, 'unite': 'kwh'}]})
+        with mock.patch('apps.calepinage.services.verrou.verifier_ecriture_autorisee',
+                        side_effect=VerrouilleRefuse('Devis envoyé')):
+            reponse = self._poster(self.calepinage.pk, mauvais)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
 
     def test_corps_vide_refuse_en_francais(self):
         # ENF11 nocturne : l'If-Match manquant est jugé AVANT le corps (428) —
@@ -236,3 +272,36 @@ class BrouillonServeurTest(BaseApiCalepinage):
                 f'{url_detail(self.calepinage.pk)}export-projet.json/')
         self.assertEqual(export.status_code, 200)
         self.assertNotIn(b'brouillons_atelier', export.content)
+
+
+class FacturesMoisValidationTest(SimpleTestCase):
+    """ACAL1927 — le validateur partagé de ``consumption.factures_mois`` (sans base)."""
+
+    def _refus(self, facture):
+        from apps.calepinage.services.io_layout import ImportLayoutRefuse, valider_factures_mois
+
+        with self.assertRaises(ImportLayoutRefuse) as refus:
+            valider_factures_mois({'consumption': {'factures_mois': [facture]}})
+        return refus.exception.champ
+
+    def test_hors_contrat_nomme_le_champ(self):
+        self.assertEqual(self._refus({'mois': 13, 'valeur': 520, 'unite': 'kwh'}),
+                         'consumption.factures_mois.0.mois')
+        from apps.calepinage.services.io_layout import ImportLayoutRefuse, valider_factures_mois
+
+        with self.assertRaises(ImportLayoutRefuse) as refus:
+            valider_factures_mois({'consumption': {'factures_mois': [{'mois': 4, 'valeur': 4, 'unite': 'w'}]}})
+        self.assertIn("l'unité doit être « kwh » ou « mad »", str(refus.exception))
+        self.assertNotIn(' is not one of', str(refus.exception))
+        self.assertEqual(self._refus({'mois': 4, 'valeur': 400, 'unite': 'w'}),
+                         'consumption.factures_mois.0.unite')
+        self.assertEqual(self._refus({'mois': 4, 'valeur': -1, 'unite': 'kwh'}),
+                         'consumption.factures_mois.0.valeur')
+
+    def test_valide_ou_absent_passe(self):
+        from apps.calepinage.services.io_layout import valider_factures_mois
+
+        valider_factures_mois({'consumption': {'factures_mois': [{'mois': 1, 'valeur': 520, 'unite': 'kwh'}]}})
+        valider_factures_mois({'consumption': {}})
+        valider_factures_mois({})
+        valider_factures_mois(None)

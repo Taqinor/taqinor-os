@@ -18,6 +18,9 @@ from apps.calepinage.services.explications import (
 
 RACINE = Path(__file__).resolve().parents[1]
 ECHANTILLONS = RACINE / 'contract_samples'
+#: ACAL1742 — l'onglet Économie lit `GET ventes/devis/<pk>/economie/` : son
+#: échantillon (contrat de ventes, lu en fichier) fait foi pour ses chemins.
+ECHANTILLON_ECONOMIE = RACINE.parent / 'ventes' / 'contract_samples' / 'ventes_economie.json'
 ONGLETS = (RACINE.parents[3] / 'frontend' / 'src' / 'features' / 'calepinage'
            / 'atelier' / 'onglets.js')
 TROU = re.compile(r'\{([^{}]*)\}')
@@ -42,7 +45,7 @@ def _chemins_servis():
             for element in noeud:
                 marcher(element, f'{prefixe}[]')
 
-    for fichier in ECHANTILLONS.glob('*.json'):
+    for fichier in (*ECHANTILLONS.glob('*.json'), ECHANTILLON_ECONOMIE):
         marcher(json.loads(fichier.read_text(encoding='utf-8')), '')
     return chemins
 
@@ -119,6 +122,15 @@ class GardeDuRegistreTest(unittest.TestCase):
         faux = [{'cle': 'x.y', 'famille': 'x', 'phrase': 'Texte.',
                  'ecrans': ['nulle_part']}]
         self.assertTrue(_problemes(faux, self.servis, self.onglets))
+
+
+class HorizonEconomieTest(unittest.TestCase):
+    def test_la_phrase_de_l_horizon_dit_l_horizon_servi(self):
+        # ACAL1742 — « écrit ici » ne disait rien : le trou lit `horizon_ans`.
+        entree = next(e for e in _entrees() if e['cle'] == 'economie.horizon')
+        self.assertIn('{horizon} ans', entree['phrase'])
+        self.assertEqual(entree['valeurs'], {'horizon': 'horizon_ans'})
+        self.assertNotIn('écrit ici', entree['phrase'])
 
 
 class ServiTest(unittest.TestCase):

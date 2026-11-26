@@ -28,10 +28,12 @@ const RESULTAT_VIDE = exempleContrat('calepinage', 'calepinage_pompage',
 const pompage = vi.fn()
 const explications = vi.fn()
 const designContext = vi.fn()
+const layout = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
   default: { calepinages: {
     pompage: (...a) => pompage(...a), explications: (...a) => explications(...a),
     designContext: (...a) => designContext(...a), // T4-U3-012 — `prefill_lead` servi
+    layout: (...a) => layout(...a), // ACAL1669 — le document enregistré (modules posés)
   } },
 }))
 
@@ -259,6 +261,19 @@ describe('ACAL811 — le verdict des modules en série contre la fenêtre du var
     calculer()
     await screen.findByTestId('cal-pompage-chaines')
     expect(groupe).toHaveTextContent(`Modules posés : ${CHAINES.modules_poses}`)
+  })
+
+  it('ACAL1669 — les modules posés sont lus du document avant tout calcul ; le bandeau nomme le mois bas en clair', async () => {
+    layout.mockResolvedValue({ data: { roof_layout: { zones: [{ geometry: { panels: Array.from({ length: 13 }, () => ({})) } }] } } })
+    pompage.mockResolvedValue({ data: { ...RESULTAT, chaines_variateur: null, erreurs: { mois_niveau_bas: ['À renseigner.'] } } })
+    rendre()
+    const groupe = screen.getByTestId('cal-pompage-groupe-champ_solaire')
+    expect(await screen.findByText('Modules posés : 13')).toBeInTheDocument()
+    expect(groupe).not.toHaveTextContent('Modules posés : —')
+    calculer()
+    const bandeau = await screen.findByTestId('cal-pompage-bandeau')
+    expect(bandeau).toHaveTextContent('à renseigner : mois où le niveau d’eau est le plus bas')
+    expect(bandeau).not.toHaveTextContent('mois_niveau_bas')
   })
 
   it('conforme : icône ET mot, Voc à froid, fenêtre et température du site', async () => {

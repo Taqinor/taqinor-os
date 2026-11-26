@@ -437,6 +437,157 @@ class SurchargesTest(SimpleTestCase):
             es.empreinte_entree(devis, es.construire_entree(devis)),
             es.empreinte_entree(devis, entree))
 
+    def test_d_hyb_1_empreinte_d_avant_inchangee(self):
+        """D-HYB-1 (26/11/2026) — les champs qui reconnaissent un hybride (``role``, ports
+        batterie) n'entrent PAS dans l'empreinte : sinon chaque ``electrical_design`` rangé,
+        devis envoyés compris, serait recalculé. Valeur littérale calculée avec le
+        ``SpecOnduleur`` d'``origin/main`` (86844ac4d), avant ces champs."""
+        import dataclasses
+
+        devis = _devis_villa()
+        entree = es.construire_entree(devis)
+        self.assertEqual(es.empreinte_entree(devis, entree),
+                         'd000cf623a958901cc02ac67fab4bc1ef63425af266b436bf566ea55439e12b2')
+        hybride = dataclasses.replace(entree, onduleur=dataclasses.replace(
+            entree.onduleur, role='onduleur_hybride', bat_max_charge_kw=25.0, bat_max_decharge_kw=25.0))
+        self.assertEqual(es.empreinte_entree(devis, hybride), es.empreinte_entree(devis, entree))
+        from core.electrique.types import CHAMPS_SPEC_ONDULEUR_HORS_EMPREINTE, spec_onduleur_pour_empreinte
+        self.assertFalse(set(spec_onduleur_pour_empreinte(entree.onduleur)) & set(CHAMPS_SPEC_ONDULEUR_HORS_EMPREINTE))
+
+
+# ── D-ACAL-139 — chaînes inégales entre entrées MPPT, calculs NEUFS seulement ──
+def _panneau_715():
+    return _FauxProduit("Panneau PV 715 Wc", fiche=_FausseFiche(
+        "module", pmax_wc=Decimal("715"), voc_v=Decimal("49.1"),
+        isc_a=Decimal("22.3"), vmp_v=Decimal("41.0"), imp_a=Decimal("17.44"),
+        temp_coeff_voc_pct_c=Decimal("-0.25"),
+        temp_coeff_pmax_pct_c=Decimal("-0.35"),
+        longueur_mm=2384, largeur_mm=1303))
+
+
+def _hybride_deye_20k():
+    """Fiche de type « Onduleur hybride Deye 20kW Triphasé » : 2 entrées MPPT,
+    Isc 54,0 A publié par entrée, 800 V DC maxi."""
+    return _FauxProduit("Onduleur hybride Deye 20kW Triphasé", fiche=_FausseFiche(
+        "onduleur", ond_ac_kw=Decimal("20"), ond_phases=3, ond_n_mppt=2,
+        ond_mppt_v_min=Decimal("150"), ond_mppt_v_max=Decimal("750"),
+        ond_v_max_abs=Decimal("800"), ond_i_max_mppt_a=Decimal("36"),
+        ond_rendement_euro_pct=Decimal("97.6"), ond_v_demarrage_v=None,
+        ond_isc_max_mppt_a=Decimal("54"), ond_bat_aucune=False,
+        ond_bat_v_min=Decimal("160"), ond_bat_v_max=Decimal("800")))
+
+
+def _devis_deye(nb_modules, *, envoye_le=None, lignes=()):
+    """Brouillon jamais envoyé, ou devis ENVOYÉ le ``envoye_le``."""
+    devis = _FauxDevis(lignes=[
+        _FausseLigne("Panneau PV 715 Wc", nb_modules, produit=_panneau_715()),
+        _FausseLigne("Onduleur hybride Deye 20kW Triphasé", 1,
+                     produit=_hybride_deye_20k()), *lignes])
+    if envoye_le is not None:
+        from datetime import datetime
+
+        devis.statut, devis.date_envoi = "envoye", datetime(*envoye_le)
+    return devis
+
+
+def _etude_du_moteur(devis, inegales):
+    """Le contrat que le MOTEUR rend pour l'entrée du devis, drapeau imposé."""
+    import dataclasses
+
+    from core.electrique import concevoir
+
+    entree, source, _lie = es.construire_entree_et_source(devis)
+    entree = dataclasses.replace(entree, chaines_inegales_sur_bloquant_seul=inegales)
+    return es.projeter_contrat(entree, concevoir(entree), source_entree=source)
+
+
+class ChainesInegalesDuDevisTest(SimpleTestCase):
+    """35 × 715 Wc sur un hybride 2 entrées à 54 A : 12 + 12 | 11 pour un
+    calcul NEUF ; l'étude d'avant pour un devis envoyé avant la coupure."""
+
+    def test_calcul_neuf_trois_chaines_et_le_bordereau_du_moteur(self):
+        devis = _devis_deye(35)
+        design = es.build_electrical_design(devis)
+        self.assertEqual([(c["nb_modules"], c["mppt"]) for c in design["chaines"]],
+                         [(12, 1), (12, 1), (11, 2)])
+        self.assertEqual(design["conformite"]["bloquants"], [])
+        # Protections et bordereau : ceux que le moteur calcule pour CES trois
+        # chaînes — aucun nombre retapé.
+        moteur = _etude_du_moteur(devis, True)
+        self.assertEqual(design["protections"], moteur["protections"])
+        self.assertEqual(design["cables"], moteur["cables"])
+        self.assertEqual(design["bom"], moteur["bom"])
+        self.assertNotEqual(design["bom"], _etude_du_moteur(devis, False)["bom"])
+
+    def test_devis_envoye_avant_la_coupure_garde_le_calcul_d_avant(self):
+        devis = _devis_deye(35, envoye_le=(2026, 11, 20))
+        design = es.build_electrical_design(devis)
+        self.assertEqual(design, _etude_du_moteur(devis, False))
+        self.assertEqual([c["nb_modules"] for c in design["chaines"]], [7] * 5)
+        self.assertTrue(any("66,9 A" in b
+                            for b in design["conformite"]["bloquants"]))
+
+    def test_le_drapeau_n_entre_pas_dans_l_empreinte(self):
+        import dataclasses
+
+        devis = _devis_deye(35)
+        entree = es.construire_entree(devis)
+        self.assertTrue(entree.chaines_inegales_sur_bloquant_seul)
+        self.assertEqual(es.empreinte_entree(devis, entree), es.empreinte_entree(
+            devis, dataclasses.replace(entree,
+                                       chaines_inegales_sur_bloquant_seul=False)))
+
+    def test_une_etude_rangee_n_est_jamais_recalculee_pour_ca(self):
+        devis = _devis_deye(35)
+        rangee = _etude_du_moteur(devis, False)            # l'étude d'hier
+        devis.electrical_design = rangee
+        devis.electrical_design_hash = es.empreinte_entree(
+            devis, es.construire_entree(devis))
+        self.assertIs(es.build_electrical_design(devis), rangee)
+
+    def test_une_simple_alerte_d_ecretage_ne_change_pas_le_devis(self):
+        """Scope D-ACAL-139 : seule une partition égale BLOQUANTE déclenche
+        des chaînes inégales au devis ; 48 modules en 4 × 12 sur une entrée à
+        30 A (Imp 34,9 A ⇒ écrêtage, ALERTE, sans Isc publié) ressort à
+        l'identique après la coupure (le calepinage, lui, câble autrement)."""
+        neuf, avant = (_devis_deye(48), _devis_deye(48, envoye_le=(2026, 11, 20)))
+        for devis in (neuf, avant):
+            fiche = devis.lignes.all()[1].produit.fiche_technique
+            fiche.ond_i_max_mppt_a, fiche.ond_isc_max_mppt_a = Decimal("30"), None
+        design = es.build_electrical_design(neuf)
+        self.assertEqual(design, es.build_electrical_design(avant))
+        self.assertTrue(any("ÉCRÊTAGE" in a for a in design["conformite"]["alertes"]))
+        self.assertEqual([c["nb_modules"] for c in design["chaines"]], [12] * 4)
+
+    def test_une_conception_egale_valide_est_identique(self):
+        neuf = es.build_electrical_design(_devis_deye(48))
+        avant = es.build_electrical_design(_devis_deye(48, envoye_le=(2026, 11, 20)))
+        self.assertEqual(neuf, avant)
+        self.assertEqual([c["nb_modules"] for c in neuf["chaines"]], [12] * 4)
+
+    def test_garde_du_devis_reel_35_x_715_hybride_deye_20k_une_batterie(self):
+        """Le devis réel du 26/11/2026 : 35 × 715 Wc, « Onduleur hybride Deye
+        20kW Triphasé » (2 entrées, Isc 54,0 A par entrée, 800 V), UNE
+        batterie. Après la coupure : aucun bloquant, 12 + 12 | 11. Avant : le
+        calcul d'avant, inchangé."""
+        batterie = _FausseLigne(
+            "Batterie lithium 16 kWh", 1, produit=_FauxProduit(
+                "Batterie lithium 16 kWh", fiche=_FausseFiche(
+                    "batterie", bat_kwh_nominal=Decimal("16"),
+                    bat_kwh_usable=None, bat_dod_pct=None,
+                    bat_v_nominal=Decimal("51.2"), bat_max_charge_kw=None)))
+        apres = _devis_deye(35, lignes=[batterie])
+        design = es.build_electrical_design(apres)
+        self.assertTrue(es.construire_entree(apres).batterie)
+        self.assertEqual(design["conformite"]["bloquants"], [])
+        self.assertEqual([(c["nb_modules"], c["mppt"]) for c in design["chaines"]],
+                         [(12, 1), (12, 1), (11, 2)])
+        avant = _devis_deye(35, envoye_le=(2026, 11, 26), lignes=[batterie])
+        self.assertEqual(es.build_electrical_design(avant),
+                         _etude_du_moteur(avant, False))
+        self.assertEqual([c["nb_modules"] for c in
+                          es.build_electrical_design(avant)["chaines"]], [7] * 5)
+
 
 class ConceptionElectriqueEndpointTest(TestCase):
     def setUp(self):
@@ -576,3 +727,75 @@ class ConceptionElectriqueEndpointTest(TestCase):
                 PRIX_ONDULEUR_VENTE, PRIX_ONDULEUR_ACHAT)]
         for interdit in interdits:
             self.assertNotIn(interdit, blob)
+
+
+#: D-HYB-1 — aides du test du ratio côté calepinage, lues par le MODULE (jamais ses classes
+#: au niveau du module : le chargeur de tests les rejouerait ici) et jamais recopiées.
+from apps.calepinage.services.electrique import SOURCE_BORNE_CAPACITE  # noqa: E402
+from apps.calepinage.tests import test_elec_ratio_dc_ac as ratio_calepinage  # noqa: E402
+
+NOM_SANS_HYBRIDE = 'Deye SUN-20K-SG01HP3-EU-AM2'  # référence constructeur, sans le mot « hybride »
+
+
+class VerdictHybrideCalepinageDevisTest(SimpleTestCase):
+    """D-HYB-1 (lead 1742) — déplacés de ``apps/calepinage/tests/test_elec_ratio_dc_ac.py``
+    (cliquet ACAL1009 : le calepinage ne lit ventes que par ses portes) : le verdict du
+    calepinage comparé au moteur de devis C&I, et la porte du moteur
+    (``conception.porte_calepinage``) qui juge une pose sur un autre onduleur — par son NOM
+    quand la ligne n'a pas de désignation, par son RÔLE quand le nom ne dit pas « hybride »."""
+
+    def test_meme_verdict_que_le_moteur_de_devis(self):
+        """D-HYB-1 (lead 1742) — même module, même compte, même hybride : le calepinage et le
+        moteur de devis C&I (``moteur_ci.onduleurs._capacite_kwc``, LA règle du noyau) disent
+        tous deux oui ou tous deux non, la capacité publiée au-dessus, au-dessous ou absente."""
+        from apps.ventes.moteur_ci.onduleurs import _capacite_kwc
+        from core.electrique.onduleurs import bornes_dc_ac
+
+        haute = bornes_dc_ac().borne_usuelle.valeur
+        for dc_max, nom, role in ((40.0, 'Onduleur hybride Deye 20 kW', ''), (30.0, 'Onduleur hybride Deye 20 kW', ''),
+                                  (None, 'Onduleur hybride Deye 20 kW', ''),
+                                  (40.0, 'Deye SUN-20K-SG01HP3', 'onduleur_hybride')):  # D-HYB-1 : le rôle
+            fiche = {} if dc_max is None else {'dc_max_kwc': dc_max}
+            bloc, _m, verdict, controle = ratio_calepinage.UnSeulVerdictTest._trois(
+                self, ratio_calepinage._conception(48, 20.0, designation=nom, role=role, **fiche))
+            devis = _capacite_kwc({'kw_ac': 20.0, 'dc_max_kwc': dc_max, '_fiche_fait_foi': True},
+                                  haute)[0] >= bloc['puissance_dc_kwc'] - 1e-9
+            self.assertEqual(verdict['conforme'], devis, dc_max)
+            self.assertEqual(bloc['dans_bornes'], devis, dc_max)
+            self.assertEqual(controle['etat'], 'ok' if devis else 'a_regler', dc_max)
+
+    def test_hybride_sans_designation_juge_a_sa_fiche(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.ventes.conception import porte_calepinage as porte
+
+        design = {'ratio_dc_ac': 1.72, 'chaines': [], 'materiel': {'onduleur': {'designation': None}}}
+        lignes = [{'produit': 7, 'designation': None, 'quantite': 1}]
+        fiche = {'ac_kw': 20.0, 'dc_max_kwc': 40.0}
+        produit = SimpleNamespace(nom='Deye hybride 20 kW', role_devis='')
+        with mock.patch.object(porte, '_onduleur_lu', return_value=(fiche, produit)), mock.patch.object(
+                porte, '_reglages_electriques', return_value={}):
+            verdicts = porte.verdicts_electriques(object(), design, lignes, 34.32)
+        self.assertIs(verdicts['ratio_dc_ac']['conforme'], True)
+        self.assertEqual(verdicts['ratio_dc_ac']['borne_source'], SOURCE_BORNE_CAPACITE)
+        self.assertIn('fiche constructeur : 40 kWc au plus', verdicts['ratio_dc_ac']['detail'])
+        self.assertIs(verdicts['capacite_hybride']['conforme'], True)
+
+    def test_pose_sur_un_autre_onduleur_par_son_role(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.ventes.conception import porte_calepinage as porte
+
+        design = {'ratio_dc_ac': 1.72, 'chaines': [], 'materiel': {'onduleur': {'designation': NOM_SANS_HYBRIDE}}}
+        lignes = [{'produit': 7, 'designation': NOM_SANS_HYBRIDE, 'quantite': 1}]
+        fiche = {'ac_kw': 20.0, 'dc_max_kwc': 40.0}
+        produit = SimpleNamespace(nom=NOM_SANS_HYBRIDE, role_devis='onduleur_hybride')
+        with mock.patch.object(porte, '_onduleur_lu', return_value=(fiche, produit)) as lu, mock.patch.object(
+                porte, '_reglages_electriques', return_value={}):
+            verdicts = porte.verdicts_electriques(object(), design, lignes, 34.32)
+        self.assertEqual(lu.call_count, 1)  # une seule lecture du produit (fiche, nom, rôle)
+        self.assertIs(verdicts['ratio_dc_ac']['conforme'], True)
+        self.assertEqual(verdicts['ratio_dc_ac']['borne_source'], SOURCE_BORNE_CAPACITE)
+        self.assertIs(verdicts['capacite_hybride']['conforme'], True)

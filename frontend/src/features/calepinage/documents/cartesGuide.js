@@ -7,7 +7,9 @@
 const CARTES = [
   { cle: 'plan_pose', vignette: 'plan_pose', source: 'sortie', code: 'plan_pose_pdf', titre: 'Plan de pose pour l’équipe',
     description: 'Place de chaque panneau, distances aux bords du toit, chaînes en couleur. PDF.' },
-  { cle: 'schema', vignette: 'schema', source: 'document', code: 'plan_cablage', titre: 'Schéma électrique',
+  // ACAL1723 — l'ÉTAT de la carte (prête / il manque) est celui de la pièce `plan_cablage` servie ; ce qu'elle LIVRE est
+  // le schéma unifilaire dessiné (`schema-unifilaire.pdf/`, ACAL1507), plus le plan de câblage (modules teintés).
+  { cle: 'schema', vignette: 'schema', source: 'document', code: 'plan_cablage', livre: 'schema_unifilaire', titre: 'Schéma électrique',
     description: 'Des panneaux au compteur, avec la section de chaque câble. PDF.' },
   { cle: 'note_calcul', vignette: 'note_calcul', source: 'sortie', code: 'note_calcul_pdf', titre: 'Note de calcul',
     description: 'Tension par temps froid, câbles, protections : chaque chiffre avec sa règle. PDF.' },
@@ -17,16 +19,25 @@ const CARTES = [
     description: 'Pour AutoCAD ou un autre logiciel de dessin : chaque panneau numéroté, avec son pan et sa chaîne.' },
 ]
 
+/** ACAL1931 — le motif d'une pièce de `sorties/` quand l'inventaire entier n'a pas pu être lu : la carte
+    reste à l'écran, grisée, au lieu de disparaître en silence (aucune donnée du serveur n'est inventée). */
+export const MOTIF_SORTIES_ILLISIBLES = 'La liste des plans et exports n’a pas pu être lue : rechargez la page.'
+
 /** Les cartes à montrer : `{cle, vignette, titre, description, source, code, entree, disponible, motif,
     apercu}` — `apercu` : 'html' (aperçu serveur de `documents/`), 'pdf' (la pièce PDF ouverte dans un
-    onglet) ou `null` (le DXF ne s'affiche pas : pas de bouton). */
-export function cartesGuide(documents, sorties) {
+    onglet) ou `null` (le DXF ne s'affiche pas : pas de bouton). `sortiesIllisibles` : l'inventaire
+    `sorties/` a refusé de se lire — ses cartes restent, grisées avec MOTIF_SORTIES_ILLISIBLES. */
+export function cartesGuide(documents, sorties, { sortiesIllisibles = false } = {}) {
   return CARTES.flatMap((carte) => {
     const liste = carte.source === 'document' ? documents : sorties
+    if (carte.source !== 'document' && sortiesIllisibles && !Array.isArray(liste)) {
+      return [{ ...carte, entree: null, disponible: false, motif: MOTIF_SORTIES_ILLISIBLES, apercu: null }]
+    }
     const entree = (liste || []).find((e) => e.code === carte.code)
     if (!entree) return []
     let apercu = null
-    if (carte.source === 'document' && entree.apercu) apercu = 'html'
+    if (carte.livre === 'schema_unifilaire') apercu = 'pdf'
+    else if (carte.source === 'document' && entree.apercu) apercu = 'html'
     else if (entree.format === 'pdf') apercu = 'pdf'
     return [{ ...carte, entree, disponible: Boolean(entree.disponible), motif: entree.motif_indisponible || '', apercu }]
   })

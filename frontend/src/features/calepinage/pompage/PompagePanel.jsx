@@ -4,6 +4,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import RetourAtelier from '../atelier/RetourAtelier'
 import Pourquoi from '../commun/Pourquoi'
 import { useLectureServie } from '../atelier/coque/etapes/panneaux/lectures'
+import { panneauxDuDocument } from '../client/vueClient.helpers'
 
 /* ============================================================================
    CAL159 — L'ÉCRAN POMPAGE DU MODULE : puits, besoin, réservoir, volumes.
@@ -94,9 +95,10 @@ const CHAMPS = [
 
 /* Clé technique → libellé humain, dérivé de CHAMPS : le bandeau nomme le champ
    comme l'écran l'affiche, pas comme le serveur le code. */
-const LIBELLE_CHAMP = Object.fromEntries(
-  CHAMPS.flatMap(([, , champs]) => champs),
-)
+const LIBELLE_CHAMP = {
+  ...Object.fromEntries(CHAMPS.flatMap(([, , champs]) => champs)),
+  mois_niveau_bas: 'mois où le niveau d’eau est le plus bas', // ACAL1669 — les pastilles des mois : jamais la clé brute au bandeau
+}
 
 /* ACAL807 — une phrase simple par code d'alerte du serveur (ACAL1113,
    ACAL1114), posée sous le champ que l'alerte nomme ; le texte du serveur suit. */
@@ -481,6 +483,9 @@ export default function PompagePanel({ calepinageId: idPropose }) {
   // T4-U3-012 — le panneau PART des valeurs du lead ; une valeur tapée (même effacée) l'emporte toujours.
   const { donnees: contexte } = useLectureServie('contexte', calepinageId)
   const prefill = prefillPompage(contexte?.prefill_lead)
+  // ACAL1669 — les modules posés : ceux du document enregistré tant que le calcul n'a rien servi.
+  const { donnees: documentLu } = useLectureServie('document', calepinageId)
+  const posesDocument = panneauxDuDocument(documentLu?.roof_layout)
   const valeurDe = (cle) => (saisie[cle] !== undefined ? saisie[cle] : prefill[cle]?.valeur)
   const mentionDe = (cle) => (saisie[cle] === undefined && prefill[cle]
     ? `Repris de la fiche du lead${prefill[cle].libelle ? ` · ${prefill[cle].libelle}` : ''}` : null)
@@ -575,7 +580,7 @@ export default function PompagePanel({ calepinageId: idPropose }) {
             )}
             {groupe === 'champ_solaire' && (
               <>
-                <p className="mt-2 text-sm text-foreground">{`Modules posés : ${valeur(chaines?.modules_poses)}`}</p>
+                <p className="mt-2 text-sm text-foreground">{`Modules posés : ${valeur(chaines?.modules_poses ?? posesDocument)}`}</p>
                 <ChoixAppoint choisi={saisie.appoint} onChange={majChamp} />
                 <VerdictAppoint bloc={resultat?.appoint_variateur} />
               </>

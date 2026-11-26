@@ -461,6 +461,26 @@ describe('AffectationChaines (CALX53) — coefficients non sourcés', () => {
   })
 })
 
+describe('AffectationChaines (ACAL1662) — l’avertissement « aucune norme » dit une fois', () => {
+  it('trois fois le même motif servi : une phrase courte avec son lien, le détail replié, rien en double', async () => {
+    const motif = "Aucune norme électrique n'est choisie : les câbles et les protections ne sont pas calculés. "
+      + 'Choisissez une norme dans les réglages du calepinage de votre société pour les calculer.'
+    const donnees = JSON.parse(JSON.stringify(contratResultat().data))
+    donnees.avertissements = [motif, motif, motif, 'Autre phrase servie.']
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donnees })
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    expect(screen.getAllByTestId('acal1662-norme')).toHaveLength(1)
+    const bloc = screen.getByTestId('acal1662-norme')
+    expect(bloc).toHaveTextContent('Choisissez la norme électrique dans les réglages')
+    expect(bloc.querySelector('a')).toHaveAttribute('href', '/calepinage/reglages')
+    expect(bloc.tagName).toBe('DETAILS')
+    expect(bloc.open).toBe(false)
+    expect(screen.getAllByTestId('calx53-avertissement')).toHaveLength(2) // le détail replié + l'autre phrase
+  })
+})
+
 /* ── CALX16 — LA CHAÎNE LA PLUS FAIBLE EN OMBRAGE ──────────────────────────
    Ce qui est prouvé : la chaîne DÉSIGNÉE par le serveur est teintée, sa
    méthode est recopiée, la légende dit que c'est un signal de CÂBLAGE et
@@ -581,6 +601,68 @@ describe('AffectationChaines (ACAL725) — le drapeau « optimiseur » par modul
     const parModule = Object.fromEntries(corps.affectation_manuelle.map((l) => [l.module, l]))
     expect(parModule[B1].optimiseur).toBe(true)
     expect(parModule[B2].optimiseur).toBe(false)
+  })
+
+  it('ACAL1642 : Optimiseur = Oui seul (numéros vides) marque les modules, garde leur chaîne, active l’enregistrement', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue(contratResultat())
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+    const avant = Object.fromEntries(contratResultat().data.electrique.affectation.map((l) => [l.module, l]))
+    glisserSur([B1, B2, B3])
+    fireEvent.change(screen.getByTestId('cal234-champ-optimiseur'), { target: { value: 'oui' } })
+    fireEvent.click(screen.getByTestId('cal234-affecter'))
+    for (const m of [B1, B2, B3]) {
+      expect(screen.getByTestId(`cal234-module-${m}`)).toHaveAttribute('data-optimiseur', 'oui')
+    }
+    const corps = await corpsEnregistre()
+    const parModule = Object.fromEntries(corps.affectation_manuelle.map((l) => [l.module, l]))
+    for (const m of [B1, B2, B3]) {
+      expect(parModule[m].optimiseur).toBe(true)
+      expect(parModule[m].chaine).toBe(avant[m].chaine ?? null)
+      expect(parModule[m].mppt).toBe(avant[m].mppt ?? null)
+    }
+  })
+
+  it('ACAL1642 : le drapeau seul écrit la table COMPLÈTE — un contrôle qui compte par chaîne ne bloque pas', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue(contratResultat())
+    // Se comporte comme le serveur : la longueur d'une chaîne est comptée sur les lignes IMPOSÉES seules (minimum 2 ici).
+    calepinageApi.calepinages.evaluerElectrique.mockImplementation(async (_id, corps) => {
+      const imposees = corps?.entree_electrique?.affectation_manuelle
+      if (!imposees) return { data: VERDICT_CONFORME }
+      const parChaine = {}
+      imposees.forEach((l) => { if (l.chaine != null) parChaine[l.chaine] = (parChaine[l.chaine] || 0) + 1 })
+      const courtes = Object.entries(parChaine).filter(([, n]) => n < 2)
+      return { data: courtes.length
+        ? { ...VERDICT_CONFORME, verdict: 'bloquant', publiable: false,
+          bloquants: courtes.map(([c, n]) => `Chaîne ${c} : ${n} module, minimum 2.`) }
+        : VERDICT_CONFORME }
+    })
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+    glisserSur([B1])
+    fireEvent.change(screen.getByTestId('cal234-champ-optimiseur'), { target: { value: 'oui' } })
+    fireEvent.click(screen.getByTestId('cal234-affecter'))
+    await waitFor(() => expect(appelsProposition().length).toBeGreaterThan(0))
+    const dernier = appelsProposition().at(-1)[1].entree_electrique.affectation_manuelle
+    expect(dernier.length).toBeGreaterThan(1) // la table complète, pas la seule ligne marquée
+    await waitFor(() => expect(screen.queryByTestId('cal234-verdict-en-cours')).toBeNull())
+    await waitFor(() => expect(screen.getByTestId('cal234-enregistrer')).not.toBeDisabled())
+    expect(screen.queryByText(/minimum 2/)).toBeNull()
+    const corps = await corpsEnregistre()
+    expect(corps.affectation_manuelle.length).toBeGreaterThan(1)
+    expect(corps.affectation_manuelle.find((l) => l.module === B1).optimiseur).toBe(true)
+  })
+
+  it('ACAL1642 : numéros à moitié saisis — l’erreur nomme le champ vide, rien n’est écrit à null', async () => {
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+    glisserSur([B1])
+    saisir('chaine', '2')
+    fireEvent.click(screen.getByTestId('cal234-affecter'))
+    expect(screen.getByTestId('cal234-erreur-mppt')).toHaveTextContent('Renseignez aussi ce numéro')
+    expect(screen.getByTestId('cal234-erreur-onduleur')).toBeInTheDocument()
+    expect(screen.queryByTestId('cal234-erreur-chaine')).toBeNull()
+    expect(screen.getByTestId('cal234-enregistrer')).toBeDisabled() // aucune édition posée
   })
 
   it('`marquerModules` marque une liste de six modules d’un seul geste', () => {

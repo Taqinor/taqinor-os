@@ -727,3 +727,349 @@ class UneCouleurParChaine(unittest.TestCase):
         self.assertEqual(rendre_schema(entree, resultat),
                          rendre_schema(entree, resultat, couleurs_chaines=()))
         self.assertNotIn("Chaîne 1", _textes(rendre_schema(entree, resultat)))
+
+
+# ═══════════════════════════════════════ SCHEL-B1 — le document « schéma électrique »
+def _contrat_schema_electrique():
+    import json
+    import os
+    chemin = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))), "apps", "ventes", "contract_samples",
+        "schema_electrique.json")
+    with open(chemin, encoding="utf-8") as fichier:
+        return json.load(fichier)
+
+
+def _formes(valeur):
+    """La FORME d'une valeur JSON : les clés imbriquées, sans les valeurs."""
+    if isinstance(valeur, dict):
+        return {cle: _formes(v) for cle, v in valeur.items()}
+    if isinstance(valeur, list):
+        return [_formes(valeur[0])] if valeur else []
+    return None
+
+
+class LeDocumentSchemaElectrique(unittest.TestCase):
+    """SCHEL-B1 — toutes les clés toujours présentes, rien d'inventé, aucun montant."""
+
+    QUATRE_CHAINES = ({"numero": 1, "nb_panneaux": 12, "onduleur": 1, "entree": 1},
+                      {"numero": 2, "nb_panneaux": 12, "onduleur": 1, "entree": 1},
+                      {"numero": 3, "nb_panneaux": 12, "onduleur": 1, "entree": 2},
+                      {"numero": 4, "nb_panneaux": 12, "onduleur": 1, "entree": 2})
+
+    def _doc(self, entree=None, **kwargs):
+        from core.electrique.schema_electrique import document_schema_electrique
+        entree = entree or _hybride_batterie()
+        return document_schema_electrique(entree, concevoir(entree), **kwargs)
+
+    def test_les_cles_sont_celles_du_contrat_dans_tous_les_exemples(self):
+        from core.electrique.schema_electrique import CLES_DOCUMENT
+        contrat = _contrat_schema_electrique()
+        for nom in ("exemple", "exemple_standard", "exemple_champ_sans_repartition"):
+            for doc in contrat[nom]["schema_electrique"]["options"].values():
+                if doc is not None:
+                    self.assertEqual(tuple(doc), CLES_DOCUMENT, nom)
+        self.assertEqual(tuple(self._doc()), CLES_DOCUMENT)
+
+    def test_la_forme_rejoint_celle_du_contrat(self):
+        exemple = _contrat_schema_electrique()["exemple"]["schema_electrique"]
+        avec = exemple["options"]["avec_batterie"]
+        doc = self._doc(chaines=self.QUATRE_CHAINES, unites_batterie=3,
+                        nombre_onduleurs=1, option="avec_batterie",
+                        source="calepinage", batterie={
+                            "designation": "Dyness BX51100", "unites": 3,
+                            "capacite_kwh": 15.36, "tension_v": 51.2})
+        for cle in ("panneaux", "chaines", "onduleurs", "batterie", "cote_reseau",
+                    "liaisons", "compteur_production", "tgbt", "reseau"):
+            self.assertEqual(_formes(doc[cle]), _formes(avec[cle]), cle)
+        self.assertEqual(_formes(doc["coffret_ac"]["organes"][0]),
+                         _formes(avec["coffret_ac"]["organes"][0]))
+
+    def test_quatre_chaines_sur_deux_entrees_colorees_par_la_palette(self):
+        from core.electrique.schema import PALETTE_CHAINES
+        doc = self._doc(chaines=self.QUATRE_CHAINES)
+        self.assertEqual([c["couleur"] for c in doc["chaines"]], list(PALETTE_CHAINES[:4]))
+        self.assertEqual([c["entree"] for c in doc["chaines"]], [1, 1, 2, 2])
+        self.assertEqual([c["couleur_index"] for c in doc["chaines"]], [0, 1, 2, 3])
+        self.assertTrue(doc["chaines_reparties"])
+
+    def test_la_couleur_suit_la_premiere_apparition_puis_le_numero_range(self):
+        from core.electrique.schema_electrique import chaines_colorees
+        chaines = chaines_colorees([{"numero": 3, "nb_panneaux": 5},
+                                    {"numero": 1, "nb_panneaux": 4},
+                                    {"numero": 3, "nb_panneaux": 1}])
+        self.assertEqual([(c["numero"], c["couleur_index"], c["nb_panneaux"])
+                          for c in chaines], [(1, 1, 4), (3, 0, 6)])
+
+    def test_avec_batterie_et_sans_batterie(self):
+        avec = self._doc(unites_batterie=2)
+        self.assertEqual(avec["batterie"]["unites"], 2)
+        self.assertIsNone(avec["batterie"]["protection"])
+        self.assertIsNone(avec["batterie"]["capacite_kwh"])   # fiche muette : rien d'inventé
+        self.assertIsNone(self._doc(_mono_reseau())["batterie"])
+        impose = self._doc(_mono_reseau(), batterie={"designation": "Dyness BX51100",
+                                                     "unites": 3, "capacite_kwh": 15.36,
+                                                     "tension_v": 51.2})
+        self.assertEqual(impose["batterie"]["capacite_kwh"], 15.36)
+
+    def test_niveau_standard_masque_calibres_sections_et_tension(self):
+        doc = self._doc(standard=True, batterie={"designation": "B", "unites": 1,
+                                                 "capacite_kwh": 5.12, "tension_v": 51.2})
+        self.assertTrue(doc["calibres_masques"])
+        for coffret in (doc["coffret_dc"], doc["coffret_ac"]):
+            self.assertTrue(coffret["organes"])
+            self.assertTrue(all(o["calibre"] is None for o in coffret["organes"]))
+        self.assertEqual(doc["liaisons"], {"dc": {"section_mm2": None, "longueur_m": None},
+                                           "ac": {"section_mm2": None, "longueur_m": None}})
+        self.assertIsNone(doc["batterie"]["tension_v"])
+        confiance = self._doc()
+        self.assertEqual([o["clef"] for o in doc["coffret_ac"]["organes"]],
+                         [o["clef"] for o in confiance["coffret_ac"]["organes"]])
+
+    def test_etage_moyenne_tension_a_confirmer(self):
+        import dataclasses
+        from core.electrique.types import EtageMt, TransformateurMt
+        entree = dataclasses.replace(_triphase_deux_pans(), etage_mt=EtageMt(
+            transformateurs=(TransformateurMt(nb=1, kva=400.0),), cellule="IM"))
+        doc = self._doc(entree)
+        self.assertEqual([b["clef"] for b in doc["etage_mt"]],
+                         ["transformateur_mt", "cellule_mt", "decouplage_mt"])
+        self.assertTrue(all(b["detail"].startswith("à confirmer") for b in doc["etage_mt"]))
+        self.assertEqual(self._doc(_mono_reseau())["etage_mt"], [])
+
+    def test_hors_reseau_ni_compteur_ni_reseau(self):
+        doc = self._doc(cote_reseau={"etat": "hors_reseau"})
+        self.assertEqual(doc["cote_reseau"], {"etat": "hors_reseau", "motif": None})
+        self.assertIsNone(doc["compteur_production"])
+        self.assertIsNone(doc["reseau"])
+        self.assertEqual(doc["etage_mt"], [])
+
+    def test_liaisons_section_commune_longueur_d_un_seul_troncon(self):
+        doc = self._doc(troncons=[{"cote": "dc", "section_mm2": 6, "longueur_m": 18.4},
+                                  {"cote": "dc", "section_mm2": 6, "longueur_m": 12},
+                                  {"cote": "ac", "section_mm2": 10, "longueur_m": 15}])
+        self.assertEqual(doc["liaisons"], {"dc": {"section_mm2": 6, "longueur_m": None},
+                                           "ac": {"section_mm2": 10, "longueur_m": 15}})
+        mixte = self._doc(troncons=[{"cote": "dc", "section_mm2": 6},
+                                    {"cote": "dc", "section_mm2": 4}])
+        self.assertIsNone(mixte["liaisons"]["dc"]["section_mm2"])
+
+    def test_champ_sans_repartition(self):
+        from core.electrique.schema_electrique import document_sans_repartition
+        attendu = _contrat_schema_electrique()["exemple_champ_sans_repartition"][
+            "schema_electrique"]["options"]["sans_batterie"]
+        doc = document_sans_repartition(
+            option="sans_batterie", nb_panneaux=35,
+            module_designation="Canadian Solar TOPBiHiKu7 715 Wc", puissance_wc=715,
+            onduleurs=[{"designation": "Huawei SUN2000-20KTL-M2", "nombre": 1}],
+            motif=attendu["cote_reseau"]["motif"])
+        self.assertEqual(doc, attendu)
+
+    def test_aucun_mot_d_argent_ni_dans_le_document_ni_dans_le_dessin(self):
+        import json
+        from core.electrique.schema_electrique import rendre_schema_electrique_svg
+        doc = self._doc(unites_batterie=2)
+        textes = json.dumps(doc, ensure_ascii=False).lower()
+        for langue in ("fr", "en", "ar"):
+            textes += rendre_schema_electrique_svg(doc, langue).lower()
+        for mot in ("prix", " mad", "dh ", "€", "montant", "tarif", "marge"):
+            self.assertNotIn(mot, textes, mot)
+
+
+class LeDessinDuSchemaElectrique(unittest.TestCase):
+    """SCHEL-B4 — le SVG du document : bien formé, une couleur par chaîne, la batterie."""
+
+    def _svg(self, entree, langue="fr", **kwargs):
+        from core.electrique.schema_electrique import (
+            document_schema_electrique, rendre_schema_electrique_svg)
+        doc = document_schema_electrique(entree, concevoir(entree), **kwargs)
+        return rendre_schema_electrique_svg(doc, langue, largeur_px=680)
+
+    def test_bien_forme_dans_les_trois_langues(self):
+        for langue, bande in (("fr", "Côté panneaux · courant continu"),
+                              ("en", "Panel side · direct current"),
+                              ("ar", "جهة الألواح · تيار مستمر")):
+            svg = self._svg(_triphase_deux_pans(), langue)
+            self.assertEqual(ET.fromstring(svg).attrib["width"], "680")
+            self.assertIn(bande, _textes(svg))
+
+    def test_chaque_chaine_a_sa_couleur_et_la_batterie_est_dessinee(self):
+        svg = self._svg(_hybride_batterie(), unites_batterie=3,
+                        chaines=LeDocumentSchemaElectrique.QUATRE_CHAINES)
+        for couleur in ("rgb(36, 130, 214)", "rgb(232, 125, 33)",
+                        "rgb(46, 163, 89)", "rgb(184, 64, 158)"):
+            self.assertIn('fill="%s"' % couleur, svg)
+            self.assertIn('stroke="%s"' % couleur, svg)
+        textes = _textes(svg)
+        for attendu in ("Batterie", "3 unités", "charge / décharge", "Liaison batterie"):
+            self.assertIn(attendu, textes)
+        self.assertNotIn("Batterie", _textes(self._svg(_mono_reseau())))
+
+    def test_les_reperes_du_document_sont_dans_le_dessin(self):
+        svg = self._svg(_mono_reseau())
+        reperes = {n.attrib["data-repere"] for n in ET.fromstring(svg).iter(
+            "{http://www.w3.org/2000/svg}g") if "data-repere" in n.attrib}
+        self.assertEqual(reperes, {"PDC1", "QDC1", "QAC1", "PAC1", "DDR1"})
+
+    def _chaines(self, n):
+        return [{"numero": k, "nb_panneaux": 12, "onduleur": 1, "entree": 1 + k % 2}
+                for k in range(1, n + 1)]
+
+    def test_hauteur_bornee_et_suite_aux_vrais_totaux(self):
+        """SCHEL-B4 (revue) — 8, 16 ou 30 chaînes : la planche de l'annexe garde
+        la MÊME hauteur bornée ; au-delà de 4 rangées, une ligne de suite porte
+        les vrais totaux des autres chaînes ; le document les garde toutes."""
+        from core.electrique.schema_electrique import (
+            document_schema_electrique, rendre_schema_electrique_svg)
+        entree = _triphase_deux_pans()
+        hauteurs = set()
+        for n in (8, 16, 30):
+            doc = document_schema_electrique(entree, concevoir(entree), chaines=self._chaines(n))
+            self.assertEqual(len(doc["chaines"]), n)
+            svg = rendre_schema_electrique_svg(doc, "fr", largeur_px=680)
+            hauteurs.add(float(ET.fromstring(svg).attrib["height"]))
+            textes = _textes(svg)
+            self.assertIn("+ %d chaînes · %d panneaux" % (n - 3, 12 * (n - 3)), textes)
+            for numero in (1, 2, 3):
+                self.assertIn("Chaîne %d · 12 panneaux" % numero, textes)
+            self.assertNotIn("Chaîne 4 · 12 panneaux", textes)
+        self.assertEqual(len(hauteurs), 1, hauteurs)
+        self.assertLessEqual(hauteurs.pop(), 380.0)
+        quatre = rendre_schema_electrique_svg(document_schema_electrique(
+            entree, concevoir(entree), chaines=self._chaines(4)), "fr", largeur_px=680)
+        self.assertIn("Chaîne 4 · 12 panneaux", _textes(quatre))
+        self.assertFalse([t for t in _textes(quatre) if t.startswith("+ ")])
+
+    def test_les_blocs_du_cote_reseau_ne_se_chevauchent_pas(self):
+        import dataclasses
+        from core.electrique.schema_electrique import (
+            document_schema_electrique, rendre_schema_electrique_svg)
+        from core.electrique.types import EtageMt, TransformateurMt
+        entree = dataclasses.replace(_triphase_deux_pans(), etage_mt=EtageMt(
+            transformateurs=(TransformateurMt(nb=1, kva=400.0),), cellule="IM",
+            compteur_production=True, injection_limitee=True))
+        for e in (entree, _mono_reseau()):
+            svg = rendre_schema_electrique_svg(document_schema_electrique(e, concevoir(e)))
+            rects = list(ET.fromstring(svg).iter("{http://www.w3.org/2000/svg}rect"))
+            haut_ac = next(float(r.attrib["y"]) for r in rects
+                           if r.attrib.get("fill") == "#f7f4fb")
+            bande = [r for r in rects if r.attrib.get("rx")
+                     and float(r.attrib["y"]) > haut_ac and float(r.attrib["x"]) < 600]
+            boites = sorted((float(r.attrib["x"]), float(r.attrib["x"]) + float(r.attrib["width"]))
+                            for r in bande)
+            self.assertGreaterEqual(boites[0][0], 16.0)
+            for (_a, fin), (debut, _b) in zip(boites, boites[1:]):
+                self.assertLessEqual(fin, debut, boites)
+
+    def test_cote_reseau_a_calculer_en_creux(self):
+        from core.electrique.schema_electrique import (
+            document_sans_repartition, rendre_schema_electrique_svg)
+        doc = document_sans_repartition(option="sans_batterie", nb_panneaux=10,
+                                        onduleurs=[{"designation": "X", "nombre": 1}])
+        svg = rendre_schema_electrique_svg(doc)
+        ET.fromstring(svg)
+        self.assertIn("à calculer", _textes(svg))
+        self.assertIn("répartition en chaînes non calculée", _textes(svg))
+        self.assertEqual(rendre_schema_electrique_svg(None), "")
+
+
+class LeBandeauTientDansLaPlanche(unittest.TestCase):
+    """ACAL1713 — le bandeau d'omission est replié, et la nomenclature sans
+    norme (niveau « standard ») liste quand même les équipements."""
+
+    PHRASE = (
+        "Calibres et sections non calculés (ma) : aucune norme électrique "
+        "n'est choisie — choisissez-la dans « Norme électrique » des "
+        "réglages. Cette planche ne montre que les appareils, leur nombre et "
+        "leurs repères. Côté alternatif non dessiné (disjoncteur AC, "
+        "compteur de production, TGBT, compteur du réseau) : il dépend de la "
+        "norme.")
+
+    def _lignes_du_bandeau(self, entree):
+        svg = rendre_schema(entree, concevoir(entree), bandeau=self.PHRASE,
+                            standard=True)
+        largeur = float(re.search(r'viewBox="0 0 ([\d.]+)', svg).group(1))
+        lignes = re.findall(
+            r'<text[^>]*font-size="10.0"[^>]*fill="#9a3412">([^<]+)</text>',
+            svg)
+        return lignes, largeur
+
+    def test_le_bandeau_est_replie_sur_trois_lignes_au_plus_et_se_lit_entier(self):
+        lignes, largeur = self._lignes_du_bandeau(_mono_reseau())
+        self.assertTrue(1 < len(lignes) <= 3, lignes)
+        self.assertEqual(" ".join(lignes).replace("&#x27;", "'"),
+                         self.PHRASE.replace("&", "&amp;"))
+        for ligne in lignes:
+            # ~0,58 em par signe en gras à 10 px : la ligne reste dans la planche.
+            self.assertLessEqual(len(ligne) * 5.8 + 28.0, largeur, ligne)
+        self.assertTrue(any("« Norme électrique »" in ligne
+                            for ligne in lignes), lignes)
+
+    def test_une_phrase_courte_reste_sur_une_ligne(self):
+        entree = _mono_reseau()
+        svg = rendre_schema(entree, concevoir(entree), bandeau="Calibres OMIS")
+        self.assertEqual(svg.count("Calibres OMIS"), 1)
+
+    def test_la_nomenclature_sans_norme_liste_reperes_et_quantites(self):
+        entree = _mono_reseau()
+        resultat = concevoir(entree)
+        lignes = lignes_tableau(resultat, standard=True)
+        self.assertTrue(lignes)
+        textes = _textes(rendre_schema(entree, resultat, standard=True))
+        for repere, designation, calibre, quantite in lignes:
+            # La désignation est tronquée à la colonne : le repère la nomme.
+            self.assertIn(repere, textes)
+            self.assertEqual(calibre, "")
+            self.assertIn(quantite, textes)
+
+
+class BandeauEtLegendeNeSeChevauchentPas(unittest.TestCase):
+    """ACAL1713 (revue) — le bandeau replié et la légende des chaînes ne partagent jamais une boîte.
+
+    Largeur estimée à 0,6 em par signe (bandeau gras ou légende), hauteur de la ligne de base
+    -corps à +0,25 corps ; l'échantillon de couleur fait 16 px de large sur 2 px de haut.
+    """
+
+    PHRASE = LeBandeauTientDansLaPlanche.PHRASE
+
+    @staticmethod
+    def _boites(svg):
+        boites = []
+        for x, y, taille, texte in re.findall(
+                r'<text x="([\d.]+)" y="([\d.]+)" font-size="([\d.]+)"[^>]*>([^<]+)</text>', svg):
+            x, y, taille = float(x), float(y), float(taille)
+            boites.append((texte, x, y - taille, x + 0.6 * taille * len(texte), y + 0.25 * taille))
+        return boites
+
+    @staticmethod
+    def _chevauchent(a, b):
+        return a[1] < b[3] and b[1] < a[3] and a[2] < b[4] and b[2] < a[4]
+
+    def _verifier(self, entree, nombre, blocs=None):
+        couleurs = [("Chaîne %d" % (i + 1), "rgb(%d, 10, 10)" % (i * 20)) for i in range(nombre)]
+        svg = rendre_schema(entree, concevoir(entree), bandeau=self.PHRASE, couleurs_chaines=couleurs,
+                            blocs=blocs)
+        boites = self._boites(svg)
+        bandeau = [b for b in boites if b[0] in self.PHRASE or b[0] in self.PHRASE.replace("'", "&#x27;")]
+        legende = [b for b in boites if b[0].startswith("Chaîne ")]
+        self.assertEqual(len(legende), nombre)
+        self.assertGreater(len(bandeau), 1)
+        for b in bandeau:
+            for g in legende:
+                self.assertFalse(self._chevauchent(b, g), (b, g))
+        for g in legende:  # l'échantillon de couleur, à gauche du libellé
+            echantillon = ("", g[1] - 20.0, g[4] - 12.0, g[1] - 4.0, g[4] - 8.0)
+            for b in bandeau:
+                self.assertFalse(self._chevauchent(b, echantillon), (b, g))
+        return float(re.search(r'viewBox="0 0 ([\d.]+)', svg).group(1))
+
+    def test_a4_avec_1_2_4_et_8_chaines(self):
+        largeurs = {self._verifier(_mono_reseau(), n) for n in (1, 2, 4, 8)}
+        self.assertEqual(largeurs, {FORMAT_A4_PAYSAGE[0]})
+
+    def test_a3_avec_1_2_4_et_8_chaines(self):
+        entree = _triphase_deux_pans()
+        blocs = blocs_du_schema(entree, concevoir(entree)) + tuple(
+            Bloc("extra%d" % i, "Extra", "d") for i in range(6))
+        largeurs = {self._verifier(entree, n, blocs=blocs) for n in (1, 2, 4, 8)}
+        self.assertEqual(largeurs, {FORMAT_A3_PAYSAGE[0]})

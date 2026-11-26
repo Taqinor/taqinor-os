@@ -163,7 +163,7 @@ def schema_unifilaire(request):
 
 
 @extend_schema(parameters=[qstr('format', enum=['json', 'pdf'])],
-               responses=SH.SCHEMA_UNIFILAIRE_RESPONSES)
+               responses=SH.SCHEMA_UNIFILAIRE_DEVIS_RESPONSES)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 @renderer_classes(_RENDERERS)
@@ -198,7 +198,12 @@ def schema_unifilaire_devis(request, pk):
     svg = build_single_line_svg(params)
     format_demande = choix_requete(request, 'format', ['json', 'pdf'])
     if format_demande == 'json':
-        return Response({"params": params, "svg": svg})
+        # SCHEL-B3 (lot 6) — le schéma électrique, un document par option
+        # (niveau « confiance »), la même enveloppe que la page client. Lecture
+        # pure : l'autre option est conçue sans rien ranger sur le devis.
+        from .electrical_service import schema_electrique_du_devis
+        return Response({"params": params, "svg": svg,
+                         "schema_electrique": schema_electrique_du_devis(devis)})
     if format_demande == 'pdf':
         reference = re.sub(r'[^A-Za-z0-9_.-]+', '-',
                            str(devis.reference or devis.pk))

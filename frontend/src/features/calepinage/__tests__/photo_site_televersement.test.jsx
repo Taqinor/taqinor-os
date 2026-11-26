@@ -26,7 +26,10 @@ vi.mock('leaflet', async () => (await import('./leafletFauxMock')).leafletFauxMo
 vi.mock('leaflet/dist/leaflet.css', () => ({}))
 
 const { default: PhotoSiteCalage } = await import('../PhotoSiteCalage')
-const { rejouerFile, genresEnAttente } = await import('../fileEnvoiPhotos')
+const { anciennesEnFile, compterEnAttente, deposerOuMettreEnFile, rejouerFile, genresEnAttente } = await import('../fileEnvoiPhotos')
+const { createBinaryOutboxStore } = await import('../../../lib/offlineStore')
+const { store } = await import('../../../store')
+const { setCredentials, logout } = await import('../../auth/store/authSlice')
 
 const PHOTO_NEUVE = {
   id: 5, genre: 'drone', legende: '', filename: 'photo.png',
@@ -48,6 +51,8 @@ const choisirGenre = async (libelle) => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Revue ACAL1949 — la file n'appartient qu'à un utilisateur CONNECTÉ : sans session, rien n'y est rejoué.
+  store.dispatch(setCredentials({ user: { id: 1 } }))
   get.mockResolvedValue({ data: { contexte_geographique: null } })
 })
 afterEach(() => { cleanup() })
@@ -197,5 +202,58 @@ describe('ACAL892 — photo déposée hors ligne : gardée sur l’appareil, env
     await remplir()
     expect(await screen.findByTestId('acal892-file-attente')).toHaveTextContent('Photo gardée sur cet appareil')
     expect(ajouterPhoto).toHaveBeenCalledTimes(1)
+  })
+
+  describe('revue ACAL1949 (point 4) — une photo gardée appartient à SON utilisateur', () => {
+    const viderLaFile = async () => { await createBinaryOutboxStore().store.save([]) }
+    afterEach(viderLaFile)
+    const garderSansUtilisateur = async () => {
+      store.dispatch(logout()) // la forme d'une photo gardée avant la mise à jour : aucun utilisateur noté
+      expect(await deposerOuMettreEnFile(9, fichierPNG(), { genre: 'drone', prise_le: '2026-09-20' })).toEqual({ enFile: true })
+      store.dispatch(setCredentials({ user: { id: 1 } }))
+    }
+
+    it('photo de A, connexion de B : ni comptée ni envoyée ; A reconnecté : envoyée', async () => {
+      rendre()
+      await screen.findByTestId('cal-photo-calage-vide')
+      await remplir()
+      await screen.findByTestId('acal892-file-attente')
+      cleanup()
+      store.dispatch(setCredentials({ user: { id: 2 } }))
+      enLigne.mockReturnValue(true)
+      expect(await compterEnAttente(9)).toBe(0)
+      expect(await genresEnAttente(9)).toEqual([])
+      expect(await rejouerFile(9)).toEqual({ envoyees: 0, refusees: [], restantes: 0 })
+      expect(ajouterPhoto).not.toHaveBeenCalled()
+
+      store.dispatch(setCredentials({ user: { id: 1 } }))
+      ajouterPhoto.mockResolvedValue({ data: { photo: PHOTO_NEUVE, photos: [PHOTO_NEUVE] } })
+      expect(await rejouerFile(9)).toEqual({ envoyees: 1, refusees: [], restantes: 0 })
+      expect(ajouterPhoto).toHaveBeenCalledTimes(1)
+    })
+
+    it('photo gardée avant la règle : montrée, jamais envoyée seule ; « Envoyer sous mon compte » l’envoie', async () => {
+      await garderSansUtilisateur()
+      enLigne.mockReturnValue(true)
+      ajouterPhoto.mockResolvedValue({ data: { photo: PHOTO_NEUVE, photos: [PHOTO_NEUVE] } })
+      rendre()
+      expect(await screen.findByTestId('releve-anciennes')).toHaveTextContent('1 photo gardée avant la mise à jour — à vérifier')
+      expect(ajouterPhoto).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByTestId('releve-anciennes-envoyer'))
+      await waitFor(() => expect(ajouterPhoto).toHaveBeenCalledTimes(1))
+      expect(ajouterPhoto.mock.calls[0][1].get('genre')).toBe('drone')
+      await waitFor(() => expect(screen.queryByTestId('releve-anciennes')).toBeNull())
+    })
+
+    it('photo gardée avant la règle : « Supprimer » la retire sans rien envoyer', async () => {
+      await garderSansUtilisateur()
+      enLigne.mockReturnValue(true)
+      rendre()
+      await screen.findByTestId('releve-anciennes')
+      fireEvent.click(screen.getByTestId('releve-anciennes-supprimer'))
+      await waitFor(() => expect(screen.queryByTestId('releve-anciennes')).toBeNull())
+      expect(await anciennesEnFile(9)).toEqual({ releve: false, photos: 0 })
+      expect(ajouterPhoto).not.toHaveBeenCalled()
+    })
   })
 })

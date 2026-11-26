@@ -19,7 +19,7 @@ vi.mock('../../api/calepinageApi', () => ({
   },
 }))
 
-const { default: useDocumentCalepinage, ecrireSection } = await import('./useDocumentCalepinage')
+const { default: useDocumentCalepinage, ecrireSection, appliquerSectionEcrite } = await import('./useDocumentCalepinage')
 
 beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup() })
@@ -141,5 +141,44 @@ describe('ecrireSection', () => {
       calepinageId: 7, cle: 'horizonProfile', valeur: null, empreinte: 'E0',
     })
     expect(res).toEqual({ ok: false, conflit: false, motif: 'Devis accepté : révisez-le (V2).' })
+  })
+})
+
+/* ACAL1816 — après « Enregistrer le profil » (Horizon), l'en-tête ne repasse plus à « Modifications non
+   enregistrées » : la section ÉCRITE (empreinte servie) rebase la référence d'une scène propre. Mutant :
+   pousser à la scène sans rebaser ⇒ la scène (qui porte maintenant le profil) diffère de sa référence. */
+describe('ACAL1816 — appliquerSectionEcrite (document vivant de l’atelier)', () => {
+  /** Une scène simulée : son empreinte change quand une section y est appliquée. */
+  function atelier({ modifieeAvant = false } = {}) {
+    const scene = { courant: modifieeAvant ? 'S-modifiee' : 'S0', reference: 'S0' }
+    const poserEmpreinte = vi.fn()
+    const vivant = {
+      appliquerALaScene: vi.fn((cle) => { scene.courant = `${scene.courant}+${cle}` }),
+      poserEmpreinte,
+      sceneModifiee: () => scene.courant !== scene.reference,
+      rebaserScene: () => { scene.reference = scene.courant },
+    }
+    const doc = { empreinte: 'E0', appliquerSection: (cle, valeur, apres) => appliquerSectionEcrite(vivant, cle, valeur, apres) }
+    return { scene, doc, poserEmpreinte }
+  }
+
+  it('section écrite sur une scène propre : jeton servi repris, scène non modifiée', async () => {
+    enregistrerSectionLayout.mockResolvedValue({ data: { empreinte_document: 'E1' } })
+    const { scene, doc, poserEmpreinte } = atelier()
+    const res = await ecrireSection({ calepinageId: 7, cle: 'horizonProfile', valeur: { points: [] }, empreinte: 'E0', documentVivant: doc })
+    expect(res).toEqual({ ok: true, empreinte: 'E1' })
+    expect(poserEmpreinte).toHaveBeenCalledWith('E1')
+    expect(scene.courant).toBe('S0+horizonProfile')
+    expect(scene.courant).toBe(scene.reference)
+  })
+
+  it('scène déjà modifiée ailleurs : elle le reste ; sans empreinte servie : rien n’est rebasé', () => {
+    const modifiee = atelier({ modifieeAvant: true })
+    modifiee.doc.appliquerSection('horizonProfile', null, 'E1')
+    expect(modifiee.scene.courant).not.toBe(modifiee.scene.reference)
+    const sansJeton = atelier()
+    sansJeton.doc.appliquerSection('choixConception', {}, null)
+    expect(sansJeton.poserEmpreinte).not.toHaveBeenCalled()
+    expect(sansJeton.scene.courant).not.toBe(sansJeton.scene.reference)
   })
 })

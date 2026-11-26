@@ -1068,7 +1068,7 @@ def resoudre_materiel(company, entree, *, calepinage=None):
     from .modules_pans import repli_materiel  # T4-B4-007 : conception, puis module posé
 
     blocs = {'module': {}, 'onduleur': {}, 'optimiseur': None}
-    designations = {role: '' for role in ROLES_MATERIEL}
+    designations, familles = {role: '' for role in ROLES_MATERIEL}, {}  # D-HYB-1 : familles du produit lu
     produits = {role: None for role in ROLES_MATERIEL}
     provenances = {role: None for role in ROLES_MATERIEL}
     skus = {role: None for role in ROLES_MATERIEL}  # ACAL662
@@ -1095,7 +1095,7 @@ def resoudre_materiel(company, entree, *, calepinage=None):
                            % LIBELLES_ROLES[role])
             continue
         blocs[role] = specs_for_produit(produit) or {}
-        designations[role] = _designation(produit)
+        designations[role], familles[role] = _designation(produit), famille_de_l_onduleur(produit)
         produits[role] = produit.pk
         skus[role] = getattr(produit, 'sku', None) or None
         provenances[role] = provenance
@@ -1106,7 +1106,7 @@ def resoudre_materiel(company, entree, *, calepinage=None):
         # pas « manquant », il n'existe pas.
         absents = [texte for texte in absents
                    if not texte.startswith(LIBELLES_ROLES['onduleur'] + ' ')]
-    return {**blocs, 'designations': designations, 'produits': produits,
+    return {**blocs, 'designations': designations, 'familles': familles, 'produits': produits,
             'provenances': provenances, 'absents': tuple(absents),
             'skus': skus}
 
@@ -1364,6 +1364,7 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         onduleur_specs=materiel['onduleur'], temperatures=temperatures,
         module_designation=materiel['designations']['module'],
         onduleur_designation=materiel['designations']['onduleur'],
+        onduleur_famille=(materiel.get('familles') or {}).get('onduleur') or (),  # D-HYB-1 : lu par resoudre_materiel
         # ACAL162 — un micro-onduleur seul suffit à câbler le champ.
         optimiseur_specs=materiel.get('optimiseur'),
         fiches_modules=materiel.get('fiches_modules'),
@@ -1881,7 +1882,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # calculée, ou longueur de dossier en repli assumé).
         'longueur_chaine': reconciliation,
         'suppose': _suppositions.liste_des_suppositions(  # ACAL980
-            reconciliation, societe, ORIGINE_LONGUEUR_DOSSIER),
+            reconciliation, societe, ORIGINE_LONGUEUR_DOSSIER, conception.manquantes),
         'temperatures': (conception.temperatures.en_dict()
                          if conception.temperatures is not None else None),
         # CALX70 — les blocs de la simulation persistée (CALX4), servis tels
@@ -2161,15 +2162,13 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
     enregistré.
     """
     from .boucles_chaines import alertes_de_boucles, boucles_des_chaines
-    from .chaines import (
-        AffectationInvalide, affectation, normaliser_affectation_imposee,
-        verdict_affectation,
-    )
+    from .chaines import affectation, verdict_affectation
     from .etat_dossier_electrique import etat_a_chaud
     from .onduleurs_minimum import onduleurs_suggeres
     from .ombrage_chaines import modules_sous_seuil
     from .raccordement import _reglage
-    from .tensions_chaines import tensions_par_chaine
+    from .tensions_chaines import (
+        conception_cablee, imposee_et_refus, tensions_par_chaine)
 
     conception, materiel_resolu, donnees, _document = conception_du_calepinage(
         calepinage, entree=entree, layout=layout, materiel=materiel)
@@ -2207,15 +2206,13 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
             'boucles_dc': [],
             'modules_sous_seuil': [],
         }
-    bloquants = list(bloquants_nommes(conception))
-    try:
-        imposee = normaliser_affectation_imposee(
-            donnees.get('affectation_manuelle'))
-    except AffectationInvalide as refus:
-        # Une proposition MALFORMÉE est un bloquant NOMMÉ, pas une erreur 500 :
-        # l'atelier envoie sa proposition à chaud, il doit lire pourquoi elle
-        # ne tient pas.
-        imposee, bloquants = (), bloquants + [str(refus)]
+    # Une proposition MALFORMÉE est un bloquant NOMMÉ, pas une erreur 500 :
+    # l'atelier envoie sa proposition à chaud, il doit lire pourquoi elle ne
+    # tient pas. Isc, V_max et écrêtage se jugent sur le câblage EFFECTIF
+    # (l'entrée MPPT saisie à la main), jamais sur l'automatique qu'il remplace.
+    imposee, invalide = imposee_et_refus(donnees.get('affectation_manuelle'))
+    cablee = conception_cablee(conception, imposee)
+    bloquants = list(bloquants_nommes(cablee)) + invalide
     bloquants.extend(verdict_affectation(
         conception, imposee,
         specs_onduleur=materiel_resolu.get('onduleur'),
@@ -2237,7 +2234,7 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
         conception, materiel_resolu.get('optimiseur'),
         materiel_resolu['designations'].get('optimiseur', ''),
         (materiel_resolu.get('skus') or {}).get('onduleur'))
-    alertes = list(_alertes_nommees(conception))
+    alertes = list(_alertes_nommees(cablee))
     alertes.extend(obsoletes)
     alertes.extend(poly['alertes'])
     # CALX209 — une borne de branche NON VÉRIFIABLE est une alerte nommée,
@@ -2735,7 +2732,9 @@ def _rapport_publication(calepinage, *, layout=None):
     norme = norme_applicable(parametres_societe(calepinage))
     reglages = _reglages_electrique_societe(calepinage)
 
-    motifs = list(_motifs_de_la_conception(conception))
+    from .tensions_chaines import conception_cablee, imposee_et_refus  # le câblage EFFECTIF
+    motifs = list(_motifs_de_la_conception(conception_cablee(
+        conception, imposee_et_refus(donnees.get('affectation_manuelle'))[0])))
     motifs.extend(_motifs_de_la_norme(norme))
     # ACAL155 — LA saisie de raccordement (celle de l'écran), jamais une clé
     # ``raccordement`` de l'entrée électrique qu'aucun écrivain ne pose.
@@ -2890,13 +2889,14 @@ def _longueur_chaine_retenue(conception, longueur_devis=None):
     longueur de la CONCEPTION pour un lead, celle du cahier des charges pour un
     dossier d'appel d'offres ; c'est aussi le repli d'une fiche muette (ACAL980).
     """
-    par_pan = {r.pan: r.longueur_chaine for r in conception.repartitions}
+    from .chaines import longueurs_retenues
+
+    par_pan, longueurs = longueurs_retenues(conception.repartitions)
 
     if conception.fiche_incomplete or not par_pan:
         return _suppositions.repli_longueur_dossier(
             longueur_devis, ORIGINE_LONGUEUR_DOSSIER)  # ACAL980
 
-    longueurs = set(par_pan.values())
     longueur = longueurs.pop() if len(longueurs) == 1 else None
     reference = longueur if longueur is not None else max(par_pan.values())
     ecart = reference - longueur_devis if longueur_devis else None
@@ -3706,7 +3706,7 @@ def _verdicts_electriques(conception, optimiseur_specs=None,
         'bloquant': False,
         'source': 'fiche',
         'detail': '' if valeur is None else detail_ratio(ratio.texte, conforme, bornes, valeur=valeur,
-                                                         reglages=reglages),
+                                                         reglages=reglages, conception=conception),
         **_bloc_temperature(conception.temperatures),
     })
     # CAL129 — les contrôles d'ENTRÉE de l'optimiseur viennent APRÈS les cinq
@@ -3740,7 +3740,8 @@ def _verdicts_electriques(conception, optimiseur_specs=None,
 
 from .ratio_devis import (  # noqa: E402 — ACAL1954 : LE verdict du ratio (D-ACAL-91)
     SOURCE_BORNE_CAPACITE, SOURCE_BORNE_DEVIS, SOURCE_BORNE_MARCHE, SOURCE_BORNE_SOCIETE,
-    bornes_du_verdict, bornes_ratio as _bornes_ratio, detail_ratio, juger_ratio,
+    bornes_du_verdict, bornes_ratio as _bornes_ratio, detail_ratio, juger_ratio, motif_capacite_non_publiee,
+    famille_de_l_onduleur,
 )
 
 # ── CALX172 — LES DEUX PHRASES DE L'ÉCRÊTAGE, ET ELLES SONT UNIQUES ──────
@@ -3835,11 +3836,10 @@ def _bloc_ratio_dc_ac(conception, *, exigence_marche=None,
             avertissements.append('ratio DC/AC de %s au-delà de la %s (%s) — champ PV trop grand '
                                   'pour cet onduleur' % (fr(valeur, 2), source, detail))
         elif valeur > borne + 1e-9:
-            avertissements.append(
-                "ratio DC/AC de %s au-dessus de la borne %s (%s%s) — "
-                "écrêtage aux heures pleines"
-                % (fr(valeur, 2), fr(borne, 2), source,
-                   ' : %s' % detail if detail else ''))
+            avertissements.append(  # D-HYB-1 : hybride sans capacité publiée, le champ est nommé
+                "ratio DC/AC de %s au-dessus de la borne %s (%s%s) — écrêtage aux heures pleines%s"
+                % (fr(valeur, 2), fr(borne, 2), source, ' : %s' % detail if detail else '',
+                   ''.join(' ; ' + m for m in [motif_capacite_non_publiee(conception, source)] if m)))
         else:
             avertissements.append(
                 "ratio DC/AC de %s sous le seuil bas réglé par la société — "

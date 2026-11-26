@@ -411,11 +411,11 @@
       },
       {
         "libelle": "Pertes passées à PVGIS (%)",
-        "valeur": "non publiée"
+        "valeur": "non publiée : la perte envoyée au service météo n'est pas conservée avec la simulation"
       },
       {
         "libelle": "Détail des pertes",
-        "valeur": "aucun poste publié"
+        "valeur": "non publiés : aucune simulation à jour ne porte de poste de pertes"
       },
       {
         "libelle": "Empreinte du calepinage",

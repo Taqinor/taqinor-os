@@ -63,6 +63,16 @@ __all__ = ['EXPORTS', 'PAS_DISPONIBLES', 'COLONNES_HORAIRE',
 
 NON_CALCULEE = 'non calculée'
 NON_PUBLIEE = 'non publiée'
+#: ACAL1929 (décision de l'orchestrateur, option b) — la perte envoyée au
+#: service météo n'est stockée NULLE PART (ni dans la simulation ni dans son
+#: empreinte) : quand elle manque, l'en-tête le DIT avec ce motif, vrai, au lieu
+#: d'une cellule vide. Idem pour les postes de pertes : aucun n'est lu d'une
+#: simulation périmée ou absente.
+MOTIF_PERTE_NON_CONSERVEE = (
+    "non publiée : la perte envoyée au service météo n'est pas conservée "
+    'avec la simulation')
+MOTIF_POSTES_ABSENTS = (
+    "non publiés : aucune simulation à jour ne porte de poste de pertes")
 LIBELLE_EMPREINTE_LAYOUT = 'Empreinte du calepinage'
 LIBELLE_EMPREINTE_SIMULATION = "Empreinte d'entrée de la simulation"
 
@@ -204,7 +214,7 @@ def _lignes_de_provenance(document, *, colonnes_retenues=None):
     detail = ' + '.join(
         f'{poste.get("poste")} {_decimal(poste.get("pct"), 2)} %'
         f' ({poste.get("source") or "source non renseignée"})'
-        for poste in pertes) or 'aucun poste publié'
+        for poste in pertes) or MOTIF_POSTES_ABSENTS
     lignes = [
         # Pas de marque en dur ici (SCA29, white-label) : le
         # branding client vient du thème de la société, pas d'un
@@ -216,7 +226,7 @@ def _lignes_de_provenance(document, *, colonnes_retenues=None):
         ['Version du moteur',
          (document or {}).get('version_moteur') or 'non publiée'],
         ['Pertes passées à PVGIS (%)',
-         _decimal(base.get('loss_passee_pct'), 3)],
+         _decimal(base.get('loss_passee_pct'), 3) or MOTIF_PERTE_NON_CONSERVEE],
         ['Détail des pertes', detail],
         # ACAL217 — les DEUX empreintes qui permettent de rejouer le fichier :
         # le document de pose, puis les entrées de la simulation.
@@ -420,8 +430,9 @@ def _export_ombrage_modules(document):
     acces = (document or {}).get('acces_modules')
     if not isinstance(acces, dict) or not acces:
         raise ExportImpossible(
-            "Aucun accès solaire par module n'est enregistré : calculez "
-            "l'ombrage dans l'atelier.", champ='acces_modules')
+            "Aucun accès solaire par module n'est enregistré : saisissez "
+            "un obstacle avec sa hauteur dans l'atelier puis enregistrez.",
+            champ='acces_modules')  # ACAL1637 — la consigne réelle (celle de Documents)
     lignes = _lignes_de_provenance(document)
     lignes.insert(len(lignes) - 1, [
         'Résolution', 'accès solaire annuel, une valeur par module — le '

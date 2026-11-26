@@ -121,6 +121,23 @@ describe('PanneauDetectionToit (ACAL488)', () => {
     expect(await screen.findByTestId('cal-detection-message')).toHaveTextContent('1 obstacle(s) posé(s)')
   })
 
+  /* ACAL1446 — chaque case a une zone cliquable de 44 × 44 px (la case dans sa cible, dans son libellé). */
+  it('chaque case proposée a une cible de 44 × 44 px qui la coche', async () => {
+    disponible()
+    api.detectionToit.mockResolvedValue({ data: contrat('exemple') })
+    await envoyerImage({ ajouterPanDepuisContour: vi.fn(), ajouterObstacleDepuisContour: vi.fn(() => ({ ok: true })) })
+    await screen.findByTestId('cal-detection-proposition')
+    const cibles = screen.getAllByTestId('cal-detection-obstacle-cible')
+    expect(cibles).toHaveLength(2)
+    for (const cible of cibles) {
+      expect(cible).toHaveClass('size-11')
+      expect(cible.closest('label')).not.toBeNull()
+      expect(cible.querySelector('[data-testid="cal-detection-obstacle"]')).not.toBeNull()
+    }
+    fireEvent.click(cibles[1])
+    expect(screen.getAllByTestId('cal-detection-obstacle')[1]).toBeChecked()
+  })
+
   it('refus de pose d’un obstacle : le motif nommé est affiché', async () => {
     disponible()
     api.detectionToit.mockResolvedValue({ data: contrat('exemple') })

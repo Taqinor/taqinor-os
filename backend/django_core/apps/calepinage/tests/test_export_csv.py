@@ -13,8 +13,8 @@ import io
 import unittest
 
 from apps.calepinage.services.export_csv import (
-    ENCODAGE_TABLEUR, EXPORTS, ExportImpossible, encoder_pour_tableur,
-    export_csv,
+    ENCODAGE_TABLEUR, EXPORTS, MOTIF_PERTE_NON_CONSERVEE,
+    MOTIF_POSTES_ABSENTS, ExportImpossible, encoder_pour_tableur, export_csv,
 )
 # ACAL234 — le jumeau ``export_csv.nom_de_fichier`` est supprimé : le CSV est
 # nommé par LE constructeur du module (``quoi`` remplace le titre).
@@ -308,3 +308,25 @@ class ColonnesPublieesTest(unittest.TestCase):
 
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()
+
+
+class EnteteSansPerteNiPostesTest(unittest.TestCase):
+    """ACAL1929 — une perte ou des postes absents sont DITS, jamais une cellule vide."""
+
+    def _entete(self, document):
+        return {ligne[0]: ligne[1] for ligne in lignes(export_csv(document, quoi='horaire'))
+                if len(ligne) > 1 and ligne[0] in ('Pertes passées à PVGIS (%)', 'Détail des pertes')}
+
+    def test_la_perte_envoyee_et_les_postes_publies_sont_ecrits(self):
+        entete = self._entete(DOCUMENT)
+        self.assertEqual(entete['Pertes passées à PVGIS (%)'], '7,250')
+        self.assertIn('shading 3,50 %', entete['Détail des pertes'])
+
+    def test_une_perte_absente_dit_pourquoi_en_clair(self):
+        document = {**DOCUMENT, 'production': {
+            **DOCUMENT['production'], 'base': {'source': 'pvgis'}}, 'pertes': []}
+        entete = self._entete(document)
+        self.assertEqual(entete['Pertes passées à PVGIS (%)'], MOTIF_PERTE_NON_CONSERVEE)
+        self.assertTrue(entete['Pertes passées à PVGIS (%)'].startswith('non publiée : '))
+        self.assertEqual(entete['Détail des pertes'], MOTIF_POSTES_ABSENTS)
+        self.assertTrue(entete['Détail des pertes'].startswith('non publiés : '))

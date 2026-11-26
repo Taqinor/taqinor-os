@@ -35,6 +35,7 @@ vi.mock('../../../api/calepinageApi', () => ({
       apercuDocument: vi.fn(), // ACAL223
       pretAEnvoyer: vi.fn(), // ACAL1193
       explications: vi.fn(() => Promise.resolve({ data: { entrees: [] } })), // ACAL1193
+      sldPdf: vi.fn(), // ACAL1723
     },
   },
 }))
@@ -52,6 +53,7 @@ vi.mock('../../../utils/downloadBlob', () => ({
 import calepinageApi from '../../../api/calepinageApi'
 import { downloadBlob, filenameFromResponse } from '../../../utils/downloadBlob'
 import { ONGLETS } from '../atelier/onglets'
+import { OPTIONS_TELECHARGEMENT } from './telechargement'
 import PanneauDocuments from './PanneauDocuments'
 import EtapeDocuments from './EtapeDocuments'
 import PretAEnvoyer from '../commun/PretAEnvoyer'
@@ -767,6 +769,29 @@ describe('PanneauDocuments — section Plans et exports (ACAL228)', () => {
     expect(downloadBlob).toHaveBeenCalled()
   })
 
+  it('ACAL1534 — la pièce plan_lestage_pdf porte Aperçu et Télécharger, et l’aperçu ouvre le même PDF dans un onglet', async () => {
+    servirInventaire('exemple')
+    const sorties = reponseContrat(APP, 'calepinage_sorties', 'exemple')
+    sorties.data.sorties = sorties.data.sorties.map((x) => (
+      x.code === 'plan_lestage_pdf' ? { ...x, disponible: true, motif_indisponible: null } : x))
+    calepinageApi.calepinages.sorties.mockResolvedValue(sorties)
+    calepinageApi.calepinages.telechargerSortie.mockResolvedValue({ data: new Blob(['x']), headers: {} })
+    const ouvrir = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const creer = vi.fn(() => 'blob:lestage')
+    URL.createObjectURL = creer
+    const utilisateur = userEvent.setup()
+    rendre()
+    expect(await screen.findByTestId('cal-doc-bouton-plan_lestage_pdf')).toBeEnabled()
+    await utilisateur.click(await screen.findByTestId('cal-doc-sorties-apercu-plan_lestage_pdf'))
+    await waitFor(() => expect(ouvrir).toHaveBeenCalledWith('blob:lestage', '_blank', 'noopener'))
+    expect(calepinageApi.calepinages.telechargerSortie)
+      .toHaveBeenCalledWith(sortieDe('plan_lestage_pdf').endpoint, undefined,
+        { timeout: 120000, suppressErrorToast: true })
+    // une pièce qui n'est pas un PDF n'a pas d'Aperçu
+    expect(screen.queryByTestId('cal-doc-sorties-apercu-dxf')).toBeNull()
+    ouvrir.mockRestore()
+  })
+
   it('pack technique appelle composerPackTechnique et affiche les signalements', async () => {
     servirSorties()
     calepinageApi.calepinages.composerPackTechnique.mockResolvedValue({
@@ -894,6 +919,33 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     expect(within(apercu).getByRole('button', { name: 'Aperçu' })).toBeTruthy()
     expect(droite).toHaveTextContent('Le devis remis au client ne se fait pas ici')
     expect(droite.querySelectorAll('[data-vignette]')).toHaveLength(6) // cinq cartes + la feuille de l'aperçu
+  })
+
+  it('ACAL1931 : inventaire des plans illisible — les cinq cartes restent, les pièces de sorties grisées avec leur motif', async () => {
+    servir()
+    calepinageApi.calepinages.sorties.mockRejectedValue(new Error('500'))
+    monter()
+    const droite = await screen.findByTestId('cal-docs-liste')
+    await waitFor(() => expect(within(droite).getAllByTestId('cal-docs-carte')).toHaveLength(5))
+    const cartes = within(droite).getAllByTestId('cal-docs-carte')
+    expect(cartes.map((c) => c.dataset.document)).toEqual(['plan_pose', 'schema', 'note_calcul', 'rapport_etude', 'dxf'])
+    for (const cle of ['plan_pose', 'note_calcul', 'dxf']) {
+      expect(screen.getByTestId(`cal-docs-telecharger-${cle}`)).toBeDisabled()
+      expect(screen.getByTestId(`cal-docs-motif-${cle}`)).toHaveTextContent('n’a pas pu être lue')
+    }
+  })
+
+  it('ACAL1931 : un nouvel enregistrement relit l’inventaire des plans', async () => {
+    servir()
+    const { rerender } = monter({ enregistreLe: '2026-11-23T11:18:00Z' })
+    await screen.findByTestId('cal-docs-liste')
+    const avant = calepinageApi.calepinages.sorties.mock.calls.length
+    rerender(
+      <MemoryRouter>
+        <EtapeDocuments calepinageId={1} enregistreLe="2026-11-23T12:40:00Z" actionDevis={<button type="button">Générer le devis</button>} />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(calepinageApi.calepinages.sorties.mock.calls.length).toBeGreaterThan(avant))
   })
 
   it('ACAL1726 : la colonne d’aperçu montre le document choisi ; un clic sur une carte le change, la note bleue est dans la colonne', async () => {
@@ -1092,5 +1144,74 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     expect(screen.queryByTestId('cal-pret-ligne-visite_validee')).toBeNull()
     expect(screen.queryByTestId('cal-pret-groupe-electrique')).toBeNull() // pas `groupes` : présentation d'origine
     expect(screen.getByTestId('cal-pret-reussis')).toHaveTextContent('Voir les 3 contrôles réussis')
+  })
+})
+
+
+describe('EtapeDocuments — la carte « Schéma électrique » livre le schéma dessiné (ACAL1723)', () => {
+  const pret = exempleContrat(APP, 'calepinage_pret_a_envoyer', 'exemple')
+  const servirPieceCablagePrete = () => {
+    const inventaire = structuredClone(reponseContrat(APP, NOM, 'exemple'))
+    const cablage = inventaire.data.documents.find((d) => d.code === 'plan_cablage')
+    cablage.disponible = true
+    cablage.manque = []
+    cablage.motif_indisponible = ''
+    calepinageApi.calepinages.documents.mockResolvedValue(inventaire)
+    calepinageApi.calepinages.sorties.mockResolvedValue(reponseContrat(APP, 'calepinage_sorties', 'exemple'))
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue({ data: { ...pret } })
+  }
+  const monter = () => render(
+    <MemoryRouter>
+      <EtapeDocuments calepinageId={1} actionDevis={<button type="button">Générer le devis</button>} />
+    </MemoryRouter>,
+  )
+
+  it('« Télécharger » de la carte appelle le PDF du schéma unifilaire, jamais le plan de câblage', async () => {
+    servirPieceCablagePrete()
+    calepinageApi.calepinages.sldPdf.mockResolvedValue({
+      data: new Blob(['%PDF']), headers: { 'content-disposition': 'attachment; filename="calepinage-1-schema.pdf"' } })
+    const utilisateur = userEvent.setup()
+    monter()
+    const bouton = await screen.findByTestId('cal-docs-telecharger-schema')
+    await waitFor(() => expect(bouton).not.toBeDisabled())
+    await utilisateur.click(bouton)
+    await waitFor(() => expect(calepinageApi.calepinages.sldPdf).toHaveBeenCalledWith(1, OPTIONS_TELECHARGEMENT))
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledWith(expect.any(Blob), 'calepinage-1-schema.pdf'))
+    expect(calepinageApi.calepinages.telechargerDocument).not.toHaveBeenCalled()
+  })
+
+  it('« Aperçu » de la colonne ouvre l’onglet AVANT la réponse, y pose le PDF puis révoque l’URL ; un refus ferme l’onglet et est dit sous la carte', async () => {
+    servirPieceCablagePrete()
+    const onglet = { location: { href: '' }, close: vi.fn(), opener: 'x' }
+    const ouvrir = vi.spyOn(window, 'open').mockImplementation(() => onglet)
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:schema')
+    globalThis.URL.revokeObjectURL = vi.fn()
+    const minuteurs = vi.spyOn(globalThis, 'setTimeout')
+    let rendre
+    calepinageApi.calepinages.sldPdf
+      .mockImplementationOnce(() => new Promise((resoudre) => { rendre = () => resoudre({ data: new Blob(['%PDF']) }) }))
+      .mockRejectedValueOnce({ response: { status: 409, data: { onduleur: 'Le schéma unifilaire n’est pas exportable.' } } })
+    const utilisateur = userEvent.setup()
+    monter()
+    await utilisateur.click(await screen.findByRole('button', { name: 'Schéma électrique' }))
+    await waitFor(() => expect(screen.getByTestId('cal-docs-apercu-schema')).not.toBeDisabled())
+    await utilisateur.click(screen.getByTestId('cal-docs-apercu-schema'))
+    // L'onglet est déjà ouvert alors que le serveur n'a pas encore répondu (le geste du clic n'est pas perdu).
+    expect(ouvrir).toHaveBeenCalledWith('', '_blank')
+    expect(onglet.opener).toBeNull()
+    expect(onglet.location.href).toBe('')
+    rendre()
+    await waitFor(() => expect(onglet.location.href).toBe('blob:schema'))
+    expect(globalThis.URL.revokeObjectURL).not.toHaveBeenCalled()
+    const revoquer = minuteurs.mock.calls.find(([, delai]) => delai === 60000)
+    expect(revoquer).toBeTruthy()
+    revoquer[0]()
+    expect(globalThis.URL.revokeObjectURL).toHaveBeenCalledWith('blob:schema')
+    await waitFor(() => expect(screen.getByTestId('cal-docs-apercu-schema')).not.toBeDisabled())
+    await utilisateur.click(screen.getByTestId('cal-docs-apercu-schema'))
+    expect(await screen.findByText(/n’est pas exportable/)).toBeTruthy()
+    expect(onglet.close).toHaveBeenCalledTimes(1)
+    ouvrir.mockRestore()
+    minuteurs.mockRestore()
   })
 })

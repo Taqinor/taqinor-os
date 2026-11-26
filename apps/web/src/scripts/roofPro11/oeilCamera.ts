@@ -20,6 +20,13 @@ export function poserOeil(camera: THREE.Camera, modeleVersClip: THREE.Matrix4): 
   return true;
 }
 
+/** LOT 6 (D-ACAL-136) — le verre SANS vernis et l'œil réel (ACAL1984) : l'atelier ERP (`productionAtelier`), ou la
+ *  visionneuse au soleil des liens de confiance quand elle teinte le pan actif (`teinteAccesVisible`, posé par
+ *  `viewerFullBoot.ts` seulement) — sans quoi la teinte reste invisible. Absents : site public inchangé. */
+export function verreEtOeilAtelier(opts: { productionAtelier?: unknown; teinteAccesVisible?: boolean } | null | undefined): boolean {
+  return opts?.productionAtelier !== undefined || opts?.teinteAccesVisible === true;
+}
+
 /** T4-U1-017 — pente de carte (degrés) jusqu'à laquelle les hauteurs remontent progressivement (pas de saut au passage
  *  Plan → 3D) ; au-delà, la scène a ses vraies hauteurs. */
 export const PENTE_HAUTEURS_PLEINES_DEG = 10;

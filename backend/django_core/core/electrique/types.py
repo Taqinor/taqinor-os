@@ -318,6 +318,19 @@ class SpecOnduleur:
     #: une seule entrée LOGIQUE (un suiveur). ``None`` = non publié ⇒ les
     #: ``n_mppt`` entrées restent indépendantes (comportement d'avant).
     mppt_independants: Optional[bool] = None
+    #: D-HYB-1 (fondateur 24/11/2026 : « un produit se reconnaît à son rôle et à sa
+    #: fiche avant son nom ») — le rôle de devis DÉCLARÉ ou de CATÉGORIE du produit
+    #: (« onduleur_hybride », « onduleur_reseau »…) ; ``""`` = non dit : la fiche,
+    #: puis le nom, disent si l'appareil est hybride (``onduleurs.onduleur_est_hybride``).
+    role: str = ""
+    #: D-HYB-1 — la famille d'onduleur AUTRE qu'hybride que le classifieur du catalogue lit
+    #: dans le NOM (« onduleur_offgrid », « micro_onduleur »), ``""`` sinon : un onduleur-
+    #: chargeur hors réseau ou un micro-onduleur qui publie un port batterie n'est pas hybride.
+    famille_par_nom: str = ""
+    #: Le PORT BATTERIE publié par la fiche (kW) : un onduleur qui en publie un est
+    #: hybride. Ne participe à aucun autre calcul du noyau.
+    bat_max_charge_kw: Optional[float] = None
+    bat_max_decharge_kw: Optional[float] = None
 
     @property
     def tension_demarrage_v(self):
@@ -332,6 +345,23 @@ class SpecOnduleur:
         if self.isc_max_mppt_a is None:
             return self.i_max_mppt_a
         return self.isc_max_mppt_a
+
+
+#: D-HYB-1 (26/11/2026) — les champs de :class:`SpecOnduleur` qui ne servent qu'à
+#: RECONNAÎTRE un hybride. Ils restent HORS de toute empreinte d'entrée : sans quoi
+#: chaque ``electrical_design`` rangé — devis envoyés compris — changerait
+#: d'empreinte et serait recalculé à sa prochaine lecture (« un devis envoyé garde
+#: ce que le client a reçu »).
+CHAMPS_SPEC_ONDULEUR_HORS_EMPREINTE = ("role", "famille_par_nom", "bat_max_charge_kw", "bat_max_decharge_kw")
+
+
+def spec_onduleur_pour_empreinte(onduleur):
+    """Le ``dataclasses.asdict`` d'un :class:`SpecOnduleur` SANS
+    :data:`CHAMPS_SPEC_ONDULEUR_HORS_EMPREINTE` : exactement les clés d'avant D-HYB-1."""
+    from dataclasses import asdict
+
+    return {cle: valeur for cle, valeur in asdict(onduleur).items()
+            if cle not in CHAMPS_SPEC_ONDULEUR_HORS_EMPREINTE}
 
 
 @dataclass(frozen=True)
@@ -450,6 +480,21 @@ class EntreeElectrique:
     #: VALIDÉ en visite (CIQ660). ``None`` (défaut) = site BT : le schéma est
     #: alors octet pour octet celui d'avant.
     etage_mt: Optional[EtageMt] = None
+    #: Chaînes de longueurs DIFFÉRENTES d'une entrée MPPT à l'autre (les
+    #: chaînes en parallèle sur une MÊME entrée restent égales) — essayées
+    #: SEULEMENT quand la partition égale d'un pan ne tient pas (aucune
+    #: partition égale, Isc publié ou Imp d'entrée dépassé). ``False`` (défaut)
+    #: = la répartition d'avant, octet pour octet : le devis (``apps.ventes``)
+    #: ne la demande pas, seul le calepinage la demande. Hors de toute
+    #: empreinte d'entrée (``electrical_service._empreinte`` énumère ses clés).
+    chaines_inegales_entre_entrees: bool = False
+    #: D-ACAL-139 — la même répartition, essayée SEULEMENT quand la partition
+    #: égale est BLOQUANTE ou laisse des modules hors chaîne (Isc publié
+    #: dépassé, modules non câblés) — jamais pour une simple ALERTE
+    #: d'écrêtage (Imp d'entrée) : c'est la règle du DEVIS. Le calepinage pose
+    #: ``chaines_inegales_entre_entrees`` (déclencheur plus large, écrêtage
+    #: compris). Hors de toute empreinte d'entrée, comme le précédent.
+    chaines_inegales_sur_bloquant_seul: bool = False
 
     @property
     def nb_modules(self):

@@ -62,6 +62,32 @@ describe('HorizonPanel — onglet monté', () => {
     expect(screen.getByRole('button', { name: 'Enregistrer le profil' })).toBeDisabled()
   })
 
+  // ACAL1815 — au doigt : le message d'enregistrement passe SOUS « Enregistrer le profil » (pleine largeur, plus
+  // sur sa rangée où il l'écrasait en colonne de ~60 px) ; champs et boutons de l'onglet ≥ 44 px de haut.
+  it('après « Enregistrer le profil », le message est sous le bouton ; champs et boutons à 44 px', async () => {
+    const points = [0, 45, 90, 135, 180, 225, 270, 315].map((azimuthDeg) => ({ azimuthDeg, heightDeg: 5 }))
+    espions.layout.mockResolvedValue({ data: { roof_layout: { horizonProfile: { source: 'saisie', points } }, empreinte_document: 'E0' } })
+    espions.enregistrerSectionLayout.mockResolvedValue({ data: { empreinte_document: 'E1' } })
+    rendre()
+    const bouton = await screen.findByRole('button', { name: 'Enregistrer le profil' })
+    await vi.waitFor(() => expect(bouton).toBeEnabled())
+    fireEvent.click(bouton)
+    const message = await screen.findByText(/Profil d’horizon enregistré/)
+    const rangee = screen.getByTestId('cal-horizon-enregistrer-rangee')
+    expect(rangee).toHaveClass('flex-col')
+    expect(message.parentElement).toBe(rangee)
+    expect(message).toHaveClass('w-full')
+    expect(bouton.compareDocumentPosition(message) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const cibles = [
+      bouton,
+      screen.getByTestId('cal-horizon-champ-azimut').querySelector('input'),
+      screen.getByTestId('cal-horizon-champ-hauteur').querySelector('input'),
+      screen.getByTestId('cal-horizon-fichier'),
+      ...['Ajouter le point', 'Importer', 'Récupérer depuis PVGIS'].map((name) => screen.getByRole('button', { name })),
+    ]
+    for (const el of cibles) expect(el).toHaveClass('min-h-11')
+  })
+
   describe('ACAL458 — import de fichier', () => {
     const huit = (az) => az.map((a, i) => `${a};${i + 1}`).join('\n')
     async function choisir(contenu) {

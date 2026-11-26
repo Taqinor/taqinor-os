@@ -610,6 +610,46 @@ class AlertesDePoseTest(SimpleTestCase):
         self.assertIn('Zone de serrage du module non saisie',
                       alertes[0]['message'])
 
+    def test_sans_devis_le_module_pose_sur_le_pan_sert_la_zone_de_serrage(self):
+        """ACAL1531 — pas de devis lié : le module POSÉ sur le pan (étape
+        Panneaux) porte la zone de serrage de sa fiche ; « non saisie sur sa
+        fiche » ne sort que si la fiche est réellement vide."""
+        import contextlib
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services.controles_pose import alertes_du_systeme
+
+        layout = {'modules': [{'id': 'm1', 'produitId': 77, 'libelle': 'Jinko'}],
+                  'zones': [{'geometry': {'moduleId': 'm1',
+                                          'panels': [{'n': i} for i in range(12)]}}]}
+        calepinage = SimpleNamespace(company=SimpleNamespace(pk=1), roof_layout=layout, pk=5)
+        systeme = SimpleNamespace(controles_pose={'distance_rail_bord_mm': 300})
+        electrique = 'apps.calepinage.services.electrique.'
+
+        def alertes(fiche):
+            retours = {
+                'apps.stock.selectors.get_produit_scoped':
+                    SimpleNamespace(pk=77, nom='Jinko', sku='x'),
+                'apps.stock.selectors.specs_for_produit': fiche,
+                electrique + 'entree_stockee': {},
+                electrique + 'materiel_de_la_conception': {},
+                electrique + '_designation': 'Jinko',
+                electrique + 'famille_de_l_onduleur': None,
+            }
+            with contextlib.ExitStack() as pile:
+                for cible, valeur in retours.items():
+                    pile.enter_context(mock.patch(cible, return_value=valeur))
+                return alertes_du_systeme(calepinage, systeme)
+
+        rendu = alertes({'serrage_min_mm': 345, 'serrage_max_mm': 415})
+        self.assertEqual([a['code'] for a in rendu], ['zone_serrage'])
+        self.assertEqual(rendu[0]['message'],
+                         'Rail à 300 mm du bord, hors de la zone de serrage '
+                         'du module (345 à 415 mm).')
+        vide = alertes({})
+        self.assertIn('non saisie sur sa fiche', vide[0]['message'])
+
     def test_controles_vides_une_ligne_info(self):
         alertes = self._alertes({})
         self.assertEqual([a['gravite'] for a in alertes], ['info'])

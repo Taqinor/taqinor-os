@@ -147,6 +147,28 @@ test('ACAL1800 : chaque jeton dont la valeur change en sombre est redéfini sous
   }
 })
 
+/* ACAL1941 — la pile de police des TITRES commence par Archivo (la pile globale --font-display commence par « Noto
+   Sans Arabic », NTI18N7) ; les titres de la coque, du téléphone et de la vue client la lisent. Mutant : Noto en tête. */
+test('ACAL1941 : le jeton de police des titres commence par Archivo ; coque, téléphone et vue client le lisent', () => {
+  const pile = blocDe(RACINES)?.['--cal-police-titre'] ?? ''
+  // `pile` est la VALEUR du jeton lue par l'analyseur de feuille (blocDe), pas un motif sur le texte du source
+  assert.ok(pile.startsWith("'Archivo'"), `--cal-police-titre : ${pile}`)
+  assert.ok(pile.includes("'Noto Sans Arabic'"), 'l’arabe reste servi par Noto, en repli')
+  const feuille = (f) => regles(readFileSync(new URL(`../../styles/calepinage/${f}`, import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, ''))
+  const titres = {
+    '50-coque-atelier.css': ['.cal-coque .cal-projet-titre', '.cal-coque .cal-panneau-etape-titre'],
+    '58-telephone.css': ['.cal-tel-projet-titre', '.cal-tel-h', '.cal-client-puce-titre'],
+  }
+  for (const [f, selecteurs] of Object.entries(titres)) {
+    const regs = feuille(f)
+    for (const s of selecteurs) {
+      const familles = regs.filter((r) => r.sel === s).map((r) => declarations(r.corps)['font-family']).filter(Boolean)
+      assert.deepEqual(familles, ['var(--cal-police-titre)'], `${f} › ${s}`)
+    }
+  }
+})
+
 test('ACAL1800 : la feuille des jetons ne touche aucun jeton global de l’ERP (racines du module seules)', () => {
   for (const { sel, corps } of jetons()) {
     for (const s of sel.split(',').map((x) => x.trim())) {

@@ -182,7 +182,7 @@ export function libelleCibleEstimee(cible, { sansLead = false } = {}) {
   if (!Number.isFinite(n) || n <= 0) return null
   const origine = cible.source === 'lead'
     ? 'la taille souhaitée du lead' : 'les factures du lead'
-  return `Cible estimée depuis ${origine} : ${n} panneaux (non vendue)`
+  return `Cible estimée depuis ${origine} : ${n} panneaux` // ACAL1733 — « estimée » le dit déjà : jamais « (estimation) » en plus
 }
 
 // R2-15 / R2-01 (décision Q1, 22/11) — « Le lead déclare : tuiles · pente 25° · sud-ouest · ombrage partiel
@@ -289,8 +289,29 @@ export function reglagesAtelierDesParametres(p) {
     zones_types: p.zones_types ?? null,
     degagements: p.degagements ?? null,
     pays,
+    // La clé n'existe QUE s'il y a un vrai réglage d'imagerie (fournisseur, fournisseurs admis, attribution) : sinon le
+    // builder reçoit exactement ce qu'il recevait avant (`pays` seul, `useAtelierBoot.js` en fait le contexte).
+    ...(imagerieReglee(p.imagerie, pays) ? { imagerie: imagerieReglee(p.imagerie, pays) } : {}),
     simulation: Object.values(simulation).some((v) => v !== null) ? simulation : null,
   }
+}
+
+// ACAL1754 — le contexte d'imagerie RÉGLÉ par la société (contrat `site_imagerie.json`) : pays, fournisseur choisi,
+// fournisseurs admis (dans son ordre) et mention légale saisie — seulement les clés renseignées ; `null` si rien.
+// Avant, seul `pays` passait : l'atelier affichait le premier fournisseur disponible, pas celui de la société.
+function imagerieReglee(imagerie, pays) {
+  // Sans pays réglé : AUCUN contexte (comportement historique) — un contexte sans `pays` ferait passer le fond de carte
+  // au premier fournisseur déclaré (`useAtelierBoot.js::imageryDesReglages`) : l'attribution seule ne le change pas.
+  if (pays === null) return null
+  const texte = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+  const autorises = Array.isArray(imagerie?.fournisseurs_autorises)
+    ? imagerie.fournisseurs_autorises.filter((id) => texte(id)) : []
+  const autres = Object.entries({
+    fournisseur_imagerie: texte(imagerie?.fournisseur_imagerie),
+    fournisseurs_autorises: autorises.length ? autorises : null,
+    attribution: texte(imagerie?.attribution),
+  }).filter(([, v]) => v !== null)
+  return autres.length ? { pays, ...Object.fromEntries(autres) } : null
 }
 
 // CALX107 câblage — la taille du plan de fond, telle que `GET …/plan-importe/`

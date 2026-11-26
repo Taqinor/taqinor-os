@@ -26,6 +26,13 @@ SOURCE_BORNE_MARCHE = 'exigence de marché'
 SOURCE_BORNE_SOCIETE = 'fourchette de la société'
 SOURCE_BORNE_DEVIS = 'règle du devis'
 SOURCE_BORNE_CAPACITE = "capacité publiée de l'onduleur"
+#: D-HYB-1 — un HYBRIDE dont la fiche ne publie pas sa puissance PV maximale
+#: (``dc_max_kwc``, libellé de la fiche technique du Stock) est jugé à la borne
+#: de ratio, et la phrase le DIT avec le champ à remplir (lead 1742, 26/11/2026 :
+#: « 1,72 pour 1,35 au plus » sans dire pourquoi la fiche n'a pas jugé).
+MOTIF_HYBRIDE_SANS_CAPACITE = (
+    "la fiche de l'onduleur hybride ne publie pas sa puissance PV maximale : "
+    "compléter « Puissance PV maximale raccordable (kWc) » dans sa fiche technique (Stock)")
 
 
 def bornes_ratio(*, exigence_marche=None, parametres_societe=None,
@@ -75,7 +82,45 @@ def bornes_du_verdict(bornes, evaluation, conception):
     ac = evaluation.puissance_ac_kw
     if capacite is None or not ac:
         return bornes
-    return (capacite / ac, None, SOURCE_BORNE_CAPACITE, '%s kWc' % fr(capacite, 0))
+    return (capacite / ac, None, SOURCE_BORNE_CAPACITE,
+            'fiche constructeur : %s kWc au plus' % fr(capacite, 0))
+
+
+def motif_capacite_non_publiee(conception, source=None):
+    """D-HYB-1 — :data:`MOTIF_HYBRIDE_SANS_CAPACITE` quand l'onduleur de la
+    ``conception`` est un hybride dont la fiche ne publie pas ``dc_max_kwc`` (la
+    borne de ratio le juge alors), ``''`` sinon — et ``''`` quand la borne qui
+    juge (``source``, si donnée) est une exigence de marché. Fonction PURE."""
+    from core.electrique.onduleurs import dc_max_publie_kwc, onduleur_est_hybride
+
+    if source is not None and source not in (SOURCE_BORNE_DEVIS, SOURCE_BORNE_SOCIETE):
+        return ''
+    onduleur = getattr(getattr(conception, 'entree', None), 'onduleur', None)
+    if onduleur is None or not onduleur_est_hybride(onduleur):
+        return ''
+    publie = dc_max_publie_kwc(getattr(onduleur, 'dc_max_kwc', None)) is not None
+    return '' if publie else MOTIF_HYBRIDE_SANS_CAPACITE
+
+
+def famille_de_l_onduleur(produit):
+    """D-HYB-1 (fondateur 24/11/2026 : « un produit se reconnaît à son rôle et à sa fiche
+    avant son nom ») — ``(role, famille_par_nom)`` d'un produit DÉJÀ LU (aucune requête) :
+
+    * ``role`` : le rôle de devis DÉCLARÉ (``core.product_roles.role_declare``), ``''``
+      sinon — la famille de catégorie « onduleur » est ambiguë (``FAMILLE_VERS_ROLE``) et
+      ne donne jamais de rôle d'onduleur ;
+    * ``famille_par_nom`` : la famille d'onduleur AUTRE qu'hybride que le classifieur du
+      catalogue lit dans son nom (``equipements.autre_famille_d_onduleur``, porte vers ventes).
+
+    Rangés sur le ``SpecOnduleur`` (``role``, ``famille_par_nom``), lus par
+    ``core.electrique.onduleurs.onduleur_est_hybride``."""
+    from .equipements import autre_famille_d_onduleur
+    from core.product_roles import role_declare
+
+    if produit is None:
+        return ('', '')
+    return (role_declare(getattr(produit, 'role_devis', None)) or '',
+            autre_famille_d_onduleur(getattr(produit, 'nom', '') or ''))
 
 
 def juger_ratio(valeur, bornes, reglages=None):
@@ -92,13 +137,14 @@ def juger_ratio(valeur, bornes, reglages=None):
     return dans and (not bas.controlee or valeur >= bas.valeur - 1e-9)
 
 
-def detail_ratio(texte, conforme, bornes, *, valeur=None, reglages=None):
+def detail_ratio(texte, conforme, bornes, *, valeur=None, reglages=None, conception=None):
     """La phrase du verdict, qui dit D'OÙ vient la borne — et, sous le seuil BAS
     réglé par la société, LA borne franchie : la règle du devis
     (``borne_dc_ac_du_moteur_devis``) ne fixe qu'un plafond, jamais de borne
     basse ; seul le seuil bas de la société (``seuil_bas_dc_ac``) peut juger un
     ratio trop faible (rejeu T3-VAGUEC2 : « 0,99 pour 1,35 au plus » à régler
-    sans raison dite)."""
+    sans raison dite). D-HYB-1 : refusé par la borne de ratio parce que la fiche
+    d'un hybride (``conception``) ne publie rien, la phrase le dit et nomme le champ."""
     from core.electrique.onduleurs import bornes_dc_ac
     from core.electrique.types import fr
 
@@ -113,4 +159,6 @@ def detail_ratio(texte, conforme, bornes, *, valeur=None, reglages=None):
     if source == SOURCE_BORNE_CAPACITE:
         return '%s — %s la capacité publiée de l\'onduleur (%s)' % (
             texte, 'dans' if conforme else 'au-delà de', detail)
-    return '%s pour %s au plus (%s)' % (texte, fr(borne, 2), source)
+    phrase = '%s pour %s au plus (%s)' % (texte, fr(borne, 2), source)
+    manque = '' if conforme else motif_capacite_non_publiee(conception, source)
+    return '%s — %s' % (phrase, manque) if manque else phrase

@@ -597,15 +597,15 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
 
     @extend_schema_field(serializers.DictField(allow_null=True))
     def get_client_apercu(self, calepinage):
-        """ACAL196 — ``{id, nom, ville}`` du client rattaché, ``None`` sans
+        """ACAL196 — ``{id, nom}`` du client rattaché, ``None`` sans
         client. Lu sur le client DÉJÀ CHARGÉ par la liste
         (``select_related('client')``) : aucune requête par ligne."""
         client = getattr(calepinage, 'client', None)
         if client is None:
             return None
-        ville = (getattr(client, 'ville', '') or '').strip() or None
+        # ACAL1750 — ``crm.Client`` n'a pas de colonne ville : la ville de la carte se lit sur le lead.
         # ``Client.__str__`` ajoute une espace finale sans prénom : rognée.
-        return {'id': client.pk, 'nom': str(client).strip(), 'ville': ville}
+        return {'id': client.pk, 'nom': str(client).strip()}
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_responsable_nom(self, calepinage):

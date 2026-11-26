@@ -86,7 +86,10 @@ export const ZOOM_MAX_CADRAGE_ATELIER = 22
 // Société MUETTE (aucun pays réglé) ⇒ aucun contexte : un contexte, même sans pays, fait passer le fond satellite
 // par le registre de fournisseurs, qui retient alors le premier déclaré au lieu du fond historique (critique de la
 // vague A du 23/11/2026). Le fond ne change donc que pour une société qui a réglé son imagerie.
+// ACAL1754 — tout le contexte RÉGLÉ (fournisseur choisi, fournisseurs admis, mention légale), lu par
+// `roofConfig.ts::resolveImageryProvider` : une société qui a choisi son fournisseur le voit sur la carte.
 export function imageryDesReglages(reglagesAtelier) {
+  if (reglagesAtelier?.imagerie) return reglagesAtelier.imagerie
   const pays = reglagesAtelier?.pays ?? null
   return pays ? { pays } : undefined
 }

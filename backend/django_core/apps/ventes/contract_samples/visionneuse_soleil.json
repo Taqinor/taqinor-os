@@ -1,0 +1,38 @@
+{
+  "endpoint": "GET /api/django/public/proposal/<token>/data/",
+  "forme_serveur": "partielle",
+  "pourquoi": "LOT 6 (fondateur, 26/11/2026 : « clients de confiance should get it », D-ACAL-132) — la page client (`apps/web/src/pages/proposition/[...token].astro`, section #roof3d) montre aux liens de niveau « confiance » la visionneuse au soleil qui bouge de l'écran Panneaux du calepinage : lecture de la journée, curseur d'heure, Hiver / Été, et chaque panneau teinté par son ensoleillement. Ce fichier documente la clé ADDITIVE `visionneuse_soleil` de la charge publique. Elle est ABSENTE (jamais `null`) sauf quand le lien est de niveau « confiance » ET que `roof_layout` est servi (case « Calepinage 3D » cochée, pas de brouillon en conception rapide) : un lien « standard », une page servie par un backend antérieur ou un devis sans calepinage gardent la page d'aujourd'hui. SOURCE UNIQUE de la teinte : l'accès solaire par module ENREGISTRÉ par le calepinage (`roof_layout.zones[].geometry.solarAccess.values`, CAL248, calculé par `apps/web/src/lib/shadingEngine.ts::pointSolarAccess` dans l'atelier et lu côté serveur par `apps/calepinage/services/ombrage_chaines.py::acces_par_module`) — jamais un second calcul d'ombrage sur la page. La position du soleil n'est pas servie : la page la calcule avec la même fonction que l'atelier (`apps/web/src/lib/roofPro2.ts::sunDirection`, via `scene3d.ts` et `roofPro11/soleilPlay.ts`). Aucun prix, aucun prix d'achat, aucune consommation, aucun libellé saisi. Émetteur : `apps/ventes/public/visionneuse_soleil.py::visionneuse_soleil_publique` (à construire, lane B) ; lecteurs : `apps/web/src/lib/visionneuseSoleil.ts` et `apps/web/src/scripts/roofPro11/viewerSoleil.ts` (à construire, lane W). Conception et lanes : docs/audits/l5-calepinage/visionneuse-soleil-client.md ; décisions D-ACAL-132 à D-ACAL-138 (docs/audits/decisions.yml).",
+  "notes": {
+    "version": "`version` = 1. Toute clé de la forme est TOUJOURS présente quand `visionneuse_soleil` l'est (une liste vide `[]`, un instant non choisi `null`) — PACT10.",
+    "zones": "Un élément par pan de `roof_layout.zones` dont le document porte un accès solaire exploitable ; les autres pans n'apparaissent pas (`[]` quand aucun n'en porte : la page montre alors le soleil et les ombres SANS teinte et sans légende — une mesure absente ne vaut pas du plein soleil). `index` = position du pan dans `roof_layout.zones` servi ; `id` = son `id` (vérification croisée, la page refuse un élément dont l'id ne correspond pas). `acces` = un facteur par module, DANS L'ORDRE ET DE LA LONGUEUR EXACTE de `roof_layout.zones[index].geometry.panels` tels que SERVIS (le serveur réaligne après le filtre de `_safe_zone_geometry` : un module écarté du dessin est écarté ici) ; nombre de [0 ; 1] arrondi au millième, ou `null` (module non calculé : non teinté, jamais 1). Un pan dont le document porte un nombre de valeurs différent de son nombre de modules est OMIS en bloc (jamais réaligné au hasard). `calcule_le` = `solarAccess.computedAt` du document (ISO 8601). Ces valeurs sont ANNUELLES (l'heure et la saison choisies ne les changent pas, comme dans l'atelier) et ne sont rendues qu'en COULEUR : aucun pourcentage n'est affiché.",
+    "environnement": "Les objets voisins SAISIS dans l'atelier qui portent une ombre (`roof_layout.environment`, `apps/web/src/scripts/roofPro11/environment.ts::EnvironmentObject`), pour que la scène dessine ce qui teinte les panneaux. Liste blanche, géométrie seule : `kind` (`arbre` | `batiment` | `poteau` | `ligne`), `centerLng`, `centerLat`, `heightM` (> 0, sinon l'objet n'est pas servi), et selon le genre `crownDiameterM`, `evergreen`, `footprint` ([[lng, lat]…]), `lengthM`, `widthM`, `diameterM`, `trace` ([[lng, lat]…]), `epaisseurM` — une clé absente du document est absente ici. JAMAIS `id`, `label` (texte libre, peut nommer un voisin), `hauteurFutureM`, `dansAns` ; un objet `supposeCoupe: true` n'est pas servi. `[]` quand il n'y en a aucun.",
+    "instant_choisi": "L'instant de scène CHOISI par le commercial (`roof_layout.scene{sunDay, sunHour}`), `{jour: 1-366, heure: 0-24}`, seulement s'il diffère du défaut de l'atelier (jour 355, 12 h — même règle que `frontend/src/features/calepinage/client/vueClient.helpers.js::instantSoleilChoisi`) ; sinon `null` et la page s'ouvre comme « Montrer au client » (été, midi — D-ACAL-135).",
+    "ce_qui_ne_sort_jamais": "`shading12x24`, `shadeObstructions`, `horizonProfile`, `pin`, `outline`, la méthode et les hypothèses du calcul d'accès (`method`, `assumptions`), toute consommation, tout montant."
+  },
+  "exemple": {
+    "visionneuse_soleil": {
+      "version": 1,
+      "zones": [
+        {
+          "index": 0,
+          "id": "zone-1",
+          "acces": [0.981, 0.979, 0.962, 0.874, null, 0.988],
+          "calcule_le": "2026-11-20T09:14:05.000Z"
+        }
+      ],
+      "environnement": [
+        {"kind": "arbre", "centerLng": -7.6195, "centerLat": 33.5741, "heightM": 7.5, "crownDiameterM": 5, "evergreen": true},
+        {"kind": "batiment", "centerLng": -7.6201, "centerLat": 33.5738, "heightM": 9, "footprint": [[-7.62015, 33.57385], [-7.62005, 33.57385], [-7.62005, 33.57375], [-7.62015, 33.57375]]}
+      ],
+      "instant_choisi": {"jour": 355, "heure": 16}
+    }
+  },
+  "exemple_sans_mesure": {
+    "visionneuse_soleil": {
+      "version": 1,
+      "zones": [],
+      "environnement": [],
+      "instant_choisi": null
+    }
+  }
+}

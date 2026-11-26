@@ -580,8 +580,10 @@
     {
       "cle": "economie.horizon",
       "famille": "economie",
-      "phrase": "Les économies sont comptées année par année jusqu'à l'horizon retenu sur le devis, écrit ici : au-delà, rien n'est compté.",
-      "valeurs": {},
+      "phrase": "Les économies sont comptées année par année jusqu'à l'horizon retenu sur le devis, {horizon} ans : au-delà, rien n'est compté.",
+      "valeurs": {
+        "horizon": "horizon_ans"
+      },
       "geste": "Pour changer l'horizon, modifiez-le sur le devis.",
       "lexique": null,
       "ecrans": [

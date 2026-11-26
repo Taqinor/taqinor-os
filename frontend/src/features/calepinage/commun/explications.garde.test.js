@@ -99,6 +99,21 @@ describe('ACAL872 — la bulle', () => {
     expect(phrase).not.toMatch(/\b0 kWh/)
   })
 
+  it('une valeur absente se dit sans l’unité collée (« non publiée kWh »)', () => {
+    const entree = REGISTRE.find((e) => e.cle === 'production.p90_kwh')
+    const phrase = remplirPhrase(entree, { production: { total: {} } })
+    expect(phrase).toContain('ici valeur non publiée.')
+    expect(phrase).not.toMatch(/non publiée\s*kWh/)
+    const avec = remplirPhrase(entree, { production: { total: { p90_kwh: 9000 } } })
+    expect(avec).toMatch(/9\s?000 kWh\./)
+  })
+
+  it('la phrase de l’horizon dit l’horizon du devis (ACAL1742)', () => {
+    const entree = REGISTRE.find((e) => e.cle === 'economie.horizon')
+    expect(remplirPhrase(entree, { horizon_ans: 25 })).toContain('sur le devis, 25 ans :')
+    expect(remplirPhrase(entree, { horizon_ans: null })).toContain('sur le devis, valeur non publiée :')
+  })
+
   it('une clé absente du registre ne rend rien', async () => {
     servir()
     const { container } = rendre({ cle: 'inconnue.nulle_part' })

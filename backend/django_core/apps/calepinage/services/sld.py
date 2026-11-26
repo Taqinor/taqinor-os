@@ -72,6 +72,7 @@ publiée par ``core/electrique/schema.py::GEOMETRIE``), ni le placement (par
 fragment, aucun filtre de texte sur le SVG rendu.
 """
 from __future__ import annotations
+import logging
 from types import SimpleNamespace
 
 from core.champs_stricts import non_blanc
@@ -84,7 +85,10 @@ __all__ = [
     'SldRefuse', 'SldEnConflit', 'branches_onduleur_de_la_conception',
     'cartouche_du_calepinage', 'edition_sld', 'enregistrer_edition_sld',
     'gabarit_de_schema', 'rendu_du_schema', 'schema_du_calepinage',
+    'document_electrique_du_calepinage',
 ]
+
+logger = logging.getLogger(__name__)
 
 #: La clé du bloc d'édition dans ``Calepinage.resultat`` (JSONField existant).
 CLE_EDITION = 'sld_edition'
@@ -484,6 +488,17 @@ def enregistrer_edition_sld(calepinage, corps, *, dessin=None):
     return modifier_resultat(calepinage, _poser)
 
 
+def bloquants_du_cablage(conception, donnees):
+    """Les bloquants NOMMÉS du câblage EFFECTIF (affectation manuelle comprise,
+    ``tensions_chaines.conception_cablee``), jamais ceux des seules chaînes
+    automatiques qu'elle remplace. Lecture seule : rien n'est écrit."""
+    from .electrique import bloquants_nommes
+    from .tensions_chaines import conception_cablee, imposee_et_refus
+
+    imposee = imposee_et_refus((donnees or {}).get('affectation_manuelle'))[0]
+    return bloquants_nommes(conception_cablee(conception, imposee))
+
+
 def _Porteur(resultat):  # noqa: N802 — nom historique
     """Un ``resultat`` relu, présenté à :func:`edition_sld`."""
     return SimpleNamespace(resultat=resultat)
@@ -496,14 +511,13 @@ def _dessin_du_calepinage(calepinage):
     alors aucun organe à nommer, et toute clef sera refusée en la nommant.
     """
     from .electrique import (
-        _reglages_electrique_societe, bloquants_nommes,
-        conception_du_calepinage,
+        _reglages_electrique_societe, conception_du_calepinage,
     )
 
     conception, _materiel, donnees, _document = conception_du_calepinage(
         calepinage)
     if (list(getattr(conception, 'manquantes', ()) or ())
-            or list(bloquants_nommes(conception) or ())
+            or list(bloquants_du_cablage(conception, donnees) or ())
             or getattr(conception, 'micro_seul', False)):
         return {'svg': None, 'blocs': (), 'liaisons': ()}
     norme = _norme_du_calepinage(calepinage)
@@ -666,9 +680,8 @@ def _liaisons(places):
     return tuple(liaisons)
 
 
-def _couleurs_des_chaines(conception, donnees):
-    """ACAL1337 — ``(('Chaîne N', couleur), …)`` lus sur l'affectation SERVIE (manuelle
-    comprise) : la palette et l'ordre de la carte et du plan de câblage, jamais une copie."""
+def _lignes_d_affectation(conception, donnees):
+    """La table d'affectation SERVIE (manuelle comprise) — une lecture, deux lecteurs."""
     from .chaines import (
         AffectationInvalide, affectation, normaliser_affectation_imposee,
     )
@@ -677,10 +690,113 @@ def _couleurs_des_chaines(conception, donnees):
         imposee = normaliser_affectation_imposee((donnees or {}).get('affectation_manuelle'))
     except AffectationInvalide:
         imposee = ()
+    return affectation(conception, imposee=imposee)
+
+
+def _couleurs_des_chaines(conception, donnees):
+    """ACAL1337 — ``(('Chaîne N', couleur), …)`` lus sur l'affectation SERVIE (manuelle
+    comprise) : la palette et l'ordre de la carte et du plan de câblage, jamais une copie."""
     vues = {}
-    for ligne in affectation(conception, imposee=imposee):
+    for ligne in _lignes_d_affectation(conception, donnees):
         vues.setdefault(ligne.get('chaine'), ligne.get('couleur_chaine'))
     return tuple(('Chaîne %d' % numero, couleur) for numero, couleur in vues.items() if numero is not None)
+
+
+def _chaines_de_l_affectation(conception, donnees):
+    """SCHEL-B2 — ``[{numero, nb_panneaux, onduleur, entree}]`` dans l'ordre de PREMIÈRE
+    apparition de la table servie : les chaînes RÉELLES (manuelle comprise). La couleur est
+    posée par le noyau (``chaines_colorees``) avec la même palette et le même ordre."""
+    par_numero = {}
+    for ligne in _lignes_d_affectation(conception, donnees):
+        numero = ligne.get('chaine')
+        if numero is None:
+            continue
+        chaine = par_numero.setdefault(numero, {
+            'numero': numero, 'nb_panneaux': 0,
+            'onduleur': ligne.get('onduleur'), 'entree': ligne.get('mppt')})
+        chaine['nb_panneaux'] += 1
+    return list(par_numero.values())
+
+
+#: SCHEL-B2 — la phrase servie quand le côté réseau n'est pas dimensionné (aucune
+#: protection AC retenue : pas de norme choisie, ou pas de simulation).
+MOTIF_COTE_RESEAU_A_CALCULER = (
+    "Le côté réseau n'est pas encore dimensionné : choisissez la norme électrique "
+    "dans les réglages, puis lancez la simulation.")
+
+
+def _batterie_du_document(calepinage, donnees, materiel):
+    """SCHEL-B2 — ``(batterie, option)`` du document : la batterie DÉCLARÉE, ou celle de
+    l'option « avec » que la conception du calepinage retient — résolue par
+    ``chaines.batterie_du_calepinage`` (la ligne du devis lié comprise). Capacité =
+    ``kwh_nominal`` de la fiche × packs, jamais la capacité utile supposée. Lecture
+    seule : l'entrée électrique (et son empreinte) n'est pas touchée."""
+    from apps.stock.selectors import specs_for_produit
+
+    from .chaines import batterie_du_calepinage
+    from .devis_retenu import conception_du_calepinage as conception_retenue
+    from .devis_retenu import lecture_de_liste
+
+    declaree = isinstance((donnees or {}).get('batterie'), dict) and bool(donnees['batterie'])
+    option = None
+    if not declaree:
+        # Lecture de LISTE : la version rangée telle quelle, sans relance en file ni
+        # péremption — ce dessin ne déclenche jamais de calcul.
+        with lecture_de_liste():
+            option = (conception_retenue(calepinage) or {}).get('option_retenue')
+        if option != 'avec':
+            return None, option
+    trouvee = batterie_du_calepinage(calepinage, donnees, materiel)
+    if trouvee is None:
+        return None, option
+    packs = trouvee.get('packs') or 1
+    nominal = (((trouvee.get('specs') or {}).get('grandeurs') or {})
+               .get('kwh_nominal') or {}).get('valeur')
+    fiche = specs_for_produit(trouvee.get('produit')) or {}
+    return {'designation': trouvee.get('designation'), 'unites': packs,
+            'capacite_kwh': round(float(nominal) * packs, 3) if nominal else None,
+            'tension_v': fiche.get('v_nominal') if isinstance(fiche, dict) else None}, option
+
+
+def _document_electrique(calepinage, conception, materiel, donnees, document,
+                         resultat, gabarit, edition, norme):
+    """SCHEL-B2 — le document « schéma électrique » de CE calepinage (contrat
+    ``ventes/contract_samples/schema_electrique.json``), composé par le noyau."""
+    from core.electrique.schema_electrique import (
+        ETAT_HORS_RESEAU, OPTION_AVEC, OPTION_SANS,
+        SOURCE_CALEPINAGE, document_schema_electrique,
+    )
+
+    from .chaines import evaluer_onduleurs
+    from .troncons import troncons_de_la_conception
+
+    batterie, option = _batterie_du_document(calepinage, donnees, materiel)
+    hors_reseau = bool(((donnees or {}).get('hors_reseau') or {}).get('actif'))
+    evaluation = evaluer_onduleurs(conception)
+    troncons = troncons_de_la_conception(conception, document, norme).get('troncons') or ()
+    return document_schema_electrique(
+        conception.entree, resultat,
+        chaines=_chaines_de_l_affectation(conception, donnees),
+        option=OPTION_AVEC if (batterie or option == 'avec') else OPTION_SANS,
+        source=SOURCE_CALEPINAGE, standard=bool((gabarit or {}).get('standard')),
+        # Raccordé : « calculé » dès qu'un organe AC est retenu, sinon « à calculer »
+        # avec sa phrase (décidé par le noyau sur les blocs servis).
+        cote_reseau=({'etat': ETAT_HORS_RESEAU} if hors_reseau else
+                     {'motif': MOTIF_COTE_RESEAU_A_CALCULER}),
+        unites_batterie=(batterie or {}).get('unites'),
+        nombre_onduleurs=getattr(evaluation, 'nombre', None),
+        libelles=edition.get('libelles'), troncons=troncons,
+        batterie=batterie or False)
+
+
+def _document_electrique_tolerant(*args):
+    """Le document, ou ``None`` : une lecture ratée ne fait jamais tomber le schéma."""
+    try:
+        return _document_electrique(*args)
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
+        logger.warning("SCHEL-B2 : schéma électrique du calepinage %s indisponible",
+                       getattr(args[0], 'pk', None), exc_info=True)
+        return None
 
 
 def rendu_du_schema(entree, resultat, *, edition=None, gabarit=None,
@@ -764,6 +880,28 @@ def branches_onduleur_de_la_conception(conception):
 
 
 # ────────────────────────────────── CALX234 — la réponse servie par la vue
+def _nom_du_client_ou_du_lead(calepinage):
+    """ACAL1713 — « Client » du cartouche : le client rattaché, sinon le LEAD.
+
+    Un calepinage né d'un lead n'a pas de client (OU INCLUSIF, contrainte
+    ``calepinage_lead_ou_client``) : son cartouche restait vide. Le lead est
+    lu par le sélecteur du CRM, borné société, corbeille comprise (une lecture) ;
+    même composition « nom prénom » que ``serializers._lead_apercu``.
+    """
+    nom = getattr(getattr(calepinage, 'client', None), 'nom', '') or ''
+    if nom:
+        return nom
+    lead_id = getattr(calepinage, 'lead_id', None)
+    if not lead_id:
+        return ''
+    from apps.crm.selectors import get_company_lead
+
+    lead = get_company_lead(getattr(calepinage, 'company', None), lead_id,
+                            avec_corbeille=True)
+    return ' '.join(p for p in (getattr(lead, 'nom', ''),
+                                getattr(lead, 'prenom', '') or '') if p).strip()
+
+
 def cartouche_du_calepinage(calepinage):
     """Le cartouche technique de CE calepinage : client, référence, date.
 
@@ -775,8 +913,7 @@ def cartouche_du_calepinage(calepinage):
     """
     cree_le = getattr(calepinage, 'created_at', None)
     return {
-        'client': getattr(getattr(calepinage, 'client', None), 'nom', '')
-        or '',
+        'client': _nom_du_client_ou_du_lead(calepinage),
         'reference': getattr(calepinage, 'titre', '') or '',
         'date': cree_le.strftime('%d/%m/%Y') if cree_le else '',
     }
@@ -801,24 +938,49 @@ def _edition_publiee(edition, dessin):
     return publiee
 
 
+def document_electrique_du_calepinage(calepinage, *, lecture=None):
+    """SCHEL-B2 — le seul document « schéma électrique » de CE calepinage, sans
+    planche SVG (la porte de ``selectors.schema_electrique_du_calepinage``) ;
+    ``None`` dans les mêmes cas que ``svg`` (fiche muette, bloquant, micro seul).
+    Lecture seule. ``lecture`` : le 4-uplet déjà rendu par ``conception_du_calepinage``
+    (l'appelant qui l'a lu ne le fait pas recalculer)."""
+    from .electrique import (
+        _reglages_electrique_societe, conception_du_calepinage,
+    )
+
+    conception, materiel, donnees, document = (
+        lecture or conception_du_calepinage(calepinage))
+    if (getattr(conception, 'manquantes', ()) or bloquants_du_cablage(conception, donnees)
+            or getattr(conception, 'micro_seul', False)):
+        return None
+    norme = _norme_du_calepinage(calepinage)
+    resultat, gabarit = resultat_et_gabarit_decides(
+        conception, donnees, norme,
+        reglages=_reglages_electrique_societe(calepinage))
+    return _document_electrique_tolerant(
+        calepinage, conception, materiel, donnees, document, resultat, gabarit,
+        edition_sld(calepinage), norme)
+
+
 def schema_du_calepinage(calepinage):
-    """CALX204 — les SIX clés du contrat, dans tous les états.
+    """CALX204 — les SEPT clés du contrat, dans tous les états.
 
     ``svg`` vaut ``None`` quand la conception ne permet pas de dessiner
     (fiche muette ou bloquant) : mêmes portails que l'annexe technique du
     devis, et la réponse DIT pourquoi par ``bloquants``/``manquantes``, les
     libellés français du service électrique tels quels. Aucune clé ne
-    disparaît jamais (leçon PACT10 du 03/08/2026).
+    disparaît jamais (leçon PACT10 du 03/08/2026). SCHEL-B2 : la 7e,
+    ``schema_electrique``, est le document du noyau (``None`` quand ``svg``
+    l'est).
     """
     from .electrique import (
-        _reglages_electrique_societe, bloquants_nommes,
-        conception_du_calepinage,
+        _reglages_electrique_societe, conception_du_calepinage,
     )
 
-    conception, _materiel, donnees, _document = conception_du_calepinage(
+    conception, materiel, donnees, document = conception_du_calepinage(
         calepinage)
     manquantes = list(getattr(conception, 'manquantes', ()) or ())
-    bloquants = list(bloquants_nommes(conception) or ())
+    bloquants = list(bloquants_du_cablage(conception, donnees) or ())
     reponse = {
         'calepinage': getattr(calepinage, 'pk', None),
         'svg': None,
@@ -826,6 +988,7 @@ def schema_du_calepinage(calepinage):
         'edition': _edition_vide(),
         'bloquants': bloquants,
         'manquantes': manquantes,
+        'schema_electrique': None,
     }
     if manquantes or bloquants:
         return reponse
@@ -856,4 +1019,7 @@ def schema_du_calepinage(calepinage):
     reponse['svg'] = dessin['svg']
     reponse['blocs'] = [dict(bloc) for bloc in dessin['blocs']]
     reponse['edition'] = _edition_publiee(edition, dessin)
+    reponse['schema_electrique'] = _document_electrique_tolerant(
+        calepinage, conception, materiel, donnees, document, resultat, gabarit,
+        edition, norme)
     return reponse

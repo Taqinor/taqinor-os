@@ -408,3 +408,109 @@ class ConceptionElectriquePubliqueTest(MontageDevisElectrique, TestCase):
         self.assertEqual(self.devis.statut, statut)
         self.assertEqual(self.devis.electrical_design_hash, empreinte)
         self.assertEqual(self.devis.lignes.count(), 2)
+
+
+def _cles_du_contrat_schema_electrique():
+    """Toutes les clés (à toute profondeur) des exemples du contrat
+    ``schema_electrique.json`` : la liste blanche de la charge publique."""
+    import json
+    import pathlib
+
+    chemin = (pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+              / 'schema_electrique.json')
+    contrat = json.loads(chemin.read_text(encoding='utf-8'))
+    cles = set()
+
+    def parcourir(valeur):
+        if isinstance(valeur, dict):
+            cles.update(valeur)
+            for v in valeur.values():
+                parcourir(v)
+        elif isinstance(valeur, list):
+            for v in valeur:
+                parcourir(v)
+
+    for nom in ('exemple', 'exemple_standard', 'exemple_champ_sans_repartition'):
+        parcourir(contrat[nom])
+    return cles
+
+
+class SchemaElectriquePubliqueTest(MontageDevisElectrique, TestCase):
+    """SCHEL-B3 (lot 6) — la clé additive ``schema_electrique`` de la page
+    client : un document par option publiée, aucune clé hors contrat, aucun
+    prix, ``prix_achat`` jamais ; absente quand la case « Schéma unifilaire »
+    est décochée ; aucune écriture (empreinte rangée intacte)."""
+
+    def _charge(self, **lien):
+        jeton = str(uuid.uuid4())
+        ShareLink.objects.create(company=self.company, devis=self.devis,
+                                 token=jeton, **lien)
+        resp = DjangoClient().get('/api/django/public/proposal/%s/data/' % jeton)
+        self.assertEqual(resp.status_code, 200)
+        return resp.json()
+
+    def test_un_document_sous_la_cle_de_l_option_publiee(self):
+        from core.electrique.schema_electrique import CLES_DOCUMENT
+        self._concevoir()
+        charge = self._charge(niveau=ShareLink.NIVEAU_CONFIANCE)
+        options = charge['schema_electrique']['options']
+        self.assertEqual(set(options), {'sans_batterie', 'avec_batterie'})
+        self.assertIsNone(options['avec_batterie'])      # mono-option réseau
+        doc = options['sans_batterie']
+        self.assertEqual(tuple(doc), CLES_DOCUMENT)
+        self.assertEqual(doc['source'], 'conception_devis')
+        self.assertEqual(doc['panneaux']['nombre'], 14)
+        self.assertEqual(sum(c['nb_panneaux'] for c in doc['chaines']), 14)
+        self.assertEqual(doc['onduleurs'][0]['nombre'], 1)
+        self.assertIsNone(doc['batterie'])
+        self.assertFalse(doc['calibres_masques'])
+
+    def test_aucune_cle_hors_contrat_aucun_prix(self):
+        self._concevoir()
+        bloc = self._charge(niveau=ShareLink.NIVEAU_CONFIANCE)['schema_electrique']
+        permises = _cles_du_contrat_schema_electrique()
+        servies = set()
+
+        def parcourir(valeur):
+            if isinstance(valeur, dict):
+                servies.update(valeur)
+                for v in valeur.values():
+                    parcourir(v)
+            elif isinstance(valeur, list):
+                for v in valeur:
+                    parcourir(v)
+
+        parcourir(bloc)
+        self.assertEqual(servies - permises, set())
+        texte = str(bloc).lower()
+        for interdit in ('prix', 'marge', 'achat', 'mad', 'ttc', 'remise', 'total'):
+            self.assertNotIn(interdit, texte)
+        for montant in ('1234', '12345', '9876', '789'):
+            self.assertNotIn(montant, texte)
+
+    def test_niveau_standard_calibres_masques(self):
+        self._concevoir()
+        doc = self._charge(niveau=ShareLink.NIVEAU_STANDARD)[
+            'schema_electrique']['options']['sans_batterie']
+        self.assertTrue(doc['calibres_masques'])
+        for coffret in (doc['coffret_dc'], doc['coffret_ac']):
+            for organe in (coffret or {}).get('organes') or ():
+                self.assertIsNone(organe['calibre'])
+        self.assertIsNone(doc['liaisons']['ac']['section_mm2'])
+
+    def test_absente_quand_la_case_schema_est_decochee(self):
+        self._concevoir()
+        charge = self._charge(niveau=ShareLink.NIVEAU_CONFIANCE,
+                              sections={'sld': False})
+        self.assertNotIn('schema_electrique', charge)
+
+    def test_lecture_pure_empreinte_rangee_intacte(self):
+        self._concevoir()
+        self.devis.refresh_from_db()
+        avant = (self.devis.statut, self.devis.electrical_design,
+                 self.devis.electrical_design_hash)
+        self._charge(niveau=ShareLink.NIVEAU_CONFIANCE)
+        self.devis.refresh_from_db()
+        self.assertEqual((self.devis.statut, self.devis.electrical_design,
+                          self.devis.electrical_design_hash), avant)
+        self.assertEqual(self.devis.lignes.count(), 2)

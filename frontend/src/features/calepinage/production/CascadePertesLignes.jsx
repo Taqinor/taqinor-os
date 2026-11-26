@@ -66,12 +66,27 @@ function MentionEntree({ ligne }) {
   )
 }
 
+/* ACAL1948 — l'« Entrée » d'une ligne : une chaîne telle quelle ; pour l'étape `iam`, l'objet servi
+   (modèle, indice du verre, antireflet, table) dit en phrase. Rien d'autre n'est déduit. */
+const MODELES_IAM = { fresnel: 'Fresnel', ashrae: 'ASHRAE' }
+function entreeEnPhrase(ligne) {
+  const e = ligne.entree
+  if (typeof e === 'string') return e || '—'
+  if (ligne.poste !== 'iam' || !e || typeof e !== 'object' || !e.modele) return null
+  const morceaux = [`Modèle de reflet ${MODELES_IAM[e.modele] || e.modele}`]
+  if (present(e.indice_verre)) morceaux.push(`indice du verre ${formatNumber(e.indice_verre, { decimals: 3 })}`)
+  if (typeof e.revetement_ar === 'boolean') morceaux.push(`revêtement antireflet : ${e.revetement_ar ? 'oui' : 'non'}`)
+  if (Array.isArray(e.table_iam) && e.table_iam.length) morceaux.push('table des facteurs par angle servie')
+  return `${morceaux.join(' ; ')}.`
+}
+
 function Detail({ ligne, id }) {
+  const entree = entreeEnPhrase(ligne)
   const champs = [
     ['Valeur', ligne.pertePct === null || ligne.pertePct === undefined
       ? '—' : formatPercent(ligne.pertePct, { decimals: 1 })],
     ['Source', ligne.source || '—'],
-    ...(typeof ligne.entree === 'string' ? [['Entrée', ligne.entree || '—']] : []),
+    ...(entree ? [['Entrée', entree]] : []),
     ['Référence', ligne.reference || '—'],
     ['Énergie avant', kwh(ligne.kwhAvant)],
     ['Énergie après', kwh(ligne.kwhApres)],

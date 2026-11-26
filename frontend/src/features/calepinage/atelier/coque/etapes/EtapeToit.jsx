@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { PARAM_CHAMP } from '../../ouvrirChamp'
 import SaisiePente from '../../../SaisiePente'
 import { panParDefaut, sourceDePente, zonesDuDocument } from '../../../SaisiePente.helpers'
 import useDocumentCalepinage from '../../../useDocumentCalepinage'
 import { SurCarte } from '../emplacements'
 import { BoutonMarine, CarteFlottante, Icone, Indicateur, SectionEtape, Segmente } from '../primitives'
 import {
-  GESTES, ajoutTermine, annulerAjoutPan, appliquerCotes, commencerAjoutPan, confirmerPenteVivante, degres, enregistrerPentePan, nomFace,
+  GESTES, ajoutTermine, annulerAjoutPan, appliquerCotes, commencerAjoutPan, confirmerPenteVivante, degres, enregistrerPentePan, estObjet, nomFace,
   selectionnerObstacle, texteBesoin, useEtatToit,
 } from './EtapeToit.helpers'
 import { jourMois } from './panneaux/formats'
@@ -33,8 +35,6 @@ const astuceContour = () => `Glissez un coin pour le déplacer. ${auDoigt() ? 'T
 const ALERTE_ECHELLE = 'Le tracé semble à la mauvaise échelle : une surface si grande ne tient aucune rangée. Effacez-le et retracez le toit de près.'
 const ASTUCE_AJOUT = 'Cliquez sur la carte pour poser chaque coin du pan, double-cliquez pour le fermer. Échap annule l’ajout.'
 const DUREE_BULLE_MS = 8000
-
-const estObjet = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 
 function Champ({ id, libelle, valeur, onChange, onBlur, desactive }) {
   return (
@@ -148,6 +148,8 @@ function CartePente({ calepinageId, builderApi, documentVivant, lectureSeule, en
             <div className="cal-toit-pente-tete">
               <span className="cal-toit-pente-valeur">{titre}</span>
               {aConfirmer && <span className="cal-toit-pente-tag">À confirmer</span>}
+              {/* ACAL1922 — « Toit plat · confirmé » : le tag suit la valeur, jamais dans son texte. */}
+              {!aConfirmer && vue.plat && <span className="cal-toit-pente-tag" data-testid="cal-toit-plat-confirme">· confirmé</span>}
             </div>
             {aConfirmer && !inconnue && (
               <p className="cal-toit-pente-texte">
@@ -219,6 +221,29 @@ function Cadran({ azimut }) {
 function Obstacles({ obstacles, relire }) {
   const [actif, setActif] = useState(0)
   const [choisi, setChoisi] = useState(null)
+  // ACAL1971 — « Régler » sur « Obstacles dans leur pan » arrive avec `?champ=<id de l'obstacle fautif>` : l'état est
+  // AMORCÉ une fois (ligne active + choisie) et le script reçoit UNE fois le même clic que sur sa ligne du tableau
+  // « Objets du site » ; le paramètre est ensuite retiré (replace : « Retour » ne le rejoue pas, un remontage non plus).
+  const [parametres, setParametres] = useSearchParams()
+  const visee = parametres.get(PARAM_CHAMP)
+  const iVisee = visee ? obstacles.findIndex((o) => o.id === visee) : -1
+  // Amorçage pendant le rendu (« ajuster l'état » de React) : une seule fois par paramètre reçu, sans effet qui pose l'état.
+  const [amorce, setAmorce] = useState(null)
+  if (iVisee >= 0 && amorce !== visee) {
+    setAmorce(visee)
+    setActif(iVisee)
+    setChoisi(obstacles[iVisee].id)
+  }
+  useEffect(() => {
+    if (iVisee < 0) return
+    selectionnerObstacle(document, obstacles[iVisee])
+    relire()
+    setParametres((precedents) => {
+      const suivants = new URLSearchParams(precedents)
+      suivants.delete(PARAM_CHAMP)
+      return suivants
+    }, { replace: true })
+  }, [iVisee, obstacles, relire, setParametres])
   const choisir = (o, i) => {
     setActif(i)
     setChoisi(o.id)

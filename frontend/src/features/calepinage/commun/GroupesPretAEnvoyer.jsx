@@ -193,6 +193,13 @@ function ContenuPourquoi({ controle, calepinageId, cause, entree, gesteServi }) 
   )
 }
 
+/* ACAL1983 — « Fiche incomplète » : le bouton dit le geste SERVI (« Compléter la fiche du module »), pas le générique. */
+const libelleBouton = (controle, etape) => {
+  const geste = String(controle?.geste || '')
+  if (/^Compléter la fiche/.test(geste) && geste.length <= 48) return geste
+  return etape ? `Régler dans ${etape}` : 'Régler'
+}
+
 function Ligne({ controle, onRegler }) {
   const cible = cibleDuReglage(controle) // T4-U4-007 — la cible du point servi
   const aRegler = (controle.etat === 'a_regler' || controle.etat === 'bloquant') && Boolean(cible?.onglet)
@@ -208,7 +215,7 @@ function Ligne({ controle, onRegler }) {
       {aRegler && (
         <button type="button" data-testid={`cal-pret-regler-${controle.code}`} className="cdoc-regler"
           onClick={() => onRegler(cible)}>
-          {etape ? `Régler dans ${etape}` : 'Régler'}
+          {libelleBouton(controle, etape)}
         </button>
       )}
     </li>

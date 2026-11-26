@@ -24,9 +24,9 @@ vi.mock('./exportImage', () => ({
 import calepinageApi from '../../api/calepinageApi'
 import SchemaUnifilairePanel, { PlancheSchema, SchemaEnBlocs } from './SchemaUnifilairePanel'
 import {
-  motifDuRefusDxf, corpsEdition, couperTexte, estHorsReseau, lignesCartouche, lignesLegende, phraseCoteReseau, planSchemaEnBlocs,
+  motifDuRefusDxf, corpsEdition, couperTexte, estHorsReseau, lignesCartouche, lignesLegende, phraseCoteReseau, planDepuisDocument, planSchemaEnBlocs,
 } from './SchemaUnifilairePanel.helpers'
-import { exempleContrat } from '../../test/fixtures/contractSamples'
+import { documentContrat, exempleContrat } from '../../test/fixtures/contractSamples'
 import { OPTIONS_TELECHARGEMENT } from './documents/telechargement'
 
 const servir = (data) => {
@@ -619,5 +619,208 @@ describe('planSchemaEnBlocs / SchemaEnBlocs (maquette Schema, tour 2)', () => {
     expect(couperTexte('Compteur de production', 12)).toEqual(['Compteur de', 'production'])
     expect(couperTexte('un deux trois quatre cinq', 5, 2)).toEqual(['un', 'deux…'])
     expect(couperTexte(null, 10)).toEqual([])
+  })
+})
+
+/* ── LOT 6 — le MÊME dessin, lu sur le document `schema_electrique` du contrat (ventes/schema_electrique.json) ── */
+describe('planDepuisDocument — le document schema_electrique (lot 6)', () => {
+  const doc = (option, variante = 'exemple') => structuredClone(
+    exempleContrat('ventes', 'schema_electrique', variante).schema_electrique.options[option])
+  const dessiner = (plan) => {
+    render(<PlancheSchema balisage={null} dessin={<SchemaEnBlocs plan={plan} />} />)
+    return screen.getByTestId('csch-blocs')
+  }
+
+  it('avec batterie : quatre chaînes aux quatre couleurs du contrat, onduleur, côté réseau ET la carte batterie', () => {
+    const plan = planDepuisDocument(doc('avec_batterie'))
+    expect(plan.chaines.map((c) => [c.chaine, c.nombre, c.couleur, c.mppt])).toEqual([
+      [1, 12, 'rgb(36, 130, 214)', 1], [2, 12, 'rgb(232, 125, 33)', 1],
+      [3, 12, 'rgb(46, 163, 89)', 2], [4, 12, 'rgb(184, 64, 158)', 2]])
+    expect(plan.onduleur.designation.join(' ')).toBe('Deye SUN-20K-SG05LP3')
+    expect(plan.onduleur.entrees).toBe('2 entrées : 1 et 2')
+    expect(plan.blocsAc.map((b) => b.cle)).toEqual(['coffret_ac', 'compteur', 'tgbt', 'reseau'])
+    expect(plan.batterie.lignes).toEqual(['Dyness BX51100', '3 unités', '15,36 kWh au total', '51,2 V'])
+    expect(plan.legende.map((l) => l.libelle)).toContain('Liaison batterie')
+    // La carte est dans la bande courant continu, à gauche de l'onduleur, et ne le recouvre pas.
+    expect(plan.batterie.x + plan.batterie.l).toBeLessThan(plan.onduleur.x)
+    expect(plan.batterie.y + plan.batterie.h).toBeLessThan(plan.bandes[0].h)
+    const blocs = dessiner(plan)
+    for (const texte of ['Batterie', 'Dyness BX51100', '3 unités', '15,36 kWh au total', '51,2 V',
+      'Chaîne 4 · 12 panneaux', 'Côté réseau · courant alternatif', 'Compteur ONEE']) {
+      expect(blocs).toHaveTextContent(texte)
+    }
+    expect(screen.getByTestId('csch-bloc-batterie')).toBeInTheDocument()
+    expect(screen.getByTestId('csch-lien-batterie')).toBeInTheDocument()
+    // La batterie n'ajoute aucune largeur : le côté réseau reste dans la planche de 1440 px.
+    expect(plan.largeur).toBeLessThanOrEqual(880)
+  })
+
+  it('sans batterie : aucune carte, aucune liaison, aucune ligne de légende « batterie »', () => {
+    const plan = planDepuisDocument(doc('sans_batterie'))
+    expect(plan.batterie).toBeUndefined()
+    expect(plan.chaines.map((c) => c.nombre)).toEqual([18, 17])
+    expect(plan.legende.map((l) => l.libelle)).not.toContain('Liaison batterie')
+    dessiner(plan)
+    expect(screen.queryByTestId('csch-bloc-batterie')).toBeNull()
+    expect(screen.queryByTestId('csch-lien-batterie')).toBeNull()
+  })
+
+  it('une valeur null est omise, jamais remplacée : niveau standard (tension et calibres absents)', () => {
+    const d = doc('avec_batterie', 'exemple_standard')
+    const plan = planDepuisDocument(d)
+    expect(plan.batterie.lignes).toEqual(['Dyness BX51100', '3 unités', '15,36 kWh au total'])
+    d.batterie.capacite_kwh = null
+    d.batterie.designation = null
+    expect(planDepuisDocument(d).batterie.lignes).toEqual(['3 unités'])
+    // Sections nulles : aucune étiquette « mm² » ni longueur sur les liaisons.
+    expect(plan.liaisons.every((l) => !l.etiquette?.lignes.some((t) => /mm²| m$/.test(t)))).toBe(true)
+    expect(dessiner(plan).textContent).not.toMatch(/—|–|\bnull\b|undefined|NaN/)
+  })
+
+  it('champ sans découpage : UN champ au nombre réel de panneaux, aucune chaîne inventée, côté réseau en creux', () => {
+    const plan = planDepuisDocument(doc('sans_batterie', 'exemple_champ_sans_repartition'))
+    expect(plan.chaines).toHaveLength(1)
+    expect(plan.chaines[0].libelle).toBe('Champ · 35 panneaux')
+    expect(plan.chaines[0].couleur).toBeNull()
+    expect(plan.chaines[0].mppt).toBeNull()
+    expect(plan.coteReseauACalculer).toBe(true)
+    expect(plan.blocsAc.every((b) => b.aCalculer)).toBe(true)
+    expect(plan.legende[0].libelle).toBe('Champ de panneaux')
+  })
+
+  it('hors réseau : rien côté réseau ; sans panneau ni chaîne : null', () => {
+    const d = doc('avec_batterie')
+    d.cote_reseau = { etat: 'hors_reseau', motif: null }
+    d.coffret_ac = null; d.compteur_production = null; d.tgbt = null; d.reseau = null
+    const plan = planDepuisDocument(d)
+    expect(plan.blocsAc).toEqual([])
+    expect(plan.coteReseauACalculer).toBe(false)
+    const vide = doc('sans_batterie', 'exemple_champ_sans_repartition')
+    vide.panneaux.nombre = 0
+    expect(planDepuisDocument(vide)).toBeNull()
+    expect(planDepuisDocument(null)).toBeNull()
+    expect(planDepuisDocument({})).toBeNull()
+  })
+
+  it('aucun montant : le dessin ne contient ni prix ni devise, avec ou sans batterie', () => {
+    for (const option of ['avec_batterie', 'sans_batterie']) {
+      cleanup()
+      const texte = dessiner(planDepuisDocument(doc(option))).textContent
+      expect(texte).not.toMatch(/\bDH\b|\bMAD\b|€|\$|\bprix\b|\bHT\b|\bTTC\b|\bachat\b/i)
+    }
+  })
+
+  it('un libellé édité (parafoudre DC renommé) s\'affiche par le chemin du document', () => {
+    const plan = planDepuisDocument(doc('avec_batterie'), { parafoudre_dc: 'Protection foudre toit' })
+    expect(plan.coffretDc.organes.find((o) => o.clef === 'parafoudre_dc').nom).toBe('Protection foudre toit')
+    expect(plan.coffretDc.organes.find((o) => o.clef === 'sectionneur_dc').nom).toBe('Sectionneur')
+    expect(dessiner(plan)).toHaveTextContent('Protection foudre toit')
+  })
+
+  it.each([100, 400])('champ de %i panneaux : tuiles bornées et lisibles, le nombre écrit reste le vrai', (n) => {
+    const d = doc('sans_batterie', 'exemple_champ_sans_repartition')
+    d.panneaux.nombre = n
+    const plan = planDepuisDocument(d)
+    const g = plan.chaines[0].glyphes
+    expect(g.n).toBeLessThanOrEqual(24)
+    expect(g.l).toBeGreaterThan(3)
+    expect(plan.chaines[0].libelle).toBe(`Champ · ${n} panneaux`)
+    expect(plan.chaines[0].detail).toBe(`${n} × 715 Wc`)
+    const blocs = dessiner(plan)
+    const tuiles = [...blocs.querySelectorAll('rect.csch-glyphe')]
+    expect(tuiles).toHaveLength(g.n)
+    expect(tuiles.every((t) => Number(t.getAttribute('width')) > 0)).toBe(true)
+  })
+
+  it('étage moyenne tension : ses blocs entre le coffret et le compteur, « à confirmer », sans rien recouvrir', () => {
+    const d = doc('avec_batterie')
+    d.etage_mt = [
+      { clef: 'cellule_mt', titre: 'Cellule MT', detail: 'à confirmer' },
+      { clef: 'transfo', titre: 'Transformateur MT/BT', detail: 'à confirmer' }]
+    const base = planDepuisDocument(doc('avec_batterie'))
+    const plan = planDepuisDocument(d)
+    expect(plan.blocsAc.map((b) => b.cle)).toEqual(['coffret_ac', 'mt-cellule_mt', 'mt-transfo', 'compteur', 'tgbt', 'reseau'])
+    // Aucun recouvrement horizontal dans la chaîne alternative, de la gauche vers l'onduleur.
+    const rangee = [...plan.blocsAc].sort((a, b) => a.x - b.x)
+    rangee.forEach((b, i) => {
+      const suivant = rangee[i + 1] ?? plan.onduleur
+      expect(b.x + b.l).toBeLessThan(suivant.x)
+    })
+    expect(Math.min(...plan.blocsAc.map((b) => b.x))).toBeGreaterThanOrEqual(0)
+    // Les blocs côté réseau n'ont pas bougé ; l'onduleur et la batterie ont glissé de la largeur ajoutée.
+    expect(plan.blocsAc.find((b) => b.cle === 'reseau').x).toBe(base.blocsAc.find((b) => b.cle === 'reseau').x)
+    const w = plan.largeur - base.largeur
+    expect(plan.onduleur.x - base.onduleur.x).toBe(w)
+    expect(plan.batterie.x - base.batterie.x).toBe(w)
+    // Chaque liaison alternative relie deux blocs voisins ; les entrées des chaînes atteignent l'onduleur déplacé.
+    expect(plan.liaisons.filter((l) => /^ac\d/.test(l.cle))).toHaveLength(6)
+    expect(plan.liaisons.filter((l) => l.couleur).map((l) => l.points.at(-1)[0]).filter((x) => x === plan.onduleur.x).length).toBeGreaterThan(0)
+    const blocs = dessiner(plan)
+    expect(blocs).toHaveTextContent('Cellule MT')
+    expect(blocs).toHaveTextContent('Transformateur')
+    expect(screen.getByTestId('csch-bloc-mt-cellule_mt')).toHaveTextContent('à confirmer')
+    // Basse tension : aucun bloc MT.
+    expect(base.blocsAc.some((b) => b.aConfirmer)).toBe(false)
+  })
+
+  it('plusieurs groupes d\'onduleurs : tous listés, aucun total ni puissance d\'un seul groupe', () => {
+    const d = doc('avec_batterie')
+    d.onduleurs.push({ designation: 'Huawei SUN2000-10KTL', puissance_kw: 10, nombre: 2, nb_entrees: 2 })
+    const plan = planDepuisDocument(d)
+    expect(plan.onduleur.puissance).toBeNull()
+    expect(plan.onduleur.entrees).toBeNull()
+    expect(plan.onduleur.designation.join(' ')).not.toContain('…')
+    expect(plan.onduleur.designation.join(' ')).toMatch(/^1 × Deye.*SUN-20K-SG05LP3.*20 kW 2 × Huawei.*SUN2000-10KTL.*10 kW$/)
+    const blocs = dessiner(plan)
+    expect(blocs).toHaveTextContent('SUN2000-10KTL')
+    expect(blocs).toHaveTextContent('SUN-20K-SG05LP3')
+  })
+
+  it('deux dessins montés ensemble : un identifiant de flèche par instance', () => {
+    const plan = planDepuisDocument(doc('avec_batterie'))
+    render(<><SchemaEnBlocs plan={plan} /><SchemaEnBlocs plan={plan} /></>)
+    const ids = [...document.querySelectorAll('marker')].map((m) => m.id)
+    expect(ids).toHaveLength(2)
+    expect(new Set(ids).size).toBe(2)
+    const liens = [...document.querySelectorAll('[data-testid="csch-lien-batterie"]')]
+    expect(liens.map((l) => l.getAttribute('marker-end'))).toEqual(ids.map((i) => `url(#${i})`))
+  })
+
+  // Tous les états que porte `calepinage_sld.json` (clés `exemple*`), puis leurs variantes extrêmes : chacun se dessine sans
+  // lever, sans « undefined / NaN / null » à l'écran ; un état sans document (`exemple_vide`) ne dessine rien.
+  const etats = Object.keys(documentContrat('calepinage', 'calepinage_sld')).filter((k) => k.startsWith('exemple'))
+  const variantes = {
+    tel_quel: () => {},
+    onduleur_sans_fiche: (d) => { d.onduleurs = [{ designation: null, puissance_kw: null, nombre: null, nb_entrees: null }] },
+    micro_onduleurs: (d) => { d.onduleurs = [{ designation: 'Micro-onduleur 400 W', puissance_kw: 0.4, nombre: 24, nb_entrees: 1 }] },
+    cote_reseau_a_calculer: (d) => {
+      Object.assign(d, { coffret_ac: null, compteur_production: null, tgbt: null, reseau: null,
+        cote_reseau: { etat: 'a_calculer', motif: 'Le côté réseau n’est pas encore dimensionné.' } })
+    },
+    champ_de_300_panneaux: (d) => { d.chaines_reparties = false; d.chaines = []; d.panneaux.nombre = 300 },
+    sans_module: (d) => { d.panneaux.module = { designation: null, puissance_wc: null } },
+  }
+  describe.each(etats)('état « %s » de calepinage_sld.json', (etat) => {
+    it.each(Object.keys(variantes))('%s : dessiné sans lever', (variante) => {
+      const d = structuredClone(exempleContrat('calepinage', 'calepinage_sld', etat).schema_electrique)
+      if (d === null) { expect(planDepuisDocument(d)).toBeNull(); return }
+      variantes[variante](d)
+      const plan = planDepuisDocument(d, {})
+      expect(plan).not.toBeNull()
+      expect(dessiner(plan).textContent).not.toMatch(/undefined|NaN|\bnull\b/)
+    })
+  })
+
+  it('aucun onduleur servi : aucun bloc onduleur inventé (pas de plan)', () => {
+    const d = doc('avec_batterie')
+    d.onduleurs = []
+    expect(planDepuisDocument(d)).toBeNull()
+  })
+
+  it('un clic sur la batterie ouvre la section où elle se règle', () => {
+    const onOuvrir = vi.fn()
+    render(<PlancheSchema balisage={null} dessin={<SchemaEnBlocs plan={planDepuisDocument(doc('avec_batterie'))} onOuvrir={onOuvrir} />} />)
+    fireEvent.click(screen.getByTestId('csch-bloc-batterie'))
+    expect(onOuvrir).toHaveBeenLastCalledWith('materiel-electrique')
   })
 })

@@ -5,7 +5,7 @@ import useResource from '../../../hooks/useResource'
 import { formatNumber, formatPercent } from '../../../lib/format'
 import { Button, Card, EmptyState, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
-import { celluleLongueur, libelleCote } from './CheminementCables.helpers'
+import { celluleLongueur, libelleChamp, libelleCote } from './CheminementCables.helpers'
 import ParcoursDuPan from './ParcoursDuPan'
 import Pourquoi from '../commun/Pourquoi'
 
@@ -252,7 +252,7 @@ export default function CheminementCables({ calepinageId, builderApi } = {}) {
                 {omissions.map((o, index) => (
                   // Pas d'identifiant stable côté serveur pour une omission.
                   <li key={index} data-testid={`calx229-omission-${index}`}>
-                    {o.champ ? <span className="font-medium">{`${o.champ} — `}</span> : null}
+                    {libelleChamp(o.champ) ? <span className="font-medium">{`${libelleChamp(o.champ)} — `}</span> : null}
                     {o.motif}
                   </li>
                 ))}

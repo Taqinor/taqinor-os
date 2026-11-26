@@ -5,7 +5,7 @@ import {
   CHAMPS_REQUIS_PAR_TYPE,
 } from '../../../pages/stock/ficheCompletude'
 import RetourAtelier from '../atelier/RetourAtelier'
-import { impactChamp } from './FichesIncompletes.helpers'
+import { impactChamp, libelleChamp } from './FichesIncompletes.helpers'
 
 /* ============================================================================
    CAL121 — LE PANNEAU « FICHES INCOMPLÈTES » DU CALEPINAGE.
@@ -74,14 +74,14 @@ function LigneChamp({ famille, champ, requis }) {
       className="flex flex-wrap items-baseline gap-x-2 text-sm"
       data-testid={`cal-fiche-manquant-${famille}-${champ}`}
     >
-      <code className="text-xs text-primary-text">{champ}</code>
+      <span className="text-xs font-semibold text-primary-text">{libelleChamp(champ, famille)}</span>
       {requis && (
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground" data-testid={`cal-fiche-requis-${famille}-${champ}`}>
           requis
         </span>
       )}
       <span className="text-foreground">
-        {impact ?? `champ servi par la fiche technique, hors du contrat de calcul documenté du calepinage (${champ})`}
+        {impact ?? `champ servi par la fiche technique, hors du contrat de calcul documenté du calepinage (${libelleChamp(champ, famille)})`}
       </span>
     </li>
   )
@@ -190,7 +190,7 @@ function MaterielDuCalcul({ materiel, panneauDevis }) {
                     {bloc.provenance && ` (${PROVENANCES[bloc.provenance] ?? bloc.provenance})`}
                     {bloc.fiche_complete === false && (bloc.champs_manquants ?? []).length > 0 && (
                       <span className="text-red-300">
-                        {' '}— fiche incomplète : {bloc.champs_manquants.join(', ')}
+                        {' '}— fiche incomplète : {bloc.champs_manquants.map((c) => libelleChamp(c, role === 'module' ? 'panneau' : role)).join(', ')}
                       </span>
                     )}
                   </>

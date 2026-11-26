@@ -123,3 +123,15 @@ rougit pas tant que la route n'existe pas.
 | `devis_echeancier.json` | PUT ventes/devis/<pk>/echeancier/ sur devis accepté (VNT6) |
 | `vente_etat.json` | GET ventes/devis/<pk>/ : bloc `vente` (état de la vente), 7 variantes (VNT7 ; ATOT59 : `exemple_avoir_a_confirmer`) |
 | `devis_journal_auto.json` | GET ventes/devis/<id>/ : `etude_params.journal_auto.alertes` [{code, message, champ_lead, interne?}] — suppositions dites à la création du devis automatique, remontrées à la réouverture, jamais au PDF (ADEV123/ADEV125) |
+
+## Lot 6 — schéma électrique du devis, contrat posé SEUL (26/11/2026)
+
+| Fichier | Endpoint / ce qu'il apparie |
+| --- | --- |
+| `schema_electrique.json` (+ copie jumelle `apps/web/src/contract_samples/`) | clé ADDITIVE `schema_electrique` de GET public/proposal/<token>/data/ : `{options: {sans_batterie, avec_batterie}}`, un document par option (chaînes colorées, coffrets, onduleur(s), batterie, côté réseau). Le MÊME document est la 7e clé `schema_electrique` de GET calepinage/calepinages/<pk>/schema-unifilaire/ et la clé `schema_electrique` de GET ventes/devis/<pk>/schema-unifilaire/?format=json. Conception et lanes : `docs/audits/l5-calepinage/schema-electrique-devis.md` ; règle de source D-ACAL-131 |
+
+## Lot 6 — visionneuse au soleil des clients de confiance, contrat posé SEUL (26/11/2026)
+
+| Fichier | Endpoint / ce qu'il apparie |
+| --- | --- |
+| `visionneuse_soleil.json` (+ copie jumelle `apps/web/src/contract_samples/`) | clé ADDITIVE `visionneuse_soleil` de GET public/proposal/<token>/data/, servie au niveau « confiance » seulement : `{version, zones[{index, id, acces[], calcule_le}], environnement[], instant_choisi}` — accès solaire ENREGISTRÉ par module (`geometry.solarAccess.values`), objets voisins sans libellé, instant choisi par le commercial. Conception et lanes : `docs/audits/l5-calepinage/visionneuse-soleil-client.md` ; décisions D-ACAL-132 à 138 |

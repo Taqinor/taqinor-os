@@ -28,7 +28,7 @@ from pathlib import Path
 from unittest import mock
 
 from django.db import transaction
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from freezegun import freeze_time
 
 from apps.ventes.models import Devis, LigneDevis, ShareLink
@@ -225,6 +225,10 @@ CLES_HORS_RENDU_ORIGINE = (
     # ouvert (nouveaux rendus : un brouillon jamais envoyé les porte) et la
     # phrase approuvée sous la facture recalculée : des textes, aucun chiffre.
     ('phrases_profil_ouvertes',), ('phrases_pdf_2511',), ('echeancier_option_signee',),
+    # SCHEL-B4 (26/11/2026) — drapeau de RENDU du cas ouvert de l'annexe : le
+    # schéma électrique (nouveaux rendus seulement), un texte de dessin, aucun
+    # chiffre de devis. Posé seulement quand l'annexe est demandée.
+    ('schema_electrique_annexe',),
     ('libelles_document', 'res_facture_recalculee_tranches'),
     ('libelles_document', 'agr_base_besoin_agronomique'),
     # Libellé « suite » des CGV tronquées, ajouté au catalogue sans chiffre.
@@ -533,3 +537,69 @@ class RenduReglesOrigineTests(TestCase):
                 self.assertNotEqual(_empreinte(self, frais, data),
                                     golden[f'{nom_fx}__defaut'], nom_fx)
                 transaction.set_rollback(True)
+
+
+class SchemaElectriqueNouveauxRendusTests(SimpleTestCase):
+    """SCHEL-B4 — l'annexe PV46 au schéma électrique, NOUVEAUX RENDUS seulement :
+    un devis envoyé avant la coupure garde l'annexe reçue ; le niveau courant
+    ne bouge pas ; le drapeau n'existe que dans le cas ouvert ET l'annexe."""
+
+    def _devis(self, statut='envoye', envoi=None, creation=None, regles=1):
+        from types import SimpleNamespace
+        return SimpleNamespace(statut=statut, date_envoi=envoi,
+                               date_creation=creation, regles_calcul=regles,
+                               mode_installation='residentiel')
+
+    def test_coupure_et_niveau_courant(self):
+        from apps.ventes.domain import regles_calcul as rc
+        self.assertEqual(rc.COUPURE_SCHEMA_ELECTRIQUE, (2026, 11, 27))
+        self.assertEqual(rc.REGLES_COURANTES, rc.REGLES_SENSIBILITES_1911)
+
+    def test_ouvert_aux_brouillons_et_aux_envois_depuis_la_coupure(self):
+        from apps.ventes.domain.regles_calcul import schema_electrique_ouvert
+        jour = datetime.datetime(2026, 11, 27, 9, 0)
+        veille = datetime.datetime(2026, 11, 26, 18, 0)
+        self.assertTrue(schema_electrique_ouvert(None))
+        self.assertTrue(schema_electrique_ouvert(self._devis(statut='brouillon')))
+        self.assertTrue(schema_electrique_ouvert(self._devis(envoi=jour)))
+        self.assertFalse(schema_electrique_ouvert(self._devis(envoi=veille)))
+        self.assertFalse(schema_electrique_ouvert(
+            self._devis(statut='accepte', creation=veille)))
+
+    def test_drapeau_seulement_dans_le_cas_ouvert_et_avec_l_annexe(self):
+        from apps.ventes.domain.regles_calcul import (
+            drapeaux_nouveaux_rendus, drapeaux_schema_electrique)
+        ouvert = self._devis(statut='brouillon')
+        ferme = self._devis(envoi=datetime.datetime(2026, 11, 20, 9, 0))
+        self.assertEqual(drapeaux_schema_electrique(ouvert),
+                         {'schema_electrique_annexe': True})
+        self.assertEqual(drapeaux_schema_electrique(ferme), {})
+        self.assertNotIn('schema_electrique_annexe', drapeaux_nouveaux_rendus(ouvert))
+        self.assertIn('schema_electrique_annexe',
+                      drapeaux_nouveaux_rendus(ouvert, annexe=True))
+        self.assertNotIn('schema_electrique_annexe',
+                         drapeaux_nouveaux_rendus(ferme, annexe=True))
+
+    def test_l_annexe_d_un_devis_ferme_garde_la_planche_d_hier(self):
+        from apps.ventes.quote_engine import artefacts_rendu
+        ferme = self._devis(envoi=datetime.datetime(2026, 11, 20, 9, 0))
+        ferme.electrical_design = {'materiel': {'nb_modules': 1}}
+        ferme.roof_image = None
+        data = {}
+        opts = {'include_calepinage': False, 'include_annexe_technique': True}
+        with mock.patch.object(artefacts_rendu, '_sld_svg', return_value='<svg>hier</svg>'), \
+                mock.patch.object(artefacts_rendu, '_schema_electrique_svg',
+                                  return_value='<svg>neuf</svg>') as neuf:
+            artefacts_rendu.ajouter_artefacts_rendu(data, ferme, opts, {}, False, [])
+        self.assertEqual(data['sld_svg'], '<svg>hier</svg>')
+        self.assertNotIn('schema_electrique_annexe', data)
+        neuf.assert_not_called()
+        ouvert = self._devis(statut='brouillon')
+        ouvert.electrical_design, ouvert.roof_image = ferme.electrical_design, None
+        data = {}
+        with mock.patch.object(artefacts_rendu, '_sld_svg', return_value='<svg>hier</svg>'), \
+                mock.patch.object(artefacts_rendu, '_schema_electrique_svg',
+                                  return_value='<svg>neuf</svg>'):
+            artefacts_rendu.ajouter_artefacts_rendu(data, ouvert, opts, {}, False, [])
+        self.assertEqual(data['sld_svg'], '<svg>neuf</svg>')
+        self.assertTrue(data['schema_electrique_annexe'])

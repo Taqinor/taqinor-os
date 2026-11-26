@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { couleurAccesActive } from '@rooflib/shadingEngine'
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
+import { couvertureServie } from '@roofpro/affichageErp' // ACAL1613 — LA part « De la consommation » du constructeur
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
 import { formatKwc, formatNumber } from '../../../../../lib/format'
@@ -11,10 +12,12 @@ import { SurCarte } from '../emplacements'
 import { BoutonMarine, CarteFlottante, Icone, Indicateur, Segmente } from '../primitives'
 import { BESOIN_MAX, gestes, useConstructeur, usePoseVivante } from './panneaux/constructeur'
 import { jourMois, ligneModule } from './panneaux/formats'
-import { useCibleFactures } from './panneaux/lectures'
+import { useCibleFactures, useLectureServie } from './panneaux/lectures'
 import ValeurUnite from './panneaux/ValeurUnite'
 import { fmtKwc, modulesServis, productionPubliee, simulationARefaire } from './panneaux/sources'
 import { SIMULATION_A_REFAIRE } from '../../../production/BandeauProvenanceProduction.helpers' // T4-X2-002
+import Pourquoi from '../../../commun/Pourquoi' // ACAL1728 — le « ? » unique des chiffres
+import { GESTES, lireOutils } from './EtapeToit.helpers' // ACAL1728 — Annuler / Rétablir de la barre de carte
 
 /* ============================================================================
    COQUE — L'ÉCRAN DE L'ÉTAPE « PANNEAUX » (maquettes Panneaux et Tablette).
@@ -66,6 +69,16 @@ function Vignette() {
 }
 
 const compte = (n) => (n === 1 ? '1 panneau' : `${n} panneaux`)
+
+/** ACAL1749 — des panneaux posés dont la puissance LUE sur le constructeur est nulle (document sans `modules[]`, aucun module
+    sur le pan) : jamais « 0,00 kWc » à côté de « 148 panneaux » — la puissance dit « module à choisir » (le choix est
+    « Panneau » ci-dessus) ; aucune puissance n'est recalculée ici. */
+const PUISSANCE_NULLE = /^0(?:[.,]0+)?\s*kWc$/
+const MODULE_A_CHOISIR = 'module à choisir'
+function sansPuissanceNulle(figures) {
+  return figures?.panneaux > 0 && PUISSANCE_NULLE.test((figures.kwc ?? '').trim())
+    ? { ...figures, kwc: MODULE_A_CHOISIR } : figures
+}
 const selectData = { select: (r) => r?.data ?? null }
 const sansParenthese = (t) => (t ?? '').replace(/\s*\([^)]*\)\s*$/, '')
 
@@ -75,6 +88,8 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
   // La taille des factures : l'accesseur PARTAGÉ avec l'étape Toit (trois états ; le design-context de l'atelier,
   // `ecranProps.contexte`, prime — relu ici seulement sans lui, REP-995).
   const facture = useCibleFactures(calepinageId, servi, { attendre })
+  // ACAL1613 — le bloc `chiffrage` du MÊME design-context (lecture partagée, aucune requête de plus).
+  const contexte = useLectureServie('contexte', calepinageId, { servi, actif: !attendre })
   const catalogue = useResource((id) => calepinageApi.calepinages.modulesDisponibles(id), calepinageId, selectData).data
   const entree = useResource((id) => calepinageApi.calepinages.entreeElectrique(id), calepinageId, selectData).data
   const resultat = useResource((p) => calepinageApi.calepinages.resultat(p.id), { id: calepinageId, enregistreLe },
@@ -82,6 +97,7 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
   return {
     leadId: facture.leadId,
     facture,
+    chiffrage: contexte.etat === 'ok' ? (contexte.donnees?.chiffrage ?? null) : null,
     cible: facture.cible,
     motifFacture: facture.refus || facture.motif,
     refusFacture: facture.refus,
@@ -92,6 +108,7 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
     kwcSelonWatt: catalogue?.kwc_selon_watt ?? {}, // T4-X8-011 — le kWc de ce compte dans ce module, servi
     servis: modulesServis(entree),
     publiee: productionPubliee(resultat),
+    resultat, // ACAL1728 — les valeurs des « ? » de la production publiée
     aRefaire: simulationARefaire(resultat), // T4-X2-002
     // T4-X7-002 — la simulation de la pose a trouvé un ÉCART RÉEL avec la conception (`taux_source: 'autre_installation'` :
     // autre puissance, ou batterie d'un seul côté) : sa part de la consommation ne se lit plus à côté de cette pose. Seul ce
@@ -221,8 +238,11 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   if (partLue && (gardee?.pour !== cible.panneaux || gardee.watt !== figures.watt || gardee.texte !== partLue)) {
     setGardee({ pour: cible.panneaux, watt: figures.watt, texte: partLue })
   }
+  // ACAL1613 — la carte non posée dit aussi sa part : la part SERVIE à SA taille, par LA fonction qui écrit « De la
+  // consommation » du constructeur (`couvertureServie`, kWc égal à celui de la conception, sinon rien — jamais une autre pose).
+  const pctServi = cible && servi.partDeLaConception ? couvertureServie(servi.chiffrage, cible.kwc) : null
   const partFacture = partLue ?? (gardee && cible && gardee.pour === cible.panneaux && gardee.watt === figures.watt
-    ? gardee.texte : null)
+    ? gardee.texte : null) ?? (pctServi != null ? `≈ ${Math.round(pctServi)} % de la consommation` : null)
   // ACAL2022 (T4-X2-001) — la carte dit la taille de la CONCEPTION (son nombre de panneaux et SON kWc, nommée) : jamais un nombre
   // de panneaux à côté du kWc d'un autre module ; la pose posée se dit à part (« Posé : … »).
   // T4-X8-011 — un module d'une autre puissance : la ligne dit LE compte servi pour ce module et SON kWc servi (« 6 panneaux
@@ -350,6 +370,36 @@ function RetirerUnPanneau({ etat, lectureSeule, g }) {
   )
 }
 
+/** ACAL1728 (reprise d'ACAL869) — « Personnaliser la disposition » en Guidé : l'alignement des rangées, Annuler et
+    Rétablir, chacun RENVOYÉ au vrai contrôle du script (`#rp9-alignement-select`, `#rp9-layout-undo` / `-redo` par les
+    gestes de la barre de carte, `EtapeToit.helpers.js::GESTES`) ; leur état est LU sur ces contrôles, jamais supposé. */
+function PersonnaliserDisposition({ lectureSeule, rafraichir }) {
+  const [, relire] = useState(0)
+  const liste = document.getElementById('rp9-alignement-select')
+  const modes = liste ? Array.from(liste.options).map((o) => ({ valeur: o.value, libelle: sansParenthese(o.textContent) })) : []
+  const outils = lireOutils(document)
+  const geste = (faire) => () => { faire(); rafraichir(); relire((n) => n + 1) }
+  const aligner = (v) => {
+    const champ = document.getElementById('rp9-alignement-select')
+    if (!champ || champ.disabled || v === champ.value) return
+    champ.value = v
+    champ.dispatchEvent(new Event('change', { bubbles: true }))
+  }
+  return (
+    <details className="cal-pan-section" data-testid="cal-panneaux-disposition">
+      <summary className="cal-pan-titre">Personnaliser la disposition</summary>
+      {modes.length > 0 && (
+        <Segmente libelle="Alignement des rangées" options={modes} valeur={liste.value}
+          onChange={(v) => { if (!lectureSeule) geste(() => aligner(v))() }} />
+      )}
+      <div className="cal-pan-alerte-actions">
+        <BoutonMarine disabled={lectureSeule || !outils.annuler} onClick={geste(() => GESTES.annuler(document))}>Annuler</BoutonMarine>
+        <BoutonMarine disabled={lectureSeule || !outils.retablir} onClick={geste(() => GESTES.retablir(document))}>Rétablir</BoutonMarine>
+      </div>
+    </details>
+  )
+}
+
 const PICTO_PORTRAIT = (
   <svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><rect x="0.75" y="0.75" width="8.5" height="14.5" rx="1" /></svg>
 )
@@ -410,26 +460,30 @@ function AlerteOmbre({ ombre, g }) {
 /** La puce de la carte. Production publiée FRAÎCHE et COMPLÈTE → la pose simulée et sa production, libellé de l'étape
     Résultats ; sinon la pose du constructeur, son estimation nommée « estimation » et la part de la consommation servie
     (T4-X7-002 : énergie autoconsommée ÷ consommation, le nom et la grandeur des Résultats ; tue par `partDeLaConception`). */
-function PuceResume({ figures, publiee, site = null, aRefaire = false, partDeLaConception = true }) {
+function PuceResume({ figures, publiee, site = null, aRefaire = false, partDeLaConception = true, resultat = null }) {
   // ACAL2022 (T4-X2-009) — le site compte plus que ce pan (champ au sol, autre pan) : la bande dit qu'elle compte CE pan et le total du site est dit.
   const autrePan = !publiee && site?.panneaux > 0 && figures.panneaux > 0 && site.panneaux !== figures.panneaux
   const pan = autrePan ? ' · ce pan' : ''
+  // ACAL1728 (reprise d'ACAL876) — chaque chiffre porte son « ? » (phrase du REGISTRE servi, `commun/Pourquoi.jsx`) : la
+  // production publiée, celles de l'étape Résultats ; la pose du constructeur, celles de sa carte « Recommandation ».
   const indicateurs = publiee
     ? [
-      ['Panneaux', publiee.panneaux != null ? String(publiee.panneaux) : null],
-      ['Puissance', publiee.kwc],
-      [publiee.libelle, kwh(publiee.p50)],
+      ['Panneaux', publiee.panneaux != null ? String(publiee.panneaux) : null, <Pourquoi key="?" cle="toit.pose_panneaux" />],
+      ['Puissance', publiee.kwc, <Pourquoi key="?" cle="production.kwc" valeurs={resultat} />],
+      [publiee.libelle, kwh(publiee.p50), <Pourquoi key="?" cle="production.p50_kwh" valeurs={resultat} />],
     ]
     : [
-      [`Panneaux${pan}`, figures.panneaux ? String(figures.panneaux) : null],
-      [`Puissance${pan}`, figures.kwc],
+      [`Panneaux${pan}`, figures.panneaux ? String(figures.panneaux) : null, <Pourquoi key="?" cle="toit.reco_panneaux" />],
+      [`Puissance${pan}`, figures.kwc, <Pourquoi key="?" cle="toit.reco_puissance" />],
       ...(autrePan ? [['Total du site', [`${site.panneaux} panneaux`, site.kwc].filter(Boolean).join(' · ')]] : []),
       // ACAL2022 — la production est celle de la conception SERVIE ; pendant le dessin, « au prochain enregistrement ».
-      figures.productionKwh != null ? ['Production · conception', figures.production]
+      [...(figures.productionKwh != null ? ['Production · conception', figures.production]
         // M5 — la raison est celle que dit le constructeur (`affichageErp.raisonSansValeur`) : « au prochain enregistrement » seulement là où il
         // est vrai, sinon « calculée pour la conception du lead : X kWc — votre pose en compte Y kWc ».
-        : ['Production', figures.production ? figures.production.replace(/^production\s+/i, '') : null],
-      ['De la consommation', partDeLaConception && figures.couverture ? `≈ ${figures.couverture}` : null],
+        : ['Production', figures.production ? figures.production.replace(/^production\s+/i, '') : null]),
+      <Pourquoi key="?" cle="toit.reco_production" />],
+      ['De la consommation', partDeLaConception && figures.couverture ? `≈ ${figures.couverture}` : null,
+        <Pourquoi key="?" cle="toit.reco_couverture" />],
     ]
   const lus = indicateurs.filter(([, valeur]) => valeur)
   // T4-X9-006 — tailles différentes : la phrase du constructeur, UNE fois, en texte courant qui revient à la ligne dans la
@@ -440,8 +494,8 @@ function PuceResume({ figures, publiee, site = null, aRefaire = false, partDeLaC
   if (lus.length === 0 && !phrase && !aRefaireTexte) return null
   return (
     <CarteFlottante className="cal-pan-puce" data-testid="cal-sur-carte-resume">
-      {lus.map(([libelle, valeur]) => (
-        <Indicateur key={libelle} libelle={libelle} valeur={<ValeurUnite texte={valeur} />} />
+      {lus.map(([libelle, valeur, aide]) => (
+        <Indicateur key={libelle} libelle={aide ? <>{libelle}{aide}</> : libelle} valeur={<ValeurUnite texte={valeur} />} />
       ))}
       {phrase && <p className="cal-pan-puce-phrase">{phrase}</p>}
       {aRefaireTexte && <p className="cal-pan-puce-phrase">{aRefaireTexte}</p>}
@@ -514,7 +568,8 @@ export default function EtapePanneaux({
   calepinageId, lectureSeule = false, enregistreLe = null, contexte = null, contexteEnCours = false, parcours = null,
   builderApi = null,
 }) {
-  const [etat, rafraichir] = useConstructeur()
+  const [lu, rafraichir] = useConstructeur()
+  const etat = { ...lu, figures: sansPuissanceNulle(lu.figures) } // ACAL1749
   const site = usePoseVivante(true, builderApi)
   // Chaque geste part au vrai contrôle, puis la lecture est refaite tout de suite (sinon elle suit 0,4 s plus tard).
   const g = Object.fromEntries(Object.entries(gestes).map(([nom, geste]) => [
@@ -548,11 +603,12 @@ export default function EtapePanneaux({
           </p>
         )}
       </section>
+      <PersonnaliserDisposition lectureSeule={lectureSeule} rafraichir={rafraichir} />
       <AlerteOmbre key={etat.ombre?.n ?? 0} ombre={etat.ombre} g={g} />
       <AvisOmbresNonComptees manque={parcours?.manque} />
       <SurCarte>
         <PuceResume figures={etat.figures} publiee={servi.publiee} site={site} aRefaire={servi.aRefaire}
-          partDeLaConception={servi.partDeLaConception} />
+          partDeLaConception={servi.partDeLaConception} resultat={servi.resultat} />
         <div className="cal-carte-soleil" data-testid="cal-carte-soleil">
           {etat.soleil.carte && <LegendeSoleil carte={etat.soleil.carte} g={g} />}
           <LecteurSoleil soleil={etat.soleil} g={g} />

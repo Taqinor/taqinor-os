@@ -34,7 +34,7 @@ def _onduleur(ac_kw, **fiche):
             'phases': 3, **fiche}
 
 
-def _conception(modules, ac_kw, designation='Onduleur d essai', **fiche):
+def _conception(modules, ac_kw, designation='Onduleur d essai', role='', famille='', **fiche):
     layout = {'version': 2, 'zones': [
         {'label': 'PAN-A',
          'geometry': {'count': modules, 'azimuthDeg': 180.0,
@@ -43,7 +43,7 @@ def _conception(modules, ac_kw, designation='Onduleur d essai', **fiche):
         layout, module_specs=MODULE, onduleur_specs=_onduleur(ac_kw, **fiche),
         temperatures=temperatures_site(
             saisie={'temperature_min_c': -5.0, 'temperature_max_c': 70.0}),
-        onduleur_designation=designation)
+        onduleur_designation=designation, onduleur_famille=(role, famille))
 
 
 class BornesLuesTest(SimpleTestCase):
@@ -162,7 +162,8 @@ class UnSeulVerdictTest(SimpleTestCase):
         bloc, messages, verdict, controle = self._trois(_conception(48, 20.0, **hybride))
         self.assertIs(verdict['conforme'], True)
         self.assertEqual(bloc['borne_source'], SOURCE_BORNE_CAPACITE)
-        self.assertIn("dans la capacité publiée de l'onduleur (40 kWc)", verdict['detail'])
+        self.assertIn("dans la capacité publiée de l'onduleur (fiche constructeur : 40 kWc au plus)",
+                      verdict['detail'])
         self.assertEqual(controle['etat'], 'ok')
         self.assertNotIn("seuil d'alerte", '\n'.join(messages))
         self.assertGreater(bloc['valeur'], 1.35)  # la borne de ratio l'aurait refusé
@@ -172,14 +173,24 @@ class UnSeulVerdictTest(SimpleTestCase):
             48, 20.0, designation=hybride['designation'], dc_max_kwc=float(petite)))
         self.assertIs(verdict['conforme'], False)
         self.assertEqual(controle['etat'], 'a_regler')
-        self.assertIn("au-delà de la capacité publiée de l'onduleur (%d kWc)" % petite, verdict['detail'])
+        self.assertIn("au-delà de la capacité publiée de l'onduleur (fiche constructeur : %d kWc au plus)"
+                      % petite, verdict['detail'])
 
     def test_onduleur_reseau_et_fiche_sans_capacite_inchanges(self):
-        for fiche in ({'designation': 'Onduleur réseau 20 kW', 'dc_max_kwc': 40.0},
-                      {'designation': 'Onduleur hybride 20 kW'}):
-            bloc, _m, verdict, _c = self._trois(_conception(48, 20.0, **fiche))
+        from apps.calepinage.services.ratio_devis import MOTIF_HYBRIDE_SANS_CAPACITE
+
+        for fiche, dit in (({'designation': 'Onduleur réseau 20 kW', 'dc_max_kwc': 40.0}, False),
+                           ({'designation': 'Onduleur hybride 20 kW'}, True)):
+            from apps.calepinage.services.pret_a_envoyer import _ratio_dc_ac
+
+            bloc, messages, verdict, _c = self._trois(_conception(48, 20.0, **fiche))
             self.assertEqual(bloc['borne_source'], SOURCE_BORNE_DEVIS)
             self.assertIs(verdict['conforme'], False)  # 1,70 > 1,35
+            # D-HYB-1 (lead 1742) — l'hybride sans capacité publiée : la phrase dit que la fiche
+            # ne publie rien et nomme le champ ; jamais pour un onduleur réseau.
+            controle = _ratio_dc_ac(bloc, verdict=verdict)  # comme ``controles_electriques``
+            for texte in (verdict['detail'], controle['valeur_texte'], ' | '.join(messages)):
+                self.assertEqual(MOTIF_HYBRIDE_SANS_CAPACITE in texte, dit, texte)
 
     def test_sous_le_seuil_bas_la_borne_franchie_est_dite_aux_deux_ecrans(self):
         """Rejeu T3-VAGUEC2 — « 0,99 pour 1,35 au plus (règle du devis) » était
@@ -220,6 +231,74 @@ class UnSeulVerdictTest(SimpleTestCase):
         self.assertTrue(bloc['dans_bornes'])
         self.assertIs(verdict['conforme'], True)
         self.assertEqual(controle['etat'], 'ok')
+
+
+class HybrideParRoleEtFicheTest(SimpleTestCase):
+    """D-HYB-1 (fondateur 24/11/2026 : « un produit se reconnaît à son rôle et à sa fiche
+    avant son nom ») — l'hybride est reconnu par son RÔLE, puis par le port batterie de sa
+    FICHE, et par le mot de sa désignation en dernier seulement. Ici, aucun nom ne dit
+    « hybride » : avant, ces onduleurs étaient jugés à la borne 1,35."""
+
+    NOM = 'Deye SUN-20K-SG01HP3-EU-AM2'  # référence constructeur, sans le mot « hybride »
+
+    def test_les_trois_rangs(self):
+        from core.electrique.onduleurs import est_onduleur_hybride
+
+        self.assertTrue(est_onduleur_hybride(self.NOM, role='onduleur_hybride'))
+        self.assertFalse(est_onduleur_hybride('Onduleur hybride 20 kW', role='onduleur_reseau'))
+        self.assertTrue(est_onduleur_hybride(self.NOM, ports_batterie_kw=(None, 25.0)))
+        self.assertFalse(est_onduleur_hybride(self.NOM, role='', ports_batterie_kw=(None, 0)))
+        self.assertTrue(est_onduleur_hybride('Onduleur hybride 20 kW', role='batterie'))  # le nom, en dernier
+
+    def test_role_et_fiche_jugent_avant_le_nom_aux_trois_endroits(self):
+        for jeu in ({'role': 'onduleur_hybride'}, {'bat_max_charge_kw': 25.0}):
+            bloc, messages, verdict, controle = UnSeulVerdictTest._trois(
+                self, _conception(48, 20.0, designation=self.NOM, dc_max_kwc=40.0, **jeu))
+            self.assertEqual(bloc['borne_source'], SOURCE_BORNE_CAPACITE, jeu)
+            self.assertIs(verdict['conforme'], True, jeu)
+            self.assertEqual(controle['etat'], 'ok', jeu)
+            self.assertNotIn("seuil d'alerte", ' | '.join(messages), jeu)
+        # Un rôle d'onduleur RÉSEAU déclaré l'emporte sur le mot du nom.
+        bloc, _m, verdict, _c = UnSeulVerdictTest._trois(self, _conception(
+            48, 20.0, designation='Onduleur hybride 20 kW', role='onduleur_reseau', dc_max_kwc=40.0))
+        self.assertEqual((bloc['borne_source'], verdict['conforme']), (SOURCE_BORNE_DEVIS, False))
+
+    def test_famille_lue_sur_le_produit_deja_lu(self):
+        from types import SimpleNamespace
+
+        from apps.calepinage.services.ratio_devis import famille_de_l_onduleur
+
+        self.assertEqual(famille_de_l_onduleur(SimpleNamespace(role_devis='onduleur_hybride', nom=self.NOM)),
+                         ('onduleur_hybride', ''))
+        self.assertEqual(famille_de_l_onduleur(SimpleNamespace(role_devis='', nom=self.NOM)), ('', ''))
+        self.assertEqual(famille_de_l_onduleur(SimpleNamespace(role_devis='inconnu', nom='Onduleur off-grid 5 kW')),
+                         ('', 'onduleur_offgrid'))
+        self.assertEqual(famille_de_l_onduleur(SimpleNamespace(role_devis='', nom='Micro-onduleur 800W')),
+                         ('', 'micro_onduleur'))
+        self.assertEqual(famille_de_l_onduleur(None), ('', ''))
+
+    def test_port_batterie_d_une_autre_famille_n_est_pas_hybride(self):
+        """Relecture : un onduleur-chargeur hors réseau ou un micro-onduleur, sans rôle
+        déclaré, qui publie un port batterie, n'est PAS hybride ; un Deye sans rôle dont le
+        nom ne dit pas « hybride » mais qui publie un port batterie l'est toujours."""
+        from apps.calepinage.services.equipements import autre_famille_d_onduleur as autre_famille_d_onduleur_par_nom
+        from core.electrique.onduleurs import est_onduleur_hybride
+
+        for nom in ('Onduleur off-grid Growatt SPF 5000', 'Micro-onduleur Hoymiles 800W'):
+            famille = autre_famille_d_onduleur_par_nom(nom)
+            self.assertTrue(famille, nom)
+            self.assertFalse(est_onduleur_hybride(nom, ports_batterie_kw=(25.0,), autre_famille_par_nom=famille))
+            bloc, _m, verdict, _c = UnSeulVerdictTest._trois(self, _conception(
+                48, 20.0, designation=nom, famille=famille, dc_max_kwc=40.0, bat_max_charge_kw=25.0))
+            self.assertEqual((bloc['borne_source'], verdict['conforme']), (SOURCE_BORNE_DEVIS, False), nom)
+        self.assertEqual(autre_famille_d_onduleur_par_nom(self.NOM), '')
+        bloc, _m, verdict, _c = UnSeulVerdictTest._trois(self, _conception(
+            48, 20.0, designation=self.NOM, famille='', dc_max_kwc=40.0, bat_max_decharge_kw=25.0))
+        self.assertEqual((bloc['borne_source'], verdict['conforme']), (SOURCE_BORNE_CAPACITE, True))
+
+    # Relecture lot 6 (cliquet ACAL1009) : la comparaison avec le moteur de devis et la porte
+    # du moteur (pose sur un autre onduleur) vivent côté ventes, dans
+    # apps/ventes/tests/test_pv41_conception_electrique.py::VerdictHybrideCalepinageDevisTest.
 
 
 class EcretageTest(SimpleTestCase):

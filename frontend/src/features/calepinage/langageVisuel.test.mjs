@@ -51,6 +51,9 @@ test("ACAL438 : aucun texte de l'atelier sous 12 px", () => {
   for (const m of css.matchAll(/font(?:-size)?:\s*(?:[0-9]+\s+)?(0?\.\d+)rem/g)) assert.ok(parseFloat(m[1]) >= 0.75, `roofbuilder.css : ${m[0]} < 0,75 rem`)
 })
 
+// ACAL1746 — la grille des chiffres de la cible (`AtelierPanneaux.jsx`) suit la colonne : prouvé en RENDANT le composant
+// (`AtelierPanneaux.test.jsx`, cas « ACAL1746 »), pas en lisant son source.
+
 // ACAL969 — GARDE « K-STYLE » : toute classe `rp9-*` posée par le constructeur (`className = '…'` dans
 // `apps/web/src/scripts/roof-tool-pro11.ts`) a une règle dans `roofbuilder.css`, un seul état « choisi »
 // (`[aria-pressed='true']`, fond doré), un survol réservé aux pointeurs qui survolent, un badge « recommandé »

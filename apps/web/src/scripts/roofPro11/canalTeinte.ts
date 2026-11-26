@@ -2,7 +2,8 @@
 // sources : la carte d'accès solaire (allumée par l'utilisateur ou le temps de « Joindre la carte de chaleur ») et la
 // teinte par chaîne (table servie). Tant que la carte d'accès est allumée, elle passe AVANT les chaînes — y compris
 // quand le maillage est reconstruit ; éteinte, les chaînes reviennent (sinon la teinte d'origine).
-export type CouleurDe = ((cellIndex: number) => { r: number; g: number; b: number }) | null;
+// LOT 6 — une cellule peut rendre `null` : la scène y écrit sa teinte d'origine (un module sans mesure n'est pas teinté).
+export type CouleurDe = ((cellIndex: number) => { r: number; g: number; b: number } | null) | null;
 
 export function creerCanalTeinte(ecrire: (couleur: CouleurDe) => void) {
   let acces: CouleurDe = null;

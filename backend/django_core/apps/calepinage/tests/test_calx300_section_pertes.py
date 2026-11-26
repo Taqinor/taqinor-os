@@ -390,6 +390,25 @@ class FamilleDeMotifsSansNomInterneTest(unittest.TestCase):
         self.assertEqual(avec_motifs_lisibles({'cascade': None}),
                          {'cascade': None})
 
+    def test_un_avertissement_servi_ne_nomme_pas_un_champ_de_fiche(self):
+        # ACAL1741 — la phrase de dégradation recopiée dans `avertissements`.
+        from apps.calepinage.services.rapport.champs_lisibles import (
+            avec_motifs_lisibles,
+        )
+
+        phrase = ('Projection pluriannuelle non publiée. La fiche du module '
+                  'ne porte pas sa dégradation. Non renseigné(s) : '
+                  '« FicheTechnique.degradation_annuelle_pct ».')
+        resultat = {'avertissements': [phrase, 'Rien à dire.']}
+        servi = avec_motifs_lisibles(resultat)
+        self.assertNotIn('FicheTechnique', servi['avertissements'][0])
+        self.assertIn('dégradation annuelle du module',
+                      servi['avertissements'][0])
+        self.assertEqual(servi['avertissements'][1], 'Rien à dire.')
+        self.assertIn('FicheTechnique', resultat['avertissements'][0])
+        neutre = {'avertissements': ['Rien à dire.']}
+        self.assertIs(avec_motifs_lisibles(neutre), neutre)
+
     def test_l_echantillon_du_resultat_porte_le_texte_lisible(self):
         from apps.calepinage.services.rapport.champs_lisibles import (
             motif_lisible,
