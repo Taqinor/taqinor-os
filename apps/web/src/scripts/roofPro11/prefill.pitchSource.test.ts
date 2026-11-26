@@ -27,6 +27,9 @@ function documentADeuxPans(): Record<string, unknown> {
   doc.zones[0].pitchSource = POURCENTAGE;
   doc.zones[1].pitchDeg = (Math.atan(5.7735 / 10) * 180) / Math.PI;
   doc.zones[1].pitchSource = COTES;
+  // ACAL1923 — une pente décrite par ses cotes est celle d'un toit EN PENTE (le second pan de l'exemple est plat :
+  // un toit plat s'écrit à 0°, sa provenance « cotes » à 30° n'y survivrait pas).
+  doc.zones[1].roofType = 'pitched';
   return doc as unknown as Record<string, unknown>;
 }
 
