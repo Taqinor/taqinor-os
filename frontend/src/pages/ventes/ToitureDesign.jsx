@@ -614,7 +614,7 @@ function AtelierToiture({
     setSending(true)
     setGenStatus('Génération du devis…')
     try {
-      const layout = apiTool.serializeLayout()
+      const layout = apiTool.serializeLayout(null, { engagerNumeros: true }) // suite ACAL1720 — seul l'enregistrement engage les numéros
       // 1) Crée le devis depuis le layout (cookie = auth, pas de Bearer).
       //    QJ17 — le backend renvoie 200 si un brouillon identique existe déjà
       //    (idempotency par lead + hash du layout), 201 pour un nouveau devis, et
@@ -793,7 +793,7 @@ function AtelierToiture({
     enregistrementEnVolRef.current = true // T4-U4-025
     setGenStatus('Enregistrement du calepinage…')
     try {
-      const layout = apiTool.serializeLayout()
+      const layout = apiTool.serializeLayout(null, { engagerNumeros: true }) // suite ACAL1720 — seul l'enregistrement engage les numéros
       let resultat
       let heureReponse = null
       try {

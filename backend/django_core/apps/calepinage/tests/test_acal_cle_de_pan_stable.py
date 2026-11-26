@@ -267,6 +267,39 @@ class ChainesManuellesComportementTest(SimpleTestCase):
                                    imposee=CHAINE_2_SUR_4_A_10)
         self.assertEqual(len(bloc['affectation_obsolete']), 7)
 
+    # Revue lot 8 (suite ACAL1720) — un centre mémorisé sans AUCUN module à moins d'un demi-pas.
+    def _pose_retenue(self):
+        """Pivot n 1…10 (x = 1…10) + X n° 11 à x = 11 ; la variante retenue porte n° 11 sur Y, à x = 20."""
+        pivot = _pan_pose(self.POSITIONS + [11.0], list(range(1, 12)))
+        retenue = _pan_pose(self.POSITIONS + [20.0], list(range(1, 12)))
+        ligne = {'module': 'zA#11', 'chaine': 2, 'mppt': 1, 'onduleur': 1}
+        return pivot, retenue, ligne
+
+    def test_centre_sans_module_la_ligne_est_obsolete_jamais_appliquee_a_y(self):
+        from apps.calepinage.services.chaines import memoriser_centres
+
+        pivot, retenue, ligne = self._pose_retenue()
+        stockee = memoriser_centres({'affectation_manuelle': [ligne]}, pivot)['affectation_manuelle']
+        self.assertEqual((stockee[0]['cx'], stockee[0]['cy']), (11.0, 0.0))  # le centre de X
+        self.assertEqual(_manuels(retenue, stockee), [])  # jamais sur Y (zA#11 à x = 20)
+        bloc, _a = bloc_electrique(_conception(retenue), imposee=stockee)
+        self.assertEqual(bloc['affectation_obsolete'],
+                         [{'module': 'zA#11', 'motif': 'module introuvable'}])
+        refus = verdict_affectation(_conception(retenue), stockee)
+        self.assertTrue(any('zA#11' in r and 'obsolète' in r for r in refus), refus)
+
+    def test_module_a_moins_d_un_demi_pas_garde_sa_ligne(self):
+        _pivot, retenue, _ligne = self._pose_retenue()
+        proche = [{'module': 'zA#4', 'chaine': 2, 'mppt': 1, 'onduleur': 1, 'cx': 4.2, 'cy': 0.0}]
+        self.assertEqual(_manuels(retenue, proche), [4.0])
+        bloc, _a = bloc_electrique(_conception(retenue), imposee=proche)
+        self.assertEqual(bloc['affectation_obsolete'], [])
+
+    def test_ligne_sans_centre_memorise_comportement_d_avant(self):
+        # Ligne d'avant ``memoriser_centres`` : elle suit son numéro, comme avant.
+        _pivot, retenue, ligne = self._pose_retenue()
+        self.assertEqual(_manuels(retenue, [ligne]), [20.0])
+
 
 class MigrationIdempotenteTest(SimpleTestCase):
     """Lot 3 critique #7 — un pan dont le libellé EST l'id (ancienne clé ==

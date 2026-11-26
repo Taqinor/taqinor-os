@@ -68,5 +68,5 @@ export function enregistrerAtelier(
     horizonProfile: c.horizonProfile as never,
     modules: null,
     coucheElectrique: creerCoucheElectrique(c),
-  });
+  }, { engagerNumeros: true }); // suite ACAL1720 — « Enregistrer » engage les numéros, comme la page hôte
 }
