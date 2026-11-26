@@ -465,6 +465,21 @@ describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () =>
     expect(ligne).not.toHaveTextContent('sur cette pose')
   })
 
+  // Rejeu R5B (26/11) — la lecture de l'ouverture portait la pose d'avant (même taille que la conception) ; la pose
+  // enregistrée ensuite (5,68 kWc), relue par la coque et PUBLIÉE (`CoqueAtelier.jsx::useResultatServi`), change la ligne.
+  it('T4-X9-004 (rejeu) — un résultat relu après l’enregistrement et publié remplace la lecture de l’ouverture', async () => {
+    simule() // ouverture : pose 71 kWc = la conception
+    rendreAvec(ville, false)
+    expect(await screen.findByTestId('acal995-devis-annonce')).toHaveTextContent('Moteur du devis sur cette pose (71,00 kWc')
+    const { publierResultat } = await import('../atelier/simulationFraiche')
+    const apres = reponseContrat('calepinage', 'calepinage_resultat', 'exemple').data
+    apres.pose.kwc = 5.68
+    act(() => publierResultat(1, apres))
+    const ligne = screen.getByTestId('acal995-devis-annonce')
+    expect(ligne).toHaveTextContent('Conception du lead (71,00 kWc)')
+    expect(ligne).not.toHaveTextContent('sur cette pose')
+  })
+
   // ADEV155 (niveau 15) — la conception d'un lead sans pose tourne sur le plan par défaut : la ligne le DIT
   // (jamais « production standard de la ville »), au lieu de se taire sur une source inconnue.
   it('ADEV155 — conception du plan par défaut : la ligne dit « toit supposé », jamais la ville', async () => {
