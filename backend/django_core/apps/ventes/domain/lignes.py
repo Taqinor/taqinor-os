@@ -539,7 +539,7 @@ def _champs_a_la_creation(devis, champs):
                 'Une ligne se rattache à son %s par « %s » OU par « %s », '
                 'jamais par les deux.' % (objet, objet, cle))
     if 'role_devis' not in champs:
-        champs['role_devis'] = _role_a_la_creation(champs)
+        champs['role_devis'] = _role_a_la_creation(champs, devis)
     if champs.get('taux_tva') is None:
         taux_produit = _taux_tva_du_produit(champs)
         if taux_produit is not None:
@@ -581,8 +581,18 @@ def _taux_tva_du_produit(champs):
     return taux_tva_produit(produit_id)
 
 
-def _role_a_la_creation(champs):
+def _role_a_la_creation(champs, devis=None):
     """STKCAT23 — le RÔLE à figer sur une ligne qu'on crée, ou ``None``.
+
+    Lecteurs en aval (fondateur 24/11/2026, « un produit se reconnaît à son
+    rôle et à sa fiche avant son nom ») — TROIS rangs désormais, décidés ICI,
+    une fois, avec le produit en main, et RANGÉS sur la ligne que tous les
+    lecteurs aval lisent (``domain.classe_ligne``) : le rôle DÉCLARÉ, puis la
+    FICHE du produit (:func:`_role_de_la_fiche`, lue seulement quand
+    l'écrivain l'a chargée — jamais une requête par ligne), puis les
+    mots-clés. Le rang de la fiche : nouvelles écritures d'un devis ouvert
+    seulement (``regles_calcul.classe_par_role_ouverte``) ; un devis envoyé
+    avant la coupure garde les deux rangs d'hier.
 
     DEUX RANGS, ET PAS TROIS. Le rôle DÉCLARÉ du produit passe devant (c'est
     une donnée, posée par le fondateur sur la fiche) ; sinon les MOTS-CLÉS de
@@ -604,14 +614,50 @@ def _role_a_la_creation(champs):
     """
     from core.product_roles import role_declare
 
+    from apps.ventes.domain.regles_calcul import classe_par_role_ouverte
+
     produit = champs.get('produit')
     declare = role_declare(getattr(produit, 'role_devis', None))
     if declare:
         return declare
+    par_fiche = _role_de_la_fiche(produit) if classe_par_role_ouverte(devis) else None
+    if par_fiche:
+        return par_fiche
     # ``designation`` peut manquer (une section/note n'en porte pas toujours) :
     # le classifieur rend alors None, et la ligne naît sans rôle.
     from .catalogue import classer_produit
     return role_declare(classer_produit(champs.get('designation') or ''))
+
+
+def _role_de_la_fiche(produit):
+    """Le rôle que la FICHE du produit prouve, ou ``None`` : module ⇒ panneau,
+    batterie ⇒ batterie, onduleur au port batterie publié ⇒ hybride (D-HYB-1,
+    ``core.electrique.onduleurs.est_onduleur_hybride``, sauf un nom d'une autre
+    famille : chargeur hors réseau, micro-onduleur) ; une fiche onduleur sans
+    port laisse la famille aux mots-clés. Lue par le sélecteur du stock, et
+    SEULEMENT quand l'écrivain l'a déjà chargée (``select_related`` du vivier
+    ou de l'écran) : aucune requête ici."""
+    from apps.ventes.domain.classe_ligne import en_cache
+
+    if produit is None or not en_cache(produit, 'fiche_technique'):
+        return None
+    from apps.stock.selectors import specs_for_produit, type_fiche_produit
+    try:
+        type_fiche = type_fiche_produit(produit) or ''
+    except AttributeError:  # doublure de fiche sans ``type_fiche`` : rien de prouvé
+        return None
+    if type_fiche in ('module', 'batterie'):
+        return 'panneau' if type_fiche == 'module' else 'batterie'
+    if type_fiche != 'onduleur':
+        return None
+    from core.electrique.onduleurs import est_onduleur_hybride
+
+    from apps.ventes.selectors_calepinage import autre_famille_d_onduleur_par_nom
+    specs = specs_for_produit(produit) or {}
+    hybride = est_onduleur_hybride(
+        '', ports_batterie_kw=(specs.get('bat_max_charge_kw'), specs.get('bat_max_decharge_kw')),
+        autre_famille_par_nom=autre_famille_d_onduleur_par_nom(getattr(produit, 'nom', '') or ''))
+    return 'onduleur_hybride' if hybride else None
 
 
 # ── QJR116 — UN SEUL CLONEUR DE LIGNES POUR LES TROIS CHEMINS DE COPIE ──────
@@ -1200,9 +1246,11 @@ def _champs_des_lignes(lignes_in, company, lot_emis):
         # ré-enregistrement). La portée reste bornée : société de
         # l'utilisateur OU catalogue global — jamais celui d'un autre
         # tenant.
+        # Lecteurs en aval — la fiche jointe à la MÊME requête : le rôle rangé à
+        # l'écriture la lit (``_role_a_la_creation``) sans requête de plus.
         produit = produits_qs().filter(
             Q(company=company) | Q(company__isnull=True),
-            id=produit_id).first()
+            id=produit_id).select_related('fiche_technique').first()
         if produit is None:
             raise ValueError(f'Produit {produit_id} inconnu.')
         try:
