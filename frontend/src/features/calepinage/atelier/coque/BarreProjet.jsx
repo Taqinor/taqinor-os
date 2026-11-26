@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useMatch } from 'react-router-dom'
+import useDroitMetier from '../../../sav/useDroitMetier'
 import { BoutonMarine, Icone, Segmente } from './primitives'
 
 /* ============================================================================
@@ -51,6 +52,8 @@ export default function BarreProjet({
   libelleDevis = 'Générer le devis', onDevis = null, cache = false,
 }) {
   const calepinageId = useMatch('/calepinage/:id')?.params.id ?? null
+  // D-ACAL-106 — le Technicien relève et ne chiffre pas : sans `ventes_creer`, « Générer le devis » n'est pas proposé (le serveur reste l'autorité).
+  const peutDevis = useDroitMetier('ventes_creer')
   return (
     <header className="cal-barre-projet" data-testid="cal-barre-projet" hidden={cache || undefined}>
       {/* « ‹ Calepinages » referme l'atelier comme le geste qui l'a ouvert (`retour.onClick`, qui
@@ -82,7 +85,7 @@ export default function BarreProjet({
       <Segmente libelle="Mode" options={MODES} valeur={expert ? 'expert' : 'guide'}
         onChange={(v) => onExpert(v === 'expert')} />
       {calepinageId && <EntreeVisite id={calepinageId} />}
-      {onDevis && (
+      {onDevis && peutDevis && (
         <BoutonMarine onClick={onDevis} className="cal-bouton-devis" data-testid="cal-generer-devis-haut">
           {libelleDevis}
         </BoutonMarine>

@@ -757,3 +757,24 @@ describe('ACAL1353 — la vue client n’importe plus le moteur du toit statique
     expect(evaluationsMoteur).toEqual({ geo: 1, taille: 1 })
   })
 })
+
+describe('Vue client — « Envoyer le lien » selon le droit (D-ACAL-106)', () => {
+  it('sans `ventes_creer` (Technicien) ni le bouton ni sa raison ; avec, le bouton désactivé et sa raison', async () => {
+    const { Provider } = await import('react-redux')
+    const { configureStore } = await import('@reduxjs/toolkit')
+    const boutique = (permissions) => configureStore({ reducer: { auth: (s = { role: 'technicien', permissions }) => s } })
+    const { PiedClient, TuilesClient } = await import('./partiesClient')
+    const monter = (permissions) => render(
+      <Provider store={boutique(permissions)}>
+        <MemoryRouter><PiedClient id={7} /><TuilesClient tuiles={[]} ville="" /></MemoryRouter>
+      </Provider>,
+    )
+    const { unmount } = monter(['calepinage_voir'])
+    expect(screen.queryByTestId('client-envoyer-lien')).toBeNull()
+    expect(screen.queryByTestId('client-lien-raison')).toBeNull()
+    unmount()
+    monter(['calepinage_voir', 'ventes_creer'])
+    expect(screen.getByTestId('client-envoyer-lien')).toBeDisabled()
+    expect(screen.getByTestId('client-lien-raison')).toBeInTheDocument()
+  })
+})

@@ -1125,6 +1125,21 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     }
   })
 
+  it('D-ACAL-106 — la note de la colonne ne promet ni devis ni prix à qui n\'a pas `ventes_creer`', async () => {
+    const { Provider } = await import('react-redux')
+    const { configureStore } = await import('@reduxjs/toolkit')
+    const boutique = (permissions) => configureStore({ reducer: { auth: (s = { role: 'technicien', permissions }) => s } })
+    servir()
+    render(
+      <Provider store={boutique(['calepinage_voir'])}>
+        <MemoryRouter><EtapeDocuments calepinageId={1} actionDevis={null} /></MemoryRouter>
+      </Provider>,
+    )
+    const note = await screen.findByTestId('cal-docs-info-devis')
+    expect(note).toHaveTextContent('Le devis remis au client ne se fait pas ici.')
+    expect(note.textContent).not.toMatch(/prix|Générer le devis/)
+  })
+
   it('ACAL1193 — contrôles visibles de l’écran guidé : au plus 26 (la maquette v2 en dessine 24 ; + les trois lignes de groupe repliées, ACAL1725)', async () => {
     servir()
     const { container } = monter()
