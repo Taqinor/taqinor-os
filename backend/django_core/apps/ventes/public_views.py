@@ -58,6 +58,7 @@ from .public.payload_horaire import (
 from .public.payload_variantes import (
     _gammes_public, _remplace_par_public, _variant_summaries,
 )
+from .public.visionneuse_soleil import visionneuse_soleil_publique
 from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
 from .utils.anticopie import (
     LIBELLE_KIT as _LIBELLE_KIT,
@@ -1817,11 +1818,16 @@ def proposal_data(request, token):
         # ensemble — jamais un dessin d'option orphelin sur une page qui a
         # masqué le calepinage. Contrat :
         # apps/ventes/contract_samples/calepinage_options.json.
-        _calepinage_options = _calepinage_options_publique(
-            devis, _offres_tailles, _roof_layout_public,
-            _sld_public is not None, _resid_public)
-        if _calepinage_options is not None:
+        if (_calepinage_options := _calepinage_options_publique(
+                devis, _offres_tailles, _roof_layout_public,
+                _sld_public is not None, _resid_public)) is not None:
             payload['calepinage_options'] = _calepinage_options
+        # D-ACAL-132 (lot 6) — la visionneuse au soleil : liens « confiance » au
+        # calepinage servi seulement, clé ABSENTE sinon (contrat
+        # ``visionneuse_soleil.json``). Une ligne logique (E701) : la fonction-mur
+        # ne grossit pas (C20) ; le bloc du dessus en rend une par son walrus.
+        if (_soleil := visionneuse_soleil_publique(
+                devis, _roof_layout_public, niveau)) is not None: payload['visionneuse_soleil'] = _soleil  # noqa: E701
         # AUDIT #23 — `parametres_site` : l'annexe « paramètres du site »
         # (orientation/inclinaison du pan principal, source d'irradiation
         # NOMMÉE, résumé des chaînes déjà publiques, ombrage seulement s'il a
