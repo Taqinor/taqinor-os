@@ -63,5 +63,32 @@ export function heriterDuPanDecoupe(
   if (!erp || !pans.length) return;
   pans[0].neededPanels = besoin.neededPanels;
   pans[0].neededAuto = besoin.neededAuto;
+  repartirLeNombre(besoin, pans); // ACAL1707
   if (ancien?.moduleId) for (const p of pans) if (!p.existant) p.moduleId = ancien.moduleId;
+}
+
+/** Surface relative d'un contour lng/lat (formule des lacets, longitude pondérée par cos(latitude)) : sert seulement de poids. */
+function surfaceRelative(v: readonly (readonly [number, number])[]): number {
+  if (v.length < 3) return 0;
+  const k = Math.cos((v.reduce((s, p) => s + p[1], 0) / v.length) * (Math.PI / 180));
+  let a = 0;
+  for (let i = 0; i < v.length; i++) { const [x1, y1] = v[i]; const [x2, y2] = v[(i + 1) % v.length]; a += x1 * k * y2 - x2 * k * y1; }
+  return Math.abs(a) / 2;
+}
+
+/** ACAL1707 — un nombre voulu FIGÉ (la pose existante) est RÉPARTI entre les pans découpés au prorata de leur surface, hors pans
+ *  tournés vers le nord (rien n'y tient) ; leur somme reste le nombre d'avant, jamais un pan rempli en plus. Aucun contour ⇒ rien
+ *  n'est réparti (le premier pan garde tout, comme avant). Plus grand reste pour l'arrondi. */
+function repartirLeNombre(besoin: { neededPanels: number; neededAuto: boolean }, pans: AreaRecord[]): void {
+  if (besoin.neededAuto || !(besoin.neededPanels > 0) || pans.length < 2) return;
+  const ecartSud = (az: number) => { const d = (((az - 180) % 360) + 360) % 360; return Math.min(d, 360 - d); };
+  const poids = pans.map((p) => (Number.isFinite(p.facingAzimuthDeg) && ecartSud(p.facingAzimuthDeg) > 90 ? 0 : surfaceRelative(p.vertices ?? [])));
+  const total = poids.reduce((a, b) => a + b, 0);
+  if (!(total > 0)) return;
+  const n = Math.round(besoin.neededPanels);
+  const parts = poids.map((w) => (w / total) * n);
+  const base = parts.map(Math.floor);
+  let reste = n - base.reduce((a, b) => a + b, 0);
+  parts.map((x, i) => ({ i, f: x - base[i] })).sort((a, b) => b.f - a.f || a.i - b.i).forEach(({ i }) => { if (reste > 0 && poids[i] > 0) { base[i]++; reste--; } });
+  pans.forEach((p, i) => { p.neededPanels = base[i]; p.neededAuto = false; });
 }

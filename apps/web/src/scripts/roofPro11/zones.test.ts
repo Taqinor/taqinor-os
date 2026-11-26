@@ -40,7 +40,8 @@ import {
   ajoutDePanEnCours, monterToitGriseSousTrace, toitExistantGeoJSON, // ACAL1329
   type ExclusionZone,
 } from './zones';
-import { deserializeLayout, hydrateFromDevis, serializeLayout, selectionSansChangement, type SerializedLayout } from './prefill'; // ACAL64, ACAL1415, ACAL1916
+import { deserializeLayout, hydrateFromDevis, serializeLayout, selectionSansChangement, type SerializedLayout } from './prefill';
+import { heriterDuPanDecoupe } from './tailleAuto'; // ACAL1707 // ACAL64, ACAL1415, ACAL1916
 import { MENTION_MODULE_DE_DEPART, affectationDesPans } from './moduleSelect'; // ACAL1415
 import { panAuModuleChoisi, remplacerParPanVierge, reprendreModuleChoisi } from './repriseModule'; // ACAL1416
 import { type Ctx } from './context'; // ACAL64
@@ -1524,5 +1525,31 @@ describe('ACAL1916 — choisir un pan ne marque pas le document modifié', () =>
   it('un pan sans pose enregistrée n’est jamais « inchangé »', () => {
     const a = { ...pan(), geometrieEnregistree: undefined };
     expect(selectionSansChangement(a as never, vif(a as never), null)).toBe(false);
+  });
+});
+
+describe('ACAL1707 — « 2 pans » sur un toit à 4 panneaux garde 4 panneaux', () => {
+  const pan = (id: string, x: number, w: number, az: number) => ({
+    id, neededPanels: 0, neededAuto: true, facingAzimuthDeg: az,
+    vertices: [[x, 33.5], [x + w, 33.5], [x + w, 33.5004], [x, 33.5004]] as LngLat[],
+  });
+  it('la somme des pans est la pose d’avant (4), répartie au prorata de la surface, aucun pan n’est rempli', () => {
+    const pans = [pan('area-2', -7.6, 0.0003, 180), pan('area-3', -7.5997, 0.0001, 180)];
+    heriterDuPanDecoupe({ moduleId: 'm' }, { neededPanels: 4, neededAuto: false }, pans as never, true);
+    expect(pans.map((p) => p.neededPanels)).toEqual([3, 1]);
+    expect(pans.every((p) => p.neededAuto === false)).toBe(true);
+  });
+  it('un pan tourné vers le nord ne reçoit rien : tout reste sur le pan exposé', () => {
+    const pans = [pan('area-2', -7.6, 0.0002, 180), pan('area-3', -7.5998, 0.0002, 0)];
+    heriterDuPanDecoupe(null, { neededPanels: 4, neededAuto: false }, pans as never, true);
+    expect(pans.map((p) => p.neededPanels)).toEqual([4, 0]);
+  });
+  it('nombre non figé (auto) ou site public : rien n’est réparti', () => {
+    const pans = [pan('area-2', -7.6, 0.0002, 180), pan('area-3', -7.5998, 0.0002, 180)];
+    heriterDuPanDecoupe(null, { neededPanels: 4, neededAuto: true }, pans as never, true);
+    expect(pans.map((p) => p.neededPanels)).toEqual([4, 0]);
+    const publics = [pan('area-2', -7.6, 0.0002, 180), pan('area-3', -7.5998, 0.0002, 180)];
+    heriterDuPanDecoupe(null, { neededPanels: 4, neededAuto: false }, publics as never, false);
+    expect(publics.map((p) => p.neededPanels)).toEqual([0, 0]);
   });
 });
