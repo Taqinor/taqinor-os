@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { initState } from './draftCore'
 import DevisTab from './DevisTab'
@@ -94,5 +94,32 @@ describe('T4-X1-010 — aperçu WhatsApp : darija non rédigé, lien unique', ()
     expect(screen.getAllByText(/https:\/\/t\/p\/abc/)).toHaveLength(1)
     expect(screen.queryByTestId('wa-darija-non-redige')).toBeNull()
     expect(screen.getByRole('button', { name: /Ouvrir WhatsApp/ })).toBeEnabled()
+  })
+})
+
+// D-ACAL-154 — la taille visée est PORTÉE par la fiche quand elle le fournit : la frappe remonte (le champ reste
+// le seul éditeur) et le bouton « Devis automatique » envoie la valeur portée.
+describe('D-ACAL-154 — taille visée portée par la fiche', () => {
+  it('la frappe remonte, le bouton envoie la valeur portée', () => {
+    const onAction = vi.fn()
+    const onKwcCibleChange = vi.fn()
+    const state = initState({
+      lead: { id: 7, nom: 'Karim', telephone: '0612345678', devis: [], devis_auto: { pret: true, manquants: [], message: null } },
+      mode: 'edit',
+    })
+    render(
+      <MemoryRouter>
+        <DevisTab
+          state={state} onAction={onAction} wa={{ selected: [], langue: 'fr', preview: null }}
+          onWaToggle={vi.fn()} onWaLangue={vi.fn()} onWaPreview={vi.fn()} onWaReset={vi.fn()}
+          kwcCible="6.5" onKwcCibleChange={onKwcCibleChange}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByLabelText(/Puissance cible/)).toHaveValue(6.5)
+    fireEvent.change(screen.getByLabelText(/Puissance cible/), { target: { value: '8' } })
+    expect(onKwcCibleChange).toHaveBeenCalledWith('8')
+    fireEvent.click(screen.getByRole('button', { name: /Devis automatique/ }))
+    expect(onAction).toHaveBeenCalledWith('open-devis', { mode: 'auto', targetKwc: '6.5' })
   })
 })

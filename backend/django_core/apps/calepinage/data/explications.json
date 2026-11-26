@@ -1128,7 +1128,7 @@
       "famille": "toit",
       "phrase": "Nombre de panneaux que la recommandation pose sur les surfaces tracées, dans les retraits et hors des obstacles.",
       "valeurs": {},
-      "geste": "Changez-le avec les boutons « Panneaux nécessaires ».",
+      "geste": "Changez-le avec les boutons « Panneaux à poser ».",
       "lexique": null,
       "ecrans": []
     },

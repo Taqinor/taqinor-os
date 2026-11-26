@@ -162,6 +162,7 @@ function BlocCatalogueCi({ devisAuto, leadId }) {
 
 export default function DevisTab({
   state, onAction, wa, onWaToggle, onWaLangue, onWaPreview, onWaReset,
+  kwcCible: kwcCiblePortee, onKwcCibleChange,
 }) {
   // ADRG121 — « Créer le chantier » : la règle de la route (ventes_creer, ou le palier).
   const droitVentesCreer = useDroitMetier('ventes_creer')
@@ -182,7 +183,13 @@ export default function DevisTab({
   // dit « je veux 3 kWc », pas « je veux 4 panneaux ». Vide = dimensionnement
   // historique (taille souhaitée du lead, sinon facture d'hiver) : le trajet
   // à 1 clic du commercial est INCHANGÉ.
-  const [kwcCible, setKwcCible] = useState('')
+  // D-ACAL-154 — la valeur est PORTÉE par la fiche (LeadWorkspace) quand elle est
+  // fournie, pour que le rail et la palette lisent la même taille ; ce champ reste
+  // le seul endroit qui la modifie. Sans porteur : état local, comme avant.
+  const [kwcLocal, setKwcLocal] = useState('')
+  const porte = typeof onKwcCibleChange === 'function'
+  const kwcCible = porte ? (kwcCiblePortee ?? '') : kwcLocal
+  const setKwcCible = porte ? onKwcCibleChange : setKwcLocal
   // AGNR39 — au pompage, le champ solaire découle de la pompe : le champ
   // « puissance cible » n'est pas affiché pour un lead agricole, la cible
   // reste donc vide (le serveur la refuserait en la nommant).

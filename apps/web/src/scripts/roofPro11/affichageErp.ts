@@ -181,7 +181,7 @@ export function besoinDeLaFacture(opts: { hydrate?: { devis?: object | null } | 
   return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : null;
 }
 
-/** Le champ « Panneaux nécessaires » : en ERP sur « le plus de panneaux », le besoin de la facture (« — » s'il n'est pas
+/** Le champ « Panneaux à poser » (site public : « Panneaux nécessaires », inchangé) : en ERP sur « le plus de panneaux », le besoin de la facture (« — » s'il n'est pas
  *  servi) et `data-le-plus="1"` (lu par l'étape Panneaux du Guidé, qui garde « Le plus de panneaux » choisi) ; sinon le
  *  besoin tel quel. `data-besoin-facture` garde le chiffre affiché pour le re-poser à la sortie du champ. */
 export function peindreChampBesoin(el: HTMLInputElement, besoin: number, erp: boolean, facture: number | null, ecrire: boolean): void {
