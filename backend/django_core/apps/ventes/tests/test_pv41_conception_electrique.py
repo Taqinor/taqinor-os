@@ -455,6 +455,103 @@ class SurchargesTest(SimpleTestCase):
         self.assertFalse(set(spec_onduleur_pour_empreinte(entree.onduleur)) & set(CHAMPS_SPEC_ONDULEUR_HORS_EMPREINTE))
 
 
+# ── D-ACAL-139 — chaînes inégales entre entrées MPPT, calculs NEUFS seulement ──
+def _panneau_715():
+    return _FauxProduit("Panneau PV 715 Wc", fiche=_FausseFiche(
+        "module", pmax_wc=Decimal("715"), voc_v=Decimal("49.1"),
+        isc_a=Decimal("22.3"), vmp_v=Decimal("41.0"), imp_a=Decimal("17.44"),
+        temp_coeff_voc_pct_c=Decimal("-0.25"),
+        temp_coeff_pmax_pct_c=Decimal("-0.35"),
+        longueur_mm=2384, largeur_mm=1303))
+
+
+def _hybride_deye_20k():
+    """Fiche de type « Onduleur hybride Deye 20kW Triphasé » : 2 entrées MPPT,
+    Isc 54,0 A publié par entrée, 800 V DC maxi."""
+    return _FauxProduit("Onduleur hybride Deye 20kW Triphasé", fiche=_FausseFiche(
+        "onduleur", ond_ac_kw=Decimal("20"), ond_phases=3, ond_n_mppt=2,
+        ond_mppt_v_min=Decimal("150"), ond_mppt_v_max=Decimal("750"),
+        ond_v_max_abs=Decimal("800"), ond_i_max_mppt_a=Decimal("36"),
+        ond_rendement_euro_pct=Decimal("97.6"), ond_v_demarrage_v=None,
+        ond_isc_max_mppt_a=Decimal("54"), ond_bat_aucune=False,
+        ond_bat_v_min=Decimal("160"), ond_bat_v_max=Decimal("800")))
+
+
+def _devis_deye(nb_modules, *, envoye_le=None, lignes=()):
+    """Brouillon jamais envoyé, ou devis ENVOYÉ le ``envoye_le``."""
+    devis = _FauxDevis(lignes=[
+        _FausseLigne("Panneau PV 715 Wc", nb_modules, produit=_panneau_715()),
+        _FausseLigne("Onduleur hybride Deye 20kW Triphasé", 1,
+                     produit=_hybride_deye_20k()), *lignes])
+    if envoye_le is not None:
+        from datetime import datetime
+
+        devis.statut, devis.date_envoi = "envoye", datetime(*envoye_le)
+    return devis
+
+
+def _etude_du_moteur(devis, inegales):
+    """Le contrat que le MOTEUR rend pour l'entrée du devis, drapeau imposé."""
+    import dataclasses
+
+    from core.electrique import concevoir
+
+    entree, source, _lie = es.construire_entree_et_source(devis)
+    entree = dataclasses.replace(entree, chaines_inegales_entre_entrees=inegales)
+    return es.projeter_contrat(entree, concevoir(entree), source_entree=source)
+
+
+class ChainesInegalesDuDevisTest(SimpleTestCase):
+    """35 × 715 Wc sur un hybride 2 entrées à 54 A : 12 + 12 | 11 pour un
+    calcul NEUF ; l'étude d'avant pour un devis envoyé avant la coupure."""
+
+    def test_calcul_neuf_trois_chaines_et_le_bordereau_du_moteur(self):
+        devis = _devis_deye(35)
+        design = es.build_electrical_design(devis)
+        self.assertEqual([(c["nb_modules"], c["mppt"]) for c in design["chaines"]],
+                         [(12, 1), (12, 1), (11, 2)])
+        self.assertEqual(design["conformite"]["bloquants"], [])
+        # Protections et bordereau : ceux que le moteur calcule pour CES trois
+        # chaînes — aucun nombre retapé.
+        moteur = _etude_du_moteur(devis, True)
+        self.assertEqual(design["protections"], moteur["protections"])
+        self.assertEqual(design["cables"], moteur["cables"])
+        self.assertEqual(design["bom"], moteur["bom"])
+        self.assertNotEqual(design["bom"], _etude_du_moteur(devis, False)["bom"])
+
+    def test_devis_envoye_avant_la_coupure_garde_le_calcul_d_avant(self):
+        devis = _devis_deye(35, envoye_le=(2026, 11, 20))
+        design = es.build_electrical_design(devis)
+        self.assertEqual(design, _etude_du_moteur(devis, False))
+        self.assertEqual([c["nb_modules"] for c in design["chaines"]], [7] * 5)
+        self.assertTrue(any("66,9 A" in b
+                            for b in design["conformite"]["bloquants"]))
+
+    def test_le_drapeau_n_entre_pas_dans_l_empreinte(self):
+        import dataclasses
+
+        devis = _devis_deye(35)
+        entree = es.construire_entree(devis)
+        self.assertTrue(entree.chaines_inegales_entre_entrees)
+        self.assertEqual(es.empreinte_entree(devis, entree), es.empreinte_entree(
+            devis, dataclasses.replace(entree,
+                                       chaines_inegales_entre_entrees=False)))
+
+    def test_une_etude_rangee_n_est_jamais_recalculee_pour_ca(self):
+        devis = _devis_deye(35)
+        rangee = _etude_du_moteur(devis, False)            # l'étude d'hier
+        devis.electrical_design = rangee
+        devis.electrical_design_hash = es.empreinte_entree(
+            devis, es.construire_entree(devis))
+        self.assertIs(es.build_electrical_design(devis), rangee)
+
+    def test_une_conception_egale_valide_est_identique(self):
+        neuf = es.build_electrical_design(_devis_deye(48))
+        avant = es.build_electrical_design(_devis_deye(48, envoye_le=(2026, 11, 20)))
+        self.assertEqual(neuf, avant)
+        self.assertEqual([c["nb_modules"] for c in neuf["chaines"]], [12] * 4)
+
+
 class ConceptionElectriqueEndpointTest(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom="Acme", slug="pv41-acme")
