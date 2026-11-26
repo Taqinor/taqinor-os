@@ -167,6 +167,63 @@ class ContratOmCiTest(TestCase):
                          format='json')
         self.assertEqual(resp.status_code, 409)
 
+    def test_dacal165_technicien_sans_prix_du_contrat(self):
+        """D-ACAL-165 — Technicien et Technicien responsable livrés (`sav_voir`,
+        sans `prix_vente_voir`) : ni `prix` ni `prestations[].prix_ht` en
+        lecture ; l'édition renvoyant ces prix VIDES ne les efface pas ;
+        l'administrateur légacy les lit, inchangés. Jeu `sav_contrats` : prix
+        et valeur annuelle absents pour le technicien, présents sans acteur."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            TECHNICIEN_PERMISSIONS, TECHNICIEN_RESP_PERMISSIONS)
+        from apps.sav.bi_datasets import CONTRATS_DATASET_NAME
+        from core import data_explorer
+        self._accepter(self.devis)
+        contrat = self._contrats().get()
+        ContratMaintenance.objects.filter(pk=contrat.pk).update(prix=Decimal('98765.43'))
+        contrat.prestations.update(prix_ht=Decimal('87654.32'))
+        url = f'/api/django/sav/contrats-maintenance/{contrat.pk}/'
+
+        def api_de(user):
+            api = APIClient()
+            api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+            return api
+
+        comptes = {}
+        for nom, perms in (('Technicien', TECHNICIEN_PERMISSIONS),
+                           ('Technicien responsable', TECHNICIEN_RESP_PERMISSIONS)):
+            role = Role.objects.create(company=self.company, nom=nom, permissions=list(perms))
+            comptes[nom] = User.objects.create_user(
+                username=f'd165-{nom.replace(" ", "-")}', password='x',
+                company=self.company, role=role)
+            resp = api_de(comptes[nom]).get(url)
+            self.assertEqual(resp.status_code, 200, resp.data)
+            self.assertNotIn('prix', resp.data)
+            self.assertTrue(resp.data['prestations'])
+            self.assertTrue(all('prix_ht' not in p for p in resp.data['prestations']))
+            self.assertNotIn('98765', str(resp.data))
+            self.assertNotIn('87654', str(resp.data))
+        admin = api_de(self.user).get(url).data
+        self.assertEqual(Decimal(str(admin['prix'])), Decimal('98765.43'))
+        self.assertEqual(Decimal(str(admin['prestations'][0]['prix_ht'])), Decimal('87654.32'))
+        # L'écran du chef renvoie les prix qu'il n'a pas reçus, vides : rien n'est effacé.
+        nettoyage = contrat.prestations.get(type='nettoyage')
+        resp = api_de(comptes['Technicien responsable']).patch(url, {
+            'prix': None, 'prestations': [{'id': nettoyage.pk, 'frequence_an': 2, 'prix_ht': None}],
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        contrat.refresh_from_db()
+        nettoyage.refresh_from_db()
+        self.assertEqual((contrat.prix, nettoyage.prix_ht, nettoyage.frequence_an),
+                         (Decimal('98765.43'), Decimal('87654.32'), 2))
+        spec = {'select': ['id', 'prix', 'valeur_annuelle']}
+        ligne = data_explorer.run_query(CONTRATS_DATASET_NAME, self.company,
+                                        comptes['Technicien'], spec)[0]
+        self.assertNotIn('prix', ligne)
+        self.assertNotIn('valeur_annuelle', ligne)
+        ligne = data_explorer.run_query(CONTRATS_DATASET_NAME, self.company, None, spec)[0]
+        self.assertEqual(ligne['prix'], Decimal('98765.43'))
+
     def test_migration_additive(self):
         module = import_module(
             'apps.sav.migrations.0066_ciq640_prestations_contrat')

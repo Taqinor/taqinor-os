@@ -15,7 +15,7 @@ from rest_framework.exceptions import ValidationError
 
 from authentication.permissions import IsResponsableOrAdmin, LectureDuModule
 from apps.roles.permissions import DroitDeLaGrille
-from ..gardes_lecture import BorneAuChantierMixin  # APFS109
+from ..gardes_lecture import BorneAuChantierMixin, SansMontantsVenteMixin  # APFS109, D-ACAL-165
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import (
     RegulatoryDossier, DossierChecklistItem, DossierExchange,
@@ -357,7 +357,8 @@ class DossierExchangeViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):  
     parameters=[qint('devis'),
                 qstr('programme', enum=SubventionDossier.Programme.values),
                 qstr('statut', enum=SubventionDossier.Statut.values)]))
-class SubventionDossierViewSet(BorneAuChantierMixin, CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
+class SubventionDossierViewSet(SansMontantsVenteMixin, BorneAuChantierMixin,  # ARC5 (voir note ci-dessus)
+                               CompanyScopedModelViewSet):
     """FG270 — éligibilité & suivi des subventions (scopé société)."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
 

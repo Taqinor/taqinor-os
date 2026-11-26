@@ -162,3 +162,34 @@ class StockBiDatasetsTests(TestCase):
             BCF_DATASET, self.company, self.vendeur,
             {'select': ['id', 'montant']})
         self.assertNotIn('montant', lignes[0])
+
+    def test_dacal165_prix_vente_masque_au_technicien_garde_sans_acteur(self):
+        """D-ACAL-165 — le Technicien livré (stock_voir + reporting_voir, sans
+        `prix_vente_voir`) : `prix_vente` absent du select, de l'agrégat et du
+        schéma. Avec le droit (vendeur + code) : servi. Sans acteur (tâche,
+        extrait sans créateur) : GARDÉ ; et jamais retiré des sorties de
+        rapport d'un propriétaire autorisé (pas un `gated_fields`, AANA25)."""
+        from apps.reporting.rapport_builder import champs_gated
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        self._produit(prix_vente=Decimal('98765.43'))
+        role = Role.objects.create(company=self.company, nom='NTDATA3 Technicien',
+                                   permissions=list(TECHNICIEN_PERMISSIONS))
+        tech = User.objects.create_user(username='ntdata3_tech', password='x',
+                                        company=self.company, role=role)
+        role_vente = Role.objects.create(company=self.company, nom='NTDATA3 Vente',
+                                         permissions=['stock_voir', 'prix_vente_voir'])
+        vente = User.objects.create_user(username='ntdata3_vente', password='x',
+                                         company=self.company, role=role_vente)
+        spec = {'select': ['id', 'prix_vente']}
+        self.assertNotIn('prix_vente', data_explorer.run_query(
+            PRODUITS_DATASET, self.company, tech, spec)[0])
+        agregat = data_explorer.run_query(PRODUITS_DATASET, self.company, tech, {
+            'group_by': ['marque'],
+            'aggregates': [{'alias': 'total', 'fn': 'sum', 'field': 'prix_vente'}]})
+        self.assertNotIn('total', agregat[0])
+        noms = set(data_explorer.describe_dataset(PRODUITS_DATASET, user=tech)['fields'])
+        self.assertNotIn('prix_vente', noms)
+        for lecteur in (vente, self.admin, None):
+            ligne = data_explorer.run_query(PRODUITS_DATASET, self.company, lecteur, spec)[0]
+            self.assertEqual(ligne['prix_vente'], Decimal('98765.43'), lecteur)
+        self.assertNotIn('prix_vente', champs_gated(PRODUITS_DATASET))

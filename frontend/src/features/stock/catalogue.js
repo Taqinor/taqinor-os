@@ -400,15 +400,17 @@ const _fiche = (fiches, p) => (fiches && typeof fiches.get === 'function' ? fich
 
 /** Articles à rôle pompage qui bloquent un devis pompage : sans prix de vente,
  * sans prix d'achat (quand il est servi), pompe sans courbe, variateur sans
- * fiche. Rend `[{ produit, role, raisons: [...] }]`, archivés exclus. */
-export function produitsPompageACompleter(produits, fiches) {
+ * fiche. Rend `[{ produit, role, raisons: [...] }]`, archivés exclus.
+ * D-ACAL-152 — `prixMasques` (compte sans « voir les prix de vente ») : le
+ * serveur n'a servi aucun prix, l'absence de prix n'est donc pas une raison. */
+export function produitsPompageACompleter(produits, fiches, { prixMasques = false } = {}) {
   const out = []
   for (const p of produits ?? []) {
     if (p?.is_archived) continue
     const role = roleDuProduitPompage(p)
     if (!role) continue
     const raisons = []
-    if (sansPrix(p)) raisons.push('prix de vente à renseigner')
+    if (!prixMasques && sansPrix(p)) raisons.push('prix de vente à renseigner')
     if (p.prix_achat !== undefined && p.prix_achat !== null
         && !(parseFloat(p.prix_achat) > 0)) raisons.push("prix d'achat à renseigner")
     if (role === 'pompe' && !_avecCourbe(p)) raisons.push('courbe constructeur absente')

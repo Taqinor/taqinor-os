@@ -42,7 +42,9 @@ User = get_user_model()
 CONTRAT = (Path(__file__).resolve().parent / 'contract_samples'
            / 'produit_utilise_dans.json')
 
-_PERMS = ['stock_voir', 'crm_voir', 'ventes_voir']
+# D-ACAL-152/165 — un lecteur des devis porte aussi `prix_vente_voir` (tous les rôles livrés
+# sauf les techniciens) : sans lui, `total_ttc` est retiré (test dédié plus bas).
+_PERMS = ['stock_voir', 'crm_voir', 'ventes_voir', 'prix_vente_voir']
 
 
 def _company(slug):
@@ -256,6 +258,23 @@ class ContenuTests(UtiliseDansBase):
                 set(ligne),
                 {'id', 'reference', 'client_nom', 'statut', 'date',
                  'total_ttc'})
+
+    def test_sans_prix_vente_voir_aucun_total_et_sans_lecture_des_devis_aucune_ligne(self):
+        """D-ACAL-165 — lecteur des devis SANS `prix_vente_voir` : les lignes
+        restent, `total_ttc` disparaît. D-ACAL-106 — le Technicien livré (ne
+        lit pas les devis) : `devis: []`, leads et chantiers selon leur portée."""
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        lecteur = _user(self.company, 'stkcat25-sans-prix',
+                        permissions=['stock_voir', 'crm_voir', 'ventes_voir'])
+        lignes = self._get(lecteur).data['devis']
+        self.assertEqual([d['id'] for d in lignes], [self.devis.pk])
+        self.assertEqual(set(lignes[0]), {'id', 'reference', 'client_nom', 'statut', 'date'})
+        technicien = _user(self.company, 'stkcat25-technicien',
+                           permissions=list(TECHNICIEN_PERMISSIONS))
+        resp = self._get(technicien)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['devis'], [])
+        self.assertNotIn(str(self.devis.total_ttc), json.dumps(resp.data, default=str))
 
     def test_totaux_en_texte_decimal_jamais_un_flottant(self):
         resp = self._get(self.large)

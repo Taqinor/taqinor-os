@@ -42,6 +42,10 @@
   },
   "routes": {
     "kits": {
+      "cles_masquees_sans_prix_vente": [
+        "composants[].prix_vente"
+      ],
+      "cles_masquees_pourquoi_prix_vente": "D-ACAL-152 (26/11/2026) — clés RETIRÉES de la réponse pour un rôle sans `prix_vente_voir` (Technicien, Technicien responsable) ; présentes sinon (apps/stock/permissions.py::PRIX_VENTE_CHAMPS)",
       "endpoint": "GET /api/django/stock/kits/?search=<texte>&ordering=nom&avec_disponibilite=1",
       "pourquoi": "FG66/DC36 — nomenclatures de stock vendables (`KitProduitViewSet`, views/kit.py:26 ; KitProduitSerializer serializers.py:1855, KitComposantSerializer :1819). Un kit ne porte AUCUN prix/marque/TVA propre (tout est lu sur chaque Produit à l'explosion) ; `prix_vente` d'un composant est le prix de vente catalogue en lecture seule, jamais un prix d'achat. Liste paginée {count,next,previous,results} ; GET détail `/kits/<id>/` = CET objet kit. Lecture tout rôle ; POST/PUT/PATCH permission stock_modifier ; DELETE ADMIN seulement (204 sans corps). `disponibilite_potentielle` = null SAUF `?avec_disponibilite=1` : alors {kits_assemblables:n, goulots:[{designation, sku}]}. Corps POST/PUT : {nom, sku?, description?, is_archived?, composants:[{produit | composant_kit, quantite}]} — `composants` est OBLIGATOIRE à la création et au PUT (nested), un composant est SOIT un produit SOIT un sous-kit. `date_creation`/`date_mise_a_jour` en lecture seule. Chaque modification des composants crée une révision XMFG18 (idempotente). CLÉ NOUVELLE : `composants[].taux_perte_pct` (taux de perte planifié XMFG11, texte décimal, défaut 0.00) figure dans `exemple` comme forme CIBLE de l'écran ASTK229 mais N'EST PAS encore servie par KitComposantSerializer (fields = id, produit, produit_nom, produit_sku, prix_vente, composant_kit, composant_kit_nom, quantite) alors que le modèle KitComposant la porte déjà (models.py:2054) — à confirmer à la fusion (voir `nouveau_taux_perte_pct`).",
       "exemple": {
@@ -205,6 +209,10 @@
       }
     },
     "kit_exploser": {
+      "cles_masquees_sans_prix_vente": [
+        "lignes[].prix_vente_unitaire"
+      ],
+      "cles_masquees_pourquoi_prix_vente": "D-ACAL-152 (26/11/2026) — clés RETIRÉES de la réponse pour un rôle sans `prix_vente_voir` (Technicien, Technicien responsable) ; présentes sinon (apps/stock/permissions.py::PRIX_VENTE_CHAMPS)",
       "endpoint": "GET /api/django/stock/kits/<id>/exploser/?quantite=<n>",
       "pourquoi": "FG66/XMFG17 — explose le kit en lignes PRODUIT (récursif à travers les sous-kits, quantités cumulées par produit), pour `quantite` kits (défaut 1, ≤ 0 → 1). Lecture tout rôle. Prix de vente/TVA/marque lus sur le Produit ; le prix d'ACHAT n'est JAMAIS exposé. `quantite_kit` = nombre JSON (float) ; `quantite` d'une ligne = texte décimal. 400 {detail} sur cycle (« Nomenclature cyclique détectée : le kit \"<nom>\" se contient lui-même (directement ou via un sous-kit). ») ou profondeur excessive.",
       "exemple": {
@@ -226,6 +234,11 @@
       }
     },
     "kit_structure": {
+      "cles_masquees_sans_prix_vente": [
+        "composants[].prix_vente",
+        "prix_vente_total"
+      ],
+      "cles_masquees_pourquoi_prix_vente": "D-ACAL-152 (26/11/2026) — clés RETIRÉES de la réponse pour un rôle sans `prix_vente_voir` (Technicien, Technicien responsable) ; présentes sinon (apps/stock/permissions.py::PRIX_VENTE_CHAMPS)",
       "endpoint": "GET /api/django/stock/kits/<id>/structure/",
       "pourquoi": "XMFG5/XMFG17 — nomenclature indentée + disponibilité + coût de revient roll-up (tout rôle ; INTERNE). Lignes `type` produit (porte `produit_id`) ou sous_kit (porte `composant_kit_id`, `prix_vente` null) avec `niveau` pour l'indentation. COÛT et MARGE réservés responsable/admin : pour les autres rôles `cout_unitaire`/`cout_total` des lignes et `cout_total_roll_up`/`marge` sont ABSENTS de la réponse. Les montants roll-up sont du texte à 2 décimales. Les valeurs de coût de l'exemple sont à 0.00 à dessein — aucun montant d'achat dans ce fichier. `disponibilite_potentielle` = nombre de kits assemblables.",
       "exemple": {

@@ -88,7 +88,7 @@ def _partage(dataset) -> bool:
         spec = data_explorer.get_dataset(dataset)
     except data_explorer.DatasetInconnu:
         return False
-    if spec.get('gated_fields'):
+    if spec.get('gated_fields') or spec.get('masques_lecteur'):  # D-ACAL-165
         return False
     return bool(spec.get('cache_partage'))
 
