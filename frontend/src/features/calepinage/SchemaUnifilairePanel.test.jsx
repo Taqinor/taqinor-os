@@ -732,6 +732,19 @@ describe('planDepuisDocument — le document schema_electrique (lot 6)', () => {
     expect(tuiles.every((t) => Number(t.getAttribute('width')) > 0)).toBe(true)
   })
 
+  it('plusieurs groupes d\'onduleurs : tous listés, aucun total ni puissance d\'un seul groupe', () => {
+    const d = doc('avec_batterie')
+    d.onduleurs.push({ designation: 'Huawei SUN2000-10KTL', puissance_kw: 10, nombre: 2, nb_entrees: 2 })
+    const plan = planDepuisDocument(d)
+    expect(plan.onduleur.puissance).toBeNull()
+    expect(plan.onduleur.entrees).toBeNull()
+    expect(plan.onduleur.designation.join(' ')).not.toContain('…')
+    expect(plan.onduleur.designation.join(' ')).toMatch(/^1 × Deye.*SUN-20K-SG05LP3.*20 kW 2 × Huawei.*SUN2000-10KTL.*10 kW$/)
+    const blocs = dessiner(plan)
+    expect(blocs).toHaveTextContent('SUN2000-10KTL')
+    expect(blocs).toHaveTextContent('SUN-20K-SG05LP3')
+  })
+
   it('aucun onduleur servi : aucun bloc onduleur inventé (pas de plan)', () => {
     const d = doc('avec_batterie')
     d.onduleurs = []

@@ -444,6 +444,19 @@ function carteBatterie(batterie, onduleur) {
   return { x, y, l, h: 44 + lignes.length * 16, lignes, lien: [[x + l, y + 40], [cx, y + 40], [cx, onduleur.y]] }
 }
 
+/** Plusieurs groupes d'onduleurs : la carte les liste TOUS (« N × désignation · X kW »), sans total inventé ni
+    puissance / entrées d'un seul groupe attribuées à l'ensemble. */
+function listerOnduleurs(plan, groupes) {
+  if (groupes.length < 2) return
+  const ligne = (g) => [
+    [fini(g.nombre) ? `${g.nombre} ×` : null, g.designation].filter(Boolean).join(' '),
+    fini(g.puissance_kw) ? `${nombreFr(g.puissance_kw)} kW` : null,
+  ].filter(Boolean).join(' · ')
+  plan.onduleur.puissance = null
+  plan.onduleur.entrees = null
+  plan.onduleur.designation = groupes.map(ligne).filter(Boolean).flatMap((t) => couperTexte(t, 22, 3))
+}
+
 const TUILES_MAX = 24
 
 /** Au-delà de ~50 panneaux dans une rangée, la largeur d'une tuile devient nulle ou négative : on dessine au plus
@@ -464,6 +477,7 @@ export function planDepuisDocument(doc, libelles = {}) {
   const plan = planSchemaEnBlocs(schema, resultat)
   if (!plan) return null
   plan.chaines.forEach((c) => { c.glyphes = tuilesBornees(c.glyphes) })
+  listerOnduleurs(plan, doc.onduleurs ?? [])
   if (!avecChaines(doc)) {
     const n = plan.chaines[0].nombre
     plan.chaines[0].libelle = `Champ · ${n} panneau${n > 1 ? 'x' : ''}`
