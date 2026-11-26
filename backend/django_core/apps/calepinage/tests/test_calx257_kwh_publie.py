@@ -186,7 +186,7 @@ class SupposeTest(SimpleTestCase):
     DOSSIER = 'dossier'
     FICHE = 'fiche'
 
-    def _liste(self, origine, societe):
+    def _liste(self, origine, societe, manquantes=()):
         from apps.calepinage.services.suppositions import (
             liste_des_suppositions)
 
@@ -194,7 +194,27 @@ class SupposeTest(SimpleTestCase):
         from core.calepinage.electrique import MODULES_PAR_CHAINE
 
         return liste_des_suppositions({'origine': origine, 'longueur': MODULES_PAR_CHAINE}, societe,
-                                      self.DOSSIER)
+                                      self.DOSSIER, manquantes)
+
+    @staticmethod
+    def _manquantes_sans_onduleur():
+        """``Conception.manquantes`` RÉELLES de l'état d'``exemple_vide`` : 12
+        modules posés (fiche module complète), AUCUN onduleur désigné — d'où
+        ``electrique.onduleurs = []`` et ``chainage = null`` dans l'échantillon."""
+        from apps.calepinage.services.chaines import concevoir_par_pan
+        from apps.calepinage.services.electrique import temperatures_site
+
+        conception = concevoir_par_pan(
+            {'version': 2, 'zones': [{'id': 'z1', 'label': 'PAN-A', 'geometry': {
+                'count': 12, 'azimuthDeg': 180.0, 'tiltDeg': 15.0}}]},
+            module_specs={'vmp_v': 41.5, 'voc_v': 49.6, 'isc_a': 18.4,
+                          'imp_a': 17.1, 'pmax_wc': 720.0},
+            onduleur_specs={}, temperatures=temperatures_site(saisie={
+                'temperature_min_c': -5.0, 'temperature_max_c': 70.0}))
+        assert conception.manquantes and all(
+            m.startswith('onduleur : ') for m in conception.manquantes), \
+            conception.manquantes
+        return conception.manquantes
 
     def test_fiche_incomplete_et_sans_allee_nomme_les_deux_replis(self):
         from core.calepinage.electrique import MODULES_PAR_CHAINE
@@ -246,6 +266,9 @@ class SupposeTest(SimpleTestCase):
                   / 'contract_samples' / 'calepinage_resultat.json')
         exemple = json.loads(chemin.read_text(encoding='utf-8'))
         vide = exemple['exemple_vide']['suppose']
-        self.assertEqual(vide, self._liste(self.DOSSIER, {}))
+        # ``exemple_vide`` = posé, non chaîné, SANS onduleur désigné : le
+        # serveur reçoit les ``manquantes`` de cette conception (ACAL1648).
+        self.assertEqual(vide, self._liste(self.DOSSIER, {},
+                                           self._manquantes_sans_onduleur()))
         self.assertEqual(exemple['exemple']['suppose'],
                          self._liste(self.FICHE, {}))
