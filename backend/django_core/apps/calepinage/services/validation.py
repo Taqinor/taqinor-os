@@ -290,8 +290,8 @@ def _poste_principal(cascade, pertes, ecart, tolerance=None):
     perd PLUS que PVGIS et produit MOINS, ou (ACAL1606, pertes système
     égales) quand l'écart dépasse la ``tolerance`` saisie ; sinon ``None``."""
     chaine, pvgis = pertes.get('chaine_pct'), pertes.get('pvgis_pct')
-    hors_tolerance = (pertes.get('egales') and ecart is not None
-                      and tolerance is not None and abs(ecart) > tolerance)
+    hors_tolerance = (pertes.get('egales') and ecart is not None  # ACAL1961
+                      and tolerance is not None and -ecart > tolerance)
     if not hors_tolerance and (
             pertes.get('egales') or chaine is None or pvgis is None
             or ecart is None or not float(chaine) > float(pvgis)

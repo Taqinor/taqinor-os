@@ -469,6 +469,13 @@ class PerteSystemeTest(SimpleTestCase):
                                              tolerance=5.0))
         self.assertIsNone(v._poste_principal(CASCADE_SYSTEME, pertes, -8.0))
 
+    def test_une_chaine_qui_produit_plus_que_pvgis_ne_cite_aucun_poste(self):
+        """ACAL1961 — +8 % hors tolérance de 5 % : la chaîne produit PLUS que
+        PVGIS, aucune perte n'explique l'écart ⇒ aucun poste cité."""
+        pertes = v._pertes_totales(CASCADE_SYSTEME, {'loss_pct': 6.8})
+        self.assertIsNone(v._poste_principal(CASCADE_SYSTEME, pertes, 8.0,
+                                             tolerance=5.0))
+
     def test_le_motif_dit_a_pertes_systeme_egales(self):
         self.assertIn('à pertes système égales', v.MOTIF_ECART_INFORMATIF)
 
