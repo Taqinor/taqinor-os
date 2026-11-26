@@ -367,7 +367,9 @@ async function rendrePage(data: unknown): Promise<string> {
 
 describe('page /proposition — section #sld, deux payloads (LOT 6)', () => {
   it('ancien payload (sld_svg, sans schema_electrique) : section historique inchangée', async () => {
-    const html = await rendrePage(proposalContrat.exemple);
+    // L'exemple du contrat porte `schema_electrique` depuis SCHEL-B3 : l'ancien payload la RETIRE de sa copie.
+    const { schema_electrique: _neuf, ...ancien } = proposalContrat.exemple;
+    const html = await rendrePage(ancien);
     expect(html).toContain('id="sld-teaser"');
     expect(html).toContain('id="sld-viewer"');
     expect(html).toContain('id="sld-download"');
