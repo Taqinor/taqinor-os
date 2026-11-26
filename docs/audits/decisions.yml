@@ -6154,3 +6154,14 @@ decisions:
     date: "2026-11-25"
     source: "lecture seule de la production du 25/11/2026 (catalogue et lignes de devis des 90 derniers jours et des douze derniers mois, agrégats) ; RÉPONSES DU FONDATEUR le 25/11/2026 (questions interactives), mot pour mot : « 540 DH TTC per panel » et « 2 000 + 250 per panel HT (Recommended) » ; posés au déploiement par migration de données, seulement là où le prix ou le barème est vide"
     taches: []
+  - id: D-ACAL-131
+    question: "Schéma électrique du devis (lot 6 — le schéma unifilaire de la page client, de la fiche devis et de l'annexe PDF prend le dessin du calepinage) : d'où viennent les chaînes dessinées, et quelle option chaque schéma montre-t-il ?"
+    options:
+      - cle: calepinage_sinon_conception_par_option
+        texte: "Chaque option du devis a SON schéma. Les chaînes réelles du calepinage lié quand la conception du devis est celle du calepinage (empreintes layout_hash égales) et que l'option dessinée est celle que le calepinage retient ; sinon la conception électrique de CETTE option (chaînes du moteur), dans le même dessin ; sans conception pour l'option, le champ de panneaux sans découpage inventé. Batterie dessinée quand l'option en a une (unités, capacité nominale de la fiche × unités, tension de la fiche ; aucune protection batterie, décision du 19/08/2026). Page client : le schéma suit l'option choisie par le client. Fiche devis : les deux options, l'une ou l'autre à l'écran. Annexe PDF : le dessin neuf pour les nouveaux rendus seulement (un devis envoyé avant la coupure garde l'annexe reçue), même option qu'aujourd'hui (avec batterie quand elle est servable)"
+      - cle: conception_du_devis_seule
+        texte: "Toujours la conception électrique rangée du devis (une seule option, avec batterie quand elle est servable), jamais les chaînes du calepinage ; la page montre le même schéma quelle que soit l'option choisie"
+    reponse: calepinage_sinon_conception_par_option
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (option recommandée et réversible) ; demande du fondateur le 26/11/2026, mot pour mot : « i want this shema unifilaire i hade to be changed by the new schema electique that calpinage use that shows the chaines of pannels in 4 colors and show the inverter the grid and everything (if it does not show the battery make is show it) » ; conception et lanes : docs/audits/l5-calepinage/schema-electrique-devis.md ; contrat : backend/django_core/apps/ventes/contract_samples/schema_electrique.json"
+    taches: []
