@@ -449,14 +449,39 @@ class Deye20kTrenteCinqModulesTest(SimpleTestCase):
             [(12, 1), (12, 1), (11, 2)])
 
     def test_les_codes_du_cablage_sont_ceux_du_noyau(self):
-        import inspect
-        import re
-
-        from core.electrique import chaines as noyau
+        """``CODES_DU_CABLAGE`` = les codes que les deux fonctions de câblage
+        du noyau ÉMETTENT réellement : on les fait toutes parler (tension
+        haute et basse, Isc publié dépassé, écrêtage, borne d'Isc de repli)."""
+        from core.electrique.chaines import _verdicts_courant, _verdicts_tension
+        from core.electrique.types import Chaine, SpecOnduleur
 
         from apps.calepinage.services.tensions_chaines import CODES_DU_CABLAGE
 
-        source = (inspect.getsource(noyau._verdicts_tension)
-                  + inspect.getsource(noyau._verdicts_courant))
-        self.assertEqual(set(re.findall(r'"(CH_[A-Z_]+)"', source)),
+        class _Fenetre:
+            temp_froid_c, temp_chaud_c = -5.0, 70.0
+
+        def chaine(repere, mppt, voc, vmp_froid, vmp_chaud, isc, imp):
+            # La plus longue chaîne a la plus forte tension (jugée à froid),
+            # la plus courte la plus faible (jugée à chaud).
+            return Chaine(repere=repere, pan='PAN-1',
+                          nb_modules=int(voc // 50), mppt=mppt,
+                          voc_froid_v=voc, vmp_froid_v=vmp_froid,
+                          vmp_chaud_v=vmp_chaud, vmp_stc_v=vmp_froid,
+                          isc_a=isc, imp_a=imp, puissance_kwc=5.0)
+
+        publie = SpecOnduleur(n_mppt=2, mppt_v_min=200.0, mppt_v_max=600.0,
+                              v_max_abs=800.0, i_max_mppt_a=20.0, ac_kw=10.0,
+                              v_demarrage_v=250.0, isc_max_mppt_a=30.0)
+        repli = SpecOnduleur(n_mppt=1, mppt_v_min=100.0, mppt_v_max=900.0,
+                             v_max_abs=1000.0, i_max_mppt_a=20.0, ac_kw=10.0)
+        emis = []
+        hors_bornes = (chaine('CH1', 1, 900.0, 700.0, 500.0, 20.0, 9.0),
+                       chaine('CH2', 1, 500.0, 400.0, 300.0, 20.0, 9.0),
+                       chaine('CH3', 2, 300.0, 250.0, 150.0, 25.0, 25.0))
+        _verdicts_tension(hors_bornes, publie, _Fenetre(), [], emis)
+        _verdicts_courant(hors_bornes, publie, [], emis)
+        _verdicts_courant((chaine('CH1', 1, 500.0, 400.0, 300.0, 12.0, 9.0),
+                           chaine('CH2', 1, 500.0, 400.0, 300.0, 12.0, 9.0)),
+                          repli, [], emis)
+        self.assertEqual({verdict.code for verdict in emis},
                          set(CODES_DU_CABLAGE))
