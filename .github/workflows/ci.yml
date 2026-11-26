@@ -229,7 +229,7 @@ jobs:
       # cle que dans `.github/actions/backend-env/action.yml` — a garder
       # identiques, sinon le constructeur tourne (ou est saute) a tort.
       - id: testdb
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             /tmp/testdb.dump
