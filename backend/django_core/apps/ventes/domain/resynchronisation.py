@@ -267,13 +267,12 @@ def _avertissements_de_depart(verrou):
     return agricole, multi_villa, avertissements
 
 
-def _designations(verrou, intention, layout, lignes, veut_batterie, avertissements):
+def _designations(verrou, intention, layout, veut_batterie, avertissements):
     """D-ACAL-148 / 159 — porte de :func:`creation_calepinage.appliquer_designations_a_la_resynchro`
     (import local : ``creation_calepinage`` lit ce paquet en bas de module)."""
     from apps.ventes.domain.creation_calepinage import appliquer_designations_a_la_resynchro
 
-    return appliquer_designations_a_la_resynchro(verrou, intention, layout, lignes, veut_batterie,
-                                                 avertissements)
+    return appliquer_designations_a_la_resynchro(verrou, intention, layout, veut_batterie, avertissements)
 
 
 def reconcilier(devis, intention):
@@ -467,6 +466,10 @@ def reconcilier(devis, intention):
         refus = _refus_resynchro(verrou)
         if refus is not None:
             raise refus
+        agricole, multi_villa, avertissements = _avertissements_de_depart(verrou)
+        # D-ACAL-148 / 159 / 164 (relecture, A) — la MÊME décision que la création, AVANT que les
+        # lignes soient lues ici : les règles PV18 ci-dessous relisent ce qu'elle a écrit.
+        veut_batterie, designations = _designations(verrou, intention, layout, veut_batterie, avertissements)
 
         lignes = _lignes_produit(verrou)
         lignes_panneau = [li for li in lignes
@@ -497,11 +500,6 @@ def reconcilier(devis, intention):
                                    for li in lignes_panneau))
         total_panneaux_avec = (_total_de(VARIANTE_AVEC) if devis_variante
                                else total_panneaux)
-
-        agricole, multi_villa, avertissements = _avertissements_de_depart(verrou)
-        # D-ACAL-148 / 159 (relecture, A) — la MÊME décision que la création, avant les règles PV18.
-        veut_batterie, designations = _designations(verrou, intention, layout, lignes, veut_batterie,
-                                                    avertissements)
 
         # ── Court-circuit : même géométrie → ZÉRO écriture ──
         # ACAL96 — accepté seulement si le layout STOCKÉ porte déjà
@@ -1433,14 +1431,14 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False, desi
     lignes_ajoutees, avertissements}``, et ``SyncLayoutError`` remonte telle
     quelle à travers le pipeline (aucune étape ne l'intercepte).
 
-    ``designations`` (D-ACAL-148 / 159) — ``{'onduleur': …}`` du calepinage (la resynchro du
+    ``designations`` (D-ACAL-148 / 159 / 164) — ``{'onduleur': …, 'batterie': …}`` du calepinage (la resynchro du
     MODULE) : portées par ``IntentionDevis.cible`` jusqu'à ``reconcilier``. ``None`` (LE DÉFAUT :
     apply-taille, réparations) ⇒ intention identique à hier.
     """
     from apps.ventes.domain.creation_calepinage import cible_des_designations
 
     resultat = appliquer(devis, IntentionDevis(
-        cible=(cible_des_designations(designations.get('onduleur'))
+        cible=(cible_des_designations(designations.get('onduleur'), designations.get('batterie'))
                if designations is not None else None),
         origine=ORIGINE_RESYNCHRONISATION,
         company=getattr(devis, 'company', None),

@@ -237,11 +237,14 @@ def composer(intention):
     # optimiseurs``) ; toute autre imposition reste mono-option.
     designe = (imposition.get('onduleur_impose')
                if isinstance(imposition.get('onduleur_impose'), dict) else None)
-    if deux_options and imposition and not (designe is not None and len(imposition) == 1):
+    # D-ACAL-164 — la batterie DÉSIGNÉE (``designee``) va, elle, au kit « avec ».
+    batterie_designee = (imposition.get('batterie_imposee')
+                         if (imposition.get('batterie_imposee') or {}).get('designee') else None)
+    if deux_options and imposition and len(imposition) != (designe is not None) + (batterie_designee is not None):
         # COP2-V3 — une composition imposée est MONO-OPTION (le devis auto
         # refuse ``les_deux`` en amont) : jamais une imposition ignorée.
         raise ValueError('Composition imposée : forme mono-option seulement.')
-    if deux_options and designe is not None and not (avec or commun['regles_2710']):
+    if deux_options and (designe or batterie_designee) is not None and not (avec or commun['regles_2710']):
         imposition = {}  # règles d'origine (< 3) : jamais un devis neuf du calepinage
     if deux_options and (avec or commun['regles_2710']):
         avec = avec or {}
@@ -255,7 +258,7 @@ def composer(intention):
             batterie_cible_kwh=avec.get('batterie_kwh'),
             modeles=getattr(intention, 'modeles', None),
             batterie_module_kwh=getattr(intention, 'batterie_module_kwh', None),
-            onduleur_designe=designe,
+            onduleur_designe=designe, batterie_designee=batterie_designee,
             **commun)
     else:
         lignes = composition_residentielle(
@@ -584,7 +587,7 @@ def _verifier_impose(intention, erreurs):
     company = intention.company
     onduleur_impose = getattr(intention, 'onduleur_impose', None)
     batterie_imposee = getattr(intention, 'batterie_imposee', None)
-    if isinstance(onduleur_impose, dict):
+    if isinstance(onduleur_impose, dict) or (batterie_imposee or {}).get('designee'):
         return _verifier_designe(intention, erreurs)
     erreurs.extend(refus_produits_imposes(
         company, onduleur_impose, batterie_imposee))
@@ -625,11 +628,11 @@ def _verifier_designe(intention, erreurs):
     batterie gardent l'exigence ordinaire (la batterie jugée sur l'onduleur qui
     la porte)."""
     company = intention.company
-    designe = intention.onduleur_impose
+    designe = intention.onduleur_impose if isinstance(intention.onduleur_impose, dict) else {}
     batterie_imposee = getattr(intention, 'batterie_imposee', None)
     erreurs.extend(refus_produits_imposes(company, None, batterie_imposee))
-    produit = _fiche_tarifee(company, designe.get('produit_id'))
-    if produit is None:
+    produit = _fiche_tarifee(company, designe.get('produit_id')) if designe else None
+    if designe and produit is None:
         erreurs.extend(refus_produits_imposes(company, designe.get('produit_id'), None))
     categorie = designe.get('categorie')
     scenario = (intention.scenario or '').strip().lower()

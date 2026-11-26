@@ -451,7 +451,7 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
         for cible in (None, SimpleNamespace(source='calepinage', onduleur_impose=None)):
             with self.subTest(cible=cible):
                 rendu = appliquer_designations_a_la_resynchro(
-                    verrou, SimpleNamespace(cible=cible), {}, [], False, avertissements)
+                    verrou, SimpleNamespace(cible=cible), {}, False, avertissements)
                 self.assertEqual(rendu, (False, {'modifiees': 0, 'a_ecrire': False, 'marqueur': {'onduleur': 7}}))
         self.assertEqual(avertissements, [])
         self.assertIsNone(marqueur_stocke(SimpleNamespace(roof_layout={})))
@@ -484,6 +484,50 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
         nombre = ligne()
         self.assertTrue(_poser_produit(nombre, produit, 'onduleur_hybride', avertissements, nombre=2))
         self.assertEqual((nombre.quantite, nombre.role_devis), (D('2'), 'onduleur_hybride'))
+
+    def test_b_decision_de_la_batterie_designee(self):
+        """D-ACAL-164 — la décision, nourrie par les VRAIES fonctions du catalogue (nom lu comme le PDF
+        et la resynchro, compatibilité par le juge de la composition)."""
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.catalogue import _batterie_compatible, _is_battery
+        from apps.ventes.domain.creation_calepinage import decision_batterie_designee
+        from apps.ventes.utils.options import texte_classement
+
+        dyness, bos = 'Batterie Dyness 5 kWh', 'Deye BOS-B Pack16'
+
+        def decision(nom=dyness, scenario='avec', plage=None, **extra):
+            options = dict(produit_id=4, nom=nom, etat='tarife',
+                           nom_dit_batterie=_is_battery(texte_classement(nom, nom)),
+                           scenario=scenario, hybride_nom='Onduleur hybride Deye 5kW',
+                           compatible=_batterie_compatible(SimpleNamespace(nom=nom), plage), packs=2)
+            options.update(extra)
+            return decision_batterie_designee(**options)
+
+        self.assertEqual(decision()['impose'], {'produit_id': 4, 'nombre': 2, 'designee': True})
+        self.assertEqual(decision(scenario='les_deux')['option'], 'avec')
+        for attendu, extra in (('n’est pas mise au devis', {'scenario': 'sans'}),
+                               ('son nom ne dit pas qu’il s’agit d’une batterie', {'nom': bos}),
+                               ('ne convient pas à l’onduleur « Onduleur hybride Deye 5kW »', {'plage': (0, 0)}),
+                               ('aucun onduleur hybride ni autonome', {'hybride_nom': None}),
+                               ('aucun nombre de packs', {'packs': None}),
+                               ('n’est pas un entier', {'packs': None, 'packs_illisible': True}),
+                               ('pas de prix de vente', {'etat': 'sans_prix'})):
+            with self.subTest(attendu=attendu):
+                rendu = decision(**extra)
+                self.assertIsNone(rendu['impose'])
+                self.assertIn(attendu, rendu['message'])
+                self.assertIn('« %s »' % extra.get('nom', dyness), rendu['message'])
+
+    def test_b_sans_designation_l_intention_est_inchangee(self):
+        from apps.ventes.domain.creation_calepinage import _appliquer_les_designations
+        from apps.ventes.domain.pipeline import ORIGINE_CALEPINAGE, CibleDevis, IntentionDevis
+
+        intention = IntentionDevis(origine=ORIGINE_CALEPINAGE, company=None, cible=CibleDevis(nb_panneaux=12),
+                                   scenario='sans', layout={'result': {}})
+        journal = {}
+        self.assertEqual(_appliquer_les_designations(intention, None, None, 'sans', journal), (intention, []))
+        self.assertEqual(journal, {})
 
     def test_famille_role_puis_fiche_puis_nom(self):
         from types import SimpleNamespace
@@ -585,6 +629,37 @@ class OnduleurDesigneDuCalepinage(TestCase):
                 self.assertIsNone(journal['onduleur_designe']['impose'])
                 self.assertTrue(any('« Onduleur hybride Deye 5kW Monophasé »' in m and 'ne pose aucune batterie' in m
                                     for m in journal['avertissements']), journal)
+
+    def _batteries(self):
+        return sorted((li.designation, int(li.quantite), li.variante or '') for li in self.dernier.lignes.all()
+                      if li.role_devis == 'batterie')
+
+    def test_b_batterie_designee_vendue_au_nombre_de_packs_meme_hors_stock(self):
+        """D-ACAL-164 — vendue au nombre de packs saisi ; comme l'onduleur désigné, un prix suffit (la
+        banque imposée de la composition ne lit pas le stock)."""
+        Produit.objects.create(company=self.company, nom='Batterie Lithium 7 kWh', sku=f'A164-B7-{self.company.pk}',
+                               prix_vente=Decimal('21000'), prix_achat=Decimal('1'), quantite_stock=0)
+        batterie = {'produit_id': self._id('Batterie Lithium 7 kWh'), 'packs': 2, 'packs_illisible': False}
+        for extra, variante in (({'scenario': 'avec_batterie'}, ''), ({'deux_options': True}, 'avec')):
+            with self.subTest(**extra):
+                _o, journal = self._devis(batterie_designee=batterie, **extra)
+                self.assertEqual(self._batteries(), [('Batterie Lithium 7 kWh', 2, variante)])
+                self.assertIsNone(journal['batterie_designee']['message'])
+
+    def test_b_batterie_designee_sur_pose_sans_et_sans_hybride_n_est_pas_mise_et_le_dit(self):
+        batterie = {'produit_id': self._id('Batterie Dyness 5 kWh'), 'packs': 1, 'packs_illisible': False}
+        _o, journal = self._devis(batterie_designee=batterie)
+        self.assertEqual(self._batteries(), [])
+        self.assertTrue(any('n’est pas mise au devis' in m for m in journal['avertissements']), journal)
+
+    def test_b_batterie_sans_prix_le_choix_automatique_et_le_dit(self):
+        Produit.objects.create(company=self.company, nom='Batterie Lithium 7 kWh', sku=f'A164-B0-{self.company.pk}',
+                               prix_vente=Decimal('0'), prix_achat=Decimal('1'), quantite_stock=5)
+        batterie = {'produit_id': self._id('Batterie Lithium 7 kWh'), 'packs': 2, 'packs_illisible': False}
+        _o, journal = self._devis('avec_batterie', batterie_designee=batterie)
+        self.assertEqual([d for d, *_ in self._batteries()], ['Batterie Dyness 5 kWh'])
+        self.assertTrue(any('pas de prix de vente' in m and 'choix automatique' in m
+                            for m in journal['avertissements']), journal)
 
     def test_deux_options_chaque_onduleur_va_a_son_option_jamais_un_500(self):
         onduleurs, _j = self._devis(designe={'produit_id': self._id('Onduleur hybride Deye 5kW Monophasé'),

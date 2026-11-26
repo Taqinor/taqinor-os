@@ -102,6 +102,13 @@ def _ecarts(calepinage, options, decision_onduleur=None, *, brouillon=False):
     return phrases
 
 
+def _ecart_batterie(decision):
+    """D-ACAL-164 — la phrase de la décision sur la batterie désignée (repli, ou « sans batterie »),
+    LA MÊME que la génération met dans ``avertissements`` ; ``[]`` quand elle est chiffrée."""
+    return ([{'champ': 'batterie.produit', 'message': decision['message']}]
+            if decision and decision.get('message') else [])
+
+
 def _role_de_ligne(ligne):
     """Lot 8 (B2) — le rôle d'une ligne déjà au devis, résolu comme le reste du code pour une ligne
     sans rôle figé (``ventes.domain.bordereau._boq_role_de_ligne``) : le rôle FIGÉ de la ligne, sinon
@@ -204,7 +211,7 @@ def _apercu_complet(calepinage, surfaces):
     )
     from .equipements import composition_a_blanc
 
-    from .devis import _onduleur_designe
+    from .devis import _batterie_designee, _onduleur_designe
 
     composer, AutoDevisError = composition_a_blanc()
     source, reference, libre, issue = 'composition', None, None, None
@@ -224,7 +231,8 @@ def _apercu_complet(calepinage, surfaces):
             specs = _specs_du_brouillon(retenu)
         else:
             specs = composer(layout=layout, company=company, lead=lead,
-                             onduleur_designe=_onduleur_designe(calepinage), journal=journal)
+                             onduleur_designe=_onduleur_designe(calepinage), journal=journal,
+                             batterie_designee=_batterie_designee(calepinage))
             if issue == ISSUE_BROUILLON_LIBRE:
                 libre = _ecart_brouillon_libre(retenu[0])
     except (AutoDevisError, DevisRefuse) as refus:
@@ -232,7 +240,7 @@ def _apercu_complet(calepinage, surfaces):
                 'source': None, 'reference': None}, issue
     options = _materiel_par_option(specs)
     ecarts = (_ecarts(calepinage, options, journal.get('onduleur_designe'), brouillon=source == 'brouillon_existant')
-              + ([libre] if libre else []))
+              + ([libre] if libre else []) + _ecart_batterie(journal.get('batterie_designee')))
     for option in options:
         option.pop('module_produit')
         option.pop('onduleur_produit')

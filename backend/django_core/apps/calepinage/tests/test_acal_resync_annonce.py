@@ -645,6 +645,39 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertIn('L’onduleur suit la désignation de l’étape Électrique : « Onduleur réseau Huawei 5kW '
                       'Monophasé » remplace « Onduleur réseau Growatt 8kW Monophasé ».', data['avertissements'])
 
+    # ── D-ACAL-164 (B) — la batterie désignée à l'étape Électrique ──
+    def test_b_batterie_designee_generation_apercu_et_resynchro(self):
+        from apps.stock.models import Produit
+
+        Produit.objects.create(company=self.company, nom='Batterie Lithium 7 kWh', sku=f'A164C-{self.company.pk}',
+                               prix_vente=Decimal('21000'), prix_achat=Decimal('1'), quantite_stock=5)
+        batterie = Produit.objects.get(company=self.company, nom='Batterie Lithium 7 kWh')
+        self._nouvelle_pose()
+        self._designer('Onduleur hybride Deye 5kW Monophasé', nombre_onduleurs=1,
+                       batterie={'produit': batterie.pk, 'packs': 2})
+        apercu, genere, onduleurs = self._apercu_puis_generation()
+        self.assertEqual(onduleurs, {None: ('Onduleur hybride Deye 5kW Monophasé', 'onduleur_hybride')})
+        self.assertNotIn('batterie.produit', [e['champ'] for e in apercu['ecarts']])  # chiffrée : rien à dire
+        _data, _ond, batteries = self._resynchroniser()
+        self.assertEqual([(b.designation, int(b.quantite)) for b in batteries], [('Batterie Lithium 7 kWh', 2)])
+        self._designer('Onduleur hybride Deye 5kW Monophasé', nombre_onduleurs=1,
+                       batterie={'produit': batterie.pk, 'packs': 3})
+        data, _ond, batteries = self._resynchroniser()
+        self.assertEqual([(b.designation, int(b.quantite)) for b in batteries], [('Batterie Lithium 7 kWh', 3)])
+        self.assertTrue(any('La batterie suit la désignation' in m for m in data['avertissements']), data)
+
+    def test_b_batterie_designee_sans_hybride_sur_pose_sans_dite_a_l_apercu_et_a_la_generation(self):
+        from apps.stock.models import Produit
+
+        batterie = Produit.objects.get(company=self.company, nom='Batterie Dyness 5 kWh')
+        self._nouvelle_pose()
+        self._designer('Onduleur réseau Huawei 5kW Monophasé', nombre_onduleurs=1,
+                       batterie={'produit': batterie.pk, 'packs': 1})
+        apercu, genere, _onduleurs = self._apercu_puis_generation()
+        phrase = next(e['message'] for e in apercu['ecarts'] if e['champ'] == 'batterie.produit')
+        self.assertIn('n’est pas mise au devis', phrase)
+        self.assertIn(phrase, genere['avertissements'])  # la même phrase
+
 
 class ApercuBrouillonLibreSansBaseTest(SimpleTestCase):
     """Lot 8 (B2) — sans base : le rôle d'une ligne de brouillon et la phrase R2-22."""

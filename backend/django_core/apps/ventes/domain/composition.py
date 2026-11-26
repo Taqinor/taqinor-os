@@ -517,7 +517,7 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
                                  mppt_paires=1, phase=None, modeles=None,
                                  batterie_module_kwh=None,
                                  regles_2710=True, modules_affleurants=0,
-                                 froid=None, onduleur_designe=None):
+                                 froid=None, onduleur_designe=None, batterie_designee=None):
     """L-2OPT — LE devis « Les deux » quand les deux optimums DIVERGENT.
 
     Compose DEUX kits complets par ``composition_residentielle`` (la source de
@@ -540,7 +540,7 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
     ``batterie_module_kwh`` (BATHOMO) va au kit « avec ». ``onduleur_designe``
     (D-ACAL-148, ``{'produit_id', 'categorie', 'nombre'}``) va au SEUL kit qu'il
     sert : un onduleur réseau au kit « sans », un hybride au kit « avec » ; l'autre
-    kit garde son choix catalogue. Kit « avec » SANS
+    kit garde son choix catalogue ; ``batterie_designee`` (D-ACAL-164) va au kit « avec ». Kit « avec » SANS
     aucune batterie ⇒ le kit « sans » seul, avec
     :func:`avertissement_option_avec_retiree`. ``regles_2710=False`` (devis
     EXISTANT aux règles < 3) : l'ancien repli — forme « deux options »
@@ -601,6 +601,7 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
         batterie_module_kwh=batterie_module_kwh, modeles=modeles_kits,
         onduleur_impose=(onduleur_designe if categorie_designee == 'onduleur_hybride'
                          else None),
+        batterie_imposee=batterie_designee,
         **commun)
     if (regles_2710 and kit_sans
             and 'batterie' not in (getattr(kit_avec, 'roles', ()) or ())):
