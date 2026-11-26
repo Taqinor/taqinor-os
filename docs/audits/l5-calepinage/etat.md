@@ -2118,7 +2118,7 @@ porte) : listes `T4/tour4/a-rejouer-devis.json` (52) et `a-rejouer-calepinage.js
 `scratchpad/tour4/msg-Y2.md`) à lancer dès que X7 rend la main (deux navigateurs au plus). NE PAS rebâtir la pile tant
 que X7, Y1 ou Y2 jouent ; les corrections du lot 5 seront rejouées au tour 5, sur la pile rebâtie.
 
-### Point du 25/11, soir — REPRISE SUR LE POSTE Reda_Laptop (le plus récent — REPRENDRE ICI)
+### Point du 25/11, soir — REPRISE SUR LE POSTE Reda_Laptop
 
 **Le poste DESKTOP-APTAHF6 est arrêté** (confirmé par Reda à 20 h 15 UTC). Son dossier de travail, ses consignes de
 lane, son texte de PR, sa pile de revue et ses agents en vol sont PERDUS : seul ce qui est commité existe. Ses baux de
@@ -2185,3 +2185,48 @@ activation du niveau 15 ; ACAL2029 (@acceptation) non jouée.
 
 **Reste ouvert :** T4-X3-017 (ci-dessus) ; T4-X4-003 (formulation d'une erreur 500, facultatif) ; D-AMOT-8 et D-AMOT-9
 (constats T4-X1-005, T4-X1-006, T4-X4-007) ; prix des articles de protection du pompage à saisir au catalogue.
+
+### Point du 26/11, 02 h UTC — LOT 5 FUSIONNÉ (le plus récent — REPRENDRE ICI)
+
+**Fusionné, pas en ligne.** PR Taqinor/taqinor-os#1559 fusionnée sur `main` le 26/11 à 01 h 45 UTC (commit de fusion
+`86844ac4d`), par la file de fusion. Quatre passages de CI : 18 rouges, puis 9, puis 1 (lane 2 du front annulée à
+12 min : un clic dans un `waitFor` du garde « Recalculer »), puis vert (37 contrôles). Rien n'est en ligne tant que
+Reda n'a pas lancé `scripts/deploy-prod.ps1` ; D-ACAL-122 : le 26/11 avant tout envoi de devis, sinon déplacer d'abord
+`COUPURE_PDF_2511` et `COUPURE_PHRASES_PROFIL`. Baux du lot 5 rendus après la fusion ; baux du lot 6 pris sous
+`Reda_Laptop/dev-lot6`.
+
+**Ajouté au lot 5 après le point précédent :** catalogue du pompage (migrations stock 0190 à 0196 : rôle
+`protection_ac`, neuf prix de protections, parafoudre AC à 1 000 DH TTC, fiches des variateurs VEICHI, tension et CV
+des petites pompes, pose 2 000 + 250 par panneau HT, structure 540 DH TTC par panneau — D-ACAL-127 à 130) ; six
+relecteurs neufs sur l'ensemble (corrigés : visites visibles du Technicien, pointeur de conception sous verrou, plan
+par défaut, hypothèse interne du kit servie au public, clé d'idempotence effacée sur un 409, double sens de
+`taux_source`).
+
+**Prêt pour le lot 6 (branche `dev-lot6`, partie de `origin/main` ; aucune PR ouverte) :**
+- `origin/lot6/ratio-hybride` (4 commits, pointe `96abd203b`) : le verdict DC/AC du calepinage dit d'où vient sa
+  borne ; une pose sur un onduleur hors lignes est jugée sur la fiche de cet onduleur ; un hybride se reconnaît à son
+  rôle, puis à sa fiche, puis à son nom (décision du 24/11) ; D-HYB-2 ouverte (le résidentiel juge-t-il aussi un
+  hybride sur sa fiche ?). Tests sans base verts sur le poste ; la CI ne l'a pas vu ; relecteur neuf en cours.
+- `origin/lot5c/ci-vitest-toiture-lent` (`6029b9a72`) : poids de six fichiers de test remis aux durées mesurées
+  (`ToitureDesign.calepinage` : 9,5 s déclarés, 93 s mesurés — 92 tests contre 33 à la mesure du 24/10).
+- `origin/lot6/schema-electrique` : en cours. Demande de Reda du 26/11 : le schéma unifilaire du devis (page du
+  client, annexe technique du PDF, écran du devis) est remplacé par le schéma électrique du calepinage (chaînes en
+  couleurs, coffrets, onduleur, réseau), batterie comprise. Contrat d'abord, puis trois lanes (serveur, écran, site).
+  Choix de l'orchestrateur à confirmer (D-ACAL-131) : un devis envoyé garde son PDF ; la page du client, vue vivante,
+  change.
+
+**Fait en production pour le client du lead 1742, sur demande de Reda (25-26/11) :** réglages société de la
+simulation choisis à l'écran (plusieurs années réelles, 2005-2023) ; calepinage 9 re-lié au devis envoyé 564
+(`relier_calepinages_devis_envoye --appliquer`) ; `roof_layout` et `layout_hash` du devis 564 écrits depuis le
+calepinage par une mise à jour ciblée (aucune étude recalculée ; lignes, totaux et date de modification relus
+identiques) ; nouveau devis brouillon DEV-202611-0104 créé à l'écran (35 panneaux, hybride 20 kW, une batterie),
+lignes prises au calculateur — le calculateur seul compose 42 panneaux pour une batterie (D-HYB-4).
+
+**JAMAIS VÉRIFIÉ :** aucun écran du lot 5 vu dans l'application ; la pile de revue de ce poste
+(`C:/dev/taqinor-pile-revue/`, API sur le port 8041) est en cours d'installation ; tour 5 (199 rejeux, consignes dans
+le dossier de travail de la session), relecteur des maquettes, enregistrements d'acceptation, liste
+`remplir_conceptions --ecarts-sans-toit` : rien de commencé. Le contrat de sortie K1 à K17 reste à mesurer.
+
+**Attend Reda :** barre du haut en tablette (T4-X3-017) ; D-AMOT-8 et D-AMOT-9 ; lecture de D-ACAL-126 (un Technicien
+responsable lit-il les calepinages des visites d'un commercial qu'il supervise ?) ; D-HYB-2 ; D-ACAL-131.
+
