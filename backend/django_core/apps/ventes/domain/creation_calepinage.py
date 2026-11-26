@@ -65,9 +65,22 @@ def _arbitrage_du_calepinage(layout, nb_panneaux, kwc, *, company):
 
 
 def toiture_sans_suppositions(toiture):
-    """La toiture à RANGER (``etude_params['toiture']``) : sans ``suppositions`` (D-ACAL-149 (ii)),
-    une copie ; ``phrases_des_suppositions`` les rend au vendeur."""
-    return {cle: valeur for cle, valeur in (toiture or {}).items() if cle != 'suppositions'}
+    """La toiture à RANGER (``etude_params['toiture']``, servi au client comme ``data['etude']``) :
+    sans ``suppositions`` (D-ACAL-149 (ii)) ; round 4, point 3 — sans l'inclinaison SUPPOSÉE
+    (D-ACAL-168 : jamais imprimée pour le client) ni le drapeau privé, pan par pan et pour le pan
+    principal ; la production lit ``_pans_geometry``, qui la garde. Une copie ;
+    ``phrases_des_suppositions`` rend la phrase au vendeur."""
+    from apps.ventes.domain.geometrie import CLE_INCLINAISON_SUPPOSEE
+
+    rangee = {cle: valeur for cle, valeur in (toiture or {}).items() if cle != 'suppositions'}
+    if (toiture or {}).get('suppositions'):
+        rangee.pop('inclinaison_deg', None)
+    if isinstance(rangee.get('pans'), list):
+        rangee['pans'] = [{cle: valeur for cle, valeur in pan.items()
+                           if cle != CLE_INCLINAISON_SUPPOSEE and not (
+                               pan.get(CLE_INCLINAISON_SUPPOSEE) and cle == 'inclinaison_deg')}
+                          if isinstance(pan, dict) else pan for pan in rangee['pans']]
+    return rangee
 
 
 def phrases_des_suppositions(toiture):

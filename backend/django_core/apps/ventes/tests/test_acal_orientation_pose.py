@@ -242,17 +242,44 @@ class ToitPlatPartieDeuxTest(SimpleTestCase):
         self.assertNotIn('suppositions', etude['toiture'])
         self.assertNotIn('suppositions', toiture_sans_suppositions(toiture))
         self.assertEqual(phrases_des_suppositions(toiture), [SUPPOSITION_INCLINAISON_TOIT_PLAT['message']])
+        from apps.ventes.domain.geometrie import CLE_INCLINAISON_SUPPOSEE, layout_hash
+
         for pan in stocke['_pans_geometry']:
+            # Round 4, point 3 — seule trace : le drapeau PRIVÉ (préfixe « _ »), jamais la phrase.
             self.assertFalse({'suppositions', 'inclinaison_supposee'} & set(pan))
+            self.assertIs(pan[CLE_INCLINAISON_SUPPOSEE], True)
         texte = repr(etude) + repr(stocke)
         self.assertNotIn(SUPPOSITION_INCLINAISON_TOIT_PLAT['message'], texte)
-        self.assertNotIn('inclinaison_supposee', texte)
+        self.assertNotIn(CLE_INCLINAISON_SUPPOSEE, repr(etude))
+        # etude_params est servi au client (data['etude']) : la valeur supposée n'y est pas.
+        self.assertNotIn('inclinaison_deg', etude['toiture'])
+        self.assertNotIn('inclinaison_deg', etude['toiture']['pans'][0])
+        self.assertEqual(stocke['_pans_geometry'][0]['inclinaison_deg'], 20)  # la production la garde
+        # Hors empreintes : layout_hash et les groupes de l'étude électrique ne lisent pas le drapeau.
+        from types import SimpleNamespace
+
+        from apps.ventes.electrical_service import groupes_du_devis
+        sans = dict(stocke, _pans_geometry=[{k: v for k, v in pan.items() if k != CLE_INCLINAISON_SUPPOSEE}
+                                            for pan in stocke['_pans_geometry']])
+        self.assertEqual(layout_hash(stocke), layout_hash(sans))
+        self.assertEqual(groupes_du_devis(SimpleNamespace(roof_layout=stocke)),
+                         groupes_du_devis(SimpleNamespace(roof_layout=sans)))
 
     def test_l_annexe_client_n_imprime_pas_l_inclinaison_supposee(self):
-        pans = extract_roof_config(_toit_plat_vide(), toit_plat_corrige=True)['pans']  # aucun module posé
-        self.assertEqual(pans[0]['inclinaison_deg'], 20)
-        self.assertNotIn('inclinaison_deg', _pan_principal({'pans': pans}, toit_plat_corrige=True))
-        self.assertEqual(_pan_principal({'pans': pans})['inclinaison_deg'], 20)  # lecture d'avant : inchangée
+        from types import SimpleNamespace
+
+        from apps.ventes.public_views import _safe_roof_layout
+
+        # Round 4, point 3 — masqué SUR LE DRAPEAU, avec ou sans modules (le cas avec modules est celui
+        # où 20° entre en production) ; jamais imprimé, ni à l'annexe ni à la 3D publique.
+        for layout in (_toit_plat_vide(), self._plat_avec_compte()):
+            pans = extract_roof_config(layout, toit_plat_corrige=True)['pans']
+            self.assertEqual(pans[0]['inclinaison_deg'], 20)
+            self.assertNotIn('inclinaison_deg', _pan_principal({'pans': pans}, toit_plat_corrige=True))
+            public = _safe_roof_layout(SimpleNamespace(roof_layout=dict(layout, _pans_geometry=pans),
+                                                       statut='envoye', pk=None))
+            self.assertNotIn('inclinaison_deg', public['pans'][0])
+            self.assertNotIn('inclinaison_deg', _pan_principal(public, toit_plat_corrige=True))
         poses = extract_roof_config(_layout(_zone_plate_inclinee()), toit_plat_corrige=True)['pans']
         self.assertEqual(_pan_principal({'pans': poses}, toit_plat_corrige=True)['inclinaison_deg'], 10)
 
@@ -312,9 +339,12 @@ class ZonesEtudeDuDevisTest(TestCase):
         self.assertIn(SUPPOSITION_INCLINAISON_TOIT_PLAT['message'], journal['avertissements'])
         self.assertEqual([p['inclinaison_deg'] for p in devis.roof_layout['_pans_geometry']], [20])
         self.assertEqual(zones_etude_du_devis(devis)[0]['tilt'], 20.0)
+        from apps.ventes.public_views import _safe_roof_layout
+
         texte = repr(devis.etude_params) + repr(devis.roof_layout.get('_pans_geometry'))
-        for interdit in ('suppositions', 'inclinaison_supposee', SUPPOSITION_INCLINAISON_TOIT_PLAT['message']):
+        for interdit in ("'suppositions'", "'inclinaison_supposee'", SUPPOSITION_INCLINAISON_TOIT_PLAT['message']):
             self.assertNotIn(interdit, texte)
+        self.assertNotIn('inclinaison_deg', (_safe_roof_layout(devis) or {}).get('pans', [{}])[0])
 
     def test_dry_run_liste_le_devis_envoye_sans_le_reecrire(self):
         layout = _layout(_zone_plate_inclinee())

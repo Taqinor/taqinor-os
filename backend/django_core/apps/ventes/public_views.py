@@ -588,7 +588,10 @@ def _safe_roof_layout(devis) -> dict | None:
     for p in (layout.get("_pans_geometry") or []):
         if not isinstance(p, dict):
             continue
-        pans.append({k: p.get(k) for k in _PAN_KEYS if k in p})
+        # D-ACAL-168 — une inclinaison SUPPOSÉE (drapeau privé du pan) n'est jamais servie au client.
+        from apps.ventes.domain.geometrie import CLE_INCLINAISON_SUPPOSEE
+        suppose = bool(p.get(CLE_INCLINAISON_SUPPOSEE))
+        pans.append({k: p.get(k) for k in _PAN_KEYS if k in p and not (suppose and k == "inclinaison_deg")})
 
     # Géométrie des zones (contours + obstacles + orientation), sans aucun prix.
     _ZONE_KEYS = ("id", "label", "vertices", "obstacles", "roofType",

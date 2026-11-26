@@ -95,6 +95,15 @@ SUPPOSITION_INCLINAISON_TOIT_PLAT = {
 }
 
 
+#: D-ACAL-168 (relecture round 4, point 3) — drapeau PRIVÉ d'un pan de ``_pans_geometry`` dont
+#: l'inclinaison est la valeur SUPPOSÉE (20°) : la production l'emploie, le client ne la lit jamais
+#: (``public_views._safe_roof_layout`` et l'annexe ``calepinage_options._pan_principal`` omettent
+#: ``inclinaison_deg`` sur ce drapeau ; la liste blanche ``_PAN_KEYS`` ne recopie pas la clé). Hors
+#: ``layout_hash`` (``_pans_geometry`` n'est pas dans :data:`CLES_IMPRIMEES`) et hors
+#: ``electrical_design_hash`` (``groupes_du_devis`` ne lit que libellé, compte, azimut, inclinaison).
+CLE_INCLINAISON_SUPPOSEE = '_inclinaison_supposee'
+
+
 def orientation_du_pan(zone, *, toit_plat_corrige=False):
     """ACAL58 — l'orientation d'un pan : celle des modules POSÉS d'abord.
 
@@ -305,6 +314,8 @@ def extract_roof_config(layout, *, toit_plat_corrige=False):
             # face du toit). Clé interne additive de ``_pans_geometry``.
             'source_orientation': orientation['source_orientation'],
         }
+        if orientation.get('inclinaison_supposee'):  # D-ACAL-168 — drapeau privé (point 3)
+            pan[CLE_INCLINAISON_SUPPOSEE] = True
         nb_pans_dessines += 1
         faces = orientation.get('faces') or []
         if faces and a.get('existant') is not True:
