@@ -47,6 +47,7 @@ const writeTab = (v) => {
 // de secours (D2#6) qui reste inactif tant que `dispatch` n'est pas câblé.
 export default function ContextRail({
   state, users, historique, refreshHistorique, onAction, dispatch,
+  kwcCible, onKwcCibleChange,
 }) {
   const leadId = state.leadId
   const [tab, setTab] = useState(readTab)
@@ -207,6 +208,8 @@ export default function ContextRail({
             onWaLangue={onWaLangue}
             onWaPreview={onWaPreview}
             onWaReset={onWaReset}
+            kwcCible={kwcCible}
+            onKwcCibleChange={onKwcCibleChange}
           />
         </TabsContent>
 
