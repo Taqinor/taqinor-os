@@ -62,6 +62,12 @@ URL = '/api/django/ventes/etude-ci/preview/'
 _FOURNISSEUR_TMY = 'apps.calepinage.services.electrique._fournisseur_temperatures'
 
 
+#: D-ACAL-103 (T4-X6-013, 87cf062aa) — une option « avec » n'est composée que sur une
+#: combinaison d'hybrides câblable (``moteur_ci.batterie._cablable``) : les évaluations
+#: simulées d'une option COMPOSÉE en portent une, comme celles du vrai dimensionnement.
+HYBRIDE_CABLABLE = [{'produit': 1, 'nom': 'Hybride 30 kW', 'kw_ac': 30, 'quantite': 1}]
+
+
 def _production_casablanca(_site=None, toit=None):
     formes = {}
     for saison in SAISONS:

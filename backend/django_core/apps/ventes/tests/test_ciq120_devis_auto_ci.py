@@ -24,7 +24,7 @@ from apps.ventes import tarif_ci
 from apps.ventes.domain import etude_ci
 from apps.ventes.models import Devis, DevisActivity
 from apps.ventes.services import AutoDevisError, build_devis_auto
-from apps.ventes.tests.test_ciq118_etude_ci_preview import _production_casablanca
+from apps.ventes.tests.test_ciq118_etude_ci_preview import HYBRIDE_CABLABLE, _production_casablanca
 from authentication.models import Company
 from core.electrique.cables import SECTIONS_MM2_CI
 
@@ -978,12 +978,6 @@ class DesignationOptionAvecTests(SimpleTestCase):
         (hybride,) = bat['ht']['hybrides']
         self.assertEqual((hybride['nom'], hybride['max_parallele']), (produit.nom, 1))
         self.assertEqual(m.alertes_articles_ecartes(bat), [])
-
-
-#: D-ACAL-103 (T4-X6-013, 87cf062aa) — une option « avec » n'est composée que sur une
-#: combinaison d'hybrides câblable (``moteur_ci.batterie._cablable``) : les évaluations
-#: simulées d'une option COMPOSÉE en portent une, comme celles du vrai dimensionnement.
-HYBRIDE_CABLABLE = [{'produit': 1, 'nom': 'Hybride 30 kW', 'kw_ac': 30, 'quantite': 1}]
 
 
 class BanqueRecommandeeD4Tests(SimpleTestCase):
