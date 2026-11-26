@@ -307,7 +307,8 @@ class SchemaElectriqueParOptionTest(SimpleTestCase):
             _FausseLigne("Panneau PV 710 Wc", 14, produit=_panneau())],
             roof_layout=_roof(14))
         self.assertEqual(es.schema_electrique_du_devis(devis),
-                         {"options": {"sans_batterie": None, "avec_batterie": None}})
+                         {"options": {"sans_batterie": None, "avec_batterie": None},
+                          "avis_client": {"sans_batterie": None, "avec_batterie": None}})
 
 
 _TOTAUX = {"sans_batterie": {"ttc": 1}, "avec_batterie": {"ttc": 1}}
@@ -469,6 +470,21 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
                          {"regime": "TN", "dc_m": 8.0, "ac_m": 22.0, "inclure_prise_terre": True})
         es.build_electrical_design(devis, overrides={"temp_froid_c": -10})
         self.assertEqual(es.figer_conceptions_des_options(devis), {})
+
+    def test_d_acal_158_avis_au_vendeur_pour_l_option_que_le_client_ne_voit_pas(self):
+        """Revue D-ACAL-158 (4) — fiche ERP : une phrase par option que la page
+        du client ne reçoit pas ; rien sur un brouillon ni sur une option rangée."""
+        devis = _devis_deux_options_servables()
+        es.build_electrical_design(devis)
+        devis.statut, devis.clauses_appliquees = "brouillon", []
+        self.assertEqual(es.schema_electrique_du_devis(devis)["avis_client"],
+                         {"sans_batterie": None, "avec_batterie": None})
+        devis.statut = "envoye"                                      # envoyé avant la règle
+        self.assertEqual(es.schema_electrique_du_devis(devis)["avis_client"],
+                         {"sans_batterie": es.AVIS_OPTION_NON_RANGEE, "avec_batterie": None})
+        es.figer_conceptions_des_options(devis)
+        self.assertEqual(es.schema_electrique_du_devis(devis)["avis_client"],
+                         {"sans_batterie": None, "avec_batterie": None})
 
     def test_d_acal_158_option_a_un_autre_nombre_de_panneaux_non_rangee(self):
         """Revue D-ACAL-158 (2) — 30 panneaux posés au toit, l'option « sans » en

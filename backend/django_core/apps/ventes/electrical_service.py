@@ -1723,12 +1723,27 @@ def _documents_du_devis(devis, standard, avec_calepinage):
     return documents, origines
 
 
+#: Revue D-ACAL-158 (4) — la phrase dite au VENDEUR (fiche ERP seulement) pour
+#: une option dessinée à l'écran mais qui n'a pas de conception rangée : la
+#: page du client ne la montre pas (D-ACAL-140).
+AVIS_OPTION_NON_RANGEE = ("Le client ne voit pas le schéma de cette option : aucune "
+                          "conception électrique n'a été rangée pour elle à l'envoi.")
+
+
 def schema_electrique_du_devis(devis, *, standard=False, avec_calepinage=True):
-    """SCHEL-B3 — ``{options: {sans_batterie, avec_batterie}}`` : un document
-    « schéma électrique » par option du devis (``None`` pour une option qu'il
-    n'a pas), pour la fiche ERP. Lecture PURE : aucune écriture, aucun statut,
-    aucun montant ; une option illisible vaut ``None``."""
-    return {"options": _documents_du_devis(devis, standard, avec_calepinage)[0]}
+    """SCHEL-B3 — ``{options: {sans_batterie, avec_batterie}, avis_client}`` :
+    un document « schéma électrique » par option du devis (``None`` pour une
+    option qu'il n'a pas), pour la fiche ERP. ``avis_client`` (D-ACAL-158) :
+    par option, :data:`AVIS_OPTION_NON_RANGEE` quand un devis sorti du brouillon
+    dessine une option que la page du client ne reçoit pas (étude non rangée),
+    sinon ``None``. Lecture PURE : aucune écriture, aucun statut, aucun montant ;
+    une option illisible vaut ``None``."""
+    documents, origines = _documents_du_devis(devis, standard, avec_calepinage)
+    envoye = getattr(devis, "statut", None) not in (None, "", "brouillon")
+    return {"options": documents,
+            "avis_client": {cle: (AVIS_OPTION_NON_RANGEE if envoye and doc
+                                  and origines.get(cle) != _ORIGINE_RANGEE else None)
+                            for cle, doc in documents.items()}}
 
 
 def rendre_schema_electrique_du_devis(devis, *, langue="fr", largeur_px=None):
@@ -1901,11 +1916,16 @@ def _ranger_conceptions_figees(devis, entree):
     cible = [c for c in base if not (
         isinstance(c, dict) and c.get("type") == TYPE_CONCEPTIONS_OPTIONS_FIGEES)]
     cible += [entree] if entree is not None else []
-    devis.clauses_appliquees = cible
     if cible == base:
+        devis.clauses_appliquees = cible
         return False
+    ancien, devis.clauses_appliquees = devis.clauses_appliquees, cible
     if getattr(devis, "pk", None):
-        devis.save(update_fields=["clauses_appliquees"])
+        try:
+            devis.save(update_fields=["clauses_appliquees"])
+        except Exception:
+            devis.clauses_appliquees = ancien      # l'instance ne garde pas une écriture défaite
+            raise
     return True
 
 
@@ -1920,7 +1940,31 @@ def figer_conceptions_des_options(devis, *, garder=False):
     s'arrête jamais : ne lève pas, journalise. ``garder`` (correction sur place)
     reprend les conceptions déjà rangées dont les entrées n'ont pas bougé ; à
     l'envoi, tout est recalculé (une V2 range les conceptions de SON envoi).
-    Aucun statut, aucune ligne, aucun prix (règle #4)."""
+    Aucun statut, aucune ligne, aucun prix (règle #4).
+
+    Revue (4) — tout se passe dans un point de sauvegarde (un par option, un
+    autour de l'ensemble) : une erreur de base ici est défaite sans empoisonner
+    la transaction de l'envoi, qui continue."""
+    try:
+        with _point_de_sauvegarde(devis):
+            return _figer_conceptions(devis, garder)
+    except Exception:  # noqa: BLE001 — journalisé, l'envoi continue (D-ENF22-BLE001)
+        logger.warning("D-ACAL-158 : conceptions des options non rangées pour %s",
+                       getattr(devis, "reference", "?"), exc_info=True)
+        return {}
+
+
+def _point_de_sauvegarde(devis):
+    """Un ``transaction.atomic()`` (point de sauvegarde dans l'envoi) pour un
+    devis en base ; rien pour un devis non enregistré (aucune base touchée)."""
+    if getattr(devis, "pk", None):
+        from django.db import transaction
+        return transaction.atomic()
+    return contextlib.nullcontext()
+
+
+def _figer_conceptions(devis, garder):
+    """Le corps de :func:`figer_conceptions_des_options` (peut lever)."""
     from apps.ventes.domain.envoi import TYPE_CONCEPTIONS_OPTIONS_FIGEES
     reference = getattr(devis, "reference", "?")
     try:
@@ -1939,7 +1983,8 @@ def figer_conceptions_des_options(devis, *, garder=False):
     for variante in a_concevoir:
         cle = _cle_option(variante)
         try:
-            conception = _conception_de_l_option(devis, variante, anciennes.get(cle), surcharges)
+            with _point_de_sauvegarde(devis):
+                conception = _conception_de_l_option(devis, variante, anciennes.get(cle), surcharges)
         except Exception:  # noqa: BLE001 — journalisé, l'option n'est pas rangée (D-ENF22-BLE001)
             logger.warning("D-ACAL-158 : conception « %s » impossible pour %s",
                            cle, reference, exc_info=True)
@@ -1949,11 +1994,5 @@ def figer_conceptions_des_options(devis, *, garder=False):
                            "devis %s (option non dessinable)", cle, reference)
             continue
         options[cle] = conception
-    entree = {"type": TYPE_CONCEPTIONS_OPTIONS_FIGEES, "options": options}
-    try:
-        _ranger_conceptions_figees(devis, entree)
-    except Exception:  # noqa: BLE001 — journalisé, l'envoi continue (D-ENF22-BLE001)
-        logger.warning("D-ACAL-158 : conceptions des options non rangées pour %s",
-                       reference, exc_info=True)
-        return {}
+    _ranger_conceptions_figees(devis, {"type": TYPE_CONCEPTIONS_OPTIONS_FIGEES, "options": options})
     return options
