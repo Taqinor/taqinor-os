@@ -108,7 +108,7 @@ class ActionLayoutTest(BaseApiCalepinage):
     def test_acal1927_un_document_deja_stocke_hors_contrat_se_re_enregistre(self):
         from apps.calepinage.services.layout import enregistrer_layout
 
-        mauvais = dict(LAYOUT, consumption={'factures_mois': [{'mois': 13, 'valeur': 5, 'unite': 'w'}]})
+        mauvais = dict(LAYOUT, consumption={'factures_mois': [{'mois': 13, 'valeur': 5, 'unite': 'kwh'}]})
         enregistrer_layout(self.calepinage, mauvais)  # écrivain interne : restauration, copie, sync
         self.calepinage.refresh_from_db()
         self.assertEqual(self.calepinage.roof_layout, mauvais)

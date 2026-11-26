@@ -752,14 +752,25 @@ export default function PanneauDocuments({
     const code = carte.code
     setErreurs((precedent) => ({ ...precedent, [code]: null }))
     setEnCours(code)
+    // L'onglet s'ouvre TOUT DE SUITE, dans le geste du clic : après l'`await`, un bloqueur de fenêtres le refuserait.
+    const onglet = ouvrir ? window.open('', '_blank') : null
+    if (onglet) onglet.opener = null
+    let url = null
     try {
       const reponse = await calepinageApi.calepinages.sldPdf(id, OPTIONS_TELECHARGEMENT)
       if (ouvrir) {
-        window.open(URL.createObjectURL(new Blob([reponse.data], { type: 'application/pdf' })), '_blank', 'noopener')
+        url = URL.createObjectURL(new Blob([reponse.data], { type: 'application/pdf' }))
+        if (onglet) onglet.location.href = url
+        else window.open(url, '_blank', 'noopener') // bloqueur actif : dernier essai, jamais un échec muet
+        const aRevoquer = url
+        url = null
+        setTimeout(() => URL.revokeObjectURL(aRevoquer), 60000) // le temps que l'onglet lise le PDF
       } else {
         downloadBlob(reponse.data, filenameFromResponse(reponse, `calepinage-${id}-schema-unifilaire.pdf`))
       }
     } catch (erreur) {
+      if (url) URL.revokeObjectURL(url)
+      onglet?.close()
       const details = await erreurDeTelechargement(erreur, { delai: true })
       setErreurs((precedent) => ({ ...precedent, [code]: details }))
     } finally {

@@ -89,9 +89,15 @@ class MicroSeul(BaseApiCalepinage):
         self.assertEqual(len(micro['branches']), 3)
         reperes = [organe['repere'] for organe in resultat['protections']]
         self.assertIn('QAC.1', reperes)
-        # Les W2.N sont publiés, ou leur omission NOMME la longueur.
+        # Les W2.N sont publiés, ou leur omission NOMME la longueur — en clair
+        # depuis ACAL1741 (« longueur du tronçon (m) »), jamais la clé brute.
+        from apps.calepinage.services.rapport.champs_lisibles import (
+            motif_lisible)
+
         textes = ' '.join(resultat['avertissements'])
-        self.assertTrue(micro.get('cables') or 'longueur_m' in textes)
+        self.assertTrue(micro.get('cables')
+                        or motif_lisible('longueur_m') in textes)
+        self.assertNotIn('« longueur_m »', textes)
         self.assertFalse([texte for texte in resultat['avertissements']
                           if texte.startswith('onduleur : ')])
 

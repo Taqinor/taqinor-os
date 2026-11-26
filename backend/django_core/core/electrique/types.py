@@ -488,6 +488,13 @@ class EntreeElectrique:
     #: ne la demande pas, seul le calepinage la demande. Hors de toute
     #: empreinte d'entrée (``electrical_service._empreinte`` énumère ses clés).
     chaines_inegales_entre_entrees: bool = False
+    #: D-ACAL-139 — la même répartition, essayée SEULEMENT quand la partition
+    #: égale est BLOQUANTE ou laisse des modules hors chaîne (Isc publié
+    #: dépassé, modules non câblés) — jamais pour une simple ALERTE
+    #: d'écrêtage (Imp d'entrée) : c'est la règle du DEVIS. Le calepinage pose
+    #: ``chaines_inegales_entre_entrees`` (déclencheur plus large, écrêtage
+    #: compris). Hors de toute empreinte d'entrée, comme le précédent.
+    chaines_inegales_sur_bloquant_seul: bool = False
 
     @property
     def nb_modules(self):
