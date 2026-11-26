@@ -711,6 +711,27 @@ describe('ACAL729 — tête d’info-bulle d’un module', () => {
   });
 });
 
+// ACAL1947 — l'info-bulle d'un module lit la MÊME clé de pan que la coloration par chaîne (`clePanAffectation`,
+// ACAL1516 : l'ID du pan) : un pan « Zone 1 » d'identifiant `z1` affiche sa chaîne. Mutant : `label || id` ⇒ rien.
+describe('ACAL1947 — info-bulle d’un module d’un pan au libellé ≠ identifiant', () => {
+  it('pan « Zone 1 » (id z1), module z1#1 en chaîne 2 ⇒ l’info-bulle dit « chaîne 2 »', () => {
+    document.body.innerHTML = '';
+    const zone = { id: 'z1', label: 'Zone 1', vertices: [], obstacles: [], buildingId: null };
+    const ctx = {
+      areas: [zone], activeAreaId: 'z1', vertices: [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001]], closed: true,
+      // Un obstacle à hauteur saisie : une source d'ombrage, sans quoi l'info-bulle dit « non renseigné ».
+      obstacles: [{ id: 'o1', centerLng: -7.6001, centerLat: 33.5001, lengthM: 1, widthM: 1, heightM: 1 }],
+      batiments: [], shadeObstructions: [], environment: [], activeArea: () => zone, pushWorkshopHistory: () => {},
+      centroid: [-7.6, 33.5], centroidLat: 33.5, prodPerKwc: null, shadeFactors: null,
+      layoutPlan: { grid: { panels: [{ cx: 0, cy: 0 }], kwc: 0.5 } }, activePanelCellIndex: [0],
+      affectationColoration: buildAffectationColoring([{ module: 'z1#1', chaine: 2, mppt: 1 }], 'chaine'),
+    } as unknown as Ctx;
+    const map = new Proxy({}, { get: () => () => undefined }) as never;
+    const ui = createShadingUi(ctx, { map, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {} });
+    expect(ui.moduleShadeTooltip(0)).toContain('chaîne 2');
+  });
+});
+
 // ACAL548 — le champ « Accès solaire minimal (%) » : lecture pure, jamais corrigée en silence.
 describe('ACAL548 — lireSeuilSaisi et origine du seuil', () => {
   it('« 80 » ⇒ 0,8 ; « 80,5 » ⇒ 0,805 ; vide ⇒ retrait de la clé', () => {

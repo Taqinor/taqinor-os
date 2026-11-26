@@ -22,6 +22,7 @@ import { dateImageCapturee } from './imageCapture'; // ACAL496 / ACAL509
 import { phraseVerdictOmbrage } from './verdictOmbrage'; // ACAL715
 import { choixOptimisationCourant, poserChoixOptimisation } from './optimizer'; // ACAL548 (usage dans les fonctions seulement : import circulaire sûr)
 import { identifiantsModulesParCellule } from './libellesAffectation'; // ACAL729
+import { clePanAffectation } from './scene3d'; // ACAL1947 — la clé de pan de la coloration par chaîne (ACAL1516)
 import {
   declarationSoleilPriseDeVue,
   SHADE_OBSTRUCTION_HALF_WIDTH_M,
@@ -1227,7 +1228,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       : 'Ombrage : aucune heure masquée pour ce module.';
     // ACAL729 — accès annuel du module et sa chaîne (table servie), en TÊTE ; rien d'inventé sinon.
     const aire = ctx.areas.find((a) => a.id === ctx.activeAreaId);
-    const id = identifiantsModulesParCellule(ctx.activePanelCellIndex ?? [], String(aire?.label || aire?.id || ctx.activeAreaId || ''))[cellIndex];
+    const id = identifiantsModulesParCellule(ctx.activePanelCellIndex ?? [], clePanAffectation(aire, ctx.activeAreaId))[cellIndex]; // ACAL1947 — la clé de la coloration
     return teteInfoBulleModule(accesAnnuelDuModule(cellIndex), id ? ctx.affectationColoration?.labelByModule?.get(id) ?? null : null) + ombrage;
   }
 
