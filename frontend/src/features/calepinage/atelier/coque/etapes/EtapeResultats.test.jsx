@@ -131,12 +131,28 @@ describe('Étape Résultats — résultat complet (maquette Resultats)', () => {
     rendre()
     const alerte = await screen.findByRole('alert')
     expect(alerte).toHaveAttribute('data-zone', 'cablage-perd-la-production')
-    expect(alerte).toHaveTextContent('fait perdre l’essentiel de la production')
+    // aucun chiffre de perte servi pour la fenêtre MPPT : jamais « l'essentiel », la seule phrase du serveur
+    expect(alerte).not.toHaveTextContent('l’essentiel')
+    expect(alerte).toHaveTextContent('la production des heures où les panneaux chauffent est perdue')
     expect(alerte).toHaveTextContent('Cause : Par forte chaleur, la tension des panneaux (140,5 V)')
     expect(alerte).not.toHaveTextContent('borne de fiche')
     expect(document.querySelector('[data-zone="production-nulle"]')).toBeNull()
     fireEvent.click(within(alerte).getByRole('button', { name: 'Aller à l’étape Électrique' }))
     expect(screen.getByTestId('lieu').textContent).toMatch(/onglet=/)
+  })
+
+  it.each([
+    [63.5, 'fait perdre l’essentiel de la production : 63,5 %'],
+    [4.2, 'fait perdre la production des heures les plus chaudes : 4,2 %'],
+  ])('T4-U4-012 — la phrase suit la perte SERVIE de la fenêtre MPPT (%s %%)', async (perte, phrase) => {
+    const d = COMPLET()
+    d.electrique.verdicts = d.electrique.verdicts.map((v) => (v.code === 'vmp_hot_over_mppt_min'
+      ? { ...v, conforme: false, raison: 'par forte chaleur, la tension des panneaux (140,5 V) tombe sous la plage' } : v))
+    d.cascade.etapes = [...(d.cascade.etapes ?? []), { etape: 'mppt', libelle: 'Fenêtre MPPT', perte_pct: perte }]
+    servir(d)
+    rendre()
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveTextContent(phrase)
   })
 
   it('T4-X7-005 — production non nulle : aucune alerte de production nulle', async () => {
