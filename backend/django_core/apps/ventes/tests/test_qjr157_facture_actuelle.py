@@ -216,3 +216,66 @@ class ExempleAligneCouvertureTests(SimpleTestCase):
         self.assertEqual(_exemple_aligne_couverture(
             {'annual_before': 40000, 'annual_after': 9665}, ex), ex)
         self.assertEqual(_exemple_aligne_couverture({}, ex), ex)
+
+
+class UneSeuleEconomieAvecBatterieTests(SimpleTestCase):
+    """ACAL1218 (D-AMOT-9 = economie_annuelle, fondateur 26/11/2026) — UNE
+    économie « avec batterie » par PDF résidentiel : les cartes des pages 1-2
+    impriment 11 204, la page 4 imprimait 11 205 (15 000 − 3 795, deux
+    arrondis indépendants du moteur). Nouveaux rendus seulement : la facture
+    « avec solaire » de l'exemple dérive de l'économie des cartes ; un devis
+    envoyé avant la coupure garde l'exemple qu'il a reçu."""
+
+    ROI = {'facture_sans': 15000, 'facture_avec_a': 3795, 'facture_avec_s': 6000,
+           'eco_a_ann': 11204, 'eco_s_ann': 9000}
+
+    def _methode(self, modele, unique):
+        from apps.ventes.quote_engine.etude_restitution import restituer_etude
+        sortie = restituer_etude(
+            _client_city='Casablanca', _co_productible=None, _corrige=True, _utility='onee',
+            etude={}, puissance_kwc=5, roi=dict(self.ROI), savings_model=modele,
+            savings_model_avec=modele, savings_model_sans=modele, scenario='Avec batterie',
+            _economie_unique=unique)
+        return sortie[-1]
+
+    def test_avec_batterie_une_seule_economie(self):
+        for modele in ('horaire', 'factures'):
+            neuf = self._methode(modele, True)
+            self.assertEqual(neuf['economie'], 11204, modele)
+            self.assertEqual(neuf['facture_avec_solaire'], 15000 - 11204, modele)
+            self.assertEqual(neuf['exemple'], 'Facture actuelle ≈ 15 000 MAD/an → avec solaire '
+                             '≈ 3 796 MAD/an → économie ≈ 11 204 MAD/an', modele)
+            # Rendu d'hier (devis envoyé avant la coupure) : octet pour octet.
+            hier = self._methode(modele, False)
+            self.assertEqual((hier['economie'], hier['facture_avec_solaire']), (11205, 3795), modele)
+
+    def test_le_predicat_suit_la_coupure_du_lot_8(self):
+        from datetime import datetime, time, timedelta, timezone
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.regles_calcul import COUPURE_PDF_2611, REGLES_POSE_REELLE_2111
+        from apps.ventes.quote_engine.etude_restitution import economie_unique_ouverte
+        coupure = datetime.combine(datetime(*COUPURE_PDF_2611), time(9), tzinfo=timezone.utc)
+        avant = coupure - timedelta(days=3)
+
+        def devis(mode='residentiel', **champs):
+            return SimpleNamespace(**dict({'regles_calcul': 14, 'date_creation': avant,
+                                           'mode_installation': mode}, **champs))
+        self.assertTrue(economie_unique_ouverte(devis(statut='brouillon', date_envoi=None)))
+        self.assertTrue(economie_unique_ouverte(devis(statut='envoye', date_envoi=coupure)))
+        self.assertFalse(economie_unique_ouverte(devis(statut='envoye', date_envoi=avant)))
+        self.assertFalse(economie_unique_ouverte(devis('commercial', statut='brouillon', date_envoi=None)))
+        self.assertTrue(economie_unique_ouverte(devis(regles_calcul=REGLES_POSE_REELLE_2111,
+                                                      statut='envoye', date_envoi=avant)))
+
+    def test_la_page_1_dit_la_meme_economie(self):
+        from apps.ventes.quote_engine.residential import sample_data
+        from apps.ventes.quote_engine.residential.renderer import synthese_economies
+        data = sample_data.build('deux')
+        eco_m = [665] * 11 + [673]
+        data.update({'factures_mensuelles': [831] * 12, 'factures_mensuelles_exactes': [831.4] * 12,
+                     'eco_a_monthly': eco_m, 'eco_a_ann': 7987, 'recommended': 'Avec batterie'})
+        hier = synthese_economies(data)
+        self.assertEqual(hier['annual_before'] - hier['annual_after'], 7988)
+        neuf = synthese_economies({**data, 'phrases_pdf_2611': True})
+        self.assertEqual(neuf['annual_before'] - neuf['annual_after'], 7987)

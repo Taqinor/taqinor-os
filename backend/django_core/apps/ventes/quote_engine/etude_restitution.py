@@ -90,6 +90,17 @@ def factures_mensuelles_exactes(etude, factures_source, devis=None):
     return serie if len(serie) == 12 else None
 
 
+def economie_unique_ouverte(devis):
+    """T4-U1-019 / D-AMOT-9 — l'exemple chiffré dérive-t-il de l'économie
+    des cartes (une économie, un arrondi) pour ce devis ? Niveau 15, ou les
+    nouveaux rendus du lot 8 (``regles_calcul.drapeaux_pdf_2611`` : brouillon
+    jamais envoyé ou envoyé à partir de la coupure, marché résidentiel) ; un
+    devis envoyé avant garde l'exemple qu'il a reçu."""
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_POSE_REELLE_2111, drapeaux_pdf_2611, regles_au_moins)
+    return regles_au_moins(devis, REGLES_POSE_REELLE_2111) or bool(drapeaux_pdf_2611(devis))
+
+
 def _facture_avec_affichee(roi, avec, economie_unique=None):
     """T4-U1-019 — la facture « avec solaire » de l'exemple chiffré.
 
@@ -123,7 +134,8 @@ def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
         scenario == "Les deux (Sans + Avec)" and recommended == "Avec batterie")
     _sm_eco_ref = roi["eco_a_ann"] if _avec else roi["eco_s_ann"]
     if savings_model == "factures":
-        _sm_avec = roi["facture_avec_a"] if _avec else roi["facture_avec_s"]
+        # D-AMOT-9 — nouveaux rendus : la facture « avec » dérive de l'économie des cartes.
+        _sm_avec = _facture_avec_affichee(roi, _avec, _sm_eco_ref if _economie_unique else None)
         savings_method = {
             "model": "factures",
             "facture_actuelle": roi["facture_sans"],

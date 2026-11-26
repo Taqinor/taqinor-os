@@ -278,10 +278,11 @@ def drapeaux_schema_electrique(devis) -> dict:
 
 def drapeaux_nouveaux_rendus(devis, *, annexe=False) -> dict:
     """Les drapeaux de rendu « nouveaux rendus seulement » posés par le builder
-    (D-ACAL-102, D-ACAL-111 à 114) : cas OUVERT seulement. ``annexe`` (SCHEL-B4)
-    ajoute celui de l'annexe technique ; le builder ne le passe pas (l'annexe
-    pose le sien elle-même), sa charge reste donc identique."""
-    return {**drapeaux_phrases_profil(devis), **drapeaux_pdf_2511(devis),
+    (D-ACAL-102, D-ACAL-111 à 114, lot 8 : :func:`drapeaux_pdf_2611`) : cas
+    OUVERT seulement. ``annexe`` (SCHEL-B4) ajoute celui de l'annexe
+    technique ; le builder ne le passe pas (l'annexe pose le sien elle-même),
+    sa charge reste donc identique."""
+    return {**drapeaux_phrases_profil(devis), **drapeaux_pdf_2511(devis), **drapeaux_pdf_2611(devis),
             **(drapeaux_schema_electrique(devis) if annexe else {})}
 
 
@@ -339,3 +340,35 @@ def toit_plat_ouvert(devis) -> bool:
     valeur du curseur) ? Voir :data:`COUPURE_TOIT_PLAT`."""
     return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111,
                                        COUPURE_TOIT_PLAT)
+
+
+#: Lot 8 (fondateur 26/11/2026, « nouveaux rendus seulement ») — les
+#: corrections du PDF décidées ce jour-là : D-AMOT-9 (UNE économie « avec
+#: batterie » par PDF résidentiel : la facture « avec solaire » de la page 1
+#: et de l'exemple de la page 4 = « avant » − l'économie des cartes, la
+#: correction T4-U1-019 sortie du niveau 15). UNE coupure, UN prédicat
+#: (:func:`phrases_pdf_2611_ouvertes`), même mécanique que
+#: :data:`COUPURE_PDF_2511` ; le niveau 15 n'est pas rendu courant. Même date
+#: que :data:`COUPURE_TOIT_PLAT`, À POSER par l'orchestrateur (le lendemain du
+#: déploiement) : un devis envoyé avant garde ce qu'il a reçu.
+COUPURE_PDF_2611 = (2026, 11, 28)
+#: Les marchés dont le PDF ne change pas avec :data:`COUPURE_PDF_2611` (leur
+#: charge utile ne reçoit pas le drapeau).
+MARCHES_HORS_PDF_2611 = ('commercial', 'industriel', 'agricole')
+
+
+def phrases_pdf_2611_ouvertes(devis) -> bool:
+    """Lot 8 — les corrections du PDF du 26/11/2026 pour ce devis ? Voir
+    :data:`COUPURE_PDF_2611`."""
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111, COUPURE_PDF_2611)
+
+
+def drapeaux_pdf_2611(devis) -> dict:
+    """Lot 8 — drapeau de RENDU du cas OUVERT : ``{'phrases_pdf_2611': True}``
+    pour un devis dont le rendu change (marché hors
+    :data:`MARCHES_HORS_PDF_2611`), ``{}`` sinon : l'empreinte des données
+    bouge exactement pour les devis dont le PDF change."""
+    marche = (getattr(devis, 'mode_installation', None) or '').strip().lower()
+    if marche not in MARCHES_HORS_PDF_2611 and phrases_pdf_2611_ouvertes(devis):
+        return {'phrases_pdf_2611': True}
+    return {}

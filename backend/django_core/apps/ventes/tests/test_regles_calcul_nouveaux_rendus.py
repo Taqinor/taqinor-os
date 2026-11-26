@@ -124,7 +124,8 @@ class ReglesCalculTests(SimpleTestCase):
                          {'phrases_profil_ouvertes': True})
         self.assertEqual(_avec_regles_pose_reelle({}, False, devis(statut='envoye', date_envoi=avant)), {})
         self.assertEqual(_avec_regles_pose_reelle({}, True, None),
-                         {'regles_pose_reelle': True, 'phrases_pdf_2511': True})
+                         {'regles_pose_reelle': True, 'phrases_pdf_2511': True,
+                          'phrases_pdf_2611': True})
 
     def test_d_acal_111_114_une_coupure_un_predicat_cas_ouvert(self):
         from datetime import datetime, timezone
@@ -150,6 +151,28 @@ class ReglesCalculTests(SimpleTestCase):
         self.assertFalse(phrases_pdf_2511_ouvertes(devis(statut='accepte', date_envoi=avant)))
         self.assertEqual(drapeaux_nouveaux_rendus(devis('industriel', statut='brouillon', date_envoi=None)),
                          {'phrases_profil_ouvertes': True})
+
+    def test_lot_8_une_coupure_un_drapeau_marches_dont_le_pdf_change(self):
+        # Lot 8 (D-AMOT-9, fondateur 26/11/2026) — nouveaux rendus seulement.
+        from datetime import datetime, time, timedelta, timezone
+
+        from apps.ventes.domain.regles_calcul import (
+            COUPURE_PDF_2611, COUPURE_TOIT_PLAT, drapeaux_nouveaux_rendus, drapeaux_pdf_2611)
+        self.assertEqual(COUPURE_PDF_2611, COUPURE_TOIT_PLAT)
+        coupure = datetime.combine(datetime(*COUPURE_PDF_2611), time(8), tzinfo=timezone.utc)
+        avant = coupure - timedelta(days=2)
+
+        def devis(mode='residentiel', **champs):
+            return SimpleNamespace(**dict({'regles_calcul': 14, 'date_creation': avant,
+                                           'mode_installation': mode}, **champs))
+        for mode in ('residentiel', ''):
+            for ouvert in (devis(mode, statut='brouillon', date_envoi=None),
+                           devis(mode, statut='envoye', date_envoi=coupure)):
+                self.assertEqual(drapeaux_pdf_2611(ouvert), {'phrases_pdf_2611': True})
+            self.assertEqual(drapeaux_pdf_2611(devis(mode, statut='envoye', date_envoi=avant)), {})
+        for mode in ('commercial', 'industriel', 'agricole'):
+            self.assertEqual(drapeaux_pdf_2611(devis(mode, statut='brouillon', date_envoi=None)), {})
+        self.assertIn('phrases_pdf_2611', drapeaux_nouveaux_rendus(devis(statut='brouillon', date_envoi=None)))
 
     def test_t4_v2_010_protection_marche_a_sec_prouvee_par_la_fiche(self):
         # T4-V2-010 — le PDF n'imprime « protection marche à sec » sur la ligne
