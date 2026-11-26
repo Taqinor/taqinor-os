@@ -46,6 +46,7 @@ import { FLOORS, FLOOR_HEIGHT_M } from './constants';
 import { phraseVerdictOmbrage } from './verdictOmbrage'; // ACAL715
 import { libelleModuleAffecte } from './libellesAffectation'; // ACAL729
 import { buildAffectationColoring } from './scene3d'; // ACAL729
+import { registreAtelier } from './numerotation'; // R3 (visuel lot 7)
 import { fallbackPerKwc } from '../../lib/productionEngine';
 import { hourlyShadeFactors, proposeShadedRemoval, type ShadeObstructionENU } from '../../lib/shadingEngine';
 
@@ -752,6 +753,28 @@ describe('ACAL1947 — info-bulle d’un module d’un pan au libellé ≠ ident
     const map = new Proxy({}, { get: () => () => undefined }) as never;
     const ui = createShadingUi(ctx, { map, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {} });
     expect(ui.moduleShadeTooltip(0)).toContain('chaîne 2');
+  });
+
+  // R3 (visuel lot 7) — le module porte n = 2236 au document : la ligne servie est `z1#2236`, pas `z1#1`.
+  it('module numéroté 2236 au document, ligne servie z1#2236 en chaîne 3 ⇒ l’info-bulle dit « chaîne 3 »', () => {
+    document.body.innerHTML = '';
+    registreAtelier.absorberDocument({ zones: [{ id: 'z1', geometry: { panels: [{ cx: 0, cy: 0, n: 2236 }] } }] });
+    const zone = { id: 'z1', label: 'Zone 1', vertices: [], obstacles: [], buildingId: null };
+    const ctx = {
+      areas: [zone], activeAreaId: 'z1', vertices: [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001]], closed: true,
+      obstacles: [{ id: 'o1', centerLng: -7.6001, centerLat: 33.5001, lengthM: 1, widthM: 1, heightM: 1 }],
+      batiments: [], shadeObstructions: [], environment: [], activeArea: () => zone, pushWorkshopHistory: () => {},
+      centroid: [-7.6, 33.5], centroidLat: 33.5, prodPerKwc: null, shadeFactors: null,
+      layoutPlan: { grid: { panels: [{ cx: 0, cy: 0 }], kwc: 0.5 } }, activePanelCellIndex: [0],
+      affectationColoration: buildAffectationColoring([{ module: 'z1#2236', chaine: 3, mppt: 1 }], 'chaine'),
+    } as unknown as Ctx;
+    const map = new Proxy({}, { get: () => () => undefined }) as never;
+    const ui = createShadingUi(ctx, { map, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {} });
+    try {
+      expect(ui.moduleShadeTooltip(0)).toContain('chaîne 3');
+    } finally {
+      registreAtelier.oublier();
+    }
   });
 });
 

@@ -123,6 +123,22 @@ def famille_de_l_onduleur(produit):
             autre_famille_d_onduleur(getattr(produit, 'nom', '') or ''))
 
 
+def onduleur_designe_est_hybride(specs, designation, famille):
+    """D-ACAL-157 — l'onduleur DÉSIGNÉ est-il un hybride ? La décision du SERVEUR, jamais celle de l'écran :
+    ``core.electrique.onduleurs.est_onduleur_hybride`` (rôle, puis port batterie de la fiche, puis nom) lue sur
+    la fiche DÉJÀ lue (``specs``) et la ``famille`` ``(role, famille_par_nom)`` de ``famille_de_l_onduleur``.
+    Fonction PURE ; sans onduleur lu, ``False``."""
+    from core.electrique.onduleurs import est_onduleur_hybride
+
+    if not specs and not designation:
+        return False
+    specs = specs if isinstance(specs, dict) else {}
+    role, par_nom = (tuple(famille or ()) + ('', ''))[:2]
+    return est_onduleur_hybride(
+        designation, role=role, autre_famille_par_nom=par_nom,
+        ports_batterie_kw=(specs.get('bat_max_charge_kw'), specs.get('bat_max_decharge_kw')))
+
+
 def juger_ratio(valeur, bornes, reglages=None):
     """LE verdict du ratio DC/AC : ``True`` / ``False``, ``None`` sans ratio.
 

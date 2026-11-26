@@ -1,102 +1,165 @@
-"""R3-01 / R3-17 (Q2) — DRY-RUN : les documents déjà REMIS dont le résultat
-rangé publie ses énergies sur la fenêtre ENTIÈRE (mode météo pluriannuel,
-somme de N années au lieu de leur moyenne), à montrer au fondateur.
+"""R3-01 / R3-17 (Q2) — ACAL1252 (D-ACAL-64 = lister_et_montrer) — DRY-RUN :
+les simulations RANGÉES et les documents déjà REMIS dont les énergies sont
+publiées sur la fenêtre ENTIÈRE (mode météo pluriannuel, somme de N années
+au lieu de leur moyenne), à montrer au fondateur AVANT toute re-simulation.
 
-Une ligne par version remise (``records.Attachment`` rattachée au
-calepinage, nom ``<code>__v<NNN>__<langue>[__<empreinte>].<ext>``,
-``views/remise_document.py``) d'un calepinage dont le résultat rangé est
-pluriannuel (N > 1) :
+La sélection est ``services/annee_moyenne.py::lister_pluriannuels`` (pure) ;
+cette commande ne fait que LIRE les entrées et imprimer ses deux listes :
 
-    société | calepinage | document remis | remis le | mode météo |
-    années de la fenêtre | énergies rangées | calculé le
+* concernés — ``fenêtre entière`` prouvée par la trace : N rangé
+  (``production.total.annees_fenetre`` > 1) et arrivée de la cascade ≈ N ×
+  P50. Énergie rangée et énergie ÷ N côte à côte ;
+* indéterminés — la trace ne permet pas de le dire (N non rangé, P50 ou
+  cascade absents, document remis avant le calcul rangé) : jamais deviné.
 
-« énergies rangées » : ``fenêtre entière`` (arrivée de la cascade ≈ N × P50,
-les kWh imprimés par le rapport d'étude et le diagramme de pertes sont faux
-d'un facteur N), ``année moyenne`` (déjà juste) ou ``indéterminé``. Un
-document remis AVANT le « calculé le » a été produit sur un calcul antérieur
-dont le mode n'est plus lisible : la ligne le dit. Un calepinage pluriannuel
-sans document remis est compté, pas listé.
+Sources lues : ``Calepinage.resultat``, ``CalepinageVariante.resultat`` et
+les versions remises (``records.Attachment`` rattachées au calepinage, nom
+``<code>__v<NNN>__<langue>[__<empreinte>].<ext>``, ``views/remise_document.py``).
+Aucun nom de client, titre, téléphone, e-mail, adresse ni GPS n'est lu ni
+imprimé : identifiants seulement.
 
-LECTURE SEULE : aucun calepinage, aucun document n'est réécrit ni recalculé.
+LECTURE SEULE : aucun ``save``/``update``/``delete``, aucune tâche de fond,
+aucun ``get_or_create`` (le type de contenu est LU, jamais créé), aucun
+fichier écrit sauf ``--sortie``. Jouable dans une transaction en lecture
+seule.
 
-    python manage.py acal_dryrun_annee_moyenne --dry-run [--company <slug>]
+    python manage.py acal_dryrun_annee_moyenne --dry-run [--company <id|slug>]
+        [--json] [--sortie <chemin>]
 """
 from __future__ import annotations
+
+import json
 
 from django.apps import apps as registre
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.calepinage.services import annee_moyenne as _annee_moyenne
 
-#: Le libellé de la colonne « énergies rangées ».
-LIBELLES_ENERGIES = {True: 'fenêtre entière', False: 'année moyenne',
-                     None: 'indéterminé'}
+ENTETE = 'DRY-RUN R3-01 (lecture seule) — aucune écriture'
+COLONNES = ('société | calepinage | objet | document remis | date | mode météo '
+            '| années de la fenêtre | énergie rangée kWh | énergie ÷ N kWh '
+            '| P50 rangé kWh | motif')
 
 
-def _remis_avant_le_calcul(remis_le, calcule_le):
-    """Vrai quand la remise précède le calcul rangé (comparaison ISO, les
-    deux en UTC ``…Z`` / ``+00:00``) ; ``False`` sans date lisible."""
-    if remis_le is None or not calcule_le:
-        return False
-    return remis_le.strftime('%Y-%m-%dT%H:%M:%S') < str(calcule_le)[:19]
+def _documents_par_calepinage(ids, company_id=None):
+    """``{(calepinage_id, company_id): [{nom, remis_le}]}`` — LECTURE des
+    versions remises. Le type de contenu est LU (``filter``), jamais créé
+    (``get_for_model`` ferait un ``get_or_create``)."""
+    ContentType = registre.get_model('contenttypes', 'ContentType')
+    Attachment = registre.get_model('records', 'Attachment')
+    type_calepinage = ContentType.objects.filter(
+        app_label='calepinage', model='calepinage').first()
+    documents = {}
+    if type_calepinage is None or not ids:
+        return documents
+    qs = Attachment.objects.filter(content_type=type_calepinage,
+                                   object_id__in=list(ids),
+                                   filename__contains='__v')
+    if company_id is not None:
+        qs = qs.filter(company_id=company_id)
+    for object_id, cie, nom, remis_le in qs.order_by(
+            'created_at', 'pk').values_list('object_id', 'company_id',
+                                            'filename', 'created_at'):
+        documents.setdefault((object_id, cie), []).append(
+            {'nom': nom, 'remis_le': remis_le})
+    return documents
+
+
+def _entrees(company_id=None):
+    """Les entrées de ``lister_pluriannuels`` — lectures seules."""
+    Calepinage = registre.get_model('calepinage', 'Calepinage')
+    Variante = registre.get_model('calepinage', 'CalepinageVariante')
+    calepinages = Calepinage.objects.exclude(resultat__isnull=True)
+    variantes = Variante.objects.exclude(resultat__isnull=True)
+    if company_id is not None:
+        calepinages = calepinages.filter(company_id=company_id)
+        variantes = variantes.filter(company_id=company_id)
+    lignes = list(calepinages.order_by('company_id', 'pk').values_list(
+        'pk', 'company_id', 'resultat'))
+    documents = _documents_par_calepinage([pk for pk, _c, _r in lignes],
+                                          company_id)
+    for pk, cie, resultat in lignes:
+        yield {'company_id': cie, 'calepinage_id': pk, 'objet': 'calepinage',
+               'objet_id': pk, 'resultat': resultat,
+               'documents': documents.get((pk, cie), [])}
+    for pk, cie, calepinage_id, resultat in variantes.order_by(
+            'company_id', 'calepinage_id', 'pk').values_list(
+            'pk', 'company_id', 'calepinage_id', 'resultat'):
+        yield {'company_id': cie, 'calepinage_id': calepinage_id,
+               'objet': 'variante', 'objet_id': pk, 'resultat': resultat,
+               'documents': []}
+
+
+def _ligne(r):
+    return ' | '.join('—' if v in (None, '') else str(v) for v in (
+        r['company_id'], r['calepinage_id'],
+        '%s %s' % (r['objet'], r['objet_id']), r['document'], r['date'],
+        r['mode'], r['annees'], r['energie_rangee_kwh'],
+        r['energie_par_an_kwh'], r['p50_kwh'], r['motif']))
+
+
+def _texte(releve):
+    c = releve['comptes']
+    return '\n'.join(
+        [ENTETE, '',
+         'CONCERNÉS — énergies rangées sur la fenêtre entière (× N)',
+         COLONNES]
+        + [_ligne(r) for r in releve['concernes']]
+        + ['', 'INDÉTERMINÉS — la trace ne permet pas de le dire', COLONNES]
+        + [_ligne(r) for r in releve['indetermines']]
+        + ['', '%d résultat(s) rangé(s) lu(s) ; %d concerné(s) ; %d '
+           'indéterminé(s) ; %d ligne(s) concernée(s) dont %d document(s) '
+           'remis ; %d ligne(s) indéterminée(s).' % (
+               c['lus'], c[_annee_moyenne.CONCERNE],
+               c[_annee_moyenne.INDETERMINE], len(releve['concernes']),
+               sum(1 for r in releve['concernes'] if r['document']),
+               len(releve['indetermines']))])
+
+
+def _societe(valeur):
+    """L'identifiant de société de ``--company`` (id, ou slug LU)."""
+    if not valeur:
+        return None
+    if str(valeur).isdigit():
+        return int(valeur)
+    Company = registre.get_model('authentication', 'Company')
+    company_id = (Company.objects.filter(slug=valeur)
+                  .values_list('pk', flat=True).first())
+    if company_id is None:
+        raise CommandError('société inconnue : %s' % valeur)
+    return company_id
 
 
 class Command(BaseCommand):
-    help = ('R3-01 (Q2) — liste (lecture seule) les documents remis dont le '
-            'résultat rangé publie ses énergies sur la fenêtre entière.')
+    help = ('ACAL1252 — liste (lecture seule) les simulations rangées et '
+            'documents remis dont les énergies sont la somme des N années.')
 
     def add_arguments(self, parser):
         parser.add_argument('--dry-run', action='store_true',
                             help='Obligatoire : la commande ne fait que lire.')
         parser.add_argument(
             '--company', default=None,
-            help='Slug de société (défaut : toutes les sociétés).')
+            help='Identifiant (ou slug) de société ; défaut : toutes.')
+        parser.add_argument('--json', action='store_true',
+                            help='Imprime le relevé en JSON.')
+        parser.add_argument('--sortie', default=None,
+                            help='Écrit le relevé dans ce fichier (seule '
+                                 'écriture possible, sur disque).')
 
     def handle(self, *args, **options):
         if not options.get('dry_run'):
             raise CommandError(
                 "ajoutez --dry-run : cette commande n'écrit jamais")
-        from django.contrib.contenttypes.models import ContentType
-
-        Calepinage = registre.get_model('calepinage', 'Calepinage')
-        Attachment = registre.get_model('records', 'Attachment')
-        type_calepinage = ContentType.objects.get_for_model(Calepinage)
-        qs = (Calepinage.objects.exclude(resultat__isnull=True)
-              .select_related('company').order_by('company_id', 'pk'))
-        if options.get('company'):
-            qs = qs.filter(company__slug=options['company'])
-
-        ecrire = self.stdout.write
-        ecrire('DRY-RUN R3-01 (lecture seule) — aucune écriture')
-        ecrire('société | calepinage | document remis | remis le | mode météo '
-               '| années de la fenêtre | énergies rangées | calculé le')
-        documents, concernes, sans_document = 0, 0, 0
-        for calepinage in qs.iterator(chunk_size=200):
-            etat = _annee_moyenne.etat_des_energies(calepinage.resultat)
-            if etat is None:
-                continue
-            concernes += 1
-            pieces = (Attachment.objects
-                      .filter(content_type=type_calepinage,
-                              object_id=calepinage.pk,
-                              company_id=calepinage.company_id,
-                              filename__contains='__v')
-                      .order_by('created_at', 'pk'))
-            vues = 0
-            for piece in pieces:
-                vues += 1
-                avant = _remis_avant_le_calcul(piece.created_at,
-                                               etat['calcule_le'])
-                ecrire('%s | %s | %s | %s%s | %s | %d | %s | %s' % (
-                    calepinage.company.slug, calepinage.pk, piece.filename,
-                    piece.created_at.isoformat(),
-                    ' (avant le calcul rangé : mode à la remise inconnu)'
-                    if avant else '',
-                    etat['mode'] or '—', etat['annees'],
-                    LIBELLES_ENERGIES[etat['fenetre_entiere']],
-                    etat['calcule_le'] or '—'))
-            documents += vues
-            sans_document += 0 if vues else 1
-        ecrire('%d document(s) remis sur %d calepinage(s) pluriannuel(s) ; '
-               '%d calepinage(s) pluriannuel(s) sans document remis.'
-               % (documents, concernes, sans_document))
+        releve = _annee_moyenne.lister_pluriannuels(
+            _entrees(_societe(options.get('company'))))
+        if options.get('json'):
+            texte = json.dumps(releve, ensure_ascii=False, indent=2,
+                               default=str)
+        else:
+            texte = _texte(releve)
+        if options.get('sortie'):
+            with open(options['sortie'], 'w', encoding='utf-8') as fichier:
+                fichier.write(texte + '\n')
+            self.stdout.write('relevé écrit dans %s' % options['sortie'])
+        else:
+            self.stdout.write(texte)
