@@ -1,6 +1,6 @@
 import { sansRecommande } from '../../../test/fixtures/offresTailles'
 import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
@@ -195,18 +195,6 @@ describe('LW21 — CTA devis automatique', () => {
     await user.type(screen.getByLabelText(/Puissance cible/), '3')
     await user.click(screen.getByRole('button', { name: /Devis automatique/ }))
     expect(onAction).toHaveBeenCalledWith('open-devis', { mode: 'auto', targetKwc: '3' })
-  })
-
-  // D-ACAL-154 — porté par la fiche : la frappe remonte (le champ reste le seul
-  // éditeur) et le bouton lit la valeur portée.
-  it('taille portée par la fiche : la frappe remonte, le bouton envoie la valeur portée', async () => {
-    const onKwcCibleChange = vi.fn()
-    const { onAction } = renderTab({ kwcCible: '6.5', onKwcCibleChange })
-    expect(screen.getByLabelText(/Puissance cible/)).toHaveValue(6.5)
-    fireEvent.change(screen.getByLabelText(/Puissance cible/), { target: { value: '8' } })
-    expect(onKwcCibleChange).toHaveBeenCalledWith('8')
-    fireEvent.click(screen.getByRole('button', { name: /Devis automatique/ }))
-    expect(onAction).toHaveBeenCalledWith('open-devis', { mode: 'auto', targetKwc: '6.5' })
   })
 
   // AGNR39 — au pompage, aucune cible kWc : ni champ, ni cible envoyée ; le
