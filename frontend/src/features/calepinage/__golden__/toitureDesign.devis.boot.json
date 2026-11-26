@@ -47,6 +47,7 @@
           },
           "cibleVendue": true,
           "origineCible": "devis",
+          "libelleOrigineCible": "Devis lié",
           "referenceDevis": "DEV-202610-0001",
           "optionCible": "sans",
           "fullName": "Toiture — bâtiment principal",
