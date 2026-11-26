@@ -112,11 +112,14 @@ class CatalogueApprobationTest(SimpleTestCase):
         self.assertNotIn(CAL_APPROUVER, CODES)
         self.assertNotIn(CAL_APPROUVER, ELEVATED_PERMISSIONS)
 
-    def test_zero_titulaire_hors_direction(self):
-        """Seuls Directeur/Administrateur le portent — par le catalogue."""
+    def test_titulaires_direction_et_commercial_responsable_seulement(self):
+        """Seuls Directeur/Administrateur le portent — par le catalogue — plus,
+        depuis D-ACAL-117 (fondateur, 25/11/2026, « Also Commercial
+        responsable »), le Commercial responsable. Aucun autre rôle."""
         for nom, permissions in CANONICAL_SYSTEM_ROLES:
             with self.subTest(role=nom):
-                attendu = nom in ('Directeur', 'Administrateur')
+                attendu = nom in ('Directeur', 'Administrateur',
+                                  'Commercial responsable')
                 self.assertEqual(CAL_APPROUVER in permissions, attendu, nom)
 
     def test_gardes_portent_le_bon_code(self):
