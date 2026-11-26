@@ -1068,7 +1068,7 @@ def resoudre_materiel(company, entree, *, calepinage=None):
     from .modules_pans import repli_materiel  # T4-B4-007 : conception, puis module posé
 
     blocs = {'module': {}, 'onduleur': {}, 'optimiseur': None}
-    designations = {role: '' for role in ROLES_MATERIEL}
+    designations, familles = {role: '' for role in ROLES_MATERIEL}, {}  # D-HYB-1 : familles du produit lu
     produits = {role: None for role in ROLES_MATERIEL}
     provenances = {role: None for role in ROLES_MATERIEL}
     skus = {role: None for role in ROLES_MATERIEL}  # ACAL662
@@ -1095,7 +1095,7 @@ def resoudre_materiel(company, entree, *, calepinage=None):
                            % LIBELLES_ROLES[role])
             continue
         blocs[role] = specs_for_produit(produit) or {}
-        designations[role] = _designation(produit)
+        designations[role], familles[role] = _designation(produit), famille_de_l_onduleur(produit)
         produits[role] = produit.pk
         skus[role] = getattr(produit, 'sku', None) or None
         provenances[role] = provenance
@@ -1106,7 +1106,7 @@ def resoudre_materiel(company, entree, *, calepinage=None):
         # pas « manquant », il n'existe pas.
         absents = [texte for texte in absents
                    if not texte.startswith(LIBELLES_ROLES['onduleur'] + ' ')]
-    return {**blocs, 'designations': designations, 'produits': produits,
+    return {**blocs, 'designations': designations, 'familles': familles, 'produits': produits,
             'provenances': provenances, 'absents': tuple(absents),
             'skus': skus}
 
@@ -1364,6 +1364,7 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
         onduleur_specs=materiel['onduleur'], temperatures=temperatures,
         module_designation=materiel['designations']['module'],
         onduleur_designation=materiel['designations']['onduleur'],
+        onduleur_famille=(materiel.get('familles') or {}).get('onduleur') or (),  # D-HYB-1 : lu par resoudre_materiel
         # ACAL162 — un micro-onduleur seul suffit à câbler le champ.
         optimiseur_specs=materiel.get('optimiseur'),
         fiches_modules=materiel.get('fiches_modules'),
@@ -3706,7 +3707,7 @@ def _verdicts_electriques(conception, optimiseur_specs=None,
         'bloquant': False,
         'source': 'fiche',
         'detail': '' if valeur is None else detail_ratio(ratio.texte, conforme, bornes, valeur=valeur,
-                                                         reglages=reglages),
+                                                         reglages=reglages, conception=conception),
         **_bloc_temperature(conception.temperatures),
     })
     # CAL129 — les contrôles d'ENTRÉE de l'optimiseur viennent APRÈS les cinq
@@ -3740,7 +3741,8 @@ def _verdicts_electriques(conception, optimiseur_specs=None,
 
 from .ratio_devis import (  # noqa: E402 — ACAL1954 : LE verdict du ratio (D-ACAL-91)
     SOURCE_BORNE_CAPACITE, SOURCE_BORNE_DEVIS, SOURCE_BORNE_MARCHE, SOURCE_BORNE_SOCIETE,
-    bornes_du_verdict, bornes_ratio as _bornes_ratio, detail_ratio, juger_ratio,
+    bornes_du_verdict, bornes_ratio as _bornes_ratio, detail_ratio, juger_ratio, motif_capacite_non_publiee,
+    famille_de_l_onduleur,
 )
 
 # ── CALX172 — LES DEUX PHRASES DE L'ÉCRÊTAGE, ET ELLES SONT UNIQUES ──────
@@ -3835,11 +3837,10 @@ def _bloc_ratio_dc_ac(conception, *, exigence_marche=None,
             avertissements.append('ratio DC/AC de %s au-delà de la %s (%s) — champ PV trop grand '
                                   'pour cet onduleur' % (fr(valeur, 2), source, detail))
         elif valeur > borne + 1e-9:
-            avertissements.append(
-                "ratio DC/AC de %s au-dessus de la borne %s (%s%s) — "
-                "écrêtage aux heures pleines"
-                % (fr(valeur, 2), fr(borne, 2), source,
-                   ' : %s' % detail if detail else ''))
+            avertissements.append(  # D-HYB-1 : hybride sans capacité publiée, le champ est nommé
+                "ratio DC/AC de %s au-dessus de la borne %s (%s%s) — écrêtage aux heures pleines%s"
+                % (fr(valeur, 2), fr(borne, 2), source, ' : %s' % detail if detail else '',
+                   ''.join(' ; ' + m for m in [motif_capacite_non_publiee(conception, source)] if m)))
         else:
             avertissements.append(
                 "ratio DC/AC de %s sous le seuil bas réglé par la société — "
