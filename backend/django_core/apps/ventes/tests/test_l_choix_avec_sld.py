@@ -487,6 +487,27 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
         self.assertEqual(es.schema_electrique_du_devis(devis)["avis_client"],
                          {"sans_batterie": None, "avec_batterie": None})
 
+    def test_d_acal_158_avis_d_une_conception_rangee_devenue_indessinable(self):
+        """Revue 2 (point 3) — une conception EST rangée (l'étude du devis ou celle
+        de l'envoi) mais une fiche a changé depuis : la phrase le dit, avec sa
+        cause, pour l'option retenue comme pour l'autre ; jamais « aucune
+        conception rangée »."""
+        devis = _devis_deux_options_servables()
+        es.build_electrical_design(devis)
+        devis.statut, devis.clauses_appliquees = "envoye", []
+        co.figer_conceptions_des_options(devis)
+        attendu = es.AVIS_CONCEPTION_NON_DESSINABLE % es.CAUSE_FICHE_MODIFIEE
+        reseau, hybride = devis.lignes.all()[1].produit, devis.lignes.all()[2].produit
+        for produit, cle, autre in ((hybride, "avec_batterie", "sans_batterie"),
+                                    (reseau, "sans_batterie", "avec_batterie")):
+            fiche = produit.fiche_technique
+            produit.fiche_technique = _FausseFiche("onduleur")             # fiche vidée depuis l'envoi
+            avis = es.schema_electrique_du_devis(devis)["avis_client"]
+            produit.fiche_technique = fiche
+            self.assertEqual(avis[cle], attendu, cle)
+            self.assertNotEqual(avis[cle], es.AVIS_OPTION_NON_RANGEE)
+            self.assertIsNone(avis[autre], cle)
+
     def test_d_acal_166_annexe_une_page_par_option_rangee_seulement(self):
         """D-ACAL-166 — l'annexe PDF reçoit une entrée par option RANGÉE (sans,
         puis avec), chacune avec SA conception et SON schéma ; sans l'entrée

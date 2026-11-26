@@ -1720,23 +1720,53 @@ def _documents_du_devis(devis, standard, avec_calepinage):
 #: une option dessinée à l'écran mais qui n'a pas de conception rangée : la
 #: page du client ne la montre pas (D-ACAL-140).
 AVIS_OPTION_NON_RANGEE = ("Le client ne voit pas le schéma de cette option : aucune "
-                          "conception électrique n'a été rangée pour elle à l'envoi.")
+                          "conception électrique n'est rangée pour elle.")
+#: Revue 2 (point 3) — une conception EST rangée pour l'option, mais elle ne
+#: passe plus les portails du dessin (``_etude_dessinable``) ; ``%s`` NOMME la cause.
+AVIS_CONCEPTION_NON_DESSINABLE = ("Le client ne voit pas le schéma de cette option : la "
+                                  "conception électrique rangée pour elle ne peut plus être "
+                                  "dessinée (%s).")
+CAUSE_FICHE_MODIFIEE = "une fiche technique du matériel a changé depuis et n'est plus complète"
+CAUSE_FORMAT_ANCIEN = "elle a été calculée par une version antérieure du moteur"
+CAUSE_ETUDE_BLOQUANTE = "elle porte un blocage de conformité"
+
+
+def _avis_client(devis, documents, origines):
+    """``{clé: phrase | None}`` — l'option dessinée à l'écran que la page du client
+    ne reçoit pas (devis sorti du brouillon, origine autre que « rangée ») : sans
+    conception rangée :data:`AVIS_OPTION_NON_RANGEE`, sinon
+    :data:`AVIS_CONCEPTION_NON_DESSINABLE` avec la cause lue sous SA variante."""
+    from apps.ventes.conceptions_options import _conceptions_figees
+    avis = {cle: None for cle in documents}
+    if getattr(devis, "statut", None) in (None, "", "brouillon"):
+        return avis
+    for variante, imposee in _variantes_du_schema(devis):
+        cle = _cle_option(variante)
+        if not documents.get(cle) or origines.get(cle) == _ORIGINE_RANGEE:
+            continue
+        rangee = ((_conceptions_figees(devis).get(cle) or {}).get("design") if imposee
+                  else conception_electrique_stockee(devis))
+        if not rangee:
+            avis[cle] = AVIS_OPTION_NON_RANGEE
+            continue
+        with _variante_imposee(variante if imposee else None):
+            cause = (CAUSE_FORMAT_ANCIEN if artefact_a_rejouer(rangee)
+                     else CAUSE_FICHE_MODIFIEE if fiches_manquantes_du_devis(devis)
+                     else CAUSE_ETUDE_BLOQUANTE)
+        avis[cle] = AVIS_CONCEPTION_NON_DESSINABLE % cause
+    return avis
 
 
 def schema_electrique_du_devis(devis, *, standard=False, avec_calepinage=True):
     """SCHEL-B3 — ``{options: {sans_batterie, avec_batterie}, avis_client}`` :
     un document « schéma électrique » par option du devis (``None`` pour une
     option qu'il n'a pas), pour la fiche ERP. ``avis_client`` (D-ACAL-158) :
-    par option, :data:`AVIS_OPTION_NON_RANGEE` quand un devis sorti du brouillon
-    dessine une option que la page du client ne reçoit pas (étude non rangée),
+    par option, la phrase dite au vendeur quand un devis sorti du brouillon
+    dessine une option que la page du client ne reçoit pas (``_avis_client``),
     sinon ``None``. Lecture PURE : aucune écriture, aucun statut, aucun montant ;
     une option illisible vaut ``None``."""
     documents, origines = _documents_du_devis(devis, standard, avec_calepinage)
-    envoye = getattr(devis, "statut", None) not in (None, "", "brouillon")
-    return {"options": documents,
-            "avis_client": {cle: (AVIS_OPTION_NON_RANGEE if envoye and doc
-                                  and origines.get(cle) != _ORIGINE_RANGEE else None)
-                            for cle, doc in documents.items()}}
+    return {"options": documents, "avis_client": _avis_client(devis, documents, origines)}
 
 
 def rendre_schema_electrique_du_devis(devis, *, langue="fr", largeur_px=None):

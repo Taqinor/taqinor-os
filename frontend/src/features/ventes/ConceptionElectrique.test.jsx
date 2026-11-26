@@ -149,7 +149,7 @@ describe('ConceptionElectrique (PV43)', () => {
 
   it('D-ACAL-158 : l\'avis du serveur dit au vendeur quelle option le client ne voit pas', async () => {
     const enveloppe = ENVELOPPE()
-    const avis = 'Le client ne voit pas le schéma de cette option : aucune conception électrique n\'a été rangée pour elle à l\'envoi.'
+    const avis = 'Le client ne voit pas le schéma de cette option : aucune conception électrique n\'est rangée pour elle.'
     enveloppe.avis_client = { sans_batterie: avis, avec_batterie: null }
     serviSchema(enveloppe)
     const user = userEvent.setup()
