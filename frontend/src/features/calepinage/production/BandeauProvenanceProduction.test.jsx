@@ -261,6 +261,14 @@ describe('SourceMeteo / IncertitudeSigma (ENF15)', () => {
     expect(bloc).toHaveTextContent(`${meteo.horizon.origine} (${meteo.horizon.base_horizon})`)
   })
 
+  it('le mode se dit en mots : « Année type (TMY) », jamais « tmy »', () => {
+    const { meteo } = exempleContrat('calepinage', 'calepinage_meteo')
+    render(<SourceMeteo meteo={{ ...meteo, mode: 'tmy' }} />)
+    const bloc = screen.getByTestId('enf15-source-meteo')
+    expect(bloc).toHaveTextContent('Année type (TMY)')
+    expect(bloc.textContent).not.toMatch(/(^|[^(A-Za-z])tmy/)
+  })
+
   it('sans simulation (exemple_vide) : aucun bloc météo', () => {
     const { meteo } = exempleContrat('calepinage', 'calepinage_meteo', 'exemple_vide')
     render(<SourceMeteo meteo={meteo} />)

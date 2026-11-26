@@ -1616,7 +1616,8 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         serie_production, kwc=meta['kwc'],
         fiche_module=contexte['fiche_module'],
         pr=total.get('performance_ratio'),
-        irradiation_incidente=cascade.get('irradiation_incidente_kwh_m2'))
+        irradiation_incidente=cascade.get('irradiation_incidente_kwh_m2'),
+        mode_meteo=decision['mode'])  # revue lot 6 : une année type reste UNE année
 
     reponse_pvgis = None
     if fichier is None and _orientations_identiques(plans_chaine):

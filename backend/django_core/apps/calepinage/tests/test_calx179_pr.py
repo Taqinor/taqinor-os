@@ -121,6 +121,20 @@ class PeriodeTest(unittest.TestCase):
         self.assertIn('pluriannuelle', bloc['periode'])
         self.assertIn('2020-2021', bloc['periode'])
 
+    def test_annee_type_reste_une_annee(self):
+        # Revue lot 6 (ACAL1715) — les mois d'une année type viennent
+        # d'années différentes : jamais « pluriannuelle (8 années…) ».
+        points = [{'annee': 2005 + mois, 'mois': mois, 'jour': 15, 'heure': 12,
+                   'p_ac_kw': 5.0, 'gi_w_m2': 700.0, 't_cell_c': 40.0}
+                  for mois in range(1, 13)]
+        bloc = bloc_performance(dict(SERIE, points=points), kwc=KWC,
+                                fiche_module=FICHE, mode_meteo='tmy')
+        self.assertEqual(bloc['periode'], performance.PERIODE_ANNEE_TYPE)
+        self.assertNotIn('pluriannuelle', bloc['periode'])
+        sans_mode = bloc_performance(dict(SERIE, points=points), kwc=KWC,
+                                     fiche_module=FICHE)
+        self.assertIn('pluriannuelle', sans_mode['periode'])
+
     def test_une_serie_sans_mois_n_invente_aucune_periode(self):
         bloc = bloc_performance(serie_sans('mois'), kwc=KWC,
                                 fiche_module=FICHE)

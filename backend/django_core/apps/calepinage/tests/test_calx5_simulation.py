@@ -339,6 +339,9 @@ class RefusTest(SimpleTestCase):
         self.assertEqual(meteo['transposition']['modele'], 'perez')
         self.assertEqual(meteo['transposition']['albedo']['source'], 'note')
         self.assertGreater(blocs['production']['total']['p50_kwh'], 0)
+        # Revue lot 6 — une année type reste UNE année (jamais « pluriannuelle »).
+        from apps.calepinage.services.performance import PERIODE_ANNEE_TYPE
+        self.assertEqual(blocs['performance']['periode'], PERIODE_ANNEE_TYPE)
 
     def test_sans_pan_equipe_le_refus_nomme_les_plans(self):
         vide = dict(LAYOUT, zones=[])
