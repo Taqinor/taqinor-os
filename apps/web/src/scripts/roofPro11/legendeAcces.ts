@@ -1,8 +1,21 @@
 // ACAL441 — légende graphique de la carte d'accès solaire : trois repères (0, 0,5, 1) dont les
 // couleurs sont LUES de `solarAccessColorRGB` (jamais recopiées). Les extrémités 0 % / 100 % sont
 // les bornes du domaine de la fonction, pas des mesures.
-import { couleurAccesActive } from '../../lib/shadingEngine';
+import { couleurAccesActive, solarAccessColorRGB } from '../../lib/shadingEngine';
 import { esc } from './dom';
+
+/** ACAL1821 — la palette ACTIVE est-elle celle du site (rouge → vert, `solarAccessColorRGB`) ? Lu des couleurs. */
+function paletteDuSite(): boolean {
+  return [0, 0.5, 1].every((a) => JSON.stringify(couleurAccesActive(a)) === JSON.stringify(solarAccessColorRGB(a)));
+}
+
+/** ACAL1821 — ce que la note dit des couleurs : sur la palette du site, ses deux couleurs (texte inchangé) ; sur une
+ *  autre palette (atelier : bleu nuit → or), aucun nom de couleur — la légende ci-dessous les montre. */
+export function phraseCouleursAcces(periode: string): string {
+  return paletteDuSite()
+    ? `vert = plein soleil ${periode}, rouge = souvent à l’ombre`
+    : `teinte de chaque panneau selon la légende ci-dessous, de l’ombre (0 %) au plein soleil (100 %) ${periode}`;
+}
 
 function css(a: number): string {
   const c = couleurAccesActive(a); // palette active (site : solarAccessColorRGB, inchangée)
@@ -33,6 +46,10 @@ export function poserLegendeAcces(noteEl: HTMLElement | null, periode: string | 
     el = document.createElement('div');
     el.id = 'rp9-heatmap-legend';
     el.className = 'text-xs text-lune-faint';
+    // ACAL1821 — dans une rangée flex (atelier ERP), la légende prenait la largeur de son texte : les deux bornes se
+    // collaient (« à l'ombre (0 %)plein soleil (100 %) »). Pleine largeur : elles sont aux deux bouts de la barre.
+    (el as HTMLElement).style.width = '100%';
+    (el as HTMLElement).style.flexBasis = '100%';
     noteEl.after(el);
   }
   el.innerHTML = htmlLegendeAcces(periode);

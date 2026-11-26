@@ -60,7 +60,7 @@ import {
 } from './batiment'; // CALX100 — la hauteur vient du DOCUMENT, plus d'une Map locale
 import { etiquette, registreAtelier } from './numerotation'; // CALX111 câblage
 import { $, esc } from './dom';
-import { poserLegendeAcces } from './legendeAcces'; // ACAL441
+import { phraseCouleursAcces, poserLegendeAcces } from './legendeAcces'; // ACAL441, ACAL1821
 import { signerSources, tableOmbrage, type TableOmbrage } from './tableOmbrage'; // ACAL459
 import { facteurVueCiel, vueCielDuPan, type FacteurVueCiel } from './vueCiel'; // ACAL460
 import { type Ctx } from './context';
@@ -1298,7 +1298,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     const periode = heatmapMonth == null ? 'toute l’année' : `en ${HEATMAP_MONTH_LABELS[heatmapMonth]}`;
     heatmapNoteEl.textContent =
       `Carte d’accès solaire (${heatmapMonth == null ? 'année entière' : HEATMAP_MONTH_LABELS[heatmapMonth]}) : ` +
-      `vert = plein soleil ${periode}, rouge = souvent à l’ombre (calcul astronomique, pondéré par l’irradiation réelle du lieu). ` +
+      `${phraseCouleursAcces(periode)} (calcul astronomique, pondéré par l’irradiation réelle du lieu). ` + // ACAL1821
       'Obstacles de toiture à hauteur saisie, objets d’environnement et ombres tracées la font varier.';
   }
 

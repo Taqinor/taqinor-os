@@ -9,8 +9,8 @@ import { annualShadeFactor, MID_MONTH_DAY_OF_YEAR, DIFFUSE_FRACTION_WHEN_SHADED 
 import { tableOmbrage, recomposerMatrice, ajouterTableOmbrage, garderTableRelue, signerSources } from './tableOmbrage'; // ACAL459
 import { facteurVueCiel, vueCielDuPan, ajouterVueCiel, garderVueCielRelue } from './vueCiel'; // ACAL460
 import { describe, expect, it } from 'vitest';
-import { htmlLegendeAcces, poserLegendeAcces } from './legendeAcces'; // ACAL441
-import { solarAccessColorRGB } from '../../lib/shadingEngine'; // ACAL441
+import { htmlLegendeAcces, phraseCouleursAcces, poserLegendeAcces } from './legendeAcces'; // ACAL441, ACAL1821
+import { choisirPaletteAcces, solarAccessColorRGB } from '../../lib/shadingEngine'; // ACAL441, ACAL1821
 import {
   effectiveBuildingHeightM,
   filtrerEmplacementsSousSeuil,
@@ -565,6 +565,23 @@ describe('ACAL441 : la légende reprend les couleurs de solarAccessColorRGB', ()
   });
   it('sans note dans la page, rien n’est créé', () => {
     expect(() => poserLegendeAcces(null, 'année entière')).not.toThrow();
+  });
+
+  // ACAL1821 — la note ne nomme aucune couleur absente de la palette active (atelier : bleu nuit → or), le site garde
+  // son texte ; la légende prend toute la largeur d'une rangée flex (bornes aux deux bouts). Mutant : « vert / rouge ».
+  it('palette atelier : la note ne dit plus « vert / rouge » ; palette du site : texte inchangé ; légende pleine largeur', () => {
+    try {
+      choisirPaletteAcces('atelier');
+      const phrase = phraseCouleursAcces('en décembre');
+      expect(phrase).not.toMatch(/vert|rouge/);
+      expect(phrase).toContain('de l’ombre (0 %) au plein soleil (100 %) en décembre');
+    } finally { choisirPaletteAcces('site'); }
+    expect(phraseCouleursAcces('toute l’année')).toBe('vert = plein soleil toute l’année, rouge = souvent à l’ombre');
+    const rangee = document.createElement('div');
+    rangee.innerHTML = '<p id="note"></p>';
+    poserLegendeAcces(rangee.querySelector('#note') as HTMLElement, 'année entière');
+    const legende = rangee.querySelector('#rp9-heatmap-legend') as HTMLElement;
+    expect([legende.style.width, legende.style.flexBasis]).toEqual(['100%', '100%']);
   });
 });
 
