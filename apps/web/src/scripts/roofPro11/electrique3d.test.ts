@@ -1034,3 +1034,32 @@ describe('ACAL1317 — tracé reconnu après retouche, un tracé par pan, lectur
     expect(couche.pousser('eq1', 1, 0).ok).toBe(true);
   });
 });
+
+/* ACAL1317 (revue 2) — deux onduleurs : un pan servi par l'un n'envoie pas un second câble à l'autre. */
+describe('ACAL1317 — deux onduleurs, un câble par pan', () => {
+  const COS = Math.cos((ORIGINE[1] * Math.PI) / 180);
+  const M = (Math.PI / 180) * 6378137;
+  const lngLat = (e: number, n: number): [number, number] => [ORIGINE[0] + e / (M * COS), ORIGINE[1] + n / M];
+  const enu = (p: { lng: number; lat: number }): [number, number] => [(p.lng - ORIGINE[0]) * M * COS, (p.lat - ORIGINE[1]) * M];
+  const pan = (id: string, ring: [number, number][]) => ({
+    id, renderPlan: { pack: { origin: ORIGINE, azimuthDeg: 180, ringENU: ring }, grid: { rowWidthM: 2, panels: [3, 5, 7].map((cx) => ({ cx, cy: 6 })) } },
+  });
+  it('z1 câblé à l’onduleur 1 : poser l’onduleur 2 n’ajoute aucun câble depuis z1 ; déplacer l’onduleur 1 ne fait suivre que SON tracé', () => {
+    const couche = creerCoucheElectrique({ electrical: null, sceneOrigin: ORIGINE, areas: [pan('z1', [[0, 0], [20, 0], [20, 12], [0, 12]])], activeAreaId: 'z1' });
+    couche.armerPose('onduleur', { suivreTrace: true });
+    couche.clicCarte(lngLat(20, 2));
+    couche.armerPose('onduleur', { suivreTrace: true });
+    couche.clicCarte(lngLat(0, 2));
+    const liaisons = () => (couche.documentElectrique()!.cheminements ?? []).map((c) => [c.de, c.vers]);
+    expect(couche.documentElectrique()!.equipements!.map((e) => e.id)).toEqual(['eq1', 'eq2']);
+    expect(liaisons()).toEqual([['z1', 'eq1']]);
+    couche.armerDeplacement('eq1');
+    couche.clicCarte(lngLat(19, 1));
+    expect(liaisons()).toEqual([['z1', 'eq1']]);
+    const pts = couche.documentElectrique()!.cheminements![0].points!;
+    const bout = enu(pts[pts.length - 1]);
+    expect(Math.hypot(bout[0] - 19, bout[1] - 1)).toBeLessThan(1e-6);
+    expect(couche.etatTraces('eq1').pansSansTrace).toEqual([]);
+    expect(couche.etatTraces('eq2').pansSansTrace).toEqual([]);
+  });
+});

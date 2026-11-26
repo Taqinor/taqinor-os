@@ -1113,6 +1113,15 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
   const pansAModules = (): string[] => (ctx.areas ?? [])
     .filter((a) => a.id && (a.renderPlan?.grid?.panels?.length ?? 0) > 0).map((a) => a.id);
 
+  /** Un pan est SERVI quand un tracé DC le relie à UN onduleur, quel qu'il soit : avec deux onduleurs, le pan câblé
+   *  au premier n'envoie pas un second câble au deuxième (deux métrés pour un seul câble). */
+  const panServi = (pan: string): boolean => {
+    const onduleurs = new Set(((document()?.equipements ?? []) as EquipementElectrique[])
+      .filter((e) => e?.type === 'onduleur').map((e) => e.id));
+    return ((document()?.cheminements ?? []) as CheminementElectrique[]).some((c) => c && c.cote === 'dc'
+      && ((c.de === pan && onduleurs.has(c.vers)) || (c.vers === pan && onduleurs.has(c.de))));
+  };
+
   function etatTraces(id: string): EtatTracesOrgane {
     const organe = ((document()?.equipements ?? []) as EquipementElectrique[]).find((x) => x.id === id) ?? null;
     const proposes: string[] = [];
@@ -1124,19 +1133,20 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
       autres.push(c.id);
       if (organe && !aboutit(c, organe)) decales.push(c.id);
     }
-    const pansSansTrace = organe ? pansAModules().filter((pan) => !traces.some((c) => c.de === pan || c.vers === pan)) : [];
+    const pansSansTrace = organe ? pansAModules().filter((pan) => !panServi(pan)) : [];
     return { proposes, autres, decales, pansSansTrace };
   }
 
-  /** Repropose les liaisons PROPOSÉES relevées avant le geste, puis propose le tracé DC de chaque pan à modules qui
-   *  n'a encore AUCUN tracé vers l'organe. Un tracé non reconnu n'est jamais touché, ni sa liaison reproposée. */
+  /** Repropose les liaisons PROPOSÉES de l'organe déplacé relevées avant le geste (jamais celles d'un autre
+   *  onduleur), puis propose le tracé DC de chaque pan à modules qu'AUCUN onduleur ne sert encore. Un tracé non
+   *  reconnu n'est jamais touché, ni sa liaison reproposée. */
   function suivreTrace(id: string, proposesAvant: readonly CheminementElectrique[]): SuiviTrace {
     const autres = tracesDe(id).filter((c) => !proposesAvant.some((p) => p.id === c.id));
     const liaisons: { cote: CoteCheminement; de: string; vers: string }[] = proposesAvant
       .map((c) => ({ cote: c.cote, de: c.de, vers: c.vers }))
       .filter((l) => !autres.some((c) => c.cote === l.cote && c.de === l.de && c.vers === l.vers));
     for (const pan of pansAModules()) {
-      if (!tracesDe(id).some((c) => c.de === pan || c.vers === pan)) liaisons.push({ cote: 'dc', de: pan, vers: id });
+      if (!panServi(pan) && !tracesDe(id).some((c) => c.de === pan || c.vers === pan)) liaisons.push({ cote: 'dc', de: pan, vers: id });
     }
     const traces: string[] = [];
     let refusTrace: RefusElectrique | null = null;
