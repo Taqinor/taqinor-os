@@ -9091,20 +9091,13 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               ...(soleil ? { instant: soleil.ouverture, environnement: soleil.environnement, indexTeintes: fullLayout === layoutRacine ? soleil.zones.map((z) => z.index) : [], presentationClient: true } : {}),
               onReady: () => {
                 if (overlay) overlay.hidden = true;
-                if (hintEl) {
-                  hintEl.hidden = false;
-                  // Gestes carte ≠ gestes Three : réécrit data-i18n ET le texte,
-                  // sinon le sélecteur de langue remet l'ancien libellé.
-                  hintEl.dataset.fr = 'Deux doigts pour déplacer et zoomer · clic droit ou Ctrl + glisser pour tourner';
-                  hintEl.dataset.en = 'Two fingers to pan and zoom · right-click or Ctrl + drag to rotate';
-                  hintEl.dataset.ar = 'إصبعان للتحريك والتكبير · زر أيمن أو Ctrl + سحب للتدوير';
-                  hintEl.textContent = hintEl.dataset.fr;
-                }
-                stage.classList.add('roof3d-stage--sky', 'roof3d-stage--map');
               },
               onMapError: () => showFallback('Vue 3D interrompue — voici la photo de votre étude.'),
             }, {
               barre,
+              // Cadre et aide des gestes CARTE posés au rendu, rendus tels qu'avant au repli (viewerFullBoot.ts::habillerPourCarte).
+              scene: stage,
+              aide: hintEl,
               // LOT 6 — barre au soleil chargée APRÈS la visionneuse ; tout échec la masque et laisse la visionneuse.
               brancherSoleil: s && barre
                 ? async (poignee) => (await import('../../scripts/roofPro11/viewerSoleil')).attacherSoleil({ barre, poignee, soleil: s, layout: fullLayout, avecTeinte: fullLayout === layoutRacine, reducedMotion: reduced })

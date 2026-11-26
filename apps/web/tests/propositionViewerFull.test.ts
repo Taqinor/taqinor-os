@@ -943,6 +943,9 @@ describe('monterVisionneusePleine — barre au soleil branchée après le rendu,
   const BARRE = `<div id="roof3d-soleil" hidden><div data-soleil-legende></div>
     <button data-soleil-lecture disabled></button><strong data-soleil-quand></strong><p data-soleil-journee></p>
     <input type="range" data-soleil-heure disabled /><button data-soleil-saison="hiver" disabled></button><button data-soleil-saison="ete" disabled></button></div>`;
+  // L'aide des gestes de la page (#roof3d-hint), telle que la visionneuse simplifiée la sert.
+  const AIDE_SIMPLE = { fr: 'Faites glisser pour tourner', en: 'Drag to rotate', ar: 'اسحبوا للتدوير' };
+  const AIDE = `<p id="aide" hidden data-i18n data-fr="${AIDE_SIMPLE.fr}" data-en="${AIDE_SIMPLE.en}" data-ar="${AIDE_SIMPLE.ar}">${AIDE_SIMPLE.fr}</p>`;
   const PAYLOAD_REEL = { visionneuse_soleil: { version: 1, zones: [], environnement: [], instant_choisi: { jour: 356, heure: 16.25 } } };
   const getContextOrigine = HTMLCanvasElement.prototype.getContext;
   beforeEach(() => {
@@ -959,7 +962,7 @@ describe('monterVisionneusePleine — barre au soleil branchée après le rendu,
 
   async function monter(extra: Record<string, unknown> = {}) {
     const { monterVisionneusePleine } = await import('../src/scripts/roofPro11/viewerFullBoot');
-    document.body.innerHTML = `<div id="scene"></div>${BARRE}`;
+    document.body.innerHTML = `<div id="scene" class="roof3d-stage"></div>${BARRE}${AIDE}`;
     const barre = document.getElementById('roof3d-soleil')!;
     const soleil = lireVisionneuseSoleil(PAYLOAD_REEL, LAYOUT_PLAT_35)!;
     const onReady = vi.fn();
@@ -967,9 +970,11 @@ describe('monterVisionneusePleine — barre au soleil branchée après le rendu,
     const avertir = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const brancherSoleil = vi.fn(async (poignee: ViewerFullHandle) =>
       attacherSoleil({ barre, poignee, soleil, layout: LAYOUT_PLAT_35, avecTeinte: true, reducedMotion: true }));
-    const vue = monterVisionneusePleine(document.getElementById('scene'), LAYOUT_PLAT_35, { maptilerKey: 'cle-test', reducedMotion: true, instant: soleil.ouverture, onReady, ...extra }, { barre, brancherSoleil, replier });
+    const vue = monterVisionneusePleine(document.getElementById('scene'), LAYOUT_PLAT_35, { maptilerKey: 'cle-test', reducedMotion: true, instant: soleil.ouverture, onReady, ...extra }, { barre, brancherSoleil, replier, scene: document.getElementById('scene'), aide: document.getElementById('aide') });
     const q = <T extends HTMLElement>(s: string) => barre.querySelector<T>(s)!;
-    return { vue, barre, carte: carteFactice.cartes[0], onReady, replier, brancherSoleil, avertir, q };
+    const scene = document.getElementById('scene')!;
+    const aide = document.getElementById('aide')!;
+    return { vue, barre, carte: carteFactice.cartes[0], onReady, replier, brancherSoleil, avertir, q, scene, aide };
   }
   const attendre = () => new Promise((r) => setTimeout(r, 0));
 
@@ -1008,11 +1013,15 @@ describe('monterVisionneusePleine — barre au soleil branchée après le rendu,
     expect(avertir).toHaveBeenCalledTimes(1);
   });
 
-  it('un pas de soleil qui jette après coup → barre débranchée et cachée, repli monté', async () => {
-    const { barre, carte, replier, q } = await monter();
+  it('un pas de soleil qui jette après coup → barre débranchée et cachée, cadre et aide rendus au repli', async () => {
+    const { barre, carte, replier, q, scene, aide } = await monter();
     carte.fire('load');
     await attendre();
     expect(barre.hidden).toBe(false);
+    // Habillé pour la carte au rendu : cadre « carte » (un doigt fait défiler la page) et aide des gestes carte.
+    expect(scene.classList.contains('roof3d-stage--map')).toBe(true);
+    expect(aide.hidden).toBe(false);
+    expect(aide.dataset.fr).toMatch(/^Deux doigts/);
     carte.triggerRepaint = () => { throw new Error('rendu impossible'); }; // appelé par le pas de soleil (B3 : soleil seul)
     const curseur = q<HTMLInputElement>('[data-soleil-heure]');
     curseur.value = '10';
@@ -1021,6 +1030,12 @@ describe('monterVisionneusePleine — barre au soleil branchée après le rendu,
     expect(curseur.disabled).toBe(true);
     expect(carte.retiree).toBe(true);
     expect(replier).toHaveBeenCalledTimes(1);
+    // Le repli (visionneuse simplifiée) retrouve SON cadre et SON aide.
+    expect(scene.classList.contains('roof3d-stage--map')).toBe(false);
+    expect(scene.classList.contains('roof3d-stage--sky')).toBe(false);
+    expect(scene.classList.contains('roof3d-stage')).toBe(true);
+    expect(aide.hidden).toBe(true);
+    expect([aide.dataset.fr, aide.dataset.en, aide.dataset.ar, aide.textContent]).toEqual([AIDE_SIMPLE.fr, AIDE_SIMPLE.en, AIDE_SIMPLE.ar, AIDE_SIMPLE.fr]);
   });
 
   it('B0 — une tuile refusée (429) ou une réponse HTTP ne retire pas la barre ; une panne de style, si', async () => {

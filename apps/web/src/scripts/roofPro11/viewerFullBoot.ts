@@ -403,6 +403,41 @@ export interface SuiteVisionneuse {
   brancherSoleil?: (poignee: ViewerFullHandle) => Promise<() => void>;
   /** La scène a échoué après son démarrage : la page monte son repli, comme sans WebGL ni clé d'imagerie. */
   replier: (raison: unknown) => void;
+  /** Le cadre de la scène et l'aide des gestes : habillés pour la CARTE une fois la scène rendue, rendus tels qu'avant
+   *  au repli (la visionneuse simplifiée a ses propres gestes : un doigt tourne, il ne fait pas défiler la page). */
+  scene?: HTMLElement | null;
+  aide?: HTMLElement | null;
+}
+
+/** Les gestes de la CARTE (≠ ceux de la visionneuse simplifiée), dans les trois langues de la page. */
+const AIDE_GESTES_CARTE = {
+  fr: 'Deux doigts pour déplacer et zoomer · clic droit ou Ctrl + glisser pour tourner',
+  en: 'Two fingers to pan and zoom · right-click or Ctrl + drag to rotate',
+  ar: 'إصبعان للتحريك والتكبير · زر أيمن أو Ctrl + سحب للتدوير',
+} as const;
+const CLASSES_CARTE = ['roof3d-stage--sky', 'roof3d-stage--map'] as const;
+
+/** Habille la scène pour la carte (classes du cadre, aide des gestes réécrite : data-i18n ET texte, sinon le sélecteur
+ *  de langue remet l'ancien libellé) ; renvoie la fonction qui remet le cadre et l'aide exactement comme avant. */
+export function habillerPourCarte(scene: HTMLElement | null | undefined, aide: HTMLElement | null | undefined): () => void {
+  const avant = aide ? { hidden: aide.hidden, fr: aide.dataset.fr, en: aide.dataset.en, ar: aide.dataset.ar, texte: aide.textContent } : null;
+  const avaitClasse = CLASSES_CARTE.map((c) => scene?.classList.contains(c) === true);
+  if (aide) {
+    aide.hidden = false;
+    Object.assign(aide.dataset, AIDE_GESTES_CARTE);
+    aide.textContent = AIDE_GESTES_CARTE.fr;
+  }
+  scene?.classList.add(...CLASSES_CARTE);
+  return () => {
+    CLASSES_CARTE.forEach((c, i) => { if (!avaitClasse[i]) scene?.classList.remove(c); });
+    if (!aide || !avant) return;
+    aide.hidden = avant.hidden;
+    for (const l of ['fr', 'en', 'ar'] as const) {
+      if (avant[l] === undefined) delete aide.dataset[l];
+      else aide.dataset[l] = avant[l];
+    }
+    aide.textContent = avant.texte;
+  };
 }
 
 /**
@@ -419,6 +454,7 @@ export function monterVisionneusePleine(
   let fini = false;
   let debrancher: (() => void) | null = null;
   let poignee: ViewerFullHandle | null = null;
+  let deshabiller: (() => void) | null = null;
   const cacherBarre = () => {
     if (suite.barre) suite.barre.hidden = true;
   };
@@ -430,6 +466,7 @@ export function monterVisionneusePleine(
     ...opts,
     onReady: () => {
       opts.onReady?.();
+      if (!fini && (suite.scene || suite.aide)) deshabiller = habillerPourCarte(suite.scene, suite.aide);
       const p = poignee;
       if (!p || fini || !suite.brancherSoleil) return;
       suite.brancherSoleil(p).then((d) => (fini ? d() : (debrancher = d)), cacherBarre);
@@ -439,6 +476,8 @@ export function monterVisionneusePleine(
       fini = true;
       arreterSoleil();
       cacherBarre();
+      deshabiller?.(); // le repli retrouve le cadre et l'aide de la visionneuse simplifiée
+      deshabiller = null;
       opts.onFail?.(raison);
       suite.replier(raison);
     },
