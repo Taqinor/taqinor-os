@@ -118,6 +118,14 @@ export const LIBELLES_SOURCE_CIBLE = {
   factures: 'Factures du lead',
 }
 export const libelleSourceCible = (source) => LIBELLES_SOURCE_CIBLE[source] ?? source ?? null
+// La MÊME source après « d'après » (« Posé d'après les factures du lead : 8 panneaux ») : une seconde forme de chaque mot de la table
+// ci-dessus, jamais le libellé de la carte collé derrière la préposition. Une source inconnue n'a pas de seconde forme (`null`).
+export const LIBELLES_APRES_SOURCE_CIBLE = {
+  devis: 'le devis lié',
+  lead: 'la taille souhaitée sur la fiche du lead',
+  factures: 'les factures du lead',
+}
+export const libelleApresSourceCible = (source) => LIBELLES_APRES_SOURCE_CIBLE[source] ?? null
 
 // CAL37 — MODE CALEPINAGE. Jumeau NEUTRE de la projection devis ci-dessus, pour
 // le contexte servi par `GET /calepinage/calepinages/<pk>/design-context/`
@@ -178,6 +186,7 @@ export function contexteCalepinageVersPayload(contexte) {
     origineCible: contexte.cible?.source ?? null,
     // T4-X8-012 (une cible) — la même source, dans les mots de la carte « Cible — panneaux » : la note du nombre de panneaux la reprend.
     libelleOrigineCible: contexte.cible?.source ? libelleSourceCible(contexte.cible.source) : null,
+    libelleApresOrigineCible: libelleApresSourceCible(contexte.cible?.source),
     // ACAL1951 — le devis lié (sa référence) et l'option que sa cible suit (`sans` | `avec`, `null` pour une cible estimée) :
     // l'atelier les nomme dans la note du nombre de panneaux.
     referenceDevis: contexte.calepinage?.devis_lie?.reference ?? null,

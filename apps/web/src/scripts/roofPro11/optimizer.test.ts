@@ -1844,9 +1844,16 @@ describe('R3-25 (b) / R3-04 — cartes de variante espacées, phrase « aucune p
 // toit est fermé, à la taille de la cible servie (celle du devis lié, sinon celle tirée de la facture du lead), et l'écran
 // le DIT ; le commercial ajuste ; une pose tenue n'est jamais re-posée (ACAL1900) ; le site public ne change pas.
 describe('ACAL1331 — la taille de la cible posée d’elle-même sur un calepinage vierge, et dite', () => {
+  // les mots que l'ERP pose dans le payload (contexteAtelier.js : LIBELLES_SOURCE_CIBLE et sa forme « d'après »)
+  const motsDeLaCarte: Record<string, { libelleOrigineCible: string; libelleApresOrigineCible: string }> = {
+    factures: { libelleOrigineCible: 'Factures du lead', libelleApresOrigineCible: 'les factures du lead' },
+    devis: { libelleOrigineCible: 'Devis lié', libelleApresOrigineCible: 'le devis lié' },
+    lead: { libelleOrigineCible: 'Taille souhaitée sur la fiche du lead', libelleApresOrigineCible: 'la taille souhaitée sur la fiche du lead' },
+  };
   const payload = (origineCible: string | null, roofLayout: unknown = null) => ({
     id: null, geometrie: { roof_layout: roofLayout, roof_point: null, roof_outline: null },
     cible: { panneaux: 8, panel_watt: 710, scenario: null }, cibleVendue: origineCible === 'devis', origineCible,
+    ...(motsDeLaCarte[origineCible ?? ''] ?? {}),
   });
   /** Boot d'un plat `l × p` m depuis le payload de l'atelier (`hydrateFromDevis`, cible imposée au pan unique comme
    *  `imposeTarget`), puis `close()` : le premier rendu de l'optimiseur. */
@@ -1884,7 +1891,7 @@ describe('ACAL1331 — la taille de la cible posée d’elle-même sur un calepi
     const a = fermer(12, 8, ERP('factures'));
     try {
       expect(a.dessinee()).toBe(8);
-      expect(a.note()).toBe(`Posé d’après la facture : 8 panneaux · ${a.kwc()} kWc — ajustez si besoin.`);
+      expect(a.note()).toBe(`Posé d’après les factures du lead : 8 panneaux · ${a.kwc()} kWc — ajustez si besoin.`);
       a.ctx.neededPanels = 9; // « + »
       a.opt.liveResolveFlat();
       expect(a.dessinee()).toBe(9);
@@ -1910,18 +1917,34 @@ describe('ACAL1331 — la taille de la cible posée d’elle-même sur un calepi
       const n = a.dessinee();
       expect(n).toBeGreaterThan(0);
       expect(n).toBeLessThan(8);
-      expect(a.note()).toMatch(new RegExp(`^Posé d’après la facture : ${n} panneaux · ${a.kwc()} kWc sur 8 — seuls ${n} tiennent .+ ; ajustez si besoin\\.$`));
+      expect(a.note()).toMatch(new RegExp(`^Posé d’après les factures du lead : ${n} panneaux · ${a.kwc()} kWc sur 8 — seuls ${n} tiennent .+ ; ajustez si besoin\\.$`));
     } finally { a.fin(); }
   });
 
-  it('devis lié : « Posé d’après le devis » ; taille souhaitée du lead : dite telle', () => {
-    for (const [origine, mot] of [['devis', 'le devis'], ['lead', 'la taille souhaitée du lead']]) {
+  it('devis lié : « Posé d’après le devis lié » ; taille souhaitée du lead : dite telle', () => {
+    for (const [origine, mot] of [['devis', 'le devis lié'], ['lead', 'la taille souhaitée sur la fiche du lead']]) {
       const a = fermer(12, 8, ERP(origine));
       try {
         expect(a.dessinee()).toBe(8);
         expect(a.note().startsWith(`Posé d’après ${mot} : 8 panneaux`)).toBe(true);
       } finally { a.fin(); }
     }
+  });
+
+  it('T4-X8-012 (une cible) — la note nomme la MÊME source que la carte (même table) ; un payload sans ces mots garde le repli d’avant ; site public octet pour octet', () => {
+    // la tête de la note dit la source de la carte « Cible — panneaux » (« Factures du lead ») après « d’après » : « les factures du lead »
+    const a = fermer(5, 4, ERP('factures'));
+    try { expect(a.note().startsWith('Posé d’après les factures du lead : ')).toBe(true); } finally { a.fin(); }
+    // payload sans les mots de la table (jamais produit par l'ERP d'aujourd'hui) : le repli, texte d'avant
+    const sansMots = fermer(12, 8, { chiffrage: null, rendementPvgis: null, hydrate: { devis: { ...payload('factures'), libelleOrigineCible: undefined, libelleApresOrigineCible: undefined } } });
+    try { expect(sansMots.note()).toBe(`Posé d’après la facture : 8 panneaux · ${sansMots.kwc()} kWc — ajustez si besoin.`); } finally { sansMots.fin(); }
+    // site public : le texte est le même avec ou sans les mots de l'ERP dans le payload (aucune note « d'après », aucun « cible »)
+    const sans = fermer(12, 8, { rendementPvgis: null, hydrate: { devis: { ...payload('factures'), libelleOrigineCible: undefined, libelleApresOrigineCible: undefined } } });
+    const avec = fermer(12, 8, { rendementPvgis: null, hydrate: { devis: payload('factures') } });
+    try {
+      expect(avec.note()).toBe(sans.note());
+      expect(avec.note()).not.toMatch(/d’après|cible/);
+    } finally { sans.fin(); avec.fin(); }
   });
 
   it('jumeaux inchangés : pose déjà enregistrée, aucune origine servie, site public', () => {
