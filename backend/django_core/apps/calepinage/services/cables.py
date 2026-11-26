@@ -549,8 +549,8 @@ def cables_du_calepinage(conception, *, cheminement=None, norme=None,
             publies.append(_cable_publie(
                 cable, _longueur_de_branche(par_repere.get(cable.repere),
                                             cable)))
-    omissions.extend(resultat.bloquants)
-    omissions.extend(resultat.alertes)
+    omissions.extend(_ce_que_mesure_w1(resultat.bloquants))
+    omissions.extend(_ce_que_mesure_w1(resultat.alertes))
 
     return {
         'cables': publies,
@@ -630,6 +630,26 @@ def _tracees(document, cheminement, entree, jour=None):
     if (_nombre(getattr(entree, 'dc_m', None)) or 0) > 0 or not liaison_dc_tracee_ouverte(jour):
         return None
     return courses_tracees(document) or None
+
+
+#: Liaison DC tracée (revue, point 3) — le préfixe des messages du câble ``W1``
+#: (``core.electrique.cables.dimensionner_cables``) et ce qu'il devient dans le
+#: calepinage : W1 est vérifié au courant d'UNE chaîne (1,25 × Isc), une paire
+#: + / − par entrée MPPT, sur la liaison la plus longue ; la chute « cumulée DC »
+#: des tronçons (``troncons.py``, CALX225/226) porte, elle, les chaînes de chaque
+#: tronçon tracé. Les deux s'affichent ensemble (avertissements et verdicts de
+#: l'étape Électrique, rapport) : chaque ligne DIT ce qu'elle mesure, aucune
+#: n'est choisie en silence. Le noyau (et donc le devis) n'est pas touché.
+PREFIXE_W1_NOYAU = 'câble DC : '
+PREFIXE_W1_CALEPINAGE = ("câble DC W1 (par paire d'entrées MPPT, au courant d'une chaîne, sur la "
+                         "liaison la plus longue — distinct de la chute cumulée par tronçon) : ")
+
+
+def _ce_que_mesure_w1(messages):
+    """Les messages du noyau, ceux du câble ``W1`` dits avec ce qu'ils mesurent."""
+    return [PREFIXE_W1_CALEPINAGE + message[len(PREFIXE_W1_NOYAU):]
+            if isinstance(message, str) and message.startswith(PREFIXE_W1_NOYAU) else message
+            for message in messages or ()]
 
 
 def _point_saisi(point):

@@ -403,6 +403,31 @@ class LiaisonDcTraceeTest(SimpleTestCase):
                          attendu['troncons']['troncons'][0]['longueur_m'])
 
 
+class LesDeuxChutesDCDisentCeQuEllesMesurent(SimpleTestCase):
+    """W1 (une chaîne, par paire MPPT) et la chute cumulée par tronçon : chacune se nomme."""
+
+    def test_un_message_du_w1_dit_ce_qu_il_mesure(self):
+        from apps.calepinage.services.cables import PREFIXE_W1_CALEPINAGE, PREFIXE_W1_NOYAU
+
+        longue = dict(CHEMINEMENT, descente_m=400.0)  # chute DC au-delà du maximum : un bloquant du noyau
+        omissions = _cables(LAYOUT, longue, _jour_de_coupure())['omissions']
+        du_w1 = [m for m in omissions if m.startswith(PREFIXE_W1_CALEPINAGE)]
+
+        self.assertTrue(du_w1, omissions)
+        self.assertFalse([m for m in omissions if m.startswith(PREFIXE_W1_NOYAU)])
+        self.assertIn("par paire d'entrées MPPT", du_w1[0])
+
+    def test_le_noyau_du_devis_garde_son_texte(self):
+        import dataclasses
+
+        from apps.calepinage.services.cables import PREFIXE_W1_NOYAU
+        from core.electrique import concevoir
+
+        entree = dataclasses.replace(_conception().entree, dc_m=416.0)
+        textes = list(concevoir(entree).conformite.bloquants) + list(concevoir(entree).conformite.alertes)
+        self.assertTrue(any(PREFIXE_W1_NOYAU in texte for texte in textes), textes)
+
+
 class LeDevisNeBougePasTest(SimpleTestCase):
     """Le devis ne lit que la longueur SAISIE ``dc_m`` : le tracé ne le touche pas."""
 
