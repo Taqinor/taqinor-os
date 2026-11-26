@@ -623,6 +623,48 @@ describe('AffectationChaines (ACAL725) — le drapeau « optimiseur » par modul
     }
   })
 
+  it('ACAL1642 : le drapeau seul écrit la table COMPLÈTE — un contrôle qui compte par chaîne ne bloque pas', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue(contratResultat())
+    // Se comporte comme le serveur : la longueur d'une chaîne est comptée sur les lignes IMPOSÉES seules (minimum 2 ici).
+    calepinageApi.calepinages.evaluerElectrique.mockImplementation(async (_id, corps) => {
+      const imposees = corps?.entree_electrique?.affectation_manuelle
+      if (!imposees) return { data: VERDICT_CONFORME }
+      const parChaine = {}
+      imposees.forEach((l) => { if (l.chaine != null) parChaine[l.chaine] = (parChaine[l.chaine] || 0) + 1 })
+      const courtes = Object.entries(parChaine).filter(([, n]) => n < 2)
+      return { data: courtes.length
+        ? { ...VERDICT_CONFORME, verdict: 'bloquant', publiable: false,
+          bloquants: courtes.map(([c, n]) => `Chaîne ${c} : ${n} module, minimum 2.`) }
+        : VERDICT_CONFORME }
+    })
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+    glisserSur([B1])
+    fireEvent.change(screen.getByTestId('cal234-champ-optimiseur'), { target: { value: 'oui' } })
+    fireEvent.click(screen.getByTestId('cal234-affecter'))
+    await waitFor(() => expect(appelsProposition().length).toBeGreaterThan(0))
+    const dernier = appelsProposition().at(-1)[1].entree_electrique.affectation_manuelle
+    expect(dernier.length).toBeGreaterThan(1) // la table complète, pas la seule ligne marquée
+    await waitFor(() => expect(screen.queryByTestId('cal234-verdict-en-cours')).toBeNull())
+    await waitFor(() => expect(screen.getByTestId('cal234-enregistrer')).not.toBeDisabled())
+    expect(screen.queryByText(/minimum 2/)).toBeNull()
+    const corps = await corpsEnregistre()
+    expect(corps.affectation_manuelle.length).toBeGreaterThan(1)
+    expect(corps.affectation_manuelle.find((l) => l.module === B1).optimiseur).toBe(true)
+  })
+
+  it('ACAL1642 : numéros à moitié saisis — l’erreur nomme le champ vide, rien n’est écrit à null', async () => {
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+    glisserSur([B1])
+    saisir('chaine', '2')
+    fireEvent.click(screen.getByTestId('cal234-affecter'))
+    expect(screen.getByTestId('cal234-erreur-mppt')).toHaveTextContent('Renseignez aussi ce numéro')
+    expect(screen.getByTestId('cal234-erreur-onduleur')).toBeInTheDocument()
+    expect(screen.queryByTestId('cal234-erreur-chaine')).toBeNull()
+    expect(screen.getByTestId('cal234-enregistrer')).toBeDisabled() // aucune édition posée
+  })
+
   it('`marquerModules` marque une liste de six modules d’un seul geste', () => {
     const six = ['P#1', 'P#2', 'P#3', 'P#4', 'P#5', 'P#6'].map((module, i) => (
       { module, chaine: 1, mppt: 1, onduleur: 1, cx: i }))
