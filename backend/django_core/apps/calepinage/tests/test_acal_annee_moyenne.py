@@ -389,7 +389,7 @@ class PublicationAnneeMoyenneTest(SimpleTestCase):
         avant = copy.deepcopy(blocs)
         self.assertIs(annee_moyenne.publier_a_l_annee_moyenne(blocs), blocs)
         self.assertEqual(blocs, avant)
-        self.assertIsNone(annee_moyenne.etat_des_energies(blocs))
+        self.assertIsNone(annee_moyenne._etat_des_energies(blocs))
 
     def test_chaque_energie_divisee_une_fois_le_reste_intact(self):
         blocs = annee_moyenne.publier_a_l_annee_moyenne(
@@ -467,17 +467,17 @@ class PublicationAnneeMoyenneTest(SimpleTestCase):
 
     def test_etat_des_energies_rangees(self):
         # Rangé AVANT la correction : l'arrivée vaut N × P50.
-        etat = annee_moyenne.etat_des_energies(_blocs_de_publication(4))
+        etat = annee_moyenne._etat_des_energies(_blocs_de_publication(4))
         self.assertEqual(etat, {
             'annees': 4, 'mode': 'pluriannuel',
             'calcule_le': '2026-11-22T01:00:00Z', 'p50_kwh': 225.0,
             'arrivee_kwh': 900.0, 'fenetre_entiere': True})
         juste = annee_moyenne.publier_a_l_annee_moyenne(
             _blocs_de_publication(4))
-        self.assertIs(annee_moyenne.etat_des_energies(juste)[
+        self.assertIs(annee_moyenne._etat_des_energies(juste)[
             'fenetre_entiere'], False)
         sans_cascade = dict(_blocs_de_publication(4), cascade=None)
-        self.assertIsNone(annee_moyenne.etat_des_energies(sans_cascade)[
+        self.assertIsNone(annee_moyenne._etat_des_energies(sans_cascade)[
             'fenetre_entiere'])
 
     def test_sans_dry_run_refuse_avant_toute_lecture(self):
@@ -488,6 +488,82 @@ class PublicationAnneeMoyenneTest(SimpleTestCase):
         with self.assertRaises(CommandError) as refus:
             call_command('acal_dryrun_annee_moyenne', stdout=io.StringIO())
         self.assertIn('ajoutez --dry-run', str(refus.exception))
+
+
+class ListerPluriannuelsTest(SimpleTestCase):
+    """ACAL1252 (D-ACAL-64) — la sélection PURE du relevé, sur des traces
+    rangées construites à la main."""
+
+    def _entree(self, resultat, documents=(), objet='calepinage'):
+        return {'company_id': 7, 'calepinage_id': 11, 'objet': objet,
+                'objet_id': 11, 'resultat': resultat,
+                'documents': list(documents)}
+
+    def test_pluriannuel_n3_liste_avec_energie_divisee(self):
+        rangees = _blocs_de_publication(3)
+        releve = annee_moyenne.lister_pluriannuels([self._entree(
+            rangees, [{'nom': 'rapport_etude__v001__fr.pdf',
+                       'remis_le': datetime.datetime(
+                           2026, 11, 22, 9, 0,
+                           tzinfo=datetime.timezone.utc)}])])
+        self.assertEqual(releve['indetermines'], [])
+        self.assertEqual(releve['comptes'],
+                         {'lus': 1, 'concerne': 1, 'indetermine': 0})
+        simulation, document = releve['concernes']
+        self.assertEqual(simulation, {
+            'company_id': 7, 'calepinage_id': 11, 'objet': 'calepinage',
+            'objet_id': 11, 'mode': 'pluriannuel', 'annees': 3,
+            'energie_rangee_kwh': 900.0, 'energie_par_an_kwh': 300.0,
+            'p50_kwh': 300.0, 'document': None,
+            'date': '2026-11-22T01:00:00Z', 'motif': ''})
+        self.assertEqual(document['document'], 'rapport_etude__v001__fr.pdf')
+        self.assertEqual(document['date'], '2026-11-22T09:00:00+00:00')
+        self.assertEqual(document['energie_par_an_kwh'], 300.0)
+        # Rien n'est lu en dehors des identifiants : aucune clé nominative.
+        self.assertFalse({'titre', 'nom', 'client', 'telephone', 'email',
+                          'adresse', 'gps'} & set(simulation))
+        # La trace rangée n'est pas touchée (fonction pure).
+        self.assertEqual(rangees, _blocs_de_publication(3))
+
+    def test_annee_type_et_deja_moyenne_non_listees(self):
+        juste = annee_moyenne.publier_a_l_annee_moyenne(
+            _blocs_de_publication(3))
+        releve = annee_moyenne.lister_pluriannuels([
+            self._entree(_blocs_de_publication(1)), self._entree(juste),
+            self._entree({'roof_layout': {}}), self._entree(None)])
+        self.assertEqual((releve['concernes'], releve['indetermines']),
+                         ([], []))
+        self.assertEqual(releve['comptes']['lus'], 4)
+
+    def test_trace_sans_n_ni_preuve_indeterminee(self):
+        sans_trace = _blocs_de_publication(3)
+        del sans_trace['production']['total']['annees_fenetre']
+        del sans_trace['meteo']
+        sans_cascade = dict(_blocs_de_publication(3), cascade=None)
+        releve = annee_moyenne.lister_pluriannuels([
+            self._entree(sans_trace), self._entree(sans_cascade,
+                                                   objet='variante')])
+        self.assertEqual(releve['concernes'], [])
+        sans_n, sans_preuve = releve['indetermines']
+        self.assertEqual((sans_n['annees'], sans_n['mode'],
+                          sans_n['energie_par_an_kwh']), (None, None, None))
+        self.assertIn("nombre d'années de la fenêtre non rangé",
+                      sans_n['motif'])
+        self.assertEqual((sans_preuve['objet'], sans_preuve['annees'],
+                          sans_preuve['energie_par_an_kwh']),
+                         ('variante', 3, None))
+        self.assertIn('impossible à prouver', sans_preuve['motif'])
+
+    def test_document_remis_avant_le_calcul_indetermine(self):
+        releve = annee_moyenne.lister_pluriannuels([self._entree(
+            _blocs_de_publication(3),
+            [{'nom': 'diagramme_pertes__v001__fr.svg',
+              'remis_le': '2026-11-20T08:00:00+00:00'}])])
+        self.assertEqual(len(releve['concernes']), 1)
+        (avant,) = releve['indetermines']
+        self.assertEqual(avant['document'], 'diagramme_pertes__v001__fr.svg')
+        self.assertIsNone(avant['energie_par_an_kwh'])
+        self.assertIn('remis avant le calcul rangé', avant['motif'])
 
 
 class CommandeAnneeMoyenneTest(TestCase):
@@ -532,16 +608,50 @@ class CommandeAnneeMoyenneTest(TestCase):
                      if r['sql'].lstrip().upper().startswith(
                          ('INSERT', 'UPDATE', 'DELETE'))]
         self.assertEqual(ecritures, [])
+        # Que des lectures : chaque requête est un SELECT.
+        self.assertTrue(all(r['sql'].lstrip().upper().startswith('SELECT')
+                            for r in requetes.captured_queries),
+                        [r['sql'] for r in requetes.captured_queries])
         lignes = sortie.getvalue().splitlines()
         self.assertEqual(lignes[0],
                          'DRY-RUN R3-01 (lecture seule) — aucune écriture')
-        remis = [ligne for ligne in lignes
-                 if ligne.startswith('fenetre-co-r301 | %s | ' % self.faux.pk)]
-        self.assertEqual(len(remis), 1)
-        self.assertIn('| rapport_etude__v001__fr.pdf |', remis[0])
-        self.assertTrue(remis[0].endswith(
-            '| pluriannuel | 10 | fenêtre entière | 2026-11-22T01:00:00Z'),
-            remis[0])
-        self.assertIn('1 document(s) remis sur 1 calepinage(s) '
-                      'pluriannuel(s) ; 0 calepinage(s) pluriannuel(s) sans '
-                      'document remis.', lignes)
+        prefixe = '%s | %s | calepinage %s | ' % (
+            self.company.pk, self.faux.pk, self.faux.pk)
+        concernes = [ligne for ligne in lignes if ligne.startswith(prefixe)]
+        self.assertEqual(len(concernes), 2)
+        self.assertTrue(concernes[0].startswith(
+            prefixe + '— | 2026-11-22T01:00:00Z | pluriannuel | 10 | '
+            '900.0 | 90.0 | 90.0'), concernes[0])
+        self.assertIn('| rapport_etude__v001__fr.pdf |', concernes[1])
+        self.assertTrue(concernes[1].endswith(
+            '| pluriannuel | 10 | 900.0 | 90.0 | 90.0 | —'), concernes[1])
+        # Aucun titre (il peut porter le nom du client).
+        self.assertNotIn('Pluriannuel |', sortie.getvalue())
+        self.assertIn('2 résultat(s) rangé(s) lu(s) ; 1 concerné(s) ; 0 '
+                      'indéterminé(s) ; 2 ligne(s) concernée(s) dont 1 '
+                      'document(s) remis ; 0 ligne(s) indéterminée(s).',
+                      lignes)
+        # Le même relevé par l'identifiant de société, en JSON.
+        sortie_json = io.StringIO()
+        call_command('acal_dryrun_annee_moyenne', '--dry-run', '--json',
+                     '--company', str(self.company.pk), stdout=sortie_json)
+        import json
+        releve = json.loads(sortie_json.getvalue())
+        self.assertEqual([r['energie_par_an_kwh']
+                          for r in releve['concernes']], [90.0, 90.0])
+        self.assertEqual({r['company_id'] for r in releve['concernes']},
+                         {self.company.pk})
+        # La commande n'appelle que la sélection pure et des lectures : ni
+        # get_or_create (get_for_model), ni save, ni tâche de fond.
+        from unittest import mock
+
+        from django.contrib.contenttypes.models import ContentTypeManager
+        from django.db.models import Model
+        with mock.patch.object(ContentTypeManager, 'get_for_model',
+                               side_effect=AssertionError('get_or_create')), \
+                mock.patch.object(Model, 'save',
+                                  side_effect=AssertionError('save')), \
+                mock.patch('core.jobs.submit',
+                           side_effect=AssertionError('tâche')):
+            call_command('acal_dryrun_annee_moyenne', '--dry-run',
+                         stdout=io.StringIO())
