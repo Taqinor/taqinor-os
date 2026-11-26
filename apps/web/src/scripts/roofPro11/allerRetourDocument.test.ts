@@ -12,7 +12,8 @@
    ========================================================================== */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { hydrateFromDevis } from './prefill';
-import { reinitialiserNumerotation } from './numerotation';
+import { registreAtelier, reinitialiserNumerotation } from './numerotation';
+import { identifiantsModulesParCellule } from './libellesAffectation'; // R3 (visuel lot 7)
 import { motifPenteNord, noterMotifPanVide } from './motifPanVide'; // ACAL1970
 import { enregistrerAtelier, exempleRoofLayoutV2, ouvrirAtelier } from './harnaisDocument';
 import { readFileSync } from 'node:fs';
@@ -81,6 +82,41 @@ describe('ACAL31 — aller-retour octet-identique de l’exemple complet', () =>
     // Chaque pan porte SA production (ACAL355) ; le total en est la somme, jamais un prorata.
     for (const z of zones) expect(typeof z.result?.annualKwh).toBe('number');
     expect(result.annualKwh).toBe(zones.reduce((s, z) => s + (z.result?.annualKwh ?? 0), 0));
+  });
+});
+
+// R3 (visuel lot 7) — deux documents ouverts l'un après l'autre (même module, mêmes ids de pan) : le
+// second ne garde rien des numéros du premier ; il est enregistré sans geste octet-identique.
+describe('R3 — un document ouvert après un autre repart d’une mémoire de numéros vide', () => {
+  const avecNumeros = (numeros: (number | null)[]) => {
+    const doc = JSON.parse(JSON.stringify(EXEMPLE)) as { zones: Array<{ id: string; geometry: { panels: Array<Record<string, unknown>> } }> };
+    const z1 = doc.zones.find((z) => z.id === 'z1')!;
+    z1.geometry.panels.forEach((p, i) => { // en place : l'ordre des clés du contrat est gardé
+      if (numeros[i] == null) delete p.n;
+      else p.n = numeros[i];
+    });
+    return doc;
+  };
+
+  it('A (z1 : n = 3, 4) puis B (z1 sans n) : B est nommé par SES clés (le rang), pas par celles de A', () => {
+    ouvrirAtelier({ id: null, geometrie: { roof_layout: avecNumeros([3, 4]) }, cibleVendue: false });
+    expect(registreAtelier.historique('z1').plafond).toBe(4);
+    const b = avecNumeros([null, null]);
+    const { c } = ouvrirAtelier({ id: null, geometrie: { roof_layout: JSON.parse(JSON.stringify(b)) }, cibleVendue: false });
+    expect(registreAtelier.modules('z1')).toEqual([]);
+    expect(registreAtelier.historique('z1').plafond).toBe(0);
+    expect(identifiantsModulesParCellule([0, 1], 'z1')).toEqual(['z1#1', 'z1#2']);
+    expect(differences(b, enregistrerAtelier(c, null))).toEqual([]);
+  });
+
+  it('A puis B numéroté (z1 : n = 7, 9) : chaque n stocké de B relu et réécrit tel quel', () => {
+    ouvrirAtelier({ id: null, geometrie: { roof_layout: avecNumeros([3, 4]) }, cibleVendue: false });
+    const b = avecNumeros([7, 9]);
+    const { c } = ouvrirAtelier({ id: null, geometrie: { roof_layout: JSON.parse(JSON.stringify(b)) }, cibleVendue: false });
+    expect(identifiantsModulesParCellule([0, 1], 'z1')).toEqual(['z1#7', 'z1#9']);
+    const sortie = enregistrerAtelier(c, null);
+    expect(differences(b, sortie)).toEqual([]); // même critère que l'aller-retour ACAL31 ci-dessus
+    expect((sortie.zones[0] as { geometry: { panels: Array<{ n?: number }> } }).geometry.panels.map((p) => p.n)).toEqual([7, 9]);
   });
 });
 

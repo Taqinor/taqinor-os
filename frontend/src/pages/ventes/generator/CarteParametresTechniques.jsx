@@ -10,6 +10,7 @@ import { RefreshCw, Zap } from 'lucide-react'
 import { Button, Card, CardContent, Label, Segmented } from '../../../ui'
 import { formatNumber } from '../../../lib/format'
 import { roleLabel, comptePanneauxOption, kwcPanneauxOption } from '../../../features/ventes/solar'
+import { phraseAvantAutoRemplirAvec } from '../../../features/ventes/quote/forfaitsPanneau'
 import BandeauDeriveLead from '../../../features/ventes/quote/BandeauDeriveLead'
 import StructureSelector from '../../../features/stock/StructureSelector'
 import { GenCardHeader } from './CarteMetrique'
@@ -22,7 +23,7 @@ export default function CarteParametresTechniques({
   pompageManquants, autoFillLoading, marcheCi, fHiver, recalculerDimensionnement,
   avecQuantitesFigees, handleAutoFill, compositionErreur, editDevis, leadValeursModifiees,
   setLeadValeursModifiees, clear, setRechargeEdit, onduleursIncomplets, pompageAutoFilled,
-  apercuPompage, lines,
+  apercuPompage, lines, nbSaisiPourLesDeux = false,
 }) {
   // T4-V2-018 — ce que les LIGNES chiffrent dans chaque option (même règle que
   // les totaux : commun + variante de l'option), à côté du conseil du moteur.
@@ -205,6 +206,13 @@ export default function CarteParametresTechniques({
                 Conseillé par le moteur, avec batterie : <strong>{deuxValeursDim.avec.nbPanneaux} panneaux</strong>
                 {' '}· {formatNumber(kwcConseil('avec', deuxValeursDim.avec), { decimals: 2 })} kWc
                 {ecart('avec', deuxValeursDim.avec)}
+                {/* R5A-N2 — dit AVANT le geste ce que « Auto-remplir » posera. */}
+                {(() => {
+                  const phrase = phraseAvantAutoRemplirAvec(nbSaisiPourLesDeux, deuxValeursDim.avec.nbPanneaux, nbPanneaux)
+                  return phrase && (
+                    <div className="text-xs text-warning" data-testid="auto-remplir-avec-prevenu">{phrase}</div>
+                  )
+                })()}
               </div>
             )}
           </div>

@@ -264,7 +264,8 @@ def sales_report(request):
 
 
 _REPORTS_STOCK_REPORT_REPONSE = inline_serializer('ReportsStockReportReponse', {
-    'valorisation_vente': drf_serializers.JSONField(allow_null=True),
+    # D-ACAL-165 — absente sans « voir les prix de vente » (required=False, comme l'achat).
+    'valorisation_vente': drf_serializers.JSONField(required=False, allow_null=True),
     'valorisation_achat': drf_serializers.JSONField(required=False, allow_null=True),
     'par_categorie': drf_serializers.JSONField(allow_null=True),
     'bas_stock': drf_serializers.JSONField(allow_null=True),
@@ -322,10 +323,15 @@ def stock_report(request):
         for societe in societes:
             val_achat += sum(
                 valeur_stock_par_produit(societe).values(), Decimal('0.00'))
+    # D-ACAL-165 (fondateur, 26/11/2026) — sans « voir les prix de vente »
+    # (Technicien, Technicien responsable), AUCUNE valorisation de vente : ni
+    # clé JSON, ni colonne XLSX, ni ligne / colonne PDF, ni même l'ORDRE des
+    # catégories par valeur (trié par nom) ; le bas stock reste.
+    voit_vente = bool(getattr(request.user, 'can_view_sale_prices', True))
     par_categorie = list(
         qs.values('categorie__nom')
         .annotate(nb=Count('id'), valeur_vente=sum_vente)
-        .order_by('-valeur_vente'))
+        .order_by('-valeur_vente' if voit_vente else 'categorie__nom'))
     # ERR57 — `seuil_alerte=0` signifie « aucun seuil » : exclu de la liste bas
     # stock (cohérent avec le dashboard), sinon tout produit à 0 en stock par
     # défaut serait faussement signalé.
@@ -334,10 +340,10 @@ def stock_report(request):
         .filter(quantite_stock__lte=F('seuil_alerte'))
         .values('nom', 'sku', 'quantite_stock', 'seuil_alerte')[:200])
 
-    rows = [[c['categorie__nom'] or '—', c['nb'], str(c['valeur_vente'])]
+    rows = [[c['categorie__nom'] or '—', c['nb'], str(c['valeur_vente'])][:3 if voit_vente else 2]
             for c in par_categorie]
     x = _maybe_xlsx(request, 'rapport-stock.xlsx',
-                    ['Catégorie', 'Articles', 'Valeur vente HT'], rows, 'Stock')
+                    ['Catégorie', 'Articles', 'Valeur vente HT'][:3 if voit_vente else 2], rows, 'Stock')
     if x:
         return x
 
@@ -345,10 +351,10 @@ def stock_report(request):
     p = _maybe_pdf(
         request, 'Rapport Stock',
         sections=[
-            {'title': 'Valorisation par catégorie',
+            {'title': 'Valorisation par catégorie' if voit_vente else 'Articles par catégorie',
              'kv': [{'label': 'Valeur vente totale (HT)',
-                     'value': f'{val_vente:,.0f} MAD'}],
-             'table': {'headers': ['Catégorie', 'Articles', 'Valeur vente HT (MAD)'],
+                     'value': f'{val_vente:,.0f} MAD'}] if voit_vente else None,
+             'table': {'headers': ['Catégorie', 'Articles', 'Valeur vente HT (MAD)'][:3 if voit_vente else 2],
                        'rows': rows}},
             {'title': 'Articles en bas stock',
              'kv': None,
@@ -364,6 +370,12 @@ def stock_report(request):
 
     par_categorie_out = [
         {**c, 'valeur_vente': str(c['valeur_vente'])} for c in par_categorie]
+    if not voit_vente:  # D-ACAL-165 — ni total ni valeur par catégorie
+        return Response({
+            'par_categorie': [{'categorie__nom': c['categorie__nom'], 'nb': c['nb']}
+                              for c in par_categorie],
+            'bas_stock': bas_stock,
+        })
     if not voit_achat:
         return Response({
             'valorisation_vente': str(val_vente),

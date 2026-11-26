@@ -378,6 +378,41 @@ def _resultat_du_modele(resultat):
     return {CLE_ENTREE: materiel} if materiel else None
 
 
+#: ACAL1253 — la provenance d'un onduleur REPRIS de l'original : à côté de ``entree_electrique``
+#: (jamais dedans : aucune clé d'entrée de plus, aucune empreinte qui bouge), ``{calepinage,
+#: onduleur_produit}``. Une désignation n'est « reprise » que tant que l'onduleur de l'entrée est
+#: encore celui-là : un choix fait à la main ensuite la rend caduque d'elle-même.
+CLE_ONDULEUR_REPRIS = 'onduleur_repris'
+
+
+def _resultat_de_la_copie(calepinage, lead_cible):
+    """ACAL1253 (D-ACAL-65) — le ``resultat`` de la copie : le matériel explicite de l'original
+    (:func:`_resultat_du_modele`) et, SEULEMENT si la copie ne pourrait pas relire ce que
+    l'original lisait (autre lead ou aucun : la conception se lit par lead, sinon par calepinage),
+    l'onduleur, le nombre d'onduleurs et la longueur de chaîne que ``options_de_la_conception``
+    donne à l'original (même règle, même condition de pose), marqués :data:`CLE_ONDULEUR_REPRIS`.
+    Même lead ⇒ rien n'est écrit : la copie relit la même conception. Lecture seule."""
+    from .electrique import CLE_ENTREE
+    from .equipements import materiel_de_la_conception, options_de_la_conception
+
+    resultat = _resultat_du_modele(getattr(calepinage, 'resultat', None))
+    entree = (resultat or {}).get(CLE_ENTREE) or {}
+    if entree.get('onduleur_produit') not in (None, '') \
+            or (lead_cible and lead_cible == getattr(calepinage, 'lead_id', None)):
+        return resultat
+    onduleur = (materiel_de_la_conception(calepinage).get('produits') or {}).get('onduleur')
+    if onduleur in (None, ''):
+        return resultat
+    options = options_de_la_conception({}, calepinage, {})
+    ajout = {'onduleur_produit': onduleur}
+    if options.get('nombre_onduleurs'):
+        ajout['nombre_onduleurs'] = options['nombre_onduleurs']
+    if options.get('longueur_forcee'):
+        ajout['longueur_chaine_forcee'] = options['longueur_forcee']
+    return {CLE_ENTREE: {**entree, **ajout},
+            CLE_ONDULEUR_REPRIS: {'calepinage': calepinage.pk, 'onduleur_produit': onduleur}}
+
+
 #: ACON11 (D-ACAL-15) — les clés du document propres au site et au client
 #: de la SOURCE : jamais recopiées vers un autre lead/client (modèle compris).
 CLES_D_UN_AUTRE_SITE = ('consumption', 'billKwh', 'result', 'underlay',
@@ -586,8 +621,7 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
     copies['layout_hash'] = copies['layout_hash'] or ''
     copies['pertes'] = (copies['pertes']
                         if isinstance(copies['pertes'], list) else [])
-    copies['resultat'] = _resultat_du_modele(  # ACAL959
-        getattr(calepinage, 'resultat', None))
+    copies['resultat'] = _resultat_de_la_copie(calepinage, lead_cible)  # ACAL959 + ACAL1253
 
     from .creation import _verrou_creation, responsable_par_defaut
 

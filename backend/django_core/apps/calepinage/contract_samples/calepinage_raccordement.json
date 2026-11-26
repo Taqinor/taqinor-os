@@ -93,7 +93,8 @@
       "mention": "Revente du surplus non ouverte en basse tension à ce jour — ANRE décision 04/26 ; installation dimensionnée pour l'autoconsommation",
       "avertissement": "La part injectée (35 %) dépasse le plafond légal de 20 % de la production annuelle : en MT/HT, l'excédent de revente n'est pas valorisé"
     },
-    "injection_motif": null
+    "injection_motif": null,
+    "avertissements": []
   },
   "exemple_limite_saisie": {
     "saisie": {
@@ -183,7 +184,8 @@
       "mention": "Revente du surplus non ouverte en basse tension à ce jour — ANRE décision 04/26 ; installation dimensionnée pour l'autoconsommation",
       "avertissement": "La part injectée (35 %) dépasse le plafond légal de 20 % de la production annuelle : en MT/HT, l'excédent de revente n'est pas valorisé"
     },
-    "injection_motif": null
+    "injection_motif": null,
+    "avertissements": [{"champ": "puissance_souscrite_kva", "message": "La puissance souscrite saisie (12 kVA) dépasse 10 fois la puissance des onduleurs (1,1 kW) : vérifiez la saisie. Elle est gardée."}]
   },
   "exemple_vide": {
     "saisie": {
@@ -266,7 +268,8 @@
       "a_qualifier": true
     },
     "injection": null,
-    "injection_motif": "Simulez d'abord pour comparer l'injection"
+    "injection_motif": "Simulez d'abord pour comparer l'injection",
+    "avertissements": []
   },
   "refus_limite_sans_source": {
     "source_limite": "Une limite d'élévation de tension ne peut pas être enregistrée sans sa source : indiquez le texte réglementaire ou le contrat de raccordement qui la fixe — un seuil sans provenance n'est pas opposable."

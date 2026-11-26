@@ -158,7 +158,7 @@ TYPES_CHAMP = (TYPE_DIMENSION, TYPE_MESURE, TYPE_TEMPS)
 
 def register_dataset(name, label, fields, queryset_provider,
                      cache_partage=False, gated_fields=None,
-                     field_meta=None, module=None):
+                     field_meta=None, module=None, masques_lecteur=None):
     """Enregistre un dataset interrogeable (idempotent).
 
     ``fields`` = liste blanche de chemins de champs. ``queryset_provider`` =
@@ -187,11 +187,20 @@ def register_dataset(name, label, fields, queryset_provider,
 
     APFS4 — ``module`` : module de droits du jeu ; défaut : l'app du fournisseur
     (``apps.<app>.…``, résolue à la lecture) ; aucune app à codes = fondation.
+
+    D-ACAL-165 — ``masques_lecteur`` : dict ``{champ: attribut_de_permission}``
+    comme ``gated_fields``, mais jugé sur le LECTEUR SEUL : écarté pour un
+    ``user`` dont l'attribut est faux, GARDÉ quand ``user`` est ``None`` (tâche
+    sans acteur) et JAMAIS retiré des sorties de rapport par les filtres
+    ``gated_fields`` (AANA25). Sert un champ que tout le monde voit sauf
+    certains rôles (le prix de vente, masqué aux techniciens). Même refus que
+    ``gated_fields`` avec ``cache_partage``.
     """
     if not name or not callable(queryset_provider):
         raise ValueError('Dataset : nom + queryset_provider requis.')
     gated = dict(gated_fields or {})
-    if gated and cache_partage:
+    masques = dict(masques_lecteur or {})
+    if (gated or masques) and cache_partage:
         raise ValueError(
             'Dataset %r : « cache_partage » est incompatible avec des champs '
             'sous permission (le résultat dépend du lecteur).' % name)
@@ -211,6 +220,7 @@ def register_dataset(name, label, fields, queryset_provider,
         'provider': queryset_provider,
         'cache_partage': bool(cache_partage),
         'gated_fields': gated,
+        'masques_lecteur': masques,
         'field_meta': meta,
         'module': module,
         'chemin': getattr(queryset_provider, '__module__', ''),
@@ -369,11 +379,15 @@ def champs_interdits(dataset, user):
     n'importe aucun modèle d'app.
     """
     gated = (dataset or {}).get('gated_fields') or {}
-    if not gated:
+    masques = (dataset or {}).get('masques_lecteur') or {}
+    if not gated and not masques:
         return set()
     return {
         champ for champ, permission in gated.items()
         if user is None or not getattr(user, permission, False)
+    } | {  # D-ACAL-165 — lecteur seulement ; sans acteur, le champ reste
+        champ for champ, permission in masques.items()
+        if user is not None and not getattr(user, permission, False)
     }
 
 

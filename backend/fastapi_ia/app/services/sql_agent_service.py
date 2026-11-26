@@ -42,7 +42,7 @@ except ImportError:  # pragma: no cover - langchain >= 1.0 a deplace le module
 if TYPE_CHECKING:  # eviter un import circulaire au runtime
     from app.services.action_tools import ActionContext
 
-from app.services import prompt_copilote
+from app.services import garde_prix_vente, prompt_copilote
 from app.services.cartes import construire_cartes
 from app.core.config import (
     CHAT_HISTORY_MAX,
@@ -1036,7 +1036,7 @@ def _select_sources(select: exp.Select) -> list:
 
 
 def _references_forbidden_column(sql: str, allow_price: bool = False,
-                                 allow_pii: bool = True) -> bool:
+                                 allow_pii: bool = True, allow_sale: bool = True) -> bool:
     """True si la requete peut RESTITUER une colonne confidentielle — secret de
     compte (toujours) ou prix d'achat / marge (sauf `allow_price`) — qu'elle
     soit NOMMEE ou emportee par une projection LIGNE ENTIERE d'une table qui la
@@ -1048,8 +1048,10 @@ def _references_forbidden_column(sql: str, allow_price: bool = False,
         tree = _parse_single_query(sql)
     except SQLSecurityError:
         return True
-    colonnes = set(_SECRET_COLUMNS)
-    tables = set(_SECRET_TABLES) | set(_TABLES_LIGNE_SECRETE)
+    # D-ACAL-165 — `allow_sale=False` ajoute la famille prix de vente (garde_prix_vente).
+    colonnes = set(_SECRET_COLUMNS) | (set() if allow_sale else set(garde_prix_vente.COLONNES))
+    tables = (set(_SECRET_TABLES) | set(_TABLES_LIGNE_SECRETE)
+              | (set() if allow_sale else set(garde_prix_vente.TABLES)))
     if not allow_price:
         colonnes |= set(_FORBIDDEN_COLUMNS)
         tables |= set(_PRICE_TABLES)
@@ -1184,7 +1186,7 @@ def _validate_and_secure(sql: str, company_id: int,
             sql, allow_price=True, allow_pii=False):
         raise RefusDeDroit(
             "Donnee personnelle du client (client_pii_voir) — lecture refusee.")
-    _verifier_module_et_portee(sql, permissions)
+    garde_prix_vente.verifier_droits_de_lecture(sql, permissions)  # D-ACAL-165 + ALEC16
     return _inject_company_filter(sql, company_id)
 
 

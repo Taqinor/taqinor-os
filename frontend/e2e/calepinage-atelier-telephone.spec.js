@@ -191,7 +191,7 @@ test('ACAL1809 : « Relevé » dans le bandeau, 44 × 44 dans le premier écran,
 })
 
 // ACAL1812 — « Terminer le relevé » répond EN VUE : le refus (orientation sans précision) pose le focus sur le champ
-// fautif et s'écrit dans une bannière entièrement au-dessus de la barre du bas ; le succès idem.
+// fautif et s'écrit dans une bannière entièrement au-dessus de la barre du bas ; la réserve « aucun pan » idem.
 test('ACAL1812 : la réponse de « Terminer le relevé » est visible, au-dessus de la barre fixe du bas', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 664 })
   const cal = await calepinageDeTest(page, 'Atelier tel ACAL1812')
@@ -213,9 +213,16 @@ test('ACAL1812 : la réponse de « Terminer le relevé » est visible, au-dessus
   await page.getByTestId('releve-longueur').fill('12,4')
   await page.getByTestId('releve-largeur').fill('8,6')
   await page.getByTestId('releve-terminer').tap()
-  await expect(message).toHaveText(/Relevé (enregistré|corrigé)\./)
+  // Le calepinage de test n'a AUCUN pan : le relevé est enregistré mais l'orientation tapée ne l'est pas ; l'écran RESTE
+  // ouvert et le dit (ACAL1319 : on ne quitte pas l'écran sur une réserve). Ce message-là reste en vue, au-dessus de la barre.
+  await expect(message).toHaveText(/Relevé (enregistré|corrigé)\..*aucun pan dessiné/)
+  await expect(page).toHaveURL(new RegExp(`/calepinage/${cal.id}/releve$`))
   m = await dessus()
-  expect(m.basMessage, 'le succès est sous la barre du bas').toBeLessThanOrEqual(m.hautPied + 0.5)
+  expect(m.basMessage, 'la réserve « aucun pan dessiné » est sous la barre du bas').toBeLessThanOrEqual(m.hautPied + 0.5)
+  // ACAL1319 / D-ACAL-68 — sans orientation tapée, rien ne reste à dire : « Terminer » enregistre puis revient à la fiche.
+  await page.getByTestId('releve-azimut-main').fill('')
+  await page.getByTestId('releve-terminer').tap()
+  await expect(page).toHaveURL(new RegExp(`/calepinage/${cal.id}$`))
 })
 
 // ACAL1811 — « Voir en 3D » du relevé ouvre « Montrer au client » ; « Retour au relevé » ramène au relevé.

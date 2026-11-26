@@ -106,6 +106,20 @@ describe('MaterielElectrique (ACAL149)', () => {
     expect(option).not.toHaveTextContent(incomplet.champs_manquants[0])
   })
 
+  it('D-ACAL-71 — « En stock » sur les lignes servies, rien sur une ligne non servie', async () => {
+    const complets = EXEMPLE.candidats.modules.map((c) => ({ ...c, en_stock: true }))
+    const autre = { ...complets[0], id: 777, libelle: 'Module B non servi', en_stock: null }
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({
+      data: { ...EXEMPLE, candidats: { ...EXEMPLE.candidats, modules: [...complets, autre] } },
+    })
+
+    rendre()
+    await screen.findByTestId('acal149-formulaire')
+
+    expect(screen.getByTestId(`acal149-candidat-${complets[0].id}`)).toHaveTextContent('· En stock')
+    expect(screen.getByTestId('acal149-candidat-777')).not.toHaveTextContent(/stock|rupture/i)
+  })
+
   it('un refus 400 s’affiche sous le champ nommé, mot pour mot', async () => {
     calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: EXEMPLE })
     calepinageApi.calepinages.enregistrerEntreeElectrique.mockRejectedValue({

@@ -8,6 +8,7 @@ import {
 } from '../features/stock/catalogue'
 import { classifyProduct } from '../features/ventes/calc/classification.js'
 import { useCanCreateProduit } from '../hooks/useHasPermission'
+import { useVoitPrixVente } from '../features/stock/useVoitPrixAchat'
 import { useActiveDescendant } from '../hooks/useActiveDescendant'
 import { formatMAD } from '../lib/format'
 import stockApi from '../api/stockApi'
@@ -75,6 +76,10 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
   const inputRef = useRef(null)
   const listRef = useRef(null)
   const canCreateProduit = useCanCreateProduit()
+  // D-ACAL-152 — sans « voir les prix de vente » (Technicien), le serveur ne
+  // sert aucun prix : aucun prix affiché, et l'absence de prix ne rend plus
+  // un article inchoisissable (le technicien choisit un équipement, pas un prix).
+  const prixMasques = !useVoitPrixVente(produits)
   const selected = useMemo(
     () => produits.find((p) => String(p.id) === String(value)) ?? null,
     [produits, value])
@@ -84,8 +89,8 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
   // l'indice « Tapez pour chercher dans N produits » (jamais un sous-compte
   // trompeur du seul type attendu).
   const totalSelectable = useMemo(
-    () => produits.filter((p) => !p.is_archived && !sansPrix(p)).length,
-    [produits])
+    () => produits.filter((p) => !p.is_archived && (prixMasques || !sansPrix(p))).length,
+    [produits, prixMasques])
 
   const famille = typeFilter ? familleAttendue(typeFilter) : null
   // STKCAT13 — chargement paresseux des catégories, uniquement à l'ouverture
@@ -139,7 +144,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
         for (const b of cat.brands) {
           rows.push({ kind: 'brand', label: b.marque, key: `${sectionKey}-b-${cat.nom}-${b.marque}` })
           for (const p of b.items) {
-            const dispo = !sansPrix(p)
+            const dispo = prixMasques || !sansPrix(p)
             rows.push({ kind: 'item', p, dispo, key: `${sectionKey}-p-${p.id}`,
                         index: dispo ? selectables.length : -1 })
             if (dispo) selectables.push(p)
@@ -172,7 +177,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
       appendGroup(faibles, 'fiche')
     }
     return { rows, selectables, nbForts }
-  }, [produits, query, typeFilter, famille])
+  }, [produits, query, typeFilter, famille, prixMasques])
 
   // T4-V1-002 — l'article surligné : celui que l'utilisateur a désigné, sinon
   // le premier trouvé PAR SON NOM après une frappe, sinon aucun (-1) : Entrée
@@ -354,7 +359,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
                   <span className="flex w-full items-start gap-2">
                     <span className="min-w-0 flex-1 break-words">{p.nom}</span>
                     <span className={cn('shrink-0 text-xs tabular-nums', dispo ? 'font-medium text-foreground' : 'italic text-muted-foreground')}>
-                      {dispo ? `${formatMAD(prixTtc(p), { withSymbol: false })} DH` : 'prix à renseigner'}
+                      {prixMasques ? null : dispo ? `${formatMAD(prixTtc(p), { withSymbol: false })} DH` : 'prix à renseigner'}
                     </span>
                   </span>
                   {/* STKCAT12 — puce du type de catégorie (categorie_type_display,

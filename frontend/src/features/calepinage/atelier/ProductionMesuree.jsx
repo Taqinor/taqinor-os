@@ -146,6 +146,14 @@ export default function ProductionMesuree({ calepinageId: idPropose = null }) {
             {parMois[i + 1]
               ? <p className="text-sm text-destructive" data-testid={`acal888-erreur-${i + 1}`}>{parMois[i + 1]}</p>
               : null}
+            {/* ACAL1251 (D-ACAL-63) — mesure gardée mais plus de 10 fois le P50 du mois : le serveur le dit. */}
+            {ecarts.find((ligne) => ligne.mois === i + 1)?.avertissement
+              ? (
+                <p role="status" className="text-sm text-warning" data-testid={`acal1251-avertissement-${i + 1}`}>
+                  {ecarts.find((ligne) => ligne.mois === i + 1).avertissement}
+                </p>
+              )
+              : null}
           </div>
         ))}
       </div>

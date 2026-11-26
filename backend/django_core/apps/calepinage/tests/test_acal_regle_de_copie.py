@@ -261,3 +261,81 @@ class MaterielDuModeleTest(SimpleTestCase):
                          {'entree_electrique': {'temperature_min_c': -5}}):
             with self.subTest(resultat=resultat):
                 self.assertIsNone(_resultat_du_modele(resultat))
+
+
+class OnduleurDeLOriginalTest(SimpleTestCase):
+    """ACAL1253 (D-ACAL-65) — la copie résout le MÊME onduleur, le même nombre et la même longueur
+    que son original. Les vraies fonctions tournent (``materiel_de_la_conception``,
+    ``options_de_la_conception``) ; seules les lectures en base sont remplacées : la conception du
+    lead (``devis_retenu.conception_du_calepinage``, servie à l'ORIGINAL seul), le produit actif du
+    catalogue et le nombre de panneaux posés."""
+
+    CONCEPTION = {'etat': 'complet', 'option_retenue': 'A', 'valeurs': {'A': {
+        'onduleur_produit': {'valeur': 42}, 'nombre_onduleurs': {'valeur': 2},
+        'nb_panneaux': {'valeur': 24}, 'chaines': {'valeur': {'longueur': 12}}}}}
+
+    def _original(self, resultat=None, lead_id=3):
+        return Calepinage(pk=11, lead_id=lead_id, resultat=copy.deepcopy(resultat))
+
+    def _copier(self, original, lead_cible, poses=24):
+        from unittest import mock
+
+        from apps.calepinage.services.variantes import _resultat_de_la_copie
+
+        avant = copy.deepcopy(original.resultat)
+        with mock.patch('apps.calepinage.services.devis_retenu.conception_du_calepinage',
+                        side_effect=lambda c: self.CONCEPTION if c is original else None), \
+                mock.patch('apps.calepinage.services.equipements._produit_actif',
+                           side_effect=lambda company, identifiant, type_fiche: identifiant), \
+                mock.patch('apps.calepinage.services.equipements._panneaux_poses', return_value=poses):
+            produit = _resultat_de_la_copie(original, lead_cible)
+        self.assertEqual(original.resultat, avant)  # l'original n'est jamais modifié
+        return produit
+
+    def test_meme_lead_rien_n_est_ecrit(self):
+        # La copie relit la même conception : aucune désignation figée.
+        self.assertIsNone(self._copier(self._original(), lead_cible=3))
+
+    def test_sans_lead_la_copie_reprend_ce_que_options_de_la_conception_donne_a_l_original(self):
+        from apps.calepinage.services.variantes import CLE_ONDULEUR_REPRIS
+        resultat = self._copier(self._original(lead_id=None), lead_cible=None)
+        self.assertEqual(resultat['entree_electrique'],
+                         {'onduleur_produit': 42, 'nombre_onduleurs': 2, 'longueur_chaine_forcee': 12})
+        self.assertEqual(resultat[CLE_ONDULEUR_REPRIS], {'calepinage': 11, 'onduleur_produit': 42})
+
+    def test_la_copie_resout_les_memes_options_que_l_original(self):
+        from unittest import mock
+
+        from apps.calepinage.services.electrique import _options_entree
+        from apps.calepinage.services.equipements import options_de_la_conception
+        original = self._original(lead_id=None)
+        entree = self._copier(original, lead_cible=None)['entree_electrique']
+        copie = Calepinage(pk=12, lead_id=None, resultat={'entree_electrique': entree})
+        with mock.patch('apps.calepinage.services.devis_retenu.conception_du_calepinage',
+                        side_effect=lambda c: self.CONCEPTION if c is original else None), \
+                mock.patch('apps.calepinage.services.equipements._produit_actif',
+                           side_effect=lambda company, identifiant, type_fiche: identifiant), \
+                mock.patch('apps.calepinage.services.equipements._panneaux_poses', return_value=24):
+            attendu = options_de_la_conception({}, original, {})
+            lu = options_de_la_conception(_options_entree(entree), copie, entree)
+        self.assertEqual(attendu, {'nombre_onduleurs': 2, 'longueur_forcee': 12})
+        self.assertEqual(lu, attendu)
+
+    def test_autre_lead_reprend_aussi_et_pose_d_une_autre_taille_ne_force_ni_nombre_ni_longueur(self):
+        self.assertEqual(self._copier(self._original(), lead_cible=9)['entree_electrique'],
+                         {'onduleur_produit': 42, 'nombre_onduleurs': 2, 'longueur_chaine_forcee': 12})
+        # 20 panneaux posés ≠ 24 de la conception : l'original n'imposait rien, la copie non plus.
+        self.assertEqual(self._copier(self._original(), lead_cible=9, poses=20)['entree_electrique'],
+                         {'onduleur_produit': 42})
+
+    def test_onduleur_deja_designe_la_copie_est_inchangee(self):
+        resultat = {'entree_electrique': {'onduleur_produit': 5}}
+        self.assertEqual(self._copier(self._original(resultat), lead_cible=9), resultat)
+
+    def test_onduleur_non_resolu_rien_n_est_invente(self):
+        from unittest import mock
+
+        from apps.calepinage.services.variantes import _resultat_de_la_copie
+        original = self._original()
+        with mock.patch('apps.calepinage.services.devis_retenu.conception_du_calepinage', return_value=None):
+            self.assertIsNone(_resultat_de_la_copie(original, None))

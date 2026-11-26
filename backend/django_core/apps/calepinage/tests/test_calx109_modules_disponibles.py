@@ -117,6 +117,13 @@ class LExempleEstCeQueLeServiceProduitTest(SimpleTestCase):
                 return_value={'favoris_materiel': {'modules': [4112]}}):
             servi = modules_disponibles_du_calepinage(
                 calepinage, [_produit_incomplet(), _produit_complet()])
+        # D-ACAL-71 : `en_stock` est posé par la VUE (stock réel) — on rejoue ce que la vue sert, le stock mocké
+        # rendant les ids que l'exemple dit en stock ; l'exemple n'est jamais amputé de la clé.
+        from apps.calepinage.services.disponibilite_stock import marquer_en_stock
+
+        en_stock = {e['module']['produitId'] for e in CONTRAT['exemple']['modules'] if e.get('en_stock')}
+        with mock.patch('apps.stock.selectors_disponibilite.produits_en_stock', return_value=en_stock):
+            marquer_en_stock(calepinage.company, servi['modules'], lambda entree: entree['module']['produitId'])
         self.assertEqual(servi, CONTRAT['exemple'])
 
     def test_un_catalogue_sans_fiche_module_est_celui_de_l_exemple_vide(self):

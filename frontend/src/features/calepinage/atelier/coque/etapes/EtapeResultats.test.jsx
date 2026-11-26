@@ -1145,3 +1145,47 @@ describe('Étape Résultats — panneaux posés mais non raccordés (ACAL1912)',
     expect(zone()).toBeNull()
   })
 })
+
+describe('ACAL1268 (D-ACAL-66 = outil_pose) — l’étape Résultats d’un lead de pompage', () => {
+  const CONTEXTE = (marche) => {
+    const c = JSON.parse(JSON.stringify(exempleContrat('calepinage', 'calepinage_design_context')))
+    c.chiffrage.marche = marche
+    return c
+  }
+
+  it('pompage : ni production, ni couverture, ni économies, ni réseau ; un renvoi vers le devis agricole et le pied', async () => {
+    servir(COMPLET())
+    const contexte = CONTEXTE('agricole')
+    rendre({ contexte })
+    const pied = await screen.findByTestId('cal-resultats-pied')
+    expect(pied).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-resultats-tuiles')).toBeNull()
+    expect(screen.queryByTestId('cal-resultats-mois')).toBeNull()
+    expect(screen.queryByTestId('cal-resultats-pertes')).toBeNull()
+    const carte = document.querySelector('[data-zone="pompage-outil-pose"]')
+    expect(carte).toHaveTextContent('sans économies ni énergie du réseau')
+    // Sans devis agricole servi : la création, dite comme telle.
+    expect(within(carte).getByRole('link', { name: 'Créer le devis agricole' }))
+      .toHaveAttribute('href', `/ventes/devis/nouveau?lead=${contexte.calepinage.lead}`)
+    cleanup()
+    servir(COMPLET())
+    rendre({ contexte: { ...contexte, cible: { ...contexte.cible, devis_agricole: { id: 42, reference: 'DEV-AGR-42' } } } })
+    // Avec le devis agricole servi : le lien ouvre CE devis, jamais un formulaire vierge.
+    expect(await screen.findByRole('link', { name: 'Ouvrir le devis agricole DEV-AGR-42' }))
+      .toHaveAttribute('href', '/ventes/devis?devis=42')
+    expect(document.body.textContent).not.toMatch(/kWh par an|autoconsommation/i)
+  })
+
+  it('pas un pompage : le rendu est identique octet pour octet à celui sans contexte', async () => {
+    servir(COMPLET())
+    const { container, unmount } = rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    const sansContexte = container.innerHTML
+    unmount()
+    servir(COMPLET())
+    const { container: autre } = rendre({ contexte: CONTEXTE('residentiel') })
+    await screen.findByTestId('cal-resultats-tuiles')
+    expect(autre.innerHTML).toBe(sansContexte)
+    expect(document.querySelector('[data-zone="pompage-outil-pose"]')).toBeNull()
+  })
+})

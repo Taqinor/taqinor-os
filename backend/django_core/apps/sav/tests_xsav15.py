@@ -113,6 +113,25 @@ class XSAV15FiabiliteTest(TestCase):
         # prix catalogue = 600 < coût cumulé -> remplacer.
         self.assertEqual(resp.data['reparer_vs_remplacer'], 'remplacer')
 
+    def test_dacal165_prix_catalogue_exige_aussi_prix_vente_voir(self):
+        """D-ACAL-165 — un rôle qui porte `prix_achat_voir` SANS
+        `prix_vente_voir` reçoit les coûts mais `prix_catalogue` à null (fiche
+        ET vue d'ensemble) ; l'administrateur légacy : 600.0, inchangé."""
+        from apps.roles.models import Role
+        self._ticket(date(2026, 1, 1), date(2026, 1, 3), cout=Decimal('50'))
+        role = Role.objects.create(company=self.company, nom='Achats sans vente',
+                                   permissions=['equipement_voir', 'sav_voir', 'prix_achat_voir'])
+        acheteur = User.objects.create_user(username='xsav15_acheteur', password='x',
+                                            company=self.company, role=role)
+        url = f'/api/django/sav/equipements/{self.equip.id}/fiabilite/'
+        data = auth(acheteur).get(url).data
+        self.assertIn('cout_cumule', data)
+        self.assertIsNone(data['prix_catalogue'])
+        self.assertEqual(auth(self.admin).get(url).data['prix_catalogue'], 600.0)
+        from apps.sav.selectors import fiabilite_equipements
+        lignes = fiabilite_equipements(self.company, include_couts=True, include_prix_vente=False)
+        self.assertEqual([r['prix_catalogue'] for r in lignes], [None])
+
     def test_reparer_si_cout_sous_prix_catalogue(self):
         self._ticket(date(2026, 1, 1), date(2026, 1, 3), cout=Decimal('50'))
         api = auth(self.admin)

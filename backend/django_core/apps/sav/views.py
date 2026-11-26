@@ -742,7 +742,8 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         equipement = self.get_object()
         include_couts = HasPermissionOrLegacy('prix_achat_voir')().has_permission(
             request, self)
-        data = fiabilite_equipement(equipement, include_couts=include_couts)
+        data = fiabilite_equipement(  # D-ACAL-165 : prix catalogue sous « voir les prix de vente »
+            equipement, include_couts=include_couts, include_prix_vente=request.user.can_view_sale_prices)
         return Response(data)
 
     @extend_schema(responses=_sch('SavEstimationsMaintenance', {}, extra=True))
@@ -3973,8 +3974,9 @@ def sav_fiabilite_insight(request):
     company = request.user.company
     include_couts = bool(request.user.can_view_buy_prices)
     limit = entier_param(request, 'limit', 50, maxi=LIMITE_MAX)
-    data = fiabilite_equipements(
-        company, include_couts=include_couts, limit=limit)
+    data = fiabilite_equipements(  # D-ACAL-165
+        company, include_couts=include_couts, limit=limit,
+        include_prix_vente=request.user.can_view_sale_prices)
     return Response({'results': data, 'couts_inclus': include_couts})
 
 
