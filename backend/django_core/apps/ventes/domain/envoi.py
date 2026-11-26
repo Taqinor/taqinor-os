@@ -518,7 +518,7 @@ def geler_document_engage(devis, user, *, statut=None, acceptation=False):
     figer_reglages_rendu(devis)
     # D-ACAL-158 — devis à deux options : la conception de l'AUTRE option est
     # rangée aussi (jamais bloquant : une option incalculable n'est pas rangée).
-    from apps.ventes.electrical_service import figer_conceptions_des_options
+    from apps.ventes.conceptions_options import figer_conceptions_des_options
     figer_conceptions_des_options(devis)
     from apps.ventes.models import Devis
     if statut == Devis.Statut.ENVOYE:  # ASOC95 (D-ASOC-1) — échéancier figé à l'envoi

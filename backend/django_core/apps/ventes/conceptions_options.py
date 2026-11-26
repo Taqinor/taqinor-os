@@ -2,9 +2,9 @@
 """D-ACAL-158 (fondateur, 26/11/2026) — la conception électrique de CHAQUE option
 d'un devis à deux options, rangée à l'envoi (déplacée hors de
 ``electrical_service``, fichier de 2 000 lignes qui ne grossit plus). Les
-lecteurs (``electrical_service._document_de_l_option``, ``annexes_par_option``,
-``schema_electrique_du_devis``) et l'envoi (``domain.envoi.geler_document_engage``)
-passent par les noms réexportés en fin de ``electrical_service``."""
+lecteurs (``electrical_service._document_de_l_option``, ``annexes_par_option``),
+l'envoi (``domain.envoi.geler_document_engage``) et le POST
+``conception-electrique`` l'importent ici, à l'appel (aucune façade)."""
 import contextlib
 import logging
 

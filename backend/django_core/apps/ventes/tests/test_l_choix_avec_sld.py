@@ -39,6 +39,7 @@ from decimal import Decimal
 
 from django.test import SimpleTestCase
 
+from apps.ventes import conceptions_options as co
 from apps.ventes import electrical_service as es
 
 
@@ -429,7 +430,7 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
         design, empreinte = devis.electrical_design, devis.electrical_design_hash
         avant, annexe = copy.deepcopy(design), es.rendre_schema_electrique_du_devis(devis)
         devis.statut, devis.clauses_appliquees = "envoye", []
-        figees = es.figer_conceptions_des_options(devis)
+        figees = co.figer_conceptions_des_options(devis)
         self.assertEqual(set(figees), {"sans_batterie"})            # « avec » = electrical_design
         self.assertEqual(devis.clauses_appliquees[0]["type"], "conceptions_options_figees")
         from apps.ventes.domain.envoi import est_gel_interne
@@ -449,7 +450,7 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
         self.assertEqual(es.rendre_schema_electrique_du_devis(devis), annexe)
         # Correction sans changement d'entrée : la conception rangée est gardée telle quelle.
         rangee = devis.clauses_appliquees[0]["options"]["sans_batterie"]
-        self.assertIs(es.figer_conceptions_des_options(devis, garder=True)["sans_batterie"], rangee)
+        self.assertIs(co.figer_conceptions_des_options(devis, garder=True)["sans_batterie"], rangee)
 
     def test_d_acal_158_surcharges_de_site_reportees_sur_l_autre_option(self):
         """Revue D-ACAL-158 (1) — le site saisi par le vendeur (régime, longueurs,
@@ -461,15 +462,15 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
             "regime": "TN", "dc_m": 8, "ac_m": 22, "inclure_prise_terre": True})
         self.assertEqual(devis.electrical_design["source_entree"]["regime"], "surcharge")
         devis.statut, devis.clauses_appliquees = "envoye", []
-        sans = es.figer_conceptions_des_options(devis)["sans_batterie"]["design"]
+        sans = co.figer_conceptions_des_options(devis)["sans_batterie"]["design"]
         self.assertEqual(sans["parametres"]["regime"], "TN")
         self.assertEqual((sans["parametres"]["dc_m"], sans["parametres"]["ac_m"]), (8.0, 22.0))
         self.assertEqual(sans["source_entree"], devis.electrical_design["source_entree"])
         self.assertIn("T1", {p["repere"] for p in sans["protections"]})
-        self.assertEqual(es._surcharges_de_site(devis.electrical_design),
+        self.assertEqual(co._surcharges_de_site(devis.electrical_design),
                          {"regime": "TN", "dc_m": 8.0, "ac_m": 22.0, "inclure_prise_terre": True})
         es.build_electrical_design(devis, overrides={"temp_froid_c": -10})
-        self.assertEqual(es.figer_conceptions_des_options(devis), {})
+        self.assertEqual(co.figer_conceptions_des_options(devis), {})
 
     def test_d_acal_158_avis_au_vendeur_pour_l_option_que_le_client_ne_voit_pas(self):
         """Revue D-ACAL-158 (4) — fiche ERP : une phrase par option que la page
@@ -482,7 +483,7 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
         devis.statut = "envoye"                                      # envoyé avant la règle
         self.assertEqual(es.schema_electrique_du_devis(devis)["avis_client"],
                          {"sans_batterie": es.AVIS_OPTION_NON_RANGEE, "avec_batterie": None})
-        es.figer_conceptions_des_options(devis)
+        co.figer_conceptions_des_options(devis)
         self.assertEqual(es.schema_electrique_du_devis(devis)["avis_client"],
                          {"sans_batterie": None, "avec_batterie": None})
 
@@ -494,11 +495,11 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
         es.build_electrical_design(devis)
         devis.statut, devis.clauses_appliquees = "envoye", []
         self.assertEqual(es.annexes_par_option(devis), [])            # envoyé avant la règle
-        es.figer_conceptions_des_options(devis)
+        co.figer_conceptions_des_options(devis)
         sans, avec = es.annexes_par_option(devis, langue="fr", largeur_px=680)
         self.assertEqual((sans["option"], avec["option"]), ("sans_batterie", "avec_batterie"))
         self.assertIs(avec["electrical_design"], devis.electrical_design)
-        self.assertIs(sans["electrical_design"], es._conceptions_figees(devis)["sans_batterie"]["design"])
+        self.assertIs(sans["electrical_design"], co._conceptions_figees(devis)["sans_batterie"]["design"])
         self.assertIn("Huawei", sans["sld_svg"])
         self.assertNotIn("Batterie", sans["sld_svg"])
         self.assertIn("Deye", avec["sld_svg"])
@@ -519,9 +520,9 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
             _FausseLigne("Batterie lithium 15,4 kWh", 1, produit=_batterie())], roof_layout=_roof(30))
         es.build_electrical_design(devis)
         devis.statut, devis.clauses_appliquees = "envoye", []
-        self.assertEqual(es.figer_conceptions_des_options(devis), {})
+        self.assertEqual(co.figer_conceptions_des_options(devis), {})
         sans_20.quantite = Decimal("30")
-        self.assertEqual(set(es.figer_conceptions_des_options(devis)), {"sans_batterie"})
+        self.assertEqual(set(co.figer_conceptions_des_options(devis)), {"sans_batterie"})
 
     def test_d_acal_158_envoye_avant_brouillon_et_mono_option_inchanges(self):
         devis = _devis_deux_options_servables()
@@ -532,7 +533,7 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
         es.schema_electrique_du_devis(devis)
         es.rafraichir_conception_electrique_devis(devis)               # correction sur place
         self.assertEqual(devis.clauses_appliquees, [])                 # jamais rétro-rempli
-        es.figer_conceptions_des_options(devis)
+        co.figer_conceptions_des_options(devis)
         devis.statut = "brouillon"                                    # V2 qui hérite de l'entrée
         self.assertEqual(es.schema_electrique_public(devis, standard=False, option_totals=_TOTAUX), avant)
         mono = _FauxDevis(lignes=[
@@ -542,7 +543,7 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
         es.build_electrical_design(mono)
         mono.statut, mono.clauses_appliquees = "envoye", None
         charge = es.schema_electrique_public(mono, standard=False, option_totals=_TOTAUX)
-        self.assertEqual(es.figer_conceptions_des_options(mono), {})
+        self.assertEqual(co.figer_conceptions_des_options(mono), {})
         # Revue 3 — le marqueur « envoyé sous D-ACAL-158 », options vides.
         self.assertEqual(mono.clauses_appliquees,
                          [{"type": "conceptions_options_figees", "options": {}}])
@@ -557,12 +558,12 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
             roof_layout=_roof(30))
         es.build_electrical_design(devis)
         devis.statut, devis.clauses_appliquees = "envoye", []
-        es.figer_conceptions_des_options(devis)
+        co.figer_conceptions_des_options(devis)
         devis.lignes._lignes += [
             _FausseLigne("Onduleur hybride 15kW triphasé", 1, produit=_onduleur_hybride()),
             _FausseLigne("Batterie lithium 15,4 kWh", 1, produit=_batterie())]
         es.rafraichir_conception_electrique_devis(devis)
-        self.assertEqual(set(es._conceptions_figees(devis)), {"sans_batterie"})
+        self.assertEqual(set(co._conceptions_figees(devis)), {"sans_batterie"})
         public = es.schema_electrique_public(devis, standard=False, option_totals=_TOTAUX)["options"]
         self.assertIsNotNone(public["sans_batterie"])
         self.assertIsNotNone(public["avec_batterie"])
@@ -578,13 +579,13 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
         es.build_electrical_design(devis)
         devis.statut, devis.clauses_appliquees = "envoye", []
         with self.assertLogs("apps.ventes.electrical_service", level="WARNING"):
-            self.assertEqual(es.figer_conceptions_des_options(devis), {})
+            self.assertEqual(co.figer_conceptions_des_options(devis), {})
         self.assertEqual(devis.clauses_appliquees[0]["options"], {})
         public = es.schema_electrique_public(devis, standard=False, option_totals=_TOTAUX)["options"]
         self.assertIsNone(public["sans_batterie"])
         self.assertIsNotNone(public["avec_batterie"])
         with mock.patch("apps.ventes.conceptions_options._conception_de_l_option", side_effect=RuntimeError("panne")):
-            self.assertEqual(es.figer_conceptions_des_options(devis), {})
+            self.assertEqual(co.figer_conceptions_des_options(devis), {})
 
     def test_d_acal_158_chaines_du_calepinage_a_l_option_de_son_onduleur(self):
         """D-ACAL-141 par option : les deux conceptions rangées, le calepinage ne
@@ -592,7 +593,7 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
         devis = _devis_deux_options_servables()
         es.build_electrical_design(devis)
         devis.statut, devis.clauses_appliquees = "envoye", []
-        es.figer_conceptions_des_options(devis)
+        co.figer_conceptions_des_options(devis)
         options = es.schema_electrique_du_devis(devis, avec_calepinage=False)["options"]
         for cle, autre in (("sans_batterie", "avec_batterie"), ("avec_batterie", "sans_batterie")):
             a, b, c = self._avec_calepinage(self._plan(options[cle]))

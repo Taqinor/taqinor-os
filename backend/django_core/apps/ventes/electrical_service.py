@@ -1473,6 +1473,7 @@ def rafraichir_conception_electrique_devis(devis):
             "rafraichir_conception_electrique_devis indisponible sur %s",
             getattr(devis, "reference", "?"), exc_info=True)
         rangee = None
+    from apps.ventes.conceptions_options import suivre_conceptions_figees
     suivre_conceptions_figees(devis)
     return rangee
 
@@ -1632,6 +1633,7 @@ def _document_de_l_option(devis, variante, imposee, standard):
     unites, nombre = _quantites_de_l_option(_lignes_de_l_option(devis, variante))
     if nombre is None:
         return None, None            # aucun onduleur (pompage) : aucun schéma
+    from apps.ventes.conceptions_options import _conceptions_figees
     with _variante_imposee(variante if imposee else None):
         # D-ACAL-158 — l'option imposée lit SA conception rangée à l'envoi.
         calculee = (_conceptions_figees(devis).get(cle, {}).get("design") if imposee
@@ -1772,6 +1774,7 @@ def annexes_par_option(devis, *, langue="fr", largeur_px=None):
     from core.electrique.schema_electrique import (
         OPTIONS, SOURCE_LIGNES_DEVIS, rendre_schema_electrique_svg)
 
+    from apps.ventes.conceptions_options import _conceptions_figees
     figees = _conceptions_figees(devis)
     if not figees:
         return []
@@ -1806,9 +1809,3 @@ def schema_electrique_public(devis, *, standard, option_totals):
                    and (option_totals or {}).get(cle))
         publiees[cle] = dict(doc, cote_reseau={"etat": ETAT_CALCULE, "motif": None}) if sur else None
     return {"options": publiees} if any(publiees.values()) else None
-
-
-# ── D-ACAL-158 — noms hébergés dans ``conceptions_options`` (import de fin de
-# module : anti-cycle, ce module lit les fonctions ci-dessus à l'appel).
-from apps.ventes.conceptions_options import (  # noqa: E402,F401 — fin de module (anti-cycle) (D-ENF22)
-    _conceptions_figees, _surcharges_de_site, figer_conceptions_des_options, suivre_conceptions_figees)
