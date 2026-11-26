@@ -1810,7 +1810,7 @@ const vueSimplifiee = viewerModel?.simplifie && roofLayout ? { dessines: formatN
 const roofOutlineLatLng = roofLayout ? roofLayoutOutlineLatLng(roofLayout) : [];
 // Absente (lien standard, backend antérieur, forme invalide) → null : configuration et page d'aujourd'hui, au bit près.
 const visionneuseSoleil = show3d ? lireVisionneuseSoleil(data, roofLayout) : null;
-const viewerConfig = show3d ? JSON.stringify({ model: viewerModel, roofOutlineLatLng, layout: roofLayout, ...(visionneuseSoleil ? { soleil: visionneuseSoleil } : {}) }) : null;
+const viewerConfig = show3d ? JSON.stringify({ model: viewerModel, roofOutlineLatLng, layout: roofLayout }) : null;
 
 // ── WJ128 — Schéma électrique (SLD) : rendu UNIQUEMENT quand le backend
 // fournit `sld_svg` (étude électrique du devis existante) — absent/null →
@@ -3246,7 +3246,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       {show3d && (
         <>
         <div class="seam-soft" aria-hidden="true"></div>
-        <section id="roof3d" class="mx-auto max-w-5xl px-5 pt-14 sm:px-8 sm:pt-20" data-viewer-config={viewerConfig} data-calepinage-options={calepOptionsPourClient} data-track-section="calepinage">
+        <section id="roof3d" class="mx-auto max-w-5xl px-5 pt-14 sm:px-8 sm:pt-20" data-viewer-config={viewerConfig} data-visionneuse-soleil={visionneuseSoleil ? JSON.stringify(visionneuseSoleil) : undefined} data-calepinage-options={calepOptionsPourClient} data-track-section="calepinage">
           <p class="tech-label rule-brass cine-in text-brass-300" data-i18n data-fr="Le centre de votre proposition" data-en="At the heart of your proposal" data-ar="جوهر عرضكم">Le centre de votre proposition</p>
           <h2 class="display cine-in cine-in-1 mt-3 text-2xl text-lune sm:text-3xl" data-i18n data-fr="Votre toit en 3D" data-en="Your roof in 3D" data-ar="سطحكم بتقنية ثلاثية الأبعاد">Votre toit en 3D</h2>
           <div class="cine-card cine-in cine-in-2 mt-5 overflow-hidden rounded-2xl p-0 shadow-premium">
@@ -8977,16 +8977,15 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         model: ViewerModel;
         roofOutlineLatLng?: Array<[number, number]>;
         layout?: RoofLayout | null;
-        soleil?: VisionneuseSoleil;
       };
       model = parsed.model;
       roofOutlineLatLng = Array.isArray(parsed.roofOutlineLatLng) ? parsed.roofOutlineLatLng : [];
       layout = parsed.layout ?? null;
-      soleil = parsed.soleil ?? null;
     } catch {
       model = null;
       layout = null;
     }
+    try { soleil = section3d.dataset.visionneuseSoleil ? (JSON.parse(section3d.dataset.visionneuseSoleil) as VisionneuseSoleil) : null; } catch { soleil = null; }
 
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const nav = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };

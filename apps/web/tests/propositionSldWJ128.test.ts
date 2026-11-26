@@ -451,13 +451,13 @@ describe('BarreSoleil.astro — rendu (LOT 6)', () => {
 describe('page /proposition — section #roof3d, avec et sans visionneuse_soleil (LOT 6)', () => {
   const base = { ...proposalContrat.exemple, roof_layout: roofLayoutSoleil };
 
-  it('REPLI : sans la clé (lien standard, backend antérieur), section d’aujourd’hui — aucune barre, configuration sans `soleil`', async () => {
+  it('REPLI : sans la clé (lien standard, backend antérieur), section d’aujourd’hui — aucune barre, aucun attribut neuf', async () => {
     const html = await rendrePage(base);
     const s = section3d(html);
     expect(s).toContain('id="roof3d-stage"');
     expect(s).toContain('data-viewer-config=');
     expect(s).not.toContain('roof3d-soleil');
-    expect(s).not.toContain('&quot;soleil&quot;');
+    expect(s).not.toContain('data-visionneuse-soleil');
     expect(s).not.toContain('Ensoleillement');
   });
 
@@ -468,12 +468,16 @@ describe('page /proposition — section #roof3d, avec et sans visionneuse_soleil
     }
   });
 
-  it('clé servie : barre sous la scène, configuration portant l’ouverture et les objets voisins', async () => {
+  it('clé servie : barre sous la scène, attribut portant l’ouverture et les objets voisins (jamais un libellé), configuration 3D inchangée', async () => {
+    const sans = section3d(await rendrePage(base));
     const s = section3d(await rendrePage({ ...base, visionneuse_soleil: soleil() }));
     expect(s).toContain('id="roof3d-soleil"');
     expect(s.indexOf('id="roof3d-stage"')).toBeLessThan(s.indexOf('id="roof3d-soleil"'));
-    expect(s).toContain('&quot;soleil&quot;');
-    expect(s).toContain('&quot;ouverture&quot;:{&quot;jour&quot;:355,&quot;heure&quot;:16}');
-    expect(s).not.toMatch(/&quot;label&quot;:&quot;(?!Pan principal)/);
+    const attr = /data-visionneuse-soleil="([^"]*)"/.exec(s)![1];
+    expect(attr).toContain('&quot;ouverture&quot;:{&quot;jour&quot;:355,&quot;heure&quot;:16}');
+    expect(attr).toContain('&quot;kind&quot;:&quot;arbre&quot;');
+    expect(attr).not.toContain('label');
+    const config = (x: string) => /data-viewer-config="([^"]*)"/.exec(x)![1];
+    expect(config(s)).toBe(config(sans));
   });
 });
