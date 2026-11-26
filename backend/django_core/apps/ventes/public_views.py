@@ -1471,8 +1471,8 @@ def proposal_data(request, token):
             'conception_electrique': _conception_publique,
             # SCHEL-B3 (lot 6, D-ACAL-131) — le schéma électrique, un document par
             # option publiée, sans prix ; clé ABSENTE (jamais ``null``) si la case
-            # est décochée ou si aucune option n'a de document.
-            **({'schema_electrique': _schema_el} if _schema_el is not None else {}),
+            # est décochée ou si aucune option n'a de document (retirée juste après).
+            'schema_electrique': _schema_el,
             'option_totals': {
                 'sans_batterie': data.get('totaux_sans'),
                 'avec_batterie': data.get('totaux_avec'),
@@ -1570,6 +1570,9 @@ def proposal_data(request, token):
             # comme intertitres/notes. Absent quand le devis n'a aucune section.
             'lignes_structure': data.get('lignes_structure'),
         }
+        # SCHEL-B3 — rien à servir : la clé additive part (une seule instruction,
+        # la fonction-mur ``proposal_data`` ne grossit pas).
+        payload.pop('schema_electrique') if _schema_el is None else None
         # ADEV49 — les clés de BASE (littéral ci-dessus) : à une case décochée
         # elles restent à ``null`` (contrat), les autres partent.
         _cles_base = frozenset(payload)
