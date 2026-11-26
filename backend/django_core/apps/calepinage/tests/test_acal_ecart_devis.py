@@ -32,6 +32,7 @@ from apps.calepinage.services.electrique import (
     BLOCS_SIMULATION, CLE_SIMULATION, MENTION_ECART_DEVIS, _ecart_devis,
     resultat_calepinage,
 )
+from apps.calepinage.services.ecart_devis import ecart_devis_et_motif
 from apps.calepinage.services.rapport.production import html_de_section
 from apps.ventes.models import Devis
 
@@ -163,6 +164,9 @@ class EcartDevisTest(BaseApiCalepinage):
             with self.subTest(empreinte_devis=empreinte_devis):
                 self.assertEqual(resultat['ecart_devis'] is not None, servi)
                 self.assertEqual('production-ecart-devis' in html_de_section({'resultat': resultat}), servi)
+                # ACAL1915 — jamais un silence : la garde en cause est dite.
+                self.assertEqual(resultat['ecart_devis_motif'], (
+                    '' if servi else CONTRAT['acal1915_motifs']['a_resynchroniser']))
 
     def test_rapport_etude_imprime_ecart(self):
         exemple = CONTRAT['exemple_ecart_devis']
@@ -263,6 +267,58 @@ class EcartDevisSansRenduTest(SimpleTestCase):
         """Pompage : aucune production au devis ⇒ aucun écart, jamais un 0."""
         self.assertIsNone(self._ecart(None))
         self.assertEqual(html_de_section({'resultat': {'ecart_devis': None}}).count('production-ecart-devis'), 0)
+
+
+class EcartDevisMotifTest(SimpleTestCase):
+    """ACAL1915 — un devis LIÉ sans écart servi : ``ecart_devis_motif`` dit la
+    garde en cause, phrase du contrat (``acal1915_motifs``) mot pour mot ;
+    jamais un silence. ``''`` sans devis lié ou quand l'écart est servi."""
+
+    MOTIFS = CONTRAT['acal1915_motifs']
+
+    def _lu(self, *, p50=4808.0, devis_id=71, devis=True, societe=3, a_jour=True,
+            imprimee=True, production=Decimal('3628')):
+        trouve = (SimpleNamespace(pk=71, company_id=societe, reference='DEV-202611-0071')
+                  if devis else None)
+        calepinage = SimpleNamespace(devis_id=devis_id, company_id=3)
+        with mock.patch('apps.ventes.selectors.get_devis_by_pk', return_value=trouve), \
+                mock.patch('apps.ventes.selectors_calepinage._conception_a_jour', return_value=a_jour), \
+                mock.patch('apps.ventes.selectors_calepinage.figure_stockee_imprimee', return_value=imprimee), \
+                mock.patch('apps.ventes.selectors.production_attendue_pour_devis', return_value=production), \
+                mock.patch('apps.ventes.quote_engine.builder.build_quote_data') as rendu:
+            lu = ecart_devis_et_motif(calepinage, p50)
+        rendu.assert_not_called()
+        return lu
+
+    def test_devis_lie_sans_ecart_toujours_un_motif_du_contrat(self):
+        cas = {'simulation': {'p50': None},
+               'devis_introuvable': {'devis': False},
+               'autre_societe': {'societe': 9},
+               'a_resynchroniser': {'a_jour': False},
+               'production_recalculee_au_rendu': {'imprimee': False},
+               'sans_production': {'production': None},
+               'production_nulle': {'production': Decimal('0')}}
+        attendu = {'autre_societe': 'devis_introuvable', 'production_nulle': 'sans_production'}
+        for nom, champs in cas.items():
+            with self.subTest(cas=nom):
+                ecart, motif = self._lu(**champs)
+                self.assertIsNone(ecart)
+                self.assertEqual(motif, self.MOTIFS[attendu.get(nom, nom)])
+
+    def test_sans_devis_ou_ecart_servi_aucun_motif(self):
+        self.assertEqual(self._lu(devis_id=None), (None, ''))
+        ecart, motif = self._lu()
+        self.assertEqual(ecart['production_devis_kwh'], 3628.0)
+        self.assertEqual(motif, '')
+        # Le seul cas qui compte au rendu reste celui de ``_ecart_devis``.
+        self.assertEqual(set(ecart), set(CONTRAT['exemple_ecart_devis']['ecart_devis']))
+
+    def test_le_contrat_porte_la_cle_dans_chaque_exemple(self):
+        for etat in ('exemple', 'exemple_perime', 'exemple_vide', 'exemple_ecart_devis'):
+            self.assertEqual(CONTRAT[etat]['ecart_devis_motif'], '', etat)
+        fragment = CONTRAT['acal1915_ecart_devis_motif']
+        self.assertIsNone(fragment['ecart_devis'])
+        self.assertIn(fragment['ecart_devis_motif'], self.MOTIFS.values())
 
 
 class PariteLead1742Test(BaseMateriel):
