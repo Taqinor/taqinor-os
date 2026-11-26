@@ -151,9 +151,14 @@ _HORS_EMPREINTE = frozenset({'updated_at', 'search_vector', 'lock_version',
 # du total ne lit pas (prouvé par ``test_aprf6_liste_sans_conception``) :
 # hors empreinte, sinon un mouvement de stock périmerait tous les devis du
 # panneau courant. Toute AUTRE colonne, présente ou future, est hachée.
+# D-ACAL-169 — ``panneau_par_defaut`` (le panneau désigné de la société) ne
+# décide qu'une composition NOUVELLE (``domain.panneau_defaut.devis_a_naitre``) ;
+# un devis existant lit le panneau de SES lignes : le total affiché ne le lit
+# jamais, et désigner un autre panneau ne périme aucun total rangé.
 PRODUIT_HORS_EMPREINTE = frozenset({
     'quantite_stock', 'seuil_alerte', 'date_mise_a_jour',
-    'prix_achat', 'quantite_reappro_cible', 'delai_appro_jours', 'fournisseur_id'})
+    'prix_achat', 'quantite_reappro_cible', 'delai_appro_jours', 'fournisseur_id',
+    'panneau_par_defaut'})
 # Les sources dont le total affiché dépend : tout ``apps/ventes`` (moteur,
 # options, arrondis, classement, multivilla…), ``core`` (``core.money``),
 # ``apps/parametres`` (profil, tarifs) et la ville de calcul du lead, hors

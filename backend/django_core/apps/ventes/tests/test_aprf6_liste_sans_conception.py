@@ -505,7 +505,10 @@ class ListeLegereT4X4005Tests(TestCase):
         'tarif_location_mois', 'suivi_serie', 'code_barres', 'unite_stock', 'unite_id', 'code_sh',
         'pays_origine', 'politique_facturation_achat', 'est_recurrent', 'periodicite_defaut',
         'avertissement_vente', 'avertissement_bloquant', 'lock_version', 'entite_id',
-        'debit_m3j'})
+        'debit_m3j',
+        # D-ACAL-169 (26/11/2026) — décidée HORS empreinte (``PRODUIT_HORS_EMPREINTE``) :
+        # le total d'un devis existant lit le panneau de ses lignes, jamais le désigné.
+        'panneau_par_defaut'})
 
     def test_empreinte_couvre_ce_que_le_total_lit(self):
         """ADEV162 (relecture) — relevé sur un vrai passage du moteur : aucune
