@@ -495,6 +495,42 @@ test.describe('ACAL988 — gestes de carte au doigt (iPhone)', () => {
   })
 })
 
+// ACAL1272 — « Terminer le tracé » et « Annuler le dernier point » pendant le tracé : chacun sur UNE ligne, entier
+// dans la fenêtre, au moins 44 × 44 px (téléphone 390 × 664 et tablette portrait 820 × 1180). Avant : un bandeau
+// absolu ancré à 50 % sans largeur rendait des colonnes de 56-67 px de large, « Terminer » à x = −25 px.
+for (const [nom, viewport] of [['téléphone 390×664', { width: 390, height: 664 }], ['tablette 820×1180', { width: 820, height: 1180 }]]) {
+  test.describe(`ACAL1272 — boutons du tracé (${nom})`, () => {
+    test.use({ viewport, hasTouch: true, isMobile: true })
+
+    test('Terminer et Annuler : une ligne, entiers, ≥ 44 px', async ({ page }) => {
+      test.setTimeout(600_000)
+      await carteRefusee(page.context())
+      const id = await calepinageVide(page.request)
+      await ouvrirAtelierGestes(page, id)
+      const coins = await coinsLibres(page)
+      for (const { x, y } of coins) {
+        await page.touchscreen.tap(x, y)
+        await expect(page.locator('#rp9-undo-point')).toBeVisible()
+        await page.waitForFunction((depuis) => Date.now() - depuis >= 300, Date.now(), { polling: 50 }) // anti-double-clic (W77)
+      }
+      await expect(page.locator('#rp9-finish')).toBeEnabled()
+      for (const sel of ['#rp9-finish', '#rp9-undo-point']) {
+        const m = await page.locator(sel).evaluate((el) => {
+          const r = el.getBoundingClientRect()
+          const plage = document.createRange()
+          plage.selectNodeContents(el)
+          const lignes = new Set([...plage.getClientRects()].map((l) => Math.round(l.top))).size
+          return { x: r.left, droite: r.right, l: r.width, h: r.height, lignes, largeur: window.innerWidth }
+        })
+        expect(m.lignes, `${sel} (${nom}) : le libellé tient sur une ligne`).toBe(1)
+        expect(m.x, `${sel} (${nom}) : entier à gauche`).toBeGreaterThanOrEqual(0)
+        expect(m.droite, `${sel} (${nom}) : entier à droite`).toBeLessThanOrEqual(m.largeur)
+        expect(Math.min(m.l, m.h), `${sel} (${nom}) : cible d'au moins 44 × 44 px`).toBeGreaterThanOrEqual(44)
+      }
+    })
+  })
+}
+
 // WebKit réel (iPhone 13) : les gestes à un point (tap, « + » / « − », plein écran). Ignoré, en le disant, quand
 // le navigateur WebKit n'est pas installé (aucune installation n'est tentée) ; les gestes à deux doigts restent
 // jouables seulement sous Chromium (protocole DevTools).
