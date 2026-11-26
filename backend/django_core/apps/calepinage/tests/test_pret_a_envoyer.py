@@ -211,7 +211,7 @@ class ControlesElectriquesTest(SimpleTestCase):
         self.assertEqual(verdict['etat'], 'a_regler')
         # ACAL1539 : « À compléter » seul — le détail des motifs est au Verdict.
         self.assertEqual(verdict['valeur_texte'], 'À compléter')
-        self.assertEqual(len(controles), 8)
+        self.assertEqual(len(controles), 9)  # R5C-N3 : + courant_entree
 
     def test_materiel_choisi_fiche_incomplete_dit_la_vraie_cause(self):
         """ACAL1704 — panneau ET onduleur choisis, fiche du module sans Vmp :
@@ -436,10 +436,28 @@ class ControlesElectriquesTest(SimpleTestCase):
         self.assertEqual(chaud['libelle'], 'Tension des chaînes par forte chaleur')
         self.assertEqual(chaud['etat'], 'a_regler')
         self.assertEqual(chaud['valeur_texte'],
-                         '141,4 V sous la borne de fiche 150,0 V à 70,0 °C')
+                         'Par forte chaleur, la tension des panneaux (141,4 V) tombe sous la plage de '
+                         'travail de cet onduleur (150,0 V)')  # R5C — plus de « borne de fiche »
         self.assertEqual(chaud['geste'], GESTE_TENSION_CHAUD)
         self.assertIn('trop courte', chaud['cause'])
         self.assertEqual(chaud['seuil_source'], 'fiche')
+
+    def test_courant_entree_alerte_comptee_et_dite_en_mots_du_metier(self):
+        """R5C-N3 — Huawei 5 kW, 8 panneaux : le verdict servi « courant par entrée » non conforme (alerte,
+        non bloquant) n'était lu par aucun contrôle : « 7 bons » se taisait. Il est maintenant un contrôle
+        à régler, dit avec la phrase servie (mutant : retirer ``_courant_entree`` ⇒ ``KeyError``)."""
+        raison = ('le courant des panneaux (17,6 A) dépasse ce qu’une entrée de cet onduleur accepte (13,5 A)')
+        ligne = {'code': 'courant_par_entree_mppt', 'conforme': False, 'bloquant': False, 'source': 'fiche',
+                 'detail': '17,6 A au-dessus de la borne de fiche 13,5 A', 'raison': raison}
+        controle = self._controles(verdicts=[ligne])['courant_entree']
+        self.assertEqual((controle['etat'], controle['geste']), ('a_regler', 'Revoir les chaînes'))
+        self.assertEqual(controle['valeur_texte'], raison[:1].upper() + raison[1:])
+        self.assertNotIn('borne de fiche', controle['valeur_texte'])
+        self.assertEqual(self._controles(verdicts=[dict(ligne, bloquant=True)])['courant_entree']['etat'], 'bloquant')
+        ok = dict(ligne, conforme=True, raison=None, detail='10,0 A sous 13,5 A')
+        self.assertEqual(self._controles(verdicts=[ok])['courant_entree']['etat'], 'ok')
+        self.assertEqual(self._controles(verdicts=[dict(ok, conforme=None)])['courant_entree']['etat'], 'info')
+        self.assertEqual(self._controles()['courant_entree']['valeur_texte'], 'Non évalué : chaînes non calculées')
 
     def test_tension_chaud_borne_absente_non_calcule_jamais_vert(self):
         sans_borne = {'code': 'vmp_hot_over_mppt_min', 'conforme': None,

@@ -339,6 +339,41 @@ def _verdict_electrique(publication):
                  points=detail)
 
 
+def _phrase_du_verdict(ligne, repli):
+    """R5C-N3 / T4-X9-002 — la phrase SERVIE d'un verdict refusé (``raison``, ``raisons_verdicts``) : elle dit
+    de quoi on parle et ce que l'onduleur admet, là où ``detail`` (la mesure brute de l'installateur) parle de
+    « borne de fiche ». Un verdict conforme, ou sans raison servie, garde ``repli``. UNE seule phrase par
+    verdict : tous les écrans qui la disent la lisent ici ou dans ``verdicts[].raison``."""
+    raison = ligne.get('raison') if not ligne.get('conforme') else None
+    if not (isinstance(raison, str) and raison.strip()):
+        return repli
+    return raison[:1].upper() + raison[1:]
+
+
+def _courant_entree(verdicts):
+    """R5C-N3 — le courant des panneaux face à l'entrée de l'onduleur (verdict servi
+    ``courant_par_entree_mppt``) : jusqu'ici absent des contrôles, « Contrôles · 7 bons » se taisait alors que
+    le plan disait « à revoir ». Même rangement que la chaleur : non conforme ⇒ bloquant si le verdict l'est
+    (Isc publié dépassé), sinon à régler (l'Imp dépassé fait écrêter, c'est une alerte par décision) ; borne
+    absente ⇒ « non calculé », jamais vert."""
+    libelle = 'Courant des panneaux face à l’entrée de l’onduleur'
+    ligne = next((v for v in verdicts if v.get('code') == 'courant_par_entree_mppt'), None)
+    if ligne is None:
+        return _elec('courant_entree', libelle, 'info', 'Non évalué : chaînes non calculées')
+    if ligne.get('conforme') is None:
+        return _elec('courant_entree', libelle, 'info',
+                     'Non calculé : courant admissible manquant sur la fiche de l’onduleur',
+                     geste='Compléter la fiche de l’onduleur', cible=CIBLE_MATERIEL)
+    if ligne.get('conforme'):
+        etat = 'ok'
+    else:
+        etat = 'bloquant' if ligne.get('bloquant') else 'a_regler'
+    controle = _elec('courant_entree', libelle, etat, _phrase_du_verdict(ligne, ligne.get('detail') or ''),
+                     geste='' if etat == 'ok' else 'Revoir les chaînes')
+    controle['seuil_source'] = ligne.get('source')
+    return controle
+
+
 def _tension_froid(verdicts):
     from core.electrique.types import fr
 
@@ -357,6 +392,7 @@ def _tension_froid(verdicts):
     valeur = ligne.get('detail') or ''
     if ligne.get('temperature_c') is not None:
         valeur = '%s à %s °C' % (valeur, fr(ligne['temperature_c'], 1))
+    valeur = _phrase_du_verdict(ligne, valeur)  # R5C — la phrase d'un refus se dit en mots du métier
     controle = _elec('tension_froid', libelle, etat, valeur,
                      cause=ligne.get('temperature_mention') or '',
                      geste='' if etat == 'ok' else 'Revoir les chaînes')
@@ -401,6 +437,7 @@ def _tension_chaud(verdicts):
     valeur = ligne.get('detail') or ''
     if ligne.get('temperature_c') is not None:
         valeur = '%s à %s °C' % (valeur, fr(ligne['temperature_c'], 1))
+    valeur = _phrase_du_verdict(ligne, valeur)  # R5C — la phrase d'un refus se dit en mots du métier
     mention = ligne.get('temperature_mention') or ''
     cause = mention if etat == 'ok' else ' '.join(
         filter(None, (CAUSE_TENSION_CHAUD, mention)))
@@ -570,7 +607,7 @@ def controles_electriques(calepinage):
     terre = [m for m in motifs if str(m['code']).startswith('TERRE_')]
     return [
         _verdict_electrique(publication), materiel,
-        _tension_froid(verdicts), _tension_chaud(verdicts),
+        _tension_froid(verdicts), _tension_chaud(verdicts), _courant_entree(verdicts),
         _depuis_motifs('orientation_mppt', 'Une seule orientation par entrée',
                        poly, geste='Revoir l’affectation des chaînes'),
         (_ratio_dc_ac(resultat.get('ratio_dc_ac'), pourquoi=pourquoi_ratio, devis_recu=devis_recu,
