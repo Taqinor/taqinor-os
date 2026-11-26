@@ -865,6 +865,23 @@ describe('visionneuse pleine — premier rendu réel (scene3d + contexte du boot
     expect(solStandard).toBe(false);
   });
 
+  it('B4 — lien de confiance : aucune étiquette ni commande d’édition dans la scène ou la page', async () => {
+    const [lngC, latC] = at(0, 0);
+    const avecObstacle = layoutOf(rawZone({ obstacles: [{ centerLng: lngC, centerLat: latC + 0.0001, lengthM: 4, widthM: 1 }], geometry: { ...(rawZone().geometry as object), count: 35, panels: RANGEES_PLAT } }));
+    const { bootViewerFull } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    const el = document.body.appendChild(document.createElement('div'));
+    const poignee = bootViewerFull(el, avecObstacle, { maptilerKey: 'cle-test', instant: INSTANT_REEL, presentationClient: true })!;
+    const carte = carteFactice.cartes[0];
+    carte.fire('load');
+    poignee.poserInstant(INSTANT_REEL.jour, 12);
+    soleilDessine(carte);
+    const genres = new Set<string>();
+    (carteFactice.rendus.at(-1) as { traverse: (f: (o: Record<string, any>) => void) => void }).traverse((o) => { if (o.isSprite) genres.add('sprite'); });
+    expect(genres.has('sprite')).toBe(false); // ni cote d'obstacle, ni numéro de module, ni poignée
+    expect(document.querySelector('input, select, textarea, [contenteditable]')).toBeNull(); // aucun contrôle de saisie monté
+    expect(document.body.textContent ?? '').not.toMatch(/MAD|DH|prix|€/i);
+  });
+
   /** Démarre avec un token Mapbox et compte les demandes de la photo du toit ; `images` = les <img> demandées. */
   async function photoDuToit() {
     const images: HTMLImageElement[] = [];
