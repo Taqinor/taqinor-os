@@ -1420,7 +1420,7 @@
   ],
   "parametres.update": [
     {
-      "config": null,
+      "config": 3,
       "data": 7,
       "url": "/calepinage/parametres/",
       "verbe": "put"

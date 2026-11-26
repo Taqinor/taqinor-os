@@ -497,7 +497,7 @@ TOLERANCE_KWC_AFFICHE = 0.005
 TOLERANCE_WC_STOCKE = 1
 
 
-def module_est_substitue(dessine_kwc, compose_kwc, dessine_wc=None):
+def _module_est_substitue(dessine_kwc, compose_kwc, dessine_wc=None):
     """Le module que le devis composerait n'est-il PAS celui du dessin ?
 
     Fonction PURE, sans arrondi stocké ni imprimé. Quand le dessin donne son compte
@@ -574,7 +574,7 @@ def _garde_module_substitue(devis, layout):
     compose = _kwc_compose_du_devis(devis)
     if not dessine or compose is None:
         return
-    if not module_est_substitue(dessine, compose, dessine_wc):
+    if not _module_est_substitue(dessine, compose, dessine_wc):
         return
     # Le refus imprime les chiffres COMPARÉS : le total compte × puissance quand c'est lui qui a
     # refusé (le champ ``kwc`` stocké d'un pan peut être périmé et égal au composé), sinon les kWc.

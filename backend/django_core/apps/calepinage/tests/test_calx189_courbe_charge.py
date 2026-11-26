@@ -604,11 +604,11 @@ class CourbeNulleRangeeTests(unittest.TestCase):
 
     def test_le_predicat_est_unique_et_exact(self):
         from apps.calepinage.services.consommation import (
-            courbe24_est_nulle, profil_depuis_layout)
-        self.assertTrue(courbe24_est_nulle([0.0] * 24))
-        self.assertTrue(courbe24_est_nulle([0] * 24))
-        self.assertFalse(courbe24_est_nulle([0.0] * 23 + [0.01]))
-        self.assertFalse(courbe24_est_nulle(None))
+            _courbe24_est_nulle, profil_depuis_layout)
+        self.assertTrue(_courbe24_est_nulle([0.0] * 24))
+        self.assertTrue(_courbe24_est_nulle([0] * 24))
+        self.assertFalse(_courbe24_est_nulle([0.0] * 23 + [0.01]))
+        self.assertFalse(_courbe24_est_nulle(None))
         profil = profil_depuis_layout(layout_de_test(0.0))
         self.assertIsNone(profil['courbe24'])
         self.assertIsNone(profil_depuis_layout({})['courbe24'])

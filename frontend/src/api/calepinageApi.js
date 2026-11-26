@@ -409,8 +409,7 @@ const calepinageApi = {
     get: () => api.get('/calepinage/parametres/'),
     // ACAL1434 — `{ suppressErrorToast: true }` : l'écran qui pose le refus
     // SOUS le champ coupe le toast de l'intercepteur (sinon dit deux fois).
-    update: (corps, options) => api.put('/calepinage/parametres/', corps,
-      ...(options?.suppressErrorToast ? [{ suppressErrorToast: true }] : [])),
+    update: (corps, config) => api.put('/calepinage/parametres/', corps, config),
 
     // ACAL960 — le catalogue du matériel de la société (modules, onduleurs,
     // optimiseurs ACTIFS, sans prix, favoris marqués) pour COCHER les favoris

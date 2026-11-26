@@ -377,17 +377,17 @@ class ModuleSubstitueArrondiSansBaseTest(SimpleTestCase):
         self.assertIn('Le dessin porte 35 panneaux, soit 24,95 kWc', refus.exception.donnees['detail'])
 
     def test_fonction_pure_repli_sans_compte_ni_puissance(self):
-        from apps.calepinage.services.devis import _chiffres_distincts, module_est_substitue
+        from apps.calepinage.services.devis import _chiffres_distincts, _module_est_substitue
 
         self.assertEqual(_chiffres_distincts(0.714, 0.7104), ('0,714', '0,710'))
-        self.assertFalse(module_est_substitue(25.02, 25.025))
-        self.assertTrue(module_est_substitue(25.02, 24.85))
-        self.assertFalse(module_est_substitue(25.025, 25.025, 25025))
-        self.assertTrue(module_est_substitue(25.025, 24.85, 25025))
+        self.assertFalse(_module_est_substitue(25.02, 25.025))
+        self.assertTrue(_module_est_substitue(25.02, 24.85))
+        self.assertFalse(_module_est_substitue(25.025, 25.025, 25025))
+        self.assertTrue(_module_est_substitue(25.025, 24.85, 25025))
         from decimal import Decimal
 
-        self.assertFalse(module_est_substitue(1.7325, 1.732, Decimal('1732.5')))
-        self.assertFalse(module_est_substitue(1.7325, 1.733, Decimal('1732.5')))
+        self.assertFalse(_module_est_substitue(1.7325, 1.732, Decimal('1732.5')))
+        self.assertFalse(_module_est_substitue(1.7325, 1.733, Decimal('1732.5')))
 
 
 class KwcComposeSansCleSansBaseTest(SimpleTestCase):

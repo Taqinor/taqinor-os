@@ -59,7 +59,7 @@ __all__ = [
     # CALX314
     'CALQUE_PROVENANCE',
     # ACAL1721
-    'CALQUE_NUMEROS', 'modules_numerotes', 'affectation_pour_dxf',
+    'CALQUE_NUMEROS', '_modules_numerotes', 'affectation_pour_dxf',
 ]
 
 CALQUE_TOITURE = 'TOITURE'
@@ -116,7 +116,7 @@ def _document_dxf(geometrie, *, chaines=None, provenance=None, modules=None):
     ``PROVENANCE``, non imprimable. ``None`` (le défaut) : aucun calque de plus.
 
     ACAL1721 — ``modules`` (``[{module, pan, numero, chaine, centre, coins}]``,
-    voir ``modules_numerotes``) ajoute le calque ``NUMEROS`` : un bloc
+    voir ``_modules_numerotes``) ajoute le calque ``NUMEROS`` : un bloc
     ``MODULE_POSE`` par module, attributs ``PAN``, ``N``, ``CHAINE``.
     """
     import ezdxf
@@ -423,7 +423,7 @@ def octets_dxf(geometrie, *, chaines=None, provenance=None, modules=None):
     return tampon.getvalue().encode('utf-8')
 
 
-def modules_numerotes(roof_layout, geometrie, affectation=None):
+def _modules_numerotes(roof_layout, geometrie, affectation=None):
     """ACAL1721 — les modules dessinés avec leur ``numero``, leur ``pan`` et
     leur ``chaine``, depuis la MÊME source que l'écran et le schéma : la clé
     ``<pan>#<n>`` de ``plan_cablage._modules_du_plan`` (``panels[].n``) et la
@@ -488,4 +488,4 @@ def exporter_dxf(calepinage, *, affectation=None):
     geometrie = geometrie_de_planche(roof_layout)
     return octets_dxf(
         geometrie, provenance=lignes_de_provenance(calepinage),
-        modules=modules_numerotes(roof_layout, geometrie, affectation))
+        modules=_modules_numerotes(roof_layout, geometrie, affectation))
