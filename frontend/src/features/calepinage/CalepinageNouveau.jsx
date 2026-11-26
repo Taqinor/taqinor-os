@@ -174,7 +174,7 @@ export default function CalepinageNouveau() {
   const idMoi = useContext(ReactReduxContext)?.store?.getState?.()?.auth?.user?.id ?? null
   // Responsable facultatif : VIDE par défaut (le repli est le propriétaire du lead).
   const [responsableId, setResponsableId] = useState('')
-  const responsables = useUtilisateursAssignables()
+  const responsables = useUtilisateursAssignables(true, null, onglet === 'lead' ? leadId : null)
   // ACAL2047 — la clé d'idempotence de CETTE création : la même tant qu'aucune réponse n'est arrivée pour le même corps
   // (renvoi après délai dépassé), une neuve dès qu'une réponse est reçue ou que le corps change.
   const creationRef = useRef(null)
