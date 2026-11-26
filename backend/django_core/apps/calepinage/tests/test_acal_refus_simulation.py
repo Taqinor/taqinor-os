@@ -148,6 +148,19 @@ class RefusSansPanTest(SimpleTestCase):
         lignes = manquants_simulation.manquants_de_simulation(contexte, {})
         self.assertEqual(lignes, attendu['manquants'])
 
+    def test_acal1639_le_refus_sans_module_mene_a_toit_ou_panneaux(self):
+        from apps.calepinage.services import manquants_simulation
+
+        def cible(contexte):
+            lignes = manquants_simulation.manquants_de_simulation(
+                dict(contexte, reglages_simulation=self.REGLAGES), {})
+            return next(ligne for ligne in lignes if ligne['champ'] == 'plans')['cible']
+
+        self.assertEqual(cible({'plans': []})['etape'], 'toit')
+        self.assertEqual(cible({'plans': [{'modules': 0}]})['etape'], 'panneaux')
+        # des modules posés : pas l'étape Toit ni Panneaux (matériel, côté écran)
+        self.assertIsNone(cible({'plans': [{'modules': 4}]}))
+
     def test_le_409_garde_la_cle_de_tete_plans(self):
         from apps.calepinage.services.simulation import verifier_simulable
 

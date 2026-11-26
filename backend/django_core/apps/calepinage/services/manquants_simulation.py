@@ -43,6 +43,20 @@ def _manques_meteo(contexte):
     return lignes, None
 
 
+def _cible_sans_module(contexte):
+    """ACAL1639 — où agir quand aucun pan n'est équipé : l'étape « Toit » sans
+    aucun pan, « Panneaux » quand un pan existe sans module, ``None`` sinon (des
+    modules posés mais sans module PV désigné : l'onglet Matériel, côté écran)."""
+    pans = (contexte or {}).get('plans_poses') or (contexte or {}).get('plans') or []
+    if not pans:
+        etape = 'toit'
+    elif not any(pan.get('modules') for pan in pans):
+        etape = 'panneaux'
+    else:
+        return None
+    return {'etape': etape, 'onglet': '', 'champ': ''}
+
+
 def manquants_de_simulation(contexte, meta, fichier_depose=False):
     """Les manques d'une simulation, dans l'ordre de ``verifier_simulable`` ;
     liste vide = simulable."""
@@ -50,7 +64,9 @@ def manquants_de_simulation(contexte, meta, fichier_depose=False):
 
     lignes, mode = _manques_meteo(contexte)
     if not (meta or {}).get('plans_equipes'):
-        lignes.append(_ligne('plans', _sim.MOTIF_SANS_PAN_EQUIPE))
+        ligne = _ligne('plans', _sim.MOTIF_SANS_PAN_EQUIPE)
+        ligne['cible'] = _cible_sans_module(contexte)
+        lignes.append(ligne)
     if not fichier_depose:
         site = (contexte or {}).get('site') or {}
         if site.get('lat') is None or site.get('lon') is None:

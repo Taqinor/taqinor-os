@@ -3975,7 +3975,11 @@
       {
         "champ": "plans",
         "motif": "Aucun pan de ce calepinage ne porte à la fois des modules et une puissance crête : il n'y a rien à simuler. Posez des modules, puis désignez le module PV dans l'onglet Matériel électrique (ou liez un devis qui porte une ligne module) avant de lancer la simulation.",
-        "cible": null
+        "cible": {
+          "etape": "toit",
+          "onglet": "",
+          "champ": ""
+        }
       }
     ]
   },
