@@ -1873,6 +1873,7 @@ def verdict_affectation(conception, imposee, *, specs_onduleur=None,
             refus.append("Chaîne %d (pan %s) : %d modules, %s."
                          % (numero, ', '.join(pans), nombre, motif))
 
+    refus.extend(_refus_paralleles_inegales(conception, imposee))
     maximum = _chaines_max_par_mppt(specs_onduleur)
     if maximum:
         for (onduleur, mppt), chaines in sorted(
@@ -1884,6 +1885,46 @@ def verdict_affectation(conception, imposee, *, specs_onduleur=None,
                     "par la fiche onduleur."
                     % (_libelle_mppt(onduleur, mppt), len(chaines), maximum))
     return tuple(refus)
+
+
+def _refus_paralleles_inegales(conception, imposee):
+    """Des chaînes en PARALLÈLE sur une même entrée MPPT ont la même longueur.
+
+    Lu sur le câblage EFFECTIF (table automatique + affectation imposée) : deux
+    chaînes de longueurs différentes sur une entrée tirent deux tensions
+    différentes sur un seul suiveur (Voc à vide inégaux, courant de retour de
+    l'une dans l'autre). Deux entrées DIFFÉRENTES peuvent porter des longueurs
+    différentes — c'est ce que fait le câblage automatique (12 + 12 | 11).
+    Seules les entrées qui portent une chaîne SAISIE à la main sont jugées ici :
+    l'automatique dit lui-même ce qu'il pose (pans qui partagent une entrée).
+    """
+    table = affectation(conception, imposee=imposee)
+    # Un seul onduleur (toutes les lignes à 1 ou vides) : vide et 1 = le même.
+    seul = all(ligne['onduleur'] in (None, 1) for ligne in table)
+    longueurs, par_entree, manuelles = {}, {}, set()
+    for ligne in table:
+        if ligne['chaine'] is None:
+            continue
+        longueurs[ligne['chaine']] = longueurs.get(ligne['chaine'], 0) + 1
+        if ligne['source'] == SOURCE_MANUELLE:
+            manuelles.add(ligne['chaine'])
+        if ligne['mppt'] is not None:
+            onduleur = None if seul else ligne['onduleur']
+            par_entree.setdefault((onduleur, ligne['mppt']),
+                                  set()).add(ligne['chaine'])
+    refus = []
+    for (onduleur, mppt), numeros in sorted(
+            par_entree.items(), key=lambda c: (c[0][0] or 0, c[0][1] or 0)):
+        tailles = sorted({longueurs[n] for n in numeros}, reverse=True)
+        if len(tailles) > 1 and numeros & manuelles:
+            refus.append(
+                "Entrée MPPT %s : chaînes %s en parallèle de %s modules — des "
+                "chaînes en parallèle sur une même entrée doivent avoir la "
+                "même longueur (des entrées différentes peuvent différer)."
+                % (_libelle_mppt(onduleur, mppt),
+                   ', '.join(str(n) for n in sorted(numeros)),
+                   ' et '.join(str(t) for t in tailles)))
+    return refus
 
 
 def _libelle_mppt(onduleur, mppt):

@@ -399,6 +399,16 @@ class Deye20kTrenteCinqModulesTest(SimpleTestCase):
         self.assertTrue(any('entrée MPPT 1' in b and 'CH1, CH2, CH3' in b
                             and '66,9 A' in b for b in bloquants), bloquants)
 
+    def test_douze_et_onze_en_parallele_sur_l_entree_1_refuses(self):
+        bloquants = self._evaluer((12, 1), (12, 1), (11, 1))['bloquants']
+        self.assertIn(
+            "Entrée MPPT 1 : chaînes 1, 2, 3 en parallèle de 12 et 11 modules "
+            "— des chaînes en parallèle sur une même entrée doivent avoir la "
+            "même longueur (des entrées différentes peuvent différer).",
+            bloquants)
+        self.assertFalse(any('en parallèle de' in b for b in self._evaluer(
+            (12, 1), (12, 1), (11, 2))['bloquants']))
+
     def test_chaine_de_vingt_refusee_avec_la_vraie_borne(self):
         verdict = self._evaluer((20, 1), (15, 2))
         refus = [b for b in verdict['bloquants'] if b.startswith('Chaîne 1 ')]
