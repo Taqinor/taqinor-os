@@ -55,6 +55,17 @@ def _premieres(lignes, cle, couleur):
 
 class AffectationCouleurs(unittest.TestCase):
 
+    def test_s3_la_couleur_d_une_chaine_suit_son_numero_pas_l_ordre_des_modules(self):
+        from apps.calepinage.services.chaines import _colorer
+        avant = _colorer([{'chaine': 1, 'mppt': 1}, {'chaine': 2, 'mppt': 1}, {'chaine': 3, 'mppt': 2}])
+        # Recâblage manuel : la chaîne 3 apparaît d'abord dans la table.
+        apres = _colorer([{'chaine': 3, 'mppt': 2}, {'chaine': 1, 'mppt': 1}, {'chaine': 2, 'mppt': 1}])
+
+        def teinte(lignes):
+            return {ligne['chaine']: ligne['couleur_chaine'] for ligne in lignes}
+        self.assertEqual(teinte(avant), teinte(apres))
+        self.assertEqual(teinte(apres), {1: PALETTE_CHAINES[0], 2: PALETTE_CHAINES[1], 3: PALETTE_CHAINES[2]})
+
     def test_lignes_portent_couleur_chaine_et_mppt_dans_l_ordre_de_premiere_apparition(self):
         lignes = affectation(_conception())
         self.assertGreaterEqual(len({ligne['chaine'] for ligne in lignes

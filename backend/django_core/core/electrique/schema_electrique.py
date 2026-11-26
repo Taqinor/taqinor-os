@@ -38,7 +38,7 @@ __all__ = [
     "VERSION_DOCUMENT", "SOURCE_CALEPINAGE", "SOURCE_CONCEPTION_DEVIS",
     "SOURCE_LIGNES_DEVIS", "SOURCES", "OPTION_SANS", "OPTION_AVEC", "OPTIONS",
     "ETAT_CALCULE", "ETAT_A_CALCULER", "ETAT_HORS_RESEAU", "CLES_DOCUMENT",
-    "chaines_colorees", "chaines_du_resultat", "troncons_du_resultat",
+    "couleur_de_chaine", "chaines_colorees", "chaines_du_resultat", "troncons_du_resultat",
     "document_schema_electrique", "document_sans_repartition",
     "rendre_schema_electrique_svg",
 ]
@@ -114,14 +114,22 @@ def _texte(valeur):
 
 
 # ──────────────────────────────────────────────────────────────── chaînes
+def couleur_de_chaine(numero):
+    """S3 — LA couleur d'une chaîne, liée à son NUMÉRO (jamais à son rang d'apparition) : la chaîne 1 est
+    toujours la première teinte de ``PALETTE_CHAINES``, la 2 la deuxième, etc. (modulo la palette). Source
+    unique : la table d'affectation servie, son éditeur, le schéma, sa légende, le PDF et le plan de câblage
+    la lisent ; un recâblage manuel qui change l'ordre des modules ne change plus aucune couleur."""
+    return PALETTE_CHAINES[(int(numero) - 1) % len(PALETTE_CHAINES)]
+
+
 def chaines_colorees(chaines):
     """Les chaînes servies : une entrée par chaîne, rangée par ``numero``.
 
     ``chaines`` : ``[{numero, nb_panneaux, onduleur, entree}, …]`` dans l'ordre
     de PREMIÈRE APPARITION (celui de la table d'affectation du calepinage, ou
-    celui du moteur). ``couleur_index`` = ce rang modulo la palette ;
-    ``couleur`` = ``PALETTE_CHAINES[couleur_index]`` — la règle de
-    ``apps/calepinage/services/chaines.py::_colorer``, appliquée UNE fois ici.
+    celui du moteur). ``couleur_index`` = (numéro − 1) modulo la palette ;
+    ``couleur`` = ``couleur_de_chaine(numero)`` — la règle de
+    ``apps/calepinage/services/chaines.py::_colorer``, liée au NUMÉRO.
     Deux entrées du même numéro s'additionnent ; une chaîne sans numéro ni
     panneau n'est pas une chaîne et n'est pas servie.
     """
@@ -134,11 +142,11 @@ def chaines_colorees(chaines):
         if numero in par_numero:
             par_numero[numero]["nb_panneaux"] += nombre
             continue
-        index = len(par_numero) % len(PALETTE_CHAINES)
+        index = (numero - 1) % len(PALETTE_CHAINES)
         par_numero[numero] = {
             "numero": numero,
             "couleur_index": index,
-            "couleur": PALETTE_CHAINES[index],
+            "couleur": couleur_de_chaine(numero),
             "nb_panneaux": nombre,
             "onduleur": _entier_positif(chaine.get("onduleur")),
             "entree": _entier_positif(chaine.get("entree")),

@@ -819,13 +819,14 @@ class LeDocumentSchemaElectrique(unittest.TestCase):
         self.assertEqual([c["couleur_index"] for c in doc["chaines"]], [0, 1, 2, 3])
         self.assertTrue(doc["chaines_reparties"])
 
-    def test_la_couleur_suit_la_premiere_apparition_puis_le_numero_range(self):
+    def test_la_couleur_suit_le_numero_jamais_l_ordre_d_apparition(self):
+        # S3 : la chaîne 1 reste la première teinte même quand la chaîne 3 apparaît d'abord (recâblage manuel).
         from core.electrique.schema_electrique import chaines_colorees
         chaines = chaines_colorees([{"numero": 3, "nb_panneaux": 5},
                                     {"numero": 1, "nb_panneaux": 4},
                                     {"numero": 3, "nb_panneaux": 1}])
         self.assertEqual([(c["numero"], c["couleur_index"], c["nb_panneaux"])
-                          for c in chaines], [(1, 1, 4), (3, 0, 6)])
+                          for c in chaines], [(1, 0, 4), (3, 2, 6)])
 
     def test_avec_batterie_et_sans_batterie(self):
         avec = self._doc(unites_batterie=2)
