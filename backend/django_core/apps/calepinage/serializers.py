@@ -789,7 +789,7 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
                 # (règle de cohérence ACAL179), jamais l'ancien client gardé.
                 attrs['client'] = getattr(lead, 'client', None)
                 client = attrs['client']
-        self._exiger_responsable_qui_ouvre(attrs, lead_id)
+        self._exiger_responsable_qui_ouvre(attrs, lead_id, instance)
         ecrit = 'lead_id' in attrs or 'client' in attrs
         if ecrit and lead_id and client is not None:
             if lead is None:
@@ -815,22 +815,33 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
         return attrs
 
     @staticmethod
-    def _exiger_responsable_qui_ouvre(attrs, lead_id):
+    def _exiger_responsable_qui_ouvre(attrs, lead_id, instance=None):
         """T4-X3-016 — un responsable qui ne pourrait pas OUVRIR le calepinage
         (compte qui ne lit que par sa visite, sans visite sur ce lead) est
         refusé sous ``responsable``, en une phrase : le menu ne le propose pas
-        (``assignable-users?permission=calepinage_voir``), l'API ne le laisse
-        pas non plus créer l'impasse."""
+        (``assignable-users?permission=calepinage_voir&lead=``), l'API ne le
+        laisse pas non plus créer l'impasse. Seul un responsable POSÉ ou
+        CHANGÉ est jugé : renvoyer celui qui est déjà là passe. Création :
+        400 ; modification : 409 (le corps est conforme, c'est l'ÉTAT qui s'y
+        oppose, comme ses voisins de ``validate``)."""
         responsable = attrs.get('responsable')
         if responsable is None:
             return
+        if instance is not None and responsable.pk == instance.responsable_id:
+            return
         from .selectors import peut_ouvrir_une_fois_responsable
 
-        if not peut_ouvrir_une_fois_responsable(responsable, lead_id):
-            raise serializers.ValidationError({'responsable': (
-                "Ce compte ne pourrait pas ouvrir ce calepinage : il ne lit "
-                "que celui d'une visite qui lui est assignée. Choisissez un "
-                "autre responsable.")})
+        if peut_ouvrir_une_fois_responsable(responsable, lead_id):
+            return
+        erreur = {'responsable': (
+            "Ce compte ne pourrait pas ouvrir ce calepinage : il ne lit "
+            "que celui d'une visite qui lui est assignée. Choisissez un "
+            "autre responsable.")}
+        if instance is not None:
+            from core.conflit_etat import ConflitEtat
+
+            raise ConflitEtat(erreur)
+        raise serializers.ValidationError(erreur)
 
     def _refuser_cles_non_inscriptibles(self):
         """ACAL179 — un PATCH qui écrit une clé en lecture seule ou inconnue
