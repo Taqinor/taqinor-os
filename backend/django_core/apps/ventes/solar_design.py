@@ -734,7 +734,8 @@ def match_inverter(produits, *, n_panels, panel_w=None, hybrid=False,
     de la bonne FAMILLE — hybride si ``hybrid`` sinon réseau/injection, mots-clés
     ALIGNÉS sur ``builder.py`` — puis choisit le plus petit onduleur (kW) dont :
 
-    * la puissance AC supporte un ratio DC/AC raisonnable (≤ ``MAX_DC_AC``) ;
+    * la puissance AC supporte un ratio DC/AC raisonnable (≤ ``MAX_DC_AC``) — un
+      hybride à puissance PV maximale publiée est jugé à elle (D-HYB-6) ;
     * la fenêtre de tension accepte au moins une longueur de chaîne valide pour
       le module (réutilise ``string_design`` pour la vérif Vmp/Voc à froid).
 
@@ -820,10 +821,14 @@ def match_inverter(produits, *, n_panels, panel_w=None, hybrid=False,
     chosen_ratio = None
     reason = ""
 
+    from apps.ventes.selectors_calepinage import capacite_publiee_du_produit
+
     for p, kw in candidates:
-        ratio = (dc_kw / kw) if kw > 0 else None
-        # Onduleur trop petit pour le champ (ratio DC/AC excessif) → suivant.
-        if ratio is not None and ratio > MAX_DC_AC:
+        # Onduleur trop petit pour le champ → suivant. D-HYB-6 (fondateur 26/11/2026) : un
+        # HYBRIDE dont la fiche publie sa puissance PV maximale est jugé à elle (D-HYB-1, la
+        # règle du calepinage) ; tout autre onduleur garde le ratio DC/AC ≤ ``MAX_DC_AC``.
+        if ((capacite := capacite_publiee_du_produit(p)) is not None and dc_kw > capacite + 1e-9
+                or capacite is None and dc_kw / kw > MAX_DC_AC):
             continue
         window = _window_for(p, kw)
         design = string_design(

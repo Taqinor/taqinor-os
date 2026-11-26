@@ -938,3 +938,54 @@ class MatchInverterSansMicroOnduleurTest(SimpleTestCase):
                               hybrid=False)
         self.assertIs(res['inverter'], huawei)
         self.assertEqual(res['candidates_considered'], 1)
+
+
+def _hybride_deye(pk, kw, dc_max_kwc=None, nom=None):
+    """Hybride Deye SG05LP3 (fiche seedée 15T/20T : 36 A / 54 A par MPPT) ; ``dc_max_kwc``
+    = la « Max. PV access power » publiée, ``None`` = la fiche ne la publie pas."""
+    return _onduleur(pk, nom or 'Onduleur hybride Deye %skW Triphasé' % kw,
+                     ond_ac_kw=Decimal(str(kw)), ond_i_max_mppt_a=Decimal('36.0'),
+                     ond_isc_max_mppt_a=Decimal('54.0'), ond_dc_max_kwc=dc_max_kwc,
+                     ond_bat_max_charge_kw=Decimal('17.92'), ond_bat_max_decharge_kw=Decimal('17.92'))
+
+
+class MatchInverterCapacitePublieeHybrideTest(SimpleTestCase):
+    """D-HYB-6 (fondateur 26/11/2026) — le devis résidentiel juge un HYBRIDE à la puissance PV
+    maximale de sa fiche (D-HYB-1, la règle du calepinage) ; 1,35 × AC reste la borne d'un
+    onduleur réseau et d'un hybride qui ne publie rien. Cas du fondateur : lead 1742,
+    48 × 715 W = 34,32 kWc sur un hybride Deye 20 kW (fiche : 40 kWc)."""
+
+    def _choisir(self, onduleurs, hybrid=True):
+        return _match_inverter(onduleurs, n_panels=48, panel_w=715, hybrid=hybrid,
+                               module=sd.specs_module_pour_produit(_panneau_710()))
+
+    def test_le_cas_du_fondateur_est_retenu_dans_la_capacite_publiee(self):
+        h20 = _hybride_deye(20, 20, Decimal('40.0'))
+        res = self._choisir([h20])
+        self.assertAlmostEqual(res['dc_kw'], 34.32)
+        self.assertGreater(res['dc_kw'] / 20, sd.MAX_DC_AC)  # 1,72 : écarté avant D-HYB-6
+        self.assertIs(res['inverter'], h20)
+        self.assertTrue(res['compatible'])
+        self.assertTrue(res['reason'].startswith('onduleur le plus petit'), res['reason'])
+
+    def test_au_dela_de_la_capacite_publiee_l_hybride_est_ecarte(self):
+        h15, h20 = _hybride_deye(15, 15, Decimal('30.0')), _hybride_deye(20, 20, Decimal('40.0'))
+        self.assertIs(self._choisir([h15, h20])['inverter'], h20)  # 34,32 > 30 : le 15 kW sort
+        seul = self._choisir([_hybride_deye(21, 20, Decimal('30.0'))])
+        self.assertIn('plus grosse puissance retenue', seul['reason'])
+
+    def test_un_hybride_sans_valeur_publiee_garde_1_35(self):
+        res = self._choisir([_hybride_deye(22, 20)])
+        self.assertIn('plus grosse puissance retenue', res['reason'])
+
+    def test_un_onduleur_reseau_garde_1_35_meme_avec_une_valeur_publiee(self):
+        reseau = _onduleur(23, 'Onduleur réseau Huawei 20kW Triphasé', ond_ac_kw=Decimal('20'),
+                           ond_i_max_mppt_a=Decimal('36.0'), ond_isc_max_mppt_a=Decimal('54.0'),
+                           ond_dc_max_kwc=Decimal('40.0'))
+        res = self._choisir([reseau], hybrid=False)
+        self.assertIs(res['inverter'], reseau)
+        self.assertIn('plus grosse puissance retenue', res['reason'])
+        # Sous 1,35 × AC, rien ne change : 36 × 715 W = 25,74 kWc ≤ 27 kWc.
+        sous = _match_inverter([reseau], n_panels=36, panel_w=715, hybrid=False,
+                               module=sd.specs_module_pour_produit(_panneau_710()))
+        self.assertTrue(sous['compatible'], sous['string_design'] and sous['string_design']['warnings'])

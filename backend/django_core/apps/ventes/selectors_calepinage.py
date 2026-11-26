@@ -350,6 +350,33 @@ def borne_dc_ac_du_moteur_devis(mode_installation=None):
     return float(MAX_DC_AC)
 
 
+def capacite_publiee_du_produit(produit):
+    """D-HYB-6 (fondateur 26/11/2026) — kWc DC qu'un onduleur du CATALOGUE porte quand il est
+    HYBRIDE et que sa fiche publie sa puissance PV maximale (``dc_max_kwc``), ``None`` sinon
+    (onduleur réseau, ou hybride sans valeur publiée : la borne de ratio habituelle s'applique).
+
+    LA règle du calepinage, sans seconde implémentation : hybride reconnu par le rôle, puis le
+    port batterie de la fiche, puis le nom (``core.electrique.onduleurs.onduleur_est_hybride``,
+    mêmes entrées que ``calepinage/services/ratio_devis.famille_de_l_onduleur``), capacité par
+    ``core.electrique.onduleurs.capacite_publiee_hybride``. Lit le produit déjà chargé."""
+    from types import SimpleNamespace
+
+    from apps.stock.selectors import specs_for_produit
+    from core.electrique.onduleurs import capacite_publiee_hybride
+    from core.product_roles import role_declare
+
+    if produit is None:
+        return None
+    fiche = specs_for_produit(produit) or {}
+    nom = getattr(produit, 'nom', '') or ''
+    return capacite_publiee_hybride(SimpleNamespace(
+        designation=nom, role=role_declare(getattr(produit, 'role_devis', None)) or '',
+        famille_par_nom=autre_famille_d_onduleur_par_nom(nom),
+        bat_max_charge_kw=fiche.get('bat_max_charge_kw'),
+        bat_max_decharge_kw=fiche.get('bat_max_decharge_kw'),
+        dc_max_kwc=fiche.get('dc_max_kwc')))
+
+
 #: ACAL1950 — les statuts d'un devis que le client a déjà reçu.
 STATUTS_DEVIS_RECU = ('envoye', 'accepte')
 
