@@ -64,12 +64,17 @@ function lire(leadId) {
 }
 
 /** Relit la conception d'une fiche OUVERTE (aucun effet si aucune fiche ne la consomme).
- *  `attendre` (défaut : oui) — l'appel suit une ACTION qui peut créer la première conception : un 404 est alors « en cours
- *  de calcul » (relu, borné). `attendre: false` (l'historique a changé) : une relecture simple, un 404 reste calme. */
+ *  `attendre` (défaut : oui) — l'appel suit une ACTION (fiche enregistrée…) : un 404 est alors « en cours de calcul » (relu,
+ *  borné) SAUF si l'état de CETTE fiche est déjà l'état calme `vide` (un 404 à l'ouverture ou la fin d'une attente bornée) :
+ *  un lead qui n'a légitimement AUCUNE conception (données manquantes) ne doit pas afficher « en cours de calcul » pendant 24 s
+ *  après chaque enregistrement. Une lecture, alors, et rien d'autre : si la saisie fait naître la conception, le serveur écrit
+ *  « Conception recalculée » à l'historique (crm/receivers.py::_noter_conception_recalculee, première version comprise) et
+ *  l'historique relu (30 s, retour de fenêtre, notification) relit la conception (`attendre: false`).
+ *  `attendre: false` (l'historique a changé) : une relecture simple, un 404 reste calme. */
 export function relireConceptionLead(leadId, { attendre = true } = {}) {
   if (!leadId || !entrees.has(leadId)) return
   const e = entrees.get(leadId)
-  e.attente = attendre
+  e.attente = attendre && e.snap.statut !== 'vide'
   e.essais = 0
   clearTimeout(e.minuterie)
   e.minuterie = null

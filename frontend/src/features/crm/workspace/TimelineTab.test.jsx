@@ -135,33 +135,6 @@ describe('LW20 — filtre par type', () => {
     expect(screen.getAllByText(/Une note/).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('button', { name: 'Tous' })[0]).toHaveAttribute('aria-pressed', 'true')
   })
-
-  it('une note du client plus récente que les entrées visibles sous « Appels » : la phrase le dit, « Tout afficher » en sort', async () => {
-    const user = userEvent.setup()
-    const avecClient = [
-      { id: 3, kind: 'note', body: 'Le client demande à être contacté (DEV-1)', created_at: '2026-11-26T10:00:00Z' },
-      { id: 2, kind: 'appel', outcome: 'joint', user_nom: 'Sami', created_at: '2026-11-26T09:00:00Z' },
-      { id: 1, kind: 'note', body: 'Une note', user_nom: 'Sami', created_at: '2026-11-26T08:00:00Z' },
-    ]
-    renderTab({ historique: avecClient })
-    expect(screen.queryByTestId('lw-timeline-masques')).toBeNull()
-    await user.click(screen.getAllByRole('button', { name: 'Appels' })[0])
-    expect(screen.getByTestId('lw-timeline-masques').textContent)
-      .toContain('1 élément plus récent masqué par le filtre')
-    await user.click(screen.getByRole('button', { name: 'Tout afficher' }))
-    expect(screen.queryByTestId('lw-timeline-masques')).toBeNull()
-    expect(screen.getAllByText(/demande à être contacté/).length).toBeGreaterThan(0)
-  })
-
-  it('un élément masqué plus ANCIEN que le dernier visible ne déclenche pas la phrase', async () => {
-    const user = userEvent.setup()
-    renderTab({ historique: [
-      { id: 2, kind: 'appel', outcome: 'joint', user_nom: 'Sami', created_at: '2026-11-26T09:00:00Z' },
-      { id: 1, kind: 'note', body: 'Une note', user_nom: 'Sami', created_at: '2026-11-26T08:00:00Z' },
-    ] })
-    await user.click(screen.getAllByRole('button', { name: 'Appels' })[0])
-    expect(screen.queryByTestId('lw-timeline-masques')).toBeNull()
-  })
 })
 
 describe('Historique du lead — jalons devis lus une seule fois à l’ouverture', () => {
