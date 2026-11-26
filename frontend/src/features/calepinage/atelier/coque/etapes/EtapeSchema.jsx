@@ -135,7 +135,7 @@ export default function EtapeSchema({ calepinageId: id }) {
   // LOT 6 — le document structuré `schema_electrique` (chaînes, batterie, côté réseau) quand le serveur le
   // sert ; sinon (serveur plus ancien) le plan composé des deux réponses, comme avant.
   const doc = schema?.schema_electrique ?? null
-  const plan = planDepuisDocument(doc) ?? (balisage ? planSchemaEnBlocs(schema, resultat) : null)
+  const plan = planDepuisDocument(doc, schema?.edition?.libelles) ?? (balisage ? planSchemaEnBlocs(schema, resultat) : null)
   const motifCoteReseau = doc?.cote_reseau?.etat === 'a_calculer' ? doc.cote_reseau.motif : null
   const enBlocs = Boolean(plan) && !detaille
   const legende = enBlocs ? plan.legende : (balisage ? lignesLegende(schema.svg) : [])

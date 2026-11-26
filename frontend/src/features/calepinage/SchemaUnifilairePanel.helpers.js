@@ -405,11 +405,13 @@ function affectationDuDocument(doc) {
 }
 
 /** Le document traduit vers les deux réponses (`schema-unifilaire/`, `resultat/`) que lit `planSchemaEnBlocs`. */
-function entreesDuDocument(doc) {
+function entreesDuDocument(doc, libelles) {
   const o = doc.onduleurs?.[0] ?? null
+  // Libellé ÉDITÉ (`edition.libelles`, servi avec le dessin) : il l'emporte sur le titre du document.
+  const blocs = blocsDuDocument(doc).map((b) => (libelles[b.clef] ? { ...b, titre: libelles[b.clef] } : b))
   return {
     // `svg` ne sert à `planSchemaEnBlocs` qu'à savoir si une terre est tracée.
-    schema: { blocs: blocsDuDocument(doc), edition: { libelles: {} }, svg: doc.terre ? '<line stroke-dasharray="1"/>' : '' },
+    schema: { blocs, edition: { libelles }, svg: doc.terre ? '<line stroke-dasharray="1"/>' : '' },
     resultat: {
       electrique: {
         affectation: affectationDuDocument(doc),
@@ -446,9 +448,9 @@ function carteBatterie(batterie, onduleur) {
  * Le modèle du schéma en blocs lu sur le document `schema_electrique`, ou `null` quand il n'y a ni
  * panneau ni onduleur à dessiner. `plan.batterie` n'existe que si le document porte une batterie.
  */
-export function planDepuisDocument(doc) {
+export function planDepuisDocument(doc, libelles = {}) {
   if (!doc || typeof doc !== 'object' || !Array.isArray(doc.chaines)) return null
-  const { schema, resultat } = entreesDuDocument(doc)
+  const { schema, resultat } = entreesDuDocument(doc, libelles ?? {})
   const plan = planSchemaEnBlocs(schema, resultat)
   if (!plan) return null
   if (!avecChaines(doc)) {

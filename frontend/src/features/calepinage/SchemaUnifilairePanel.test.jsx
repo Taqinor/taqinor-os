@@ -710,6 +710,13 @@ describe('planDepuisDocument — le document schema_electrique (lot 6)', () => {
     }
   })
 
+  it('un libellé édité (parafoudre DC renommé) s\'affiche par le chemin du document', () => {
+    const plan = planDepuisDocument(doc('avec_batterie'), { parafoudre_dc: 'Protection foudre toit' })
+    expect(plan.coffretDc.organes.find((o) => o.clef === 'parafoudre_dc').nom).toBe('Protection foudre toit')
+    expect(plan.coffretDc.organes.find((o) => o.clef === 'sectionneur_dc').nom).toBe('Sectionneur')
+    expect(dessiner(plan)).toHaveTextContent('Protection foudre toit')
+  })
+
   it('aucun onduleur servi : aucun bloc onduleur inventé (pas de plan)', () => {
     const d = doc('avec_batterie')
     d.onduleurs = []

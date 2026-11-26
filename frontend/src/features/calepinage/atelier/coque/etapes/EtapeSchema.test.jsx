@@ -243,6 +243,16 @@ describe('EtapeSchema — sous-écran « Schéma électrique » (ACAL1301)', () 
     expect(new URLSearchParams(screen.getByTestId('temoin-url').textContent).get('onglet')).toBe('materiel-electrique')
   })
 
+  it('document servi : le libellé édité du schéma (edition.libelles) est celui qui s\'affiche', async () => {
+    servir()
+    const options = exempleContrat('ventes', 'schema_electrique').schema_electrique.options
+    calepinageApi.calepinages.schemaUnifilaire.mockResolvedValue({ data: {
+      ...sld(), schema_electrique: structuredClone(options.avec_batterie), edition: { libelles: { parafoudre_dc: 'Foudre toit' }, reperes: {} } } })
+    rendre()
+    const blocs = await screen.findByTestId('csch-blocs')
+    await waitFor(() => expect(blocs).toHaveTextContent('Foudre toit'))
+  })
+
   it('document sans batterie : aucune carte batterie', async () => {
     servir()
     const options = exempleContrat('ventes', 'schema_electrique').schema_electrique.options
