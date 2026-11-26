@@ -319,3 +319,45 @@ class LectureToleranteTest(SimpleTestCase):
         self.assertEqual(edition['libelles'], {'ddr': 'OK'})
         self.assertEqual(edition['reperes'], {})
         self.assertEqual(edition['positions'], {'ddr': {'x': 1.0, 'y': 2.0}})
+
+
+class CartoucheClientDuLeadTest(SimpleTestCase):
+    """ACAL1713 — « Client » du cartouche : le client, sinon le nom du LEAD."""
+
+    def _calepinage(self, **champs):
+        from types import SimpleNamespace
+
+        base = {'client': None, 'lead_id': None, 'company': 'societe-1',
+                'created_at': None, 'titre': 'Villa'}
+        base.update(champs)
+        return SimpleNamespace(**base)
+
+    def test_un_calepinage_de_lead_porte_le_nom_du_lead(self):
+        from unittest import mock
+
+        from apps.calepinage.services.sld import cartouche_du_calepinage
+
+        lead = mock.Mock(nom='Alami', prenom='Sara')
+        with mock.patch('apps.crm.selectors.get_company_lead',
+                        return_value=lead) as lecture:
+            cartouche = cartouche_du_calepinage(self._calepinage(lead_id=7))
+        self.assertEqual(cartouche['client'], 'Alami Sara')
+        lecture.assert_called_once_with('societe-1', 7, avec_corbeille=True)
+
+    def test_le_client_rattache_reste_prioritaire_sans_lire_le_lead(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services.sld import cartouche_du_calepinage
+
+        with mock.patch('apps.crm.selectors.get_company_lead') as lecture:
+            cartouche = cartouche_du_calepinage(self._calepinage(
+                client=SimpleNamespace(nom='Société Atlas'), lead_id=7))
+        self.assertEqual(cartouche['client'], 'Société Atlas')
+        lecture.assert_not_called()
+
+    def test_ni_client_ni_lead_laisse_le_champ_vide(self):
+        from apps.calepinage.services.sld import cartouche_du_calepinage
+
+        self.assertEqual(
+            cartouche_du_calepinage(self._calepinage())['client'], '')
