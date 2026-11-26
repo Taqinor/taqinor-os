@@ -581,19 +581,22 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     const surCarte = document.createElement('div')
     document.body.appendChild(surCarte)
     const coque = { noeuds: { surCarte, panneau: null, pied: null }, prendrePied: () => () => {} }
-    render(
+    const arbre = (api) => (
       <MemoryRouter initialEntries={[`/calepinage/${id}?onglet=verdict-electrique`]}>
         <Routes>
           <Route path="/calepinage/:id" element={(
             <ContexteCoque.Provider value={coque}>
-              <EtapeElectrique calepinageId={id} builderApi={builderApi} ouvert="verdict-electrique"
+              <EtapeElectrique calepinageId={id} builderApi={api} ouvert="verdict-electrique"
                 action={{ libelle: 'Voir les résultats', onClick: () => {} }} />
               <TemoinUrl />
             </ContexteCoque.Provider>
           )} />
         </Routes>
-      </MemoryRouter>,
+      </MemoryRouter>
     )
+    const { rerender } = render(arbre(builderApi))
+    // Le constructeur de toit peut être prêt APRÈS l'arrivée des lignes : le test le fournit plus tard.
+    surCarte.fournirConstructeur = (api) => rerender(arbre(api))
     return surCarte
   }
   afterEach(() => { document.body.innerHTML = '' })
@@ -970,6 +973,18 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(screen.getByTestId('acal617-carte-43')).toBeTruthy()
     expect(screen.queryByTestId('acal617-lien')).toBeNull()
     expect(calepinageApi.calepinages.configurationsOnduleur).toHaveBeenCalledTimes(1)
+  })
+
+  it('S3 — le constructeur du toit prêt APRÈS l’arrivée des lignes : la teinte est quand même poussée, une seule fois', async () => {
+    servirEtape()
+    const carte = rendreEtape({ builderApi: null })
+    await within(carte).findByTestId('cal-sur-carte-resume') // les lignes sont arrivées, aucun constructeur
+    const builderApi = { setAffectationChaines: vi.fn() }
+    carte.fournirConstructeur(builderApi)
+    await waitFor(() => expect(builderApi.setAffectationChaines).toHaveBeenCalledTimes(1))
+    expect(builderApi.setAffectationChaines).toHaveBeenCalledWith(resultat().electrique.affectation, 'chaine')
+    // Un constructeur sans la méthode (ancien build) : rien n'est appelé, aucune erreur.
+    carte.fournirConstructeur({})
   })
 
   it('carte : pastille « Chaînes | Onduleur | Câble côté panneaux » servie, légende des couleurs dessinées, barre d’actions', async () => {

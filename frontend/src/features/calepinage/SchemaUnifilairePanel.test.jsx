@@ -444,6 +444,26 @@ describe('PlancheSchema, légende et cartouche (ACAL1301)', () => {
     expect(echelleDeDepart(echelleAjustee(1200, 872))).toBe(1)
   })
 
+  it('S3 — echelleAjustee sur les DEUX dimensions : la plus petite des deux, le bas n’est jamais coupé', () => {
+    expect(echelleAjustee(668, 872, 400, 640)).toBe(0.625) // tablette portrait : la hauteur limite (0,766 en largeur)
+    expect(echelleAjustee(668, 872, 700, 640)).toBe(0.766) // hauteur suffisante : la largeur seule
+    expect(echelleAjustee(1200, 872, 900, 640)).toBe(1)
+    expect(echelleAjustee(668, 872, 0, 640)).toBe(0.766) // hauteur non mesurée : largeur seule
+    expect(echelleAjustee(668, 872, 400, null)).toBe(0.766)
+  })
+
+  it('S3 — cadre mesuré en hauteur : l’échelle de départ la prend en compte et la vue réclame la hauteur du dessin', async () => {
+    const haut = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(560)
+    await avecCadre(780, async () => {
+      render(<PlancheSchema dessin={<svg />} largeurDessin={872} hauteurDessin={800} />)
+      const vue = screen.getByTestId('csch-vue')
+      // largeur : 0,894 ; hauteur : 560 / 800 = 0,7 -> 0,7 est sous le plancher 0,75 : départ à 0,75
+      await waitFor(() => expect(vue).toHaveAttribute('data-echelle', '0.75'))
+      expect(vue.style.getPropertyValue('--csch-h-dessin')).toBe('600px')
+    })
+    haut.mockRestore()
+  })
+
   const avecCadre = async (largeur, essai) => {
     const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(largeur)
     const ancien = globalThis.ResizeObserver

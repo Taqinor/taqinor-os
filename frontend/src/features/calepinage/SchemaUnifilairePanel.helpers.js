@@ -171,11 +171,16 @@ export const CIBLE_DU_BLOC = {
 
 /** S2 (tablette) — l'échelle de DÉPART du schéma en blocs : tout le dessin tient dans la largeur du cadre (jamais
     coupé), sans jamais agrandir au-delà de 1 ; sans mesure exploitable (cadre pas encore mesuré), 1. */
-export function echelleAjustee(largeurCadre, largeurDessin) {
+export function echelleAjustee(largeurCadre, largeurDessin, hauteurCadre = null, hauteurDessin = null) {
   const cadre = Number(largeurCadre)
   const dessin = Number(largeurDessin)
   if (!Number.isFinite(cadre) || !Number.isFinite(dessin) || cadre <= 0 || dessin <= 0) return 1
-  return Math.min(1, Math.floor((cadre / dessin) * 1000) / 1000)
+  const enLargeur = Math.min(1, Math.floor((cadre / dessin) * 1000) / 1000)
+  // Cadre ET dessin mesurés en hauteur : l'échelle est la plus petite des deux (le bas du dessin n'est jamais coupé).
+  const h = Number(hauteurCadre)
+  const hd = Number(hauteurDessin)
+  if (!Number.isFinite(h) || !Number.isFinite(hd) || h <= 0 || hd <= 0) return enLargeur
+  return Math.min(enLargeur, Math.floor((h / hd) * 1000) / 1000)
 }
 
 /** Coupe un texte en lignes d'au plus `max` caractères (mots entiers), `n` lignes au plus (… au bout). */

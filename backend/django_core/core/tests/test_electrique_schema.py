@@ -928,7 +928,8 @@ class LeDessinDuSchemaElectrique(unittest.TestCase):
             self.assertIn('fill="%s"' % couleur, svg)
             self.assertIn('stroke="%s"' % couleur, svg)
         textes = _textes(svg)
-        for attendu in ("Batterie", "3 unités", "charge / décharge", "Liaison batterie"):
+        # « charge / décharge » s'écrit sur deux lignes (elle ne franchit plus la boîte de l'onduleur), même sens.
+        for attendu in ("Batterie", "3 unités", "charge /", "décharge", "Liaison batterie"):
             self.assertIn(attendu, textes)
         self.assertNotIn("Batterie", _textes(self._svg(_mono_reseau())))
 
@@ -941,6 +942,19 @@ class LeDessinDuSchemaElectrique(unittest.TestCase):
     def _chaines(self, n):
         return [{"numero": k, "nb_panneaux": 12, "onduleur": 1, "entree": 1 + k % 2}
                 for k in range(1, n + 1)]
+
+    def test_s3_l_etiquette_de_la_liaison_batterie_ne_franchit_aucune_boite(self):
+        from core.electrique import schema_electrique as se
+        espace = se._X_BATTERIE - (se._X_ONDULEUR + se._L_ONDULEUR)
+        for langue in ("fr", "en", "ar"):
+            svg = self._svg(_hybride_batterie(), langue, unites_batterie=3)
+            self.assertIn('data-schema="electrique"', svg)
+            libelle = se._libelle("charge", langue)
+            self.assertNotIn(libelle, _textes(svg), langue)  # plus d'étiquette d'un seul tenant
+            morceaux = [t for t in _textes(svg) if t in (libelle.split(" / ")[0] + " /", libelle.split(" / ", 1)[1])]
+            self.assertEqual(len(morceaux), 2, langue)
+            for ligne in morceaux:  # ≈ 0,6 em par signe à 8 px : plus étroit que l'écart entre les deux boîtes
+                self.assertLessEqual(len(ligne) * 8.0 * 0.6, espace, (langue, ligne))
 
     def test_s3_une_valeur_ne_quitte_jamais_son_unite_et_l_ellipse_tombe_sur_un_mot(self):
         from core.electrique.schema_electrique import (
