@@ -283,7 +283,7 @@ describe('étape Panneaux — panneau de droite', () => {
     document.getElementById('rp9-pan-module-select').value = 'produit-1'
     rendre()
     const facture = screen.getByTestId('cal-panneaux-option-facture')
-    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc · conception'))
+    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc · Factures du lead'))
     expect(facture.querySelector('[data-zone="conception-du-lead"]')).toBeNull()
   })
 
@@ -333,7 +333,7 @@ describe('étape Panneaux — panneau de droite', () => {
     document.getElementById('rp9-reco-kwc').textContent = '8,64 kWc'
     document.getElementById('rp9-reco-prod').textContent = '9 589 kWh/an'
     document.getElementById('rp9-reco-cover').textContent = '144 %'
-    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc · conception · ≈ 144 % de la consommation'), { timeout: 3000 })
+    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc · Factures du lead · ≈ 144 % de la consommation'), { timeout: 3000 })
     expect(facture).toHaveAttribute('aria-pressed', 'true')
     expect(max).toHaveAttribute('aria-pressed', 'false')
     // l'autre carte garde les chiffres lus quand elle était posée
@@ -351,7 +351,7 @@ describe('étape Panneaux — panneau de droite', () => {
     const surInput = espion('#rp9-need-input', 'input')
     rendre()
     const facture = screen.getByTestId('cal-panneaux-option-facture')
-    await waitFor(() => expect(facture).toHaveTextContent('Couvrir la factureRecommandé1 panneau · 0,71 kWc · sur 6 nécessaires'))
+    await waitFor(() => expect(facture).toHaveTextContent('Couvrir la factureRecommandé1 panneau · 0,71 kWc · 6 cible (Factures du lead) · 5 de moins que la cible'))
     expect(facture).not.toHaveTextContent('4,26')
     expect(facture).not.toHaveTextContent('6 panneaux')
     fireEvent.click(facture)
@@ -361,7 +361,7 @@ describe('étape Panneaux — panneau de droite', () => {
   // ACAL1331 (D-ACAL-76) — calepinage vierge : le constructeur a posé la taille de la cible et l'a dite dans sa note ;
   // le Guidé la DIT sous « Combien de panneaux ? ». Le commercial ajuste (« + ») : la note change, la phrase part.
   it('ACAL1331 — la taille posée d’elle-même est dite ; ajustée, la phrase part', async () => {
-    const phrase = 'Posé d’après la facture : 12 panneaux · 6,96 kWc — ajustez si besoin.'
+    const phrase = 'Posé d’après les factures du lead : 12 panneaux · 6,96 kWc — ajustez si besoin.'
     monterConstructeur({ besoin: '12', note: phrase })
     rendre()
     const dite = () => document.querySelector('[data-zone="taille-auto"]')
@@ -541,7 +541,7 @@ describe('étape Panneaux — panneau de droite', () => {
     couverture_pct: { valeur: pct, unite: '%', source: 'conception', etat: 'servi' },
   })
   it.each([
-    ['la conception servie a la taille de la carte', 2.84, '4 panneaux · 2,84 kWc · conception · ≈ 54 % de la consommation'],
+    ['la conception servie a la taille de la carte', 2.84, '4 panneaux · 2,84 kWc · Factures du lead · ≈ 54 % de la consommation'],
     ['la conception servie a une autre taille', 3.55, null],
   ])('ACAL1613 — la carte recommandée non posée dit sa part : %s', async (_cas, kwcServi, attendu) => {
     servir({ cible: { panneaux: 4, kwc: 2.84, module_wc: 710 } })
@@ -925,7 +925,7 @@ describe('étape Panneaux — sur la carte', () => {
     monterConstructeur({ besoin: '8', panneaux: '8 × 710 W', kwc: '5,68 kWc', cover: '—', note: '' })
     rendre()
     const facture = screen.getByTestId('cal-panneaux-option-facture')
-    await waitFor(() => expect(facture).toHaveTextContent('8 panneaux · 4,40 kWc · conception'))
+    await waitFor(() => expect(facture).toHaveTextContent('8 panneaux · 4,40 kWc · Factures du lead'))
     expect(facture).toHaveAttribute('aria-pressed', 'true')
     expect(document.querySelector('[data-zone="pose-posee"]')).toHaveTextContent('Posé : 8 panneaux · 5,68 kWc')
     expect(facture).not.toHaveTextContent('5,68')
@@ -934,7 +934,7 @@ describe('étape Panneaux — sur la carte', () => {
     document.getElementById('faux-constructeur').remove()
     monterConstructeur({ besoin: '8', panneaux: '8 × 550 W', kwc: '4,40 kWc', cover: '—', note: '' })
     rendre()
-    await waitFor(() => expect(screen.getByTestId('cal-panneaux-option-facture')).toHaveTextContent('8 panneaux · 4,40 kWc · conception'))
+    await waitFor(() => expect(screen.getByTestId('cal-panneaux-option-facture')).toHaveTextContent('8 panneaux · 4,40 kWc · Factures du lead'))
     expect(document.querySelector('[data-zone="pose-posee"]')).toBeNull()
   })
 

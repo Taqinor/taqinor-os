@@ -105,7 +105,7 @@ describe('PretAEnvoyer — ordre des listes (H3)', () => {
     )
     expect(await screen.findByTestId('compte')).toHaveTextContent('6 points à régler')
     await waitFor(() => expect(screen.getByTestId('cal-etape-electrique')).toHaveTextContent('6 à régler'))
-    expect(screen.getByTestId('cal-pret-bons')).toHaveTextContent('Contrôles · 4 bons')
+    expect(screen.getByTestId('cal-pret-bons')).toHaveTextContent('Contrôles · 4 bons sur 10')
     // 6 + 4 : les lignes de la carte sont exactement les contrôles comptés.
     expect(codesAffiches(screen.getByTestId('cal-pret-a-envoyer'))).toHaveLength(10)
     expect(screen.getByTestId('cal-pret-ligne-verdict_electrique')).toHaveTextContent('Bloquant : 2 points du dossier')

@@ -17,8 +17,9 @@ Run :
     python manage.py test apps.calepinage.tests.test_selectors -v2
 """
 from datetime import timedelta
+from types import SimpleNamespace
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from apps.calepinage import selectors
@@ -160,3 +161,12 @@ class AffaireTest(BaseLecture):
     # sont partis avec lui ; reste la lecture du devis.
     def test_devis_sans_calepinage(self):
         self.assertIsNone(selectors.calepinage_du_devis(999, self.company))
+
+
+class SansAccesDuResponsableTest(SimpleTestCase):
+    """T4-X3-016 (lot 8) — ``responsable_sans_acces`` sans base : rien à
+    signaler sans responsable."""
+
+    def test_sans_responsable_rien_a_signaler(self):
+        self.assertFalse(selectors.responsable_sans_acces(
+            SimpleNamespace(responsable=None, lead_id=3)))

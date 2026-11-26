@@ -351,7 +351,7 @@ function ListeCourte({ controles, testIdCompte, onRegler, attente = false, avis 
       </div>
       {!premiere && autres.length > 0 && (
         <details className="cel-pret-bons" data-testid="cal-pret-bons">
-          <summary>{nbBons > 0 ? `Contrôles · ${nbBons} ${nbBons > 1 ? 'bons' : 'bon'}` : 'Autres contrôles'}</summary>
+          <summary>{nbBons > 0 ? `Contrôles · ${nbBons} ${nbBons > 1 ? 'bons' : 'bon'} sur ${lignes.length}` : 'Autres contrôles'}</summary>
           <ul className="cel-pret-lignes">
             {autres.map((c) => <LigneCourte key={c.code} c={c} premierARegler={premierARegler} onRegler={onRegler} />)}
           </ul>
