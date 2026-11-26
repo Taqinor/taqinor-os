@@ -131,6 +131,82 @@ class OrientationPoseeTest(SimpleTestCase):
         self.assertEqual(pan['roof_type'], 'flat')
 
 
+def _toit_plat_vide():
+    """D-ACAL-149 — toit plat au curseur (22), sans tables ni module."""
+    return {'version': 2,
+            'outline': [[33.5, -7.6], [33.5, -7.5999], [33.5001, -7.5999], [33.5001, -7.6]],
+            'zones': [{'id': 'z1', 'label': 'Terrasse', 'roofType': 'flat', 'pitchDeg': 22,
+                       'facingAzimuthDeg': 180,
+                       'vertices': [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001],
+                                    [-7.6, 33.5001]]}]}
+
+
+class ToitPlatAuCurseurTest(SimpleTestCase):
+    """D-ACAL-149 — la lecture corrigée est OPT-IN ; par défaut, au bit près."""
+
+    def _devis(self, ouvert):
+        import datetime
+
+        from apps.ventes.domain.regles_calcul import COUPURE_TOIT_PLAT
+        jour = datetime.datetime(*COUPURE_TOIT_PLAT, 9, 0)
+        envoi = jour if ouvert else jour - datetime.timedelta(days=1)
+        return SimpleNamespace(statut='envoye', date_envoi=envoi, date_creation=None,
+                               regles_calcul=1, roof_layout=_toit_plat_vide())
+
+    def test_defaut_lecture_d_avant(self):
+        zone = _toit_plat_vide()['zones'][0]
+        o = orientation_du_pan(zone)
+        self.assertEqual(o['inclinaison_deg'], 22)
+        self.assertNotIn('inclinaison_supposee', o)
+        cfg = extract_roof_config(_toit_plat_vide())
+        self.assertEqual(cfg['inclinaison_deg'], 22)
+        self.assertNotIn('suppositions', cfg)
+
+    def test_lecture_corrigee_sans_inclinaison_et_dite(self):
+        from apps.ventes.domain.geometrie import SUPPOSITION_INCLINAISON_TOIT_PLAT
+        from apps.ventes.services import pans_du_document
+
+        zone = _toit_plat_vide()['zones'][0]
+        o = orientation_du_pan(zone, toit_plat_corrige=True)
+        self.assertIsNone(o['inclinaison_deg'])
+        self.assertTrue(o['inclinaison_supposee'])
+        cfg = extract_roof_config(_toit_plat_vide(), toit_plat_corrige=True)
+        self.assertIsNone(cfg['inclinaison_deg'])
+        self.assertEqual(cfg['suppositions'], [SUPPOSITION_INCLINAISON_TOIT_PLAT])
+        self.assertNotIn('inclinaison_supposee', cfg['pans'][0])
+        self.assertIsNone(pans_du_document(_toit_plat_vide(), toit_plat_corrige=True)[0]['inclinaison_deg'])
+        self.assertEqual(pans_du_document(_toit_plat_vide())[0]['inclinaison_deg'], 22)
+        from apps.ventes.domain.geometrie import lire_layout
+        self.assertEqual(lire_layout(_toit_plat_vide()).toiture['inclinaison_deg'], 22)
+        self.assertEqual(lire_layout(_toit_plat_vide(), toit_plat_corrige=True).toiture['suppositions'],
+                         [SUPPOSITION_INCLINAISON_TOIT_PLAT])
+        # Les tables posées priment toujours, et rien n'est supposé.
+        pose = orientation_du_pan(_zone_plate_inclinee(), toit_plat_corrige=True)
+        self.assertEqual((pose['inclinaison_deg'], 'inclinaison_supposee' in pose), (10, False))
+
+    def test_annexe_et_planche_concordent_de_part_et_d_autre_de_la_coupure(self):
+        """Le cas limite : tous les pans plats, sans tables ni module. Fermé, la
+        planche et l'annexe « paramètres du site » disent 22 (ce que le client a
+        reçu) ; ouvert, aucune des deux ne dit 22 (planche : pente 0 du toit ;
+        annexe : inclinaison omise, la production prend le réglage société)."""
+        from apps.calepinage.services.planche import geometrie_de_planche
+        from apps.ventes.calepinage_options import parametres_site_publics
+        from apps.ventes.domain.regles_calcul import toit_plat_ouvert
+
+        for ouvert in (False, True):
+            devis = self._devis(ouvert)
+            self.assertIs(toit_plat_ouvert(devis), ouvert)
+            annexe = parametres_site_publics(devis, _toit_plat_vide()) or {}
+            planche = geometrie_de_planche(_toit_plat_vide(), toit_plat_corrige=toit_plat_ouvert(devis))
+            pente = planche['pans'][0]['pente_deg']
+            if ouvert:
+                self.assertNotIn('inclinaison_deg', annexe)
+                self.assertEqual(pente, 0.0)
+            else:
+                self.assertEqual(annexe.get('inclinaison_deg'), 22.0)
+                self.assertEqual(pente, 22.0)
+
+
 class ZonesEtudeDuDevisTest(TestCase):
     def setUp(self):
         self.co = Company.objects.create(nom='ACAL58', slug='acal58')

@@ -273,10 +273,15 @@ def _planche_calepinage(devis):
             calepinage_du_devis as _lire_calepinage,
             conception_figee_du_devis as _lire_conception_figee)
 
+        from apps.ventes.domain.regles_calcul import toit_plat_ouvert
+
         calepinage = _lire_calepinage(getattr(devis, 'pk', None),
                                       getattr(devis, 'company', None))
         if calepinage is None:
             return "", ""
+        # D-ACAL-149 — un devis envoyé avant la coupure garde la pente d'un toit
+        # plat qu'il a reçue (la valeur du curseur) ; sinon elle vaut 0.
+        toit_plat = toit_plat_ouvert(devis)
         # ACAL92 (D-ACAL-3) — un devis REMPLACÉ (calepinage re-lié à sa
         # remplaçante) se rend de SA conception figée (« Version envoyée »,
         # sinon ``Devis.roof_layout``), jamais de la conception courante.
@@ -289,7 +294,8 @@ def _planche_calepinage(devis):
                 figee.get('layout_hash', ''), '', None)
             svg = _calepinage_services.rendre_planche_svg(
                 calepinage, pied=empreinte,
-                document=figee['roof_layout']) or ""
+                document=figee['roof_layout'],
+                toit_plat_corrige=toit_plat) or ""
             return _svg_planche_inline(svg), empreinte
         # ACAL968 (D-ACAL-37) — un devis qui ne chiffre qu'une partie des
         # surfaces imprime la planche de SA copie (les seules surfaces vendues).
@@ -301,7 +307,8 @@ def _planche_calepinage(devis):
             None)
         svg = _calepinage_services.rendre_planche_svg(
             calepinage, pied=empreinte,
-            document=devis.roof_layout if partiel else None) or ""
+            document=devis.roof_layout if partiel else None,
+            toit_plat_corrige=toit_plat) or ""
         return _svg_planche_inline(svg), empreinte
     except Exception:  # noqa: BLE001 — une planche absente ne casse pas un PDF (D-ENF22-BLE001)
         logger.warning("CAL182: planche de calepinage indisponible pour le "
