@@ -215,7 +215,9 @@ const ventesApi = {
   // QX22 — aperçu LECTURE SEULE du message WhatsApp (aucune mutation de statut) :
   // peuple la modale d'aperçu ; seul le clic-through sur wa.me (whatsappDevis
   // ci-dessus) marque réellement le devis « Envoyé ».
-  whatsappPreviewDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/whatsapp-preview/`, payload),
+  // T4-X4-009 — le seul appelant (`handleEnvoyer`) dit lui-même chaque refus ; le toast générique de l'intercepteur
+  // (« Numéro de téléphone invalide. ») s'empilait sinon sur son message juste.
+  whatsappPreviewDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/whatsapp-preview/`, payload, { suppressErrorToast: true }),
   // QJ28 — « Contacter mon supérieur » : notifie le supérieur du vendeur sur ce devis.
   contacterSuperieur: (id, payload = {}) => api.post(`/ventes/devis/${id}/contacter-superieur/`, payload),
   // VX215 — boucle de retour « pris en charge » : l'émetteur voit si sa
