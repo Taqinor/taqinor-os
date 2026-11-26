@@ -719,10 +719,12 @@ class ProvenanceDesPostesTest(unittest.TestCase):
         from apps.calepinage.services.rapport.pertes import html_de_section
 
         etapes = [
+            # Seule la PROVENANCE est lue ici : aucune part de perte chiffrée
+            # (garde CAL238) ; la colonne « part » imprime alors « — ».
             {'etape': 'lid', 'libelle': 'LID', 'kwh_avant': 100.0, 'kwh_apres': 98.0,
-             'perte_pct': 2.0, 'motif_omission': '', 'source': 'saisie'},
+             'motif_omission': '', 'source': 'saisie'},
             {'etape': 'iam', 'libelle': 'IAM', 'kwh_avant': 98.0, 'kwh_apres': 97.0,
-             'perte_pct': 1.0, 'motif_omission': '', 'source': 'texte',
+             'motif_omission': '', 'source': 'texte',
              'reference': 'core.calepinage.soleil (CALX146)'}]
         return html_de_section({'resultat': {'cascade': {'etapes': etapes, 'total_pct': 3.0},
                                              'pertes': pertes},
