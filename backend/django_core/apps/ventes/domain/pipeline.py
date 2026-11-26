@@ -657,6 +657,9 @@ def _reecrire_quantites_soeurs(lignes_in, nb_panneaux, affleurants=0, avertissem
     from apps.ventes.domain.composition import quantites_derivees_du_compte
 
     derivees = quantites_derivees_du_compte(nb_panneaux, affleurants)  # ACAL927
+    # ACAL1238 — le kit de fixation suit les affleurants comme à la composition (mot-clé de
+    # ``composition_residentielle._kit_de_fixation``, quantité ``min(affleurants, nb)``).
+    kit = min(int(affleurants or 0), int(nb_panneaux or 0))
     for spec in lignes_in:
         if not isinstance(spec, dict):
             continue
@@ -665,6 +668,8 @@ def _reecrire_quantites_soeurs(lignes_in, nb_panneaux, affleurants=0, avertissem
         if spec.get('optionnelle') or spec.get('quantite_manuelle'):
             continue
         categorie = classer_produit(spec.get('designation') or '')
+        if kit > 0 and 'kit de fixation' in (spec.get('designation') or '').lower():
+            categorie, derivees = 'kit', dict(derivees, kit=kit)
         if categorie in derivees:
             if _entier_lisible(spec.get('quantite')) != _entier_lisible(derivees[categorie]):
                 _dire_ajustement(avertissements, spec.get('designation'), spec.get('quantite'),
