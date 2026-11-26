@@ -401,11 +401,12 @@ describe('DiagrammePertes — barres depuis les énergies servies (ACAL140)', ()
       { ...deuxEtapes[0], source: 'texte' },
       { ...deuxEtapes[1], source: 'societe' },
     ]
-    calepinageApi.calepinages.resultat.mockResolvedValue({ data: {
+    const resultatAvecSources = () => ({
       ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple'),
       cascade: { ...exempleContrat('calepinage', 'calepinage_pertes_cascade', 'exemple').cascade,
         etapes, total_pct: 19 },
-    } })
+    })
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: resultatAvecSources() })
     rendre()
     const table = within(await screen.findByTestId('calx48-cascade-detaillee')).getByRole('table')
     expect(within(table).getByText('Page publiée')).toBeInTheDocument()
