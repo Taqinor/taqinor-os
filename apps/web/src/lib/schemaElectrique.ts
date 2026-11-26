@@ -301,8 +301,7 @@ const nf = (n: number, lg: keyof Tri): string => {
 const tri = (f: (lg: keyof Tri) => string): Tri => ({ fr: f('fr'), en: f('en'), ar: f('ar') });
 
 export interface LigneOrgane {
-  texte: string; // « F1 · Fusibles gPV · 25 A × 8 », champs null omis
-  titreTri: Tri;
+  texte: Tri; // « F1 · Fusibles gPV · 25 A × 8 » dans chaque langue, champs null omis
 }
 export interface PlanChaine {
   numero: number;
@@ -321,17 +320,17 @@ export interface PlanSchema {
   coffretDc: { organes: LigneOrgane[] } | null;
   onduleurs: Array<{ designation: string | null; puissanceKw: Tri | null; entrees: Tri | null }>;
   batterie: { designation: string | null; unites: Tri | null; capacite: Tri | null; tension: Tri | null } | null;
+  // Côté alternatif : dessiné SEULEMENT quand le serveur l'a calculé (`etat: calcule`) ; jamais de bloc
+  // en creux, de motif vendeur ni d'étage « à confirmer » côté client (« rien d'incertain côté client »).
   coteReseau: {
-    etat: EtatCoteReseau;
-    motif: string | null;
     coffretAc: { organes: LigneOrgane[] } | null;
-    blocs: Array<{ cle: string; titre: Tri; detail: Tri | null; aConfirmer: boolean }>;
+    blocs: Array<{ cle: string; titre: Tri; detail: Tri | null }>;
   } | null;
   legende: { reseau: boolean; batterie: boolean; terre: boolean; sections: Tri | null };
 }
 
 const TITRES_ORGANES: Record<string, Tri> = {
-  fusibles: { fr: 'Fusibles gPV', en: 'gPV fuses', ar: 'فيوزات gPV' },
+  fusibles: { fr: 'Fusibles gPV', en: 'gPV fuses', ar: 'منصهرات gPV' },
   parafoudre_dc: { fr: 'Parafoudre DC Type 2', en: 'DC surge arrester Type 2', ar: 'مانع صواعق DC من النوع 2' },
   sectionneur_dc: { fr: 'Sectionneur DC', en: 'DC isolator', ar: 'فاصل DC' },
   disjoncteur_ac: { fr: 'Disjoncteur AC', en: 'AC breaker', ar: 'قاطع AC' },
@@ -353,15 +352,26 @@ function ligneOrgane(o: SchemaOrgane): LigneOrgane {
   const base = TITRES_ORGANES[o.clef];
   // Le français est celui servi (libellé éventuellement édité) ; EN/AR par clef connue, sinon tel quel.
   const titreTri: Tri = base ? { fr: o.titre, en: base.en, ar: base.ar } : soloTri(o.titre);
-  const parts = [o.repere, o.titre, o.calibre].filter((x): x is string => !!x);
   const q = o.quantite !== null && o.quantite > 1 ? ` × ${o.quantite}` : '';
-  return { texte: parts.join(' · ') + q, titreTri };
+  const ligne = (lg: keyof Tri): string =>
+    [o.repere, titreTri[lg], o.calibre].filter((x): x is string => !!x).join(' · ') + q;
+  return { texte: tri(ligne) };
 }
+
+/** Accord arabe : singulier, duel, pluriel 3-10, puis singulier accusatif au-delà de 10. */
+function nombreAr(n: number, f: { un: string; deux: string; pluriel: string; plus: string }): string {
+  if (n === 1) return f.un;
+  if (n === 2) return f.deux;
+  return n >= 3 && n <= 10 ? `${n} ${f.pluriel}` : `${n} ${f.plus}`;
+}
+const AR_PANNEAU = { un: 'لوح واحد', deux: 'لوحان', pluriel: 'ألواح', plus: 'لوحًا' };
+const AR_UNITE = { un: 'وحدة واحدة', deux: 'وحدتان', pluriel: 'وحدات', plus: 'وحدة' };
+const AR_ENTREE = { un: 'مدخل واحد', deux: 'مدخلان', pluriel: 'مداخل', plus: 'مدخلًا' };
 
 function plurielPanneaux(n: number, lg: keyof Tri): string {
   if (lg === 'fr') return `${n} panneau${n > 1 ? 'x' : ''}`;
   if (lg === 'en') return `${n} panel${n > 1 ? 's' : ''}`;
-  return n === 1 ? 'لوح واحد' : n >= 3 && n <= 10 ? `${n} ألواح` : `${n} لوحًا`;
+  return nombreAr(n, AR_PANNEAU);
 }
 
 export function planSchema(doc: SchemaDoc): PlanSchema {
@@ -397,13 +407,8 @@ export function planSchema(doc: SchemaDoc): PlanSchema {
   const sansDecoupage =
     !doc.chainesReparties && chaines.length === 0 && doc.panneaux.nombre !== null && doc.panneaux.nombre > 0
       ? {
-          titre: tri((lg) =>
-            lg === 'fr'
-              ? `Panneaux · ${plurielPanneaux(doc.panneaux.nombre as number, lg)}`
-              : lg === 'en'
-                ? `Panels · ${plurielPanneaux(doc.panneaux.nombre as number, lg)}`
-                : `الألواح · ${plurielPanneaux(doc.panneaux.nombre as number, lg)}`,
-          ),
+          // « 35 panneaux » (le mot n'est pas répété) ; la répartition en chaînes n'est pas dessinée.
+          titre: tri((lg) => plurielPanneaux(doc.panneaux.nombre as number, lg)),
           puissance: puissanceDe(doc.panneaux.nombre),
         }
       : null;
@@ -416,7 +421,7 @@ export function planSchema(doc: SchemaDoc): PlanSchema {
         ? {
             fr: `${o.nbEntrees} entrée${o.nbEntrees > 1 ? 's' : ''}`,
             en: `${o.nbEntrees} input${o.nbEntrees > 1 ? 's' : ''}`,
-            ar: `${o.nbEntrees} ${o.nbEntrees > 1 ? 'مداخل' : 'مدخل'}`,
+            ar: nombreAr(o.nbEntrees, AR_ENTREE),
           }
         : null,
   }));
@@ -430,7 +435,7 @@ export function planSchema(doc: SchemaDoc): PlanSchema {
             ? {
                 fr: `${b.unites} unité${b.unites > 1 ? 's' : ''}`,
                 en: `${b.unites} unit${b.unites > 1 ? 's' : ''}`,
-                ar: `${b.unites} ${b.unites > 1 ? 'وحدات' : 'وحدة'}`,
+                ar: nombreAr(b.unites, AR_UNITE),
               }
             : null,
         capacite:
@@ -447,30 +452,22 @@ export function planSchema(doc: SchemaDoc): PlanSchema {
       }
     : null;
 
-  const aCalculer = doc.coteReseau.etat === 'a_calculer';
   const blocsReseau: NonNullable<PlanSchema['coteReseau']>['blocs'] = [];
   const pousser = (cle: string, b2: SchemaBloc | null): void => {
     if (!b2) return;
     const t = TITRES_BLOCS[b2.titre] ?? soloTri(b2.titre);
     const d = b2.detail !== null ? (DETAILS_BLOCS[b2.detail] ?? soloTri(b2.detail)) : null;
-    blocsReseau.push({ cle, titre: t, detail: d, aConfirmer: false });
+    blocsReseau.push({ cle, titre: t, detail: d });
   };
+  // Étage moyenne tension : « à confirmer » dans le contrat → jamais dessiné côté client.
   pousser('compteur_production', doc.compteurProduction);
   pousser('tgbt', doc.tgbt);
-  for (const m of doc.etageMt) {
-    blocsReseau.push({ cle: `mt_${m.clef}`, titre: soloTri(m.titre), detail: m.detail !== null ? soloTri(m.detail) : null, aConfirmer: true });
-  }
   pousser('reseau', doc.reseau);
 
   const coteReseau =
-    doc.coteReseau.etat === 'hors_reseau'
-      ? null
-      : {
-          etat: doc.coteReseau.etat,
-          motif: doc.coteReseau.motif,
-          coffretAc: !aCalculer && doc.coffretAc ? { organes: doc.coffretAc.map(ligneOrgane) } : null,
-          blocs: blocsReseau,
-        };
+    doc.coteReseau.etat === 'calcule'
+      ? { coffretAc: doc.coffretAc ? { organes: doc.coffretAc.map(ligneOrgane) } : null, blocs: blocsReseau }
+      : null;
 
   const sec = (l: { sectionMm2: number | null; longueurM: number | null } | null, lg: keyof Tri): string | null => {
     if (!l || l.sectionMm2 === null) return null;

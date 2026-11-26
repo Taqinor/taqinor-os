@@ -1816,6 +1816,9 @@ const viewerConfig = show3d ? JSON.stringify({ model: viewerModel, roofOutlineLa
 const sldSchema = ok && data ? (() => { const c = choisirSld(data); return c.mode === 'schema' ? c.schema : null; })() : null;
 const showSld = ok && data ? (sldSchema !== null || hasSldSvg(data)) : false;
 const sldSvg = showSld && !sldSchema ? (data!.sld_svg ?? '') : '';
+// Option cochée sans document : la section entière reste cachée (ni titre orphelin, ni note) — jamais
+// le schéma de l'autre option sous son nom. Le script `setupSldOption` la rouvre si le client change d'option.
+const sldAbsentPourSelection = !!sldSchema && !!preselect && !sldSchema.options[preselect];
 const sldFilename = showSld ? sldSvgFilename(reference) : '';
 
 // ── L-NIV-VU — « Version simplifiée », affichée SEULEMENT si c'est vrai.
@@ -6997,8 +7000,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
            de génération (CLAUDE.md règle #4, flux PDF inchangé). */}
       {showSld && (
         <>
-        <div class="seam-soft" aria-hidden="true"></div>
-      <section id="sld" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8 sm:pt-20" data-track-section="sld">
+        <div class="seam-soft" id="sld-seam" aria-hidden="true" hidden={sldAbsentPourSelection}></div>
+      <section id="sld" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8 sm:pt-20" data-track-section="sld" hidden={sldAbsentPourSelection}>
           {/* PREVIEW v2 (fondateur Reda, 2026-09-16) — le sur-titre, le <h2> et
               la phrase d'introduction occupaient un écran pour annoncer un
               document que presque personne n'ouvre AVANT de signer (et que le
@@ -10587,7 +10590,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
 
   // ── LOT 6 (SCHEL-W2) — le schéma électrique suit l'option cochée. Un panneau par option servie
   // (`[data-sld-option]`) ; on montre celui de la case cochée, jamais celui de l'autre option
-  // (option sans document → la note « non disponible » ou rien). Sans schéma neuf (ancien payload)
+  // (option sans document → toute la section cachée, aucune note). Sans schéma neuf (ancien payload)
   // aucun `[data-sld-option]` dans le DOM : ce bloc ne fait rien. À l'impression, le repli
   // <details> du schéma est ouvert pour que la feuille le porte.
   (function setupSldOption(): void {
@@ -10599,8 +10602,11 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       panels.forEach((el) => {
         el.hidden = el.dataset.sldOption !== coche.value;
       });
-      const indispo = document.querySelector<HTMLElement>('[data-sld-indispo]');
-      if (indispo) indispo.hidden = panels.some((el) => !el.hidden);
+      const montre = panels.some((el) => !el.hidden);
+      const section = document.getElementById('sld');
+      const seam = document.getElementById('sld-seam');
+      if (section) section.hidden = !montre;
+      if (seam) seam.hidden = !montre;
     };
     document.querySelectorAll<HTMLInputElement>('input[name="option"]').forEach((radio) => {
       radio.addEventListener('change', sync);
