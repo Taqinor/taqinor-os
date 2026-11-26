@@ -71,7 +71,13 @@ export async function deposerOuMettreEnFile(calepinageId, fichier, champs) {
   }
 }
 
-/** Rejoue DANS L'ORDRE : `{ envoyees, refusees: [{message, champs}], restantes }` ; sans réseau, on s'arrête et la file reste intacte. */
+/** Une réponse qui ne juge pas l'envoi (session expirée, serveur en cours de redémarrage, trop de requêtes) : la garder
+    en file et réessayer plus tard. */
+const reponsePassagere = (statut) => statut === 401 || statut === 408 || statut === 429 || statut >= 500
+
+/** Rejoue DANS L'ORDRE : `{ envoyees, refusees: [{message, champs}], restantes }` ; sans réseau ou sur une réponse
+    PASSAGÈRE (ACAL1974 : un 502 pendant un deploy rangeait la photo parmi les « refusées »), on s'arrête et la file
+    reste intacte ; seul un vrai refus du serveur retire la photo et la dit. */
 export async function rejouerFile(calepinageId) {
   let envoyees = 0
   const refusees = []
@@ -81,7 +87,7 @@ export async function rejouerFile(calepinageId) {
       await calepinageApi.calepinages.ajouterPhoto(op.meta.calepinageId, corpsPhoto(fichier, op.meta))
       envoyees += 1
     } catch (err) {
-      if (!err?.response) break
+      if (!err?.response || reponsePassagere(err.response.status)) break
       refusees.push(refusServeur(err))
     }
     await majAtomique(file(), (cur) => cur.filter((o) => o.client_op_id !== op.client_op_id))
@@ -133,9 +139,6 @@ if (typeof window !== 'undefined') {
 }
 
 const rejeuxReleve = new Map()
-
-/** Une réponse qui ne juge pas le relevé : la garder en file et réessayer plus tard. */
-const reponsePassagere = (statut) => statut === 401 || statut === 408 || statut === 429 || statut >= 500
 
 /** Rejoue le relevé en file : `{ envoye, releve, refus: {message, champs} | null, restantes }`. Sans réseau on s'arrête et
     la file reste intacte ; un refus du serveur (réponse HTTP) retire l'entrée et la dit ; deux rejeux simultanés (retour du

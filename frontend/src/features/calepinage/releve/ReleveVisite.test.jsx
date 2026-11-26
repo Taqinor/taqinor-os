@@ -463,6 +463,37 @@ describe('ACAL1949 — le relevé gardé est celui de SON utilisateur, porte sa 
   })
 })
 
+describe('ACAL1974 — une photo hors ligne n’est jamais « refusée » sur une réponse passagère du serveur', () => {
+  const PHOTO = { arrayBuffer: async () => new ArrayBuffer(3), name: 'drone.jpg', type: 'image/jpeg' }
+  const CHAMPS = { genre: 'drone', prise_le: '2026-11-20' }
+  let reel
+  beforeEach(async () => {
+    reel = await vi.importActual('../fileEnvoiPhotos') // la VRAIE file des photos (simulée dans le reste du fichier)
+    api.ajouterPhoto = vi.fn()
+    enLigne = false
+    expect(await reel.deposerOuMettreEnFile('1', PHOTO, CHAMPS)).toEqual({ enFile: true })
+    enLigne = true
+  })
+
+  it('502 puis 401 au rejeu : la photo reste en file, rien n’est dit refusé ; la réponse normale suivante l’envoie', async () => {
+    for (const status of [502, 401]) {
+      api.ajouterPhoto.mockRejectedValueOnce({ response: { status, data: {} } })
+      expect(await reel.rejouerFile('1')).toEqual({ envoyees: 0, refusees: [], restantes: 1 })
+    }
+    api.ajouterPhoto.mockResolvedValueOnce({ data: { id: 7 } })
+    expect(await reel.rejouerFile('1')).toEqual({ envoyees: 1, refusees: [], restantes: 0 })
+    expect(api.ajouterPhoto).toHaveBeenCalledTimes(3)
+  })
+
+  it('un vrai refus (400) retire la photo de la file et le dit', async () => {
+    api.ajouterPhoto.mockRejectedValueOnce({ response: { status: 400, data: { photo: ['Format refusé.'] } } })
+    const r = await reel.rejouerFile('1')
+    expect(r.envoyees).toBe(0)
+    expect(r.refusees).toHaveLength(1)
+    expect(r.restantes).toBe(0)
+  })
+})
+
 describe('ACAL1836 — le relevé sur la maquette v2 : la carte du toit, les cotes reprises, la feuille', () => {
   // Un toit RECTANGLE créé 12,4 × 8,6 m (sommets servis en [lng, lat] autour de Casablanca).
   const rectangle = () => {
