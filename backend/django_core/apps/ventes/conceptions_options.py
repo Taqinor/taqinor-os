@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """D-ACAL-158 (fondateur, 26/11/2026) — la conception électrique de CHAQUE option
 d'un devis à deux options, rangée à l'envoi (déplacée hors de
-``electrical_service``, fichier de 2 000 lignes qui ne grossit plus). Les
+``electrical_service`` pour qu'il reste sous le seuil de 2 000 lignes du garde
+C20 FICHIER_MUR). Les
 lecteurs (``electrical_service._document_de_l_option``, ``annexes_par_option``),
 l'envoi (``domain.envoi.geler_document_engage``) et le POST
 ``conception-electrique`` l'importent ici, à l'appel (aucune façade)."""
@@ -27,8 +28,9 @@ logger = logging.getLogger("apps.ventes.electrical_service")
 
 def _entree_conceptions_figees(devis):
     """L'entrée rangée à l'envoi (aussi sur un mono-option, ``options: {}``), ou
-    ``None`` : brouillon (même une V2 qui l'a héritée de sa V1) ou devis envoyé
-    avant D-ACAL-158."""
+    ``None`` : brouillon (par prudence : aucune copie — révision, duplication —
+    ne reporte ``clauses_appliquees``, ``domain.creation_clone.cloner_devis``) ou
+    devis envoyé avant D-ACAL-158."""
     from apps.ventes.domain.envoi import TYPE_CONCEPTIONS_OPTIONS_FIGEES
     if getattr(devis, "statut", None) == "brouillon":
         return None
@@ -163,7 +165,7 @@ def figer_conceptions_des_options(devis, *, garder=False):
     client ne montre alors rien pour elle (D-ACAL-142) — et l'envoi ne
     s'arrête jamais : ne lève pas, journalise. ``garder`` (correction sur place)
     reprend les conceptions déjà rangées dont les entrées n'ont pas bougé ; à
-    l'envoi, tout est recalculé (une V2 range les conceptions de SON envoi).
+    l'envoi, tout est recalculé (une révision, qui ne copie pas ``clauses_appliquees``, range celles de SON envoi).
     Aucun statut, aucune ligne, aucun prix (règle #4).
 
     Revue (4) — tout se passe dans un point de sauvegarde (un par option, un

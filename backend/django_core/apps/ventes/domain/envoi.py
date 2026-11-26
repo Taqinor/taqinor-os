@@ -88,7 +88,9 @@ TYPE_DOC_TEXTS_GELES = 'doc_texts_geles'
 #: devis à DEUX options, la conception électrique de l'option que
 #: ``electrical_design`` ne porte pas, rangée à l'envoi :
 #: ``{'type': …, 'options': {<clé d'option>: {'design': {…}, 'hash': '…'}}}``.
-#: Écrite et lue par ``electrical_service`` seulement ; jamais imprimée.
+#: Écrite par ``conceptions_options.figer_conceptions_des_options`` ; lue par lui
+#: et par ``electrical_service`` (fiche ERP, page client, annexe PDF) ; jamais
+#: imprimée. Aucune copie de devis (``creation_clone.cloner_devis``) ne la reporte.
 TYPE_CONCEPTIONS_OPTIONS_FIGEES = 'conceptions_options_figees'
 
 TYPES_GELS_INTERNES = frozenset({

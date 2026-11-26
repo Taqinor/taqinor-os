@@ -534,7 +534,7 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
         es.rafraichir_conception_electrique_devis(devis)               # correction sur place
         self.assertEqual(devis.clauses_appliquees, [])                 # jamais rétro-rempli
         co.figer_conceptions_des_options(devis)
-        devis.statut = "brouillon"                                    # V2 qui hérite de l'entrée
+        devis.statut = "brouillon"                                    # brouillon porteur d'une entrée : ignorée
         self.assertEqual(es.schema_electrique_public(devis, standard=False, option_totals=_TOTAUX), avant)
         mono = _FauxDevis(lignes=[
             _FausseLigne("Panneau PV 710 Wc", 14, produit=_panneau()),
