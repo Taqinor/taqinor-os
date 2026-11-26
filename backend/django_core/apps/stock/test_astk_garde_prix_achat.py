@@ -594,6 +594,54 @@ class MasquePrixVenteSansBase(SimpleTestCase):
         self.assertEqual(entiere.data, {'nom': 'Panneau', 'prix_vente': '1500'})
 
 
+class MasqueAchatRapportsSansBase(SimpleTestCase):
+    """Lot 9 — le masque d'achat des rapports produit ne déclenche jamais
+    l'authentification sur une réponse d'erreur (jumeau de MasquePrixVenteSansBase)."""
+
+    def _vue(self, action='valorisation'):
+        from apps.stock.permissions import MasqueAchatRapportsProduitMixin
+
+        class Base:
+            def finalize_response(self, request, response, *args, **kwargs):
+                return response
+
+        class Vue(MasqueAchatRapportsProduitMixin, Base):
+            pass
+
+        vue = Vue()
+        vue.action = action
+        return vue
+
+    def test_reponse_erreur_inchangee_sans_lire_user(self):
+        from rest_framework.response import Response
+
+        class RequeteNonAuthentifiee:
+            @property
+            def user(self):
+                raise AssertionError('authentification déclenchée par le masque')
+
+        erreur = Response({'detail': 'Non authentifié.', 'total': 1}, status=401)
+        erreur.exception = True
+        self.assertIs(self._vue().finalize_response(RequeteNonAuthentifiee(), erreur), erreur)
+        self.assertEqual(erreur.data, {'detail': 'Non authentifié.', 'total': 1})
+
+    def test_utilisateur_deja_authentifie_sans_le_droit_perd_les_prix_achat(self):
+        from types import SimpleNamespace
+
+        from rest_framework.response import Response
+
+        def requete(voit):
+            return SimpleNamespace(_user=SimpleNamespace(
+                is_authenticated=True, portee='interne', can_view_buy_prices=voit))
+
+        masquee = Response({'total': 10, 'valeur': 5, 'nom': 'x'}, status=200)
+        self._vue().finalize_response(requete(False), masquee)
+        self.assertEqual(masquee.data, {'nom': 'x'})
+        entiere = Response({'total': 10, 'valeur': 5, 'nom': 'x'}, status=200)
+        self._vue().finalize_response(requete(True), entiere)
+        self.assertEqual(entiere.data, {'total': 10, 'valeur': 5, 'nom': 'x'})
+
+
 class GardePrixVente(TestCase):
     """D-ACAL-152 (fondateur, 26/11/2026) — Technicien et Technicien
     responsable (sans ``prix_vente_voir``) ne reçoivent AUCUN prix de vente du
