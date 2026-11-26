@@ -288,6 +288,109 @@ class ReviserRelieTest(BaseApiCalepinage):
         self.assertEqual(v.roof_layout['zones'][0]['geometry']['count'], 8)
 
 
+class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
+    """R6-N1 — les études de la V2 voient le calepinage qu'elle porte.
+
+    Calepinage RÉEL simulé (client météo rejoué, fiches matériel injectées,
+    accès solaire 0,9 par module : perte d'ombrage MESURÉE), lié à la V1
+    envoyée. La perte attendue est celle que ``ombrage_servi`` sert à la V1
+    AVANT la révision ; l'espion n'enveloppe que le calcul des études et y lit
+    la VRAIE ``perte_ombrage_du_devis`` (l'entrée que le moteur horaire et le
+    balayage reçoivent, ``domain.entrees``). ROUGE AVANT : un seul calcul, dans
+    le clonage, avant la re-liaison — perte ``None``."""
+
+    def setUp(self):
+        super().setUp()
+        from unittest import mock
+
+        from apps.calepinage.services.simulation import simuler_calepinage
+
+        from .acal_livrables_helpers import patch_materiel
+        from .test_acal_multi_pans import _ClientParOrientation, _layout, _zone
+        from .test_calx5_simulation import MATERIEL
+
+        reseau = mock.patch('urllib.request.urlopen',
+                            side_effect=OSError('R6-N1 hors réseau'))
+        reseau.start()
+        self.addCleanup(reseau.stop)
+        self.materiel = patch_materiel
+        self.v1 = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MOIS}-0931',
+            client=self.client_a, lead=self.lead,
+            statut=Devis.Statut.BROUILLON, taux_tva=Decimal('20'),
+            mode_installation='residentiel')
+        layout = _layout(_zone(1, 16, 90.0), _zone(2, 8, 270.0))
+        for zone in layout['zones']:
+            zone['geometry']['solarAccess'] = {
+                'values': [0.9] * zone['geometry']['count'],
+                'method': {'horizon': False, 'rangees': False,
+                           'resolution': 'annuelle',
+                           'description': 'Accès solaire annuel'},
+                'assumptions': {'periode': 'annee'},
+                'computedAt': '2026-10-01T10:00:00Z'}
+        self.c = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, client=self.client_a,
+            devis=self.v1, titre='R6-N1 révision', roof_layout=layout)
+        with patch_materiel():
+            simuler_calepinage(self.c, client=_ClientParOrientation(),
+                               materiel=MATERIEL, enregistrer=True)
+            servi = selectors.ombrage_servi(self.v1.pk, self.company)
+        Devis.objects.filter(pk=self.v1.pk).update(
+            statut=Devis.Statut.ENVOYE, date_envoi=timezone.now())
+        self.v1.refresh_from_db()
+        self.assertFalse(servi['perime'])
+        self.assertIsNotNone(servi['global'])
+        self.assertGreater(float(servi['global']), 0.0)
+        self.perte_servie = float(servi['global'])
+
+    def _reviser(self, *, hors_transaction=False):
+        from apps.ventes.horaire.ombrage import perte_ombrage_du_devis
+        from apps.ventes.tests.test_acal_devis_revise_evenement import (
+            espionner_etudes, hors_transaction as forcer_hors_transaction)
+
+        journal = []
+        espionner_etudes(self, journal, mesure=perte_ombrage_du_devis)
+        if hors_transaction:
+            forcer_hors_transaction(self)
+        with self.materiel(), self.captureOnCommitCallbacks(execute=True):
+            v2 = reviser_devis(self.v1, user=self.user)
+        return v2, [appel for appel in journal if appel[1] == v2.pk]
+
+    def test_hors_transaction_un_calcul_avec_l_ombrage_du_calepinage(self):
+        v2, appels = self._reviser(hors_transaction=True)
+        self.c.refresh_from_db()
+        self.assertEqual(self.c.devis_id, v2.pk)
+        self.assertEqual(len(appels), 1, appels)
+        self.assertTrue(appels[0][2])  # force
+        self.assertAlmostEqual(appels[0][3], self.perte_servie, places=6)
+
+    def test_dans_une_transaction_recalcule_apres_la_reliaison(self):
+        v2, appels = self._reviser()
+        self.assertEqual(len(appels), 2, appels)
+        self.assertIsNone(appels[0][3])  # le clonage, avant la re-liaison
+        self.assertAlmostEqual(appels[-1][3], self.perte_servie, places=6)
+        # Règle #4 : la V1 n'est ni recalculée ni réécrite, son statut tient.
+        self.v1.refresh_from_db()
+        self.assertEqual(self.v1.statut, Devis.Statut.ENVOYE)
+
+    def test_reliaison_en_echec_la_v2_garde_des_etudes_sans_calepinage(self):
+        """L'abonné du calepinage échoue (journalisé) : la V2 a quand même
+        ses études — celles d'hier, sans calepinage — et le calepinage reste
+        sur la V1. Rien n'est muet."""
+        from unittest import mock
+
+        with mock.patch('apps.calepinage.services.liens.lier_devis',
+                        side_effect=RuntimeError('lien refusé')), \
+                self.assertLogs('apps.calepinage.receivers', 'ERROR') as sortie:
+            v2, appels = self._reviser(hors_transaction=True)
+        self.assertTrue(any('ACAL92' in ligne for ligne in sortie.output))
+        self.c.refresh_from_db()
+        self.assertEqual(self.c.devis_id, self.v1.pk)
+        self.assertEqual(len(appels), 1, appels)
+        self.assertIsNone(appels[0][3])
+        self.assertTrue(Devis.objects.filter(pk=v2.pk).exists())
+
+
 class SuitLeDevisEnvoyeTest(BaseApiCalepinage):
     """ACAL1955 (D-ACAL-89) — à l'envoi d'un devis, le calepinage ouvert du lead
     resté sur un brouillon jamais envoyé le suit ; sinon rien ne bouge. Abonné
