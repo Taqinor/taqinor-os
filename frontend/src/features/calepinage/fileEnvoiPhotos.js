@@ -7,7 +7,6 @@
    le dernier relevé terminé remplace le précédent) et le même rejeu : aucun second système. */
 import calepinageApi from '../../api/calepinageApi'
 import { createBinaryOutboxStore } from '../../lib/offlineStore'
-import { AUTH_LOGOUT_EVENT } from '../../providers/session-bridge'
 import { store } from '../../store'
 import {
   BINARY_MAX_BYTES, BINARY_MAX_OPS, OutboxQuotaError, espaceDisponible, majAtomique, makeOpId,
@@ -130,12 +129,11 @@ export async function oublierReleveEnFile(calepinageId) {
   await majAtomique(file(), (cur) => cur.filter((o) => !releveDuCompte(o, calepinageId)))
 }
 
-/** ACAL1949 — vide TOUS les relevés gardés (déconnexion, poste partagé) ; les photos ne sont pas touchées. */
+/** ACAL1949 — vide TOUS les relevés gardés ; les photos ne sont pas touchées. La purge de la DÉCONNEXION ne passe pas
+    par ici : `providers/session-bridge.js::emitAuthLogout` vide la file par type, même si ce module n'a jamais été
+    chargé dans la page. */
 export async function viderRelevesEnFile() {
   await majAtomique(file(), (cur) => cur.filter((o) => o.op_type !== OP_RELEVE_CALEPINAGE))
-}
-if (typeof window !== 'undefined') {
-  window.addEventListener(AUTH_LOGOUT_EVENT, () => { viderRelevesEnFile().catch(() => undefined) })
 }
 
 const rejeuxReleve = new Map()

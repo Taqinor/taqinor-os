@@ -152,11 +152,15 @@ export function createModuleOutboxStore(module) {
 // vidée serait pire que pas de file du tout). Sans IndexedDB, on retombe sur la
 // mémoire et on le DIT (`persistent: false`) pour que l'UI reste honnête : la
 // file ne survivra pas à la fermeture de l'onglet.
+// La mémoire de repli est UNE par page, comme la clé IndexedDB qu'elle remplace : tous les lecteurs (files des
+// installations et du calepinage, purge de la déconnexion) voient le même contenu.
+let memoireBinaire = null
 export function createBinaryOutboxStore() {
   try {
     if (typeof indexedDB !== 'undefined' && indexedDB) {
       return { store: idbAdapter(BINARY_KEY), persistent: true }
     }
   } catch { /* repli */ }
-  return { store: memoryAdapter(), persistent: false }
+  memoireBinaire ??= memoryAdapter()
+  return { store: memoireBinaire, persistent: false }
 }

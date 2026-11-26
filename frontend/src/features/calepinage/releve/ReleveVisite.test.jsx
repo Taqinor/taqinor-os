@@ -39,7 +39,11 @@ vi.mock('../capteursTelephone', () => ({
   arreter: (...a) => capteurs.arreter(...a),
 }))
 
-const { mettreReleveEnFile, oublierReleveEnFile, rejouerReleve, releveEnAttente, viderRelevesEnFile } = await import('../fileEnvoiPhotos')
+const {
+  OP_PHOTO_CALEPINAGE, OP_RELEVE_CALEPINAGE, mettreReleveEnFile, oublierReleveEnFile, rejouerReleve, releveEnAttente,
+  viderRelevesEnFile,
+} = await import('../fileEnvoiPhotos')
+const { TYPES_BINAIRES_VIDES_A_LA_DECONNEXION, emitAuthLogout } = await import('../../../providers/session-bridge')
 const { store } = await import('../../../store')
 const { setCredentials, logout } = await import('../../auth/store/authSlice')
 const { default: ReleveVisite } = await import('./ReleveVisite')
@@ -456,10 +460,15 @@ describe('ACAL1949 — le relevé gardé est celui de SON utilisateur, porte sa 
     connecter(1)
     await mettreReleveEnFile('1', { corps: CORPS })
     expect(await releveEnAttente('1')).toBe(true)
-    window.dispatchEvent(new Event('taqinor:auth-logout'))
+    emitAuthLogout() // le point de passage de TOUTE déconnexion (locale ou propagée d'un autre onglet)
     await waitFor(async () => expect(await releveEnAttente('1')).toBe(false))
     connecter(1)
     expect(await releveEnAttente('1')).toBe(false)
+  })
+
+  it('la purge centrale connaît les types de CETTE file (photos et relevé)', () => {
+    expect(TYPES_BINAIRES_VIDES_A_LA_DECONNEXION).toEqual(
+      expect.arrayContaining([OP_PHOTO_CALEPINAGE, OP_RELEVE_CALEPINAGE]))
   })
 })
 
