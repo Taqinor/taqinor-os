@@ -909,13 +909,17 @@ def reappliquer_lead(devis, *, user=None, company=None):
     with transaction.atomic():
         avant = debut_de_geste_devis(devis, user)
         ttc_avant = ttc_du_devis(devis)  # AGNR77 — TTC lu AVANT le geste
+        residentiel = (getattr(devis, 'mode_installation', '') or 'residentiel') == 'residentiel'
+        if lead is not None and not residentiel and getattr(devis, 'statut', None) == 'brouillon':
+            _retirer_copies_du_lead(devis, lead)  # ACAL1228 — le lead gagne (un envoyé : inchangé)
         appliquer(devis, IntentionDevis(
             origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR, company=company,
             force_etudes=True))
-        if lead is not None and (getattr(devis, 'mode_installation', '')
-                                 or 'residentiel') == 'residentiel':
+        if lead is not None and residentiel:
             avertissements.extend(
                 _reconcilier_sur_le_lead(devis, lead, company, user))
+        elif lead is not None:
+            avertissements.append(PHRASE_TAILLE_CI)
         devis.refresh_from_db()
         # AGNR77 — LA règle d'AGNR49 au nouveau TTC ; dépassement ⇒ 409
         # ``{detail, echeancier}``, tout le geste annulé.
@@ -928,6 +932,29 @@ def reappliquer_lead(devis, *, user=None, company=None):
             corrige = True
     return {'champs_repris': list(champs), 'corrige_apres_envoi': corrige,
             'avertissements': avertissements}
+
+
+#: ACAL1228 — jumelle des « Taille non recalculée » résidentielles, pour un devis C&I.
+PHRASE_TAILLE_CI = ('Taille non recalculée : la taille d\'un devis C&I suit ses lignes ; '
+                    'appliquez une taille pour la recalculer')
+
+
+def _retirer_copies_du_lead(devis, lead):
+    """ACAL1228 — retire de ``etude_params`` les copies « devis » des feuilles que le lead
+    renseigne (``etude_ci.CHEMINS_LEAD`` → ``FEUILLES``) : la couche devis passant devant le
+    lead, le rafraîchissement gardait sinon les horaires d'hier (1x8 au lieu de 3x8)."""
+    from apps.crm.selectors import entrees_ci_du_lead
+    from apps.ventes.domain.etude_ci import CHEMINS_LEAD, FEUILLES, _vide
+
+    params, chemins = dict(devis.etude_params or {}), dict(FEUILLES)
+    for entree in (entrees_ci_du_lead(lead) or {}).get('entrees') or ():
+        tete, _, feuille = (chemins.get(CHEMINS_LEAD.get(entree.get('chemin') or '')) or '').partition('.')
+        bloc = params.get(tete)
+        if bloc is not None and not _vide(entree.get('valeur')) and (not feuille or isinstance(bloc, dict)):
+            params[tete] = {k: v for k, v in bloc.items() if k != feuille} if feuille else None
+    retire = {cle: v or None for cle, v in params.items() if v != (devis.etude_params or {}).get(cle)}
+    if retire:
+        ecrire_etude(devis, proprietaire=PIPELINE, **retire)
 
 
 def _reconcilier_sur_le_lead(devis, lead, company, user):
