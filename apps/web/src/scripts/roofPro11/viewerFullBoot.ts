@@ -206,6 +206,10 @@ export function bootViewerFull(
     centroidLat: plan.center[1],
     // ACAL262 — surfaces de pose publiées (tables moteur) : scene3d les dessine.
     surfacesPose: plan.surfacesPose,
+    // Lot 8 — `buildZoneMeshes` lit `ctx.dom.areasWindowEl` (hôte du contrôle de numérotation, CALX111) à CHAQUE
+    // rendu : sans `dom`, le premier rendu jetait (TypeError) depuis le 21/09 — scène à moitié bâtie, soleil
+    // figé. Aucun hôte ici : `monterControleNumerotation(undefined)` ne monte rien, la page reste sans contrôle.
+    dom: {},
   } as unknown as Ctx;
 
   // — Carte : MÊME imagerie que les pages mon-toit et que l'ERP
