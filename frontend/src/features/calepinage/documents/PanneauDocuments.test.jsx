@@ -767,6 +767,29 @@ describe('PanneauDocuments — section Plans et exports (ACAL228)', () => {
     expect(downloadBlob).toHaveBeenCalled()
   })
 
+  it('ACAL1534 — la pièce plan_lestage_pdf porte Aperçu et Télécharger, et l’aperçu ouvre le même PDF dans un onglet', async () => {
+    servirInventaire('exemple')
+    const sorties = reponseContrat(APP, 'calepinage_sorties', 'exemple')
+    sorties.data.sorties = sorties.data.sorties.map((x) => (
+      x.code === 'plan_lestage_pdf' ? { ...x, disponible: true, motif_indisponible: null } : x))
+    calepinageApi.calepinages.sorties.mockResolvedValue(sorties)
+    calepinageApi.calepinages.telechargerSortie.mockResolvedValue({ data: new Blob(['x']), headers: {} })
+    const ouvrir = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const creer = vi.fn(() => 'blob:lestage')
+    URL.createObjectURL = creer
+    const utilisateur = userEvent.setup()
+    rendre()
+    expect(await screen.findByTestId('cal-doc-bouton-plan_lestage_pdf')).toBeEnabled()
+    await utilisateur.click(await screen.findByTestId('cal-doc-sorties-apercu-plan_lestage_pdf'))
+    await waitFor(() => expect(ouvrir).toHaveBeenCalledWith('blob:lestage', '_blank', 'noopener'))
+    expect(calepinageApi.calepinages.telechargerSortie)
+      .toHaveBeenCalledWith(sortieDe('plan_lestage_pdf').endpoint, undefined,
+        { timeout: 120000, suppressErrorToast: true })
+    // une pièce qui n'est pas un PDF n'a pas d'Aperçu
+    expect(screen.queryByTestId('cal-doc-sorties-apercu-dxf')).toBeNull()
+    ouvrir.mockRestore()
+  })
+
   it('pack technique appelle composerPackTechnique et affiche les signalements', async () => {
     servirSorties()
     calepinageApi.calepinages.composerPackTechnique.mockResolvedValue({
@@ -894,6 +917,33 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     expect(within(apercu).getByRole('button', { name: 'Aperçu' })).toBeTruthy()
     expect(droite).toHaveTextContent('Le devis remis au client ne se fait pas ici')
     expect(droite.querySelectorAll('[data-vignette]')).toHaveLength(6) // cinq cartes + la feuille de l'aperçu
+  })
+
+  it('ACAL1931 : inventaire des plans illisible — les cinq cartes restent, les pièces de sorties grisées avec leur motif', async () => {
+    servir()
+    calepinageApi.calepinages.sorties.mockRejectedValue(new Error('500'))
+    monter()
+    const droite = await screen.findByTestId('cal-docs-liste')
+    await waitFor(() => expect(within(droite).getAllByTestId('cal-docs-carte')).toHaveLength(5))
+    const cartes = within(droite).getAllByTestId('cal-docs-carte')
+    expect(cartes.map((c) => c.dataset.document)).toEqual(['plan_pose', 'schema', 'note_calcul', 'rapport_etude', 'dxf'])
+    for (const cle of ['plan_pose', 'note_calcul', 'dxf']) {
+      expect(screen.getByTestId(`cal-docs-telecharger-${cle}`)).toBeDisabled()
+      expect(screen.getByTestId(`cal-docs-motif-${cle}`)).toHaveTextContent('n’a pas pu être lue')
+    }
+  })
+
+  it('ACAL1931 : un nouvel enregistrement relit l’inventaire des plans', async () => {
+    servir()
+    const { rerender } = monter({ enregistreLe: '2026-11-23T11:18:00Z' })
+    await screen.findByTestId('cal-docs-liste')
+    const avant = calepinageApi.calepinages.sorties.mock.calls.length
+    rerender(
+      <MemoryRouter>
+        <EtapeDocuments calepinageId={1} enregistreLe="2026-11-23T12:40:00Z" actionDevis={<button type="button">Générer le devis</button>} />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(calepinageApi.calepinages.sorties.mock.calls.length).toBeGreaterThan(avant))
   })
 
   it('ACAL1726 : la colonne d’aperçu montre le document choisi ; un clic sur une carte le change, la note bleue est dans la colonne', async () => {

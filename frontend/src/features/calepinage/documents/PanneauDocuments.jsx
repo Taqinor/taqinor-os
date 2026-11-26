@@ -519,7 +519,7 @@ const SORTIES_REMETTABLES = new Set([
     servie est affichée telle quelle (libellé, format, motif) ; l'`endpoint`
     vient de l'entrée, jamais reconstruit. */
 function SectionSorties({
-  sorties, enCours, enRemise, erreurs, resultatPack, onTelecharger, onRemettre,
+  sorties, enCours, enRemise, erreurs, resultatPack, onTelecharger, onRemettre, onApercu,
 }) {
   const [expert] = useModeExpert()
   if (!sorties?.length) return null
@@ -544,6 +544,18 @@ function SectionSorties({
                 </div>
                 {!rendu3d && (
                   <div className="flex flex-wrap items-center gap-2">
+                    {/* ACAL1534 — « Aperçu » des pièces PDF (le même appel que ACAL1193, jamais un second chemin). */}
+                    {sortie.format === 'pdf' && !pack && onApercu && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!sortie.disponible}
+                        onClick={() => onApercu(sortie)}
+                        data-testid={`cal-doc-sorties-apercu-${sortie.code}`}
+                      >
+                        Aperçu
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"
@@ -621,8 +633,9 @@ export default function PanneauDocuments({
 
   // ACAL228 — l'inventaire `sorties/` (distinct de `documents/`). Une erreur
   // de ce second inventaire n'abat jamais le panneau : la section manque.
-  const { data: inventaireSorties } = useResource(
-    () => calepinageApi.calepinages.sorties(id), id,
+  // ACAL1931 — relu à chaque enregistrement (`enregistreLe`) : une conception changée n'est pas lue sur l'inventaire d'avant.
+  const { data: inventaireSorties, error: erreurSorties } = useResource(
+    () => calepinageApi.calepinages.sorties(id), { id, enregistreLe },
     { select: (r) => r?.data ?? null },
   )
   const [enCoursSortie, setEnCoursSortie] = useState(null)
@@ -951,6 +964,7 @@ export default function PanneauDocuments({
         resultatPack={resultatPack}
         onTelecharger={telechargerSortie}
         onRemettre={remettreSortie}
+        onApercu={apercuSortie}
       />
       {/* CALX28 — HORS inventaire (aucun document ne le déclare) : toujours
           visible, jamais gouverné par `disponible`. */}
@@ -978,7 +992,8 @@ export default function PanneauDocuments({
   )
   if (!guide) return vueExpert
 
-  const cartes = cartesGuide(documents, inventaireSorties?.sorties)
+  const cartes = cartesGuide(documents, inventaireSorties?.sorties,
+    { sortiesIllisibles: Boolean(erreurSorties) && !inventaireSorties })
   const estDocument = (carte) => carte.source === 'document'
   return (
     <>

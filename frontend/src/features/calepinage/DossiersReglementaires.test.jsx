@@ -495,6 +495,20 @@ describe('DossiersReglementaires — ACAL242', () => {
     expect(screen.queryByTestId(`acal824-perime-${premier.id}`)).toBeNull()
   })
 
+  it('ACAL1548 — la date « Vérifié le » se lit même sans fichier déposé, à côté du bandeau périmé', async () => {
+    const sansFichier = copie()
+    const premier = sansFichier.data.dossiers[0]
+    premier.gabarit.present = false
+    premier.gabarit.verifie_le = '2025-10-19'
+    premier.gabarit.verification_perimee = true
+    premier.gabarit.verification_max_jours = 365
+    calepinageApi.calepinages.dossiersReglementaires.mockResolvedValue(sansFichier)
+    rendre()
+    await screen.findByTestId('cal196-ecran')
+    expect(screen.getByTestId(`acal824-verifie-${premier.id}`)).toHaveTextContent('Vérifié le')
+    expect(screen.getByTestId(`acal824-perime-${premier.id}`)).toBeInTheDocument()
+  })
+
   it('bandeau conception perimee', async () => {
     servir('exemple')
     rendre()
