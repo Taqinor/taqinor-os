@@ -69,6 +69,10 @@ logs/
 # brain) so cloud sessions / routines get them in a fresh clone.
 !.claude/skills/
 !.claude/skills/**
+# …and the lean agent definitions (lane-legere, relecteur-leger,
+# verificateur-leger — go-deep L4.md « Token economy »).
+!.claude/agents/
+!.claude/agents/**
 .serena/
 
 # Instantanés anonymisés de production (export_anonymise / import_anonymise,
