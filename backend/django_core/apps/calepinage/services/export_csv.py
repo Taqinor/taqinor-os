@@ -196,7 +196,7 @@ def _refuser_si_perimee(document):
     if (document or {}).get('simulation_perimee'):
         raise ExportImpossible(
             document.get('motif_perimee') or 'simulation périmée : le '
-            'document a changé depuis le calcul précédent',
+            'document ou un réglage de la société a changé depuis le calcul précédent',
             champ='production')
 
 

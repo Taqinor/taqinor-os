@@ -479,7 +479,7 @@
     {
       "cle": "controle.simulation_fraiche",
       "famille": "controle",
-      "phrase": "Vérifie que la simulation de production a été lancée et qu'elle date d'après la dernière modification de la conception.",
+      "phrase": "Vérifie que la simulation de production a été lancée et qu'elle n'est pas périmée : ni le document ni un réglage de la société n'a changé depuis le calcul.",
       "valeurs": {},
       "geste": "Si ce n'est pas bon : lancez ou relancez la simulation.",
       "lexique": null,

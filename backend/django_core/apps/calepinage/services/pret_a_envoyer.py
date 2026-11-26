@@ -197,11 +197,15 @@ def _simulation(calepinage):
                          'Jamais lancée', geste='Lancer la simulation',
                          cible=CIBLE_PRODUCTION)
     if simulation_perimee_du_calepinage(calepinage):
+        # La cause est celle que SERT ``GET resultat/`` (``motif``, ``electrique._simulation_servie`` : « un réglage
+        # de la société a changé » seulement quand la trace figée le prouve) — jamais une cause devinée ici.
+        motif = str(_resultat(calepinage).get('motif') or '').strip()
+        if not motif:
+            motif = ('simulation périmée : le document ou un réglage de la société a changé '
+                     'depuis le calcul précédent')
         return _controle(
-            'simulation_fraiche', libelle, 'a_regler',
-            'Lancée avant la dernière modification',
-            cause='La production affichée ne correspond plus à la '
-                  'conception.',
+            'simulation_fraiche', libelle, 'a_regler', 'Périmée',
+            cause=motif[:1].upper() + motif[1:] + '.',
             geste='Relancer la simulation', cible=CIBLE_PRODUCTION)
     return _controle('simulation_fraiche', libelle, 'ok', 'À jour',
                      cible=CIBLE_PRODUCTION)
