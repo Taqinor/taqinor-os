@@ -26,6 +26,8 @@ import logging
 import math
 from collections import namedtuple
 
+from apps.ventes.domain.regles_calcul import INCLINAISON_TOIT_PLAT_SUPPOSEE_DEG
+
 # Noms ré-exportés volontairement (façade) : pas la surface complète du module.
 __all__ = [
     'CIBLE_WATT_DEFAUT', '_is_hybrid_inverter', '_is_reseau_inverter', '_pick_batterie',
@@ -87,10 +89,19 @@ def _aspect_vers_azimut_boussole(aspect):
 SUPPOSITION_INCLINAISON_TOIT_PLAT = {
     'code': 'inclinaison_toit_plat_supposee',
     'champ': 'geometry.tiltDeg',
-    'message': ("Toit plat sans inclinaison des tables posées : la production est "
-                "calculée à l'« Inclinaison par défaut » des réglages de la société. "
-                "Posez les panneaux dans le calepinage pour la remplacer."),
+    'message': ("Toit plat sans tables posées : la production du devis est calculée à "
+                "20° d'inclinaison des panneaux, une valeur supposée (D-ACAL-168). Posez "
+                "les panneaux dans le calepinage pour la remplacer."),
 }
+
+
+#: D-ACAL-168 (relecture round 4, point 3) — drapeau PRIVÉ d'un pan de ``_pans_geometry`` dont
+#: l'inclinaison est la valeur SUPPOSÉE (20°) : la production l'emploie, le client ne la lit jamais
+#: (``public_views._safe_roof_layout`` et l'annexe ``calepinage_options._pan_principal`` omettent
+#: ``inclinaison_deg`` sur ce drapeau ; la liste blanche ``_PAN_KEYS`` ne recopie pas la clé). Hors
+#: ``layout_hash`` (``_pans_geometry`` n'est pas dans :data:`CLES_IMPRIMEES`) et hors
+#: ``electrical_design_hash`` (``groupes_du_devis`` ne lit que libellé, compte, azimut, inclinaison).
+CLE_INCLINAISON_SUPPOSEE = '_inclinaison_supposee'
 
 
 def orientation_du_pan(zone, *, toit_plat_corrige=False):
@@ -199,7 +210,10 @@ def extract_roof_config(layout, *, toit_plat_corrige=False):
     l'inclinaison PRINCIPALE n'est pas connue faute de tables posées sur un
     toit plat, ``suppositions`` porte :data:`SUPPOSITION_INCLINAISON_TOIT_PLAT`
     (clé racine seulement : ``pans`` — futur ``_pans_geometry`` — n'en reçoit
-    aucune).
+    aucune) ; D-ACAL-168 — l'inclinaison de ce pan (et la principale) vaut alors
+    ``regles_calcul.INCLINAISON_TOIT_PLAT_SUPPOSEE_DEG`` (20°), la valeur de la
+    production, jamais ``None`` ni 0 par accident. Les appelants ôtent ``suppositions``
+    avant de ranger la toiture (une consigne du vendeur, jamais servie au client).
 
     Lit les PANS de toiture (``areas``/``zones``/``pans``) — chacun portant
     ``roofType``, ``pitchDeg``/``pitch``, ``facingAzimuthDeg``/``aspect`` et un
@@ -282,7 +296,8 @@ def extract_roof_config(layout, *, toit_plat_corrige=False):
         orientation = orientation_du_pan(a, toit_plat_corrige=toit_plat_corrige)
         azimut_boussole = orientation['azimut_deg']
         aspect_pvgis = orientation['aspect_pvgis']
-        pitch = orientation['inclinaison_deg']
+        pitch = (INCLINAISON_TOIT_PLAT_SUPPOSEE_DEG if orientation.get('inclinaison_supposee')
+                 else orientation['inclinaison_deg'])  # D-ACAL-168
         pan = {
             'label': a.get('label') or '',
             'roof_type': a.get('roofType') or '',
@@ -299,6 +314,8 @@ def extract_roof_config(layout, *, toit_plat_corrige=False):
             # face du toit). Clé interne additive de ``_pans_geometry``.
             'source_orientation': orientation['source_orientation'],
         }
+        if orientation.get('inclinaison_supposee'):  # D-ACAL-168 — drapeau privé (point 3)
+            pan[CLE_INCLINAISON_SUPPOSEE] = True
         nb_pans_dessines += 1
         faces = orientation.get('faces') or []
         if faces and a.get('existant') is not True:
@@ -313,7 +330,8 @@ def extract_roof_config(layout, *, toit_plat_corrige=False):
                     pan, label='%s — face %s' % (pan['label'] or 'Pan', LIBELLES_FACES[face['face']]),
                     nb_panneaux=modules, kwc=round(kwc * face['part'], 3) if kwc else 0.0,
                     surface_m2=round(surface * face['part'], 2) if surface else 0.0,
-                    azimut_deg=face['azimut_deg'], inclinaison_deg=face['inclinaison_deg'],
+                    azimut_deg=face['azimut_deg'],
+                    inclinaison_deg=face['inclinaison_deg'] if face['inclinaison_deg'] is not None else pitch,
                     orientation=_aspect_to_orientation(_azimut_boussole_vers_aspect(face['azimut_deg']))))
             pan = max(pans[-len(faces):], key=lambda p: p['kwc'])
         else:

@@ -228,6 +228,57 @@ def _ordre_de_generation(lie, rendu, libres_lus):
     return (ISSUE_BROUILLON_LIBRE, libres) if libres else (ISSUE_COMPOSER, None)
 
 
+def _onduleur_designe(calepinage):
+    """D-ACAL-148 — ``{'produit_id', 'nombre'}`` de l'onduleur désigné à l'étape Électrique
+    (``electrique.entree_stockee``), ``None`` sans désignation. Lu par la génération ET l'aperçu :
+    ``ventes`` décide seul s'il est chiffré (catalogue, prix, forme du devis)."""
+    from .electrique import entree_stockee
+
+    entree = entree_stockee(calepinage)
+    if entree.get('onduleur_produit') in (None, ''):
+        return None
+    brut = entree.get('nombre_onduleurs')
+    if brut in (None, ''):  # aucun nombre accepté : celui que le SCHÉMA dessine
+        return {'produit_id': entree['onduleur_produit'], 'nombre': _nombre_du_schema(calepinage),
+                'nombre_illisible': False}
+    entier = (int(brut) if isinstance(brut, (int, float)) and not isinstance(brut, bool)
+              and float(brut).is_integer() and brut >= 1 else None)
+    return {'produit_id': entree['onduleur_produit'], 'nombre': entier, 'nombre_illisible': entier is None}
+
+
+def _batterie_designee(calepinage):
+    """D-ACAL-164 — ``{'produit_id', 'packs', 'packs_illisible'}`` de la batterie désignée à l'étape
+    Électrique (``entree_stockee(...)['batterie']['produit']``, saisie D-ACAL-157), ``None`` sans
+    désignation. Le nombre de packs saisi (entier ≥ 1) ; autre chose ⇒ ``packs_illisible``, jamais
+    tronqué ; absent ⇒ ``None`` (``ventes`` le dit). Lu par la génération, l'aperçu et la resynchro."""
+    from .electrique import entree_stockee
+
+    batterie = entree_stockee(calepinage).get('batterie')
+    if not isinstance(batterie, dict) or batterie.get('produit') in (None, ''):
+        return None
+    brut = batterie.get('packs')
+    entier = (int(brut) if isinstance(brut, (int, float)) and not isinstance(brut, bool)
+              and float(brut).is_integer() and brut >= 1 else None)
+    return {'produit_id': batterie['produit'], 'packs': entier,
+            'packs_illisible': brut not in (None, '') and entier is None}
+
+
+def _nombre_du_schema(calepinage):
+    """D-ACAL-148 (relecture, point 1) — le nombre d'onduleurs que le schéma du calepinage
+    dessine (``chaines.evaluer_onduleurs`` sur ``electrique.conception_du_calepinage``, la source
+    de la table d'affectation), ``None`` quand il n'est pas établi (fiche incomplète…)."""
+    from .chaines import evaluer_onduleurs
+    from .electrique import conception_du_calepinage
+
+    try:
+        evaluation = evaluer_onduleurs(conception_du_calepinage(calepinage)[0])
+    except Exception:  # noqa: BLE001 — conception illisible : nombre non établi, repli annoncé (D-ENF22-BLE001)
+        logger.warning('onduleur désigné : nombre du schéma illisible', exc_info=True)
+        return None
+    nombre = getattr(evaluation, 'nombre', None)
+    return int(nombre) if isinstance(nombre, int) and nombre >= 1 else None
+
+
 def _brouillon_reutilisable(company, lead, empreinte, calepinage):
     """ACAL89 — le brouillon de même empreinte, SEULEMENT s'il n'est lié à
     aucun AUTRE calepinage (la copie d'un calepinage ne vole jamais le devis
@@ -749,7 +800,10 @@ def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
         with transaction.atomic():
             devis = build_devis_from_layout(
                 layout=layout, user=user, company=company, lead=lead,
-                client=client, journal=journal_composition, **montants)
+                client=client, journal=journal_composition,
+                onduleur_designe=_onduleur_designe(calepinage),  # D-ACAL-148
+                batterie_designee=_batterie_designee(calepinage),  # D-ACAL-164
+                marquer_designations=True, **montants)  # né sous la règle (relecture, point 1)
             _garde_kwh_declare(devis)
             _garde_module_substitue(devis, layout)  # ACAL914
             _garde_taille(devis, calepinage, choix['confirmer_taille'])  # ACAL922
@@ -1161,7 +1215,10 @@ def resynchroniser_devis(calepinage, *, user=None,
         resultat = resynchroniser_conception(
             devis, layout, user, emettre=True,
             roof_image=None if variante is not None else (
-                getattr(calepinage, 'roof_image', None) or None))
+                getattr(calepinage, 'roof_image', None) or None),
+            # D-ACAL-148 / 159 — la MÊME décision que « Générer le devis » (ventes la juge).
+            designations={'onduleur': _onduleur_designe(variante or calepinage),
+                          'batterie': _batterie_designee(variante or calepinage)})
     except SyncLayoutError as refus:
         detail = refus.detail + _onduleur_juge(calepinage, devis, refus)
         raise DevisRefuse(

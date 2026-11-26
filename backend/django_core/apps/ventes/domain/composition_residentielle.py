@@ -164,23 +164,63 @@ def _imposition_resolue(tarifes_par_pk, onduleur_impose, batterie_imposee, *,
                         deux_options, hors_reseau, avec_batterie):
     """COP2-V3 — les produits IMPOSÉS lus dans le vivier TARIFÉ, et la
     catégorie d'onduleur qu'ils remplacent (``None`` sans onduleur imposé).
-    Une composition imposée est MONO-OPTION : ``ValueError`` sinon."""
+    Une composition imposée est MONO-OPTION : ``ValueError`` sinon.
+
+    D-ACAL-148 — ``onduleur_impose`` peut être l'onduleur DÉSIGNÉ par le
+    calepinage, ``{'produit_id', 'categorie', 'nombre'}`` : sa catégorie est
+    celle du PRODUIT (lue par ``creation_calepinage.famille_onduleur_du_produit``),
+    jamais celle du scénario."""
     if deux_options and (onduleur_impose is not None
                          or isinstance(batterie_imposee, dict)):
         raise ValueError('Composition imposée : forme mono-option seulement.')
     categorie = None
-    if onduleur_impose is not None:
+    if isinstance(onduleur_impose, dict):
+        categorie = onduleur_impose.get('categorie')
+    elif onduleur_impose is not None:
         categorie = ('onduleur_offgrid' if hors_reseau
                      else ('onduleur_hybride' if avec_batterie
                            else 'onduleur_reseau'))
     return {
         'categorie': categorie,
-        'onduleur': (tarifes_par_pk.get(_entier_ou_none(onduleur_impose))
+        'onduleur': (tarifes_par_pk.get(_entier_ou_none(_id_onduleur_impose(onduleur_impose)))
                      if onduleur_impose is not None else None),
         'batterie': (tarifes_par_pk.get(_entier_ou_none(
             batterie_imposee.get('produit_id')))
             if isinstance(batterie_imposee, dict) else None),
     }
+
+
+def _id_onduleur_impose(onduleur_impose):
+    """L'id de l'onduleur imposé : l'entier du devis automatique (COP2-V3), ou
+    ``produit_id`` de l'onduleur DÉSIGNÉ par le calepinage (D-ACAL-148)."""
+    if isinstance(onduleur_impose, dict):
+        return onduleur_impose.get('produit_id')
+    return onduleur_impose
+
+
+def _quantite_imposee(onduleur_impose):
+    """La quantité d'un onduleur imposé : 1 pour le devis automatique (COP2-V3,
+    inchangé) ; pour l'onduleur DÉSIGNÉ (D-ACAL-148), le nombre d'onduleurs
+    retenu par le calepinage (``nombre`` entier ≥ 1, posé par
+    ``creation_calepinage.decision_onduleur_designe``) — jamais la règle du
+    catalogue, qui contredirait le schéma ; illisible ⇒ 1."""
+    if not isinstance(onduleur_impose, dict):
+        return 1
+    nombre = onduleur_impose.get('nombre')
+    valide = isinstance(nombre, int) and not isinstance(nombre, bool) and nombre >= 1
+    return nombre if valide else 1
+
+
+def _quantite_onduleur(onduleur_impose, kw, seuil, kwp):
+    """Un onduleur suffit dès qu'il couvre le seuil ; sinon assez pour absorber le champ (blocs
+    entiers, jamais moins d'un). Imposé : :func:`_quantite_imposee` (COP2-V3 : 1 ; D-ACAL-148 :
+    le nombre accepté à l'étape Électrique, sinon la règle)."""
+    impose = _quantite_imposee(onduleur_impose) if onduleur_impose is not None else None
+    if impose is not None:
+        return impose
+    if not kw or kw >= seuil:
+        return 1
+    return max(1, int(math.ceil(kwp / kw)))
 
 
 def _onduleur_impose(imposes, categorie, replis_phase, refus_tri):
@@ -620,10 +660,10 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     def quantite_onduleur(kw):
         """Un onduleur suffit dès qu'il couvre le seuil ; sinon on en met assez
         pour absorber le champ (blocs entiers, jamais moins d'un). COP2-V3 :
-        un onduleur IMPOSÉ se vend à l'unité."""
-        if onduleur_impose is not None or not kw or kw >= seuil:
-            return 1
-        return max(1, int(math.ceil(kwp / kw)))
+        un onduleur IMPOSÉ se vend à l'unité. D-ACAL-148 : l'onduleur DÉSIGNÉ
+        par le calepinage, au nombre accepté à l'étape Électrique (sinon la
+        règle ci-dessous)."""
+        return _quantite_onduleur(onduleur_impose, kw, seuil, kwp)
 
     if hors_reseau:
         # QJR-OFFGRID — les deux familles RACCORDÉES ne sont même pas

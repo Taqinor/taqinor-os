@@ -246,6 +246,44 @@ def _appliquer_cles_etude(etude, cles):
     etude.update(cles)
 
 
+def _avertissements_de_depart(verrou):
+    """``(agricole, multi_villa, avertissements)`` — les deux cas que PV17 déclare NON modifiables,
+    dits d'entrée (extrait de :func:`reconcilier`, mêmes phrases)."""
+    from apps.ventes.models import Devis
+
+    avertissements = []
+    # Cohérence avec PV17 : ces deux cas y sont déclarés NON modifiables.
+    agricole = (
+        verrou.mode_installation == Devis.ModeInstallation.AGRICOLE)
+    if agricole:
+        avertissements.append(
+            'Devis agricole (pompage) — le calepinage de toiture ne '
+            's\'applique pas.')
+    multi_villa = verrou.lignes.filter(groupe_index__gte=1).exists()
+    if multi_villa:
+        avertissements.append(
+            'Devis multi-villa : l\'écart de calepinage porte sur la ligne '
+            'de panneaux la plus grosse, tous groupes confondus.')
+    return agricole, multi_villa, avertissements
+
+
+def _toiture_rangee(toiture, avertissements):
+    """D-ACAL-149 (ii) — la toiture à ranger dans ``etude_params`` (servi au client), sans
+    ``suppositions`` ; leurs phrases vont aux ``avertissements`` de la resynchro (le vendeur)."""
+    from apps.ventes.domain.creation_calepinage import phrases_des_suppositions, toiture_sans_suppositions
+
+    avertissements.extend(phrases_des_suppositions(toiture))
+    return toiture_sans_suppositions(toiture)
+
+
+def _designations(verrou, intention, layout, veut_batterie, avertissements):
+    """D-ACAL-148 / 159 — porte de :func:`creation_calepinage.appliquer_designations_a_la_resynchro`
+    (import local : ``creation_calepinage`` lit ce paquet en bas de module)."""
+    from apps.ventes.domain.creation_calepinage import appliquer_designations_a_la_resynchro
+
+    return appliquer_designations_a_la_resynchro(verrou, intention, layout, veut_batterie, avertissements)
+
+
 def reconcilier(devis, intention):
     """QJR97 — L'ÉTAPE « RÉCONCILIER » du pipeline (``MODE_RECONCILIER``).
 
@@ -377,7 +415,7 @@ def reconcilier(devis, intention):
     cible_exacte = bool(intention.exact)
     layout = intention.layout if isinstance(intention.layout, dict) else {}
     nouveau_hash = layout_hash(layout)
-    toiture = extract_roof_config(layout)
+    toiture = extract_roof_config(layout, toit_plat_corrige=toit_plat_ouvert(devis))  # D-ACAL-149 (ii)
     cible_panneaux = _cible_panneaux_du_layout(layout, toiture)
     watt = _watt_du_layout(layout, toiture, cible_panneaux)
     # ACAL63 (C-ACAL-042) — les modèles DÉSIGNÉS par le calepinage : la
@@ -437,6 +475,10 @@ def reconcilier(devis, intention):
         refus = _refus_resynchro(verrou)
         if refus is not None:
             raise refus
+        agricole, multi_villa, avertissements = _avertissements_de_depart(verrou)
+        # D-ACAL-148 / 159 / 164 (relecture, A) — la MÊME décision que la création, AVANT que les
+        # lignes soient lues ici : les règles PV18 ci-dessous relisent ce qu'elle a écrit.
+        veut_batterie, designations = _designations(verrou, intention, layout, veut_batterie, avertissements)
 
         lignes = _lignes_produit(verrou)
         lignes_panneau = [li for li in lignes
@@ -468,20 +510,6 @@ def reconcilier(devis, intention):
         total_panneaux_avec = (_total_de(VARIANTE_AVEC) if devis_variante
                                else total_panneaux)
 
-        avertissements = []
-        # Cohérence avec PV17 : ces deux cas y sont déclarés NON modifiables.
-        agricole = (
-            verrou.mode_installation == Devis.ModeInstallation.AGRICOLE)
-        if agricole:
-            avertissements.append(
-                'Devis agricole (pompage) — le calepinage de toiture ne '
-                's\'applique pas.')
-        multi_villa = verrou.lignes.filter(groupe_index__gte=1).exists()
-        if multi_villa:
-            avertissements.append(
-                'Devis multi-villa : l\'écart de calepinage porte sur la ligne '
-                'de panneaux la plus grosse, tous groupes confondus.')
-
         # ── Court-circuit : même géométrie → ZÉRO écriture ──
         # ACAL96 — accepté seulement si le layout STOCKÉ porte déjà
         # ``_pans_geometry`` quand le toit a des pans : un document stocké
@@ -490,7 +518,7 @@ def reconcilier(devis, intention):
         stocke = verrou.roof_layout if isinstance(verrou.roof_layout,
                                                   dict) else {}
         range_ok = (not (toiture and toiture.get('pans'))
-                    or bool(stocke.get('_pans_geometry')))
+                    or bool(stocke.get('_pans_geometry'))) and not designations['a_ecrire']
         if nouveau_hash and verrou.layout_hash == nouveau_hash and range_ok:
             return {
                 'inchange': True,
@@ -508,7 +536,7 @@ def reconcilier(devis, intention):
                 'avertissements': avertissements,
             }
 
-        lignes_modifiees = 0
+        lignes_modifiees = designations['modifiees']
         # F8 — vrai UNIQUEMENT quand le compte de panneaux a réellement bougé
         # (ligne créée, ou ligne dominante réajustée) : c'est ce qui déclenche
         # la resynchro des câbles plus bas, jamais un layout qui ne change
@@ -1160,8 +1188,8 @@ def reconcilier(devis, intention):
             etude['puissance_kwc'] = _kwc_proprietaire
         else:
             etude.pop('puissance_kwc', None)
-        if toiture:
-            etude['toiture'] = toiture
+        if toiture:  # D-ACAL-149 (ii) — la supposition va au vendeur, jamais au client
+            etude['toiture'] = _toiture_rangee(toiture, avertissements)
         # PVSCE — le scénario suit l'état RÉEL des lignes après resynchro : sans
         # lui, le moteur PDF garderait le choix stocké d'avant (ou déduirait
         # « Sans batterie » par repli) alors que l'équipement vient de changer.
@@ -1204,7 +1232,8 @@ def reconcilier(devis, intention):
         # ACAL96 — UN SEUL rangement : celui de la création
         # (``creation_calepinage._calepinage_range``), plus de copie inline.
         from apps.ventes.domain.creation_calepinage import _calepinage_range
-        layout_stocke, _etude = _calepinage_range(layout, toiture, None)
+        layout_stocke, _etude = _calepinage_range(layout, toiture, None,
+                                                  designations=designations['marqueur'])
 
         verrou.roof_layout = layout_stocke
         if ecart_residuel:
@@ -1395,7 +1424,7 @@ def _reconcilier_panneaux_par_modele(verrou, lignes_panneau, modeles,
     return modifiees, change, residuel
 
 
-def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
+def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False, designations=None):
     """PV18 — ADAPTATEUR (QJR97, bascule 5/5a).
 
     Cette fonction ne PORTE plus le geste : elle le DEMANDE. Elle traduit ses
@@ -1410,8 +1439,16 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False):
     dict ``{inchange, panneaux, kwc, scenario, batterie, lignes_modifiees,
     lignes_ajoutees, avertissements}``, et ``SyncLayoutError`` remonte telle
     quelle à travers le pipeline (aucune étape ne l'intercepte).
+
+    ``designations`` (D-ACAL-148 / 159 / 164) — ``{'onduleur': …, 'batterie': …}`` du calepinage (la resynchro du
+    MODULE) : portées par ``IntentionDevis.cible`` jusqu'à ``reconcilier``. ``None`` (LE DÉFAUT :
+    apply-taille, réparations) ⇒ intention identique à hier.
     """
+    from apps.ventes.domain.creation_calepinage import cible_des_designations
+
     resultat = appliquer(devis, IntentionDevis(
+        cible=(cible_des_designations(designations.get('onduleur'), designations.get('batterie'))
+               if designations is not None else None),
         origine=ORIGINE_RESYNCHRONISATION,
         company=getattr(devis, 'company', None),
         user=user,
@@ -1446,7 +1483,7 @@ def emettre_layout_finalise(devis, user):
 
 
 def resynchroniser_conception(devis, layout, user=None, *, emettre=True,
-                              roof_image=None):
+                              roof_image=None, designations=None):
     """ACAL34 (C-ACAL-109) — L'ENVELOPPE UNIQUE d'une resynchronisation de
     conception : ``sync-layout`` (ventes) ET « Resynchroniser le devis »
     (module calepinage) l'appellent, plus aucune suite recopiée.
@@ -1468,9 +1505,10 @@ def resynchroniser_conception(devis, layout, user=None, *, emettre=True,
     injoignable n'annule pas la resynchro déjà validée.
 
     Rend le dict de :func:`sync_devis_from_layout`, INCHANGÉ ; ``SyncLayoutError``
-    remonte telle quelle. Aucun statut écrit (règle #4).
+    remonte telle quelle. Aucun statut écrit (règle #4). ``designations`` : celles du
+    calepinage (D-ACAL-148 / 159), transmises à :func:`sync_devis_from_layout`.
     """
-    resultat = sync_devis_from_layout(devis, layout, user)
+    resultat = sync_devis_from_layout(devis, layout, user, designations=designations)
     if isinstance(resultat, dict) and resultat.get('inchange'):
         return resultat
     # AGNR64 — TTC neuf : échéancier re-basé, ou gardé et signalé au chatter.
@@ -1617,6 +1655,7 @@ from apps.ventes.domain.composition import (  # noqa: E402 — fin de module (an
     _v_txt,
 )
 from apps.ventes.domain.gammes import gamme_nom  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.regles_calcul import toit_plat_ouvert  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 from apps.ventes.domain.geometrie import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _cible_panneaux_du_layout,
     _watt_du_layout,
