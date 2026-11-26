@@ -13,7 +13,7 @@ import AffectationChaines, { BarreRaccordement } from '../plan/AffectationChaine
 import ConfigurationsOnduleur from './ConfigurationsOnduleur'
 import DevisRetenu from './DevisRetenu'
 import { refusParChamp } from './entreeElectrique'
-import { ROLES } from './MaterielElectrique.helpers'
+import { ROLES, libelleChampManquant } from './MaterielElectrique.helpers'
 import { casesPastille, chainesServies, libelleChaine } from './resumeRaccordement'
 
 /* ============================================================================
@@ -137,7 +137,7 @@ function CarteOnduleur({ id, entree, configs, resultat, lectureSeule, onApplique
           {candidats.map((c) => (
             <option key={c.id} value={c.id} disabled={c.fiche_complete === false}>
               {c.fiche_complete === false
-                ? `${c.libelle} — fiche incomplète : ${(c.champs_manquants ?? []).join(', ')}`
+                ? `${c.libelle} — fiche incomplète : ${(c.champs_manquants ?? []).map((k) => libelleChampManquant(k, 'onduleur')).join(', ')}`
                 : `${c.libelle}${c.marque ? ` (${c.marque})` : ''}`}
             </option>
           ))}

@@ -330,6 +330,50 @@ function ProductionNulle({ data }) {
   )
 }
 
+/** T4-U4-012 — la simulation donne un chiffre PLAUSIBLE en apparence (4 panneaux sur un onduleur 5 kW : 1 004 kWh) alors que les
+    chaînes, trop courtes, passent sous la plage de travail de l'onduleur quand les panneaux chauffent : le raccordement tel
+    que dessiné perd l'essentiel de la production, et seul Documents le disait, parmi d'autres points. Quand le résultat servi
+    porte ce verdict non conforme (`vmp_hot_over_mppt_min`, sa `raison` servie), l'étape le DIT en une phrase et renvoie à
+    l'étape Électrique. Aucun chiffre calculé ici ; le 0 kWh garde sa propre alerte (`ProductionNulle`).
+    Le verdict se juge à la chaleur extrême (70 °C) : seule la perte SERVIE de l'étape « Fenêtre MPPT » de la cascade
+    (`cascade.etapes[etape='mppt'].perte_pct`, part de l'énergie qui lui arrive) dit si c'est l'essentiel ou quelques
+    heures. ≥ 50 % : « l'essentiel » ; en dessous : « la production des heures les plus chaudes » ; aucun chiffre servi :
+    la seule phrase du serveur (`CAUSE_TENSION_CHAUD`), jamais « l'essentiel ». */
+function CablagePerdLaProduction({ data }) {
+  const [parametres, setParametres] = useSearchParams()
+  const [expert] = useModeExpert()
+  const p50 = data?.production?.total?.p50_kwh
+  if (typeof p50 === 'number' && p50 <= 0) return null
+  const verdict = (data?.electrique?.verdicts ?? [])
+    .find((v) => v?.code === 'vmp_hot_over_mppt_min' && v.conforme === false && typeof v.raison === 'string' && v.raison)
+  if (!verdict) return null
+  const onglet = premierOngletEtape('electrique', expert)
+  const allerElectrique = () => {
+    const suivants = new URLSearchParams(parametres)
+    suivants.set(PARAM_ONGLET, onglet)
+    setParametres(suivants, { state: { etapeChoisie: true } })
+  }
+  const perte = (data?.cascade?.etapes ?? []).find((e) => e?.etape === 'mppt')?.perte_pct
+  const chiffre = typeof perte === 'number' && perte > 0 ? formatNumber(perte, { decimals: 1 }) : null
+  let titre = 'Avec ce raccordement, la production des heures où les panneaux chauffent est perdue.'
+  if (chiffre !== null) {
+    titre = perte >= 50
+      ? `Le raccordement tel qu’il est dessiné fait perdre l’essentiel de la production : ${chiffre} % de l’énergie est retirée par la plage de tension de l’onduleur.`
+      : `Le raccordement tel qu’il est dessiné fait perdre la production des heures les plus chaudes : ${chiffre} % de l’énergie est retirée par la plage de tension de l’onduleur.`
+  }
+  return (
+    <section className="cal-res-alerte" data-zone="cablage-perd-la-production" role="alert">
+      <p className="cal-res-alerte-titre">{titre}</p>
+      <p className="cal-res-alerte-texte">{`Cause : ${verdict.raison.charAt(0).toUpperCase()}${verdict.raison.slice(1)}.`}</p>
+      {onglet && (
+        <button type="button" className="cal-res-lien" style={{ alignSelf: 'flex-start' }} onClick={allerElectrique}>
+          Aller à l’étape Électrique
+        </button>
+      )}
+    </section>
+  )
+}
+
 /** ACAL1987 (D-ACAL-90 renversée : « Simulation must start by itself ») — la simulation PARTIE SEULE à l'enregistrement
     d'une pose complète (`simulation_automatique` de `GET resultat/`). En file ou en cours : « Simulation en cours… », sans
     bouton ; `GET resultat/` est relu en silence toutes les `intervalleMs` jusqu'à la fin, puis `onTermine` relit l'écran
@@ -422,6 +466,7 @@ export default function EtapeResultats({
         : <ProductionDuDevis bloc={blocDuDevis(data)} p50={complet ? total?.p50_kwh : null} incomplet={incomplet} />}
       {simule && <PanneauxNonRaccordes data={data} />}
       {complet && <ProductionNulle data={data} />}
+      {complet && <CablagePerdLaProduction data={data} />}
       {enCours && <SimulationEnCours calepinageId={id} intervalleMs={intervalleMs} onTermine={refetch} />}
       {!simule && !enCours && <SimulationEnAttente manquants={auto?.manquants} />}
       {!simule && !enCours && (

@@ -1,0 +1,268 @@
+[
+ {
+  "id": "T4-U1-018",
+  "verdict": "partiel",
+  "vu": "Calepinage de lead sans GPS (cal. 10, ville Casablanca) : ouverture + etape Resultats sans cle technique (ni Site.pin, ni produit-NNNN, ni electrique_societe.*), aucun 409 soleil-legal (200). MAIS calepinage cree depuis un CLIENT sans lead/ville (cal. 6) : GET soleil-legal repond toujours 409 a chaque ouverture (console error 'status 409'); le corps est en francais (« Position du site inconnue : cherchez l'adresse du client puis Localiser ... ») et rien n'est affiche a l'ecran, mais l'erreur console demeure.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-u1-018-open.png ; console: 409 .../calepinages/6/soleil-legal/?date=2026-12-20",
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-U2-013",
+  "verdict": "corrige",
+  "vu": "Resultats cal. 10 apres simulation : « 16 reglages utilisent des valeurs publiees, non mesurees sur ce chantier (reflets du verre, ..., taille minimale des panneaux face a l'onduleur, ecart bloquant entre chaines, ecart acceptable entre chaines) » : liste entierement en francais, aucune cle electrique_societe.*.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-u2-013.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-U4-009",
+  "verdict": "corrige",
+  "vu": "Meme encadre sous « Du soleil au reseau » : la liste se termine par « taille minimale des panneaux face a l'onduleur, ecart bloquant entre chaines, ecart acceptable entre chaines » (mots du metier, pas de cle).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-u2-013.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U4-014",
+  "verdict": "corrige",
+  "vu": "Calepinage cree depuis un client sans lead (cal. 6) : formulaire dit « Laisse vide, le calepinage reste sans responsable. » ; etape Documents, « ? » de « Taille dimensionnee sur la consommation » : « Ce calepinage n'a pas de lead : aucune facture a lire. Choisissez le nombre de panneaux a l'etape Panneaux, ou rattachez un lead pour dimensionner sur sa facture. » (aucun bouton Saisir la facture, geste faisable).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-u4-014.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-V1-012",
+  "verdict": "corrige",
+  "vu": "Cal. 10 (lead sans GPS, onduleur non choisi, toit 10x8): la simulation partie seule a abouti (8 112 kWh, 1 632 kWh/kWc) sans onduleur designe. Sur cal. 7 et 8 (pile chargee) la simulation a depasse 2 min : message francais « La simulation a depasse le temps alloue (2 minutes) : relancez-la ; si cela se reproduit, reduisez la Fenetre d'annees meteo ... Ouvrir les reglages de simulation / Reessayer » (plus de SoftTimeLimitExceeded()), et « Reessayer » relance (Calcul de fond n°15). Reserve: 24 panneaux impossible sur 10x8 (8 max).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-v1-012.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X9-001",
+  "verdict": "corrige",
+  "vu": "Cal. 9, Expert > Documents : export JSON, fichier sans contour/pans/modules importe : UN seul avertissement en francais « Ce fichier ne decrit aucun toit (ni contour ni pan) : l'importer effacerait le toit deja dessine. Rien n'a ete enregistre... » avec « Remplacer le toit par ce fichier » / « Garder le toit actuel » ; aucun toast « Roof layout : ... » ; apres « Garder le toit actuel » plus aucun avertissement ni toast (0 occurrence). Le serveur repond 409 attendu (refus) deux fois (deux envois du meme fichier de ma part).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x9-001.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-U2-014",
+  "verdict": "corrige",
+  "vu": "Cal. 10 : onduleur « Onduleur reseau Huawei 50kW Triphase » choisi dans la liste Onduleur (en-tete « 1 onduleur 50 kW »), simulation faite (sim-3), Documents > Rapport d'etude telecharge (22 pages). Page 3 « Synthese » : « Onduleurs Huawei Onduleur reseau Huawei 50kW Triphase x 1 (50,0 kW) » et « Controles electriques non conformes : Ratio DC/AC face a la borne du devis ou de la societe » ; page « Electrique » tableau Onduleurs : « Huawei Onduleur reseau Huawei 50kW Triphase 1 4,97 0,099 oui ». Aucune occurrence de « aucun onduleur designe » dans le texte du PDF.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-rapport-cal10.pdf ; texte: C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-rapport-cal10.txt",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-V1-006",
+  "verdict": "corrige",
+  "vu": "Cal. 10 : Plan de pose pour l'equipe (PDF 2 pages A3 paysage) page 1 rendue en image : bloc de droite entierement dans la page, « Onduleur Huawei Onduleur reseau Huawei 50kW Triphase x1 6 MPPT », « Emplacement des onduleurs non releve — a definir sur site. », « Chaine 1 : 355,7 V a vide maxi a froid (4,18 C, meteo type du site) » lisibles en entier (retours a la ligne) ; la mention d'echelle « Echelle du trace 1/33 ... » est sous le trait de cote 10,00 m, sans chevauchement.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-v1-006.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X7-011",
+  "verdict": "corrige",
+  "vu": "Cal. 9 : onduleur designe via liste (+ module) -> ligne « Materiel electrique designe » = « Designe » dans Controles (Electrique) ; apres rechargement de la page Documents la ligne n'est plus a regler (Electrique : « Autres controles — 7 bons »). Decisions > coche « Justification de la continuite de la terre existante » > Enregistrer les decisions : « Dossier electrique Bloquant : 1 » et « Terre et protections » disparaissent (reste « A completer »), le message « Ces points bloquent le devis » est remplace par « Les points a regler n'empechent pas le devis ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x7-011.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X9-010",
+  "verdict": "partiel",
+  "vu": "Cal. 9, Expert > Avance > Comparer les variantes : « X9 variante A » creee, clic « Retenir » avec terre non justifiee : le refus s'affiche sous le bouton, en mots du metier (« Cette variante ne peut pas etre retenue : verdict electrique bloquant — prise de terre non fournie au marche : la justification de continuite de la terre existante reste a cocher ») avec un lien « Ouvrir l'etape Electrique » = chemin pour lever le blocage. RESTE : un toast apparait en meme temps pres du clic et affiche encore le nom technique du champ « (terre.justification_continuite) » ; ce toast reste ensuite affiche sur d'autres ecrans (Electrique > Decisions).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x9-010.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x9-010b.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "E9b-1",
+  "verdict": "non-rejouable",
+  "vu": "La societe de la copie a deja ses lignes de reglages (parametres_tariffsettings = 1, parametres_companyprofile = 1, lecture seule en base apres mes ouvertures de Documents) : l'ancien defaut (creation de la ligne a la premiere ouverture de l'apercu pour une societe qui n'en avait pas) ne peut pas se produire ici. L'apercu « Le devis portera » s'affiche sans erreur sur cal. 6, 7, 9, 10.",
+  "preuve": "lecture SQL seule: select count(*) from parametres_tariffsettings = 1 ; parametres_companyprofile = 1",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X5-002",
+  "verdict": "corrige",
+  "vu": "Lead R5C-1 (factures hiver 1 200 / ete 700 MAD, ete different coche, present en journee), cal. 7 : Resultats > Valeurs mensuelles Consommation Jan 664, Fev 669, Mar 664, Avr 664, Mai-Oct 427, Nov 664, Dec 664 kWh (hiver plus fort que l'ete, plus de courbe plate). Rapport d'etude (22 p.) page 13 « Consommation et hypotheses » memes valeurs (664,33 / 669,07 ... 426,8), annuelle 6 551,49 kWh ; page 14 couverture 48,25 % = 3 161,24 / 6 551,49 (ecran: 48 %). PDF du devis DEV-202611-0115 genere pour ce lead p.1 : « Estimation — deux factures (hiver/ete) », barres hautes en hiver (596-673) et basses en ete (423-441), « ≈ 950 MAD/mois », 50 % couverture (devis = production standard 7 948 kWh vs simulation 8 112 kWh, ecart normal entre moteurs). Reserve: le rapport affiche encore « Origine de la courbe layout » (mot brut).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x5-002.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-rapport-cal7.txt ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-devis617-p1.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X5-010",
+  "verdict": "pas-corrige",
+  "vu": "Cal. 7 : onduleur designe a la main « Onduleur hybride Deye 5kW Monophasé » (Materiel > Enregistrer le materiel + liste Onduleur), terre justifiee, « Generer le devis » -> DEV-202611-0115 (devis 617) : PDF p.1 et p.2 portent « Onduleur reseau Huawei 5kW Monophasé » (ligne equipement 11 666,67 HT), pas le Deye. Sur cal. 9 : designe « Huawei 5kW Monophasé » mais « Le devis portera : Onduleur reseau Huawei 10kW Triphasé ». L'ecran Documents dit desormais clairement « L'onduleur designe a l'etape Electrique (...) n'est pas celui que le devis portera (...) : le devis genere depuis l'atelier compose son materiel d'apres la pose du toit : la designation de l'etape Electrique n'y entre pas », et Resultats dit que l'onduleur designe sert l'option avec/sans batterie (D-ACAL-109) : l'ecart est annonce, mais le devis ne chiffre toujours pas l'onduleur designe (attendu de la ligne). Le refus de Resynchroniser a 7 panneaux (Isc) n'a pas pu etre rejoue (pas d'Isc > borne ici).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x5-010-avant.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-devis617.txt (lignes 40, 51)",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X9-008",
+  "verdict": "corrige",
+  "vu": "Cal. 9 (9 panneaux 6,39 kWc, conception du lead 5 panneaux 3,55 kWc), Resultats apres simulation : « Production simulee de la pose 10 569 kWh · De la consommation 49 % » ; « Pourquoi ce chiffre ? » dit « Taux d'autoconsommation et couverture calcules sur la pose simulee : la conception du lead (version 2, 5 panneaux, 3,55 kWc) decrit une autre installation, ses taux ne s'appliquent pas a cette pose. Couverture = energie autoconsommee ÷ CONSOMMATION ... jamais production ÷ consommation » ; API: 4 283,55 / 8 728,15 = 49,1 % = la jauge (taux de la pose). Bandeau du haut : « Production de la conception : 5 677 kWh ... calculee pour la conception du lead : 3,55 kWc (5 panneaux) — votre pose en compte 6,39 kWc (9 panneaux). La production simulee de votre pose est ci-dessous. » Seul l'etat 9 panneaux rejoue (pas de 2e cycle « Un de moins x2 » + 2e simulation).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x9-008.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X5-004",
+  "verdict": "partiel",
+  "vu": "Cal. 7 (lead R5C-1) : devis DEV-202611-0115 genere puis marque envoye (Copier le lien), puis pose 7 -> 5 panneaux (3,55 kWc), enregistree, simulation seule (5 794 kWh). VU corrige : le calepinage connait son devis (« Devis lie : DEV-202611-0115 », plus de « aucun devis lie ») ; Documents : « Devis a jour de la conception — Le devis ne suit plus la conception » (Regler dans Documents) ; Avance : « Non — la conception et le devis divergent : Resynchroniser » et « Devis envoye : la resynchronisation le corrigera, et la correction sera notee sur le devis » ; onglet Economie lit le devis (« issue du devis », 39 900 MAD, 6 250 MAD/an, 7 948 kWh) ; carte Conception du lead dit « d'apres le devis DEV-202611-0115 ». NON corrige / ecart : aucun ecran ne chiffre l'ecart devis (4,97 kWc · 7 panneaux) ↔ pose (5 panneaux · 3,55 kWc) ; pas de bouton « Reviser le devis » (seulement « Resynchroniser le devis », qui MODIFIE le devis envoye : apres clic, PDF du devis 617 = 5 panneaux 3,55 kWc 5 677 kWh) ; Resultats dit « Le devis envoye DEV-202611-0115 porte le meme chiffre. » (ambigu : il parle de la conception 7 948, pas de la pose 5 794) ; Economie affiche toujours la production du devis (7 948 kWh) sans mentionner la pose.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x5-004-doc.png ; r5c-t4-x5-004-res.png ; r5c-t4-x5-004-eco.png ; r5c-devis617b.txt",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X5-015",
+  "verdict": "partiel",
+  "vu": "Cal. 7 (pose 5 panneaux, devis lie 7 panneaux, simulation de la pose 5 794 kWh), Expert > Documents > Presentation compacte (PDF 2 pages, « INTERNE »). Page 1 : « 5 module(s) — 3,55 kWc — 2 pan(s) ». Page 2 : « Production : celle du devis DEV-202611-0115 (7948 kWh/an, 7 module(s)) — la pose de cette synthese compte 5 module(s) — 3,55 kWc : sa production n'est pas celle du devis ». Le desaccord est maintenant DIT dans le document, mais la production imprimee n'est toujours pas celle de la pose (la simulation de la pose, 5 794 kWh, n'est pas reprise) ; le libelle « synthese une page » donne toujours 2 pages.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-compacte-cal7.pdf ; texte r5c-compacte-cal7.txt",
+  "gravite": "S3"
+ },
+ {
+  "id": "D-ACAL-109",
+  "verdict": "corrige",
+  "vu": "Cal. 7 : onduleur hybride Deye 5 kW designe : Resultats « Onduleur designe a la main « Onduleur hybride Deye 5kW Monophase » : il sert l'option avec batterie ; l'option sans batterie garde l'onduleur choisi par le moteur. ». Cal. 10 / 9 : reseau Huawei 50 kW / 5 kW designe : « il sert l'option sans batterie ; l'option avec batterie garde l'onduleur choisi par le moteur. ». Fiche du lead R5C-1 > carte Conception : deux colonnes « Sans batterie » et « Avec batterie (retenue) » conservees + « Conception electrique calculee pour l'autre option seulement (onduleur different) ». Reserve : les deux colonnes portent la pastille « materiel designe », et la colonne sans batterie montre « 4 panneaux · 2,84 kWc » avec « d'apres le devis DEV-202611-0115 39 900 MAD » (voir constat R5C-N1).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-d-acal-109.png",
+  "gravite": null
+ },
+ {
+  "id": "T4-X7-002",
+  "verdict": "corrige",
+  "vu": "Cal. 8 (lead R5C-2, 5 panneaux 710 W, 3,55 kWc, sans batterie, simulation faite) : Montrer au client (/calepinage/8/client) = « 5 panneaux · 3,55 kWc de puissance · Production : calculee a la mise a jour de la conception. » (aucune part « 76 % de votre consommation » inventee ; phrase a la place). Resultats : « De la consommation 43 % » ; Pourquoi ce chiffre ? « Taux ... calcules sur la pose simulee : la conception du lead (version 2, 8 panneaux, 5,68 kWc, avec batterie) decrit une autre installation ... Couverture = energie autoconsommee ÷ CONSOMMATION — jamais production ÷ consommation ». Bande Panneaux : plus de « ≈ x % : production ÷ consommation », seulement « Production et economie calculees pour la conception du lead : 5,68 kWc — votre pose en compte 3,55 kWc ». Rapport d'etude (22 p.) page 14 : couverture 42,79 % = 4 379,291 / 10 233,964 (= 43 % de l'ecran) ; autoconsommation 75,58 % = 4 379,291 / 5 794,084 (definition distincte, nommee).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x7-002-res.png ; r5c-t4-x7-002-client.png ; r5c-t4-x7-002-pan.png ; r5c-rapport-cal8.txt",
+  "gravite": "S1"
+ },
+ {
+  "id": "T4-X7-005",
+  "verdict": "corrige",
+  "vu": "Cal. 8 reduit a 3 panneaux (2,13 kWc), Deye 5 kW designe, simulation faite : l'etape Resultats affiche un encadre « La simulation de la pose donne 0 kWh par an. Cause : Par forte chaleur, la tension des panneaux (105,4 V) tombe sous la plage de travail de cet onduleur (150,0 V). Corrigez la longueur des chaines ou l'onduleur a l'etape Electrique, puis relancez la simulation. » avec lien « Aller a l'etape Electrique ». Reste : jauge 0 %, « Pertes au total 100,0 % » et « Cables et onduleur − 79,7 % » toujours affiches ; le trace de la courbe mensuelle n'a pas ete verifie dans le cadre.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x7-005-chart.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X7-016",
+  "verdict": "corrige",
+  "vu": "Cal. 8 : devis DEV-202611-0116 genere, envoye (Copier le lien), accepte (chantier CHT-202611-0006), « Reviser (nouvelle version) » -> V2 DEV-202611-0117 (/ventes/devis/619/design), V2 envoyee puis acceptee ; atelier de cal. 8 en lecture seule (« Calepinage 8 en lecture seule — consultation de la conception »), Documents : le bouton s'appelle « Reviser (nouvelle version) » (plus « Reviser (v2) ») ; clic : navigation en ~10 s vers une revision ouverte DEV-202611-0118 (/ventes/devis/620/design).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x7-016-avant.png ; r5c-t4-x7-016.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X7-006",
+  "verdict": "partiel",
+  "vu": "Cal. 7 (devis DEV-202611-0115 accepte = 5 panneaux 34 700 MAD ; puis pose passee a 8 panneaux 5,68 kWc AVANT l'acceptation) : atelier en lecture seule, Documents « Le devis ne suit plus la conception » + bouton « Reviser (nouvelle version) » (la promesse « sur la conception » n'apparait plus). Clic : V2 DEV-202611-0119 (/ventes/devis/621/design) : en-tete « 8 panneaux · 5,68 kWc » mais lignes du devis = copie exacte de la V1 (« Panneau Canadien Solar 710W x5 », 34 700,00 MAD). L'ecart V2 ↔ pose reste nomme (« Devis a jour de la conception — Le devis ne suit plus la conception » + « Resynchroniser le devis ») : acquis ; mais la V2 n'est pas « sur la conception » et rien ne dit explicitement qu'elle est une copie de la V1. Apres resynchronisation d'une V2 (cal. 8, DEV-0117) a 5 panneaux : lignes = 5 panneaux 34 700 MAD (la resync aligne bien).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x7-006-avant.png ; r5c-t4-x7-006.png ; r5c-t4-x7-006-doc.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X5-011",
+  "verdict": "partiel",
+  "vu": "« Reviser le devis » sur un devis ENVOYE n'existe plus : sur cal. 7 (devis envoye) seul « Resynchroniser le devis » est propose, qui corrige le devis en place (Avance : « Devis envoye : la resynchronisation le corrigera, et la correction sera notee sur le devis ») ; « Reviser (nouvelle version) » n'apparait que pour un devis ACCEPTE. Rejoue sur devis accepte (voir T4-X7-006) : la V2 creee reprend les lignes de la V1 (5 panneaux 34 700 MAD) alors que la pose enregistree est 8 panneaux 5,68 kWc → le defaut « la nouvelle version reprend l'ancien contenu » subsiste (mais l'ecart est nomme et « Resynchroniser » fonctionne : V2 alignee ensuite).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x7-006.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-U4-012",
+  "verdict": "partiel",
+  "vu": "Cal. 8 (V3 DEV-202611-0118 ouverte en conception), module Jinko 710 W, 4 panneaux 2,84 kWc, Deye hybride 5 kW, « Raccorder automatiquement » (1 chaine), simulation : Resultats « Production simulee de la pose 1 004 kWh · 354 kWh par kWc », « Pertes au total 84,1 % », « Cables et onduleur − 63,5 % », mois par mois mai-sept (83-59 kWh) sous janvier (109) ; AUCUNE phrase sur l'etape Resultats (l'encadre de cause n'existe que pour 0 kWh). MAIS le controle existe maintenant ailleurs : Documents > Electrique « Tension des chaines par forte chaleur — 140,5 V sous la borne de fiche 150,0 V a 70,0 °C » range parmi les points A REGLER (« Regler dans Electrique ») et « Puissance des panneaux face a l'onduleur 0,57 : sous le seuil bas ... ». Donc un controle avertit de la cause, mais ne dit pas que le raccordement fait perdre l'essentiel de la production, et la production affichee reste implausible sans avertissement a l'ecran Resultats.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-u4-012.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X9-002",
+  "verdict": "partiel",
+  "vu": "Cal. 9 (8 panneaux 710 W), Electrique, onduleur « Huawei 5kW Monophase » choisi dans la liste : la phrase d'origine (« ne convient pas pour 8 panneaux : Courant par entree MPPT sous ... ») n'apparait plus ; a la place, sur le plan : « Chaines formees, mais a revoir : 17,6 A au-dessus de la borne de fiche 13,5 A » (plus de contradiction sous/au-dessus, plus de sigle MPPT) — mais ce n'est pas la phrase attendue : elle ne dit pas qu'il s'agit du courant des panneaux ni de ce que l'entree de l'onduleur accepte (« borne de fiche » reste du jargon) ; et le panneau de droite continue de dire « Controles · 7 bons » et « Comparer ... Huawei 5kW : Conforme · Retenu » pour le meme onduleur. Reserve : la valeur 18,0 A du constat n'est pas rejouee (fiche courante : 13,5 A).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x9-002.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X5-012",
+  "verdict": "corrige",
+  "vu": "anon_admin2, cal. 7 (lead R5C-1), Resultats (Expert) > onglet « Consommation mesuree » : 12 valeurs saisies (900, 850, 700, 650, 600, 550, 560, 600, 650, 700, 800, 880) > Comparer : colonne « Simule (kWh) » = 664,33 / 669,07 / 664,22 / 664,36 / 426,8 / 426,83 / 426,73 / 426,78 / 426,81 / 426,92 / 664,32 / 664,33 (memes valeurs que Resultats et Rapport d'etude p.13), « Ecart sur la periode : +28,8 % » ; aucune ligne « Eau ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x5-012.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X3-009",
+  "verdict": "corrige",
+  "vu": "anon_admin2, lead R5C-5 (facture 1 400 MAD), cal. 11, toit 2 pans 10x8 : etape Panneaux « Couvrir la facture (Recommande) 8 panneaux 5,68 kWc », « Pose d'apres la facture : 8 panneaux · 5,68 kWc — ajustez si besoin » ; en-tete 8 panneaux · 5,68 kWc ; Avance : « 8 panneaux de 710 W — CIBLE PANNEAUX », « 5,68 kWc — CIBLE PUISSANCE ». Plus aucun « 4,40 kWc — 6 panneaux » ni « conception du lead en compte 8 » contradictoire. Reserve : le controle DC/AC de l'etape Electrique et le bandeau Resultats apres simulation n'ont pas ete lus (simulation de ce calepinage refusee : « PVGIS est injoignable (RemoteDisconnected) » — environnement sans reseau).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x3-009.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X3-012",
+  "verdict": "non-rejouable",
+  "vu": "Le geste exige de modifier un reglage SOCIETE (Calepinage > Reglages simulation, champ Salissure mensuelle 3 -> 4 %, enregistrer, puis remettre 3). Le classificateur de permissions a REFUSE cette action de modification (parametre societe) ; je n'ai rien change (valeur relue = 3). Indice partiel sans changement : sur cal. 10, quand la simulation est perimee, l'etape Resultats dit « Calcul a refaire — Le calepinage ou un reglage de votre societe a change depuis le dernier calcul : relancez-le » (motif generique, nomme les deux causes ; non rejoue avec un seul reglage societe change). Comparaison non rejouee.",
+  "preuve": null,
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-U4-018",
+  "verdict": "non-joue",
+  "vu": "Scenario non construit : un calepinage « sol + ombriere seulement » (44 modules) demande de tracer une parcelle puis deux zones typees « Champ au sol » / « Ombriere » a la souris sur la carte (pas de champs numeriques pour ces surfaces). Essai sur cal. 12 (client sans lead) : « Parcelle » + clics sur la carte n'a pose qu'un triangle (3 sommets sur 4 pris, « Parcelle posee — enregistrez pour la conserver »), pas pu aller jusqu'a des surfaces chiffrables ni a « Raccorder automatiquement ». Rien conclu sur la ligne.",
+  "preuve": null,
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X7-007",
+  "verdict": "non-rejouable",
+  "vu": "Condition manquante : le refus du Resynchroniser (« N panneaux ... incompatibles avec « Onduleur reseau Huawei 5kW Monophase » : Isc cumule 18,6 A > 18,0 A ... ») ne s'est jamais produit ici. Essais : V2 DEV-202611-0117 (3 puis 5 panneaux) et cal. 7 (devis Huawei 5 kW, 5/7/8 panneaux en une seule chaine) : « Resynchroniser le devis » repond « Aucun changement » ou realigne le devis sans refus. Le cas « 2 chaines en parallele sur une meme entree MPPT » n'a pas pu etre construit.",
+  "preuve": null,
+  "gravite": "S2"
+ },
+ {
+  "id": "E9b-2",
+  "verdict": "non-rejouable",
+  "vu": "Condition manquante : l'ecran « Generer le devis » n'offre des surfaces a cocher/decocher que pour un calepinage a plusieurs surfaces chiffrables (« Surfaces chiffrables : Zone 1 — 9 modules » = une seule sur cal. 9, aucune case dans Documents) et le calepinage multi-surfaces (sol + ombriere) n'a pas pu etre construit (voir T4-U4-018). Observe seulement : l'apercu « Le devis portera : module ... onduleur ... » s'affiche et se met a jour apres changement de pose (cal. 7 : « Huawei 5kW » constant), et sur cal. 9 « Generer le devis » est bloque (« Choisissez d'abord une variante retenue ») tant qu'une variante existe sans etre retenue. La phrase « Un devis brouillon existe deja (REF) : le bouton l'ouvre. » n'a pas ete vue (non declenchee).",
+  "preuve": null,
+  "gravite": "S3"
+ },
+ {
+  "id": "R5C-N1",
+  "verdict": "constat",
+  "vu": "Fiche du lead R5C-1 > carte « Conception » : les deux colonnes citent le MEME devis avec deux prix : « Sans batterie · 4 panneaux 2,84 kWc · 4 542 kWh/an · Retour 6,9 ans d'apres le devis DEV-202611-0115 39 900 MAD TTC pour 5 883 MAD/an » et « Avec batterie (retenue) · 7 panneaux 4,97 kWc · 7 948 kWh/an · Retour 2,6 ans d'apres le devis DEV-202611-0115 22 900 MAD TTC pour 8 945 MAD/an » ; or le devis DEV-202611-0115 ne porte qu'une option (« Sans batterie », 7 panneaux 4,97 kWc, 39 900 MAD TTC, 7 948 kWh, 6 250 MAD/an dans son PDF). Les deux colonnes portent la pastille « materiel designe » alors que le texte dit que l'onduleur designe ne sert qu'une option.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-d-acal-109.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "R5C-N2",
+  "verdict": "constat",
+  "vu": "Etape Electrique, liste « Onduleur » (select cel-onduleur-choix) : l'entree « Onduleur injection 30kW Triphase — fiche incomplete : v_max_abs » imprime le nom technique du champ ; le panneau « Comparer » dit lui, en francais, « fiche a completer (tension DC maximale absolue) ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x9-002.png (liste lue par script: option 'Onduleur injection 30kW Triphase — fiche incomplete : v_max_abs')",
+  "gravite": "S4"
+ },
+ {
+  "id": "R5C-N3",
+  "verdict": "constat",
+  "vu": "Cal. 9, 8 panneaux 710 W, Huawei 5kW Monophase choisi : le plan dit « Chaines formees, mais a revoir : 17,6 A au-dessus de la borne de fiche 13,5 A » alors que le panneau de droite affiche « Controles · 7 bons » et le comparateur « Onduleur reseau Huawei 5kW Monophase — Conforme — Retenu » pour le meme onduleur et la meme pose ; l'utilisateur ne sait pas si c'est bloquant.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-t4-x9-002.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "R5C-N4",
+  "verdict": "constat",
+  "vu": "Cal. 8 (lead R5C-2) sous charge de la pile : « Generer le devis » affiche « DEVIS — Le serveur n'a pas repondu. Reessayez dans un instant. » alors que le devis DEV-202611-0116 (id 618) a bien ete cree cote serveur (API calepinage 8 : devis=618 brouillon) : l'utilisateur est invite a recliquer sans savoir qu'un devis existe deja. Probablement lie a la lenteur de la pile locale (reponse > 30 s).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-tmp.png (capture ecrasee ensuite) ; API: GET calepinages/8/ -> devis 618",
+  "gravite": "S3"
+ },
+ {
+  "id": "R5C-N5",
+  "verdict": "constat",
+  "vu": "Rapport d'etude (cal. 7 et 10) page « Consommation et hypotheses » : la ligne « Origine de la courbe layout » imprime le mot brut « layout » (cle technique) a la place d'un libelle en francais.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5c-rapport-cal7.txt (ligne « Origine de la courbe layout »)",
+  "gravite": "S4"
+ },
+ {
+  "id": "R5C-N6",
+  "verdict": "constat",
+  "vu": "Avance (cal. 9, avant devis lie, pose 9 panneaux 6,39 kWc, conception du lead 5 panneaux/8 selon le moment) : « Moteur du devis sur cette pose (aucun devis lie a ce calepinage) : 9 084 kWh/an — production standard de la ville », chiffre qui est celui de la conception du lead (8 panneaux 5,68 kWc), pas celui de « cette pose ». A reverifier : sur cal. 7 apres devis lie le libelle devient « Conception du lead (4,97 kWc) : 7 948 kWh/an ».",
+  "preuve": "texte lu par script le 26/11 06:42 UTC (cal. 9, onglet variantes, bloc « Estimation rapide de l'atelier »)",
+  "gravite": "S3"
+ },
+ {
+  "id": "R5C-N7",
+  "verdict": "constat",
+  "vu": "Sous charge (plusieurs simulations en parallele), l'etape Resultats empile plusieurs lignes identiques « Erreur serveur. Réessayez ou contactez le support si le problème persiste. » (5 copies vues sur cal. 10 apres des 502) ou « La connexion a expire » sans offrir de bouton Reessayer et sans dire que le calcul continue cote serveur ; la simulation de cal. 7 a ete marquee « Le suivi du calcul de fond a ete interrompu » alors que le calcul s'est termine avec succes quelques secondes apres (celery: succeeded 110 s).",
+  "preuve": "textes lus par script le 26/11 06:37-06:45 UTC (cal. 7, 8, 10)",
+  "gravite": "S3"
+ },
+ {
+  "id": "R5C-N8",
+  "verdict": "constat",
+  "vu": "Cal. 8 apres acceptation de la V2 (atelier en lecture seule) : le sous-titre de l'en-tete passe de « 3 panneaux · 2,13 kWc · 1 onduleur 5 kW » a « Lead · facture 1 500 MAD / mois » (le resume de la pose disparait pendant la lecture seule) ; Montrer au client affiche « Production : calculee a la mise a jour de la conception » meme quand une simulation recente existe.",
+  "preuve": "texte lu par script le 26/11 07:22 UTC (cal. 8 > Documents)",
+  "gravite": "S4"
+ }
+]

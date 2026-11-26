@@ -486,10 +486,50 @@ def _garde_taille(devis, calepinage, confirmer_taille):
         'refus': question['refus']})
 
 
-#: ACAL914 — l'écart d'ÉGALITÉ entre kWc dessiné et kWc composé : l'arrondi
-#: d'écriture de ``etude_params['puissance_kwc']`` (trois décimales), pas un
-#: seuil métier.
-EPSILON_KWC_COMPOSE = 0.001
+#: Un kWc dessiné SANS compte ni puissance unitaire lisibles n'est connu qu'à
+#: l'unité affichée (deux décimales : l'outil de toit l'arrondit) — l'écart
+#: d'égalité est alors la moitié de cette unité (0,005 kWc), pas un seuil métier.
+TOLERANCE_KWC_AFFICHE = 0.005
+
+#: Un kWc composé est stocké à trois décimales, soit au watt-crête près : le
+#: compte en Wc relu de lui peut s'écarter d'un Wc d'un module à puissance
+#: décimale (35 × 577,5 W), jamais davantage.
+TOLERANCE_WC_STOCKE = 1
+
+
+def module_est_substitue(dessine_kwc, compose_kwc, dessine_wc=None):
+    """Le module que le devis composerait n'est-il PAS celui du dessin ?
+
+    Fonction PURE, sans arrondi stocké ni imprimé. Quand le dessin donne son compte
+    de modules ET leur puissance unitaire (``dessine_wc`` = Σ compte × Wc, entier
+    exact : 35 × 715 = 25 025), la comparaison se fait en watts-crête entiers contre
+    le kWc composé lu au watt près — 25,025 kWc dessiné « 25,02 » par l'outil de toit
+    n'est jamais une substitution. Sans compte/puissance, repli sur les kWc avec la
+    moitié de l'unité affichée (``TOLERANCE_KWC_AFFICHE``)."""
+    if dessine_wc is not None:
+        return abs(round(float(compose_kwc) * 1000) - int(dessine_wc)) > TOLERANCE_WC_STOCKE
+    return abs(float(compose_kwc) - dessine_kwc) > TOLERANCE_KWC_AFFICHE + 1e-9
+
+
+def _chiffres_distincts(dessine, compose):
+    """Les deux kWc affichés, avec UNE décimale de plus dès que deux décimales les
+    montreraient identiques : un refus n'imprime jamais deux chiffres égaux."""
+    from core.electrique.types import fr
+
+    for decimales in (2, 3):
+        a, b = fr(dessine, decimales), fr(compose, decimales)
+        if a != b:
+            break
+    return a, b
+
+
+def _wc_dessine(pans):
+    """Σ compte × puissance unitaire des pans VENDUS, en Wc entiers, ou ``None``
+    dès qu'un pan vendu n'a pas l'un des deux (jamais de puissance supposée)."""
+    vendus = [p for p in pans if p['modules'] > 0 and not p.get('existant')]
+    if not vendus or any(not p.get('module_wc') for p in vendus):
+        return None
+    return sum(round(p['modules'] * p['module_wc']) for p in vendus)
 
 
 def _garde_module_substitue(devis, layout):
@@ -506,7 +546,9 @@ def _garde_module_substitue(devis, layout):
     pans = pans_du_document(layout)
     # Un pan existant (ACAL573) n'est pas vendu : la composition l'ignore aussi.
     dessine = sum(p['kwc'] for p in pans if p.get('kwc') and not p.get('existant'))
+    dessine_wc = _wc_dessine(pans)
     if dessine and not any(p['kind'] == 'toit' and p['source'] != 'aucune' for p in pans):
+        dessine_wc = None
         # Toit sans pan mesuré : il est résumé par le ``result`` racine, que la
         # composition compte aussi (``ventes.lire_layout``) — sinon un toit
         # résumé + un champ au sol se lisait « champ seul » (faux 409).
@@ -520,11 +562,13 @@ def _garde_module_substitue(devis, layout):
         from apps.ventes.selectors_calepinage import kwc_lu_du_layout
 
         dessine = kwc_lu_du_layout(layout)
+        dessine_wc = None
     compose = _kwc_compose_du_devis(devis)
     if not dessine or compose is None:
         return
-    if abs(float(compose) - dessine) <= EPSILON_KWC_COMPOSE + 1e-9:
+    if not module_est_substitue(dessine, compose, dessine_wc):
         return
+    affiche_dessine, affiche_compose = _chiffres_distincts(dessine, float(compose))
     panneau = next((ligne['designation'] for ligne in
                     lignes_produits_calepinage(devis)
                     if 'panneau' in (ligne['designation'] or '').lower()), '')
@@ -541,7 +585,7 @@ def _garde_module_substitue(devis, layout):
     else:
         detail = ("Le dessin porte %s kWc ; le catalogue compose %s kWc%s. "
                   "Choisissez le module du catalogue dans l'atelier puis "
-                  "relancez." % (fr(dessine, 2), fr(float(compose), 2),
+                  "relancez." % (affiche_dessine, affiche_compose,
                                  ' (%s)' % panneau if panneau else ''))
     raise DevisRefuse(detail, champ='zones.0.geometry.moduleId', statut=409,
                       donnees={'detail': detail, 'code': 'module_substitue',
