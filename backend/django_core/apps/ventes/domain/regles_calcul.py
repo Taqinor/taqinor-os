@@ -181,9 +181,10 @@ COUPURE_CHAINES_INEGALES = (2026, 11, 27)
 #: (``var_protection_marche_a_sec`` différent de vrai) — l'écran du devis dit
 #: déjà « la fiche ne dit pas s'il protège la pompe ». Nouveaux rendus
 #: seulement, même mécanique que :data:`COUPURE_SCHEMA_ELECTRIQUE` (le niveau
-#: 15 n'est pas rendu courant) ; date À CONFIRMER avec Reda (jour du
-#: déploiement du lot 8, à déplacer avant de déployer s'il glisse).
-COUPURE_PROTECTION_FICHE = (2026, 11, 27)
+#: 15 n'est pas rendu courant) ; date posée par l'orchestrateur à la PR du lot 8 :
+#: le 28/11/2026, comme toutes les coupures du lot 8 — le lot doit être déployé
+#: AVANT cette date (à déplacer avant de déployer s'il glisse).
+COUPURE_PROTECTION_FICHE = (2026, 11, 28)
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
 REGLES_COURANTES = REGLES_SENSIBILITES_1911
 

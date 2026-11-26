@@ -184,7 +184,7 @@ class ReglesCalculTests(SimpleTestCase):
         from apps.ventes.quote_engine.lignes_classement import _item_du_devis
         # La garde : la date bouge avec le déploiement (le lendemain), et SEUL
         # ce littéral bouge avec elle ; ``avant`` / ``apres`` en dérivent.
-        self.assertEqual(COUPURE_PROTECTION_FICHE, (2026, 11, 27))
+        self.assertEqual(COUPURE_PROTECTION_FICHE, (2026, 11, 28))
         apres = datetime(*COUPURE_PROTECTION_FICHE, 8, 0, tzinfo=timezone.utc)
         avant = apres - timedelta(days=1)
         desc = ('Variateur solaire dédié pompage : MPPT intégré, entrée PV directe\n'
