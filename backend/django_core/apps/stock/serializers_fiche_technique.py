@@ -251,6 +251,13 @@ class FicheTechniqueSerializer(IdInconnu404Mixin,
             'ond_pnom_reduite_debut_c', 'ond_pnom_pente_pct_c',
             'ond_mppt_independants', 'opt_onduleurs_compatibles',
             'sous_chaines_par_module',  # ACAL720
+            # ACAL1600 — lus par la cascade (vieillissement, optimiseur), le
+            # rapport et « fiches incomplètes » : un PATCH était ignoré en
+            # silence. Bornes = celles du modèle (max_digits), aucune autre.
+            'degradation_annuelle_pct', 'degradation_annee1_pct',
+            'garantie_pct_a_10_ans', 'garantie_pct_a_25_ans',
+            'opt_pmax_in_w', 'opt_v_in_min', 'opt_v_in_max', 'opt_i_in_max_a',
+            'opt_rendement_pct', 'opt_modules_par_optimiseur',
             'pdf', 'pdf_url', 'pdf_filename', 'pdf_size', 'pdf_mime',
             'date_creation', 'date_mise_a_jour',
         ]
