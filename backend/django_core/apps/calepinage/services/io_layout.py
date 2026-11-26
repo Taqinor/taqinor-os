@@ -305,6 +305,31 @@ def valider_document(document):
     _controles_croises(document)
 
 
+def valider_factures_mois(document):
+    """ACAL1927 — valide SEUL ``consumption.factures_mois`` contre le schéma v2 (le
+    sous-schéma de ``valider_document``, aucune seconde règle) ; l'enregistrement de
+    l'atelier (``layout/``) le partage avec l'import.
+
+    Raises:
+        ImportLayoutRefuse: mois hors 1-12, unité inconnue, valeur non positive… ;
+            ``champ`` = ``consumption.factures_mois.<i>.<champ>``.
+    """
+    import jsonschema
+
+    consommation = document.get('consumption') if isinstance(document, dict) else None
+    if not isinstance(consommation, dict) or 'factures_mois' not in consommation:
+        return
+    sous_schema = _schema()['$defs']['consumption']['properties']['factures_mois']
+    try:
+        jsonschema.validate(consommation['factures_mois'], sous_schema)
+    except jsonschema.exceptions.ValidationError as erreur:
+        chemin = '.'.join(['consumption', 'factures_mois']
+                          + [str(segment) for segment in erreur.absolute_path])
+        raise ImportLayoutRefuse(
+            f'Document refusé au champ « {chemin} » : {erreur.message}.',
+            champ=chemin) from erreur
+
+
 def importer_layout(calepinage, document, *, user=None, remplacer_toit=False):
     """Valide STRICTEMENT ``document`` puis l'enregistre par le chemin
     d'écriture unique (``services.layout.enregistrer_layout``).
