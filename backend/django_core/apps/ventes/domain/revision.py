@@ -343,23 +343,27 @@ def _calepinage_a_relier(ancien):
 def relier_calepinage_de_la_revision(ancien, nouveau, *, user=None):
     """R6-N1 (suite) — re-lie MAINTENANT, dans la transaction de l'appelant,
     le calepinage lié directement à ``ancien`` (la V1, déjà inactive) à
-    ``nouveau`` (sa V+1) : LE MÊME abonné que ``devis_revise``
-    (``calepinage.receivers.relier_calepinage_au_devis_revise`` : version
-    figée « Version envoyée — <réf.> » puis ``lier_devis``), appelé en avance.
-    Au commit, l'abonné trouve le calepinage déjà sur la V+1 et n'écrit rien :
-    un seul lien, une seule version figée. Un rollback de l'appelant défait
-    les deux (le calepinage reste sur la V1). Point de sauvegarde ; un échec
-    est journalisé par l'abonné, jamais propagé. Rend vrai quand ``nouveau``
-    porte désormais ce calepinage."""
+    ``nouveau`` (sa V+1) : LE service du calepinage
+    (``services.relier_au_devis_revise`` : version figée « Version envoyée —
+    <réf.> » puis ``lier_devis``), celui que son abonné ``devis_revise``
+    appelle au commit — il y trouve alors le calepinage déjà sur la V+1 et
+    n'écrit rien : un seul lien, une seule version figée. Un rollback de
+    l'appelant défait les deux (le calepinage reste sur la V1). Point de
+    sauvegarde ; un échec est journalisé, jamais propagé (l'abonné du commit
+    retente). Rend vrai quand ``nouveau`` porte désormais ce calepinage."""
     from django.db import transaction
 
-    from apps.calepinage.receivers import relier_calepinage_au_devis_revise
+    from apps.calepinage import services as calepinage_services
     from apps.calepinage.selectors import calepinage_du_devis
-    from apps.ventes.models import Devis
 
-    with transaction.atomic():
-        relier_calepinage_au_devis_revise(
-            sender=Devis, ancien=ancien, nouveau=nouveau, user=user)
+    try:
+        with transaction.atomic():
+            calepinage_services.relier_au_devis_revise(
+                ancien, nouveau, user=user)
+    except Exception:  # noqa: BLE001 — la révision ne casse jamais sur une re-liaison (D-ENF22-BLE001)
+        logger.exception('R6-N1 : re-liaison du calepinage en échec (%s -> %s)',
+                         getattr(ancien, 'reference', '?'),
+                         getattr(nouveau, 'reference', '?'))
     calepinage = calepinage_du_devis(nouveau.pk, nouveau.company)
     return calepinage is not None and calepinage.devis_id == nouveau.pk
 

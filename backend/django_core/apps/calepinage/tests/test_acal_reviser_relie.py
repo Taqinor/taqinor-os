@@ -185,6 +185,21 @@ class ReviserRelieTest(BaseApiCalepinage):
         self.c.refresh_from_db()
         self.assertEqual(self.c.devis_id, v2.pk)  # savepoint annulé
 
+    def test_service_relier_au_devis_revise_idempotent(self):
+        """R6-N1 (suite) — LE service (appelé par l'abonné ET par ventes) :
+        un second appel n'écrit rien, une seule version figée."""
+        from apps.calepinage.services.liens import relier_au_devis_revise
+
+        v2 = reviser_devis(self.v1, user=self.user)  # rappels non rejoués
+        self.assertEqual(relier_au_devis_revise(self.v1, v2, user=self.user),
+                         self.c)
+        self.assertIsNone(relier_au_devis_revise(self.v1, v2, user=self.user))
+        self.c.refresh_from_db()
+        self.assertEqual(self.c.devis_id, v2.pk)
+        libelle = LIBELLE_VERSION_ENVOYEE.format(reference=self.v1.reference)
+        self.assertEqual(CalepinageVersion.objects.filter(
+            calepinage=self.c, libelle=libelle).count(), 1)
+
     def test_version_envoyee_figee(self):
         self._reviser()
         libelle = LIBELLE_VERSION_ENVOYEE.format(reference=self.v1.reference)
