@@ -90,7 +90,10 @@ def verdicts_electriques(company, design, onduleurs, puissance_kwc):
     fiche = _fiche_onduleur(company, onduleurs[0].get('produit'))
     materiel = (design.get('materiel') or {}).get('onduleur') or {}
     nombre = sum(int(o.get('quantite') or 0) for o in onduleurs) or 1
-    onduleur = SimpleNamespace(designation=materiel.get('designation') or onduleurs[0].get('designation'),
+    # D-HYB-1 (lead 1742) — une pose jugée sur un onduleur absent des lignes de la conception
+    # arrive sans désignation : le NOM du produit dit s'il est hybride, jamais « réseau » par défaut.
+    onduleur = SimpleNamespace(designation=(materiel.get('designation') or onduleurs[0].get('designation')
+                                            or _nom_produit(company, onduleurs[0].get('produit'))),
                                dc_max_kwc=fiche.get('dc_max_kwc'))
     ac_kw = _nombre(materiel.get('ac_kw')) or _nombre(fiche.get('ac_kw')) or 0.0
     evaluation = SimpleNamespace(nombre=nombre, puissance_ac_kw=nombre * ac_kw)
@@ -317,7 +320,7 @@ def _designations(company, calepinage_id, lu=None):
 def _nom_produit(company, produit_id):
     from apps.stock.selectors import get_produit_scoped
     try:
-        produit = get_produit_scoped(company, int(produit_id))
+        produit = get_produit_scoped(company, int(produit_id)) if company is not None else None
     except (TypeError, ValueError):
         produit = None
     return getattr(produit, 'nom', None) or None

@@ -251,6 +251,30 @@ class UnSeulVerdictTest(SimpleTestCase):
         self.assertEqual(controle['etat'], 'ok')
 
 
+class PoseSurUnAutreOnduleurTest(SimpleTestCase):
+    """D-HYB-1 (lead 1742) — « Prêt à envoyer ? » juge une pose dont l'onduleur n'est pas
+    dans les lignes de la conception (``selectors_conception.verdicts_pour_le_calepinage`` :
+    ligne sans désignation) : la porte du moteur lit le NOM du produit pour savoir s'il
+    est hybride ; avant, un hybride publiant sa capacité était jugé à la borne 1,35."""
+
+    def test_hybride_sans_designation_juge_a_sa_fiche(self):
+        from unittest import mock
+
+        from apps.ventes.conception import porte_calepinage as porte
+
+        design = {'ratio_dc_ac': 1.72, 'chaines': [], 'materiel': {'onduleur': {'designation': None}}}
+        lignes = [{'produit': 7, 'designation': None, 'quantite': 1}]
+        fiche = {'ac_kw': 20.0, 'dc_max_kwc': 40.0}
+        with mock.patch.object(porte, '_fiche_onduleur', return_value=fiche), mock.patch.object(
+                porte, '_nom_produit', return_value='Deye hybride 20 kW'), mock.patch.object(
+                porte, '_reglages_electriques', return_value={}):
+            verdicts = porte.verdicts_electriques(object(), design, lignes, 34.32)
+        self.assertIs(verdicts['ratio_dc_ac']['conforme'], True)
+        self.assertEqual(verdicts['ratio_dc_ac']['borne_source'], SOURCE_BORNE_CAPACITE)
+        self.assertIn('fiche constructeur : 40 kWc au plus', verdicts['ratio_dc_ac']['detail'])
+        self.assertIs(verdicts['capacite_hybride']['conforme'], True)
+
+
 class EcretageTest(SimpleTestCase):
     """La perte d'écrêtage se calcule heure par heure, ou pas du tout."""
 
