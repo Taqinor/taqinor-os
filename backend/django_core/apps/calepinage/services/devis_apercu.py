@@ -72,29 +72,49 @@ def _ecarts(calepinage, options):
     return phrases
 
 
+def _role_de_ligne(ligne):
+    """Lot 8 (B2) — le rôle d'une ligne déjà au devis, résolu comme le reste du code pour une ligne
+    sans rôle figé (``ventes.domain.bordereau._boq_role_de_ligne``) : le rôle FIGÉ de la ligne, sinon
+    le rôle déclaré de son produit, sinon les mots-clés de la désignation — le classifieur unique
+    ``core.product_roles.role_effectif``, celui de ventes injecté (``ventes.selectors``)."""
+    from core.product_roles import role_effectif
+
+    from apps.ventes.selectors import classer_produit_nom
+
+    declare = ligne.role_devis or getattr(getattr(ligne, 'produit', None), 'role_devis', None)
+    return role_effectif(declare, None, ligne.designation or '', classer_nom=classer_produit_nom)[0]
+
+
 def _specs_du_brouillon(devis):
     """Lane E9b — les lignes RÉELLES du brouillon que le bouton ouvrirait, à la forme des specs de
     composition que lit :func:`_materiel_par_option` (rôle, variante, désignation, produit) : on lit
-    ce que le devis porte, rien n'est recomposé."""
-    return [{'role_devis': ligne.role_devis, 'variante': ligne.variante or '', 'designation': ligne.designation,
-             'produit': ligne.produit_id} for ligne in devis.lignes.all().order_by('ordre', 'pk')]
+    ce que le devis porte, rien n'est recomposé. Lot 8 (B2) — rôle résolu par :func:`_role_de_ligne`."""
+    return [{'role_devis': _role_de_ligne(ligne), 'variante': ligne.variante or '',
+             'designation': ligne.designation, 'produit': ligne.produit_id}
+            for ligne in devis.lignes.select_related('produit').order_by('ordre', 'pk')]
 
 
 #: Lot 8 (aperçu ≠ devis, 26/11) — le lead a un brouillon LIBRE né avant ce calepinage : « Générer »
 #: ne compose pas, il pose la question R2-22 (``devis._brouillon_libre_choisi``) ; rattaché, ce brouillon
 #: est resynchronisé (``reconcilier``, PV18 : les produits des lignes ne sont jamais re-choisis).
 MESSAGE_BROUILLON_LIBRE = ('Ce lead a déjà le devis %s (brouillon), créé avant ce calepinage : rattaché à ce '
-                           'calepinage, il garde les produits qu’il porte (%s) et ne prend que le compte de '
+                           'calepinage, il garde les produits qu’il porte%s et ne prend que le compte de '
                            'panneaux et le scénario de la pose ; le matériel ci-dessus est celui d’un autre devis.')
+
+
+def _phrase_brouillon_libre(reference, onduleurs):
+    """Lot 8 (B2) — la phrase R2-22 ; l'onduleur n'est nommé que s'il est ÉTABLI sur les lignes
+    (pompage, micro-onduleurs non reconnus, rôle introuvable : la phrase s'en tait)."""
+    noms = ' / '.join(sorted({o for o in onduleurs if o}))
+    return MESSAGE_BROUILLON_LIBRE % (reference, f' (onduleur « {noms} »)' if noms else '')
 
 
 def _ecart_brouillon_libre(libre):
     """L'entrée ``ecarts`` R2-22 pour le brouillon libre que « Générer » proposera de rattacher (le
     plus récent, comme le 409 ``devis_existant``). Ce qu'il porte est lu sur SES lignes."""
-    porte = ' / '.join(sorted({o['onduleur'] for o in _materiel_par_option(_specs_du_brouillon(libre))
-                               if o['onduleur']})) or 'aucun'
+    onduleurs = [o['onduleur'] for o in _materiel_par_option(_specs_du_brouillon(libre))]
     return {'champ': 'rattacher_devis',
-            'message': MESSAGE_BROUILLON_LIBRE % (libre.reference or f'#{libre.pk}', f'onduleur « {porte} »')}
+            'message': _phrase_brouillon_libre(libre.reference or f'#{libre.pk}', onduleurs)}
 
 
 def apercu_materiel_du_devis(calepinage, surfaces=None):

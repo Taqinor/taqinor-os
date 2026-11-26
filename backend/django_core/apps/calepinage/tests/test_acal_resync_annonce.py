@@ -10,6 +10,8 @@ Run :
 import copy
 from decimal import Decimal
 
+from django.test import SimpleTestCase
+
 from core import events
 
 from apps.calepinage.models import Calepinage, CalepinageVersion
@@ -306,6 +308,37 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertEqual(apercu.data['refus'], str(genere.data['detail']))
         self.assertIn(d2.reference, apercu.data['refus'])
 
+    def test_lot8_b2_onduleur_du_brouillon_libre_sans_role_fige(self):
+        """Lot 8 (B2) — brouillon libre dont la ligne onduleur n'a pas de rôle figé : le rôle est
+        résolu (produit, puis mots-clés) et l'onduleur nommé ; sans onduleur établi, la phrase ne
+        dit rien de l'onduleur (jamais « aucun »)."""
+        from datetime import timedelta
+
+        from apps.ventes.models import Devis
+
+        self.calepinage.refresh_from_db()
+        libre = Devis.objects.get(pk=self.calepinage.devis_id)
+        ligne = next(li for li in libre.lignes.all() if str(li.role_devis or '').startswith('onduleur_'))
+        type(ligne).objects.filter(pk=ligne.pk).update(role_devis=None, produit=None,
+                                                       designation='Onduleur réseau Huawei 20 kW')
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=None)
+        self.calepinage.refresh_from_db()
+        Devis.objects.filter(pk=libre.pk).update(date_creation=self.calepinage.created_at - timedelta(days=1))
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 10
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+
+        def phrase():
+            reponse = self.api.get(f'{self.base}apercu-devis/')
+            self.assertEqual(reponse.status_code, 200, reponse.data)
+            return next(e['message'] for e in reponse.data['ecarts'] if e['champ'] == 'rattacher_devis')
+        self.assertIn('(onduleur « Onduleur réseau Huawei 20 kW »)', phrase())
+        type(ligne).objects.filter(pk=ligne.pk).delete()
+        sans = phrase()
+        self.assertIn(libre.reference, sans)
+        self.assertNotIn('onduleur', sans)
+        self.assertNotIn('aucun', sans)
+
     def test_e9b_apercu_compose_les_surfaces_cochees_comme_la_generation(self):
         """Lane E9b — ``?surfaces=`` (les cases cochées que « Générer » enverra) passe par LA même
         fonction (``devis._layout_des_surfaces``) : clé inconnue ⇒ le refus nommé de la génération ;
@@ -387,3 +420,31 @@ class ResyncAnnonceTest(BaseApiCalepinage):
                         side_effect=SyncLayoutError('Refus du serveur.', revision_possible=False)):
             reponse = self.api.post(f'{self.base}sync-devis/', {}, format='json')
         self.assertEqual((reponse.status_code, str(reponse.data['detail'])), (409, 'Refus du serveur.'))
+
+
+class ApercuBrouillonLibreSansBaseTest(SimpleTestCase):
+    """Lot 8 (B2) — sans base : le rôle d'une ligne de brouillon et la phrase R2-22."""
+
+    def test_role_fige_puis_mots_cles_et_aucun_onduleur(self):
+        from types import SimpleNamespace
+
+        from apps.calepinage.services.devis_apercu import _role_de_ligne
+
+        def ligne(role, designation, produit=None):
+            return SimpleNamespace(role_devis=role, designation=designation, produit=produit)
+        self.assertEqual(_role_de_ligne(ligne('onduleur_hybride', 'Désignation libre')), 'onduleur_hybride')
+        produit = SimpleNamespace(role_devis='onduleur_reseau')
+        self.assertEqual(_role_de_ligne(ligne(None, 'Désignation libre', produit)), 'onduleur_reseau')
+        self.assertEqual(_role_de_ligne(ligne(None, 'Onduleur réseau Huawei 20 kW')), 'onduleur_reseau')
+        self.assertEqual(_role_de_ligne(ligne('', 'Onduleur hybride Deye 5kW Monophasé')), 'onduleur_hybride')
+        self.assertFalse(str(_role_de_ligne(ligne(None, 'Pompe immergée 4 pouces')) or '').startswith('onduleur_'))
+
+    def test_phrase_ne_dit_jamais_aucun_onduleur(self):
+        from apps.calepinage.services.devis_apercu import _phrase_brouillon_libre
+
+        avec = _phrase_brouillon_libre('DEV-1', ['Onduleur réseau Huawei 20 kW', None])
+        self.assertIn('(onduleur « Onduleur réseau Huawei 20 kW »)', avec)
+        sans = _phrase_brouillon_libre('DEV-1', [None])
+        self.assertIn('DEV-1', sans)
+        self.assertNotIn('onduleur', sans)
+        self.assertNotIn('aucun', sans)
