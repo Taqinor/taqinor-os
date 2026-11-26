@@ -31,7 +31,7 @@ const rail = read('IdentityRail.jsx')
 test('le champ « Puissance cible (kWc) » existe sur le CTA du workspace', () => {
   assert.match(tab, /data-testid="lw-devis-kwc"/)
   assert.match(tab, /Puissance cible \(kWc\)/)
-  assert.match(tab, /const \[kwcCible, setKwcCible\] = useState\(''\)/)
+  assert.match(tab, /const \[kwcLocal, setKwcLocal\] = useState\(''\)/)
   // Étiqueté (le lecteur d'écran nomme le champ) — pas un simple placeholder.
   assert.match(tab, /htmlFor="lw-devis-kwc"/)
   assert.match(tab, /id="lw-devis-kwc"/)
@@ -73,7 +73,7 @@ test('les appelants historiques d’open-devis ne bougent pas', () => {
 })
 
 test('LeadWorkspace lit les DEUX formes, sans casser `devisPanel`', () => {
-  assert.match(workspace, /const intent = \(payload && typeof payload === 'object'\) \? payload : \{ mode: payload \}/)
+  assert.match(workspace, /const intent = \(brut && typeof brut === 'object'\) \? brut : \{ mode: brut \}/)
   assert.match(workspace, /setDevisKwc\(intent\.targetKwc \|\| null\)/)
   assert.match(workspace, /setDevisPanel\(intent\.mode \|\| 'auto'\)/)
   // `devisPanel` reste une chaîne : la comparaison `=== 'view'` (qui décide

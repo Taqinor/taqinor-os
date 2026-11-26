@@ -467,8 +467,14 @@ def _pente_et_azimut(pan):
     mesuré ce toit »). Absents, on lit ce que le contrat dit : toiture PLATE,
     pente 0, plein sud — exactement ce qu'appliquent les deux lecteurs
     existants (``newAreaRecord()``), jamais une valeur inventée ici.
+
+    D-ACAL-149 — sur un toit ``flat``, ``pitchDeg`` n'est que le curseur
+    mémorisé (22 par défaut) : la pente vaut 0 (``valeurs.pente_du_pan``),
+    donc rangées anti-ombrage et non pose affleurante.
     """
-    pente = _nombre(pan.get('pitchDeg'))
+    from .valeurs import pente_du_pan
+
+    pente = pente_du_pan(pan)
     azimut = _nombre(pan.get('facingAzimuthDeg'))
     genre = pan.get('roofType')
     plat = (genre != 'pitched') if genre is not None else (

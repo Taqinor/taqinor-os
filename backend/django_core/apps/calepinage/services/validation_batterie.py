@@ -6,7 +6,7 @@ Extraite de ``services/electrique.py`` : ``electrique`` ré-importe le module
 from .valeurs import nombre as _nombre
 
 
-def valider_batterie(saisie):
+def valider_batterie(saisie, calepinage=None, fusionnee=None):
     """ACAL166 — la FORME de la déclaration de batterie, refusée en NOMMANT
     le champ (``batterie.<champ>``). Aucune stratégie n'est supposée : une
     stratégie absente reste absente, et la simulation OMET le bloc en le
@@ -60,3 +60,86 @@ def valider_batterie(saisie):
                        or not 0 <= h <= 23 for h in heures)):
             _refus_champ("« %s » doit être une liste d'heures entières "
                          "comprises entre 0 et 23." % cle, 'batterie.%s' % cle)
+    if calepinage is not None:  # D-ACAL-157 — la désignation d'un produit batterie (écriture de l'entrée)
+        _valider_batterie_designee(calepinage, fusionnee or {}, {'batterie': saisie})
+
+
+def drapeau_hybride(role, resolu):
+    """D-ACAL-157 — ``{'hybride': bool}`` pour le rôle ``onduleur`` (décidé par le SERVEUR, ``ratio_devis.
+    onduleur_designe_est_hybride``), ``{}`` pour les autres rôles : le matériel servi n'a la clé que sur l'onduleur."""
+    from .ratio_devis import onduleur_designe_est_hybride
+
+    if role != 'onduleur':
+        return {}
+    return {'hybride': onduleur_designe_est_hybride(
+        resolu.get(role), (resolu.get('designations') or {}).get(role), (resolu.get('familles') or {}).get(role))}
+
+
+def _valider_batterie_designee(calepinage, fusionnee, postee):
+    """D-ACAL-157 — ``batterie.produit`` POSTÉ : un produit de la société (jamais celui d'une autre : même
+    message qu'un id absent) ET membre de la MÊME liste que les candidats servis (``produits_par_type_fiche_qs``
+    « batterie » : fiche batterie, actif) — un câble ou un produit sans fiche ne passe plus pour une batterie. Une
+    désignation INCHANGÉE (le ``produit`` déjà stocké) n'est pas rejugée : une entrée ou une fixture qui porte une
+    batterie sans fiche reste réenregistrable. AUCUN jugement sur l'onduleur à l'écriture : une batterie derrière son
+    propre onduleur-chargeur, sur un onduleur réseau, est une configuration légitime et modélisée
+    (``services/batterie.py`` : couplage ``ac`` par défaut) ; D-ACAL-157 ne demande que de PROPOSER le sélecteur
+    pour un hybride (garde d'ÉCRAN). Un refus NOMME ``batterie.produit`` ; ``None`` / ``''`` effacent."""
+    from apps.stock.selectors import get_produit_scoped, produits_par_type_fiche_qs
+
+    from .electrique import EntreeInvalide, entree_stockee
+
+    saisie = (postee or {}).get('batterie')
+    identifiant = saisie.get('produit') if isinstance(saisie, dict) else None
+    if identifiant in (None, ''):
+        return
+    deja = (entree_stockee(calepinage).get('batterie') or {}).get('produit')
+    if deja not in (None, '') and str(deja) == str(identifiant):
+        return
+    company = getattr(calepinage, 'company', None)
+    try:
+        produit = get_produit_scoped(company, identifiant)
+    except (TypeError, ValueError):
+        produit = None
+    if produit is None:
+        raise EntreeInvalide('Produit introuvable dans votre catalogue (#%s).' % identifiant,
+                             champ='batterie.produit', introuvable=True)
+    if not produits_par_type_fiche_qs(company, 'batterie').filter(pk=produit.pk).exists():
+        raise EntreeInvalide("« %s » n'est pas une batterie du catalogue : choisissez un produit actif de la catégorie "
+                             "Batterie." % (getattr(produit, 'nom', '') or identifiant), champ='batterie.produit')
+    from .electrique import resoudre_materiel
+
+    verdict = _verdict_batterie(company, resoudre_materiel(company, fusionnee, calepinage=calepinage), produit.pk)
+    if verdict['statut'] == 'incompatible':  # « inconnu » (fiche sans tension) n'est PAS incompatible
+        raise EntreeInvalide("La batterie « %s » ne convient pas à l'onduleur désigné : %s." % (
+            getattr(produit, 'nom', '') or identifiant, ' ; '.join(verdict['raisons']) or 'incompatible'),
+            champ='batterie.produit')
+
+
+def _verdict_batterie(company, resolu, batterie_id):
+    """D-ACAL-157 — le verdict de l'UNIQUE juge (``apps.ventes.selectors.compatibilite_du_materiel`` ->
+    ``verdict_batterie_onduleur``) de cette batterie sous l'onduleur RÉSOLU ; sans onduleur : ``inconnu``."""
+    from apps.ventes.selectors import compatibilite_du_materiel
+
+    produits = (resolu or {}).get('produits') or {}
+    if produits.get('onduleur') is None:
+        return {'statut': 'inconnu', 'raisons': []}
+    servi = compatibilite_du_materiel(produits.get('module'), produits.get('onduleur'), company, batterie_id)
+    verdict = servi.get('batterie_onduleur') or {}
+    return {'statut': verdict.get('statut') or 'inconnu', 'raisons': list(verdict.get('raisons') or [])}
+
+
+def enrichir_candidats(calepinage, candidats, resolu):
+    """D-ACAL-157 — les candidats servis, enrichis : chaque batterie porte ``compatibilite`` (le verdict du juge pour
+    l'onduleur désigné) et ``batterie_du_devis`` dit la ligne batterie du devis lié que le schéma reprend quand aucune
+    batterie n'est désignée ici (``{produit_id, designation, packs}``, sinon ``None``)."""
+    from .equipements import equipements_du_calepinage
+
+    company = getattr(calepinage, 'company', None)
+    for ligne in candidats.get('batteries') or ():
+        ligne['compatibilite'] = _verdict_batterie(company, resolu, ligne['id'])
+    bloc = (equipements_du_calepinage(calepinage) or {}).get('batterie')
+    quantite = _nombre((bloc or {}).get('quantite'))
+    candidats['batterie_du_devis'] = ({
+        'produit_id': bloc['produit'], 'designation': bloc.get('designation') or '',
+        'packs': int(round(quantite)) if quantite is not None and quantite >= 1 else 1} if bloc else None)
+    return candidats

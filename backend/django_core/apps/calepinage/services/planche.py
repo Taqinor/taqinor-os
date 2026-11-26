@@ -47,7 +47,7 @@ from __future__ import annotations
 import math
 import textwrap
 from html import escape
-from .valeurs import nombre as _nombre
+from .valeurs import nombre as _nombre, pente_du_pan
 
 __all__ = [
     'FORMAT_A3_MM', 'MARGE_MM', 'LARGEUR_BANDEAU_MM', 'PAS_D_ECHELLE_M',
@@ -252,8 +252,13 @@ def _annee(valeur):
     return valeur
 
 
-def geometrie_de_planche(roof_layout):
+def geometrie_de_planche(roof_layout, *, toit_plat_corrige=True):
     """``roof_layout`` -> géométrie PLANE en mètres, prête à dessiner.
+
+    D-ACAL-149 — ``toit_plat_corrige`` (vrai par défaut) lit 0 pour la pente
+    d'un toit plat sans ``geometry.tiltDeg`` ; faux, la valeur du curseur
+    (``pitchDeg``), comme avant : seul le devis envoyé avant la coupure
+    (``ventes.regles_calcul.toit_plat_ouvert``) le demande.
 
     Rend ``{'contour', 'pans', 'obstacles', 'zones_interdites', 'etendue',
     'module_m', 'parcelle', 'surfaces_de_pose'}``. Lève ``PlancheRefusee``
@@ -310,9 +315,13 @@ def geometrie_de_planche(roof_layout):
             'azimut_deg': _nombre(geometrie.get('azimuthDeg')
                                   if 'azimuthDeg' in geometrie
                                   else zone.get('facingAzimuthDeg')),
-            'pente_deg': _nombre(geometrie.get('tiltDeg')
-                                 if 'tiltDeg' in geometrie
-                                 else zone.get('pitchDeg')),
+            # D-ACAL-149 — sans ``tiltDeg``, un toit plat a une pente de 0 (sa
+            # ``pitchDeg`` n'est que le curseur mémorisé) ; ``toit_plat_corrige``
+            # faux garde la lecture d'avant (devis envoyé avant la coupure).
+            'pente_deg': _nombre(geometrie.get('tiltDeg'))
+            if 'tiltDeg' in geometrie else (
+                pente_du_pan(zone) if toit_plat_corrige
+                else _nombre(zone.get('pitchDeg'))),
             'modules': modules,
             'reperes_modules': reperes,
             # ACAL601 — la pose DÉCLARÉE (``None`` si absente ou inconnue :
@@ -1595,7 +1604,9 @@ def rendre_planche_svg(calepinage, *, moment=None, roof_layout=None,
         document = roof_layout
     geometrie = geometrie_de_planche(
         document if document is not None
-        else getattr(calepinage, 'roof_layout', None))
+        else getattr(calepinage, 'roof_layout', None),
+        # D-ACAL-149 — faux pour un devis envoyé avant la coupure seulement.
+        toit_plat_corrige=options.pop('toit_plat_corrige', True))
     return svg_de_planche(
         geometrie,
         titre=options.pop('titre', None) or str(calepinage),

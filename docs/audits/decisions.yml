@@ -5157,9 +5157,9 @@ decisions:
         texte: "Un AVERTISSEMENT non bloquant sous le champ quand la valeur dépasse 10 fois l'attendu (puissance des onduleurs ; P50 du mois), sans chiffre absolu inventé"
       - cle: bornes_absolues
         texte: "Refuser au-delà de bornes absolues que vous fixez"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q1 de JUGEMENT-R3 (R3-13, R3-29) ; recommandation du juge : avertir_10x"
+    reponse: avertir_10x
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q1 de JUGEMENT-R3 (R3-13, R3-29) ; recommandation du juge : avertir_10x ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1251]
 
   - id: D-ACAL-64
@@ -5169,9 +5169,9 @@ decisions:
         texte: "Oui : la liste (`acal_dryrun_annee_moyenne`) vous est montrée, rien n'est réparé"
       - cle: nouveaux_rendus
         texte: "Nouveaux rendus seulement, sans liste"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q2 de JUGEMENT-R3 ; les nouvelles simulations sont corrigées (correcteur C3A) ; recommandation du juge : lister_et_montrer"
+    reponse: lister_et_montrer
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q2 de JUGEMENT-R3 ; les nouvelles simulations sont corrigées (correcteur C3A) ; recommandation du juge : lister_et_montrer ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1252]
 
   - id: D-ACAL-65
@@ -5181,9 +5181,9 @@ decisions:
         texte: "Oui, comme désignation explicite de l'entrée de la copie (sinon la copie simule sans onduleur et annonce + 1,9 %)"
       - cle: dire
         texte: "Non, mais l'écran de la copie dit « onduleur non désigné » avant de simuler"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q4 de JUGEMENT-R3 (R3-11) ; recommandation du juge : reprendre"
+    reponse: reprendre
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q4 de JUGEMENT-R3 (R3-11) ; recommandation du juge : reprendre ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1253]
 
   - id: D-AGNR-6
@@ -5205,9 +5205,9 @@ decisions:
         texte: "Accepter « 3 ou 4 pages » et dire la vérité (libellé du dialogue, CLAUDE.md, commentaires)"
       - cle: exiger_trois
         texte: "Exiger 3 pages : resserrer la mise en page de la rentabilité, mesurée sur le rendu réel"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q2 de JUGEMENT-R1 (R1-04) ; recommandation du juge : trois_ou_quatre"
+    reponse: trois_ou_quatre
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q2 de JUGEMENT-R1 (R1-04) ; recommandation du juge : trois_ou_quatre ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1222]
 
   - id: D-AMOT-9
@@ -5217,9 +5217,9 @@ decisions:
         texte: "L'économie annuelle des cartes (p.1-2) ; la facture « avec solaire » de la page 4 en dérive, nouveaux rendus seulement"
       - cle: facture_mensuelle
         texte: "La facture « après » calculée mois par mois ; l'économie en dérive (la carte p.1 change)"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q4 de JUGEMENT-R1 (R1-06) ; recommandation du juge : economie_annuelle"
+    reponse: economie_annuelle
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q4 de JUGEMENT-R1 (R1-06) ; recommandation du juge : economie_annuelle ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1218]
 
   - id: D-AMOT-10
@@ -5229,9 +5229,9 @@ decisions:
         texte: "« Barème national de référence » partout (vrai pour tous) ; le générateur reprend le distributeur du lead pour l'affichage"
       - cle: distributeur
         texte: "Nommer le distributeur du lead"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q6 de JUGEMENT-R1 (R1-17) ; recommandation du juge : bareme_national"
+    reponse: bareme_national
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q6 de JUGEMENT-R1 (R1-17) ; recommandation du juge : bareme_national ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1221]
 
   - id: D-AMOT-11
@@ -5241,9 +5241,9 @@ decisions:
         texte: "Non pour l'instant : deux gabarits voulus et testés ; chantier lourd sur la règle #4"
       - cle: oui
         texte: "Oui, en tâche de plan dédiée"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q7 (facultative) de JUGEMENT-R1 (R1-05, classé VOULU) ; recommandation du juge : non ; aucune tâche écrite"
+    reponse: non
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q7 (facultative) de JUGEMENT-R1 (R1-05, classé VOULU) ; recommandation du juge : non ; aucune tâche écrite ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: []
 
   - id: D-AMOT-12
@@ -5253,9 +5253,9 @@ decisions:
         texte: "Oui, par un drapeau de rendu (nouveaux rendus ; envoyés inchangés)"
       - cle: ecran_seulement
         texte: "Écran seulement (déjà fait, D-ACAL-52)"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q5 de JUGEMENT-R2, moitié PDF ; recommandation du juge : niveau_nouveaux_rendus"
+    reponse: ecran_seulement
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q5 de JUGEMENT-R2, moitié PDF ; recommandation du juge : niveau_nouveaux_rendus ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1219]
 
   - id: D-ADEV-7
@@ -5325,9 +5325,9 @@ decisions:
         texte: "Un outil de pose seulement : ni économies ni kWh de réseau, un renvoi clair vers le devis agricole, la pose limitée au champ du devis"
       - cle: panneau_pompage
         texte: "Un panneau Pompage dans l'atelier (pompe, volume d'eau), aligné sur le moteur du devis agricole"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q1 de JUGEMENT-R5 (R5-14, R5-15) ; recommandation du juge : outil_pose maintenant, panneau_pompage quand D-ACAL-46 passe au niveau de règles 15"
+    reponse: outil_pose
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q1 de JUGEMENT-R5 (R5-14, R5-15) ; recommandation du juge : outil_pose maintenant, panneau_pompage quand D-ACAL-46 passe au niveau de règles 15 ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1268]
 
   - id: D-AGR-15
@@ -5349,9 +5349,9 @@ decisions:
         texte: "Garder la valeur de départ, toujours marquée « à confirmer » ; rien de neuf n'est enregistré"
       - cle: etat_inconnu
         texte: "Enregistrer un état « pente inconnue », repris par « Prêt à envoyer ? » et par la visite"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : garder_depart maintenant (construit ainsi), etat_inconnu si la visite doit le reprendre"
+    reponse: garder_depart
+    date: "2026-11-26"
+    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : garder_depart maintenant (construit ainsi), etat_inconnu si la visite doit le reprendre ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1316]
 
   - id: D-ACAL-68
@@ -5361,9 +5361,9 @@ decisions:
         texte: "Les catégories de photos déjà stockées par le relevé ; « Terminer » enregistre et revient à la fiche, sans statut neuf"
       - cle: six_maquette
         texte: "Les six photos de la maquette comme liste fermée, et un statut « relevé terminé » sur le calepinage"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : categories_existantes (aucun statut inventé)"
+    reponse: categories_existantes
+    date: "2026-11-26"
+    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : categories_existantes (aucun statut inventé) ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1319]
 
   - id: D-ACAL-69
@@ -5385,9 +5385,9 @@ decisions:
         texte: "Non pour l'instant : la maquette le montre, aucune position d'onduleur n'est enregistrée aujourd'hui ; l'action reste masquée"
       - cle: construire
         texte: "Oui : enregistrer une position d'onduleur sur le plan et en déduire la longueur de câble"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : plus_tard (aucun chiffre inventé) ; construire demande une donnée neuve"
+    reponse: construire
+    date: "2026-11-26"
+    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : plus_tard (aucun chiffre inventé) ; construire demande une donnée neuve ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1317]
 
   - id: D-ACAL-71
@@ -5397,9 +5397,9 @@ decisions:
         texte: "Oui, lu du stock réel par le sélecteur du stock ; rien affiché quand la quantité n'est pas servie"
       - cle: non
         texte: "Non : le stock ne se lit pas dans l'atelier"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : si_servi"
+    reponse: si_servi
+    date: "2026-11-26"
+    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : si_servi ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1318]
 
   - id: D-ACAL-72
@@ -5421,9 +5421,9 @@ decisions:
         texte: "Oui, corrigé sur place comme tout devis envoyé (règle QJR5), et l'écran le dit avant d'agir"
       - cle: refuser
         texte: "Non : refuser et proposer une révision V2"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : corriger_dire, après le dry-run des écarts montré au fondateur"
+    reponse: corriger_dire
+    date: "2026-11-26"
+    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : corriger_dire, après le dry-run des écarts montré au fondateur ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1320]
 
   - id: D-AGNR-7
@@ -5483,9 +5483,9 @@ decisions:
         texte: "Le renommer « Facture ou taille souhaitée renseignée » : il ne promet plus un dimensionnement qu'il ne vérifie pas"
       - cle: ajouter_controle
         texte: "Garder ce contrôle renommé ET ajouter un contrôle « Taille proche de la cible » qui passe à régler quand la pose dépasse deux fois la cible servie"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage ; constat : le contrôle teste seulement qu'une facture ou une taille souhaitée existe, et dit « Dimensionnée » pour 60 panneaux et ~6 655 kWh par an ; recommandation (de l'auteur du plan, non demandée au fondateur) : renommer d'abord, ajouter le second contrôle seulement si le fondateur veut qu'une taille démesurée gêne l'envoi"
+    reponse: renommer
+    date: "2026-11-26"
+    source: "comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage ; constat : le contrôle teste seulement qu'une facture ou une taille souhaitée existe, et dit « Dimensionnée » pour 60 panneaux et ~6 655 kWh par an ; recommandation (de l'auteur du plan, non demandée au fondateur) : renommer d'abord, ajouter le second contrôle seulement si le fondateur veut qu'une taille démesurée gêne l'envoi ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1332]
 
   - id: D-ACAL-78
@@ -6518,4 +6518,61 @@ decisions:
     reponse: laisser_ouvert
     date: "2026-11-26"
     source: "fondateur, séance de questions du 26/11/2026 (nuit) ; tour 5 du L5, paquet E"
+    taches: []
+  - id: D-ACAL-163
+    question: "D-ACAL-159 bascule le devis en « avec batterie » quand un hybride est désigné. Si AUCUNE batterie ne peut être mise au devis avec cet hybride (aucune en stock avec un prix, ou aucune compatible) ?"
+    options:
+      - cle: garder_catalogue_et_dire
+        texte: "(recommandée) Le devis est créé avec l'onduleur que choisit la règle du catalogue, et le vendeur lit que l'hybride désigné n'a pas été repris, faute de batterie"
+      - cle: refuser
+        texte: "Refuser le devis tant qu'une batterie compatible n'est pas en stock"
+    reponse: garder_catalogue_et_dire
+    date: "2026-11-26"
+    source: "fondateur, questions interactives du 26/11/2026 (quatrième séance) ; confirme la borne posée par l'orchestrateur sous D-ACAL-159"
+    taches: []
+  - id: D-ACAL-164
+    question: "L'étape Électrique permet de désigner une BATTERIE (D-ACAL-157). Quelle batterie vend le devis généré depuis ce calepinage ?"
+    options:
+      - cle: la_designee_si_tarifee
+        texte: "(recommandée) Celle désignée au calepinage quand elle a un prix de vente et convient à l'onduleur ; sinon le choix automatique habituel, dit à l'écran"
+      - cle: toujours_automatique
+        texte: "Toujours le choix automatique ; la batterie désignée ne figure qu'au schéma, l'écran dit l'écart"
+    reponse: la_designee_si_tarifee
+    date: "2026-11-26"
+    source: "fondateur, questions interactives du 26/11/2026 (quatrième séance) ; même règle que D-ACAL-148 pour l'onduleur ; nouveaux devis seulement"
+    taches: []
+  - id: D-ACAL-165
+    question: "Les prix de vente sont masqués au Technicien dans le stock (D-ACAL-152). Il les voit encore ailleurs : lignes du devis de son chantier, synthèse des coûts du SAV, produits de pompage d'un calepinage, explorateur de données. Les masquer là aussi ?"
+    options:
+      - cle: masquer_partout
+        texte: "(recommandée) Un technicien ne voit aucun prix de vente dans l'ERP ; sur son chantier il voit les produits et les quantités, sans montants"
+      - cle: stock_seulement
+        texte: "Ne masquer que dans le stock"
+    reponse: masquer_partout
+    date: "2026-11-26"
+    source: "fondateur, questions interactives du 26/11/2026 (quatrième séance) ; inventaire de la lane prix-vente-technicien (calepinage/views/pompage.py::_produit_pompage, OCTROIS_LECTURE des lignes de devis, sav/selectors.py, sav/views.py, stock/bi_datasets.py)"
+    taches: []
+  - id: D-ACAL-166
+    question: "Devis à deux options : un schéma électrique par option côté client (D-ACAL-158). Dans l'annexe technique du PDF, comment paraît le second schéma ?"
+    options:
+      - cle: une_page_par_option
+        texte: "(recommandée) Une page d'annexe par option : une page de plus, seulement pour un devis à deux options et seulement quand l'annexe est incluse ; nouveaux devis seulement"
+      - cle: deux_sur_une_page
+        texte: "Les deux schémas sur une même page, plus petits"
+      - cle: un_seul_au_pdf
+        texte: "Le PDF garde un seul schéma"
+    reponse: une_page_par_option
+    date: "2026-11-26"
+    source: "fondateur, questions interactives du 26/11/2026 (quatrième séance) ; la règle des pages du PDF (CLAUDE.md « Quote PDFs ») gagne ce cas : annexe technique d'un devis à deux options = une page par option"
+    taches: []
+  - id: D-ACAL-167
+    question: "PDF industriel (4 pages), page 3 : « bases du calcul ci-dessous » est annoncé mais aucune section ne suit ; seule la ligne « prix moyen de votre kWh évité » paraît, sans dire quel tarif a servi (constat T4-U2-020). Que faire ?"
+    options:
+      - cle: imprimer_les_bases
+        texte: "(recommandée) Imprimer le court bloc « Bases du calcul » du document commercial 3 pages : horizon, indexation, dégradation, base de production, tarif retenu pour le prix du kWh ; nouveaux devis seulement"
+      - cle: retirer_la_phrase
+        texte: "Retirer « bases du calcul ci-dessous »"
+    reponse: imprimer_les_bases
+    date: "2026-11-26"
+    source: "fondateur, questions interactives du 26/11/2026 (quatrième séance) ; tour 5 du L5, paquet F, T4-U2-020"
     taches: []

@@ -88,6 +88,47 @@ class GeometrieDePlancheTest(SimpleTestCase):
         self.assertIsNone(pan['pente_deg'])
 
 
+def _toit_plat_au_curseur(avec_tables):
+    """D-ACAL-149 — un toit plat qui porte la valeur du curseur (22)."""
+    import copy
+
+    layout = copy.deepcopy(LAYOUT)
+    layout['zones'][0].update(roofType='flat', pitchDeg=22)
+    if not avec_tables:
+        del layout['zones'][0]['geometry']['tiltDeg']
+    return layout
+
+
+class PenteDuToitPlatTest(SimpleTestCase):
+    """D-ACAL-149 — sans ``tiltDeg``, la planche lit 0 pour un toit plat ;
+    ``toit_plat_corrige=False`` (devis envoyé avant la coupure) rend la
+    planche d'avant à l'octet près."""
+
+    def test_toit_plat_sans_tables_lit_zero(self):
+        pan = geometrie_de_planche(_toit_plat_au_curseur(False))['pans'][0]
+        self.assertEqual(pan['pente_deg'], 0.0)
+        svg = svg_de_planche(geometrie_de_planche(_toit_plat_au_curseur(False)))
+        self.assertIn('inclinaison 0°', svg)
+        self.assertNotIn('inclinaison 22°', svg)
+
+    def test_les_tables_posees_priment_toujours(self):
+        for corrige in (True, False):
+            pan = geometrie_de_planche(_toit_plat_au_curseur(True),
+                                       toit_plat_corrige=corrige)['pans'][0]
+            self.assertEqual(pan['pente_deg'], 15.0)
+
+    def test_devis_ferme_rend_la_planche_d_avant_a_l_octet(self):
+        """Avant D-ACAL-149 la planche ne lisait pas ``roofType`` : le même
+        document SANS ``roofType`` est la référence d'hier."""
+        hier = _toit_plat_au_curseur(False)
+        del hier['zones'][0]['roofType']
+        ferme = geometrie_de_planche(_toit_plat_au_curseur(False),
+                                     toit_plat_corrige=False)
+        self.assertEqual(ferme['pans'][0]['pente_deg'], 22.0)
+        self.assertEqual(svg_de_planche(ferme, titre='T', pied='p'),
+                         svg_de_planche(geometrie_de_planche(hier), titre='T', pied='p'))
+
+
 class DimensionsModuleTest(SimpleTestCase):
     def test_dimensions_sourcees_par_le_kit_declare(self):
         self.assertEqual(_dimensions_module({'panelWatt': 720}),

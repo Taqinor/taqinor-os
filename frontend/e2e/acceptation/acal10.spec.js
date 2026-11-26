@@ -326,7 +326,7 @@ const fermer = (a, b, tol) => Math.abs(a - b) <= tol
 // ACAL401 — PA2.5 : la barre de résumé (panneaux · kWc · production) suit l'édition en moins de 2 s, production
 // « estimation » ; après la simulation serveur (le VRAI service, aucun worker Celery sur le runner) « P50 … (simulation) ».
 // NOTE : DÉPLACER un panneau ne peut pas changer le NOMBRE de panneaux ; le geste qui change les trois chiffres est
-// « − » des « Panneaux nécessaires » (inspecteur) — joué ici, chronométré.
+// « − » des « Panneaux à poser » (inspecteur) — joué ici, chronométré.
 // ════════════════════════════════════════════════════════════════════════════
 etape('PA2.5-ACAL401-resume-vivant', ['ACAL401'], async ({ page, context, suivi }) => {
   await carteRefusee(context, suivi)
@@ -359,7 +359,7 @@ etape('PA2.5-ACAL401-resume-vivant', ['ACAL401'], async ({ page, context, suivi 
       await page.getByTestId('cal-barre-projet').getByRole('button', { name: 'Expert' }).click()
     }
     const moins = page.locator('#rp9-need-minus')
-    await expect(moins, '« − » des panneaux nécessaires (inspecteur) actif').toBeEnabled(T)
+    await expect(moins, '« − » des panneaux à poser (inspecteur) actif').toBeEnabled(T)
     const t0 = Date.now()
     await moins.click()
     await expect.poll(async () => {
