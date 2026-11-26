@@ -7,7 +7,7 @@
    module affiche un vrai `0` distinct de « non calculée ». */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { exempleContrat, fichierContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
@@ -1230,6 +1230,31 @@ describe('PanneauProduction — sur la durée (ACAL710)', () => {
     rendre()
     await screen.findByTestId('cal236-panneau')
     expect(screen.queryByTestId('acal710-ligne')).toBeNull()
+  })
+
+  // ACAL1634 — la fiche du module ne porte pas sa dégradation : la ligne de durée le dit, avec le lien vers la fiche.
+  it('ACAL1634 — sans dégradation : le motif servi suit « Année basse » avec le lien vers la fiche du module', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    servirDuree((p) => {
+      p.duree_de_vie.motif_omission = 'La fiche du module ne porte pas sa dégradation : le tableau pluriannuel est OMIS.'
+      p.projection = projectionSur(1)
+    })
+    render(<MemoryRouter initialEntries={['/calepinage/7']}><Routes>
+      <Route path="/calepinage/:id" element={<PanneauProduction calepinageId={7} />} />
+    </Routes></MemoryRouter>)
+    const ligne = await screen.findByTestId('acal710-ligne')
+    const basse = within(ligne).getByTestId('acal710-basse')
+    const motif = within(ligne).getByTestId('acal710-motif')
+    expect(basse.compareDocumentPosition(motif) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(motif).toHaveTextContent('La fiche du module ne porte pas sa dégradation')
+    const lien = within(motif).getByRole('link', { name: 'Voir la fiche du module' })
+    expect(lien).toHaveAttribute('href', '/calepinage/7?onglet=fiches')
+    cleanup()
+    // avec dégradation servie : « Dans N ans », aucun motif ni lien
+    servirDuree((p) => { p.projection = projectionSur(25) })
+    rendre()
+    expect(await screen.findByTestId('acal710-derniere')).toHaveTextContent('Dans 25 ans')
+    expect(screen.queryByRole('link', { name: 'Voir la fiche du module' })).toBeNull()
   })
 })
 

@@ -1,5 +1,7 @@
+import { Link, useParams } from 'react-router-dom'
 import { formatNumber } from '../../../lib/format'
 import { useModeExpert } from '../atelier/modeExpert'
+import { lienManque } from './lienManque'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import { kwh, nonCalculee, nonPublie } from './ResultatHeros.helpers'
 
@@ -19,6 +21,7 @@ const garantieDe = (annee, garantie) => {
 
 export default function LigneSurLaDuree({ production }) {
   const [expert] = useModeExpert()
+  const { id } = useParams()
   if (!expert) return null
   const total = production?.total
   const duree = production?.duree_de_vie
@@ -43,6 +46,9 @@ export default function LigneSurLaDuree({ production }) {
       {omis ? (
         <p data-testid="acal710-motif" className="text-muted-foreground">
           {duree?.motif_omission || 'Aucune projection sur la durée n\'a été servie.'}
+          {duree?.motif_omission && id && (
+            <>{' '}<Link to={lienManque(id, { onglet: 'fiches' })} className="text-primary-text underline">Voir la fiche du module</Link></>
+          )}
         </p>
       ) : (
         <details data-testid="acal710-tableau">
