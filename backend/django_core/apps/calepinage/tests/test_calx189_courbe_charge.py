@@ -643,8 +643,34 @@ class CourbeNulleRangeeTests(unittest.TestCase):
         self.assertFalse(any("Aucune consommation de base" in t
                              for t in bloc['avertissements']))
 
-    def test_d_cle_absente_sans_autre_source_reste_omise(self):
-        # Inchangé : la clé absente n'a jamais fabriqué de base nulle.
-        resultat = construire_courbe_charge(serie_de_test(), consommation={
-            'layout': {}, 'charges': [dict(self.CHARGE)]})
-        self.assertIsNone(resultat['consommation'])
+    def test_d_cle_absente_et_zeros_donnent_le_meme_resultat(self):
+        # Une courbe ABSENTE et 24 zéros sont la même chose : avec des
+        # charges, jamais perdues en silence (base 0 kWh, dite en clair).
+        blocs = [construire_courbe_charge(serie_de_test(), consommation={
+            'layout': layout, 'charges': [dict(self.CHARGE)]})['consommation']
+            for layout in ({}, layout_de_test(0.0))]
+        self.assertEqual(blocs[0], blocs[1])
+        self.assertAlmostEqual(blocs[0]['total_kwh'], 2.0 * 2 * 365,
+                               delta=0.05)
+        self.assertIn(courbe_charge.MOTIF_BASE_NULLE,
+                      blocs[0]['avertissements'])
+
+    def test_sans_charge_les_deux_formes_sont_omises_avec_leur_motif(self):
+        for layout in ({}, layout_de_test(0.0)):
+            resultat = construire_courbe_charge(serie_de_test(), consommation={
+                'layout': layout})
+            self.assertIsNone(resultat['consommation'])
+            self.assertEqual(resultat['omissions']['consommation'],
+                             courbe_charge.MOTIF_CONSOMMATION)
+
+    def test_la_phrase_aucun_repli_n_est_emise_que_si_rien_n_est_trouve(self):
+        for layout in ({'consumption': {}}, layout_de_test(0.0)):
+            trouve = construire_courbe_charge(serie_de_test(), consommation={
+                'layout': layout,
+                'facture_lead': dict(self.PROPOSITION)})
+            self.assertFalse(any("l'atelier" in t and 'VIDE' in t or 'ignorée' in t
+                                 for t in trouve['avertissements']))
+            rien = construire_courbe_charge(serie_de_test(), consommation={
+                'layout': layout})
+            self.assertTrue(any("l'atelier" in t and 'VIDE' in t or 'ignorée' in t
+                                for t in rien['avertissements']))

@@ -67,7 +67,7 @@ from __future__ import annotations
 from .autoconsommation import MOTIF_SANS_COURBE as MOTIF_AUTOCONSOMMATION
 from .charges import (ChargeInvalide, ajouter_charges, courbe_pac,
                       courbe_vehicule)
-from .consommation import courbe24_est_nulle, profil_depuis_layout
+from .consommation import profil_depuis_layout
 from .profils_types import courbe_journaliere
 
 __all__ = ['CourbeChargeInvalide', 'MOTIF_AUTOCONSOMMATION',
@@ -553,32 +553,35 @@ _SOURCES_EN_ENERGIE = ('profil_mensuel', 'profil_type')
 
 def _courbe_de_base(points, declaration, avertissements, annees=1):
     """``(courbe, origine)`` de la première source SAISIE disponible."""
+    # Les phrases « atelier sans courbe » (« aucun repli… ») ne sont vraies
+    # que si la cascade FINIT sans autre source : tampon, émis à la fin.
+    tampon = []
     for origine, fabrique in _SOURCES_DE_BASE:
         arguments = ((annees,) if origine in _SOURCES_EN_ENERGIE else ())
-        courbe = fabrique(points, declaration, avertissements, *arguments)
+        courbe = fabrique(points, declaration,
+                          tampon if origine == 'layout' else avertissements,
+                          *arguments)
         if courbe is not None:
+            if origine == 'layout':
+                avertissements.extend(tampon)
             return courbe, origine
-    if declaration.get('charges') and _layout_a_courbe_nulle(declaration):
-        # ACAL1962 (suite lecture) — aucune source n'a donné de base, mais
-        # l'atelier porte 24 zéros rangés et des charges sont déclarées : on
-        # garde le comportement d'avant (les charges sur une base nulle),
-        # en DISANT qu'aucune consommation de base n'est connue.
+    if declaration.get('charges'):
+        # ACAL1962 (suite lecture) — aucune source n'a donné de base et des
+        # charges sont déclarées : elles ne sont jamais perdues en silence.
+        # Une courbe ABSENTE et 24 zéros rangés sont la MÊME chose : les
+        # charges sur une base de 0 kWh, en DISANT qu'aucune base n'est connue.
         avertissements.append(MOTIF_BASE_NULLE)
         return [0.0] * len(points), 'layout'
+    avertissements.extend(tampon)
     return None, None
 
 
-#: ACAL1962 (suite lecture) — la base nulle gardée à dessein.
+#: ACAL1962 (suite lecture) — la base nulle, dite en clair.
 MOTIF_BASE_NULLE = (
-    "Aucune consommation de base n'est connue (l'atelier ne porte que 24 "
-    'zéros, ni relevé importé, ni kWh saisis, ni facture exploitable) : la '
-    'courbe ne contient que les charges ajoutées, sur une base de 0 kWh.')
-
-
-def _layout_a_courbe_nulle(declaration):
-    layout = declaration.get('layout')
-    conso = layout.get('consumption') if isinstance(layout, dict) else None
-    return isinstance(conso, dict) and courbe24_est_nulle(conso.get('courbe24'))
+    "Aucune consommation de base n'est connue (l'atelier ne porte aucune "
+    'courbe — absente ou 24 zéros —, ni relevé importé, ni kWh saisis, ni '
+    'facture exploitable) : la courbe ne contient que les charges ajoutées, '
+    'sur une base de 0 kWh.')
 
 
 # ── les charges déclarées ────────────────────────────────────────────────
