@@ -52,6 +52,24 @@ describe('ModeTerrain — onglet monté', () => {
   })
 })
 
+describe('ModeTerrain — largeur de l’onglet (ACAL1511)', () => {
+  it('les chiffres et les champs se rangent selon la largeur de l’onglet, pas de la fenêtre', async () => {
+    monter()
+    await waitFor(() => expect(espions.layout).toHaveBeenCalled())
+    for (const [cle, valeur] of Object.entries(SAISIE_SOL)) {
+      const champ = screen.queryByTestId(`cal-terrain-${cle}`)
+      if (champ) fireEvent.change(champ, { target: { value: valeur } })
+    }
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    const modules = await screen.findByTestId('cal-terrain-modules')
+    const grille = modules.parentElement
+    expect(grille.className).not.toMatch(/(^|\s)sm:grid-cols-5/)
+    expect(grille.className).toMatch(/@3xl:grid-cols-5/)
+    expect(screen.getByTestId('cal-terrain')).toHaveClass('@container')
+    expect(screen.getByTestId('cal-terrain-largeurM').closest('div').className).not.toMatch(/(^|\s)sm:grid-cols-3/)
+  })
+})
+
 describe('ModeTerrain — pente du relief (ACAL466, contrat calepinage_pente_terrain.json)', () => {
   const contrat = (cle) => exempleContrat('calepinage', 'calepinage_pente_terrain', cle)
   const SURFACE = { id: 'TERRAIN', kind: 'sol', vertices: [[-7.59, 33.57], [-7.58, 33.57], [-7.58, 33.56]] }
