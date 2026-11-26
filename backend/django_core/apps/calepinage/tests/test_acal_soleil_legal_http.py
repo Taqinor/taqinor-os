@@ -48,13 +48,14 @@ class SoleilLegalApiTests(BaseApiCalepinage):
                 self.assertEqual(r.status_code, 400)
                 self.assertIn('date', r.data)
 
-    def test_409_sans_epingle(self):
+    def test_sans_epingle_l_absence_est_servie_en_200(self):
         self._profil()
         self.cal.roof_layout = {'version': 2}
         self.cal.save(update_fields=['roof_layout'])
         r = self.api.get(_url(self.cal.pk, '2026-02-11'))
-        self.assertEqual(r.status_code, 409)
-        self.assertEqual(r.data, {'site.pin': [MOTIF_SANS_EPINGLE]})
+        self.assertEqual(r.status_code, 200, r.data)  # T4-U4-018 : plus de 409 à chaque ouverture
+        self.assertEqual(r.data, {'date': '2026-02-11', 'absence': {
+            'champ': 'site.pin', 'motif': MOTIF_SANS_EPINGLE}})
 
     def test_t4_u1_003_centre_de_carte_par_defaut_n_est_pas_une_epingle(self):
         """Le toit créé sur la carte « niveau Maroc » arrive avec l'épingle au
@@ -65,8 +66,9 @@ class SoleilLegalApiTests(BaseApiCalepinage):
             'lat': 31.789999999984182, 'lng': -7.089999999999918}}
         self.cal.save(update_fields=['roof_layout'])
         r = self.api.get(_url(self.cal.pk, '2026-02-11'))
-        self.assertEqual(r.status_code, 409)
-        self.assertEqual(r.data, {'site.pin': [MOTIF_SANS_EPINGLE]})
+        self.assertEqual(r.status_code, 200, r.data)  # T4-U4-018 : plus de 409 à chaque ouverture
+        self.assertEqual(r.data, {'date': '2026-02-11', 'absence': {
+            'champ': 'site.pin', 'motif': MOTIF_SANS_EPINGLE}})
 
     def test_t4_u4_013_trace_sans_site_localise_meme_regle_que_la_simulation(self):
         """Un toit tracé à l'échelle du pays (épingle = centre du tracé, à côté
@@ -77,8 +79,8 @@ class SoleilLegalApiTests(BaseApiCalepinage):
                                 'pin': {'lat': 31.6123, 'lng': -7.3456}}
         self.cal.save(update_fields=['roof_layout'])
         r = self.api.get(_url(self.cal.pk, '2026-02-11'))
-        self.assertEqual(r.status_code, 409)
-        self.assertIn('Localiser', r.data['site.pin'][0])
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIn('Localiser', r.data['absence']['motif'])
         self.lead.ville = 'Marrakech'
         self.lead.save(update_fields=['ville'])
         r = self.api.get(_url(self.cal.pk, '2026-02-11'))
