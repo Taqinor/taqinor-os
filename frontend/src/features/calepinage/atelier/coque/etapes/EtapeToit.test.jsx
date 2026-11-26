@@ -1185,6 +1185,36 @@ describe('T4-X7-019 — la bulle de consigne n’est jamais sous le bandeau', ()
   })
 })
 
+/* T4-X8-008 / T4-X8-006 / R5D-N4 — Expert au téléphone : le tiroir se réduit comme en guidé, le centre défile dans ses limites
+   (les puces du tracé ne passent plus sur la barre des étapes), la barre des étapes est au-dessus. Règles lues dans la feuille
+   et appliquées aux éléments par `matches` (jsdom ne lit pas les requêtes de média). */
+describe('T4-X8-008 — Expert au téléphone : tiroir réductible, rien ne déborde sur la barre des étapes', () => {
+  it('le tiroir Expert réduit mesure --cal-tiroir (96 px), centre défilant, rail au-dessus', () => {
+    const source = document.createElement('style')
+    source.textContent = readFileSync(resolve(process.cwd(), 'src/styles/calepinage/56-coque-responsive.css'), 'utf8')
+    document.head.appendChild(source)
+    const tel = [...source.sheet.cssRules].filter((r) => r.media && r.media.mediaText === '(max-width: 639px)')
+      .flatMap((r) => [...r.cssRules])
+    const hote = document.createElement('div')
+    hote.innerHTML = '<div class="cal-coque" data-expert="1"><div class="cal-coque-corps"><div class="cal-coque-centre">'
+      + '<div class="cal-coque-scene"></div></div><nav class="cal-rail"></nav>'
+      + '<aside class="cal-panneau-etape" data-tiroir="1" data-deplie="0"><div class="cal-panneau-etape-corps"></div></aside></div></div>'
+    document.body.appendChild(hote)
+    try {
+      const prop = (el, nom) => tel.filter((r) => r.selectorText && r.style.getPropertyValue(nom) && el.matches(r.selectorText))
+        .map((r) => r.style.getPropertyValue(nom))
+      expect(prop(hote.querySelector('.cal-coque'), '--cal-tiroir').pop()).toBe('96px')
+      expect(prop(hote.querySelector('.cal-panneau-etape'), 'height')).toContain('var(--cal-tiroir)')
+      expect(prop(hote.querySelector('.cal-panneau-etape-corps'), 'display')).toContain('none')
+      expect(prop(hote.querySelector('.cal-coque-centre'), 'overflow-y')).toContain('auto')
+      expect(prop(hote.querySelector('.cal-rail'), 'z-index').pop()).toBe('calc(var(--z-base) + 40)')
+      // Déplié : le tiroir n'est plus réduit (la hauteur pleine du bloc téléphone s'applique seule).
+      hote.querySelector('.cal-panneau-etape').setAttribute('data-deplie', '1')
+      expect(prop(hote.querySelector('.cal-panneau-etape-corps'), 'display')).not.toContain('none')
+    } finally { source.remove(); hote.remove() }
+  })
+})
+
 describe('T4-X5-017 — plein écran de la carte (useAtelierVues)', () => {
   // T4-X5-017 (rejeu X9) — le toit restait dans la moitié gauche : la coque re-cadrait dans la zone libre (pièces comptées)
   // après la bascule. Le recadrage passe par LE cadrage de la coque, à l'entrée ET à la sortie, au rendu du nouvel état.

@@ -350,6 +350,26 @@
   }
   .cal-coque .cal-coque-alertes-contenu button,
   .cal-coque .cal-coque-alertes-plus { min-height: 44px; }
+  /* T4-X8-008 / T4-X8-006 / R5D-N4 (rejeu R5D) — EXPERT au téléphone : le tiroir ne couvrait plus la carte sans moyen de la
+     réduire (300 px fixes, la poignée ne faisait qu'agrandir) et les puces du tracé (« Caler le fond », `#rp9-trace-chips`)
+     débordaient du centre sur la barre des étapes. Même mécanisme que le guidé (poignée, `data-deplie`) : le tiroir s'ouvre
+     RÉDUIT (96 px, poignée + titre + bouton) et la poignée l'ouvre ; le centre défile DANS ses limites (rien ne déborde sur le
+     rail) en gardant la hauteur du tiroir libre en bas ; la barre des étapes passe AU-DESSUS du reste (elle reçoit les touchers). */
+  .cal-coque[data-expert='1'] { --cal-tiroir: 96px; }
+  .cal-coque[data-expert='1'] .cal-panneau-etape[data-tiroir='1'][data-deplie='0']:not([hidden]) {
+    height: var(--cal-tiroir);
+    grid-template-areas: "poignee poignee" "tete pied";
+    grid-template-rows: auto minmax(0, 1fr);
+    row-gap: 4px;
+    padding: 8px 16px 12px;
+  }
+  .cal-coque[data-expert='1'] .cal-panneau-etape[data-tiroir='1'][data-deplie='0'] :is(.cal-panneau-etape-controle, .cal-panneau-etape-corps) {
+    display: none;
+  }
+  .cal-coque[data-expert='1'] .cal-coque-centre { overflow-y: auto; padding-bottom: var(--cal-tiroir); }
+  .cal-coque[data-expert='1'] .cal-coque-scene { flex: 1 0 auto; }
+  .cal-coque[data-expert='1'] .cal-coque-scene .rp9-map-wrap:not([data-plein-ecran='1']) { min-height: 300px; }
+  .cal-coque .cal-rail { position: relative; z-index: calc(var(--z-base) + 40); }
   /* T4-X8-006 — « Avancé » au téléphone : une FEUILLE DU BAS (comme celle du relevé, `.cal-tel-feuille` de 58-telephone.css :
      rayon 26 en haut, ombre vers le haut), posée sur la barre des étapes, haute de son contenu, défilante. Elle vit dans le
      corps du tiroir : tiroir réduit (guidé), ce corps n'était plus rendu et la feuille mesurait 0 × 0 ; il ne garde
