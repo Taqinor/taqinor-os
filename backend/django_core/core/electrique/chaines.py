@@ -53,6 +53,7 @@ __all__ = [
     "MOTIF_CHAINE_PLUS_COURTE", "MOTIFS_ECARTEMENT",
     "CRITERE_COURANT_ENTREE", "CRITERE_CHAINE_LA_PLUS_LONGUE",
     "CRITERE_SEULE_PARTITION", "CRITERE_AUCUNE_PARTITION",
+    "CRITERE_CHAINES_INEGALES",
     "fenetre_admissible", "concevoir_chaines",
 ]
 
@@ -76,6 +77,13 @@ CRITERE_COURANT_ENTREE = ("courant d'entrée MPPT — d'autres partitions "
 CRITERE_CHAINE_LA_PLUS_LONGUE = "chaîne la plus longue à critère de courant égal"
 CRITERE_SEULE_PARTITION = "seule partition égale dans la fenêtre de tension"
 CRITERE_AUCUNE_PARTITION = "aucune partition égale dans la fenêtre de tension"
+#: Le critère d'une répartition à chaînes INÉGALES d'une entrée à l'autre
+#: (``EntreeElectrique.chaines_inegales_entre_entrees``) : elle ne remplace la
+#: partition égale que quand celle-ci ne tient pas.
+CRITERE_CHAINES_INEGALES = (
+    "chaînes de longueurs différentes d'une entrée MPPT à l'autre (égales sur "
+    "une même entrée) — la partition égale dépassait le courant d'une entrée "
+    "ou laissait des modules hors chaîne")
 
 #: CALX215 — d'OÙ sort la borne que chaque verdict a comparée. Quatre
 #: provenances, et aucune autre : la fiche de l'onduleur, le COUPLE de fiches
@@ -587,6 +595,173 @@ def _allouer_mppt(nb_pans, n_mppt):
     return tuple(blocs)
 
 
+# ------------------------------------------- chaînes inégales entre entrées
+def _entrees_hors_borne(comptes, module, onduleur):
+    """``(entrées au-dessus de l'Isc PUBLIÉ, entrées au-dessus de l'Imp admis)``.
+
+    Les deux bornes de ``_verdicts_courant``, comptées entrée par entrée pour
+    ``comptes`` chaînes en parallèle : une borne non publiée ne compte rien.
+    """
+    isc_publie = onduleur.isc_max_mppt_a
+    isc = sum(1 for nombre in comptes
+              if isc_publie is not None and isc_publie > 0
+              and module.isc_a > 0
+              and nombre * module.isc_a > isc_publie + 1e-9)
+    imp = sum(1 for nombre in comptes
+              if onduleur.i_max_mppt_a > 0 and module.imp_a > 0
+              and nombre * module.imp_a > onduleur.i_max_mppt_a + 1e-9)
+    return isc, imp
+
+
+def _ecart_de_la_partition_egale(nb_modules, entrees, fenetre, module,
+                                 onduleur, longueur, nb_chaines):
+    """``(isc, imp, reste)`` de la répartition ÉGALE telle que le moteur la pose.
+
+    ``(0, 0, 0)`` = la partition égale tient : rien n'est cherché ailleurs, et
+    le résultat reste octet pour octet celui d'avant. Le repli sans partition
+    égale est évalué EXACTEMENT comme ``concevoir_chaines`` le pose.
+    """
+    if longueur <= 0 or nb_chaines <= 0:
+        longueur = max(1, min(nb_modules, fenetre.longueur_max))
+        nb_chaines = nb_modules // longueur
+        if nb_chaines <= 0:
+            nb_chaines, longueur = 1, nb_modules
+    isc, imp = _entrees_hors_borne(_repartir(nb_chaines, entrees), module,
+                                   onduleur)
+    return isc, imp, nb_modules - nb_chaines * longueur
+
+
+def _repartition_inegale(nb_modules, entrees, fenetre, module, onduleur,
+                         ecart_egal):
+    """Chaînes de DEUX longueurs sur des entrées distinctes, ou ``None``.
+
+    Le cas réel (fiche Deye 20 kW, 2 entrées, Isc 54 A ; 35 × 715 Wc) : la
+    seule partition égale admissible, 5 × 7, met trois chaînes en parallèle
+    sur l'entrée 1 (Isc cumulé 66,9 A). 2 × 12 sur l'entrée 1 et 1 × 11 sur
+    l'entrée 2 tiennent : des chaînes en parallèle sur UNE entrée doivent être
+    égales, deux entrées distinctes, non.
+
+    Balayage exhaustif des couples ``(s1 chaînes de l1, s2 chaînes de l2)``,
+    ``l1 > l2`` dans la fenêtre de tension, ``s1·l1 + s2·l2 = nb_modules``
+    (tout le pan câblé), chaque longueur sur ses propres entrées. Ordre de
+    préférence, et rien d'autre : moins d'entrées au-dessus de l'Isc publié,
+    puis de l'Imp admis, puis le moins de chaînes, puis les longueurs les plus
+    proches, puis la charge d'entrée la plus faible. Retenue SEULEMENT si elle
+    fait mieux que ``ecart_egal`` (la partition égale) — sinon ``None``.
+    """
+    if len(entrees) < 2:
+        return None
+    lmin = max(1, fenetre.longueur_min)
+    lmax = min(fenetre.longueur_max, nb_modules)
+    nombre = len(entrees)
+    isc_publie = onduleur.isc_max_mppt_a
+    plafond = (int((isc_publie + 1e-9) // module.isc_a) * nombre
+               if isc_publie and module.isc_a > 0 else None)
+    meilleur, meilleur_score = None, None
+    for total in range(max(2, -(-nb_modules // max(1, lmax))),
+                       nb_modules // lmin + 1):
+        if plafond is not None and total > plafond:
+            break  # au-delà, une entrée dépasse forcément l'Isc publié
+        for s1 in range(1, total):
+            s2 = total - s1
+            for l1 in range(lmax, lmin, -1):
+                reste = nb_modules - s1 * l1
+                if reste < s2 * lmin or reste % s2:
+                    continue
+                l2 = reste // s2
+                if l2 >= l1:
+                    continue
+                for a in range(1, min(s1, nombre - 1) + 1):
+                    b = min(s2, nombre - a)
+                    comptes = (_repartir(s1, entrees[:a])
+                               + _repartir(s2, entrees[a:a + b]))
+                    isc, imp = _entrees_hors_borne(comptes, module, onduleur)
+                    score = (isc, imp, total, l1 - l2, max(comptes), -l1, a)
+                    if meilleur_score is None or score < meilleur_score:
+                        meilleur_score = score
+                        meilleur = (l1, s1, a, l2, s2, b)
+        if meilleur_score is not None and meilleur_score[:2] == (0, 0):
+            break
+    if meilleur is None:
+        return None
+    isc, imp = meilleur_score[:2]
+    # Retenue seulement si elle TIENT : aucune entrée au-dessus de l'Isc
+    # publié, et aucune au-dessus de l'Imp admis — sauf à lever un Isc
+    # dépassé par la partition égale sans ajouter d'entrée qui écrête (l'Isc
+    # publié borne alors la charge de chaque entrée). Jamais « moins pire ».
+    if isc or not (imp == 0 or (ecart_egal[0] and imp <= ecart_egal[1])):
+        return None
+    return meilleur
+
+
+def _tenter_chaines_inegales(sorties, numero, groupe, entrees, fenetre, module,
+                             onduleur, choix):
+    """``EntreeElectrique.chaines_inegales_entre_entrees`` — pour UN pan.
+
+    Rend le dernier numéro de chaîne posé quand des chaînes inégales ont été
+    posées (le pan est alors fait), ``None`` sinon : la partition égale de
+    ``choix`` est posée par l'appelant, comme avant. Quand elle ne tient pas
+    ET qu'aucune répartition ne tient non plus, une alerte le DIT.
+    """
+    chaines, repartitions, verdicts = sorties
+    nb_modules = _entier(groupe.nb_modules)
+    if (len(entrees) < 2 or fenetre.plafond_non_verifiable
+            or fenetre.trop_etroite):
+        return None
+    ecart = _ecart_de_la_partition_egale(
+        nb_modules, entrees, fenetre, module, onduleur, choix[0], choix[1])
+    if ecart == (0, 0, 0):
+        return None
+    inegale = _repartition_inegale(nb_modules, entrees, fenetre, module,
+                                   onduleur, ecart)
+    if inegale is not None:
+        return _poser_chaines_inegales(chaines, repartitions, numero, groupe,
+                                       entrees, inegale, fenetre, module,
+                                       choix)
+    _verdict(
+        verdicts, "CH_AUCUNE_REPARTITION_ENTRE_ENTREES", NATURE_FONCTIONNELLE,
+        STATUT_ALERTE,
+        "pan « %s » : aucune répartition en chaînes d'une ou deux longueurs "
+        "(%s, chaînes égales sur une même entrée) ne câble ses %d modules sur "
+        "ses %d entrées MPPT sans dépasser le courant d'une entrée — la "
+        "partition égale est gardée, ses verdicts suivent"
+        % (groupe.label, fenetre.texte, nb_modules, len(entrees)),
+        valeur=float(nb_modules), source=SOURCE_REPARTITION)
+    return None
+
+
+def _poser_chaines_inegales(chaines, repartitions, numero, groupe, entrees,
+                            inegale, fenetre, module, choix):
+    """Pose les chaînes de ``_repartition_inegale`` — UNE répartition par
+    longueur, chacune sur SES entrées (la note de calcul et le libellé disent
+    alors « 2 chaîne(s) de 12 … entrée 1 », « 1 chaîne(s) de 11 … entrée 2 »).
+    Rend le dernier numéro de chaîne posé."""
+    l1, s1, a, l2, s2, b = inegale
+    for longueur, nombre, mes_entrees, ecartees in (
+            (l1, s1, tuple(entrees[:a]), choix.partitions_ecartees),
+            (l2, s2, tuple(entrees[a:a + b]), ())):
+        par_entree = _repartir(nombre, mes_entrees)
+        for rang, entree_mppt in enumerate(mes_entrees):
+            for _ in range(par_entree[rang]):
+                numero += 1
+                chaines.append(Chaine(
+                    repere="CH%d" % numero, pan=groupe.label,
+                    nb_modules=longueur, mppt=entree_mppt,
+                    voc_froid_v=fenetre.voc_froid_unitaire_v * longueur,
+                    vmp_froid_v=fenetre.vmp_froid_unitaire_v * longueur,
+                    vmp_chaud_v=fenetre.vmp_chaud_unitaire_v * longueur,
+                    vmp_stc_v=module.vmp_v * longueur,
+                    isc_a=module.isc_a, imp_a=module.imp_a,
+                    puissance_kwc=longueur * module.pmax_wc / 1000.0))
+        repartitions.append(RepartitionPan(
+            pan=groupe.label, nb_modules=nombre * longueur,
+            longueur_chaine=longueur, nb_chaines=nombre, reste=0,
+            mppt=mes_entrees, homogene=True,
+            critere_longueur=CRITERE_CHAINES_INEGALES,
+            partitions_ecartees=ecartees))
+    return numero
+
+
 # ------------------------------------------------------------------- conception
 def concevoir_chaines(entree):
     """PV34 — conçoit les chaînes de TOUS les pans d'une ``EntreeElectrique``.
@@ -703,6 +878,7 @@ def concevoir_chaines(entree):
     chaines = []
     repartitions = []
     numero = 0
+    inegales = bool(getattr(entree, "chaines_inegales_entre_entrees", False))
     for index, groupe in enumerate(groupes):
         nb_modules = _entier(groupe.nb_modules)
         entrees = blocs[index] if index < len(blocs) else (1,)
@@ -716,6 +892,14 @@ def concevoir_chaines(entree):
                 nb_modules, len(entrees), fenetre.longueur_min,
                 fenetre.longueur_max, module.imp_a, onduleur.i_max_mppt_a)
             longueur, nb_chaines = choix
+
+        if inegales and choix is not None:
+            posee = _tenter_chaines_inegales(
+                (chaines, repartitions, verdicts), numero, groupe, entrees,
+                fenetre, module, onduleur, choix)
+            if posee is not None:
+                numero = posee
+                continue
 
         homogene = True
         if longueur <= 0 or nb_chaines <= 0:

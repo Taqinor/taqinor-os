@@ -142,6 +142,9 @@ const LIBELLES_COMMUNS = {
   v_sortie_max: 'Tension de sortie maximale (V)',
   i_entree_max_a: 'Courant d’entrée maximal (A)',
   rendement_pct: 'Rendement (%)',
+  v_in_max: 'Tension d’entrée maximale (V)',
+  i_in_max_a: 'Courant d’entrée maximal (A)',
+  pmax_in_w: 'Puissance d’entrée maximale (W)',
 }
 const LIBELLES_PAR_FAMILLE = {
   panneau: { rendement_pct: 'Rendement du module (%)' },
