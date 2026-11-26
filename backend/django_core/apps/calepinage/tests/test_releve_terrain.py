@@ -347,6 +347,24 @@ class EndpointTest(BaseReleve):
                          ['façade / cage'])
         self.assertEqual(len(reponse.data['releves']), 1)
 
+    def test_rejeu_de_la_meme_cle_ne_cree_pas_un_second_releve(self):
+        """ACAL1949 — le relevé gardé hors ligne repart avec SA clé : un rejeu
+        coupé après la réponse du serveur rend la réponse mémorisée."""
+        corps = {'releve_le': HIER.isoformat(), 'chaines': [CHAINE_FRDISI]}
+        entetes = {'HTTP_IDEMPOTENCY_KEY': 'releve-hors-ligne-1'}
+        premier = self.api.post(self.url, corps, format='json', **entetes)
+        second = self.api.post(self.url, corps, format='json', **entetes)
+        self.assertEqual(premier.status_code, 201, premier.data)
+        self.assertEqual(second.status_code, 201, second.data)
+        self.assertEqual(second.data['releve']['id'],
+                         premier.data['releve']['id'])
+        self.assertEqual(
+            ReleveTerrain.objects.filter(calepinage=self.calepinage).count(), 1)
+        # Sans clé, deux envois restent deux relevés (comportement inchangé).
+        self.api.post(self.url, corps, format='json')
+        self.assertEqual(
+            ReleveTerrain.objects.filter(calepinage=self.calepinage).count(), 2)
+
     def test_date_du_releve_obligatoire_400_nomme(self):
         # ENF11 — la date est SAISIE : le schéma la déclare obligatoire
         # (``format: date``), le serveur la refuse sinon (400 nommé).

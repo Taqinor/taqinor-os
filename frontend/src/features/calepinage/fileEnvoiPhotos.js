@@ -7,6 +7,8 @@
    le dernier relevé terminé remplace le précédent) et le même rejeu : aucun second système. */
 import calepinageApi from '../../api/calepinageApi'
 import { createBinaryOutboxStore } from '../../lib/offlineStore'
+import { AUTH_LOGOUT_EVENT } from '../../providers/session-bridge'
+import { store } from '../../store'
 import {
   BINARY_MAX_BYTES, BINARY_MAX_OPS, OutboxQuotaError, espaceDisponible, majAtomique, makeOpId,
 } from '../../lib/offlineOutbox'
@@ -87,29 +89,47 @@ export async function rejouerFile(calepinageId) {
   return { envoyees, refusees, restantes: await compterEnAttente(calepinageId) }
 }
 
+/* ACAL1949 — le relevé gardé appartient à l'utilisateur CONNECTÉ quand il l'a gardé (`meta.utilisateurId`) : sur un
+   poste partagé, B ne voit, ne remplace ni ne rejoue jamais le relevé de A ; celui-ci repart à la reconnexion de A, avec
+   sa clé (`client_op_id`, en `Idempotency-Key`). La déconnexion vide les relevés gardés (poste partagé, LW45). */
+const utilisateurCourant = () => { try { return store.getState()?.auth?.user?.id ?? null } catch { return null } }
+const releveDuCompte = (o, id) => miennes([o], id, OP_RELEVE_CALEPINAGE).length > 0
+  && String(o.meta?.utilisateurId ?? '') === String(utilisateurCourant() ?? '')
+const relevesDuCompte = (ops, id) => ops.filter((o) => releveDuCompte(o, id))
+
 /** ACAL1810 — garde le relevé terminé (corps de `corpsDuReleve`, id du relevé à corriger ou `null` pour en créer un) :
-    le relevé déjà en file de ce calepinage est REMPLACÉ, jamais doublé. Pas d'octets : le corps tient dans `meta`. */
+    le relevé déjà en file de ce calepinage (et de cet utilisateur) est REMPLACÉ, jamais doublé. Pas d'octets : le corps
+    tient dans `meta`. */
 export async function mettreReleveEnFile(calepinageId, { corps, releveId = null }) {
   const courantes = await file().load()
-  const sansLeMien = courantes.filter((o) => !miennes([o], calepinageId, OP_RELEVE_CALEPINAGE).length)
+  const sansLeMien = courantes.filter((o) => !releveDuCompte(o, calepinageId))
   if (sansLeMien.length >= BINARY_MAX_OPS) {
     throw new OutboxQuotaError('File d’envoi pleine : reconnectez-vous au réseau pour la vider avant de terminer le relevé.')
   }
   const entree = {
-    client_op_id: makeOpId(), op_type: OP_RELEVE_CALEPINAGE, meta: { calepinageId, releveId, corps },
+    client_op_id: makeOpId(), op_type: OP_RELEVE_CALEPINAGE,
+    meta: { calepinageId, releveId, corps, utilisateurId: utilisateurCourant() },
     bytes: new ArrayBuffer(0), name: 'releve.json', type: 'application/json', size: 0, queuedAt: new Date().toISOString(),
   }
-  await majAtomique(file(), (cur) => [...cur.filter((o) => !miennes([o], calepinageId, OP_RELEVE_CALEPINAGE).length), entree])
+  await majAtomique(file(), (cur) => [...cur.filter((o) => !releveDuCompte(o, calepinageId)), entree])
 }
 
 /** Un relevé de ce calepinage attend-il le réseau ? (lu dans la file : survit au rechargement). */
 export async function releveEnAttente(calepinageId) {
-  return miennes(await file().load(), calepinageId, OP_RELEVE_CALEPINAGE).length > 0
+  return relevesDuCompte(await file().load(), calepinageId).length > 0
 }
 
 /** Retire le relevé en file : l'envoi en ligne vient de réussir, le garder le renverrait une seconde fois. */
 export async function oublierReleveEnFile(calepinageId) {
-  await majAtomique(file(), (cur) => cur.filter((o) => !miennes([o], calepinageId, OP_RELEVE_CALEPINAGE).length))
+  await majAtomique(file(), (cur) => cur.filter((o) => !releveDuCompte(o, calepinageId)))
+}
+
+/** ACAL1949 — vide TOUS les relevés gardés (déconnexion, poste partagé) ; les photos ne sont pas touchées. */
+export async function viderRelevesEnFile() {
+  await majAtomique(file(), (cur) => cur.filter((o) => o.op_type !== OP_RELEVE_CALEPINAGE))
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener(AUTH_LOGOUT_EVENT, () => { viderRelevesEnFile().catch(() => undefined) })
 }
 
 const rejeuxReleve = new Map()
@@ -121,18 +141,18 @@ const reponsePassagere = (statut) => statut === 401 || statut === 408 || statut 
     la file reste intacte ; un refus du serveur (réponse HTTP) retire l'entrée et la dit ; deux rejeux simultanés (retour du
     réseau + ouverture de l'écran) n'en font qu'UN : le relevé part une seule fois. */
 export function rejouerReleve(calepinageId) {
-  const cle = String(calepinageId)
+  const cle = `${utilisateurCourant() ?? ''}:${calepinageId}`
   if (rejeuxReleve.has(cle)) return rejeuxReleve.get(cle)
   const rejeu = (async () => {
     let envoye = false
     let releve = null
     let refus = null
-    for (const op of miennes(await file().load(), calepinageId, OP_RELEVE_CALEPINAGE)) {
+    for (const op of relevesDuCompte(await file().load(), calepinageId)) {
       try {
         const { calepinageId: id, releveId, corps } = op.meta
         const res = await (releveId
           ? calepinageApi.calepinages.corrigerReleve(id, releveId, corps)
-          : calepinageApi.calepinages.enregistrerReleve(id, corps))
+          : calepinageApi.calepinages.enregistrerReleve(id, corps, { idempotencyKey: op.client_op_id }))
         envoye = true
         releve = res?.data?.releve ?? null
       } catch (err) {
@@ -144,7 +164,7 @@ export function rejouerReleve(calepinageId) {
       }
       await majAtomique(file(), (cur) => cur.filter((o) => o.client_op_id !== op.client_op_id))
     }
-    return { envoye, releve, refus, restantes: miennes(await file().load(), calepinageId, OP_RELEVE_CALEPINAGE).length }
+    return { envoye, releve, refus, restantes: relevesDuCompte(await file().load(), calepinageId).length }
   })().finally(() => { rejeuxReleve.delete(cle) })
   rejeuxReleve.set(cle, rejeu)
   return rejeu
