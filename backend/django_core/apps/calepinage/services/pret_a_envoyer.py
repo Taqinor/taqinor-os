@@ -221,15 +221,14 @@ def _devis_lie(calepinage):
     from ..serializers import peremption_du_calepinage
 
     if peremption_du_calepinage(devis, calepinage).get('layout_stale'):
-        # T4-X7-006 — une révision (version ≥ 2) naît COPIE de la précédente : le dire, une fois, avec le geste.
-        version = getattr(devis, 'version', None)
-        cause = 'La conception a changé depuis la dernière mise à jour du devis.'
-        if isinstance(version, int) and version > 1:
-            cause = ('Cette version reprend les lignes de la V%d ; « Resynchroniser le devis » '
-                     'les aligne sur la pose.' % (version - 1))
+        # T4-X7-006 : « cette version reprend les lignes de la V(n-1) » n'est PAS dite ici : aucun fait servi
+        # par apps/ventes ne prouve que les lignes sont encore la copie (resynchronisée puis périmée de
+        # nouveau, ou recomposée par reviser_sur_la_conception). Il faudra un marqueur servi par ventes.
         conception = _controle(
             'conception_perimee', libelle_conception, 'a_regler',
-            'Le devis ne suit plus la conception', cause=cause,
+            'Le devis ne suit plus la conception',
+            cause='La conception a changé depuis la dernière mise à jour '
+                  'du devis.',
             geste='Resynchroniser le devis')
     else:
         conception = _controle('conception_perimee', libelle_conception,
