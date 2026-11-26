@@ -1967,3 +1967,27 @@ describe('ACAL1331 — la taille de la cible posée d’elle-même sur un calepi
     expect(publics).toEqual([{ id: 'area-2', neededPanels: 0, neededAuto: true }]);
   });
 });
+
+// ACAL1919 — la carte « Densité maximale (plein sud) » ne cite pas un second nombre sans le nommer.
+describe('ACAL1919 — un seul nombre de panneaux par carte de recommandation', () => {
+  const grandToit = rectRing(10, 7);
+  it('cible posée à 5 : l’en-tête dit 5, la raison nomme ce qui tient ET les 5 posés', async () => {
+    const { fineGridMatrixV6 } = await import('../../lib/estimatorBrainV6');
+    const { pickVariantCards } = await import('./optimizer');
+    const res = fineGridMatrixV6(grandToit, 33.59, 5000, [], { neededPanelsPose: 5 });
+    const carte = pickVariantCards(res).find((c) => c.id === 'south-max');
+    expect(carte).toBeDefined();
+    expect(carte!.count).toBe(5);
+    const nombres = carte!.reason.match(/\d+(?=\s+(panneaux|tiennent|posés))/g) ?? [];
+    expect(carte!.row.fitCount).toBeGreaterThan(5);
+    expect(carte!.reason).toContain(`${carte!.row.fitCount} tiennent au total`);
+    expect(carte!.reason).toContain('5 posés pour votre cible');
+    expect(nombres.length).toBe(2);
+  });
+
+  it('quand tout ce qui tient est posé, la phrase ne dit qu’un nombre', async () => {
+    const { phraseDensiteMax } = await import('./phrasesRecommandation');
+    const p = phraseDensiteMax({ fitCount: 8, placedCount: 8, tiltDeg: 15, layoutLabel: 'paysage' });
+    expect(p).toBe('La plus dense en plein sud : 8 panneaux tiennent à 15°, paysage.');
+  });
+});

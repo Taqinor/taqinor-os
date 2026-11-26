@@ -78,6 +78,7 @@ import {
   type MatrixV6Result,
 } from '../../lib/estimatorBrainV6';
 import { majNoteChassis, optionChassis } from './chassisPavage'; // ACAL585
+import { phraseDensiteMax } from './phrasesRecommandation'; // ACAL1919
 import {
   anneauPosableParArete, // CALX95 câblage
   solveLive,
@@ -193,7 +194,7 @@ export function pickVariantCards(result: MatrixV6Result | null | undefined): Var
       // Densité = le plus de panneaux qui TIENNENT (fitCount, pas le nombre posé : celui-ci
       // est plafonné au besoin et ne dirait rien de la densité). À égalité, le plus productif.
       row: pick((r) => r.family === 'south', (r) => r.fitCount),
-      reason: (r) => `La plus dense en plein sud : ${r.fitCount} panneaux tiennent à ${r.tiltDeg}°, ${r.layoutLabel}.`,
+      reason: phraseDensiteMax, // ACAL1919 — un seul nombre, ou les deux nommés
     },
     {
       id: 'eastwest',
