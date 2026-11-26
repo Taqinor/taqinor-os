@@ -318,6 +318,8 @@ body[data-cal-atelier] [data-sonner-toaster][data-y-position='bottom'][data-x-po
 .cal-coque .cal-coque-scene .rp9-map-wrap:not([data-plein-ecran='1']) #rp9-map { height: 100%; min-height: 0; }
 .cal-coque .cal-coque-sur-carte { position: absolute; inset: 0; pointer-events: none; z-index: calc(var(--z-base) + 10); }
 .cal-coque .cal-coque-sur-carte > * { pointer-events: auto; }
+/* T4-X7-018 — le message du script qui contredit l'alerte d'échelle (EtapeToit.jsx pose `data-contredit`) ne s'affiche pas. */
+.cal-coque .cal-coque-statut:has(#rp9-status[data-contredit='1']) { display: none; }
 .cal-coque .cal-coque-statut {
   position: absolute;
   right: 16px;

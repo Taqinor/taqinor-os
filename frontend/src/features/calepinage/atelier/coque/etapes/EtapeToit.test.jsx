@@ -74,6 +74,7 @@ const CONSTRUCTEUR = `
 const ZONE = { id: 'area-1', label: 'Pan 1', pitchDeg: 22, facingAzimuthDeg: 180, roofType: 'pitched' }
 const $ = (id) => document.getElementById(id)
 let surCarte
+let pied
 let builderApi
 
 /** ACAL1971 — l'URL courante du routeur, lue pour prouver que `champ` est retiré une fois consommé. */
@@ -93,8 +94,10 @@ function rendre(props = {}, avant = null, url = '/') {
   hote.appendChild(surCarte)
   const panneau = document.createElement('div')
   hote.appendChild(panneau)
+  pied = document.createElement('div')
+  hote.appendChild(pied)
   document.body.appendChild(hote)
-  const coque = { noeuds: { surCarte, panneau: null, pied: null }, prendrePied: () => () => {} }
+  const coque = { noeuds: { surCarte, panneau: null, pied }, prendrePied: () => () => {} }
   return render(
     <MemoryRouter initialEntries={[url]}>
       <ContexteCoque.Provider value={coque}>
@@ -422,6 +425,36 @@ describe('Étape Toit — sur la carte', () => {
     $('rp9-area-value').textContent = '~120 534 611 780 m²'
     statut.textContent = 'Calcul prêt.'
     expect(H.traceHorsEchelle(document, H.lireSurface(document))).toBe(false)
+  })
+
+  it('T4-X7-018 — tracé hors échelle : aucune surface absurde, la phrase contradictoire masquée, « Poser les panneaux » désactivé avec son motif', async () => {
+    rendre({ action: { libelle: 'Poser les panneaux', onClick: vi.fn() } }, (hote) => {
+      const statut = document.createElement('p')
+      statut.id = 'rp9-status'
+      statut.textContent = 'Surface trop petite pour une rangée — élargissez le tracé.'
+      hote.appendChild(statut)
+      hote.querySelectorAll('[data-pan-stat]').forEach((n) => n.remove())
+      hote.querySelector('#rp9-area-value').textContent = '~868 298 030 010 m²'
+    })
+    const action = await within(pied).findByTestId('cal-action-etape-suivante')
+    expect(action).toBeDisabled()
+    expect(action).toHaveAttribute('title', expect.stringContaining('Retracez'))
+    expect(within(surCarte).queryByText(/868/)).toBeNull() // aucune surface absurde imprimée par l'atelier
+    expect(within(surCarte).queryByTestId('cal-sur-carte-resume')).toBeNull()
+    await waitFor(() => expect($('rp9-status')).toHaveAttribute('data-contredit', '1'))
+    // Le même message avec une vraie petite surface : rien n'est masqué, ni désactivé, la puce garde son chiffre.
+    cleanup(); document.body.innerHTML = ''
+    rendre({ action: { libelle: 'Poser les panneaux', onClick: vi.fn() } }, (hote) => {
+      const statut = document.createElement('p')
+      statut.id = 'rp9-status'
+      statut.textContent = 'Surface trop petite pour une rangée — élargissez le tracé.'
+      hote.appendChild(statut)
+      hote.querySelectorAll('[data-pan-stat]').forEach((n) => n.remove())
+      hote.querySelector('#rp9-area-value').textContent = '~3 m²'
+    })
+    expect(within(pied).queryByTestId('cal-action-etape-suivante')).toBeNull()
+    expect(within(surCarte).getByTestId('cal-sur-carte-resume')).toBeInTheDocument()
+    expect($('rp9-status')).not.toHaveAttribute('data-contredit')
   })
 
   it('T4-X7-018 — au doigt, l’aide du contour dit « Touchez deux fois », jamais « Double-cliquez »', () => {
