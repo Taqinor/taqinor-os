@@ -82,6 +82,30 @@ def _decalage_minutes(serie):
     return int(decalages[0])
 
 
+#: Revue lot 6 (ACAL1715) — l'INSTANT où le soleil est placé pour une heure de
+#: série, en minutes après l'horodatage. Un fichier horaire : le milieu de
+#: l'heure (convention de l'atelier, DITE). L'année type PVGIS : l'instant que
+#: PVGIS publie (``irradiance_time_offset``). Le même instant sert la
+#: transposition ET les étapes qui placent le soleil (``etapes.instant_utc``).
+INSTANT_MILIEU_DE_L_HEURE = {
+    'minutes_apres_l_heure': 30,
+    'source': "convention : milieu de l'heure de la série horaire",
+    'hypothese': '',
+}
+
+
+def _instant_de_l_annee_type(decalage_h):
+    """L'instant publié par PVGIS (arrondi à la minute, valeur exacte
+    citée), ou le milieu de l'heure DIT comme une hypothèse."""
+    if isinstance(decalage_h, (int, float)) and not isinstance(decalage_h, bool):
+        return {'minutes_apres_l_heure': int(round(decalage_h * 60)),
+                'source': 'PVGIS, inputs.location.irradiance_time_offset = %g h' % decalage_h,
+                'hypothese': ''}
+    return dict(INSTANT_MILIEU_DE_L_HEURE, source='', hypothese=(
+        "PVGIS ne publie pas l'instant des valeurs de cette année type : le "
+        "soleil est placé au milieu de chaque heure, par hypothèse."))
+
+
 def refus_de_reglages(contexte):
     """ACAL1715 — les refus (``EntreeInvalide``) du modèle et de l'albédo NON
     saisis, dans cet ordre ; liste vide = transposable. Lu AVANT tout appel
@@ -121,7 +145,8 @@ def transposer_annee_type(client, plan, contexte, horizon, compteur):
              'depuis_cache': bool(rendu.get('depuis_cache')),
              'convention_azimut': CONVENTION_AZIMUT,
              'heure': {'base': BASE_HEURE_UTC, 'fuseau_site': None,
-                       'decalage_minutes': [0]}}
+                       'decalage_minutes': [0]},
+             'instant_soleil': _instant_de_l_annee_type(rendu.get('irradiance_time_offset_h'))}
     sortie = transposer_serie_horizontale(
         {'points': points, 'annees': [], 'meteo': meteo}, plan, contexte)
     return dict(sortie, service='tmy', url=rendu.get('url'),
@@ -148,7 +173,8 @@ def transposer_serie_horizontale(serie, plan, contexte):
             "transposition vers le plan, se calcule à une latitude et une "
             "longitude. Posez l'épingle du site (« roof_layout.pin »).",
             champ='site.pin')
-    vers_utc = datetime.timedelta(minutes=30 - _decalage_minutes(serie))
+    instant_soleil = (serie.get('meteo') or {}).get('instant_soleil') or INSTANT_MILIEU_DE_L_HEURE
+    vers_utc = datetime.timedelta(minutes=instant_soleil['minutes_apres_l_heure'] - _decalage_minutes(serie))
     points = [p for p in (serie.get('points') or []) if isinstance(p, dict)]
     instants, zeniths, azimuts = [], [], []
     for point in points:
@@ -229,7 +255,8 @@ def transposer_serie_horizontale(serie, plan, contexte):
     meteo = copy.deepcopy(serie.get('meteo') or {})
     meteo['transposition'] = {
         'modele': modele, 'reference': MODELES_TRANSPOSITION[modele],
-        'albedo': {'valeur': albedos, 'source': source_albedo}}
+        'albedo': {'valeur': albedos, 'source': source_albedo},
+        'instant_soleil': dict(instant_soleil)}
     if decomposition:
         meteo['decomposition'] = decomposition
     annees = list(serie.get('annees') or [])

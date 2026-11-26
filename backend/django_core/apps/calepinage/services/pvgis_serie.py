@@ -807,6 +807,11 @@ class ClientPvgis:
             'fenetre_annees': (f'{an_min}-{an_max}'
                                if an_min is not None and an_max is not None
                                else None),
+            # Revue lot 6 (ACAL1715) — l'INSTANT des valeurs, tel que PVGIS le
+            # publie (heures après l'horodatage) ; ``None`` s'il ne le dit pas.
+            'irradiance_time_offset_h': _flottant(
+                (((charge or {}).get('inputs') or {}).get('location') or {})
+                .get('irradiance_time_offset')),
             'url': self.construire_url('tmy', params),
             'depuis_cache': depuis_cache,
         }
