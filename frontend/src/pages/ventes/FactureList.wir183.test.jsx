@@ -400,7 +400,7 @@ describe('WIR183 — ZFAC6 : encaissement groupé', () => {
     const user = userEvent.setup()
     const row = screen.getByText('BROUILLON-7').closest('tr')
     await user.click(within(row).getAllByRole('button', { name: /Émettre/ })[0])
-    await waitFor(() => expect(api.emettreFacture).toHaveBeenCalledWith(7))
+    await waitFor(() => expect(api.emettreFacture).toHaveBeenCalledWith(7, { suppressErrorToast: true }))
     await waitFor(() => expect(api.getFacturesKpis).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(tuile()).toHaveTextContent(/21\s?960/))
   })

@@ -468,7 +468,11 @@ const ventesApi = {
   auditNumerotation: () => api.get('/ventes/numerotation-audit/'),
   // R5A-N7 — `config` : le thunk de la liste passe `suppressErrorToast` (il toaste lui-même le refus ; sans cela le même
   // message s'affichait deux fois : intercepteur + doAction).
-  emettreFacture: (id, config) => api.post(`/ventes/factures/${id}/emettre/`, undefined, config),
+  // Sans `config`, l'appel HTTP est exactement celui d'avant (`api.post(url)`, aucun argument `undefined` en plus).
+  emettreFacture: (id, config) => {
+    const url = `/ventes/factures/${id}/emettre/`
+    return config ? api.post(url, undefined, config) : api.post(url)
+  },
   // AUD124 — motif OBLIGATOIRE : marquer une facture payée sans encaissement
   // la sort de la balance âgée et des relances ; le serveur refuse (400) sans
   // justification, et trace l'auteur + le motif dans le chatter.
