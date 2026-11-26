@@ -269,6 +269,36 @@ describe('PanneauProduction — bouton de calcul (CALX48, ACAL125)', () => {
       expect(lignes[0]).toHaveAttribute('href', '/calepinage/reglages')
       expect(lignes[1]).toHaveAttribute('href', '/calepinage/1?onglet=electrique&champ=norme')
     })
+
+    /* R5B-N5 (jumeau, revue du 26/11) — la ligne des ombres servie avec la cible `?onglet=production` menait à l'écran
+       même où elle se lit : un lien mort dans le panneau Production. Même destination qu'aux Résultats : l'étape Panneaux,
+       ouverte comme par le clic sur l'étape (`state.etapeChoisie`). */
+    it('R5B-N5 — la ligne des ombres ouvre l’étape Panneaux ; aucune ligne ne mène à l’écran où elle se lit', async () => {
+      const { Routes, Route, useLocation } = await import('react-router-dom')
+      const Sonde = () => {
+        const lieu = useLocation()
+        return <p data-testid="sonde">{`${lieu.pathname}${lieu.search}|${lieu.state?.etapeChoisie === true}`}</p>
+      }
+      servir('exemple_vide')
+      render(
+        <MemoryRouter initialEntries={['/calepinage/1?onglet=production']}>
+          <Routes>
+            <Route path="/calepinage/:id" element={<>
+              <PanneauProduction calepinageId={1} parcours={{ etats: {}, manque: [
+                { code: 'acces_solaire_absent', message: 'L’ombre sur chaque panneau n’est pas encore calculée.',
+                  etape: 'resultats', gravite: 'info', nombre: 1, cible: { onglet: 'production', champ: '' } },
+              ] }} />
+              <Sonde />
+            </>} />
+          </Routes>
+        </MemoryRouter>,
+      )
+      const ligne = await screen.findByTestId('calx48-manque-ligne')
+      expect(ligne).toHaveAttribute('href', '/calepinage/1?onglet=fiches')
+      expect(ligne.getAttribute('href')).not.toContain('onglet=production')
+      fireEvent.click(ligne)
+      await waitFor(() => expect(screen.getByTestId('sonde')).toHaveTextContent('/calepinage/1?onglet=fiches|true'))
+    })
   })
 
   it('suit queued → running → done sans refus, puis relit le résultat', async () => {
