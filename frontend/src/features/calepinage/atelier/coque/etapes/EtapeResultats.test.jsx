@@ -122,6 +122,23 @@ describe('Étape Résultats — résultat complet (maquette Resultats)', () => {
     expect(screen.getByTestId('lieu').textContent).toMatch(/onglet=(equipements-electriques|cheminement-cables|raccordement|verdict-electrique|materiel-electrique|saisies-electriques|decisions-electriques|controle-chaine|schema)/)
   })
 
+  it('T4-U4-012 — production NON nulle mais chaînes sous la plage de l’onduleur : une phrase dit que le raccordement perd l’essentiel', async () => {
+    const d = COMPLET()
+    const raison = 'par forte chaleur, la tension des panneaux (140,5 V) tombe sous la plage de travail de cet onduleur (150,0 V)'
+    d.electrique.verdicts = d.electrique.verdicts.map((v) => (v.code === 'vmp_hot_over_mppt_min'
+      ? { ...v, conforme: false, raison } : v))
+    servir(d)
+    rendre()
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveAttribute('data-zone', 'cablage-perd-la-production')
+    expect(alerte).toHaveTextContent('fait perdre l’essentiel de la production')
+    expect(alerte).toHaveTextContent('Cause : Par forte chaleur, la tension des panneaux (140,5 V)')
+    expect(alerte).not.toHaveTextContent('borne de fiche')
+    expect(document.querySelector('[data-zone="production-nulle"]')).toBeNull()
+    fireEvent.click(within(alerte).getByRole('button', { name: 'Aller à l’étape Électrique' }))
+    expect(screen.getByTestId('lieu').textContent).toMatch(/onglet=/)
+  })
+
   it('T4-X7-005 — production non nulle : aucune alerte de production nulle', async () => {
     servir(COMPLET())
     rendre()
