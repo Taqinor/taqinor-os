@@ -7,7 +7,7 @@
 import { roleLabel, tauxTvaOf, tauxTvaOuDefaut, ttcExactFromHt } from '../../../../features/ventes/solar'
 import { lignesDepuisKit } from '../../../../features/ventes/quote/etudeMarcheBloc'
 import { tailleAutoRemplirPompage } from '../../../../features/ventes/quote/reouverture'
-import { laisserLeServeurChoisirLeWatt, motifRefusComposition } from '../../../../features/ventes/quote/panneauDefautEcran'
+import { laisserLeServeurChoisirLeWatt, motifRefusComposition, usePanneauParDefautDepart } from '../../../../features/ventes/quote/panneauDefautEcran'
 import { phraseReductionOptionAvec } from '../../../../features/ventes/quote/forfaitsPanneau'
 import { DIMENSIONNEMENT_PRET, issueRecalculDimensionnement } from '../../../../features/ventes/quote/paireDimensionnement'
 import { refusAutoRemplirPompage } from '../../../../features/ventes/etudePompagePreviewPur'
@@ -51,8 +51,12 @@ export function useCompositionEcran(ctx) {
     setAutoFillLoading, setCompositionErreur, profilCi, horsReseau, kwp, selectedLead,
     etudeHoraireDonnees, etudeHoraireChargement, marcheCi, ctxProfilCi, apercuCi, resolveKwcAvec,
     recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard, sizing, lines,
-    panneauDefaut = null,
+    editId,
   } = ctx
+  // D-ACAL-169 — le panneau par défaut de la société : UNE lecture à l'ouverture d'un devis NEUF
+  // (jamais d'un devis rouvert), qui pose la puissance de départ (précédence : `ETAT_INITIAL.panelW`,
+  // sizingReducer.js). Ne bloque jamais l'écran ; rendu à l'écran pour l'indication sous le champ.
+  const panneauDefaut = usePanneauParDefautDepart({ editId, dispatchSizing })
 
   // U3COMPOSE — l'optimum AXE BATTERIE envoyé au dry-run serveur : même
   // précédence que `resolveKwcAvec` ci-dessus (le moteur horaire serveur
@@ -438,6 +442,6 @@ export function useCompositionEcran(ctx) {
   }, [recalcDimTick])
 
   return {
-    handleAutoFill, appliquerTailleDimensionnement, recalculerDimensionnement,
+    handleAutoFill, appliquerTailleDimensionnement, recalculerDimensionnement, panneauDefaut,
   }
 }
