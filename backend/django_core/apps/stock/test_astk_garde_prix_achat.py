@@ -665,26 +665,68 @@ class GardePrixVente(TestCase):
         self.assertEqual(rep.status_code, 403, getattr(rep, 'data', ''))
         self.assertIn('catalogue_prix_modifier', str(rep.data['detail']))
 
-    def test_balayage_des_routes_stock_sans_prix_de_vente(self):
-        """Garde de CLASSE : toute route GET de ``apps.stock.urls`` lue par le
-        Technicien responsable ne sert aucune clé de ``PRIX_VENTE_CHAMPS``."""
+    def test_balayage_des_routes_stock_sans_aucun_montant_de_vente(self):
+        """Garde de CLASSE, par les VALEURS (D-ACAL-165) : un prix de vente et
+        un total de devis REPÉRABLES sont semés ; aucune réponse d'aucune route
+        GET de ``apps.stock.urls`` lue par le Technicien ou le Technicien
+        responsable ne les contient, sous quelque nom de clé que ce soit. Le
+        corps de TOUTE réponse est scanné (non-200 compris, XLSX ouvert) ; les
+        routes non-200 et les gabarits de détail sans objet sont NOMMÉS dans
+        le message, jamais sautés en silence."""
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis, LigneDevis
+        Produit.objects.filter(pk=self.produit.pk).update(
+            prix_vente=Decimal('98765.43'), prix_fixe_ht=Decimal('87654.32'),
+            prix_par_panneau_ht=Decimal('76543.21'), tarif_location_jour=Decimal('65432.19'),
+            paliers_prix_vente=[{'seuil_min': 1, 'seuil_max': None, 'prix_vente_ttc': '54321.98'}])
+        client = Client.objects.create(company=self.company, nom='Client D165', prenom='',
+                                       email='d165@example.com', telephone='+212600000165')
+        devis = Devis.objects.create(company=self.company, reference='DEV-D165-1', client=client,
+                                     created_by=self.admin, statut=Devis.Statut.ENVOYE,
+                                     taux_tva=Decimal('20'))
+        LigneDevis.objects.create(devis=devis, produit=self.produit, designation='Panneau D165',
+                                  quantite=Decimal('3'), prix_unitaire=Decimal('98765.43'))
+        devis.refresh_from_db()
+        aiguilles = ['98765.4', '87654.3', '76543.2', '65432.1', '54321.9', '118518.5']
+        if devis.total_ttc:
+            aiguilles.append(str(devis.total_ttc).split('.')[0])
+        # Contrôle positif : l'Administrateur LIT bien ces valeurs (garde non aveugle).
+        admin = _api(self.admin).get(f'/api/django/stock/produits/{self.produit.id}/')
+        self.assertIn('98765.4', admin.content.decode('utf-8'))
         routes = [(u, k) for u, k in routes_get() if u.startswith('/api/django/stock/')]
-        api, ids, fuites, nb_json = _api(self.chef), {}, [], 0
-        for url, kind in sorted(routes, key=lambda r: r[1] != 'list'):
-            pk = ids.get(url.split('{pk}')[0]) if '{pk}' in url else ''
-            if pk is None:
-                continue
-            rep = api.get(url.replace('{pk}', str(pk)))
-            if rep.status_code != 200 or 'json' not in (rep.get('Content-Type') or ''):
-                continue
-            nb_json += 1
-            donnees = rep.json()
-            if trouvees := cles_prix_vente(donnees):
-                fuites.append(f'GET {url} -> {sorted(trouvees)}')
-            lignes = donnees.get('results') if isinstance(donnees, dict) else donnees
-            if kind == 'list' and isinstance(lignes, list) and lignes and isinstance(lignes[0], dict):
-                ids[url] = lignes[0].get('id')
-        self.assertGreater(nb_json, 5)
-        self.assertEqual(fuites, [], '\n'.join(fuites))
-        self.assertEqual(cles_prix_vente({'prix_vente': 1, 'x': [{'prix_ttc': 2}]}),
-                         {'prix_vente', 'prix_ttc'})  # test-du-test
+
+        def texte(rep):
+            if 'spreadsheetml' in (rep.get('Content-Type') or ''):
+                classeur = load_workbook(BytesIO(rep.content), read_only=True)
+                return ' '.join(str(c) for ws in classeur.worksheets
+                                for ligne in ws.iter_rows(values_only=True) for c in ligne)
+            return rep.content.decode('utf-8', 'replace')
+
+        for user in (self.tech, self.chef):
+            api, ids, fuites, non_200, sans_objet = _api(user), {}, [], [], []
+            for url, kind in sorted(routes, key=lambda r: r[1] != 'list'):
+                pk = ids.get(url.split('{pk}')[0]) if '{pk}' in url else ''
+                if pk is None:
+                    sans_objet.append(url)
+                    continue
+                rep = api.get(url.replace('{pk}', str(pk)))
+                corps = texte(rep)
+                if trouvees := [a for a in aiguilles if a in corps]:
+                    fuites.append(f'GET {url} (HTTP {rep.status_code}) -> {trouvees}')
+                if rep.status_code != 200:
+                    non_200.append(f'{url} -> HTTP {rep.status_code}')
+                    continue
+                if kind == 'list' and 'json' in (rep.get('Content-Type') or ''):
+                    donnees = rep.json()
+                    lignes = donnees.get('results') if isinstance(donnees, dict) else donnees
+                    if isinstance(lignes, list) and lignes and isinstance(lignes[0], dict):
+                        ids[url] = lignes[0].get('id')
+            rapport = (f'\n{user.username} — non-200 ({len(non_200)}) : ' + '; '.join(non_200)
+                       + f'\nsans objet ({len(sans_objet)}) : ' + '; '.join(sans_objet))
+            print(rapport)
+            self.assertEqual(fuites, [], '\n'.join(fuites) + rapport)
+            self.assertGreater(len(routes) - len(non_200) - len(sans_objet), 5, rapport)

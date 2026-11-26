@@ -194,6 +194,9 @@ class MasquePrixVenteReponseMixin:
     l'étiquette prix) répondent 403."""
 
     actions_reservees_prix_vente = ()
+    #: D-ACAL-165 — montants de VENTE propres à une action, sous un autre nom
+    #: que ``PRIX_VENTE_CHAMPS`` (ex. le total TTC d'un devis).
+    montants_vente_par_action = {}
 
     def check_permissions(self, request):
         super().check_permissions(request)
@@ -203,12 +206,27 @@ class MasquePrixVenteReponseMixin:
 
     def finalize_response(self, request, response, *args, **kwargs):
         if cache_prix_vente(request):
-            retirer_cles(getattr(response, 'data', None), PRIX_VENTE_CHAMPS)
+            champs = PRIX_VENTE_CHAMPS + tuple(
+                self.montants_vente_par_action.get(getattr(self, 'action', None), ()))
+            retirer_cles(getattr(response, 'data', None), champs)
         return super().finalize_response(request, response, *args, **kwargs)
 
 
 class MasquePrixVenteProduitMixin(MasquePrixVenteReponseMixin):
     """D-ACAL-152 — ``ProduitViewSet`` : l'étiquette PRIX de rayon n'existe que
-    pour son prix TTC → réservée à ``prix_vente_voir``."""
+    pour son prix TTC → réservée à ``prix_vente_voir``. D-ACAL-165 — « Utilisé
+    dans » : ``total_ttc`` des devis retiré sans le droit ; et (D-ACAL-106,
+    « aucun devis ni aucun prix ») un compte qui ne peut pas LIRE les devis
+    (``ventes.selectors_assistant.lit_les_devis``) n'en reçoit aucune ligne."""
 
     actions_reservees_prix_vente = ('etiquettes_prix',)
+    montants_vente_par_action = {'utilise_dans': ('total_ttc',)}
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        donnees = getattr(response, 'data', None)
+        if getattr(self, 'action', None) == 'utilise_dans' and isinstance(donnees, dict) \
+                and donnees.get('devis'):
+            from apps.ventes.selectors_assistant import lit_les_devis
+            if not lit_les_devis(getattr(request, 'user', None)):
+                donnees['devis'] = []
+        return super().finalize_response(request, response, *args, **kwargs)
