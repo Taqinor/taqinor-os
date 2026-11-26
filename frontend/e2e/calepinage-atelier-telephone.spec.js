@@ -213,9 +213,8 @@ test('ACAL1812 : la réponse de « Terminer le relevé » est visible, au-dessus
   await page.getByTestId('releve-longueur').fill('12,4')
   await page.getByTestId('releve-largeur').fill('8,6')
   await page.getByTestId('releve-terminer').tap()
-  await expect(message).toHaveText(/Relevé (enregistré|corrigé)\./)
-  m = await dessus()
-  expect(m.basMessage, 'le succès est sous la barre du bas').toBeLessThanOrEqual(m.hautPied + 0.5)
+  // ACAL1319 / D-ACAL-68 — le succès ne se lit plus sur l'écran : « Terminer » enregistre puis revient à la fiche.
+  await expect(page).toHaveURL(new RegExp(`/calepinage/${cal.id}$`))
 })
 
 // ACAL1811 — « Voir en 3D » du relevé ouvre « Montrer au client » ; « Retour au relevé » ramène au relevé.

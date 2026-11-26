@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useDocumentCalepinage from '../useDocumentCalepinage'
 import { panParDefaut, zonesDuDocument } from '../SaisiePente.helpers'
@@ -114,6 +114,7 @@ function PastilleEnvoi() {
 
 export default function ReleveVisite() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const enLigne = useEnLigne()
   const doc = useDocumentCalepinage(id)
   const zone = zonesDuDocument(doc.document).find((z) => String(z.id) === panParDefaut(doc.document)) ?? null
@@ -388,6 +389,10 @@ export default function ReleveVisite() {
           ? ' L’orientation tapée n’est pas enregistrée : aucun pan dessiné, tracez le toit dans l’atelier.' : ''}${nonEnvoyees}`,
         ton: 'ok',
       })
+      /* ACAL1319 / D-ACAL-68 — « Terminer » enregistre puis REVIENT à la fiche d'où le relevé a été ouvert (la même que la
+         flèche « Retour »), sans statut neuf. Une réserve dite à l'écran (orientation non écrite, mesures non parties)
+         reste en vue : on ne quitte pas l'écran sur elle. */
+      if (!sansPanPourAzimut && !nonEnvoyees) navigate(`/calepinage/${id}`)
     } catch (err) {
       const refus = (texte, champ = null) => setMessage({ texte, ton: 'refus', champ })
       if (!err?.response) {
