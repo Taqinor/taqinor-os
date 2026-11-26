@@ -485,12 +485,11 @@ describe('PanneauProduction — bouton de calcul (CALX48, ACAL125)', () => {
 
   it('ACAL1647 — périmé par un réglage de la société : « Relancer (réglages modifiés) »', async () => {
     const servi = exempleContrat('calepinage', 'calepinage_resultat', 'exemple_perime')
-    calepinageApi.calepinages.resultat.mockResolvedValue({
-      data: {
-        ...servi,
-        motif: 'simulation périmée : un réglage de la société a changé depuis le calcul du 19/09/2026',
-      },
+    const perimeParUnReglage = () => ({
+      ...servi,
+      motif: 'simulation périmée : un réglage de la société a changé depuis le calcul du 19/09/2026',
     })
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: perimeParUnReglage() })
     rendre()
 
     await screen.findByTestId('cal236-panneau')
@@ -512,7 +511,7 @@ describe('PanneauProduction — bouton de calcul (CALX48, ACAL125)', () => {
 
     await screen.findByTestId('cal236-panneau')
     expect(screen.getByTestId('calx48-perime')).toHaveTextContent(
-      'simulation périmée : le document a changé depuis le calcul du 19/09/2026',
+      'simulation périmée : le document ou un réglage de la société a changé depuis le calcul du 19/09/2026',
     )
     expect(screen.queryByTestId('cal236-non-simule')).toBeNull()
   })
@@ -581,7 +580,7 @@ describe('PanneauProduction — simulation périmée (ACAL218)', () => {
     const tapis = await screen.findByTestId('cal-tapis-perime')
     // ACAL990 : le motif servi est dit UNE fois (le bandeau) ; le tapis dit sa propre phrase.
     expect(screen.getByTestId('calx48-perime')).toHaveTextContent(
-      'simulation périmée : le document a changé depuis le calcul du 19/09/2026',
+      'simulation périmée : le document ou un réglage de la société a changé depuis le calcul du 19/09/2026',
     )
     expect(tapis).toHaveTextContent('relancez-la')
     expect(screen.queryByTestId('cal-tapis')).toBeNull()
