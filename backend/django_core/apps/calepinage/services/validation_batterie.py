@@ -119,7 +119,7 @@ def _valider_batterie_designee(calepinage, fusionnee, postee):
 def _verdict_batterie(company, resolu, batterie_id):
     """D-ACAL-157 — le verdict de l'UNIQUE juge (``apps.ventes.selectors.compatibilite_du_materiel`` ->
     ``verdict_batterie_onduleur``) de cette batterie sous l'onduleur RÉSOLU ; sans onduleur : ``inconnu``."""
-    from apps.ventes.selectors import compatibilite_du_materiel
+    from .equipements import compatibilite_du_materiel  # porte déjà comptée (cliquet ACAL1009)
 
     produits = (resolu or {}).get('produits') or {}
     if produits.get('onduleur') is None:

@@ -74,15 +74,15 @@ test('entrée absente/nulle : refusée (jamais une exception)', () => {
 
 test('roleLoader délègue à estAutoriseEntree et reçoit permRepliPalier', () => {
   const routerSrc = lire('index.jsx')
-  assert.match(routerSrc, /const roleLoader = \(roles, perm, permRepliPalier\)/)
+  assert.match(routerSrc, /const roleLoader = \(roles, perm, permRepliPalier, permModule\)/)
   assert.match(
     routerSrc,
-    /estAutoriseEntree\(\{ roles, perm, permRepliPalier \}, tier, permissions\)/,
+    /estAutoriseEntree\(\{ roles, perm, permRepliPalier, permModule \}, tier, permissions\)/,
   )
   // Plus aucune copie locale de la règle dans le routeur.
   assert.doesNotMatch(routerSrc, /roles\.includes\(tier\) && \(!perm/)
   // buildModuleRoutes transmet le drapeau depuis la route du module.config.
-  assert.match(lire('moduleRoutes.jsx'), /roleLoader\(r\.roles, r\.perm, r\.permRepliPalier\)/)
+  assert.match(lire('moduleRoutes.jsx'), /roleLoader\(r\.roles, r\.perm, r\.permRepliPalier, r\.permModule\)/)
 })
 
 test('Sidebar, BottomTabBar, appNavItems et buildInstalledApps appellent la MÊME règle', () => {

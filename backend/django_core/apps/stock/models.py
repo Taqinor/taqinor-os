@@ -739,6 +739,15 @@ class Produit(VerrouOptimisteMixin, models.Model):
     )
     tva = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     is_archived = models.BooleanField(default=False)
+    # D-ACAL-169 (fondateur, 26/11/2026) — LE panneau par défaut de la société,
+    # lu par les choix automatiques d'un panneau (sélecteurs
+    # ``selectors_panneau_defaut``). Au plus UN vrai par société (contrainte
+    # ``stock_produit_un_panneau_defaut_par_societe``), jamais sur un produit
+    # global (``..._panneau_defaut_societe``). Posé SEULEMENT par l'action
+    # dédiée (``services_panneau_defaut``) — lecture seule ailleurs.
+    panneau_par_defaut = models.BooleanField(
+        default=False, verbose_name='Panneau par défaut',
+        help_text="Panneau utilisé par défaut par les choix automatiques (un seul par société).")
 
     # ── STKCAT21 — RÔLE DU PRODUIT DANS UN DEVIS, enfin une DONNÉE ──────────
     # Jusqu'ici, « ce produit est-il un panneau, une structure, un câble ? »
@@ -1143,6 +1152,16 @@ class Produit(VerrouOptimisteMixin, models.Model):
                 condition=models.Q(is_archived=False) & (
                     models.Q(sku__isnull=True) | models.Q(sku='')),
                 name='stock_produit_company_nom_sans_sku_uniq'),
+            # D-ACAL-169 — un seul panneau par défaut par société ; un produit
+            # GLOBAL (company NULL) ne peut pas le porter (NULL est « distinct »
+            # pour une contrainte d'unicité PostgreSQL : sans la seconde
+            # contrainte, plusieurs produits globaux pourraient le porter).
+            models.UniqueConstraint(
+                fields=['company'], condition=models.Q(panneau_par_defaut=True),
+                name='stock_produit_un_panneau_defaut_par_societe'),
+            models.CheckConstraint(
+                condition=models.Q(panneau_par_defaut=False) | models.Q(company__isnull=False),
+                name='stock_produit_panneau_defaut_societe'),
         ]
 
     def __str__(self):

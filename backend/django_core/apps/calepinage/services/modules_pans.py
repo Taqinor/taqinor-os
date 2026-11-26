@@ -46,17 +46,21 @@ def modules_par_pan_servis(calepinage, materiel, resolu, fiches, manquants,
         getattr(calepinage, 'roof_layout', None), defaut, fiches, manquants)
 
 
-def _produit_du_module_pose(document):
+def _produit_du_module_pose(document, *, sans_existants=False):
     """T4-B4-007 — le ``produit_id`` du module CHOISI à l'étape Panneaux : celui
     qui couvre le PLUS de modules posés (``geometry.moduleId`` →
     ``modules[].produitId``), ou ``None`` (aucun pan posé avec un produit du
-    catalogue). Lecture pure ; rien n'est supposé."""
+    catalogue). Lecture pure ; rien n'est supposé. ``sans_existants``
+    (D-ACAL-169) écarte les pans « existant » (ACAL573) ; FAUX par défaut :
+    les autres appelants lisent ce qu'ils lisaient."""
     from apps.ventes.services import pans_du_document
 
     comptes = {}
     for pan in pans_du_document(document):
         produit_id = pan.get('produit_id')
         modules = int(pan.get('modules') or 0)
+        if sans_existants and pan.get('existant'):
+            continue
         if produit_id in (None, '') or modules <= 0:
             continue
         comptes[produit_id] = comptes.get(produit_id, 0) + modules

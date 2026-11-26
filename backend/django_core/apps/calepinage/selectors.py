@@ -178,6 +178,21 @@ def peut_ouvrir_une_fois_responsable(user, lead_id=None):
     return lead_ids_de_ses_visites(user).filter(lead_id=lead_id).exists()
 
 
+def responsable_sans_acces(calepinage):
+    """T4-X3-016 (lot 8) — Vrai si le RESPONSABLE de ``calepinage`` ne peut
+    pas l'ouvrir (``peut_ouvrir_une_fois_responsable``, même prédicat que la
+    liste). Aucune règle de droits n'est changée : D-ACAL-106/126 et le choix
+    17 du 26/11 disent qu'un technicien n'ouvre que les calepinages de SES
+    visites — être responsable ne lui ouvre rien. C'est la DONNÉE qui est
+    l'anomalie (calepinages confiés avant que le menu et le serveur ne le
+    refusent). Sans responsable : ``False`` (rien à signaler)."""
+    responsable = getattr(calepinage, 'responsable', None)
+    if responsable is None:
+        return False
+    return not peut_ouvrir_une_fois_responsable(
+        responsable, getattr(calepinage, 'lead_id', None))
+
+
 def _de_ses_visites(user):
     """D-ACAL-106 — le calepinage du lead d'une visite ASSIGNÉE à ``user`` :
     le technicien qui monte sur le toit le lit et y fait le relevé."""

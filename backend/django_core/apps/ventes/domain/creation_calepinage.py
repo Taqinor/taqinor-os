@@ -522,7 +522,14 @@ def _banque_automatique(intention, produit):
     """Point 4 — le nombre de modules que la RÈGLE AUTOMATIQUE poserait pour cette même batterie :
     la vraie composition « avec », sans banque imposée, calibre épinglé sur celui de la batterie
     (``batterie_module_kwh``, le pin BATHOMO de la composition). ``None`` sans calibre lisible ou
-    sans batterie composée. Lecture seule."""
+    sans batterie composée. Lecture seule.
+
+    Pré-CI lot 8 — la règle est jugée sur CETTE batterie seule : le vivier de la composition préfère
+    les Dyness (et suit la marque de batterie épinglée), si bien qu'une autre batterie désignée n'y
+    entrait jamais, le pin restait sans correspondance et l'écart n'était pas dit. Le catalogue de
+    l'essai ne garde donc, comme batterie, que la désignée ; tout le reste (cible, onduleur, plafond)
+    est la vraie composition."""
+    from apps.ventes.domain.etape_composer import reglages_de_composition
     from apps.ventes.domain.kwh_lecture import _parse_kwh
     from apps.ventes.domain.pipeline import intention_de_composition
 
@@ -532,7 +539,11 @@ def _banque_automatique(intention, produit):
     cible = replace(intention.cible, batterie_imposee=None)
     essai = intention_de_composition(replace(intention, scenario=COMPOSITION_AVEC, cible=cible), cible,
                                      avertissements=[], devis=None)
-    lignes = composer(replace(essai, batterie_module_kwh=calibre))
+    base = reglages_de_composition(essai.company, essai.gamme_nom_devis)
+    seule = replace(base, marques={r: m for r, m in (base.marques or {}).items() if r != 'batterie'},
+                    catalogue=[p for p in base.catalogue if getattr(p, 'pk', None) == produit.pk
+                               or classer_produit(getattr(p, 'nom', '') or '') != 'batterie'])
+    lignes = composer(replace(essai, batterie_module_kwh=calibre, reglages=seule))
     roles = list(getattr(lignes, 'roles', ()) or ())
     return sum(int(ligne.quantite) for role, ligne in zip(roles, lignes) if role == 'batterie') or None
 
@@ -699,7 +710,7 @@ def _poser_produit(ligne, produit, famille, avertissements, *, nombre=None):
     """Pose ``produit`` sur une ligne (produit, désignation, prix catalogue, rôle, et le nombre
     désigné hors quantité saisie à la main) ; un prix saisi à la main n'est jamais écrasé
     (abstention DITE, comme ``reconcilier._permuter_onduleur``). Rend vrai si la ligne a bougé."""
-    from apps.ventes.domain.lignes import poser_prix_unitaire
+    from apps.ventes.domain.lignes import porter_quantite, poser_prix_unitaire
 
     if getattr(ligne, 'prix_manuel', False) and ligne.produit_id != produit.pk:
         avertissements.append(MSG_RESYNC_PRIX_MANUEL % (ligne.designation or 'ligne sans désignation',
@@ -713,11 +724,11 @@ def _poser_produit(ligne, produit, famille, avertissements, *, nombre=None):
     if getattr(ligne, 'role_devis', '') and ligne.role_devis != famille:
         ligne.role_devis = famille
         champs.append('role_devis')
-    if nombre and not getattr(ligne, 'quantite_manuelle', False) and ligne.quantite != Decimal(nombre):
-        ligne.quantite = Decimal(nombre)
-        champs.append('quantite')
     if champs:
         ligne.save(update_fields=champs)
+    if nombre and not getattr(ligne, 'quantite_manuelle', False) and ligne.quantite != Decimal(nombre):
+        porter_quantite(ligne, Decimal(nombre))  # QJR6 : l'écrivain sanctionné d'une quantité recalculée
+        return True
     return bool(champs)
 
 

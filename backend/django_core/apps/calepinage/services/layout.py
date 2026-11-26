@@ -738,6 +738,10 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
                 CalepinageVariante.objects.filter(pk=retenue.pk).update(
                     roof_layout=roof_layout, layout_hash=nouvelle,
                     resultat=None, updated_at=timezone.now())
+            # D-ACAL-169 — l'entrée électrique suit le module POSÉ, et le dit.
+            from .suivi_module_pose import suivre_le_module_pose
+
+            suivre_le_module_pose(calepinage, roof_layout, user=user)
 
     if not inchange:
         # CAL26 — un enregistrement SIGNIFICATIF se journalise ; un renvoi à

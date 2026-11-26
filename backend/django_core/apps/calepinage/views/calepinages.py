@@ -1639,6 +1639,8 @@ def detail_calepinage(calepinage, request=None):
         'modifie_le': _horodatage(getattr(calepinage, 'updated_at', None)),
         'cree_par': _personne(getattr(calepinage, 'cree_par', None)),
         'responsable': _responsable(calepinage, company),
+        # T4-X3-016 — le responsable ne peut pas l'ouvrir (donnée d'avant lot 8) : la fiche le dit.
+        'responsable_sans_acces': cal_selectors.responsable_sans_acces(calepinage),
         'lead': _lead(calepinage, company),
         'client': _client(calepinage),
         'devis': _devis(devis_lie),

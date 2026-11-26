@@ -39,7 +39,8 @@ function libelleDe(etat, points) {
   const libelles = {
     pret: 'Prêt',
     a_completer: `À compléter : ${n} point${n > 1 ? 's' : ''}`,
-    bloquant: `Bloquant : ${n}`,
+    // R6-N3 — un nombre de POINTS DU DOSSIER (motifs de son verdict), à ne pas lire comme un compte de contrôles de la liste.
+    bloquant: `Bloquant : ${n} point${n > 1 ? 's' : ''} du dossier`,
   }
   return { libelle: libelles[etat], ton: ETATS[etat].ton }
 }

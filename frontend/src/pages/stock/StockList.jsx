@@ -20,6 +20,7 @@ import ProduitDetail, { RebutModal } from './ProduitDetail'
 import usePeutEcrireStock from './usePeutEcrireStock'
 import { CatalogueTable } from './CatalogueTable'
 import PretDevisCi from './PretDevisCi'
+import { usePanneauParDefaut } from '../../features/stock/panneauParDefaut'  // D-ACAL-169
 import PilotageStock from './PilotageStock'
 import BulkProductBar from './BulkProductBar'
 import ExcelImport from '../../components/ExcelImport'
@@ -737,6 +738,8 @@ export default function StockList() {
   const canExport = hasFinePermissions ? canExportViaPerm : canWriteViaRole
   // ASTK21 (D-ASTK-3) — édition en place du prix de vente du catalogue.
   const canEditPrix = usePermissionAchats('catalogue_prix_modifier')
+  // D-ACAL-169 — LE panneau par défaut de la société (ligne en tête du catalogue).
+  const [panneauParDefaut, relirePanneauParDefaut] = usePanneauParDefaut()
   // D-ACAL-152 — sans « voir les prix de vente » (Technicien, Technicien
   // responsable), le serveur ne sert aucun prix de vente : colonnes, filtre
   // « Sans prix », jauge et compteur de prix ne sont pas rendus.
@@ -1478,6 +1481,7 @@ export default function StockList() {
           onClose={() => setDetailProduit(null)}
           onEdit={canWrite ? ((prod, champ) => { setDetailProduit(null); openEdit(prod, champ) }) : null}
           onRebut={peutMouvement ? () => dispatch(fetchProduits()) : null}
+          onPanneauParDefaut={() => { relirePanneauParDefaut(); dispatch(fetchProduits()) }}
         />
       )}
       {/* WIR221/XSTK10 — mise au rebut depuis la grille catalogue. */}
@@ -1638,6 +1642,7 @@ export default function StockList() {
               onToggleSelect={canWrite ? onToggleSelect : null}
               fichesParProduit={fichesTechniques}
               onExport={canExport ? exportCatalogueTable : null /* ADRG129 — route : stock_export */}
+              panneauParDefaut={panneauParDefaut}
             />
           )}
           {filtered.length === 0 && !loading && (

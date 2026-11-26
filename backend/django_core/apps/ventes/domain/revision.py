@@ -188,13 +188,27 @@ def reviser_devis(devis, *, user=None):
       * chatter v1 « Remplacé par <ref v2> (révision) » et v2 « Révision de
         <ref v1> ».
     Le statut de v1 n'est JAMAIS écrit (règle #4) — seuls ``is_active`` et
-    ``superseded_by`` bougent. Renvoie la nouvelle version."""
+    ``superseded_by`` bougent. Renvoie la nouvelle version.
+
+    R6-N1 — LES ÉTUDES DE LA V+1 SUIVENT SON CALEPINAGE. Le calepinage n'est
+    re-lié à la V+1 qu'APRÈS le commit (abonné ``devis_revise`` du
+    calepinage) : calculées dans le clonage, ses études ne le voyaient pas
+    (``calepinage_du_devis(V+1)`` vide ⇒ ni l'ombrage servi, ni la pose
+    réelle, ni les chaînes du calepinage) et rien ne les refaisait. Appelé
+    HORS transaction (la vue « Réviser ») : le clonage ne calcule plus rien,
+    les études sont calculées UNE fois, après la re-liaison, hors du verrou
+    de la V1, et avant le retour (la réponse les porte). Appelé DANS la
+    transaction d'un appelant (prix négocié, révision après visite,
+    révision sur la conception) : le clonage les calcule comme avant, et
+    elles sont refaites au commit seulement si un calepinage a été re-lié à
+    une V+1 restée brouillon (:func:`_etudes_apres_reliaison`)."""
     from django.db import transaction
     from apps.ventes.models import Devis
     from apps.ventes import activity
     from apps.ventes.domain.creation_clone import cloner_devis
     from apps.ventes.selectors import racine_groupe
 
+    differees = _hors_transaction()
     with transaction.atomic():
         old = (Devis.objects.select_for_update(of=('self',))
                .get(pk=devis.pk))
@@ -215,7 +229,8 @@ def reviser_devis(devis, *, user=None):
         nd = cloner_devis(
             old, user=user, note=old.note,
             version=old.version + 1,
-            version_parent=racine_groupe(old), revision=True)
+            version_parent=racine_groupe(old), revision=True,
+            etudes=not differees)
         old.is_active = False
         old.superseded_by = nd
         old.save(update_fields=['is_active', 'superseded_by'])
@@ -238,9 +253,50 @@ def reviser_devis(devis, *, user=None):
                 logger.warning(
                     'ACAL91 : abonné %r de devis_revise en échec (%s -> %s) : %s',
                     recepteur, old.reference, nd.reference, resultat)
+        # R6-N1 — APRÈS les abonnés (calepinage re-lié, ou re-liaison en
+        # échec journalisée) : les études de la V+1 voient sa conception.
+        _etudes_apres_reliaison(nd, differees=differees)
 
     transaction.on_commit(_emettre_devis_revise)
     return nd
+
+
+def _hors_transaction():
+    """R6-N1 — vrai quand ``reviser_devis`` est appelé HORS de toute
+    transaction (la vue « Réviser », en autocommit) : son ``on_commit`` part
+    alors tout de suite, avant le retour."""
+    from django.db import transaction
+    return not transaction.get_connection().in_atomic_block
+
+
+def _etudes_apres_reliaison(nd, *, differees):
+    """R6-N1 — les études de la V+1 ``nd``, après la re-liaison du calepinage.
+
+    ``differees`` (appel hors transaction) : le clonage n'a rien calculé — LE
+    calcul, une fois, sur l'instance rendue à la vue. Sinon le clonage les a
+    calculées sans calepinage : refaites seulement si un calepinage est
+    désormais celui de la V+1 et qu'elle est encore un brouillon actif (une
+    V+1 déjà acceptée dans la transaction de l'appelant n'est jamais
+    réécrite) ; sans calepinage, rien (le résultat d'hier, à l'octet).
+    Best-effort : la révision est actée ; un échec est journalisé (jamais
+    muet) et la première écriture suivante du brouillon recalcule (clés
+    dérivées absentes)."""
+    from apps.ventes.models import Devis
+    try:
+        cible = nd
+        if not differees:
+            from apps.calepinage.selectors import calepinage_du_devis
+            if calepinage_du_devis(nd.pk, nd.company) is None:
+                return
+            cible = Devis.objects.filter(
+                pk=nd.pk, company_id=nd.company_id, is_active=True,
+                statut=Devis.Statut.BROUILLON).first()
+            if cible is None:
+                return
+        rafraichir_etudes_du_devis(cible, force=True)
+    except Exception:  # noqa: BLE001 — la révision est actée, l'échec journalisé (D-ENF22-BLE001)
+        logger.exception('R6-N1 : études de la révision %s non calculées',
+                         getattr(nd, 'reference', '?'))
 
 
 def abandonner_revision(v2, user=None, *, retrait=False):
