@@ -147,11 +147,25 @@ describe('ModeTerrain — champ enregistré depuis un contour tracé (ACAL1425)'
       data: {
         roof_layout: {
           zones: [{ id: 'PAN-A' }],
-          poseSurfaces: [{ ...TRACE, id: 'TERRAIN', contourM: [[0, 0], [30, 0], [30, 22], [0, 22]] }],
+          // Un rectangle saisi n'écrit pas `vertices` (marqueur du tracé sur la carte).
+          poseSurfaces: [{ ...TRACE, vertices: undefined, id: 'TERRAIN', contourM: [[0, 0], [30, 0], [30, 22], [0, 22]] }],
         },
         empreinte_document: 'E0',
       },
     })
+    monter()
+    await waitFor(() => expect(screen.getByTestId('cal-terrain-relief-lire')).not.toBeDisabled())
+    expect(screen.queryByTestId('cal-terrain-contour-trace')).toBeNull()
+  })
+
+  it('un contour tracé à QUATRE coins porte la mention ; un rectangle stocké en anneau fermé de 5 points ne l’a pas', async () => {
+    const quatre = { ...TRACE, vertices: TRACE.vertices.slice(0, 4), contourM: [[0, 0], [20, 0], [20, 9], [0, 9]] }
+    espions.layout.mockResolvedValue({ data: { roof_layout: { zones: [{ id: 'PAN-A' }], poseSurfaces: [quatre] }, empreinte_document: 'E0' } })
+    monter()
+    expect(await screen.findByTestId('cal-terrain-contour-trace')).toHaveTextContent('contour tracé')
+    cleanup()
+    const anneau = { ...TRACE, vertices: undefined, contourM: [[0, 0], [30, 0], [30, 22], [0, 22], [0, 0]] }
+    espions.layout.mockResolvedValue({ data: { roof_layout: { zones: [{ id: 'PAN-A' }], poseSurfaces: [anneau] }, empreinte_document: 'E0' } })
     monter()
     await waitFor(() => expect(screen.getByTestId('cal-terrain-relief-lire')).not.toBeDisabled())
     expect(screen.queryByTestId('cal-terrain-contour-trace')).toBeNull()
