@@ -329,8 +329,21 @@ def _cotes_dessinees(distances, zones, vers_feuille):
         # sommet ne s'empilent plus au coin haut-gauche (x = −2 mesuré).
         bout = vers_feuille((x1, y1))
         dx, dy = _DECALAGE_LETTRE[cote]
-        lx = min(max(bout[0] + dx, 1.0), FORMAT_A4_MM[0] - 4.0)
-        ly = min(max(bout[1] + dy, 4.0), FORMAT_A4_MM[1] - 1.0)
+        lx, ly = bout[0] + dx, bout[1] + dy
+        # ACAL1935 — la lettre se pose HORS de la boîte du texte de la cote (largeur ≈ 0,6 × corps par
+        # caractère) : une cote courte n'a plus sa valeur sous la lettre E / O, ni sa lettre N / S sur la valeur.
+        a, b = vers_feuille((x0, y0)), vers_feuille((x1, y1))
+        demi = 0.6 * 3.2 * len(texte_de_longueur(abs((x1 - x0) if cote in 'EO' else (y1 - y0)))) / 2.0
+        if cote in 'EO':
+            milieu = (a[0] + b[0]) / 2.0
+            # Les deux lettres E et O se posent À DROITE de leur valeur : le bord gauche de la feuille est
+            # déjà pris par les cotes verticales tournées.
+            lx = max(lx, milieu + demi + 1.0) if dx >= 0 else milieu + demi + 1.0
+        else:
+            milieu = (a[1] + b[1]) / 2.0
+            ly = min(ly, milieu - demi - 1.0) if dy < 0 else max(ly, milieu + demi + 1.0 + 3.2)
+        lx = min(max(lx, 1.0), FORMAT_A4_MM[0] - 4.0)
+        ly = min(max(ly, 4.0), FORMAT_A4_MM[1] - 1.0)
         morceaux.append('<g data-cote="%s">%s<text x="%s" y="%s" '
                         'font-size="3.2" font-weight="bold" fill="%s">%s'
                         '</text></g>' % (cote, trace, _n(lx), _n(ly), NOIR, cote))

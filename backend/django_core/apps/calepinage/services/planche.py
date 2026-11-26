@@ -703,16 +703,22 @@ def _cote_horizontale(x0, x1, y, vers_feuille, *, couleur=NOIR):
          escape(texte_de_longueur(abs(x1 - x0))))
 
 
+#: ACAL1935 — le texte d'une cote verticale (corps 3,2, tourné) occupe [x − 3,2 ; x] : il reste à 1 mm au
+#: moins du bord gauche de la feuille ; sinon la cote entière se décale vers la droite (jamais coupée).
+_X_MIN_TEXTE_COTE_VERTICALE = 3.2 + 1.0
+
+
 def _cote_verticale(y0, y1, x, vers_feuille, *, couleur=NOIR):
     a, b = vers_feuille((x, y0)), vers_feuille((x, y1))
     milieu_y = (a[1] + b[1]) / 2.0
+    decalage = max(0.0, _X_MIN_TEXTE_COTE_VERTICALE - (a[0] - 7.2))
     return (
         '<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" stroke-width="%s" />'
         '<text x="%s" y="%s" font-size="3.2" text-anchor="middle" fill="%s" '
         'transform="rotate(-90 %s %s)">%s</text>'
-    ) % (_n(a[0] - 6.0), _n(a[1]), _n(b[0] - 6.0), _n(b[1]), couleur,
-         _n(TRAIT_COTE), _n(a[0] - 7.2), _n(milieu_y), couleur,
-         _n(a[0] - 7.2), _n(milieu_y), escape(texte_de_longueur(abs(y1 - y0))))
+    ) % (_n(a[0] - 6.0 + decalage), _n(a[1]), _n(b[0] - 6.0 + decalage), _n(b[1]), couleur,
+         _n(TRAIT_COTE), _n(a[0] - 7.2 + decalage), _n(milieu_y), couleur,
+         _n(a[0] - 7.2 + decalage), _n(milieu_y), escape(texte_de_longueur(abs(y1 - y0))))
 
 
 #: Les poses que le document enregistre (``geometry.panelOrientation`` et

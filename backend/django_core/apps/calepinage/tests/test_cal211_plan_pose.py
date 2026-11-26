@@ -715,6 +715,57 @@ class FeuilleCoteeTest(SimpleTestCase):
             self.assertGreaterEqual(y, 0.0, cote)
 
 
+def boites_de_textes(svg):
+    """ACAL1935 — la boîte (x0, y0, x1, y1, texte) de chaque ``<text>`` du SVG : largeur ≈ 0,6 × le corps
+    par caractère (DejaVu Sans, comme les autres gardes de ce module), hauteur = le corps ; un texte
+    tourné de −90° (cote verticale) échange les deux dimensions."""
+    boites = []
+    for m in re.finditer(r'<text ([^>]*)>([^<]*)</text>', svg):
+        attrs = dict(re.findall(r'([\w-]+)="([^"]*)"', m.group(1)))
+        corps = float(attrs.get('font-size', 3.2))
+        x, y = float(attrs['x']), float(attrs['y'])
+        texte = html.unescape(m.group(2))
+        largeur, hauteur = 0.6 * corps * len(texte), corps
+        ancre = attrs.get('text-anchor', 'start')
+        debut = {'start': 0.0, 'middle': -largeur / 2.0, 'end': -largeur}[ancre]
+        if 'rotate(-90' in attrs.get('transform', ''):
+            boites.append((x - hauteur, y - debut - largeur, x, y - debut, texte))
+        else:
+            boites.append((x + debut, y - hauteur, x + debut + largeur, y, texte))
+    return boites
+
+
+class CotesDeRiveSansChevauchementTest(SimpleTestCase):
+    """ACAL1935 — sur la page d'un pan, ni une cote de rive ni sa lettre N/E/S/O n'en recoupe une autre, et
+    aucun texte ne sort de la feuille (x ≥ 0) : « 0,00 m » tourné coupé à x = −1,8, « 0,82 m » sur le E."""
+
+    def feuille(self, centres):
+        from apps.calepinage.services.planche_pan import _feuille_de_pan
+
+        pan = pan_de_10_sur_6('portrait')
+        modules = [dict(m, pan='z1', chaine=None, couleur=None, rang=None, module='z1#%d' % (i + 1))
+                   for i, m in enumerate(modules_aux_marges(pan, centres))]
+        return _feuille_de_pan(pan, modules, [], [pan], '', [])
+
+    def verifier(self, svg):
+        groupes = re.findall(r'<g data-cote="\w">.*?</g>', svg)
+        boites = [b for g in groupes for b in boites_de_textes(g)]
+        self.assertEqual(len(boites), 8)
+        for x0, y0, x1, y1, texte in boites_de_textes(svg):
+            self.assertGreaterEqual(x0, 0.0, texte)
+            self.assertGreaterEqual(y0, 0.0, texte)
+        for i, a in enumerate(boites):
+            for b in boites[i + 1:]:
+                recoupe = a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+                self.assertFalse(recoupe, (a, b))
+
+    def test_champ_au_contact_des_rives(self):
+        self.verifier(self.feuille([(0.55, 5.15), (1.65, 5.15)]))
+
+    def test_champ_aux_marges_ordinaires(self):
+        self.verifier(self.feuille(CENTRES_AUX_MARGES))
+
+
 class EncartFixationDuPanTest(SimpleTestCase):
     """ACAL592 - l'encart « Fixation de ce pan » de la feuille A4."""
 
