@@ -1689,16 +1689,16 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     const req = roofImageRequest(ringBBox(ctx.vertices));
     setDeckUVs(deck.geometry, origin, req.extent);
     const key = req.extent.map((n) => n.toFixed(6)).join(',');
-    if (roofTex && roofTexKey === key) {
-      mat.map = roofTex;
-      mat.color.set(0xffffff);
-      mat.needsUpdate = true;
+    if (roofTexKey === key) { // lot 8 — UNE demande par emprise : en vol, chargée ou refusée, jamais redemandée à chaque rendu
+      if (roofTex) Object.assign(mat, { map: roofTex, needsUpdate: true }).color.set(0xffffff);
       return;
     }
+    roofTex?.dispose(); roofTex = null; roofTexKey = key; // l'ancienne emprise n'est plus montée (deck reconstruit) : libérée
     const url = mapboxStaticRoofImageUrl(opts.mapboxToken, req.center, req.zoom, req.w, req.h);
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
+      if (roofTexKey !== key) return; // une autre emprise a été demandée depuis (retracé) : image périmée
       const tex = new THREE.Texture(img);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = 8;
@@ -1709,7 +1709,6 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       // recomposition du matériau — la libérer ici corromprait le rendu en cours.
       if (roofTex && roofTex !== tex && roofTex !== deckMaterial?.map) roofTex.dispose();
       roofTex = tex;
-      roofTexKey = key;
       // Réapplique sur le deck COURANT (un bascule a pu le recréer entre-temps).
       if (deckMaterial) {
         deckMaterial.map = tex;
