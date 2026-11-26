@@ -1063,3 +1063,22 @@ describe('ACAL1317 — deux onduleurs, un câble par pan', () => {
     expect(couche.etatTraces('eq2').pansSansTrace).toEqual([]);
   });
 });
+
+describe('ACAL1317 — un pan « existant » n’envoie aucun câble neuf', () => {
+  const COS = Math.cos((ORIGINE[1] * Math.PI) / 180);
+  const M = (Math.PI / 180) * 6378137;
+  const lngLat = (e: number, n: number): [number, number] => [ORIGINE[0] + e / (M * COS), ORIGINE[1] + n / M];
+  const pan = (id: string, ring: [number, number][], existant = false) => ({
+    id, existant, renderPlan: { pack: { origin: ORIGINE, azimuthDeg: 180, ringENU: ring }, grid: { rowWidthM: 2, panels: [3, 5, 7].map((cx) => ({ cx, cy: 6 })) } },
+  });
+  it('la pose ne trace que depuis les pans vendus ; le pan existant n’est pas compté « sans tracé »', () => {
+    const couche = creerCoucheElectrique({
+      electrical: null, sceneOrigin: ORIGINE, activeAreaId: 'z1',
+      areas: [pan('z1', [[0, 0], [20, 0], [20, 12], [0, 12]]), pan('z2', [[22, 0], [40, 0], [40, 12], [22, 12]], true)],
+    });
+    couche.armerPose('onduleur', { suivreTrace: true });
+    couche.clicCarte(lngLat(20, 2));
+    expect((couche.documentElectrique()!.cheminements ?? []).map((c) => c.de)).toEqual(['z1']);
+    expect(couche.etatTraces('eq1').pansSansTrace).toEqual([]);
+  });
+});

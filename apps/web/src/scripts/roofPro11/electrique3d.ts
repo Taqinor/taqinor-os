@@ -596,6 +596,8 @@ export interface ContexteCoucheElectrique {
   /** Les pans de l'atelier : une extrémité de cheminement peut les désigner. */
   areas?: ReadonlyArray<{
     id: string;
+    /** ACAL510 — « Pan existant » : modules déjà en place, hors de la vente (ACAL1317 : aucun câble neuf n'en part). */
+    existant?: boolean;
     /** ACAL472 — la pose du pan (rive + rangées de modules) : sans elle, aucun tracé n'est proposé. */
     renderPlan?: {
       pack: { origin: LngLat; azimuthDeg: number; ringENU: [number, number][] };
@@ -1109,9 +1111,11 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     return Math.hypot(e, n) <= TOLERANCE_ABOUTISSEMENT_M;
   }
 
-  /** Les pans qui portent des modules : chacun envoie son câble DC à l'onduleur (un tracé par pan). */
+  /** Les pans qui portent des modules VENDUS : chacun envoie son câble DC à l'onduleur (un tracé par pan). Un pan
+   *  « existant » (installation déjà en place, ACAL510 — hors de la vente comme dans `calepinage/services/devis.py`)
+   *  n'en reçoit pas : ni tracé proposé, ni « tracé partiel ». */
   const pansAModules = (): string[] => (ctx.areas ?? [])
-    .filter((a) => a.id && (a.renderPlan?.grid?.panels?.length ?? 0) > 0).map((a) => a.id);
+    .filter((a) => a.id && !a.existant && (a.renderPlan?.grid?.panels?.length ?? 0) > 0).map((a) => a.id);
 
   /** Un pan est SERVI quand un tracé DC le relie à UN onduleur, quel qu'il soit : avec deux onduleurs, le pan câblé
    *  au premier n'envoie pas un second câble au deuxième (deux métrés pour un seul câble). */
