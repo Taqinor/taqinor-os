@@ -1031,7 +1031,7 @@ def _echeancier(d, lg):
     # (nouveaux rendus, clé ``rib_sous_echeancier`` du builder) ; sinon rien.
     from ..rib_devis_final import bloc_agricole
     return (f'<table class="ag-ech"><tr>{"".join(cases)}</tr></table>'
-            f'{bloc_agricole(d, _t(lg, "res_virement"))}{fda}')
+            f'{fda}{bloc_agricole(d, _t(lg, "res_virement"))}')
 
 
 def cloture(ctx):

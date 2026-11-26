@@ -229,6 +229,10 @@ class ReglesCalculTests(SimpleTestCase):
             self.assertIn('Virement bancaire&nbsp;:', rendu)
             self.assertIn('<b>SOCIETE 43 SARL</b> · Banque X · RIB 011 780 0000000000000000 12', rendu)
             self.assertNotIn('0002720029379418', rendu)  # jamais le RIB historique
+        # Agricole : le RIB vient APRÈS la note « acompte après l'accord FDA », sous tout l'échéancier.
+        from apps.ventes.quote_engine.agricole.pages import _t
+        agri = _echeancier(dict(agricole, entreprise=profil, **{CLE: True}), 'fr')
+        self.assertLess(agri.index(_t('fr', 'agr_acompte_apres_fda')), agri.index('ag-ech-rib'))
         # Clé posée mais profil vidé depuis : rien (jamais « RIB à communiquer »).
         vide = dict(profil, rib='', banque='')
         self.assertEqual(bloc_echeancier(synthese, 'c3', doc={'entreprise': vide, CLE: True}), ci_avant)
