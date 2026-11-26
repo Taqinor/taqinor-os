@@ -299,6 +299,24 @@ describe('PretAEnvoyer — un calepinage sans lead ne parle pas du lead (T4-U4-0
   })
 })
 
+/* ACAL1983 — « Fiche incomplète » : le bouton dit « Compléter la fiche du module », pas « Régler dans … ». */
+describe('PretAEnvoyer — le bouton d’une fiche incomplète (ACAL1983)', () => {
+  it('le geste servi nomme le bouton ; un autre contrôle garde « Régler dans … »', async () => {
+    const fiche = {
+      ...ligne(modeleARegler, 'materiel_designe'), libelle: 'Matériel électrique désigné',
+      valeur_texte: 'Fiche incomplète : tension au point de puissance maximale (Vmp) du module',
+      geste: 'Compléter la fiche du module', cible: { etape: 'electrique', onglet: 'materiel', champ: '' },
+    }
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi([fiche, ligne(modeleARegler, 'chutes_tension')]))
+    monter({ calepinageId: 208, groupes: true })
+    const bouton = await screen.findByTestId('cal-pret-regler-materiel_designe')
+    expect(bouton).toHaveTextContent('Compléter la fiche du module')
+    expect(bouton).not.toHaveTextContent('Régler dans')
+    expect(screen.getByTestId('cal-pret-regler-chutes_tension')).toHaveTextContent(/^Régler/)
+    cleanup()
+  })
+})
+
 /* ACAL1729 — le « ? » (Pourquoi) s'ouvre à la touche Entrée comme à la touche Espace ; Échap le ferme. */
 describe('PretAEnvoyer — le « ? » au clavier (ACAL1729)', () => {
   const taille = { ...ligne(modeleARegler, 'taille_clavier'), libelle: 'Pentes et faces confirmées', valeur_texte: '4 pans' }
