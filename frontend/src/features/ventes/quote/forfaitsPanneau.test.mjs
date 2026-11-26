@@ -6,9 +6,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  prixForfaitHt, porteBaremeParPanneau, comptesPanneauxEcran, retarifierForfaitsEcran,
+  prixForfaitHt, porteBaremeParPanneau, comptesPanneauxEcran, retarifierForfaitsEcran, suivreQuantitesPanneauxEcran, reductionOptionAvec,
+  phraseReductionOptionAvec,
 } from './forfaitsPanneau.js'
 import { lignesEcranVersPayload } from './lignesEcran.js'
+import { ETAT_INITIAL, sizingReducer, toucheNbPanneauxPourComposition } from './sizingReducer.js'
 
 // Mêmes barèmes que `apps/ventes/tests/test_pvkit_composition.py::BAREMES_FORFAIT`
 // (chaînes telles que DRF les sert : DecimalField 2 et 4 décimales).
@@ -151,4 +153,71 @@ test('catalogue absent ou vide : lignes rendues telles quelles', () => {
   const lines = [ligne(PAN, 8), ligne(INST, 1)]
   assert.equal(retarifierForfaitsEcran(lines, []), lines)
   assert.equal(retarifierForfaitsEcran(lines, undefined), lines)
+})
+
+// T4-X4-001 — structures et socles : la règle est celle du SERVEUR (modules affleurants déduits, D-ACAL-39) ; l'écran
+// ne recopie aucune quantité, il DIT qu'une ligne ne suit pas les panneaux, sans chiffre. Lignes reconnues par leur RÔLE.
+const STRUCT = { id: 20, nom: 'Structures acier', prix_vente: '300', tva: 20, role_devis_effectif: 'structure_acier' }
+const SOCLE = { id: 21, nom: 'Socles', prix_vente: '50', tva: 20, role_devis_effectif: 'socle' }
+const SERVICE_CI = { id: 22, nom: 'Étude de structure du bâtiment', prix_vente: '5000', tva: 20, role_devis_effectif: null }
+const PRODUITS_FIX = [PAN, STRUCT, SOCLE, SERVICE_CI]
+const ligneFix = (produit, quantite, extra = {}) => ({ _key: `k${produit.id}`, produit: produit.id, designation: produit.nom, quantite: String(quantite), typeLigne: 'produit', ...extra })
+const avecPanneaux = (lignes, q) => lignes.map((l) => (l.produit === PAN.id ? { ...l, quantite: String(q) } : l))
+
+test('suivreQuantitesPanneauxEcran — 6 -> 8 panneaux (dont 2 affleurants côté serveur) : aucune quantité réécrite, aucun « 8 attendu »', () => {
+  const vues = suivreQuantitesPanneauxEcran([ligneFix(PAN, 6), ligneFix(STRUCT, 6), ligneFix(SOCLE, 12)], PRODUITS_FIX)
+  assert.deepEqual(vues.map((l) => l.neSuitPasPanneaux), [undefined, undefined, undefined])
+  assert.equal(suivreQuantitesPanneauxEcran(vues, PRODUITS_FIX), vues, 'rien ne change : même tableau')
+  const apres = suivreQuantitesPanneauxEcran(avecPanneaux(vues, 8), PRODUITS_FIX)
+  assert.deepEqual(apres.map((l) => l.quantite), ['8', '6', '12'], 'la règle du serveur (6 structures si 2 affleurants) n est pas devinée')
+  assert.deepEqual(apres.map((l) => l.neSuitPasPanneaux), [undefined, true, true])
+  assert.ok(apres.every((l) => !('qteAttenduePanneaux' in l)), 'aucun chiffre attendu n est posé')
+  assert.equal(suivreQuantitesPanneauxEcran(apres, PRODUITS_FIX), apres)
+})
+
+test('suivreQuantitesPanneauxEcran — la quantité retouchée ou le compte revenu efface l alerte', () => {
+  const huit = suivreQuantitesPanneauxEcran(avecPanneaux(suivreQuantitesPanneauxEcran(
+    [ligneFix(PAN, 6), ligneFix(STRUCT, 6), ligneFix(SOCLE, 12)], PRODUITS_FIX), 8), PRODUITS_FIX)
+  const retouchee = suivreQuantitesPanneauxEcran(huit.map((l) => (l.produit === STRUCT.id ? { ...l, quantite: '6' } : l))
+    .map((l) => (l.produit === SOCLE.id ? { ...l, quantite: '12.0' } : l)), PRODUITS_FIX)
+  assert.equal(retouchee[1].neSuitPasPanneaux, true, 'même valeur retapée : rien n a bougé')
+  const tapee = suivreQuantitesPanneauxEcran(huit.map((l) => (l.produit === STRUCT.id ? { ...l, quantite: '7' } : l)), PRODUITS_FIX)
+  assert.equal(tapee[1].neSuitPasPanneaux, undefined, 'le vendeur a retapé la quantité à ce compte')
+  assert.equal(tapee[2].neSuitPasPanneaux, true)
+  const revenu = suivreQuantitesPanneauxEcran(avecPanneaux(huit, 6), PRODUITS_FIX)
+  assert.deepEqual(revenu.map((l) => l.neSuitPasPanneaux), [undefined, undefined, undefined])
+})
+
+test('suivreQuantitesPanneauxEcran — une ligne est reconnue par son rôle, jamais par un mot de son nom', () => {
+  const lignes = suivreQuantitesPanneauxEcran([ligneFix(PAN, 6), ligneFix(SERVICE_CI, 1), ligneFix(STRUCT, 6, { role_devis: '' })], PRODUITS_FIX)
+  const apres = suivreQuantitesPanneauxEcran(avecPanneaux(lignes, 8), PRODUITS_FIX)
+  assert.equal(apres[1].neSuitPasPanneaux, undefined, 'un service C&I dont le nom contient « structure » n est pas une structure')
+  assert.equal(apres[1].fixationVue, undefined)
+  assert.equal(apres[2].neSuitPasPanneaux, true, 'le rôle servi du produit tranche')
+  const roleStocke = suivreQuantitesPanneauxEcran(avecPanneaux(suivreQuantitesPanneauxEcran(
+    [ligneFix(PAN, 6), { ...ligneFix(SERVICE_CI, 4), role_devis: 'socle' }], PRODUITS_FIX), 8), PRODUITS_FIX)
+  assert.equal(roleStocke[1].neSuitPasPanneaux, true, 'le rôle STOCKÉ de la ligne passe devant celui du produit')
+})
+
+test('reductionOptionAvec — l option avec batterie qui passe de 8 à 6 panneaux est nommée ; sinon null', () => {
+  const sans = (q) => ({ produit: PAN.id, designation: PAN.nom, quantite: q, variante: 'sans' })
+  const avec = (q) => ({ produit: PAN.id, designation: PAN.nom, quantite: q, variante: 'avec' })
+  assert.deepEqual(reductionOptionAvec([sans('6'), avec('8')], [sans('6'), avec('6')], [PAN]), { avant: 8, apres: 6 })
+  assert.equal(reductionOptionAvec([sans('6'), avec('8')], [sans('6'), avec('8')], [PAN]), null)
+  assert.equal(reductionOptionAvec([sans('6'), avec('6')], [sans('6'), avec('8')], [PAN]), null, 'une hausse n est pas une réduction')
+  assert.equal(reductionOptionAvec([], [sans('6'), avec('6')], [PAN]), null)
+})
+
+test('R5A-N2 (revue) — « le nombre de panneaux saisi » n est la raison QUE si un compte a été saisi (état réel du reducer)', () => {
+  const sans = (q) => ({ produit: PAN.id, designation: PAN.nom, quantite: q, variante: 'sans' })
+  const avec = (q) => ({ produit: PAN.id, designation: PAN.nom, quantite: q, variante: 'avec' })
+  const avant = [sans('6'), avec('8')]
+  const apres = [sans('6'), avec('6')]
+  const saisi = sizingReducer(ETAT_INITIAL, { type: 'SAISI', champ: 'nbPanneaux', valeur: '6' })
+  assert.equal(toucheNbPanneauxPourComposition(saisi), true)
+  assert.equal(phraseReductionOptionAvec(avant, apres, [PAN], toucheNbPanneauxPourComposition(saisi)),
+    'L\'option avec batterie passe de 8 à 6 panneaux : le nombre de panneaux saisi vaut pour les deux options.')
+  // Rien de tapé : `resolveKwcAvec` a rendu la taille sans batterie (moteur sans `recommandation_avec`, ou la sienne plus petite).
+  assert.equal(toucheNbPanneauxPourComposition(ETAT_INITIAL), false)
+  assert.equal(phraseReductionOptionAvec(avant, apres, [PAN], toucheNbPanneauxPourComposition(ETAT_INITIAL)), null)
 })

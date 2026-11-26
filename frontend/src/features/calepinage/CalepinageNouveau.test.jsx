@@ -258,6 +258,22 @@ describe('CalepinageNouveau (CAL36)', () => {
     expect(mocks.navigate).toHaveBeenCalledWith(`/calepinage/${DETAIL.id}`)
   })
 
+  // R5B-N1 (rejeu 26/11) — `clients/search/` sert aussi les LEADS (`source: 'lead'`) : l'onglet Client proposait
+  // « R5B-1 » (lead #1238) et `depuis-modele` répondait 404 « Client introuvable (#1238) ». Seuls les clients sont offerts.
+  it('R5B-N1 — l’onglet Client ne propose que des clients (jamais un lead servi par la recherche d’entreprise)', async () => {
+    mocks.searchClients.mockResolvedValue({ data: { results: [
+      { source: 'lead', id: 1238, nom: 'R5B-1' }, { source: 'client', ...CLIENT_AVEC_ADRESSE },
+    ] } })
+    rendre()
+    allerSurOnglet('Client')
+    fireEvent.click(screen.getByRole('combobox', { name: 'Client rattaché au calepinage' }))
+    const client = await screen.findByText('Client d’essai')
+    expect(screen.queryByText('R5B-1')).toBeNull()
+    fireEvent.click(client)
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    await waitFor(() => expect(mocks.depuisModele).toHaveBeenCalledWith({ client_id: '3' }))
+  })
+
   it('créer depuis un CLIENT envoie `{client_id}` — jamais les deux à la fois', async () => {
     rendre()
     allerSurOnglet('Client')

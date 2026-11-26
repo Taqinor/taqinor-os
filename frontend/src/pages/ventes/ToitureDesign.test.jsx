@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, act } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, act, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
@@ -210,6 +210,7 @@ describe('ToitureDesign — mode devis (PV20)', () => {
         expect(beforeunloadArme()).toBe(false)
 
         // On retire 3 panneaux : la sérialisation change.
+        fireEvent.pointerDown(document.body) // ACAL1661 — une vraie retouche suit un geste de l'utilisateur
         serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 9 } })
         await waitFor(() => expect(beforeunloadArme()).toBe(true), { timeout: 5000 })
 
@@ -226,6 +227,24 @@ describe('ToitureDesign — mode devis (PV20)', () => {
         natif.mockRestore()
       }
     })
+
+    it('ACAL1661 — sans geste, ce que l’outil réécrit seul n’arme rien ; un geste puis une retouche, si (course comprise)', async () => {
+      servirConceptionDevis(
+        reponseContrat('calepinage', 'calepinage_design_context'))
+      bootHydrate()
+      rendreDevis(DEVIS_ID)
+      await screen.findByTestId('cal-retour-liste')
+      await waitFor(() => expect(serializeLayout).toHaveBeenCalled())
+      // La pose se recalcule d'elle-même après l'ouverture : plus de deux sondages (1,5 s) sans geste, rien d'armé.
+      serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 9 } })
+      await new Promise((r) => { setTimeout(r, 3300) })
+      expect(beforeunloadArme()).toBe(false)
+      // Le geste fige la référence d'avant lui ; la retouche qui le suit se voit.
+      fireEvent.keyDown(document.body, { key: 'a' })
+      expect(beforeunloadArme()).toBe(false)
+      serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 12 } })
+      await waitFor(() => expect(beforeunloadArme()).toBe(true), { timeout: 5000 })
+    }, 20000)
 
     it('scène inchangée → Fermer sans confirmation, beforeunload désarmé', async () => {
       servirConceptionDevis(
@@ -259,6 +278,7 @@ describe('ToitureDesign — mode devis (PV20)', () => {
         const fermer = await screen.findByTestId('cal-retour-liste') // Coque (22/11) : « ‹ Devis » du bandeau referme l'atelier
         await waitFor(() => expect(serializeLayout).toHaveBeenCalled())
         const modifie = { ...LAYOUT, result: { panels: CTX_CAL.cible.panneaux } }
+        fireEvent.pointerDown(document.body) // ACAL1661 — idem
         serializeLayout.mockReturnValue(modifie)
         await waitFor(() => expect(beforeunloadArme()).toBe(true), { timeout: 5000 })
 

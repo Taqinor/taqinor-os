@@ -269,6 +269,36 @@ describe('PanneauProduction — bouton de calcul (CALX48, ACAL125)', () => {
       expect(lignes[0]).toHaveAttribute('href', '/calepinage/reglages')
       expect(lignes[1]).toHaveAttribute('href', '/calepinage/1?onglet=electrique&champ=norme')
     })
+
+    /* R5B-N5 (jumeau, revue du 26/11) — la ligne des ombres servie avec la cible `?onglet=production` menait à l'écran
+       même où elle se lit : un lien mort dans le panneau Production. Même destination qu'aux Résultats : l'étape Panneaux,
+       ouverte comme par le clic sur l'étape (`state.etapeChoisie`). */
+    it('R5B-N5 — la ligne des ombres ouvre l’étape Panneaux ; aucune ligne ne mène à l’écran où elle se lit', async () => {
+      const { Routes, Route, useLocation } = await import('react-router-dom')
+      const Sonde = () => {
+        const lieu = useLocation()
+        return <p data-testid="sonde">{`${lieu.pathname}${lieu.search}|${lieu.state?.etapeChoisie === true}`}</p>
+      }
+      servir('exemple_vide')
+      render(
+        <MemoryRouter initialEntries={['/calepinage/1?onglet=production']}>
+          <Routes>
+            <Route path="/calepinage/:id" element={<>
+              <PanneauProduction calepinageId={1} parcours={{ etats: {}, manque: [
+                { code: 'acces_solaire_absent', message: 'L’ombre sur chaque panneau n’est pas encore calculée.',
+                  etape: 'resultats', gravite: 'info', nombre: 1, cible: { onglet: 'production', champ: '' } },
+              ] }} />
+              <Sonde />
+            </>} />
+          </Routes>
+        </MemoryRouter>,
+      )
+      const ligne = await screen.findByTestId('calx48-manque-ligne')
+      expect(ligne).toHaveAttribute('href', '/calepinage/1?onglet=fiches')
+      expect(ligne.getAttribute('href')).not.toContain('onglet=production')
+      fireEvent.click(ligne)
+      await waitFor(() => expect(screen.getByTestId('sonde')).toHaveTextContent('/calepinage/1?onglet=fiches|true'))
+    })
   })
 
   it('suit queued → running → done sans refus, puis relit le résultat', async () => {
@@ -455,12 +485,11 @@ describe('PanneauProduction — bouton de calcul (CALX48, ACAL125)', () => {
 
   it('ACAL1647 — périmé par un réglage de la société : « Relancer (réglages modifiés) »', async () => {
     const servi = exempleContrat('calepinage', 'calepinage_resultat', 'exemple_perime')
-    calepinageApi.calepinages.resultat.mockResolvedValue({
-      data: {
-        ...servi,
-        motif: 'simulation périmée : un réglage de la société a changé depuis le calcul du 19/09/2026',
-      },
+    const perimeParUnReglage = () => ({
+      ...servi,
+      motif: 'simulation périmée : un réglage de la société a changé depuis le calcul du 19/09/2026',
     })
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: perimeParUnReglage() })
     rendre()
 
     await screen.findByTestId('cal236-panneau')
@@ -482,7 +511,7 @@ describe('PanneauProduction — bouton de calcul (CALX48, ACAL125)', () => {
 
     await screen.findByTestId('cal236-panneau')
     expect(screen.getByTestId('calx48-perime')).toHaveTextContent(
-      'simulation périmée : le document a changé depuis le calcul du 19/09/2026',
+      'simulation périmée : le document ou un réglage de la société a changé depuis le calcul du 19/09/2026',
     )
     expect(screen.queryByTestId('cal236-non-simule')).toBeNull()
   })
@@ -551,7 +580,7 @@ describe('PanneauProduction — simulation périmée (ACAL218)', () => {
     const tapis = await screen.findByTestId('cal-tapis-perime')
     // ACAL990 : le motif servi est dit UNE fois (le bandeau) ; le tapis dit sa propre phrase.
     expect(screen.getByTestId('calx48-perime')).toHaveTextContent(
-      'simulation périmée : le document a changé depuis le calcul du 19/09/2026',
+      'simulation périmée : le document ou un réglage de la société a changé depuis le calcul du 19/09/2026',
     )
     expect(tapis).toHaveTextContent('relancez-la')
     expect(screen.queryByTestId('cal-tapis')).toBeNull()

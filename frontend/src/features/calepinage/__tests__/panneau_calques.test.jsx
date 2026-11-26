@@ -71,6 +71,33 @@ describe('T4-X7-015 — la liste est relue quand le panneau devient visible', ()
     expect(screen.getByTestId('pc-calque-zones')).toBeTruthy()
     globalThis.ResizeObserver = ancien
   })
+
+  // Rejeu R5B (26/11) — lien profond juste après le chargement : la feuille devient visible avant que la carte n'installe
+  // ses couches ; la relecture d'ouverture voit [] et la liste restait vide pour toujours.
+  it('visible mais vide (carte pas encore prête) : relue d’elle-même, bornée, jusqu’à ce que les calques paraissent', () => {
+    vi.useFakeTimers()
+    let rappel = null
+    const ancien = globalThis.ResizeObserver
+    globalThis.ResizeObserver = class { constructor(cb) { rappel = cb } observe() {} disconnect() {} }
+    try {
+      const prises = { ids: [] }
+      const lu = vi.fn(() => prises.ids)
+      render(<PanneauCalques utilisateurId="u1" stockage={memStore()} builderApi={{ calquesDisponibles: lu }} onChange={vi.fn()} />)
+      Object.defineProperty(screen.getByTestId('pc-panneau'), 'offsetWidth', { configurable: true, value: 300 })
+      act(() => rappel()) // la feuille s'ouvre : la carte n'a encore rien installé
+      expect(screen.getByTestId('pc-vide')).toBeTruthy()
+      prises.ids = ['trace_client', 'obstacles', 'zones', 'mesures'] // la carte finit de charger
+      act(() => { vi.advanceTimersByTime(500) })
+      expect(screen.queryByTestId('pc-vide')).toBeNull()
+      expect(screen.getByTestId('pc-calque-mesures')).toBeTruthy()
+      const appels = lu.mock.calls.length
+      act(() => { vi.advanceTimersByTime(5000) })
+      expect(lu.mock.calls.length).toBe(appels) // remplie : plus aucune relecture
+    } finally {
+      globalThis.ResizeObserver = ancien
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe('CAL103 — ordre de superposition déterminé', () => {

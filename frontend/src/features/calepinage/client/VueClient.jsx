@@ -2,7 +2,7 @@ import { Component, Suspense, lazy, useCallback, useMemo, useState } from 'react
 import { useParams } from 'react-router-dom'
 import { ContextePresentation } from '../atelier/coque/contexteCoque'
 import HabillageClient from './HabillageClient'
-import { AttenteScene, AvisEchec3D, IconeTourner, PastilleAttente, PiedClient, PlanDessus, PuceProjet, TuilesClient } from './partiesClient'
+import { AttenteScene, AvisEchec3D, AvisMoteurEchec, IconeTourner, PastilleAttente, PiedClient, PlanDessus, PuceProjet, TuilesClient } from './partiesClient'
 import { useBureau, useDonneesClient, webglDisponible } from './vueClient.helpers'
 
 /* ============================================================================
@@ -45,6 +45,7 @@ function VueClient2D({ id, donnees: d, etat, onReessayer = null }) {
         {etat === 'sans3d' && (
           <span className="cal-client-pastille" data-testid="client-voir-3d"><IconeTourner />Vue de dessus</span>
         )}
+        {d.moteurEchec && <AvisMoteurEchec />}
       </div>
       <div className="cal-client-corps">
         <TuilesClient tuiles={d.tuiles} ville={d.ville} bureau={bureau} />
@@ -62,7 +63,7 @@ class GardeAtelier extends Component {
   render() { return this.state.echec ? this.props.repli : this.props.children }
 }
 
-export default function VueClient({ webgl }) {
+export default function VueClient({ webgl, chargerMoteur = undefined }) {
   const { id } = useParams()
   const peut3d = useMemo(() => (webgl === undefined ? webglDisponible() : webgl), [webgl])
   const [contexteAtelier, setContexteAtelier] = useState(null)
@@ -70,7 +71,8 @@ export default function VueClient({ webgl }) {
   // Un essai = une instance de l'atelier (et de son chunk : `lazy` garde un import échoué) ; « Réessayer » en ouvre une neuve.
   const [essai, setEssai] = useState(() => ({ n: 0, Atelier: lazy(chargerAtelier) }))
   // Le contexte : celui que l'atelier a lu ; lu ici seulement sans 3D, ou quand elle tarde (la puce reste dite).
-  const donnees = useDonneesClient(id, { contexte: contexteAtelier, lireContexte: !peut3d || retard3d })
+  // `chargerMoteur` (comme `webgl`) : le chargeur du moteur du toit, remplaçable ; absent = `vueClient.helpers::chargerMoteur`.
+  const donnees = useDonneesClient(id, { contexte: contexteAtelier, lireContexte: !peut3d || retard3d, chargerMoteur })
   const { reessayer: relireDonnees } = donnees
   const reessayer3d = useCallback(() => {
     relireDonnees()

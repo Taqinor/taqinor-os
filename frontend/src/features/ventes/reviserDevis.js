@@ -7,6 +7,9 @@ import { toast } from '../../ui'
 import { chantierEnCours } from './devisStatuts'
 
 const MESSAGE_ECHEC = 'La révision a échoué — réessayez.'
+// R5A-N1 — la requête est partie mais aucune réponse n'est revenue : le serveur a peut-être créé la version.
+const MESSAGE_SANS_REPONSE = 'La révision a échoué — réessayez. Sans réponse du serveur : la nouvelle version a peut-être été créée, '
+  + 'regardez la liste des devis avant de relancer.'
 
 /**
  * VNT80 — un refus serveur qui NOMME un autre devis (forme unique VNT24 :
@@ -55,8 +58,15 @@ export async function reviserEtOuvrir({ devis, navigate, onApres, onConflit, sur
       onConflit({ conflit: c.conflit, successeur: c.successeur })
       return { conflit: c.conflit, successeur: c.successeur }
     }
-    toast.error((typeof data?.detail === 'string' && data.detail) || MESSAGE_ECHEC)
-    return c ? { conflit: c.conflit, successeur: c.successeur } : null
+    // R5A-N1 — un refus qui nomme la version déjà créée : le toast offre de l'OUVRIR (jamais un message sans issue).
+    if (c) {
+      toast.error(c.conflit, {
+        action: { label: `Ouvrir ${c.successeur.reference}`, onClick: () => navigate(`/ventes/devis/nouveau?edit=${c.successeur.id}`) },
+      })
+      return { conflit: c.conflit, successeur: c.successeur }
+    }
+    toast.error((typeof data?.detail === 'string' && data.detail) || (err?.response ? MESSAGE_ECHEC : MESSAGE_SANS_REPONSE))
+    return null
   }
   if (onApres) onApres(nouveau)
   toast.success(`Version créée : ${nouveau?.reference ?? ''}`.trim())

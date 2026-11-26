@@ -358,3 +358,13 @@ describe('ACAL520 — pan verrouillé : cotes et rotation refusées', () => {
     expect(zones.pivoterPanActif(90)).toBe(true);
   });
 });
+
+// ACAL1330 (D-ACAL-75 « rejouer ») — la fin d'hydratation d'un pan rouvert AVEC sa pose ferme le tracé en « plan rejoué » :
+// aucun retrait de la société n'y est ajouté (fermetureDuPan, testé dans edges.test.ts) ; un pan neuf les reçoit (close()).
+describe('ACAL1330 — câblage : un plan rejoué n’est pas re-pavé par les retraits de la société', () => {
+  it('la fin d’hydratation passe le plan rejoué à close(), qui le passe à la pose des retraits', () => {
+    expect(SOURCE_ENTREE).toContain('close(Boolean(posed?.panels?.length));');
+    expect(SOURCE_ENTREE).toContain('function close(planRejoue = false) {');
+    expect(SOURCE_ENTREE).toContain('poserRetraitsPuisRecalculer(ctx, recalc, planRejoue);');
+  });
+});

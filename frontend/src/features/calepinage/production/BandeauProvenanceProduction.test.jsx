@@ -460,6 +460,34 @@ describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () =>
     }
   })
 
+  // Rejeu R5B (26/11) — pose 8 × 710 W non servie en kWc (`pose.kwc` nul) : la ligne disait « Moteur du devis sur cette
+  // pose : 7 948 kWh/an », le chiffre de la conception (4,97 kWc). Taille de la pose inconnue ⇒ la conception est nommée.
+  it('T4-X9-004 (rejeu) — taille de la pose non servie : la ligne nomme la conception et sa taille, jamais « sur cette pose »', async () => {
+    kwcPose = null
+    simule()
+    rendreAvec(ville, false)
+    const ligne = await screen.findByTestId('acal995-devis-annonce')
+    expect(ligne.textContent.replace(/\s/g, ' ')).toBe(
+      `Conception du lead (71,00 kWc) : ${formatNumber(ville.production_annuelle_kwh.valeur, { decimals: 0 })} kWh/an — production standard de la ville`
+        .replace(/\s/g, ' '))
+    expect(ligne).not.toHaveTextContent('sur cette pose')
+  })
+
+  // Rejeu R5B (26/11) — la lecture de l'ouverture portait la pose d'avant (même taille que la conception) ; la pose
+  // enregistrée ensuite (5,68 kWc), relue par la coque et PUBLIÉE (`CoqueAtelier.jsx::useResultatServi`), change la ligne.
+  it('T4-X9-004 (rejeu) — un résultat relu après l’enregistrement et publié remplace la lecture de l’ouverture', async () => {
+    simule() // ouverture : pose 71 kWc = la conception
+    rendreAvec(ville, false)
+    expect(await screen.findByTestId('acal995-devis-annonce')).toHaveTextContent('Moteur du devis sur cette pose (71,00 kWc')
+    const { publierResultat } = await import('../atelier/simulationFraiche')
+    const apres = reponseContrat('calepinage', 'calepinage_resultat', 'exemple').data
+    apres.pose.kwc = 5.68
+    act(() => publierResultat(1, apres))
+    const ligne = screen.getByTestId('acal995-devis-annonce')
+    expect(ligne).toHaveTextContent('Conception du lead (71,00 kWc)')
+    expect(ligne).not.toHaveTextContent('sur cette pose')
+  })
+
   // ADEV155 (niveau 15) — la conception d'un lead sans pose tourne sur le plan par défaut : la ligne le DIT
   // (jamais « production standard de la ville »), au lieu de se taire sur une source inconnue.
   it('ADEV155 — conception du plan par défaut : la ligne dit « toit supposé », jamais la ville', async () => {
@@ -483,7 +511,7 @@ describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () =>
     const espaces = (t) => t.replace(/\s/g, ' ')
     const ligne = await screen.findByTestId('acal995-devis-annonce')
     expect(espaces(ligne.textContent)).toBe(espaces(
-      `Moteur du devis sur cette pose (aucun devis lié à ce calepinage) : ${formatNumber(ville.production_annuelle_kwh.valeur, { decimals: 0 })} kWh/an — `
+      `Moteur du devis sur cette pose (71,00 kWc enregistrés) — aucun devis lié à ce calepinage : ${formatNumber(ville.production_annuelle_kwh.valeur, { decimals: 0 })} kWh/an — `
       + `production standard de la ville (étude technique : −${formatNumber(11.5, { decimals: 1 })} %)`))
     expect(screen.getByTestId('calx65-bandeau')).not.toHaveTextContent('Le devis annonce')
   })
@@ -504,7 +532,7 @@ describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () =>
     simule(bloc({ devis: 162, reference: 'DEV-202611-0162', statut: 'brouillon', a_jour: false }))
     rendreAvec(ville, true)
     const t = await texte()
-    expect(t).toContain(`Conception du lead sur cette pose : ${chiffreVille()}`)
+    expect(t).toContain(`Conception du lead sur cette pose (71,00 kWc enregistrés) : ${chiffreVille()}`.replace(/\s/g, ' '))
     expect(t).toContain('Le devis DEV-202611-0162 ne porte pas la pose enregistrée (à resynchroniser).')
     expect(t).not.toContain('annonce')
   })
@@ -513,7 +541,7 @@ describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () =>
     simule(bloc(null))
     rendreAvec(ville, true)
     const t = await texte()
-    expect(t).toContain(`Moteur du devis sur cette pose (aucun devis lié à ce calepinage) : ${chiffreVille()}`)
+    expect(t).toContain(`Moteur du devis sur cette pose (71,00 kWc enregistrés) — aucun devis lié à ce calepinage : ${chiffreVille()}`.replace(/\s/g, ' '))
     expect(t).not.toContain('Le devis annonce')
   })
 

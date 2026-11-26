@@ -1,12 +1,40 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { creerRepere, lngLatVersMetres, ORDRE_LNGLAT } from '../repere'
-import { modulesDuDocument } from '@roofpro/modulesGeo'
-import { memeTaille } from '@roofpro/tailleConception'
 import { formatNumber } from '../../../lib/format'
 import { useLectureServie } from '../atelier/coque/etapes/panneaux/lectures'
 
 /** T4-X8-007 — l'état d'adresse posé par le relevé (« Voir en 3D ») : la vue client sait qu'on vient de lui. */
 export const DEPUIS_RELEVE = { depuis: 'releve' }
+
+/* ACAL1353 — LE MOTEUR DU TOIT N'EST PLUS DANS LE PAQUET DE LA VUE CLIENT. Les deux fonctions du constructeur dont la vue
+   a besoin (`modulesDuDocument` : les modules posés ; `memeTaille` : le prédicat de taille de l'atelier) se chargent par UN
+   import dynamique, dans le hook qui nourrit la vue (`useMoteurToit`). Sans moteur (chargement, ou échec du chargement — le
+   bouton « Réessayer » le relance) : le plan 2D des pans seul, et les tuiles sans production (jamais sans pouvoir vérifier la
+   taille : « kWh par an » ne se montre qu'à côté d'une pose de la MÊME taille). */
+let moteurCharge = null
+export function chargerMoteur() {
+  if (!moteurCharge) {
+    moteurCharge = Promise.all([import('@roofpro/modulesGeo'), import('@roofpro/tailleConception')])
+      .then(([geo, taille]) => ({ modulesDuDocument: geo.modulesDuDocument, memeTaille: taille.memeTaille }))
+    moteurCharge.catch(() => { moteurCharge = null }) // un import échoué se retente
+  }
+  return moteurCharge
+}
+
+/** Le moteur chargé (`null` tant qu'il charge ou s'il a échoué) ; `echec` dit l'échec ; `reessayer` relance le chargement. */
+export function useMoteurToit(charger = chargerMoteur) {
+  const [etat, setEtat] = useState({ moteur: null, echec: false, essai: 0 })
+  useEffect(() => {
+    let annule = false
+    charger().then(
+      (moteur) => { if (!annule) setEtat((e) => ({ ...e, moteur, echec: false })) },
+      () => { if (!annule) setEtat((e) => ({ ...e, moteur: null, echec: true })) },
+    )
+    return () => { annule = true }
+  }, [etat.essai, charger])
+  const reessayer = useCallback(() => setEtat((e) => (e.echec ? { moteur: null, echec: false, essai: e.essai + 1 } : e)), [])
+  return { moteur: etat.moteur, echec: etat.echec, reessayer }
+}
 
 /* ============================================================================
    « MONTRER AU CLIENT » — lectures pures (maquette TelephoneClient).
@@ -19,17 +47,18 @@ const zonesTracees = (document) => (Array.isArray(document?.zones) ? document.zo
   .filter((z) => z && Array.isArray(z.vertices) && z.vertices.length >= 3)
 
 /** Les pans et les modules du document, en mètres locaux (y vers le nord), ou `null` sans pan. */
-export function planDessus(document) {
+export function planDessus(document, moteur = null) {
   const zones = zonesTracees(document)
   if (!zones.length) return null
   const repere = creerRepere({ origine_lnglat: zones[0].vertices[0], ordre: ORDRE_LNGLAT })
   const versM = (p) => lngLatVersMetres(repere, p, ORDRE_LNGLAT)
   const pans = zones.map((z) => z.vertices.map(versM))
-  const modules = modulesDuDocument(document).flatMap((pan) => pan.quads.map((q) => q.map(versM)))
+  // ACAL1353 — sans moteur : les pans seuls (aucun module n'est deviné), `sansModules` le dit.
+  const modules = !moteur ? [] : moteur.modulesDuDocument(document).flatMap((pan) => pan.quads.map((q) => q.map(versM)))
   const tous = [...pans.flat(), ...modules.flat()]
   const xs = tous.map((p) => p.x)
   const ys = tous.map((p) => p.y)
-  return { pans, modules, minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) }
+  return { pans, modules, sansModules: !moteur, minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) }
 }
 
 /** Le nombre de panneaux POSÉS dans le document enregistré (centres des modules), ou `null`. */
@@ -93,7 +122,7 @@ export const PRODUCTION_A_LA_MISE_A_JOUR = 'Production : calculée à la mise à
  * n'est pas celle de la pose réelle) ; la conception en cours de calcul ⇒ la tuile « calcul en cours », sans chiffre. Sans conception
  * servie : restent les faits du document enregistré (panneaux posés, puissance de la pose).
  */
-export function tuilesClient(document, resultat, chiffrage = null) {
+export function tuilesClient(document, resultat, chiffrage = null, moteur = null) {
   const tuiles = []
   const panneaux = panneauxDuDocument(document)
   if (panneaux !== null) tuiles.push({ cle: 'panneaux', valeur: formatNumber(panneaux, { locale: 'fr' }), libelle: 'panneaux' })
@@ -102,7 +131,11 @@ export function tuilesClient(document, resultat, chiffrage = null) {
   // TAILLE de la conception ; elles ne se lisent qu'à côté d'une pose de la MÊME taille, jamais à côté d'un autre compte de panneaux.
   const kwcConception = servi(chiffrage?.kwc)
   const kwcPose = puissancePose(resultat, panneaux)
-  if (kwh > 0 && !memeTaille(kwcConception, kwcPose)) { // T4-X9 — LE prédicat de taille de l'atelier
+  if (kwh > 0 && !moteur) { // ACAL1353 — taille invérifiable sans le prédicat de l'atelier : ni production ni part, la puissance seule
+    if (kwcPose !== null) tuiles.push({ cle: 'kwc', valeur: formatNumber(kwcPose, { locale: 'fr', decimals: 2 }), libelle: 'kWc de puissance', marine: true })
+    return tuiles
+  }
+  if (kwh > 0 && !moteur.memeTaille(kwcConception, kwcPose)) { // T4-X9 — LE prédicat de taille de l'atelier
     tuiles.push({ cle: 'miseajour', valeur: '', libelle: PRODUCTION_A_LA_MISE_A_JOUR })
     if (kwcPose !== null) tuiles.push({ cle: 'kwc', valeur: formatNumber(kwcPose, { locale: 'fr', decimals: 2 }), libelle: 'kWc de puissance', marine: true })
     return tuiles
@@ -153,13 +186,15 @@ function useRelectures(lectures) {
     enregistré, contexte, résultat publié. `contexte` déjà chargé par l'atelier : aucune seconde lecture ;
     `lireContexte: false` (l'atelier démarre et le lira) : le contexte n'est pas lu ici.
     J1 — tenues par la vue client HORS de l'atelier : les tuiles ne dépendent pas du démarrage de la 3D. */
-export function useDonneesClient(id, { contexte: contexteServi = null, lireContexte = true } = {}) {
+export function useDonneesClient(id, { contexte: contexteServi = null, lireContexte = true, chargerMoteur: charger = chargerMoteur } = {}) {
   const lu = useLectureServie('document', id)
   const lectureContexte = useLectureServie('contexte', id, { servi: contexteServi, actif: lireContexte })
   const lectureResultat = useLectureServie('resultat', id)
   const contexte = lectureContexte.donnees
   const resultat = lectureResultat.donnees
-  const reessayer = useRelectures([lu, lectureResultat, lectureContexte])
+  const relireLectures = useRelectures([lu, lectureResultat, lectureContexte])
+  const { moteur, echec: moteurEchec, reessayer: relireMoteur } = useMoteurToit(charger) // ACAL1353
+  const reessayer = useCallback(() => { relireLectures(); relireMoteur() }, [relireLectures, relireMoteur])
   const donnees = lu.donnees
   const ok = lu.etat === 'ok' && donnees !== null && typeof donnees === 'object'
   const document = ok && donnees.roof_layout && typeof donnees.roof_layout === 'object' ? donnees.roof_layout : {}
@@ -167,9 +202,10 @@ export function useDonneesClient(id, { contexte: contexteServi = null, lireConte
   const ville = (contexte?.calepinage?.client_ville ?? '').trim()
   return {
     doc,
-    plan: ok ? planDessus(document) : null,
+    plan: ok ? planDessus(document, moteur) : null,
+    moteurEchec, // ACAL1353 — le moteur n'a pas pu se charger : plan 2D des pans seul ; l'écran le dit (`AvisMoteurEchec`)
     // ACAL2023 — la conception courante servie (bloc `chiffrage` du design-context) : la vue ne calcule rien.
-    tuiles: ok ? tuilesClient(document, resultat, contexte?.chiffrage ?? null) : [],
+    tuiles: ok ? tuilesClient(document, resultat, contexte?.chiffrage ?? null, moteur) : [],
     // Le nom servi du projet ; sinon le client du devis lié (servi) ; sinon le nom que l'atelier donne lui-même
     // au calepinage (« Calepinage N », coque/projet.js).
     titre: (contexte?.calepinage?.titre ?? '').trim() || (contexte?.calepinage?.devis_lie?.client_nom ?? '').trim()

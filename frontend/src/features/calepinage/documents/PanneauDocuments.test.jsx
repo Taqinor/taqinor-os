@@ -57,6 +57,7 @@ import { OPTIONS_TELECHARGEMENT } from './telechargement'
 import PanneauDocuments from './PanneauDocuments'
 import EtapeDocuments from './EtapeDocuments'
 import PretAEnvoyer from '../commun/PretAEnvoyer'
+import { cartesGuide } from './cartesGuide'
 
 const APP = 'calepinage'
 const NOM = 'calepinage_documents'
@@ -532,8 +533,22 @@ describe('PanneauDocuments — joindre la carte de chaleur (CALX302)', () => {
     await utilisateur.click(await screen.findByTestId('cal-doc-bouton-joindre-ombrage'))
 
     await waitFor(() => {
-      expect(screen.getByTestId('cal-doc-images')).toHaveTextContent('Aucune ombre saisie : rien à teinter')
+      expect(screen.getByTestId('cal-doc-images')).toHaveTextContent('Rien à teinter : saisissez une ombre ou un obstacle avec sa hauteur, et posez les panneaux.')
     })
+    expect(calepinageApi.calepinages.deposerImageDocument).not.toHaveBeenCalled()
+  })
+
+  it('ACAL1621 — jamais la vue 3D ordinaire sous le nom de carte de chaleur : sans rendu teinté, rien n’est déposé', async () => {
+    servirInventaire('exemple')
+    const blob = new Blob(['png-simule'], { type: 'image/png' })
+    const renderImageHd = vi.fn().mockResolvedValue({ blob, width: 800, height: 600, scale: 2 })
+    const utilisateur = userEvent.setup()
+
+    rendreAvecBuilder({ renderImageHd })
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-joindre-ombrage'))
+
+    expect(await screen.findByTestId('cal-doc-images')).toHaveTextContent('Outil non prêt')
+    expect(renderImageHd).not.toHaveBeenCalled()
     expect(calepinageApi.calepinages.deposerImageDocument).not.toHaveBeenCalled()
   })
 })
@@ -1213,5 +1228,21 @@ describe('EtapeDocuments — la carte « Schéma électrique » livre le schéma
     expect(onglet.close).toHaveBeenCalledTimes(1)
     ouvrir.mockRestore()
     minuteurs.mockRestore()
+  })
+})
+
+describe('cartesGuide — la carte DXF ne promet pas une chaîne absente (ACAL1721)', () => {
+  const sorties = [{ code: 'dxf', disponible: true, format: 'dxf' }]
+  const carteDxf = (documents) => cartesGuide(documents, sorties).find((c) => c.cle === 'dxf')
+
+  it('avec un câblage publié, la carte promet le pan ET la chaîne', () => {
+    const { description } = carteDxf([{ code: 'plan_cablage', disponible: true }])
+    expect(description.includes('son pan et sa chaîne')).toBe(true)
+  })
+
+  it('sans câblage publié, la carte promet le numéro et le pan, jamais la chaîne', () => {
+    const { description } = carteDxf([{ code: 'plan_cablage', disponible: false }])
+    expect(description.includes('chaîne')).toBe(false)
+    expect(description.includes('avec son pan')).toBe(true)
   })
 })

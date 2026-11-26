@@ -16,7 +16,9 @@ const CARTES = [
   { cle: 'rapport_etude', vignette: 'rapport_etude', source: 'document', code: 'rapport_etude', titre: 'Rapport d’étude',
     description: 'Production mois par mois, pertes, ombres, et ce que le calcul ne prend pas en compte. PDF.' },
   { cle: 'dxf', vignette: 'dxf', source: 'sortie', code: 'dxf', titre: 'Plan au format DXF',
-    description: 'Pour AutoCAD ou un autre logiciel de dessin : chaque panneau numéroté, avec son pan et sa chaîne.' },
+    description: 'Pour AutoCAD ou un autre logiciel de dessin : chaque panneau numéroté, avec son pan et sa chaîne.',
+    // ACAL1721 — le DXF porte N, PAN et CHAINE par module ; la chaîne n'y est écrite que si le câblage est publié.
+    descriptionSansChaine: 'Pour AutoCAD ou un autre logiciel de dessin : chaque panneau numéroté, avec son pan.' },
 ]
 
 /** ACAL1931 — le motif d'une pièce de `sorties/` quand l'inventaire entier n'a pas pu être lu : la carte
@@ -28,13 +30,17 @@ export const MOTIF_SORTIES_ILLISIBLES = 'La liste des plans et exports n’a pas
     onglet) ou `null` (le DXF ne s'affiche pas : pas de bouton). `sortiesIllisibles` : l'inventaire
     `sorties/` a refusé de se lire — ses cartes restent, grisées avec MOTIF_SORTIES_ILLISIBLES. */
 export function cartesGuide(documents, sorties, { sortiesIllisibles = false } = {}) {
-  return CARTES.flatMap((carte) => {
+  return CARTES.flatMap((carteBrute) => {
+    let carte = carteBrute
     const liste = carte.source === 'document' ? documents : sorties
     if (carte.source !== 'document' && sortiesIllisibles && !Array.isArray(liste)) {
       return [{ ...carte, entree: null, disponible: false, motif: MOTIF_SORTIES_ILLISIBLES, apercu: null }]
     }
     const entree = (liste || []).find((e) => e.code === carte.code)
     if (!entree) return []
+    // ACAL1721 — sans chaîne publiée (pièce `plan_cablage` non prête), la carte ne promet pas de chaîne.
+    const cablagePret = (documents || []).some((e) => e.code === 'plan_cablage' && e.disponible)
+    if (carte.descriptionSansChaine && !cablagePret) carte = { ...carte, description: carte.descriptionSansChaine }
     let apercu = null
     if (carte.livre === 'schema_unifilaire') apercu = 'pdf'
     else if (carte.source === 'document' && entree.apercu) apercu = 'html'

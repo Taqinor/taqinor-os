@@ -146,7 +146,7 @@ describe('PanneauBatterie (CALX14)', () => {
 
     await screen.findByTestId('calx14-panneau')
     expect(screen.getByTestId('calx14-perime')).toHaveTextContent(
-      'simulation périmée : le document a changé depuis le calcul du 19/09/2026',
+      'simulation périmée : le document ou un réglage de la société a changé depuis le calcul du 19/09/2026',
     )
     expect(screen.queryByTestId('calx14-batterie')).toBeNull()
     expect(screen.queryByTestId('calx14-hors-reseau')).toBeNull()

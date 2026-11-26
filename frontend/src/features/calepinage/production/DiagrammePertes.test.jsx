@@ -374,7 +374,7 @@ describe('DiagrammePertes — cascade séquentielle (CALX48)', () => {
 
     await screen.findByTestId('cal143-panneau')
     expect(screen.getByTestId('calx48-perime')).toHaveTextContent(
-      'simulation périmée : le document a changé depuis le calcul du 19/09/2026',
+      'simulation périmée : le document ou un réglage de la société a changé depuis le calcul du 19/09/2026',
     )
   })
 })

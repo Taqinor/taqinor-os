@@ -391,13 +391,14 @@ class SortiesMixin:
             url_name='export-dxf', permission_classes=[PeutVoirCalepinage])
     def export_dxf(self, request, pk=None):
         """CAL178 — le DXF, pour le bureau d'études."""
-        from ..services.export_dxf import exporter_dxf
+        from ..services.export_dxf import affectation_pour_dxf, exporter_dxf
         from ..services.planche import PlancheRefusee, nom_de_fichier
 
         calepinage = self.get_object()  # borné société par get_queryset
         porte_execution(calepinage, 'export_dxf')  # ACAL116
         try:
-            octets = exporter_dxf(calepinage)
+            octets = exporter_dxf(
+                calepinage, affectation=affectation_pour_dxf(calepinage))
         except PlancheRefusee as refus:
             return Response({refus.champ or 'roof_layout': str(refus)},
                             status=status.HTTP_409_CONFLICT)

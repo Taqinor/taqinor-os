@@ -212,8 +212,15 @@ function cibleDuModule(cible, module, entrees, servi, wattPose) {
   const auModule = cibleAuModule({ panneaux: cible.panneaux, kwc: cible.kwc, wattConception: cible.moduleWc },
     fiche?.pmaxWc ?? wattPose, servi.panneauxSelonWatt, servi.kwcSelonWatt)  // T4-X3-009 : LE lecteur unique de l'atelier
   if (!auModule?.convertie) return cible
+  // D-ACAL-110 (rejeu R5B, 26/11) — le module choisi n'est pas celui de la conception : la phrase le DIT d'abord, avec ce
+  // que cela change au nombre de panneaux (compte SERVI `panneaux_selon_watt`, jamais calculé ici), puis la conception.
+  const watt = `${formatNumber(auModule.watt)} W`
+  const ecart = auModule.panneaux == null ? `Ce panneau de ${watt} n’est pas celui de la conception du lead.`
+    : auModule.panneaux === cible.panneaux
+      ? `Ce panneau de ${watt} n’est pas celui de la conception du lead ; le nombre de panneaux reste ${auModule.panneaux}.`
+      : `Ce panneau de ${watt} n’est pas celui de la conception du lead : il en faut ${auModule.panneaux} au lieu de ${cible.panneaux}.`
   return { ...cible, panneaux: auModule.panneaux, watt: auModule.watt, kwc: auModule.kwcModule,
-    conception: `La conception du lead compte ${auModule.conception}${cible.kwc != null ? `, ${formatKwc(cible.kwc)}` : ''}.` }
+    conception: `${ecart} La conception du lead compte ${auModule.conception}${cible.kwc != null ? `, ${formatKwc(cible.kwc)}` : ''}.` }
 }
 
 function CombienDePanneaux({ etat, servi, lectureSeule, g }) {

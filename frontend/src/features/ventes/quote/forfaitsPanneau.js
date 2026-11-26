@@ -12,7 +12,7 @@
 //
 // Module PUR (aucun React) : exécuté par `node --test` / vitest.
 import { ttcExactFromHt, tauxTvaOf } from '../solar.js'
-import { isPanel } from '../calc/classification.js'
+import { isPanel, roleLigneOuProduit } from '../calc/classification.js'
 import { lignesEnvoyees } from './lignesEcran.js'
 
 const TYPES_STRUCTURE = new Set(['section', 'note'])
@@ -145,3 +145,63 @@ export function retarifierForfaitsEcran(lines, produits) {
   })
   return change ? sortie : lines
 }
+
+/* T4-X4-001 — LES QUANTITÉS QUI DÉPENDENT DU NOMBRE DE PANNEAUX. Les quantités structure / socle sont une règle du
+   SERVEUR (`apps/ventes/domain/composition.py::quantites_derivees_du_compte`, ACAL927 / D-ACAL-39 : N panneaux NON
+   affleurants, 2 × N socles) ; l'écran ne la recopie pas (il ne connaît pas les modules affleurants du calepinage) et le
+   serveur ne lui sert aucune quantité dérivée pour un compte retouché à l'écran (le dry-run `devis/composition/` rend les
+   quantités du compte qu'IL a composé, rien d'autre). Règle d'écran : une ligne structure / socle — reconnue par son RÔLE
+   (rôle stocké de la ligne, sinon `role_devis_effectif` servi du produit : `roleLigneOuProduit`, jamais un mot du nom) — qui
+   n'a pas bougé alors que le compte de panneaux de son option a changé DIT qu'elle ne suit pas les panneaux
+   (`neSuitPasPanneaux`, lu par la ligne), SANS chiffre attendu. Marqueur d'écran `fixationVue` = { n, q } au premier
+   passage ; une quantité retouchée (q changé) ou un compte revenu à n efface l'alerte. Aucune quantité n'est réécrite.
+   Fonction pure ; le même tableau revient quand rien ne change. */
+const ROLES_FIXATION = new Set(['structure', 'structure_acier', 'structure_alu', 'socle'])
+
+export function suivreQuantitesPanneauxEcran(lines, produits) {
+  if (!Array.isArray(lines)) return lines
+  const cat = Array.isArray(produits) ? produits : []
+  const comptes = comptesPanneauxEcran(lines, cat)
+  let change = false
+  const sortie = lines.map((l) => {
+    if (!l || TYPES_STRUCTURE.has(l.typeLigne) || !l.produit || l.optionnelle || !ligneEnvoyee(l)) return l
+    if (!ROLES_FIXATION.has(roleLigneOuProduit(l, cat))) return l
+    const variante = l.variante || ''
+    const n = Object.hasOwn(comptes, variante) ? comptes[variante] : comptes['']
+    if (n === null || n === undefined) return l
+    const q = parseFloat(l.quantite) || 0
+    const vue = l.fixationVue
+    let suivante = vue
+    if (!vue || vue.q !== q) suivante = { n, q } // première vue, ou quantité retouchée : nouveau point de départ
+    const alerte = suivante.n !== n
+    if (suivante === vue && Boolean(l.neSuitPasPanneaux) === alerte) return l
+    change = true
+    const { neSuitPasPanneaux: _x, ...reste } = l
+    return alerte ? { ...reste, fixationVue: suivante, neSuitPasPanneaux: true } : { ...reste, fixationVue: suivante }
+  })
+  return change ? sortie : lines
+}
+
+/* R5A-N2 — « Auto-remplir » recompose l'option AVEC batterie à la taille SANS quand le nombre de panneaux a été saisi à la
+   main (règle voulue : un compte saisi vaut pour les deux options, `resolveKwcAvec`). Un devis de 8 panneaux « avec batterie »
+   retombait à 6 sans que rien ne le dise au moment où ça arrive. Rend `{ avant, apres }` quand l'option avec perd des panneaux,
+   sinon `null` ; l'écran le dit alors, en nommant les deux comptes. */
+export function reductionOptionAvec(avant, apres, produits = []) {
+  const a = comptesPanneauxEcran(avant, produits).avec
+  const b = comptesPanneauxEcran(apres, produits).avec
+  return a > 0 && b > 0 && b < a ? { avant: a, apres: b } : null
+}
+
+/** R5A-N2 (revue) — LA phrase de l'Auto-remplir, ou `null`. Elle ne donne « le nombre de panneaux saisi » pour raison QUE si
+    un compte a été saisi (`nbSaisi` = `toucheNbPanneauxPourComposition`) : `resolveKwcAvec` rend aussi la taille sans batterie
+    quand le moteur n'a pas de `recommandation_avec` ou que la sienne est plus petite — personne n'a alors rien tapé. */
+export function phraseReductionOptionAvec(avant, apres, produits, nbSaisi) {
+  const reduction = nbSaisi ? reductionOptionAvec(avant, apres, produits) : null
+  return reduction
+    ? `L'option avec batterie passe de ${reduction.avant} à ${reduction.apres} panneaux : le nombre de panneaux saisi vaut pour les deux options.`
+    : null
+}
+
+/** Prix des forfaits au panneau PUIS quantités structure / socle : UN seul passage, le même tableau quand rien ne change
+    (appelé pendant le rendu du générateur, sans boucle). */
+export const ajusterAuxPanneauxEcran = (lines, produits) => suivreQuantitesPanneauxEcran(retarifierForfaitsEcran(lines, produits), produits)

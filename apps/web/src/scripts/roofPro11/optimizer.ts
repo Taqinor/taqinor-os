@@ -110,7 +110,7 @@ import { besoinAutoRelu } from './cible'; // ACAL367
 import { lignesSensDePose, afficherSensDePose } from './orientationOmbre'; // ACAL552
 import { maxDuSolveur, phraseCouvertureMax, type MaxDuToit } from './cibleProduction'; // ACAL547, ACAL1903
 import { heatmapAccessValues } from './shadingUi'; // ACAL552
-import { causeDuPanVide, mesurerPanVide, noterMotifPanVide, retraitApplique, type MotifPanVide } from './motifPanVide'; // ACAL549
+import { causeDuPanVide, mesurerPanVide, motifPenteNord, noterMotifPanVide, retraitApplique, type MotifPanVide } from './motifPanVide'; // ACAL549, ACAL1970
 import { cotesDePavage } from '../../lib/roofPro2';
 import { carteDeLaPoseTenue, direEcartPoseRelue, motifPanExistant, poseTenue } from './panExistant'; import { noteTailleAuto } from './tailleAuto'; import { chiffresDeLaPose, texteChiffresVariante } from './chiffresVariante'; // ACAL574, ACAL1900, ACAL1331, T4-V2-021
 
@@ -1381,7 +1381,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       },
       usePvgis ? '(production PVGIS · pose affleurante « building »)' : '(production estimée · table committée — PVGIS indisponible)',
     );
-    syncNeedControl(plane.fitCount, 'pente');
+    syncNeedControl(plane.fitCount, 'pente', noterMotifPanVide(ctx.activeAreaId, motifPenteNord(plane.northFacing, plane.placedCount, ctx.neededPanels, ctx.facingAzimuthDeg, fp.pitchDeg))); // ACAL1970
     if (pitchedNoteEl) pitchedNoteEl.textContent = pitchedNote();
     if (pitchValueEl) pitchValueEl.textContent = `${Math.round(fp.pitchDeg)}°`;
     highlightRow(null);
@@ -1478,7 +1478,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       },
       w.yieldSource === 'pvgis' ? '(production PVGIS · pose affleurante « building »)' : '(production estimée · table committée — PVGIS indisponible)',
     );
-    syncNeedControl(w.grid.count, 'pente');
+    syncNeedControl(w.grid.count, 'pente', noterMotifPanVide(ctx.activeAreaId, motifPenteNord(res.northFacing, w.placedCount, ctx.neededPanels, ctx.facingAzimuthDeg, ctx.pitchDeg))); // ACAL1970
     if (pitchValueEl) pitchValueEl.textContent = tiltTxt;
     if (pitchedNoteEl) {
       pitchedNoteEl.textContent = `Inclinaison ${tiltTxt} = pente · azimut ${Math.round(ctx.facingAzimuthDeg)}° = face (imposés, non balayés). Pose affleurante, sans rangées espacées. Panneaux qui tiennent : ${w.fitCount}.`;

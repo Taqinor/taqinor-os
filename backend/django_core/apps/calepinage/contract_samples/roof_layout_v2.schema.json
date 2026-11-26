@@ -400,7 +400,7 @@
           ]
         },
         "pitchDeg": {
-          "description": "OPTIONNEL — même raison que `roofType` (F2).",
+          "description": "OPTIONNEL — même raison que `roofType` (F2). Pente du PLAN de toiture, en degrés, sur un pan `roofType: pitched`. ACAL1923 — sur un pan `roofType: flat`, `pitchDeg` N'EST PAS une pente : c'est la valeur mémorisée du curseur (22 à la création ; un simple « Enregistrer » la garde), l'inclinaison des tables vit dans `geometry.tiltDeg`. Tout lecteur prend alors la pente pour 0 (serveur : `services/valeurs.py::pente_du_pan` ; atelier : `EtapeToit.jsx`). Un document plat qui porte une valeur > 0 reste CONFORME et n'est jamais réécrit.",
           "type": "number"
         },
         "facingAzimuthDeg": {
@@ -1221,11 +1221,10 @@
       }
     },
     "consumption": {
-      "description": "CALX251 — la consommation affinée dans le panneau « Affiner ma consommation » de l'atelier (W68/W95). `methode` est DÉDUITE de ce que l'utilisateur a réellement fait (`serializeConsumption`, CALX253, `apps/web/src/scripts/roofPro11/prefill.ts`), jamais un choix par défaut : `courbe` = la courbe horaire a été éditée à la main (`ctx.consHandEdited`) et prime sur tout le reste ; `appareils` = calculée depuis la liste d'appareils (`ctx.consAppliances`) ; `facture` = seul un socle mensuel a été saisi (`ctx.consDailyTarget`). `courbe24`/`methode`/`source` sont TOUJOURS présents ensemble — un producteur qui émet ce bloc les émet toujours les trois ; `saisons` et `appareils` sont chacun OMIS quand ils n'apportent rien (aucune modulation saisonnière activée, aucun appareil ajouté). Aucune valeur n'est inventée par le schéma (D-CALX 7) : un bloc absent à la racine reste le seul état « rien n'a été touché ».",
+      "description": "CALX251 — la consommation affinée dans le panneau « Affiner ma consommation » de l'atelier (W68/W95). `methode` est DÉDUITE de ce que l'utilisateur a réellement fait (`serializeConsumption`, CALX253, `apps/web/src/scripts/roofPro11/prefill.ts`), jamais un choix par défaut : `courbe` = la courbe horaire a été éditée à la main (`ctx.consHandEdited`) et prime sur tout le reste ; `appareils` = calculée depuis la liste d'appareils (`ctx.consAppliances`) ; `facture` = seul un socle mensuel a été saisi (`ctx.consDailyTarget`). `methode`/`source` sont TOUJOURS présents ; `courbe24` (ACAL1962) est OMISE quand ni facture ni socle ne sont saisis (une consommation inconnue n'est jamais écrite en 24 zéros) — un document stocké qui porte 24 zéros reste valide ; `saisons` et `appareils` sont chacun OMIS quand ils n'apportent rien (aucune modulation saisonnière activée, aucun appareil ajouté). Aucune valeur n'est inventée par le schéma (D-CALX 7) : un bloc absent à la racine reste le seul état « rien n'a été touché ».",
       "type": "object",
       "additionalProperties": true,
       "required": [
-        "courbe24",
         "methode",
         "source"
       ],
@@ -2367,7 +2366,7 @@
       }
     },
     "pitchSource": {
-      "description": "ACAL2 — PROVENANCE de la pente du PAN, écrite par l'onglet Pente : `mode` degres | pourcentage | cotes | plat. Chaque mode ne porte que ses propres champs ; la pente RÉSULTANTE vit dans `zones[].pitchDeg`. ACAL1400 — `plat` = toit plat CONFIRMÉ (pan `roofType: flat`, aucun champ propre ; « Confirmer » écrit `pitchDeg: 0`, ACAL1341) ; absent = pan jamais confirmé.",
+      "description": "ACAL2 — PROVENANCE de la pente du PAN, écrite par l'onglet Pente : `mode` degres | pourcentage | cotes | plat. Chaque mode ne porte que ses propres champs ; la pente RÉSULTANTE vit dans `zones[].pitchDeg`. ACAL1400 — `plat` = toit plat CONFIRMÉ (pan `roofType: flat`, aucun champ propre ; le geste « Confirmer » écrit `pitchDeg: 0`, ACAL1341) ; absent = pan jamais confirmé. ACAL1923 — un pan plat enregistré sans ce geste garde la valeur du curseur dans `pitchDeg` (souvent 22) : ce n'est pas une pente, les lecteurs l'ignorent (voir `zones[].pitchDeg`).",
       "type": "object",
       "additionalProperties": true,
       "required": [

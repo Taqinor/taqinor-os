@@ -187,7 +187,7 @@ describe('CALX114 câblage — l’objectif d’optimisation survit au rechargem
 
   it('`prefill.ts` porte les DEUX lignes d’appel (lecture et écriture)', () => {
     expect(SOURCE_PREFILL).toContain('semerOptimisationDepuisDocument(json); // CALX114 câblage');
-    expect(SOURCE_PREFILL).toContain('ecrireOptimisationDansDocument(layout); // CALX114 câblage');
+    expect(SOURCE_PREFILL).toContain('ecrireOptimisationDansDocument(layout, ctx.documentRelu); // CALX114 câblage'); // ACAL1970 — + le document relu
   });
 });
 

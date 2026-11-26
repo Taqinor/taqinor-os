@@ -4,6 +4,7 @@ import calepinageApi from '../../../../api/calepinageApi'
 import { ErrorBoundary, SkeletonCard, SkeletonText } from '../../../../ui'
 import BarreEnregistrement from '../BarreEnregistrement'
 import { formaterHeureBrouillon } from '../contexteAtelier'
+import { publierResultat } from '../simulationFraiche' // T4-X9-004 — un seul résultat relu, partagé
 import { PARAM_MODE, useModeExpert } from '../modeExpert'
 import { PARAM_ONGLET, resoudreOnglet } from '../onglets'
 import { cadrerDansZoneLibre } from './cadrageZoneLibre' // T4-X5-017 — sorti tel quel (partagé avec le plein écran)
@@ -163,7 +164,14 @@ function useResultatServi(calepinageId, actif, relecture) {
     let vivant = true
     Promise.resolve()
       .then(() => calepinageApi.calepinages.resultat(calepinageId))
-      .then((rep) => { if (vivant) setData(rep?.data ?? null) })
+      .then((rep) => {
+        if (!vivant) return
+        setData(rep?.data ?? null)
+        // T4-X9-004 (rejeu R5B, 26/11) — relu à CHAQUE enregistrement : publié aux autres lecteurs du même résultat
+        // (bandeau de provenance de l'Expert, résumé « Avancé »), qui gardaient sinon la lecture de l'ouverture — la
+        // taille de pose d'avant (« Moteur du devis sur cette pose » à côté d'une pose de 5,68 kWc enregistrée).
+        if (rep?.data) publierResultat(calepinageId, rep.data)
+      })
       .catch(() => { if (vivant) setData(null) })
     return () => { vivant = false }
   }, [calepinageId, actif, relecture])
@@ -215,7 +223,7 @@ export default function CoqueAtelier({
   const [deplie, setDeplie] = useState(false)
   const [parametres, setParametres] = useSearchParams()
   const [expert, basculerExpert] = useModeExpert(parametres.get(PARAM_MODE) === 'expert')
-  const parcours = useParcours(calepinageId)
+  const parcours = useParcours(calepinageId, enregistreLe) // T4-U1-023 — relu à chaque enregistrement
   const cleActive = resoudreOnglet(parametres.get(PARAM_ONGLET))?.cle ?? null
   const { cleEtape } = vueParcours(cleActive, parcours.etats, expert, parcours.memorisee)
   const ecran = ecranCoque(cleActive, resoudreOnglet(cleActive), parcours.etats, expert, parcours.memorisee)

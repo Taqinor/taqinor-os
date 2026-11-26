@@ -38,7 +38,7 @@ import { createShadingUi, seuilEffectifAccesSolaire } from './shadingUi'; // ACA
 import { cibleDepuisCarte, maxDuSolveur, panneauxPourCible, phraseCible } from './cibleProduction'; // ACAL1618, ACAL1903
 import { cotesDePavage } from '../../lib/roofPro2';
 import {
-  causeDuPanVide, ecrireMotifsDansDocument, mesurerPanVide, noterMotifPanVide, retraitApplique,
+  causeDuPanVide, ecrireMotifsDansDocument, mesurerPanVide, motifPenteNord, noterMotifPanVide, retraitApplique, // ACAL1970
   semerMotifsDepuisDocument, type MesuresPanVide,
 } from './motifPanVide'; // ACAL549
 
@@ -1037,6 +1037,54 @@ describe('ACAL549 — causeDuPanVide', () => {
   });
 });
 
+// ACAL1970 — chemin « toit en pente » : un pan à 22° tourné au nord (azimut 0°), un besoin, aucun module posé ⇒ le
+// motif `orientation_nord` (contrat ACAL1969) est noté puis écrit au document ; tourné au sud ⇒ aucun motif.
+// Mutant : ne rien noter sur le chemin pente ⇒ pas de `motifsPansVides`.
+describe('ACAL1970 — motif orientation_nord du toit en pente', () => {
+  const resoudre = (azimut: number) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><p id="rp9-need-note"></p></body>').window.document;
+    try {
+      const ctx = {
+        closed: true, vertices: rectRing(10, 8), roofType: 'pitched', pitchDeg: 22, facingAzimuthDeg: azimut, centroidLat: 33.5,
+        areas: [], activeAreaId: 'pan-nord', opts: {}, neededAuto: false, neededPanels: 6, pinned: new Set(),
+        pitchedYieldCache: new Map(), pitchedLocks: {}, overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], obstacles: [],
+        activeArea: () => null, dom: {}, centroid: [-7, 33],
+      } as unknown as Ctx;
+      const deps = { renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+        syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 0, factureCarte: () => 0, obstructionRings: vi.fn(() => []), setStatus: vi.fn() };
+      createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]).liveResolvePitched();
+      const doc: Record<string, unknown> = { zones: [{ id: 'pan-nord', geometry: { count: 0 } }] };
+      ecrireMotifsDansDocument(doc);
+      const note = g.document.getElementById('rp9-need-note')?.textContent ?? '';
+      return { doc, note, nord: (ctx as unknown as { pitchedLiveResult: { northFacing: boolean } }).pitchedLiveResult.northFacing };
+    } finally { g.document = avant; semerMotifsDepuisDocument({}); }
+  };
+  it('pan nord à 22° ⇒ motif écrit avec azimutDeg et penteDeg ; pan sud ⇒ aucun motif', () => {
+    const nord = resoudre(0);
+    expect(nord.nord).toBe(true);
+    expect(nord.doc.motifsPansVides).toEqual({ 'pan-nord': {
+      code: 'orientation_nord', message: 'Aucun module : pan en pente (22°) orienté au nord (azimut 0°)', mesures: { azimutDeg: 0, penteDeg: 22 } } });
+    expect('motifsPansVides' in resoudre(180).doc).toBe(false);
+    expect(motifPenteNord(true, 0, 0, 0, 22)).toBeNull(); // sans besoin, aucune cause à dire
+  });
+  // Revue : la note du besoin vue par un visiteur public sur un pan nord dit la pose réelle (0), plus « On pose 6
+  // panneaux » ; « au nord » seulement pour un pan vraiment nord, les autres faces de la moitié nord disent la leur.
+  it('note du besoin (site public) : « 6 nécessaires — 0 tiennent en pente — Aucun module : … On pose 0. »', () => {
+    expect(resoudre(0).note).toBe('6 nécessaires — 0 tiennent en pente — Aucun module : pan en pente (22°) orienté au nord (azimut 0°). On pose 0.');
+    const nordEst = resoudre(40);
+    expect(nordEst.nord).toBe(true);
+    expect(nordEst.note).toContain('orienté nord-est (azimut 40°), trop au nord.');
+    expect(nordEst.note).not.toContain('au nord (azimut');
+  });
+  it('arrondis du schéma : 359,996° ⇒ azimut 0 (jamais 360) ; pente bornée à [0, 90]', () => {
+    expect(motifPenteNord(true, 0, 6, 359.996, 22)?.mesures).toEqual({ azimutDeg: 0, penteDeg: 22 });
+    expect(motifPenteNord(true, 0, 6, 359.996, 22)?.message).toBe('Aucun module : pan en pente (22°) orienté au nord (azimut 0°)');
+    expect(motifPenteNord(true, 0, 6, -10, 95)?.mesures).toEqual({ azimutDeg: 350, penteDeg: 90 });
+  });
+});
+
 // ACAL548 — UNE règle pour le seuil d'accès solaire : le dossier prime, la société sert de départ, sinon aucun filtre.
 describe('ACAL548 — seuil effectif (dossier > société > rien)', () => {
   const societe = { simulation: { seuil_acces_retrait: { valeur: 0.6, source: 'societe' } } };
@@ -1319,11 +1367,15 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
 
   // T4-X2-006 (rejeu X9) — « Est-Ouest dos à dos — 24 panneaux · 17,04 kWc · 21 735 kWh/an » : la carte de la variante
   // posée gardait l'estimation de l'atelier sans le dire, après la simulation (27 197 kWh). ERP : elle est DITE estimation.
-  it('T4-X2-006 — variante posée : l’estimation de l’atelier est dite « Estimation pour comparer les poses » (ERP) ; servie : sans préfixe', async () => {
+  // Rejeu R5B (26/11) — « Estimation pour comparer les poses : … 21 735 kWh/an » restait à côté du Total « 27 305 kWh/an ·
+  // simulation » : deux productions pour la même pose. ERP : la variante posée ne dit plus de production estimée.
+  it('T4-X2-006 — variante posée (ERP) : aucune production estimée, renvoi au Total ; servie : son chiffre ; autre pose : « Estimation »', async () => {
     const { chiffresDeLaPose, texteChiffresVariante } = await import('./chiffresVariante');
     const carte = { count: 24, kwc: 17.04, annualKwh: 21735 };
     const estimee = chiffresDeLaPose(carte, null, () => null);
-    expect(texteChiffresVariante(carte, estimee, null, fmt, fmtKwc, true)).toBe(`Estimation pour comparer les poses : 24 panneaux · 17,04 kWc · ${fmt(21735)} kWh/an`);
+    expect(texteChiffresVariante(carte, estimee, null, fmt, fmtKwc, true)).toBe('24 panneaux · 17,04 kWc · production : voir le Total');
+    expect(texteChiffresVariante(carte, estimee, null, fmt, fmtKwc, true)).not.toContain(fmt(21735));
+    expect(texteChiffresVariante(carte, null, null, fmt, fmtKwc, true)).toBe(`Estimation : 24 panneaux · 17,04 kWc · ${fmt(21735)} kWh/an`);
     expect(texteChiffresVariante(carte, estimee, null, fmt, fmtKwc)).toBe(`24 panneaux · 17,04 kWc · ${fmt(21735)} kWh/an`); // site public : inchangé
     const servie = chiffresDeLaPose(carte, null, () => 22000);
     expect(texteChiffresVariante(carte, servie, null, fmt, fmtKwc, true)).toBe(`24 panneaux · 17,04 kWc · ${fmt(22000)} kWh/an`);

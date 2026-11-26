@@ -200,6 +200,27 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(document.getElementById('rp9-need-input').value).toBe('6')
   })
 
+  /* D-ACAL-110 (rejeu R5B, 26/11) — conception 7 × 710 W = 4,97 kWc, module 715 W choisi : la carte disait « 7 panneaux de
+     715 W · 5 kWc » et « La conception du lead compte 7 panneaux de 710 W, 4,97 kWc. » sans dire que le panneau (ou le
+     nombre) n'est pas celui de la conception. Une phrase simple, aux valeurs SERVIES (`panneaux_selon_watt`). */
+  it.each([
+    [715, { 715: 7 }, { 715: 5.0 }, 'Ce panneau de 715 W n’est pas celui de la conception du lead ; le nombre de panneaux reste 7.'],
+    [550, { 550: 9 }, { 550: 4.95 }, 'Ce panneau de 550 W n’est pas celui de la conception du lead : il en faut 9 au lieu de 7.'],
+  ])('D-ACAL-110 — module de %s W : la phrase dit que le panneau diffère et ce que devient le nombre', async (wc, table, tableKwc, attendu) => {
+    monterConstructeur({ besoin: '7' })
+    document.getElementById('rp9-pan-module-select').value = 'produit-1'
+    const catalogue = [{ ...CATALOGUE[0], module: { ...CATALOGUE[0].module, libelle: `Module ${wc} Wc`, pmaxWc: wc } }]
+    calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({ data: {
+      modules: catalogue, panneaux_selon_watt: table, kwc_selon_watt: tableKwc } })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: {
+      cible_factures: { panneaux: 7, kwc: 4.97, module_wc: 710 }, refus: '', calcul_en_cours: false } })
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture.querySelector('[data-zone="conception-du-lead"]')).toHaveTextContent(attendu))
+    expect(facture.querySelector('[data-zone="conception-du-lead"]'))
+      .toHaveTextContent('La conception du lead compte 7 panneaux de 710 W, 4,97 kWc.')
+  })
+
   it('lane E9 (T4-X2-001) — module absent de la table servie : la puissance seule, aucun compte, rien à poser', async () => {
     monterConstructeur({ besoin: '12' })
     document.getElementById('rp9-pan-module-select').value = 'produit-1'

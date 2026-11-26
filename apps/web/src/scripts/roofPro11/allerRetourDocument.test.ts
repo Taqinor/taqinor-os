@@ -13,6 +13,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { hydrateFromDevis } from './prefill';
 import { reinitialiserNumerotation } from './numerotation';
+import { motifPenteNord, noterMotifPanVide } from './motifPanVide'; // ACAL1970
 import { enregistrerAtelier, exempleRoofLayoutV2, ouvrirAtelier } from './harnaisDocument';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -108,5 +109,52 @@ describe('ACAL1601 — consumption.factures_mois au contrat roof_layout_v2', () 
   it('un document sans la clé reste conforme', () => {
     expect((EXEMPLE.consumption as Record<string, unknown>).factures_mois).toBeUndefined();
     expect(valider(JSON.parse(JSON.stringify(EXEMPLE)))).toBe(true);
+  });
+});
+// ACAL1970 (revue) — un pan EN PENTE tourné au nord, sans module, avec un besoin : la résolution de fond de la
+// réouverture (`close()` → `recalc()` → chemin pente) peut noter (ou retirer) son motif à l'écran, mais « Enregistrer »
+// SANS GESTE réécrit le document tel qu'il a été LU : ni motif gagné, ni motif perdu. Un geste sur ce pan l'écrit.
+describe('ACAL1970 — motif d’un pan en pente nord vide : aller-retour octet-identique', () => {
+  /** L'exemple, avec un pan NON actif passé en pente nord vide à besoin 6 ; enregistré une fois (le document « tel que stocké »). */
+  function stocke(motif: boolean) {
+    const doc = JSON.parse(JSON.stringify(EXEMPLE)) as { activeAreaId: string; zones: Array<Record<string, unknown>> } & Record<string, unknown>;
+    const z = doc.zones.find((p) => p.id !== doc.activeAreaId)!;
+    Object.assign(z, { roofType: 'pitched', pitchDeg: 22, facingAzimuthDeg: 0, neededPanels: 6, neededAuto: false });
+    delete z.pitchSource;
+    z.geometry = { ...(z.geometry as Record<string, unknown>), count: 0, kwc: 0, panels: [] };
+    if (motif) doc.motifsPansVides = { [z.id as string]: motifPenteNord(true, 0, 6, 0, 22) };
+    reinitialiserNumerotation();
+    const premier = ouvrirPuisEnregistrer({ id: null, geometrie: { roof_layout: doc }, cibleVendue: false });
+    return { premier, panId: z.id as string };
+  }
+  const rouvrir = (document: unknown, apres: (c: ReturnType<typeof ouvrirAtelier>['c']) => void) => {
+    reinitialiserNumerotation();
+    const { c } = ouvrirAtelier({ id: null, geometrie: { roof_layout: JSON.parse(JSON.stringify(document)) }, cibleVendue: false });
+    apres(c);
+    return enregistrerAtelier(c, null);
+  };
+
+  it('sans motif stocké : la résolution de l’ouverture note le motif, le document enregistré sans geste est identique', () => {
+    const { premier, panId } = stocke(false);
+    expect('motifsPansVides' in premier).toBe(false);
+    const sortie = rouvrir(premier, () => noterMotifPanVide(panId, motifPenteNord(true, 0, 6, 0, 22)));
+    expect(differences(premier, sortie)).toEqual([]);
+  });
+
+  it('motif stocké : la résolution de l’ouverture le retire de la mémoire, il reste au document, identique', () => {
+    const { premier, panId } = stocke(true);
+    expect((premier as Record<string, unknown>).motifsPansVides).toEqual({ [panId]: motifPenteNord(true, 0, 6, 0, 22) });
+    const sortie = rouvrir(premier, () => noterMotifPanVide(panId, null));
+    expect(differences(premier, sortie)).toEqual([]);
+  });
+
+  it('un GESTE sur ce pan (besoin changé) : le motif de la session est écrit', () => {
+    const { premier, panId } = stocke(false);
+    const sortie = rouvrir(premier, (c) => {
+      const pan = c.areas.find((a) => a.id === panId)!;
+      pan.neededPanels = 7;
+      noterMotifPanVide(panId, motifPenteNord(true, 0, 7, 0, 22));
+    }) as unknown as Record<string, unknown>;
+    expect(sortie.motifsPansVides).toEqual({ [panId]: motifPenteNord(true, 0, 7, 0, 22) });
   });
 });

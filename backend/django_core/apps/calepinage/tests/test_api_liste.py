@@ -1245,6 +1245,33 @@ def _garde_de_la_route(action):
     return {classe.read_permission if methode == 'get' else classe.write_permission}
 
 
+class ContenanceTraceToitPlatTest(SimpleTestCase):
+    """ACAL1923 — origine « trace » : un pan plat qui porte la valeur du
+    curseur (22) se lit pente 0, comme un pan plat à 0 (calcul pur)."""
+
+    def _lignes(self, valeur):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services import contenance
+
+        pan = {'id': 'z1', 'label': 'Pan 1', 'roofType': 'flat', 'pitchDeg': valeur,
+               'vertices': [[0, 0], [1, 0], [1, 1]]}
+        sortie = {'traduction': SimpleNamespace(politique=SimpleNamespace(code='ANTI_OMBRAGE'),
+                                                regle_retrait='r', regle_allee='a'),
+                  'resultat': SimpleNamespace(modules=10, optimal=True)}
+        with mock.patch('apps.calepinage.villa_service.calepiner_pan_traduit',
+                        return_value=sortie):
+            lignes, _regles = contenance._zones_du_trace(
+                SimpleNamespace(roof_layout={'zones': [pan]}), None, {}, 710)
+        return lignes
+
+    def test_pan_plat_a_22_rend_la_meme_ligne_qu_a_0(self):
+        a_22, a_0 = self._lignes(22.0), self._lignes(0.0)
+        self.assertEqual(a_22, a_0)
+        self.assertEqual(a_22[0]['pente_deg'], 0.0)
+
+
 class ManifesteEtPermissionsTest(SimpleTestCase):
     """CALA12 — toutes les actions ``calepinage.*`` : la permission du catalogue
     est la garde de la route (assertion LOCALE de la parité FND14), une

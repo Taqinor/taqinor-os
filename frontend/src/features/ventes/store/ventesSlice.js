@@ -294,7 +294,7 @@ export const envoyerEmailFacture = createAsyncThunk('ventes/envoyerEmailFacture'
 
 export const emettreFacture = createAsyncThunk('ventes/emettreFacture', async (id, { rejectWithValue }) => {
   try {
-    const res = await ventesApi.emettreFacture(id)
+    const res = await ventesApi.emettreFacture(id, { suppressErrorToast: true }) // R5A-N7 — le refus est dit UNE fois, par `doAction`
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)

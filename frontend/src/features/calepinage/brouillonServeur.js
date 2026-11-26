@@ -164,3 +164,6 @@ export async function lireBrouillonServeur({ lire, calepinageId, hashBase, layou
     return null
   }
 }
+
+// ACAL1661 / R5A-N5 — le suivi du premier geste de l'utilisateur est partagé avec le générateur de devis : `ui/suivreGestes.js`.
+export { suivreGestes, EVENEMENTS_DE_GESTE } from '../../ui/suivreGestes.js'
