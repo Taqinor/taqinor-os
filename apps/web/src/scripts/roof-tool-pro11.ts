@@ -2103,12 +2103,12 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       redrawExclusionZones();
       if (vertices.length >= 3) {
         landCameraOnRoof(vertices); // W120 — cadre le contour ENTIER avant la bascule 3D
-        close(); // referme le tracé du devis → optimiseur + rendu
         // PV27 — le dossier porte la POSE EXACTE (liste des panneaux réellement posés) :
         // on la repose sur la lattice fraîchement pavée (re-snap au plus proche) au lieu
         // de laisser l'optimum s'afficher à sa place.
         const zoneGeo = layout?.zones?.find((z) => z.id === activeAreaId) ?? layout?.zones?.[0];
         const posed = zoneGeo?.geometry;
+        close(Boolean(posed?.panels?.length)); // referme le tracé du devis → optimiseur + rendu ; ACAL1330 — plan rejoué : sans retraits ajoutés
         // PV30 — un dossier enregistré en PLACEMENT LIBRE (`geometry.mode === 'free'`)
         // se recharge VERBATIM : le re-snap sur la lattice détruirait précisément les
         // marges réduites à la main que ce dossier enregistrait.
@@ -2385,7 +2385,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     facingAutoInferred = true;
   }
 
-  function close() {
+  function close(planRejoue = false) { // ACAL1330 — vrai : pan rouvert avec sa pose enregistrée
     if (closed || vertices.length < 3) return;
     // W76 — refuse de fermer un contour qui se croise (nœud papillon) : l'aire géodésique
     // serait fausse et le calepinage remplirait une forme aberrante. On reste à tracer.
@@ -2423,7 +2423,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // commune (sauf override manuel). Les puces « Face du pan » reflètent la valeur déduite.
     autoInferFacing();
     syncFacingChips();
-    const infoRetraits = poserRetraitsPuisRecalculer(ctx, recalc); // ACAL562 — retraits de la société posés AVANT le premier pavage
+    const infoRetraits = poserRetraitsPuisRecalculer(ctx, recalc, planRejoue); // ACAL562 — retraits de la société AVANT le premier pavage (pas sur un plan rejoué, ACAL1330)
     if (infoRetraits) setStatus(infoRetraits);
   }
 
