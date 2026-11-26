@@ -43,6 +43,9 @@ class DecisionResidentielle:
     #: ``plafond_applique`` et ``contour_client`` — dans l'ordre où ils ont été
     #: notés ; jamais écrit ailleurs.
     journal: dict = field(default_factory=dict)
+    #: D-ACAL-169 — le panneau par défaut (id) quand ``watt`` est SA puissance
+    #: (taille décidée ici, jamais imposée) ; ``None`` ⇒ choix au wattage.
+    panneau_prefere_id: object = None
 
     def scenario_composition(self):
         R = _res()
@@ -51,11 +54,12 @@ class DecisionResidentielle:
         return R.COMPOSITION_AVEC if self.avec_batterie else R.COMPOSITION_SANS
 
 
-def _taille_residentielle(lead, company, target_kwc, imposition, journal, dimensionner):
+def _taille_residentielle(lead, company, target_kwc, imposition, journal, dimensionner, watt_auto=None):
     """Fondateur 29/08/2026 — deux chemins seulement : une puissance DEMANDÉE
     (souveraine : ``target_kwc``, sinon la fiche) ou le MOTEUR HORAIRE ; le
     compte d'une composition IMPOSÉE (COP2-V3) passe devant les deux.
-    ``(panneaux, watt, source, optimum_avec)``."""
+    ``(panneaux, watt, source, optimum_avec)``. ``watt_auto`` (D-ACAL-169) : la
+    puissance du panneau automatique (``panneau_defaut``), sinon 710 Wc."""
     from apps.ventes.domain.taille import (
         _AUTO_PANEL_WATT, AutoDevisError, _refus_dimensionnement, _residential_panel_count,
         phase_client_pour_dimensionnement)
@@ -69,12 +73,12 @@ def _taille_residentielle(lead, company, target_kwc, imposition, journal, dimens
             raise AutoDevisError('Puissance cible invalide.', field='target_kwc')
         if cible <= 0:
             raise AutoDevisError('La puissance cible doit être supérieure à zéro.', field='target_kwc')
-    panneaux, watt, optimum_avec, source = 0, _AUTO_PANEL_WATT, None, None
+    panneaux, watt, optimum_avec, source = 0, watt_auto or _AUTO_PANEL_WATT, None, None
     taille_demandee = cible if cible is not None else taille_kwc
     if imposition is not None:
         panneaux, watt, source = R._taille_imposee(imposition)
     elif taille_demandee not in (None, ''):
-        panneaux = _residential_panel_count(taille_kwc=taille_demandee)
+        panneaux = _residential_panel_count(taille_kwc=taille_demandee, panel_watt=watt)
     if imposition is None and panneaux > 0:
         source = 'taille_demandee'
         R._alerter_taille_demandee(journal, cible, taille_demandee)
@@ -110,8 +114,13 @@ def decider_taille_residentielle(*, lead, company, target_kwc=None, scenario=Non
     if controle_kwh is not None and not controle_kwh['coherent']:
         raise AutoDevisError(MESSAGE_KWH_INCOHERENT, field='conso_mensuelle_kwh')
     journal = {}
+    # D-ACAL-169 — le panneau par défaut que la composition accepte (une lecture) ;
+    # désigné mais inutilisable : la règle d'aujourd'hui, DITE au vendeur.
+    from apps.ventes.domain.panneau_defaut import aucun_panneau_auto, panneau_auto_composition
+    auto = panneau_auto_composition(company) if imposition is None else aucun_panneau_auto()
+    R._ajouter_alerte(journal, 'panneau_par_defaut', auto.motif)
     panneaux, watt, source, optimum_avec = _taille_residentielle(
-        lead, company, target_kwc, imposition, journal, dimensionner)
+        lead, company, target_kwc, imposition, journal, dimensionner, watt_auto=auto.watt)
     kwc = round(panneaux * watt / 1000, 2)
     # U2/U3 — sans consigne : les deux options ; un choix explicite est souverain.
     demande = (scenario or '').strip().lower()
@@ -145,7 +154,8 @@ def decider_taille_residentielle(*, lead, company, target_kwc=None, scenario=Non
     return DecisionResidentielle(
         panneaux=panneaux, watt=watt, kwc=kwc, source=source, optimum_avec=optimum_avec,
         choix_batterie=choix_batterie, avec_batterie=avec_batterie, deux_options=deux_options,
-        phase=phase, hors_reseau=hors_reseau, layout=layout, journal=journal)
+        phase=phase, hors_reseau=hors_reseau, layout=layout, journal=journal,
+        panneau_prefere_id=auto.prefere(watt))
 
 
 def _plafond_du_toit(lead, plafond_toit, panneaux, kwc, watt, optimum_avec, journal):
@@ -197,7 +207,8 @@ def verifier_composition_residentielle(decision, *, lead, company, taux_tva=None
         scenario=decision.choix_batterie or 'les_deux', taux_tva=taux_tva,
         phase=decision.phase, hors_reseau=decision.hors_reseau,
         structure_produit_id=structure_produit_id, structure_type=structure_type,
-        dimensionnement_avec=decision.optimum_avec)
+        dimensionnement_avec=decision.optimum_avec,
+        panneau_prefere_id=getattr(decision, 'panneau_prefere_id', None))  # D-ACAL-169
     if apercu['marques_manquantes']:
         detail = ', '.join('%s (%s)' % (m.get('marque'), m.get('libelle_role'))
                            for m in apercu['marques_manquantes'])

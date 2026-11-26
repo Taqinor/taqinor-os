@@ -165,8 +165,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         puissances_batterie_des_lignes,
     )
     from apps.ventes.domain.etape_composer import (
-        ContexteSonde,
         composer_sonde,
+        contexte_sonde_neuf,
         reglages_de_composition,
         sonder_wattage,
     )
@@ -185,9 +185,11 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
     # CHAQUE taille composée par ``pipeline.composer_sonde`` — le même
     # constructeur que le devis (gamme, phase, MPPT, TVA, hors-réseau,
     # structure), jamais un appel direct qui en oublierait un.
+    # D-ACAL-169 — sans ``devis`` (taille d'un devis à naître) le contexte porte
+    # le panneau par défaut de la société ; un devis existant garde la sonde.
     import dataclasses
-    sonde_ctx = ContexteSonde(
-        company=company,
+    sonde_ctx = contexte_sonde_neuf(
+        devis=devis, company=company,
         reglages=reglages_de_composition(company, gamme_nom_devis),
         gamme_nom_devis=gamme_nom_devis,
         structure_type=structure_type,

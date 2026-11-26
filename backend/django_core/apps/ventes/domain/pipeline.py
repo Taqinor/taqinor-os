@@ -163,6 +163,10 @@ class CibleDevis:
     #: ``None`` (LE DÉFAUT) ⇒ pipeline strictement inchangé.
     onduleur_impose: object = None
     batterie_imposee: object = None
+    #: D-ACAL-169 — le panneau PAR DÉFAUT de la société (id ``stock.Produit``),
+    #: posé seulement quand la cible d'un devis NOUVEAU est à SA puissance
+    #: (``panneau_defaut.PanneauAuto.prefere``). ``None`` (LE DÉFAUT) ⇒ inchangé.
+    panneau_prefere_id: object = None
 
 
 @dataclass(frozen=True)
@@ -386,11 +390,15 @@ def decider_taille(intention, devis=None):
         phase=phase_client_pour_dimensionnement(intention.lead))
     if nb_panneaux <= 0:
         raise _refus_dimensionnement(source)
-    watt = watt or _AUTO_PANEL_WATT
+    # D-ACAL-169 — un devis À NAÎTRE : le balayage (sans devis) a sondé au
+    # panneau par défaut ; la composition retient CE produit à SA puissance.
+    auto = (panneau_auto_composition(intention.company) if devis is None or getattr(devis, 'pk', None) is None
+            else aucun_panneau_auto())
+    watt = watt or auto.watt
     return CibleDevis(
         nb_panneaux=nb_panneaux, panel_watt=watt,
         kwc=round(nb_panneaux * float(watt) / 1000.0, 2),
-        source=source, dimensionnement_avec=avec)
+        source=source, dimensionnement_avec=avec, panneau_prefere_id=auto.prefere(watt))
 
 
 def intention_de_composition(intention, cible, *, avertissements=None,
@@ -432,6 +440,7 @@ def intention_de_composition(intention, cible, *, avertissements=None,
         modules_affleurants=_affleurants_au_niveau(devis, getattr(intention, 'layout', None)),
         # ADEV156 (D-ACAL-80) — le froid du site du lead ; un devis envoyé garde −5 °C.
         froid=froid_du_lead(intention.lead, devis),
+        panneau_prefere_id=getattr(cible, 'panneau_prefere_id', None),  # D-ACAL-169
     )
 
 
@@ -1375,6 +1384,10 @@ from apps.ventes.domain.etape_composer import (  # noqa: E402 — fin de module 
 from apps.ventes.domain.scenario import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     poser_puissance_kwc,
     scenario_servable,
+)
+from apps.ventes.domain.panneau_defaut import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    aucun_panneau_auto,
+    panneau_auto_composition,
 )
 from apps.ventes.domain.taille import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _AUTO_PANEL_WATT,
