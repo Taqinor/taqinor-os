@@ -852,3 +852,27 @@ test('ACAL1661 — un clic sur un onglet n’est pas un geste ; un seul appel ; 
   geste(autre, 'pointerdown')
   assert.equal(s2.aGeste(), false)
 })
+
+test('R5A-N5 — naviguer n’est pas éditer : un clic dans une barre de navigation et les touches de focus ne sont pas un geste', () => {
+  const cible = new EventTarget()
+  let appels = 0
+  const suivi = suivreGestes(cible, () => { appels += 1 })
+  const dansNav = { closest: (sel) => (sel.includes('nav') ? {} : null) }
+  geste(cible, 'pointerdown', dansNav)
+  geste(cible, 'touchstart', dansNav)
+  for (const key of ['Tab', 'Shift', 'Control', 'Alt', 'Meta']) {
+    const e = new Event('keydown')
+    Object.defineProperty(e, 'key', { value: key })
+    Object.defineProperty(e, 'target', { value: {} })
+    cible.dispatchEvent(e)
+  }
+  assert.equal(suivi.aGeste(), false)
+  assert.equal(appels, 0)
+  // Un vrai geste d'édition passe toujours : une frappe de lettre, un clic hors navigation.
+  const lettre = new Event('keydown')
+  Object.defineProperty(lettre, 'key', { value: 'a' })
+  Object.defineProperty(lettre, 'target', { value: {} })
+  cible.dispatchEvent(lettre)
+  assert.equal(suivi.aGeste(), true)
+  assert.equal(appels, 1)
+})
