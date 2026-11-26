@@ -2503,3 +2503,94 @@ Constats à garder : la révision d'un devis par NÉGOCIATION de prix reste calc
 `apps/web` garde un module de repli codé en dur à 720 Wc quand aucun catalogue n'est servi (`moduleSelect.ts::MODULE_PAR_DEFAUT_ATELIER`) ;
 lenteur de « Réviser » et des cartes de la liste des devis : mesure à faire sur la pile (`mesure_lenteurs.py` du dossier de travail),
 piste : lancer `manage.py ranger_totaux_affiches` après `migrate` au déploiement.
+
+### Point du 26/11, 23 h UTC — ARRÊT DEMANDÉ PAR LE FONDATEUR APRÈS LA FUSION DU LOT 8 ; LOT 9 GARDÉ SUR GITHUB (le plus récent — REPRENDRE ICI)
+
+Reda, le 26/11 au soir : « stop after lot 8 have merged, but still keep all the lot 9 work in github and one drive ».
+Plus aucune lane n'est lancée. Ce point dit où tout se trouve et par quoi reprendre.
+
+**LOT 8** — PR Taqinor/taqinor-os#1564 (`dev-lot8` → `main`), Auto-fix allumé, fusion automatique par la file. 30 branches pliées,
+relecture finale faite (un bloquant corrigé : devis envoyé né « avec batterie » qui perdait sa batterie à la resynchronisation).
+1er passage de CI : 7 rouges, tous petits, en réparation sur `lot8/ci-backend` et `lot8/ci-frontend` + budget du bundle (4220 → 4235) :
+500 au lieu de 404 sur `ventes/devis-lignes/<id non entier>/` (api-fuzz) ; garde CALX250 (`raccordement.py::FACTEUR_AVERTISSEMENT` sans
+source) ; garde WOW5 (`test_regles_calcul_rendu_origine.py` jugé « lourd ») ; test du rôle « Commercial terrain » (gagne `prix_vente_voir`) ;
+garde EZ16 (`PanneauEtape.jsx`, catch vide) ; garde CALX383 (`Rail.jsx` importe `OutilPosePompage.jsx` hors registre).
+Coupures du lot : 28/11 → **à déployer le 27/11** (le lot 7, fusionné, attend le même déploiement). À la fusion : rendre les baux
+(`python scripts/plan_claims.py release … --owner Reda_Laptop/dev-lot8`).
+
+**LOT 9** — branche `dev-lot9` (poussée ; contient `dev-lot8` d'avant les réparations de CI : re-fusionner `origin/main` d'abord).
+PAS de PR. Pliées (18) : `lot8/module-pose-suivi`, `lot8/atelier-r6`, `lot9/historique-devis-public`, `lot8/panneau-defaut-stock`,
+`lot9/panneau-defaut-calepinage`, `lot8/liaison-dc-tracee`, `lot9/reviser-etudes`, `lot8/pdf-devis-final-rib`,
+`lot9/comptes-electrique`, `lot9/calque-electrique`, `lot9/une-cible`, `lot8/droits-technicien`, `lot8/numerotation-stable`,
+`lot9/panneau-defaut-ventes`, `lot9/panneau-defaut-generateur`, `lot9/schema-module-pose`, `lot9/reviser-negociation`,
+`lot8/resync-apercu`. Instantané OpenAPI régénéré une fois (à refaire : `resync-apercu` est arrivée après).
+
+Relues par un relecteur neuf, constats corrigés : numerotation-stable (2 relectures + fuzz de 3 200 passes), panneau-defaut-stock,
+resync-apercu (réconciliée avec la réparation du lot 8 : un seul prédicat `designations_appliquees`), pdf-devis-final-rib,
+droits-technicien (règle « un code du module » = `LectureDuModule`), reviser-etudes, reviser-negociation (aucun constat),
+schema-module-pose (REFAITE : plus rien ne change à la lecture ; le schéma imprime nom et puissance du module posé ; l'entrée
+électrique suit le module posé au prochain enregistrement seulement), panneau-defaut-ventes (règle : le panneau par défaut ne décide
+que d'une composition NEUVE ; un devis existant lit son propre panneau ; brouillons seulement).
+Pliées SANS relecture propre (à couvrir par la relecture finale du lot) : module-pose-suivi, atelier-r6, historique-devis-public,
+panneau-defaut-calepinage, liaison-dc-tracee (ses corrections), comptes-electrique, calque-electrique, une-cible,
+panneau-defaut-generateur, et les corrections d'après relecture de ventes / numerotation / resync / schema-module-pose.
+
+**PAS pliées** (branches poussées) :
+- `lot9/lecteurs-aval` (470433f48) — classe d'une ligne de devis décidée à l'écriture et rangée sur la ligne ; refonte après une 1re
+  relecture ; **2e relecture en cours à l'arrêt** : ne PAS plier sans son verdict (une quinzaine de lecteurs restent sur les mots-clés :
+  risque de cœur d'argent à moitié converti).
+- `lot9/plan-atelier-web` (f7295b76b) — ACAL1813 seule (règle CSS `isolation: isolate` sur l'écran « deux doigts » de la carte) ; non vue
+  dans un navigateur ; ACAL1346, ACAL1347, ACAL1815 demandent une mesure sur pile d'abord.
+- `lot9/panneau-defaut-web` — rapport seul, rien de construit (voir « Décisions »).
+- ACAL1330 (pose rouverte : 60 enregistrés ⇒ 60 à l'écran) : reste à faire dans `prefill.ts` (libre maintenant). Défaut restant
+  seulement déduit du code : le mesurer sur pile avant de construire. Changement proposé : en fin d'hydratation
+  (`roof-tool-pro11.ts` vers l.2108, logique dans un petit module `roofPro11/poseEnregistree.ts`), si
+  `occupied.size < posed.panels.length`, rejouer les centres enregistrés tels quels (`hydrateLayout(..., 'free')`), marquer
+  `ctx.poseRejoueeIntacte`, ERP seulement ; `prefill.ts::serializeLayout` écrit alors `a.geometrieEnregistree` telle quelle pour le pan
+  actif tant qu'aucun geste n'a eu lieu ; tests dans `cablageLot2.test.ts`.
+
+**Avant la PR du lot 9** :
+1. `git merge origin/main` dans `dev-lot9` (après la fusion du lot 8).
+2. Coupures neuves `COUPURE_LIAISON_DC_TRACEE` (et `COUPURE_CLASSE_PAR_ROLE` si lecteurs-aval est pliée) = lendemain du déploiement du
+   lot 9 (aujourd'hui 28/11 : à repousser).
+3. OpenAPI (`check_openapi_schema.py --write`, environnement épinglé).
+4. CODEMAP + `codemap_fingerprint.py --write`.
+5. Une ligne COCHÉE du plan transverse portant « Exception C20 : FICHIER_MUR `backend/django_core/apps/stock/models.py` car : un champ
+   de modèle ne peut vivre que dans sa classe » (`check_forme_code` est rouge sur ce constat ; `resync-apercu` signale aussi
+   `frontend/src/pages/ventes/DevisGenerator.jsx` : à vérifier).
+6. Lecture de D-ACAL-169 dans `decisions.yml` à mettre à jour (permission `catalogue_prix_modifier` ; défaut avant les favoris à
+   l'atelier ; désignation refusée si le watt du nom diffère de la fiche ; ne décide que d'une composition neuve).
+7. Cliquet des imports calepinage ↔ ventes : `resync-apercu` mesure 46 pour un plafond de 44, et 25 pour 23, sur `dev-lot9` — à ramener
+   par les portes (`services/devis.py`, `services/equipements.py`).
+8. **Toutes les gardes du groupe `stage-names` EN ENTIER** (`PYTHONIOENCODING=utf-8 python scripts/ci_guards.py stage-names`, plusieurs
+   minutes — au lot 8 je ne l'avais pas laissé finir : 6 gardes rouges en CI) et `backend-lint-fast`.
+9. Budget du bundle (lot 8 = 4 220,9 Ko sur le runner, budget porté à 4235 : le lot 9 le dépassera, mesurer).
+10. Pré-CI sur un runner avec une base (workflow temporaire `zz-scratch-*`, UNE seule invocation `manage.py test` : enchaîner plusieurs
+    `--keepdb` dans un job fabrique de faux rouges de `ContentType`).
+11. Rejeu en direct ; relecture finale Fable ; marques au plan (ACAL1813, D-ACAL-169…) ; PR, Auto-fix, file de fusion.
+
+**Rejeu en direct n° 8** (pile locale `C:/dev/taqinor-pile-revue/`, sur `dev-lot8`) : en cours à l'arrêt ; son relevé est rangé dans
+`docs/audits/l5-calepinage/T5/rejeu-8-lot8.json` s'il a rendu la main (sinon : à relancer ; lignes prévues : historique du lead après
+« Être rappelé », position de l'onduleur, onduleur et batterie désignés, toit plat 20°, prix masqués au technicien, PDF ; mesures
+ACAL1330, ACAL1346 / 1815 / 1813, ACAL1347, ACAL2038, lenteurs de « Réviser » et des cartes de la liste des devis).
+
+**Relevés de production du 26/11 (lecture seule)** : 12 calepinages, 0 batterie déclarée, 2 onduleurs désignés, 2 modules désignés ;
+7 devis envoyés le 26/11 ; 3 devis C&I « deux options » envoyés, aucun avant le 13/11 ; 8 devis acceptés, 0 né d'une négociation
+(`accepte_par_nom` finissant par « — avenant négocié ») ; relevé « pluriannuel » : 4 lus, 0 concerné.
+
+**Décisions en attente du fondateur** (aucune ne bloque) :
+- D-ACAL-169, suite : (a) le site public à 715 W ? aucune voie propre sans un point d'accès relayé (rapport de
+  `lot9/panneau-defaut-web`, options A / B / C ; chiffres qui bougeraient : estimation pro de 10 kWc, 15 → 14 panneaux) ; (b) les leads qui
+  ont déjà une conception passent-ils au panneau par défaut tout de suite (aujourd'hui : au prochain recalcul de leur conception) ?
+  (c) la marque de panneau épinglée d'une gamme l'emporte-t-elle sur le panneau par défaut (aujourd'hui : oui en résidentiel, non en
+  C&I et pompage) ?
+- Une ligne « N éléments masqués par le filtre » dans l'historique du lead ? (retirée du lot 8 : l'écran du lead ne change pas).
+- Textes en darija du message WhatsApp du devis (T4-X1-010).
+- Rapport d'étude d'un calepinage de pompage : cesser d'imprimer production et autoconsommation ?
+- Lancer `ranger_totaux_affiches` après `migrate` au déploiement (cartes de la liste des devis lentes après chaque déploiement) ?
+- Corrections par numéro aux 67 phrases de `mots-a-relire-2026-11-26.md` ; les 8 questions d'audits plus anciennes (« plus tard »).
+- Lectures de l'orchestrateur à confirmer : D-ACAL-169 (ci-dessus) ; études d'un devis négocié calculées APRÈS le prix négocié.
+
+**Leçons de la soirée** (pour la rétro) : laisser FINIR `ci_guards.py stage-names` avant d'ouvrir une PR ; le budget du bundle se mesure
+sur la PR reconstruite sur `main`, pas sur la branche seule ; api-fuzz voit les 500 sur un identifiant non entier ; un test « contenu
+exact d'un rôle » existe hors de `apps/roles` (visites) ; compter les lanes qui ÉCRIVENT (relecteurs exclus).
