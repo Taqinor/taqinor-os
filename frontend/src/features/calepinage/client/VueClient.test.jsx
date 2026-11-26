@@ -122,6 +122,21 @@ describe('Montrer au client — repli 2D, avec les seules données servies', () 
     expect(texte).not.toMatch(/52.695|kWh|estimation|année moyenne|%/)
   })
 
+  it('ACAL1268 — lead de pompage : ni kWh par an, ni part de consommation, ni « estimation » devant le client ; la pose (panneaux, kWc) reste', async () => {
+    api.designContext.mockResolvedValue(contexteAvec({ ...CHIFFRAGE, marche: 'agricole' })) // même si une production est servie
+    rendre()
+    await waitFor(() => expect(chiffres()).toHaveLength(2))
+    expect(chiffres().map((t) => t.dataset.testid)).toEqual(['client-tuile-panneaux', 'client-tuile-kwc'])
+    expect(screen.getByTestId('cal-vue-client').textContent).not.toMatch(/kWh|estimation|année moyenne|%/)
+  })
+
+  it('ACAL1268 — un autre marché (résidentiel) : les trois tuiles d’avant, inchangées', async () => {
+    api.designContext.mockResolvedValue(contexteAvec({ ...CHIFFRAGE, marche: 'residentiel' }))
+    rendre()
+    await waitFor(() => expect(chiffres()).toHaveLength(3))
+    expect(chiffres().map((t) => t.dataset.testid)).toEqual(['client-tuile-kwh', 'client-tuile-panneaux', 'client-tuile-couverture'])
+  })
+
   it('H2 — les lectures sont partagées : un seul design-context, un seul résultat, un seul document', async () => {
     rendre()
     await waitFor(() => expect(chiffres()).toHaveLength(3))

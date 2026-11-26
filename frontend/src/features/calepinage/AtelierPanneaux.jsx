@@ -331,6 +331,7 @@ export default function AtelierPanneaux({
         actionDevis={devisAuRail && !dansCoque ? boutonDevis : null}
         dansCoque={dansCoque}
         parcours={parcours}
+        contexte={contexte}
       />
       {devisAuRail && dansCoque && portailDevis ? createPortal(boutonDevis, portailDevis) : null}
 

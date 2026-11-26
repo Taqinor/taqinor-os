@@ -135,7 +135,9 @@ export function tuilesClient(document, resultat, chiffrage = null, moteur = null
   const tuiles = []
   const panneaux = panneauxDuDocument(document)
   if (panneaux !== null) tuiles.push({ cle: 'panneaux', valeur: formatNumber(panneaux, { locale: 'fr' }), libelle: 'panneaux' })
-  const kwh = panneaux === null ? null : servi(chiffrage?.production_annuelle_kwh) // aucun toit enregistré : rien à chiffrer devant le client
+  // ACAL1268 (D-ACAL-66) — un lead de POMPAGE : ni kWh de réseau ni « production estimée » devant le client ; la pose reste (panneaux, kWc).
+  const pompage = chiffrage?.marche === 'agricole'
+  const kwh = panneaux === null || pompage ? null : servi(chiffrage?.production_annuelle_kwh) // aucun toit enregistré : rien à chiffrer devant le client
   // B1 — même garde que l'atelier (`affichageErp.ts::productionServie`) : la production et la part servies sont celles de la
   // TAILLE de la conception ; elles ne se lisent qu'à côté d'une pose de la MÊME taille, jamais à côté d'un autre compte de panneaux.
   const kwcConception = servi(chiffrage?.kwc)
@@ -163,7 +165,7 @@ export function tuilesClient(document, resultat, chiffrage = null, moteur = null
     if (couverture !== null) tuiles.push({ cle: 'couverture', valeur: `${Math.round(couverture)} %`, libelle: 'de votre consommation' })
     return tuiles
   }
-  if (panneaux !== null && calculEnCours(chiffrage)) tuiles.push({ cle: 'calcul', valeur: 'calcul en cours', libelle: 'production estimée', marine: true })
+  if (panneaux !== null && !pompage && calculEnCours(chiffrage)) tuiles.push({ cle: 'calcul', valeur: 'calcul en cours', libelle: 'production estimée', marine: true })
   const kwc = puissancePose(resultat, panneaux)
   if (kwc !== null) {
     tuiles.push({ cle: 'kwc', valeur: formatNumber(kwc, { locale: 'fr', decimals: 2 }), libelle: 'kWc de puissance', marine: true })
