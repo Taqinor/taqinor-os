@@ -151,6 +151,55 @@ class ReglesCalculTests(SimpleTestCase):
         self.assertEqual(drapeaux_nouveaux_rendus(devis('industriel', statut='brouillon', date_envoi=None)),
                          {'phrases_profil_ouvertes': True})
 
+    def test_t4_v2_010_protection_marche_a_sec_prouvee_par_la_fiche(self):
+        # T4-V2-010 — le PDF n'imprime « protection marche à sec » sur la ligne
+        # du variateur que si sa fiche la publie ; nouveaux rendus seulement.
+        from datetime import datetime, timezone
+
+        from apps.ventes.domain.regles_calcul import (
+            COUPURE_PROTECTION_FICHE, protection_fiche_ouverte)
+        from apps.ventes.quote_engine.lignes_classement import _item_du_devis
+        self.assertEqual(COUPURE_PROTECTION_FICHE, (2026, 11, 27))
+        avant = datetime(2026, 11, 26, 9, 0, tzinfo=timezone.utc)
+        apres = datetime(2026, 11, 27, 8, 0, tzinfo=timezone.utc)
+        desc = ('Variateur solaire dédié pompage : MPPT intégré, entrée PV directe\n'
+                'Pilotage automatique lever/coucher du soleil, protection marche à sec\n'
+                'Compatible pompes AC triphasées/monophasées standards')
+
+        def ligne(protection, role='variateur_pompage'):
+            fiche = SimpleNamespace(type_fiche='variateur_pompage',
+                                    var_protection_marche_a_sec=protection)
+            produit = SimpleNamespace(pk=7, nom='VARIATEUR VEICHI SI23 4KW 380V', marque='VEICHI',
+                                      description=desc, garantie='', role_pompage=role,
+                                      fiche_technique=fiche)
+            return SimpleNamespace(designation=produit.nom, produit=produit, quantite=1,
+                                   prix_unitaire=Decimal('2291.67'), remise=0, taux_tva=20)
+
+        def devis(**champs):
+            return SimpleNamespace(**dict({'regles_calcul': 14, 'date_creation': avant,
+                                           'mode_installation': 'agricole', 'reglages_figes': None},
+                                          **champs))
+        ouvert = devis(statut='brouillon', date_envoi=None)
+        ferme = devis(statut='envoye', date_envoi=avant)
+        self.assertTrue(protection_fiche_ouverte(ouvert))
+        self.assertTrue(protection_fiche_ouverte(devis(statut='envoye', date_envoi=apres)))
+        self.assertFalse(protection_fiche_ouverte(ferme))
+        # Fiche muette (None) ou négative (False) : l'affirmation disparaît, le
+        # reste de la ligne demeure.
+        for protection in (None, False):
+            texte = _item_du_devis(ligne(protection), Decimal('20'), ouvert)['description']
+            self.assertNotIn('marche à sec', texte)
+            self.assertIn('Pilotage automatique lever/coucher du soleil\n', texte)
+            self.assertIn('Compatible pompes AC', texte)
+        # Fiche qui la publie : la phrase reste.
+        self.assertEqual(_item_du_devis(ligne(True), Decimal('20'), ouvert)['description'], desc)
+        # Devis envoyé avant la coupure : l'item reste celui que le client a reçu.
+        self.assertEqual(_item_du_devis(ligne(None), Decimal('20'), ferme)['description'], desc)
+        # Un autre produit (sonde de niveau, sans fiche de variateur) garde son texte.
+        sonde = ligne(None, role='sonde_niveau')
+        sonde.produit.fiche_technique = None
+        self.assertEqual(_item_du_devis(sonde, Decimal('20'), ouvert)['description'], desc)
+
     # ── Niveau 3 (corrections résidentielles du 27/10/2026) ──
     def test_devis_envoye_au_niveau_2_hors_corrections_2710(self):
         envoye = SimpleNamespace(regles_calcul=REGLES_CORRIGEES)

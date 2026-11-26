@@ -267,7 +267,33 @@ def fiches_figees(devis) -> dict:
     return reglages_figes(devis).get("produits") or {}
 
 
-def _line_to_item(ligne, taux_tva: Decimal, fiches=None) -> dict:
+#: T4-V2-010 — l'affirmation « protection (contre la) marche à sec » d'une
+#: description de variateur, avec la virgule qui l'introduit.
+_PROTECTION_MARCHE_A_SEC_RE = re.compile(
+    r",?\s*protection\s+(?:contre\s+la\s+)?marche\s+[àa]\s+sec", re.IGNORECASE)
+
+
+def _description_prouvee(description: str, produit) -> str:
+    """T4-V2-010 — ``description`` sans « protection marche à sec » quand le
+    produit est un variateur de pompage dont la fiche ne PUBLIE pas cette
+    protection (``var_protection_marche_a_sec`` vide ou faux) : le PDF
+    n'affirme rien que la fiche ne prouve, comme l'écran du devis qui dit « la
+    fiche ne dit pas s'il protège la pompe ». Toute autre description revient
+    telle quelle ; une ligne vidée par le retrait disparaît."""
+    if not description or not _PROTECTION_MARCHE_A_SEC_RE.search(description):
+        return description
+    fiche = getattr(produit, "fiche_technique", None)
+    variateur = ((getattr(produit, "role_pompage", None) or "") == "variateur_pompage"
+                 or (getattr(fiche, "type_fiche", None) or "") == "variateur_pompage")
+    if not variateur or getattr(fiche, "var_protection_marche_a_sec", None) is True:
+        return description
+    lignes = [_PROTECTION_MARCHE_A_SEC_RE.sub("", ligne).rstrip(" ,;")
+              for ligne in description.split("\n")]
+    return "\n".join(ligne for ligne in lignes if ligne.strip())
+
+
+def _line_to_item(ligne, taux_tva: Decimal, fiches=None, *,
+                  protection_fiche=False) -> dict:
     """Convert an OS LigneDevis (HT prices) into a premium item dict.
 
     Carries both HT and TTC unit prices (the PDFs show per-line HT with an
@@ -354,7 +380,21 @@ def _line_to_item(ligne, taux_tva: Decimal, fiches=None) -> dict:
     fiche = (fiches or {}).get(str(getattr(produit, "pk", "")))
     if fiche:
         item.update({cle: fiche.get(cle) for cle in _CHAMPS_FICHE_FIGEE})
+    # T4-V2-010 — ``protection_fiche`` (``regles_calcul.protection_fiche_ouverte``,
+    # nouveaux rendus seulement) : la description, fiche figée comprise,
+    # n'affirme pas une protection que la fiche technique ne publie pas.
+    if protection_fiche and item.get("description"):
+        item["description"] = _description_prouvee(item["description"], produit)
     return item
+
+
+def _item_du_devis(ligne, taux_tva: Decimal, devis) -> dict:
+    """L'item de rendu d'une ligne de ``devis`` : fiches figées de l'envoi
+    (ADVS7) et, pour les nouveaux rendus, description prouvée par la fiche
+    (T4-V2-010, ``regles_calcul.protection_fiche_ouverte``)."""
+    from apps.ventes.domain.regles_calcul import protection_fiche_ouverte
+    return _line_to_item(ligne, taux_tva, fiches_figees(devis),
+                         protection_fiche=protection_fiche_ouverte(devis))
 
 
 def puissance_panneaux_lignes(lignes) -> tuple[int, int]:
