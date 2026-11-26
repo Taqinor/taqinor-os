@@ -350,6 +350,14 @@ describe('lireVisionneuseSoleil — exemples du contrat', () => {
     expect(v.ouverture).toEqual({ jour: 355, heure: 16 });
   });
 
+  it('l’exemple de `proposal_data.json` (lane B) se lit aussi, contre un pan de trois modules', () => {
+    const proposal = JSON.parse(readFileSync(root('../src/contract_samples/proposal_data.json'), 'utf-8')) as Record<string, any>;
+    const trois = layoutOf(rawZone({ geometry: { ...(rawZone().geometry as object), count: 3, panels: columns(PORTRAIT_PITCH, 3) } }));
+    const v = lireVisionneuseSoleil(proposal.exemple, trois)!;
+    expect(v.zones).toEqual([{ index: 0, id: 'zone-1', acces: [0.981, 0.874, null] }]);
+    expect(v.ouverture).toEqual({ jour: 172, heure: 12 });
+  });
+
   it('exemple sans mesure : aucune zone, aucun objet, ouverture l’été à midi (D-ACAL-135)', () => {
     expect(lireVisionneuseSoleil(payloadSoleil('exemple_sans_mesure'), LAYOUT_SOLEIL)).toEqual({ zones: [], environnement: [], ouverture: { jour: 172, heure: 12 } });
   });

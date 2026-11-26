@@ -449,7 +449,9 @@ describe('BarreSoleil.astro — rendu (LOT 6)', () => {
 });
 
 describe('page /proposition — section #roof3d, avec et sans visionneuse_soleil (LOT 6)', () => {
-  const base = { ...proposalContrat.exemple, roof_layout: roofLayoutSoleil };
+  // L'exemple du contrat porte la clé depuis le lot 6 (lane B) : le repli la RETIRE, comme un lien standard.
+  const { visionneuse_soleil: _servie, ...sansCle } = proposalContrat.exemple;
+  const base = { ...sansCle, roof_layout: roofLayoutSoleil };
 
   it('REPLI : sans la clé (lien standard, backend antérieur), section d’aujourd’hui — aucune barre, aucun attribut neuf', async () => {
     const html = await rendrePage(base);

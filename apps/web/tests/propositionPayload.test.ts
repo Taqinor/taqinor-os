@@ -306,6 +306,8 @@ const CONTRAT_DEDIE = [
   'variantes_servables', 'profils_comparatifs', 'offres_tailles',
   'calepinage_options', 'paliers_batterie', 'couverture_batterie',
   'conception_electrique', 'fiche_batterie',
+  // D-ACAL-132 (lot 6) — `visionneuse_soleil.json`, désigné par la note depuis 188d9613c.
+  'visionneuse_soleil',
 ] as const;
 
 /** Les trois exemples du contrat — la charge utile ; le reste est de la prose. */
@@ -432,6 +434,7 @@ const NON_LU: Readonly<Record<string, string>> = {
   'fiche_batterie': 'ACAL173 — rendement aller-retour et DoD de la FICHE de la batterie vendue : forme gardée par `couverture_batterie.json` (clé `fiche_batterie`), lue par `batterySim.readFicheBatterie` pour le simulateur de repli, pas par le lecteur typé.',
   'paliers_batterie[]': 'Paliers de dimensionnement batterie : forme gardée par `paliers_batterie.json`, lue par le curseur batterie.',
   'profils_comparatifs': 'Simulation par profil d’occupation : forme gardée par `profils_comparatifs.json`, rendue par le frontmatter.',
+  'visionneuse_soleil': 'D-ACAL-132 — visionneuse au soleil des liens de confiance : forme gardée par `visionneuse_soleil.json`, lue par `lib/visionneuseSoleil.ts::lireVisionneuseSoleil` dans le frontmatter (barre sous la scène 3D, puis `scripts/roofPro11/viewerSoleil.ts`), jamais par le lecteur typé.',
 
   // ── `quote` — l'objet INTERNE du moteur, hors périmètre de ce contrat ────
   // `notes.portee_de_quote` le dit : la forme interne de `quote` est
