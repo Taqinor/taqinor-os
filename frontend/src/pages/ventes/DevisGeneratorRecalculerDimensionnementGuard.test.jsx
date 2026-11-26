@@ -19,7 +19,7 @@
 // celui-ci le prouve en observant l'écran après un vrai clic.
 
 import { describe, it, expect, vi } from 'vitest'
-import { screen, fireEvent, waitFor } from '@testing-library/react'
+import { screen, fireEvent, waitFor, act } from '@testing-library/react'
 
 
 vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiMock())
@@ -102,17 +102,33 @@ const recalcButton = () => screen.getByRole('button', { name: /Recalculer le dim
 // Si un dry-run est encore EN VOL au moment du clic (le débounce de 500 ms
 // vient d'être relancé par un changement de composition), le bouton refuse
 // honnêtement (« Dimensionnement en cours de calcul — réessayez dans un
-// instant. ») au lieu d'inventer une taille. On reclique donc jusqu'à ce que
-// la composition parte : c'est EXACTEMENT ce que fait un commercial, et cela
-// rend le test déterministe sous charge sans rien relâcher du contrat F1.
-async function cliquerRecalculJusquaComposition() {
-  await waitFor(() => {
+// instant. ») au lieu d'inventer une taille. On reclique donc, comme un
+// commercial, jusqu'à ce que l'effet attendu se produise.
+// T4-X6-015 (blocage CI) — JAMAIS le clic DANS un `waitFor` : chaque clic
+// provoque un rendu complet du générateur (~2 s sous charge) et son
+// MutationObserver relance aussitôt le rappel, donc le clic suivant, sans jamais
+// rendre la main à la file de tâches — le débounce de 500 ms qui amène la
+// recommandation ne part alors jamais et le test ne rend plus de verdict (le
+// délai de 20 s ne peut pas le couper). Ici un clic, puis une VRAIE pause qui
+// laisse tourner minuteurs et promesses, puis la vérification.
+async function cliquerJusqua(verifier, { timeout = 15000, pause = 300 } = {}) {
+  const fin = Date.now() + timeout
+  for (;;) {
     fireEvent.click(recalcButton())
-    // L'onduleur réseau du stock n'apparaît dans les lignes que si la
-    // composition est réellement partie.
-    screen.getByDisplayValue(/Onduleur réseau Huawei/)
-  }, { timeout: 10000 })
+    await act(async () => { await new Promise(r => setTimeout(r, pause)) })
+    try {
+      verifier()
+      return
+    } catch (e) {
+      if (Date.now() > fin) throw e
+    }
+  }
 }
+
+// L'onduleur réseau du stock n'apparaît dans les lignes que si la composition
+// est réellement partie.
+const cliquerRecalculJusquaComposition = () =>
+  cliquerJusqua(() => { screen.getByDisplayValue(/Onduleur réseau Huawei/) })
 
 describe('F1 — le garde-fou nbPanneauxTouched est restauré à sa valeur EXACTE d\'avant le clic (jamais figé à true)', () => {
   it('création (garde-fou OUVERT avant le clic) : le redimensionnement en direct facture→panneaux SURVIT à un clic sur Recalculer', async () => {
@@ -233,10 +249,7 @@ describe('QJR570 — Recalculer fusionne au lieu de remplacer', () => {
     await waitFor(() => expect(qteDe('Socles').value).toBe('24'))
     const avant = instantaneLignes()
 
-    await waitFor(() => {
-      fireEvent.click(recalcButton())
-      expect(confirmSpy).toHaveBeenCalled()
-    }, { timeout: 10000 })
+    await cliquerJusqua(() => expect(confirmSpy).toHaveBeenCalled(), { timeout: 10000 })
     expect(String(confirmSpy.mock.calls[0][0])).toMatch(/Socles : 24/)
     // Annuler : rien n'est dispatché, aucune composition ne part.
     expect(instantaneLignes()).toEqual(avant)
@@ -258,10 +271,7 @@ describe('T4-X6-015 — Recalculer demande avant de quitter la taille demandée 
     })
     await screen.findByTestId('gen-taille-lead')
     await waitFor(() => expect(nbPanneauxField().value).toBe('9'))
-    await waitFor(() => {
-      fireEvent.click(recalcButton())
-      expect(confirmSpy).toHaveBeenCalled()
-    }, { timeout: 10000 })
+    await cliquerJusqua(() => expect(confirmSpy).toHaveBeenCalled(), { timeout: 10000 })
     const question = String(confirmSpy.mock.calls[0][0])
     expect(question).toMatch(/Taille demandée sur la fiche du lead : 6 kWc/)
     expect(question).toMatch(/21 panneaux · 14,91 kWc/)
