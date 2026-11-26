@@ -163,7 +163,7 @@ function CarteOnduleur({ id, entree, configs, resultat, lectureSeule, onApplique
 
 /** Sur la carte : la pastille du haut, la légende des chaînes (seulement si le constructeur les
     colore), la barre d'actions du bas. */
-function CalquesCarte({ id, resultat, couleursDessinees, lectureSeule, onRaccorde, onModifier }) {
+function CalquesCarte({ id, resultat, couleursDessinees, lectureSeule, nonEnregistre = false, onRaccorde, onModifier }) {
   const cases = casesPastille(resultat)
   const chaines = couleursDessinees ? chainesServies(resultat).filter((c) => c.couleur) : []
   const manuelles = (resultat?.electrique?.affectation ?? []).some((l) => l?.source === 'affectation manuelle')
@@ -190,7 +190,7 @@ function CalquesCarte({ id, resultat, couleursDessinees, lectureSeule, onRaccord
           ))}
         </CarteFlottante>
       )}
-      <BarreRaccordement calepinageId={id} manuelles={manuelles} lectureSeule={lectureSeule}
+      <BarreRaccordement calepinageId={id} manuelles={manuelles} nonEnregistre={nonEnregistre} lectureSeule={lectureSeule}
         onRaccorde={onRaccorde} onModifier={onModifier} />
     </SurCarte>
   )
@@ -207,6 +207,7 @@ export default function EtapeElectrique(props) {
   const [parametres, setParametres] = useSearchParams()
   const [relecture, setRelecture] = useState(0)
   const [editeur, setEditeur] = useState(false)
+  const [editeurModifie, setEditeurModifie] = useState(false) // S3 — brouillon non enregistré de l'éditeur d'affectation
   const relire = () => setRelecture((n) => n + 1)
   const cle = { id, relecture }
   const { data: resultat } = useResource((p) => calepinageApi.calepinages.resultat(p.id), cle, { select: (r) => r?.data ?? null })
@@ -253,7 +254,7 @@ export default function EtapeElectrique(props) {
     return true
   }
   const calques = (
-    <CalquesCarte id={id} resultat={resultat} couleursDessinees={peutColorer} lectureSeule={lectureSeule}
+    <CalquesCarte id={id} resultat={resultat} couleursDessinees={peutColorer} lectureSeule={lectureSeule} nonEnregistre={editeur && editeurModifie}
       onRaccorde={relire} onModifier={() => setEditeur(true)} />
   )
 
@@ -267,7 +268,7 @@ export default function EtapeElectrique(props) {
         </button>
         {/* S3 — « Raccorder automatiquement » (barre ci-dessus) efface l'affectation manuelle et fait `relire` : sans
             cette clé, l'éditeur gardait SA copie du résultat (anciennes chaînes, ancien verdict) jusqu'au rechargement. */}
-        <AffectationChaines key={relecture} calepinageId={id} lectureSeule={lectureSeule} />
+        <AffectationChaines key={relecture} calepinageId={id} lectureSeule={lectureSeule} onModifie={setEditeurModifie} />
       </div>
     )
   }
