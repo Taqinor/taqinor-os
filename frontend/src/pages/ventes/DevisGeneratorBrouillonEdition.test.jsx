@@ -73,7 +73,12 @@ describe('QJR581 — brouillon local en Édition complète', () => {
     expect(quitterBloque()).toBe(false)
   }, 15000)
 
-  it('R5A-N5 — lead résolu très tard (5 s, hors toute fenêtre), sans geste : rien d’armé ; un geste puis une saisie, si', async () => {
+  // R5A-N5 — CE QUE CE TEST PROUVE, ET CE QU'IL NE PROUVE PAS. Il prouve : lead relu tard (5 s), aucun geste ⇒ rien d'armé ;
+  // puis une saisie (son propre geste) ⇒ armé. Il ne prouve PAS le suivi des gestes contre une écriture tardive : la relecture
+  // du lead RÉ-ARME elle-même la fenêtre de 1,5 s (`useChargeurEdition` › `captureReferenceJusqua`), et aucune écriture de
+  // l'écran n'arrive ici après cette fenêtre — ce test passe aussi sur le code d'avant R5A-N5 (constaté au commit e92689de2).
+  // L'écriture tardive vue sur la vraie pile n'est pas reproduite dans jsdom : la preuve reste un rejeu en direct.
+  it('R5A-N5 — lead relu tard (5 s, la relecture ré-arme la fenêtre), sans geste : rien d’armé ; une saisie après son geste : armé', async () => {
     crmApi.getLead.mockImplementation(() => new Promise(r => setTimeout(() => r({ data: LEAD }), 5000)))
     renderEdition()
     await screen.findByRole('button', { name: /Enregistrer les modifications/ })
