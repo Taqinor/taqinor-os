@@ -6473,3 +6473,49 @@ decisions:
     date: "2026-11-26"
     source: "fondateur, séance de questions du 26/11/2026 (soir) ; second regard sur la pile du 26/11 (devis à deux options : `sans_batterie` nul sur la page) ; D-ACAL-140 reste vraie — le client ne reçoit que du stocké, et les deux options le deviennent"
     taches: []
+  - id: D-ACAL-159
+    question: "Un onduleur HYBRIDE est désigné à l'étape Électrique, mais le devis est généré « sans batterie » (cas vu en essai : hybride Deye désigné, onduleur réseau chiffré). Que porte le devis ?"
+    options:
+      - cle: hybride_seul
+        texte: "(recommandée) L'hybride désigné, sans batterie ; une batterie pourra s'ajouter plus tard sans changer d'onduleur"
+      - cle: basculer_avec_batterie
+        texte: "Le devis bascule en « avec batterie » : l'hybride désigné ET une batterie"
+      - cle: garder_le_reseau_et_le_dire
+        texte: "Garder un onduleur réseau et dire à l'écran que l'hybride désigné n'a pas été repris"
+    reponse: basculer_avec_batterie
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (nuit) ; suite de D-ACAL-148 ; le fondateur n'a PAS retenu l'option recommandée. Borne posée par l'orchestrateur, à confirmer : si aucune batterie n'est composable avec l'hybride désigné selon la règle de composition du devis (en stock, tarifée, compatible), le devis garde son choix de catalogue et l'écran le dit en nommant l'hybride désigné — jamais un hybride « avec batterie » sans batterie"
+    taches: []
+  - id: D-ACAL-160
+    question: "Devis de pompage sans distance forage → champ : le câble DC n'est pas chiffré (le vendeur reçoit une alerte, D-ACAL-156). La liste « Non inclus » du PDF du client doit-elle le dire ?"
+    options:
+      - cle: lister_non_inclus
+        texte: "(recommandée) La page 3 dit que le câble DC entre le forage et les panneaux n'est pas inclus et sera chiffré après mesure"
+      - cle: ne_rien_dire_au_client
+        texte: "Le PDF reste tel quel ; seul le vendeur voit l'alerte"
+    reponse: ne_rien_dire_au_client
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (nuit) ; le fondateur n'a PAS retenu l'option recommandée ; aucun changement au PDF agricole"
+    taches: []
+  - id: D-ACAL-161
+    question: "Visionneuse 3D simplifiée de la page du client (repli quand la visionneuse pleine ne charge pas) et estimateur public : les panneaux inclinés flottent sans support. Des pieds de châssis partout, ou seulement pour les liens « client de confiance » ?"
+    options:
+      - cle: pieds_partout
+        texte: "(recommandée) Des pieds sous les panneaux inclinés pour tous les liens et sur l'estimateur public ; purement visuel, aucun chiffre ne change"
+      - cle: confiance_seulement
+        texte: "Liens ordinaires et estimateur public inchangés"
+    reponse: pieds_partout
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (nuit) ; exception explicite à D-ACAL-134 (« les liens ordinaires ne changent pas ») pour ce seul point"
+    taches: []
+  - id: D-ACAL-162
+    question: "Le bouton « Tout recalculer » des réglages de simulation (il relance toutes les simulations périmées de la société) est ouvert à Commercial, Commercial responsable et Administrateur ; changer les réglages est réservé à ceux qui approuvent un calepinage. Réserver le bouton de la même façon ?"
+    options:
+      - cle: laisser_ouvert
+        texte: "(recommandée) Non : il ne change aucun réglage, il relance seulement des calculs déjà périmés"
+      - cle: reserver_aux_approbateurs
+        texte: "Oui, le réserver à ceux qui approuvent"
+    reponse: laisser_ouvert
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (nuit) ; tour 5 du L5, paquet E"
+    taches: []
