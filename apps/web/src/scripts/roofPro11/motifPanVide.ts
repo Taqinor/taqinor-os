@@ -76,9 +76,13 @@ export function causeDuPanVide(m: MesuresPanVide): MotifPanVide {
  *  sinon `null` (le motif noté du pan est alors retiré, comme sur le chemin plat). */
 export function motifPenteNord(nordique: boolean, poses: number, besoin: number, azimutDeg: number, penteDeg: number): MotifPanVide | null {
   if (!nordique || poses > 0 || !(besoin > 0) || !Number.isFinite(azimutDeg) || !Number.isFinite(penteDeg)) return null;
+  // Schéma : `azimutDeg` dans [0, 360[ (359,996 arrondi donnerait 360, refusé par `valider_document`), `penteDeg`
+  // dans [0, 90].
+  const azimut = ((r2(azimutDeg) % 360) + 360) % 360;
+  const pente = Math.min(90, Math.max(0, r2(penteDeg)));
   return { code: 'orientation_nord',
-    message: `Aucun module : pan en pente (${Math.round(penteDeg)}°) orienté au nord (azimut ${Math.round(azimutDeg)}°).`,
-    mesures: { azimutDeg: r2(azimutDeg), penteDeg: r2(penteDeg) } };
+    message: `Aucun module : pan en pente (${Math.round(pente)}°) orienté au nord (azimut ${Math.round(azimut) % 360}°).`,
+    mesures: { azimutDeg: azimut, penteDeg: pente } };
 }
 
 // — Mémoire d'atelier : un motif par pan, semée depuis le document, écrite à la sérialisation. —

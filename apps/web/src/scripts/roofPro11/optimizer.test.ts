@@ -1068,6 +1068,11 @@ describe('ACAL1970 — motif orientation_nord du toit en pente', () => {
     expect('motifsPansVides' in resoudre(180).doc).toBe(false);
     expect(motifPenteNord(true, 0, 0, 0, 22)).toBeNull(); // sans besoin, aucune cause à dire
   });
+  it('arrondis du schéma : 359,996° ⇒ azimut 0 (jamais 360) ; pente bornée à [0, 90]', () => {
+    expect(motifPenteNord(true, 0, 6, 359.996, 22)?.mesures).toEqual({ azimutDeg: 0, penteDeg: 22 });
+    expect(motifPenteNord(true, 0, 6, 359.996, 22)?.message).toBe('Aucun module : pan en pente (22°) orienté au nord (azimut 0°).');
+    expect(motifPenteNord(true, 0, 6, -10, 95)?.mesures).toEqual({ azimutDeg: 350, penteDeg: 90 });
+  });
 });
 
 // ACAL548 — UNE règle pour le seuil d'accès solaire : le dossier prime, la société sert de départ, sinon aucun filtre.
