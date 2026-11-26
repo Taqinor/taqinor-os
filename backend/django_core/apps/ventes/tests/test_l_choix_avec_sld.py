@@ -493,6 +493,9 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
         devis.statut, devis.clauses_appliquees = "envoye", []          # envoyé avant la règle
         avant = es.schema_electrique_public(devis, standard=False, option_totals=_TOTAUX)
         self.assertIsNone(avant["options"]["sans_batterie"])
+        es.schema_electrique_du_devis(devis)
+        es.rafraichir_conception_electrique_devis(devis)               # correction sur place
+        self.assertEqual(devis.clauses_appliquees, [])                 # jamais rétro-rempli
         es.figer_conceptions_des_options(devis)
         devis.statut = "brouillon"                                    # V2 qui hérite de l'entrée
         self.assertEqual(es.schema_electrique_public(devis, standard=False, option_totals=_TOTAUX), avant)
@@ -504,8 +507,29 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
         mono.statut, mono.clauses_appliquees = "envoye", None
         charge = es.schema_electrique_public(mono, standard=False, option_totals=_TOTAUX)
         self.assertEqual(es.figer_conceptions_des_options(mono), {})
-        self.assertIsNone(mono.clauses_appliquees)                    # rien écrit
+        # Revue 3 — le marqueur « envoyé sous D-ACAL-158 », options vides.
+        self.assertEqual(mono.clauses_appliquees,
+                         [{"type": "conceptions_options_figees", "options": {}}])
         self.assertEqual(es.schema_electrique_public(mono, standard=False, option_totals=_TOTAUX), charge)
+
+    def test_d_acal_158_un_mono_option_qui_gagne_sa_seconde_option_apres_l_envoi(self):
+        """Revue D-ACAL-158 (3) — envoyé à une option (marqueur), corrigé sur place
+        en deux options : la seconde est rangée et la page montre les deux."""
+        devis = _FauxDevis(lignes=[
+            _FausseLigne("Panneau PV 710 Wc", 30, produit=_panneau()),
+            _FausseLigne("Onduleur réseau 15kW triphasé", 1, produit=_onduleur_reseau())],
+            roof_layout=_roof(30))
+        es.build_electrical_design(devis)
+        devis.statut, devis.clauses_appliquees = "envoye", []
+        es.figer_conceptions_des_options(devis)
+        devis.lignes._lignes += [
+            _FausseLigne("Onduleur hybride 15kW triphasé", 1, produit=_onduleur_hybride()),
+            _FausseLigne("Batterie lithium 15,4 kWh", 1, produit=_batterie())]
+        es.rafraichir_conception_electrique_devis(devis)
+        self.assertEqual(set(es._conceptions_figees(devis)), {"sans_batterie"})
+        public = es.schema_electrique_public(devis, standard=False, option_totals=_TOTAUX)["options"]
+        self.assertIsNotNone(public["sans_batterie"])
+        self.assertIsNotNone(public["avec_batterie"])
 
     def test_d_acal_158_option_incalculable_non_rangee_sans_lever(self):
         from unittest import mock

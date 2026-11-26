@@ -1787,8 +1787,9 @@ def schema_electrique_public(devis, *, standard, option_totals):
 # envoyé avant n'en reçoit jamais, sa page et son PDF restent ceux reçus.
 
 def _entree_conceptions_figees(devis):
-    """L'entrée rangée à l'envoi, ou ``None`` : brouillon (même une V2 qui l'a
-    héritée de sa V1), devis mono-option ou envoyé avant D-ACAL-158."""
+    """L'entrée rangée à l'envoi (aussi sur un mono-option, ``options: {}``), ou
+    ``None`` : brouillon (même une V2 qui l'a héritée de sa V1) ou devis envoyé
+    avant D-ACAL-158."""
     from apps.ventes.domain.envoi import TYPE_CONCEPTIONS_OPTIONS_FIGEES
     if getattr(devis, "statut", None) == "brouillon":
         return None
@@ -1892,10 +1893,6 @@ def _ranger_conceptions_figees(devis, entree):
     quand rien ne change. Rend ``True`` quand la liste a été réécrite."""
     from apps.ventes.domain.envoi import TYPE_CONCEPTIONS_OPTIONS_FIGEES
     base = getattr(devis, "clauses_appliquees", None)
-    if entree is None and not any(
-            isinstance(c, dict) and c.get("type") == TYPE_CONCEPTIONS_OPTIONS_FIGEES
-            for c in (base or [])):
-        return False                 # mono-option : rien à écrire ni à relire
     if getattr(devis, "pk", None):
         from apps.ventes.models import Devis
         base = (Devis.objects.filter(pk=devis.pk)
@@ -1915,8 +1912,10 @@ def _ranger_conceptions_figees(devis, entree):
 def figer_conceptions_des_options(devis, *, garder=False):
     """D-ACAL-158 — range la conception de chaque option IMPOSÉE (celle que
     ``electrical_design`` ne porte pas) d'un devis à deux options ; rend
-    ``{clé: {design, hash}}``. Mono-option : aucune entrée (une entrée héritée
-    d'une V1 est retirée). Une option incalculable n'est pas rangée — la page
+    ``{clé: {design, hash}}``. L'entrée est TOUJOURS écrite, mono-option
+    comprise (``options: {}``) : elle marque « envoyé sous D-ACAL-158 », pour
+    qu'un devis qui gagne sa seconde option par une correction après l'envoi
+    reçoive aussi son second schéma (revue 3). Une option incalculable n'est pas rangée — la page
     client ne montre alors rien pour elle (D-ACAL-142) — et l'envoi ne
     s'arrête jamais : ne lève pas, journalise. ``garder`` (correction sur place)
     reprend les conceptions déjà rangées dont les entrées n'ont pas bougé ; à
@@ -1928,7 +1927,7 @@ def figer_conceptions_des_options(devis, *, garder=False):
         imposees = [v for v, imposee in _variantes_du_schema(devis) if imposee]
     except Exception:  # noqa: BLE001 — journalisé, l'envoi continue (D-ENF22-BLE001)
         logger.warning("D-ACAL-158 : options du devis %s illisibles", reference, exc_info=True)
-        return {}
+        imposees = []
     anciennes = _conceptions_figees(devis) if garder else {}
     options = {}
     a_concevoir = imposees
@@ -1950,8 +1949,7 @@ def figer_conceptions_des_options(devis, *, garder=False):
                            "devis %s (option non dessinable)", cle, reference)
             continue
         options[cle] = conception
-    entree = ({"type": TYPE_CONCEPTIONS_OPTIONS_FIGEES, "options": options}
-              if imposees else None)
+    entree = {"type": TYPE_CONCEPTIONS_OPTIONS_FIGEES, "options": options}
     try:
         _ranger_conceptions_figees(devis, entree)
     except Exception:  # noqa: BLE001 — journalisé, l'envoi continue (D-ENF22-BLE001)
