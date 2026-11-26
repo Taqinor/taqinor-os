@@ -6,6 +6,15 @@ import { useLectureServie } from '../atelier/coque/etapes/panneaux/lectures'
 /** T4-X8-007 — l'état d'adresse posé par le relevé (« Voir en 3D ») : la vue client sait qu'on vient de lui. */
 export const DEPUIS_RELEVE = { depuis: 'releve' }
 
+/** ACAL1319 — où revient « Terminer le relevé » : l'adresse d'où le relevé a été ouvert (`state.depuis`, posé par chaque lien
+    d'entrée), sinon la fiche du calepinage. Seule une adresse DE L'APPLICATION est suivie (« /… », jamais « //… » ni un
+    schéma) : un lien profond ou un démarrage hors ligne n'a pas d'origine. */
+export function retourDuReleve(state, id) {
+  const depuis = state?.depuis
+  const interne = typeof depuis === 'string' && depuis.startsWith('/') && !depuis.startsWith('//')
+  return interne ? depuis : `/calepinage/${id}`
+}
+
 /* ACAL1353 — LE MOTEUR DU TOIT N'EST PLUS DANS LE PAQUET DE LA VUE CLIENT. Les deux fonctions du constructeur dont la vue
    a besoin (`modulesDuDocument` : les modules posés ; `memeTaille` : le prédicat de taille de l'atelier) se chargent par UN
    import dynamique, dans le hook qui nourrit la vue (`useMoteurToit`). Sans moteur (chargement, ou échec du chargement — le

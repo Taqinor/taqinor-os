@@ -182,7 +182,8 @@ export function TuilesClient({ tuiles, ville, bureau = false }) {
     sa raison. */
 export function PiedClient({ id }) {
   const peutDevis = usePeutGenererDevis()
-  const depuisReleve = useLocation().state?.depuis === DEPUIS_RELEVE.depuis
+  const etatAdresse = useLocation().state
+  const depuisReleve = etatAdresse?.depuis === DEPUIS_RELEVE.depuis
   return (
     <footer className="cal-tel-pied" data-vue-client="">
       {!depuisReleve ? (
@@ -191,7 +192,7 @@ export function PiedClient({ id }) {
           {'Retour à l’atelier'}
         </Link>
       ) : (
-        <Link to={`/calepinage/${id}/releve`} className="cal-tel-pied-secondaire" data-testid="client-retour-releve">
+        <Link to={`/calepinage/${id}/releve`} state={etatAdresse?.origine ? { depuis: etatAdresse.origine } : undefined} className="cal-tel-pied-secondaire" data-testid="client-retour-releve">
           <Icone nom="retour" taille={18} epaisseur={2} />
           Retour au relevé
         </Link>

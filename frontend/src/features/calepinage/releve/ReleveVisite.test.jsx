@@ -1063,4 +1063,28 @@ describe('ACAL1319 / D-ACAL-68 — « Terminer le relevé » enregistre puis rev
     await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Une photo a été refusée'))
     expect(allerA).not.toHaveBeenCalled()
   })
+
+  const rendreDepuis = (entree) => render(
+    <MemoryRouter initialEntries={[entree]}>
+      <Routes><Route path="/calepinage/:id/releve" element={<ReleveVisite />} /></Routes>
+    </MemoryRouter>,
+  )
+
+  it('ouvert depuis la page devis (état d’adresse) : « Terminer » ET la flèche « Retour » ramènent là', async () => {
+    rendreDepuis({ pathname: '/calepinage/1/releve', state: { depuis: '/ventes/devis/7/design' } })
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalled())
+    expect(screen.getByRole('link', { name: 'Retour' }).getAttribute('href')).toBe('/ventes/devis/7/design')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(allerA).toHaveBeenCalledWith('/ventes/devis/7/design'))
+  })
+
+  it('lien profond (aucun état) : retour à la fiche du calepinage ; une adresse hors application n’est jamais suivie', async () => {
+    rendreDepuis({ pathname: '/calepinage/1/releve', state: { depuis: '//autre.exemple/x' } })
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalled())
+    expect(screen.getByRole('link', { name: 'Retour' }).getAttribute('href')).toBe('/calepinage/1')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(allerA).toHaveBeenCalledWith('/calepinage/1'))
+  })
 })
