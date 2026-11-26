@@ -325,3 +325,9 @@ class CibleDeLaConceptionTest(BaseApiCalepinage):
         cible = self._contexte(calepinage)['cible']
         self.assertEqual((cible['panneaux'], cible['source'], cible['refus']), (7, 'devis', None))
         self.assertEqual(cible['panel_watt'], 550)
+        self.assertEqual(cible['devis_agricole'], {'id': devis.pk, 'reference': 'DEV-202611-1268'})
+        # Un brouillon agricole VIDE plus récent ne masque pas le devis plus ancien qui porte des panneaux.
+        Devis.objects.create(company=self.company, client=client, lead=lead, reference='DEV-202611-1269',
+                             mode_installation=Devis.ModeInstallation.AGRICOLE)
+        self.assertEqual(self._contexte(calepinage)['cible']['devis_agricole']['id'], devis.pk)
+        self.assertIsNone(sans_devis['devis_agricole'])
