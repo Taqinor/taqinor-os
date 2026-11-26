@@ -21,7 +21,7 @@ export default function InspecteurBuilder({ estCalepinage = false }) {
           <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Recommandation</p>
           <p id="rp9-reco-title" className="fig mt-4 text-2xl text-primary-text">—</p>
           <div className="mt-5 border border-border bg-card/60 p-4">
-            <label htmlFor="rp9-need-input" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Panneaux nécessaires</label>
+            <label htmlFor="rp9-need-input" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Panneaux à poser</label>
             <div className="mt-2 flex items-center gap-3">
               <button type="button" id="rp9-need-minus" aria-label="Un de moins" className="h-11 w-11 border border-border text-2xl text-foreground">−</button>
               <input id="rp9-need-input" type="text" inputMode="numeric" defaultValue="—" disabled

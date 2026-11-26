@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { renderLeadWorkspace } from '../../../test/leadWorkspaceHarness'
 import { LEAD_A, installerHooksLeadWorkspace } from '../../../test/leadWorkspaceMocks'
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, fireEvent } from '@testing-library/react'
+import crmApi from '../../../api/crmApi'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
@@ -13,7 +14,7 @@ import LeadWorkspace from './LeadWorkspace'
    Mêmes neutralisations que LeadWorkspaceCreate.test.jsx, sauf LeadDevisPanel
    (exposé pour vérifier le mode passé par « Devis automatique »). */
 vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({
-  default: (props) => <div data-testid="devis-panel" data-mode={props.mode} />,
+  default: (props) => <div data-testid="devis-panel" data-mode={props.mode} data-kwc={props.targetKwc ?? ''} />,
 }))
 vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => null }))
 
@@ -108,5 +109,71 @@ describe('LW26 — actions contextuelles ⌘K + Récents', () => {
     section.scrollIntoView = scrollSpy
     act(() => { goToToiture.run() })
     expect(scrollSpy).toHaveBeenCalled()
+  })
+})
+
+/* D-ACAL-154 — la taille visée tapée dans l'onglet Devis est lue aussi par la
+   palette de commandes (le rail est couvert dans LeadWorkspace.onAction.test). */
+describe('D-ACAL-154 — la palette « Devis automatique » lit la taille tapée', () => {
+  const FICHE = (id) => ({
+    id, nom: 'Ali', prenom: 'Ben', stage: 'NEW', is_archived: false,
+    devis_auto: { pret: true, manquants: [] },
+  })
+  let actions = null
+  const ecoute = (e) => { actions = e.detail.actions }
+
+  const monter = async (lead = LEAD_A) => {
+    crmApi.getLead.mockImplementation((id) => Promise.resolve({ data: FICHE(id) }))
+    sessionStorage.setItem('taqinor.lw.contextTab', 'devis')
+    window.addEventListener('taqinor:lead-workspace-actions', ecoute)
+    renderLeadWorkspace({ lead })
+    return screen.findByTestId('lw-devis-kwc')
+  }
+  const lancerPalette = () => act(() => { actions.find((a) => a.id === 'lw-devis-auto').run() })
+  const nettoyer = () => { window.removeEventListener('taqinor:lead-workspace-actions', ecoute); sessionStorage.clear() }
+
+  it('taille tapée → la palette ouvre le devis automatique avec cette taille', async () => {
+    const champ = await monter()
+    fireEvent.change(champ, { target: { value: '3.5' } })
+    lancerPalette()
+    expect(screen.getByTestId('devis-panel')).toHaveAttribute('data-kwc', '3.5')
+    nettoyer()
+  })
+
+  it('taille tapée puis effacée → aucune taille envoyée', async () => {
+    const champ = await monter()
+    fireEvent.change(champ, { target: { value: '3' } })
+    fireEvent.change(champ, { target: { value: '' } })
+    lancerPalette()
+    expect(screen.getByTestId('devis-panel')).toHaveAttribute('data-kwc', '')
+    nettoyer()
+  })
+
+  it('onglet Devis jamais ouvert → aucune taille (comportement d’avant)', async () => {
+    window.addEventListener('taqinor:lead-workspace-actions', ecoute)
+    renderEdit()
+    lancerPalette()
+    expect(screen.getByTestId('devis-panel')).toHaveAttribute('data-kwc', '')
+    nettoyer()
+  })
+
+  it('taille tapée sur le lead A → jamais lue pour le lead B', async () => {
+    const store = configureStore({ reducer: { crm: crmReducer, auth: (s = { user: { id: 42 } }) => s } })
+    crmApi.getLead.mockImplementation((id) => Promise.resolve({ data: FICHE(id) }))
+    sessionStorage.setItem('taqinor.lw.contextTab', 'devis')
+    window.addEventListener('taqinor:lead-workspace-actions', ecoute)
+    const wrap = (lead) => (
+      <Provider store={store}>
+        <MemoryRouter>
+          <LeadWorkspace lead={lead} onClose={vi.fn()} onSaved={vi.fn()} />
+        </MemoryRouter>
+      </Provider>
+    )
+    const { rerender } = render(wrap(LEAD_A))
+    fireEvent.change(await screen.findByTestId('lw-devis-kwc'), { target: { value: '7' } })
+    rerender(wrap({ id: 2, nom: 'Zohra', prenom: 'Idrissi', stage: 'NEW', is_archived: false }))
+    lancerPalette()
+    expect(screen.getByTestId('devis-panel')).toHaveAttribute('data-kwc', '')
+    nettoyer()
   })
 })

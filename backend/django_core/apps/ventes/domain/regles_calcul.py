@@ -322,3 +322,20 @@ def calcul_corrige(devis) -> bool:
     explicitement marquées 1 en base gardent l'ancien calcul.
     """
     return regles_au_moins(devis, REGLES_CORRIGEES)
+
+
+#: D-ACAL-149 (fondateur 26/11/2026, « nouveaux rendus seulement ») : sur un
+#: toit PLAT, ``zones[].pitchDeg`` n'est que la valeur mémorisée du curseur
+#: (22° par défaut) ; la pente lue est 0 (``core.calepinage.geo.
+#: pente_effective_du_pan``). Même mécanique que
+#: :data:`COUPURE_CHAINES_INEGALES` (prédicat seul, aucun drapeau de rendu) ;
+#: le niveau 15 n'est pas rendu courant. Date À POSER par l'orchestrateur (le
+#: lendemain du déploiement) : un devis envoyé avant garde ce qu'il a reçu.
+COUPURE_TOIT_PLAT = (2026, 11, 28)
+
+
+def toit_plat_ouvert(devis) -> bool:
+    """D-ACAL-149 — ce devis lit-il la pente d'un toit plat comme 0 (et non la
+    valeur du curseur) ? Voir :data:`COUPURE_TOIT_PLAT`."""
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111,
+                                       COUPURE_TOIT_PLAT)

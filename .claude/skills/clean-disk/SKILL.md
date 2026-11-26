@@ -67,6 +67,11 @@ sessions Claude. **Ne cherche pas ailleurs : les endroits sont connus, ils sont 
   lignes de `git status` sont des suppressions. Le script le reconnaît (rien que des suppressions, au moins 50) et
   le retire ; en dessous de ce seuil il le laisse, à regarder à la main.
 
+- **Jonctions des lanes (portable, 26/11/2026).** Sur le portable les lanes partagent `node_modules` par une
+  jonction ; `git worktree remove` et `rm -rf` suppriment À TRAVERS une jonction et vident le vrai dossier d'une
+  autre session (mesuré le 20/09 et le 02/11). Le script retire donc d'abord chaque jonction avec `cmd rmdir`
+  (le lien seul) et laisse l'arbre s'il en reste une. Ne jamais supprimer un arbre à la main sans ce geste.
+
 ## Ce que le script ne peut pas rendre
 
 Docker garde l'espace libéré dans son disque virtuel : Windows ne le récupère qu'après un compactage, qui demande

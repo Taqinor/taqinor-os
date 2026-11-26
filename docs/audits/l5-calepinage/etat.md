@@ -2379,3 +2379,49 @@ du stock (aucun prix d'achat) ; « Tout recalculer » ouvert au Commercial ; un 
 d'un calepinage qu'il ne pourrait pas ouvrir (assignation en impasse refusée, rien ne change dans D-ACAL-106/126) ;
 « Devis auto » qui crée un brouillon à chaque clic ; libellé « Panneaux nécessaires » contre « Cible » dans l'atelier
 (T4-X8-012) ; une cible de taille tapée dans l'onglet Devis n'est pas lue par les deux autres boutons « Devis automatique ».
+
+### Point du 26/11, 13 h 50 UTC — RÉPARATION DE LA VISIONNEUSE EN FILE DE FUSION, LOT 8 EN RELECTURE (le plus récent — REPRENDRE ICI)
+
+Correction d'horloge : le point précédent, intitulé « 19 h UTC », a été écrit vers 12 h UTC (heure de GitHub : lot 7 fusionné à
+11 h 00 UTC). Les « séance du soir » et « séance de nuit » de `decisions.yml` sont deux séances de questions du 26/11 en
+début d'après-midi.
+
+**PR en vol (une seule)** : Taqinor/taqinor-os#1562, `lot8/web-visionneuse-correctifs-a` → `main`, site seul (5 fichiers
+sous `apps/web`), Auto-fix allumé, fusion automatique demandée. Elle répare le défaut signalé par Reda (« le bouton lecture
+ne change rien ») : la visionneuse 3D de la page du devis jetait au premier rendu (`ctx.dom` absent depuis CALX111). Vérifiée
+dans un navigateur sur un build de production (enregistrement `T5/visuel-web-a.json`, clé `ship_305a1c48a`). En ligne par
+Cloudflare à la fusion, sans déploiement de l'ERP.
+
+**Suite du site (étape B)** : `lot8/web-visionneuse-b` (5cfee2618 + corrections en cours) — habillage « Montrer au client »
+des liens de confiance, ombres portées au sol et des obstacles, pas de soleil sans reconstruction de maillage, pieds de
+châssis PARTOUT (D-ACAL-161), aide des gestes traduite, repli vrai quand le style de carte est refusé. À relire par un
+relecteur neuf puis à regarder dans un navigateur avant sa PR (après la fusion de #1562).
+
+**Lot 8** (`dev-lot8`, pas de PR ; baux `Reda_Laptop/dev-lot8`) :
+- Pliées : r5d-corrections, acal-apercu-devis, r5e-corrections, acal-module-substitue-2, acal-schema-visuel-2,
+  r5f-corrections, pompage-cable-alerte (les quatre dernières sans seconde relecture neuve : à couvrir par la relecture
+  finale du lot assemblé).
+- En relecture neuve (26/11, 13 h 45) : `lot8/prix-vente-technicien` (7f2dcf4b4, migration `roles/0016`),
+  `lot8/schema-deux-options` (1211b1e7a ; l'annexe du PDF par option N'EST PAS construite), `lot8/acal-toit-plat-rendus`
+  (8fb4d21b4 ; partie (ii) — création et resynchronisation — à appliquer après le pli d'onduleur-designe),
+  `lot8/cible-et-libelle` (2cd6777f8), `lot8/acal-batterie-atelier` (dfd57cd48).
+- En correction : `lot8/acal-onduleur-designe` (relecture : 5 défauts — quantité vendue quand aucun nombre n'est accepté,
+  produit reconnu par rôle ou fiche mais pas par son nom en aval, test de batterie plus lâche que la composition, raison
+  fausse à l'aperçu, contrôles de raccordement sautés ; plus D-ACAL-159).
+- En construction : `lot8/plan-couleurs-chaines` (constat R3 du second regard : panneaux du plan blancs à l'étape
+  Électrique).
+- Abandonnée : `lot8/hyb6-residentiel` (D-HYB-6 = rien ne change).
+- À mettre en file après les relectures : annexe du PDF par option (D-ACAL-158, moteur — règle n° 4) ;
+  `apps/calepinage/views/pompage.py::_produit_pompage` sert encore le prix de vente à un technicien (suite de D-ACAL-152) ;
+  puissance du module 710 / 715 entre l'entrée électrique stockée et le plan (`electrique.py::resoudre_materiel`).
+
+**Avant la PR du lot 8** : dates de `COUPURE_PROTECTION_FICHE` et `COUPURE_TOIT_PLAT` = lendemain du déploiement ;
+instantané OpenAPI ; `codemap_fingerprint.py --write` ; marques au plan et DONE LOG ; mesure du bundle ; gardes
+`backend-lint-fast` et `stage-names` ; relecture finale du lot assemblé (Fable) ; puis PR, CI, fusion, baux rendus.
+
+**Réponses du fondateur, troisième séance du 26/11** : D-ACAL-159 (hybride désigné sans batterie → devis basculé en « avec
+batterie »), 160 (PDF de pompage inchangé), 161 (pieds partout), 162 (« Tout recalculer » reste ouvert). **Attend Reda** :
+lesquels des 18 choix changer (`choix-a-confirmer-2026-11-26.md`) ; déploiement du lot 7 (`scripts/deploy-prod.ps1`).
+
+**Jamais vu à l'écran** : toutes les corrections des lots 7 et 8 sauf le second regard du lot 7 ; la génération du devis
+35 × 715 W avec la garde refaite ; l'imagerie satellite réelle sur la page du client.
