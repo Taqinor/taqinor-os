@@ -1174,14 +1174,14 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
 
         if 'heure_debut' in attrs or 'heure_fin' in attrs:
             debut, fin = _valeur('heure_debut'), _valeur('heure_fin')
-            if debut is not None and fin is not None and debut >= fin:
+            if debut is not None and fin is not None and debut == fin:
                 champ = 'heure_fin' if 'heure_fin' in attrs else 'heure_debut'
                 # Règle ENTRE deux nombres (ou avec l'heure déjà enregistrée) :
                 # aucun schéma ne la dit -> 409, jamais un 400 sur un corps
                 # conforme. ``useLeadDraft`` lit 400 et 409 pareil.
                 raise ConflitEtat({champ: [
-                    "« Heure de fin » : elle doit être après l'heure de "
-                    'début.']})
+                    "« Heure de fin » : une plage de 0 h n'existe pas ; pour "
+                    '24 h sur 24, choisissez 0 → 24.']})
         # CIQ666 — le bi-horaire n'est ouvert qu'à la force motrice
         # (``tarifs_officiels.grille_bt``) : jamais à un patenté ni en MT.
         if 'option_tarifaire_bt' in attrs or 'contrat_electricite' in attrs:

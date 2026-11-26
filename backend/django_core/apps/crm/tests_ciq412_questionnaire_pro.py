@@ -112,6 +112,18 @@ class QuestionnairePro(TestCase):
         lead = self._pro(**dict(societe, tva_recuperable=None))
         self.assertTrue(quest.manquantes(lead)['societe'])
 
+    def test_acal1244_plage_de_nuit_gardee_plage_nulle_jetee(self):
+        # ACAL1244 — 22 h -> 6 h passe minuit : gardee ; 8 -> 8 : jetee.
+        lead = self._pro(categorie_commerciale='hotel')
+        nuit = quest._champs_pro_depuis_reponses(
+            lead, 'activite', {'heure_debut': 22, 'heure_fin': 6})
+        self.assertEqual((nuit.get('heure_debut'), nuit.get('heure_fin')),
+                         (22, 6))
+        nulle = quest._champs_pro_depuis_reponses(
+            lead, 'activite', {'heure_debut': 8, 'heure_fin': 8})
+        self.assertNotIn('heure_debut', nulle)
+        self.assertNotIn('heure_fin', nulle)
+
     def test_post_activite_jamais_ferme_enregistre_une_liste_vide(self):
         lead = self._pro()
         lien = QuestionnaireLien.objects.create(
