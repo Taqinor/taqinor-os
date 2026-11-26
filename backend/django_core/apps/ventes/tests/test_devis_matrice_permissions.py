@@ -291,6 +291,51 @@ class MatricePermissionsDevis(TestCase):
         self.assertEqual(lire(commercial, lignes).status_code, 200)
         self.assertEqual(lire(commercial, prix).status_code, 200)
 
+    def test_dacal165_technicien_lit_produits_et_quantites_sans_montants(self):
+        """D-ACAL-165 — le Technicien livré (octroi ``installation_voir``, sans
+        ``prix_vente_voir``) lit les lignes du devis de SON chantier SANS
+        prix unitaire, remise ni total, et sa subvention sans montants ; le
+        Commercial (avec le droit) reçoit les mêmes réponses qu'avant."""
+        from decimal import Decimal
+
+        from apps.installations.models import Installation
+        from apps.ventes.models import LigneDevis
+        from apps.ventes.models_regulatory import SubventionDossier
+
+        client = Client.objects.create(company=self.company, nom='DACAL165')
+        commercial = self._compte('Commercial', registre.COMMERCIAL_PERMISSIONS)
+        technicien = self._compte('Technicien', registre.TECHNICIEN_PERMISSIONS)
+        devis = Devis.objects.create(company=self.company, reference='DEV-D165-1',
+                                     client=client, created_by=commercial)
+        LigneDevis.objects.create(devis=devis, designation='Panneau', quantite=Decimal('4'),
+                                  prix_unitaire=Decimal('98765.43'), remise=Decimal('5'))
+        Installation.objects.create(company=self.company, reference='CH-D165-1', client=client,
+                                    devis=devis, technicien_responsable=technicien)
+        SubventionDossier.objects.create(company=self.company, devis=devis,
+                                         montant_demande=Decimal('87654.32'))
+
+        def corps(user, url):
+            api = APIClient()
+            api.force_authenticate(user)
+            reponse = api.get(url)
+            self.assertEqual(reponse.status_code, 200, (user.username, url, reponse.data))
+            donnees = reponse.data
+            return donnees.get('results', donnees) if isinstance(donnees, dict) else donnees
+
+        lignes = corps(technicien, '/api/django/ventes/devis-lignes/')
+        self.assertEqual([(ligne['designation'], Decimal(str(ligne['quantite']))) for ligne in lignes],
+                         [('Panneau', Decimal('4'))])
+        for cle in ('prix_unitaire', 'remise', 'total_ht'):
+            self.assertNotIn(cle, lignes[0])
+        avec = corps(commercial, '/api/django/ventes/devis-lignes/')
+        self.assertEqual(Decimal(str(avec[0]['prix_unitaire'])), Decimal('98765.43'))
+        self.assertIn('total_ht', avec[0])
+        sub = corps(technicien, '/api/django/ventes/subventions/')
+        self.assertEqual(len(sub), 1)
+        self.assertNotIn('montant_demande', sub[0])
+        self.assertNotIn('98765', str(lignes) + str(sub))
+        self.assertIn('montant_demande', corps(commercial, '/api/django/ventes/subventions/')[0])
+
     def test_lecture_devis_refusee_hors_module_ventes(self):
         # ADVS23 — Admin RH, Commercial terrain et les deux techniciens : 403 ×5.
         client = Client.objects.create(company=self.company, nom='ADVS23')

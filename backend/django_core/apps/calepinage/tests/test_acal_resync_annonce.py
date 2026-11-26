@@ -28,6 +28,12 @@ TOIT = {
 }
 
 
+def _materiel(apercu):
+    """Les écarts de MATÉRIEL de l'aperçu (round 4 : le toit plat de ``TOIT`` sans tables y ajoute
+    aussi la phrase des 20° supposés, champ ``geometry.tiltDeg``, la même qu'à la génération)."""
+    return [e for e in apercu['ecarts'] if e['champ'] != 'geometry.tiltDeg']
+
+
 class ResyncAnnonceTest(BaseApiCalepinage):
     def setUp(self):
         super().setUp()
@@ -78,13 +84,14 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertNotIn('_pans_geometry', self.calepinage.roof_layout)
 
     # ── Lane E6e, item 3 (T4-X5-010) — le devis né de l'atelier et l'onduleur désigné ──
-    def _designer(self, nom):
+    def _designer(self, nom, **saisie):
         from apps.calepinage.services.electrique import CLE_ENTREE
         from apps.stock.models import Produit
 
         produit = Produit.objects.get(company=self.company, nom=nom)
         self.calepinage.refresh_from_db()
-        resultat = dict(self.calepinage.resultat or {}, **{CLE_ENTREE: {'onduleur_produit': produit.pk}})
+        resultat = dict(self.calepinage.resultat or {},
+                        **{CLE_ENTREE: {'onduleur_produit': produit.pk, **saisie}})
         Calepinage.objects.filter(pk=self.calepinage.pk).update(resultat=resultat)
         self.calepinage.refresh_from_db()
         return produit
@@ -133,9 +140,11 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertEqual(set(reponse.data), set(contrat['exemple']))
         self.assertEqual(set(reponse.data['options'][0]), set(contrat['exemple']['options'][0]))
         self.assertEqual([o['onduleur'] for o in reponse.data['options']], ['Onduleur réseau Huawei 5kW Monophasé'])
-        self.assertEqual([e['champ'] for e in reponse.data['ecarts']], ['onduleur_produit'])
+        self.assertEqual([e['champ'] for e in _materiel(reponse.data)], ['onduleur_produit'])
         self.assertIn('« Onduleur hybride Deye 5kW Monophasé »', reponse.data['ecarts'][0]['message'])
-        self.assertIn('« Onduleur réseau Huawei 5kW Monophasé »', reponse.data['ecarts'][0]['message'])
+        # D-ACAL-148 (relecture, point 4) — la phrase est celle de la décision (ici : aucun nombre
+        # d'onduleurs accepté ni établi par un schéma sans fiche) ; l'onduleur porté est lu dans ``options``.
+        self.assertIn('le devis garde l’onduleur de la conception du lead', reponse.data['ecarts'][0]['message'])
         self.assertIsNone(reponse.data['refus'])
         self.assertNotIn('prix', json.dumps(reponse.data))
         self.calepinage.refresh_from_db()
@@ -477,9 +486,353 @@ class ResyncAnnonceTest(BaseApiCalepinage):
             reponse = self.api.post(f'{self.base}sync-devis/', {}, format='json')
         self.assertEqual((reponse.status_code, str(reponse.data['detail'])), (409, 'Refus du serveur.'))
 
+    # ── D-ACAL-148 (fondateur, 26/11/2026) — le devis chiffre l'onduleur désigné ──
+    def _apercu_puis_generation(self):
+        from apps.ventes.models import Devis
+
+        apercu = self.api.get(f'{self.base}apercu-devis/')
+        self.assertEqual(apercu.status_code, 200, apercu.data)
+        genere = self.api.post(f'{self.base}generer-devis/', {'creer_autre_devis': True}, format='json')
+        self.assertEqual(genere.status_code, 201, genere.data)
+        lignes = Devis.objects.get(pk=genere.data['devis']).lignes.all()
+        onduleurs = {(li.variante or None): (li.designation, li.role_devis) for li in lignes
+                     if str(li.role_devis or '').startswith('onduleur_')}
+        return apercu.data, genere.data, onduleurs
+
+    def test_d_acal_148_onduleur_reseau_designe_et_tarife_est_au_devis(self):
+        from apps.stock.models import Produit
+
+        for kw, prix in ((6, 15000), (8, 16000)):  # sans désignation, le catalogue prendrait le 6 kW
+            Produit.objects.create(company=self.company, nom=f'Onduleur réseau Growatt {kw}kW Monophasé',
+                                   sku=f'A148-G{kw}-{self.company.pk}', prix_vente=Decimal(prix),
+                                   prix_achat=Decimal('1'), quantite_stock=5)
+        self._nouvelle_pose()
+        self._designer('Onduleur réseau Growatt 8kW Monophasé', nombre_onduleurs=1)
+        apercu, _genere, onduleurs = self._apercu_puis_generation()
+        self.assertEqual([o['onduleur'] for o in apercu['options']], ['Onduleur réseau Growatt 8kW Monophasé'])
+        self.assertEqual(_materiel(apercu), [])
+        self.assertEqual(onduleurs, {None: ('Onduleur réseau Growatt 8kW Monophasé', 'onduleur_reseau')})
+
+    def test_d_acal_148_sans_prix_le_repli_est_dit_a_l_apercu_et_a_la_generation(self):
+        from apps.stock.models import Produit
+
+        Produit.objects.create(company=self.company, nom='Onduleur réseau Growatt 3kW Monophasé',
+                               sku=f'A148-G3-{self.company.pk}', prix_vente=Decimal('0'),
+                               prix_achat=Decimal('1'), quantite_stock=5)
+        self._nouvelle_pose()
+        self._designer('Onduleur réseau Growatt 3kW Monophasé', nombre_onduleurs=1)
+        apercu, genere, onduleurs = self._apercu_puis_generation()
+        self.assertEqual([o['onduleur'] for o in apercu['options']], ['Onduleur réseau Huawei 5kW Monophasé'])
+        self.assertEqual([e['champ'] for e in _materiel(apercu)], ['onduleur_produit'])
+        self.assertIn('pas de prix de vente', apercu['ecarts'][0]['message'])
+        self.assertTrue(any('pas de prix de vente' in m for m in genere['avertissements']), genere)
+        self.assertEqual(onduleurs, {None: ('Onduleur réseau Huawei 5kW Monophasé', 'onduleur_reseau')})
+
+    def test_d_acal_148_sans_nombre_ni_schema_le_repli_est_dit(self):
+        """Relecture, point 1 — aucun nombre accepté et un schéma sans fiche (aucun nombre établi) :
+        le devis garde le choix du catalogue et le dit, jamais ⌈kWc ÷ kW⌉."""
+        from apps.stock.models import Produit
+
+        Produit.objects.create(company=self.company, nom='Onduleur réseau Growatt 8kW Monophasé',
+                               sku=f'A148-N8-{self.company.pk}', prix_vente=Decimal('16000'),
+                               prix_achat=Decimal('1'), quantite_stock=5)
+        self._nouvelle_pose()  # sans désignation, le catalogue prend le 8 kW (≥ 80 % de 6,6 kWc)
+        self._designer('Onduleur réseau Huawei 5kW Monophasé')
+        apercu, genere, onduleurs = self._apercu_puis_generation()
+        self.assertIn('ni établi par le schéma', apercu['ecarts'][0]['message'])
+        self.assertTrue(any('ni établi par le schéma' in m for m in genere['avertissements']), genere)
+        self.assertEqual(onduleurs, {None: ('Onduleur réseau Growatt 8kW Monophasé', 'onduleur_reseau')})
+
+    def test_d_acal_159_hybride_sur_pose_sans_batterie_le_devis_passe_avec_batterie(self):
+        """D-ACAL-159 (fondateur, 26/11/2026) — l'hybride désigné ET une batterie (celle que la
+        composition pose) ; la phrase est dite à la génération."""
+        from apps.ventes.models import Devis
+
+        self._nouvelle_pose()
+        self._designer('Onduleur hybride Deye 5kW Monophasé', nombre_onduleurs=1)
+        apercu, genere, onduleurs = self._apercu_puis_generation()
+        phrase = ('Le devis passe en « avec batterie » : l’onduleur désigné « Onduleur hybride Deye 5kW '
+                  'Monophasé » est un hybride.')
+        self.assertIn(phrase, genere['avertissements'], genere)
+        self.assertEqual(apercu['ecarts'], [{'champ': 'onduleur_produit', 'message': phrase}])  # même phrase
+        self.assertEqual([o['onduleur'] for o in apercu['options']], ['Onduleur hybride Deye 5kW Monophasé'])
+        self.assertEqual(onduleurs, {None: ('Onduleur hybride Deye 5kW Monophasé', 'onduleur_hybride')})
+        self.assertTrue(Devis.objects.get(pk=genere['devis']).lignes.filter(role_devis='batterie').exists())
+
+    def test_d_acal_148_deux_options_l_hybride_designe_va_a_l_option_avec(self):
+        from apps.ventes.models import Devis
+
+        Devis.objects.filter(pk=self.calepinage.devis_id).update(is_active=False)
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=None)
+        self.calepinage.refresh_from_db()
+        enregistrer_layout(self.calepinage, dict(copy.deepcopy(TOIT), scenario='les_deux'), user=self.user)
+        self.calepinage.refresh_from_db()
+        self._designer('Onduleur hybride Deye 5kW Monophasé', nombre_onduleurs=1)
+        apercu, _genere, onduleurs = self._apercu_puis_generation()
+        self.assertEqual({o['option']: o['onduleur'] for o in apercu['options']},
+                         {'sans': 'Onduleur réseau Huawei 5kW Monophasé',
+                          'avec': 'Onduleur hybride Deye 5kW Monophasé'})
+        self.assertEqual(_materiel(apercu), [])
+        self.assertEqual(onduleurs['avec'], ('Onduleur hybride Deye 5kW Monophasé', 'onduleur_hybride'))
+        self.assertEqual(onduleurs['sans'], ('Onduleur réseau Huawei 5kW Monophasé', 'onduleur_reseau'))
+
+    # ── D-ACAL-148 / 159 (relecture, A) — « Resynchroniser » ne défait pas une désignation ──
+    def _resynchroniser(self):
+        from apps.ventes.models import Devis
+
+        reponse = self.api.post(f'{self.base}sync-devis/', {}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.calepinage.refresh_from_db()
+        lignes = Devis.objects.get(pk=self.calepinage.devis_id).lignes.all()
+        onduleurs = sorted((li.designation, int(li.quantite)) for li in lignes
+                           if str(li.role_devis or '').startswith('onduleur_') or 'nduleur' in li.designation)
+        return reponse.data, onduleurs, [li for li in lignes if li.role_devis == 'batterie']
+
+    def _growatt_8(self):
+        from apps.stock.models import Produit
+
+        Produit.objects.create(company=self.company, nom='Onduleur réseau Growatt 8kW Monophasé',
+                               sku=f'A148R-G8-{self.company.pk}', prix_vente=Decimal('16000'),
+                               prix_achat=Decimal('1'), quantite_stock=5)
+
+    def test_a_la_resynchro_garde_l_onduleur_designe(self):
+        self._growatt_8()  # le catalogue prendrait le 8 kW
+        self._nouvelle_pose()
+        self._designer('Onduleur réseau Huawei 5kW Monophasé', nombre_onduleurs=1)
+        self._apercu_puis_generation()
+        _data, onduleurs, _batteries = self._resynchroniser()
+        self.assertEqual(onduleurs, [('Onduleur réseau Huawei 5kW Monophasé', 1)])
+
+    def test_a_la_resynchro_suit_une_designation_changee_et_le_dit(self):
+        self._growatt_8()
+        self._nouvelle_pose()
+        self._designer('Onduleur réseau Huawei 5kW Monophasé', nombre_onduleurs=1)
+        self._apercu_puis_generation()
+        self._designer('Onduleur réseau Growatt 8kW Monophasé', nombre_onduleurs=1)
+        data, onduleurs, _b = self._resynchroniser()
+        self.assertEqual(onduleurs, [('Onduleur réseau Growatt 8kW Monophasé', 1)])
+        self.assertIn('La désignation de l’onduleur a changé à l’étape Électrique : « Onduleur réseau Growatt '
+                      '8kW Monophasé » remplace « Onduleur réseau Huawei 5kW Monophasé ».', data['avertissements'])
+
+    def test_a_designation_retiree_la_resynchro_reprend_le_catalogue_et_le_dit(self):
+        from apps.calepinage.services.electrique import CLE_ENTREE
+
+        self._growatt_8()
+        self._nouvelle_pose()
+        self._designer('Onduleur réseau Huawei 5kW Monophasé', nombre_onduleurs=1)
+        self._apercu_puis_generation()
+        self.calepinage.refresh_from_db()
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(resultat={
+            **(self.calepinage.resultat or {}), CLE_ENTREE: {}})
+        data, onduleurs, _b = self._resynchroniser()
+        self.assertEqual(onduleurs, [('Onduleur réseau Growatt 8kW Monophasé', 1)])
+        self.assertTrue(any('n’est plus désigné à l’étape Électrique' in m for m in data['avertissements']), data)
+
+    def test_a_d_acal_159_la_resynchro_garde_l_hybride_et_la_batterie(self):
+        self._nouvelle_pose()
+        self._designer('Onduleur hybride Deye 5kW Monophasé', nombre_onduleurs=1)
+        self._apercu_puis_generation()
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 11  # le toit bouge : la resynchro écrit vraiment
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        _data, onduleurs, batteries = self._resynchroniser()
+        self.assertEqual(onduleurs, [('Onduleur hybride Deye 5kW Monophasé', 1)])
+        self.assertTrue(batteries)
+
+    def test_a_brouillon_ne_sans_designation_suit_une_designation_ajoutee(self):
+        """Né sous la règle (marqueur ``{}`` posé même sans désignation) : une désignation AJOUTÉE
+        ensuite est appliquée à la resynchro et dite."""
+        from apps.ventes.models import Devis
+
+        self._growatt_8()
+        self._nouvelle_pose()
+        self._apercu_puis_generation()  # aucun onduleur désigné : le catalogue (8 kW)
+        self.calepinage.refresh_from_db()
+        self.assertEqual(Devis.objects.get(pk=self.calepinage.devis_id).roof_layout['_designations'], {})
+        self._designer('Onduleur réseau Huawei 5kW Monophasé', nombre_onduleurs=1)
+        data, onduleurs, _b = self._resynchroniser()
+        self.assertEqual(onduleurs, [('Onduleur réseau Huawei 5kW Monophasé', 1)])
+        self.assertIn('L’onduleur suit la désignation de l’étape Électrique : « Onduleur réseau Huawei 5kW '
+                      'Monophasé » remplace « Onduleur réseau Growatt 8kW Monophasé ».', data['avertissements'])
+
+    def _sans_marqueur_ou_envoye(self, *, envoye):
+        from apps.ventes.models import Devis
+
+        self._growatt_8()
+        self._nouvelle_pose()
+        self._apercu_puis_generation()
+        self.calepinage.refresh_from_db()
+        devis = Devis.objects.get(pk=self.calepinage.devis_id)
+        if envoye:
+            Devis.objects.filter(pk=devis.pk).update(statut='envoye')
+        else:  # un devis créé AVANT la règle : aucun marqueur
+            Devis.objects.filter(pk=devis.pk).update(roof_layout={
+                k: v for k, v in devis.roof_layout.items() if k != '_designations'})
+        self._designer('Onduleur réseau Huawei 5kW Monophasé', nombre_onduleurs=1)
+        return self._resynchroniser()
+
+    def test_a_brouillon_cree_avant_la_regle_ne_suit_pas_la_designation_et_le_dit(self):
+        data, onduleurs, _b = self._sans_marqueur_ou_envoye(envoye=False)
+        self.assertEqual(onduleurs, [('Onduleur réseau Growatt 8kW Monophasé', 1)])
+        self.assertTrue(data['inchange'], data)  # aucune écriture de plus : le court-circuit d'hier
+        self.assertIn('Le calepinage désigne un onduleur à l’étape Électrique : ce devis, créé avant que le '
+                      'devis suive la désignation, ne la suit pas ; un nouveau devis généré depuis le calepinage '
+                      'la suivra.', data['avertissements'])
+
+    def test_a_devis_envoye_ne_recoit_pas_la_designation_et_le_dit(self):
+        data, onduleurs, _b = self._sans_marqueur_ou_envoye(envoye=True)
+        self.assertEqual(onduleurs, [('Onduleur réseau Growatt 8kW Monophasé', 1)])
+        self.assertIn('Le calepinage désigne un onduleur à l’étape Électrique : la désignation n’est pas '
+                      'appliquée à un devis envoyé — révisez-le (V2) pour l’appliquer.', data['avertissements'])
+
+    def test_a_onduleur_change_a_la_main_garde_et_dit_une_fois(self):
+        from apps.stock.models import Produit
+        from apps.ventes.models import Devis
+
+        self._growatt_8()
+        self._nouvelle_pose()
+        self._designer('Onduleur réseau Huawei 5kW Monophasé', nombre_onduleurs=1)
+        self._apercu_puis_generation()
+        self.calepinage.refresh_from_db()
+        devis = Devis.objects.get(pk=self.calepinage.devis_id)
+        growatt = Produit.objects.get(company=self.company, nom='Onduleur réseau Growatt 8kW Monophasé')
+        ligne = next(li for li in devis.lignes.all() if str(li.role_devis or '').startswith('onduleur_'))
+        type(ligne).objects.filter(pk=ligne.pk).update(produit=growatt, designation=growatt.nom)
+        for _tour, attendue in ((1, True), (2, False)):
+            data, onduleurs, _b = self._resynchroniser()
+            self.assertEqual(onduleurs, [('Onduleur réseau Growatt 8kW Monophasé', 1)])
+            self.assertEqual(any('a été posé à la main' in m for m in data['avertissements']), attendue, data)
+
+    def test_round_4_la_phrase_des_20_degres_est_la_meme_a_l_apercu_et_a_la_generation(self):
+        from apps.ventes.domain.geometrie import SUPPOSITION_INCLINAISON_TOIT_PLAT
+
+        self._nouvelle_pose()
+        apercu, genere, _o = self._apercu_puis_generation()
+        phrase = SUPPOSITION_INCLINAISON_TOIT_PLAT['message']
+        self.assertIn({'champ': 'geometry.tiltDeg', 'message': phrase}, apercu['ecarts'])
+        self.assertIn(phrase, genere['avertissements'])
+
+    # ── Relecture round 4, point 6 — chaque phrase vraie dans son état ──
+    def test_6_d_onduleur_plus_chiffrable_la_phrase_dit_la_raison_et_la_reprise(self):
+        from apps.stock.models import Produit
+
+        self._growatt_8()
+        self._nouvelle_pose()
+        self._designer('Onduleur réseau Huawei 5kW Monophasé', nombre_onduleurs=1)
+        self._apercu_puis_generation()
+        Produit.objects.filter(company=self.company, nom='Onduleur réseau Huawei 5kW Monophasé').update(prix_vente=0)
+        data, onduleurs, _b = self._resynchroniser()
+        self.assertEqual(onduleurs, [('Onduleur réseau Growatt 8kW Monophasé', 1)])
+        self.assertTrue(any('n’est plus chiffrable : il n’a pas de prix de vente au catalogue ; la resynchronisation '
+                            'reprend le choix du catalogue' in m for m in data['avertissements']), data)
+        self.assertFalse(any('conception du lead' in m or 'n’est plus désigné' in m for m in data['avertissements']))
+
+    def test_6_e_la_bascule_n_est_dite_qu_au_moment_ou_elle_a_lieu(self):
+        self._nouvelle_pose()
+        self._designer('Onduleur hybride Deye 5kW Monophasé', nombre_onduleurs=1)
+        _apercu, genere, _o = self._apercu_puis_generation()
+        self.assertTrue(any('Le devis passe en « avec batterie »' in m for m in genere['avertissements']))
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 11
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        data, _o, batteries = self._resynchroniser()
+        self.assertTrue(batteries)
+        self.assertFalse(any('Le devis passe en « avec batterie »' in m for m in data['avertissements']), data)
+
+    def test_6_b_batterie_sur_devis_redevenu_sans_une_seule_phrase_vraie(self):
+        from apps.stock.models import Produit
+
+        batterie = Produit.objects.get(company=self.company, nom='Batterie Dyness 5 kWh')
+        self._nouvelle_pose()
+        self._designer('Onduleur hybride Deye 5kW Monophasé', nombre_onduleurs=1,
+                       batterie={'produit': batterie.pk, 'packs': 1})
+        self._apercu_puis_generation()
+        self._designer('Onduleur réseau Huawei 5kW Monophasé', nombre_onduleurs=1,
+                       batterie={'produit': batterie.pk, 'packs': 1})  # plus d'hybride : la pose « sans » reste
+        data, _o, _b = self._resynchroniser()
+        self.assertTrue(any('n’est pas mise au devis' in m for m in data['avertissements']), data)
+        self.assertFalse(any('reprend le choix automatique' in m for m in data['avertissements']), data)
+
+    # ── D-ACAL-164 (B) — la batterie désignée à l'étape Électrique ──
+    def test_b_batterie_designee_generation_apercu_et_resynchro(self):
+        from apps.stock.models import Produit
+
+        Produit.objects.create(company=self.company, nom='Batterie Lithium 7 kWh', sku=f'A164C-{self.company.pk}',
+                               prix_vente=Decimal('21000'), prix_achat=Decimal('1'), quantite_stock=5)
+        batterie = Produit.objects.get(company=self.company, nom='Batterie Lithium 7 kWh')
+        self._nouvelle_pose()
+        self._designer('Onduleur hybride Deye 5kW Monophasé', nombre_onduleurs=1,
+                       batterie={'produit': batterie.pk, 'packs': 2})
+        apercu, genere, onduleurs = self._apercu_puis_generation()
+        self.assertEqual(onduleurs, {None: ('Onduleur hybride Deye 5kW Monophasé', 'onduleur_hybride')})
+        # Chiffrée ; point 4 — seule phrase : les 2 packs désignés face à la règle automatique (1), la même
+        # à l'aperçu et à la génération.
+        phrase = next(e['message'] for e in apercu['ecarts'] if e['champ'] == 'batterie.produit')
+        self.assertIn('est vendue à 2 pack(s)', phrase)
+        self.assertIn(phrase, genere['avertissements'])
+        _data, _ond, batteries = self._resynchroniser()
+        self.assertEqual([(b.designation, int(b.quantite)) for b in batteries], [('Batterie Lithium 7 kWh', 2)])
+        self._designer('Onduleur hybride Deye 5kW Monophasé', nombre_onduleurs=1,
+                       batterie={'produit': batterie.pk, 'packs': 3})
+        data, _ond, batteries = self._resynchroniser()
+        self.assertEqual([(b.designation, int(b.quantite)) for b in batteries], [('Batterie Lithium 7 kWh', 3)])
+        self.assertTrue(any('La batterie suit la désignation' in m for m in data['avertissements']), data)
+
+    def test_b_batterie_designee_sans_hybride_sur_pose_sans_dite_a_l_apercu_et_a_la_generation(self):
+        from apps.stock.models import Produit
+
+        batterie = Produit.objects.get(company=self.company, nom='Batterie Dyness 5 kWh')
+        self._nouvelle_pose()
+        self._designer('Onduleur réseau Huawei 5kW Monophasé', nombre_onduleurs=1,
+                       batterie={'produit': batterie.pk, 'packs': 1})
+        apercu, genere, _onduleurs = self._apercu_puis_generation()
+        phrase = next(e['message'] for e in apercu['ecarts'] if e['champ'] == 'batterie.produit')
+        self.assertIn('n’est pas mise au devis', phrase)
+        self.assertIn(phrase, genere['avertissements'])  # la même phrase
+
 
 class ApercuBrouillonLibreSansBaseTest(SimpleTestCase):
     """Lot 8 (B2) — sans base : le rôle d'une ligne de brouillon et la phrase R2-22."""
+
+    def test_d_acal_148_point_4_chaque_issue_dit_sa_raison(self):
+        """Relecture, point 4 — jamais « la désignation n'y entre pas » pour l'onduleur : la phrase de
+        la décision (la même que la génération, produite par la VRAIE fonction de ventes), rien
+        quand il est posé, et une raison vraie quand l'imposé n'est pas posé."""
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services import devis_apercu as service
+        from apps.ventes.domain.creation_calepinage import decision_onduleur_designe, repli_onduleur_designe
+
+        nom = 'Onduleur hybride Deye 5kW'
+        bascule = decision_onduleur_designe(produit_id=9, nom=nom, etat='tarife', famille='onduleur_hybride',
+                                            famille_au_nom='onduleur_hybride', scenario='sans',
+                                            hors_reseau=False, nombre=1)
+        repli = repli_onduleur_designe(nom, 'sans_prix')
+        impose = dict(bascule, message=None)
+        porte = [{'option': None, 'onduleur': nom, 'onduleur_produit': 9, 'module': None, 'module_produit': None}]
+        autre = [dict(porte[0], onduleur='Onduleur réseau Huawei 5kW', onduleur_produit=3)]
+        calepinage = SimpleNamespace(company=None)
+        with (mock.patch('apps.calepinage.services.electrique.entree_stockee', return_value={'onduleur_produit': 9}),
+              mock.patch('apps.calepinage.services.devis_retenu.conception_du_calepinage', return_value={}),
+              mock.patch('apps.stock.selectors.get_produit_scoped', return_value=SimpleNamespace(nom=nom))):
+            self.assertEqual(service._ecarts(calepinage, porte, bascule),
+                             [{'champ': 'onduleur_produit', 'message': bascule['message']}])
+            self.assertEqual(service._ecarts(calepinage, autre, repli),
+                             [{'champ': 'onduleur_produit', 'message': repli['message']}])
+            self.assertEqual(service._ecarts(calepinage, porte, impose), [])
+            non_pose = service._ecarts(calepinage, autre, impose)
+        self.assertIn(service.RAISON_IMPOSE_NON_POSE, non_pose[0]['message'])
+        # Round 4, point 6 a — le brouillon rendu : la raison vraie selon qu'il est né sous la règle.
+        with (mock.patch('apps.calepinage.services.electrique.entree_stockee', return_value={'onduleur_produit': 9}),
+              mock.patch('apps.calepinage.services.devis_retenu.conception_du_calepinage', return_value={}),
+              mock.patch('apps.stock.selectors.get_produit_scoped', return_value=SimpleNamespace(nom=nom))):
+            for sous, attendue in ((True, service.RAISON_BROUILLON_SOUS_LA_REGLE),
+                                   (False, service.RAISON_BROUILLON_AVANT_LA_REGLE)):
+                message = service._ecarts(calepinage, autre, None, brouillon=True, sous_la_regle=sous)[0]['message']
+                self.assertIn(attendue, message)
+                self.assertNotIn('ne vaut que pour un devis neuf', message)
+        self.assertNotIn(service.RAISON_PAR_DEFAUT, non_pose[0]['message'])
 
     def test_role_fige_puis_mots_cles_et_aucun_onduleur(self):
         from types import SimpleNamespace

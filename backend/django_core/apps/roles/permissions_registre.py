@@ -667,6 +667,22 @@ ALL_PERMISSIONS = [
     # autres rôles internes le reçoivent par l'éditeur de rôles, jamais un rôle
     # portail.
     'taches_voir',
+    # ── D-ACAL-152 (fondateur, 26/11/2026) — « Voir les prix de vente » ─────
+    # Démasque les prix de VENTE du catalogue dans les sorties du stock
+    # (``prix_vente``, paliers, barème forfaitaire, tarifs de location, prix
+    # TTC d'étiquette, prix des composants de kit) : sans lui, le serveur
+    # RETIRE ces clés (``apps.stock.permissions.PRIX_VENTE_CHAMPS``), comme
+    # ``prix_achat_voir`` retire le prix d'achat. Porté par TOUS les rôles
+    # système internes SAUF Technicien et Technicien responsable (« aucun
+    # devis ni aucun prix », D-ACAL-106) ; jamais par un rôle portail (axe
+    # externe, NTPRT1). Repli légacy : un compte SANS rôle fin garde l'accès
+    # (``User.can_view_sale_prices``). Rôles déjà en base (personnalisés
+    # compris) : migration roles 0016 — tous le reçoivent sauf les deux rôles
+    # système techniciens, aucun accès perdu ailleurs. Code de LECTURE
+    # (``_voir``) : n'accorde aucune écriture (``_role_grants_write``) ;
+    # l'écriture d'un prix reste ``catalogue_prix_modifier``. NON élevé :
+    # un Responsable peut le rendre à un rôle.
+    'prix_vente_voir',
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -957,6 +973,8 @@ RESPONSABLE_PERMISSIONS = [
     # par ce palier ; codes appliqués côté serveur, décochables (migration
     # roles 0010_asec50_responsable_exports).
     'sav_export', 'installation_export', 'ventes_supprimer',
+    # D-ACAL-152 — voit les prix de vente (tous les rôles sauf les techniciens).
+    'prix_vente_voir',
 ]
 
 UTILISATEUR_PERMISSIONS = [
@@ -975,6 +993,8 @@ UTILISATEUR_PERMISSIONS = [
     # ENG19 — lecture du moteur publicitaire : `adsengine_view` est distribuée
     # à TOUS les rôles (manage/approve restent réservés aux paliers supérieurs).
     'adsengine_view',
+    # D-ACAL-152 — voit les prix de vente (tous les rôles sauf les techniciens).
+    'prix_vente_voir',
 ]
 
 
@@ -1072,6 +1092,8 @@ COMMERCIAL_RESP_PERMISSIONS = [
     # ``IsAdminOrResponsableTier``, le code préserve cet accès (décochable ;
     # migration roles 0008_asec10_users_gerer_alignement).
     'users_gerer',
+    # D-ACAL-152 — voit les prix de vente (tous les rôles sauf les techniciens).
+    'prix_vente_voir',
 ]
 
 # Commercial : l'accès de la « Commerciale » d'aujourd'hui ; voit son équipe
@@ -1117,6 +1139,8 @@ COMMERCIAL_PERMISSIONS = [
     # ASEC9 / D-ASEC-1 — continuité d'``enregistrer_paiement`` « disponible à
     # la Commerciale » : coché par défaut, décochable dans la grille.
     'encaisser',
+    # D-ACAL-152 — voit les prix de vente (tous les rôles sauf les techniciens).
+    'prix_vente_voir',
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -1142,6 +1166,8 @@ COMMERCIAL_PERMISSIONS = [
 COMMERCIAL_TERRAIN_PERMISSIONS = [
     'visites_voir', 'visites_creer', 'visites_modifier',
     permission_app('visites'),
+    # D-ACAL-152 — voit les prix de vente (tous les rôles sauf les techniciens).
+    'prix_vente_voir',
 ]
 
 # Technicien responsable : Chantiers/SAV/Stock complets, assigne les
@@ -1284,6 +1310,8 @@ VIEWER_PERMISSIONS = [
     # toute façon jamais accès à la corbeille/au partage d'équipe (palier
     # normal).
     SCOPE_TEAM,
+    # D-ACAL-152 — voit les prix de vente (tous les rôles sauf les techniciens).
+    'prix_vente_voir',
 ]
 
 # ── NTADM20 — Administration DÉLÉGUÉE par domaine ──────────────────────────
@@ -1328,6 +1356,8 @@ ADMIN_RH_PERMISSIONS = [
     # seule, et ce code est ÉLEVÉ — un admin délégué ne peut ni le porter ni
     # l'octroyer.
     'ged_voir', 'ged_gerer',
+    # D-ACAL-152 — voit les prix de vente (tous les rôles sauf les techniciens).
+    'prix_vente_voir',
 ]
 
 # Admin Ventes : CRM + Ventes + Stock (sans la création de produits, QG4) et
@@ -1349,6 +1379,8 @@ ADMIN_VENTES_PERMISSIONS = [
     # dans la GED (devis signés, pièces client). Accès courant préservé, sans
     # ``ged_gouvernance``.
     'ged_voir', 'ged_gerer',
+    # D-ACAL-152 — voit les prix de vente (tous les rôles sauf les techniciens).
+    'prix_vente_voir',
 ]
 
 ROLE_ADMIN_RH = 'Admin RH'

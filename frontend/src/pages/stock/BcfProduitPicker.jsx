@@ -3,6 +3,7 @@ import * as PopoverPrimitive from '@radix-ui/react-popover'
 import { cn } from '../../lib/cn'
 import { useActiveDescendant } from '../../hooks/useActiveDescendant'
 import { formatMAD } from '../../lib/format'
+import { useVoitPrixVente } from '../../features/stock/useVoitPrixAchat'
 import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
 } from '../../features/stock/catalogue'
@@ -22,6 +23,8 @@ export default function BcfProduitPicker({ produits, value, onChange, invalid })
   const listRef = useRef(null)
   // VX191 — `aria-activedescendant` : même contrat que ProduitPicker (VX191).
   const { listId, getOptionId, activeId } = useActiveDescendant(cursor)
+  // D-ACAL-152 — sans « voir les prix de vente », aucun prix n'est affiché.
+  const prixMasques = !useVoitPrixVente(produits)
 
   const selected = useMemo(
     () => produits.find((p) => String(p.id) === String(value)) ?? null,
@@ -165,9 +168,11 @@ export default function BcfProduitPicker({ produits, value, onChange, invalid })
                 >
                   <span className="flex-1 truncate">{p.nom}</span>
                   {spec && <span className="shrink-0 text-xs text-muted-foreground">{spec}</span>}
-                  <span className={cn('shrink-0 text-xs tabular-nums', noPrix ? 'italic text-muted-foreground' : 'font-medium text-foreground')}>
-                    {noPrix ? 'sans prix de vente' : `${formatMAD(prixTtc(p), { withSymbol: false })} DH`}
-                  </span>
+                  {!prixMasques && (
+                    <span className={cn('shrink-0 text-xs tabular-nums', noPrix ? 'italic text-muted-foreground' : 'font-medium text-foreground')}>
+                      {noPrix ? 'sans prix de vente' : `${formatMAD(prixTtc(p), { withSymbol: false })} DH`}
+                    </span>
+                  )}
                 </button>
               )
             })}

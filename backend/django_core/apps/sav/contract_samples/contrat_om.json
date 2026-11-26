@@ -3,6 +3,11 @@
   "forme_serveur": "partielle",
   "forme_serveur_provisoire": "Les cles `prestations`, `delai_intervention_heures` et `origine` sont AJOUTEES par les taches backend du Groupe CIQ (CIQ640) ; la tache qui les sert remet `forme_serveur: complete`.",
   "pourquoi": "CIQ669 (Groupe CIQ, audit L3 du 03/10/2026 ; D-CIQ-12) — CONTRAT D'ABORD (PACT10), pose SEUL sur `main`. Aujourd'hui `ContratMaintenance` (sav/models.py:1444-1535) connait une periodicite, des quotas de visites et des SLA en JOURS (`sla_response_days`, `sla_resolution_days`), sans aucune prestation nommee ; l'ecran sav/ContratsMaintenance.jsx et le service CIQ640 n'ont aucune forme partagee. D-CIQ-12 : option O&M nommee (nettoyages, inspection, thermographie, test des protections), prix et delais SAISIS par Reda. Champs ajoutes : `prestations` [{id, type nettoyage|inspection|thermographie|test_protections|supervision|autre, libelle, incluse, frequence_an, prix_ht}] ; `delai_intervention_heures` ; `origine` {devis_id, ligne_om}. REGLE ECRITE : AUCUN nombre par defaut — `frequence_an` null = « a renseigner », `prix_ht` null = « a renseigner », `delai_intervention_heures` null = « non engage » ; les valeurs de `exemple` sont ILLUSTRATIVES (saisies), jamais proposees par defaut. `exemple` = contrat rempli ; `exemple_vide` = cree depuis un devis, rien de saisi.",
+  "cles_masquees_sans_prix_vente": [
+    "prix",
+    "prestations[].prix_ht"
+  ],
+  "cles_masquees_pourquoi_prix_vente": "D-ACAL-165 (fondateur, 26/11/2026) — clés RETIRÉES de la réponse (ContratMaintenanceSerializer) pour un lecteur sans `prix_vente_voir` (Technicien, Technicien responsable, qui portent sav_voir) ; présentes sinon. En mise à jour par un tel lecteur, une valeur vide renvoyée (null, '') n'efface pas le prix enregistré.",
   "exemple": {
     "id": 12,
     "prestations": [

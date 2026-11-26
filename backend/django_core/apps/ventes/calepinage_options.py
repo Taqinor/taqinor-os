@@ -1217,9 +1217,8 @@ def _pan_principal(layout_public, pose_reelle=False, toit_plat_corrige=False):
     pans = [pan for pan in (layout_public or {}).get('pans') or []
             if isinstance(pan, dict)]
     if pans:
-        if pose_reelle:
-            return _face_du_pan_principal(pans)
-        return max(pans, key=lambda p: _fini(p.get('kwc')) or 0.0)
+        pan = _face_du_pan_principal(pans) if pose_reelle else max(pans, key=lambda p: _fini(p.get('kwc')) or 0.0)
+        return _sans_inclinaison_supposee(pan)
     # ACAL58 — la MÊME lecture que ``extract_roof_config`` : l'orientation
     # des modules POSÉS (``geometry``) d'abord, la pente du toit à défaut.
     from .domain.geometrie import orientation_du_pan
@@ -1236,6 +1235,18 @@ def _pan_principal(layout_public, pose_reelle=False, toit_plat_corrige=False):
                 'inclinaison_deg': orientation['inclinaison_deg'],
                 'roof_type': zone.get('roofType')}
     return None
+
+
+def _sans_inclinaison_supposee(pan):
+    """D-ACAL-149 (ii) / D-ACAL-168 (relecture round 4, point 3) — un pan dont l'inclinaison est la
+    valeur SUPPOSÉE de la production (20°, drapeau privé ``geometrie.CLE_INCLINAISON_SUPPOSEE`` posé
+    par la lecture corrigée) : elle n'est pas imprimée pour le client, avec ou sans modules — le
+    masquage suit le DRAPEAU, jamais le compte de modules."""
+    from .domain.geometrie import CLE_INCLINAISON_SUPPOSEE
+
+    if pan.get(CLE_INCLINAISON_SUPPOSEE):
+        return {cle: valeur for cle, valeur in pan.items() if cle != 'inclinaison_deg'}
+    return pan
 
 
 def _face_du_pan_principal(pans):

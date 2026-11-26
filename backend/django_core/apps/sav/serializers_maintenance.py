@@ -133,6 +133,40 @@ class ContratMaintenanceSerializer(ListesStrictesMixin,
         return {'devis_id': obj.origine_devis_id,
                 'ligne_om': obj.origine_ligne_om_id}
 
+    def _prix_caches(self):
+        user = getattr(self.context.get('request'), 'user', None)
+        return user is not None and not getattr(user, 'can_view_sale_prices', True)
+
+    def to_internal_value(self, data):
+        """D-ACAL-165 — l'écran d'un lecteur qui n'a pas reçu le prix renvoie un
+        prix VIDE (édition en ligne ``prix: null``, prestations ``prix_ht: null``) :
+        en MISE À JOUR, une valeur vide est lue « pas de changement » et n'efface
+        jamais le prix enregistré. Toute valeur non vide suit la permission
+        d'écriture existante de la vue ; à la création, rien ne change."""
+        if self.instance is not None and isinstance(data, dict) and self._prix_caches():
+            data = dict(data)
+            if data.get('prix', 0) in ('', None):
+                data.pop('prix')
+            if isinstance(data.get('prestations'), list):
+                data['prestations'] = [
+                    {c: v for c, v in p.items() if not (c == 'prix_ht' and v in ('', None))}
+                    if isinstance(p, dict) else p for p in data['prestations']]
+        return super().to_internal_value(data)
+
+    def to_representation(self, instance):
+        """D-ACAL-165 (fondateur, 26/11/2026) — le prix du contrat (TTC par
+        période facturé au client) et le prix HT de chaque prestation sont
+        des prix de VENTE : RETIRÉS de la sortie pour un lecteur sans « voir
+        les prix de vente » (Technicien, Technicien responsable, qui portent
+        ``sav_voir``). Sortie seulement ; tout autre lecteur : inchangé."""
+        data = super().to_representation(instance)
+        if self._prix_caches():
+            data.pop('prix', None)
+            for prestation in data.get('prestations') or []:
+                if isinstance(prestation, dict):
+                    prestation.pop('prix_ht', None)
+        return data
+
     @extend_schema_field(serializers.DictField())
     def get_droits_restants(self, obj):
         from .droits_contrat import droits_restants

@@ -9,6 +9,13 @@ porte les trois langues » les couvre aussi.
 """
 
 LIBELLES_RESIDENTIEL = {
+    # ACAL1221 (D-AMOT-10 = bareme_national, fondateur 26/11/2026) — la puce
+    # CGV par défaut « Tarifs de référence » des nouveaux rendus : le barème
+    # est national et unique, aucun distributeur n'y est nommé.
+    'cgv_tarifs_bareme_national': {
+        'fr': 'Tarifs de référence&#160;: barème national de référence',
+        'en': 'Reference tariffs: national reference schedule',
+        'ar': 'التعريفات المرجعية: الجدول الوطني المرجعي'},
     # CE2E7 — salutation sans prénom (nom de bien ou de société).
     'rpdf_bonjour_neutre': {'fr': 'Bonjour,', 'en': 'Hello,', 'ar': 'مرحبًا،'},
     # CE2E5 — « Nos hypothèses » d'un lead sans distributeur, modèle horaire.
