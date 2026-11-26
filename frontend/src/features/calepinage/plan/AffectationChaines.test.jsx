@@ -209,6 +209,43 @@ describe('AffectationChaines (CAL234) — le verdict SERVEUR', () => {
     expect(calepinageApi.calepinages.enregistrerEntreeElectrique).not.toHaveBeenCalled()
   })
 
+  // R3 (visuel lot 7) — numéros stables ≠ rang (pose dont le compteur a grandi) : l'écran renvoie
+  // les clés SERVIES telles quelles, jamais un rang recalculé.
+  it('modules servis `<pan>#2236…` : la proposition et l’enregistrement portent ces mêmes clés', async () => {
+    const donnees = JSON.parse(JSON.stringify(contratResultat().data))
+    donnees.electrique.affectation = donnees.electrique.affectation.map((ligne, i) => (
+      { ...ligne, module: `${ligne.module.split('#')[0]}#${2236 + i}` }))
+    const [, , m1, m2] = donnees.electrique.affectation.map((ligne) => ligne.module)
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donnees })
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: donnees })
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    glisserSur([m1, m2])
+    saisir('chaine', '2')
+    saisir('mppt', '2')
+    saisir('onduleur', '1')
+    fireEvent.click(screen.getByTestId('cal234-affecter'))
+    await waitFor(() => {
+      expect(appelsProposition()).not.toHaveLength(0)
+    })
+    const attendu = [
+      { module: m1, chaine: 2, mppt: 2, onduleur: 1 },
+      { module: m2, chaine: 2, mppt: 2, onduleur: 1 },
+    ]
+    expect(m1).toMatch(/#2238$/)
+    expect(appelsProposition().at(-1)[1].entree_electrique.affectation_manuelle).toEqual(attendu)
+    await waitFor(() => {
+      expect(screen.getByTestId('cal234-enregistrer')).not.toBeDisabled()
+    })
+    fireEvent.click(screen.getByTestId('cal234-enregistrer'))
+    await waitFor(() => {
+      expect(calepinageApi.calepinages.enregistrerEntreeElectrique).toHaveBeenCalled()
+    })
+    expect(calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls.at(-1)[1])
+      .toEqual({ affectation_manuelle: attendu })
+  })
+
   it('un refus est affiché AVEC le motif du serveur et bloque l’enregistrement', async () => {
     const motif = 'Chaîne 2 (pan PAN-B) : 2 modules, minimum 6 — en deçà, la chaîne '
       + 'ne démarre pas sur la plage MPPT.'
