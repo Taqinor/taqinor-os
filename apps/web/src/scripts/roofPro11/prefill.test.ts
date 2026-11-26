@@ -155,24 +155,6 @@ describe('CAL67 — serializeLayout porte l’environnement (additif)', () => {
   });
 });
 
-// ACAL1923 — un toit plat ne s'enregistre jamais avec une pente : 0 écrit (pan actif comme pans voisins), même si le
-// curseur garde sa valeur de départ (22°) ; un toit en pente garde la sienne. Mutant : écrire `ctx.pitchDeg` brut.
-describe('ACAL1923 — toit plat ⇒ pitchDeg 0 écrit', () => {
-  it('pan actif plat (curseur à 22°) et pan voisin plat à 22° : 0 ; pan en pente : sa pente', () => {
-    const areas = [panDeTest('z1', { roofType: 'flat', pitchDeg: 22 }), panDeTest('z2', { roofType: 'flat', pitchDeg: 22 }),
-      panDeTest('z3', { roofType: 'pitched', pitchDeg: 30 })];
-    const c = makeCtx(areas, 'z1');
-    c.roofType = 'flat';
-    c.pitchDeg = 22;
-    const pentes = serializeLayout(c).zones.map((z) => [z.id, z.roofType, z.pitchDeg]);
-    expect(pentes).toEqual([['z1', 'flat', 0], ['z2', 'flat', 0], ['z3', 'pitched', 30]]);
-    const actifEnPente = makeCtx(areas, 'z3');
-    actifEnPente.roofType = 'pitched';
-    actifEnPente.pitchDeg = 18;
-    expect(serializeLayout(actifEnPente).zones.find((z) => z.id === 'z3')?.pitchDeg).toBe(18);
-  });
-});
-
 describe('CAL57 — arêtes typées, sérialisées', () => {
   it('une zone seule (pas d’adjacence) porte un égout + des arêtes inconnues, jamais de faîtière', () => {
     const areas = [zone('z1')];

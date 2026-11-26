@@ -60,7 +60,7 @@ import { emettreProvenanceEpingle } from './provenanceEpingle'; import { emettre
 import { orientationEmise } from './orientationDocument'; // ACAL608
 import { hasManualEdits } from '../../lib/layoutVariability'; // relecture E6 M2 — poseManuelle
 import { construireConsommation } from './consommationSerialisee'; import { type ChargeAvenir } from './chargesAvenir'; // ACAL780
-import { penteEmise, pitchSourceEmise } from './provenancePente'; import { emettrePortee } from './piedsChassis'; // ACAL252 (sorti), ACAL579
+import { pitchSourceEmise } from './provenancePente'; import { emettrePortee } from './piedsChassis'; // ACAL252 (sorti), ACAL579
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -921,9 +921,9 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
         ...champsFormeObstacle(o), // CALX103/CALX104 — forme/contour/rayon, additifs
       })),
       roofType: isActive ? ctx.roofType : a.roofType,
-      pitchDeg: penteEmise(isActive ? ctx.roofType : a.roofType, isActive ? ctx.pitchDeg : a.pitchDeg), // ACAL1923 — plat ⇒ 0
+      pitchDeg: isActive ? ctx.pitchDeg : a.pitchDeg,
       // ACAL252 — la provenance de la pente voyage avec elle, tant qu'elle la décrit encore.
-      ...pitchSourceEmise(a.pitchSource, penteEmise(isActive ? ctx.roofType : a.roofType, isActive ? ctx.pitchDeg : a.pitchDeg)),
+      ...pitchSourceEmise(a.pitchSource, isActive ? ctx.pitchDeg : a.pitchDeg),
       facingAzimuthDeg: isActive ? ctx.facingAzimuthDeg : a.facingAzimuthDeg,
       facingManual: isActive ? ctx.facingManual : a.facingManual ?? false,
       ...(a.verrouille ? { verrouille: true } : {}), ...emettreCoupures(a.coupuresPavage), ...emettrePortee(a.porteeEntrePieds), ...emettreChassis(a.chassis), ...(a.existant ? { existant: true, ...(Number.isInteger(a.anneeMiseEnService) ? { anneeMiseEnService: a.anneeMiseEnService as number } : {}) } : {}), // ACAL520, ACAL510 — additifs
