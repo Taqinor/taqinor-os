@@ -16,9 +16,8 @@ from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset
 from .params_requete import (
     CORPS_NOTER_JSON, CORPS_NOTER_MULTIPART, CORPS_REORDER_VUE, CORPS_RESOUDRE_GPS, CORPS_VILLE_STATUT,
-    NOTER_REPERE, RESOUDRE_GPS_REPERE, booleen_param, corps_lu, corps_objet, liste_ids,
+    NOTER_REPERE, PARAMETRES_MENU, RESOUDRE_GPS_REPERE, booleen_param, corps_lu, corps_objet, liste_ids,
     refus_page_reorder, texte_param, texte_verifie)
-from .collegues import PARAMETRES_MENU
 from .models import (
     LeadActivity, Lead, LeadTag, MotifPerte, Canal, SavedView, SiteProfile,
     WebsiteLeadPayload,

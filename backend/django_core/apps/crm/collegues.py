@@ -13,9 +13,6 @@ les plus proches quand rien ne correspond (« Meriem » pour « Meryem »).
 import difflib
 import unicodedata
 
-from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter
-
 #: Ratio minimal (``difflib``) pour citer un nom « proche » d'une recherche
 #: sans résultat ; trois noms au plus.
 RATIO_PROCHE = 0.6
@@ -89,16 +86,6 @@ def chercher_collegues(user, q='', limite=20):
         proches = [_ligne(c) for ratio, _nom, c in notes[:PROCHES_MAX]
                    if ratio >= RATIO_PROCHE]
     return len(trouves), [_ligne(c) for c in trouves[:limite]], proches
-
-
-PARAMETRES_MENU = [OpenApiParameter(
-    'permission', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
-    description="Code d'une permission ERP : ne propose que les comptes qui la portent "
-                "(ex. calepinage_voir pour le responsable d'un calepinage)."), OpenApiParameter(
-    'lead', OpenApiTypes.INT, OpenApiParameter.QUERY, required=False,
-    description="Lead du calepinage qu'on confie (avec permission=calepinage_voir) : un compte qui ne lit que "
-                "par sa visite n'est proposé que s'il a une visite sur ce lead. Un identifiant inconnu ou d'une "
-                "autre société est ignoré, comme l'absence de lead.")]
 
 
 def lead_du_menu(user, brut):
