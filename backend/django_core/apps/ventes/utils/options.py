@@ -709,7 +709,7 @@ def familles_des_lignes(lignes) -> dict:
 
     def _porte(predicat):
         classe = classe_du_predicat(predicat)
-        return any(classe_de_ligne(li, classe, lambda li=li: predicat(_blob(li)), fiche=False)
+        return any(classe_de_ligne(li, classe, lambda li=li: predicat(_blob(li)))
                    for li in vivantes)
     return {
         'has_reseau': _porte(_is_reseau_inverter),

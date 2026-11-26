@@ -77,7 +77,8 @@ from .artefacts_rendu import _roof_photo_data_uri, ajouter_artefacts_rendu
 # calepinage test_pv41_conception_electrique (_sld_svg) et devis
 # test_acal_planche_devis_remplace (_svg_planche_inline).
 from .artefacts_rendu import _sld_svg, _svg_planche_inline  # noqa: F401
-# Lecteurs en aval (rôle/fiche) — la classe d'une ligne : rôle déclaré du produit, puis mots-clés.
+# Lecteurs en aval (rôle/fiche) — la classe d'une ligne : rôle déclaré du produit, puis mots-clés
+# (le rang de la fiche n'est pas lu ici : servabilité liée à l'argent, ``domain.classe_ligne``).
 from apps.ventes.domain.classe_ligne import paires_portent
 
 logger = logging.getLogger(__name__)

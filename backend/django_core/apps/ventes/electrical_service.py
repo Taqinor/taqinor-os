@@ -215,9 +215,10 @@ def _quantite_ligne(ligne):
 def _est(devis, ligne, predicat, *textes):
     """Lecteurs en aval (fondateur 24/11/2026) — ``ligne`` est-elle de la classe
     du prédicat ``predicat`` (``solar_classification``) ? Le rôle déclaré du
-    produit, puis sa fiche (``domain.classe_ligne``) ; sinon le prédicat sur
-    l'un des ``textes``, le verdict d'hier. Nouveaux rendus seulement."""
-    from apps.ventes.domain.classe_ligne import classe_de_ligne, classe_du_predicat
+    produit, puis sa fiche (``domain.classe_ligne_fiche``) ; sinon le prédicat
+    sur l'un des ``textes``, le verdict d'hier. Nouveaux rendus seulement."""
+    from apps.ventes.domain.classe_ligne import classe_du_predicat
+    from apps.ventes.domain.classe_ligne_fiche import classe_de_ligne
 
     return classe_de_ligne(ligne, classe_du_predicat(predicat),
                            lambda: any(predicat(texte) for texte in textes), devis=devis)
@@ -351,9 +352,9 @@ def _lignes_option_choisie(devis):
 def _produit_de_famille(devis, predicat, classe=None):
     """``(produit, libellé)`` de la première ligne classée par ``predicat``.
 
-    Lecteurs en aval (fondateur 24/11/2026) — ``classe`` (``domain.classe_ligne``)
-    passe le rôle déclaré du produit puis sa fiche DEVANT ``predicat``, qui reste
-    le repli (nouveaux rendus seulement).
+    Lecteurs en aval (fondateur 24/11/2026) — ``classe``
+    (``domain.classe_ligne_fiche``) passe le rôle déclaré du produit puis sa
+    fiche DEVANT ``predicat``, qui reste le repli (nouveaux rendus seulement).
 
     Classification par les mots-clés PARTAGÉS de ``solar_design`` (alignés sur
     ``quote_engine/builder.py``) : la désignation d'abord, le nom du produit
@@ -371,7 +372,7 @@ def _produit_de_famille(devis, predicat, classe=None):
     évite de retourner le premier onduleur trouvé par ordre d'insertion
     plutôt que celui de l'option retenue (cf. sa docstring, DEV-202608-0024).
     """
-    from apps.ventes.domain.classe_ligne import classe_de_ligne
+    from apps.ventes.domain.classe_ligne_fiche import classe_de_ligne
 
     repli = (None, "")
     for ligne in _lignes_option_choisie(devis):
