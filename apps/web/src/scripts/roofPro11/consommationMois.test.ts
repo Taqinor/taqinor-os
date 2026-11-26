@@ -45,6 +45,32 @@ describe('ACAL837 — 12 barres lues dans mois[]', () => {
   });
 });
 
+// ACAL1643 — les 12 barres tiennent dans la colonne (269 px) comme à 1440 px : largeur RELATIVE, jamais le contenu qui impose.
+describe('ACAL1643 — barres en largeur relative', () => {
+  it('chaque barre se répartit à parts égales et peut rétrécir ; ses libellés se replient au lieu de déborder', () => {
+    document.body.innerHTML = htmlBarres(MOIS);
+    const barres = Array.from(document.querySelectorAll<HTMLElement>('[data-cons-mois-barre]'));
+    expect(barres).toHaveLength(12);
+    for (const b of barres) {
+      expect(b.style.flexGrow).toBe('1');
+      expect(b.style.flexShrink).toBe('1');
+      expect(b.style.flexBasis).toMatch(/^0(%|px)?$/);
+      expect(b.style.minWidth).toMatch(/^0(px)?$/);
+      expect(b.style.overflowWrap).toBe('anywhere');
+      expect(b.style.width).toBe(''); // aucune largeur fixe
+    }
+  });
+
+  it('le conteneur des barres peut lui-même rétrécir dans la colonne', () => {
+    const hote = document.createElement('div');
+    document.body.appendChild(hote);
+    monterGrilleFactures(hote, { lancer: () => {}, classe: () => 'residentiel', ecouter: () => {} });
+    const conteneur = hote.querySelector<HTMLElement>('[data-cons-mois-barres]')!;
+    expect(conteneur.style.minWidth).toMatch(/^0(px)?$/);
+    expect(conteneur.style.width).toBe('100%');
+  });
+});
+
 describe('ACAL837 — la grille', () => {
   function monter() {
     const hote = document.createElement('div');
