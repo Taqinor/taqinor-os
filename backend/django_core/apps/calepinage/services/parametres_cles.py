@@ -362,13 +362,10 @@ TYPES_CLES = {
 #: retirer). Chaque couple est exercé par ``test_calx69_registre_servi.py``.
 VALEURS_NON_SERVIES = {
     SECTION_SIMULATION: {
-        'mode_meteo': {
-            'tmy': (
-                "Année type : n'aboutit pas sans fichier — la météo PVGIS "
-                "d'année type est à plat et n'est pas ramenée au plan des "
-                "modules ; choisissez « pluriannuel », ou déposez un fichier "
-                "météo d'année type sur le calepinage (onglet Séries)."),
-        },
+        # ACAL1715 — « tmy » n'est plus dans cette table : l'année type PVGIS
+        # est ramenée au plan des modules (``transposition.transposer_annee_type``)
+        # dès que le modèle de transposition et l'albédo sont saisis ; sans
+        # eux, la simulation est refusée en nommant ces réglages.
         'modele_iam': {
             'martin_ruiz': (
                 "Martin-Ruiz : pas encore pris en charge ; la simulation "
