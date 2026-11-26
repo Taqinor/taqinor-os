@@ -942,6 +942,30 @@ class LeDessinDuSchemaElectrique(unittest.TestCase):
         return [{"numero": k, "nb_panneaux": 12, "onduleur": 1, "entree": 1 + k % 2}
                 for k in range(1, n + 1)]
 
+    def test_s3_une_valeur_ne_quitte_jamais_son_unite_et_l_ellipse_tombe_sur_un_mot(self):
+        from core.electrique.schema_electrique import (
+            _couper, _designation_affichee, document_schema_electrique, rendre_schema_electrique_svg)
+        self.assertEqual(_couper("3P + N + T · 400 V", 16, 3), ["3P + N + T ·", "400 V"])
+        self.assertEqual(_couper("Parafoudre In 20 kA, Up ≤ 1,5 kV", 22, 2), ["Parafoudre In 20 kA,", "Up ≤ 1,5 kV"])
+        for ligne in _couper("Parafoudre In 20 kA, Up ≤ 1,5 kV", 14, 3):
+            self.assertNotRegex(ligne, r"^(kV|kA|V|A)\b")
+        long = "Onduleur hybride très long designation supercalifragilistic extra"
+        coupe = _couper(long, 20, 2)
+        self.assertEqual(coupe, ["Onduleur hybride", "très long…"])
+        self.assertTrue(all(len(ligne) <= 21 for ligne in coupe))
+        # Marque répétée : « Deye » + « Onduleur hybride Deye 20kW » du catalogue.
+        self.assertEqual(_designation_affichee("Deye Onduleur hybride Deye 20kW Triphasé"),
+                         "Onduleur hybride Deye 20kW Triphasé")
+        self.assertEqual(_designation_affichee("Deye SUN-10K-SG05LP3"), "Deye SUN-10K-SG05LP3")
+        # Rendu : la désignation du bloc onduleur n'est coupée qu'entre deux mots, jamais au milieu.
+        entree = _triphase_deux_pans()
+        doc = document_schema_electrique(entree, concevoir(entree))
+        doc["onduleurs"][0]["designation"] = "Deye Onduleur hybride Deye 20kW Triphasé"
+        textes = _textes(rendre_schema_electrique_svg(doc, "fr"))
+        self.assertIn("Onduleur hybride Deye", textes)
+        self.assertFalse([t for t in textes if t.startswith("Deye Onduleur")])
+        self.assertFalse([t for t in textes if t in ("kV", "kA", "V")])
+
     def test_hauteur_bornee_et_suite_aux_vrais_totaux(self):
         """SCHEL-B4 (revue) — 8, 16 ou 30 chaînes : la planche de l'annexe garde
         la MÊME hauteur bornée ; au-delà de 4 rangées, une ligne de suite porte

@@ -27,6 +27,7 @@ couleurs que l'écran du calepinage.
 """
 
 import math
+import re
 from html import escape
 
 from core.electrique.schema import (
@@ -629,7 +630,7 @@ def _carte_onduleur(doc, y, h, langue):
     if onduleur.get("nombre") and onduleur["nombre"] > 1:
         lignes.append("%d ×" % onduleur["nombre"])
     if onduleur.get("designation"):
-        lignes.append(onduleur["designation"][:30])
+        lignes.extend(_couper(_designation_affichee(onduleur["designation"]), 24, 3))
     if onduleur.get("nb_entrees"):
         lignes.append(_texte_entrees(onduleur["nb_entrees"], langue))
     for rang, ligne in enumerate(lignes):
@@ -646,7 +647,7 @@ def _carte_batterie(batterie, y, langue):
                 _t(x + 10.0, y + 20.0, _libelle("batterie", langue), 11.0, "700")]
     lignes = []
     if batterie.get("designation"):
-        lignes.append(batterie["designation"][:30])
+        lignes.extend(_couper(_designation_affichee(batterie["designation"]), 30, 2))
     if batterie.get("unites"):
         lignes.append("%d %s" % (batterie["unites"], _libelle(
             "unites" if batterie["unites"] > 1 else "unite", langue)))
@@ -738,19 +739,47 @@ def _blocs_ac(doc, langue):
     return blocs
 
 
+#: Les unités qu'un nombre ne quitte jamais en fin de ligne (« 400 V », « 20 kA », « 1,5 kV »).
+_UNITES = r"kWh|kWc|kW|kVA|kV|kA|Wc|Wh|Ah|mA|mm²|mm2|m²|Hz|°C|V|A|W|m|%"
+_NOMBRE_UNITE = re.compile(r"(\d(?:[\d.,]*\d)?)[ \t]+((?:%s)(?![\w²]))" % _UNITES)
+_BLANCS = re.compile(r"[ \t\r\n]+")
+_INSECABLE = "\u00a0"
+
+
+def _mots(texte):
+    """Les mots d'un texte, une valeur et son unité formant UN seul mot (espace insécable)."""
+    joint = _NOMBRE_UNITE.sub("\\1" + _INSECABLE + "\\2", str(texte or ""))
+    return [mot for mot in _BLANCS.split(joint.strip()) if mot]
+
+
+def _designation_affichee(designation):
+    """La désignation SANS marque répétée : « Deye Onduleur hybride Deye 20kW » (marque + nom du
+    catalogue, qui contient déjà la marque) s'écrit « Onduleur hybride Deye 20kW ». Affichage seul :
+    la désignation servie et ses empreintes ne bougent pas."""
+    mots = str(designation or "").split()
+    if len(mots) > 2 and len(mots[0]) >= 3 and mots[0].casefold() in (
+            m.casefold() for m in mots[1:]):
+        mots = mots[1:]
+    return " ".join(mots)
+
+
 def _couper(texte, largeur, lignes):
-    """Mots entiers sur ``lignes`` lignes d'au plus ``largeur`` signes (… au
-    bout, comme ``couperTexte`` de l'écran) — un texte, jamais un chiffre."""
+    """Mots entiers sur ``lignes`` lignes d'au plus ``largeur`` signes. Une valeur ne quitte jamais son
+    unité ; trop long, le texte finit par « … » posé à une FRONTIÈRE de mot (jamais au milieu d'un mot) —
+    un texte, jamais un chiffre."""
     sortie = []
-    for mot in str(texte or "").split():
+    for mot in _mots(texte):
         if sortie and len(sortie[-1]) + 1 + len(mot) <= largeur:
             sortie[-1] += " " + mot
         else:
             sortie.append(mot)
     if len(sortie) > lignes:
         sortie = sortie[:lignes]
-        sortie[-1] = sortie[-1][:max(1, largeur - 1)] + "…"
-    return sortie
+        derniers = sortie[-1].split(" ")
+        while len(derniers) > 1 and len(" ".join(derniers)) + 1 > largeur:
+            derniers.pop()
+        sortie[-1] = " ".join(derniers) + "…"
+    return [ligne.replace(_INSECABLE, " ") for ligne in sortie]
 
 
 def _largeurs_ac(blocs):

@@ -24,7 +24,7 @@ vi.mock('./exportImage', () => ({
 import calepinageApi from '../../api/calepinageApi'
 import SchemaUnifilairePanel, { PlancheSchema, SchemaEnBlocs } from './SchemaUnifilairePanel'
 import {
-  motifDuRefusDxf, corpsEdition, couperTexte, echelleAjustee, estHorsReseau, lignesCartouche, lignesLegende, phraseCoteReseau, planDepuisDocument, planSchemaEnBlocs,
+  motifDuRefusDxf, corpsEdition, couperTexte, designationAffichee, echelleAjustee, estHorsReseau, lignesCartouche, lignesLegende, phraseCoteReseau, planDepuisDocument, planSchemaEnBlocs,
 } from './SchemaUnifilairePanel.helpers'
 import { documentContrat, exempleContrat } from '../../test/fixtures/contractSamples'
 import { OPTIONS_TELECHARGEMENT } from './documents/telechargement'
@@ -648,6 +648,16 @@ describe('planSchemaEnBlocs / SchemaEnBlocs (maquette Schema, tour 2)', () => {
     expect(couperTexte('Compteur de production', 12)).toEqual(['Compteur de', 'production'])
     expect(couperTexte('un deux trois quatre cinq', 5, 2)).toEqual(['un', 'deux…'])
     expect(couperTexte(null, 10)).toEqual([])
+  })
+
+  it('S3 — une valeur ne quitte jamais son unité, le « … » tombe sur un mot, la marque répétée est écrite une fois', () => {
+    expect(couperTexte('Parafoudre In 20 kA, Up ≤ 1,5 kV', 22, 2)).toEqual(['Parafoudre In 20 kA,', 'Up ≤ 1,5 kV'])
+    expect(couperTexte('Parafoudre In 20 kA, Up ≤ 1,5 kV', 14, 3).every((l) => !/^(kV|kA|V)\b/.test(l))).toBe(true)
+    expect(couperTexte('3P + N + T · 400 V', 16, 3)).toEqual(['3P + N + T ·', '400 V'])
+    const longue = couperTexte('Onduleur hybride très long designation supercalifragilistic extra', 20, 2)
+    expect(longue).toEqual(['Onduleur hybride', 'très long…'])
+    expect(designationAffichee('Deye Onduleur hybride Deye 20kW Triphasé')).toBe('Onduleur hybride Deye 20kW Triphasé')
+    expect(designationAffichee('Deye SUN-10K-SG05LP3')).toBe('Deye SUN-10K-SG05LP3')
   })
 })
 

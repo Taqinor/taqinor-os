@@ -179,18 +179,37 @@ export function echelleAjustee(largeurCadre, largeurDessin) {
 }
 
 /** Coupe un texte en lignes d'au plus `max` caractères (mots entiers), `n` lignes au plus (… au bout). */
+const NOMBRE_UNITE = /(\d(?:[\d.,]*\d)?)[ \t]+(kWh|kWc|kW|kVA|kV|kA|Wc|Wh|Ah|mA|mm²|mm2|m²|Hz|°C|V|A|W|m|%)(?![\w²])/g
+const INSECABLE = ' '
+
+/** Marque répétée d'une désignation « Marque Nom » dont le nom la porte déjà : « Deye Onduleur hybride Deye 20kW »
+    s'écrit « Onduleur hybride Deye 20kW ». Affichage seul — la désignation servie ne change pas. */
+export function designationAffichee(designation) {
+  const mots = String(designation ?? '').trim().split(/\s+/).filter(Boolean)
+  const premier = mots[0]?.toLowerCase()
+  return mots.length > 2 && premier.length >= 3 && mots.slice(1).some((m) => m.toLowerCase() === premier)
+    ? mots.slice(1).join(' ')
+    : mots.join(' ')
+}
+
+/** Coupe un texte en lignes d'au plus `max` caractères (mots entiers ; une valeur ne quitte jamais son unité),
+    `n` lignes au plus — le « … » final se pose à une frontière de mot, jamais au milieu d'un mot. */
 export function couperTexte(texte, max, n = 2) {
-  const mots = String(texte ?? '').trim().split(/\s+/).filter(Boolean)
+  const mots = String(texte ?? '').trim().replace(NOMBRE_UNITE, `$1${INSECABLE}$2`).split(/[ \t\r\n]+/).filter(Boolean)
   const lignes = []
   for (const mot of mots) {
     const derniere = lignes[lignes.length - 1]
     if (derniere !== undefined && `${derniere} ${mot}`.length <= max) lignes[lignes.length - 1] = `${derniere} ${mot}`
     else lignes.push(mot)
   }
-  if (lignes.length <= n) return lignes
-  const gardees = lignes.slice(0, n)
-  gardees[n - 1] = `${gardees[n - 1].slice(0, Math.max(1, max - 1))}…`
-  return gardees
+  if (lignes.length > n) {
+    const gardees = lignes.slice(0, n)
+    const derniers = gardees[n - 1].split(' ')
+    while (derniers.length > 1 && `${derniers.join(' ')}…`.length > max) derniers.pop()
+    gardees[n - 1] = `${derniers.join(' ')}…`
+    return gardees.map((l) => l.replaceAll(INSECABLE, ' '))
+  }
+  return lignes.map((l) => l.replaceAll(INSECABLE, ' '))
 }
 
 /** Site déclaré hors réseau : `resultat.hors_reseau` est un bloc chiffré (sans `motif_absence`, que le serveur
@@ -313,7 +332,7 @@ export function planSchemaEnBlocs(schema, resultat) {
     x: ox, y: 148, l: 160, h: yAc + 152 - 148,
     puissance: texteOnduleur(resultat),
     // Sans désignation servie, le serveur titre le bloc « Onduleur » : pas deux fois le même mot.
-    designation: /^onduleur$/i.test(String(blocOnduleur.titre ?? '').trim()) ? [] : couperTexte(blocOnduleur.titre, 22, 3),
+    designation: /^onduleur$/i.test(String(blocOnduleur.titre ?? '').trim()) ? [] : couperTexte(designationAffichee(blocOnduleur.titre), 22, 3),
     entrees: ond && fini(ond.n_mppt) && ond.n_mppt > 0
       ? `${ond.n_mppt} entrée${ond.n_mppt > 1 ? 's' : ''} : ${ond.n_mppt === 1 ? '1' : ond.n_mppt === 2 ? '1 et 2' : `1 à ${ond.n_mppt}`}`
       : null,
@@ -449,7 +468,7 @@ function entreesDuDocument(doc, libelles) {
 /** La carte batterie (bande courant continu, à gauche de l'onduleur) et sa liaison neutre à double flèche. */
 function carteBatterie(batterie, onduleur) {
   const lignes = [
-    ...couperTexte(batterie.designation, 20, 2),
+    ...couperTexte(designationAffichee(batterie.designation), 20, 2),
     ...(fini(batterie.unites) ? [`${batterie.unites} unité${batterie.unites > 1 ? 's' : ''}`] : []),
     ...(fini(batterie.capacite_kwh) ? [`${nombreFr(batterie.capacite_kwh)} kWh au total`] : []),
     ...(fini(batterie.tension_v) ? [`${nombreFr(batterie.tension_v)} V`] : []),
@@ -503,7 +522,7 @@ function insererEtageMt(plan, etage) {
 function listerOnduleurs(plan, groupes) {
   if (groupes.length < 2) return
   const ligne = (g) => [
-    [fini(g.nombre) ? `${g.nombre} ×` : null, g.designation].filter(Boolean).join(' '),
+    [fini(g.nombre) ? `${g.nombre} ×` : null, designationAffichee(g.designation)].filter(Boolean).join(' '),
     fini(g.puissance_kw) ? `${nombreFr(g.puissance_kw)} kW` : null,
   ].filter(Boolean).join(' · ')
   plan.onduleur.puissance = null
