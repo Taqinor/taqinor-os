@@ -516,6 +516,9 @@ ProposalDataResponse = _ser('PublicProposalData', {
     'fiche_batterie': s.DictField(**_souple()),
     'offres_tailles': s.DictField(**_souple()),
     'calepinage_options': s.DictField(**_souple()),
+    # D-ACAL-132 (lot 6) — additive : liens « confiance » au calepinage servi
+    # seulement (contrat ``contract_samples/visionneuse_soleil.json``).
+    'visionneuse_soleil': s.DictField(required=False),
     'parametres_site': s.DictField(**_souple()),
     'acompte': s.DictField(**_souple()),
     'date_validite': s.CharField(**_souple(allow_blank=True)),
