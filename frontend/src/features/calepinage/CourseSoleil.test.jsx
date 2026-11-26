@@ -35,6 +35,24 @@ describe('CourseSoleil — onglet monté', () => {
     expect(screen.getByText(/Latitude du site inconnue/)).toBeInTheDocument()
   })
 
+  /* T5 (suite d'ACAL1640) — la barre du soleil porte l'année de dessin du script (2028, bissextile) et sa phrase d'heure
+     légale la dit ; la course du soleil disait « 2026-06-21, année en cours » pour le MÊME jour 172 : une seule date. */
+  it('T5 — la course du soleil et la phrase d’heure légale de la barre disent la même date', async () => {
+    const { default: HeureLegale } = await import('./HeureLegale')
+    const barre = document.createElement('div')
+    barre.innerHTML = '<input id="rp9-sun-hour" value="14"><input id="rp9-sun-date" type="date" value="2028-06-20">'
+    document.body.appendChild(barre)
+    espions.layout.mockResolvedValue({ data: { roof_layout: {
+      pin: { lat: 33.6, lng: -7.6 }, zones: [ZONE], scene: { sunDay: 172, sunHour: 14 } } } })
+    render(<MemoryRouter><HeureLegale calepinageId={7} /><CourseSoleil calepinageId={7} /></MemoryRouter>)
+    await screen.findByTestId('cal-course-soleil')
+    expect(document.getElementById('rp9-sun-legal')).toHaveTextContent('calculé pour le 20 juin 2028')
+    const scene = screen.getByTestId('cal-course-soleil-scene')
+    expect(scene).toHaveTextContent('jour 172 de l’année (2028-06-20)')
+    expect(scene).not.toHaveTextContent('année en cours')
+    barre.remove()
+  })
+
   it('lecture du document en échec : message d’erreur, pas d’écran vide muet', async () => {
     espions.layout.mockRejectedValue(new Error('500'))
     rendre()
