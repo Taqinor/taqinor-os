@@ -26,18 +26,21 @@ function ecartPanneaux(devis, conception) {
   return cible != null && actuel !== cible ? `panneaux ${actuel} → ${cible}` : ''
 }
 
-//: `avantMiseAJour` (E7d, M4) : appelé avant le POST ; `false` ⇒ rien n'est fait.
-export default function BandeauConception({ devis, onMisAJour, avantMiseAJour = null }) {
-  const navigate = useNavigate()
+// T4-X6-012 — la conception est RELUE quand la fenêtre revient au premier plan (fiche du
+// lead changée dans un autre onglet) et après chaque enregistrement (`updated_at`) : le
+// bandeau apparaît sans recharger la page.
+function useConceptionRelue(leadId, devisId, tour, jeton) {
   const [conception, setConception] = useState(null)
-  const [enCours, setEnCours] = useState(false)
-  const [resultat, setResultat] = useState(null)
-  const [erreur, setErreur] = useState('')
-  const leadId = devis?.lead ?? null
-
-  const [tour, setTour] = useState(0)  // relire après « Mettre à jour »
-  const devisId = devis?.id
-
+  const [focus, setFocus] = useState(0)
+  useEffect(() => {
+    const relire = () => { if (document.visibilityState !== 'hidden') setFocus((n) => n + 1) }
+    window.addEventListener('focus', relire)
+    document.addEventListener('visibilitychange', relire)
+    return () => {
+      window.removeEventListener('focus', relire)
+      document.removeEventListener('visibilitychange', relire)
+    }
+  }, [])
   useEffect(() => {
     let vivant = true
     const lire = async () => {
@@ -51,7 +54,26 @@ export default function BandeauConception({ devis, onMisAJour, avantMiseAJour = 
     }
     lire()
     return () => { vivant = false }
-  }, [leadId, devisId, tour])
+  }, [leadId, devisId, tour, jeton, focus])
+  return conception
+}
+
+//: `avantMiseAJour` (E7d, M4) : appelé avant le POST ; `false` ⇒ rien n'est fait.
+//: `avantRechargement` (T4-X6-012) : appelé avant de relire un brouillon qui a suivi.
+export default function BandeauConception({ devis, onMisAJour, avantMiseAJour = null, avantRechargement = null }) {
+  const navigate = useNavigate()
+  const [enCours, setEnCours] = useState(false)
+  const [resultat, setResultat] = useState(null)
+  const [erreur, setErreur] = useState('')
+  const leadId = devis?.lead ?? null
+
+  const [tour, setTour] = useState(0)  // relire après « Mettre à jour »
+  const devisId = devis?.id
+  const conception = useConceptionRelue(leadId, devisId, tour, devis?.updated_at)
+  // La version que l'écran a lue en premier pour CE devis : plus récente sur un brouillon
+  // non listé (non retouché) = il l'a suivie (ou la suivra) ; l'écran montre l'ancienne.
+  const [vue, setVue] = useState({ devisId: null, version: null })
+  if (conception?.version != null && vue.devisId !== devisId) setVue({ devisId, version: conception.version })
 
   if (!devis?.id || !leadId) return null
   const aJour = (conception?.brouillons_a_mettre_a_jour || []).find((b) => b.devis === devis.id)
@@ -108,6 +130,29 @@ export default function BandeauConception({ devis, onMisAJour, avantMiseAJour = 
           {enCours ? 'Mise à jour…' : 'Mettre à jour'}
         </Button>
         {erreur && <p className="w-full text-xs text-destructive">{erreur}</p>}
+      </div>
+    )
+  }
+
+  const suivie = !PARTIS.includes(devis.statut) && vue.devisId === devisId && vue.version != null
+    && conception?.version > vue.version
+  if (suivie) {
+    const recharger = async () => {
+      if (avantRechargement && !(await avantRechargement())) return
+      setVue({ devisId, version: conception.version })
+      if (onMisAJour) await onMisAJour()
+    }
+    return (
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm"
+           data-testid="bandeau-conception-suivi">
+        <p className="flex-1">
+          La conception de ce lead a changé. Ce brouillon n’était pas retouché : il suit la nouvelle conception.
+          Rechargez-le pour voir ses nouvelles valeurs.
+        </p>
+        <Button type="button" size="sm" variant="outline" onClick={recharger}
+                data-testid="bandeau-conception-recharger">
+          Recharger
+        </Button>
       </div>
     )
   }

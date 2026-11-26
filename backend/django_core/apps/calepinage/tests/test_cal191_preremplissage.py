@@ -21,6 +21,7 @@ from apps.calepinage.services.reglementaire import (
     ETAT_FOURNIE,
     ETAT_MANQUANTE,
     MESSAGE_AUCUN_GABARIT,
+    MESSAGE_PAYS_NON_RENSEIGNE,
     _composer_dossiers,
 )
 from apps.calepinage.tests._m0_en_attente import affirmer_non_servies, sans
@@ -235,6 +236,19 @@ class GabaritManquantTest(unittest.TestCase):
         self.assertEqual(agregat['gabarits_deposes'], 0)
         self.assertEqual(agregat['message_aucun_gabarit'],
                          MESSAGE_AUCUN_GABARIT)
+
+    def test_pays_non_renseigne_dit_la_vraie_cause_et_ou_le_remplir(self):
+        # T4-X3-014 — `dossiers_du_calepinage` ne cherche aucun gabarit sans
+        # pays (on ne devine pas un pays) : dire « aucun gabarit déposé »
+        # alors qu'un gabarit l'est ment sur la cause.
+        for pays in (None, ''):
+            agregat = _composer_dossiers(calepinage_id=2, pays=pays,
+                                         entrees=[], infos={})
+            self.assertEqual(agregat['message_aucun_gabarit'],
+                             MESSAGE_PAYS_NON_RENSEIGNE)
+            self.assertNotIn('Aucun gabarit', agregat['message_aucun_gabarit'])
+        self.assertIn('Réglages', MESSAGE_PAYS_NON_RENSEIGNE)
+        self.assertIn('pays', MESSAGE_PAYS_NON_RENSEIGNE)
 
 
 #: ACAL15 (M0) a posé ces clés avant leur producteur : chaque tâche nommée

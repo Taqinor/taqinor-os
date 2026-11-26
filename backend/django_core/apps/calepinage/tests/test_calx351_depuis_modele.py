@@ -354,6 +354,40 @@ class DepuisModeleEnBase(BaseApiCalepinage):
             Calepinage.objects.get(pk=reponse.data['id']).client_id,
             client.pk)
 
+    def test_deux_envois_une_cle_un_seul_calepinage(self):
+        """ACAL2047 — la réponse perdue puis renvoyée avec la même clé ne
+        crée pas de doublon : le MÊME calepinage est rendu."""
+        client = Client.objects.create(company=self.company,
+                                       nom='Client ACAL2047')
+        corps = {'client_id': client.pk, 'titre': 'Une seule fois'}
+        premier = self.api.post(URL_DEPUIS_MODELE, corps, format='json',
+                                HTTP_IDEMPOTENCY_KEY='cle-acal2047')
+        second = self.api.post(URL_DEPUIS_MODELE, corps, format='json',
+                               HTTP_IDEMPOTENCY_KEY='cle-acal2047')
+        self.assertEqual(premier.status_code, 201, premier.data)
+        self.assertEqual(second.status_code, 201, second.data)
+        self.assertEqual(second.data['id'], premier.data['id'])
+        self.assertEqual(
+            Calepinage.objects.filter(client_id=client.pk).count(), 1)
+        # Une AUTRE clé = une autre création (jamais fusionnée).
+        autre = self.api.post(URL_DEPUIS_MODELE, corps, format='json',
+                              HTTP_IDEMPOTENCY_KEY='cle-acal2047-bis')
+        self.assertEqual(autre.status_code, 201, autre.data)
+        self.assertNotEqual(autre.data['id'], premier.data['id'])
+
+    def test_cle_d_une_autre_societe_ne_rend_pas_son_calepinage(self):
+        client = Client.objects.create(company=self.company,
+                                       nom='Client ACAL2047 A')
+        premier = self.api.post(URL_DEPUIS_MODELE, {'client_id': client.pk},
+                                format='json',
+                                HTTP_IDEMPOTENCY_KEY='cle-partagee')
+        self.assertEqual(premier.status_code, 201, premier.data)
+        voisin = Client.objects.create(company=self.autre, nom='Voisin')
+        reponse = self.api_autre.post(
+            URL_DEPUIS_MODELE, {'client_id': voisin.pk}, format='json',
+            HTTP_IDEMPOTENCY_KEY='cle-partagee')
+        self.assertNotEqual(reponse.data.get('id'), premier.data['id'])
+
     def test_sans_rattachement_refus_nomme(self):
         reponse = self.api.post(URL_DEPUIS_MODELE, {}, format='json')
         self.assertEqual(reponse.status_code, 400)

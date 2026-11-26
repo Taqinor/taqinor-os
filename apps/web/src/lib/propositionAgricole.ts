@@ -192,6 +192,19 @@ const AGR_OPTIONS_NON_INCLUS_LBL: Record<string, Lbl3> = {
 export const AGR_NON_INCLUS_LBL: Record<string, Lbl3> = {
   forage: { fr: 'le forage', en: 'the borehole', ar: 'الثقب' },
   genie_civil: { fr: 'le génie civil', en: 'civil works', ar: 'الهندسة المدنية' },
+  // D-ACAL-112 / D-ACAL-118 — les protections du kit minimum restées sans prix. Jumeau (MÊMES
+  // textes) : backend/django_core/apps/ventes/quote_engine/i18n_labels_agricole.py (agr_non_inclus_<clé>).
+  coffret_dc: { fr: 'le coffret de protection DC', en: 'the DC protection box', ar: 'علبة حماية التيار المستمر' },
+  disjoncteur_ac: {
+    fr: 'le disjoncteur AC variateur → pompe',
+    en: 'the AC circuit breaker from drive to pump',
+    ar: 'قاطع التيار المتناوب من المغير إلى المضخة',
+  },
+  parafoudre_ac: {
+    fr: 'le parafoudre AC variateur → pompe',
+    en: 'the AC surge arrester from drive to pump',
+    ar: 'مانعة الصواعق للتيار المتناوب من المغير إلى المضخة',
+  },
   ...AGR_OPTIONS_NON_INCLUS_LBL,
 };
 

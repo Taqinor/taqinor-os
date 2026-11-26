@@ -95,12 +95,12 @@ with no rate column at all — mono-MAD in practice.
 | stock | ParametresNegoce | `apps/stock/models_negoce_params.py:16` | cout_rupture_jour_mad |
 | stock | AccordRFAFournisseur | `apps/stock/models_rfa.py:16` | montant_fixe |
 | stock | ExpeditionTransporteur | `apps/stock/models_wms.py:477` | cout_reel |
-| ventes | LigneDevis | `apps/ventes/models.py:610` | prix_manuel, prix_unitaire, remise, taux_tva, tva_base_legale |
-| ventes | AvenantDevis | `apps/ventes/models.py:941` | taux_remise_global |
-| ventes | DevisPreset | `apps/ventes/models.py:1748` | remise_globale, taux_tva |
-| ventes | LignePrixListe | `apps/ventes/models.py:2094` | prix_unitaire |
-| ventes | PalierRemiseVolume | `apps/ventes/models.py:2183` | remise_pct |
-| ventes | PlanCommission | `apps/ventes/models.py:2243` | montant_par_kwc |
+| ventes | LigneDevis | `apps/ventes/models.py:619` | prix_manuel, prix_unitaire, remise, taux_tva, tva_base_legale |
+| ventes | AvenantDevis | `apps/ventes/models.py:950` | taux_remise_global |
+| ventes | DevisPreset | `apps/ventes/models.py:1757` | remise_globale, taux_tva |
+| ventes | LignePrixListe | `apps/ventes/models.py:2103` | prix_unitaire |
+| ventes | PalierRemiseVolume | `apps/ventes/models.py:2192` | remise_pct |
+| ventes | PlanCommission | `apps/ventes/models.py:2252` | montant_par_kwc |
 | ventes | FactureSource | `apps/ventes/models_facturation.py:98` | sous_total_ht |
 | ventes | AffectationPaiement | `apps/ventes/models_facturation.py:418` | montant |
 | ventes | NoteDebit | `apps/ventes/models_facturation.py:452` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
@@ -120,4 +120,4 @@ with no rate column at all — mono-MAD in practice.
 | crm | ConcurrentPerte | `apps/crm/models_clients.py:1267` | concurrent_prix | no |
 | facturation | Facture | `apps/facturation/models.py:35` | abandon_montant, acompte_auto_le, montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, total_ht_stocke, total_ttc_stocke, ventilation_tva | yes |
 | parametres | CompanyProfile | `apps/parametres/models_company.py:15` | bande_prix_kwc_ci, exiger_acompte_avant_planification, prix_cible_kwc_defaut, remise_max_pct, tva_intra, tva_panneaux, tva_standard | no |
-| ventes | Devis | `apps/ventes/models.py:37` | penalites_retard_livraison, prix_cible_kwc, prix_par_kwc, remise_approuvee, remise_approuvee_pct, remise_globale, taux_tva | yes |
+| ventes | Devis | `apps/ventes/models.py:37` | penalites_retard_livraison, prix_cible_kwc, prix_par_kwc, remise_approuvee, remise_approuvee_pct, remise_globale, taux_tva, total_affiche_empreinte, total_affiche_range | yes |

@@ -31,7 +31,7 @@ from core.champs_stricts import ChaineStricte, DateStricte
 from core.conflit_etat import ConflitEtat
 from core.parseurs import ListeJSON
 
-from ..permissions import PeutGererCalepinage, PeutLireOuEcrireCalepinage
+from ..permissions import PeutGererCalepinage, PeutLireOuReleverCalepinage
 from ..serializers import forme_reponse
 
 __all__ = ['ReleveTerrainMixin']
@@ -63,7 +63,7 @@ class ReleveTerrainMixin:
             'chaines': ListeJSON(element=dict, required=False)}),
         responses={201: _FORME_RELEVE})
     @action(detail=True, methods=['get', 'post'], url_path='releve',
-            permission_classes=[PeutLireOuEcrireCalepinage])
+            permission_classes=[PeutLireOuReleverCalepinage])
     def releve(self, request, pk=None):
         from ..selectors import releves_terrain
         from ..services.releve import (
@@ -108,7 +108,7 @@ class ReleveTerrainMixin:
         responses={200: _FORME_RELEVE, 204: None})
     @action(detail=True, methods=['patch', 'delete'],
             url_path=r'releve/(?P<releve_id>[^/.]+)',
-            permission_classes=[PeutLireOuEcrireCalepinage])
+            permission_classes=[PeutLireOuReleverCalepinage])
     def releve_detail(self, request, pk=None, releve_id=None):
         """ACAL204 — corrige (PATCH) ou retire (DELETE) UN relevé de saisie.
 

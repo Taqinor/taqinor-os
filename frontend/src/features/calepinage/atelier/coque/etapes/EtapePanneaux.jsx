@@ -4,7 +4,7 @@ import { couleurAccesActive } from '@rooflib/shadingEngine'
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
-import { formatNumber } from '../../../../../lib/format'
+import { formatKwc, formatNumber } from '../../../../../lib/format'
 import { cibleAuModule } from '../../cibleAuModule'
 import { kwh } from '../../../production/ResultatHeros.helpers'
 import { SurCarte } from '../emplacements'
@@ -36,7 +36,7 @@ import { SIMULATION_A_REFAIRE } from '../../../production/BandeauProvenanceProdu
 // La palette bleu nuit → or de la carte d'accès solaire est posée au DÉMARRAGE de l'atelier (useAtelierBoot,
 // ACAL1340), jamais ici : l'étape ne fait que la lire (couleurAccesActive) pour sa légende.
 
-/** ACAL1829 — la ligne d'une carte de taille (« 12 panneaux · 6,96 kWc · ≈ 82 % : production ÷ consommation ») : le nombre de chaque
+/** ACAL1829 — la ligne d'une carte de taille (« 12 panneaux · 6,96 kWc · ≈ 82 % de la consommation ») : le nombre de chaque
     morceau est dessiné en gras (Archivo), le texte reste celui de la lecture ; le « · » ne se voit pas (l'écart le remplace). */
 function Seg({ texte }) {
   const m = /^(≈\s*)?(\d(?:[\d\u00a0\u202f ,.]*\d)?(?:\s%)?)(.*)$/.exec(texte)
@@ -89,9 +89,14 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
     entrees: Array.isArray(catalogue?.modules) ? catalogue.modules : [],
     // Lane E9 — la taille de la conception comptée dans chaque puissance de la liste (`modules-disponibles/`).
     panneauxSelonWatt: catalogue?.panneaux_selon_watt ?? {},
+    kwcSelonWatt: catalogue?.kwc_selon_watt ?? {}, // T4-X8-011 — le kWc de ce compte dans ce module, servi
     servis: modulesServis(entree),
     publiee: productionPubliee(resultat),
     aRefaire: simulationARefaire(resultat), // T4-X2-002
+    // T4-X7-002 — la simulation de la pose a trouvé un ÉCART RÉEL avec la conception (`taux_source: 'autre_installation'` :
+    // autre puissance, ou batterie d'un seul côté) : sa part de la consommation ne se lit plus à côté de cette pose. Seul ce
+    // signal la tait (`'pose'` = aucun taux de conception, résultat rangé sans clé : comme avant).
+    partDeLaConception: resultat?.autoconsommation?.taux_source !== 'autre_installation',
   }
 }
 
@@ -179,22 +184,24 @@ function ChoixModule({ etat, entrees, servis, lectureSeule, g }) {
 
 /** Lane E9 (T4-X2-001 / T4-X9-005) — la cible comptée dans le module CHOISI : la conception est une PUISSANCE ; un module
     d'une autre puissance en pose le compte SERVI (`panneaux_selon_watt`, la règle du moteur — jamais calculé ici), et la
-    carte dit les deux. Module absent de la table : la puissance seule, aucun compte (`panneaux: null`) ; sans fiche lue
-    (catalogue en lecture) : la cible telle quelle. */
-function cibleDuModule(cible, module, entrees, table) {
+    carte dit les deux. Module absent de la table : la puissance seule, aucun compte (`panneaux: null`).
+    T4-X8-011 — le compte ET son kWc (`kwc_selon_watt`, servi) vont ensemble : `kwc` devient celui du module posé ; la
+    conception est dite dans sa propre phrase (`conception`). Fiche du module pas (encore) lue : la puissance que le
+    constructeur POSE (`wattPose`, « 5 × 710 W ») — jamais le compte de la conception sous un module d'une autre taille. */
+function cibleDuModule(cible, module, entrees, servi, wattPose) {
   // Aucun module choisi sur le pan : rien à convertir (la carte garde la taille de la conception, comme avant).
   if (!cible || !module?.valeur) return cible
   const fiche = entrees.find((e) => e.module.id === module.valeur)?.module
   const auModule = cibleAuModule({ panneaux: cible.panneaux, kwc: cible.kwc, wattConception: cible.moduleWc },
-    fiche?.pmaxWc, table)  // T4-X3-009 : LE lecteur unique de l'atelier
+    fiche?.pmaxWc ?? wattPose, servi.panneauxSelonWatt, servi.kwcSelonWatt)  // T4-X3-009 : LE lecteur unique de l'atelier
   if (!auModule?.convertie) return cible
-  return { ...cible, panneaux: auModule.panneaux, watt: auModule.watt,
-    conception: `la conception du lead compte ${auModule.conception}` }
+  return { ...cible, panneaux: auModule.panneaux, watt: auModule.watt, kwc: auModule.kwcModule,
+    conception: `La conception du lead compte ${auModule.conception}${cible.kwc != null ? `, ${formatKwc(cible.kwc)}` : ''}.` }
 }
 
 function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   const { besoin, figures, memoire } = etat
-  const cible = cibleDuModule(servi.cible, etat.module, servi.entrees, servi.panneauxSelonWatt)
+  const cible = cibleDuModule(servi.cible, etat.module, servi.entrees, servi, figures.watt)
   // La carte choisie est celle de la cible ACTUELLE ; ni l'une ni l'autre → « Pose actuelle : N panneaux · kWc ».
   const factureChoisie = !!cible && besoin?.valeur === cible.panneaux
   const max = etat.max && !factureChoisie
@@ -203,10 +210,10 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   const ligneTaille = tient == null ? null : [
     compte(tient), cible.kwc != null ? fmtKwc((cible.kwc * tient) / cible.panneaux) : null, `sur ${cible.panneaux} nécessaires`,
   ].filter(Boolean).join(' · ')
-  // Le % n'est dit qu'à côté de la taille pour laquelle il est calculé : production estimée ÷ consommation du lead.
-  // ACAL1968 — le nom de ce que ce % MESURE : production estimée ÷ consommation (jamais « de la consommation » tout court :
-  // c'est l'intitulé de la tuile des Résultats, qui est l'énergie AUTOCONSOMMÉE ÷ consommation — deux grandeurs, deux noms).
-  const part = (fig) => (fig?.couverture ? `≈ ${fig.couverture} : production ÷ consommation` : null)
+  // Le % n'est dit qu'à côté de la taille pour laquelle il est calculé. T4-X7-002 — ce % est la part SERVIE de la conception
+  // (`chiffrage.couverture_pct` = énergie AUTOCONSOMMÉE ÷ consommation, la grandeur ET le nom de la tuile « De la consommation »
+  // des Résultats), jamais « production ÷ consommation » ; tu quand la simulation dit que la conception décrit une autre pose.
+  const part = (fig) => (servi.partDeLaConception && fig?.couverture ? `≈ ${fig.couverture} de la consommation` : null)
   // La part de la consommation de la carte « Couvrir la facture » : lue sur le constructeur tant que cette taille est
   // posée, gardée pour cette taille et ce module quand une autre carte est choisie (jamais déduite d'une autre pose).
   const partLue = factureChoisie && cible && figures.panneaux === cible.panneaux ? part(figures) : null
@@ -218,15 +225,16 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
     ? gardee.texte : null)
   // ACAL2022 (T4-X2-001) — la carte dit la taille de la CONCEPTION (son nombre de panneaux et SON kWc, nommée) : jamais un nombre
   // de panneaux à côté du kWc d'un autre module ; la pose posée se dit à part (« Posé : … »).
-  // Lane E9 — un module d'une autre puissance : « 4,40 kWc — 6 panneaux de 710 W (la conception du lead compte 8 panneaux
-  // de 550 W) » ; sans compte servi pour ce module, la puissance seule.
-  const ligneConversion = cible?.conception && cible.kwc != null
-    ? `${fmtKwc(cible.kwc)}${cible.panneaux ? ` — ${compte(cible.panneaux)} de ${formatNumber(cible.watt)} W` : ''} (${cible.conception})`
+  // T4-X8-011 — un module d'une autre puissance : la ligne dit LE compte servi pour ce module et SON kWc servi (« 6 panneaux
+  // de 710 W · 4,26 kWc »), la conception sa propre phrase complète, sous la ligne ; sans compte servi : la phrase seule.
+  const ligneConversion = cible?.conception && cible.panneaux
+    ? [`${compte(cible.panneaux)} de ${formatNumber(cible.watt)} W`, cible.kwc != null ? formatKwc(cible.kwc) : null, partFacture]
+      .filter(Boolean).join(' · ')
     : null
-  const ligneFacture = cible && (ligneConversion ?? ligneTaille ?? [
+  const ligneFacture = cible && (cible.conception ? (ligneTaille ?? ligneConversion) : (ligneTaille ?? [
     compte(cible.panneaux), cible.kwc != null ? fmtKwc(cible.kwc) : null, 'conception',
     partFacture,
-  ].filter(Boolean).join(' · '))
+  ].filter(Boolean).join(' · ')))
   const posee = factureChoisie && cible && figures.panneaux > 0 && figures.kwc
     && (figures.panneaux !== cible.panneaux || (cible.kwc != null && figures.kwc !== fmtKwc(cible.kwc)))
     ? ['Posé : ' + compte(figures.panneaux), figures.kwc].join(' · ') : null
@@ -254,6 +262,8 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
           {cible && <span className="cal-pan-badge">Recommandé</span>}
         </span>
         {ligneFacture && <span className="cal-pan-option-ligne"><Ligne texte={ligneFacture} /></span>}
+        {/* T4-X8-011 — la conception, dite en entier : une phrase qui se replie, jamais coupée au bord de la carte. */}
+        {cible?.conception && <span className="cal-pan-option-phrase" data-zone="conception-du-lead">{cible.conception}</span>}
         {/* Relecture E5 B1 — la conception se calcule : jamais « 0 panneau », la cible est dite en cours. */}
         {!ligneFacture && servi.facture.calculEnCours && (
           <span className="cal-pan-option-ligne" data-zone="cible-en-calcul">calcul en cours</span>
@@ -315,6 +325,31 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   )
 }
 
+/** T4-X7-012 (décision du 25/11 : « Add a button ») — retirer un panneau en Guidé, sans passer en Expert : le geste du
+    script (`gestes.retirerUnPanneau`), qui choisit le panneau ; les chiffres suivent la lecture du constructeur. Grisé
+    avec sa raison quand rien ne peut partir. */
+function raisonSansRetrait(etat, lectureSeule) {
+  if (lectureSeule) return 'Ce calepinage est en lecture seule : la pose ne se modifie pas ici.'
+  const pose = etat.figures.panneaux
+  if (!(pose > 0)) return 'Aucun panneau posé à retirer.'
+  if (pose < 2) return 'Il reste un seul panneau sur ce pan : il ne se retire pas ici.'
+  if (!etat.besoin?.editable) return 'Choisissez d’abord une taille ci-dessus.'
+  return null
+}
+
+function RetirerUnPanneau({ etat, lectureSeule, g }) {
+  const raison = raisonSansRetrait(etat, lectureSeule)
+  return (
+    <div className="cal-pan-section">
+      <BoutonMarine disabled={!!raison} title={raison ?? undefined} data-testid="cal-panneaux-retirer-un"
+        onClick={() => g.retirerUnPanneau(etat.figures.panneaux)}>
+        Retirer un panneau
+      </BoutonMarine>
+      {raison && <p className="cal-pan-note" data-zone="retrait-impossible">{raison}</p>}
+    </div>
+  )
+}
+
 const PICTO_PORTRAIT = (
   <svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><rect x="0.75" y="0.75" width="8.5" height="14.5" rx="1" /></svg>
 )
@@ -373,9 +408,9 @@ function AlerteOmbre({ ombre, g }) {
 }
 
 /** La puce de la carte. Production publiée FRAÎCHE et COMPLÈTE → la pose simulée et sa production, libellé de l'étape
-    Résultats ; sinon la pose du constructeur, son estimation nommée « estimation » et la part production ÷ consommation
-    (production estimée ÷ consommation du lead : jamais « de la facture »). */
-function PuceResume({ figures, publiee, site = null, aRefaire = false }) {
+    Résultats ; sinon la pose du constructeur, son estimation nommée « estimation » et la part de la consommation servie
+    (T4-X7-002 : énergie autoconsommée ÷ consommation, le nom et la grandeur des Résultats ; tue par `partDeLaConception`). */
+function PuceResume({ figures, publiee, site = null, aRefaire = false, partDeLaConception = true }) {
   // ACAL2022 (T4-X2-009) — le site compte plus que ce pan (champ au sol, autre pan) : la bande dit qu'elle compte CE pan et le total du site est dit.
   const autrePan = !publiee && site?.panneaux > 0 && figures.panneaux > 0 && site.panneaux !== figures.panneaux
   const pan = autrePan ? ' · ce pan' : ''
@@ -394,7 +429,7 @@ function PuceResume({ figures, publiee, site = null, aRefaire = false }) {
         // M5 — la raison est celle que dit le constructeur (`affichageErp.raisonSansValeur`) : « au prochain enregistrement » seulement là où il
         // est vrai, sinon « calculée pour la conception du lead : X kWc — votre pose en compte Y kWc ».
         : ['Production', figures.production ? figures.production.replace(/^production\s+/i, '') : null],
-      ['Production ÷ consommation', figures.couverture ? `≈ ${figures.couverture}` : null],
+      ['De la consommation', partDeLaConception && figures.couverture ? `≈ ${figures.couverture}` : null],
     ]
   const lus = indicateurs.filter(([, valeur]) => valeur)
   // T4-X9-006 — tailles différentes : la phrase du constructeur, UNE fois, en texte courant qui revient à la ligne dans la
@@ -500,6 +535,7 @@ export default function EtapePanneaux({
     <div className="cal-pan">
       <ChoixModule etat={etat} entrees={servi.entrees} servis={servi.servis} lectureSeule={lectureSeule} g={g} />
       <CombienDePanneaux etat={etat} servi={servi} lectureSeule={lectureSeule} g={gestesEcran} />
+      <RetirerUnPanneau etat={etat} lectureSeule={lectureSeule} g={g} />
       <section className="cal-pan-section">
         <h2 className="cal-pan-titre">Sens de pose</h2>
         <div data-testid="cal-panneaux-sens-pose">
@@ -515,7 +551,8 @@ export default function EtapePanneaux({
       <AlerteOmbre key={etat.ombre?.n ?? 0} ombre={etat.ombre} g={g} />
       <AvisOmbresNonComptees manque={parcours?.manque} />
       <SurCarte>
-        <PuceResume figures={etat.figures} publiee={servi.publiee} site={site} aRefaire={servi.aRefaire} />
+        <PuceResume figures={etat.figures} publiee={servi.publiee} site={site} aRefaire={servi.aRefaire}
+          partDeLaConception={servi.partDeLaConception} />
         <div className="cal-carte-soleil" data-testid="cal-carte-soleil">
           {etat.soleil.carte && <LegendeSoleil carte={etat.soleil.carte} g={g} />}
           <LecteurSoleil soleil={etat.soleil} g={g} />

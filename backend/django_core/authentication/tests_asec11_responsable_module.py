@@ -33,8 +33,11 @@ MATRICE_DOREE = {
     'Commercial responsable': 'WWW-WWWW',
     'Commercial':             'WWR-RRWW',
     'Commercial terrain':     '--------',
-    'Technicien responsable': '--WWWW-W',
-    'Technicien':             '--WWWR-W',
+    # D-ACAL-106 (fondateur, 25/11/2026) : les deux rôles techniques portent
+    # ``calepinage_voir`` + ``calepinage_releve`` — le relevé au téléphone est
+    # un code d'ÉCRITURE du module calepinage, d'où W (et non R) dans sa colonne.
+    'Technicien responsable': '--WWWWWW',
+    'Technicien':             '--WWWRWW',
     'Viewer':                 '--------',
     # ASEC50 (roles 0009) : « Responsable » reçoit ``reporting_export`` pour
     # garder l'export de rapport qu'il faisait déjà ; c'est l'unique code

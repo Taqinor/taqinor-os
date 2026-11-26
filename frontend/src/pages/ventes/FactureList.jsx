@@ -72,6 +72,7 @@ import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcut
 import { DataTable } from '../../ui/datatable'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import EnteteVentes from '../../features/ventes/EnteteVentes'
+import { RefusDeDroit, estRefusDeDroit } from '../../ui/Forbidden'
 
 // VX21 — squelette de la liste (parité DevisList/DevisTableSkeleton) : reprend
 // les 8 colonnes du vrai tableau pour que la mise en page ne saute pas à
@@ -558,6 +559,10 @@ export default function FactureList() {
         <FactureTableSkeleton />
       </PageListeChargement>
     )
+  }
+  // T4-X8-015 — un 403 dit le droit manquant : ni « Réessayer », ni « Nouvelle facture ».
+  if (error && factures.length === 0 && estRefusDeDroit(error)) {
+    return <div className="page"><RefusDeDroit objet="les factures" className="mt-4" /></div>
   }
   if (error && factures.length === 0) {
     return (

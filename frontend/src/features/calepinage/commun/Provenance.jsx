@@ -4,6 +4,9 @@ import useResource from '../../../hooks/useResource'
 import { formatNumber } from '../../../lib/format'
 import { Card, Spinner } from '../../../ui'
 import { ORIGINES, estOrigineDeclaree } from './Provenance.helpers'
+import {
+  LIBELLES_COEFFICIENTS_NORME, LIBELLES_DEGAGEMENTS, NORMES, TYPES_ARETE,
+} from './libellesReglages'
 
 /* ============================================================================
    CAL165 — LA SOURCE DE CHAQUE PARAMÈTRE NORMATIF, AFFICHÉE AVEC LUI.
@@ -145,6 +148,7 @@ function libelleDeCode(code) {
 // clé qui n'est pas un chiffre. Chaque paramètre DE ZONE est rendu sous le
 // nom de sa zone, avec SA propre source.
 const CLES_STRUCTURE_LESTAGE = ['zones', 'zone_par_defaut']
+const CLES_LISTES_DEGAGEMENTS = ['retraits_par_arete', 'allees_circulation']
 
 export default function SourcesNormatives() {
   const { data, loading, error } = useResource(
@@ -160,6 +164,12 @@ export default function SourcesNormatives() {
   const norme = data?.norme_electrique || {}
   const coefficients = norme.coefficients || {}
   const lestage = data?.lestage || {}
+  // T4-X3-005 — les libellés et unités du lestage sont ceux du registre SERVI (le même qui nomme les lignes de
+  // l'écran de saisie) ; une clé hors registre garde sa forme lisible de repli.
+  const registreLestage = Array.isArray(data?.registre?.lestage) ? data.registre.lestage : []
+  const ligneLestage = (code) => registreLestage.find((r) => r?.cle === code)
+  const libelleLestage = (code) => ligneLestage(code)?.libelle || libelleDeCode(code)
+  const uniteLestage = (code) => ligneLestage(code)?.unite || undefined
   const codesLestage = Object.keys(lestage)
     .filter((c) => !CLES_STRUCTURE_LESTAGE.includes(c))
   const zonesLestage = Array.isArray(lestage.zones) ? lestage.zones : []
@@ -167,7 +177,17 @@ export default function SourcesNormatives() {
   // Le dégagement porte UNE source pour toute la section : c'est la forme du
   // contrat, elle n'est pas réinterprétée ici.
   const sourceDegagements = degagements.source
-  const codesDegagements = Object.keys(degagements).filter((c) => c !== 'source')
+  // T4-X3-002/013 — `retraits_par_arete` et `allees_circulation` sont des LISTES
+  // dont chaque entrée porte SA source : les rendre comme un nombre unique
+  // affichait « — non sourcée » sur une ligne pourtant sourcée.
+  const retraitsArete = Array.isArray(degagements.retraits_par_arete)
+    ? degagements.retraits_par_arete : []
+  const alleesPays = Array.isArray(degagements.allees_circulation)
+    ? degagements.allees_circulation : []
+  const codesDegagements = Object.keys(degagements)
+    .filter((c) => !['source', ...CLES_LISTES_DEGAGEMENTS].includes(c))
+  const aucunDegagement = codesDegagements.length === 0
+    && retraitsArete.length === 0 && alleesPays.length === 0
 
   return (
     <Card className="flex flex-col gap-5 p-4" data-testid="cal165-ecran">
@@ -189,15 +209,31 @@ export default function SourcesNormatives() {
             texte={norme.norme ? 'Changer la norme' : 'Choisir la norme'}
           />
         )}
-        vide={Object.keys(coefficients).length === 0
+        // T4-X3-001 — « choisie » se lit sur la NORME enregistrée, pas sur la
+        // présence de coefficients saisis (la société n'en saisit en général aucun).
+        vide={!norme.norme && Object.keys(coefficients).length === 0
           ? 'Aucune norme électrique choisie : les coefficients sont omis.'
           : null}
       >
+        {norme.norme
+          ? (
+            <Ligne libelle="Norme choisie">
+              {NORMES.find((n) => n.valeur === norme.norme)?.libelle || norme.norme}
+            </Ligne>
+          )
+          : null}
         {norme.reference
           ? <Ligne libelle="Référence de la norme">{norme.reference}</Ligne>
           : null}
+        {norme.norme && Object.keys(coefficients).length === 0
+          ? (
+            <Ligne libelle="Coefficients">
+              Aucun coefficient propre à la société : ceux de la norme s’appliquent.
+            </Ligne>
+          )
+          : null}
         {Object.entries(coefficients).map(([code, coefficient]) => (
-          <Ligne key={code} libelle={libelleDeCode(code)}>
+          <Ligne key={code} libelle={LIBELLES_COEFFICIENTS_NORME[code] || libelleDeCode(code)}>
             <ValeurSourcee
               valeur={coefficient?.valeur}
               // La référence du coefficient EST la provenance publiée par
@@ -227,9 +263,10 @@ export default function SourcesNormatives() {
         {codesLestage.map((code) => {
           const parametre = lestage[code]
           return (
-            <Ligne key={code} libelle={libelleDeCode(code)}>
+            <Ligne key={code} libelle={libelleLestage(code)}>
               <ValeurSourcee
                 valeur={parametre?.valeur}
+                unite={uniteLestage(code)}
                 origine={parametre?.source ? 'societe' : undefined}
                 reference={parametre?.source}
                 decimals={2}
@@ -241,10 +278,11 @@ export default function SourcesNormatives() {
           .map(([code, parametre]) => (
             <Ligne
               key={`${zone?.code}:${code}`}
-              libelle={`zone « ${zone?.libelle || zone?.code} » — ${libelleDeCode(code)}`}
+              libelle={`zone « ${zone?.libelle || zone?.code} » — ${libelleLestage(code)}`}
             >
               <ValeurSourcee
                 valeur={parametre?.valeur}
+                unite={uniteLestage(code)}
                 origine={parametre?.source ? 'societe' : undefined}
                 reference={parametre?.source}
                 decimals={2}
@@ -256,12 +294,51 @@ export default function SourcesNormatives() {
       <Section
         titre="Dégagements"
         testId="cal165-degagements"
-        vide={codesDegagements.length === 0
+        // D-ACAL-105 — sans source, la largeur d'allée et le retrait de bord par défaut restent « non sourcée » ;
+        // le champ « Source » qui les couvre tous les deux est sur l'écran des allées.
+        lien={codesDegagements.length > 0 && !sourceDegagements ? (
+          <Link
+            to="/calepinage/reglages/allees"
+            className="inline-flex min-h-[44px] items-center text-sm underline"
+            data-testid="cal939-lien-source-degagements"
+          >
+            Renseigner la source
+          </Link>
+        ) : null}
+        vide={aucunDegagement
           ? 'Aucun dégagement enregistré : les valeurs de l’atelier s’appliquent.'
           : null}
       >
+        {retraitsArete.map((entree) => (
+          <Ligne
+            key={`arete:${entree?.type}`}
+            libelle={`Retrait — ${TYPES_ARETE.find(([t]) => t === entree?.type)?.[1] || entree?.type}`}
+          >
+            <ValeurSourcee
+              valeur={entree?.retrait_m}
+              unite="m"
+              origine={entree?.source ? 'societe' : undefined}
+              reference={[entree?.source, entree?.reference].filter(Boolean).join(' — ')}
+              decimals={2}
+            />
+          </Ligne>
+        ))}
+        {alleesPays.map((entree) => (
+          <Ligne
+            key={`allee:${entree?.pays}`}
+            libelle={`Allée de circulation — ${String(entree?.pays || '').toUpperCase()}`}
+          >
+            <ValeurSourcee
+              valeur={entree?.largeur_m}
+              unite="m"
+              origine={entree?.source ? 'societe' : undefined}
+              reference={[entree?.source, entree?.reference].filter(Boolean).join(' — ')}
+              decimals={2}
+            />
+          </Ligne>
+        ))}
         {codesDegagements.map((code) => (
-          <Ligne key={code} libelle={libelleDeCode(code)}>
+          <Ligne key={code} libelle={LIBELLES_DEGAGEMENTS[code] || libelleDeCode(code)}>
             <ValeurSourcee
               valeur={degagements[code]}
               origine={sourceDegagements ? 'societe' : undefined}

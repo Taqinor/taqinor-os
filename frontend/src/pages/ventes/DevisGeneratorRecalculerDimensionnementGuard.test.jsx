@@ -19,7 +19,7 @@
 // celui-ci le prouve en observant l'écran après un vrai clic.
 
 import { describe, it, expect, vi } from 'vitest'
-import { screen, fireEvent, waitFor } from '@testing-library/react'
+import { screen, fireEvent, waitFor, act } from '@testing-library/react'
 
 
 vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiMock())
@@ -83,7 +83,7 @@ import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import DevisGenerator from './DevisGenerator'
-import { PRODUITS_COMPOSITION as PRODUITS, bancCreation } from './devisGenerator.testHelpers.jsx'
+import { PRODUITS_COMPOSITION as PRODUITS, bancCreation, renderGeneratorPage } from './devisGenerator.testHelpers.jsx'
 
 // Catalogue solaire complet (même fixture que DevisGeneratorMarquesPinning.
 // test.jsx) : assez de rôles réels (panneau, onduleur, structures, socles,
@@ -102,17 +102,33 @@ const recalcButton = () => screen.getByRole('button', { name: /Recalculer le dim
 // Si un dry-run est encore EN VOL au moment du clic (le débounce de 500 ms
 // vient d'être relancé par un changement de composition), le bouton refuse
 // honnêtement (« Dimensionnement en cours de calcul — réessayez dans un
-// instant. ») au lieu d'inventer une taille. On reclique donc jusqu'à ce que
-// la composition parte : c'est EXACTEMENT ce que fait un commercial, et cela
-// rend le test déterministe sous charge sans rien relâcher du contrat F1.
-async function cliquerRecalculJusquaComposition() {
-  await waitFor(() => {
+// instant. ») au lieu d'inventer une taille. On reclique donc, comme un
+// commercial, jusqu'à ce que l'effet attendu se produise.
+// T4-X6-015 (blocage CI) — JAMAIS le clic DANS un `waitFor` : chaque clic
+// provoque un rendu complet du générateur (~2 s sous charge) et son
+// MutationObserver relance aussitôt le rappel, donc le clic suivant, sans jamais
+// rendre la main à la file de tâches — le débounce de 500 ms qui amène la
+// recommandation ne part alors jamais et le test ne rend plus de verdict (le
+// délai de 20 s ne peut pas le couper). Ici un clic, puis une VRAIE pause qui
+// laisse tourner minuteurs et promesses, puis la vérification.
+async function cliquerJusqua(verifier, { timeout = 15000, pause = 300 } = {}) {
+  const fin = Date.now() + timeout
+  for (;;) {
     fireEvent.click(recalcButton())
-    // L'onduleur réseau du stock n'apparaît dans les lignes que si la
-    // composition est réellement partie.
-    screen.getByDisplayValue(/Onduleur réseau Huawei/)
-  }, { timeout: 10000 })
+    await act(async () => { await new Promise(r => setTimeout(r, pause)) })
+    try {
+      verifier()
+      return
+    } catch (e) {
+      if (Date.now() > fin) throw e
+    }
+  }
 }
+
+// L'onduleur réseau du stock n'apparaît dans les lignes que si la composition
+// est réellement partie.
+const cliquerRecalculJusquaComposition = () =>
+  cliquerJusqua(() => { screen.getByDisplayValue(/Onduleur réseau Huawei/) })
 
 describe('F1 — le garde-fou nbPanneauxTouched est restauré à sa valeur EXACTE d\'avant le clic (jamais figé à true)', () => {
   it('création (garde-fou OUVERT avant le clic) : le redimensionnement en direct facture→panneaux SURVIT à un clic sur Recalculer', async () => {
@@ -233,15 +249,55 @@ describe('QJR570 — Recalculer fusionne au lieu de remplacer', () => {
     await waitFor(() => expect(qteDe('Socles').value).toBe('24'))
     const avant = instantaneLignes()
 
-    await waitFor(() => {
-      fireEvent.click(recalcButton())
-      expect(confirmSpy).toHaveBeenCalled()
-    }, { timeout: 10000 })
+    await cliquerJusqua(() => expect(confirmSpy).toHaveBeenCalled(), { timeout: 10000 })
     expect(String(confirmSpy.mock.calls[0][0])).toMatch(/Socles : 24/)
     // Annuler : rien n'est dispatché, aucune composition ne part.
     expect(instantaneLignes()).toEqual(avant)
     expect(screen.queryByDisplayValue(/Onduleur réseau Huawei/)).toBeNull()
     confirmSpy.mockRestore()
+  })
+})
+
+// T4-X6-015 — la taille demandée sur la fiche du lead n'est jamais quittée
+// sans question : la confirmation nomme les DEUX tailles ; Annuler garde tout.
+describe('T4-X6-015 — Recalculer demande avant de quitter la taille demandée sur la fiche', () => {
+  it('lead à 6 kWc (9 panneaux) : la question nomme 6 kWc et la recommandation, Annuler garde les 9 panneaux', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderGeneratorPage(DevisGenerator, {
+      crmApi, stockApi, produits: PRODUITS,
+      leads: [{ id: 42, nom: 'Bennani', prenom: 'Yassine', type_installation: 'residentiel',
+        taille_souhaitee_kwc: 6, facture_hiver: 3000, ville: 'Fès' }],
+      route: '/ventes/devis/nouveau?lead=42',
+    })
+    await screen.findByTestId('gen-taille-lead')
+    await waitFor(() => expect(nbPanneauxField().value).toBe('9'))
+    await cliquerJusqua(() => expect(confirmSpy).toHaveBeenCalled(), { timeout: 10000 })
+    const question = String(confirmSpy.mock.calls[0][0])
+    expect(question).toMatch(/Taille demandée sur la fiche du lead : 6 kWc/)
+    expect(question).toMatch(/21 panneaux · 14,91 kWc/)
+    expect(nbPanneauxField().value).toBe('9')
+    expect(screen.getByTestId('gen-taille-lead')).toBeTruthy()
+    confirmSpy.mockRestore()
+  })
+})
+
+// T4-X6-016 — un panneau écarté par le serveur (compatibilité électrique) n'est
+// jamais dit absent du stock ; les puissances sont en kWc français.
+describe('T4-X6-016 — composition à un autre wattage : la phrase est juste et en français', () => {
+  it('4 × 710 W demandés, 550 W composés : « un panneau 550 W a été composé au lieu de 710 W », 2,2 kWc (et non 2,84 kWc)', async () => {
+    ventesApi.composerDevis.mockResolvedValueOnce({ data: {
+      panel_watt: 550, kwc_reel: 2.2,
+      lignes: [{ produit: 2, designation: 'Panneau Canadien Solar 710W', quantite: 4, prix_unitaire_ht: 1166.67, variante: '' }],
+    } })
+    renderGenerator()
+    await screen.findByDisplayValue('Installation')
+    fireEvent.change(nbPanneauxField(), { target: { value: '4' } })
+    await waitFor(() => expect(nbPanneauxField().value).toBe('4'))
+    fireEvent.click(screen.getByRole('button', { name: /Auto-remplir depuis le stock/i }))
+    const phrase = await screen.findByText(/a été composé au lieu de/)
+    expect(phrase.textContent).toBe('Attention : un panneau 550 W a été composé au lieu de 710 W. La puissance '
+      + 'réelle du système est 2,2 kWc (et non 2,84 kWc). Ajustez le nombre de panneaux ou le wattage pour la cible voulue.')
+    expect(screen.queryByText(/le stock ne propose pas/)).toBeNull()
   })
 })
 

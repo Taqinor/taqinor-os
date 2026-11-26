@@ -9,7 +9,7 @@ from pathlib import Path
 from django.test import TestCase
 
 from apps.stock.models import FicheTechnique, Produit
-from apps.stock.selectors import produits_ci
+from apps.stock.selectors import etat_ci_produit, produits_ci
 from authentication.models import Company
 
 CONTRAT = json.loads(
@@ -115,6 +115,40 @@ class ProduitsCiTests(TestCase):
 
     def _par_id(self, **kw):
         return {e['id']: e for e in produits_ci(self.company, **kw)}
+
+    def test_dacal130_structure_de_pompage_jamais_structure_ci(self):
+        """D-ACAL-130 — une structure DE POMPAGE (rôle pompage déclaré, aucun
+        role_ci) à fiche « structure / sol » n'est jamais une structure C&I,
+        chiffrée ou non ; la structure C&I au sol déclarée l'est."""
+        ci_sol = Produit.objects.create(
+            company=self.company, nom='Structure au sol C&I', sku='CI-STRUCT-SOL',
+            role_ci='structure_ci', type_pose='sol', prix_vente=Decimal('0'))
+        ids = []
+        for prix in ('0', '450'):
+            pompage = Produit.objects.create(
+                company=self.company, nom='Structure au sol pompage %s' % prix,
+                role_pompage='structure_sol', prix_vente=Decimal(prix))
+            FicheTechnique.objects.create(
+                company=self.company, produit=pompage, type_fiche='structure',
+                struct_type_pose='sol')
+            self.assertIsNone(etat_ci_produit(pompage))
+            ids.append(pompage.id)
+        par_id = self._par_id()
+        self.assertFalse(set(ids) & set(par_id))
+        self.assertEqual(par_id[ci_sol.id]['role_ci'], 'structure_ci')
+
+    def test_dacal130_pont_cable_dc_du_pompage_garde(self):
+        sans_fiche = Produit.objects.create(
+            company=self.company, nom='Câble pompage', role_pompage='cable_dc',
+            prix_vente=Decimal('9'))
+        avec_fiche = Produit.objects.create(
+            company=self.company, nom='Câble pompage fiché', role_pompage='cable_dc',
+            prix_vente=Decimal('9'))
+        FicheTechnique.objects.create(company=self.company, produit=avec_fiche,
+                                      type_fiche='cable', cable_cote='dc')
+        par_id = self._par_id()
+        self.assertEqual(par_id[sans_fiche.id]['role_ci'], 'cable_dc')
+        self.assertEqual(par_id[avec_fiche.id]['role_ci'], 'cable_dc')
 
     def test_forme_du_contrat(self):
         for element in produits_ci(self.company):
@@ -519,7 +553,34 @@ class PretDevisAgricoleTests(TestCase):
         self.assertEqual(res['nb_obligatoires_manquants'], len(manquants))
         self.assertEqual(
             manquants, {'pompe:tri', 'pompe:mono', 'variateur_pompage',
-                        'panneau', 'structure_sol', 'installation_pompage'})
+                        'panneau', 'structure_sol', 'installation_pompage',
+                        # D-ACAL-118 — les protections du kit minimum.
+                        'protection:coffret_dc', 'protection:disjoncteur_ac',
+                        'protection:parafoudre_ac'})
+
+    def test_dacal118_protections_obligatoires_et_nommees(self):
+        """D-ACAL-118 — coffret DC, disjoncteur AC, parafoudre AC : postes
+        OBLIGATOIRES ; un article sans prix est « à compléter », jamais un
+        fusible pour un coffret."""
+        coffret = Produit.objects.create(
+            company=self.company, nom='Coffret DC 2 strings',
+            role_pompage='protection_dc', prix_vente=0)
+        Produit.objects.create(
+            company=self.company, nom='Fusible gPV 1000 VDC 15 A',
+            role_pompage='protection_dc', prix_vente=Decimal('50'))
+        Produit.objects.create(
+            company=self.company, nom='Disjoncteur AC courbe C 16 A monophasé',
+            role_pompage='protection_ac', prix_vente=Decimal('150'))
+        _res, postes = self._postes()
+        poste = postes['protection:coffret_dc']
+        self.assertTrue(poste['obligatoire'])
+        self.assertEqual(poste['statut'], 'a_completer')
+        self.assertEqual(poste['articles'], [{
+            'id': coffret.id, 'nom': 'Coffret DC 2 strings',
+            'motif': 'prix de vente non saisi'}])
+        self.assertEqual(postes['protection:disjoncteur_ac']['statut'], 'ok')
+        self.assertEqual(postes['protection:parafoudre_ac']['statut'], 'absent')
+        self.assertNotIn('option:protection_dc', postes)
 
     def test_pompe_sans_courbe_a_completer(self):
         Produit.objects.create(
@@ -568,6 +629,12 @@ class PretDevisAgricoleTests(TestCase):
         Produit.objects.create(
             company=co, nom='INST-PMP', role_pompage='installation_pompage',
             prix_vente=Decimal('0'), prix_fixe_ht=Decimal('2000'))
+        for nom, role in (('Coffret DC 2 strings', 'protection_dc'),
+                          ('Disjoncteur AC courbe C 16 A tétrapolaire',
+                           'protection_ac'),
+                          ('Parafoudre AC type 2', 'protection_ac')):
+            Produit.objects.create(company=co, nom=nom, role_pompage=role,
+                                   prix_vente=Decimal('300'))
         res, postes = self._postes(co)
         self.assertEqual(
             {c: p['statut'] for c, p in postes.items()

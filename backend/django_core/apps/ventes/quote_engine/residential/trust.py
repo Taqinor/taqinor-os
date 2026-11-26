@@ -184,9 +184,16 @@ def _bloc_paiement(d, ctx, ident) -> str:
     def L(cle, fr):
         return theme.libelle_doc(d, cle, fr)
 
+    # D-ACAL-116 — deux options, nouveaux rendus : les cases gardent % et
+    # libellé, les montants passent sur une ligne par option, nommée.
+    from ..conditions_commerciales import echeanciers_par_option
+    par_option = echeanciers_par_option(d, d.get("deux_options", True))
+
     def case(pct, montant, libelle):
+        montant_html = ("" if par_option else
+                        f'<div class="p3-pay-m">{fmt_mad(montant)} MAD</div>')
         return (f'<div class="p3-pay-c"><div class="p3-pay-p">{pct}%</div>'
-                f'<div class="p3-pay-m">{fmt_mad(montant)} MAD</div>'
+                f'{montant_html}'
                 f'<div class="p3-pay-l">{libelle}</div></div>')
 
     if theme.langue_doc(d) == "fr":
@@ -206,6 +213,11 @@ def _bloc_paiement(d, ctx, ident) -> str:
     else:
         cases = (case(rep.get("pct_a"), rep.get("acompte"), l_ac)
                  + case(rep.get("pct_s2"), rep.get("solde2"), l_sd2))
+    from .cover import nom_option
+    lignes_html = "".join(
+        f'<div class="p3-pay-m" style="margin-top:3px;">{nom_option(d, b)} : '
+        + " / ".join(fmt_mad(m) for m in montants) + ' MAD</div>'
+        for b, montants in par_option or ())
     rib = _ligne_rib(d)
     rib_html = (f'<div class="p3-pay-rib">{L("res_virement", "Virement bancaire&nbsp;:")} {rib}</div>'
                 if rib else "")
@@ -227,7 +239,7 @@ def _bloc_paiement(d, ctx, ident) -> str:
         '<div class="p3-block p3-pay">'
         f'<div class="p3-h">{L("conditions_paiement", "Modalités de paiement")}</div>'
         f'<div class="p3-pay-row">{cases}</div>'
-        f'{rib_html}'
+        f'{lignes_html}{rib_html}'
         '</div>')
 
 
@@ -284,6 +296,19 @@ def _methode_traduite(d, sm):
     return (libelle_cat(d, cle) if cle else ligne,
             libelle_cat(d, "res_methode_exemple", a=nombres[1], b=nombres[2],
                         c=nombres[3]) if nombres else exemple)
+
+
+def _valeur_methode(d, ligne, exemple, approx):
+    """Texte du bloc « Comment nous calculons » : la phrase, puis l'exemple en
+    gras. D-ACAL-111 — un exemple dont la « Facture actuelle » est RECALCULÉE
+    au tarif par tranches (``cover.facture_recalculee``, nouveaux rendus) est
+    suivi de la phrase approuvée, dans le même bloc."""
+    if not exemple:
+        return ligne
+    from .cover import facture_recalculee, libelle_cat
+    note = (" " + libelle_cat(d, "res_facture_recalculee_tranches")
+            if facture_recalculee(d) else "")
+    return f'{ligne} <b>{exemple}{approx}</b>{note}'
 
 
 #: AMOT52 (D-AMOT-1 = a) — phrases « Nos hypothèses » du builder et de
@@ -489,9 +514,7 @@ def build(ctx) -> str:
     sm_approx = LC(d, "res_approximatif") if sm.get("approximatif") else ""
     method_html = ""
     if sm_line:
-        _v = sm_line
-        if sm_ex:
-            _v += f' <b>{sm_ex}{sm_approx}</b>'
+        _v = _valeur_methode(d, sm_line, sm_ex, sm_approx)
         method_html = (
             '<div class="p3-method">'
             '<span class="p3-method-k">' + LC(d, "res_methode_titre")

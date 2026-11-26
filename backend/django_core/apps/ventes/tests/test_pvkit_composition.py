@@ -256,6 +256,35 @@ class LeKitResidentielEstComplet(_Base):
                           for li in second])
         self.assertEqual(Devis.objects.count(), 0, 'la composition a écrit')
 
+    def test_dacal130_article_de_pompage_jamais_candidat_residentiel(self):
+        """D-ACAL-130 — une structure DE POMPAGE chiffrée n'est jamais la
+        structure résidentielle ; le câble DC partagé (rôle pompage
+        ``cable_dc``, comme CAB-6MM-M) reste le câble DC du kit."""
+        from apps.stock.selectors import produits_pompage
+        Produit.objects.filter(pk=self.produits['STR-ACIER'].pk).update(prix_vente=0)
+        pompage = Produit.objects.create(
+            company=self.company, nom='Structure acier au sol pompage', sku='STR-SOL-PMP-T',
+            role_pompage='structure_sol', prix_vente=Decimal('450'), quantite_stock=500)
+        cable = Produit.objects.create(
+            company=self.company, nom='Câble solaire Nexans 6mm² (au mètre)',
+            sku='CAB-6MM-M-T', role_pompage='cable_dc', prix_vente=Decimal('10.83'),
+            quantite_stock=5000)
+        lignes = services.composition_residentielle(
+            services.catalogue_de_la_societe(self.company), kwc=4.4,
+            panel_watt=550, nb_panneaux=8)
+        produits_ids = {li.produit.id for li in lignes}
+        self.assertNotIn(pompage.id, produits_ids)
+        self.assertIn(cable.id, produits_ids)
+        # Le mode agricole le sert toujours.
+        self.assertIn(pompage.id, {e['id'] for e in produits_pompage(self.company)})
+
+    def test_dacal130_structure_acier_ordinaire_inchangee(self):
+        lignes = services.composition_residentielle(
+            services.catalogue_de_la_societe(self.company), kwc=4.4,
+            panel_watt=550, nb_panneaux=8)
+        self.assertIn(self.produits['STR-ACIER'].id,
+                      {li.produit.id for li in lignes})
+
     def test_puissance_nulle_ne_compose_rien(self):
         self.assertEqual(services.composition_residentielle(
             services.catalogue_de_la_societe(self.company),

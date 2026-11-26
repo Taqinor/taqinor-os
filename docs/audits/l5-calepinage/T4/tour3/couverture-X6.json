@@ -1,0 +1,302 @@
+[
+ {
+  "id": "LEAD-DEV-002",
+  "scenario": "e,f,g,h",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Devis automatique sur les 4 leads : DEV-202611-0153 à 0156 ; h (moyenne tension déclarée) accepté aussi (4 min de calcul)"
+ },
+ {
+  "id": "LEAD-DEV-030",
+  "scenario": "e,f,g,h",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Création automatique : panneau « Devis automatique — … » puis bandeau « Devis créé »"
+ },
+ {
+  "id": "LEAD-DEV-033",
+  "scenario": "e,f,g,h",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Bandeau « Devis créé » + alertes « Vendeur seulement » avec lien vers le champ ; 35,04 kWc contre 35,03 ailleurs (T4-X6-001)"
+ },
+ {
+  "id": "LEAD-DEV-016",
+  "scenario": "e",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "« Modifier » de l'onglet « 1 devis » ouvre l'édition complète embarquée (dans la liste, « Éditer » est hors écran : T4-X6-005)"
+ },
+ {
+  "id": "LEAD-DEV-013",
+  "scenario": "e,f,g,h",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "« Envoyer au client » : WhatsApp et e-mail indisponibles (pas de numéro), « Copier le lien » → statut Envoyé"
+ },
+ {
+  "id": "LEAD-DEV-025",
+  "scenario": "e",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Copier le lien : « Création du lien de la page client… » ; presse-papiers vide après 3 s (non attendu plus longtemps)"
+ },
+ {
+  "id": "LEAD-DEV-028",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "X6-r (résidentiel) : Avancé → « Options présentées au client » 1/2/3 : « 2 » coche Recommandé + Max (Éco décoché) ; « Modifier les options… » ouvre Éco 4 panneaux · 2,20 kWc"
+ },
+ {
+  "id": "PDF-001",
+  "scenario": "e,f,g,h",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Bouton PDF de la ligne : 12 à 103 s par PDF (103 s une fois, file partagée)"
+ },
+ {
+  "id": "PDF-003",
+  "scenario": "e,f,g,h",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Fenêtre « Générer le PDF — <réf> », Générer"
+ },
+ {
+  "id": "PDF-004",
+  "scenario": "e,f,g,h",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Commercial 3 pages (e, f), industriel 4 pages (g, h) : comptés sur les PDF"
+ },
+ {
+  "id": "PDF-005",
+  "scenario": "e,f,g,h",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Devis une page : 1 page sur les 4"
+ },
+ {
+  "id": "PDF-009",
+  "scenario": "e,f,g,h",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Calepinage « Automatique » par défaut ; « Inclure la planche cotée » grisée « Aucun calepinage lié à ce devis »"
+ },
+ {
+  "id": "PDF-011",
+  "scenario": "e,f,g,h",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Devis Final : retire « Devis préliminaire » (et l'étape « Visite technique » en industriel) ; h moyenne tension sans visite : T4-X6-004"
+ },
+ {
+  "id": "PDF-012",
+  "scenario": "h",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Devis final C&I : « Échéancier du devis » par défaut (acompte personnalisé non essayé)"
+ },
+ {
+  "id": "PDF-006",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "DEV-202611-0158 sans onduleur : avis affiché, format une page présélectionné ; disparaît en choisissant « Devis premium »"
+ },
+ {
+  "id": "PDF-031",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "bloque",
+  "note": "Assistant indisponible sur la pile (brief) : bouton de téléchargement de l'assistant non atteignable"
+ },
+ {
+  "id": "PDF-032",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "bloque",
+  "note": "Liste › Plus d'actions › « Envoyer par email » (DEV-202611-0157, e-mail synthétique sur la fiche) : POST envoyer-email 502 « E-mail non opérationnel : aucun message ne part » (limite de la pile) ; pièce jointe non comparable"
+ },
+ {
+  "id": "GEN-CI-003",
+  "scenario": "e",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "12 mois kWh → cartes suivent en ~1,7 s ; Factures (MAD) ×12 → ignorées (T4-X6-009) ; Enregistrer + réouverture : mêmes chiffres"
+ },
+ {
+  "id": "GEN-CI-002",
+  "scenario": "g",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "non-atteint",
+  "note": "« Affiner l'étude » ouvert sur X6-g : Prix imprimés (HT/TTC), Source des prix (Lus sur la facture / Déclarés oralement), Date de la facture vus ; aucune valeur écrite ni enregistrée (temps)"
+ },
+ {
+  "id": "GEN-IND-004",
+  "scenario": "g",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Import d'une courbe CSV horaire synthétique (8 760 lignes) : « Méthode retenue : courbe mesurée », 85,09 → 40,04 kWc ; « Retirer » → profil déclaré, 85,09 kWc ; absent en marché Commercial (T4-X6-014)"
+ },
+ {
+  "id": "GEN-MKT-003",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "X6-r : ligne batterie supprimée → « Option « avec » sans batterie chiffrée : … « Hybride, batterie plus tard » » ; hybride supprimé → « Option « avec batterie » indisponible : aucun onduleur hybride… » (non enregistré)"
+ },
+ {
+  "id": "GEN-RES-005",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "X6-r (taille souhaitée 6 kWc) : AUCUN bandeau en édition d'un devis automatique qui la suit (T4-X6-015)"
+ },
+ {
+  "id": "GEN-TEC-006",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "introuvable",
+  "note": "Code : `onduleursIncomplets` n'est jamais rempli (seul appel : `setOnduleursIncomplets([])`, useCompositionEcran.js) — aucun état ne rend l'avis"
+ },
+ {
+  "id": "GEN-SIM-004",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "X6-r Aperçu de la Simulation déplié : tableau par taille (kWc, onduleur, autoconso, éco sans/avec, payback, résiduel, remplissage) ; chaque batterie « 4.6 kWh refusé : … plafond de remplissage 0.00 kWh » ; colonnes « Batterie (kWh) / Coût TTC / Éco. marginale » et « Falaise tarifaire » non vues"
+ },
+ {
+  "id": "GEN-LIG-007",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "« Ajouter le BOQ électrique » sur DEV-202611-0157 : 12 lignes ajoutées, 5 à chiffrer ; doublons (T4-X6-019)"
+ },
+ {
+  "id": "GEN-SAV-005",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Lead X6-r coché « Perdu ? » (motif Prix) → Modifier → Enregistrer : « Attention : le lead … est perdu. Vous pouvez tout de même créer ce devis. » (non bloquant) ; lead décoché ensuite"
+ },
+ {
+  "id": "GEN-SUC-002",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "non-atteint",
+  "note": "Création depuis la fiche du lead : l'écran revient au panneau du devis, sans panneau de succès ni « Envoyer par WhatsApp » ; le chemin pleine page /ventes/devis/nouveau non essayé (temps)"
+ },
+ {
+  "id": "GEN-ADM-002",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Administrateur (droit absent en Commercial) : surcharge recommended_option = Sans batterie → « Imposé par le registre — revenir à l'automatique » mais menu sur « Avec batterie » (T4-X6-018) ; retour à l'automatique OK ; en Commercial le panneau n'existe pas"
+ },
+ {
+  "id": "GEN-AGR-016",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "non-atteint",
+  "note": "Aucun lead agricole créé (temps consacré aux scénarios e-h)"
+ },
+ {
+  "id": "LEAD-DEV-007",
+  "scenario": "balayage",
+  "moteur": "chromium",
+  "taille": "1440",
+  "theme": "clair",
+  "role": "Commercial",
+  "resultat": "non-atteint",
+  "note": "Demande de retirer un forfait C&I dans Paramètres (Administrateur) sur la pile partagée pendant que d'autres jouent du C&I : non fait ; condition : un forfait de Paramètres › Devis › Prestations C&I sans source ni montant, ou un article C&I sans prix"
+ }
+]

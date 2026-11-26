@@ -1073,7 +1073,9 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
         model = Devis
         # NTPLT32 — index plein-texte, jamais servi ; ADEV143 — le pointeur vers
         # la conception d'origine est interne (aucun contrat du devis ne le porte).
-        exclude = ['search_vector', 'conception_source']
+        exclude = ['search_vector', 'conception_source',
+                   # ADEV162 — cache rangé de la synthèse, jamais servi.
+                   'total_affiche_range', 'total_affiche_empreinte']
         # SCA47 — prix_par_kwc est DÉRIVÉ et gelé côté serveur (write-once au
         # save) : lecture seule sur l'API interne générateur/BI, JAMAIS accepté
         # du corps de requête (même régime interne que prix_achat, qui n'est

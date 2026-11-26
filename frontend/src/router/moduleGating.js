@@ -73,6 +73,10 @@ export function filterNavSections(sections, disabled) {
 // Paliers historiques de `IsResponsableOrAdmin` / `user.is_responsable`.
 export const PALIERS_LEGACY = ['responsable', 'admin']
 
+// T4-X8-014 — valeur de `permRepliPalier` : le compte légacy retombe sur les
+// `roles` de l'entrée (palier inchangé), pas sur responsable/admin.
+export const REPLI_ROLES = 'roles'
+
 /**
  * Vrai si l'entrée (item de nav ou route de module, forme `{roles, perm,
  * permRepliPalier}`) est autorisée pour le palier + les permissions courants.
@@ -84,9 +88,14 @@ export function estAutoriseEntree(entree, tier, permissions) {
   const perms = permissions || []
   if (!entree.perm) return roles.includes(tier)
   if (entree.permRepliPalier) {
+    // T4-X8-014 — `permRepliPalier: REPLI_ROLES` suit la garde du serveur `LectureDuModule`
+    // (apps/ventes/gardes_lecture.py) — un rôle fin est jugé sur la SEULE
+    // permission, un compte légacy garde le palier de l'entrée (`roles`),
+    // comme le serveur qui le laisse lire.
+    const repli = entree.permRepliPalier === REPLI_ROLES ? roles : PALIERS_LEGACY
     return perms.length > 0
       ? perms.includes(entree.perm)
-      : PALIERS_LEGACY.includes(tier)
+      : repli.includes(tier)
   }
   return roles.includes(tier) && perms.includes(entree.perm)
 }

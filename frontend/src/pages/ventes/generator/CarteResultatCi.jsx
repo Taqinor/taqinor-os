@@ -11,9 +11,10 @@
 // bilan par mois, profil type) est replié sous « Détails du calcul ». Aucune
 // clé interne n'est affichée brute : un libellé français, sinon la ligne
 // « Autres » du détail.
+import { Button } from '../../../ui'
 import { formatNumber } from '../../../lib/format'
 import { phraseOnduleurExtension } from '../../../features/ventes/calc/batteriesDepart.js'
-import { alertesAffichables } from '../../../features/ventes/etudeCiPreview'
+import { alertesAffichables, reponseAffichee } from '../../../features/ventes/etudeCiPreview'
 import { PointeurChampLead } from '../../crm/leads/AlertesDevisAuto'
 import {
   COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS,
@@ -91,12 +92,47 @@ function ArchetypeEtSansEffet({ profil, autres }) {
   )
 }
 
-export default function CarteResultatCi({ donnees, chargement, erreur }) {
+// T4-X6-008 — le CONSEIL de taille du moteur (aperçu libre) quand il diffère de la taille
+// que les lignes du devis vendent : une proposition à part, jamais le chiffre des cartes.
+function ConseilMoteur({ conseil, vendus, appliquer }) {
+  const conseille = Number(conseil?.nb_panneaux)
+  if (!(conseille > 0) || vendus == null || conseille === Number(vendus)) return null
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-info/30 bg-background/70 p-2 text-xs"
+         data-testid="ci-conseil-moteur">
+      <p className="flex-1">
+        Le moteur conseille {n(conseille)} panneaux
+        {conseil.retenue_kwc != null ? ` (${n(conseil.retenue_kwc, 2)} kWc)` : ''} pour cette consommation ; ce
+        devis en vend {n(vendus)}.
+      </p>
+      {appliquer && (
+        <Button type="button" size="sm" variant="outline" onClick={appliquer} data-testid="ci-conseil-appliquer">
+          Appliquer
+        </Button>
+      )}
+    </div>
+  )
+}
+
+export default function CarteResultatCi(apercu) {
+  const { chargement, erreur, relancer, conseil = null, appliquerConseil = null, retourSans = null } = apercu
   if (erreur) {
-    return <p className="mt-3 text-xs text-warning" data-testid="ci-resultat-erreur">{erreur}</p>
+    // T4-X6-010 — l'échec est dit, sans anciens chiffres, avec « Réessayer » (rejoué seul au retour du réseau).
+    return (
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-warning" data-testid="ci-resultat-erreur">
+        <span>{erreur}</span>
+        {relancer && (
+          <Button type="button" size="sm" variant="outline" onClick={relancer} data-testid="ci-resultat-reessayer">
+            Réessayer
+          </Button>
+        )}
+      </div>
+    )
   }
+  // T4-X6-011 — pendant le calcul, les cartes restent (réponse précédente) sous « Calcul en cours… ».
+  const donnees = reponseAffichee(apercu)
   if (chargement && !donnees) {
-    return <p className="mt-3 text-xs text-muted-foreground" data-testid="ci-resultat-chargement">Calcul du moteur C&I…</p>
+    return <p className="mt-3 text-xs text-muted-foreground" data-testid="ci-resultat-chargement">Calcul en cours…</p>
   }
   if (!donnees) return null
   const t = donnees.taille || {}
@@ -123,10 +159,16 @@ export default function CarteResultatCi({ donnees, chargement, erreur }) {
   const profilType = ArchetypeEtSansEffet({ profil: donnees.profil_charge, autres })
   const optionAvec = donnees.option_avec || null
   const economieAn = eco.statut !== 'omis' ? eco.economie_annee1?.total_mad : null
-  const retour = eco.statut !== 'omis' ? eco.indicateurs?.retour_ans : null
+  // T4-X6-007 — UN retour pour l'offre réseau : celui de l'économie C&I sur les lignes de
+  // CETTE option (le chiffre du PDF), jamais celui de l'étude sur le prix du moteur.
+  const retour = retourSans
   return (
     <div className="mt-4 rounded-lg border border-info/30 bg-info/5 p-3 sm:p-4 grid gap-3"
-         data-testid="ci-resultat">
+         data-testid="ci-resultat" aria-busy={chargement ? 'true' : undefined}>
+      {chargement && (
+        <p className="text-xs text-muted-foreground" data-testid="ci-resultat-calcul">Calcul en cours…</p>
+      )}
+      <ConseilMoteur conseil={conseil} vendus={t.nb_panneaux} appliquer={appliquerConseil} />
       {optionAvec && <p className="text-xs font-semibold">Option sans batterie</p>}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="ci-synthese">
         <Chiffre id="ci-taille-retenue" libelle="Taille retenue"

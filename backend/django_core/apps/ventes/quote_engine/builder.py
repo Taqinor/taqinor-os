@@ -480,10 +480,10 @@ def cgv_ci_du_devis(devis, tva_note="", langue=None):
     return puces or None
 
 
-def _avec_regles_pose_reelle(data, pose_reelle):
-    # ACAL1033 (D-ACAL-45) — clé de rendu ``regles_pose_reelle``, posée au niveau 15 seulement.
-    if pose_reelle:
-        data["regles_pose_reelle"] = True
+def _avec_regles_pose_reelle(data, pose_reelle, devis=None):
+    # ACAL1033 (D-ACAL-45) — ``regles_pose_reelle`` au niveau 15 seulement ; D-ACAL-102 : ``phrases_profil_ouvertes``.
+    from apps.ventes.domain.regles_calcul import drapeaux_nouveaux_rendus  # D-ACAL-102, D-ACAL-111..114
+    data.update({"regles_pose_reelle": True} if pose_reelle else {}, **drapeaux_nouveaux_rendus(devis))
     return data
 
 
@@ -2303,7 +2303,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                            getattr(devis, "reference", "?"), _msg)
             data.setdefault("avertissements_internes", []).append(_msg)
 
-    return _avec_regles_pose_reelle(data, regles_au_moins(devis, REGLES_POSE_REELLE_2111))  # ACAL1033
+    return _avec_regles_pose_reelle(data, regles_au_moins(devis, REGLES_POSE_REELLE_2111), devis)  # ACAL1033
 
 
 def ecarts_totaux_imprimes(data, ttc_noyau=None, *, tol=0.011):

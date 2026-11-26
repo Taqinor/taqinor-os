@@ -24,8 +24,9 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 from .domain.suppositions_ci import alertes_pour_la_commerciale
 
-#: Identifiants de contexte retirés du corps avant le calcul.
-CLES_CONTEXTE = ('devis', 'lead')
+#: Identifiants de contexte retirés du corps avant le calcul. ``lignes`` (T4-X6-008) : les
+#: lignes de l'écran d'édition — l'étude décrit alors le système que CES lignes vendent.
+CLES_CONTEXTE = ('devis', 'lead', 'lignes')
 
 #: Forme de réponse = clés de ``exemple`` du contrat
 #: ``contract_samples/etude_ci_preview.json`` (PACT7 : jamais un objet vide).
@@ -71,6 +72,31 @@ def _devis_de_la_societe(company, devis_id, user=None):
         return None
 
 
+class _DevisALaSaisie:
+    """T4-X6-009 — le devis que lit l'aperçu quand l'écran ENVOIE sa consommation : le bloc
+    ``consommation`` du corps remplace celui rangé (c'est lui que l'enregistrement rangera à
+    sa place) ; un champ vidé à l'écran ne laisse plus passer les kWh rangés avant devant
+    les factures tapées. Tout le reste est le devis."""
+
+    def __init__(self, devis, consommation):
+        self.__dict__['_devis'] = devis
+        self.__dict__['etude_params'] = dict(devis.etude_params or {}, consommation=consommation)
+
+    def __getattr__(self, nom):
+        return getattr(self.__dict__['_devis'], nom)
+
+    def __setattr__(self, nom, valeur):
+        setattr(self.__dict__['_devis'], nom, valeur)  # mémos de lecture du devis (toit, plafond)
+
+
+def _devis_a_la_saisie(devis, corps):
+    """``devis`` lu avec la consommation de l'écran (:class:`_DevisALaSaisie`), ou tel quel."""
+    consommation = corps.get('consommation')
+    if devis is None or not isinstance(consommation, dict):
+        return devis
+    return _DevisALaSaisie(devis, consommation)
+
+
 def _lead_de_la_societe(company, lead_id):
     if not lead_id or company is None:
         return None
@@ -111,7 +137,14 @@ def etude_ci_preview(request):
         raise NotFound('Devis introuvable.')
     lead = _lead_de_la_societe(company, corps.get('lead'))
     entrees = {k: v for k, v in corps.items() if k not in CLES_CONTEXTE}
-    etude = etudier_ci(company, entrees, devis=devis, lead=lead)
+    vu = _devis_a_la_saisie(devis, corps)
+    etude = None
+    if devis is not None and isinstance(corps.get('lignes'), list):
+        # T4-X6-008 — le calcul RANGÉ du devis (celui que le PDF lit) sur les lignes de l'écran.
+        from .conception.etudes_lignes import etude_ci_de_l_ecran
+        etude = etude_ci_de_l_ecran(devis, corps['lignes'], entrees, vu=vu)
+    if etude is None:
+        etude = etudier_ci(company, entrees, devis=vu, lead=lead)
     return Response({
         'entrees_resolues': etude['entrees_resolues'],
         'niveau_donnees': etude['niveau_donnees'],

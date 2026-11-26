@@ -13,7 +13,7 @@ import ventesApi from '../../api/ventesApi'
 import { Button } from '../../ui'
 import { useConfirmDialog } from '../../ui/confirm'
 import { isAnyFormDirty } from '../../ui/useDirtyGuard'
-import { bilanBoq } from './lotsBoq'
+import { bilanBoq, phrasesBoq } from './lotsBoq'
 
 /**
  * @param {number}   devisId     devis rouvert en Édition complète
@@ -62,6 +62,9 @@ export default function AjouterBoqElectrique({ devisId, modifiable, onAjoute }) 
       {resultat && (
         <div className="text-xs" role="status">
           <p>{bilanBoq(resultat)}</p>
+          {phrasesBoq(resultat).map(phrase => (
+            <p key={phrase} className="text-warning">{phrase}</p>
+          ))}
           {resultat.manques?.length > 0 && (
             <ul className="list-disc pl-5 text-muted-foreground">
               {resultat.manques.map(m => (

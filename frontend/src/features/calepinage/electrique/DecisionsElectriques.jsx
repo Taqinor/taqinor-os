@@ -48,7 +48,7 @@ function Ligne({ children, onRetirer, testid, erreurs }) {
   )
 }
 
-export default function DecisionsElectriques({ calepinageId, lectureSeule = false } = {}) {
+export default function DecisionsElectriques({ calepinageId, lectureSeule = false, surEnregistre = null } = {}) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
@@ -82,6 +82,7 @@ export default function DecisionsElectriques({ calepinageId, lectureSeule = fals
     setErreurs({})
     calepinageApi.calepinages.enregistrerEntreeElectrique(id, corpsDeDecisions(etat, entree))
       .then(() => lire())
+      .then(() => surEnregistre?.()) // T4-X7-011 : la liste « Prêt à envoyer ? » se relit
       .catch((err) => setErreurs(messageErreur(err, 'Décisions non enregistrées : le serveur n’a pas accepté la saisie.')))
       .finally(() => setEnregistrement(false))
   }

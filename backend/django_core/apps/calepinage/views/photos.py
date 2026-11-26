@@ -35,7 +35,7 @@ from core.champs_stricts import ChaineStricte, DateStricte
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 from ..models import PhotoSite
-from ..permissions import PeutLireOuEcrireCalepinage
+from ..permissions import PeutLireOuEcrireCalepinage, PeutLireOuReleverCalepinage
 from ..serializers import forme_reponse
 
 __all__ = ['PhotosSiteMixin', 'reponse_fichier']
@@ -153,7 +153,7 @@ class PhotosSiteMixin:
         request=PhotoSiteCorpsSerializer,
         responses={201: _FORME_PHOTO})
     @action(detail=True, methods=['get', 'post'], url_path='photos',
-            permission_classes=[PeutLireOuEcrireCalepinage],
+            permission_classes=[PeutLireOuReleverCalepinage],
             parser_classes=[MultiPartParser])
     def photos(self, request, pk=None):
         from ..selectors import photos_site

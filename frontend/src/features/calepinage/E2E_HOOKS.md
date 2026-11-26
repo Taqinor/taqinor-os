@@ -61,6 +61,8 @@ retiré plus un hook ajouté.
 | `cal-biblio-kit` | bibliothèque kit. |
 | `cal-biblio-kits-liste` | bibliothèque kits liste. |
 | `cal-biblio-lecture-seule` | bibliothèque lecture seule. |
+| `cal-reglages-lecture-seule` | phrase des écrans de réglages de la société lus sans le droit de les changer. |
+| `cal-allees-source` | champ « Source » partagé de l’allée par défaut et du retrait de bord par défaut. |
 | `cal-biblio-lien-reglages` | bibliothèque lien réglages. |
 | `cal-biblio-modele` | bibliothèque modèle. |
 | `cal-biblio-modele-annuler` | bibliothèque modèle annuler. |
@@ -110,11 +112,13 @@ retiré plus un hook ajouté.
 | `cal-devis-reviser` | devis réviser. |
 | `cal-devis-variante-manquante` | devis variante manquant. |
 | `cal-devis-surfaces` | étape Documents : surfaces chiffrées par le devis repliées sur une ligne qui se déplie (`<details>`, BoutonDevis `compact`). |
-| `cal-devis-reviser-lecture-seule` | devis réviser (v2) depuis la lecture seule (ACAL93). |
+| `cal-devis-reviser-lecture-seule` | devis « Réviser (nouvelle version) » depuis la lecture seule (ACAL93, T4-X7-016). |
+| `cal-devis-reviser-refus` | devis : la révision refusée ou échouée, dite sous le bouton (motif du serveur, lien vers la version plus récente ; T4-X7-016). |
 | `cal-devis-retouches` | devis retouches non enregistrées / lignes ajoutées (ACAL94/95). |
 | `cal-devis-avertissements` | devis avertissements et marques manquantes (ACAL95). |
 | `cal-devis-j-ai-lu` | devis « J'ai lu » avant rechargement (ACAL95). |
 | `cal-devis-cree` | devis : carte « Devis … créé » après la génération (ACAL866). |
+| `cal-devis-alertes` | devis : avertissements de composition lisibles sur la carte du devis créé, jamais repliés (T4-X7-008). |
 | `cal-devis-details-technicien` | devis : détails techniques repliés sous la carte (ACAL866). |
 | `cal-devis-ouvrir` | devis : bouton « Voir le devis » (`/ventes/devis?devis=<id>`, ACAL95/ACAL866). |
 | `cal-devis-revenir` | devis : « Revenir à la conception » sous la carte (ACAL866). |
@@ -678,6 +682,12 @@ retiré plus un hook ajouté.
 | `cal-retour-atelier-lien` | retour atelier lien. |
 | `cal-retour-atelier-onglet` | retour atelier onglet. |
 
+## BuilderPose (`atelier/BuilderPose.jsx`) — T4-X8-008
+
+| Hook | Sémantique |
+|---|---|
+| `cal-placement-libre-ailleurs` | téléphone tactile seulement : « Le placement libre se fait sur une tablette ou au bureau. » (placement libre et « Ajouter un panneau » masqués). |
+
 ## ResumeAtelier (`atelier/ResumeAtelier.jsx`) — ACAL401
 
 | Hook | Sémantique |
@@ -685,7 +695,7 @@ retiré plus un hook ajouté.
 | `cal-resume-atelier` | résumé vivant de la barre d'enregistrement (panneaux · kWc · production). |
 | `cal-resume-panneaux` | nombre de panneaux du document sérialisé, « — » si absent. |
 | `cal-resume-kwc` | puissance crête du document sérialisé, « — » si absente. |
-| `cal-resume-production` | « ≈ N kWh/an (estimation) » ou « P50 N kWh/an (simulation) » ; « — » si absente. |
+| `cal-resume-production` | « P50 N kWh/an (simulation) » (la production de l'étape Résultats) ; « — » sans simulation fraîche (T4-X8-013 : jamais l'estimation du constructeur). |
 
 ## PanneauDocuments (`documents/PanneauDocuments.jsx`)
 
@@ -1016,6 +1026,7 @@ retiré plus un hook ajouté.
 | `cal-panneaux-option-facture` | étape Panneaux : option « Couvrir la facture ». |
 | `cal-panneaux-actualiser-conception` | étape Panneaux : « Actualiser » pendant le premier calcul de la conception du lead (relecture E5 B1). |
 | `cal-panneaux-option-max` | étape Panneaux : option « Le plus de panneaux ». |
+| `cal-panneaux-retirer-un` | étape Panneaux : « Retirer un panneau » en Guidé, grisé avec sa raison (T4-X7-012). |
 | `cal-panneaux-sens-pose` | étape Panneaux : segmenté Portrait / Paysage / Au mieux. |
 | `cal-panneaux-ombre` | étape Panneaux : alerte des panneaux à l’ombre (seulement quand le constructeur la sert). |
 | `cal-carte-soleil` | étape Panneaux : légende d’ensoleillement et lecteur du soleil sur la carte. |

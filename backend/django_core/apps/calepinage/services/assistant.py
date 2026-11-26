@@ -288,7 +288,18 @@ def lead_de_l_appelant(user, lead_id):
     from .creation import lead_en_portee
 
     company = getattr(user, 'company', None)
+    from ..selectors import lit_par_le_seul_releve
+
     lead = lead_en_portee(company, lead_id, user) if company is not None else None
+    if lead is not None and lit_par_le_seul_releve(user):
+        # D-ACAL-106 (revue lot 5) — le Technicien n'atteint que le lead d'une
+        # visite qui lui est ASSIGNÉE ; tout autre lead lui est introuvable.
+        # D-ACAL-126 — même prédicat que la liste (équipe du responsable).
+        from ..selectors import lead_ids_de_ses_visites
+
+        if not lead_ids_de_ses_visites(user).filter(
+                lead_id=lead.pk).exists():
+            lead = None
     if lead is None:
         raise LeadIntrouvable(lead_id)
     return lead

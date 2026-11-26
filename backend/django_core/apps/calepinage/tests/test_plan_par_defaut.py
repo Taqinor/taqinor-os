@@ -19,6 +19,12 @@ from apps.calepinage.tests.test_calx5_simulation import MATERIEL, REGLAGES, _Cli
 from authentication.models import Company
 
 CASABLANCA = (33.5731, -7.5898)
+#: La table société de l'échauffement (profil de départ, D-ACAL-84) : sans elle ni Uc / NOCT
+#: sur la fiche, l'étape « Échauffement des modules » est omise et le plan la DIT (B1).
+REGLAGES_THERMIQUE = {**REGLAGES, 'simulation': {**REGLAGES['simulation'], 'thermique_par_pose': {
+    'source': 'profil de départ', 'valeur': {
+        'pose_libre': {'uc_w_m2k': 29, 'uv_w_m3sk': 0, 'source': 'texte'},
+        'dos_isole': {'uc_w_m2k': 15, 'uv_w_m3sk': 0, 'source': 'texte'}}}}}
 
 
 class PlanParDefautTest(TestCase):
@@ -28,8 +34,8 @@ class PlanParDefautTest(TestCase):
     def setUpTestData(cls):
         cls.company = Company.objects.create(nom='Plan par défaut')
 
-    def _plan(self, client=None, kwc=21.6, materiel=MATERIEL, **kwargs):
-        return simuler_plan_par_defaut(self.company, *CASABLANCA, kwc, materiel=materiel, reglages=REGLAGES,
+    def _plan(self, client=None, kwc=21.6, materiel=MATERIEL, reglages=REGLAGES_THERMIQUE, **kwargs):
+        return simuler_plan_par_defaut(self.company, *CASABLANCA, kwc, materiel=materiel, reglages=reglages,
                                        client=client or _ClientRejoue(), **kwargs)
 
     def test_production_par_la_cascade_de_la_pose_et_rien_d_ecrit(self):
@@ -48,13 +54,15 @@ class PlanParDefautTest(TestCase):
         # LA cascade de la pose : la même simulation sur le même toit rend le même chiffre.
         pose = simulation.simuler_calepinage(
             Calepinage(company=self.company, roof_layout=plan['document'], pertes=[]), forcer=True,
-            enregistrer=False, materiel=MATERIEL, reglages=REGLAGES, client=_ClientRejoue())
+            enregistrer=False, materiel=MATERIEL, reglages=REGLAGES_THERMIQUE, client=_ClientRejoue())
         total = pose['blocs']['production']['total']
         self.assertGreater(plan['production_annuelle'], 0)
         self.assertEqual(plan['production_annuelle'], total['p50_kwh'])
         self.assertEqual(plan['production_mensuelle'],
                          [m.get('p50_kwh') for m in pose['blocs']['production']['mensuel']])
         self.assertEqual(plan['version_moteur'], simulation._version_moteur())
+        # ADEV155 — la complétude du total de la cascade, lue telle quelle (jamais recalculée).
+        self.assertIs(plan['complete'], total['complete'] is True)
         # Rappeler rend le même résultat.
         self.assertEqual(self._plan()['production_annuelle'], plan['production_annuelle'])
 
@@ -62,14 +70,17 @@ class PlanParDefautTest(TestCase):
         suppose = self._plan()
         self.assertEqual(suppose['pente_deg'], PENTE_SUPPOSEE_DEG)
         self.assertEqual(PENTE_SUPPOSEE_DEG, 30.0)
-        self.assertEqual([s['champ'] for s in suppose['suppositions']], ['inclinaison_deg', 'type_toiture'])
+        # (B1 — les manques de la fiche d'essai, dits à part, ne sont pas le sujet de ce test.)
+        self.assertEqual([s['champ'] for s in suppose['suppositions'] if s['code'] != 'fiche_module_incomplete'],
+                         ['inclinaison_deg', 'type_toiture'])
         self.assertIn('30°', suppose['suppositions'][0]['message'])
 
         client = _ClientRejoue()
         declaree = self._plan(pente=18, client=client)
         self.assertEqual(declaree['pente_deg'], 18.0)
         # ACAL2045 — la pose reste supposée (dite), la pente non.
-        self.assertEqual([s['code'] for s in declaree['suppositions']], ['pose_supposee'])
+        self.assertEqual([s['code'] for s in declaree['suppositions'] if s['code'] != 'fiche_module_incomplete'],
+                         ['pose_supposee'])
         self.assertEqual(declaree['document']['zones'][0]['geometry']['tiltDeg'], 18.0)
         # La météo est DEMANDÉE au plan déclaré (la réponse rejouée, elle, ne dépend pas de l'angle ;
         # 0° = la demande horizontale que la cascade fait aussi pour tout plan).
@@ -90,7 +101,7 @@ class PlanParDefautTest(TestCase):
         self.assertEqual(plan['document']['modules'][0]['pmaxWc'], 550.0)
         pose = simulation.simuler_calepinage(
             Calepinage(company=self.company, roof_layout=plan['document'], pertes=[]), forcer=True,
-            enregistrer=False, materiel=materiel, reglages=REGLAGES, client=_ClientRejoue())
+            enregistrer=False, materiel=materiel, reglages=REGLAGES_THERMIQUE, client=_ClientRejoue())
         self.assertEqual(plan['production_annuelle'], pose['blocs']['production']['total']['p50_kwh'])
         # Rien d'inventé : la puissance prise de la conception et chaque étape que la fiche vide
         # empêche sont dites, le produit nommé, le champ à remplir = sa fiche technique.
@@ -106,10 +117,7 @@ class PlanParDefautTest(TestCase):
         « dos isolé », châssis ⇒ « pose libre ») au lieu d'être omise, et ``suppositions`` dit la
         pose supposée avec le champ du lead à renseigner. Mutant « retirer la pose du document »
         ⇒ l'étape est omise : rouge."""
-        reglages = {**REGLAGES, 'simulation': {**REGLAGES['simulation'], 'thermique_par_pose': {
-            'source': 'profil de départ', 'valeur': {
-                'pose_libre': {'uc_w_m2k': 29, 'uv_w_m3sk': 0, 'source': 'texte'},
-                'dos_isole': {'uc_w_m2k': 15, 'uv_w_m3sk': 0, 'source': 'texte'}}}}}
+        reglages = REGLAGES_THERMIQUE
 
         def plan(**lead):
             rendu = simuler_plan_par_defaut(self.company, *CASABLANCA, 21.6, materiel=MATERIEL, reglages=reglages,
@@ -137,8 +145,76 @@ class PlanParDefautTest(TestCase):
         self.assertEqual({nom: [(s['champ'], s['valeur']) for s in d] for nom, d in dites.items()},
                          {'r': [('type_toiture', 'affleurante')], 't': [('type_toiture', 'sur châssis')],
                           'i': [('type_installation', 'sur châssis')], 'x': [('type_toiture', 'affleurante')]})
-        self.assertIn('Type de toiture', dites['r'][0]['message'])
-        self.assertIn('calepinage', dites['t'][0]['message'])
+        # B2 (relecture lot 5) — la phrase nomme le geste qui LÈVE la supposition : « Type de
+        # toiture » seulement s'il est vide ; rempli (tuiles), ou site industriel : le toit tracé.
+        # Tour 4 — vide : les DEUX gestes dans leur vrai rôle — le toit tracé confirme la pose,
+        # « Type de toiture » ne la change que pour un toit plat (mutant « renseigner … ou tracer » : rouge).
+        self.assertTrue(dites['x'][0]['message'].endswith(
+            ': tracer le toit au calepinage pour la confirmer ; « Type de toiture » sur la fiche du lead ne la '
+            'change que pour un toit plat (« Terrasse béton » : pose sur châssis).'), dites['x'][0]['message'])
+        self.assertNotIn('renseigner « Type de toiture »', dites['x'][0]['message'])
+        for nom in ('r', 't', 'i'):
+            self.assertNotIn('Type de toiture', dites[nom][0]['message'], nom)  # mutant « phrase d'avant » : rouge
+            self.assertTrue(dites[nom][0]['message'].endswith(': tracer le toit au calepinage.'), nom)
+
+    def test_fiche_a_puissance_sans_coefficient_de_temperature_echauffement_omis_dit(self):
+        """B1 (relecture lot 5) — la fiche porte ``pmax_wc`` mais pas ``temp_coeff_pmax_pct_c`` :
+        l'échauffement est omis ; le plan le DIT (``fiche_module_incomplete``, champ nommé) même
+        sans puissance prise de la conception. Mutant « ne scanner que si la fiche n'a pas de
+        puissance » ⇒ aucune supposition : rouge."""
+        module = {cle: valeur for cle, valeur in MATERIEL['module'].items() if cle != 'temp_coeff_pmax_pct_c'}
+        plan = self._plan(materiel=dict(MATERIEL, module=module))
+        self.assertNotIn('puissance_module_de_la_conception', [s['code'] for s in plan['suppositions']])
+        manques = [s for s in plan['suppositions'] if s['code'] == 'fiche_module_incomplete'
+                   and 'Échauffement' in s['message']]
+        self.assertEqual(len(manques), 1, plan['suppositions'])
+        self.assertEqual(manques[0]['valeur'], 'fiche_module.temp_coeff_pmax_pct_c')
+        self.assertIn('temp_coeff_pmax_pct_c', manques[0]['message'])
+        # La fiche complète (table société de l'échauffement) : l'étape n'est pas dite manquante.
+        self.assertFalse([s for s in self._plan()['suppositions'] if 'Échauffement' in s.get('message', '')])
+
+    def test_valeur_illisible_de_la_fiche_est_un_manque_dit(self):
+        """Relecture lot 5, tour 4 — la valeur BRUTE n'est plus rejugée : une fiche qui porte
+        « -0,35 » (virgule), ``uc_w_m2k: 0`` sans NOCT ni table, ou une technologie faite
+        d'espaces fait omettre son étape (lue par le lecteur de l'étape) ; le plan le DIT, champ
+        nommé (la porte ne le sert donc pas). Mutant « champ porté = non vide » : rouge."""
+        def manques(module, reglages=REGLAGES_THERMIQUE):
+            plan = self._plan(materiel=dict(MATERIEL, module=dict(MATERIEL['module'], **module)), reglages=reglages)
+            return [s['valeur'] for s in plan['suppositions'] if s['code'] == 'fiche_module_incomplete']
+
+        self.assertIn('fiche_module.temp_coeff_pmax_pct_c', manques({'temp_coeff_pmax_pct_c': '-0,35'}))
+        self.assertTrue(any('fiche_module.uc_w_m2k' in m for m in manques({'uc_w_m2k': 0}, reglages=REGLAGES)))
+        # Technologie faite d'espaces : l'étape LID ne lit la fiche QU'AVEC une table société
+        # (sans elle, elle s'omet d'abord sur `simulation.lid_par_techno`, cause réglage, pas
+        # fiche) ; table posée sans ligne « inconnue » ⇒ `strip()` vide = technologie non dite ⇒
+        # omise sur `fiche_module.techno_cellule`. (Avec la ligne « inconnue », l'étape applique
+        # cette ligne DITE supposée — `entree.supposee`, `mention` — : rien à refuser.)
+        lid = {**REGLAGES_THERMIQUE, 'simulation': {**REGLAGES_THERMIQUE['simulation'], 'lid_par_techno': {
+            'source': 'profil de départ', 'valeur': {'p-type PERC': {'pct': 1.5, 'source': 'texte'}}}}}
+        self.assertIn('fiche_module.techno_cellule', manques({'techno_cellule': '   '}, reglages=lid))
+        self.assertNotIn('fiche_module.techno_cellule', manques({'techno_cellule': 'p-type PERC'}, reglages=lid))
+
+    def test_seul_faux_manque_le_chainage_absent_des_etapes_mppt_et_ohmique_dc(self):
+        """Le Vmp nommé par « Fenêtre MPPT » / « Pertes ohmiques DC » quand c'est le chaînage
+        qui manque n'est PAS un manque de fiche (Vmp lisible par le lecteur de l'étape) ; un Vmp
+        illisible l'est ; une cascade sans étape omise ne dit rien (plan servi)."""
+        from apps.calepinage.services import etapes
+        from apps.calepinage.services.etapes import mppt, ohmique_dc, thermique
+        from apps.calepinage.services.plan_par_defaut import _suppositions_du_module
+
+        def dites(module, *omises):
+            rendu = {'blocs': {'cascade': {'etapes': [etapes.etape_omise(lib, 'Omise.', champ=champ)
+                                                      for lib, champ in omises]}}}
+            return [s['valeur'] for s in _suppositions_du_module(rendu, {'module': module}, 30, None)]
+
+        lisible = dict(MATERIEL['module'])
+        self.assertEqual(dites(lisible), [])  # fiche lisible, rien d'omis : servi
+        for libelle in (mppt.LIBELLE, ohmique_dc.LIBELLE):
+            self.assertEqual(dites(lisible, (libelle, 'fiche_module.vmp_v')), [], libelle)  # chaînage absent
+            self.assertEqual(dites(dict(lisible, vmp_v='41,5'), (libelle, 'fiche_module.vmp_v')),
+                             ['fiche_module.vmp_v'], libelle)  # Vmp illisible : un vrai manque
+        # Le même champ nommé par une AUTRE étape n'est jamais excusé.
+        self.assertEqual(dites(lisible, (thermique.LIBELLE, 'fiche_module.vmp_v')), ['fiche_module.vmp_v'])
 
     def test_fiche_sans_puissance_sans_compte_de_conception_refuse_comme_avant(self):
         materiel = dict(MATERIEL, module={})

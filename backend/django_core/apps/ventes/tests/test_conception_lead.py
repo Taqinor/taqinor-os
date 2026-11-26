@@ -41,8 +41,8 @@ CLES_RANGEES = {
     'payback_devis',  # relecture E6 : le devis de référence du payback servi à la lecture
 }
 CLES_VALEUR = {'valeur', 'unite', 'source'}
-CLES_ENTREES_PAYBACK = {'investissement_ttc', 'economie_annuelle', 'cout_onduleur_ttc', 'calcul'}  # T4-X9-016
-SOURCES_VALEUR = {'moteur', 'pose', 'impose', 'devis', 'defaut'}
+CLES_ENTREES_PAYBACK = set('investissement base investissement_ttc economie_annuelle cout_onduleur_ttc calcul'.split())
+SOURCES_VALEUR = {'moteur', 'pose', 'plan_par_defaut', 'impose', 'devis', 'defaut'}  # ADEV155 : niveau 15
 SOURCES_ENTREE = {'lead', 'calepinage', 'reglage_societe', 'defaut'}
 CLES_SUPPOSITION = {'code', 'champ', 'valeur', 'source', 'message'}
 CLES_DECLENCHEUR = {'raison', 'champs', 'origine'}

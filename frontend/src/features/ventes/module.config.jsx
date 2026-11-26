@@ -7,6 +7,7 @@ import {
   Box,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
+import { REPLI_ROLES } from '../../router/moduleGating'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy Ventes vers le registre (phase 2, après
@@ -39,6 +40,18 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    réellement les clients qui en avait besoin, pas seulement responsable/
    admin. Garde serveur alignée (`IsAnyRole`, `apps/ventes/views/devis.py`).
    ========================================================================== */
+
+/* T4-X8-014 — un rôle FIN sans `ventes_voir` (le Technicien) ne voit plus ces
+   écrans, et leur adresse tapée rend la page « Accès refusé » (`/403`, garde
+   `roleLoader`) au lieu d'un écran à moitié chargé : même règle que le serveur
+   (`LectureDuModule`, apps/ventes/gardes_lecture.py) — un compte légacy garde
+   son palier. Le générateur exige `ventes_creer` (le serveur refuse la création
+   sans lui). Restent ouverts à son palier : « Dossiers réglementaires » (lus
+   par le chantier, octroi `installation_voir` — OCTROIS_LECTURE) et « Remises
+   d'encaissement » (le technicien déclare SA collecte, PACT46). */
+const ROLES_VENTES = ['normal', 'responsable', 'admin']
+const LECTURE_VENTES = { perm: 'ventes_voir', permRepliPalier: REPLI_ROLES }
+const CREATION_DEVIS = { roles: ROLES_VENTES, perm: 'ventes_creer', permRepliPalier: REPLI_ROLES }
 
 const navIcon = (Comp) => createElement(Comp, { size: 17, strokeWidth: 1.75, 'aria-hidden': 'true' })
 
@@ -86,38 +99,38 @@ const config = {
       // ODY16 — porte d'entrée de l'app : PREMIER item (convention
       // `nav.items[0].to` déjà lue comme « cockpit du module » par
       // AppLauncher/PinnedApps/la préférence d'atterrissage VX46).
-      { to: '/ventes/cockpit',       label: 'Cockpit',          k: 'nav.ventes_cockpit', icon: navIcon(LayoutDashboard), roles: ['normal','responsable','admin'] },
-      { to: '/ventes/devis',         label: 'Devis',            k: 'nav.devis',      icon: navIcon(FileText),        roles: ['normal','responsable','admin'] },
+      { to: '/ventes/cockpit',       label: 'Cockpit',          k: 'nav.ventes_cockpit', icon: navIcon(LayoutDashboard), roles: ['normal','responsable','admin'], ...LECTURE_VENTES },
+      { to: '/ventes/devis',         label: 'Devis',            k: 'nav.devis',      icon: navIcon(FileText),        roles: ['normal','responsable','admin'], ...LECTURE_VENTES },
       // Fondateur 18/08 — le layouteur 3D en item de nav de plein droit
       // (jusqu'ici atteignable seulement depuis une fiche lead ou une ligne
       // de la liste des devis) ; ouvert sans contexte, il fait choisir un
       // devis brouillon (ChoisirDevisPourDesign) avant de calepiner.
-      { to: '/ventes/conception-3d', label: 'Conception 3D',    k: 'nav.conception_3d', icon: navIcon(Box), roles: ['normal','responsable','admin'] },
-      { to: '/ventes/bons-commande', label: 'Bons de commande', k: 'nav.bons_commande', icon: navIcon(ShoppingCart),  roles: ['normal','responsable','admin'] },
+      { to: '/ventes/conception-3d', label: 'Conception 3D',    k: 'nav.conception_3d', icon: navIcon(Box), roles: ['normal','responsable','admin'], ...LECTURE_VENTES },
+      { to: '/ventes/bons-commande', label: 'Bons de commande', k: 'nav.bons_commande', icon: navIcon(ShoppingCart),  roles: ['normal','responsable','admin'], ...LECTURE_VENTES },
       // ODY16 — sous-groupe « Facturation » (Factures/Avoirs/Encaissements/
       // Relances) : reste DANS Ventes tant qu'ODX18 n'a pas livré
       // `features/facturation/module.config.jsx` — `navGroup` marque
       // exactement le lot qu'ODX18 devra déplacer tel quel (Sidebar ignore ce
       // champ aujourd'hui, purement préparatoire, aucun rendu ≠ actuel).
-      { to: '/ventes/factures',      label: 'Factures',         k: 'nav.factures',   icon: navIcon(Receipt),     roles: ['normal','responsable','admin'], navGroup: 'facturation' },
-      { to: '/ventes/avoirs',        label: 'Avoirs',           k: 'nav.avoirs',     icon: navIcon(FileMinus),        roles: ['normal','responsable','admin'], navGroup: 'facturation' },
-      { to: '/ventes/paiements',     label: 'Encaissements',    k: 'nav.encaissements', icon: navIcon(Wallet),    roles: ['normal','responsable','admin'], navGroup: 'facturation' },
+      { to: '/ventes/factures',      label: 'Factures',         k: 'nav.factures',   icon: navIcon(Receipt),     roles: ['normal','responsable','admin'], navGroup: 'facturation', ...LECTURE_VENTES },
+      { to: '/ventes/avoirs',        label: 'Avoirs',           k: 'nav.avoirs',     icon: navIcon(FileMinus),        roles: ['normal','responsable','admin'], navGroup: 'facturation', ...LECTURE_VENTES },
+      { to: '/ventes/paiements',     label: 'Encaissements',    k: 'nav.encaissements', icon: navIcon(Wallet),    roles: ['normal','responsable','admin'], navGroup: 'facturation', ...LECTURE_VENTES },
       // WIR265/FG42 — import d'un relevé bancaire (dry-run puis import). Le
       // couple d'endpoints multipart existait sans aucun consommateur. Même
       // écran que les encaissements (l'assistant s'y ouvre sur cette route) :
       // l'import n'a de sens qu'à côté de la liste qu'il alimente. Réservé
       // responsable/admin, comme la garde serveur `IsResponsableOrAdmin`.
-      { to: '/ventes/paiements/import-releve', label: 'Import relevé bancaire', k: 'nav.import_releve', icon: navIcon(Wallet), roles: ['responsable','admin'], navGroup: 'facturation' },
-      { to: '/ventes/relances',      label: 'Relances / Impayés', k: 'nav.relances', icon: navIcon(CalendarClock),      roles: ['responsable','admin'], navGroup: 'facturation' },
+      { to: '/ventes/paiements/import-releve', label: 'Import relevé bancaire', k: 'nav.import_releve', icon: navIcon(Wallet), roles: ['responsable','admin'], navGroup: 'facturation', ...LECTURE_VENTES },
+      { to: '/ventes/relances',      label: 'Relances / Impayés', k: 'nav.relances', icon: navIcon(CalendarClock),      roles: ['responsable','admin'], navGroup: 'facturation', ...LECTURE_VENTES },
       // WIR23 — miroir de `/sav/action-requise` (ZSAV6) : « quels devis
       // traiter aujourd'hui » (QX29/QX30). CAD115 (SIG9) — ouvert au rôle
       // qui relance réellement (même palier que `/crm/relances`, la file
       // calendaire du CRM que ce tableau arbitre désormais) ; garde serveur
       // alignée (`IsAnyRole`, apps/ventes/views/devis.py::action_requise).
-      { to: '/ventes/devis/action-requise', label: 'Action requise', k: 'nav.devis_action_requise', icon: navIcon(AlertTriangle), roles: ['normal','responsable','admin'] },
+      { to: '/ventes/devis/action-requise', label: 'Action requise', k: 'nav.devis_action_requise', icon: navIcon(AlertTriangle), roles: ['normal','responsable','admin'], ...LECTURE_VENTES },
       // WIR23 — lecture ouverte à tout rôle (écriture Responsable/Admin
       // gardée serveur, cf. apps/ventes/views/liste_prix.py).
-      { to: '/ventes/listes-prix',   label: 'Listes de prix',   k: 'nav.listes_prix', icon: navIcon(Tags),  roles: ['normal','responsable','admin'] },
+      { to: '/ventes/listes-prix',   label: 'Listes de prix',   k: 'nav.listes_prix', icon: navIcon(Tags),  roles: ['normal','responsable','admin'], ...LECTURE_VENTES },
       // WIR104 — dossiers réglementaires & mise en service (lecture).
       { to: '/ventes/dossiers-reglementaires', label: 'Dossiers réglementaires', k: 'nav.dossiers_reglementaires', icon: navIcon(FileText), roles: ['normal','responsable','admin'] },
       // AFAC19 — « Mandats de paiement » (PACT43) PARQUÉ : pile sans appelant MVP.
@@ -136,23 +149,23 @@ const config = {
   ],
   routes: [
     // ODY16 — cockpit Ventes (porte d'entrée de l'app).
-    { path: '/ventes/cockpit', component: VentesCockpit },
-    { path: '/ventes/devis', component: DevisList },
+    { path: '/ventes/cockpit', component: VentesCockpit, roles: ROLES_VENTES, ...LECTURE_VENTES },
+    { path: '/ventes/devis', component: DevisList, roles: ROLES_VENTES, ...LECTURE_VENTES },
     // QX29 — « Relances du jour » : tableau d'action des devis (miroir ZSAV6).
-    { path: '/ventes/devis/action-requise', component: DevisActionBoardPage },
-    { path: '/ventes/devis/nouveau', component: DevisGenerator },
+    { path: '/ventes/devis/action-requise', component: DevisActionBoardPage, roles: ROLES_VENTES, ...LECTURE_VENTES },
+    { path: '/ventes/devis/nouveau', component: DevisGenerator, ...CREATION_DEVIS },
     // Fondateur 18/08 — entrée standalone du layouteur 3D (choisit un devis
     // brouillon puis ouvre `/ventes/devis/:id/design`).
-    { path: '/ventes/conception-3d', component: Conception3DPage },
-    { path: '/ventes/bons-commande', component: BonCommandeList },
-    { path: '/ventes/factures', component: FactureList },
-    { path: '/ventes/avoirs', component: AvoirsPage },
-    { path: '/ventes/relances', component: RelancesPage },
+    { path: '/ventes/conception-3d', component: Conception3DPage, roles: ROLES_VENTES, ...LECTURE_VENTES },
+    { path: '/ventes/bons-commande', component: BonCommandeList, roles: ROLES_VENTES, ...LECTURE_VENTES },
+    { path: '/ventes/factures', component: FactureList, roles: ROLES_VENTES, ...LECTURE_VENTES },
+    { path: '/ventes/avoirs', component: AvoirsPage, roles: ROLES_VENTES, ...LECTURE_VENTES },
+    { path: '/ventes/relances', component: RelancesPage, roles: ROLES_VENTES, ...LECTURE_VENTES },
     // WIR265 — la route d'import précède `/ventes/paiements` (préfixe plus
     // spécifique) et rend le MÊME écran, assistant d'import ouvert.
-    { path: '/ventes/paiements/import-releve', component: PaiementsPage, roles: ['responsable', 'admin'] },
-    { path: '/ventes/paiements', component: PaiementsPage },
-    { path: '/ventes/listes-prix', component: ListesPrixPage },
+    { path: '/ventes/paiements/import-releve', component: PaiementsPage, roles: ['responsable', 'admin'], ...LECTURE_VENTES },
+    { path: '/ventes/paiements', component: PaiementsPage, roles: ROLES_VENTES, ...LECTURE_VENTES },
+    { path: '/ventes/listes-prix', component: ListesPrixPage, roles: ROLES_VENTES, ...LECTURE_VENTES },
     // WIR104 — écran consommateur du cluster réglementaire (FG245, FG268-287).
     { path: '/ventes/dossiers-reglementaires', component: DossiersReglementairesPage },
     // PACT46 — remises d'encaissement terrain (écart + bordereau PDF).

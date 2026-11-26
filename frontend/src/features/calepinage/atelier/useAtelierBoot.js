@@ -528,6 +528,9 @@ export function useAtelierBoot(ctx) {
           payload.cible.panneaux = cibleAuModule({ panneaux: payload.cible.panneaux, kwc: ctx?.cible?.kwc,
             wattConception: payload.cible.panel_watt }, depart?.pmaxWc, modulesDisponibles.panneaux_selon_watt)?.panneaux ?? null
         }
+        // T4-X8-012 — la table SERVIE du besoin de la facture par puissance de module : le champ « Panneaux nécessaires » de
+        // l'Expert la lit sur « le plus de panneaux » (le compte du module posé), jamais le plafond 400.
+        if (payload && modulesDisponibles) payload.panneauxSelonWatt = modulesDisponibles.panneaux_selon_watt ?? {}
         if (payload && layoutSubstitue !== undefined) {
           payload.geometrie = { ...payload.geometrie, roof_layout: layoutSubstitue }
         }

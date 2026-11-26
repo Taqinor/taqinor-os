@@ -61,8 +61,9 @@ class SkuPompageTests(TestCase):
             self.assertEqual(p.role_pompage, role)
             self.assertIn(role, ROLES_POMPAGE)
         inst = self._p('INST-PMP')
-        self.assertIsNone(inst.prix_fixe_ht)
-        self.assertIsNone(inst.prix_par_panneau_ht)
+        # D-ACAL-130 — barème de la pose ; prix de vente toujours 0.
+        self.assertEqual((inst.prix_fixe_ht, inst.prix_par_panneau_ht),
+                         (Decimal('2000.00'), Decimal('250.0000')))
         ent = self._p('ENT-PMP')
         self.assertTrue(ent.est_recurrent)
         self.assertFalse(ent.periodicite_defaut)

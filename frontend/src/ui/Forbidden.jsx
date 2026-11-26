@@ -29,4 +29,30 @@ export function Forbidden({ onHome }) {
   )
 }
 
+/* T4-X8-015/016 — un DROIT MANQUANT n'est pas une panne réseau. Vrai pour une
+   réponse 403, qu'on tienne l'erreur axios (`response.status`) ou le corps
+   rangé par un slice (`rejectWithValue(err.response.data)` : l'enveloppe du
+   serveur porte `error.code = 'permission_denied'`, core/exceptions.py). */
+export function estRefusDeDroit(erreur) {
+  return erreur?.response?.status === 403
+    || erreur?.error?.code === 'permission_denied'
+    || erreur?.response?.data?.error?.code === 'permission_denied'
+}
+
+/* L'état d'un écran dont la lecture est refusée (403) : la phrase du droit,
+   jamais « vérifiez votre connexion », sans « Réessayer » (réessayer ne
+   donnera pas le droit) ni bouton de création. `objet` : « ce lead », « les
+   factures »… */
+export function RefusDeDroit({ objet, className = '' }) {
+  return (
+    <EmptyState
+      icon={ShieldAlert}
+      tone="warning"
+      title="Accès refusé"
+      description={`Vous n'avez pas le droit d'ouvrir ${objet}. Contactez un administrateur si vous pensez que c'est une erreur.`}
+      className={className}
+    />
+  )
+}
+
 export default Forbidden

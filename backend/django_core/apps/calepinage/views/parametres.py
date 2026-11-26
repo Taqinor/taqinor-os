@@ -39,7 +39,7 @@ from core.parseurs import PARSEURS_JSON
 from core.permissions import ScopedPermission
 
 from ..models import ParametresCalepinage
-from ..permissions import CAL_GERER, CAL_VOIR
+from ..permissions import CAL_GERER, CAL_VOIR, exiger_droit_reglages_societe
 from ..serializers import _SchemaCorpsObligatoire
 from ..selectors import (
     kits_de_pose_disponibles, parametres_de_societe, registre_des_reglages,
@@ -414,6 +414,7 @@ class ParametresCalepinageView(APIView):
                    responses={200: _forme_reglages(
                        'CalepinageParametresEcrite')})
     def put(self, request, *args, **kwargs):
+        exiger_droit_reglages_societe(request.user)  # D-ACAL-104
         if request.META.get('CONTENT_LENGTH') in (None, '', '0'):
             # Corps absent : le schéma le déclare obligatoire.
             return Response(

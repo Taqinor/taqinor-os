@@ -76,7 +76,7 @@ MOTIF_NON_SIMULEE = (
     "Cette variante n'a pas été simulée : aucune production n'est publiée "
     '(les colonnes restent vides, jamais à 0).')
 MOTIF_PERIMEE = (
-    'La conception a changé depuis la dernière simulation de cette variante : '
+    'La conception ou un réglage de votre société a changé depuis la dernière simulation de cette variante : '
     'la production affichée serait celle d’un autre toit. Elle est donc '
     'traitée comme non simulée — relancez la simulation.')
 

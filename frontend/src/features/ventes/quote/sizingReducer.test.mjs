@@ -566,3 +566,31 @@ test('CIQ426 : un geste du vendeur (touche.tension) n’est jamais écrasé', ()
   const s = sizingReducer(touche, { type: 'LEAD_APPLIQUE', lead, sizingLocal: null })
   assert.equal(s.tension, 'bt')
 })
+
+test('T4-X6-015 — un devis ROUVERT qui suit la taille demandée sur la fiche la DIT (bandeau), et la garde jusqu’à « Recalculer »', () => {
+  // Rejeu X6-r : 6 kWc demandés, devis automatique 9 × 710 W = 6,39 kWc.
+  const rouvert = sizingReducer(ETAT_INITIAL, {
+    type: 'REOUVERTURE', devis: { mode_installation: 'residentiel', panneaux: 9, panel_watt: 710 },
+  })
+  assert.equal(tailleDemandeeParLead(rouvert), null)
+  const relu = sizingReducer(rouvert, { type: 'TAILLE_LEAD_RELUE', kwc: '6' })
+  assert.equal(tailleDemandeeParLead(relu), 6)
+  assert.equal(relu.nbPanneaux, '9')                 // rien n'est recompté : les lignes décident
+  assert.equal(relu.touche.nbPanneaux, false)
+  // Un devis qui ne suit PAS la taille de la fiche ne la prétend pas.
+  const autreTaille = sizingReducer(ETAT_INITIAL, {
+    type: 'REOUVERTURE', devis: { mode_installation: 'residentiel', panneaux: 4, panel_watt: 710 },
+  })
+  assert.equal(tailleDemandeeParLead(sizingReducer(autreTaille, { type: 'TAILLE_LEAD_RELUE', kwc: '6' })), null)
+  // Ni hors résidentiel, ni après une frappe, ni sans taille.
+  const commercial = sizingReducer(ETAT_INITIAL, {
+    type: 'REOUVERTURE', devis: { mode_installation: 'commercial', panneaux: 9, panel_watt: 710 },
+  })
+  assert.equal(tailleDemandeeParLead(sizingReducer(commercial, { type: 'TAILLE_LEAD_RELUE', kwc: '6' })), null)
+  assert.equal(tailleDemandeeParLead(red(rouvert,
+    { type: 'SAISI', champ: 'nbPanneaux', valeur: '9' }, { type: 'TAILLE_LEAD_RELUE', kwc: '6' })), null)
+  assert.equal(tailleDemandeeParLead(sizingReducer(rouvert, { type: 'TAILLE_LEAD_RELUE', kwc: '' })), null)
+  // Le registre qui n'impose que le scénario ne l'efface pas ; un compte imposé, si.
+  assert.equal(tailleDemandeeParLead(sizingReducer(relu, { type: 'REOUVERTURE', devis: { scenario: SCENARIO_SANS } })), 6)
+  assert.equal(tailleDemandeeParLead(sizingReducer(relu, { type: 'REOUVERTURE', devis: { panneaux: 12 } })), null)
+})

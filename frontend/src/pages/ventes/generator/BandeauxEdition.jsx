@@ -27,11 +27,21 @@ export default function BandeauxEdition({
     if (!ok) return false
     return enregistrer ? Boolean(await enregistrer()) : false
   }
+  // T4-X6-012 — un brouillon qui a suivi la conception est RELU : une saisie non
+  // enregistrée serait perdue, l'écran le demande d'abord (rien n'est enregistré ici).
+  const avantRechargement = async () => {
+    if (!dirty) return true
+    return confirm ? Boolean(await confirm({
+      title: 'Recharger le brouillon ?',
+      description: 'Les modifications non enregistrées de cet écran seront perdues.',
+      confirmLabel: 'Recharger',
+    })) : false
+  }
   return (
     <>
       {/* AGEN12 — la conception du lead a bougé : « Mettre à jour » (brouillon
           retouché) ou « Réviser le devis » (envoyé) ; puis l'écran se recharge. */}
-      <BandeauConception devis={editDevis} avantMiseAJour={avantMiseAJour}
+      <BandeauConception devis={editDevis} avantMiseAJour={avantMiseAJour} avantRechargement={avantRechargement}
                          onMisAJour={() => { clear(); setRechargeEdit((n) => n + 1) }} />
       {editDevis?.statut === 'envoye' && (
         <div

@@ -347,7 +347,8 @@ CODES_HORAIRES_SUPPOSES = frozenset({"heure_debut_supposee",
 
 
 def _methode_profil(etude_ci, alertes, niveau_15):
-    """La méthode du profil de charge servie au client. T4-U2-019 (niveau 15,
+    """La méthode du profil de charge servie au client. T4-U2-019 (D-ACAL-102 :
+    ``niveau_15`` = :func:`regles_calcul.phrases_profil_ouvertes`,
     nouveaux rendus) : un profil « déclaré » dont l'heure ou les jours ont été
     supposés est dit profil type, estimation ; dessous, celle du moteur."""
     methode = _dict(etude_ci.get("profil_charge")).get("methode")
@@ -1042,7 +1043,7 @@ def synthese_ci(data):
                           "motif": MOTIF_ETUDE_AUTRE_PUISSANCE})
     else:
         energie, motif = _bloc_energie(etude_option, langue, etude_ci.get("alertes"),
-                                       bool(data.get("regles_pose_reelle")))  # T4-U2-019
+                                       bool(data.get("phrases_profil_ouvertes")))  # T4-U2-019, D-ACAL-102
         if energie is not None:
             synthese["energie"] = energie
         else:

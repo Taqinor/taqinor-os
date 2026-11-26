@@ -330,6 +330,39 @@ describe('Étape Toit — sur la carte', () => {
     expect(cibleFactures).toHaveBeenCalledTimes(1)
   })
 
+  it('T4-X7-018 — un tracé à l’échelle du pays : « trop petite pour une rangée » à côté d’une surface vaste = alerte, sans refus', async () => {
+    rendre()
+    document.querySelectorAll('[data-pan-stat]').forEach((n) => n.remove())
+    const statut = document.createElement('p')
+    statut.id = 'rp9-status'
+    statut.textContent = 'Surface trop petite pour une rangée — élargissez le tracé.'
+    document.body.querySelector('.rp9-host').appendChild(statut)
+    $('rp9-area-value').textContent = '~120 534 611 780 m²'
+    expect(H.traceHorsEchelle(document, H.lireSurface(document))).toBe(true)
+    // Une vraie petite surface au même message : aucune alerte d'échelle.
+    $('rp9-area-value').textContent = '~3 m²'
+    expect(H.traceHorsEchelle(document, H.lireSurface(document))).toBe(false)
+    // Surface vaste sans le message du script : aucune alerte.
+    $('rp9-area-value').textContent = '~120 534 611 780 m²'
+    statut.textContent = 'Calcul prêt.'
+    expect(H.traceHorsEchelle(document, H.lireSurface(document))).toBe(false)
+  })
+
+  it('T4-X7-018 — au doigt, l’aide du contour dit « Touchez deux fois », jamais « Double-cliquez »', () => {
+    vi.useFakeTimers()
+    const ancien = window.matchMedia
+    window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} })
+    rendre()
+    $('rp9-add-area').disabled = true
+    $('rp9-finish').disabled = false
+    act(() => { vi.advanceTimersByTime(600) })
+    $('rp9-finish').disabled = true
+    $('rp9-add-area').disabled = false
+    act(() => { vi.advanceTimersByTime(600) })
+    expect(within(surCarte).getByText('Glissez un coin pour le déplacer. Touchez deux fois un bord pour ajouter un point.')).toBeInTheDocument()
+    window.matchMedia = ancien
+  })
+
   it('sans contour, pas de puce', () => {
     rendre()
     document.querySelectorAll('[data-pan-stat]').forEach((n) => n.remove())
@@ -346,6 +379,33 @@ describe('Étape Toit — sur la carte', () => {
     expect(within(barre).getByRole('button', { name: 'Sélectionner' })).toHaveAttribute('aria-pressed', 'true')
     expect(within(barre).getByRole('button', { name: 'Plan' })).toHaveAttribute('aria-pressed', 'true')
     expect(within(barre).getByRole('button', { name: 'Rétablir' })).toBeDisabled()
+  })
+
+  // T4-X8-009 — au téléphone (390 px), la barre défile (427 px dans 364) et « 3D » commençait à x = 387 : le choix
+  // Plan / 3D passe EN TÊTE de la barre (ordre visuel seul, l'ordre lu reste celui de la maquette), suivi de son filet ;
+  // les autres outils peuvent défiler. jsdom n'évalue pas les @media : les règles du bloc téléphone sont posées seules.
+  it('T4-X8-009 — téléphone : Plan / 3D en tête de la barre, jamais coupé au bord droit', () => {
+    const source = document.createElement('style')
+    source.textContent = readFileSync(resolve(process.cwd(), 'src/styles/calepinage/56-coque-responsive.css'), 'utf8')
+    document.head.appendChild(source)
+    const telephone = [...source.sheet.cssRules].filter((r) => r.media && r.media.mediaText === '(max-width: 639px)')
+      .flatMap((r) => [...r.cssRules].map((x) => x.cssText))
+    source.remove()
+    const style = document.createElement('style')
+    style.textContent = telephone.join(' ')
+    document.head.appendChild(style)
+    try {
+      rendre()
+      const barre = within(surCarte).getByRole('toolbar', { name: 'Outils du plan' })
+      const ordre = (el) => Number(getComputedStyle(el).order || 0)
+      const vue = within(barre).getByRole('group', { name: 'Vue' })
+      const filets = [...barre.querySelectorAll('.cal-barre-outils-separateur')]
+      const outils = within(barre).getAllByRole('button').filter((b) => !vue.contains(b))
+      expect(getComputedStyle(vue).flexShrink).toBe('0')
+      for (const b of outils) expect(ordre(vue)).toBeLessThan(ordre(b))
+      expect(ordre(vue)).toBeLessThan(ordre(filets[filets.length - 1]))
+      for (const b of outils) expect(ordre(filets[filets.length - 1])).toBeLessThan(ordre(b))
+    } finally { style.remove() }
   })
 
   it('chaque outil clique le VRAI contrôle du constructeur', async () => {
@@ -1019,6 +1079,36 @@ describe('ACAL1907 — pièces de la carte', () => {
 })
 
 // T4-X5-017 — la carte passait en plein écran sans que le toit soit recadré : il restait à sa place d'avant.
+/* T4-X7-019 — la bulle « 1 · Localisez le toit… » du constructeur (`#rp9-etat-vide`, posée en style inline à 12 px du haut
+   de la carte) passait SOUS le bandeau du projet : dès 640 px la carte est plein écran sous les pièces. Elle se pose
+   dans la zone libre, sous la carte d'adresse, centrée entre le rail et le panneau d'étape. */
+describe('T4-X7-019 — la bulle de consigne n’est jamais sous le bandeau', () => {
+  it('dès 640 px (bureau et tablette) : sous la zone libre et la carte d’adresse, centrée entre rail et panneau', () => {
+    // jsdom ne fait pas primer `!important` sur le style inline : la règle est lue et appliquée à l'élément par `matches`.
+    const source = document.createElement('style')
+    source.textContent = readFileSync(resolve(process.cwd(), 'src/styles/calepinage/56-coque-responsive.css'), 'utf8')
+    document.head.appendChild(source)
+    const large = [...source.sheet.cssRules].filter((r) => r.media && r.media.mediaText === '(min-width: 640px)')
+      .flatMap((r) => [...r.cssRules])
+    const hote = document.createElement('div')
+    hote.innerHTML = '<div class="rp9-host cal-coque" data-avance="0" data-cadre="carte"><div class="rp9-map-wrap"><div id="rp9-map">'
+      + '<div id="rp9-etat-vide" style="position:absolute;left:50%;top:12px">1</div></div></div></div>'
+    document.body.appendChild(hote)
+    try {
+      const bulle = hote.querySelector('#rp9-etat-vide')
+      const regles = large.filter((r) => r.selectorText && bulle.matches(r.selectorText) && r.style.getPropertyValue('top'))
+      expect(regles).toHaveLength(1)
+      expect(regles[0].style.getPropertyValue('top')).toBe('calc(var(--cal-libre-haut) + 84px)')
+      expect(regles[0].style.getPropertyValue('left')).toBe('calc((var(--cal-libre-gauche) + 100% - var(--cal-libre-droite)) / 2)')
+      // jsdom perd la priorité : elle est lue dans la feuille (`!important` est requis contre le style inline du moteur).
+      const brut = source.textContent.split(String.fromCharCode(13)).join('')
+      const bloc = brut.slice(brut.indexOf('#rp9-etat-vide {'), brut.indexOf('}', brut.indexOf('#rp9-etat-vide {')))
+      expect(bloc).toMatch(/top: calc\(var\(--cal-libre-haut\) \+ 84px\) !important;/)
+      expect(bloc).toMatch(/left: calc\(.*\) !important;/)
+    } finally { source.remove(); hote.remove() }
+  })
+})
+
 describe('T4-X5-017 — plein écran de la carte (useAtelierVues)', () => {
   // T4-X5-017 (rejeu X9) — le toit restait dans la moitié gauche : la coque re-cadrait dans la zone libre (pièces comptées)
   // après la bascule. Le recadrage passe par LE cadrage de la coque, à l'entrée ET à la sortie, au rendu du nouvel état.

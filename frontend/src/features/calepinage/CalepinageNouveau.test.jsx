@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { ReactReduxContext } from 'react-redux'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* ============================================================================
@@ -61,7 +62,11 @@ vi.mock('../../api/crmApi', () => ({
 
 import CalepinageNouveau from './CalepinageNouveau'
 
-const rendre = () => render(<MemoryRouter><CalepinageNouveau /></MemoryRouter>)
+// La personne connectée (identifiant 7) : lue du magasin, comme la liste (« Mes calepinages »).
+const MAGASIN = { store: { getState: () => ({ auth: { user: { id: 7 } } }), subscribe: () => () => {}, dispatch: () => {} } }
+const rendre = () => render(
+  <ReactReduxContext.Provider value={MAGASIN}><MemoryRouter><CalepinageNouveau /></MemoryRouter></ReactReduxContext.Provider>,
+)
 
 // ACAL251 — chaque lead porte `repere_toit` tel que le SERVEUR le sert
 // (contrat crm/contract_samples/lead_repere_toit.json).
@@ -140,6 +145,11 @@ describe('CalepinageNouveau (CAL36)', () => {
     rendre()
     expect(screen.getByRole('tab', { name: 'Lead' })).toHaveAttribute('data-state', 'active')
     expect(screen.getByRole('tab', { name: 'Client' })).toBeInTheDocument()
+  })
+
+  it('T4-X3-016 — le menu « Responsable » ne demande que ceux qui peuvent ouvrir un calepinage', async () => {
+    rendre()
+    await waitFor(() => expect(mocks.getAssignableUsers).toHaveBeenCalledWith({ permission: 'calepinage_voir' }))
   })
 
   it('la recherche de LEADS part au SERVEUR (seul bornage société possible)', async () => {
@@ -261,7 +271,7 @@ describe('CalepinageNouveau (CAL36)', () => {
   // « Réessayez » faisait un doublon. La route ne porte pas de clé d'idempotence : l'écran cherche ce qu'il vient de créer.
   it('T4-X9-011 — pas de réponse mais calepinage créé : retrouvé (même client, même nom, créé à l’instant), jamais « Réessayez »', async () => {
     mocks.depuisModele.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 20000ms exceeded' })
-    mocks.list.mockResolvedValue({ data: { results: [{ id: 1975, titre: 'X9-o Calepinage sans lead', reference: 'CAL-2611-1975' }] } })
+    mocks.list.mockResolvedValue({ data: { results: [{ id: 1975, titre: 'X9-o Calepinage sans lead', reference: 'CAL-2611-1975', cree_par: 7 }] } })
     rendre()
     allerSurOnglet('Client')
     await choisirDansCombobox('Client rattaché au calepinage', 'Client d’essai')
@@ -273,10 +283,47 @@ describe('CalepinageNouveau (CAL36)', () => {
     expect(params).toMatchObject({ client: '3', ordering: '-created_at' })
     expect(typeof params.depuis).toBe('string')
     expect(screen.queryByText(/Réessayez/)).toBeNull()
-    expect(mocks.optionsDepuisModele).toHaveBeenCalledWith({ silencieuxExpiration: true }) // pas de toast « … réessayez »
+    expect(mocks.optionsDepuisModele).toHaveBeenCalledWith({ silencieuxExpiration: true, idempotencyKey: expect.any(String) }) // pas de toast « … réessayez »
     expect(screen.queryByRole('button', { name: /Créer le calepinage/ })).toBeNull() // aucun second envoi possible ici
     fireEvent.click(screen.getByRole('button', { name: 'Ouvrir le calepinage créé' }))
     expect(mocks.navigate).toHaveBeenCalledWith('/calepinage/1975')
+  })
+
+  // ACAL2047 — un second envoi de la MÊME création porte la MÊME clé : le serveur rend le même calepinage.
+  it('ACAL2047 — sans réponse puis renvoi : la même clé d’idempotence repart ; après un succès, une clé neuve', async () => {
+    mocks.depuisModele.mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout' })
+    mocks.list.mockResolvedValue({ data: { results: [] } })
+    rendre()
+    allerSurOnglet('Client')
+    await choisirDansCombobox('Client rattaché au calepinage', 'Client d’essai')
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    await screen.findByRole('alert')
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    await waitFor(() => expect(mocks.optionsDepuisModele).toHaveBeenCalledTimes(2))
+    const [premier, second] = mocks.optionsDepuisModele.mock.calls.map(([o]) => o.idempotencyKey)
+    expect(premier).toBeTruthy()
+    expect(second).toBe(premier)
+  })
+
+  it('ACAL2047 — renvoi accueilli par le 409 « en cours » : message dédié et la MÊME clé repart au troisième envoi', async () => {
+    mocks.depuisModele
+      .mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout' })
+      .mockRejectedValueOnce({ response: { status: 409, data: { code: 'idempotency_en_cours', detail: 'Une requête identique est déjà en cours de traitement.' } } })
+    mocks.list.mockResolvedValue({ data: { results: [] } })
+    rendre()
+    allerSurOnglet('Client')
+    await choisirDansCombobox('Client rattaché au calepinage', 'Client d’essai')
+    const creer = () => fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    creer()
+    await waitFor(() => expect(mocks.optionsDepuisModele).toHaveBeenCalledTimes(1))
+    await screen.findByRole('alert')
+    creer()
+    expect(await screen.findByText(/Création en cours/)).toBeInTheDocument()
+    creer()
+    await waitFor(() => expect(mocks.optionsDepuisModele).toHaveBeenCalledTimes(3))
+    const cles = mocks.optionsDepuisModele.mock.calls.map(([o]) => o.idempotencyKey)
+    expect(cles[1]).toBe(cles[0])
+    expect(cles[2]).toBe(cles[0])
   })
 
   it('T4-X9-011 — pas de réponse et rien de retrouvé : la liste est désignée avant tout nouvel essai', async () => {
@@ -288,6 +335,32 @@ describe('CalepinageNouveau (CAL36)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
     expect(await screen.findByText(/Vérifiez la liste des calepinages avant de recommencer/)).toBeInTheDocument()
     expect(screen.queryByText(/Réessayez dans un instant/)).toBeNull()
+  })
+
+  // Relecture finale du lot 4 (mineur 6) — sans nom tapé, l'écran ouvrait le premier calepinage du même client créé dans
+  // les deux minutes : ce pouvait être celui d'un collègue. Seul un calepinage créé PAR la personne connectée est le sien.
+  it('pas de réponse : le calepinage qu’un collègue vient de créer sur le même client n’est jamais présenté comme le mien', async () => {
+    mocks.depuisModele.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout' })
+    mocks.list.mockResolvedValue({ data: { results: [{ id: 1980, titre: '', reference: 'CAL-2611-1980', cree_par: 12 }] } })
+    rendre()
+    allerSurOnglet('Client')
+    await choisirDansCombobox('Client rattaché au calepinage', 'Client d’essai')
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    expect(await screen.findByText(/Vérifiez la liste des calepinages avant de recommencer/)).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-nouveau-retrouve')).toBeNull()
+  })
+
+  it('pas de réponse, sans nom tapé : le mien (créé par moi) est retrouvé parmi ceux des collègues', async () => {
+    mocks.depuisModele.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout' })
+    mocks.list.mockResolvedValue({ data: { results: [
+      { id: 1980, titre: '', reference: 'CAL-2611-1980', cree_par: 12 },
+      { id: 1981, titre: '', reference: 'CAL-2611-1981', cree_par: 7 },
+    ] } })
+    rendre()
+    allerSurOnglet('Client')
+    await choisirDansCombobox('Client rattaché au calepinage', 'Client d’essai')
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    expect(await screen.findByTestId('cal-nouveau-retrouve')).toHaveTextContent('CAL-2611-1981')
   })
 
   it('le nom facultatif ne part QUE s’il est saisi', async () => {

@@ -66,6 +66,18 @@ class DevisAutoAgricoleTests(TestCase):
             'Installation pompage solaire', '0',
             role_pompage='installation_pompage',
             prix_fixe_ht=Decimal('3000'), prix_par_panneau_ht=Decimal('150'))
+        # D-ACAL-112 / D-ACAL-118 — les protections du kit minimum, CHIFFRÉES
+        # (valeurs de test) : coffret DC, disjoncteur AC par phase, parafoudre AC.
+        cls.coffret_dc = cls._produit('Coffret DC 2 strings', '900',
+                                      role_pompage='protection_dc')
+        cls.disjoncteur_tri = cls._produit(
+            'Disjoncteur AC courbe C 16 A tétrapolaire', '300',
+            role_pompage='protection_ac')
+        cls.disjoncteur_mono = cls._produit(
+            'Disjoncteur AC courbe C 16 A monophasé', '150',
+            role_pompage='protection_ac')
+        cls.parafoudre_ac = cls._produit('Parafoudre AC type 2', '400',
+                                         role_pompage='protection_ac')
 
     @classmethod
     def _produit(cls, nom, prix, **kw):
@@ -192,6 +204,14 @@ class DevisAutoAgricoleTests(TestCase):
         # Aucune distance saisie ⇒ aucune ligne câble DC.
         self.assertFalse(devis.lignes.filter(
             designation__icontains='câble dc').exists())
+        # D-ACAL-112 / D-ACAL-118 — les protections au kit minimum : le coffret
+        # DC, le disjoncteur AC de la phase (tri) et le parafoudre AC.
+        for produit in (self.coffret_dc, self.disjoncteur_tri,
+                        self.parafoudre_ac):
+            self.assertTrue(devis.lignes.filter(produit=produit).exists(),
+                            produit.nom)
+        self.assertFalse(devis.lignes.filter(
+            produit=self.disjoncteur_mono).exists())
         etude = devis.etude_params
         self.assertEqual(etude['taille'], 'recommandee')
         self.assertEqual(etude['alim'], 'tri')
@@ -303,6 +323,32 @@ class DevisAutoAgricoleTests(TestCase):
         self.assertEqual(rep.data['field'], 'kit.installation')
         self.assertFalse(Devis.objects.filter(lead=lead).exists())
 
+    def test_dacal118_protection_sans_prix_refuse_en_la_nommant(self):
+        """D-ACAL-118 — un article de protection sans prix n'est jamais
+        chiffré : le devis automatique de pompage est refusé et nomme
+        l'article à chiffrer (« prix à renseigner »)."""
+        Produit.objects.filter(pk=self.coffret_dc.pk).update(
+            prix_vente=Decimal('0'))
+        self._pompe('15000')
+        lead = self._lead()
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['detail'],
+                         'Coffret de protection DC : prix à renseigner au '
+                         'catalogue — article « Coffret DC 2 strings »')
+        self.assertEqual(rep.data['field'], 'kit.coffret_dc')
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
+    def test_dacal118_aucun_parafoudre_ac_refus_dit_aucun_article(self):
+        Produit.objects.filter(pk=self.parafoudre_ac.pk).delete()
+        self._pompe('15000')
+        rep = self._post(self._lead())
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['detail'],
+                         'Parafoudre AC (variateur → pompe) : aucun article '
+                         'au catalogue (rôle protection_ac)')
+        self.assertEqual(rep.data['field'], 'kit.parafoudre_ac')
+
     def _pompe_3cv_mono(self):
         return self._produit(
             'Pompe immergée solaire 3 CV Monophasé', '5000',
@@ -331,11 +377,19 @@ class DevisAutoAgricoleTests(TestCase):
             pompe_kw=Decimal('2.2'), tension_v=220)
         lead = self._lead(raccordement='monophase',
                           besoin_eau_m3j=Decimal('10'))
+        # L'étude retient le SI22 sur les 3 CV de la pompe (AGQ6).
+        sortie = pompage.etudier_pompage(self.co, {'alim': 'mono'}, lead=lead)
+        self.assertEqual(sortie['variateur']['produit'], si22.id)
+        self.assertEqual(sortie['pompe']['produit'], pompe.id)
+        # Revue R3 (F1/F2, D-ACAL-124) — SI22 sans fiche : chaînes non
+        # vérifiables ⇒ aucun coffret DC ; pompe sans kW ni tension ⇒ aucun
+        # disjoncteur. Le devis automatique est refusé en nommant la cause.
         rep = self._post(lead)
-        self.assertEqual(rep.status_code, 201, rep.data)
-        devis = Devis.objects.get(pk=rep.data['id'])
-        self.assertTrue(devis.lignes.filter(produit=pompe).exists())
-        self.assertTrue(devis.lignes.filter(produit=si22).exists())
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['field'], 'kit.coffret_dc')
+        self.assertIn('nombre de chaînes en parallèle du champ inconnu',
+                      rep.data['detail'])
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
 
     def test_etude_calculee_une_fois_sans_tmy(self):
         """AGQ24 (C-AGQ-023) — le devis automatique calcule l'étude UNE fois

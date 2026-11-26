@@ -166,6 +166,28 @@ def devis_et_ecart(devis_id, retenue, company_id):
     return devis, ecart_devis(devis, **{'retenue': retenue})
 
 
+def devis_lie_et_pose(calepinage):
+    """T4-X7-006 — ``{devis, reference, statut, a_jour}`` du devis LIÉ à ``calepinage`` (même
+    société), ou ``None`` sans devis lié. ``a_jour`` = LE prédicat des deux empreintes de ventes
+    (``_conception_a_jour``, ACAL46, celui du badge et de ``_ecart_devis``) : ``False`` quand le
+    devis ne porte pas la pose enregistrée, ``None`` quand une empreinte manque. Lecture pure ;
+    le devis est celui déjà lu par la conception retenue (mémo de requête, aucune requête de plus)."""
+    from apps.ventes.selectors_calepinage import _conception_a_jour, devis_lu_par_pk
+
+    devis_id = getattr(calepinage, 'devis_id', None)
+    if not devis_id:
+        return None
+    # Budget de requêtes (CI du 25/11, +1 sur ``resultat/``) : le devis DÉJÀ joint au calepinage
+    # (``select_related('devis')`` de la vue) est lu tel quel ; sinon le mémo de requête de ventes.
+    descripteur = getattr(type(calepinage), 'devis', None)
+    devis = (calepinage.devis if getattr(descripteur, 'is_cached', None) and descripteur.is_cached(calepinage)
+             else devis_lu_par_pk(devis_id))
+    if devis is None or devis.company_id != getattr(calepinage, 'company_id', None):
+        return None
+    return {'devis': devis.pk, 'reference': devis.reference or '', 'statut': devis.statut,
+            'a_jour': _conception_a_jour(devis, calepinage)}
+
+
 #: ACAL2013 — la provenance d'un matériel servi par la conception du moteur unique.
 PROVENANCE_MOTEUR = 'moteur'
 
@@ -361,9 +383,9 @@ def panneaux_pour_la_meme_puissance(kwc, watt):
 
 
 def composition_a_blanc():
-    """T4-X5-010 — ``(build_devis_from_layout, AutoDevisError)`` de ``apps.ventes.services`` pour
-    l'aperçu à blanc du devis (``devis_apercu``), passés par ce module déjà importateur de ventes
-    (même cliquet)."""
-    from apps.ventes.services import AutoDevisError, build_devis_from_layout
+    """T4-X5-010 — ``(composer_a_blanc_depuis_layout, AutoDevisError)`` de ``apps.ventes.services``
+    pour l'aperçu à blanc du devis (``devis_apercu``), passés par ce module déjà importateur de
+    ventes (même cliquet). Lane E9b : le dry-run lit les réglages SANS les créer."""
+    from apps.ventes.services import AutoDevisError, composer_a_blanc_depuis_layout
 
-    return build_devis_from_layout, AutoDevisError
+    return composer_a_blanc_depuis_layout, AutoDevisError

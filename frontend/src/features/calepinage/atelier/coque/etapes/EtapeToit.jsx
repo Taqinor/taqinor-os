@@ -26,7 +26,11 @@ import ValeurUnite from './panneaux/ValeurUnite'
    Les anciens contrôles restent montés : masqués en guidé, visibles en Avancé.
    ========================================================================== */
 
-const ASTUCE_CONTOUR = 'Glissez un coin pour le déplacer. Double-cliquez un bord pour ajouter un point.'
+// T4-X7-018 — au doigt (`pointer: coarse`), le geste se dit « Touchez deux fois », jamais « Double-cliquez ».
+const auDoigt = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+  && !!window.matchMedia('(pointer: coarse)')?.matches
+const astuceContour = () => `Glissez un coin pour le déplacer. ${auDoigt() ? 'Touchez deux fois' : 'Double-cliquez'} un bord pour ajouter un point.`
+const ALERTE_ECHELLE = 'Le tracé semble à la mauvaise échelle : une surface si grande ne tient aucune rangée. Effacez-le et retracez le toit de près.'
 const ASTUCE_AJOUT = 'Cliquez sur la carte pour poser chaque coin du pan, double-cliquez pour le fermer. Échap annule l’ajout.'
 const DUREE_BULLE_MS = 8000
 
@@ -332,7 +336,7 @@ function Bulle({ titre, texte }) {
     déplacé (ACAL1445) : le moteur garde un déplacement dans son historique, `touche` est le premier instant où il le
     dit — et le reste, annuler jusqu'au début ne la ramène pas. Un tracé fait dans la séance la porte quelques
     secondes. Pendant l'ajout d'un pan, la bulle dit le geste suivant et comment l'annuler. */
-function BulleContour({ contourFerme, ferme, historique, ajout }) {
+function BulleContour({ contourFerme, ferme, historique, ajout, horsEchelle = false }) {
   const [vue, setVue] = useState(0)
   const [touche, setTouche] = useState(false)
   if (touche && !ferme) setTouche(false)
@@ -342,11 +346,12 @@ function BulleContour({ contourFerme, ferme, historique, ajout }) {
     const minuterie = window.setTimeout(() => setVue(contourFerme), DUREE_BULLE_MS)
     return () => window.clearTimeout(minuterie)
   }, [contourFerme])
+  if (horsEchelle) return <Bulle titre="Tracé à vérifier" texte={ALERTE_ECHELLE} />
   if (ajout) return <Bulle titre="Nouveau pan" texte={ASTUCE_AJOUT} />
   // Ouvert tel quel (aucun tracé de la séance) : la bulle tient jusqu'au premier coin déplacé.
-  if (!contourFerme) return ferme && !touche && !historique ? <Bulle titre="Contour tracé" texte={ASTUCE_CONTOUR} /> : null
+  if (!contourFerme) return ferme && !touche && !historique ? <Bulle titre="Contour tracé" texte={astuceContour()} /> : null
   if (vue === contourFerme) return null
-  return <Bulle titre="Contour tracé" texte={ASTUCE_CONTOUR} />
+  return <Bulle titre="Contour tracé" texte={astuceContour()} />
 }
 
 /** ACAL1445 — le bloc « Soleil » (maquette Main, à droite de la barre d'outils) : le jour et l'heure du soleil que le
@@ -474,7 +479,7 @@ export default function EtapeToit({
       <Obstacles obstacles={etat.obstacles} relire={relire} />
       <SurCarte>
         <ResumeCarte surface={etat.surface} pans={etat.pans} besoin={besoinAffiche(facture)} />
-        <BulleContour contourFerme={etat.contourFerme} ferme={etat.outils.ferme} historique={etat.outils.annuler} ajout={ajout} />
+        <BulleContour contourFerme={etat.contourFerme} ferme={etat.outils.ferme} historique={etat.outils.annuler} ajout={ajout} horsEchelle={etat.horsEchelle} />
         <BarreOutils outils={etat.outils} builderApi={builderApi} relire={relire} ajout={ajout} onAjout={basculerAjout} />
         <BlocSoleil soleil={etat.soleil} />
       </SurCarte>

@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
-import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Card } from '../../../ui'
+import { NORMES } from '../commun/libellesReglages'
+import LectureSeuleSociete from '../commun/LectureSeuleSociete'
+import { usePeutReglerSociete } from '../commun/useReglagesSociete'
 
 /* ============================================================================
    ACAL397 (acceptation ACAL490) — LA NORME ÉLECTRIQUE, SAISISSABLE.
@@ -16,15 +18,11 @@ import { Card } from '../../../ui'
    section servie (coefficients compris), seules `norme` et `reference`
    changent.
    ========================================================================== */
-const NORMES = [
-  { valeur: '', libelle: 'Aucune — calculs dépendant d’une norme omis' },
-  { valeur: 'nf_c_15_100', libelle: 'NF C 15-100 / UTE C 15-712-1 / IEC 62548 (jeu français)' },
-]
 
 const texte = (v) => (typeof v === 'string' ? v : '')
 
 export default function ReglagesNorme({ normeElectrique = null }) {
-  const peutGerer = useHasPermission('calepinage_gerer')
+  const peutGerer = usePeutReglerSociete()
   const [servi, setServi] = useState(normeElectrique && typeof normeElectrique === 'object' ? normeElectrique : {})
   const [norme, setNorme] = useState(texte(servi.norme))
   const [reference, setReference] = useState(texte(servi.reference))

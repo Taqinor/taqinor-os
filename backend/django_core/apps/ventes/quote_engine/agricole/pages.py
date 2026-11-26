@@ -450,7 +450,7 @@ def _valeur_provenance(lg, cle, valeur):
     return f"{texte} {_t(lg, unite)}" if unite else texte
 
 
-def _provenance(synthese, lg, nom_societe):
+def _provenance(synthese, lg, nom_societe, sans_reserve=False):
     prov = synthese.get("provenance") or {}
     lignes = []
     for cle, p in prov.items():
@@ -474,6 +474,9 @@ def _provenance(synthese, lg, nom_societe):
     controle = synthese.get("controle_forage")
     if isinstance(controle, dict):
         cle = ("agr_controle_forage_ok" if controle.get("conforme")
+               # D-ACAL-113 (nouveaux rendus) — devis final : le fait, sans réserve.
+               else "agr_controle_forage_depasse_final"
+               if sans_reserve and synthese.get("devis_final") is True
                else "agr_controle_forage_depasse")
         u = _t(lg, "unite_m3h")
         texte = _t(lg, cle,
@@ -535,7 +538,7 @@ def page1(ctx):
     return (f'<div class="ag-pad">{entete}{_qj(10)}{_hero(synthese, lg, declare)}'
             f'{_qj(15)}{_cartes(synthese, lg)}{_qj(25)}'
             f'{argent}{_qj(25) if argent else ""}'
-            f'{_provenance(synthese, lg, ctx["nom_societe"])}{_qj(15)}'
+            f'{_provenance(synthese, lg, ctx["nom_societe"], bool(d.get("phrases_pdf_2511")))}{_qj(15)}'
             f'{_etapes_suivantes(synthese, lg)}'
             f'</div>')
 
@@ -884,7 +887,8 @@ def _formalites(synthese, lg):
 def _libelle_non_inclus(lg, cle):
     """AGQ11 — forage, génie civil, puis les éléments du kit absents des
     lignes (libellé de l'option, en minuscule dans la phrase)."""
-    if f"agr_non_inclus_{cle}" in i18n_labels.LIBELLES:
+    if (f"agr_non_inclus_{cle}" in i18n_labels.LIBELLES
+            or i18n_labels_agricole.a_la_cle(f"agr_non_inclus_{cle}")):
         return _t(lg, f"agr_non_inclus_{cle}")
     if f"agr_option_{cle}" in i18n_labels.LIBELLES:
         texte = _t(lg, f"agr_option_{cle}")

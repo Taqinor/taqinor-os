@@ -172,7 +172,7 @@ const crmApi = {
       { suppressErrorToast: true }),
   // Employés assignables (id, username, poste, avatar_url) — ouvert à la
   // Commerciale (le sélecteur de responsable doit marcher pour elle aussi).
-  getAssignableUsers: () => api.get('/crm/assignable-users/'),
+  getAssignableUsers: (params) => api.get('/crm/assignable-users/', { params }),
   // Actions EN MASSE sur une sélection de leads (liste + kanban). Le corps
   // porte {ids, action, …paramètres} ; la règle métier vit côté serveur.
   bulkLeads: (payload) => api.post('/crm/leads/bulk/', payload),

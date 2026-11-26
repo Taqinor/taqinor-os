@@ -123,16 +123,64 @@ def restreindre_aux_siens(lignes, user):
         return lignes
     if _user_has_or_legacy(user, CAL_APPROUVER):
         return lignes
+    if lit_par_le_seul_releve(user):
+        # D-ACAL-106 (revue lot 5) — le Technicien ne lit QUE les calepinages de
+        # SES visites : un ET avec la société, jamais un OU ajouté à la portée
+        # d'équipe (qui lui ouvrait les leads de ses pairs).
+        return lignes.filter(_de_ses_visites(user))
     if visible_user_ids(user) is not None:  # ALEC29 (D-ALEC-4) — la portée du rôle suit la lecture
         from apps.crm.selectors import client_base_qs, leads_visibles
         company = getattr(user, 'company', None)
         lignes = lignes.filter(
             Q(lead_id__in=leads_visibles(user, company).values('id'))
             | Q(lead_id__isnull=True, client__in=scope_client_queryset(client_base_qs(company), user))
-            | Q(responsable=user) | Q(cree_par=user))
+            | Q(responsable=user) | Q(cree_par=user) | _de_ses_visites(user))
     if not vue_restreinte_au_responsable(getattr(user, 'company', None)):
         return lignes
-    return lignes.filter(Q(responsable=user) | Q(cree_par=user))
+    return lignes.filter(Q(responsable=user) | Q(cree_par=user) | _de_ses_visites(user))
+
+
+def lit_par_le_seul_releve(user):
+    """D-ACAL-106 — Vrai pour un compte qui ne lit le calepinage QUE par le
+    relevé : il porte ``calepinage_releve`` sans ``calepinage_gerer`` (ni
+    ``calepinage_approuver``, déjà servi plus haut). Avant le lot 5, ce compte
+    (Technicien, Technicien responsable) ne portait aucun code calepinage : sa
+    lecture entière vient de la visite qui lui est assignée."""
+    from core.permissions import _user_has_or_legacy
+
+    from .permissions import CAL_GERER, CAL_RELEVE
+
+    return (_user_has_or_legacy(user, CAL_RELEVE)
+            and not _user_has_or_legacy(user, CAL_GERER))
+
+
+def _de_ses_visites(user):
+    """D-ACAL-106 — le calepinage du lead d'une visite ASSIGNÉE à ``user`` :
+    le technicien qui monte sur le toit le lit et y fait le relevé."""
+    from django.db.models import Q
+
+    return Q(lead_id__in=lead_ids_de_ses_visites(user))
+
+
+def lead_ids_de_ses_visites(user):
+    """D-ACAL-106 + D-ACAL-126 — LE prédicat « ses visites », en sous-requête
+    d'identifiants de leads (liste, détail, relevé, photos, ``layout/section``,
+    ``lead_de_l_appelant``, bibliothèque des modèles : tous passent par ici).
+
+    = les leads des visites ASSIGNÉES à ``user`` ; pour un compte qui ne lit
+    le calepinage que par le relevé ET dont la portée est le sous-arbre
+    (Technicien responsable), aussi celles assignées aux comptes de son
+    sous-arbre (``core.scoping.subtree_user_ids``). C'est l'assigné de la
+    VISITE qui compte, jamais le propriétaire du lead. Tout autre compte :
+    ses visites seulement (inchangé)."""
+    from apps.visites.selectors import lead_ids_des_visites_assignees_a
+    from core.scoping import record_scope_for, subtree_user_ids
+
+    ids = [getattr(user, 'pk', None)]
+    if lit_par_le_seul_releve(user) and record_scope_for(user) == 'subtree':
+        ids = list(subtree_user_ids(user))
+    return lead_ids_des_visites_assignees_a(
+        getattr(user, 'company_id', None), ids)
 
 
 def calepinages_visibles(user, *, inclure_archives=False, base=None,
@@ -245,14 +293,43 @@ def _condition_recherche(terme, company, user=None):
     if repli:  # ACAL948 — seul un calepinage SANS titre s'affiche ainsi
         condition |= Q(pk=int(repli.group(1)), titre='')
     if company is not None:
-        from apps.crm.selectors import rechercher_leads_minimal
+        from apps.crm.selectors import ids_leads_pour_recherche
 
-        ids = [lead['id'] for lead in
-               rechercher_leads_minimal(company, terme, limit=50, user=user,
-                                        par_ville=True)]
-        if ids:
-            condition |= Q(lead_id__in=ids)
+        # T4-X3-010 — SOUS-REQUÊTE SQL sur TOUS les leads qui répondent (plus
+        # de plafond à 50 qui perdait les calepinages au-delà, en silence).
+        condition |= Q(lead_id__in=ids_leads_pour_recherche(
+            company, terme, user=user, par_ville=True))
     return condition
+
+
+def annoter_titre_tri(lignes):
+    """T4-X3-011 — ``titre_tri`` : le titre que la carte AFFICHE, en minuscules et
+    sans accents, pour ``?ordering=titre``.
+
+    La carte (``CalepinageList.helpers.js::identiteCarte``) montre, dans l'ordre : le
+    nom du CLIENT rattaché, sinon celui du LEAD, sinon le titre saisi, sinon
+    « Calepinage #N ». Trier la colonne ``titre`` rangeait les titres vides en tête
+    et ignorait tout le reste. Les accents sont retirés quand la base sait le faire
+    (``apps.stock.selectors.recherche_sans_accents_disponible``), sinon seule la
+    casse l'est."""
+    from django.db.models import CharField, Func, TextField, Value
+    from django.db.models.functions import Cast, Coalesce, Concat, Lower, NullIf, Trim
+
+    from apps.crm.selectors import nom_affiche_lead_sous_requete
+    from apps.stock.selectors import recherche_sans_accents_disponible
+
+    nom_client = NullIf(Trim(Concat(
+        Coalesce('client__nom', Value('')), Value(' '),
+        Coalesce('client__prenom', Value('')))), Value(''))
+    affiche = Coalesce(
+        nom_client, nom_affiche_lead_sous_requete(),
+        NullIf('titre', Value('')),
+        Concat(Value('Calepinage #'), Cast('pk', CharField())),
+        output_field=TextField())
+    cle = Lower(affiche)
+    if recherche_sans_accents_disponible():
+        cle = Func(cle, function='public.f_unaccent', output_field=TextField())
+    return lignes.annotate(titre_tri=cle)
 
 
 def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
@@ -273,8 +350,9 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
     sur le modèle), qui survit à la purge de la corbeille.
 
     ACAL196 — ``q`` cherche le TITRE, la RÉFÉRENCE affichée (CAL-AAMM-NNNN,
-    décodée en identifiant), le nom du LEAD rattaché (50 leads au plus, par
-    ``crm.selectors.rechercher_leads_minimal``, borné à ``company``) et le
+    décodée en identifiant), le nom du LEAD rattaché (TOUS les leads qui
+    répondent, en sous-requête ``crm.selectors.ids_leads_pour_recherche``,
+    borné à ``company``, sans plafond) et le
     nom du CLIENT rattaché — plus la VILLE du LEAD (maquette « Liste » :
     « Client, ville ou lead » ; la fiche client n'a pas de champ ville).
 

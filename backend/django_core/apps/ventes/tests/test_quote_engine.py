@@ -213,6 +213,77 @@ class RpdfLegacyMiseEnPageTest(SimpleTestCase):
                     self.assertEqual(len(HTML(string=html).render().pages),
                                      attendu)
 
+    def test_d_acal_116_deux_echeanciers_aucune_page_ajoutee(self):
+        """D-ACAL-116 — Devis final à deux options, nouveaux rendus : une ligne
+        d'échéances par option ; condition du fondateur, AUCUNE page ajoutée
+        (format avec étude et sans, fr/en/ar)."""
+        from weasyprint import HTML
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.quote_engine import i18n_labels
+        from apps.ventes.tests import _moteur_fixtures as F
+        tranches = {b: {"acompte": a, "materiel": m, "solde": s, "pct_a": 30, "pct_m": 60,
+                        "pct_s": 10, "solde2": m + s, "pct_s2": 70}
+                    for b, a, m, s in (("sans", 18518.52, 37037.04, 6172.84),
+                                       ("avec", 29629.63, 59259.26, 9876.54))}
+        for etude, attendu in ((None, 3), ({'production_annuelle': 25415}, 4)):
+            for langue in ('fr', 'en', 'ar'):
+                with self.subTest(etude=bool(etude), langue=langue):
+                    d = F.donnees_legacy(
+                        pdf_mode='full', include_etude=True, langue_sortie=langue,
+                        libelles_document=i18n_labels.libelles(langue), devis_final=True,
+                        montants_tranches=tranches, phrases_pdf_2511=True)
+                    if etude:
+                        d['etude'] = etude
+                    html = G.render_html_for(d)
+                    # Nom d'option traduit par LA fonction du code (catalogue res_opt_sans).
+                    self.assertIn(i18n_labels.nom_option("Sans batterie", langue) + " : ", html)
+                    self.assertEqual(len(HTML(string=html).render().pages), attendu)
+
+    def test_d_acal_111_phrase_facture_recalculee_aucune_page_ajoutee(self):
+        """T4-X7-003 / D-ACAL-111 — la phrase approuvée suit aussi l'exemple
+        « Facture actuelle ≈ … » des blocs « Comment nous calculons » : premium
+        résidentiel (variante « long », page 3 la plus dense) toujours 3 pages,
+        format avec étude toujours 4, fr/en/ar.
+
+        Premium : le PDF du CLIENT sort de ``renderer.render_pdf_bytes`` (garde
+        ERR114 + ``theme.compact_css``, chemin de ``PaginationReelle``) — c'est
+        lui qui doit faire 3 pages. Le HTML BRUT en arabe imprime 5 feuilles
+        même sans la phrase (docstring de ``theme.compact_css`` : pages 1 et 2
+        débordent chacune) : sur ce chemin-là, la garde est « la phrase
+        n'ajoute aucune feuille », dans les trois langues."""
+        import fitz
+        from weasyprint import HTML
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.quote_engine import i18n_labels
+        from apps.ventes.quote_engine.residential import render, renderer, sample_data
+        from apps.ventes.tests import _moteur_fixtures as F
+        neuf = {"factures_source": "etude_horaire", "phrases_pdf_2511": True}
+        self.addCleanup(renderer._PDF_CACHE.clear)
+        for langue in ('fr', 'en', 'ar'):
+            phrase = i18n_labels.libelle("res_facture_recalculee_tranches", langue)
+            with self.subTest(format="premium", langue=langue):
+                # Même document, même drapeau, facture NON recalculée : sans la phrase.
+                base = dict(sample_data.build("long"), langue_sortie=langue, phrases_pdf_2511=True,
+                            libelles_document=i18n_labels.libelles(langue))
+                d = dict(base, **neuf)
+                html = render.build_html(renderer._augment(d))
+                self.assertEqual(html.count(phrase), 2)  # couverture + méthode
+                self.assertEqual(
+                    len(HTML(string=html).render().pages),
+                    len(HTML(string=render.build_html(renderer._augment(base))).render().pages))
+                renderer._PDF_CACHE.clear()
+                with fitz.open(stream=renderer.render_pdf_bytes(d), filetype="pdf") as pdf:
+                    self.assertEqual(len(pdf), 3)
+            with self.subTest(format="etude", langue=langue):
+                d = F.donnees_legacy(
+                    pdf_mode='full', include_etude=True, langue_sortie=langue,
+                    libelles_document=i18n_labels.libelles(langue),
+                    savings_method=sample_data.build("long")["savings_method"], **neuf)
+                d['etude'] = {'production_annuelle': 25415}
+                html = G.render_html_for(d)
+                self.assertIn(phrase, html)
+                self.assertEqual(len(HTML(string=html).render().pages), 4)
+
     @staticmethod
     def _page2(html):
         from apps.ventes.quote_engine import generate_devis_premium as G

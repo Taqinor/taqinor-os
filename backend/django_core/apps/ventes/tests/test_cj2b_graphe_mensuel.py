@@ -535,3 +535,56 @@ class DecimalNonRegressionTests(SimpleTestCase):
         for valeur in serie:
             self.assertIsInstance(valeur, int)
             self.assertNotIsInstance(valeur, Decimal)
+
+
+class FactureRecalculeeD111Tests(SimpleTestCase):
+    """D-ACAL-111 — sous la facture actuelle RECALCULÉE par le moteur de
+    tarif (``factures_source = etude_horaire``), la phrase approuvée par le
+    fondateur ; nouveaux rendus seulement (``phrases_pdf_2511``) ; jamais sous
+    les douze factures saisies (``lead_12_mois``)."""
+
+    PHRASE = ("Montant recalculé au tarif par tranches à partir de votre "
+              "consommation ; il peut différer légèrement de votre facture.")
+
+    def _html(self, **extra):
+        from apps.ventes.quote_engine.residential import render, renderer
+        from apps.ventes.tests._quote_engine_common import _residential_sample_data
+        d = _residential_sample_data()
+        d.update(extra)
+        return render.build_html(renderer._augment(d))
+
+    def test_recalculee_et_nouveau_rendu_la_phrase(self):
+        html = self._html(factures_source="etude_horaire", phrases_pdf_2511=True)
+        self.assertEqual(html.count(self.PHRASE), 1)
+
+    def test_devis_envoye_avant_ou_facture_saisie_rien(self):
+        self.assertNotIn(self.PHRASE, self._html(factures_source="etude_horaire"))
+        self.assertNotIn(self.PHRASE, self._html(factures_source="lead_12_mois", phrases_pdf_2511=True))
+        self.assertNotIn(self.PHRASE, self._html(phrases_pdf_2511=True))
+
+    SM = {"model": "horaire", "ligne_methode": "Économies intégrées heure par heure.",
+          "exemple": "Facture actuelle ≈ 9 977 MAD/an → avec solaire ≈ 1 989 MAD/an → "
+                     "économie ≈ 7 988 MAD/an"}
+
+    def test_t4x7_003_methode_premium_et_format_etude(self):
+        """T4-X7-003 — la même facture recalculée revient dans « Comment nous
+        calculons » (« Facture actuelle ≈ 9 977 MAD/an ») : la phrase la suit,
+        premium (page 3) comme format avec étude (moteur legacy) ; un devis
+        envoyé avant la coupure ou aux douze factures saisies n'en a aucune."""
+        from apps.ventes.tests import _moteur_fixtures as F
+        neuf = {"factures_source": "etude_horaire", "phrases_pdf_2511": True}
+        self.assertEqual(self._html(savings_method=self.SM, **neuf).count(self.PHRASE), 2)
+        self.assertNotIn(self.PHRASE, self._html(savings_method=self.SM, factures_source="etude_horaire"))
+
+        def legacy(**extra):
+            return F.html_legacy(pdf_mode='full', include_etude=True,
+                                 etude={'production_annuelle': 25415}, savings_method=self.SM, **extra)
+        self.assertEqual(legacy(**neuf).count(self.PHRASE), 1)
+        self.assertNotIn(self.PHRASE, legacy(factures_source="etude_horaire"))
+        self.assertNotIn(self.PHRASE, legacy(factures_source="lead_12_mois", phrases_pdf_2511=True))
+
+    def test_langues_traduites(self):
+        from apps.ventes.quote_engine.i18n_labels import libelle
+        self.assertEqual(libelle("res_facture_recalculee_tranches", "fr"), self.PHRASE)
+        for lg in ("en", "ar"):
+            self.assertNotEqual(libelle("res_facture_recalculee_tranches", lg), self.PHRASE)

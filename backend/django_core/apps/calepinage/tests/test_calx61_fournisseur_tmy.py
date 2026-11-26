@@ -70,6 +70,11 @@ class _Socle(SimpleTestCase):
     """Le rejoueur de la réponse enregistrée, monté une fois."""
 
     def setUp(self):
+        from django.core.cache import cache
+
+        # Lane I4 — le cache PARTAGÉ (système) vide avant et après chaque essai.
+        cache.clear()
+        self.addCleanup(cache.clear)
         self.charge = charger('tmy_casablanca.json')
         self.meteo = self.charge['inputs']['meteo_data']
         self.t2m = [ligne['T2m']
@@ -259,6 +264,21 @@ class SansReseauTest(_Socle):
             servi = temperatures_tmy(LAT, LON, client=pvgis)
         self.assertIsNotNone(servi)
         self.assertEqual((servi, etat.manques, len(transport.appels)), (attendu, 0, 1))
+
+    def test_un_second_worker_sert_le_point_du_premier_sans_pvgis(self):
+        """Deux workers = deux caches de processus, UN cache partagé : le point demandé par
+        le premier est servi au second (et sous le mode sans réseau) sans aucun appel."""
+        from apps.calepinage.services.temperatures_tmy import temperatures_sans_reseau
+
+        premier = TransportEnregistre(self.charge)
+        attendu = temperatures_tmy(LAT, LON, client=client_a_cache_prive(premier))
+        second = TransportEnregistre(erreur=OSError('le second worker a appelé PVGIS'))
+        servi = temperatures_tmy(LAT, LON, client=client_a_cache_prive(second))
+        with temperatures_sans_reseau() as etat:
+            sans_reseau = temperatures_tmy(LAT, LON, client=client_a_cache_prive(second))
+        self.assertIsNotNone(attendu)
+        self.assertEqual((servi, sans_reseau, etat.manques), (attendu, attendu, 0))
+        self.assertEqual((len(premier.appels), second.appels), (1, []))
 
     def test_hors_du_mode_un_manque_interroge_pvgis(self):
         from apps.calepinage.services.temperatures_tmy import temperatures_sans_reseau

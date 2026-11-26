@@ -1,5 +1,6 @@
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { Icone } from '../atelier/coque/primitives'
+import { DEPUIS_RELEVE } from './vueClient.helpers'
 
 /* ============================================================================
    « MONTRER AU CLIENT » — LES PIÈCES PARTAGÉES de la vue 3D (l'atelier en mode
@@ -162,11 +163,14 @@ export function TuilesClient({ tuiles, ville, bureau = false }) {
   )
 }
 
-/** Le pied : « Retour au relevé » (au bureau : « Retour à l'atelier ») + « Envoyer le lien » doré, désactivé avec sa raison. */
-export function PiedClient({ id, bureau = false }) {
+/** Le pied : « Retour » là d'où l'on vient (T4-X8-007 — du relevé : « Retour au relevé » ; de l'atelier ou d'une adresse
+    ouverte directement : « Retour à l'atelier », au téléphone comme au bureau) + « Envoyer le lien » doré, désactivé avec
+    sa raison. */
+export function PiedClient({ id }) {
+  const depuisReleve = useLocation().state?.depuis === DEPUIS_RELEVE.depuis
   return (
     <footer className="cal-tel-pied" data-vue-client="">
-      {bureau ? (
+      {!depuisReleve ? (
         <Link to={`/calepinage/${id}`} className="cal-tel-pied-secondaire" data-testid="client-retour-atelier">
           <Icone nom="retour" taille={18} epaisseur={2} />
           {'Retour à l’atelier'}

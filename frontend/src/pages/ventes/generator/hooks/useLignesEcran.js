@@ -17,6 +17,24 @@ import stockApi from '../../../../api/stockApi'
 import { emptyLine, structureLine, withKeys } from '../../../../features/ventes/quote/ligneFabrique.js'
 import { toast } from '../../../../ui/confirm'
 import { lignesServeurVersEcran, deplacerDansSequence } from '../../../../features/ventes/quote/lignesEcran'
+import { formatKwc, formatNumber } from '../../../../lib/format'
+
+/**
+ * T4-X6-015 — la phrase de la question posée avant de quitter la taille
+ * demandée sur la fiche du lead : les DEUX tailles, en format français.
+ * `null` sans taille demandée (aucune question de ce chef).
+ */
+export function phraseTailleDemandeeQuittee(tailleDemandee) {
+  const kwc = Number(tailleDemandee?.kwc)
+  if (!(kwc > 0)) return null
+  const n = Number(tailleDemandee.panneaux)
+  const retenu = Number(tailleDemandee.kwcRetenu)
+  const reco = n > 0
+    ? ` : ${formatNumber(n)} panneaux${retenu > 0 ? ` · ${formatKwc(retenu)}` : ''}`
+    : ''
+  return `Taille demandée sur la fiche du lead : ${formatKwc(kwc)}. `
+    + `Le recalcul la remplace par la recommandation du moteur${reco}.`
+}
 
 export function useLignesEcran(ctx) {
   const {
@@ -392,11 +410,22 @@ export function useLignesEcran(ctx) {
   // figées à la main existent (5 désignations au plus). Sans elles, AUCUNE
   // confirmation et le geste part de façon synchrone (invariant F2 QJR99 :
   // jamais de `confirm` DANS handleAutoFill). Annuler ne dispatche rien.
-  const avecQuantitesFigees = (geste) => {
+  // T4-X6-015 — `tailleDemandee` ({kwc, panneaux, kwcRetenu}) : le geste quitte
+  // la taille demandée sur la fiche du lead. La MÊME question le dit d'abord,
+  // les deux tailles nommées ; Annuler garde la taille demandée.
+  const avecQuantitesFigees = (geste, { tailleDemandee } = {}) => {
     // Conflit POSSIBLE seulement s'il existe une quantité figée à la main ;
     // prix tapés et options sont gardés d'office (aucun dialogue).
     const manuelles = lignesManuellesEnConflitPossible(lines)
-    if (!manuelles.length) { modeRecomposition.current = 'garder'; geste(); return }
+    const taille = phraseTailleDemandeeQuittee(tailleDemandee)
+    if (!manuelles.length && !taille) { modeRecomposition.current = 'garder'; geste(); return }
+    if (!manuelles.length) {
+      confirm({
+        title: 'Quitter la taille demandée ?', description: taille,
+        confirmLabel: 'Prendre la recommandation', cancelLabel: 'Garder la taille demandée', destructive: false,
+      }).then((ok) => { if (ok) { modeRecomposition.current = 'garder'; geste() } })
+      return
+    }
     const noms = manuelles.slice(0, 5)
       .map(l => `${l.designation || 'ligne'} : ${l.quantite}`).join(', ')
       + (manuelles.length > 5 ? '…' : '')
@@ -404,7 +433,7 @@ export function useLignesEcran(ctx) {
     const tva = phrasesTvaBaseLegaleRemplacee(lines)
     confirm({
       title: 'Garder vos saisies ?',
-      description: `Lignes saisies à la main (${noms}) : la recomposition peut les GARDER `
+      description: (taille ? `${taille} ` : '') + `Lignes saisies à la main (${noms}) : la recomposition peut les GARDER `
         + 'ou prendre uniquement les valeurs recalculées.'
         + (tva.length ? ` En prenant les valeurs recalculées : ${tva.join(' ; ')}.` : ''),
       confirmLabel: 'Recomposer en les gardant',

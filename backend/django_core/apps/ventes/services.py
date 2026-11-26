@@ -456,6 +456,7 @@ dupliquer_devis = _creation_clone.dupliquer_devis
 # SPL266 — le pont calepinage → devis vit dans ``domain/creation_calepinage.py``.
 from apps.ventes.domain import creation_calepinage as _creation_calepinage  # noqa: E402 — anti-cycle (D-ENF22)
 build_devis_from_layout = _creation_calepinage.build_devis_from_layout
+composer_a_blanc_depuis_layout = _creation_calepinage.composer_a_blanc_depuis_layout
 MESSAGE_LEAD_AGRICOLE = _creation_calepinage.MESSAGE_LEAD_AGRICOLE  # ACON40
 produits_a_renseigner = _creation_calepinage.produits_a_renseigner
 # SPL267 — le devis automatique vit dans ``domain/creation_auto.py``.
@@ -605,6 +606,7 @@ __all__ = [
     'chiffrer_conception',
     'cible_depuis_lignes',
     'classer_produit',
+    'composer_a_blanc_depuis_layout',
     'composer_devis_residentiel',
     'composition_deux_optimiseurs',
     'composition_residentielle',

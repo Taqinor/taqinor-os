@@ -89,6 +89,14 @@
     left: calc((var(--cal-libre-gauche) + 100% - var(--cal-libre-droite)) / 2);
   }
   .rp9-host.cal-coque[data-avance='0'] .rp9-toit-client { left: calc(var(--cal-libre-gauche) + 4px); bottom: 16px; }
+  /* T4-X7-019 — la bulle de consigne du constructeur (`#rp9-etat-vide`, « 1 · Localisez le toit… ») est posée en style
+     inline à 12 px du haut de la carte ; la carte étant plein écran SOUS les pièces, elle passait sous le bandeau du
+     projet. Elle se pose dans la zone libre, sous la carte d'adresse (12 + 60 + 12 px), centrée entre rail et panneau. */
+  .rp9-host.cal-coque[data-avance='0'] #rp9-etat-vide {
+    top: calc(var(--cal-libre-haut) + 84px) !important;
+    left: calc((var(--cal-libre-gauche) + 100% - var(--cal-libre-droite)) / 2) !important;
+    max-width: calc(100% - var(--cal-libre-gauche) - var(--cal-libre-droite) - 32px) !important;
+  }
   /* ACAL1804 — pièces posées sur la carte aux places de la maquette, aux trois étapes à carte : pilule de chiffres
      (`cal-sur-carte-resume` : Toit, Panneaux, Électrique) à 16 px du rail et du bandeau (après la bulle de consigne
      quand elle est là), barre d'outils à 28 px du bas. */
@@ -229,6 +237,12 @@
   .cal-coque[data-expert='0'] { --cal-tiroir: 96px; }
   .cal-coque .cal-coque-corps { flex-direction: column; }
   .cal-coque .cal-coque-sur-carte .cal-carte-flottante { max-width: calc(100vw - 24px); overflow-x: auto; }
+  /* T4-X8-009 — la barre d'outils de la carte défile à 390 px (427 px dans 364) : le choix Plan / 3D, LE contrôle dont le
+     téléphone a besoin, passe en tête (ordre visuel seul : l'ordre lu reste celui de la maquette), suivi de son filet ;
+     les autres outils défilent après lui. */
+  .cal-coque .cal-barre-outils-carte > [role='group'] { order: -2; flex-shrink: 0; }
+  .cal-coque .cal-barre-outils-carte > .cal-barre-outils-separateur:last-of-type { order: -1; }
+  .cal-coque .cal-barre-outils-carte > :not([role='group'], .cal-barre-outils-separateur) { flex-shrink: 0; }
   .cal-coque .cal-coque-centre { order: 1; flex: 1; min-height: 0; }
   .cal-coque .cal-rail {
     order: 2;
@@ -336,6 +350,32 @@
   }
   .cal-coque .cal-coque-alertes-contenu button,
   .cal-coque .cal-coque-alertes-plus { min-height: 44px; }
+  /* T4-X8-006 — « Avancé » au téléphone : une FEUILLE DU BAS (comme celle du relevé, `.cal-tel-feuille` de 58-telephone.css :
+     rayon 26 en haut, ombre vers le haut), posée sur la barre des étapes, haute de son contenu, défilante. Elle vit dans le
+     corps du tiroir : tiroir réduit (guidé), ce corps n'était plus rendu et la feuille mesurait 0 × 0 ; il ne garde
+     alors QUE la feuille, sans place dans le tiroir (elle est fixée à l'écran). */
+  .cal-coque[data-feuille='1'] .cal-coque-avance:not([hidden]) {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: var(--cal-rail-bas);
+    width: auto;
+    max-height: calc(100dvh - var(--cal-rail-bas) - 48px);
+    border-left: 0;
+    border-radius: 26px 26px 0 0;
+    box-shadow: var(--cal-ombre-feuille, var(--shadow-lg));
+  }
+  .cal-coque.cal-coque[data-feuille='1'] .cal-panneau-etape[data-tiroir='1'][data-deplie='0'] .cal-panneau-etape-corps {
+    display: block;
+    position: absolute;
+    width: 0;
+    height: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+  .cal-coque.cal-coque[data-feuille='1'] .cal-panneau-etape[data-tiroir='1'][data-deplie='0'] .cal-panneau-etape-corps > :not(.cal-coque-avance) {
+    display: none;
+  }
 }
 
 /* ── ACAL1835 — TABLETTE (640 à 1 279 px, maquette v2 Tablette 1 180 × 820) : la coque flottante du bloc ≥ 640 px à

@@ -6,6 +6,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { formatDate, formatNumber, formatPercent } from '../../../lib/format'
 import { PARAM_ONGLET } from '../atelier/onglets'
+import { ecouterResultat } from '../atelier/simulationFraiche'
 import { estProfilDepart, MENTION_PUBLIEE } from '../reglages/profilDepart'
 import { estIncomplet, SIMULATION_A_REFAIRE, simulationARefaire } from './BandeauProvenanceProduction.helpers'
 import Pourquoi from '../commun/Pourquoi'
@@ -51,9 +52,13 @@ function useSourceCarte() {
   return source
 }
 
-export default function BandeauProvenanceProduction({ calepinageId, chiffrage = null, devisLie = false }) {
+/** `variante` (T4-X7-013, revue) : l'atelier est sur la variante d'un devis (`contexte.variante`, `?devis=`) — `chiffrage`
+    est alors celui du devis de la VARIANTE, alors que `conception.devis_lie` de `GET resultat/` est le devis du calepinage
+    de BASE : jamais sa référence à côté du chiffre d'un autre devis. Le contexte ne sert pour la variante ni référence ni
+    « à jour » : la ligne dit « Le devis annonce » sans nommer de devis, comme avant. */
+export default function BandeauProvenanceProduction({ calepinageId, chiffrage = null, devisLie = false, variante = false }) {
   const source = useSourceCarte()
-  const { data } = useResource(
+  const { data: lu } = useResource(
     () => calepinageApi.calepinages.resultat(calepinageId), calepinageId,
     {
       select: (r) => r.data,
@@ -61,6 +66,10 @@ export default function BandeauProvenanceProduction({ calepinageId, chiffrage = 
       enabled: Boolean(calepinageId),
     },
   )
+  // T4-X8-013 — le résultat que l'étape Résultats relit prime sur cette lecture (faite parfois avant la simulation).
+  const [publie, setPublie] = useState({ id: null, data: null })
+  useEffect(() => ecouterResultat(calepinageId, (d) => setPublie({ id: calepinageId, data: d })), [calepinageId])
+  const data = publie.id === calepinageId && publie.data ? publie.data : lu
 
   const p50 = data?.production?.total?.p50_kwh
   const aSimulation = p50 !== null && p50 !== undefined
@@ -99,7 +108,7 @@ export default function BandeauProvenanceProduction({ calepinageId, chiffrage = 
       )}
       <EcartDevis ecart={data?.ecart_devis} borneHaute={borneHaute} />
       <DevisAnnonce chiffrage={chiffrage} p50={aSimulation ? p50 : null} borneHaute={borneHaute} devisLie={devisLie}
-        kwcPose={data?.pose?.kwc} />
+        kwcPose={data?.pose?.kwc} conception={variante ? null : data?.conception} />
     </p>
   )
 }
@@ -118,11 +127,26 @@ function mentionBorneHaute(total) {
 const ORIGINE_ANNONCE = {
   standard_ville: 'production standard de la ville',
   calepinage_enregistre: 'pose réelle recalculée par le moteur du devis',
+  plan_par_defaut: 'production du toit supposé (plan par défaut), sans la pose de ce calepinage', // ADEV155, niveau 15
 }
 /* T4-U4-006 / T4-U4-017 — sans devis LIÉ au calepinage, le chiffre est celui du moteur du devis sur CETTE pose (la
    production standard de la ville) : jamais « Le devis annonce », qui faisait lire au vendeur l'estimation de l'atelier
-   comme le chiffre envoyé au client. */
-function DevisAnnonce({ chiffrage, p50, borneHaute = null, devisLie = false, kwcPose = null }) {
+   comme le chiffre envoyé au client.
+   T4-X7-013 — la ligne ne dit que ce qui est SERVI : `conception.devis_lie` de `GET resultat/` ({devis, reference, statut,
+   a_jour}, `null` sans devis lié). Lié et portant la pose ⇒ « Le devis DEV-… annonce » ; lié sans la pose (ou sans savoir) ⇒
+   le chiffre est celui de la conception, le devis est nommé et dit à resynchroniser ; non lié ⇒ « aucun devis lié à CE
+   calepinage » (le lead peut avoir d'autres devis : l'atelier ne les lit pas). Sans ce bloc (serveur d'avant) : `devisLie`. */
+function phraseDuDevis(conception, devisLie) {
+  const servi = conception && Object.prototype.hasOwnProperty.call(conception, 'devis_lie')
+  if (!servi) return devisLie ? { annonce: 'Le devis annonce' } : { annonce: null }
+  const lie = conception.devis_lie
+  if (!lie) return { annonce: null }
+  const nom = lie.reference ? `Le devis ${lie.reference}` : 'Le devis lié'
+  if (lie.a_jour === true) return { annonce: `${nom} annonce` }
+  return { annonce: null, suite: lie.a_jour === false ? `${nom} ne porte pas la pose enregistrée (à resynchroniser).` : `Devis lié : ${lie.reference || 'sans référence'}.` }
+}
+
+function DevisAnnonce({ chiffrage, p50, borneHaute = null, devisLie = false, kwcPose = null, conception = null }) {
   const prod = chiffrage?.production_annuelle_kwh
   if (!prod) return null
   if (prod.etat === 'non_servi' || prod.etat === 'indisponible') {
@@ -143,12 +167,14 @@ function DevisAnnonce({ chiffrage, p50, borneHaute = null, devisLie = false, kwc
     )
   }
   const ecart = typeof p50 === 'number' ? ((p50 - prod.valeur) / prod.valeur) * 100 : null
+  const { annonce, suite = null } = phraseDuDevis(conception, devisLie)
+  const chiffre = `${formatNumber(prod.valeur, { decimals: 0 })} kWh/an — ${ORIGINE_ANNONCE[prod.source]}`
+  const sujet = annonce ?? (suite ? 'Conception du lead sur cette pose' : 'Moteur du devis sur cette pose (aucun devis lié à ce calepinage)')
   return (
     <span className="block" data-testid="acal995-devis-annonce">
-      {devisLie
-        ? `Le devis annonce : ${formatNumber(prod.valeur, { decimals: 0 })} kWh/an — ${ORIGINE_ANNONCE[prod.source]}`
-        : `Moteur du devis sur cette pose (aucun devis lié) : ${formatNumber(prod.valeur, { decimals: 0 })} kWh/an — ${ORIGINE_ANNONCE[prod.source]}`}
+      {`${sujet} : ${chiffre}`}
       {ecart !== null && ` (étude technique : ${ecart < 0 ? '−' : '+'}${formatNumber(Math.abs(ecart), { decimals: 1 })} %${borneHaute ? ` — ${borneHaute}` : ''})`}
+      {suite && ` ${suite}`}
     </span>
   )
 }

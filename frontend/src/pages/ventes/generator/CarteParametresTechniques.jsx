@@ -30,6 +30,15 @@ export default function CarteParametresTechniques({
     n: comptePanneauxOption(lines, option, produits),
     kwc: kwcPanneauxOption(lines, option, panelW, produits),
   })
+  // T4-X6-016 — UN kWc par option, celui que les lignes vendent : un conseil du
+  // moteur au même compte que les lignes prend leur kWc (le sien est calculé sur
+  // un wattage que le devis ne vend peut-être pas) ; à un autre compte, l'écart
+  // ci-dessous dit le kWc des lignes.
+  const kwcConseil = (option, conseil) => {
+    const c = chiffre(option)
+    return c.n === conseil.nbPanneaux && c.kwc != null ? c.kwc : conseil.kwc
+  }
+  const kwcLignes = chiffre(showSans ? 'sans' : 'avec').kwc
   const ecart = (option, conseil) => {
     const c = chiffre(option)
     if (!conseil || !(c.n > 0) || c.n === conseil.nbPanneaux) return null
@@ -78,7 +87,8 @@ export default function CarteParametresTechniques({
           </div>
           <div className="grid gap-1.5">
             <Label>Puissance PV (kWp) — calculée</Label>
-            <div className="gen-kwp">{kwp > 0 ? formatNumber(kwp, { decimals: 2 }) + ' kWp' : '—'}</div>
+            {/* T4-X6-016 — la puissance que les LIGNES vendent ; la cible seulement sans ligne panneau. */}
+            <div className="gen-kwp">{(kwcLignes ?? kwp) > 0 ? formatNumber(kwcLignes ?? kwp, { decimals: 2 }) + ' kWp' : '—'}</div>
           </div>
           {/* QJR568 — les lignes et la cible divergent (quantité panneau
               corrigée à la main) : on le DIT, sans recomposer d'office. */}
@@ -186,14 +196,14 @@ export default function CarteParametresTechniques({
             {showSans && deuxValeursDim.sans && (
               <div>
                 Conseillé par le moteur, sans batterie : <strong>{deuxValeursDim.sans.nbPanneaux} panneaux</strong>
-                {' '}· {formatNumber(deuxValeursDim.sans.kwc, { decimals: 2 })} kWc
+                {' '}· {formatNumber(kwcConseil('sans', deuxValeursDim.sans), { decimals: 2 })} kWc
                 {ecart('sans', deuxValeursDim.sans)}
               </div>
             )}
             {showAvec && deuxValeursDim.avec && (
               <div>
                 Conseillé par le moteur, avec batterie : <strong>{deuxValeursDim.avec.nbPanneaux} panneaux</strong>
-                {' '}· {formatNumber(deuxValeursDim.avec.kwc, { decimals: 2 })} kWc
+                {' '}· {formatNumber(kwcConseil('avec', deuxValeursDim.avec), { decimals: 2 })} kWc
                 {ecart('avec', deuxValeursDim.avec)}
               </div>
             )}

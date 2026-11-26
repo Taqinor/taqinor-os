@@ -445,3 +445,283 @@ class SaisieIllisibleTest(SimpleTestCase):
             with self.assertRaises(ReleveRefuse) as capture:
                 _sans_caractere_interdit(valeur, champ)
             self.assertEqual(capture.exception.champ, champ)
+
+
+class TechnicienReleveTest(BaseReleve):
+    """D-ACAL-106 (fondateur, 25/11/2026) — le Technicien ouvre le calepinage
+    du lead de SA visite et y fait le relevé (mesures, pente, orientation,
+    photos), sans jamais dessiner, ni lire un devis ou un montant."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, TECHNICIEN_PERMISSIONS,
+        )
+        from apps.visites.models import VisiteTerrain
+
+        def compte(nom, permissions):
+            role = Role.objects.create(company=self.company, nom=f'r-{nom}',
+                                       permissions=list(permissions))
+            return User.objects.create_user(username=nom, password='x',
+                                            company=self.company, role=role)
+        self.commercial = compte('m4-commercial', COMMERCIAL_PERMISSIONS)
+        self.tech = compte('m4-tech', TECHNICIEN_PERMISSIONS)
+        self.lead.owner = self.commercial
+        self.lead.save(update_fields=['owner'])
+        self.calepinage.roof_layout = {
+            'version': 2, 'zones': [{'id': 'zA', 'label': 'Pan A',
+                                     'pitchDeg': 10,
+                                     'vertices': [[0, 0], [8, 0], [8, 5], [0, 5]]}]}
+        self.calepinage.save(update_fields=['roof_layout'])
+        self.visite = VisiteTerrain.objects.create(
+            company=self.company, lead=self.lead, commercial=self.tech)
+        self.base = f'/api/django/calepinage/calepinages/{self.calepinage.pk}/'
+
+    def _section(self, api, corps):
+        from apps.calepinage.services.layout import empreinte_document
+
+        self.calepinage.refresh_from_db()
+        return api.post(f'{self.base}layout/section/', dict(
+            corps, base_empreinte=empreinte_document(self.calepinage.roof_layout)),
+            format='json')
+
+    def test_lit_le_calepinage_de_sa_visite_seulement(self):
+        api = self._api(self.tech)
+        self.assertEqual(api.get(self.base).status_code, 200)
+        self.assertEqual(api.get(f'{self.base}releve/').status_code, 200)
+        self.visite.commercial = self.commercial
+        self.visite.save(update_fields=['commercial'])
+        self.assertEqual(api.get(self.base).status_code, 404)
+
+    def test_fait_le_releve_mesures_pente_orientation_photos(self):
+        api = self._api(self.tech)
+        cree = api.post(f'{self.base}releve/',
+                        {'releve_le': HIER.isoformat(), 'chaines': []},
+                        format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+        corrige = api.patch(f"{self.base}releve/{cree.data['releve']['id']}/",
+                            {'notes': 'Accès par la terrasse'}, format='json')
+        self.assertEqual(corrige.status_code, 200, corrige.data)
+        pan = self._section(api, {'cle': 'zones', 'zone_id': 'zA', 'champs': {
+            'pitchDeg': 22, 'facingAzimuthDeg': 180, 'facingManual': True,
+            'facingAzimuthSource': 'saisie'}})
+        self.assertEqual(pan.status_code, 200, pan.data)
+        photo = api.post(f'{self.base}photos/', {
+            'photo': SimpleUploadedFile('toit.png', PNG, content_type='image/png'),
+            'prise_le': HIER.isoformat(), 'genre': 'sol'}, format='multipart')
+        self.assertEqual(photo.status_code, 201, photo.data)
+
+    def test_ne_dessine_ni_ne_retire_ni_ne_chiffre(self):
+        api = self._api(self.tech)
+        releve = enregistrer_releve(self.calepinage, {
+            'releve_le': HIER.isoformat(), 'chaines': []}, user=self.user)
+        self.assertEqual(api.delete(f'{self.base}releve/{releve.pk}/').status_code, 403)
+        geometrie = self._section(api, {'cle': 'zones', 'zone_id': 'zA', 'champs': {
+            'vertices': [[0, 0], [9, 0], [9, 5], [0, 5]]}})
+        self.assertEqual(geometrie.status_code, 403)
+        self.assertEqual(self._section(api, {'cle': 'underlay', 'valeur': {}}).status_code, 403)
+        self.assertEqual(api.patch(self.base, {'titre': 'x'}, format='json').status_code, 403)
+        self.assertEqual(api.post(f'{self.base}generer-devis/', {}, format='json').status_code, 403)
+        self.assertEqual(api.get('/api/django/ventes/devis/').status_code, 403)
+        self.assertEqual(api.post('/api/django/ventes/devis/', {'lead': self.lead.pk},
+                                  format='json').status_code, 403)
+
+    def test_aucun_montant_dans_le_contexte_de_conception(self):
+        reponse = self._api(self.tech).get(f'{self.base}design-context/')
+        self.assertEqual(reponse.status_code, 200)
+        economie = reponse.data['chiffrage']['economie_annee1_mad']
+        self.assertIsNone(economie['valeur'])
+        self.assertEqual(economie['etat'], 'non_servi')
+        self.assertIsNone((reponse.data.get('consommation_lead') or {})
+                          .get('facture_mensuelle_mad'))
+
+    def _pairs_sous_un_directeur(self, permissions_tech):
+        """Revue lot 5 : T (technicien) et C (commercial) rendent compte au même
+        Directeur D ; C possède le lead L et son calepinage K."""
+        directeur = User.objects.create_user(
+            username='m4-directeur', password='x', company=self.company,
+            role=self.role)
+        role = Role.objects.create(company=self.company, nom='r-tech-pair',
+                                   permissions=list(permissions_tech))
+        pair = User.objects.create_user(username='m4-tech-pair', password='x',
+                                        company=self.company, role=role,
+                                        supervisor=directeur)
+        User.objects.filter(pk=self.commercial.pk).update(supervisor=directeur)
+        return pair
+
+    def _sans_lecture_hors_visite(self, tech):
+        api = self._api(tech)
+        self.assertEqual(api.get(self.base).status_code, 404)
+        liste = api.get('/api/django/calepinage/calepinages/')
+        self.assertEqual(liste.status_code, 200)
+        lignes = liste.data.get('results', liste.data)
+        self.assertNotIn(self.calepinage.pk, [ligne['id'] for ligne in lignes])
+        self.assertIn(api.post(f'{self.base}releve/', {
+            'releve_le': HIER.isoformat(), 'chaines': []},
+            format='json').status_code, (403, 404))
+        self.assertIn(api.post(f'{self.base}photos/', {
+            'photo': SimpleUploadedFile('toit.png', PNG, content_type='image/png'),
+            'prise_le': HIER.isoformat(), 'genre': 'sol'},
+            format='multipart').status_code, (403, 404))
+        self.assertIn(self._section(api, {'cle': 'zones', 'zone_id': 'zA', 'champs': {
+            'pitchDeg': 22}}).status_code, (403, 404))
+        self.assertEqual(ReleveTerrain.objects.count(), 0)
+
+    def test_technicien_pair_du_commercial_sans_visite_ne_lit_rien(self):
+        """Revue lot 5 — SCOPE_TEAM ouvrait au Technicien les leads de ses pairs :
+        sans visite assignée sur L, K lui est introuvable partout."""
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+
+        self._sans_lecture_hors_visite(
+            self._pairs_sous_un_directeur(TECHNICIEN_PERMISSIONS))
+
+    def test_technicien_responsable_sans_visite_ne_lit_rien(self):
+        from apps.roles.permissions_registre import TECHNICIEN_RESP_PERMISSIONS
+
+        tech_resp = self._pairs_sous_un_directeur(TECHNICIEN_RESP_PERMISSIONS)
+        User.objects.filter(pk=self.commercial.pk).update(supervisor=tech_resp)
+        self._sans_lecture_hors_visite(tech_resp)
+
+    def _responsable_et_son_technicien(self):
+        """D-ACAL-126 — R (Technicien responsable) et T2 (Technicien) sous R."""
+        from apps.roles.permissions_registre import (
+            TECHNICIEN_PERMISSIONS, TECHNICIEN_RESP_PERMISSIONS,
+        )
+
+        resp = self._pairs_sous_un_directeur(TECHNICIEN_RESP_PERMISSIONS)
+        role = Role.objects.create(company=self.company, nom='r-tech-equipe',
+                                   permissions=list(TECHNICIEN_PERMISSIONS))
+        tech = User.objects.create_user(username='m4-tech-equipe', password='x',
+                                        company=self.company, role=role,
+                                        supervisor=resp)
+        return resp, tech
+
+    def test_responsable_lit_les_visites_de_son_equipe(self):
+        """D-ACAL-126 — une visite assignée à un technicien de SON sous-arbre :
+        R lit le calepinage, y fait le relevé, et ``du-lead`` le sert."""
+        from apps.visites.models import VisiteTerrain
+
+        resp, tech = self._responsable_et_son_technicien()
+        User.objects.filter(pk=self.commercial.pk).update(supervisor=resp)
+        VisiteTerrain.objects.create(company=self.company, lead=self.lead,
+                                     commercial=tech)
+        api = self._api(resp)
+        self.assertEqual(api.get(self.base).status_code, 200)
+        cree = api.post(f'{self.base}releve/',
+                        {'releve_le': HIER.isoformat(), 'chaines': []},
+                        format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+        du_lead, _contenance = self._routes_du_lead(api, self.lead.pk)
+        self.assertEqual(du_lead.status_code, 200, du_lead.data)
+
+    def test_responsable_ne_lit_pas_la_visite_d_un_technicien_hors_equipe(self):
+        """La visite de ``setUp`` est assignée à ``self.tech``, HORS du
+        sous-arbre de R : introuvable pour R."""
+        resp, _tech = self._responsable_et_son_technicien()
+        api = self._api(resp)
+        self.assertEqual(api.get(self.base).status_code, 404)
+        lignes = api.get('/api/django/calepinage/calepinages/').data
+        lignes = lignes.get('results', lignes)
+        self.assertNotIn(self.calepinage.pk, [ligne['id'] for ligne in lignes])
+
+    def test_technicien_simple_ne_lit_pas_la_visite_de_son_pair(self):
+        """D-ACAL-126 ne vaut que pour le sous-arbre : un Technicien ne lit pas
+        la visite assignée à un autre technicien de la même équipe."""
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.visites.models import VisiteTerrain
+
+        resp, tech = self._responsable_et_son_technicien()
+        role = Role.objects.create(company=self.company, nom='r-tech-pair-2',
+                                   permissions=list(TECHNICIEN_PERMISSIONS))
+        pair = User.objects.create_user(username='m4-tech-pair-2', password='x',
+                                        company=self.company, role=role,
+                                        supervisor=resp)
+        VisiteTerrain.objects.create(company=self.company, lead=self.lead,
+                                     commercial=tech)
+        self.assertEqual(self._api(pair).get(self.base).status_code, 404)
+        self.assertEqual(self._api(tech).get(self.base).status_code, 200)
+
+    def test_technicien_pair_avec_sa_visite_lit_et_releve(self):
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.visites.models import VisiteTerrain
+
+        pair = self._pairs_sous_un_directeur(TECHNICIEN_PERMISSIONS)
+        VisiteTerrain.objects.create(company=self.company, lead=self.lead,
+                                     commercial=pair)
+        api = self._api(pair)
+        self.assertEqual(api.get(self.base).status_code, 200)
+        cree = api.post(f'{self.base}releve/',
+                        {'releve_le': HIER.isoformat(), 'chaines': []},
+                        format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+
+    def _routes_du_lead(self, api, lead_id):
+        url = '/api/django/calepinage/calepinages/'
+        return (api.get(f'{url}du-lead/', {'lead': lead_id}),
+                api.get(f'{url}contenance/', {'lead': lead_id,
+                                              'origine': 'visite'}))
+
+    def test_du_lead_et_contenance_hors_visite_introuvables(self):
+        """Revue lot 5 — ``du-lead`` et ``contenance`` répondent pour le lead
+        d'un pair EXACTEMENT ce qu'ils répondent pour un lead hors portée."""
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+
+        api = self._api(self._pairs_sous_un_directeur(TECHNICIEN_PERMISSIONS))
+        absent = self._routes_du_lead(api, 999999)
+        for reponse, temoin in zip(self._routes_du_lead(api, self.lead.pk),
+                                   absent):
+            self.assertEqual(temoin.status_code, 404, temoin.data)
+            self.assertEqual(reponse.status_code, 404, reponse.data)
+            self.assertEqual(reponse.data, temoin.data)
+
+    def test_du_lead_et_contenance_de_sa_visite_servis(self):
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.visites.models import VisiteTerrain
+
+        pair = self._pairs_sous_un_directeur(TECHNICIEN_PERMISSIONS)
+        VisiteTerrain.objects.create(company=self.company, lead=self.lead,
+                                     commercial=pair)
+        du_lead, contenance = self._routes_du_lead(self._api(pair), self.lead.pk)
+        self.assertEqual(du_lead.status_code, 200, du_lead.data)
+        # Servie : jamais « introuvable » (un refus métier 409 reste possible
+        # faute de visite validée — c'est le lead qui est atteint).
+        self.assertNotEqual(contenance.status_code, 404, contenance.data)
+
+    def test_bibliotheque_des_modeles_bornee_a_ses_visites(self):
+        """Revue lot 5 — ``modeles/`` servait au Technicien TOUS les modèles de
+        la société (lead, client, géométrie), hors de ses visites."""
+        from apps.calepinage.services.modeles import marquer_modele
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.visites.models import VisiteTerrain
+
+        marquer_modele(self.calepinage, user=self.user)
+        url = '/api/django/calepinage/calepinages/modeles/'
+        pair = self._pairs_sous_un_directeur(TECHNICIEN_PERMISSIONS)
+
+        def ids(user):
+            reponse = self._api(user).get(url)
+            self.assertEqual(reponse.status_code, 200, reponse.data)
+            return [ligne['id'] for ligne in reponse.data]
+        self.assertNotIn(self.calepinage.pk, ids(pair))
+        self.assertIn(self.calepinage.pk, ids(self.commercial))
+        VisiteTerrain.objects.create(company=self.company, lead=self.lead,
+                                     commercial=pair)
+        self.assertIn(self.calepinage.pk, ids(pair))
+
+    def test_commercial_et_directeur_inchanges(self):
+        """La restriction ne touche que le porteur du seul relevé."""
+        from apps.calepinage.selectors import lit_par_le_seul_releve
+
+        self._pairs_sous_un_directeur(DIRECTEUR_PERMISSIONS)
+        self.assertFalse(lit_par_le_seul_releve(self.commercial))
+        self.assertFalse(lit_par_le_seul_releve(self.user))
+        self.assertTrue(lit_par_le_seul_releve(self.tech))
+        self.assertEqual(self._api(self.commercial).get(self.base).status_code, 200)
+
+    def test_qui_gere_garde_le_releve_sans_le_code_du_releve(self):
+        """Le porteur de ``calepinage_gerer`` (Commercial) n'a pas besoin de
+        ``calepinage_releve`` : l'alternative n'enlève rien."""
+        reponse = self._api(self.commercial).post(
+            f'{self.base}releve/', {'releve_le': HIER.isoformat(), 'chaines': []},
+            format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)

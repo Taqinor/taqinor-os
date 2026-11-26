@@ -11,19 +11,23 @@ export function panneauxDuModule(panneaux, watt) {
   return Number(watt) > 0 ? `${n} de ${formatNumber(Number(watt))} W` : n
 }
 
-/** `{ panneaux, kwc, watt, convertie, conception }` — `panneaux` : le compte à poser dans le module de `wattPose` ;
-    `convertie` : le module posé n'a pas la puissance de la conception (`conception` dit alors son propre compte,
-    « 8 panneaux de 550 W ») ; module absent de la table servie : `panneaux: null` (la puissance seule, rien à poser).
-    `null` sans cible. Sans puissance connue d'un côté : la cible telle quelle. */
-export function cibleAuModule(cible, wattPose, table) {
+/** `{ panneaux, kwc, watt, convertie, conception, kwcModule }` — `panneaux` : le compte à poser dans le module de
+    `wattPose` ; `convertie` : le module posé n'a pas la puissance de la conception (`conception` dit alors son propre
+    compte, « 8 panneaux de 550 W ») ; module absent de la table servie : `panneaux: null` (la puissance seule, rien à
+    poser). T4-X8-011 — `kwcModule` : le kWc de CE compte dans CE module, lu dans `tableKwc` (`kwc_selon_watt` servi),
+    `null` s'il n'est pas servi — jamais un produit calculé ici. `null` sans cible. Sans puissance connue d'un côté :
+    la cible telle quelle. */
+export function cibleAuModule(cible, wattPose, table, tableKwc = null) {
   if (!cible) return null
   const { panneaux, kwc = null, wattConception = null } = cible
   const watt = Number(wattPose) || null
   const meme = !watt || !(Number(wattConception) > 0) || Math.abs(watt - Number(wattConception)) < 0.5
   if (meme || typeof panneaux !== 'number') return { panneaux, kwc, watt: watt ?? wattConception, convertie: false, conception: null }
   const servi = table?.[String(watt)]
+  const kwcServi = tableKwc?.[String(watt)]
   return {
     panneaux: Number.isInteger(servi) ? servi : null, kwc, watt, convertie: true,
     conception: panneauxDuModule(panneaux, wattConception),
+    kwcModule: Number.isInteger(servi) && typeof kwcServi === 'number' ? kwcServi : null,
   }
 }

@@ -20,7 +20,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-VERSION_MOTEUR = 'moteur-unique-2'  # relecture E5 m4 : identifiants produit servis
+#: D-ACAL-109 / D-ACAL-110 : une conception désignée garde ses deux options et dit l'arrondi
+#: (forme rangée changée : toute conception rangée est périmée et refaite par le filet).
+VERSION_MOTEUR = 'moteur-unique-3'
 CODE_LOCALISATION = 'localisation_inconnue'
 MESSAGE_LOCALISATION = 'Ville inconnue du moteur : renseigner la ville ou le point GPS du lead.'
 #: T4-X9-013 — le même refus pour un calepinage SANS lead : son entrée ne porte aucun lieu.
@@ -84,9 +86,20 @@ class ResultatConception:
     #: productible servi retenu (``None`` : production de la ville). Jamais servis.
     pose_a_produire: object = None
     productible_pose: object = None
+    #: ADEV155 (D-ACAL-108, niveau 15 seulement) — le lead SANS toit tracé dont le plan par
+    #: défaut sert de BASE aux études (même chemin que la pose), puis ce que le plan suppose
+    #: (pente, pose, production du toit supposé), ajouté aux suppositions. Jamais servis.
+    plan_a_produire: object = None
+    suppositions_plan: list = field(default_factory=list)
     #: Reste d'ACAL2020 — résidentiel : la forme 24 h (somme = 1) de la consommation que le
     #: moteur horaire a utilisée (occupation + équipements), servie par ``valeurs``.
     forme_horaire_24: object = None
+    #: D-ACAL-109 / D-ACAL-110 (``conception/autre_option.py``) — l'option que la désignation
+    #: a prise, l'autre option ``(option, ResultatConception)`` composée sans l'onduleur
+    #: désigné, et les arrondis au module désigné. Jamais servis tels quels.
+    option_designee: object = None
+    autre_option: object = None
+    arrondis: list = field(default_factory=list)
 
     def sortie(self):
         return {cle: getattr(self, cle) for cle in CLES_SORTIE}
@@ -191,6 +204,8 @@ def _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_
         resultat.designations_ecartees = designations_ecartees(company, calepinage_id)
     if pose is not None and pose['complete']:
         resultat.pose_a_produire = (calepinage_id, pose)
+    elif plan_par_defaut_ouvert(calepinage_id, entrees.marche):
+        resultat.plan_a_produire = lead
     refus = refus_localisation(lead)
     if refus is None:
         calcul = {'residentiel': _residentiel, 'agricole': _agricole}.get(entrees.marche, _ci)
@@ -204,10 +219,13 @@ def _calculer(lead, company, entrees, toit, imposes, investissement, calepinage_
     froid = None if entrees.marche == 'agricole' else froid_du_lead(lead)
     resultat.blocs = blocs_du_moteur(resultat.etude_params)
     from apps.ventes.conception.suppositions import suppositions_de
-    resultat.suppositions = suppositions_de(resultat, froid=froid) + resultat.designations_ecartees
+    resultat.suppositions = (suppositions_de(resultat, froid=froid) + resultat.designations_ecartees
+                             + resultat.suppositions_plan)
     resultat.option_retenue, options = V.options(resultat)
     resultat.valeurs = {option: V.valeurs(resultat, option, investissement, froid=froid, company=company)
                         for option in options}
+    from apps.ventes.conception.autre_option import ajouter_l_autre_option
+    ajouter_l_autre_option(resultat, investissement, froid=froid, company=company)
     V.dire_l_impose(resultat, 'calepinage' if souple or (pose or {}).get('a_la_main') else 'saisie',
                     pose_a_la_main=bool((pose or {}).get('a_la_main')) and entrees.marche == 'residentiel')
     from apps.ventes.conception.consommation_imposee import dire
@@ -232,10 +250,14 @@ def _calcul_et_repli(resultat, calcul, porteur, toit, imposes, designes):
         try:
             calcul(resultat, *porteur, toit=toit, imposes=avec, completer=True)
             resultat.imposes_retenus = avec
+            if resultat.marche == 'residentiel':  # D-ACAL-109 : l'autre option reste
+                from apps.ventes.conception.autre_option import garder_l_autre_option
+                garder_l_autre_option(resultat, calcul, porteur, toit, imposes, designes)
             return None
         except SimulationEnCours:
             raise
         except AutoDevisError as exc:
+            resultat.option_designee, resultat.arrondis = None, []
             champ = 'onduleur_produit' if str(exc.field or '').startswith('onduleur') or (
                 'panneau_produit_id' not in designes) else 'module_produit'
             resultat.designations_ecartees.append({
@@ -253,34 +275,42 @@ def _calcul_et_repli(resultat, calcul, porteur, toit, imposes, designes):
     return None
 
 
-def _compte_designe(lead, company, toit, imposes, dimensionner):
+def _compte_designe(lead, company, toit, imposes, dimensionner, scenario=None, arrondis=None):
     """Relecture E6 B2 — ``(imposes complétés, scénario)`` d'un matériel désigné sans
     compte de panneaux : la taille que le moteur DÉCIDE sans la désignation (la facture
     garde la main ; un module désigné d'une autre puissance garde la même puissance crête,
     au panneau près) ; le scénario suit l'onduleur désigné (hybride ⇒ avec batterie,
     réseau ⇒ sans), sinon la décision. Constat T4-X9-009 : la taille est décidée POUR ce
     scénario (l'option « avec batterie » a son propre optimum) — sans cela un hybride
-    désigné rangeait l'option « avec » à la taille de l'option « sans »."""
+    désigné rangeait l'option « avec » à la taille de l'option « sans ».
+
+    D-ACAL-109 — ``scenario`` : l'option demandée (l'AUTRE option d'une conception
+    désignée, module désigné seul). D-ACAL-110 — ``arrondis`` reçoit le passage du compte
+    du moteur au compte du module désigné (``autre_option.arrondi``)."""
+    from apps.ventes.conception.autre_option import arrondi
     from apps.ventes.conception.decisions import decider_taille_residentielle
     from apps.ventes.domain import resolution_catalogue as rc
     from apps.ventes.domain.taille import panneaux_pour_la_meme_puissance
 
     onduleur = (rc.entree_du_produit(company, imposes['onduleur_produit_id'])
                 if imposes.get('onduleur_produit_id') else None)
-    force = {rc.FAMILLE_HYBRIDE: 'avec', rc.FAMILLE_RESEAU: 'sans'}.get(getattr(onduleur, 'famille', None))
+    force = scenario or {rc.FAMILLE_HYBRIDE: 'avec', rc.FAMILLE_RESEAU: 'sans'}.get(
+        getattr(onduleur, 'famille', None))
     decision = decider_taille_residentielle(lead=lead, company=company, scenario=force, plafond_toit=getattr(
         toit, 'plafond_panneaux', None), dimensionner=dimensionner)
-    nombre, complets = decision.panneaux, {}
+    nombre, complets, porte = decision.panneaux, {}, False
     panneau = (rc.entree_du_produit(company, imposes['panneau_produit_id'])
                if imposes.get('panneau_produit_id') else None)
     watt = float(getattr(panneau, 'wc', None) or 0)
     if watt and abs(watt - float(decision.watt or 0)) >= 0.5:
-        nombre = panneaux_pour_la_meme_puissance(decision.kwc, watt)
+        nombre, porte = panneaux_pour_la_meme_puissance(decision.kwc, watt), True
     if panneau is None:  # le module du moteur (sa puissance, par LE résolveur), jamais le défaut 710 Wc
         resolution = rc.resoudre_panneau(company, rc.vivier(company), wc=decision.watt)
         if resolution.statut == rc.STATUT_UNIQUE:
             complets['panneau_produit_id'] = resolution.produit.pk
-    scenario = force if onduleur is not None else ('avec' if decision.avec_batterie else 'sans')
+    scenario = force if onduleur is not None or force else ('avec' if decision.avec_batterie else 'sans')
+    if arrondis is not None and porte:  # D-ACAL-110 : le kWc change toujours, le compte parfois
+        arrondi(arrondis, scenario, panneau, decision, nombre)
     return dict(imposes, nb_panneaux=nombre, **complets), scenario
 
 
@@ -297,6 +327,74 @@ def pose_reelle(company, calepinage_id, marche):
     return pose if pose and pose.get('nb_panneaux') else None
 
 
+def plan_par_defaut_ouvert(calepinage_id, marche):
+    """ADEV155 (D-ACAL-108, fondateur 25/11/2026 « Yes, with level 15 ») — la production d'un
+    lead SANS toit tracé vient-elle du plan par défaut (``calepinage/services/plan_par_defaut.py``) ?
+    Seulement quand le niveau de règles COURANT est ≥ 15 (``REGLES_POSE_REELLE_2111``, rendu
+    courant par ACAL1001, jamais par cette tâche), aucun toit tracé, marché solaire (le pompage
+    suit sa pose : D-ACAL-46). Au niveau 14 courant : fermé, chemin d'aujourd'hui au bit près."""
+    from apps.ventes.domain import regles_calcul as RC
+
+    return (not calepinage_id and marche_au_plan_par_defaut(marche)
+            and RC.REGLES_COURANTES >= RC.REGLES_POSE_REELLE_2111)
+
+
+def marche_au_plan_par_defaut(marche):
+    """ADEV155 — LA règle de marché du plan par défaut (une seule place, lue par le moteur et
+    par la liste ``remplir_conceptions --ecarts-sans-toit``) : tout marché solaire, jamais le
+    pompage (il suit sa pose, D-ACAL-46)."""
+    return marche != 'agricole'
+
+
+def _materiel_des_lignes(resultat):
+    """``{module, onduleur}`` (identifiants produit) des lignes du moteur : l'onduleur de
+    l'option « avec » d'abord."""
+    from apps.ventes.domain.catalogue import classer_produit
+
+    classes = [(li, classer_produit(getattr(li.produit, 'nom', '') or li.designation) or '')
+               for li in resultat.lignes if li.type_ligne == 'produit' and not li.optionnelle]
+    return {'module': next((li.produit_id for li, c in classes if c == 'panneau'), None),
+            'onduleur': next((li.produit_id for li, c in sorted(
+                classes, key=lambda paire: (paire[0].variante or '') != 'avec') if c.startswith('onduleur')),
+                None)}
+
+
+#: ADEV155 — le plan par défaut ouvert (niveau 15) mais non simulé : la supposition servie.
+CODE_PLAN_NON_SIMULE = 'plan_par_defaut_non_simule'
+MESSAGE_PLAN_NON_SIMULE = ('Production du toit supposé non simulée (%s) : la production standard de la ville est '
+                           'utilisée — %s, ou tracer le toit au calepinage.')
+GESTE_FICHE, GESTE_RELANCE = 'renseigner la fiche technique du produit dans Stock', 'relancer le calcul'
+
+
+def _base_du_plan(resultat, devis, company):
+    """ADEV155 — le productible du PLAN PAR DÉFAUT (porte ``productible_du_plan_par_defaut``)
+    au kWc et au matériel des lignes du moteur, posé sur le devis EN MÉMOIRE avant ses études
+    comme celui d'une pose : production, autoconsommation, économies et blocs en viennent tous.
+    Non servi (plan refusé — météo injoignable comprise —, incomplet, fiche vide) ou en échec :
+    la ville reste, et c'est DIT : ``absents`` (interne) ET une supposition SERVIE
+    (:data:`CODE_PLAN_NON_SIMULE`, relecture lot 5 point 4 : ``absents`` n'est ni rangé ni
+    servi, l'échec était muet à l'écran)."""
+    from apps.ventes.conception.etudes_lignes import puissances_des_lignes
+    from apps.ventes.conception.porte_calepinage import productible_du_plan_par_defaut
+
+    try:
+        servi, suppositions, motif = productible_du_plan_par_defaut(
+            company, resultat.plan_a_produire, puissances_des_lignes(devis, resultat.lignes)[0],
+            _materiel_des_lignes(resultat))
+    except Exception as exc:  # noqa: BLE001 — dite absente, la production de la ville reste (D-ENF22-BLE001)
+        logger.warning('Plan par défaut non simulé (moteur unique)', exc_info=True)
+        servi, suppositions, motif = None, [], 'erreur : %s' % type(exc).__name__
+    if servi is None:
+        resultat.absents['production_plan_par_defaut'] = motif
+        fiche = 'fiche technique' in motif
+        resultat.suppositions_plan = [{
+            'code': CODE_PLAN_NON_SIMULE, 'champ': 'fiche_technique' if fiche else 'calepinage', 'valeur': None,
+            'source': 'defaut', 'message': MESSAGE_PLAN_NON_SIMULE % (motif, GESTE_FICHE if fiche else GESTE_RELANCE)}]
+        return
+    resultat.productible_pose, resultat.suppositions_plan = servi, suppositions
+    devis.productible_pose_moteur = servi
+
+
 def _base_de_la_pose(resultat, devis, company):
     """Relecture E6 M1 (ADEV149, niveau 15, pose complète) — le productible de LA pose
     (porte ``productible_de_la_pose`` : le résultat rangé du calepinage s'il est à jour,
@@ -306,17 +404,13 @@ def _base_de_la_pose(resultat, devis, company):
     production, autoconsommation, couverture, économies et blocs copiés au devis en
     viennent TOUS. Une lecture qui échoue autrement est DITE absente (production de la ville)."""
     if resultat.pose_a_produire is None:
+        if resultat.plan_a_produire is not None:  # ADEV155, niveau 15 seulement
+            _base_du_plan(resultat, devis, company)
         return
     from apps.ventes.conception.porte_calepinage import SimulationEnCours, productible_de_la_pose
-    from apps.ventes.domain.catalogue import classer_produit
 
     calepinage_id, _pose = resultat.pose_a_produire
-    classes = [(li, classer_produit(getattr(li.produit, 'nom', '') or li.designation) or '')
-               for li in resultat.lignes if li.type_ligne == 'produit' and not li.optionnelle]
-    materiel = {'module': next((li.produit_id for li, c in classes if c == 'panneau'), None),
-                'onduleur': next((li.produit_id for li, c in sorted(
-                    classes, key=lambda paire: (paire[0].variante or '') != 'avec') if c.startswith('onduleur')),
-                    None)}
+    materiel = _materiel_des_lignes(resultat)
     try:
         servi = productible_de_la_pose(company, calepinage_id, materiel)
     except SimulationEnCours:
@@ -433,10 +527,12 @@ def _provenance(devis, contexte, intention):
         _fusion(devis, PIPELINE, provenance=stamp)
 
 
-def _residentiel(resultat, lead, company, entrees, *, toit, imposes, completer=False):
+def _residentiel(resultat, lead, company, entrees, *, toit, imposes, completer=False, scenario=None):
     """``_build_devis_auto_residentiel`` sans écriture : décision, contrôle à
     blanc, intention, étapes 1-4, lignes de l'écrivain, étapes 6-8. ``completer``
-    (relecture E6 B2) : un matériel désigné sans compte reçoit celui du moteur."""
+    (relecture E6 B2) : un matériel désigné sans compte reçoit celui du moteur ;
+    ``scenario`` (D-ACAL-109) : l'option demandée de ce compte."""
+    demande_option = scenario
     from apps.ventes.conception.decisions import decider_taille_residentielle, verifier_composition_residentielle
     from apps.ventes.domain import creation_auto_residentiel as R
     from apps.ventes.domain import etude_schema as es
@@ -454,7 +550,9 @@ def _residentiel(resultat, lead, company, entrees, *, toit, imposes, completer=F
         from apps.ventes.domain.composition_imposee import _alerter, preparer_imposition
         demande = None
         if completer and not imposes.get('nb_panneaux'):
-            imposes, demande = _compte_designe(lead, company, toit, imposes, dimensionner)
+            imposes, demande = _compte_designe(lead, company, toit, imposes, dimensionner, scenario=demande_option,
+                                               arrondis=resultat.arrondis)
+            resultat.option_designee = demande
         imposition, alertes, _phase, _isole = preparer_imposition(company=company, lead=lead, imposes=imposes,
                                                                   scenario=demande)
         scenario = imposition.scenario

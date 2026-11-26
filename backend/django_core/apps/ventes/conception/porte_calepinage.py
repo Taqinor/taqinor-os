@@ -207,6 +207,53 @@ def production_du_plan_par_defaut(company, lead, kwc, produits, nb_panneaux=None
         return {'refus': refus.motif or str(refus)}
 
 
+#: ADEV155 — une fiche de module vide fait omettre des pertes : la production serait SURESTIMÉE.
+CODES_FICHE_VIDE = ('fiche_module_incomplete', 'puissance_module_de_la_conception')
+MESSAGE_PRODUCTION_PLAN = ('Production simulée sur un toit supposé (un seul pan, pente %s°, %s, sans ombre '
+                           'proche : %s kWh/kWc) : tracer le toit au calepinage pour la production de la pose réelle.')
+
+
+def productible_du_plan_par_defaut(company, lead, kwc, produits):
+    """ADEV155 (D-ACAL-108, niveau 15 seulement) — ``(servi | None, suppositions, motif)`` :
+    le plan par défaut de :func:`production_du_plan_par_defaut` (au kWc et au matériel du
+    moteur) à la forme du productible servi d'une pose (kWh/kWc, pertes incluses,
+    ``source`` = ``SOURCE_PLAN_PAR_DEFAUT``), lu par ``horaire/productible_pose.base_depuis_servi``
+    comme celui d'une pose. ``kwc_simule`` absent : un rendement par kWc, le même pour les
+    deux options du lead. Jamais servi (motif dit) : plan refusé, incomplet, ou fiche du
+    module vide (pertes omises, production surestimée)."""
+    from apps.ventes.horaire.productible_pose import SOURCE_PLAN_PAR_DEFAUT
+
+    if not kwc:
+        return None, [], 'puissance du moteur inconnue'
+    plan = production_du_plan_par_defaut(company, lead, kwc, produits)
+    if plan.get('refus'):
+        return None, [], 'plan par défaut refusé : %s' % plan['refus']
+    suppositions = list(plan.get('suppositions') or ())
+    vides = [s for s in suppositions if s.get('code') in CODES_FICHE_VIDE]
+    if vides:  # B1 (relecture lot 5) : toute étape omise faute de fiche, puissance portée ou non
+        champs = [str(s['valeur']) for s in vides if s.get('code') == 'fiche_module_incomplete' and s.get('valeur')]
+        return None, [], 'fiche technique du module incomplète : pertes non appliquées%s' % (
+            ' (champ manquant : %s)' % ' ; '.join('« %s »' % c for c in champs) if champs else '')
+    annuel, mensuel, kwc_plan = plan.get('production_annuelle'), plan.get('production_mensuelle'), plan.get('kwc')
+    if (not plan.get('complete') or not annuel or not kwc_plan or not isinstance(mensuel, list) or len(mensuel) != 12
+            or any(m is None for m in mensuel)):  # un mois absent : jamais servi comme zéro
+        return None, [], 'plan par défaut incomplet'
+    par_mois = [round(float(m) / float(kwc_plan), 1) for m in mensuel]
+    # Le rendement annuel = la somme des 12 mois servis : celle que relit un brouillon C&I
+    # (``horaire/productible_pose._base_du_plan_rangee``), une seule valeur de bout en bout.
+    rendement = round(sum(par_mois), 1)
+    azimut = float(plan.get('azimut_deg') or 180.0)
+    suppositions.append({'code': 'production_plan_par_defaut', 'champ': 'calepinage', 'valeur': rendement,
+                         'source': 'defaut', 'message': MESSAGE_PRODUCTION_PLAN % (
+                             '{:g}'.format(float(plan.get('pente_deg') or 0)),
+                             'plein sud' if azimut == 180.0 else 'azimut {:g}°'.format(azimut),
+                             '{:g}'.format(rendement).replace('.', ','))})
+    return {'perime': False, 'motif': '', 'source': SOURCE_PLAN_PAR_DEFAUT, 'kwc_simule': None,
+            'kwh_kwc_annuel': rendement,
+            'kwh_kwc_mensuel': par_mois,
+            'complete': True, 'pertes_et_ombrage_inclus': True}, suppositions, ''
+
+
 #: Reste d'ACAL2020 — l'origine du RELEVÉ collé à l'étape Consommation (``consumption.source``
 #: du document, écrite par ``calepinage/services/consommation.py::proposer_consommation``).
 ORIGINE_RELEVE = 'csv'

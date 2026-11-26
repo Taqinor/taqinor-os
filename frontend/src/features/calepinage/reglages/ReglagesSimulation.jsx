@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import ChoixSurfaceAlbedo from './ChoixSurfaceAlbedo'
+import ChampTableLisible from './ChampTableLisible'
+import { lireTable } from './tablesReglages'
 import calepinageApi from '../../../api/calepinageApi'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Badge, Button, Card, Spinner } from '../../../ui'
+import { useFormSafety } from '../../../ui/useFormSafety'
 import ReglagesSite from './ReglagesSite'
 import ReglagesGabaritsObstacle from './ReglagesGabaritsObstacle'
 import DemarrageRapide from './DemarrageRapide'
@@ -11,6 +14,8 @@ import ReglagesLestage from './ReglagesLestage'
 import ReglagesRetraitsAretes from './ReglagesRetraitsAretes'
 import { useOuvrirChamp } from '../atelier/ouvrirChamp'
 import { refusServeur } from '../commun/refusServeur'
+import LectureSeuleSociete from '../commun/LectureSeuleSociete'
+import { usePeutReglerSociete } from '../commun/useReglagesSociete'
 
 /* ============================================================================
    CALX69 / ACAL133 — LES RÉGLAGES DE SIMULATION ET D'ÉLECTRIQUE, AVEC
@@ -184,7 +189,7 @@ function validerSection(registre, lignes) {
 const CLASSE_CHAMP = 'mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground'
 
 /** L'aide de TYPE d'une clé, depuis le registre servi (type, bornes). */
-function aideDeType(r) {
+function aideDeType(r, texte) {
   const bornes = r.minimum !== null && r.maximum !== null
     ? ` entre ${r.minimum} et ${r.maximum}`
     : (r.minimum !== null ? ` au moins ${r.minimum}` : (r.maximum !== null ? ` au plus ${r.maximum}` : ''))
@@ -196,7 +201,7 @@ function aideDeType(r) {
     case 'booleen': return 'Oui ou non'
     case 'table_mensuelle': return `Douze valeurs mensuelles (liste), ou une seule pour les douze${bornes}`
     case 'intervalle_annees': return 'Intervalle d’années [début, fin]'
-    case 'table': return 'Table structurée (JSON)'
+    case 'table': return lireTable(r.cle, texte) !== null ? 'Une ligne par entrée, un champ par grandeur' : 'Table structurée (JSON)'
     default: return ''
   }
 }
@@ -240,7 +245,8 @@ function ChampValeur({ r, ligne, disabled, erreur, onChange }) {
 
 function LigneReglage({ r, ligne, erreur, disabled, onChange }) {
   const majer = (champ, valeur) => onChange(r.cle, champ, valeur)
-  const aide = aideDeType(r)
+  const aide = aideDeType(r, ligne.valeurTexte)
+  const tableLisible = r.type === 'table' && lireTable(r.cle, ligne.valeurTexte) !== null
   return (
     <fieldset className="mt-4 border-t border-border/60 pt-4" data-testid={`calx69-ligne-${r.cle}`}>
       <legend className="text-sm font-semibold text-foreground">
@@ -258,10 +264,18 @@ function LigneReglage({ r, ligne, erreur, disabled, onChange }) {
       )}
       {r.cle === 'albedo_mensuel' && <ChoixSurfaceAlbedo cle={r.cle} disabled={disabled} onChoisir={majer} />}
       <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <label className="block" data-testid={`calx69-valeur-${r.cle}`}>
-          <span className="text-xs text-muted-foreground">Valeur</span>
-          <ChampValeur r={r} ligne={ligne} disabled={disabled} erreur={erreur} onChange={majer} />
-        </label>
+        {tableLisible ? (
+          <div className="block sm:col-span-3" data-testid={`calx69-valeur-${r.cle}`}>
+            <span className="text-xs text-muted-foreground">Valeur</span>
+            <ChampTableLisible cle={r.cle} texte={ligne.valeurTexte} disabled={disabled}
+              onTexte={(t) => majer('valeurTexte', t)} />
+          </div>
+        ) : (
+          <label className="block" data-testid={`calx69-valeur-${r.cle}`}>
+            <span className="text-xs text-muted-foreground">Valeur</span>
+            <ChampValeur r={r} ligne={ligne} disabled={disabled} erreur={erreur} onChange={majer} />
+          </label>
+        )}
         <label className="block" data-testid={`calx69-source-${r.cle}`}>
           <span className="text-xs text-muted-foreground">Source</span>
           <select
@@ -488,8 +502,9 @@ function CarteRapport({ documents, peutGerer }) {
 }
 
 export default function ReglagesSimulation() {
-  const peutGerer = useHasPermission('calepinage_gerer')
+  const peutGerer = usePeutReglerSociete()
   const peutApprouver = useHasPermission('calepinage_approuver')
+  const peutRecalculer = useHasPermission('calepinage_gerer') // le droit de la route recalculer-simulations
   // ACAL405 — les sections TELLES QUE SERVIES (état « à appliquer » / « déjà
   // saisie ») et le compteur qui relit les réglages après un geste.
   const [servis, setServis] = useState(null)
@@ -498,6 +513,11 @@ export default function ReglagesSimulation() {
   const [lignesParSection, setLignesParSection] = useState({
     simulation: {}, electrique_societe: {},
   })
+  // T4-X3-018 — les lignes TELLES QUE SERVIES (ou telles qu'enregistrées) : tout écart est une saisie non enregistrée,
+  // gardée à la sortie de l'onglet comme à celle de la page (la garde de la maison, `useFormSafety`).
+  const [lignesServies, setLignesServies] = useState(() => JSON.stringify(lignesParSection))
+  const poserLignes = useCallback((lignes) => { setLignesParSection(lignes); setLignesServies(JSON.stringify(lignes)) }, [])
+  useFormSafety({ lignes: lignesServies }, { lignes: JSON.stringify(lignesParSection) }, null, { routeLevel: true })
   // Le registre ACTIF : UNIQUEMENT celui servi par le GET (ACAL133).
   const [registres, setRegistres] = useState(null)
   // ACAL130 — la section « imagerie » servie, pour « Site & imagerie ».
@@ -542,7 +562,7 @@ export default function ReglagesSimulation() {
         setLestage({ registre: servi.lestage ?? null, servi: data.lestage ?? {} })
         setDegagements(data.degagements && typeof data.degagements === 'object' ? data.degagements : {})
         setServis({ simulation: data.simulation, electrique_societe: data.electrique_societe })
-        setLignesParSection({
+        poserLignes({
           simulation: lignesDepuis(simulation, data.simulation),
           electrique_societe: lignesDepuis(electrique, data.electrique_societe),
         })
@@ -554,7 +574,7 @@ export default function ReglagesSimulation() {
       })
       .finally(() => { if (!annule) setChargement(false) })
     return () => { annule = true }
-  }, [relecture])
+  }, [relecture, poserLignes])
 
   useOuvrirChamp(chargement ? '' : decodeURIComponent((window.location.hash || '').slice(1)), chargement)
 
@@ -587,7 +607,7 @@ export default function ReglagesSimulation() {
         electrique_societe: electrique.section,
       })
       const data = res?.data ?? {}
-      setLignesParSection({
+      poserLignes({
         simulation: lignesDepuis(registres.simulation, data.simulation),
         electrique_societe: lignesDepuis(registres.electrique_societe, data.electrique_societe),
       })
@@ -658,6 +678,7 @@ export default function ReglagesSimulation() {
           <Badge variant="outline" data-testid="calx69-lecture-seule">Lecture seule</Badge>
         )}
       </div>
+      {!peutGerer && <div className="mt-1"><LectureSeuleSociete /></div>}
       <p className="mt-1 text-sm text-muted-foreground">
         Chaque valeur saisie porte sa provenance : sans elle, elle n’est pas
         enregistrée. Une clé non saisie reste omise — chaque étape de
@@ -702,33 +723,34 @@ export default function ReglagesSimulation() {
         </Card>
       ))}
 
-      {peutGerer ? (
+      {/* « Enregistrer » change les réglages de la société (`calepinage_approuver`) ; « Tout recalculer » relance
+          les simulations (`calepinage_gerer`, le droit de SA route) : chaque bouton suit le droit de son geste. */}
+      {(peutGerer || peutRecalculer) && (
         <div className="mt-4 flex flex-wrap items-center gap-4">
-          <button
-            type="button"
-            disabled={enregistrement}
-            data-testid="calx69-enregistrer"
-            className="text-sm font-semibold underline"
-            onClick={enregistrer}
-          >
-            {enregistrement ? 'Enregistrement…' : 'Enregistrer les réglages'}
-          </button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={recalcul || enregistrement}
-            data-testid="acal133-tout-recalculer"
-            onClick={toutRecalculer}
-          >
-            {recalcul ? 'Recalcul en cours…' : 'Tout recalculer'}
-          </Button>
+          {peutGerer && (
+            <button
+              type="button"
+              disabled={enregistrement}
+              data-testid="calx69-enregistrer"
+              className="text-sm font-semibold underline"
+              onClick={enregistrer}
+            >
+              {enregistrement ? 'Enregistrement…' : 'Enregistrer les réglages'}
+            </button>
+          )}
+          {peutRecalculer && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={recalcul || enregistrement}
+              data-testid="acal133-tout-recalculer"
+              onClick={toutRecalculer}
+            >
+              {recalcul ? 'Recalcul en cours…' : 'Tout recalculer'}
+            </Button>
+          )}
         </div>
-      ) : (
-        <p className="mt-4 text-xs text-muted-foreground">
-          Sans le droit « gérer le calepinage », la saisie n’est pas proposée
-          ici.
-        </p>
       )}
 
       {/* ACAL947 — TOUTES les erreurs d'un coup, sous le bouton : chaque ligne

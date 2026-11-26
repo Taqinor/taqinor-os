@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, act, within } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import process from 'node:process'
 import { resolve } from 'node:path'
 import { creerRepere, metresVersLngLat } from '../repere'
@@ -22,11 +22,12 @@ const api = {
 vi.mock('../../../api/calepinageApi', () => ({
   default: { calepinages: new Proxy({}, { get: (_, nom) => (...a) => api[nom](...a) }) },
 }))
-const file = { compterEnAttente: vi.fn(), deposerOuMettreEnFile: vi.fn(), rejouerFile: vi.fn() }
+const file = { compterEnAttente: vi.fn(), genresEnAttente: vi.fn(), deposerOuMettreEnFile: vi.fn(), rejouerFile: vi.fn() }
 // Les photos sont simulées ; la file du RELEVÉ (ACAL1810) est la vraie (magasin en mémoire sous jsdom, comme sans IndexedDB).
 vi.mock('../fileEnvoiPhotos', async (importOriginal) => ({
   ...(await importOriginal()),
   compterEnAttente: (...a) => file.compterEnAttente(...a),
+  genresEnAttente: (...a) => file.genresEnAttente(...a),
   deposerOuMettreEnFile: (...a) => file.deposerOuMettreEnFile(...a),
   rejouerFile: (...a) => file.rejouerFile(...a),
 }))
@@ -63,6 +64,7 @@ beforeEach(async () => {
   api.corrigerReleve.mockResolvedValue({ data: { releve: { ...RELEVE_COURANT } } })
   api.enregistrerSectionLayout.mockResolvedValue({ data: { roof_layout: { zones: [ZONE] }, empreinte_document: 'emp-2' } })
   file.compterEnAttente.mockResolvedValue(0)
+  file.genresEnAttente.mockResolvedValue([])
   file.rejouerFile.mockResolvedValue({ envoyees: 0, refusees: [], restantes: 0 })
   capteurs.demarrerCapteurs.mockResolvedValue({ indisponible: true, motif: 'Capteurs absents : saisissez l’azimut et la hauteur à la main.' })
 })
@@ -260,6 +262,22 @@ describe('Relevé de visite — « Voir en 3D » ouvre la vue client (ACAL1811)'
     expect(screen.getByTestId('releve-voir-3d').getAttribute('href')).toBe('/calepinage/1/client')
     expect(screen.getByTestId('releve-voir-3d')).toHaveTextContent('Voir en 3D')
   })
+
+  // T4-X8-007 — la vue client sait qu'on vient du relevé (son « Retour » y ramène) ; ouverte d'ailleurs, elle ramène à l'atelier.
+  it('T4-X8-007 — « Voir en 3D » dit à la vue client qu’on vient du relevé', async () => {
+    const Sonde = () => <p data-testid="sonde-depuis">{useLocation().state?.depuis ?? 'aucune'}</p>
+    render(
+      <MemoryRouter initialEntries={['/calepinage/1/releve']}>
+        <Routes>
+          <Route path="/calepinage/:id/releve" element={<ReleveVisite />} />
+          <Route path="/calepinage/:id/client" element={<Sonde />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await screen.findByTestId('releve-projet')
+    fireEvent.click(screen.getByTestId('releve-voir-3d'))
+    expect(await screen.findByTestId('sonde-depuis')).toHaveTextContent('releve')
+  })
 })
 
 describe('Relevé de visite — « Terminer » répond EN VUE (ACAL1812)', () => {
@@ -411,7 +429,7 @@ describe('ACAL1836 — le relevé sur la maquette v2 : la carte du toit, les cot
     data: { roof_layout: { zones: [{ ...ZONE, id: 'z1', vertices }] }, empreinte_document: 'emp-1' },
   })
 
-  it('un toit rectangle déjà créé préremplit Longueur et Largeur, DITES « reprises du toit » ; elles partent avec « Terminer »', async () => {
+  it('un toit rectangle déjà créé préremplit Longueur et Largeur, DITES « reprises du toit » ; jamais envoyées comme mesures (T4-X8-001)', async () => {
     avecToit(rectangle())
     rendre()
     await waitFor(() => expect(screen.getByTestId('releve-longueur')).toHaveValue('12,4'))
@@ -423,10 +441,9 @@ describe('ACAL1836 — le relevé sur la maquette v2 : la carte du toit, les cot
     expect(screen.getByTestId('releve-cote-largeur')).toHaveTextContent('8,6')
     fireEvent.click(screen.getByTestId('releve-terminer'))
     await waitFor(() => expect(api.corrigerReleve).toHaveBeenCalledTimes(1))
-    expect(api.corrigerReleve.mock.calls[0][2].chaines).toEqual([
-      { nom: 'Longueur', total_mesure: null, tolerance_m: null, cotes: [{ nom: 'Longueur', valeur: 12.4 }] },
-      { nom: 'Largeur', total_mesure: null, tolerance_m: null, cotes: [{ nom: 'Largeur', valeur: 8.6 }] },
-    ])
+    expect(api.corrigerReleve.mock.calls[0][2].chaines).toEqual([])
+    await waitFor(() => expect(screen.getByTestId('releve-message'))
+      .toHaveTextContent('Longueur et largeur reprises du toit dessiné : non envoyées comme mesures.'))
   })
 
   it('une saisie remplace la reprise (et la note disparaît) ; un champ vidé reste vide ; un contour non rectangle ne reprend rien', async () => {
@@ -646,6 +663,36 @@ describe('T4-U4-020..023 — ce qui est tapé n’est jamais perdu, l’écran d
     expect(screen.getByTestId('releve-photos-compte')).toHaveTextContent('2 sur 3')
   })
 
+  it('X8-003 : 3 photos gardées, rechargement hors ligne puis retour du réseau : « 3 sur 3 », tuiles « en attente d’envoi », pastille juste', async () => {
+    api.photos.mockResolvedValue({ data: { photos: [] } })
+    file.compterEnAttente.mockResolvedValue(3)
+    file.genresEnAttente.mockResolvedValue(['drone', 'oblique', 'sol'])
+    enLigne = false
+    rendre() // rechargement hors ligne
+    await waitFor(() => expect(screen.getByTestId('releve-photos-compte')).toHaveTextContent('3 sur 3'))
+    for (const g of ['drone', 'oblique', 'sol']) {
+      expect(screen.getByTestId(`releve-photo-${g}-etat`)).toHaveTextContent('en attente d’envoi')
+      expect(screen.getByTestId(`releve-photo-${g}`).querySelector('input[type="file"]')).toBeNull()
+    }
+    expect(screen.getByTestId('releve-hors-ligne')).toHaveTextContent('Hors ligne')
+
+    let liberer
+    file.rejouerFile.mockImplementationOnce(() => new Promise((r) => { liberer = r }))
+    enLigne = true
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    // Pendant l'envoi : rien ne se vide, et la pastille ne dit plus « Hors ligne ».
+    expect(screen.getByTestId('releve-photos-compte')).toHaveTextContent('3 sur 3')
+    expect(screen.getByTestId('releve-photo-sol').querySelector('input[type="file"]')).toBeNull()
+    expect(screen.queryByTestId('releve-hors-ligne')).toBeNull()
+    expect(screen.getByTestId('releve-envoi-attente')).toHaveTextContent('En attente d’envoi')
+    file.genresEnAttente.mockResolvedValue([])
+    api.photos.mockResolvedValue({ data: { photos: ['drone', 'oblique', 'sol'].map((genre, i) => ({ id: 20 + i, genre, url: `/a/${i}/` })) } })
+    await act(async () => { liberer({ envoyees: 3, refusees: [], restantes: 0 }) })
+    await waitFor(() => expect(screen.getByTestId('releve-photo-sol').querySelector('img')).not.toBeNull())
+    expect(screen.getByTestId('releve-photos-compte')).toHaveTextContent('3 sur 3')
+    expect(screen.queryByTestId('releve-envoi-attente')).toBeNull()
+  })
+
   it('U4-021 : deux retours du réseau rapprochés ne rejouent la file des photos qu’UNE fois', async () => {
     rendre()
     await screen.findByTestId('releve-projet')
@@ -674,6 +721,86 @@ describe('T4-U4-020..023 — ce qui est tapé n’est jamais perdu, l’écran d
     await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé envoyé.'))
     await waitFor(() => expect(api.releve).toHaveBeenCalledTimes(2))
     expect(screen.getByTestId('releve-longueur')).toHaveValue('9,8')
+  })
+
+  /* T4-X8-001 — ce que les champs MONTRENT à « Terminer » est ce qui part : une mesure reprise du brouillon compte comme
+     tapée ; une cote du toit dessiné jamais touchée n'est pas envoyée comme mesure, et le message le dit. */
+  const toit10x4 = () => {
+    const repere = creerRepere({ origine_lnglat: [-7.6, 33.5], ordre: 'lnglat' })
+    api.layout.mockResolvedValue({ data: { roof_layout: { zones: [{ ...ZONE, vertices: [[0, 0], [10, 0], [10, 4], [0, 4]]
+      .map(([x, y]) => metresVersLngLat(repere, { x, y })) }] }, empreinte_document: 'emp-1' } })
+  }
+  const cote = (nom, valeur) => ({ nom, total_mesure: null, tolerance_m: null, cotes: [{ nom, valeur }] })
+
+  it('X8-001 : hors ligne, Longueur et Largeur tapées, rechargement, seule la Longueur changée : les DEUX partent au retour du réseau', async () => {
+    toit10x4()
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalledTimes(1))
+    enLigne = false
+    await act(async () => { window.dispatchEvent(new Event('offline')) })
+    taper('releve-longueur', '12,4')
+    taper('releve-largeur', '8,1')
+    cleanup()
+    rendre() // rechargement, toujours hors ligne
+    await waitFor(() => expect(screen.getByTestId('releve-largeur')).toHaveValue('8,1'))
+    expect(screen.getByTestId('releve-longueur')).toHaveValue('12,4')
+    taper('releve-longueur', '12,6')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé gardé sur ce téléphone'))
+    enLigne = true
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé envoyé.'))
+    expect(api.corrigerReleve).toHaveBeenCalledTimes(1)
+    expect(api.corrigerReleve.mock.calls[0][2].chaines).toEqual([cote('Longueur', 12.6), cote('Largeur', 8.1)])
+  })
+
+  it('X8-001 : rejoué en ligne (reprise du brouillon puis une seule correction) : les deux mesures partent', async () => {
+    toit10x4()
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalledTimes(1))
+    taper('releve-longueur', '12,6')
+    taper('releve-largeur', '8,2')
+    cleanup()
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('releve-largeur')).toHaveValue('8,2'))
+    taper('releve-longueur', '12,7')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé corrigé.'))
+    expect(api.corrigerReleve.mock.calls[0][2].chaines).toEqual([cote('Longueur', 12.7), cote('Largeur', 8.2)])
+  })
+
+  it('X8-001 : une cote du toit dessiné jamais touchée n’est pas envoyée comme mesure, et le message le dit', async () => {
+    toit10x4()
+    rendre()
+    await waitFor(() => expect(screen.getByTestId('releve-largeur')).toHaveValue('4'))
+    taper('releve-longueur', '12,6')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé corrigé.'))
+    expect(api.corrigerReleve.mock.calls[0][2].chaines).toEqual([cote('Longueur', 12.6)])
+    expect(screen.getByTestId('releve-message'))
+      .toHaveTextContent('Largeur reprise du toit dessiné : non envoyée comme mesure.')
+  })
+
+  it('X8-004 : « Notes de terrain » au téléphone — le champ du relevé servi, gardé au rechargement hors ligne, parti avec « Terminer »', async () => {
+    api.releve.mockResolvedValue({ data: { releves: [{ ...RELEVE_COURANT, notes: 'Accès par l’escalier' }], releve_courant_id: 9 } })
+    rendre()
+    await waitFor(() => expect(screen.getByLabelText('Notes de terrain')).toHaveValue('Accès par l’escalier'))
+    expect(screen.getByLabelText('Notes de terrain').tagName).toBe('TEXTAREA')
+    enLigne = false
+    await act(async () => { window.dispatchEvent(new Event('offline')) })
+    fireEvent.change(screen.getByLabelText('Notes de terrain'), { target: { value: 'Tuiles fragiles côté rue' } })
+    cleanup()
+    rendre() // rechargement hors ligne : la note tapée prime sur celle du serveur
+    await waitFor(() => expect(api.releve).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.getByLabelText('Notes de terrain')).toHaveValue('Tuiles fragiles côté rue'))
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé gardé sur ce téléphone'))
+    enLigne = true
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé envoyé.'))
+    expect(api.corrigerReleve.mock.calls[0][2].notes).toBe('Tuiles fragiles côté rue')
   })
 
   it('U4-021 : un relevé enregistré illisible le dit (jamais des champs vides muets) et « Réessayer » relit', async () => {

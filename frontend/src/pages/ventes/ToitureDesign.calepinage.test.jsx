@@ -594,9 +594,22 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       // La clé périmée est purgée à l'ouverture, la courante reste.
       expect(window.localStorage.getItem(orpheline)).toBeNull()
       expect(window.localStorage.getItem(cle)).not.toBeNull()
+      // T4-X8-010 — le bouton dit ce qu'il fait, et le fait : CE brouillon est effacé, le bandeau ne revient pas pour lui.
+      expect(screen.getByTestId('cal-brouillon-ignorer')).toHaveTextContent(/^Effacer ce brouillon$/)
       await userEvent.click(screen.getByTestId('cal-brouillon-ignorer'))
       expect(screen.queryByTestId('cal-brouillon-bandeau')).toBeNull()
       expect(initRoofToolPro8).toHaveBeenCalledTimes(1)
+      expect(window.localStorage.getItem(cle)).toBeNull()
+      cleanup(); reinitialiserBoot()
+      const boots = initRoofToolPro8.mock.calls.length
+      rendreCalepinage(CTX.calepinage.id)
+      await waitFor(() => expect(initRoofToolPro8.mock.calls.length).toBeGreaterThan(boots))
+      expect(screen.queryByTestId('cal-brouillon-bandeau')).toBeNull()
+      // Un brouillon PLUS RÉCENT (nouveaux gestes) relève le bandeau.
+      cleanup(); reinitialiserBoot()
+      window.localStorage.setItem(cle, JSON.stringify({ layout: { version: 2, zones: [{ id: 'neuf' }] }, horodatage: '2026-10-05T10:00:00.000Z' }))
+      rendreCalepinage(CTX.calepinage.id)
+      expect(await screen.findByTestId('cal-brouillon-bandeau')).toBeTruthy()
     } finally {
       window.localStorage.removeItem(cle)
       window.localStorage.removeItem(orpheline)
@@ -798,7 +811,8 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       const RESULT = exempleContrat('calepinage', 'roof_layout_v2.schema').result
       const texte = (id) => screen.getByTestId(id).textContent.replace(/\s+/g, ' ')
 
-      it('document sérialisé ⇒ panneaux, kWc et production « estimation »', async () => {
+      // T4-X8-013 — sans simulation fraîche, la production est « — » : jamais une seconde estimation (≈ … estimation).
+      it('document sérialisé ⇒ panneaux et kWc ; sans simulation fraîche, production « — »', async () => {
         calepinageApi.calepinages.designContext.mockResolvedValue(
           reponseContrat('calepinage', 'calepinage_design_context'))
         calepinageApi.calepinages.resultat.mockResolvedValue(
@@ -810,7 +824,7 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
         await waitFor(() => expect(texte('cal-resume-panneaux')).toContain(`${RESULT.panels} panneaux`),
           { timeout: 3000 })
         expect(texte('cal-resume-kwc')).toMatch(/14,40 kWc/)
-        expect(texte('cal-resume-production')).toMatch(/≈ 18 771 kWh\/an \(estimation\)/)
+        expect(texte('cal-resume-production')).toBe('—')
 
         serializeLayout.mockReturnValue({ ...LAYOUT, result: { ...RESULT, panels: 19 } })
         await waitFor(() => expect(texte('cal-resume-panneaux')).toContain('19 panneaux'),
@@ -1702,6 +1716,47 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
       expect(664 - 168 - 64 - tiroir).toBeGreaterThanOrEqual(0.45 * 664)
     } finally { style.remove(); window.matchMedia = avant }
   })
+
+  // T4-X8-006 — « Avancé » au téléphone : la feuille du bas s'ouvre (Guidé ET Expert), ses liens se voient, Fermer la referme.
+  // Les règles du bloc téléphone sont posées SANS leur @media (jsdom ne lit pas les requêtes de média).
+  for (const expert of [false, true]) {
+    it(`T4-X8-006 — téléphone, ${expert ? 'Expert' : 'Guidé'} : « Avancé » ouvre la feuille du bas, liens visibles`, async () => {
+      const avant = window.matchMedia
+      window.matchMedia = (q) => ({ matches: q === '(max-width: 639px)', media: q, addEventListener() {}, removeEventListener() {} })
+      const { readFileSync } = await import('node:fs')
+      const brut = document.createElement('style')
+      brut.textContent = ['50-coque-atelier.css', '56-coque-responsive.css']
+        .map((f) => readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/${f}`, 'utf8')).join('\n')
+      document.head.appendChild(brut)
+      const tel = [...brut.sheet.cssRules].filter((r) => r.type === 4 && r.conditionText === '(max-width: 639px)')
+      const style = document.createElement('style')
+      style.textContent = [...brut.sheet.cssRules].filter((r) => r.type !== 4).map((r) => r.cssText)
+        .concat(tel.flatMap((m) => [...m.cssRules].map((r) => r.cssText))).join('\n')
+      brut.remove()
+      document.head.appendChild(style)
+      if (expert) window.localStorage.setItem(clef, '1')
+      try {
+        amorcer()
+        rendreCalepinage(CTX.calepinage.id)
+        const coque = await screen.findByTestId('cal-coque')
+        expect(coque).toHaveAttribute('data-expert', expert ? '1' : '0')
+        expect(screen.getByTestId('cal-rail-avance')).toHaveAttribute('aria-expanded', 'false')
+        await userEvent.click(screen.getByTestId('cal-rail-avance'))
+        const feuille = await screen.findByRole('dialog', { name: 'Avancé' })
+        expect(screen.getByTestId('cal-rail-avance')).toHaveAttribute('aria-expanded', 'true')
+        for (const nom of ['Montrer au client', 'Relevé de visite', 'Photos du site']) {
+          expect(within(feuille).getByRole('link', { name: nom })).toBeVisible()
+        }
+        // La feuille du bas : posée sur toute la largeur, au-dessus de la barre des étapes, coins hauts arrondis.
+        const regle = tel.flatMap((m) => [...m.cssRules])
+          .find((r) => r.selectorText === ".cal-coque[data-feuille='1'] .cal-coque-avance:not([hidden])")
+        expect(regle?.style.bottom).toBe('var(--cal-rail-bas)')
+        expect(regle?.style.left).toMatch(/^0(px)?$/)
+        await userEvent.click(within(feuille).getByRole('button', { name: 'Fermer' }))
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Avancé' })).toBeNull())
+      } finally { style.remove(); window.matchMedia = avant }
+    })
+  }
 
   it('ACAL1809 — le bandeau porte l’entrée de la visite : « Relevé » au doigt, « Montrer au client » à la souris, jamais les deux', async () => {
     const avant = window.matchMedia

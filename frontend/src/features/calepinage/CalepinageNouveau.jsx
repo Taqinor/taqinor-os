@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { ReactReduxContext } from 'react-redux'
 import { refusServeur } from './commun/refusServeur'
 import { useNavigate } from 'react-router-dom'
 import { AlertCircle, MapPin, Plus } from 'lucide-react'
@@ -169,9 +170,14 @@ export default function CalepinageNouveau() {
   // vraie liste `?lead=<id>`, ou rendu par un 409 `calepinage_existant`.)
   const [existant, setExistant] = useState(null)
   const [retrouve, setRetrouve] = useState(null) // T4-X9-011 — le calepinage créé malgré une réponse perdue
+  // La personne connectée, lue du magasin (comme « Mes calepinages » de la liste) : seul SON calepinage est « retrouvé ».
+  const idMoi = useContext(ReactReduxContext)?.store?.getState?.()?.auth?.user?.id ?? null
   // Responsable facultatif : VIDE par défaut (le repli est le propriétaire du lead).
   const [responsableId, setResponsableId] = useState('')
   const responsables = useUtilisateursAssignables()
+  // ACAL2047 — la clé d'idempotence de CETTE création : la même tant qu'aucune réponse n'est arrivée pour le même corps
+  // (renvoi après délai dépassé), une neuve dès qu'une réponse est reçue ou que le corps change.
+  const creationRef = useRef(null)
   const refLead = useRef(null)
   const refClient = useRef(null)
   // CALX352 — partir d'un MODÈLE et/ou d'un JEU DE RÉGLAGES société. Rien
@@ -294,7 +300,17 @@ export default function CalepinageNouveau() {
       if (modeleId) corps.modele_id = modeleId
       if (presetId) corps.preset_id = presetId
       if (nom.trim()) corps.titre = nom.trim()
-      const res = await calepinageApi.calepinages.depuisModele(corps, { silencieuxExpiration: true }) // T4-X9-011
+      const empreinte = JSON.stringify(corps)
+      if (creationRef.current?.empreinte !== empreinte) {
+        creationRef.current = {
+          empreinte,
+          cle: globalThis.crypto?.randomUUID?.() || `cal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`,
+        }
+      }
+      const res = await calepinageApi.calepinages.depuisModele(
+        corps, { silencieuxExpiration: true, idempotencyKey: creationRef.current.cle }, // T4-X9-011 + ACAL2047
+      )
+      creationRef.current = null // créé : un nouvel envoi est une NOUVELLE création
       const id = res?.data?.id
       if (id && responsableId) {
         // Le responsable choisi est ÉCRIT puis relu au détail ; un refus ne
@@ -308,6 +324,14 @@ export default function CalepinageNouveau() {
       if (id) navigate(`/calepinage/${id}`)
       else setErreurs({ global: 'Le serveur n’a pas renvoyé l’identifiant du calepinage créé.' })
     } catch (err) {
+      // ACAL2047 — le 409 `{code: 'idempotency_en_cours'}` (core/idempotency.py::IdempotencyEnCours, `code` servi à la
+      // racine) : la MÊME création tourne encore. La clé est GARDÉE (le renvoi rejouera sa réponse) et l'écran le dit.
+      const enCours = err?.response?.status === 409 && err.response.data?.code === 'idempotency_en_cours'
+      if (err?.response && !enCours) creationRef.current = null // autre refus : corriger puis renvoyer = nouvelle création
+      if (enCours) {
+        setErreurs({ global: 'Création en cours… le serveur termine ce calepinage. Patientez quelques secondes puis appuyez de nouveau sur « Créer le calepinage » : la même demande sera reprise, sans doublon.' })
+        return
+      }
       const existantServi = err?.response?.status === 409
         ? err.response.data?.calepinage_existant : null
       if (existantServi) {
@@ -321,7 +345,9 @@ export default function CalepinageNouveau() {
             lead: surLead ? cibleId : undefined, client: surLead ? undefined : cibleId,
             depuis, ordering: '-created_at', ...pages,
           }))
-          trouve = lignes.find((l) => !nom.trim() || (l?.titre || l?.nom || '') === nom.trim()) ?? null
+          // Créé PAR MOI (`cree_par`) : jamais le calepinage qu'un collègue vient d'ouvrir sur le même lead ou client.
+          const mien = (l) => idMoi != null && (l?.cree_par?.id ?? l?.cree_par) === idMoi
+          trouve = lignes.find((l) => mien(l) && (!nom.trim() || (l?.titre || l?.nom || '') === nom.trim())) ?? null
         } catch {
           trouve = null
         }

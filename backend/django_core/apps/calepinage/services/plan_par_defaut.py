@@ -33,22 +33,31 @@ MESSAGE_PUISSANCE_CONCEPTION = ('Puissance du module prise de la conception (%s 
                                 'la fiche technique du produit dans Stock.')
 MESSAGE_ETAPE_SANS_FICHE = ('Étape « %s » non appliquée : la fiche technique de « %s » ne porte pas « %s » — '
                             'renseigner la fiche technique du produit dans Stock.')
-#: ACAL2045 — ce qu'il faut renseigner pour que la pose ne soit plus supposée.
-A_RENSEIGNER_POSE = 'renseigner « Type de toiture » sur la fiche du lead ou tracer le toit au calepinage'
+#: ACAL2045 — le geste qui lève la pose supposée : tracer le toit (relecture lot 5, tour 4 :
+#: « Type de toiture » ne lève rien, il ne CHANGE la supposition que pour un toit plat).
+A_TRACER_LE_TOIT = 'tracer le toit au calepinage'
+A_RENSEIGNER_POSE = (A_TRACER_LE_TOIT + ' pour la confirmer ; « Type de toiture » sur la fiche du lead ne la '
+                     'change que pour un toit plat (« Terrasse béton » : pose sur châssis)')
 
 
 def _pose_supposee(type_installation=None, type_toiture=None):
-    """ACAL2045 — RÈGLE PROPOSÉE, EN ATTENTE DE LA RÉPONSE DU FONDATEUR (décision 26 du rapport) :
-    la seule place où elle vit. ``(flush, supposition)`` : sur châssis quand le lead déclare un
-    toit plat (« Terrasse béton ») ou est commercial, industriel ou agricole ; sinon affleurante
-    (lead résidentiel ou marché non dit). Le document la dit par ``flush`` comme une pose réelle :
-    l'étape « Échauffement des modules » la relie à la table société (D-ACAL-84)."""
+    """ACAL2045 — LA règle de D-ACAL-107 (fondateur, 25/11/2026 : « By roof type »), la seule
+    place où elle vit. ``(flush, supposition)`` : sur châssis quand le lead déclare un toit plat
+    (« Terrasse béton ») ou est un site commercial ou industriel (agricole : champ de pompage,
+    posé sur châssis) ; sinon affleurante (toit en pente d'une maison, marché non dit). Le
+    document la dit par ``flush`` comme une pose réelle : l'étape « Échauffement des modules »
+    la relie à la table société (D-ACAL-84), aucun coefficient n'est posé ici."""
+    # B2 (relecture lot 5, tours 2 et 4) — la phrase nomme le geste qui LÈVE la supposition :
+    # toujours le toit tracé au calepinage ; « Type de toiture », vide sur un lead résidentiel
+    # (ou de marché non dit), est dit dans son vrai rôle : il ne CHANGE la pose supposée que
+    # pour un toit plat. Rempli, ou site commercial / industriel / agricole : le toit tracé seul.
     if type_toiture == 'terrasse_beton':
-        flush, champ, raison, quoi = False, 'type_toiture', 'toit plat déclaré', 'tracer le toit au calepinage'
+        flush, champ, raison, quoi = False, 'type_toiture', 'toit plat déclaré', A_TRACER_LE_TOIT
     elif type_installation in ('commercial', 'industriel', 'agricole'):
-        flush, champ, raison, quoi = False, 'type_installation', 'lead %s' % type_installation, A_RENSEIGNER_POSE
+        flush, champ, raison, quoi = False, 'type_installation', 'lead %s' % type_installation, A_TRACER_LE_TOIT
     else:
-        flush, champ, raison, quoi = True, 'type_toiture', 'panneaux à plat sur la couverture', A_RENSEIGNER_POSE
+        flush, champ, raison = True, 'type_toiture', 'panneaux à plat sur la couverture'
+        quoi = A_TRACER_LE_TOIT if type_toiture else A_RENSEIGNER_POSE
     valeur = 'affleurante' if flush else 'sur châssis'
     return flush, {'code': 'pose_supposee', 'champ': champ, 'valeur': valeur, 'source': 'defaut',
                    'message': 'Pose des panneaux supposée %s (%s) : %s.' % (valeur, raison, quoi)}
@@ -84,21 +93,47 @@ def _taille(kwc, watt_fiche, nb_conception):
     return 0, 0.0, None
 
 
+def _chainage_absent(etape, noms, fiche):
+    """Le SEUL faux manque de fiche connu : « Fenêtre MPPT » et « Pertes ohmiques DC » nomment
+    ``fiche_module.vmp_v`` quand le Vmp manque OU quand le chaînage (modules par chaîne) manque
+    (``etapes/mppt.py``, ``etapes/ohmique_dc.py`` : ``if not vmp or not modules…``). Le Vmp lu
+    par le lecteur de ces étapes (``valeurs.nombre``, non nul comme elles l'exigent) ⇒ c'est le
+    chaînage qui manque, pas la fiche."""
+    from .etapes import mppt, ohmique_dc
+    from .valeurs import nombre
+
+    return (etape.get('libelle') in (mppt.LIBELLE, ohmique_dc.LIBELLE) and noms == ['vmp_v']
+            and bool(nombre((fiche or {}).get('vmp_v'))))
+
+
+def _champ_de_fiche(etape, fiche):
+    """Le champ manquant d'une étape omise pour une raison ``fiche_module.*`` (le texte entier
+    de « Champ manquant : « … » », qui peut nommer aussi le réglage société qui la lève), sinon
+    ``None``. Relecture lot 5 (tour 4) : la valeur brute de la fiche n'est PAS rejugée ici —
+    l'étape l'a lue avec son propre lecteur et l'a refusée (« -0,35 », ``uc_w_m2k: 0``, une
+    technologie faite d'espaces…) : c'est un manque. Seule exception : :func:`_chainage_absent`."""
+    motif = etape.get('motif_omission') or ''
+    noms = re.findall(r'fiche_module\.(\w+)', motif)
+    if not noms or _chainage_absent(etape, noms, fiche):
+        return None
+    entier = re.search(r'Champ manquant : « ([^»]*fiche_module\.[^»]*) »', motif)
+    return entier.group(1).strip() if entier is not None else 'fiche_module.' + noms[0]
+
+
 def _suppositions_du_module(rendu, materiel, nb, watt_document):
-    """Rien d'inventé : la puissance prise de la conception, puis chaque étape de la cascade
-    que la fiche vide empêche (``Champ manquant : « fiche_module.… »``), le produit nommé."""
-    if not watt_document:
-        return []
+    """Rien d'inventé : la puissance prise de la conception (fiche sans ``pmax_wc``), puis
+    CHAQUE étape de la cascade omise pour une raison ``fiche_module.*`` — que la fiche porte
+    sa puissance ou non (relecture lot 5, B1 : une fiche à puissance sans coefficient de
+    température faisait omettre l'échauffement en silence) —, le produit et le champ nommés."""
     nom = ((materiel or {}).get('designations') or {}).get('module') or 'module du moteur'
     dites = [{'code': 'puissance_module_de_la_conception', 'champ': 'fiche_technique', 'valeur': watt_document,
               'source': 'conception', 'message': MESSAGE_PUISSANCE_CONCEPTION % (
-                  '{:g}'.format(watt_document), nb, nom)}]
+                  '{:g}'.format(watt_document), nb, nom)}] if watt_document else []
     for etape in (rendu['blocs'].get('cascade') or {}).get('etapes') or ():
-        manque = re.search(r'fiche_module\.(\w+)', etape.get('motif_omission') or '')
-        if manque is None:
+        champ = _champ_de_fiche(etape, (materiel or {}).get('module'))
+        if champ is None:
             continue
-        champ = manque.group(1)
-        dites.append({'code': 'fiche_module_incomplete', 'champ': 'fiche_technique', 'valeur': None,
+        dites.append({'code': 'fiche_module_incomplete', 'champ': 'fiche_technique', 'valeur': champ,
                       'source': 'defaut', 'message': MESSAGE_ETAPE_SANS_FICHE % (etape.get('libelle'), nom, champ)})
     return dites
 
@@ -122,7 +157,9 @@ def simuler_plan_par_defaut(company, lat, lon, kwc, *, pente=None, azimut=AZIMUT
     (:func:`_pose_supposee`, toujours dite dans ``suppositions``).
 
     Rend ``{production_annuelle, production_mensuelle, nb_panneaux, kwc, pente_deg,
-    azimut_deg, version_moteur, hash_entree, suppositions, document}``. Lève
+    azimut_deg, version_moteur, hash_entree, complete, suppositions, document}``
+    (``complete`` : le total de la cascade est complet, aucune perte du socle manquante —
+    ADEV155 ne sert au moteur qu'un plan complet). Lève
     ``SimulationRefusee`` (champ nommé) comme la simulation de la pose."""
     from ..models import Calepinage
     from .electrique import resoudre_materiel
@@ -148,6 +185,7 @@ def simuler_plan_par_defaut(company, lat, lon, kwc, *, pente=None, azimut=AZIMUT
         'pente_deg': pente_deg, 'azimut_deg': float(azimut),
         'version_moteur': rendu['blocs'][CLE_SIMULATION]['version_moteur'],
         'hash_entree': rendu['hash_entree'],
+        'complete': (production.get('total') or {}).get('complete') is True,
         'suppositions': ([] if pente is not None else [{
             'code': 'pente_supposee', 'champ': 'inclinaison_deg', 'valeur': PENTE_SUPPOSEE_DEG,
             'source': 'defaut', 'message': MESSAGE_PENTE_SUPPOSEE}]) + [pose_dite]

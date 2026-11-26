@@ -1,0 +1,831 @@
+[
+ {
+  "id": "T4-U1-013",
+  "gravite": "S3",
+  "ecran": "Calepinage › barre d'enregistrement",
+  "gestes": "Calepinage 1934 : Enregistrer le calepinage (« Conception enregistrée ») ; rouvrir l'onglet",
+  "attendu": "Après enregistrement : « Enregistré », pas de brouillon local proposé",
+  "vu": "Juste après « Conception enregistrée » : « Modifications non enregistrées » et le bandeau « BROUILLON LOCAL — Un brouillon non enregistré du 15:12 a été trouvé » ; le bandeau revient à chaque réouverture",
+  "scenario": "a",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U1/a22-panneaux.png",
+  "commits": [
+   "19a03d161c"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U1-018",
+  "gravite": "S4",
+  "ecran": "Calepinage (toutes étapes) et Résultats",
+  "gestes": "Ouvrir le calepinage sans GPS ; étape Résultats",
+  "attendu": "Messages en français sans clé technique",
+  "vu": "« Site.pin : épingle du site non posée … » (deux fois, plus un 409 sur soleil-legal à chaque ouverture) ; « produit-23019 » ; « electrique_societe.seuil_bas_dc_ac, electrique_societe.tolerance_polystring_bloquante_pct … » dans la liste des réglages",
+  "scenario": "a",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U1/a22-toit.png",
+  "commits": [
+   "b24a7e5dd0"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U1-022",
+  "gravite": "S2",
+  "ecran": "Fiche lead › Profil énergétique ; bouton « Devis auto » ; calepinage › besoin",
+  "gestes": "+ Nouveau lead ; GPS 33.5731 / -7.5898 ; Conso mensuelle (kWh) 450 ; cocher « L'été est différent de l'hiver ? » ; chercher où taper 700 kWh l'été ; Créer le lead ; Devis auto",
+  "attendu": "Une consommation déclarée en kWh (hiver et été) suffit au devis, ou un champ « conso été (kWh) » existe",
+  "vu": "Cocher « été différent » n'ouvre qu'un champ « Facture Été (MAD/mois) » : aucun champ pour 700 kWh l'été. Le bouton « Devis auto » est grisé « Manque : facture hiver, facture été » malgré 450 kWh saisis ; la fiche dit « Facture manquante · Devis non prêt ». Au calepinage : « Besoin d'après la facture : Lecture impossible — réessayer » et « Couvrir la facture : Lecture de la facture du lead… » qui ne finit pas. Le refus nomme les champs, mais force à inventer des montants en dirhams",
+  "scenario": "b",
+  "role": "Commercial responsable (anon_resp)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U1/b02-card.png",
+  "commits": [
+   "346b736c94",
+   "6833ee7eb6"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U1-023",
+  "gravite": "S2",
+  "ecran": "Calepinage 1940 › Résultats ; Expert › Accès solaire",
+  "gestes": "Toit 2 pans 10 × 8 ; cheminée 0,8 × 0,8 m hauteur 1,5 m sur le pan sud ; Expert › « Poser un bâtiment voisin » à l'ouest du pan sud, hauteur 6 m, 8 × 5 m ; Enregistrer ; Panneaux ; Résultats",
+  "attendu": "Ombre proche mesurée sur les panneaux posés (plan b), dite à l'étape Panneaux et aux Résultats",
+  "vu": "Étape Panneaux : aucune carte d'avis d'ombrage ; Résultats : « Ombres proches : à renseigner » et « Aucune ombre n'est signalée, mais cela ne prouve pas qu'il n'y en a pas ». En Expert, la même conception dit « 3 module(s) sur 6 couverts par une obstruction, de 1 à 4 heure(s), dès mai » alors que 3 panneaux sont posés",
+  "scenario": "b",
+  "role": "Commercial responsable (anon_resp)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U1/b09-res.png",
+  "commits": [
+   "f6492427e6",
+   "7efaddf330",
+   "7795843087"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U1-024",
+  "gravite": "S3",
+  "ecran": "Calepinage › Toit › Obstacles",
+  "gestes": "« + Ajouter » ; glisser un rectangle hors du toit ; type Cheminée",
+  "attendu": "Une cheminée hors de tout pan est refusée ou signalée",
+  "vu": "« Obstacle ajouté — le calepinage l'évite » : la cheminée reste posée à côté du toit, sans avertissement",
+  "scenario": "b",
+  "role": "Commercial responsable (anon_resp)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U1/b05-chim-set.png",
+  "commits": [
+   "f3bfd3ca99"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U1-025",
+  "gravite": "S3",
+  "ecran": "Calepinage › Toit › obstacle sélectionné",
+  "gestes": "Glisser un rectangle sur le toit (« 1,2 × 0,6 m » affiché) ; choisir le type « Cheminée »",
+  "attendu": "La taille dessinée est gardée",
+  "vu": "Après le choix du type, l'obstacle devient « 1,0 × 1,0 m » (champs Longueur et Largeur remis à 1,0) : la taille dessinée est remplacée sans le dire",
+  "scenario": "b",
+  "role": "Commercial responsable (anon_resp)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U1/b05-chim-set.png",
+  "commits": [
+   "f3bfd3ca99"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U2-005",
+  "gravite": "S3",
+  "ecran": "Calepinage (atelier guidé) → étape 1 « Le toit »",
+  "gestes": "Depuis la fiche du lead U2-e, « Dessiner le toit » ; dans l'étape Toit, survoler puis essayer de cliquer « Plat » sous « Forme »",
+  "attendu": "Choisir la forme « Plat » avant de créer le toit, ou au moins lire pourquoi les formes sont grisées",
+  "vu": "Les six formes (Plat, 2 pans, 4 pans, En L, En T, Tracé libre) sont grisées, sans infobulle ni texte qui dise pourquoi. Elles ne s'activent qu'après « Créer le toit » (Longueur 20 / Largeur 12), qui crée d'office un toit plat : l'ordre affiché (Forme puis Dimensions) ne marche pas",
+  "scenario": "e",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U2/s32-e-chip-hover.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U2/s33-e-toit-cree.png",
+  "commits": [
+   "09c49390ff",
+   "4aa4a6800e"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U2-013",
+  "gravite": "S4",
+  "ecran": "Calepinage → étape 4 « Les résultats » → « Du soleil au réseau »",
+  "gestes": "Lire le paragraphe sous « Électricité produite » après la simulation",
+  "attendu": "Une liste de réglages en français",
+  "vu": "La liste « 16 réglages utilisent des valeurs publiées… » se termine par trois clés techniques brutes : « electrique_societe.seuil_bas_dc_ac, electrique_societe.tolerance_polystring_bloquante_pct, electrique_societe.tolerance_polystring_acceptable_pct »",
+  "scenario": "e",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U2/s36-e-sim.png",
+  "commits": [
+   "c4c092b8cb"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U2-014",
+  "gravite": "S3",
+  "ecran": "Calepinage → étape 5 « Les documents » → Rapport d'étude (PDF, 22 pages)",
+  "gestes": "Étape Électrique : onduleur « Onduleur réseau Huawei 50kW Triphasé » choisi dans la liste (affiché sous « Onduleur ») et calepinage enregistré ; simulation lancée ; étape Documents → carte « Rapport d'étude » → « Télécharger »",
+  "attendu": "Le rapport remis reprend l'onduleur affiché à l'écran",
+  "vu": "Le rapport d'étude imprime « Onduleurs : non calculée — aucun onduleur désigné » et « Contrôles électriques non conformes : non calculée — aucun onduleur désigné », alors que l'étape Électrique affiche l'onduleur Huawei 50 kW choisi",
+  "scenario": "e",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U2/s34-e-elec.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U2/e-doc-Rapportdtude.pdf",
+  "commits": [
+   "1a46bf3a39"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U3-012",
+  "gravite": "S3",
+  "ecran": "Calepinage CAL-2611-1936 du lead U3-i → onglet Pompage (/calepinage/1936?onglet=pompage)",
+  "gestes": "Fiche du lead → « Dessiner le toit » → atelier → onglet Pompage",
+  "attendu": "Le pompage du calepinage reprend les valeurs déjà saisies sur la fiche et au devis (HMT 80 m, débit souhaité 20 m³/h, niveau statique 40 m, débit du forage 25 m³/h), ou dit qu'il ne les reprend pas",
+  "vu": "Tous les champs du panneau Pompage sont vides (niveau statique, HMT saisie, débit du forage, débit souhaité) : il faut tout retaper, et deux valeurs différentes peuvent coexister entre la fiche, le devis et le calepinage. Après saisie de HMT 80 et débit 20, « Calculer le dimensionnement » rend « Pompe retenue — », « Variateur assorti — » et le même refus « des pompes conviennent mais n'ont pas de prix renseigné »",
+  "scenario": "i",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U3/i36.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U3/i37-calc.png",
+  "commits": [
+   "16c60c458b",
+   "9403ef26b5"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U4-006",
+  "gravite": "S2",
+  "ecran": "Atelier calepinage, feuille « Avancé », ligne en tête",
+  "gestes": "Même calepinage (aucun devis lié, « DEVIS — » dans la fiche) → bouton « Avancé » du rail",
+  "attendu": "Aucun chiffre attribué « au devis » quand aucun devis n'est lié ; et si un devis est cité, son vrai chiffre (le devis envoyé du lead annonce 6 157 kWh/an avec batterie, 3 518 sans)",
+  "vu": "La feuille écrit « Le devis annonce : 22 709 kWh/an — production standard de la ville (étude technique : −4,5 %) ». 22 709 kWh/an est l'estimation de la pose affichée au bandeau des panneaux, pas un chiffre de devis ; le devis envoyé au client dit 6 157 kWh/an. Le vendeur lit un chiffre faux attribué au devis",
+  "scenario": "n",
+  "role": "Commercial responsable",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/n28-avance.png",
+  "commits": [
+   "b7a5c60648"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U4-009",
+  "gravite": "S3",
+  "ecran": "Atelier calepinage, étape 4 « Les résultats », encadré sous « Du soleil au réseau »",
+  "gestes": "Étape Résultats après simulation",
+  "attendu": "Des mots que le vendeur comprend",
+  "vu": "La liste des « 16 réglages » se termine par des clés techniques brutes : « electrique_societe.seuil_bas_dc_ac, electrique_societe.tolerance_polystring_bloquante_pct, electrique_societe.tolerance_polystring_acceptable_pct »",
+  "scenario": "n",
+  "role": "Commercial responsable",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/n22-res-fin.png",
+  "commits": [
+   "c4c092b8cb"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U4-012",
+  "gravite": "S2",
+  "ecran": "Atelier calepinage, étape 4 « Les résultats » et « Voir les 26 étapes » ; étape Documents « Prêt à envoyer ? »",
+  "gestes": "Étape Panneaux → « Couvrir la facture (Recommandé) » (4 panneaux Jinko 710 W) → Électrique : onduleur « Onduleur hybride Deye 5kW Monophasé » (celui du devis) → « Raccorder automatiquement » (1 × 4 panneaux) → Enregistrer → Résultats",
+  "attendu": "Une production plausible pour Casablanca, ou un contrôle qui avertit que le raccordement proposé fait perdre une grande part de la production",
+  "vu": "« Production la première année 3 116 kWh », « 1 097 kWh par kWc », « Pertes au total 51,2 % », dont « Câbles et onduleur − 35,9 % » ; mois par mois, mai (248 kWh) produit moins que janvier (355 kWh). Aucun contrôle ne le signale (« Tension des chaînes par grand froid », « Compatibilité du matériel » rangés dans les bons ; seul le ratio 0,57 est signalé). La feuille Avancé dit en même temps « Le devis annonce : 4 542 kWh/an »",
+  "scenario": "n",
+  "role": "Commercial responsable",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/n36-res.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/n37-26etapes.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/n31-docs.png",
+  "commits": [
+   "f616c7a7a6",
+   "f841613842"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U4-014",
+  "gravite": "S3",
+  "ecran": "Nouveau calepinage (onglet Client) ; atelier, étape Documents, « Pourquoi : Taille dimensionnée sur la consommation »",
+  "gestes": "Créer un calepinage à partir d'un client sans lead ; lire le formulaire ; à l'étape Documents ouvrir le « ? » de « Taille dimensionnée sur la consommation »",
+  "attendu": "Sur un calepinage sans lead, aucun renvoi « au lead » qui n'existe pas ; le geste proposé est faisable (rattacher un lead, saisir une taille souhaitée)",
+  "vu": "Le formulaire du client dit « Laissé vide, le responsable est le propriétaire du lead. » (il n'y a pas de lead). Le « ? » dit « Si ce n'est pas bon : saisissez la facture du lead. » avec un bouton « Saisir la facture ». Phrases qui disent bien l'absence de lead (à garder) : « Aucune facture d'hiver renseignée sur le lead (ou aucun lead rattaché à ce calepinage) » à l'étape Panneaux, et « Le devis n'est pas encore chiffré : aucun lead lié » dans Avancé",
+  "scenario": "o",
+  "role": "Commercial responsable",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/o09-pret.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/o19-pourquoi-taille.png",
+  "commits": [
+   "f4b2ce3dec"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U4-016",
+  "gravite": "S3",
+  "ecran": "Atelier calepinage (mode Expert), onglets « Terrain » et « Ombrière » ; barre projet",
+  "gestes": "Lead U4-p (Commercial) → « Dessiner le toit » → Expert → onglet Terrain : 20 × 10 m, rangées 180°, tables 25°, module 2,384 × 1,303 m 710 Wc, 2 modules par table → « Calculer le champ au sol » (28 modules, 19,88 kWc) → « Enregistrer le champ » → onglet Ombrière : 12 × 6 m, hauteur 2,5 m, 8°, 2 modules par travée → « Calculer l'ombrière » (16 modules) → « Enregistrer l'ombrière » → « Enregistrer le calepinage »",
+  "attendu": "Le total du projet compte chaque surface une fois : 44 panneaux, 31,24 kWc, partout",
+  "vu": "Le tableau des totaux sous l'ombrière dit « OMBRIÈRES 1 · CHAMPS AU SOL 1 · MODULES 44 » (28 + 16, bien compté une fois), mais la barre projet reste à « 28 panneaux · 19,88 kWc » après « Enregistrer l'ombrière » et après « Enregistré à 16:49 » ; elle ne passe à « 44 panneaux · 31,24 kWc » qu'après rechargement de la page. Le même tableau compte aussi « PANS 1 » alors qu'aucun pan de toit n'est tracé",
+  "scenario": "p",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/p12-ombriere-enregistree.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/p14-elec.png",
+  "commits": [
+   "53e8bea4aa",
+   "4cd499c4e3",
+   "a2fcb38a59"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U4-017",
+  "gravite": "S2",
+  "ecran": "Atelier calepinage, feuille « Avancé » (ligne de tête), calepinage CAL 1941 du lead U4-p",
+  "gestes": "Lead U4-p sans aucun devis → calepinage avec champ au sol et ombrière (44 modules) → Électrique → lire la ligne de tête de l'inspecteur / Avancé",
+  "attendu": "Aucun chiffre attribué à un devis qui n'existe pas",
+  "vu": "« Le devis annonce : 49 960 kWh/an — production standard de la ville » alors que le lead n'a aucun devis (fiche « DEVIS — »). Jumeau de T4-U4-006 : la phrase prête au devis l'estimation de l'atelier",
+  "scenario": "p",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/p14-elec.png",
+  "commits": [
+   "b7a5c60648"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U4-018",
+  "gravite": "S2",
+  "ecran": "Atelier calepinage, étape 3 « Le raccordement » (mode Guidé), calepinage avec champ au sol + ombrière seulement",
+  "gestes": "Étape Électrique → onduleur « Deye 30kW Triphasé » → « Régler » (Matériel) → module Jinko 710 W et onduleur → « Enregistrer le matériel » (les deux passent à « désigné ») → « Raccorder automatiquement » ; rejoué deux fois",
+  "attendu": "Les 44 modules du sol et de l'ombrière apparaissent sur le plan et se raccordent, ou un message dit pourquoi ils ne peuvent pas l'être",
+  "vu": "Le plan n'affiche ni le champ au sol ni l'ombrière (seulement l'épingle et « Localisez le toit ») ; « Raccorder automatiquement » ne crée aucune chaîne et n'affiche rien ; la ligne « Matériel électrique désigné : Non désigné » reste, et au passage suivant l'onduleur revient à « — à désigner — ». Le devis de ces surfaces ne peut donc pas être généré par ce chemin (pile très lente à ce moment : plusieurs « La connexion a expiré »)",
+  "scenario": "p",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/p-e1-raccorde.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/p18-raccorder.png",
+  "commits": [
+   "1e3015ff2f",
+   "de6f6fe900",
+   "4cd499c4e3"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U4-020",
+  "gravite": "S2",
+  "ecran": "Relevé de visite au téléphone (/calepinage/1941/releve), puis onglet « Relevé terrain » de l'atelier dans un autre navigateur",
+  "gestes": "Relevé ouvert en ligne → « Mesurer » (aucun capteur) → « Pente saisie à la main » 15 → « Boussole » → « Orientation saisie à la main » 170 → couper le réseau (« Hors ligne » affiché) → Longueur 9,8, Largeur 6,4, pente 18, photo « Oblique » → « Terminer le relevé » → rétablir le réseau → « Relevé envoyé. » au bout d'environ 5 s → autre contexte (Chromium, bureau) : atelier → Expert → « Relevé terrain »",
+  "attendu": "Tout ce qui est tapé hors ligne arrive au serveur au retour du réseau, ou l'écran dit après coup ce qui reste à envoyer",
+  "vu": "Hors ligne, l'écran prévient : « La pente du toit et L'orientation du toit s'enregistrera au prochain « Terminer le relevé » avec du réseau. » Au retour du réseau seul le relevé part (« Relevé envoyé. ») ; plus rien ne rappelle que la pente (18°) et l'orientation (170°) ne sont pas parties. Côté serveur, le relevé n° 74 porte les longueurs 9,8 m et 6,4 m mais « azimut » vide ; l'onglet Relevé terrain n'affiche ni pente ni orientation. La pente et l'orientation tapées sont perdues si le technicien ne touche pas une deuxième fois « Terminer »",
+  "scenario": "q",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/q05-4-terminer-hors-ligne.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/q05-5-retour-0.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/q08-Relev_terrain.png",
+  "commits": [
+   "57399684a3"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U4-021",
+  "gravite": "S3",
+  "ecran": "Relevé de visite au téléphone ; même écran ouvert dans un autre navigateur",
+  "gestes": "Photo « Depuis le sol » envoyée en ligne, photo « Oblique » prise hors ligne (« 2 sur 3 », « en attente ») → retour du réseau → « Relevé envoyé. » ; puis rouvrir le relevé dans un autre contexte (Chromium)",
+  "attendu": "Après l'envoi, la tuile Oblique montre la photo envoyée et le compteur reste à 2 sur 3 ; un autre appareil voit le relevé enregistré",
+  "vu": "Après « Relevé envoyé. » le compteur redescend à « 1 sur 3 » et la tuile « Oblique (aérienne) » redevient vide, alors que le serveur a bien les deux photos (l'onglet « Photos du site » liste « oblique » et « sol »). Dans l'autre contexte, le relevé s'ouvre avec Longueur et Largeur vides, « Pente du toit à mesurer », « 0 sur 3 » : l'écran du relevé ne relit jamais ce qui est enregistré, on croit tout perdu",
+  "scenario": "q",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/q05-4-terminer-hors-ligne.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/q05-5-retour-0.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/q06-autre-contexte.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/q07-Photos_du_site.png",
+  "commits": [
+   "2acdeffa83"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U4-023",
+  "gravite": "S4",
+  "ecran": "Relevé de visite au téléphone, hors ligne",
+  "gestes": "Couper le réseau, prendre une photo « Oblique », toucher « Terminer le relevé »",
+  "attendu": "Un texte lisible et accordé",
+  "vu": "La tuile affiche « Oblique (aérienne) · en attente » coupé (« Oblique » en blanc sur fond clair, « attente » tronqué) ; la phrase « La pente du toit et L'orientation du toit s'enregistrera » a une majuscule au milieu et un verbe au singulier",
+  "scenario": "q",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/q05-4-terminer-hors-ligne.png",
+  "commits": [
+   "74de4424c7"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U4-024",
+  "gravite": "S3",
+  "ecran": "Atelier calepinage CAL 1941 (pan de toit + champ au sol + ombrière), barre projet, étape Panneaux",
+  "gestes": "Utilisateur A (Commercial) : étape Panneaux → « Le plus de panneaux » sur le pan de toit (10 → 12) → lire la barre → « Enregistrer le calepinage » (« Enregistré à 17:42 ») → relire ; utilisateur B (Commercial responsable) recharge ensuite le même calepinage",
+  "attendu": "La barre donne le total du projet (toit + sol + ombrière) pendant l'édition et après l'enregistrement : 56 panneaux, 39,76 kWc",
+  "vu": "Pendant l'édition la barre dit « 12 panneaux · 8,52 kWc » (le pan de toit seul, sans les 44 modules du sol et de l'ombrière) ; juste après « Enregistré à 17:42 » elle dit « 54 panneaux · 38,34 kWc » (l'ancien total) ; l'utilisateur B qui recharge lit « 56 panneaux · 39,76 kWc ». Trois totaux pour la même conception. La carte « Couvrir la facture » répète aussi « 10 panneaux 5,50 kWc » pour 10 × 710 W (jumeau de T4-U4-001)",
+  "scenario": "r",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/r03-A-change.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/r03-A-enregistre.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/r04-B-relu.png",
+  "commits": [
+   "53e8bea4aa",
+   "4cd499c4e3",
+   "a2fcb38a59"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U4-025",
+  "gravite": "S3",
+  "ecran": "Atelier calepinage ouvert dans deux navigateurs (CAL 1941)",
+  "gestes": "Ouvrir le calepinage chez A et chez B, tracer un toit dans chacun (« Créer le toit »), puis attendre l'enregistrement de A (bouton « Enregistrer le calepinage ») ; compter les requêtes envoyées par chaque page",
+  "attendu": "Le brouillon automatique s'écrit à un rythme qui ne charge pas le serveur, et l'enregistrement explicite passe",
+  "vu": "Chaque page envoie un PUT « brouillon » (corps = toute la conception) environ chaque seconde : 49 PUT pour A et 52 pour B en un peu plus de 3 minutes, sans geste de l'utilisateur pendant l'attente. Pendant ce temps l'enregistrement de A échoue (« Le serveur n'a pas répondu : vérifiez votre connexion puis réessayez. ») et une autre fois « Catalogue des modules indisponible : rien n'est enregistré, rechargez la page. ». Lien de cause à effet non prouvé (pile partagée par plusieurs relecteurs), mais le rythme est mesuré",
+  "scenario": "r",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/r01-A-enregistre.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/r01-B-enregistre.png",
+  "commits": [
+   "19a03d161c",
+   "0bf394fff0"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U4-026",
+  "gravite": "S4",
+  "ecran": "Atelier calepinage, étape Panneaux, quand le catalogue ne répond pas",
+  "gestes": "Ouvrir l'étape Panneaux pendant que le serveur est lent (catalogue des modules en échec)",
+  "attendu": "Le nom du module, pas son identifiant interne",
+  "vu": "« Zone 1 : le module « produit-23019 » ne figure plus dans le catalogue de la société — rechargez le catalogue, ou choisissez un module de la liste. » : l'identifiant technique s'affiche, et la phrase affirme que le module ne figure plus au catalogue alors que c'est la lecture du catalogue qui a échoué (« Catalogue des modules indisponible »)",
+  "scenario": "r",
+  "role": "Commercial responsable",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/r02-B-enregistre.png",
+  "commits": [
+   "03bd4189d7",
+   "b24a7e5dd0"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U4-027",
+  "gravite": "S4",
+  "ecran": "Atelier calepinage, utilisateur B après le refus de son enregistrement (409)",
+  "gestes": "A enregistre (« Enregistré à 17:42 ») puis B, qui avait le calepinage ouvert, clique « Enregistrer le calepinage »",
+  "attendu": "Un message de conflit, une fois, lisible en entier, et une barre qui ne dit pas « enregistré »",
+  "vu": "Le conflit est bien dit (réponse HTTP 409, bouton « Recharger », rien d'écrasé — à garder), mais la même phrase apparaît trois fois (bandeau tronqué « rechargez ava… », seconde phrase dans le même bandeau, notification en bas), et la barre garde la coche verte « Enregistré à 17:32 » à côté du refus",
+  "scenario": "r",
+  "role": "Commercial responsable",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/r03-B-enregistre.png",
+  "commits": [
+   "e115807fbe",
+   "b24a7e5dd0"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-V1-006",
+  "gravite": "S3",
+  "ecran": "Calepinage › Documents › Plan de pose pour l'équipe (PDF, page 1)",
+  "gestes": "Calepinage 1959 › Documents › Télécharger : Plan de pose pour l'équipe › ouvrir la page 1",
+  "attendu": "La légende tient dans la page : nom de l'onduleur, emplacement, tension à froid lisibles en entier",
+  "vu": "Le bloc de droite est coupé par le bord de la page : « Onduleur Huawei Onduleur réseau Huawei 5kW Monophas », « … à définir sur site » tronqué, « Chaîne 1 : 152,4 V à vide maxi à froid (4,18 °C, météo type d » ; la mention d'échelle en bas chevauche le trait de cote du toit",
+  "scenario": "b",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/pdf/b-Plan_de_po-p1.png",
+  "commits": [
+   "c92e9e62d4"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-V1-012",
+  "gravite": "S3",
+  "ecran": "Calepinage 1960 (lead V1-r sans GPS) › étape Résultats › « Lancer la simulation »",
+  "gestes": "Toit 10 × 8 créé, 24 panneaux, onduleur pas encore choisi ; Résultats › Lancer la simulation › attendre 140 s",
+  "attendu": "Le calcul aboutit, ou un refus en français qui dit quoi faire (ex. « choisissez l'onduleur » — déjà écrit en haut de l'écran)",
+  "vu": "Après 140 s, sous le bouton : « SoftTimeLimitExceeded() » (nom brut d'une exception du serveur), aucune phrase, aucun nouvel essai proposé ; le bouton reste « Lancer la simulation ». Après choix de l'onduleur, la simulation partie seule a abouti en 170 s (26 653 kWh)",
+  "scenario": "b",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V1/r04-res1.png",
+  "commits": [
+   "e240d72950"
+  ],
+  "rejeu_precedent": "autre"
+ },
+ {
+  "id": "T4-X1-007",
+  "gravite": "S3",
+  "ecran": "Fenêtre PDF › Calepinage › « Inclure la planche cotée »",
+  "gestes": "DEV-202611-0137 (aucun calepinage) › PDF › « Inclure la planche cotée » › Générer",
+  "attendu": "Sans calepinage, l'option est grisée ou un message dit qu'aucune planche ne peut être ajoutée",
+  "vu": "Le PDF produit est identique, ligne pour ligne, au PDF sans l'option (comparaison des textes : aucune différence) ; rien n'est dit, ni dans la fenêtre ni après",
+  "scenario": "balayage u",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/r-plan.txt",
+  "commits": [
+   "8d8b865d50"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X2-001",
+  "gravite": "S2",
+  "ecran": "Calepinage 1970 (lead X2-a, Rabat) › étape 2 Les panneaux › carte « Couvrir la facture »",
+  "gestes": "Toit « 2 pans » 12 × 8 m › Créer le toit › Poser les panneaux ; lire la carte « Couvrir la facture » (Recommandé), la bande du haut de la carte et la barre projet ; Enregistrer, recharger, relire",
+  "attendu": "La carte de l'option choisie donne la puissance des panneaux qu'elle pose (5 × 710 W = 3,55 kWc), comme la bande et la barre projet",
+  "vu": "Carte « Couvrir la facture — Recommandé » : « 5 panneaux 2,75 kWc » ; au même moment la bande « Panneaux 5 · Puissance 3,55 kWc », la barre projet « 5 panneaux · 3,55 kWc » et le message « Posé d'après la facture : 5 panneaux · 3,55 kWc ». 2,75 kWc est le « Besoin d'après la facture » de l'étape Toit, affiché comme si c'était la puissance des 5 panneaux. Identique après enregistrement et rechargement (aussi vu sur p1-pan.png)",
+  "scenario": "balayage",
+  "role": "Commercial responsable (anon_resp)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X2/p2-pan-reload.png",
+  "commits": [
+   "6a93963486",
+   "8e63cd111c"
+  ],
+  "rejeu_precedent": "pas-corrige"
+ },
+ {
+  "id": "T4-X2-002",
+  "gravite": "S3",
+  "ecran": "Calepinage 1970 › étape 2 Les panneaux › bande « Production · estimation de la pose »",
+  "gestes": "Toit 2 pans 12 × 8 m + cheminée 1,0 × 1,2 m hauteur 1,5 m › Poser les panneaux (5 panneaux) ; lire la production ; Enregistrer le calepinage ; recharger la page ; étape Panneaux ; relire",
+  "attendu": "La même pose de 5 panneaux donne la même production avant et après l'enregistrement, ou l'écran dit pourquoi elle change",
+  "vu": "Avant l'enregistrement : « Production · estimation de la pose 5 310 kWh / an » ; après rechargement, même pose, mêmes 5 panneaux · 3,55 kWc : « 5 623 kWh / an », et une carte nouvelle « Ombres à compter : … cette ombre n'est pas encore comptée sur les panneaux posés : ouvrez le calcul des ombres du toit » : l'écart (+313 kWh/an) correspond vraisemblablement à l'ombre de la cheminée comptée avant l'enregistrement et plus comptée à la réouverture (cause non prouvée ; le fait prouvé est le changement de chiffre sans geste). La carte ne donne ni bouton ni lien vers ce « calcul des ombres du toit »",
+  "scenario": "balayage",
+  "role": "Commercial responsable (anon_resp)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X2/p2-pan-reload.png",
+  "commits": [
+   "bd4b2b68ab",
+   "0ae2498ced"
+  ],
+  "rejeu_precedent": "pas-corrige"
+ },
+ {
+  "id": "T4-X2-006",
+  "gravite": "S3",
+  "ecran": "Calepinage 1971 › Expert › étape Toit : « TOTAL — TOUTES LES ZONES » et pied de l'outil (« Vidéo 10 s »)",
+  "gestes": "Toit plat 10 × 8, 24 panneaux, Enregistrer, Résultats › Lancer la simulation (27 197 kWh) ; puis Expert › Toit ; lire la carte de droite",
+  "attendu": "Une seule production pour la même pose sur le même écran, ou l'estimation retirée une fois la simulation faite (comme le fait déjà l'étape Panneaux en Guidé)",
+  "vu": "Même écran, mêmes 24 panneaux · 17,04 kWc : « PRODUCTION ESTIMÉE 21 797 kWh/an · estimation de l'atelier » (et « Est-Ouest dos à dos — 24 panneaux · 17,04 kWc · 21 797 kWh/an ») et, plus bas, « 24 panneaux · 17,04 kWc · P50 27 197 kWh/an (simulation) » : 5 400 kWh/an d'écart (25 %). (L'étape Panneaux en Guidé, elle, passe bien à « Production la première année 27 197 kWh » après la simulation : m0-pan-after-sim.png.)",
+  "scenario": "balayage",
+  "role": "Commercial responsable (anon_resp)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X2/w1-ew2full.png",
+  "commits": [
+   "209c438b18",
+   "8e63cd111c"
+  ],
+  "rejeu_precedent": "pas-corrige"
+ },
+ {
+  "id": "T4-X3-009",
+  "gravite": "S2",
+  "ecran": "Calepinage X3-a : étape 2 Les panneaux, étape 4 Les résultats, étape 5 (contrôle DC/AC), feuille Avancé",
+  "gestes": "Ouvrir le calepinage neuf du lead X3-a › Toit 2 pans 10 × 8 › Poser les panneaux (lire la pose automatique) › Couvrir la facture › Enregistrer › Résultats › Documents › Avancé",
+  "attendu": "Une seule cible exprimée dans le module posé (commit fc9fa2c7a5 : « la cible de l'atelier est une PUISSANCE, comptée dans le module posé ») : 4,40 kWc = 6 panneaux de 710 W partout",
+  "vu": "Carte « Couvrir la facture » : « 4,40 kWc — 6 panneaux de 710 W (la conception du lead…) » ; mais la première pose automatique est « Posé d’après la facture : 8 panneaux · 5,68 kWc » (e5-panneaux.png), le bandeau des Résultats dit « conception du lead : 4,40 kWc (8 panneaux) », le contrôle DC/AC « la conception du lead en compte 8 » et la feuille Avancé « 8 CIBLE — PANNEAUX » (e23-pertes.png)",
+  "scenario": "balayage",
+  "role": "anon_admin2",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X3/e7-res.png",
+  "commits": [
+   "ce3f0038ee",
+   "ba878975f8"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X5-002",
+  "gravite": "S2",
+  "ecran": "Calepinage 1973 (lead X5-n, Casablanca, factures hiver 1 200 / été 700 MAD, présent en journée) › étape Résultats (tableau « Valeurs mensuelles ») et Rapport d’étude PDF (p. 14-15)",
+  "gestes": "Lead créé avec facture d'hiver 1 200 MAD, « L'été est différent de l'hiver ? » coché, facture d'été 700 MAD ; calepinage posé et simulé ; lire « Valeurs mensuelles » de l'étape Résultats ; télécharger le Rapport d'étude (Documents) et lire p. 14 « Consommation et hypothèses » ; comparer au PDF du devis envoyé DEV-202611-0146 p. 1",
+  "attendu": "La consommation mois par mois du calepinage suit les deux factures déclarées (hiver plus fort que l'été), comme le devis qui affiche « Estimation — deux factures (hiver/été) »",
+  "vu": "Consommation plate : 597 kWh chaque mois de 31 jours, 577 les mois de 30 jours, 543 en février (Jan 597 = Juil 597) ; Rapport d'étude p. 14 « Origine de la courbe layout », mêmes valeurs, et p. 15 autoconsommation 30,59 % / couverture 40,16 % calculées sur cette courbe. Le PDF du devis envoyé montre au contraire des barres hautes en hiver et basses en été (« Estimation — deux factures (hiver/été) », capture devis-envoye-p1.png) et « 74 % couverture ». L'en-tête du calepinage dit « Lead · facture 950 MAD / mois » (moyenne) : les deux factures sont réduites à une moyenne sans que l'écran le dise. Pas S1 : le total annuel est le même (7 028 kWh), seule la répartition et les taux qui en découlent changent",
+  "scenario": "n",
+  "role": "Commercial responsable (anon_resp)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X5/sim-r0.png",
+  "commits": [
+   "93eeb00905"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X5-003",
+  "gravite": "S2",
+  "ecran": "Calepinage 1973 (lead X5-n, Casablanca, factures hiver 1 200 / été 700 MAD, présent en journée) › étape 2 Les panneaux (carte « Couvrir la facture »), étape Toit, devis envoyé DEV-202611-0146, fiche du lead",
+  "gestes": "Poser les panneaux juste après « Créer le toit » ; lire la carte « Couvrir la facture » et la bande ; plus tard (après le recalcul de la conception du lead à 05:09) relire la carte ; faire le « Devis auto » du lead, l'envoyer (Copier le lien) et lire son PDF ; lire la fiche du lead",
+  "attendu": "La cible de l'atelier, la conception du lead et le devis donnent la même taille, le même module et la même production pour la même facture",
+  "vu": "Juste après la pose : carte « Couvrir la facture — Recommandé : 8 panneaux 4,40 kWc » (8 × 710 W = 5,68 kWc, déjà T4-X2-001, toujours là sur 22e6aa81ae) et étape Toit « Besoin d'après la facture ≈ 4,40 kWc ». Ensuite, sans rien changer à la facture : carte « 3 panneaux 2,13 kWc » et Toit « ≈ 2,13 kWc » (captures exp0-pan-now.png, tabs1-tab-q-pente.png) ; le changement n'est annoncé nulle part et la pose déjà faite (8) reste. Devis envoyé : « Sans batterie 4 panneaux 550 W · 2,2 kWc · 3 527 kWh/an », « Avec batterie 8 panneaux 550 W · 4,4 kWc · 7 053 kWh/an » (module 550 W, alors que le calepinage et sa cible portent le Canadian Solar 710 W) ; Résultats « Production de la conception : 3 414 kWh par an » ; fiche du lead « 4,40 kWc devisés ». Trois tailles (2,13 / 2,2 / 4,4 kWc), deux modules, deux productions (3 414 / 3 527) pour la même conception",
+  "scenario": "n",
+  "role": "Commercial responsable (anon_resp)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X5/roof-saved.png",
+  "commits": [
+   "c096d3d9d1",
+   "70d6f32690",
+   "ae5726103d"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X5-004",
+  "gravite": "S2",
+  "ecran": "Calepinage 1973 (lead X5-n, Casablanca, factures hiver 1 200 / été 700 MAD, présent en journée) › Documents (contrôles), Avancé, onglets Économie et Fiches équipements ; fiche du lead",
+  "gestes": "Lead avec devis automatique DEV-202611-0146 envoyé (Copier le lien → « Envoyé ») ; dans le calepinage du même lead, retirer 2 panneaux (8 → 6), Enregistrer, simulation partie seule ; relire Documents, Avancé, Économie, Fiches équipements, puis la fiche du lead et son onglet Devis",
+  "attendu": "Le devis envoyé reste intact (c'est le cas : PDF identique avant/après) et les écrans disent l'écart entre le devis envoyé (2,2 / 4,4 kWc) et la nouvelle pose (6 panneaux · 4,26 kWc), avec « Réviser le devis »",
+  "vu": "Aucun écran ne nomme l'écart. Le calepinage ignore le devis du lead : Avancé « DEVIS — » et « Moteur du devis sur cette pose (aucun devis lié) : 6 829 kWh/an » ; Économie « Aucun devis lié à ce calepinage : le bloc économie n'est publié que pour un calepinage rattaché à un devis » ; Fiches équipements « Aucun devis lié à ce calepinage » ; contrôle « Devis à jour de la conception — Vérifié à la création du devis » (capture dchk-devchk.png). Aucun « Réviser le devis » dans l'atelier. Fiche du lead : toujours « 🛰️ 4,40 kWc devisés » et « CALEPINAGE CAL-2611-1973 » côte à côte ; l'onglet Devis n'offre que le « Réviser (nouvelle version) » général, sans écart. Seule trace : « Puissance des panneaux face à l'onduleur … (jugé pour la pose : 6 panneaux — la conception du lead en compte 3) »",
+  "scenario": "n",
+  "role": "Commercial responsable (anon_resp)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X5/aft-docs-after.png",
+  "commits": [
+   "a723c5f232",
+   "a8a036fd8f"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X5-005",
+  "gravite": "S3",
+  "ecran": "Calepinage 1973 (lead X5-n, Casablanca, factures hiver 1 200 / été 700 MAD, présent en journée) › étape 2 Les panneaux › bande du haut",
+  "gestes": "Poser les panneaux, Enregistrer, recharger : lire « Production · estimation de la pose » et « Production ÷ consommation » ; puis retirer 2 panneaux et Enregistrer",
+  "attendu": "Le pourcentage « Production ÷ consommation » est le quotient des deux nombres affichés (production de la bande ÷ consommation 7 028 kWh)",
+  "vu": "Après enregistrement : « 9 105 kWh / an » et « ≈ 123 % » (9 105 ÷ 7 028 = 130 % ; 123 % = 8 619, l'estimation d'avant l'enregistrement, déjà vue changer sans geste : T4-X2-002). Après retrait de 2 panneaux : « 6 829 kWh / an » et « ≈ 92 % » (6 829 ÷ 7 028 = 97 %). La même bande montre un pourcentage qui ne vient pas de son propre chiffre",
+  "scenario": "n",
+  "role": "Commercial responsable (anon_resp)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X5/roof-saved.png",
+  "commits": [
+   "b3ceb74d00",
+   "6da220f4ea"
+  ],
+  "rejeu_precedent": "pas-corrige"
+ },
+ {
+  "id": "T4-X5-010",
+  "gravite": "S2",
+  "ecran": "Calepinage 1973 (lead X5-n, Casablanca, factures hiver 1 200 / été 700 MAD, présent en journée) › devis généré par « Générer le devis » (DEV-202611-0147) et « Resynchroniser le devis »",
+  "gestes": "Étape Électrique : onduleur désigné « Onduleur hybride Deye 5kW Monophasé » (Matériel électrique) › « Générer le devis » › lire le PDF du devis et l'onglet Fiches équipements ; passer à 7 panneaux › « Resynchroniser le devis »",
+  "attendu": "Le devis né du calepinage chiffre l'onduleur désigné et contrôlé dans l'étape Électrique",
+  "vu": "Le devis DEV-202611-0147 porte « Onduleur réseau Huawei 5kW Monophasé » (PDF p. 1 et 2, Fiches équipements « ONDULEUR — ONDULEUR RÉSEAU HUAWEI 5KW ») alors que le calepinage, son schéma unifilaire, sa note de calcul et son plan de pose portent le Deye 5 kW hybride. À 7 panneaux, « Resynchroniser le devis » est refusé : « 7 panneaux … sont incompatibles avec « Onduleur réseau Huawei 5kW Monophasé » : Isc cumulé 18,6 A > 18,0 A … le devis n'a pas été modifié », pendant que l'étape Électrique (Deye) compte ses contrôles bons. Même refus en passant outre en Administrateur. Impasse : aucun écran ne propose de mettre l'onduleur désigné dans le devis",
+  "scenario": "n",
+  "role": "Commercial responsable (anon_resp)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X5/resync-resync.png",
+  "commits": [
+   "7a26fd5532",
+   "b064a874c1"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X5-011",
+  "gravite": "S2",
+  "ecran": "Calepinage 1973 (lead X5-n, Casablanca, factures hiver 1 200 / été 700 MAD, présent en journée) › étape Résultats › « Réviser le devis » (devis lié DEV-202611-0147 envoyé)",
+  "gestes": "Devis DEV-202611-0147 (6 panneaux) généré depuis le calepinage puis envoyé ; passer la pose à 7 panneaux, Enregistrer ; l'étape Résultats affiche « Le devis envoyé n'est pas modifié : « Réviser le devis » crée une nouvelle version sur la conception » › « Réviser le devis » › lire le PDF de la version créée",
+  "attendu": "La nouvelle version reprend la conception courante (7 panneaux · 4,97 kWc)",
+  "vu": "La version créée DEV-202611-0148 (v2) reprend le contenu de l'ancienne : « 4,26 kWc · 6 829 kWh/an · 6 panneaux × 710 W », ligne « Panneau Canadien Solar 710W … 6 » (PDF devis-cal-0148.pdf), alors que l'en-tête de l'écran ouvert dit « 7 panneaux · 4,97 kWc ». Le devis envoyé, lui, est bien resté intact. Pour aligner, il faudrait « Resynchroniser », refusé (T4-X5-010)",
+  "scenario": "n",
+  "role": "Commercial responsable (anon_resp)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X5/rev-reviser.png",
+  "commits": [
+   "b34fcaa326"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X5-012",
+  "gravite": "S2",
+  "ecran": "Calepinage 1973 (lead X5-n, Casablanca, factures hiver 1 200 / été 700 MAD, présent en journée) › Avancé › onglet « Consommation mesurée » (Administrateur anon_admin2 : le Commercial responsable lit « Réservé aux porteurs du droit calepinage_approuver »)",
+  "gestes": "En anon_admin2 : saisir 12 consommations mensuelles (900, 850, 700 … 880 kWh) › « Comparer »",
+  "attendu": "La colonne « Simulé (kWh) » reprend la consommation du calepinage (597 kWh en janvier, Résultats et Rapport d'étude p. 14)",
+  "vu": "« Simulé (kWh) » vaut 59,66 en janvier, 54,27 en février … (dix fois moins que les 596,61 / 542,73 du Rapport d'étude), d'où « Écart sur la période : +1076,6 % » pour des mesures réalistes. Le bloc parle aussi d'« Eau | Aucun volume d'eau mesuré » sur un calepinage résidentiel",
+  "scenario": "balayage",
+  "role": "Administrateur (anon_admin2) — droit calepinage_approuver absent du Commercial responsable",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X5/conso-conso.png",
+  "commits": [
+   "4a46af30e2",
+   "137fca1713"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X5-015",
+  "gravite": "S3",
+  "ecran": "Calepinage 1973 (lead X5-n, Casablanca, factures hiver 1 200 / été 700 MAD, présent en journée) › Documents (Expert) › « Présentation compacte (synthèse une page) » PDF",
+  "gestes": "Pose à 7 panneaux, devis lié DEV-202611-0148 (6 panneaux) › Télécharger la Présentation compacte › lire",
+  "attendu": "Une synthèse dont la puissance et la production décrivent la même pose",
+  "vu": "PDF rap-calepinage-1973.presentation-compacte.pdf : page 1 « 7 module(s) — 4,97 kWc », page 2 « Production : celle du devis DEV-202611-0148 (6829 kWh/an) » (production d'une pose de 6 panneaux · 4,26 kWc) ; la simulation de la pose affichée au même moment dit 8 074 kWh. Document marqué « INTERNE », 2 pages alors que le libellé dit « synthèse une page »",
+  "scenario": "balayage",
+  "role": "Commercial responsable (anon_resp)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X5/rev-reviser.png",
+  "commits": [
+   "365457ea51"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X5-017",
+  "gravite": "S4",
+  "ecran": "Calepinage 1973 (lead X5-n, Casablanca, factures hiver 1 200 / été 700 MAD, présent en journée) › coque › « Plein écran » de la carte",
+  "gestes": "Étape Panneaux › bouton « Plein écran »",
+  "attendu": "En plein écran, les commandes de la carte suivent le bord de l'écran",
+  "vu": "La carte passe en plein écran mais la pile zoom / plein écran / boussole reste à sa place d'avant (au milieu de l'écran, x ≈ 985 sur 1 440) et le toit n'est pas recentré. « Quitter le plein écran » fonctionne",
+  "scenario": "balayage",
+  "role": "Commercial responsable (anon_resp)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X5/coque-fs-on.png",
+  "commits": [
+   "c9d0316c83",
+   "b4c2043839",
+   "efcedcb5e3"
+  ],
+  "rejeu_precedent": "pas-corrige"
+ },
+ {
+  "id": "T4-X9-001",
+  "gravite": "S4",
+  "ecran": "Calepinage 1974 › Expert › Documents › « Importer une conception » avec un fichier sans toit",
+  "gestes": "Exporter la conception (JSON), retirer le toit du fichier (contour, pans, modules vides), « Importer une conception » avec ce fichier, puis « Garder le toit actuel »",
+  "attendu": "L'avertissement une seule fois, en français",
+  "vu": "L'avertissement de la carte (correct, avec ses deux boutons) est doublé d'un toast en bas de la carte qui commence par le nom anglais du champ : « Roof layout : Ce fichier ne décrit aucun toit… » ; le toast reste affiché après « Garder le toit actuel »",
+  "scenario": "o",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/i3-toast.png",
+  "commits": [
+   "9f4cbd14b0"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X9-002",
+  "gravite": "S4",
+  "ecran": "Calepinage 1974 › étape 3 Le raccordement › liste « Onduleur »",
+  "gestes": "Électrique › choisir « Onduleur réseau Huawei 5kW Monophasé » dans la liste (8 panneaux 710 W posés)",
+  "attendu": "Une raison lisible : le courant des panneaux dépasse ce que l'entrée de l'onduleur accepte",
+  "vu": "« ne convient pas pour 8 panneaux : Courant par entrée MPPT sous le courant admissible (18,6 A au-dessus de la borne de fiche 18,0 A) » : la phrase dit « sous » puis « au-dessus » pour le même fait, avec le sigle MPPT et « borne de fiche » ; un commercial ne sait pas si c'est trop ou trop peu",
+  "scenario": "b",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/el-el1.png",
+  "commits": [
+   "42750763ef",
+   "408a33f68a",
+   "41acb18caf"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X9-003",
+  "gravite": "S2",
+  "ecran": "Calepinage 1974 › Expert › carte « TOTAL — TOUTES LES ZONES » (et carte Recommandation)",
+  "gestes": "Lead X9-n (conception du lead : sans batterie 4 panneaux · 2,2 kWc, avec batterie retenue 8 panneaux · 4,4 kWc) › Dessiner le toit › 2 pans 12 × 8 › Poser les panneaux (8 × 710 W = 5,68 kWc) › Enregistrer › Expert › lire la carte TOTAL",
+  "attendu": "Aucun chiffre d'une autre taille à côté du compte de panneaux posés (la règle du jour : une phrase à la place du chiffre)",
+  "vu": "La carte TOTAL aligne « 8 × 710 W — PANNEAUX », « 5,68 kWc — PUISSANCE » et « 8 886 MAD/an — ÉCONOMIES ESTIMÉES » : 8 886 MAD/an est l'économie de l'option « Avec batterie » de la conception du lead (4,4 kWc, carte Conception de la fiche), pas celle de la pose de 5,68 kWc. La production, elle, est bien remplacée par la phrase. La carte Recommandation au-dessus dit « au dernier enregistrement · avec batterie » sans chiffre de taille",
+  "scenario": "b",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/e1-total.png",
+  "commits": [
+   "230dd4fc70"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X9-004",
+  "gravite": "S2",
+  "ecran": "Calepinage 1974 › Expert › colonne de droite, sous « Affiner ma consommation »",
+  "gestes": "Même calepinage (8 × 710 W = 5,68 kWc, simulation faite) › Expert › lire la ligne « Moteur du devis sur cette pose »",
+  "attendu": "Le chiffre annoncé « sur cette pose » est celui de la pose (5,68 kWc), ou la ligne dit qu'il s'agit de la conception du lead (4,40 kWc)",
+  "vu": "« Moteur du devis sur cette pose (aucun devis lié) : 7 037 kWh/an — production standard de la ville (étude technique : +31,2 %) » : 7 037 kWh est exactement la « Production de la conception … 4,40 kWc (8 panneaux) » de l'étape Résultats ; pour 5,68 kWc la simulation dit 9 234 kWh. La ligne attribue à la pose la production d'une autre taille",
+  "scenario": "b",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/e1-moteur.png",
+  "commits": [
+   "77e4609403"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X9-005",
+  "gravite": "S2",
+  "ecran": "Calepinage 1974 › étape 2 Les panneaux (carte « Couvrir la facture ») + étape 4 + « Montrer au client »",
+  "gestes": "Lead X9-n › Dessiner le toit › 2 pans 12 × 8 › Poser les panneaux › Enregistrer ; lire la carte « Couvrir la facture », la bande, l'étape Résultats, « Montrer au client » ; chercher comment mettre la conception à la taille de la pose",
+  "attendu": "L'utilisateur comprend pourquoi la pose (5,68 kWc) diffère de la conception (4,40 kWc) avec le même nombre de panneaux, et a un geste pour obtenir une production montrable au client",
+  "vu": "La carte dit « 8 panneaux · 4,40 kWc · conception » juste au-dessus de « Posé : 8 panneaux · 5,68 kWc » : même nombre de panneaux, deux puissances, sans dire que la conception du lead est comptée en panneaux de 550 W (réponse cible-factures : module_wc 550) alors que la liste de l'atelier n'offre que des 710/715 W — la pose ne peut donc jamais égaler la conception. L'étape Résultats répète « 4,40 kWc (8 panneaux) — votre pose en compte 5,68 kWc (8 panneaux) ». L'écran client dit « Production : calculée à la mise à jour de la conception. » mais aucun bouton ni texte de l'atelier ne dit comment faire cette mise à jour : le commercial reste devant un client sans production",
+  "scenario": "b",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/c1-saved.png",
+  "commits": [
+   "6a93963486"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X9-006",
+  "gravite": "S4",
+  "ecran": "Calepinage 1974 › étape 2 Les panneaux › bande du haut (bureau 1440 × 900)",
+  "gestes": "Poser les panneaux, Enregistrer, lire la bande",
+  "attendu": "La phrase tient dans la bande",
+  "vu": "« calculée pour la conception du lead : 4,4 kWc — votre pose en compte 5,68 kWc » déborde à droite de la bande blanche et passe sous la pile de zoom de la carte (fin du texte vers x ≈ 1 025, bande close vers x ≈ 915) ; « 4,4 kWc » ici, « 4,40 kWc » sur la carte voisine",
+  "scenario": "b",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/c1-saved.png",
+  "commits": [
+   "fc663d50de"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X9-007",
+  "gravite": "S3",
+  "ecran": "Calepinage 1974 › Expert › cartes Recommandation et TOTAL",
+  "gestes": "Expert › faire défiler la colonne de droite jusqu'à la carte TOTAL",
+  "attendu": "La phrase d'explication en texte courant, une fois",
+  "vu": "La phrase « production calculée pour la conception du lead : 4,4 kWc — votre pose en compte 5,68 kWc » est rendue dans la case d'un chiffre clé, en très gros caractères gras sur huit lignes (TOTAL › PRODUCTION ESTIMÉE), et sa jumelle « économie calculée pour la conception du lead… » de même dans la carte Recommandation ; la même phrase revient quatre fois dans la colonne (Recommandation production, économie, Année 1, TOTAL)",
+  "scenario": "b",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/e1-total.png",
+  "commits": [
+   "18926a9670"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X9-008",
+  "gravite": "S2",
+  "ecran": "Calepinage 1974 › étape 4 Les résultats › jauge « De la consommation »",
+  "gestes": "Lead X9-n › 2 pans 12 × 8 › 8 × 710 W › Enregistrer › Résultats (simulation partie seule) ; puis Expert › « Un de moins » ×2 › Enregistrer › Résultats",
+  "attendu": "La jauge posée à côté de « Production simulée de la pose » parle de la pose, ou dit qu'elle parle de la conception du lead et de quelle taille",
+  "vu": "8 panneaux (5,68 kWc, 9 234 kWh simulés) : jauge « De la consommation 74 % » ; 6 panneaux (4,26 kWc, 6 926 kWh) : « 52 % ». 74 % et 52 % sont la couverture de la conception du lead (réponses /resultat/ et /ventes/conception/ : taux_couverture 0,742 pour 4,40 kWc avec batterie, puis 0,5183 pour 2,13 kWc), pas celle de la pose (la même réponse /resultat/ porte d'autres taux, 0,94 puis 0,84, vraisemblablement ceux de la pose — non prouvé). La jauge se lit comme la part de la consommation couverte par la pose affichée à sa gauche",
+  "scenario": "b",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/mn-res6.png",
+  "commits": [
+   "d8d07e0ddb"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X9-009",
+  "gravite": "S2",
+  "ecran": "Fiche du lead X9-n › carte « Conception » (et pastille kWc), après enregistrements au calepinage",
+  "gestes": "Créer le lead (hiver 1 200 / été 700 MAD, Casablanca, GPS, présent en journée) › carte Conception : deux options › Dessiner le toit › 2 pans › Poser 8 × 710 W › Enregistrer › Électrique : onduleur Huawei puis retour Deye 5 kW, Raccorder automatiquement, Enregistrer › Expert « Un de moins » ×2 › Enregistrer › rouvrir la fiche",
+  "attendu": "La conception du lead (consommation inchangée) garde ses deux options et la taille de l'option retenue ne fond pas parce qu'on a posé des panneaux d'un autre modèle",
+  "vu": "Avant : « Sans batterie 4 panneaux · 2,2 kWc · 3 518 kWh · 5 486 MAD/an » et « Avec batterie (retenue) 8 panneaux · 4,4 kWc · 7 037 kWh · 8 886 MAD/an », pastille « 4,40 kWc conçus ». Après (« Recalculé le 25/11 à 10 h 21 : pose enregistrée sur le calepinage », note « matériel désigné à l'atelier : Panneau Canadien Solar 710W / Onduleur hybride Deye 5kW ») : une seule colonne « 3 panneaux · 2,13 kWc · 3 406 kWh/an · 6 397 MAD/an », pastille « 2,13 kWc conçus » ; la réponse /ventes/conception/ dit toujours option_retenue « avec » (batterie 23021) mais avec la puissance de l'ancienne option SANS batterie ; l'option « sans » a disparu ; consommation identique (6 546,6 kWh). La conception retenue a perdu la moitié de sa puissance et ses économies ont baissé de 28 % sans aucun changement de la fiche",
+  "scenario": "b",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/cd-card.png",
+  "commits": [
+   "3eab6b88ad",
+   "438b50856c"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X9-010",
+  "gravite": "S3",
+  "ecran": "Calepinage 1974 › Expert › Résultats › Avancé › « Comparer les variantes » › « Retenir »",
+  "gestes": "Créer « X9 variante A » › dans le tableau, cliquer « Retenir » sur la variante alors que le verdict électrique est bloquant (terre non justifiée)",
+  "attendu": "Le refus se voit là où l'on a cliqué, en mots du métier, avec le chemin pour lever le blocage",
+  "vu": "POST retenir 409 ; à l'endroit du clic rien ne change (le bouton « Retenir » reste, aucun message visible) ; le refus est écrit tout en haut de l'onglet, hors de la vue : « Cette variante ne peut pas être retenue : verdict électrique bloquant — prise de terre non fournie au marché : la justification de continuité de la terre existante reste à cocher (terre.justification_continuite) » — avec le nom technique du champ (corrigé à l'étape Documents en T4-X5-007, pas ici) et sans bouton vers Électrique › Décisions où se trouve la case",
+  "scenario": "b",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/vr-var2.png",
+  "commits": [
+   "16c59c532c"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X9-011",
+  "gravite": "S3",
+  "ecran": "Calepinages › Nouveau calepinage (mode Client)",
+  "gestes": "Nouveau calepinage › Client › choisir « X9-o Client » › Nom « X9-o Calepinage sans lead » › « Créer le calepinage » pendant que la pile répond lentement (POST depuis-modele coupé à 20 s côté écran)",
+  "attendu": "Si le calepinage a été créé, l'écran y mène ; sinon il dit de réessayer",
+  "vu": "L'écran reste sur le formulaire avec « Le serveur n'a pas répondu. Réessayez dans un instant. » alors que le serveur AVAIT créé le calepinage (CAL-2611-1975 « X9-o Calepinage sans lead » apparaît dans la liste, « Modifié à 10:59 ») : suivre le conseil « Réessayez » crée un doublon. Lenteur due à la pile partagée (d'autres appels coupés au même moment), mais le message, lui, est faux quel que soit le temps de réponse",
+  "scenario": "o",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/k2-error.png",
+  "commits": [
+   "e390c95388",
+   "204ebed5a3",
+   "c9367d9677"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X9-012",
+  "gravite": "S3",
+  "ecran": "Calepinage 1975 › Expert › Toit › tableau « SITE — PANS DE TOIT ET SURFACES DE POSE » face à la barre projet",
+  "gestes": "Toit plat 24 panneaux › « + Ajouter une zone » + 4 clics › Champ au sol › Enregistrer le contour tracé ; puis Ombrière ; puis « Enregistrer le calepinage » ; lire la barre et le tableau, sans recharger",
+  "attendu": "La barre et le tableau du site disent le même total dès que la surface est enregistrée, et au moins après « Enregistré à … »",
+  "vu": "Après le champ au sol : barre « 37 panneaux · 26,27 kWc », tableau « Total du site : 24 modules · 17,04 kWc » ; après l'ombrière : barre « 45 · 31,95 », tableau « 37 modules · 26,27 kWc » (le champ au sol y est, l'ombrière non) ; après « Enregistré à 11:13 » : toujours 45 contre 37. Le tableau rattrape la barre seulement après rechargement de la page (45 = 45)",
+  "scenario": "p",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/zn-beforesave.png",
+  "commits": [
+   "07ff1935ee"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X9-013",
+  "gravite": "S3",
+  "ecran": "Calepinage 1975 sans lead (client X9-o) › bandeau du haut et bande de l'étape Panneaux, après ajout des surfaces",
+  "gestes": "Calepinage sans lead, site non localisé, toit plat simulé (27 197 kWh) › ajouter un champ au sol et une ombrière › Enregistrer › recharger › Guidé › Panneaux",
+  "attendu": "Le même lieu de calcul qu'avant (« Casablanca, ville de référence », dit par le bandeau d'origine) ou un geste faisable pour ce calepinage sans lead ; une production calculée après l'enregistrement",
+  "vu": "Le bandeau devient « Ville inconnue du moteur : renseigner la ville ou le point GPS du lead. » (aussi sous « Couvrir la facture ») alors que ce calepinage n'a pas de lead et que la simulation précédente était faite sur Casablanca ; la bande dit « Production — au prochain enregistrement » juste après « Enregistré à 11:13 » et un rechargement",
+  "scenario": "o",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/zn-guide-pan.png",
+  "commits": [
+   "1a65ad77bd",
+   "9ab1323c9a",
+   "05c7f86a10"
+  ],
+  "rejeu_precedent": null
+ }
+]

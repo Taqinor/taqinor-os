@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { feuilleAuDoigt } from './__tests__/feuilleAuDoigt'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* ============================================================================
@@ -170,7 +171,7 @@ describe('ACAL42 — bandeau de lecture seule', () => {
     expect(screen.queryByTestId('cal-deverrouiller')).toBeNull()
     expect(screen.queryByText(/Déverrouiller/)).toBeNull()
     expect(await screen.findByTestId('cal-devis-reviser-lecture-seule'))
-      .toHaveTextContent('Réviser (v2)')
+      .toHaveTextContent('Réviser (nouvelle version)')
   })
 
   it('conception ouverte : aucun bandeau', async () => {
@@ -329,4 +330,18 @@ describe('ACAL867 — l’étape Documents guidée porte « Générer le devis �
     // ACAL1802 — en Expert l'or n'est pas l'action de l'étape : bouton à filet.
     expect(screen.getByTestId('cal-generer-devis').classList.contains('cal-bouton-or')).toBe(false)
   }, 30_000)
+})
+
+/* T4-X7-010 — feuille « Avancé » au doigt (tablette) : les liens (« Montrer au client », « Relevé de visite »…) mesuraient
+   20 px de haut. Toute cible de la feuille fait au moins 44 px de haut sur un écran tactile. */
+describe('T4-X7-010 — feuille « Avancé » : cibles de 44 px au doigt', () => {
+  it('un lien de la feuille fait 44 px de haut sous (pointer: coarse)', () => {
+    const style = feuilleAuDoigt('src/styles/calepinage/50-coque-atelier.css')
+    const hote = document.createElement('div')
+    hote.innerHTML = '<div class="cal-coque"><div class="cal-coque-avance"><div class="flex"><a href="#x">Montrer au client</a></div></div></div>'
+    document.body.appendChild(hote)
+    try {
+      expect(getComputedStyle(hote.querySelector('a')).minHeight).toBe('44px')
+    } finally { style.remove(); hote.remove() }
+  })
 })

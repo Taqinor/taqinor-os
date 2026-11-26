@@ -1039,7 +1039,8 @@ class SensibilitesOptionAvecNiveau14Tests(SimpleTestCase):
         """``sensibilites`` passé à ``option_avec_de_l_etude`` atteint le
         contexte du bloc (étude ET lignes), jamais le dimensionnement."""
         from apps.ventes.domain import etude_ci_batterie as m
-        resultat = {'evaluation': {'kwc': 1, 'batterie': {'produit': 1, 'quantite': 2}},
+        resultat = {'evaluation': {'kwc': 1, 'batterie': {'produit': 1, 'quantite': 2},
+                                   'onduleurs': {'combinaison': ciq120.HYBRIDE_CABLABLE}},  # D-ACAL-103
                     'prix_a_renseigner': [], 'hypotheses': [], 'alertes': [], 'motif': None}
         catalogue = {'batterie': {'hybrides': [1], 'batteries': [{'produit': 1}]}}
         vus = []
@@ -1169,6 +1170,13 @@ class DevisFinalEnregistreTests(ciq120.RecomposerBatteriesTests):
         from apps.ventes.quote_engine.builder import build_quote_data
         devis, _reco = self._devis()
         self.assertFalse(build_quote_data(devis, {})['devis_final'])
+        # T4-X6-004 (D-CIQ-5) — la case dit « visite faite » : la boulangerie
+        # du jeu (puissance souscrite et type de surface non déclarés) exige
+        # la visite avant le devis ; sans elle la case est refusée (409, garde
+        # ``devis_pdf.refus_devis_final``, couverte par
+        # ``test_apdf_options_relayees``). La visite est donc enregistrée.
+        self.assertEqual(self._patch(devis, True).status_code, 409)
+        ciq120.Lead.objects.filter(pk=devis.lead_id).update(visite_effectuee=True)
         etude_avant = dict(
             ciq120.Devis.objects.get(pk=devis.pk).etude_params)
         self.assertEqual(self._patch(devis, True).status_code, 200)

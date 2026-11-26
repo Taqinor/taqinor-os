@@ -128,6 +128,43 @@ class Agr300PropositionReelleTests(TestCase):
         self.assertNotIn('prix_achat', blob)
         self.assertNotIn('7777', blob)
 
+    def test_r3_f3_pompage_interne_jamais_dans_la_charge_publique(self):
+        """Revue R3 (F3) — calibre de disjoncteur DÉDUIT (D-ACAL-124) : ni la
+        phrase d'hypothèse du kit ni l'alerte interne n'atteignent la charge
+        utile publique ; l'alerte publiable au client, la ligne du kit et la
+        synthèse que lit la page restent servies ; l'étude stockée reste
+        intacte (écrans internes)."""
+        phrase = ('Calibre du disjoncteur AC déduit des 7,5 kW et 380 V de la '
+                  'pompe (courant estimé 11,4 A, sans facteur de puissance ni '
+                  'rendement du moteur : sous-estimé) ; saisir le courant '
+                  'nominal de la pompe sur sa fiche du catalogue le remplace.')
+        etude = dict(ETUDE_POMPAGE, kit={
+            'inclus': [{'cle': 'disjoncteur_ac', 'role_pompage': 'protection_ac',
+                        'produit': 1, 'designation': 'Disjoncteur AC 16 A',
+                        'quantite': 1, 'prix_connu': True,
+                        'hypothese': phrase}],
+            'options': [], 'non_inclus': ['forage', 'genie_civil']},
+            alertes_pompage=[
+                {'code': 'calibre_disjoncteur_deduit',
+                 'champ': 'kit.disjoncteur_ac', 'message': phrase},
+                {'code': 'ratio_champ_pompe', 'champ': 'champ.kwc',
+                 'message': 'Champ publiable'}])
+        devis = self._devis('DEV-AGR300-F3', 'agricole', LIGNES_POMPAGE, etude)
+        p = self._payload(self._lien(devis))
+        blob = json.dumps(p, ensure_ascii=False)
+        self.assertNotIn('Calibre du disjoncteur AC déduit', blob)
+        self.assertNotIn('calibre_disjoncteur_deduit', blob)
+        self.assertNotIn('hypothese', json.dumps(p['quote']['etude']['kit']))
+        self.assertEqual([a['code'] for a in p['quote']['etude']['alertes_pompage']],
+                         ['ratio_champ_pompe'])
+        self.assertEqual(p['quote']['etude']['kit']['inclus'][0]['cle'],
+                         'disjoncteur_ac')
+        self.assertIn('synthese_agricole', p)
+        devis.refresh_from_db()
+        self.assertEqual(devis.etude_params['kit']['inclus'][0]['hypothese'],
+                         phrase)
+        self.assertEqual(len(devis.etude_params['alertes_pompage']), 2)
+
     def test_preparation_jumelle_taille_detail_meme_garde(self):
         devis = self._devis('DEV-AGR300-TWIN', 'agricole', LIGNES_POMPAGE,
                             ETUDE_POMPAGE)

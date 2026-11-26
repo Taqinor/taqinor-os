@@ -131,9 +131,9 @@ class PanneauxDeuxOptionsEgalesTests(TestCase):
         self.assertEqual(data['puissance_kwc'], 5.68)
 
     # ── T4-X1-001 — chaque option porte SA taille et SON prix par kWc ──────
-    def _tailles(self, slug, niveau):
+    def _tailles(self, slug, niveau, **champs):
         devis = self._devis(slug, TAILLES)
-        Devis.objects.filter(pk=devis.pk).update(regles_calcul=niveau)
+        Devis.objects.filter(pk=devis.pk).update(regles_calcul=niveau, **champs)
         return Devis.objects.get(pk=devis.pk)
 
     @staticmethod
@@ -142,10 +142,25 @@ class PanneauxDeuxOptionsEgalesTests(TestCase):
         return [int(re.sub(r'\D', '', m)) for m in re.findall(
             r'soit ([\d\s   ]+) MAD/kWc', html)]
 
-    def test_t4x1_001_niveau_14_inchange(self):
-        """Niveau 14 (courant) : le rendu d'hier, une seule taille."""
+    def test_d_acal_115_brouillon_niveau_14_chaque_option_sa_taille(self):
+        """D-ACAL-115 (fondateur 25/11 « Both live now ») — nouveaux rendus : un
+        BROUILLON au niveau courant (14) porte déjà la correction T4-X1-001."""
         from apps.ventes.quote_engine.residential import render, renderer
-        data = self._build(self._tailles('t4x1-n14', 14))
+        data = self._build(self._tailles('t4x1-b14', 14))
+        self.assertTrue(data['panneaux_divergents'])
+        html = render.build_html(renderer._augment(dict(data)))
+        self.assertEqual(self._prix_kwc_imprimes(html)[:2], [
+            round(data['total_sans'] / 2.75), round(data['total_avec'] / 3.55)])
+        self.assertIn('2,75 · 3,55', html)
+
+    def test_t4x1_001_envoye_avant_la_coupure_inchange(self):
+        """Envoyé le 20/11/2026 au niveau 14 : le rendu reçu, une seule taille."""
+        from datetime import datetime, timezone
+
+        from apps.ventes.quote_engine.residential import render, renderer
+        data = self._build(self._tailles(
+            't4x1-n14', 14, statut='envoye',
+            date_envoi=datetime(2026, 11, 20, 9, 0, tzinfo=timezone.utc)))
         self.assertEqual(data['puissance_kwc_sans'], 2.75)
         self.assertEqual(data['puissance_kwc_avec'], 3.55)
         self.assertFalse(data['panneaux_divergents'])

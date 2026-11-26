@@ -103,7 +103,7 @@ import {
   type FiltrageAccesSolaire,
 } from './shadingUi'; // CALX115 — le seuil d'accès solaire lu par le posable
 import { $, celluleEconomies, fmt, fmtKwc, fmtMad, renommerDt } from './dom';
-import { raisonSansValeur, VALEURS_HORS_LIGNE, compteDevis, couvertureServie, phraseSurplus, peindreBande, phraseTaillesDuChiffrage, productionServie, quiDuDevis, suiteAuDevis, texteEconomie, texteSurDevis } from './affichageErp'; import { peindrePhraseTailles, suiteCouverture } from './tailleConception'; // R2-13/16/17, ACAL2022, T4-X9-007
+import { besoinDeLaFacture, estLePlus, noteLePlus, peindreChampBesoin, raisonSansValeur, VALEURS_HORS_LIGNE, compteDevis, couvertureServie, phraseSurplus, peindreBande, phraseTaillesDuChiffrage, productionServie, quiDuDevis, suiteAuDevis, texteEconomie, texteSurDevis } from './affichageErp'; import { peindrePhraseTailles, suiteCouverture } from './tailleConception'; // R2-13/16/17, ACAL2022, T4-X9-007
 import { type CardData, type ChiffrageAtelier, type RenderConfigOpts, type RenderSceneFn } from './types';
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
@@ -620,7 +620,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       ? causeDuPanVide(mesurerPanVide(pack, grid, retraitM, cotesDePavage(module), filtrageSeuil(grid.panels))) : null);
   /** R2-13/22/23 — l'atelier ERP (`opts.chiffrage` défini, `null` compris) dit « cible » pour le nombre MODIFIABLE et ne dit
    *  « au devis » que pour un devis lié, avec le compte réel des panneaux de CE devis. Site public : libellé d'avant. */
-  const modeErp = (): boolean => ctx.opts?.chiffrage !== undefined;
+  const modeErp = (): boolean => ctx.opts?.chiffrage !== undefined; const besoinFacture = (): number | null => besoinDeLaFacture(ctx.opts, (moduleDuPanActif() ?? MODULE_PAR_DEFAUT_ATELIER).pmaxWc); // T4-X8-012 — le besoin de la facture au module posé (servi)
   const surDevis = (placed: number): string => texteSurDevis(placed, ctx.neededPanels, modeErp(), Boolean(ctx.opts?.devisLie && ctx.cibleVendue), ctx.panneauxDevis, quiDuDevis(ctx.opts)); // ACAL1951
   /** ACAL1526 — `ecartes` = emplacements retirés par le seuil d'accès solaire (`poseSousSeuil`) : la capacité dite
    *  est celle qui reste, donc la note lit la pose DESSINÉE (jamais « il reste de la place » sur une pose rognée). */
@@ -638,7 +638,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const editable = active || ctx.devisMode;
     if (needInputEl) {
       needInputEl.disabled = !editable;
-      if (document.activeElement !== needInputEl) needInputEl.value = active ? fmt(ctx.neededPanels) : '—';
+      peindreChampBesoin(needInputEl, active ? ctx.neededPanels : 0, modeErp(), modeErp() ? besoinFacture() : null, document.activeElement !== needInputEl); // T4-X8-012 — « le plus » : le besoin de la facture, jamais 400
     }
     if (needMinusEl) needMinusEl.disabled = !active || ctx.neededPanels <= 1;
     if (needPlusEl) needPlusEl.disabled = !editable || ctx.neededPanels >= 400;
@@ -670,7 +670,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
         : `${fmt(ctx.neededPanels)} couvrent votre facture (+10 %) — il reste de la place sur le toit, laissée libre.`;
     } else {
       needNoteEl.textContent = ctx.devisMode ? `${surDevis(placed)}.` : `On pose ${fmt(placed)} panneaux.`;
-    } needNoteEl.textContent = noteTailleAuto(ctx, placed, derniereCarte, needNoteEl.textContent ?? '', surDevis(placed)); // ACAL1331 — la taille de la cible, dite
+    } needNoteEl.textContent = modeErp() && estLePlus(ctx.neededPanels) && !motif ? noteLePlus(placed, besoinFacture()) : noteTailleAuto(ctx, placed, derniereCarte, needNoteEl.textContent ?? '', surDevis(placed)); // ACAL1331, T4-X8-012 — le choix dit en mots
   }
 
   // WJ19 — dérate d'ombrage tracé appliqué aux chiffres ANNUELS affichés (1 = aucun
@@ -1136,7 +1136,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // R2-17 — à kWc égal, la production SERVIE (celle du PDF) remplace l'estimation du navigateur (`prodServieAuKwc`).
     const pServie = modeErp() ? prodServieAuKwc(kwc) : null, cServie = modeErp() ? couvertureServie(etatEco(ctx).chiffrage, kwc) : null;
     set('rp9-reco-prod', modeErp() ? (pServie != null ? `${fmt(Math.round(pServie))} kWh/an` : raisonSansValeur(etatEco(ctx).chiffrage, kwc, 'production')) : prodPose != null ? `${fmt(Math.round(prodPose))} kWh/an` : '—');
-    renommerDt($('rp9-reco-cover'), modeErp() ? 'Production ÷ consommation' : null, true); // R2-05 — l'ERP : jamais « couverture » (mot du PDF)
+    renommerDt($('rp9-reco-cover'), modeErp() ? 'De la consommation' : null, true); // R2-05 — l'ERP : jamais « couverture » (mot du PDF) ; T4-X7-002 — la part servie (`couverture_pct`) est l'énergie autoconsommée ÷ consommation : le nom des Résultats
     set('rp9-reco-cover', modeErp() ? (cServie != null ? `${Math.round(cServie)} %` : '—') : d.pct > 0 ? `${Math.round(d.pct)} %` : '—');
     // R2-08 — l'ERP donne UNE estimation (la borne prudente) : la fourchette 75-100 % n'encadrait rien du calcul du serveur.
     set('rp9-reco-savings', economieAffichee(ctx, 'carte', factureInconnue ? '— facture inconnue' : modeErp() ? `≈ ${fmtMad(d.savingsLow)}/an` : `${fmtMad(d.savingsLow)} – ${fmtMad(d.savingsHigh)}/an`, kwc)); if (modeErp()) peindrePhraseTailles($('rp9-reco-savings')?.closest('dl'), 'rp9-reco-tailles', phraseTaillesDuChiffrage(etatEco(ctx).chiffrage, kwc)); // T4-X9-007 — la phrase UNE fois, sous les cartes

@@ -2456,7 +2456,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     neededPanels = 0;
     neededAuto = true;
     if (needInputEl) {
-      needInputEl.value = '—';
+      needInputEl.value = '—'; needInputEl.dataset.lePlus = ''; // T4-X8-012 — aucun pan : plus de « le plus »
       needInputEl.disabled = true;
     }
     if (needMinusEl) needMinusEl.disabled = true;
@@ -3055,7 +3055,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     renderActive();
   }
   needMinusEl?.addEventListener('click', () => {
-    if (neededPanels > 0) setNeeded(neededPanels - 1);
+    if (neededPanels > 0) setNeeded((needInputEl?.dataset.lePlus ? Number((needInputEl.dataset.besoinFacture ?? '').replace(/\D/g, '')) || neededPanels : neededPanels) - 1); // T4-X8-012 — depuis « le plus » : le besoin affiché − 1
   });
   needPlusEl?.addEventListener('click', () => setNeeded(neededPanels + 1));
   needInputEl?.addEventListener('input', () => {
@@ -3070,7 +3070,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (needNoteEl) needNoteEl.textContent = phraseCible(r);
   });
   needInputEl?.addEventListener('blur', () => {
-    if (needInputEl) needInputEl.value = neededPanels > 0 ? fmt(neededPanels) : '—';
+    if (needInputEl) needInputEl.value = needInputEl.dataset.lePlus ? needInputEl.dataset.besoinFacture || '—' : neededPanels > 0 ? fmt(neededPanels) : '—'; // T4-X8-012
   });
 
   // ═══════════ W68 — câblage « Affiner ma consommation » : voir roofPro11/consumption.ts ═══════════

@@ -552,6 +552,23 @@ def expire_stale_devis():
     return result
 
 
+@shared_task(name='ventes.ranger_totaux_affiches', soft_time_limit=540, time_limit=600)  # ACEL2
+def ranger_totaux_affiches_planifie():
+    """ADEV162 — toutes les 10 min : le total affiché rangé des devis en jeu
+    dont l'empreinte a bougé (``domain.etudes.ranger_totaux_affiches``,
+    l'écrivain unique ; deux colonnes de cache, jamais un statut). Société
+    par société, les seules sociétés actives (AUD415/SCA19) : un tenant
+    suspendu ou en fermeture n'est plus balayé."""
+    from authentication.selectors import active_companies
+    from .domain.etudes import ranger_totaux_affiches
+    from .models import Devis
+    ranges = 0
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
+        ranges += ranger_totaux_affiches(
+            Devis.objects.filter(company=company, is_active=True))
+    return ranges
+
+
 @shared_task(name='ventes.devis_followup_nudges')
 def devis_followup_nudges():
     """QJ4 — Relance automatique cadencée des devis envoyés toujours en attente.

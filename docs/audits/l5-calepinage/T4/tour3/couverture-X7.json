@@ -1,0 +1,182 @@
+[
+ {
+  "id": "CAL-PAN-003",
+  "scenario": "a",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Calepinage 1981 (lead X7-c sans facture) : « Données insuffisantes … Renseigner la facture du lead » ; le lien ouvre /crm/leads/3749. L’état « Lecture impossible — réessayer » (lecture de facture en échec) n’a pas pu être produit. Le lien reste un texte de 12 px.",
+  "moteur": "webkit",
+  "taille": 1440,
+  "theme": "clair"
+ },
+ {
+  "id": "CAL-PAN-005",
+  "scenario": "b",
+  "role": "Commercial",
+  "resultat": "bloque",
+  "note": "Obstacle 1,2 × 2,3 m, hauteur 2,5 m posé au milieu des panneaux (1981, non enregistré) : panneaux 9 → 6, ombre visible, aucune carte d’avis d’ombrage (comme T4-U1-023).",
+  "moteur": "webkit",
+  "taille": 1440,
+  "theme": "clair"
+ },
+ {
+  "id": "CAL-ELEC-006",
+  "scenario": "f",
+  "role": "Commercial",
+  "resultat": "introuvable",
+  "note": "Avancé › Calques : « Aucun calque disponible pour le moment » sur 1981 (toit, panneaux, chaîne) et sur 1980 ; la liste ne s’affiche que si le builder expose calquesDisponibles() (PanneauCalques.jsx) — jamais le cas ici (constat T4-X7-015).",
+  "moteur": "webkit",
+  "taille": 1440,
+  "theme": "clair"
+ },
+ {
+  "id": "CAL-ELEC-006",
+  "scenario": "f",
+  "role": "Administrateur",
+  "resultat": "introuvable",
+  "note": "Même message en tablette sur 1980 (feuille Avancé). Technicien : module refusé (403).",
+  "moteur": "webkit",
+  "taille": 1180,
+  "theme": "clair"
+ },
+ {
+  "id": "CAL-ELEC-007",
+  "scenario": "f",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "Calepinage 1980 (Deye 5 kW, 5 × 710 W) : Électrique › Schéma « Voir » › bascule « Schéma détaillé » → « Schéma en blocs » et retour. Sur 1981 (Huawei 10 kW triphasé) au bureau : « Croquis de principe, sans valeur » — fiche onduleur incomplète, pas de bascule. Administrateur car le Technicien n’a pas accès au calepinage.",
+  "moteur": "webkit",
+  "taille": 1180,
+  "theme": "clair"
+ },
+ {
+  "id": "CAL-ELEC-007",
+  "scenario": "f",
+  "role": "Commercial",
+  "resultat": "bloque",
+  "note": "1981 : schéma non dessiné, « Fiche technique incomplète (onduleur : entrées MPPT, plage MPPT, tension DC max, courant par MPPT, puissance AC) ».",
+  "moteur": "webkit",
+  "taille": 1440,
+  "theme": "clair"
+ },
+ {
+  "id": "CAL-ELEC-011",
+  "scenario": "f",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "8 blocs cliquables (câble, chaîne, coffret DC, onduleur, coffret AC, compteur, TGBT, réseau) ; toucher « Câble : entrée 1 » ouvre ?onglet=cheminement-cables.",
+  "moteur": "webkit",
+  "taille": 1180,
+  "theme": "clair"
+ },
+ {
+  "id": "CAL-RES-003",
+  "scenario": "f",
+  "role": "Commercial",
+  "resultat": "non-atteint",
+  "note": "Aucun état « panneaux hors chaîne » produit : le raccordement automatique raccorde tout ; non essayé de défaire une chaîne.",
+  "moteur": "webkit",
+  "taille": 1440,
+  "theme": "clair"
+ },
+ {
+  "id": "CAL-RES-005",
+  "scenario": "n",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "1979 : « Production de la conception … — Devis DEV-202611-0160 envoyé le 25/11/2026 : 6 157 kWh par an — Réviser le devis » ; le clic crée DEV-202611-0161 (V2) mais copie exacte de la V1 (constat T4-X7-006).",
+  "moteur": "webkit",
+  "taille": 1440,
+  "theme": "clair"
+ },
+ {
+  "id": "CAL-RES-005",
+  "scenario": "n",
+  "role": "Administrateur",
+  "resultat": "joue",
+  "note": "1980 : le bouton et les deux chiffres nommés s’affichent (DEV-202611-0162 envoyé : 6 157 kWh) ; non cliqué en tablette.",
+  "moteur": "webkit",
+  "taille": 1180,
+  "theme": "clair"
+ },
+ {
+  "id": "CAL-DOC-009",
+  "scenario": "b",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "Expert › Documents › « Plans et exports » : une carte par sortie (planche A3/SVG/PNG, plan de pose, plan de toiture, plan de masse, note de calcul, DXF, XLSX, CSV, rendu 3D, dossier technique « Composer », lestage) ; « Télécharger » sur 1979 a livré calepinage-1979.pdf en WebKit ; « Remettre » non cliqué.",
+  "moteur": "webkit",
+  "taille": 1440,
+  "theme": "clair"
+ },
+ {
+  "id": "CAL-DEV-001",
+  "scenario": "p",
+  "role": "Commercial",
+  "resultat": "non-atteint",
+  "note": "Les cases ne s’affichent qu’avec une surface « toit » ET une surface d’un autre type (sol, ombrière) — BoutonDevis.jsx choixSurfaces ; mes calepinages n’ont que des pans de toit (2 pans = 2 zones toit, aucune case).",
+  "moteur": "webkit",
+  "taille": 1440,
+  "theme": "clair"
+ },
+ {
+  "id": "CAL-DEV-003",
+  "scenario": "n",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "DEV-202611-0161 : refus 409 « verdict électrique bloquant » (terre), puis après la justification de terre refus 409 Isc 18,6 A > 18,0 A (constat T4-X7-007) ; sur 1981/DEV-202611-0163 : 200 « Aucun changement ».",
+  "moteur": "webkit",
+  "taille": 1440,
+  "theme": "clair"
+ },
+ {
+  "id": "CAL-DEV-004",
+  "scenario": "n",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "« Devis lié : DEV-202611-0163 » → /ventes/devis?devis=2896 (liste encore en chargement après 8 s, lenteur connue).",
+  "moteur": "webkit",
+  "taille": 1440,
+  "theme": "clair"
+ },
+ {
+  "id": "CAL-DEV-008",
+  "scenario": "n",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "1981 : « Aucun changement — À compléter : 13 points (onduleur : nombre d’entrées MPPT …) » ; « J’ai lu » non affiché (rien à recharger) ; « Voir le devis » vu sur la carte du devis créé.",
+  "moteur": "webkit",
+  "taille": 1440,
+  "theme": "clair"
+ },
+ {
+  "id": "CAL-DEV-009",
+  "scenario": "a",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "1981 (lead sans facture) : 409 confirmation_taille « Aucune facture ni taille souhaitée … le devis remplit le toit (6,39 kWc, 51 100,00 MAD TTC) » avec « Confirmer et générer » et « Renseigner la facture du lead » ; Confirmer → DEV-202611-0163 créé (constat T4-X7-008).",
+  "moteur": "webkit",
+  "taille": 1440,
+  "theme": "clair"
+ },
+ {
+  "id": "CAL-DEV-010",
+  "scenario": "n",
+  "role": "Commercial",
+  "resultat": "non-atteint",
+  "note": "Il faut un calepinage NEUF sur un lead qui a un brouillon libre ; le calepinage de X7-a était déjà lié à la V2 acceptée. Non joué faute de temps.",
+  "moteur": "webkit",
+  "taille": 1440,
+  "theme": "clair"
+ },
+ {
+  "id": "CAL-DEV-011",
+  "scenario": "n",
+  "role": "Commercial",
+  "resultat": "joue",
+  "note": "1979 lié à la V2 acceptée : « Calepinage 1979 en lecture seule » + bouton « Réviser (v2) » ; le clic ne fait rien (constat T4-X7-016).",
+  "moteur": "webkit",
+  "taille": 1440,
+  "theme": "clair"
+ }
+]

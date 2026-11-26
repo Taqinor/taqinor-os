@@ -21,7 +21,7 @@ test('(a) le fichier ne ment plus, et l’URL du BC n’a pas bougé', () => {
   assert.ok(existsSync(path.join(PAGES, 'BonCommandeList.jsx')))
   assert.ok(!existsSync(path.join(PAGES, 'VentesKanban.jsx')))
   const cfg = readFileSync(path.join(__dirname, 'module.config.jsx'), 'utf8')
-  assert.match(cfg, /\{ path: '\/ventes\/bons-commande', component: BonCommandeList \}/)
+  assert.match(cfg, /\{ path: '\/ventes\/bons-commande', component: BonCommandeList[,\s}]/) // T4-X8-014 : l'entrée porte aussi ses rôles
   assert.match(cfg, /import\('\.\.\/\.\.\/pages\/ventes\/BonCommandeList'\)/)
 })
 

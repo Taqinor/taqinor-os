@@ -8,8 +8,9 @@ import { roleLabel, tauxTvaOf, tauxTvaOuDefaut, ttcExactFromHt } from '../../../
 import { lignesDepuisKit } from '../../../../features/ventes/quote/etudeMarcheBloc'
 import { tailleAutoRemplirPompage } from '../../../../features/ventes/quote/reouverture'
 import { refusAutoRemplirPompage } from '../../../../features/ventes/etudePompagePreviewPur'
-import { SCENARIO_AVEC, SCENARIO_LES_DEUX } from '../../../../features/ventes/quote/sizingReducer'
+import { SCENARIO_AVEC, SCENARIO_LES_DEUX, tailleDemandeeParLead } from '../../../../features/ventes/quote/sizingReducer'
 import ventesApi from '../../../../api/ventesApi'
+import { formatKwc, formatNumber } from '../../../../lib/format'
 import {
   corpsCiDepuisProfil, lignesDepuisCompositionCi, avertissementsCompositionCi,
 } from '../../../../features/ventes/quote/profilCi'
@@ -44,7 +45,7 @@ export function useCompositionEcran(ctx) {
     structureProduitId, recalcDimTick, setPompageAutoFilled, setOnduleursIncomplets,
     setAutoFillLoading, setCompositionErreur, profilCi, horsReseau, kwp, selectedLead,
     etudeHoraireDonnees, etudeHoraireChargement, marcheCi, ctxProfilCi, apercuCi, resolveKwcAvec,
-    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard,
+    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard, sizing,
   } = ctx
 
   // U3COMPOSE — l'optimum AXE BATTERIE envoyé au dry-run serveur : même
@@ -112,9 +113,12 @@ export function useCompositionEcran(ctx) {
     const realW = data.panel_watt
     let mismatch = null
     if (realW && Math.abs(realW - askedW) > 1) {
-      mismatch = `Attention : le stock ne propose pas de panneau ${askedW} W ; `
-        + `un panneau ${realW} W a été retenu. La puissance réelle du système est `
-        + `${data.kwc_reel} kWc (et non ${kwp} kWc). Ajustez le nombre de panneaux ou le `
+      // T4-X6-016 — le serveur peut écarter un panneau EN STOCK (compatibilité
+      // électrique : il le dit dans `avertissements`) : jamais « le stock ne
+      // propose pas » ; la puissance du devis en kWc français (`formatKwc`).
+      mismatch = `Attention : un panneau ${formatNumber(realW)} W a été composé au lieu de `
+        + `${formatNumber(askedW)} W. La puissance réelle du système est `
+        + `${formatKwc(data.kwc_reel)} (et non ${formatKwc(kwp)}). Ajustez le nombre de panneaux ou le `
         + 'wattage pour la cible voulue.'
     }
     const marquesManquantes = data.marques_manquantes || []
@@ -394,8 +398,9 @@ export function useCompositionEcran(ctx) {
       }
     } else {
       // CIQ126 — C&I : la taille retenue par le moteur serveur (aperçu en
-      // direct du profil déclaré) ; sans elle, rien n'est inventé.
-      const t = apercuCi.donnees?.taille
+      // direct du profil déclaré) ; sans elle, rien n'est inventé. T4-X6-008 — en
+      // édition, l'aperçu décrit les LIGNES : la taille du moteur est son `conseil`.
+      const t = apercuCi.conseil ?? apercuCi.donnees?.taille
       if (!marcheCi || !(Number(t?.nb_panneaux) > 0)) {
         setErrors(e => ({
           ...e,
@@ -417,7 +422,13 @@ export function useCompositionEcran(ctx) {
     // un recalcul qui retombe sur le MÊME compte de panneaux doit quand même
     // relancer la composition (catalogue/marques/scénario ont pu changer).
     // QJR570 — confirmation (quantités figées seulement) AVANT la transition.
-    avecQuantitesFigees(() => dispatchSizing({ type: 'RECALCUL_DEMANDE', retenu }))
+    // T4-X6-015 — la MÊME question nomme la taille demandée sur la fiche que le
+    // recalcul quitterait (jamais remplacée sans le dire).
+    const demandee = modeInstallation === 'residentiel' ? tailleDemandeeParLead(sizing) : null
+    const quitte = demandee != null && String(retenu.nbPanneaux) !== String(sizing?.nbPanneaux)
+    avecQuantitesFigees(() => dispatchSizing({ type: 'RECALCUL_DEMANDE', retenu }), quitte
+      ? { tailleDemandee: { kwc: demandee, panneaux: retenu.nbPanneaux, kwcRetenu: retenu.kwcOptimal } }
+      : undefined)
   }
   // QJR99 — L'UNIQUE effet de composition : « Appliquer cette taille » et
   // « Recalculer le dimensionnement » avancent tous deux `compositionSeq`, et

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
-import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Button, Card } from '../../../ui'
 import { useConfirmDialog } from '../../../ui/confirm'
+import LectureSeuleSociete from '../commun/LectureSeuleSociete'
+import { usePeutReglerSociete } from '../commun/useReglagesSociete'
 
 /* ============================================================================
    ACAL559 — « RÉGLAGES › CALEPINAGE › SYSTÈMES DE FIXATION ».
@@ -316,7 +317,7 @@ function LigneSysteme({ systeme, peutGerer, onModifier, onChange }) {
 }
 
 export default function ReglagesFixation() {
-  const peutGerer = useHasPermission('calepinage_gerer')
+  const peutGerer = usePeutReglerSociete()
   const [systemes, setSystemes] = useState(null)
   const [erreurChargement, setErreurChargement] = useState(null)
   // `edition` : null = ajout ; sinon le système en cours de modification. La
@@ -352,6 +353,7 @@ export default function ReglagesFixation() {
           Chaque système est saisi par la société depuis la notice de son fabricant. L’onglet
           Fixation de chaque calepinage en calcule les quantités.
         </p>
+        {!peutGerer && <LectureSeuleSociete />}
       </div>
       <Card className="p-4">
         {erreurChargement && <p className="text-sm text-destructive">{erreurChargement}</p>}

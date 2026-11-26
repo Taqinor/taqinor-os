@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
 import { Button, Card } from '../../../ui'
+import { TYPES_ARETE as TYPES } from '../commun/libellesReglages'
 
 /* ============================================================================
    ACAL561 — « RETRAITS PAR TYPE D'ARÊTE (en plus du retrait de pourtour) ».
@@ -18,11 +19,6 @@ import { Button, Card } from '../../../ui'
    rang `i`. Réglages société, niveau expert.
    ========================================================================== */
 
-//: `services/degagements.py::TYPES_ARETE`, dans le même ordre.
-const TYPES = [
-  ['faitage', 'Faîtage'], ['noue', 'Noue'], ['arretier', 'Arêtier'],
-  ['egout', 'Égout'], ['rive', 'Rive'],
-]
 const CLE = 'retraits_par_arete'
 const CHAMP = 'mt-0.5 block min-h-[44px] w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground'
 

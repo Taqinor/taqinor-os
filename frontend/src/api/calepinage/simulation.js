@@ -80,7 +80,7 @@ export const simulation = {
     // design-context : le dimensionnement qu'elle appelle n'est plus sur le chemin de démarrage de l'atelier.
     cibleFactures: (id) => api.get(`${pivot(id)}cible-factures/`),
     // Lane E9 (T4-X5-010) — AVANT « Générer le devis » : le matériel que chaque option du devis portera (lecture seule).
-    apercuDevis: (id) => api.get(`${pivot(id)}apercu-devis/`),
+    apercuDevis: (id, config) => api.get(`${pivot(id)}apercu-devis/`, config), // E9b : `config.params.surfaces`
 
     // CALX229 — le métré et la chute, TRONÇON PAR TRONÇON (contrat
     // `contract_samples/calepinage_troncons.json`, CALX203). ÉTAT DU SERVEUR

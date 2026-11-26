@@ -739,6 +739,57 @@ def refresh_marge_snapshot(devis):
                        getattr(devis, 'reference', '?'), exc)
 
 
+def ranger_totaux_affiches(qs):
+    """ADEV162 — L'ÉCRIVAIN UNIQUE du total affiché rangé (cache de la
+    synthèse de la liste, ``selectors_listes``) : pour chaque devis du jeu dont
+    l'empreinte a bougé, ``display_totals`` (la seule règle de total) et son
+    empreinte, par ``update()`` sur les DEUX colonnes rangées seulement — ni
+    ``updated_at``, ni statut, ni rien qu'un client ou un PDF lit (règle #4).
+    Idempotent ; rend le nombre de devis rangés. Jamais appelé par un GET.
+    Lecture légère d'abord (gros JSON laissés en base), relecture complète
+    des seuls devis à recalculer ; un total de REPLI (moteur en échec :
+    ``donnees`` resté vide) n'est jamais rangé."""
+    from apps.ventes.models import Devis
+    from apps.ventes.quote_engine.builder import display_totals
+    from apps.ventes.selectors_listes import (
+        devis_pour_les_totaux, empreinte_total_affiche, profil_pour_les_totaux,
+        total_du_moteur)
+    profils, a_ranger, ranges = {}, {}, 0
+    for devis in devis_pour_les_totaux(qs, leger=True).iterator(chunk_size=100):
+        if devis.company_id not in profils:
+            profils[devis.company_id] = profil_pour_les_totaux(devis.company)
+        empreinte = empreinte_total_affiche(devis, profils[devis.company_id])
+        if devis.total_affiche_range is None or devis.total_affiche_empreinte != empreinte:
+            a_ranger[devis.pk] = empreinte
+    if not a_ranger:
+        return 0
+    # Relecture DANS le jeu reçu (sa société, ses filtres) : jamais un
+    # ``Devis.objects`` global qui sortirait du périmètre de l'appelant.
+    for devis in devis_pour_les_totaux(qs.filter(pk__in=list(a_ranger))).iterator(chunk_size=50):
+        donnees = {}
+        total = total_du_moteur(devis, display_totals, donnees)
+        if not donnees:
+            continue
+        Devis.objects.filter(pk=devis.pk).update(
+            total_affiche_range=total, total_affiche_empreinte=a_ranger[devis.pk])
+        ranges += 1
+    return ranges
+
+
+def ranger_total_affiche_apres_commit(devis):
+    """ADEV162 — range le total du devis APRÈS le commit de son écriture
+    (l'état final, lignes comprises) ; best-effort, jamais bloquant."""
+    from django.db import transaction
+
+    def _ranger(pk=devis.pk, modele=type(devis)):
+        try:
+            ranger_totaux_affiches(modele.objects.filter(pk=pk))
+        except Exception:  # noqa: BLE001 — la synthèse recalcule à défaut (D-ENF22-BLE001)
+            logger.warning('ADEV162 : total affiché non rangé (devis %s)', pk, exc_info=True)
+    if devis.pk:
+        transaction.on_commit(_ranger)
+
+
 # ── QJR76 : les ENTRÉES des études ──────────────────────────────────────────
 # `entrees_dimensionnement_du_devis` alimente `rafraichir_dimensionnement_devis`
 # (plus haut) : il vivait dans `services.py`, ce module l'importait par un pont.

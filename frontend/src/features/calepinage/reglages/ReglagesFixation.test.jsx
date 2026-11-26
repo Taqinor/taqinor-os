@@ -115,6 +115,17 @@ describe('ReglagesFixation (ACAL559)', () => {
     expect(screen.queryByTestId(`acal559-basculer-${systeme.id}`)).toBeNull()
   })
 
+  it('D-ACAL-104 — « gérer » sans « approuver » : la liste et la phrase, aucun formulaire ni bouton', async () => {
+    espions.hasPermission.mockImplementation((code) => code === 'calepinage_gerer')
+    espions.liste.mockResolvedValue({ data: LISTE })
+    render(<ReglagesFixation />)
+    const systeme = LISTE.systemes[0]
+    expect(await screen.findByTestId(`acal559-systeme-${systeme.id}`)).toBeInTheDocument()
+    expect(screen.getByTestId('cal-reglages-lecture-seule')).toHaveTextContent('peuvent approuver un calepinage')
+    expect(screen.queryByTestId('acal559-formulaire')).toBeNull()
+    expect(screen.queryByTestId(`acal559-basculer-${systeme.id}`)).toBeNull()
+  })
+
   it('« Désactiver » passe actif à faux', async () => {
     espions.liste.mockResolvedValue({ data: LISTE })
     espions.modifier.mockResolvedValue({ data: {} })

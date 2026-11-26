@@ -54,19 +54,21 @@ from authentication.permissions import IsResponsableOrAdmin
 from core.champs_stricts import ChaineStricte
 from core.parseurs import ObjetJSON
 from core.idempotency import (
-    IDEMPOTENCY_KEY_HEADER, IdempotencyConflict, IdempotencyRecord,
-    _fingerprint,
+    IDEMPOTENCY_KEY_HEADER, IdempotencyRecord,
+    _fingerprint, _liberer, _reserver,
 )
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
-from core.permissions import ScopedPermission, declared_action_permissions
+from core.permissions import (
+    ScopedPermission, _user_has_or_legacy, declared_action_permissions,
+)
 from core.viewsets import CompanyScopedModelViewSet
 
 from .. import selectors
 from ..models import Calepinage
 from ..permissions import (
-    CAL_APPROUVER, CAL_GERER, CAL_VOIR,
+    CAL_APPROUVER, CAL_GERER, CAL_RELEVE, CAL_VOIR,
     PeutApprouverCalepinage, PeutGererCalepinage, PeutLireOuEcrireCalepinage,
-    PeutVoirCalepinage,
+    PeutLireOuReleverCalepinage, PeutVoirCalepinage, ecriture_de_releve,
 )
 from ..serializers import (
     CalepinageLectureSerializer, CalepinageSerializer,
@@ -158,28 +160,38 @@ class ActionIdempotenteMixin:
         endpoint = '%s.%s' % (type(self).__qualname__,
                               getattr(self, 'action', ''))
         empreinte = self._empreinte_idempotence(request)
-        memorise = IdempotencyRecord.objects.filter(
-            company=company, endpoint=endpoint, key=cle).first()
-        if memorise is not None:
-            if memorise.request_fingerprint != empreinte:
-                raise IdempotencyConflict()
-            return Response(memorise.response_body,
-                            status=memorise.response_status)
-        reponse = calcul()
+        if company is None:
+            return calcul()
+        # ACAL2047 — la clé est RÉSERVÉE avant le calcul (primitive de
+        # ``core.idempotency``, celle d'AGNR40) : un second envoi arrivé
+        # pendant que le premier tourne encore ne crée rien (409 « en
+        # cours »), un second envoi après coup rejoue la réponse mémorisée.
+        reservation = _reserver(company, endpoint, cle, empreinte)
+        if isinstance(reservation, Response):
+            return reservation
         try:
-            IdempotencyRecord.objects.get_or_create(
-                company=company, endpoint=endpoint, key=cle,
-                defaults={'request_fingerprint': empreinte,
-                          'response_status': reponse.status_code,
-                          # NORMALISÉ avant écriture : un `Decimal` ou un
-                          # `datetime` resté dans le corps ferait échouer le
-                          # `json.dumps` du JSONField, et l'idempotence
-                          # deviendrait un no-op SILENCIEUX.
-                          'response_body': json.loads(
-                              json.dumps(reponse.data, default=str))})
+            reponse = calcul()
+        except BaseException:
+            _liberer(reservation)
+            raise
+        if reponse.status_code >= 400:
+            # Un refus n'est pas mémorisé : corriger puis renvoyer la même
+            # clé doit pouvoir réussir.
+            _liberer(reservation)
+            return reponse
+        try:
+            # NORMALISÉ avant écriture : un `Decimal` ou un `datetime` resté
+            # dans le corps ferait échouer le `json.dumps` du JSONField.
+            reservation.etat = IdempotencyRecord.Etat.TERMINE
+            reservation.response_status = reponse.status_code
+            reservation.response_body = json.loads(
+                json.dumps(reponse.data, default=str))
+            reservation.save(update_fields=[
+                'etat', 'response_status', 'response_body'])
         except Exception:  # l'idempotence est un CONFORT : elle
             # ne fait jamais échouer une action qui a déjà réussi.
             logger.warning("executer idempotent : échec ignoré, comportement dégradé", exc_info=True)
+            _liberer(reservation)
         return reponse
 
 
@@ -219,6 +231,21 @@ class _OrdreStatutDerive(filters.OrderingFilter):
 
     def filter_queryset(self, request, queryset, view):
         ordre = self.get_ordering(request, queryset, view)
+        if ordre and any(o.lstrip('-') == 'titre' for o in ordre):
+            # T4-X3-011 — « Titre » range le titre AFFICHÉ (client, lead, titre,
+            # repli), sans casse ni accents — jamais la colonne ``titre`` brute.
+            from ..selectors import annoter_titre_tri
+
+            queryset = annoter_titre_tri(queryset)
+            ordre = [('-' if o.startswith('-') else '') + 'titre_tri'
+                     if o.lstrip('-') == 'titre' else o for o in ordre]
+            if any(o.lstrip('-') == 'statut' for o in ordre):
+                from ..services.approbation import annoter_statut_derive
+
+                queryset = annoter_statut_derive(queryset)
+                ordre = [('-' if o.startswith('-') else '') + 'statut_derive'
+                         if o.lstrip('-') == 'statut' else o for o in ordre]
+            return queryset.order_by(*ordre, '-id')
         if ordre and any(o.lstrip('-') == 'statut' for o in ordre):
             from ..services.approbation import annoter_statut_derive
 
@@ -330,6 +357,15 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
 
     @property
     def write_permission(self):
+        # D-ACAL-106 — une écriture DU RELEVÉ accepte ``calepinage_releve`` à
+        # la place de GÉRER ; le porteur de GÉRER reste lu sur GÉRER.
+        requete = getattr(self, 'request', None)
+        # Le droit GÉRER est lu AVANT le corps : son porteur ne fait jamais
+        # parser la requête pendant la vérification des droits.
+        if (requete is not None
+                and not _user_has_or_legacy(requete.user, CAL_GERER)
+                and ecriture_de_releve(requete, self)):
+            return CAL_RELEVE
         return self.PERMISSIONS_ECRITURE_PAR_ACTION.get(
             getattr(self, 'action', None), CAL_GERER)
 
@@ -688,7 +724,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
             'base_empreinte': drf_serializers.CharField(allow_blank=True)}),
         responses=_FORME_ECRITURE_LAYOUT, extensions=SECTION_RESSERRE)
     @action(detail=True, methods=['post'], url_path='layout/section',
-            permission_classes=[PeutLireOuEcrireCalepinage],
+            permission_classes=[PeutLireOuReleverCalepinage],
             parser_classes=[JSONParser])  # valeur/champs : objets JSON
     def layout_section(self, request, pk=None):
         """ACAL22 (C-ACAL-044) — écrit UNE section du document.
@@ -1008,7 +1044,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         """
         from .chiffrage_contexte import avec_chiffrage  # ACAL993 — + le bloc ``chiffrage``
         calepinage = self.get_object()
-        return Response(avec_chiffrage(contexte_conception(calepinage, request), calepinage))
+        return Response(avec_chiffrage(contexte_conception(calepinage, request), calepinage,
+                                       user=request.user))
 
     def _geste_repere(self, request, geste):
         """ACAL191 — exécute un geste de repère et rend la réponse d'écriture."""

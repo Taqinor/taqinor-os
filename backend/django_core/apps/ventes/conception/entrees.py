@@ -116,6 +116,15 @@ def _empreinte(charge):
     return hashlib.sha256(canonique.encode('utf-8')).hexdigest()
 
 
+#: T4-X7-022 — les souhaits du lead que la DÉCISION de chaque marché lit :
+#: résidentiel ``decisions.py::_taille_residentielle`` (taille) et
+#: ``decider_taille_residentielle`` (batterie) ; C&I ``decider_ci`` (taille) et
+#: ``etude_ci_batterie`` (batterie, via ``lignes_des_options``). Agricole : aucun
+#: (pompage sans batterie, taille tirée de la pompe).
+_SOUHAITS_LUS = ('taille_souhaitee_kwc', 'batterie_souhaitee')
+SOUHAITS_PAR_MARCHE = {'residentiel': _SOUHAITS_LUS, 'commercial': _SOUHAITS_LUS, 'industriel': _SOUHAITS_LUS}
+
+
 def completer(empreinte, lead, company, utilisees):
     """Relecture E4 B1 — ce que les noyaux lisent hors de l'empreinte de
     l'adaptateur : le RACCORDEMENT du lead (phase du site : l'adaptateur
@@ -129,8 +138,20 @@ def completer(empreinte, lead, company, utilisees):
         utilisees['raccordement'] = {'valeur': _json(raccordement), 'source': 'lead'}
     societe = entrees_de_la_societe(company)
     utilisees.update(societe)
-    return _empreinte({'entrees': empreinte, 'raccordement': raccordement or '',
-                       'societe': {cle: entree['valeur'] for cle, entree in sorted(societe.items())}})
+    charge = {'entrees': empreinte, 'raccordement': raccordement or '',
+              'societe': {cle: entree['valeur'] for cle, entree in sorted(societe.items())}}
+    # T4-X7-022 — les SOUHAITS du lead (taille, batterie) décident des options
+    # (``decisions.py``) sans entrer dans l'empreinte de l'adaptateur : « Avec » →
+    # « Les deux options » laissait la carte à une seule option (empreinte égale ⇒
+    # rien rangé). Posés seulement quand l'un est renseigné : l'empreinte d'un lead
+    # sans souhait reste celle d'avant (aucune conception rangée ne devient périmée).
+    # Seulement les marchés dont la décision les lit (:data:`SOUHAITS_PAR_MARCHE`) :
+    # l'agricole n'en lit aucun, son empreinte reste celle d'avant T4-X7-022.
+    souhaits = {c: _json(getattr(lead, c, None)) for c in SOUHAITS_PAR_MARCHE.get(marche_du_lead(lead), ())
+                if not _vide(getattr(lead, c, None))}
+    if souhaits:
+        charge['souhaits'] = souhaits
+    return _empreinte(charge)
 
 
 def entrees_pour(lead, company, *, toit=None):

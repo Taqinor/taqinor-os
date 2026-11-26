@@ -147,6 +147,95 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         etranger = Calepinage.objects.create(company=self.autre, lead_id=self.lead.pk, titre='Autre')
         self.assertEqual(self.api.get(f'{url_detail(etranger.pk)}apercu-devis/').status_code, 404)
 
+    def _nouvelle_pose(self, panneaux=10):
+        """Le devis du setUp mis de côté et une AUTRE pose : « Générer » composerait un devis neuf."""
+        from apps.ventes.models import Devis
+
+        Devis.objects.filter(pk=self.calepinage.devis_id).update(is_active=False)
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=None)
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = panneaux
+        self.calepinage.refresh_from_db()
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        self.calepinage.refresh_from_db()
+
+    def test_e9b_apercu_a_blanc_ne_cree_aucun_reglage(self):
+        """Lane E9b — l'aperçu est un calcul À BLANC : une société SANS ``CompanyProfile`` ni
+        ``TariffSettings`` n'en gagne aucun (``reglages_lus_sans_creer``), aucune écriture parmi
+        les requêtes de l'appel. Mutant « aperçu hors du contexte » ⇒ INSERT ⇒ rouge."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.calepinage.services.devis_apercu import apercu_materiel_du_devis
+        from apps.parametres.models import CompanyProfile
+        from apps.parametres.models_tariff import TariffSettings
+
+        self._nouvelle_pose()
+        CompanyProfile.objects.filter(company=self.company).delete()
+        TariffSettings.objects.filter(company=self.company).delete()
+        with CaptureQueriesContext(connection) as requetes:
+            rendu = apercu_materiel_du_devis(self.calepinage)
+        self.assertTrue(rendu['options'], rendu)
+        ecritures = [q['sql'] for q in requetes.captured_queries
+                     if q['sql'].lstrip().upper().startswith(('INSERT', 'UPDATE', 'DELETE'))]
+        self.assertEqual(ecritures, [])
+        self.assertFalse(CompanyProfile.objects.filter(company=self.company).exists())
+        self.assertFalse(TariffSettings.objects.filter(company=self.company).exists())
+
+    def test_e9b_apercu_suit_le_brouillon_que_le_bouton_ouvrirait(self):
+        """Lane E9b — « Générer » RENDRAIT le brouillon de même empreinte (lié, ou réutilisable :
+        ``devis._brouillon_rendu``) au lieu d'en composer un : l'aperçu lit SES lignes et le dit
+        (``source: brouillon_existant`` + sa référence). Mutant « recomposer » ⇒ la ligne
+        retouchée du brouillon n'est pas lue ⇒ rouge."""
+        from apps.ventes.models import Devis
+
+        self.calepinage.refresh_from_db()  # le lien posé par « Générer » du setUp
+        devis = Devis.objects.get(pk=self.calepinage.devis_id)
+        ligne = next(li for li in devis.lignes.all() if 'nduleur' in li.designation)
+        type(ligne).objects.filter(pk=ligne.pk).update(designation='Onduleur du brouillon retouché')
+        for lie in (True, False):  # lié au calepinage, puis réutilisable (même empreinte, délié)
+            with self.subTest(lie=lie):
+                if not lie:
+                    Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=None)
+                reponse = self.api.get(f'{self.base}apercu-devis/')
+                self.assertEqual(reponse.status_code, 200, reponse.data)
+                self.assertEqual((reponse.data['source'], reponse.data['reference']),
+                                 ('brouillon_existant', devis.reference))
+                self.assertEqual([o['onduleur'] for o in reponse.data['options']], ['Onduleur du brouillon retouché'])
+        # Une autre pose : la composition neuve, sans référence.
+        self._nouvelle_pose(panneaux=9)
+        neuve = self.api.get(f'{self.base}apercu-devis/')
+        self.assertEqual((neuve.data['source'], neuve.data['reference']), ('composition', None))
+
+    def test_e9b_apercu_compose_les_surfaces_cochees_comme_la_generation(self):
+        """Lane E9b — ``?surfaces=`` (les cases cochées que « Générer » enverra) passe par LA même
+        fonction (``devis._layout_des_surfaces``) : clé inconnue ⇒ le refus nommé de la génération ;
+        seul le champ coché ⇒ l'onduleur que la génération écrit pour ce champ."""
+        doc = {
+            'scenario': 'reseau',
+            'zones': [{'id': 'z1', 'label': 'Zone 1', 'roofType': 'flat',
+                       'vertices': [[0, 0], [30, 0], [30, 20], [0, 20]],
+                       'geometry': {'count': 42, 'kwc': 23.1, 'azimuthDeg': 180.0, 'tiltDeg': 10.0},
+                       'result': {'count': 42, 'kwc': 23.1}}],
+            'poseSurfaces': [{'id': 's1', 'kind': 'sol', 'label': 'Champ au sol 1', 'moduleWc': 550,
+                              'contourM': [[0, 0], [40, 0], [40, 25], [0, 25]], 'areaM2': 1000,
+                              'rowAzimuthDeg': 90, 'tiltDeg': 25,
+                              'engine': {'modules': 176, 'tables': [], 'rowPitchM': 4.2}}]}
+        from apps.ventes.models import Devis
+
+        calepinage = Calepinage.objects.create(company=self.company, lead_id=self.lead.pk, titre='E9b surfaces')
+        enregistrer_layout(calepinage, doc, user=self.user)
+        base = url_detail(calepinage.pk)
+        inconnue = self.api.get(f'{base}apercu-devis/', {'surfaces': 'inconnue'})
+        self.assertEqual(inconnue.status_code, 200, inconnue.data)
+        self.assertTrue(str(inconnue.data['refus']).startswith('Cochez au moins une surface'), inconnue.data)
+        champ = self.api.get(f'{base}apercu-devis/', {'surfaces': 's1'})
+        genere = self.api.post(f'{base}generer-devis/', {'surfaces_chiffrees': ['s1'], 'creer_autre_devis': True},
+                               format='json')
+        self.assertEqual(genere.status_code, 201, genere.data)
+        lignes = [li.designation for li in Devis.objects.get(pk=genere.data['devis']).lignes.all()]
+        self.assertIn(champ.data['options'][0]['onduleur'], lignes)
+
     def test_e6e_resynchro_refusee_pour_un_onduleur_non_designe_dit_l_issue(self):
         """Le refus de « Resynchroniser » qui juge l'onduleur du DEVIS alors qu'un autre est
         désigné à l'étape Électrique le dit, nomme les deux et propose le geste qui existe :
@@ -157,17 +246,36 @@ class ResyncAnnonceTest(BaseApiCalepinage):
 
         self._designer('Onduleur hybride Deye 5kW Monophasé')
         refus = SyncLayoutError("7 panneaux « P » sont incompatibles avec « Onduleur réseau Huawei 5kW "
-                                "Monophasé » : Isc. Corrigez le nombre de panneaux ou changez d'onduleur — le "
-                                "devis n'a pas été modifié.", revision_possible=False)
+                                "Monophasé » : Isc. — le devis n'a pas été modifié.", revision_possible=False,
+                                code='couple_incompatible')
         with mock.patch('apps.ventes.services.resynchroniser_conception', side_effect=refus):
             reponse = self.api.post(f'{self.base}sync-devis/', {}, format='json')
         self.assertEqual(reponse.status_code, 409, reponse.data)
+        # T4-X7-007 — plus de « désignez l'onduleur du devis » (geste qui ne lève pas ce refus) :
+        # les gestes qui le lèvent sont nommés.
         self.assertTrue(str(reponse.data['detail']).endswith(
             " L'étape Électrique juge l'onduleur désigné « Onduleur hybride Deye 5kW Monophasé » ; ce devis "
-            "porte « Onduleur réseau Huawei 5kW Monophasé », c'est lui que ce refus juge. Pour aligner les "
-            "deux, désignez « Onduleur réseau Huawei 5kW Monophasé » à l'étape Électrique (Matériel "
-            "électrique), puis resynchronisez."), reponse.data)
+            "porte « Onduleur réseau Huawei 5kW Monophasé », c'est lui que ce refus juge : désigner un "
+            "onduleur à l'étape Électrique ne le change pas. Pour lever ce refus, choisissez un autre module "
+            "à l'étape Électrique (Matériel électrique), ou remplacez « Onduleur réseau Huawei 5kW "
+            "Monophasé » dans le devis, puis resynchronisez."), reponse.data)
+        self.assertNotIn('désignez « Onduleur réseau Huawei', reponse.data['detail'])
         self.assertEqual(self.emissions, [])
+
+    def test_t4_x7_007_refus_d_etat_ne_propose_pas_de_changer_de_module(self):
+        """T4-X7-007 — un refus qui n'est pas celui du couple (ici un refus d'état) garde
+        l'onduleur jugé nommé, sans « choisissez un autre module »."""
+        from unittest import mock
+
+        from apps.ventes.services import SyncLayoutError
+
+        self._designer('Onduleur hybride Deye 5kW Monophasé')
+        with mock.patch('apps.ventes.services.resynchroniser_conception',
+                        side_effect=SyncLayoutError('Devis accepté.', revision_possible=True)):
+            reponse = self.api.post(f'{self.base}sync-devis/', {}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('c\'est lui que ce refus juge', reponse.data['detail'])
+        self.assertNotIn('autre module', reponse.data['detail'])
 
     def test_e6e_resynchro_refusee_onduleur_designe_inchangee(self):
         """Le devis porte l'onduleur désigné : le refus reste celui du serveur, mot pour mot."""

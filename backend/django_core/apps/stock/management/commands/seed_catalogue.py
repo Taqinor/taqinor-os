@@ -577,21 +577,9 @@ KIT_FIXATION_PRIX_A_RENSEIGNER = [
 # dans « Protection & accessoires » (aucun mot « structure » ni « socle »).
 CATEGORIE_IMPOSEE_PAR_SKU = {'KIT-FIX-INCL': 'Structures & fixation'}
 
-# ── AGR104 — articles des OPTIONS du kit pompage (D-AGR-8), PRIX VIDES ───────
-# Articles GÉNÉRIQUES, sans marque ni caractéristique inventée : le fondateur
-# les renseigne (prix, fournisseur) ; tant que ``prix_vente`` vaut 0 ils sont
-# « prix à renseigner » et jamais auto-chiffrés (même garde que les pompes OSP).
-# ``role_pompage`` est DÉCLARÉ à la création (vocabulaire ROLES_POMPAGE, AGR100).
-# (nom, sku, role_pompage, qte, seuil)
-OPTIONS_POMPAGE = [
-    ('Sonde de niveau (protection marche à sec)', 'SONDE-NIV', 'sonde_niveau', 20, 2),
-    ("Compteur d'eau / débitmètre", 'CPT-EAU', 'compteur_eau', 20, 2),
-    ('Câble de descente immergé (au mètre)', 'CAB-DESC-M', 'cable_descente', 5000, 200),
-    ('Colonne de refoulement', 'COL-REF', 'colonne_refoulement', 20, 2),
-    ('Clapet anti-retour', 'CLAP-AR', 'clapet', 20, 2),
-    ('Tuyauterie (au mètre)', 'TUY-M', 'tuyauterie', 5000, 200),
-    ('Bassin', 'BASSIN', 'bassin', 20, 2),
-]
+# ── AGR104 — articles des OPTIONS du kit pompage (D-AGR-8) et D-ACAL-118 —
+# rôles pompage des protections PVG3 : ``_articles_pompage`` (OPTIONS_POMPAGE,
+# ROLE_POMPAGE_PVG3), importés plus bas.
 
 # ── AGR620 — SKU pompage « prix à renseigner » : installation, entretien,
 # antivol, clôture ──────────────────────────────────────────────────────────
@@ -674,6 +662,9 @@ from apps.stock.management.commands._articles_ci import (  # noqa: E402
     ARTICLES_CI_PRIX_A_RENSEIGNER)
 from apps.stock.management.commands._articles_ht import (  # noqa: E402
     ACCESSOIRES_GRAPPE_HT, HYBRIDES_DEYE_HT, semer_haute_tension)
+from apps.stock.management.commands._articles_pompage import (  # noqa: E402
+    BAREME_POMPAGE, OPTIONS_POMPAGE, PRIX_TTC_POMPAGE, PRIX_TTC_PVG3, ROLE_POMPAGE_PVG3,
+    semer_fiches_variateurs, tension_pompe)
 
 #: CIQ103 — rôle C&I des articles DÉJÀ seedés (``lim_mode`` laissé vide : la
 #: fiche du Smart Meter ne publie pas son mode de raccordement).
@@ -2118,9 +2109,10 @@ def _semer_prix_vides(company, Produit, MouvementStock, record_stock_movement,
             company=company, nom=nom, sku=sku,
             categorie=get_categorie(classify_categorie(nom)),
             prix_achat=Decimal('0'),
-            prix_vente=Decimal('0'),  # à renseigner par le fondateur
+            prix_vente=ht(PRIX_TTC_PVG3.get(sku, 0)),  # D-ACAL-127 ; sinon 0 = à renseigner
             quantite_stock=qte, seuil_alerte=seuil,
             tva=Decimal('20.00'),
+            role_pompage=ROLE_POMPAGE_PVG3.get(sku, ''),
         )
         record_stock_movement(
             company=company, produit=produit,
@@ -2262,7 +2254,7 @@ class Command(BaseCommand):
                 tva=Decimal('20.00'),
                 pompe_cv=Decimal(cv) if cv else None,
                 hmt_m=Decimal(hmt) if hmt else None,
-                debit_m3j=Decimal(debit) if debit else None,
+                debit_m3j=Decimal(debit) if debit else None, tension_v=tension_pompe(nom),  # D-ACAL-129
             )
             record_stock_movement(
                 company=company, produit=produit,
@@ -2392,12 +2384,12 @@ class Command(BaseCommand):
                 company=company, nom=nom, sku=sku,
                 categorie=get_categorie(classify_categorie(nom)),
                 prix_achat=Decimal('0'),
-                prix_vente=Decimal('0'),  # à renseigner par le fondateur
+                prix_vente=ht(PRIX_TTC_POMPAGE.get(sku, 0)),  # D-ACAL-130 ; sinon 0 = à renseigner
                 quantite_stock=qte, seuil_alerte=seuil,
                 tva=Decimal('20.00'),
                 role_pompage=role_pompage,
                 description=description,
-                est_recurrent=recurrent,
+                est_recurrent=recurrent, **BAREME_POMPAGE.get(sku, {}),  # D-ACAL-130
             )
             record_stock_movement(
                 company=company, produit=produit,
@@ -2561,7 +2553,8 @@ class Command(BaseCommand):
         # pas) et la fiche d'un produit absent de ce dictionnaire.
         from apps.stock.models import FicheTechnique
         reappliquer = bool(options.get('reappliquer_fiches'))
-        fiches_techniques_created = 0
+        fiches_techniques_created = semer_fiches_variateurs(  # D-ACAL-129
+            company, Produit, FicheTechnique)
         fiches_techniques_updated = 0
         champs_combles = 0
         for sku, valeurs in FICHES_TECHNIQUES.items():

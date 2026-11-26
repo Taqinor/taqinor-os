@@ -291,6 +291,16 @@ export function parsePhaseIsTri(text) {
   return /tri\s*phas/i.test(text || '')
 }
 
+// D-ACAL-130 — un article au rôle POMPAGE déclaré est un article de pompage :
+// il n'entre jamais dans la table résidentielle / C&I, sauf les rôles partagés
+// (le câble solaire DC sert les deux, ex. CAB-6MM-M). Jumeau serveur :
+// `apps/ventes/domain/catalogue.py::est_article_pompage` (ROLES_POMPAGE_PARTAGES).
+export const ROLES_POMPAGE_PARTAGES = ['cable_dc']
+export const estArticlePompage = (p) => {
+  const role = String(p?.role_pompage ?? '').trim()
+  return role !== '' && !ROLES_POMPAGE_PARTAGES.includes(role)
+}
+
 export function classifyProduct(nom) {
   const n = _norm(nom)
   if (!n) return null

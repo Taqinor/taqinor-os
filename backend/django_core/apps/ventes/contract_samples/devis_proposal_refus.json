@@ -1,0 +1,9 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/{id}/proposal/",
+  "forme_serveur": "partielle",
+  "pourquoi": "T4-X6-017 (25/11/2026) — `exemple` est le corps du refus 409 du document à options d'un devis dont AUCUNE option ne porte d'onduleur (règle dure du moteur, ENF11). La phrase servie (`detail`) s'adresse au vendeur : aucun paramètre d'adresse (« ?pdf_mode=onepage » n'y est plus) ; le format qui reste possible est un CHAMP, `format_possible` (« onepage »), que l'écran offre par un bouton (« Voir le devis une page »). Le moteur n'est pas touché, rien ne change sur un PDF ; la réponse 200 (le PDF lui-même) est inchangée.",
+  "exemple": {
+    "detail": "Aucune option de ce devis ne contient d'onduleur : le document à options ne peut pas être généré. Le format une page reste possible.",
+    "format_possible": "onepage"
+  }
+}

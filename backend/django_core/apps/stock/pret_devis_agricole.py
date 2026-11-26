@@ -16,12 +16,15 @@ noyau ``core.pompage`` (``selection.choisir_pompe``, ``champ.choisir_variateur``
   toiture avec une alerte interne ;
 * transport : ligne composée seulement si un article de rôle ``transport`` est
   chiffré, sinon simplement omise — poste NON obligatoire ;
+* protections (D-ACAL-118) : coffret DC, disjoncteur AC et parafoudre AC,
+  obligatoires — un article chiffré de chaque (``kit.choisir_protections``
+  affine ensuite par chaînes, phase et calibre) ;
 * options : ``core.pompage.kit.OPTIONS`` (lues, jamais recopiées).
 
 Lecture seule, bornée à la société (+ produits globaux), produits archivés
 exclus ; AUCUN prix, prix d'achat ni marge dans la réponse.
 """
-from core.pompage.kit import OPTIONS, _par_role, bareme_saisi
+from core.pompage.kit import OPTIONS, _norme, _par_role, bareme_saisi
 from core.pompage.selection import (
     _a_courbe, alimentation_produit, kw_pompe, type_produit)
 from core.product_roles import LIBELLES_ROLES_POMPAGE
@@ -166,6 +169,17 @@ def pret_devis_agricole(company):
                'prestation', True, _installations(produits, baremes)),
         _poste('transport', 'Transport', 'prestation', False, transports),
     ]
+    # D-ACAL-112 / D-ACAL-118 — les protections du kit minimum : le devis
+    # automatique de pompage est refusé tant qu'aucune n'est chiffrée.
+    postes += [
+        _poste('protection:' + cle, lib, 'materiel', True,
+               [c for c in _du_role(produits, role) if mot in _norme(c['nom'])])
+        for cle, role, lib, mot in (
+            ('coffret_dc', 'protection_dc', 'Coffret de protection DC', 'coffret'),
+            ('disjoncteur_ac', 'protection_ac',
+             'Disjoncteur AC (variateur → pompe)', 'disjoncteur'),
+            ('parafoudre_ac', 'protection_ac',
+             'Parafoudre AC (variateur → pompe)', 'parafoudre'))]
     postes += [
         _poste('option:' + cle, lib, 'option', False,
                _du_role(produits, role))

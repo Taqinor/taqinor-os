@@ -1,5 +1,5 @@
 {
-  "sha256": "12b72c3d8f0dc520858997606fdf90c0b0e8063ffb700366531397c4bea4cf49",
+  "sha256": "2fc00c9c10d1c6be08f4f2b84e6d283f2ab1a29a9d002753ee942ce2debe150c",
   "cles": [
     "ref",
     "date",
@@ -123,7 +123,8 @@
     "devise",
     "montants_tranches",
     "options_proposees",
-    "lignes_structure"
+    "lignes_structure",
+    "phrases_pdf_2511"
   ],
   "sharelinks": 0
 }

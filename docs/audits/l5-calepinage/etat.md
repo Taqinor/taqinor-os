@@ -1916,7 +1916,7 @@ lot 4 ; relecteurs X3, X6, X7, X8 ; rapport.
   devis qui ne vend que « avec batterie » ne montre plus de carte « Recommandé — sans batterie » (elle affichait
   un prix sans onduleur) ; aucun montant de PDF ne change.
 
-### Point du 25/11, 14 h 45 UTC (le plus récent — REPRENDRE ICI)
+### Point du 25/11, 14 h 45 UTC
 
 **Lot 4 (PR Taqinor/taqinor-os#1556, brouillon), `dev-lot4`.** Reda, 14 h 15 : « where are you ? » — répondu.
 - **Neuvième passage (`fe1b7982f6`) : rouge sur 2 causes.** (1) `raison_du_verdict` sans appelant hors de son
@@ -1947,3 +1947,241 @@ lot 4 ; relecteurs X3, X6, X7, X8 ; rapport.
   4,26 kWc · 6 926 kWh/an · simulation · — » et UNE phrase — VU en texte. À voir encore : libellés de cote de
   l'obstacle hors toit qui se chevauchent sur la carte (S4), tableau des tailles du devis après la suite d'E7f,
   fiche du lead (retour tracé), calepinage sans lead après G2.
+
+### Point du 25/11, 16 h 10 UTC
+
+**LOT 4 FUSIONNÉ** : PR Taqinor/taqinor-os#1556, `main` = `d619459423` (25/11, 15 h 56 UTC), onzième passage de CI
+vert (37 contrôles), file de fusion verte. Relecture finale indépendante avant la mise en file : « fusionner »,
+aucun bloquant (`controles/revue-lot4-finale-2026-11-25.md`). **NON DÉPLOYÉ : c'est à Reda
+(`scripts/deploy-prod.ps1`). Les lots 1 à 4 attendent tous son déploiement.** Passage de CI sur `main` après
+fusion : en file à 16 h 05, à relire.
+
+**LOT 5 — branche locale `dev-lot5`** (= `main` + ce qui suit ; RIEN de poussé, pas encore de PR) :
+- **Plié** : I5 (`lane/reglages-calepinage`, 14 constats de X3 sur 16 : sources des paramètres, altitude, préréglage
+  fantôme, recherche et tri de la liste, menu Responsable, raison « à refaire », clés brutes, bibliothèque, liens
+  profonds, garde de saisie) ; I3 (`lane/t3-pompage-pdf` : « Devis final » refusé sans la visite exigée — 409 —,
+  production par option au PDF commercial AU NIVEAU 15, kWc à deux décimales pour le bandeau) ; golden du crm
+  re-haché pour deux symboles (`assignable_users`, `__all__` de selectors).
+- **Paquet docker joué sur `dev-lot5`** (548 tests) : vert, sauf `test_empreintes_ast` du crm (corrigé depuis, à
+  rejouer) et `test_actions_devis_ont_appelant` (front non monté, vert en CI).
+- **EN VOL** : I1 (`lane/editeur-ci`, agent a3ec71c931984fded : écran du devis C&I, T4-X6-007 à 012 ; 2 commits vus) ;
+  I2 (`lane/ci-retour-cable`, agent abf185aa2759d2b3f : retour de la fiche du lead en C&I, câble de l'option « avec »,
+  bouton BOQ qui double des lignes) ; H2 (`lane/liste-total`, agent acd5913bf9b7ab14f : corrections demandées par
+  la relecture indépendante — empreinte du CODE du moteur, colonnes volatiles hors de l'empreinte, balayage léger) ;
+  relecteurs X7 (agent a8c0bce9ca0c7bc1e : WebKit bureau puis tablette) et X8 (agent a1e9f64db652e1c8e : téléphone,
+  thème sombre, Technicien) sur la pile `1cfa550e99` (rebâtie à 15 h 30 : tout le lot 4).
+- **À ATTRIBUER dès qu'un créneau se libère (mémoire : 5 agents au plus)** :
+  - majeur de la relecture finale : la file « à traiter » fait disparaître une ligne dont la température de site
+    n'est pas en cache (auteur d'I4, agent a375819ef15513c07) ;
+  - mineurs 1 et 2 : `GET apercu-devis` peut créer une ligne de réglages ; l'aperçu peut différer de la
+    génération (auteur d'e9, agent a1144b5df28380f54) ;
+  - mineur 5 (`reunirOptions`) : à l'auteur d'I1 ; mineur 6 (calepinage d'un collègue ouvert après délai dépassé) ;
+  - restes de X6 : T4-X6-005 (menu de la liste hors écran), 014 (courbe de charge en marché Commercial), 015 / 016
+    (taille souhaitée, deux kWc sur l'écran résidentiel), 017 (panneau « Premium » d'un devis sans onduleur), 018
+    (option imposée par le registre non montrée) ; reste d'I5 : T4-X3-017 (barre du haut en WebKit tablette).
+- **DÉCISIONS POUR REDA nées aujourd'hui** (rapport, décisions 34 à 38, à compléter) : phrases du PDF industriel
+  corrigées seulement au niveau 15 (les rendre actives au niveau 14 ?) ; source des allées et retraits par défaut
+  (un champ « Source » partagé, ou une source par valeur) ; un Commercial peut réécrire tous les réglages société
+  du calepinage mais pas appliquer le profil de départ (laisser, ou aligner les deux droits) ; clause « horaires
+  confirmés à la visite » sur un devis préliminaire (phrase du fondateur requise).
+- **Leçon de méthode du jour (à verser au retour d'expérience)** : trois passages de CI rouges d'affilée sur des
+  listes figées que les lanes ne voient pas — depuis le huitième passage, « paquet des listes figées » en docker
+  (`scratchpad/pack_cliquets.txt`), goldens du front (`*olden*.test.jsx`), gardes d'hôte APRÈS le dernier commit,
+  `check_except_larges`, `check_contrats_calepinage_deux_moities`, `lint-imports` avant chaque push.
+
+### Point du 25/11, 17 h 00 UTC
+
+**`main` = `d619459423` (lots 1 à 4 fusionnés, NON déployés : c'est à Reda).** Passage de CI de `main` après la
+fusion du lot 4 : un échec e2e (ACAL987, clic pendant le changement d'onglets du rail), relancé vert ; le test est
+durci dans le lot 5.
+
+**LOT 5 — branche locale `dev-lot5`, tête `ece0ca9bae`, RIEN de poussé, pas de PR.** Plié : I5 (réglages du
+calepinage), I3 (PDF C&I, « Devis final » refusé sans la visite exigée), H2 (total affiché rangé sur le devis,
+migration `0163_adev162_total_affiche_range`, tâche périodique 10 min, commande `ranger_totaux_affiches`), I2
+(retour de la fiche du lead en C&I, option « avec » non composée si chaînes infaisables, bouton BOQ sans doublon),
+I1 (écran du devis C&I : un seul retour, aperçu sur les lignes du devis, factures tapées comptées), le test e2e
+ACAL987 durci, et — fait par l'orchestrateur — le mineur 6 de la relecture finale (« Nouveau calepinage » ne
+retrouve qu'un calepinage créé PAR la personne connectée, `cree_par` de la ligne de liste).
+
+**Vérifications jouées sur `dev-lot5` à 16 h 45 (tête `213df5ba4f`)** : gardes d'hôte — toutes vertes SAUF
+`check_forme_code` (`ventes/models.py` +2 lignes : les deux colonnes de H2). Remède prévu, AUCUNE exception à
+écrire : cocher ADEV162 en citant `backend/django_core/apps/ventes/models.py` entre accents graves dans une note de
+fold (son budget « lignes nettes attendues ≤ 80 » couvre alors le fichier). `check_api_shapes --write`,
+`check_money_monodevise --write`, `codemap_fingerprint --write` : aucun fichier changé. Paquet docker (14 modules
+touchés + listes figées + surfaces + golden du moteur + `test_quote_engine`) et tests du front : EN COURS
+(tâches de fond `bdmw42pa6` et `bwh3qmkhd`) — à relire.
+
+**EN VOL (5 agents, le plafond de mémoire)** : J1 (`lane/editeur-restes`, agent a6311371c4d45a84d : restes de X6 sur
+l'écran du devis, consigne `scratchpad/tour3/msg-lane-J1-editeur-restes.md`) ; suite d'I1 (agent a3ec71c931984fded,
+branche `lane/editeur-ci` : l'étude C&I rangée rejouée dès le PREMIER enregistrement, pour que le PDF suive) ; suite 2
+d'I4 (agent a375819ef15513c07, branche `lane/file-a-traiter` : températures de site dans le cache partagé de Django,
+ligne non jugée jamais disparue) ; relecteurs X7 (agent a8c0bce9ca0c7bc1e, WebKit bureau puis tablette) et X8 (agent
+a1e9f64db652e1c8e, téléphone, sombre, Technicien) sur la pile `1cfa550e99` — NE PAS rebâtir la pile tant qu'ils jouent.
+
+**PRÊT À LANCER dès qu'un créneau se libère** : `scratchpad/tour3/msg-lane-E9b-apercu-devis-suite.md` (mineurs 1 et 2
+de la relecture finale, à l'auteur d'E9, agent a1144b5df28380f54, par SendMessage). Reste non attribué : T4-X3-017
+(barre du haut en WebKit tablette : attendre le compte rendu de X7, qui joue cette taille).
+
+**ENSUITE, dans l'ordre** : plier J1, I1 suite, I4 suite, E9b (relire chaque diff) ; trier X7 et X8 ; rebâtir la pile
+(`bash scratchpad/rebatir_pile.sh` — défaut `dev-lot5` désormais) et REGARDER moi-même : en-tête de la liste des devis
+juste après redémarrage (preuve en direct d'ADEV162), écran du devis C&I, tableau des tailles, retour de la fiche du
+lead, calepinage sans lead, écrans de réglages ; cocher ADEV162 et les tâches livrées ; méthode complète d'avant
+push ; UNE PR pour le lot 5 (Auto-fix, archivage automatique éteint), CI, relecture finale indépendante, file de
+fusion ; « mergé — à déployer par toi ». Puis : relecteur des maquettes (planches côte à côte), enregistrements
+d'acceptation ACAL2028 / ACAL2029, rejeux ACAL2034, 2035, 2038, deux tours sans rien de neuf, rapport final.
+
+**Baux de plan** renouvelés à 16 h 50 UTC (propriétaire `DESKTOP-APTAHF6/dev-moteur-unique`, 6 h) : à renouveler vers
+22 h 30, à relâcher après la dernière fusion.
+
+### Point du 25/11, 17 h 25 UTC
+
+**Reda est présent et répond aux questions interactives.** Cinq réponses aujourd'hui, toutes au registre
+(`docs/audits/decisions.yml`) et au rapport (décisions 35, 39, 41, 42, 45) : D-ACAL-102 phrases corrigées du PDF
+industriel actives pour les nouveaux rendus (« Live now ») ; D-ACAL-103 option « avec batterie » non composable non
+proposée ; D-ACAL-104 réglages société du calepinage réservés aux responsables (« Managers only, both ») ; D-ACAL-105 un
+champ « Source » partagé ; D-ACAL-106 le Technicien fait aussi le relevé (« Technicien too »).
+
+**Relecteur X8 rendu** (téléphone 390 × 844, sombre, Chromium + WebKit, Technicien) : 17 constats (4 S2, 12 S3, 1 S4),
+`registre/constats/T4-X8.jsonl`, `T4/tour3/X8.md`, `couverture-X8.json` (commités). TRI :
+- lane **M2** `lane/atelier-telephone` (agent a0099a92fd177e9e9) : X8-005 (vue client qui montre les outils de l'atelier
+  après le mode Expert — vu par un client), 006 (« Avancé » n'ouvre rien au téléphone), 013 (deux productions pour une
+  pose), 007, 010 (« Ignorer » qui n'ignore pas), 008, 009 ;
+- lane **M4** `lane/technicien-droits` (agent a7d69e5b61d5c0c2b) : D-ACAL-106 + X8-014 (générateur de devis ouvert à un
+  rôle sans droit de devis), 015, 016 (droit manquant dit « vérifiez votre connexion »), 017 ;
+- lane **M1** `lane/releve-telephone` (agent a1995fc29e332c794) : X8-001 (mesure reprise du brouillon affichée mais non
+  envoyée — perte de donnée), 003, 002, 004 ;
+- consigne **M3** PRÊTE, non lancée (`scratchpad/tour3/msg-lane-M3-panneaux-un-chiffre.md`) : X8-011 (carte « Couvrir la
+  facture » : compte et kWc qui ne vont pas ensemble, phrase coupée), 012 (« Panneaux nécessaires 400 »).
+
+**Autres lanes en vol** : J1 (`lane/editeur-restes`), suite d'I1 (`lane/editeur-ci`), suite 2 d'I4
+(`lane/file-a-traiter`), **K1** (`lane/phrases-pdf-ci`, agent ab75a7c7a60c1d28c : D-ACAL-102, consigne
+`msg-lane-K1-phrases-pdf-ci.md`), relecteur X7 (WebKit bureau puis tablette).
+**Consignes PRÊTES, non lancées (mémoire)** : `msg-lane-K2-reglages-decisions.md` (D-ACAL-104 et 105, à l'auteur d'I5,
+agent a9d37147aa205718d, par SendMessage) ; `msg-lane-E9b-apercu-devis-suite.md` (mineurs 1 et 2 de la relecture
+finale, à l'auteur d'E9, agent a1144b5df28380f54) ; `msg-B5-maquettes.md` (relecteur des maquettes, à lancer après la
+pile rebâtie sur `dev-lot5`) ; M3 ci-dessus. Attention M4 et K2 touchent tous deux les droits : plier K2 puis M4, ou
+résoudre à la main sur `permissions_registre.py` et les matrices de rôles.
+
+**Vérifications de `dev-lot5` (lancées à 16 h 45)** : gardes d'hôte vertes sauf `check_forme_code` (remède : cocher
+ADEV162 en citant `backend/django_core/apps/ventes/models.py`) ; tests du front 634 verts, 5 en délai dépassé sous la
+charge (`ReglagesSimulation.test.jsx` et `DevisGeneratorConsoIC.test.jsx`, rejoués SEULS : 65 et 11 verts) ; `node
+--test` 3 échecs (à vérifier que ce sont les 3 artefacts locaux connus) ; paquet docker encore en cours à 17 h 25.
+**Trouvé dans le journal du passage docker, à corriger par l'orchestrateur dès que le passage finit** : la doublure
+`conception/etudes_lignes.py::DevisAuxLignes` refuse les deux mémos de calcul posés sur le devis
+(`_taqinor_plafond_physique`, `_taqinor_capacite_toit`) : résultat juste, mais recalcul et avertissement avec trace à
+chaque appel (76 dans un passage). Test rouge DÉJÀ écrit, non commité :
+`apps/ventes/tests/test_borne_toit_physique.py::MemoSurLaDoublureAuxLignesTest`. Correctif : `__setattr__` accepte un
+nom commençant par `_` (posé sur la doublure, jamais sur le devis) ; tout autre nom reste refusé.
+
+**Outils prêts** : `scratchpad/consolider_couverture.py [--ecrire]` remplit la colonne « Joué par » de
+`T4/couverture.md` et la liste NON COUVERT (407 lignes jouées sur 449 avant X7 et X8) ; `scratchpad/pr-lot5.md`
+(texte de la PR du lot 5, à compléter) ; `scratchpad/rebatir_pile.sh` (défaut `dev-lot5`).
+
+**Ajout de 17 h 35 UTC** — quatre réponses de plus de Reda (questions interactives), au registre et au rapport
+(décisions 26 et 28 répondues) : D-ACAL-107 toit supposé « By roof type » (affleurant pour une maison en pente, sur
+châssis pour un toit plat ou un site C&I, supposition dite) ; D-ACAL-108 bascule sans toit « Yes, with level 15 »
+(ADEV155 DÉBLOQUÉE : construite maintenant, ouverte au niveau 15 seulement, `REGLES_COURANTES` inchangé) ; D-ACAL-109
+« Keep both options » (onduleur désigné dans l'option qui lui convient, l'autre option au matériel du moteur) ;
+D-ACAL-110 « Nearest panel, said ». Lane **N1** `lane/moteur-decisions` (agent aac95571301d1d032, consigne
+`scratchpad/tour3/msg-lane-N1-moteur-decisions.md`) : partie A (D-109, D-110), partie B (ACAL2045), partie C (ADEV155
+et liste `--ecarts-sans-toit` avec la pose supposée). APRÈS son pli : l'orchestrateur rejoue
+`manage.py remplir_conceptions --ecarts-sans-toit` sur la copie (pile l5t, lecture seule) et montre la liste à Reda.
+Neuf agents en vol : J1, I1 suite, I4 suite 2, K1, M1, M2, M4, N1, relecteur X7. En attente de créneau : M3, K2, E9b, B5.
+Le goulot est le créneau docker unique (le paquet de l'orchestrateur le tient depuis 16 h 48 : phase des rendus PDF).
+
+**Ajout de 17 h 55 UTC** — quatre réponses de plus (D-ACAL-111 à 114, PDF) : ligne sous la « facture actuelle » du PDF
+résidentiel (phrase approuvée au registre) ; PROTECTIONS ET LEUR CÂBLE DANS LE KIT MINIMUM du pompage (choix du
+fondateur, pas ma recommandation : modifie la décision du kit du 02/10, le prix monte) ; devis final de pompage sans
+« à vérifier à la visite » ; option unique sans « OPTION 2 ». Lane **P1** = l'auteur de K1 (agent ab75a7c7a60c1d28c,
+MÊME branche `lane/phrases-pdf-ci`, consigne `msg-lane-P1-pdf-decisions.md`) : d'abord la CORRECTION de K1 trouvée à
+la relecture — le drapeau de rendu marquait l'ANCIEN cas, donc le PDF déjà rangé d'un brouillon n'était pas régénéré
+(`cle_pdf_a_jour` compare l'empreinte des données) : le drapeau doit marquer le cas OUVERT ; puis les quatre décisions.
+`lane/phrases-pdf-ci` N'EST PAS PLIÉE (attendre le compte rendu de P1).
+PLIÉ depuis 17 h 25 : M1 (`lane/releve-telephone`, 4 constats de X8 ; choix noté au rapport § 2 : une cote reprise du
+dessin n'est plus envoyée comme mesure). Fait par l'orchestrateur : mémo de calcul accepté par la doublure
+`DevisAuxLignes` (rouge 2 échecs puis 21 verts, commit 141838e040).
+Paquet docker de 16 h 48 ARRÊTÉ à 17 h 50 par l'orchestrateur pour libérer le créneau : ~800 tests avec base passés
+sans échec (aucune marque E/F), seuls les rendus PDF de `test_quote_engine` n'ont pas fini — à rejouer dans le paquet
+d'avant push, après le pli de P1.
+En vol (12) : J1, I1 suite, I4 suite 2, M2, M3 (agent abf2f974be2593484), M4, N1, K2 (auteur d'I5), E9b (auteur d'E9),
+P1, relecteur X7. Reste à lancer : B5 (maquettes) après la pile rebâtie.
+
+**Ajout de 18 h 05 UTC — TOUR 4 du test utilisateur ouvert.** Tableau de suivi généré
+(`T4/suivi-des-constats.md`, script `scratchpad/suivi_constats.py --branche dev-lot5 --ecrire`) : 276 constats — 68
+corrigés ET rejoués par un relecteur neuf, 94 corrigés sur `main` jamais rejoués, 31 corrigés dans le lot 5, 15 rejoués
+non corrigés ou autres, 68 qu'aucun commit ne cite. Pour ces 68 : agent de tenue de registre en lecture seule
+(a675e65a011933cdd, sonnet) qui établit le sort de chacun (corrigé sous un numéro de tâche, décision, tâche écrite,
+fusionné, SANS SUITE) → `scratchpad/dispositions-constats.json`, à verser dans le tableau.
+Rejeu des 105 corrections déjà sur `main` et jamais vues à l'écran par un relecteur neuf (la pile `1cfa550e99` les
+porte) : listes `T4/tour4/a-rejouer-devis.json` (52) et `a-rejouer-calepinage.json` (53) ; relecteur **Y1** lancé
+(agent aa0ab783422a1743b, consigne `scratchpad/tour4/msg-Y1.md`, côté devis) ; **Y2** (calepinage,
+`scratchpad/tour4/msg-Y2.md`) à lancer dès que X7 rend la main (deux navigateurs au plus). NE PAS rebâtir la pile tant
+que X7, Y1 ou Y2 jouent ; les corrections du lot 5 seront rejouées au tour 5, sur la pile rebâtie.
+
+### Point du 25/11, soir — REPRISE SUR LE POSTE Reda_Laptop (le plus récent — REPRENDRE ICI)
+
+**Le poste DESKTOP-APTAHF6 est arrêté** (confirmé par Reda à 20 h 15 UTC). Son dossier de travail, ses consignes de
+lane, son texte de PR, sa pile de revue et ses agents en vol sont PERDUS : seul ce qui est commité existe. Ses baux de
+plan ont été repris par `Reda_Laptop/dev-lot5` (à rendre après la fusion sur `main`, jamais avant).
+
+**Branche de travail : `dev-lot5`** (sur GitHub). Elle part de `origin/sauvegarde/dev-lot5` (19 h 13 UTC), porte les
+cinq lanes sauvées (`atelier-tablette`, `pdf-decisions-2`, `reglages-suite`, `fiche-lead-conception`,
+`moteur-decisions`), `origin/main` fusionné, puis les lanes du soir (branches `origin/lot5b/<nom>`, toutes pliées sauf
+mention). Note de reprise tenue à jour : `OneDrive - Atlencia/TAQINOR/Claude/REPRENDRE-ICI.md`.
+
+**Lanes du soir (base `origin/dev-lot5`), pliées :**
+- `atelier-divers` — T4-X7-011 (la liste « Prêt à envoyer ? » relue après l'enregistrement du matériel et des
+  décisions), 015 (panneau Calques), 018 (tracé à la mauvaise échelle signalé par la contradiction ; seuil d'affichage
+  de 1 000 m² choisi par la lane, à dire à Reda) ; 017 déjà corrigé par 7d3a7a26b.
+- `pdf-decisions-3` et `pdf-decisions-4` — D-ACAL-115 et 116 relues complètes ; T4-X7-003 (la phrase D-ACAL-111 suit
+  aussi « Facture actuelle ≈ … » de « Comment nous calculons », premium et format avec étude) ; T4-X7-004 déjà corrigé
+  par 5e821aba6 ; D-ACAL-116 : un devis ACCEPTÉ sur une option garde l'échéancier de cette option (trouvé par la
+  relecture) ; les deux tests de compte de pages restent SANS `@tag('pdf')` pour tourner à la barrière de fusion.
+- `fiche-lead-retour` — T4-X7-001 (le retour d'UNE option sur la carte Conception : lignes découpées dès que le DEVIS
+  porte deux options), T4-X7-022 (les souhaits du lead entrent dans l'empreinte : une conception rangée d'un lead à
+  souhait est recalculée une fois) ; T4-X7-014 = D-ACAL-120.
+- `calepinage-sans-doublon` — ACAL2047, par le registre `core.idempotency` déjà présent (clé réservée avant le calcul).
+- `moteur-sans-toit` et `moteur-sans-toit-2` — ADEV155 derrière le niveau 15 DORMANT (`REGLES_COURANTES` inchangé) ;
+  ACAL2045 était déjà construite (23778ec89), règle confirmée par D-ACAL-107 ; fiche de module incomplète (puissance
+  présente, coefficient absent) : plan jamais servi, champ nommé ; phrase de la pose supposée qui nomme le geste qui la
+  lève ; un mois absent n'est jamais servi comme zéro.
+- `reglages-lisibles` — T4-X3-019 (tables des réglages en champs lisibles ; `correspondances_nomenclature` reste en
+  JSON). **NON PLIÉ : son commit ea51baad8 (T4-X3-017, barre du haut de l'ERP)** — changement de la coque commune à
+  tous les écrans, jamais vu dans un navigateur : laissé sur la branche, à juger sur une pile.
+- `reviser-resync-2` — T4-X7-006 (la phrase dit ce que « Réviser » fait ; l'écart devis lié ↔ pose reste nommé :
+  `conception.devis_lie`), 007 (refus du couple module / onduleur qui nomme le geste qui le lève), 008 (alertes de
+  composition visibles sur la carte « Devis créé »), 016 (« Réviser (nouvelle version) », le résultat toujours dit).
+- `kit-pompage-protections` — D-ACAL-112 et 118 : rôle `protection_ac` (migration stock 0190), coffret DC +
+  disjoncteur AC + parafoudre AC au kit minimum des NOUVEAUX devis ; un article sans prix n'est jamais chiffré (devis
+  automatique refusé, article nommé) ; phrase « Pose : … » vraie (nouveaux rendus). Deux goldens agricoles retouchés
+  à la main (totaux à confirmer par la CI).
+- `gardes-backend` — balayage planifié des totaux par sociétés actives, `Devis.total_affiche_range` à 2 décimales
+  (migration 0163 retouchée : absente de `main`), `marquer_retouche_ecran` sous verrou (statut ET pointeur relus).
+- `technicien-ses-visites` — trouvé par la relecture : le Technicien (D-ACAL-106) lisait et relevait les calepinages
+  des leads de ses pairs ; borné aux visites qui lui sont assignées. Technicien responsable : ses propres visites
+  seulement (aucun sélecteur « visites de mon sous-arbre » : à décider).
+- `retirer-panneau` — D-ACAL-119 : bouton « Retirer un panneau » du mode guidé (même geste moteur que « Un de moins »).
+- `atelier-resultats-un-chiffre` — T4-X7-002 (S1 : part de la consommation de la POSE quand la conception décrit une
+  autre installation, `taux_source`), 013 (production et taille lues ensemble), 005 (production nulle : cause et geste
+  dits) ; 021 déjà corrigé par c21d54d7d.
+
+**Décisions du fondateur du soir (au registre) :** D-ACAL-119 à 125 — bouton « Retirer un panneau » ; heure WebKit à
+vérifier sur un vrai iPad (aucun code) ; courbe de charge réservée à l'Industriel ; **déploiement du lot 5 le 26/11
+AVANT tout envoi de devis** (les coupures `COUPURE_PDF_2511` et `COUPURE_PHRASES_PROFIL` sont au 26/11 : si le
+déploiement glisse, déplacer les deux dates avant de déployer) ; bouton « Voir le devis une page » du panneau du lead
+gardé ; calibre du disjoncteur AC dérivé des kW et de la tension de la pompe (option non recommandée, choisie) ; kit
+de pompage livré dans le lot 5.
+
+**Relectures indépendantes du lot entier (lecture seule, quatre surfaces)** : moteur de devis (aucun bloquant hors la
+date de coupure, tranchée par D-ACAL-122), droits / migrations / sociétés (Technicien, pointeur de conception : les
+deux corrigés), écrans (aucun test affaibli ; deux ajouts sur la fiche du lead : « matériel désigné » couvert par
+D-ACAL-109, bouton couvert par D-ACAL-123), serveur du calepinage (deux défauts du plan par défaut : corrigés).
+
+**JAMAIS VÉRIFIÉ sur ce poste (à dire à Reda) :** aucun test avec base de données (la CI est le premier passage) ;
+aucun écran vu dans un navigateur ; rejeux du tour 4 (Y1 à peine commencé : 4 lignes « non rejoué », Y2 jamais lancé),
+tour 5 des corrections du lot 5, relecteur des maquettes B5 : tous demandent une pile de revue ; la liste
+`remplir_conceptions --ecarts-sans-toit` reste à rejouer sur la copie anonymisée et à montrer à Reda avant toute
+activation du niveau 15 ; ACAL2029 (@acceptation) non jouée.
+
+**Reste ouvert :** T4-X3-017 (ci-dessus) ; T4-X4-003 (formulation d'une erreur 500, facultatif) ; D-AMOT-8 et D-AMOT-9
+(constats T4-X1-005, T4-X1-006, T4-X4-007) ; prix des articles de protection du pompage à saisir au catalogue.

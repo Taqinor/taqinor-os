@@ -2,6 +2,16 @@
 import api from '../axios'
 import { pivot } from './_base'
 
+/** ACAL2047 — les options de `depuisModele` : `undefined` sans aucune (l'appel reste celui d'avant), sinon le drapeau
+ * d'expiration silencieuse et l'en-tête `Idempotency-Key`. */
+function optionsDepuisModele(silencieuxExpiration, idempotencyKey) {
+  const options = {
+    ...(silencieuxExpiration ? { silencieuxExpiration: true } : {}),
+    ...(idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
+  }
+  return Object.keys(options).length ? options : undefined
+}
+
 export const projet = {
     // CALX342 — le COMPARATIF de 1 à 5 calepinages DISTINCTS (contrat
     // `contract_samples/calepinage_comparaison_projets.json`, CALX331 ; porte
@@ -41,8 +51,11 @@ export const projet = {
     // garde `create()` — la création d'aujourd'hui, inchangée.
     // T4-X9-011 — `silencieuxExpiration` (écran de création) : sans réponse à temps, l'écran cherche lui-même le
     // calepinage peut-être créé ; le toast global « … réessayez » (qui menait au doublon) est tu pour lui seul.
-    depuisModele: (corps, { silencieuxExpiration = false } = {}) =>
-      api.post('/calepinage/calepinages/depuis-modele/', corps, silencieuxExpiration ? { silencieuxExpiration: true } : undefined),
+    // ACAL2047 — `idempotencyKey` (une par création, la même au renvoi) part en en-tête `Idempotency-Key` : deux envois
+    // de la même création rendent le MÊME calepinage côté serveur.
+    // Corps en EXPRESSION (pas de bloc) : la garde `check_api_shapes.py` ne résout une porte que sous cette forme.
+    depuisModele: (corps, { silencieuxExpiration = false, idempotencyKey } = {}) =>
+      api.post('/calepinage/calepinages/depuis-modele/', corps, optionsDepuisModele(silencieuxExpiration, idempotencyKey)),
 
     // CALX349 — la DÉCISION D'APPROBATION (second regard interne, CALX347) :
     // GET rend `{etat, decide_par, decide_le, motif, exigee}` (contrat

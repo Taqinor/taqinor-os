@@ -22,6 +22,7 @@ ni ``marge_voir``, ni ``roles_gerer``. Le module n'expose aucune donnée de
 coût de revient, donc il n'a besoin d'aucun code élevé.
 """
 from __future__ import annotations
+from rest_framework.exceptions import ParseError, UnsupportedMediaType
 from rest_framework.permissions import BasePermission
 from core.permissions import _user_has_or_legacy
 
@@ -41,6 +42,76 @@ CODES = (CAL_VOIR, CAL_GERER)
 #: PAS dans ``CODES`` — ce tuple fige les deux codes du palier ``ventes``
 #: (CAL6) et ce code-ci n'a volontairement aucun palier.
 CAL_APPROUVER = 'calepinage_approuver'
+
+#: D-ACAL-106 (fondateur, 25/11/2026) — LE RELEVÉ au téléphone : écrire les
+#: mesures, la pente, l'orientation et les photos d'un calepinage, rien
+#: d'autre. ALTERNATIVE à ``calepinage_gerer`` sur ces seules routes (le
+#: porteur de GÉRER garde tout) ; hors ``CODES`` comme ``CAL_APPROUVER``.
+CAL_RELEVE = 'calepinage_releve'
+
+#: Les actions du relevé et les MÉTHODES qu'il y écrit. ``releve_detail`` :
+#: corriger (PATCH) oui, retirer (DELETE) non — cela reste un geste de GÉRER.
+ACTIONS_RELEVE = {
+    'releve': frozenset({'POST'}),
+    'releve_detail': frozenset({'PATCH'}),
+    'photos': frozenset({'POST'}),
+    'layout_section': frozenset({'POST'}),
+}
+
+#: Les champs d'un PAN que le relevé écrit (``releve/ReleveVisite.jsx::
+#: champsDuPan``) : la pente et l'orientation, jamais la géométrie.
+CHAMPS_PAN_RELEVE = frozenset({
+    'pitchDeg', 'pitchSource', 'facingAzimuthDeg', 'facingManual',
+    'facingAzimuthSource', 'facingAzimuthPrecisionDeg',
+})
+
+
+def ecriture_de_releve(request, view):
+    """Vrai si cette requête est une écriture DU RELEVÉ (D-ACAL-106).
+
+    ``layout/section`` n'en est une que pour ``cle == 'zones'`` et des champs
+    tous dans :data:`CHAMPS_PAN_RELEVE` — toute autre section reste à GÉRER.
+    """
+    methodes = ACTIONS_RELEVE.get(getattr(view, 'action', None))
+    if not methodes or request.method not in methodes:
+        return False
+    if view.action != 'layout_section':
+        return True
+    # Le corps n'est lu qu'ICI, pendant la vérification des droits : un corps
+    # illisible (type de contenu refusé, JSON cassé) n'est PAS une écriture du
+    # relevé — la garde tombe sur GÉRER (403 sans le droit) et l'objet reste
+    # cherché avant toute négociation du corps (404 pour un id étranger,
+    # balayage ``test_isolation_societe``). Le porteur légitime reçoit son 415
+    # du gestionnaire, après ``get_object``.
+    try:
+        donnees = request.data
+    except (ParseError, UnsupportedMediaType):
+        return False
+    corps = donnees if isinstance(donnees, dict) else {}
+    champs = corps.get('champs')
+    return (corps.get('cle') == 'zones' and isinstance(champs, dict)
+            and bool(champs) and set(champs) <= CHAMPS_PAN_RELEVE)
+
+
+#: D-ACAL-104 (25/11/2026) — ÉCRIRE un réglage de la SOCIÉTÉ (réglages, profils types,
+#: gabarits de dossier, systèmes de fixation…) exige le MÊME droit que d'appliquer ou
+#: retirer le profil de départ : ``calepinage_approuver``. Lire reste ``calepinage_voir``.
+#: Le réglage d'UN calepinage (le document, ses variantes, son entrée électrique) reste
+#: ``calepinage_gerer`` : un vendeur règle SA conception sans pouvoir toucher le défaut
+#: de la société.
+MESSAGE_REGLAGES_SOCIETE = (
+    "Changer les réglages de la société est réservé aux personnes qui peuvent "
+    "approuver un calepinage.")
+
+
+def exiger_droit_reglages_societe(user):
+    """403 NOMMÉ (``{reglages_societe: phrase}``, même forme que les refus du profil de
+    départ) quand ``user`` ne porte pas ``calepinage_approuver``. Appelé AVANT toute
+    écriture : le serveur est la serrure, l'écran ne fait que la suivre."""
+    from rest_framework.exceptions import PermissionDenied
+
+    if not _user_has_or_legacy(user, CAL_APPROUVER):
+        raise PermissionDenied({'reglages_societe': MESSAGE_REGLAGES_SOCIETE})
 
 
 # ── CAL16 — les DEUX gardes DRF par action (jamais un littéral en viewset) ──
@@ -100,6 +171,32 @@ class PeutLireOuEcrireCalepinage(_PermissionCalepinage):
         garde = (PeutVoirCalepinage() if request.method in SAFE_METHODS
                  else PeutGererCalepinage())
         return garde.has_permission(request, view)
+
+
+class PeutLireOuReleverCalepinage(_PermissionCalepinage):
+    """D-ACAL-106 — la garde des routes du RELEVÉ (``releve``,
+    ``releve_detail``, ``photos``, ``layout_section``).
+
+    Lecture : ``calepinage_voir``. Écriture : ``calepinage_gerer`` comme
+    avant, OU ``calepinage_releve`` pour une écriture DU RELEVÉ
+    (:func:`ecriture_de_releve`) — jamais pour le reste de la route.
+    """
+
+    def has_permission(self, request, view):
+        from rest_framework.permissions import SAFE_METHODS
+
+        if request.method in SAFE_METHODS:
+            return PeutVoirCalepinage().has_permission(request, view)
+        if PeutGererCalepinage().has_permission(request, view):
+            return True
+        return (ecriture_de_releve(request, view)
+                and PeutReleverCalepinage().has_permission(request, view))
+
+
+class PeutReleverCalepinage(_PermissionCalepinage):
+    """D-ACAL-106 — le code du relevé (``calepinage_releve``)."""
+
+    code = CAL_RELEVE
 
 
 class PeutApprouverCalepinage(_PermissionCalepinage):

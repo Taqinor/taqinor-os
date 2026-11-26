@@ -252,6 +252,8 @@
 .cal-resinc > .cal-res-carte .cal-resinc-sur { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 @media (pointer: coarse) {
   .cal-resinc-remplir { display: inline-flex; align-items: center; min-height: 44px; }
+  /* T4-X7-010 — le lien du devis (« DEV-… », 114 × 18 au doigt) : une cible de 44 px de haut. */
+  .cal-res-lien-devis { display: inline-flex; align-items: center; min-height: 44px; }
 }
 
 @container (max-width: 860px) {

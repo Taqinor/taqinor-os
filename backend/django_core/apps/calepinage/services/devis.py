@@ -192,6 +192,24 @@ def _refus_deja_rattache(lie):
     })
 
 
+def _empreinte_generee(calepinage, layout):
+    """ACAL968 — l'empreinte du document que « Générer » chiffre (celle du calepinage quand il
+    chiffre tout, sinon celle de la copie des surfaces cochées)."""
+    from apps.ventes.services import layout_hash
+
+    return (calepinage.layout_hash if layout is calepinage.roof_layout else None) or layout_hash(layout)
+
+
+def _brouillon_rendu(calepinage, company, lead, empreinte, *, lie=None):
+    """Lane E9b — le brouillon que « Générer le devis » RENDRAIT au lieu d'en composer un : le
+    devis lié actif encore brouillon à la même empreinte (ACAL33), sinon le brouillon
+    réutilisable du lead (ACAL89) ; ``None`` sinon. Lecture seule ; ``lie`` : le lien déjà lu."""
+    lie = lie if lie is not None else _devis_lie_actif(calepinage)
+    if lie is not None:
+        return lie if lie.statut == 'brouillon' and (lie.layout_hash or '') == (empreinte or '') else None
+    return _brouillon_reutilisable(company, lead, empreinte, calepinage) if lead is not None else None
+
+
 def _brouillon_reutilisable(company, lead, empreinte, calepinage):
     """ACAL89 — le brouillon de même empreinte, SEULEMENT s'il n'est lié à
     aucun AUTRE calepinage (la copie d'un calepinage ne vole jamais le devis
@@ -538,7 +556,7 @@ def _generer(calepinage, layout, company, lead, client, montants, *, user,
     from django.db import transaction
 
     from apps.ventes.services import (
-        AutoDevisError, layout_hash, validate_composition_for_layout,
+        AutoDevisError, validate_composition_for_layout,
     )
 
     # Pré-vol de composition : le catalogue peut-il servir ce toit ? Le refus
@@ -555,8 +573,7 @@ def _generer(calepinage, layout, company, lead, client, montants, *, user,
                           donnees={'detail': erreurs[0], 'errors': erreurs})
 
     # ACAL968 — une copie limitée aux surfaces cochées se dédoublonne sur SA empreinte.
-    empreinte = (calepinage.layout_hash if layout is calepinage.roof_layout
-                 else None) or layout_hash(layout)
+    empreinte = _empreinte_generee(calepinage, layout)
     # ACON46 — UNE transaction sous verrou de ligne du calepinage : deux
     # générations concurrentes se sérialisent ; la seconde relit le lien posé
     # par la première (dédup) au lieu de créer un second devis.
@@ -582,19 +599,20 @@ def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
 
     # ACAL89 — le lien EXISTANT est lu AVANT toute création.
     lie = _devis_lie_actif(calepinage)
+    # Lane E9b — LA décision « le brouillon rendu au lieu d'un devis neuf », lue aussi par l'aperçu.
+    rendu = _brouillon_rendu(calepinage, company, lead, empreinte, lie=lie)
     if lie is not None:
         # ACAL33 — un calepinage lié à un devis ACTIF n'est jamais re-pointé :
         # le même brouillon à la même empreinte est rendu (dédup, double clic,
         # client seul compris), tout autre cas est un 409 NOMMÉ avant toute
         # création (jamais un devis orphelin ni un 500).
-        if (lie.statut == 'brouillon'
-                and (lie.layout_hash or '') == (empreinte or '')):
+        if rendu is not None:
             _refuser_autre_marche(lie, lead)  # ACON90
             _refuser_montants_differents(lie, montants)  # ACON49
             return lie, False
         raise _refus_deja_rattache(lie)
     if lead is not None:
-        deja = _brouillon_reutilisable(company, lead, empreinte, calepinage)
+        deja = rendu
         if deja is not None:
             _refuser_autre_marche(deja, lead)  # ACON90
             _refuser_montants_differents(deja, montants)  # ACON49
@@ -916,10 +934,12 @@ def _montants(taux_tva, remise_globale, Decimal):
     return montants
 
 
-def _onduleur_juge(calepinage, devis):
+def _onduleur_juge(calepinage, devis, refus=None):
     """Lane E6e (T4-X5-010) — un refus de resynchro juge l'onduleur du DEVIS ; quand
-    l'étape Électrique en désigne un AUTRE, la phrase le dit, nomme les deux et propose
-    le geste qui existe (désigner l'onduleur du devis). ``''`` sinon (refus inchangé)."""
+    l'étape Électrique en désigne un AUTRE, la phrase le dit et nomme les deux. T4-X7-007 —
+    elle ne propose plus de désigner l'onduleur du devis (geste qui ne lève pas un refus
+    jugé sur ce même onduleur) : elle nomme les gestes qui le lèvent (un autre module à
+    l'étape Électrique, ou un autre onduleur dans le devis). ``''`` sinon (refus inchangé)."""
     from apps.stock.selectors import get_produit_scoped
     from apps.ventes.selectors_calepinage import lignes_produits_calepinage
     from apps.ventes.services import classer_produit
@@ -936,9 +956,14 @@ def _onduleur_juge(calepinage, devis):
     if not onduleurs or produit is None or designe in {o.pk for o in onduleurs}:
         return ''
     du_devis = onduleurs[0].nom
-    return (f" L'étape Électrique juge l'onduleur désigné « {produit.nom} » ; ce devis porte "
-            f"« {du_devis} », c'est lui que ce refus juge. Pour aligner les deux, désignez "
-            f"« {du_devis} » à l'étape Électrique (Matériel électrique), puis resynchronisez.")
+    phrase = (f" L'étape Électrique juge l'onduleur désigné « {produit.nom} » ; ce devis porte "
+              f"« {du_devis} », c'est lui que ce refus juge : désigner un onduleur à l'étape "
+              f"Électrique ne le change pas.")
+    if getattr(refus, 'code', '') == 'couple_incompatible':  # ventes.domain.resynchronisation.COUPLE_INCOMPATIBLE
+        phrase += (f" Pour lever ce refus, choisissez un autre module à l'étape Électrique "
+                   f"(Matériel électrique), ou remplacez « {du_devis} » dans le devis, puis "
+                   f"resynchronisez.")
+    return phrase
 
 
 def resynchroniser_devis(calepinage, *, user=None,
@@ -1027,7 +1052,7 @@ def resynchroniser_devis(calepinage, *, user=None,
             roof_image=None if variante is not None else (
                 getattr(calepinage, 'roof_image', None) or None))
     except SyncLayoutError as refus:
-        detail = refus.detail + _onduleur_juge(calepinage, devis)
+        detail = refus.detail + _onduleur_juge(calepinage, devis, refus)
         raise DevisRefuse(
             detail, champ='devis', statut=409,
             donnees={'detail': detail,

@@ -36,3 +36,21 @@ export function bilanBoq(data) {
   if (deja) morceaux.push(`${deja} déjà présente${deja > 1 ? 's' : ''}`)
   return `${morceaux.join(' · ')}.`
 }
+
+/** Une phrase servie, rendue en phrase : majuscule initiale, point final. */
+const enPhrase = (texte) => {
+  const t = String(texte || '').trim()
+  if (!t) return ''
+  const p = t.charAt(0).toUpperCase() + t.slice(1)
+  return /[.!?…]$/.test(p) ? p : `${p}.`
+}
+
+/** T4-X6-019 (suite) — les phrases sous le bilan : chaque ligne REMPLACÉE
+ *  (« X remplace Y ») puis les `avertissements` servis, tels quels en phrases. */
+export function phrasesBoq(data) {
+  const remplacees = (data?.remplacees ?? [])
+    .filter((r) => r?.nouvelle && r?.ancienne)
+    .map((r) => `« ${r.nouvelle} » remplace « ${r.ancienne} ».`)
+  const avertissements = (data?.avertissements ?? []).map(enPhrase).filter(Boolean)
+  return [...remplacees, ...avertissements]
+}

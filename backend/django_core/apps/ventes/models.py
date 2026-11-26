@@ -319,6 +319,15 @@ class Devis(VerrouOptimisteMixin, RechercheFTSMixin, models.Model):
     marge_snapshot = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
         verbose_name='Marge HT figée (interne, manager-only)')
+    # ADEV162 — cache RANGÉ du total affiché (``display_totals``) et l'empreinte
+    # de ce dont il a été calculé ; lus par la SEULE synthèse de la liste
+    # (``selectors_listes``), servis seulement si l'empreinte relue concorde.
+    # Le TTC affiché en MAD, au centime (``display_totals`` le rend déjà au
+    # centime) : deux décimales, comme tout montant (check_money_fields).
+    total_affiche_range = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True, editable=False)
+    total_affiche_empreinte = models.CharField(
+        max_length=80, blank=True, default='', editable=False)
 
     # VX98 — fraîcheur : horodatage (auto_now) + dernier auteur d'une
     # modification (posé server-side dans perform_update, jamais accepté du

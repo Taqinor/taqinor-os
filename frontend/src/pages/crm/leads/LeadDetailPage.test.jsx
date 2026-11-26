@@ -88,6 +88,15 @@ describe('LeadDetailPage — AERR112 lecture en panne', () => {
     expect(screen.queryByText('Lead introuvable')).not.toBeInTheDocument()
   })
 
+  it('403 (T4-X8-016) : le droit manquant est dit, sans « Réessayer » ni « Vérifiez votre connexion »', async () => {
+    crmApi.getLead.mockRejectedValueOnce({ response: { status: 403, data: { detail: 'Refus.' } } })
+    monter()
+    expect(await screen.findByText('Accès refusé')).toBeInTheDocument()
+    expect(screen.getByText(/Vous n'avez pas le droit d'ouvrir ce lead\./)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Réessayer' })).toBeNull()
+    expect(screen.queryByText(/Vérifiez votre connexion/)).toBeNull()
+  })
+
   it('404 : Lead introuvable', async () => {
     crmApi.getLead.mockRejectedValueOnce({ response: { status: 404 } })
     monter()

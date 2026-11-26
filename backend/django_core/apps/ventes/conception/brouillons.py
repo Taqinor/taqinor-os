@@ -54,11 +54,58 @@ def _brouillons_nes_avant(company_id, lead_id, version):
             .annotate(_lignes_manuelles=Exists(manuelles)).order_by('pk'))
 
 
+#: T4-X6-012 — « enregistré depuis l'écran avec des lignes changées », rangé DANS le
+#: pointeur ``Devis.conception_source`` (jamais servi) : un nombre de panneaux recomposé
+#: à l'écran ne pose aucun verrou de ligne, et le suivi effaçait la retouche du vendeur.
+CLE_RETOUCHE_ECRAN = 'retouche_ecran'
+
+
+def empreinte_des_lignes(devis):
+    """Ce que le vendeur voit d'une ligne (produit, désignation, quantité, prix, remise,
+    option) : deux empreintes égales = aucune retouche des lignes."""
+    return list(devis.lignes.order_by('ordre', 'pk').values_list(
+        'type_ligne', 'produit_id', 'designation', 'quantite', 'prix_unitaire', 'remise', 'variante',
+        'optionnelle'))
+
+
+def marquer_retouche_ecran(devis, avant):
+    """T4-X6-012 — un BROUILLON né d'une conception, enregistré depuis l'écran avec des
+    lignes différentes de ``avant`` (:func:`empreinte_des_lignes`), devient « retouché » :
+    il ne suit plus seul la conception du lead, « Mettre à jour » lui est proposé. Appelé
+    sous la transaction de l'écriture, AVANT tout suivi. Rend vrai quand il marque.
+
+    Le statut ET le pointeur sont RELUS sous le verrou de la ligne (``select_for_update``) :
+    un devis parti entre la lecture de l'instance et ce geste n'est ni marqué ni dit marqué,
+    et un pointeur changé entre-temps par un suivi est gardé (seule la clé est ajoutée)."""
+    from django.db import transaction
+
+    from apps.ventes.models import Devis
+
+    if not devis.conception_source or empreinte_des_lignes(devis) == avant:
+        return False
+    with transaction.atomic():
+        # Le pointeur AUSSI est relu sous le verrou : un suivi de la conception
+        # committé entre la lecture de l'instance et ce geste n'est jamais écrasé
+        # par l'ancien pointeur.
+        ligne = (Devis.objects.select_for_update().filter(pk=devis.pk)
+                 .values('statut', 'conception_source').first())
+        if ligne is None or ligne['statut'] != Devis.Statut.BROUILLON:
+            return False
+        source = ligne['conception_source']
+        if not source or source.get(CLE_RETOUCHE_ECRAN):
+            return False
+        marque = dict(source, **{CLE_RETOUCHE_ECRAN: True})
+        Devis.objects.filter(pk=devis.pk).update(conception_source=marque)
+    devis.conception_source = marque
+    return True
+
+
 def est_retouche(devis):
     """« Retouché à la main » (règle (4) de la consolidation C4) : une
-    surcharge déclarée (``Devis.overrides`` non vide) ou une ligne retouchée
+    surcharge déclarée (``Devis.overrides`` non vide), un enregistrement de l'écran qui
+    a changé les lignes (:func:`marquer_retouche_ecran`) ou une ligne retouchée
     (:func:`_lignes_retouchees`). Seule définition."""
-    if devis.overrides:
+    if devis.overrides or (devis.conception_source or {}).get(CLE_RETOUCHE_ECRAN):
         return True
     manuelles = getattr(devis, '_lignes_manuelles', None)
     if manuelles is None:

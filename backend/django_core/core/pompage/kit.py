@@ -17,7 +17,10 @@ Ici :
   appliqué à un pompage ». AGQ5 — un barème saisi vaut PRIX CONNU : la ligne
   est chiffrée par le barème à l'écriture (``domain/lignes.py``).
   Câble DC champ → variateur SEULEMENT si la distance est SAISIE (jamais 20 m
-  par défaut, P6).
+  par défaut, P6). D-ACAL-112 / D-ACAL-118 (fondateur 25/11/2026) : les
+  protections — UN coffret de protection DC choisi pour le champ, un
+  disjoncteur AC et un parafoudre AC entre le variateur et la pompe
+  (:func:`choisir_protections`) — quittent les options pour le kit minimum.
 * OPTIONS NOMMÉES trouvées par ``role_pompage`` (vocabulaire
   ``ROLES_POMPAGE`` de ``stock/contract_samples/produit_pompage.json``) :
   afficheur (cochée par défaut avec un variateur VEICHI — règle CLAUDE.md
@@ -36,6 +39,10 @@ Noyau PUR : stdlib seulement, aucune I/O.
 """
 from __future__ import annotations
 
+import math
+import re
+import unicodedata
+
 from core.pompage.hydraulique import _flottant
 from core.pompage.selection import prix_connu
 
@@ -44,9 +51,13 @@ SUFFIXE_PRIX = " — prix à renseigner"
 MENTION_COMPTEUR = "exigé par la loi 36-15 et le dossier FDA 2024"
 
 #: (clé, rôle ``role_pompage``, libellé) — ordre d'affichage des options.
+#: D-ACAL-112 / D-ACAL-118 (fondateur 25/11/2026) : l'ancienne option
+#: « Protections DC/AC » (``protection_dc``) n'est plus une option — les
+#: protections entrent au kit minimum (:data:`PROTECTIONS`). Un devis déjà
+#: créé garde ses lignes et son étude figée (libellé ``agr_option_protection_dc``
+#: toujours servi au rendu).
 OPTIONS = (
     ("afficheur_variateur", "afficheur_variateur", "Afficheur du variateur"),
-    ("protection_dc", "protection_dc", "Protections DC/AC"),
     ("sonde_niveau", "sonde_niveau", "Sonde de niveau (marche à sec)"),
     ("compteur_eau", "compteur_eau", "Compteur d'eau"),
     ("cable_descente", "cable_descente", "Câble de descente"),
@@ -57,6 +68,16 @@ OPTIONS = (
     ("entretien_pompage", "entretien_pompage", "Contrat d'entretien"),
     ("antivol", "antivol", "Fixations antivol"),
     ("cloture", "cloture", "Clôture du champ"),
+)
+
+#: D-ACAL-112 / D-ACAL-118 (fondateur 25/11/2026, « DC box + AC protection »)
+#: — les protections du kit MINIMUM des nouveaux devis : UN coffret de
+#: protection DC choisi pour le champ, un disjoncteur AC et un parafoudre AC
+#: entre le variateur et la pompe. (clé, rôle ``role_pompage``, libellé).
+PROTECTIONS = (
+    ("coffret_dc", "protection_dc", "Coffret de protection DC"),
+    ("disjoncteur_ac", "protection_ac", "Disjoncteur AC variateur → pompe"),
+    ("parafoudre_ac", "protection_ac", "Parafoudre AC variateur → pompe"),
 )
 
 
@@ -124,6 +145,232 @@ def bareme_saisi(produit):
                for c in ("prix_fixe_ht", "prix_par_panneau_ht"))
 
 
+def _norme(texte):
+    texte = unicodedata.normalize("NFKD", str(texte or "").lower())
+    return "".join(c for c in texte if not unicodedata.combining(c))
+
+
+def _premier_price(candidats):
+    """Le premier PRICÉ, sinon le premier (règle de :func:`_par_role`)."""
+    pricees = [p for p in candidats if prix_connu(p)]
+    return (pricees or list(candidats) or [None])[0]
+
+
+def _phase_article(produit):
+    """``mono`` / ``tri`` lu sur l'article (alimentation servie, sinon le nom :
+    « monophasé », « triphasé » / « tétrapolaire ») ; ``None`` = non publié."""
+    alim = (produit or {}).get("alimentation")
+    if alim in ("mono", "tri"):
+        return alim
+    nom = _norme((produit or {}).get("nom"))
+    if "monophas" in nom:
+        return "mono"
+    if "triphas" in nom or "tetrapolaire" in nom:
+        return "tri"
+    return None
+
+
+def _nombre_du_nom(produit, motif):
+    trouve = re.search(motif, _norme((produit or {}).get("nom")))
+    return float(trouve.group(1).replace(",", ".")) if trouve else None
+
+
+def _de_la_phase(candidats, phase):
+    """Les articles de la phase voulue ; à défaut, ceux qui n'en publient
+    aucune (jamais un article de l'autre phase)."""
+    exacts = [p for p in candidats if phase and _phase_article(p) == phase]
+    return exacts or [p for p in candidats if _phase_article(p) is None]
+
+
+def _plus_petit_suffisant(candidats, taille, besoin):
+    """Le plus petit article dont la ``taille`` publiée couvre ``besoin``
+    (même règle que le variateur : plus petit kW ≥ pompe), le premier pricé à
+    taille égale ; ``None`` si aucun ne suffit."""
+    suffisants = [(taille(p), p) for p in candidats
+                  if taille(p) is not None and taille(p) + 1e-9 >= besoin]
+    if not suffisants:
+        return None
+    mini = min(t for t, _p in suffisants)
+    return _premier_price([p for t, p in suffisants if t == mini])
+
+
+def courant_deduit_pompe(pompe_kw, tension_v, alimentation):
+    """D-ACAL-124 (fondateur 25/11/2026, « Derive from kW and voltage ») —
+    ``(courant_a | None, motif | None)`` : le courant de la pompe DÉDUIT de son
+    kW (``pompe_kw``) et de sa tension (``tension_v``), relation électrique
+    seule : I = P / U en monophasé, I = P / (√3 · U) en triphasé (même relation
+    que ``core.electrique.protections.courant_emploi_ac``, à la tension de la
+    pompe). AUCUN facteur de puissance ni rendement du moteur n'est supposé (le
+    dépôt n'en publie aucun) : la valeur SOUS-ESTIME le courant réel d'un
+    moteur. ``motif`` nomme le champ manquant."""
+    kw, tension = _flottant(pompe_kw), _flottant(tension_v)
+    if not kw or kw <= 0:
+        return None, ("calibre du disjoncteur AC à choisir : ni courant "
+                      "nominal ni kW de la pompe (pompe_kw) sur sa fiche")
+    if not tension or tension <= 0:
+        return None, ("calibre du disjoncteur AC à choisir : ni courant "
+                      "nominal ni tension de la pompe (tension_v) sur sa fiche")
+    if alimentation not in ("mono", "tri"):
+        return None, ("calibre du disjoncteur AC à choisir : ni courant "
+                      "nominal ni phase (mono / tri) connus pour la pompe")
+    diviseur = tension * (math.sqrt(3.0) if alimentation == "tri" else 1.0)
+    return kw * 1000.0 / diviseur, None
+
+
+def phrase_calibre_deduit(pompe_kw, tension_v, courant, pompe_cv=None):
+    """D-ACAL-124 — l'hypothèse DITE (écran, hypothèses internes ; jamais au
+    PDF client) et le champ qui la lève. ``pompe_cv`` : le kW vient des CV
+    (``selection.kw_pompe``, même kW que le variateur) — la phrase le dit."""
+    kw, tension = _fr(_flottant(pompe_kw)), _fr(_flottant(tension_v))
+    source = ("%s kW et %s V de la pompe" % (kw, tension) if not pompe_cv else
+              "%s CV de la pompe (%s kW) et %s V" % (
+                  _fr(_flottant(pompe_cv)), kw, tension))
+    return ("Calibre du disjoncteur AC déduit des %s (courant estimé %s A, "
+            "sans facteur de puissance ni rendement du moteur : sous-estimé) "
+            "; saisir le courant nominal de la pompe sur sa fiche du "
+            "catalogue le remplace." % (source, _fr(courant)))
+
+
+#: Ce qui rend les chaînes vérifiables quand le noyau ne les a pas comptées.
+MOTIF_CHAINES_INCONNUES = ("fiche du variateur (tensions et courant MPPT) à "
+                           "saisir dans Stock")
+
+
+def _choisir_coffret(coffrets, capacite, nb_chaines, motif_chaines):
+    """Revue R3 (F1) — ``(coffret | None, motif | None)`` : un nombre de
+    chaînes INCONNU n'est pas 1 (aucun coffret, le motif dit ce qui manque) ;
+    un coffret qui ne publie aucun nombre de chaînes n'est jamais choisi."""
+    if not coffrets:
+        return None, None
+    besoin = _flottant(nb_chaines)
+    if besoin is None or besoin < 1:
+        return None, ("coffret DC non choisi : nombre de chaînes en parallèle "
+                      "du champ inconnu (%s)"
+                      % (motif_chaines or MOTIF_CHAINES_INCONNUES))
+    besoin = int(besoin)
+    coffret = _plus_petit_suffisant(coffrets, capacite, besoin)
+    if coffret is not None:
+        return coffret, None
+    motifs = []
+    if any(capacite(p) is not None for p in coffrets):
+        motifs.append("aucun coffret DC du catalogue n'accepte %d chaîne%s en "
+                      "parallèle" % (besoin, "s" if besoin > 1 else ""))
+    motifs += ["« %s » ne publie aucun nombre de chaînes (nom de l'article)"
+               % (p.get("nom") or "coffret DC")
+               for p in coffrets if capacite(p) is None]
+    return None, " ; ".join(motifs)
+
+
+def choisir_protections(produits, *, nb_chaines=None, alimentation=None,
+                        courant_pompe_a=None, pompe_kw=None, tension_v=None,
+                        motif_chaines=None, pompe_cv=None):
+    """D-ACAL-118 — ``{cle: (produit | None, motif | None)}`` des trois
+    protections du kit, choisies sur les données publiées SEULEMENT :
+
+    * coffret DC (rôle ``protection_dc``, « coffret » au nom) : le plus petit
+      dont le nombre de chaînes publié au nom (« 2 strings ») couvre les
+      chaînes en parallèle du champ ; chaînes inconnues ou coffret sans
+      nombre publié : aucun (:func:`_choisir_coffret`) ;
+    * disjoncteur AC (rôle ``protection_ac``) : de la phase de la pompe ; un
+      plus petit calibre PUBLIÉ ≥ courant de la pompe (Ib ≤ In), même avec un
+      seul calibre au catalogue ; sans courant, aucun —
+      courant PUBLIÉ, sinon déduit de son kW et de sa tension (D-ACAL-124,
+      :func:`courant_deduit_pompe`, hypothèse dite) ;
+    * parafoudre AC (rôle ``protection_ac``) : de la phase, sinon générique.
+
+    ``motif`` dit pourquoi aucun article n'est retenu (jamais une valeur
+    supposée)."""
+    produits = list(produits or ())
+    choix = {}
+
+    coffrets = [p for p in produits if p.get("role_pompage") == "protection_dc"
+                and "coffret" in _norme(p.get("nom"))]
+    capacite = lambda p: _nombre_du_nom(  # noqa: E731
+        p, r"(\d+)\s*(?:strings?|chaines?|entrees?)\b")
+    choix["coffret_dc"] = _choisir_coffret(coffrets, capacite, nb_chaines,
+                                           motif_chaines)
+
+    ac = [p for p in produits if p.get("role_pompage") == "protection_ac"]
+    tous = [p for p in ac if "disjoncteur" in _norme(p.get("nom"))
+            and "parafoudre" not in _norme(p.get("nom"))]
+    disjoncteurs = _de_la_phase(tous, alimentation)
+    calibre = lambda p: _nombre_du_nom(p, r"(\d+(?:[.,]\d+)?)\s*a\b")  # noqa: E731
+    calibres = {calibre(p) for p in disjoncteurs}
+    courant = _flottant(courant_pompe_a)
+    motif = None
+    # D-ACAL-124 — le courant PUBLIÉ gagne ; sinon déduit du kW et de la
+    # tension de la pompe (hypothèse dite), sinon le champ manquant est nommé.
+    motif_deduit = None
+    if (courant is None or courant <= 0) and disjoncteurs:
+        courant, motif_deduit = courant_deduit_pompe(
+            pompe_kw, tension_v, alimentation)
+        if courant is not None:
+            choix["_hypothese_disjoncteur"] = phrase_calibre_deduit(
+                pompe_kw, tension_v, courant, pompe_cv)
+    # Revue R3 (F2) — jamais un disjoncteur sans courant (publié ou déduit),
+    # quel que soit le nombre de calibres ; un article sans calibre publié
+    # n'est jamais choisi ; un courant au-dessus de tout calibre : aucun.
+    if not disjoncteurs:
+        disjoncteur = None
+        if tous and alimentation not in ("mono", "tri"):
+            # Les articles existent : c'est la PHASE qui manque.
+            motif = ("disjoncteur AC non choisi : phase (mono / tri) de la "
+                     "pompe inconnue (alimentation à renseigner)")
+        elif tous:
+            # Revue R4 — des disjoncteurs existent, d'une AUTRE phase.
+            motif = ("aucun disjoncteur AC %s au catalogue (seulement "
+                     "d'une autre phase)" % {"mono": "monophasé",
+                                             "tri": "triphasé"}[alimentation])
+    elif courant is None or courant <= 0:
+        disjoncteur = None
+        motif = motif_deduit
+    else:
+        disjoncteur = _plus_petit_suffisant(disjoncteurs, calibre, courant)
+        if disjoncteur is None:
+            motifs = []
+            if any(c is not None for c in calibres):
+                motifs.append(
+                    "aucun disjoncteur AC du catalogue n'atteint le courant "
+                    "%s de la pompe (%s A)" % (
+                        "estimé" if choix.get("_hypothese_disjoncteur")
+                        else "nominal", _fr(courant)))
+            motifs += ["« %s » ne publie aucun calibre (nom de l'article)"
+                       % (p.get("nom") or "disjoncteur AC")
+                       for p in disjoncteurs if calibre(p) is None]
+            motif = " ; ".join(motifs)
+    choix["disjoncteur_ac"] = (disjoncteur, motif)
+
+    parafoudres = _de_la_phase(
+        [p for p in ac if "parafoudre" in _norme(p.get("nom"))], alimentation)
+    choix["parafoudre_ac"] = (_premier_price(parafoudres), None)
+    return choix
+
+
+def _lignes_protections(produits, alertes, *, avec_champ, avec_variateur,
+                        **choix_kw):
+    """D-ACAL-118 / D-ACAL-124 — ``[(ligne, produit)]`` des protections du
+    kit (coffret DC avec un champ dimensionné, disjoncteur et parafoudre AC
+    avec un variateur) ; l'hypothèse d'un calibre déduit est DITE (clé
+    ``hypothese`` + alerte INTERNE ``calibre_disjoncteur_deduit``)."""
+    protections = choisir_protections(produits, **choix_kw)
+    hypothese = protections.get("_hypothese_disjoncteur")
+    sortie = []
+    for cle, role, libelle in PROTECTIONS:
+        if not (avec_champ if cle == "coffret_dc" else avec_variateur):
+            continue
+        produit, motif = protections[cle]
+        ligne = _ligne(cle, role, produit, libelle, 1)
+        if motif:
+            ligne["motif"] = motif
+        if cle == "disjoncteur_ac" and hypothese:
+            ligne["hypothese"] = hypothese
+            alertes.append(_alerte("calibre_disjoncteur_deduit",
+                                   "kit.disjoncteur_ac", hypothese,
+                                   interne=True))
+        sortie.append((ligne, produit))
+    return sortie
+
+
 def _quantites_options(*, profondeur_calage_m, marge_cable_m,
                        longueur_conduite_m, volume_bassin_m3):
     """{clé: (quantité, motif)} — quantité ``None`` = à saisir, jamais une
@@ -145,7 +392,7 @@ def _quantites_options(*, profondeur_calage_m, marge_cable_m,
               else (None, "volume du bassin à saisir"))
     a_saisir = (None, "quantité à saisir")
     return {
-        "afficheur_variateur": (1, None), "protection_dc": (1, None),
+        "afficheur_variateur": (1, None),
         "sonde_niveau": (1, None), "compteur_eau": (1, None),
         "cable_descente": descente, "colonne_refoulement": a_saisir,
         "clapet": (1, None), "tuyauterie": tuyauterie, "bassin": bassin,
@@ -160,7 +407,9 @@ def composer_kit(*, mode_pompe, pompe=None, variateur=None, panneau=None,
                  transport=None, produits_options=(), distance_champ_m=None,
                  profondeur_calage_m=None, marge_cable_m=None,
                  longueur_conduite_m=None, volume_bassin_m3=None,
-                 options_cochees=None):
+                 options_cochees=None, nb_chaines=None, alimentation=None,
+                 courant_pompe_a=None, pompe_kw=None, tension_pompe_v=None,
+                 motif_chaines=None, pompe_cv_source=None):
     """AGR119 — ``{inclus, options, non_inclus, lignes, total_ttc, alertes}``.
 
     * ``pompe`` : forme ``pompe`` du contrat (sortie AGR117) — ignorée en
@@ -170,7 +419,18 @@ def composer_kit(*, mode_pompe, pompe=None, variateur=None, panneau=None,
       ``installation_toiture`` = l'installation de rôle ``installation``
       du catalogue (repli trouvé par rôle, AGQ5) ;
     * ``produits_options`` : éléments ``produits_pompage`` (tous rôles) ;
-    * ``options_cochees`` : liste de clés cochées, ``None`` = défauts.
+    * ``options_cochees`` : liste de clés cochées, ``None`` = défauts ;
+    * ``nb_chaines`` (chaînes en parallèle du champ), ``alimentation``
+      (``mono``/``tri``) et ``courant_pompe_a`` (courant nominal publié de la
+      pompe) choisissent les protections (:func:`choisir_protections`) ;
+      sans courant publié, ``pompe_kw`` et ``tension_pompe_v`` le déduisent
+      (D-ACAL-124) ; ``pompe_cv_source`` = les CV d'où vient ce kW (dit).
+
+    D-ACAL-112 / D-ACAL-118 — ``inclus`` porte les trois protections
+    (:data:`PROTECTIONS`) : coffret DC dès que le champ est dimensionné,
+    disjoncteur et parafoudre AC dès qu'un variateur est retenu. Sans article
+    retenu, la ligne reste « — prix à renseigner » sans produit, avec son
+    ``motif`` quand il y en a un.
 
     ``lignes`` = inclus + options cochées, prêtes pour une composition de
     devis (désignation suffixée « — prix à renseigner » quand aucun prix
@@ -217,6 +477,13 @@ def composer_kit(*, mode_pompe, pompe=None, variateur=None, panneau=None,
             ajouter(_ligne("cable_dc", "cable_dc", cable_dc,
                            "Câble DC champ → variateur (m)",
                            round(distance, 1)), cable_dc)
+        for ligne, produit in _lignes_protections(
+                produits_options, alertes, avec_champ=bool(nb),
+                avec_variateur=variateur is not None, nb_chaines=nb_chaines,
+                alimentation=alimentation, courant_pompe_a=courant_pompe_a,
+                pompe_kw=pompe_kw, tension_v=tension_pompe_v,
+                motif_chaines=motif_chaines, pompe_cv=pompe_cv_source):
+            ajouter(ligne, produit)
         if bareme_saisi(installation_pompage):
             ajouter(_ligne("installation", "installation_pompage",
                            installation_pompage, "Installation pompage", 1),

@@ -69,6 +69,11 @@ class EntreesResoluesTests(TestCase):
                      role_pompage='installation_pompage',
                      prix_fixe_ht=Decimal('3000'),
                      prix_par_panneau_ht=Decimal('150'))
+        # D-ACAL-112 / D-ACAL-118 — les protections du kit minimum, chiffrées.
+        cls._produit('Coffret DC 2 strings', '900', role_pompage='protection_dc')
+        cls._produit('Disjoncteur AC courbe C 16 A tétrapolaire', '300',
+                     role_pompage='protection_ac')
+        cls._produit('Parafoudre AC type 2', '400', role_pompage='protection_ac')
         cls._produit(
             'Pompe immergée OSP 30/8 7,5 CV 380V', '15000',
             role_pompage='pompe', type_pompe='immergee', alimentation='tri',

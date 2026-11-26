@@ -327,15 +327,59 @@ class ResultatsDeLaConceptionTest(_DevisDeuxOptions):
         self.assertEqual(bloc_production_devis(calepinage)['devis'], devis.pk)
         self.assertEqual(Devis.objects.filter(pk=devis.pk).values().get(), avant)
 
+    def test_d_acal_109_les_phrases_du_materiel_designe_servies_telles_quelles(self):
+        """D-ACAL-109 / D-ACAL-110 — ``designations`` : les phrases servies par ventes dont le
+        champ est le matériel désigné (onduleur, module), dans leur ordre ; ``[]`` sinon."""
+        self.assertEqual(self._bloc()['designations'], [])
+        phrases = [{'code': 'option_materiel_du_moteur', 'champ': 'onduleur_produit', 'message': 'A'},
+                   {'code': 'froid_suppose', 'champ': 'gps_lat', 'message': 'B'},
+                   {'code': 'panneaux_au_module_designe', 'champ': 'module_produit', 'message': 'C'}]
+        type(self.version).objects.filter(pk=self.version.pk).update(suppositions=phrases)
+        self.assertEqual(self._bloc()['designations'], ['A', 'C'])
+
     def test_sans_devis_un_seul_chiffre(self):
         bloc = self._bloc()
         self.assertEqual((bloc['production_annuelle_kwh'], bloc['option'], bloc['devis_envoye']),
                          (self.attendu, 'sans', None))
         self.assertEqual(bloc['version'], self.version.version)
 
+    def test_t4_x7_013_la_production_porte_sa_taille(self):
+        """T4-X7-013 — la production servie va avec la taille de la MÊME option (48 × 715 W) :
+        jamais une production lue ici et une taille lue sur une autre lecture."""
+        bloc = self._bloc()
+        table = self.version.valeurs['sans']
+        self.assertEqual((bloc['puissance_kwc'], bloc['nb_panneaux']),
+                         (table['puissance_kwc']['valeur'], 48))
+        self.assertEqual(bloc['puissance_kwc'], round(48 * 715 / 1000, 2))
+
     def test_brouillon_un_seul_chiffre(self):
         bloc = self._bloc(self._les_deux('Sans batterie', statut='brouillon'))
         self.assertEqual((bloc['production_annuelle_kwh'], bloc['devis_envoye']), (self.attendu, None))
+
+    def test_t4_x7_006_le_devis_lie_dit_s_il_porte_la_pose(self):
+        """T4-X7-006 — après « Réviser le devis », la V2 (brouillon) liée ne porte pas la pose : le
+        bloc la nomme (``devis_lie``) avec ``a_jour`` faux (empreintes différentes), vrai quand elles
+        sont égales, ``None`` sans empreinte ; ``None`` sans devis lié. Rien n'est écrit."""
+        self.assertIsNone(self._bloc()['devis_lie'])
+        devis = self._les_deux('Sans batterie', statut='brouillon')
+        Devis.objects.filter(pk=devis.pk).update(layout_hash='a' * 64)
+        devis.refresh_from_db()
+        avant = Devis.objects.filter(pk=devis.pk).values().get()
+        from apps.calepinage.services.devis_retenu import bloc_conception
+
+        # UN calepinage par devis (contrainte ``calepinage_un_par_devis``) : le même, dont l'empreinte change.
+        calepinage = Calepinage.objects.create(company=self.company, lead_id=self.lead_lie.pk, devis=devis,
+                                               titre='QA-T4-X7-006')
+        lie = bloc_conception(calepinage)['devis_lie']
+        self.assertEqual((lie['devis'], lie['reference'], lie['statut']), (devis.pk, devis.reference, 'brouillon'))
+        self.assertIsNone(lie['a_jour'])  # le calepinage neuf n'a pas d'empreinte : inconnu, jamais « périmé »
+        Calepinage.objects.filter(pk=calepinage.pk).update(layout_hash='b' * 64)
+        calepinage.refresh_from_db()
+        self.assertIs(bloc_conception(calepinage)['devis_lie']['a_jour'], False)
+        Calepinage.objects.filter(pk=calepinage.pk).update(layout_hash='a' * 64)
+        calepinage.refresh_from_db()
+        self.assertIs(bloc_conception(calepinage)['devis_lie']['a_jour'], True)
+        self.assertEqual(Devis.objects.filter(pk=devis.pk).values().get(), avant)
 
     def test_envoye_nomme_le_devis_et_l_ecart_sans_le_toucher(self):
         from django.utils import timezone

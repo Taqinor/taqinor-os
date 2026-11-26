@@ -114,6 +114,11 @@ ATTENTE_529_S = 1.0
 #: rendu à l'autre (même TTL que le Worker du site public).
 CACHE_TTL_S = 6 * 60 * 60
 CACHE_MAX = 200
+#: ACAL2044 — lignes horaires gardées au plus (une réponse de 10 ans décodée
+#: ≈ 45 Mo ; sans borne : +182 Mo par pose, mesuré le 25/11/2026) : UNE
+#: simulation à la fenêtre plafond (10 ans × 8 784 h) = 4 séries PVGIS (plan,
+#: horizontal, ERA5, PVcalc) + NASA POWER.
+CACHE_LIGNES_MAX = 5 * 10 * 8784
 
 #: CALX59 — LES TROIS BASES HORAIRES qu'une série peut déclarer, et il n'y
 #: en a pas d'autre. ``meteo.heure.base`` dit LAQUELLE, pour que la chaîne
@@ -356,29 +361,71 @@ class _Limiteur:
 class _Cache:
     """Cache borné en taille ET en durée (jamais une fuite de mémoire)."""
 
-    def __init__(self, ttl_s=CACHE_TTL_S, taille_max=CACHE_MAX, horloge=None):
+    def __init__(self, ttl_s=CACHE_TTL_S, taille_max=CACHE_MAX, horloge=None,
+                 lignes_max=CACHE_LIGNES_MAX):
         self.ttl_s = ttl_s
         self.taille_max = taille_max
+        self.lignes_max = lignes_max
         self._horloge = horloge or time.monotonic
         self._entrees = {}
+        self._lignes = {}
+        # Partagé par les fils d'un worker (gunicorn --threads) : UN verrou
+        # garde les deux dicts, jamais tenu pendant un appel réseau.
+        self._verrou = threading.RLock()
+
+    def lignes_gardees(self):
+        """ACAL2044 — les lignes horaires que le cache retient en ce moment."""
+        with self._verrou:
+            return sum(self._lignes.values())
 
     def lire(self, cle):
-        entree = self._entrees.get(cle)
-        if entree is None:
-            return None
-        pose_a, valeur = entree
-        if self._horloge() - pose_a > self.ttl_s:
+        with self._verrou:
+            entree = self._entrees.get(cle)
+            if entree is None:
+                return None
+            pose_a, valeur = entree
+            if self._horloge() - pose_a > self.ttl_s:
+                self._retirer(cle)
+                return None
+            return valeur
+
+    def _retirer(self, cle):
+        with self._verrou:
             self._entrees.pop(cle, None)
-            return None
-        return valeur
+            self._lignes.pop(cle, None)
 
     def poser(self, cle, valeur):
-        if len(self._entrees) >= self.taille_max:
-            self._entrees.pop(next(iter(self._entrees)), None)
-        self._entrees[cle] = (self._horloge(), valeur)
+        lignes = _lignes_horaires(valeur)
+        with self._verrou:
+            self._retirer(cle)
+            while self._entrees and (
+                    len(self._entrees) >= self.taille_max
+                    or self.lignes_gardees() + lignes > self.lignes_max):
+                self._retirer(next(iter(self._entrees)))
+            self._entrees[cle] = (self._horloge(), valeur)
+            self._lignes[cle] = lignes
 
     def vider(self):
-        self._entrees.clear()
+        with self._verrou:
+            self._entrees.clear()
+            self._lignes.clear()
+
+
+def _lignes_horaires(charge):
+    """Les heures d'une charge mise en cache : PVGIS (``outputs.hourly``) ou
+    NASA POWER (``properties.parameter``) ; 0 pour une réponse sans série."""
+    if not isinstance(charge, dict):
+        return 0
+    sorties, proprietes = charge.get('outputs'), charge.get('properties')
+    lignes = sorties.get('hourly') if isinstance(sorties, dict) else None
+    if isinstance(lignes, list):
+        return len(lignes)
+    parametres = (proprietes.get('parameter')
+                  if isinstance(proprietes, dict) else None)
+    if isinstance(parametres, dict):
+        return max((len(v) for v in parametres.values()
+                    if isinstance(v, dict)), default=0)
+    return 0
 
 
 #: Le cache PARTAGÉ du processus (un client neuf ne repart pas de zéro).

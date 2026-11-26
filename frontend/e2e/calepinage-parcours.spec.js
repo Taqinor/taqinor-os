@@ -742,8 +742,13 @@ test('ACAL987: calepinage enregistré non simulé — aucun onglet ne produit d�
   for (const cle of CLES_ONGLETS) {
     ongletCourant = cle
     const bouton = page.getByTestId(`cal-onglet-${cle}`)
-    if (await bouton.isVisible()) await bouton.click()
-    else {
+    // Course relevée sur `main` le 25/11 (trace du run 45649887715) : au chargement, le rail montre d'abord les
+    // onglets de l'étape « Toit », puis l'atelier bascule sur l'étape en cours et les remplace. Un onglet vu puis
+    // retiré pendant cette bascule ne se clique pas : on retombe alors sur son lien `?onglet=`, comme pour un
+    // onglet absent du rail.
+    const clique = (await bouton.isVisible())
+      && await bouton.click({ timeout: 3_000 }).then(() => true, () => false)
+    if (!clique) {
       const url = new URL(page.url())
       url.searchParams.set('onglet', cle)
       url.searchParams.set('mode', 'expert')

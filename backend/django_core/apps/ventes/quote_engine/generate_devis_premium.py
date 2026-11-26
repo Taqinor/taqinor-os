@@ -349,7 +349,7 @@ PAY_A, PAY_M, PAY_S = 30, 60, 10
 # QJR623 — cases « Modalités de paiement » calculées par le builder (par
 # branche « sans » / « avec », au centime) ; le moteur ne fait qu'imprimer.
 MONTANTS_TRANCHES = {}
-BRANCHE_ECHEANCIER = None  # AMOT122 — branche servie par le builder (niveau 12)
+BRANCHE_ECHEANCIER = ECHEANCIER_OPTION_SIGNEE = None  # AMOT122 ; D-ACAL-116 — branche servie par le builder (niveau 12)
 # Devis deux-options rendu en une page : option 1 seule + mention discrète.
 ONEPAGE_NOTE_BATTERIE = False
 # M4 — branche ('sans' | 'avec' | None) dont proviennent les lignes du format
@@ -391,7 +391,7 @@ DELAI_INSTALLATION = ""
 # client d'une économie estimée sur un tarif de référence. Défaut False =
 # rendu inchangé pour tout appel sans la clé.
 SAVINGS_ESTIMATED = False
-ECONOMIES_SANS_ANCRAGE = REGLES_POSE_REELLE = False  # ACAL1033 (D-ACAL-45) — niveau 15 sans donnée réelle : une page sans économie ; T4-X1-002 — niveau 15
+ECONOMIES_SANS_ANCRAGE = RENDUS_2511 = UNE_OPTION_SANS_NUMERO = False  # ACAL1033 (D-ACAL-45) — niveau 15 sans donnée réelle : une page sans économie ; T4-X1-002 — niveau 15
 
 # ── DC1 — identité société (multi-tenant) ──────────────────────────────────────
 # Chaque littéral d'identité (nom de marque du footer, coordonnées, ligne légale
@@ -721,7 +721,7 @@ def _savings_method_html():
     if exemple:
         ex_html = (
             f'<div style="margin-top:4px;font-size:8pt;color:{CN};font-weight:700;">'
-            f'{_esc(exemple) if LANGUE_SORTIE == "fr" else exemple}{approx}</div>')
+            f'{_esc(exemple) if LANGUE_SORTIE == "fr" else exemple}{approx}{(" <span style=font-weight:400;>" + _L("res_facture_recalculee_tranches") + "</span>") if sm.get("note_facture_recalculee") else ""}</div>')
     elif approx:
         ex_html = (
             f'<div style="margin-top:4px;font-size:7.5pt;color:{CG4};'
@@ -1930,8 +1930,7 @@ def page1():
             f'{eaa_mad}{_L("lg_par_an")}</span>{_mt_src}\n'
             '      </div>')
     # Scenario-aware option card visibility
-    _s1   = 'display:none;' if SCENARIO == 'Avec batterie' else ''
-    _s2   = 'display:none;' if SCENARIO == 'Sans batterie' else ''
+    _s1, _s2 = ('display:none;' if SCENARIO == 'Avec batterie' else ''), ('display:none;' if SCENARIO == 'Sans batterie' else '')
     _both = not _s1 and not _s2
     # Espacement entre cartes par MARGE + padding droit du conteneur
     # compensé : WeasyPrint ne déduit pas l'espacement des enfants flex:1.
@@ -2265,7 +2264,7 @@ def page1():
     <!-- OPTION 1 -->
     <div style="flex:1;min-width:0;overflow:hidden;{_opt1_margin}border:1.5px solid #E8A020;border-radius:6px;padding:28px 12px 12px;display:flex;flex-direction:column;background:#FFFFFF;position:relative;{_s1}">
       {_r1}
-      <div style="font-size:6.5pt;letter-spacing:3px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">{_L("res_option_n").format(n=1)}</div>
+      {"" if UNE_OPTION_SANS_NUMERO else f'<div style="font-size:6.5pt;letter-spacing:3px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">{_L("res_option_n").format(n=1)}</div>'}
       <div style="font-size:13pt;font-weight:500;color:{CN};margin-bottom:2px;">{i18n_labels.nom_option("Sans batterie", LANGUE_SORTIE)}</div>
       <div style="font-size:7pt;color:{CGR};font-weight:600;margin-bottom:7px;">{_L("lg_autoconso_directe")}</div>
       {_ts_price}
@@ -2282,7 +2281,7 @@ def page1():
     <!-- OPTION 2 -->
     <div style="flex:1;min-width:0;overflow:hidden;border:1.5px solid #E8A020;border-radius:6px;padding:28px 12px 12px;display:flex;flex-direction:column;background:#FFF3E0;position:relative;{_s2}">
       {_r2}
-      <div style="font-size:6.5pt;letter-spacing:3px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">{_L("res_option_n").format(n=2)}</div>
+      {"" if UNE_OPTION_SANS_NUMERO else f'<div style="font-size:6.5pt;letter-spacing:3px;color:{CA};font-weight:700;text-transform:uppercase;margin-bottom:4px;">{_L("res_option_n").format(n=2)}</div>'}
       <div style="font-size:13pt;font-weight:500;color:{CN};margin-bottom:2px;">{i18n_labels.nom_option(LIBELLE_AVEC, LANGUE_SORTIE)}</div>
       <div style="font-size:7pt;color:{CGR};font-weight:600;margin-bottom:7px;">{_sous_titre_avec()}</div>
       {_ta_price}
@@ -2324,8 +2323,7 @@ def page2(sans_items, img_roi, img_mon):
                     ancres=None if SCENARIO == 'Sans batterie' else "avec")
 
     # Scenario visibility
-    _p2_s1 = 'display:none;' if SCENARIO == 'Avec batterie' else ''
-    _p2_s2 = 'display:none;' if SCENARIO == 'Sans batterie' else ''
+    _p2_s1, _p2_s2 = ('display:none;' if SCENARIO == 'Avec batterie' else ''), ('display:none;' if SCENARIO == 'Sans batterie' else '')
 
     # ── Dynamic table row scaling: many rows would squeeze the charts off the page ──
     if SCENARIO == 'Avec batterie':
@@ -2433,7 +2431,7 @@ def page2(sans_items, img_roi, img_mon):
     <div style="display:flex;gap:10px;">
 
       <div style="flex:1;min-width:0;{_p2_s1}">
-        <div style="background:{CN};color:white;font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:5px 9px;border-radius:5px 5px 0 0;">{_L("res_option_n_nom").format(n=1, option=i18n_labels.nom_option("Sans batterie", LANGUE_SORTIE))}</div>
+        <div style="background:{CN};color:white;font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:5px 9px;border-radius:5px 5px 0 0;">{i18n_labels.nom_option("Sans batterie", LANGUE_SORTIE) if UNE_OPTION_SANS_NUMERO else _L("res_option_n_nom").format(n=1, option=i18n_labels.nom_option("Sans batterie", LANGUE_SORTIE))}</div>
         <table class="eq">
           <thead><tr>
             <th class="ti"></th><th>{_L("lg_th_designation")}</th>
@@ -2444,7 +2442,7 @@ def page2(sans_items, img_roi, img_mon):
       </div>
 
       <div style="flex:1;min-width:0;{_p2_s2}">
-        <div style="background:{CA};color:{CN};font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:5px 9px;border-radius:5px 5px 0 0;">{_L("res_option_n_nom").format(n=2, option=i18n_labels.nom_option(LIBELLE_AVEC, LANGUE_SORTIE))}</div>
+        <div style="background:{CA};color:{CN};font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;padding:5px 9px;border-radius:5px 5px 0 0;">{i18n_labels.nom_option(LIBELLE_AVEC, LANGUE_SORTIE) if UNE_OPTION_SANS_NUMERO else _L("res_option_n_nom").format(n=2, option=i18n_labels.nom_option(LIBELLE_AVEC, LANGUE_SORTIE))}</div>
         <table class="eq">
           <thead><tr>
             <th class="ti"></th><th>{_L("lg_th_designation")}</th>
@@ -2631,6 +2629,8 @@ def page3():
         # (``builder.repartition_paiement``). Plus d'arrondi au millier ni de
         # reliquat tronqué ici. Rendu seul : aucun statut touché (règle #4).
         _rep = (MONTANTS_TRANCHES or {}).get(_branche) or {}
+        from .legacy_etude import lignes_echeancier_option  # D-ACAL-116 — import local (cycle)
+        _par_option = lignes_echeancier_option()  # une ligne d'échéances par option, nommée
         _acompte = _rep.get('acompte', 0)
         _materiel = _rep.get('materiel', 0)
         _solde = _rep.get('solde', 0)
@@ -2644,7 +2644,7 @@ def page3():
             return (
                 f'<div style="flex:1;text-align:center;padding:6px 5px;background:white;border-radius:8px;border:1px solid {CG2};">'
                 f'<div class="serif" style="font-size:22px;font-weight:800;color:{CA};line-height:1.0;">{pct}%</div>'
-                f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{_fmt2_mad(montant)}</div>'
+                + ('' if _par_option else f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{_fmt2_mad(montant)}</div>') +
                 f'<div style="font-size:9px;color:{CG4};margin-top:2px;">{label}</div>'
                 f'</div>')
 
@@ -2675,7 +2675,7 @@ def page3():
             f'</div>'
             f'<div style="display:flex;gap:6px;margin-bottom:3px;">'
             f'{_boxes}'
-            f'</div>'
+            f'</div>{_par_option or ""}'
             # Note
             f'<div style="font-size:7pt;color:{CG4};font-style:italic;margin-bottom:3px;">'
             f'{_L("lg_pay_note")}'
@@ -3550,8 +3550,8 @@ def apply_quote_data(data: dict) -> None:
     global LANGUE_SORTIE, LIBELLES_DOC  # NTI18N5 — langue + libellés du gabarit
     global SAVINGS_METHOD  # QF3 — bloc « Comment nous calculons vos économies »
     global WATERMARK_STANDARD  # L-NIV — filigrane PDF public niveau standard
-    SAVINGS_METHOD = data.get("savings_method")
-    WATERMARK_STANDARD = data.get("_watermark_standard")
+    from .legacy_etude import methode_note_facture  # D-ACAL-111 — import local (cycle)
+    SAVINGS_METHOD, WATERMARK_STANDARD = methode_note_facture(data), data.get("_watermark_standard")
     # QXMT — un dossier MT sans économies d'étude n'imprime AUCUN chiffre
     # d'économies : ceux disponibles ici sont calculés au barème BASSE TENSION.
     global MASQUER_ECONOMIES, TARIF_MT_MENTION
@@ -3734,8 +3734,8 @@ def apply_quote_data(data: dict) -> None:
     PAY_A = _pct_echeance(_terms.get("acompte"), 30)
     PAY_M = _pct_echeance(_terms.get("materiel"), 60)
     PAY_S = _pct_echeance(_terms.get("solde"), 10)
-    global MONTANTS_TRANCHES, BRANCHE_ECHEANCIER  # AMOT122 — branche servie par le builder
-    MONTANTS_TRANCHES, BRANCHE_ECHEANCIER = dict(data.get("montants_tranches") or {}), data.get("branche_echeancier")
+    global MONTANTS_TRANCHES, BRANCHE_ECHEANCIER, ECHEANCIER_OPTION_SIGNEE  # AMOT122 ; D-ACAL-116 — branche servie par le builder
+    MONTANTS_TRANCHES, BRANCHE_ECHEANCIER, ECHEANCIER_OPTION_SIGNEE = dict(data.get("montants_tranches") or {}), data.get("branche_echeancier"), bool(data.get("echeancier_option_signee"))
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))
     LIBELLE_AVEC = str(data.get("libelle_avec") or "Avec batterie")
     LINKS = dict(data.get("links") or {})
@@ -3796,8 +3796,8 @@ def apply_quote_data(data: dict) -> None:
     _dl = data.get("delais") or {}
     from .residential.theme import delai_doc as _dd  # RPDF : délais dans la langue du document
     DELAI_VISITE, DELAI_INSTALLATION = (_dd(data, (_dl.get(k) or "").strip()) for k in ("visite_technique", "installation"))
-    global SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, REGLES_POSE_REELLE  # M10 — estimées ? ACAL1033 — sans ancrage ? niveau 15 ?
-    SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, REGLES_POSE_REELLE = bool(data.get("savings_estimated")), _economies_sans_ancrage(data), bool(data.get("regles_pose_reelle"))
+    global SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, RENDUS_2511, UNE_OPTION_SANS_NUMERO  # M10 ; ACAL1033 ; niveau 15 ; D-ACAL-114
+    SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, RENDUS_2511, UNE_OPTION_SANS_NUMERO = bool(data.get("savings_estimated")), _economies_sans_ancrage(data), bool(data.get("regles_pose_reelle") or data.get("phrases_pdf_2511")), bool(data.get("phrases_pdf_2511")) and data.get("scenario") in ("Avec batterie", "Sans batterie")
     # XSAL14/XSAL5 — structure (sections/notes) + options proposées (rendu seul,
     # hors totaux). Absents → byte-identique. Escapés à l'ingestion (ERR37).
     global LIGNES_STRUCTURE, OPTIONS_PROPOSEES

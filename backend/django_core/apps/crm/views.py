@@ -3,7 +3,7 @@ from contextlib import contextmanager
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    extend_schema, extend_schema_view, inline_serializer,
+    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
 )
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
@@ -102,7 +102,12 @@ def _save_borne_aux_champs(instance, champs):
             instance.save = original
 
 
-@extend_schema(responses=sd.liste('CrmAssignableUser'))
+@extend_schema(
+    parameters=[OpenApiParameter(
+        'permission', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+        description="Code d'une permission ERP : ne propose que les comptes qui la portent "
+                    "(ex. calepinage_voir pour le responsable d'un calepinage).")],
+    responses=sd.liste('CrmAssignableUser'))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def assignable_users(request):
@@ -113,8 +118,10 @@ def assignable_users(request):
     /users/ réservé à l'admin. Avatar Odoo (initiales/photo), nom, prénom, poste.
     """
     from authentication.avatars import presign_avatar
-    from .collegues import collegues_assignables
-    qs = collegues_assignables(request.user).order_by('username')
+    from .collegues import collegues_assignables, filtrer_par_permission
+    # T4-X3-016 — « qui peut OUVRIR ce qu'on lui confie » (``?permission=``) : filtré dans ``collegues.py``.
+    qs = filtrer_par_permission(collegues_assignables(request.user).order_by('username'),
+                                request.query_params.get('permission'))
     return Response([
         {
             'id': u.id,

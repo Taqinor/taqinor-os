@@ -54,12 +54,43 @@ describe('ACAL893 — Réglages › Allées', () => {
     expect(updateParametres.mock.calls[0][0].degagements.allee_technique_m).toBeUndefined()
   })
 
-  it('sans le droit de gérer, le bouton d’écriture reste éteint', async () => {
+  it('D-ACAL-104 — sans le droit d’approuver : lecture seule, une phrase, aucun bouton d’écriture', async () => {
     peutGerer.valeur = false
-    getParametres.mockResolvedValue({ data: { degagements: {} } })
+    getParametres.mockResolvedValue({ data: { degagements: { allee_technique_m: 0.9, source: 'notice X',
+      allees_circulation: [{ pays: 'ma', largeur_m: 1, source: 'arrêté', reference: '' }] } } })
     render(<ReglagesAllees />)
     await waitFor(() => expect(getParametres).toHaveBeenCalled())
+    expect(await screen.findByTestId('cal-reglages-lecture-seule')).toHaveTextContent(
+      'seules les personnes qui peuvent approuver un calepinage peuvent les changer')
+    expect(screen.queryByTestId('cal-allees-enregistrer')).toBeNull()
+    expect(screen.queryByTestId('cal-allees-confirmer-societe')).toBeNull()
+    expect(screen.queryByTestId('cal-allees-circulation-ajouter')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Retirer' })).toBeNull()
+    expect(document.getElementById('cal-allees-largeur')).toBeDisabled()
+    expect(document.getElementById('cal-allees-source')).toBeDisabled()
+    expect(document.getElementById('cal-allees-circulation-0-pays')).toBeDisabled()
+  })
+
+  it('D-ACAL-105 — UN champ « Source » pour l’allée et le retrait par défaut : relu, écrit, retiré quand vidé', async () => {
+    getParametres.mockResolvedValue({ data: { degagements: { retrait_rive_m: 0.5, source: 'notice X' } } })
+    updateParametres.mockResolvedValue({ data: { degagements: {} } })
+    render(<ReglagesAllees />)
+    await waitFor(() => expect(getParametres).toHaveBeenCalled())
+    const champ = await screen.findByTestId('cal-allees-source')
+    expect(champ).toHaveTextContent('Cette source vaut pour les deux')
+    expect(document.getElementById('cal-allees-source')).toHaveValue('notice X')
+
+    fireEvent.change(document.getElementById('cal-allees-source'), { target: { value: ' relevé du 25/11 ' } })
     fireEvent.click(screen.getByTestId('cal-allees-confirmer-societe'))
-    expect(screen.getByTestId('cal-allees-enregistrer')).toBeDisabled()
+    fireEvent.click(screen.getByTestId('cal-allees-enregistrer'))
+    await waitFor(() => expect(updateParametres).toHaveBeenCalledTimes(1))
+    expect(updateParametres.mock.calls[0][0].degagements.source).toBe('relevé du 25/11')
+
+    fireEvent.change(document.getElementById('cal-allees-source'), { target: { value: '' } })
+    await waitFor(() => expect(screen.getByTestId('cal-allees-enregistrer')).toBeDisabled()) // la confirmation retombe
+    fireEvent.click(screen.getByTestId('cal-allees-confirmer-societe'))
+    fireEvent.click(screen.getByTestId('cal-allees-enregistrer'))
+    await waitFor(() => expect(updateParametres).toHaveBeenCalledTimes(2))
+    expect(updateParametres.mock.calls[1][0].degagements).not.toHaveProperty('source')
   })
 })

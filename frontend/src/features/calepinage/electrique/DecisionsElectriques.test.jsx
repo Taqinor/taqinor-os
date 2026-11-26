@@ -33,6 +33,15 @@ beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('DecisionsElectriques (ACAL154)', () => {
+  it('T4-X7-011 — une décision enregistrée prévient l’écran (la liste « Prêt à envoyer ? » se relit)', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+    servir(VIDE.entree)
+    const surEnregistre = vi.fn()
+    render(<MemoryRouter><DecisionsElectriques calepinageId={5} surEnregistre={surEnregistre} /></MemoryRouter>)
+    await userEvent.click(await screen.findByTestId('acal154-enregistrer'))
+    await waitFor(() => expect(surEnregistre).toHaveBeenCalledTimes(1))
+  })
+
   it('écarter sans motif affiche le refus sous la ligne', async () => {
     servir(VIDE.entree)
     const message = 'Organe « PAC1 » écarté sans motif : écarter un organe exigé par une règle demande une justification écrite.'

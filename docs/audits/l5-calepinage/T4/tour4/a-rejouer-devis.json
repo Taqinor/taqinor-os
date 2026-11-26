@@ -1,0 +1,809 @@
+[
+ {
+  "id": "T4-U1-009",
+  "gravite": "S2",
+  "ecran": "PDF « Devis final (paiement + RIB) »",
+  "gestes": "Fiche › PDF ▾ › Devis final (paiement + RIB) ; lire la page 4",
+  "attendu": "Les montants de l'échéancier valent pour l'option que le client choisira (ou les deux options sont chiffrées), et le RIB annoncé est imprimé",
+  "vu": "« Modalités de paiement 30 % 60 % 10 % — 17 850 / 35 700 / 5 950 MAD » calculés sur la seule option avec batterie (59 500) alors que la page 4 fait cocher « Sans batterie — 37 400 » ou « Avec batterie » ; aucun RIB dans le document, rien ne dit qu'il manque",
+  "scenario": "a",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U1/pdf-a-final.txt",
+  "commits": [
+   "220de00e8b"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U1-011",
+  "gravite": "S3",
+  "ecran": "Ventes › Devis (liste) › PDF ; liste des devis",
+  "gestes": "Ventes › Devis : la liste reste blanche 8,7 s puis « timeout of 20000ms exceeded » ; PDF › Générer : message « DEV-202611-0097 : timeout of 20000ms exceeded »",
+  "attendu": "Un message en français qui dit quoi faire ; la génération continue ou dit qu'elle reprend",
+  "vu": "Message technique anglais brut ; l'en-tête affiche « 0 devis » pendant l'erreur. Au deuxième essai (pile moins chargée) la génération asynchrone a abouti en 25 s",
+  "scenario": "a",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U1/a12-after.png",
+  "commits": [
+   "a2e0ceb127"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U1-014",
+  "gravite": "S3",
+  "ecran": "Ventes › Devis › Accepter › fenêtre « Accepter le devis »",
+  "gestes": "Devis V2 envoyé ; bouton Accepter",
+  "attendu": "L'option retenue n'est pas présélectionnée, ou l'est sur l'option « Recommandé » du devis",
+  "vu": "« Sans batterie » est présélectionné alors que le devis recommande « Avec batterie » ; un clic rapide sur Confirmer accepte l'autre option",
+  "scenario": "a",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U1/a36-acc-dlg.png",
+  "commits": [
+   "1e65848940"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U1-020",
+  "gravite": "S4",
+  "ecran": "Fiche lead › Questionnaire d'appel › « Aussi à demander »",
+  "gestes": "+ Nouveau lead ; onglet Profil énergétique / Questionnaire",
+  "attendu": "Unité de la facture mensuelle : MAD/mois",
+  "vu": "Puce « Facture mensuelle (MAD/kWh) »",
+  "scenario": "a",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U1/a04-after-create.png",
+  "commits": [
+   "4fc50f3196"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U1-029",
+  "gravite": "S4",
+  "ecran": "Panneau Devis automatique (téléphone)",
+  "gestes": "Après Devis auto, regarder « Inclure l'étude » et « Devis final »",
+  "attendu": "Des cases à cocher de taille normale",
+  "vu": "Les deux cases sont dessinées comme de hauts rectangles vides (≈ 35 × 90 px)",
+  "scenario": "c",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U1/c02-done.png",
+  "commits": [
+   "a11368f4ae",
+   "dbaa16c667"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U1-030",
+  "gravite": "S3",
+  "ecran": "CRM › Leads (Commercial responsable)",
+  "gestes": "Ouvrir Leads ; taper « U1-b » dans la recherche",
+  "attendu": "Résultat en quelques secondes",
+  "vu": "La liste charge les 686 leads en 4 pages de 200 (≈ 2,3 Mo) avant d'afficher : squelette 45 s, puis filtrage",
+  "scenario": "b",
+  "role": "Commercial responsable (anon_resp)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U1/bfind-find.png",
+  "commits": [
+   "a2e0ceb127"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U2-004",
+  "gravite": "S3",
+  "ecran": "Édition complète du devis → « Activité et horaires » → « Catégorie commerciale »",
+  "gestes": "Lead U2-f (catégorie « Supermarché / épicerie (avec frigos) » choisie à la création) : onglet Devis → « Modifier » le devis automatique → descendre à « Activité et horaires ». Même geste sur le lead U2-e (catégorie « Boulangerie / pâtisserie »)",
+  "attendu": "La catégorie déclarée sur la fiche (et imprimée en tête du PDF : « SUPERMARCHÉ / ÉPICERIE », « BOULANGERIE / PÂTISSERIE ») est reprise, comme le contrat, la phase et les horaires (marqués « Retenu : … saisi »)",
+  "vu": "Le menu « Catégorie commerciale » affiche « Non précisée » sur les deux devis, alors que contrat (BT patenté), phase (Triphasé) et horaires (8-20) sont bien repris avec leur provenance. Après enregistrement du devis U2-e la tête du PDF garde « Boulangerie » : l'écran d'édition montre une valeur qui n'est pas celle du devis",
+  "scenario": "f",
+  "role": "Commercial responsable",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U2/s51-f-categorie.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U2/s18-e-inputs.txt",
+  "commits": [
+   "cf93caec39"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U2-016",
+  "gravite": "S3",
+  "ecran": "Tickets SAV (/sav) et fiche du chantier → onglet « Interventions »",
+  "gestes": "Après acceptation du devis V2 (chantier CHT-…0004 créé) : ouvrir Après-vente → Tickets SAV ; puis Chantiers → CHT-…0004 → « Voir » → onglet « Interventions »",
+  "attendu": "Un des deux écrans permet d'ouvrir un ticket SAV pour ce chantier, ou dit que le rôle Commercial n'en a pas le droit et qui peut le faire",
+  "vu": "Tickets SAV : « Aucun ticket ouvert pour le moment. Ouvrez-en un depuis la fiche d'un chantier. » sans bouton de création ; fiche du chantier : « Aucun ticket SAV sur ce chantier. Le suivi détaillé (interventions, historique) se fait dans l'écran « Tickets SAV ». » sans bouton non plus. Chaque écran renvoie à l'autre",
+  "scenario": "e",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U2/e-sav2.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U2/s46-e-click1.png",
+  "commits": [
+   "2f1351589b",
+   "1884d31518",
+   "8cc8137440"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U2-018",
+  "gravite": "S3",
+  "ecran": "Ventes → Devis (liste) et CRM → Leads (pipeline), serveur lent",
+  "gestes": "Ouvrir Ventes → Devis en Commercial responsable (thème sombre) pendant que le serveur répond en plus de 20 s ; même chose plus tôt sur CRM → Leads en Commercial",
+  "attendu": "Un message en français qui dit quoi faire, comme « La connexion a expiré. Vérifiez votre connexion et réessayez. » affiché ailleurs",
+  "vu": "La liste des devis affiche en rouge « timeout of 20000ms exceeded » (texte technique anglais) au-dessus de « Réessayer » ; le pipeline des leads affiche « Erreur : timeout of 20000ms exceeded ». La lenteur vient de la pile partagée ; le message brut est du produit",
+  "scenario": "f",
+  "role": "Commercial responsable",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U2/s14-f-list.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U2/e-crm-leads.png",
+  "commits": [
+   "a2e0ceb127"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U2-019",
+  "gravite": "S2",
+  "ecran": "PDF « Document industriel » (4 pages) et « Devis une page » du devis automatique du lead U2-g",
+  "gestes": "Créer le lead U2-g (Industriel, Tanger, facture 60 000 MAD/mois, « Deux équipes (2×8) », sans heure de début, sans tension) ; onglet Devis → « Devis automatique » ; liste des devis → PDF → « Document industriel » puis « Devis une page » → Générer ; lire",
+  "attendu": "Le PDF dit que l'heure de début (6 h) et les jours (lundi à samedi) sont supposés, comme l'écran le dit au vendeur",
+  "vu": "Les deux PDF impriment « Taux calculés heure par heure sur vos horaires déclarés. » alors que l'écran du devis dit au vendeur « Heure de début d'équipe non déclarée : 6 h supposée » et « Jours ouverts non déclarés : lundi à samedi supposés ». Le client lit que ses horaires ont été déclarés ; ni les 6 h, ni les jours, ni le contrat « BT force motrice » supposé ne figurent dans le PDF (seule réserve imprimée : « Devis préliminaire — les prix pourront être ajustés après la visite technique »)",
+  "scenario": "g",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U2/s13-g-auto.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U2/g-v1-full.pdf ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U2/g-v1-onepage.pdf",
+  "commits": [
+   "6c76c49a16"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U2-020",
+  "gravite": "S3",
+  "ecran": "PDF « Document industriel » (4 pages), page 3 « Rentabilité sur 25 ans »",
+  "gestes": "Même PDF que T4-U2-019 ; lire les pages 3 et 4",
+  "attendu": "Les bases du calcul annoncées sont imprimées (horizon, indexation, dégradation, base de production, prix du kWh), comme dans le document commercial 3 pages (« Bases du calcul » en page 3)",
+  "vu": "La page 3 annonce « …délai de retour et TRI tirés de la même série ; bases du calcul ci-dessous. » mais aucune section « Bases du calcul » ne suit, ni en page 3 ni en page 4 ; seule la ligne « prix moyen de votre kWh évité : 1,397 MAD/kWh » apparaît, sans dire quel tarif a servi",
+  "scenario": "g",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U2/g-v1-full.pdf",
+  "commits": [
+   "cfacac71ae"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U2-021",
+  "gravite": "S4",
+  "ecran": "Fiche du lead U2-h (moyenne tension) → onglet Devis puis « Nouveau devis (édition complète)… »",
+  "gestes": "Lead U2-h (Industriel, Kénitra, facture 150 000 MAD/mois, « Moyenne tension (MT) ») ; onglet Devis ; puis « Nouveau devis (édition complète)… »",
+  "attendu": "Les deux écrans disent la même raison : en moyenne tension la facture en dirhams ne suffit pas, il faut les kWh des registres",
+  "vu": "L'onglet Devis le dit bien (« Consommation (kWh), relevé de factures, ou facture en MAD (hors moyenne tension déclarée) », bouton « Devis automatique » grisé, visite avant devis annoncée). L'édition complète dit « Consommation non déclarée : aucune taille calculée » alors que la facture de 150 000 MAD/mois est sur la fiche ; aucun chiffre n'est inventé (« étude non calculée », « économies non chiffrées »)",
+  "scenario": "h",
+  "role": "Administrateur",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U2/s12-h-devistab.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U2/s50-h-gen.png",
+  "commits": [
+   "a020916900"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U3-002",
+  "gravite": "S2",
+  "ecran": "Fiche du lead U3-i, section Pompage → « Origine du niveau d'eau » et « Origine du débit du forage »",
+  "gestes": "Fiche du lead → lien « niveau d'eau du forage (visite) » → Niveau 40, Origine « Mesuré en visite » ; Débit du forage 25, Origine « Mesuré en visite » ; la fiche affiche « ✓ Enregistré » ; rouvrir la fiche. Rejoué une 2e fois (Origine du niveau seule) : même résultat",
+  "attendu": "L'origine choisie (« Mesuré en visite ») est gardée, ou refusée avec un message qui dit pourquoi et où saisir une mesure de visite",
+  "vu": "La requête envoie bien `mesure_visite` (réponse 200), mais à la réouverture les deux listes affichent « Déclaré par le client » et « Estimation du client » (le serveur relu dit `declare` / `client`), sans aucun message. Pire, l'historique de la fiche écrit « Provenance du niveau statique : — → Déclaré par le client — par anon_commercial » : un choix que l'utilisateur n'a pas fait lui est attribué",
+  "scenario": "i",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U3/i08-devisside.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U3/i11-saved.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U3/i12-readf.png",
+  "commits": [
+   "a91d2a9496"
+  ],
+  "rejeu_precedent": "autre"
+ },
+ {
+  "id": "T4-U3-014",
+  "gravite": "S2",
+  "ecran": "CRM → Leads (Commercial responsable, 518 leads visibles) et lien de fiche /crm/leads?lead=<id>",
+  "gestes": "Connecté anon_resp : ouvrir Leads (menu) ou le lien de la fiche du lead U3-j ; attendre ; « Réessayer ». Joué 6 fois entre 16 h 00 et 16 h 20 (pile partagée chargée : à recontrôler sous charge normale)",
+  "attendu": "La liste s'affiche, ou au moins la fiche demandée par son lien s'ouvre",
+  "vu": "La page affiche « Erreur : timeout of 20000ms exceeded » (message technique brut) avec « Réessayer », 5 fois sur 6 ; la fiche du lead ne s'ouvre pas non plus par son lien, car elle dépend de la liste. Le Commercial (3 leads) charge la même page en quelques secondes au même moment, ou après un seul « Réessayer »",
+  "scenario": "j",
+  "role": "Commercial responsable",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U3/err-editlead.png",
+  "commits": [
+   "a2e0ceb127"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U3-016",
+  "gravite": "S4",
+  "ecran": "Fenêtre du devis créé (édition complète, téléphone 390 px)",
+  "gestes": "Après création de DEV-202611-0107 sur téléphone, regarder l'en-tête de la fenêtre",
+  "attendu": "Tous les boutons visibles dans la largeur de l'écran",
+  "vu": "Le bouton « Télécharger le PDF » est coupé au bord droit (« Téléchar… ») ; la pastille de référence « DEV-202611-0107 » est écrasée en cercle sur trois lignes ; la case « Devis final » est un grand rectangle vertical",
+  "scenario": "k",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U3/k04-create1.png",
+  "commits": [
+   "a11368f4ae",
+   "dbaa16c667"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U3-017",
+  "gravite": "S3",
+  "ecran": "Fiche du lead U3-l (facture 300 MAD/mois, 2 000 kWh/mois tapés) → « Devis automatique »",
+  "gestes": "Créer le lead résidentiel (Rabat, facture 300 MAD/mois, Conso mensuelle 2 000 kWh) → colonne Devis → « Devis automatique » (bouton actif)",
+  "attendu": "La contradiction est signalée dès la fiche (le lead n'est pas « prêt »), avant que l'utilisateur lance un devis",
+  "vu": "Le serveur sert `devis_auto.pret = true` et le bouton « Devis automatique » est actif ; ce n'est qu'au clic que le refus arrive (409) : « kWh déclarés incohérents avec les factures — corriger la fiche du lead » + « Compléter : Conso mensuelle (kWh) ». Dans l'édition complète, l'enregistrement est bien bloqué, mais l'aperçu de simulation calcule quand même tailles, couverture et retour sur les 2 000 kWh contredits (« Résiduel après 1 927 kWh », retours de 18,5 à 4,8 ans)",
+  "scenario": "l",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U3/l02-done.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U3/l03-create0.png",
+  "commits": [
+   "1a4f4bfdeb"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U3-019",
+  "gravite": "S2",
+  "ecran": "Fiche du lead U3-m → champ « Ville / quartier » → « Vérifier la ville », puis « Devis automatique »",
+  "gestes": "Remplacer « maroc » par « kech » (surnom courant de Marrakech) → Tab (la fiche enregistre) → toucher « Vérifier la ville » ; fermer sans choisir → « Devis automatique »",
+  "attendu": "« kech » reconnu comme Marrakech (ou au moins Marrakech proposé) ; sinon la fiche reste « non prête » et le devis dit quelle ville a servi au soleil",
+  "vu": "La fenêtre « Vérifier la ville — « kech » » dit « Cette ville n'est pas dans notre liste » et place le point dans le Rif, près d'Al Hoceïma, avec « Midar 16,8 km » déjà coché, puis Bni Bouayach, Boudinar, Imzouren… (Marrakech absent, à environ 600 km). Derrière, la fiche passe « Prêt à deviser » avec cette ville inconnue, et « Devis automatique » crée DEV-202611-0110 (3,3 kWc) avec 4 alertes dont aucune ne dit que la ville est inconnue ni quel ensoleillement a servi",
+  "scenario": "m",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U3/m08-verif.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U3/m09-done.png",
+  "commits": [
+   "1bf0ea7507",
+   "d42bab8df2"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U3-020",
+  "gravite": "S3",
+  "ecran": "Fiche du lead U3-m (ville tapée « maroc »)",
+  "gestes": "Créer le lead résidentiel (facture 800 MAD, ville « maroc ») → ouvrir la fiche",
+  "attendu": "À côté du champ, un message dit que « maroc » n'est pas une ville reconnue et ce qu'il faut taper",
+  "vu": "La fiche affiche « À compléter : ville » et « Devis non prêt » alors que le champ Ville montre « maroc » ; aucun texte près du champ n'explique pourquoi la ville saisie est refusée (le serveur répond `statut: inconnue`), seul un bouton « Vérifier la ville » est proposé. À la création, le formulaire a accepté « maroc » sans rien dire",
+  "scenario": "m",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U3/m-c1-ville.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U3/m06-card.png",
+  "commits": [
+   "1bf0ea7507",
+   "d42bab8df2"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U3-021",
+  "gravite": "S3",
+  "ecran": "Fiche du lead U3-j → « Devis automatique » (refus)",
+  "gestes": "Lead agricole pompe actuelle conservée (plaque 7,5 kW, 380 V, triphasé, HMT 60), complété comme la fiche le demande (phase, niveau, débit du forage, débit de la pompe actuelle 12 m³/h, 8 h/jour) → « Devis automatique »",
+  "attendu": "Le refus nomme l'article sans prix, dit qui peut le chiffrer et où, ou propose de le demander",
+  "vu": "Refus 409 « Structure au sol : prix à renseigner au catalogue », sans nom d'article, sans lien vers le catalogue et sans geste « Demander au responsable » ; seuls « Fermer » et « Ouvrir l'édition complète » sont offerts",
+  "scenario": "j",
+  "role": "Commercial responsable",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U3/j11-done.png",
+  "commits": [
+   "0ba28da18a",
+   "c6ec0fea90",
+   "ab71b0b1ee"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U3-023",
+  "gravite": "S3",
+  "ecran": "Fiche du lead U3-j (pompe actuelle conservée) → « À compléter »",
+  "gestes": "Créer le lead avec Mode de pompe « Pompe actuelle conservée », Plaque 7,5 kW, tension 380 V, phases « Triphasé » → ouvrir la fiche",
+  "attendu": "La phase déclarée sur la plaque de la pompe gardée suffit (ou la fiche explique pourquoi il faut aussi la phase du site)",
+  "vu": "La fiche demande encore « Phase du site (monophasé ou triphasé) » (champ « Raccordement » du profil énergétique) alors que la plaque de la pompe conservée dit déjà « Triphasé » et 380 V ; trois champs proches coexistent (Raccordement, Électricité sur place, Plaque : phases) sans dire lequel compte",
+  "scenario": "j",
+  "role": "Commercial responsable",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U3/j02-devisside.png",
+  "commits": [
+   "857753de95"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-U4-019",
+  "gravite": "S4",
+  "ecran": "Onglets « Terrain » et « Ombrière » (mode Expert)",
+  "gestes": "Ombrière 10 × 5 m, 4 modules par travée → « Calculer l'ombrière » ; Terrain → « Calculer le champ au sol »",
+  "attendu": "Les mots de l'ombrière dans l'onglet Ombrière ; la virgule décimale française",
+  "vu": "Pour l'ombrière, le refus dit « Aucune table ne tient dans ce terrain avec cette saisie […] Réduisez le nombre de modules par table ou agrandissez le terrain » (on parle de travées et d'emprise) ; « Couverture posée à 2.5 m » et « 39.4 % TAUX D'OCCUPATION DU SOL » avec un point décimal, quand le reste écrit « 19,88 kWc »",
+  "scenario": "p",
+  "role": "Commercial",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/p11-ombriere-calc.png ; C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour1/U4/p10-terrain-calcule.png",
+  "commits": [
+   "f35763b43f"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-V2-003",
+  "gravite": "S2",
+  "ecran": "Édition complète, nouveau devis agricole, encart des trois pompes (« Inférieure / Recommandée / Supérieure »)",
+  "gestes": "Lead V2-i1 (triphasé, HMT 80 m, débit souhaité 20 m³/h, forage 30 m³/h) → onglet « 1 devis » → « Nouveau devis (édition complète)… » → section étude, sous le tableau mensuel",
+  "attendu": "Le champ photovoltaïque suit la pompe : une pompe plus petite demande moins de panneaux, une plus grande davantage (ratio champ/pompe dans la bande 1,2-1,5× que l'écran cite lui-même)",
+  "vu": "« Inférieure : OSP 30/8 — 10 CV / 7,5 kW · 59,34 kWc · 83 panneaux · couverture 101 % » ; « Recommandée : OSP 30/11 — 12,5 CV / 9,3 kW · 16,45 kWc · 23 panneaux · 105 % » ; « Supérieure : OSP 30/13 — 15 CV / 11 kW · 15,73 kWc · 22 panneaux · 106 % ». La plus petite pompe reçoit 3,6 fois plus de panneaux (≈ 8× sa puissance) et la plus grande moins que la recommandée : un commercial qui retient « Inférieure » chiffrerait 83 panneaux",
+  "scenario": "rejeu T4-U3-004",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/i1-gen-s3.png",
+  "commits": [
+   "273a498107",
+   "243eb9af6a",
+   "bf0c9fe467"
+  ],
+  "rejeu_precedent": "pas-corrige"
+ },
+ {
+  "id": "T4-V2-008",
+  "gravite": "S3",
+  "ecran": "Liste des devis → « PDF » → fenêtre « Générer le PDF » → « Générer » (devis agricole DEV-202611-0113)",
+  "gestes": "Bouton PDF de la ligne → laisser « Document agricole complet » → « Générer » ; attendre. Puis même geste avec « Joindre la note de calcul ». Chaque fois rejoué une seconde fois",
+  "attendu": "Le PDF arrive, ou un message dit qu'il est en retard ou en échec et quoi faire",
+  "vu": "Deux demandes sur sept (le complet à 20 h 22, la note de calcul à 20 h 40) n'ont jamais livré de fichier : 300 s puis 604 s d'attente, la fenêtre se ferme, l'icône « Mes tâches de fond (1 en cours) » reste allumée (elle ne montre que des tâches de calepinage), aucun message. La demande suivante, identique, arrive en 12 s puis 56 s : l'utilisateur n'a aucun moyen de savoir que la première est perdue",
+  "scenario": "rejeu T4-U3-009",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/i1-list-note-w185.png",
+  "commits": [
+   "2885898117"
+  ],
+  "rejeu_precedent": "non-rejoue"
+ },
+ {
+  "id": "T4-V2-010",
+  "gravite": "S3",
+  "ecran": "Devis auto (alertes) et édition complète d'un côté ; PDF 1 page et note de calcul (fiches produits) de l'autre",
+  "gestes": "Lead V2-i1 → « Devis auto » → lire les alertes ; puis PDF « Version courte (1 page) » et « Joindre la note de calcul » → lire la ligne du variateur",
+  "attendu": "Le même fait (le variateur protège-t-il de la marche à sec ?) dit de la même façon partout",
+  "vu": "Le Commercial lit « Ni sonde de niveau ni protection marche à sec connue : la fiche du variateur ne dit pas s'il protège de la marche à sec : à saisir » ; le client lit, sur la ligne « VARIATEUR VEICHI SI23 11KW 380V » du PDF 1 page et de la note de calcul, « Pilotage automatique lever/coucher du soleil, protection marche à sec », et la sonde de niveau proposée « prix sur devis » en option",
+  "scenario": "rejeu T4-U3-004",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/i1-auto-done.png",
+  "commits": [
+   "b143526675"
+  ],
+  "rejeu_precedent": "pas-corrige"
+ },
+ {
+  "id": "T4-V2-018",
+  "gravite": "S2",
+  "ecran": "Édition complète du devis DEV-202611-0119 (onglet Technique) puis PDF Premium",
+  "gestes": "Bureau Chromium (bascule depuis le téléphone ici) : lead V2-c → « 1 devis » → « Modifier » → scénario « Les deux (Sans + Avec batterie) » → « Auto-remplir depuis le stock » → « Enregistrer » → lire Paramètres techniques, carte « Tailles Éco / Recommandé / Max » (onglet Sans batterie) et le PDF Premium",
+  "attendu": "L'option sans batterie est chiffrée à sa taille recommandée, et l'écran comme le PDF donnent un seul chiffre pour « Recommandé sans batterie »",
+  "vu": "Paramètres techniques : « Recommandé sans batterie : 6 panneaux · 3,30 kWc » ; même écran, carte Tailles onglet « Sans batterie » : « Recommandé · Devis officiel · 10 panneaux · 5,50 kWc » ; lignes : « Panneau mono 550W » ×10 sans étiquette d'option (comptée dans les deux) ; PDF p.1 « OPTION 1 Sans batterie … 10 panneaux 550 W · 62 700 MAD » et « OPTION 2 Avec batterie … 10 panneaux 550 W · 73 200 MAD » : l'écart entre les options n'est plus que l'onduleur et la batterie, la taille sans batterie annoncée (3,30 kWc) n'est chiffrée nulle part",
+  "scenario": "c",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour2/V2/c-both-b4-saved.png",
+  "commits": [
+   "b3ec24d12c",
+   "010e1383e6"
+  ],
+  "rejeu_precedent": "autre"
+ },
+ {
+  "id": "T4-X1-001",
+  "gravite": "S1",
+  "ecran": "PDF premium résidentiel (fiche du lead › panneau du devis › « Télécharger le PDF »), pages 1 et 2",
+  "gestes": "Lead X1-s (Rabat, facture d'hiver 800 MAD, GPS) › onglet Devis › Puissance cible 3 › « Devis modifiable ▾ » › « Remise %… » 5 › « Créer le devis » (DEV-202611-0138) › ouvrir le devis › « Télécharger le PDF »",
+  "attendu": "Chaque option porte ses propres chiffres : l'option 1 (5 panneaux de 550 W = 2,75 kWc) a son prix par kWc calculé sur 2,75 kWc",
+  "vu": "Page 1, option 1 « Sans batterie » : 40 100 MAD « soit 11 296 MAD/kWc » = 40 100 / 3,55 ; or l'option 1 est « 5 panneaux 550 W » (2,75 kWc, soit ≈ 14 580 MAD/kWc). La page 2 annonce en tête, pour les deux options, « 3,55 kWc installés · panneaux · 710 W », alors que l'option 1 liste « 5× Panneau mono 550W ». L'écran du devis dit bien « Sans batterie : 2,75 kWc · Avec batterie : 3,55 kWc »",
+  "scenario": "balayage u",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/s2-panel.pdf",
+  "commits": [
+   "6d4078a267"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X1-002",
+  "gravite": "S1",
+  "ecran": "PDF « Inclure l'étude » (résidentiel), page 4 « Confiance, Garanties »",
+  "gestes": "Liste des devis › DEV-202611-0137 (lead X1-r, Marrakech, facture 1 200 MAD) › PDF › cocher « Inclure l'étude » › Générer › lire la page 4",
+  "attendu": "La garantie de l'onduleur imprimée est celle de l'onduleur chiffré dans chaque option (page 2 du même PDF : Huawei 10 ans, Deye 5 ans), comme le fait le PDF premium sans étude (« 10 ans — Onduleur (option 1) · 5 ans — Onduleur (option 2) »)",
+  "vu": "Page 4 : « Garanties jusqu'à 30 ans — Onduleur 10 ans » et « onduleurs Huawei », sans distinction d'option ; l'option recommandée (avec batterie) porte un onduleur hybride Deye dont la page 2 du même document dit « Garantie constructeur 5 ans »",
+  "scenario": "balayage u",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/r-etude.txt",
+  "commits": [
+   "dc08ec1809"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X1-003",
+  "gravite": "S2",
+  "ecran": "Liste des devis › fenêtre PDF › « Devis Final » (format premium, résidentiel)",
+  "gestes": "DEV-202611-0137 › PDF › cocher « Devis Final » (échéancier du devis) › Générer ; rejoué une 2e fois avec « Acompte personnalisé » 5 000 et une 3e fois seul, rien d'autre de mon côté en cours",
+  "attendu": "Le PDF arrive (les autres formats du même devis arrivent en 6 à 30 s) ou un message dit que la génération a échoué",
+  "vu": "Trois essais : la demande est acceptée (POST generer-pdf 202) puis rien en 603 s, 603 s et 333 s : aucun téléchargement, aucun indicateur sur la ligne, aucun message (captures r-final-w5…w185, r-final2-*). Le client de l'écran a signalé un appel « etat-pdf » sans réponse après 20 s. Juste après, « Devis Final » combiné à « Inclure l'étude » arrive en 15 s et « Devis une page » + « Devis Final » en 6 s",
+  "scenario": "balayage u",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/r-final2-after.png",
+  "commits": [
+   "a529caef05",
+   "e14d9877d6"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X1-004",
+  "gravite": "S3",
+  "ecran": "Fiche du lead › onglet Devis › « Puissance cible (kWc) » + « Remise %… »",
+  "gestes": "Lead X1-s › Puissance cible 3 › « Devis modifiable ▾ » › « Remise %… » 5 › « Créer le devis »",
+  "attendu": "La taille demandée (3 kWc) est respectée ou l'écart est dit, et les deux options partent de la même taille",
+  "vu": "La requête envoie target_kwc 3.55 ; l'alerte dit « Taille imposée pour ce devis : 3,55 kWc » ; le devis créé dit « Sans batterie : 2,75 kWc · Avec batterie : 3,55 kWc » (panneau 710 W remplacé par 550 W sur l'option 1 « pour compatibilité électrique »). Trois tailles pour une saisie de 3 kWc, aucune ne vaut 3",
+  "scenario": "balayage LEAD-DEV",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/s1-8-created.png",
+  "commits": [
+   "4d88568cca",
+   "1d34f121e4"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X1-010",
+  "gravite": "S3",
+  "ecran": "Fiche du lead › onglet Devis › barre WhatsApp FR / Darija › « Aperçu du message WhatsApp »",
+  "gestes": "Lead X1-s › cocher DEV-202611-0138 › « Darija » › « Envoyer par WhatsApp » › lire › Annuler › « FR » › « Envoyer par WhatsApp »",
+  "attendu": "La variante Darija donne un texte en darija",
+  "vu": "« Variante Darija » et « Variante Français » affichent le même texte français : « Bonjour X1-s …, voici votre devis … » (le lien est aussi répété deux fois dans le message)",
+  "scenario": "balayage LEAD-DEV",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/s3-3-wa-preview.png",
+  "commits": [
+   "84e24843cf",
+   "86db7969e9"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X1-011",
+  "gravite": "S3",
+  "ecran": "Fiche du lead résidentiel › « Devis auto »",
+  "gestes": "Lead X1-r (Marrakech, facture 1 200 MAD, GPS) › « Devis auto » ; deuxième clic sans rien changer",
+  "attendu": "Le devis se crée, ou le refus nomme le champ à corriger",
+  "vu": "1er essai : POST devis/auto 500 après 28,5 s (request_id ad58d83f617b4f8284c91b009209c8f0) et le message « Le devis automatique a échoué — vérifiez la fiche du lead et réessayez » accuse la fiche ; 2e essai, fiche inchangée : devis DEV-202611-0137 créé en 8 s. Non reproduit une 3e fois",
+  "scenario": "balayage u",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/r-auto-done.png",
+  "commits": [
+   "643bb3331d"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X1-012",
+  "gravite": "S3",
+  "ecran": "Liste des devis (colonne Validité) contre PDF",
+  "gestes": "Liste des devis › recherche « X1- »",
+  "attendu": "La validité affichée dans la liste est celle que le PDF imprime",
+  "vu": "DEV-202611-0138, -0137 et -0135 (brouillons) : colonne Validité « — » ; leurs PDF impriment « Validité : jusqu'au 25/12/2026 » / « offre valable jusqu'au 25/12/2026 »",
+  "scenario": "balayage u",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/lot-3-after.png",
+  "commits": [
+   "e63f6279ec"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X1-016",
+  "gravite": "S4",
+  "ecran": "« Réviser (nouvelle version) » depuis le panneau du devis de la fiche du lead",
+  "gestes": "Lead X1-i › devis accepté DEV-202611-0132 › « Réviser (nouvelle version) »",
+  "attendu": "La révision s'ouvre en restant lisible : le fil d'Ariane nomme le devis révisé",
+  "vu": "L'écran quitte la fiche pour le générateur pleine page ; le fil d'Ariane dit « Nouveau devis solaire » alors que l'écran édite DEV-202611-0142 ; la date de validité de la V2 est vide",
+  "scenario": "i",
+  "role": "Commercial (anon_commercial)",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X1/s4i-revised.png",
+  "commits": [
+   "d74519d132"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-001",
+  "gravite": "S2",
+  "ecran": "Devis › Édition complète › Lignes (option sans batterie)",
+  "gestes": "Lead X4-r1 (résidentiel, facture hiver 1 200 MAD, Casablanca + GPS) → Devis auto DEV-202611-0130 → Modifier → ligne « Panneau mono 550W » de l'option sans batterie : Qté 5 → 7 → Tab → Enregistrer ; puis comparé avec le lead jumeau X4-r2 dont le devis automatique est passé de lui-même à 7 panneaux sans batterie",
+  "attendu": "Quand je passe de 5 à 7 panneaux, toutes les lignes qui dépendent du nombre de panneaux suivent (ou aucune, et l'écran le dit)",
+  "vu": "Accessoires (312,5 → 437,5), Tableau de protection (1 218,76 → 1 706,26) et Installation (3 900 → 4 500) suivent, mais « Structures acier » reste à 5 et « Socles » à 10 pour 7 panneaux. Total sans batterie enregistré 48 600 MAD TTC ; le devis automatique du lead jumeau pour les mêmes 7 panneaux met 7 structures et 14 socles et vaut 49 900 MAD TTC : environ 1 300 MAD de pose manquent sur le devis retouché, sans aucun avertissement",
+  "scenario": "A",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/eq1-typed.png",
+  "commits": [
+   "db907fb5d6",
+   "1cd7a05dda"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-004",
+  "gravite": "S2",
+  "ecran": "Devis › Édition complète › Technique › carte « Tailles Éco / Recommandé / Max », onglet « Sans batterie »",
+  "gestes": "Lead X4-c (batterie souhaitée) → Devis auto DEV-202611-0131 → Modifier → Document : Scénario « Les deux (Sans + Avec batterie) » → Technique → « Auto-remplir depuis le stock » → Enregistrer → carte Tailles, onglet « Sans batterie » puis « Avec batterie »",
+  "attendu": "La carte « Recommandé · Devis officiel » de l'onglet Sans batterie montre la composition sans batterie et le prix du devis sans batterie (53 900 MAD TTC à droite)",
+  "vu": "Onglet « Sans batterie » : Recommandé « Devis officiel » 8 panneaux · 4,40 kWc avec onduleur hybride Deye + batterie Dyness, PRIX TTC 36 900 MAD (économie 7 791 MAD, retour 4,8 ans) ; même écran, carte de droite « TOTAL SANS BATTERIE · TTC 53 900 MAD » et « TOTAL AVEC BATTERIE 65 900 MAD ». Le « Recommandé » à 8 panneaux coûte moins que l'« Éco » à 5 panneaux (41 900 MAD). Déjà vu avant l'enregistrement, en scénario « avec batterie seulement » (capture tc-Technique.png). Onglet « Avec batterie » cohérent (65 900 MAD)",
+  "scenario": "A",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/tl-b-Sansbatterie.png",
+  "commits": [
+   "e390c95388",
+   "a7f66ba39e",
+   "a7b49100e9"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-006",
+  "gravite": "S3",
+  "ecran": "Devis › Édition complète, compteurs du haut (onglet Document)",
+  "gestes": "Ouvrir « Modifier » sur les brouillons DEV-202611-0130 (X4-r1), DEV-202611-0131 (X4-c) et la V2 DEV-202611-0136 tout juste créée ; lire la ligne au-dessus de « Marché / Mode d'installation »",
+  "attendu": "Le compteur dit 0 bon de commande tant qu'aucun bon de commande n'existe (aucun de ces devis n'a été accepté)",
+  "vu": "« 1 bon de commande » s'affiche sur chacun de ces brouillons. Code lu : BandeauxEdition.jsx compte « editDevis.bon_commande_etat ? 1 : 0 », or le serveur renvoie toujours un objet ({exists: false, …}) quand il n'y a pas de bon de commande (serializers.py::get_bon_commande_etat) : le compteur vaut 1 pour tous les devis",
+  "scenario": "A",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/st1-edit.png",
+  "commits": [
+   "d04df9f6ce"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-008",
+  "gravite": "S2",
+  "ecran": "PDF Premium de DEV-202611-0130 (page 1 et page 4) contre fiche du lead X4-r1",
+  "gestes": "Devis X4-r1 retouché à la main (7 panneaux) → facture hiver passée de 1 200 à 1 800 MAD sur la fiche (note « Conception recalculée ») → télécharger le PDF Premium du devis gardé",
+  "attendu": "Le chiffre « facture actuelle » est le même sur la fiche et dans le PDF, ou l'écran signale avant téléchargement que le devis repose sur l'ancienne facture",
+  "vu": "Fiche : « Facture hiver 1 800 MAD ». PDF page 1 : « ≈ 1 200 MAD/mois aujourd'hui », « soit 14 400 MAD/an », économie 10 930 MAD/an ; page 4 « Facture actuelle ≈ 14 400 MAD/an ». Rien sur la fiche, la carte du devis ni le panneau PDF ne dit que ce devis part de l'ancienne facture. Le PDF imprime aussi « Structures acier 5 · 8 » pour « 7 · 8 » panneaux (voir T4-X4-001)",
+  "scenario": "A",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/r1prem-panel.png",
+  "commits": [
+   "347e4e1154"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-009",
+  "gravite": "S3",
+  "ecran": "Ventes › Devis (liste) › ligne DEV-202611-0136 › bouton « Envoyer »",
+  "gestes": "Liste des devis → rechercher DEV-202611-0136 (lead X4-c sans téléphone ni e-mail) → « Envoyer »",
+  "attendu": "Le bouton dit qu'il n'y a ni téléphone ni e-mail sur la fiche et propose de copier le lien (comme la fenêtre « Envoyer au client » de la fiche du lead)",
+  "vu": "Seul un toast « Numéro de téléphone invalide. » : la fiche n'a AUCUN numéro (le mot « invalide » trompe), rien ne dit quoi faire ni ne propose le lien ; le devis reste « Brouillon »",
+  "scenario": "A",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/ch1-1.png",
+  "commits": [
+   "75ff219226"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-010",
+  "gravite": "S3",
+  "ecran": "Ventes › Factures, carte « À ÉCHOIR ≤ 7 J »",
+  "gestes": "Factures → « Émettre » BROUILLON-122 (acompte de DEV-202611-0136, échéance affichée 25/12/2026) → relire la carte avant / après",
+  "attendu": "La carte compte les factures dont l'échéance tombe dans les 7 jours, et son montant est leur somme",
+  "vu": "Avant : « 0,00 MAD — 4 factures · 7 prochains jours » ; après l'émission d'une facture à échéance dans 30 jours : « 0,00 MAD — 5 factures · 7 prochains jours ». Le compteur prend une facture qui n'échoit pas dans 7 jours et le montant reste 0 : les deux chiffres de la même carte se contredisent (déjà visible dans le texte de T4-V2-023)",
+  "scenario": "A",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/fa-after.png",
+  "commits": [
+   "054f3e431a",
+   "bad8dad930"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-011",
+  "gravite": "S2",
+  "ecran": "Nouveau devis › Lignes › « Plusieurs propriétés ? » › « + Villas différentes »",
+  "gestes": "C:/Program Files/Git/ventes/devis/nouveau, client direct X4-cli, facture 1 000 MAD, 8 × 550 W, Structures acier, « Auto-remplir depuis le stock » (scénario « Les deux ») → Lignes → « + Villas différentes »",
+  "attendu": "Le récapitulatif par villa reprend le total du devis (une option à la fois, ou les deux nommées)",
+  "vu": "Récapitulatif : « Équipement commun 82 876 MAD » et « Total général 82 800 MAD », alors que le même écran affiche « Total TTC 65 800 MAD » en haut et que les deux options valent 53 800 (sans batterie) et 65 800 (avec batterie) : le « Total général » additionne les lignes des deux options, un prix qui ne correspond à aucune offre",
+  "scenario": "A",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/rs2-villas.png",
+  "commits": [
+   "50f6ef6ed1",
+   "4ce57f0645",
+   "16fb2dd59f"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-012",
+  "gravite": "S3",
+  "ecran": "Nouveau devis › « Créer » › fenêtre « Désignation modifiée »",
+  "gestes": "C:/Program Files/Git/ventes/devis/nouveau → ligne « Onduleur réseau Huawei 5kW Monophasé » renommée (« … X4 ») → « Créer »",
+  "attendu": "Le texte et les deux boutons tiennent dans la fenêtre",
+  "vu": "À 1 440 px de large, la fenêtre (≈ 450 px) coupe son texte à droite (« … Huawei 5kW Mon », « … Monopha ») et ses deux boutons : « Renommer sur ce devis seulement » déborde du cadre, « Créer un nouveau produit « Onduleur réseau Huawei 5kW Monop… » est tronqué ; on ne lit pas le nom qu'on va créer",
+  "scenario": "A",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/err-res2-1795572792533.png",
+  "commits": [
+   "1255de47fb",
+   "cb01462c4c"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-013",
+  "gravite": "S3",
+  "ecran": "Nouveau devis › Document › « Date de validité »",
+  "gestes": "C:/Program Files/Git/ventes/devis/nouveau, client direct X4-cli, 8 × 550 W, Auto-remplir → Date de validité = 01/01/2020 → « Créer »",
+  "attendu": "Une date de validité déjà passée est refusée sur le champ (ou au moins signalée) : un devis ne naît pas expiré",
+  "vu": "POST ventes/devis/atomic 201 avec date_validite 2020-01-01 : « Devis enregistré DEV-202611-0139 · 65 800 MAD », aucun message ni sur le champ ni ailleurs ; le devis naît avec une validité expirée depuis presque 7 ans",
+  "scenario": "A",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/rs3-past-date.png",
+  "commits": [
+   "90edbcf6c1",
+   "ba97fc0a25",
+   "fa3caba30d"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-014",
+  "gravite": "S3",
+  "ecran": "Nouveau devis › « Créer » › panneau « Devis enregistré »",
+  "gestes": "Même devis (deux options : sans batterie 53 800 MAD, avec batterie 65 800 MAD) → « Créer » → lire le panneau de succès",
+  "attendu": "Le panneau dit de quelle option est le montant (le devis en porte deux), comme le bandeau « Devis créé » du devis automatique depuis la correction de T4-V2-013",
+  "vu": "« Devis enregistré DEV-202611-0139 — 65 800 MAD » : c'est l'option avec batterie, sans le dire ; l'option sans batterie n'apparaît pas (jumeau de T4-V2-013 sur l'écran du générateur)",
+  "scenario": "A",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/rs3-past-date.png",
+  "commits": [
+   "926b9c5955"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-015",
+  "gravite": "S3",
+  "ecran": "Nouveau devis › « Créer » › fenêtre « Désignation modifiée » › « Renommer sur ce devis seulement »",
+  "gestes": "/ventes/devis/nouveau, client X4-cli, 8 × 550 W, Auto-remplir → renommer la 1re ligne (« … X4 ») → « Créer » → « Renommer sur ce devis seulement » ; attendre 80 s (joué deux fois) ; puis « Créer » une seconde fois",
+  "attendu": "Le choix « Renommer sur ce devis seulement » enregistre le devis (c'est la suite du clic sur « Créer »)",
+  "vu": "La fenêtre se ferme et rien ne part : aucun appel au serveur, « Modifications non enregistrées » reste affiché, aucun message, pendant 80 s (deux essais). Il faut recliquer « Créer » pour que le devis soit enregistré (DEV-202611-0140, désignation renommée gardée) ; rien ne le dit",
+  "scenario": "A",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/rs4-after-rename.png",
+  "commits": [
+   "7a03fc1c7d"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-016",
+  "gravite": "S2",
+  "ecran": "Devis C&I › Édition complète › « Détails du calcul » › « Économies (moteur serveur) »",
+  "gestes": "Lead X4-e (épicerie, Casablanca, facture 3 000 MAD/mois, catégorie « Supermarché / épicerie (avec frigos) ») → Devis auto DEV-202611-0141 → Modifier → descendre à « Détails du calcul » ; PDF Premium du même devis",
+  "attendu": "Un seul retour sur investissement pour l'option sans batterie, le même dans le bandeau du devis auto, la carte de l'étude et le PDF",
+  "vu": "Bandeau « Devis créé » : « sans batterie : … retour ≈ 5,7 ans » ; PDF (3 pages) : « Retour sur investissement 5,7 ans », « remboursé en 5,7 ans ». Carte « Économies (moteur serveur) » du même devis : « Retour sur investissement 21 ans », « TRI 1,7 % sur 25 ans », cumul HT à 5 ans −151 470 MAD alors que l'option coûte 86 600 MAD TTC et économise 13 061 MAD HT/an : le détail sans batterie part d'un investissement d'environ 217 000 MAD HT (proche des deux options additionnées). Le vendeur lit 21 ans là où le client lit 5,7 ans",
+  "scenario": "e",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/se-2.png",
+  "commits": [
+   "f8ff13eb13"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-017",
+  "gravite": "S3",
+  "ecran": "Nouveau devis › Agricole › « Énergie actuelle et dépense déclarée » › « Mois d'irrigation »",
+  "gestes": "/ventes/devis/nouveau → Agricole (pompage) → « Changer de marché » → descendre aux « Mois d'irrigation » ; cocher le 2e « Jui » et « Aoû »",
+  "attendu": "Chaque case porte un nom de mois qu'on distingue (Juin / Juil)",
+  "vu": "Les cases s'appellent « Jan Fév Mar Avr Mai Jui Jui Aoû Sep Oct Nov Déc » : juin et juillet portent le même libellé « Jui » ; on ne sait pas lequel on coche (ces mois alimentent le bloc économies du document 3 pages)",
+  "scenario": "A",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/ag-mois.png",
+  "commits": [
+   "93bbc05f04",
+   "f6fcdc37ee"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-018",
+  "gravite": "S2",
+  "ecran": "Devis › Édition complète › Simulation › « Aperçu de la Simulation » (DEV-202611-0133, lead X4-r2)",
+  "gestes": "Lead X4-r2 (facture 1 800 MAD) → 1 devis → Modifier → onglet Simulation → « Déplier »",
+  "attendu": "La colonne « Éco. avec » chiffre l'option avec batterie que le devis vend (6,05 kWc, onduleur hybride Deye 5 kW + batterie Dyness 5 kWh, 78 000 MAD), ou dit pourquoi elle diffère",
+  "vu": "Pour chaque taille de 0,55 à 4,40 kWc la colonne « Éco. avec » dit « Option batterie non livrable pour cette taille (catalogue). » et le tableau des batteries n'apparaît pas, alors que le même écran affiche « TOTAL AVEC BATTERIE · TTC 78 000 MAD — Option recommandée » et « Avec batterie : 6,05 kWc · 11 panneaux ». Le vendeur ne peut pas comparer les tailles avec batterie ; la colonne « Payback » écrit « 5.74 ans », « 18.36 ans » (point et deux décimales) quand le reste de l'ERP écrit « 5,7 ans »",
+  "scenario": "A",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/ed-sim.png",
+  "commits": [
+   "6fb47b1949",
+   "7f98aedb8d"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-019",
+  "gravite": "S3",
+  "ecran": "Devis › Édition complète › « Surcharges (registre) » (Administrateur)",
+  "gestes": "anon_admin2 (droit manquant au Commercial responsable : le bloc n'existe pas pour lui) → lead X4-r2 → 1 devis → Modifier → « Surcharges (registre) » › Déplier",
+  "attendu": "Les valeurs « Auto / Effectif » du registre sont celles du devis (7 panneaux · 3,85 kWc sans batterie ; 11 panneaux · 6,05 kWc avec batterie)",
+  "vu": "Registre : taille.nb_panneaux Auto 18 / Effectif 18, taille.kwc 9.9 / 9.9 (GET devis/2863/overrides 200) : c'est la somme des deux options (7 + 11 panneaux, 3,85 + 6,05 kWc), une taille qu'aucune option n'a ; même écran, carte Système « Sans batterie : 3,85 kWc · 7 panneaux / Avec batterie : 6,05 kWc · 11 panneaux ». Poser une valeur manuelle sur ce chemin partirait de ce 18",
+  "scenario": "A",
+  "role": "anon_admin2",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/ad-surch.png",
+  "commits": [
+   "bedb9c388c",
+   "3db68368af"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-020",
+  "gravite": "S2",
+  "ecran": "Devis › Édition complète › carte « Marge indicative (interne) » (Administrateur)",
+  "gestes": "anon_admin2 → lead X4-r2 → devis automatique DEV-202611-0133 jamais retouché (après recalcul sur facture 1 800 MAD) → Modifier → carte de droite",
+  "attendu": "Un devis composé automatiquement par l'ERP n'est pas vendu à perte, ou l'écran dit quelle option et quelles lignes font la perte",
+  "vu": "« MARGE INDICATIVE (INTERNE) » négative (quelques milliers de MAD, rouge) avec « marge partielle : 2 lignes sans prix d'achat » et, dans le rail sous la table, « Le total après remise est INFÉRIEUR au coût d'achat estimé — vous vendez à perte. Réduisez la remise ou le prix cible. » — sur un devis sans remise que l'ERP a composé seul. Rien ne dit à quelle option (sans 49 900 / avec 78 000 MAD) se rapporte la marge. À vérifier (non prouvé) : si le coût additionne les lignes des deux options comme le registre (T4-X4-019) et le récapitulatif par villa (T4-X4-011)",
+  "scenario": "A",
+  "role": "anon_admin2",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/ad-surch.png",
+  "commits": [
+   "4ce57f0645"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-021",
+  "gravite": "S2",
+  "ecran": "Devis envoyé › Édition complète ouverte dans deux onglets (même utilisateur)",
+  "gestes": "Lead X4-r2, DEV-202611-0133 (envoyé, 79 000 MAD) : onglet A « Modifier », onglet B « Modifier » ; A : Transport Qté 1 → Enregistrer ; 4 s plus tard B : Transport Qté 4 → Enregistrer ; relire la fiche (joué deux fois ; au 2e essai réseau écouté)",
+  "attendu": "Le second enregistrement est arrêté par le bandeau de conflit (« Modifié … pendant votre édition — vérifiez avant d'enregistrer ») au lieu d'écraser la modification de l'autre onglet",
+  "vu": "2e essai : POST replace-lines de A (02:48:35) et de B (02:48:39) répondent tous deux 200 à 02:49:11, aucun bandeau de verrou ni message dans aucun des deux onglets ; la fiche affiche ensuite 81 200 MAD (Transport ×4 de B) : la modification de A est écrasée en silence. 1er essai : B est resté « Enregistrement… » plus de 60 s sans message (A avait gagné, 79 000 MAD). Le devis est déjà envoyé : le lien client change sans que personne ne le voie",
+  "scenario": "A",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/bn-B-after.png",
+  "commits": [
+   "2d5258bd87"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X4-022",
+  "gravite": "S3",
+  "ecran": "Nouveau devis › Enregistrement › « Réinitialiser »",
+  "gestes": "/ventes/devis/nouveau : client X4-cli, facture 900, 6 × 550 W, Auto-remplir → « Réinitialiser » → « Annuler » (rien ne bouge, normal) → « Réinitialiser » → « Réinitialiser » dans la fenêtre « Réinitialiser le formulaire ? — Toutes les saisies en cours seront perdues. » (joué deux fois)",
+  "attendu": "Le formulaire revient vide (client, factures, panneaux, lignes), comme la fenêtre l'annonce",
+  "vu": "La fenêtre se ferme et rien n'est effacé : client X4-cli, facture 900, 6 panneaux, 14 lignes, totaux 45 800 / 57 800 MAD et « Modifications non enregistrées » restent à l'écran ; aucun message",
+  "scenario": "A",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X4/su-reset-done.png",
+  "commits": [
+   "d93c796d08"
+  ],
+  "rejeu_precedent": null
+ },
+ {
+  "id": "T4-X9-016",
+  "gravite": "S3",
+  "ecran": "Fiche du lead X9-n › carte « Conception », après « Devis auto »",
+  "gestes": "Fiche du lead › « Devis auto » (DEV-202611-0150, 37 800 / 65 900 MAD, deux options) › relire la carte Conception",
+  "attendu": "Un retour sur investissement que l'utilisateur peut rapprocher du prix et des économies affichés",
+  "vu": "La carte aligne « Économies 6 397 MAD/an » et « Retour 21,4 ans — d'après le devis DEV-202611-0150 » ; avec 37 800 MAD (6 ans) ou 65 900 MAD (10,3 ans) aucun calcul simple ne donne 21,4 ans, et la carte ne dit ni quel montant ni quelles économies il prend (avant le devis la même ligne disait « retour sur investissement : après un premier devis »)",
+  "scenario": "a",
+  "role": "anon_resp",
+  "capture": "C:/Users/kasri/AppData/Local/Temp/claude/5802fae8d4a7e5bc/000d80cd-a11a-4e65-b5cd-28804de75179/scratchpad/tour3/X9/dt-devtab.png",
+  "commits": [
+   "c7131af98a",
+   "3eab6b88ad"
+  ],
+  "rejeu_precedent": null
+ }
+]

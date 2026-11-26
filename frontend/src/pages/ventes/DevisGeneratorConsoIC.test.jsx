@@ -7,7 +7,7 @@
 //
 // Run : npx vitest run src/pages/ventes/DevisGeneratorConsoIC.test.jsx
 import { describe, it, expect, vi } from 'vitest'
-import { screen, waitFor, fireEvent } from '@testing-library/react'
+import { act, screen, waitFor, fireEvent } from '@testing-library/react'
 
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
@@ -15,7 +15,7 @@ vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.
 vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).stockApiMock())
 vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).parametresApiMock())
 vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).ventesApiEdition({
-    etudeCiPreview: vi.fn(),
+    etudeCiPreview: vi.fn(), economieCiPreview: vi.fn(),
 }))
 
 import crmApi from '../../api/crmApi'
@@ -54,6 +54,7 @@ declarerBeforeEachDevis({
     ventesApi.getDevisById.mockResolvedValue(devisIndustriel())
     mockEcrituresDevisOk(ventesApi)
     ventesApi.etudeCiPreview.mockResolvedValue(reponseContrat('ventes', 'etude_ci_preview'))
+    ventesApi.economieCiPreview.mockResolvedValue(reponseContrat('ventes', 'economie_ci'))
   },
 })
 
@@ -177,5 +178,89 @@ describe('CIQ125 — profil déclaré C&I et résultat serveur en direct', () =>
     // un article « prix à renseigner » est nommé, jamais chiffré
     const aRenseigner = compo.lignes.find((l) => l.prix_connu === false)
     expect(await screen.findByDisplayValue(`${aRenseigner.designation} — prix à renseigner`)).toBeInTheDocument()
+  })
+})
+
+// T4-X6-007 / 008 / 010 / 011 — l'édition complète d'un devis C&I : l'aperçu décrit les
+// LIGNES du devis (une valeur par option), le moteur ne fait que CONSEILLER sa taille ; un
+// seul retour pour l'offre réseau ; « Calcul en cours… », « Réessayer », reprise au réseau.
+const BATTERIE = { id: 103, nom: 'Batterie Dyness PowerBrick 16 kWh', prix_vente: 40000, tva: 20, is_archived: false }
+const HYBRIDE = { id: 104, nom: 'Onduleur hybride Deye 50kW Triphasé', prix_vente: 70000, tva: 20, is_archived: false }
+
+function devisDeuxOptions() {
+  const d = devisIndustriel('commercial')
+  d.data.etude_params = { scenario: 'Les deux (Sans + Avec)' }
+  d.data.lignes = [
+    { ...d.data.lignes[0], variante: 'sans' }, { ...d.data.lignes[1], variante: 'sans' },
+    { id: 3, produit: PANNEAU.id, designation: PANNEAU.nom, quantite: '120', prix_unitaire: '1000.00',
+      taux_tva: '10.00', ordre: 2, type_ligne: 'produit', optionnelle: false, variante: 'avec' },
+    { id: 4, produit: HYBRIDE.id, designation: HYBRIDE.nom, quantite: '1', prix_unitaire: '70000.00',
+      taux_tva: '20.00', ordre: 3, type_ligne: 'produit', optionnelle: false, variante: 'avec' },
+    { id: 5, produit: BATTERIE.id, designation: BATTERIE.nom, quantite: '1', prix_unitaire: '40000.00',
+      taux_tva: '20.00', ordre: 4, type_ligne: 'produit', optionnelle: false, variante: 'avec' },
+  ]
+  return d
+}
+
+/** Réponse de l'aperçu : sur les lignes (71 kWc, 100 panneaux) ; libre (moteur : 120 panneaux). */
+function apercuSelonLesLignes(corps) {
+  const r = reponseContrat('ventes', 'etude_ci_preview')
+  r.data.taille = corps.lignes ? { ...r.data.taille, nb_panneaux: 100, retenue_kwc: 71 }
+    : { ...r.data.taille, nb_panneaux: 120, retenue_kwc: 85.2 }
+  return Promise.resolve(r)
+}
+
+describe('T4-X6-008 / 007 — une valeur par option, celle des lignes du devis', () => {
+  it('l’aperçu de l’édition porte les LIGNES ; la carte les décrit ; le moteur conseille à part', async () => {
+    ventesApi.etudeCiPreview.mockImplementation(apercuSelonLesLignes)
+    rendre()
+    expect(await screen.findByTestId('ci-taille-retenue', {}, { timeout: 5000 })).toHaveTextContent('71')
+    const surLignes = ventesApi.etudeCiPreview.mock.calls.map(([c]) => c).find((c) => c.lignes)
+    expect(surLignes.devis).toBe(55)
+    expect(surLignes.lignes.map((l) => [l.produit, l.quantite])).toEqual([[PANNEAU.id, '100'], [ONDULEUR.id, '1']])
+    const conseil = await screen.findByTestId('ci-conseil-moteur')
+    expect(conseil).toHaveTextContent('Le moteur conseille 120 panneaux')
+    expect(conseil).toHaveTextContent('ce devis en vend 100')
+    expect(screen.getByTestId('ci-conseil-appliquer')).toHaveTextContent('Appliquer')
+  })
+
+  it('devis à deux options : l’économie de l’offre réseau chiffre SES lignes seules ; un seul retour', async () => {
+    stockApi.getProduits.mockResolvedValue({ data: [PANNEAU, ONDULEUR, BATTERIE, HYBRIDE] })
+    ventesApi.getDevisById.mockResolvedValue(devisDeuxOptions())
+    const eco = reponseContrat('ventes', 'economie_ci')
+    eco.data.indicateurs = { ...eco.data.indicateurs, retour_dixieme_ans: 5.5 }
+    ventesApi.economieCiPreview.mockResolvedValue(eco)
+    rendre()
+    await waitFor(() => expect(ventesApi.economieCiPreview).toHaveBeenCalled(), { timeout: 5000 })
+    const [corps] = ventesApi.economieCiPreview.mock.calls.at(-1)
+    expect(corps.lignes.map((l) => l.produit).sort()).toEqual([PANNEAU.id, ONDULEUR.id].sort())
+    expect(await screen.findByTestId('ci-retour')).toHaveTextContent('5,5 ans')
+  })
+})
+
+describe('T4-X6-010 / 011 — calcul en cours, échec, reprise', () => {
+  it('pendant le calcul les cartes restent sous « Calcul en cours… » ; un échec offre « Réessayer »', async () => {
+    const { container } = rendre()
+    expect(await screen.findByTestId('ci-taille-retenue', {}, { timeout: 5000 })).toBeInTheDocument()
+    let echouer
+    ventesApi.etudeCiPreview.mockImplementation(() => new Promise((_ok, ko) => { echouer = ko }))
+    fireEvent.change(container.querySelector('#gen-ci-kwh-0'), { target: { value: '6001' } })
+    expect(await screen.findByTestId('ci-resultat-calcul', {}, { timeout: 3000 })).toHaveTextContent('Calcul en cours…')
+    expect(screen.getByTestId('ci-taille-retenue')).toBeInTheDocument()
+    await act(async () => { echouer(new Error('Network Error')) })
+    expect(await screen.findByTestId('ci-resultat-erreur')).toHaveTextContent('indisponible')
+    expect(screen.queryByTestId('ci-taille-retenue')).toBeNull()
+    ventesApi.etudeCiPreview.mockResolvedValue(reponseContrat('ventes', 'etude_ci_preview'))
+    fireEvent.click(screen.getByTestId('ci-resultat-reessayer'))
+    expect(await screen.findByTestId('ci-taille-retenue', {}, { timeout: 3000 })).toBeInTheDocument()
+  })
+
+  it('au retour du réseau, un aperçu en échec est redemandé tout seul', async () => {
+    ventesApi.etudeCiPreview.mockRejectedValue(new Error('Network Error'))
+    rendre()
+    expect(await screen.findByTestId('ci-resultat-erreur', {}, { timeout: 5000 })).toBeInTheDocument()
+    ventesApi.etudeCiPreview.mockResolvedValue(reponseContrat('ventes', 'etude_ci_preview'))
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    expect(await screen.findByTestId('ci-taille-retenue', {}, { timeout: 3000 })).toBeInTheDocument()
   })
 })

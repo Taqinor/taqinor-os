@@ -8,6 +8,7 @@ import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-li
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { exempleContrat } from '../../../../../test/fixtures/contractSamples'
 import { formatNumber } from '../../../../../lib/format'
+import { feuilleAuDoigt } from '../../../__tests__/feuilleAuDoigt'
 
 vi.mock('../../../../../api/calepinageApi', () => ({
   default: {
@@ -100,6 +101,32 @@ describe('Étape Résultats — résultat complet (maquette Resultats)', () => {
     const labels = [...tuiles.querySelectorAll('.cal-res-tuile-label')].map((n) => n.textContent)
     expect(labels).toEqual(['Production la première année', 'Pertes au total'])
     expect(tuiles).not.toHaveTextContent('non calculée')
+  })
+
+  /* T4-X7-005 — 3 panneaux 710 W sur un Deye 5 kW : 0 kWh, pertes 100 %, et aucune phrase sur l'étape ; la cause (tension
+     par forte chaleur sous la plage de l'onduleur) n'était que dans Documents / Électrique. */
+  it('T4-X7-005 — production nulle : la cause servie et le geste (étape Électrique) sont dits sur l’étape', async () => {
+    const d = COMPLET()
+    d.production.total.p50_kwh = 0
+    const raison = 'par forte chaleur, la tension des panneaux (105,4 V) tombe sous la plage de travail de cet onduleur (150,0 V)'
+    d.electrique.verdicts = d.electrique.verdicts.map((v) => (v.code === 'vmp_hot_over_mppt_min'
+      ? { ...v, conforme: false, raison } : v))
+    servir(d)
+    rendre()
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveAttribute('data-zone', 'production-nulle')
+    expect(alerte).toHaveTextContent('La simulation de la pose donne 0 kWh par an.')
+    expect(alerte).toHaveTextContent(`Cause : Par forte chaleur, la tension des panneaux (105,4 V) tombe sous la plage`)
+    fireEvent.click(within(alerte).getByRole('button', { name: 'Aller à l’étape Électrique' }))
+    // le premier panneau de l'étape Électrique (parcoursGuide.premierOngletEtape), comme un clic sur le rail
+    expect(screen.getByTestId('lieu').textContent).toMatch(/onglet=(equipements-electriques|cheminement-cables|raccordement|verdict-electrique|materiel-electrique|saisies-electriques|decisions-electriques|controle-chaine|schema)/)
+  })
+
+  it('T4-X7-005 — production non nulle : aucune alerte de production nulle', async () => {
+    servir(COMPLET())
+    rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    expect(document.querySelector('[data-zone="production-nulle"]')).toBeNull()
   })
 
   it('pied : année basse et dernière année servies ; bouton = action de l’étape, sinon URL de l’étape Documents', async () => {
@@ -330,7 +357,8 @@ describe('Étape Résultats — résultat complet à la maquette v2 (ACAL1832)',
     expect(mois.querySelectorAll('.cal-res-point')).toHaveLength(12)
     // Repères ronds de l'échelle, au-dessus du plus grand mois servi.
     const reperes = [...mois.querySelectorAll('.cal-res-axe span')].map((s) => s.textContent.replace(/\s/g, ''))
-    expect(reperes).toHaveLength(3)
+    expect(reperes).toHaveLength(4)
+    expect(reperes[0]).toBe('0') // T4-X7-005 — l'axe part de 0
     unmount()
     const sans = COMPLET_MAQUETTE()
     sans.autoconsommation.par_mois = sans.autoconsommation.par_mois.map((m) => ({ ...m, consommation_kwh: null }))
@@ -660,6 +688,8 @@ describe('Étape Résultats — calcul à refaire (simulation périmée)', () =>
     await screen.findByTestId('cal-avant-simulation')
     expect(screen.getByTestId('cal-avant-simulation')).toHaveAttribute('data-etat', 'perime')
     expect(screen.getByTestId('cal-avant-titre')).toHaveTextContent('Calcul à refaire')
+    // T4-X3-012 — le motif nomme AUSSI les réglages de la société (ils périment le calcul sans toucher au toit).
+    expect(screen.getByTestId('cal-avant-phrase')).toHaveTextContent('ou un réglage de votre société a changé depuis le dernier calcul')
     expect(screen.getByTestId('cal-avant-titre')).toHaveAttribute('title', expect.stringContaining('19/09/2026'))
     expect(screen.getByTestId('calx48-lancer-bouton')).toHaveAttribute('data-etat', 'perime')
     expect(screen.getByText('Pour un résultat complet')).toBeInTheDocument()
@@ -687,6 +717,16 @@ describe('Étape Résultats — production retenue par le devis (ACAL1956)', () 
     expect(screen.getByRole('link', { name: PROD().reference })).toHaveAttribute('href', `/ventes/devis?devis=${PROD().devis}`)
     expect(zone).toHaveTextContent('Simulez la pose pour la comparer à ce chiffre.')
     expect(screen.getByRole('button', { name: 'Lancer la simulation' })).toBeInTheDocument()
+  })
+
+  // T4-X7-010 — au doigt (tablette), le lien du devis mesurait 114 × 18 : une cible d'au moins 44 px de haut.
+  it('T4-X7-010 — au doigt, le lien du devis est une cible de 44 px de haut', async () => {
+    const style = feuilleAuDoigt('src/styles/calepinage/54-etape-resultats.css')
+    try {
+      rendreAvec({ ...JAMAIS(), production_devis: PROD() })
+      const lien = await screen.findByRole('link', { name: PROD().reference })
+      expect(getComputedStyle(lien).minHeight).toBe('44px')
+    } finally { style.remove() }
   })
 
   it('devis envoyé avec simulation : les deux chiffres côte à côte, chacun nommé', async () => {
@@ -776,6 +816,21 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
     expect(screen.queryByRole('button', { name: 'Réviser le devis' })).toBeNull()
   })
 
+  it('D-ACAL-109 / 110 — les phrases servies sur le matériel désigné sont affichées telles quelles ; aucune sans désignation', async () => {
+    const bloc = sans()
+    servir({ ...COMPLET(), conception: bloc })
+    const { unmount } = rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    const dites = [...document.querySelectorAll('[data-zone="designation-conception"]')].map((p) => p.textContent)
+    expect(bloc.designations.length).toBeGreaterThan(0)
+    expect(dites).toEqual(bloc.designations)
+    unmount()
+    servir({ ...COMPLET(), conception: { ...sans(), designations: [] } })
+    rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    expect(document.querySelector('[data-zone="designation-conception"]')).toBeNull()
+  })
+
   it('brouillon lié (écart de l’atelier servi) : toujours UN seul chiffre, aucun bouton', async () => {
     const d = { ...COMPLET(), conception: sans() }
     d.ecart_devis = { devis: 412, reference: 'DEV-202610-0042', production_devis_kwh: 12600, p50_calepinage_kwh: 13000, ecart_pct: 3.2, mention: '' }
@@ -804,6 +859,36 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
       .toHaveBeenCalledWith(bloc.devis_envoye.devis, { sur_la_conception: true }))
   })
 
+  it('T4-X7-006 — la révision est dite telle qu’elle est (copie remise sur la conception, la pose par la resynchronisation)', async () => {
+    const bloc = SERVI()
+    bloc.devis_envoye.ecart_devis = [LIGNE(), { ...LIGNE(), valeur: 'production_annuelle', devis: 6047, conception: 8198 }]
+    servir({ ...JAMAIS(), conception: bloc })
+    rendre()
+    await screen.findByRole('link', { name: bloc.devis_envoye.reference })
+    const phrase = document.querySelector('[data-zone="reviser-explique"]')
+    expect(phrase).toHaveTextContent('copie de ce devis remise sur la conception du lead si elle a changé depuis')
+    expect(phrase).toHaveTextContent('Votre pose n’y entre qu’en resynchronisant cette nouvelle version')
+    expect(zone()).not.toHaveTextContent('crée une nouvelle version sur la conception.')
+  })
+
+  it('T4-X7-006 — après la révision, la V2 liée qui ne porte pas la pose reste NOMMÉE ; à jour ou absente : rien', async () => {
+    const lie = { devis: 2892, reference: 'DEV-202611-0161', statut: 'brouillon', a_jour: false }
+    servir({ ...JAMAIS(), conception: { ...sans(), devis_lie: lie } })
+    const { unmount } = rendre()
+    const ligne = await waitFor(() => {
+      const el = document.querySelector('[data-zone="devis-lie-pose"]')
+      expect(el).not.toBeNull()
+      return el
+    })
+    expect(ligne).toHaveTextContent('Le devis lié DEV-202611-0161 ne porte pas votre pose : « Resynchroniser le devis »')
+    expect(within(ligne).getByRole('link', { name: 'DEV-202611-0161' })).toHaveAttribute('href', '/ventes/devis?devis=2892')
+    unmount()
+    servir({ ...JAMAIS(), conception: { ...sans(), devis_lie: { ...lie, a_jour: true } } })
+    rendre()
+    await screen.findByText(/Production de la conception/)
+    expect(document.querySelector('[data-zone="devis-lie-pose"]')).toBeNull()
+  })
+
   it('devis envoyé au même chiffre de production : UN seul chiffre, pas de bouton', async () => {
     const bloc = SERVI()
     bloc.devis_envoye.ecart_devis = [LIGNE()]
@@ -824,9 +909,38 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
     data: { chiffrage: { kwc: { valeur: kwc, unite: 'kWc', etat: 'servi' } }, cible: { panneaux, kwc } },
   })
   const kwc = (n) => `${formatNumber(n, { decimals: 2 })} kWc`.replace(/\s+/g, ' ')
+  // Serveur d'avant T4-X7-013 (bloc sans sa taille) : la taille se lit sur le design-context.
+  const sansTaille = () => { const b = sans(); delete b.puissance_kwc; delete b.nb_panneaux; return b }
+
+  /* T4-X7-013 — « 5 677 kWh … calculée pour 3,85 kWc (7 panneaux de 550 W) » : la production d'une conception refaite au
+     module de la pose (5 × 710 W), à côté de la taille d'une lecture plus ancienne. La taille vient du MÊME bloc. */
+  it('T4-X7-013 — la production de la conception porte SA taille servie, jamais celle d’une autre lecture', async () => {
+    const d = { ...COMPLET(), conception: { ...sans(), production_annuelle_kwh: 5677, puissance_kwc: 3.55, nb_panneaux: 5 } }
+    calepinageApi.calepinages.designContext.mockResolvedValue({
+      data: { chiffrage: { kwc: { valeur: 3.85, unite: 'kWc', etat: 'servi' } }, cible: { panneaux: 7, kwc: 3.85, panel_watt: 550 } },
+    })
+    servir(d)
+    rendre()
+    await waitFor(() => expect(zone()).toHaveTextContent(
+      `Production de la conception : ${kwh(5677)}, calculée pour la conception du lead : ${kwc(3.55)} (5 panneaux) — `))
+    expect(zone()).not.toHaveTextContent('3,85')
+    expect(zone()).not.toHaveTextContent('550 W')
+  })
+
+  it('T4-X7-013 — conception servie à la taille de la pose : UNE ligne, même si le design-context dit une autre taille', async () => {
+    const d = { ...COMPLET(), conception: sans() }  // bloc : 8,64 kWc · 12 panneaux, comme la pose du contrat
+    calepinageApi.calepinages.designContext.mockResolvedValue(contexteDeTaille(3.85, 7))
+    servir(d)
+    rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    await waitFor(() => expect(calepinageApi.calepinages.designContext).toHaveBeenCalled())
+    expect(zone()).toHaveTextContent(`Production de la conception : ${kwh(sans().production_annuelle_kwh)}`)
+    expect(zone()).not.toHaveTextContent('votre pose en compte')
+    expect(zone()).not.toHaveTextContent('3,85')
+  })
 
   it('T4-X5-001 — conception d’une autre taille que la pose : sa taille, son chiffre, et la pose renvoyée à sa simulation', async () => {
-    const d = { ...COMPLET(), conception: sans() }  // pose du contrat : 12 panneaux · 8,64 kWc
+    const d = { ...COMPLET(), conception: sansTaille() }  // pose du contrat : 12 panneaux · 8,64 kWc
     calepinageApi.calepinages.designContext.mockResolvedValue(contexteDeTaille(2.13, 3))
     servir(d)
     rendre()
@@ -838,7 +952,7 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
   })
 
   it('T4-X3-009 — la conception compte 8 panneaux de 550 W : la ligne NOMME son panneau, jamais un « 8 » nu', async () => {
-    const d = { ...COMPLET(), conception: sans() }
+    const d = { ...COMPLET(), conception: sansTaille() }
     calepinageApi.calepinages.designContext.mockResolvedValue({
       data: { chiffrage: { kwc: { valeur: 4.4, unite: 'kWc', etat: 'servi' } }, cible: { panneaux: 8, kwc: 4.4, panel_watt: 550 } },
     })
@@ -862,7 +976,8 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
   /* T4-X9-008 — la jauge « De la consommation » (74 %) posée à côté de « Production simulée de la pose » était la part de
      la CONCEPTION (4,40 kWc), pas celle de la pose (5,68 kWc) : à une autre taille, la phrase remplace le chiffre. */
   it('T4-X9-008 — conception d’une autre taille : la jauge dit la phrase des deux tailles, aucun pourcentage', async () => {
-    const d = { ...COMPLET(), conception: sans() }  // pose du contrat : 12 panneaux · 8,64 kWc
+    const d = { ...COMPLET(), conception: sansTaille() }  // pose du contrat : 12 panneaux · 8,64 kWc
+    d.autoconsommation = { ...d.autoconsommation, taux_source: 'conception' }  // serveur : taux de la conception publiés
     calepinageApi.calepinages.designContext.mockResolvedValue(contexteDeTaille(2.13, 3))
     servir(d)
     rendre()
@@ -871,6 +986,33 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
       `Part de la consommation calculée pour la conception du lead : ${kwc(2.13)} — votre pose en compte ${kwc(d.pose.kwc)}.`))
     expect(tuile()).not.toHaveTextContent('%')
     expect(tuile().querySelector('svg')).toBeNull()
+  })
+
+  /* T4-X7-002 — conception « 7 panneaux + batterie » (76 %), pose de 5 panneaux sans batterie : le serveur trouve l'écart
+     et publie les taux de la POSE (`taux_source: 'autre_installation'`) ; la jauge les montre, aucune phrase d'une autre taille. */
+  it('T4-X7-002 — écart réel (`autre_installation`) : la jauge montre CE pourcentage, jamais la phrase de la conception', async () => {
+    const d = { ...COMPLET(), conception: sansTaille() }
+    d.autoconsommation = { ...d.autoconsommation, taux_source: 'autre_installation', taux_couverture: 0.474 }
+    calepinageApi.calepinages.designContext.mockResolvedValue(contexteDeTaille(2.13, 3))
+    servir(d)
+    rendre()
+    await waitFor(() => expect(calepinageApi.calepinages.designContext).toHaveBeenCalled())
+    const tuile = () => document.querySelector('[data-tuile="couverture"]')
+    await waitFor(() => expect(tuile()).toHaveTextContent('47 %'))
+    expect(tuile()).not.toHaveTextContent('calculée pour la conception du lead')
+  })
+
+  /* Revue du 25/11 — `'pose'` sans écart = aucun taux de conception au moment de la simulation : l'écran fait comme avant
+     (deux tailles connues et différentes ⇒ la phrase des deux tailles), jamais comme pour un écart réel. */
+  it('T4-X7-002 — aucun taux de conception (`pose`) : comme avant, la phrase des deux tailles quand elles diffèrent', async () => {
+    const d = { ...COMPLET(), conception: sansTaille() }
+    d.autoconsommation = { ...d.autoconsommation, taux_source: 'pose' }
+    calepinageApi.calepinages.designContext.mockResolvedValue(contexteDeTaille(2.13, 3))
+    servir(d)
+    rendre()
+    const tuile = () => document.querySelector('[data-tuile="couverture"]')
+    await waitFor(() => expect(tuile()).toHaveTextContent(
+      `Part de la consommation calculée pour la conception du lead : ${kwc(2.13)} — votre pose en compte ${kwc(d.pose.kwc)}.`))
   })
 
   it('T4-X9-008 — même taille : la jauge garde son pourcentage', async () => {

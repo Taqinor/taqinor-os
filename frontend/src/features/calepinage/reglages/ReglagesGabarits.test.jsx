@@ -139,6 +139,16 @@ describe('ReglagesGabarits (ACAL242)', () => {
     expect(screen.queryByTestId('acal242-formulaire')).toBeNull()
     expect(screen.queryByTestId(`acal242-supprimer-${LISTE.gabarits[0].id}`)).toBeNull()
   })
+
+  it('D-ACAL-104 — « gérer » sans « approuver » : la liste et la phrase, aucun bouton d’écriture', async () => {
+    espions.hasPermission.mockImplementation((code) => code === 'calepinage_gerer')
+    espions.liste.mockResolvedValue({ data: LISTE })
+    render(<ReglagesGabarits />)
+    await screen.findByTestId(`acal242-gabarit-${LISTE.gabarits[0].id}`)
+    expect(screen.getByTestId('cal-reglages-lecture-seule')).toHaveTextContent('peuvent approuver un calepinage')
+    expect(screen.queryByTestId('acal242-formulaire')).toBeNull()
+    expect(screen.queryByTestId(`acal242-supprimer-${LISTE.gabarits[0].id}`)).toBeNull()
+  })
 })
 
 describe('ReglagesGabarits (ACAL971) — des mots, un bouton en français', () => {

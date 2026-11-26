@@ -7,7 +7,7 @@
    `apps/calepinage/contract_samples/calepinage_resultat.json` (PACT10/13 —
    `reponseContrat`, jamais une charge utile écrite à la main). */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, within } from '@testing-library/react'
+import { act, render, screen, cleanup, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 import { formatNumber } from '../../../lib/format'
@@ -46,6 +46,19 @@ describe('BandeauProvenanceProduction (CALX65)', () => {
     )
     // UNE SEULE mention (Done) : la moitié « Simulation » n'existe pas.
     expect(within(bandeau).queryByTestId('calx65-simulation')).toBeNull()
+  })
+
+  // T4-X8-013 — lu AVANT la simulation, le bandeau disait « avant la simulation » pendant que l'étape Résultats montrait la
+  // production simulée : il reprend le résultat que Résultats publie, sans seconde lecture.
+  it('T4-X8-013 — le résultat publié par l’étape Résultats remplace une lecture faite avant la simulation', async () => {
+    servir('exemple_vide')
+    const { publierResultat } = await import('../atelier/simulationFraiche')
+    rendre()
+    await screen.findByTestId('calx65-bandeau')
+    expect(screen.queryByTestId('calx65-simulation')).toBeNull()
+    act(() => publierResultat(1, exempleContrat('calepinage', 'calepinage_resultat')))
+    expect(await screen.findByTestId('calx65-simulation')).toHaveTextContent(/P50 13.000 kWh\/an/)
+    expect(calepinageApi.calepinages.resultat).toHaveBeenCalledTimes(1)
   })
 
   /* ACAL894 — la provenance de la carte (`data-source-prod` de #rp9-reco-why). */
@@ -411,10 +424,11 @@ describe('ReglagesUtilises — prop ouvert (ACAL698)', () => {
 describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () => {
   const ville = exempleContrat('ventes', 'chiffrage_conception', 'exemple_ville')
   const pose = exempleContrat('ventes', 'chiffrage_conception', 'exemple')
-  const simule = () => {
+  const simule = (conception = undefined) => {
     const r = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
     r.data.production.total.p50_kwh = pose.production_annuelle_kwh.valeur
     r.data.pose.kwc = kwcPose // la pose a la taille de la conception (71 kWc), sauf quand le test la change
+    if (conception !== undefined) r.data.conception = conception
     calepinageApi.calepinages.resultat.mockResolvedValue(r)
   }
   let kwcPose = 71
@@ -437,6 +451,18 @@ describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () =>
     }
   })
 
+  // ADEV155 (niveau 15) — la conception d'un lead sans pose tourne sur le plan par défaut : la ligne le DIT
+  // (jamais « production standard de la ville »), au lieu de se taire sur une source inconnue.
+  it('ADEV155 — conception du plan par défaut : la ligne dit « toit supposé », jamais la ville', async () => {
+    kwcPose = 5.68
+    simule()
+    const plan = { ...ville, production_annuelle_kwh: { ...ville.production_annuelle_kwh, source: 'plan_par_defaut' } }
+    rendreAvec(plan, false)
+    const ligne = await screen.findByTestId('acal995-devis-annonce')
+    expect(ligne).toHaveTextContent('production du toit supposé (plan par défaut)')
+    expect(ligne).not.toHaveTextContent('production standard de la ville')
+  })
+
   // T4-U4-006 — « Le devis annonce » ne parle que d'un devis LIÉ (`calepinage.devis_lie` du contexte).
   const rendreAvec = (chiffrage, devisLie = true) => render(
     <MemoryRouter><BandeauProvenanceProduction calepinageId={1} chiffrage={chiffrage} devisLie={devisLie} /></MemoryRouter>,
@@ -448,9 +474,58 @@ describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () =>
     const espaces = (t) => t.replace(/\s/g, ' ')
     const ligne = await screen.findByTestId('acal995-devis-annonce')
     expect(espaces(ligne.textContent)).toBe(espaces(
-      `Moteur du devis sur cette pose (aucun devis lié) : ${formatNumber(ville.production_annuelle_kwh.valeur, { decimals: 0 })} kWh/an — `
+      `Moteur du devis sur cette pose (aucun devis lié à ce calepinage) : ${formatNumber(ville.production_annuelle_kwh.valeur, { decimals: 0 })} kWh/an — `
       + `production standard de la ville (étude technique : −${formatNumber(11.5, { decimals: 1 })} %)`))
     expect(screen.getByTestId('calx65-bandeau')).not.toHaveTextContent('Le devis annonce')
+  })
+
+  /* T4-X7-013 — « (aucun devis lié) » alors que le lead a un devis : la ligne ne dit que ce que `conception.devis_lie` sert. */
+  const bloc = (devisLie) => ({ ...exempleContrat('calepinage', 'calepinage_resultat', 'acal2015_conception'), devis_lie: devisLie })
+  const texte = async () => (await screen.findByTestId('acal995-devis-annonce')).textContent.replace(/\s/g, ' ')
+  const chiffreVille = () => `${formatNumber(ville.production_annuelle_kwh.valeur, { decimals: 0 })} kWh/an — production standard de la ville`.replace(/\s/g, ' ')
+
+  it('T4-X7-013 — devis lié servi qui porte la pose : il est NOMMÉ (« Le devis DEV-… annonce »)', async () => {
+    simule(bloc({ devis: 162, reference: 'DEV-202611-0162', statut: 'envoye', a_jour: true }))
+    rendreAvec(ville, false) // l'ancien drapeau du contexte ne l'emporte plus sur le bloc servi
+    expect(await texte()).toContain(`Le devis DEV-202611-0162 annonce : ${chiffreVille()}`)
+    expect(await texte()).not.toContain('aucun devis lié')
+  })
+
+  it('T4-X7-013 — devis lié qui ne porte pas la pose : le chiffre est celui de la conception, le devis nommé à resynchroniser', async () => {
+    simule(bloc({ devis: 162, reference: 'DEV-202611-0162', statut: 'brouillon', a_jour: false }))
+    rendreAvec(ville, true)
+    const t = await texte()
+    expect(t).toContain(`Conception du lead sur cette pose : ${chiffreVille()}`)
+    expect(t).toContain('Le devis DEV-202611-0162 ne porte pas la pose enregistrée (à resynchroniser).')
+    expect(t).not.toContain('annonce')
+  })
+
+  it('T4-X7-013 — aucun devis lié servi : « aucun devis lié à ce calepinage », jamais « Le devis annonce » (même si le contexte disait lié)', async () => {
+    simule(bloc(null))
+    rendreAvec(ville, true)
+    const t = await texte()
+    expect(t).toContain(`Moteur du devis sur cette pose (aucun devis lié à ce calepinage) : ${chiffreVille()}`)
+    expect(t).not.toContain('Le devis annonce')
+  })
+
+  /* Revue de 0c4ba1f6d — variante du devis B (`?devis=B`) : `chiffrage` est celui de B, `conception.devis_lie` celui du
+     calepinage de BASE (devis A). Jamais la référence de A à côté du chiffre de B ; la ligne d'avant, sans référence. */
+  it('T4-X7-013 — variante : la référence du devis de base n’est jamais posée à côté du chiffre du devis de la variante', async () => {
+    for (const aJour of [true, false]) {
+      simule(bloc({ devis: 101, reference: 'DEV-202611-0101', statut: 'envoye', a_jour: aJour }))
+      const { unmount } = render(
+        <MemoryRouter><BandeauProvenanceProduction calepinageId={1} chiffrage={ville} devisLie variante /></MemoryRouter>,
+      )
+      const t = await texte()
+      expect(t).not.toContain('DEV-202611-0101')
+      expect(t).not.toContain('resynchroniser')
+      expect(t).not.toContain('aucun devis lié')
+      expect(t).toContain(`Le devis annonce : ${chiffreVille()}`)
+      unmount()
+    }
+    simule(bloc(null)) // la base n'a aucun devis lié, la variante porte B : jamais « aucun devis lié »
+    render(<MemoryRouter><BandeauProvenanceProduction calepinageId={1} chiffrage={ville} devisLie variante /></MemoryRouter>)
+    expect(await texte()).toContain(`Le devis annonce : ${chiffreVille()}`)
   })
 
   it('standard ville ⇒ la ligne et l’écart −11,5 %', async () => {
@@ -473,7 +548,7 @@ describe('ACAL995 — « Le devis annonce » seulement hors pose réelle', () =>
     calepinageApi.calepinages.resultat.mockResolvedValue(r)
     rendreAvec(null, false)
     const ligne = await screen.findByTestId('cal-simulation-a-refaire')
-    expect(ligne).toHaveTextContent('Simulation à refaire : le toit a changé depuis le dernier calcul.')
+    expect(ligne).toHaveTextContent('Simulation à refaire : le toit ou un réglage de votre société a changé depuis le dernier calcul.')
     expect(within(ligne).getByRole('link', { name: 'relancer la simulation' })).toBeInTheDocument()
     expect(screen.getByTestId('calx65-bandeau')).not.toHaveTextContent('avant la simulation')
   })

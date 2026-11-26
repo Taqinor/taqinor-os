@@ -354,8 +354,12 @@ LIBELLES_OPTIONS = {'sans': 'Sans batterie', 'avec': 'Avec batterie',
 
 
 def _kwc_arrondi(valeur):
+    """T4-X6-001 — au centième, sur la valeur EXACTE : la règle du PDF
+    (``quote_engine.premium_base.kwc_str``). Au millième, 35,035 kWc
+    (49 × 715 W) s'écrivait 35,04 sur le bandeau « Devis créé » et 35,03 sur
+    la fiche et le PDF."""
     try:
-        return round(float(valeur), 3) if valeur is not None else None
+        return round(float(valeur), 2) if valeur is not None else None
     except (TypeError, ValueError):
         return None
 

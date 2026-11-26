@@ -34,7 +34,7 @@ import {
   TARIF_SAISIE_VIDE, tarifDeclareDepuisSaisie,
   ECO_CI_VIDE, saisiesEconomieCi,
 } from '../../features/ventes/quote/etudeMarcheBloc'
-import { useApercuEconomieCi } from '../../features/ventes/quote/hooks/useApercuEconomieCi'
+import { useApercuEconomieCi, lignesEconomieCi } from '../../features/ventes/quote/hooks/useApercuEconomieCi'
 import {
   POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie, libelleProvenance, siteDuLead,
 } from '../../features/ventes/etudePompagePreviewPur'
@@ -85,7 +85,7 @@ import {
   // rendent. CIQ126 — l'étude C&I locale (et son avertissement MT) est
   // supprimée : le moteur serveur C&I est la seule source.
   DEFAULT_MONTHLY_BILLS,
-  formatMoney, estimerMois, htFromTtc, comptePanneauxOption,
+  formatMoney, estimerMois, comptePanneauxOption,
   kwcFactureDesLignes, kwcPanneauxOption, kwcPourPanneaux,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
   // QJR66 — `buildEtudeParamsChoice` n'est PLUS importé ici : l'écran n'écrit
@@ -137,7 +137,7 @@ import { deuxValeursDim as selecteurDeuxValeursDim }
 // QJR523 — UN seul couple de mappeurs lignes serveur ⇄ écran.
 // QJR658 — devis ⇄ état d'écran : un module pur.
 // CIQ125 — profil déclaré C&I (corps de l'aperçu serveur + entrées v2).
-import { useEtudeCiPreview } from '../../features/ventes/etudeCiPreview'
+import { useEtudeCiEcran, apercuCiPourLesCartes } from '../../features/ventes/etudeCiPreview'
 import { useProfilCiLead } from './generator/hooks/useProfilCiLead'
 import {
   profilCiVide, corpsCiDepuisProfil, profilCiAncre,
@@ -1097,7 +1097,7 @@ export default function DevisGenerator({
     tarif: tarifDeclareDepuisSaisie(tarifSaisie, { aujourdhui: todayLocalIso() }),
   }
   const corpsCi = marcheCi ? corpsCiDepuisProfil(profilCi, ctxProfilCi) : null
-  const apercuCi = useEtudeCiPreview(corpsCi)
+  const apercuCi = useEtudeCiEcran(corpsCi, editId ? lines : null)  // T4-X6-008 — sur les LIGNES du devis
   // Consommation connue : saisie dans le profil (ou taille explicite), ou
   // reprise de la fiche lead par le serveur (valeur résolue non vide).
   // ADEV91 (rejeu « humain » 23/10/2026) — un lead Meta ne porte qu'un kWh
@@ -1503,7 +1503,7 @@ export default function DevisGenerator({
     structureProduitId, recalcDimTick, setPompageAutoFilled, setOnduleursIncomplets,
     setAutoFillLoading, setCompositionErreur, profilCi, horsReseau, kwp, selectedLead,
     etudeHoraireDonnees, etudeHoraireChargement, marcheCi, ctxProfilCi, apercuCi, resolveKwcAvec,
-    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard: quoteLogic.tvaStandard,
+    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard: quoteLogic.tvaStandard, sizing,
   })
 
   const selectedClient = clientsConnus.find(c => String(c.id) === String(clientId))
@@ -1678,15 +1678,8 @@ export default function DevisGenerator({
   const corpsEcoCi = marcheCi && apercuCi.donnees ? {
     sortie_etude_ci: apercuCi.donnees,
     saisies: saisiesEconomieCi(ecoCiEffectif, { aujourdhui: aujourdhuiIso }) || {},
-    lignes: usableLines().map((l) => {
-      const q = parseFloat(l.quantite) || 0
-      const tva = parseFloat(l.taux_tva ?? 20)
-      const ttc = (parseFloat(l.prix_unit_ttc) || 0) * q
-      return {
-        produit: Number(l.produit), quantite: q, taux_tva: tva,
-        totaux: { ht: htFromTtc(parseFloat(l.prix_unit_ttc) || 0, tva) * q, ttc },
-      }
-    }),
+    // T4-X6-007 — l'investissement de l'option montrée seulement (sans batterie, devis à deux options).
+    lignes: lignesEconomieCi(usableLines(), { scenario, produits }),
   } : null
   const apercuEcoCi = useApercuEconomieCi(corpsEcoCi)
 
@@ -1730,8 +1723,8 @@ export default function DevisGenerator({
   // QJR101 — les entrées d'étude que l'industriel et le commercial partagent.
   // CIQ125 — le profil déclaré C&I + la réponse du moteur serveur.
   const socleEtudeReseau = {
-    profilCi, apercuCi, tarifSaisie, setChampCi: ci.setChampCi, setTarifChamp: ci.setTarifChamp, reprisLead: ci.reprisLead,
-    apercuEcoCi, ecoCi, setEcoChamp,
+    profilCi, apercuCi: apercuCiPourLesCartes(apercuCi, apercuEcoCi, recalculerDimensionnement), tarifSaisie,
+    setChampCi: ci.setChampCi, setTarifChamp: ci.setTarifChamp, reprisLead: ci.reprisLead, apercuEcoCi, ecoCi, setEcoChamp,
   }
 
   return (

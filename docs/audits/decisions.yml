@@ -5807,3 +5807,350 @@ decisions:
     date: "2026-11-23"
     source: "relevé par la critique finale des vagues C et D (docs/audits/l5-calepinage/T3/critique-finale-vagues-C-D.md, point 2) : le bloc d'étude rangé porte désormais la réserve de visite, que le PDF lisait déjà sans jamais la trouver ; tout devis C&I créé ou recalculé après la vague D est donc marqué estimation pour les quatre motifs ; un devis déjà rangé ou envoyé ne bouge pas ; PRIS PAR L'ORCHESTRATEUR, À CONFIRMER (statut imprimé au client) ; RÉPONSE DU FONDATEUR le 24/11/2026 (questions interactives) : CONFIRMÉ"
     taches: [ADEV125]
+  - id: D-ACAL-102
+    question: "Les deux phrases corrigées du PDF industriel (« profil type — estimation » au lieu de « horaires déclarés » quand l'heure ou les jours sont supposés ; « tirés de la même série. » au lieu de « bases du calcul ci-dessous » quand le bloc est absent), écrites pour le niveau de règles 15, deviennent-elles actives tout de suite ?"
+    options:
+      - cle: tout_de_suite
+        texte: "Actives dès le prochain déploiement pour les NOUVEAUX rendus ; un devis déjà envoyé garde la phrase reçue ; le reste du niveau 15 reste éteint"
+      - cle: avec_le_niveau_15
+        texte: "Rien ne change aujourd'hui : elles arrivent avec le reste du niveau 15"
+    reponse: tout_de_suite
+    date: "2026-11-25"
+    source: "relecteur X6 du test utilisateur (T4-X6-003) : le PDF industriel imprime « heure par heure sur vos horaires déclarés » alors que l'heure de début et les jours sont supposés ; les deux corrections (T4-U2-019, T4-U2-020) existaient mais seulement au niveau 15 ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Live now (Recommended) » ; mise en œuvre : prédicat `regles_calcul.phrases_profil_ouvertes` sur le modèle de `hybrides_ht_ouverts` (brouillon jamais envoyé, ou envoyé à partir du 26/11/2026), `REGLES_COURANTES` inchangé ; conséquence dite au fondateur : un devis industriel envoyé le 26/11 AVANT son déploiement serait re-rendu avec la phrase corrigée"
+    taches: []
+  - id: D-ACAL-103
+    question: "Devis automatique commercial ou industriel : que faire de l'option « avec batterie » quand les onduleurs hybrides retenus ne peuvent pas recevoir les chaînes de panneaux (câble DC, protection DC et parafoudre DC impossibles à composer) ?"
+    options:
+      - cle: ne_pas_la_proposer
+        texte: "L'option n'est pas composée : le devis garde « sans batterie », la commerciale lit pourquoi (alerte nommée)"
+      - cle: garder_a_chiffrer
+        texte: "L'option reste au devis et ces postes sont imprimés « à chiffrer après visite » (prix incomplet)"
+    reponse: ne_pas_la_proposer
+    date: "2026-11-25"
+    source: "relecteur X6 du test utilisateur (T4-X6-013) : une option « avec batterie » chiffrée et acceptée sans câble DC, sans protection DC ni parafoudre DC ; lane I2 (alerte `OPTION_BATTERIE_NON_COMPOSEE`, famille haute tension essayée d'abord) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Do not offer it (Recommended) »"
+    taches: []
+  - id: D-ACAL-104
+    question: "Réglages société du calepinage : qui peut les réécrire à la main, et qui peut appliquer ou retirer le profil de départ ?"
+    options:
+      - cle: responsables_pour_les_deux
+        texte: "Les deux gestes demandent le même droit (« approuver ») ; un Commercial lit les réglages sans les écrire"
+      - cle: laisser
+        texte: "Comme aujourd'hui : un Commercial écrit les réglages à la main (« gérer »), le profil de départ reste réservé (« approuver »)"
+      - cle: commercial_pour_les_deux
+        texte: "Un Commercial peut aussi appliquer ou retirer le profil de départ"
+    reponse: responsables_pour_les_deux
+    date: "2026-11-25"
+    source: "relecteur X3 du test utilisateur (réglages du calepinage, rôle Commercial) et lane I5 : écart de droits entre la saisie à la main et le profil de départ ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Managers only, both (Recommended) »"
+    taches: []
+  - id: D-ACAL-105
+    question: "Page « Sources des paramètres » : où saisir la source de l'allée par défaut et du retrait de bord par défaut, aujourd'hui « non sourcée » faute de champ ?"
+    options:
+      - cle: un_champ_partage
+        texte: "Un seul champ « Source » sur l'écran des allées et retraits, valable pour les deux valeurs"
+      - cle: un_champ_par_valeur
+        texte: "Une source distincte pour l'allée et pour le retrait"
+    reponse: un_champ_partage
+    date: "2026-11-25"
+    source: "relecteur X3 du test utilisateur (T4-X3-002) et lane I5 : les deux valeurs partagent une « source » qu'aucun écran ne peut remplir ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « One shared field (Recommended) »"
+    taches: []
+  - id: D-ACAL-106
+    question: "Qui fait le relevé du toit au téléphone ? Le rôle Technicien reçoit « Accès refusé » sur le calepinage, le relevé et les visites, alors que le planificateur de visite le propose dans « Assigner à »."
+    options:
+      - cle: technicien_aussi
+        texte: "Le rôle Technicien gagne : ouvrir les visites qui lui sont assignées, lire le calepinage et remplir le relevé au téléphone ; toujours aucun devis ni aucun prix"
+      - cle: commerciaux_seulement
+        texte: "Rien n'est ajouté au rôle Technicien ; il n'est plus proposé dans « Assigner à » d'une visite"
+    reponse: technicien_aussi
+    date: "2026-11-25"
+    source: "relecteur X8 du test utilisateur (T4-X8-017, téléphone, rôle Technicien, copie anonymisée de la production) : 403 sur /calepinage/<id>, le relevé, la vue client et /visites, et le compte proposé dans « Assigner à » ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Technicien too (Recommended) » ; changement de droits (rôle Technicien) : appliqué au prochain déploiement, à noter au journal du lot"
+    taches: []
+  - id: D-ACAL-107
+    question: "Lead sans toit tracé : quelle pose des panneaux le toit supposé du plan par défaut doit-il supposer (l'échauffement des modules, première perte au Maroc, en dépend) ?"
+    options:
+      - cle: selon_le_type_de_toit
+        texte: "Affleurant sur un toit en pente pour une maison (échauffement −13 %, environ 1 660 kWh/kWc à Casablanca) ; sur châssis pour un toit plat ou un site commercial / industriel (−6 %, environ 1 790) ; le devis dit la supposition et le champ à remplir"
+      - cle: toujours_affleurant
+        texte: "Le chiffre le plus prudent partout (environ 1 660 kWh/kWc à Casablanca)"
+      - cle: toujours_sur_chassis
+        texte: "Environ 1 790 kWh/kWc à Casablanca, maisons comprises"
+    reponse: selon_le_type_de_toit
+    date: "2026-11-25"
+    source: "mesure de l'orchestrateur du 25/11/2026 sur la copie anonymisée (rapport, décision 26) : le toit supposé tel que construit ne dit pas sa pose, l'étape « Échauffement des modules » est omise et le rendement monte à 1 912 kWh/kWc à Casablanca (+19 %) — un défaut, pas un chiffre plus réaliste ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « By roof type (Recommended) »"
+    taches: [ACAL2045]
+  - id: D-ACAL-108
+    question: "La liste d'ADEV154 lue (31 leads simulés de la copie : aujourd'hui environ 1 600 kWh/kWc par l'enveloppe de 20 % ; avec le toit supposé +4 % à +8 % en affleurant, +11 % à +16 % sur châssis), brancher le moteur sans toit sur la simulation du plan par défaut (ADEV155) ?"
+    options:
+      - cle: oui_avec_le_niveau_15
+        texte: "Construit maintenant, allumé le même jour que les autres changements de chiffres du niveau de règles 15, après lecture des listes"
+      - cle: oui_au_prochain_deploiement
+        texte: "Les nouveaux devis des leads sans toit tracé changent dès le déploiement, avant le niveau 15"
+      - cle: non
+        texte: "Garder l'enveloppe de 20 % tant que le toit n'est pas tracé"
+    reponse: oui_avec_le_niveau_15
+    date: "2026-11-25"
+    source: "demande du fondateur du 24/11/2026 : « Before any switch that changes numbers, show me the list of quotes whose numbers would change (tasks ADEV154 and ADEV155) and wait for my answer » ; liste montrée au rapport (décision 26) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Yes, with level 15 (Recommended) » ; les devis envoyés ne changent jamais ; `REGLES_COURANTES` n'est pas modifié par cette tâche"
+    taches: [ADEV155]
+  - id: D-ACAL-109
+    question: "Atelier : quand la commerciale désigne un onduleur à la main, la conception du lead ne garde qu'UNE option (hybride = « avec batterie », réseau = « sans batterie ») et l'autre disparaît. Que faire ?"
+    options:
+      - cle: garder_les_deux_options
+        texte: "L'onduleur désigné sert l'option qui lui convient ; l'autre option reste, calculée avec le matériel du moteur ; l'écran dit laquelle est laquelle"
+      - cle: une_option_et_le_dire
+        texte: "Comme aujourd'hui, avec une phrase qui dit que l'autre option a été écartée à cause de l'onduleur désigné"
+    reponse: garder_les_deux_options
+    date: "2026-11-25"
+    source: "rapport, décision 28 (a) ; constat T4-X9-009 du relecteur X9 (une conception à deux options en perd une après la désignation d'un hybride à l'étape Électrique) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Keep both options (Recommended) »"
+    taches: []
+  - id: D-ACAL-110
+    question: "Atelier : un panneau d'une autre puissance désigné à la main garde la même puissance de conception, donc le nombre de panneaux change (4,40 kWc en 710 W = 6 panneaux = 4,26 kWc). Quel arrondi ?"
+    options:
+      - cle: au_plus_proche_et_le_dire
+        texte: "Au panneau le plus proche (au plus près du besoin calculé depuis la facture) ; l'écran dit que le nombre et le kWc ont changé"
+      - cle: au_dessus_comme_le_20_08
+        texte: "Jamais moins que la puissance de la conception (4,40 kWc = 7 panneaux = 4,97 kWc), une seule règle d'arrondi dans l'ERP"
+    reponse: au_plus_proche_et_le_dire
+    date: "2026-11-25"
+    source: "rapport, décision 28 (b) ; la règle du 20/08/2026 (taille TAPÉE par la commerciale : arrondi au-dessus, jamais moins que la puissance vendue) reste inchangée pour une taille tapée ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Nearest panel, said (Recommended) »"
+    taches: []
+  - id: D-ACAL-111
+    question: "PDF résidentiel, « facture actuelle » : un client qui dit « 900 MAD par mois » lit « ≈ 831 MAD par mois » (tarif par tranches : aucune consommation ne donne exactement 900 MAD, le moteur garde le côté bas). Qu'imprimer ?"
+    options:
+      - cle: garder_et_expliquer
+        texte: "Les chiffres restent ; une ligne sous la facture : « Montant recalculé au tarif par tranches à partir de votre consommation ; il peut différer légèrement de votre facture. »"
+      - cle: imprimer_le_montant_dit
+        texte: "Imprimer 900 MAD et calculer l'économie dessus (moins prudent)"
+      - cle: laisser
+        texte: "Rien ne change"
+    reponse: garder_et_expliquer
+    date: "2026-11-25"
+    source: "rapport L5, décision 1 (test utilisateur, tour 1) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Keep it, add a sentence (Recommended) » ; la phrase approuvée est celle de l'option ; nouveaux rendus seulement, un devis envoyé garde le PDF reçu"
+    taches: []
+  - id: D-ACAL-112
+    question: "PDF pompage : la page 1 imprime toujours l'étape « Pose : pompe, variateur, champ solaire et protections. » alors que la page 3 range « Protections DC/AC » sous « Non inclus » quand l'option n'est pas vendue. Que faire ?"
+    options:
+      - cle: le_dire_seulement_si_vendu
+        texte: "Sans ligne de protection au devis, l'étape lit « Pose : pompe, variateur et champ solaire. » ; aucun prix ne change"
+      - cle: protections_dans_le_kit
+        texte: "Les protections et leur câble entrent dans le kit minimum de tout devis de pompage (change la décision du kit et monte le prix)"
+      - cle: laisser
+        texte: "Rien ne change"
+    reponse: protections_dans_le_kit
+    date: "2026-11-25"
+    source: "rapport L5, décision 16 (test utilisateur) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Protections in the kit » — option NON recommandée par l'orchestrateur, choisie par le fondateur ; MODIFIE la décision D-AGR du 02/10/2026 « kit minimum + options » pour ce poste : les protections DC/AC et leur câble passent de l'option au kit minimum des NOUVEAUX devis de pompage ; un devis déjà créé garde ses lignes"
+    taches: []
+  - id: D-ACAL-113
+    question: "PDF pompage d'un devis FINAL (visite faite) : il imprime encore « pompe plus puissante que le forage — à vérifier à la visite ». Qu'imprimer ?"
+    options:
+      - cle: garder_le_fait_sans_a_verifier
+        texte: "La comparaison pompe / forage reste, « à vérifier à la visite » disparaît une fois la visite enregistrée ; le bandeau « estimation » du volume journalier reste"
+      - cle: retirer_la_ligne
+        texte: "Un devis final ne mentionne plus la comparaison"
+      - cle: laisser
+        texte: "Rien ne change"
+    reponse: garder_le_fait_sans_a_verifier
+    date: "2026-11-25"
+    source: "rapport L5, décision 17 (test utilisateur) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Keep the fact, drop « à vérifier » (Recommended) » ; nouveaux rendus seulement"
+    taches: []
+  - id: D-ACAL-114
+    question: "PDF résidentiel d'un devis à UNE option (lead qui veut une batterie) : il imprime encore le titre « OPTION 2 ». Quel titre ?"
+    options:
+      - cle: sans_numero
+        texte: "Le titre ne porte que le nom de l'option (« Avec batterie »), sans « OPTION 2 »"
+      - cle: numero_1
+        texte: "Le titre lit « OPTION 1 »"
+    reponse: sans_numero
+    date: "2026-11-25"
+    source: "rapport L5, décision 22 (test utilisateur) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « No number (Recommended) » ; nouveaux rendus seulement"
+    taches: []
+  - id: D-ACAL-115
+    question: "Deux affirmations fausses des PDF client, corrigées derrière le niveau de règles 15 : (a) la page « Confiance, Garanties » du PDF avec étude imprime « Onduleur 10 ans » et « onduleurs Huawei » même quand l'option recommandée porte un Deye garanti 5 ans ; (b) à deux options de tailles différentes, le « prix par kWc » de l'option 1 est divisé par la taille de l'autre. Les rendre actives tout de suite pour les NOUVEAUX rendus ?"
+    options:
+      - cle: les_deux_tout_de_suite
+        texte: "Les nouveaux PDF impriment la marque et la garantie de l'onduleur réellement vendu, et le bon prix par kWc ; un devis envoyé garde le sien ; le reste du niveau 15 reste éteint"
+      - cle: garantie_seulement
+        texte: "Seule la page des garanties est corrigée maintenant"
+      - cle: attendre_le_niveau_15
+        texte: "Rien ne change aujourd'hui"
+    reponse: les_deux_tout_de_suite
+    date: "2026-11-25"
+    source: "rapport L5, décision 24 ; constats T4-X1-001, T4-X1-002 et, revu le 25/11 par le relecteur X7, T4-X7-004 (S1) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Both live now (Recommended) » ; même mécanique que D-ACAL-102 (nouveaux rendus, coupure au 26/11/2026), `REGLES_COURANTES` inchangé"
+    taches: []
+  - id: D-ACAL-116
+    question: "PDF d'un devis FINAL à DEUX options : « Modalités de paiement 30 % / 60 % / 10 % » imprime des montants calculés sur l'option « avec batterie » sans le dire, alors que le client coche encore l'une des deux. Qu'imprimer ?"
+    options:
+      - cle: un_echeancier_par_option
+        texte: "Deux lignes : « Sans batterie : … / … / … MAD » et « Avec batterie : … / … / … MAD » ; si cela ne tient pas sans ajouter une page, revenir vers le fondateur"
+      - cle: pourcentages_seuls
+        texte: "Tant que deux options restent, seulement « 30 % / 60 % / 10 % », sans montants"
+      - cle: nommer_l_option
+        texte: "Montants d'aujourd'hui, avec « calculé sur l'option avec batterie »"
+    reponse: un_echeancier_par_option
+    date: "2026-11-25"
+    source: "constat T4-X7-020 du relecteur X7 (25/11/2026) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « One schedule per option (Recommended) » ; nouveaux rendus seulement ; aucune page ajoutée sans son accord"
+    taches: []
+  - id: D-ACAL-117
+    question: "Suite de D-ACAL-104 : le droit « approuver un calepinage » n'est porté que par Directeur et Administrateur ; un « Commercial responsable » perd donc l'écriture des réglages société du calepinage. Qui peut les changer ?"
+    options:
+      - cle: directeur_et_administrateur
+        texte: "Comme construit : seuls Directeur et Administrateur écrivent ces réglages ; le Commercial responsable les lit"
+      - cle: aussi_commercial_responsable
+        texte: "Le rôle « Commercial responsable » gagne le droit « approuver un calepinage » au prochain déploiement : il change les réglages société, applique le profil de départ et approuve un calepinage"
+    reponse: aussi_commercial_responsable
+    date: "2026-11-25"
+    source: "compte rendu de la lane K2 (D-ACAL-104) : `calepinage_approuver` n'est porté par aucun rôle métier ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Also Commercial responsable » ; changement de droits additif pour un rôle, appliqué au prochain déploiement (migration de rôles + `init_roles`)"
+    taches: []
+  - id: D-ACAL-118
+    question: "Suite de D-ACAL-112 (protections dans le kit minimum du pompage) : quelles pièces font « les protections et leur câble » ? Le catalogue n'a aucun « ensemble de protection » : l'option d'aujourd'hui est UNE ligne qui prend le premier article chiffré parmi des pièces séparées, et aucune protection AC n'a de rôle pompage."
+    options:
+      - cle: un_coffret_dc
+        texte: "UN coffret de protection DC choisi pour le champ, plus le câble DC déjà au kit ; aucune pièce AC"
+      - cle: pieces_separees
+        texte: "Par chaîne : un porte-fusible et deux fusibles gPV ; plus un parafoudre DC et un sectionneur DC ; plus le câble DC"
+      - cle: coffret_dc_et_protection_ac
+        texte: "Le coffret DC, plus un disjoncteur AC et un parafoudre AC entre le variateur et la pompe ; les pièces AC sont d'abord ajoutées au catalogue avec un prix"
+    reponse: coffret_dc_et_protection_ac
+    date: "2026-11-25"
+    source: "compte rendu de la lane P1 (arrêt avant construction : `core/pompage/kit.py::composer_kit`, rôle `protection_dc` couvrant des pièces séparées, aucune protection AC au rôle pompage — migration 0162) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « DC box + AC protection » ; un article sans prix n'est jamais chiffré (« prix à renseigner ») : le devis de pompage n'est automatique qu'une fois ces articles chiffrés au catalogue par le fondateur"
+    taches: []
+  - id: D-ACAL-119
+    question: "Atelier, mode guidé : un panneau ne se retire pas (cliquer un panneau ne le sélectionne pas, Suppr ne fait rien) ; le retrait n'existe qu'en mode Expert (« Un de moins »). Que faire ?"
+    options:
+      - cle: un_bouton
+        texte: "Un bouton « Retirer un panneau » à l'étape Panneaux du mode guidé, qui fait le même geste que « Un de moins » du mode Expert"
+      - cle: cliquer_pour_selectionner
+        texte: "Ouvrir en mode guidé la sélection au clic et la suppression du mode Expert"
+      - cle: laisser_en_expert
+        texte: "Rien ne change : retirer un panneau reste un geste du mode Expert"
+    reponse: un_bouton
+    date: "2026-11-25"
+    source: "constat T4-X7-012 du relecteur X7 ; compte rendu de la lane atelier-divers (poste Reda_Laptop) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Add a button (Recommended) »"
+    taches: []
+  - id: D-ACAL-120
+    question: "Dans le navigateur WebKit du test, les heures s'affichent une heure plus tard que celles écrites par le serveur (15:35 contre 16:35). Le serveur a raison (Maroc à UTC+0 depuis le 20/09/2026, `core/checks_tz.py`) ; les données de fuseau du navigateur de test semblent dater d'avant. Que faire ?"
+    options:
+      - cle: verifier_sur_un_vrai_ipad
+        texte: "Aucun changement de code maintenant ; regarder une heure sur un vrai iPad ou Safari à jour, et ne corriger que si le décalage est réel"
+      - cle: correctif_dans_les_ecrans
+        texte: "Les écrans détectent un navigateur qui ignore la nouvelle heure marocaine et corrigent eux-mêmes (contraire à la règle « l'ERP ne code jamais un décalage en dur »)"
+    reponse: verifier_sur_un_vrai_ipad
+    date: "2026-11-25"
+    source: "constat T4-X7-014 du relecteur X7 ; compte rendu de la lane fiche-lead-retour (poste Reda_Laptop) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Check a real iPad first (Recommended) »"
+    taches: []
+  - id: D-ACAL-121
+    question: "Générateur de devis : « Importer une courbe de charge » n'existe que pour le marché Industriel. Le marché Commercial doit-il l'avoir aussi ?"
+    options:
+      - cle: industriel_seulement
+        texte: "Rien ne change : un devis commercial garde le profil horaire déclaré"
+      - cle: ouvrir_au_commercial
+        texte: "Le même import au panneau Commercial du générateur, vers le même calcul heure par heure"
+    reponse: industriel_seulement
+    date: "2026-11-25"
+    source: "constat T4-X6-014 du relecteur X6 (reste non attribué) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Industriel only (Recommended) »"
+    taches: []
+  - id: D-ACAL-122
+    question: "Les phrases corrigées des PDF du lot 5 s'appliquent aux devis envoyés à partir du 26/11/2026 (date fixe : `regles_calcul.COUPURE_PDF_2511` et `COUPURE_PHRASES_PROFIL`). Si le lot est mis en ligne un autre jour, un devis envoyé entre-temps serait ré-imprimé avec des phrases que son client n'a pas reçues. Quand le lot 5 est-il déployé ?"
+    options:
+      - cle: le_26_11_avant_tout_envoi
+        texte: "Le fondateur lance le déploiement le 26/11/2026 avant qu'aucun devis ne soit envoyé ce jour-là ; la date du code reste telle quelle"
+      - cle: un_autre_jour
+        texte: "Le fondateur donne le jour ; la date du code est déplacée à ce jour avant le déploiement"
+      - cle: independant_du_jour
+        texte: "Une lane remplace la date fixe par le moment où le lot est réellement installé sur le serveur (code neuf dans le moteur de devis)"
+    reponse: le_26_11_avant_tout_envoi
+    date: "2026-11-25"
+    source: "relecture indépendante du lot 5 (moteur de devis), point B1 ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « 26/11, before sending (Recommended) » ; si le déploiement glisse à un autre jour, déplacer les deux dates AVANT de déployer"
+    taches: []
+  - id: D-ACAL-123
+    question: "Le lot 5 ajoute un bouton au panneau du devis ouvert depuis la fiche du lead : quand l'aperçu du PDF est refusé parce que le devis n'a pas d'onduleur, le panneau offre « Voir le devis une page » à la place d'un « Réessayer » inutile (constat T4-X6-017). La règle est que la fiche du lead ne change pas. Le garder ?"
+    options:
+      - cle: garder_le_bouton
+        texte: "Le bouton reste : il n'apparaît que dans ce cas de refus et remplace un « Réessayer » qui ne pouvait pas aboutir"
+      - cle: le_retirer
+        texte: "Le bouton est retiré avant la PR : le panneau revient au message de refus avec « Réessayer », comme sur main"
+    reponse: garder_le_bouton
+    date: "2026-11-25"
+    source: "relecture indépendante du lot 5 (écrans), point B2 ; commit 7ebe4b5bb (lane J1) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Keep the button (Recommended) »"
+    taches: []
+  - id: D-ACAL-124
+    question: "Kit minimum du pompage (D-ACAL-118) : le catalogue porte 4 calibres de disjoncteur AC par phase (16, 20, 25, 32 A) et aucune fiche de pompe ne publie son courant nominal ; le kit ne peut donc pas choisir un disjoncteur. Quelle règle ?"
+    options:
+      - cle: courant_sur_la_fiche
+        texte: "Le courant nominal de chaque pompe est saisi sur sa fiche (donnée publiée) ; le kit prend le plus petit calibre égal ou supérieur ; sans courant, le devis automatique est refusé et le dit"
+      - cle: derive_de_kw_et_tension
+        texte: "Le kit calcule un courant approché depuis les kW et la tension de la pompe ; aucune saisie, mais c'est une valeur supposée, pas une valeur publiée"
+      - cle: un_disjoncteur_par_phase
+        texte: "Les autres calibres sont archivés : un seul disjoncteur monophasé et un seul triphasé restent, le kit prend toujours celui-là"
+    reponse: derive_de_kw_et_tension
+    date: "2026-11-25"
+    source: "compte rendu de la lane kit-pompage-protections (poste Reda_Laptop) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Derive from kW and voltage » — option NON recommandée par l'orchestrateur, choisie par le fondateur ; un courant publié sur la fiche de la pompe l'emporte toujours ; la supposition est dite à l'écran"
+    taches: []
+  - id: D-ACAL-125
+    question: "Avec les protections dans le kit minimum (D-ACAL-112, D-ACAL-118), tout devis automatique de pompage est refusé, article nommé, tant que le coffret DC, le parafoudre AC et les disjoncteurs n'ont pas de prix au catalogue (ils sont à 0 aujourd'hui). Le livrer dans le lot 5 ?"
+    options:
+      - cle: dans_le_lot_5
+        texte: "Livré dans le lot 5 ; le fondateur chiffre les articles (jusqu'à 10) au catalogue ; d'ici là le devis automatique de pompage est refusé avec un message clair ; un devis existant garde ses lignes"
+      - cle: hors_du_lot_5
+        texte: "Retiré du lot 5, gardé sur sa branche, livré plus tard une fois les articles chiffrés"
+    reponse: dans_le_lot_5
+    date: "2026-11-25"
+    source: "compte rendu de la lane kit-pompage-protections (poste Reda_Laptop) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Ship it in lot 5 (Recommended) »"
+    taches: []
+  - id: D-ACAL-126
+    question: "Suite de D-ACAL-106 : depuis la correction de la relecture du lot 5, un Technicien ne lit que les calepinages des visites qui lui sont assignées. Le « Technicien responsable » ne lit donc plus ceux des visites de ses techniciens. Que doit-il voir ?"
+    options:
+      - cle: ses_visites_seulement
+        texte: "Comme construit : ses propres visites seulement"
+      - cle: aussi_son_equipe
+        texte: "Ses visites et celles assignées aux techniciens de son équipe (son sous-arbre) ; jamais le lead d'un collègue sans visite"
+    reponse: aussi_son_equipe
+    date: "2026-11-25"
+    source: "compte rendu de la lane technicien-ses-visites (poste Reda_Laptop) ; RÉPONSE DU FONDATEUR le 25/11/2026 (en discussion), mot pour mot : « Technicien responsable should see his team's calepinages too »"
+    taches: []
+  - id: D-ACAL-127
+    question: "Kit de pompage (D-ACAL-118, D-ACAL-125) : les dix articles de protection sont à prix 0 au catalogue. Le fondateur a demandé que l'orchestrateur propose des prix, à confirmer un par un. Quels prix publics ?"
+    options:
+      - cle: prix_lus_et_confirmes
+        texte: "Prix TTC lus le 25/11/2026 sur mrelec.ma, sans marge ajoutée : disjoncteurs monophasés 16/20/25/32 A = 80/80/80/83 DH (EATON Xpole 1P+N courbe C) ; disjoncteurs tétrapolaires 16/20/25/32 A = 128/132/136/141 DH (CHINT NXB-63 4P, courbe non précisée sur l'annonce) ; coffret DC 2 chaînes = 2 000 DH (boîte de jonction DC 2 entrées, sur commande) ; parafoudre AC type 2 = 1 000 DH (chiffre donné par le fondateur, aucune annonce marocaine fiable lue)"
+      - cle: prix_du_fondateur
+        texte: "Les articles restent à 0 ; le fondateur saisit ses prix au catalogue"
+    reponse: prix_lus_et_confirmes
+    date: "2026-11-25"
+    source: "recherche de prix (poste Reda_Laptop) : https://mrelec.ma/products/disjoncteur-modulaire-ac-2p , https://mrelec.ma/products/disjoncteur-modulaire-chint-4p-220v , https://mrelec.ma/products/boite-de-jonction-dc ; RÉPONSES DU FONDATEUR le 25/11/2026 (questions interactives), mot pour mot : « Yes: 80 / 80 / 80 / 83 DH », « Yes: 128 / 132 / 136 / 141 DH », « Yes: 2 000 DH », « use 1000 » ; posés au déploiement par migration de données, seulement là où le prix est vide ; le prix d'achat n'est pas renseigné"
+    taches: []
+  - id: D-ACAL-128
+    question: "Aucun des 15 variateurs VEICHI n'a de fiche technique en production : le kit de pompage ne peut pas vérifier les chaînes de panneaux. Les manuels VEICHI publient la tension DC maximale d'entrée : SI22 220 V = 400 V ; SI23 220 V = 450 V ; SI23 380 V = 800 V au tableau, coupure logicielle à 780 V. Les écrire sur les 15 variateurs ?"
+    options:
+      - cle: oui_780_pour_les_380
+        texte: "Oui : 400 V et 450 V comme publiés, et 780 V (la coupure réelle) pour tous les modèles 380 V"
+      - cle: oui_800_comme_imprime
+        texte: "Oui : 400 / 450 / 800 V comme le tableau les imprime"
+      - cle: non
+        texte: "Rien n'est écrit ; le fondateur crée les fiches dans Stock"
+    reponse: oui_780_pour_les_380
+    date: "2026-11-25"
+    source: "manuels VEICHI SI22 (§2, p. 2) et SI23 (§1.4, p. 4), veichi.com ; le constructeur ne publie ni fenêtre MPPT ni courant d'entrée : ces champs restent vides ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Yes, 780 V for 380 V models (Recommended) »"
+    taches: []
+  - id: D-ACAL-129
+    question: "Les petites pompes chiffrées (1,5 à 10 CV) n'ont pas de tension au catalogue ; leur nom dit seulement Monophasé ou Triphasé. Le calibre du disjoncteur a besoin d'une tension. Écrire 220 V sur les monophasées et 380 V sur les triphasées ?"
+    options:
+      - cle: oui_220_380
+        texte: "Oui, seulement là où la tension est vide ; les CV du catalogue de départ sont aussi complétés là où ils manquent en production"
+      - cle: non
+        texte: "Rien n'est écrit ; le fondateur saisit kW et tension sur chaque pompe"
+    reponse: oui_220_380
+    date: "2026-11-25"
+    source: "lecture seule de la production du 25/11/2026 (9 pompes chiffrées sans kW ni tension) ; RÉPONSE DU FONDATEUR le 25/11/2026 (question interactive), mot pour mot : « Yes: 220 V / 380 V (Recommended) »"
+    taches: []
+  - id: D-ACAL-130
+    question: "Deux articles du kit de pompage sont à prix 0 : la structure au sol (STR-SOL-PMP, chiffrée par panneau) et la pose (INST-PMP, barème fixe + par panneau). Le fondateur a demandé de s'inspirer des devis résidentiels et C&I d'aujourd'hui. Quels prix ?"
+    options:
+      - cle: structure_540_ttc_pose_2000_plus_250
+        texte: "Structure : 540 DH TTC par panneau (450 HT, la valeur de la structure lestée C&I CI-STRUCT-PLAT-LEST) ; pose : 2 000 DH HT fixes + 250 DH HT par panneau (le barème de l'installation résidentielle)"
+      - cle: structure_500_ttc
+        texte: "Structure : 500 DH TTC par panneau (416,67 HT, la structure acier résidentielle, pratiquée sur 23 lignes de devis agricoles en douze mois)"
+      - cle: pose_170_par_panneau
+        texte: "Pose : 170 DH HT par panneau (forfaits C&I pose de structure + pose de modules), avec ou sans 1 500 DH fixes"
+    reponse: structure_540_ttc_pose_2000_plus_250
+    date: "2026-11-25"
+    source: "lecture seule de la production du 25/11/2026 (catalogue et lignes de devis des 90 derniers jours et des douze derniers mois, agrégats) ; RÉPONSES DU FONDATEUR le 25/11/2026 (questions interactives), mot pour mot : « 540 DH TTC per panel » et « 2 000 + 250 per panel HT (Recommended) » ; posés au déploiement par migration de données, seulement là où le prix ou le barème est vide"
+    taches: []

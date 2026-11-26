@@ -77,7 +77,7 @@ export default function AlertesEnregistrement({
               <p className="text-sm text-foreground" role="status">{conflit.detail}</p>
               <button type="button" onClick={() => reviser(devisId, devisReference)} disabled={sending}
                 className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60">
-                Réviser (v2)
+                Réviser (nouvelle version)
               </button>
             </div>
           )}

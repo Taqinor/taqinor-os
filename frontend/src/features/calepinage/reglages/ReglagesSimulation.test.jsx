@@ -143,6 +143,35 @@ describe('ACAL133 — les lignes viennent EXCLUSIVEMENT du registre servi', () =
   })
 })
 
+describe('T4-X3-018 — une saisie non enregistrée ne se perd pas sans avertissement', () => {
+  const quitter = () => {
+    const evenement = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(evenement)
+    return evenement.defaultPrevented
+  }
+
+  it('quitter après une saisie demande confirmation ; enregistrée ou rétablie, non', async () => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage', 'exemple_vide'))
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+    expect(quitter()).toBe(false)
+
+    fireEvent.change(champValeur('cos_phi_par_defaut'), { target: { value: '0.9' } })
+    expect(quitter()).toBe(true)
+    // Revenir à la valeur servie : plus rien à perdre.
+    fireEvent.change(champValeur('cos_phi_par_defaut'), { target: { value: '' } })
+    expect(quitter()).toBe(false)
+
+    fireEvent.change(champValeur('cos_phi_par_defaut'), { target: { value: '1' } })
+    fireEvent.change(champSource('cos_phi_par_defaut'), { target: { value: 'societe' } })
+    expect(quitter()).toBe(true)
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(quitter()).toBe(false))
+  })
+})
+
 describe('ACAL133 — un seul PUT pour les deux sections', () => {
   it('un seul PUT {simulation, electrique_societe}', async () => {
     mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage', 'exemple_vide'))
@@ -299,6 +328,128 @@ describe('CALX69 — lecture seule sans le droit de gérer', () => {
     expect(screen.getByTestId('calx69-lecture-seule')).toBeInTheDocument()
     expect(champValeur('mode_meteo')).toBeDisabled()
     expect(screen.queryByTestId('calx69-enregistrer')).not.toBeInTheDocument()
+  })
+})
+
+describe('T4-X3-019 — les tables se saisissent en champs lisibles, pas en JSON brut', () => {
+  const servirTable = (simulation) => {
+    const servi = reponseContrat('calepinage', 'parametres_calepinage', 'exemple_vide')
+    servi.data.simulation = simulation
+    mocks.getParametres.mockResolvedValue(servi)
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES_VIDES })
+  }
+
+  it('LID : une ligne par technologie, la frappe écrit la MÊME forme JSON que l’API attend', async () => {
+    servirTable({})
+    rendre()
+    await screen.findByTestId('calx69-ligne-lid_par_techno')
+    const table = screen.getByTestId('calx69-table-lid_par_techno')
+    expect(table).toHaveTextContent('Cellules PERC')
+    expect(table).toHaveTextContent('Cellules TOPCon')
+    expect(table.textContent).not.toMatch(/[{}"]/)
+    const pct = screen.getByTestId('calx69-lid_par_techno-perc-pct')
+    expect(pct).toHaveAttribute('step', 'any')
+    expect(pct).not.toHaveAttribute('min')
+    fireEvent.change(pct, { target: { value: '1.5' } })
+    fireEvent.change(screen.getByTestId('calx69-lid_par_techno-perc-source'), { target: { value: 'Fiche fabricant' } })
+    fireEvent.change(champSource('lid_par_techno'), { target: { value: 'texte' } })
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    expect(mocks.putParametres.mock.calls[0][0].simulation.lid_par_techno).toEqual({
+      valeur: { perc: { pct: 1.5, source: 'Fiche fabricant' } }, source: 'texte', reference: '',
+    })
+  })
+
+  it('une table servie se lit en champs remplis ; un aller-retour sans geste renvoie la valeur servie', async () => {
+    const servie = { dos_isole: { source: 'texte', uc_w_m2k: 15 }, pose_libre: { source: 'texte', uc_w_m2k: 29, uv_w_m3sk: 0 } }
+    servirTable({ thermique_par_pose: { valeur: servie, source: 'texte', reference: '' } })
+    rendre()
+    await screen.findByTestId('calx69-ligne-thermique_par_pose')
+    expect(screen.getByTestId('calx69-thermique_par_pose-dos_isole-uc_w_m2k')).toHaveValue(15)
+    expect(screen.getByTestId('calx69-thermique_par_pose-pose_libre-uc_w_m2k')).toHaveValue(29)
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    expect(mocks.putParametres.mock.calls[0][0].simulation.thermique_par_pose.valeur).toEqual(servie)
+  })
+
+  it('fenêtres d’arrêt : ajouter une ligne écrit une liste [{debut, fin, motif}]', async () => {
+    servirTable({})
+    rendre()
+    await screen.findByTestId('calx69-ligne-indisponibilite_fenetres')
+    fireEvent.click(screen.getByTestId('calx69-table-indisponibilite_fenetres-ajouter'))
+    fireEvent.change(screen.getByTestId('calx69-indisponibilite_fenetres-0-debut'), { target: { value: '2026-01-05' } })
+    fireEvent.change(screen.getByTestId('calx69-indisponibilite_fenetres-0-fin'), { target: { value: '2026-01-07' } })
+    fireEvent.change(screen.getByTestId('calx69-indisponibilite_fenetres-0-motif'), { target: { value: 'Maintenance' } })
+    fireEvent.change(champSource('indisponibilite_fenetres'), { target: { value: 'saisie' } })
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    expect(mocks.putParametres.mock.calls[0][0].simulation.indisponibilite_fenetres.valeur)
+      .toEqual([{ debut: '2026-01-05', fin: '2026-01-07', motif: 'Maintenance' }])
+  })
+
+  it('correspondances de nomenclature (forme libre) reste sur l’éditeur JSON ; une valeur illisible aussi', async () => {
+    servirTable({ lid_par_techno: { valeur: [1, 2], source: 'texte', reference: '' } })
+    rendre()
+    await screen.findByTestId('calx69-ligne-correspondances_nomenclature')
+    expect(screen.queryByTestId('calx69-table-correspondances_nomenclature')).toBeNull()
+    expect(champValeur('correspondances_nomenclature').tagName).toBe('INPUT')
+    expect(screen.queryByTestId('calx69-table-lid_par_techno')).toBeNull()
+    expect(champValeur('lid_par_techno')).toHaveValue('[1,2]')
+  })
+
+  it('chaque table convertie monte son ancre #calx69-<clé> (liens « Renseigner »), focalisable, sans doublon d’id', async () => {
+    servirTable({})
+    rendre()
+    await screen.findByTestId('calx69-ligne-lid_par_techno')
+    for (const cle of ['lid_par_techno', 'thermique_par_pose', 'indisponibilite_fenetres', 'regle_bom_structure', 'consigne_dc_plan_cablage']) {
+      const ancres = document.querySelectorAll(`[id="calx69-${cle}"]`)
+      expect(ancres.length, cle).toBe(1)
+      expect(ancres[0], cle).toHaveAttribute('tabindex', '-1')
+    }
+  })
+
+  it('lecture seule : tous les champs de table sont désactivés', async () => {
+    mocks.hasPermission.mockReturnValue(false)
+    servirTable({ lid_par_techno: { valeur: { perc: { pct: 1.5, source: 'texte' } }, source: 'texte', reference: '' } })
+    rendre()
+    await screen.findByTestId('calx69-ligne-lid_par_techno')
+    expect(screen.getByTestId('calx69-lid_par_techno-perc-pct')).toBeDisabled()
+    expect(screen.getByTestId('calx69-lid_par_techno-perc-pct')).toHaveValue(1.5)
+    expect(screen.getByTestId('calx69-regle_bom_structure-rails_par_module')).toBeDisabled()
+  })
+})
+
+describe('D-ACAL-104 — « gérer » sans « approuver » : les réglages de la société se lisent seulement', () => {
+  it('une phrase, saisie désactivée, aucun bouton d’enregistrement ni de réinitialisation', async () => {
+    mocks.hasPermission.mockImplementation((code) => code === 'calepinage_gerer')
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+
+    expect(screen.getByTestId('cal-reglages-lecture-seule')).toHaveTextContent(
+      'Ces réglages de la société se lisent ici : seules les personnes qui peuvent approuver un calepinage peuvent les changer.')
+    expect(champValeur('mode_meteo')).toBeDisabled()
+    expect(screen.queryByTestId('calx69-enregistrer')).not.toBeInTheDocument()
+    // « Tout recalculer » suit le droit DE SA ROUTE (`calepinage_gerer`), pas la lecture seule des champs.
+    expect(screen.getByTestId('acal133-tout-recalculer')).toBeInTheDocument()
+  })
+
+  it('sans « gérer » ni « approuver » : ni enregistrer, ni tout recalculer', async () => {
+    mocks.hasPermission.mockReturnValue(false)
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+    expect(screen.queryByTestId('calx69-enregistrer')).toBeNull()
+    expect(screen.queryByTestId('acal133-tout-recalculer')).toBeNull()
+  })
+
+  it('un approbateur ne voit pas la phrase et enregistre', async () => {
+    mocks.hasPermission.mockImplementation((code) => code === 'calepinage_approuver')
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+    expect(screen.queryByTestId('cal-reglages-lecture-seule')).toBeNull()
+    expect(screen.getByTestId('calx69-enregistrer')).toBeInTheDocument()
   })
 })
 

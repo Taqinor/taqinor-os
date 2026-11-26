@@ -30,6 +30,16 @@ beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('MaterielElectrique (ACAL149)', () => {
+  it('T4-X7-011 — un matériel désigné prévient l’écran (la liste « Prêt à envoyer ? » se relit)', async () => {
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: EXEMPLE })
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+    const surEnregistre = vi.fn()
+    render(<MemoryRouter><MaterielElectrique calepinageId={1} surEnregistre={surEnregistre} /></MemoryRouter>)
+    await screen.findByTestId('acal149-formulaire')
+    await userEvent.selectOptions(document.getElementById('acal149-champ-module_produit'), '4112')
+    await waitFor(() => expect(surEnregistre).toHaveBeenCalledTimes(1))
+  })
+
   it('ACAL1987 — choisir dans la liste DÉSIGNE (un POST, sans autre bouton) puis affiche les valeurs RELUES du GET', async () => {
     const complet = {
       ...EXEMPLE,

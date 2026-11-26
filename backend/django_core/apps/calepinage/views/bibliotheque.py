@@ -62,6 +62,13 @@ def modeles(self, request):
     de requête)."""
     company = getattr(request.user, 'company', None)
     lignes = calepinages_modeles(company)
+    from ..selectors import lit_par_le_seul_releve, restreindre_aux_siens
+
+    if lit_par_le_seul_releve(request.user):
+        # D-ACAL-106 (revue lot 5) — un modèle est un calepinage comme un autre
+        # (lead, client, géométrie) : le Technicien ne lit que ceux de SES
+        # visites. Les autres comptes gardent la bibliothèque de la société.
+        lignes = restreindre_aux_siens(lignes, request.user)
     return Response(CalepinageSerializer(lignes, many=True).data)
 
 
@@ -214,6 +221,14 @@ class _RattachementExigePublie(OpenApiSerializerExtension):
 @action(detail=False, methods=['post'], url_path='depuis-modele',
         permission_classes=[PeutGererCalepinage])
 def depuis_modele(self, request):
+    """ACAL2047 — deux envois de la MÊME création (en-tête ``Idempotency-Key``)
+    rendent le MÊME calepinage (réponse mémorisée, rien de recréé) ; sans clé,
+    comportement inchangé. Le geste lui-même : ``_depuis_modele_corps``."""
+    return self.executer_idempotent(
+        request, lambda: _depuis_modele_corps(self, request))
+
+
+def _depuis_modele_corps(self, request):
     """CALX351 — ``{modele_id?, lead_id|client_id|devis_id, titre,
     preset_id?}`` → le calepinage créé, en DÉTAIL (201 ; 200 quand un devis
     avait déjà son calepinage).

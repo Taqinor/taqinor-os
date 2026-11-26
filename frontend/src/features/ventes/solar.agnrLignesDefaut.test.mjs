@@ -13,6 +13,7 @@ import assert from 'node:assert/strict'
 import {
   defaultProductLines, lignesParDefautDuMarche, signatureGabarit, tableIntacte,
 } from './calc/lignesDefaut.js'
+import { estArticlePompage } from './calc/classification.js'
 
 const P = (id, nom, prix_vente, extra = {}) => ({ id, nom, prix_vente: String(prix_vente), tva: '20.00', ...extra })
 const CATALOGUE = [
@@ -101,4 +102,24 @@ test('T4-U3-006 — changer de marché remplace une table INTACTE, jamais une ta
   assert.equal(tableIntacte(editee, signature), false)
   assert.equal(tableIntacte([...residentiel, { designation: 'Ajout', produit: '7', quantite: 1 }], signature), false)
   assert.equal(tableIntacte(residentiel, null), false)
+})
+
+// D-ACAL-130 — un article au rôle POMPAGE déclaré (hors câble DC partagé) ne
+// remplit jamais la table résidentielle / C&I ; le mode agricole est intact.
+test('D-ACAL-130 — structure de pompage chiffrée jamais structure résidentielle', () => {
+  const pompage = P(60, 'Structure acier au sol pompage', 450, { role_pompage: 'structure_sol' })
+  const sansAcierPrice = CATALOGUE.map((p) => (p.nom === 'Structures acier' ? { ...p, prix_vente: '0' } : p))
+  const acier = (ls) => ls.find((l) => l.designation === 'Structures acier' || l.produit === '60')
+  // Sans la garde, « … acier … » chiffré serait la structure acier par défaut.
+  assert.equal(acier(defaultProductLines([...sansAcierPrice, pompage])).produit, '')
+  // Une structure acier ordinaire n'est pas touchée.
+  assert.equal(acier(defaultProductLines([...CATALOGUE, pompage])).produit, '41')
+  // Le rôle partagé « cable_dc » n'est pas un article de pompage.
+  assert.equal(estArticlePompage({ role_pompage: 'cable_dc' }), false)
+  assert.equal(estArticlePompage({ role_pompage: 'structure_sol' }), true)
+  assert.equal(estArticlePompage({ role_pompage: '' }), false)
+  assert.equal(estArticlePompage({}), false)
+  // Mode agricole : la même table, avec ou sans l'article de pompage.
+  assert.deepEqual(lignesParDefautDuMarche([...CATALOGUE, pompage], 'agricole'),
+    lignesParDefautDuMarche(CATALOGUE, 'agricole'))
 })

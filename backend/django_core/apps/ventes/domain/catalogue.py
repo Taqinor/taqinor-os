@@ -553,6 +553,19 @@ _is_reseau_inverter = _sc.is_reseau_inverter
 _is_offgrid_inverter = _sc.is_offgrid_inverter
 
 
+#: D-ACAL-130 — un article au rôle POMPAGE déclaré est un article de pompage :
+#: il n'entre jamais dans une composition résidentielle, sauf ces rôles
+#: partagés (le câble solaire DC sert les deux, ex. CAB-6MM-M). Jumeau écran :
+#: ``frontend/src/features/ventes/calc/classification.js::estArticlePompage``.
+ROLES_POMPAGE_PARTAGES = ('cable_dc',)
+
+
+def est_article_pompage(produit) -> bool:
+    """Vrai pour un article au rôle pompage déclaré hors rôle partagé."""
+    role = (getattr(produit, 'role_pompage', '') or '').strip()
+    return bool(role) and role not in ROLES_POMPAGE_PARTAGES
+
+
 def _has_price(produit) -> bool:
     """A product is quotable only when it carries a real sell price.
 

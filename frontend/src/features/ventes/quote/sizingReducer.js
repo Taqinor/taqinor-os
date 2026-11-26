@@ -416,8 +416,10 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
     case 'REOUVERTURE': {
       const d = action.devis || {}
       // RGEN3 — un devis rouvert porte SES lignes : la taille de la fiche ne
-      // décide plus rien.
-      let s = { ...base, tailleLead: null }
+      // décide plus rien. T4-X6-015 — seulement quand un COMPTE est relu (le
+      // registre qui n'impose que le scénario ne l'efface pas) ; un devis qui
+      // la suit encore la redit par `TAILLE_LEAD_RELUE`.
+      let s = nombre(d.panneaux) > 0 ? { ...base, tailleLead: null } : base
       if (d.mode_installation) {
         s = appliquerMarche(s, d.mode_installation, { marquerTouche: true })
       }
@@ -442,6 +444,18 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
         s = { ...avecTouche(s, 'scenario'), scenario: sc }
       }
       return s
+    }
+
+    // ── T4-X6-015 — la fiche du lead d'un devis ROUVERT est relue ──────────
+    // Le devis (résidentiel, compte jamais retapé) suit-il encore la taille
+    // demandée sur la fiche ? Même conversion que `LEAD_APPLIQUE` sur le
+    // wattage relu des lignes : rien n'est recompté, la taille est seulement
+    // DITE (bandeau) et gardée jusqu'à « Recalculer », qui la nomme.
+    case 'TAILLE_LEAD_RELUE': {
+      const kwc = nombre(action.kwc)
+      if (base.modeInstallation !== 'residentiel' || base.touche.nbPanneaux || !(kwc > 0)) return base
+      const suit = panneauxPourKwc(kwc, base.panelW) === nombre(base.nbPanneaux)
+      return suit ? { ...base, tailleLead: kwc } : base
     }
 
     // ── « Recalculer le dimensionnement » (:2647-2731) ─────────────────────

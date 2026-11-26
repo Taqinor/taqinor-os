@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
-import { useHasPermission } from '../../../hooks/useHasPermission'
 import { Card } from '../../../ui'
+import LectureSeuleSociete from '../commun/LectureSeuleSociete'
+import { usePeutReglerSociete } from '../commun/useReglagesSociete'
 
 /* ============================================================================
    ACAL130 — « SITE & IMAGERIE » : LES RÉGLAGES DU SITE, SAISISSABLES.
@@ -39,7 +40,7 @@ const CHAMPS = [
   { cle: 'pays', libelle: 'Pays (code à deux lettres)', aide: 'Par exemple « ma » ou « fr » : borne le géocodage et ouvre la suggestion de pente IGN pour « fr ».' },
   { cle: 'fournisseur_imagerie', libelle: 'Fournisseur d’imagerie', aide: 'maptiler, mapbox ou ign_bd_ortho (France).' },
   { cle: 'attribution', libelle: 'Attribution légale', aide: 'Mention exigée par le fournisseur (obligatoire pour ign_bd_ortho).' },
-  { cle: 'altitude_m', libelle: 'Altitude du site (m)', aide: 'Saisie : jamais devinée.' },
+  { cle: 'altitude_m', libelle: 'Altitude du site (m)', aide: 'Saisie : jamais devinée. Elle n’est pas utilisée pour l’instant : le calcul et le rapport prennent l’altitude donnée par la météo du site.' },
   { cle: 'source_altitude', libelle: 'Source de l’altitude', aide: 'D’où vient l’altitude saisie.' },
   { cle: 'fuseau', libelle: 'Fuseau horaire (IANA)', aide: 'Par exemple « Africa/Casablanca » : aucune heure légale n’est supposée.' },
 ]
@@ -101,7 +102,7 @@ function erreursDepuis(corps) {
 }
 
 export default function ReglagesSite({ imagerie = null }) {
-  const peutGerer = useHasPermission('calepinage_gerer')
+  const peutGerer = usePeutReglerSociete()
   const [servi, setServi] = useState(imagerie)
   const [brouillon, setBrouillon] = useState(() => brouillonDe(imagerie))
   const [brouillonInitial, setBrouillonInitial] = useState(() => brouillonDe(imagerie))

@@ -268,7 +268,12 @@ const PER_CHUNK_BUDGET_KB = 350
 // bandeau du devis automatique, tickets après-vente, bandeau du site, étude de pompage rouverte) : mesuré 4 175,0x Ko
 // gzip sur le runner (job frontend-static du run 45548112417, tête 5a8dae9886), aucune dépendance npm ajoutée (diff
 // package.json vide), aucun autre plafond dépassé. Budget : mesure arrondie aux 5 Ko + 10 : 4175 -> 4190.
-const TOTAL_BUDGET_KB = 4190
+// 26/11/2026 (calepinage L5, lot 5 : corrections des tours 3 et 4 du test utilisateur — réglages de simulation en
+// champs lisibles, bouton « Retirer un panneau », refus de droit nommés, alertes de composition sur la carte du devis
+// créé, part de la consommation de la pose, production nulle expliquée) : mesuré 4 197,6 Ko gzip sur le runner (job
+// frontend-static du run 45727936828), aucune dépendance npm ajoutée (diff package.json vide), aucun autre plafond
+// dépassé. Budget : mesure arrondie aux 5 Ko + 10 : 4190 -> 4210.
+const TOTAL_BUDGET_KB = 4210
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,

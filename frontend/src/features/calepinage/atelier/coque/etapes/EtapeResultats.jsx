@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { panneauxDuModule } from '../../cibleAuModule'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
 import { formatDate, formatNumber } from '../../../../../lib/format'
@@ -19,6 +19,9 @@ import { memeTaille, phraseTailles, tailleDifferente } from '@roofpro/tailleConc
 import { messageResultatIndisponible } from '../../../delaiReseau'
 import EtatEcranAtelier from '../../EtatEcranAtelier'
 import { useModeExpert } from '../../modeExpert'
+import { PARAM_ONGLET } from '../../onglets'
+import { premierOngletEtape } from '../../parcoursGuide'
+import { publierResultat } from '../../simulationFraiche'
 import PanneauPertes from '../../PanneauPertes'
 import { useLectureServie } from './panneaux/lectures'
 
@@ -85,7 +88,7 @@ function ProductionDuDevis({ bloc, p50, incomplet = false }) {
   const [enCours, reviser] = useReviser(bloc)
   if (!bloc) return null
   const kwh = typeof bloc.production_annuelle_kwh === 'number' ? bloc.production_annuelle_kwh : null
-  const lien = <Link to={`/ventes/devis?devis=${bloc.devis}`}>{bloc.reference || 'voir le devis'}</Link>
+  const lien = <Link to={`/ventes/devis?devis=${bloc.devis}`} className="cal-res-lien-devis">{bloc.reference || 'voir le devis'}</Link>
   const simule = typeof p50 === 'number' ? p50 : null
   const dit = (n) => `${formatNumber(n, { decimals: 0 })} kWh par an`
   if (kwh != null && simule != null && Math.round(kwh) === Math.round(simule)) {
@@ -136,27 +139,42 @@ const LIBELLE_OPTION = { sans: 'option sans batterie', avec: 'option avec batter
 /** Relecture E5 M1 — tant que la conception est servie, la production de la POSE (simulée) porte son nom exact :
     jamais deux productions à l'écran sans que chacune soit nommée. */
 const NOM_PRODUCTION_POSE = 'Production simulée de la pose'
+/** T4-X7-006 — « Réviser le devis » de la conception : ce que le serveur fait réellement. */
+const PHRASE_REVISER_SUR_LA_CONCEPTION = 'Le devis envoyé n’est pas modifié : « Réviser le devis » en crée une '
+  + 'nouvelle version, copie de ce devis remise sur la conception du lead si elle a changé depuis. Votre pose n’y entre '
+  + 'qu’en resynchronisant cette nouvelle version (étape Documents).'
 
 /** ACAL2015 (C4-E5, D-ACAL-96) — LA conception (`conception` de `GET resultat/`) : UN chiffre de production, celui que le
     moteur unique a rangé ; un devis ENVOYÉ dont l'écart servi (`devis_envoye.ecart_devis`, lignes de ventes) porte la
     production est NOMMÉ (référence, date d'envoi) avec « Réviser le devis » quand ventes le permet. Rien n'est recalculé. */
 /** T4-X5-001 — LA taille de la conception : `chiffrage.kwc` servi du design-context (le lecteur de la bande Panneaux et de
     la vue client) ; le nombre de panneaux est celui de `cible` quand il décrit cette même taille, sinon il est tu. */
-function tailleDeLaConception(contexte) {
+/** T4-X7-013 — la taille servie AVEC la production, sur le bloc `conception` de `GET resultat/` (même option, même version,
+    `puissance_kwc` / `nb_panneaux`), prime : la production et sa taille vont ensemble, jamais une production fraîche à côté
+    de la taille d'une lecture plus ancienne. Sans elle (serveur d'avant), le design-context comme avant. */
+function tailleDeLaConception(contexte, bloc = null) {
+  const propre = typeof bloc?.puissance_kwc === 'number' ? bloc.puissance_kwc : null
   const kwc = contexte?.chiffrage?.kwc
-  const valeur = kwc?.etat === 'servi' && typeof kwc.valeur === 'number' ? kwc.valeur : null
+  const valeur = propre ?? (kwc?.etat === 'servi' && typeof kwc.valeur === 'number' ? kwc.valeur : null)
   if (valeur == null) return null
   const cible = contexte?.cible
-  const panneaux = typeof cible?.panneaux === 'number' && memeTaille(cible?.kwc, valeur) ? cible.panneaux : null
-  // T4-X3-009 — le compte de la conception nomme SON panneau (« 8 panneaux de 550 W »).
-  return { kwc: valeur, panneaux, watt: panneaux != null ? cible?.panel_watt ?? null : null }
+  const cibleDeCetteTaille = typeof cible?.panneaux === 'number' && memeTaille(cible?.kwc, valeur)
+  const servis = propre != null && typeof bloc?.nb_panneaux === 'number' ? bloc.nb_panneaux : null
+  const panneaux = servis ?? (cibleDeCetteTaille ? cible.panneaux : null)
+  // T4-X3-009 — le compte de la conception nomme SON panneau (« 8 panneaux de 550 W ») quand la cible décrit ce même compte.
+  const watt = panneaux != null && cibleDeCetteTaille && cible.panneaux === panneaux ? cible?.panel_watt ?? null : null
+  return { kwc: valeur, panneaux, watt }
 }
 
 /** T4-X9-008 — la part de la consommation servie pour un calepinage de lead est celle de la CONCEPTION
     (`services/etapes/autoconsommation.py::_publier`) : à une autre taille que la pose, la phrase des deux tailles (prédicat
     et formateur uniques de l'atelier) remplace le chiffre ; `null` sinon (même taille, ou taille inconnue). */
 function phraseCouvertureConception(data, contexte) {
-  const taille = data?.conception && contexte?.etat === 'ok' ? tailleDeLaConception(contexte.donnees) : null
+  // T4-X7-002 — le serveur a trouvé un écart réel et publié les taux de la POSE simulée (`autre_installation`) : le chiffre
+  // est celui de cette pose, de ses énergies ; aucune phrase ne le remplace. `'pose'` (aucun taux de conception) : comme avant.
+  if (data?.autoconsommation?.taux_source === 'autre_installation') return null
+  const taille = data?.conception
+    ? tailleDeLaConception(contexte?.etat === 'ok' ? contexte.donnees : null, data.conception) : null
   return taille && tailleDifferente(taille.kwc, data?.pose?.kwc)
     ? phraseTailles('Part de la consommation', taille.kwc, data.pose.kwc) : null
 }
@@ -172,6 +190,7 @@ function ProductionDeLaConception({ bloc, taille = null, pose = null, simulee = 
   // renvoyée à sa propre simulation (jamais deux productions de deux tailles sans le dire). Même taille : une ligne.
   const autreTaille = kwh != null && tailleDifferente(taille?.kwc, pose?.kwc)
   const envoye = bloc.devis_envoye
+  const lie = bloc.devis_lie ?? null
   const ecarts = envoye?.ecart_devis ?? []
   // Relecture E5 M2 — la production QUE LE DEVIS ENVOYÉ A RANGÉE (`devis_envoye.production_annuelle_kwh`, servie par
   // le serveur), comparée au chiffre AFFICHÉ ici : jamais déduite de l'absence d'une ligne d'écart.
@@ -180,7 +199,7 @@ function ProductionDeLaConception({ bloc, taille = null, pose = null, simulee = 
   const reviserPossible = ecarts.length === 0 || ecarts.some((e) => e?.reviser_possible)
   const option = different && envoye?.option && envoye.option !== bloc.option ? ` (${LIBELLE_OPTION[envoye.option] ?? envoye.option})` : ''
   const [enCours, reviser] = useReviser(envoye, { surLaConception: true })  // T4-X5-011 : V2 sur la conception
-  const lien = envoye ? <Link to={`/ventes/devis?devis=${envoye.devis}`}>{envoye.reference || 'voir le devis'}</Link> : null
+  const lien = envoye ? <Link to={`/ventes/devis?devis=${envoye.devis}`} className="cal-res-lien-devis">{envoye.reference || 'voir le devis'}</Link> : null
   return (
     <section className="cal-res-carte flex flex-col gap-1" data-zone="production-conception"
       data-chiffre={different ? 'deux' : 'un-seul'}>
@@ -198,6 +217,11 @@ function ProductionDeLaConception({ bloc, taille = null, pose = null, simulee = 
       ) : (
         <p>{kwh != null ? `Production de la conception : ${dit(kwh)}` : 'Production de la conception : non calculée'}</p>
       )}
+      {/* D-ACAL-109 / D-ACAL-110 — le matériel désigné à la main : quelle option il sert, l'arrondi au module désigné
+          (phrases SERVIES par ventes, `conception.designations`, affichées telles quelles). */}
+      {(bloc.designations ?? []).map((phrase) => (
+        <p key={phrase} className="cal-res-sourdine" data-zone="designation-conception">{phrase}</p>
+      ))}
       {envoye && duDevis == null && (
         <p className="cal-res-sourdine">{'Le devis envoyé '}{lien}{' ne porte pas de production enregistrée.'}</p>
       )}
@@ -209,8 +233,10 @@ function ProductionDeLaConception({ bloc, taille = null, pose = null, simulee = 
           <p>
             {'Devis '}{lien}{` envoyé${envoye.envoye_le ? ` le ${formatDate(envoye.envoye_le)}` : ''}${option} : ${dit(duDevis)}`}
           </p>
-          <p className="cal-res-sourdine">
-            Le devis envoyé n’est pas modifié : « Réviser le devis » crée une nouvelle version sur la conception.
+          {/* T4-X7-006 — ce que la révision fait VRAIMENT (`reviser_sur_la_conception`) : une copie du devis, remise sur
+              la conception du lead seulement si elle a changé depuis ce devis ; la pose n'y entre qu'en resynchronisant. */}
+          <p className="cal-res-sourdine" data-zone="reviser-explique">
+            {PHRASE_REVISER_SUR_LA_CONCEPTION}
           </p>
           {reviserPossible && (
             <button type="button" className="cal-res-lien" style={{ alignSelf: 'flex-start' }} disabled={enCours}
@@ -219,6 +245,15 @@ function ProductionDeLaConception({ bloc, taille = null, pose = null, simulee = 
             </button>
           )}
         </>
+      )}
+      {/* T4-X7-006 — le devis LIÉ (la V2 brouillon après une révision) qui ne porte pas la pose enregistrée : l'écart
+          reste NOMMÉ (servi `conception.devis_lie.a_jour`, prédicat des empreintes), avec le geste qui le comble. */}
+      {lie && lie.a_jour === false && lie.devis !== envoye?.devis && (
+        <p className="cal-res-sourdine" data-zone="devis-lie-pose">
+          {'Le devis lié '}
+          <Link to={`/ventes/devis?devis=${lie.devis}`} className="cal-res-lien-devis">{lie.reference || 'voir le devis'}</Link>
+          {' ne porte pas votre pose : « Resynchroniser le devis » (étape Documents) le met sur la pose.'}
+        </p>
       )}
     </section>
   )
@@ -252,6 +287,43 @@ function PanneauxNonRaccordes({ data }) {
         <p className="cal-res-alerte-texte">
           {`Production comptée sur ${formatNumber(comptes, { decimals: 0 })} des ${formatNumber(poses, { decimals: 0 })} panneaux posés${kwc}.`}
         </p>
+      )}
+    </section>
+  )
+}
+
+/** T4-X7-005 — la simulation complète donne 0 kWh : l'étape le DIT, avec la cause servie (la `raison` des contrôles
+    électriques non conformes de `electrique.verdicts`, phrases du serveur telles quelles) et le geste — l'étape Électrique,
+    où se corrigent la longueur des chaînes et l'onduleur. Rien n'est calculé ; sans cause servie, la phrase le dit. */
+function ProductionNulle({ data }) {
+  const [parametres, setParametres] = useSearchParams()
+  const [expert] = useModeExpert()
+  const p50 = data?.production?.total?.p50_kwh
+  if (!(typeof p50 === 'number' && p50 <= 0)) return null
+  const raisons = [...new Set((data?.electrique?.verdicts ?? [])
+    .filter((v) => v?.conforme === false && typeof v.raison === 'string' && v.raison)
+    .map((v) => v.raison))]
+  const onglet = premierOngletEtape('electrique', expert)
+  const allerElectrique = () => {
+    const suivants = new URLSearchParams(parametres)
+    suivants.set(PARAM_ONGLET, onglet)
+    setParametres(suivants, { state: { etapeChoisie: true } })
+  }
+  return (
+    <section className="cal-res-alerte" data-zone="production-nulle" role="alert">
+      <p className="cal-res-alerte-titre">La simulation de la pose donne 0 kWh par an.</p>
+      {raisons.length > 0 ? raisons.map((r) => (
+        <p key={r} className="cal-res-alerte-texte">{`Cause : ${r.charAt(0).toUpperCase()}${r.slice(1)}.`}</p>
+      )) : (
+        <p className="cal-res-alerte-texte">Le calcul ne nomme pas de cause : vérifiez le raccordement des panneaux à l’onduleur.</p>
+      )}
+      <p className="cal-res-alerte-texte">
+        Corrigez la longueur des chaînes ou l’onduleur à l’étape Électrique, puis relancez la simulation.
+      </p>
+      {onglet && (
+        <button type="button" className="cal-res-lien" style={{ alignSelf: 'flex-start' }} onClick={allerElectrique}>
+          Aller à l’étape Électrique
+        </button>
       )}
     </section>
   )
@@ -313,6 +385,8 @@ export default function EtapeResultats({
     () => calepinageApi.calepinages.resultat(id), id,
     { select: (r) => r.data, errorMessage: messageResultatIndisponible },
   )
+  // T4-X8-013 — le résultat lu ici est celui que reprennent le résumé de la feuille « Avancé » et le Total du constructeur.
+  useEffect(() => { if (data) publierResultat(id, data) }, [id, data])
   // T4-X5-001 — la taille de la conception (lecture partagée du design-context, jamais un second appel en vol).
   const contexte = useLectureServie('contexte', id, { actif: data?.conception != null })
   if (loading || error) {
@@ -343,9 +417,10 @@ export default function EtapeResultats({
     <div className="cal-res" data-zone="etape-resultats">
       {data?.conception
         ? <ProductionDeLaConception bloc={data.conception} pose={data?.pose} simulee={complet}
-          taille={contexte.etat === 'ok' ? tailleDeLaConception(contexte.donnees) : null} />
+          taille={tailleDeLaConception(contexte.etat === 'ok' ? contexte.donnees : null, data.conception)} />
         : <ProductionDuDevis bloc={blocDuDevis(data)} p50={complet ? total?.p50_kwh : null} incomplet={incomplet} />}
       {simule && <PanneauxNonRaccordes data={data} />}
+      {complet && <ProductionNulle data={data} />}
       {enCours && <SimulationEnCours calepinageId={id} intervalleMs={intervalleMs} onTermine={refetch} />}
       {!simule && !enCours && <SimulationEnAttente manquants={auto?.manquants} />}
       {!simule && !enCours && (

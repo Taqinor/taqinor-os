@@ -86,6 +86,7 @@ from .attribution_selectors import (
 )
 from .fiche_selectors import (
     get_company_lead, get_company_leads_by_ids, rechercher_leads_minimal, lead_card,
+    ids_leads_pour_recherche, nom_affiche_lead_sous_requete,
     _VALEUR_CHATTER_VIDE, provenance_site, LEAD_PROVENANCE_FIELDS,
     _LEAD_PROVENANCE_MARQUEURS, _RAISON_LU_EN_DIRECT, _RAISON_PROFIL_APPEL,
     _RAISON_QUALIFICATION, _RAISON_TRANCHE, _RAISON_POMPAGE_AGR, _RAISON_PRO_CIQ,
@@ -164,7 +165,8 @@ __all__ = [
     'partenaire_pour_certification', 'partenaires_certifies_qs', 'peut_contacter',
     'pipeline_pondere_par_entite', 'pipeline_stage_order', 'portee_leads',
     'portefeuille_commercial', 'prochaine_touche_par_lead', 'profil_activite_pour_devis',
-    'provenance_site', 'rechercher_leads_minimal', 'reconciliation_lead_rows',
+    'ids_leads_pour_recherche', 'nom_affiche_lead_sous_requete', 'provenance_site',
+    'rechercher_leads_minimal', 'reconciliation_lead_rows',
     'register_metric_adapters', 'relance_etapes_dues', 'relance_etapes_periode', 'relances_du_jour',
     'releve_commissions_partenaire', 'releve_declare_ci', 'repere_toit', 'reporting_lead_rows',
     'resume_portail_partenaire', 'revenu_attribue_campagne', 'revenu_pipeline_pondere_par_mois',

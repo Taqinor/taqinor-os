@@ -6,7 +6,7 @@
 // `lent`) n'est pas « hors ligne » : l'écran le dit (« Le serveur met du temps à
 // répondre ») et réessaie seul toutes les 15 s, avec un « Réessayer » visible.
 import { useEffect, useRef } from 'react'
-import { useLoaderData, useRevalidator } from 'react-router-dom'
+import { useLoaderData, useLocation, useRevalidator } from 'react-router-dom'
 
 const TEXTES_DEMARRAGE = {
   horsLigne: {
@@ -21,11 +21,19 @@ const TEXTES_DEMARRAGE = {
   },
 }
 const DELAI_NOUVEL_ESSAI_MS = 15000
+// T4-X8-002 — rechargé hors ligne sur le relevé de visite au téléphone : l'écran ne peut pas se rouvrir sans
+// session ni calepinage (l'API n'est jamais en cache), mais le brouillon et la file des photos sont sur le
+// téléphone — la phrase dit ce qu'il en advient au lieu d'un « vos données » vague.
+const RELEVE_VISITE = /^\/calepinage\/[^/]+\/releve\/?$/
+const PHRASE_RELEVE = 'Vos mesures et vos photos sont gardées sur ce téléphone. '
+  + 'Elles s’afficheront et partiront au retour du réseau.'
 
 export default function HorsLigneDemarrage() {
   const revalidator = useRevalidator()
   const lent = useLoaderData()?.lent === true
-  const textes = lent ? TEXTES_DEMARRAGE.lent : TEXTES_DEMARRAGE.horsLigne
+  const { pathname } = useLocation()
+  const textes = lent ? TEXTES_DEMARRAGE.lent
+    : RELEVE_VISITE.test(pathname) ? { ...TEXTES_DEMARRAGE.horsLigne, phrase: PHRASE_RELEVE } : TEXTES_DEMARRAGE.horsLigne
   const reessayer = () => revalidator.revalidate()
   // Dernier `reessayer` (le revalidator change à chaque rendu) : l'écouteur
   // `online` est posé une seule fois et appelle toujours la version à jour.

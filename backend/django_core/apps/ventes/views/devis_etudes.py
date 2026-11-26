@@ -376,6 +376,12 @@ class DevisEtudesActionsMixin:
         # ne bascule que sur un brouillon ; une bascule relance l'étude C&I.
         from ..domain.depart_une_batterie_ci import phrase_demandee, refus_bascule
         bascule = refus_bascule(devis, corps)
+        # T4-X6-004 — la case « Devis final » enregistrée suit la même garde.
+        from .devis_pdf import refus_devis_final
+        final = refus_devis_final(devis) if corps.get('devis_final') is True else None
+        if final:
+            return Response({'detail': final, 'field': 'devis_final'},
+                            status=status.HTTP_409_CONFLICT)
         if bascule:
             return Response({'detail': bascule, 'field': 'options.phrase_une_batterie'},
                             status=status.HTTP_409_CONFLICT)

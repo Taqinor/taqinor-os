@@ -62,6 +62,12 @@ URL = '/api/django/ventes/etude-ci/preview/'
 _FOURNISSEUR_TMY = 'apps.calepinage.services.electrique._fournisseur_temperatures'
 
 
+#: D-ACAL-103 (T4-X6-013, 87cf062aa) — une option « avec » n'est composée que sur une
+#: combinaison d'hybrides câblable (``moteur_ci.batterie._cablable``) : les évaluations
+#: simulées d'une option COMPOSÉE en portent une, comme celles du vrai dimensionnement.
+HYBRIDE_CABLABLE = [{'produit': 1, 'nom': 'Hybride 30 kW', 'kw_ac': 30, 'quantite': 1}]
+
+
 def _production_casablanca(_site=None, toit=None):
     formes = {}
     for saison in SAISONS:
@@ -1030,3 +1036,122 @@ class EstimationPuissanceMaxLeadTests(_Base):
         etude = etude_ci.etudier_ci(self.co, {'mode': 'industriel'}, lead=lead)
         self.assertEqual(etude['feuille_consommation_retenue'], 'kwh_mensuel_declare')
         self.assertNotIn('consommation_estimee_puissance', [a['code'] for a in etude['alertes']])
+
+
+class EcranEditionSurLesLignesTests(TestCase):
+    """T4-X6-007 / 008 — l'aperçu de l'écran d'édition (corps ``lignes``) d'un devis C&I
+    « Les deux » : une économie, un retour, une taille, un investissement par option, ceux du
+    PDF. Fabriques du devis automatique à deux options (CIQ120), empruntées à l'appel
+    (jamais importées au niveau du module : le chargeur rejouerait leurs tests)."""
+
+    @staticmethod
+    def _ci120():
+        from apps.ventes.tests import test_ciq120_devis_auto_ci as ci
+        return ci
+
+    @classmethod
+    def setUpTestData(cls):
+        ci = cls._ci120()
+        ci._Base.setUpTestData.__func__(cls)
+        ci._semer_batterie(cls)
+
+    def setUp(self):
+        self._ci120()._Base.setUp(self)
+
+    def _lead(self, **kw):
+        return self._ci120()._Base._lead(self, **kw)
+
+    def _devis_les_deux(self):
+        ci = self._ci120()
+        return ci._Base._auto(self, ci.OptionBatterieCITests._boulangerie(self))
+
+    def _ecran(self, corps, chemin):
+        """Un appel de l'écran (aperçu C&I / économie C&I) au tarif de la grille de test."""
+        from apps.ventes import tarif_ci
+        api = APIClient()
+        api.force_authenticate(self.user)
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=self._ci120()._tarif_grille):
+            reponse = api.post('/api/django/ventes/%s/preview/' % chemin, corps, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        return reponse.json()
+
+    def _servi_a_l_ecran(self, devis, saisie=None):
+        """Ce que l'écran d'édition sert : l'aperçu C&I sur les LIGNES du devis (+ la saisie
+        tapée), puis l'économie de l'option sans batterie sur SES lignes seules, comme l'écran
+        les envoie (``lignesEconomieCi`` ⇄ ``filter_lines_for_option``)."""
+        from apps.ventes.utils.options import SANS_BATTERIE, filter_lines_for_option
+        lignes = [{'produit': li.produit_id, 'designation': li.designation, 'quantite': str(li.quantite),
+                   'prix_unitaire': str(li.prix_unitaire), 'remise': str(li.remise or 0),
+                   'taux_tva': str(li.taux_tva), 'variante': li.variante or '', 'optionnelle': li.optionnelle,
+                   'type_ligne': li.type_ligne} for li in devis.lignes.order_by('ordre', 'pk')]
+        apercu = self._ecran(dict(saisie or {}, mode=devis.mode_installation, devis=devis.pk,
+                                  lead=devis.lead_id, lignes=lignes), 'etude-ci')
+        sans = [{'produit': li.produit_id, 'quantite': float(li.quantite), 'taux_tva': float(li.taux_tva),
+                 'optionnelle': li.optionnelle, 'designation': li.designation,
+                 'totaux': {'ht': float(li.total_ht),
+                            'ttc': float(li.total_ht * (1 + li.taux_tva_effectif / 100))}}
+                for li in filter_lines_for_option(
+                    list(devis.lignes.select_related('produit')), SANS_BATTERIE, devis)]
+        return apercu, self._ecran({'sortie_etude_ci': apercu, 'saisies': {}, 'lignes': sans}, 'economie-ci')
+
+    def _une_valeur_par_option(self, devis, apercu, eco):
+        """Ce que le PDF imprime (``build_quote_data`` : ``chiffres_cles`` de l'offre réseau,
+        ``valeur_option_avec`` + ``etude_ci.option_avec``) = ce que l'écran sert."""
+        from apps.ventes import tarif_ci
+        from apps.ventes.models import Devis
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.ci.mentions import valeur_option_avec
+        from apps.ventes.quote_engine.ci.synthese import chiffres_cles, synthese_ci
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=self._ci120()._tarif_grille):
+            data = build_quote_data(Devis.objects.get(pk=devis.pk))
+        cles, avec_imprime = chiffres_cles(synthese_ci(data)), valeur_option_avec(data)
+        avec_range, avec = data['etude']['etude_ci']['option_avec'], apercu['option_avec']
+        self.assertEqual(
+            {'kwc': avec['kwc'], 'economie': avec['economie_annuelle_mad'], 'retour': avec['retour_simple_ans'],
+             'investissement': avec['cout_vente_ht']},
+            {'kwc': avec_range['kwc'], 'economie': avec_imprime['economie_annuelle_mad'],
+             'retour': avec_imprime['retour_simple_ans'], 'investissement': avec_range['cout_vente_ht']})
+        # T4-X6-007 — le retour au dixième SERVI à l'écran est celui du PDF (même fonction).
+        self.assertEqual((eco['economie_annee1']['total_mad'], eco['indicateurs']['retour_dixieme_ans']),
+                         (cles['economie_annuelle_mad'], cles['payback_ans']))
+
+    def test_x6_008_ecran_sur_les_lignes_egal_au_pdf(self):
+        """Mutant « aperçu du moteur libre » : la taille, la batterie et le prix du moteur."""
+        devis = self._devis_les_deux()
+        apercu, eco = self._servi_a_l_ecran(devis)
+        self._une_valeur_par_option(devis, apercu, eco)
+
+    def test_x6_008_consommation_tapee_decrit_le_systeme_des_lignes(self):
+        """Douze mois tapés : le système que les LIGNES vendent (même taille par option, même
+        banque), jamais l'optimum du moteur pour cette consommation."""
+        devis = self._devis_les_deux()
+        range_ = devis.etude_params['etude_ci']
+        consommation = {'kwh_mensuels': [15000] + [12000] * 11}
+        apercu, _eco = self._servi_a_l_ecran(devis, {'consommation': consommation})
+        self.assertEqual(apercu['taille']['raison_arret'], 'taille_explicite')
+        systeme = (lambda e: (e['taille']['retenue_kwc'], e['option_avec']['kwc'],
+                              e['option_avec']['batterie']['nom'], e['option_avec']['batterie']['quantite']))
+        self.assertEqual(systeme(apercu), systeme(range_))
+        self.assertEqual(apercu['entrees_resolues']['kwh_mensuels']['valeur'], consommation['kwh_mensuels'])
+
+    def test_x6_009_factures_tapees_passent_devant_les_kwh_ranges(self):
+        """T4-X6-009 — 12 mois en kWh ENREGISTRÉS sur le devis, puis 12 factures en MAD tapées
+        (l'écran envoie le bloc ``consommation`` entier, kWh vides : celui que l'enregistrement
+        rangera) : l'aperçu retient les factures, jamais les kWh rangés « origine devis »."""
+        from apps.ventes import tarif_ci
+        from apps.ventes.models import Devis
+        devis = self._devis_les_deux()
+        api = APIClient()
+        api.force_authenticate(self.user)
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=self._ci120()._tarif_grille):
+            reponse = api.patch('/api/django/ventes/devis/%d/etude-params/' % devis.pk,
+                                {'consommation': {'kwh_mensuels': [2600] + [2000] * 11}}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        Lead.objects.filter(pk=devis.lead_id).update(conso_mensuelle_kwh=None)
+        devis = Devis.objects.get(pk=devis.pk)
+        factures = [{'mois': '2025-%02d' % m, 'montant_ttc': 4200 if m == 7 else 3000, 'kwh': None}
+                    for m in range(1, 13)]
+        consommation = {'kwh_mensuels': None, 'kwh_annuel': None, 'factures_mad': factures, 'registres_mt': None}
+        apercu, _eco = self._servi_a_l_ecran(devis, {'consommation': consommation})
+        self.assertEqual(apercu['feuille_consommation_retenue'], 'factures_mad')
+        self.assertIsNone((apercu['entrees_resolues'].get('kwh_mensuels') or {}).get('valeur'))

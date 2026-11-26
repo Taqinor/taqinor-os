@@ -120,3 +120,55 @@ class HypotheseAutoconsoBatDiffTests(TestCase):
         self.assertTrue(phrase.endswith('% avec batterie.'), phrase)
         self.assertTrue(hypothese_traduite('en', phrase).endswith(
             '% with battery.'))
+
+
+class UneOptionSansNumeroD114Tests(SimpleTestCase):
+    """D-ACAL-114 — document à UNE option : le titre ne porte que le nom de
+    l'option (« Avec batterie »), ni « OPTION 2 » ni « Option 2 — » ;
+    nouveaux rendus seulement (``phrases_pdf_2511``) ; deux options : inchangé."""
+
+    def _html(self, scenario, **extra):
+        from apps.ventes.tests import _moteur_fixtures as F
+        return G.render_html_for(F.donnees_legacy(scenario=scenario, **extra))
+
+    def test_une_option_nouveau_rendu_sans_numero(self):
+        html = self._html("Avec batterie", phrases_pdf_2511=True)
+        self.assertNotIn(">Option 2<", html)
+        self.assertNotIn("Option 2 —", html)
+        self.assertIn("Avec batterie", html)
+
+    def test_devis_envoye_avant_et_deux_options_inchanges(self):
+        self.assertIn(">Option 2<", self._html("Avec batterie"))
+        self.assertIn("Option 2 —", self._html("Avec batterie"))
+        deux = self._html("Les deux (Sans + Avec)", phrases_pdf_2511=True)
+        self.assertIn(">Option 2<", deux)
+        self.assertIn("Option 2 —", deux)
+
+
+class EcheancierParOptionLegacyD116(SimpleTestCase):
+    """D-ACAL-116 — format avec étude (moteur legacy) : Devis final à DEUX
+    options, une ligne d'échéances par option, nommée ; sans le drapeau ou à
+    une option, le bloc d'hier."""
+
+    MONTANTS = {
+        "sans": {"total": 61728.4, "acompte": 18518.52, "materiel": 37037.04,
+                 "solde": 6172.84, "pct_a": 30, "pct_m": 60, "pct_s": 10,
+                 "deux_cases": False, "solde2": 43209.88, "pct_s2": 70},
+        "avec": {"total": 98765.43, "acompte": 29629.63, "materiel": 59259.26,
+                 "solde": 9876.54, "pct_a": 30, "pct_m": 60, "pct_s": 10,
+                 "deux_cases": False, "solde2": 69135.8, "pct_s2": 70}}
+
+    def _html(self, scenario="Les deux (Sans + Avec)", **extra):
+        from apps.ventes.tests import _moteur_fixtures as F
+        return G.render_html_for(F.donnees_legacy(
+            scenario=scenario, devis_final=True, montants_tranches=self.MONTANTS, **extra))
+
+    def test_deux_options_deux_lignes(self):
+        html = self._html(phrases_pdf_2511=True)
+        self.assertIn("Sans batterie : 18", html)
+        self.assertIn("Avec batterie : 29", html)
+
+    def test_envoye_avant_et_une_option_inchanges(self):
+        self.assertNotIn("Sans batterie : 18", self._html())
+        # Une option : une seule ligne d'échéances, jamais celles de l'autre option.
+        self.assertNotIn("Sans batterie : 18", self._html("Avec batterie", phrases_pdf_2511=True))

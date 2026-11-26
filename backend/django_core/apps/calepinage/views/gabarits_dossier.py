@@ -32,7 +32,9 @@ from core.champs_stricts import BooleenStrict, ChaineStricte
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import GabaritDossierReglementaire
-from ..permissions import PeutGererCalepinage
+from ..permissions import (
+    PeutGererCalepinage, PeutVoirCalepinage, exiger_droit_reglages_societe,
+)
 from ..services.reglementaire import (
     GabaritRefuse, deposer_gabarit, gabarit_publie, modifier_gabarit,
     supprimer_gabarit,
@@ -193,6 +195,10 @@ class GabaritDossierViewSet(CompanyScopedModelViewSet):
     search_fields = ['intitule', 'code', 'pays']
 
     def get_permissions(self):
+        # D-ACAL-104 — LIRE les gabarits de la société : ``calepinage_voir`` ; les ÉCRIRE exige en plus
+        # ``calepinage_approuver`` (``exiger_droit_reglages_societe``, 403 nommé, au début de chaque écriture).
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return [PeutVoirCalepinage()]
         return [PeutGererCalepinage()]
 
     # Schéma brut (dict) : un sérialiseur serait enveloppé en tableau par
@@ -209,6 +215,7 @@ class GabaritDossierViewSet(CompanyScopedModelViewSet):
     @extend_schema(request=_REQUETE_GABARIT, responses={201: inline_serializer(
         'CalepinageGabaritDepose', {'gabarit': serializers.DictField()})})
     def create(self, request, *args, **kwargs):
+        exiger_droit_reglages_societe(request.user)
         mal_forme = _fichier_mal_forme(request)
         if mal_forme is not None:
             return mal_forme
@@ -223,6 +230,7 @@ class GabaritDossierViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(request=_REQUETE_GABARIT, responses={200: _FORME_GABARIT})
     def partial_update(self, request, *args, **kwargs):
+        exiger_droit_reglages_societe(request.user)
         gabarit = self.get_object()
         mal_forme = _fichier_mal_forme(request)
         if mal_forme is not None:
@@ -236,6 +244,7 @@ class GabaritDossierViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(request=None, responses={204: None})
     def destroy(self, request, *args, **kwargs):
+        exiger_droit_reglages_societe(request.user)
         try:
             supprimer_gabarit(self.get_object(), request.user)
         except GabaritRefuse as refus:

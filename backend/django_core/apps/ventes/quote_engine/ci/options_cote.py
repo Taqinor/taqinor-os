@@ -89,6 +89,38 @@ def _ligne_puissance(d, kwc, ancrer):
             + (ancre("puissance_kwc", texte) if ancrer else ""))
 
 
+def _production_avec(d):
+    """La production annuelle SERVIE de l'option avec batterie
+    (``etude_ci.option_avec.bilan.production_kwh``), ou None."""
+    etude = d.get("etude") if isinstance(d.get("etude"), dict) else {}
+    etude_ci = etude.get("etude_ci") if isinstance(etude.get("etude_ci"), dict) else {}
+    option = etude_ci.get("option_avec") if isinstance(etude_ci.get("option_avec"), dict) else {}
+    bilan = option.get("bilan") if isinstance(option.get("bilan"), dict) else {}
+    return nombre_ou_none(bilan.get("production_kwh"))
+
+
+def production_par_option(d, cle):
+    """T4-X6-002 (niveau de règles 15, nouveaux rendus) — les deux options ont
+    des TAILLES différentes et chacune a sa production servie : chaque carte
+    dit la sienne, et la couverture n'imprime plus une production unique
+    au-dessus des deux. Tailles égales, production manquante ou niveau 14 :
+    faux (la couverture d'hier)."""
+    if not (d.get("regles_pose_reelle") and deux_options(d, cle)):
+        return False
+    kwc_s = nombre_ou_none(d.get(f"{cle}_kwc"))
+    kwc_a = nombre_ou_none(d.get("puissance_kwc_avec"))
+    return bool(kwc_s and kwc_a and abs(kwc_s - kwc_a) > 0.005
+                and nombre_ou_none(d.get(f"{cle}_production")) is not None
+                and _production_avec(d) is not None)
+
+
+def _ligne_production(d, kwh, fmt, ancrer):
+    texte = fmt(round(kwh))
+    return (libelle(d, "ci_production_annuelle", "Production annuelle"),
+            texte + libelle(d, "ci_unite_kwh_an", "&nbsp;kWh/an")
+            + (ancre("production_annuelle_kwh", texte) if ancrer else ""))
+
+
 def _ligne_couverture(d, pct, ancrer):
     return (libelle(d, "ci_opt_couverture",
                     "Part de votre consommation couverte"),
@@ -103,6 +135,9 @@ def lignes_sans(d, cle, fmt, fmt_mad, invest_ttc):
     lignes = [_ligne_puissance(d, d.get(f"{cle}_kwc"), True),
               _ligne_prix(d, synthese, (d.get("totaux_all") or {}).get(
                   "ht_net"), invest_ttc, fmt_mad, True)]
+    if production_par_option(d, cle):  # T4-X6-002
+        lignes.insert(1, _ligne_production(
+            d, nombre_ou_none(d.get(f"{cle}_production")), fmt, True))
     if not d.get(f"{cle}_masquer_economies"):
         economie = d.get(f"{cle}_economies")
         if economie is not None:
@@ -130,6 +165,8 @@ def lignes_avec(d, cle, fmt, fmt_mad):
     lignes = [_ligne_puissance(d, d.get("puissance_kwc_avec"), False),
               _ligne_prix(d, synthese, nombre_ou_none(totaux.get("ht_net")),
                           nombre_ou_none(totaux.get("ttc")), fmt_mad, False)]
+    if production_par_option(d, cle):  # T4-X6-002
+        lignes.insert(1, _ligne_production(d, _production_avec(d), fmt, False))
     if not d.get(f"{cle}_masquer_economies"):
         # ``valeur_option_avec`` : l'économie annuelle HT de l'option (TTC en base « ttc »).
         economie = nombre_ou_none(valeur.get("economie_annuelle_mad"))

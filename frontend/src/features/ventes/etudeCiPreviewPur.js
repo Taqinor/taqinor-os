@@ -186,6 +186,27 @@ export function normaliserCorpsCi(etat) {
   }
 }
 
+/**
+ * T4-X6-008 — le corps de l'aperçu de l'ÉCRAN D'ÉDITION : le corps tapé plus les
+ * lignes PRODUIT du devis (forme `replace-lines`), pour que le serveur calcule le
+ * système que CES lignes vendent (contrat `etude_ci_preview.json`, `corps_regles.lignes`).
+ * `null` hors édition (aucun devis) ou sans ligne produit : l'aperçu du moteur suffit.
+ */
+export function corpsCiSurLesLignes(corps, lignes) {
+  if (!corps || !nombreOuNull(corps.devis)) return null
+  const produits = (Array.isArray(lignes) ? lignes : [])
+    .filter((l) => l && l.type_ligne === 'produit' && Number.isFinite(Number(l.produit)) && Number(l.produit) > 0)
+  return produits.length ? { ...corps, lignes: produits } : null
+}
+
+/**
+ * T4-X6-011 — la réponse que les cartes MONTRENT : celle de la saisie courante, sinon,
+ * pendant le calcul, la précédente (affichée sous « Calcul en cours… », jamais lue
+ * comme résultat). `null` après un échec.
+ */
+export const reponseAffichee = (apercu) => apercu?.donnees
+  ?? (apercu?.chargement ? apercu?.precedentes ?? null : null)
+
 const LIBELLES_ORIGINE = {
   saisie: 'saisi',
   lead: 'fiche lead',

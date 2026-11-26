@@ -40,7 +40,7 @@ function monterConstructeur(o = {}) {
   const racine = document.createElement('div')
   racine.id = 'faux-constructeur'
   racine.innerHTML = `
-    <input id="rp9-need-input" value="${c.besoin}" ${c.besoinDesactive ? 'disabled' : ''}>
+    <input id="rp9-need-input" value="${c.besoin}" ${c.besoinDesactive ? 'disabled' : ''} ${c.lePlus ? 'data-le-plus="1"' : ''}>
     <p id="rp9-need-note">${c.note}</p>
     <p id="rp9-reco-panels">${c.panneaux}</p><p id="rp9-reco-kwc">${c.kwc}</p>
     <p id="rp9-reco-prod">${c.prod}</p><p id="rp9-reco-cover">${c.cover}</p>
@@ -176,13 +176,17 @@ describe('étape Panneaux — panneau de droite', () => {
     document.getElementById('rp9-pan-module-select').value = 'produit-1'
     const catalogue = [{ ...CATALOGUE[0], module: { ...CATALOGUE[0].module, libelle: 'Module 710 Wc', pmaxWc: 710 } }]
     calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({ data: {
-      modules: catalogue, panneaux_selon_watt: { 710: 6, 715: 6 } } })
+      modules: catalogue, panneaux_selon_watt: { 710: 6, 715: 6 }, kwc_selon_watt: { 710: 4.26, 715: 4.29 } } })
     calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: {
       cible_factures: { panneaux: 8, kwc: 4.4, module_wc: 550 }, refus: '', calcul_en_cours: false } })
     rendre()
     const facture = screen.getByTestId('cal-panneaux-option-facture')
-    await waitFor(() => expect(facture).toHaveTextContent(
-      '4,40 kWc — 6 panneaux de 710 W (la conception du lead compte 8 panneaux de 550 W)'))
+    // T4-X8-011 — UN compte et UN kWc qui vont ensemble (6 × 710 W = 4,26 kWc, les deux SERVIS), puis la conception
+    // dite dans une seconde phrase complète — jamais « 4,40 kWc — 6 panneaux de 710 W ».
+    await waitFor(() => expect(facture.querySelector('.cal-pan-option-ligne')).toHaveTextContent('6 panneaux de 710 W · 4,26 kWc'))
+    expect(facture.querySelector('[data-zone="conception-du-lead"]'))
+      .toHaveTextContent('La conception du lead compte 8 panneaux de 550 W, 4,4 kWc.')
+    expect(facture).not.toHaveTextContent('4,40 kWc —')
     fireEvent.click(facture)
     expect(document.getElementById('rp9-need-input').value).toBe('6')
   })
@@ -196,8 +200,36 @@ describe('étape Panneaux — panneau de droite', () => {
       cible_factures: { panneaux: 8, kwc: 4.4, module_wc: 550 }, refus: '', calcul_en_cours: false } })
     rendre()
     const facture = screen.getByTestId('cal-panneaux-option-facture')
-    await waitFor(() => expect(facture).toHaveTextContent('4,40 kWc (la conception du lead compte 8 panneaux de 550 W)'))
+    await waitFor(() => expect(facture.querySelector('[data-zone="conception-du-lead"]'))
+      .toHaveTextContent('La conception du lead compte 8 panneaux de 550 W, 4,4 kWc.'))
+    expect(facture.querySelector('.cal-pan-option-ligne')).toBeNull() // aucun compte servi pour 710 W : aucun compte dit
     expect(facture).toBeDisabled()
+  })
+
+  it('T4-X8-011 — module choisi dont la fiche n’est pas (encore) lue : la puissance POSÉE par le constructeur compte, jamais « 7 panneaux » de 550 W sous un module de 710 W', async () => {
+    monterConstructeur({ besoin: '5', panneaux: '5 × 710 W', kwc: '3,55 kWc' })
+    document.getElementById('rp9-pan-module-select').value = 'produit-1'
+    // le catalogue servi ne porte pas (encore) la fiche du module choisi
+    calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({ data: {
+      modules: [], panneaux_selon_watt: { 710: 5 }, kwc_selon_watt: { 710: 3.55 } } })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: {
+      cible_factures: { panneaux: 7, kwc: 3.85, module_wc: 550 }, refus: '', calcul_en_cours: false } })
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture.querySelector('.cal-pan-option-ligne')).toHaveTextContent('5 panneaux de 710 W · 3,55 kWc'))
+    expect(facture.querySelector('[data-zone="conception-du-lead"]'))
+      .toHaveTextContent('La conception du lead compte 7 panneaux de 550 W, 3,85 kWc.')
+    expect(facture).not.toHaveTextContent('7 panneaux · 3,85 kWc')
+    expect(facture).toHaveAttribute('aria-pressed', 'true') // le besoin posé (5) EST la cible du module : carte choisie
+  })
+
+  it('T4-X8-011 — même module que la conception : une ligne, son compte et son kWc, aucune seconde phrase', async () => {
+    monterConstructeur()
+    document.getElementById('rp9-pan-module-select').value = 'produit-1'
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc · conception'))
+    expect(facture.querySelector('[data-zone="conception-du-lead"]')).toBeNull()
   })
 
   it('lane E9 — la conception recalculée depuis l’ouverture : la carte « Couvrir la facture » dit pourquoi, jamais en silence', async () => {
@@ -235,7 +267,7 @@ describe('étape Panneaux — panneau de droite', () => {
     // la pose actuelle = tout ce qui tient (55) : « Le plus de panneaux », son % nommé pour ce qu'il est
     const max = screen.getByTestId('cal-panneaux-option-max')
     expect(max).toHaveAttribute('aria-pressed', 'true')
-    expect(max).toHaveTextContent('55 panneaux · 39,60 kWc · ≈ 809 % : production ÷ consommation')
+    expect(max).toHaveTextContent('55 panneaux · 39,60 kWc · ≈ 809 % de la consommation')
     expect(document.body).not.toHaveTextContent('de la facture')
     fireEvent.click(facture)
     expect(document.getElementById('rp9-need-input').value).toBe('12')
@@ -246,7 +278,7 @@ describe('étape Panneaux — panneau de droite', () => {
     document.getElementById('rp9-reco-kwc').textContent = '8,64 kWc'
     document.getElementById('rp9-reco-prod').textContent = '9 589 kWh/an'
     document.getElementById('rp9-reco-cover').textContent = '144 %'
-    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc · conception · ≈ 144 % : production ÷ consommation'), { timeout: 3000 })
+    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc · conception · ≈ 144 % de la consommation'), { timeout: 3000 })
     expect(facture).toHaveAttribute('aria-pressed', 'true')
     expect(max).toHaveAttribute('aria-pressed', 'false')
     // l'autre carte garde les chiffres lus quand elle était posée
@@ -293,7 +325,7 @@ describe('étape Panneaux — panneau de droite', () => {
     rendre()
     const facture = screen.getByTestId('cal-panneaux-option-facture')
     const max = screen.getByTestId('cal-panneaux-option-max')
-    await waitFor(() => expect(facture).toHaveTextContent('≈ 63 % : production ÷ consommation'))
+    await waitFor(() => expect(facture).toHaveTextContent('≈ 63 % de la consommation'))
     expect(max).toHaveTextContent('20 panneaux · 14,20 kWc') // 20 × 710 W, lu de la pose, dès l'ouverture
     fireEvent.click(max)
     expect(document.getElementById('rp9-need-input').value).toBe('400')
@@ -306,7 +338,7 @@ describe('étape Panneaux — panneau de droite', () => {
     document.querySelector('[data-orient="landscape"]').setAttribute('aria-pressed', 'true')
     await waitFor(() => expect(document.querySelector('[data-zone="sens-bascule"]')).toHaveTextContent('passé de Portrait à Paysage'), { timeout: 3000 })
     expect(max).toHaveAttribute('aria-pressed', 'true')
-    expect(facture).toHaveTextContent('≈ 63 % : production ÷ consommation') // gardée, pas perdue au clic
+    expect(facture).toHaveTextContent('≈ 63 % de la consommation') // gardée, pas perdue au clic
     expect(facture).not.toHaveTextContent('105')
   })
 
@@ -384,6 +416,21 @@ describe('étape Panneaux — panneau de droite', () => {
     // Reste de G2 (orchestrateur) : la phrase de repli ne nomme pas « ce lead » quand il n'y en a pas.
     expect(document.body).not.toHaveTextContent('factures de ce lead')
     expect(document.body).toHaveTextContent('Ce calepinage n’a pas de lead : aucune taille n’est tirée d’une facture.')
+  })
+
+  it('T4-X8-012 — « le plus de panneaux » posé : le champ du constructeur dit le besoin de la facture (7 = la cible), la carte choisie reste « Le plus de panneaux »', async () => {
+    monterConstructeur({ besoin: '7', lePlus: true, panneaux: '9 × 580 W', kwc: '5,22 kWc',
+      note: 'Vous avez choisi le plus de panneaux possible : 9 posés. Le besoin de la facture : 7.' })
+    document.getElementById('rp9-pan-module-select').value = 'produit-1'
+    servir({ cible: { panneaux: 7, kwc: 4.06, module_wc: 580 } })
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture).toHaveTextContent('7 panneaux · 4,06 kWc'))
+    expect(facture).toHaveAttribute('aria-pressed', 'false')
+    const max = screen.getByTestId('cal-panneaux-option-max')
+    expect(max).toHaveAttribute('aria-pressed', 'true')
+    expect(max).toHaveTextContent('9 panneaux · 5,22 kWc')
+    expect(document.body).not.toHaveTextContent('400')
   })
 
   it('ni l’une ni l’autre : aucune carte choisie et « Pose actuelle : N panneaux · kWc »', async () => {
@@ -548,21 +595,52 @@ describe('étape Panneaux — panneau de droite', () => {
 })
 
 describe('étape Panneaux — sur la carte', () => {
-  it('ACAL1968 — la part estimée par le constructeur ne porte jamais le nom de la tuile « De la consommation » des Résultats', () => {
-    // Deux grandeurs (production ÷ consommation ici ; énergie autoconsommée ÷ consommation à l'étape Résultats) :
-    // jamais le même intitulé pour deux chiffres différents (règle du fondateur du 23/11 : un nom, un chiffre).
+  it('T4-X7-002 — la part servie (énergie autoconsommée ÷ consommation de la conception) porte le nom de la tuile des Résultats', () => {
+    // Le constructeur de l'ERP montre `chiffrage.couverture_pct` : la MÊME grandeur que « De la consommation » des Résultats.
+    // « Production ÷ consommation » la nommait mal (≈ 76 % pour une pose dont production ÷ consommation fait 94 %).
     monterConstructeur()
     rendre()
     const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
-    expect(puce).toHaveTextContent('Production ÷ consommation')
-    expect(puce).not.toHaveTextContent('De la consommation')
+    expect(puce).toHaveTextContent('De la consommation')
+    expect(puce).toHaveTextContent('≈ 82 %')
+    expect(puce).not.toHaveTextContent('Production ÷ consommation')
   })
+
+  it('T4-X7-002 — écart réel trouvé par la simulation (`autre_installation`) : aucune part de la conception', async () => {
+    servir({ resultat: { simule: false, autoconsommation: { taux_source: 'autre_installation', taux_couverture: 0.474 } } })
+    monterConstructeur()
+    rendre()
+    await waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalled())
+    await waitFor(() => expect(within(noeudCarte).getByTestId('cal-sur-carte-resume')).not.toHaveTextContent('De la consommation'))
+    const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+    expect(puce).not.toHaveTextContent('82 %')
+    expect(document.body).not.toHaveTextContent('82 % de la consommation')
+  })
+
+  // Revue du 25/11 — `'pose'` = aucun taux de conception au moment de la simulation (conception pas encore complète,
+  // pas de lead…) ; `'conception'` = ses taux ; aucune clé = résultat rangé d'avant : la part servie reste dite.
+  for (const [cas, autoconsommation] of [
+    ['aucun taux de conception (`pose`)', { taux_source: 'pose', taux_couverture: 0.474 }],
+    ['taux de la conception (`conception`)', { taux_source: 'conception', taux_couverture: 0.82 }],
+    ['résultat rangé sans la clé', { taux_couverture: 0.82 }],
+  ]) {
+    it(`T4-X7-002 — ${cas} : la part servie de la conception reste dite`, async () => {
+      servir({ resultat: { simule: false, autoconsommation } })
+      monterConstructeur()
+      rendre()
+      await waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalled())
+      await new Promise((r) => setTimeout(r, 50))
+      const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+      expect(puce).toHaveTextContent('De la consommation')
+      expect(puce).toHaveTextContent('≈ 82 %')
+    })
+  }
 
   it('puce : les quatre chiffres lus ; un chiffre absent est omis', () => {
     monterConstructeur()
     rendre()
     const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
-    for (const t of ['Panneaux', '12', 'Puissance', '6,96 kWc', 'Production · conception', '11 480 kWh / an', 'Production ÷ consommation', '≈ 82 %']) {
+    for (const t of ['Panneaux', '12', 'Puissance', '6,96 kWc', 'Production · conception', '11 480 kWh / an', 'De la consommation', '≈ 82 %']) {
       expect(puce).toHaveTextContent(t)
     }
     cleanup()
@@ -571,7 +649,7 @@ describe('étape Panneaux — sur la carte', () => {
     rendre()
     const reduite = within(noeudCarte).getByTestId('cal-sur-carte-resume')
     expect(reduite).not.toHaveTextContent('Production')
-    expect(reduite).not.toHaveTextContent('Production ÷ consommation')
+    expect(reduite).not.toHaveTextContent('De la consommation')
   })
 
   it('puce : production PUBLIÉE fraîche et complète → le libellé de l’étape Résultats, jamais « estimation »', async () => {
@@ -620,7 +698,7 @@ describe('étape Panneaux — sur la carte', () => {
     rendre()
     const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
     await waitFor(() => expect(puce).toHaveTextContent(
-      'Simulation à refaire : le toit a changé depuis le dernier calcul. Relancez-la à l’étape Les résultats.'))
+      'Simulation à refaire : le toit ou un réglage de votre société a changé depuis le dernier calcul. Relancez-la à l’étape Les résultats.'))
     expect(puce.textContent.split('Simulation à refaire').length).toBe(2)
     expect(puce).not.toHaveTextContent('6 926')
   })
@@ -777,6 +855,32 @@ describe('panneau de droite — grilles suivant la colonne, pas la fenêtre (ACA
       expect(el.className, 'grille liée à la largeur de la fenêtre').not.toMatch(POINT_DE_RUPTURE)
     }
   })
+})
+
+/* T4-X8-008 — Expert au téléphone tactile : « Placement libre » demande une carte visible (« Cliquez sur le toit… (Échap) ») ;
+   elle n'a que 63 px sous le tiroir. Le geste n'est pas offert, et UNE phrase dit où il se fait. Rien ne change ailleurs. */
+describe('T4-X8-008 — le placement libre n’est pas offert au téléphone tactile', () => {
+  afterEach(() => { delete window.matchMedia })
+  const doubler = (tactile, telephone) => {
+    window.matchMedia = (q) => ({
+      matches: (q === '(hover: none) and (pointer: coarse)' && tactile) || (q === '(max-width: 639px)' && telephone),
+      media: q, addEventListener() {}, removeEventListener() {},
+    })
+  }
+  for (const [nom, tactile, telephone, offert] of [
+    ['téléphone tactile', true, true, false], ['tablette tactile', true, false, true], ['petite fenêtre à la souris', false, true, true],
+  ]) {
+    it(`${nom} : placement libre ${offert ? 'offert' : 'non offert, la phrase le dit'}`, async () => {
+      doubler(tactile, telephone)
+      const { default: BuilderPose } = await import('../../BuilderPose.jsx')
+      const { container } = render(<MemoryRouter><BuilderPose expert /></MemoryRouter>)
+      expect(container.querySelector('#rp9-layout-mode-free').hidden).toBe(!offert)
+      expect(container.querySelector('#rp9-free-add').hidden).toBe(!offert)
+      const phrase = screen.queryByTestId('cal-placement-libre-ailleurs')
+      if (offert) expect(phrase).toBeNull()
+      else expect(phrase).toHaveTextContent(/^Le placement libre se fait sur une tablette ou au bureau\.$/)
+    })
+  }
 })
 
 describe('retraits du panneau de droite — règle CSS suivant la colonne (ACAL1519)', () => {
@@ -945,6 +1049,30 @@ describe('ACAL1829 — l’étape Panneaux à sa maquette v2', () => {
     expect(cs(document.querySelector('.cal-pan-badge')).borderRadius).toBe('11px')
   })
 
+  it('T4-X8-011 — la phrase de la conception se replie : ni troncature ni ligne unique sur une phrase qui porte un nombre', async () => {
+    monterConstructeur({ besoin: '12' })
+    document.getElementById('rp9-pan-module-select').value = 'produit-1'
+    const catalogue = [{ ...CATALOGUE[0], module: { ...CATALOGUE[0].module, pmaxWc: 710 } }]
+    calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({ data: {
+      modules: catalogue, panneaux_selon_watt: { 710: 6 }, kwc_selon_watt: { 710: 4.26 } } })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: {
+      cible_factures: { panneaux: 8, kwc: 4.4, module_wc: 550 }, refus: '', calcul_en_cours: false } })
+    rendre()
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    const phrase = await waitFor(() => {
+      const el = facture.querySelector('[data-zone="conception-du-lead"]')
+      expect(el).not.toBeNull()
+      return el
+    })
+    for (const el of [phrase, ...facture.querySelectorAll('.cal-pan-option-ligne > span')]) {
+      expect(el.className).not.toMatch(/truncate|ellipsis/)
+    }
+    expect(cs(phrase).whiteSpace).not.toBe('nowrap')
+    expect(cs(phrase).textOverflow).not.toBe('ellipsis')
+    expect(cs(phrase).overflow).not.toBe('hidden')
+    expect(phrase.closest('.cal-pan-option-ligne')).toBeNull() // jamais dans la ligne des chiffres (ses morceaux ne se coupent pas)
+  })
+
   it('sens de pose : pictogrammes portrait et paysage, « Au mieux » sans ; segments de 44 px sur piste v2', () => {
     monterConstructeur()
     rendre()
@@ -1043,5 +1171,53 @@ describe('en-tête de pose — suit la pose affichée tant que la scène n’est
     await waitFor(() => expect(result.current).toBeNull())
     rerender({ actif: false })
     expect(result.current).toBeNull()
+  })
+})
+
+/* T4-X7-012 (décision du 25/11 : « Add a button ») — en Guidé, retirer un panneau demandait de passer en Expert
+   (« Un de moins »). Le bouton renvoie au script le besoin = pose affichée − 1 (le script choisit le panneau) ; grisé
+   avec sa raison quand rien ne peut partir. */
+describe('étape Panneaux — « Retirer un panneau » (T4-X7-012)', () => {
+  it('renvoie au script la pose − 1', () => {
+    const { espion } = monterConstructeur({ besoin: '12', panneaux: '12 × 580 W', kwc: '6,96 kWc' })
+    const surInput = espion('#rp9-need-input', 'input')
+    rendre()
+    const bouton = screen.getByTestId('cal-panneaux-retirer-un')
+    expect(bouton).toHaveTextContent('Retirer un panneau')
+    expect(bouton).toBeEnabled()
+    fireEvent.click(bouton)
+    expect(surInput).toHaveBeenCalledTimes(1)
+    expect(document.getElementById('rp9-need-input').value).toBe('11')
+  })
+
+  it('« le plus de panneaux » : part de la pose (9), jamais du besoin de la facture affiché (12)', () => {
+    monterConstructeur({ besoin: '12', lePlus: true, panneaux: '9 × 710 W', kwc: '6,39 kWc',
+      note: 'Le plus de panneaux possible : 9 posés.' })
+    rendre()
+    fireEvent.click(screen.getByTestId('cal-panneaux-retirer-un'))
+    expect(document.getElementById('rp9-need-input').value).toBe('8')
+  })
+
+  it('grisé avec sa raison : lecture seule, aucun panneau, un seul panneau, aucune taille choisie', () => {
+    const cas = [
+      [{}, { lectureSeule: true }, 'Ce calepinage est en lecture seule : la pose ne se modifie pas ici.'],
+      [{ panneaux: '—', kwc: '—' }, {}, 'Aucun panneau posé à retirer.'],
+      [{ besoin: '1', panneaux: '1 × 580 W', kwc: '0,58 kWc' }, {}, 'Il reste un seul panneau sur ce pan : il ne se retire pas ici.'],
+      [{ besoin: '—', besoinDesactive: true }, {}, 'Choisissez d’abord une taille ci-dessus.'],
+    ]
+    for (const [constructeur, props, raison] of cas) {
+      const { espion } = monterConstructeur(constructeur)
+      const surInput = espion('#rp9-need-input', 'input')
+      rendre(props)
+      const bouton = screen.getByTestId('cal-panneaux-retirer-un')
+      expect(bouton).toBeDisabled()
+      expect(bouton).toHaveAttribute('title', raison)
+      expect(document.querySelector('[data-zone="retrait-impossible"]')).toHaveTextContent(raison)
+      fireEvent.click(bouton)
+      expect(surInput).not.toHaveBeenCalled()
+      cleanup()
+      document.getElementById('faux-constructeur')?.remove()
+      noeudCarte?.remove()
+    }
   })
 })

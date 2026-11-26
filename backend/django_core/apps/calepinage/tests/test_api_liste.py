@@ -64,9 +64,12 @@ class BaseApiCalepinage(TestCase):
         self.role_autre = Role.objects.create(
             company=self.autre, nom='Directeur',
             permissions=list(DIRECTEUR_PERMISSIONS))
+        # D-ACAL-106 — le Technicien LIT désormais un calepinage : le compte
+        # « sans » garde ses droits, moins tout code ``calepinage_*``.
         self.role_sans = Role.objects.create(
-            company=self.company, nom='Technicien',
-            permissions=list(TECHNICIEN_PERMISSIONS))
+            company=self.company, nom='Technicien sans calepinage',
+            permissions=[c for c in TECHNICIEN_PERMISSIONS
+                         if not c.startswith('calepinage_')])
         self.user = User.objects.create_user(
             username='cal_api', password='x', company=self.company,
             role=self.role)
@@ -178,6 +181,35 @@ class FiltresListeTest(BaseApiCalepinage):
     def test_sans_permission_de_lecture_403(self):
         reponse = self.api_sans.get(URL)
         self.assertEqual(reponse.status_code, 403)
+
+
+class ResponsablesPossiblesTest(BaseApiCalepinage):
+    """T4-X3-016 — le menu « Responsable » de Nouveau calepinage ne propose que
+    des gens qui peuvent OUVRIR un calepinage (même prédicat que le serveur :
+    ``calepinage_voir``, ``ScopedPermission``). Un compte sans ``calepinage_voir``
+    reçoit 403 sur tout le module : lui confier un calepinage n'a pas de sens."""
+
+    URL = '/api/django/crm/assignable-users/'
+
+    def _usernames(self, **params):
+        reponse = self.api.get(self.URL, params)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        return {u['username'] for u in reponse.data}
+
+    def test_filtre_par_permission_ecarte_qui_ne_peut_pas_ouvrir(self):
+        # Sans filtre : tout le monde (comportement du sélecteur de leads, inchangé).
+        self.assertIn('cal_api_tech', self._usernames())
+        proposes = self._usernames(permission=CAL_VOIR)
+        self.assertIn('cal_api', proposes)
+        self.assertNotIn('cal_api_tech', proposes)
+        self.assertNotIn('cal_api_voisin', proposes)
+        # Ouvre bien ce qu'on lui offre : la liste lui répond 200.
+        self.assertEqual(self.api_sans.get(URL).status_code, 403)
+
+    def test_permission_inconnue_refusee_en_la_nommant(self):
+        reponse = self.api.get(self.URL, {'permission': 'inventee'})
+        self.assertEqual(reponse.status_code, 400)
+        self.assertIn('permission', reponse.data)
 
 
 class CreationTest(BaseApiCalepinage):
