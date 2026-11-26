@@ -198,18 +198,16 @@ def _echec_inattendu(erreur):
 
 
 def _livraison_de_trop(job):
-    """ACAL1622 — compte la livraison du job (cache société, 24 h) ; vrai
-    au-delà de :data:`LIVRAISONS_MAX`. Un job encore « en file » est une
-    PREMIÈRE livraison (le compte repart de 1) ; le cache perdu recompte
-    depuis 1 : au pire un essai de plus, jamais un échec prononcé à tort."""
-    from core import cache as cache_tenant
+    """ACAL1622 — compte la livraison du job ; vrai au-delà de
+    :data:`LIVRAISONS_MAX`. ACAL1963 — le compte est DURABLE : une ligne
+    ``core.SequenceCounter`` par job (société + identifiant + date de
+    création), incrémentée sous verrou de ligne. Un cache vidé ne le remet
+    plus à 1 : la tâche redistribuée sans fin finit en échec dit."""
+    from core.models import SequenceCounter
 
-    cle = 'calepinage:livraisons:%s:%s' % (
-        job.pk, getattr(job, 'created_at', None) and job.created_at.timestamp())
-    rang = (1 if job.statut == job.STATUT_QUEUED
-            else int(cache_tenant.get(job.company_id, cle) or 0) + 1)
-    cache_tenant.set(job.company_id, cle, rang, timeout=DUREE_CACHE_S)
-    return rang > LIVRAISONS_MAX
+    cree = getattr(job, 'created_at', None)
+    cle = 'calepinage:livraisons:%s:%s' % (job.pk, int(cree.timestamp()) if cree else '')
+    return SequenceCounter.next(job.company, cle) > LIVRAISONS_MAX
 
 
 def _publier_echec(job, calepinage, champ, motif):

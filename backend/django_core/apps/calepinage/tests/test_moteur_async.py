@@ -109,6 +109,39 @@ class TacheDeFondTest(BaseApiCalepinage):
         self.assertEqual(
             BackgroundJob.objects.filter(kind='calepinage').count(), 1)
 
+    def test_cache_vide_echec_au_troisieme_passage(self):
+        # ACAL1963 — le compte des livraisons est porté par une ligne durable :
+        # le cache société vidé entre chaque livraison ne le remet pas à 1.
+        # Mutant : revenir au cache seul ⇒ quatre calculs, jamais l'échec.
+        from django.core.cache import cache
+
+        from apps.calepinage import tasks
+        from apps.calepinage.models import Calepinage
+
+        class _Tue(BaseException):
+            pass
+
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Tué 1963',
+            roof_layout={})
+        job = BackgroundJob.objects.create(
+            company=self.company, user=self.user, kind='calepinage')
+        issues = []
+        with mock.patch('apps.calepinage.services.simulation.simuler_calepinage',
+                        side_effect=_Tue) as calcul:
+            for _ in range(4):
+                cache.clear()
+                try:
+                    issues.append(tasks.simuler_calepinage(
+                        job_id=job.pk, company_id=self.company.pk,
+                        calepinage_id=calepinage.pk)['statut'])
+                except _Tue:
+                    issues.append('tue')
+        self.assertEqual(issues[:3], ['tue', 'tue', 'failed'])
+        self.assertEqual(calcul.call_count, 2)
+        job.refresh_from_db()
+        self.assertEqual(job.statut, BackgroundJob.STATUT_FAILED)
+
     def test_job_d_une_autre_societe_introuvable(self):
         job = BackgroundJob.objects.create(
             company=self.autre, user=self.user_autre, kind='calepinage')
