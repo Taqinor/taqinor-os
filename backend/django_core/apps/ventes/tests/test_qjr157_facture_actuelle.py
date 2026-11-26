@@ -265,6 +265,7 @@ class UneSeuleEconomieAvecBatterieTests(SimpleTestCase):
         self.assertTrue(economie_unique_ouverte(devis(statut='envoye', date_envoi=coupure)))
         self.assertFalse(economie_unique_ouverte(devis(statut='envoye', date_envoi=avant)))
         self.assertFalse(economie_unique_ouverte(devis('commercial', statut='brouillon', date_envoi=None)))
+        self.assertFalse(economie_unique_ouverte(devis('industriel', statut='brouillon', date_envoi=None)))
         self.assertTrue(economie_unique_ouverte(devis(regles_calcul=REGLES_POSE_REELLE_2111,
                                                       statut='envoye', date_envoi=avant)))
 

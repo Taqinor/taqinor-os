@@ -121,7 +121,7 @@ class ReglesCalculTests(SimpleTestCase):
             self.assertEqual(drapeaux_phrases_profil(ferme), {})
         from apps.ventes.quote_engine.builder import _avec_regles_pose_reelle
         self.assertEqual(_avec_regles_pose_reelle({}, False, devis(statut='brouillon', date_envoi=None)),
-                         {'phrases_profil_ouvertes': True})
+                         {'phrases_profil_ouvertes': True, 'phrases_pdf_2611': True})
         self.assertEqual(_avec_regles_pose_reelle({}, False, devis(statut='envoye', date_envoi=avant)), {})
         self.assertEqual(_avec_regles_pose_reelle({}, True, None),
                          {'regles_pose_reelle': True, 'phrases_pdf_2511': True,
@@ -150,7 +150,7 @@ class ReglesCalculTests(SimpleTestCase):
             self.assertEqual(drapeaux_pdf_2511(devis(mode, statut='brouillon', date_envoi=None)), {})
         self.assertFalse(phrases_pdf_2511_ouvertes(devis(statut='accepte', date_envoi=avant)))
         self.assertEqual(drapeaux_nouveaux_rendus(devis('industriel', statut='brouillon', date_envoi=None)),
-                         {'phrases_profil_ouvertes': True})
+                         {'phrases_profil_ouvertes': True, 'phrases_pdf_2611': True})
 
     def test_lot_8_une_coupure_un_drapeau_marches_dont_le_pdf_change(self):
         # Lot 8 (D-AMOT-9, fondateur 26/11/2026) — nouveaux rendus seulement.
@@ -165,12 +165,12 @@ class ReglesCalculTests(SimpleTestCase):
         def devis(mode='residentiel', **champs):
             return SimpleNamespace(**dict({'regles_calcul': 14, 'date_creation': avant,
                                            'mode_installation': mode}, **champs))
-        for mode in ('residentiel', ''):
+        for mode in ('residentiel', '', 'industriel'):
             for ouvert in (devis(mode, statut='brouillon', date_envoi=None),
                            devis(mode, statut='envoye', date_envoi=coupure)):
                 self.assertEqual(drapeaux_pdf_2611(ouvert), {'phrases_pdf_2611': True})
             self.assertEqual(drapeaux_pdf_2611(devis(mode, statut='envoye', date_envoi=avant)), {})
-        for mode in ('commercial', 'industriel', 'agricole'):
+        for mode in ('commercial', 'agricole'):
             self.assertEqual(drapeaux_pdf_2611(devis(mode, statut='brouillon', date_envoi=None)), {})
         self.assertIn('phrases_pdf_2611', drapeaux_nouveaux_rendus(devis(statut='brouillon', date_envoi=None)))
 
