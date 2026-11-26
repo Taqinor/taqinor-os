@@ -469,7 +469,9 @@ class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
                               date_acceptation=date.today(),
                               option='sans_batterie')
             journal = self._espion()
-            with self.materiel(), self.captureOnCommitCallbacks(execute=True):
+            # Sans rejouer les rappels du commit (abonnés de l'acceptation) :
+            # tout ce qui est vérifié ici se joue DANS la transaction du geste.
+            with self.materiel():
                 corps = appliquer_prix_negocie(v1, user=vendeur,
                                                remise_pct='2')
         v2 = Devis.objects.get(pk=corps['devis_v2']['id'])
