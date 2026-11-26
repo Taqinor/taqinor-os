@@ -58,3 +58,14 @@ export const deuxValeursDim = (modeInstallation, etudeHoraireDonnees) => {
   const dim = etudeHoraireDonnees?.dimensionnement
   return paireDimensionnement(dim?.recommandation, dim?.recommandation_avec)
 }
+
+/** T4-X6-016 / R5A-N3 — le moteur a-t-il SERVI une recommandation de taille (horaire résidentiel, avec ou sans batterie,
+    ou conseil C&I) ? Tant qu'elle est servie, le message « Le moteur n'a pas pu chiffrer de recommandation » d'un clic
+    antérieur sur « Recalculer » est périmé : il ne reste jamais à côté des lignes « Conseillé par le moteur ». */
+export function recommandationServie(etudeHoraireDonnees, apercuCi) {
+  const dim = etudeHoraireDonnees?.dimensionnement
+  return Number(dim?.recommandation?.panneaux) > 0
+    || Number(dim?.recommandation_avec?.panneaux) > 0
+    || Number(apercuCi?.conseil?.nb_panneaux) > 0
+    || Number(apercuCi?.donnees?.taille?.nb_panneaux) > 0
+}

@@ -279,3 +279,14 @@ test('le compte de panneaux est PROPRE à chaque option — sinon l’écran chi
   assert.equal(comptePanneauxOption(lignes, 'sans'), 14, 'commun + sans')
   assert.equal(comptePanneauxOption(lignes, 'avec'), 18, 'commun + avec')
 })
+
+// T4-X6-016 / R5A-N3 — la recommandation servie périme le message « n'a pas pu chiffrer » d'un clic antérieur.
+test('recommandationServie — vraie dès que le moteur sert une taille (sans, avec, ou conseil C&I), fausse sinon', async () => {
+  const { recommandationServie } = await import('../../features/ventes/quote/paireDimensionnement.js')
+  assert.equal(recommandationServie(null, null), false)
+  assert.equal(recommandationServie({ dimensionnement: { recommandation: { panneaux: 0 } } }, {}), false)
+  assert.equal(recommandationServie({ dimensionnement: { recommandation: { panneaux: 6 } } }, {}), true)
+  assert.equal(recommandationServie({ dimensionnement: { recommandation_avec: { panneaux: 8 } } }, {}), true)
+  assert.equal(recommandationServie(null, { conseil: { nb_panneaux: 12 } }), true)
+  assert.equal(recommandationServie(null, { donnees: { taille: { nb_panneaux: 12 } } }), true)
+})

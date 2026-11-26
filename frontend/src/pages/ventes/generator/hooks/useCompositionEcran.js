@@ -8,6 +8,7 @@ import { roleLabel, tauxTvaOf, tauxTvaOuDefaut, ttcExactFromHt } from '../../../
 import { lignesDepuisKit } from '../../../../features/ventes/quote/etudeMarcheBloc'
 import { tailleAutoRemplirPompage } from '../../../../features/ventes/quote/reouverture'
 import { reductionOptionAvec } from '../../../../features/ventes/quote/forfaitsPanneau'
+import { recommandationServie } from '../../../../features/ventes/quote/paireDimensionnement'
 import { refusAutoRemplirPompage } from '../../../../features/ventes/etudePompagePreviewPur'
 import { SCENARIO_AVEC, SCENARIO_LES_DEUX, tailleDemandeeParLead } from '../../../../features/ventes/quote/sizingReducer'
 import ventesApi from '../../../../api/ventesApi'
@@ -146,6 +147,14 @@ export function useCompositionEcran(ctx) {
     }))
     recomposerLignes(generated)
   }
+
+  // T4-X6-016 / R5A-N3 — un message « le moteur n'a pas pu chiffrer » ne survit pas à la réponse qui le contredit : dès que le
+  // moteur sert une recommandation, l'erreur d'un « Recalculer » antérieur tombe (jamais à côté des lignes « Conseillé »).
+  const recommandationLue = recommandationServie(etudeHoraireDonnees, apercuCi)
+  useEffect(() => {
+    if (!recommandationLue) return
+    queueMicrotask(() => setErrors(e => (e.recalcDim ? { ...e, recalcDim: null } : e)))
+  }, [recommandationLue, etudeHoraireDonnees, setErrors])
 
   const handleAutoFill = async () => {
     // PVOND — le bandeau des onduleurs grisés appartient au DERNIER
