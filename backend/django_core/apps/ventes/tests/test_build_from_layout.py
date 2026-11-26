@@ -418,6 +418,26 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
         self.assertIn('« Onduleur hybride Deye 5kW »', repli['message'])
         self.assertIn('ne pose aucune batterie', repli['message'])
 
+    def test_forme_entiere_cop2_v3_et_none_inchangees(self):
+        """La forme ENTIÈRE du devis automatique (COP2-V3) et l'absence d'imposition gardent leur
+        comportement : catégorie du scénario, quantité 1 ; la règle du catalogue sans imposition."""
+        from apps.ventes.domain.composition_residentielle import (
+            _imposition_resolue, _quantite_onduleur)
+
+        tarifes = {88: object()}
+        for avec, attendu in ((False, 'onduleur_reseau'), (True, 'onduleur_hybride')):
+            imposes = _imposition_resolue(tarifes, 88, None, deux_options=False, hors_reseau=False,
+                                          avec_batterie=avec)
+            self.assertEqual((imposes['categorie'], imposes['onduleur']), (attendu, tarifes[88]))
+        self.assertEqual(_quantite_onduleur(88, 5.0, 5.28, 6.6), 1)  # COP2-V3 : toujours 1
+        self.assertEqual(_quantite_onduleur(None, 5.0, 5.28, 6.6), 2)  # catalogue : ⌈6,6 ÷ 5⌉
+        self.assertEqual(_quantite_onduleur(None, 8.0, 5.28, 6.6), 1)
+        designe = {'produit_id': 88, 'categorie': 'onduleur_hybride', 'nombre': 3}
+        self.assertEqual(_quantite_onduleur(designe, 5.0, 5.28, 6.6), 3)
+        self.assertEqual(_quantite_onduleur(dict(designe, nombre=None), 5.0, 5.28, 6.6), 1)  # jamais ⌈kWc ÷ kW⌉
+        self.assertEqual(_imposition_resolue(tarifes, designe, None, deux_options=False, hors_reseau=False,
+                                             avec_batterie=False)['categorie'], 'onduleur_hybride')
+
     def test_famille_role_puis_fiche_puis_nom(self):
         from types import SimpleNamespace
 
