@@ -312,7 +312,10 @@ class ModuleDuDevisTests(_Base):
         from apps.ventes.domain.panneau_defaut import panneau_pour_etude
         devis = self._devis()
         auto = panneau_pour_etude(self.co, devis)
-        Produit.objects.filter(pk=self.panneau.pk).update(prix_vente=None)
+        # « Sans prix » pour le moteur C&I : ``prix_vente`` nul ou négatif
+        # (``etude_ci_module.module_ci_retenu`` / ``lire_catalogue_ci``) ; le
+        # champ est NOT NULL, ``0`` est donc l'état « sans prix » réel.
+        Produit.objects.filter(pk=self.panneau.pk).update(prix_vente=Decimal('0'))
         alertes = []
         catalogue = etude_ci.lire_catalogue_ci(self.co, panneau_defaut=auto, alertes=alertes)
         self.assertEqual(catalogue['module']['produit'], self.panneau_720.pk)
