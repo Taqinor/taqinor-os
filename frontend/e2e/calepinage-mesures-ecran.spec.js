@@ -14,6 +14,9 @@ import { uniq, API_DJANGO, lireJson, telephoneMobileUnique } from './helpers'
 const here = dirname(fileURLToPath(import.meta.url))
 const BASE = join(here, 'calepinage-mesures-ecran.baseline.json')
 const ECRIRE = process.env.CAL_MESURES_ECRIRE === '1'
+// ACAL1286/ACAL1293 — plafonds de la MAQUETTE (Main.dc.html, étape Toit en guidé) : constantes du plan, jamais lues de la base
+// (la base est un cliquet qui ne peut que descendre ; elle ne doit pas non plus rester au-dessus de la maquette).
+const PLAFOND_MAQUETTE = { controles: 33, tailles_texte: 6 }
 const CLES = ['controles_visibles', 'tailles_texte_distinctes', 'cibles_sous_44px', 'gestes_lead_production']
 
 // Atelier mesuré sur le FOND DE REPLI (ACAL377), comme acceptation/acal6.spec.js::carteRefusee :
@@ -312,6 +315,8 @@ test('ACAL385: mesures de l’atelier ≤ base committée', async ({ page }) => 
   for (const cle of CLES) {
     expect(actuel[cle], `${cle} : ${actuel[cle]} dépasse la base ${base[cle]}`).toBeLessThanOrEqual(base[cle])
   }
+  expect(actuel.controles_visibles, 'premier écran de l’étape Toit : plafond de la maquette').toBeLessThanOrEqual(PLAFOND_MAQUETTE.controles)
+  expect(actuel.tailles_texte_distinctes, 'tailles de texte du premier écran : plafond de la maquette').toBeLessThanOrEqual(PLAFOND_MAQUETTE.tailles_texte)
 })
 
 // ACAL989 — l'action suivante et le chiffre résultat restent dans la PREMIÈRE hauteur d'écran, à 1440×900
@@ -378,6 +383,15 @@ test('ACAL989+ACAL1189: la comparaison à la base échoue en nommant élément, 
   expect(ecartsParEtape({ resultats: { onglets: 3, controles_panneau: 20 } }, basePar)).toEqual([])
 })
 
+// ACAL1286/ACAL1293 — la base committée elle-même tient sous la maquette (sans pile : lit le JSON). Rouge tant que la base
+// relevée sur l'ancienne coque dit 34 / 36 contrôles ; l'orchestrateur la relève (`CAL_MESURES_ECRIRE=1`) sur la pile.
+test('ACAL1286+ACAL1293: la base de mesures tient sous la maquette (≤ 33 contrôles, ≤ 6 tailles de texte)', () => {
+  const base = lireBase()
+  expect(base.controles_visibles, 'base : contrôles visibles à l’arrivée').toBeLessThanOrEqual(PLAFOND_MAQUETTE.controles)
+  expect(base.mode_guide?.controles_premier_ecran, 'base : contrôles du premier écran guidé').toBeLessThanOrEqual(PLAFOND_MAQUETTE.controles)
+  expect(base.tailles_texte_distinctes, 'base : tailles de texte').toBeLessThanOrEqual(PLAFOND_MAQUETTE.tailles_texte)
+})
+
 // ACAL478 — budget de simplicité du MODE GUIDÉ (mode expert éteint, par défaut).
 // Seuls les « 5 étapes » viennent du squelette du complément ; tous les autres
 // seuils sont LUS dans `mode_guide` de la base (mesurés, jamais tapés ici).
@@ -441,6 +455,7 @@ test('ACAL478: budget du mode guidé', async ({ page }) => {
   expect(base, 'section mode_guide absente : lancer une fois avec CAL_MESURES_ECRIRE=1 puis committer le JSON').toBeTruthy()
   expect(controles, `contrôles du premier écran : ${controles} dépasse la base ${base.controles_premier_ecran}`)
     .toBeLessThanOrEqual(base.controles_premier_ecran)
+  expect(controles, 'contrôles du premier écran : plafond de la maquette').toBeLessThanOrEqual(PLAFOND_MAQUETTE.controles)
   expect(base.par_etape, 'mode_guide.par_etape absente : lancer une fois avec CAL_MESURES_ECRIRE=1 puis committer le JSON').toBeTruthy()
   expect(ecartsParEtape(parEtape, base.par_etape), 'étape(s) du mode guidé au-dessus de leur base').toEqual([])
 })
