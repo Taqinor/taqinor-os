@@ -899,6 +899,7 @@ export const ALL_HOOKS = [
   'cal-elec-onduleur-choix',
   'cal-elec-onduleur-message',
   'cal-elec-cable-provenance',
+  'cal-elec-cable-simulation',
   'cal-elec-batterie',
   'cal-elec-batterie-du-devis',
   'cal-elec-batterie-packs',

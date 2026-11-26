@@ -1043,6 +1043,7 @@ retiré plus un hook ajouté.
 | `cal-elec-onduleur-choix` | étape Électrique, barre de la carte : l’onduleur visé quand le document en porte plusieurs (ACAL1317). |
 | `cal-elec-onduleur-message` | étape Électrique, barre de la carte : ce que le geste sur l’onduleur a fait (tracé suivi, tracé enregistré décalé, refus — ACAL1317). |
 | `cal-elec-cable-provenance` | étape Électrique, pastille de carte : sous « Câble côté panneaux », la provenance du tracé (« tracé proposé le long des rangées (position de l’onduleur) » — ACAL1317). |
+| `cal-elec-cable-simulation` | étape Électrique, pastille de carte : sous « Câble côté panneaux », la longueur DC que la simulation compte (W1), ses parts et leur source (`longueurs.source_dc` de `GET resultat/` — liaison DC tracée, suite ACAL1317) ; absente tant qu’un geste sur l’onduleur n’est pas enregistré et relu. |
 | `cal-elec-batterie` | étape Électrique : sélecteur de batterie (seulement quand l’onduleur désigné est un hybride, D-ACAL-157). |
 | `cal-elec-batterie-du-devis` | étape Électrique : « le schéma montre la batterie du devis » quand aucune batterie n’est désignée ici. |
 | `cal-elec-batterie-packs` | étape Électrique : le nombre de batteries désignées (pas − / +). |
