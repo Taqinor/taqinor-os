@@ -327,6 +327,15 @@ def motif_lisible(motif):
 
 #: ACAL1323 — les motifs SERVIS à l'écran, où qu'ils soient dans le résultat.
 _CLES_MOTIF_SERVI = frozenset(('motif_omission', 'motif_absence'))
+#: ACAL1741 — les avertissements (liste de phrases) recopient des motifs
+#: (« Projection pluriannuelle non publiée. … Non renseigné(s) : « Fiche… »).
+_CLES_PHRASES_SERVIES = frozenset(('avertissements',))
+
+
+def _phrases_lisibles(phrases):
+    """La liste de phrases, chacune lisible ; la MÊME liste si rien ne change."""
+    lues = [motif_lisible(t) if isinstance(t, str) else t for t in phrases]
+    return phrases if lues == phrases else lues
 
 
 def _servis_lisibles(noeud, cles=_CLES_MOTIF_SERVI):
@@ -338,6 +347,9 @@ def _servis_lisibles(noeud, cles=_CLES_MOTIF_SERVI):
     if not isinstance(noeud, dict):
         return noeud
     lus = {c: (motif_lisible(v) if c in cles and isinstance(v, str) and v
+               else _phrases_lisibles(v)
+               if c in _CLES_PHRASES_SERVIES and isinstance(v, list)
+               and cles is _CLES_MOTIF_SERVI
                else _servis_lisibles(v, cles)) for c, v in noeud.items()}
     return lus if any(lus[c] != noeud[c] if isinstance(noeud[c], str)
                       else lus[c] is not noeud[c] for c in noeud) else noeud

@@ -34,11 +34,12 @@ export const NON_PUBLIEE = 'valeur non publiée'
 
 /** La phrase de l'entrée, trous remplis par les valeurs servies (absente ⇒ « valeur non publiée », jamais 0). */
 export function remplirPhrase(entree, source) {
-  return entree.phrase.replace(/\{([^{}]+)\}/g, (_, nom) => {
+  // ACAL1741 — l'unité qui suit un trou est dite AVEC la valeur : absente, elle part avec elle.
+  return entree.phrase.replace(/\{([^{}]+)\}( ?(?:kWh|kWc|kW|m³\/h|%))?/g, (_, nom, unite = '') => {
     const chemin = entree.valeurs?.[nom]
     const v = chemin ? lireChemin(source, chemin) : undefined
     if (v === null || v === undefined || v === '') return NON_PUBLIEE
-    return typeof v === 'number' ? formatNumber(v) : String(v)
+    return (typeof v === 'number' ? formatNumber(v) : String(v)) + unite
   })
 }
 
