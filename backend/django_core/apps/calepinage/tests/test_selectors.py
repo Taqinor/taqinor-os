@@ -164,25 +164,8 @@ class AffaireTest(BaseLecture):
 
 
 class SansAccesDuResponsableTest(SimpleTestCase):
-    """T4-X3-016 (lot 8) — la liste en lecture seule des calepinages dont le
-    responsable ne pourrait pas ouvrir la fiche : pure, sans base."""
-
-    def test_liste_les_seuls_refuses_et_juge_une_fois_par_couple(self):
-        tech = SimpleNamespace(pk=7)
-        chef = SimpleNamespace(pk=8)
-        appels = []
-
-        def peut_ouvrir(responsable, lead_id):
-            appels.append((responsable.pk, lead_id))
-            return responsable is chef or lead_id == 2
-
-        lignes = [(30, tech, 1), (10, tech, 1), (20, tech, 2),
-                  (40, chef, None), (50, None, 1), (60, tech, None)]
-        self.assertEqual(
-            selectors.ids_sans_acces_du_responsable(lignes, peut_ouvrir),
-            [10, 30, 60])
-        self.assertEqual(len(appels), 4)
-        self.assertEqual(set(appels), {(7, 1), (7, 2), (7, None), (8, None)})
+    """T4-X3-016 (lot 8) — ``responsable_sans_acces`` sans base : rien à
+    signaler sans responsable."""
 
     def test_sans_responsable_rien_a_signaler(self):
         self.assertFalse(selectors.responsable_sans_acces(

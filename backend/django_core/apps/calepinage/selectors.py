@@ -193,48 +193,6 @@ def responsable_sans_acces(calepinage):
         responsable, getattr(calepinage, 'lead_id', None))
 
 
-def ids_sans_acces_du_responsable(lignes, peut_ouvrir):
-    """T4-X3-016 — PURE : les identifiants (triés) des lignes
-    ``(id, responsable, lead_id)`` dont le responsable ne pourrait pas ouvrir
-    le calepinage, jugé par ``peut_ouvrir(responsable, lead_id)``. Une ligne
-    sans responsable n'est jamais listée ; le jugement est fait UNE fois par
-    couple (responsable, lead)."""
-    juges = {}
-    ids = []
-    for pk, responsable, lead_id in lignes:
-        if responsable is None:
-            continue
-        cle = (responsable.pk, lead_id)
-        if cle not in juges:
-            juges[cle] = bool(peut_ouvrir(responsable, lead_id))
-        if not juges[cle]:
-            ids.append(pk)
-    return sorted(ids)
-
-
-def calepinages_dont_le_responsable_ne_peut_ouvrir(company):
-    """T4-X3-016 — LISTE EN LECTURE SEULE, pour qu'un administrateur
-    réassigne : les identifiants des calepinages de ``company`` (archives
-    comprises) dont le responsable ne pourrait pas les ouvrir. Aucune donnée
-    client, aucune écriture. Depuis le serveur (jamais lancé par Claude) ::
-
-        python manage.py shell -c "from authentication.models import Company; \\
-        from apps.calepinage.selectors import \\
-        calepinages_dont_le_responsable_ne_peut_ouvrir as f; \\
-        [print(c.pk, f(c)) for c in Company.objects.all()]"
-    """
-    from .models import Calepinage
-
-    if company is None:
-        return []
-    lignes = (Calepinage.objects.filter(company=company,
-                                        responsable__isnull=False)
-              .select_related('responsable', 'responsable__role'))
-    return ids_sans_acces_du_responsable(
-        ((c.pk, c.responsable, c.lead_id) for c in lignes),
-        peut_ouvrir_une_fois_responsable)
-
-
 def _de_ses_visites(user):
     """D-ACAL-106 — le calepinage du lead d'une visite ASSIGNÉE à ``user`` :
     le technicien qui monte sur le toit le lit et y fait le relevé."""

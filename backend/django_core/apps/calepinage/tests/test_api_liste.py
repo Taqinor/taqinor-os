@@ -342,10 +342,7 @@ class ResponsableQuiOuvreTest(BaseApiCalepinage):
     def test_donnee_d_avant_lot_8_confiee_sans_visite_404_et_signalee(self):
         # Lot 8 (T4-X3-016) — la RÈGLE ne bouge pas (D-ACAL-106/126, choix 17) :
         # un calepinage déjà confié à un technicien sans visite sur le lead lui
-        # reste introuvable ; la fiche et la liste de l'administrateur le disent.
-        from apps.calepinage.selectors import (
-            calepinages_dont_le_responsable_ne_peut_ouvrir as lister)
-
+        # reste introuvable ; la fiche de l'administrateur le dit.
         confie = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='Villa',
             responsable=self.tech)
@@ -355,30 +352,26 @@ class ResponsableQuiOuvreTest(BaseApiCalepinage):
             api_tech.get(URL))})
         self.assertIs(self.api.get(url_detail(confie.pk)).data[
             'responsable_sans_acces'], True)
-        self.assertEqual(lister(self.company), [confie.pk])
         # Une visite sur le lead : il l'ouvre, plus rien n'est signalé.
         self._visite(self.tech)
         self.assertEqual(api_tech.get(url_detail(confie.pk)).status_code, 200)
         self.assertIs(self.api.get(url_detail(confie.pk)).data[
             'responsable_sans_acces'], False)
-        self.assertEqual(lister(self.company), [])
 
-    def test_lister_ignore_les_responsables_qui_ouvrent_et_les_autres_societes(self):
-        from apps.calepinage.selectors import (
-            calepinages_dont_le_responsable_ne_peut_ouvrir as lister)
-
-        Calepinage.objects.create(company=self.company, lead_id=self.lead.pk,
-                                  titre='Sans responsable')
-        Calepinage.objects.create(company=self.company, lead_id=self.lead_2.pk,
-                                  titre='Directeur', responsable=self.user)
+    def test_detail_signale_le_seul_responsable_qui_ne_peut_pas_ouvrir(self):
+        sans = Calepinage.objects.create(company=self.company, lead_id=self.lead.pk,
+                                         titre='Sans responsable')
+        directeur = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead_2.pk, titre='Directeur',
+            responsable=self.user)
         sans_lead = Calepinage.objects.create(
             company=self.company, client=self.client_a, titre='Client seul',
             responsable=self.tech)
-        self.assertEqual(lister(self.company), [sans_lead.pk])
-        self.assertEqual(lister(self.autre), [])
-        self.assertEqual(lister(None), [])
-        detail = self.api.get(url_detail(sans_lead.pk)).data
-        self.assertIs(detail['responsable_sans_acces'], True)
+        for calepinage, attendu in ((sans, False), (directeur, False),
+                                    (sans_lead, True)):
+            detail = self.api.get(url_detail(calepinage.pk)).data
+            self.assertIs(detail['responsable_sans_acces'], attendu,
+                          calepinage.titre)
 
 
 class CreationTest(BaseApiCalepinage):

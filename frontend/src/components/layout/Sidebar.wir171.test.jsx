@@ -136,9 +136,21 @@ describe('T4-X8-016 — le menu CRM suit la règle de ses routes', () => {
 
   it('Technicien : plus aucune entrée dont l’écran exige crm_voir', () => {
     const { container } = renderSidebar({ path: '/calendrier', role: 'normal', permissions: TECHNICIEN })
+    // Défis, Parrainage et Profils site restent : leur garde serveur (`LectureDuModule`, n'importe quel code
+    // crm) n'est pas exprimable par `estAutoriseEntree`, et le menu n'est jamais plus strict que le serveur.
     expect(menuCrm(container)).toEqual([
-      '/calendrier', '/crm', '/crm/forecast', '/carte', '/crm/visiteurs', '/crm/attribution', '/crm/cockpit-equipe',
+      '/calendrier', '/crm', '/crm/forecast', '/carte', '/crm/parrainage', '/crm/profils-site', '/crm/defis',
+      '/crm/visiteurs', '/crm/attribution', '/crm/cockpit-equipe',
     ])
+  })
+
+  it('rôle PERSONNALISÉ « crm_creer » sans crm_voir : Défis, Parrainage et Profils site, jamais Leads', () => {
+    const { container } = renderSidebar({ path: '/calendrier', role: 'normal', permissions: ['crm_creer'] })
+    const menu = menuCrm(container)
+    for (const lu of ['/crm/defis', '/crm/parrainage', '/crm/profils-site']) expect(menu).toContain(lu)
+    for (const refuse of ['/crm/leads', '/crm/cockpit', '/crm/concurrents-perte', '/crm/relances']) {
+      expect(menu).not.toContain(refuse)
+    }
   })
 
   it('compte LÉGACY de palier normal (aucune permission servie) : menu CRM inchangé', () => {
@@ -151,5 +163,7 @@ describe('T4-X8-016 — le menu CRM suit la règle de ses routes', () => {
     expect(tech.find((a) => a.key === 'crm')?.to).toBe('/calendrier')
     const commercial = buildInstalledApps(moduleConfigs, { role: 'normal', permissions: COMMERCIAL_REEL })
     expect(commercial.find((a) => a.key === 'crm')?.to).toBe('/crm/leads')
+    const personnalise = buildInstalledApps(moduleConfigs, { role: 'normal', permissions: ['crm_creer'] })
+    expect(personnalise.find((a) => a.key === 'crm')?.to).toBe('/calendrier')
   })
 })
