@@ -457,6 +457,9 @@ export interface SerializeMeta {
    * dans le document sérialisé, `panelWatt` et `result.kwc` inchangés.
    */
   modules?: AffectationModules | null;
+  /** Numérotation stable (suite ACAL1720) — `true` pour la SEULE sérialisation qui est enregistrée : elle engage
+   *  les numéros des modules. Absente (sondage, capture, lecture) : numéros provisoires, rien n'est engagé. */
+  engagerNumeros?: boolean;
 }
 
 // ═══════════ PV71 — MATRICE D'OMBRAGE 12 × 24 (sérialisation) ═══════════
@@ -1151,7 +1154,8 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   // ACAL307 — les pans PAVÉS dans la session (pose différente de celle du document relu,
   // ou pan sans pose relue) sont numérotés d'office ; un pan dont la pose est celle du
   // document n'est jamais renuméroté par un simple enregistrement.
-  numeroterDocument(layout, undefined, undefined, { pansPaves: pansPavesDansLaSession(layout, ctx) });
+  // Suite ACAL1720 — seule la sérialisation ENREGISTRÉE engage des numéros (`meta.engagerNumeros`).
+  numeroterDocument(layout, undefined, undefined, { pansPaves: pansPavesDansLaSession(layout, ctx), engager: meta?.engagerNumeros === true });
   // CALX110 — le catalogue `modules[]` + le `moduleId` de chaque pan (contrat CALX82) :
   // le kWc de chaque pan est recalculé depuis SON module, le total du site en devient la
   // somme, et `panelWatt` racine reste servi (watt du module MAJORITAIRE). Sans catalogue

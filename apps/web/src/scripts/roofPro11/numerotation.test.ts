@@ -22,6 +22,7 @@ import {
   numeroterDocument,
   ordreAttribution,
   rangeesDeModules,
+  registreAtelier,
   reinitialiserNumerotation,
   saisieCourante,
   type ConventionNumerotation,
@@ -373,27 +374,27 @@ import { hydrateFromDevis, serializeLayout } from './prefill';
 import { type Ctx } from './context';
 import { type AreaRecord } from './types';
 
-describe('ACAL307 — numérotation d’office', () => {
-  const VERTS: [number, number][] = [[-7.6, 33.59], [-7.599, 33.59], [-7.599, 33.591], [-7.6, 33.591]];
-  function plan(cellules: ModulePose[]) {
-    return {
-      pack: { origin: [-7.6, 33.59] as [number, number], azimuthDeg: SUD },
-      grid: { panels: cellules, kwc: cellules.length * 0.72 },
-      tiltDeg: 10, family: 'south', flush: false, count: cellules.length,
-    } as unknown as AreaRecord['renderPlan'];
-  }
-  function ctxPave(cellules: ModulePose[], documentRelu?: Record<string, unknown>): Ctx {
-    const zone = {
-      id: 'z1', label: 'Pan', vertices: VERTS, obstacles: [], roofType: 'flat', pitchDeg: 10, facingAzimuthDeg: 180,
-      facingManual: false, neededPanels: cellules.length, neededAuto: false, result: null, renderPlan: plan(cellules),
-    } as unknown as AreaRecord;
-    return {
-      areas: [zone], activeAreaId: 'z2', vertices: [], obstacles: [], roofType: 'flat', pitchDeg: 10,
-      facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true, layoutPlan: null,
-      layoutOptimalCount: 0, ...(documentRelu ? { documentRelu } : {}),
-    } as unknown as Ctx;
-  }
+const VERTS: [number, number][] = [[-7.6, 33.59], [-7.599, 33.59], [-7.599, 33.591], [-7.6, 33.591]];
+function plan(cellules: ModulePose[]) {
+  return {
+    pack: { origin: [-7.6, 33.59] as [number, number], azimuthDeg: SUD },
+    grid: { panels: cellules, kwc: cellules.length * 0.72 },
+    tiltDeg: 10, family: 'south', flush: false, count: cellules.length,
+  } as unknown as AreaRecord['renderPlan'];
+}
+function ctxPave(cellules: ModulePose[], documentRelu?: Record<string, unknown>): Ctx {
+  const zone = {
+    id: 'z1', label: 'Pan', vertices: VERTS, obstacles: [], roofType: 'flat', pitchDeg: 10, facingAzimuthDeg: 180,
+    facingManual: false, neededPanels: cellules.length, neededAuto: false, result: null, renderPlan: plan(cellules),
+  } as unknown as AreaRecord;
+  return {
+    areas: [zone], activeAreaId: 'z2', vertices: [], obstacles: [], roofType: 'flat', pitchDeg: 10,
+    facingAzimuthDeg: 180, facingManual: false, neededPanels: 0, neededAuto: true, layoutPlan: null,
+    layoutOptimalCount: 0, ...(documentRelu ? { documentRelu } : {}),
+  } as unknown as Ctx;
+}
 
+describe('ACAL307 — numérotation d’office', () => {
   it('pavage d’un pan neuf : numéros attribués sans geste', () => {
     const doc = serializeLayout(ctxPave(QUATRE));
     const g = doc.zones[0].geometry!;
@@ -424,5 +425,68 @@ describe('ACAL307 — numérotation d’office', () => {
     delete sansNumeros.zones[0].geometry.numerotation;
     const sortie = serializeLayout(ctxPave(QUATRE, sansNumeros));
     expect((sortie.zones[0].geometry!.panels as ModuleNumerote[]).some((m) => m.n !== undefined)).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Numérotation stable (suite ACAL1720) — un numéro n'est attribué QUE par un enregistrement. Le sondage
+// « modifié ? » de la page (1,5 s), la capture du pan quitté et l'accès solaire sérialisent sans cesse : chaque
+// pose intermédiaire d'un glissement d'inclinaison dépensait 40 numéros (des calepinages réels portaient
+// n = 2236…2275 pour 40 modules). Chemin réel : `serializeLayout` (+ `engagerNumeros` pour l'enregistrement).
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('Numérotation stable — seul l’enregistrement engage des numéros', () => {
+  /** 40 modules (10 × 4), décalés de `dx` mètres le long des rangées. */
+  const grille = (dx = 0): ModulePose[] => Array.from({ length: 40 }, (_, i) => ({ cx: (i % 10) * 1.2 + dx, cy: Math.floor(i / 10) * 2.1 }));
+  const numeros = (doc: ReturnType<typeof serializeLayout>) => (doc.zones[0].geometry!.panels as ModuleNumerote[]).map((m) => m.n);
+  const plage = (debut: number, compte = 40) => Array.from({ length: compte }, (_, i) => debut + i);
+  /** Le document stocké (n = 1…40), relu au boot comme le fait la page. */
+  function rouvrir(): Record<string, unknown> {
+    const stocke = JSON.parse(JSON.stringify(serializeLayout(ctxPave(grille()), null, { engagerNumeros: true })));
+    reinitialiserNumerotation();
+    hydrateFromDevis({ id: 1, geometrie: { roof_layout: stocke }, cibleVendue: false });
+    return stocke;
+  }
+
+  it('défaut (1) — sondages à 0, 0, 5, 10, 15 cm puis 0 : aucun numéro dépensé, plafond engagé inchangé', () => {
+    const relu = rouvrir();
+    const vus = [0, 0, 0.05, 0.1, 0.15, 0].map((dx) => numeros(serializeLayout(ctxPave(grille(dx), relu))));
+    expect(vus).toEqual([plage(1), plage(1), plage(41), plage(41), plage(41), plage(1)]);
+    expect(registreAtelier.historique('z1').plafond).toBe(40);
+  });
+
+  it('rien ne bouge : deux sondages successifs rendent le MÊME document (l’empreinte ne bat pas)', () => {
+    const relu = rouvrir();
+    const a = serializeLayout(ctxPave(grille(0.05), relu));
+    const b = serializeLayout(ctxPave(grille(0.05), relu));
+    expect(JSON.stringify(b)).toBe(JSON.stringify(a));
+  });
+
+  it('l’enregistrement engage ce que l’écran montrait ; le sondage suivant rend le document enregistré', () => {
+    const relu = rouvrir();
+    const montre = serializeLayout(ctxPave(grille(0.1), relu));
+    const enregistre = serializeLayout(ctxPave(grille(0.1), relu), null, { engagerNumeros: true });
+    expect(numeros(enregistre)).toEqual(numeros(montre));
+    expect(registreAtelier.historique('z1').plafond).toBe(80);
+    expect(JSON.stringify(serializeLayout(ctxPave(grille(0.1), relu)))).toBe(JSON.stringify(enregistre));
+    // Engagés, 41…80 ne sont plus jamais redonnés : une autre pose neuve part au-delà.
+    expect(numeros(serializeLayout(ctxPave(grille(0.05), relu)))).toEqual(plage(81));
+    expect(numeros(serializeLayout(ctxPave(grille(0.1), relu)))).toEqual(plage(41));
+    expect(numeros(serializeLayout(ctxPave(grille(), relu)))).toEqual(plage(1));
+  });
+
+  it('CALX111 tenu AVANT tout enregistrement : retirer un module neuf ne renumérote pas ses voisins', () => {
+    expect(numeros(serializeLayout(ctxPave(QUATRE)))).toEqual([1, 2, 3, 4]);
+    expect(numeros(serializeLayout(ctxPave([QUATRE[0], QUATRE[1], QUATRE[3]])))).toEqual([1, 2, 4]);
+    expect(numeros(serializeLayout(ctxPave([QUATRE[0], QUATRE[1], QUATRE[3], { cx: 2.4, cy: 0 }])))).toEqual([1, 2, 4, 5]);
+    expect(numeros(serializeLayout(ctxPave(QUATRE)))).toEqual([1, 2, 3, 4]);
+    expect(registreAtelier.historique('z1').plafond).toBe(0); // rien d'engagé : aucun enregistrement
+  });
+
+  it('les étiquettes montrent les numéros provisoires, sans les engager', () => {
+    const relu = rouvrir();
+    serializeLayout(ctxPave(grille(0.05), relu));
+    expect(registreAtelier.modules('z1').map((m) => m.n)).toEqual(plage(41));
+    expect(registreAtelier.numerosAffiches('z1').get(cleEmplacement(0.05, 0))).toBe(41);
+    expect(registreAtelier.historique('z1').numeros.has(cleEmplacement(0.05, 0))).toBe(false);
   });
 });
