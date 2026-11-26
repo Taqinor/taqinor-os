@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, act, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within, act, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
@@ -118,6 +118,8 @@ describe('ToitureDesign — mode devis (PV20)', () => {
   it('ACAL1268 — lead de pompage : l’atelier ne montre ni économies ni production du réseau, renvoie au devis agricole', async () => {
     const reponse = reponseContrat('calepinage', 'calepinage_design_context')
     reponse.data.chiffrage.marche = 'agricole'
+    reponse.data.cible = { ...reponse.data.cible, panneaux: 7, kwc: 4.97, source: 'devis', refus: null,
+      devis_agricole: { id: 77, reference: 'DEV-AGR-7' } }
     servirConceptionDevis(reponse)
     rendreDevis(DEVIS_ID)
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
@@ -133,8 +135,12 @@ describe('ToitureDesign — mode devis (PV20)', () => {
     expect(document.getElementById('rp9-reco-cover').parentElement).toHaveAttribute('hidden')
     expect(document.getElementById('rp9-cible-kwh')).toHaveAttribute('hidden')
     expect(document.getElementById('rp9-areas-total-savings').parentElement).toHaveAttribute('hidden')
-    // La cible du devis agricole (servie par le serveur, source « devis ») borne la pose : le mécanisme d'un devis vendu.
-    expect(initRoofToolPro8.mock.calls[0][0].hydrate.devis.cibleVendue).toBe(true)
+    // La cible du devis agricole (servie par le serveur : 7 panneaux, source « devis ») est CELLE que reçoit l'atelier :
+    // le mécanisme d'un devis vendu, avec le nombre servi — pas la cible de l'exemple.
+    const devis = initRoofToolPro8.mock.calls[0][0].hydrate.devis
+    expect(devis.cible.panneaux).toBe(7)
+    expect([devis.cibleVendue, devis.origineCible]).toEqual([true, 'devis'])
+    expect(within(carte).getByRole('link', { name: 'Ouvrir le devis agricole DEV-AGR-7' })).toHaveAttribute('href', '/ventes/devis?devis=77')
   })
 
   it('ACAL1268 — un autre marché : les mêmes blocs, sans `hidden`, aucun renvoi', async () => {

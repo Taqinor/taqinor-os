@@ -857,10 +857,10 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
 
   it('ACAL1268 — lead de pompage : ni onduleur, ni batterie, ni schéma réseau ; un renvoi au devis agricole. Autre marché : inchangé', async () => {
     servirEtape()
-    const contexte = (marche) => ({ calepinage: { lead: 5 }, chiffrage: { marche } })
-    rendreEtape({ contexte: contexte('agricole') })
+    const contexte = (marche, devis = null) => ({ calepinage: { lead: 5 }, chiffrage: { marche }, cible: { devis_agricole: devis } })
+    rendreEtape({ contexte: contexte('agricole', { id: 42, reference: 'DEV-AGR-42' }) })
     const ecran = screen.getByTestId('cal-etape-electrique-ecran')
-    expect(within(ecran).getByRole('link', { name: 'Ouvrir le devis agricole' })).toHaveAttribute('href', '/ventes/devis/nouveau?lead=5')
+    expect(within(ecran).getByRole('link', { name: 'Ouvrir le devis agricole DEV-AGR-42' })).toHaveAttribute('href', '/ventes/devis?devis=42')
     expect(ecran).toHaveTextContent('ni onduleur ni batterie')
     for (const absent of ['cal-elec-onduleur', 'cal-elec-schema-voir', 'cal-electrique-avances']) {
       expect(screen.queryByTestId(absent)).toBeNull()

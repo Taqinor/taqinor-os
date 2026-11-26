@@ -1164,8 +1164,15 @@ describe('ACAL1268 (D-ACAL-66 = outil_pose) — l’étape Résultats d’un lea
     expect(screen.queryByTestId('cal-resultats-pertes')).toBeNull()
     const carte = document.querySelector('[data-zone="pompage-outil-pose"]')
     expect(carte).toHaveTextContent('sans économies ni énergie du réseau')
-    expect(within(carte).getByRole('link', { name: 'Ouvrir le devis agricole' }))
+    // Sans devis agricole servi : la création, dite comme telle.
+    expect(within(carte).getByRole('link', { name: 'Créer le devis agricole' }))
       .toHaveAttribute('href', `/ventes/devis/nouveau?lead=${contexte.calepinage.lead}`)
+    cleanup()
+    servir(COMPLET())
+    rendre({ contexte: { ...contexte, cible: { ...contexte.cible, devis_agricole: { id: 42, reference: 'DEV-AGR-42' } } } })
+    // Avec le devis agricole servi : le lien ouvre CE devis, jamais un formulaire vierge.
+    expect(await screen.findByRole('link', { name: 'Ouvrir le devis agricole DEV-AGR-42' }))
+      .toHaveAttribute('href', '/ventes/devis?devis=42')
     expect(document.body.textContent).not.toMatch(/kWh par an|autoconsommation/i)
   })
 
