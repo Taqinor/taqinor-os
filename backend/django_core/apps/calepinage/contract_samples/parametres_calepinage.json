@@ -203,9 +203,6 @@
           "libelles": {
             "tmy": "Année type (TMY)",
             "pluriannuel": "Plusieurs années réelles"
-          },
-          "valeurs_non_servies": {
-            "tmy": "Année type : n'aboutit pas sans fichier — la météo PVGIS d'année type est à plat et n'est pas ramenée au plan des modules ; choisissez « pluriannuel », ou déposez un fichier météo d'année type sur le calepinage (onglet Séries)."
           }
         },
         {
@@ -1015,9 +1012,6 @@
           "libelles": {
             "tmy": "Année type (TMY)",
             "pluriannuel": "Plusieurs années réelles"
-          },
-          "valeurs_non_servies": {
-            "tmy": "Année type : n'aboutit pas sans fichier — la météo PVGIS d'année type est à plat et n'est pas ramenée au plan des modules ; choisissez « pluriannuel », ou déposez un fichier météo d'année type sur le calepinage (onglet Séries)."
           }
         },
         {

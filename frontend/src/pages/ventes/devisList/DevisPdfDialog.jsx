@@ -44,7 +44,9 @@ export default function DevisPdfDialog({
   useEffect(() => {
     if (!ouvert) return undefined // T4-U1-009 / T4-X7-020 : lu dès l'ouverture, pour que l'intitulé ne promette pas un RIB absent
     let vivant = true
-    Promise.resolve(parametresApi.getProfile())
+    // Lecture d'appoint (intitulé « + RIB ») : un échec se tait ici (`.catch`) ET dans l'intercepteur — jamais un toast
+    // « Connexion perdue » à l'ouverture de la fenêtre PDF.
+    Promise.resolve(parametresApi.getProfile({ suppressErrorToast: true }))
       .then((r) => { if (vivant) setProfil(r?.data ?? null) })
       .catch(() => {})
     return () => { vivant = false }

@@ -437,7 +437,10 @@ class PlagesTest(unittest.TestCase):
             self.assertTrue(bande['citation'].strip(), bande['etape'])
         lid = next(b for b in bandes if b['etape'] == 'lid')
         self.assertIn('typically ranges from 1% to 3%', lid['citation'])
-        cascade = {'etapes': [{'etape': 'lid', 'perte_pct': 2.0, 'motif_omission': '',
+        # La valeur jugée est tirée de la bande elle-même (milieu, puis moitié du
+        # minimum) : aucune perte chiffrée en dur (garde CAL238).
+        milieu = (lid['min'] + lid['max']) / 2
+        cascade = {'etapes': [{'etape': 'lid', 'perte_pct': milieu, 'motif_omission': '',
                                'gain': False, 'entree': {'ligne_retenue': 'perc'}}],
                    'total_pct': None}
         plages = evaluer(cascade)
@@ -449,7 +452,7 @@ class PlagesTest(unittest.TestCase):
         # un module de type n (TOPCon) à 0,5 % n'est PAS « inhabituel ».
         for ligne in ('topcon', 'hjt', 'inconnue', None):
             with self.subTest(ligne=ligne):
-                type_n = {'etapes': [dict(cascade['etapes'][0], perte_pct=0.5,
+                type_n = {'etapes': [dict(cascade['etapes'][0], perte_pct=lid['min'] / 2,
                                           entree={'ligne_retenue': ligne})], 'total_pct': None}
                 self.assertNotIn('lid', evaluer(type_n)['etapes'])
         sans_citation = {'bandes': [dict(lid, citation='')]}

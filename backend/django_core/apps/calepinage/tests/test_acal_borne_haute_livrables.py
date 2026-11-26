@@ -88,7 +88,18 @@ def _ligne(html, libelle):
 
 
 def _non_publie(total, cle):
-    return 'non publié — %s' % total['%s_motif' % cle]
+    """La phrase « non publié — <motif> » construite par LA fonction que les
+    quatre documents emploient (``rapport.production.texte_non_publie`` :
+    rapport, synthèse, note de calcul, présentation compacte) — ACAL1928 :
+    le motif y est en mots (« LID (première exposition)… »), jamais les codes
+    de poste ; jamais un littéral retapé ici."""
+    from apps.calepinage.services.rapport.production import texte_non_publie
+
+    texte = texte_non_publie(total, cle)
+    assert texte is not None, cle
+    # Le motif servi porte bien les codes bruts ; l'imprimé ne les porte plus.
+    assert 'mismatch_fabricant' in total['%s_motif' % cle] and 'mismatch_fabricant' not in texte
+    return texte
 
 
 class BorneHauteLivrablesTest(SimpleTestCase):

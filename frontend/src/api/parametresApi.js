@@ -1,7 +1,9 @@
 import api from './axios'
 
 const parametresApi = {
-  getProfile: () => api.get('/parametres/'),
+  // `config` facultatif (ex. `suppressErrorToast` pour une lecture d'appoint qui se tait en cas d'échec) ; sans lui,
+  // l'appel est exactement celui d'avant (`api.get(url)`).
+  getProfile: (config) => (config ? api.get('/parametres/', config) : api.get('/parametres/')),
   updateProfile: (data) => api.patch('/parametres/update/', data),
   uploadLogo: (formData) => api.post('/parametres/upload-logo/', formData),
   deleteLogo: () => api.delete('/parametres/delete-logo/'),
