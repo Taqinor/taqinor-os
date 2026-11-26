@@ -20,8 +20,9 @@ import { CONDITION_ETUDE } from '../../../features/ventes/previewPdf.js'
    (GET /parametres/, toute personne connectée) — les mêmes que `CHAMPS_IDENTITE`. */
 const IDENTITE_SOCIETE = ['nom', 'adresse', 'email', 'telephone', 'ice', 'rc', 'identifiant_fiscal', 'patente']
 const rempli = (v) => typeof v === 'string' && v.trim() !== ''
+const profilLu = (profil) => !!profil && typeof profil === 'object' && !Array.isArray(profil)
 function ribSocieteManquant(profil) {
-  if (!profil || typeof profil !== 'object' || Array.isArray(profil)) return false
+  if (!profilLu(profil)) return false
   return !rempli(profil.rib) && !rempli(profil.banque) && IDENTITE_SOCIETE.some((k) => rempli(profil[k]))
 }
 
@@ -53,8 +54,9 @@ export default function DevisPdfDialog({
   }, [ouvert])
   const ribAbsent = !targetIsCi && !targetIsAgricole && ribSocieteManquant(profil)
   const ribManquant = devisFinal && ribAbsent
-  // T4-U1-009 / T4-X7-020 — l'intitulé ne promet « + RIB » que si le profil de la société en a un.
-  const plusRib = ribAbsent ? '' : ' + RIB'
+  // T4-U1-009 / T4-X7-020 — l'intitulé ne promet « + RIB » que si le profil LU de la société en a un : ni avant la
+  // lecture (fenêtre tout juste ouverte), ni quand elle a échoué.
+  const plusRib = profilLu(profil) && !ribSocieteManquant(profil) ? ' + RIB' : ''
   return (
     <ResponsiveDialog
       open={ouvert}
