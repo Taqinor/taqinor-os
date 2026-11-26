@@ -406,11 +406,9 @@ def panneaux_et_watt_lu(lignes) -> tuple:
     return nb_panneaux, watt
 
 
-def kwc_lu_des_panneaux(lignes):
-    """AGNR69 — kWc = Σ quantité × watt lu de CHAQUE ligne panneau (fiche,
-    puis désignation / nom), la règle de ``solar.js::kwcPanneauxOption`` ; une
-    ligne au watt illisible prend le watt de la 1re ligne lisible. ``None``
-    sans panneau ou sans aucun watt lu (M3 : aucun watt inventé)."""
+def paires_panneaux_lues(lignes):
+    """``[(quantité entière, watt lu | None)]`` de CHAQUE ligne panneau (fiche, puis désignation / nom) :
+    la lecture que :func:`kwc_lu_des_panneaux` somme, exposée pour comparer des entiers exacts."""
     paires = []
     for li in lignes:
         designation = getattr(li, "designation", "") or ""
@@ -419,6 +417,15 @@ def kwc_lu_des_panneaux(lignes):
         if _is_panel(designation, produit_nom):
             paires.append((int(round(float(getattr(li, "quantite", 0) or 0))),
                            _fiche_watt(produit) or _parse_watt(designation, produit_nom)))
+    return paires
+
+
+def kwc_lu_des_panneaux(lignes):
+    """AGNR69 — kWc = Σ quantité × watt lu de CHAQUE ligne panneau (fiche,
+    puis désignation / nom), la règle de ``solar.js::kwcPanneauxOption`` ; une
+    ligne au watt illisible prend le watt de la 1re ligne lisible. ``None``
+    sans panneau ou sans aucun watt lu (M3 : aucun watt inventé)."""
+    paires = paires_panneaux_lues(lignes)
     premier = next((w for _n, w in paires if w), None)
     if not premier or not sum(n for n, _w in paires):
         return None
