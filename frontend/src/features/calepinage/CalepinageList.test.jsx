@@ -489,7 +489,7 @@ describe('CalepinageList — maquette Liste', () => {
   })
 
   it('le titre de la carte est le client (puis la ville), le nom propre passe en petit ; sans rattachement il reste le titre', async () => {
-    const lie = { ...SANS_IMAGE, id: 331, nom: 'ACAL987 Toiture x7', client_apercu: { id: 4, nom: 'Villa Bennani', ville: 'Casablanca' } }
+    const lie = { ...SANS_IMAGE, id: 331, nom: 'ACAL987 Toiture x7', client_apercu: { id: 4, nom: 'Villa Bennani' }, lead: { id: 5, nom: 'Villa Bennani', ville: 'Casablanca', supprime: false } }
     const libre = { ...SANS_IMAGE, id: 332, nom: 'Toiture libre', client_apercu: null, lead: null }
     mocks.list.mockResolvedValue({ data: { count: 2, next: null, previous: null, results: [lie, libre] } })
     rendre()
@@ -573,7 +573,7 @@ describe('CalepinageList.helpers — modifieDe / initiales', () => {
 
 describe('CalepinageList.helpers — identiteCarte / apercuVide', () => {
   it('identiteCarte : client, sinon lead, sinon nom propre', () => {
-    expect(identiteCarte({ nom: 'N', client_apercu: { nom: 'C', ville: 'Fès' } }))
+    expect(identiteCarte({ nom: 'N', client_apercu: { nom: 'C' }, lead: { nom: 'L', ville: 'Fès' } }))
       .toEqual({ titre: 'C', ville: 'Fès', propre: 'N' })
     expect(identiteCarte({ nom: 'N', lead: { nom: 'L', ville: 'Rabat' } }))
       .toEqual({ titre: 'L', ville: 'Rabat', propre: 'N' })

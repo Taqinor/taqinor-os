@@ -64,8 +64,8 @@ export function initiales(nom) {
   return mots.slice(0, 2).map((m) => m[0]).join('').toUpperCase()
 }
 
-/** La ville de la carte : celle du client rattaché, à défaut celle du lead. */
-export const villeDe = (ligne) => ligne?.client_apercu?.ville || ligne?.lead?.ville || null
+/** La ville de la carte : celle du lead (ACAL1750 — `client_apercu` n'a plus de ville, le client n'en a pas). */
+export const villeDe = (ligne) => ligne?.lead?.ville || null
 
 /** Ce que la carte dit du projet, comme une personne le lit (maquette « Liste » :
     « Villa Bennani » puis « Casablanca ») : le NOM du client rattaché (à défaut celui du
