@@ -1509,7 +1509,7 @@ export default function DevisGenerator({
     setAutoFillLoading, setCompositionErreur, profilCi, horsReseau, kwp, selectedLead,
     etudeHoraireDonnees, etudeHoraireChargement, marcheCi, ctxProfilCi, apercuCi, resolveKwcAvec,
     recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard: quoteLogic.tvaStandard, sizing, lines,
-    panneauDefaut,
+    panneauDefaut, leadAttendu: editId ? null : (embedded ? leadIdProp : searchParams.get('lead')),
   })
 
   const selectedClient = clientsConnus.find(c => String(c.id) === String(clientId))

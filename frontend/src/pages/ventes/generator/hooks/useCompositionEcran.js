@@ -51,7 +51,7 @@ export function useCompositionEcran(ctx) {
     setAutoFillLoading, setCompositionErreur, profilCi, horsReseau, kwp, selectedLead,
     etudeHoraireDonnees, etudeHoraireChargement, marcheCi, ctxProfilCi, apercuCi, resolveKwcAvec,
     recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard, sizing, lines,
-    panneauDefaut = null,
+    panneauDefaut = null, leadAttendu = null,
   } = ctx
 
   // U3COMPOSE — l'optimum AXE BATTERIE envoyé au dry-run serveur : même
@@ -201,6 +201,12 @@ export function useCompositionEcran(ctx) {
       const taille = tailleAutoRemplirPompage(apercuPompage?.donnees?.champ, generated, produits)
       if (taille) dispatchSizing({ type: 'REOUVERTURE', devis: taille })
       setPompageAutoFilled(true)
+      return
+    }
+    // ACAL1212 — `?lead=` attendu mais pas encore appliqué : le marché affiché est celui d'AVANT le lead
+    // (résidentiel par défaut) ; jamais une branche résidentielle ni son message. On relit `selectedLead`, jamais un doublon.
+    if (leadAttendu && !selectedLead) {
+      setErrors(e => ({ ...e, autofill: 'Lead en cours de chargement — réessayez dans un instant.' }))
       return
     }
     // U3COMPOSE (26/08/2026) — RÉSIDENTIEL SEULEMENT : le dry-run serveur

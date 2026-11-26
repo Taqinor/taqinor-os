@@ -126,6 +126,21 @@ describe('ACAL1206 — le refus faute de taille nomme les deux gestes possibles'
   })
 })
 
+describe('ACAL1212 — ?lead= : aucun Auto-remplir résidentiel avant l\'application du lead', () => {
+  it('lead attendu mais pas encore appliqué ⇒ aucune composition, aucun message résidentiel ; lead appliqué ⇒ la branche normale reprend', async () => {
+    const { etat, composerDevis, etudeCiPreview, ctx, monte } = await bancAutoFill()
+    const { result, rerender } = monte(ctx({ kwp: 0, leadAttendu: '119' }))
+    await act(async () => { await result.current.handleAutoFill() })
+    expect(composerDevis).not.toHaveBeenCalled()
+    expect(etudeCiPreview).not.toHaveBeenCalled()
+    expect(String(etat.erreurs.autofill)).toMatch(/lead.*en cours de chargement/i)
+    expect(String(etat.erreurs.autofill)).not.toMatch(/nombre de panneaux/)
+    await act(async () => { rerender(ctx({ kwp: 0, leadAttendu: '119', selectedLead: { id: 119 } })) })
+    await act(async () => { await result.current.handleAutoFill() })
+    expect(String(etat.erreurs.autofill)).not.toMatch(/en cours de chargement/)
+  })
+})
+
 describe('ACAL1205 —Auto-remplir attend l\'étude horaire (taille « avec batterie »)', () => {
   it('clic pendant le chargement de l\'étude ⇒ rien composé + « en cours » ; après l\'étude ⇒ la composition porte la taille avec batterie', async () => {
     const { etat, composerDevis, ctx, monte } = await bancAutoFill()
