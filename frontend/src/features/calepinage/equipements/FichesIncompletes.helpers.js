@@ -80,3 +80,80 @@ const IMPACT = {
 export function impactChamp(famille, champ) {
   return IMPACT[famille]?.[champ] ?? null
 }
+
+/* ACAL1740 — LE NOM FRANÇAIS D'UN CHAMP DE FICHE, avec son unité. Une clé
+   brute (`noct_c`, `vmp_v`) n'est jamais lue à l'écran. Une table commune,
+   plus un jeu par famille pour les clés dont le sens change (`rendement_pct`).
+   Une clé inconnue reste lisible : underscores retirés, majuscule initiale. */
+const LIBELLES_COMMUNS = {
+  longueur_mm: 'Longueur (mm)',
+  largeur_mm: 'Largeur (mm)',
+  epaisseur_mm: 'Épaisseur (mm)',
+  poids_kg: 'Poids (kg)',
+  pmax_wc: 'Puissance maximale Pmax (Wc)',
+  voc_v: 'Tension à vide Voc (V)',
+  vmp_v: 'Tension au point de puissance Vmp (V)',
+  isc_a: 'Courant de court-circuit Isc (A)',
+  imp_a: 'Courant au point de puissance Imp (A)',
+  temp_coeff_voc_pct_c: 'Coefficient de température de Voc (%/°C)',
+  temp_coeff_pmax_pct_c: 'Coefficient de température de Pmax (%/°C)',
+  noct_c: 'Température nominale de la cellule (°C)',
+  uc_w_m2k: 'Coefficient thermique constant Uc (W/m²K)',
+  uv_w_m3sk: 'Coefficient thermique au vent Uv (W·s/m³K)',
+  techno_cellule: 'Technologie de cellule',
+  bifacial: 'Module bifacial',
+  bifacialite_pct: 'Bifacialité (%)',
+  degradation_annuelle_pct: 'Dégradation annuelle (%)',
+  degradation_annee1_pct: 'Dégradation de la première année (%)',
+  garantie_pct_a_10_ans: 'Production garantie à 10 ans (%)',
+  garantie_pct_a_25_ans: 'Production garantie à 25 ans (%)',
+  rendement_par_irradiance: 'Rendement selon l’éclairement',
+  tolerance_pmax_min_pct: 'Tolérance de Pmax minimale (%)',
+  tolerance_pmax_max_pct: 'Tolérance de Pmax maximale (%)',
+  n_mppt: 'Nombre de MPPT',
+  mppt_v_min: 'Tension MPPT minimale (V)',
+  mppt_v_max: 'Tension MPPT maximale (V)',
+  v_max_abs: 'Tension maximale absolue (V)',
+  v_demarrage_v: 'Tension de démarrage (V)',
+  i_max_mppt_a: 'Courant maximal par MPPT (A)',
+  isc_max_mppt_a: 'Courant de court-circuit maximal par MPPT (A)',
+  entrees_par_mppt: 'Entrées par MPPT',
+  chaines_max_par_mppt: 'Chaînes maximales par MPPT',
+  ac_kw: 'Puissance AC (kW)',
+  dc_max_kwc: 'Puissance DC admissible (kWc)',
+  s_max_kva: 'Puissance apparente maximale (kVA)',
+  phases: 'Nombre de phases',
+  rendement_euro_pct: 'Rendement européen (%)',
+  bat_max_charge_kw: 'Puissance de charge de la batterie (kW)',
+  bat_max_decharge_kw: 'Puissance de décharge de la batterie (kW)',
+  rendement_par_charge: 'Rendement selon la charge',
+  rendement_max_pct: 'Rendement maximal (%)',
+  rendement_cec_pct: 'Rendement CEC (%)',
+  conso_nuit_w: 'Consommation de nuit (W)',
+  kwh_nominal: 'Capacité nominale (kWh)',
+  dod_pct: 'Profondeur de décharge (%)',
+  kwh_utile: 'Énergie utile (kWh)',
+  v_nominal: 'Tension nominale (V)',
+  p_charge_kw: 'Puissance de charge (kW)',
+  p_decharge_kw: 'Puissance de décharge (kW)',
+  cycles: 'Nombre de cycles',
+  p_max_wc: 'Puissance maximale (Wc)',
+  v_entree_max: 'Tension d’entrée maximale (V)',
+  v_sortie_max: 'Tension de sortie maximale (V)',
+  i_entree_max_a: 'Courant d’entrée maximal (A)',
+  rendement_pct: 'Rendement (%)',
+}
+const LIBELLES_PAR_FAMILLE = {
+  panneau: { rendement_pct: 'Rendement du module (%)' },
+  batterie: { rendement_pct: 'Rendement de la batterie (%)' },
+  optimiseur: { rendement_pct: 'Rendement de l’optimiseur (%)' },
+}
+
+/** Le nom français (avec unité) d'un champ de fiche. */
+export function libelleChamp(champ, famille) {
+  const brut = String(champ ?? '')
+  const lu = LIBELLES_PAR_FAMILLE[famille]?.[brut] ?? LIBELLES_COMMUNS[brut]
+  if (lu) return lu
+  const sans = brut.replace(/_/g, ' ').trim()
+  return sans ? sans.charAt(0).toUpperCase() + sans.slice(1) : brut
+}
