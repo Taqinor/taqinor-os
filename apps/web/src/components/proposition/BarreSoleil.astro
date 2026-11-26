@@ -57,9 +57,9 @@ const avecLegende = soleil.zones.length > 0;
         aria-label={T.heure.fr} data-aria-label-fr={T.heure.fr} data-aria-label-en={T.heure.en} data-aria-label-ar={T.heure.ar} />
     </div>
     <div class="soleil-saisons" role="group" aria-label={T.saison.fr} data-aria-label-fr={T.saison.fr} data-aria-label-en={T.saison.en} data-aria-label-ar={T.saison.ar}>
-      <button type="button" data-soleil-saison="hiver" disabled aria-pressed={String(jour === JOUR_HIVER)}
+      <button type="button" data-soleil-saison="hiver" disabled aria-pressed={jour === JOUR_HIVER ? 'true' : 'false'}
         data-i18n data-fr={T.hiver.fr} data-en={T.hiver.en} data-ar={T.hiver.ar}>{T.hiver.fr}</button>
-      <button type="button" data-soleil-saison="ete" disabled aria-pressed={String(jour === JOUR_ETE)}
+      <button type="button" data-soleil-saison="ete" disabled aria-pressed={jour === JOUR_ETE ? 'true' : 'false'}
         data-i18n data-fr={T.ete.fr} data-en={T.ete.en} data-ar={T.ete.ar}>{T.ete.fr}</button>
     </div>
   </div>
