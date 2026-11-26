@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, cleanup, waitFor, within, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
+import { formatNumber } from '../../lib/format'
 
 /* ============================================================================
    CAL37 — MODE `calepinage` de l'atelier 3D : le MÊME builder, un troisième
@@ -1183,14 +1184,19 @@ describe('ACAL546 — « Comparer les poses » monté en mode calepinage, sans m
 })
 
 describe('REP-995 — le bandeau de provenance reçoit le chiffrage servi par design-context', () => {
-  it('chiffrage servi (standard_ville) ⇒ la ligne « Le devis annonce » s’affiche, sans second appel design-context', async () => {
+  // T4-X9-004 (rejeu R5B) — `resultat/` ne sert ici ni la taille de la pose (`pose.kwc`) ni le bloc `conception` : rien ne
+  // dit que le chiffre est celui d'un devis portant cette pose ; le chiffrage servi est celui de la CONCEPTION du lead.
+  it('chiffrage servi (standard_ville), taille de pose non servie ⇒ la ligne nomme la conception et sa taille, sans second appel design-context', async () => {
     const chiffrage = exempleContrat('ventes', 'chiffrage_conception', 'exemple_ville')
     calepinageApi.calepinages.designContext.mockResolvedValue({
       data: { ...CTX, chiffrage },
     })
     rendreCalepinage(CTX.calepinage.id)
     const ligne = await screen.findByTestId('acal995-devis-annonce')
-    expect(ligne).toHaveTextContent('Le devis annonce')
+    expect(ligne.textContent.replace(/\s/g, ' ')).toBe(
+      `Conception du lead (71,00 kWc) : ${formatNumber(chiffrage.production_annuelle_kwh.valeur, { decimals: 0 })} kWh/an — `
+        .replace(/\s/g, ' ') + 'production standard de la ville')
+    expect(ligne).not.toHaveTextContent('Le devis annonce')
     expect(calepinageApi.calepinages.designContext).toHaveBeenCalledTimes(1)
   })
 
