@@ -309,10 +309,16 @@ class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
         from .test_acal_multi_pans import _ClientParOrientation, _layout, _zone
         from .test_calx5_simulation import MATERIEL
 
-        reseau = mock.patch('urllib.request.urlopen',
-                            side_effect=OSError('R6-N1 hors réseau'))
-        reseau.start()
-        self.addCleanup(reseau.stop)
+        # Les deux lecteurs réseau des études rejoués, comme ACAL144
+        # (``ventes.tests.test_acal_ombrage_etude_devis``).
+        from apps.ventes.tests.test_acal_ombrage_etude_devis import (
+            _fake_productible, _fake_tmy)
+        for cible, faux in (
+                ('apps.ventes.weather_feed.fetch_irradiance_tmy', _fake_tmy),
+                ('apps.parametres.pvgis.fetch_productible', _fake_productible)):
+            patch = mock.patch(cible, side_effect=faux)
+            patch.start()
+            self.addCleanup(patch.stop)
         self.materiel = patch_materiel
         self.v1 = Devis.objects.create(
             company=self.company, reference=f'DEV-{MOIS}-0931',
