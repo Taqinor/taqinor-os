@@ -17,7 +17,8 @@ import ConfigurationsOnduleur from './ConfigurationsOnduleur'
 import DevisRetenu from './DevisRetenu'
 import { refusParChamp } from './entreeElectrique'
 import { ROLES, libelleChampManquant } from './MaterielElectrique.helpers'
-import { casesPastille, chainesServies, libelleChaine } from './resumeRaccordement'
+import { CASE_CABLE, casesPastille, chainesServies, libelleChaine } from './resumeRaccordement'
+import { useOnduleurSurCarte } from './onduleurSurCarte'
 
 /* ============================================================================
    ACAL1299 / ACAL1300 — L'ÉTAPE « ÉLECTRIQUE » DE LA COQUE (maquette `Electrique.dc.html`).
@@ -166,8 +167,17 @@ function CarteOnduleur({ id, entree, configs, resultat, lectureSeule, onApplique
 
 /** Sur la carte : la pastille du haut, la légende des chaînes (seulement si le constructeur les
     colore), la barre d'actions du bas. */
-function CalquesCarte({ id, resultat, couleursDessinees, lectureSeule, nonEnregistre = false, onRaccorde, onModifier }) {
-  const cases = casesPastille(resultat)
+function CalquesCarte({
+  id, resultat, couleursDessinees, lectureSeule, nonEnregistre = false, onRaccorde, onModifier, builderApi = null,
+  enregistreLe = null, nombreOnduleurs = 1, resultatAJour = true,
+}) {
+  // ACAL1317 — l'onduleur posé sur la carte (document), ses gestes et la provenance du tracé de son câble.
+  const onduleur = useOnduleurSurCarte({
+    builderApi, enregistreLe, nombreAttendu: nombreOnduleurs, lectureSeule, simulationExiste: resultat?.simule === true,
+  })
+  // Après un geste sur l'onduleur, la longueur servie est celle de l'ANCIEN tracé tant que l'atelier n'est pas
+  // enregistré ET relu : elle n'est pas montrée (« à mesurer à l'enregistrement »), jamais un ancien chiffre.
+  const cases = casesPastille(resultat, { cableEnAttente: onduleur.aGeste && (onduleur.aEnregistrer || !resultatAJour) })
   const chaines = couleursDessinees ? chainesServies(resultat).filter((c) => c.couleur) : []
   const manuelles = (resultat?.electrique?.affectation ?? []).some((l) => l?.source === 'affectation manuelle')
   return (
@@ -178,6 +188,9 @@ function CalquesCarte({ id, resultat, couleursDessinees, lectureSeule, nonEnregi
             <div key={c.libelle} className="cel-pastille-case">
               {i > 0 && <span className="cel-pastille-filet" aria-hidden="true" />}
               <Indicateur libelle={c.libelle} valeur={c.valeur} />
+              {c.libelle === CASE_CABLE && onduleur.provenance && (
+                <span className="cal-indicateur-libelle" data-testid="cal-elec-cable-provenance">{onduleur.provenance}</span>
+              )}
             </div>
           ))}
         </CarteFlottante>
@@ -194,7 +207,7 @@ function CalquesCarte({ id, resultat, couleursDessinees, lectureSeule, nonEnregi
         </CarteFlottante>
       )}
       <BarreRaccordement calepinageId={id} manuelles={manuelles} nonEnregistre={nonEnregistre} lectureSeule={lectureSeule}
-        onRaccorde={onRaccorde} onModifier={onModifier} />
+        onRaccorde={onRaccorde} onModifier={onModifier} onduleur={onduleur} />
     </SurCarte>
   )
 }
@@ -202,7 +215,7 @@ function CalquesCarte({ id, resultat, couleursDessinees, lectureSeule, nonEnregi
 export default function EtapeElectrique(props) {
   // Reçus de la coque, non relayés aux sections (le pied « Voir les résultats → » est celui de la coque).
   const {
-    parcours: _parcours, action: _action, enregistreLe: _enregistreLe, actionDevis: _actionDevis,
+    parcours: _parcours, action: _action, enregistreLe = null, actionDevis: _actionDevis,
     ouvert = null, ...propsDuRail
   } = props
   const id = propsDuRail.calepinageId
@@ -212,8 +225,14 @@ export default function EtapeElectrique(props) {
   const [editeur, setEditeur] = useState(false)
   const [editeurModifie, setEditeurModifie] = useState(false) // S3 — brouillon non enregistré de l'éditeur d'affectation
   const relire = () => setRelecture((n) => n + 1)
-  const cle = { id, relecture }
-  const { data: resultat } = useResource((p) => calepinageApi.calepinages.resultat(p.id), cle, { select: (r) => r?.data ?? null })
+  const cle = { id, relecture, enregistreLe } // ACAL1317 — un enregistrement de l'atelier relit la longueur mesurée
+  // ACAL1317 — le résultat garde l'enregistrement de l'atelier pour lequel il a été LU : la longueur mesurée n'est
+  // montrée que lue après le dernier enregistrement (relecture en cours ⇒ « à mesurer »).
+  const { data: resultatLu, loading: resultatEnCours } = useResource(
+    (p) => Promise.resolve(calepinageApi.calepinages.resultat(p.id)).then((r) => ({ data: r?.data ?? null, le: p.enregistreLe })),
+    cle)
+  const resultat = resultatLu?.data ?? null
+  const resultatAJour = !resultatEnCours && String(resultatLu?.le ?? null) === String(enregistreLe ?? null)
   const { data: entree } = useResource((p) => calepinageApi.calepinages.entreeElectrique(p.id), cle, { select: (r) => r?.data ?? null })
   const { data: configs } = useResource((p) => calepinageApi.calepinages.configurationsOnduleur(p.id), cle, { select: (r) => r?.data ?? null })
 
@@ -258,7 +277,8 @@ export default function EtapeElectrique(props) {
   }
   const calques = (
     <CalquesCarte id={id} resultat={resultat} couleursDessinees={peutColorer} lectureSeule={lectureSeule} nonEnregistre={editeur && editeurModifie}
-      onRaccorde={relire} onModifier={() => setEditeur(true)} />
+      onRaccorde={relire} onModifier={() => setEditeur(true)} builderApi={builderApi} enregistreLe={enregistreLe}
+      nombreOnduleurs={entree?.entree?.nombre_onduleurs ?? 1} resultatAJour={resultatAJour} />
   )
 
   // ACAL1268 (D-ACAL-66 = outil_pose) — un pompage n'a ni onduleur ni batterie ni raccordement au réseau : l'étape ne les

@@ -169,7 +169,7 @@ export default function DevisTab({
   const droitInstallGerer = useDroitMetier('installation_gerer')
   const peutCreerChantier = droitVentesCreer || droitInstallGerer
   const devisList = state.server?.devis ?? []
-  const brouillonsAMettreAJour = useBrouillonsConception(state.leadId, devisList.map((d) => d.id).join(','))
+  const brouillonsAMettreAJour = useBrouillonsConception(state.leadId)
   const devisAuto = state.server?.devis_auto ?? { pret: false, manquants: [] }
   // T4-U3-017 — le kWh tapé que les factures contredisent : la fiche SERVIE le dit (`avertissements.kwh_factures`,
   // ACVI97) — le bouton est grisé AVANT le clic avec cette raison (le serveur refuserait en 409). Aucune règle ici.
