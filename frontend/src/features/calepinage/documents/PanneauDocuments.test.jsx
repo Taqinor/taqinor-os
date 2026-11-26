@@ -537,6 +537,20 @@ describe('PanneauDocuments — joindre la carte de chaleur (CALX302)', () => {
     })
     expect(calepinageApi.calepinages.deposerImageDocument).not.toHaveBeenCalled()
   })
+
+  it('ACAL1621 — jamais la vue 3D ordinaire sous le nom de carte de chaleur : sans rendu teinté, rien n’est déposé', async () => {
+    servirInventaire('exemple')
+    const blob = new Blob(['png-simule'], { type: 'image/png' })
+    const renderImageHd = vi.fn().mockResolvedValue({ blob, width: 800, height: 600, scale: 2 })
+    const utilisateur = userEvent.setup()
+
+    rendreAvecBuilder({ renderImageHd })
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-joindre-ombrage'))
+
+    expect(await screen.findByTestId('cal-doc-images')).toHaveTextContent('Outil non prêt')
+    expect(renderImageHd).not.toHaveBeenCalled()
+    expect(calepinageApi.calepinages.deposerImageDocument).not.toHaveBeenCalled()
+  })
 })
 
 describe('PanneauDocuments — contrat documents v2 (ACAL223)', () => {
