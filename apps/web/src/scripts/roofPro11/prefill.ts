@@ -1161,7 +1161,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   // CALX114 câblage — l'objectif d'optimisation SAISI (contrat CALX88, clé racine
   // `optimisation`) : sans cette ligne il ne quittait jamais la mémoire de l'optimiseur et
   // était perdu au rechargement. Aucun objectif saisi ⇒ aucune clé, document inchangé.
-  ecrireOptimisationDansDocument(layout); // CALX114 câblage
+  ecrireOptimisationDansDocument(layout, ctx.documentRelu); // CALX114 câblage ; ACAL1970 — motifs des pans inchangés tels que lus
   // CALX22x câblage — la couche électrique s'écrit EN DERNIER, par son PROPRE crochet
   // d'export (`ecrireDansDocument`) : jamais une deuxième copie de sa logique ici — elle
   // gère seule la copie profonde et l'absence de la clé quand le document ne porte ni

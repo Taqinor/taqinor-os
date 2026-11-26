@@ -5,7 +5,6 @@
 // une mesure absente (`null`) rend sa cause intestable, jamais vraie.
 import { resolveSetbacks, type Panel2Module, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { type PackResult, type PanelGrid } from '../../lib/estimatorBrainV2';
-
 export type CodeMotifPanVide = 'retrait_rive' | 'obstacles' | 'seuil_acces_solaire' | 'module_trop_grand' | 'orientation_nord' | 'inconnue';
 export interface MotifPanVide { code: CodeMotifPanVide; message: string; mesures: Record<string, number> }
 export interface MesuresPanVide {
@@ -101,16 +100,37 @@ export function semerMotifsDepuisDocument(json: unknown): void {
   }
 }
 
-/** À LA SÉRIALISATION — un motif par pan VIDE du dessin ; aucun ⇒ la clé est retirée. */
-export function ecrireMotifsDansDocument(layout: unknown): boolean {
+/** ACAL1970 — la pose d'un pan (positions et faces, sans numéros) : la même empreinte que
+ *  `prefill.ts::pansPavesDansLaSession` (ACAL307) pour dire « pavé dans la session ». */
+const empreintePose = (panels: unknown): string => JSON.stringify((Array.isArray(panels) ? panels : [])
+  .map((p: { cx?: number; cy?: number; face?: string }) => [p?.cx, p?.cy, p?.face ?? null]));
+
+/** ACAL1970 — un pan que la session n'a ni retouché ni re-résolu par un geste : même forme, même besoin et même
+ *  pose que dans le document relu (ACAL31). Son motif repart TEL QU'IL A ÉTÉ LU (présent ou absent) : la
+ *  résolution de fond de l'ouverture peut le montrer à l'écran, jamais l'écrire ni l'effacer. */
+function panInchange(z: Record<string, unknown>, rz: Record<string, unknown> | undefined): boolean {
+  if (!rz) return false;
+  const meme = (k: string) => JSON.stringify(z[k] ?? null) === JSON.stringify(rz[k] ?? null);
+  const besoin = (z.neededAuto === true && rz.neededAuto === true) || meme('neededPanels');
+  return ['vertices', 'roofType', 'pitchDeg', 'facingAzimuthDeg', 'neededAuto'].every(meme) && besoin
+    && empreintePose((z.geometry as { panels?: unknown } | undefined)?.panels) === empreintePose((rz.geometry as { panels?: unknown } | undefined)?.panels);
+}
+
+/** À LA SÉRIALISATION — un motif par pan VIDE du dessin ; aucun ⇒ la clé est retirée. ACAL1970 — `relu` (le
+ *  document rouvert) : un pan inchangé garde le motif LU ; seul un pan touché dans la session écrit le sien. */
+export function ecrireMotifsDansDocument(layout: unknown, relu?: Record<string, unknown> | null): boolean {
   const cible = layout as Record<string, unknown> | null | undefined;
   if (!cible || typeof cible !== 'object') return false;
   const sortie: Record<string, MotifPanVide> = {};
+  const lus = (relu?.[CLE_MOTIFS_PANS_VIDES] ?? {}) as Record<string, MotifPanVide>;
+  const zonesRelues = new Map((Array.isArray(relu?.zones) ? (relu!.zones as Array<Record<string, unknown>>) : [])
+    .map((z) => [z?.id, z]));
   for (const z of Array.isArray(cible.zones) ? (cible.zones as Array<Record<string, unknown>>) : []) {
     const g = (z?.geometry ?? {}) as { count?: number; panels?: unknown[] };
     const garni = Number(g.count) > 0 || (Array.isArray(g.panels) && g.panels.length > 0);
-    const m = typeof z?.id === 'string' ? memoire.get(z.id) : undefined;
-    if (m && !garni) sortie[z.id as string] = JSON.parse(JSON.stringify(m));
+    const inchange = relu != null && typeof z?.id === 'string' && panInchange(z, zonesRelues.get(z.id));
+    const m = typeof z?.id === 'string' ? (inchange ? lus[z.id] : memoire.get(z.id)) : undefined;
+    if (m && (inchange || !garni)) sortie[z.id as string] = JSON.parse(JSON.stringify(m));
   }
   if (Object.keys(sortie).length === 0) { delete cible[CLE_MOTIFS_PANS_VIDES]; return false; }
   cible[CLE_MOTIFS_PANS_VIDES] = sortie;
