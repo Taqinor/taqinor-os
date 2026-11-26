@@ -2278,7 +2278,7 @@ D-ACAL-126 ; ACAL1943 (texte de tâche contre maquette) ; ACAL1635 (énergies ar
 sur la pile de revue ; déploiement après la fusion du lot 6 (avant le 27/11, sinon déplacer `COUPURE_SCHEMA_ELECTRIQUE` et
 `COUPURE_CHAINES_INEGALES`).
 
-### Point du 26/11, 12 h UTC — LOT 6 FUSIONNÉ, LOT 7 EN COURS (le plus récent — REPRENDRE ICI)
+### Point du 26/11, 12 h UTC — LOT 6 FUSIONNÉ, LOT 7 EN COURS
 
 **Lot 6.** PR #1560 fusionnée le 26/11 à 07 h 33 UTC (commit de fusion bfe152adc). Premier passage de CI rouge sur huit
 causes (toutes « figées » : garde des tests qui lisent un source, repères `cal-*` non déclarés, compte figé des clés de
@@ -2337,3 +2337,45 @@ document a changé » ; (5) trois assertions lisaient le source d'un fichier (re
 re-cadrée dite sur sa ligne, journal du paquet C). Pliées depuis la note de 12 h : `lot6/r5c-corrections`,
 `lot6/acal-module-substitue` ; `lot6/web-hero-3d` n'a rien changé (le bandeau est l'image de fond voulue de la page, grise
 sur la pile faute d'imagerie) ; `lot6/acal-schema-visuel` relue, en correction.
+
+### Point du 26/11, 19 h UTC — LOT 7 FUSIONNÉ, TOUR 5 JOUÉ EN ENTIER, LOT 8 EN COURS (le plus récent — REPRENDRE ICI)
+
+**Lot 7.** PR #1561 fusionnée le 26/11 à 11 h 00 UTC (commit de fusion 5e24d76d7). Premier passage de CI rouge sur trois
+groupes : des tests d'AUTRES modules figés sur une forme d'appel ou une phrase que le lot changeait exprès (factures,
+liste des devis, bandeau de provenance, livrables de la borne haute, registre des réglages) et un vrai défaut attrapé par
+la CI (un toast « Connexion perdue » à chaque ouverture de la fenêtre PDF quand le profil est illisible). Trois lanes de
+réparation, un seul envoi, second passage vert. NON déployé par Claude. À déployer avec le lot 6, **avant le 27/11**.
+Avant la PR, les gardes d'hôte (`ci_guards.py stage-names`) avaient attrapé trois rouges de plus (fonctions de service
+sans appelant, entrée morte d'une liste d'exceptions, appel d'API illisible pour la garde des paramètres).
+
+**Tour 5 — joué en entier sur la pile de revue** (199 lignes ; enregistrements `T5/rejeu-A.json` à `rejeu-F.json`) :
+
+| Paquet | Lignes | Corrigé | Partiel | Non corrigé | Non rejouable / non joué | Constats neufs |
+|---|---|---|---|---|---|---|
+| A — devis, PDF, lead | 56 | 34 | 13 | 2 | 7 | 8 |
+| B — atelier, toit, panneaux | 33 | 25 | 5 | 2 | 1 | 8 |
+| C — électrique, résultats, documents | 30 | 16 | 8 | 1 | 5 | 8 |
+| D — téléphone et tablette (WebKit) | 30 | 20 | 7 | 3 | 0 | 4 |
+| E — droits et réglages | 19 | 14 | 3 | 1 | 1 | 3 |
+| F — pompage et C&I | 31 | 23 | 4 | 4 | 0 | 4 |
+| **Total** | **199** | **132** | **40** | **13** | **14** | **35** |
+
+Les paquets A, B et C ont leurs corrections dans le lot 7 ; D, E et F dans le lot 8. La pile tournait sur le lot 5 (A, B, C)
+puis sur le lot 6 (D, E, F) : aucune correction des lots 7 et 8 n'a encore été rejouée.
+
+**Lot 8** — branche `dev-lot8` (coupée de `main` 5e24d76d7), baux `Reda_Laptop/dev-lot8` (calepinage, core, ventes, web,
+crm). Pliées, relues et corrigées : `lot8/r5d-corrections` (paquet D), `lot8/acal-apercu-devis` (l'aperçu du devis suit
+l'ordre de décision de la génération ; il ne nomme aucun devis à qui ne lit pas les devis). En correction après relecture :
+`lot8/r5e-corrections` (paquet E — la relecture a trouvé des tests annoncés mais jamais commités). En construction :
+`lot8/r5f-corrections` (paquet F : une phrase du PDF de pompage que la fiche ne prouve pas, un devis C&I enregistré
+différent de l'écran sans message, le bandeau « la conception a changé » qui n'apparaît pas).
+
+**En cours sur la pile** : reconstruction sur `main` 5e24d76d7 puis second regard (`T5/visuel-lot7.json` à venir) — devis à
+35 × 715 W, schéma en tablette et téléphone, couleurs des chaînes, et les trois jamais-vus : visionneuse au soleil avec un
+accès solaire enregistré, hybride avec batterie au schéma, schéma par option sur le devis et la page client.
+
+**Décisions pour Reda** (en plus de la note de 12 h) : droits du Technicien — prix de vente servis et affichés dans la liste
+du stock (aucun prix d'achat) ; « Tout recalculer » ouvert au Commercial ; un Technicien ne peut plus être mis responsable
+d'un calepinage qu'il ne pourrait pas ouvrir (assignation en impasse refusée, rien ne change dans D-ACAL-106/126) ;
+« Devis auto » qui crée un brouillon à chaque clic ; libellé « Panneaux nécessaires » contre « Cible » dans l'atelier
+(T4-X8-012) ; une cible de taille tapée dans l'onglet Devis n'est pas lue par les deux autres boutons « Devis automatique ».
