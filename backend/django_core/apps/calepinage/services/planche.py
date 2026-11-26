@@ -1397,16 +1397,24 @@ def _bandeau_svg(titre, sous_titre, lignes, geometrie,
            _n(FORMAT_A3_MM[1] - MARGE_MM), GRIS_TEXTE, _n(TRAIT_COTE)),
     ]
     y = MARGE_MM + 6.0
+    # ACAL1717 — le titre (corps 5, gras) et le sous-titre se replient aux mots
+    # dans la largeur du bandeau, comme les lignes plus bas : « Villa Essaou »
+    # coupé par le bord de la feuille. Aucun mot n'est changé.
     if titre:
-        morceaux.append(
-            '<text x="%s" y="%s" font-size="5" font-weight="bold" fill="%s">'
-            '%s</text>' % (_n(x), _n(y), NOIR, escape(titre)))
-        y += 5.5
+        for morceau in textwrap.wrap(
+                titre, CARACTERES_PAR_LIGNE_TITRE_BANDEAU,
+                break_long_words=False) or [titre]:
+            morceaux.append(
+                '<text x="%s" y="%s" font-size="5" font-weight="bold" '
+                'fill="%s">%s</text>' % (_n(x), _n(y), NOIR, escape(morceau)))
+            y += 5.5
     if sous_titre:
-        morceaux.append('<text x="%s" y="%s" font-size="3.4" fill="%s">%s'
-                        '</text>' % (_n(x), _n(y), GRIS_TEXTE,
-                                     escape(sous_titre)))
-        y += 6.0
+        for morceau in _lignes_du_bandeau(sous_titre):
+            morceaux.append('<text x="%s" y="%s" font-size="3.4" fill="%s">%s'
+                            '</text>' % (_n(x), _n(y), GRIS_TEXTE,
+                                         escape(morceau)))
+            y += 4.2
+        y += 1.8
 
     entrees = _entrees_de_legende(geometrie, contenu)
     if entrees:
@@ -1448,6 +1456,12 @@ def _bandeau_svg(titre, sous_titre, lignes, geometrie,
 #: caractère ≈ 0,6 × le corps (DejaVu Sans), comme la légende.
 CARACTERES_PAR_LIGNE_BANDEAU = int(
     (LARGEUR_BANDEAU_MM - 3.0 - 3.0 - 2.0) / (0.6 * 3.4))
+
+
+#: ACAL1717 — idem pour le titre : corps 5 en gras, ≈ 0,68 × le corps par
+#: caractère (DejaVu Sans Bold).
+CARACTERES_PAR_LIGNE_TITRE_BANDEAU = int(
+    (LARGEUR_BANDEAU_MM - 3.0 - 3.0 - 2.0) / (0.68 * 5.0))
 
 
 def _lignes_du_bandeau(texte):

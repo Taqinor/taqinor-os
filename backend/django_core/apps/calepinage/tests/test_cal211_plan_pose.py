@@ -440,6 +440,28 @@ class BandeauDansLaPageTest(SimpleTestCase):
         self.assertEqual(traversants, [])
 
 
+class TitreDuBandeauRepliTest(SimpleTestCase):
+    """ACAL1717 — un titre long (« Plan de pose — F2-DOCS-a Villa Essaouira 2
+    pans ») se replie aux mots dans le bandeau : aucune ligne ne dépasse sa
+    largeur et le titre se relit entier."""
+
+    TITRE = 'Plan de pose — F2-DOCS-a Villa Essaouira 2 pans'
+
+    def test_un_titre_long_est_replie_et_se_relit_entier(self):
+        from apps.calepinage.services.planche import (
+            CARACTERES_PAR_LIGNE_TITRE_BANDEAU,
+        )
+
+        svg = svg_de_planche(geometrie_de_planche(LAYOUT), titre=self.TITRE,
+                             contenu=CONTENU_POSE)
+        lignes = re.findall(
+            r'<text[^>]*font-size="5" font-weight="bold"[^>]*>([^<]*)</text>', svg)
+        self.assertGreater(len(lignes), 1)
+        self.assertTrue(all(len(x) <= CARACTERES_PAR_LIGNE_TITRE_BANDEAU
+                            for x in lignes), lignes)
+        self.assertEqual(html.unescape(' '.join(lignes)), self.TITRE)
+
+
 def pan_de_10_sur_6(pose='portrait'):
     """ACAL591 - un pan rectangulaire de 10 x 6 m (repere local, metres),
     plein sud, a plat, module 1,7 x 1,1 m dont la pose est ``pose``."""
