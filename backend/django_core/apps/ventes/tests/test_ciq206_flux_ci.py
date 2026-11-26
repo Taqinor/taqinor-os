@@ -1215,3 +1215,46 @@ _sans_tests_herites(RemplacementCyclesNiveau13DevisTests)
 _sans_tests_herites(SensibilitesNiveau14DevisTests)
 _sans_tests_herites(DepartUneBatterieRemiseTests)
 _sans_tests_herites(DevisFinalEnregistreTests)
+
+
+class ContratDixiemeEtLibellePosteTests(SimpleTestCase):
+    """ACAL1223 — le contrat ``economie_ci.json`` porte, posées SEULES (PACT10)
+    pour ACAL1224/ACAL1225 (serveur) et ACAL1213/ACAL1214 (écran),
+    ``indicateurs.retour_dixieme_ans`` de l'offre réseau et ``libelle`` sur
+    chaque poste ; les clés d'hier restent là (ajout seulement)."""
+
+    def _contrat(self):
+        import json
+        from pathlib import Path
+        chemin = Path(__file__).resolve().parent.parent / 'contract_samples' / 'economie_ci.json'
+        return json.loads(chemin.read_text(encoding='utf-8'))
+
+    def test_l_offre_reseau_porte_son_retour_au_dixieme_derive_du_flux_servi(self):
+        from apps.ventes.economie_ci_options import retour_au_dixieme
+        doc = self._contrat()
+        ex = doc['exemple_industriel_mt']
+        ind = ex['indicateurs']
+        self.assertEqual(ex['base'], 'ht')
+        # Le nombre de l'exemple est DÉRIVÉ : la fonction du PDF sur le flux principal.
+        self.assertEqual(ind['retour_dixieme_ans'], retour_au_dixieme(ex['flux_ht']))
+        self.assertEqual(ind['retour_dixieme_ans'], round(ind['retour_dixieme_ans'], 1))
+        self.assertGreater(ind['retour_dixieme_ans'], ind['retour_ans'] - 1)
+        self.assertLessEqual(ind['retour_dixieme_ans'], ind['retour_ans'])
+        self.assertIn('retour_dixieme_ans', doc['regles_sortie']['indicateurs'])
+
+    def test_chaque_poste_porte_un_libelle_de_metier(self):
+        doc = self._contrat()
+        ex = doc['exemple']
+        postes = (ex['economie_annee1']['par_poste'] + ex['facture_avant']['energie_par_poste']
+                  + ex['facture_apres']['energie_par_poste'])
+        self.assertTrue(postes)
+        for p in postes:
+            with self.subTest(poste=p['poste']):
+                self.assertIsInstance(p['libelle'], str)
+                self.assertTrue(p['libelle'].strip())
+                self.assertNotEqual(p['libelle'], p['poste'])
+                self.assertNotIn('D-CIQ', p['libelle'])
+                self.assertNotIn('_', p['libelle'])
+        self.assertEqual([p['poste'] for p in ex['economie_annee1']['par_poste']], ['tranche_2'])
+        for cle in ('economie_annee1', 'facture_avant / facture_apres'):
+            self.assertIn('libelle', doc['regles_sortie'][cle])
