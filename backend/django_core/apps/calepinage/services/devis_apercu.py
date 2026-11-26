@@ -10,6 +10,10 @@ pas celui-là, une phrase le dit et dit pourquoi : la raison rangée par la conc
 compose son matériel depuis la pose, la désignation électrique n'y entre pas.
 Aucune règle n'est inventée sur ce que la désignation DEVRAIT faire (non tranché).
 Lecture seule ; aucun prix servi.
+
+Lot 8 (26/11) — la génération ne compose PAS toujours : quand le lead a un brouillon libre
+antérieur, elle pose la question R2-22 et, rattaché, ce brouillon garde son onduleur ; l'aperçu
+le dit (``ecarts`` champ ``rattacher_devis``) au lieu d'annoncer la composition comme LE devis.
 """
 from __future__ import annotations
 
@@ -76,6 +80,29 @@ def _specs_du_brouillon(devis):
              'produit': ligne.produit_id} for ligne in devis.lignes.all().order_by('ordre', 'pk')]
 
 
+#: Lot 8 (aperçu ≠ devis, 26/11) — le lead a un brouillon LIBRE né avant ce calepinage : « Générer »
+#: ne compose pas, il pose la question R2-22 (``devis._brouillon_libre_choisi``) ; rattaché, ce brouillon
+#: est resynchronisé (``reconcilier``, PV18 : les produits des lignes ne sont jamais re-choisis).
+MESSAGE_BROUILLON_LIBRE = ('Ce lead a déjà le devis %s (brouillon), créé avant ce calepinage : rattaché à ce '
+                           'calepinage, il garde les produits qu’il porte (%s) et ne prend que le compte de '
+                           'panneaux et le scénario de la pose ; le matériel ci-dessus est celui d’un autre devis.')
+
+
+def _ecart_brouillon_libre(calepinage, lead):
+    """La phrase R2-22 quand « Générer » demandera de rattacher un brouillon libre (le plus récent,
+    comme le 409 ``devis_existant``), ``None`` sinon. Ce que ce brouillon porte est lu sur SES lignes."""
+    from .devis import _brouillons_libres_anterieurs
+
+    libres = _brouillons_libres_anterieurs(calepinage, calepinage.company, lead) if lead is not None else []
+    if not libres:
+        return None
+    libre = libres[0]
+    porte = ' / '.join(sorted({o['onduleur'] for o in _materiel_par_option(_specs_du_brouillon(libre))
+                               if o['onduleur']})) or 'aucun'
+    return {'champ': 'rattacher_devis',
+            'message': MESSAGE_BROUILLON_LIBRE % (libre.reference or f'#{libre.pk}', f'onduleur « {porte} »')}
+
+
 def apercu_materiel_du_devis(calepinage, surfaces=None):
     """``{options, ecarts, refus, source, reference}`` : par option, le module et l'onduleur que
     « Générer le devis » porterait, les désignations électriques qu'il ne portera pas (phrase et
@@ -90,7 +117,7 @@ def apercu_materiel_du_devis(calepinage, surfaces=None):
     from .equipements import composition_a_blanc
 
     composer, AutoDevisError = composition_a_blanc()
-    source, reference = 'composition', None
+    source, reference, libre = 'composition', None, None
     try:
         layout = _layout_des_surfaces(_exiger_layout(calepinage), surfaces)
         lead, _client = _lead_et_client(calepinage)
@@ -100,11 +127,14 @@ def apercu_materiel_du_devis(calepinage, surfaces=None):
             specs = _specs_du_brouillon(brouillon)
         else:
             specs = composer(layout=layout, company=calepinage.company, lead=lead)
+            # Lot 8 — comme ``_generer_sous_verrou`` : sans brouillon rendu, un brouillon libre du lead
+            # fait poser la question R2-22 avant toute composition.
+            libre = _ecart_brouillon_libre(calepinage, lead)
     except (AutoDevisError, DevisRefuse) as refus:
         return {'options': [], 'ecarts': [], 'refus': getattr(refus, 'message', None) or str(refus),
                 'source': None, 'reference': None}
     options = _materiel_par_option(specs)
-    ecarts = _ecarts(calepinage, options)
+    ecarts = _ecarts(calepinage, options) + ([libre] if libre else [])
     for option in options:
         option.pop('module_produit')
         option.pop('onduleur_produit')
