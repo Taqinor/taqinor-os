@@ -179,6 +179,12 @@ function ChampRaccordement({ champ, saisie, bloc, erreurs, modifier }) {
           </p>
         )
         : <p className="text-xs text-muted-foreground">{aide}</p>}
+      {/* ACAL1251 (D-ACAL-63) — la saisie est gardée ; le serveur dit quand elle dépasse 10 fois l'attendu. */}
+      {(bloc?.avertissements ?? []).filter((a) => a.champ === cle).map((a) => (
+        <p key={a.message} role="status" className="text-xs text-warning" data-testid={`acal1251-avertissement-${cle}`}>
+          {a.message}
+        </p>
+      ))}
     </div>
   )
 }

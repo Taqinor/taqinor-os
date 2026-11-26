@@ -80,7 +80,7 @@ export default function CarteBatterie({ id, entree, lectureSeule, onApplique }) 
               <option key={c.id} value={c.id} disabled={incompatible}>
                 {incompatible
                   ? `${c.libelle} — incompatible : ${(c.compatibilite.raisons ?? []).join(' ; ')}`
-                  : `${c.libelle}${c.marque ? ` (${c.marque})` : ''}`}
+                  : `${c.libelle}${c.marque ? ` (${c.marque})` : ''}${c.en_stock ? ' · En stock' : ''}`}
               </option>
             )
           })}

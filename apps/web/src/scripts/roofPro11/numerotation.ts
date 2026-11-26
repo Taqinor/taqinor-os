@@ -690,6 +690,13 @@ export interface DemandeEtiquettes3d {
 let derniereDemande: DemandeEtiquettes3d | null = null;
 let rafraichirCarte: (() => void) | null = null;
 
+/** R3 (visuel lot 7) — les modules RENDUS du pan `panId` au dernier rendu 3D du pan actif, dans l'ordre des
+ *  instances (celui de `ctx.activePanelCellIndex`, même filtre dans `scene3d.ts::buildZoneMeshes`) ; `null` si le
+ *  dernier rendu n'était pas ce pan. Lecture seule : sert à apparier une cellule à SON emplacement. */
+export function modulesRendus(panId: string): readonly ModulePose[] | null {
+  return derniereDemande && derniereDemande.panId === panId ? derniereDemande.modules : null;
+}
+
 /** Retire le groupe d'étiquettes d'une racine (et libère ses textures canvas). */
 function retirerGroupe(racine: THREE.Object3D | null): void {
   if (!racine) return;

@@ -60,6 +60,13 @@ export function leadToBuilderPayload(lead) {
 // comportement strictement inchangé. Avant ce correctif, l'écran ne lisait
 // QUE `cible` (option SANS par construction de CTX3D) — exactement le bug
 // que la docstring de CTX3D dit corriger.
+// ACAL1268 (D-ACAL-66 = outil_pose) — l'atelier d'un lead de POMPAGE : le marché que le serveur sert dans le bloc
+// `chiffrage` du design-context (`chiffrage.marche`, lu du lead par ventes). Un outil de pose seulement : ni économies, ni
+// kWh de réseau, ni onduleur, ni batterie.
+export function estAtelierPompage(contexte) {
+  return contexte?.chiffrage?.marche === 'agricole'
+}
+
 export function cibleActiveDuContexte(contexte) {
   return contexte?.cible_avec ?? contexte?.cible ?? {}
 }

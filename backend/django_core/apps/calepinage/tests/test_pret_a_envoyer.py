@@ -889,6 +889,12 @@ class TailleSansFactureTest(SimpleTestCase):
         # Mutant « absence de consumption.courbe24 » ⇒ orange ici, échec.
         self.assertEqual(self._controle(_cible())['etat'], 'ok')
 
+    def test_libelle_dit_ce_qui_est_verifie(self):
+        # ACAL1332 (D-ACAL-77) : plus de « dimensionnée » pour une taille que rien n'a comparée.
+        controle = self._controle(_cible())
+        self.assertEqual(controle['libelle'], 'Facture ou taille souhaitée renseignée')
+        self.assertNotIn('imensionn', controle['libelle'] + controle['valeur_texte'])
+
     def test_autre_refus_ne_pose_pas_la_question(self):
         ci = _cible(None, 'Lead commercial/industriel : étude C&I.')
         self.assertEqual(self._controle(ci)['etat'], 'ok')

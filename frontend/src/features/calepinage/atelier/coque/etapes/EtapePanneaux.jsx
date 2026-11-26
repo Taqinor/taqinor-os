@@ -180,7 +180,7 @@ function ChoixModule({ etat, entrees, servis, lectureSeule, g }) {
                     className="cal-pan-option">
                     <span className="cal-pan-module-nom">{nom(o)}</span>
                     <span className="cal-pan-module-ligne">
-                      {o.grise ? (entree?.motif || 'fiche produit incomplète') : ligneModule(fiche(o.valeur))}
+                      {o.grise ? (entree?.motif || 'fiche produit incomplète') : [entree?.en_stock ? 'En stock' : '', ligneModule(fiche(o.valeur))].filter(Boolean).join(' · ')}
                     </span>
                   </button>
                 </li>

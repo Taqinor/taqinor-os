@@ -180,6 +180,18 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(surChange).toHaveBeenCalledTimes(1)
   })
 
+  it('D-ACAL-71 — le menu dit « En stock » sur la ligne servie, rien sur celle qui ne l’est pas', async () => {
+    monterConstructeur()
+    calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({
+      data: { modules: [{ ...CATALOGUE[0], en_stock: true }, { ...CATALOGUE[1], en_stock: null }] },
+    })
+    rendre()
+    const carte = screen.getByTestId('cal-panneaux-module')
+    fireEvent.click(within(carte).getByRole('button', { name: /Module par défaut/ }))
+    await waitFor(() => expect(within(carte).getAllByRole('option')[1]).toHaveTextContent('En stock · 580 Wc · 2,28 × 1,13 m'))
+    expect(within(carte).getAllByRole('option')[2]).not.toHaveTextContent(/stock/i)
+  })
+
   it('lane E9 (T4-X2-001) — module de 710 W pour une conception de 8 × 550 W : la carte dit la puissance et le compte servi, la pose reçoit 6', async () => {
     monterConstructeur({ besoin: '12' })
     document.getElementById('rp9-pan-module-select').value = 'produit-1'

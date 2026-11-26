@@ -1,3 +1,5 @@
+import { estAtelierPompage } from './contexteAtelier'
+import OutilPosePompage from './OutilPosePompage'
 import { Suspense, useCallback, useEffect, useRef } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../../api/axios'
@@ -173,6 +175,7 @@ function RailCorps({
   // Coque (22/11) — monté dans la coque plein écran : les étapes sont au rail de gauche (pas ici), et en
   // guidé l'écran de l'étape est monté par la coque (ici : les seuls onglets) ; `parcours` = celui de la coque.
   dansCoque = false, parcours: parcoursImpose = null,
+  contexte = null, // ACAL1268 — le design-context : relayé aux onglets d'un lead de POMPAGE seulement (ni kWh de réseau ni économies)
 }) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl ?? null
@@ -238,6 +241,9 @@ function RailCorps({
   useEffect(() => { onEtape?.({ etape: cleEtape, expert, allerA }) }, [onEtape, cleEtape, expert, allerA])
 
   const Composant = ecran?.composant ?? actif?.composant ?? null
+  // ACAL1268 (D-ACAL-66) — pompage : les onglets de résultats et d'électrique du réseau ne s'ouvrent pas (carte de renvoi).
+  const pompageSansReseau = estAtelierPompage(contexte)
+    && (actif?.groupe === 'Résultats' || ECRANS_ETAPE.electrique.onglets.includes(cleActive))
   const libelleActif = ecran ? ecran.libelle : actif?.libelle
 
   return (
@@ -303,6 +309,10 @@ function RailCorps({
               {/* CALX222 — `builderApi` est relayée à TOUS les panneaux :
                   ceux qui ne la déclarent pas l'ignorent, et le rail
                   continue de ne connaître aucun panneau par son nom. */}
+              {pompageSansReseau ? (
+                <OutilPosePompage contexte={contexte}
+                  phrase="Lead de pompage : l’atelier pose les panneaux, sans économies, énergie du réseau, onduleur ni batterie." />
+              ) : (
               <Composant
                 calepinageId={calepinageId}
                 builderApi={builderApi}
@@ -313,6 +323,7 @@ function RailCorps({
                 actionDevis={actionDevis}
                 ouvert={cleActive}
               />
+              )}
             </Suspense>
           </ErrorBoundary>
         </TabsContent>

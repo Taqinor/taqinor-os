@@ -135,6 +135,8 @@ const PERMISSION_GROUPS = [
       // FG20 — groupe « Données sensibles » curé : PII client + marge calculée.
       { code: 'client_pii_voir', label: 'Voir les coordonnées client (tél/email/adresse/GPS)' },
       { code: 'marge_voir', label: 'Voir l\'indicateur de marge' },
+      // D-ACAL-152 — tous les rôles sauf Technicien / Technicien responsable.
+      { code: 'prix_vente_voir', label: 'Voir les prix de vente' },
     ],
   },
   {

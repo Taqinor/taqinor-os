@@ -516,21 +516,40 @@ class BatterieDesigneeD_ACAL_157(SimpleTestCase):
         bloc = {'produit': 905, 'designation': 'Batterie du devis', 'quantite': 3.0}
         with mock.patch('apps.ventes.selectors.compatibilite_du_materiel',
                         side_effect=lambda panneau, onduleur, company, batterie: verdicts[batterie]), \
+                mock.patch('apps.stock.selectors_disponibilite.produits_en_stock', return_value={905}), \
                 mock.patch('apps.calepinage.services.equipements.equipements_du_calepinage',
                            return_value={'batterie': bloc}):
             sortie = vb.enrichir_candidats(mock.Mock(company=object()), candidats, resolu)
         self.assertEqual(sortie['batteries'][0]['compatibilite'], {'statut': 'compatible', 'raisons': []})
         self.assertEqual(sortie['batteries'][1]['compatibilite']['statut'], 'incompatible')
+        # D-ACAL-71 (ACAL1318) — « En stock » : vrai quand le stock réel en a, sinon None (jamais False).
+        self.assertEqual([ligne['en_stock'] for ligne in sortie['batteries']], [True, None])
         self.assertEqual(sortie['batterie_du_devis'],
                          {'produit_id': 905, 'designation': 'Batterie du devis', 'packs': 3})
         # Sans onduleur résolu : « inconnu » (jamais « incompatible »), sans appeler le juge ; sans devis : None.
         with mock.patch('apps.ventes.selectors.compatibilite_du_materiel') as juge, \
+                mock.patch('apps.stock.selectors_disponibilite.produits_en_stock', return_value=set()), \
                 mock.patch('apps.calepinage.services.equipements.equipements_du_calepinage',
                            return_value={'batterie': None}):
             sortie = vb.enrichir_candidats(mock.Mock(company=object()), {'batteries': [{'id': 905}]}, {'produits': {}})
         juge.assert_not_called()
         self.assertEqual(sortie['batteries'][0]['compatibilite']['statut'], 'inconnu')
         self.assertIsNone(sortie['batterie_du_devis'])
+
+    def test_en_stock_touche_les_roles_scope_societe_sans_prix_ni_quantite(self):
+        from apps.calepinage.services import validation_batterie as vb
+
+        candidats = {'modules': [{'id': 1}, {'id': 2}], 'onduleurs': [{'id': 3}], 'optimiseurs': [], 'batteries': []}
+        societe = object()
+        with mock.patch('apps.stock.selectors_disponibilite.produits_en_stock', return_value={1, 3}) as lu, \
+                mock.patch('apps.calepinage.services.equipements.equipements_du_calepinage',
+                           return_value={'batterie': None}):
+            sortie = vb.enrichir_candidats(mock.Mock(company=societe), candidats, {'produits': {}})
+        self.assertEqual([ligne['en_stock'] for ligne in sortie['modules']], [True, None])
+        self.assertEqual(sortie['onduleurs'][0]['en_stock'], True)
+        self.assertEqual(lu.call_count, 2)  # une lecture par rôle non vide, jamais par ligne
+        self.assertEqual(lu.call_args_list[0].args[0], societe)  # la société du calepinage, jamais du corps
+        self.assertTrue(all(set(ligne) <= {'id', 'en_stock'} for ligne in sortie['modules']))  # ni prix ni quantité
 
     def test_une_designation_inchangee_reste_reenregistrable_meme_sans_fiche(self):
         # La fixture / l'entrée qui porte déjà une batterie sans fiche : renvoyée telle quelle, elle passe.

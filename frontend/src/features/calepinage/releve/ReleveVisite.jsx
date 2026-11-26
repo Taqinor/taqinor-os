@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useDocumentCalepinage from '../useDocumentCalepinage'
 import { panParDefaut, zonesDuDocument } from '../SaisiePente.helpers'
@@ -9,7 +9,7 @@ import { lireConflit } from '../conflitEcriture'
 import { Icone } from '../atelier/coque/primitives'
 import { RefusDeDroit } from '../../../ui/Forbidden'
 import { PlanDessus } from '../client/partiesClient'
-import { DEPUIS_RELEVE, planDessus, useMoteurToit } from '../client/vueClient.helpers'
+import { DEPUIS_RELEVE, planDessus, retourDuReleve, useMoteurToit } from '../client/vueClient.helpers'
 import { champsDuReleve, corpsDuReleve, validerAvantEnvoi } from './corpsReleve'
 import {
   LARGEUR, LONGUEUR, avecMesure, chainesSaisies, dateDuJour, mesureDesChaines, mesureDuCapteur,
@@ -114,10 +114,15 @@ function PastilleEnvoi() {
 
 export default function ReleveVisite() {
   const { id } = useParams()
+  const navigate = useNavigate()
+  const { state: etatAdresse } = useLocation()
+  const retour = retourDuReleve(etatAdresse, id) // d'où le relevé a été ouvert, sinon la fiche du calepinage
   const enLigne = useEnLigne()
   const doc = useDocumentCalepinage(id)
   const zone = zonesDuDocument(doc.document).find((z) => String(z.id) === panParDefaut(doc.document)) ?? null
   const photos = usePhotosReleve(id)
+  const photosRef = useRef(photos) // l'état COURANT des photos, relu après l'envoi du relevé (la fermeture de « Terminer » est périmée)
+  useEffect(() => { photosRef.current = photos })
   /* T4-U4-020 / T4-U4-022 — le brouillon des mesures tapées et le pan en attente, gardés sur le téléphone. */
   const brouillons = useBrouillonReleve(id)
   const depart = brouillons.brouillon
@@ -383,11 +388,21 @@ export default function ReleveVisite() {
       if (brouillons.pan) brouillons.oublierPan()
       const nouvelId = res?.data?.releve?.id
       setReleve((r) => ({ ...r, id: nouvelId ?? r.id, releveLe: corps.releve_le }))
+      /* Une photo encore en route (ou refusée) n'est pas dans ce relevé : on le dit en mots simples et on reste sur l'écran,
+         sinon elle arriverait sur un écran quitté et ne serait jamais rattachée. */
+      const photoEnRoute = photosRef.current.enCours != null
+      const photoRefusee = !photoEnRoute && !!photosRef.current.message
+      const phrasePhoto = photoEnRoute ? ' Une photo est encore en cours d’envoi : attendez la fin, puis touchez « Terminer le relevé ».'
+        : photoRefusee ? ' Une photo a été refusée (voir plus haut) : reprenez-la, puis touchez « Terminer le relevé ».' : ''
       setMessage({
         texte: `${releve.id ? 'Relevé corrigé.' : 'Relevé enregistré.'}${sansPanPourAzimut
-          ? ' L’orientation tapée n’est pas enregistrée : aucun pan dessiné, tracez le toit dans l’atelier.' : ''}${nonEnvoyees}`,
+          ? ' L’orientation tapée n’est pas enregistrée : aucun pan dessiné, tracez le toit dans l’atelier.' : ''}${nonEnvoyees}${phrasePhoto}`,
         ton: 'ok',
       })
+      /* ACAL1319 / D-ACAL-68 — « Terminer » enregistre puis REVIENT à la fiche d'où le relevé a été ouvert (la même que la
+         flèche « Retour » : `retour`), sans statut neuf. Une réserve dite à l'écran (orientation non écrite, mesures non parties)
+         reste en vue : on ne quitte pas l'écran sur elle. */
+      if (!sansPanPourAzimut && !nonEnvoyees && !phrasePhoto) navigate(retour)
     } catch (err) {
       const refus = (texte, champ = null) => setMessage({ texte, ton: 'refus', champ })
       if (!err?.response) {
@@ -441,7 +456,7 @@ export default function ReleveVisite() {
       </div>
 
       <header className="cal-tel-entete">
-        <Link to={`/calepinage/${id}`} aria-label="Retour" className="cal-tel-retour">
+        <Link to={retour} aria-label="Retour" className="cal-tel-retour">
           <Icone nom="retour" taille={22} epaisseur={2} />
         </Link>
         <div className="cal-tel-projet">
@@ -551,7 +566,7 @@ export default function ReleveVisite() {
         )}
 
         <footer className="cal-tel-pied">
-          <Link to={`/calepinage/${id}/client`} state={DEPUIS_RELEVE} className="cal-tel-pied-secondaire" data-testid="releve-voir-3d">Voir en 3D</Link>
+          <Link to={`/calepinage/${id}/client`} state={{ ...DEPUIS_RELEVE, origine: etatAdresse?.depuis }} className="cal-tel-pied-secondaire" data-testid="releve-voir-3d">Voir en 3D</Link>
           <button type="button" className="cal-tel-pied-or" onClick={terminer} disabled={enCours} data-testid="releve-terminer">
             {enCours ? 'Enregistrement…' : 'Terminer le relevé'}
           </button>

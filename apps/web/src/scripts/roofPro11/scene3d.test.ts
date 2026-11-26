@@ -1,7 +1,9 @@
 // CAL56 — préréts de forme de toiture (2/4 pans, appentis, plat) : géométrie PURE qui
 // GÉNÈRE les pans depuis un contour fermé + une pente saisie, au lieu du choix binaire
 // plat/pente par zone. Testé hors DOM/Three (pure geometry in, geometry out).
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { numeroterDocument, poserEtiquettesNumeros, registreAtelier } from './numerotation'; // R3 (visuel lot 7)
+import { identifiantsModulesParCellule, numerosStablesDuPan } from './libellesAffectation'; // R3 (visuel lot 7)
 import { creerCanalTeinte } from './canalTeinte'; // ACAL1621
 import { cibleVue, appliquerVue } from './vuesCamera';
 import { dimensionsTexture, makeCanadianPanelTexture } from './panelTexture'; // ACAL1839
@@ -405,6 +407,141 @@ describe('ACAL286 — la teinte atteint le canal instanceColor du module PAN-A#1
   it('table vide ou non servie ⇒ aucune coloration (null)', () => {
     expect(couleurParAffectation(null, [0, 1], 'PAN-A')).toBeNull();
     expect(couleurParAffectation(buildAffectationColoring([], 'chaine'), [0, 1], 'PAN-A')).toBeNull();
+  });
+});
+
+// R3 (visuel lot 7) — le serveur nomme chaque module `<pan>#<n>`, `n` le numéro STABLE du document
+// (`production.py::cle_de_module`) ; la scène nommait par le RANG. Pose dont le compteur a grandi
+// (n = 2236…2275) : aucun module teinté. Les clés de la scène viennent désormais des `panels[].n` du
+// document absorbé (`registreAtelier`), avec le même repli que le serveur (rang).
+describe('R3 — la clé de module de la scène est celle du serveur (`panels[].n`)', () => {
+  const COULEURS = [BLEU, ORANGE, 'rgb(44, 160, 44)', 'rgb(214, 39, 40)', 'rgb(148, 103, 189)']; // forme servie
+  const docDe = (pans: { id: string; numeros: (number | undefined)[] }[]) => ({
+    version: 2,
+    zones: pans.map(({ id, numeros }) => ({
+      id,
+      label: `Zone ${id}`,
+      geometry: { panels: numeros.map((n, i) => ({ cx: i * 1.2, cy: 0, ...(n === undefined ? {} : { n }) })) },
+    })),
+  });
+  /** Les lignes servies d'un pan : chaînes de `parChaine` modules, couleur servie par chaîne. */
+  const lignesServies = (pan: string, numeros: number[], parChaine: number, decalage = 0): AffectationRow[] =>
+    numeros.map((n, i) => {
+      const chaine = Math.floor(i / parChaine) + 1 + decalage;
+      return { module: `${pan}#${n}`, chaine, mppt: 1, couleur_chaine: COULEURS[(chaine - 1) % COULEURS.length] };
+    });
+  const plage = (debut: number, compte: number) => Array.from({ length: compte }, (_, i) => debut + i);
+  afterEach(() => registreAtelier.oublier());
+
+  it('n = 2236…2275, 5 chaînes servies `area-2#2236…` ⇒ chaque module a la couleur de SA chaîne', () => {
+    const numeros = plage(2236, 40);
+    registreAtelier.absorberDocument(docDe([{ id: 'area-2', numeros }]));
+    const coloring = buildAffectationColoring(lignesServies('area-2', numeros, 8), 'chaine');
+    const cellules = plage(10, 40).map((c) => c * 2); // cellules de lattice non contiguës, rangs 1…40
+    const fn = couleurParAffectation(coloring, cellules, clePanAffectation({ id: 'area-2' }))!;
+    cellules.forEach((cellule, i) => {
+      expect(fn(cellule)).toEqual(lireCouleurServie(COULEURS[Math.floor(i / 8)]));
+    });
+    expect(identifiantsModulesParCellule(cellules, 'area-2')[cellules[0]]).toBe('area-2#2236');
+  });
+
+  it('pose neuve n = 1…16 : clés et teintes identiques à celles du rang (inchangé)', () => {
+    const numeros = plage(1, 16);
+    registreAtelier.absorberDocument(docDe([{ id: 'area-2', numeros }]));
+    const cellules = plage(0, 16);
+    const parRang = cellules.map((c, i) => [c, `area-2#${i + 1}`]);
+    const ids = identifiantsModulesParCellule(cellules, 'area-2');
+    expect(cellules.map((c) => [c, ids[c]])).toEqual(parRang);
+    const fn = couleurParAffectation(buildAffectationColoring(lignesServies('area-2', numeros, 8), 'chaine'), cellules, 'area-2')!;
+    expect(cellules.map(fn)).toEqual(cellules.map((_, i) => lireCouleurServie(COULEURS[Math.floor(i / 8)])));
+  });
+
+  it('deux pans, chacun sa numérotation : chaque module prend la couleur de SA ligne, aucun échange', () => {
+    const a = [101, 102, 103, 104];
+    const b = [7, 8, 10, 11]; // le 9 a été retiré : numéro vacant
+    registreAtelier.absorberDocument(docDe([{ id: 'area-1', numeros: a }, { id: 'area-2', numeros: b }]));
+    const lignes = [...lignesServies('area-1', a, 2), ...lignesServies('area-2', b, 2, 2)];
+    const coloring = buildAffectationColoring(lignes, 'chaine');
+    const fnA = couleurParAffectation(coloring, [3, 1, 2, 0], 'area-1')!; // ordre de rendu ≠ ordre trié
+    const fnB = couleurParAffectation(coloring, [0, 1, 2, 3], 'area-2')!;
+    expect([0, 1, 2, 3].map(fnA)).toEqual([0, 0, 1, 1].map((k) => lireCouleurServie(COULEURS[k])));
+    expect([0, 1, 2, 3].map(fnB)).toEqual([2, 2, 3, 3].map((k) => lireCouleurServie(COULEURS[k])));
+    expect(identifiantsModulesParCellule([0, 1, 2, 3], 'area-2')).toEqual(b.map((n) => `area-2#${n}`));
+  });
+
+  it('repli = le RANG, comme le serveur : document sans n, n partiel, n en double, pose non enregistrée', () => {
+    const rang = (pan: string, compte: number) => plage(1, compte).map((i) => `${pan}#${i}`);
+    const cellules = plage(0, 3);
+    expect(identifiantsModulesParCellule(cellules, 'jamais-lu')).toEqual(rang('jamais-lu', 3)); // estimateur public
+    registreAtelier.absorberDocument(docDe([
+      { id: 'sans-n', numeros: [undefined, undefined, undefined] },
+      { id: 'partiel', numeros: [40, undefined, 42] },
+      { id: 'double', numeros: [5, 5, 6] },
+      { id: 'repave', numeros: [2236, 2237] }, // 2 au document, 3 cellules à l'écran
+    ]));
+    for (const pan of ['sans-n', 'partiel', 'double', 'repave']) {
+      expect(identifiantsModulesParCellule(cellules, pan)).toEqual(rang(pan, 3));
+    }
+    expect(numerosStablesDuPan([{ n: 3 }, { n: 0 }])).toEqual([]);
+    expect(numerosStablesDuPan(null)).toEqual([]);
+  });
+
+  // R3 point 2 — appariement par EMPLACEMENT. Le document stocké est dans un ordre ≠ celui des instances.
+  const stockeMelange = (id: string, places: [number, number][], numeros: (number | undefined)[]) => ({
+    zones: [{ id, geometry: { panels: places.map(([cx, cy], i) => ({ cx, cy, ...(numeros[i] === undefined ? {} : { n: numeros[i] }) })) } }],
+  });
+
+  it('chaîne réelle (rendu → coloration) : stocké dans un AUTRE ordre, chaque module prend la couleur de SA ligne', () => {
+    const rendus = plage(0, 40).map((i) => ({ cx: (i % 10) * 1.2, cy: Math.floor(i / 10) * 2.1 }));
+    const ordre = plage(0, 40).reverse(); // document écrit à l'envers
+    const nDe = (i: number) => 2236 + i; // le module rendu i porte n = 2236 + i
+    registreAtelier.absorberDocument(stockeMelange('rendu-reel', ordre.map((i) => [rendus[i].cx, rendus[i].cy]), ordre.map(nDe)));
+    poserEtiquettesNumeros({ three: THREE, racine: new THREE.Group(), panId: 'rendu-reel', modules: rendus, matrices: [], zoom: null });
+    const cellules = plage(0, 40).map((i) => 3 * i + 1); // cellules de lattice, ordre des instances
+    const coloring = buildAffectationColoring(lignesServies('rendu-reel', plage(2236, 40), 8), 'chaine');
+    const fn = couleurParAffectation(coloring, cellules, 'rendu-reel')!;
+    cellules.forEach((cellule, i) => expect(fn(cellule)).toEqual(lireCouleurServie(COULEURS[Math.floor(i / 8)])));
+  });
+
+  it('une cellule sans panneau stocké à son emplacement est GRISE, jamais nommée par un rang d’un autre module', () => {
+    // Stocké : n = 1, 2, 3 à x = 1,2 / 2,4 / 3,6 ; à l'écran un module de plus à x = 0 (pose non enregistrée).
+    registreAtelier.absorberDocument(stockeMelange('neuf', [[1.2, 0], [2.4, 0], [3.6, 0]], [1, 2, 3]));
+    const rendus = [{ cx: 0, cy: 0 }, { cx: 1.2, cy: 0 }, { cx: 2.4, cy: 0 }, { cx: 3.6, cy: 0 }];
+    const ids = identifiantsModulesParCellule([0, 1, 2, 3], 'neuf', rendus);
+    expect(ids).toEqual([undefined, 'neuf#1', 'neuf#2', 'neuf#3']);
+    const lignes = [1, 2, 3].map((n) => ({ module: `neuf#${n}`, chaine: n, mppt: 1, couleur_chaine: COULEURS[n - 1] }));
+    const fn = affectationColorFn(buildAffectationColoring(lignes, 'chaine'), ids)!;
+    expect([0, 1, 2, 3].map(fn)).toEqual([AFFECTATION_UNASSIGNED, ...[0, 1, 2].map((k) => lireCouleurServie(COULEURS[k]))]);
+  });
+
+  it('document ancien sans n : la clé est le rang AU DOCUMENT du panneau au même endroit (règle serveur)', () => {
+    registreAtelier.absorberDocument(stockeMelange('ancien', [[2.4, 0], [0, 0], [1.2, 0]], [undefined, 7, undefined]));
+    const ids = identifiantsModulesParCellule([0, 1, 2], 'ancien', [{ cx: 0, cy: 0 }, { cx: 1.2, cy: 0 }, { cx: 2.4, cy: 0 }]);
+    expect(ids).toEqual(['ancien#2', 'ancien#3', 'ancien#1']);
+  });
+
+  it('placement libre : cellules = index de `freeState.panels`, positions hors lattice, appariées par emplacement', () => {
+    const libres = [{ cx: 0.37, cy: 1.91 }, { cx: 2.05, cy: 0.12 }, { cx: 4.4, cy: 3.33 }];
+    registreAtelier.absorberDocument(stockeMelange('libre', [[4.4, 3.33], [0.37, 1.91], [2.05, 0.12]], [12, 10, 11]));
+    expect(identifiantsModulesParCellule([0, 1, 2], 'libre', libres)).toEqual(['libre#10', 'libre#11', 'libre#12']);
+  });
+
+  it('sans table servie (estimateur public) : aucune teinte, comme avant', () => {
+    registreAtelier.absorberDocument(docDe([{ id: 'area-2', numeros: plage(2236, 3) }]));
+    expect(couleurParAffectation(null, [0, 1, 2], 'area-2')).toBeNull();
+    expect(couleurParAffectation(buildAffectationColoring([], 'chaine'), [0, 1, 2], 'area-2')).toBeNull();
+  });
+
+  it('lire les clés n’écrit rien : le document rouvert puis ré-enregistré sans geste est octet-identique', () => {
+    const doc = docDe([{ id: 'area-2', numeros: plage(2236, 4) }]);
+    const avant = JSON.stringify(doc);
+    const copie = JSON.parse(avant);
+    registreAtelier.absorberDocument(copie);
+    const coloring = buildAffectationColoring(lignesServies('area-2', plage(2236, 4), 2), 'chaine');
+    couleurParAffectation(coloring, [0, 1, 2, 3], 'area-2');
+    identifiantsModulesParCellule([0, 1, 2, 3], 'area-2');
+    expect(numeroterDocument(copie, undefined, registreAtelier)).toBeNull(); // chemin d'enregistrement, bascule éteinte
+    expect(JSON.stringify(copie)).toBe(avant);
   });
 });
 

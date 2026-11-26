@@ -2425,3 +2425,41 @@ lesquels des 18 choix changer (`choix-a-confirmer-2026-11-26.md`) ; déploiement
 
 **Jamais vu à l'écran** : toutes les corrections des lots 7 et 8 sauf le second regard du lot 7 ; la génération du devis
 35 × 715 W avec la garde refaite ; l'imagerie satellite réelle sur la page du client.
+
+### Point du 26/11, 15 h 15 UTC (intitulé d'abord « 17 h » par erreur d'horloge) — VISIONNEUSE RÉPARÉE EN LIGNE, LOT 8 : 9 BRANCHES PLIÉES, 12 EN COURS (le plus récent — REPRENDRE ICI)
+
+**Fusionné** : PR Taqinor/taqinor-os#1562 (site seul, 13 h 57 UTC) — la visionneuse 3D de la page du devis ne plante plus ;
+en ligne par Cloudflare. Lot 7 fusionné, toujours PAS déployé.
+
+**Réponses de Reda (séances 3 à 5 du 26/11)** : les 18 choix confirmés ; D-ACAL-159 à 169 ; D-ACAL-63 à 68, 70, 71, 73,
+77 ; D-AMOT-8 à 12 — tout est dans `decisions.yml` et la mémoire partagée. Liste des mots à relire envoyée
+(`mots-a-relire-2026-11-26.md`, 67 numéros) : il corrige par numéro. Huit questions d'autres audits : « plus tard ».
+
+**Pliées dans `dev-lot8` depuis 13 h 50** : cible-et-libelle, acal-toit-plat-rendus (partie i), acal-batterie-atelier,
+toit-estimation ; correctif de la commande « clean the disk » (jonctions).
+
+**En relecture neuve** : `lot8/acal-onduleur-designe` (d8a32d8a4 — onduleur ET batterie désignés, resynchronisation qui
+garde la désignation, toit plat partie (ii) à 20°), `lot8/prix-vente-technicien` (05f828e9b — masquage partout, D-ACAL-165),
+`lot8/stock-atelier` (b611e2d6b), `lot8/atelier-saisies` (e431374d9), `lot8/pompage-atelier` (c0a7b9ebc),
+`lot8/affectation-cles-modules` (5dfc1d59d — couleurs des chaînes sur la carte : clé = numéro stable, appariement par position).
+**En correction après relecture** : `lot8/generateur-autofill`, `lot8/releve-photos`.
+**En construction** : `lot8/schema-deux-options` (partie 2 : une page d'annexe par option), `lot8/moteur-pdf` (ACAL1218,
+1221, 1222, D-ACAL-167), `lot8/onduleur-position` (ACAL1317, arbre posé à la main `zz-lane-onduleur-position`),
+`lot8/liste-pluriannuel` (ACAL1252, arbre `zz-lane-liste-pluriannuel`).
+**Site, étape B** : `lot8/web-visionneuse-b` (00b1561c5), relue, corrigée, en contrôle au navigateur ; sa PR (site seul)
+part si le contrôle dit oui, puis la PR du lot 8.
+
+**À mettre en file** : panneau par défaut partout (D-ACAL-169 : stock → ventes → calepinage → générateur → site ; le stock
+attend le pli de prix-vente-technicien) ; numérotation des modules consommée à chaque sérialisation pendant l'édition
+(cause des numéros 2236… ; politique de numérotation, territoire d'ACAL1720) ; ACAL1320 (libellé de la resynchronisation
+d'un devis envoyé, D-ACAL-73 : aucun aperçu avant d'agir n'existe) ; suites du rejeu ci-dessous.
+
+**Rejeu en direct du lot 7 sur la pile (`T5/rejeu-6-lot7.json`, 39 lignes)** : 9 corrigées, 15 partielles, 4 non corrigées,
+7 non rejouables, 4 défauts neufs. Restent à traiter : R5A-N5 (« modifications non enregistrées » sans rien taper, devis et
+fiche du lead), R5A-N6 (9 réponses 404 de `ventes/conception/<lead>/` sur une fiche), T4-X7-015 (pas de calque
+« Électrique »), R6-N1 (Réviser > 20 s), R5A-N8 (cartes « Calcul des totaux… » > 25 s), R6-N2 (Retenir une variante non
+simulée sans avertissement), R6-N3, R6-N4, T4-U1-009 / T4-X7-020 (PDF « devis final » sans RIB ni mention), T4-X1-010
+(darija rendu en français). T4-X1-004 et T4-X2-006 sont corrigées dans le lot 8 (non rejouées).
+
+**Disque** : commande « clean the disk » du dépôt lancée (16 Go libres vers 15 h, 6,8 au départ) ; rapport de mesure dans le
+dossier de travail de la session (`disque/rapport.md`) : arbres de travail 53 Go dont 104 déjà dans `main`, caches 23 Go.

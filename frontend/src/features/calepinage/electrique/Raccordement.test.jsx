@@ -110,6 +110,22 @@ describe('Raccordement (CALX244)', () => {
     }
   })
 
+  it('ACAL1251 — l\'avertissement « dix fois l\'attendu » du contrat se lit sous le champ, la saisie reste', async () => {
+    servir(CONTRAT.exemple_limite_saisie)
+    rendre()
+    await screen.findByTestId('calx244-formulaire')
+    const avertissement = await screen.findByTestId('acal1251-avertissement-puissance_souscrite_kva')
+    expect(avertissement).toHaveTextContent(CONTRAT.exemple_limite_saisie.avertissements[0].message)
+    expect(screen.queryByTestId('calx244-erreur-puissance_souscrite_kva')).toBeNull()
+  })
+
+  it('ACAL1251 — sans avertissement servi, rien n\'est affiché sous le champ', async () => {
+    servir(CONTRAT.exemple_vide)
+    rendre()
+    await screen.findByTestId('calx244-formulaire')
+    expect(screen.queryByTestId('acal1251-avertissement-puissance_souscrite_kva')).toBeNull()
+  })
+
   it('poste les neuf clés et affiche la réponse, sans seconde lecture', async () => {
     servir(CONTRAT.exemple_vide)
     calepinageApi.calepinages.enregistrerRaccordement

@@ -126,7 +126,7 @@ class TroisBlocsTest(SimpleTestCase):
             # ACAL157 — + ``proposition_lead`` (null sans proposition).
             # ACAL782/783 — + ``regime``, ``injection``, ``injection_motif``.
             self.assertEqual(sorted(RACCORDEMENT[etat]),
-                             ['calcul', 'injection', 'injection_motif',
+                             ['avertissements', 'calcul', 'injection', 'injection_motif',
                               'proposition_lead', 'regime', 'saisie',
                               'verdicts'],
                              f'{etat} : les blocs de réponse ont bougé.')

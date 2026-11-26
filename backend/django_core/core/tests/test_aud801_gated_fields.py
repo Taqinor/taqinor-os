@@ -191,6 +191,21 @@ class Aud801GatedFieldsTests(TestCase):
                 cache_partage=True,
                 gated_fields={'montant': 'can_view_buy_prices'})
 
+    def test_dacal165_masques_lecteur_juges_sur_le_seul_lecteur(self):
+        """D-ACAL-165 — ``masques_lecteur`` : écarté pour un lecteur sans
+        l'attribut, GARDÉ sans acteur (``user=None``), jamais partagé en cache."""
+        from types import SimpleNamespace
+        definition = {'gated_fields': {}, 'masques_lecteur': {'prix': 'can_view_sale_prices'}}
+        self.assertEqual(data_explorer.champs_interdits(definition, None), set())
+        self.assertEqual(data_explorer.champs_interdits(
+            definition, SimpleNamespace(can_view_sale_prices=False)), {'prix'})
+        self.assertEqual(data_explorer.champs_interdits(
+            definition, SimpleNamespace(can_view_sale_prices=True)), set())
+        with self.assertRaises(ValueError):
+            data_explorer.register_dataset(
+                'dacal165.interdit', 'X', CHAMPS, _transactions_queryset,
+                cache_partage=True, masques_lecteur={'montant': 'can_view_sale_prices'})
+
     def test_bi_cache_ne_partage_pas_un_dataset_gated(self):
         self.assertFalse(bi_cache._partage(DATASET))
 

@@ -261,11 +261,11 @@ describe('PretAEnvoyer — « Régler » mène à un écran qui existe (ACAL1703
   })
 })
 
-/* T4-U4-014 — un calepinage SANS lead (créé depuis un client) : le « ? » de « Taille dimensionnée sur la consommation »
+/* T4-U4-014 — un calepinage SANS lead (créé depuis un client) : le « ? » de « Facture ou taille souhaitée renseignée »
    ne renvoie plus à « la facture du lead » qui n'existe pas ; le geste proposé est faisable. */
 describe('PretAEnvoyer — un calepinage sans lead ne parle pas du lead (T4-U4-014)', () => {
   const taille = {
-    ...ligne(modeleARegler, 'taille_sans_facture'), libelle: 'Taille dimensionnée sur la consommation',
+    ...ligne(modeleARegler, 'taille_sans_facture'), libelle: 'Facture ou taille souhaitée renseignée',
     valeur_texte: 'le toit est rempli : 9 kWc', cause: 'aucune facture ni taille souhaitée : le système n’est pas dimensionné sur la consommation',
     geste: 'Saisir la facture', cible: { etape: 'toit', onglet: '', champ: 'facture' },
   }
@@ -277,7 +277,7 @@ describe('PretAEnvoyer — un calepinage sans lead ne parle pas du lead (T4-U4-0
     calepinageApi.calepinages.get.mockResolvedValue({ data: { id: 205, lead: null, client: 9 } })
     monter({ calepinageId: 205, groupes: true })
     const ligneTaille = await screen.findByTestId('cal-pret-ligne-taille_sans_facture')
-    await userEvent.click(within(ligneTaille).getByRole('button', { name: 'Pourquoi : Taille dimensionnée sur la consommation' }))
+    await userEvent.click(within(ligneTaille).getByRole('button', { name: 'Pourquoi : Facture ou taille souhaitée renseignée' }))
     const bulle = await screen.findByTestId('cal-pret-sans-lead')
     expect(bulle).toHaveTextContent('Ce calepinage n’a pas de lead : aucune facture à lire. Choisissez le nombre de panneaux à l’étape Panneaux, ou rattachez un lead pour dimensionner sur sa facture.')
     const contenu = bulle.parentElement
@@ -292,7 +292,7 @@ describe('PretAEnvoyer — un calepinage sans lead ne parle pas du lead (T4-U4-0
     calepinageApi.calepinages.get.mockResolvedValue({ data: { id: 206, lead: 4, client: null } })
     monter({ calepinageId: 206, groupes: true })
     const ligneTaille = await screen.findByTestId('cal-pret-ligne-taille_sans_facture')
-    await userEvent.click(within(ligneTaille).getByRole('button', { name: 'Pourquoi : Taille dimensionnée sur la consommation' }))
+    await userEvent.click(within(ligneTaille).getByRole('button', { name: 'Pourquoi : Facture ou taille souhaitée renseignée' }))
     expect(await screen.findByText('Saisir la facture')).toBeInTheDocument()
     expect(screen.queryByTestId('cal-pret-sans-lead')).toBeNull()
     cleanup()
