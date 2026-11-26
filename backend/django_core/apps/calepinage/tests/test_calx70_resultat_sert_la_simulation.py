@@ -166,6 +166,25 @@ class SimulationFraicheTest(SimpleTestCase):
         self.assertFalse(self.resultat['simulation_perimee'])
         self.assertEqual(self.resultat['motif'], '')
 
+    def test_panneaux_non_raccordes_sur_leur_cle(self):
+        # Revue lot 6 (ACAL1623) — la phrase sur SA clé, quel que soit le rang
+        # de la « borne haute » dans les avertissements ; null sans panneau
+        # hors chaîne. Mutant : ne pas servir la clé ⇒ échec.
+        attendu = CONTRAT['acal1623_non_raccordes']
+        depose = copy.deepcopy(self.calepinage.resultat)
+        depose['production']['hors_chaine'] = {'modules': 0, 'p50_kwh': None}
+        self.assertIsNone(resultat_calepinage(
+            _Calepinage(LAYOUT, resultat=depose),
+            materiel=MATERIEL)['panneaux_non_raccordes'])
+        depose['production']['hors_chaine'] = {'modules': 4, 'p50_kwh': None}
+        depose['avertissements'] = list(attendu['avertissements'])
+        servi = resultat_calepinage(_Calepinage(LAYOUT, resultat=depose),
+                                    materiel=MATERIEL)
+        self.assertEqual(servi['panneaux_non_raccordes'],
+                         attendu['panneaux_non_raccordes'])
+        self.assertNotEqual(servi['avertissements'][0],
+                            servi['panneaux_non_raccordes']['phrase'])
+
     def test_aucun_avertissement_de_non_simulation(self):
         for message in self.resultat['avertissements']:
             self.assertNotIn("La production n'est pas encore calculée", message)

@@ -55,7 +55,8 @@ from . import bordereau_calepinage as _module_bordereau  # ACAL632
 from . import validation_transformateur as _validation_transformateur  # ACAL642
 from . import validation_batterie as _validation_batterie  # ACAL633
 from . import batterie_declaration as _batterie_declaration  # ACAL786
-from . import (hors_reseau_declaration as _hors_reseau_declaration,  # ACAL790
+from . import (agregation_electrique as _agregation_electrique,  # ACAL1623 (revue lot 6)
+               hors_reseau_declaration as _hors_reseau_declaration,  # ACAL790
                pret_a_envoyer as _pret_a_envoyer,  # H5 — une_fois_par_lecture
                simulation_auto as _simulation_auto,  # ACAL1987
                suppositions as _suppositions)  # ACAL980
@@ -1922,6 +1923,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # ACAL1987 — la simulation PARTIE SEULE : en file/en cours, ou ce qui
         # manque à la dernière pose enregistrée (« Il manque … »).
         'simulation_automatique': _simulation_auto.etat_simulation_automatique(calepinage, empreinte),
+        # ACAL1623 (revue lot 6) — la phrase des panneaux non raccordés sur SA clé.
+        'panneaux_non_raccordes': _agregation_electrique.non_raccordes_servis(blocs['production']),
         'avertissements': _avertissements_uniques(messages),  # ACAL1540
         # ACAL283 — les deux FILS bornés, LUS tels qu'enregistrés (jamais
         # recalculés), listes vides jamais absentes — y compris quand la
