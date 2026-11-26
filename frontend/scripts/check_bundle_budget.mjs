@@ -273,7 +273,13 @@ const PER_CHUNK_BUDGET_KB = 350
 // créé, part de la consommation de la pose, production nulle expliquée) : mesuré 4 197,6 Ko gzip sur le runner (job
 // frontend-static du run 45727936828), aucune dépendance npm ajoutée (diff package.json vide), aucun autre plafond
 // dépassé. Budget : mesure arrondie aux 5 Ko + 10 : 4190 -> 4210.
-const TOTAL_BUDGET_KB = 4210
+// 26/11/2026 (calepinage L5, lot 7 : corrections du tour 5 du test utilisateur et défauts vus du schéma électrique —
+// échelle de départ du schéma en tablette et téléphone, confirmation avant de perdre un brouillon de câblage, phrases
+// du générateur réglées sur ce que le serveur prouve, « Réessayer » de la vue client, 9e contrôle « courant d'entrée ») :
+// mesuré 4 211,6 Ko gzip sur le build du poste (tête 8b116cf68 ; PAS le runner : le lot 6 y mesurait 4 207,1 Ko pour un
+// passage vert sous 4 210), aucune dépendance npm ajoutée (diff package.json vide), aucun autre plafond dépassé.
+// Budget : mesure arrondie aux 5 Ko + 10 : 4210 -> 4220.
+const TOTAL_BUDGET_KB = 4220
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
