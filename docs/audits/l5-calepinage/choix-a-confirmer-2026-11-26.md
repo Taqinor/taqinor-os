@@ -1,4 +1,6 @@
-# Choix pris sans le fondateur — à confirmer (26/11/2026)
+# Choix pris sans le fondateur — CONFIRMÉS par Reda le 26/11/2026
+
+**Réponse de Reda le 26/11/2026, mot pour mot : « all the 18 choices are good ». Les dix-huit choix sont gardés.**
 
 Dix-huit choix pris par l'orchestrateur pendant la nuit du 25 au 26/11 et la journée du 26/11, en l'absence de Reda.
 Chacun est écrit dans `docs/audits/decisions.yml` avec sa raison. Reda a demandé cette liste le 26/11 au soir pour dire
