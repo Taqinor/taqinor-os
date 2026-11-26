@@ -4,6 +4,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import calepinageApi from '../../api/calepinageApi'
 import { compterEnAttente, deposerOuMettreEnFile, rejouerFile } from './fileEnvoiPhotos' // ACAL892
+import AnciennesEnFile from './releve/AnciennesEnFile'
 import { urlFichierCalepinage, crossOriginFichierCalepinage } from '../../lib/calage/fichierCalepinage'
 import { ZOOM_INITIAL, poserFondCarte } from '../../lib/calage/fondCarte'
 import { retirerCarte } from '../../lib/leaflet/retirerCarte'
@@ -500,6 +501,11 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
           onFiles={deposerPhoto}
           data-testid="cal-photo-depot-fichier"
         />
+        {/* Revue ACAL1949 (point 4) — photos gardées avant la règle « une entrée = son utilisateur » : à choisir. */}
+        <AnciennesEnFile calepinageId={calepinageId} onApres={() => {
+          compterEnAttente(calepinageId).then(setEnAttente).catch(() => {})
+          envoyerLaFile()
+        }} />
         {(enAttente > 0 || messageFile) && (
           <p role="status" className="text-sm text-foreground" data-testid="acal892-file-attente">
             {messageFile}{enAttente > 0 ? ` ${enAttente} photo${enAttente > 1 ? 's' : ''} en attente d’envoi.` : ''}

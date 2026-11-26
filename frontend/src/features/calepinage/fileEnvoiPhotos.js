@@ -20,6 +20,24 @@ let magasin = null
 const file = () => { magasin ??= createBinaryOutboxStore().store; return magasin }
 const miennes = (ops, id, type = OP_PHOTO_CALEPINAGE) => ops.filter((o) => o.op_type === type && (id == null || String(o.meta?.calepinageId) === String(id)))
 
+/* ACAL1949 — une entrée gardée (photo ou relevé) appartient à l'utilisateur CONNECTÉ quand il l'a gardée
+   (`meta.utilisateurId`) : sur un poste partagé, B ne voit, ne remplace ni ne rejoue jamais ce que A a gardé ; cela
+   repart à la reconnexion de A (le relevé avec sa clé `client_op_id`, en `Idempotency-Key`). La déconnexion vide la file
+   (`providers/session-bridge.js::emitAuthLogout`). */
+const utilisateurCourant = () => { try { return store.getState()?.auth?.user?.id ?? null } catch { return null } }
+/** Revue ACAL1949 (point 3) — une entrée gardée SANS utilisateur (avant cette règle, ou sans session connue) est une
+    « ancienne » : jamais rejouée seule, jamais jetée en silence ; l'utilisateur connecté la voit et choisit (l'envoyer
+    sous son compte, ou la supprimer). */
+const estAncienne = (o) => o?.meta?.utilisateurId == null
+/** Gardée par l'utilisateur connecté. Session pas encore connue (`null`) : RIEN n'est à lui — rien n'est rejoué,
+    retiré ni proposé tant que la session n'est pas là (point 5). */
+const duCompte = (o) => {
+  const u = utilisateurCourant()
+  return u != null && !estAncienne(o) && String(o.meta.utilisateurId) === String(u)
+}
+/** Revue ACAL1949 (point 4) — les photos de l'utilisateur connecté seulement (même règle que le relevé). */
+const photosDuCompte = (ops, id) => miennes(ops, id).filter(duCompte)
+
 /** Le corps multipart de `ajouterPhoto` (mêmes champs que le dépôt en ligne). */
 function corpsPhoto(fichier, { genre, prise_le: priseLe, legende }) {
   const corps = new FormData()
@@ -32,12 +50,12 @@ function corpsPhoto(fichier, { genre, prise_le: priseLe, legende }) {
 
 /** Le nombre de photos en attente (celles de ce calepinage si `calepinageId`), lu dans la file : survit au rechargement. */
 export async function compterEnAttente(calepinageId) {
-  return miennes(await file().load(), calepinageId).length
+  return photosDuCompte(await file().load(), calepinageId).length
 }
 
 /** T4-X8-003 — les genres des photos en attente (dans l'ordre de la file) : survivent au rechargement, l'écran les montre. */
 export async function genresEnAttente(calepinageId) {
-  return miennes(await file().load(), calepinageId).map((o) => o.meta?.genre).filter(Boolean)
+  return photosDuCompte(await file().load(), calepinageId).map((o) => o.meta?.genre).filter(Boolean)
 }
 
 async function mettreEnFile(calepinageId, fichier, champs) {
@@ -48,7 +66,8 @@ async function mettreEnFile(calepinageId, fichier, champs) {
     throw new OutboxQuotaError('File d’envoi pleine : reconnectez-vous au réseau pour la vider avant d’ajouter une photo.')
   }
   const entree = {
-    client_op_id: makeOpId(), op_type: OP_PHOTO_CALEPINAGE, meta: { calepinageId, ...champs },
+    client_op_id: makeOpId(), op_type: OP_PHOTO_CALEPINAGE,
+    meta: { calepinageId, ...champs, utilisateurId: utilisateurCourant() },
     bytes, name: fichier.name || 'photo.jpg', type: fichier.type || 'image/jpeg', size: bytes.byteLength,
     queuedAt: new Date().toISOString(),
   }
@@ -87,7 +106,7 @@ const reponsePassagere = (reponse) => {
 export async function rejouerFile(calepinageId) {
   let envoyees = 0
   const refusees = []
-  for (const op of miennes(await file().load(), calepinageId)) {
+  for (const op of photosDuCompte(await file().load(), calepinageId)) {
     try {
       const fichier = new File([op.bytes], op.name, { type: op.type })
       await calepinageApi.calepinages.ajouterPhoto(op.meta.calepinageId, corpsPhoto(fichier, op.meta))
@@ -101,28 +120,19 @@ export async function rejouerFile(calepinageId) {
   return { envoyees, refusees, restantes: await compterEnAttente(calepinageId) }
 }
 
-/* ACAL1949 — le relevé gardé appartient à l'utilisateur CONNECTÉ quand il l'a gardé (`meta.utilisateurId`) : sur un
-   poste partagé, B ne voit, ne remplace ni ne rejoue jamais le relevé de A ; celui-ci repart à la reconnexion de A, avec
-   sa clé (`client_op_id`, en `Idempotency-Key`). La déconnexion vide les relevés gardés (poste partagé, LW45). */
-const utilisateurCourant = () => { try { return store.getState()?.auth?.user?.id ?? null } catch { return null } }
-/** Revue ACAL1949 (point 3) — une entrée gardée SANS utilisateur (avant cette règle, ou sans session connue) est une
-    « ancienne » : jamais rejouée seule, jamais jetée en silence ; l'utilisateur connecté la voit et choisit (l'envoyer
-    sous son compte, ou la supprimer). */
-const estAncienne = (o) => o?.meta?.utilisateurId == null
-/** Gardée par l'utilisateur connecté. Session pas encore connue (`null`) : RIEN n'est à lui — rien n'est rejoué,
-    retiré ni proposé tant que la session n'est pas là (point 5). */
-const duCompte = (o) => {
-  const u = utilisateurCourant()
-  return u != null && !estAncienne(o) && String(o.meta.utilisateurId) === String(u)
-}
 const releveDuCompte = (o, id) => miennes([o], id, OP_RELEVE_CALEPINAGE).length > 0 && duCompte(o)
 const relevesDuCompte = (ops, id) => ops.filter((o) => releveDuCompte(o, id))
-const ancienneDe = (o, id) => estAncienne(o) && miennes([o], id, OP_RELEVE_CALEPINAGE).length > 0
+const ancienneDe = (o, id) => estAncienne(o)
+  && (miennes([o], id, OP_RELEVE_CALEPINAGE).length > 0 || miennes([o], id, OP_PHOTO_CALEPINAGE).length > 0)
 
-/** Les entrées « anciennes » de ce calepinage : `{ releve: bool }` (rien sans session connue). */
+/** Les entrées « anciennes » de ce calepinage : `{ releve: bool, photos: n }` (rien sans session connue). */
 export async function anciennesEnFile(calepinageId) {
-  if (utilisateurCourant() == null) return { releve: false }
-  return { releve: (await file().load()).some((o) => ancienneDe(o, calepinageId)) }
+  if (utilisateurCourant() == null) return { releve: false, photos: 0 }
+  const anciennes = (await file().load()).filter((o) => ancienneDe(o, calepinageId))
+  return {
+    releve: anciennes.some((o) => o.op_type === OP_RELEVE_CALEPINAGE),
+    photos: anciennes.filter((o) => o.op_type === OP_PHOTO_CALEPINAGE).length,
+  }
 }
 
 /** « Envoyer sous mon compte » : les anciennes de ce calepinage deviennent celles de l'utilisateur connecté (même clé

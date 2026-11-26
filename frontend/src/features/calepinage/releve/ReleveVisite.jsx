@@ -510,7 +510,7 @@ export default function ReleveVisite() {
               <span>{noteHorsLigne(photos.enAttente, enLigne, fileReleve.enAttente, mesuresGardees)}</span>
             </section>
           )}
-          <AnciennesEnFile calepinageId={id} onApres={() => { Promise.resolve(fileReleve.renvoyer()).catch(() => {}) }} />
+          <AnciennesEnFile calepinageId={id} onApres={() => { Promise.resolve(fileReleve.renvoyer()).catch(() => {}); photos.envoyer() }} />
           {brouillons.stockageIndisponible && (
             <section className="cal-tel-note" data-testid="releve-stockage-indisponible" role="status">
               <span>Ce téléphone ne peut pas garder vos mesures : terminez le relevé tant que vous avez du réseau.</span>

@@ -526,7 +526,7 @@ describe('ACAL1949 — le relevé gardé est celui de SON utilisateur, porte sa 
     it('sans session connue (démarrage), rien n’est proposé, envoyé ni retiré', async () => {
       await garderAncien()
       store.dispatch(logout())
-      expect(await anciennesEnFile('1')).toEqual({ releve: false })
+      expect(await anciennesEnFile('1')).toEqual({ releve: false, photos: 0 })
       await supprimerAnciennes('1')
       expect(await rejouerReleve('1')).toMatchObject({ envoye: false, restantes: 0 })
       connecter(1)
