@@ -280,3 +280,33 @@ class UneSeuleEconomieAvecBatterieTests(SimpleTestCase):
         self.assertEqual(hier['annual_before'] - hier['annual_after'], 7988)
         neuf = synthese_economies({**data, 'phrases_pdf_2611': True})
         self.assertEqual(neuf['annual_before'] - neuf['annual_after'], 7987)
+
+    def test_un_brouillon_a_des_regles_anciennes_garde_ses_chiffres(self):
+        """Doctrine du golden des règles d'origine : aucun chiffre ne change
+        sous les règles courantes — un brouillon au niveau 1 garde sa facture
+        « avec solaire » (page 4) et son « avant → après » (page 1) ; au niveau
+        courant, ils dérivent de l'économie des cartes."""
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.regles_calcul import (
+            REGLES_COURANTES, REGLES_ORIGINE, REGLES_SENSIBILITES_1911)
+        from apps.ventes.quote_engine.etude_restitution import economie_unique_ouverte
+        from apps.ventes.quote_engine.residential import sample_data
+        from apps.ventes.quote_engine.residential.renderer import synthese_economies
+        # Le drapeau historique lu par la page 1 est celui du niveau courant.
+        self.assertEqual(REGLES_COURANTES, REGLES_SENSIBILITES_1911)
+        brouillon = dict(statut='brouillon', date_envoi=None, date_creation=None,
+                         mode_installation='residentiel')
+        ancien = SimpleNamespace(regles_calcul=REGLES_ORIGINE, **brouillon)
+        courant = SimpleNamespace(regles_calcul=REGLES_COURANTES, **brouillon)
+        self.assertFalse(economie_unique_ouverte(ancien))
+        self.assertTrue(economie_unique_ouverte(courant))
+        self.assertEqual(self._methode('horaire', economie_unique_ouverte(ancien))['facture_avec_solaire'], 3795)
+        self.assertEqual(self._methode('horaire', economie_unique_ouverte(courant))['facture_avec_solaire'], 3796)
+        data = sample_data.build('deux')
+        data.update({'factures_mensuelles': [831] * 12, 'factures_mensuelles_exactes': [831.4] * 12,
+                     'eco_a_monthly': [665] * 11 + [673], 'eco_a_ann': 7987, 'recommended': 'Avec batterie',
+                     'phrases_pdf_2611': True})
+        vieux = synthese_economies({**data, 'regles_sensibilites_historique': True})
+        self.assertEqual(vieux['annual_before'] - vieux['annual_after'], 7988)
+        self.assertEqual(synthese_economies(data)['annual_before'] - synthese_economies(data)['annual_after'], 7987)

@@ -95,13 +95,16 @@ def economie_unique_ouverte(devis):
     des cartes (une économie, un arrondi) pour ce devis ? Niveau 15, ou les
     nouveaux rendus du lot 8 (``regles_calcul.drapeaux_pdf_2611`` : brouillon
     jamais envoyé ou envoyé à partir de la coupure), marché résidentiel
-    seulement (le document industriel n'imprime pas cet exemple) ; un devis
-    envoyé avant garde l'exemple qu'il a reçu."""
+    seulement (le document industriel n'imprime pas cet exemple), et aux
+    règles COURANTES seulement (``REGLES_COURANTES`` : un brouillon resté à un
+    niveau de règles plus ancien garde ses chiffres, comme le golden des
+    règles d'origine l'exige) ; un devis envoyé avant garde l'exemple reçu."""
     from apps.ventes.domain.regles_calcul import (
-        REGLES_POSE_REELLE_2111, drapeaux_pdf_2611, regles_au_moins)
+        REGLES_COURANTES, REGLES_POSE_REELLE_2111, drapeaux_pdf_2611, regles_au_moins)
     marche = (getattr(devis, 'mode_installation', None) or '').strip().lower()
     return regles_au_moins(devis, REGLES_POSE_REELLE_2111) or (
-        marche != 'industriel' and bool(drapeaux_pdf_2611(devis)))
+        marche != 'industriel' and regles_au_moins(devis, REGLES_COURANTES)
+        and bool(drapeaux_pdf_2611(devis)))
 
 
 def _facture_avec_affichee(roi, avec, economie_unique=None):
