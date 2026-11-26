@@ -1111,6 +1111,8 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     if (!arme || !Array.isArray(lngLat) || !nombreFini(lngLat[0]) || !nombreFini(lngLat[1])) return poser(lngLat);
     return enUnGeste(() => {
       const p = poser(lngLat) as PoseReussie;
+      arme = null; // désarmé AVANT que l'écran soit prévenu (fin du geste) : il lit un geste achevé
+      suivreALaPose = false;
       return { ...p, ...suivreTrace(p.equipement.id, []) };
     });
   }
@@ -1259,12 +1261,14 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     poser,
     clicCarte: (lngLat) => {
       if (deplacementVise) { // ACAL1317 — le clic déplace l'organe visé, jamais n'en pose un second
-        if (deplacerEtSuivre(deplacementVise, lngLat).ok) deplacementVise = null;
+        const vise = deplacementVise;
+        deplacementVise = null; // désarmé AVANT que l'écran soit prévenu ; un refus réarme (nommé)
+        if (!deplacerEtSuivre(vise, lngLat).ok) deplacementVise = vise;
         return true;
       }
       if (!arme) return false;
       if (suivreALaPose) {
-        if (poserEtSuivre(lngLat).ok) { arme = null; suivreALaPose = false; }
+        poserEtSuivre(lngLat); // un refus garde l'armement (nommé)
         return true;
       }
       if (poser(lngLat).ok) arme = null; // un clic = un organe ; un refus garde l'armement (nommé)

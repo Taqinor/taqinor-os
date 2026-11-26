@@ -925,6 +925,19 @@ describe('ACAL1317 — déplacer l’onduleur, le tracé suit', () => {
     expect(traces(couche).map((c) => c.id)).toEqual(['ch2']);
   });
 
+  it('l’écran est prévenu UNE fois par geste, le geste déjà désarmé (pose comme déplacement)', () => {
+    const couche = atelier(null);
+    const vus: Array<[string | null, string | null, number]> = [];
+    couche.ecouter(() => vus.push([couche.typeArme(), couche.deplacementArme(), couche.documentElectrique()?.equipements?.length ?? 0]));
+    couche.armerPose('onduleur', { suivreTrace: true });
+    couche.clicCarte(lngLat(19, 5));
+    expect(vus).toEqual([[null, null, 1]]);
+    couche.armerDeplacement('eq1');
+    couche.clicCarte(lngLat(1, 5));
+    expect(vus).toHaveLength(2);
+    expect(vus[1]).toEqual([null, null, 1]);
+  });
+
   it('sans geste, rien n’est écrit : le document repart identique octet pour octet', () => {
     const source = { equipements: [onduleur(19, 5)], cheminements: [] };
     const avant = JSON.stringify(source);
