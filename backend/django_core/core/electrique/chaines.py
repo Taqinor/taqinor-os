@@ -695,13 +695,19 @@ def _repartition_inegale(nb_modules, entrees, fenetre, module, onduleur,
 
 
 def _tenter_chaines_inegales(sorties, numero, groupe, entrees, fenetre, module,
-                             onduleur, choix):
+                             onduleur, choix, mode="tout"):
     """``EntreeElectrique.chaines_inegales_entre_entrees`` — pour UN pan.
 
     Rend le dernier numéro de chaîne posé quand des chaînes inégales ont été
     posées (le pan est alors fait), ``None`` sinon : la partition égale de
     ``choix`` est posée par l'appelant, comme avant. Quand elle ne tient pas
     ET qu'aucune répartition ne tient non plus, une alerte le DIT.
+
+    ``mode`` « tout » (calepinage) : déclenché aussi par une ALERTE
+    d'écrêtage (Imp d'entrée) ; « bloquant » (devis,
+    ``chaines_inegales_sur_bloquant_seul``) : seulement par l'Isc publié
+    dépassé ou des modules hors chaîne — une conception qui ne porte qu'une
+    alerte ressort octet pour octet.
     """
     chaines, repartitions, verdicts = sorties
     nb_modules = _entier(groupe.nb_modules)
@@ -710,7 +716,8 @@ def _tenter_chaines_inegales(sorties, numero, groupe, entrees, fenetre, module,
         return None
     ecart = _ecart_de_la_partition_egale(
         nb_modules, entrees, fenetre, module, onduleur, choix[0], choix[1])
-    if ecart == (0, 0, 0):
+    if ecart == (0, 0, 0) or (mode == "bloquant"
+                              and not (ecart[0] or ecart[2])):
         return None
     inegale = _repartition_inegale(nb_modules, entrees, fenetre, module,
                                    onduleur, ecart)
@@ -878,7 +885,11 @@ def concevoir_chaines(entree):
     chaines = []
     repartitions = []
     numero = 0
-    inegales = bool(getattr(entree, "chaines_inegales_entre_entrees", False))
+    # « tout » (calepinage : écrêtage compris) / « bloquant » (devis, D-ACAL-139).
+    inegales = ("tout" if getattr(entree, "chaines_inegales_entre_entrees", False)
+                else "bloquant" if getattr(
+                    entree, "chaines_inegales_sur_bloquant_seul", False)
+                else None)
     for index, groupe in enumerate(groupes):
         nb_modules = _entier(groupe.nb_modules)
         entrees = blocs[index] if index < len(blocs) else (1,)
@@ -896,7 +907,7 @@ def concevoir_chaines(entree):
         if inegales and choix is not None:
             posee = _tenter_chaines_inegales(
                 (chaines, repartitions, verdicts), numero, groupe, entrees,
-                fenetre, module, onduleur, choix)
+                fenetre, module, onduleur, choix, mode=inegales)
             if posee is not None:
                 numero = posee
                 continue
