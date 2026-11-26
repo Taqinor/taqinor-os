@@ -305,14 +305,28 @@ describe('ACAL1429 — toit plat jamais confirmé', () => {
     expect(within(carte).getByText('Toit plat')).toBeInTheDocument()
   })
 
-  it('ACAL1922 : le serveur rend le pan SANS pitchSource ⇒ la carte perd « À confirmer » et lit « confirmé » quand même', async () => {
+  it('ACAL1922 : le serveur rend le pan SANS pitchSource = écriture non retenue : la carte GARDE « À confirmer », le refus est dit, la conception est relue', async () => {
     layout.mockResolvedValue({ data: { roof_layout: { zones: [PLAT] }, empreinte_document: 'jeton-1' } })
     enregistrerSectionLayout.mockImplementation(async () => ({ data: {
       empreinte_document: 'jeton-2', roof_layout: { zones: [PLAT] } } }))
     rendre()
     const carte = screen.getByTestId('cal-toit-pente-carte')
     await waitFor(() => expect(within(carte).getByText('Toit plat')).toBeInTheDocument())
+    const lectures = layout.mock.calls.length
+    fireEvent.click(screen.getByTestId('cal-toit-pente-confirmer'))
+    await waitFor(() => expect(within(carte).getByRole('status')).toHaveTextContent('n’a pas été retenue'))
+    expect(within(carte).getByText('À confirmer')).toBeInTheDocument()
     expect(screen.queryByTestId('cal-toit-plat-confirme')).toBeNull()
+    await waitFor(() => expect(layout.mock.calls.length).toBeGreaterThan(lectures)) // relu, pas un écho
+  })
+
+  it('ACAL1922 : le serveur rend le pan avec pitchSource ⇒ « Toit plat · confirmé », sans bouton', async () => {
+    layout.mockResolvedValue({ data: { roof_layout: { zones: [PLAT] }, empreinte_document: 'jeton-1' } })
+    enregistrerSectionLayout.mockImplementation(async (_id, corps) => ({ data: {
+      empreinte_document: 'jeton-2', roof_layout: { zones: [{ ...PLAT, ...corps.champs }] } } }))
+    rendre()
+    const carte = screen.getByTestId('cal-toit-pente-carte')
+    await waitFor(() => expect(within(carte).getByText('Toit plat')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('cal-toit-pente-confirmer'))
     await waitFor(() => expect(within(carte).queryByText('À confirmer')).toBeNull())
     expect(within(carte).getByTestId('cal-toit-plat-confirme')).toHaveTextContent('confirmé')
