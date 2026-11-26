@@ -244,9 +244,39 @@ class PorteDuPutTest(unittest.TestCase):
 
         from apps.calepinage.views.consommation import ProfilsTypesView
 
+        from types import SimpleNamespace
+
         requete = Request(APIRequestFactory().put(
             '/x/', corps, format='json'), parsers=[JSONParser()])
+        # D-ACAL-104 (25/11/2026) — écrire les profils types de la SOCIÉTÉ exige
+        # ``calepinage_approuver`` (``exiger_droit_reglages_societe``, en tête du
+        # ``put``) : l'auteur de ce test le porte, sans base ni société.
+        requete.user = SimpleNamespace(
+            is_authenticated=True, is_superuser=False, role=object(),
+            company=None, has_erp_permission=lambda code: code == 'calepinage_approuver')
         return ProfilsTypesView().put(requete)
+
+    def test_sans_le_droit_des_reglages_societe_refuse_avant_la_forme(self):
+        """D-ACAL-104 — sans ``calepinage_approuver``, le refus NOMMÉ précède la
+        forme (appelé hors ``dispatch`` ici, il se lève tel quel ; par l'API, DRF
+        le rend en 403 — ``test_acal_parametres_gouvernance``)."""
+        from types import SimpleNamespace
+
+        from rest_framework.exceptions import PermissionDenied
+        from rest_framework.request import Request
+        from rest_framework.test import APIRequestFactory
+
+        from apps.calepinage.views.consommation import ProfilsTypesView
+
+        requete = Request(APIRequestFactory().put(
+            '/x/', {'profils': [{'libelle': 'sans clé'}]}, format='json'),
+            parsers=[JSONParser()])
+        requete.user = SimpleNamespace(
+            is_authenticated=True, is_superuser=False, role=object(),
+            company=None, has_erp_permission=lambda code: code == 'calepinage_gerer')
+        with self.assertRaises(PermissionDenied) as refus:
+            ProfilsTypesView().put(requete)
+        self.assertIn('reglages_societe', refus.exception.detail)
 
     def test_la_forme_fautive_est_un_400_qui_nomme_la_ligne(self):
         reponse = self._put({'profils': [{'libelle': 'sans clé'}]})
