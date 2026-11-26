@@ -2426,7 +2426,7 @@ lesquels des 18 choix changer (`choix-a-confirmer-2026-11-26.md`) ; déploiement
 **Jamais vu à l'écran** : toutes les corrections des lots 7 et 8 sauf le second regard du lot 7 ; la génération du devis
 35 × 715 W avec la garde refaite ; l'imagerie satellite réelle sur la page du client.
 
-### Point du 26/11, 17 h UTC — VISIONNEUSE RÉPARÉE EN LIGNE, LOT 8 : 9 BRANCHES PLIÉES, 12 EN COURS (le plus récent — REPRENDRE ICI)
+### Point du 26/11, 15 h 15 UTC (intitulé d'abord « 17 h » par erreur d'horloge) — VISIONNEUSE RÉPARÉE EN LIGNE, LOT 8 : 9 BRANCHES PLIÉES, 12 EN COURS (le plus récent — REPRENDRE ICI)
 
 **Fusionné** : PR Taqinor/taqinor-os#1562 (site seul, 13 h 57 UTC) — la visionneuse 3D de la page du devis ne plante plus ;
 en ligne par Cloudflare. Lot 7 fusionné, toujours PAS déployé.
@@ -2461,5 +2461,5 @@ fiche du lead), R5A-N6 (9 réponses 404 de `ventes/conception/<lead>/` sur une f
 simulée sans avertissement), R6-N3, R6-N4, T4-U1-009 / T4-X7-020 (PDF « devis final » sans RIB ni mention), T4-X1-010
 (darija rendu en français). T4-X1-004 et T4-X2-006 sont corrigées dans le lot 8 (non rejouées).
 
-**Disque** : commande « clean the disk » du dépôt lancée (16 Go libres à 16 h 30, 6,8 au départ) ; rapport de mesure dans le
+**Disque** : commande « clean the disk » du dépôt lancée (16 Go libres vers 15 h, 6,8 au départ) ; rapport de mesure dans le
 dossier de travail de la session (`disque/rapport.md`) : arbres de travail 53 Go dont 104 déjà dans `main`, caches 23 Go.
