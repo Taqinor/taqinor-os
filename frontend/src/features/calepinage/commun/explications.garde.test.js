@@ -108,6 +108,12 @@ describe('ACAL872 — la bulle', () => {
     expect(avec).toMatch(/9\s?000 kWh\./)
   })
 
+  it('la phrase de l’horizon dit l’horizon du devis (ACAL1742)', () => {
+    const entree = REGISTRE.find((e) => e.cle === 'economie.horizon')
+    expect(remplirPhrase(entree, { horizon_ans: 25 })).toContain('sur le devis, 25 ans :')
+    expect(remplirPhrase(entree, { horizon_ans: null })).toContain('sur le devis, valeur non publiée :')
+  })
+
   it('une clé absente du registre ne rend rien', async () => {
     servir()
     const { container } = rendre({ cle: 'inconnue.nulle_part' })
