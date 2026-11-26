@@ -11,8 +11,8 @@
 // DevisGeneratorTarif.test.jsx (rendu réel, mocks des couches api) mais n'a
 // PAS été exécuté ici — seule la vérification de syntaxe (esbuild) l'a été.
 
-import { describe, it, expect, vi } from 'vitest'
-import { screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { screen, fireEvent, waitFor, renderHook, act } from '@testing-library/react'
 
 
 vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).crmApiMock())
@@ -54,6 +54,7 @@ import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import DevisGenerator from './DevisGenerator'
+import { usePanneauParDefautDepart } from '../../features/ventes/quote/panneauDefautEcran'
 import { PRODUITS_COMPOSITION as PRODUITS, bancCreation } from './devisGenerator.testHelpers.jsx'
 
 // Catalogue solaire complet — SAUF un panneau Jinko : la seule marque de
@@ -120,5 +121,105 @@ describe('PVMRQ — marque de panneau épinglée introuvable au stock', () => {
     // de préférence appliquée quand le réglage est indisponible.
     expect(await screen.findByDisplayValue('Panneau Canadien Solar 710W')).toBeInTheDocument()
     expect(screen.queryByText(/Marque épinglée introuvable/)).not.toBeInTheDocument()
+  })
+})
+
+// D-ACAL-169 (fondateur 26/11/2026 : « always use 715w everywhere ») — le panneau par
+// défaut de la société est la puissance de DÉPART d'un devis neuf ; ce que le vendeur tape
+// gagne ; un devis rouvert ne le lit jamais ; sans défaut désigné rien ne change.
+describe('D-ACAL-169 — panneau par défaut de la société', () => {
+  const DEFAUT = {
+    produit_id: 2, nom: 'Panneau Canadian Solar 715 Wc bifacial', pmax_wc: 715, source: 'designe', motif: null,
+  }
+  const AUCUN = {
+    produit_id: null, nom: null, pmax_wc: null, source: 'aucun',
+    motif: 'Aucun panneau par défaut n\'est désigné : les choix automatiques gardent leur règle d\'aujourd\'hui.',
+  }
+  const LIGNES = [
+    { produit: 1, designation: 'Onduleur réseau Huawei 10kW Triphasé', quantite: 1, prix_unitaire_ht: 16666.67 },
+    { produit: 2, designation: 'Panneau Canadien Solar 710W', quantite: 14, prix_unitaire_ht: 1166.67 },
+  ]
+  const lireDefaut = (resume) => { stockApi.getPanneauParDefaut = vi.fn(() => Promise.resolve({ data: resume })) }
+  const composition = (panneauParDefaut, watt = 715) => ({
+    data: { panel_watt: watt, marques_manquantes: [], lignes: LIGNES, panneau_par_defaut: panneauParDefaut },
+  })
+  const composer = async (nb = '14') => {
+    fireEvent.change(screen.getByLabelText(/Nombre de panneaux/), { target: { value: nb } })
+    fireEvent.click(screen.getByRole('button', { name: /Auto-remplir depuis le stock/i }))
+    await screen.findByDisplayValue('Panneau Canadien Solar 710W')
+    return ventesApi.composerDevis.mock.calls.at(-1)[0]
+  }
+  afterEach(() => { delete stockApi.getPanneauParDefaut })
+
+  it('devis neuf + défaut désigné : départ à sa puissance, nom dit, la composition laisse le serveur choisir', async () => {
+    lireDefaut(DEFAUT)
+    ventesApi.composerDevis.mockResolvedValueOnce(composition(DEFAUT))
+    renderGenerator()
+    expect(await screen.findByDisplayValue('715')).toBeInTheDocument()
+    expect(screen.getByTestId('gen-panneau-defaut')).toHaveTextContent('Panneau par défaut : Panneau Canadian Solar 715 Wc bifacial')
+    const corps = await composer()
+    // Ni wattage ni produit n'est dit au serveur : il applique sa règle (les deux de la même source).
+    expect(corps).not.toHaveProperty('panel_watt')
+    expect(corps.kwc).toBeCloseTo(10.01, 2)   // 14 × 715 W
+    expect(stockApi.getPanneauParDefaut).toHaveBeenCalledTimes(1)
+  })
+
+  it('un wattage TAPÉ gagne : la phrase s’efface et la composition l’envoie', async () => {
+    lireDefaut(DEFAUT)
+    ventesApi.composerDevis.mockResolvedValueOnce(composition(DEFAUT, 600))
+    renderGenerator()
+    await screen.findByTestId('gen-panneau-defaut')
+    fireEvent.change(screen.getByLabelText(/Puissance Panneau/), { target: { value: '600' } })
+    expect(screen.queryByTestId('gen-panneau-defaut')).not.toBeInTheDocument()
+    const corps = await composer()
+    expect(corps.panel_watt).toBe(600)
+  })
+
+  it('le serveur refuse le défaut (`refuse`) : son motif est dit, rien d’autre ne change', async () => {
+    lireDefaut(DEFAUT)
+    const motif = 'Le panneau par défaut « Panneau Canadian Solar 715 Wc bifacial » n\'est pas retenu par la composition '
+      + '(la marque épinglée des panneaux est « Jinko ») : la règle d\'aujourd\'hui s\'applique.'
+    ventesApi.composerDevis.mockResolvedValueOnce(composition({
+      produit_id: null, nom: null, pmax_wc: null, source: 'refuse', motif,
+    }, 710))
+    renderGenerator()
+    await screen.findByTestId('gen-panneau-defaut')
+    await composer()
+    expect(await screen.findByText(/n'est pas retenu par la composition/)).toBeInTheDocument()
+  })
+
+  it('aucun défaut désigné : 710 comme avant, rien n’est dit, le wattage part comme avant', async () => {
+    lireDefaut(AUCUN)
+    ventesApi.composerDevis.mockResolvedValueOnce(composition(AUCUN, 710))
+    renderGenerator()
+    await screen.findByDisplayValue('Installation')
+    await waitFor(() => expect(stockApi.getPanneauParDefaut).toHaveBeenCalled())
+    expect(screen.getByLabelText(/Puissance Panneau/)).toHaveValue('710')
+    expect(screen.queryByTestId('gen-panneau-defaut')).not.toBeInTheDocument()
+    const corps = await composer()
+    expect(corps.panel_watt).toBe(710)
+  })
+
+  it('lecture du défaut en échec : l’écran reste celui d’hier (710, wattage envoyé)', async () => {
+    stockApi.getPanneauParDefaut = vi.fn(() => Promise.reject(new Error('réseau')))
+    ventesApi.composerDevis.mockResolvedValueOnce(composition(AUCUN, 710))
+    renderGenerator()
+    await screen.findByDisplayValue('Installation')
+    expect(screen.getByLabelText(/Puissance Panneau/)).toHaveValue('710')
+    const corps = await composer()
+    expect(corps.panel_watt).toBe(710)
+  })
+
+  it('un devis rouvert (editId) ne lit JAMAIS le défaut ; un devis neuf le lit une fois et le dit au reducer', async () => {
+    lireDefaut(DEFAUT)
+    const dispatchSizing = vi.fn()
+    renderHook(() => usePanneauParDefautDepart({ editId: '7', dispatchSizing }))
+    await act(async () => { await Promise.resolve() })
+    expect(stockApi.getPanneauParDefaut).not.toHaveBeenCalled()
+    expect(dispatchSizing).not.toHaveBeenCalled()
+
+    renderHook(() => usePanneauParDefautDepart({ editId: null, dispatchSizing }))
+    await waitFor(() => expect(dispatchSizing).toHaveBeenCalledWith({ type: 'PANNEAU_DEFAUT_LU', pmaxWc: 715 }))
+    expect(stockApi.getPanneauParDefaut).toHaveBeenCalledTimes(1)
   })
 })

@@ -81,6 +81,17 @@ class KwcDesOptionsArrondiTest(SimpleTestCase):
         self.assertIsNone(_kwc_arrondi(None))
 
 
+class PanneauParDefautPhraseTest(SimpleTestCase):
+    """D-ACAL-169 — la phrase du panneau omis ne donne plus un wattage figé : le choix automatique
+    suit le panneau par défaut de la société (D-ACAL-169), sinon le catalogue."""
+
+    def test_panneau_omis_ne_dit_plus_un_wattage_fige(self):
+        from apps.ventes.agent_actions import COMPOSER_DEVIS
+        phrase = COMPOSER_DEVIS.inputs['properties']['panneau_produit_id']['description']
+        self.assertIn('panneau par défaut de la société', phrase)
+        self.assertNotRegex(phrase, r'\d+\s*Wc')
+
+
 class VentesAgentCatalogueTest(TestCase):
     """Les actions Ventes sont au catalogue et filtrées par permission ERP."""
 
