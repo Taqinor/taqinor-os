@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { lienManque } from './lienManque'
+import { destinationManque } from './lienManque'
 import { manqueClair } from './nomsPertes'
 import { CeQuiEstSur } from './ResultatIncomplet'
 import { BoutonCalculer } from './PanneauProduction'
@@ -20,6 +20,7 @@ const DOUBLON_DU_BOUTON = ['production_non_simulee', 'simulation_perimee']
 function Ligne({ rang, m, calepinageId }) {
   const [ouvert, setOuvert] = useState(false)
   const { titre, ligne, bouton, technique } = manqueClair(m)
+  const vers = destinationManque(calepinageId, m) // R5B-N5 — la destination unique d'une ligne (lienManque.js)
   return (
     <li className="cal-resinc-ligne" data-testid="cal-avant-ligne" data-code={m.code}>
       <span className="cal-resinc-rang" aria-hidden="true">{rang}</span>
@@ -34,7 +35,8 @@ function Ligne({ rang, m, calepinageId }) {
         {ligne && <span className="cal-resinc-raison">{ligne}</span>}
         {technique && ouvert && <span className="cal-resinc-raison" data-testid="cal-avant-servi">{technique}</span>}
       </span>
-      <Link to={lienManque(calepinageId, m.cible)} className="cal-resinc-bouton" data-testid="cal-avant-renseigner">
+      <Link to={vers.to} state={vers.state} className="cal-resinc-bouton"
+        data-testid="cal-avant-renseigner">
         {bouton}
       </Link>
     </li>

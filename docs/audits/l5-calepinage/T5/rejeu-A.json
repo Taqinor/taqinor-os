@@ -1,0 +1,450 @@
+[
+ {
+  "id": "T4-U1-009",
+  "verdict": "partiel",
+  "vu": "PDF Devis final du devis brouillon DEV-202611-0104 (2 options 29 500 / 46 700 MAD), page 4 : 'ModalitÃ©s de paiement 30%/60%/10%' puis DEUX lignes 'Sans batterie : 8 850,00 / 17 700,00 / 2 950,00 MAD' et 'Avec batterie : 14 010,00 / 28 020,00 / 4 670,00 MAD' (corrigÃ©). Mais aucun RIB/IBAN imprimÃ© et rien ne dit qu'il manque ; la case du dialogue s'appelle toujours 'Devis Final (ajoute modalitÃ©s de paiement + RIB)'. Le code omet la ligne RIB quand le profil sociÃ©tÃ© n'en a pas : la copie n'en a probablement pas (non vÃ©rifiÃ© dans ParamÃ¨tres, rÃ©glage non touchÃ©).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/pdfs/0104-final-ui.pdf ; C:/dev/taqinor-os/logs/nightly-qa/playwright/pdfs/606-final.txt",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-U1-019",
+  "verdict": "corrige",
+  "vu": "PDF premium du brouillon DEV-202611-0104 : Ã©conomie avec batterie = 7 262 MAD/an en page 1 (bloc haut + option 2), page 2 (tableau) et page 4 ('Ã©conomie â‰ˆ 7 262 MAD/an') ; un seul chiffre.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/pdfs/606-full.txt",
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-U1-022",
+  "verdict": "corrige",
+  "vu": "Lead R5A-1 (GPS 33,5731/-7,5898, Conso mensuelle 450 kWh, 'Ã©tÃ© diffÃ©rent' cochÃ© ; pas de champ conso Ã©tÃ© kWh, seul 'Facture Ã‰tÃ© (MAD/mois)') : la fiche affiche 'PrÃªt Ã  deviser', le bouton Devis auto est actif et crÃ©e DEV-202611-0104 (Sans batterie 2,13 kWc 29 500 / Avec batterie 3,55 kWc 46 700). Le 'Besoin d'aprÃ¨s la facture' du calepinage n'a pas Ã©tÃ© jouÃ© (pas de calepinage crÃ©Ã©).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-U1-022-devisauto.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-U1-030",
+  "verdict": "corrige",
+  "vu": "CRM > Leads (anon_resp, 686 leads) : la liste charge une seule page (GET crm/leads/?page=1&page_size=50, 6,4 s Ã  froid) ; taper 'R5A-2' dans la recherche affiche la fiche en 3,0 s, 1 carte.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-U1-030.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U3-014",
+  "verdict": "corrige",
+  "vu": "Pile peu chargÃ©e : CRM > Leads s'affiche en 6,4 s ; le lien /crm/leads?lead=1232 ouvre la fiche en 9,4 s (pas de timeout, pas de 'Erreur : timeout'). A recontrÃ´ler sous charge.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-U3-014.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X1-001",
+  "verdict": "corrige",
+  "vu": "PDF premium DEV-202611-0104 : option 1 '3 panneaux 710 W', 29 500 MAD 'soit 13 850 MAD/kWc' (=29 500/2,13) ; option 2 '5 panneaux', 46 700 'soit 13 155 MAD/kWc' (=46 700/3,55) ; page 2 en-tÃªte '2,13 Â· 3,55 kWc installÃ©s (sans Â· avec)'.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/pdfs/606-full.txt",
+  "gravite": "S1"
+ },
+ {
+  "id": "T4-X1-002",
+  "verdict": "corrige",
+  "vu": "PDF avec Ã©tude du brouillon 0104, page 4 : 'Garanties jusqu'Ã  25 ans â€” Onduleur (option 1) 10 ans, onduleur (option 2) 5 ans', pastilles '10 ANS Onduleur (option 1)' et '5 ANS Onduleur (option 2)' ; le texte dit 'onduleurs Huawei & Deye'.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/pdfs/606-etude.txt",
+  "gravite": "S1"
+ },
+ {
+  "id": "T4-X1-003",
+  "verdict": "corrige",
+  "vu": "Liste des devis > PDF > cocher Devis Final > GÃ©nÃ©rer sur DEV-202611-0104 : la ligne affiche 'PDF en cours de gÃ©nÃ©rationâ€¦' puis le PDF se tÃ©lÃ©charge en ~36 s (4 pages, Ã©chÃ©ancier prÃ©sent).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/pdfs/0104-final-ui.pdf",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X1-007",
+  "verdict": "pas-corrige",
+  "vu": "Devis 0104 sans calepinage : dans la fenÃªtre PDF le choix 'Inclure la planche cotÃ©e' n'est pas grisÃ© (isDisabled=false), aucun message ; aprÃ¨s GÃ©nÃ©rer le PDF (4 pages) est identique ligne pour ligne au PDF sans l'option (0 ligne de diffÃ©rence), rien n'est dit.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X1-007.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/pdfs/0104-planche.pdf",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X1-012",
+  "verdict": "corrige",
+  "vu": "Liste des devis, brouillon DEV-202611-0104 : colonne ValiditÃ© '26/12/2026' ; le PDF imprime 'ValiditÃ© : jusqu'au 26/12/2026' (page 1 et 4).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-devis-list.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X7-001",
+  "verdict": "corrige",
+  "vu": "Lead R5A-2, aprÃ¨s Devis auto DEV-202611-0105 : carte Conception 'Retour 6 ans d'aprÃ¨s le devis â€¦ 29 500 MAD TTC pour 5 001 MAD/an' (sans) et '5,9 ans â€¦ 46 700 MAD TTC pour 7 954 MAD/an' (avec) ; un retour par option, chacun = prix/Ã©conomie.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X7-001.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X7-003",
+  "verdict": "corrige",
+  "vu": "Lead R5A-2 facture hiver 900 : PDF du brouillon DEV-202611-0105 imprime 'â‰ˆ 831 MAD/mois aujourd'hui' / 'Facture actuelle â‰ˆ 9 977 MAD/an' avec, page 1 et page 4, la phrase approuvÃ©e 'Montant recalculÃ© au tarif par tranches Ã  partir de votre consommation ; il peut diffÃ©rer lÃ©gÃ¨rement de votre facture.' (l'Ã©cart est dit, le montant 900 n'est pas imprimÃ©).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/pdfs/607-full.txt",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X7-020",
+  "verdict": "partiel",
+  "vu": "PDF Devis final de DEV-202611-0104 (2 options) : Ã©chÃ©ances par option (8 850/17 700/2 950 et 14 010/28 020/4 670). RIB promis par l'intitulÃ© de la case mais non imprimÃ© et non signalÃ© absent.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/pdfs/606-final.txt",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X9-015",
+  "verdict": "corrige",
+  "vu": "En-tÃªte de la liste des devis : '545 devis Â· 5 versions remplacÃ©es Â· 6 Ã  relancer', pagination 'Page 1 sur 22 Â· 545 devis' ; un seul nombre, l'Ã©cart (versions remplacÃ©es) est expliquÃ© ; lien 'Voir les versions remplacÃ©es (5)'.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-ADEV162.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-X9-016",
+  "verdict": "corrige",
+  "vu": "Carte Conception du lead R5A-2 aprÃ¨s Devis auto : 'Retour 6 ans / 5,9 ans d'aprÃ¨s le devis DEV-202611-0105 29 500 MAD TTC pour 5 001 MAD/an / 46 700 MAD TTC pour 7 954 MAD/an' : montant et Ã©conomies nommÃ©s, rapprochables.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X7-001.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "ADEV162",
+  "verdict": "corrige",
+  "vu": "Liste des devis : l'en-tÃªte '545 devis' est affichÃ© d'emblÃ©e (les 5 cartes de statut montrent 'Calcul des totauxâ€¦' ~10-25 s Ã  froid puis 58 / 65 / 6 / 4 / 412 devis avec totaux '9 073 400,00 MAD', '5 627 300,00 MAD'â€¦ au centime, somme des nombres = 545). La stabilitÃ© aprÃ¨s rechargement n'a pas Ã©tÃ© remesurÃ©e au centime.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-ADEV162.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X1-010",
+  "verdict": "partiel",
+  "vu": "Lead R5A-2 > onglet Devis > cocher DEV-202611-0105 > Darija > Envoyer par WhatsApp : l'aperÃ§u dit 'Variante darija : texte non rÃ©digÃ© â€” le message ci-dessous est en franÃ§ais. Choisissez FR pour l'envoyer en franÃ§ais.' puis un texte franÃ§ais avec le lien UNE seule fois. Pas de texte en darija (attendu non obtenu), mais le mÃ©lange silencieux est remplacÃ© par une mention claire.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X1-010.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U1-014",
+  "verdict": "corrige",
+  "vu": "Liste des devis > Accepter sur DEV-202611-0105 (envoyÃ©, 2 options) : aucune option prÃ©sÃ©lectionnÃ©e (les deux radios vides), bouton 'Confirmer l'acceptation' grisÃ© tant que l'option et le nom ne sont pas saisis ; aide 'Choisissez l'option que le client a retenue'. AcceptÃ© ensuite en 'Avec batterie' (option_acceptee=avec_batterie).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-U1-014.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X6-005",
+  "verdict": "corrige",
+  "vu": "Liste des devis, une seule ligne (DEV-202611-0105) : le menu 'â‹¯' s'ouvre Ã  y=8..488 px, 'Ã‰diter' Ã  y=41-73 et 'Lien interne' Ã  y=73-105 visibles dans la fenÃªtre 1440x900 ; le menu dÃ©file (overflow-y auto, scrollHeight 548 > 478).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X6-005.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U2-016",
+  "verdict": "corrige",
+  "vu": "AprÃ¨s acceptation de DEV-202611-0105 (chantier CHT-202611-0005) : AprÃ¨s-vente > Tickets SAV affiche un bouton 'Nouveau ticket' (fenÃªtre Client / Type / Description) et le texte 'Un ticket s'ouvre depuis la fiche du chantier, onglet Â« Interventions Â»' ; la fiche du chantier, bloc 'Tickets SAV', porte Type / Ã‰quipement / Description / bouton 'Ouvrir un ticket'. Aucun ticket rÃ©ellement crÃ©Ã©.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-U2-016-sav.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-U2-016-chantier.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X1-016",
+  "verdict": "partiel",
+  "vu": "Lead R5A-2 > panneau du devis acceptÃ© DEV-202611-0105 > RÃ©viser (nouvelle version) : le bouton affiche 'CrÃ©ation de la nouvelle versionâ€¦' ~10 s puis le toast 'La rÃ©vision a Ã©chouÃ© â€” rÃ©essayez.' (POST ventes/devis/607/reviser/ = net::ERR_ABORTED cÃ´tÃ© navigateur) alors que le serveur a bien crÃ©Ã© DEV-202611-0106 (un 2e clic rÃ©pond 409 'DÃ©jÃ  remplacÃ© par DEV-202611-0106'). On n'est pas emmenÃ© dans le gÃ©nÃ©rateur ; en rouvrant par 'Modifier' la V2 s'ouvre en Ã©dition complÃ¨te dont le titre nomme 'DEV-202611-0106', date de validitÃ© 26/12/2026 non vide ; le PDF dit 'Remplace le devis DEV-202611-0105'.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X1-016.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X1-016-edit.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X4-006",
+  "verdict": "corrige",
+  "vu": "Ã‰dition complÃ¨te de la V2 brouillon DEV-202611-0106 (aucun bon de commande) : la ligne au-dessus de 'MarchÃ© / Mode d'installation' dit seulement 'Brouillon enregistrÃ© Ã  04:46' ; aucun texte 'bon de commande' n'est prÃ©sent dans la page (0 occurrence). Les brouillons DEV-0130/0131 citÃ©s ne sont pas dans cette copie.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X4-006.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X4-004",
+  "verdict": "corrige",
+  "vu": "Ã‰dition complÃ¨te de DEV-202611-0106 (scÃ©nario Les deux), Auto-remplir puis Enregistrer : carte Tailles, onglet Sans batterie, 'RecommandÃ© Â· Devis officiel Â· 6 panneaux Â· 4,26 kWc', onduleur Huawei 5kW rÃ©seau, PRIX TTC 37 300 MAD = 'TOTAL SANS BATTERIE 37 300 MAD' Ã  droite ; le PDF imprime option 1 '6 panneaux 710 W 37 300,00 MAD'.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X4-004.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/pdfs/608-full.txt",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-V2-018",
+  "verdict": "corrige",
+  "vu": "MÃªme devis DEV-202611-0106 aprÃ¨s Auto-remplir + Enregistrer : Ã©cran 'ConseillÃ© par le moteur, sans batterie : 6 panneaux Â· 4,26 kWc', carte Tailles sans batterie 6 panneaux 4,26 kWc, PDF option 1 '6 panneaux 710 W 37 300 MAD soit 8 756 MAD/kWc' et page 2 '4,26 kWc installÃ©s' : un seul chiffre pour le sans batterie. Constat : l'option avec batterie est aussi chiffrÃ©e Ã  6 panneaux alors que le moteur en conseille 8 ; l'Ã©cran le dit ('Ce devis chiffre 6 panneaux Â· 4,26 kWc dans l'option avec batterie â€” Recalculerâ€¦').",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-saved.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/pdfs/608-full.txt",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X4-001",
+  "verdict": "pas-corrige",
+  "vu": "Ã‰dition complÃ¨te de DEV-202611-0106 > Lignes : Panneau Canadien Solar 710W QtÃ© 6 -> 8 -> Tab : Accessoires (313->417 HT), Tableau De Protection (1 219->1 625 HT) et Installation (3 500->4 000 HT) suivent, mais Structures acier reste 6 et Socles reste 12 pour 8 panneaux ; seule la ligne panneau porte l'Ã©tiquette 'QtÃ© figÃ©e Â· LibÃ©rer', rien sur Structures/Socles. Total 53 200 (non enregistrÃ©, abandonnÃ©).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X4-001.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X4-011",
+  "verdict": "corrige",
+  "vu": "Lignes > Plusieurs propriÃ©tÃ©s > + Villas diffÃ©rentes (DEV-0106, deux options) : rÃ©capitulatif 'Option sans batterie Â· Total gÃ©nÃ©ral 41 200 MAD' et 'Option avec batterie Â· Total gÃ©nÃ©ral 53 200 MAD' = les deux totaux de la colonne de droite (41 200 / 53 200), plus de total mÃ©langÃ©. DÃ©tail : 'Ã‰quipement commun 41 211 / 53 211' vs 'Total gÃ©nÃ©ral 41 200 / 53 200' (arrondi, S4).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X4-011.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X4-018",
+  "verdict": "corrige",
+  "vu": "Ã‰dition complÃ¨te DEV-202611-0106 > Simulation > DÃ©plier : la colonne 'Ã‰co. avec (MAD/an, batterie du moteur)' donne soit un chiffre (4,97 kWc : 12 101 ; 5,68 kWc â˜… RecommandÃ© (avec) : 12 318) soit la raison par taille ('Pas de batterie Ã  cette taille : en novembre, le surplus solaire d'une journÃ©e ne remplirait la batterie de 4,6 kWh qu'Ã  53 %.') ; paybacks '4,2 ans' (virgule). DÃ©tail stockage proposÃ©.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X4-018.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X6-016",
+  "verdict": "partiel",
+  "vu": "Technique de DEV-202611-0106 : carte et rail disent la mÃªme taille (4,26 kWp / '4,26 kWc Â· 6 panneaux') et l'Ã©cran annonce 'ConseillÃ© par le moteur, sans batterie : 6 panneaux Â· 4,26 kWc / avec batterie : 8 panneaux Â· 5,68 kWc â€” Ce devis chiffre 6 panneaux dans l'option avec batterie'. Mais aprÃ¨s 'Recalculer le dimensionnement' le rail ne change pas (reste 6 panneaux) et le texte 'Le moteur n'a pas pu chiffrer de recommandation : complÃ©tez la facture, la ville et le raccordement' reste affichÃ© en mÃªme temps que les lignes ConseillÃ© (contradiction) ; 'AperÃ§u indisponible â€” RÃ©essayer' a flashÃ© puis l'aperÃ§u est revenu.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X6-016b.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X4-008",
+  "verdict": "partiel",
+  "vu": "Lead R5A-2 : facture hiver 900 -> 1 500 saisie sur la fiche. Le devis brouillon automatique DEV-202611-0105 a Ã©tÃ© recalculÃ© tout seul (46 700 -> 54 500 MAD) et son PDF imprime 'â‰ˆ 1 500 MAD/mois aujourd'hui / soit 18 000 MAD/an' = la fiche (avant recalcul le PDF disait 831/mois). Dans l'Ã©dition complÃ¨te d'une rÃ©vision, la banniÃ¨re 'Valeurs du lead modifiÃ©es depuis la reprise dans ce devis : facture d'hiver â€” Reprendre / Garder' signale l'Ã©cart. Le cas d'un devis retouchÃ© Ã  la main n'a pas Ã©tÃ© rejouÃ©.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/pdfs/607-full-after2.txt ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X4-008-after.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X4-012",
+  "verdict": "corrige",
+  "vu": "GÃ©nÃ©rateur, ligne 'Onduleur rÃ©seau Huawei 5kW MonophasÃ©' renommÃ©e 'â€¦ X4' : la fenÃªtre 'DÃ©signation modifiÃ©e' (448 px de large, 1440x900) montre tout le texte sur 4 lignes et les deux boutons 'Renommer sur ce devis seulement' et 'CrÃ©er un nouveau produit Â« Onduleur rÃ©seau Huawei 5kW MonophasÃ© X4 Â» dans le stock' entiers (aucun dÃ©bordement, scrollWidth<=clientWidth). La fenÃªtre apparaÃ®t dÃ¨s la sortie du champ, pas au clic sur CrÃ©er.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X4-012.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X4-013",
+  "verdict": "corrige",
+  "vu": "GÃ©nÃ©rateur, Date de validitÃ© = 01/01/2020 puis CrÃ©er : rien n'est crÃ©Ã©, message rouge 'Date de validitÃ© : Cette date est dÃ©jÃ  passÃ©e : choisissez aujourd'hui ou une date Ã  venir.'",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X4-013.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X4-014",
+  "verdict": "corrige",
+  "vu": "GÃ©nÃ©rateur, deux options, CrÃ©er : panneau 'Devis enregistrÃ© DEV-202611-0107 Â· Sans batterie : 53 900 MAD TTC Â· Avec batterie : 65 900 MAD TTC' (les deux options nommÃ©es) + boutons Envoyer par WhatsApp / AperÃ§u du PDF / Retour Ã  la liste.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X4-014.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X4-015",
+  "verdict": "corrige",
+  "vu": "GÃ©nÃ©rateur : dÃ©signation renommÃ©e -> fenÃªtre 'DÃ©signation modifiÃ©e' -> 'Renommer sur ce devis seulement' : la fenÃªtre se ferme, la ligne affiche 'DÃ©signation modifiÃ©e (produit : â€¦)' ; un seul clic sur CrÃ©er ensuite enregistre le devis (Enregistrementâ€¦ ~15 s puis DEV-202611-0107 crÃ©Ã©), sans avoir Ã  recliquer. Limite : sur cette pile la fenÃªtre est apparue Ã  la sortie du champ et non aprÃ¨s le clic sur CrÃ©er.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X4-015a.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X4-014.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X4-022",
+  "verdict": "corrige",
+  "vu": "GÃ©nÃ©rateur rempli (lead R5A-1, facture 900, 6 panneaux 550 W, Auto-remplir) : RÃ©initialiser > fenÃªtre 'RÃ©initialiser le formulaire ?' > RÃ©initialiser : lead 'SÃ©lectionner un lead', facture et panneaux vides, total 8 400 MAD par dÃ©faut, plus de 'Modifications non enregistrÃ©es'.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X4-022.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X4-009",
+  "verdict": "partiel",
+  "vu": "Liste des devis, DEV-202611-0108 (lead R5A-3 sans tÃ©lÃ©phone ni e-mail) > Envoyer : toast 'aucun numÃ©ro de tÃ©lÃ©phone exploitable sur la fiche â€” WhatsApp est impossible. Copiez le lien pour l'envoyer vous-mÃªme, ou complÃ©tez la fiche.' avec bouton 'Copier le lien' (corrigÃ©) ; mais l'ancien toast 'NumÃ©ro de tÃ©lÃ©phone invalide.' s'affiche encore en plus, et le texte ne parle pas de l'e-mail.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X4-009.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U1-011",
+  "verdict": "partiel",
+  "vu": "Un timeout rÃ©el (>20 s) est survenu Ã  l'ouverture de Ventes > Devis (pile chargÃ©e) : l'Ã©cran affiche en franÃ§ais 'La connexion a expirÃ©. VÃ©rifiez votre connexion et rÃ©essayez.' avec 'RÃ©essayer' (qui a marchÃ© en 4,7 s) et l'en-tÃªte garde '548 devis Â· 6 versions remplacÃ©es' (plus de '0 devis'). Le cas du message de gÃ©nÃ©ration PDF 'DEV-â€¦: timeout of 20000ms' n'a pas Ã©tÃ© vu (les 3 gÃ©nÃ©rations jouÃ©es ont abouti en 12-36 s).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-U1-011.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U2-018",
+  "verdict": "partiel",
+  "vu": "Ventes > Devis pendant un timeout rÃ©el : message franÃ§ais 'La connexion a expirÃ©. VÃ©rifiez votre connexion et rÃ©essayez.' (plus de 'timeout of 20000ms exceeded'). Le pipeline CRM > Leads sous lenteur et le thÃ¨me sombre n'ont pas Ã©tÃ© rejouÃ©s (CRM chargÃ© en 6 s sans erreur).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-U1-011.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X1-011",
+  "verdict": "corrige",
+  "vu": "Devis auto jouÃ© 3 fois sur 3 leads rÃ©sidentiels neufs (R5A-1, R5A-2, R5A-3) : le devis se crÃ©e au 1er clic (DEV-0104, 0105, 0108), aucun 500, alertes nommant le champ ('Ã€ complÃ©ter sur la fiche : â€¦'). Le lead X1-r (Marrakech) n'existe pas dans la copie.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-lead2-devisauto.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U1-020",
+  "verdict": "corrige",
+  "vu": "Fiche du lead R5A-3 > Questionnaire d'appel > 'Aussi Ã  demander (dÃ©jÃ  ailleurs sur la fiche)' : puces 'Facture mensuelle (MAD/mois)' (et libellÃ© du champ identique).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-U1-020.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "D-ACAL-107",
+  "verdict": "non-rejouable",
+  "vu": "Lead rÃ©sidentiel R5A-3 (type de toiture vide, aucun toit tracÃ©) : 'Suppositions Ã  vÃ©rifier' de la carte Conception et alertes du Devis auto listent prÃ©sence en journÃ©e, facture d'Ã©tÃ©, consommation estimÃ©e, production 30Â° plein sud, conception Ã©lectrique pour l'autre option, mais AUCUNE phrase de pose supposÃ©e (affleurant / sur chÃ¢ssis). Les cas tuiles, toit plat et commercial n'ont pas Ã©tÃ© jouÃ©s. Condition du brief : le moteur sans toit reste Ã©teint (D-ACAL-108).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-lead2-devisauto.png",
+  "gravite": null
+ },
+ {
+  "id": "B2-POSE-SUPPOSEE",
+  "verdict": "non-rejouable",
+  "vu": "MÃªme constat que D-ACAL-107 : sur le lead vide aucune phrase de pose supposÃ©e n'apparaÃ®t donc rien Ã  relire ; les leads tuiles/industriel n'ont pas Ã©tÃ© jouÃ©s.",
+  "preuve": null,
+  "gravite": null
+ },
+ {
+  "id": "T4-X4-010",
+  "verdict": "partiel",
+  "vu": "Factures, carte 'Ã€ Ã‰CHOIR â‰¤ 7 J' : '0,00 MAD Â· 0 facture Â· 7 prochains jours' avant et aprÃ¨s ma tentative : les deux chiffres sont cohÃ©rents (plus de '5 factures' avec 0,00 MAD). Je n'ai pas pu Ã©mettre de facture Ã  30 jours : 'Ã‰mettre' BROUILLON-25 (acompte du devis R5A-2) rÃ©pond 'Le devis DEV-202611-0105 a Ã©tÃ© remplacÃ© par DEV-202611-0106 : facturez la version en cours.' (toast affichÃ© deux fois).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X4-010.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X4-021",
+  "verdict": "corrige",
+  "vu": "Deux onglets du mÃªme utilisateur sur DEV-202611-0107 (envoyÃ©, 65 900) : A met Transport QtÃ© 2 puis Enregistrer (replace-lines 200) ; 5 s plus tard B met QtÃ© 4 puis Enregistrer : replace-lines 409 et bandeau 'Ce devis a Ã©tÃ© modifiÃ© depuis votre ouverture â€” par vous, dans un autre onglet ou lors d'un envoi prÃ©cÃ©dent. Rechargez pour reprendre la derniÃ¨re version.' ; le total serveur reste 67 000 (modif de A gardÃ©e, pas 4 x).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X4-021-B.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X3-010",
+  "verdict": "non-rejouable",
+  "vu": "La copie n'a qu'UN calepinage (CAL-2611-0001, lead Essai-revue-L5T Pile, ville Casablanca) : la liste /calepinage rÃ©pond 1 projet pour 'Casablanca' et 0 pour 'Rabat', mais le dÃ©faut demande >=24 calepinages et des leads au-delÃ  des 50 premiers ; non reproduit faute de donnÃ©es (je n'ai pas crÃ©Ã© 4 calepinages).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-calepinage-list.png",
+  "gravite": null
+ },
+ {
+  "id": "T4-X3-011",
+  "verdict": "non-rejouable",
+  "vu": "MÃªme condition : un seul calepinage dans la copie, un tri 'Titre' ne peut pas Ãªtre jugÃ©.",
+  "preuve": null,
+  "gravite": null
+ },
+ {
+  "id": "T4-X6-017",
+  "verdict": "corrige",
+  "vu": "Lead R5A-3 > Nouveau devis (Ã©dition complÃ¨te) > Composition libre > CrÃ©er > 'CrÃ©er sans ces lignes' (devis sans onduleur, id 611) : le panneau s'ouvre sur Premium, GET proposal?pdf_mode=full rÃ©pond 409 mais l'Ã©cran dit en franÃ§ais 'Aucune option de ce devis ne contient d'onduleur : le document Ã  options ne peut pas Ãªtre gÃ©nÃ©rÃ©. Le format une page reste possible.' avec les boutons 'Voir le devis une page' (marche : proposal?pdf_mode=onepage 200) et 'Ouvrir l'Ã©dition complÃ¨te' ; plus de paramÃ¨tre technique ni de 'RÃ©essayer'. Reste le 409 en console.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X6-017.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X6-019",
+  "verdict": "partiel",
+  "vu": "Ã‰dition complÃ¨te de DEV-202611-0108 > 'Ajouter le BOQ Ã©lectrique' > confirmation 'Ajouter quand mÃªme' : rÃ©ponse 200 {creees:12}, message '12 lignes ajoutÃ©es Â· 5 Ã  chiffrer faute de produit au catalogue.' ; 20 -> 30 lignes. Les anciens cÃ¢bles 'CÃ¢ble solaire Nexans 6mmÂ² (au mÃ¨tre)' et 'CÃ¢ble de terre Nexans 6 mmÂ²' ont disparu (remplacÃ©s par ceux du BOQ), mais 'Tableau De Protection AC/DC' (x2 lignes d'option) reste en plus de 'ARM1 â€” Coffret de protection AC/DC (tableau)' et 'Coffret de protection AC â€” Ã  chiffrer' : mÃªme matÃ©riel comptÃ© deux fois, et le message ne dit pas ce qui a Ã©tÃ© remplacÃ©.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X6-019b.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X6-015",
+  "verdict": "partiel",
+  "vu": "Lead R5A-4 (FÃ¨s, taille souhaitÃ©e 6 kWc, deux options) > Devis auto DEV-202611-0110 (6,39 kWc, 9 panneaux, alerte 'Taille imposÃ©e pour ce devis : 6 kWc') > Modifier : aucun bandeau permanent 'Taille demandÃ©e sur la fiche du lead' ni dans Document ni dans Technique. Mais 'Recalculer le dimensionnement' ouvre maintenant 'Quitter la taille demandÃ©e ? Taille demandÃ©e sur la fiche du lead : 6 kWc. Le recalcul la remplace par la recommandation du moteur : 4 panneaux Â· 2,84 kWc.' avec 'Garder la taille demandÃ©e' / 'Prendre la recommandation' (rien n'est remplacÃ© sans question).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X6-015b.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X1-004",
+  "verdict": "partiel",
+  "vu": "Lead R5A-3 : Puissance cible 3 > Devis modifiable > Remise % 5 > CrÃ©er le devis (requÃªte {lead:1233,remise_globale:5,target_kwc:3}) : DEV-202611-0112 'Sans batterie : 3,55 kWc Â· 33 300 MAD Â· Avec batterie : 3,55 kWc Â· 44 700 MAD' : les deux options partent de la mÃªme taille (avant : 2,75/3,55), alerte 'Taille imposÃ©e pour ce devis : 3 kWc' ; mais 3,55 kWc (5 panneaux 710 W) n'est pas 3 kWc et l'alerte ne dit pas l'Ã©cart ; le bandeau seul donne le 3,55. Sans remise tapÃ©e seule la taille 3 n'est pas lue par le bouton Devis automatique (4,26/5,68).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X1-004.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U3-017",
+  "verdict": "corrige",
+  "vu": "Lead R5A-5 (Rabat, facture 300 MAD/mois, Conso mensuelle 2 000 kWh) : dÃ¨s l'ouverture de la fiche le bouton Devis auto est grisÃ©, la fiche dit 'Devis non prÃªt' et l'info-bulle 'Â« Consommation mensuelle (kWh) Â» contredit les factures dÃ©clarÃ©es : corrigez la fiche.' (le chip 'incohÃ©rent' est affichÃ©). Pas de 409 au clic. L'aperÃ§u de simulation de l'Ã©dition complÃ¨te n'a pas Ã©tÃ© rejouÃ©.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-U3-017.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X9-017",
+  "verdict": "corrige",
+  "vu": "Lead R5A-6 (mÃªme tÃ©lÃ©phone que R5A-2) aprÃ¨s Devis auto : en haut de la fiche deux encarts seulement, '1 doublon probable â€” Examiner' (lÃ©gitime) et 'Client liÃ© : R5A-2 Facture900 â€” La fiche client diffÃ¨re du lead (nom, e-mail, adresse) â€” Mettre Ã  jour la fiche client' ; l'encart 'Ce contact correspond au client â€¦ Ouvrir la fiche' vu avant le devis a disparu une fois le client liÃ©. Remarque : le client liÃ© est celui d'un AUTRE lead (mÃªme tÃ©lÃ©phone).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X9-017.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "D-ACAL-114",
+  "verdict": "corrige",
+  "vu": "Lead R5A-6 Batterie = Avec batterie > Devis auto DEV-202611-0113 (option unique avec batterie, 4,97 kWc, 52 300 MAD) > /proposal?pdf_mode=full&include_etude=true : PDF de 3 pages, titre 'Avec batterie' puis 'SystÃ¨me photovoltaÃ¯que 4,97 kWc â€” Avec batterie', aucune occurrence de 'OPTION 2'.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/pdfs/615-etude.txt",
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-X7-022",
+  "verdict": "corrige",
+  "vu": "Lead R5A-6 : Toiture & site > Batterie 'Avec batterie' -> 'Les deux options' : la carte Conception passe par 'Recalcul en cours' puis, aprÃ¨s ~30 s, affiche deux colonnes 'Sans batterie 4 panneaux Â· 2,84 kWc Â· 6 828 MAD/an' et 'Avec batterie (retenue) 7 panneaux Â· 4,97 kWc Â· 9 787 MAD/an' (plus la taille unique). Le champ lead renvoie batterie=les_deux.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X7-022b.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X6-001",
+  "verdict": "non-rejouable",
+  "vu": "Il faut un lead commercial de 49 panneaux de 715 W : le lead R5A-7 (Commercial, Casablanca, facture hiver 25 000 MAD, GPS) a son bouton Devis auto grisÃ© (donnÃ©es C&I manquantes : Ã  renseigner), je n'ai donc pas pu produire le devis. Non comparÃ© bandeau/carte/PDF. Sur les devis rÃ©sidentiels jouÃ©s, le kWc est Ã©crit avec 2 dÃ©cimales partout (ex. 4,26 kWc Ã©cran, carte, PDF).",
+  "preuve": null,
+  "gravite": null
+ },
+ {
+  "id": "T4-X7-008",
+  "verdict": "non-joue",
+  "vu": "Parcours Atelier calepinage (dessin du toit, pose 9 x 710 W, Documents > GÃ©nÃ©rer le devis) non jouÃ© par manque de temps de session.",
+  "preuve": null,
+  "gravite": null
+ },
+ {
+  "id": "T4-X9-009",
+  "verdict": "non-joue",
+  "vu": "Parcours Atelier calepinage + retour Ã  la carte Conception non jouÃ© par manque de temps de session.",
+  "preuve": null,
+  "gravite": null
+ },
+ {
+  "id": "R5A-N1",
+  "verdict": "nouveau",
+  "vu": "Fiche du lead > devis acceptÃ© > 'RÃ©viser (nouvelle version)' : le bouton affiche 'CrÃ©ation de la nouvelle versionâ€¦' puis ~10 s aprÃ¨s 'La rÃ©vision a Ã©chouÃ© â€” rÃ©essayez.' (POST ventes/devis/607/reviser/ net::ERR_ABORTED cÃ´tÃ© navigateur) alors que le serveur a bien crÃ©Ã© DEV-202611-0106 ; rÃ©essayer rÃ©pond 409 'DÃ©jÃ  remplacÃ© par DEV-202611-0106' sans lien pour l'ouvrir. Risque de doublon de rÃ©vision pour la commerciale.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X1-016.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "R5A-N2",
+  "verdict": "nouveau",
+  "vu": "Ã‰dition complÃ¨te d'un devis Ã  deux options (sans 4,26 kWc/6 panneaux, avec 5,68 kWc/8 panneaux, total avec 54 500 MAD) : 'Auto-remplir depuis le stock' ramÃ¨ne silencieusement l'option avec batterie Ã  6 panneaux/4,26 kWc (total 49 300 MAD) alors que l'Ã©cran continue Ã  dire 'ConseillÃ© par le moteur, avec batterie : 8 panneaux Â· 5,68 kWc'. Un message le dit seulement aprÃ¨s coup ('Ce devis chiffre 6 panneaux dans l'option avec batterie').",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-saved.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "R5A-N3",
+  "verdict": "nouveau",
+  "vu": "Technique d'un devis, aprÃ¨s 'Recalculer le dimensionnement' : le texte 'Le moteur n'a pas pu chiffrer de recommandation : complÃ©tez la facture, la ville et le raccordement du client, puis rÃ©essayez.' reste affichÃ© en mÃªme temps que 'ConseillÃ© par le moteurâ€¦' et que l'aperÃ§u (plusieurs POST conception/apercu net::ERR_ABORTED, 'AperÃ§u indisponible â€” RÃ©essayer' passager).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X6-016b.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "R5A-N4",
+  "verdict": "nouveau",
+  "vu": "GÃ©nÃ©rateur plein Ã©cran : juste aprÃ¨s 'CrÃ©er' (DEV-202611-0107) six requÃªtes rÃ©pondent 401 (devis/609/, etude-params, conception/1231, historique-configuration, attachments, overrides) puis la session continue (refresh de jeton) ; au chargement suivant du gÃ©nÃ©rateur le bandeau rouge 'Ã‰chec du chargement : clients, leads. VÃ©rifiez votre connexion puis rechargez la page.' est apparu (requÃªtes clients/leads page_size=200 en net::ERR_ABORTED). Le gÃ©nÃ©rateur charge encore tous les leads en pages de 200.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-cur.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "R5A-N5",
+  "verdict": "nouveau",
+  "vu": "Ouvrir l'Ã©dition complÃ¨te d'une V2 (DEV-202611-0106) sans rien toucher affiche tout de suite 'Modifications non enregistrÃ©es' ; quitter la page ensuite dÃ©clenche la fenÃªtre du navigateur 'Quitter le site ?' (beforeunload).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X4-006.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "R5A-N6",
+  "verdict": "nouveau",
+  "vu": "Console : GET ventes/conception/<id lead>/ rÃ©pond 404 (erreur console, 2 Ã  4 fois) Ã  chaque ouverture d'une fiche de lead neuve avant calcul ; GET onboarding/tours/ 502 Ã  la premiÃ¨re arrivÃ©e sur /apps ; 409 proposal?pdf_mode=full sur un devis sans onduleur (X6-017).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-U1-022-fiche.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "R5A-N7",
+  "verdict": "nouveau",
+  "vu": "Ventes > Factures > Ã‰mettre BROUILLON-25 (acompte d'un devis rÃ©visÃ©) : le toast de refus 'Le devis DEV-202611-0105 a Ã©tÃ© remplacÃ© par DEV-202611-0106 : facturez la version en cours.' s'affiche deux fois de suite ; de plus la facture porte '5 mention(s) manquante(s)' sans que l'Ã©mission ne dise lesquelles.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-T4-X4-010.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "R5A-N8",
+  "verdict": "nouveau",
+  "vu": "Ventes > Devis Ã  froid : les cinq cartes de statut restent sur 'Calcul des totauxâ€¦' pendant 10 Ã  25 s ; l'en-tÃªte '545 devis' et la liste apparaissent d'abord. Sous charge la liste a affichÃ© 'La connexion a expirÃ©â€¦' (corrigÃ©) mais un premier chargement a pris 10,4 s.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5a-ADEV162.png",
+  "gravite": "S4"
+ }
+]

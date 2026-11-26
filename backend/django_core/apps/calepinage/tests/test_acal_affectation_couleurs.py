@@ -2,8 +2,8 @@
 """ACAL285 — la teinte de chaque chaîne et de chaque entrée MPPT, SERVIE.
 
 ``electrique.affectation[]`` porte ``couleur_chaine`` et ``couleur_mppt``
-(source unique ``services/chaines.py::PALETTE_CHAINES``), par ordre de
-première apparition, recalculées après l'affectation manuelle ; le plan de
+(source unique ``services/chaines.py::PALETTE_CHAINES``), la couleur d'une chaîne étant liée à son
+NUMÉRO (``couleur_de_chaine``) et non à l'ordre des modules (S3), recalculées après l'affectation manuelle ; le plan de
 câblage garde EXACTEMENT ses teintes. Conception réelle (service), aucun mock.
 """
 from __future__ import annotations
@@ -55,7 +55,18 @@ def _premieres(lignes, cle, couleur):
 
 class AffectationCouleurs(unittest.TestCase):
 
-    def test_lignes_portent_couleur_chaine_et_mppt_dans_l_ordre_de_premiere_apparition(self):
+    def test_s3_la_couleur_d_une_chaine_suit_son_numero_pas_l_ordre_des_modules(self):
+        from apps.calepinage.services.chaines import _colorer
+        avant = _colorer([{'chaine': 1, 'mppt': 1}, {'chaine': 2, 'mppt': 1}, {'chaine': 3, 'mppt': 2}])
+        # Recâblage manuel : la chaîne 3 apparaît d'abord dans la table.
+        apres = _colorer([{'chaine': 3, 'mppt': 2}, {'chaine': 1, 'mppt': 1}, {'chaine': 2, 'mppt': 1}])
+
+        def teinte(lignes):
+            return {ligne['chaine']: ligne['couleur_chaine'] for ligne in lignes}
+        self.assertEqual(teinte(avant), teinte(apres))
+        self.assertEqual(teinte(apres), {1: PALETTE_CHAINES[0], 2: PALETTE_CHAINES[1], 3: PALETTE_CHAINES[2]})
+
+    def test_lignes_portent_couleur_chaine_par_numero_et_couleur_mppt_par_premiere_apparition(self):
         lignes = affectation(_conception())
         self.assertGreaterEqual(len({ligne['chaine'] for ligne in lignes
                                      if ligne['chaine'] is not None}), 2)

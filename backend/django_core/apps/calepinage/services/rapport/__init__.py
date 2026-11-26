@@ -536,9 +536,14 @@ def _motif_html(section, langue):
     blocs = ['<p class="motif">%s</p>'
              % escape(section.get('motif') or section['motif_si_absent'])]
     if manque:
+        # ACAL1656 — chaque donnée en intitulé de métier, jamais son chemin
+        # (« electrique.chainage » → « câblage des chaînes »).
+        from .champs_lisibles import champ_en_clair
+
         blocs.append('<p class="note">%s : %s</p>'
                      % (escape(libelle('donnee_manquante', langue)),
-                        escape(', '.join(manque))))
+                        escape(', '.join(champ_en_clair(c) or 'une donnée sans intitulé'
+                                         for c in manque))))
     return ''.join(blocs)
 
 

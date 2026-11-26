@@ -55,7 +55,8 @@ from . import bordereau_calepinage as _module_bordereau  # ACAL632
 from . import validation_transformateur as _validation_transformateur  # ACAL642
 from . import validation_batterie as _validation_batterie  # ACAL633
 from . import batterie_declaration as _batterie_declaration  # ACAL786
-from . import (hors_reseau_declaration as _hors_reseau_declaration,  # ACAL790
+from . import (agregation_electrique as _agregation_electrique,  # ACAL1623 (revue lot 6)
+               hors_reseau_declaration as _hors_reseau_declaration,  # ACAL790
                pret_a_envoyer as _pret_a_envoyer,  # H5 — une_fois_par_lecture
                simulation_auto as _simulation_auto,  # ACAL1987
                suppositions as _suppositions)  # ACAL980
@@ -814,6 +815,15 @@ def _valider_entree(calepinage, fusionnee, postee):
     _batterie_declaration.valider_secours(postee.get('batterie'))  # ACAL786
     _hors_reseau_declaration.valider_hors_reseau(
         postee.get('hors_reseau'))  # ACAL166, ACAL790
+    if 'affectation_manuelle' in postee:
+        # ACAL1627 — refusée à l'ÉCRITURE (la lecture l'avalait et repartait
+        # de l'automatique) : même normalisation que la lecture, champ nommé.
+        from .chaines import AffectationInvalide, normaliser_affectation_imposee
+
+        try:
+            normaliser_affectation_imposee(postee.get('affectation_manuelle'))
+        except AffectationInvalide as refus:
+            raise EntreeInvalide(str(refus), champ=refus.champ)
     poly = postee.get(CLE_POLYSTRING)
     if poly not in (None, '') and not isinstance(poly, (list, tuple)):
         raise EntreeInvalide(
@@ -1528,7 +1538,7 @@ def _ecretage_de_la_cascade(cascade):
     return None
 
 
-def _simulation_servie(calepinage, empreinte, *, defauts=None):
+def _simulation_servie(calepinage, empreinte, *, defauts=None, reglages=None):
     """CALX70 — les blocs de simulation à publier, et leur état de fraîcheur.
 
     Args:
@@ -1565,7 +1575,21 @@ def _simulation_servie(calepinage, empreinte, *, defauts=None):
 
     if hash_calcule != empreinte:
         date = _date_de_calcul(simulation)
-        motif = ('simulation périmée : le document a changé depuis le calcul '
+        # ACAL1647 — la cause DÉMONTRÉE seulement : les réglages société FIGÉS
+        # au calcul (``reglages_utilises``, D-ACAL-8 : sections ``simulation``
+        # et ``electrique_societe``) diffèrent d'aujourd'hui. Rien d'autre
+        # n'est figé (``norme_electrique``, grille horaire, document) : sans
+        # preuve, le motif nomme les deux côtés, jamais une cause devinée.
+        from .simulation import _reglages_utilises
+
+        figes = simulation.get('reglages_utilises')
+        par_reglage = (reglages is not None and isinstance(figes, dict)
+                       and figes != _reglages_utilises(reglages))
+        motif = ('simulation périmée : '
+                 + ('un réglage de la société a changé depuis le calcul '
+                    if par_reglage else
+                    'le document ou un réglage de la société a changé '
+                    'depuis le calcul ')
                  + ('du %s' % date if date
                     else "précédent, dont la date n'a pas été enregistrée"))
         return ({cle: ([] if cle in BLOCS_LISTE else None)
@@ -1574,10 +1598,15 @@ def _simulation_servie(calepinage, empreinte, *, defauts=None):
 
     # Fraîche : chaque bloc est publié TEL QUEL. Le dictionnaire servi est
     # détaché du document stocké (``deepcopy``) — sans quoi un appelant qui
-    # remanie la réponse remanierait la base.
-    blocs = {cle: (copy.deepcopy(stocke[cle]) if cle in stocke
-                   else defauts.get(cle))
-             for cle in BLOCS_SIMULATION}
+    # remanie la réponse remanierait la base. ACAL1623 — les avertissements
+    # que la simulation FRAÎCHE a écrits (borne haute, rendement hors de la
+    # plage vraisemblable, panneaux non raccordés…) voyagent avec ses blocs :
+    # ``resultat_calepinage`` les sert EN TÊTE, dans l'ordre de la simulation.
+    blocs = dict({cle: (copy.deepcopy(stocke[cle]) if cle in stocke
+                        else defauts.get(cle))
+                  for cle in BLOCS_SIMULATION},
+                 avertissements=[texte for texte in stocke.get('avertissements') or ()
+                                 if isinstance(texte, str) and texte])
     return blocs, False, '', simulation.get('calcule_le')
 
 
@@ -1714,7 +1743,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     # dossier ; lue ICI parce que le ratio DC/AC en tire son écrêtage.
     blocs, perimee, motif, calcule_le = _simulation_servie(
         porteur_simulation if porteur_simulation is not None else calepinage,
-        empreinte, defauts=_defauts_simulation(pose))
+        empreinte, defauts=_defauts_simulation(pose), reglages=reglages)
     ratio, messages_ratio = _bloc_ratio_dc_ac(
         conception, **bornes_ratio,
         # ACAL141 — l'écrêtage de l'étape « ecretage » de la cascade FRAÎCHE
@@ -1781,7 +1810,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         donnees.get('plafond_kwc_par_onduleur'),
         pose.get('puissance_module_wc')))
 
-    messages = list(avertissements) + list(messages_ratio)
+    messages = list(blocs.get('avertissements') or ()) + list(avertissements) + list(messages_ratio)
     messages.extend(poly['bloquants'])
     messages.extend(poly['alertes'])
     messages.extend(micro['omissions'])
@@ -1917,6 +1946,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # ACAL1987 — la simulation PARTIE SEULE : en file/en cours, ou ce qui
         # manque à la dernière pose enregistrée (« Il manque … »).
         'simulation_automatique': _simulation_auto.etat_simulation_automatique(calepinage, empreinte),
+        # ACAL1623 (revue lot 6) — la phrase des panneaux non raccordés sur SA clé.
+        'panneaux_non_raccordes': _agregation_electrique.non_raccordes_servis(blocs['production']),
         'avertissements': _avertissements_uniques(messages),  # ACAL1540
         # ACAL283 — les deux FILS bornés, LUS tels qu'enregistrés (jamais
         # recalculés), listes vides jamais absentes — y compris quand la

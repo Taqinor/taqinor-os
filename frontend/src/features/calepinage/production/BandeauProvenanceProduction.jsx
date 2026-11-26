@@ -159,7 +159,10 @@ function DevisAnnonce({ chiffrage, p50, borneHaute = null, devisLie = false, kwc
   // T4-X9-004 — le bloc `chiffrage` est TOUJOURS celui de la conception du lead (`chiffrer_conception`, devis lié ou non) :
   // à une autre taille que la pose, la ligne nomme la conception et sa taille, sans écart contre la simulation de la pose.
   const kwcConception = chiffrage?.kwc?.etat === 'servi' ? chiffrage.kwc.valeur : null
-  if (tailleDifferente(kwcConception, kwcPose)) {
+  // Rejeu R5B (T4-X9-004, 26/11) — taille de la pose NON servie (`pose.kwc` nul : pan sans puissance lue) : rien ne prouve
+  // que le chiffre est celui de « cette pose » — la ligne nomme la conception et SA taille, comme à une autre taille.
+  const poseInconnue = typeof kwcConception === 'number' && typeof kwcPose !== 'number'
+  if (poseInconnue || tailleDifferente(kwcConception, kwcPose)) {
     return (
       <span className="block" data-testid="acal995-devis-annonce">
         {`Conception du lead (${texteKwc(kwcConception)}) : ${formatNumber(prod.valeur, { decimals: 0 })} kWh/an — ${ORIGINE_ANNONCE[prod.source]}`}
@@ -169,7 +172,12 @@ function DevisAnnonce({ chiffrage, p50, borneHaute = null, devisLie = false, kwc
   const ecart = typeof p50 === 'number' ? ((p50 - prod.valeur) / prod.valeur) * 100 : null
   const { annonce, suite = null } = phraseDuDevis(conception, devisLie)
   const chiffre = `${formatNumber(prod.valeur, { decimals: 0 })} kWh/an — ${ORIGINE_ANNONCE[prod.source]}`
-  const sujet = annonce ?? (suite ? 'Conception du lead sur cette pose' : 'Moteur du devis sur cette pose (aucun devis lié à ce calepinage)')
+  // Rejeu R5B (T4-X9-004) — « cette pose » est la pose ENREGISTRÉE : sa taille est dite, pour qu'une pose vivante d'une
+  // autre taille (barre de l'atelier, pas encore enregistrée) ne lise jamais ce chiffre comme le sien.
+  const taille = typeof kwcPose === 'number' ? texteKwc(kwcPose) : null
+  const surLaPose = taille ? `sur cette pose (${taille} enregistrés)` : 'sur cette pose'
+  const sujet = annonce ?? (suite ? `Conception du lead ${surLaPose}`
+    : `Moteur du devis ${surLaPose} — aucun devis lié à ce calepinage`)
   return (
     <span className="block" data-testid="acal995-devis-annonce">
       {`${sujet} : ${chiffre}`}
@@ -430,6 +438,10 @@ export function EcartNasaPower({ comparaison }) {
   )
 }
 
+/* Revue lot 6 (ACAL1715) — le mode météo dans les mots de l'écran des réglages (registre `mode_meteo`,
+   `parametres_cles.LIBELLES_ENUM`), jamais le code brut « tmy ». Un mode inconnu reste tel que servi. */
+const LIBELLES_MODE_METEO = { tmy: 'Année type (TMY)', pluriannuel: 'Plusieurs années réelles' }
+
 export function SourceMeteo({ meteo }) {
   if (!meteo?.service) return null
   const horizon = meteo.horizon?.origine
@@ -442,7 +454,7 @@ export function SourceMeteo({ meteo }) {
     ['Service PVGIS', meteo.service],
     ['Base de rayonnement', meteo.base_rayonnement],
     ['Base météo', meteo.base_meteo],
-    ['Mode', meteo.mode],
+    ['Mode', LIBELLES_MODE_METEO[meteo.mode] ?? meteo.mode],
     ['Fenêtre', meteo.fenetre_annees],
     ['Horizon', horizon],
     ['Fuseau du site', meteo.heure?.fuseau_site],

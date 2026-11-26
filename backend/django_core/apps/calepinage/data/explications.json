@@ -360,6 +360,15 @@
       "ecrans": []
     },
     {
+      "cle": "controle.courant_entree",
+      "famille": "controle",
+      "phrase": "Vérifie que le courant des panneaux reste dans ce que chaque entrée de l'onduleur accepte, d'après la fiche de l'onduleur. Sans onduleur de chaîne (micro-onduleurs), ce contrôle n'a pas lieu d'être.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : revoyez les chaînes, par exemple avec moins de panneaux en parallèle sur une entrée, ou choisissez un onduleur dont les entrées acceptent plus de courant.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
       "cle": "controle.dossier_pieces",
       "famille": "controle",
       "phrase": "Vérifie que les pièces obligatoires des dossiers réglementaires du projet sont toutes fournies.",
@@ -470,7 +479,7 @@
     {
       "cle": "controle.simulation_fraiche",
       "famille": "controle",
-      "phrase": "Vérifie que la simulation de production a été lancée et qu'elle date d'après la dernière modification de la conception.",
+      "phrase": "Vérifie que la simulation de production a été lancée et qu'elle n'est pas périmée : ni le document ni un réglage de la société n'a changé depuis le calcul.",
       "valeurs": {},
       "geste": "Si ce n'est pas bon : lancez ou relancez la simulation.",
       "lexique": null,
@@ -482,6 +491,15 @@
       "phrase": "Vérifie que le calepinage dispose d'une facture du lead ou d'une taille souhaitée ; sans l'une ou l'autre, le toit est rempli sans tenir compte de la consommation.",
       "valeurs": {},
       "geste": "Si ce n'est pas bon : saisissez la facture du lead.",
+      "lexique": null,
+      "ecrans": []
+    },
+    {
+      "cle": "controle.tension_chaud",
+      "famille": "controle",
+      "phrase": "Vérifie que la tension des chaînes par forte chaleur reste au-dessus du bas de la plage de travail de l'onduleur : en dessous, la production des heures chaudes est perdue.",
+      "valeurs": {},
+      "geste": "Si ce n'est pas bon : ajoutez des panneaux à la chaîne ou choisissez un onduleur dont la plage commence plus bas.",
       "lexique": null,
       "ecrans": []
     },

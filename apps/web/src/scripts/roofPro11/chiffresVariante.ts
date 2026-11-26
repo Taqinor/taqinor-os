@@ -45,10 +45,13 @@ export function texteChiffresVariante(
   erp = false,
 ): string {
   if (posee) {
-    // T4-X2-006 — atelier ERP : la carte de la variante posée garde l'estimation de l'atelier seulement DITE comme telle
-    // (elle sert à comparer les poses ; la production de la pose est celle de sa simulation, étape Les résultats).
-    const prefixe = erp && posee.estimee ? 'Estimation pour comparer les poses : ' : '';
-    return `${prefixe}${fmt(posee.count)} panneaux · ${posee.kwc == null ? '—' : `${fmtKwc(posee.kwc)} kWc`} · ${posee.annualKwh == null ? '—' : `${fmt(Math.round(posee.annualKwh))} kWh/an`}`;
+    // T4-X2-006 (rejeu R5B, 26/11) — atelier ERP : la variante posée EST la pose ; son estimation de navigateur faisait un
+    // second chiffre à côté du Total (« 21 735 » contre « 27 305 · simulation », mêmes 24 panneaux). Règle D-ACAL-86 / 97
+    // (un seul chiffre par valeur ; pendant le dessin, panneaux et kWc seulement) : la carte ne dit plus de production
+    // estimée pour la pose, elle renvoie au Total ; les AUTRES cartes restent « Estimation » (autres poses, pour comparer).
+    const kwc = posee.kwc == null ? '—' : `${fmtKwc(posee.kwc)} kWc`;
+    if (erp && posee.estimee) return `${fmt(posee.count)} panneaux · ${kwc} · production : voir le Total`;
+    return `${fmt(posee.count)} panneaux · ${kwc} · ${posee.annualKwh == null ? '—' : `${fmt(Math.round(posee.annualKwh))} kWh/an`}`;
   }
   const chiffres = `${fmt(c.count)} panneaux · ${fmtKwc(c.kwc)} kWc · ${fmt(Math.round(c.annualKwh))} kWh/an`;
   return autreQueLaReference(choisi)

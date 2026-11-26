@@ -2093,10 +2093,10 @@ def _refuser_irradiance_horizontale(serie):
     """Une série qui n'a que ``gh_w_m2`` n'entre PAS dans la chaîne (CALX153).
 
     ``ClientPvgis.tmy`` publie ``gh_w_m2`` — l'irradiance GLOBALE
-    HORIZONTALE. La chaîne, elle, travaille sur le PLAN des modules : sans
-    ``gi_w_m2``, il faudrait transposer, et ce module n'a aucun modèle de
-    transposition. Le refus NOMME la colonne manquante plutôt que de laisser
-    la cascade tourner sur une irradiance qui n'est pas la bonne.
+    HORIZONTALE. La chaîne travaille sur le PLAN des modules : ACAL1715,
+    ``simulation.py`` transpose l'année type (``transposition.py``) AVANT
+    la chaîne ; une série brute arrivée ici reste refusée en NOMMANT la
+    colonne, plutôt que de tourner sur une irradiance qui n'est pas la bonne.
     """
     points = (serie or {}).get('points') if isinstance(serie, dict) else None
     if not points or not isinstance(points[0], dict):

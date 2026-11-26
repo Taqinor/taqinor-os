@@ -139,3 +139,16 @@ class ConsigneOmbrageParModuleTest(SimpleTestCase):
         self.assertIn("saisissez un obstacle avec sa hauteur dans l'atelier puis enregistrez",
                       capture.exception.motif)
         self.assertNotIn('calculez', capture.exception.motif)
+
+
+class MotifDeReplisPerimeeTest(SimpleTestCase):
+    def test_sans_motif_servi_la_phrase_est_neutre_jamais_une_cause_devinee(self):
+        """Relecture — repli (motif servi vide) : « le document ou un réglage de la société a changé »."""
+        with self.assertRaises(ExportImpossible) as capture:
+            export_csv({'simulation_perimee': True, 'motif_perimee': ''}, quoi='mensuel')
+        self.assertIn('le document ou un réglage de la société a changé depuis le calcul précédent',
+                      capture.exception.motif)
+        with self.assertRaises(ExportImpossible) as servi:
+            export_csv({'simulation_perimee': True, 'motif_perimee': 'simulation périmée : un réglage'},
+                       quoi='mensuel')
+        self.assertEqual(servi.exception.motif, 'simulation périmée : un réglage')

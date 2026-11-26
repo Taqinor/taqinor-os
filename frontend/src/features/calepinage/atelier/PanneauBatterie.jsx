@@ -94,7 +94,7 @@ const libelleMois = (m) => (m === null || m === undefined ? 'non calculé' : (MO
    remplace tous les blocs par `null`, jamais un chiffre trompeur. */
 function BandeauPerime({ motif }) {
   const texte = motif
-    || 'Simulation périmée : le document a changé depuis le dernier calcul.'
+    || 'Simulation périmée : le document ou un réglage de la société a changé depuis le dernier calcul.'
   return (
     <div
       className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm"

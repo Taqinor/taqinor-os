@@ -52,6 +52,9 @@ LIBELLE = 'Écrêtage'
 
 #: La colonne ÉCRITE sur chaque point (contrat CALX142, déjà exportée).
 COLONNE_ECRETAGE = 'ecretage_kw'
+#: Revue lot 6 (ACAL1960) — la portée des heures publiées : l'année moyenne
+#: de la fenêtre (même mot que ``chaine_pertes.PORTEE_ANNEE_MOYENNE``).
+PORTEE_HEURES = 'annee_moyenne'
 
 #: Les champs de fiche et de saisie que l'étape lit, nommés comme l'écran
 #: les affiche — ce sont eux que les omissions et les mentions prononcent.
@@ -177,6 +180,10 @@ def appliquer(serie, contexte):
                 else ecretage_depuis_serie(puissances_kw, borne_kw)),
             'heures_ecretees': sum(1 for valeur, borne in zip(puissances_kw, bornes_kw)
                                    if valeur > borne + 1e-9),
+            # Revue lot 6 (ACAL1960) — publiées sur l'ANNÉE MOYENNE
+            # (``annee_moyenne.CLES_COMPTE_PAR_AN``) : la clé le DIT ; un
+            # résultat rangé avant ne la porte pas (jamais confondu).
+            'portee_heures': PORTEE_HEURES,
             # ACAL740 — le déclassement thermique, heure par heure.
             'declassement': _declassement(
                 declasse, debut_c, pente_pct_c, bornes_kw, borne_kw,

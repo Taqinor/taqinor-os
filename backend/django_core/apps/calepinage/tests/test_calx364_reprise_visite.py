@@ -556,3 +556,14 @@ class EcartDessinTest(SimpleTestCase):
             dict(_lecture(pente_deg=22), visite_id=None)), [])
         self.assertEqual(self.calcul({}, pente_deg=22), [])
         self.assertEqual(self.calcul({'zones': []}, pente_deg=22), [])
+
+    def test_toit_plat_a_22_se_lit_comme_un_toit_plat_a_0(self):
+        """ACAL1923 — sur un pan plat, ``pitchDeg`` est la valeur du curseur
+        (22), pas une pente : le dessin se lit 0, comme un pan plat à 0."""
+        lignes = []
+        for valeur in (22.0, 0.0):
+            document = _toit(pente=valeur)
+            document['zones'][0]['roofType'] = 'flat'
+            lignes.append(self.calcul(document, pente_deg=0)[0])
+        self.assertEqual(lignes[0], lignes[1])
+        self.assertEqual((lignes[0]['dessin'], lignes[0]['ecart']), (0.0, 0.0))

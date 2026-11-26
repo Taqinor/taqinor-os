@@ -6304,3 +6304,80 @@ decisions:
     date: "2026-11-26"
     source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; relecture indépendante du 26/11 : au Maroc le midi solaire tombe vers 13 h 30 à la montre du client, une heure nue serait lue à tort comme une heure d'horloge"
     taches: []
+  - id: D-ACAL-144
+    question: "Un pan en pente tourné au nord ne reçoit aucun panneau. La note de besoin (atelier et estimateur du site public) disait « On pose N panneaux » alors que rien n'est posé. Que doit-elle dire ?"
+    options:
+      - cle: verite_zero
+        texte: "(recommandée) La vérité : « N nécessaires — 0 tiennent en pente — Aucun module : pan en pente orienté au nord (ou « nord-est …, trop au nord »). On pose 0. », y compris sur le site public"
+      - cle: ancienne_phrase
+        texte: "Garder l'ancienne phrase sur le site public"
+    reponse: verite_zero
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; relecture indépendante de la lane de l'atelier web (26/11) : l'ancienne phrase annonçait une pose qui n'a pas lieu (ACAL1970)"
+    taches: [ACAL1970]
+  - id: D-ACAL-145
+    question: "ACAL1923 demandait d'enregistrer un toit plat avec une pente de 0. Construite ainsi, elle réécrit au prochain enregistrement tous les toits plats stockés (la pente mémorisée du curseur, 22° par défaut) : document modifié sans geste, empreinte déplacée, production recalculée. Comment la faire ?"
+    options:
+      - cle: lecture_seulement
+        texte: "(recommandée) Ne rien réécrire : les lecteurs du serveur ignorent la pente mémorisée d'un toit plat (fonction unique `pente_du_pan`) ; le contrat dit que cette valeur n'est pas une pente"
+      - cle: ecriture_zero
+        texte: "Écrire 0 à l'enregistrement, en acceptant que les documents stockés changent"
+    reponse: lecture_seulement
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; lane construite puis retirée (cinq tests d'aller-retour rouges), relecture indépendante du 26/11 ; faite pour la contenance, la reprise de visite et le diff de versions — quatre autres lecteurs attendent D-ACAL-149"
+    taches: [ACAL1923]
+  - id: D-ACAL-146
+    question: "Une simulation périmée disait toujours « le document a changé ». La trace gardée au calcul ne prouve la cause que pour deux familles de réglages de la société. Que disent le motif et le bouton quand la cause n'est pas prouvée ?"
+    options:
+      - cle: cause_prouvee_seulement
+        texte: "(recommandée) Cause nommée seulement si elle est prouvée : « un réglage de la société a changé » et « Relancer (réglages modifiés) » ; sinon « le document ou un réglage de la société a changé » et « Relancer la simulation »"
+      - cle: toujours_document
+        texte: "Garder « le document a changé » dans tous les cas"
+    reponse: cause_prouvee_seulement
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; relecture indépendante du 26/11 : la norme électrique et la grille horaire entrent dans l'empreinte sans être figées au calcul (ACAL1647)"
+    taches: [ACAL1647]
+  - id: D-ACAL-147
+    question: "Pour un fichier météo horizontal, les étapes qui dépendent du soleil (angle d'incidence, horizon, inter-rangées, ombrage, bifacial) plaçaient le soleil à l'heure pile alors que la transposition le plaçait à la demi-heure. Elles prennent maintenant le même instant : les nouvelles simulations sur ces fichiers changent légèrement. Faut-il changer la version de la simulation ?"
+    options:
+      - cle: trace_sans_version
+        texte: "(recommandée) Non : changer la version périmerait toutes les simulations stockées ; la trace est la présence de `meteo.transposition.instant_soleil` dans le résultat (absente = soleil à l'heure pile), dite au contrat et au journal des versions"
+      - cle: nouvelle_version
+        texte: "Oui : nouvelle version, toutes les simulations stockées deviennent « périmées »"
+    reponse: trace_sans_version
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; relecture indépendante du 26/11 ; mesuré sur la fixture : l'écart est-ouest passe de 12,5 % à 5,5 % en année type"
+    taches: [ACAL1715]
+  - id: D-ACAL-148
+    question: "Le devis généré depuis un calepinage chiffre l'onduleur de la conception du lead, pas celui désigné à l'étape Électrique du calepinage (constaté au tour 5 : Deye 5 kW hybride désigné, « Onduleur réseau Huawei 5 kW » au devis). L'écran le dit maintenant, mais le devis ne suit pas. Le devis doit-il chiffrer l'onduleur désigné ?"
+    options:
+      - cle: a_suivre_le_designe
+        texte: "(recommandée) Oui : le devis généré depuis le calepinage reprend l'onduleur désigné quand il existe au catalogue avec un prix ; sinon il garde celui de la conception et le dit"
+      - cle: b_garder_la_conception
+        texte: "Non : le devis garde l'onduleur de la conception du lead ; la désignation du calepinage ne sert qu'au contrôle électrique"
+    reponse: ouverte
+    date: "2026-11-26"
+    source: "tour 5 du L5, rejeu du paquet C sur la pile de revue (26/11/2026), constat T4-X5-010 « pas corrigé » ; composition et prix relèvent d'apps/ventes"
+    taches: []
+  - id: D-ACAL-149
+    question: "Quatre lecteurs prennent encore la pente mémorisée d'un toit plat (22° par défaut) pour une vraie pente : la traduction vers le moteur (pose affleurante au lieu de rangées espacées, donc trop de modules — derrière un réglage aujourd'hui éteint), la pente imprimée sur la planche du PDF du devis, et l'inclinaison utilisée pour la production de l'étude (deux fonctions). Les corriger change des chiffres de documents client."
+    options:
+      - cle: a_nouveaux_rendus
+        texte: "(recommandée) Les corriger pour les nouveaux rendus seulement, derrière une coupure datée ; les devis envoyés gardent ce que le client a reçu"
+      - cle: b_laisser
+        texte: "Ne pas y toucher"
+    reponse: ouverte
+    date: "2026-11-26"
+    source: "lane lot6/acal-toit-plat-pente (26/11/2026) : lecteurs `apps/calepinage/services/traduction.py::_pente_et_azimut`, `services/planche.py`, `apps/ventes/domain/geometrie.py::orientation_du_pan` et `::_zone_villa_depuis_pan`"
+    taches: [ACAL1923]
+  - id: D-ACAL-150
+    question: "Un calepinage sans facture ni socle où l'utilisateur ne déclare qu'une charge (voiture électrique, pompe à chaleur) : les anciens documents portent une courbe de base de 24 zéros, les nouveaux n'en portent plus. Les deux doivent-ils donner le même résultat ?"
+    options:
+      - cle: meme_regle
+        texte: "(recommandée) Oui : courbe absente et courbe toute à zéro sont la même chose. Avec une charge déclarée et aucune autre source, la consommation est bâtie sur la charge, base à 0 kWh, avec l'avertissement « aucune consommation de base n'est connue » ; sans charge, le bloc est omis avec son motif. La charge déclarée n'est jamais abandonnée en silence"
+      - cle: selon_le_document
+        texte: "Garder deux comportements selon l'âge du document"
+    reponse: meme_regle
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; relecture finale du lot 7 : deux lanes justes chacune, deux résultats différents pour la même saisie selon l'âge du document (ACAL1962)"
+    taches: [ACAL1962]

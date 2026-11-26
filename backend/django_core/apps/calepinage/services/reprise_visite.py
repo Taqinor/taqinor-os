@@ -43,7 +43,7 @@ La société et l'auteur viennent TOUJOURS du serveur. Aucun statut ne bouge.
 """
 from __future__ import annotations
 
-from .valeurs import nombre as _nombre
+from .valeurs import nombre as _nombre, pente_du_pan
 
 #: Le motif publié quand le calepinage n'a AUCUN lead : il n'y a pas de
 #: visite technique à chercher. Recopié tel quel par l'onglet (CALX365).
@@ -219,7 +219,7 @@ def _ecarts_visite_dessin(calepinage, lecture):
         dessin_longueur, dessin_largeur = grande, petite
     arrondi = (lambda x: None if x is None else round(x, 2))
     return [
-        _ligne(pan_id, 'pente', pente, _nombre(pan.get('pitchDeg')),
+        _ligne(pan_id, 'pente', pente, pente_du_pan(pan),  # ACAL1923
                source_pente),
         _ligne(pan_id, 'longueur', longueur, arrondi(dessin_longueur),
                'contour tracé'),

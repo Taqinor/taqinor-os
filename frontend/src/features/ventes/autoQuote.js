@@ -122,6 +122,42 @@ async function creerDevisServeur({ lead, discountStr, onAlertes, onResultat, tar
  * ordreLignes, dispatch) sont acceptés et IGNORÉS : le serveur lit le
  * catalogue, les marques épinglées et l'ordre des lignes de la société.
  */
+/**
+ * T4-X1-004 — la taille tapée (3 kWc) et la taille composée par le serveur (3,55 kWc) diffèrent : l'écart est DIT, à partir
+ * des seules valeurs SERVIES (le `kwc` et le `nb_panneaux` du devis ou de chacune de ses options) ; rien n'est recalculé.
+ * UNE CAUSE N'EST DITE QUE SI LES DONNÉES SERVIES LA PROUVENT : « panneau entier » seulement quand, pour CHAQUE option qui
+ * diffère, la taille servie est ≥ la demande ET l'écart est strictement inférieur à la puissance d'UN panneau de cette option
+ * (kwc servi ÷ nombre de panneaux servi). Sinon (plusieurs panneaux d'écart, taille servie sous la demande, nombre de
+ * panneaux non servi) : les deux chiffres seuls, sans cause. `null` quand rien ne diffère (ou qu'une valeur manque).
+ */
+export function alerteTailleArrondie(cibleKwc, donnees) {
+  const cible = Number(cibleKwc)
+  if (!(cible > 0) || !donnees) return null
+  const options = Array.isArray(donnees.options) ? donnees.options.filter((o) => o?.variante && Number(o.kwc) > 0) : []
+  const unique = Array.isArray(donnees.options) && donnees.options.length === 1 ? donnees.options[0] : null
+  const servis = options.length
+    ? options.map((o) => ({ nom: o.libelle || (o.variante === 'avec' ? 'Avec batterie' : 'Sans batterie'), kwc: Number(o.kwc), nb: Number(o.nb_panneaux) }))
+    : (Number(donnees.kwc) > 0 ? [{
+      nom: '',
+      kwc: Number(donnees.kwc),
+      // Le nombre de panneaux du devis : servi au devis, ou par son option unique de MÊME puissance.
+      nb: Number(donnees.nb_panneaux ?? (unique && Number(unique.kwc) === Number(donnees.kwc) ? unique.nb_panneaux : NaN)),
+    }] : [])
+  const ecarts = servis.filter((o) => Math.abs(o.kwc - cible) > 0.005)
+  if (!ecarts.length) return null
+  const unPanneauAuDessus = (o) => Number.isInteger(o.nb) && o.nb > 0 && o.kwc >= cible && (o.kwc - cible) < o.kwc / o.nb
+  if (ecarts.every(unPanneauAuDessus)) {
+    const reel = ecarts.map((o) => `${o.nom ? `${o.nom} : ` : ''}${formatKwc(o.kwc)}`).join(' · ')
+    return {
+      code: 'taille_arrondie',
+      message: `Vous avez demandé ${formatKwc(cible)} ; le devis est à ${reel} : le nombre de panneaux est entier, `
+        + 'la taille composée est celle du panneau entier juste au-dessus de la demande.',
+    }
+  }
+  const composee = ecarts.map((o) => `${formatKwc(o.kwc)}${o.nom ? ` (${o.nom})` : ''}`).join(' · ')
+  return { code: 'taille_arrondie', message: `Taille demandée : ${formatKwc(cible)} ; taille composée : ${composee}.` }
+}
+
 export async function createAutoQuote({ lead, discountStr, onAlertes, onResultat, targetKwc, idempotencyKey }) {
   const mode = LEAD_TYPE_TO_MODE[lead.type_installation] || 'residentiel'
   // ── U3 (fondateur 20/08/2026) — LE RÉSIDENTIEL NE COMPOSE PLUS ICI ─────
@@ -208,7 +244,9 @@ export async function createAutoQuote({ lead, discountStr, onAlertes, onResultat
     // ADEV123 — les suppositions du calcul résidentiel (présence, été = hiver,
     // kWh tirés des dirhams, 30° plein sud) partent à l'écran comme celles du C&I.
     if (typeof onAlertes === 'function') {
-      onAlertes(Array.isArray(reponse.data.alertes) ? reponse.data.alertes : [])
+      const alertes = Array.isArray(reponse.data.alertes) ? reponse.data.alertes : []
+      const arrondie = alerteTailleArrondie(cibleKwc, reponse.data) // T4-X1-004 — seule une taille TAPÉE pour ce devis
+      onAlertes(arrondie ? [...alertes, arrondie] : alertes)
     }
     if (typeof onResultat === 'function') onResultat(reponse.data)
     return id

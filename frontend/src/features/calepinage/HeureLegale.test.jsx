@@ -87,6 +87,15 @@ describe('ACAL719 — HeureLegale', () => {
     expect(soleilLegal.mock.calls[0][2]).toEqual({ suppressErrorToast: true })
   })
 
+  it('T4-U1-018 — position du site absente : le serveur répond 200 « absence » (plus de 409), même phrase à l’écran', async () => {
+    soleilLegal.mockResolvedValue({ data: { date: '2026-02-11', absence: { champ: 'site.pin', motif: 'Position du site inconnue : …' } } })
+    barre()
+    rendre()
+    await waitFor(() => expect(document.getElementById('rp9-sun-legal'))
+      .toHaveTextContent('heure légale non calculée : posez d’abord l’épingle du site sur la carte'))
+    expect(document.getElementById('rp9-sun-legal')).not.toHaveTextContent('13 h')
+  })
+
   it('hors d’un calepinage (pas d’identifiant), rien ne s’affiche', () => {
     barre()
     render(<MemoryRouter initialEntries={['/ventes/devis/3']}><HeureLegale /></MemoryRouter>)

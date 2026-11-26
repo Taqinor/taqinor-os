@@ -1050,7 +1050,9 @@
   ],
   "calepinages.retenirVariante": [
     {
-      "config": null,
+      "config": {
+        "k": 1
+      },
       "data": null,
       "url": "/calepinage/calepinages/7/variantes/3/retenir/",
       "verbe": "post"
@@ -1418,7 +1420,7 @@
   ],
   "parametres.update": [
     {
-      "config": null,
+      "config": 3,
       "data": 7,
       "url": "/calepinage/parametres/",
       "verbe": "put"

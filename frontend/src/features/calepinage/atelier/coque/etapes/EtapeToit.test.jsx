@@ -131,6 +131,18 @@ describe('Étape Toit — le panneau de la maquette Main', () => {
     expect(document.querySelector('.cal-coque').dataset.sansToit).toBeUndefined()
   })
 
+  // R5B-N7 (rejeu 26/11) — toit 10 × 8 créé en 2 pans : « Largeur » relisait 4 sans dire que ce sont les cotes d'UN pan.
+  it('R5B-N7 — plusieurs pans : les cotes sont dites celles du pan sélectionné ; un seul pan : rien de plus', async () => {
+    rendre()
+    const dims = screen.getByTestId('cal-toit-dimensions').closest('.cal-toit-bloc-dimensions')
+    expect(dims.querySelector('[data-zone="cotes-du-pan"]')).toHaveTextContent('Cotes du pan sélectionné — le toit en compte 2.')
+    cleanup()
+    document.body.innerHTML = ''
+    rendre({}, (hote) => hote.querySelector('#rp9-areas-list li[data-area-row="area-2"]').remove())
+    expect(screen.getByTestId('cal-toit-dimensions')).toBeInTheDocument()
+    expect(document.querySelector('[data-zone="cotes-du-pan"]')).toBeNull()
+  })
+
   it('blocs dans l’ordre de la maquette, libellés mot pour mot, crochets e2e', async () => {
     rendre()
     const titres = [...document.querySelectorAll('.cal-etape-toit h2')].map((n) => n.textContent)

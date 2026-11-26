@@ -1,0 +1,289 @@
+[
+ {
+  "id": "T4-X7-019",
+  "verdict": "corrige",
+  "vu": "Calepinage neuf R5B-1 (calepinage 2), Chromium 1440x900 : la bulle « 1 · Localisez le toit : tapez l'adresse, puis cliquez le premier coin » est lisible en entier sous la barre de recherche, sans passer sous les boutons de l'en-tête (non rejoué en WebKit).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X7-019.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U2-005",
+  "verdict": "corrige",
+  "vu": "Sur un calepinage neuf, avant « Créer le toit » : les 5 formes Plat/2 pans/4 pans/En L/En T sont actives (title « Choisissez la forme, puis saisissez la longueur et la largeur et « Créer le toit » »), « Plat » se sélectionne et le texte « Forme « Plat » choisie : saisissez la longueur et la largeur puis « Créer le toit » — il sera découpé dans cette forme » s'affiche. Seul « Tracé libre » reste en pointillé mais cliquable.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-U2-005.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U1-024",
+  "verdict": "corrige",
+  "vu": "Rectangle glissé hors du toit : message « Obstacle posé hors du toit : il n'a aucun effet ici. Déplacez-le sur un pan, ou supprimez-le. » (plus de « le calepinage l'évite »). Le message est transitoire (n'apparaît plus dans le panneau Obstacles une fois le type choisi).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-U1-024.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U1-025",
+  "verdict": "corrige",
+  "vu": "Obstacle glissé sur le pan « 0,6 × 1,2 m » : après choix du type Cheminée les champs restent 0,6 et 1,2 (aussi vérifié hors toit : 1,3 × 1,9 conservé).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-U1-025.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U1-023",
+  "verdict": "pas-corrige",
+  "vu": "Toit 2 pans 10x8, cheminée 0,8x0,8 h 1,5 sur pan sud, bâtiment voisin ouest 6 m 8x5, enregistré. Étape Panneaux : aucune carte d'avis d'ombrage. Résultats : « Ombrage panneau par panneau — Aucune ombre n'est signalée, mais cela ne prouve pas qu'il n'y en a pas » et « Ombres proches : à renseigner ». Pendant ce temps l'Expert dit « Accès solaire moyenne du pan 98,2 % sur 7 modules ; 6 module(s) sur 7 couvert(s) par une obstruction, de 2 à 8 heure(s), dès janvier » et « L'ombre sur chaque panneau n'est pas encore calculée ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-U1-023c.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-U1-013",
+  "verdict": "corrige",
+  "vu": "Calepinage 2 : après « Enregistrer le calepinage » la barre dit « Enregistré à 05:42 » (toast « Conception enregistrée »), jamais « Modifications non enregistrées » ; après rechargement de la page (profil de navigateur neuf) : « Enregistré à 05:42 » et aucun bandeau « BROUILLON LOCAL ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-U1-013.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U4-006",
+  "verdict": "corrige",
+  "vu": "Calepinage 2 (lead sans devis), Avancé : la ligne de tête dit « Estimation rapide de l'atelier — avant la simulation / Conception du lead (3,55 kWc) : 5 677 kWh/an — production standard de la ville » ; aucune phrase « Le devis annonce » ni chiffre attribué à un devis.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-U4-006.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-U4-017",
+  "verdict": "corrige",
+  "vu": "Même calepinage avec champ au sol + ombrière (51 modules), lead sans devis, Avancé : ligne de tête « Conception du lead (3,55 kWc) : 5 677 kWh/an » — plus de « Le devis annonce ». Réserve S4 : le bloc plus bas dit « Le devis chiffre : Zone 1 (7) + Champ au sol (28) + Ombrière (16) = 51 modules » alors qu'aucun devis n'existe (aperçu de ce que le devis portera).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-U4-017.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-U4-016",
+  "verdict": "corrige",
+  "vu": "Calepinage 2 : toit 7 panneaux + Terrain 20x10 (28 modules, 19,88 kWc, « Enregistrer le champ » : barre passe aussitôt à 35 panneaux · 24,85 kWc) + Ombrière 12x6 h 2,5 m 8° 2/travée (16 modules) : après « Enregistrer l'ombrière » la barre dit 51 panneaux · 36,21 kWc sans rechargement ; idem après « Enregistré à 05:51 ». Tableau « Total du site : 51 modules · 36,21 kWc », PANS = 2 (le toit est tracé).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-U4-016.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X9-012",
+  "verdict": "corrige",
+  "vu": "Après ombrière enregistrée puis « Enregistré à 05:51 » (sans recharger) : barre 51 panneaux · 36,21 kWc = tableau « Total du site : 51 modules · 36,21 kWc » = tableau Ombrière (…2 1 1 51). Joué sur toit en pente + champ + ombrière (pas la variante toit plat + zone du brief).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X9-012.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U4-019",
+  "verdict": "corrige",
+  "vu": "Ombrière 10x5, 4 modules par travée : « Aucune travée ne tient dans cette emprise avec cette saisie […] Réduisez le nombre de modules par travée ou agrandissez l'emprise. » ; « Couverture posée à 2,5 m » et « 39,4 % TAQ D'OCCUPATION » avec virgule. Réserve S4 : les notes du bas de l'ombrière parlent encore de « terrain » / « pas inter-rangées » / « surface du terrain manquante ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-U4-019.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-U4-024",
+  "verdict": "corrige",
+  "vu": "Calepinage 2 (toit + sol + ombrière) : « Couvrir la facture » (7 → 5 panneaux) : pendant l'édition barre = 49 panneaux · 34,79 kWc ; après « Enregistré à 05:51 » = 49 · 34,79 ; après rechargement = 49 · 34,79 ; bande « Total du site 49/51 ». La carte dit 5 panneaux 3,55 kWc (= 5 × 710 W). Utilisateur B non joué (un seul compte).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-U4-024.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X7-015",
+  "verdict": "partiel",
+  "vu": "Avancé › Calques n'est plus vide (« Aucun calque disponible » disparu) mais ne liste que 4 calques : Tracé client, Obstacles, Zones (interdites / réservées / préférées), Mesures — pas de calque « Électrique », alors que la chaîne est formée (rail Électrique ✓, 1 onduleur 5 kW). Variante : ouverte par le lien profond /calepinage/2/pertes juste après chargement, la même feuille dit « CALQUES — Aucun calque disponible pour le moment » (le défaut d'origine), alors qu'ouverte par le bouton Avancé après avoir quitté l'étape Toit elle liste 4 calques : le contenu dépend de l'état de la carte.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X7-015.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X3-007",
+  "verdict": "corrige",
+  "vu": "Calepinage 2, liens /calepinage/2/fiches, /pente, /production, /pertes en mode Guidé (attente 10-12 s) : chaque adresse devient ?onglet=<clé>, la feuille « Avancé » s'ouvre (bouton Fermer visible) avec l'onglet demandé sélectionné (« Pertes » vu à l'écran, « Fiches équipements », « Pente », « Production » par l'arbre d'accessibilité). Les 12 autres clés non rejouées. Réserve : le panneau Calques de la feuille est vide (« Aucun calque disponible ») juste après ouverture par lien profond.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X3-007.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X7-012",
+  "verdict": "partiel",
+  "vu": "Calepinage 3 (lead R5B-2, 2 pans 12x8, conception 7 panneaux 4,97 kWc « Couvrir la facture — Recommandé ») : après « Créer le toit » + « Poser les panneaux » la pose appliquée est « Le plus de panneaux » (9 × 710 W = 6,39 kWc), pas la pose Recommandée (7). En revanche, le geste de retrait existe (D-ACAL-119) : bouton « Retirer un panneau » à l'étape Panneaux en guidé : 9 → 8 panneaux · 5,68 kWc, « Pose actuelle : 8 panneaux · 5,68 kWc ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X7-012.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X2-001",
+  "verdict": "corrige",
+  "vu": "Calepinage 3 : carte « Couvrir la facture — Recommandé » = 7 panneaux 4,97 kWc (7 × 710 W) = bande Panneaux 7 / Puissance 4,97 kWc = barre « 7 panneaux · 4,97 kWc » = message « Posé d'après la facture : 7 panneaux · 4,97 kWc ». Après Enregistrer + rechargement : mêmes valeurs (7 · 4,97, 7 948 kWh/an, ≈ 75 %).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X2-001.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X2-002",
+  "verdict": "corrige",
+  "vu": "Calepinage 3 avec cheminée 1,0 × 1,2 m h 1,5 sur le pan sud, pose 7 panneaux : bande « Production · conception 7 948 kWh/an » avant enregistrement ; après « Enregistré à 05:59 » + rechargement : 7 948 kWh/an identique, aucune carte « Ombres à compter ». Réserve : le chiffre affiché est celui de la conception du lead, pas une estimation de la pose avec l'ombre de la cheminée.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X2-002.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U4-026",
+  "verdict": "corrige",
+  "vu": "Appel « modules-disponibles » bloqué (échec réseau simulé) puis ouverture de l'étape Panneaux : « Catalogue des modules indisponible : rien n'est enregistré. « Réessayer » le relit… » et « Zone 1 : le catalogue des modules n'a pas pu être lu — le module « Panneau Canadien Solar 710W » n'est pas vérifié. Cliquez sur « Réessayer » pour le relire. » : le nom du module, plus l'identifiant produit-NNNN, et plus de « ne figure plus dans le catalogue ». Réserve S4 : dans cet état dégradé l'écran dit aussi « Module par défaut de l'atelier (…720 Wc) » pour 8 modules de 710 W.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-U4-026.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-X9-006",
+  "verdict": "corrige",
+  "vu": "Calepinage 3, pose 8 panneaux · 5,68 kWc, conception 7 · 4,97 kWc, 1440x900 : la phrase « Production et économie calculées pour la conception du lead : 4,97 kWc — votre pose en compte 5,68 kWc. » tient dans la bande blanche du haut de la carte (rien sous la pile de zoom), et 4,97 s'écrit pareil sur la bande et sur la carte « Couvrir la facture ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X9-006.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-X9-003",
+  "verdict": "corrige",
+  "vu": "Calepinage 3 (pose 8 × 710 W = 5,68 kWc, conception du lead 7 · 4,97 kWc), Expert, carte TOTAL : « 8 × 710 W PANNEAUX », « 5,68 kWc PUISSANCE », « — PRODUCTION ESTIMÉE », « — ÉCONOMIES ESTIMÉES » + une phrase ; aucun chiffre en MAD/an d'une autre taille ; la carte Recommandation dit la même phrase à la place des chiffres.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X9-003.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X9-007",
+  "verdict": "corrige",
+  "vu": "Expert, colonne de droite : la phrase « Production et économie calculées pour la conception du lead : 4,97 kWc — votre pose en compte 5,68 kWc. » est en texte courant (14 px, graisse 400) une seule fois dans la carte Recommandation et une seule fois dans la carte TOTAL (2 éléments dans la colonne, plus la bande du haut en guidé), plus de gros caractères gras sur huit lignes.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X9-003.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X9-004",
+  "verdict": "pas-corrige",
+  "vu": "Calepinage 3, pose 8 × 710 W = 5,68 kWc (conception du lead 4,97 kWc), simulation non faite : Expert, sous « Affiner ma consommation » : « Moteur du devis sur cette pose (aucun devis lié à ce calepinage) : 7 948 kWh/an — production standard de la ville ». 7 948 kWh est la production de la conception 4,97 kWc (Résultats : « Production de la conception : 7 948 kWh par an »), pas de la pose de 5,68 kWc ; la ligne ne dit pas que c'est la conception.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X9-004.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X9-005",
+  "verdict": "corrige",
+  "vu": "Calepinage 3 : étape Résultats : « Production de la conception : 7 948 kWh par an, calculée pour la conception du lead : 4,97 kWc (7 panneaux de 710 W) — votre pose en compte 5,68 kWc (8 panneaux). La production de votre pose sera celle de sa simulation. » ; la simulation part d'elle-même (« Simulation en cours… »). La carte Panneaux dit « 7 panneaux 4,97 kWc conception » et « Pose actuelle : 8 panneaux · 5,68 kWc ». Cas 550 W vs 710 W non reproduit (la conception de ce lead est en 710 W). Résultat de la simulation et « Montrer au client » vus plus bas / voir autres lignes.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X9-005.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X5-017",
+  "verdict": "corrige",
+  "vu": "Étape Panneaux › « Plein écran » (1440x900) : la pile zoom +/− / plein écran / boussole se place au bord droit de l'écran (x ≈ 1400) et le toit est recentré au milieu ; Échap quitte le plein écran.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X5-017.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-X5-005",
+  "verdict": "corrige",
+  "vu": "Calepinage 3 (lead R5B-2, factures hiver 1200 / été 700 MAD, présent en journée), pose = conception 7 × 710 W : bande « Production · conception 7 948 kWh / an — De la consommation ≈ 75 % » (design-context : couverture 74,9 %, annualKwh 7 948,12 ; la consommation annuelle n'est pas affichée sur l'écran, le quotient n'a donc pas été recalculé de tête à partir d'un chiffre affiché) ; après retrait de 2 panneaux (5 · 3,55 kWc) + Enregistré à 06:07 : la bande n'affiche plus ni production ni pourcentage, seulement « Production et économie calculées pour la conception du lead : 4,97 kWc — votre pose en compte 3,55 kWc » ; le « ≈ 75 % » reste attaché à la carte « 7 panneaux 4,97 kWc conception ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X5-005.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X5-003",
+  "verdict": "corrige",
+  "vu": "Lead R5B-2 (Casablanca, hiver 1200 / été 700, présent en journée) : atelier « Couvrir la facture » = 7 panneaux 710 W · 4,97 kWc (cible-factures module_wc 710, « Recalculé le 26/11 à 6 h 03 : pose enregistrée ») ; étape Toit « Besoin d'après la facture ≈ 4,97 kWc » ; fiche du lead : avec batterie retenue 7 panneaux · 4,97 kWc · 7 948 kWh/an, sans batterie 4 · 2,84 kWc ; « Devis auto » DEV-202611-0114 : Sans batterie 2,84 kWc, Avec batterie 4,97 kWc. Même taille, même module, même production (7 948) partout ; stable après le recalcul du devis. PDF du devis non lu ici (paquet A) ; scénario 05:09 non reproduit.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X5-003.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "D-ACAL-110",
+  "verdict": "partiel",
+  "vu": "Calepinage 3, conception du lead 7 × 710 W = 4,97 kWc : choix du module « Panneau Canadien Solar 715W » (la liste n'offre que 720 / 710 / 715 / Jinko 710, pas de 550 W) → message « Zone 1 : module « Panneau Canadien Solar 715W » — le calepinage est repavé à ses cotes », carte « 7 panneaux de 715 W · 5 kWc » + phrase « La conception du lead compte 7 panneaux de 710 W, 4,97 kWc. » ; la pose existante passe de 3,55 à 3,58 kWc (5 × 715 W). Le cas 550 W → arrondi au plus proche (6 panneaux) n'est pas reproductible ici : 715 W donne 7 panneaux par les deux règles (au plus proche et au-dessus), donc l'arrondi n'est pas discriminé ; l'écran dit bien la différence de puissance mais pas que « le nombre a changé ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-D-ACAL-110.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U4-025",
+  "verdict": "corrige",
+  "vu": "Deux contextes de navigateur (même compte) sur le calepinage 3, un panneau retiré dans chacun puis 40 s sans geste : 1 seul PUT « brouillon » par page (200) au lieu d'environ 1 par seconde (≈ 40 avant). L'enregistrement explicite de A passe : POST layout 200, POST roof-image 201, DELETE brouillon 200, barre « Enregistré à 06:11 ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-U4-027.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U4-027",
+  "verdict": "corrige",
+  "vu": "Après l'enregistrement de A (200), B clique « Enregistrer le calepinage » : POST layout 409 ; la barre de B dit « Non enregistré : modifié ailleurs » (plus de coche verte « Enregistré à… »), le bandeau dit une seule fois en entier « Le document a été modifié ailleurs depuis votre ouverture : rechargez avant d'enregistrer. » avec le bouton « Recharger » ; rien n'est écrasé. Notification en bas non observée (capture prise 6 s après).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-U4-027.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-X9-011",
+  "verdict": "corrige",
+  "vu": "Lead R5B-3, Nouveau calepinage › Lead, réponse de POST depuis-modele retardée de 28 s côté réseau (le serveur a bien créé) : après le délai de l'écran, message « Le serveur a répondu trop tard, mais le calepinage a bien été créé : CAL-2611-0004 « R5B-3 lent ». » avec le bouton « Ouvrir le calepinage créé » (plus de « Réessayez »). L'écran n'ouvre pas le calepinage tout seul. Joué en mode Lead : le mode Client est impossible ici (voir R5B-N1).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X9-011.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "ACAL2047",
+  "verdict": "partiel",
+  "vu": "Lead R5B-4 : double-clic sur « Créer le calepinage » = un seul POST depuis-modele (une seule clé d'idempotence) et un seul calepinage (CAL #5), l'écran ouvre /calepinage/5. Réponse perdue/lente (lead R5B-3) : la clé est envoyée une fois, pas de troisième envoi, message « répondu trop tard, mais le calepinage a bien été créé ». Non vu : le libellé « Création en cours… » (le bouton garde « Créer le calepinage », grisé pendant l'attente) ; coupure réseau réelle non jouée.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X9-011.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X2-006",
+  "verdict": "partiel",
+  "vu": "Calepinage 5 (lead R5B-4), toit plat 10 x 8, 24 panneaux · 17,04 kWc, enregistré, « Lancer la simulation » (≈ 2 min) → Expert › Toit : la carte TOTAL dit « 27 305 kWh/an · simulation » et la ligne du pied « 24 panneaux · 17,04 kWc · P50 27 305 kWh/an (simulation) » : plus d'estimation de l'atelier à côté. MAIS la carte d'option « Est-Ouest dos à dos » affiche encore « Estimation pour comparer les poses : 24 panneaux · 17,04 kWc · 21 735 kWh/an » pour la même pose (écart 5 570 kWh/an) ; aussi « Année 1 : production au prochain enregistrement » alors que la conception est enregistrée.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X2-006.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X9-013",
+  "verdict": "non-rejouable",
+  "vu": "Le mode Client de « Nouveau calepinage » est inutilisable sur cette copie pour le compte Commercial : les entrées proposées (« R5B-1 », « R5B-2 ») portent l'identifiant de mes leads (1238, 1239) et « Créer » répond 404 « Client introuvable (#1238) » (voir R5B-N1). Impossible d'obtenir un calepinage sans lead pour rejouer simulation + champ au sol + ombrière + rechargement.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X9-013.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "R5B-N1",
+  "verdict": "constat",
+  "gravite": "S2",
+  "vu": "Nouveau calepinage › onglet Client (compte anon_commercial) : le sélecteur affiche « Aucun de vos clients ne correspond » tant qu'on ne tape rien, puis propose « R5B-1 » / « R5B-2 » (mes leads) ; choisir « R5B-1 » et « Créer le calepinage » → POST depuis-modele 404 {\"client_id\":\"Client introuvable (#1238)\"} ; 1238 est l'identifiant du lead R5B-1. Le mode Client ne peut donc pas créer de calepinage. Message à l'écran « Corriger le champ « Client » — Client introuvable (#1238). »",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-clientmode-404.png"
+ },
+ {
+  "id": "R5B-N2",
+  "verdict": "constat",
+  "gravite": "S3",
+  "vu": "Calepinage 2 (toit 5 + champ au sol 28 + ombrière 16 = 49 panneaux · 34,79 kWc dans la barre et la bande « Total du site »), feuille Avancé : la ligne de résumé dit « 5 panneaux · 3,55 kWc · — » (le pan de toit seul) et « 5 panneaux de 710 W — CIBLE ». Deux totaux différents dans le même écran, sans libellé « pan de toit ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-N2.png"
+ },
+ {
+  "id": "R5B-N3",
+  "verdict": "constat",
+  "gravite": "S4",
+  "vu": "Fiche d'un lead tout juste créé (R5B-2) : « Conception en cours de calcul… » et 3 erreurs console « 404 /api/django/ventes/conception/1239/ » (le serveur logge « Not Found ») le temps du premier calcul ; la conception apparaît ensuite. Une erreur 4xx sur une action normale (création de lead).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-lead2.png"
+ },
+ {
+  "id": "R5B-N4",
+  "verdict": "constat",
+  "gravite": "S4",
+  "vu": "Étape Résultats avant simulation : « Production de la conception : 7948 kWh par an… » et « 5677 kWh » sans espace des milliers, alors que partout ailleurs le même nombre s'écrit « 7 948 kWh/an » / « 5 677 kWh/an ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-X9-005.png"
+ },
+ {
+  "id": "R5B-N5",
+  "verdict": "constat",
+  "gravite": "S3",
+  "vu": "Étape Résultats, liste « Pour un résultat complet » : cliquer « Renseigner » sur la ligne « Ombrage panneau par panneau » (deux fois) ne fait rien de visible (pas de feuille, pas de navigation, URL inchangée). À confirmer sur un autre poste.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-U1-023d.png"
+ },
+ {
+  "id": "R5B-N6",
+  "verdict": "constat",
+  "gravite": "S4",
+  "vu": "Expert › Terrain (1440 × 900) : après « Calculer le champ au sol » les tuiles de résultat de la colonne de droite se chevauchent (« MODULES POSÉS (MOTEUR) / TABLES POSÉES / PAS NON MESURABLE » écrites les unes sur les autres, « 19,88 kWc » et « 39,4 % » coupés).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-N6.png"
+ },
+ {
+  "id": "R5B-N7",
+  "verdict": "constat",
+  "gravite": "S4",
+  "vu": "Toit 10 × 8 en 2 pans : après « Créer le toit » le champ « Largeur » du panneau Toit relit « 4 » (largeur d'un pan) alors que la saisie était 8 ; la barre passe tout de suite à « 8 panneaux · 5,68 kWc » (pose automatique) avant tout clic sur « Poser les panneaux ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-roof2.png"
+ },
+ {
+  "id": "R5B-N8",
+  "verdict": "constat",
+  "gravite": "S4",
+  "vu": "Environnement : la simulation d'un calepinage de 7 panneaux a dépassé 2 minutes (3 échecs « La simulation a dépassé le temps alloué » sur le calepinage 2 ; 112 s pour le calepinage 3 ; 24 panneaux ≈ 2 min) ; l'écran le dit correctement et propose « Réessayer ». À confirmer en production (probablement la machine de revue). Échap n'a pas quitté le plein écran (le bouton, oui).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5b-T4-U1-023b.png"
+ }
+]

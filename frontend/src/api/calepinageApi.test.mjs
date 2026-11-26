@@ -161,7 +161,7 @@ test('CAL33 — les neuf actions exigées par la tâche sont déclarées', () =>
     // ACAL109 : la liste vient de comparer/ (le GET variantes/ n'avait plus
     // d'appelant, retiré par la garde d'usage) ; la ressource reste servie.
     variantes: /creerVariante: \(id, corps\) => api\.post\(`\$\{pivot\(id\)\}variantes\/`, corps\)/,
-    retenir: /retenirVariante: \(id, varianteId\) =>\s*\n?\s*api\.post\(`\$\{pivot\(id\)\}variantes\/\$\{varianteId\}\/retenir\/`\)/,
+    retenir: /retenirVariante: \(id, varianteId, config\) =>\s*\n?\s*api\.post\(`\$\{pivot\(id\)\}variantes\/\$\{varianteId\}\/retenir\/`, undefined, config\)/,
     comparer: /comparer: \(id\) => api\.get\(`\$\{pivot\(id\)\}comparer\/`\)/,
     moteur: /calculer: \(corps\) => api\.post\('\/calepinage\/moteur\/calculer\/', corps\)/,
     'generer-devis': /genererDevis: \(id, corps, config\) => api\.post\(`\$\{pivot\(id\)\}generer-devis\/`, corps, config\)/, // T4-X5-007

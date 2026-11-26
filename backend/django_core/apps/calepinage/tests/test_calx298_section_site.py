@@ -246,12 +246,29 @@ class ModelesEmployesTest(unittest.TestCase):
         self.assertIn('réglage société', trans)
 
     def test_sans_transposition_servie_la_ligne_est_non_nommee(self):
+        # ACAL1636 — un fichier déjà sur le plan : la source a transposé sans
+        # nommer son modèle (PVGIS, lui, se nomme : cas suivant).
         res = self.resultat()
         res['meteo'].pop('transposition')
+        res['meteo']['service'] = 'fichier'
         html = html_de_section(contexte(res))
         trans = self.ligne(html, 'Transposition vers le plan des modules')
         self.assertIn('Non nommée', trans)
         self.assertNotIn('haydavies', trans.lower())
+
+    def test_acal1636_pvgis_nomme_la_transposition(self):
+        res = self.resultat()
+        res['meteo'].pop('transposition')
+        res['meteo']['service'] = 'seriescalc'
+        trans = self.ligne(html_de_section(contexte(res)),
+                           'Transposition vers le plan des modules')
+        self.assertIn('Calculée par PVGIS', trans)
+        self.assertNotIn('Non nommée', trans)
+        # Un fichier horizontal transposé garde son modèle nommé.
+        res = self.resultat()
+        res['meteo']['service'] = 'fichier'
+        self.assertIn('Hay et Davies', self.ligne(
+            html_de_section(contexte(res)), 'Transposition vers le plan des modules'))
 
     def test_etape_omise_dit_non_appliquee_avec_son_motif(self):
         res = self.resultat()

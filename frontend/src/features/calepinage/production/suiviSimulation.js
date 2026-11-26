@@ -128,6 +128,16 @@ export function etatCalcul(data) {
 
 export const LIBELLE_BOUTON = {
   lancer: 'Lancer la simulation',
-  perime: 'Relancer (document modifié)',
+  // ACAL1647 — la cause n'est nommée que si le serveur la prouve (`libelleBouton`) : sans preuve, aucune.
+  perime: 'Relancer la simulation',
   frais: 'Recalculer',
+}
+
+/** ACAL1647 — le libellé du bouton : quand le serveur démontre que la péremption vient d'un
+    réglage de la société (son motif l'ouvre ainsi), « Relancer (réglages modifiés) » ; sinon
+    le libellé de l'état. Seul le motif servi porte la cause : aucune cause n'est devinée ici. */
+export function libelleBouton(etat, motif) {
+  if (etat === 'perime' && typeof motif === 'string'
+    && motif.startsWith('simulation périmée : un réglage de la société')) return 'Relancer (réglages modifiés)'
+  return LIBELLE_BOUTON[etat]
 }

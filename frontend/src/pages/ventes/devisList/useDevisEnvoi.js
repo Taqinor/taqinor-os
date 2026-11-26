@@ -169,7 +169,7 @@ export function useDevisEnvoi({
         && /Numéro de téléphone invalide/.test(String(err?.response?.data?.detail || ''))) {
         toast.error(
           `${d.reference} : aucun numéro de téléphone exploitable sur la fiche — WhatsApp est impossible. `
-          + 'Copiez le lien pour l’envoyer vous-même, ou complétez la fiche.',
+          + 'Copiez le lien pour l’envoyer vous-même (e-mail, SMS…), ou complétez la fiche du lead (téléphone ou e-mail).',
           { action: { label: 'Copier le lien', onClick: () => handleCopierLienProposition(d) }, duration: 20000 },
         )
       } else {

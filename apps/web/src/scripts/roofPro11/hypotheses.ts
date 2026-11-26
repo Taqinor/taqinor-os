@@ -22,6 +22,11 @@ export interface EtatHypotheses {
 const presente = (v: unknown): boolean => v != null && typeof v === 'object' && !Array.isArray(v);
 const NOMS = ['Nord', 'Nord-Est', 'Est', 'Sud-Est', 'Sud', 'Sud-Ouest', 'Ouest', 'Nord-Ouest'];
 
+/** Le nom de la face d'un pan, au huitième de tour le plus proche (0° = Nord). ACAL1970 : partagé (motif de pan vide). */
+export function nomDeFace(azimutDeg: number): string {
+  return NOMS[Math.round((((azimutDeg % 360) + 360) % 360) / 45) % 8];
+}
+
 export function etatHypotheses(e: EtatHypotheses): {
   penteConfirmee: boolean;
   faceConfirmee: boolean;
@@ -30,7 +35,7 @@ export function etatHypotheses(e: EtatHypotheses): {
 } {
   const penteConfirmee = presente(e.pitchSource);
   const faceConfirmee = e.facingManual || presente(e.facingAzimuthSource);
-  const nom = NOMS[Math.round((((e.facingAzimuthDeg % 360) + 360) % 360) / 45) % 8];
+  const nom = nomDeFace(e.facingAzimuthDeg);
   return {
     penteConfirmee,
     faceConfirmee,

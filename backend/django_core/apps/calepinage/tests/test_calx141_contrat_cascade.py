@@ -211,6 +211,85 @@ class MotifServiLisibleTest(unittest.TestCase):
         for texte in textes(servi):
             self.assertIsNone(chemin.search(texte), texte)
 
+    def test_acal1654_aucun_code_servi_source_lisible_motif_unique(self):
+        # Ni « (CALX170) » ni « core.calepinage.soleil (CALX146) », la source
+        # « texte » se lit « page publiée », une phrase n'est servie qu'une
+        # fois ; le stocké ne bouge pas. Mutant : code servi ⇒ échec.
+        import copy
+        import re
+
+        from apps.calepinage.services.rapport.champs_lisibles import (
+            avec_motifs_lisibles,
+        )
+
+        phrase = 'Aucune fiche thermique publiée (CALX170).'
+        stocke = {'cascade': {'etapes': [
+            {'etape': 'thermique', 'motif_omission': ' '.join([phrase] * 5),
+             'source': None},
+            {'etape': 'horizon', 'motif_omission': '', 'source': 'texte',
+             'reference': 'core.calepinage.soleil (CALX146)'},
+            {'etape': 'iam', 'motif_omission': '', 'source': 'fiche',
+             'reference': 'https://www.pvsyst.com/help/iam.html'}]}}
+        avant = copy.deepcopy(stocke)
+        thermique, horizon, iam = avec_motifs_lisibles(stocke)['cascade']['etapes']
+        self.assertEqual(thermique['motif_lisible'], 'Aucune fiche thermique publiée.')
+        # Revue lot 6 — le code est servi tel quel : l'écran le nomme par SA
+        # table (« Page publiée », DiagrammePertes.jsx::SOURCE_LABELS).
+        self.assertEqual(horizon['source'], 'texte')
+        self.assertEqual(horizon['reference'], 'position du soleil')
+        self.assertEqual((iam['source'], iam['reference']),
+                         ('fiche', 'https://www.pvsyst.com/help/iam.html'))
+        for etape in (thermique, horizon):
+            self.assertIsNone(re.search(r'CALX\d+', str(etape)), etape)
+        self.assertEqual(stocke, avant, 'le résultat stocké ne bouge pas')
+
+
+class AdressesPublieesIntactesTest(unittest.TestCase):
+    """Revue lot 6 (ACAL1654/1656) — une adresse publiée citée comme source
+    ressort de ``motif_lisible`` EXACTE (« array-incidence-loss-iam.html »
+    devenait « array-incidence-loss-une donnée »). Les adresses sont relevées
+    dans les VALEURS des modules qui les publient (modules importés, leurs
+    constantes parcourues — aucun fichier source lu, ATST53) : une adresse
+    ajoutée à une référence est couverte."""
+
+    def test_toute_adresse_des_etapes_ressort_telle_quelle(self):
+        import importlib
+        import pkgutil
+        import re
+
+        from apps.calepinage.services import etapes
+        from apps.calepinage.services.rapport.champs_lisibles import motif_lisible
+
+        noms = (['apps.calepinage.services.etapes.' + m.name
+                 for m in pkgutil.iter_modules(etapes.__path__)]
+                + ['apps.calepinage.services.etapes', 'apps.calepinage.services.chaine_pertes',
+                   'apps.calepinage.services.transposition', 'apps.calepinage.services.pvgis_serie'])
+        textes = []
+
+        def recueillir(valeur, profondeur=0):
+            if isinstance(valeur, str):
+                textes.append(valeur)
+            elif isinstance(valeur, dict) and profondeur < 4:
+                for v in valeur.values():
+                    recueillir(v, profondeur + 1)
+            elif isinstance(valeur, (list, tuple, set, frozenset)) and profondeur < 4:
+                for v in valeur:
+                    recueillir(v, profondeur + 1)
+
+        for nom in noms:
+            module = importlib.import_module(nom)
+            recueillir(module.__doc__ or '')
+            for valeur in vars(module).values():
+                recueillir(valeur)
+        adresses = {a.rstrip('.,;:') for texte in textes
+                    for a in re.findall(r'https?://[^\s\'"»)<>]+', texte)}
+        self.assertGreater(len(adresses), 20)
+        for adresse in sorted(adresses):
+            with self.subTest(adresse=adresse):
+                self.assertEqual(motif_lisible(adresse), adresse)
+                phrase = 'PVsyst (CALX146) — %s.' % adresse
+                self.assertEqual(motif_lisible(phrase), 'PVsyst — %s.' % adresse)
+
 
 class PasDeDeriveTest(unittest.TestCase):
     """Le bloc détaillé ici reste celui que CALX4 annonce, et `pertes` reste
@@ -309,14 +388,16 @@ class PlagesTest(unittest.TestCase):
     BANDES = {'bandes': [
         {'etape': 'thermique', 'min': 5.0, 'max': 9.0, 'unite': '%',
          'url': 'https://exemple.invalid/thermique',
-         'date_lecture': '2026-11-21'},
+         'date_lecture': '2026-11-21', 'citation': 'phrase de test'},
         {'etape': 'ohmique_dc', 'min': 0.2, 'max': 0.5, 'unite': '%',
-         'url': 'https://exemple.invalid/dc', 'date_lecture': '2026-11-21'},
+         'url': 'https://exemple.invalid/dc', 'date_lecture': '2026-11-21',
+         'citation': 'phrase de test'},
         {'etape': 'bifacial', 'min': 0.0, 'max': 1.0, 'unite': '%',
-         'url': 'https://exemple.invalid/bif', 'date_lecture': '2026-11-21'},
+         'url': 'https://exemple.invalid/bif', 'date_lecture': '2026-11-21',
+         'citation': 'phrase de test'},
     ], 'total': {'min': 1.0, 'max': 5.0, 'unite': '%',
                  'url': 'https://exemple.invalid/total',
-                 'date_lecture': '2026-11-21'}}
+                 'date_lecture': '2026-11-21', 'citation': 'phrase de test'}}
 
     def _attendu(self, valeur, bas, haut):
         return 'dans_la_plage' if bas <= valeur <= haut else 'inhabituel'
@@ -342,6 +423,42 @@ class PlagesTest(unittest.TestCase):
         self.assertEqual(plages['total']['statut'], 'inhabituel')
         self.assertEqual(plages['etapes']['thermique']['url'],
                          'https://exemple.invalid/thermique')
+
+    def test_acal1625_une_bande_servie_porte_url_et_citation(self):
+        # Le FICHIER réel porte au moins une bande citée mot pour mot (LID,
+        # PVsyst) ; servie, elle dit son url et sa phrase. Mutant : une bande
+        # sans citation n'est pas lue (aucune pastille, motif d'absence).
+        from apps.calepinage.services.plages_usuelles import charger, evaluer
+
+        bandes = charger()['bandes']
+        self.assertTrue(bandes)
+        for bande in bandes:
+            self.assertTrue(bande['url'].startswith('https://'), bande['etape'])
+            self.assertTrue(bande['citation'].strip(), bande['etape'])
+        lid = next(b for b in bandes if b['etape'] == 'lid')
+        self.assertIn('typically ranges from 1% to 3%', lid['citation'])
+        # La valeur jugée est tirée de la bande elle-même (milieu, puis moitié du
+        # minimum) : aucune perte chiffrée en dur (garde CAL238).
+        milieu = (lid['min'] + lid['max']) / 2
+        cascade = {'etapes': [{'etape': 'lid', 'perte_pct': milieu, 'motif_omission': '',
+                               'gain': False, 'entree': {'ligne_retenue': 'perc'}}],
+                   'total_pct': None}
+        plages = evaluer(cascade)
+        self.assertEqual(plages['etapes']['lid']['statut'], 'dans_la_plage')
+        self.assertEqual(plages['etapes']['lid']['url'], lid['url'])
+        self.assertEqual(plages['etapes']['lid']['citation'], lid['citation'])
+        self.assertEqual(plages['motif_absence'], '')
+        # Revue lot 6 — la bande ne juge que la ligne où sa source s'applique :
+        # un module de type n (TOPCon) à 0,5 % n'est PAS « inhabituel ».
+        for ligne in ('topcon', 'hjt', 'inconnue', None):
+            with self.subTest(ligne=ligne):
+                type_n = {'etapes': [dict(cascade['etapes'][0], perte_pct=lid['min'] / 2,
+                                          entree={'ligne_retenue': ligne})], 'total_pct': None}
+                self.assertNotIn('lid', evaluer(type_n)['etapes'])
+        sans_citation = {'bandes': [dict(lid, citation='')]}
+        plages = evaluer(cascade, sans_citation)
+        self.assertEqual(plages['etapes'], {})
+        self.assertEqual(plages['motif_absence'], 'aucune bande sourcée')
 
     def test_fichier_vide_aucune_pastille(self):
         from apps.calepinage.services.plages_usuelles import evaluer

@@ -309,8 +309,21 @@ _STYLE_PDF = (
     'font:11pt Helvetica,Arial,sans-serif;color:#1f2937;}'
     '.cartouche b{font-size:14pt;}'
     '.cartouche span{margin-left:10mm;}'
-    'svg{width:100%%;height:%(h)dmm;}'
-) % {'c': _CARTOUCHE_MM, 'h': _DESSIN_MM}
+) % {'c': _CARTOUCHE_MM}
+_FEUILLE_LARGEUR_MM = 420
+
+
+def _style_du_dessin(svg):
+    """Le dessin à SA proportion, collé sous le cartouche (plus de bande vide en haut) : la pleine largeur de
+    la feuille quand la hauteur tient, sinon la largeur qui fait tenir la hauteur disponible. Le ``viewBox``
+    du SVG fait foi ; sans lui, le dessin garde la pleine largeur."""
+    trouve = re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', svg)
+    if not trouve or float(trouve.group(1)) <= 0 or float(trouve.group(2)) <= 0:
+        return 'svg{width:100%;}'
+    largeur_vb, hauteur_vb = float(trouve.group(1)), float(trouve.group(2))
+    largeur_mm = min(float(_FEUILLE_LARGEUR_MM), _DESSIN_MM * largeur_vb / hauteur_vb)
+    return 'svg{width:%.1fmm;height:%.1fmm;margin:0 auto;}' % (
+        largeur_mm, largeur_mm * hauteur_vb / largeur_vb)
 
 
 def _html_du_schema_pdf(document, cartouche):
@@ -334,7 +347,7 @@ def _html_du_schema_pdf(document, cartouche):
             morceaux.append('<span>%s : %s</span>'
                             % (etiquette, escape(cartouche[clef])))
     entete = '<div class="cartouche">%s</div>' % ''.join(morceaux)
-    return html_de_planche(entete + svg, _STYLE_PDF)
+    return html_de_planche(entete + svg, _STYLE_PDF + _style_du_dessin(svg))
 
 
 def exporter_sld_pdf(calepinage, *, company=None, document=None,

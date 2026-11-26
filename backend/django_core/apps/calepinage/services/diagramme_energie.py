@@ -41,6 +41,16 @@ PAS_LIGNE_PX = 30.0
 HAUTEUR_BARRE_PX = 10.0
 MARGE_HAUTE_PX = 30.0
 LIGNES_MAX = 8
+#: ACAL1635 — au plus ce nombre de caractères par ligne de texte (police 9 px,
+#: ≈ 0,55 em le caractère dans un bloc de 372 px) : une phrase plus longue
+#: continue sur la ligne suivante, jamais coupée par le bord ni sur le bloc voisin.
+CARACTERES_LIGNE = 68
+INTERLIGNE_PX = 11.0
+#: ACAL1635 — l'étape qui DONNE son nom au poste : son motif d'omission est
+#: celui imprimé sous le poste (« Ombres proches » ne dit plus le motif de
+#: l'horizon) ; à défaut, la première étape omise du poste.
+ETAPE_DU_POSTE = {'ombres_proches': 'ombrage_proche', 'poussiere': 'salissure',
+                  'chaleur': 'thermique'}
 
 
 def _libelles(langue):
@@ -57,14 +67,30 @@ def _libelles(langue):
 def _motif_poste(poste, textes):
     from .rapport.champs_lisibles import motif_lisible
 
-    for etape in poste.get('etapes') or ():
-        if isinstance(etape, dict) and etape.get('motif_omission'):
-            return motif_lisible(etape['motif_omission'])
-    return textes['poste_non_compte']
+    omises = [etape for etape in poste.get('etapes') or ()
+              if isinstance(etape, dict) and etape.get('motif_omission')]
+    nom = ETAPE_DU_POSTE.get(poste.get('poste'))
+    omises.sort(key=lambda etape: etape.get('etape') != nom)  # stable : la sienne d'abord
+    return motif_lisible(omises[0]['motif_omission']) if omises else textes['poste_non_compte']
+
+
+def _lignes(texte):
+    """ACAL1635 — le texte coupé aux ESPACES en lignes d'au plus
+    :data:`CARACTERES_LIGNE` caractères (l'espace fine des milliers ne coupe pas,
+    « kWh » reste avec son nombre : une ligne peut alors dépasser de 4 caractères)."""
+    lignes = ['']
+    for mot in str(texte).split(' '):
+        if (lignes[-1] and mot != 'kWh'  # l'unité reste avec son nombre
+                and len(lignes[-1]) + 1 + len(mot) > CARACTERES_LIGNE):
+            lignes.append(mot)
+        else:
+            lignes[-1] = (lignes[-1] + ' ' + mot).strip(' ')
+    return lignes
 
 
 def _bloc(x0, titre, flux, textes, langue, notes=()):
-    """Un bloc : ``flux`` = [(code, libellé, kWh ou None, motif)]."""
+    """Un bloc : ``flux`` = [(code, libellé, kWh ou None, motif)] ;
+    rend ``(morceaux, y)`` — ``y`` : le bas du bloc (ACAL1635)."""
     from .rapport import nombre_tel_que_servi
 
     valeurs = [v for _c, _l, v, _m in flux if _est_nombre(v)]
@@ -80,7 +106,11 @@ def _bloc(x0, titre, flux, textes, langue, notes=()):
         else:
             ligne = '%s — %s — %s' % (nom, textes['energie_non_calcule'],
                                       motif or '—')
-        morceaux.append(_texte(0, y + 8, ligne, taille=9, ancre='start'))
+        rangs = _lignes(ligne)
+        for rang, morceau in enumerate(rangs):
+            morceaux.append(_texte(0, y + 8 + rang * INTERLIGNE_PX, morceau,
+                                   taille=9, ancre='start'))
+        y += (len(rangs) - 1) * INTERLIGNE_PX
         if _est_nombre(kwh):
             morceaux.append(
                 '<rect class="flux" data-flux="%s" data-kwh="%s" x="0" y="%s" '
@@ -99,11 +129,12 @@ def _bloc(x0, titre, flux, textes, langue, notes=()):
                    ID_HACHURE, _GRIS_TRAIT))
         y += PAS_LIGNE_PX
     for note in notes:
-        morceaux.append(_texte(0, y + 8, note, taille=9, ancre='start',
-                               couleur=_GRIS_TEXTE))
-        y += 14
+        for morceau in (m for partie in note.split(' · ') for m in _lignes(partie)):
+            morceaux.append(_texte(0, y + 8, morceau, taille=9, ancre='start',
+                                   couleur=_GRIS_TEXTE))
+            y += 14
     morceaux.append('</g>')
-    return morceaux
+    return morceaux, y
 
 
 def _flux_a(cascade, textes):
@@ -183,7 +214,11 @@ def svg_d_energie(resultat, langue='fr'):
     autoconsommation = resultat.get('autoconsommation')
     flux_b = _flux_b(autoconsommation, textes)
     largeur = 2 * LARGEUR_BLOC_PX + 24
-    hauteur = MARGE_HAUTE_PX + PAS_LIGNE_PX * LIGNES_MAX + 28
+    bloc_a, bas_a = _bloc(8, textes['energie_titre_a'], flux_a, textes, langue)
+    bloc_b, bas_b = _bloc(LARGEUR_BLOC_PX + 16, textes['energie_titre_b'], flux_b,
+                          textes, langue,
+                          notes=_notes_batterie(resultat, textes, langue))
+    hauteur = max(MARGE_HAUTE_PX + PAS_LIGNE_PX * LIGNES_MAX, bas_a, bas_b) + 28
     morceaux = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<svg xmlns="http://www.w3.org/2000/svg" version="1.1" '
@@ -198,10 +233,7 @@ def svg_d_energie(resultat, langue='fr'):
         '<rect x="0" y="0" width="%s" height="%s" fill="#ffffff" />'
         % (_n(largeur), _n(hauteur)),
     ]
-    morceaux += _bloc(8, textes['energie_titre_a'], flux_a, textes, langue)
-    morceaux += _bloc(LARGEUR_BLOC_PX + 16, textes['energie_titre_b'], flux_b,
-                      textes, langue,
-                      notes=_notes_batterie(resultat, textes, langue))
+    morceaux += bloc_a + bloc_b
     morceaux.append('</svg>')
     return '\n'.join(morceaux)
 

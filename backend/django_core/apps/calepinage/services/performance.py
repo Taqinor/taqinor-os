@@ -77,6 +77,9 @@ _PR_CALCULE = object()
 
 #: Les trois formes de période, publiées telles quelles.
 PERIODE_ANNUELLE = 'annuelle'
+#: Revue lot 6 (ACAL1715) — une année météo TYPE : douze mois venus d'années
+#: différentes, mais UNE année ; jamais « pluriannuelle ».
+PERIODE_ANNEE_TYPE = 'annuelle (année type)'
 
 #: LA RÉFÉRENCE, publiée TELLE QUELLE dans ``pr_reference``.
 REFERENCE_IEC = (
@@ -97,7 +100,7 @@ MOIS_LIBELLES = ('janvier', 'février', 'mars', 'avril', 'mai', 'juin',
 
 __all__ = ['IRRADIANCE_REFERENCE_W_M2', 'COLONNE_IRRADIANCE',
            'COLONNE_TEMPERATURE', 'CHAMP_GAMMA', 'METHODE',
-           'PERIODE_ANNUELLE', 'REFERENCE_IEC', 'MOIS_LIBELLES',
+           'PERIODE_ANNUELLE', 'PERIODE_ANNEE_TYPE', 'REFERENCE_IEC', 'MOIS_LIBELLES',
            'bloc_performance']
 
 
@@ -137,7 +140,7 @@ MOTIF_TEMPERATURE = (
 
 
 def bloc_performance(serie, *, kwc, fiche_module=None, pr=_PR_CALCULE,
-                     irradiation_incidente=None):
+                     irradiation_incidente=None, mode_meteo=None):
     """Le bloc ``resultat['performance']`` — ou ses nulls, motivés.
 
     Args:
@@ -182,7 +185,7 @@ def bloc_performance(serie, *, kwc, fiche_module=None, pr=_PR_CALCULE,
     irradiation = (_nombre(irradiation_incidente)
                    if irradiation_incidente is not None
                    else irradiation_kwh_m2(serie))
-    periode = _periode(points)
+    periode = _periode(points, mode_meteo)
     puissance = _nombre(kwc)
 
     bloc = {
@@ -293,8 +296,10 @@ def _corrige_temperature(points, heures, energie_kwh, puissance, fiche):
 
 # ── la PÉRIODE, explicite dès qu'elle n'est pas annuelle ───────────────
 
-def _periode(points):
-    """Le texte qui dit sur QUOI ce ratio porte, ou ``None``."""
+def _periode(points, mode_meteo=None):
+    """Le texte qui dit sur QUOI ce ratio porte, ou ``None``. Une année type
+    (``mode_meteo == 'tmy'``) porte l'année de chaque mois retenu : elle reste
+    UNE année (:data:`PERIODE_ANNEE_TYPE`)."""
     mois = set()
     annees = set()
     for point in points:
@@ -307,6 +312,8 @@ def _periode(points):
     if not mois:
         return None
     if len(mois) == 12:
+        if mode_meteo == 'tmy':
+            return PERIODE_ANNEE_TYPE
         if len(annees) <= 1:
             return PERIODE_ANNUELLE
         return (f'pluriannuelle ({len(annees)} années : '

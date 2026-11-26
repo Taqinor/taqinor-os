@@ -71,7 +71,9 @@ def texte_non_publie(total, cle):
     n'est jamais imprimée."""
     if not _resultat_incomplet(total):
         return None
-    motif = total.get('%s_motif' % cle) or MOTIF_PAR_DEFAUT
+    # ACAL1928 — imprimé en mots : « Pertes non renseignées (salissure, LID
+    # (première exposition)…) », jamais les codes de poste ni un chemin pointé.
+    motif = motif_lisible(total.get('%s_motif' % cle) or MOTIF_PAR_DEFAUT)
     return 'non publié — %s' % motif
 
 

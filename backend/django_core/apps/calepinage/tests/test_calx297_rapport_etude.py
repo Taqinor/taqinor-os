@@ -205,7 +205,9 @@ class ConsommationEtSectionsOmisesTest(unittest.TestCase):
         self.assertIn('Consommation et hypothèses', page)
         bloc = res['consommation']
         self.assertIn(nombre_tel_que_servi(bloc['total_kwh']), page)
-        self.assertIn(bloc['courbe_origine'], page)
+        # ACAL1744 — l'origine en mots (« profil_mensuel » → « profil mensuel saisi »).
+        from apps.calepinage.services.rapport.consommation import ORIGINES_COURBE
+        self.assertIn(ORIGINES_COURBE[bloc['courbe_origine']], page)
         charge = bloc['charges'][0]
         self.assertIn(charge['libelle'].replace("'", '&#x27;'), page)
         self.assertIn(nombre_tel_que_servi(charge['kwh_an']), page)
@@ -218,6 +220,23 @@ class ConsommationEtSectionsOmisesTest(unittest.TestCase):
         page = self.page(res)
         self.assertNotIn('data-section="consommation"', page)
         self.assertNotIn('consommation.total_kwh', page)
+
+    def test_acal1744_mois_en_lettres_et_origine_traduite(self):
+        from apps.calepinage.services import courbe_charge
+        from apps.calepinage.services.rapport.consommation import ORIGINES_COURBE
+
+        self.assertEqual(set(ORIGINES_COURBE), set(courbe_charge.ORIGINES))
+        res = resultat()
+        res['consommation']['courbe_origine'] = 'layout'
+        res['consommation']['profil_mensuel'] = [{'mois': 1, 'kwh': 800.0},
+                                                 {'mois': 12, 'kwh': 900.0}]
+        page = self.page(res)
+        section = re.search(r'data-section="consommation".*?</section>', page, re.S).group(0)
+        self.assertIn('saisie du calepinage', section)
+        self.assertNotIn('>layout<', section)
+        self.assertIn('<td>Janvier</td>', section)
+        self.assertIn('<td>Décembre</td>', section)
+        self.assertNotIn('<td class="valeur">12</td>', section)
 
     def test_le_total_n_est_pas_arrondi(self):
         res = resultat()
@@ -298,8 +317,10 @@ class HorsReseauTest(unittest.TestCase):
                         'Mention servie du bloc.',
                         'Aucun quantile P75/P90 hors réseau.'):
             self.assertIn(attendu, page)
-        self.assertIn('12 (mois le plus défavorable)', page)
-        self.assertNotIn('11 (mois le plus défavorable)', page)
+        # ACAL1744 — le mois en lettres, jamais son numéro.
+        self.assertIn('Décembre (mois le plus défavorable)', page)
+        self.assertNotIn('Novembre (mois le plus défavorable)', page)
+        self.assertNotIn('12 (mois le plus défavorable)', page)
 
     def test_raccorde_la_section_est_absente(self):
         res = resultat()
@@ -604,6 +625,136 @@ class MiseEnPageTest(unittest.TestCase):
         html = html_de_rapport(rapport(langue='ar'))
         self.assertIn('<html lang="fr"', html)
         self.assertIn('Document demandé en arabe', html)
+
+
+class PagesDixOnzeTest(unittest.TestCase):
+    """ACAL1635 — « où va l'énergie » : chaque poste porte le motif de SA
+    grandeur, aucune ligne de texte ne dépasse son bloc, le schéma et la table
+    de la cascade tiennent dans la largeur de la page."""
+
+    MOTIF_HORIZON = 'Aucun profil d horizon joint au document.'
+    MOTIF_OMBRAGE = 'Aucune matrice d ombrage proche publiée pour ce pan ' * 3
+
+    def _svg(self):
+        from apps.calepinage.services.diagramme_energie import svg_d_energie
+
+        poste = {'poste': 'ombres_proches', 'libelle': 'Ombres proches',
+                 'statut': 'non_compte', 'perte_kwh': None, 'etapes': [
+                     {'etape': 'horizon', 'motif_omission': self.MOTIF_HORIZON},
+                     {'etape': 'ombrage_proche',
+                      'motif_omission': self.MOTIF_OMBRAGE.strip()}]}
+        return svg_d_energie({'cascade': {'postes_lisibles': {
+            'depart_kwh': 6380.0, 'arrivee_kwh': 5000.0, 'postes': [poste]}}})
+
+    def test_ombres_proches_porte_le_motif_de_l_ombrage_proche(self):
+        texte = re.sub(r'<[^>]+>', '\n', self._svg())
+        self.assertIn('Aucune matrice d ombrage proche', texte)
+        self.assertNotIn(self.MOTIF_HORIZON, texte)
+
+    def test_aucune_ligne_ne_depasse_son_bloc(self):
+        from apps.calepinage.services.diagramme_energie import CARACTERES_LIGNE
+
+        lignes = re.findall(r'<text [^>]*>([^<]*)</text>', self._svg())
+        self.assertGreater(len(lignes), 4)  # le long motif est réparti
+        for ligne in lignes:
+            self.assertLessEqual(len(ligne), CARACTERES_LIGNE + len(' kWh'), ligne)
+        self.assertIn('6 380,0 kWh', self._svg())
+
+    def test_schema_et_table_tiennent_dans_la_page(self):
+        from apps.calepinage.services.rapport.pertes import CSS_SECTION
+
+        self.assertIn('.diagramme-energie svg{display:block;width:100%', CSS_SECTION)
+        self.assertIn('overflow-wrap:anywhere', CSS_SECTION)
+
+
+class PertesNonRenseigneesEnMotsTest(unittest.TestCase):
+    """ACAL1928 — pages 3 et 12 et écran : aucun code de poste (« ohmique_dc »)
+    ni chemin pointé (« electrique_societe.seuil_bas_dc_ac ») n'est imprimé ;
+    la donnée stockée, relue par ``a_renseigner``, ne change pas. Mutant :
+    formater les codes bruts ⇒ échec."""
+
+    POSTES = 'salissure, lid, ohmique_dc, ohmique_ac, qualite_module, indisponibilite'
+
+    def _motif(self):
+        from apps.calepinage.services.chaine_pertes import MOTIF_SOCLE_MANQUANT
+
+        return MOTIF_SOCLE_MANQUANT.format(postes=self.POSTES)
+
+    def _sans_code(self, texte):
+        self.assertIn('LID (première exposition)', texte)
+        self.assertIn('pertes ohmiques DC', texte)
+        for code in ('ohmique_dc', 'qualite_module', 'indisponibilite,', ' lid,'):
+            self.assertNotIn(code, texte)
+
+    def test_page_de_synthese_et_production(self):
+        from apps.calepinage.services.rapport.production import texte_non_publie
+        from apps.calepinage.services.rapport.synthese import _valeur
+
+        self._sans_code(_valeur(None, self._motif()))
+        total = {'p75_kwh_motif': self._motif(), 'p50_kwh': 1000.0,
+                 'portee': 'borne_haute', 'mention': 'borne haute'}
+        with mock.patch('apps.calepinage.services.rapport.production._resultat_incomplet',
+                        return_value=True):
+            self._sans_code(texte_non_publie(total, 'p75_kwh'))
+
+    def test_ecran_production_sans_chemin_pointe_stocke_intact(self):
+        from apps.calepinage.services.rapport.champs_lisibles import avec_motifs_lisibles
+
+        stocke = {'production': {'total': {
+            'p75_kwh_motif': self._motif(),
+            'performance_ratio_motif': ('Réglages à saisir : electrique_societe.'
+                                        'seuil_bas_dc_ac')}}}
+        avant = copy.deepcopy(stocke)
+        total = avec_motifs_lisibles(stocke)['production']['total']
+        self._sans_code(total['p75_kwh_motif'])
+        self.assertNotIn('electrique_societe.', total['performance_ratio_motif'])
+        self.assertEqual(stocke, avant)
+
+
+class ProvenanceDesPostesTest(unittest.TestCase):
+    """ACAL1656 — pp. 7-9 et 19 : chaque poste dit sa provenance réelle, aucun
+    chemin de code ni nom de tâche."""
+
+    def _html(self, pertes):
+        from apps.calepinage.services.rapport.pertes import html_de_section
+
+        etapes = [
+            # Seule la PROVENANCE est lue ici : aucune part de perte chiffrée
+            # (garde CAL238) ; la colonne « part » imprime alors « — ».
+            {'etape': 'lid', 'libelle': 'LID', 'kwh_avant': 100.0, 'kwh_apres': 98.0,
+             'motif_omission': '', 'source': 'saisie'},
+            {'etape': 'iam', 'libelle': 'IAM', 'kwh_avant': 98.0, 'kwh_apres': 97.0,
+             'motif_omission': '', 'source': 'texte',
+             'reference': 'core.calepinage.soleil (CALX146)'}]
+        return html_de_section({'resultat': {'cascade': {'etapes': etapes, 'total_pct': 3.0},
+                                             'pertes': pertes},
+                                'langue': 'fr', 'section': {'motif_si_absent': 'x'}})
+
+    def ligne(self, html, etape):
+        return re.search(r'<tr[^>]*data-etape="%s">.*?</tr>' % etape, html).group(0)
+
+    def test_poste_du_calepinage_dit_saisie_du_calepinage(self):
+        html = self._html([{'poste': 'lid', 'pct': 2.0, 'source': 'saisie'}])
+        self.assertIn('saisie du calepinage', self.ligne(html, 'lid'))
+        self.assertNotIn('saisie société', self.ligne(html, 'lid'))
+        # Sans poste saisi en face : le glossaire de la note (inchangé).
+        self.assertIn('saisie société', self.ligne(self._html([]), 'lid'))
+
+    def test_source_texte_et_reference_sans_code(self):
+        iam = self.ligne(self._html([]), 'iam')
+        self.assertIn('page publiée', iam)
+        self.assertIn('position du soleil', iam)
+        self.assertNotIn('CALX146', iam)
+        self.assertNotIn('core.calepinage', iam)
+
+    def test_donnee_manquante_en_intitule(self):
+        from apps.calepinage.services.rapport import _motif_html
+
+        html = _motif_html({'motif_si_absent': 'Absent.',
+                            'manque': ['electrique.chainage', 'production.total.p50_kwh']}, 'fr')
+        self.assertIn('câblage des chaînes', html)
+        self.assertIn('production annuelle P50 (kWh)', html)
+        self.assertNotIn('electrique.chainage', html)
 
 
 class RenduPartageTest(unittest.TestCase):

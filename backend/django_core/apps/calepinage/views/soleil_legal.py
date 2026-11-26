@@ -18,7 +18,9 @@ from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
 from ..serializers import REPONSE_REFUS_ETAT, forme_du_contrat
-from ..services.soleil_legal import SoleilLegalRefuse, correspondance_du_jour
+from ..services.soleil_legal import (
+    MOTIF_SANS_EPINGLE, SoleilLegalRefuse, correspondance_du_jour,
+)
 from .calepinages import CalepinageViewSet
 
 __all__ = ['soleil_legal']
@@ -53,8 +55,11 @@ def soleil_legal(self, request, pk=None):
       decalage_utc_min, equation_du_temps_min, ecart_legal_moins_solaire_min,
       midi_solaire_legal_h, mention}`` ;
     * **400** — ``date`` absente ou mal formée, nommée ;
-    * **409** — épingle absente (``site.pin``) ou fuseau non saisi
-      (``site.fuseau``) : jamais un fuseau déduit de la longitude.
+    * **200 sans heure** — ``{date, absence: {champ: 'site.pin', motif}}`` : aucune position
+      du site (ni épingle, ni ville du lead ou du client). C'est un état du dossier que
+      l'écran ne peut pas deviner avant de demander (ENF11 : 409 seulement quand l'appelant
+      pouvait savoir) : l'absence est DITE, sans refus, donc sans erreur à chaque ouverture ;
+    * **409** — fuseau non saisi (``site.fuseau``) : jamais un fuseau déduit de la longitude.
     """
     calepinage = self.get_object()
     jour = _jour(request.query_params.get('date'))
@@ -64,6 +69,10 @@ def soleil_legal(self, request, pk=None):
     try:
         return Response(correspondance_du_jour(calepinage, jour))
     except SoleilLegalRefuse as refus:
+        if refus.champ == 'site.pin' and refus.motif == MOTIF_SANS_EPINGLE:
+            # T4-U1-018 — aucune position du site : l'absence est servie (200), pas refusée.
+            return Response({'date': jour.isoformat(),
+                             'absence': {'champ': refus.champ, 'motif': refus.motif}})
         return Response({refus.champ: [refus.motif]},
                         status=status.HTTP_409_CONFLICT)
 

@@ -144,7 +144,9 @@ export function lignesLegende(svg) {
 
 const chiffre = (v, d = 0) => formatNumber(v, { decimals: d, locale: 'fr' })
 const fini = (v) => typeof v === 'number' && Number.isFinite(v)
-const DC_ORGANES = ['fusibles', 'parafoudre_dc', 'sectionneur_dc']
+// ACAL1551 — `organe_dc` (`organe_dc#2`…) : un organe côté continu retenu hors chaîne canonique (la coupure
+// d'urgence DC exigée par le dossier) ; son nom est le titre SERVI (sa désignation).
+const DC_ORGANES = ['fusibles', 'parafoudre_dc', 'sectionneur_dc', 'organe_dc']
 const AC_ORGANES = ['disjoncteur_ac', 'parafoudre_ac', 'ddr']
 /* Nom court de l'organe dans son coffret + ce qu'il fait (aucun chiffre). La 2e ligne est le
    calibre SERVI (`sous_titre`) quand il existe ; sinon cette phrase. */
@@ -152,6 +154,7 @@ const ORGANES = {
   fusibles: { nom: 'Fusibles', role: 'protègent chaque chaîne', picto: 'fusible' },
   parafoudre_dc: { nom: 'Parafoudre', role: 'protège de la foudre', picto: 'parafoudre' },
   sectionneur_dc: { nom: 'Sectionneur', role: 'coupe les panneaux', picto: 'sectionneur' },
+  organe_dc: { nom: null, role: 'décision société', picto: 'sectionneur' },
   disjoncteur_ac: { nom: 'Disjoncteur', role: 'calibre : note de calcul', picto: 'disjoncteur' },
   parafoudre_ac: { nom: 'Parafoudre', role: 'protège de la foudre', picto: 'parafoudre' },
   ddr: { nom: 'Différentiel', role: 'protège les personnes', picto: 'disjoncteur' },
@@ -166,19 +169,58 @@ export const CIBLE_DU_BLOC = {
   batterie: 'materiel-electrique',
 }
 
+/** S2 (tablette) — l'échelle de DÉPART du schéma en blocs : tout le dessin tient dans la largeur du cadre (jamais
+    coupé), sans jamais agrandir au-delà de 1 ; sans mesure exploitable (cadre pas encore mesuré), 1. */
+export function echelleAjustee(largeurCadre, largeurDessin) {
+  const cadre = Number(largeurCadre)
+  const dessin = Number(largeurDessin)
+  if (!Number.isFinite(cadre) || !Number.isFinite(dessin) || cadre <= 0 || dessin <= 0) return 1
+  return Math.min(1, Math.floor((cadre / dessin) * 1000) / 1000)
+}
+
 /** Coupe un texte en lignes d'au plus `max` caractères (mots entiers), `n` lignes au plus (… au bout). */
+const NOMBRE_UNITE = /(\d(?:[\d.,]*\d)?)[ \t]+(kWh|kWc|kW|kVA|kV|kA|Wc|Wh|Ah|mA|mm²|mm2|m²|Hz|°C|V|A|W|m|%)(?![\w²])/g
+const INSECABLE = ' '
+
+/** Marque répétée d'une désignation « Marque Nom » dont le nom la porte déjà : « Deye Onduleur hybride Deye 20kW »
+    s'écrit « Onduleur hybride Deye 20kW ». Affichage seul — la désignation servie ne change pas. */
+export function designationAffichee(designation) {
+  const mots = String(designation ?? '').trim().split(/\s+/).filter(Boolean)
+  const premier = mots[0]?.toLowerCase()
+  return mots.length > 2 && premier.length >= 3 && mots.slice(1).some((m) => m.toLowerCase() === premier)
+    ? mots.slice(1).join(' ')
+    : mots.join(' ')
+}
+
+/** Le plus petit texte du schéma en blocs fait 12 px (`.csch-t12`) : sous 9 px réels il ne se lit plus ; le plancher
+    de l'échelle de DÉPART est donc 9 / 12 = 0,75. En dessous (téléphone), le dessin s'ouvre à 0,75 et se fait défiler. */
+export const ECHELLE_LISIBLE_MIN = 9 / 12
+
+/** L'échelle de départ : celle qui fait tout tenir (`echelleAjustee`), jamais sous le plancher lisible. */
+export function echelleDeDepart(echelleQuiFaitTenir) {
+  return Math.max(Number(echelleQuiFaitTenir) || 1, ECHELLE_LISIBLE_MIN)
+}
+
+/** Coupe un texte en lignes d'au plus `max` caractères (mots entiers ; une valeur ne quitte jamais son unité),
+    `n` lignes au plus — le « … » final se pose à une frontière de mot, jamais au milieu d'un mot. */
 export function couperTexte(texte, max, n = 2) {
-  const mots = String(texte ?? '').trim().split(/\s+/).filter(Boolean)
+  const mots = String(texte ?? '').trim().replace(NOMBRE_UNITE, `$1${INSECABLE}$2`).split(/[ \t\r\n]+/).filter(Boolean)
+    // Un mot seul plus long que la ligne (code de modèle) est coupé à la largeur de la ligne : il ne déborde pas.
+    .flatMap((m) => (max > 0 && m.length > max ? m.match(new RegExp(`.{1,${max}}`, 'g')) : [m]))
   const lignes = []
   for (const mot of mots) {
     const derniere = lignes[lignes.length - 1]
     if (derniere !== undefined && `${derniere} ${mot}`.length <= max) lignes[lignes.length - 1] = `${derniere} ${mot}`
     else lignes.push(mot)
   }
-  if (lignes.length <= n) return lignes
-  const gardees = lignes.slice(0, n)
-  gardees[n - 1] = `${gardees[n - 1].slice(0, Math.max(1, max - 1))}…`
-  return gardees
+  if (lignes.length > n) {
+    const gardees = lignes.slice(0, n)
+    const derniers = gardees[n - 1].split(' ')
+    while (derniers.length > 1 && `${derniers.join(' ')}…`.length > max) derniers.pop()
+    gardees[n - 1] = `${derniers.join(' ')}…`
+    return gardees.map((l) => l.replaceAll(INSECABLE, ' '))
+  }
+  return lignes.map((l) => l.replaceAll(INSECABLE, ' '))
 }
 
 /** Site déclaré hors réseau : `resultat.hors_reseau` est un bloc chiffré (sans `motif_absence`, que le serveur
@@ -203,13 +245,18 @@ function sectionDuCote(troncons, cote) {
   return sections.size === 1 ? duCote[0].section_mm2 : null
 }
 
+const familleDe = (clef) => String(clef ?? '').split('#')[0]
+
 function organesDe(blocs, clefs, libelles) {
-  return clefs.map((clef) => blocs.find((b) => b.clef === clef)).filter(Boolean).map((b) => ({
-    clef: b.clef,
-    nom: libelles[b.clef] ? b.titre : ORGANES[b.clef].nom,
-    detail: String(b.sous_titre ?? '').trim() || ORGANES[b.clef].role,
-    picto: ORGANES[b.clef].picto,
-  }))
+  return clefs.flatMap((clef) => blocs.filter((b) => familleDe(b.clef) === clef)).map((b) => {
+    const organe = ORGANES[familleDe(b.clef)]
+    return {
+      clef: b.clef,
+      nom: libelles[b.clef] || !organe.nom ? b.titre : organe.nom,
+      detail: String(b.sous_titre ?? '').trim() || organe.role,
+      picto: organe.picto,
+    }
+  })
 }
 
 /**
@@ -296,7 +343,7 @@ export function planSchemaEnBlocs(schema, resultat) {
     x: ox, y: 148, l: 160, h: yAc + 152 - 148,
     puissance: texteOnduleur(resultat),
     // Sans désignation servie, le serveur titre le bloc « Onduleur » : pas deux fois le même mot.
-    designation: /^onduleur$/i.test(String(blocOnduleur.titre ?? '').trim()) ? [] : couperTexte(blocOnduleur.titre, 22, 3),
+    designation: /^onduleur$/i.test(String(blocOnduleur.titre ?? '').trim()) ? [] : couperTexte(designationAffichee(blocOnduleur.titre), 22, 3),
     entrees: ond && fini(ond.n_mppt) && ond.n_mppt > 0
       ? `${ond.n_mppt} entrée${ond.n_mppt > 1 ? 's' : ''} : ${ond.n_mppt === 1 ? '1' : ond.n_mppt === 2 ? '1 et 2' : `1 à ${ond.n_mppt}`}`
       : null,
@@ -432,7 +479,7 @@ function entreesDuDocument(doc, libelles) {
 /** La carte batterie (bande courant continu, à gauche de l'onduleur) et sa liaison neutre à double flèche. */
 function carteBatterie(batterie, onduleur) {
   const lignes = [
-    ...couperTexte(batterie.designation, 20, 2),
+    ...couperTexte(designationAffichee(batterie.designation), 20, 2),
     ...(fini(batterie.unites) ? [`${batterie.unites} unité${batterie.unites > 1 ? 's' : ''}`] : []),
     ...(fini(batterie.capacite_kwh) ? [`${nombreFr(batterie.capacite_kwh)} kWh au total`] : []),
     ...(fini(batterie.tension_v) ? [`${nombreFr(batterie.tension_v)} V`] : []),
@@ -486,7 +533,7 @@ function insererEtageMt(plan, etage) {
 function listerOnduleurs(plan, groupes) {
   if (groupes.length < 2) return
   const ligne = (g) => [
-    [fini(g.nombre) ? `${g.nombre} ×` : null, g.designation].filter(Boolean).join(' '),
+    [fini(g.nombre) ? `${g.nombre} ×` : null, designationAffichee(g.designation)].filter(Boolean).join(' '),
     fini(g.puissance_kw) ? `${nombreFr(g.puissance_kw)} kW` : null,
   ].filter(Boolean).join(' · ')
   plan.onduleur.puissance = null

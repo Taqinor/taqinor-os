@@ -363,7 +363,16 @@ def instant_utc(point, meteo):
         moment += datetime.timedelta(hours=float(point['heure']))
     except (KeyError, TypeError, ValueError):
         return None
-    return moment - datetime.timedelta(minutes=decalage)
+    return moment - datetime.timedelta(minutes=decalage - _minutes_du_soleil(meteo))
+
+
+def _minutes_du_soleil(meteo):
+    """Revue lot 6 (ACAL1715) — les minutes après l'horodatage où une série
+    TRANSPOSÉE place le soleil (``meteo.transposition.instant_soleil``) ; ``0``
+    sinon (comportement d'avant, inchangé)."""
+    instant = (((meteo or {}).get('transposition') or {}).get('instant_soleil') or {})
+    minutes = _nombre_simple(instant.get('minutes_apres_l_heure'))
+    return minutes if minutes is not None else 0.0
 
 
 def decalages_publies(points, meteo):

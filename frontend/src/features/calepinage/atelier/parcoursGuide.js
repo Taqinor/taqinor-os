@@ -210,10 +210,16 @@ export function aReglerDeLEtape(manque, cle) {
     .reduce((n, m) => n + (Number.isFinite(Number(m?.nombre)) && Number(m.nombre) > 0 ? Number(m.nombre) : 1), 0)
 }
 
-/** Les états par étape et « ce qui manque », lus une fois ; vides tant que le serveur n'a pas répondu. */
-export function useParcours(calepinageId) {
+/** Les états par étape et « ce qui manque » ; vides tant que le serveur n'a pas répondu.
+    T4-U1-023 (rejeu R5B, 26/11) — `relecture` (l'heure du dernier enregistrement) : le parcours est RELU après chaque
+    enregistrement. Lu une seule fois à l'ouverture, il gardait « aucune ombre signalée » après qu'une cheminée et un
+    voisin ont été posés et enregistrés, pendant que l'Expert, lui, les voyait. */
+export function useParcours(calepinageId, relecture = null) {
   // ACAL1731 — lue UNE fois à l'ouverture : la coque et le rail d'onglets partagent la même étape de départ.
-  const [memorisee] = useState(() => lireEtapeMemorisee(calepinageId))
+  // Revue de T4-U1-023 (26/11) — l'étape de départ : celle mémorisée sur cet appareil, sinon le choix AUTOMATIQUE (première
+  // étape non faite) fait UNE fois, à la première réponse, puis TENU : une relecture après un enregistrement met à jour les
+  // états (pastilles, carte des ombres) sans jamais changer d'écran — l'étape ne change que par un geste de l'utilisateur.
+  const [memorisee, setMemorisee] = useState(() => lireEtapeMemorisee(calepinageId))
   const [parcours, setParcours] = useState({ etats: {}, manque: [] })
   useEffect(() => {
     if (!calepinageId) return undefined
@@ -225,16 +231,15 @@ export function useParcours(calepinageId) {
         const liste = Array.isArray(rep?.data?.etapes) ? rep.data.etapes : []
         const manque = Array.isArray(rep?.data?.manque)
           ? rep.data.manque.filter((m) => m && typeof m === 'object') : []
-        setParcours({
-          etats: Object.fromEntries(
-            liste.filter((e) => ETATS.includes(e?.etat)).map((e) => [e.cle, e.etat]),
-          ),
-          manque,
-        })
+        const etats = Object.fromEntries(
+          liste.filter((e) => ETATS.includes(e?.etat)).map((e) => [e.cle, e.etat]),
+        )
+        setParcours({ etats, manque })
+        setMemorisee((tenue) => tenue ?? etapeActive(null, etats, null))
       })
       .catch(() => {})
     return () => { vivant = false }
-  }, [calepinageId])
+  }, [calepinageId, relecture])
   return { ...parcours, memorisee }
 }
 

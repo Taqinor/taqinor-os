@@ -2230,7 +2230,7 @@ le dossier de travail de la session), relecteur des maquettes, enregistrements d
 **Attend Reda :** barre du haut en tablette (T4-X3-017) ; D-AMOT-8 et D-AMOT-9 ; lecture de D-ACAL-126 (un Technicien
 responsable lit-il les calepinages des visites d'un commercial qu'il supervise ?) ; D-HYB-2 ; D-ACAL-131.
 
-### Point du 26/11, 07 h UTC — LOT 6 PRÊT POUR SA PR (le plus récent — REPRENDRE ICI)
+### Point du 26/11, 07 h UTC — LOT 6 PRÊT POUR SA PR
 
 **Lot 5 : en ligne d'après Reda** (« i deployed », 26/11 vers 03 h UTC) ; le serveur n'a pas été vérifié par cette session.
 
@@ -2277,3 +2277,63 @@ enregistrements d'acceptation ; contrat de sortie K1 à K17.
 D-ACAL-126 ; ACAL1943 (texte de tâche contre maquette) ; ACAL1635 (énergies arrondies au kWh dans le rapport) ; une vraie clé de carte
 sur la pile de revue ; déploiement après la fusion du lot 6 (avant le 27/11, sinon déplacer `COUPURE_SCHEMA_ELECTRIQUE` et
 `COUPURE_CHAINES_INEGALES`).
+
+### Point du 26/11, 12 h UTC — LOT 6 FUSIONNÉ, LOT 7 EN COURS (le plus récent — REPRENDRE ICI)
+
+**Lot 6.** PR #1560 fusionnée le 26/11 à 07 h 33 UTC (commit de fusion bfe152adc). Premier passage de CI rouge sur huit
+causes (toutes « figées » : garde des tests qui lisent un source, repères `cal-*` non déclarés, compte figé des clés de
+`calepinageApi`, empreinte du contenu public, chaînes inégales déclenchées au devis sur une simple alerte, deux tests à
+réaligner) ; six lanes de réparation, un seul envoi, second passage vert. NON déployé par Claude : en ligne seulement après
+`scripts/deploy-prod.ps1` par Reda, **avant le 27/11** (`COUPURE_SCHEMA_ELECTRIQUE` et `COUPURE_CHAINES_INEGALES`). Le site
+public (`apps/web`) s'est déployé seul à la fusion.
+
+**Lot 7** — branche `dev-lot7` (coupée de `main` bfe152adc), baux `Reda_Laptop/dev-lot7`. Chaque lane a été relue par un
+relecteur neuf, puis corrigée par son auteur avant d'être pliée. Pliées : `lot6/acal-reglages` (15 tâches du rapport et des
+réglages), `lot6/acal-electrique-serveur` (ACAL1627, 1647, 1551), `lot6/acal-suites-3` et `lot6/acal-conso-lecture`
+(ACAL1962, écriture et lecture), `lot6/acal-toit-plat-pente` (ACAL1923 re-cadrée, D-ACAL-145), `lot6/acal-documents-3`
+(ACAL1721), `lot6/acal-roofpro` (ACAL1720, 1821, 1947, 1970, 1621 ; ACAL1330 partielle), `lot6/acal-style-archivo`
+(ACAL1941), `lot6/r5a-corrections` et `lot6/r5b-corrections` (corrections du tour 5). En cours au moment de cette note :
+`lot6/r5c-corrections` (trois phrases à ramener à ce que le serveur prouve), `lot6/acal-module-substitue` (devis refusé
+sur un écart d'arrondi), `lot6/acal-schema-visuel` (défauts vus du schéma), `lot6/web-hero-3d` (bandeau 3D sur la carte
+du prix de la page client : enquête d'abord).
+
+**Deux défauts de pliage trouvés en jouant les tests du lot assemblé** (aucune lane seule ne les voyait) : un test de
+`PanneauProduction` lisait encore la source brute d'une étape ; l'exemple du contrat et les écrans portaient l'ancienne
+phrase « le document a changé ». Corrigés sur `dev-lot7`.
+
+**Tour 5 sur la pile de revue** (enregistrements dans `docs/audits/l5-calepinage/T5/`) :
+- paquet A : 56 rejeux — 34 corrigés, 13 partiels, 2 non corrigés, 5 non rejouables, 2 non joués, 8 constats neufs ;
+- paquet B : 33 — 25 corrigés, 5 partiels, 2 non corrigés, 1 non rejouable, 8 constats neufs ;
+- paquet C : 30 — 16 corrigés, 8 partiels, 1 non corrigé (T4-X5-010, D-ACAL-148 ouverte), 4 non rejouables, 1 non joué,
+  8 constats neufs ;
+- paquets D (tactile), E (droits et réglages, jamais en parallèle), F (pompage et C&I) : PAS joués.
+- Pile rebâtie sur `main` bfe152adc (lot 6) à 07 h 50 ; premier regard réel sur le lot 6 (`T5/visuel-lot6.json`) :
+  schéma électrique conforme à 1440 × 900 ; 12 + 12 + 11 proposé et accepté ; **devis refusé à 35 × 715 W sur un écart
+  d'arrondi (409 `module_substitue`, deux chiffres identiques affichés)** ; schéma coupé en tablette ; couleurs des chaînes
+  qui changent après un recâblage ; bandeau 3D en travers de la carte « TOTAL TTC » de la page client.
+- **Jamais vu** : la visionneuse au soleil (le toit d'essai n'avait pas d'accès solaire enregistré : bouton masqué), un
+  hybride avec sa batterie au schéma, le schéma de chaque option, l'annexe du PDF du devis (active seulement pour les
+  rendus à partir du 27/11), les paquets D, E, F.
+
+**Décisions du matin** (`docs/audits/decisions.yml`) : D-ACAL-144 à 147 prises par l'orchestrateur, à confirmer ;
+D-ACAL-148 (le devis né d'un calepinage doit-il chiffrer l'onduleur désigné ?) et D-ACAL-149 (pente mémorisée d'un toit
+plat dans quatre lecteurs de documents client) OUVERTES.
+
+**Reste avant la PR du lot 7** : plier les quatre lanes en cours après relecture ; régénérer `docs/openapi-schema.yml`
+(environnement épinglé) ; `codemap_fingerprint.py --write` (fichiers neufs sous `frontend/src`) ; une relecture finale du
+lot assemblé ; gardes d'hôte ; mesure du bundle. Puis une PR, Auto-fix, file de fusion ; s'arrêter à la fusion.
+
+**Après le lot 7** : rebâtir la pile sur `main`, second regard (visionneuse au soleil avec accès solaire enregistré,
+hybride + batterie, deux options, tablette), paquets D, E, F, reproductions en direct dues (ACAL1659, ACAL1921, ACAL1330,
+T4-X7-012, R5A-N1, R5C-N1, R5C-N8, ACAL1661), comparaison aux maquettes, enregistrements d'acceptation, contrat de sortie.
+
+**Ajout de 15 h UTC — relecture finale du lot assemblé (un relecteur neuf sur tout `dev-lot7`).** Aucune entorse aux règles
+dures (aucune empreinte stockée ne bouge, aucun devis envoyé ne change, rien d'argent hors `apps/ventes`, écran du lead
+intact). Six constats que seule la vue d'ensemble montrait : (1) courbe de base absente contre toute à zéro — deux
+résultats pour la même saisie selon l'âge du document : une seule règle (D-ACAL-150) ; (2) ACAL1720 RETIRÉE du lot (la
+numérotation qui repart de 1 faisait appliquer en silence une affectation manuelle stockée à d'autres modules) ; (3) une
+phrase du générateur attribuait tout écart de taille à l'arrondi au panneau ; (4) deux phrases jumelles disaient encore « le
+document a changé » ; (5) trois assertions lisaient le source d'un fichier (retirées) ; (6) tenue du plan (ACAL1923
+re-cadrée dite sur sa ligne, journal du paquet C). Pliées depuis la note de 12 h : `lot6/r5c-corrections`,
+`lot6/acal-module-substitue` ; `lot6/web-hero-3d` n'a rien changé (le bandeau est l'image de fond voulue de la page, grise
+sur la pile faute d'imagerie) ; `lot6/acal-schema-visuel` relue, en correction.

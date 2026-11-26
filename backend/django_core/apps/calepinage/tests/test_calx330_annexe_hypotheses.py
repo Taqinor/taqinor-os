@@ -172,9 +172,31 @@ class NonCalculeTest(unittest.TestCase):
                 self.assertIn(escape(chemin), self.non_calcule)
 
     def test_un_resultat_complet_ne_publie_aucune_omission(self):
-        html = html_de_section(contexte(copy.deepcopy(RESULTAT['exemple'])))
-        non_calcule = table_non_calcule(html)
-        self.assertEqual(non_calcule.count('<tr'), 1)  # en-tête seule
+        # ACAL1626 — complet = aucune grandeur absente ET aucune étape omise
+        # (l'exemple omet « spectral » : retiré ici) ; la table dit « aucune ».
+        resultat = copy.deepcopy(RESULTAT['exemple'])
+        for etape in resultat['cascade']['etapes']:
+            etape['motif_omission'] = ''
+        non_calcule = table_non_calcule(html_de_section(contexte(resultat)))
+        self.assertEqual(non_calcule.count('<tr'), 2)  # en-tête + « aucune »
+        self.assertIn('<td colspan="2">aucune</td>', non_calcule)
+
+    def test_acal1626_chaque_etape_omise_une_ligne_au_motif_lisible(self):
+        # Les étapes omises de la cascade (ici « spectral » de l'exemple,
+        # plus deux copies d'une étape omise nommant une tâche) sont listées
+        # UNE fois chacune, motif lisible. Mutant : ne lister que les
+        # sections ⇒ aucune ligne d'étape.
+        resultat = copy.deepcopy(RESULTAT['exemple'])
+        omise = dict(_etape_du_contrat(), etape='lid', libelle='LID',
+                     motif_omission='Non renseigné (CALX170).')
+        resultat['cascade']['etapes'] += [omise, dict(omise)]
+        non_calcule = table_non_calcule(html_de_section(contexte(resultat)))
+        spectral = next(e for e in resultat['cascade']['etapes']
+                        if e['etape'] == 'spectral')
+        self.assertIn('<td>%s</td>' % escape(spectral['libelle']), non_calcule)
+        self.assertEqual(non_calcule.count('<td>LID</td>'), 1)
+        self.assertNotIn('CALX170', non_calcule)
+        self.assertNotIn('aucune</td>', non_calcule)
 
 
 class TablesDisjointesTest(unittest.TestCase):

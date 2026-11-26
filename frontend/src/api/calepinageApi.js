@@ -130,8 +130,9 @@ const calepinageApi = {
     // ACAL109 — la clé `variantes` (GET liste brute, sans appelant) est
     // retirée : la liste se lit par `comparer()`. La route serveur reste décrite par
     // contract_samples/calepinage_variantes_liste.json (ENF15).
-    retenirVariante: (id, varianteId) =>
-      api.post(`${pivot(id)}variantes/${varianteId}/retenir/`),
+    // T4-X9-010 — `config` (ex. `{ suppressErrorToast: true }`) : l'écran dit le refus sous « Retenir », le toast ne le répète pas.
+    retenirVariante: (id, varianteId, config) =>
+      api.post(`${pivot(id)}variantes/${varianteId}/retenir/`, undefined, config),
 
     // CALX37 — créer une variante (`services.creer_variante`, déjà servi par
     // `POST variantes/`) : `corps` porte `nom`/`roof_layout`/`resultat`, un nom
@@ -406,7 +407,9 @@ const calepinageApi = {
      actuel — aucune valeur par défaut n'est inventée côté écran. */
   parametres: {
     get: () => api.get('/calepinage/parametres/'),
-    update: (corps) => api.put('/calepinage/parametres/', corps),
+    // ACAL1434 — `{ suppressErrorToast: true }` : l'écran qui pose le refus
+    // SOUS le champ coupe le toast de l'intercepteur (sinon dit deux fois).
+    update: (corps, config) => api.put('/calepinage/parametres/', corps, config),
 
     // ACAL960 — le catalogue du matériel de la société (modules, onduleurs,
     // optimiseurs ACTIFS, sans prix, favoris marqués) pour COCHER les favoris

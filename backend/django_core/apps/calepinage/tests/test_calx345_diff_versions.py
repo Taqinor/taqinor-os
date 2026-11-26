@@ -185,6 +185,17 @@ class ContratDiffTest(SimpleTestCase):
         self.assertEqual(comparer_versions(vide, _version(2, '', None, ''))
                          ['ecarts'], [])
 
+    def test_un_pan_plat_a_22_se_compare_comme_un_pan_plat_a_0(self):
+        """ACAL1923 — sans ``geometry.tiltDeg``, l'inclinaison d'un pan plat
+        est 0 : la valeur du curseur (22) n'est pas une pente."""
+        def plat(valeur):
+            return {'zones': [{'id': 'z1', 'label': 'Pan', 'roofType': 'flat',
+                               'pitchDeg': valeur, 'facingAzimuthDeg': 180.0}]}
+
+        ecarts = comparer_versions(_version(1, 'A', plat(22.0), 'a' * 64),
+                                   _version(2, 'B', plat(0.0), 'a' * 64))['ecarts']
+        self.assertEqual([e['champ'] for e in ecarts if e['champ'].startswith('pan:')], [])
+
     def test_texte_des_ecarts(self):
         self.assertEqual(texte_des_ecarts([]),
                          'Aucun écart sur les grandeurs comparées.')

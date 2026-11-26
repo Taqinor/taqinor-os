@@ -157,7 +157,9 @@ const ventesApi = {
   // serveur : niveau 'standard').
   shareLinkDevis: (id, opts) => api.post(`/ventes/devis/${id}/share-link/`, opts),
   // Révision : crée une nouvelle version (v2, v3…) d'un devis.
-  reviserDevis: (id, corps) => api.post(`/ventes/devis/${id}/reviser/`, corps),
+  // R5A-N1 — la révision recompose les lignes de la V2 : plus de 20 s sous charge ; avec le délai par défaut le navigateur
+  // coupait la requête (« La révision a échoué ») alors que le serveur créait la version. Même borne que replace-lines.
+  reviserDevis: (id, corps) => api.post(`/ventes/devis/${id}/reviser/`, corps, { timeout: 120000 }),
   // PV20 — TOUT ce que l'écran de conception 3D doit savoir d'un devis, en UN
   // SEUL appel : identité + statut, géométrie déjà enregistrée (roof_layout /
   // pin / contour), cible vendue (panneaux, kWc, scénario), disponibilité de la
@@ -213,7 +215,9 @@ const ventesApi = {
   // QX22 — aperçu LECTURE SEULE du message WhatsApp (aucune mutation de statut) :
   // peuple la modale d'aperçu ; seul le clic-through sur wa.me (whatsappDevis
   // ci-dessus) marque réellement le devis « Envoyé ».
-  whatsappPreviewDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/whatsapp-preview/`, payload),
+  // T4-X4-009 — le seul appelant (`handleEnvoyer`) dit lui-même chaque refus ; le toast générique de l'intercepteur
+  // (« Numéro de téléphone invalide. ») s'empilait sinon sur son message juste.
+  whatsappPreviewDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/whatsapp-preview/`, payload, { suppressErrorToast: true }),
   // QJ28 — « Contacter mon supérieur » : notifie le supérieur du vendeur sur ce devis.
   contacterSuperieur: (id, payload = {}) => api.post(`/ventes/devis/${id}/contacter-superieur/`, payload),
   // VX215 — boucle de retour « pris en charge » : l'émetteur voit si sa
@@ -462,7 +466,13 @@ const ventesApi = {
   telechargerUbl: (id) => api.get(`/ventes/factures/${id}/ubl/`, { responseType: 'blob' }),
   // N31 — audit admin de la numérotation séquentielle (trous/doublons).
   auditNumerotation: () => api.get('/ventes/numerotation-audit/'),
-  emettreFacture: (id) => api.post(`/ventes/factures/${id}/emettre/`),
+  // R5A-N7 — `config` : le thunk de la liste passe `suppressErrorToast` (il toaste lui-même le refus ; sans cela le même
+  // message s'affichait deux fois : intercepteur + doAction).
+  // Sans `config`, l'appel HTTP est exactement celui d'avant (`api.post(url)`, aucun argument `undefined` en plus).
+  emettreFacture: (id, config) => {
+    const url = `/ventes/factures/${id}/emettre/`
+    return config ? api.post(url, undefined, config) : api.post(url)
+  },
   // AUD124 — motif OBLIGATOIRE : marquer une facture payée sans encaissement
   // la sort de la balance âgée et des relances ; le serveur refuse (400) sans
   // justification, et trace l'auteur + le motif dans le chatter.

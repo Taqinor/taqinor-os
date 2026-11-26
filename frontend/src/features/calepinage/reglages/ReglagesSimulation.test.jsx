@@ -1054,38 +1054,41 @@ describe('ACAL397 — « ce qui manque » → /calepinage/reglages#norme : le ch
 })
 
 describe('ACAL770 — les valeurs que le serveur ne sait pas honorer sont grisées avec leur motif', () => {
-  it('« tmy » et « martin_ruiz » : options désactivées « — indisponible », motif visible', async () => {
+  it('« martin_ruiz » : option désactivée « — indisponible », motif visible ; « tmy » est servie (ACAL1715)', async () => {
     mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage'))
     rendre()
     await screen.findByTestId('calx69-ligne-mode_meteo')
 
+    // ACAL1715 — l'année type PVGIS est transposée : l'option n'est plus grisée, aucun motif.
     const optionTmy = Array.from(champValeur('mode_meteo').querySelectorAll('option'))
       .find((o) => o.value === 'tmy')
-    expect(optionTmy.disabled).toBe(true)
-    expect(optionTmy.textContent).toBe('Année type (TMY) — indisponible')
+    expect(optionTmy.disabled).toBe(false)
+    expect(optionTmy.textContent).toBe('Année type (TMY)')
+    expect(screen.queryByTestId('acal770-motif-mode_meteo-tmy')).toBeNull()
     const optionPluri = Array.from(champValeur('mode_meteo').querySelectorAll('option'))
       .find((o) => o.value === 'pluriannuel')
     expect(optionPluri.disabled).toBe(false)
 
-    const motif = screen.getByTestId('acal770-motif-mode_meteo-tmy')
-    expect(motif).toHaveAttribute('role', 'status')
-    expect(motif).toHaveTextContent('n\'aboutit pas sans fichier')
     const optionMartin = Array.from(champValeur('modele_iam').querySelectorAll('option'))
       .find((o) => o.value === 'martin_ruiz')
     expect(optionMartin.disabled).toBe(true)
-    expect(screen.getByTestId('acal770-motif-modele_iam-martin_ruiz')).toHaveTextContent('Fresnel')
+    expect(optionMartin.textContent).toContain('— indisponible')
+    const motif = screen.getByTestId('acal770-motif-modele_iam-martin_ruiz')
+    expect(motif).toHaveAttribute('role', 'status')
+    expect(motif).toHaveTextContent('Fresnel')
     // une ligne sans valeur non servie ne change pas
     expect(screen.queryByTestId('acal770-motif-attenuation_horizon-true')).toBeNull()
   })
 
   it('une valeur déjà enregistrée reste affichée et son motif devient un avertissement', async () => {
+    // La valeur non servie qui reste au registre : « martin_ruiz » (ACAL1715 a retiré « tmy »).
     const servi = reponseContrat('calepinage', 'parametres_calepinage')
-    servi.data.simulation.mode_meteo = { valeur: 'tmy', source: 'societe', reference: '' }
+    servi.data.simulation.modele_iam = { valeur: 'martin_ruiz', source: 'societe', reference: '' }
     mocks.getParametres.mockResolvedValue(servi)
     rendre()
-    await screen.findByTestId('calx69-ligne-mode_meteo')
-    expect(champValeur('mode_meteo').value).toBe('tmy')
-    expect(screen.getByTestId('acal770-motif-mode_meteo-tmy')).toHaveTextContent('Valeur enregistrée')
+    await screen.findByTestId('calx69-ligne-modele_iam')
+    expect(champValeur('modele_iam').value).toBe('martin_ruiz')
+    expect(screen.getByTestId('acal770-motif-modele_iam-martin_ruiz')).toHaveTextContent('Valeur enregistrée')
   })
 })
 

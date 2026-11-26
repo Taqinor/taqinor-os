@@ -785,6 +785,17 @@ class TranspositionTest(SimpleTestCase):
                                           'source': 'mesure'})
         attendu = METEO_CONTRAT['exemple_horizontal']['meteo']['transposition']
         self.assertEqual(sorted(attendu), sorted(bloc))
+        # Revue lot 6 — la TRACE d'un résultat calculé avec l'instant partagé :
+        # un fichier horizontal porte instant_soleil au milieu de l'heure (30 min),
+        # convention nommée, sans hypothèse ; les étapes lisent le même instant.
+        self.assertEqual(bloc['instant_soleil'], {
+            'minutes_apres_l_heure': 30,
+            'source': "convention : milieu de l'heure de la série horaire",
+            'hypothese': ''})
+        from apps.calepinage.services import etapes
+        point = dict(rendu['points'][0])
+        instant = etapes.instant_utc(point, rendu['meteo'])
+        self.assertEqual(instant.minute if instant else None, 30)
         self.assertEqual(sorted(attendu['albedo']), sorted(bloc['albedo']))
         self.assertIn(attendu['modele'], ('isotropic', 'haydavies', 'perez'))
 

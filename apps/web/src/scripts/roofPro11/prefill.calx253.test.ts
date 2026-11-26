@@ -152,9 +152,9 @@ describe('CALX253 — contrat partagé roof_layout_v2.schema.json (CALX251), lu 
     expect(defs.consumption.properties.methode.enum).toEqual(['facture', 'courbe', 'appareils']);
   });
 
-  it('`courbe24`/`methode`/`source` sont les seules clés OBLIGATOIRES du bloc', () => {
+  it('`methode`/`source` sont les seules clés OBLIGATOIRES du bloc (ACAL1962 : `courbe24` est omise sans facture ni socle)', () => {
     const defs = schema()['$defs'] as Record<string, { required: string[] }>;
-    expect([...defs.consumption.required].sort()).toEqual(['courbe24', 'methode', 'source']);
+    expect([...defs.consumption.required].sort()).toEqual(['methode', 'source']);
   });
 
   it('le vocabulaire `billing` d’un appareil est EXACTEMENT celui d’`ApplianceBilling`', () => {

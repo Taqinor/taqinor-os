@@ -25,7 +25,6 @@ frontend/src/features/calepinage/Bibliotheque.jsx::Bibliotheque
 frontend/src/features/calepinage/CalepinageList.jsx::chercherClients
 frontend/src/features/calepinage/CalepinageList.jsx::chercherLeads
 frontend/src/features/calepinage/CalepinageNouveau.jsx::CalepinageNouveau
-frontend/src/features/calepinage/CalepinageNouveau.jsx::chercherClients
 frontend/src/features/calepinage/CalepinageNouveau.jsx::chercherLeads
 frontend/src/features/calepinage/SelecteurRattachement.jsx::SelecteurRattachement
 frontend/src/features/ged/GedSearch.jsx::runSearchWith

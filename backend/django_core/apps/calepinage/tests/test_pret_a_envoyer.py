@@ -69,8 +69,8 @@ class _Devis:
 class ControlesDePorteTest(SimpleTestCase):
 
     def _controles(self, calepinage, *, option=True, feu_vert=True,
-                   exigee=True, approuve=True, perimee=False):
-        with mock.patch(FEU_VERT, return_value=option), \
+                   exigee=True, approuve=True, perimee=False, servi=None):
+        with mock.patch(SERVI, return_value=servi or {}),                 mock.patch(FEU_VERT, return_value=option), \
                 mock.patch(VISITE, return_value=object() if feu_vert
                            else None), \
                 mock.patch(EXIGEE, return_value=exigee), \
@@ -133,6 +133,19 @@ class ControlesDePorteTest(SimpleTestCase):
         fraiche = self._controles(_Calepinage())
         self.assertEqual(fraiche['simulation_fraiche']['etat'], 'ok')
 
+    def test_simulation_perimee_dit_la_cause_servie_jamais_une_cause_devinee(self):
+        """La cause est le ``motif`` servi par ``GET resultat/`` : réglage société PROUVÉ → il est nommé ;
+        sans preuve → la phrase neutre ; jamais « dernière modification » ni « ne correspond plus à la conception »."""
+        prouve = 'simulation périmée : un réglage de la société a changé depuis le calcul du 12/11/2026'
+        c = self._controles(_Calepinage(), perimee=True, servi={'motif': prouve})['simulation_fraiche']
+        self.assertEqual((c['etat'], c['valeur_texte'], c['geste']), ('a_regler', 'Périmée', 'Relancer la simulation'))
+        self.assertEqual(c['cause'], prouve[:1].upper() + prouve[1:] + '.')
+        neutre = self._controles(_Calepinage(), perimee=True, servi={'motif': ''})['simulation_fraiche']
+        self.assertIn('le document ou un réglage de la société a changé', neutre['cause'])
+        for texte in (c['valeur_texte'] + c['cause'], neutre['valeur_texte'] + neutre['cause']):
+            self.assertNotIn('dernière modification', texte)
+            self.assertNotIn('ne correspond plus', texte)
+
     def test_sans_devis_lie_verifie_a_la_creation(self):
         controles = self._controles(_Calepinage())
         for code in ('conception_perimee', 'kwh_declare'):
@@ -149,6 +162,18 @@ class ControlesDePorteTest(SimpleTestCase):
         self.assertEqual(controles['conception_perimee']['etat'], 'a_regler')
         self.assertEqual(controles['kwh_declare']['etat'], 'bloquant')
         self.assertEqual(controles['kwh_declare']['cause'], refus['detail'])
+
+    def test_revision_perimee_ne_pretend_pas_etre_une_copie(self):
+        """T4-X7-006 (relecture) — aucun fait servi ne prouve que les lignes d'une V2 sont encore la copie de la V1
+        (resynchronisée puis périmée de nouveau, ou recomposée sur la conception) : la cause reste celle de toute
+        version périmée, jamais « reprend les lignes de la V1 »."""
+        class _V2(_Devis):
+            version = 2
+        with mock.patch(PEREMPTION, return_value={'layout_stale': True}), mock.patch(KWH, return_value=None):
+            v2 = self._controles(_Calepinage(devis=_V2()))['conception_perimee']
+        self.assertEqual(v2['cause'], 'La conception a changé depuis la dernière mise à jour du devis.')
+        self.assertNotIn('reprend les lignes', v2['cause'])
+        self.assertEqual(v2['geste'], 'Resynchroniser le devis')
 
     def test_devis_lie_a_jour(self):
         with mock.patch(PEREMPTION, return_value={'layout_stale': False}), \
@@ -211,7 +236,7 @@ class ControlesElectriquesTest(SimpleTestCase):
         self.assertEqual(verdict['etat'], 'a_regler')
         # ACAL1539 : « À compléter » seul — le détail des motifs est au Verdict.
         self.assertEqual(verdict['valeur_texte'], 'À compléter')
-        self.assertEqual(len(controles), 8)
+        self.assertEqual(len(controles), 9)  # R5C-N3 : + courant_entree
 
     def test_materiel_choisi_fiche_incomplete_dit_la_vraie_cause(self):
         """ACAL1704 — panneau ET onduleur choisis, fiche du module sans Vmp :
@@ -436,10 +461,41 @@ class ControlesElectriquesTest(SimpleTestCase):
         self.assertEqual(chaud['libelle'], 'Tension des chaînes par forte chaleur')
         self.assertEqual(chaud['etat'], 'a_regler')
         self.assertEqual(chaud['valeur_texte'],
-                         '141,4 V sous la borne de fiche 150,0 V à 70,0 °C')
+                         'Par forte chaleur, la tension des panneaux (141,4 V) tombe sous la plage de '
+                         'travail de cet onduleur (150,0 V)')  # R5C — plus de « borne de fiche »
         self.assertEqual(chaud['geste'], GESTE_TENSION_CHAUD)
         self.assertIn('trop courte', chaud['cause'])
         self.assertEqual(chaud['seuil_source'], 'fiche')
+
+    def test_courant_entree_alerte_comptee_et_dite_en_mots_du_metier(self):
+        """R5C-N3 — Huawei 5 kW, 8 panneaux : le verdict servi « courant par entrée » non conforme (alerte,
+        non bloquant) n'était lu par aucun contrôle : « 7 bons » se taisait. Il est maintenant un contrôle
+        à régler, dit avec la phrase servie (mutant : retirer ``_courant_entree`` ⇒ ``KeyError``)."""
+        raison = ('le courant des panneaux (17,6 A) dépasse ce qu’une entrée de cet onduleur accepte (13,5 A)')
+        ligne = {'code': 'courant_par_entree_mppt', 'conforme': False, 'bloquant': False, 'source': 'fiche',
+                 'detail': '17,6 A au-dessus de la borne de fiche 13,5 A', 'raison': raison}
+        controle = self._controles(verdicts=[ligne])['courant_entree']
+        self.assertEqual((controle['etat'], controle['geste']), ('a_regler', 'Revoir les chaînes'))
+        self.assertEqual(controle['valeur_texte'], raison[:1].upper() + raison[1:])
+        self.assertNotIn('borne de fiche', controle['valeur_texte'])
+        self.assertEqual(self._controles(verdicts=[dict(ligne, bloquant=True)])['courant_entree']['etat'], 'bloquant')
+        ok = dict(ligne, conforme=True, raison=None, detail='10,0 A sous 13,5 A')
+        self.assertEqual(self._controles(verdicts=[ok])['courant_entree']['etat'], 'ok')
+        self.assertEqual(self._controles(verdicts=[dict(ok, conforme=None)])['courant_entree']['etat'], 'info')
+        self.assertEqual(self._controles()['courant_entree']['valeur_texte'], 'Non évalué : chaînes non calculées')
+
+    def test_micro_onduleurs_seuls_le_detail_servi_pas_une_fiche_incomplete(self):
+        """Relecture — conception micro-onduleurs seuls : les verdicts de chaîne sont servis ``conforme: None`` avec
+        ``detail = MOTIF_MICRO_SEUL`` ; la fiche n'est pas incomplète, aucun geste « Compléter la fiche »."""
+        from apps.calepinage.services.chaines import MOTIF_MICRO_SEUL
+
+        verdicts = [{'code': code, 'conforme': None, 'bloquant': False, 'source': None, 'detail': MOTIF_MICRO_SEUL}
+                    for code in ('vmp_hot_over_mppt_min', 'courant_par_entree_mppt')]
+        controles = self._controles(verdicts=verdicts)
+        for code in ('tension_chaud', 'courant_entree'):
+            with self.subTest(code=code):
+                self.assertEqual((controles[code]['etat'], controles[code]['valeur_texte'], controles[code]['geste']),
+                                 ('info', MOTIF_MICRO_SEUL, ''))
 
     def test_tension_chaud_borne_absente_non_calcule_jamais_vert(self):
         sans_borne = {'code': 'vmp_hot_over_mppt_min', 'conforme': None,

@@ -19,6 +19,8 @@ from __future__ import annotations
 import copy
 from decimal import Decimal
 import json
+import math
+import re
 from pathlib import Path
 
 from django.test import SimpleTestCase, TransactionTestCase
@@ -269,6 +271,123 @@ class ModuleSubstitueSurfaceSansBaseTest(SimpleTestCase):
         detail = self._refus(doc, 35.5).donnees['detail']
         self.assertIn("Choisissez le module du catalogue dans l'atelier puis relancez.", detail)
         self.assertNotIn('Changez le module du pan', detail)
+
+
+class ModuleSubstitueArrondiSansBaseTest(SimpleTestCase):
+    """Recette 26/11 (35 × 715 W) — l'écart d'ARRONDI entre le kWc dessiné (25,02 posé par l'outil
+    de toit) et le kWc composé (25,025) n'est pas un module substitué ; un vrai module changé l'est,
+    et son refus n'imprime jamais deux chiffres égaux."""
+
+    LIGNES = 'apps.ventes.selectors_calepinage.lignes_produits_calepinage'
+
+    @staticmethod
+    def _doc(nombre, watt, kwc_arrondi=None, plans=1):
+        """``nombre`` modules de ``watt`` W répartis sur ``plans`` pans (le premier prend le reste)."""
+        parts = [nombre // plans + (nombre % plans if i == 0 else 0) for i in range(plans)]
+        zones = []
+        for i, part in enumerate(parts):
+            geo = {'moduleId': 'm1', 'panels': [{}] * part}
+            if kwc_arrondi is not None and plans == 1:
+                geo['kwc'] = kwc_arrondi
+            zones.append({'id': 'Z%d' % i, 'label': 'Z%d' % i, 'geometry': geo})
+        return {'scenario': 'reseau', 'modules': [{'id': 'm1', 'pmaxWc': watt}], 'zones': zones}
+
+    def _garde(self, doc, compose_wc):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services.devis import _garde_module_substitue
+
+        devis = SimpleNamespace(etude_params={'puissance_kwc': round(compose_wc / 1000, 3)})
+        with mock.patch(self.LIGNES, return_value=[{'designation': 'Panneau 715W', 'quantite': 35}]):
+            _garde_module_substitue(devis, doc)
+
+    def test_35_fois_715_meme_module_aucun_refus(self):
+        self._garde(self._doc(35, 715, kwc_arrondi=25.02), 35 * 715)
+        self._garde(self._doc(35, 715, kwc_arrondi=25.03), 35 * 715)
+        self._garde(self._doc(35, 715), 35 * 715)
+
+    def test_balayage_meme_module_des_deux_cotes_jamais_de_refus(self):
+        for watt in (540, 550, 585, 590, 595, 610, 615, 620, 705, 710, 715, 720):
+            for nombre in range(1, 121):
+                total = nombre * watt
+                for arrondi in (None, round(total / 1000 - 0.0005, 2), round(total / 1000 + 0.0005, 2)):
+                    with self.subTest(nombre=nombre, watt=watt, arrondi=arrondi):
+                        self._garde(self._doc(nombre, watt, kwc_arrondi=arrondi), total)
+
+    def test_balayage_watts_decimaux_sur_un_deux_trois_pans_jamais_de_refus(self):
+        """Un module à 577,5 W posé en un module par pan : trois pans = 1 732,5 Wc, pas 3 × 578 ;
+        la somme est exacte et arrondie une seule fois (le kWc composé tombe sur 1,732 ou 1,733)."""
+        for watt in (577.5, 582.5, 707.5):
+            for plans in (1, 2, 3):
+                for nombre in range(plans, 121):
+                    total = nombre * watt
+                    for compose in (math.floor(total) / 1000, math.ceil(total) / 1000, round(total / 1000, 3)):
+                        with self.subTest(nombre=nombre, watt=watt, plans=plans, compose=compose):
+                            self._garde(self._doc(nombre, watt, plans=plans), compose * 1000)
+
+    def test_vrai_changement_de_module_refuse_meme_en_watts_decimaux(self):
+        from apps.calepinage.services.devis import DevisRefuse
+
+        for plans in (1, 3):
+            with self.subTest(plans=plans), self.assertRaises(DevisRefuse):
+                self._garde(self._doc(36, 577.5, plans=plans), 36 * 582.5)
+
+    def test_vrai_module_substitue_refuse_avec_deux_chiffres_differents(self):
+        from apps.calepinage.services.devis import DevisRefuse
+
+        with self.assertRaises(DevisRefuse) as refus:
+            self._garde(self._doc(35, 715, kwc_arrondi=25.02), 35 * 710)
+        donnees = refus.exception.donnees
+        self.assertEqual((refus.exception.statut, donnees['code']), (409, 'module_substitue'))
+        self.assertIn('25,02 kWc ; le catalogue compose 24,85 kWc', donnees['detail'])
+        # watts voisins sur un seul panneau : 0,715 contre 0,710 — jamais deux chiffres égaux à l'écran
+        with self.assertRaises(DevisRefuse) as proche:
+            self._garde(self._doc(1, 715), 710)
+        figures = re.findall(r'(\d+,\d+) kWc', proche.exception.donnees['detail'])
+        self.assertNotEqual(figures[0], figures[1])
+
+    def test_refus_imprime_les_chiffres_comparés_jamais_deux_chiffres_égaux(self):
+        from apps.calepinage.services.devis import DevisRefuse
+
+        perime = self._doc(35, 710, kwc_arrondi=25.025)  # kwc stocké périmé = le composé, module 710 W posé
+        mixte = {'scenario': 'reseau', 'modules': [{'id': 'm1', 'pmaxWc': 715}, {'id': 'm2', 'pmaxWc': 710}],
+                 'zones': [{'id': 'A', 'label': 'A', 'geometry': {'moduleId': 'm1', 'panels': [{}] * 20}},
+                           {'id': 'B', 'label': 'B', 'geometry': {'moduleId': 'm2', 'panels': [{}] * 15}}]}
+        sans_module = {'scenario': 'reseau', 'zones': [
+            {'id': 'A', 'label': 'A', 'geometry': {'count': 50, 'kwc': 36.0}}]}
+        cas = [('même compte, autre watt', self._doc(35, 715, kwc_arrondi=25.02), 35 * 710, 'soit'),
+               ('kwc périmé égal au composé', perime, 25025, 'soit'),
+               ('modules mêlés', mixte, 25000, 'soit'),
+               ('repli sans puissance unitaire', sans_module, 35500, 'porte')]
+        for nom, doc, compose_wc, marque in cas:
+            with self.subTest(nom), self.assertRaises(DevisRefuse) as refus:
+                self._garde(doc, compose_wc)
+            detail = refus.exception.donnees['detail']
+            figures = re.findall(r'(?:soit|porte) (\d+,\d+) kWc ; le catalogue compose (\d+,\d+) kWc', detail)
+            self.assertEqual(len(figures), 1, detail)
+            self.assertNotEqual(*figures[0], detail)
+            self.assertIn(marque, detail)
+        with self.assertRaises(DevisRefuse) as refus:
+            self._garde(perime, 25025)
+        self.assertIn('Le dessin porte 35 panneaux de 710 W, soit 24,85 kWc ; le catalogue compose 25,02 kWc',
+                      refus.exception.donnees['detail'])
+        with self.assertRaises(DevisRefuse) as refus:
+            self._garde(mixte, 25000)
+        self.assertIn('Le dessin porte 35 panneaux, soit 24,95 kWc', refus.exception.donnees['detail'])
+
+    def test_fonction_pure_repli_sans_compte_ni_puissance(self):
+        from apps.calepinage.services.devis import _chiffres_distincts, _module_est_substitue
+
+        self.assertEqual(_chiffres_distincts(0.714, 0.7104), ('0,714', '0,710'))
+        self.assertFalse(_module_est_substitue(25.02, 25.025))
+        self.assertTrue(_module_est_substitue(25.02, 24.85))
+        self.assertFalse(_module_est_substitue(25.025, 25.025, 25025))
+        self.assertTrue(_module_est_substitue(25.025, 24.85, 25025))
+        from decimal import Decimal
+
+        self.assertFalse(_module_est_substitue(1.7325, 1.732, Decimal('1732.5')))
+        self.assertFalse(_module_est_substitue(1.7325, 1.733, Decimal('1732.5')))
 
 
 class KwcComposeSansCleSansBaseTest(SimpleTestCase):

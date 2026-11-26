@@ -68,7 +68,7 @@ from .pvgis_serie import (
     EntreeInvalide, PvgisIndisponible, azimut_pvgis, jambes_du_pan,
 )
 from . import irradiation_mensuelle as _irr
-from . import production_parties as _parties
+from . import production_parties as _parties, transposition as _transposition
 from .a_renseigner import construire as construire_a_renseigner
 from .bifacial_sheds import CLE_HORIZONTALE_LEGALE
 from .horizon import profil_depuis_document
@@ -106,6 +106,8 @@ logger = logging.getLogger(__name__)
 #: * ``sim-3`` (ACAL128, 06/10/2026) — ratio de performance sur
 #:   l'irradiation INCIDENTE capturée avant la chaîne (plus celle de la série
 #:   finale, réécrite par les étapes optiques).
+#: * sans bump (ACAL1715, 26/11 — la version périmerait tout) : série transposée = soleil des étapes à l'instant
+#:   de la transposition ; trace ``meteo.transposition.instant_soleil`` (absente = étapes à HH:00).
 VERSION_SIMULATION = 'sim-3'
 
 #: ACAL48 — les saisies de l'entrée électrique enregistrée qui ENTRENT dans
@@ -848,7 +850,7 @@ def _refus_nomme(refus):
 def verifier_simulable(contexte, meta, *, fichier_depose=False):
     """ACAL126 — les refus AVANT tout calcul, nommés : mode météo saisi,
     au moins un pan équipé, épingle du site (sauf fichier météo déposé),
-    pas d'année type sans fichier.
+    transposition de l'année type saisie.
 
     Appelée par :func:`simuler_calepinage` ET par la vue ``simuler/`` (400
     immédiat au lieu d'une tâche de fond vouée à l'échec) : une seule
@@ -857,9 +859,8 @@ def verifier_simulable(contexte, meta, *, fichier_depose=False):
     Raises:
         SimulationRefusee: le champ fautif est nommé ; ACAL940 : TOUS les
             manques dans ``manquants`` (``services/manquants_simulation.py``,
-            même ordre), le premier en tête. Le mode ``tmy`` sans fichier est
-            refusé : le service ``tmy`` de PVGIS ne publie que l'irradiance
-            globale HORIZONTALE et la chaîne ne transpose pas.
+            même ordre), le premier en tête. ACAL1715 : le mode ``tmy`` sans
+            fichier exige le modèle de transposition et l'albédo saisis.
     """
     from . import manquants_simulation as _manquants
 
@@ -1026,11 +1027,11 @@ def _fournisseur_meteo(*, client, decision, document, fichier=None,
         cle = (plan.get('inclinaison_deg'), plan.get('azimut_pvgis_deg'))
         if cle not in memoire:
             if fichier is not None and fichier.get('plan_des_donnees') == 'horizontal':
-                # ACAL455 — chaque pan reçoit SA série, transposée par pvlib.
-                from .transposition import transposer_serie_horizontale
-                reponse = transposer_serie_horizontale(fichier, plan, contexte)
+                reponse = _transposition.transposer_serie_horizontale(fichier, plan, contexte)  # ACAL455, pvlib
             elif fichier is not None:
                 reponse = fichier
+            elif decision['mode'] == 'tmy':  # ACAL1715 — l'année type PVGIS, transposée sur CE pan
+                reponse = _transposition.transposer_annee_type(client, plan, contexte, horizon, compteur)
             else:
                 reponse = client.serie_irradiance(
                     lat=plan.get('lat'), lon=plan.get('lon'),
@@ -1491,7 +1492,9 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     # avec son motif plutôt que supposé à 1,0.
     contexte[CLE_CLIENT_PVGIS] = client
 
-    blocs = {}
+    # ACAL1623 — ``avertissements`` toujours posé : une simulation SANS
+    # avertissement efface ceux de la précédente (servis par GET resultat/).
+    blocs = {'avertissements': []}
     # ACAL139 — un pan est-ouest est simulé en DEUX jambes (face E, face O),
     # chacune à son aspect PVGIS et pour sa part du kWc ; la météo de
     # référence est celle de la jambe (ou du pan) la plus puissante.
@@ -1615,7 +1618,8 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         serie_production, kwc=meta['kwc'],
         fiche_module=contexte['fiche_module'],
         pr=total.get('performance_ratio'),
-        irradiation_incidente=cascade.get('irradiation_incidente_kwh_m2'))
+        irradiation_incidente=cascade.get('irradiation_incidente_kwh_m2'),
+        mode_meteo=decision['mode'])  # revue lot 6 : une année type reste UNE année
 
     reponse_pvgis = None
     if fichier is None and _orientations_identiques(plans_chaine):

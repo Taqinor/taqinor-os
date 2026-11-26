@@ -37,7 +37,7 @@ import math
 
 __all__ = ['AVIS_KWH_NON_CONVERTIS', 'ImportCourbeInvalide',
            'PROVENANCES_APPAREIL', 'ProfilInvalide', 'SOURCES_MOIS', 'UNITES',
-           'apercu_courbe_csv', 'profil_depuis_layout',
+           'apercu_courbe_csv', '_courbe24_est_nulle', 'profil_depuis_layout',
            # ACAL310 — la consommation proposée par le serveur.
            'LeadIntrouvable', 'MOIS_ETE', 'SOURCES_PROPOSITION',
            'proposer_consommation']
@@ -356,6 +356,24 @@ def _verifier_courbe24(courbe24, *, champ, quoi=''):
             champ=champ)
 
 
+def _courbe24_est_nulle(courbe24):
+    """ACAL1962 (suite lecture) — vrai pour une courbe 24 h dont TOUTES les
+    valeurs sont nulles : ce n'est PAS un profil de consommation.
+
+    Une base nulle ne peut pas être celle d'un foyer ni d'une société ; les
+    calepinages rangés avant la correction de l'atelier portent 24 zéros
+    écrits faute de saisie. Le prédicat est UNIQUE : ``profil_depuis_layout``
+    et ``courbe_charge._base_layout`` le partagent. Une valeur illisible
+    n'est pas un zéro : la courbe n'est alors pas déclarée nulle.
+    """
+    if not isinstance(courbe24, (list, tuple)) or not courbe24:
+        return False
+    try:
+        return all(float(valeur) == 0.0 for valeur in courbe24)
+    except (TypeError, ValueError):
+        return False
+
+
 def profil_depuis_layout(layout, *, saisies=None):
     """Le profil de consommation depuis le document ATELIER (``roof_layout``).
 
@@ -387,6 +405,21 @@ def profil_depuis_layout(layout, *, saisies=None):
 
     _verifier_courbe24(courbe24, champ='consumption.courbe24',
                        quoi="de l'atelier ")
+
+    if courbe24 is not None and _courbe24_est_nulle(courbe24):
+        # ACAL1962 (suite lecture) — 24 zéros rangés = « rien saisi », jamais
+        # une base de 0 kWh : même sortie que la clé absente.
+        return {
+            'courbe24': None,
+            'pas_minutes': None,
+            'total_kwh': None,
+            'methode': consumption.get('methode'),
+            'source': 'layout',
+            'avertissements': [
+                "La courbe de consommation de l'atelier ne porte que des "
+                "zéros (24 valeurs nulles) : ce n'est pas une consommation "
+                "saisie, elle est ignorée — aucune moyenne n'est inventée."],
+        }
 
     if not consumption or courbe24 is None:
         return {

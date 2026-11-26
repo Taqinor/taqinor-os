@@ -25,7 +25,7 @@ export function PlanDessus({ plan }) {
   return (
     <svg className="cal-client-plan" viewBox={`0 0 ${larg.toFixed(2)} ${haut.toFixed(2)}`}
       preserveAspectRatio="xMidYMid meet" role="img" data-testid="client-plan"
-      aria-label={`Le toit vu de dessus : ${plan.pans.length} pan${plan.pans.length > 1 ? 's' : ''}, ${plan.modules.length} panneau${plan.modules.length > 1 ? 'x' : ''} dessiné${plan.modules.length > 1 ? 's' : ''}`}>
+      aria-label={`Le toit vu de dessus : ${plan.pans.length} pan${plan.pans.length > 1 ? 's' : ''}${plan.sansModules ? '' : `, ${plan.modules.length} panneau${plan.modules.length > 1 ? 'x' : ''} dessiné${plan.modules.length > 1 ? 's' : ''}`}`}>
       {plan.pans.map((pan, i) => <polygon key={`p${i}`} className="cal-client-pan" points={pan.map(pt).join(' ')} />)}
       {plan.modules.map((q, i) => <polygon key={`m${i}`} className="cal-client-module" points={q.map(pt).join(' ')} />)}
     </svg>
@@ -61,6 +61,18 @@ export function AvisEchec3D({ onReessayer }) {
     <p className="cal-client-repli-retard" role="status" data-testid="client-3d-retard">
       {'La vue 3D n’a pas pu démarrer. '}
       <button type="button" className="cal-client-repli-reessayer" onClick={onReessayer}>Réessayer</button>
+    </p>
+  )
+}
+
+/** ACAL1353 — le moteur du toit (chargé à part) n'a pas pu se charger : les panneaux ne sont pas dessinés et la production
+ *  n'est pas montrée. Dit en mots simples ; « Réessayer » RECHARGE LA PAGE (un nouvel `import()` peut retomber sur l'échec
+ *  gardé en cache par le navigateur). */
+export function AvisMoteurEchec() {
+  return (
+    <p className="cal-client-repli-retard" role="status" data-testid="cal-client-moteur-echec">
+      {'Les panneaux n’ont pas pu s’afficher. '}
+      <button type="button" className="cal-client-repli-reessayer" onClick={() => window.location.reload()}>Réessayer</button>
     </p>
   )
 }

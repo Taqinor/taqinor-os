@@ -148,7 +148,7 @@ describe('VariantesCompare (CAL42)', () => {
     const boutons = within(cellule).getAllByRole('button', { name: 'Retenir' })
     fireEvent.click(boutons[0])
 
-    await waitFor(() => expect(mocks.retenirVariante).toHaveBeenCalledWith('1', AUTRE.id))
+    await waitFor(() => expect(mocks.retenirVariante).toHaveBeenCalledWith('1', AUTRE.id, { suppressErrorToast: true }))
     await waitFor(() => expect(screen.getByTestId(`cal-retenue-${AUTRE.id}`)).toBeInTheDocument())
     expect(screen.queryByTestId(`cal-retenue-${RETENUE.id}`)).not.toBeInTheDocument()
   })
@@ -206,6 +206,8 @@ describe('VariantesCompare (CAL42)', () => {
     const lien = within(pres).getByRole('link', { name: 'Ouvrir l’étape Électrique' })
     expect(lien.getAttribute('href')).toContain('onglet=decisions-electriques')
     expect(screen.getAllByRole('alert')).toHaveLength(1) // plus de copie en haut de l'onglet
+    // T4-X9-010 — le toast global répétait la clé interne : l'appel le coupe, le refus n'est dit qu'une fois.
+    expect(mocks.retenirVariante).toHaveBeenCalledWith('1', AUTRE.id, { suppressErrorToast: true })
   })
 
   it('la vue CÔTE À CÔTE compare deux variantes, écarts serveur inclus', async () => {
@@ -377,7 +379,7 @@ describe('VariantesCompare (CALX37) — créer et dupliquer', () => {
     const ligneNeuve = screen.getByTestId('cal-variante-dupliquer-301').closest('td')
     fireEvent.click(within(ligneNeuve).getByRole('button', { name: 'Retenir' }))
 
-    await waitFor(() => expect(mocks.retenirVariante).toHaveBeenCalledWith('1', 301))
+    await waitFor(() => expect(mocks.retenirVariante).toHaveBeenCalledWith('1', 301, { suppressErrorToast: true }))
     await waitFor(() => expect(screen.getByTestId('cal-retenue-301')).toBeInTheDocument())
     expect(screen.queryByTestId(`cal-retenue-${RETENUE.id}`)).not.toBeInTheDocument()
   })

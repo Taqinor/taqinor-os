@@ -273,6 +273,19 @@ class ChampReellementLeveTest(unittest.TestCase):
         self.assertTrue(document['disponible'])
         self.assertEqual(document['manque'], [])
 
+    def test_plan_cablage_indisponible_si_l_affectation_porte_un_cout(self):
+        # ACAL1721 — le DXF de pose écrit les chaînes de cette même table :
+        # refusée par le pare-feu de montants, la carte ne se dit pas prête.
+        from apps.calepinage.services.rapport import RapportRefuse
+
+        with mock.patch(
+                'apps.calepinage.services.rapport.verifier_etancheite',
+                side_effect=RapportRefuse('coût', champ='electrique.affectation')):
+            servi = inventaire_des_documents(FauxResultatCoute())
+        document = {d['code']: d for d in servi['documents']}['plan_cablage']
+        self.assertFalse(document['disponible'])
+        self.assertEqual(document['manque'][0]['champ'], 'electrique.affectation')
+
     def test_les_pieces_sans_service_dedie_restent_disponibles(self):
         """La BASE (conception+résultat) suffit pour ``export_projet_json``
         et ``presentation_compacte`` : aucune donnée supplémentaire."""

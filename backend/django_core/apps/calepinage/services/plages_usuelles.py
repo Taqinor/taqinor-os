@@ -39,7 +39,29 @@ def _pastille(valeur, bande):
     statut = 'dans_la_plage' if bas <= valeur <= haut else 'inhabituel'
     return {'statut': statut, 'min': bas, 'max': haut,
             'unite': bande.get('unite'), 'url': bande.get('url'),
-            'date_lecture': bande.get('date_lecture')}
+            'date_lecture': bande.get('date_lecture'),
+            'citation': bande.get('citation')}  # ACAL1625 — la phrase de la page
+
+
+def _citee(bande):
+    """ACAL1625 — une bande n'est lue que si elle porte son url ET la phrase
+    citée de la page : jamais un chiffre sans sa page."""
+    return (isinstance(bande, dict) and str(bande.get('url') or '').startswith('https://')
+            and bool(str(bande.get('citation') or '').strip()))
+
+
+def _s_applique(bande, etape):
+    """Revue lot 6 (ACAL1625) — la bande ne juge que là où sa source s'applique :
+    ``applicable_si = {entree, valeurs}`` exige que ``etape.entree[entree]``
+    soit l'une des ``valeurs`` (le LID de PVsyst : la seule ligne « perc ») ;
+    sans condition, la bande s'applique ; une condition illisible ne juge pas."""
+    condition = bande.get('applicable_si')
+    if condition is None:
+        return True
+    if not isinstance(condition, dict):
+        return False
+    entree = etape.get('entree') if isinstance(etape.get('entree'), dict) else {}
+    return entree.get(condition.get('entree')) in (condition.get('valeurs') or ())
 
 
 def evaluer(cascade, donnees=None):
@@ -47,17 +69,18 @@ def evaluer(cascade, donnees=None):
     donnees = charger() if donnees is None else (donnees or {})
     bandes = {bande.get('etape'): bande
               for bande in donnees.get('bandes') or ()
-              if isinstance(bande, dict)}
+              if _citee(bande)}
     etapes = {}
     for etape in (cascade or {}).get('etapes') or ():
         bande = bandes.get(etape.get('etape'))
-        if bande is None or etape.get('motif_omission') or etape.get('gain'):
+        if (bande is None or etape.get('motif_omission') or etape.get('gain')
+                or not _s_applique(bande, etape)):
             continue
         pastille = _pastille(_nombre(etape.get('perte_pct')), bande)
         if pastille is not None:
             etapes[etape['etape']] = pastille
     total = donnees.get('total')
     total = (_pastille(_nombre((cascade or {}).get('total_pct')), total)
-             if isinstance(total, dict) else None)
+             if _citee(total) else None)
     return {'etapes': etapes, 'total': total,
             'motif_absence': '' if bandes else MOTIF_AUCUNE_BANDE}

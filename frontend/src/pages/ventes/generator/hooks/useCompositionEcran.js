@@ -7,8 +7,12 @@
 import { roleLabel, tauxTvaOf, tauxTvaOuDefaut, ttcExactFromHt } from '../../../../features/ventes/solar'
 import { lignesDepuisKit } from '../../../../features/ventes/quote/etudeMarcheBloc'
 import { tailleAutoRemplirPompage } from '../../../../features/ventes/quote/reouverture'
+import { phraseReductionOptionAvec } from '../../../../features/ventes/quote/forfaitsPanneau'
+import { DIMENSIONNEMENT_PRET, issueRecalculDimensionnement } from '../../../../features/ventes/quote/paireDimensionnement'
 import { refusAutoRemplirPompage } from '../../../../features/ventes/etudePompagePreviewPur'
-import { SCENARIO_AVEC, SCENARIO_LES_DEUX, tailleDemandeeParLead } from '../../../../features/ventes/quote/sizingReducer'
+import {
+  SCENARIO_AVEC, SCENARIO_LES_DEUX, tailleDemandeeParLead, toucheNbPanneauxPourComposition,
+} from '../../../../features/ventes/quote/sizingReducer'
 import ventesApi from '../../../../api/ventesApi'
 import { formatKwc, formatNumber } from '../../../../lib/format'
 import {
@@ -45,7 +49,7 @@ export function useCompositionEcran(ctx) {
     structureProduitId, recalcDimTick, setPompageAutoFilled, setOnduleursIncomplets,
     setAutoFillLoading, setCompositionErreur, profilCi, horsReseau, kwp, selectedLead,
     etudeHoraireDonnees, etudeHoraireChargement, marcheCi, ctxProfilCi, apercuCi, resolveKwcAvec,
-    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard, sizing,
+    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard, sizing, lines,
   } = ctx
 
   // U3COMPOSE — l'optimum AXE BATTERIE envoyé au dry-run serveur : même
@@ -135,14 +139,27 @@ export function useCompositionEcran(ctx) {
     // affichait localement pour un onduleur incomplet, un rôle absent, etc. —
     // rendus tels quels dans le même bandeau, jamais tus.
     const avertissementsMsg = (data.avertissements || []).join(' ') || null
+    // R5A-N2 — l'option « avec batterie » qui perd des panneaux À CAUSE d'un compte saisi le dit, les deux comptes nommés.
+    const reduction = phraseReductionOptionAvec(lines, generated, produits, toucheNbPanneauxPourComposition(sizing))
     setErrors(e => ({
       ...e,
       autofill: [manquantsMsg, avertissementsMsg].filter(Boolean).join(' ') || null,
-      autofillKwc: mismatch,
+      autofillKwc: [mismatch, reduction].filter(Boolean).join(' ') || null,
       marquesManquantes: marquesMsg,
     }))
     recomposerLignes(generated)
   }
+
+  // T4-X6-016 / R5A-N3 — UN prédicat pour le clic et pour le message : `issueRecalculDimensionnement`. Un message de clic encore
+  // affiché est réécrit, à chaque nouvelle donnée, par ce que le clic dirait MAINTENANT — jamais « n'a pas pu chiffrer » à côté
+  // d'une taille retenable, et un clic arrivé avant les données dit « Dimensionnement prêt — réessayez » (jamais effacé en silence).
+  const issueRecalcul = issueRecalculDimensionnement({
+    modeInstallation, scenario, marcheCi, etudeHoraireDonnees, etudeHoraireChargement, apercuCi,
+  })
+  const messageRecalcul = issueRecalcul.retenu ? DIMENSIONNEMENT_PRET : issueRecalcul.erreur
+  useEffect(() => {
+    queueMicrotask(() => setErrors(e => (e.recalcDim && e.recalcDim !== messageRecalcul ? { ...e, recalcDim: messageRecalcul } : e)))
+  }, [messageRecalcul, setErrors])
 
   const handleAutoFill = async () => {
     // PVOND — le bandeau des onduleurs grisés appartient au DERNIER
@@ -372,47 +389,11 @@ export function useCompositionEcran(ctx) {
     // `sizingInfo` reste NUL sur ce chemin : son encart parle de « palier
     // retenu / besoin lu sur la facture », deux notions du balayage local qui
     // ne décrivent pas ce que le moteur a fait (règle chiffres-vérifiés).
-    let retenu = null
-    if (modeInstallation === 'residentiel') {
-      const dim = etudeHoraireDonnees?.dimensionnement
-      const source = (scenario === SCENARIO_AVEC
-        && Number(dim?.recommandation_avec?.panneaux) > 0)
-        ? dim.recommandation_avec : dim?.recommandation
-      if (!(Number(source?.panneaux) > 0)) {
-        setErrors(e => ({
-          ...e,
-          // Message FRANÇAIS du serveur quand il en a un (il nomme la donnée
-          // manquante), sinon la cause générique — jamais un chiffre supposé.
-          recalcDim: dim?.motivation
-            || etudeHoraireDonnees?.avertissements?.[0]
-            || (etudeHoraireChargement
-              ? 'Dimensionnement en cours de calcul — réessayez dans un instant.'
-              : "Le moteur n'a pas pu chiffrer de recommandation : complétez la "
-                + 'facture, la ville et le raccordement du client, puis réessayez.'),
-        }))
-        return
-      }
-      retenu = {
-        nbPanneaux: Number(source.panneaux),
-        kwcOptimal: source.kwc != null ? Number(source.kwc) : null,
-      }
-    } else {
-      // CIQ126 — C&I : la taille retenue par le moteur serveur (aperçu en
-      // direct du profil déclaré) ; sans elle, rien n'est inventé. T4-X6-008 — en
-      // édition, l'aperçu décrit les LIGNES : la taille du moteur est son `conseil`.
-      const t = apercuCi.conseil ?? apercuCi.donnees?.taille
-      if (!marcheCi || !(Number(t?.nb_panneaux) > 0)) {
-        setErrors(e => ({
-          ...e,
-          recalcDim: 'Le moteur C&I n\'a pas encore retenu de taille : complétez le '
-            + 'profil de consommation du site, puis réessayez.',
-        }))
-        return
-      }
-      retenu = {
-        nbPanneaux: Number(t.nb_panneaux),
-        kwcOptimal: t.retenue_kwc != null ? Number(t.retenue_kwc) : null,
-      }
+    // T4-X6-016 — la décision (taille retenue ou message) est `issueRecalculDimensionnement`, le MÊME prédicat que le message.
+    const { retenu, erreur } = issueRecalcul
+    if (!retenu) {
+      setErrors(e => ({ ...e, recalcDim: erreur }))
+      return
     }
     setErrors(e => ({ ...e, recalcDim: null }))
     // Une seule transition : la taille retenue est posée, `sizingInfo` reste

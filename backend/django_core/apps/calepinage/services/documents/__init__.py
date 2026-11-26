@@ -332,6 +332,17 @@ def _etat_du_document(code, calepinage, resultat, refus_rapport=None):
         # chainage, la carte reste indisponible et le dit.
         if not valeur_au_chemin(resultat, 'electrique.chainage')[0]:
             return False, MOTIF_SANS_CHAINAGE, [MANQUE_CHAINAGE]
+        # ACAL1721 — le plan, et le DXF de pose qui y écrit les chaînes,
+        # lisent cette table à travers le pare-feu de montants : si elle le
+        # refuse, la carte ne se dit pas prête.
+        from ..rapport import RapportRefuse, verifier_etancheite
+        try:
+            verifier_etancheite(
+                (resultat.get('electrique') or {}).get('affectation') or [],
+                origine='electrique.affectation')
+        except RapportRefuse as refus:
+            return (False, str(refus),
+                    [_manque_pour_champ(refus.champ or 'electrique.chainage')])
         return True, None, []
 
     if code == 'manuel_proprietaire':

@@ -936,6 +936,7 @@
     },
     "hors_reseau": {
       "heures": 8760,
+      "portee_heures": "annee_moyenne",
       "consommation_kwh": 9600.0,
       "production_kwh": 13000.0,
       "servi_kwh": 9350.0,
@@ -1205,6 +1206,7 @@
       "duree_s": 12.4
     },
     "simulation_automatique": {"en_cours": false, "job_id": null, "manquants": []},
+    "panneaux_non_raccordes": null,
     "production_devis": null,
     "conception": null,
     "ecart_devis": null,
@@ -1430,9 +1432,9 @@
     "ombrage": null,
     "validation": null,
     "simulation_perimee": true,
-    "motif": "simulation périmée : le document a changé depuis le calcul du 19/09/2026",
+    "motif": "simulation périmée : le document ou un réglage de la société a changé depuis le calcul du 19/09/2026",
     "avertissements": [
-      "simulation périmée : le document a changé depuis le calcul du 19/09/2026",
+      "simulation périmée : le document ou un réglage de la société a changé depuis le calcul du 19/09/2026",
       "La production n'est pas encore calculée : lancez la simulation à l'étape Résultats pour connaître ce que l'installation produira."
     ],
     "nomenclature": [],
@@ -1457,6 +1459,7 @@
       "duree_s": 12.4
     },
     "simulation_automatique": {"en_cours": false, "job_id": null, "manquants": []},
+    "panneaux_non_raccordes": null,
     "production_devis": null,
     "conception": null,
     "ecart_devis": null,
@@ -1636,6 +1639,7 @@
       "duree_s": null
     },
     "simulation_automatique": {"en_cours": false, "job_id": null, "manquants": []},
+    "panneaux_non_raccordes": null,
     "production_devis": null,
     "conception": null,
     "ecart_devis": null,
@@ -2548,6 +2552,7 @@
     },
     "hors_reseau": {
       "heures": 8760,
+      "portee_heures": "annee_moyenne",
       "consommation_kwh": 9600.0,
       "production_kwh": 13000.0,
       "servi_kwh": 9350.0,
@@ -2817,6 +2822,7 @@
       "duree_s": 12.4
     },
     "simulation_automatique": {"en_cours": false, "job_id": null, "manquants": []},
+    "panneaux_non_raccordes": null,
     "production_devis": {"devis": 412, "reference": "DEV-202610-0042", "statut": "envoye", "production_annuelle_kwh": 12600.0, "production_origine": "production_annuelle"},
     "conception": {"production_annuelle_kwh": 12100.0, "option": "sans", "puissance_kwc": 8.64, "nb_panneaux": 12, "version": 3, "calcule_le": "2026-11-24T10:00:00+01:00", "designations": [], "devis_envoye": {"devis": 412, "reference": "DEV-202610-0042", "statut": "envoye", "envoye_le": "2026-10-20T09:30:00+01:00", "option": "sans", "production_annuelle_kwh": 12600.0, "ecart_devis": [{"valeur": "production_annuelle", "devis": 12600, "conception": 12100, "devis_ref": "DEV-202610-0042", "reviser_possible": true, "mise_a_jour_proposee": false, "courante_refusee": false}]}, "devis_lie": {"devis": 412, "reference": "DEV-202610-0042", "statut": "envoye", "a_jour": true}},
     "ecart_devis": {
@@ -2859,5 +2865,7 @@
   "acal2015_conception": {"production_annuelle_kwh": 8198.0, "option": "sans", "puissance_kwc": 8.64, "nb_panneaux": 12, "version": 2, "calcule_le": "2026-11-23T14:05:00+01:00", "designations": ["Onduleur désigné à la main « Onduleur hybride Deye 5kW Monophasé » : il sert l'option avec batterie ; l'option sans batterie garde l'onduleur choisi par le moteur."], "devis_envoye": {"devis": 1742, "reference": "DEV-202611-0001", "statut": "envoye", "envoye_le": "2026-11-10T09:30:00+01:00", "option": "sans", "production_annuelle_kwh": 6047.0, "ecart_devis": [{"valeur": "nb_panneaux", "devis": 35, "conception": 48, "devis_ref": "DEV-202611-0001", "reviser_possible": true, "mise_a_jour_proposee": false, "courante_refusee": false}, {"valeur": "production_annuelle", "devis": 6047, "conception": 8198, "devis_ref": "DEV-202611-0001", "reviser_possible": true, "mise_a_jour_proposee": false, "courante_refusee": false}]}, "devis_lie": {"devis": 1743, "reference": "DEV-202611-0002", "statut": "brouillon", "a_jour": false}},
   "e5_m2_note": "Relecture E5 M2 (25/11) — `conception.devis_envoye.option` et `.production_annuelle_kwh` : l'option et la production annuelle que le DEVIS ENVOYÉ a rangées (`conception_retenue_du_devis`, aucun recalcul ; `production_annuelle_kwh` vaut `null` quand le devis n'en range aucune). L'étape Résultats compare CE chiffre à celui qu'elle affiche : égaux ⇒ « Le devis envoyé porte le même chiffre » ; différents ⇒ les deux chiffres nommés et « Réviser le devis » ; `null` ⇒ « Le devis envoyé ne porte pas de production enregistrée ». Le devis n'est jamais modifié.",
   "acal1956_note": "ACAL1956 (D-ACAL-90) — `production_devis` : pour un calepinage lié à un devis ENVOYÉ ou ACCEPTÉ, la production annuelle RETENUE PAR LE DEVIS (`conception_retenue_du_devis`, contrat `calepinage_conception_retenue.json` : `production_annuelle_kwh`, `production_origine`, `null` quand la clé manque — jamais recalculée) avec `devis`/`reference`/`statut` ; servie même sans simulation (l'étape Résultats n'est jamais vide), et à côté du P50 quand la simulation existe. `null` sans devis lié ou devis brouillon.",
-  "acal1987_simulation_automatique": {"en_cours": false, "job_id": null, "manquants": [{"champ": "materiel.onduleur", "motif": "Aucun onduleur n'est désigné pour cette pose : choisissez l'onduleur.", "cible": null}]}
+  "acal1987_simulation_automatique": {"en_cours": false, "job_id": null, "manquants": [{"champ": "materiel.onduleur", "motif": "Aucun onduleur n'est désigné pour cette pose : choisissez l'onduleur.", "cible": null}]},
+  "acal1623_note": "ACAL1623 (revue lot 6) — `panneaux_non_raccordes` : null, ou {modules, phrase} quand la simulation servie compte des panneaux posés raccordés à aucun onduleur (`production.hors_chaine.modules` > 0). `phrase` est celle de `agregation_electrique.phrase_non_raccordes` : l'écran (Guidé > Résultats) la lit SUR CETTE CLÉ, jamais à un rang de `avertissements` (où la « borne haute » la précède).",
+  "acal1623_non_raccordes": {"panneaux_non_raccordes": {"modules": 4, "phrase": "4 panneaux ne sont raccordés à aucun onduleur : ils ne sont pas comptés dans la production (leur énergie possible est donnée à part, « hors chaîne »)."}, "production": {"hors_chaine": {"modules": 4, "p50_kwh": null}}, "avertissements": ["Production publiée en « borne haute » : PR, P75, P90 et P95 non publiés tant que les pertes du socle ne sont pas saisies (salissure, lid).", "4 panneaux ne sont raccordés à aucun onduleur : ils ne sont pas comptés dans la production (leur énergie possible est donnée à part, « hors chaîne »)."]}
 }

@@ -122,6 +122,39 @@ describe('Étape Résultats — résultat complet (maquette Resultats)', () => {
     expect(screen.getByTestId('lieu').textContent).toMatch(/onglet=(equipements-electriques|cheminement-cables|raccordement|verdict-electrique|materiel-electrique|saisies-electriques|decisions-electriques|controle-chaine|schema)/)
   })
 
+  it('T4-U4-012 — production NON nulle mais chaînes sous la plage de l’onduleur : une phrase dit que le raccordement perd l’essentiel', async () => {
+    const d = COMPLET()
+    const raison = 'par forte chaleur, la tension des panneaux (140,5 V) tombe sous la plage de travail de cet onduleur (150,0 V)'
+    d.electrique.verdicts = d.electrique.verdicts.map((v) => (v.code === 'vmp_hot_over_mppt_min'
+      ? { ...v, conforme: false, raison } : v))
+    servir(d)
+    rendre()
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveAttribute('data-zone', 'cablage-perd-la-production')
+    // aucun chiffre de perte servi pour la fenêtre MPPT : jamais « l'essentiel », la seule phrase du serveur
+    expect(alerte).not.toHaveTextContent('l’essentiel')
+    expect(alerte).toHaveTextContent('la production des heures où les panneaux chauffent est perdue')
+    expect(alerte).toHaveTextContent('Cause : Par forte chaleur, la tension des panneaux (140,5 V)')
+    expect(alerte).not.toHaveTextContent('borne de fiche')
+    expect(document.querySelector('[data-zone="production-nulle"]')).toBeNull()
+    fireEvent.click(within(alerte).getByRole('button', { name: 'Aller à l’étape Électrique' }))
+    expect(screen.getByTestId('lieu').textContent).toMatch(/onglet=/)
+  })
+
+  it.each([
+    [63.5, 'fait perdre l’essentiel de la production : 63,5 %'],
+    [4.2, 'fait perdre la production des heures les plus chaudes : 4,2 %'],
+  ])('T4-U4-012 — la phrase suit la perte SERVIE de la fenêtre MPPT (%s %%)', async (perte, phrase) => {
+    const d = COMPLET()
+    d.electrique.verdicts = d.electrique.verdicts.map((v) => (v.code === 'vmp_hot_over_mppt_min'
+      ? { ...v, conforme: false, raison: 'par forte chaleur, la tension des panneaux (140,5 V) tombe sous la plage' } : v))
+    d.cascade.etapes = [...(d.cascade.etapes ?? []), { etape: 'mppt', libelle: 'Fenêtre MPPT', perte_pct: perte }]
+    servir(d)
+    rendre()
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveTextContent(phrase)
+  })
+
   it('T4-X7-005 — production non nulle : aucune alerte de production nulle', async () => {
     servir(COMPLET())
     rendre()
@@ -590,10 +623,12 @@ describe('Étape Résultats — pas encore simulé (jamais lancé)', () => {
     expect(lignes.map((l) => texte(l.querySelector('.cal-resinc-nom')))).toEqual([
       'Choisir la norme électrique de votre société?', 'Ombrage panneau par panneau?', 'Températures de référence?'])
     expect(lignes.map((l) => l.querySelector('.cal-resinc-rang').textContent)).toEqual(['1', '2', '3'])
+    // R5B-N5 (rejeu 26/11) — la ligne des ombres menait à `?onglet=production`, l'écran même : « Renseigner » ne faisait
+    // rien de visible. Elle ouvre l'étape Panneaux (premier onglet `fiches`), où l'ombre de chaque panneau se calcule.
     expect(lignes.map((l) => l.querySelector('[data-testid="cal-avant-renseigner"]').getAttribute('href'))).toEqual([
-      '/calepinage/reglages#norme', '/calepinage/5?onglet=production', '/calepinage/reglages'])
+      '/calepinage/reglages#norme', '/calepinage/5?onglet=fiches', '/calepinage/reglages'])
     expect(lignes.map((l) => l.querySelector('[data-testid="cal-avant-renseigner"]').textContent)).toEqual([
-      'Renseigner', 'Renseigner', 'Renseigner'])
+      'Renseigner', 'Voir les ombres', 'Renseigner'])
     // « Production à calculer — Voir » doublait le bouton « Lancer la simulation » de la carte sombre : retirée de la liste.
     expect(screen.queryByText('Production à calculer')).toBeNull()
     // La phrase servie est gardée, derrière le « ? » (infobulle + révélée au clic), jamais dans la ligne.
@@ -1057,13 +1092,17 @@ describe('Étape Résultats — la conception, et l’écart avec le devis envoy
    de `avertissements`, et la production rapportée aux panneaux COMPTÉS (jamais « 13 panneaux » à côté d'un productible
    de 9). Tout vient de `GET resultat/` : `production.hors_chaine.modules`, `pose.*`, `production.total.kwc`. */
 describe('Étape Résultats — panneaux posés mais non raccordés (ACAL1912)', () => {
-  const PHRASE = '4 panneaux ne sont raccordés à aucun onduleur : ils ne sont pas comptés dans la production (leur énergie possible est donnée à part, « hors chaîne »).'
+  // Revue lot 6 (ACAL1623) — l'exemple du contrat : la phrase sur SA clé, la « borne haute » EN TÊTE des avertissements.
+  const SERVI = exempleContrat('calepinage', 'calepinage_resultat', 'acal1623_non_raccordes')
+  const PHRASE = SERVI.panneaux_non_raccordes.phrase
+  const BORNE = SERVI.avertissements[0]
   const NON_RACCORDES = () => {
     const d = COMPLET()
     d.pose = { ...d.pose, total_modules: 13, kwc: 9.23 }
     d.production.total.kwc = 6.39
     d.production.hors_chaine = { modules: 4, p50_kwh: 3300 }
-    d.avertissements = [PHRASE, 'Longueur de chaîne à vérifier.']
+    d.panneaux_non_raccordes = SERVI.panneaux_non_raccordes
+    d.avertissements = [...SERVI.avertissements, 'Longueur de chaîne à vérifier.']
     return d
   }
   const zone = () => document.querySelector('[data-zone="non-raccordes"]')
@@ -1087,6 +1126,9 @@ describe('Étape Résultats — panneaux posés mais non raccordés (ACAL1912)',
     await screen.findByTestId('acal700-incomplet')
     expect(zone()).toHaveTextContent(PHRASE)
     expect(zone()).toHaveTextContent('13 panneaux posés')
+    // La « borne haute » est en tête des avertissements : elle ne titre jamais ce bloc.
+    expect(BORNE).not.toBe(PHRASE)
+    expect(zone()).not.toHaveTextContent(BORNE)
   })
 
   it('tous les panneaux raccordés (ou rien de servi) : aucun bloc', async () => {

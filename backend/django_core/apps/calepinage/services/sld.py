@@ -554,10 +554,16 @@ def resultat_et_gabarit_decides(conception, donnees, norme, *,
                                          reglages=reglages)
     resultat = resultat_electrique_complet(conception, norme=norme,
                                            checklist=checklist)
+    from core.electrique.schema import organes_dc_hors_chaine
+
     gabarit = dict(gabarit if gabarit is not None
                    else gabarit_de_schema(norme))
+    # ACAL1551 — un organe société côté continu est DESSINÉ (bloc
+    # ``organe_dc``) : seuls les autres restent « non dessinés ».
+    dessines = {p.repere for p in organes_dc_hors_chaine(resultat)}
     ajoutes = [ligne for ligne in organes_retenus(checklist)
-               if ligne.get('origine') == ORIGINE_SOCIETE]
+               if ligne.get('origine') == ORIGINE_SOCIETE
+               and ligne.get('repere') not in dessines]
     if ajoutes:
         mention = ('Organe(s) ajouté(s) par décision société, non dessiné(s) '
                    'sur la planche : %s.'
@@ -695,7 +701,8 @@ def _lignes_d_affectation(conception, donnees):
 
 def _couleurs_des_chaines(conception, donnees):
     """ACAL1337 — ``(('Chaîne N', couleur), …)`` lus sur l'affectation SERVIE (manuelle
-    comprise) : la palette et l'ordre de la carte et du plan de câblage, jamais une copie."""
+    comprise) : la couleur est celle de la carte et du plan de câblage, liée au NUMÉRO de la chaîne,
+    jamais une copie."""
     vues = {}
     for ligne in _lignes_d_affectation(conception, donnees):
         vues.setdefault(ligne.get('chaine'), ligne.get('couleur_chaine'))
@@ -705,7 +712,8 @@ def _couleurs_des_chaines(conception, donnees):
 def _chaines_de_l_affectation(conception, donnees):
     """SCHEL-B2 — ``[{numero, nb_panneaux, onduleur, entree}]`` dans l'ordre de PREMIÈRE
     apparition de la table servie : les chaînes RÉELLES (manuelle comprise). La couleur est
-    posée par le noyau (``chaines_colorees``) avec la même palette et le même ordre."""
+    posée par le noyau (``chaines_colorees``) : liée au NUMÉRO de la chaîne (``couleur_de_chaine``),
+    jamais à l'ordre d'apparition."""
     par_numero = {}
     for ligne in _lignes_d_affectation(conception, donnees):
         numero = ligne.get('chaine')
