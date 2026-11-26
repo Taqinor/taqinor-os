@@ -626,6 +626,7 @@ function buildZone(
     const rise = slopeLenM * Math.abs(Math.sin(tiltRad));
     const m = new THREE.Matrix4();
     const pos = new THREE.Vector3();
+    const poses: THREE.Matrix4[] = [];
     for (let i = 0; i < zone.panels.length; i++) {
       const p = zone.panels[i];
       const zBase = pitched
@@ -634,11 +635,50 @@ function buildZone(
       pos.set(p.x, p.y, zBase);
       m.compose(pos, p.face === 'E' ? qDown : qUp, scl);
       im.setMatrixAt(i, m);
+      poses.push(m.clone());
     }
     im.instanceMatrix.needsUpdate = true;
     root.add(im);
     disposables.push(panelGeo, panelMat, im);
+    // Lot 8 — châssis de toit plat : un pied AVANT et un pied ARRIÈRE sous chaque panneau incliné (plus de verre
+    // qui flotte au-dessus de la dalle). Aucun pied en pose affleurante, sur un pan en pente ou sans inclinaison servie.
+    const pieds = matricesPiedsChassis(zone, poses, slopeLenM);
+    if (pieds.length) {
+      const piedGeo = new THREE.BoxGeometry(PIED_SECTION_M, PIED_SECTION_M, 1);
+      const piedMat = new THREE.MeshStandardMaterial({ color: 0xb0b7be, roughness: 0.38, metalness: 0.78 });
+      const piedsIm = new THREE.InstancedMesh(piedGeo, piedMat, pieds.length);
+      pieds.forEach((pm, i) => piedsIm.setMatrixAt(i, pm));
+      piedsIm.instanceMatrix.needsUpdate = true;
+      root.add(piedsIm);
+      disposables.push(piedGeo, piedMat, piedsIm);
+    }
   }
+}
+
+/** Section d'un pied de châssis (m) — le profilé galvanisé de ~41 mm des rails du builder (apparence). */
+export const PIED_SECTION_M = 0.04;
+
+/**
+ * Lot 8 — les pieds du châssis de toit plat de la visionneuse simplifiée : pour chaque panneau, un pied vertical
+ * de la dalle (`WALL_H_M + 0,02`) jusqu'à son bord HAUT et un jusqu'à son bord BAS, aux points que la matrice du
+ * panneau (pose servie : inclinaison, module, orientation) donne à ses deux bords. Rien n'est inventé : aucun pied
+ * quand la pose est affleurante (`flush`), le pan en pente, ou l'inclinaison absente ou nulle. Matrices unitaires
+ * (boîte de hauteur 1) mises à l'échelle de chaque pied.
+ */
+export function matricesPiedsChassis(zone: Pick<ViewerZone, 'flush' | 'roofType' | 'tiltDeg'>, poses: readonly THREE.Matrix4[], slopeLenM: number): THREE.Matrix4[] {
+  if (zone.flush || zone.roofType === 'pitched' || !(Number.isFinite(zone.tiltDeg) && zone.tiltDeg > 0) || !(slopeLenM > 0)) return [];
+  const dalle = WALL_H_M + 0.02;
+  const pieds: THREE.Matrix4[] = [];
+  const bord = new THREE.Vector3();
+  const id = new THREE.Quaternion();
+  for (const pose of poses) {
+    for (const s of [1, -1]) {
+      bord.set(0, (s * slopeLenM) / 2, -PANEL_THICK_M / 2).applyMatrix4(pose);
+      const h = bord.z - dalle;
+      if (h > 0.01) pieds.push(new THREE.Matrix4().compose(new THREE.Vector3(bord.x, bord.y, dalle + h / 2), id, new THREE.Vector3(1, 1, h)));
+    }
+  }
+  return pieds;
 }
 
 /**
