@@ -24,6 +24,9 @@ import BandeauAvenant from '../../components/proposition/BandeauAvenant.astro';
 // LOT 6 (SCHEL-W2) — schéma électrique du devis (remplace le schéma unifilaire quand le backend le sert).
 import SchemaElectrique from '../../components/proposition/SchemaElectrique.astro';
 import { choisirSld } from '../../lib/schemaElectrique';
+// LOT 6 (D-ACAL-132) — visionneuse au soleil des liens de confiance (clé additive `visionneuse_soleil`).
+import BarreSoleil from '../../components/proposition/BarreSoleil.astro';
+import { lireVisionneuseSoleil } from '../../lib/visionneuseSoleil';
 // CPRW (27/10/2026) — blocs C&I et agricoles déplacés tels quels dans leurs composants (chaque composant
 // commence par sa balise : la condition d'affichage reste ici, les espaces du rendu ne bougent pas).
 import SectionAutoconso from '../../components/proposition/ci/SectionAutoconso.astro';
@@ -1805,6 +1808,8 @@ const layoutPanneaux = layoutStale ? (data?.layout_nb_panneaux ?? null) : null;
 // ACON93 — « vue simplifiée » : modules dessinés / modules posés (`geometry.count`).
 const vueSimplifiee = viewerModel?.simplifie && roofLayout ? { dessines: formatNumber(viewerModel.totalPanels), poses: formatNumber(roofLayout.zones.reduce((n, z, i) => n + Math.max(z.geometry?.count ?? 0, viewerModel.zones[i].panels.length), 0)) } : null;
 const roofOutlineLatLng = roofLayout ? roofLayoutOutlineLatLng(roofLayout) : [];
+// Absente (lien standard, backend antérieur, forme invalide) → null : configuration et page d'aujourd'hui, au bit près.
+const visionneuseSoleil = show3d ? lireVisionneuseSoleil(data, roofLayout) : null;
 const viewerConfig = show3d ? JSON.stringify({ model: viewerModel, roofOutlineLatLng, layout: roofLayout }) : null;
 
 // ── WJ128 — Schéma électrique (SLD) : rendu UNIQUEMENT quand le backend
@@ -3241,7 +3246,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       {show3d && (
         <>
         <div class="seam-soft" aria-hidden="true"></div>
-        <section id="roof3d" class="mx-auto max-w-5xl px-5 pt-14 sm:px-8 sm:pt-20" data-viewer-config={viewerConfig} data-calepinage-options={calepOptionsPourClient} data-track-section="calepinage">
+        <section id="roof3d" class="mx-auto max-w-5xl px-5 pt-14 sm:px-8 sm:pt-20" data-viewer-config={viewerConfig} data-visionneuse-soleil={visionneuseSoleil ? JSON.stringify(visionneuseSoleil) : undefined} data-calepinage-options={calepOptionsPourClient} data-track-section="calepinage">
           <p class="tech-label rule-brass cine-in text-brass-300" data-i18n data-fr="Le centre de votre proposition" data-en="At the heart of your proposal" data-ar="جوهر عرضكم">Le centre de votre proposition</p>
           <h2 class="display cine-in cine-in-1 mt-3 text-2xl text-lune sm:text-3xl" data-i18n data-fr="Votre toit en 3D" data-en="Your roof in 3D" data-ar="سطحكم بتقنية ثلاثية الأبعاد">Votre toit en 3D</h2>
           <div class="cine-card cine-in cine-in-2 mt-5 overflow-hidden rounded-2xl p-0 shadow-premium">
@@ -3282,6 +3287,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 </p>
               </div>
             </div>
+            {visionneuseSoleil && <BarreSoleil soleil={visionneuseSoleil} />}
             <p id="roof3d-hint" class="px-5 py-3 text-xs text-lune-faint" hidden data-i18n
               data-fr="Faites glisser pour tourner · pincez ou molette pour zoomer · deux doigts pour déplacer · flèches pour tourner, + / − pour zoomer au clavier."
               data-en="Drag to rotate · pinch or scroll to zoom · two fingers to pan · arrow keys to rotate, + / − to zoom on keyboard."
@@ -8945,9 +8951,11 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
   // Échec WebGL / import → le poster (photo d'étude) reste, avec une note claire.
   import type { RoofLayout, ViewerModel } from '../../lib/proposition';
   import type { RoofImageSpec } from '../../scripts/roofPro11/viewerOnly';
+  import type { VisionneuseSoleil } from '../../lib/visionneuseSoleil';
 
   const section3d = document.getElementById('roof3d');
   const stage = document.getElementById('roof3d-stage');
+  const barreSoleil = document.getElementById('roof3d-soleil');
   const overlay = document.getElementById('roof3d-overlay');
   const startBtn = document.getElementById('roof3d-start') as HTMLButtonElement | null;
   const noteEl = document.getElementById('roof3d-note');
@@ -8963,6 +8971,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     // Le layout PUBLIC brut (parseRoofLayout côté serveur) : il porte le
     // calepinage RÉEL, seule source de la visionneuse PLEINE (le vrai builder).
     let layout: RoofLayout | null = null;
+    let soleil: VisionneuseSoleil | null = null;
     try {
       const parsed = JSON.parse(section3d.dataset.viewerConfig) as {
         model: ViewerModel;
@@ -8976,6 +8985,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       model = null;
       layout = null;
     }
+    try { soleil = section3d.dataset.visionneuseSoleil ? (JSON.parse(section3d.dataset.visionneuseSoleil) as VisionneuseSoleil) : null; } catch { soleil = null; }
 
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const nav = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
@@ -9035,6 +9045,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     });
 
     function showFallback(msg: string): void {
+      if (barreSoleil) barreSoleil.hidden = true;
       if (startBtn) startBtn.hidden = true;
       if (noteEl) noteEl.textContent = msg;
     }
@@ -9074,6 +9085,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               mapboxToken: cfg.mapboxToken,
               reducedMotion: reduced,
               lowEnd: strategy.lowEnd,
+              ...(soleil ? { instant: soleil.ouverture, environnement: soleil.environnement } : {}),
               onReady: () => {
                 if (overlay) overlay.hidden = true;
                 if (hintEl) {
@@ -9091,10 +9103,21 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             });
             if (fullHandle) {
               handle = { dispose: () => fullHandle.destroy() };
+              // LOT 6 — barre au soleil chargée APRÈS la visionneuse ; tout échec la masque et laisse la visionneuse.
+              const courant = handle, s = soleil, barre = barreSoleil;
+              if (s && barre) {
+                barre.hidden = false;
+                import('../../scripts/roofPro11/viewerSoleil').then((m) => {
+                  if (handle !== courant) return; // démontée entre-temps (autre taille choisie)
+                  const debrancher = m.attacherSoleil({ barre, poignee: fullHandle, soleil: s, layout: fullLayout, avecTeinte: fullLayout === layoutRacine, reducedMotion: reduced });
+                  handle = { dispose: () => { debrancher(); courant.dispose(); } };
+                }).catch(() => { barre.hidden = true; });
+              }
               return;
             }
           }
         }
+        if (barreSoleil) barreSoleil.hidden = true; // visionneuse simplifiée : aucun soleil à piloter
         // WJ118 — photo satellite RÉELLE du toit du client (contrat viewerOnly
         // ci-dessus) : TOUT échec (pas de clé MAPTILER/MAPBOX, contour < 3
         // sommets, /api/roof-config en échec, image cassée/trop lente) → null,
