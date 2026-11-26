@@ -185,7 +185,7 @@
       "avertissement": "La part injectée (35 %) dépasse le plafond légal de 20 % de la production annuelle : en MT/HT, l'excédent de revente n'est pas valorisé"
     },
     "injection_motif": null,
-    "avertissements": [{"champ": "puissance_souscrite_kva", "message": "La puissance souscrite saisie (99 999 999 kVA) vaut 10 000 000 fois la puissance des onduleurs (10 kW) : vérifiez la saisie. Elle est gardée."}]
+    "avertissements": [{"champ": "puissance_souscrite_kva", "message": "La puissance souscrite saisie (12 kVA) dépasse 10 fois la puissance des onduleurs (1,1 kW) : vérifiez la saisie. Elle est gardée."}]
   },
   "exemple_vide": {
     "saisie": {

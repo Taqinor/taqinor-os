@@ -90,7 +90,7 @@ class ContratCommitteTest(SimpleTestCase):
         etat = service._composer_etat(1, 2026, enorme, SERVI)
         self.assertEqual(etat['mesures'][0]['kwh_mesure'], p50_janvier * 11)
         self.assertIn('vérifiez', etat['ecarts'][0]['avertissement'])
-        self.assertIn('11 fois', etat['ecarts'][0]['avertissement'])
+        self.assertIn('dépasse 11 fois', etat['ecarts'][0]['avertissement'])
         self.assertTrue(all(ligne['avertissement'] is None for ligne in etat['ecarts'][1:]))
         # Pile dix fois : rien ; sans P50 servi : aucune référence, rien.
         dix = [(1, p50_janvier * 10, '2026-11-21T10:00:00Z')]

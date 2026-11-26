@@ -265,7 +265,7 @@ class AvertissementDixFoisTest(SimpleTestCase):
     def test_99_999_999_kva_face_a_dix_kw_est_signale(self):
         (avert,) = self._avertissements(99999999.0, 10.0)
         self.assertEqual(avert['champ'], 'puissance_souscrite_kva')
-        self.assertIn('10 000 000', avert['message'])
+        self.assertIn('dépasse 9 999 999 fois', avert['message'])  # 9 999 999,9 : jamais arrondi vers le haut
         self.assertIn('99 999 999 kVA', avert['message'])
         self.assertIn('10 kW', avert['message'])
 

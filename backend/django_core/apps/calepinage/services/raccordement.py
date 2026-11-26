@@ -1456,9 +1456,9 @@ def _avertissements_saisie(saisie, puissance_ac_kw):
     if rapport <= FACTEUR_AVERTISSEMENT:
         return []
     return [{'champ': 'puissance_souscrite_kva', 'message': (
-        "La puissance souscrite saisie (%s kVA) vaut %s fois la puissance des "
+        "La puissance souscrite saisie (%s kVA) dépasse %s fois la puissance des "
         "onduleurs (%s kW) : vérifiez la saisie. Elle est gardée."
-        % (_lisible(souscrite), _lisible(round(rapport)), _lisible(puissance_ac_kw)))}]
+        % (_lisible(souscrite), _lisible(math.floor(round(rapport, 6))), _lisible(puissance_ac_kw)))}]
 
 
 def puissances_du_site(conception):

@@ -12,6 +12,7 @@ serveur ; rien du corps de la requête ne désigne l'une ou l'autre.
 from __future__ import annotations
 
 import datetime
+import math
 
 from django.db import transaction
 
@@ -132,9 +133,9 @@ def _avertissement(mesure, p50, mois):
     """Le message sous le champ du mois, ou ``None`` : aucune référence (P50 absent) ⇒ rien."""
     if mesure is None or p50 is None or p50 <= 0 or mesure <= FACTEUR_AVERTISSEMENT * p50:
         return None
-    return ("La mesure du mois %d (%s kWh) vaut %s fois la prévision P50 du mois (%s kWh) : "
+    return ("La mesure du mois %d (%s kWh) dépasse %s fois la prévision P50 du mois (%s kWh) : "
             "vérifiez la saisie. Elle est gardée."
-            % (mois, _lisible(mesure), _lisible(round(mesure / p50)), _lisible(p50)))
+            % (mois, _lisible(mesure), _lisible(math.floor(round(mesure / p50, 6))), _lisible(p50)))
 
 
 def _lisible(valeur):
