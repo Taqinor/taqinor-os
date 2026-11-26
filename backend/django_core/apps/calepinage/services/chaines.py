@@ -44,6 +44,7 @@ from typing import Optional, Tuple
 
 from core.electrique.chaines import CRITERE_CHAINES_INEGALES, concevoir_chaines
 from core.electrique.schema import PALETTE_CHAINES
+from core.electrique.schema_electrique import couleur_de_chaine
 from core.electrique.types import (
     COEFFICIENTS_TEMPERATURE, EntreeElectrique, GroupePan, SpecModule,
     SpecOnduleur, fr, fr_v,
@@ -1116,9 +1117,10 @@ COULEUR_NON_AFFECTE = 'rgb(140, 143, 148)'
 def _colorer(lignes):
     """ACAL285 — ``couleur_chaine`` et ``couleur_mppt`` sur chaque ligne.
 
-    Ordre de PREMIÈRE APPARITION du groupe dans la table (celui de la légende
-    du plan de câblage) ; appliqué APRÈS l'affectation manuelle. Déterministe :
-    aucun ensemble non ordonné.
+    S3 : la couleur d'une CHAÎNE est liée à son NUMÉRO (``couleur_de_chaine``),
+    jamais à l'ordre des modules : un recâblage manuel ne la change pas. Les
+    entrées MPPT gardent l'ordre de PREMIÈRE APPARITION. Appliqué APRÈS
+    l'affectation manuelle. Déterministe : aucun ensemble non ordonné.
     """
     par_chaine, par_mppt = {}, {}
     for ligne in lignes:
@@ -1127,8 +1129,7 @@ def _colorer(lignes):
             ligne['couleur_chaine'] = COULEUR_NON_AFFECTE
         else:
             if chaine not in par_chaine:
-                par_chaine[chaine] = PALETTE_CHAINES[
-                    len(par_chaine) % len(PALETTE_CHAINES)]
+                par_chaine[chaine] = couleur_de_chaine(chaine)
             ligne['couleur_chaine'] = par_chaine[chaine]
         if chaine is None or ligne.get('mppt') is None:
             ligne['couleur_mppt'] = COULEUR_NON_AFFECTE

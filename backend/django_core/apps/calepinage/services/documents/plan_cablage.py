@@ -59,6 +59,8 @@ import re
 import textwrap
 from html import escape
 
+from core.electrique.schema_electrique import couleur_de_chaine
+
 from ..planche import PlancheRefusee
 from ..tensions_chaines import chaines_servies
 from ..chaines import COULEUR_NON_AFFECTE, PALETTE_CHAINES
@@ -201,7 +203,7 @@ def _plan_de_cablage(roof_layout, affectation):
             "Électrique), puis redemandez le plan.",
             champ=CHAMP_CHAINAGE)
 
-    # Couleurs : ordre de PREMIÈRE APPARITION dans la table, comme l'écran.
+    # Couleurs : liées au NUMÉRO de chaîne (S3), comme l'écran ; la légende garde l'ordre d'apparition.
     couleurs, legende = {}, []
     par_chaine = {}
     rangs = {}
@@ -210,8 +212,7 @@ def _plan_de_cablage(roof_layout, affectation):
         if chaine is None:
             continue
         if chaine not in couleurs:
-            couleurs[chaine] = PALETTE_CHAINES[
-                len(couleurs) % len(PALETTE_CHAINES)]
+            couleurs[chaine] = couleur_de_chaine(chaine)
             entree = {'chaine': chaine, 'couleur': couleurs[chaine],
                       'modules': 0, 'entrees': [], 'manuels': 0}
             par_chaine[chaine] = entree

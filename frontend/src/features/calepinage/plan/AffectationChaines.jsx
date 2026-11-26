@@ -61,13 +61,13 @@ function causeSansChaine(absents) {
    serveur affichés tels quels) ; « Modifier une chaîne » ouvre l'écran d'affectation (`onModifier`).
    « Déplacer l'onduleur » n'est PAS proposé : aucune position d'onduleur n'est enregistrée (D-ACAL-70). */
 export function BarreRaccordement({
-  calepinageId, manuelles = false, lectureSeule = false, onRaccorde, onModifier,
+  calepinageId, manuelles = false, nonEnregistre = false, lectureSeule = false, onRaccorde, onModifier,
 }) {
   const [arme, setArme] = useState(false)
   const [enCours, setEnCours] = useState(false)
   const [refus, setRefus] = useState(null)
   const raccorder = () => {
-    if (manuelles && !arme) { setArme(true); return }
+    if ((manuelles || nonEnregistre) && !arme) { setArme(true); return }
     setArme(false)
     setRefus(null)
     setEnCours(true)
@@ -101,14 +101,20 @@ export function BarreRaccordement({
     <div className="cel-barre" data-testid="cal-elec-actions-carte">
       {(arme || refus) && (
         <div className="cel-barre-message" role={refus ? 'alert' : 'status'}>
-          {arme && <p>L’affectation faite à la main sera effacée. Confirmez pour continuer.</p>}
+          {arme && (
+            <p>
+              {nonEnregistre
+                ? `Vos modifications non enregistrées seront perdues${manuelles ? ' et l’affectation faite à la main sera effacée' : ''}. Confirmez pour continuer.`
+                : 'L’affectation faite à la main sera effacée. Confirmez pour continuer.'}
+            </p>
+          )}
           {(refus ?? []).map((m) => <p key={m} className="cel-refus font-semibold">{m}</p>)}
         </div>
       )}
       <div role="toolbar" aria-label="Outils du raccordement" className="cel-barre-outils">
         <button type="button" className="cel-barre-principal" onClick={raccorder}
           disabled={lectureSeule || enCours} title={lectureSeule ? MOTIF_LECTURE_SEULE : undefined}>
-          {arme ? 'Confirmer : effacer l’affectation manuelle' : 'Raccorder automatiquement'}
+          {arme ? (nonEnregistre && !manuelles ? 'Confirmer : perdre mes modifications' : 'Confirmer : effacer l’affectation manuelle') : 'Raccorder automatiquement'}
         </button>
         <button type="button" className="cel-barre-texte" onClick={onModifier}>Modifier une chaîne</button>
       </div>
@@ -155,7 +161,7 @@ function numeroSaisi(texte) {
   return Number.isInteger(n) && n > 0 ? n : undefined
 }
 
-export default function AffectationChaines({ calepinageId, lectureSeule = false }) {
+export default function AffectationChaines({ calepinageId, lectureSeule = false, onModifie = null }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
@@ -192,6 +198,13 @@ export default function AffectationChaines({ calepinageId, lectureSeule = false 
      le geste nommé « Retirer l'affectation obsolète <module> ». */
   const [stockees, setStockees] = useState(() => new Map())
   const [retirees, setRetirees] = useState(() => new Set())
+  /* S3 — dit à l'étape si l'éditeur porte des modifications NON enregistrées : « Raccorder automatiquement » (barre
+     de la carte) remonte l'éditeur, elles seraient perdues sans avertissement. */
+  const nonEnregistre = editions.size > 0 || retirees.size > 0
+  useEffect(() => {
+    onModifie?.(nonEnregistre)
+    return () => onModifie?.(false)
+  }, [nonEnregistre, onModifie])
 
   const glisse = useRef(false)
 

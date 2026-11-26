@@ -1015,6 +1015,67 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(await within(carte).findByText('Aucun onduleur désigné : chaînage impossible.')).toBeTruthy()
   })
 
+  it('S3 — « Raccorder automatiquement » lancé depuis l’éditeur d’affectation le rafraîchit (plus d’ancien état jusqu’au rechargement)', async () => {
+    const avant = resultat()
+    const apres = resultat()
+    apres.electrique.affectation.forEach((l) => { if (l.chaine != null) l.chaine = 3 })
+    let reclame = false
+    servirEtape({ r: avant })
+    calepinageApi.calepinages.resultat.mockImplementation(() => Promise.resolve({ data: reclame ? apres : avant }))
+    calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({ data: { modules_sous_seuil: [] } })
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockImplementation(() => {
+      reclame = true
+      return Promise.resolve({ data: apres })
+    })
+    const carte = rendreEtape()
+    fireEvent.click(await within(carte).findByRole('button', { name: 'Modifier une chaîne' }))
+    const legende = await screen.findByTestId('cal234-legende')
+    await waitFor(() => expect(legende).toHaveTextContent('Chaîne 1'))
+    fireEvent.click(within(carte).getByRole('button', { name: 'Raccorder automatiquement' }))
+    await waitFor(() => expect(screen.getByTestId('cal234-legende')).toHaveTextContent('Chaîne 3'))
+    expect(screen.getByTestId('cal234-legende')).not.toHaveTextContent('Chaîne 1')
+  })
+
+  describe('S3 — « Raccorder automatiquement » depuis l’éditeur : brouillon non enregistré', () => {
+    const ouvrirEditeur = async () => {
+      servirEtape()
+      calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({ data: { modules_sous_seuil: [] } })
+      calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: resultat() })
+      const carte = rendreEtape()
+      fireEvent.click(await within(carte).findByRole('button', { name: 'Modifier une chaîne' }))
+      await screen.findByTestId('cal234-ecran')
+      return carte
+    }
+    const salirLEditeur = () => {
+      fireEvent.pointerDown(screen.getByTestId('cal234-module-z2#3'))
+      fireEvent.pointerUp(screen.getByTestId('cal234-module-z2#3'))
+      fireEvent.change(screen.getByTestId('cal234-champ-chaine'), { target: { value: '2' } })
+      fireEvent.change(screen.getByTestId('cal234-champ-mppt'), { target: { value: '2' } })
+      fireEvent.change(screen.getByTestId('cal234-champ-onduleur'), { target: { value: '1' } })
+      fireEvent.click(screen.getByTestId('cal234-affecter'))
+    }
+
+    it('éditeur propre, aucune ligne manuelle enregistrée : aucune confirmation, l’envoi part (comme avant)', async () => {
+      const carte = await ouvrirEditeur()
+      fireEvent.click(within(carte).getByRole('button', { name: 'Raccorder automatiquement' }))
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique).toHaveBeenCalled())
+      expect(within(carte).queryByText(/Confirmez pour continuer/)).toBeNull()
+    })
+
+    it('éditeur avec brouillon : la barre demande confirmation, rien n’est envoyé ; confirmer envoie puis relit', async () => {
+      const carte = await ouvrirEditeur()
+      salirLEditeur()
+      expect(await screen.findByTestId('cal234-enregistrer')).not.toBeDisabled()
+      const lectures = calepinageApi.calepinages.resultat.mock.calls.length
+      fireEvent.click(within(carte).getByRole('button', { name: 'Raccorder automatiquement' }))
+      expect(await within(carte).findByText(/modifications non enregistrées seront perdues/)).toBeTruthy()
+      expect(calepinageApi.calepinages.enregistrerEntreeElectrique).not.toHaveBeenCalled()
+      fireEvent.click(within(carte).getByRole('button', { name: 'Confirmer : perdre mes modifications' }))
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(calepinageApi.calepinages.resultat.mock.calls.length).toBeGreaterThan(lectures))
+    })
+  })
+
   it('« Modifier une chaîne » ouvre l’écran d’affectation existant dans le panneau, avec un retour', async () => {
     servirEtape()
     calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({ data: { modules_sous_seuil: [] } })

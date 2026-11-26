@@ -27,6 +27,7 @@ couleurs que l'écran du calepinage.
 """
 
 import math
+import re
 from html import escape
 
 from core.electrique.schema import (
@@ -38,7 +39,7 @@ __all__ = [
     "VERSION_DOCUMENT", "SOURCE_CALEPINAGE", "SOURCE_CONCEPTION_DEVIS",
     "SOURCE_LIGNES_DEVIS", "SOURCES", "OPTION_SANS", "OPTION_AVEC", "OPTIONS",
     "ETAT_CALCULE", "ETAT_A_CALCULER", "ETAT_HORS_RESEAU", "CLES_DOCUMENT",
-    "chaines_colorees", "chaines_du_resultat", "troncons_du_resultat",
+    "couleur_de_chaine", "chaines_colorees", "chaines_du_resultat", "troncons_du_resultat",
     "document_schema_electrique", "document_sans_repartition",
     "rendre_schema_electrique_svg",
 ]
@@ -114,14 +115,22 @@ def _texte(valeur):
 
 
 # ──────────────────────────────────────────────────────────────── chaînes
+def couleur_de_chaine(numero):
+    """S3 — LA couleur d'une chaîne, liée à son NUMÉRO (jamais à son rang d'apparition) : la chaîne 1 est
+    toujours la première teinte de ``PALETTE_CHAINES``, la 2 la deuxième, etc. (modulo la palette). Source
+    unique : la table d'affectation servie, son éditeur, le schéma, sa légende, le PDF et le plan de câblage
+    la lisent ; un recâblage manuel qui change l'ordre des modules ne change plus aucune couleur."""
+    return PALETTE_CHAINES[(int(numero) - 1) % len(PALETTE_CHAINES)]
+
+
 def chaines_colorees(chaines):
     """Les chaînes servies : une entrée par chaîne, rangée par ``numero``.
 
     ``chaines`` : ``[{numero, nb_panneaux, onduleur, entree}, …]`` dans l'ordre
     de PREMIÈRE APPARITION (celui de la table d'affectation du calepinage, ou
-    celui du moteur). ``couleur_index`` = ce rang modulo la palette ;
-    ``couleur`` = ``PALETTE_CHAINES[couleur_index]`` — la règle de
-    ``apps/calepinage/services/chaines.py::_colorer``, appliquée UNE fois ici.
+    celui du moteur). ``couleur_index`` = (numéro − 1) modulo la palette ;
+    ``couleur`` = ``couleur_de_chaine(numero)`` — la règle de
+    ``apps/calepinage/services/chaines.py::_colorer``, liée au NUMÉRO.
     Deux entrées du même numéro s'additionnent ; une chaîne sans numéro ni
     panneau n'est pas une chaîne et n'est pas servie.
     """
@@ -134,11 +143,11 @@ def chaines_colorees(chaines):
         if numero in par_numero:
             par_numero[numero]["nb_panneaux"] += nombre
             continue
-        index = len(par_numero) % len(PALETTE_CHAINES)
+        index = (numero - 1) % len(PALETTE_CHAINES)
         par_numero[numero] = {
             "numero": numero,
             "couleur_index": index,
-            "couleur": PALETTE_CHAINES[index],
+            "couleur": couleur_de_chaine(numero),
             "nb_panneaux": nombre,
             "onduleur": _entier_positif(chaine.get("onduleur")),
             "entree": _entier_positif(chaine.get("entree")),
@@ -621,7 +630,7 @@ def _carte_onduleur(doc, y, h, langue):
     if onduleur.get("nombre") and onduleur["nombre"] > 1:
         lignes.append("%d ×" % onduleur["nombre"])
     if onduleur.get("designation"):
-        lignes.append(onduleur["designation"][:30])
+        lignes.extend(_couper(_designation_affichee(onduleur["designation"]), 24, 3))
     if onduleur.get("nb_entrees"):
         lignes.append(_texte_entrees(onduleur["nb_entrees"], langue))
     for rang, ligne in enumerate(lignes):
@@ -638,7 +647,7 @@ def _carte_batterie(batterie, y, langue):
                 _t(x + 10.0, y + 20.0, _libelle("batterie", langue), 11.0, "700")]
     lignes = []
     if batterie.get("designation"):
-        lignes.append(batterie["designation"][:30])
+        lignes.extend(_couper(_designation_affichee(batterie["designation"]), 30, 2))
     if batterie.get("unites"):
         lignes.append("%d %s" % (batterie["unites"], _libelle(
             "unites" if batterie["unites"] > 1 else "unite", langue)))
@@ -730,19 +739,54 @@ def _blocs_ac(doc, langue):
     return blocs
 
 
+#: Les unités qu'un nombre ne quitte jamais en fin de ligne (« 400 V », « 20 kA », « 1,5 kV »).
+_UNITES = r"kWh|kWc|kW|kVA|kV|kA|Wc|Wh|Ah|mA|mm²|mm2|m²|Hz|°C|V|A|W|m|%"
+_NOMBRE_UNITE = re.compile(r"(\d(?:[\d.,]*\d)?)[ \t]+((?:%s)(?![\w²]))" % _UNITES)
+_BLANCS = re.compile(r"[ \t\r\n]+")
+_INSECABLE = "\u00a0"
+
+
+def _mots(texte):
+    """Les mots d'un texte, une valeur et son unité formant UN seul mot (espace insécable)."""
+    joint = _NOMBRE_UNITE.sub("\\1" + _INSECABLE + "\\2", str(texte or ""))
+    return [mot for mot in _BLANCS.split(joint.strip()) if mot]
+
+
+def _designation_affichee(designation):
+    """La désignation SANS marque répétée : « Deye Onduleur hybride Deye 20kW » (marque + nom du
+    catalogue, qui contient déjà la marque) s'écrit « Onduleur hybride Deye 20kW ». Affichage seul :
+    la désignation servie et ses empreintes ne bougent pas."""
+    mots = str(designation or "").split()
+    if len(mots) > 2 and len(mots[0]) >= 3 and mots[0].casefold() in (
+            m.casefold() for m in mots[1:]):
+        mots = mots[1:]
+    return " ".join(mots)
+
+
 def _couper(texte, largeur, lignes):
-    """Mots entiers sur ``lignes`` lignes d'au plus ``largeur`` signes (… au
-    bout, comme ``couperTexte`` de l'écran) — un texte, jamais un chiffre."""
+    """Mots entiers sur ``lignes`` lignes d'au plus ``largeur`` signes. Une valeur ne quitte jamais son
+    unité ; trop long, le texte finit par « … » posé à une FRONTIÈRE de mot (jamais au milieu d'un mot) —
+    un texte, jamais un chiffre."""
     sortie = []
-    for mot in str(texte or "").split():
+    morceaux = []
+    for mot in _mots(texte):
+        # Un mot seul plus long que la ligne (code de modèle) est coupé à la largeur de la ligne.
+        while largeur > 0 and len(mot) > largeur:
+            morceaux.append(mot[:largeur])
+            mot = mot[largeur:]
+        morceaux.append(mot)
+    for mot in morceaux:
         if sortie and len(sortie[-1]) + 1 + len(mot) <= largeur:
             sortie[-1] += " " + mot
         else:
             sortie.append(mot)
     if len(sortie) > lignes:
         sortie = sortie[:lignes]
-        sortie[-1] = sortie[-1][:max(1, largeur - 1)] + "…"
-    return sortie
+        derniers = sortie[-1].split(" ")
+        while len(derniers) > 1 and len(" ".join(derniers)) + 1 > largeur:
+            derniers.pop()
+        sortie[-1] = " ".join(derniers) + "…"
+    return [ligne.replace(_INSECABLE, " ") for ligne in sortie]
 
 
 def _largeurs_ac(blocs):

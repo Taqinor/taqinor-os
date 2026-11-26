@@ -819,13 +819,14 @@ class LeDocumentSchemaElectrique(unittest.TestCase):
         self.assertEqual([c["couleur_index"] for c in doc["chaines"]], [0, 1, 2, 3])
         self.assertTrue(doc["chaines_reparties"])
 
-    def test_la_couleur_suit_la_premiere_apparition_puis_le_numero_range(self):
+    def test_la_couleur_suit_le_numero_jamais_l_ordre_d_apparition(self):
+        # S3 : la chaîne 1 reste la première teinte même quand la chaîne 3 apparaît d'abord (recâblage manuel).
         from core.electrique.schema_electrique import chaines_colorees
         chaines = chaines_colorees([{"numero": 3, "nb_panneaux": 5},
                                     {"numero": 1, "nb_panneaux": 4},
                                     {"numero": 3, "nb_panneaux": 1}])
         self.assertEqual([(c["numero"], c["couleur_index"], c["nb_panneaux"])
-                          for c in chaines], [(1, 1, 4), (3, 0, 6)])
+                          for c in chaines], [(1, 0, 4), (3, 2, 6)])
 
     def test_avec_batterie_et_sans_batterie(self):
         avec = self._doc(unites_batterie=2)
@@ -940,6 +941,31 @@ class LeDessinDuSchemaElectrique(unittest.TestCase):
     def _chaines(self, n):
         return [{"numero": k, "nb_panneaux": 12, "onduleur": 1, "entree": 1 + k % 2}
                 for k in range(1, n + 1)]
+
+    def test_s3_une_valeur_ne_quitte_jamais_son_unite_et_l_ellipse_tombe_sur_un_mot(self):
+        from core.electrique.schema_electrique import (
+            _couper, _designation_affichee, document_schema_electrique, rendre_schema_electrique_svg)
+        self.assertEqual(_couper("3P + N + T · 400 V", 16, 3), ["3P + N + T ·", "400 V"])
+        self.assertEqual(_couper("SUN2000-100KTL-M2-ABCDEFGH", 10, 3), ["SUN2000-10", "0KTL-M2-AB", "CDEFGH"])
+        self.assertEqual(_couper("Parafoudre In 20 kA, Up ≤ 1,5 kV", 22, 2), ["Parafoudre In 20 kA,", "Up ≤ 1,5 kV"])
+        for ligne in _couper("Parafoudre In 20 kA, Up ≤ 1,5 kV", 14, 3):
+            self.assertNotRegex(ligne, r"^(kV|kA|V|A)\b")
+        long = "Onduleur hybride très long designation supercalifragilistic extra"
+        coupe = _couper(long, 20, 2)
+        self.assertEqual(coupe, ["Onduleur hybride", "très long…"])
+        self.assertTrue(all(len(ligne) <= 21 for ligne in coupe))
+        # Marque répétée : « Deye » + « Onduleur hybride Deye 20kW » du catalogue.
+        self.assertEqual(_designation_affichee("Deye Onduleur hybride Deye 20kW Triphasé"),
+                         "Onduleur hybride Deye 20kW Triphasé")
+        self.assertEqual(_designation_affichee("Deye SUN-10K-SG05LP3"), "Deye SUN-10K-SG05LP3")
+        # Rendu : la désignation du bloc onduleur n'est coupée qu'entre deux mots, jamais au milieu.
+        entree = _triphase_deux_pans()
+        doc = document_schema_electrique(entree, concevoir(entree))
+        doc["onduleurs"][0]["designation"] = "Deye Onduleur hybride Deye 20kW Triphasé"
+        textes = _textes(rendre_schema_electrique_svg(doc, "fr"))
+        self.assertIn("Onduleur hybride Deye", textes)
+        self.assertFalse([t for t in textes if t.startswith("Deye Onduleur")])
+        self.assertFalse([t for t in textes if t in ("kV", "kA", "V")])
 
     def test_hauteur_bornee_et_suite_aux_vrais_totaux(self):
         """SCHEL-B4 (revue) — 8, 16 ou 30 chaînes : la planche de l'annexe garde

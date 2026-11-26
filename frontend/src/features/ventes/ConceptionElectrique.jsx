@@ -207,7 +207,13 @@ export default function ConceptionElectrique({ devisId }) {
       {/* Résumé de conformité */}
       <div className="space-y-1.5">
         <div className="flex flex-wrap items-center gap-2">
-          {conformite.conforme ? (
+          {conformite.conforme && conformite.alertes.length > 0 ? (
+            /* « Conforme » = aucun bloquant, mais les alertes servies sont réelles : le badge ne dit pas « tout va bien ». */
+            <Badge tone="warning" data-testid="conception-conformite-badge">
+              <AlertTriangle className="size-3" aria-hidden="true" />
+              {`Conforme · ${conformite.alertes.length} ${conformite.alertes.length > 1 ? 'points' : 'point'} à regarder`}
+            </Badge>
+          ) : conformite.conforme ? (
             <Badge tone="success" data-testid="conception-conformite-badge">
               <Check className="size-3" aria-hidden="true" />
               Conforme

@@ -25,6 +25,7 @@ Run :
 from __future__ import annotations
 
 import io
+import re
 
 from django.test import SimpleTestCase, tag
 
@@ -551,4 +552,13 @@ class SchemaPdfRevueTest(SimpleTestCase):
         total = e._CARTOUCHE_MM + e._DESSIN_MM
         self.assertLess(total, e._FEUILLE_HAUTEUR_MM)
         self.assertGreaterEqual(e._FEUILLE_HAUTEUR_MM - total, 5)
-        self.assertIn('height:%dmm;}' % e._DESSIN_MM, e._STYLE_PDF)
+        # S3 — le dessin garde SA proportion (plus de boîte fixe qui le centrait avec une bande vide en haut) :
+        # large, il prend la pleine largeur et colle au cartouche ; haut, sa hauteur ne dépasse jamais la place.
+        for viewbox in ('0 0 1040 520', '0 0 1040 1400', '0 0 1040 380'):
+            style = e._style_du_dessin('<svg viewBox="%s">' % viewbox)
+            largeur, hauteur = [float(v) for v in re.findall(r'(?:width|height):([\d.]+)mm', style)]
+            self.assertLessEqual(largeur, e._FEUILLE_LARGEUR_MM)
+            self.assertLessEqual(hauteur, e._DESSIN_MM)
+            self.assertAlmostEqual(largeur / hauteur, 1040 / float(viewbox.split()[-1]), places=2)
+        self.assertIn('width:420.0mm', e._style_du_dessin('<svg viewBox="0 0 1040 520">'))
+        self.assertEqual(e._style_du_dessin('<svg>'), 'svg{width:100%;}')
