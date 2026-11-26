@@ -318,3 +318,79 @@ class GabaritNeutreTest(SimpleTestCase):
         for protection in resultat.protections:
             if protection.calibre:
                 self.assertNotIn(protection.calibre, textes)
+
+
+class SchemaPdfTest(SimpleTestCase):
+    """ACAL1507 — le MÊME schéma, en PDF A3 : onduleur, coffrets, terre.
+
+    ``render_pdf`` est remplacé (WeasyPrint n'existe pas sur ce poste) : on
+    juge le HTML A3 qui lui est remis — celui que le PDF réel mettrait en page.
+    """
+
+    def _html_rendu(self, cartouche=None):
+        from unittest import mock
+
+        from core.electrique.schema_electrique import document_schema_electrique
+
+        from apps.calepinage.services.sld_export import exporter_sld_pdf
+
+        entree = _entree()
+        document = document_schema_electrique(entree, concevoir(entree))
+        capte = {}
+
+        def _faux_pdf(html=None, **_options):
+            capte['html'] = html
+            return b'%PDF-faux'
+
+        with mock.patch('core.pdf.render_pdf', _faux_pdf):
+            octets = exporter_sld_pdf(object(), document=document,
+                                      cartouche=cartouche)
+        self.assertEqual(octets, b'%PDF-faux')
+        return capte['html']
+
+    def test_le_pdf_porte_l_onduleur_les_coffrets_et_la_terre(self):
+        html = self._html_rendu({'client': 'Mme <Alami>',
+                                 'reference': 'Villa 1',
+                                 'date': '23/11/2026'})
+        self.assertIn('@page{size:A3 landscape', html)
+        self.assertIn('data-schema="electrique"', html)
+        self.assertIn('Deye SUN-10K-SG05LP3', html)
+        self.assertIn('Client : Mme &lt;Alami&gt;', html)
+        self.assertIn('Référence : Villa 1', html)
+        self.assertNotIn('plan de câblage', html.lower())
+
+    def test_un_document_sans_onduleur_ne_produit_aucun_fichier(self):
+        from apps.calepinage.services.sld_export import exporter_sld_pdf
+
+        with self.assertRaises(SldRefuse) as refus:
+            exporter_sld_pdf(object(), document={'onduleurs': []})
+        self.assertEqual(refus.exception.champ, 'onduleur')
+
+    def test_une_conception_incomplete_ne_produit_aucun_pdf(self):
+        from apps.calepinage.services import electrique as _electrique
+        from apps.calepinage.services.sld_export import exporter_sld_pdf
+
+        original = _electrique.conception_du_calepinage
+        _electrique.conception_du_calepinage = (
+            lambda _c, **_o: (_ConceptionMuette(), {}, {}, None))
+        try:
+            with self.assertRaises(SldRefuse) as refus:
+                exporter_sld_pdf(object())
+        finally:
+            _electrique.conception_du_calepinage = original
+        self.assertEqual(refus.exception.champ, 'onduleur')
+        self.assertIn('Aucun fichier', str(refus.exception))
+
+    def test_la_route_pdf_existe_en_lecture(self):
+        from django.urls import reverse
+
+        from apps.calepinage.permissions import PeutVoirCalepinage
+        from apps.calepinage.views.schema import SchemaUnifilaireMixin
+
+        self.assertEqual(
+            reverse('calepinage-schema-unifilaire-pdf', args=('1',)),
+            '/api/django/calepinage/calepinages/1/schema-unifilaire.pdf/')
+        self.assertIn(
+            PeutVoirCalepinage,
+            SchemaUnifilaireMixin.schema_unifilaire_pdf
+            .kwargs['permission_classes'])
