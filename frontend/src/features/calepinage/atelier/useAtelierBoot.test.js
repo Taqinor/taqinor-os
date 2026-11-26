@@ -9,6 +9,8 @@ import {
   cadrerToitAtelier, ZOOM_MAX_CADRAGE_ATELIER, hauteurCouverteParTiroir,
   useAtelierBoot, imageryDesReglages, // ACAL1421
 } from './useAtelierBoot'
+import { reglagesAtelierDesParametres } from './contexteAtelier' // ACAL1754
+import { resolveImageryProvider } from '@rooflib/roofConfig' // ACAL1754 — le résolveur de la carte, lu tel quel
 
 // ACAL1421 — le boot réel du hook, réseau et constructeur doublés (les charges servies viennent des contrats).
 const { initRoofToolPro8 } = vi.hoisted(() => ({ initRoofToolPro8: vi.fn() }))
@@ -83,6 +85,25 @@ describe('ACAL1421 — `imagery` passé à initRoofToolPro8', () => {
     expect(imageryDesReglages({ pays: null })).toBeUndefined()
     expect(imageryDesReglages({ pays: '' })).toBeUndefined()
     expect(imageryDesReglages({ pays: 'fr' })).toEqual({ pays: 'fr' })
+  })
+
+  // ACAL1754 — le fournisseur CHOISI par la société passe à la carte (avec les fournisseurs admis et la mention
+  // légale saisie) : la carte prend le sien, pas le premier disponible. Mutant : ne passer que `pays` ⇒ maptiler.
+  it('le fournisseur choisi, les fournisseurs admis et l’attribution passent ; la carte prend le choisi', () => {
+    const section = exempleContrat('calepinage', 'site_imagerie').imagerie
+    const reglages = reglagesAtelierDesParametres({ imagerie: section })
+    expect(imageryDesReglages(reglages)).toEqual({
+      pays: section.pays,
+      fournisseur_imagerie: section.fournisseur_imagerie,
+      fournisseurs_autorises: section.fournisseurs_autorises,
+      attribution: section.attribution,
+    })
+    const choisiMapbox = reglagesAtelierDesParametres({ imagerie: { pays: 'ma', fournisseur_imagerie: 'mapbox', fournisseurs_autorises: [] } })
+    const fournisseur = resolveImageryProvider(imageryDesReglages(choisiMapbox), { maptilerKey: 'K', mapboxToken: 'T' })
+    expect(fournisseur?.id).toBe('mapbox')
+    // Section déclarée sans valeur : aucun contexte (comportement historique).
+    const vide = exempleContrat('calepinage', 'site_imagerie', 'exemple_section_declaree_sans_valeur').imagerie
+    expect(imageryDesReglages(reglagesAtelierDesParametres({ imagerie: vide }))).toBeUndefined()
   })
 })
 
