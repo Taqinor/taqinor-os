@@ -36,17 +36,38 @@ function usePublierHauteurAlertes(ref) {
   }, [ref])
 }
 
+/* ACAL1733 — « En savoir plus » n'est offert que s'il y a quelque chose à déplier : une seconde alerte (repliée
+   par 50-coque-atelier.css) ou un texte tronqué à une ligne. Avant : un bouton fixe qui ne dépliait rien. */
+function useADeplier(ref) {
+  const [aDeplier, setADeplier] = useState(true) // comme avant tant que rien n'est mesuré
+  useEffect(() => {
+    const contenu = ref.current?.querySelector('.cal-coque-alertes-contenu')
+    if (!contenu) return undefined
+    const mesurer = () => setADeplier(
+      [...contenu.children].filter((e) => !e.classList.contains('sr-only')).length > 1
+      || [...contenu.querySelectorAll('p')].some((p) => p.scrollWidth > p.clientWidth + 1))
+    mesurer()
+    const obs = typeof ResizeObserver === 'function' ? new ResizeObserver(mesurer) : null
+    obs?.observe(contenu)
+    return () => obs?.disconnect()
+  })
+  return aDeplier
+}
+
 export function BandeauAlertes({ children, cache = false }) {
   const [deplie, setDeplie] = useState(false)
   const bande = useRef(null)
   usePublierHauteurAlertes(bande)
+  const aDeplier = useADeplier(bande)
   return (
     <div ref={bande} className="cal-coque-alertes" data-deplie={deplie ? '1' : '0'} hidden={cache || undefined}>
       <div className="cal-coque-alertes-contenu">{children}</div>
-      <button type="button" className="cal-coque-alertes-plus" aria-expanded={deplie}
-        onClick={() => setDeplie((d) => !d)}>
-        {deplie ? 'Réduire' : 'En savoir plus'}
-      </button>
+      {(aDeplier || deplie) && (
+        <button type="button" className="cal-coque-alertes-plus" aria-expanded={deplie}
+          onClick={() => setDeplie((d) => !d)}>
+          {deplie ? 'Réduire' : 'En savoir plus'}
+        </button>
+      )}
     </div>
   )
 }

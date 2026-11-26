@@ -182,7 +182,7 @@ export function libelleCibleEstimee(cible, { sansLead = false } = {}) {
   if (!Number.isFinite(n) || n <= 0) return null
   const origine = cible.source === 'lead'
     ? 'la taille souhaitée du lead' : 'les factures du lead'
-  return `Cible estimée depuis ${origine} : ${n} panneaux (non vendue)`
+  return `Cible estimée depuis ${origine} : ${n} panneaux (estimation)` // ACAL1733 — « (non vendue) » ne s'expliquait pas
 }
 
 // R2-15 / R2-01 (décision Q1, 22/11) — « Le lead déclare : tuiles · pente 25° · sud-ouest · ombrage partiel
