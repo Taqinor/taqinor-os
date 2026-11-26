@@ -186,6 +186,7 @@ retiré plus un hook ajouté.
 | `cal-fiche-nom-enregistrer` | fiche nom enregistrer. |
 | `cal-fiche-nom-erreur` | fiche nom message d'erreur. |
 | `cal-fiche-restaurer` | fiche restaurer. |
+| `cal-fiche-responsable-sans-acces` | fiche — le responsable ne peut pas ouvrir ce calepinage (donnée d'avant le lot 8, T4-X3-016). |
 | `cal-fiche-custom-data-saisie` | fiche — saisie des champs personnalisés du calepinage (ACAL294). |
 | `cal-fiche-custom-data-enregistrer` | fiche — bouton d'enregistrement des champs personnalisés (ACAL294). |
 | `cal-fiche-custom_data-erreur` | fiche — refus `custom_data` du serveur, sous la saisie (ACAL294). |

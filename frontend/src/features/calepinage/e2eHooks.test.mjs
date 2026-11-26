@@ -161,6 +161,7 @@ export const ALL_HOOKS = [
   'cal-fiche-nom-enregistrer',
   'cal-fiche-nom-erreur',
   'cal-fiche-restaurer',
+  'cal-fiche-responsable-sans-acces',
   'cal-fiche-custom-data-saisie',
   'cal-fiche-custom-data-enregistrer',
   'cal-fiche-custom_data-erreur',
