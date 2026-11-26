@@ -35,7 +35,7 @@ export default function PanneauSucces({ succes, navigate }) {
           </div>
           {/* AGQ25 — rendu UNIQUE du journal, partagé avec la fiche lead ;
               ALEA51 — en avertissement sous la phrase de succès. */}
-          <AlertesDevisAuto alertes={succes.alertes} />
+          <AlertesDevisAuto alertes={succes.alertes} titre={succes.titreAlertes} />
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
             <Button
               onClick={() => navigate(`/ventes/devis?devis=${succes.id}&envoyer=1`)}

@@ -288,6 +288,17 @@ export function optionsDepuisComparaison(devisData) {
 }
 
 /**
+ * T4-X6-008 — le titre des `alertes` de l'ENREGISTREMENT d'une édition
+ * (réponse de replace-lines : chaque quantité que le serveur a réécrite ou
+ * gardée) : « 2 ajustements à l'enregistrement : ». Aucun ajustement : null.
+ */
+export function titreAjustementsEnregistrement(alertes) {
+  const n = Array.isArray(alertes) ? alertes.length : 0
+  if (!n) return null
+  return `${n} ajustement${n > 1 ? 's' : ''} à l’enregistrement :`
+}
+
+/**
  * ALEA51 — la phrase du bandeau de SUCCÈS après un devis automatique :
  * « DEV-… · 65 kWc · 212 100 MAD TTC · économie ≈ 102 000 MAD/an · retour ≈
  * 4,2 ans · 3 postes à chiffrer après la visite ». Chaque morceau vient de la

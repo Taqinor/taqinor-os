@@ -22,6 +22,7 @@ import { erreursBaseLegaleServeur, lignesServeurVersEcran, lignesEnvoyees, ligne
 import { useRef, useState } from 'react'
 import { todayLocalIso } from '../../../../lib/dateLocale.js'
 import { withKeys } from '../ligneFabrique.js'
+import { titreAjustementsEnregistrement } from '../../autoQuote'
 
 // AGNR33 — les champs d'en-tête dont un refus 400 se lit sous le champ.
 // ERR-AGNR40-IDEMPOTENCE-EN-VOL — reprise d'une création encore en vol côté
@@ -499,7 +500,11 @@ export function usePersistanceDevis(ctx) {
         armerJeton(reponse?.data?.updated_at)
         setConflitVerrou(null)
         devisId = editDevis.id
-        devisCree = { reference: editDevis.reference }
+        // T4-X6-008 — ce que le serveur a ajusté en enregistrant (quantités
+        // réécrites, saisies gardées) : dit tout de suite, jamais en silence.
+        const alertes = Array.isArray(reponse?.data?.alertes) ? reponse.data.alertes : []
+        devisCree = { reference: editDevis.reference, alertes,
+                      titreAlertes: titreAjustementsEnregistrement(alertes) }
       } else {
         // QX21 — CRÉATION ATOMIQUE : devis + lignes en UN commit serveur → plus
         // de brouillon orphelin/partiel si la connexion est coupée en cours de
@@ -774,6 +779,9 @@ export function usePersistanceDevis(ctx) {
       setEditDevis(d => (d && jetonRef.current ? { ...d, updated_at: jetonRef.current } : d))
       setVersionHistorique(n => n + 1)
       toast.success('Modifications enregistrées.')
+      if (res.devisCree?.alertes?.length) {
+        toast.warning(`${res.devisCree.titreAlertes} ${res.devisCree.alertes.map(a => a.message).join(' ')}`)
+      }
       onEnregistre(res.devisId)
       return
     }

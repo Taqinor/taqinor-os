@@ -175,6 +175,15 @@ COUPURE_SCHEMA_ELECTRIQUE = (2026, 11, 27)
 #: que :data:`COUPURE_SCHEMA_ELECTRIQUE`, le niveau 15 n'est pas rendu courant ;
 #: un devis envoyé avant garde son étude, son annexe et son bordereau.
 COUPURE_CHAINES_INEGALES = (2026, 11, 27)
+#: T4-V2-010 (lot 8, 26/11/2026, « rien d'imprimé que la fiche ne prouve ») :
+#: la description d'un variateur de pompage n'imprime plus « protection marche
+#: à sec » quand sa fiche technique ne publie pas cette protection
+#: (``var_protection_marche_a_sec`` différent de vrai) — l'écran du devis dit
+#: déjà « la fiche ne dit pas s'il protège la pompe ». Nouveaux rendus
+#: seulement, même mécanique que :data:`COUPURE_SCHEMA_ELECTRIQUE` (le niveau
+#: 15 n'est pas rendu courant) ; date À CONFIRMER avec Reda (jour du
+#: déploiement du lot 8, à déplacer avant de déployer s'il glisse).
+COUPURE_PROTECTION_FICHE = (2026, 11, 27)
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
 REGLES_COURANTES = REGLES_SENSIBILITES_1911
 
@@ -248,6 +257,15 @@ def chaines_inegales_ouvertes(devis) -> bool:
     de toute empreinte : une étude rangée n'est jamais recalculée pour ça."""
     return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111,
                                        COUPURE_CHAINES_INEGALES)
+
+
+def protection_fiche_ouverte(devis) -> bool:
+    """T4-V2-010 — la description d'un variateur ne dit « protection marche à
+    sec » que si sa fiche la publie, pour ce devis ? Voir
+    :data:`COUPURE_PROTECTION_FICHE`. Pas de drapeau de rendu : la description
+    retirée change elle-même l'empreinte des données des seuls devis ouverts."""
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111,
+                                       COUPURE_PROTECTION_FICHE)
 
 
 def drapeaux_schema_electrique(devis) -> dict:

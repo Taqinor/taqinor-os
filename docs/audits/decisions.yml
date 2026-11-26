@@ -6172,9 +6172,9 @@ decisions:
         texte: "(recommandée) Oui : un hybride dont la fiche publie sa puissance PV maximale (ond_dc_max_kwc) est retenu jusqu'à elle, par la même fonction du noyau (core.electrique.onduleurs.capacite_dc_appareil_kwc) ; sans valeur publiée, 1,35 reste la borne. Change l'onduleur choisi par les NOUVEAUX devis résidentiels ; les devis envoyés gardent ce que le client a reçu"
       - cle: b_inchange
         texte: "Non : le devis résidentiel garde 1,35 pour tout onduleur ; le calepinage et le devis résidentiel peuvent alors se contredire sur le même hybride (le calepinage « bon », le devis « vérifier la conception »)"
-    reponse: a_capacite_publiee
+    reponse: b_inchange
     date: "2026-11-26"
-    source: "RÉPONDUE par le fondateur, séance de questions du 26/11/2026 (soir) ; lane lot6/ratio-hybride (lead 1742 : 48 × 715 W = 34,32 kWc sur un hybride Deye 20 kW, « 1,72 pour 1,35 au plus » dans « Prêt à envoyer ? ») ; conséquence calculée sur le catalogue de départ (migration stock 0182, puissances PV maximales des fiches Deye : 10 kW → 20 kWc, 12 kW → 24 kWc, 15 kW → 30 kWc, 20 kW → 40 kWc, soit 2,0 × la puissance AC) : avec (a) un hybride porte jusqu'à 2,0 × sa puissance AC au lieu de 1,35 ×, donc pour 34,32 kWc le 20 kW convient (34,32 ≤ 40) alors qu'avec (b) aucun hybride du catalogue ne passe et le 20 kW n'est pris qu'en repli signalé ; aucune lecture de la production faite (nombre de devis résidentiels concernés non mesuré)"
+    source: "RÉPONDUE par le fondateur le 26/11/2026 (soir), en deux temps : d'abord « même règle que le calepinage » sur une question MAL POSÉE (le devis résidentiel ne choisit pas par 1,35 : `match_inverter` n'a aucun appelant en production ; le choix réel est le plus petit onduleur d'au moins 0,8 × la puissance des panneaux, `domain/composition_residentielle.py::choisir_onduleur`, et le contrôle à 1,35 applique déjà la capacité publiée d'un hybride, D-HYB-1) ; puis, la question corrigée, « garder le choix d'aujourd'hui » : rien ne change dans les devis, un vendeur peut toujours choisir un hybride plus petit à la main. La branche lot8/hyb6-residentiel n'est pas pliée. lane lot6/ratio-hybride (lead 1742 : 48 × 715 W = 34,32 kWc sur un hybride Deye 20 kW, « 1,72 pour 1,35 au plus » dans « Prêt à envoyer ? ») ; conséquence calculée sur le catalogue de départ (migration stock 0182, puissances PV maximales des fiches Deye : 10 kW → 20 kWc, 12 kW → 24 kWc, 15 kW → 30 kWc, 20 kW → 40 kWc, soit 2,0 × la puissance AC) : avec (a) un hybride porte jusqu'à 2,0 × sa puissance AC au lieu de 1,35 ×, donc pour 34,32 kWc le 20 kW convient (34,32 ≤ 40) alors qu'avec (b) aucun hybride du catalogue ne passe et le 20 kW n'est pris qu'en repli signalé ; aucune lecture de la production faite (nombre de devis résidentiels concernés non mesuré)"
     taches: []
   - id: D-ACAL-132
     question: "La page client (proposition) montre une visionneuse 3D au soleil figé ; l'écran Panneaux du calepinage montre le soleil qui bouge (lecture, heure, Hiver / Été) et l'ensoleillement de chaque panneau. Quels clients ont cette visionneuse sur leur page ?"
@@ -6472,4 +6472,50 @@ decisions:
     reponse: stocker_et_montrer_les_deux
     date: "2026-11-26"
     source: "fondateur, séance de questions du 26/11/2026 (soir) ; second regard sur la pile du 26/11 (devis à deux options : `sans_batterie` nul sur la page) ; D-ACAL-140 reste vraie — le client ne reçoit que du stocké, et les deux options le deviennent"
+    taches: []
+  - id: D-ACAL-159
+    question: "Un onduleur HYBRIDE est désigné à l'étape Électrique, mais le devis est généré « sans batterie » (cas vu en essai : hybride Deye désigné, onduleur réseau chiffré). Que porte le devis ?"
+    options:
+      - cle: hybride_seul
+        texte: "(recommandée) L'hybride désigné, sans batterie ; une batterie pourra s'ajouter plus tard sans changer d'onduleur"
+      - cle: basculer_avec_batterie
+        texte: "Le devis bascule en « avec batterie » : l'hybride désigné ET une batterie"
+      - cle: garder_le_reseau_et_le_dire
+        texte: "Garder un onduleur réseau et dire à l'écran que l'hybride désigné n'a pas été repris"
+    reponse: basculer_avec_batterie
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (nuit) ; suite de D-ACAL-148 ; le fondateur n'a PAS retenu l'option recommandée. Borne posée par l'orchestrateur, à confirmer : si aucune batterie n'est composable avec l'hybride désigné selon la règle de composition du devis (en stock, tarifée, compatible), le devis garde son choix de catalogue et l'écran le dit en nommant l'hybride désigné — jamais un hybride « avec batterie » sans batterie"
+    taches: []
+  - id: D-ACAL-160
+    question: "Devis de pompage sans distance forage → champ : le câble DC n'est pas chiffré (le vendeur reçoit une alerte, D-ACAL-156). La liste « Non inclus » du PDF du client doit-elle le dire ?"
+    options:
+      - cle: lister_non_inclus
+        texte: "(recommandée) La page 3 dit que le câble DC entre le forage et les panneaux n'est pas inclus et sera chiffré après mesure"
+      - cle: ne_rien_dire_au_client
+        texte: "Le PDF reste tel quel ; seul le vendeur voit l'alerte"
+    reponse: ne_rien_dire_au_client
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (nuit) ; le fondateur n'a PAS retenu l'option recommandée ; aucun changement au PDF agricole"
+    taches: []
+  - id: D-ACAL-161
+    question: "Visionneuse 3D simplifiée de la page du client (repli quand la visionneuse pleine ne charge pas) et estimateur public : les panneaux inclinés flottent sans support. Des pieds de châssis partout, ou seulement pour les liens « client de confiance » ?"
+    options:
+      - cle: pieds_partout
+        texte: "(recommandée) Des pieds sous les panneaux inclinés pour tous les liens et sur l'estimateur public ; purement visuel, aucun chiffre ne change"
+      - cle: confiance_seulement
+        texte: "Liens ordinaires et estimateur public inchangés"
+    reponse: pieds_partout
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (nuit) ; exception explicite à D-ACAL-134 (« les liens ordinaires ne changent pas ») pour ce seul point"
+    taches: []
+  - id: D-ACAL-162
+    question: "Le bouton « Tout recalculer » des réglages de simulation (il relance toutes les simulations périmées de la société) est ouvert à Commercial, Commercial responsable et Administrateur ; changer les réglages est réservé à ceux qui approuvent un calepinage. Réserver le bouton de la même façon ?"
+    options:
+      - cle: laisser_ouvert
+        texte: "(recommandée) Non : il ne change aucun réglage, il relance seulement des calculs déjà périmés"
+      - cle: reserver_aux_approbateurs
+        texte: "Oui, le réserver à ceux qui approuvent"
+    reponse: laisser_ouvert
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (nuit) ; tour 5 du L5, paquet E"
     taches: []
