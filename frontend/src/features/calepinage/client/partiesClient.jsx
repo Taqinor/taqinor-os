@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import useDroitMetier from '../../sav/useDroitMetier'
+import usePeutGenererDevis from '../usePeutGenererDevis'
 import { Icone } from '../atelier/coque/primitives'
 import { DEPUIS_RELEVE } from './vueClient.helpers'
 
@@ -143,7 +143,7 @@ function Chiffre({ tuile }) {
  * donnée non servie est omise, jamais fabriquée. Au bureau, le sur-titre et les mentions entrent dans la carte.
  */
 export function TuilesClient({ tuiles, ville, bureau = false }) {
-  const peutDevis = useDroitMetier('ventes_creer') // D-ACAL-106 — l'envoi du lien au client relève du devis, que le Technicien n'a pas
+  const peutDevis = usePeutGenererDevis() // D-ACAL-106 — l'envoi du lien au client relève du devis, que le Technicien n'a pas
   const kwh = tuiles.find((t) => t.cle === 'kwh') ?? null
   const autres = tuiles.filter((t) => t.cle !== 'kwh' && t.cle !== 'miseajour')
   return (
@@ -181,7 +181,7 @@ export function TuilesClient({ tuiles, ville, bureau = false }) {
     ouverte directement : « Retour à l'atelier », au téléphone comme au bureau) + « Envoyer le lien » doré, désactivé avec
     sa raison. */
 export function PiedClient({ id }) {
-  const peutDevis = useDroitMetier('ventes_creer')
+  const peutDevis = usePeutGenererDevis()
   const depuisReleve = useLocation().state?.depuis === DEPUIS_RELEVE.depuis
   return (
     <footer className="cal-tel-pied" data-vue-client="">

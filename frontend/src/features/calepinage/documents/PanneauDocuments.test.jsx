@@ -1125,7 +1125,7 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     }
   })
 
-  it('D-ACAL-106 — la note de la colonne ne promet ni devis ni prix à qui n\'a pas `ventes_creer`', async () => {
+  it('D-ACAL-106 — la note de la colonne ne promet ni devis ni prix à qui n\'a pas `calepinage_gerer`', async () => {
     const { Provider } = await import('react-redux')
     const { configureStore } = await import('@reduxjs/toolkit')
     const boutique = (permissions) => configureStore({ reducer: { auth: (s = { role: 'technicien', permissions }) => s } })
@@ -1138,6 +1138,24 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     const note = await screen.findByTestId('cal-docs-info-devis')
     expect(note).toHaveTextContent('Le devis remis au client ne se fait pas ici.')
     expect(note.textContent).not.toMatch(/prix|Générer le devis/)
+  })
+
+  it('D-ACAL-106 — le pied « Générer le devis » de l\'étape : absent pour le Technicien, présent avec calepinage_gerer', async () => {
+    const { Provider } = await import('react-redux')
+    const { configureStore } = await import('@reduxjs/toolkit')
+    const boutique = (permissions) => configureStore({ reducer: { auth: (s = { role: 'technicien', permissions }) => s } })
+    servir()
+    const monterAvec = (permissions) => render(
+      <Provider store={boutique(permissions)}>
+        <MemoryRouter><EtapeDocuments calepinageId={1} actionDevis={<button type="button">Générer le devis</button>} /></MemoryRouter>
+      </Provider>,
+    )
+    const { unmount } = monterAvec(['calepinage_voir', 'calepinage_releve'])
+    await screen.findByTestId('cal-docs-controles')
+    expect(screen.queryByTestId('cal-etape-documents-devis')).toBeNull()
+    unmount()
+    monterAvec(['calepinage_voir', 'calepinage_gerer'])
+    expect(await screen.findByTestId('cal-etape-documents-devis')).toBeInTheDocument()
   })
 
   it('ACAL1193 — contrôles visibles de l’écran guidé : au plus 26 (la maquette v2 en dessine 24 ; + les trois lignes de groupe repliées, ACAL1725)', async () => {

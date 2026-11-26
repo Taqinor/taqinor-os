@@ -11,6 +11,7 @@ import {
   LIBELLE_CHAMP, MESSAGE_DEROGATION_RESERVEE, MESSAGE_MOTIF_OBLIGATOIRE,
   bloquageElectrique, refusServeur, texteBloquant,
 } from './refusDevis'
+import usePeutGenererDevis from './usePeutGenererDevis'
 
 /* ============================================================================
    CAL38 — LA SORTIE VERS LE DEVIS d'un calepinage, et elle n'existait nulle
@@ -122,7 +123,7 @@ function messageDevisNonModifie(motif, devis = null) {
   return `La conception est enregistrée, mais ${quel} n’a pas été modifié${texte ? ` : ${texte}` : '.'}`
 }
 
-export default function BoutonDevis({
+function BoutonDevisCalepinage({
   calepinageId, detail = null, lectureSeule = false, onRecharger, onRelire,
   enregistrerAvant = null, aDesRetouches = null, revisionPossible = false,
   // ACAL311 (rejeu P5.5) — faux tant que la scène de l'atelier n'est pas hydratée :
@@ -748,4 +749,11 @@ export default function BoutonDevis({
       )}
     </div>
   )
+}
+
+/** D-ACAL-106 — sans le droit de la route `generer-devis` (`calepinage_gerer`, usePeutGenererDevis), ni génération, ni resynchronisation,
+    ni révision n'est proposée (le Technicien relève, il ne chiffre pas). Le serveur reste l'autorité. */
+export default function BoutonDevis(props) {
+  const peut = usePeutGenererDevis()
+  return peut ? <BoutonDevisCalepinage {...props} /> : null
 }

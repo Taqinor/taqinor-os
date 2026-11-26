@@ -30,7 +30,7 @@ describe('BarreProjet — l’entrée « Montrer au client »', () => {
 })
 
 describe('BarreProjet — « Générer le devis » selon le droit (D-ACAL-106)', () => {
-  it('sans `ventes_creer` (Technicien) le bouton n\'est pas proposé ; avec, il l\'est', async () => {
+  it('sans `calepinage_gerer` (Technicien) le bouton n\'est pas proposé ; avec, il l\'est', async () => {
     const { Provider } = await import('react-redux')
     const { configureStore } = await import('@reduxjs/toolkit')
     const boutique = (permissions) => configureStore({ reducer: { auth: (s = { role: 'technicien', permissions }) => s } })
@@ -48,7 +48,7 @@ describe('BarreProjet — « Générer le devis » selon le droit (D-ACAL-106)',
     const { unmount } = monter(['calepinage_voir', 'calepinage_releve'])
     expect(screen.queryByTestId('cal-generer-devis-haut')).toBeNull()
     unmount()
-    monter(['calepinage_voir', 'ventes_creer'])
+    monter(['calepinage_voir', 'calepinage_gerer'])
     expect(screen.getByTestId('cal-generer-devis-haut')).toBeInTheDocument()
   })
 })

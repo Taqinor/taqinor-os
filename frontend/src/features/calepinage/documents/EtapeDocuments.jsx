@@ -1,4 +1,5 @@
 import PretAEnvoyer from '../commun/PretAEnvoyer'
+import usePeutGenererDevis from '../usePeutGenererDevis'
 import PanneauDocuments from './PanneauDocuments'
 
 /* ACAL867 / ACAL1193 — l'étape Documents GUIDÉE, écran de FIN de parcours (maquette `Documents.dc.html`),
@@ -10,6 +11,7 @@ import PanneauDocuments from './PanneauDocuments'
    `enregistreLe` (ISO) : l'heure de la version enregistrée, quand l'atelier la relaie — sinon la ligne
    « Faits à partir de la version enregistrée à … » n'est pas écrite. */
 export default function EtapeDocuments({ actionDevis = null, enregistreLe = null, ...propsDuRail }) {
+  const peutDevis = usePeutGenererDevis() // D-ACAL-106 — pas de pied « Générer le devis » sans le droit de la route
   return (
     <div data-testid="cal-etape-documents-ecran" className="cdoc-ecran">
       <div data-testid="cal-docs-controles" className="cdoc-colonne">
@@ -17,7 +19,7 @@ export default function EtapeDocuments({ actionDevis = null, enregistreLe = null
           calepinageId={propsDuRail.calepinageId}
           testIdCompte="cal-documents-synthese"
           groupes
-          pied={actionDevis
+          pied={actionDevis && peutDevis
             ? <div data-testid="cal-etape-documents-devis" className="cdoc-devis">{actionDevis}</div> : null}
         />
       </div>
