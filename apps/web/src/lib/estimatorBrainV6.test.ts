@@ -68,6 +68,21 @@ function empreinte(res: MatrixV6Result): string {
 
 const balayage = (options: MatrixV6Options = {}) => fineGridMatrixV6(TOIT, LAT, FACTURE, [], options);
 
+describe('ACAL1918 — pas de ligne en double ; le nombre voulu plafonne chaque ligne', () => {
+  it('aucune pose listée deux fois', () => {
+    const res = balayage();
+    const sig = res.rows.map((r) => `${r.label}|${r.fitCount}|${r.placedCount}|${Math.round(r.annualKwh)}`);
+    expect(new Set(sig).size).toBe(sig.length);
+  });
+
+  it('avec un nombre voulu de 5, aucune ligne ne dépasse 5 et le gagnant en pose 5', () => {
+    const res = balayage({ neededPanelsPose: 5 });
+    expect(Math.max(...res.rows.map((r) => r.placedCount))).toBeLessThanOrEqual(5);
+    expect(res.winner.placedCount).toBe(5);
+    expect(res.neededPanels).toBe(5);
+  });
+});
+
 describe('CALX114 — sans cible saisie, le balayage ne bouge PAS', () => {
   it('le gagnant est celui de la chaîne historique', () => {
     const res = balayage();

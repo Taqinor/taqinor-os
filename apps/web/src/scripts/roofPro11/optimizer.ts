@@ -1696,6 +1696,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       obstructionClearancesM: obstructionClearances(), // PV61
       setbacksM: keepSetbacks(), // PV63
       optimisation: choixOptimisation, // CALX114 — l'objectif SAISI, null = celui d'hier
+      neededPanelsPose: ctx.neededPanels, // ACAL1918 — même plafond que le tableau « Comparer les poses »
     });
     paintComparison();
     renderMatrixOptimumCard();

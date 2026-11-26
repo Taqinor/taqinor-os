@@ -199,7 +199,15 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
     const winner = matrixResult.winner;
     // Optimum réel ÉPINGLÉ en tête, puis le reste de la matrice (triée/filtrée).
     const rest = matrixOrderedRows().filter((r) => !isMatrixWinner(r));
-    const rows = [winner, ...rest];
+    // ACAL1918 — deux lignes qui s'affichent à l'identique (marge gardée / retirée sans effet sur le nombre posé)
+    // sont UNE pose pour le lecteur : la première, le gagnant en tête, reste.
+    const vues = new Set<string>();
+    const rows = [winner, ...rest].filter((r) => {
+      const signature = `${r.label}|${r.placedCount}|${r.kwc.toFixed(1)}|${Math.round(r.annualKwh)}|${Math.round(r.pctOfTarget)}`;
+      if (vues.has(signature)) return false;
+      vues.add(signature);
+      return true;
+    });
     tbody.innerHTML = '';
     for (const r of rows) {
       const tr = document.createElement('tr');
@@ -284,6 +292,7 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
       obstructionClearancesM: deps.obstructionClearances?.(),
       setbacksM: deps.setbacksOf?.(),
       optimisation: choixOptimisationCourant(),
+      neededPanelsPose: ctx.neededPanels, // ACAL1918 — le nombre annoncé est celui que la pose affiche au clic
     });
     paintComparison();
   }

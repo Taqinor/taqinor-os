@@ -241,3 +241,31 @@ describe('ACAL546 — comparatif sans montant (atelier ERP)', () => {
     expect(tr.textContent).toContain('MAD');
   });
 });
+
+// ACAL1918 — « Comparer les poses » : aucune ligne en double, et le nombre annoncé est celui que la pose affiche au clic.
+describe('ACAL1918 — aucune ligne en double ; le nombre annoncé égale le nombre posé au clic', () => {
+  const lignesPeintes = () =>
+    Array.from(document.querySelectorAll('#rp9-compare tr')).map((tr) =>
+      Array.from(tr.querySelectorAll('td')).map((td) => (td.textContent ?? '').replace(/\s*✓.*$/, '')).join('|'),
+    );
+
+  it('chaque ligne du tableau est une pose distincte', () => {
+    const ctx = { ...makeCtx(), matrixResult: null } as unknown as Ctx;
+    matrice(ctx).recomputeMatrix();
+    const lignes = lignesPeintes();
+    expect(lignes.length).toBeGreaterThan(1);
+    expect(new Set(lignes).size).toBe(lignes.length);
+  });
+
+  it('cible posée à 5 : la ligne « Recommandé » et toutes les lignes annoncent au plus 5', () => {
+    const ctx = { ...makeCtx(), matrixResult: null, neededPanels: 5 } as unknown as Ctx;
+    matrice(ctx).recomputeMatrix();
+    const premiere = document.querySelector('#rp9-compare tr')!;
+    expect(premiere.textContent).toContain('Recommandé');
+    expect(premiere.querySelectorAll('td')[1].textContent).toBe('5');
+    for (const tr of Array.from(document.querySelectorAll('#rp9-compare tr'))) {
+      expect(Number((tr.querySelectorAll('td')[1].textContent ?? '').replace(/\D/g, ''))).toBeLessThanOrEqual(5);
+    }
+    expect(ctx.matrixResult!.winner.placedCount).toBe(5);
+  });
+});
