@@ -122,6 +122,28 @@ async function creerDevisServeur({ lead, discountStr, onAlertes, onResultat, tar
  * ordreLignes, dispatch) sont acceptés et IGNORÉS : le serveur lit le
  * catalogue, les marques épinglées et l'ordre des lignes de la société.
  */
+/**
+ * T4-X1-004 — « Taille imposée : 3 kWc » alors que le devis part à 3,55 kWc : le nombre de panneaux est ENTIER, la
+ * puissance se règle donc au panneau près. L'écart est DIT, à partir des seules valeurs SERVIES (le `kwc` du devis ou de
+ * chacune de ses options) et de la taille que le vendeur a tapée ; rien n'est recalculé ici. `null` quand rien ne diffère
+ * (ou qu'une valeur manque) : jamais une phrase sans chiffre servi.
+ */
+export function alerteTailleArrondie(cibleKwc, donnees) {
+  const cible = Number(cibleKwc)
+  if (!(cible > 0) || !donnees) return null
+  const options = Array.isArray(donnees.options) ? donnees.options.filter((o) => o?.variante && Number(o.kwc) > 0) : []
+  const servis = options.length ? options.map((o) => ({ nom: o.libelle || (o.variante === 'avec' ? 'Avec batterie' : 'Sans batterie'), kwc: Number(o.kwc) }))
+    : (Number(donnees.kwc) > 0 ? [{ nom: '', kwc: Number(donnees.kwc) }] : [])
+  const ecarts = servis.filter((o) => Math.abs(o.kwc - cible) > 0.005)
+  if (!ecarts.length) return null
+  const reel = ecarts.map((o) => `${o.nom ? `${o.nom} : ` : ''}${formatKwc(o.kwc)}`).join(' · ')
+  return {
+    code: 'taille_arrondie',
+    message: `Vous avez demandé ${formatKwc(cible)} ; le devis est à ${reel} : le nombre de panneaux est entier, `
+      + 'la puissance se règle donc au panneau près (jamais en dessous de la demande).',
+  }
+}
+
 export async function createAutoQuote({ lead, discountStr, onAlertes, onResultat, targetKwc, idempotencyKey }) {
   const mode = LEAD_TYPE_TO_MODE[lead.type_installation] || 'residentiel'
   // ── U3 (fondateur 20/08/2026) — LE RÉSIDENTIEL NE COMPOSE PLUS ICI ─────
@@ -208,7 +230,9 @@ export async function createAutoQuote({ lead, discountStr, onAlertes, onResultat
     // ADEV123 — les suppositions du calcul résidentiel (présence, été = hiver,
     // kWh tirés des dirhams, 30° plein sud) partent à l'écran comme celles du C&I.
     if (typeof onAlertes === 'function') {
-      onAlertes(Array.isArray(reponse.data.alertes) ? reponse.data.alertes : [])
+      const alertes = Array.isArray(reponse.data.alertes) ? reponse.data.alertes : []
+      const arrondie = alerteTailleArrondie(cibleKwc, reponse.data) // T4-X1-004 — seule une taille TAPÉE pour ce devis
+      onAlertes(arrondie ? [...alertes, arrondie] : alertes)
     }
     if (typeof onResultat === 'function') onResultat(reponse.data)
     return id
