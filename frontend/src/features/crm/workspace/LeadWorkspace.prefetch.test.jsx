@@ -6,6 +6,7 @@ import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
 import crmReducer from '../store/crmSlice'
 import crmApi from '../../../api/crmApi'
+import api from '../../../api/axios'
 import { resetPrefetchCache, getPrefetched } from './leadPrefetch'
 import LeadWorkspace from './LeadWorkspace'
 
@@ -204,5 +205,20 @@ describe('R5A-N5b — une fiche ouverte sans rien taper n’est jamais « sale �
     expect(quitterBloque()).toBe(true) // du vrai travail non envoyé : la sortie reste gardée
     fireEvent.change(document.querySelector('#lf-tags'), { target: { value: 'froid, villa' } })
     await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(1, { tags: 'froid, villa' }), { timeout: 4000 })
+  }, 15000)
+
+  it('R5A-N6 — l’historique de la fiche change (ligne « Conception recalculée ») : la conception est relue UNE fois', async () => {
+    api.get.mockImplementation((u) => Promise.resolve({ data: u === '/crm/leads/1/historique/' ? [] : [] }))
+    ouvrir()
+    await screen.findByDisplayValue('chaud, villa')
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/crm/leads/1/historique/'))
+    await new Promise((r) => { setTimeout(r, 50) })
+    expect(conception404).toHaveBeenCalledTimes(1)
+    api.get.mockImplementation((u) => Promise.resolve({ data: u === '/crm/leads/1/historique/'
+      ? [{ id: 5, kind: 'note', body: 'Conception recalculée : taille changée', created_at: '2026-11-26T10:00:00Z' }] : [] }))
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    await waitFor(() => expect(conception404).toHaveBeenCalledTimes(2))
+    await new Promise((r) => { setTimeout(r, 100) })
+    expect(conception404).toHaveBeenCalledTimes(2) // une relecture simple : un 404 reste calme, pas de file
   }, 15000)
 })

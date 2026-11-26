@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import api from '../../../api/axios'
 import useVisibilityAwarePolling from '../../../hooks/useVisibilityAwarePolling'
 import { ecouterNotificationsRecues, lienDuLead } from '../../../lib/evenementsNotification'
+import { relireConceptionLead } from './useConceptionLead'
 
 // Historique du lead (fondateur, prod : « i dont see this ») — l'historique d'une fiche OUVERTE est RELU, il n'est plus figé
 // à l'ouverture. Rien ici ne touche au brouillon, au composer, à la liste défilante ni au démontage de l'onglet : seul le
@@ -20,6 +21,7 @@ export default function useHistoriqueLead(leadId, mode) {
   const idRef = useRef(leadId)
   const enVol = useRef(new Map())
   const lireRef = useRef(null)
+  const vue = useRef({ id: null, signature: '' })
   useEffect(() => { idRef.current = leadId })
 
   const lire = useCallback((id, rejouable) => {
@@ -32,6 +34,11 @@ export default function useHistoriqueLead(leadId, mode) {
       .then((r) => {
         if (idRef.current !== id || !Array.isArray(r?.data)) return
         const signature = JSON.stringify(r.data)
+        // Chaque recalcul de la conception écrit une ligne « Conception recalculée » à l'historique : un historique qui CHANGE
+        // (pas sa première lecture) fait relire la conception une fois — la carte suit même après la fenêtre bornée.
+        const avant = vue.current
+        vue.current = { id, signature }
+        if (avant.id === id && avant.signature !== signature) relireConceptionLead(id, { attendre: false })
         setLu((prev) => (prev.pour === id && JSON.stringify(prev.entrees) === signature
           ? prev : { pour: id, entrees: r.data }))
       })

@@ -6,7 +6,9 @@
 // Aucun calcul ici : des lectures de `GET ventes/conception/<lead>/` (contrat
 // `apps/ventes/contract_samples/conception_lead.json`). La carte n'écrit rien.
 // Un lead tout neuf n'a pas encore de conception (404 = la réponse NORMALE du serveur) :
-// la carte le dit calmement ; la lecture est partagée avec l'onglet Devis (useConceptionLead).
+// la carte le dit calmement ; la lecture est partagée avec l'onglet Devis (useConceptionLead). La PREMIÈRE conception d'un
+// lead se calcule en arrière-plan : après une action (ou à l'ouverture d'un lead créé à l'instant) un 404 est « en cours de
+// calcul », relu de façon BORNÉE par le store partagé (une minuterie par lead).
 import { useEffect, useState } from 'react'
 import { Button } from '../../../ui'
 import useConceptionLead, { relireConceptionLead } from './useConceptionLead'
@@ -140,11 +142,11 @@ function LigneFiche({ ligne }) {
   )
 }
 
-export default function CarteConception({ leadId, delaiRelectureMs = 4000, maxRelectures = 6 }) {
+export default function CarteConception({ leadId, creeLe = null, delaiRelectureMs = 4000, maxRelectures = 6 }) {
   // R5A-N6 — la conception est lue UNE fois par fiche (useConceptionLead, partagée avec l'onglet Devis) ; un 404 est l'état
   // calme « pas encore de conception », jamais rejoué. Seule une version PÉRIMÉE (réponse 200 « recalcul en cours ») est
   // relue, bornée ; « Relire » est une lecture de plus, jamais une chaîne.
-  const lu = useConceptionLead(leadId)
+  const lu = useConceptionLead(leadId, { creeLe })
   const conception = lu.donnees?.etat ? lu.donnees : null
   const perimee = Boolean(conception?.perimee)
   const [relectures, setRelectures] = useState(0)
@@ -165,12 +167,21 @@ export default function CarteConception({ leadId, delaiRelectureMs = 4000, maxRe
   const epuisee = perimee && relectures >= maxRelectures // m1 — plus de relecture automatique : la carte le dit
   let statut = 'charge'
   if (lu.statut === 'erreur') statut = 'erreur'
+  else if (lu.statut === 'attente') statut = 'absente'
   else if (lu.statut !== 'charge') statut = conception ? 'ok' : 'vide'
   const etat = { epuisee }
   if (!leadId || statut === 'charge') return null
   const boite = 'mb-3 rounded-lg border border-border bg-card p-3 text-sm'
   const titre = <h3 className="mb-2 text-sm font-semibold text-foreground">Conception</h3>
 
+  if (statut === 'absente') {
+    return (
+      <section className={boite} data-testid="carte-conception-attente">
+        {titre}
+        <p className="m-0 text-muted-foreground">Conception en cours de calcul…</p>
+      </section>
+    )
+  }
   if (statut === 'vide') {
     return (
       <section className={boite} data-testid="carte-conception-sans-conception">

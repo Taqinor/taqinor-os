@@ -68,7 +68,12 @@ export default function TimelineTab({
   }
   // Relus aussi quand l'historique relu (useHistoriqueLead) a CHANGÉ : un devis ouvert/signé par le client apparaît
   // sans recharger la page (aucun sondage de plus).
-  const signatureHistorique = `${historique?.length ?? 0}:${historique?.[0]?.id ?? ''}`
+  // Le passage de l'historique vide à sa première lecture fraîche n'est pas un changement (une seule lecture à l'ouverture).
+  const signatureBrute = `${historique?.length ?? 0}:${historique?.[0]?.id ?? ''}`
+  const [premiere, setPremiere] = useState({ leadId, sig: null })
+  if (premiere.leadId !== leadId) setPremiere({ leadId, sig: null })
+  else if (premiere.sig === null && signatureBrute !== '0:') setPremiere({ leadId, sig: signatureBrute })
+  const signatureHistorique = premiere.sig === null || signatureBrute === premiere.sig ? 'ouverture' : signatureBrute
   useEffect(() => {
     if (!leadId) return undefined
     let annule = false

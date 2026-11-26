@@ -164,6 +164,24 @@ describe('LW20 — filtre par type', () => {
   })
 })
 
+describe('Historique du lead — jalons devis lus une seule fois à l’ouverture', () => {
+  it('l’arrivée de la première lecture fraîche ne relit pas les jalons ; un historique qui CHANGE ensuite, si', async () => {
+    const un = { id: 1, kind: 'note', body: 'Une', created_at: '2026-11-26T08:00:00Z' }
+    const deux = { id: 2, kind: 'note', body: 'Deux', created_at: '2026-11-26T09:00:00Z' }
+    const rendu = (historique) => (
+      <TimelineTab state={leadState()} historique={historique} refreshHistorique={vi.fn()}
+        composer={composerBase()} setComposer={vi.fn()} resetComposer={vi.fn()} />
+    )
+    const { rerender } = render(rendu([]))
+    await waitFor(() => expect(getLeadJalonsDevis).toHaveBeenCalledTimes(1))
+    rerender(rendu([un]))
+    await new Promise((r) => { setTimeout(r, 30) })
+    expect(getLeadJalonsDevis).toHaveBeenCalledTimes(1)
+    rerender(rendu([deux, un]))
+    await waitFor(() => expect(getLeadJalonsDevis).toHaveBeenCalledTimes(2))
+  })
+})
+
 describe('LW20 — notes épinglées (📌) + épingler/désépingler', () => {
   it('une note épinglée est rendue en tête avec l\'icône 📌', () => {
     const entries = [
