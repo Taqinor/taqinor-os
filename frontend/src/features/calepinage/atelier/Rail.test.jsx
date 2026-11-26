@@ -853,3 +853,22 @@ describe('ACAL1280 — pièces de la coque : clavier et rôles', () => {
     expect(screen.queryAllByRole('button')).toHaveLength(0)
   })
 })
+
+/* T4-U1-023 (rejeu R5B, 26/11) — cheminée et voisin posés PUIS enregistrés : l'Expert les voyait, l'étape Panneaux et les
+   Résultats disaient encore « aucune ombre signalée » — le parcours n'était lu qu'à l'ouverture. Relu à chaque enregistrement. */
+describe('useParcours — relu à chaque enregistrement (T4-U1-023)', () => {
+  it('une nouvelle heure d’enregistrement relit « ce qui manque » : la ligne des ombres posées remplace l’ancienne', async () => {
+    const { renderHook } = await import('@testing-library/react')
+    const { useParcours } = await import('./parcoursGuide')
+    const ligne = (code) => ({ code, message: code, etape: 'resultats', gravite: 'a_regler', nombre: 1, cible: { onglet: '', champ: '' } })
+    mocks.parcours.mockReset()
+    mocks.parcours.mockResolvedValueOnce({ data: { etapes: [], manque: [ligne('acces_solaire_absent')] } })
+    mocks.parcours.mockResolvedValueOnce({ data: { etapes: [], manque: [ligne('ombres_non_mesurees')] } })
+    const { result, rerender } = renderHook(({ le }) => useParcours(ID, le), { initialProps: { le: null } })
+    await waitFor(() => expect(result.current.manque.map((m) => m.code)).toEqual(['acces_solaire_absent']))
+    rerender({ le: '2026-11-26T10:00:00Z' })
+    await waitFor(() => expect(result.current.manque.map((m) => m.code)).toEqual(['ombres_non_mesurees']))
+    expect(mocks.parcours).toHaveBeenCalledTimes(2)
+    mocks.parcours.mockReset()
+  })
+})

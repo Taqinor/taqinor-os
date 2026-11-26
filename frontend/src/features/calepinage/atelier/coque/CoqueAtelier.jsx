@@ -215,7 +215,7 @@ export default function CoqueAtelier({
   const [deplie, setDeplie] = useState(false)
   const [parametres, setParametres] = useSearchParams()
   const [expert, basculerExpert] = useModeExpert(parametres.get(PARAM_MODE) === 'expert')
-  const parcours = useParcours(calepinageId)
+  const parcours = useParcours(calepinageId, enregistreLe) // T4-U1-023 — relu à chaque enregistrement
   const cleActive = resoudreOnglet(parametres.get(PARAM_ONGLET))?.cle ?? null
   const { cleEtape } = vueParcours(cleActive, parcours.etats, expert, parcours.memorisee)
   const ecran = ecranCoque(cleActive, resoudreOnglet(cleActive), parcours.etats, expert, parcours.memorisee)

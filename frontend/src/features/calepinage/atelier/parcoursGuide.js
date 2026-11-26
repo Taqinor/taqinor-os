@@ -210,8 +210,11 @@ export function aReglerDeLEtape(manque, cle) {
     .reduce((n, m) => n + (Number.isFinite(Number(m?.nombre)) && Number(m.nombre) > 0 ? Number(m.nombre) : 1), 0)
 }
 
-/** Les états par étape et « ce qui manque », lus une fois ; vides tant que le serveur n'a pas répondu. */
-export function useParcours(calepinageId) {
+/** Les états par étape et « ce qui manque » ; vides tant que le serveur n'a pas répondu.
+    T4-U1-023 (rejeu R5B, 26/11) — `relecture` (l'heure du dernier enregistrement) : le parcours est RELU après chaque
+    enregistrement. Lu une seule fois à l'ouverture, il gardait « aucune ombre signalée » après qu'une cheminée et un
+    voisin ont été posés et enregistrés, pendant que l'Expert, lui, les voyait. */
+export function useParcours(calepinageId, relecture = null) {
   // ACAL1731 — lue UNE fois à l'ouverture : la coque et le rail d'onglets partagent la même étape de départ.
   const [memorisee] = useState(() => lireEtapeMemorisee(calepinageId))
   const [parcours, setParcours] = useState({ etats: {}, manque: [] })
@@ -234,7 +237,7 @@ export function useParcours(calepinageId) {
       })
       .catch(() => {})
     return () => { vivant = false }
-  }, [calepinageId])
+  }, [calepinageId, relecture])
   return { ...parcours, memorisee }
 }
 
