@@ -3,6 +3,16 @@
   "forme_serveur": "partielle",
   "forme_serveur_pourquoi": "Contrat posé SEUL sur `main` (PACT10) : `exemple` ne montre QUE les 10 champs maîtres DÉJÀ servis par ProduitSerializer mais sans geste d'écriture à l'écran (plus `id`, `nom` pour situer l'objet). Les 8 champs NOUVEAUX du serializer sont dans `exemple_nouveau_astk214` (clés `cles_nouvelles_astk214`) : ASTK214 les ajoute à `ProduitSerializer.Meta.fields` et remet les affirmations serveur.",
   "pourquoi": "ASTK169 (M0, PACT10, C-ASTK-045 — volet CAT-8) — champs maîtres produit à rendre saisissables, posé SEUL sur main avant les deux moitiés (ASTK214 affirme les clés, ASTK230 en est nourri). GET/PATCH produits/<id>/ restreint à ces champs. Déjà servis (serializers.py, ProduitSerializer.Meta.fields) mais absents de ProduitForm.jsx : role_devis, unite_stock, code_barres, code_sh, pays_origine, avertissement_vente, avertissement_bloquant, paliers_prix_vente, suivi_serie, politique_facturation_achat. ABSENTS du serializer aujourd'hui (champs du modèle, models.py) : classe_danger, quantite_reappro_cible, louable, tarif_location_jour, tarif_location_semaine, tarif_location_mois, est_recurrent, periodicite_defaut — « NOUVEAU — ASTK214 ». Aucun n'est un prix d'achat. Hors périmètre : `quantite_stock` écrivable (C-ASTK-005). Jumeaux non dupliqués : produit_ci.json / produit_pompage.json.",
+  "cles_masquees_sans_prix_vente": [
+    "prix_vente",
+    "paliers_prix_vente",
+    "prix_fixe_ht",
+    "prix_par_panneau_ht",
+    "tarif_location_jour",
+    "tarif_location_semaine",
+    "tarif_location_mois"
+  ],
+  "cles_masquees_pourquoi_prix_vente": "D-ACAL-152 (fondateur, 26/11/2026) — clés RETIRÉES de la réponse (liste, détail, recherche, actions du ProduitViewSet) pour un rôle sans `prix_vente_voir` (User.can_view_sale_prices : Technicien et Technicien responsable par défaut ; compte légacy sans rôle fin = repli historique, clés présentes) ; présentes sinon, octet pour octet. Liste unique : apps/stock/permissions.py::PRIX_VENTE_CHAMPS. Écritures inchangées (catalogue_prix_modifier) ; un prix envoyé par un rôle sans la permission est ignoré, jamais écrit.",
   "exemple": {
     "id": 5,
     "nom": "Batterie 5 kWh",
