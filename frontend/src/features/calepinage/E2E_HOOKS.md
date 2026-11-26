@@ -452,6 +452,8 @@ retiré plus un hook ajouté.
 | `cal-variante-dupliquer` | variante dupliquer. |
 | `cal-simulation-a-refaire` | Expert, ligne de provenance de la production : « Simulation à refaire : le toit a changé depuis le dernier calcul. » et le lien pour la relancer (T4-X2-002). |
 | `cal-variante-refus` | Comparer les variantes : refus de « Retenir », dit à côté du bouton cliqué, avec le lien vers l'étape Électrique (T4-X9-010). |
+| `cal-variante-retenue-sans-simulation` | Comparer les variantes : après « Retenir » d'une variante jamais simulée, la phrase qui dit que sa production n'est qu'une estimation et que la simulation est à refaire (R6-N2). |
+| `cal-variante-sans-simulation` | Comparer les variantes : sous « Retenir » d'une variante jamais simulée, l'avertissement dit AVANT le geste (R6-N2). |
 | `cal-variante-formulaire` | variante formulaire. |
 | `cal-variante-nom` | variante nom. |
 | `cal-variante-nom-erreur` | variante nom message d'erreur. |
