@@ -228,6 +228,18 @@ def _ordre_de_generation(lie, rendu, libres_lus):
     return (ISSUE_BROUILLON_LIBRE, libres) if libres else (ISSUE_COMPOSER, None)
 
 
+def _onduleur_designe(calepinage):
+    """D-ACAL-148 — ``{'produit_id', 'nombre'}`` de l'onduleur désigné à l'étape Électrique
+    (``electrique.entree_stockee``), ``None`` sans désignation. Lu par la génération ET l'aperçu :
+    ``ventes`` décide seul s'il est chiffré (catalogue, prix, forme du devis)."""
+    from .electrique import entree_stockee
+
+    entree = entree_stockee(calepinage)
+    if entree.get('onduleur_produit') in (None, ''):
+        return None
+    return {'produit_id': entree['onduleur_produit'], 'nombre': entree.get('nombre_onduleurs')}
+
+
 def _brouillon_reutilisable(company, lead, empreinte, calepinage):
     """ACAL89 — le brouillon de même empreinte, SEULEMENT s'il n'est lié à
     aucun AUTRE calepinage (la copie d'un calepinage ne vole jamais le devis
@@ -749,7 +761,8 @@ def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
         with transaction.atomic():
             devis = build_devis_from_layout(
                 layout=layout, user=user, company=company, lead=lead,
-                client=client, journal=journal_composition, **montants)
+                client=client, journal=journal_composition,
+                onduleur_designe=_onduleur_designe(calepinage), **montants)  # D-ACAL-148
             _garde_kwh_declare(devis)
             _garde_module_substitue(devis, layout)  # ACAL914
             _garde_taille(devis, calepinage, choix['confirmer_taille'])  # ACAL922

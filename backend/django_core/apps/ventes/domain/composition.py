@@ -517,7 +517,7 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
                                  mppt_paires=1, phase=None, modeles=None,
                                  batterie_module_kwh=None,
                                  regles_2710=True, modules_affleurants=0,
-                                 froid=None):
+                                 froid=None, onduleur_designe=None):
     """L-2OPT — LE devis « Les deux » quand les deux optimums DIVERGENT.
 
     Compose DEUX kits complets par ``composition_residentielle`` (la source de
@@ -537,7 +537,10 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
     commun) : la forme commune réseau + hybride n'est plus jamais rendue.
     ``modeles`` (ACAL63) n'est transmis aux deux kits qu'à champs ÉGAUX (le
     seul cas où le calepinage dessine les deux options) ;
-    ``batterie_module_kwh`` (BATHOMO) va au kit « avec ». Kit « avec » SANS
+    ``batterie_module_kwh`` (BATHOMO) va au kit « avec ». ``onduleur_designe``
+    (D-ACAL-148, ``{'produit_id', 'categorie', 'nombre'}``) va au SEUL kit qu'il
+    sert : un onduleur réseau au kit « sans », un hybride au kit « avec » ; l'autre
+    kit garde son choix catalogue. Kit « avec » SANS
     aucune batterie ⇒ le kit « sans » seul, avec
     :func:`avertissement_option_avec_retiree`. ``regles_2710=False`` (devis
     EXISTANT aux règles < 3) : l'ancien repli — forme « deux options »
@@ -584,13 +587,20 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
                 **commun)
         modeles = batterie_module_kwh = None
     modeles_kits = modeles if nb_avec == nb_sans else None
+    categorie_designee = (onduleur_designe.get('categorie')
+                          if isinstance(onduleur_designe, dict) else None)
     kit_sans = composition_residentielle(
         catalogue, kwc=kwc_s, nb_panneaux=nb_sans, avec_batterie=False,
-        deux_options=False, modeles=modeles_kits, **commun)
+        deux_options=False, modeles=modeles_kits,
+        onduleur_impose=(onduleur_designe if categorie_designee == 'onduleur_reseau'
+                         else None),
+        **commun)
     kit_avec = composition_residentielle(
         catalogue, kwc=kwc_a, nb_panneaux=nb_avec, avec_batterie=True,
         deux_options=False, batterie_cible_kwh=cible_stockage,
         batterie_module_kwh=batterie_module_kwh, modeles=modeles_kits,
+        onduleur_impose=(onduleur_designe if categorie_designee == 'onduleur_hybride'
+                         else None),
         **commun)
     if (regles_2710 and kit_sans
             and 'batterie' not in (getattr(kit_avec, 'roles', ()) or ())):

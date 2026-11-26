@@ -117,15 +117,145 @@ def _marche_du_lead(lead):
             else Devis.ModeInstallation.RESIDENTIEL)
 
 
-def composer_a_blanc_depuis_layout(*, layout, company, lead=None):
+def composer_a_blanc_depuis_layout(*, layout, company, lead=None, onduleur_designe=None, journal=None):
     """Lane E9b — LE dry-run de « Générer le devis » (``build_devis_from_layout(a_blanc=True)``)
     sous ``conception.moteur.reglages_lus_sans_creer`` : la TVA et le tarif de la société sont
     lus sur la ligne existante, sinon sur une instance NON enregistrée — un ``GET`` ne crée
-    jamais de ``CompanyProfile`` / ``TariffSettings``. Rend les specs de lignes."""
+    jamais de ``CompanyProfile`` / ``TariffSettings``. Rend les specs de lignes.
+
+    D-ACAL-148 — ``onduleur_designe`` / ``journal`` : ceux de la génération (même décision,
+    rangée dans ``journal['onduleur_designe']``)."""
     from apps.ventes.conception.moteur import reglages_lus_sans_creer
 
     with reglages_lus_sans_creer(company):
-        return build_devis_from_layout(layout=layout, user=None, company=company, lead=lead, a_blanc=True)
+        return build_devis_from_layout(layout=layout, user=None, company=company, lead=lead, a_blanc=True,
+                                       onduleur_designe=onduleur_designe, journal=journal)
+
+
+# ── D-ACAL-148 — L'ONDULEUR DÉSIGNÉ À L'ÉTAPE ÉLECTRIQUE ─────────────────────
+#: Les trois familles d'onduleur qu'une composition résidentielle sait vendre.
+FAMILLES_ONDULEUR_DESIGNABLES = ('onduleur_reseau', 'onduleur_hybride', 'onduleur_offgrid')
+#: La suite de toute phrase de repli : ce que le devis fait à la place.
+SUITE_REPLI_ONDULEUR = 'le devis garde l’onduleur de la conception du lead'
+MESSAGE_ONDULEUR_NON_CHIFFRE = ('L’onduleur désigné à l’étape Électrique (« %s ») n’est pas chiffré : %s ; '
+                                + SUITE_REPLI_ONDULEUR + '.')
+MOTIFS_REPLI_ONDULEUR = {
+    'introuvable': 'il n’est pas au catalogue de vente de la société (inconnu ou archivé)',
+    'sans_prix': 'il n’a pas de prix de vente au catalogue',
+    'pompage': 'c’est un article de pompage',
+    'non_onduleur': ('il n’est reconnu comme onduleur réseau, hybride ou hors réseau ni par son rôle, '
+                     'ni par sa fiche, ni par son nom'),
+    'site_isole': 'le site est hors réseau : seul un onduleur hors réseau (autonome) peut être chiffré',
+    'autonome_raccorde': 'c’est un onduleur hors réseau et le site est raccordé au réseau',
+    'reseau_avec_batterie': 'c’est un onduleur réseau : il ne porte pas la batterie de ce devis',
+    'hybride_sans_batterie': ('c’est un onduleur hybride et la pose est sans batterie : un hybride sans '
+                              'batterie n’est pas chiffré automatiquement'),
+    'batterie_incompatible': 'aucune batterie tarifée du catalogue ne se raccorde à cet onduleur',
+}
+
+
+def famille_onduleur_du_produit(produit, specs=None):
+    """D-ACAL-148 — la famille de devis d'un onduleur (``FAMILLES_ONDULEUR_DESIGNABLES``) ou
+    ``None``. Règle du fondateur du 24/11 (« un produit se reconnaît à son rôle et à sa fiche
+    avant son nom ») : le rôle DÉCLARÉ, puis la fiche (port batterie publié ⇒ hybride,
+    ``core.electrique.onduleurs.est_onduleur_hybride`` — la règle du calepinage), puis le nom
+    (``catalogue.classer_produit``). Un micro-onduleur, ou un produit déclaré d'un autre rôle,
+    n'est pas un onduleur du système. Fonction PURE (``specs`` : la fiche déjà lue)."""
+    from core.electrique.onduleurs import est_onduleur_hybride
+    from core.product_roles import role_declare
+
+    from apps.ventes.selectors_calepinage import autre_famille_d_onduleur_par_nom
+
+    if produit is None:
+        return None
+    nom = getattr(produit, 'nom', '') or ''
+    role = role_declare(getattr(produit, 'role_devis', None))
+    if role:
+        return role if role in FAMILLES_ONDULEUR_DESIGNABLES else None
+    autre = autre_famille_d_onduleur_par_nom(nom)
+    if autre == 'micro_onduleur':
+        return None
+    fiche = specs or {}
+    if est_onduleur_hybride(nom, ports_batterie_kw=(fiche.get('bat_max_charge_kw'),
+                                                    fiche.get('bat_max_decharge_kw')),
+                            autre_famille_par_nom=autre):
+        return 'onduleur_hybride'
+    par_nom = classer_produit(nom)
+    return par_nom if par_nom in FAMILLES_ONDULEUR_DESIGNABLES else None
+
+
+def decision_onduleur_designe(*, produit_id, nom, etat, famille, scenario, hors_reseau,
+                              batterie_compatible=True, nombre=None):
+    """D-ACAL-148 — que fait le devis de l'onduleur DÉSIGNÉ ? Fonction PURE.
+
+    ``etat`` : ``'tarife'`` (au catalogue, avec un prix de vente) ou la clé du motif de repli
+    (``'introuvable'``, ``'sans_prix'``, ``'pompage'``). Rend ``{impose, option, motif, message}`` :
+
+    * ``impose`` — ``{'produit_id', 'categorie', 'nombre'}`` transmis à la composition
+      (``CibleDevis.onduleur_impose``), ou ``None`` (repli : la composition d'aujourd'hui) ;
+    * ``option`` — l'option qui le porte : ``''`` (devis à une option), ``'sans'`` (onduleur
+      réseau d'un devis « les deux »), ``'avec'`` (hybride d'un devis « les deux ») ;
+    * ``motif`` / ``message`` — en repli seulement, la raison (sans sujet, pour l'aperçu) et
+      la phrase complète (journal de la génération).
+
+    Ce qu'une forme peut porter : site isolé ⇒ l'autonome seul ; « sans » ⇒ un onduleur réseau
+    (un hybride sans batterie reste en repli : non tranché) ; « avec » ⇒ un hybride servi par une
+    batterie tarifée ; « les deux » ⇒ le réseau à l'option sans, l'hybride à l'option avec."""
+    motif = None if etat == 'tarife' else etat
+    if motif is None:
+        if famille is None:
+            motif = 'non_onduleur'
+        elif hors_reseau:
+            motif = None if famille == 'onduleur_offgrid' else 'site_isole'
+        elif famille == 'onduleur_offgrid':
+            motif = 'autonome_raccorde'
+        elif famille == 'onduleur_reseau' and scenario == COMPOSITION_AVEC:
+            motif = 'reseau_avec_batterie'
+        elif famille == 'onduleur_hybride' and scenario == COMPOSITION_SANS:
+            motif = 'hybride_sans_batterie'
+    if motif is None and famille != 'onduleur_reseau' and not batterie_compatible:
+        motif = 'batterie_incompatible'
+    if motif is not None:
+        texte = MOTIFS_REPLI_ONDULEUR[motif]
+        return {'impose': None, 'option': None, 'motif': '%s ; %s' % (texte, SUITE_REPLI_ONDULEUR),
+                'message': MESSAGE_ONDULEUR_NON_CHIFFRE % (nom, texte)}
+    option = ''
+    if scenario == COMPOSITION_LES_DEUX and not hors_reseau:
+        option = 'sans' if famille == 'onduleur_reseau' else 'avec'
+    return {'impose': {'produit_id': int(produit_id), 'categorie': famille, 'nombre': nombre},
+            'option': option, 'motif': None, 'message': None}
+
+
+def onduleur_designe_pour_le_devis(company, designe, *, scenario, hors_reseau):
+    """D-ACAL-148 — la décision (:func:`decision_onduleur_designe`) pour l'onduleur désigné
+    ``designe`` (``{'produit_id', 'nombre'}`` de l'étape Électrique), lue sur le catalogue de
+    vente de la société (le vivier de la composition : produits de la société et globaux, non
+    archivés), sa fiche et ses batteries. ``None`` sans désignation. Lecture seule."""
+    from apps.stock.selectors import get_produit_scoped, specs_for_produit
+
+    from apps.ventes.domain.catalogue import _pick_batterie, est_article_pompage
+
+    try:
+        cle = int((designe or {}).get('produit_id'))
+    except (TypeError, ValueError):
+        return None
+    produit = next((p for p in catalogue_de_la_societe(company) if getattr(p, 'pk', None) == cle), None)
+    if produit is None:
+        lu = get_produit_scoped(company, cle)
+        nom, etat = (getattr(lu, 'nom', None) or 'fiche produit #%s' % cle), 'introuvable'
+    else:
+        nom = produit.nom
+        etat = ('sans_prix' if not _has_price(produit)
+                else 'pompage' if est_article_pompage(produit) else 'tarife')
+    famille = (famille_onduleur_du_produit(produit, specs_for_produit(produit) or {})
+               if etat == 'tarife' else None)
+    porte_la_batterie = famille in ('onduleur_hybride', 'onduleur_offgrid') and (
+        hors_reseau or scenario in (COMPOSITION_AVEC, COMPOSITION_LES_DEUX))
+    return decision_onduleur_designe(
+        produit_id=cle, nom=nom, etat=etat, famille=famille, scenario=scenario,
+        hors_reseau=hors_reseau, nombre=(designe or {}).get('nombre'),
+        batterie_compatible=(not porte_la_batterie
+                             or _pick_batterie(company, onduleur=produit) is not None))
 
 
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
@@ -133,8 +263,16 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             deux_options=False, journal=None, phase=None,
                             dimensionnement_avec=None,
                             mppt_paires=1, structure_type=None,
-                            structure_produit_id=None, hors_reseau=None, a_blanc=False):
+                            structure_produit_id=None, hors_reseau=None, a_blanc=False,
+                            onduleur_designe=None):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
+
+    ``onduleur_designe`` (D-ACAL-148, fondateur 26/11/2026) — l'onduleur DÉSIGNÉ à l'étape
+    Électrique du calepinage, ``{'produit_id', 'nombre'}`` : le devis le chiffre quand il est au
+    catalogue avec un prix et que la forme du devis peut le porter
+    (:func:`decision_onduleur_designe`), sinon il garde l'onduleur de la composition et le DIT
+    (``journal['avertissements']``). ``journal['onduleur_designe']`` reçoit la décision (aussi
+    à blanc : l'aperçu la lit). ``None`` (LE DÉFAUT) ⇒ composition inchangée.
 
     ``a_blanc`` (lane E9, T4-X5-010) — LE DRY-RUN de ce même chemin : aucun client résolu
     (``resolve_client_for_lead`` écrit), aucun devis ; la composition des étapes 1-4 du
@@ -315,6 +453,13 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
             scenario=COMPOSITION_AVEC, phase=phase, hors_reseau=True))
         if refus_isole and refus_isole[0] != MSG_AUCUN_PANNEAU:
             raise AutoDevisError(refus_isole[0], field='hors_reseau')
+    # D-ACAL-148 — l'onduleur désigné, jugé sur la forme RETENUE (scénario, site isolé).
+    designe = (onduleur_designe_pour_le_devis(company, onduleur_designe, scenario=scenario,
+                                              hors_reseau=hors_reseau)
+               if onduleur_designe else None)
+    if journal is not None and designe is not None:
+        journal['onduleur_designe'] = designe
+    annonces = [designe['message']] if designe is not None and designe['message'] else []
 
     # ── QJR95 — LE PIPELINE, DANS SON ORDRE UNIQUE ─────────────────────────
     # La cible est SOUVERAINE : elle vient du toit que le commercial a dessiné,
@@ -340,7 +485,8 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
             # ACAL63 — le devis vend le(s) module(s) DÉSIGNÉ(S) par le
             # calepinage : une ligne panneau par modèle (``None`` sans fiche
             # désignée ⇒ composition au wattage, inchangée).
-            modeles=modeles_designes(layout) or None),
+            modeles=modeles_designes(layout) or None,
+            onduleur_impose=designe['impose'] if designe is not None else None),
         # QJR165 — le scénario vient du MÊME lecteur que la pré-vérification
         # qui précède cette création (``validate_composition_for_layout`` lit
         # déjà ``scenario_du_layout``). Le couple ``batterie``/``hybride`` +
@@ -378,14 +524,14 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     if journal is not None:
         journal['marques_manquantes'] = list(
             getattr(line_specs, 'marques_manquantes', ()) or ())
-        journal['avertissements'] = list(avertissements or ())
+        journal['avertissements'] = list(avertissements or ()) + annonces
         journal['nb_panneaux'] = getattr(line_specs, 'nb_panneaux', 0)
         journal['kwc_reel'] = getattr(line_specs, 'kwc_reel', 0.0)
-    elif avertissements:
+    elif avertissements or annonces:
         # Sans canal fourni, la composition journalisait elle-même ses refus.
         # Le pipeline, lui, les COLLECTE toujours : on les journalise ici
         # plutôt que de les laisser dans une liste que personne ne lit.
-        for message in avertissements:
+        for message in [*(avertissements or ()), *annonces]:
             logger.warning('Q3: devis depuis layout — %s', message)
 
     logger.info(
@@ -453,6 +599,7 @@ from apps.ventes.domain.pipeline import (  # noqa: E402 — fin de module (anti-
 from apps.ventes.domain.etape_composer import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     COMPOSITION_AVEC,
     COMPOSITION_LES_DEUX,
+    COMPOSITION_SANS,
     MSG_AUCUN_PANNEAU,
     IntentionComposition,
     verifier,

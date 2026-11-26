@@ -477,6 +477,73 @@ class ResyncAnnonceTest(BaseApiCalepinage):
             reponse = self.api.post(f'{self.base}sync-devis/', {}, format='json')
         self.assertEqual((reponse.status_code, str(reponse.data['detail'])), (409, 'Refus du serveur.'))
 
+    # ── D-ACAL-148 (fondateur, 26/11/2026) — le devis chiffre l'onduleur désigné ──
+    def _apercu_puis_generation(self):
+        from apps.ventes.models import Devis
+
+        apercu = self.api.get(f'{self.base}apercu-devis/')
+        self.assertEqual(apercu.status_code, 200, apercu.data)
+        genere = self.api.post(f'{self.base}generer-devis/', {'creer_autre_devis': True}, format='json')
+        self.assertEqual(genere.status_code, 201, genere.data)
+        lignes = Devis.objects.get(pk=genere.data['devis']).lignes.all()
+        onduleurs = {(li.variante or None): (li.designation, li.role_devis) for li in lignes
+                     if str(li.role_devis or '').startswith('onduleur_')}
+        return apercu.data, genere.data, onduleurs
+
+    def test_d_acal_148_onduleur_reseau_designe_et_tarife_est_au_devis(self):
+        from apps.stock.models import Produit
+
+        for kw, prix in ((6, 15000), (8, 16000)):  # sans désignation, le catalogue prendrait le 6 kW
+            Produit.objects.create(company=self.company, nom=f'Onduleur réseau Growatt {kw}kW Monophasé',
+                                   sku=f'A148-G{kw}-{self.company.pk}', prix_vente=Decimal(prix),
+                                   prix_achat=Decimal('1'), quantite_stock=5)
+        self._nouvelle_pose()
+        self._designer('Onduleur réseau Growatt 8kW Monophasé')
+        apercu, _genere, onduleurs = self._apercu_puis_generation()
+        self.assertEqual([o['onduleur'] for o in apercu['options']], ['Onduleur réseau Growatt 8kW Monophasé'])
+        self.assertEqual(apercu['ecarts'], [])
+        self.assertEqual(onduleurs, {None: ('Onduleur réseau Growatt 8kW Monophasé', 'onduleur_reseau')})
+
+    def test_d_acal_148_sans_prix_le_repli_est_dit_a_l_apercu_et_a_la_generation(self):
+        from apps.stock.models import Produit
+
+        Produit.objects.create(company=self.company, nom='Onduleur réseau Growatt 3kW Monophasé',
+                               sku=f'A148-G3-{self.company.pk}', prix_vente=Decimal('0'),
+                               prix_achat=Decimal('1'), quantite_stock=5)
+        self._nouvelle_pose()
+        self._designer('Onduleur réseau Growatt 3kW Monophasé')
+        apercu, genere, onduleurs = self._apercu_puis_generation()
+        self.assertEqual([o['onduleur'] for o in apercu['options']], ['Onduleur réseau Huawei 5kW Monophasé'])
+        self.assertEqual([e['champ'] for e in apercu['ecarts']], ['onduleur_produit'])
+        self.assertIn('pas de prix de vente', apercu['ecarts'][0]['message'])
+        self.assertTrue(any('pas de prix de vente' in m for m in genere['avertissements']), genere)
+        self.assertEqual(onduleurs, {None: ('Onduleur réseau Huawei 5kW Monophasé', 'onduleur_reseau')})
+
+    def test_d_acal_148_hybride_sur_pose_sans_batterie_reste_en_repli_dit(self):
+        self._nouvelle_pose()
+        self._designer('Onduleur hybride Deye 5kW Monophasé')
+        apercu, genere, onduleurs = self._apercu_puis_generation()
+        self.assertIn('la pose est sans batterie', apercu['ecarts'][0]['message'])
+        self.assertTrue(any('la pose est sans batterie' in m for m in genere['avertissements']), genere)
+        self.assertEqual(onduleurs, {None: ('Onduleur réseau Huawei 5kW Monophasé', 'onduleur_reseau')})
+
+    def test_d_acal_148_deux_options_l_hybride_designe_va_a_l_option_avec(self):
+        from apps.ventes.models import Devis
+
+        Devis.objects.filter(pk=self.calepinage.devis_id).update(is_active=False)
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(devis=None)
+        self.calepinage.refresh_from_db()
+        enregistrer_layout(self.calepinage, dict(copy.deepcopy(TOIT), scenario='les_deux'), user=self.user)
+        self.calepinage.refresh_from_db()
+        self._designer('Onduleur hybride Deye 5kW Monophasé')
+        apercu, _genere, onduleurs = self._apercu_puis_generation()
+        self.assertEqual({o['option']: o['onduleur'] for o in apercu['options']},
+                         {'sans': 'Onduleur réseau Huawei 5kW Monophasé',
+                          'avec': 'Onduleur hybride Deye 5kW Monophasé'})
+        self.assertEqual(apercu['ecarts'], [])
+        self.assertEqual(onduleurs['avec'], ('Onduleur hybride Deye 5kW Monophasé', 'onduleur_hybride'))
+        self.assertEqual(onduleurs['sans'], ('Onduleur réseau Huawei 5kW Monophasé', 'onduleur_reseau'))
+
 
 class ApercuBrouillonLibreSansBaseTest(SimpleTestCase):
     """Lot 8 (B2) — sans base : le rôle d'une ligne de brouillon et la phrase R2-22."""
