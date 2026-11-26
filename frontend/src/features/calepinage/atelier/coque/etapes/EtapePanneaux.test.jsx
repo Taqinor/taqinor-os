@@ -192,6 +192,19 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(within(carte).getAllByRole('option')[2]).not.toHaveTextContent(/stock/i)
   })
 
+  it('D-ACAL-169 — le panneau par défaut de la société porte la pastille « Par défaut », les autres modèles aucune', async () => {
+    monterConstructeur()
+    calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({
+      data: { modules: [{ ...CATALOGUE[0], par_defaut: true }, CATALOGUE[1]] },
+    })
+    rendre()
+    const carte = screen.getByTestId('cal-panneaux-module')
+    fireEvent.click(within(carte).getByRole('button', { name: /Module par défaut/ }))
+    await waitFor(() => expect(within(within(carte).getAllByRole('option')[1]).getByTestId('cal-pan-par-defaut')).toHaveTextContent('Par défaut'))
+    expect(within(carte).getAllByTestId('cal-pan-par-defaut')).toHaveLength(1)
+    expect(within(carte).getAllByRole('option')[2]).not.toHaveTextContent('Par défaut')
+  })
+
   it('lane E9 (T4-X2-001) — module de 710 W pour une conception de 8 × 550 W : la carte dit la puissance et le compte servi, la pose reçoit 6', async () => {
     monterConstructeur({ besoin: '12' })
     document.getElementById('rp9-pan-module-select').value = 'produit-1'
@@ -439,6 +452,40 @@ describe('étape Panneaux — panneau de droite', () => {
     await screen.findByText(/rien ne dimensionne le devis/)
     const lien = await screen.findByRole('link', { name: 'Renseigner la facture du lead' })
     expect(lien).toHaveAttribute('href', '/crm/leads/42')
+  })
+
+  // R6-N4 — lead R5A-4 (facture 900 MAD + taille souhaitée 6 kWc) : le serveur nomme la cause dans `refus`, dite telle quelle ;
+  // sans cause servie, un lead qui porte une facture ne lit jamais « Aucune taille ne se tire des factures » ni le lien
+  // « Renseigner la facture du lead ».
+  it('R6-N4 — facture saisie : la cause servie est dite, et sans cause jamais « aucune taille » ni « renseigner la facture »', async () => {
+    servir({ cible: null })
+    const CAUSE = 'La taille de ce lead vient de la taille souhaitée sur sa fiche (6 kWc ; conception : 9 panneaux · 6,39 kWc), pas de ses factures.'
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: { cible_factures: null, refus: CAUSE } })
+    rendre()
+    await screen.findByText(CAUSE)
+    expect(document.body).not.toHaveTextContent('Aucune taille ne se tire des factures')
+    expect(screen.queryByRole('link', { name: 'Renseigner la facture du lead' })).toBeNull()
+    cleanup()
+    oublierLecturesServies()
+    servir({ cible: null })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: { cible_factures: null, refus: '' } })
+    rendre()
+    await screen.findByText(/La facture de ce lead est renseignée, mais le moteur n’en a tiré aucune taille/)
+    expect(document.body).not.toHaveTextContent('Aucune taille ne se tire des factures')
+    expect(screen.queryByRole('link', { name: 'Renseigner la facture du lead' })).toBeNull()
+  })
+
+  // R6-N4 — taille souhaitée SANS facture : il ne manque rien, la phrase n'est pas suivie du lien de saisie d'une facture.
+  it('R6-N4 — taille souhaitée sur la fiche, sans facture : la cause est dite, aucun lien « Renseigner la facture du lead »', async () => {
+    servir({ cible: null })
+    const CAUSE = 'La taille de ce lead vient de la taille souhaitée sur sa fiche (6 kWc ; conception : 9 panneaux · 6,39 kWc), pas de ses factures.'
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: {
+      calepinage: { lead: 42 }, consommation_lead: { facture_mensuelle_mad: null, motif: '' },
+      cible: { source: 'lead', panneaux: 9, kwc: 6.39 } } })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: { cible_factures: null, refus: CAUSE } })
+    rendre()
+    await screen.findByText(CAUSE)
+    expect(screen.queryByRole('link', { name: 'Renseigner la facture du lead' })).toBeNull()
   })
 
   // T4-X9-013 — calepinage SANS lead : « Ville inconnue du moteur : renseigner la ville ou le point GPS du lead. » sous

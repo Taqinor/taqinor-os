@@ -500,6 +500,8 @@
     cout_rupture_jour:texte, fournisseurs:inconnu, produit:inconnu
 - frontend/src/api/stockApi.js :: deciderCandidatureFournisseur -> /api/django/stock/fournisseurs/<>/decider-candidature
     detail:texte, id:inconnu, statut_validation:inconnu
+- frontend/src/api/stockApi.js :: definirPanneauParDefaut -> /api/django/stock/produits/<>/definir-panneau-par-defaut
+    motif:inconnu, nom:inconnu, pmax_wc:inconnu, produit_id:inconnu, source:inconnu
 - frontend/src/api/stockApi.js :: deposerFichierPvsyst -> /api/django/stock/fiches-techniques/importer-datasheet
     champ:inconnu, champs_attendus_absents:inconnu, confirme:booleen, controles_omis:inconnu, conversions:inconnu, deja_saisis:inconnu, detail:inconnu, ecrits:inconnu, fiche:inconnu, ligne:inconnu, mapping:inconnu, non_reconnus:inconnu, reconnus:inconnu, refus:inconnu, type_fiche:inconnu
 - frontend/src/api/stockApi.js :: exploserKit -> /api/django/stock/kits/<>/exploser
@@ -522,6 +524,8 @@
     composants:inconnu, detail:texte, goulots:inconnu, kit_id:inconnu, kit_nom:inconnu, kits_assemblables:inconnu
 - frontend/src/api/stockApi.js :: getOnboardingFournisseur -> /api/django/stock/fournisseurs/<>/onboarding
     dossier:inconnu, obligatoire:inconnu, progression:inconnu
+- frontend/src/api/stockApi.js :: getPanneauParDefaut -> /api/django/stock/panneau-par-defaut
+    motif:inconnu, nom:inconnu, pmax_wc:inconnu, produit_id:inconnu, source:inconnu
 - frontend/src/api/stockApi.js :: getPretDevisAgricole -> /api/django/stock/produits/pret-devis-agricole
     nb_obligatoires_manquants:inconnu, postes:inconnu, pret:booleen
 - frontend/src/api/stockApi.js :: getProduitUtiliseDans -> /api/django/stock/produits/<>/utilise-dans
@@ -540,6 +544,8 @@
     detail:texte, mouvement_id:inconnu, valeur_perdue:texte
 - frontend/src/api/stockApi.js :: resolveCode -> /api/django/stock/produits/resolve
     chantier:inconnu, client:inconnu, created:inconnu, date_fin_garantie:inconnu, date_peremption:inconnu, detail:texte, gs1:inconnu, id:inconnu, label:inconnu, nb_tickets_ouverts:inconnu, numero_lot:inconnu, numero_serie:inconnu, quantite:inconnu, quantite_restante:inconnu, reference:inconnu, route:texte, serie:texte, sku:texte, statut:inconnu, type:texte
+- frontend/src/api/stockApi.js :: retirerPanneauParDefaut -> /api/django/stock/produits/<>/retirer-panneau-par-defaut
+    motif:inconnu, nom:inconnu, pmax_wc:inconnu, produit_id:inconnu, source:inconnu
 - frontend/src/api/stockApi.js :: revoquerAccesFournisseur -> /api/django/stock/fournisseurs/<>/revoquer-acces
     actif:inconnu, comptes_desactives:inconnu, detail:texte, fournisseur_id:inconnu, jetons_revoques:inconnu
 - frontend/src/api/stockApi.js :: scanGs1ReceptionFournisseur -> /api/django/stock/receptions-fournisseur/scan-gs1

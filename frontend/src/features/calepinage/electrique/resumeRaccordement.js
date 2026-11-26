@@ -63,6 +63,34 @@ export function longueurCableDc(resultat) {
   return dc.reduce((somme, t) => somme + t.longueur_m, 0)
 }
 
+/** Liaison DC tracée (suite ACAL1317) — la ligne de provenance sous « Câble côté panneaux » : quelle longueur la
+    simulation et la chute de tension COMPTENT (`longueurs.source_dc` et `longueurs.dc.valeur_m` de `GET resultat/`,
+    contrat `calepinage_resultat.json` › `liaison_dc_tracee`). `null` quand le serveur ne le dit pas. */
+export function provenanceLiaisonDc(resultat) {
+  const source = resultat?.longueurs?.source_dc
+  const dc = resultat?.longueurs?.dc
+  // Sans longueur, la perte du câble est la valeur de conception de la société (`ohmique_dc_conception_pct`,
+  // dite « supposé ») quand elle en a une — jamais « aucune » : on ne le dit donc pas.
+  if (source === 'defaut') return 'Longueur inconnue de la simulation : la perte de ce câble y est supposée, ou non comptée'
+  if (!estNombre(dc?.valeur_m)) return null
+  // La liaison comptée est la PIRE (module le plus éloigné → onduleur, descente comprise) : elle n'est pas la
+  // somme des tronçons de la pastille, et n'y est jamais comparée. Une longueur SAISIE l'emporte toujours sur
+  // le plan (descente avant l'altitude du tracé, coffret → onduleur avant le tracé) : la phrase le dit.
+  const textes = {
+    saisie: 'longueurs saisies',
+    trace: 'relevée sur le plan',
+    trace_et_saisie: 'tracé du plan et longueurs saisies — une longueur saisie l’emporte sur le plan',
+  }
+  if (!Object.hasOwn(textes, source)) return null
+  // Simulation fraîche : le W1 servi est celui qu'elle a calculé ; sinon celui que la prochaine comptera.
+  const verbe = resultat?.simule === true && !resultat?.simulation_perimee ? 'compte' : 'comptera'
+  const metres = (v) => `${nb(v, Number.isInteger(v) ? 0 : 1)} m`
+  const parts = (Array.isArray(dc.composantes) ? dc.composantes : [])
+    .filter((c) => c && estNombre(c.valeur_m) && c.poste)
+    .map((c) => `${metres(c.valeur_m)} ${c.poste}${c.origine ? ` (${c.origine})` : ''}`)
+  return `La simulation ${verbe} ${metres(dc.valeur_m)} (${textes[source]})${parts.length ? ` : ${parts.join(' + ')}` : ''}`
+}
+
 /** ACAL1317 — le libellé de la case du câble : la provenance du tracé de l'onduleur s'y range dessous. */
 export const CASE_CABLE = 'Câble côté panneaux'
 

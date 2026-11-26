@@ -399,3 +399,19 @@ def composition_a_blanc():
     from apps.ventes.services import AutoDevisError, composer_a_blanc_depuis_layout
 
     return composer_a_blanc_depuis_layout, AutoDevisError
+
+
+def classer_produit_nom(nom):
+    """Lot 8 (B2) — le classifieur de NOM du catalogue (``apps.ventes.selectors.classer_produit_nom``),
+    passé par ce module déjà importateur de ventes (cliquet ``test_imports_croises_ventes``)."""
+    from apps.ventes.selectors import classer_produit_nom as classer
+
+    return classer(nom)
+
+
+def compatibilite_du_materiel(module, onduleur, company, batterie_id=None):
+    """D-ACAL-157 — L'UNIQUE juge de compatibilité du matériel (``apps.ventes.selectors.
+    compatibilite_du_materiel``), passé par ce module déjà importateur de ventes (même cliquet)."""
+    from apps.ventes.selectors import compatibilite_du_materiel as juge
+
+    return juge(module, onduleur, company, batterie_id)

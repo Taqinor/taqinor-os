@@ -111,8 +111,7 @@ _SURFACES = OpenApiParameter(
 @action(detail=True, methods=['get'], url_path='apercu-devis', permission_classes=[PeutVoirCalepinage])
 def apercu_devis(self, request, pk=None):
     """Le matériel que « Générer le devis » portera, par option, et les écarts aux désignations."""
-    from apps.ventes.selectors_assistant import lit_les_devis
-
+    from ..services.devis import lit_les_devis
     from ..services.devis_apercu import apercu_materiel_du_devis
 
     calepinage = self.get_object()

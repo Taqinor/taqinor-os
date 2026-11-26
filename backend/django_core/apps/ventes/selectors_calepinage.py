@@ -782,6 +782,17 @@ def pose_reelle_au_niveau(niveau):
                            REGLES_POSE_REELLE_2111)
 
 
+def liaison_dc_tracee_ouverte(jour=None):
+    """Liaison DC tracée (suite ACAL1317) — un calcul du calepinage fait le ``jour``
+    (aujourd'hui, fuseau du projet, par défaut) prend-il le tracé DC du plan ? Voir
+    ``domain.regles_calcul.COUPURE_LIAISON_DC_TRACEE``. Lecture pure."""
+    from django.utils import timezone
+
+    from .domain.regles_calcul import liaison_dc_tracee_ouverte as ouverte
+
+    return ouverte(jour if jour is not None else timezone.localdate())
+
+
 def production_imprimee_du_devis(devis):
     """R2-14 (D-ACAL-6) — LA production annuelle (kWh, ``Decimal``) que le PDF
     ``/proposal`` imprime pour ce devis (instance) : le MÊME rendu que

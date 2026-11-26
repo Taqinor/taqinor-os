@@ -383,6 +383,8 @@ export const ALL_HOOKS = [
   'cal-variante-confirmer',
   'cal-variante-dupliquer',
   'cal-variante-refus', // T4-X9-010
+  'cal-variante-retenue-sans-simulation', // R6-N2
+  'cal-variante-sans-simulation', // R6-N2
   'cal-simulation-a-refaire', // T4-X2-002
   'cal-variante-formulaire',
   'cal-variante-nom',
@@ -880,6 +882,7 @@ export const ALL_HOOKS = [
   'cal-toit-obstacles',
   'cal-toit-soleil',
   'cal-panneaux-module',
+  'cal-pan-par-defaut',
   'cal-panneaux-option-facture',
   'cal-panneaux-actualiser-conception',
   'cal-panneaux-option-max',
@@ -897,6 +900,7 @@ export const ALL_HOOKS = [
   'cal-elec-onduleur-choix',
   'cal-elec-onduleur-message',
   'cal-elec-cable-provenance',
+  'cal-elec-cable-simulation',
   'cal-elec-batterie',
   'cal-elec-batterie-du-devis',
   'cal-elec-batterie-packs',

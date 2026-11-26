@@ -101,6 +101,7 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
     cible: facture.cible,
     motifFacture: facture.refus || facture.motif,
     refusFacture: facture.refus,
+    tailleSouhaitee: facture.tailleSouhaitee, // R6-N4
     factureSaisie: facture.factureSaisie,
     entrees: Array.isArray(catalogue?.modules) ? catalogue.modules : [],
     // Lane E9 — la taille de la conception comptée dans chaque puissance de la liste (`modules-disponibles/`).
@@ -174,11 +175,15 @@ function ChoixModule({ etat, entrees, servis, lectureSeule, g }) {
             onKeyDown={(e) => { if (e.key === 'Escape') setOuvert(false) }}>
             {options.map((o) => {
               const entree = fiches.get(o.valeur)
+              const intitule = <span className="cal-pan-module-nom">{nom(o)}</span>
               return (
                 <li key={o.valeur || 'defaut'} role="option" aria-selected={o.valeur === module.valeur}>
                   <button type="button" disabled={o.grise} onClick={() => choisir(o.valeur)}
                     className="cal-pan-option">
-                    <span className="cal-pan-module-nom">{nom(o)}</span>
+                    {/* D-ACAL-169 — le panneau par défaut de la société (désigné au stock, servi `par_defaut`) porte une pastille. */}
+                    {entree?.par_defaut
+                      ? <span className="cal-pan-option-tete">{intitule}<span className="cal-pan-badge" data-testid="cal-pan-par-defaut">Par défaut</span></span>
+                      : intitule}
                     <span className="cal-pan-module-ligne">
                       {o.grise ? (entree?.motif || 'fiche produit incomplète') : [entree?.en_stock ? 'En stock' : '', ligneModule(fiche(o.valeur))].filter(Boolean).join(' · ')}
                     </span>
@@ -275,8 +280,13 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   const ligneMax = figuresMax?.panneaux ? [compte(figuresMax.panneaux), figuresMax.kwc, part(figuresMax)]
     .filter(Boolean).join(' · ') : ''
   // T4-X9-013 (reste) — sans lead, la phrase de repli ne nomme pas « ce lead ».
+  // R6-N4 — un lead qui PORTE une facture ne se voit jamais dire « aucune taille ne se tire des factures » (le serveur nomme
+  // d'ordinaire la cause dans `refus` : taille souhaitée, C&I…) : à défaut de cause servie, la phrase dit ce qui est vrai.
+  const factureSansCause = Boolean(servi.leadId) && servi.factureSaisie && !servi.motifFacture
   const raison = servi.motifFacture || (servi.leadId
-    ? 'Aucune taille ne se tire des factures de ce lead.'
+    ? (factureSansCause
+      ? 'La facture de ce lead est renseignée, mais le moteur n’en a tiré aucune taille pour l’instant. Choisissez le nombre de panneaux à poser.'
+      : 'Aucune taille ne se tire des factures de ce lead.')
     : 'Ce calepinage n’a pas de lead : aucune taille n’est tirée d’une facture. Choisissez le nombre de panneaux à poser.')
   return (
     <section className="cal-pan-section">
@@ -333,7 +343,7 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
       {servi.facture.etat === 'ok' && !cible && !servi.facture.calculEnCours && (
         <p className="cal-pan-note">
           {raison}
-          {servi.leadId && !(servi.refusFacture && servi.factureSaisie) && (
+          {servi.leadId && !(servi.refusFacture && servi.factureSaisie) && !factureSansCause && !servi.tailleSouhaitee && (
             <>{' '}<Link to={`/crm/leads/${servi.leadId}`} className="cal-pan-lien">Renseigner la facture du lead</Link></>
           )}
         </p>
