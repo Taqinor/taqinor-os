@@ -138,8 +138,9 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         apercu = reponse.data
         self.assertEqual((apercu['inchange'], apercu['statut'], apercu['corrige_apres_envoi']),
                          (False, 'envoye', True))
-        panneaux = [c for c in apercu['changements'] if c['quantite_avant'] == '12.00']
-        self.assertEqual([c['quantite_apres'] for c in panneaux], ['14.00'], apercu)
+        panneaux = [c for c in apercu['changements'] if c['designation_apres'].startswith('Panneau')]
+        self.assertEqual([c['quantite_apres'] for c in panneaux], ['14.00'], apercu)  # la pose : 14 panneaux
+        self.assertNotEqual(panneaux[0]['quantite_avant'], '14.00')
         self.assertEqual(set(panneaux[0]), set(contrat['exemple']['changements'][0]))
         self.assertNotEqual(apercu['totaux']['avant']['ttc'], apercu['totaux']['apres']['ttc'])
 
