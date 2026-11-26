@@ -83,33 +83,44 @@ describe('AGNR34 — devis auto résidentiel : deux factures, aucune série fabr
 })
 
 describe('T4-X1-004 — la taille réelle est dite quand elle diffère de la cible tapée', () => {
-  it('3 kWc tapés, devis servi à 3,55 kWc : une alerte nomme les deux tailles et pourquoi', async () => {
-    // La réponse servie (contrat committé), à 3,55 kWc et avec l'alerte « Taille imposée » que le serveur pose.
-    ventesApi.creerDevisAuto.mockResolvedValueOnce({ data: { ...exempleContrat('ventes', 'assistant_devis_cree'), kwc: 3.55, alertes: [{ code: 'taille_demandee', message: 'Taille imposée pour ce devis : 3 kWc' }] } })
+  // La réponse servie part du contrat committé ; son option unique porte le kwc ET le nombre de panneaux servis.
+  const servi = (kwc, nbPanneaux, extra = {}) => {
+    const contrat = exempleContrat('ventes', 'assistant_devis_cree')
+    return { ...contrat, kwc, options: [{ ...contrat.options[0], kwc, nb_panneaux: nbPanneaux }], ...extra }
+  }
+  const SANS_CAUSE = /panneaux est entier|panneau entier|jamais en dessous/
+
+  it('3 kWc tapés, devis servi à 3,55 kWc / 5 panneaux (écart < 1 panneau de 0,71, au-dessus) : la cause est dite', async () => {
+    ventesApi.creerDevisAuto.mockResolvedValueOnce({ data: servi(3.55, 5, { alertes: [{ code: 'taille_demandee', message: 'Taille imposée pour ce devis : 3 kWc' }] }) })
     const onAlertes = vi.fn()
     await createAutoQuote({ lead: { id: 4, type_installation: 'residentiel' }, produits: [], discountStr: '0', targetKwc: '3', onAlertes })
     const alertes = onAlertes.mock.calls[0][0]
     expect(alertes).toHaveLength(2)
-    expect(alertes[1].message).toMatch(/3 kWc.*3,55 kWc.*panneaux est entier/)
+    expect(alertes[1].message).toBe('Vous avez demandé 3 kWc ; le devis est à 3,55 kWc : le nombre de panneaux est entier, '
+      + 'la taille composée est celle du panneau entier juste au-dessus de la demande.')
   })
 
-  it('deux options servies à 3,55 kWc : chacune nommée ; taille servie égale à la cible : aucune alerte en plus', async () => {
+  it('deux options servies (panneaux servis) : chacune nommée ; taille servie égale à la cible : aucune alerte en plus', async () => {
     const { alerteTailleArrondie } = await import('./autoQuote')
-    const deux = alerteTailleArrondie(3, { options: [{ variante: 'sans', libelle: 'Sans batterie', kwc: 3.55 }, { variante: 'avec', libelle: 'Avec batterie', kwc: 3.55 }] })
+    const deux = alerteTailleArrondie(3, { options: [{ variante: 'sans', libelle: 'Sans batterie', kwc: 3.55, nb_panneaux: 5 }, { variante: 'avec', libelle: 'Avec batterie', kwc: 3.55, nb_panneaux: 5 }] })
     expect(deux.message).toContain('Sans batterie : 3,55 kWc')
     expect(deux.message).toContain('Avec batterie : 3,55 kWc')
-    expect(alerteTailleArrondie(3.55, { kwc: 3.55 })).toBeNull()
+    expect(deux.message).toContain('panneau entier juste au-dessus')
+    expect(alerteTailleArrondie(3.55, servi(3.55, 5))).toBeNull()
     expect(alerteTailleArrondie(3, { })).toBeNull()
-    expect(alerteTailleArrondie(0, { kwc: 3.55 })).toBeNull()
+    expect(alerteTailleArrondie(0, servi(3.55, 5))).toBeNull()
   })
 
-  it('« jamais en dessous de la demande » n’est dit que si chaque taille servie est ≥ la cible', async () => {
+  it('aucune cause sans preuve servie : 3 panneaux d’écart, taille sous la demande, ou nombre de panneaux non servi → les deux chiffres seuls', async () => {
     const { alerteTailleArrondie } = await import('./autoQuote')
-    expect(alerteTailleArrondie(3, { kwc: 3.55 }).message).toContain('(jamais en dessous de la demande)')
-    const dessous = alerteTailleArrondie(3, { kwc: 2.84 })
-    expect(dessous.message).toContain('le devis est à 2,84 kWc')
-    expect(dessous.message).not.toMatch(/jamais en dessous/)
-    const mixte = alerteTailleArrondie(3, { options: [{ variante: 'sans', libelle: 'Sans batterie', kwc: 2.84 }, { variante: 'avec', libelle: 'Avec batterie', kwc: 3.55 }] })
-    expect(mixte.message).not.toMatch(/jamais en dessous/)
+    const troisPanneaux = alerteTailleArrondie(3, servi(5.68, 8)) // 2,68 kWc d'écart ≥ 0,71 (un panneau)
+    expect(troisPanneaux.message).toBe('Taille demandée : 3 kWc ; taille composée : 5,68 kWc.')
+    const dessous = alerteTailleArrondie(3, servi(2.84, 4))
+    expect(dessous.message).toBe('Taille demandée : 3 kWc ; taille composée : 2,84 kWc.')
+    const sansWattage = alerteTailleArrondie(3, { kwc: 3.55 })
+    expect(sansWattage.message).toBe('Taille demandée : 3 kWc ; taille composée : 3,55 kWc.')
+    const mixte = alerteTailleArrondie(3, { options: [{ variante: 'sans', libelle: 'Sans batterie', kwc: 3.55, nb_panneaux: 5 }, { variante: 'avec', libelle: 'Avec batterie', kwc: 5.68, nb_panneaux: 8 }] })
+    expect(mixte.message).toBe('Taille demandée : 3 kWc ; taille composée : 3,55 kWc (Sans batterie) · 5,68 kWc (Avec batterie).')
+    ;[troisPanneaux, dessous, sansWattage, mixte].forEach((a) => expect(a.message).not.toMatch(SANS_CAUSE))
   })
 })
