@@ -3,6 +3,7 @@ import {
   CalendarDays, Users, Target, Map, UserPlus, TrendingUp, LayoutDashboard, Globe,
   Swords, Trophy, CalendarClock, ClipboardCheck, Radar,
 } from 'lucide-react'
+import { REPLI_ROLES } from '../../router/moduleGating'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy CRM vers le registre (phase 2, après les
@@ -65,6 +66,19 @@ const CockpitEquipePage = lazy(() => import('../../pages/crm/CockpitEquipePage')
 // routes `/visites/...`), parce que le commercial terrain qui les utilise n'a
 // aucun accès au CRM. Ne les remonter ici sous aucun prétexte.
 
+/* T4-X8-016 (lot 8) — LA règle de lecture du CRM, lue À LA FOIS par l'entrée de menu et par sa route
+   (`router/moduleGating.js::estAutoriseEntree`, la même fonction pour la Sidebar, le lanceur et `roleLoader`).
+   Un rôle FIN est jugé sur `crm_voir` seul — la garde serveur de la liste des leads
+   (`HasPermissionOrLegacy('crm_voir')`, `apps/crm/views.py::LeadViewSet.get_permissions`) et de ce que ces
+   écrans lisent d'abord ; aucun rôle système ne porte un `crm_*` sans `crm_voir` (registre
+   `apps/roles/permissions_registre.py`). Un compte LÉGACY (aucune permission servie) garde le palier de
+   l'entrée (`REPLI_ROLES`) : rien ne change pour lui. Le Technicien (aucun `crm_*`) ne voit plus ces entrées,
+   et sa route le renvoie sur l'écran « Accès refusé » (`/403`) AVANT que la page ne lance une seule requête
+   (les toasts de permission venaient de ces lectures refusées). Les entrées dont l'écran se lit sans
+   `crm_voir` (Calendrier, Clients, Forecast, Carte, Visiteurs, Attribution, Cockpit d'équipe) sont inchangées. */
+const ROLES_CRM = ['normal', 'responsable', 'admin']
+const LECTURE_CRM = { roles: ROLES_CRM, perm: 'crm_voir', permRepliPalier: REPLI_ROLES }
+
 const config = {
   key: 'crm',
   order: 40,
@@ -85,9 +99,9 @@ const config = {
       // (`prefs.js` VX46) — trois surfaces corrigées par cette seule ligne.
       // ODY15 avait mis `/crm/cockpit` ici ; le cockpit reste une entrée de
       // nav parfaitement atteignable, simplement plus la porte d'entrée.
-      { to: '/crm/leads',            label: 'Leads',            k: 'nav.leads',      icon: navIcon(Target),        roles: ['normal','responsable','admin'] },
+      { to: '/crm/leads',            label: 'Leads',            k: 'nav.leads',      icon: navIcon(Target),        roles: ['normal','responsable','admin'], ...LECTURE_CRM },
       // ODY15 — cockpit CRM (ModuleHero + actions + KPI), désormais 2ᵉ.
-      { to: '/crm/cockpit',          label: 'Cockpit',          k: 'nav.crm_cockpit', icon: navIcon(LayoutDashboard), roles: ['normal','responsable','admin'] },
+      { to: '/crm/cockpit',          label: 'Cockpit',          k: 'nav.crm_cockpit', icon: navIcon(LayoutDashboard), roles: ['normal','responsable','admin'], ...LECTURE_CRM },
       { to: '/calendrier',           label: 'Calendrier',       k: 'nav.calendrier', icon: navIcon(CalendarDays),   roles: ['normal','responsable','admin'] },
       { to: '/crm',                  label: 'Clients',          k: 'nav.clients',    icon: navIcon(Users),      roles: ['normal','responsable','admin'] },
       // ODY15 — fermait un trou réel (module.config.test.jsx le documentait
@@ -95,18 +109,18 @@ const config = {
       { to: '/crm/payloads-site-web', label: 'Leads site web',  k: 'nav.leads_site_web', icon: navIcon(Globe), roles: ['responsable','admin'] },
       { to: '/crm/forecast',         label: 'Forecast',         k: 'nav.forecast',   icon: navIcon(TrendingUp),    roles: ['normal','responsable','admin'] },
       { to: '/carte',                label: 'Carte',            k: 'nav.carte',      icon: navIcon(Map),           roles: ['normal','responsable','admin'] },
-      { to: '/crm/parrainage',       label: 'Parrainage',       k: 'nav.parrainage', icon: navIcon(UserPlus),   roles: ['normal','responsable','admin'] },
+      { to: '/crm/parrainage',       label: 'Parrainage',       k: 'nav.parrainage', icon: navIcon(UserPlus),   roles: ['normal','responsable','admin'], ...LECTURE_CRM },
       // WIR99/DC12 — profil site réutilisable par client (pré-remplit le devis).
-      { to: '/crm/profils-site',     label: 'Profils site',     k: 'nav.profils_site', icon: navIcon(Users),   roles: ['normal','responsable','admin'] },
+      { to: '/crm/profils-site',     label: 'Profils site',     k: 'nav.profils_site', icon: navIcon(Users),   roles: ['normal','responsable','admin'], ...LECTURE_CRM },
       // PACT103 — intelligence concurrentielle par lead perdu.
-      { to: '/crm/concurrents-perte', label: 'Concurrents (perdus)', k: 'nav.concurrents_perte', icon: navIcon(Swords), roles: ['normal','responsable','admin'] },
+      { to: '/crm/concurrents-perte', label: 'Concurrents (perdus)', k: 'nav.concurrents_perte', icon: navIcon(Swords), roles: ['normal','responsable','admin'], ...LECTURE_CRM },
       // NTCRM24 — classement des défis d'équipe : visible de toute l'équipe
       // (gamification), pas juste le manager.
-      { to: '/crm/defis',            label: 'Défis',            k: 'nav.defis',      icon: navIcon(Trophy),     roles: ['normal','responsable','admin'] },
+      { to: '/crm/defis',            label: 'Défis',            k: 'nav.defis',      icon: navIcon(Trophy),     roles: ['normal','responsable','admin'], ...LECTURE_CRM },
       // MRY31 — suivi des relances par jour (au-delà du widget Cockpit) :
       // visible de toute l'équipe, le filtre Responsable se réserve lui-même
       // aux rôles responsable/admin à l'intérieur de l'écran.
-      { to: '/crm/relances',         label: 'Suivi des relances', k: 'nav.relances_suivi', icon: navIcon(CalendarClock), roles: ['normal','responsable','admin'] },
+      { to: '/crm/relances',         label: 'Suivi des relances', k: 'nav.relances_suivi', icon: navIcon(CalendarClock), roles: ['normal','responsable','admin'], ...LECTURE_CRM },
       // VIS1 — Visiteurs & alertes : visible de toute l'équipe (lecture), les
       // actions d'exclusion « appareil équipe » se réservent elles-mêmes aux
       // rôles responsable/admin à l'intérieur de l'écran (la garde réelle
@@ -120,27 +134,27 @@ const config = {
   },
   routes: [
     // ODY15 — cockpit CRM (porte d'entrée de l'app).
-    { path: '/crm/cockpit', component: CrmCockpit },
+    { path: '/crm/cockpit', component: CrmCockpit, ...LECTURE_CRM },
     { path: '/crm', component: ClientList },
-    { path: '/crm/leads', component: LeadsPage },
+    { path: '/crm/leads', component: LeadsPage, ...LECTURE_CRM },
     // VX22 — page dédiée : deep-link partageable, F5 recharge via crmApi.getLead.
     { path: '/crm/leads/:id', component: LeadDetailPage },
     { path: '/activites', component: MesActivitesPage },
     { path: '/calendrier', component: CalendarPage },
     { path: '/carte', component: CartePage },
-    { path: '/crm/parrainage', component: ParrainagePage },
+    { path: '/crm/parrainage', component: ParrainagePage, ...LECTURE_CRM },
     // WIR99/DC12 — écran minimal create/edit du profil site par client.
-    { path: '/crm/profils-site', component: SiteProfilePage },
+    { path: '/crm/profils-site', component: SiteProfilePage, ...LECTURE_CRM },
     // QX16 — rejeu des payloads leads site web.
     { path: '/crm/payloads-site-web', component: WebsiteLeadPayloadsPage },
     // WIR15/NTCRM7 — Forecast (manager rollup).
     { path: '/crm/forecast', component: ForecastPage },
     // PACT103 — Concurrents sur affaires perdues.
-    { path: '/crm/concurrents-perte', component: ConcurrentsPertePage },
+    { path: '/crm/concurrents-perte', component: ConcurrentsPertePage, ...LECTURE_CRM },
     // NTCRM24 — leaderboard des défis d'équipe.
-    { path: '/crm/defis', component: DefisPage },
+    { path: '/crm/defis', component: DefisPage, ...LECTURE_CRM },
     // MRY31 — suivi des relances par jour.
-    { path: '/crm/relances', component: RelancesSuiviPage },
+    { path: '/crm/relances', component: RelancesSuiviPage, ...LECTURE_CRM },
     // VIS1 — Visiteurs & alertes (anti-fraude anonyme/appareil équipe).
     { path: '/crm/visiteurs', component: VisiteursPage },
     { path: '/crm/attribution', component: AttributionLeadsPage },

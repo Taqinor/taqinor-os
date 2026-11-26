@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
+import { estAutoriseEntree } from '../../router/moduleGating'
 
 // VX22 — les deux écrans lead sont remplacés par des doublures identifiables :
 // le test monte le composant que CHAQUE route désigne réellement et lit ce qui
@@ -139,5 +140,42 @@ describe('crm — module.config (VX22 : fiche lead adressable)', () => {
     expect(liste.component).not.toBe(fiche.component)
     expect(config.routes.filter((r) => r.path === '/crm/leads')).toHaveLength(1)
     expect(config.routes.filter((r) => r.path === '/crm/leads/:id')).toHaveLength(1)
+  })
+})
+
+/* T4-X8-016 (lot 8) — UNE règle par écran : la route et son entrée de menu portent la même garde
+   (`{roles, perm, permRepliPalier}`), et la route la fait jouer à `roleLoader` (→ `/403` AVANT que la page ne
+   lance une requête). Le Technicien (aucun `crm_*`) est refusé ; le Commercial et le compte légacy passent. */
+describe('crm — module.config (T4-X8-016 : route et menu lisent la même règle)', () => {
+  const garde = (e) => ({ roles: e.roles, perm: e.perm, permRepliPalier: e.permRepliPalier })
+  const TECHNICIEN = ['installation_voir', 'sav_voir', 'stock_voir', 'visites_voir', 'calepinage_voir']
+
+  it('chaque route gardée a une entrée de menu à la garde identique, et inversement', async () => {
+    const { default: config } = await import('./module.config.jsx')
+    const gardees = config.routes.filter((r) => r.perm)
+    expect(gardees.map((r) => r.path).sort()).toEqual([
+      '/crm/cockpit', '/crm/concurrents-perte', '/crm/defis', '/crm/leads', '/crm/parrainage',
+      '/crm/profils-site', '/crm/relances',
+    ])
+    for (const route of gardees) {
+      const item = config.nav.items.find((i) => i.to === route.path)
+      expect(garde(item), route.path).toEqual(garde(route))
+    }
+    for (const item of config.nav.items.filter((i) => i.perm)) {
+      expect(config.routes.find((r) => r.path === item.to)?.perm, item.to).toBe(item.perm)
+    }
+  })
+
+  it('/crm/leads : refusée au Technicien, ouverte au Commercial et au compte légacy de palier normal', async () => {
+    const { default: config } = await import('./module.config.jsx')
+    const route = config.routes.find((r) => r.path === '/crm/leads')
+    expect(route.perm).toBe('crm_voir')
+    expect(estAutoriseEntree(route, 'normal', TECHNICIEN)).toBe(false)
+    expect(estAutoriseEntree(route, 'normal', ['crm_voir', 'crm_modifier'])).toBe(true)
+    expect(estAutoriseEntree(route, 'normal', [])).toBe(true)
+    // Écrans lisibles sans crm_voir : aucune garde ajoutée.
+    for (const libre of ['/calendrier', '/crm', '/carte', '/crm/forecast']) {
+      expect(config.routes.find((r) => r.path === libre).perm, libre).toBeUndefined()
+    }
   })
 })
