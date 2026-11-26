@@ -397,6 +397,17 @@ describe('T4-X3-019 — les tables se saisissent en champs lisibles, pas en JSON
     expect(champValeur('lid_par_techno')).toHaveValue('[1,2]')
   })
 
+  it('chaque table convertie monte son ancre #calx69-<clé> (liens « Renseigner »), focalisable, sans doublon d’id', async () => {
+    servirTable({})
+    rendre()
+    await screen.findByTestId('calx69-ligne-lid_par_techno')
+    for (const cle of ['lid_par_techno', 'thermique_par_pose', 'indisponibilite_fenetres', 'regle_bom_structure', 'consigne_dc_plan_cablage']) {
+      const ancres = document.querySelectorAll(`[id="calx69-${cle}"]`)
+      expect(ancres.length, cle).toBe(1)
+      expect(ancres[0], cle).toHaveAttribute('tabindex', '-1')
+    }
+  })
+
   it('lecture seule : tous les champs de table sont désactivés', async () => {
     mocks.hasPermission.mockReturnValue(false)
     servirTable({ lid_par_techno: { valeur: { perc: { pct: 1.5, source: 'texte' } }, source: 'texte', reference: '' } })

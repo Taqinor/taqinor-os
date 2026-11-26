@@ -101,7 +101,7 @@ export default function ChampTableLisible({ cle, texte, disabled, onTexte }) {
 
   if (spec.mode === 'objet') {
     return (
-      <div className="mt-0.5" data-testid={`calx69-table-${cle}`}>
+      <div id={id} tabIndex={-1} className="mt-0.5" data-testid={`calx69-table-${cle}`}>
         <Cases idBase={id} testBase={id} champs={spec.champs} ligne={valeur} disabled={disabled}
           onChamp={(k, v) => onTexte(ecrireTable(spec, { ...valeur, [k]: v }))} />
       </div>
@@ -111,11 +111,11 @@ export default function ChampTableLisible({ cle, texte, disabled, onTexte }) {
   if (spec.mode === 'liste') {
     const maj = (i, k, v) => onTexte(ecrireTable(spec, valeur.map((l, j) => (j === i ? { ...l, [k]: v } : l))))
     return (
-      <div className="mt-0.5 space-y-2" data-testid={`calx69-table-${cle}`}>
+      <div id={id} tabIndex={-1} className="mt-0.5 space-y-2" data-testid={`calx69-table-${cle}`}>
         {valeur.map((l, i) => (
           <div key={i} className="border border-border/60 p-2" data-testid={`calx69-table-${cle}-${i}`}>
             <p className="text-xs font-semibold text-foreground">{`${spec.nom} ${i + 1}`}</p>
-            <Cases idBase={i === 0 ? id : `${id}-${i}`} testBase={`${id}-${i}`} champs={spec.champs} ligne={l} disabled={disabled}
+            <Cases idBase={`${id}-${i}`} testBase={`${id}-${i}`} champs={spec.champs} ligne={l} disabled={disabled}
               onChamp={(k, v) => maj(i, k, v)} />
             {!disabled && (
               <Button type="button" size="sm" variant="outline" className="mt-2"
@@ -138,13 +138,13 @@ export default function ChampTableLisible({ cle, texte, disabled, onTexte }) {
   // dict : une ligne par famille connue, plus toute clé déjà stockée.
   const cles = [...Object.keys(spec.familles), ...Object.keys(valeur).filter((k) => !(k in spec.familles))]
   return (
-    <div className="mt-0.5 space-y-2" data-testid={`calx69-table-${cle}`}>
-      {cles.map((k, i) => {
+    <div id={id} tabIndex={-1} className="mt-0.5 space-y-2" data-testid={`calx69-table-${cle}`}>
+      {cles.map((k) => {
         const l = valeur[k] || {}
         return (
           <div key={k} className="border border-border/60 p-2" data-testid={`calx69-table-${cle}-${k}`}>
             <p className="text-xs font-semibold text-foreground">{spec.familles[k] || k}</p>
-            <Cases idBase={i === 0 ? id : `${id}-${k}`} testBase={`${id}-${k}`} champs={spec.champs} ligne={l} disabled={disabled}
+            <Cases idBase={`${id}-${k}`} testBase={`${id}-${k}`} champs={spec.champs} ligne={l} disabled={disabled}
               onChamp={(champ, v) => onTexte(ecrireTable(spec, { ...valeur, [k]: { ...l, [champ]: v } }))} />
           </div>
         )
