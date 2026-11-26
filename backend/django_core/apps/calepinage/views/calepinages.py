@@ -360,8 +360,11 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         # D-ACAL-106 — une écriture DU RELEVÉ accepte ``calepinage_releve`` à
         # la place de GÉRER ; le porteur de GÉRER reste lu sur GÉRER.
         requete = getattr(self, 'request', None)
-        if (requete is not None and ecriture_de_releve(requete, self)
-                and not _user_has_or_legacy(requete.user, CAL_GERER)):
+        # Le droit GÉRER est lu AVANT le corps : son porteur ne fait jamais
+        # parser la requête pendant la vérification des droits.
+        if (requete is not None
+                and not _user_has_or_legacy(requete.user, CAL_GERER)
+                and ecriture_de_releve(requete, self)):
             return CAL_RELEVE
         return self.PERMISSIONS_ECRITURE_PAR_ACTION.get(
             getattr(self, 'action', None), CAL_GERER)
