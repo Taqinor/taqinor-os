@@ -534,6 +534,19 @@ describe('ACAL1949 — le relevé gardé est celui de SON utilisateur, porte sa 
     })
   })
 
+  it('juste après « Se connecter » (store = { username } seul, /auth/me/ pas revenu) : le relevé gardé est bien le sien', async () => {
+    // Login.jsx / SessionProvider.jsx posent `{ username }` ; /auth/me/ (sans attendre) peut ne jamais revenir hors ligne.
+    store.dispatch(setCredentials({ user: { username: 'alice' } }))
+    await mettreReleveEnFile('1', { corps: CORPS })
+    expect(await releveEnAttente('1')).toBe(true)
+    expect(await anciennesEnFile('1')).toEqual({ releve: false, photos: 0 }) // jamais rangé « avant la mise à jour »
+    store.dispatch(setCredentials({ user: { username: 'bruno' } }))
+    expect(await releveEnAttente('1')).toBe(false)
+    store.dispatch(setCredentials({ user: { id: 1, username: 'alice' } })) // /auth/me/ revenu
+    api.enregistrerReleve.mockResolvedValueOnce({ data: { releve: { id: 40 } } })
+    expect(await rejouerReleve('1')).toMatchObject({ envoye: true, restantes: 0 })
+  })
+
   it('la purge centrale connaît les types de CETTE file (photos et relevé)', () => {
     expect(TYPES_BINAIRES_VIDES_A_LA_DECONNEXION).toEqual(
       expect.arrayContaining([OP_PHOTO_CALEPINAGE, OP_RELEVE_CALEPINAGE]))

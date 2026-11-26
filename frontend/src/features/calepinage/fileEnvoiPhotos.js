@@ -24,16 +24,30 @@ const miennes = (ops, id, type = OP_PHOTO_CALEPINAGE) => ops.filter((o) => o.op_
    (`meta.utilisateurId`) : sur un poste partagé, B ne voit, ne remplace ni ne rejoue jamais ce que A a gardé ; cela
    repart à la reconnexion de A (le relevé avec sa clé `client_op_id`, en `Idempotency-Key`). La déconnexion vide la file
    (`providers/session-bridge.js::emitAuthLogout`). */
-const utilisateurCourant = () => { try { return store.getState()?.auth?.user?.id ?? null } catch { return null } }
+/* Revue ACAL1949 (point 5) — l'identifiant seul ne suffit pas : juste après « Se connecter » (Login.jsx) ou une
+   reconnexion après expiration (SessionProvider.jsx), le store ne porte que `{ username }` tant que `/auth/me/` (lancé
+   sans attendre) n'a pas répondu — et jamais s'il échoue (réseau perdu juste après la connexion, cas du chantier). On
+   note donc l'identifiant ET le nom d'utilisateur (unique, AbstractUser) : deux identifiants connus se comparent entre
+   eux (un renommage ne déshérite personne), sinon les noms. */
+const identiteCourante = () => {
+  try {
+    const u = store.getState()?.auth?.user
+    return { id: u?.id ?? null, nom: u?.username || null }
+  } catch { return { id: null, nom: null } }
+}
+const identiteConnue = (i) => i.id != null || !!i.nom
+const signature = (i) => ({ utilisateurId: i.id, utilisateurNom: i.nom })
 /** Revue ACAL1949 (point 3) — une entrée gardée SANS utilisateur (avant cette règle, ou sans session connue) est une
     « ancienne » : jamais rejouée seule, jamais jetée en silence ; l'utilisateur connecté la voit et choisit (l'envoyer
     sous son compte, ou la supprimer). */
-const estAncienne = (o) => o?.meta?.utilisateurId == null
-/** Gardée par l'utilisateur connecté. Session pas encore connue (`null`) : RIEN n'est à lui — rien n'est rejoué,
-    retiré ni proposé tant que la session n'est pas là (point 5). */
+const estAncienne = (o) => o?.meta?.utilisateurId == null && !o?.meta?.utilisateurNom
+/** Gardée par l'utilisateur connecté. Session pas encore connue : RIEN n'est à lui — rien n'est rejoué, retiré ni
+    proposé tant que la session n'est pas là (point 5). */
 const duCompte = (o) => {
-  const u = utilisateurCourant()
-  return u != null && !estAncienne(o) && String(o.meta.utilisateurId) === String(u)
+  const i = identiteCourante()
+  if (!identiteConnue(i) || estAncienne(o)) return false
+  if (i.id != null && o.meta.utilisateurId != null) return String(i.id) === String(o.meta.utilisateurId)
+  return !!i.nom && o.meta.utilisateurNom === i.nom
 }
 /** Revue ACAL1949 (point 4) — les photos de l'utilisateur connecté seulement (même règle que le relevé). */
 const photosDuCompte = (ops, id) => miennes(ops, id).filter(duCompte)
@@ -67,7 +81,7 @@ async function mettreEnFile(calepinageId, fichier, champs) {
   }
   const entree = {
     client_op_id: makeOpId(), op_type: OP_PHOTO_CALEPINAGE,
-    meta: { calepinageId, ...champs, utilisateurId: utilisateurCourant() },
+    meta: { calepinageId, ...champs, ...signature(identiteCourante()) },
     bytes, name: fichier.name || 'photo.jpg', type: fichier.type || 'image/jpeg', size: bytes.byteLength,
     queuedAt: new Date().toISOString(),
   }
@@ -127,7 +141,7 @@ const ancienneDe = (o, id) => estAncienne(o)
 
 /** Les entrées « anciennes » de ce calepinage : `{ releve: bool, photos: n }` (rien sans session connue). */
 export async function anciennesEnFile(calepinageId) {
-  if (utilisateurCourant() == null) return { releve: false, photos: 0 }
+  if (!identiteConnue(identiteCourante())) return { releve: false, photos: 0 }
   const anciennes = (await file().load()).filter((o) => ancienneDe(o, calepinageId))
   return {
     releve: anciennes.some((o) => o.op_type === OP_RELEVE_CALEPINAGE),
@@ -138,15 +152,15 @@ export async function anciennesEnFile(calepinageId) {
 /** « Envoyer sous mon compte » : les anciennes de ce calepinage deviennent celles de l'utilisateur connecté (même clé
     d'idempotence) ; le rejeu ordinaire les envoie ensuite. */
 export async function adopterAnciennes(calepinageId) {
-  const u = utilisateurCourant()
-  if (u == null) return
+  const i = identiteCourante()
+  if (!identiteConnue(i)) return
   await majAtomique(file(), (cur) => cur.map((o) => (ancienneDe(o, calepinageId)
-    ? { ...o, meta: { ...o.meta, utilisateurId: u } } : o)))
+    ? { ...o, meta: { ...o.meta, ...signature(i) } } : o)))
 }
 
 /** « Supprimer » : retire les anciennes de ce calepinage, sur le geste explicite de l'utilisateur connecté. */
 export async function supprimerAnciennes(calepinageId) {
-  if (utilisateurCourant() == null) return
+  if (!identiteConnue(identiteCourante())) return
   await majAtomique(file(), (cur) => cur.filter((o) => !ancienneDe(o, calepinageId)))
 }
 
@@ -161,7 +175,7 @@ export async function mettreReleveEnFile(calepinageId, { corps, releveId = null 
   }
   const entree = {
     client_op_id: makeOpId(), op_type: OP_RELEVE_CALEPINAGE,
-    meta: { calepinageId, releveId, corps, utilisateurId: utilisateurCourant() },
+    meta: { calepinageId, releveId, corps, ...signature(identiteCourante()) },
     bytes: new ArrayBuffer(0), name: 'releve.json', type: 'application/json', size: 0, queuedAt: new Date().toISOString(),
   }
   await majAtomique(file(), (cur) => [...cur.filter((o) => !releveDuCompte(o, calepinageId)), entree])
@@ -190,7 +204,8 @@ const rejeuxReleve = new Map()
     la file reste intacte ; un refus du serveur (réponse HTTP) retire l'entrée et la dit ; deux rejeux simultanés (retour du
     réseau + ouverture de l'écran) n'en font qu'UN : le relevé part une seule fois. */
 export function rejouerReleve(calepinageId) {
-  const cle = `${utilisateurCourant() ?? ''}:${calepinageId}`
+  const i = identiteCourante()
+  const cle = `${i.id ?? ''}|${i.nom ?? ''}:${calepinageId}`
   if (rejeuxReleve.has(cle)) return rejeuxReleve.get(cle)
   const rejeu = (async () => {
     let envoye = false
