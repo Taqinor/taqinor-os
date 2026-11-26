@@ -15,6 +15,7 @@ from __future__ import annotations
 from html import escape
 
 from . import nombre_tel_que_servi
+from .production import _mois_libelle
 
 __all__ = ['CSS_SECTION', 'html_de_section']
 
@@ -22,6 +23,17 @@ CSS_SECTION = (
     '.consommation td.valeur{text-align:right;}'
     '.consommation .detail{display:block;font-size:7.5pt;color:#555;}'
 )
+
+
+#: ACAL1744 — l'origine de la courbe de base (``courbe_charge._SOURCES_DE_BASE``)
+#: en mots ; une origine inconnue s'imprime telle que servie.
+ORIGINES_COURBE = {
+    'layout': 'saisie du calepinage',
+    'import_intervalle': 'relevé importé',
+    'profil_mensuel': 'profil mensuel saisi',
+    'profil_type': "profil type d'activité",
+    'facture_lead': 'profil de la facture',
+}
 
 
 def _n(valeur):
@@ -43,7 +55,8 @@ def _texte(valeur):
 
 def _totaux(bloc):
     lignes = [
-        ('Origine de la courbe', _texte(bloc.get('courbe_origine'))),
+        ('Origine de la courbe', _texte(ORIGINES_COURBE.get(
+            bloc.get('courbe_origine'), bloc.get('courbe_origine')))),
         ('Consommation annuelle (kWh)', _n(bloc.get('total_kwh'))),
         ('Part base (kWh)', _n(bloc.get('total_base_kwh'))),
         ('Part charges ajoutées (kWh)', _n(bloc.get('total_charges_kwh'))),
@@ -72,7 +85,7 @@ def _charges(charges):
 
 def _profil(profil):
     return _table(['Mois', 'Consommation (kWh)'], [
-        ['<td class="valeur">%s</td>' % _n(m.get('mois')),
+        ['<td>%s</td>' % _mois_libelle(m.get('mois')),  # ACAL1744 — en lettres
          '<td class="valeur">%s</td>' % _n(m.get('kwh'))]
         for m in profil])
 

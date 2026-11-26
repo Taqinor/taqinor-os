@@ -205,7 +205,9 @@ class ConsommationEtSectionsOmisesTest(unittest.TestCase):
         self.assertIn('Consommation et hypothèses', page)
         bloc = res['consommation']
         self.assertIn(nombre_tel_que_servi(bloc['total_kwh']), page)
-        self.assertIn(bloc['courbe_origine'], page)
+        # ACAL1744 — l'origine en mots (« profil_mensuel » → « profil mensuel saisi »).
+        from apps.calepinage.services.rapport.consommation import ORIGINES_COURBE
+        self.assertIn(ORIGINES_COURBE[bloc['courbe_origine']], page)
         charge = bloc['charges'][0]
         self.assertIn(charge['libelle'].replace("'", '&#x27;'), page)
         self.assertIn(nombre_tel_que_servi(charge['kwh_an']), page)
@@ -218,6 +220,23 @@ class ConsommationEtSectionsOmisesTest(unittest.TestCase):
         page = self.page(res)
         self.assertNotIn('data-section="consommation"', page)
         self.assertNotIn('consommation.total_kwh', page)
+
+    def test_acal1744_mois_en_lettres_et_origine_traduite(self):
+        from apps.calepinage.services import courbe_charge
+        from apps.calepinage.services.rapport.consommation import ORIGINES_COURBE
+
+        self.assertEqual(set(ORIGINES_COURBE), set(courbe_charge.ORIGINES))
+        res = resultat()
+        res['consommation']['courbe_origine'] = 'layout'
+        res['consommation']['profil_mensuel'] = [{'mois': 1, 'kwh': 800.0},
+                                                 {'mois': 12, 'kwh': 900.0}]
+        page = self.page(res)
+        section = re.search(r'data-section="consommation".*?</section>', page, re.S).group(0)
+        self.assertIn('saisie du calepinage', section)
+        self.assertNotIn('>layout<', section)
+        self.assertIn('<td>Janvier</td>', section)
+        self.assertIn('<td>Décembre</td>', section)
+        self.assertNotIn('<td class="valeur">12</td>', section)
 
     def test_le_total_n_est_pas_arrondi(self):
         res = resultat()
@@ -298,8 +317,10 @@ class HorsReseauTest(unittest.TestCase):
                         'Mention servie du bloc.',
                         'Aucun quantile P75/P90 hors réseau.'):
             self.assertIn(attendu, page)
-        self.assertIn('12 (mois le plus défavorable)', page)
-        self.assertNotIn('11 (mois le plus défavorable)', page)
+        # ACAL1744 — le mois en lettres, jamais son numéro.
+        self.assertIn('Décembre (mois le plus défavorable)', page)
+        self.assertNotIn('Novembre (mois le plus défavorable)', page)
+        self.assertNotIn('12 (mois le plus défavorable)', page)
 
     def test_raccorde_la_section_est_absente(self):
         res = resultat()
