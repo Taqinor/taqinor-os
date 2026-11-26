@@ -9,6 +9,7 @@
  * par le calepinage : rien n'est recalculé ici.
  */
 import { couleurAccesActive } from './shadingEngine';
+import { DEG2M_GEO } from './geo';
 import type { RoofLayout } from './proposition';
 import type { EnvironmentObject, EnvironmentKind } from '../scripts/roofPro11/environment';
 
@@ -136,8 +137,8 @@ export function bornesCarte(layout: RoofLayout, zoomInitial: number, margeM = 15
   const lngs = pts.map((p) => p[0]);
   const lats = pts.map((p) => p[1]);
   const [s, n] = [Math.min(...lats), Math.max(...lats)];
-  const dLat = margeM / 111_320;
-  const dLng = margeM / (111_320 * Math.max(0.05, Math.cos((((s + n) / 2) * Math.PI) / 180)));
+  const dLat = margeM / DEG2M_GEO; // ACAL349 — la constante de projection unique (lib/geo.ts)
+  const dLng = margeM / (DEG2M_GEO * Math.max(0.05, Math.cos((((s + n) / 2) * Math.PI) / 180)));
   return { bornes: [[Math.min(...lngs) - dLng, s - dLat], [Math.max(...lngs) + dLng, n + dLat]], zoomMin: Math.max(0, zoomInitial - 2) };
 }
 
