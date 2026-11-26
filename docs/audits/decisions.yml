@@ -6164,4 +6164,15 @@ decisions:
     reponse: calepinage_sinon_conception_par_option
     date: "2026-11-26"
     source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (option recommandée et réversible) ; demande du fondateur le 26/11/2026, mot pour mot : « i want this shema unifilaire i hade to be changed by the new schema electique that calpinage use that shows the chaines of pannels in 4 colors and show the inverter the grid and everything (if it does not show the battery make is show it) » ; conception et lanes : docs/audits/l5-calepinage/schema-electrique-devis.md ; contrat : backend/django_core/apps/ventes/contract_samples/schema_electrique.json"
+
+  - id: D-HYB-6
+    question: "Le moteur de devis RÉSIDENTIEL (apps/ventes/solar_design.py::match_inverter) écarte tout onduleur au-delà d'un rapport DC/AC de 1,35 (MAX_DC_AC), hybride compris, et prend le plus gros quand aucun ne convient (« plus grosse puissance retenue, vérifier la conception »). Le calepinage et le moteur C&I jugent déjà un hybride à la puissance PV maximale de sa fiche (D-HYB-1). Le devis résidentiel doit-il juger un hybride de la même façon ?"
+    options:
+      - cle: a_capacite_publiee
+        texte: "(recommandée) Oui : un hybride dont la fiche publie sa puissance PV maximale (ond_dc_max_kwc) est retenu jusqu'à elle, par la même fonction du noyau (core.electrique.onduleurs.capacite_dc_appareil_kwc) ; sans valeur publiée, 1,35 reste la borne. Change l'onduleur choisi par les NOUVEAUX devis résidentiels ; les devis envoyés gardent ce que le client a reçu"
+      - cle: b_inchange
+        texte: "Non : le devis résidentiel garde 1,35 pour tout onduleur ; le calepinage et le devis résidentiel peuvent alors se contredire sur le même hybride (le calepinage « bon », le devis « vérifier la conception »)"
+    reponse: ouverte
+    date: "2026-11-26"
+    source: "lane lot6/ratio-hybride (lead 1742 : 48 × 715 W = 34,32 kWc sur un hybride Deye 20 kW, « 1,72 pour 1,35 au plus » dans « Prêt à envoyer ? ») ; conséquence calculée sur le catalogue de départ (migration stock 0182, puissances PV maximales des fiches Deye : 10 kW → 20 kWc, 12 kW → 24 kWc, 15 kW → 30 kWc, 20 kW → 40 kWc, soit 2,0 × la puissance AC) : avec (a) un hybride porte jusqu'à 2,0 × sa puissance AC au lieu de 1,35 ×, donc pour 34,32 kWc le 20 kW convient (34,32 ≤ 40) alors qu'avec (b) aucun hybride du catalogue ne passe et le 20 kW n'est pris qu'en repli signalé ; aucune lecture de la production faite (nombre de devis résidentiels concernés non mesuré)"
     taches: []

@@ -437,6 +437,23 @@ class SurchargesTest(SimpleTestCase):
             es.empreinte_entree(devis, es.construire_entree(devis)),
             es.empreinte_entree(devis, entree))
 
+    def test_d_hyb_1_empreinte_d_avant_inchangee(self):
+        """D-HYB-1 (26/11/2026) — les champs qui reconnaissent un hybride (``role``, ports
+        batterie) n'entrent PAS dans l'empreinte : sinon chaque ``electrical_design`` rangé,
+        devis envoyés compris, serait recalculé. Valeur littérale calculée avec le
+        ``SpecOnduleur`` d'``origin/main`` (86844ac4d), avant ces champs."""
+        import dataclasses
+
+        devis = _devis_villa()
+        entree = es.construire_entree(devis)
+        self.assertEqual(es.empreinte_entree(devis, entree),
+                         'd000cf623a958901cc02ac67fab4bc1ef63425af266b436bf566ea55439e12b2')
+        hybride = dataclasses.replace(entree, onduleur=dataclasses.replace(
+            entree.onduleur, role='onduleur_hybride', bat_max_charge_kw=25.0, bat_max_decharge_kw=25.0))
+        self.assertEqual(es.empreinte_entree(devis, hybride), es.empreinte_entree(devis, entree))
+        from core.electrique.types import CHAMPS_SPEC_ONDULEUR_HORS_EMPREINTE, spec_onduleur_pour_empreinte
+        self.assertFalse(set(spec_onduleur_pour_empreinte(entree.onduleur)) & set(CHAMPS_SPEC_ONDULEUR_HORS_EMPREINTE))
+
 
 class ConceptionElectriqueEndpointTest(TestCase):
     def setUp(self):
