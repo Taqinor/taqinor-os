@@ -339,3 +339,11 @@ def toit_plat_ouvert(devis) -> bool:
     valeur du curseur) ? Voir :data:`COUPURE_TOIT_PLAT`."""
     return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111,
                                        COUPURE_TOIT_PLAT)
+
+
+#: D-ACAL-168 (fondateur, 26/11/2026) — un toit PLAT sur lequel aucune table n'est encore posée
+#: (pas de ``geometry.tiltDeg``) prend 20° d'inclinaison des panneaux pour la production du devis,
+#: annoncée au VENDEUR comme supposée (jamais imprimée pour le client) ; ni l'« Inclinaison par
+#: défaut » de la société (30°), ni 10°. Lu par la lecture corrigée
+#: (``geometrie.extract_roof_config(toit_plat_corrige=True)``), création et resynchro d'un devis ouvert.
+INCLINAISON_TOIT_PLAT_SUPPOSEE_DEG = 20

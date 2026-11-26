@@ -64,6 +64,17 @@ def _arbitrage_du_calepinage(layout, nb_panneaux, kwc, *, company):
     return nb_panneaux, kwc
 
 
+def toiture_sans_suppositions(toiture):
+    """La toiture à RANGER (``etude_params['toiture']``) : sans ``suppositions`` (D-ACAL-149 (ii)),
+    une copie ; ``phrases_des_suppositions`` les rend au vendeur."""
+    return {cle: valeur for cle, valeur in (toiture or {}).items() if cle != 'suppositions'}
+
+
+def phrases_des_suppositions(toiture):
+    """Les phrases des suppositions de la lecture du toit (D-ACAL-149 / 168), pour ``avertissements``."""
+    return [s['message'] for s in (toiture or {}).get('suppositions') or () if s.get('message')]
+
+
 def _calepinage_range(layout, toiture, kwc, designations=None):
     """QJ21 / FG248 — ce qu'un calepinage APPORTE au devis, lu UNE fois.
 
@@ -97,7 +108,9 @@ def _calepinage_range(layout, toiture, kwc, designations=None):
     if kwc:
         etude_initiale['puissance_kwc'] = kwc
     if toiture:
-        etude_initiale['toiture'] = toiture
+        # D-ACAL-149 (ii) — la supposition est une consigne au VENDEUR (``avertissements``) :
+        # ``etude_params`` est servi au client (``data['etude']``), elle n'y entre jamais.
+        etude_initiale['toiture'] = toiture_sans_suppositions(toiture)
     return layout_stocke, etude_initiale
 
 
@@ -929,7 +942,8 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     # (``pipeline.ecrire_etude_params``), qui les lit dans le MÊME bloc
     # ``result`` du layout transmis. Les relire des deux côtés, c'était deux
     # lecteurs pour une donnée.
-    lecture = lire_layout(layout)
+    # D-ACAL-149 (ii) — la création fait toujours un brouillon (ouvert) : lecture corrigée.
+    lecture = lire_layout(layout, toit_plat_corrige=True)
     toiture = lecture.toiture
 
     # AOF164 / PVG2 — la bascule A/B du moteur de calepinage, écrite une seule
@@ -942,7 +956,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         # Drapeau moteur baissé (le défaut) ⇒ l'arbitrage est l'identité et
         # cette relecture n'a pas lieu.
         lecture = lire_layout(layout, toiture=toiture,
-                              compte=nb_panneaux, kwc=kwc)
+                              compte=nb_panneaux, kwc=kwc, toit_plat_corrige=True)
     watt = lecture.watt
 
     # PVKIT — le KIT COMPLET du simulateur (structures, socles, accessoires,
@@ -1025,6 +1039,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     )
     # D-ACAL-148 / 159 / 164 — batterie désignée, batterie de l'onduleur, marqueur, journal, phrases.
     intention, annonces = _appliquer_les_designations(intention, designe, batterie_designee, scenario, journal)
+    annonces += phrases_des_suppositions(toiture)  # D-ACAL-149 (ii) / 168 — dites au vendeur
     if a_blanc:
         from apps.ventes.domain.pipeline import composer_l_intention, specs_de_composition
 

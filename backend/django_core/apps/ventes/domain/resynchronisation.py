@@ -267,6 +267,15 @@ def _avertissements_de_depart(verrou):
     return agricole, multi_villa, avertissements
 
 
+def _toiture_rangee(toiture, avertissements):
+    """D-ACAL-149 (ii) — la toiture à ranger dans ``etude_params`` (servi au client), sans
+    ``suppositions`` ; leurs phrases vont aux ``avertissements`` de la resynchro (le vendeur)."""
+    from apps.ventes.domain.creation_calepinage import phrases_des_suppositions, toiture_sans_suppositions
+
+    avertissements.extend(phrases_des_suppositions(toiture))
+    return toiture_sans_suppositions(toiture)
+
+
 def _designations(verrou, intention, layout, veut_batterie, avertissements):
     """D-ACAL-148 / 159 — porte de :func:`creation_calepinage.appliquer_designations_a_la_resynchro`
     (import local : ``creation_calepinage`` lit ce paquet en bas de module)."""
@@ -406,7 +415,7 @@ def reconcilier(devis, intention):
     cible_exacte = bool(intention.exact)
     layout = intention.layout if isinstance(intention.layout, dict) else {}
     nouveau_hash = layout_hash(layout)
-    toiture = extract_roof_config(layout)
+    toiture = extract_roof_config(layout, toit_plat_corrige=toit_plat_ouvert(devis))  # D-ACAL-149 (ii)
     cible_panneaux = _cible_panneaux_du_layout(layout, toiture)
     watt = _watt_du_layout(layout, toiture, cible_panneaux)
     # ACAL63 (C-ACAL-042) — les modèles DÉSIGNÉS par le calepinage : la
@@ -1179,8 +1188,8 @@ def reconcilier(devis, intention):
             etude['puissance_kwc'] = _kwc_proprietaire
         else:
             etude.pop('puissance_kwc', None)
-        if toiture:
-            etude['toiture'] = toiture
+        if toiture:  # D-ACAL-149 (ii) — la supposition va au vendeur, jamais au client
+            etude['toiture'] = _toiture_rangee(toiture, avertissements)
         # PVSCE — le scénario suit l'état RÉEL des lignes après resynchro : sans
         # lui, le moteur PDF garderait le choix stocké d'avant (ou déduirait
         # « Sans batterie » par repli) alors que l'équipement vient de changer.
@@ -1646,6 +1655,7 @@ from apps.ventes.domain.composition import (  # noqa: E402 — fin de module (an
     _v_txt,
 )
 from apps.ventes.domain.gammes import gamme_nom  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.regles_calcul import toit_plat_ouvert  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 from apps.ventes.domain.geometrie import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _cible_panneaux_du_layout,
     _watt_du_layout,
