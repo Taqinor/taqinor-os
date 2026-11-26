@@ -210,6 +210,82 @@ describe('VariantesCompare (CAL42)', () => {
     expect(mocks.retenirVariante).toHaveBeenCalledWith('1', AUTRE.id, { suppressErrorToast: true })
   })
 
+  // R6-N2 — « Retenir » sur une variante JAMAIS simulée : permis, mais dit avant le geste et après (la conception passait de
+  // 8 panneaux 5,68 kWc à 9 · 6,39 sans un mot).
+  it('R6-N2 — une variante non simulée porte son avertissement AVANT « Retenir », les simulées non', async () => {
+    rendre()
+    await screen.findByTestId('cal-tableau-variantes')
+    const avant = screen.getByTestId(`cal-variante-sans-simulation-${NON_SIMULEE.id}`)
+    expect(avant).toHaveTextContent('Non simulée')
+    expect(avant).toHaveTextContent('estimation de l’atelier')
+    expect(avant).toHaveTextContent('Simulation à refaire')
+    expect(screen.queryByTestId(`cal-variante-sans-simulation-${AUTRE.id}`)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('cal-variante-retenue-sans-simulation')).not.toBeInTheDocument()
+  })
+
+  // Les lignes RELUES après « Retenir » de NON_SIMULEE : `perimee` = la simulation du calepinage servie périmée (ligne
+  // `courante`), `simulee` = la variante retenue a (ou non) sa propre simulation.
+  const apresRetenirNonSimulee = ({ perimee, simulee = false }) => ({
+    ...CONTRAT,
+    retenue_id: NON_SIMULEE.id,
+    lignes: CONTRAT.lignes.map((l) => (l.courante
+      ? { ...l, simulation_perimee: perimee }
+      : { ...l, est_retenue: l.id === NON_SIMULEE.id, ...(l.id === NON_SIMULEE.id ? { simulee } : {}) })),
+  })
+  const retenirNonSimulee = async () => {
+    rendre()
+    await screen.findByTestId('cal-tableau-variantes')
+    const cellule = screen.getByTestId(`cal-ecart_modules-${NON_SIMULEE.id}`).closest('table')
+    const rangee = within(cellule).getByTestId(`cal-variante-sans-simulation-${NON_SIMULEE.id}`).closest('td')
+    fireEvent.click(within(rangee).getByRole('button', { name: 'Retenir' }))
+    return screen.findByTestId('cal-variante-retenue-sans-simulation')
+  }
+
+  it('R6-N2 — après « Retenir » d’une variante non simulée, la simulation servie périmée : estimation dite, « conception précédente » ne vaut plus', async () => {
+    mocks.comparer.mockResolvedValue({ data: CONTRAT })
+    mocks.comparer.mockResolvedValueOnce({ data: CONTRAT }).mockResolvedValue({ data: apresRetenirNonSimulee({ perimee: true }) })
+    const apres = await retenirNonSimulee()
+    expect(apres).toHaveTextContent(NON_SIMULEE.nom)
+    expect(apres).toHaveTextContent('retenue sans simulation propre')
+    expect(apres).toHaveTextContent('estimation de l’atelier')
+    expect(apres).toHaveTextContent('la simulation de la conception précédente ne s’applique plus')
+    expect(apres).not.toHaveTextContent('ancienne retenue')
+    expect(mocks.retenirVariante).toHaveBeenCalledWith('1', NON_SIMULEE.id, { suppressErrorToast: true })
+  })
+
+  // Cas (a) aucune variante retenue avant / (b) variante dupliquée de la conception, jamais modifiée : le serveur sert la
+  // simulation du calepinage toujours en vigueur — la phrase ne dit ni « précédente » ni « estimation ».
+  it('R6-N2 — simulation du calepinage toujours en vigueur (aucune retenue avant, ou copie inchangée) : rien n’est affirmé sur la précédente', async () => {
+    mocks.comparer.mockResolvedValueOnce({ data: CONTRAT }).mockResolvedValue({ data: apresRetenirNonSimulee({ perimee: false }) })
+    const apres = await retenirNonSimulee()
+    expect(apres).toHaveTextContent('retenue sans simulation propre')
+    expect(apres).not.toHaveTextContent('précédente')
+    expect(apres).not.toHaveTextContent('estimation')
+    expect(apres).not.toHaveTextContent('Simulation à refaire')
+  })
+
+  it('R6-N2 — la carte suit les lignes relues : elle disparaît dès que la variante retenue est simulée', async () => {
+    mocks.comparer.mockResolvedValueOnce({ data: CONTRAT }).mockResolvedValue({ data: apresRetenirNonSimulee({ perimee: true }) })
+    mocks.simulerVariante.mockResolvedValue({ data: { job_id: 8, variante_id: NON_SIMULEE.id } })
+    mocks.resultatJob.mockResolvedValue({ data: { job_id: 8, statut: 'done', resultat: {} } })
+    await retenirNonSimulee()
+    // le serveur sert désormais la variante retenue SIMULÉE
+    mocks.comparer.mockResolvedValue({ data: apresRetenirNonSimulee({ perimee: false, simulee: true }) })
+    fireEvent.click(screen.getByTestId(`cal-variante-simuler-${NON_SIMULEE.id}`))
+    await waitFor(() => expect(screen.queryByTestId('cal-variante-retenue-sans-simulation')).not.toBeInTheDocument())
+    expect(screen.getByTestId(`cal-retenue-${NON_SIMULEE.id}`)).toBeInTheDocument()
+  })
+
+  it('R6-N2 — retenir une variante SIMULÉE ne pose aucune phrase « sans simulation »', async () => {
+    rendre()
+    await screen.findByTestId('cal-tableau-variantes')
+    const cellule = screen.getByTestId(`cal-ecart_modules-${AUTRE.id}`).closest('table')
+    const rangee = within(cellule).getByTestId(`cal-variante-dupliquer-${AUTRE.id}`).closest('td')
+    fireEvent.click(within(rangee).getByRole('button', { name: 'Retenir' }))
+    await waitFor(() => expect(mocks.retenirVariante).toHaveBeenCalledWith('1', AUTRE.id, { suppressErrorToast: true }))
+    expect(screen.queryByTestId('cal-variante-retenue-sans-simulation')).not.toBeInTheDocument()
+  })
+
   it('la vue CÔTE À CÔTE compare deux variantes, écarts serveur inclus', async () => {
     rendre()
     const bloc = await screen.findByTestId('cal-cote-a-cote')

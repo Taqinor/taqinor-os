@@ -92,22 +92,57 @@ def _libelle(lead, champ):
     return str(getattr(lead, f'get_{champ}_display')()) or None
 
 
-def cible_factures_et_refus(calepinage, *, lire_cible=None):
+def cible_factures_et_refus(calepinage, *, lire_cible=None, lire_lead=None):
     """ACAL1500 — ``(cible_factures, refus)`` d'UNE seule lecture de la cible
     du garde R2-17 (``services.devis._cible_du_calepinage`` →
     ``apps.ventes.selectors.cible_depuis_lead``) : le dimensionnement n'est
-    joué qu'une fois. ``refus`` est la phrase NOMMÉE de ``cible_depuis_lead``
-    (C&I, agricole, facture absente…) quand aucune taille ne se tire des
-    factures, ``''`` quand la cible existe ou qu'il n'y a pas de lead."""
+    joué qu'une fois. ``refus`` est la phrase NOMMÉE qui dit pourquoi aucune
+    taille ne se tire des factures : celle de ``cible_depuis_lead`` (C&I,
+    agricole, facture absente…) ou, quand la taille souhaitée du lead est
+    souveraine (R6-N4, ``source`` ``'lead'``), la phrase de
+    :func:`_refus_taille_souhaitee` ; ``''`` quand la cible vient des
+    factures (``cible_factures`` servi) ou qu'il n'y a ni lead ni refus."""
     if lire_cible is None:
         from ..services.devis import _cible_du_calepinage as lire_cible
     cible = lire_cible(calepinage)
-    if cible and cible.get('source') == 'factures' and cible.get('panneaux'):
-        return ({'panneaux': int(cible['panneaux']), 'kwc': nombre(cible.get('kwc')),
-                 'module_wc': nombre(cible.get('panel_watt')),
-                 # Lane E9 — la version de la conception qui fait ces chiffres et la raison de son calcul.
-                 'version': cible.get('version'), 'raison': cible.get('raison')}, '')
+    des_factures = _cible_des_factures(cible)
+    if des_factures is not None:
+        return des_factures, ''
+    if cible and cible.get('source') == 'lead' and cible.get('panneaux'):
+        lead = _lead(getattr(calepinage, 'company', None), getattr(calepinage, 'lead_id', None), lire_lead)
+        return None, _refus_taille_souhaitee(cible, nombre(getattr(lead, 'taille_souhaitee_kwc', None)))
     return None, str((cible or {}).get('refus') or '')
+
+
+def _cible_des_factures(cible):
+    """Le bloc ``cible_factures`` quand la taille vient des factures, sinon ``None`` (aucune lecture de lead)."""
+    if not (cible and cible.get('source') == 'factures' and cible.get('panneaux')):
+        return None
+    return {'panneaux': int(cible['panneaux']), 'kwc': nombre(cible.get('kwc')),
+            'module_wc': nombre(cible.get('panel_watt')),
+            # Lane E9 — la version de la conception qui fait ces chiffres et la raison de son calcul.
+            'version': cible.get('version'), 'raison': cible.get('raison')}
+
+
+def _kwc_fr(valeur):
+    """``6.0`` → « 6 », ``6.39`` → « 6,39 », ``6.5`` → « 6,5 » : jamais de décimales forcées (« 6,00 kWc »)."""
+    from core.electrique.types import fr
+
+    return fr(valeur).rstrip('0').rstrip(',')
+
+
+def _refus_taille_souhaitee(cible, souhait):
+    """R6-N4 — la taille souhaitée du lead est SOUVERAINE (``cible_depuis_lead`` : ``source`` ``'lead'``) : le moteur
+    n'a donc rien lu dans les factures, et ``cible_factures`` reste ``null``. Sans phrase, l'étape Panneaux retombait
+    sur « Aucune taille ne se tire des factures de ce lead », fausse pour un lead qui porte une facture ET une taille.
+    La phrase dit le SOUHAIT tel qu'il est sur la fiche (``souhait`` = ``taille_souhaitee_kwc``, lu par le
+    sélecteur CRM) et, à côté, la pose calculée NOMMÉE comme telle (« conception ») : le calcul n'est jamais
+    présenté comme le souhait."""
+    n, kwc = int(cible['panneaux']), nombre(cible.get('kwc'))
+    pose = '%d panneau%s' % (n, 'x' if n > 1 else '') + (' · %s kWc' % _kwc_fr(kwc) if kwc else '')
+    morceaux = (['%s kWc' % _kwc_fr(souhait)] if souhait else []) + ['conception : %s' % pose]
+    detail = ' ; '.join(morceaux)
+    return 'La taille de ce lead vient de la taille souhaitée sur sa fiche (%s), pas de ses factures.' % detail
 
 
 def cible_factures(calepinage, *, lire_cible=None):
@@ -117,7 +152,9 @@ def cible_factures(calepinage, *, lire_cible=None):
     module_wc}``, ou ``None`` quand la taille ne vient pas des factures (sans
     lead, sans facture, taille souhaitée, C&I, agricole, refus ; le motif est
     dit par ``cible_factures_et_refus``). LECTURE PURE."""
-    return cible_factures_et_refus(calepinage, lire_cible=lire_cible)[0]
+    if lire_cible is None:
+        from ..services.devis import _cible_du_calepinage as lire_cible
+    return _cible_des_factures(lire_cible(calepinage))
 
 
 # ── H3 (22/11) — ``GET calepinages/<pk>/cible-factures/`` : le bloc ci-dessus, LU À PART.
