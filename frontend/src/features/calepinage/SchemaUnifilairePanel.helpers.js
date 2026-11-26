@@ -163,6 +163,7 @@ export const CIBLE_DU_BLOC = {
   onduleur: 'materiel-electrique',
   reseau: 'raccordement',
   cable: 'cheminement-cables',
+  batterie: 'materiel-electrique',
 }
 
 /** Coupe un texte en lignes d'au plus `max` caractères (mots entiers), `n` lignes au plus (… au bout). */
@@ -364,6 +365,103 @@ export function planSchemaEnBlocs(schema, resultat) {
     legende,
     coteReseauACalculer: aCalculer,
   }
+}
+
+/* ============================================================================
+   LOT 6 (fondateur, 26/11/2026) — LE MÊME DESSIN, LU SUR LE DOCUMENT `schema_electrique`.
+   Le serveur sert désormais UN document structuré (contrat `ventes/schema_electrique.json`, clé
+   `schema_electrique`) : chaînes (couleur, entrée), organes, onduleurs, BATTERIE, côté réseau.
+   `planDepuisDocument` le traduit vers les entrées que `planSchemaEnBlocs` sait déjà dessiner
+   (UNE seule géométrie, aucune copie) puis ajoute la carte batterie. Une grandeur `null` est omise.
+   ========================================================================== */
+
+const nombreFr = (v) => String(Math.round(v * 100) / 100).replace('.', ',')
+const bloc = (clef, titre, sous_titre = '') => ({ clef, titre, sous_titre: sous_titre ?? '', repere: '' })
+
+/** Les blocs « servis » que `planSchemaEnBlocs` lit, tirés du document. */
+function blocsDuDocument(doc) {
+  const organes = (c) => (c?.organes ?? []).map((o) => bloc(o.clef, o.titre, o.calibre))
+  const simple = (clef, b) => (b ? [bloc(clef, b.titre, b.detail)] : [])
+  return [
+    bloc('onduleur', doc.onduleurs?.[0]?.designation ?? 'Onduleur'),
+    ...organes(doc.coffret_dc),
+    ...organes(doc.coffret_ac),
+    ...simple('compteur_production', doc.compteur_production),
+    ...simple('tgbt', doc.tgbt),
+    ...simple('reseau', doc.reseau),
+  ]
+}
+
+const avecChaines = (doc) => Boolean(doc.chaines_reparties) && doc.chaines.length > 0
+
+/** Les chaînes du document (ou, SANS découpage servi, UN champ de panneaux au nombre réel). */
+function affectationDuDocument(doc) {
+  if (avecChaines(doc)) {
+    return doc.chaines.flatMap((c) => Array.from({ length: c.nb_panneaux ?? 0 }, () => (
+      { chaine: c.numero, mppt: c.entree, couleur_chaine: c.couleur })))
+  }
+  return Array.from({ length: doc.panneaux?.nombre ?? 0 }, () => ({ chaine: 1, mppt: null, couleur_chaine: null }))
+}
+
+/** Le document traduit vers les deux réponses (`schema-unifilaire/`, `resultat/`) que lit `planSchemaEnBlocs`. */
+function entreesDuDocument(doc) {
+  const o = doc.onduleurs?.[0] ?? null
+  return {
+    // `svg` ne sert à `planSchemaEnBlocs` qu'à savoir si une terre est tracée.
+    schema: { blocs: blocsDuDocument(doc), edition: { libelles: {} }, svg: doc.terre ? '<line stroke-dasharray="1"/>' : '' },
+    resultat: {
+      electrique: {
+        affectation: affectationDuDocument(doc),
+        onduleurs: o ? [{ taille_kw: o.puissance_kw, nombre: o.nombre, n_mppt: o.nb_entrees }] : [],
+        chainage: { puissance_module_wc: doc.panneaux?.module?.puissance_wc },
+      },
+      troncons: {
+        troncons: ['dc', 'ac'].map((cote) => ({
+          cote, section_mm2: doc.liaisons?.[cote]?.section_mm2, longueur_m: doc.liaisons?.[cote]?.longueur_m,
+        })),
+      },
+      hors_reseau: doc.cote_reseau?.etat === 'hors_reseau' ? { banque: null } : null,
+      simule: false,
+    },
+  }
+}
+
+/** La carte batterie (bande courant continu, à gauche de l'onduleur) et sa liaison neutre à double flèche. */
+function carteBatterie(batterie, onduleur) {
+  const lignes = [
+    ...couperTexte(batterie.designation, 20, 2),
+    ...(fini(batterie.unites) ? [`${batterie.unites} unité${batterie.unites > 1 ? 's' : ''}`] : []),
+    ...(fini(batterie.capacite_kwh) ? [`${nombreFr(batterie.capacite_kwh)} kWh au total`] : []),
+    ...(fini(batterie.tension_v) ? [`${nombreFr(batterie.tension_v)} V`] : []),
+  ]
+  const l = 150
+  const x = onduleur.x - 24 - l
+  const y = 34
+  const cx = onduleur.x + onduleur.l / 2
+  return { x, y, l, h: 44 + lignes.length * 16, lignes, lien: [[x + l, y + 40], [cx, y + 40], [cx, onduleur.y]] }
+}
+
+/**
+ * Le modèle du schéma en blocs lu sur le document `schema_electrique`, ou `null` quand il n'y a ni
+ * panneau ni onduleur à dessiner. `plan.batterie` n'existe que si le document porte une batterie.
+ */
+export function planDepuisDocument(doc) {
+  if (!doc || typeof doc !== 'object' || !Array.isArray(doc.chaines)) return null
+  const { schema, resultat } = entreesDuDocument(doc)
+  const plan = planSchemaEnBlocs(schema, resultat)
+  if (!plan) return null
+  if (!avecChaines(doc)) {
+    const n = plan.chaines[0].nombre
+    plan.chaines[0].libelle = `Champ · ${n} panneau${n > 1 ? 'x' : ''}`
+    plan.chaines[0].legende = 'Champ de panneaux'
+    plan.legende[0].libelle = 'Champ de panneaux'
+  }
+  if (doc.batterie) {
+    plan.batterie = carteBatterie(doc.batterie, plan.onduleur)
+    const i = plan.legende.findIndex((l) => l.cle === 'ac')
+    plan.legende.splice(i < 0 ? plan.chaines.length : i, 0, { cle: 'batterie', trait: 'batterie', libelle: 'Liaison batterie' })
+  }
+  return plan
 }
 
 const date = (iso) => new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })

@@ -218,6 +218,27 @@ function Onduleur({ o, onOuvrir }) {
   )
 }
 
+/* LOT 6 — la batterie : une carte du même langage que les autres, reliée à l'onduleur par une liaison NEUTRE à
+   double flèche (charge / décharge). Seules les lignes servies existent (`plan.batterie.lignes`) : aucune valeur
+   absente n'est remplacée. Aucune protection : le serveur n'en calcule aucune. */
+function Batterie({ b, onOuvrir }) {
+  const lib = ['Batterie', ...b.lignes].join(', ')
+  return (
+    <>
+      <polyline points={b.lien.map((p) => p.join(',')).join(' ')} className="csch-liaison csch-liaison-batterie"
+        markerStart="url(#csch-fleche)" markerEnd="url(#csch-fleche)" data-testid="csch-lien-batterie" />
+      <Element cible={CIBLE_DU_BLOC.batterie} onOuvrir={onOuvrir} testId="csch-bloc-batterie" libelle={lib}>
+        <rect x={b.x} y={b.y} width={b.l} height={b.h} rx="10" className="csch-boite" />
+        <g transform={`translate(${b.x + 12} ${b.y + 10})`} className="csch-picto">
+          <rect x="1" y="4" width="20" height="11" rx="2" /><path d="M23 7v5M5 8v3M9 8v3M13 8v3" />
+        </g>
+        <text x={b.x + 44} y={b.y + 24} className="csch-t14">Batterie</text>
+        <Lignes x={b.x + 12} y={b.y + 52} lignes={b.lignes} pas={16} className="csch-t12 csch-attenue" />
+      </Element>
+    </>
+  )
+}
+
 /* Côté réseau pas encore servi : la boîte en creux (pointillés), son nom, « à calculer » — aucune valeur. */
 function BlocACalculer({ b }) {
   const cx = b.x + b.l / 2
@@ -270,6 +291,13 @@ export function SchemaEnBlocs({ plan, onOuvrir = null, coteReseau = null }) {
   return (
     <svg width={largeur} height={hauteur} viewBox={`0 0 ${largeur} ${hauteur}`} className="csch-blocs-svg"
       xmlns="http://www.w3.org/2000/svg">
+      {plan.batterie && (
+        <defs>
+          <marker id="csch-fleche" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 1L10 5L0 9z" className="csch-fleche" />
+          </marker>
+        </defs>
+      )}
       {bandes.map((b) => (
         <g key={b.cle}>
           <rect x="0.5" y={b.y + 0.5} width={largeur - 1} height={b.h - 1} rx="10" className="csch-bande" />
@@ -319,6 +347,7 @@ export function SchemaEnBlocs({ plan, onOuvrir = null, coteReseau = null }) {
       ))}
       {coffretDc && <Coffret titre="Coffret côté panneaux" boite={coffretDc} onOuvrir={onOuvrir} cleCible={CIBLE_DU_BLOC.coffret} />}
       <Onduleur o={onduleur} onOuvrir={onOuvrir} />
+      {plan.batterie && <Batterie b={plan.batterie} onOuvrir={onOuvrir} />}
       {blocsAc.map((b) => <BlocAc key={b.cle} b={b} onOuvrir={onOuvrir} />)}
       {terre && <text x={terre.x1 + 20} y={terre.y + 19} className="csch-t12 csch-gras csch-etiquette csch-terre-texte">{terre.libelle}</text>}
     </svg>

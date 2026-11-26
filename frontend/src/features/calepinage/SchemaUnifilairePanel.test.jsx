@@ -24,7 +24,7 @@ vi.mock('./exportImage', () => ({
 import calepinageApi from '../../api/calepinageApi'
 import SchemaUnifilairePanel, { PlancheSchema, SchemaEnBlocs } from './SchemaUnifilairePanel'
 import {
-  motifDuRefusDxf, corpsEdition, couperTexte, estHorsReseau, lignesCartouche, lignesLegende, phraseCoteReseau, planSchemaEnBlocs,
+  motifDuRefusDxf, corpsEdition, couperTexte, estHorsReseau, lignesCartouche, lignesLegende, phraseCoteReseau, planDepuisDocument, planSchemaEnBlocs,
 } from './SchemaUnifilairePanel.helpers'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { OPTIONS_TELECHARGEMENT } from './documents/telechargement'
@@ -619,5 +619,101 @@ describe('planSchemaEnBlocs / SchemaEnBlocs (maquette Schema, tour 2)', () => {
     expect(couperTexte('Compteur de production', 12)).toEqual(['Compteur de', 'production'])
     expect(couperTexte('un deux trois quatre cinq', 5, 2)).toEqual(['un', 'deux…'])
     expect(couperTexte(null, 10)).toEqual([])
+  })
+})
+
+/* ── LOT 6 — le MÊME dessin, lu sur le document `schema_electrique` du contrat (ventes/schema_electrique.json) ── */
+describe('planDepuisDocument — le document schema_electrique (lot 6)', () => {
+  const doc = (option, variante = 'exemple') => structuredClone(
+    exempleContrat('ventes', 'schema_electrique', variante).schema_electrique.options[option])
+  const dessiner = (plan) => {
+    render(<PlancheSchema balisage={null} dessin={<SchemaEnBlocs plan={plan} />} />)
+    return screen.getByTestId('csch-blocs')
+  }
+
+  it('avec batterie : quatre chaînes aux quatre couleurs du contrat, onduleur, côté réseau ET la carte batterie', () => {
+    const plan = planDepuisDocument(doc('avec_batterie'))
+    expect(plan.chaines.map((c) => [c.chaine, c.nombre, c.couleur, c.mppt])).toEqual([
+      [1, 12, 'rgb(36, 130, 214)', 1], [2, 12, 'rgb(232, 125, 33)', 1],
+      [3, 12, 'rgb(46, 163, 89)', 2], [4, 12, 'rgb(184, 64, 158)', 2]])
+    expect(plan.onduleur.designation.join(' ')).toBe('Deye SUN-20K-SG05LP3')
+    expect(plan.onduleur.entrees).toBe('2 entrées : 1 et 2')
+    expect(plan.blocsAc.map((b) => b.cle)).toEqual(['coffret_ac', 'compteur', 'tgbt', 'reseau'])
+    expect(plan.batterie.lignes).toEqual(['Dyness BX51100', '3 unités', '15,36 kWh au total', '51,2 V'])
+    expect(plan.legende.map((l) => l.libelle)).toContain('Liaison batterie')
+    // La carte est dans la bande courant continu, à gauche de l'onduleur, et ne le recouvre pas.
+    expect(plan.batterie.x + plan.batterie.l).toBeLessThan(plan.onduleur.x)
+    expect(plan.batterie.y + plan.batterie.h).toBeLessThan(plan.bandes[0].h)
+    const blocs = dessiner(plan)
+    for (const texte of ['Batterie', 'Dyness BX51100', '3 unités', '15,36 kWh au total', '51,2 V',
+      'Chaîne 4 · 12 panneaux', 'Côté réseau · courant alternatif', 'Compteur ONEE']) {
+      expect(blocs).toHaveTextContent(texte)
+    }
+    expect(screen.getByTestId('csch-bloc-batterie')).toBeInTheDocument()
+    expect(screen.getByTestId('csch-lien-batterie')).toBeInTheDocument()
+    // La batterie n'ajoute aucune largeur : le côté réseau reste dans la planche de 1440 px.
+    expect(plan.largeur).toBeLessThanOrEqual(880)
+  })
+
+  it('sans batterie : aucune carte, aucune liaison, aucune ligne de légende « batterie »', () => {
+    const plan = planDepuisDocument(doc('sans_batterie'))
+    expect(plan.batterie).toBeUndefined()
+    expect(plan.chaines.map((c) => c.nombre)).toEqual([18, 17])
+    expect(plan.legende.map((l) => l.libelle)).not.toContain('Liaison batterie')
+    dessiner(plan)
+    expect(screen.queryByTestId('csch-bloc-batterie')).toBeNull()
+    expect(screen.queryByTestId('csch-lien-batterie')).toBeNull()
+  })
+
+  it('une valeur null est omise, jamais remplacée : niveau standard (tension et calibres absents)', () => {
+    const d = doc('avec_batterie', 'exemple_standard')
+    const plan = planDepuisDocument(d)
+    expect(plan.batterie.lignes).toEqual(['Dyness BX51100', '3 unités', '15,36 kWh au total'])
+    d.batterie.capacite_kwh = null
+    d.batterie.designation = null
+    expect(planDepuisDocument(d).batterie.lignes).toEqual(['3 unités'])
+    // Sections nulles : aucune étiquette « mm² » ni longueur sur les liaisons.
+    expect(plan.liaisons.every((l) => !l.etiquette?.lignes.some((t) => /mm²| m$/.test(t)))).toBe(true)
+    expect(dessiner(plan).textContent).not.toMatch(/—|–|\bnull\b|undefined|NaN/)
+  })
+
+  it('champ sans découpage : UN champ au nombre réel de panneaux, aucune chaîne inventée, côté réseau en creux', () => {
+    const plan = planDepuisDocument(doc('sans_batterie', 'exemple_champ_sans_repartition'))
+    expect(plan.chaines).toHaveLength(1)
+    expect(plan.chaines[0].libelle).toBe('Champ · 35 panneaux')
+    expect(plan.chaines[0].couleur).toBeNull()
+    expect(plan.chaines[0].mppt).toBeNull()
+    expect(plan.coteReseauACalculer).toBe(true)
+    expect(plan.blocsAc.every((b) => b.aCalculer)).toBe(true)
+    expect(plan.legende[0].libelle).toBe('Champ de panneaux')
+  })
+
+  it('hors réseau : rien côté réseau ; sans panneau ni chaîne : null', () => {
+    const d = doc('avec_batterie')
+    d.cote_reseau = { etat: 'hors_reseau', motif: null }
+    d.coffret_ac = null; d.compteur_production = null; d.tgbt = null; d.reseau = null
+    const plan = planDepuisDocument(d)
+    expect(plan.blocsAc).toEqual([])
+    expect(plan.coteReseauACalculer).toBe(false)
+    const vide = doc('sans_batterie', 'exemple_champ_sans_repartition')
+    vide.panneaux.nombre = 0
+    expect(planDepuisDocument(vide)).toBeNull()
+    expect(planDepuisDocument(null)).toBeNull()
+    expect(planDepuisDocument({})).toBeNull()
+  })
+
+  it('aucun montant : le dessin ne contient ni prix ni devise, avec ou sans batterie', () => {
+    for (const option of ['avec_batterie', 'sans_batterie']) {
+      cleanup()
+      const texte = dessiner(planDepuisDocument(doc(option))).textContent
+      expect(texte).not.toMatch(/\bDH\b|\bMAD\b|€|\$|\bprix\b|\bHT\b|\bTTC\b|\bachat\b/i)
+    }
+  })
+
+  it('un clic sur la batterie ouvre la section où elle se règle', () => {
+    const onOuvrir = vi.fn()
+    render(<PlancheSchema balisage={null} dessin={<SchemaEnBlocs plan={planDepuisDocument(doc('avec_batterie'))} onOuvrir={onOuvrir} />} />)
+    fireEvent.click(screen.getByTestId('csch-bloc-batterie'))
+    expect(onOuvrir).toHaveBeenLastCalledWith('materiel-electrique')
   })
 })
