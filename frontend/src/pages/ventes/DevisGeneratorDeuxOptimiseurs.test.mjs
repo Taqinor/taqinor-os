@@ -280,13 +280,23 @@ test('le compte de panneaux est PROPRE à chaque option — sinon l’écran chi
   assert.equal(comptePanneauxOption(lignes, 'avec'), 18, 'commun + avec')
 })
 
-// T4-X6-016 / R5A-N3 — la recommandation servie périme le message « n'a pas pu chiffrer » d'un clic antérieur.
-test('recommandationServie — vraie dès que le moteur sert une taille (sans, avec, ou conseil C&I), fausse sinon', async () => {
-  const { recommandationServie } = await import('../../features/ventes/quote/paireDimensionnement.js')
-  assert.equal(recommandationServie(null, null), false)
-  assert.equal(recommandationServie({ dimensionnement: { recommandation: { panneaux: 0 } } }, {}), false)
-  assert.equal(recommandationServie({ dimensionnement: { recommandation: { panneaux: 6 } } }, {}), true)
-  assert.equal(recommandationServie({ dimensionnement: { recommandation_avec: { panneaux: 8 } } }, {}), true)
-  assert.equal(recommandationServie(null, { conseil: { nb_panneaux: 12 } }), true)
-  assert.equal(recommandationServie(null, { donnees: { taille: { nb_panneaux: 12 } } }), true)
+// T4-X6-016 / R5A-N3 — UN prédicat : ce que « Recalculer » retiendrait maintenant, ou le message qu'il dirait.
+test('issueRecalculDimensionnement — taille retenue ou message, le même pour le clic et pour l effacement', async () => {
+  const { issueRecalculDimensionnement } = await import('../../features/ventes/quote/paireDimensionnement.js')
+  const { SCENARIO_AVEC, SCENARIO_LES_DEUX } = await import('../../features/ventes/quote/scenarios.js')
+  const res = (dimensionnement, extra = {}) => issueRecalculDimensionnement({
+    modeInstallation: 'residentiel', scenario: SCENARIO_LES_DEUX, etudeHoraireDonnees: dimensionnement ? { dimensionnement } : null, ...extra,
+  })
+  assert.match(res(null, { etudeHoraireChargement: true }).erreur, /en cours de calcul/)
+  assert.deepEqual(res({ recommandation: { panneaux: 6, kwc: 4.26 } }).retenu, { nbPanneaux: 6, kwcOptimal: 4.26 })
+  // sans = 0, avec = 8, scénario « les deux » : le clic ne retient rien — le message reste (il n'est plus effacé à tort).
+  const avecSeul = res({ recommandation: { panneaux: 0 }, recommandation_avec: { panneaux: 8 } })
+  assert.equal(avecSeul.retenu, undefined)
+  assert.match(avecSeul.erreur, /n'a pas pu chiffrer/)
+  assert.equal(res({ recommandation: { panneaux: 0 }, recommandation_avec: { panneaux: 8, kwc: 5.68 } }, { scenario: SCENARIO_AVEC }).retenu.nbPanneaux, 8)
+  assert.equal(res({ motivation: 'Facture manquante.' }).erreur, 'Facture manquante.')
+  const ci = (apercuCi) => issueRecalculDimensionnement({ modeInstallation: 'industriel', marcheCi: true, apercuCi })
+  assert.equal(ci({ conseil: { nb_panneaux: 12, retenue_kwc: 8.52 } }).retenu.nbPanneaux, 12)
+  assert.equal(ci({ donnees: { taille: { nb_panneaux: 12 } } }).retenu.nbPanneaux, 12)
+  assert.match(ci(null).erreur, /n'a pas encore retenu de taille/)
 })

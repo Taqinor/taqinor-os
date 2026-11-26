@@ -20,6 +20,7 @@
 // la branche locale (structurellement injoignable) : il ne reste QU'UNE
 // source possible, et la règle devient une propriété du type.
 import { moteur, absent, estFait } from './valeur.js'
+import { SCENARIO_AVEC } from './scenarios.js'
 
 /** Motif d'absence — jamais un chiffre de remplacement (règle #4). */
 export const RIEN_A_CHIFFRER = 'aucun dimensionnement chiffré pour cette branche'
@@ -59,13 +60,41 @@ export const deuxValeursDim = (modeInstallation, etudeHoraireDonnees) => {
   return paireDimensionnement(dim?.recommandation, dim?.recommandation_avec)
 }
 
-/** T4-X6-016 / R5A-N3 — le moteur a-t-il SERVI une recommandation de taille (horaire résidentiel, avec ou sans batterie,
-    ou conseil C&I) ? Tant qu'elle est servie, le message « Le moteur n'a pas pu chiffrer de recommandation » d'un clic
-    antérieur sur « Recalculer » est périmé : il ne reste jamais à côté des lignes « Conseillé par le moteur ». */
-export function recommandationServie(etudeHoraireDonnees, apercuCi) {
-  const dim = etudeHoraireDonnees?.dimensionnement
-  return Number(dim?.recommandation?.panneaux) > 0
-    || Number(dim?.recommandation_avec?.panneaux) > 0
-    || Number(apercuCi?.conseil?.nb_panneaux) > 0
-    || Number(apercuCi?.donnees?.taille?.nb_panneaux) > 0
+/** T4-X6-016 / R5A-N3 — CE QUE « Recalculer le dimensionnement » RETIENDRAIT MAINTENANT : `{ retenu }` (la taille servie par
+    le moteur, horaire résidentiel ou conseil C&I) ou `{ erreur }` (le message du clic, en français). LE prédicat unique : le
+    clic l'applique, et l'écran réécrit avec lui un message de clic encore affiché quand les données changent — un message
+    ne contredit donc jamais les lignes « Conseillé », et un clic arrivé avant les données n'est jamais perdu en silence
+    (`DIMENSIONNEMENT_PRET` dit de réessayer). */
+export const DIMENSIONNEMENT_PRET = 'Dimensionnement prêt — réessayez pour l’appliquer.'
+export function issueRecalculDimensionnement({
+  modeInstallation, scenario, marcheCi, etudeHoraireDonnees, etudeHoraireChargement, apercuCi,
+}) {
+  if (modeInstallation === 'residentiel') {
+    const dim = etudeHoraireDonnees?.dimensionnement
+    const source = (scenario === SCENARIO_AVEC && Number(dim?.recommandation_avec?.panneaux) > 0)
+      ? dim.recommandation_avec : dim?.recommandation
+    if (Number(source?.panneaux) > 0) {
+      return { retenu: { nbPanneaux: Number(source.panneaux), kwcOptimal: source.kwc != null ? Number(source.kwc) : null } }
+    }
+    // Message FRANÇAIS du serveur quand il en a un (il nomme la donnée manquante), sinon la cause générique — jamais un
+    // chiffre supposé ; pendant le calcul, le clic DIT que le calcul n'est pas encore là.
+    return {
+      erreur: dim?.motivation
+        || etudeHoraireDonnees?.avertissements?.[0]
+        || (etudeHoraireChargement
+          ? 'Dimensionnement en cours de calcul — réessayez dans un instant.'
+          : "Le moteur n'a pas pu chiffrer de recommandation : complétez la "
+            + 'facture, la ville et le raccordement du client, puis réessayez.'),
+    }
+  }
+  // CIQ126 — C&I : la taille retenue par le moteur serveur (aperçu en direct du profil déclaré) ; sans elle, rien n'est
+  // inventé. T4-X6-008 — en édition, l'aperçu décrit les LIGNES : la taille du moteur est son `conseil`.
+  const t = apercuCi?.conseil ?? apercuCi?.donnees?.taille
+  if (!marcheCi || !(Number(t?.nb_panneaux) > 0)) {
+    return {
+      erreur: 'Le moteur C&I n\'a pas encore retenu de taille : complétez le '
+        + 'profil de consommation du site, puis réessayez.',
+    }
+  }
+  return { retenu: { nbPanneaux: Number(t.nb_panneaux), kwcOptimal: t.retenue_kwc != null ? Number(t.retenue_kwc) : null } }
 }

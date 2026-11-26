@@ -8,7 +8,7 @@ import { roleLabel, tauxTvaOf, tauxTvaOuDefaut, ttcExactFromHt } from '../../../
 import { lignesDepuisKit } from '../../../../features/ventes/quote/etudeMarcheBloc'
 import { tailleAutoRemplirPompage } from '../../../../features/ventes/quote/reouverture'
 import { phraseReductionOptionAvec } from '../../../../features/ventes/quote/forfaitsPanneau'
-import { recommandationServie } from '../../../../features/ventes/quote/paireDimensionnement'
+import { DIMENSIONNEMENT_PRET, issueRecalculDimensionnement } from '../../../../features/ventes/quote/paireDimensionnement'
 import { refusAutoRemplirPompage } from '../../../../features/ventes/etudePompagePreviewPur'
 import {
   SCENARIO_AVEC, SCENARIO_LES_DEUX, tailleDemandeeParLead, toucheNbPanneauxPourComposition,
@@ -150,13 +150,16 @@ export function useCompositionEcran(ctx) {
     recomposerLignes(generated)
   }
 
-  // T4-X6-016 / R5A-N3 — un message « le moteur n'a pas pu chiffrer » ne survit pas à la réponse qui le contredit : dès que le
-  // moteur sert une recommandation, l'erreur d'un « Recalculer » antérieur tombe (jamais à côté des lignes « Conseillé »).
-  const recommandationLue = recommandationServie(etudeHoraireDonnees, apercuCi)
+  // T4-X6-016 / R5A-N3 — UN prédicat pour le clic et pour le message : `issueRecalculDimensionnement`. Un message de clic encore
+  // affiché est réécrit, à chaque nouvelle donnée, par ce que le clic dirait MAINTENANT — jamais « n'a pas pu chiffrer » à côté
+  // d'une taille retenable, et un clic arrivé avant les données dit « Dimensionnement prêt — réessayez » (jamais effacé en silence).
+  const issueRecalcul = issueRecalculDimensionnement({
+    modeInstallation, scenario, marcheCi, etudeHoraireDonnees, etudeHoraireChargement, apercuCi,
+  })
+  const messageRecalcul = issueRecalcul.retenu ? DIMENSIONNEMENT_PRET : issueRecalcul.erreur
   useEffect(() => {
-    if (!recommandationLue) return
-    queueMicrotask(() => setErrors(e => (e.recalcDim ? { ...e, recalcDim: null } : e)))
-  }, [recommandationLue, etudeHoraireDonnees, setErrors])
+    queueMicrotask(() => setErrors(e => (e.recalcDim && e.recalcDim !== messageRecalcul ? { ...e, recalcDim: messageRecalcul } : e)))
+  }, [messageRecalcul, setErrors])
 
   const handleAutoFill = async () => {
     // PVOND — le bandeau des onduleurs grisés appartient au DERNIER
@@ -386,47 +389,11 @@ export function useCompositionEcran(ctx) {
     // `sizingInfo` reste NUL sur ce chemin : son encart parle de « palier
     // retenu / besoin lu sur la facture », deux notions du balayage local qui
     // ne décrivent pas ce que le moteur a fait (règle chiffres-vérifiés).
-    let retenu = null
-    if (modeInstallation === 'residentiel') {
-      const dim = etudeHoraireDonnees?.dimensionnement
-      const source = (scenario === SCENARIO_AVEC
-        && Number(dim?.recommandation_avec?.panneaux) > 0)
-        ? dim.recommandation_avec : dim?.recommandation
-      if (!(Number(source?.panneaux) > 0)) {
-        setErrors(e => ({
-          ...e,
-          // Message FRANÇAIS du serveur quand il en a un (il nomme la donnée
-          // manquante), sinon la cause générique — jamais un chiffre supposé.
-          recalcDim: dim?.motivation
-            || etudeHoraireDonnees?.avertissements?.[0]
-            || (etudeHoraireChargement
-              ? 'Dimensionnement en cours de calcul — réessayez dans un instant.'
-              : "Le moteur n'a pas pu chiffrer de recommandation : complétez la "
-                + 'facture, la ville et le raccordement du client, puis réessayez.'),
-        }))
-        return
-      }
-      retenu = {
-        nbPanneaux: Number(source.panneaux),
-        kwcOptimal: source.kwc != null ? Number(source.kwc) : null,
-      }
-    } else {
-      // CIQ126 — C&I : la taille retenue par le moteur serveur (aperçu en
-      // direct du profil déclaré) ; sans elle, rien n'est inventé. T4-X6-008 — en
-      // édition, l'aperçu décrit les LIGNES : la taille du moteur est son `conseil`.
-      const t = apercuCi.conseil ?? apercuCi.donnees?.taille
-      if (!marcheCi || !(Number(t?.nb_panneaux) > 0)) {
-        setErrors(e => ({
-          ...e,
-          recalcDim: 'Le moteur C&I n\'a pas encore retenu de taille : complétez le '
-            + 'profil de consommation du site, puis réessayez.',
-        }))
-        return
-      }
-      retenu = {
-        nbPanneaux: Number(t.nb_panneaux),
-        kwcOptimal: t.retenue_kwc != null ? Number(t.retenue_kwc) : null,
-      }
+    // T4-X6-016 — la décision (taille retenue ou message) est `issueRecalculDimensionnement`, le MÊME prédicat que le message.
+    const { retenu, erreur } = issueRecalcul
+    if (!retenu) {
+      setErrors(e => ({ ...e, recalcDim: erreur }))
+      return
     }
     setErrors(e => ({ ...e, recalcDim: null }))
     // Une seule transition : la taille retenue est posée, `sizingInfo` reste
