@@ -134,13 +134,10 @@ describe('T4-X8-016 — le menu CRM suit la règle de ses routes', () => {
     expect(menuCrm(container)).toContain('/crm/leads')
   })
 
-  it('Technicien : plus aucune entrée dont l’écran exige crm_voir', () => {
+  it('Technicien : plus aucune entrée dont l’écran exige crm_voir ou un code du module crm', () => {
     const { container } = renderSidebar({ path: '/calendrier', role: 'normal', permissions: TECHNICIEN })
-    // Défis, Parrainage et Profils site restent : leur garde serveur (`LectureDuModule`, n'importe quel code
-    // crm) n'est pas exprimable par `estAutoriseEntree`, et le menu n'est jamais plus strict que le serveur.
     expect(menuCrm(container)).toEqual([
-      '/calendrier', '/crm', '/crm/forecast', '/carte', '/crm/parrainage', '/crm/profils-site', '/crm/defis',
-      '/crm/visiteurs', '/crm/attribution', '/crm/cockpit-equipe',
+      '/calendrier', '/crm', '/crm/forecast', '/carte', '/crm/visiteurs', '/crm/attribution', '/crm/cockpit-equipe',
     ])
   })
 

@@ -147,21 +147,24 @@ describe('crm — module.config (VX22 : fiche lead adressable)', () => {
    (`{roles, perm, permRepliPalier}`), et la route la fait jouer à `roleLoader` (→ `/403` AVANT que la page ne
    lance une requête). Le Technicien (aucun `crm_*`) est refusé ; le Commercial et le compte légacy passent. */
 describe('crm — module.config (T4-X8-016 : route et menu lisent la même règle)', () => {
-  const garde = (e) => ({ roles: e.roles, perm: e.perm, permRepliPalier: e.permRepliPalier })
+  const garde = (e) => ({ roles: e.roles, perm: e.perm, permModule: e.permModule, permRepliPalier: e.permRepliPalier })
   const TECHNICIEN = ['installation_voir', 'sav_voir', 'stock_voir', 'visites_voir', 'calepinage_voir']
 
   it('chaque route gardée a une entrée de menu à la garde identique, et inversement', async () => {
     const { default: config } = await import('./module.config.jsx')
-    const gardees = config.routes.filter((r) => r.perm)
-    expect(gardees.map((r) => r.path).sort()).toEqual([
+    const gardees = config.routes.filter((r) => r.perm || r.permModule)
+    expect(gardees.filter((r) => r.perm).map((r) => r.path).sort()).toEqual([
       '/crm/cockpit', '/crm/concurrents-perte', '/crm/leads', '/crm/relances',
+    ])
+    expect(gardees.filter((r) => r.permModule).map((r) => r.path).sort()).toEqual([
+      '/crm/defis', '/crm/parrainage', '/crm/profils-site',
     ])
     for (const route of gardees) {
       const item = config.nav.items.find((i) => i.to === route.path)
       expect(garde(item), route.path).toEqual(garde(route))
     }
-    for (const item of config.nav.items.filter((i) => i.perm)) {
-      expect(config.routes.find((r) => r.path === item.to)?.perm, item.to).toBe(item.perm)
+    for (const item of config.nav.items.filter((i) => i.perm || i.permModule)) {
+      expect(garde(config.routes.find((r) => r.path === item.to) ?? {}), item.to).toEqual(garde(item))
     }
   })
 
@@ -178,16 +181,19 @@ describe('crm — module.config (T4-X8-016 : route et menu lisent la même règl
     }
   })
 
-  it('jamais plus strict que le serveur : Défis, Parrainage, Profils site (LectureDuModule) restent ouverts à un rôle crm_creer sans crm_voir', async () => {
+  it('Défis, Parrainage, Profils site (LectureDuModule) : ouverts à un rôle crm_creer sans crm_voir, fermés au Technicien', async () => {
     const { default: config } = await import('./module.config.jsx')
     for (const chemin of ['/crm/defis', '/crm/parrainage', '/crm/profils-site']) {
       const route = config.routes.find((r) => r.path === chemin)
       const item = config.nav.items.find((i) => i.to === chemin)
-      // Route sans `roles` ni `perm` : `buildModuleRoutes` lui donne `authLoader` (toute session interne).
+      // Route gardée (`roles` + `permModule`) : `roleLoader` → `/403` avant le montage de la page.
+      expect(route.permModule, chemin).toBe('crm')
       expect(route.perm, chemin).toBeUndefined()
-      expect(route.roles, chemin).toBeUndefined()
-      expect(item.perm, chemin).toBeUndefined()
-      expect(estAutoriseEntree(item, 'normal', ['crm_creer']), chemin).toBe(true)
+      for (const entree of [route, item]) {
+        expect(estAutoriseEntree(entree, 'normal', ['crm_creer']), chemin).toBe(true)
+        expect(estAutoriseEntree(entree, 'normal', TECHNICIEN), chemin).toBe(false)
+        expect(estAutoriseEntree(entree, 'normal', []), chemin).toBe(true)
+      }
     }
     // … et /crm/leads, gardé par crm_voir côté serveur, lui reste refusé.
     expect(estAutoriseEntree(config.routes.find((r) => r.path === '/crm/leads'), 'normal', ['crm_creer'])).toBe(false)
