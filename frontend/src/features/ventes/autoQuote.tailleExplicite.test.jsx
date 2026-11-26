@@ -21,6 +21,7 @@ vi.mock('../../api/ventesApi', () => ({
 
 import ventesApi from '../../api/ventesApi'
 import { createAutoQuote } from './autoQuote'
+import { exempleContrat } from '../../test/fixtures/contractSamples'
 
 beforeEach(() => { vi.clearAllMocks() })
 
@@ -83,7 +84,8 @@ describe('AGNR34 — devis auto résidentiel : deux factures, aucune série fabr
 
 describe('T4-X1-004 — la taille réelle est dite quand elle diffère de la cible tapée', () => {
   it('3 kWc tapés, devis servi à 3,55 kWc : une alerte nomme les deux tailles et pourquoi', async () => {
-    ventesApi.creerDevisAuto.mockResolvedValueOnce({ data: { id: 901, kwc: 3.55, alertes: [{ code: 'taille_demandee', message: 'Taille imposée pour ce devis : 3 kWc' }] } })
+    // La réponse servie (contrat committé), à 3,55 kWc et avec l'alerte « Taille imposée » que le serveur pose.
+    ventesApi.creerDevisAuto.mockResolvedValueOnce({ data: { ...exempleContrat('ventes', 'assistant_devis_cree'), kwc: 3.55, alertes: [{ code: 'taille_demandee', message: 'Taille imposée pour ce devis : 3 kWc' }] } })
     const onAlertes = vi.fn()
     await createAutoQuote({ lead: { id: 4, type_installation: 'residentiel' }, produits: [], discountStr: '0', targetKwc: '3', onAlertes })
     const alertes = onAlertes.mock.calls[0][0]
