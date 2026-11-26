@@ -171,12 +171,33 @@ class MasquePrixVenteMixin:
         return cache_prix_vente(self.context.get('request'))
 
     def to_internal_value(self, data):
-        if self.instance is not None and hasattr(data, 'copy') and self._prix_vente_caches():
+        caches = self.instance is not None and self._prix_vente_caches()
+        if caches and hasattr(data, 'copy'):
             data = data.copy()
             for champ in PRIX_VENTE_CHAMPS:
                 if champ in data and data.get(champ) in _PRIX_VIDES:
                     data.pop(champ)
-        return super().to_internal_value(data)
+        attrs = super().to_internal_value(data)
+        if caches:
+            self._refuser_prix_vente_modifie(attrs)
+        return attrs
+
+    def _refuser_prix_vente_modifie(self, attrs):
+        """D-ACAL-165 — qui ne VOIT pas un prix de vente ne l'écrase pas : un
+        changement NON vide → 403. Les prix catalogue (``PRIX_CATALOGUE_CHAMPS``
+        du sérialiseur) gardent leur 403 « catalogue_prix_modifier » (ASTK20)
+        pour qui n'a pas ce code ; ce garde couvre le reste (tarifs de
+        location) et le compte qui porterait ``catalogue_prix_modifier`` sans
+        ``prix_vente_voir``."""
+        user = getattr(self.context.get('request'), 'user', None)
+        from .serializers import PRIX_CATALOGUE_CHAMPS as catalogue  # liste unique (ASTK20)
+        garde_catalogue = bool(user and user.has_erp_permission('catalogue_prix_modifier'))
+        changes = [c for c in PRIX_VENTE_CHAMPS
+                   if c in attrs and (garde_catalogue or c not in catalogue)
+                   and attrs[c] != getattr(self.instance, c, None)]
+        if changes:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(f"{MESSAGE_PRIX_VENTE} — modification refusée ({', '.join(changes)}).")
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

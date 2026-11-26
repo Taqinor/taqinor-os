@@ -664,6 +664,19 @@ class GardePrixVente(TestCase):
         rep = api.patch(url, {'prix_vente': '1'}, format='json')
         self.assertEqual(rep.status_code, 403, getattr(rep, 'data', ''))
         self.assertIn('catalogue_prix_modifier', str(rep.data['detail']))
+        # D-ACAL-165 — un tarif de location qu'il ne voit pas : vide = sans effet,
+        # non vide = 403 « prix_vente_voir » (avant : ÉCRIT, puis masqué en lecture).
+        rep = api.patch(url, {'tarif_location_jour': '', 'tarif_location_mois': None}, format='json')
+        self.assertEqual(rep.status_code, 200, getattr(rep, 'data', ''))
+        rep = api.patch(url, {'tarif_location_jour': '1'}, format='json')
+        self.assertEqual(rep.status_code, 403, getattr(rep, 'data', ''))
+        self.assertIn('prix_vente_voir', str(rep.data['detail']))
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.tarif_location_jour, Decimal('50'))
+        # Avec le droit : l'écriture du tarif est inchangée.
+        rep = _api(self.admin).patch(url, {'tarif_location_jour': '55'}, format='json')
+        self.assertEqual(rep.status_code, 200, getattr(rep, 'data', ''))
+        self.assertEqual(Decimal(str(rep.json()['tarif_location_jour'])), Decimal('55'))
 
     def test_balayage_des_routes_stock_sans_aucun_montant_de_vente(self):
         """Garde de CLASSE, par les VALEURS (D-ACAL-165) : un prix de vente et

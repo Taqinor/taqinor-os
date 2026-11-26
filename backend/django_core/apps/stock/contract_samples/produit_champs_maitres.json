@@ -12,7 +12,7 @@
     "tarif_location_semaine",
     "tarif_location_mois"
   ],
-  "cles_masquees_pourquoi_prix_vente": "D-ACAL-152 (fondateur, 26/11/2026) — clés RETIRÉES de la réponse (liste, détail, recherche, actions du ProduitViewSet) pour un rôle sans `prix_vente_voir` (User.can_view_sale_prices : Technicien et Technicien responsable par défaut ; compte légacy sans rôle fin = repli historique, clés présentes) ; présentes sinon, octet pour octet. Liste unique : apps/stock/permissions.py::PRIX_VENTE_CHAMPS. Écritures inchangées (catalogue_prix_modifier) ; un prix envoyé par un rôle sans la permission est ignoré, jamais écrit.",
+  "cles_masquees_pourquoi_prix_vente": "D-ACAL-152 / D-ACAL-165 (fondateur, 26/11/2026) — clés RETIRÉES de la réponse (liste, détail, recherche, actions du ProduitViewSet) pour un rôle sans `prix_vente_voir` (User.can_view_sale_prices : Technicien et Technicien responsable par défaut ; compte légacy sans rôle fin = repli historique, clés présentes) ; présentes sinon, octet pour octet. Liste unique : apps/stock/permissions.py::PRIX_VENTE_CHAMPS. ÉCRITURE par un compte sans le droit (mise à jour) : une valeur VIDE ('', null, [], {}) renvoyée par un formulaire qui ne l'a pas reçue = aucun changement ; une valeur NON vide qui change le prix = 403 — `catalogue_prix_modifier` pour prix_vente / paliers_prix_vente / prix_fixe_ht / prix_par_panneau_ht (ASTK20) à qui n'a pas ce code, `prix_vente_voir` pour tarif_location_* et pour qui porterait catalogue_prix_modifier sans voir les prix. Avec le droit : écriture inchangée.",
   "exemple": {
     "id": 5,
     "nom": "Batterie 5 kWh",

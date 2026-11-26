@@ -1301,7 +1301,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
               {/* step="any" + saisie libre : ne jamais snapper/rejeter un nombre tapé. */}
               <Input id="pf-vente" type="number" min="0" step="any" inputMode="decimal"
                      invalid={!!errors.prix_vente} value={fields.prix_vente}
-                     readOnly={prixVenteFige} disabled={prixVenteFige}
+                     readOnly={prixVenteFige || prixVenteMasque} disabled={prixVenteFige || prixVenteMasque}
                      onChange={e => setField('prix_vente', e.target.value)} />
               {/* Avertissement marge négative — interne, jamais bloquant. */}
               {margeNegative && (
@@ -1385,12 +1385,12 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
                 <p className="text-xs text-muted-foreground sm:col-span-2">{libTarif.aide}</p>
                 <FormField label={libTarif.fixe} htmlFor="pf-tarif-fixe">
                   <Input id="pf-tarif-fixe" type="number" min="0" step="any" inputMode="decimal"
-                         value={fields.prix_fixe_ht}
+                         value={fields.prix_fixe_ht} disabled={prixVenteMasque}
                          onChange={e => setField('prix_fixe_ht', e.target.value)} />
                 </FormField>
                 <FormField label={libTarif.panneau} htmlFor="pf-tarif-panneau">
                   <Input id="pf-tarif-panneau" type="number" min="0" step="any" inputMode="decimal"
-                         value={fields.prix_par_panneau_ht}
+                         value={fields.prix_par_panneau_ht} disabled={prixVenteMasque}
                          onChange={e => setField('prix_par_panneau_ht', e.target.value)} />
                 </FormField>
               </div>
@@ -2230,7 +2230,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
               ['tarif_location_mois', 'Tarif location / mois']].map(([cle, libelle]) => (
               <FormField key={cle} label={libelle} htmlFor={`pf-${cle}`} error={errors[cle]}>
                 <Input id={`pf-${cle}`} type="number" step="any" inputMode="decimal"
-                       value={fields[cle]} onChange={e => setField(cle, e.target.value)} />
+                       value={fields[cle]} onChange={e => setField(cle, e.target.value)} disabled={prixVenteMasque} />
               </FormField>
             ))}
             <label className="flex items-center gap-2 text-sm">
@@ -2256,12 +2256,12 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
               {fields.paliers_prix_vente.map((pal, i) => (
                 <div key={i} className="flex flex-wrap items-end gap-2">
                   <Input aria-label={`Palier ${i + 1} — quantité min`} type="number" step="any" className="w-28"
-                         value={pal.seuil_min} onChange={e => setPalier(i, 'seuil_min', e.target.value)} />
+                         value={pal.seuil_min} onChange={e => setPalier(i, 'seuil_min', e.target.value)} disabled={prixVenteMasque} />
                   <Input aria-label={`Palier ${i + 1} — quantité max`} type="number" step="any" className="w-28"
-                         value={pal.seuil_max} placeholder="∞"
+                         value={pal.seuil_max} placeholder="∞" disabled={prixVenteMasque}
                          onChange={e => setPalier(i, 'seuil_max', e.target.value)} />
                   <Input aria-label={`Palier ${i + 1} — prix TTC`} type="number" step="any" className="w-32"
-                         value={pal.prix_vente_ttc} onChange={e => setPalier(i, 'prix_vente_ttc', e.target.value)} />
+                         value={pal.prix_vente_ttc} onChange={e => setPalier(i, 'prix_vente_ttc', e.target.value)} disabled={prixVenteMasque} />
                   <Button type="button" variant="ghost" size="sm" onClick={() => retirerPalier(i)}
                           aria-label={`Retirer le palier ${i + 1}`}>
                     <X className="size-4" />
@@ -2272,7 +2272,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
                 <p className="text-xs text-destructive">{String(errors.paliers_prix_vente)}</p>
               )}
               <div>
-                <Button type="button" variant="outline" size="sm" onClick={ajouterPalier}>
+                <Button type="button" variant="outline" size="sm" onClick={ajouterPalier} disabled={prixVenteMasque}>
                   <Plus className="size-4" /> Ajouter un palier
                 </Button>
               </div>

@@ -109,6 +109,11 @@ describe('ASTK230 — champs maîtres saisissables', () => {
   it('D-ACAL-152 — fiche servie sans prix de vente (Technicien) : enregistrer passe, aucun « Prix de vente requis »', async () => {
     const { prix_vente: _pv, paliers_prix_vente: _pal, ...sansPrix } = BATTERIE
     await ouvrir({ ...sansPrix, seuil_alerte: 0 })
+    // D-ACAL-165 — aucun champ de prix de vente modifiable.
+    for (const libelle of ['Prix de vente HT', 'Tarif location / jour', 'Tarif location / mois']) {
+      expect(screen.getByLabelText(libelle, { exact: false })).toBeDisabled()
+    }
+    expect(screen.getByRole('button', { name: /Ajouter un palier/ })).toBeDisabled()
     fireEvent.change(screen.getByLabelText('Code SH'), { target: { value: '8507.80' } })
     enregistrer()
     await waitFor(() => expect(espionsStock.updateProduitApi).toHaveBeenCalled())
