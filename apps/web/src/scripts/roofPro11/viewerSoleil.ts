@@ -12,7 +12,7 @@
  */
 import { couleurAccesActive } from '../../lib/shadingEngine';
 import type { RoofLayout } from '../../lib/proposition';
-import { bornesCarte, JOUR_ETE, JOUR_HIVER, libelleInstant, type LangueSoleil, type VisionneuseSoleil } from '../../lib/visionneuseSoleil';
+import { bornesCarte, JOUR_ETE, JOUR_HIVER, libelleInstant, libelleJournee, type LangueSoleil, type VisionneuseSoleil } from '../../lib/visionneuseSoleil';
 import { createSoleilPlayer, sunriseSunsetHours, type SunriseSunset } from './soleilPlay';
 import type { ViewerFullHandle } from './viewerFullBoot';
 
@@ -49,9 +49,10 @@ export function bornesJournee(lat: number, jour: number): SunriseSunset | null {
 export function couleurParPanneau(soleil: VisionneuseSoleil, indexActif: number) {
   const zone = soleil.zones.find((z) => z.index === indexActif);
   if (!zone) return null;
+  // Module non calculé (`null`) ou absent : `null`, la scène y garde la teinte d'origine (jamais un blanc gainé).
   return (cellule: number) => {
     const a = zone.acces[cellule];
-    return typeof a === 'number' ? couleurAccesActive(a, 'atelier') : { r: 1, g: 1, b: 1 };
+    return typeof a === 'number' ? couleurAccesActive(a, 'atelier') : null;
   };
 }
 
@@ -86,10 +87,8 @@ export function attacherSoleil(o: OptionsSoleil): () => void {
       const rempli = ((Number(curseur.value) - bornes.riseHour) / (bornes.setHour - bornes.riseHour)) * 100;
       curseur.style.setProperty('--soleil-rempli', `${Math.max(0, Math.min(100, rempli))}%`);
     }
-    for (const [cle, el] of [['min', bornes?.riseHour], ['max', bornes?.setHour]] as const) {
-      const n = q<HTMLElement>(`[data-soleil-${cle}]`);
-      if (n) n.textContent = el == null ? '' : langue() === 'fr' ? `${el} h` : `${el}:00`;
-    }
+    const journee = q<HTMLElement>('[data-soleil-journee]');
+    if (journee) journee.textContent = bornes ? libelleJournee(bornes.riseHour, bornes.setHour, langue()) : '';
     for (const b of saisons) b.setAttribute('aria-pressed', String((b.dataset.soleilSaison === 'ete' ? JOUR_ETE : JOUR_HIVER) === jour));
     if (lecture) {
       lecture.setAttribute('aria-pressed', String(player.playing));
@@ -155,6 +154,7 @@ export function attacherSoleil(o: OptionsSoleil): () => void {
   for (const c of controles) c.disabled = false;
   barre.dataset.soleilPret = '';
   afficher();
+  barre.hidden = false; // rendue `hidden` : montrée seulement une fois branchée sur la scène
 
   return () => {
     player.stop();
@@ -162,5 +162,8 @@ export function attacherSoleil(o: OptionsSoleil): () => void {
     observateur.disconnect();
     for (const c of controles) c.disabled = true;
     delete barre.dataset.soleilPret;
+    // Démontée (autre taille choisie, départ de la page) : aucun reste de légende ni de barre inerte.
+    q<HTMLElement>('[data-soleil-legende]')?.removeAttribute('data-soleil-visible');
+    barre.hidden = true;
   };
 }

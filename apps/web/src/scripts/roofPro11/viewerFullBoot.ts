@@ -90,6 +90,9 @@ export interface ViewerFullOptions {
   instant?: { jour: number; heure: number };
   /** LOT 6 (D-ACAL-137) — objets voisins à hauteur saisie (géométrie seule). Absent = aucun, comme avant. */
   environnement?: EnvironmentObject[];
+  /** LOT 6 (D-ACAL-136) — index des pans que la visionneuse au soleil TEINTERA. Le pan actif en fait partie ⇒ la scène
+   *  prend le verre et l'œil de l'atelier (`teinteAccesVisible`, sinon la teinte reste invisible). Absent = inchangé. */
+  indexTeintes?: readonly number[];
 }
 
 export interface ViewerFullHandle {
@@ -165,7 +168,9 @@ export function bootViewerFull(
   //   sceneOrigin, obstacleMeshes, activePanel*, selectedObsId, layout*, sunHour,
   //   sunDay, shadeObstructions). On caste un objet partiel, MÊME procédé que
   //   `captureBoot.ts` : aucun autre champ n'existe dans ce mode.
-  const toolOpts: InitOptions = { maptilerKey, mapboxToken, reducedMotion };
+  // LOT 6 (P1) — verre et œil de l'atelier SEULEMENT quand le pan actif sera teinté (ACAL1984) ; sinon aucune clé.
+  const teinteAccesVisible = opts.indexTeintes?.includes(plan.activeIndex) === true;
+  const toolOpts: InitOptions = { maptilerKey, mapboxToken, reducedMotion, ...(teinteAccesVisible ? { teinteAccesVisible } : {}) };
   const areas = viewerAreaRecords(plan);
   const ctx = {
     opts: toolOpts,

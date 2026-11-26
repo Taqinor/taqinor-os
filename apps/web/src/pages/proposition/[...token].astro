@@ -9085,7 +9085,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               mapboxToken: cfg.mapboxToken,
               reducedMotion: reduced,
               lowEnd: strategy.lowEnd,
-              ...(soleil ? { instant: soleil.ouverture, environnement: soleil.environnement } : {}),
+              ...(soleil ? { instant: soleil.ouverture, environnement: soleil.environnement, indexTeintes: fullLayout === layoutRacine ? soleil.zones.map((z) => z.index) : [] } : {}),
               onReady: () => {
                 if (overlay) overlay.hidden = true;
                 if (hintEl) {
@@ -9106,7 +9106,6 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               // LOT 6 — barre au soleil chargée APRÈS la visionneuse ; tout échec la masque et laisse la visionneuse.
               const courant = handle, s = soleil, barre = barreSoleil;
               if (s && barre) {
-                barre.hidden = false;
                 import('../../scripts/roofPro11/viewerSoleil').then((m) => {
                   if (handle !== courant) return; // démontée entre-temps (autre taille choisie)
                   const debrancher = m.attacherSoleil({ barre, poignee: fullHandle, soleil: s, layout: fullLayout, avecTeinte: fullLayout === layoutRacine, reducedMotion: reduced });

@@ -160,6 +160,9 @@ export interface InitOptions {
    *  « Affiner ma consommation » reste masqué faute de plan. Absente = pages publiques,
    *  comportement inchangé (la fenêtre de production interroge sa route). */
   productionAtelier?: ((cfg: ProdConfig) => import('../../lib/productionEngine').PerKwcProduction | null) | null;
+  /** LOT 6 (D-ACAL-136) — posé par la seule visionneuse au soleil (`viewerFullBoot.ts`) quand elle teintera le pan
+   *  actif : verre et œil de l'atelier (`oeilCamera.ts::verreEtOeilAtelier`). Absent = rendu inchangé. */
+  teinteAccesVisible?: boolean;
 
   // CALX104/CALX403 — les deux sections des réglages société que l'ATELIER consomme
   // (`zones_types` pour les gabarits d'obstacle, `degagements` pour la largeur d'allée

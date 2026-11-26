@@ -367,7 +367,9 @@ async function rendrePage(data: unknown): Promise<string> {
 
 describe('page /proposition — section #sld, deux payloads (LOT 6)', () => {
   it('ancien payload (sld_svg, sans schema_electrique) : section historique inchangée', async () => {
-    const html = await rendrePage(proposalContrat.exemple);
+    // L'exemple du contrat porte `schema_electrique` depuis SCHEL-B3 : l'ancien payload la RETIRE de sa copie.
+    const { schema_electrique: _neuf, ...ancien } = proposalContrat.exemple;
+    const html = await rendrePage(ancien);
     expect(html).toContain('id="sld-teaser"');
     expect(html).toContain('id="sld-viewer"');
     expect(html).toContain('id="sld-download"');
@@ -419,7 +421,7 @@ describe('BarreSoleil.astro — rendu (LOT 6)', () => {
     expect(html).toContain('Ensoleillement de chaque panneau sur l’année');
     expect(html).toContain('Ombragé');
     expect(html).toContain('Plein soleil');
-    expect(html).toContain('20 décembre · 16 h');
+    expect(html).toContain('20 décembre · 16 h (heure solaire)');
     expect(html).toMatch(/data-soleil-saison="hiver"[^>]*aria-pressed="true"/);
     expect(html).toContain('data-soleil-lecture');
     expect(html).toContain('type="range"');
@@ -430,8 +432,10 @@ describe('BarreSoleil.astro — rendu (LOT 6)', () => {
     for (const hook of ['data-soleil-lecture', 'data-soleil-heure', 'data-soleil-saison="hiver"', 'data-soleil-saison="ete"']) {
       expect(html).toMatch(new RegExp(`${hook}[^>]*disabled`));
     }
+    expect(html).toMatch(/id="roof3d-soleil"[^>]*\bhidden\b/); // C3 — cachée jusqu'au branchement
+    expect(html).toMatch(/data-soleil-quand[^>]*data-en="20 December · 16:00 \(solar time\)"[^>]*data-ar="20 دجنبر · الساعة 16 \(بالتوقيت الشمسي\)"/);
     expect(html).toContain('data-aria-label-ar="تشغيل مسار الشمس خلال اليوم"');
-    expect(html).toContain('data-aria-label-en="Time of day"');
+    expect(html).toContain('data-aria-label-en="Solar time of day"');
     expect(html).toContain('data-ar="الصيف"');
   });
 
@@ -439,7 +443,7 @@ describe('BarreSoleil.astro — rendu (LOT 6)', () => {
     const html = await rendreBarre(lu('exemple_sans_mesure'));
     expect(html).not.toContain('data-soleil-legende');
     expect(html).not.toContain('Ombragé');
-    expect(html).toContain('20 juin · 12 h');
+    expect(html).toContain('20 juin · 12 h (heure solaire)');
   });
 
   it('rien d’inventé ni d’incertain : aucun pourcentage, aucun prix, aucun « à confirmer » / « estimation »', async () => {

@@ -9,6 +9,7 @@
  * par le calepinage : rien n'est recalculé ici.
  */
 import { couleurAccesActive } from './shadingEngine';
+import { DEG2M_GEO } from './geo';
 import type { RoofLayout } from './proposition';
 import type { EnvironmentObject, EnvironmentKind } from '../scripts/roofPro11/environment';
 
@@ -109,15 +110,24 @@ const MOIS: Record<LangueSoleil, readonly string[]> = {
   ar: ['يناير', 'فبراير', 'مارس', 'أبريل', 'ماي', 'يونيو', 'يوليوز', 'غشت', 'شتنبر', 'أكتوبر', 'نونبر', 'دجنبر'],
 };
 
-/** « 20 décembre · 12 h » — jour de l'année dans l'année de dessin 2028 de l'atelier (`formats.js::jourMois`). */
-export function libelleInstant(jour: number, heure: number, langue: LangueSoleil): string {
+// L'heure de la scène est l'heure SOLAIRE (midi = soleil au plus haut), pas celle de la montre du client : chaque
+// heure imprimée le dit. Aucune conversion en heure légale ici (elle demande des données que la page n'a pas).
+const SOLAIRE: Record<LangueSoleil, string> = { fr: '(heure solaire)', en: '(solar time)', ar: '(بالتوقيت الشمسي)' };
+const heure = (h: number, langue: LangueSoleil) =>
+  langue === 'en' ? `${Math.round(h)}:00` : langue === 'ar' ? `الساعة ${Math.round(h)}` : `${Math.round(h)} h`;
+
+/** « 20 décembre · 12 h (heure solaire) » — jour dans l'année de dessin 2028 de l'atelier (`formats.js::jourMois`). */
+export function libelleInstant(jour: number, h: number, langue: LangueSoleil): string {
   const d = new Date(Date.UTC(2028, 0, Math.max(1, Math.min(366, Math.round(jour)))));
-  const j = d.getUTCDate();
   const mois = (MOIS[langue] ?? MOIS.fr)[d.getUTCMonth()];
-  const h = Math.round(heure);
-  if (langue === 'en') return `${j} ${mois} · ${h}:00`;
-  if (langue === 'ar') return `${j} ${mois} · الساعة ${h}`;
-  return `${j} ${mois} · ${h} h`;
+  return `${d.getUTCDate()} ${mois} · ${heure(h, langue)} ${SOLAIRE[langue] ?? SOLAIRE.fr}`;
+}
+
+/** « Lever 7 h · coucher 17 h (heure solaire) » — les bornes du curseur, dites une fois sous lui. */
+export function libelleJournee(lever: number, coucher: number, langue: LangueSoleil): string {
+  if (langue === 'en') return `Sunrise ${heure(lever, 'en')} · sunset ${heure(coucher, 'en')} ${SOLAIRE.en}`;
+  if (langue === 'ar') return `الشروق ${heure(lever, 'ar')} · الغروب ${heure(coucher, 'ar')} ${SOLAIRE.ar}`;
+  return `Lever ${heure(lever, 'fr')} · coucher ${heure(coucher, 'fr')} ${SOLAIRE.fr}`;
 }
 
 /** Bornes de la carte (D-ACAL-138) : emprise des sommets + `margeM` ; zoom mini = zoom initial − 2. */
@@ -127,8 +137,8 @@ export function bornesCarte(layout: RoofLayout, zoomInitial: number, margeM = 15
   const lngs = pts.map((p) => p[0]);
   const lats = pts.map((p) => p[1]);
   const [s, n] = [Math.min(...lats), Math.max(...lats)];
-  const dLat = margeM / 111_320;
-  const dLng = margeM / (111_320 * Math.max(0.05, Math.cos((((s + n) / 2) * Math.PI) / 180)));
+  const dLat = margeM / DEG2M_GEO; // ACAL349 — la constante de projection unique (lib/geo.ts)
+  const dLng = margeM / (DEG2M_GEO * Math.max(0.05, Math.cos((((s + n) / 2) * Math.PI) / 180)));
   return { bornes: [[Math.min(...lngs) - dLng, s - dLat], [Math.max(...lngs) + dLng, n + dLat]], zoomMin: Math.max(0, zoomInitial - 2) };
 }
 

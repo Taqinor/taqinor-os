@@ -52,7 +52,7 @@ import {
 } from './constants';
 import { type AreaRecord, type ZoneRenderPlan, type RenderSceneFn } from './types';
 import { makeCanadianPanelTexture, type JeuPanneau } from './panelTexture';
-import { aplatirEnPlan, poserOeil } from './oeilCamera'; // ACAL1984, T4-U1-017
+import { aplatirEnPlan, poserOeil, verreEtOeilAtelier } from './oeilCamera'; // ACAL1984, T4-U1-017, LOT 6
 import { boiteObstacle } from './obstacle3d'; // ACAL1820
 import { etiquettesChaines, type ChaineAPoser } from './electrique3d'; // ACAL1944
 import { teintesBatiment, eclatPresentation, TEINTES_PRESENTATION } from './jeuPresentation'; // ACAL1839
@@ -146,7 +146,7 @@ export interface Scene3d {
   /** WJ21 — teinte CHAQUE panneau de la zone active par son accès solaire (0–1) via
    *  `colorFor(cellIndex)` (rouge=faible → vert=plein soleil), ou remet tout à blanc si
    *  `colorFor` est null (heatmap désactivée). Réutilise le buffer instanceColor. */
-  setSolarAccessHeatmap: (colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) => void;
+  setSolarAccessHeatmap: (colorFor: CouleurDe) => void;
   /** CAL126 — teinte les modules PAR CHAÎNE / PAR MPPT. Même canal que la carte
    *  d'accès solaire (buffer `instanceColor`), source DIFFÉRENTE : la table
    *  `electrique.affectation` du serveur, traduite par `affectationColorFn`.
@@ -1057,12 +1057,12 @@ export function materiauVerre(map: THREE.Texture | null, erp: boolean): THREE.Me
  *  0–1 brute y restait noire (carte d'accès et chaînes invisibles). Même gain que le surlignage (PV31). */
 export const GAIN_TEINTE_PANNEAU = 14;
 
-/** ACAL1408 — écrit la teinte GAINÉE de chaque instance (`idxMap[i]` = sa cellule) ; `colorFor` null ⇒ blanc
- *  (teinte d'origine). Seule écriture des teintes « par module » (accès solaire, chaînes). */
+/** ACAL1408 — écrit la teinte GAINÉE de chaque instance (`idxMap[i]` = sa cellule) ; `colorFor` null, ou une cellule
+ *  qui rend `null`, ⇒ 1,1,1 (teinte d'origine). Seule écriture des teintes « par module » (accès solaire, chaînes). */
 export function ecrireTeintesPanneaux(
   col: { setXYZ(i: number, x: number, y: number, z: number): unknown; needsUpdate: boolean },
   idxMap: readonly number[],
-  colorFor: ((cellIndex: number) => Rgb01) | null,
+  colorFor: ((cellIndex: number) => Rgb01 | null) | null,
 ): void {
   for (let i = 0; i < idxMap.length; i++) {
     const c = colorFor ? colorFor(idxMap[i]) : null;
@@ -1310,7 +1310,6 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   const poignees3d = creerPoignees3d(map); // ACAL1185 — poignées des coins au haut des murs
   const opts = ctx.opts;
   const atelierErp = opts?.productionAtelier !== undefined; // ACAL1984 — `productionAtelier` : ERP seul (types.ts) ; site public : rendu inchangé
-
   const fmt1 = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const dimsLabel = (o: Obstacle) => `${fmt1(o.lengthM)} × ${fmt1(o.widthM)} m`;
 
@@ -1428,7 +1427,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     socleMat: THREE.MeshStandardMaterial;
   }
   const buildPanelMatSet = (dim: boolean, rapport: number, jeu: JeuPanneau = 'atelier'): PanelMatSet => {
-    const glassMat = materiauVerre(panelTexOf(rapport, jeu), atelierErp); // ACAL1984
+    const glassMat = materiauVerre(panelTexOf(rapport, jeu), verreEtOeilAtelier(opts)); // ACAL1984, LOT 6 (oeilCamera.ts)
     const frameMat = jeu === 'presentation' // ACAL1839 — cadre alu clair, pas un métal noirci sans reflet
       ? new THREE.MeshStandardMaterial({ color: TEINTES_PRESENTATION.cadre, metalness: 0.2, roughness: 0.5 })
       : new THREE.MeshStandardMaterial({ color: 0x9aa0aa, metalness: 0.85, roughness: 0.35 });
@@ -1583,7 +1582,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       const m = new THREE.Matrix4().fromArray(Array.from(args.defaultProjectionData.mainMatrix)).multiply(modelMatrix)
         .multiply(aplatirEnPlan(map.getPitch())); // T4-U1-017 — en Plan, la dalle retombe sur le contour tracé au sol
       poignees3d.suivre(m.elements);
-      if (!(atelierErp && poserOeil(threeCamera, m))) threeCamera.projectionMatrix = m; // ACAL1984 — l'œil réel (oeilCamera.ts)
+      if (!(verreEtOeilAtelier(opts) && poserOeil(threeCamera, m))) threeCamera.projectionMatrix = m; // ACAL1984 — l'œil réel (oeilCamera.ts) ; LOT 6
       renderer.resetState(); renderer.setViewport(0, 0, _gl.drawingBufferWidth, _gl.drawingBufferHeight); // H1 : la carte a pu changer de taille
       renderer.render(scene, threeCamera);
     },
