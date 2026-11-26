@@ -1882,7 +1882,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # calculée, ou longueur de dossier en repli assumé).
         'longueur_chaine': reconciliation,
         'suppose': _suppositions.liste_des_suppositions(  # ACAL980
-            reconciliation, societe, ORIGINE_LONGUEUR_DOSSIER),
+            reconciliation, societe, ORIGINE_LONGUEUR_DOSSIER, conception.manquantes),
         'temperatures': (conception.temperatures.en_dict()
                          if conception.temperatures is not None else None),
         # CALX70 — les blocs de la simulation persistée (CALX4), servis tels

@@ -27,20 +27,50 @@ def _ligne(champ, motif):
     return {'champ': champ, 'motif': motif, 'cible': cible}
 
 
+def _motif_meteo(refus, contexte):
+    """ACAL1649 — le refus d'un réglage météo en mots de métier, sans clé ni valeur
+    d'énumération (``champ`` garde le chemin pour le lien) ; un autre champ : motif tel quel."""
+    saisi = _cp._etapes.reglage(contexte, refus.champ.rsplit('.', 1)[-1])
+    if refus.champ == _cp.CLE_REGLAGE_MODE_METEO:
+        if saisi is None:
+            return "Choisissez le mode météo : année type ou plusieurs années."
+        return "Le mode météo choisi n'est pas reconnu : choisissez année type ou plusieurs années."
+    if refus.champ == _cp.CLE_REGLAGE_FENETRE_ANNEES:
+        if saisi is None:
+            return ("Choisissez la fenêtre d'années météo : toute la base disponible, dans la limite de %s ans."
+                    % _cp.PLAFOND_FENETRE_ANNEES)
+        return "La fenêtre d'années météo est illisible : saisissez deux années, par exemple 2015-2024."
+    return refus.motif
+
+
 def _manques_meteo(contexte):
     """Les lignes météo et le mode décidé (``None`` sans décision)."""
     try:
         return [], _cp.decision_meteo(contexte)['mode']
     except _cp.MeteoIndecise as refus:
-        lignes = [_ligne(refus.champ, refus.motif)]
+        lignes = [_ligne(refus.champ, _motif_meteo(refus, contexte))]
     if lignes[0]['champ'] == _cp.CLE_REGLAGE_MODE_METEO:
         # Mode absent ou inconnu : la fenêtre, exigée par le seul mode qui
         # aboutit sans fichier (« pluriannuel »), est vérifiée aussi.
         try:
             _cp._fenetre_pluriannuelle(contexte)
         except _cp.MeteoIndecise as refus:
-            lignes.append(_ligne(refus.champ, refus.motif))
+            lignes.append(_ligne(refus.champ, _motif_meteo(refus, contexte)))
     return lignes, None
+
+
+def _cible_sans_module(contexte):
+    """ACAL1639 — où agir quand aucun pan n'est équipé : l'étape « Toit » sans
+    aucun pan, « Panneaux » quand un pan existe sans module, ``None`` sinon (des
+    modules posés mais sans module PV désigné : l'onglet Matériel, côté écran)."""
+    pans = (contexte or {}).get('plans_poses') or (contexte or {}).get('plans') or []
+    if not pans:
+        etape = 'toit'
+    elif not any(pan.get('modules') for pan in pans):
+        etape = 'panneaux'
+    else:
+        return None
+    return {'etape': etape, 'onglet': '', 'champ': ''}
 
 
 def manquants_de_simulation(contexte, meta, fichier_depose=False):
@@ -50,7 +80,9 @@ def manquants_de_simulation(contexte, meta, fichier_depose=False):
 
     lignes, mode = _manques_meteo(contexte)
     if not (meta or {}).get('plans_equipes'):
-        lignes.append(_ligne('plans', _sim.MOTIF_SANS_PAN_EQUIPE))
+        ligne = _ligne('plans', _sim.MOTIF_SANS_PAN_EQUIPE)
+        ligne['cible'] = _cible_sans_module(contexte)
+        lignes.append(ligne)
     if not fichier_depose:
         site = (contexte or {}).get('site') or {}
         if site.get('lat') is None or site.get('lon') is None:

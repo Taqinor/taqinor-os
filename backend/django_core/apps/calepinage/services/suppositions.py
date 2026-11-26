@@ -63,9 +63,23 @@ def _allee_du_moteur():
     return champs['allee_m'].default
 
 
-def liste_des_suppositions(longueur, societe, origine_dossier):
+def _libelle_longueur(valeur, manquantes):
+    """ACAL1648 — la ligne en mots de métier : ce qui manque (l'onduleur, ou la fiche
+    du module), puis la longueur par défaut « à confirmer » ; ``manquantes`` =
+    ``Conception.manquantes`` (préfixes « module : » / « onduleur : »)."""
+    module = any(str(m).startswith('module') for m in manquantes or ())
+    onduleur = any(str(m).startswith('onduleur') for m in manquantes or ())
+    if not (module or onduleur):
+        return None
+    action = ("Complétez la fiche du module" if module else "Choisissez l'onduleur")
+    defaut = " (%d modules par défaut, à confirmer)" % valeur if valeur else ''
+    return "%s pour vérifier la longueur des chaînes%s" % (action, defaut)
+
+
+def liste_des_suppositions(longueur, societe, origine_dossier, manquantes=()):
     """``[{code, libelle, valeur, champ}]`` — un repli caché par entrée.
 
+    ``manquantes`` : ce que la conception dit manquer (ACAL1648).
     ``longueur`` : le dictionnaire ``longueur_chaine`` ; ``societe`` : les
     réglages société ; ``origine_dossier`` : l'origine qui marque le repli.
     """
@@ -74,7 +88,8 @@ def liste_des_suppositions(longueur, societe, origine_dossier):
         valeur = (longueur or {}).get('longueur')  # ACAL2014 — la longueur retenue, jamais la constante
         suppose.append({
             'code': 'longueur_chaine_dossier',
-            'libelle': ("%d modules par chaîne (longueur retenue au dossier : fiche du module ou de "
+            'libelle': _libelle_longueur(valeur, manquantes) or (
+                        "%d modules par chaîne (longueur retenue au dossier : fiche du module ou de "
                         "l'onduleur incomplète)" % valeur if valeur else
                         "longueur de chaîne non calculée (fiche du module ou de l'onduleur incomplète)"),
             'valeur': valeur, 'champ': CHAMP_FICHES})

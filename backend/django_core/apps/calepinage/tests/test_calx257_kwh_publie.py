@@ -213,6 +213,19 @@ class SupposeTest(SimpleTestCase):
             self.assertEqual(sorted(repli),
                              ['champ', 'code', 'libelle', 'valeur'])
 
+    def test_acal1648_la_ligne_nomme_ce_qui_manque_en_mots_de_metier(self):
+        from apps.calepinage.services.suppositions import liste_des_suppositions
+
+        reglee = {'degagements': {'allee_technique_m': 0.8}}
+        dossier = {'origine': self.DOSSIER, 'longueur': 16}
+        sans_onduleur = liste_des_suppositions(dossier, reglee, self.DOSSIER, ('onduleur : fiche absente',))
+        self.assertEqual(
+            sans_onduleur[0]['libelle'],
+            "Choisissez l'onduleur pour vérifier la longueur des chaînes (16 modules par défaut, à confirmer)")
+        sans_module = liste_des_suppositions(dossier, reglee, self.DOSSIER, ('module : voc_v',))
+        self.assertTrue(sans_module[0]['libelle'].startswith('Complétez la fiche du module pour vérifier'))
+        self.assertNotIn('repli', sans_onduleur[0]['libelle'])
+
     def test_fiche_complete_et_allee_reglee_liste_vide(self):
         societe = {'degagements': {'allee_technique_m': 0.8}}
         self.assertEqual(self._liste(self.FICHE, societe), [])

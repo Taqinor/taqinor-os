@@ -104,6 +104,20 @@ class ManquantsDeSimulationTest(SimpleTestCase):
             {}, {'plans_equipes': 1})
         self.assertEqual(lignes, attendu['manquants'])
 
+    def test_acal1649_le_refus_meteo_se_dit_sans_cle_brute(self):
+        from apps.calepinage.services import manquants_simulation
+
+        lignes = manquants_simulation.manquants_de_simulation(
+            {'site': {'lat': 33.5, 'lon': -7.6}}, {'plans_equipes': 1})
+        self.assertEqual([ligne['champ'] for ligne in lignes],
+                         ['parametres.simulation.mode_meteo',
+                          'parametres.simulation.fenetre_annees'])
+        self.assertEqual(lignes[0]['motif'],
+                         'Choisissez le mode météo : année type ou plusieurs années.')
+        for ligne in lignes:
+            for brut in ('parametres.', 'tmy', 'pluriannuel'):
+                self.assertNotIn(brut, ligne['motif'])
+
     def test_avec_epingle_deux_lignes(self):
         from apps.calepinage.services import manquants_simulation
 
@@ -147,6 +161,19 @@ class RefusSansPanTest(SimpleTestCase):
                     'site': {'lat': 33.5, 'lon': -7.6}}
         lignes = manquants_simulation.manquants_de_simulation(contexte, {})
         self.assertEqual(lignes, attendu['manquants'])
+
+    def test_acal1639_le_refus_sans_module_mene_a_toit_ou_panneaux(self):
+        from apps.calepinage.services import manquants_simulation
+
+        def cible(contexte):
+            lignes = manquants_simulation.manquants_de_simulation(
+                dict(contexte, reglages_simulation=self.REGLAGES), {})
+            return next(ligne for ligne in lignes if ligne['champ'] == 'plans')['cible']
+
+        self.assertEqual(cible({'plans': []})['etape'], 'toit')
+        self.assertEqual(cible({'plans': [{'modules': 0}]})['etape'], 'panneaux')
+        # des modules posés : pas l'étape Toit ni Panneaux (matériel, côté écran)
+        self.assertIsNone(cible({'plans': [{'modules': 4}]}))
 
     def test_le_409_garde_la_cle_de_tete_plans(self):
         from apps.calepinage.services.simulation import verifier_simulable
