@@ -84,6 +84,17 @@ class KpiAlerteSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
             'created_at', 'updated_at',
         ]
 
+    def to_representation(self, instance):
+        """D-ACAL-165 — la « Valeur de stock totale » est une valorisation de
+        VENTE : sa dernière valeur n'est servie qu'à ``can_view_sale_prices``
+        (null sinon, clé gardée) ; tout autre KPI : inchangé."""
+        data = super().to_representation(instance)
+        user = getattr(self.context.get('request'), 'user', None)
+        if (getattr(instance, 'kpi', None) == KpiAlerte.Kpi.VALEUR_STOCK_TOTALE
+                and user is not None and not getattr(user, 'can_view_sale_prices', True)):
+            data['derniere_valeur'] = None
+        return data
+
     def to_internal_value(self, data):
         # ERR-ENF11-FUZZ-REPORTING — DRF itère un OBJET comme une liste de
         # clés : ``destinataires_utilisateurs: {}`` passait (liste vide) alors

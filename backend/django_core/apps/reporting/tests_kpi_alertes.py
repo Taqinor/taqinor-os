@@ -49,6 +49,29 @@ class TestKpiAlerteCrud(KpiAlerteBase):
         ids = [a['id'] for a in resp.data.get('results', resp.data)]
         self.assertEqual(ids, [])
 
+    def test_dacal165_valeur_de_stock_masquee_sans_prix_vente_voir(self):
+        """D-ACAL-165 — la dernière « Valeur de stock totale » (valorisation de
+        VENTE) : null pour le Technicien responsable livré, servie au
+        responsable légacy ; un autre KPI reste servi à tous."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_RESP_PERMISSIONS
+        stock = KpiAlerte.objects.create(
+            company=self.company, kpi=KpiAlerte.Kpi.VALEUR_STOCK_TOTALE,
+            operateur=KpiAlerte.Operateur.SUP, seuil=Decimal('5000'),
+            derniere_valeur=Decimal('98765.43'))
+        role = Role.objects.create(company=self.company, nom='Technicien responsable',
+                                   permissions=list(TECHNICIEN_RESP_PERMISSIONS))
+        chef = User.objects.create_user(username='xplt6_chef', password='x',
+                                        company=self.company, role=role)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(chef)}')
+        resp = api.get(f'/api/django/reporting/kpi-alertes/{stock.id}/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data['derniere_valeur'])
+        self.assertEqual(Decimal(str(self.api.get(
+            f'/api/django/reporting/kpi-alertes/{stock.id}/').data['derniere_valeur'])),
+            Decimal('98765.43'))
+
     def test_gated_to_responsable_or_admin(self):
         limited = User.objects.create_user(
             username='limited_kpi', password='x', company=self.company)
