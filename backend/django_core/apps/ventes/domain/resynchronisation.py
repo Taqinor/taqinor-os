@@ -1452,12 +1452,14 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False, desi
 
     ``designations`` (D-ACAL-148 / 159 / 164) — ``{'onduleur': …, 'batterie': …}`` du calepinage (la resynchro du
     MODULE) : portées par ``IntentionDevis.cible`` jusqu'à ``reconcilier``. ``None`` (LE DÉFAUT :
-    apply-taille, réparations) ⇒ intention identique à hier.
+    apply-taille, réparations) ⇒ intention identique à hier. Revue du 26/11 (D-ACAL-73) — la clé
+    ``apercu_confirme`` (vraie seulement après la carte d'aperçu) permet de les appliquer à un envoyé.
     """
     from apps.ventes.domain.creation_calepinage import cible_des_designations
 
     resultat = appliquer(devis, IntentionDevis(
-        cible=(cible_des_designations(designations.get('onduleur'), designations.get('batterie'))
+        cible=(cible_des_designations(designations.get('onduleur'), designations.get('batterie'),
+                                      apercu_confirme=bool(designations.get('apercu_confirme')))
                if designations is not None else None),
         origine=ORIGINE_RESYNCHRONISATION,
         company=getattr(devis, 'company', None),

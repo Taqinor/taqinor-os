@@ -88,8 +88,11 @@ describe('Resynchro du devis lié refusée — motif serveur décodé', () => {
     await waitFor(() => expect(screen.queryByTestId('cal-sync-bloquants')).not.toBeInTheDocument())
   })
 
-  it('R2-23 — « Resynchroniser » : enregistrée, devis lié refusé ⇒ BoutonDevis dit le motif du serveur', async () => {
-    calepinageApi.calepinages.syncDevis.mockRejectedValue(
+  // ACAL1320 (D-ACAL-73) — « Resynchroniser le devis » range la conception SANS toucher au devis (plus de
+  // resynchro cachée dans l'enregistrement), puis lit l'aperçu : refusé, l'écran dit le motif du serveur et
+  // rien n'est resynchronisé (ex-R2-23, où l'enregistrement resynchronisait avant de demander).
+  it('ACAL1320 — « Resynchroniser » : conception rangée sans le devis, aperçu refusé ⇒ le motif du serveur, aucun sync-devis', async () => {
+    calepinageApi.calepinages.apercuResync.mockRejectedValue(
       { response: { status: 400, data: { approbation: [APPROBATION] } } })
     calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail'))
     rendreDevis(DEVIS_ID)
@@ -97,10 +100,40 @@ describe('Resynchro du devis lié refusée — motif serveur décodé', () => {
     await waitFor(() => expect(bouton).toBeEnabled())
     await userEvent.click(bouton)
     const refus = await screen.findByTestId('cal-devis-refus')
-    expect(refus).toHaveTextContent('La conception est enregistrée, mais')
-    expect(refus).toHaveTextContent(`n’a pas été modifié : ${APPROBATION}`)
+    expect(refus).toHaveTextContent(APPROBATION)
     expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel).toHaveBeenCalledTimes(1)
-    expect(calepinageApi.calepinages.syncDevis).toHaveBeenCalledTimes(1)
+    expect(calepinageApi.calepinages.apercuResync).toHaveBeenCalledTimes(1)
+    expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
+  })
+
+  // Revue du 26/11 (D-ACAL-73, « le dire AVANT » quel que soit le bouton) — devis lié ENVOYÉ : « Enregistrer la
+  // conception » range la conception SANS corriger le devis (plus aucun sync-devis) et renvoie à la carte.
+  it('Revue — devis envoyé : « Enregistrer la conception » ne corrige pas le devis, l’écran renvoie à « Resynchroniser »', async () => {
+    const lie = { ...CTX.calepinage.devis_lie, statut: 'envoye' }
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      { data: { ...CTX, calepinage: { ...CTX.calepinage, devis_lie: lie } } })
+    await enregistrer()
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText(/Le devis envoyé n’est pas modifié par l’enregistrement/)).toBeInTheDocument()
+    expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
+  })
+
+  // D-ACAL-73 — devis ENVOYÉ : l'écran DIT avant d'agir que le devis reçu par le client sera corrigé, puis
+  // seulement « Corriger le devis envoyé » écrit (sync-devis).
+  it('ACAL1320 — devis envoyé : l’aperçu dit la correction avant d’agir, sync-devis seulement à la confirmation', async () => {
+    calepinageApi.calepinages.apercuResync.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_apercu_resync'))
+    calepinageApi.calepinages.syncDevis.mockResolvedValue({ data: { inchange: false, avertissements: [] } })
+    calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail'))
+    rendreDevis(DEVIS_ID)
+    const bouton = await screen.findByTestId('cal-resynchroniser-devis', {}, { timeout: 15000 })
+    await waitFor(() => expect(bouton).toBeEnabled())
+    await userEvent.click(bouton)
+    expect(await screen.findByTestId('cal-devis-resync-statut')).toHaveTextContent(
+      'Ce devis a déjà été envoyé au client : il sera corrigé sur place.')
+    expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByTestId('cal-devis-resync-confirmer'))
+    await waitFor(() => expect(calepinageApi.calepinages.syncDevis).toHaveBeenCalledTimes(1))
   })
 
   it('422 électrique, non approbateur : dérogation réservée', async () => {

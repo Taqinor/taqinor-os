@@ -456,20 +456,21 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
         self.assertEqual(avertissements, [])
         self.assertIsNone(marqueur_stocke(SimpleNamespace(roof_layout={})))
 
-    def test_a_point_1_seul_un_brouillon_ne_sous_la_regle_recoit_les_designations(self):
-        """Relecture round 4, point 1 — envoyé (marqueur ou non) ou brouillon sans marqueur : rien
-        n'est appliqué, le court-circuit reste permis, UNE phrase ; rien de désigné : aucune phrase."""
+    def test_a_point_1_seul_un_devis_ne_sous_la_regle_recoit_les_designations(self):
+        """Relecture round 4, point 1 — un devis SANS marqueur (créé avant la règle), brouillon ou
+        envoyé : rien n'est appliqué, le court-circuit reste permis, UNE phrase vraie ; rien de
+        désigné : aucune phrase. ACAL1320 (D-ACAL-73) — un ENVOYÉ né sous la règle n'est plus
+        refusé ici (il suit la désignation, l'aperçu le dit avant) : seul le marqueur décide."""
         from types import SimpleNamespace
 
         from apps.ventes.domain.creation_calepinage import (
-            CLE_DESIGNATIONS, MSG_RESYNC_AVANT_LA_REGLE, MSG_RESYNC_ENVOYE, SOURCE_DESIGNATIONS,
+            MSG_RESYNC_AVANT_LA_REGLE, SOURCE_DESIGNATIONS, CLE_DESIGNATIONS,
             appliquer_designations_a_la_resynchro, suit_les_designations)
 
         cible = SimpleNamespace(source=SOURCE_DESIGNATIONS, onduleur_impose={'produit_id': 3, 'nombre': 1},
                                 batterie_imposee={'produit_id': 4, 'packs': 1})
         vide = SimpleNamespace(source=SOURCE_DESIGNATIONS, onduleur_impose=None, batterie_imposee=None)
-        for statut, layout, attendu in (('envoye', {CLE_DESIGNATIONS: {'onduleur': 3}}, MSG_RESYNC_ENVOYE),
-                                        ('envoye', {}, MSG_RESYNC_ENVOYE),
+        for statut, layout, attendu in (('envoye', {}, MSG_RESYNC_AVANT_LA_REGLE),
                                         ('brouillon', {}, MSG_RESYNC_AVANT_LA_REGLE)):
             with self.subTest(statut=statut, marqueur=bool(layout)):
                 verrou = SimpleNamespace(statut=statut, roof_layout=layout)
@@ -483,6 +484,42 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
                 self.assertEqual(avertissements, [])
         self.assertTrue(suit_les_designations(SimpleNamespace(roof_layout={CLE_DESIGNATIONS: {}})))
         self.assertFalse(suit_les_designations(SimpleNamespace(roof_layout={})))
+        # Revue du 26/11 (D-ACAL-73) — un ENVOYÉ né sous la règle, sans la carte d'aperçu confirmée
+        # (source non confirmée) : rien n'est appliqué, la phrase renvoie à « Resynchroniser le devis ».
+        from apps.ventes.domain.creation_calepinage import MSG_RESYNC_ENVOYE_SANS_APERCU, cible_des_designations
+        avertissements = []
+        verrou = SimpleNamespace(statut='envoye', roof_layout={CLE_DESIGNATIONS: {'onduleur': 3}})
+        veut, rendu = appliquer_designations_a_la_resynchro(
+            verrou, SimpleNamespace(cible=cible), {}, False, avertissements)
+        self.assertEqual((veut, rendu['modifiees'], rendu['a_ecrire']), (False, 0, False))
+        self.assertEqual(avertissements, [MSG_RESYNC_ENVOYE_SANS_APERCU % 'un onduleur et une batterie'])
+        self.assertEqual(cible_des_designations(None, apercu_confirme=True).source,
+                         'designations_calepinage_confirmees')
+        self.assertEqual(cible_des_designations(None).source, SOURCE_DESIGNATIONS)
+        # Règle combinée (fusion lot 8 / revue du 26/11) — UN prédicat : brouillon né sous la règle, toute
+        # source du calepinage ; envoyé né sous la règle, seulement la source CONFIRMÉE ; jamais sans marqueur.
+        from apps.ventes.domain.creation_calepinage import (
+            MSG_RESYNC_OPTION_GARDEE, SOURCE_DESIGNATIONS_CONFIRMEES, designations_appliquees, option_batterie_gardee)
+        confirmee = SimpleNamespace(cible=SimpleNamespace(source=SOURCE_DESIGNATIONS_CONFIRMEES))
+        simple = SimpleNamespace(cible=SimpleNamespace(source=SOURCE_DESIGNATIONS))
+        marque = {CLE_DESIGNATIONS: {'onduleur': 5}}
+        for statut, layout, intention, attendu in (
+                ('brouillon', marque, simple, True), ('brouillon', marque, confirmee, True),
+                ('envoye', marque, simple, False), ('envoye', marque, confirmee, True),
+                ('envoye', {}, confirmee, False), ('brouillon', {}, simple, False),
+                ('accepte', marque, confirmee, False), ('envoye', marque, SimpleNamespace(cible=None), False)):
+            with self.subTest(statut=statut, marqueur=bool(layout), source=getattr(intention.cible, 'source', None)):
+                self.assertIs(designations_appliquees(SimpleNamespace(statut=statut, roof_layout=layout), intention),
+                              attendu)
+        # Cas 3 / 2 — l'invariant d'option ne joue que si les désignations ne sont PAS appliquées.
+        hybride = SimpleNamespace(produit_id=5, produit=None, designation='Onduleur hybride Deye 5kW Monophasé')
+        batterie = SimpleNamespace(produit_id=6, produit=None, designation='Batterie Dyness 5 kWh')
+        for intention, attendu in ((simple, (True, [MSG_RESYNC_OPTION_GARDEE % hybride.designation])),
+                                   (confirmee, (False, []))):
+            dits = []
+            rendu = option_batterie_gardee(SimpleNamespace(statut='envoye', roof_layout=marque), intention,
+                                           [hybride, batterie], False, dits)
+            self.assertEqual((rendu, dits), attendu)
 
     def test_relecture_finale_option_batterie_gardee_hors_designations_appliquees(self):
         """Lot 8, relecture finale — l'invariant : une resynchro qui n'applique pas les désignations

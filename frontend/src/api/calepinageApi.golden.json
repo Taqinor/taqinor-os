@@ -46,6 +46,14 @@
       "verbe": "get"
     }
   ],
+  "calepinages.apercuResync": [
+    {
+      "config": 3,
+      "data": null,
+      "url": "/calepinage/calepinages/7/apercu-resync/",
+      "verbe": "get"
+    }
+  ],
   "calepinages.appliquerCoteReleve": [
     {
       "config": null,

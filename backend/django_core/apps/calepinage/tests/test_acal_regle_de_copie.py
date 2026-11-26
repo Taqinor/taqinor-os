@@ -339,3 +339,91 @@ class OnduleurDeLOriginalTest(SimpleTestCase):
         original = self._original()
         with mock.patch('apps.calepinage.services.devis_retenu.conception_du_calepinage', return_value=None):
             self.assertIsNone(_resultat_de_la_copie(original, None))
+
+
+class OnduleurReprisLuParSesLecteursTest(SimpleTestCase):
+    """Lot 8 (tâche 2) — un onduleur « repris de l'original » n'est PAS une désignation du vendeur : ni
+    imposé au moteur du lead (``ventes.conception.porte_calepinage.designations_du_calepinage``), ni
+    chiffré comme désigné (``services.devis._onduleur_designe``), ni jugé comme tel par l'aperçu ; le
+    marqueur ne vaut que tant que l'entrée porte cet onduleur, et il voyage dans l'export de projet."""
+
+    @staticmethod
+    def _calepinage(entree, repris=None):
+        from types import SimpleNamespace
+
+        from apps.calepinage.services.variantes import CLE_ONDULEUR_REPRIS
+        resultat = {'entree_electrique': dict(entree)}
+        if repris is not None:
+            resultat[CLE_ONDULEUR_REPRIS] = repris
+        return SimpleNamespace(pk=7, company=None, resultat=resultat)
+
+    def test_valide_seulement_tant_que_l_entree_porte_l_onduleur_marque(self):
+        from apps.calepinage.services.variantes import onduleur_designe_a_la_main, onduleur_repris_valide
+
+        marque = {'calepinage': 11, 'onduleur_produit': 42}
+        repris = self._calepinage({'onduleur_produit': 42, 'nombre_onduleurs': 1}, marque)
+        change = self._calepinage({'onduleur_produit': 43, 'nombre_onduleurs': 1}, marque)  # choisi à la main ensuite
+        main = self._calepinage({'onduleur_produit': 42, 'nombre_onduleurs': 1})
+        self.assertEqual(onduleur_repris_valide(repris.resultat), marque)
+        self.assertIsNone(onduleur_repris_valide(change.resultat))
+        self.assertEqual([onduleur_designe_a_la_main(c) for c in (repris, change, main)], [False, True, True])
+        self.assertFalse(onduleur_designe_a_la_main(self._calepinage({}, marque)))  # aucun onduleur
+        self.assertIsNone(onduleur_repris_valide({'onduleur_repris': ['x'],
+                                                  'entree_electrique': {'onduleur_produit': 1}}))
+
+    def test_le_devis_ne_chiffre_pas_un_onduleur_repris_comme_designe(self):
+        from apps.calepinage.services.devis import _onduleur_designe
+
+        marque = {'calepinage': 11, 'onduleur_produit': 42}
+        self.assertIsNone(_onduleur_designe(self._calepinage({'onduleur_produit': 42, 'nombre_onduleurs': 1}, marque)))
+        self.assertEqual(_onduleur_designe(self._calepinage({'onduleur_produit': 43, 'nombre_onduleurs': 1}, marque)),
+                         {'produit_id': 43, 'nombre': 1, 'nombre_illisible': False})
+
+    def test_la_conception_du_lead_n_impose_pas_un_onduleur_repris(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.ventes.conception.porte_calepinage import designations_du_calepinage
+        from apps.ventes.domain import resolution_catalogue as rc
+
+        marque = {'calepinage': 11, 'onduleur_produit': 42}
+        repris = self._calepinage({'onduleur_produit': 42}, marque)
+        self.assertEqual(designations_du_calepinage(None, 7, repris), {})  # rien d'imposé, aucun vivier lu
+        unique = SimpleNamespace(statut=rc.STATUT_UNIQUE)
+        with mock.patch.object(rc, 'vivier', return_value=[]), \
+                mock.patch.object(rc, 'resoudre_par_id', return_value=unique):
+            self.assertEqual(designations_du_calepinage(None, 7, self._calepinage({'onduleur_produit': 43}, marque)),
+                             {'onduleur_produit_id': 43})
+
+    def test_l_export_de_projet_porte_le_marqueur_valide_et_l_import_le_relit(self):
+        from apps.calepinage.services import export_projet as ep
+
+        marque = {'calepinage': 11, 'onduleur_produit': 42}
+        bloc = ep._bloc_saisies(self._calepinage({'onduleur_produit': 42}, marque))
+        self.assertEqual(bloc['onduleur_repris'], marque)
+        self.assertIsNone(ep._bloc_saisies(self._calepinage({'onduleur_produit': 43}, marque))['onduleur_repris'])
+        self.assertIsNone(ep._bloc_saisies(self._calepinage({'onduleur_produit': 42}))['onduleur_repris'])
+        self.assertEqual(ep._valider_saisies({'onduleur_repris': marque})['onduleur_repris'], marque)
+        self.assertIsNone(ep._valider_saisies(None)['onduleur_repris'])
+        for brut, chemin in (({'onduleur_produit': 'x'}, 'saisies.onduleur_repris.onduleur_produit'),
+                             ({'onduleur_produit': 4, 'autre': 1}, 'saisies.onduleur_repris.autre'),
+                             ([1], 'saisies.onduleur_repris')):
+            with self.subTest(chemin=chemin), self.assertRaises(ep.ImportProjetRefuse) as capture:
+                ep._valider_saisies({'onduleur_repris': brut})
+            self.assertEqual(capture.exception.champ, chemin)
+
+    def test_l_import_ne_repose_le_marqueur_que_sur_le_meme_onduleur(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.calepinage.services import export_projet as ep
+
+        marque = {'calepinage': 11, 'onduleur_produit': 42}
+        for produits, attendu in (({'onduleur_produit': 42}, marque), ({}, None)):
+            cible = SimpleNamespace(pk=None, resultat={})
+            saisies = {'entree_electrique': {'dc_m': 3.0}, 'produits': produits, 'raccordement_saisie': None,
+                       'sld_edition': None, 'onduleur_repris': marque}
+            with self.subTest(produits=produits), \
+                    mock.patch('apps.calepinage.services.electrique.enregistrer_entree'):
+                ep._ecrire_saisies(cible, saisies)
+            self.assertEqual(cible.resultat.get('onduleur_repris'), attendu)

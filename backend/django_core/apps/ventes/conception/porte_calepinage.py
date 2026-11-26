@@ -304,11 +304,16 @@ def _designations(company, calepinage_id, lu=None):
     champs imposés) et ``[{champ, nom}]`` de celles qu'il refuse (archivé, sans prix de
     vente, d'un autre genre, inconnu) — jamais imposées (relecture E6 B2)."""
     from apps.calepinage.services.electrique import entree_stockee
+    from apps.calepinage.services.variantes import onduleur_designe_a_la_main
     from apps.ventes.selectors_calepinage import calepinage_de_societe
 
     calepinage = (lu if lu is not None and lu.pk == calepinage_id
                   else calepinage_de_societe(calepinage_id, company) if calepinage_id else None)
     entree = (entree_stockee(calepinage) or {}) if calepinage is not None else {}
+    # Lot 8 — un onduleur « repris de l'original » (copie, ACAL1253) n'est pas imposé : seul ce que le
+    # vendeur a désigné à la main l'est (lu par le calepinage, qui porte le marqueur).
+    if entree.get('onduleur_produit') not in (None, '') and not onduleur_designe_a_la_main(calepinage):
+        entree.pop('onduleur_produit')
     designes = [(role, cle, genre, entree[role]) for role, cle, genre in _ROLES_DESIGNES
                 if entree.get(role) not in (None, '')]
     if not designes:

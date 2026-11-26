@@ -389,6 +389,33 @@ def _resultat_du_modele(resultat):
 CLE_ONDULEUR_REPRIS = 'onduleur_repris'
 
 
+def onduleur_repris_valide(resultat):
+    """Lot 8 (resync-apercu, tâche 2) — le marqueur :data:`CLE_ONDULEUR_REPRIS` de ``resultat`` tant
+    qu'il est VALIDE (l'entrée électrique porte encore l'onduleur marqué), sinon ``None``. Pure."""
+    from .electrique import CLE_ENTREE
+
+    resultat = resultat if isinstance(resultat, dict) else {}
+    repris = resultat.get(CLE_ONDULEUR_REPRIS)
+    entree = resultat.get(CLE_ENTREE) if isinstance(resultat.get(CLE_ENTREE), dict) else {}
+    if not isinstance(repris, dict) or entree.get('onduleur_produit') in (None, ''):
+        return None
+    return repris if repris.get('onduleur_produit') == entree.get('onduleur_produit') else None
+
+
+def onduleur_designe_a_la_main(calepinage):
+    """L'onduleur de l'entrée électrique est-il une désignation DU VENDEUR ? Faux sans onduleur, et faux
+    quand il est « repris de l'original » (:func:`onduleur_repris_valide`) : la copie n'a pas choisi cet
+    onduleur, il n'est ni imposé au moteur du lead (``ventes.conception.porte_calepinage``) ni chiffré
+    comme une désignation par le devis (``services.devis._onduleur_designe``). Un choix fait à la main
+    ensuite (autre onduleur) rend le marqueur caduc : la désignation redevient celle du vendeur."""
+    resultat = getattr(calepinage, 'resultat', None)
+    from .electrique import entree_stockee
+
+    if entree_stockee(calepinage).get('onduleur_produit') in (None, ''):
+        return False
+    return onduleur_repris_valide(resultat) is None
+
+
 def _resultat_de_la_copie(calepinage, lead_cible):
     """ACAL1253 (D-ACAL-65) — le ``resultat`` de la copie : le matériel explicite de l'original
     (:func:`_resultat_du_modele`) et, SEULEMENT si la copie ne pourrait pas relire ce que

@@ -171,6 +171,26 @@ def lit_les_devis(user):
     return garde(user)
 
 
+def avertissements_sans_montant(avertissements):
+    """Revue du 26/11 (D-ACAL-106/165) — les avertissements d'une resynchronisation sans montant de vente
+    (``apps.ventes.services.avertissements_sans_montant``), passés par ce module déjà importateur de
+    ventes (cliquet ``test_imports_croises_ventes``)."""
+    from apps.ventes.services import avertissements_sans_montant as sans_montant
+
+    return sans_montant(avertissements)
+
+
+def _apercu_de_ventes(devis, layout, user, designations):
+    """ACAL1320 — la resynchronisation jouée puis annulée par ventes (``apercu_de_resynchronisation``) et
+    son refus de statut (``SyncLayoutError``), passés par ce module (même cliquet)."""
+    from apps.ventes.services import SyncLayoutError, apercu_de_resynchronisation
+
+    try:
+        return apercu_de_resynchronisation(devis, layout, user, designations=designations), None
+    except SyncLayoutError as refus:
+        return None, refus
+
+
 def devis_suit_les_designations(devis):
     """Relecture D-ACAL-148 round 4 — le devis est-il né sous la règle des désignations
     (``apps.ventes.selectors_calepinage.devis_suit_les_designations``) ? Même cliquet."""
@@ -250,9 +270,11 @@ def _onduleur_designe(calepinage):
     (``electrique.entree_stockee``), ``None`` sans désignation. Lu par la génération ET l'aperçu :
     ``ventes`` décide seul s'il est chiffré (catalogue, prix, forme du devis)."""
     from .electrique import entree_stockee
+    from .variantes import onduleur_designe_a_la_main
 
     entree = entree_stockee(calepinage)
-    if entree.get('onduleur_produit') in (None, ''):
+    # Lot 8 — un onduleur « repris de l'original » (copie, ACAL1253) n'est pas une désignation du vendeur.
+    if entree.get('onduleur_produit') in (None, '') or not onduleur_designe_a_la_main(calepinage):
         return None
     brut = entree.get('nombre_onduleurs')
     if brut in (None, ''):  # aucun nombre accepté : celui que le SCHÉMA dessine
@@ -1138,7 +1160,9 @@ def _onduleur_juge(calepinage, devis, refus=None):
     if not onduleurs or produit is None or designe in {o.pk for o in onduleurs}:
         return ''
     du_devis = onduleurs[0].nom
-    phrase = (f" L'étape Électrique juge l'onduleur désigné « {produit.nom} » ; ce devis porte "
+    from .variantes import onduleur_designe_a_la_main  # revue du 26/11 : un onduleur repris n'est pas « désigné »
+    mot = 'désigné' if onduleur_designe_a_la_main(calepinage) else 'repris de l’original'
+    phrase = (f" L'étape Électrique juge l'onduleur {mot} « {produit.nom} » ; ce devis porte "
               f"« {du_devis} », c'est lui que ce refus juge : désigner un onduleur à l'étape "
               f"Électrique ne le change pas.")
     if getattr(refus, 'code', '') == 'couple_incompatible':  # ventes.domain.resynchronisation.COUPLE_INCOMPATIBLE
@@ -1148,36 +1172,10 @@ def _onduleur_juge(calepinage, devis, refus=None):
     return phrase
 
 
-def resynchroniser_devis(calepinage, *, user=None,
-                         derogation_electrique=None, devis_id=None,
-                         surfaces_chiffrees=None):
-    """CAL25 — resynchronise le devis lié sur la conception COURANTE.
-
-    ACAL968 — ``surfaces_chiffrees`` absent : la sélection ÉCRITE au devis
-    (``choixConception.surfacesChiffrees``) est relue ; aucune ⇒ tout.
-
-    ACON6 — ``devis_id`` : le devis à resynchroniser, lu par
-    ``selectors.conception_du_devis`` (un devis porté par une VARIANTE suit
-    le document de la variante, jamais celui du calepinage).
-
-    Le service ventes fait le travail chirurgical (quantités, batterie,
-    onduleur accordé au scénario) et PRÉSERVE prix négociés, remises, sections
-    et notes. Son 409 sur un devis émis — avec ``revision_possible`` — remonte
-    TEL QUEL : le bon geste est « Réviser », et l'écran doit lire exactement ce
-    que dit la porte d'écriture.
-
-    Returns:
-        Le dictionnaire du service ventes (``inchange``, ``lignes_ajoutees``,
-        ``avertissements``…), inchangé.
-
-    Raises:
-        DevisRefuse: aucun devis lié (400, le message NOMME le geste
-            « Générer le devis »), ou refus 409 du serveur ventes propagé.
-    """
-    from apps.ventes.selectors import get_devis_by_pk
-    from apps.ventes.services import (
-        SyncLayoutError, resynchroniser_conception)
-
+def _avant_resynchro(calepinage, devis_id):
+    """``(variante, layout)`` — les décisions d'ENTRÉE de « Resynchroniser le devis », partagées avec
+    son aperçu (ACAL1320) : feu vert, document (celui de la VARIANTE qui porte ``devis_id``),
+    refus de lecture seule (409). N'écrit rien."""
     from .feu_vert import GESTE_DEVIS, verifier_avant_publication
 
     verifier_avant_publication(calepinage, geste=GESTE_DEVIS)
@@ -1201,10 +1199,14 @@ def resynchroniser_devis(calepinage, *, user=None,
         if raison:
             raise DevisRefuse(raison, champ='roof_layout', statut=409,
                               donnees={'roof_layout': [raison]})
-    # ACAL170 — même cliquet électrique que la génération, AVANT toute
-    # écriture (un devis ENVOYÉ suit le même refus).
-    garde = _garde_electrique(calepinage, derogation_electrique, user,
-                              geste='resynchronisé')
+    return variante, layout
+
+
+def _devis_a_resynchroniser(calepinage, variante, layout, surfaces_chiffrees):
+    """``(devis, layout)`` — le devis lié (société bornée) et le document aux surfaces chiffrées
+    (ACAL968 : absentes ⇒ la sélection écrite au devis), partagés avec l'aperçu (ACAL1320)."""
+    from apps.ventes.selectors import get_devis_by_pk
+
     devis_id = (variante.devis_id if variante is not None
                 else getattr(calepinage, 'devis_id', None))
     if not devis_id:
@@ -1218,6 +1220,90 @@ def resynchroniser_devis(calepinage, *, user=None,
         raise DevisRefuse(f"Devis introuvable (#{devis_id}).", champ='devis')
     layout = _layout_des_surfaces(layout, surfaces_chiffrees if surfaces_chiffrees
                                   is not None else _selection_du_devis(devis, variante or calepinage))
+    return devis, layout
+
+
+def _designations_de(porteur, *, apercu_confirme=False):
+    """D-ACAL-148 / 159 / 164 — les désignations de l'étape Électrique que la resynchro (et son
+    aperçu) transmet à ``ventes``, qui les juge. Revue du 26/11 (D-ACAL-73) — ``apercu_confirme`` :
+    la resynchro a été confirmée sur la carte d'aperçu ; sans lui, un devis ENVOYÉ ne les reçoit pas."""
+    return {'onduleur': _onduleur_designe(porteur), 'batterie': _batterie_designee(porteur),
+            'apercu_confirme': bool(apercu_confirme)}
+
+
+#: Revue du 26/11 — l'aperçu confirmé ne décrit plus ce que la resynchronisation écrirait (contrat
+#: ``calepinage_apercu_resync.json``, ``reponse_409_apercu_perime``).
+MESSAGE_APERCU_PERIME = "L'aperçu a changé depuis son affichage : relancez-le avant de confirmer."
+CODE_APERCU_PERIME = 'apercu_perime'
+
+
+def _exiger_apercu_a_jour(devis, layout, designations, apercu_confirme, jeton_apercu):
+    """La confirmation est LIÉE à l'aperçu : ``apercu_confirme`` sans jeton ⇒ 400 nommant
+    ``jeton_apercu`` ; un jeton qui ne décrit plus les entrées d'aujourd'hui ⇒ 409 ``apercu_perime``.
+    Sans confirmation : rien à vérifier (les autres appelants n'appliquent rien de plus à un envoyé)."""
+    if not apercu_confirme:
+        return
+    if not isinstance(jeton_apercu, str) or not jeton_apercu:
+        raise DevisRefuse("La confirmation de l'aperçu doit renvoyer son jeton : relancez l'aperçu.",
+                          champ='jeton_apercu')
+    from apps.ventes.services import jeton_de_resynchronisation
+
+    if jeton_de_resynchronisation(devis, layout, designations) != jeton_apercu:
+        raise DevisRefuse(MESSAGE_APERCU_PERIME, champ='jeton_apercu', statut=409,
+                          donnees={'detail': MESSAGE_APERCU_PERIME, 'code': CODE_APERCU_PERIME})
+
+
+def _refus_de_resynchro(calepinage, devis, refus):
+    """Le ``SyncLayoutError`` de ventes traduit en 409 du pont (``revision_possible`` compris),
+    l'onduleur jugé nommé (E6e) — le même pour la resynchro et son aperçu."""
+    detail = refus.detail + _onduleur_juge(calepinage, devis, refus)
+    return DevisRefuse(detail, champ='devis', statut=409,
+                       donnees={'detail': detail, 'revision_possible': refus.revision_possible})
+
+
+def resynchroniser_devis(calepinage, *, user=None,
+                         derogation_electrique=None, devis_id=None,
+                         surfaces_chiffrees=None, apercu_confirme=False, jeton_apercu=None):
+    """CAL25 — resynchronise le devis lié sur la conception COURANTE.
+
+    Revue du 26/11 (D-ACAL-73) — ``apercu_confirme`` : vrai SEULEMENT quand le vendeur confirme la
+    carte d'aperçu (vue ``sync-devis``) ; faux (tous les autres appelants), un devis ENVOYÉ ne reçoit
+    pas l'onduleur / la batterie désignés et une phrase le dit. ``jeton_apercu`` (obligatoire avec
+    ``apercu_confirme``) : le ``jeton`` de l'aperçu ; s'il ne décrit plus les entrées d'aujourd'hui,
+    409 ``apercu_perime`` et rien n'est écrit.
+
+    ACAL968 — ``surfaces_chiffrees`` absent : la sélection ÉCRITE au devis
+    (``choixConception.surfacesChiffrees``) est relue ; aucune ⇒ tout.
+
+    ACON6 — ``devis_id`` : le devis à resynchroniser, lu par
+    ``selectors.conception_du_devis`` (un devis porté par une VARIANTE suit
+    le document de la variante, jamais celui du calepinage).
+
+    Le service ventes fait le travail chirurgical (quantités, batterie,
+    onduleur accordé au scénario) et PRÉSERVE prix négociés, remises, sections
+    et notes. Son 409 sur un devis émis — avec ``revision_possible`` — remonte
+    TEL QUEL : le bon geste est « Réviser », et l'écran doit lire exactement ce
+    que dit la porte d'écriture.
+
+    Returns:
+        Le dictionnaire du service ventes (``inchange``, ``lignes_ajoutees``,
+        ``avertissements``…), inchangé.
+
+    Raises:
+        DevisRefuse: aucun devis lié (400, le message NOMME le geste
+            « Générer le devis »), ou refus 409 du serveur ventes propagé.
+    """
+    from apps.ventes.services import (
+        SyncLayoutError, resynchroniser_conception)
+
+    variante, layout = _avant_resynchro(calepinage, devis_id)
+    # ACAL170 — même cliquet électrique que la génération, AVANT toute
+    # écriture (un devis ENVOYÉ suit le même refus).
+    garde = _garde_electrique(calepinage, derogation_electrique, user,
+                              geste='resynchronisé')
+    devis, layout = _devis_a_resynchroniser(calepinage, variante, layout, surfaces_chiffrees)
+    designations = _designations_de(variante or calepinage, apercu_confirme=apercu_confirme)
+    _exiger_apercu_a_jour(devis, layout, designations, apercu_confirme, jeton_apercu)
 
     try:
         # ACAL34 — l'enveloppe ventes UNIQUE : resynchro + quatre études
@@ -1234,14 +1320,9 @@ def resynchroniser_devis(calepinage, *, user=None,
             roof_image=None if variante is not None else (
                 getattr(calepinage, 'roof_image', None) or None),
             # D-ACAL-148 / 159 — la MÊME décision que « Générer le devis » (ventes la juge).
-            designations={'onduleur': _onduleur_designe(variante or calepinage),
-                          'batterie': _batterie_designee(variante or calepinage)})
+            designations=designations)
     except SyncLayoutError as refus:
-        detail = refus.detail + _onduleur_juge(calepinage, devis, refus)
-        raise DevisRefuse(
-            detail, champ='devis', statut=409,
-            donnees={'detail': detail,
-                     'revision_possible': refus.revision_possible}) from refus
+        raise _refus_de_resynchro(calepinage, devis, refus) from refus
     resultat = dict(resultat or {})
     resultat['electrique'] = _consigner_et_servir(calepinage, garde,
                                                   user=user)

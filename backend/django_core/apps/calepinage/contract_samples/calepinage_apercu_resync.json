@@ -1,0 +1,117 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/apercu-resync/",
+  "pourquoi": "ACAL1320 (D-ACAL-73 = corriger_dire, fondateur, 26/11/2026) — AVANT « Resynchroniser le devis », l'atelier dit ce que la resynchronisation CHANGERA au devis lié, et, pour un devis ENVOYÉ, que le devis que le client a déjà reçu sera corrigé sur place (règle QJR5 : sa page et son PDF montreront la version corrigée, la correction est notée sur le devis) ; rien n'est écrit avant que le vendeur confirme. UN SEUL calcul : la resynchronisation réelle (`apps.ventes.services.sync_devis_from_layout`, le mode « réconcilier » du pipeline, mêmes désignations de l'étape Électrique que `sync-devis`) est jouée DANS un point de sauvegarde qui est annulé (`apps/ventes/domain/apercu_resynchro.py`) : devis, lignes, journal, note « corrigé après envoi », échéancier, clauses, liens de partage, affiche et annonce `layout_finalise` intacts après l'aperçu. Mêmes décisions d'entrée que `sync-devis` (`services/devis_resync_apercu.py`) : feu vert, document de la VARIANTE quand `?devis=<id>` désigne le devis d'une variante de ce calepinage, `?surfaces=<clés séparées par des virgules>` (absent = la sélection écrite au devis, sinon tout), refus de lecture seule (409) ; le refus de STATUT de ventes remonte tel quel (409 `{detail, revision_possible}` : un devis accepté, refusé ou expiré se révise, il n'est jamais modifié — la règle de modifiabilité n'est pas élargie). Le verdict électrique n'est PAS jugé par l'aperçu : il l'est à la confirmation, par `sync-devis` (422 et dérogation inchangés). `inchange` : la resynchronisation n'écrirait rien (« rien à changer ») — `ajouts`, `retraits` et `changements` vides, `totaux` égaux. `statut` : le statut du devis (`brouillon` | `envoye`) ; `corrige_apres_envoi` : vrai quand la resynchronisation réelle poserait la trace « corrigé après envoi » (devis envoyé dont un contenu vu par le client change, QJR518 — lue sous le point de sauvegarde, jamais devinée) : le client a reçu l'autre version. `ajouts` / `retraits` : `[{designation, variante, quantite, prix_unitaire, total_ht}]` — les lignes que la resynchronisation pose ou retire ; `changements` : `[{designation_avant, designation_apres, variante, quantite_avant, quantite_apres, prix_unitaire_avant, prix_unitaire_apres, total_ht_avant, total_ht_apres}]` (l'onduleur ou la batterie désignés à l'étape Électrique y paraissent avec leurs montants). `variante` : `''` (commune), `sans` ou `avec`. `totaux` : `{avant: {ht, ttc}, apres: {ht, ttc}}` — les totaux du devis (`Devis.total_ht` / `total_ttc`, vue NET de `ventes.domain.argent`) avant et après. Montants en chaînes décimales lues sur le devis, aucun calcul d'argent hors `apps/ventes`. `avertissements` : les phrases que la resynchronisation réelle imprimerait (mot pour mot). `panneaux`, `kwc`, `scenario`, `batterie` : ceux du compte rendu de la resynchronisation. D-ACAL-106 (« aucun devis ni aucun prix ») — pour un utilisateur SANS droit de lecture des devis (`apps.ventes.selectors_assistant.lit_les_devis`) : `reference` = null, chaque `prix_unitaire*` / `total_ht*` = null, `totaux` = null ; la désignation et la quantité restent (elles décrivent la pose). Mêmes droits que `sync-devis` (`PeutGererCalepinage`), 404 pour une autre société. Valeurs de l'exemple : des PLACEHOLDERS de forme.",
+  "exemple": {
+    "inchange": false,
+    "statut": "envoye",
+    "reference": "DEV-202611-0001",
+    "corrige_apres_envoi": true,
+    "ajouts": [],
+    "retraits": [],
+    "changements": [
+      {
+        "designation_avant": "Module 710 Wc",
+        "designation_apres": "Module 710 Wc",
+        "variante": "",
+        "quantite_avant": "3.00",
+        "quantite_apres": "2.00",
+        "prix_unitaire_avant": "1000.00",
+        "prix_unitaire_apres": "1000.00",
+        "total_ht_avant": "3000.00",
+        "total_ht_apres": "2000.00"
+      },
+      {
+        "designation_avant": "Onduleur réseau 8 kW",
+        "designation_apres": "Onduleur réseau 5 kW",
+        "variante": "",
+        "quantite_avant": "1.00",
+        "quantite_apres": "1.00",
+        "prix_unitaire_avant": "16000.00",
+        "prix_unitaire_apres": "12000.00",
+        "total_ht_avant": "16000.00",
+        "total_ht_apres": "12000.00"
+      }
+    ],
+    "totaux": {
+      "avant": {
+        "ht": "29916.67",
+        "ttc": "35900.00"
+      },
+      "apres": {
+        "ht": "24250.00",
+        "ttc": "29100.00"
+      }
+    },
+    "avertissements": [
+      "L’onduleur suit la désignation de l’étape Électrique : « Onduleur réseau 5 kW » remplace « Onduleur réseau 8 kW »."
+    ],
+    "panneaux": 2,
+    "kwc": 1.42,
+    "scenario": "reseau",
+    "batterie": false,
+    "jeton": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "exemple_inchange": {
+    "inchange": true,
+    "statut": "brouillon",
+    "reference": "DEV-202611-0001",
+    "corrige_apres_envoi": false,
+    "ajouts": [],
+    "retraits": [],
+    "changements": [],
+    "totaux": {
+      "avant": {
+        "ht": "29916.67",
+        "ttc": "35900.00"
+      },
+      "apres": {
+        "ht": "29916.67",
+        "ttc": "35900.00"
+      }
+    },
+    "avertissements": [],
+    "panneaux": 3,
+    "kwc": 2.13,
+    "scenario": "reseau",
+    "batterie": false,
+    "jeton": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "exemple_sans_lecture_devis": {
+    "inchange": false,
+    "statut": "envoye",
+    "reference": null,
+    "corrige_apres_envoi": true,
+    "ajouts": [],
+    "retraits": [],
+    "changements": [
+      {
+        "designation_avant": "Module 710 Wc",
+        "designation_apres": "Module 710 Wc",
+        "variante": "",
+        "quantite_avant": "3.00",
+        "quantite_apres": "2.00",
+        "prix_unitaire_avant": null,
+        "prix_unitaire_apres": null,
+        "total_ht_avant": null,
+        "total_ht_apres": null
+      }
+    ],
+    "totaux": null,
+    "avertissements": [],
+    "panneaux": 2,
+    "kwc": 1.42,
+    "scenario": "reseau",
+    "batterie": false,
+    "jeton": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "corps_confirmation_note": "Revue du 26/11 (D-ACAL-73, « le dire AVANT d'agir » quel que soit le bouton) — POST calepinages/<pk>/sync-devis/ accepte `apercu_confirme` (booléen, défaut faux) : SEUL le bouton de confirmation de la carte d'aperçu l'envoie. Sans lui, sur un devis ENVOYÉ, l'onduleur et la batterie désignés à l'étape Électrique ne sont PAS appliqués (une phrase dit d'utiliser « Resynchroniser le devis » pour voir le changement et le confirmer) ; avec lui, ils le sont comme sur un brouillon né sous la règle. Un brouillon ne dépend pas du drapeau. Les autres chemins de la resynchronisation (sync-layout et POST layout du devis, assistant, rattachement, taille appliquée) ne l'envoient jamais. L'aperçu montre ce que la resynchronisation CONFIRMÉE écrirait.",
+  "corps_confirmation": {
+    "apercu_confirme": true,
+    "jeton_apercu": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "jeton_note": "Revue du 26/11 — la confirmation est LIÉE à ce que l'aperçu a montré : `jeton` (64 caractères hexadécimaux) est l'empreinte des ENTRÉES que l'aperçu a lues (document du calepinage aux surfaces chiffrées, onduleur et batterie désignés, état du devis : statut, empreinte de pose, marqueur des désignations, scénario, lignes) — rien n'est stocké. La carte le renvoie avec `apercu_confirme` (`jeton_apercu`, obligatoire avec lui : sinon 400 nommant `jeton_apercu`) ; s'il ne correspond plus (autre onglet, autre utilisateur, re-simulation automatique, conception retouchée), sync-devis répond 409 `reponse_409_apercu_perime` et n'écrit rien : la carte relance l'aperçu. Le verdict électrique est jugé à la confirmation (la carte le dit). Valeurs : des PLACEHOLDERS de forme.",
+  "reponse_409_apercu_perime": {
+    "detail": "L'aperçu a changé depuis son affichage : relancez-le avant de confirmer.",
+    "code": "apercu_perime"
+  }
+}

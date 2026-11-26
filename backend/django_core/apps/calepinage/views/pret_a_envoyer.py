@@ -17,7 +17,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from ..permissions import PeutVoirCalepinage
+from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from ..serializers import forme_du_contrat
 from ..services import pret_a_envoyer as controles
 from ..services.lecture_liste import ranger_verdict
@@ -126,3 +126,39 @@ def apercu_devis(self, request, pk=None):
 
 
 CalepinageViewSet.apercu_devis = apercu_devis
+
+
+# ACAL1320 (D-ACAL-73) — ``GET calepinages/<pk>/apercu-resync/`` : AVANT « Resynchroniser le devis », ce
+# que la resynchronisation CHANGERA au devis lié (jouée puis annulée par ventes : rien d'écrit) ; mêmes
+# droits que ``sync-devis`` ; mêmes refus (409 de statut, 400 sans devis lié). Contrat
+# ``contract_samples/calepinage_apercu_resync.json``.
+_DEVIS_VARIANTE = OpenApiParameter(
+    'devis', int, required=False,
+    description="Le devis porté par une variante de ce calepinage (comme ``devis`` de « Resynchroniser le "
+                "devis ») ; absent = le devis du calepinage.")
+
+
+@extend_schema(parameters=[_SURFACES, _DEVIS_VARIANTE],
+               responses={200: forme_du_contrat('CalepinageApercuResync', 'calepinage_apercu_resync.json'),
+                          409: OpenApiResponse(description="Refus de statut de ventes (``detail``, "
+                                                           "``revision_possible``), tel quel.")})
+@action(detail=True, methods=['get'], url_path='apercu-resync', permission_classes=[PeutGererCalepinage])
+def apercu_resync(self, request, pk=None):
+    """Ce que « Resynchroniser le devis » changerait au devis lié, sans rien écrire."""
+    from ..services.devis import DevisRefuse, lit_les_devis  # porte de ventes (cliquet des imports croisés)
+    from ..services.devis_resync_apercu import apercu_resynchronisation
+    from .calepinages import _entier_ou_none, _refus_devis, _statut_refus_devis
+
+    calepinage = self.get_object()
+    brut = request.query_params.get('surfaces')
+    surfaces = None if brut is None else [cle.strip() for cle in brut.split(',') if cle.strip()]
+    try:
+        reponse = apercu_resynchronisation(
+            calepinage, user=request.user, devis_id=_entier_ou_none(request.query_params.get('devis')),
+            surfaces_chiffrees=surfaces, lit_les_devis=lit_les_devis(request.user))
+    except DevisRefuse as refus:
+        return Response(_refus_devis(refus), status=_statut_refus_devis(refus))
+    return Response(reponse)
+
+
+CalepinageViewSet.apercu_resync = apercu_resync

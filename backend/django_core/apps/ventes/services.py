@@ -446,6 +446,31 @@ sync_devis_from_layout = _resynchronisation.sync_devis_from_layout
 resynchroniser_conception = _resynchronisation.resynchroniser_conception
 
 
+def apercu_de_resynchronisation(devis, layout, user=None, *, designations=None):
+    """ACAL1320 (D-ACAL-73) — ce que :func:`sync_devis_from_layout` changerait au devis, la
+    resynchronisation réelle jouée puis annulée (``domain/apercu_resynchro.py``) ; rien d'écrit."""
+    from apps.ventes.domain import apercu_resynchro
+
+    return apercu_resynchro.apercu_de_resynchronisation(devis, layout, user, designations=designations)
+
+
+def jeton_de_resynchronisation(devis, layout, designations=None):
+    """Revue du 26/11 — l'empreinte des entrées d'une resynchronisation (``domain/apercu_resynchro``) :
+    celle que l'aperçu a lue, recalculée à la confirmation (différente ⇒ 409 ``apercu_perime``)."""
+    from apps.ventes.domain import apercu_resynchro
+
+    return apercu_resynchro.jeton_de_resynchronisation(devis, layout, designations)
+
+
+def avertissements_sans_montant(avertissements):
+    """Revue du 26/11 (D-ACAL-106/165) — les avertissements d'une resynchronisation pour qui ne lit pas
+    les devis : chaque phrase qui porte un montant de vente servie sous sa forme sans montant
+    (``domain/lignes.AvertissementChiffre``)."""
+    from apps.ventes.domain import lignes
+
+    return lignes.avertissements_sans_montant(avertissements)
+
+
 # ═════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR76 : création d'un devis → ``domain/creation.py``
 # ═════════════════════════════════════════════════════════════════════════

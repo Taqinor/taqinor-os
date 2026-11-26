@@ -235,7 +235,9 @@ def bloc_devis_retenu(calepinage, stockee, resolu):
     saisi = saisie.get('onduleur_produit')
     if onduleur and saisi not in (None, '') and str(saisi) != str(onduleur['produit']):
         designe = ((resolu or {}).get('designations') or {}).get('onduleur') or 'un autre onduleur'
-        ecarts.append(f'Onduleur : « {designe} » désigné, « {onduleur["designation"]} » au devis {reference}.')
+        from .variantes import onduleur_designe_a_la_main  # revue du 26/11 : un onduleur repris n'est pas « désigné »
+        mot = 'désigné' if onduleur_designe_a_la_main(calepinage) else 'repris de l’original'
+        ecarts.append(f'Onduleur : « {designe} » {mot}, « {onduleur["designation"]} » au devis {reference}.')
     for cle, devis_valeur, unite in (('nombre_onduleurs', (onduleur or {}).get('quantite'), 'onduleur(s)'),
                                      ('longueur_chaine_forcee', longueur, 'modules par chaîne')):
         valeur = saisie.get(cle)
