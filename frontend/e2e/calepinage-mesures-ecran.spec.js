@@ -664,3 +664,25 @@ test('ACAL1824: K-COUCHE-FIXE — rien ne recouvre consigne, réponse, commande,
   }
   expect(fautes, 'pièce fixe ou flottante qui recouvre une réponse, une consigne ou une commande').toEqual([])
 })
+
+// ACAL1819 — liste des calepinages au téléphone (390 × 664) : titre + « + » 44 × 44 sur une ligne, pastilles d'état derrière
+// « Filtres », le nom de la première carte dans le premier écran. Mesure DOM des boîtes, jamais un pixel. Écrit pour la CI.
+test('ACAL1819: liste à 390 × 664 — le nom de la première carte est dans le premier écran', async ({ page }) => {
+  test.setTimeout(300_000)
+  await amorcerSession(page)
+  await calepinageParApi(page.request, 'ACAL1819 Liste')
+  await page.setViewportSize({ width: 390, height: 664 })
+  await page.goto('/calepinage')
+  const nom = page.locator('.cliste-carte .cliste-nom').first()
+  await expect(nom).toBeVisible({ timeout: 120_000 })
+  const boite = await nom.boundingBox()
+  expect(boite.y + boite.height, 'bas du nom de la première carte sur 664').toBeLessThanOrEqual(664)
+  const plus = await page.getByRole('button', { name: /Nouveau calepinage/ }).boundingBox()
+  expect(plus.width, '« + » : largeur').toBeGreaterThanOrEqual(44)
+  expect(plus.width, '« + » : pas pleine largeur').toBeLessThan(80)
+  const titre = await page.locator('.cliste-titre').boundingBox()
+  expect(Math.abs((plus.y + plus.height / 2) - (titre.y + titre.height / 2)), '« + » et titre sur la même ligne').toBeLessThan(24)
+  await expect(page.getByTestId('cal-liste-filtres-etat')).toBeHidden()
+  await page.getByTestId('acal957-filtres-basculer').click()
+  await expect(page.getByTestId('cal-liste-filtres-etat')).toBeVisible()
+})
