@@ -109,10 +109,12 @@ export default function BuilderCarte({
             </button>
             {/* ACAL954 — « Terminer le tracé » SUR la carte (centré en bas), plus sous la flottaison ;
                 ids inchangés (lus par roof-tool-pro11.ts). Même fond opaque que la puce ACAL950,
-                rangé dans le flux de ce bandeau (position statique). */}
-            <div className="absolute bottom-10 left-1/2 z-10 flex -translate-x-1/2 gap-2">
-              <button type="button" id="rp9-finish" disabled className={`${chipClass} rp9-carte-puce`} style={{ position: 'static' }}>Terminer le tracé</button>
-              <button type="button" id="rp9-undo-point" hidden className={`${chipClass} rp9-carte-puce`} style={{ position: 'static' }}>Annuler le dernier point</button>
+                rangé dans le flux de ce bandeau (position statique).
+                ACAL1272 — `w-max` + `max-w` : ancré à 50 %, le bandeau n'avait que la moitié de la
+                carte pour se dimensionner (boutons en colonnes, « Terminer » hors écran à 390 px). */}
+            <div className="absolute bottom-10 left-1/2 z-10 flex w-max max-w-[calc(100%-1rem)] -translate-x-1/2 flex-wrap justify-center gap-2">
+              <button type="button" id="rp9-finish" disabled className={`${chipClass} rp9-carte-puce whitespace-nowrap`} style={{ position: 'static' }}>Terminer le tracé</button>
+              <button type="button" id="rp9-undo-point" hidden className={`${chipClass} rp9-carte-puce whitespace-nowrap`} style={{ position: 'static' }}>Annuler le dernier point</button>
             </div>
           </div>
     </>

@@ -11,6 +11,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { hasSldSvg, sldSvgFilename } from '../src/lib/proposition';
 import { choisirSld, parseSchemaElectrique, planSchema } from '../src/lib/schemaElectrique';
 import SchemaElectrique from '../src/components/proposition/SchemaElectrique.astro';
+import BarreSoleil from '../src/components/proposition/BarreSoleil.astro';
+import { parseRoofLayout } from '../src/lib/proposition';
+import { lireVisionneuseSoleil } from '../src/lib/visionneuseSoleil';
 
 vi.mock('cloudflare:workers', () => ({ env: {} }));
 
@@ -364,7 +367,9 @@ async function rendrePage(data: unknown): Promise<string> {
 
 describe('page /proposition — section #sld, deux payloads (LOT 6)', () => {
   it('ancien payload (sld_svg, sans schema_electrique) : section historique inchangée', async () => {
-    const html = await rendrePage(proposalContrat.exemple);
+    // L'exemple du contrat porte `schema_electrique` depuis SCHEL-B3 : l'ancien payload la RETIRE de sa copie.
+    const { schema_electrique: _neuf, ...ancien } = proposalContrat.exemple;
+    const html = await rendrePage(ancien);
     expect(html).toContain('id="sld-teaser"');
     expect(html).toContain('id="sld-viewer"');
     expect(html).toContain('id="sld-download"');
@@ -385,5 +390,100 @@ describe('page /proposition — section #sld, deux payloads (LOT 6)', () => {
     const html = await rendrePage({ ...sans, schema_electrique: exemple() });
     expect(html).toContain('id="sld"');
     expect(html).toContain('data-sld-schema');
+  });
+});
+
+// ── LOT 6 (D-ACAL-132 à 138) — section #roof3d : la visionneuse au soleil des liens de confiance ────────
+const soleilContrat = JSON.parse(readFileSync(ici('../src/contract_samples/visionneuse_soleil.json'), 'utf8')) as Record<string, any>;
+const C = Math.cos((33.574 * Math.PI) / 180);
+const sommet = (x: number, y: number) => [-7.62 + x / (111_320 * C), 33.574 + y / 111_320];
+// Le pan `zone-1` du contrat, six modules posés (calepinage réel : la visionneuse pleine peut démarrer).
+const roofLayoutSoleil = {
+  version: 2,
+  zones: [{
+    id: 'zone-1', label: 'Pan principal', vertices: [sommet(-8, -8), sommet(8, -8), sommet(8, 8), sommet(-8, 8)], obstacles: [],
+    roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180, neededPanels: 6,
+    geometry: { azimuthDeg: 180, tiltDeg: 13, family: 'south', flush: false, count: 6, origin: [-7.62, 33.574], panels: [-3, -2, -1, 1, 2, 3].map((cx) => ({ cx: cx * 1.4, cy: 0 })) },
+  }],
+};
+const soleil = (cle: 'exemple' | 'exemple_sans_mesure' = 'exemple') => structuredClone(soleilContrat[cle].visionneuse_soleil);
+const lu = (cle?: 'exemple' | 'exemple_sans_mesure') => lireVisionneuseSoleil({ visionneuse_soleil: soleil(cle) }, parseRoofLayout(roofLayoutSoleil))!;
+const section3d = (html: string) => html.slice(html.indexOf('id="roof3d"'), html.indexOf('</section>', html.indexOf('id="roof3d"')));
+
+async function rendreBarre(s: ReturnType<typeof lu>): Promise<string> {
+  const container = await AstroContainer.create({ astroConfig: { site: 'https://taqinor.ma' } } as never);
+  return container.renderToString(BarreSoleil, { props: { soleil: s } });
+}
+
+describe('BarreSoleil.astro — rendu (LOT 6)', () => {
+  it('avec valeurs enregistrées : légende Ombragé → Plein soleil, lecture, curseur, Hiver / Été, instant choisi', async () => {
+    const html = await rendreBarre(lu());
+    expect(html).toContain('Ensoleillement de chaque panneau sur l’année');
+    expect(html).toContain('Ombragé');
+    expect(html).toContain('Plein soleil');
+    expect(html).toContain('20 décembre · 16 h (heure solaire)');
+    expect(html).toMatch(/data-soleil-saison="hiver"[^>]*aria-pressed="true"/);
+    expect(html).toContain('data-soleil-lecture');
+    expect(html).toContain('type="range"');
+  });
+
+  it('contrôles inertes jusqu’au branchement, trois langues, libellés accessibles traduits', async () => {
+    const html = await rendreBarre(lu());
+    for (const hook of ['data-soleil-lecture', 'data-soleil-heure', 'data-soleil-saison="hiver"', 'data-soleil-saison="ete"']) {
+      expect(html).toMatch(new RegExp(`${hook}[^>]*disabled`));
+    }
+    expect(html).toMatch(/id="roof3d-soleil"[^>]*\bhidden\b/); // C3 — cachée jusqu'au branchement
+    expect(html).toMatch(/data-soleil-quand[^>]*data-en="20 December · 16:00 \(solar time\)"[^>]*data-ar="20 دجنبر · الساعة 16 \(بالتوقيت الشمسي\)"/);
+    expect(html).toContain('data-aria-label-ar="تشغيل مسار الشمس خلال اليوم"');
+    expect(html).toContain('data-aria-label-en="Solar time of day"');
+    expect(html).toContain('data-ar="الصيف"');
+  });
+
+  it('aucune valeur enregistrée : aucune légende (D-ACAL-136), le soleil reste pilotable', async () => {
+    const html = await rendreBarre(lu('exemple_sans_mesure'));
+    expect(html).not.toContain('data-soleil-legende');
+    expect(html).not.toContain('Ombragé');
+    expect(html).toContain('20 juin · 12 h (heure solaire)');
+  });
+
+  it('rien d’inventé ni d’incertain : aucun pourcentage, aucun prix, aucun « à confirmer » / « estimation »', async () => {
+    const txt = texteVisible(await rendreBarre(lu()));
+    expect(txt).not.toMatch(/\d\s*%|MAD|\bDH\b|TTC|prix|à confirmer|estimation|estimé/i);
+  });
+});
+
+describe('page /proposition — section #roof3d, avec et sans visionneuse_soleil (LOT 6)', () => {
+  // L'exemple du contrat porte la clé depuis le lot 6 (lane B) : le repli la RETIRE, comme un lien standard.
+  const { visionneuse_soleil: _servie, ...sansCle } = proposalContrat.exemple;
+  const base = { ...sansCle, roof_layout: roofLayoutSoleil };
+
+  it('REPLI : sans la clé (lien standard, backend antérieur), section d’aujourd’hui — aucune barre, aucun attribut neuf', async () => {
+    const html = await rendrePage(base);
+    const s = section3d(html);
+    expect(s).toContain('id="roof3d-stage"');
+    expect(s).toContain('data-viewer-config=');
+    expect(s).not.toContain('roof3d-soleil');
+    expect(s).not.toContain('data-visionneuse-soleil');
+    expect(s).not.toContain('Ensoleillement');
+  });
+
+  it('REPLI : une clé malformée rend EXACTEMENT la même section que la clé absente', async () => {
+    const sans = section3d(await rendrePage(base));
+    for (const casse of [null, 'x', { version: 2 }, { ...soleil(), zones: 'x' }]) {
+      expect(section3d(await rendrePage({ ...base, visionneuse_soleil: casse }))).toBe(sans);
+    }
+  });
+
+  it('clé servie : barre sous la scène, attribut portant l’ouverture et les objets voisins (jamais un libellé), configuration 3D inchangée', async () => {
+    const sans = section3d(await rendrePage(base));
+    const s = section3d(await rendrePage({ ...base, visionneuse_soleil: soleil() }));
+    expect(s).toContain('id="roof3d-soleil"');
+    expect(s.indexOf('id="roof3d-stage"')).toBeLessThan(s.indexOf('id="roof3d-soleil"'));
+    const attr = /data-visionneuse-soleil="([^"]*)"/.exec(s)![1];
+    expect(attr).toContain('&quot;ouverture&quot;:{&quot;jour&quot;:355,&quot;heure&quot;:16}');
+    expect(attr).toContain('&quot;kind&quot;:&quot;arbre&quot;');
+    expect(attr).not.toContain('label');
+    const config = (x: string) => /data-viewer-config="([^"]*)"/.exec(x)![1];
+    expect(config(s)).toBe(config(sans));
   });
 });

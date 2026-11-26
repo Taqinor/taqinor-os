@@ -66,6 +66,11 @@ describe('WJ18 — [token].astro : la visionneuse 3D (WJ25/27) reste lazy, jamai
     }
   });
 
+  it('LOT 6 — la visionneuse au soleil (viewerSoleil) n’est JAMAIS importée statiquement, seulement par import()', () => {
+    for (const spec of imports) expect(spec).not.toMatch(/viewerSoleil|viewerFullBoot|soleilPlay|shadingEngine/);
+    expect(PROPOSITION).toContain("import('../../scripts/roofPro11/viewerSoleil')");
+  });
+
   it('la visionneuse 3D charge par import() dynamique, gated scroll (IO) ou tap (reduced-motion/Save-Data)', () => {
     expect(PROPOSITION).toContain("await import('../../scripts/roofPro11/viewerOnly')");
     expect(PROPOSITION).toContain('IntersectionObserver');

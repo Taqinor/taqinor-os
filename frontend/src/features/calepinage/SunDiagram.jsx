@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { sortedHorizonPoints, horizonHeightAtAzimuth } from '@rooflib/horizonEngine'
 import { sunDirection as sunPosition } from '@rooflib/roofPro2'
 import { COURBES_REPERE } from './SunDiagram.helpers'
@@ -58,14 +58,31 @@ const LARGEUR = 640
 const HAUTEUR = 260
 const MARGE_G = 40
 const MARGE_B = 24
-const HAUT_UTILE = HAUTEUR - MARGE_B - 10
+const POLICE = 12 // ACAL1444 — unités du viewBox = px rendus dès que la largeur est mesurée
+const GRADUATIONS = [0, 30, 60, 90]
 
-function xDe(azimuthDeg) {
-  return MARGE_G + (azimuthDeg / 360) * (LARGEUR - MARGE_G - 10)
+/** ACAL1444 — le repère à la taille RENDUE : un viewBox fixe de 640 réduit à ≈ 270 px
+ *  rendait les libellés à 5-6 px et le diagramme à 109 px de haut. */
+function repere(largeur, hauteur) {
+  const hautUtile = hauteur - MARGE_B - 10
+  const xDe = (azimuthDeg) => MARGE_G + (azimuthDeg / 360) * (largeur - MARGE_G - 10)
+  const yDe = (elevationDeg) => hautUtile - (Math.max(0, Math.min(90, elevationDeg)) / 90) * hautUtile
+  return { largeur, hauteur, xDe, yDe }
 }
-function yDe(elevationDeg) {
-  const clamped = Math.max(0, Math.min(90, elevationDeg))
-  return HAUT_UTILE - (clamped / 90) * HAUT_UTILE
+
+/** Largeur rendue du SVG (px), `null` tant qu'elle n'est pas mesurable (jsdom, avant montage). */
+function useLargeurRendue(ref) {
+  const [largeur, setLargeur] = useState(null)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return undefined
+    const lire = () => { const w = el.getBoundingClientRect().width; setLargeur(w > 0 ? Math.round(w) : null) }
+    lire()
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(lire)
+    ro?.observe(el)
+    return () => ro?.disconnect()
+  }, [ref])
+  return largeur
 }
 
 /**
@@ -83,6 +100,10 @@ function yDe(elevationDeg) {
  * l'horizon (élévation ≤ 0) → aucun repère non plus, jamais un point inventé sous terre.
  */
 export default function SunDiagram({ latitudeDeg, horizonPoints = [], obstructions = [], sunDay, sunHour, tableOmbrage, ariaLabel, testId }) {
+  const svgRef = useRef(null)
+  const rendue = useLargeurRendue(svgRef)
+  const { largeur, hauteur, xDe, yDe } = useMemo(() => (rendue
+    ? repere(rendue, Math.max(220, Math.round((rendue * HAUTEUR) / LARGEUR))) : repere(LARGEUR, HAUTEUR)), [rendue])
   const sorted = sortedHorizonPoints(horizonPoints)
   const horizonPath = useMemo(() => {
     if (sorted.length < 2) return null
@@ -94,7 +115,7 @@ export default function SunDiagram({ latitudeDeg, horizonPoints = [], obstructio
     }
     d += ` L ${xDe(360)} ${yDe(0)} Z`
     return d
-  }, [sorted])
+  }, [sorted, xDe, yDe])
 
   // CALX118 — le repère du soleil de SCÈNE (`scene.sunDay`/`scene.sunHour`), MÊME
   // formule que les trois courbes de référence ci-dessous (`sunPosition`). Sous
@@ -110,16 +131,24 @@ export default function SunDiagram({ latitudeDeg, horizonPoints = [], obstructio
 
   return (
     <svg
-      viewBox={`0 0 ${LARGEUR} ${HAUTEUR}`}
+      ref={svgRef}
+      viewBox={`0 0 ${largeur} ${hauteur}`}
       role="img"
       aria-label={ariaLabel ?? 'Course du soleil, par azimut et hauteur'}
       className="w-full"
       data-testid={testId ?? 'cal-sundiagram'}
     >
       {[0, 90, 180, 270, 360].map((az, i) => (
-        <text key={az} x={xDe(az)} y={HAUTEUR - 6} fontSize="11" fill="#8f9bb8" textAnchor="middle">
+        <text key={az} x={xDe(az)} y={hauteur - 6} fontSize={POLICE} fill="#8f9bb8" textAnchor="middle">
           {['N', 'E', 'S', 'O', 'N'][i]}
         </text>
+      ))}
+      {/* ACAL1444 — axe vertical gradué en degrés de hauteur du soleil. */}
+      {GRADUATIONS.map((g) => (
+        <g key={g} data-testid="cal-sundiagram-graduation">
+          {g > 0 && <line x1={MARGE_G} y1={yDe(g)} x2={largeur - 10} y2={yDe(g)} stroke="#3a4258" strokeWidth="0.5" strokeDasharray="3 3" />}
+          <text x={MARGE_G - 4} y={yDe(g) + 4} fontSize={POLICE} fill="#8f9bb8" textAnchor="end">{`${g}°`}</text>
+        </g>
       ))}
       {/* ACAL449 — cellules teintées, sans interpolation : opacité = 1 − facteur, SOUS la course. */}
       {cellules.map((c) => (
@@ -135,7 +164,7 @@ export default function SunDiagram({ latitudeDeg, horizonPoints = [], obstructio
           fillOpacity={1 - c.facteur}
         />
       ))}
-      <line x1={MARGE_G} y1={yDe(0)} x2={LARGEUR - 10} y2={yDe(0)} stroke="#3a4258" strokeWidth="1" />
+      <line x1={MARGE_G} y1={yDe(0)} x2={largeur - 10} y2={yDe(0)} stroke="#3a4258" strokeWidth="1" />
 
       {typeof latitudeDeg === 'number' &&
         COURBES_REPERE.map((c) => {
@@ -152,7 +181,7 @@ export default function SunDiagram({ latitudeDeg, horizonPoints = [], obstructio
         <g key={`${o.label ?? 'obs'}-${i}`} data-testid="cal-sundiagram-obstruction">
           <circle cx={xDe(o.azimuthDeg)} cy={yDe(o.elevationDeg)} r="4" fill="#d0654f" stroke="#070b1d" strokeWidth="1" />
           {o.label && (
-            <text x={xDe(o.azimuthDeg)} y={yDe(o.elevationDeg) - 7} fontSize="10" fill="#d0654f" textAnchor="middle">
+            <text x={xDe(o.azimuthDeg)} y={yDe(o.elevationDeg) - 7} fontSize={POLICE} fill="#d0654f" textAnchor="middle">
               {o.label}
             </text>
           )}

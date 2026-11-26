@@ -73,7 +73,7 @@ body[data-cal-atelier] [data-sonner-toaster][data-y-position='bottom'][data-x-po
 }
 .cal-coque .cal-projet { display: flex; flex-direction: column; min-width: 0; margin: 0; font-size: 0.875rem; font-weight: 400; }
 .cal-coque .cal-projet-titre {
-  font-family: var(--font-display);
+  font-family: var(--cal-police-titre); /* ACAL1941 */
   font-weight: 600;
   font-size: 1rem;
   line-height: 1.2;
@@ -453,7 +453,7 @@ body[data-cal-atelier] [data-sonner-toaster][data-y-position='bottom'][data-x-po
 .cal-coque .cal-panneau-etape-rang { margin: 0; font-size: 0.75rem; font-weight: 500; color: var(--cal-texte-3); }
 .cal-coque .cal-panneau-etape-titre {
   margin: 2px 0 0;
-  font-family: var(--font-display);
+  font-family: var(--cal-police-titre); /* ACAL1941 */
   font-weight: 600;
   font-size: 1.5rem;
   line-height: 1.25;

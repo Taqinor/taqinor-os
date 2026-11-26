@@ -226,3 +226,208 @@ class SchemaUnifilaireDeuxOptionsTest(SimpleTestCase):
         self.assertIn("Deye", svg)
         self.assertIn("Dyness", svg)
         self.assertNotIn("Huawei", svg)
+
+
+class SchemaElectriqueParOptionTest(SimpleTestCase):
+    """SCHEL-B3 (lot 6) — UN document par option : « sans » montre l'onduleur
+    RÉSEAU sans batterie, « avec » l'hybride ET la batterie ; l'autre option est
+    conçue à la lecture, et rien de ce qui est rangé ne bouge (empreinte)."""
+
+    def test_deux_options_deux_documents_jamais_melanges(self):
+        devis = _devis_deux_options_servables()
+        es.build_electrical_design(devis)
+        options = es.schema_electrique_du_devis(devis)["options"]
+        sans, avec = options["sans_batterie"], options["avec_batterie"]
+        self.assertIn("Huawei", sans["onduleurs"][0]["designation"])
+        self.assertIsNone(sans["batterie"])
+        self.assertIn("Deye", avec["onduleurs"][0]["designation"])
+        self.assertEqual(avec["batterie"]["unites"], 1)
+        self.assertAlmostEqual(avec["batterie"]["capacite_kwh"], 15.4, places=1)
+        self.assertIsNone(avec["batterie"]["protection"])
+        for doc in (sans, avec):
+            self.assertEqual(doc["source"], "conception_devis")
+            self.assertTrue(doc["chaines_reparties"])
+            self.assertEqual(sum(c["nb_panneaux"] for c in doc["chaines"]), 30)
+            self.assertEqual(doc["onduleurs"][0]["nombre"], 1)
+
+    def test_l_empreinte_et_l_etude_rangees_ne_bougent_pas(self):
+        devis = _devis_deux_options_servables()
+        es.build_electrical_design(devis)
+        design, empreinte = devis.electrical_design, devis.electrical_design_hash
+        copie = dict(design)
+        recalculee = es.empreinte_entree(devis, es.construire_entree(devis))
+        self.assertEqual(recalculee, empreinte)
+        es.schema_electrique_du_devis(devis)
+        es.schema_electrique_du_devis(devis, standard=True)
+        self.assertIs(devis.electrical_design, design)
+        self.assertEqual(devis.electrical_design, copie)
+        self.assertEqual(devis.electrical_design_hash, empreinte)
+        # La variante imposée ne fuit pas hors de son bloc : l'option retenue
+        # et l'empreinte des entrées sont celles d'avant.
+        self.assertEqual(es._option_choisie(devis)[1], "avec")
+        self.assertEqual(es.empreinte_entree(devis, es.construire_entree(devis)),
+                         empreinte)
+
+    def test_sans_etude_le_champ_sans_decoupage(self):
+        """Aucune étude ne répartit les panneaux (fiche onduleur absente) : le
+        champ est servi SANS découpage, jamais une répartition inventée."""
+        devis = _FauxDevis(lignes=[
+            _FausseLigne("Panneau PV 710 Wc", 14, produit=_panneau()),
+            _FausseLigne("Onduleur réseau 15kW triphasé", 1,
+                         produit=_FauxProduit("Onduleur réseau Huawei 15kW")),
+        ], roof_layout=_roof(14))
+        doc = es.schema_electrique_du_devis(devis)["options"]["sans_batterie"]
+        self.assertEqual(doc["source"], "lignes_devis")
+        self.assertFalse(doc["chaines_reparties"])
+        self.assertEqual(doc["chaines"], [])
+        self.assertEqual(doc["panneaux"]["nombre"], 14)
+        self.assertEqual(doc["cote_reseau"]["etat"], "a_calculer")
+        self.assertIsNone(devis.electrical_design)
+
+    def test_annexe_dessine_l_option_rangee_et_rien_sans_etude(self):
+        """SCHEL-B4 — l'annexe PV46 : l'option rangée (« avec », comme la
+        planche d'hier), batterie dessinée ; aucune étude ⇒ aucun schéma."""
+        devis = _devis_deux_options_servables()
+        es.build_electrical_design(devis)
+        svg = es.rendre_schema_electrique_du_devis(devis, langue="fr", largeur_px=680)
+        self.assertIn('data-schema="electrique"', svg)
+        self.assertIn("Deye", svg)
+        self.assertIn("Batterie", svg)
+        self.assertNotIn("Huawei", svg)
+        self.assertIn("Battery", es.rendre_schema_electrique_du_devis(devis, langue="en"))
+        sans_etude = _FauxDevis(lignes=[
+            _FausseLigne("Panneau PV 710 Wc", 14, produit=_panneau()),
+            _FausseLigne("Onduleur réseau 15kW triphasé", 1,
+                         produit=_FauxProduit("Onduleur réseau Huawei 15kW")),
+        ], roof_layout=_roof(14))
+        self.assertEqual(es.rendre_schema_electrique_du_devis(sans_etude), "")
+
+    def test_pompage_sans_onduleur_aucun_document(self):
+        devis = _FauxDevis(lignes=[
+            _FausseLigne("Panneau PV 710 Wc", 14, produit=_panneau())],
+            roof_layout=_roof(14))
+        self.assertEqual(es.schema_electrique_du_devis(devis),
+                         {"options": {"sans_batterie": None, "avec_batterie": None}})
+
+
+_TOTAUX = {"sans_batterie": {"ttc": 1}, "avec_batterie": {"ttc": 1}}
+
+
+class RevueSchemaElectriqueTest(SimpleTestCase):
+    """Revue de la lane B (26/11/2026) — décisions D1/D2/D3 de l'orchestrateur
+    (à confirmer) et points 1, 3, 5, 6, 7."""
+
+    def _plan(self, document, designation=None):
+        """Un document de calepinage qui porte une seule chaîne de 30 panneaux."""
+        from core.electrique.schema_electrique import chaines_colorees
+        plan = dict(document, source="calepinage",
+                    chaines=chaines_colorees([{"numero": 7, "nb_panneaux": 30, "entree": 1}]))
+        if designation is not None:
+            plan["onduleurs"] = [dict(plan["onduleurs"][0], designation=designation)]
+        return plan
+
+    def _avec_calepinage(self, plan):
+        from unittest import mock
+        return (mock.patch("apps.calepinage.selectors.calepinage_du_devis", return_value=object()),
+                mock.patch("apps.ventes.selectors_calepinage._conception_a_jour", return_value=True),
+                mock.patch("apps.calepinage.selectors.schema_electrique_du_calepinage",
+                           return_value=plan))
+
+    def test_d1_la_page_client_ne_recoit_que_l_etude_rangee(self):
+        devis = _devis_deux_options_servables()
+        es.build_electrical_design(devis)
+        public = es.schema_electrique_public(devis, standard=False, option_totals=_TOTAUX)
+        self.assertIsNone(public["options"]["sans_batterie"])       # conçue à la lecture
+        avec = public["options"]["avec_batterie"]
+        self.assertEqual(avec["source"], "conception_devis")
+        self.assertEqual(avec["cote_reseau"], {"etat": "calcule", "motif": None})
+        erp = es.schema_electrique_du_devis(devis)["options"]
+        self.assertIsNotNone(erp["sans_batterie"])                  # la fiche ERP la garde
+
+    def test_d1_sans_etude_rangee_rien_ne_part_chez_le_client(self):
+        devis = _devis_deux_options_servables()                     # aucune étude rangée
+        self.assertIsNone(es.schema_electrique_public(devis, standard=False, option_totals=_TOTAUX))
+        lignes = _FauxDevis(lignes=[
+            _FausseLigne("Panneau PV 710 Wc", 14, produit=_panneau()),
+            _FausseLigne("Onduleur réseau 15kW triphasé", 1,
+                         produit=_FauxProduit("Onduleur réseau Huawei 15kW"))], roof_layout=_roof(14))
+        self.assertIsNone(es.schema_electrique_public(lignes, standard=False, option_totals=_TOTAUX))
+
+    def test_point3_le_motif_nomme_la_cause_reelle(self):
+        devis = _FauxDevis(lignes=[
+            _FausseLigne("Panneau PV 710 Wc", 14, produit=_panneau()),
+            _FausseLigne("Onduleur réseau 15kW triphasé", 1,
+                         produit=_FauxProduit("Onduleur réseau Huawei 15kW"))], roof_layout=_roof(14))
+        motif = es.schema_electrique_du_devis(devis)["options"]["sans_batterie"]["cote_reseau"]["motif"]
+        self.assertIn("fiche technique du matériel est incomplète", motif)
+        self.assertNotIn("aucune étude électrique n'a été faite", motif)
+
+    def test_point5_etude_rangee_d_un_majeur_perime_recalculee_sans_ecriture(self):
+        devis = _devis_deux_options_servables()
+        es.build_electrical_design(devis)
+        perimee = dict(devis.electrical_design, version_moteur="0.0.1")
+        devis.electrical_design = perimee
+        empreinte = devis.electrical_design_hash
+        self.assertTrue(es.artefact_a_rejouer(perimee))
+        avec = es.schema_electrique_du_devis(devis)["options"]["avec_batterie"]
+        self.assertEqual(avec["source"], "conception_devis")        # pas le champ des lignes
+        self.assertTrue(avec["chaines_reparties"])
+        self.assertIs(devis.electrical_design, perimee)
+        self.assertEqual(devis.electrical_design_hash, empreinte)
+        public = es.schema_electrique_public(devis, standard=False, option_totals=_TOTAUX)
+        self.assertIsNone(public)                                    # D1 : calculée à la lecture
+
+    def test_point6_unites_de_batterie_par_role_ou_fiche_jamais_par_le_mot(self):
+        lignes = [_FausseLigne("Câble batterie 35 mm²", 2),
+                  _FausseLigne("Batterie lithium 15,4 kWh", 3, produit=_batterie())]
+        self.assertEqual(es._quantites_de_l_option(lignes)[0], 3)
+        lignes[0].role_devis = "cable_dc"
+        self.assertEqual(es._quantites_de_l_option(lignes)[0], 3)
+
+    def test_point1_l_annexe_n_imprime_rien_sans_etude_meme_avec_un_calepinage(self):
+        devis = _FauxDevis(lignes=[
+            _FausseLigne("Panneau PV 710 Wc", 14, produit=_panneau()),
+            _FausseLigne("Onduleur réseau 15kW triphasé", 1,
+                         produit=_FauxProduit("Onduleur réseau Huawei 15kW"))], roof_layout=_roof(14))
+        doc = es.schema_electrique_du_devis(devis, avec_calepinage=False)["options"]["sans_batterie"]
+        a, b, c = self._avec_calepinage(self._plan(dict(doc, onduleurs=doc["onduleurs"])))
+        with a, b, c:
+            self.assertEqual(es.rendre_schema_electrique_du_devis(devis), "")
+            documents = {"sans_batterie": dict(doc), "avec_batterie": None}
+            es._chaines_du_calepinage(devis, documents)
+        self.assertEqual(documents["sans_batterie"]["source"], "lignes_devis")
+        self.assertEqual(documents["sans_batterie"]["chaines"], [])
+
+    def test_d2_chaines_du_calepinage_seulement_au_meme_onduleur(self):
+        devis = _devis_deux_options_servables()
+        es.build_electrical_design(devis)
+        avec = es.schema_electrique_du_devis(devis, avec_calepinage=False)["options"]["avec_batterie"]
+        for designation, attendu in ((None, "calepinage"), ("Autre onduleur 15 kW", "conception_devis")):
+            a, b, c = self._avec_calepinage(self._plan(avec, designation))
+            with a, b, c:
+                doc = es.schema_electrique_du_devis(devis)["options"]["avec_batterie"]
+            self.assertEqual(doc["source"], attendu, designation)
+            self.assertEqual(doc["chaines"][0]["numero"] == 7, attendu == "calepinage")
+
+    def test_d3_la_page_client_ne_relit_pas_le_calepinage(self):
+        from unittest import mock
+        devis = _devis_deux_options_servables()
+        es.build_electrical_design(devis)
+        with mock.patch("apps.calepinage.selectors.calepinage_du_devis",
+                        side_effect=AssertionError("calepinage relu à l'affichage")):
+            public = es.schema_electrique_public(devis, standard=False, option_totals=_TOTAUX)
+        self.assertIsNotNone(public["options"]["avec_batterie"])
+
+    def test_point7_le_chemin_calepinage_ne_journalise_aucune_erreur(self):
+        """Une panne du chemin calepinage ne se cache plus derrière son ``except`` :
+        sur un devis sain, AUCUN avertissement n'est journalisé ; et une erreur
+        hors des lectures attendues REMONTE."""
+        from unittest import mock
+        devis = _devis_deux_options_servables()
+        es.build_electrical_design(devis)
+        with self.assertNoLogs("apps.ventes.electrical_service", level="WARNING"):
+            es.schema_electrique_du_devis(devis)
+        with mock.patch("apps.calepinage.selectors.calepinage_du_devis",
+                        side_effect=RuntimeError("chemin cassé")):
+            with self.assertRaises(RuntimeError):
+                es.schema_electrique_du_devis(devis)

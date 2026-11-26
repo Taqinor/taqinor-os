@@ -519,7 +519,7 @@ const SORTIES_REMETTABLES = new Set([
     servie est affichée telle quelle (libellé, format, motif) ; l'`endpoint`
     vient de l'entrée, jamais reconstruit. */
 function SectionSorties({
-  sorties, enCours, enRemise, erreurs, resultatPack, onTelecharger, onRemettre,
+  sorties, enCours, enRemise, erreurs, resultatPack, onTelecharger, onRemettre, onApercu,
 }) {
   const [expert] = useModeExpert()
   if (!sorties?.length) return null
@@ -544,6 +544,18 @@ function SectionSorties({
                 </div>
                 {!rendu3d && (
                   <div className="flex flex-wrap items-center gap-2">
+                    {/* ACAL1534 — « Aperçu » des pièces PDF (le même appel que ACAL1193, jamais un second chemin). */}
+                    {sortie.format === 'pdf' && !pack && onApercu && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!sortie.disponible}
+                        onClick={() => onApercu(sortie)}
+                        data-testid={`cal-doc-sorties-apercu-${sortie.code}`}
+                      >
+                        Aperçu
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"
@@ -621,8 +633,9 @@ export default function PanneauDocuments({
 
   // ACAL228 — l'inventaire `sorties/` (distinct de `documents/`). Une erreur
   // de ce second inventaire n'abat jamais le panneau : la section manque.
-  const { data: inventaireSorties } = useResource(
-    () => calepinageApi.calepinages.sorties(id), id,
+  // ACAL1931 — relu à chaque enregistrement (`enregistreLe`) : une conception changée n'est pas lue sur l'inventaire d'avant.
+  const { data: inventaireSorties, error: erreurSorties } = useResource(
+    () => calepinageApi.calepinages.sorties(id), { id, enregistreLe },
     { select: (r) => r?.data ?? null },
   )
   const [enCoursSortie, setEnCoursSortie] = useState(null)
@@ -730,6 +743,27 @@ export default function PanneauDocuments({
     } catch (erreur) {
       const details = await erreurDeTelechargement(erreur)
       setErreurs((precedent) => ({ ...precedent, [code]: details }))
+    }
+  }
+
+  // ACAL1723 — la carte « Schéma électrique » de l'écran guidé livre le schéma unifilaire dessiné (`sldPdf`) :
+  // même état (`enCours`, `erreurs`) et mêmes textes d'erreur que les autres pièces, sous le code de sa carte.
+  async function schemaPdf(carte, ouvrir) {
+    const code = carte.code
+    setErreurs((precedent) => ({ ...precedent, [code]: null }))
+    setEnCours(code)
+    try {
+      const reponse = await calepinageApi.calepinages.sldPdf(id, OPTIONS_TELECHARGEMENT)
+      if (ouvrir) {
+        window.open(URL.createObjectURL(new Blob([reponse.data], { type: 'application/pdf' })), '_blank', 'noopener')
+      } else {
+        downloadBlob(reponse.data, filenameFromResponse(reponse, `calepinage-${id}-schema-unifilaire.pdf`))
+      }
+    } catch (erreur) {
+      const details = await erreurDeTelechargement(erreur, { delai: true })
+      setErreurs((precedent) => ({ ...precedent, [code]: details }))
+    } finally {
+      setEnCours(null)
     }
   }
 
@@ -951,6 +985,7 @@ export default function PanneauDocuments({
         resultatPack={resultatPack}
         onTelecharger={telechargerSortie}
         onRemettre={remettreSortie}
+        onApercu={apercuSortie}
       />
       {/* CALX28 — HORS inventaire (aucun document ne le déclare) : toujours
           visible, jamais gouverné par `disponible`. */}
@@ -978,7 +1013,8 @@ export default function PanneauDocuments({
   )
   if (!guide) return vueExpert
 
-  const cartes = cartesGuide(documents, inventaireSorties?.sorties)
+  const cartes = cartesGuide(documents, inventaireSorties?.sorties,
+    { sortiesIllisibles: Boolean(erreurSorties) && !inventaireSorties })
   const estDocument = (carte) => carte.source === 'document'
   return (
     <>
@@ -987,8 +1023,14 @@ export default function PanneauDocuments({
         enregistreLe={enregistreLe}
         enCoursDe={(c) => (estDocument(c) ? enCours === c.code : enCoursSortie === c.code)}
         erreursDe={(c) => (estDocument(c) ? erreurs[c.code] : erreursSorties[c.code])}
-        onTelecharger={(c) => (estDocument(c) ? telecharger(c.code) : telechargerSortie(c.entree))}
-        onApercu={(c) => (c.apercu === 'html' ? apercu(c.code) : apercuSortie(c.entree))}
+        onTelecharger={(c) => {
+          if (c.livre === 'schema_unifilaire') return schemaPdf(c, false) // ACAL1723
+          return estDocument(c) ? telecharger(c.code) : telechargerSortie(c.entree)
+        }}
+        onApercu={(c) => {
+          if (c.livre === 'schema_unifilaire') return schemaPdf(c, true) // ACAL1723
+          return c.apercu === 'html' ? apercu(c.code) : apercuSortie(c.entree)
+        }}
         // ACAL1726 — la première page réelle d'une pièce à aperçu HTML : le MÊME appel que « Aperçu », lu sans erreur affichée.
         chargerHtml={(c) => calepinageApi.calepinages
           .apercuDocument(id, c.code, { langue: langueDe(c.entree) }).then((r) => r.data)}

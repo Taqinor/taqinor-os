@@ -268,7 +268,9 @@ export default function AtelierPanneaux({
       {/* LA CIBLE, TELLE QUE LE SERVEUR LA SERT. `source` dit d'où elle vient
           (devis lié, factures du lead) : sans elle, personne ne peut savoir si
           le chiffre affiché engage un devis ou n'est qu'une estimation. */}
-      <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+      {/* ACAL1746 (K-COLONNE-ETROITE, règle d'ACAL1519) — colonnes automatiques : deux lignes de deux dans la colonne
+          de ~340 px, quatre côte à côte quand la place y est ; jamais un point de rupture de la fenêtre. */}
+      <dl className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(7rem,1fr))] gap-x-6 gap-y-4 break-words">
         <div>
           <dd className="fig text-lg text-foreground" data-testid="cal-cible-panneaux">
             {/* T4-X3-009 — le compte de la conception NOMME son panneau (« 8 panneaux de 550 W »), jamais un « 8 » nu. */}

@@ -42,12 +42,15 @@ import { buildSatelliteStyle } from '../../lib/roofConfig';
 import { PITCH_VIEW } from './constants';
 import { type Ctx } from './context';
 import { createScene3d } from './scene3d';
+import { type CouleurDe } from './canalTeinte';
+import { type EnvironmentObject } from './environment';
 import { type InitOptions } from './types';
 import { buildViewerFullPlan, viewerAreaRecords, zoomForSpanM } from './viewerFullModel';
 
 /** Jour de l'année du solstice d'hiver — MÊME soleil par défaut que le builder
  *  (midi au solstice : l'élévation de design de l'espacement anti-ombrage, où
- *  les rangées se dégagent visiblement). Aucun réglage n'est offert au client. */
+ *  les rangées se dégagent visiblement). Aucun réglage n'est offert au client
+ *  hors de la visionneuse au soleil des liens de confiance (`viewerSoleil.ts`). */
 const WINTER_SOLSTICE_DAY = 355;
 const DEFAULT_SUN_HOUR = 12;
 
@@ -83,6 +86,13 @@ export interface ViewerFullOptions {
   /** Délai au-delà duquel une carte qui n'a pas chargé est déclarée en panne
    *  (ms, défaut 15 000 — même ordre que le fetch de config du parcours). */
   loadTimeoutMs?: number;
+  /** LOT 6 (D-ACAL-135) — instant d'ouverture (jour 1-366, heure solaire). Absent = midi au solstice d'hiver. */
+  instant?: { jour: number; heure: number };
+  /** LOT 6 (D-ACAL-137) — objets voisins à hauteur saisie (géométrie seule). Absent = aucun, comme avant. */
+  environnement?: EnvironmentObject[];
+  /** LOT 6 (D-ACAL-136) — index des pans que la visionneuse au soleil TEINTERA. Le pan actif en fait partie ⇒ la scène
+   *  prend le verre et l'œil de l'atelier (`teinteAccesVisible`, sinon la teinte reste invisible). Absent = inchangé. */
+  indexTeintes?: readonly number[];
 }
 
 export interface ViewerFullHandle {
@@ -90,6 +100,15 @@ export interface ViewerFullHandle {
   destroy: () => void;
   /** Nombre de panneaux RÉELLEMENT dessinés (somme des pans) — pour un test/diagnostic. */
   panelCount: number;
+  /** LOT 6 — poignée ADDITIVE de la visionneuse au soleil (`viewerSoleil.ts`), inutilisée ailleurs. */
+  carte: maplibregl.Map;
+  zoomInitial: number;
+  /** Index (dans `roof_layout.zones`) du pan actif : le seul que la scène teinte. */
+  indexActif: number;
+  /** Écrit le soleil (jour, heure) et rejoue la scène avec les mêmes arguments ; la teinte est reposée. */
+  poserInstant: (jour: number, heure: number) => void;
+  /** `scene3d.setSolarAccessHeatmap` (pan actif), reposée après chaque rendu ; `null` l'éteint. */
+  teinter: (colorFor: CouleurDe) => void;
 }
 
 /** La feuille MapLibre n'est injectée qu'UNE fois par document (idempotent). */
@@ -149,7 +168,9 @@ export function bootViewerFull(
   //   sceneOrigin, obstacleMeshes, activePanel*, selectedObsId, layout*, sunHour,
   //   sunDay, shadeObstructions). On caste un objet partiel, MÊME procédé que
   //   `captureBoot.ts` : aucun autre champ n'existe dans ce mode.
-  const toolOpts: InitOptions = { maptilerKey, mapboxToken, reducedMotion };
+  // LOT 6 (P1) — verre et œil de l'atelier SEULEMENT quand le pan actif sera teinté (ACAL1984) ; sinon aucune clé.
+  const teinteAccesVisible = opts.indexTeintes?.includes(plan.activeIndex) === true;
+  const toolOpts: InitOptions = { maptilerKey, mapboxToken, reducedMotion, ...(teinteAccesVisible ? { teinteAccesVisible } : {}) };
   const areas = viewerAreaRecords(plan);
   const ctx = {
     opts: toolOpts,
@@ -179,8 +200,9 @@ export function bootViewerFull(
     shadeFactors: null,
     shadeAnnualFactor: 1,
     // Soleil : les valeurs par défaut du builder (midi, solstice d'hiver).
-    sunHour: DEFAULT_SUN_HOUR,
-    sunDay: WINTER_SOLSTICE_DAY,
+    sunHour: opts.instant?.heure ?? DEFAULT_SUN_HOUR,
+    sunDay: opts.instant?.jour ?? WINTER_SOLSTICE_DAY,
+    ...(opts.environnement?.length ? { environment: opts.environnement } : {}),
     centroidLat: plan.center[1],
     // ACAL262 — surfaces de pose publiées (tables moteur) : scene3d les dessine.
     surfacesPose: plan.surfacesPose,
@@ -244,13 +266,9 @@ export function bootViewerFull(
   // — Scène 3D : le module de l'ERP, en lecture seule —
   const scene3d = createScene3d(ctx, { map, lowEnd, shadowSize, readOnly: true });
 
-  map.on('load', () => {
-    // `addLayer` déclenche `onAdd` (renderer + scène + soleil) : renderScene ne
-    // peut être appelé qu'APRÈS.
-    map.addLayer(scene3d.customLayer);
-    // Le conteneur peut n'avoir sa taille finale qu'à l'ouverture du bloc 3D
-    // (voile masqué, section dépliée) — même précaution qu'à l'hydratation ERP.
-    map.resize();
+  let charge = false;
+  let teinte: CouleurDe = null;
+  const rendre = () => {
     // Pan ACTIF : bâtiment + dalle (photo satellite drapée) + panneaux + obstacles
     // + soleil. Les AUTRES pans sont ajoutés par `appendOtherZones` DEPUIS
     // renderScene (il lit `ctx.areas`), avec les mêmes matériaux (readOnly).
@@ -264,12 +282,36 @@ export function bootViewerFull(
       activePlan.grid.panels.length,
       activePlan.flush,
     );
+    if (teinte) scene3d.setSolarAccessHeatmap(teinte);
+  };
+
+  map.on('load', () => {
+    // `addLayer` déclenche `onAdd` (renderer + scène + soleil) : renderScene ne
+    // peut être appelé qu'APRÈS.
+    map.addLayer(scene3d.customLayer);
+    // Le conteneur peut n'avoir sa taille finale qu'à l'ouverture du bloc 3D
+    // (voile masqué, section dépliée) — même précaution qu'à l'hydratation ERP.
+    map.resize();
+    rendre();
+    charge = true;
     opts.onReady?.();
   });
 
   let destroyed = false;
   return {
     panelCount: plan.totalPanels,
+    carte: map,
+    zoomInitial: zoom,
+    indexActif: plan.activeIndex,
+    poserInstant(jour, heure) {
+      ctx.sunDay = jour;
+      ctx.sunHour = heure;
+      if (charge && !destroyed) rendre();
+    },
+    teinter(colorFor) {
+      teinte = colorFor;
+      if (charge && !destroyed) scene3d.setSolarAccessHeatmap(colorFor);
+    },
     destroy() {
       if (destroyed) return;
       destroyed = true;

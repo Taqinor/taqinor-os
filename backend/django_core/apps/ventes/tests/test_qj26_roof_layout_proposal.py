@@ -9,12 +9,14 @@ Run:
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_qj26_roof_layout_proposal -v 2
 """
+import copy
 import json
 import uuid
 from decimal import Decimal
+from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
-from django.test import Client as DjangoClient, TestCase
+from django.test import Client as DjangoClient, SimpleTestCase, TestCase
 
 from apps.crm.models import Client
 from apps.stock.models import Produit
@@ -116,6 +118,160 @@ def sample_layout_v2():
                    {'cx': 2.3, 'cy': 0.0, 'face': 'E'}],
     }
     return layout
+
+
+def layout_soleil():
+    """D-ACAL-132 — le layout v2 + ce que l'atelier ENREGISTRE pour la
+    visionneuse au soleil : l'accès par module (``solarAccess``, CAL248), les
+    objets voisins (``environment``) et l'instant de scène (``scene``).
+
+    Pan ``z1`` : 4 cellules dont UNE illisible (``cy`` texte, écartée du dessin
+    par ``_safe_zone_geometry``) → 3 panneaux servis, 3 valeurs réalignées.
+    Pan ``z2`` : 2 cellules mais 3 valeurs → OMIS en bloc."""
+    layout = sample_layout_v2()
+    layout['zones'][0]['geometry']['panels'] = [
+        {'cx': 0.0, 'cy': 0.0}, {'cx': 1.15, 'cy': 'gauche'},
+        {'cx': 2.3, 'cy': 0.0}, {'cx': 3.45, 'cy': 0.0}]
+    layout['zones'][0]['geometry']['solarAccess'] = {
+        'values': [0.91234, 0.5, None, 0.75],
+        'method': 'methode-interne-xyz', 'assumptions': ['hypothese-interne-xyz'],
+        'computedAt': '2026-11-20T09:14:05.000Z'}
+    layout['zones'].append({
+        'id': 'z2', 'label': 'Pan Nord', 'vertices': [[0, 0], [4, 0], [4, 3]],
+        'geometry': {'count': 2, 'panels': [{'cx': 0.0, 'cy': 0.0},
+                                            {'cx': 1.15, 'cy': 0.0}],
+                     'solarAccess': {'values': [0.8, 0.7, 0.6]}}})
+    layout['environment'] = [
+        {'id': 'env-1', 'label': 'Arbre du voisin Benali', 'kind': 'arbre',
+         'centerLng': -7.6195, 'centerLat': 33.5741, 'heightM': 7.5,
+         'crownDiameterM': 5, 'evergreen': True, 'hauteurFutureM': 12,
+         'dansAns': 5, 'prix_achat': 9999},
+        {'id': 'env-2', 'label': 'Garage', 'kind': 'batiment',
+         'centerLng': -7.6201, 'centerLat': 33.5738, 'heightM': 9,
+         'footprint': [[-7.62015, 33.57385], [-7.62005, 33.57385],
+                       [-7.62005, 33.57375]]},
+        {'id': 'env-3', 'kind': 'arbre', 'centerLng': -7.62, 'centerLat': 33.57,
+         'heightM': 6, 'supposeCoupe': True},
+        {'id': 'env-4', 'kind': 'poteau', 'centerLng': -7.62, 'centerLat': 33.57,
+         'heightM': 0, 'diameterM': 0.3},
+        {'id': 'env-5', 'kind': 'voiture', 'centerLng': -7.62, 'centerLat': 33.57,
+         'heightM': 2},
+    ]
+    layout['scene'] = {'sunDay': 172, 'sunHour': 16.5}
+    return layout
+
+
+def _devis_sans_base(roof_layout):
+    """Un devis ENVOYÉ en mémoire : ``_safe_roof_layout`` n'interroge la base
+    que pour un brouillon enregistré (ACAL1196)."""
+    return SimpleNamespace(roof_layout=roof_layout, statut='envoye', pk=None)
+
+
+class TestVisionneuseSoleilPure(SimpleTestCase):
+    """D-ACAL-132 à 138 — ``visionneuse_soleil_publique`` sans base : la porte
+    de niveau, l'alignement sur les panneaux SERVIS, l'omission d'un pan aux
+    longueurs différentes, aucune teinte sans mesure, la lecture pure."""
+
+    def _servir(self, layout, niveau=ShareLink.NIVEAU_CONFIANCE):
+        from apps.ventes.public.visionneuse_soleil import (
+            visionneuse_soleil_publique)
+        from apps.ventes.public_views import _safe_roof_layout
+        devis = _devis_sans_base(layout)
+        return visionneuse_soleil_publique(devis, _safe_roof_layout(devis), niveau)
+
+    def test_standard_ou_sans_calepinage_servi_cle_absente(self):
+        from apps.ventes.public.visionneuse_soleil import (
+            visionneuse_soleil_publique)
+        self.assertIsNone(self._servir(layout_soleil(), ShareLink.NIVEAU_STANDARD))
+        devis = _devis_sans_base(layout_soleil())
+        for servi in (None, {}):
+            self.assertIsNone(visionneuse_soleil_publique(
+                devis, servi, ShareLink.NIVEAU_CONFIANCE))
+
+    def test_acces_realigne_sur_les_panneaux_servis(self):
+        from apps.ventes.public_views import _safe_roof_layout
+        cle = self._servir(layout_soleil())
+        self.assertEqual(set(cle), {'version', 'zones', 'environnement',
+                                    'instant_choisi'})
+        self.assertEqual(cle['version'], 1)
+        zone, = cle['zones']  # z2 (3 valeurs pour 2 cellules) est omis
+        self.assertEqual(zone, {'index': 0, 'id': 'z1',
+                                'acces': [0.912, None, 0.75],
+                                'calcule_le': '2026-11-20T09:14:05.000Z'})
+        servis = _safe_roof_layout(_devis_sans_base(layout_soleil()))
+        self.assertEqual(len(zone['acces']),
+                         len(servis['zones'][0]['geometry']['panels']))
+
+    def test_index_du_pan_servi_et_longueurs_differentes(self):
+        layout = layout_soleil()
+        layout['zones'].insert(0, 'pas un dict')  # jamais servi, jamais compté
+        self.assertEqual([z['index'] for z in self._servir(layout)['zones']], [0])
+        layout['zones'][1]['geometry']['solarAccess']['values'].append(0.9)
+        self.assertEqual(self._servir(layout)['zones'], [])
+
+    def test_sans_mesure_aucune_teinte(self):
+        layout = layout_soleil()
+        for zone in layout['zones']:
+            zone['geometry'].pop('solarAccess')
+        self.assertEqual(self._servir(layout)['zones'], [])
+        layout = layout_soleil()
+        layout['zones'][0]['geometry']['solarAccess']['values'] = [None, 'x', 3, -1]
+        self.assertEqual(self._servir(layout)['zones'], [])  # rien d'exploitable
+
+    def test_valeur_hors_bornes_non_teintee_jamais_corrigee(self):
+        layout = layout_soleil()
+        layout['zones'][0]['geometry']['solarAccess']['values'] = [1.2, 0.5, -0.1, 0.4]
+        self.assertEqual(self._servir(layout)['zones'][0]['acces'], [None, None, 0.4])
+
+    def test_repere_partage_par_deux_pans_omis(self):
+        layout = layout_soleil()
+        layout['zones'][1]['label'] = 'z1'  # le lecteur du calepinage les confond
+        self.assertEqual(self._servir(layout)['zones'], [])
+
+    def test_environnement_geometrie_seule(self):
+        env = self._servir(layout_soleil())['environnement']
+        self.assertEqual(env, [
+            {'kind': 'arbre', 'centerLng': -7.6195, 'centerLat': 33.5741,
+             'heightM': 7.5, 'crownDiameterM': 5.0, 'evergreen': True},
+            {'kind': 'batiment', 'centerLng': -7.6201, 'centerLat': 33.5738,
+             'heightM': 9.0, 'footprint': [[-7.62015, 33.57385],
+                                           [-7.62005, 33.57385],
+                                           [-7.62005, 33.57375]]}])
+
+    def test_instant_choisi_et_defaut(self):
+        layout = layout_soleil()
+        self.assertEqual(self._servir(layout)['instant_choisi'],
+                         {'jour': 172, 'heure': 16.5})
+        for scene in ({'sunDay': 355, 'sunHour': 12}, None, {'sunDay': 400, 'sunHour': 12},
+                      {'sunDay': True, 'sunHour': 12}):
+            layout['scene'] = scene
+            self.assertIsNone(self._servir(layout)['instant_choisi'])
+        layout.pop('scene')
+        self.assertIsNone(self._servir(layout)['instant_choisi'])
+
+    def test_lecture_pure(self):
+        from apps.ventes.public.visionneuse_soleil import (
+            visionneuse_soleil_publique)
+        from apps.ventes.public_views import _safe_roof_layout
+        layout = layout_soleil()
+        devis = _devis_sans_base(layout)
+        servi = _safe_roof_layout(devis)
+        avant, servi_avant = copy.deepcopy(layout), copy.deepcopy(servi)
+        visionneuse_soleil_publique(devis, servi, ShareLink.NIVEAU_CONFIANCE)
+        self.assertEqual(layout, avant)
+        self.assertEqual(servi, servi_avant)
+        self.assertEqual(set(vars(devis)), {'roof_layout', 'statut', 'pk'})
+
+    def test_forme_du_contrat_dedie(self):
+        from pathlib import Path
+        contrat = json.loads((Path(__file__).resolve().parent.parent
+                              / 'contract_samples' / 'visionneuse_soleil.json')
+                             .read_text(encoding='utf-8'))
+        exemple = contrat['exemple']['visionneuse_soleil']
+        cle = self._servir(layout_soleil())
+        self.assertEqual(set(cle), set(exemple))
+        self.assertEqual(set(cle), set(contrat['exemple_sans_mesure']['visionneuse_soleil']))
+        self.assertEqual(set(cle['zones'][0]), set(exemple['zones'][0]))
 
 
 class TestSafeRoofLayoutV2Whitelist(TestCase):
@@ -326,6 +482,60 @@ class TestProposalRoofLayoutPayload(TestCase):
         self.assertEqual(resp.status_code, 200)
         payload = resp.json()
         self.assertIsNone(payload['roof_layout'])
+        self.assertNotIn('visionneuse_soleil', payload)  # D-ACAL-132
+
+    def _get_lien(self, devis, **lien):
+        token = str(uuid.uuid4())
+        ShareLink.objects.create(company=self.company, devis=devis,
+                                 token=token, **lien)
+        return DjangoClient().get(f'/api/django/public/proposal/{token}/data/')
+
+    def test_visionneuse_soleil_confiance_seulement(self):
+        """D-ACAL-132/134 — servie au lien « confiance » au calepinage servi,
+        ABSENTE au lien « standard » et quand « Calepinage 3D » est décoché."""
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           'DEV-QJ26-SOL1', roof_layout=layout_soleil())
+        payload = self._get_payload(devis).json()
+        cle = payload['visionneuse_soleil']
+        self.assertEqual(cle['zones'], [{
+            'index': 0, 'id': 'z1', 'acces': [0.912, None, 0.75],
+            'calcule_le': '2026-11-20T09:14:05.000Z'}])
+        self.assertEqual(
+            len(cle['zones'][0]['acces']),
+            len(payload['roof_layout']['zones'][0]['geometry']['panels']))
+        self.assertEqual(cle['instant_choisi'], {'jour': 172, 'heure': 16.5})
+        standard = self._get_lien(devis, niveau=ShareLink.NIVEAU_STANDARD)
+        self.assertEqual(standard.status_code, 200)
+        self.assertNotIn('visionneuse_soleil', standard.json())
+        masque = self._get_lien(devis, niveau=ShareLink.NIVEAU_CONFIANCE,
+                                sections={'roof3d': False})
+        self.assertEqual(masque.status_code, 200)
+        self.assertNotIn('visionneuse_soleil', masque.json())
+
+    def test_visionneuse_soleil_sans_mesure_sans_teinte(self):
+        """D-ACAL-136 — aucun accès enregistré : la clé est là, sans teinte."""
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           'DEV-QJ26-SOL2', roof_layout=sample_layout_v2())
+        self.assertEqual(self._get_payload(devis).json()['visionneuse_soleil'], {
+            'version': 1, 'zones': [], 'environnement': [],
+            'instant_choisi': None})
+
+    def test_visionneuse_soleil_rien_d_interne_rien_ecrit(self):
+        """D-ACAL-137 — ni libellé, ni identifiant d'objet, ni méthode ou
+        hypothèse du calcul, ni prix ; et la lecture n'écrit rien sur le devis
+        (document et empreintes intacts)."""
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           'DEV-QJ26-SOL3', roof_layout=layout_soleil())
+        devis.refresh_from_db()
+        avant = (devis.layout_hash, devis.electrical_design_hash)
+        blob = json.dumps(self._get_payload(devis).json()['visionneuse_soleil'])
+        for fuite in ('label', 'Benali', 'Garage', 'env-1', 'hauteurFutureM',
+                      'dansAns', 'supposeCoupe', 'methode-interne-xyz',
+                      'hypothese-interne-xyz', 'prix_achat', '9999', 'voiture'):
+            self.assertNotIn(fuite, blob)
+        devis.refresh_from_db()
+        self.assertEqual(devis.roof_layout, layout_soleil())
+        self.assertEqual((devis.layout_hash, devis.electrical_design_hash), avant)
 
     def test_full_payload_never_leaks_buy_price(self):
         """The whole proposal payload must never contain the reseller buy price

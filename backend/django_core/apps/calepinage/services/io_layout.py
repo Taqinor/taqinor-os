@@ -323,10 +323,19 @@ def valider_factures_mois(document):
     try:
         jsonschema.validate(consommation['factures_mois'], sous_schema)
     except jsonschema.exceptions.ValidationError as erreur:
+        champ = str(erreur.absolute_path[-1]) if erreur.absolute_path else ''
         chemin = '.'.join(['consumption', 'factures_mois']
                           + [str(segment) for segment in erreur.absolute_path])
+        propres = sous_schema['items']['properties']
+        phrases = {
+            'mois': 'le mois doit être un entier de %d à %d' % (
+                propres['mois']['minimum'], propres['mois']['maximum']),
+            'valeur': 'la valeur doit être un nombre strictement positif',
+            'unite': "l'unité doit être " + ' ou '.join('« %s »' % u for u in propres['unite']['enum']),
+        }
         raise ImportLayoutRefuse(
-            f'Document refusé au champ « {chemin} » : {erreur.message}.',
+            'Facture mensuelle refusée (%s) : %s.' % (
+                chemin, phrases.get(champ, 'valeur hors contrat')),
             champ=chemin) from erreur
 
 

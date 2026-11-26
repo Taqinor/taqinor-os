@@ -253,7 +253,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
           type="button"
           onClick={recupererDepuisPvgis}
           disabled={recuperation || !calepinageId}
-          className="rounded border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50"
+          className="min-h-11 rounded border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50"
         >
           {recuperation ? 'Récupération…' : 'Récupérer depuis PVGIS'}
         </button>
@@ -262,7 +262,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
       <div className="mt-3 flex flex-wrap items-end gap-3" data-testid="cal-horizon-import">
         <label className="block">
           <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fichier d’horizon (.txt, .csv)</span>
-          <input type="file" accept=".txt,.csv,text/plain" onChange={choisirFichier} className="mt-1 block text-sm text-foreground" data-testid="cal-horizon-fichier" />
+          <input type="file" accept=".txt,.csv,text/plain" onChange={choisirFichier} className="mt-1 block min-h-11 text-sm text-foreground" data-testid="cal-horizon-fichier" />
         </label>
         <label className="flex items-center gap-1 text-sm text-foreground">
           <input type="radio" name="cal-horizon-convention" checked={convention === CONVENTION_NORD} onChange={() => setConvention(CONVENTION_NORD)} />
@@ -276,7 +276,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
           type="button"
           onClick={importerFichier}
           disabled={!fichier || (convention === null && nombreDeColonnes(fichier.texte) !== 1)}
-          className="rounded border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50"
+          className="min-h-11 rounded border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50"
         >
           Importer
         </button>
@@ -340,7 +340,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
               step="any"
               value={saisie.azimut}
               onChange={(e) => setSaisie((s) => ({ ...s, azimut: e.target.value }))}
-              className="mt-1 w-28 rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+              className="mt-1 min-h-11 w-28 rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
             />
           </label>
           <label className="block" data-testid="cal-horizon-champ-hauteur">
@@ -350,13 +350,13 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
               step="any"
               value={saisie.hauteur}
               onChange={(e) => setSaisie((s) => ({ ...s, hauteur: e.target.value }))}
-              className="mt-1 w-28 rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+              className="mt-1 min-h-11 w-28 rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
             />
           </label>
           <button
             type="button"
             onClick={ajouterPoint}
-            className="rounded border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted"
+            className="min-h-11 rounded border border-border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted"
           >
             Ajouter le point
           </button>
@@ -398,12 +398,13 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
         </details>
       )}
 
-      <div className="mt-4 flex items-center gap-3">
+      {/* ACAL1815 — le message passe SOUS le bouton (pleine largeur) : sur la même rangée, il l'écrasait au téléphone. */}
+      <div className="mt-4 flex flex-col items-start gap-2" data-testid="cal-horizon-enregistrer-rangee">
         <button
           type="button"
           onClick={enregistrer}
           disabled={doc.etat !== 'ok' || tourIncomplet}
-          className="rounded border border-brass-400/60 px-4 py-2 text-sm font-semibold text-primary-text hover:bg-brass-400/10 disabled:opacity-50"
+          className="min-h-11 rounded border border-brass-400/60 px-4 py-2 text-sm font-semibold text-primary-text hover:bg-brass-400/10 disabled:opacity-50"
         >
           Enregistrer le profil
         </button>
@@ -417,7 +418,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
             {MESSAGE_ILLISIBLE}
           </p>
         )}
-        {message && <p className="text-sm text-muted-foreground" role="status">{message}</p>}
+        {message && <p className="w-full text-sm text-muted-foreground" role="status">{message}</p>}
       </div>
     </div>
     </>

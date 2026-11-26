@@ -152,27 +152,27 @@ dimensionner le SVG neuf), `backend/django_core/apps/ventes/contract_samples/pro
 `test_qjr_sld_variante.py`, `test_sld_batterie_packs.py`, `test_regles_calcul_rendu_origine.py`,
 `tests/golden/regles_calcul_origine.json`, `test_quote_engine.py` (pages inchangées).
 
-- [ ] SCHEL-B1 — `core/electrique/schema_electrique.py::document_schema_electrique(entree, resultat, *, chaines,
+- [x] SCHEL-B1 — `core/electrique/schema_electrique.py::document_schema_electrique(entree, resultat, *, chaines,
   option, source, standard, cote_reseau, unites_batterie, nombre_onduleurs, libelles)` → `Doc` (organes tirés de
   `blocs_du_schema`, coffrets `null` sans organe, `liaisons` par la règle « section commune / longueur si un seul
   tronçon », `terre` = la condition de `_barrette_de_terre`) ; `chaines_colorees(...)` applique `PALETTE_CHAINES`
   (déplacée dans `core/electrique/schema.py`, importée par `apps/calepinage/services/chaines.py` — une seule
   source). Fonctions ≤ 60 lignes. Tests dans `core/tests/test_electrique_schema.py` (avec et sans batterie, 4
   chaînes sur 2 entrées, standard, MT, hors réseau, aucun mot d'argent).
-- [ ] SCHEL-B2 — calepinage : `sld.py::schema_du_calepinage` sert `schema_electrique` (chaînes de l'affectation
+- [x] SCHEL-B2 — calepinage : `sld.py::schema_du_calepinage` sert `schema_electrique` (chaînes de l'affectation
   servie, `_couleurs_des_chaines` l. 669 réutilisé ; batterie quand l'option retenue par la conception
   `services/devis_retenu.py::conception_du_calepinage` est « avec » ou qu'elle est déclarée, résolue par
   `batterie_du_calepinage`, capacité = `kwh_nominal` de la fiche × packs, jamais la capacité utile supposée) ;
   `views/schema.py::CLES_SCHEMA` + `calepinage_sld.json` (chaque état) + `test_calx204_contrat_sld.py::CLES_REPONSE`.
   Sélecteur `apps/calepinage/selectors.py::schema_electrique_du_calepinage(calepinage)` pour `apps/ventes`.
-- [ ] SCHEL-B3 — devis : `electrical_service.py::schema_electrique_du_devis(devis, *, standard=False)` →
+- [x] SCHEL-B3 — devis : `electrical_service.py::schema_electrique_du_devis(devis, *, standard=False)` →
   `{options: {...}}` selon D-ACAL-131 ; `_option_choisie` accepte une variante IMPOSÉE (l'autre option, calcul
   `persister=False`) ; `unites` / `nombre` lus sur les lignes de l'option. `diagram_views.py::schema_unifilaire_devis`
   ajoute `schema_electrique` au format json (+ `openapi_shapes.py`). `public_views.py` pose la clé additive derrière
   la case `sld` (fichier-mur, budget : ligne SCHEL-B3m) ; `proposal_data.json` (deux copies) porte la clé ;
   `test_pv81_proposition_sld.py` arme la liste blanche (aucune clé hors contrat, aucun prix, `prix_achat` absent).
-- [ ] SCHEL-B3m — `backend/django_core/apps/ventes/public_views.py` : clé additive `schema_electrique`, lignes nettes attendues ≤ 12
-- [ ] SCHEL-B4 — annexe PV46, nouveaux rendus seulement : `regles_calcul.py` gagne `COUPURE_SCHEMA_ELECTRIQUE =
+- [x] SCHEL-B3m — `backend/django_core/apps/ventes/public_views.py` : clé additive `schema_electrique`, lignes nettes attendues ≤ 12
+- [x] SCHEL-B4 — annexe PV46, nouveaux rendus seulement : `regles_calcul.py` gagne `COUPURE_SCHEMA_ELECTRIQUE =
   (2026, 11, 27)` (à confirmer avec Reda : jour suivant la décision, comme D-ACAL-102), `schema_electrique_ouvert(devis)`
   par `_ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111, …)` et son drapeau dans `drapeaux_nouveaux_rendus`
   posé SEULEMENT quand l'annexe est demandée ; `artefacts_rendu.py::_sld_svg` rend

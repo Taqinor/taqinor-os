@@ -480,6 +480,14 @@ class EntreeElectrique:
     #: VALIDÉ en visite (CIQ660). ``None`` (défaut) = site BT : le schéma est
     #: alors octet pour octet celui d'avant.
     etage_mt: Optional[EtageMt] = None
+    #: Chaînes de longueurs DIFFÉRENTES d'une entrée MPPT à l'autre (les
+    #: chaînes en parallèle sur une MÊME entrée restent égales) — essayées
+    #: SEULEMENT quand la partition égale d'un pan ne tient pas (aucune
+    #: partition égale, Isc publié ou Imp d'entrée dépassé). ``False`` (défaut)
+    #: = la répartition d'avant, octet pour octet : le devis (``apps.ventes``)
+    #: ne la demande pas, seul le calepinage la demande. Hors de toute
+    #: empreinte d'entrée (``electrical_service._empreinte`` énumère ses clés).
+    chaines_inegales_entre_entrees: bool = False
 
     @property
     def nb_modules(self):

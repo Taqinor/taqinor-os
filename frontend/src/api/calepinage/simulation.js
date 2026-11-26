@@ -128,6 +128,14 @@ export const simulation = {
       api.get(`${pivot(id)}schema-unifilaire.dxf/`, { responseType: 'blob',
         ...(options?.suppressErrorToast ? { suppressErrorToast: true } : {}),
         ...(options?.timeout ? { timeout: options.timeout } : {}) }),
+
+    // ACAL1507/1508 — le MÊME schéma, en PDF A3 (`views/schema.py`, `url_path='schema-unifilaire.pdf'`) :
+    // le dessin de l'écran, onduleur, coffrets, protections et terre, avec son cartouche. Réponse BLOB ;
+    // un refus 409 NOMME le champ (même lecture que `sldDxf`).
+    sldPdf: (id, options) =>
+      api.get(`${pivot(id)}schema-unifilaire.pdf/`, { responseType: 'blob',
+        ...(options?.suppressErrorToast ? { suppressErrorToast: true } : {}),
+        ...(options?.timeout ? { timeout: options.timeout } : {}) }),
 }
 // ACAL387 — contrat calepinage_profil_depart.json (M0)
 // ACAL388 — contrat calepinage_balayage.json (M0)

@@ -15,6 +15,9 @@ from __future__ import annotations
 
 import unittest
 
+from core.electrique.chaines import fenetre_admissible
+from core.electrique.types import SpecModule, SpecOnduleur
+
 from apps.calepinage.services.chaines import (
     SOURCE_AUTO,
     SOURCE_MANUELLE,
@@ -34,10 +37,24 @@ class _Chaine:
         self.repere = repere
 
 
+#: La fenêtre de tension que le NOYAU calcule pour ces fiches d'essai : 400 V
+#: de Voc par module sous 1 000 V ⇒ 2 modules au plus (borne Voc), 3 au plus
+#: sous le haut de plage MPPT ; aucune borne basse au-delà d'un module.
+_MODULE = SpecModule(vmp_v=300.0, voc_v=400.0, isc_a=10.0, imp_a=9.0,
+                     pmax_wc=400.0)
+_ONDULEUR = SpecOnduleur(n_mppt=2, mppt_v_min=100.0, mppt_v_max=1000.0,
+                         v_max_abs=1000.0, i_max_mppt_a=20.0, ac_kw=5.0)
+
+
 class _Resultat:
     def __init__(self, chaines):
         self.chaines = chaines
         self.repartitions = ()
+        self.fenetre = fenetre_admissible(_MODULE, _ONDULEUR, 25.0, 25.0)
+
+
+class _Entree:
+    onduleur = _ONDULEUR
 
 
 class _Evaluation:
@@ -55,7 +72,7 @@ class _Conception:
             _Chaine('PAN-A', 2, 1, 'CH1'),
             _Chaine('PAN-B', 2, 2, 'CH2'),
         ))
-        self.entree = None
+        self.entree = _Entree()
 
     @property
     def chaines(self):
@@ -210,6 +227,20 @@ class VerdictTest(unittest.TestCase):
         self.assertIn('Chaîne 7', refus[0])
         self.assertIn('PAN-A', refus[0])
         self.assertIn('tension à froid', refus[0])
+        # La borne VRAIE : celle que le noyau calcule (Voc 400 V par module,
+        # 1 000 V au plus), jamais la longueur retenue par l'automatique.
+        self.assertIn('3 modules, maximum 2', refus[0])
+        self.assertIn("tension maximale 1000,0 V de l'onduleur", refus[0])
+        self.assertIn('(2 modules au plus)', refus[0])
+
+    def test_une_chaine_plus_longue_que_l_automatique_mais_dans_la_fenetre(self):
+        conception = _conception()
+        conception.resultat.chaines = (_Chaine('PAN-A', 1, 1, 'CH1'),
+                                       _Chaine('PAN-B', 1, 2, 'CH2'))
+        self.assertEqual(verdict_affectation(
+            conception, normaliser_affectation_imposee([
+                {'module': 'PAN-A#1', 'chaine': 1, 'mppt': 1},
+                {'module': 'PAN-A#2', 'chaine': 1, 'mppt': 1}])), ())
 
     def test_trop_de_chaines_sur_une_entree_mppt(self):
         refus = self._verdict([
@@ -220,6 +251,25 @@ class VerdictTest(unittest.TestCase):
         ], specs={'chaines_max_par_mppt': 1})
         self.assertTrue(any('Entrée MPPT' in message for message in refus))
         self.assertTrue(any('maximum 1' in message for message in refus))
+
+    def test_chaines_inegales_en_parallele_sur_une_entree_refusees(self):
+        refus = self._verdict([
+            {'module': 'PAN-A#1', 'chaine': 1, 'mppt': 1, 'onduleur': 1},
+            {'module': 'PAN-A#2', 'chaine': 1, 'mppt': 1, 'onduleur': 1},
+            {'module': 'PAN-B#1', 'chaine': 3, 'mppt': 1, 'onduleur': 1},
+        ])
+        self.assertIn(
+            "Entrée MPPT 1 : chaînes 1, 3 en parallèle de 2 et 1 modules — des "
+            "chaînes en parallèle sur une même entrée doivent avoir la même "
+            "longueur (des entrées différentes peuvent différer).", refus)
+
+    def test_longueurs_differentes_sur_des_entrees_differentes_admises(self):
+        refus = self._verdict([
+            {'module': 'PAN-A#1', 'chaine': 1, 'mppt': 1, 'onduleur': 1},
+            {'module': 'PAN-A#2', 'chaine': 1, 'mppt': 1, 'onduleur': 1},
+            {'module': 'PAN-B#1', 'chaine': 3, 'mppt': 2, 'onduleur': 1},
+        ])
+        self.assertEqual([m for m in refus if 'en parallèle' in m], [])
 
     def test_fiche_muette_ne_produit_aucun_faux_rouge(self):
         # Sans ``chaines_max_par_mppt`` publié, on ne SUPPOSE pas une limite.

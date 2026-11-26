@@ -160,6 +160,21 @@ COUPURE_PHRASES_PROFIL = (2026, 11, 26)
 #: (:func:`phrases_pdf_2511_ouvertes`), même mécanique que
 #: :data:`COUPURE_PHRASES_PROFIL` ; le niveau 15 n'est pas rendu courant.
 COUPURE_PDF_2511 = (2026, 11, 26)
+#: SCHEL-B4 (lot 6, fondateur 26/11/2026 — le schéma électrique du calepinage
+#: remplace le schéma unifilaire du devis) : l'annexe technique PV46 du PDF
+#: dessine le schéma électrique pour les NOUVEAUX RENDUS seulement — même
+#: mécanique que :data:`COUPURE_PDF_2511`, le niveau 15 n'est pas rendu
+#: courant. Le lendemain de la décision (comme D-ACAL-102), À CONFIRMER avec
+#: Reda : un devis envoyé avant garde l'annexe qu'il a reçue.
+COUPURE_SCHEMA_ELECTRIQUE = (2026, 11, 27)
+#: D-ACAL-139 (orchestrateur 26/11/2026, À CONFIRMER avec Reda) : l'étude
+#: électrique du devis (``electrical_service`` → ``core.electrique.concevoir``)
+#: câble des chaînes INÉGALES d'une entrée MPPT à l'autre quand la partition
+#: égale ne tient pas (35 × 715 Wc sur un hybride 2 entrées à 54 A : 12 + 12 |
+#: 11, plus 5 × 7 hors spécification). Calculs NEUFS seulement : même mécanique
+#: que :data:`COUPURE_SCHEMA_ELECTRIQUE`, le niveau 15 n'est pas rendu courant ;
+#: un devis envoyé avant garde son étude, son annexe et son bordereau.
+COUPURE_CHAINES_INEGALES = (2026, 11, 27)
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
 REGLES_COURANTES = REGLES_SENSIBILITES_1911
 
@@ -220,10 +235,36 @@ def drapeaux_pdf_2511(devis) -> dict:
     return {}
 
 
-def drapeaux_nouveaux_rendus(devis) -> dict:
+def schema_electrique_ouvert(devis) -> bool:
+    """SCHEL-B4 — l'annexe PV46 de ce devis dessine-t-elle le schéma
+    électrique ? Voir :data:`COUPURE_SCHEMA_ELECTRIQUE`."""
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111,
+                                       COUPURE_SCHEMA_ELECTRIQUE)
+
+
+def chaines_inegales_ouvertes(devis) -> bool:
+    """D-ACAL-139 — l'étude électrique de ce devis peut-elle câbler des chaînes
+    inégales entre entrées MPPT ? Voir :data:`COUPURE_CHAINES_INEGALES`. Hors
+    de toute empreinte : une étude rangée n'est jamais recalculée pour ça."""
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111,
+                                       COUPURE_CHAINES_INEGALES)
+
+
+def drapeaux_schema_electrique(devis) -> dict:
+    """SCHEL-B4 — drapeau de RENDU du cas OUVERT : ``{'schema_electrique_annexe':
+    True}`` quand l'annexe dessine le schéma électrique, ``{}`` sinon. Posé
+    SEULEMENT quand l'annexe est demandée (``quote_engine/artefacts_rendu``) :
+    l'empreinte des données ne bouge que pour les PDF dont l'annexe change."""
+    return {'schema_electrique_annexe': True} if schema_electrique_ouvert(devis) else {}
+
+
+def drapeaux_nouveaux_rendus(devis, *, annexe=False) -> dict:
     """Les drapeaux de rendu « nouveaux rendus seulement » posés par le builder
-    (D-ACAL-102, D-ACAL-111 à 114) : cas OUVERT seulement."""
-    return {**drapeaux_phrases_profil(devis), **drapeaux_pdf_2511(devis)}
+    (D-ACAL-102, D-ACAL-111 à 114) : cas OUVERT seulement. ``annexe`` (SCHEL-B4)
+    ajoute celui de l'annexe technique ; le builder ne le passe pas (l'annexe
+    pose le sien elle-même), sa charge reste donc identique."""
+    return {**drapeaux_phrases_profil(devis), **drapeaux_pdf_2511(devis),
+            **(drapeaux_schema_electrique(devis) if annexe else {})}
 
 
 def hybrides_ht_ouverts(devis) -> bool:

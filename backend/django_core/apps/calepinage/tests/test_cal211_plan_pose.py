@@ -440,6 +440,28 @@ class BandeauDansLaPageTest(SimpleTestCase):
         self.assertEqual(traversants, [])
 
 
+class TitreDuBandeauRepliTest(SimpleTestCase):
+    """ACAL1717 — un titre long (« Plan de pose — F2-DOCS-a Villa Essaouira 2
+    pans ») se replie aux mots dans le bandeau : aucune ligne ne dépasse sa
+    largeur et le titre se relit entier."""
+
+    TITRE = 'Plan de pose — F2-DOCS-a Villa Essaouira 2 pans'
+
+    def test_un_titre_long_est_replie_et_se_relit_entier(self):
+        from apps.calepinage.services.planche import (
+            CARACTERES_PAR_LIGNE_TITRE_BANDEAU,
+        )
+
+        svg = svg_de_planche(geometrie_de_planche(LAYOUT), titre=self.TITRE,
+                             contenu=CONTENU_POSE)
+        lignes = re.findall(
+            r'<text[^>]*font-size="5" font-weight="bold"[^>]*>([^<]*)</text>', svg)
+        self.assertGreater(len(lignes), 1)
+        self.assertTrue(all(len(x) <= CARACTERES_PAR_LIGNE_TITRE_BANDEAU
+                            for x in lignes), lignes)
+        self.assertEqual(html.unescape(' '.join(lignes)), self.TITRE)
+
+
 def pan_de_10_sur_6(pose='portrait'):
     """ACAL591 - un pan rectangulaire de 10 x 6 m (repere local, metres),
     plein sud, a plat, module 1,7 x 1,1 m dont la pose est ``pose``."""
@@ -691,6 +713,57 @@ class FeuilleCoteeTest(SimpleTestCase):
         for cote, (x, y) in lettres.items():
             self.assertGreaterEqual(x, 0.0, cote)
             self.assertGreaterEqual(y, 0.0, cote)
+
+
+def boites_de_textes(svg):
+    """ACAL1935 — la boîte (x0, y0, x1, y1, texte) de chaque ``<text>`` du SVG : largeur ≈ 0,6 × le corps
+    par caractère (DejaVu Sans, comme les autres gardes de ce module), hauteur = le corps ; un texte
+    tourné de −90° (cote verticale) échange les deux dimensions."""
+    boites = []
+    for m in re.finditer(r'<text ([^>]*)>([^<]*)</text>', svg):
+        attrs = dict(re.findall(r'([\w-]+)="([^"]*)"', m.group(1)))
+        corps = float(attrs.get('font-size', 3.2))
+        x, y = float(attrs['x']), float(attrs['y'])
+        texte = html.unescape(m.group(2))
+        largeur, hauteur = 0.6 * corps * len(texte), corps
+        ancre = attrs.get('text-anchor', 'start')
+        debut = {'start': 0.0, 'middle': -largeur / 2.0, 'end': -largeur}[ancre]
+        if 'rotate(-90' in attrs.get('transform', ''):
+            boites.append((x - hauteur, y - debut - largeur, x, y - debut, texte))
+        else:
+            boites.append((x + debut, y - hauteur, x + debut + largeur, y, texte))
+    return boites
+
+
+class CotesDeRiveSansChevauchementTest(SimpleTestCase):
+    """ACAL1935 — sur la page d'un pan, ni une cote de rive ni sa lettre N/E/S/O n'en recoupe une autre, et
+    aucun texte ne sort de la feuille (x ≥ 0) : « 0,00 m » tourné coupé à x = −1,8, « 0,82 m » sur le E."""
+
+    def feuille(self, centres):
+        from apps.calepinage.services.planche_pan import _feuille_de_pan
+
+        pan = pan_de_10_sur_6('portrait')
+        modules = [dict(m, pan='z1', chaine=None, couleur=None, rang=None, module='z1#%d' % (i + 1))
+                   for i, m in enumerate(modules_aux_marges(pan, centres))]
+        return _feuille_de_pan(pan, modules, [], [pan], '', [])
+
+    def verifier(self, svg):
+        groupes = re.findall(r'<g data-cote="\w">.*?</g>', svg)
+        boites = [b for g in groupes for b in boites_de_textes(g)]
+        self.assertEqual(len(boites), 8)
+        for x0, y0, x1, y1, texte in boites_de_textes(svg):
+            self.assertGreaterEqual(x0, 0.0, texte)
+            self.assertGreaterEqual(y0, 0.0, texte)
+        for i, a in enumerate(boites):
+            for b in boites[i + 1:]:
+                recoupe = a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+                self.assertFalse(recoupe, (a, b))
+
+    def test_champ_au_contact_des_rives(self):
+        self.verifier(self.feuille([(0.55, 5.15), (1.65, 5.15)]))
+
+    def test_champ_aux_marges_ordinaires(self):
+        self.verifier(self.feuille(CENTRES_AUX_MARGES))
 
 
 class EncartFixationDuPanTest(SimpleTestCase):

@@ -76,8 +76,10 @@ __all__ = ['SchemaUnifilaireMixin']
 #: deux — ``blocs`` (les organes dessinés, un par bloc) et ``edition`` (ce que
 #: l'utilisateur a changé) — et n'en retire aucune ; le contrat CALX204
 #: (``contract_samples/calepinage_sld.json``) les fige toutes les six.
+#: SCHEL-B2 (lot 6) — 7e clé ``schema_electrique`` : le document du noyau
+#: (``core/electrique/schema_electrique.py``), ``null`` quand ``svg`` l'est.
 CLES_SCHEMA = ('calepinage', 'svg', 'blocs', 'edition', 'bloquants',
-               'manquantes')
+               'manquantes', 'schema_electrique')
 
 
 _FORME_SLD = forme_du_contrat('CalepinageSchemaUnifilaire',
@@ -194,3 +196,34 @@ class SchemaUnifilaireMixin:
         return reponse_de_fichier(
             octets, mime=MIME_DXF,
             nom_fichier=nom_de_fichier(calepinage, 'schema.dxf'))
+
+    # ── ACAL1507 — le MÊME schéma, en PDF A3 ──────────────────────────────
+    @extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+                              409: REPONSE_REFUS_ETAT})
+    @action(detail=True, methods=['get'],
+            url_path=r'schema-unifilaire\.pdf',
+            url_name='schema-unifilaire-pdf',
+            permission_classes=[PeutVoirCalepinage])
+    def schema_unifilaire_pdf(self, request, pk=None):
+        """ACAL1507 — le schéma unifilaire dessiné, en PDF A3 paysage.
+
+        Le dessin est celui de l'écran (document ``schema_electrique``), avec
+        son cartouche ; aucun montant. Conception incomplète ou bloquée : 409
+        qui NOMME le champ, aucun fichier.
+        """
+        from ..services.electrique import TemperaturesInvalides
+        from ..services.planche import nom_de_fichier
+        from ..services.sld import SldRefuse
+        from ..services.sld_export import exporter_sld_pdf
+        from .sorties import MIME_PDF, reponse_de_fichier
+
+        calepinage = self.get_object()  # borné société par get_queryset
+        try:
+            octets = exporter_sld_pdf(calepinage, company=calepinage.company)
+        except (SldRefuse, TemperaturesInvalides) as refus:
+            return Response(
+                {getattr(refus, 'champ', '') or 'schema': str(refus)},
+                status=status.HTTP_409_CONFLICT)
+        return reponse_de_fichier(
+            octets, mime=MIME_PDF,
+            nom_fichier=nom_de_fichier(calepinage, 'schema-unifilaire.pdf'))

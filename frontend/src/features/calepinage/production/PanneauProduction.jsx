@@ -9,8 +9,9 @@ import { Button, Card } from '../../../ui'
 import ListeManques from './ListeManques'
 import RetourAtelier from '../atelier/RetourAtelier'
 import {
-  LIBELLE_BOUTON, cibleHorsReglages, etatCalcul, lienReglage, refusDepuisErreur, refusRenvoieAuxReglages,
+  LIBELLE_BOUTON, cibleDuManque, etatCalcul, lienReglage, refusDepuisErreur, refusRenvoieAuxReglages,
 } from './suiviSimulation'
+import { premierOngletEtape } from '../atelier/parcoursGuide' // ACAL1639 — l'onglet qui ouvre une étape
 import { lienManque } from './lienManque'
 import { EcartPvgis, IncertitudeSigma, ReglagesUtilises, SourceMeteo } from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
@@ -117,14 +118,17 @@ export function BandeauPerime({ motif }) {
    n'en exige aucun.
    ========================================================================== */
 // ACAL774 — le lien d'un refus qui ne se corrige pas dans les réglages (`plans`, `site.pin`).
-function LienHorsReglages({ calepinageId, champ }) {
-  const ou = cibleHorsReglages(champ)
+// ACAL1639 — la cible SERVIE qui nomme une étape (Toit, Panneaux) ouvre CETTE étape (son écran, jamais la feuille
+// « Avancé » : `state.etapeChoisie`, comme le clic sur l'étape) ; cible nulle ou absente : la table par champ.
+function LienHorsReglages({ calepinageId, champ, cible = null }) {
+  const ou = cibleDuManque(champ, cible)
   if (!ou) return null
+  const vers = ou.etape ? lienManque(calepinageId, { onglet: premierOngletEtape(ou.etape) }) : lienManque(calepinageId, ou.cible)
   return (
     <>
       {' '}
-      <Link to={lienManque(calepinageId, ou.cible)} className="inline-flex min-h-11 items-center underline"
-        data-testid="acal774-lien">{ou.libelle}</Link>
+      <Link to={vers} state={ou.etape ? { etapeChoisie: true } : undefined}
+        className="inline-flex min-h-11 items-center underline" data-testid="acal774-lien">{ou.libelle}</Link>
     </>
   )
 }
@@ -252,7 +256,9 @@ export function BoutonCalculer({
                       data-testid="acal940-lien-reglage">Ouvrir ce réglage</Link>
                   </>
                 )}
-                {!ligne.cible && <LienHorsReglages calepinageId={calepinageId} champ={ligne.champ} />}
+                {(!ligne.cible || ligne.cible.etape) && (
+                  <LienHorsReglages calepinageId={calepinageId} champ={ligne.champ} cible={ligne.cible} />
+                )}
               </li>
             ))}
           </ul>
@@ -261,7 +267,7 @@ export function BoutonCalculer({
         <p className={variante === 'carte' ? 'rounded-md bg-card p-3 text-sm text-destructive' : 'text-sm text-destructive'}
           role="alert" data-testid="calx48-refus">
           {refus.motif}
-          <LienHorsReglages calepinageId={calepinageId} champ={refus.champ} />
+          <LienHorsReglages calepinageId={calepinageId} champ={refus.champ} cible={refus.cible} />
           {refusRenvoieAuxReglages(refus) && (
             <>
               {' '}

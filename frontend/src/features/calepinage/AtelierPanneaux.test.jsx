@@ -83,6 +83,16 @@ describe('AtelierPanneaux (CAL37)', () => {
       .toHaveAttribute('href', `/calepinage/${CTX.calepinage.id}?onglet=variantes`)
   })
 
+  // ACAL1746 — « Factures du lead » et « Brouillon » se chevauchaient dans la colonne de ~340 px (4 colonnes fixes dès sm).
+  it('ACAL1746 — les quatre chiffres de la cible suivent la largeur de la colonne, jamais un point de rupture de la fenêtre', () => {
+    rendre()
+    const grille = screen.getByTestId('cal-cible-panneaux').closest('dl')
+    expect(grille.className).toContain('grid-cols-[repeat(auto-fit,minmax(7rem,1fr))]')
+    expect(grille.className).not.toMatch(/(?:^|\s)(?:sm|md|lg|xl|2xl):grid-cols-/)
+    expect(grille.children).toHaveLength(4)
+    expect(grille).toHaveClass('break-words') // un libellé long se replie dans sa case, ne déborde pas
+  })
+
   it('T4-X3-009 — la cible de la feuille Avancé nomme le panneau de la conception, jamais un « 8 » nu', async () => {
     const contexte = { ...CTX, cible: { ...CTX.cible, panneaux: 8, kwc: 4.4, panel_watt: 550 } }
     rendre({ contexte })

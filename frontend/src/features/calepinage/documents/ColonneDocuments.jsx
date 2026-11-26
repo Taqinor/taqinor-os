@@ -48,7 +48,7 @@ function Carte({ carte, choisie, enCours, erreurs, onChoisir, onTelecharger }) {
         {!disponible && carte.motif ? (
           <p className="cdoc-carte-motif" data-testid={`cal-docs-motif-${carte.cle}`}>{carte.motif}</p>
         ) : null}
-        {enCours && carte.entree.methode !== 'POST' ? (
+        {enCours && carte.entree?.methode !== 'POST' ? (
           <p className="cdoc-carte-motif" role="status" data-testid="cal-docs-attente">
             {`Préparation en cours : jusqu'à ${MINUTES_DE_DELAI} minutes.`}
           </p>

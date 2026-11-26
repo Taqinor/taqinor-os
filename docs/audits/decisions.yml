@@ -6176,3 +6176,131 @@ decisions:
     date: "2026-11-26"
     source: "lane lot6/ratio-hybride (lead 1742 : 48 × 715 W = 34,32 kWc sur un hybride Deye 20 kW, « 1,72 pour 1,35 au plus » dans « Prêt à envoyer ? ») ; conséquence calculée sur le catalogue de départ (migration stock 0182, puissances PV maximales des fiches Deye : 10 kW → 20 kWc, 12 kW → 24 kWc, 15 kW → 30 kWc, 20 kW → 40 kWc, soit 2,0 × la puissance AC) : avec (a) un hybride porte jusqu'à 2,0 × sa puissance AC au lieu de 1,35 ×, donc pour 34,32 kWc le 20 kW convient (34,32 ≤ 40) alors qu'avec (b) aucun hybride du catalogue ne passe et le 20 kW n'est pris qu'en repli signalé ; aucune lecture de la production faite (nombre de devis résidentiels concernés non mesuré)"
     taches: []
+  - id: D-ACAL-132
+    question: "La page client (proposition) montre une visionneuse 3D au soleil figé ; l'écran Panneaux du calepinage montre le soleil qui bouge (lecture, heure, Hiver / Été) et l'ensoleillement de chaque panneau. Quels clients ont cette visionneuse sur leur page ?"
+    options:
+      - cle: confiance
+        texte: "Clients de confiance : visionneuse avec le soleil qui bouge (liens de niveau « confiance »)"
+    reponse: confiance
+    date: "2026-11-26"
+    source: "RÉPONSE DU FONDATEUR le 26/11/2026 (en session), mot pour mot : « i can see now the old calpinage viewer not the new one with the play button for the sun moving ! i like this one and clients de confiance should get it » ; conception et lanes : docs/audits/l5-calepinage/visionneuse-soleil-client.md ; contrat : backend/django_core/apps/ventes/contract_samples/visionneuse_soleil.json"
+    taches: []
+  - id: D-ACAL-133
+    question: "La visionneuse de l'atelier pose le toit sur la carte satellite (© Mapbox © Maxar). La montrer sur la page de confiance du client (imagerie de son toit, clé carte du site, coût de tuiles) ?"
+    options:
+      - cle: oui_meme_fournisseur_borne
+        texte: "Oui, avec le fournisseur et le compte déjà utilisés (token Mapbox public du site, repli MapTiler), aucune nouvelle clé ni nouveau compte, la carte bornée au toit du client"
+    reponse: oui_meme_fournisseur_borne
+    date: "2026-11-26"
+    source: "RÉPONSE DU FONDATEUR le 26/11/2026 (en session), mot pour mot : « just go ahead and show it, i want to go sleep ». Conséquence mesurée dans le dépôt (origin/dev-lot6 fa81c4200) : rien de neuf n'est exposé — /api/roof-config (apps/web/src/pages/api/roof-config.ts) rend déjà PUBLIC_MAPBOX_TOKEN et PUBLIC_MAPTILER_KEY du Worker à tout navigateur, et la visionneuse pleine de TOUTE page client (roofPro11/viewerFullBoot.ts) charge déjà les tuiles mapbox.satellite (lib/roofConfig.ts l. 42) plus une image statique Mapbox (scene3d.ts l. 1699), sans borne de carte ; l'en-tête de roof-config dit ces clés restreintes au domaine taqinor.ma chez le fournisseur (NON vérifié : compte hors dépôt) ; plan et quota du compte Mapbox non lisibles dans le dépôt ; borne posée : la visionneuse de confiance limite la carte à l'emprise du toit + 150 m, zoom mini = zoom initial − 2, inclinaison ≤ 60° (D-ACAL-138), soit quelques dizaines à une centaine de tuiles par ouverture (estimation non mesurée), mises en cache par le navigateur ; aucune clé ajoutée dans Cloudflare"
+    taches: []
+  - id: D-ACAL-134
+    question: "Les liens de niveau « standard » ont-ils aussi la visionneuse au soleil ?"
+    options:
+      - cle: standard_inchange
+        texte: "(recommandée) Non : un lien standard garde la visionneuse d'aujourd'hui, au bit près ; la clé visionneuse_soleil n'est servie qu'en confiance (décidé par le serveur)"
+      - cle: tous_niveaux
+        texte: "Oui : tous les liens ont la visionneuse au soleil (la teinte et les objets voisins compris)"
+    reponse: standard_inchange
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (option recommandée, la plus proche de la demande D-ACAL-132 et réversible par une ligne serveur) ; docs/audits/l5-calepinage/visionneuse-soleil-client.md"
+    taches: []
+  - id: D-ACAL-135
+    question: "Visionneuse de confiance : à quel instant s'ouvre-t-elle, et quels raccourcis de saison montre-t-elle ?"
+    options:
+      - cle: comme_montrer_au_client
+        texte: "(recommandée) Comme « Montrer au client » de l'ERP : l'instant choisi par le commercial s'il en a enregistré un, sinon l'été à midi ; les deux raccourcis Hiver (20 décembre) et Été (20 juin), la lecture de la journée et le curseur d'heure (lever → coucher)"
+      - cle: hiver_pire_cas
+        texte: "Ouverture au solstice d'hiver à midi (le pire cas d'ombrage, défaut du constructeur), Hiver et Été montrés"
+    reponse: comme_montrer_au_client
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; règle reprise de frontend/src/features/calepinage/client/HabillageClient.jsx et vueClient.helpers.js::instantSoleilChoisi ; docs/audits/l5-calepinage/visionneuse-soleil-client.md"
+    taches: []
+  - id: D-ACAL-136
+    question: "Visionneuse de confiance : d'où vient la couleur de chaque panneau, et que montre la page quand l'ombre n'a pas été mesurée ?"
+    options:
+      - cle: acces_enregistre_rien_si_absent
+        texte: "(recommandée) L'accès solaire annuel ENREGISTRÉ par le calepinage (zones[].geometry.solarAccess.values), palette de l'atelier (bleu nuit → or, Ombragé → Plein soleil), légende « Ensoleillement de chaque panneau sur l'année », pan principal seulement ; un pan sans mesure n'est pas teinté et la légende est masquée (le soleil et les ombres restent), aucun pourcentage affiché"
+      - cle: uniforme_comme_atelier
+        texte: "Sans mesure, teindre tout le toit en « plein soleil » comme le fait l'atelier quand aucune ombre n'est saisie"
+    reponse: acces_enregistre_rien_si_absent
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; règle maison « une mesure absente ne vaut pas du plein soleil » (shadingUi.ts, calepinage_documents.json « manque ») ; conséquence : un toit sans obstacle à hauteur saisie ni ombre tracée verra le soleil bouger sans couleurs (cas du devis industriel du 26/11 non vérifié) ; docs/audits/l5-calepinage/visionneuse-soleil-client.md"
+    taches: []
+  - id: D-ACAL-137
+    question: "Visionneuse de confiance : dessiner les objets voisins saisis dans l'atelier (arbres, bâtiments, poteaux, haies) dont l'ombre teinte les panneaux ?"
+    options:
+      - cle: geometrie_sans_libelle
+        texte: "(recommandée) Oui, géométrie et hauteur seules, jamais le libellé saisi (il peut nommer un voisin) ; un objet « supposé coupé » n'est pas dessiné"
+      - cle: non
+        texte: "Non : seuls le bâtiment, les obstacles du toit et les panneaux sont dessinés"
+    reponse: geometrie_sans_libelle
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; sans eux un panneau pourrait paraître ombragé sans rien qui l'ombre à l'écran ; docs/audits/l5-calepinage/visionneuse-soleil-client.md"
+    taches: []
+  - id: D-ACAL-138
+    question: "Visionneuse de confiance : la carte satellite reste-t-elle libre (dézoom jusqu'à la ville, comme la visionneuse d'aujourd'hui) ?"
+    options:
+      - cle: bornee_au_toit
+        texte: "(recommandée) Bornée au toit du client : emprise des pans + 150 m, zoom mini = zoom initial − 2, inclinaison ≤ 60° ; la visionneuse des autres pages reste telle qu'aujourd'hui (non bornée)"
+      - cle: bornee_partout
+        texte: "Bornée sur toutes les pages client, tous niveaux"
+    reponse: bornee_au_toit
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; consigne de l'orchestrateur du 26/11 (« une image ou des tuiles pour le toit du client seulement, jamais une carte libre ») ; la visionneuse d'aujourd'hui est volontairement non bornée (apps/web/tests/propositionViewerFull.test.ts « aucune borne de navigation ») — la borner partout changerait les autres niveaux ; docs/audits/l5-calepinage/visionneuse-soleil-client.md"
+    taches: []
+  - id: D-ACAL-139
+    question: "L'étude électrique du devis propose-t-elle, comme le calepinage, des chaînes de longueurs différentes sur des entrées différentes quand la répartition à chaînes égales ne tient pas ?"
+    options:
+      - cle: nouveaux_rendus
+        texte: "(recommandée) Oui, pour les études calculées à neuf des devis jamais envoyés ou envoyés à partir du 27/11/2026 ; un devis envoyé avant garde son étude, son annexe et son bordereau"
+      - cle: inchange
+        texte: "Non : l'étude du devis garde les chaînes égales, même quand elles dépassent le courant admis par une entrée de l'onduleur"
+    reponse: nouveaux_rendus
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; constat du 26/11 sur un vrai dossier (35 panneaux de 715 W sur un hybride 20 kW à deux entrées de 54 A : 5 chaînes de 7 mettent 66,9 A sur une entrée ; 12 + 12 sur une entrée et 11 sur l'autre tient) ; conséquence mesurée sur ce cas : seul le calibre du sectionneur DC change au bordereau (45 A au lieu de 67 A), le câble DC reste à 120 m ; une répartition égale valide sort identique ; apps/ventes/domain/regles_calcul.py::COUPURE_CHAINES_INEGALES"
+    taches: []
+  - id: D-ACAL-140
+    question: "Sur la page du client, de quelle étude vient le schéma électrique ?"
+    options:
+      - cle: etude_rangee_seulement
+        texte: "(recommandée) Seulement de l'étude électrique rangée sur le devis : rien n'est recalculé à l'ouverture de la page, une option sans étude rangée n'a pas de schéma, et l'ouverture de la page ne lance aucun calcul de calepinage"
+      - cle: calcule_a_la_lecture
+        texte: "Aussi d'une étude calculée à l'ouverture de la page pour l'option qui n'en a pas (le schéma peut alors changer quand une fiche technique ou le calepinage change)"
+    reponse: etude_rangee_seulement
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; relecture indépendante du 26/11 (un devis envoyé garde ce que le client a reçu ; rien d'incertain côté client) ; l'écran du devis dans l'ERP garde les deux options ; apps/ventes/electrical_service.py::schema_electrique_public"
+    taches: []
+  - id: D-ACAL-141
+    question: "Quand le schéma électrique du devis reprend-il les chaînes réelles du calepinage plutôt que celles de l'étude du devis ?"
+    options:
+      - cle: meme_toit_meme_onduleur
+        texte: "(recommandée) Quand le toit du devis est celui du calepinage, que le nombre de panneaux est le même et que l'onduleur est le même (désignation, puissance, nombre d'entrées, nombre d'onduleurs) ; sinon les chaînes de l'étude du devis"
+      - cle: meme_toit_seulement
+        texte: "Dès que le toit et le nombre de panneaux sont les mêmes, quel que soit l'onduleur"
+    reponse: meme_toit_meme_onduleur
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; précise D-ACAL-131 après la relecture indépendante du 26/11 (un schéma moitié calepinage, moitié devis montrait des chaînes sous un onduleur qui n'était pas le leur) ; vaut pour l'écran du devis dans l'ERP et l'annexe des nouveaux rendus"
+    taches: []
+  - id: D-ACAL-142
+    question: "Sur la page du client, que montre le schéma électrique pour une partie qui n'est pas encore calculée ou pas confirmée (côté réseau non dimensionné, étage moyenne tension à confirmer) ?"
+    options:
+      - cle: rien
+        texte: "(recommandée) Rien : la partie n'est pas dessinée, sans mention « à dimensionner » ni « à confirmer », et la phrase interne qui en donne la raison n'est pas servie"
+      - cle: mention
+        texte: "La partie est dessinée en pointillé avec la mention « à dimensionner » ou « à confirmer »"
+    reponse: rien
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; application de la décision du fondateur des 26-27/10/2026 (rien d'incertain côté client sur un devis commercial ou industriel) ; l'écran de l'ERP garde les mentions ; le schéma de la page est dessiné en HTML (il se replie sur un téléphone), sans visionneuse plein écran ni téléchargement SVG quand il est servi"
+    taches: []
+  - id: D-ACAL-143
+    question: "Sur la visionneuse au soleil de la page du client, comment l'heure est-elle dite ?"
+    options:
+      - cle: heure_solaire_dite
+        texte: "(recommandée) L'heure affichée est dite « heure solaire » dans les trois langues ; aucune conversion en heure légale n'est faite sur la page"
+      - cle: heure_nue
+        texte: "L'heure est affichée seule (« 12 h »), comme sur « Montrer au client » de l'ERP"
+    reponse: heure_solaire_dite
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; relecture indépendante du 26/11 : au Maroc le midi solaire tombe vers 13 h 30 à la montre du client, une heure nue serait lue à tort comme une heure d'horloge"
+    taches: []

@@ -84,7 +84,95 @@
       }
     },
     "bloquants": [],
-    "manquantes": []
+    "manquantes": [],
+    "schema_electrique": {
+      "version": 1,
+      "source": "calepinage",
+      "option": "sans_batterie",
+      "calibres_masques": true,
+      "panneaux": {
+        "nombre": 24,
+        "module": {
+          "designation": null,
+          "puissance_wc": 550
+        }
+      },
+      "chaines_reparties": true,
+      "chaines": [
+        {
+          "numero": 1,
+          "couleur_index": 0,
+          "couleur": "rgb(36, 130, 214)",
+          "nb_panneaux": 12,
+          "onduleur": 1,
+          "entree": 1
+        },
+        {
+          "numero": 2,
+          "couleur_index": 1,
+          "couleur": "rgb(232, 125, 33)",
+          "nb_panneaux": 12,
+          "onduleur": 1,
+          "entree": 2
+        }
+      ],
+      "coffret_dc": null,
+      "onduleurs": [
+        {
+          "designation": null,
+          "puissance_kw": 8,
+          "nombre": 1,
+          "nb_entrees": 2
+        }
+      ],
+      "batterie": null,
+      "coffret_ac": {
+        "organes": [
+          {
+            "clef": "disjoncteur_ac",
+            "repere": "QAC1",
+            "titre": "Disjoncteur AC",
+            "calibre": null,
+            "quantite": 1
+          },
+          {
+            "clef": "ddr",
+            "repere": "DDR1",
+            "titre": "Différentiel type A",
+            "calibre": null,
+            "quantite": 1
+          }
+        ]
+      },
+      "compteur_production": {
+        "titre": "Comptage de production",
+        "detail": "énergie produite"
+      },
+      "tgbt": {
+        "titre": "TGBT",
+        "detail": "3P + N + T · 400 V"
+      },
+      "etage_mt": [],
+      "reseau": {
+        "titre": "Compteur ONEE",
+        "detail": "injection / soutirage"
+      },
+      "cote_reseau": {
+        "etat": "calcule",
+        "motif": null
+      },
+      "liaisons": {
+        "dc": {
+          "section_mm2": null,
+          "longueur_m": null
+        },
+        "ac": {
+          "section_mm2": null,
+          "longueur_m": null
+        }
+      },
+      "terre": true
+    }
   },
   "exemple_apres_edition": {
     "calepinage": 1,
@@ -173,7 +261,95 @@
       }
     },
     "bloquants": [],
-    "manquantes": []
+    "manquantes": [],
+    "schema_electrique": {
+      "version": 1,
+      "source": "calepinage",
+      "option": "sans_batterie",
+      "calibres_masques": true,
+      "panneaux": {
+        "nombre": 24,
+        "module": {
+          "designation": null,
+          "puissance_wc": 550
+        }
+      },
+      "chaines_reparties": true,
+      "chaines": [
+        {
+          "numero": 1,
+          "couleur_index": 0,
+          "couleur": "rgb(36, 130, 214)",
+          "nb_panneaux": 12,
+          "onduleur": 1,
+          "entree": 1
+        },
+        {
+          "numero": 2,
+          "couleur_index": 1,
+          "couleur": "rgb(232, 125, 33)",
+          "nb_panneaux": 12,
+          "onduleur": 1,
+          "entree": 2
+        }
+      ],
+      "coffret_dc": null,
+      "onduleurs": [
+        {
+          "designation": null,
+          "puissance_kw": 8,
+          "nombre": 1,
+          "nb_entrees": 2
+        }
+      ],
+      "batterie": null,
+      "coffret_ac": {
+        "organes": [
+          {
+            "clef": "disjoncteur_ac",
+            "repere": "QAC1",
+            "titre": "Disjoncteur AC",
+            "calibre": null,
+            "quantite": 1
+          },
+          {
+            "clef": "ddr",
+            "repere": "DDR1",
+            "titre": "Différentiel type A",
+            "calibre": null,
+            "quantite": 1
+          }
+        ]
+      },
+      "compteur_production": {
+        "titre": "Comptage de production",
+        "detail": "énergie produite"
+      },
+      "tgbt": {
+        "titre": "TGBT",
+        "detail": "3P + N + T · 400 V"
+      },
+      "etage_mt": [],
+      "reseau": {
+        "titre": "Compteur ONEE",
+        "detail": "injection / soutirage"
+      },
+      "cote_reseau": {
+        "etat": "calcule",
+        "motif": null
+      },
+      "liaisons": {
+        "dc": {
+          "section_mm2": null,
+          "longueur_m": null
+        },
+        "ac": {
+          "section_mm2": null,
+          "longueur_m": null
+        }
+      },
+      "terre": true
+    }
   },
   "exemple_vide": {
     "calepinage": 2,
@@ -188,7 +364,8 @@
     "manquantes": [
       "onduleur : aucune fiche onduleur n'est désignée sur ce calepinage — la chaîne ne peut pas être conçue, et le schéma n'est pas dessiné.",
       "module : la fiche du module ne porte pas de coefficient de température de tension (bêta) — les bornes de la fenêtre de tension sont OMISES plutôt que remplies."
-    ]
+    ],
+    "schema_electrique": null
   },
   "refus_clef_inconnue": {
     "edition.positions.coffret_ac": "Le bloc « coffret_ac » n'est pas dessiné sur ce schéma : l'édition ne peut déplacer qu'un organe retenu par la conception. Retirez-le de l'édition, ou désignez l'organe correspondant sur le calepinage."

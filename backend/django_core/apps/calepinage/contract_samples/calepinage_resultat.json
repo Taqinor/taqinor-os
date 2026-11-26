@@ -1644,7 +1644,7 @@
     "suppose": [
       {
         "code": "longueur_chaine_dossier",
-        "libelle": "16 modules par chaîne (longueur retenue au dossier : fiche du module ou de l'onduleur incomplète)",
+        "libelle": "Choisissez l'onduleur pour vérifier la longueur des chaînes (16 modules par défaut, à confirmer)",
         "valeur": 16,
         "champ": "fiche technique du module et de l'onduleur"
       },

@@ -271,6 +271,8 @@ describe('CALX69 — une clé entamée sans source est refusée AVANT tout envoi
     await screen.findByTestId('calx69-ligne-fenetre_annees')
 
     fireEvent.change(champValeur('fenetre_annees'), { target: { value: '10' } })
+    // ACAL1736 : la frappe préremplit « Saisie » ; la source est ici RETIRÉE à la main.
+    fireEvent.change(champSource('fenetre_annees'), { target: { value: '' } })
     fireEvent.click(screen.getByTestId('calx69-enregistrer'))
 
     const erreur = await screen.findByTestId('calx69-erreur-fenetre_annees')
@@ -279,6 +281,49 @@ describe('CALX69 — une clé entamée sans source est refusée AVANT tout envoi
     expect(screen.getByTestId('acal947-erreurs-bouton').querySelector('a[href="#calx69-fenetre_annees"]'))
       .toBeTruthy()
     expect(mocks.putParametres).not.toHaveBeenCalled()
+  })
+})
+
+describe('ACAL1736 — la source vaut « Saisie » par défaut, et les tables se lisent en lignes', () => {
+  beforeEach(() => {
+    mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage', 'exemple_vide'))
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES_VIDES })
+  })
+
+  it('une valeur tapée préremplit « Saisie » (modifiable) ; vidée, la ligne redevient non entamée et omise', async () => {
+    rendre()
+    await screen.findByTestId('calx69-ligne-mode_meteo')
+    expect(champSource('mode_meteo').value).toBe('') // jamais entamée : rien de prérempli
+    fireEvent.change(champValeur('mode_meteo'), { target: { value: 'pluriannuel' } })
+    expect(champSource('mode_meteo').value).toBe('saisie')
+    fireEvent.change(champSource('mode_meteo'), { target: { value: 'societe' } })
+    fireEvent.change(champValeur('sigma_modele_pct'), { target: { value: '3' } })
+    fireEvent.change(champValeur('sigma_modele_pct'), { target: { value: '' } })
+    expect(champSource('sigma_modele_pct').value).toBe('')
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    const { simulation } = mocks.putParametres.mock.calls[0][0]
+    expect(simulation.mode_meteo).toEqual({ valeur: 'pluriannuel', source: 'societe', reference: '' })
+    expect(simulation).not.toHaveProperty('sigma_modele_pct')
+  })
+
+  it('« arrêts » et « Uc / Uv » : des lignes lisibles, jamais « Table structurée (JSON) » ; la source préremplie part avec', async () => {
+    rendre()
+    await screen.findByTestId('calx69-ligne-indisponibilite_fenetres')
+    for (const cle of ['indisponibilite_fenetres', 'thermique_par_pose']) {
+      expect(screen.getByTestId(`acal133-type-${cle}`)).not.toHaveTextContent('JSON')
+      expect(screen.getByTestId(`calx69-table-${cle}`).textContent).not.toMatch(/[{}"]/)
+    }
+    fireEvent.click(screen.getByTestId('calx69-table-indisponibilite_fenetres-ajouter'))
+    fireEvent.change(screen.getByTestId('calx69-indisponibilite_fenetres-0-debut'), { target: { value: '2026-01-05' } })
+    fireEvent.change(screen.getByTestId('calx69-indisponibilite_fenetres-0-fin'), { target: { value: '2026-01-07' } })
+    expect(champSource('indisponibilite_fenetres').value).toBe('saisie')
+    expect(screen.getByTestId('calx69-table-indisponibilite_fenetres').textContent).not.toMatch(/[{}"]/)
+    fireEvent.click(screen.getByTestId('calx69-enregistrer'))
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalledTimes(1))
+    expect(mocks.putParametres.mock.calls[0][0].simulation.indisponibilite_fenetres).toEqual({
+      valeur: [{ debut: '2026-01-05', fin: '2026-01-07' }], source: 'saisie', reference: '',
+    })
   })
 })
 

@@ -405,7 +405,7 @@ function Dossier({ dossier, calepinageId, onGenere, onEnregistre }) {
           : 'Gabarit non déposé : aucun formulaire officiel n’est fabriqué sans le fichier de la société.'}
       </p>
 
-      {gabarit.present && gabarit.verifie_le
+      {gabarit.verifie_le
         ? (
           <p className="text-xs text-muted-foreground" data-testid={`acal824-verifie-${dossier.id}`}>
             Vérifié le {formatDate(gabarit.verifie_le)}

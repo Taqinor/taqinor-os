@@ -39,7 +39,9 @@ vi.mock('../capteursTelephone', () => ({
   arreter: (...a) => capteurs.arreter(...a),
 }))
 
-const { oublierReleveEnFile, releveEnAttente } = await import('../fileEnvoiPhotos')
+const { mettreReleveEnFile, oublierReleveEnFile, rejouerReleve, releveEnAttente, viderRelevesEnFile } = await import('../fileEnvoiPhotos')
+const { store } = await import('../../../store')
+const { setCredentials, logout } = await import('../../auth/store/authSlice')
 const { default: ReleveVisite } = await import('./ReleveVisite')
 const { default: PanneauReleve } = await import('../atelier/PanneauReleve')
 
@@ -416,6 +418,79 @@ describe('Relevé de visite — terminé hors ligne : gardé sur le téléphone,
     expect(await releveEnAttente('1')).toBe(false)
     await act(async () => { window.dispatchEvent(new Event('online')) }) // file vide : rien à renvoyer
     expect(api.corrigerReleve).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('ACAL1949 — le relevé gardé est celui de SON utilisateur, porte sa clé, et part à la déconnexion', () => {
+  const CORPS = { releve_le: '2026-11-20', notes: '', chaines: [] }
+  const connecter = (id) => store.dispatch(setCredentials({ user: { id } }))
+  afterEach(async () => { await viderRelevesEnFile(); store.dispatch(logout()) })
+
+  it('relevé de A, connexion de B : rien d’envoyé ni montré ; A reconnecté : envoyé UNE fois, la même clé au rejeu coupé', async () => {
+    connecter(1)
+    await mettreReleveEnFile('1', { corps: CORPS })
+    connecter(2)
+    expect(await releveEnAttente('1')).toBe(false)
+    const deB = await rejouerReleve('1')
+    expect(api.enregistrerReleve).not.toHaveBeenCalled()
+    expect(deB).toEqual({ envoye: false, releve: null, refus: null, restantes: 0 })
+    await oublierReleveEnFile('1') // B n'efface pas non plus le relevé de A
+
+    connecter(1)
+    expect(await releveEnAttente('1')).toBe(true)
+    // Rejeu coupé APRÈS la réponse du serveur : le client ne la reçoit pas, le relevé reste en file…
+    api.enregistrerReleve.mockRejectedValueOnce({ code: 'ERR_NETWORK', message: 'Network Error' })
+    expect((await rejouerReleve('1')).restantes).toBe(1)
+    // … et repart avec la MÊME clé : le serveur rejoue sa réponse au lieu de créer un second relevé.
+    api.enregistrerReleve.mockResolvedValueOnce({ data: { releve: { id: 12 } } })
+    const deA = await rejouerReleve('1')
+    expect(deA).toMatchObject({ envoye: true, releve: { id: 12 }, restantes: 0 })
+    expect(api.enregistrerReleve).toHaveBeenCalledTimes(2)
+    const [premier, second] = api.enregistrerReleve.mock.calls
+    expect(premier.slice(0, 2)).toEqual(['1', CORPS])
+    expect(premier[2].idempotencyKey).toEqual(expect.any(String))
+    expect(second[2].idempotencyKey).toBe(premier[2].idempotencyKey)
+  })
+
+  it('la déconnexion vide la file du relevé (poste partagé)', async () => {
+    connecter(1)
+    await mettreReleveEnFile('1', { corps: CORPS })
+    expect(await releveEnAttente('1')).toBe(true)
+    window.dispatchEvent(new Event('taqinor:auth-logout'))
+    await waitFor(async () => expect(await releveEnAttente('1')).toBe(false))
+    connecter(1)
+    expect(await releveEnAttente('1')).toBe(false)
+  })
+})
+
+describe('ACAL1974 — une photo hors ligne n’est jamais « refusée » sur une réponse passagère du serveur', () => {
+  const PHOTO = { arrayBuffer: async () => new ArrayBuffer(3), name: 'drone.jpg', type: 'image/jpeg' }
+  const CHAMPS = { genre: 'drone', prise_le: '2026-11-20' }
+  let reel
+  beforeEach(async () => {
+    reel = await vi.importActual('../fileEnvoiPhotos') // la VRAIE file des photos (simulée dans le reste du fichier)
+    api.ajouterPhoto = vi.fn()
+    enLigne = false
+    expect(await reel.deposerOuMettreEnFile('1', PHOTO, CHAMPS)).toEqual({ enFile: true })
+    enLigne = true
+  })
+
+  it('502 puis 401 au rejeu : la photo reste en file, rien n’est dit refusé ; la réponse normale suivante l’envoie', async () => {
+    for (const status of [502, 401]) {
+      api.ajouterPhoto.mockRejectedValueOnce({ response: { status, data: {} } })
+      expect(await reel.rejouerFile('1')).toEqual({ envoyees: 0, refusees: [], restantes: 1 })
+    }
+    api.ajouterPhoto.mockResolvedValueOnce({ data: { id: 7 } })
+    expect(await reel.rejouerFile('1')).toEqual({ envoyees: 1, refusees: [], restantes: 0 })
+    expect(api.ajouterPhoto).toHaveBeenCalledTimes(3)
+  })
+
+  it('un vrai refus (400) retire la photo de la file et le dit', async () => {
+    api.ajouterPhoto.mockRejectedValueOnce({ response: { status: 400, data: { photo: ['Format refusé.'] } } })
+    const r = await reel.rejouerFile('1')
+    expect(r.envoyees).toBe(0)
+    expect(r.refusees).toHaveLength(1)
+    expect(r.restantes).toBe(0)
   })
 })
 

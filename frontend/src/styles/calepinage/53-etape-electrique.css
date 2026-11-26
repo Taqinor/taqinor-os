@@ -454,6 +454,30 @@
 /* Côté réseau en creux : boîtes pointillées, texte atténué, aucune valeur. */
 .csch-boite.csch-boite-creux { fill: transparent; stroke: var(--cal-texte-3); stroke-width: 1.5; stroke-dasharray: 6 4; filter: none; }
 .csch-liaison.csch-liaison-creux { stroke: var(--cal-texte-3); stroke-width: 2; stroke-dasharray: 6 4; }
+/* LOT 6 — la batterie : liaison NEUTRE (ni couleur de chaîne ni trait réseau), flèches aux deux bouts. */
+.csch-liaison.csch-liaison-batterie { stroke: var(--cal-texte-2); stroke-width: 2; }
+.csch-fleche { fill: var(--cal-texte-2); }
+.csch-trait-batterie { background: var(--cal-texte-2); }
+/* LOT 6 — le même dessin hors de l'atelier (fiche devis de l'ERP) : les jetons `--cal-*` ne vivent que sous les
+   racines du module, on les ramène aux jetons de l'ERP (clair/sombre suivent le thème). Défilement horizontal
+   plutôt qu'un dessin qui déborde de la fiche. */
+.csch-devis {
+  --cal-papier: var(--background);
+  --cal-surface: var(--card);
+  --cal-surface-2: var(--muted);
+  --cal-texte-1: var(--foreground);
+  --cal-texte-2: var(--muted-foreground);
+  --cal-texte-3: var(--muted-foreground);
+  --cal-filet: var(--border);
+  --cal-filet-fort: var(--border);
+  --cal-lien: var(--ring);
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background-color: var(--background);
+  padding: 12px;
+}
+.csch-devis .csch-blocs-svg { display: block; margin: 0 auto; max-width: none; }
 
 /* Panneau : légende, cartouche, note bleue, pied */
 .cel-section { display: flex; flex-direction: column; gap: 8px; }

@@ -107,6 +107,59 @@ describe('ConceptionElectrique (PV43)', () => {
     await waitFor(() => expect(ventesApi.getSchemaUnifilaireDevis).toHaveBeenCalledTimes(2))
   })
 
+  // LOT 6 — la fiche devis montre le schéma électrique du calepinage, une planche par option servie.
+  const serviSchema = (enveloppe) => {
+    ventesApi.getConceptionElectrique.mockResolvedValue(reponseContrat('ventes', 'conception_electrique'))
+    ventesApi.getSchemaUnifilaireDevis.mockResolvedValue({ data: { params: {}, svg: SVG, schema_electrique: enveloppe } })
+  }
+  const ENVELOPPE = () => structuredClone(exempleContrat('ventes', 'schema_electrique').schema_electrique)
+
+  it('deux options : l\'option avec batterie d\'abord (carte batterie), la bascule montre l\'option sans batterie', async () => {
+    serviSchema(ENVELOPPE())
+    const user = userEvent.setup()
+    render(<ConceptionElectrique devisId={3} />)
+
+    const planche = await screen.findByTestId('schema-electrique-devis')
+    expect(within(planche).getByRole('button', { name: 'Avec batterie' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(planche).getByTestId('csch-bloc-batterie')).toHaveTextContent('Dyness BX51100')
+    expect(planche).toHaveTextContent('Chaîne 4 · 12 panneaux')
+    // L'en-tête de la carte dit « Schéma électrique ».
+    expect(screen.getByText('Schéma électrique', { selector: 'p' })).toBeInTheDocument()
+    // L'esquisse historique n'est plus affichée.
+    expect(document.querySelector('[role="img"][aria-label="Schéma unifilaire"]')).toBeNull()
+
+    await user.click(within(planche).getByRole('button', { name: 'Sans batterie' }))
+    expect(within(planche).getByRole('button', { name: 'Sans batterie' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(planche).queryByTestId('csch-bloc-batterie')).toBeNull()
+    expect(planche).toHaveTextContent('Chaîne 2 · 17 panneaux')
+    expect(planche).not.toHaveTextContent('Chaîne 4')
+  })
+
+  it('une seule option servie : pas de bascule, et jamais le dessin de l\'autre option', async () => {
+    const enveloppe = ENVELOPPE()
+    enveloppe.options.avec_batterie = null
+    serviSchema(enveloppe)
+    render(<ConceptionElectrique devisId={3} />)
+
+    const planche = await screen.findByTestId('schema-electrique-devis')
+    expect(within(planche).queryByRole('group', { name: 'Option du schéma' })).toBeNull()
+    expect(planche).toHaveTextContent('Chaîne 2 · 17 panneaux')
+    expect(within(planche).queryByTestId('csch-bloc-batterie')).toBeNull()
+  })
+
+  it('aucun montant ni prix dans la planche', async () => {
+    serviSchema(ENVELOPPE())
+    render(<ConceptionElectrique devisId={3} />)
+    const planche = await screen.findByTestId('schema-electrique-devis')
+    expect(planche.textContent).not.toMatch(/\bDH\b|\bMAD\b|€|\$|\bprix\b|\bHT\b|\bTTC\b|\bachat\b/i)
+  })
+
+  it('une enveloppe sans aucune option dessinable dit « Schéma indisponible »', async () => {
+    serviSchema({ options: { sans_batterie: null, avec_batterie: null } })
+    render(<ConceptionElectrique devisId={3} />)
+    expect(await screen.findByText('Schéma indisponible.')).toBeInTheDocument()
+  })
+
   it('un devis sans étude calculable affiche un état vide plutôt qu\'un plantage', async () => {
     ventesApi.getConceptionElectrique.mockResolvedValue({
       data: {

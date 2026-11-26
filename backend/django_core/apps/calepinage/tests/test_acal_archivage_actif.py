@@ -312,6 +312,19 @@ class ExemplesDeBibliothequeTest(BaseApiCalepinage):
         self.assertIn('réglages de simulation encore VIDES', sortie)
         self.assertIn("aucune saisie n'est écrasée", sortie)
 
+    def test_acal1751_production_sans_confirmation_refuse_puis_ecrit_avec(self):
+        from unittest import mock
+
+        from django.core.management.base import CommandError
+
+        with mock.patch('core.checks.environnement_de_production', return_value=True):
+            with self.assertRaises(CommandError) as refus:
+                self._semer('--apply')
+            self.assertIn('--confirmer-production', str(refus.exception))
+            self.assertEqual(Calepinage.objects.filter(exemple=True).count(), 0)
+            self._semer('--apply', '--confirmer-production')
+        self.assertEqual(Calepinage.objects.filter(exemple=True).count(), 3)
+
     def test_semis_deux_fois_trois_modeles_sans_rattachement(self):
         self._semer('--apply')
         self._semer('--apply')

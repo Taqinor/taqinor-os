@@ -4,24 +4,32 @@
    hooks — et que chaque geste part au VRAI contrôle ; les replis honnêtes (sans facture, sans avis d'ombrage). */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, renderHook, screen, cleanup, within, fireEvent, waitFor, act } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../../../../../api/calepinageApi', () => ({
   default: { calepinages: {
     designContext: vi.fn(), cibleFactures: vi.fn(), modulesDisponibles: vi.fn(), entreeElectrique: vi.fn(), resultat: vi.fn(),
+    explications: vi.fn(), // ACAL1728 — le registre des « ? »
   } },
 }))
 
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
 import { choisirPaletteAcces } from '@rooflib/shadingEngine'
 import calepinageApi from '../../../../../api/calepinageApi'
-import { exempleContrat, reponseContrat } from '../../../../../test/fixtures/contractSamples'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { exempleContrat, fichierContrat, reponseContrat } from '../../../../../test/fixtures/contractSamples'
 import { ContexteCoque } from '../contexteCoque'
 import { sousTitrePose } from '../projet'
 import EtapePanneaux from './EtapePanneaux'
 import { usePoseVivante } from './panneaux/constructeur'
 import { jourMois, ligneModule } from './panneaux/formats'
 import { lireServi, oublierLecturesServies } from './panneaux/lectures'
+
+// ACAL1728 — le registre SERVI des « ? » (`data/explications.json`, lu comme `explications.garde.test.js`).
+const REGISTRE = JSON.parse(readFileSync(
+  join(fichierContrat('calepinage', 'x'), '..', '..', 'data', 'explications.json'), 'utf8')).entrees
 
 const CATALOGUE = [
   { module: { id: 'produit-1', libelle: 'Jinko Tiger Neo 580 Wc', pmaxWc: 580, longueurMm: 2278, largeurMm: 1134 },
@@ -95,6 +103,7 @@ function servir({
   calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({ data: { modules: CATALOGUE } })
   calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: { materiel } })
   calepinageApi.calepinages.resultat.mockResolvedValue({ data: resultat })
+  calepinageApi.calepinages.explications.mockResolvedValue({ data: { entrees: REGISTRE } })
 }
 
 beforeEach(() => servir())
@@ -443,6 +452,30 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(document.querySelector('[data-zone="pose-actuelle"]')).toHaveTextContent('Pose actuelle : 30 panneaux · 17,40 kWc')
   })
 
+  /* ACAL1613 — lead à 900 MAD/mois, 4 panneaux recommandés, 13 posés : la carte « Couvrir la facture » non posée disait
+     « 4 panneaux · 2,84 kWc » sans pourcentage. Elle dit la part SERVIE (`chiffrage.couverture_pct` du design-context,
+     contrat `calepinage_design_context.json`) à SA taille, par la fonction du constructeur ; une autre taille : rien. */
+  const chiffrageServi = (kwc, pct) => ({
+    ...exempleContrat('calepinage', 'calepinage_design_context', 'exemple').chiffrage,
+    kwc: { valeur: kwc, unite: 'kWc', source: 'conception', etat: 'servi' },
+    couverture_pct: { valeur: pct, unite: '%', source: 'conception', etat: 'servi' },
+  })
+  it.each([
+    ['la conception servie a la taille de la carte', 2.84, '4 panneaux · 2,84 kWc · conception · ≈ 54 % de la consommation'],
+    ['la conception servie a une autre taille', 3.55, null],
+  ])('ACAL1613 — la carte recommandée non posée dit sa part : %s', async (_cas, kwcServi, attendu) => {
+    servir({ cible: { panneaux: 4, kwc: 2.84, module_wc: 710 } })
+    monterConstructeur({ besoin: '13', panneaux: '13 × 710 W', kwc: '9,23 kWc', cover: '—',
+      note: '13 posés — il reste de la place sur le toit, laissée libre.' })
+    rendre({ contexte: { calepinage: { lead: 42 }, consommation_lead: { facture_mensuelle_mad: 900, motif: '' },
+      chiffrage: chiffrageServi(kwcServi, 54.0) } })
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture).toHaveTextContent('4 panneaux · 2,84 kWc'))
+    expect(facture).toHaveAttribute('aria-pressed', 'false')
+    if (attendu) expect(facture).toHaveTextContent(attendu)
+    else expect(facture).not.toHaveTextContent('%')
+  })
+
   it('sans taille tirée des factures : « Couvrir la facture » grisée avec le motif servi et le lien vers le lead', async () => {
     servir({ cible: null, motif: 'Aucune facture sur le lead.' })
     monterConstructeur({
@@ -592,6 +625,29 @@ describe('étape Panneaux — panneau de droite', () => {
     await waitFor(() => expect(screen.queryByTestId('cal-panneaux-ombre')).toBeNull())
     expect(retirer).toHaveBeenCalledTimes(1)
   })
+
+  // ACAL1728 (reprise d'ACAL869) — l'étape guidée n'offrait ni l'alignement des rangées ni Annuler / Rétablir dans son panneau.
+  it('ACAL1728 — « Personnaliser la disposition » : alignement des rangées, Annuler et Rétablir renvoyés aux vrais contrôles', () => {
+    const { racine, espion } = monterConstructeur()
+    racine.insertAdjacentHTML('beforeend', `
+      <button id="rp9-layout-undo">u</button><button id="rp9-layout-redo" disabled>r</button>
+      <select id="rp9-alignement-select"><option value="gauche">Gauche (pavage d’origine)</option>
+        <option value="centre">Centre</option><option value="droite">Droite</option>
+        <option value="justifie">Justifié (jeux égaux)</option></select>`)
+    const annuler = espion('#rp9-layout-undo')
+    const aligne = espion('#rp9-alignement-select', 'change')
+    rendre()
+    const bloc = screen.getByTestId('cal-panneaux-disposition')
+    expect(within(bloc).getByText('Personnaliser la disposition')).toBeInTheDocument()
+    const rangees = within(bloc).getByRole('group', { name: 'Alignement des rangées' })
+    expect(within(rangees).getAllByRole('button').map((b) => b.textContent)).toEqual(['Gauche', 'Centre', 'Droite', 'Justifié'])
+    fireEvent.click(within(rangees).getByRole('button', { name: 'Centre' }))
+    expect(document.getElementById('rp9-alignement-select').value).toBe('centre')
+    expect(aligne).toHaveBeenCalledTimes(1)
+    fireEvent.click(within(bloc).getByRole('button', { name: 'Annuler' }))
+    expect(annuler).toHaveBeenCalledTimes(1)
+    expect(within(bloc).getByRole('button', { name: 'Rétablir' })).toBeDisabled() // le vrai contrôle est désactivé
+  })
 })
 
 describe('étape Panneaux — sur la carte', () => {
@@ -635,6 +691,40 @@ describe('étape Panneaux — sur la carte', () => {
       expect(puce).toHaveTextContent('≈ 82 %')
     })
   }
+
+  /* ACAL1728 (reprise d'ACAL876) — aucun « ? » sur la barre de chiffres de l'étape guidée : chacun a le sien (phrase du
+     registre servi), qui s'ouvre à Entrée comme à Espace. */
+  it('ACAL1728 — un « ? » par chiffre de la barre, ouvert à Entrée et à Espace avec la phrase servie', async () => {
+    const user = userEvent.setup()
+    monterConstructeur()
+    rendre()
+    const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+    const aides = () => within(puce).queryAllByRole('button', { name: 'Pourquoi ce chiffre ?' })
+    await waitFor(() => expect(aides().map((b) => b.dataset.grandeur))
+      .toEqual(['toit.reco_panneaux', 'toit.reco_puissance', 'toit.reco_production', 'toit.reco_couverture']))
+    const phrase = (cle) => REGISTRE.find((e) => e.cle === cle).phrase
+    aides()[3].focus()
+    await user.keyboard('{Enter}')
+    expect(await screen.findByText(phrase('toit.reco_couverture'))).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    aides()[0].focus()
+    await user.keyboard(' ')
+    expect(await screen.findByText(phrase('toit.reco_panneaux'))).toBeInTheDocument()
+  })
+
+  /* ACAL1749 — base e2e : « 148 panneaux » et « Puissance 0,00 kWc » pour le même calepinage (document sans `modules[]` :
+     le constructeur n'écrit ni la puissance du module ni le « × W »). Jamais 0,00 : « module à choisir ». */
+  it('ACAL1749 — panneaux posés sans module : la puissance dit « module à choisir », jamais 0,00 kWc', async () => {
+    monterConstructeur({ besoin: '148', panneaux: '148 panneaux', kwc: '0,00 kWc', prod: '—', cover: '—',
+      note: '148 posés — il reste de la place sur le toit, laissée libre.' })
+    const { container } = rendre()
+    const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+    expect(puce).toHaveTextContent('Panneaux148')
+    expect(puce).toHaveTextContent('Puissancemodule à choisir')
+    for (const ecran of [container, noeudCarte]) expect(ecran).not.toHaveTextContent('0,00') // le DOM du script, lui, le garde
+    await waitFor(() => expect(document.querySelector('[data-zone="pose-actuelle"]'))
+      .toHaveTextContent('Pose actuelle : 148 panneaux · module à choisir'))
+  })
 
   it('puce : les quatre chiffres lus ; un chiffre absent est omis', () => {
     monterConstructeur()

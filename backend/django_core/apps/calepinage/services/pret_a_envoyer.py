@@ -739,6 +739,8 @@ def controle_obstacle_hors_pan(calepinage):
     layout = getattr(calepinage, 'roof_layout', None) or {}
     projection = _projection(layout)
     hors, illisible, vus = [], False, 0
+    # ACAL1971 — l'`id` STABLE du premier obstacle fautif (jamais son rang dans la liste).
+    premier_id = ''
     # T4-B4-012 — « du pan A », mais « du pan Sud » pour un pan nommé « Pan Sud »
     # (jamais « du pan Pan Sud »).
 
@@ -762,13 +764,16 @@ def controle_obstacle_hors_pan(calepinage):
             if points is None:
                 illisible = True
             elif not all(point_dans_polygone(p, contour) for p in points):
+                if not hors:
+                    premier_id = str(obstacle.get('id') or '')
                 hors.append('%s dépasse du %s' % (
                     _libelle_obstacle(obstacle.get('type')),
                     _nom_du_pan(zone)))
     if hors:
         return _controle('obstacle_hors_pan', libelle, 'a_regler',
                          hors[0], cause=' ; '.join(hors),
-                         geste="Déplacer l'obstacle", cible=CIBLE_OBSTACLES)
+                         geste="Déplacer l'obstacle",
+                         cible=dict(CIBLE_OBSTACLES, champ=premier_id))
     if illisible:
         return _controle('obstacle_hors_pan', libelle, 'info',
                          'Non vérifiable : contour ou dimensions absents',

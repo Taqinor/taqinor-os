@@ -1004,6 +1004,34 @@ def _module_du_devis(donnees, devis_id, company):
     return {**donnees, 'module_produit': module} if module not in (None, '') else donnees
 
 
+def schema_electrique_du_calepinage(calepinage):
+    """SCHEL-B2 (lot 6) — le document « schéma électrique » de CE calepinage
+    (contrat ``ventes/contract_samples/schema_electrique.json``) pour
+    ``apps.ventes`` : chaînes RÉELLES de l'affectation servie, coffrets,
+    onduleur, batterie (déclarée ou de l'option « avec »). ``None`` sans
+    calepinage ou quand la conception ne se dessine pas. Lecture seule, ne lève
+    jamais."""
+    if calepinage is None:
+        return None
+    try:
+        from .services.sld import document_electrique_du_calepinage
+        return document_electrique_du_calepinage(calepinage)
+    except Exception:  # noqa: BLE001 — une lecture ratée vaut « pas de document » (D-ENF22-BLE001)
+        logger.warning("SCHEL-B2 : document électrique du calepinage %s illisible",
+                       getattr(calepinage, 'pk', None), exc_info=True)
+        return None
+
+
+def acces_solaire_par_module(layout):
+    """D-ACAL-132 (lot 6) — ``{repère du pan: [accès solaire | None, …]}`` LU
+    dans le document (``zones[].geometry.solarAccess.values``, CAL248) pour la
+    visionneuse au soleil de la page client (``apps.ventes``). Le lecteur
+    unique ``services.ombrage_chaines.acces_par_module`` : jamais un calcul
+    d'ombrage. Lecture pure, sans base."""
+    from .services.ombrage_chaines import acces_par_module
+    return acces_par_module(layout)
+
+
 def entree_electrique_du_devis(devis_id, company):
     """ACAL165 (C-ACAL-061) — les grandeurs de SITE du calepinage lié à ce
     devis, telles que l'onglet Verdict du calepinage les emploie, pour l'étude

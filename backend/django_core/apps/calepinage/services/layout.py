@@ -518,7 +518,8 @@ def enregistrer_section(calepinage, cle, valeur, *, base_empreinte,
 
 def enregistrer_layout(calepinage, roof_layout, *, user=None,
                        libelle='', resultat=None, roof_image=None,
-                       version_moteur=None, base_empreinte=None):
+                       version_moteur=None, base_empreinte=None,
+                       valider_factures=False):
     """Enregistre la conception et historise SEULEMENT si elle a changé.
 
     « A changé » = l'empreinte DOCUMENT (:func:`empreinte_document`) de
@@ -536,6 +537,8 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
             « document » stockée ; différent ⇒ :class:`DocumentModifie`.
             ``None`` (défaut, tous les écrivains serveur) : aucune
             comparaison.
+        valider_factures: ACAL1927 — ``True`` pour un document fourni par un
+            client : ``consumption.factures_mois`` est validé (400 nommé).
 
     Returns:
         ``{'calepinage', 'version', 'layout_hash', 'inchange',
@@ -572,15 +575,6 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
             "illisible) : corrigez la saisie." % chemin_interdit,
             champ='roof_layout')
 
-    # ACAL1927 — les factures mensuelles saisies : même validation que l'import
-    # (``io_layout.valider_factures_mois``) ; refus NOMMÉ, rien d'écrit.
-    from .io_layout import ImportLayoutRefuse, valider_factures_mois
-
-    try:
-        valider_factures_mois(roof_layout)
-    except ImportLayoutRefuse as refus:
-        raise LayoutRefuse(str(refus), champ=refus.champ) from refus
-
     # CAL207 — miroir de la règle ventes/sync-layout : un calepinage dont le
     # devis lié a été envoyé est en lecture seule (409), sauf déverrouillage
     # explicite. La restauration de version (CAL20) passe par ICI, donc elle
@@ -588,6 +582,16 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
     from .verrou import verifier_ecriture_autorisee
 
     verifier_ecriture_autorisee(calepinage)
+
+    if valider_factures:
+        # ACAL1927 — document venu d'un CLIENT (``POST layout/``) : mêmes règles que l'import, APRÈS
+        # le refus d'état CAL207 (409) ; jamais pour une re-sauvegarde interne d'un document déjà stocké.
+        from .io_layout import ImportLayoutRefuse, valider_factures_mois
+
+        try:
+            valider_factures_mois(roof_layout)
+        except ImportLayoutRefuse as refus:
+            raise LayoutRefuse(str(refus), champ=refus.champ) from refus
 
     champs = ['roof_layout', 'layout_hash', 'updated_at']
     with transaction.atomic():

@@ -50,10 +50,10 @@ SLD = charger('calepinage_sld.json')
 #: permet pas de dessiner.
 ETATS = ('exemple', 'exemple_apres_edition', 'exemple_vide')
 
-#: Les six clés de la réponse — les quatre de `CLES_SCHEMA` (déjà servies)
-#: plus les deux que cette tâche ajoute.
+#: Les sept clés de la réponse — les quatre de `CLES_SCHEMA` (déjà servies),
+#: les deux de CALX204, et ``schema_electrique`` (SCHEL-B2, lot 6).
 CLES_REPONSE = ['blocs', 'bloquants', 'calepinage', 'edition', 'manquantes',
-                'svg']
+                'schema_electrique', 'svg']
 
 #: Les sept champs d'un bloc dessiné.
 CHAMPS_BLOC = {'clef', 'repere', 'titre', 'sous_titre', 'x', 'y',
@@ -96,6 +96,20 @@ class ClesToujoursPresentesTest(SimpleTestCase):
                 f'{etat} : les clés de réponse ont bougé — un écran qui '
                 f'reçoit parfois six clés et parfois cinq finit par tester '
                 f"l'absence de clé au lieu de l'absence de données.")
+
+    def test_le_schema_electrique_suit_le_dessin_et_porte_le_document_entier(self):
+        """SCHEL-B2 — ``null`` quand ``svg`` l'est ; sinon le document du noyau,
+        toutes ses clés présentes (celles de ``core.electrique.schema_electrique``)."""
+        from core.electrique.schema_electrique import CLES_DOCUMENT
+
+        for etat in ETATS:
+            document = SLD[etat]['schema_electrique']
+            if SLD[etat]['svg'] is None:
+                self.assertIsNone(document, etat)
+                continue
+            self.assertEqual(tuple(document), CLES_DOCUMENT, etat)
+            self.assertEqual(document['source'], 'calepinage', etat)
+            self.assertTrue(document['chaines'], etat)
 
     def test_les_cles_deja_servies_par_la_vue_sont_toutes_la(self):
         """Le contrat ÉTEND `CLES_SCHEMA`, il n'en retire aucune."""

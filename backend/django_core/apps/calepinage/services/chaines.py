@@ -42,10 +42,11 @@ import math
 from dataclasses import dataclass, field, replace
 from typing import Optional, Tuple
 
-from core.electrique.chaines import concevoir_chaines
+from core.electrique.chaines import CRITERE_CHAINES_INEGALES, concevoir_chaines
+from core.electrique.schema import PALETTE_CHAINES
 from core.electrique.types import (
     COEFFICIENTS_TEMPERATURE, EntreeElectrique, GroupePan, SpecModule,
-    SpecOnduleur, fr,
+    SpecOnduleur, fr, fr_v,
 )
 from .valeurs import nombre as _nombre
 
@@ -204,6 +205,11 @@ class Conception:
     #: ACAL633 — le nombre d'onduleurs ACCEPTÉ dans l'entrée (``None`` = non
     #: saisi : le plafond de dossier fait foi, comme avant).
     nombre_onduleurs: Optional[int] = None
+    #: La fenêtre de tension (``core.electrique.chaines.FenetreChaine``) de
+    #: chaque pan d'un champ à PLUSIEURS modèles de module, ``((pan,
+    #: fenêtre), …)`` ; vide = un seul modèle, ``resultat.fenetre`` vaut pour
+    #: tous les pans. Lue par ``verdict_affectation`` ; hors de toute empreinte.
+    fenetres_par_pan: Tuple[Tuple[str, object], ...] = ()
 
     @property
     def fiche_incomplete(self):
@@ -678,6 +684,10 @@ def entree_electrique(layout, module, onduleur, temperatures, *,
         batterie_designation=str(batterie_designation or ''),
         batterie_kwh=float(batterie_kwh or 0.0),
         batterie_v_nominal=float(batterie_v_nominal or 0.0),
+        # Le calepinage câble des chaînes INÉGALES d'une entrée MPPT à l'autre
+        # quand la partition égale ne tient pas (Isc d'entrée dépassé,
+        # modules hors chaîne) ; une conception valide reste celle d'avant.
+        chaines_inegales_entre_entrees=True,
     )
 
 
@@ -836,10 +846,11 @@ def _concevoir_par_module(pans, fiches_par_pan, module, onduleur,
                           for m in manque)
         specs_modeles.append(spec)
     if manquantes:
-        return None, tuple(manquantes), ()
+        return None, tuple(manquantes), (), ()
 
     parts, depasse = _parts_mppt(onduleur.n_mppt, len(ordre))
     chaines, repartitions, bloquants, alertes, verdicts = [], [], [], [], []
+    fenetres = {}  # la fenêtre de tension de CHAQUE pan : celle de SON module
     premier, decalage = None, 0
     for (cle_modele, _fiche), spec, part in zip(ordre, specs_modeles, parts):
         sous_pans = groupes[cle_modele]
@@ -851,8 +862,11 @@ def _concevoir_par_module(pans, fiches_par_pan, module, onduleur,
             temp_chaud_c=temperatures.chaud_c,
             temp_source=getattr(temperatures, 'source', None),
             temp_mention=getattr(temperatures, 'mention', '') or '',
-            longueur_chaine_forcee=options.get('longueur_forcee'))
+            longueur_chaine_forcee=options.get('longueur_forcee'),
+            chaines_inegales_entre_entrees=True)
         resultat = concevoir_chaines(entree)
+        for repartition in resultat.repartitions:
+            fenetres.setdefault(repartition.pan, resultat.fenetre)
         if premier is None:
             premier = resultat
         for chaine in resultat.chaines:
@@ -881,7 +895,7 @@ def _concevoir_par_module(pans, fiches_par_pan, module, onduleur,
         alertes=tuple(alertes), longueur_forcee=premier.longueur_forcee,
         longueur_forcee_acceptee=premier.longueur_forcee_acceptee,
         verdicts=tuple(verdicts))
-    return resultat, (), tuple(messages)
+    return resultat, (), tuple(messages), tuple(fenetres.items())
 
 
 def modules_par_pan(layout, defaut, fiches, manquants):
@@ -1036,9 +1050,9 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
 
     entree = entree_electrique(layout, module, onduleur, temperatures,
                                **options)
-    ecarts = ()
+    ecarts, fenetres = (), ()
     if fiches_par_pan:
-        resultat, manquantes, par_module = _concevoir_par_module(
+        resultat, manquantes, par_module, fenetres = _concevoir_par_module(
             pans, fiches_par_pan, module, onduleur, temperatures, options)
         if manquantes:
             return Conception(pans=pans, manquantes=manquantes,
@@ -1063,7 +1077,8 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
         coefficients_non_sources=tuple(module.coefficients_non_sources),
         fusions=tuple(tuple(p.cle_stable for p in f) for f in _fusions_de_pans(
             pans, options.get('tolerance_orientation_deg')) if len(f) > 1),
-        nombre_onduleurs=int(nombre_onduleurs) if nombre_onduleurs else None)
+        nombre_onduleurs=int(nombre_onduleurs) if nombre_onduleurs else None,
+        fenetres_par_pan=fenetres)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1087,20 +1102,12 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
 # celui des pans du document puis celui des chaînes du noyau — aucun ensemble
 # non ordonné, aucun identifiant d'objet, aucune horloge.
 
-#: ACAL285 — la teinte des chaînes et des entrées MPPT : SOURCE UNIQUE
-#: (déplacée de ``documents/plan_cablage.py``, qui l'importe). Servie ligne
-#: par ligne dans ``electrique.affectation[]`` : l'écran, la 3D et le plan de
-#: câblage colorent tous avec CES valeurs, jamais une copie locale.
-PALETTE_CHAINES = (
-    'rgb(36, 130, 214)',   # bleu
-    'rgb(232, 125, 33)',   # orange
-    'rgb(46, 163, 89)',    # vert
-    'rgb(184, 64, 158)',   # magenta
-    'rgb(0, 153, 158)',    # sarcelle
-    'rgb(212, 61, 71)',    # rouge
-    'rgb(115, 102, 199)',  # violet
-    'rgb(153, 133, 26)',   # ocre
-)
+#: ACAL285 — la teinte des chaînes et des entrées MPPT : SOURCE UNIQUE, qui vit
+#: dans le noyau depuis SCHEL-B1 (``core/electrique/schema.py``) et est
+#: ré-exportée ici (``documents/plan_cablage.py`` l'importe de ce module).
+#: Servie ligne par ligne dans ``electrique.affectation[]`` : l'écran, la 3D,
+#: le plan de câblage et le schéma électrique colorent avec CES valeurs
+#: (importée en tête de module).
 #: Le gris d'un module NON affecté — jamais ``null``, jamais une teinte de
 #: chaîne voisine.
 COULEUR_NON_AFFECTE = 'rgb(140, 143, 148)'
@@ -1288,10 +1295,18 @@ def _rangs_par_groupe_brut(pan, chaines, repartitions):
         nombre_est = jambes[0][1]
         rangs = {'E': list(range(1, nombre_est + 1)),
                  'W': list(range(nombre_est + 1, pan.modules + 1))}
-    groupes = []
-    debut = 0
-    for (face, *_reste), repartition in zip(jambes, repartitions):
-        fin = debut + int(getattr(repartition, 'nb_chaines', 0) or 0)
+    groupes, debut, restantes = [], 0, list(repartitions)
+    for face, modules, *_reste in jambes:
+        # Une jambe = UNE répartition, ou plusieurs quand ses chaînes sont
+        # inégales d'une entrée à l'autre (une par longueur) : on prend
+        # celles qui couvrent ses modules.
+        fin, couverts, prises = debut, 0, 0
+        while restantes and (not prises or couverts < modules):
+            repartition = restantes.pop(0)
+            prises += 1
+            fin += int(getattr(repartition, 'nb_chaines', 0) or 0)
+            couverts += int(getattr(repartition, 'nb_modules', modules) or 0) \
+                + int(getattr(repartition, 'reste', 0) or 0)
         groupes.append((rangs.get(face, []), chaines[debut:fin]))
         debut = fin
     return groupes
@@ -1443,6 +1458,25 @@ def bloc_pose(conception):
         'puissance_module_wc': commune,
         'pans': pans,
     }
+
+
+def longueurs_retenues(repartitions):
+    """``(par_pan, longueurs)`` lus par ``electrique._longueur_chaine_retenue``.
+
+    Comme avant : la longueur de la DERNIÈRE répartition de chaque pan, et
+    l'ensemble de ces longueurs. Un pan à chaînes INÉGALES d'une entrée MPPT à
+    l'autre publie sa plus longue et compte TOUTES ses longueurs — aucun
+    nombre unique n'est alors vrai pour lui.
+    """
+    par_pan, inegales = {}, set()
+    for repartition in repartitions:
+        longueur = repartition.longueur_chaine
+        if getattr(repartition, 'critere_longueur', '') == \
+                CRITERE_CHAINES_INEGALES:
+            inegales.add(longueur)
+            longueur = max(longueur, par_pan.get(repartition.pan, 0))
+        par_pan[repartition.pan] = longueur
+    return par_pan, set(par_pan.values()) | inegales
 
 
 def _chainage(conception):
@@ -1832,22 +1866,14 @@ def verdict_affectation(conception, imposee, *, specs_onduleur=None,
                 "Chaîne %d : elle traverse les pans %s — une chaîne reste sur "
                 "UN pan." % (numero, ', '.join(sorted(pans))))
 
-    bornes = _bornes_de_chaine(conception)
-    if bornes is not None:
-        mini, maxi = bornes
-        for numero, nombre in sorted(modules_par_chaine.items()):
-            pan = ', '.join(sorted(pans_par_chaine.get(numero, ())))
-            if maxi is not None and nombre > maxi:
-                refus.append(
-                    "Chaîne %d (pan %s) : %d modules, maximum %d — au-delà, "
-                    "la tension à froid dépasse la limite de l'onduleur."
-                    % (numero, pan, nombre, maxi))
-            elif mini is not None and nombre < mini:
-                refus.append(
-                    "Chaîne %d (pan %s) : %d modules, minimum %d — en deçà, "
-                    "la chaîne ne démarre pas sur la plage MPPT."
-                    % (numero, pan, nombre, mini))
+    for numero, nombre in sorted(modules_par_chaine.items()):
+        pans = sorted(pans_par_chaine.get(numero, ()))
+        motif = _hors_fenetre(conception, pans, nombre)
+        if motif:
+            refus.append("Chaîne %d (pan %s) : %d modules, %s."
+                         % (numero, ', '.join(pans), nombre, motif))
 
+    refus.extend(_refus_paralleles_inegales(conception, imposee))
     maximum = _chaines_max_par_mppt(specs_onduleur)
     if maximum:
         for (onduleur, mppt), chaines in sorted(
@@ -1861,20 +1887,96 @@ def verdict_affectation(conception, imposee, *, specs_onduleur=None,
     return tuple(refus)
 
 
+def _refus_paralleles_inegales(conception, imposee):
+    """Des chaînes en PARALLÈLE sur une même entrée MPPT ont la même longueur.
+
+    Lu sur le câblage EFFECTIF (table automatique + affectation imposée) : deux
+    chaînes de longueurs différentes sur une entrée tirent deux tensions
+    différentes sur un seul suiveur (Voc à vide inégaux, courant de retour de
+    l'une dans l'autre). Deux entrées DIFFÉRENTES peuvent porter des longueurs
+    différentes — c'est ce que fait le câblage automatique (12 + 12 | 11).
+    Seules les entrées qui portent une chaîne SAISIE à la main sont jugées ici :
+    l'automatique dit lui-même ce qu'il pose (pans qui partagent une entrée).
+    """
+    table = affectation(conception, imposee=imposee)
+    # Un seul onduleur (toutes les lignes à 1 ou vides) : vide et 1 = le même.
+    seul = all(ligne['onduleur'] in (None, 1) for ligne in table)
+    longueurs, par_entree, manuelles = {}, {}, set()
+    for ligne in table:
+        if ligne['chaine'] is None:
+            continue
+        longueurs[ligne['chaine']] = longueurs.get(ligne['chaine'], 0) + 1
+        if ligne['source'] == SOURCE_MANUELLE:
+            manuelles.add(ligne['chaine'])
+        if ligne['mppt'] is not None:
+            onduleur = None if seul else ligne['onduleur']
+            par_entree.setdefault((onduleur, ligne['mppt']),
+                                  set()).add(ligne['chaine'])
+    refus = []
+    for (onduleur, mppt), numeros in sorted(
+            par_entree.items(), key=lambda c: (c[0][0] or 0, c[0][1] or 0)):
+        tailles = sorted({longueurs[n] for n in numeros}, reverse=True)
+        if len(tailles) > 1 and numeros & manuelles:
+            refus.append(
+                "Entrée MPPT %s : chaînes %s en parallèle de %s modules — des "
+                "chaînes en parallèle sur une même entrée doivent avoir la "
+                "même longueur (des entrées différentes peuvent différer)."
+                % (_libelle_mppt(onduleur, mppt),
+                   ', '.join(str(n) for n in sorted(numeros)),
+                   ' et '.join(str(t) for t in tailles)))
+    return refus
+
+
 def _libelle_mppt(onduleur, mppt):
     return ('%d (onduleur %d)' % (mppt, onduleur) if onduleur
             else str(mppt))
 
 
-def _bornes_de_chaine(conception):
-    """``(min, max)`` de modules par chaîne, ou ``None`` si non publié.
+def _hors_fenetre(conception, pans, nombre):
+    """Le motif VRAI d'une chaîne de ``nombre`` modules hors fenêtre, ou ``''``.
 
-    Les bornes sont celles que le DIMENSIONNEMENT a retenues : la longueur des
-    chaînes réellement conçues. Aucune borne n'est inventée — sans chaîne
-    conçue, il n'y a rien à comparer et le contrôle s'abstient.
+    La fenêtre est celle que le noyau calcule sur les fiches aux températures
+    du site (``core.electrique.chaines.fenetre_admissible`` : Voc à froid sous
+    la tension maximale, Vmp à froid sous le haut de plage MPPT, Vmp à chaud
+    au-dessus du bas de plage et du démarrage) — et non plus les longueurs que
+    le dimensionnement automatique a retenues (une chaîne de 12 était refusée
+    « maximum 7 » parce qu'il avait posé des 7, sous 615 V / 800 V). Le motif nomme la borne calculée et
+    la tension dont elle sort ; fenêtre inconnue ou borne non vérifiable :
+    aucun refus (le silence, jamais un faux rouge).
     """
-    longueurs = [chaine.nb_modules for chaine in conception.chaines
-                 if getattr(chaine, 'nb_modules', None)]
-    if not longueurs:
-        return None
-    return (min(longueurs), max(longueurs))
+    fenetres = dict(getattr(conception, 'fenetres_par_pan', ()) or ())
+    fenetre = next((fenetres[pan] for pan in pans if pan in fenetres),
+                   getattr(conception.resultat, 'fenetre', None))
+    onduleur = getattr(getattr(conception, 'entree', None), 'onduleur', None)
+    if fenetre is None or onduleur is None:
+        return ''
+    froid, chaud = fr(fenetre.temp_froid_c, 0), fr(fenetre.temp_chaud_c, 0)
+    causes = []
+    if nombre > fenetre.longueur_max and not fenetre.plafond_non_verifiable:
+        borne = 'maximum %d' % fenetre.longueur_max
+        if fenetre.max_par_voc is not None and nombre > fenetre.max_par_voc:
+            causes.append(
+                "la tension à froid de la chaîne (Voc %s à %s °C) dépasse la "
+                "tension maximale %s de l'onduleur (%d modules au plus)"
+                % (fr_v(fenetre.voc_froid_unitaire_v * nombre), froid,
+                   fr_v(onduleur.v_max_abs), fenetre.max_par_voc))
+        if fenetre.max_par_mppt is not None and nombre > fenetre.max_par_mppt:
+            causes.append(
+                "sa tension de fonctionnement à froid (Vmp %s à %s °C) dépasse "
+                "le haut de plage MPPT %s (%d modules au plus)"
+                % (fr_v(fenetre.vmp_froid_unitaire_v * nombre), froid,
+                   fr_v(onduleur.mppt_v_max), fenetre.max_par_mppt))
+    elif nombre < fenetre.longueur_min:
+        borne = 'minimum %d' % fenetre.longueur_min
+        vmp = fr_v(fenetre.vmp_chaud_unitaire_v * nombre)
+        for minimum, quoi, tension in (
+                (fenetre.min_par_mppt, 'le bas de plage MPPT',
+                 onduleur.mppt_v_min),
+                (fenetre.min_par_demarrage, "la tension de démarrage de "
+                 "l'onduleur", onduleur.tension_demarrage_v)):
+            if minimum and nombre < minimum:
+                causes.append(
+                    "sa tension à chaud (Vmp %s à %s °C) passe sous %s %s "
+                    "(%d modules au moins)"
+                    % (vmp, chaud, quoi, fr_v(tension), minimum))
+    return '%s — %s' % (borne, ' ; '.join(causes)) if causes else ''

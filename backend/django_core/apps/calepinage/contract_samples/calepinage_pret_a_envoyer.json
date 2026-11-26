@@ -137,5 +137,19 @@
         }
       ]
     }
+  },
+  "exemple_obstacle_hors_pan": {
+    "pourquoi": "ACAL1971 (contrat d'abord, PACT10) — pour `obstacle_hors_pan` à `a_regler`, `cible.champ` porte l'identifiant STABLE (`id`) de l'obstacle fautif dans le document de conception (`roof_layout_v2` : zones[].obstacles[].id), jamais sa position dans la liste (qui bouge quand on en supprime un). Vide quand l'obstacle fautif n'a pas d'identifiant, ou à `ok` / `info`. Si plusieurs obstacles dépassent, c'est le PREMIER (celui que `valeur_texte` nomme). L'écran Toit sélectionne cet obstacle à l'arrivée. Valeurs : des PLACEHOLDERS de forme.",
+    "controle": {
+      "code": "obstacle_hors_pan",
+      "libelle": "Obstacles dans leur pan",
+      "etat": "a_regler",
+      "valeur_texte": "Cheminée / souche dépasse du pan A",
+      "cause": "Cheminée / souche dépasse du pan A",
+      "geste": "Déplacer l'obstacle",
+      "cible": {"etape": "toit", "onglet": "pente", "champ": "obstacle-1"},
+      "seuil_source": null,
+      "points": []
+    }
   }
 }

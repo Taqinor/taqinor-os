@@ -25,6 +25,7 @@ un format donné : deux schémas du même format se superposent au pixel près.
 Aucun prix, aucun montant : uniquement des grandeurs électriques et des repères.
 """
 
+import re
 from dataclasses import dataclass
 from html import escape
 
@@ -36,8 +37,24 @@ __all__ = [
     # CALX233-235 (crochet de phase 2) — l'API PUBLIQUE du dessin, pour que
     # les services applicatifs cessent d'importer les privés de ce module.
     "GeometrieSchema", "GEOMETRIE", "places_du_schema", "bloc_svg", "MENTION_A_CONFIRMER", "MENTION_DECOUPLAGE",
-    "blocs_etage_mt",
+    "blocs_etage_mt", "PALETTE_CHAINES",
 ]
+
+#: ACAL285 / SCHEL-B1 — la teinte des chaînes et des entrées MPPT : SOURCE
+#: UNIQUE, ici dans le noyau depuis le lot 6 (le document « schéma électrique »
+#: du noyau colore ses chaînes avec elle ; ``apps/calepinage/services/
+#: chaines.py`` l'importe). Les quatre premières sont celles de la capture du
+#: fondateur : bleu, orange, vert, magenta.
+PALETTE_CHAINES = (
+    'rgb(36, 130, 214)',   # bleu
+    'rgb(232, 125, 33)',   # orange
+    'rgb(46, 163, 89)',    # vert
+    'rgb(184, 64, 158)',   # magenta
+    'rgb(0, 153, 158)',    # sarcelle
+    'rgb(212, 61, 71)',    # rouge
+    'rgb(115, 102, 199)',  # violet
+    'rgb(153, 133, 26)',   # ocre
+)
 
 #: Formats de planche, en pixels CSS à 96 ppp (A4 paysage 297 × 210 mm,
 #: A3 paysage 420 × 297 mm). Le viewBox est fixe pour un format donné.
@@ -140,6 +157,8 @@ _TEINTES = (
 #: pixels CSS à 96 ppp comme tout ce module — aucune norme ne les fixe.
 _BANDEAU_TAILLE = 10.0
 _BANDEAU_COULEUR = "#9a3412"
+#: ACAL1713 — interligne du bandeau replié (px).
+_PAS_BANDEAU = _BANDEAU_TAILLE + 3.0
 
 _A_LA_TERRE = ("champ", "onduleur", "tgbt")
 
@@ -786,11 +805,15 @@ def _liaison_des_chaines(depart, arrivee, couleurs):
                    for rang, (_libelle, couleur) in enumerate(couleurs)) + _pointe(xb, yb + _BLOC_H / 2, "droite")
 
 
-def _legende_des_chaines(couleurs, hauteur):
-    """ACAL1337 — « Chaîne 1 · Chaîne 2 … » au pied de la planche, au-dessus du bandeau."""
+def _legende_des_chaines(couleurs, hauteur, remontee=0.0):
+    """ACAL1337 — « Chaîne 1 · Chaîne 2 … » au pied de la planche, au-dessus du bandeau.
+
+    ``remontee`` (ACAL1713) : la hauteur des lignes du bandeau EN PLUS de la première
+    — la légende monte d'autant, pour que bandeau replié et légende ne partagent
+    jamais une boîte."""
     morceaux = []
     for rang, (libelle, couleur) in enumerate(couleurs):
-        x, y = _MARGE + (rang % 8) * 72.0, hauteur - _MARGE - 24.0 - (rang // 8) * 14.0
+        x, y = _MARGE + (rang % 8) * 72.0, hauteur - _MARGE - 24.0 - remontee - (rang // 8) * 14.0
         morceaux.append(_trait_de_chaine(rang, couleur, x, x + 16.0, y - 3.0))
         morceaux.append('<text x="%s" y="%s" font-size="9" fill="%s">%s</text>'
                         % (_n(x + 20.0), _n(y), _TRAIT, _esc(libelle)))
@@ -808,16 +831,43 @@ def _symbole_terre(x, y):
 
 
 # ────────────────────────────────────────────────────────────────── planche
-def _bandeau_svg(texte, hauteur):
-    """La ligne d'omission posée sous la planche — une ligne, rien d'autre.
+def _lignes_du_bandeau(texte, largeur):
+    """Le texte du bandeau, REPLIÉ pour tenir dans la planche (ACAL1713).
 
-    Elle est APPOSÉE : elle ne filtre ni ne réinterprète quoi que ce soit du
-    dessin, et sa marge est celle du moteur (jamais une seconde valeur).
+    Le bandeau d'omission est une phrase de ~330 signes : posée sur UNE ligne
+    elle sortait de la feuille (1 568 px dans 1 122). Largeur utile = la
+    planche moins ses marges et moins le cartouche posé à droite ; ~0,58 em
+    par signe en gras. Un nom entre guillemets français (« Norme
+    électrique ») n'est jamais coupé en deux lignes. Une phrase qui tient
+    rend UNE ligne : la planche est alors celle d'avant, octet pour octet.
     """
-    return ('<text x="%.1f" y="%.1f" font-size="%.1f" font-weight="700" '
-            'fill="%s">%s</text>'
-            % (_MARGE, hauteur - _MARGE, _BANDEAU_TAILLE, _BANDEAU_COULEUR,
-               escape(texte, quote=True)))
+    import textwrap
+
+    utile = float(largeur) - 2 * _MARGE - _TABLEAU_L - _ECART
+    signes = max(20, int(utile / (_BANDEAU_TAILLE * 0.58)))
+    insecable = chr(0xA0)
+    protege = re.sub(r"«[^»]*»",
+                     lambda m: m.group(0).replace(" ", insecable), texte)
+    lignes = textwrap.wrap(protege, width=signes, break_long_words=False,
+                           break_on_hyphens=False) or [protege]
+    return [ligne.replace(insecable, " ") for ligne in lignes]
+
+
+def _bandeau_svg(texte, hauteur, largeur=None):
+    """Le bandeau d'omission posé sous la planche, replié dans sa largeur.
+
+    Il est APPOSÉ : il ne filtre ni ne réinterprète quoi que ce soit du
+    dessin, et sa marge est celle du moteur (jamais une seconde valeur). La
+    dernière ligne reste sur la marge basse ; les suivantes montent.
+    """
+    lignes = (_lignes_du_bandeau(texte, largeur) if largeur else [texte])
+    pas = _PAS_BANDEAU
+    return "".join(
+        '<text x="%.1f" y="%.1f" font-size="%.1f" font-weight="700" '
+        'fill="%s">%s</text>'
+        % (_MARGE, hauteur - _MARGE - (len(lignes) - 1 - rang) * pas,
+           _BANDEAU_TAILLE, _BANDEAU_COULEUR, escape(ligne, quote=True))
+        for rang, ligne in enumerate(lignes))
 
 
 def rendre_schema(entree, resultat, cartouche=None, positions=None,
@@ -880,7 +930,10 @@ def rendre_schema(entree, resultat, cartouche=None, positions=None,
         svg.append(_liaison_des_chaines(depart, arrivee, couleurs_chaines)
                    if depart[0].clef == "champ" else _liaison(depart, arrivee))
     if couleurs_chaines:
-        svg.append(_legende_des_chaines(couleurs_chaines, hauteur))
+        lignes_bandeau = _lignes_du_bandeau(bandeau, largeur) if bandeau else ()
+        svg.append(_legende_des_chaines(
+            couleurs_chaines, hauteur,
+            max(0, len(lignes_bandeau) - 1) * _PAS_BANDEAU))
 
     svg.append(_branches(places))
     svg.append(_amorces_mppt(entree, resultat, places))
@@ -888,7 +941,7 @@ def rendre_schema(entree, resultat, cartouche=None, positions=None,
     svg.append(_tableau(resultat, largeur, standard=standard))
     svg.append(_cartouche(entree, resultat, largeur, hauteur, cartouche))
     if bandeau:
-        svg.append(_bandeau_svg(bandeau, hauteur))
+        svg.append(_bandeau_svg(bandeau, hauteur, largeur))
     svg.append("</svg>")
     return "".join(svg)
 
