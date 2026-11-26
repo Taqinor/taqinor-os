@@ -290,4 +290,21 @@ describe('ACAL562 — retraits de la société posés sur les arêtes typées', 
     expect((aretesVues as string[]).length).toBeGreaterThan(0);
     expect(aretesVues).toContain('societe');
   });
+
+  // ACAL1330 (D-ACAL-75 « rejouer ») — un pan rouvert AVEC sa pose enregistrée ne reçoit pas les retraits de la société
+  // à l'ouverture : ses arêtes restent celles du document, le pavage est celui de la pose relue (60 restent 60).
+  // Mutant : poser les retraits sur un plan rejoué ⇒ arêtes changées.
+  it('plan rejoué : aucun retrait de la société posé, les arêtes du document restent telles quelles ; recalc toujours', () => {
+    const pan = panDeTest('area-1', { vertices: polyM([[0, 0], [10, 0], [10, 6], [0, 6]]), roofType: 'flat' });
+    const ctx = {
+      ...ctxDeBase([pan]),
+      activeArea: () => pan,
+      opts: { reglagesAtelier: { degagements: { retraits_par_arete: [{ type: 'egout', retrait_m: 0.4 }, { type: 'rive', retrait_m: 0.3 }] } } },
+    } as unknown as Ctx;
+    const avant = JSON.stringify(pan.edges ?? null);
+    let recalculs = 0;
+    expect(poserRetraitsPuisRecalculer(ctx, () => { recalculs += 1; }, true)).toBeNull();
+    expect(recalculs).toBe(1);
+    expect(JSON.stringify(pan.edges ?? null)).toBe(avant);
+  });
 });

@@ -9,8 +9,8 @@ import { annualShadeFactor, MID_MONTH_DAY_OF_YEAR, DIFFUSE_FRACTION_WHEN_SHADED 
 import { tableOmbrage, recomposerMatrice, ajouterTableOmbrage, garderTableRelue, signerSources } from './tableOmbrage'; // ACAL459
 import { facteurVueCiel, vueCielDuPan, ajouterVueCiel, garderVueCielRelue } from './vueCiel'; // ACAL460
 import { describe, expect, it } from 'vitest';
-import { htmlLegendeAcces, poserLegendeAcces } from './legendeAcces'; // ACAL441
-import { solarAccessColorRGB } from '../../lib/shadingEngine'; // ACAL441
+import { htmlLegendeAcces, phraseCouleursAcces, poserLegendeAcces } from './legendeAcces'; // ACAL441, ACAL1821
+import { choisirPaletteAcces, solarAccessColorRGB } from '../../lib/shadingEngine'; // ACAL441, ACAL1821
 import {
   effectiveBuildingHeightM,
   filtrerEmplacementsSousSeuil,
@@ -566,6 +566,23 @@ describe('ACAL441 : la légende reprend les couleurs de solarAccessColorRGB', ()
   it('sans note dans la page, rien n’est créé', () => {
     expect(() => poserLegendeAcces(null, 'année entière')).not.toThrow();
   });
+
+  // ACAL1821 — la note ne nomme aucune couleur absente de la palette active (atelier : bleu nuit → or), le site garde
+  // son texte ; la légende prend toute la largeur d'une rangée flex (bornes aux deux bouts). Mutant : « vert / rouge ».
+  it('palette atelier : la note ne dit plus « vert / rouge » ; palette du site : texte inchangé ; légende pleine largeur', () => {
+    try {
+      choisirPaletteAcces('atelier');
+      const phrase = phraseCouleursAcces('en décembre');
+      expect(phrase).not.toMatch(/vert|rouge/);
+      expect(phrase).toContain('de l’ombre (0 %) au plein soleil (100 %) en décembre');
+    } finally { choisirPaletteAcces('site'); }
+    expect(phraseCouleursAcces('toute l’année')).toBe('vert = plein soleil toute l’année, rouge = souvent à l’ombre');
+    const rangee = document.createElement('div');
+    rangee.innerHTML = '<p id="note"></p>';
+    poserLegendeAcces(rangee.querySelector('#note') as HTMLElement, 'année entière');
+    const legende = rangee.querySelector('#rp9-heatmap-legend') as HTMLElement;
+    expect([legende.style.width, legende.style.flexBasis]).toEqual(['100%', '100%']);
+  });
 });
 
 // ACAL552 — les deux poses chiffrées sous les puces Portrait / Paysage.
@@ -674,6 +691,29 @@ describe('ACAL726 — executerAvecCarte', () => {
     expect(appelee).toBe(false);
     expect(journal).toEqual([]);
   });
+  // ACAL1621 — une source d'ombrage saisie mais AUCUN module à teinter (pas de plan pavé) : la carte ne peut pas être
+  // teintée (`buildHeatmapColorFn` rend null) ; la capture n'a pas lieu (`null`), jamais la vue 3D ordinaire déposée
+  // comme carte de chaleur. Avec des modules posés, la capture a lieu. Mutant : ne tester que la source ⇒ capture.
+  it('source saisie mais aucun module posé : `null`, rien capturé ; modules posés : capturé', async () => {
+    document.body.innerHTML = '';
+    const ctx = {
+      areas: [], activeAreaId: 'z1', vertices: [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001]], closed: true,
+      obstacles: [{ id: 'o1', centerLng: -7.6001, centerLat: 33.5001, lengthM: 1, widthM: 1, heightM: 1 }],
+      batiments: [], shadeObstructions: [], environment: [], activeArea: () => null, pushWorkshopHistory: () => {},
+      centroid: [-7.6, 33.5], centroidLat: 33.5, prodPerKwc: null, shadeFactors: null, layoutPlan: null,
+    } as unknown as Ctx;
+    const map = new Proxy({}, { get: () => () => undefined }) as never;
+    const teintes: unknown[] = [];
+    const ui = createShadingUi(ctx, { map, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: (f) => teintes.push(f) });
+    let captures = 0;
+    expect(await ui.avecCarteDAcces(async () => { captures += 1; return 'png'; })).toBeNull();
+    expect(captures).toBe(0);
+    expect(teintes).toEqual([]);
+    (ctx as unknown as { layoutPlan: unknown }).layoutPlan = { grid: { panels: [{ cx: 0, cy: 0 }], kwc: 0.5 } };
+    expect(await ui.avecCarteDAcces(async () => { captures += 1; return 'png'; })).toBe('png');
+    expect(captures).toBe(1);
+    expect(typeof teintes[0]).toBe('function'); // la carte est TEINTÉE pendant la capture
+  });
 });
 
 // ACAL729 — l'info-bulle d'un module : accès annuel et chaîne en tête, jamais une valeur inventée.
@@ -691,6 +731,27 @@ describe('ACAL729 — tête d’info-bulle d’un module', () => {
     expect(libelleModuleAffecte({ module: 'a#2', chaine: null, mppt: null }, 'chaine')).toBeNull();
     const c = buildAffectationColoring([{ module: 'a#1', chaine: 2, mppt: 1 }, { module: 'a#2', chaine: null, mppt: null }], 'chaine');
     expect([...c.labelByModule.entries()]).toEqual([['a#1', 'chaîne 2']]);
+  });
+});
+
+// ACAL1947 — l'info-bulle d'un module lit la MÊME clé de pan que la coloration par chaîne (`clePanAffectation`,
+// ACAL1516 : l'ID du pan) : un pan « Zone 1 » d'identifiant `z1` affiche sa chaîne. Mutant : `label || id` ⇒ rien.
+describe('ACAL1947 — info-bulle d’un module d’un pan au libellé ≠ identifiant', () => {
+  it('pan « Zone 1 » (id z1), module z1#1 en chaîne 2 ⇒ l’info-bulle dit « chaîne 2 »', () => {
+    document.body.innerHTML = '';
+    const zone = { id: 'z1', label: 'Zone 1', vertices: [], obstacles: [], buildingId: null };
+    const ctx = {
+      areas: [zone], activeAreaId: 'z1', vertices: [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001]], closed: true,
+      // Un obstacle à hauteur saisie : une source d'ombrage, sans quoi l'info-bulle dit « non renseigné ».
+      obstacles: [{ id: 'o1', centerLng: -7.6001, centerLat: 33.5001, lengthM: 1, widthM: 1, heightM: 1 }],
+      batiments: [], shadeObstructions: [], environment: [], activeArea: () => zone, pushWorkshopHistory: () => {},
+      centroid: [-7.6, 33.5], centroidLat: 33.5, prodPerKwc: null, shadeFactors: null,
+      layoutPlan: { grid: { panels: [{ cx: 0, cy: 0 }], kwc: 0.5 } }, activePanelCellIndex: [0],
+      affectationColoration: buildAffectationColoring([{ module: 'z1#1', chaine: 2, mppt: 1 }], 'chaine'),
+    } as unknown as Ctx;
+    const map = new Proxy({}, { get: () => () => undefined }) as never;
+    const ui = createShadingUi(ctx, { map, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {} });
+    expect(ui.moduleShadeTooltip(0)).toContain('chaîne 2');
   });
 });
 
@@ -785,6 +846,36 @@ describe('ACAL1436 — heure solaire « 10,5 »', () => {
     expect(saisir('10.5')).toBe('10 h 30');
     expect(saisir('10,5')).toBe('10 h 30');
     expect(saisir('abc')).toBe('Heure solaire illisible : un nombre entre 0 et 24.');
+  });
+});
+
+// ACAL1921 (revue) — GARDE du chemin de relecture du seuil, pas une preuve de correctif : sur le boot d'un DOCUMENT,
+// `hydrateFromDevis` rend `shadeObstructions` (tableau, vide compris) ⇒ l'entrée du constructeur appelle déjà
+// `rafraichirOmbres` (`if (h.shadeObstructions !== undefined)`), et le champ relit le seuil semé par
+// `deserializeLayout`. La cause du champ vide observé sur le calepinage 2051 est donc AILLEURS (à rejouer en direct).
+describe('ACAL1921 — garde : le boot d’un document relit le seuil d’accès solaire', () => {
+  it('document (seuil 98 %, aucune ombre tracée) : l’hydratation porte `shadeObstructions` et le rafraîchissement lit 98', async () => {
+    const { semerOptimisationDepuisDocument } = await import('./optimisationDocument');
+    const { exempleRoofLayoutV2, ouvrirAtelier } = await import('./harnaisDocument');
+    document.body.innerHTML = '<input id="rp9-seuil-acces"><p id="rp9-seuil-acces-erreur"></p><p id="rp9-seuil-acces-note"></p>';
+    const ctx = {
+      areas: [], activeAreaId: '', vertices: [], closed: false, obstacles: [], batiments: [], shadeObstructions: [],
+      environment: [], activeArea: () => null, pushWorkshopHistory: () => {},
+    } as unknown as Ctx;
+    const map = new Proxy({}, { get: () => () => undefined }) as never;
+    try {
+      semerOptimisationDepuisDocument({});
+      const ui = createShadingUi(ctx, { map, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {} });
+      const champ = document.getElementById('rp9-seuil-acces') as HTMLInputElement;
+      expect(champ.value).toBe('');
+      const doc = JSON.parse(JSON.stringify(exempleRoofLayoutV2())) as Record<string, unknown>;
+      delete doc.shadeObstructions;
+      doc.optimisation = { seuilAccesSolaire: 0.98 };
+      const { h } = ouvrirAtelier({ id: null, geometrie: { roof_layout: doc as never }, cibleVendue: false });
+      expect(h.shadeObstructions).toEqual([]); // défini ⇒ la ligne de l'entrée rafraîchit
+      ui.rafraichirOmbres();
+      expect(champ.value).toBe('98');
+    } finally { semerOptimisationDepuisDocument({}); }
   });
 });
 

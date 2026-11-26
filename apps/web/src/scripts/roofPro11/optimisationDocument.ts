@@ -49,10 +49,10 @@ export function semerOptimisationDepuisDocument(json: unknown): ChoixOptimisatio
  * document dit ce que l'atelier applique, jamais un objectif fantôme.
  * Renvoie `true` si la clé est présente en sortie.
  */
-export function ecrireOptimisationDansDocument(layout: unknown): boolean {
+export function ecrireOptimisationDansDocument(layout: unknown, relu?: Record<string, unknown> | null): boolean {
   const cible = layout as Record<string, unknown> | null | undefined;
   if (!cible || typeof cible !== 'object') return false;
-  ecrireMotifsDansDocument(cible); // ACAL549 — clé `motifsPansVides`, même crochet d'écriture
+  ecrireMotifsDansDocument(cible, relu); // ACAL1970 — un pan inchangé garde le motif LU ; ACAL549 — clé `motifsPansVides`, même crochet d'écriture
   const choix = choixOptimisationCourant();
   if (!choix) {
     delete cible[CLE_OPTIMISATION];

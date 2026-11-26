@@ -22,6 +22,7 @@ import { dateImageCapturee } from './imageCapture'; // ACAL496 / ACAL509
 import { phraseVerdictOmbrage } from './verdictOmbrage'; // ACAL715
 import { choixOptimisationCourant, poserChoixOptimisation } from './optimizer'; // ACAL548 (usage dans les fonctions seulement : import circulaire sûr)
 import { identifiantsModulesParCellule } from './libellesAffectation'; // ACAL729
+import { clePanAffectation } from './scene3d'; // ACAL1947 — la clé de pan de la coloration par chaîne (ACAL1516)
 import {
   declarationSoleilPriseDeVue,
   SHADE_OBSTRUCTION_HALF_WIDTH_M,
@@ -60,7 +61,7 @@ import {
 } from './batiment'; // CALX100 — la hauteur vient du DOCUMENT, plus d'une Map locale
 import { etiquette, registreAtelier } from './numerotation'; // CALX111 câblage
 import { $, esc } from './dom';
-import { poserLegendeAcces } from './legendeAcces'; // ACAL441
+import { phraseCouleursAcces, poserLegendeAcces } from './legendeAcces'; // ACAL441, ACAL1821
 import { signerSources, tableOmbrage, type TableOmbrage } from './tableOmbrage'; // ACAL459
 import { facteurVueCiel, vueCielDuPan, type FacteurVueCiel } from './vueCiel'; // ACAL460
 import { type Ctx } from './context';
@@ -1068,9 +1069,14 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   // annuelle reçue (obstructions tracées retirées du soleil direct, diffus conservé),
   // pondérée par les vrais profils PVGIS. Astronomie pure, aucune API, aucun chiffre
   // inventé (même modèle que le dérate de production, évalué par panneau).
+  /** ACAL1621 — y a-t-il des modules à teinter ? (plan pavé, au moins un panneau, contour fermé) */
+  const carteChiffrable = (): boolean => {
+    const plan = ctx.layoutPlan;
+    return !!plan && plan.grid.panels.length > 0 && ctx.vertices.length >= 3;
+  };
   function buildHeatmapColorFn(): ((cellIndex: number) => { r: number; g: number; b: number }) | null {
     const plan = ctx.layoutPlan;
-    if (!plan || !plan.grid.panels.length || ctx.vertices.length < 3) return null;
+    if (!plan || !carteChiffrable()) return null;
     const enu = activeShadeEntries(); // CAL66/CAL67 — toutes les sources, pas seulement les ombres tracées
     const prod = ctx.prodPerKwc ?? fallbackPerKwc();
     const panels = plan.grid.panels;
@@ -1227,7 +1233,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       : 'Ombrage : aucune heure masquée pour ce module.';
     // ACAL729 — accès annuel du module et sa chaîne (table servie), en TÊTE ; rien d'inventé sinon.
     const aire = ctx.areas.find((a) => a.id === ctx.activeAreaId);
-    const id = identifiantsModulesParCellule(ctx.activePanelCellIndex ?? [], String(aire?.label || aire?.id || ctx.activeAreaId || ''))[cellIndex];
+    const id = identifiantsModulesParCellule(ctx.activePanelCellIndex ?? [], clePanAffectation(aire, ctx.activeAreaId))[cellIndex]; // ACAL1947 — la clé de la coloration
     return teteInfoBulleModule(accesAnnuelDuModule(cellIndex), id ? ctx.affectationColoration?.labelByModule?.get(id) ?? null : null) + ombrage;
   }
 
@@ -1261,10 +1267,12 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       ?? 'Ombrage par module : non calculé (aucun module posé sur ce pan).';
   }
 
+  // ACAL1621 — sans source d'ombrage OU sans module à teinter (aucun plan, aucun panneau : `buildHeatmapColorFn` rendrait
+  // null), rien n'est capturé : `null`, comme sans source — jamais la vue 3D ordinaire présentée comme une carte de chaleur.
   const avecCarteDAcces = <T,>(fn: () => Promise<T>) => executerAvecCarte(
     { on: heatmapOn, mois: heatmapMonth },
     (on, mois) => { heatmapMonth = mois; setHeatmap(on); },
-    hasShadeSources(),
+    hasShadeSources() && carteChiffrable(),
     fn,
   );
 
@@ -1298,7 +1306,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     const periode = heatmapMonth == null ? 'toute l’année' : `en ${HEATMAP_MONTH_LABELS[heatmapMonth]}`;
     heatmapNoteEl.textContent =
       `Carte d’accès solaire (${heatmapMonth == null ? 'année entière' : HEATMAP_MONTH_LABELS[heatmapMonth]}) : ` +
-      `vert = plein soleil ${periode}, rouge = souvent à l’ombre (calcul astronomique, pondéré par l’irradiation réelle du lieu). ` +
+      `${phraseCouleursAcces(periode)} (calcul astronomique, pondéré par l’irradiation réelle du lieu). ` + // ACAL1821
       'Obstacles de toiture à hauteur saisie, objets d’environnement et ombres tracées la font varier.';
   }
 

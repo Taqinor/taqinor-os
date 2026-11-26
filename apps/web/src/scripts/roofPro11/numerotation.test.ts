@@ -257,6 +257,19 @@ describe('CALX111 — crochet document (serializeLayout)', () => {
     expect((geometrie as { numerotation?: ConventionNumerotation }).numerotation).toEqual({ prefixe: 'PV', depart: 1, sens: 'ligne' });
   });
 
+  // ACAL1720 — « Couvrir la facture » (5 panneaux) puis « Le plus de panneaux » : la pose est REMPLACÉE d'un bloc
+  // (aucun emplacement commun) ⇒ la numérotation repart de 1 (1…N, plus 6…N+5) ; un retrait garde son trou.
+  // Mutant : garder l'historique au repavage complet ⇒ 6, 7, 8, 9.
+  it('un repavage COMPLET repart de 1 ; un retrait sur la même pose garde son numéro vacant', () => {
+    const registre = creerRegistre();
+    const convention = { depart: 1, sens: 'ligne' as const };
+    const cinq = [0, 1, 2, 3, 4].map((i) => ({ cx: 10 + i * 1.2, cy: 10 }));
+    expect(numerosDe(registre.appliquer('z1', cinq, convention, SUD).modules)).toEqual([1, 2, 3, 4, 5]);
+    const repave = registre.appliquer('z1', QUATRE, convention, SUD);
+    expect(numerosDe(repave.modules)).toEqual([1, 2, 3, 4]);
+    expect(numerosDe(registre.appliquer('z1', [QUATRE[0], QUATRE[1], QUATRE[3]], convention, SUD).modules)).toEqual([1, 2, 4]);
+  });
+
   it('CALX83 — l’unicité est par PAN : deux pans portent chacun leur nº 1', () => {
     definirSaisie({ actif: true, depart: 1, sens: 'ligne' });
     const document = {
