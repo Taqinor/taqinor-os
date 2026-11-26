@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { render, screen, cleanup, waitFor, within, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
 /* « Montrer au client » (maquette TelephoneClient).
@@ -627,6 +627,20 @@ describe('T4-X8-007 — le retour de la vue client', () => {
       })
     }
   }
+
+  it('ACAL1319 — « Retour au relevé » rend au relevé son origine (la page devis), pour que « Terminer » y revienne', async () => {
+    const Vue = () => <div data-testid="etat-releve">{String(useLocation().state?.depuis)}</div>
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/calepinage/7/client', state: { depuis: 'releve', origine: '/ventes/devis/3/design' } }]}>
+        <Routes>
+          <Route path="/calepinage/:id/client" element={<VueClient webgl={false} />} />
+          <Route path="/calepinage/:id/releve" element={<Vue />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    fireEvent.click(await screen.findByTestId('client-retour-releve'))
+    expect(await screen.findByTestId('etat-releve')).toHaveTextContent('/ventes/devis/3/design')
+  })
 })
 
 /* ACAL1838 — « Montrer au client » au BUREAU (≥ 1024 px, maquette Presentation) : mêmes pièces, autre disposition ; le pied
