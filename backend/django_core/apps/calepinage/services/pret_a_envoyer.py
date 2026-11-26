@@ -912,11 +912,11 @@ def controle_taille_sans_facture(calepinage):
     from .devis import lead_sans_facture_ni_taille, taille_non_dimensionnee
     from .mesures import mesures_du_document
 
-    libelle = 'Taille dimensionnée sur la consommation'
+    libelle = 'Facture ou taille souhaitée renseignée'  # ACAL1332 (D-ACAL-77)
     # ACAL1342 — ni facture ni taille souhaitée : la réponse est connue, aucun balayage.
     if not lead_sans_facture_ni_taille(calepinage) \
             and taille_non_dimensionnee(calepinage) is None:
-        return _controle('taille_sans_facture', libelle, 'ok', 'Dimensionnée',
+        return _controle('taille_sans_facture', libelle, 'ok', 'Renseignée',
                          cible=CIBLE_FACTURE)
     kwc = mesures_du_document(getattr(calepinage, 'roof_layout', None)).get(
         'kwc')
