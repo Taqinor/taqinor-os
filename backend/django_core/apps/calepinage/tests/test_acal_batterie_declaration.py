@@ -418,3 +418,87 @@ class SeuilsHorsReseauTest(SimpleTestCase):
         valider_hors_reseau({'seuils': None})  # null efface
         valider_hors_reseau(CONTRAT_ENTREE['exemple_hors_reseau_avance'][
             'hors_reseau'])
+
+
+class BatterieDesigneeD_ACAL_157(SimpleTestCase):
+    """D-ACAL-157 — désigner une batterie à l'étape Électrique : candidats, drapeau hybride décidé par le SERVEUR,
+    refus d'un produit étranger / non batterie / d'un onduleur non hybride ; une entrée sans batterie intacte."""
+
+    def _produit(self, type_fiche='batterie'):
+        return mock.Mock(nom='Batterie 5,1 kWh', fiche_technique=mock.Mock(type_fiche=type_fiche))
+
+    def _valider(self, postee, *, produit, onduleur_hybride=None, onduleur_present=True):
+        from apps.calepinage.services import ratio_devis
+        from apps.calepinage.services.validation_batterie import valider_batterie_designee
+
+        materiel = {'produits': {'onduleur': 901 if onduleur_present else None}, 'onduleur': {'ac_kw': 10},
+                    'designations': {'onduleur': 'Onduleur X'}, 'familles': {'onduleur': ('', '')}}
+        with mock.patch('apps.stock.selectors.get_produit_scoped', return_value=produit), \
+                mock.patch('apps.calepinage.services.electrique.resoudre_materiel', return_value=materiel), \
+                mock.patch.object(ratio_devis, 'onduleur_designe_est_hybride', return_value=bool(onduleur_hybride)):
+            valider_batterie_designee(mock.Mock(company=object()), {}, postee)
+
+    def test_les_categories_de_candidats_portent_les_batteries_sans_fiche_exigee(self):
+        from apps.calepinage.services.electrique import CATEGORIES_CANDIDATS, _champs_manquants
+
+        self.assertIn(('batteries', 'batterie'), CATEGORIES_CANDIDATS)
+        self.assertEqual(_champs_manquants('batterie', {}), [])
+        self.assertTrue(_champs_manquants('optimiseur', {}))  # les autres rôles gardent leurs champs exigés
+
+    def test_le_drapeau_hybride_suit_le_role_puis_la_fiche_puis_le_nom(self):
+        from apps.calepinage.services.ratio_devis import onduleur_designe_est_hybride as hybride
+
+        self.assertTrue(hybride({}, 'Onduleur X', ('onduleur_hybride', '')))        # rôle déclaré
+        self.assertFalse(hybride({'bat_max_charge_kw': 5}, 'Hybrid X', ('onduleur_reseau', '')))  # le rôle tranche
+        self.assertTrue(hybride({'bat_max_charge_kw': 5}, 'Onduleur X', ('', '')))   # port batterie publié
+        self.assertTrue(hybride({}, 'Onduleur hybride Deye 20kW', ('', '')))          # le nom, en dernier
+        self.assertFalse(hybride({'ac_kw': 10}, 'Onduleur réseau 10 kW', ('', '')))   # réseau : non
+        self.assertFalse(hybride({}, '', ('', '')))                                    # rien lu : non
+
+    def test_le_materiel_servi_ne_porte_hybride_que_sur_l_onduleur(self):
+        from apps.calepinage.services.validation_batterie import drapeau_hybride
+
+        resolu = {'onduleur': {'bat_max_decharge_kw': 6}, 'designations': {'onduleur': 'Onduleur X'},
+                  'familles': {'onduleur': ('', '')}}
+        self.assertEqual(drapeau_hybride('onduleur', resolu), {'hybride': True})
+        self.assertEqual(drapeau_hybride('module', resolu), {})
+        self.assertEqual(drapeau_hybride('optimiseur', resolu), {})
+
+    def test_batterie_sur_onduleur_hybride_acceptee_et_effacement_admis(self):
+        self._valider({'batterie': {'produit': 905, 'packs': 2}}, produit=self._produit(), onduleur_hybride=True)
+        self._valider({'batterie': {'produit': None}}, produit=None)
+        self._valider({'batterie': {'produit': ''}}, produit=None)
+
+    def test_batterie_sur_onduleur_reseau_refusee_sous_le_champ_avec_une_phrase_claire(self):
+        from apps.calepinage.services.electrique import EntreeInvalide
+
+        with self.assertRaises(EntreeInvalide) as refus:
+            self._valider({'batterie': {'produit': 905}}, produit=self._produit(), onduleur_hybride=False)
+        self.assertEqual(refus.exception.champ, 'batterie.produit')
+        self.assertIn("n'est pas un onduleur hybride", str(refus.exception))
+        self.assertIn('retirez la batterie', str(refus.exception))
+
+    def test_produit_d_une_autre_societe_ou_non_batterie_refuse(self):
+        from apps.calepinage.services.electrique import EntreeInvalide
+
+        with self.assertRaises(EntreeInvalide) as etranger:  # get_produit_scoped borne la société : None
+            self._valider({'batterie': {'produit': 7}}, produit=None, onduleur_hybride=True)
+        self.assertEqual(etranger.exception.champ, 'batterie.produit')
+        self.assertTrue(etranger.exception.introuvable)
+        with self.assertRaises(EntreeInvalide) as module:
+            self._valider({'batterie': {'produit': 8}}, produit=self._produit('module'), onduleur_hybride=True)
+        self.assertIn("n'est pas une batterie", str(module.exception))
+
+    def test_sans_onduleur_resolu_ou_sans_batterie_rien_n_est_juge(self):
+        self._valider({'batterie': {'produit': 905}}, produit=self._produit(), onduleur_present=False)
+        self._valider({'dc_m': 12}, produit=None)                    # une saisie sans batterie : aucun effet
+        self._valider({'batterie': {'strategie': 'autoconsommation'}}, produit=None)  # sans produit : aucun effet
+
+    def test_une_entree_sans_batterie_garde_ses_options_donc_ses_empreintes(self):
+        from apps.calepinage.services.electrique import _options_entree
+
+        entree = {'regime': 'TT', 'dc_m': 12, 'onduleur_produit': 901}
+        avant = _options_entree(dict(entree))
+        self._valider(dict(entree), produit=None)  # la validation n'écrit ni ne modifie rien
+        self.assertEqual(_options_entree(dict(entree)), avant)
+        self.assertNotIn('batterie', entree)

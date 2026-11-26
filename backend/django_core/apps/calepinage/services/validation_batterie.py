@@ -60,3 +60,52 @@ def valider_batterie(saisie):
                        or not 0 <= h <= 23 for h in heures)):
             _refus_champ("« %s » doit être une liste d'heures entières "
                          "comprises entre 0 et 23." % cle, 'batterie.%s' % cle)
+
+
+def drapeau_hybride(role, resolu):
+    """D-ACAL-157 — ``{'hybride': bool}`` pour le rôle ``onduleur`` (décidé par le SERVEUR, ``ratio_devis.
+    onduleur_designe_est_hybride``), ``{}`` pour les autres rôles : le matériel servi n'a la clé que sur l'onduleur."""
+    from .ratio_devis import onduleur_designe_est_hybride
+
+    if role != 'onduleur':
+        return {}
+    return {'hybride': onduleur_designe_est_hybride(
+        resolu.get(role), (resolu.get('designations') or {}).get(role), (resolu.get('familles') or {}).get(role))}
+
+
+def valider_batterie_designee(calepinage, fusionnee, postee):
+    """D-ACAL-157 — ``batterie.produit`` POSTÉ : un produit de la société (jamais celui d'une autre : même
+    message qu'un id absent), de fiche « batterie », et l'onduleur désigné (entrée fusionnée, sinon celui de la
+    conception) doit être un HYBRIDE — un onduleur réseau ne prend pas de batterie (D-HYB-1). Un refus NOMME
+    ``batterie.produit`` et dit quoi faire ; ``None`` / ``''`` effacent la désignation (admis). Aucun onduleur
+    résolu : rien à juger ici."""
+    from apps.stock.selectors import get_produit_scoped
+
+    from .electrique import EntreeInvalide, resoudre_materiel
+    from .ratio_devis import onduleur_designe_est_hybride
+
+    saisie = (postee or {}).get('batterie')
+    identifiant = saisie.get('produit') if isinstance(saisie, dict) else None
+    if identifiant in (None, ''):
+        return
+    company = getattr(calepinage, 'company', None)
+    try:
+        produit = get_produit_scoped(company, identifiant)
+    except (TypeError, ValueError):
+        produit = None
+    if produit is None:
+        raise EntreeInvalide('Produit introuvable dans votre catalogue (#%s).' % identifiant,
+                             champ='batterie.produit', introuvable=True)
+    fiche = getattr(produit, 'fiche_technique', None)
+    if getattr(fiche, 'type_fiche', 'batterie') != 'batterie':
+        raise EntreeInvalide("« %s » n'est pas une batterie : choisissez un produit de la catégorie Batterie."
+                             % (getattr(produit, 'nom', '') or identifiant), champ='batterie.produit')
+    materiel = resoudre_materiel(company, fusionnee, calepinage=calepinage)
+    if (materiel.get('produits') or {}).get('onduleur') is None:
+        return
+    if not onduleur_designe_est_hybride(materiel.get('onduleur'), materiel['designations'].get('onduleur'),
+                                        (materiel.get('familles') or {}).get('onduleur')):
+        raise EntreeInvalide(
+            "L'onduleur désigné (%s) n'est pas un onduleur hybride : il ne prend pas de batterie. Désignez un onduleur "
+            "hybride, ou retirez la batterie." % (materiel['designations'].get('onduleur') or 'onduleur'),
+            champ='batterie.produit')

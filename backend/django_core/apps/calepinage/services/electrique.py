@@ -812,9 +812,9 @@ def _valider_entree(calepinage, fusionnee, postee):
     _validation_transformateur.valider_transformateur(
         postee.get('transformateur'))
     _validation_batterie.valider_batterie(postee.get('batterie'))  # ACAL166
+    _validation_batterie.valider_batterie_designee(calepinage, fusionnee, postee)  # D-ACAL-157
     _batterie_declaration.valider_secours(postee.get('batterie'))  # ACAL786
-    _hors_reseau_declaration.valider_hors_reseau(
-        postee.get('hors_reseau'))  # ACAL166, ACAL790
+    _hors_reseau_declaration.valider_hors_reseau(postee.get('hors_reseau'))  # ACAL166, ACAL790
     if 'affectation_manuelle' in postee:
         # ACAL1627 — refusée à l'ÉCRITURE (la lecture l'avalait et repartait
         # de l'automatique) : même normalisation que la lecture, champ nommé.
@@ -1142,7 +1142,7 @@ TRANSFORMATEUR_NON_DECLARE = {
 #: Les catégories de candidats, le type de fiche du stock et la section
 #: ``favoris_materiel`` (CAL200) qui les épingle.
 CATEGORIES_CANDIDATS = (('modules', 'module'), ('onduleurs', 'onduleur'),
-                        ('optimiseurs', 'optimiseur'))
+                        ('optimiseurs', 'optimiseur'), ('batteries', 'batterie'))
 
 
 def _champs_requis(role):
@@ -1153,7 +1153,7 @@ def _champs_requis(role):
         return tuple(cle for cle, _libelle in CHAMPS_MODULE)
     if role == 'onduleur':
         return tuple(cle for cle, _libelle in CHAMPS_ONDULEUR)
-    return tuple(cle for cle, _libelle in GRANDEURS_RECOUPEMENT)
+    return () if role == 'batterie' else tuple(cle for cle, _libelle in GRANDEURS_RECOUPEMENT)  # D-ACAL-157
 
 
 def _champs_manquants(role, specs):
@@ -1221,8 +1221,8 @@ def entree_electrique_servie(calepinage, stockee):
             'produit_id': produit_id,
             'designation': resolu['designations'].get(role, ''),
             'provenance': resolu['provenances'].get(role),
-            'fiche_complete': not manquants,
-            'champs_manquants': manquants,
+            'fiche_complete': not manquants, 'champs_manquants': manquants,
+            **_validation_batterie.drapeau_hybride(role, resolu),  # D-ACAL-157
         }
     # ACAL359 — le module RÉELLEMENT posé sur chaque pan (relu à chaque GET,
     # jamais persisté) ; mêmes règles que l'alerte d'ACAL358.
