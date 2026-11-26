@@ -2504,7 +2504,7 @@ Constats à garder : la révision d'un devis par NÉGOCIATION de prix reste calc
 lenteur de « Réviser » et des cartes de la liste des devis : mesure à faire sur la pile (`mesure_lenteurs.py` du dossier de travail),
 piste : lancer `manage.py ranger_totaux_affiches` après `migrate` au déploiement.
 
-### Point du 26/11, 23 h UTC — ARRÊT DEMANDÉ PAR LE FONDATEUR APRÈS LA FUSION DU LOT 8 ; LOT 9 GARDÉ SUR GITHUB (le plus récent — REPRENDRE ICI)
+### Point du 26/11, 20 h UTC — ARRÊT DEMANDÉ PAR LE FONDATEUR APRÈS LA FUSION DU LOT 8 ; LOT 9 GARDÉ SUR GITHUB (le plus récent — REPRENDRE ICI)
 
 Reda, le 26/11 au soir : « stop after lot 8 have merged, but still keep all the lot 9 work in github and one drive ».
 Plus aucune lane n'est lancée. Ce point dit où tout se trouve et par quoi reprendre.
