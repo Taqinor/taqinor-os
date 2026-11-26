@@ -808,6 +808,20 @@ def _conception_electrique_publique(devis, niveau=ShareLink.NIVEAU_CONFIANCE):
         return None
 
 
+def _section_sld_publique(devis, link, niveau, est_standard, data):
+    """L-SECT + SCHEL-B3 — les trois blocs de la case « Schéma unifilaire » :
+    ``(sld_svg, conception_electrique, schema_electrique)``, tous ``None`` quand
+    elle est décochée. Le schéma électrique ne garde que les options PUBLIÉES
+    (totaux non nuls) et passe par ``_strip_confidential_deep``."""
+    if not _section_servie(link, 'sld'):
+        return None, None, None
+    from .electrical_service import schema_electrique_public
+    schema = schema_electrique_public(devis, standard=est_standard, option_totals={
+        'sans_batterie': data.get('totaux_sans'), 'avec_batterie': data.get('totaux_avec')})
+    return (_safe_sld_svg(devis, standard=est_standard), _conception_electrique_publique(devis, niveau),
+            None if schema is None else _strip_confidential_deep(schema))
+
+
 def _tailles_servies(link):
     """ENVOI 1/2/3 OPTIONS (fondateur, 28/08/2026) — les tailles de CE lien.
 
@@ -1360,10 +1374,8 @@ def proposal_data(request, token):
         # objets — la charge utile est byte-identique.
         _roof_layout_public = (_safe_roof_layout(devis)
                                if _section_servie(link, 'roof3d') else None)
-        _sld_public = (_safe_sld_svg(devis, standard=est_standard)
-                       if _section_servie(link, 'sld') else None)
-        _conception_publique = (_conception_electrique_publique(devis, niveau)
-                                if _section_servie(link, 'sld') else None)
+        _sld_public, _conception_publique, _schema_el = _section_sld_publique(
+            devis, link, niveau, est_standard, data)
         payload = {
             # L-NIV — indique à la page CE niveau (elle n'a rien à deviner :
             # les dégradations sont posées ici, pas re-décidées côté client).
@@ -1554,6 +1566,10 @@ def proposal_data(request, token):
             # comme intertitres/notes. Absent quand le devis n'a aucune section.
             'lignes_structure': data.get('lignes_structure'),
         }
+        # SCHEL-B3 (lot 6, D-ACAL-131) — le schéma électrique, un document par option
+        # publiée, sans prix ; clé ABSENTE (jamais ``null``) si la case est décochée
+        # ou si aucune option n'a de document. Une ligne : la fonction-mur ne grossit pas.
+        if _schema_el is not None: payload['schema_electrique'] = _schema_el  # noqa: E701 — fonction-mur (C20)
         # ADEV49 — les clés de BASE (littéral ci-dessus) : à une case décochée
         # elles restent à ``null`` (contrat), les autres partent.
         _cles_base = frozenset(payload)

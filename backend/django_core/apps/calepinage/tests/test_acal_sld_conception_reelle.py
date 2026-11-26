@@ -163,6 +163,57 @@ class ConceptionReelle(BaseConceptionReelle):
             self.assertIn('stroke="%s"' % couleur, svg)
             self.assertIn('Chaîne %d' % numero, svg)
 
+    def test_schema_electrique_chaines_reelles_sans_ecriture(self):
+        """SCHEL-B2 — la 7e clé : les chaînes de l'affectation SERVIE, colorées
+        par la palette du noyau ; la lecture n'écrit rien (empreinte rangée et
+        ``resultat`` intacts)."""
+        from apps.calepinage.services.chaines import affectation
+        from apps.calepinage.selectors import schema_electrique_du_calepinage
+        from core.electrique.schema_electrique import CLES_DOCUMENT
+
+        self._norme_francaise()
+        self.calepinage.refresh_from_db()
+        avant = (self.calepinage.resultat, self.calepinage.updated_at)
+        doc = self.api.get(url_schema(self.calepinage.pk)).data['schema_electrique']
+        self.assertEqual(tuple(doc), CLES_DOCUMENT)
+        self.assertEqual(doc['source'], 'calepinage')
+        self.assertEqual(doc['option'], 'sans_batterie')
+        self.assertIsNone(doc['batterie'])
+        conception, _m, _d, _doc = conception_du_calepinage(self.calepinage)
+        servies = {ligne['chaine']: ligne['couleur_chaine']
+                   for ligne in affectation(conception) if ligne['chaine'] is not None}
+        self.assertEqual({c['numero']: c['couleur'] for c in doc['chaines']}, servies)
+        self.assertEqual(sum(c['nb_panneaux'] for c in doc['chaines']), 12)
+        self.assertEqual(doc['panneaux']['nombre'], 12)
+        self.assertEqual(doc['onduleurs'][0]['nombre'], 1)
+        self.assertEqual(doc['cote_reseau']['etat'], 'calcule')
+        self.assertNotIn('prix', str(doc).lower())
+        self.assertEqual(schema_electrique_du_calepinage(self.calepinage), doc)
+        self.calepinage.refresh_from_db()
+        self.assertEqual((self.calepinage.resultat, self.calepinage.updated_at), avant)
+
+    def test_schema_electrique_batterie_declaree_capacite_nominale(self):
+        """SCHEL-B2 — batterie déclarée : unités = packs, capacité = nominale
+        de la fiche × packs (jamais l'utile) ; l'option dessinée est « avec »."""
+        batterie = Produit.objects.create(
+            company=self.company, nom='Pack 10 kWh', marque='Marque',
+            sku='SCHEL-B2-B', prix_achat=Decimal('999'),
+            prix_vente=Decimal('1500'), quantite_stock=1)
+        FicheTechnique.objects.create(
+            company=self.company, produit=batterie, type_fiche='batterie',
+            bat_kwh_nominal=10.0, bat_kwh_usable=9.0, bat_dod_pct=90.0,
+            bat_rendement_ar_pct=94.0)
+        enregistrer_entree(self.calepinage, {
+            'batterie': {'produit': batterie.pk, 'packs': 2,
+                         'strategie': 'autoconso'}})
+        self._norme_francaise()
+        doc = self.api.get(url_schema(self.calepinage.pk)).data['schema_electrique']
+        self.assertEqual(doc['option'], 'avec_batterie')
+        self.assertEqual(doc['batterie']['unites'], 2)
+        self.assertEqual(doc['batterie']['capacite_kwh'], 20)
+        self.assertIn('Pack 10 kWh', doc['batterie']['designation'])
+        self.assertIsNone(doc['batterie']['protection'])
+
     def test_annexe_devis_inchangee(self):
         """Le jumeau client (``apps.ventes.selectors.schema_unifilaire_svg``)
         dessine, sur le MÊME résultat complet, le MÊME SVG que le calepinage

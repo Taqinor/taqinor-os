@@ -411,6 +411,18 @@ SCHEMA_UNIFILAIRE_RESPONSES = {
     (200, 'image/svg+xml'): OpenApiTypes.STR,
     (200, 'application/pdf'): OpenApiTypes.BINARY,
 }
+#: SCHEL-B3 (lot 6) — ``GET devis/<pk>/schema-unifilaire/?format=json`` porte en
+#: plus le schéma électrique ``{options: {sans_batterie, avec_batterie}}``
+#: (contrat ``contract_samples/schema_electrique.json``).
+SchemaUnifilaireDevisJson = _ser('SchemaUnifilaireDevisJson', {
+    'params': s.DictField(),
+    'svg': s.CharField(),
+    'schema_electrique': s.DictField(),
+})
+SCHEMA_UNIFILAIRE_DEVIS_RESPONSES = {
+    **SCHEMA_UNIFILAIRE_RESPONSES,
+    (200, 'application/json'): SchemaUnifilaireDevisJson,
+}
 
 
 # =============================================================== pages publiques
@@ -450,6 +462,9 @@ ProposalDataResponse = _ser('PublicProposalData', {
     'layout_nb_panneaux': s.IntegerField(**_souple()),
     'sld_svg': s.CharField(**_souple(allow_blank=True)),
     'conception_electrique': s.DictField(**_souple()),
+    # SCHEL-B3 — additive : absente quand la case « Schéma unifilaire » est
+    # décochée ou qu'aucune option n'a de document.
+    'schema_electrique': s.DictField(required=False),
     'option_totals': s.DictField(**_souple()),
     'variantes_servables': s.ListField(child=s.CharField(), required=False),
     'accepted': s.BooleanField(required=False),

@@ -43,6 +43,7 @@ from dataclasses import dataclass, field, replace
 from typing import Optional, Tuple
 
 from core.electrique.chaines import concevoir_chaines
+from core.electrique.schema import PALETTE_CHAINES
 from core.electrique.types import (
     COEFFICIENTS_TEMPERATURE, EntreeElectrique, GroupePan, SpecModule,
     SpecOnduleur, fr,
@@ -1087,20 +1088,12 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
 # celui des pans du document puis celui des chaînes du noyau — aucun ensemble
 # non ordonné, aucun identifiant d'objet, aucune horloge.
 
-#: ACAL285 — la teinte des chaînes et des entrées MPPT : SOURCE UNIQUE
-#: (déplacée de ``documents/plan_cablage.py``, qui l'importe). Servie ligne
-#: par ligne dans ``electrique.affectation[]`` : l'écran, la 3D et le plan de
-#: câblage colorent tous avec CES valeurs, jamais une copie locale.
-PALETTE_CHAINES = (
-    'rgb(36, 130, 214)',   # bleu
-    'rgb(232, 125, 33)',   # orange
-    'rgb(46, 163, 89)',    # vert
-    'rgb(184, 64, 158)',   # magenta
-    'rgb(0, 153, 158)',    # sarcelle
-    'rgb(212, 61, 71)',    # rouge
-    'rgb(115, 102, 199)',  # violet
-    'rgb(153, 133, 26)',   # ocre
-)
+#: ACAL285 — la teinte des chaînes et des entrées MPPT : SOURCE UNIQUE, qui vit
+#: dans le noyau depuis SCHEL-B1 (``core/electrique/schema.py``) et est
+#: ré-exportée ici (``documents/plan_cablage.py`` l'importe de ce module).
+#: Servie ligne par ligne dans ``electrique.affectation[]`` : l'écran, la 3D,
+#: le plan de câblage et le schéma électrique colorent avec CES valeurs
+#: (importée en tête de module).
 #: Le gris d'un module NON affecté — jamais ``null``, jamais une teinte de
 #: chaîne voisine.
 COULEUR_NON_AFFECTE = 'rgb(140, 143, 148)'
