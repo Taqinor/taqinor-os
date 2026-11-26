@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, cleanup, waitFor, within, act } from '@testing-library/react'
+import { screen, cleanup, waitFor, within, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
@@ -766,6 +766,8 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       await waitFor(() => expect(serializeLayout).toHaveBeenCalled())
       expect(screen.queryByTestId('cal-etat-enregistrement')).toBeNull()
 
+      // ACAL1661 — une VRAIE retouche suit un geste de l'utilisateur ; sans geste, l'outil qui se règle seul n'est pas une modification
+      fireEvent.pointerDown(document.body)
       serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 9 } })
       await waitFor(() => expect(screen.getByTestId('cal-etat-enregistrement'))
         .toHaveTextContent('Modifications non enregistrées'), { timeout: 5000 })
@@ -1485,6 +1487,7 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     expect(barre.textContent).not.toMatch(/Enregistrer le calepinage/)
     const geste = within(barre).getByRole('button', { name: /Enregistrer le calepinage à nouveau/ })
     expect(geste).toContainElement(within(barre).getByTestId('cal-etat-enregistrement'))
+    fireEvent.pointerDown(document.body) // ACAL1661 — le geste de l'utilisateur précède sa retouche
     serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 9 } })
     await waitFor(() => expect(within(barre).getByTestId('cal-etat-enregistrement'))
       .toHaveTextContent('Modifications non enregistrées'), { timeout: 5000 })
@@ -1544,12 +1547,30 @@ describe('Coque — l’atelier plein écran (maquette Main)', () => {
     const barre = await screen.findByTestId('cal-enregistrer-calepinage')
     await waitFor(() => expect(within(barre).getByTestId('cal-etat-enregistrement')).toHaveTextContent(/^Enregistré/))
     // Été, 15 h (ce que le lecteur du soleil écrit dans `scene`) : on attend plus d'un tic de brouillon (4 s) et de sondage (1,5 s).
+    fireEvent.pointerDown(document.body) // ACAL1661 — après un geste, regarder le soleil reste « pas une modification »
     serializeLayout.mockReturnValue({ ...LAYOUT, scene: { sunDay: 172, sunHour: 15 } })
     await new Promise((r) => { setTimeout(r, 5500) })
     expect(within(barre).getByTestId('cal-etat-enregistrement')).toHaveTextContent(/^Enregistré/)
     expect(calepinageApi.calepinages.envoyerBrouillon).not.toHaveBeenCalled()
     // Témoin : une VRAIE modification du document, elle, se voit toujours.
     serializeLayout.mockReturnValue({ ...LAYOUT, scene: { sunDay: 172, sunHour: 15 }, result: { panels: 9 } })
+    await waitFor(() => expect(within(barre).getByTestId('cal-etat-enregistrement'))
+      .toHaveTextContent('Modifications non enregistrées'), { timeout: 5000 })
+  }, 20000)
+
+  it('ACAL1661 — ouvrir sans rien toucher : ce que l’outil réécrit seul n’est pas « modifié » ; un geste puis une retouche, si', async () => {
+    amorcer()
+    calepinageApi.calepinages.get.mockResolvedValue({ data: { versions: { derniere_le: new Date().toISOString() } } })
+    rendreCalepinage(CTX.calepinage.id)
+    const barre = await screen.findByTestId('cal-enregistrer-calepinage')
+    await waitFor(() => expect(within(barre).getByTestId('cal-etat-enregistrement')).toHaveTextContent(/^Enregistré/))
+    // La pose se recalcule d'elle-même APRÈS l'ouverture (aucun geste) : plus d'un sondage de 1,5 s, toujours « Enregistré ».
+    serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 9 } })
+    await new Promise((r) => { setTimeout(r, 3300) })
+    expect(within(barre).getByTestId('cal-etat-enregistrement')).toHaveTextContent(/^Enregistré/)
+    // Course : le geste de l'utilisateur fige la référence d'avant lui ; sa retouche suivante se voit.
+    fireEvent.keyDown(document.body, { key: 'a' })
+    serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 12 } })
     await waitFor(() => expect(within(barre).getByTestId('cal-etat-enregistrement'))
       .toHaveTextContent('Modifications non enregistrées'), { timeout: 5000 })
   }, 20000)

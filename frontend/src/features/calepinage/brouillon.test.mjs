@@ -19,7 +19,7 @@ import {
   brouillonPertinent, creerGestionnaireBrouillon,
   purgerBrouillonsOrphelins, memoriserReprise, consommerReprise, estPanneReseau,
 } from './brouillon.js'
-import { baseServeur, brouillonLocalAProposer, creerStockageMiroir, empreinteSansVue, lireBrouillonServeur, sansVue } from './brouillonServeur.js'
+import { baseServeur, brouillonLocalAProposer, creerStockageMiroir, empreinteSansVue, lireBrouillonServeur, sansVue, suivreGestes } from './brouillonServeur.js'
 import { documentContrat } from '../../test/fixtures/contractSamples.js'
 
 /** Stockage en mémoire — MÊME contrat que `localStorage` (getItem/setItem/removeItem). */
@@ -792,4 +792,63 @@ test('T4-U1-013 — brouillon SERVEUR identique au document servi à l’état d
   const servi = { scene: { jour: 172, heure: 12 }, zones: [{ id: 'z1' }] }
   const lire = () => Promise.resolve({ data: { layout: { zones: [{ id: 'z1' }] }, horodatage: 'h', base_empreinte: 'E1' } })
   assert.equal(await lireBrouillonServeur({ lire, calepinageId: 1, hashBase: 'E1', layoutServi: servi }), null)
+})
+
+/* ACAL1661 — « aucun geste depuis l'ouverture » : la référence de « modifié ? » suit la scène jusqu'au PREMIER geste, puis
+   se fige à l'état d'AVANT ce geste. Le modèle ci-dessous reprend, ligne pour ligne, `ToitureDesign.jsx::sceneEstModifiee`. */
+function sceneSuivie(cible) {
+  const etat = { scene: 'A', reference: 'A' }
+  const suivi = suivreGestes(cible, () => { etat.reference = etat.scene })
+  const modifiee = () => {
+    if (!suivi.aGeste()) { etat.reference = etat.scene; return false }
+    return etat.scene !== etat.reference
+  }
+  return { etat, suivi, modifiee }
+}
+const geste = (cible, type, target = {}) => { const e = new Event(type); Object.defineProperty(e, 'target', { value: target }); cible.dispatchEvent(e) }
+
+test('ACAL1661 — l’outil réécrit la scène tout seul après l’ouverture, sans geste ⇒ jamais « modifié »', () => {
+  const cible = new EventTarget()
+  const { etat, modifiee } = sceneSuivie(cible)
+  etat.scene = 'A+pose recalculée'
+  assert.equal(modifiee(), false)
+  etat.scene = 'A+pose recalculée+kWh servis'
+  assert.equal(modifiee(), false)
+})
+
+test('ACAL1661 — course : un geste dans la première seconde fige la référence AVANT lui ; sa modification se voit', () => {
+  const cible = new EventTarget()
+  const { etat, modifiee } = sceneSuivie(cible)
+  etat.scene = 'A+reglage tout seul' // l'ouverture se termine…
+  geste(cible, 'pointerdown') // …l'utilisateur agit AVANT le prochain sondage (aucun appel de `modifiee()` entre les deux)
+  assert.equal(modifiee(), false, 'le réglage d’ouverture n’est pas son geste')
+  etat.scene = 'A+reglage tout seul+sa modification'
+  assert.equal(modifiee(), true)
+})
+
+test('ACAL1661 — chaque geste passe : clavier, saisie d’un panneau latéral (sans historique du constructeur), collage, dépôt', () => {
+  for (const type of ['keydown', 'input', 'change', 'paste', 'drop', 'touchstart']) {
+    const cible = new EventTarget()
+    const { etat, modifiee } = sceneSuivie(cible)
+    geste(cible, type)
+    etat.scene = 'A+edition'
+    assert.equal(modifiee(), true, type)
+  }
+})
+
+test('ACAL1661 — un clic sur un onglet n’est pas un geste ; un seul appel ; arrêter retire les écouteurs', () => {
+  const cible = new EventTarget()
+  let appels = 0
+  const suivi = suivreGestes(cible, () => { appels += 1 })
+  geste(cible, 'pointerdown', { closest: (sel) => (sel === '[role="tab"]' ? {} : null) })
+  assert.equal(suivi.aGeste(), false)
+  geste(cible, 'pointerdown', { closest: () => null })
+  geste(cible, 'keydown')
+  assert.equal(appels, 1)
+  assert.equal(suivi.aGeste(), true)
+  const autre = new EventTarget()
+  const s2 = suivreGestes(autre, null)
+  s2.arreter()
+  geste(autre, 'pointerdown')
+  assert.equal(s2.aGeste(), false)
 })

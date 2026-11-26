@@ -66,7 +66,7 @@ import { suivreSimulationDuServeur } from '../../features/calepinage/production/
 // bandeau de reprise. Logique pure, voir l'en-tête de ce module.
 import { construireCle, creerGestionnaireBrouillon, effacerBrouillon, estPanneReseau, memoriserReprise } from '../../features/calepinage/brouillon'
 import { ecrireOuRelire } from '../../features/calepinage/delaiReseau'
-import { creerStockageMiroir, sansVue, empreinteSansVue } from '../../features/calepinage/brouillonServeur' // ACAL400 ; H1 : sans l'état de vue ; ACAL1345
+import { creerStockageMiroir, sansVue, empreinteSansVue, suivreGestes } from '../../features/calepinage/brouillonServeur' // ACAL400 ; H1 : sans l'état de vue ; ACAL1345
 import { appliquerSectionEcrite } from '../../features/calepinage/useDocumentCalepinage' // ACAL1816
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
@@ -290,6 +290,7 @@ function AtelierToiture({
   // ACAL85 — empreinte de la scène au boot (après hydratation) puis à chaque
   // enregistrement réussi ; `sceneModifiee` arme `useDirtyGuard`.
   const hashSceneReferenceRef = useRef(null)
+  const gestesRef = useRef(null) // ACAL1661 — aucun geste depuis l'ouverture ⇒ rien à enregistrer (la référence suit la scène)
   const [sceneModifiee, setSceneModifiee] = useState(false)
   const [enregistreLe, setEnregistreLe] = useState(null) // ACAL399 — heure de la dernière réponse 2xx
   // ACAL868 — l'étape du rail (publiée par la coque) : son niveau expert ouvre les volets avancés du constructeur.
@@ -359,12 +360,19 @@ function AtelierToiture({
   const sceneEstModifiee = useCallback(() => {
     const courant = hacherScene()
     if (courant === null) return false
+    if (gestesRef.current && !gestesRef.current.aGeste()) { hashSceneReferenceRef.current = courant; return false } // ACAL1661
     if (hashSceneReferenceRef.current === null) {
       hashSceneReferenceRef.current = courant
       return false
     }
     return courant !== hashSceneReferenceRef.current
   }, [hacherScene])
+  useEffect(() => { // ACAL1661 — le premier geste fige la référence d'AVANT lui
+    if (!builderReady || !sceneHydratee) return undefined
+    const suivi = suivreGestes(document, () => { hashSceneReferenceRef.current = hacherScene() })
+    gestesRef.current = suivi
+    return () => { suivi.arreter(); gestesRef.current = null }
+  }, [builderReady, sceneHydratee, hacherScene])
   const marquerSceneEnregistree = (layout) => {
     try {
       hashSceneReferenceRef.current = layout == null ? hacherScene() : empreinteSansVue(layout)
