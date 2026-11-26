@@ -9,6 +9,7 @@ from django.apps import apps as django_apps
 from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase
 
+from apps.stock.management.commands import _articles_pompage as articles_pompage
 from apps.stock.management.commands import seed_catalogue as seed_mod
 from apps.stock.models import Produit
 from authentication.models import Company
@@ -351,7 +352,7 @@ class PrixFigesDacal127Tests(SimpleTestCase):
     def test_dacal129_fiches_figees_egales_au_seeder(self):
         m0193 = importlib.import_module(
             'apps.stock.migrations.0193_dacal129_fiches_variateurs_veichi')
-        self.assertEqual(m0193.FICHES, seed_mod.FICHES_VARIATEURS_VEICHI)
+        self.assertEqual(m0193.FICHES, articles_pompage.FICHES_VARIATEURS_VEICHI)
         variateurs = {sku for _n, sku, *_r in seed_mod.VEICHI} - {'VEI-SI22-AFF'}
         self.assertEqual(set(m0193.FICHES), variateurs)
         self.assertEqual(len(m0193.FICHES), 15)
@@ -403,7 +404,7 @@ class FichesVariateursDacal129Tests(TestCase):
     def test_seeder_cree_les_fiches_publiees(self):
         _seed(self.co)
         _seed(self.co)  # idempotent
-        for sku, valeurs in seed_mod.FICHES_VARIATEURS_VEICHI.items():
+        for sku, valeurs in articles_pompage.FICHES_VARIATEURS_VEICHI.items():
             fiche = self._fiche(sku)
             self.assertEqual(fiche.type_fiche, 'variateur_pompage', sku)
             for champ, valeur in valeurs.items():
