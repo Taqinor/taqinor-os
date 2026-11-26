@@ -432,7 +432,8 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
   // ASTK21 (D-ASTK-3) — changer le prix de vente d'un produit existant exige
   // `catalogue_prix_modifier` (le serveur refuse sinon, 403) : champ figé.
   const peutModifierPrix = usePermissionAchats('catalogue_prix_modifier')
-  const prixVenteFige = isEdit && !peutModifierPrix, voitPrixAchat = useVoitPrixAchat()  // ADRG142 : `prix_achat_voir`
+  // D-ACAL-152 — `prixVenteMasque` : fiche servie SANS prix de vente (Technicien) → aucun prix exigé.
+  const prixVenteFige = isEdit && !peutModifierPrix, voitPrixAchat = useVoitPrixAchat(), prixVenteMasque = isEdit && !('prix_vente' in produit)  // ADRG142
 
   const [saving, setSaving] = useState(false)
   // VX171 — vérité serveur → champ ; le rouge s'efface à la frappe.
@@ -872,7 +873,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
     if (!fields.nom.trim())               e.nom        = 'Nom requis'
     // Prix de vente : doit être strictement positif (0/négatif rejeté en JS au
     // submit, jamais via min/step HTML5 qui snapperait la saisie).
-    if (!(parseFloat(fields.prix_vente) > 0))
+    if (!prixVenteMasque && !(parseFloat(fields.prix_vente) > 0))
                                            e.prix_vente = 'Prix de vente requis (> 0)'
     if (skuDuplicate)
       e.sku = `SKU déjà utilisé par « ${skuDuplicate.nom} »`

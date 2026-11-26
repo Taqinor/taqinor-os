@@ -420,6 +420,32 @@ describe('T4-U3-005 — option sans prix lisible', () => {
   })
 })
 
+// D-ACAL-152 — un Technicien (sans `prix_vente_voir`) choisit un équipement de
+// chantier : le serveur ne sert aucun prix, l'option reste choisissable et
+// n'affiche aucun prix (ni « prix à renseigner », ni NaN).
+describe('D-ACAL-152 — picker sans prix de vente servi', () => {
+  const SANS_PRIX = PRODUITS.map((p) => { const q = { ...p }; delete q.prix_vente; return q })
+  const TECHNICIEN = { role_nom: 'Technicien', permissions: ['stock_voir', 'installation_voir'] }
+
+  it('technicien : options choisissables, aucun prix affiché', () => {
+    const onChange = vi.fn()
+    renderPicker({ produits: SANS_PRIX, value: '', onChange }, TECHNICIEN)
+    openPicker()
+    const option = screen.getByRole('option', { name: /Onduleur Hybride Deye 6kW/ })
+    expect(option).not.toBeDisabled()
+    expect(option.textContent).not.toMatch(/DH|prix à renseigner|NaN/)
+    fireEvent.click(option)
+    expect(onChange).toHaveBeenCalled()
+  })
+
+  it('avec les prix servis : le prix TTC reste affiché (rien ne change)', () => {
+    renderPicker({ produits: PRODUITS, value: '', onChange: () => {} }, TECHNICIEN)
+    openPicker()
+    const option = screen.getByRole('option', { name: /Onduleur Hybride Deye 6kW/ })
+    expect(option.textContent).toMatch(/DH/)
+  })
+})
+
 // T4-V1-002 — « Parafoudre » tapé : la liste montrait les onduleurs dont la FICHE
 // cite un parafoudre (« Onduleurs réseau » en tête), le premier surligné, et
 // Entrée l'ajoutait au devis (78 000 DH en une touche). Entrée n'ajoute que
