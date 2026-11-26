@@ -3,7 +3,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event'
 import { initState } from './draftCore'
 import TimelineTab from './TimelineTab'
-import { matchesTimelineFilter, nombreMasquesPlusRecents, TIMELINE_FILTERS } from './timelineFiltres'
+import { matchesTimelineFilter, TIMELINE_FILTERS } from './timelineFiltres'
 
 /* LW20 — `TimelineTab` : en-tête multi-touch (points-contact/, silencieux si
    vide), filtre par type persisté, notes épinglées en tête (📌) avec action
@@ -98,13 +98,6 @@ describe('LW20 — logique pure du filtre (co-localisée, testable sans DOM)', (
     expect(matchesTimelineFilter('note', 'devis')).toBe(false)
     expect(matchesTimelineFilter('appel', 'devis', 'Le client a ouvert le devis DEV-TEST-1')).toBe(false)
   })
-  it("le bandeau « masqués par le filtre » compte avec la même règle (une action client sous « Devis » n'est pas masquée)", () => {
-    const entrees = [
-      { id: 1, kind: 'note', body: 'Le client demande à être contacté (DEV-TEST-1)', created_at: '2026-11-26T10:00:00Z' },
-      { id: 2, kind: 'note', body: 'Note libre', created_at: '2026-11-26T11:00:00Z' },
-    ]
-    expect(nombreMasquesPlusRecents(entrees, 'devis')).toBe(1)
-  })
   it('TIMELINE_FILTERS liste les 6 filtres attendus', () => {
     expect(TIMELINE_FILTERS.map((f) => f.key)).toEqual(['tous', 'notes', 'appels', 'emails', 'devis', 'systeme'])
   })
@@ -165,33 +158,6 @@ describe('LW20 — filtre par type', () => {
     )
     expect(screen.getAllByText(/Une note/).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('button', { name: 'Tous' })[0]).toHaveAttribute('aria-pressed', 'true')
-  })
-
-  it('une note du client plus récente que les entrées visibles sous « Appels » : la phrase le dit, « Tout afficher » en sort', async () => {
-    const user = userEvent.setup()
-    const avecClient = [
-      { id: 3, kind: 'note', body: 'Le client demande à être contacté (DEV-1)', created_at: '2026-11-26T10:00:00Z' },
-      { id: 2, kind: 'appel', outcome: 'joint', user_nom: 'Sami', created_at: '2026-11-26T09:00:00Z' },
-      { id: 1, kind: 'note', body: 'Une note', user_nom: 'Sami', created_at: '2026-11-26T08:00:00Z' },
-    ]
-    renderTab({ historique: avecClient })
-    expect(screen.queryByTestId('lw-timeline-masques')).toBeNull()
-    await user.click(screen.getAllByRole('button', { name: 'Appels' })[0])
-    expect(screen.getByTestId('lw-timeline-masques').textContent)
-      .toContain('1 élément plus récent masqué par le filtre')
-    await user.click(screen.getByRole('button', { name: 'Tout afficher' }))
-    expect(screen.queryByTestId('lw-timeline-masques')).toBeNull()
-    expect(screen.getAllByText(/demande à être contacté/).length).toBeGreaterThan(0)
-  })
-
-  it('un élément masqué plus ANCIEN que le dernier visible ne déclenche pas la phrase', async () => {
-    const user = userEvent.setup()
-    renderTab({ historique: [
-      { id: 2, kind: 'appel', outcome: 'joint', user_nom: 'Sami', created_at: '2026-11-26T09:00:00Z' },
-      { id: 1, kind: 'note', body: 'Une note', user_nom: 'Sami', created_at: '2026-11-26T08:00:00Z' },
-    ] })
-    await user.click(screen.getAllByRole('button', { name: 'Appels' })[0])
-    expect(screen.queryByTestId('lw-timeline-masques')).toBeNull()
   })
 })
 

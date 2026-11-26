@@ -781,6 +781,44 @@ def _resynchro_inchangee(veut_batterie, stocke):
     return veut_batterie, {'modifiees': 0, 'a_ecrire': False, 'marqueur': stocke}
 
 
+def designations_appliquees(verrou, intention):
+    """Relecture, point 1 — la règle en UN prédicat : la resynchronisation applique les désignations
+    seulement quand elles viennent du calepinage (:data:`SOURCE_DESIGNATIONS`) et que le devis est un
+    BROUILLON NÉ sous la règle (:func:`suit_les_designations`)."""
+    return (getattr(getattr(intention, 'cible', None), 'source', '') == SOURCE_DESIGNATIONS
+            and getattr(verrou, 'statut', '') == 'brouillon' and marqueur_stocke(verrou) is not None)
+
+
+#: Lot 8, relecture finale — la phrase de :func:`option_batterie_gardee`, vraie dans l'état.
+MSG_RESYNC_OPTION_GARDEE = ('Le devis garde l’onduleur hybride « %s » et sa batterie, posés à sa création par la '
+                            'désignation de l’étape Électrique : la resynchronisation ne retire ni l’un ni l’autre.')
+
+
+def option_batterie_gardee(verrou, intention, lignes, veut_batterie, avertissements):
+    """Lot 8, relecture finale — L'INVARIANT : une resynchronisation qui n'applique PAS les désignations
+    (:func:`designations_appliquees` faux : devis envoyé, brouillon d'avant la règle, resynchro hors
+    calepinage — apply-taille, brouillon libre rattaché) ne bascule JAMAIS l'option batterie d'un devis
+    né « avec batterie » par un hybride désigné (D-ACAL-159) : le marqueur nomme un onduleur qu'une
+    ligne d'hybride porte encore et le devis porte une batterie ⇒ ``veut_batterie`` reste vrai (aucune
+    batterie retirée, aucun onduleur permuté) et la phrase est dite. Seul un brouillon né sous la règle,
+    dont la désignation change, change son option. Un layout qui veut déjà une batterie, un devis sans
+    marqueur ou sans onduleur désigné, un hybride changé à la main : ``veut_batterie`` inchangé, rien
+    dit (résultat d'hier). ``lignes`` : les lignes produit que ``reconcilier`` vient de lire."""
+    if veut_batterie or designations_appliquees(verrou, intention):
+        return veut_batterie
+    designe = (marqueur_stocke(verrou) or {}).get('onduleur')
+    if not designe:
+        return veut_batterie
+    from apps.ventes.domain.catalogue import _is_battery, _is_hybrid_inverter
+    from apps.ventes.domain.lignes import _classe_ligne
+
+    hybride = next((li for li in lignes if li.produit_id == designe and _classe_ligne(li, _is_hybrid_inverter)), None)
+    if hybride is None or not any(_classe_ligne(li, _is_battery) for li in lignes):
+        return veut_batterie
+    avertissements.append(MSG_RESYNC_OPTION_GARDEE % (hybride.designation or ''))
+    return True
+
+
 def appliquer_designations_a_la_resynchro(verrou, intention, layout, veut_batterie, avertissements):
     """D-ACAL-148 / 159 / 164 (relecture, A) — « Resynchroniser » applique la MÊME décision que la
     création (:func:`onduleur_designe_pour_le_devis`, :func:`juger_la_batterie`,
@@ -805,10 +843,8 @@ def appliquer_designations_a_la_resynchro(verrou, intention, layout, veut_batter
     court-circuit « inchangé » de ``reconcilier`` ; ``marqueur`` : le :data:`CLE_DESIGNATIONS` à ranger."""
     stocke = marqueur_stocke(verrou)
     cible = getattr(intention, 'cible', None)
-    if getattr(cible, 'source', '') != SOURCE_DESIGNATIONS:
-        return _resynchro_inchangee(veut_batterie, stocke)
-    quoi = _quoi_est_designe(cible)
-    if getattr(verrou, 'statut', '') != 'brouillon' or stocke is None:
+    if not designations_appliquees(verrou, intention):
+        quoi = _quoi_est_designe(cible) if getattr(cible, 'source', '') == SOURCE_DESIGNATIONS else None
         if quoi:
             avertissements.append((MSG_RESYNC_ENVOYE if getattr(verrou, 'statut', '') != 'brouillon'
                                    else MSG_RESYNC_AVANT_LA_REGLE) % quoi)

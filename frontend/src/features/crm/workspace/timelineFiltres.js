@@ -42,16 +42,3 @@ export function matchesTimelineFilter(kind, filterKey, body) {
     default: return true
   }
 }
-
-// Historique du lead — combien d'entrées le filtre COURANT cache-t-il qui sont plus RÉCENTES que la plus récente des
-// entrées visibles ? (aucune visible ⇒ toutes celles que le filtre cache). Les notes épinglées ne servent pas de repère
-// (le serveur les sert en tête, quelle que soit leur date). Pur : horodatages comparés en millisecondes.
-export function nombreMasquesPlusRecents(entries, filterKey) {
-  if (!Array.isArray(entries) || filterKey === 'tous') return 0
-  const horo = (a) => Date.parse(a?.created_at) || 0
-  let plusRecenteVisible = 0
-  for (const a of entries) {
-    if (!a?.pinned && matchesTimelineFilter(a.kind, filterKey, a.body) && horo(a) > plusRecenteVisible) plusRecenteVisible = horo(a)
-  }
-  return entries.filter((a) => !matchesTimelineFilter(a.kind, filterKey, a.body) && horo(a) > plusRecenteVisible).length
-}

@@ -921,4 +921,15 @@ describe('ACAL1268 — le rail d’un lead de pompage', () => {
     await panneauOuvert()
     expect(zone()).toBeNull()
   })
+
+  /* Lot 8, relecture finale (D-ACAL-106) — un lecteur sans droit sur les devis reçoit `{id: null, reference: null}` :
+     la carte dit qu'un devis agricole existe, sans lien ni référence, et jamais « Créer le devis agricole ». */
+  it('devis agricole non nommé : ni lien, ni référence, ni « Créer »', async () => {
+    rendreAvec({ ...CTX('agricole'), cible: { devis_agricole: { id: null, reference: null } } }, '?onglet=production&mode=expert')
+    const panneau = await screen.findByTestId('cal-onglet-panneau', {}, { timeout: DELAI_PANNEAU })
+    expect(zone()).not.toBeNull()
+    expect(within(zone()).queryByRole('link')).toBeNull()
+    expect(within(panneau).getByText('Un devis agricole du lead porte ce champ (accès réservé aux rôles du module Ventes).')).toBeInTheDocument()
+    expect(within(panneau).queryByText(/Créer le devis agricole/)).toBeNull()
+  })
 })
