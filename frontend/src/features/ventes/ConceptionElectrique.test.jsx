@@ -147,6 +147,20 @@ describe('ConceptionElectrique (PV43)', () => {
     expect(within(planche).queryByTestId('csch-bloc-batterie')).toBeNull()
   })
 
+  it('D-ACAL-158 : l\'avis du serveur dit au vendeur quelle option le client ne voit pas', async () => {
+    const enveloppe = ENVELOPPE()
+    const avis = 'Le client ne voit pas le schéma de cette option : aucune conception électrique n\'a été rangée pour elle à l\'envoi.'
+    enveloppe.avis_client = { sans_batterie: avis, avec_batterie: null }
+    serviSchema(enveloppe)
+    const user = userEvent.setup()
+    render(<ConceptionElectrique devisId={3} />)
+
+    const planche = await screen.findByTestId('schema-electrique-devis')
+    expect(within(planche).queryByText(avis)).toBeNull()
+    await user.click(within(planche).getByRole('button', { name: 'Sans batterie' }))
+    expect(within(planche).getByText(avis)).toHaveClass('text-muted-foreground')
+  })
+
   it('aucun montant ni prix dans la planche', async () => {
     serviSchema(ENVELOPPE())
     render(<ConceptionElectrique devisId={3} />)
