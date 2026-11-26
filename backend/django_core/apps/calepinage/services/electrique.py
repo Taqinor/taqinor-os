@@ -814,6 +814,15 @@ def _valider_entree(calepinage, fusionnee, postee):
     _batterie_declaration.valider_secours(postee.get('batterie'))  # ACAL786
     _hors_reseau_declaration.valider_hors_reseau(
         postee.get('hors_reseau'))  # ACAL166, ACAL790
+    if 'affectation_manuelle' in postee:
+        # ACAL1627 — refusée à l'ÉCRITURE (la lecture l'avalait et repartait
+        # de l'automatique) : même normalisation que la lecture, champ nommé.
+        from .chaines import AffectationInvalide, normaliser_affectation_imposee
+
+        try:
+            normaliser_affectation_imposee(postee.get('affectation_manuelle'))
+        except AffectationInvalide as refus:
+            raise EntreeInvalide(str(refus), champ=refus.champ)
     poly = postee.get(CLE_POLYSTRING)
     if poly not in (None, '') and not isinstance(poly, (list, tuple)):
         raise EntreeInvalide(
