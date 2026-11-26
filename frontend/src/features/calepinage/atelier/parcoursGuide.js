@@ -216,7 +216,10 @@ export function aReglerDeLEtape(manque, cle) {
     voisin ont été posés et enregistrés, pendant que l'Expert, lui, les voyait. */
 export function useParcours(calepinageId, relecture = null) {
   // ACAL1731 — lue UNE fois à l'ouverture : la coque et le rail d'onglets partagent la même étape de départ.
-  const [memorisee] = useState(() => lireEtapeMemorisee(calepinageId))
+  // Revue de T4-U1-023 (26/11) — l'étape de départ : celle mémorisée sur cet appareil, sinon le choix AUTOMATIQUE (première
+  // étape non faite) fait UNE fois, à la première réponse, puis TENU : une relecture après un enregistrement met à jour les
+  // états (pastilles, carte des ombres) sans jamais changer d'écran — l'étape ne change que par un geste de l'utilisateur.
+  const [memorisee, setMemorisee] = useState(() => lireEtapeMemorisee(calepinageId))
   const [parcours, setParcours] = useState({ etats: {}, manque: [] })
   useEffect(() => {
     if (!calepinageId) return undefined
@@ -228,12 +231,11 @@ export function useParcours(calepinageId, relecture = null) {
         const liste = Array.isArray(rep?.data?.etapes) ? rep.data.etapes : []
         const manque = Array.isArray(rep?.data?.manque)
           ? rep.data.manque.filter((m) => m && typeof m === 'object') : []
-        setParcours({
-          etats: Object.fromEntries(
-            liste.filter((e) => ETATS.includes(e?.etat)).map((e) => [e.cle, e.etat]),
-          ),
-          manque,
-        })
+        const etats = Object.fromEntries(
+          liste.filter((e) => ETATS.includes(e?.etat)).map((e) => [e.cle, e.etat]),
+        )
+        setParcours({ etats, manque })
+        setMemorisee((tenue) => tenue ?? etapeActive(null, etats, null))
       })
       .catch(() => {})
     return () => { vivant = false }

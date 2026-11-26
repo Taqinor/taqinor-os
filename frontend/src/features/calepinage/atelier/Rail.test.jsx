@@ -871,4 +871,26 @@ describe('useParcours — relu à chaque enregistrement (T4-U1-023)', () => {
     expect(mocks.parcours).toHaveBeenCalledTimes(2)
     mocks.parcours.mockReset()
   })
+
+  /* Revue de T4-U1-023 (26/11) — la relecture après un enregistrement nourrit `etapeActive` (coque : `cleEtape`, `onEtape`) :
+     sans `?onglet=` ni étape mémorisée, un enregistrement qui marque le Toit « fait » faisait passer l'écran à Panneaux
+     sans un clic. Le choix automatique est fait UNE fois (première réponse), puis tenu. */
+  it('sans étape mémorisée : un enregistrement qui rend le Toit « fait » laisse l’étape active sur le Toit', async () => {
+    const { renderHook } = await import('@testing-library/react')
+    const { useParcours, etapeActive } = await import('./parcoursGuide')
+    window.localStorage.removeItem(`calepinage.etape.${ID}`)
+    const etapes = (toit, panneaux) => ({ data: { etapes: [{ cle: 'toit', etat: toit }, { cle: 'panneaux', etat: panneaux }], manque: [] } })
+    mocks.parcours.mockReset()
+    mocks.parcours.mockResolvedValueOnce(etapes('en_cours', 'a_faire'))
+    mocks.parcours.mockResolvedValueOnce(etapes('fait', 'en_cours'))
+    const { result, rerender } = renderHook(({ le }) => useParcours(ID, le), { initialProps: { le: null } })
+    const active = () => etapeActive(null, result.current.etats, result.current.memorisee)
+    await waitFor(() => expect(result.current.etats.toit).toBe('en_cours'))
+    expect(active()).toBe('toit')
+    rerender({ le: '2026-11-26T11:00:00Z' }) // l'enregistrement : le Toit devient « fait »
+    await waitFor(() => expect(result.current.etats.toit).toBe('fait'))
+    expect(result.current.etats.panneaux).toBe('en_cours') // les états, eux, sont à jour (pastilles)
+    expect(active()).toBe('toit')
+    mocks.parcours.mockReset()
+  })
 })
