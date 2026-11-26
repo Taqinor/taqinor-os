@@ -682,6 +682,26 @@ class ObstacleHorsPanTest(SimpleTestCase):
         self.assertEqual(controle['etat'], 'a_regler')
         self.assertIn('lucarne dépasse du pan A', controle['valeur_texte'])
 
+    def test_cible_porte_l_id_stable_de_l_obstacle_fautif(self):
+        # ACAL1971 — `cible.champ` = `id` de l'obstacle (jamais son rang) ; le
+        # PREMIER fautif, même placé après un obstacle correct. Mutant : champ
+        # vide ou rang « 1 » => echec.
+        dedans = {'id': 'obs-ok', 'type': 'ventilation', 'centerLat': 33.57005,
+                  'centerLng': -7.58995, 'lengthM': 2.0, 'widthM': 2.0}
+        cheminee = {'id': 'obs-cheminee', 'type': 'cheminee',
+                    'centerLat': 33.57009, 'centerLng': -7.58995,
+                    'lengthM': 4.0, 'widthM': 1.0}
+        controle = self._controle(dedans, cheminee)
+        self.assertEqual(controle['cible'], {
+            'etape': 'toit', 'onglet': 'pente', 'champ': 'obs-cheminee'})
+        # Sans `id` : champ vide ; la constante partagee n'est pas mutee.
+        sans_id = {k: v for k, v in cheminee.items() if k != 'id'}
+        self.assertEqual(self._controle(sans_id)['cible']['champ'], '')
+        from apps.calepinage.services.pret_a_envoyer import CIBLE_OBSTACLES
+        self.assertEqual(CIBLE_OBSTACLES['champ'], '')
+        # Tout est dans le pan : aucun obstacle vise.
+        self.assertEqual(self._controle(dedans)['cible']['champ'], '')
+
     def test_obstacle_dans_le_pan_ok(self):
         dedans = {'type': 'ventilation', 'centerLat': 33.57005,
                   'centerLng': -7.58995, 'lengthM': 2.0, 'widthM': 2.0}
