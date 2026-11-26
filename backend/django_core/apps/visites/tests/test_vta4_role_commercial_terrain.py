@@ -85,7 +85,10 @@ class RoleCommercialTerrainTests(TestCase):
         self.assertEqual(
             COMMERCIAL_TERRAIN_PERMISSIONS,
             ['visites_voir', 'visites_creer', 'visites_modifier',
-             'app_visites_voir'])
+             'app_visites_voir',
+             # D-ACAL-152 (fondateur, 26/11/2026) — « voir les prix de vente »,
+             # porté par tous les rôles sauf Technicien et Technicien responsable.
+             'prix_vente_voir'])
 
     def test_il_ne_se_valide_jamais_lui_meme(self):
         self.assertNotIn('visites_valider', COMMERCIAL_TERRAIN_PERMISSIONS)
