@@ -65,6 +65,7 @@ from . import (
     sections_declarees,
 )
 from ..note_calcul import LIBELLE_SOURCE
+from .champs_lisibles import motif_lisible
 
 __all__ = ['CSS_SECTION', 'SOURCE_NON_RENSEIGNEE', 'html_de_section']
 
@@ -86,6 +87,9 @@ SOURCE_NON_RENSEIGNEE = 'source non renseignée'
 #: ``garde`` et cette annexe elle-même déclarent ``entrees_exigees: []``
 #: (elles s'impriment toujours), les lister serait un bruit sans grandeur.
 CODES_EXCLUS = ('garde', 'hypotheses')
+
+#: ACAL1626 — la ligne d'un résultat sans grandeur ni étape non calculée.
+AUCUNE_LIGNE = '<tr><td colspan="2">aucune</td></tr>'
 
 
 def _source_lisible(code):
@@ -150,7 +154,8 @@ def _table_hypotheses(postes, langue):
 
 
 def _non_calcule(resultat):
-    """``[(chemin, motif)]`` — une ligne par ``entrees_exigees`` absent."""
+    """``[(chemin, motif)]`` — une ligne par ``entrees_exigees`` absent, puis
+    (ACAL1626) une par étape de cascade OMISE, son motif rendu lisible."""
     lignes = []
     for section in sections_declarees():
         if section['code'] in CODES_EXCLUS:
@@ -160,6 +165,23 @@ def _non_calcule(resultat):
             continue  # ACAL832 — section omise : rien à lister
         for chemin in manque:
             lignes.append((chemin, section['motif_si_absent']))
+    return lignes + _etapes_omises(resultat)
+
+
+def _etapes_omises(resultat):
+    """ACAL1626 — chaque étape de ``cascade.etapes`` omise, UNE fois, avec son
+    libellé et ``motif_lisible`` de son motif (jamais de code interne)."""
+    cascade = resultat.get('cascade') if isinstance(resultat.get('cascade'), dict) else {}
+    lignes, vues = [], set()
+    for etape in cascade.get('etapes') or ():
+        if not isinstance(etape, dict) or not etape.get('motif_omission'):
+            continue
+        cle = etape.get('etape') or etape.get('libelle')
+        if cle in vues:
+            continue
+        vues.add(cle)
+        lignes.append((str(etape.get('libelle') or cle),
+                       motif_lisible(etape['motif_omission'])))
     return lignes
 
 
@@ -167,7 +189,7 @@ def _table_non_calcule(lignes):
     entete = '<tr><th>Grandeur</th><th>Motif</th></tr>'
     corps = ''.join(
         '<tr><td>%s</td><td>%s</td></tr>' % (escape(chemin), escape(motif))
-        for chemin, motif in lignes)
+        for chemin, motif in lignes) or AUCUNE_LIGNE  # ACAL1626 — « aucune »
     return '<table class="annexe-hypotheses">%s%s</table>' % (entete, corps)
 
 
