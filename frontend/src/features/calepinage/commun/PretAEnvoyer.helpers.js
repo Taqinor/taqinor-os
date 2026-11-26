@@ -3,6 +3,8 @@
    `calepinage_pret_a_envoyer.json`, `codes_produits`) ; ce fichier dit seulement dans QUELLE étape
    de l'atelier chacun se règle — jamais un état, jamais un chiffre. */
 
+import { libelleEtat } from '../electrique/etatVerdict'
+
 export const GROUPES = [
   { cle: 'toit', libelle: 'Toit' },
   { cle: 'panneaux', libelle: 'Panneaux' },
@@ -89,16 +91,23 @@ export function pointsServis(controle) {
 
 /* R6-N3 — « Dossier électrique — Bloquant : 2 » compte les POINTS DU DOSSIER (les motifs de son verdict), alors que
    « 6 points à régler », « N à régler » du rail et « Contrôles · 4 bons » comptent des CONTRÔLES (une ligne chacun) : la
-   même formule « N points » désignait deux choses sur le même écran. Le chiffre du dossier dit désormais ce qu'il compte ;
-   le texte servi (« Bloquant : N », mots communs au Verdict et au cadre du devis, ACAL935) n'est pas touché. */
-const BLOQUANT_N = /^Bloquant : (\d+)$/
+   même formule « N points » désignait deux choses sur le même écran. Le mot « points du dossier » vit dans
+   `electrique/etatVerdict.js` (source unique du libellé, lue par tous les écrans) ; le NOMBRE est celui du champ structuré
+   `controle.points` (sa longueur), à défaut le chiffre du texte servi (« Bloquant : N »). */
+const CHIFFRE_DU_TEXTE = /\d+/
 
-/** La valeur affichée à droite du titre d'un contrôle : celle du serveur, sauf le décompte du dossier électrique. */
+/** Le nombre de points du dossier électrique d'un contrôle servi (0 si rien n'est lisible). */
+export function nombreDePointsDuDossier(controle) {
+  if (Array.isArray(controle?.points) && controle.points.length > 0) return controle.points.length
+  return Number(String(controle?.valeur_texte ?? '').match(CHIFFRE_DU_TEXTE)?.[0] ?? 0)
+}
+
+/** La valeur affichée à droite du titre d'un contrôle : celle du serveur, sauf le décompte du dossier électrique bloquant. */
 export function valeurAffichee(controle) {
   const texte = controle?.valeur_texte
   if (controle?.code !== 'verdict_electrique' || controle?.etat !== 'bloquant') return texte
-  const n = Number(String(texte ?? '').match(BLOQUANT_N)?.[1])
-  return Number.isInteger(n) && n > 0 ? `${texte} point${n > 1 ? 's' : ''} du dossier` : texte
+  const n = nombreDePointsDuDossier(controle)
+  return n > 0 ? libelleEtat('bloquant', n).libelle : texte
 }
 
 /** La cible de « Régler » : celle du premier point servi quand il en porte une, sinon celle du contrôle. */

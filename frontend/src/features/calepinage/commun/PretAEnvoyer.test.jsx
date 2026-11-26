@@ -23,6 +23,7 @@ vi.mock('../../../api/calepinageApi', () => ({
 
 import calepinageApi from '../../../api/calepinageApi'
 import PretAEnvoyer from './PretAEnvoyer'
+import { libelleEtat } from '../electrique/etatVerdict'
 import RailGuide from './RailGuide'
 import { ongletParCle } from '../atelier/onglets'
 import { ETAPE_DU_CODE, MESSAGE_ECHEC, MESSAGE_LENT, rangerControles, valeurAffichee } from './PretAEnvoyer.helpers'
@@ -111,8 +112,22 @@ describe('PretAEnvoyer — ordre des listes (H3)', () => {
     expect(screen.getByTestId('cal-pret-ligne-chutes_tension')).not.toHaveTextContent('du dossier')
   })
 
+  it('R6-N3 — une seule formulation : source unique, vue liste historique et vue groupée disent « points du dossier », une seule fois par ligne', async () => {
+    expect(libelleEtat('bloquant', 2).libelle).toBe('Bloquant : 2 points du dossier')
+    expect(libelleEtat('bloquant', 1).libelle).toBe('Bloquant : 1 point du dossier')
+    const dossier = { ...ligne(modeleBloquant, 'verdict_electrique'), libelle: 'Dossier électrique', valeur_texte: 'Bloquant : 2' }
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi([dossier]))
+    monter({ calepinageId: 109 })
+    const ligneDossier = await screen.findByTestId('cal-pret-ligne-verdict_electrique')
+    expect(ligneDossier.textContent.match(/Bloquant : 2 points du dossier/g)).toHaveLength(1)
+    expect(ligneDossier).not.toHaveTextContent('Bloquant : 2 Bloquant')
+  })
+
   it('R6-N3 — valeurAffichee : singulier, autre état ou autre contrôle laissés tels que servis', () => {
     expect(valeurAffichee({ code: 'verdict_electrique', etat: 'bloquant', valeur_texte: 'Bloquant : 1' })).toBe('Bloquant : 1 point du dossier')
+    // le champ structuré `points` prime sur le chiffre du texte servi, qui n'est que le repli
+    expect(valeurAffichee({ code: 'verdict_electrique', etat: 'bloquant', valeur_texte: 'Bloquant : 9', points: [{}, {}, {}] }))
+      .toBe('Bloquant : 3 points du dossier')
     expect(valeurAffichee({ code: 'verdict_electrique', etat: 'a_regler', valeur_texte: 'À compléter' })).toBe('À compléter')
     expect(valeurAffichee({ code: 'tension_froid', etat: 'bloquant', valeur_texte: 'Bloquant : 2' })).toBe('Bloquant : 2')
     expect(valeurAffichee({ code: 'verdict_electrique', etat: 'bloquant', valeur_texte: 'Autre phrase' })).toBe('Autre phrase')
