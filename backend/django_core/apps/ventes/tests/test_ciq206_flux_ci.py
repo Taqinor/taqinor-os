@@ -1039,7 +1039,8 @@ class SensibilitesOptionAvecNiveau14Tests(SimpleTestCase):
         """``sensibilites`` passé à ``option_avec_de_l_etude`` atteint le
         contexte du bloc (étude ET lignes), jamais le dimensionnement."""
         from apps.ventes.domain import etude_ci_batterie as m
-        resultat = {'evaluation': {'kwc': 1, 'batterie': {'produit': 1, 'quantite': 2}},
+        resultat = {'evaluation': {'kwc': 1, 'batterie': {'produit': 1, 'quantite': 2},
+                                   'onduleurs': {'combinaison': ciq120.HYBRIDE_CABLABLE}},  # D-ACAL-103
                     'prix_a_renseigner': [], 'hypotheses': [], 'alertes': [], 'motif': None}
         catalogue = {'batterie': {'hybrides': [1], 'batteries': [{'produit': 1}]}}
         vus = []
