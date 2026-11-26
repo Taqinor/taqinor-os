@@ -1292,6 +1292,28 @@ class EcartsDeLignesSansBaseTest(SimpleTestCase):
                           ('Onduleur 8 kW', 'Onduleur 5 kW', '1.00', '12000.00')])
         self.assertEqual(ecarts_de_lignes(avant, dict(avant)), ([], [], []))
 
+    def test_revue_avertissement_chiffre_a_sa_forme_sans_montant(self):
+        """Revue du 26/11 (D-ACAL-106/165) — le seul avertissement de la resynchro qui porte un montant
+        de vente (``lignes.avertissement_forfait_verrouille``) a sa phrase sans montant ; tous les
+        lecteurs d'aujourd'hui lisent toujours la phrase complète (un ``str``), JSON et pickle compris."""
+        import json
+        import pickle
+
+        from apps.ventes.domain.lignes import avertissement_forfait_verrouille
+        from apps.ventes.services import avertissements_sans_montant
+
+        complet = avertissement_forfait_verrouille('Pose', 14, '4 200,00')
+        self.assertIn('4 200,00 MAD HT', complet)
+        self.assertEqual(json.loads(json.dumps([complet])), [str(complet)])
+        self.assertEqual(str(pickle.loads(pickle.dumps(complet))), str(complet))
+        autre = 'La conception 3D porte le devis de 9 à 14 panneaux.'
+        cache = avertissements_sans_montant([complet, autre])
+        self.assertEqual(cache[1], autre)
+        self.assertNotIn('MAD', cache[0])
+        self.assertNotIn('4 200', cache[0])
+        self.assertIn('« Pose » : prix saisi à la main', cache[0])
+        self.assertEqual(avertissements_sans_montant(None), [])
+
     def test_texte_au_centime(self):
         from apps.ventes.domain.apercu_resynchro import _texte
 

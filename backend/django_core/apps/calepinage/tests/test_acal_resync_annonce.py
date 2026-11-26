@@ -215,6 +215,42 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertEqual([c['quantite_apres'] for c in cache.data['changements']],
                          [c['quantite_apres'] for c in lecteur.data['changements']])
 
+    def test_revue_sans_lecture_des_devis_aucun_montant_dans_les_avertissements(self):
+        """Revue du 26/11 (D-ACAL-106/165) — la phrase du forfait au prix saisi (« barème du stock : …
+        MAD HT », ``lignes.avertissement_forfait_verrouille``) n'arrive JAMAIS avec son montant à un compte
+        qui gère le calepinage sans lire les devis : ni par l'aperçu, ni par la réponse de ``sync-devis`` ;
+        le lecteur des devis la reçoit entière. La phrase vient de la VRAIE fonction de ventes."""
+        from unittest import mock
+
+        from django.contrib.auth import get_user_model
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.ventes.domain.lignes import avertissement_forfait_verrouille
+        from apps.visites.models import VisiteTerrain
+
+        role = Role.objects.create(company=self.company, nom='Revue sans devis',
+                                   permissions=list(TECHNICIEN_PERMISSIONS) + ['calepinage_gerer'])
+        compte = get_user_model().objects.create_user(username='revue-165', password='x', company=self.company,
+                                                      role=role)
+        VisiteTerrain.objects.create(company=self.company, lead=self.lead, commercial=compte)
+        phrase = avertissement_forfait_verrouille('Pose', 14, '4 200,00')
+        reel = {'inchange': False, 'panneaux': 14, 'kwc': 7.7, 'scenario': 'reseau', 'batterie': False,
+                'lignes_modifiees': 1, 'lignes_ajoutees': 0, 'avertissements': [phrase]}
+        apercu = {'inchange': False, 'statut': 'brouillon', 'reference': 'DEV-X', 'corrige_apres_envoi': False,
+                  'ajouts': [], 'retraits': [], 'changements': [], 'totaux': None, 'avertissements': [phrase],
+                  'panneaux': 14, 'kwc': 7.7, 'scenario': 'reseau', 'batterie': False}
+        technicien = self._client(compte)
+        with mock.patch('apps.calepinage.views.calepinages.resynchroniser_devis', return_value=dict(reel)), \
+                mock.patch('apps.ventes.services.apercu_de_resynchronisation', return_value=dict(apercu)):
+            for client, attendu in ((technicien, False), (self.api, True)):
+                for reponse in (client.post(f'{self.base}sync-devis/', {}, format='json'),
+                                client.get(f'{self.base}apercu-resync/')):
+                    self.assertEqual(reponse.status_code, 200, reponse.data)
+                    texte = ' '.join(reponse.data['avertissements'])
+                    self.assertEqual(('4 200,00 MAD HT' in texte), attendu, texte)
+                    self.assertIn('« Pose » : prix saisi à la main', texte)
+
     # ── Lane E6e, item 3 (T4-X5-010) — le devis né de l'atelier et l'onduleur désigné ──
     def _designer(self, nom, **saisie):
         from apps.calepinage.services.electrique import CLE_ENTREE
@@ -1127,3 +1163,7 @@ class ApercuResyncSansBaseTest(SimpleTestCase):
         self.assertEqual(set(cache['changements'][0]), set(attendu['changements'][0]))
         self.assertIsNot(cache, complet)
         self.assertEqual(complet['reference'], 'DEV-202611-0001')  # l'entrée n'est pas modifiée
+        # Revue du 26/11 (D-ACAL-165) — l'avertissement au montant de vente (vraie fonction de ventes).
+        from apps.ventes.domain.lignes import avertissement_forfait_verrouille
+        chiffre = dict(complet, avertissements=[avertissement_forfait_verrouille('Pose', 14, '4 200,00')])
+        self.assertNotIn('MAD', ' '.join(_caviarder(chiffre)['avertissements']))

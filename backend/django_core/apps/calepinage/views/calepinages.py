@@ -853,6 +853,10 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         except DevisRefuse as refus:
             return Response(_refus_devis(refus),
                             status=_statut_refus_devis(refus))
+        from apps.ventes.selectors_assistant import lit_les_devis
+        from apps.ventes.services import avertissements_sans_montant
+        if not lit_les_devis(request.user):  # D-ACAL-106/165 — aucun montant de vente à qui ne lit pas les devis
+            resultat = dict(resultat, avertissements=avertissements_sans_montant(resultat.get('avertissements')))
         return Response(resultat)
 
     # ── Les variantes : CRUD, bascule idempotente, comparatif ──────────────

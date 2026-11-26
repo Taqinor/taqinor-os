@@ -19,11 +19,15 @@ CHAMPS_MONTANTS = ('prix_unitaire', 'total_ht', 'prix_unitaire_avant', 'prix_uni
 
 def _caviarder(reponse):
     """D-ACAL-106 (« aucun devis ni aucun prix ») — mêmes clés ; ni référence, ni montant, ni total.
-    La désignation et la quantité restent : elles décrivent la pose. Pure."""
+    La désignation et la quantité restent : elles décrivent la pose. Revue du 26/11 (D-ACAL-165) —
+    les avertissements qui portent un montant de vente passent sous leur forme sans montant."""
+    from apps.ventes.services import avertissements_sans_montant
+
     def _sans_montants(ligne):
         return {cle: (None if cle in CHAMPS_MONTANTS else valeur) for cle, valeur in ligne.items()}
 
     return dict(reponse, reference=None, totaux=None,
+                avertissements=avertissements_sans_montant(reponse.get('avertissements')),
                 **{cle: [_sans_montants(li) for li in reponse.get(cle) or ()]
                    for cle in ('ajouts', 'retraits', 'changements')})
 
