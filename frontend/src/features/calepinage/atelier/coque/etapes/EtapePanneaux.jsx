@@ -101,6 +101,7 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
     cible: facture.cible,
     motifFacture: facture.refus || facture.motif,
     refusFacture: facture.refus,
+    tailleSouhaitee: facture.tailleSouhaitee, // R6-N4
     factureSaisie: facture.factureSaisie,
     entrees: Array.isArray(catalogue?.modules) ? catalogue.modules : [],
     // Lane E9 — la taille de la conception comptée dans chaque puissance de la liste (`modules-disponibles/`).
@@ -338,7 +339,7 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
       {servi.facture.etat === 'ok' && !cible && !servi.facture.calculEnCours && (
         <p className="cal-pan-note">
           {raison}
-          {servi.leadId && !(servi.refusFacture && servi.factureSaisie) && !factureSansCause && (
+          {servi.leadId && !(servi.refusFacture && servi.factureSaisie) && !factureSansCause && !servi.tailleSouhaitee && (
             <>{' '}<Link to={`/crm/leads/${servi.leadId}`} className="cal-pan-lien">Renseigner la facture du lead</Link></>
           )}
         </p>

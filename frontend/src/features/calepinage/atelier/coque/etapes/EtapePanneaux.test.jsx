@@ -446,7 +446,7 @@ describe('étape Panneaux — panneau de droite', () => {
   // « Renseigner la facture du lead ».
   it('R6-N4 — facture saisie : la cause servie est dite, et sans cause jamais « aucune taille » ni « renseigner la facture »', async () => {
     servir({ cible: null })
-    const CAUSE = 'La taille de ce lead vient de la taille qu’il a souhaitée (9 panneaux · 6,39 kWc), pas de ses factures.'
+    const CAUSE = 'La taille de ce lead vient de la taille souhaitée sur sa fiche (6 kWc ; conception : 9 panneaux · 6,39 kWc), pas de ses factures.'
     calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: { cible_factures: null, refus: CAUSE } })
     rendre()
     await screen.findByText(CAUSE)
@@ -459,6 +459,19 @@ describe('étape Panneaux — panneau de droite', () => {
     rendre()
     await screen.findByText(/La facture de ce lead est renseignée, mais le moteur n’en a tiré aucune taille/)
     expect(document.body).not.toHaveTextContent('Aucune taille ne se tire des factures')
+    expect(screen.queryByRole('link', { name: 'Renseigner la facture du lead' })).toBeNull()
+  })
+
+  // R6-N4 — taille souhaitée SANS facture : il ne manque rien, la phrase n'est pas suivie du lien de saisie d'une facture.
+  it('R6-N4 — taille souhaitée sur la fiche, sans facture : la cause est dite, aucun lien « Renseigner la facture du lead »', async () => {
+    servir({ cible: null })
+    const CAUSE = 'La taille de ce lead vient de la taille souhaitée sur sa fiche (6 kWc ; conception : 9 panneaux · 6,39 kWc), pas de ses factures.'
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: {
+      calepinage: { lead: 42 }, consommation_lead: { facture_mensuelle_mad: null, motif: '' },
+      cible: { source: 'lead', panneaux: 9, kwc: 6.39 } } })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: { cible_factures: null, refus: CAUSE } })
+    rendre()
+    await screen.findByText(CAUSE)
     expect(screen.queryByRole('link', { name: 'Renseigner la facture du lead' })).toBeNull()
   })
 
