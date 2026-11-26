@@ -119,6 +119,8 @@ export default function ReleveVisite() {
   const doc = useDocumentCalepinage(id)
   const zone = zonesDuDocument(doc.document).find((z) => String(z.id) === panParDefaut(doc.document)) ?? null
   const photos = usePhotosReleve(id)
+  const photosRef = useRef(photos) // l'état COURANT des photos, relu après l'envoi du relevé (la fermeture de « Terminer » est périmée)
+  useEffect(() => { photosRef.current = photos })
   /* T4-U4-020 / T4-U4-022 — le brouillon des mesures tapées et le pan en attente, gardés sur le téléphone. */
   const brouillons = useBrouillonReleve(id)
   const depart = brouillons.brouillon
@@ -384,15 +386,21 @@ export default function ReleveVisite() {
       if (brouillons.pan) brouillons.oublierPan()
       const nouvelId = res?.data?.releve?.id
       setReleve((r) => ({ ...r, id: nouvelId ?? r.id, releveLe: corps.releve_le }))
+      /* Une photo encore en route (ou refusée) n'est pas dans ce relevé : on le dit en mots simples et on reste sur l'écran,
+         sinon elle arriverait sur un écran quitté et ne serait jamais rattachée. */
+      const photoEnRoute = photosRef.current.enCours != null
+      const photoRefusee = !photoEnRoute && !!photosRef.current.message
+      const phrasePhoto = photoEnRoute ? ' Une photo est encore en cours d’envoi : attendez la fin, puis touchez « Terminer le relevé ».'
+        : photoRefusee ? ' Une photo a été refusée (voir plus haut) : reprenez-la, puis touchez « Terminer le relevé ».' : ''
       setMessage({
         texte: `${releve.id ? 'Relevé corrigé.' : 'Relevé enregistré.'}${sansPanPourAzimut
-          ? ' L’orientation tapée n’est pas enregistrée : aucun pan dessiné, tracez le toit dans l’atelier.' : ''}${nonEnvoyees}`,
+          ? ' L’orientation tapée n’est pas enregistrée : aucun pan dessiné, tracez le toit dans l’atelier.' : ''}${nonEnvoyees}${phrasePhoto}`,
         ton: 'ok',
       })
       /* ACAL1319 / D-ACAL-68 — « Terminer » enregistre puis REVIENT à la fiche d'où le relevé a été ouvert (la même que la
          flèche « Retour »), sans statut neuf. Une réserve dite à l'écran (orientation non écrite, mesures non parties)
          reste en vue : on ne quitte pas l'écran sur elle. */
-      if (!sansPanPourAzimut && !nonEnvoyees) navigate(`/calepinage/${id}`)
+      if (!sansPanPourAzimut && !nonEnvoyees && !phrasePhoto) navigate(`/calepinage/${id}`)
     } catch (err) {
       const refus = (texte, champ = null) => setMessage({ texte, ton: 'refus', champ })
       if (!err?.response) {

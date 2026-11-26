@@ -1033,4 +1033,34 @@ describe('ACAL1319 / D-ACAL-68 — « Terminer le relevé » enregistre puis rev
     expect(within(section).getByLabelText('Prendre la photo « Oblique (aérienne) »')).toBeInTheDocument()
     expect(within(section).getByLabelText('Prendre la photo « Depuis le sol »')).toBeInTheDocument()
   })
+
+  const deposerPhoto = (genre) => act(async () => {
+    const entree = screen.getByTestId(`releve-photo-${genre}`).querySelector('input[type="file"]')
+    fireEvent.change(entree, { target: { files: [new File(['x'], 'o.jpg', { type: 'image/jpeg' })] } })
+  })
+
+  it('une photo encore en cours d’envoi : le relevé part mais on RESTE, et l’écran le dit', async () => {
+    let finir
+    file.deposerOuMettreEnFile.mockImplementation(() => new Promise((r) => { finir = r }))
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalled())
+    await deposerPhoto('oblique')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Une photo est encore en cours d’envoi'))
+    expect(allerA).not.toHaveBeenCalled()
+    await act(async () => { finir({ enFile: true }) })
+  })
+
+  it('une photo refusée : on RESTE et l’écran le dit', async () => {
+    file.deposerOuMettreEnFile.mockRejectedValue(new Error('Fichier illisible'))
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalled())
+    await deposerPhoto('oblique')
+    await screen.findByTestId('releve-photos-erreur')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Une photo a été refusée'))
+    expect(allerA).not.toHaveBeenCalled()
+  })
 })
