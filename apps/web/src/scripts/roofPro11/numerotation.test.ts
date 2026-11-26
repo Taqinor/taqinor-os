@@ -579,3 +579,56 @@ describe('Numérotation stable — un calepinage stocké n’est jamais renumér
     expect(registreAtelier.historique('z1').plafond).toBe(2277);
   });
 });
+
+// Revue du lot 8 (suite ACAL1720) — un numéro montré seulement à titre PROVISOIRE ne peut jamais être engagé à une
+// SECONDE place. Chemin : la géométrie capturée en quittant un pan (lecture, `geometrieZoneActive`) garde les `n`
+// provisoires et est réémise telle quelle (pan non actif, photo d'annulation qui traverse un enregistrement).
+describe('Numérotation stable — un numéro engagé désigne une seule place', () => {
+  const quarante = (): ModulePose[] => Array.from({ length: 40 }, (_, i) => ({ cx: (i % 10) * 1.2, cy: Math.floor(i / 10) * 2.1 }));
+  type Doc = ReturnType<typeof serializeLayout>;
+  const panneaux = (doc: Doc) => doc.zones[0].geometry!.panels as ModuleNumerote[];
+  const numeros = (doc: Doc) => panneaux(doc).map((m) => m.n);
+  const Y = { cx: 12, cy: 0 };
+  const X = { cx: 12, cy: 6.3 };
+  function rouvrir(): Record<string, unknown> {
+    const stocke = JSON.parse(JSON.stringify(serializeLayout(ctxPave(quarante()), null, { engagerNumeros: true })));
+    reinitialiserNumerotation();
+    hydrateFromDevis({ id: 1, geometrie: { roof_layout: stocke }, cibleVendue: false });
+    return stocke;
+  }
+  /** Le pan z1 réémis TEL QUEL depuis une géométrie capturée (pan non actif ou photo d'annulation). */
+  function ctxCapture(geometrie: unknown, relu: Record<string, unknown>): Ctx {
+    const ctx = ctxPave(quarante(), relu);
+    (ctx.areas[0] as unknown as Record<string, unknown>).geometrieEnregistree = JSON.parse(JSON.stringify(geometrie));
+    return ctx;
+  }
+
+  it('annulation à travers un enregistrement : Y (capturé à 41) ne reprend pas le 41 engagé par X', () => {
+    const relu = rouvrir();
+    const capture = serializeLayout(ctxPave([...quarante(), Y], relu)).zones[0].geometry; // Y montré 41, capturé
+    expect(panneaux(serializeLayout(ctxPave([...quarante(), X], relu))).at(-1)!.n).toBe(41); // X montré 41
+    const s1 = serializeLayout(ctxPave([...quarante(), X], relu), null, { engagerNumeros: true });
+    expect(numeros(s1).at(-1)).toBe(41); // X engagé 41
+    const montre = serializeLayout(ctxCapture(capture, relu)); // annulation : la photo réémet Y:41
+    const s2 = serializeLayout(ctxCapture(capture, relu), null, { engagerNumeros: true });
+    expect(numeros(montre).at(-1)).toBe(42); // l'écran montre ce que l'enregistrement engage
+    expect(numeros(s2).at(-1)).toBe(42);
+    const places41 = [...registreAtelier.historique('z1').numeros].filter(([, n]) => n === 41).map(([place]) => place);
+    expect(places41).toEqual([cleEmplacement(X.cx, X.cy)]);
+    const s3 = serializeLayout(ctxPave([...quarante(), Y, X], relu), null, { engagerNumeros: true });
+    expect(numeros(s3).slice(-2)).toEqual([42, 41]);
+    expect(new Set(numeros(s3)).size).toBe(42); // jamais deux fois le même numéro dans le pan
+  });
+
+  it('une géométrie qui porte deux fois un numéro provisoire, ou un autre numéro à une place engagée : corrigée', () => {
+    const relu = rouvrir();
+    const geometrie = JSON.parse(JSON.stringify((relu as { zones: Array<{ geometry: { panels: ModuleNumerote[] } }> }).zones[0].geometry));
+    geometrie.panels[0].n = 7; // place engagée au nº1
+    geometrie.panels.push({ ...Y, n: 41 }, { ...X, n: 41 });
+    const doc = serializeLayout(ctxCapture(geometrie, relu), null, { engagerNumeros: true });
+    const n = numeros(doc);
+    expect(n[0]).toBe(1);
+    expect(n.slice(-2)).toEqual([41, 42]);
+    expect(new Set(n).size).toBe(n.length);
+  });
+});

@@ -17,6 +17,9 @@
  *   • un module posé à un emplacement NEUF prend le premier numéro libre AU-DELÀ du plus
  *     haut jamais attribué sur ce pan — jamais un numéro libéré par un retrait ;
  *   • un module reposé à un emplacement DÉJÀ numéroté retrouve SON numéro.
+ * INVARIANT (revue du lot 8, suite ACAL1720) : un numéro ENGAGÉ désigne UNE place pour toujours. Seul un
+ * enregistrement engage ; un document ne peut jamais engager un numéro que la mémoire engagée donne à une autre
+ * place, ni un numéro au plus égal au plafond engagé pour une place inconnue (`assainirNumerosPortes`).
  * Rien n'est attribué tant que la bascule « Numéroter » est éteinte (défaut) : le document
  * et le rendu restent alors ceux d'aujourd'hui, octet pour octet.
  *
@@ -673,12 +676,61 @@ function ecrirePlafonds(document: unknown, registre: RegistreNumerotation): void
   else delete doc[CLE_PLAFONDS];
 }
 
+/**
+ * Revue du lot 8 (suite ACAL1720) — INVARIANT : un numéro ENGAGÉ désigne UNE place pour toujours. Un document
+ * ne peut donc jamais engager un numéro que la mémoire engagée donne à une AUTRE place, ni un numéro au plus
+ * égal au plafond engagé pour une place qu'elle ne connaît pas (un numéro montré seulement à titre provisoire,
+ * puis redonné et engagé ailleurs, revenait par une géométrie capturée ou une photo d'annulation).
+ * Un `n` porté par le document n'est gardé que :
+ *   • à la place où la mémoire engagée le donne ;
+ *   • ou à une place qu'elle ne connaît pas, au-delà de son plafond, et une seule fois par pan.
+ * Sinon il est retiré et le pan est renuméroté (ajouté aux pans pavés). Appliqué aux DEUX passages (lecture et
+ * enregistrement) : l'écran montre ce que l'enregistrement engagera. Rend les pans pavés, complétés.
+ */
+function assainirNumerosPortes(
+  document: unknown,
+  registre: RegistreNumerotation,
+  pansPaves: ReadonlySet<string> | undefined,
+): ReadonlySet<string> | undefined {
+  const zones = (document as DocumentNumerotable | null)?.zones;
+  if (!Array.isArray(zones)) return pansPaves;
+  let paves = pansPaves;
+  for (const zone of zones) {
+    const panId = zone?.id;
+    const panneaux = zone?.geometry?.panels;
+    if (!panId || !Array.isArray(panneaux)) continue;
+    const engage = registre.historique(panId);
+    const gardes = new Set<number>();
+    let retire = false;
+    const assainis = panneaux.map((module) => {
+      const n = module?.n;
+      if (typeof n !== 'number') return module;
+      const connu = engage.numeros.get(cleEmplacement(module.cx, module.cy));
+      const valide = Number.isInteger(n) && n >= 1 && !gardes.has(n)
+        && (connu === n || (connu === undefined && n > engage.plafond));
+      if (valide) {
+        gardes.add(n);
+        return module;
+      }
+      retire = true;
+      const sansNumero: ModuleNumerote = { ...module };
+      delete sansNumero.n;
+      return sansNumero;
+    });
+    if (!retire) continue;
+    zone.geometry!.panels = assainis;
+    paves = new Set([...(paves ?? []), panId]);
+  }
+  return paves;
+}
+
 function numeroterSur(
   document: unknown,
   etat: SaisieNumerotation,
   registre: RegistreNumerotation,
   pansPaves: ReadonlySet<string> | undefined,
 ): RefusNumerotation | null {
+  pansPaves = assainirNumerosPortes(document, registre, pansPaves); // revue lot 8 — jamais deux places pour un numéro
   registre.absorberDocument(document);
   if (!etat.actif) {
     // ACAL31 — bascule éteinte : LECTURE SEULE. Les numéros déjà absorbés (document rouvert)
