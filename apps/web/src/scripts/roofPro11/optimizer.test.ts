@@ -1044,7 +1044,7 @@ describe('ACAL1970 — motif orientation_nord du toit en pente', () => {
   const resoudre = (azimut: number) => {
     const g = globalThis as unknown as { document?: Document };
     const avant = g.document;
-    g.document = new JSDOM('<!doctype html><body></body>').window.document;
+    g.document = new JSDOM('<!doctype html><body><p id="rp9-need-note"></p></body>').window.document;
     try {
       const ctx = {
         closed: true, vertices: rectRing(10, 8), roofType: 'pitched', pitchDeg: 22, facingAzimuthDeg: azimut, centroidLat: 33.5,
@@ -1057,20 +1057,30 @@ describe('ACAL1970 — motif orientation_nord du toit en pente', () => {
       createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]).liveResolvePitched();
       const doc: Record<string, unknown> = { zones: [{ id: 'pan-nord', geometry: { count: 0 } }] };
       ecrireMotifsDansDocument(doc);
-      return { doc, nord: (ctx as unknown as { pitchedLiveResult: { northFacing: boolean } }).pitchedLiveResult.northFacing };
+      const note = g.document.getElementById('rp9-need-note')?.textContent ?? '';
+      return { doc, note, nord: (ctx as unknown as { pitchedLiveResult: { northFacing: boolean } }).pitchedLiveResult.northFacing };
     } finally { g.document = avant; semerMotifsDepuisDocument({}); }
   };
   it('pan nord à 22° ⇒ motif écrit avec azimutDeg et penteDeg ; pan sud ⇒ aucun motif', () => {
     const nord = resoudre(0);
     expect(nord.nord).toBe(true);
     expect(nord.doc.motifsPansVides).toEqual({ 'pan-nord': {
-      code: 'orientation_nord', message: 'Aucun module : pan en pente (22°) orienté au nord (azimut 0°).', mesures: { azimutDeg: 0, penteDeg: 22 } } });
+      code: 'orientation_nord', message: 'Aucun module : pan en pente (22°) orienté au nord (azimut 0°)', mesures: { azimutDeg: 0, penteDeg: 22 } } });
     expect('motifsPansVides' in resoudre(180).doc).toBe(false);
     expect(motifPenteNord(true, 0, 0, 0, 22)).toBeNull(); // sans besoin, aucune cause à dire
   });
+  // Revue : la note du besoin vue par un visiteur public sur un pan nord dit la pose réelle (0), plus « On pose 6
+  // panneaux » ; « au nord » seulement pour un pan vraiment nord, les autres faces de la moitié nord disent la leur.
+  it('note du besoin (site public) : « 6 nécessaires — 0 tiennent en pente — Aucun module : … On pose 0. »', () => {
+    expect(resoudre(0).note).toBe('6 nécessaires — 0 tiennent en pente — Aucun module : pan en pente (22°) orienté au nord (azimut 0°). On pose 0.');
+    const nordEst = resoudre(40);
+    expect(nordEst.nord).toBe(true);
+    expect(nordEst.note).toContain('orienté nord-est (azimut 40°), trop au nord.');
+    expect(nordEst.note).not.toContain('au nord (azimut');
+  });
   it('arrondis du schéma : 359,996° ⇒ azimut 0 (jamais 360) ; pente bornée à [0, 90]', () => {
     expect(motifPenteNord(true, 0, 6, 359.996, 22)?.mesures).toEqual({ azimutDeg: 0, penteDeg: 22 });
-    expect(motifPenteNord(true, 0, 6, 359.996, 22)?.message).toBe('Aucun module : pan en pente (22°) orienté au nord (azimut 0°).');
+    expect(motifPenteNord(true, 0, 6, 359.996, 22)?.message).toBe('Aucun module : pan en pente (22°) orienté au nord (azimut 0°)');
     expect(motifPenteNord(true, 0, 6, -10, 95)?.mesures).toEqual({ azimutDeg: 350, penteDeg: 90 });
   });
 });

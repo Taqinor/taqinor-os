@@ -5,6 +5,8 @@
 // une mesure absente (`null`) rend sa cause intestable, jamais vraie.
 import { resolveSetbacks, type Panel2Module, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { type PackResult, type PanelGrid } from '../../lib/estimatorBrainV2';
+import { nomDeFace } from './hypotheses'; // ACAL1970 — le nom de la face, vocabulaire partagé
+
 export type CodeMotifPanVide = 'retrait_rive' | 'obstacles' | 'seuil_acces_solaire' | 'module_trop_grand' | 'orientation_nord' | 'inconnue';
 export interface MotifPanVide { code: CodeMotifPanVide; message: string; mesures: Record<string, number> }
 export interface MesuresPanVide {
@@ -76,12 +78,15 @@ export function causeDuPanVide(m: MesuresPanVide): MotifPanVide {
  *  sinon `null` (le motif noté du pan est alors retiré, comme sur le chemin plat). */
 export function motifPenteNord(nordique: boolean, poses: number, besoin: number, azimutDeg: number, penteDeg: number): MotifPanVide | null {
   if (!nordique || poses > 0 || !(besoin > 0) || !Number.isFinite(azimutDeg) || !Number.isFinite(penteDeg)) return null;
-  // Schéma : `azimutDeg` dans [0, 360[ (359,996 arrondi donnerait 360, refusé par `valider_document`), `penteDeg`
-  // dans [0, 90].
+  // Schéma : `azimutDeg` dans [0, 360[ (359,996 arrondi donnerait 360, refusé), `penteDeg` dans [0, 90].
   const azimut = ((r2(azimutDeg) % 360) + 360) % 360;
   const pente = Math.min(90, Math.max(0, r2(penteDeg)));
+  const nom = nomDeFace(azimut);
+  // « au nord » seulement pour un pan vraiment nord ; les autres faces de la moitié nord disent la leur (même
+  // vocabulaire que `hypotheses.ts`, et « trop au nord » comme la phrase du pan du toit en pente).
+  const face = nom === 'Nord' ? 'orienté au nord' : `orienté ${nom.toLowerCase()}`;
   return { code: 'orientation_nord',
-    message: `Aucun module : pan en pente (${Math.round(pente)}°) orienté au nord (azimut ${Math.round(azimut) % 360}°).`,
+    message: `Aucun module : pan en pente (${Math.round(pente)}°) ${face} (azimut ${Math.round(azimut) % 360}°)${nom === 'Nord' ? '' : ', trop au nord'}`, // sans point final, comme les autres causes (la note en ajoute un)
     mesures: { azimutDeg: azimut, penteDeg: pente } };
 }
 
