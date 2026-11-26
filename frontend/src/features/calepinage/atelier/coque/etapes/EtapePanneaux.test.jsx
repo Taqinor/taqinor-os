@@ -712,6 +712,20 @@ describe('étape Panneaux — sur la carte', () => {
     expect(await screen.findByText(phrase('toit.reco_panneaux'))).toBeInTheDocument()
   })
 
+  /* ACAL1749 — base e2e : « 148 panneaux » et « Puissance 0,00 kWc » pour le même calepinage (document sans `modules[]` :
+     le constructeur n'écrit ni la puissance du module ni le « × W »). Jamais 0,00 : « module à choisir ». */
+  it('ACAL1749 — panneaux posés sans module : la puissance dit « module à choisir », jamais 0,00 kWc', async () => {
+    monterConstructeur({ besoin: '148', panneaux: '148 panneaux', kwc: '0,00 kWc', prod: '—', cover: '—',
+      note: '148 posés — il reste de la place sur le toit, laissée libre.' })
+    const { container } = rendre()
+    const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+    expect(puce).toHaveTextContent('Panneaux148')
+    expect(puce).toHaveTextContent('Puissancemodule à choisir')
+    for (const ecran of [container, noeudCarte]) expect(ecran).not.toHaveTextContent('0,00') // le DOM du script, lui, le garde
+    await waitFor(() => expect(document.querySelector('[data-zone="pose-actuelle"]'))
+      .toHaveTextContent('Pose actuelle : 148 panneaux · module à choisir'))
+  })
+
   it('puce : les quatre chiffres lus ; un chiffre absent est omis', () => {
     monterConstructeur()
     rendre()

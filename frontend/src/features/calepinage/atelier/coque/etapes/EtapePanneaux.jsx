@@ -69,6 +69,16 @@ function Vignette() {
 }
 
 const compte = (n) => (n === 1 ? '1 panneau' : `${n} panneaux`)
+
+/** ACAL1749 — des panneaux posés dont la puissance LUE sur le constructeur est nulle (document sans `modules[]`, aucun module
+    sur le pan) : jamais « 0,00 kWc » à côté de « 148 panneaux » — la puissance dit « module à choisir » (le choix est
+    « Panneau » ci-dessus) ; aucune puissance n'est recalculée ici. */
+const PUISSANCE_NULLE = /^0(?:[.,]0+)?\s*kWc$/
+const MODULE_A_CHOISIR = 'module à choisir'
+function sansPuissanceNulle(figures) {
+  return figures?.panneaux > 0 && PUISSANCE_NULLE.test((figures.kwc ?? '').trim())
+    ? { ...figures, kwc: MODULE_A_CHOISIR } : figures
+}
 const selectData = { select: (r) => r?.data ?? null }
 const sansParenthese = (t) => (t ?? '').replace(/\s*\([^)]*\)\s*$/, '')
 
@@ -558,7 +568,8 @@ export default function EtapePanneaux({
   calepinageId, lectureSeule = false, enregistreLe = null, contexte = null, contexteEnCours = false, parcours = null,
   builderApi = null,
 }) {
-  const [etat, rafraichir] = useConstructeur()
+  const [lu, rafraichir] = useConstructeur()
+  const etat = { ...lu, figures: sansPuissanceNulle(lu.figures) } // ACAL1749
   const site = usePoseVivante(true, builderApi)
   // Chaque geste part au vrai contrôle, puis la lecture est refaite tout de suite (sinon elle suit 0,4 s plus tard).
   const g = Object.fromEntries(Object.entries(gestes).map(([nom, geste]) => [
