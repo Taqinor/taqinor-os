@@ -429,14 +429,14 @@ class BatterieDesigneeD_ACAL_157(SimpleTestCase):
 
     def _valider(self, postee, *, produit, onduleur_hybride=None, onduleur_present=True):
         from apps.calepinage.services import ratio_devis
-        from apps.calepinage.services.validation_batterie import valider_batterie_designee
+        from apps.calepinage.services.validation_batterie import _valider_batterie_designee
 
         materiel = {'produits': {'onduleur': 901 if onduleur_present else None}, 'onduleur': {'ac_kw': 10},
                     'designations': {'onduleur': 'Onduleur X'}, 'familles': {'onduleur': ('', '')}}
         with mock.patch('apps.stock.selectors.get_produit_scoped', return_value=produit), \
                 mock.patch('apps.calepinage.services.electrique.resoudre_materiel', return_value=materiel), \
                 mock.patch.object(ratio_devis, 'onduleur_designe_est_hybride', return_value=bool(onduleur_hybride)):
-            valider_batterie_designee(mock.Mock(company=object()), {}, postee)
+            _valider_batterie_designee(mock.Mock(company=object()), {}, postee)
 
     def test_les_categories_de_candidats_portent_les_batteries_sans_fiche_exigee(self):
         from apps.calepinage.services.electrique import CATEGORIES_CANDIDATS, _champs_manquants

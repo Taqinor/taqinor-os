@@ -61,7 +61,7 @@ def valider_batterie(saisie, calepinage=None, fusionnee=None):
             _refus_champ("« %s » doit être une liste d'heures entières "
                          "comprises entre 0 et 23." % cle, 'batterie.%s' % cle)
     if calepinage is not None:  # D-ACAL-157 — la désignation d'un produit batterie (écriture de l'entrée)
-        valider_batterie_designee(calepinage, fusionnee or {}, {'batterie': saisie})
+        _valider_batterie_designee(calepinage, fusionnee or {}, {'batterie': saisie})
 
 
 def drapeau_hybride(role, resolu):
@@ -75,7 +75,7 @@ def drapeau_hybride(role, resolu):
         resolu.get(role), (resolu.get('designations') or {}).get(role), (resolu.get('familles') or {}).get(role))}
 
 
-def valider_batterie_designee(calepinage, fusionnee, postee):
+def _valider_batterie_designee(calepinage, fusionnee, postee):
     """D-ACAL-157 — ``batterie.produit`` POSTÉ : un produit de la société (jamais celui d'une autre : même
     message qu'un id absent), de fiche « batterie », et l'onduleur désigné (entrée fusionnée, sinon celui de la
     conception) doit être un HYBRIDE — un onduleur réseau ne prend pas de batterie (D-HYB-1). Un refus NOMME
