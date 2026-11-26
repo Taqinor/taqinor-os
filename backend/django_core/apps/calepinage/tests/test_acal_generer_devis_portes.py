@@ -19,6 +19,7 @@ from __future__ import annotations
 import copy
 from decimal import Decimal
 import json
+import math
 import re
 from pathlib import Path
 
@@ -280,12 +281,16 @@ class ModuleSubstitueArrondiSansBaseTest(SimpleTestCase):
     LIGNES = 'apps.ventes.selectors_calepinage.lignes_produits_calepinage'
 
     @staticmethod
-    def _doc(nombre, watt, kwc_arrondi=None):
-        geo = {'moduleId': 'm1', 'panels': [{}] * nombre}
-        if kwc_arrondi is not None:
-            geo['kwc'] = kwc_arrondi
-        return {'scenario': 'reseau', 'modules': [{'id': 'm1', 'pmaxWc': watt}],
-                'zones': [{'id': 'A', 'label': 'A', 'geometry': geo}]}
+    def _doc(nombre, watt, kwc_arrondi=None, plans=1):
+        """``nombre`` modules de ``watt`` W répartis sur ``plans`` pans (le premier prend le reste)."""
+        parts = [nombre // plans + (nombre % plans if i == 0 else 0) for i in range(plans)]
+        zones = []
+        for i, part in enumerate(parts):
+            geo = {'moduleId': 'm1', 'panels': [{}] * part}
+            if kwc_arrondi is not None and plans == 1:
+                geo['kwc'] = kwc_arrondi
+            zones.append({'id': 'Z%d' % i, 'label': 'Z%d' % i, 'geometry': geo})
+        return {'scenario': 'reseau', 'modules': [{'id': 'm1', 'pmaxWc': watt}], 'zones': zones}
 
     def _garde(self, doc, compose_wc):
         from types import SimpleNamespace
@@ -310,6 +315,24 @@ class ModuleSubstitueArrondiSansBaseTest(SimpleTestCase):
                     with self.subTest(nombre=nombre, watt=watt, arrondi=arrondi):
                         self._garde(self._doc(nombre, watt, kwc_arrondi=arrondi), total)
 
+    def test_balayage_watts_decimaux_sur_un_deux_trois_pans_jamais_de_refus(self):
+        """Un module à 577,5 W posé en un module par pan : trois pans = 1 732,5 Wc, pas 3 × 578 ;
+        la somme est exacte et arrondie une seule fois (le kWc composé tombe sur 1,732 ou 1,733)."""
+        for watt in (577.5, 582.5, 707.5):
+            for plans in (1, 2, 3):
+                for nombre in range(plans, 121):
+                    total = nombre * watt
+                    for compose in (math.floor(total) / 1000, math.ceil(total) / 1000, round(total / 1000, 3)):
+                        with self.subTest(nombre=nombre, watt=watt, plans=plans, compose=compose):
+                            self._garde(self._doc(nombre, watt, plans=plans), compose * 1000)
+
+    def test_vrai_changement_de_module_refuse_meme_en_watts_decimaux(self):
+        from apps.calepinage.services.devis import DevisRefuse
+
+        for plans in (1, 3):
+            with self.subTest(plans=plans), self.assertRaises(DevisRefuse):
+                self._garde(self._doc(36, 577.5, plans=plans), 36 * 582.5)
+
     def test_vrai_module_substitue_refuse_avec_deux_chiffres_differents(self):
         from apps.calepinage.services.devis import DevisRefuse
 
@@ -332,6 +355,10 @@ class ModuleSubstitueArrondiSansBaseTest(SimpleTestCase):
         self.assertTrue(module_est_substitue(25.02, 24.85))
         self.assertFalse(module_est_substitue(25.025, 25.025, 25025))
         self.assertTrue(module_est_substitue(25.025, 24.85, 25025))
+        from decimal import Decimal
+
+        self.assertFalse(module_est_substitue(1.7325, 1.732, Decimal('1732.5')))
+        self.assertFalse(module_est_substitue(1.7325, 1.733, Decimal('1732.5')))
 
 
 class KwcComposeSansCleSansBaseTest(SimpleTestCase):

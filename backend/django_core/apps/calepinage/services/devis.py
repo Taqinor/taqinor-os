@@ -501,13 +501,15 @@ def module_est_substitue(dessine_kwc, compose_kwc, dessine_wc=None):
     """Le module que le devis composerait n'est-il PAS celui du dessin ?
 
     Fonction PURE, sans arrondi stocké ni imprimé. Quand le dessin donne son compte
-    de modules ET leur puissance unitaire (``dessine_wc`` = Σ compte × Wc, entier
-    exact : 35 × 715 = 25 025), la comparaison se fait en watts-crête entiers contre
+    de modules ET leur puissance unitaire (``dessine_wc`` = Σ compte × Wc, exact :
+    35 × 715 = 25 025, 3 × 577,5 = 1 732,5), la comparaison se fait en watts-crête entiers contre
     le kWc composé lu au watt près — 25,025 kWc dessiné « 25,02 » par l'outil de toit
     n'est jamais une substitution. Sans compte/puissance, repli sur les kWc avec la
     moitié de l'unité affichée (``TOLERANCE_KWC_AFFICHE``)."""
     if dessine_wc is not None:
-        return abs(round(float(compose_kwc) * 1000) - int(dessine_wc)) > TOLERANCE_WC_STOCKE
+        from decimal import Decimal
+
+        return abs(Decimal(round(float(compose_kwc) * 1000)) - Decimal(str(dessine_wc))) > TOLERANCE_WC_STOCKE
     return abs(float(compose_kwc) - dessine_kwc) > TOLERANCE_KWC_AFFICHE + 1e-9
 
 
@@ -524,12 +526,16 @@ def _chiffres_distincts(dessine, compose):
 
 
 def _wc_dessine(pans):
-    """Σ compte × puissance unitaire des pans VENDUS, en Wc entiers, ou ``None``
-    dès qu'un pan vendu n'a pas l'un des deux (jamais de puissance supposée)."""
+    """Σ compte × puissance unitaire des pans VENDUS, en Wc EXACTS (``Decimal`` : aucun
+    arrondi par pan, aucune accumulation flottante — trois pans d'un module de 577,5 W
+    font 1 732,5, jamais 3 × 578), ou ``None`` dès qu'un pan vendu n'a pas l'un des deux
+    (jamais de puissance supposée). L'arrondi, une seule fois, est celui de la comparaison."""
+    from decimal import Decimal
+
     vendus = [p for p in pans if p['modules'] > 0 and not p.get('existant')]
     if not vendus or any(not p.get('module_wc') for p in vendus):
         return None
-    return sum(round(p['modules'] * p['module_wc']) for p in vendus)
+    return sum((p['modules'] * Decimal(str(p['module_wc'])) for p in vendus), Decimal(0))
 
 
 def _garde_module_substitue(devis, layout):
