@@ -6,7 +6,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  prixForfaitHt, porteBaremeParPanneau, comptesPanneauxEcran, retarifierForfaitsEcran,
+  prixForfaitHt, porteBaremeParPanneau, comptesPanneauxEcran, retarifierForfaitsEcran, suivreQuantitesPanneauxEcran,
 } from './forfaitsPanneau.js'
 import { lignesEcranVersPayload } from './lignesEcran.js'
 
@@ -151,4 +151,38 @@ test('catalogue absent ou vide : lignes rendues telles quelles', () => {
   const lines = [ligne(PAN, 8), ligne(INST, 1)]
   assert.equal(retarifierForfaitsEcran(lines, []), lines)
   assert.equal(retarifierForfaitsEcran(lines, undefined), lines)
+})
+
+// T4-X4-001 — structures et socles suivent le compte de panneaux, ou disent qu'ils ne le suivent pas.
+const STRUCT = { id: 20, nom: 'Structures acier', prix_vente: '300', tva: 20 }
+const SOCLE = { id: 21, nom: 'Socles', prix_vente: '50', tva: 20 }
+const PRODUITS_FIX = [PAN, STRUCT, SOCLE]
+const ligneFix = (produit, quantite, extra = {}) => ({ _key: `k${produit.id}`, produit: produit.id, designation: produit.nom, quantite: String(quantite), typeLigne: 'produit', ...extra })
+
+test('suivreQuantitesPanneauxEcran — 6 -> 8 panneaux : 6 structures -> 8, 12 socles -> 16 (jamais figés à l ancien compte)', () => {
+  const avant = [ligneFix(PAN, 6), ligneFix(STRUCT, 6), ligneFix(SOCLE, 12)]
+  const marquees = suivreQuantitesPanneauxEcran(avant, PRODUITS_FIX) // premier passage : en phase, on le note
+  assert.deepEqual(marquees.map((l) => l.suitPanneaux), [undefined, 6, 6])
+  assert.equal(suivreQuantitesPanneauxEcran(marquees, PRODUITS_FIX), marquees, 'rien ne change : même tableau')
+  const huit = marquees.map((l) => (l.produit === PAN.id ? { ...l, quantite: '8' } : l))
+  const apres = suivreQuantitesPanneauxEcran(huit, PRODUITS_FIX)
+  assert.deepEqual(apres.map((l) => l.quantite), ['8', '8', '16'])
+  assert.equal(suivreQuantitesPanneauxEcran(apres, PRODUITS_FIX), apres)
+})
+
+test('suivreQuantitesPanneauxEcran — quantité figée à la main : jamais réécrite, MARQUÉE de la quantité attendue', () => {
+  const lignes = [ligneFix(PAN, 8), ligneFix(STRUCT, 6, { quantiteManuelle: true }), ligneFix(SOCLE, 16, { quantiteManuelle: true })]
+  const out = suivreQuantitesPanneauxEcran(lignes, PRODUITS_FIX)
+  assert.equal(out[1].quantite, '6')
+  assert.equal(out[1].qteAttenduePanneaux, 8)
+  assert.equal(out[2].qteAttenduePanneaux, undefined, 'la figée qui égale la règle ne porte aucune alerte')
+  const libre = out.map((l) => ({ ...l, quantiteManuelle: false }))
+  assert.equal(suivreQuantitesPanneauxEcran(libre, PRODUITS_FIX)[1].qteAttenduePanneaux, undefined)
+})
+
+test('suivreQuantitesPanneauxEcran — une ligne jamais en phase, ou retouchée autrement, n est pas réécrite ; une recomposition remet le marqueur', () => {
+  const horsPhase = [ligneFix(PAN, 8), ligneFix(STRUCT, 5), ligneFix(SOCLE, 16)]
+  assert.equal(suivreQuantitesPanneauxEcran(horsPhase, PRODUITS_FIX)[1].quantite, '5')
+  const recomposee = [ligneFix(PAN, 10), ligneFix(STRUCT, 10, { suitPanneaux: 6 }), ligneFix(SOCLE, 20, { suitPanneaux: 6 })]
+  assert.deepEqual(suivreQuantitesPanneauxEcran(recomposee, PRODUITS_FIX).map((l) => l.suitPanneaux), [undefined, 10, 10])
 })
