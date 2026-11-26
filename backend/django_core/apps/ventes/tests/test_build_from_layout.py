@@ -307,10 +307,15 @@ class TestFG248RoofBridge(TestCase):
 class OnduleurDesigneDecisionSansBase(SimpleTestCase):
     """La décision et la famille, fonctions PURES : aucune base."""
 
+    #: Un nom réel par famille : ``famille_au_nom`` est celui que la VRAIE fonction lit.
+    NOMS = {'onduleur_reseau': 'Onduleur réseau Huawei 5kW', 'onduleur_hybride': 'Onduleur hybride Deye 5kW',
+            'onduleur_offgrid': 'Onduleur hors réseau Deye 6kW', None: 'Coffret AC'}
+
     def _decision(self, famille, scenario, **extra):
-        from apps.ventes.domain.creation_calepinage import decision_onduleur_designe
-        options = dict(produit_id=7, nom='Onduleur X', etat='tarife', famille=famille,
-                       scenario=scenario, hors_reseau=False, nombre=1)
+        from apps.ventes.domain.creation_calepinage import decision_onduleur_designe, famille_lue_au_nom
+        nom = extra.pop('nom', self.NOMS[famille])
+        options = dict(produit_id=7, nom=nom, etat='tarife', famille=famille,
+                       famille_au_nom=famille_lue_au_nom(nom), scenario=scenario, hors_reseau=False, nombre=1)
         options.update(extra)
         return decision_onduleur_designe(**options)
 
@@ -341,7 +346,7 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
                 self.assertIsNone(decision['impose'])
                 self.assertIn(attendu, decision['motif'])
                 self.assertTrue(decision['motif'].endswith('le devis garde l’onduleur de la conception du lead'))
-                self.assertIn('« Onduleur X »', decision['message'])
+                self.assertIn('« %s »' % self.NOMS[famille], decision['message'])
                 self.assertIn(attendu, decision['message'])
 
     def test_le_nombre_vient_du_calepinage_jamais_de_la_regle_du_catalogue(self):
@@ -355,6 +360,18 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
                 decision = self._decision('onduleur_reseau', 'sans', **extra)
                 self.assertIsNone(decision['impose'])
                 self.assertIn(attendu, decision['message'])
+
+    def test_un_nom_muet_n_est_pas_impose(self):
+        """Relecture, point 2 — reconnu hybride par son rôle ou sa fiche, mais un nom que le PDF et
+        la resynchronisation (lecture au nom) ne classent pas : repli annoncé, jamais imposé."""
+        from apps.ventes.domain.creation_calepinage import famille_lue_au_nom
+
+        self.assertIsNone(famille_lue_au_nom('DEYE SUN-80K-SG02HP3-EU-EM6'))
+        self.assertEqual(famille_lue_au_nom('Onduleur hybride Deye 5kW'), 'onduleur_hybride')
+        decision = self._decision('onduleur_hybride', 'avec', nom='DEYE SUN-80K-SG02HP3-EU-EM6')
+        self.assertIsNone(decision['impose'])
+        self.assertIn('son nom ne dit pas qu’il s’agit d’un onduleur hybride', decision['message'])
+        self.assertIn('« DEYE SUN-80K-SG02HP3-EU-EM6 »', decision['message'])
 
     def test_un_reseau_n_attend_aucune_batterie(self):
         self.assertIsNotNone(self._decision('onduleur_reseau', 'les_deux', batterie_compatible=False)['impose'])

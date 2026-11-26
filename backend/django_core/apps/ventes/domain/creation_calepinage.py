@@ -151,6 +151,8 @@ MOTIFS_REPLI_ONDULEUR = {
     'hybride_sans_batterie': ('c’est un onduleur hybride et la pose est sans batterie : un hybride sans '
                               'batterie n’est pas chiffré automatiquement'),
     'batterie_incompatible': 'aucune batterie tarifée du catalogue ne se raccorde à cet onduleur',
+    'nom_muet': ('son nom ne dit pas qu’il s’agit d’un onduleur %s : le PDF du devis et la '
+                 'resynchronisation reconnaissent un onduleur à son nom'),
     'nombre_illisible': 'le nombre d’onduleurs saisi à l’étape Électrique n’est pas un entier d’au moins 1',
     'nombre_inconnu': ('le nombre d’onduleurs n’est ni accepté à l’étape Électrique ni établi par le schéma '
                        'du calepinage'),
@@ -187,7 +189,31 @@ def famille_onduleur_du_produit(produit, specs=None):
     return par_nom if par_nom in FAMILLES_ONDULEUR_DESIGNABLES else None
 
 
-def decision_onduleur_designe(*, produit_id, nom, etat, famille, scenario, hors_reseau,
+#: Le mot de chaque famille dans la phrase « son nom ne dit pas… ».
+LIBELLE_FAMILLE_ONDULEUR = {'onduleur_reseau': 'réseau', 'onduleur_hybride': 'hybride',
+                            'onduleur_offgrid': 'hors réseau'}
+
+
+def famille_lue_au_nom(nom):
+    """Relecture D-ACAL-148, point 2 — la famille d'onduleur que les LECTEURS AVAL d'une ligne
+    voient : ``quote_engine/builder.py`` (paniers d'options, ``_has_qty(…, _is_hybrid_inverter)``
+    sur ``utils.options.texte_classement``) et ``domain/lignes.py::_classe_ligne`` (resynchronisation)
+    classent par le NOM seul, avec ces mêmes prédicats (``solar_classification``, réexportés par
+    ``catalogue``). La désignation d'une ligne composée EST le nom du produit. Fonction PURE."""
+    from apps.ventes.domain.catalogue import (
+        _is_hybrid_inverter, _is_offgrid_inverter, _is_reseau_inverter)
+    from apps.ventes.utils.options import texte_classement
+
+    texte = texte_classement(nom or '', nom or '')
+    for famille, predicat in (('onduleur_hybride', _is_hybrid_inverter),
+                              ('onduleur_offgrid', _is_offgrid_inverter),
+                              ('onduleur_reseau', _is_reseau_inverter)):
+        if predicat(texte):
+            return famille
+    return None
+
+
+def decision_onduleur_designe(*, produit_id, nom, etat, famille, famille_au_nom, scenario, hors_reseau,
                               batterie_compatible=True, nombre=None, nombre_illisible=False):
     """D-ACAL-148 — que fait le devis de l'onduleur DÉSIGNÉ ? Fonction PURE.
 
@@ -205,13 +231,20 @@ def decision_onduleur_designe(*, produit_id, nom, etat, famille, scenario, hors_
     (un hybride sans batterie reste en repli : non tranché) ; « avec » ⇒ un hybride servi par une
     batterie tarifée ; « les deux » ⇒ le réseau à l'option sans, l'hybride à l'option avec.
 
+    ``famille_au_nom`` (:func:`famille_lue_au_nom`) — une famille de rôle / fiche que le NOM ne
+    dit pas n'est pas imposée : le PDF ne rendrait pas l'option, la resynchronisation en
+    ajouterait un second (repli annoncé, « son nom ne dit pas… »).
+
     ``nombre`` — le nombre d'onduleurs que le CALEPINAGE retient (accepté à l'étape Électrique,
     sinon celui de son schéma), jamais la règle du catalogue : sans lui (``None``) ou illisible
     (``nombre_illisible``), repli annoncé — le devis et le schéma ne se contrediront pas."""
     motif = None if etat == 'tarife' else etat
+    nom_muet = famille is not None and famille_au_nom != famille
     if motif is None:
         if famille is None:
             motif = 'non_onduleur'
+        elif nom_muet:
+            motif = 'nom_muet'
         elif hors_reseau:
             motif = None if famille == 'onduleur_offgrid' else 'site_isole'
         elif famille == 'onduleur_offgrid':
@@ -226,6 +259,8 @@ def decision_onduleur_designe(*, produit_id, nom, etat, famille, scenario, hors_
         motif = 'nombre_illisible' if nombre_illisible else 'nombre_inconnu'
     if motif is not None:
         texte = MOTIFS_REPLI_ONDULEUR[motif]
+        if motif == 'nom_muet':
+            texte = texte % LIBELLE_FAMILLE_ONDULEUR[famille]
         return {'impose': None, 'option': None, 'motif': '%s ; %s' % (texte, SUITE_REPLI_ONDULEUR),
                 'message': MESSAGE_ONDULEUR_NON_CHIFFRE % (nom, texte)}
     option = ''
@@ -266,7 +301,8 @@ def onduleur_designe_pour_le_devis(company, designe, *, scenario, hors_reseau):
     porte_la_batterie = famille in ('onduleur_hybride', 'onduleur_offgrid') and (
         hors_reseau or scenario in (COMPOSITION_AVEC, COMPOSITION_LES_DEUX))
     return decision_onduleur_designe(
-        produit_id=cle, nom=nom, etat=etat, famille=famille, scenario=scenario,
+        produit_id=cle, nom=nom, etat=etat, famille=famille, famille_au_nom=famille_lue_au_nom(nom),
+        scenario=scenario,
         hors_reseau=hors_reseau, nombre=(designe or {}).get('nombre'),
         nombre_illisible=bool((designe or {}).get('nombre_illisible')),
         batterie_compatible=(not porte_la_batterie
