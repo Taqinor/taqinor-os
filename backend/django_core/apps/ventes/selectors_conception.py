@@ -140,7 +140,8 @@ def _payback_servi(version, valeurs):
         return servies, {'devis_ref': devis.reference, 'motif': None}
     # T4-X7-001 — le DEVIS dit s'il porte deux options, pas la conception : une conception à une
     # option lue sur un devis à deux options sommait les lignes des deux (97 400 MAD pour 7 987 MAD/an).
-    deux_au_devis = len(servies) > 1 or deux_options_declarees(devis)
+    # Budget de requêtes : les lignes DÉJÀ lues ci-dessus, jamais relues pour ce prédicat.
+    deux_au_devis = len(servies) > 1 or deux_options_declarees(devis, lignes=lignes)
     for option, table in servies.items():
         if 'payback' not in table:
             continue

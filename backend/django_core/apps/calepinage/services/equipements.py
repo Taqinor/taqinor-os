@@ -175,7 +175,13 @@ def devis_lie_et_pose(calepinage):
     from apps.ventes.selectors_calepinage import _conception_a_jour, devis_lu_par_pk
 
     devis_id = getattr(calepinage, 'devis_id', None)
-    devis = devis_lu_par_pk(devis_id) if devis_id else None
+    if not devis_id:
+        return None
+    # Budget de requêtes (CI du 25/11, +1 sur ``resultat/``) : le devis DÉJÀ joint au calepinage
+    # (``select_related('devis')`` de la vue) est lu tel quel ; sinon le mémo de requête de ventes.
+    descripteur = getattr(type(calepinage), 'devis', None)
+    devis = (calepinage.devis if getattr(descripteur, 'is_cached', None) and descripteur.is_cached(calepinage)
+             else devis_lu_par_pk(devis_id))
     if devis is None or devis.company_id != getattr(calepinage, 'company_id', None):
         return None
     return {'devis': devis.pk, 'reference': devis.reference or '', 'statut': devis.statut,

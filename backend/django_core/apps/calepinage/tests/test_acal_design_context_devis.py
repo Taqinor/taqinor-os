@@ -365,13 +365,16 @@ class ResultatsDeLaConceptionTest(_DevisDeuxOptions):
         Devis.objects.filter(pk=devis.pk).update(layout_hash='a' * 64)
         devis.refresh_from_db()
         avant = Devis.objects.filter(pk=devis.pk).values().get()
-        lie = self._bloc(devis)['devis_lie']
-        self.assertEqual((lie['devis'], lie['reference'], lie['statut']), (devis.pk, devis.reference, 'brouillon'))
-        self.assertIsNone(lie['a_jour'])  # le calepinage neuf n'a pas d'empreinte : inconnu, jamais « périmé »
-        calepinage = Calepinage.objects.create(company=self.company, lead_id=self.lead_lie.pk, devis=devis,
-                                               titre='QA-T4-X7-006', layout_hash='b' * 64)
         from apps.calepinage.services.devis_retenu import bloc_conception
 
+        # UN calepinage par devis (contrainte ``calepinage_un_par_devis``) : le même, dont l'empreinte change.
+        calepinage = Calepinage.objects.create(company=self.company, lead_id=self.lead_lie.pk, devis=devis,
+                                               titre='QA-T4-X7-006')
+        lie = bloc_conception(calepinage)['devis_lie']
+        self.assertEqual((lie['devis'], lie['reference'], lie['statut']), (devis.pk, devis.reference, 'brouillon'))
+        self.assertIsNone(lie['a_jour'])  # le calepinage neuf n'a pas d'empreinte : inconnu, jamais « périmé »
+        Calepinage.objects.filter(pk=calepinage.pk).update(layout_hash='b' * 64)
+        calepinage.refresh_from_db()
         self.assertIs(bloc_conception(calepinage)['devis_lie']['a_jour'], False)
         Calepinage.objects.filter(pk=calepinage.pk).update(layout_hash='a' * 64)
         calepinage.refresh_from_db()
