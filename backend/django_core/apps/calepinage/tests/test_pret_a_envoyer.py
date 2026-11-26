@@ -69,8 +69,8 @@ class _Devis:
 class ControlesDePorteTest(SimpleTestCase):
 
     def _controles(self, calepinage, *, option=True, feu_vert=True,
-                   exigee=True, approuve=True, perimee=False):
-        with mock.patch(FEU_VERT, return_value=option), \
+                   exigee=True, approuve=True, perimee=False, servi=None):
+        with mock.patch(SERVI, return_value=servi or {}),                 mock.patch(FEU_VERT, return_value=option), \
                 mock.patch(VISITE, return_value=object() if feu_vert
                            else None), \
                 mock.patch(EXIGEE, return_value=exigee), \
@@ -132,6 +132,19 @@ class ControlesDePorteTest(SimpleTestCase):
         self.assertEqual(jamais['simulation_fraiche']['etat'], 'a_regler')
         fraiche = self._controles(_Calepinage())
         self.assertEqual(fraiche['simulation_fraiche']['etat'], 'ok')
+
+    def test_simulation_perimee_dit_la_cause_servie_jamais_une_cause_devinee(self):
+        """La cause est le ``motif`` servi par ``GET resultat/`` : réglage société PROUVÉ → il est nommé ;
+        sans preuve → la phrase neutre ; jamais « dernière modification » ni « ne correspond plus à la conception »."""
+        prouve = 'simulation périmée : un réglage de la société a changé depuis le calcul du 12/11/2026'
+        c = self._controles(_Calepinage(), perimee=True, servi={'motif': prouve})['simulation_fraiche']
+        self.assertEqual((c['etat'], c['valeur_texte'], c['geste']), ('a_regler', 'Périmée', 'Relancer la simulation'))
+        self.assertEqual(c['cause'], prouve[:1].upper() + prouve[1:] + '.')
+        neutre = self._controles(_Calepinage(), perimee=True, servi={'motif': ''})['simulation_fraiche']
+        self.assertIn('le document ou un réglage de la société a changé', neutre['cause'])
+        for texte in (c['valeur_texte'] + c['cause'], neutre['valeur_texte'] + neutre['cause']):
+            self.assertNotIn('dernière modification', texte)
+            self.assertNotIn('ne correspond plus', texte)
 
     def test_sans_devis_lie_verifie_a_la_creation(self):
         controles = self._controles(_Calepinage())
