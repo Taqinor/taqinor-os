@@ -1051,6 +1051,14 @@ describe('OutilsOnduleur (ACAL1317, revue, point 5) — « Annuler » joint l’
     }
   })
 
+  it('« Terminer » rend le focus à « Déplacer l’onduleur » (il ne retombe pas sur la page)', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    render(<BarreAvecOnduleur couche={couche} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Déplacer l’onduleur' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Terminer' }))
+    expect(screen.getByRole('button', { name: 'Déplacer l’onduleur' })).toHaveFocus()
+  })
+
   it('lecture seule : « Annuler » et « Terminer » sont désactivés', () => {
     const couche = vraieCouche([onduleurEssai('eqA', 19, 2)])
     const { rerender } = render(<BarreAvecOnduleur couche={couche} />)

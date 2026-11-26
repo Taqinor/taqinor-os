@@ -15,8 +15,18 @@ const FLECHES = [
 
 export default function OutilsOnduleur({ onduleur, lectureSeule = false, motifLectureSeule }) {
   const premiereFleche = useRef(null)
+  const boutonDeplacer = useRef(null)
+  const etaitEnDeplacement = useRef(false)
   const enDeplacement = !!onduleur?.enDeplacement
-  useEffect(() => { if (enDeplacement) premiereFleche.current?.focus?.() }, [enDeplacement])
+  useEffect(() => {
+    if (enDeplacement) premiereFleche.current?.focus?.()
+    // Les flèches disparaissent (Terminer, Échap, toucher de la carte) : le focus, laissé sur rien, revient à
+    // « Déplacer l'onduleur » au lieu de retomber sur la page.
+    else if (etaitEnDeplacement.current && (!document.activeElement || document.activeElement === document.body)) {
+      boutonDeplacer.current?.focus?.()
+    }
+    etaitEnDeplacement.current = enDeplacement
+  }, [enDeplacement])
   if (!onduleur?.disponible) return null
   const { onduleurs, choisi, peutPlacer, enPose, message } = onduleur
   const titre = lectureSeule ? motifLectureSeule : undefined
@@ -46,7 +56,7 @@ export default function OutilsOnduleur({ onduleur, lectureSeule = false, motifLe
         </button>
       )}
       {choisi && !enDeplacement && (
-        <button type="button" className="cel-barre-texte" data-testid="cal-elec-onduleur-deplacer"
+        <button type="button" className="cel-barre-texte" data-testid="cal-elec-onduleur-deplacer" ref={boutonDeplacer}
           onClick={onduleur.deplacer} disabled={lectureSeule} title={titre}>
           Déplacer l’onduleur
         </button>
@@ -60,7 +70,7 @@ export default function OutilsOnduleur({ onduleur, lectureSeule = false, motifLe
               {f.signe}
             </button>
           ))}
-          <button type="button" className="cel-barre-texte" onClick={onduleur.terminer}>Terminer</button>
+          <button type="button" className="cel-barre-texte" onClick={onduleur.terminer} disabled={lectureSeule} title={titre}>Terminer</button>
         </div>
       )}
       <button type="button" className="cel-barre-texte" data-testid="cal-elec-onduleur-annuler"
