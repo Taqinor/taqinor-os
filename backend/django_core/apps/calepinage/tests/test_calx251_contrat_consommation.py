@@ -129,10 +129,23 @@ class FormeDuBlocTest(unittest.TestCase):
     """`courbe24`/`methode`/`source` voyagent TOUJOURS ensemble (CALX253) ;
     `saisons`/`appareils` sont chacun omis quand ils n'apportent rien."""
 
-    def test_courbe24_methode_source_sont_obligatoires(self):
+    def test_methode_source_sont_obligatoires_courbe24_est_optionnelle(self):
+        # ACAL1962 — sans facture ni socle, aucune courbe de base n'est écrite.
         self.assertEqual(
             sorted(SCHEMA['$defs']['consumption']['required']),
-            sorted(['courbe24', 'methode', 'source']))
+            sorted(['methode', 'source']))
+
+    def test_un_bloc_sans_courbe24_est_valide_et_24_zeros_stockes_le_restent(self):
+        sans = copy.deepcopy(DEPART)
+        sans['consumption'] = {
+            'methode': 'facture',
+            'source': {'origine': 'atelier', 'saisi_le': '2026-09-23T10:00:00Z'},
+            'charges': [],
+        }
+        self.assertEqual(erreurs(sans), [])
+        zeros = copy.deepcopy(sans)
+        zeros['consumption']['courbe24'] = [0.0] * 24
+        self.assertEqual(erreurs(zeros), [])
 
     def test_saisons_et_appareils_sont_optionnels(self):
         requis = SCHEMA['$defs']['consumption']['required']

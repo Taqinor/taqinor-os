@@ -1221,11 +1221,10 @@
       }
     },
     "consumption": {
-      "description": "CALX251 — la consommation affinée dans le panneau « Affiner ma consommation » de l'atelier (W68/W95). `methode` est DÉDUITE de ce que l'utilisateur a réellement fait (`serializeConsumption`, CALX253, `apps/web/src/scripts/roofPro11/prefill.ts`), jamais un choix par défaut : `courbe` = la courbe horaire a été éditée à la main (`ctx.consHandEdited`) et prime sur tout le reste ; `appareils` = calculée depuis la liste d'appareils (`ctx.consAppliances`) ; `facture` = seul un socle mensuel a été saisi (`ctx.consDailyTarget`). `courbe24`/`methode`/`source` sont TOUJOURS présents ensemble — un producteur qui émet ce bloc les émet toujours les trois ; `saisons` et `appareils` sont chacun OMIS quand ils n'apportent rien (aucune modulation saisonnière activée, aucun appareil ajouté). Aucune valeur n'est inventée par le schéma (D-CALX 7) : un bloc absent à la racine reste le seul état « rien n'a été touché ».",
+      "description": "CALX251 — la consommation affinée dans le panneau « Affiner ma consommation » de l'atelier (W68/W95). `methode` est DÉDUITE de ce que l'utilisateur a réellement fait (`serializeConsumption`, CALX253, `apps/web/src/scripts/roofPro11/prefill.ts`), jamais un choix par défaut : `courbe` = la courbe horaire a été éditée à la main (`ctx.consHandEdited`) et prime sur tout le reste ; `appareils` = calculée depuis la liste d'appareils (`ctx.consAppliances`) ; `facture` = seul un socle mensuel a été saisi (`ctx.consDailyTarget`). `methode`/`source` sont TOUJOURS présents ; `courbe24` (ACAL1962) est OMISE quand ni facture ni socle ne sont saisis (une consommation inconnue n'est jamais écrite en 24 zéros) — un document stocké qui porte 24 zéros reste valide ; `saisons` et `appareils` sont chacun OMIS quand ils n'apportent rien (aucune modulation saisonnière activée, aucun appareil ajouté). Aucune valeur n'est inventée par le schéma (D-CALX 7) : un bloc absent à la racine reste le seul état « rien n'a été touché ».",
       "type": "object",
       "additionalProperties": true,
       "required": [
-        "courbe24",
         "methode",
         "source"
       ],
