@@ -1169,6 +1169,14 @@ describe('ACAL1612 — bande sans taux inventé ; Total qui nomme la simulation'
     expect(bande(true)).toContain('Année 1 : production au prochain enregistrement'); // pendant le dessin : rien d'estimé
     expect(bande(true)).not.toContain('4');
   });
+  it('T4-X2-006 (rejeu R5B) — Année 1 : la simulation À JOUR est lue (même chiffre que le Total) ; périmée ou absente : « au prochain enregistrement » ; site public inchangé', () => {
+    const p50 = (5131).toLocaleString('fr-FR');
+    expect(bande(true, { simulation: { p50_kwh: 5131, a_jour: true } })).toContain(`Année 1 ~${p50} kWh/an (simulation)`);
+    expect(bande(true, { simulation: { p50_kwh: 5131, a_jour: true } })).not.toContain('prochain enregistrement');
+    expect(bande(true, { simulation: { p50_kwh: 5131, a_jour: false } })).toContain('Année 1 : production au prochain enregistrement');
+    expect(bande(false, { simulation: { p50_kwh: 5131, a_jour: true } })).toContain('dégradation ~0,5 %/an'); // site public : aucune notion de simulation
+    expect(bande(false, { simulation: { p50_kwh: 5131, a_jour: true } })).not.toContain('simulation');
+  });
   it('site public : le texte d’avant (taux du barème, inchangé)', () => {
     expect(bande(false)).toContain('dégradation ~0,5 %/an');
   });
