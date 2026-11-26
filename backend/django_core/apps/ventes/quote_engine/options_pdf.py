@@ -15,7 +15,7 @@ import re
 # Whitelisted PDF format options (mirroring the simulator's payload). The
 # defaults reproduce today's premium 3-page output exactly.
 DEFAULT_PDF_OPTIONS = {
-    'pdf_mode': 'full',        # 'full' (3 pages) | 'onepage' (1 page)
+    'pdf_mode': 'full',        # 'full' (document complet, 3 ou 4 pages) | 'onepage' (1 page)
     'show_monthly': True,      # monthly-savings chart on page 2
     'devis_final': False,      # payment terms + RIB block on page 3
     'include_etude': False,    # page Étude (industriel) — 4th premium page

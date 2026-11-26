@@ -17,7 +17,9 @@ import ResultatIncomplet from '../../../production/ResultatIncomplet'
 import TuilesResultat from '../../../production/TuilesResultat'
 import { memeTaille, phraseTailles, tailleDifferente } from '@roofpro/tailleConception' // T4-X9 — LE prédicat de taille de l'atelier
 import { messageResultatIndisponible } from '../../../delaiReseau'
+import { estAtelierPompage } from '../../contexteAtelier'
 import EtatEcranAtelier from '../../EtatEcranAtelier'
+import OutilPosePompage from '../../../commun/OutilPosePompage'
 import { useModeExpert } from '../../modeExpert'
 import { PARAM_ONGLET } from '../../onglets'
 import { premierOngletEtape } from '../../parcoursGuide'
@@ -419,7 +421,7 @@ function SimulationEnAttente({ manquants }) {
 }
 
 export default function EtapeResultats({
-  calepinageId = null, lectureSeule = false, parcours = null, action = null, intervalleMs = 2000,
+  calepinageId = null, lectureSeule = false, parcours = null, action = null, intervalleMs = 2000, contexte: contexteAtelier = null,
 }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
@@ -438,6 +440,20 @@ export default function EtapeResultats({
     return (
       <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal236-erreur" forme="resultats"
         onRetry={refetch} />
+    )
+  }
+  // ACAL1268 (D-ACAL-66 = outil_pose) — un lead de pompage n'a ni production de réseau, ni couverture, ni économies, ni
+  // onduleur : l'étape dit la taille de la pose servie et renvoie au devis agricole ; le pied et son bouton restent.
+  if (estAtelierPompage(contexteAtelier)) {
+    const pose = data?.pose
+    const taille = typeof pose?.total_modules === 'number' && pose.total_modules > 0
+      ? ` Pose : ${formatNumber(pose.total_modules, { decimals: 0 })} panneaux${typeof pose.kwc === 'number' ? ` · ${formatNumber(pose.kwc, { decimals: 2 })} kWc` : ''}.` : ''
+    return (
+      <div className="cal-res" data-zone="etape-resultats">
+        <OutilPosePompage contexte={contexteAtelier}
+          phrase={`Lead de pompage : l’atelier pose les panneaux, sans économies ni énergie du réseau.${taille}`} />
+        <PiedResultats production={null} action={action} />
+      </div>
     )
   }
   const perime = data?.simulation_perimee === true

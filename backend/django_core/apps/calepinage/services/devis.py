@@ -162,6 +162,23 @@ def _refuser_autre_marche(devis, lead):
         raise DevisRefuse(motif, champ='devis', statut=409)
 
 
+def lit_les_devis(user):
+    """Lot 8 (D-ACAL-106) — LA garde de lecture d'un devis (``apps.ventes.selectors_assistant.
+    lit_les_devis``), passée par ce module déjà importateur de ventes (cliquet
+    ``test_imports_croises_ventes``)."""
+    from apps.ventes.selectors_assistant import lit_les_devis as garde
+
+    return garde(user)
+
+
+def devis_suit_les_designations(devis):
+    """Relecture D-ACAL-148 round 4 — le devis est-il né sous la règle des désignations
+    (``apps.ventes.selectors_calepinage.devis_suit_les_designations``) ? Même cliquet."""
+    from apps.ventes.selectors_calepinage import devis_suit_les_designations as suit
+
+    return suit(devis)
+
+
 def _refus_deja_rattache(lie):
     """ACAL89 — 409 NOMMÉ ``{detail, devis, reference, revision_possible}``.
 
@@ -208,6 +225,75 @@ def _brouillon_rendu(calepinage, company, lead, empreinte, *, lie=None):
     if lie is not None:
         return lie if lie.statut == 'brouillon' and (lie.layout_hash or '') == (empreinte or '') else None
     return _brouillon_reutilisable(company, lead, empreinte, calepinage) if lead is not None else None
+
+
+#: Lot 8 (B1) — les issues de « Générer le devis », dans l'ordre où ``_generer_sous_verrou`` les tranche.
+ISSUE_RENDU, ISSUE_DEJA_RATTACHE, ISSUE_BROUILLON_LIBRE, ISSUE_COMPOSER = (
+    'rendu', 'deja_rattache', 'brouillon_libre', 'composer')
+
+
+def _ordre_de_generation(lie, rendu, libres_lus):
+    """Lot 8 (B1) — ``(issue, objet)`` : L'ORDRE des décisions de « Générer », partagé par la
+    génération et l'aperçu. Lié actif d'abord (rendu s'il est ce brouillon, sinon 409 « déjà
+    rattaché ») ; puis le brouillon rendu ; puis les brouillons libres du lead (question R2-22,
+    ``libres_lus()`` lu seulement à ce rang) ; sinon composer. Pur : n'écrit ni ne lit rien."""
+    if lie is not None:
+        return (ISSUE_RENDU, lie) if rendu is not None else (ISSUE_DEJA_RATTACHE, lie)
+    if rendu is not None:
+        return ISSUE_RENDU, rendu
+    libres = libres_lus()
+    return (ISSUE_BROUILLON_LIBRE, libres) if libres else (ISSUE_COMPOSER, None)
+
+
+def _onduleur_designe(calepinage):
+    """D-ACAL-148 — ``{'produit_id', 'nombre'}`` de l'onduleur désigné à l'étape Électrique
+    (``electrique.entree_stockee``), ``None`` sans désignation. Lu par la génération ET l'aperçu :
+    ``ventes`` décide seul s'il est chiffré (catalogue, prix, forme du devis)."""
+    from .electrique import entree_stockee
+
+    entree = entree_stockee(calepinage)
+    if entree.get('onduleur_produit') in (None, ''):
+        return None
+    brut = entree.get('nombre_onduleurs')
+    if brut in (None, ''):  # aucun nombre accepté : celui que le SCHÉMA dessine
+        return {'produit_id': entree['onduleur_produit'], 'nombre': _nombre_du_schema(calepinage),
+                'nombre_illisible': False}
+    entier = (int(brut) if isinstance(brut, (int, float)) and not isinstance(brut, bool)
+              and float(brut).is_integer() and brut >= 1 else None)
+    return {'produit_id': entree['onduleur_produit'], 'nombre': entier, 'nombre_illisible': entier is None}
+
+
+def _batterie_designee(calepinage):
+    """D-ACAL-164 — ``{'produit_id', 'packs', 'packs_illisible'}`` de la batterie désignée à l'étape
+    Électrique (``entree_stockee(...)['batterie']['produit']``, saisie D-ACAL-157), ``None`` sans
+    désignation. Le nombre de packs saisi (entier ≥ 1) ; autre chose ⇒ ``packs_illisible``, jamais
+    tronqué ; absent ⇒ ``None`` (``ventes`` le dit). Lu par la génération, l'aperçu et la resynchro."""
+    from .electrique import entree_stockee
+
+    batterie = entree_stockee(calepinage).get('batterie')
+    if not isinstance(batterie, dict) or batterie.get('produit') in (None, ''):
+        return None
+    brut = batterie.get('packs')
+    entier = (int(brut) if isinstance(brut, (int, float)) and not isinstance(brut, bool)
+              and float(brut).is_integer() and brut >= 1 else None)
+    return {'produit_id': batterie['produit'], 'packs': entier,
+            'packs_illisible': brut not in (None, '') and entier is None}
+
+
+def _nombre_du_schema(calepinage):
+    """D-ACAL-148 (relecture, point 1) — le nombre d'onduleurs que le schéma du calepinage
+    dessine (``chaines.evaluer_onduleurs`` sur ``electrique.conception_du_calepinage``, la source
+    de la table d'affectation), ``None`` quand il n'est pas établi (fiche incomplète…)."""
+    from .chaines import evaluer_onduleurs
+    from .electrique import conception_du_calepinage
+
+    try:
+        evaluation = evaluer_onduleurs(conception_du_calepinage(calepinage)[0])
+    except Exception:  # noqa: BLE001 — conception illisible : nombre non établi, repli annoncé (D-ENF22-BLE001)
+        logger.warning('onduleur désigné : nombre du schéma illisible', exc_info=True)
+        return None
+    nombre = getattr(evaluation, 'nombre', None)
+    return int(nombre) if isinstance(nombre, int) and nombre >= 1 else None
 
 
 def _brouillon_reutilisable(company, lead, empreinte, calepinage):
@@ -486,30 +572,33 @@ def _garde_taille(devis, calepinage, confirmer_taille):
         'refus': question['refus']})
 
 
-#: Un kWc dessiné SANS compte ni puissance unitaire lisibles n'est connu qu'à
-#: l'unité affichée (deux décimales : l'outil de toit l'arrondit) — l'écart
-#: d'égalité est alors la moitié de cette unité (0,005 kWc), pas un seuil métier.
-TOLERANCE_KWC_AFFICHE = 0.005
+#: Repli SANS puissance unitaire des deux côtés : le kWc dessiné est arrondi à deux décimales par l'outil de
+#: toit et le kWc composé l'est aussi (``quote_engine.lignes_classement.kwc_lu_des_panneaux`` : ``round(…, 2)``,
+#: arrondi de Python sur un flottant), les deux sur une règle d'arrondi qui peut différer : deux demi-unités,
+#: soit 0,01 kWc — lu du code, jamais un seuil métier.
+TOLERANCE_KWC_AFFICHE = 0.01
 
-#: Un kWc composé est stocké à trois décimales, soit au watt-crête près : le
-#: compte en Wc relu de lui peut s'écarter d'un Wc d'un module à puissance
-#: décimale (35 × 577,5 W), jamais davantage.
-TOLERANCE_WC_STOCKE = 1
+#: Un watt lu d'une fiche ou d'une désignation est entier (``_fiche_watt``, ``_parse_watt``) : un module de
+#: 577,5 W dessiné se lit 577 ou 578 au catalogue.
+TOLERANCE_WATT_LU = 0.5
 
 
-def _module_est_substitue(dessine_kwc, compose_kwc, dessine_wc=None):
+def _module_est_substitue(dessine_kwc, compose_kwc, dessine=None, compose=None):
     """Le module que le devis composerait n'est-il PAS celui du dessin ?
 
-    Fonction PURE, sans arrondi stocké ni imprimé. Quand le dessin donne son compte
-    de modules ET leur puissance unitaire (``dessine_wc`` = Σ compte × Wc, exact :
-    35 × 715 = 25 025, 3 × 577,5 = 1 732,5), la comparaison se fait en watts-crête entiers contre
-    le kWc composé lu au watt près — 25,025 kWc dessiné « 25,02 » par l'outil de toit
-    n'est jamais une substitution. Sans compte/puissance, repli sur les kWc avec la
-    moitié de l'unité affichée (``TOLERANCE_KWC_AFFICHE``)."""
-    if dessine_wc is not None:
-        from decimal import Decimal
-
-        return abs(Decimal(round(float(compose_kwc) * 1000)) - Decimal(str(dessine_wc))) > TOLERANCE_WC_STOCKE
+    Fonction PURE. ``dessine`` / ``compose`` = ``[(quantité, watt unitaire)]`` des deux côtés (le dessin :
+    ses pans vendus ; la composition : ses lignes panneau, lues par ``ventes``). Quand les deux sont
+    connus, la comparaison ne dépend d'AUCUN arrondi de kWc : le compte total doit être le même et
+    chaque puissance unitaire du dessin doit être celle d'une ligne composée (à l'entier du watt lu
+    près). Sinon, repli sur les kWc avec ``TOLERANCE_KWC_AFFICHE``."""
+    if dessine and compose and all(w for _n, w in dessine) and all(w for _n, w in compose):
+        if sum(n for n, _w in dessine) != sum(n for n, _w in compose):
+            return True
+        watts_d = sorted({float(w) for _n, w in dessine})
+        watts_c = sorted({float(w) for _n, w in compose})
+        if len(watts_d) != len(watts_c):
+            return True
+        return any(abs(d - c) > TOLERANCE_WATT_LU + 1e-9 for d, c in zip(watts_d, watts_c))
     return abs(float(compose_kwc) - dessine_kwc) > TOLERANCE_KWC_AFFICHE + 1e-9
 
 
@@ -525,25 +614,50 @@ def _chiffres_distincts(dessine, compose):
     return a, b
 
 
-def _wc_dessine(pans):
-    """Σ compte × puissance unitaire des pans VENDUS, en Wc EXACTS (``Decimal`` : aucun
-    arrondi par pan, aucune accumulation flottante — trois pans d'un module de 577,5 W
-    font 1 732,5, jamais 3 × 578), ou ``None`` dès qu'un pan vendu n'a pas l'un des deux
-    (jamais de puissance supposée). L'arrondi, une seule fois, est celui de la comparaison."""
+def _kwc_exact(wc):
+    """Un total en Wc EXACT écrit en kWc sans arrondi (deux décimales au moins) : 25 025 -> « 25,025 »."""
+    from decimal import Decimal
+
+    texte = format((Decimal(str(wc)) / 1000).normalize(), 'f')
+    entier, _, decimales = texte.partition('.')
+    return '%s,%s' % (entier, decimales.ljust(2, '0'))
+
+
+def _phrase_module(paires):
+    """« 35 panneaux de 715 W, soit 25,025 kWc » (le total seul si les modules sont mêlés)."""
+    from decimal import Decimal
+
+    nombre = sum(n for n, _w in paires)
+    total = sum((n * Decimal(str(w)) for n, w in paires), Decimal(0))
+    watts = {Decimal(str(w)) for _n, w in paires}
+    unitaire = ' de %s W' % format(next(iter(watts)).normalize(), 'f') if len(watts) == 1 else ''
+    return '%d panneaux%s, soit %s kWc' % (nombre, unitaire, _kwc_exact(total))
+
+
+def _paires_composees(devis):
+    """``[(quantité, watt)]`` des lignes panneau du devis composé, ou ``[]`` : la lecture de ``ventes``."""
+    if getattr(devis, 'lignes', None) is None:
+        return []
+    from apps.ventes.services import panneaux_composes_du_devis
+
+    return panneaux_composes_du_devis(devis)
+
+
+def _paires_dessinees(pans):
+    """``[(compte, watt unitaire)]`` des pans VENDUS, ou ``None`` dès qu'un pan vendu n'a pas l'un des deux
+    (jamais de puissance supposée) ; le watt est le ``pmaxWc`` du modèle posé, EXACT (``Decimal``)."""
     from decimal import Decimal
 
     vendus = [p for p in pans if p['modules'] > 0 and not p.get('existant')]
     if not vendus or any(not p.get('module_wc') for p in vendus):
         return None
-    return sum((p['modules'] * Decimal(str(p['module_wc'])) for p in vendus), Decimal(0))
+    return [(p['modules'], Decimal(str(p['module_wc']))) for p in vendus]
 
 
 def _garde_module_substitue(devis, layout):
     """ACAL914 — 409 ``module_substitue`` quand la composition chiffre un
     autre module que le dessin (kWc composé ≠ kWc dessiné), sous la
     transaction de la création (devis annulé)."""
-    from decimal import Decimal
-
     from core.electrique.types import fr
 
     from apps.ventes.selectors_calepinage import lignes_produits_calepinage
@@ -554,9 +668,9 @@ def _garde_module_substitue(devis, layout):
     pans = pans_du_document(layout)
     # Un pan existant (ACAL573) n'est pas vendu : la composition l'ignore aussi.
     dessine = sum(p['kwc'] for p in pans if p.get('kwc') and not p.get('existant'))
-    dessine_wc = _wc_dessine(pans)
+    paires = _paires_dessinees(pans)
     if dessine and not any(p['kind'] == 'toit' and p['source'] != 'aucune' for p in pans):
-        dessine_wc = None
+        paires = None
         # Toit sans pan mesuré : il est résumé par le ``result`` racine, que la
         # composition compte aussi (``ventes.lire_layout``) — sinon un toit
         # résumé + un champ au sol se lisait « champ seul » (faux 409).
@@ -570,24 +684,23 @@ def _garde_module_substitue(devis, layout):
         from apps.ventes.selectors_calepinage import kwc_lu_du_layout
 
         dessine = kwc_lu_du_layout(layout)
-        dessine_wc = None
+        paires = None
     compose = _kwc_compose_du_devis(devis)
     if not dessine or compose is None:
         return
-    if not _module_est_substitue(dessine, compose, dessine_wc):
+    composees = _paires_composees(devis)
+    if not _module_est_substitue(dessine, compose, paires, composees):
         return
-    # Le refus imprime les chiffres COMPARÉS : le total compte × puissance quand c'est lui qui a
-    # refusé (le champ ``kwc`` stocké d'un pan peut être périmé et égal au composé), sinon les kWc.
-    vendus_wc = [p for p in pans if p['modules'] > 0 and not p.get('existant')]
-    if dessine_wc is not None:
-        affiche_dessine, affiche_compose = _chiffres_distincts(float(dessine_wc) / 1000.0, float(compose))
-        nombre_vendus = sum(p['modules'] for p in vendus_wc)
-        watts_vendus = {Decimal(str(p['module_wc'])) for p in vendus_wc}
-        precision = ('%d panneaux de %s W, soit ' % (nombre_vendus, fr(float(next(iter(watts_vendus))), 0))
-                     if len(watts_vendus) == 1 else '%d panneaux, soit ' % nombre_vendus)
-        affiche_dessine = precision + affiche_dessine
+    # Le refus imprime les chiffres COMPARÉS : quand la comparaison s'est faite en compte × puissance
+    # unitaire des deux côtés, les deux totaux EXACTS et leurs puissances ; sinon les deux kWc (le
+    # champ ``kwc`` stocké d'un pan peut être périmé et égal au composé : jamais deux chiffres égaux).
+    en_watts = bool(paires and composees and all(w for _n, w in composees))
+    if en_watts:
+        affiche_dessine = _phrase_module(paires)
+        affiche_compose = _phrase_module(composees)
     else:
-        affiche_dessine, affiche_compose = _chiffres_distincts(dessine, float(compose))
+        affiche_dessine, affiche_compose = (
+            '%s kWc' % a_ for a_ in _chiffres_distincts(dessine, float(compose)))
     panneau = next((ligne['designation'] for ligne in
                     lignes_produits_calepinage(devis)
                     if 'panneau' in (ligne['designation'] or '').lower()), '')
@@ -602,7 +715,7 @@ def _garde_module_substitue(devis, layout):
                      ' / '.join('%s W' % w for w in watts) or '?',
                      panneau or '%s kWc' % fr(float(compose), 2)))
     else:
-        detail = ("Le dessin porte %s kWc ; le catalogue compose %s kWc%s. "
+        detail = ("Le dessin porte %s ; le catalogue compose %s%s. "
                   "Choisissez le module du catalogue dans l'atelier puis "
                   "relancez." % (affiche_dessine, affiche_compose,
                                  ' (%s)' % panneau if panneau else ''))
@@ -664,18 +777,21 @@ def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
     lie = _devis_lie_actif(calepinage)
     # Lane E9b — LA décision « le brouillon rendu au lieu d'un devis neuf », lue aussi par l'aperçu.
     rendu = _brouillon_rendu(calepinage, company, lead, empreinte, lie=lie)
-    if lie is not None:
-        # ACAL33 — un calepinage lié à un devis ACTIF n'est jamais re-pointé :
-        # le même brouillon à la même empreinte est rendu (dédup, double clic,
-        # client seul compris), tout autre cas est un 409 NOMMÉ avant toute
-        # création (jamais un devis orphelin ni un 500).
-        if rendu is not None:
-            _refuser_autre_marche(lie, lead)  # ACON90
-            _refuser_montants_differents(lie, montants)  # ACON49
-            return lie, False
-        raise _refus_deja_rattache(lie)
+    # Lot 8 (B1) — L'ORDRE des issues, partagé avec l'aperçu (``_ordre_de_generation``) ; la
+    # question R2-22 reste posée plus bas, selon le choix de l'utilisateur.
+    issue, retenu = _ordre_de_generation(lie, rendu, list)
+    # ACAL33 — un calepinage lié à un devis ACTIF n'est jamais re-pointé :
+    # le même brouillon à la même empreinte est rendu (dédup, double clic,
+    # client seul compris), tout autre cas est un 409 NOMMÉ avant toute
+    # création (jamais un devis orphelin ni un 500).
+    if issue == ISSUE_DEJA_RATTACHE:
+        raise _refus_deja_rattache(retenu)
+    if issue == ISSUE_RENDU and lie is not None:
+        _refuser_autre_marche(lie, lead)  # ACON90
+        _refuser_montants_differents(lie, montants)  # ACON49
+        return lie, False
     if lead is not None:
-        deja = rendu
+        deja = retenu if issue == ISSUE_RENDU else None
         if deja is not None:
             _refuser_autre_marche(deja, lead)  # ACON90
             _refuser_montants_differents(deja, montants)  # ACON49
@@ -701,7 +817,10 @@ def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
         with transaction.atomic():
             devis = build_devis_from_layout(
                 layout=layout, user=user, company=company, lead=lead,
-                client=client, journal=journal_composition, **montants)
+                client=client, journal=journal_composition,
+                onduleur_designe=_onduleur_designe(calepinage),  # D-ACAL-148
+                batterie_designee=_batterie_designee(calepinage),  # D-ACAL-164
+                marquer_designations=True, **montants)  # né sous la règle (relecture, point 1)
             _garde_kwh_declare(devis)
             _garde_module_substitue(devis, layout)  # ACAL914
             _garde_taille(devis, calepinage, choix['confirmer_taille'])  # ACAL922
@@ -1113,7 +1232,10 @@ def resynchroniser_devis(calepinage, *, user=None,
         resultat = resynchroniser_conception(
             devis, layout, user, emettre=True,
             roof_image=None if variante is not None else (
-                getattr(calepinage, 'roof_image', None) or None))
+                getattr(calepinage, 'roof_image', None) or None),
+            # D-ACAL-148 / 159 — la MÊME décision que « Générer le devis » (ventes la juge).
+            designations={'onduleur': _onduleur_designe(variante or calepinage),
+                          'batterie': _batterie_designee(variante or calepinage)})
     except SyncLayoutError as refus:
         detail = refus.detail + _onduleur_juge(calepinage, devis, refus)
         raise DevisRefuse(

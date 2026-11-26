@@ -138,6 +138,45 @@ def ligne_panneau_dominante(lignes):
                key=lambda li: float(getattr(li, 'quantite', 0) or 0))
 
 
+def _lignes_du_kwc(devis):
+    """``(lignes, lignes_kwc)`` : les lignes produit non optionnelles d'un devis et, parmi elles, le panier
+    de l'option dont le kWc fait foi (QJR410) — LA sélection de :func:`puissance_kwc_du_devis`, lue aussi
+    par :func:`panneaux_composes_du_devis` (jamais une seconde règle de répartition)."""
+    lignes = [li for li in devis.lignes.select_related(
+        'produit', 'produit__fiche_technique').all()
+        if getattr(li, 'type_ligne', 'produit') == 'produit'
+        and not getattr(li, 'optionnelle', False)]
+    # ── QJR410 (c) / S8-F7 — LE kWc D'UN DEVIS EST CELUI D'**UNE** OPTION ────
+    # Cette dérivation sommait les lignes panneau des DEUX variantes : sur un
+    # devis à deux options aux champs PV divergents (22 panneaux « sans »,
+    # 26 « avec »), elle stockait un compte — 48 — qui n'existe sur AUCUNE des
+    # deux options. On lit donc le panier de l'option que le document met en
+    # avant (l'option AVEC, comme les clés legacy du moteur), par le filtre
+    # d'option du noyau — jamais une seconde règle de répartition.
+    # (Constat abaissé à « low » par la ronde V2 : aucune surface client
+    # prouvée, le kWc du PDF n'étant pas affecté. Le corriger reste juste ;
+    # aucun impact client ne lui est inventé.)
+    lignes_kwc = lignes
+    try:
+        from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
+        from apps.ventes.utils.options import (
+            AVEC_BATTERIE, deux_options_declarees, est_mode_ci, filter_lines_for_option,
+            option_effective,
+        )
+        if deux_options_declarees(devis):
+            # CE2E1 — un C&I porte son total sur l'offre RÉSEAU (CIQ302) : le
+            # kWc est celui de l'option du total (``option_effective``), plus
+            # celui de l'option « avec ». Nouveaux rendus seulement (niveau 3).
+            option = AVEC_BATTERIE
+            if est_mode_ci(devis) and regles_au_moins(devis, REGLES_CORRIGEES_2710):
+                option = option_effective(devis) or AVEC_BATTERIE
+            lignes_kwc = filter_lines_for_option(lignes, option, devis=devis)
+    except Exception:  # noqa: BLE001 — une lecture de kWc ne casse jamais (D-ENF22-BLE001)
+        logger.warning("scenario.puissance_kwc_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
+        lignes_kwc = lignes
+    return lignes, lignes_kwc
+
+
 def puissance_kwc_du_devis(devis, *, avertissements=None):
     """QJR63 — LE kWc D'UN DEVIS. Une règle, un propriétaire, deux sources.
 
@@ -194,38 +233,7 @@ def puissance_kwc_du_devis(devis, *, avertissements=None):
     from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
     from apps.ventes.quote_engine.lignes_classement import kwc_des_lignes
 
-    lignes = [li for li in devis.lignes.select_related(
-        'produit', 'produit__fiche_technique').all()
-        if getattr(li, 'type_ligne', 'produit') == 'produit'
-        and not getattr(li, 'optionnelle', False)]
-    # ── QJR410 (c) / S8-F7 — LE kWc D'UN DEVIS EST CELUI D'**UNE** OPTION ────
-    # Cette dérivation sommait les lignes panneau des DEUX variantes : sur un
-    # devis à deux options aux champs PV divergents (22 panneaux « sans »,
-    # 26 « avec »), elle stockait un compte — 48 — qui n'existe sur AUCUNE des
-    # deux options. On lit donc le panier de l'option que le document met en
-    # avant (l'option AVEC, comme les clés legacy du moteur), par le filtre
-    # d'option du noyau — jamais une seconde règle de répartition.
-    # (Constat abaissé à « low » par la ronde V2 : aucune surface client
-    # prouvée, le kWc du PDF n'étant pas affecté. Le corriger reste juste ;
-    # aucun impact client ne lui est inventé.)
-    lignes_kwc = lignes
-    try:
-        from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
-        from apps.ventes.utils.options import (
-            AVEC_BATTERIE, deux_options_declarees, est_mode_ci, filter_lines_for_option,
-            option_effective,
-        )
-        if deux_options_declarees(devis):
-            # CE2E1 — un C&I porte son total sur l'offre RÉSEAU (CIQ302) : le
-            # kWc est celui de l'option du total (``option_effective``), plus
-            # celui de l'option « avec ». Nouveaux rendus seulement (niveau 3).
-            option = AVEC_BATTERIE
-            if est_mode_ci(devis) and regles_au_moins(devis, REGLES_CORRIGEES_2710):
-                option = option_effective(devis) or AVEC_BATTERIE
-            lignes_kwc = filter_lines_for_option(lignes, option, devis=devis)
-    except Exception:  # noqa: BLE001 — une lecture de kWc ne casse jamais (D-ENF22-BLE001)
-        logger.warning("scenario.puissance_kwc_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
-        lignes_kwc = lignes
+    lignes, lignes_kwc = _lignes_du_kwc(devis)
     nb_lu, watt_lu = panneaux_et_watt_lu(lignes_kwc)
     # AGNR70 — niveau 12 : Σ quantité × watt lu de chaque ligne (AGNR69).
     auto = kwc_des_lignes(lignes_kwc, nb_lu, watt_lu, devis)
@@ -250,6 +258,16 @@ def puissance_kwc_du_devis(devis, *, avertissements=None):
         except (TypeError, ValueError):
             pass
     return auto
+
+
+def panneaux_composes_du_devis(devis):
+    """Les lignes panneau que le devis VEND, lues comme :func:`puissance_kwc_du_devis` les lit (même
+    panier d'option, même watt lu : fiche produit puis désignation) : ``[(quantité, watt | None)]``,
+    ``[]`` sans panneau. Entiers EXACTS des deux côtés — ce que la garde du module substitué compare,
+    sans passer par le kWc composé (arrondi à deux décimales par ``kwc_lu_des_panneaux``)."""
+    from apps.ventes.quote_engine.lignes_classement import paires_panneaux_lues
+
+    return paires_panneaux_lues(_lignes_du_kwc(devis)[1])
 
 
 #: ACAL101 — la clé du ``result`` du layout qui porte chaque figure.

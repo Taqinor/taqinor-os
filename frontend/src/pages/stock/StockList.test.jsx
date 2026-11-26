@@ -498,3 +498,28 @@ describe('ADRG129 — export xlsx serveur de la table catalogue suit `stock_expo
   })
 })
 
+describe('D-ACAL-152 — Technicien : aucun prix de vente à l’écran du stock', () => {
+  const sansPrixServi = (p) => { const { prix_vente: _pv, ...reste } = p; return reste }
+  const TECH = {
+    role: 'normal', permissions: ['stock_voir', 'stock_mouvement'],
+    produits: [panneau, onduleur, orphelin].map(sansPrixServi),
+  }
+  const entetes = () => screen.getAllByRole('columnheader').map((h) => h.textContent)
+
+  it('technicien : ni colonnes de prix, ni filtre « Sans prix », ni jauge de prix ; les produits restent listés', () => {
+    renderPage(TECH)
+    expect(entetes().some((t) => /Prix vente HT|Prix TTC/.test(t))).toBe(false)
+    expect(screen.queryByText('Sans prix (à renseigner)')).toBeNull()
+    expect(screen.queryByText('Prix renseigné')).toBeNull()
+    expect(screen.queryByText(/NaN/)).toBeNull()
+    expect(screen.getAllByText(/Onduleur Deye 5 kW/).length).toBeGreaterThan(0)
+  })
+
+  it('compte avec le droit (`prix_vente_voir`) : colonnes de prix et filtre rendus', () => {
+    renderPage({ role: 'normal', permissions: ['stock_voir', 'prix_vente_voir'] })
+    expect(entetes().some((t) => /Prix vente HT/.test(t))).toBe(true)
+    expect(entetes().some((t) => /Prix TTC/.test(t))).toBe(true)
+    expect(screen.getByText('Sans prix (à renseigner)')).toBeInTheDocument()
+  })
+})
+

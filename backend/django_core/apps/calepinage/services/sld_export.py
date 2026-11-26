@@ -322,8 +322,11 @@ def _style_du_dessin(svg):
         return 'svg{width:100%;}'
     largeur_vb, hauteur_vb = float(trouve.group(1)), float(trouve.group(2))
     largeur_mm = min(float(_FEUILLE_LARGEUR_MM), _DESSIN_MM * largeur_vb / hauteur_vb)
-    return 'svg{width:%.1fmm;height:%.1fmm;margin:0 auto;}' % (
-        largeur_mm, largeur_mm * hauteur_vb / largeur_vb)
+    hauteur_mm = largeur_mm * hauteur_vb / largeur_vb
+    # Centré dans la place libre sous le cartouche : la largeur de la feuille borne l'échelle (le dessin est large),
+    # le reste de la hauteur se partage en haut et en bas au lieu de tomber tout en bas.
+    haut_mm = max(0.0, (_DESSIN_MM - hauteur_mm) / 2.0)
+    return 'svg{width:%.1fmm;height:%.1fmm;margin:%.1fmm auto 0;}' % (largeur_mm, hauteur_mm, haut_mm)
 
 
 def _html_du_schema_pdf(document, cartouche):

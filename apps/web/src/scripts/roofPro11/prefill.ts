@@ -1355,6 +1355,11 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
   // semée par ce que le document porte déjà (`n`, `rangee`, `numerotation`), sinon le
   // premier enregistrement suivant repartait de zéro et renumérotait tout le pan.
   // `absorberDocument` est idempotent et n'écrit RIEN dans le document.
+  // R3 (visuel lot 7) — un document NEUF repart d'une mémoire vide : les pans portent des ids génériques
+  // (`area-2`), un pan sans `n` ne réécrit pas la mémoire, et les numéros (et le plafond) d'un AUTRE
+  // document ouvert avant dans la page déborderaient sur celui-ci. Seul appelant : `hydrateFromDevis`
+  // (boot, une fois par page) ; les réhydratations de la session n'y passent pas.
+  registreAtelier.oublier();
   registreAtelier.absorberDocument(json); // CALX111 câblage
   // CALX114 câblage — l'objectif d'optimisation du document rouvert repart dans
   // l'optimiseur (et un document sans objectif l'y REMET à « aucun objectif saisi »,

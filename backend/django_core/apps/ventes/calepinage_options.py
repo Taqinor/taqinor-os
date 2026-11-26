@@ -1188,8 +1188,13 @@ def calepinage_options_publique(devis, offres_tailles, layout_public,
 # ANNEXE « PARAMÈTRES DU SITE » (audit #23)
 # ════════════════════════════════════════════════════════════════════════════
 
-def _pan_principal(layout_public, pose_reelle=False):
+def _pan_principal(layout_public, pose_reelle=False, toit_plat_corrige=False):
     """Le pan le PLUS PUISSANT du calepinage assaini, ou ``None``.
+
+    D-ACAL-149 — ``toit_plat_corrige`` (``regles_calcul.toit_plat_ouvert``) :
+    la branche ``zones`` ne prend plus le curseur mémorisé d'un toit plat sans
+    tables pour une inclinaison (omise, comme toute mesure absente) ; faux,
+    la lecture d'avant au bit près.
 
     ``pose_reelle`` (niveau de règles 15, la vague ACAL — jamais un devis déjà
     envoyé, que la migration du niveau ne touche pas) : ACAL911 (tables d'une
@@ -1212,9 +1217,8 @@ def _pan_principal(layout_public, pose_reelle=False):
     pans = [pan for pan in (layout_public or {}).get('pans') or []
             if isinstance(pan, dict)]
     if pans:
-        if pose_reelle:
-            return _face_du_pan_principal(pans)
-        return max(pans, key=lambda p: _fini(p.get('kwc')) or 0.0)
+        pan = _face_du_pan_principal(pans) if pose_reelle else max(pans, key=lambda p: _fini(p.get('kwc')) or 0.0)
+        return _sans_inclinaison_supposee(pan)
     # ACAL58 — la MÊME lecture que ``extract_roof_config`` : l'orientation
     # des modules POSÉS (``geometry``) d'abord, la pente du toit à défaut.
     from .domain.geometrie import orientation_du_pan
@@ -1226,11 +1230,23 @@ def _pan_principal(layout_public, pose_reelle=False):
         if not pose_reelle and isinstance(geo, dict) and geo.get('family') == 'eastwest':
             # Avant ACAL911 : une pose est-ouest gardait la lecture du TOIT.
             zone = {cle: valeur for cle, valeur in zone.items() if cle != 'geometry'}
-        orientation = orientation_du_pan(zone)
+        orientation = orientation_du_pan(zone, toit_plat_corrige=toit_plat_corrige)
         return {'azimut_deg': orientation['azimut_deg'],
                 'inclinaison_deg': orientation['inclinaison_deg'],
                 'roof_type': zone.get('roofType')}
     return None
+
+
+def _sans_inclinaison_supposee(pan):
+    """D-ACAL-149 (ii) / D-ACAL-168 (relecture round 4, point 3) — un pan dont l'inclinaison est la
+    valeur SUPPOSÉE de la production (20°, drapeau privé ``geometrie.CLE_INCLINAISON_SUPPOSEE`` posé
+    par la lecture corrigée) : elle n'est pas imprimée pour le client, avec ou sans modules — le
+    masquage suit le DRAPEAU, jamais le compte de modules."""
+    from .domain.geometrie import CLE_INCLINAISON_SUPPOSEE
+
+    if pan.get(CLE_INCLINAISON_SUPPOSEE):
+        return {cle: valeur for cle, valeur in pan.items() if cle != 'inclinaison_deg'}
+    return pan
 
 
 def _face_du_pan_principal(pans):
@@ -1352,10 +1368,11 @@ def parametres_site_publics(devis, layout_public, hypotheses=None,
                 calepinage_du_devis(devis.pk, getattr(devis, 'company', None))):
             logger.info('parametres_site omis (devis %s) : %s', devis.pk, _sd.MOTIF_CONCEPTION_RAPIDE)
             return None  # ACAL1008 — annexe omise
-        from .domain.regles_calcul import REGLES_POSE_REELLE_2111, regles_au_moins
+        from .domain.regles_calcul import REGLES_POSE_REELLE_2111, regles_au_moins, toit_plat_ouvert
 
         annexe = {}
-        pan = _pan_principal(layout_public, pose_reelle=regles_au_moins(devis, REGLES_POSE_REELLE_2111))
+        pan = _pan_principal(layout_public, pose_reelle=regles_au_moins(devis, REGLES_POSE_REELLE_2111),
+                             toit_plat_corrige=toit_plat_ouvert(devis))
         if pan:
             azimut = _fini(pan.get('azimut_deg'))
             if azimut is not None:

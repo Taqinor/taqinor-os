@@ -1435,6 +1435,33 @@ def _injection_publiee(autoconsommation, plafond_legal):
     }, None
 
 
+#: décision fondateur 26/11/2026 (D-ACAL-63 = avertir_10x, docs/audits/decisions.yml).
+#: ACAL1251 (D-ACAL-63) — au-delà de dix fois l'attendu, la saisie est gardée et signalée.
+FACTEUR_AVERTISSEMENT = 10
+
+
+def _lisible(valeur):
+    """Un nombre au français, par milliers, sans zéros inutiles (99 999 999 ; 12,5)."""
+    texte = ('{:,.2f}'.format(valeur)).rstrip('0').rstrip('.')
+    return texte.replace(',', ' ').replace('.', ',')
+
+
+def _avertissements_saisie(saisie, puissance_ac_kw):
+    """La puissance souscrite saisie face à celle des onduleurs : un avertissement
+    sous le champ (jamais un refus) quand elle dépasse DIX fois la référence ;
+    aucune référence (pas d'onduleur résolu) ⇒ aucun avertissement."""
+    souscrite = saisie.get('puissance_souscrite_kva')
+    if not souscrite or not puissance_ac_kw or puissance_ac_kw <= 0:
+        return []
+    rapport = souscrite / puissance_ac_kw
+    if rapport <= FACTEUR_AVERTISSEMENT:
+        return []
+    return [{'champ': 'puissance_souscrite_kva', 'message': (
+        "La puissance souscrite saisie (%s kVA) dépasse %s fois la puissance des "
+        "onduleurs (%s kW) : vérifiez la saisie. Elle est gardée."
+        % (_lisible(souscrite), _lisible(math.floor(round(rapport, 6))), _lisible(puissance_ac_kw)))}]
+
+
 def puissances_du_site(conception):
     """ACAL782 — ``(kWc DC, kW AC)`` de la conception, ``None`` si inconnue."""
     entree = getattr(conception, 'entree', None)
@@ -1522,4 +1549,5 @@ def bloc_raccordement(conception, saisie, troncons, reglages=None, *,
                                  hors_reseau),
         'injection': injection,
         'injection_motif': motif_injection,
+        'avertissements': _avertissements_saisie(saisie, puissance_ac_kw),
     }

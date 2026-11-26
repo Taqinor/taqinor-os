@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { panneauxDuModule } from './atelier/cibleAuModule'
 import { createPortal } from 'react-dom'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import { formatNumber } from '../../lib/format'
 /* CALX27 — le droit d'ÉCRITURE métier du module. Même code que la garde
@@ -143,6 +143,7 @@ export default function AtelierPanneaux({
   const enLectureSeule = lectureSeule
   useCommandesAtelier({ builderApi, lectureSeule: enLectureSeule })
   const [parametres] = useSearchParams()
+  const pathDepart = useLocation().pathname // ACAL1319 — « Terminer le relevé » y revient (page devis ou atelier)
   const [expertLocal, basculerLocal] = useModeExpert(parametres.get(PARAM_MODE) === 'expert')
   const expert = expertImpose ?? expertLocal
   const basculerExpert = onBasculerExpert ?? basculerLocal
@@ -247,7 +248,7 @@ export default function AtelierPanneaux({
           Photos du site
         </Link>
         {/* Coque (22/11) — les écrans de téléphone et le démarrage rapide des réglages, depuis l'atelier. */}
-        <Link to={`/calepinage/${calepinageId}/releve`} className="text-sm font-semibold text-primary-text underline">
+        <Link to={`/calepinage/${calepinageId}/releve`} state={{ depuis: pathDepart }} className="text-sm font-semibold text-primary-text underline">
           Relevé de visite
         </Link>
         <Link to={`/calepinage/${calepinageId}/client`} className="text-sm font-semibold text-primary-text underline">
@@ -330,6 +331,7 @@ export default function AtelierPanneaux({
         actionDevis={devisAuRail && !dansCoque ? boutonDevis : null}
         dansCoque={dansCoque}
         parcours={parcours}
+        contexte={contexte}
       />
       {devisAuRail && dansCoque && portailDevis ? createPortal(boutonDevis, portailDevis) : null}
 

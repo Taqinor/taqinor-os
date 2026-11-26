@@ -15,7 +15,7 @@ Run :
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.request import Request
 from rest_framework.test import APIClient, APIRequestFactory
 
@@ -291,6 +291,69 @@ class MatricePermissionsDevis(TestCase):
         self.assertEqual(lire(commercial, lignes).status_code, 200)
         self.assertEqual(lire(commercial, prix).status_code, 200)
 
+    def test_dacal165_technicien_lit_produits_et_quantites_sans_montants(self):
+        """D-ACAL-165 — le Technicien livré (octroi ``installation_voir``, sans
+        ``prix_vente_voir``) lit les lignes du devis de SON chantier SANS
+        prix unitaire, remise ni total, et sa subvention sans montants ; le
+        Commercial (avec le droit) reçoit les mêmes réponses qu'avant."""
+        from decimal import Decimal
+
+        from apps.installations.models import Installation
+        from apps.ventes.models import LigneDevis
+        from apps.ventes.models_regulatory import SubventionDossier
+
+        client = Client.objects.create(company=self.company, nom='DACAL165')
+        commercial = self._compte('Commercial', registre.COMMERCIAL_PERMISSIONS)
+        technicien = self._compte('Technicien', registre.TECHNICIEN_PERMISSIONS)
+        devis = Devis.objects.create(company=self.company, reference='DEV-D165-1',
+                                     client=client, created_by=commercial)
+        LigneDevis.objects.create(devis=devis, designation='Panneau', quantite=Decimal('4'),
+                                  prix_unitaire=Decimal('98765.43'), remise=Decimal('5'))
+        Installation.objects.create(company=self.company, reference='CH-D165-1', client=client,
+                                    devis=devis, technicien_responsable=technicien)
+        SubventionDossier.objects.create(company=self.company, devis=devis,
+                                         montant_demande=Decimal('87654.32'))
+
+        def corps(user, url):
+            api = APIClient()
+            api.force_authenticate(user)
+            reponse = api.get(url)
+            self.assertEqual(reponse.status_code, 200, (user.username, url, reponse.data))
+            donnees = reponse.data
+            return donnees.get('results', donnees) if isinstance(donnees, dict) else donnees
+
+        lignes = corps(technicien, '/api/django/ventes/devis-lignes/')
+        self.assertEqual([(ligne['designation'], Decimal(str(ligne['quantite']))) for ligne in lignes],
+                         [('Panneau', Decimal('4'))])
+        for cle in ('prix_unitaire', 'remise', 'total_ht'):
+            self.assertNotIn(cle, lignes[0])
+        avec = corps(commercial, '/api/django/ventes/devis-lignes/')
+        self.assertEqual(Decimal(str(avec[0]['prix_unitaire'])), Decimal('98765.43'))
+        self.assertIn('total_ht', avec[0])
+        sub = corps(technicien, '/api/django/ventes/subventions/')
+        self.assertEqual(len(sub), 1)
+        self.assertNotIn('montant_demande', sub[0])
+        self.assertNotIn('98765', str(lignes) + str(sub))
+        self.assertIn('montant_demande', corps(commercial, '/api/django/ventes/subventions/')[0])
+
+    def test_dacal165_identifiant_mal_forme_404_comme_un_inconnu(self):
+        """CI #1564 api-fuzz — ``devis-lignes/0.5/`` (``.5`` lu comme suffixe de
+        format → 404 AVANT l'authentification) répondait 500 : la garde des
+        montants authentifiait la requête hors du gestionnaire de DRF. Même
+        404 qu'un identifiant inconnu, sur les deux vues de la garde."""
+        technicien = self._compte('Technicien', registre.TECHNICIEN_PERMISSIONS)
+        for route in ('devis-lignes', 'subventions'):
+            for methode in ('get', 'put', 'patch', 'delete'):
+                anonyme = APIClient()
+                mal_forme = getattr(anonyme, methode)(
+                    f'/api/django/ventes/{route}/0.5/', HTTP_AUTHORIZATION='Basic zzz')
+                self.assertEqual(mal_forme.status_code, 404, (route, methode))
+                api = APIClient()
+                api.force_authenticate(technicien)
+                self.assertEqual(getattr(api, methode)(f'/api/django/ventes/{route}/0.5/').status_code,
+                                 404, (route, methode))
+            self.assertEqual(api.get(f'/api/django/ventes/{route}/987654/').status_code, 404, route)
+
     def test_lecture_devis_refusee_hors_module_ventes(self):
         # ADVS23 — Admin RH, Commercial terrain et les deux techniciens : 403 ×5.
         client = Client.objects.create(company=self.company, nom='ADVS23')
@@ -507,3 +570,31 @@ class MatricePermissionsDevis(TestCase):
         api.force_authenticate(responsable)
         for url in urls:
             self.assertEqual(api.delete(url).status_code, 204, url)
+
+
+class SansMontantsVenteSansBaseTests(SimpleTestCase):
+    """CI #1564 — la garde D-ACAL-165 ne déclenche jamais l'authentification."""
+
+    def test_reponse_d_erreur_sans_utilisateur_authentifie_inchangee(self):
+        from rest_framework.response import Response
+
+        from apps.ventes.gardes_lecture import SansMontantsVenteMixin
+
+        class Base:
+            def finalize_response(self, request, response, *args, **kwargs):
+                return response
+
+        class LigneDevisViewSet(SansMontantsVenteMixin, Base):
+            pass
+
+        class RequeteNonAuthentifiee:
+            @property
+            def user(self):
+                raise AssertionError('authentification déclenchée par la garde')
+
+        erreur = Response({'detail': 'Non trouvé.'}, status=404)
+        erreur.exception = True
+        self.assertIs(LigneDevisViewSet().finalize_response(RequeteNonAuthentifiee(), erreur), erreur)
+        succes = Response({'prix_unitaire': '1'}, status=200)
+        self.assertEqual(LigneDevisViewSet().finalize_response(RequeteNonAuthentifiee(), succes).data,
+                         {'prix_unitaire': '1'})

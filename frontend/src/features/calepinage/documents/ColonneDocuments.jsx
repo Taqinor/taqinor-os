@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Download, Info } from 'lucide-react'
 import { formaterHeureBrouillon } from '../atelier/contexteAtelier'
+import usePeutGenererDevis from '../usePeutGenererDevis'
 import { MINUTES_DE_DELAI } from './telechargement'
 import ApercuDocument from './ApercuDocument'
 import Vignette from './Vignettes'
@@ -68,6 +69,7 @@ export default function ColonneDocuments({
   cartes, enregistreLe = null, enCoursDe, erreursDe, onTelecharger, onApercu, chargerHtml = null,
 }) {
   const heure = enregistreLe ? formaterHeureBrouillon(enregistreLe) : ''
+  const peutDevis = usePeutGenererDevis() // D-ACAL-106 — le Technicien n'a ni devis ni prix : la note ne les promet pas
   // La pièce choisie : la première qui est prête (sinon la première), tant que l'on n'en a pas choisi une autre.
   const [cleChoisie, setCleChoisie] = useState(null)
   const choisie = cartes.find((c) => c.cle === cleChoisie) ?? cartes.find((c) => c.disponible) ?? cartes[0] ?? null
@@ -75,8 +77,9 @@ export default function ColonneDocuments({
     <div className="cdoc-info" data-testid="cal-docs-info-devis">
       <Info size={18} aria-hidden="true" />
       <span>
-        Le devis remis au client ne se fait pas ici : il est créé à partir du devis, avec ses prix.
-        {' « Générer le devis » prépare ce devis avec ce calepinage.'}
+        {peutDevis
+          ? 'Le devis remis au client ne se fait pas ici : il est créé à partir du devis, avec ses prix. « Générer le devis » prépare ce devis avec ce calepinage.'
+          : 'Le devis remis au client ne se fait pas ici.'}
       </span>
     </div>
   )

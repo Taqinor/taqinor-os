@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import { Button } from '../../ui'
 import { messageRefus } from './commun/refusServeur'
+import { ligneModule } from './atelier/coque/etapes/panneaux/formats'
 
 /* ============================================================================
    ACAL600 — « COMPARER D'AUTRES MODULES » (étape Panneaux, niveau expert).
@@ -83,7 +84,7 @@ export default function ComparerModules({ calepinageId }) {
         {`Comparer d’autres modules : cochez de ${MIN} à ${MAX} modules`}
       </legend>
       <ul className="space-y-1">
-        {entrees.map(({ module, selectionnable, motif }) => (
+        {entrees.map(({ module, selectionnable, motif, en_stock: enStock }) => (
           <li key={module.id}>
             <label className="flex min-h-11 items-center gap-2 text-sm text-foreground">
               <input type="checkbox" data-testid={`cal-comparer-module-${module.id}`}
@@ -92,6 +93,11 @@ export default function ComparerModules({ calepinageId }) {
               {module.libelle}
             </label>
             {!selectionnable && motif && <p className="ml-6 text-xs text-muted-foreground">{motif}</p>}
+            {selectionnable && (enStock || ligneModule(module)) && (
+              <p className="ml-6 text-xs text-muted-foreground">
+                {[enStock ? 'En stock' : '', ligneModule(module)].filter(Boolean).join(' · ')}
+              </p>
+            )}
             {refus?.module === module.id && (
               <p role="alert" className="ml-6 text-xs text-destructive" data-testid={`cal-comparer-refus-${module.id}`}>
                 {refus.texte}

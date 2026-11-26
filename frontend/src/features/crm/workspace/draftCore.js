@@ -516,6 +516,9 @@ export function initState({
     refused: null,           // ALEA18 — signature de la charge refusée en 400 | null
     stale: null,             // { theirs, at } | null (garde VX243c, keyée)
     restored,                // chip « Brouillon restauré »
+    // R5A-N5b — vrai dès le PREMIER geste de l'utilisateur sur cette fiche (saisie, ou « OK » du chip). Un brouillon restauré
+    // de la session (sessionStorage) n'est jamais ENVOYÉ tout seul avant : ouvrir une fiche n'écrit rien sans geste.
+    touched: false,
     composer: { note: restoredDraft && restoredDraft.note ? restoredDraft.note : '', file: null },
     wa: { selected: [], langue: (lead && lead.langue_preferee) || 'fr', preview: null },
     bill: { editing: false, hiver: '', ete: '', error: null },
@@ -598,7 +601,7 @@ export function reducer(state, action) {
       // Une frappe après une confirmation « ✓ Enregistré » remet le chip global
       // à « idle » ; on ne dégrade jamais 'saving'/'error' ici.
       const saveState = state.saveState === 'saved' ? 'idle' : state.saveState
-      return { ...state, draft, saveState }
+      return { ...state, draft, saveState, touched: true }
     }
 
     case 'FLUSH_START': {

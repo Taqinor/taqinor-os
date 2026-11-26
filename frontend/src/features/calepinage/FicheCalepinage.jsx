@@ -212,7 +212,7 @@ export default function FicheCalepinage({ detail, onRelire }) {
   }, [identifiant])
 
   const responsables = useUtilisateursAssignables(
-    Boolean(identifiant && peutModifier), identifiant)
+    Boolean(identifiant && peutModifier), identifiant, detail?.lead?.id ?? null)
 
   if (!detail) return null
 

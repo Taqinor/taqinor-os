@@ -84,9 +84,18 @@ TYPE_BAREMES_GELES = 'baremes_forfaits_geles'
 #: ``{'type': 'doc_texts_geles', 'textes': {<DEVIS_TEXT_KEYS>}, 'version': int}``.
 TYPE_DOC_TEXTS_GELES = 'doc_texts_geles'
 
+#: D-ACAL-158 (fondateur, 26/11/2026) — type de l'entrée qui porte, pour un
+#: devis à DEUX options, la conception électrique de l'option que
+#: ``electrical_design`` ne porte pas, rangée à l'envoi :
+#: ``{'type': …, 'options': {<clé d'option>: {'design': {…}, 'hash': '…'}}}``.
+#: Écrite par ``conceptions_options.figer_conceptions_des_options`` ; lue par lui
+#: et par ``electrical_service`` (fiche ERP, page client, annexe PDF) ; jamais
+#: imprimée. Aucune copie de devis (``creation_clone.cloner_devis``) ne la reporte.
+TYPE_CONCEPTIONS_OPTIONS_FIGEES = 'conceptions_options_figees'
+
 TYPES_GELS_INTERNES = frozenset({
     TYPE_CGV_GELEES, TYPE_BAREMES_GELES, TYPE_DOC_TEXTS_GELES,
-    TYPE_REGLAGES_FIGES})
+    TYPE_REGLAGES_FIGES, TYPE_CONCEPTIONS_OPTIONS_FIGEES})
 
 
 def est_gel_interne(entree):
@@ -161,7 +170,7 @@ def figer_reglages_rendu(devis):
     redevance = TariffSettings.get(company=company).redevance_compteur_mad_mois
     produits = {}
     lignes = (LigneDevis.objects.filter(devis_id=devis.pk, type_ligne='produit')
-              .select_related('produit'))
+              .select_related('produit', 'produit__fiche_technique'))
     for ligne in lignes:
         produit = ligne.produit
         if produit is None:
@@ -172,6 +181,10 @@ def figer_reglages_rendu(devis):
             'garantie': produit.garantie or '',
             'garantie_mois': produit.garantie_mois,
             'garantie_production_mois': produit.garantie_production_mois,
+            # T4-V2-010 — la PREUVE du jour de l'envoi : la description figée
+            # n'imprime « protection marche à sec » que si elle la publiait.
+            'protection_marche_a_sec': getattr(
+                getattr(produit, 'fiche_technique', None), 'var_protection_marche_a_sec', None),
         }
     devis.clauses_appliquees = [
         c for c in (devis.clauses_appliquees or [])
@@ -505,6 +518,10 @@ def geler_document_engage(devis, user, *, statut=None, acceptation=False):
     figer_baremes_forfaits(devis)
     # ADVS2 — fige les réglages de rendu et les fiches produit (D-ADVS-1).
     figer_reglages_rendu(devis)
+    # D-ACAL-158 — devis à deux options : la conception de l'AUTRE option est
+    # rangée aussi (jamais bloquant : une option incalculable n'est pas rangée).
+    from apps.ventes.conceptions_options import figer_conceptions_des_options
+    figer_conceptions_des_options(devis)
     from apps.ventes.models import Devis
     if statut == Devis.Statut.ENVOYE:  # ASOC95 (D-ASOC-1) — échéancier figé à l'envoi
         from apps.ventes.utils.echeancier import figer_echeancier

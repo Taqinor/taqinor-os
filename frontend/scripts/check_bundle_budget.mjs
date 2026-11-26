@@ -279,7 +279,12 @@ const PER_CHUNK_BUDGET_KB = 350
 // mesuré 4 211,6 Ko gzip sur le build du poste (tête 8b116cf68 ; PAS le runner : le lot 6 y mesurait 4 207,1 Ko pour un
 // passage vert sous 4 210), aucune dépendance npm ajoutée (diff package.json vide), aucun autre plafond dépassé.
 // Budget : mesure arrondie aux 5 Ko + 10 : 4210 -> 4220.
-const TOTAL_BUDGET_KB = 4220
+// 26/11/2026 (calepinage L5, lot 8 : décisions du fondateur du 26/11 — sélecteur de batterie et « En stock » de
+// l'atelier, position de l'onduleur sur le plan, atelier d'un lead de pompage en outil de pose, prix de vente masqués
+// au technicien, fiche lead relue après un geste) : mesuré 4 220,9 Ko gzip sur le runner (job frontend-static du run
+// 45885125237, PR #1564 reconstruite sur main), aucune dépendance npm ajoutée (diff package.json vide), aucun autre
+// plafond dépassé (710 chunks pour un plafond de 865). Budget : mesure arrondie aux 5 Ko + 10 : 4220 -> 4235.
+const TOTAL_BUDGET_KB = 4235
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
@@ -309,7 +314,10 @@ const VENDOR_CHUNK_BUDGETS_KB = {
   // arête au balayage, bandes de zone, cadrage après le tracé, panneaux teintés…) : mesuré 636,0 Ko gzip sur le
   // runner (job frontend-static du run 45135923717, tête cf6c37e195), aucune dépendance ajoutée → 635 -> 650
   // (mesure arrondie aux 5 Ko + 10).
-  'roof-tool': 650,
+  // 26/11/2026 (calepinage L5, lot 8 : position de l'onduleur sur le plan et son tracé de câble, étiquettes
+  // d'affectation, pose d'un lead de pompage) : mesuré 650,4 Ko gzip sur le runner (job frontend-static du run
+  // 45890779350, PR #1564), aucune dépendance ajoutée → 650 -> 665 (mesure arrondie aux 5 Ko + 10).
+  'roof-tool': 665,
   // AOF192 — Atelier de calepinage AO (`features/ao/studio/`, canvas/
   // géométrie/relevé), isolé par `manualChunks` dans vite.config.js sous le
   // même patron que `roof-tool` (voir son commentaire, ligne au-dessus).

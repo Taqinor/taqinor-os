@@ -90,7 +90,7 @@ describe('AGR315 — dialogue PDF d’un devis agricole', () => {
   it('un devis résidentiel garde ses libellés', async () => {
     const dialog = await ouvrirDialogue(RESIDENTIEL)
     expect(within(dialog).getByText(
-      'Devis premium (3 pages — options, analyse, garanties)',
+      'Devis premium — options, analyse, garanties',
     )).toBeInTheDocument()
     expect(within(dialog).getByText(
       'Devis une page (liste produits uniquement, sans graphiques)',

@@ -145,17 +145,20 @@ PRODUCT_EXPORT_HEADERS = [
 ]
 
 
-def export_products_xlsx(produits):
-    """Réponse .xlsx pour une sélection de produits (prix d'achat EXCLU)."""
+def export_products_xlsx(produits, sans_prix_vente=False):
+    """Réponse .xlsx pour une sélection de produits (prix d'achat EXCLU).
+    D-ACAL-152 — ``sans_prix_vente`` (compte sans ``prix_vente_voir``) : la
+    colonne « Prix vente HT » n'existe pas dans le fichier."""
     from apps.crm.exports import build_xlsx_response
-    rows = [[
-        p.nom, p.sku or '', p.marque or '',
-        getattr(p.categorie, 'nom', '') or '',
-        str(p.prix_vente), p.quantite_stock, p.seuil_alerte,
-        p.garantie_mois or '', p.garantie_production_mois or '',
-    ] for p in produits]
+    garde = [i for i, titre in enumerate(PRODUCT_EXPORT_HEADERS)
+             if not (sans_prix_vente and titre == 'Prix vente HT')]
     return build_xlsx_response(
-        'produits.xlsx', PRODUCT_EXPORT_HEADERS, rows, sheet_title='Produits')
+        'produits.xlsx', [PRODUCT_EXPORT_HEADERS[i] for i in garde], [[ligne[i] for i in garde] for ligne in ([
+            p.nom, p.sku or '', p.marque or '',
+            getattr(p.categorie, 'nom', '') or '',
+            str(p.prix_vente), p.quantite_stock, p.seuil_alerte,
+            p.garantie_mois or '', p.garantie_production_mois or '',
+        ] for p in produits)], sheet_title='Produits')
 
 
 # ── N13 — Approvisionnement : besoin matériel par chantier ───────────────────

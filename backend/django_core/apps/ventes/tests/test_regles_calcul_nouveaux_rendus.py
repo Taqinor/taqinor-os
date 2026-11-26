@@ -121,10 +121,11 @@ class ReglesCalculTests(SimpleTestCase):
             self.assertEqual(drapeaux_phrases_profil(ferme), {})
         from apps.ventes.quote_engine.builder import _avec_regles_pose_reelle
         self.assertEqual(_avec_regles_pose_reelle({}, False, devis(statut='brouillon', date_envoi=None)),
-                         {'phrases_profil_ouvertes': True})
+                         {'phrases_profil_ouvertes': True, 'phrases_pdf_2611': True})
         self.assertEqual(_avec_regles_pose_reelle({}, False, devis(statut='envoye', date_envoi=avant)), {})
         self.assertEqual(_avec_regles_pose_reelle({}, True, None),
-                         {'regles_pose_reelle': True, 'phrases_pdf_2511': True})
+                         {'regles_pose_reelle': True, 'phrases_pdf_2511': True,
+                          'phrases_pdf_2611': True})
 
     def test_d_acal_111_114_une_coupure_un_predicat_cas_ouvert(self):
         from datetime import datetime, timezone
@@ -149,7 +150,143 @@ class ReglesCalculTests(SimpleTestCase):
             self.assertEqual(drapeaux_pdf_2511(devis(mode, statut='brouillon', date_envoi=None)), {})
         self.assertFalse(phrases_pdf_2511_ouvertes(devis(statut='accepte', date_envoi=avant)))
         self.assertEqual(drapeaux_nouveaux_rendus(devis('industriel', statut='brouillon', date_envoi=None)),
-                         {'phrases_profil_ouvertes': True})
+                         {'phrases_profil_ouvertes': True, 'phrases_pdf_2611': True})
+
+    def test_lot_8_une_coupure_un_drapeau_marches_dont_le_pdf_change(self):
+        # Lot 8 (D-AMOT-9, fondateur 26/11/2026) — nouveaux rendus seulement.
+        from datetime import datetime, time, timedelta, timezone
+
+        from apps.ventes.domain.regles_calcul import (
+            COUPURE_PDF_2611, COUPURE_TOIT_PLAT, drapeaux_nouveaux_rendus, drapeaux_pdf_2611)
+        self.assertEqual(COUPURE_PDF_2611, COUPURE_TOIT_PLAT)
+        coupure = datetime.combine(datetime(*COUPURE_PDF_2611), time(8), tzinfo=timezone.utc)
+        avant = coupure - timedelta(days=2)
+
+        def devis(mode='residentiel', **champs):
+            return SimpleNamespace(**dict({'regles_calcul': 14, 'date_creation': avant,
+                                           'mode_installation': mode}, **champs))
+        for mode in ('residentiel', '', 'industriel'):
+            for ouvert in (devis(mode, statut='brouillon', date_envoi=None),
+                           devis(mode, statut='envoye', date_envoi=coupure)):
+                self.assertEqual(drapeaux_pdf_2611(ouvert), {'phrases_pdf_2611': True})
+            self.assertEqual(drapeaux_pdf_2611(devis(mode, statut='envoye', date_envoi=avant)), {})
+        for mode in ('commercial', 'agricole'):
+            self.assertEqual(drapeaux_pdf_2611(devis(mode, statut='brouillon', date_envoi=None)), {})
+        self.assertIn('phrases_pdf_2611', drapeaux_nouveaux_rendus(devis(statut='brouillon', date_envoi=None)))
+
+    def test_t4_v2_010_protection_marche_a_sec_prouvee_par_la_fiche(self):
+        # T4-V2-010 — le PDF n'imprime « protection marche à sec » sur la ligne
+        # du variateur que si sa fiche la publie ; nouveaux rendus seulement.
+        from datetime import datetime, timedelta, timezone
+
+        from apps.ventes.domain.regles_calcul import (
+            COUPURE_PROTECTION_FICHE, protection_fiche_ouverte)
+        from apps.ventes.quote_engine.lignes_classement import _item_du_devis
+        # La garde : la date bouge avec le déploiement (le lendemain), et SEUL
+        # ce littéral bouge avec elle ; ``avant`` / ``apres`` en dérivent.
+        self.assertEqual(COUPURE_PROTECTION_FICHE, (2026, 11, 28))
+        apres = datetime(*COUPURE_PROTECTION_FICHE, 8, 0, tzinfo=timezone.utc)
+        avant = apres - timedelta(days=1)
+        desc = ('Variateur solaire dédié pompage : MPPT intégré, entrée PV directe\n'
+                'Pilotage automatique lever/coucher du soleil, protection marche à sec\n'
+                'Compatible pompes AC triphasées/monophasées standards')
+
+        def ligne(protection, role='variateur_pompage'):
+            fiche = SimpleNamespace(type_fiche='variateur_pompage',
+                                    var_protection_marche_a_sec=protection)
+            produit = SimpleNamespace(pk=7, nom='VARIATEUR VEICHI SI23 4KW 380V', marque='VEICHI',
+                                      description=desc, garantie='', role_pompage=role,
+                                      fiche_technique=fiche)
+            return SimpleNamespace(designation=produit.nom, produit=produit, quantite=1,
+                                   prix_unitaire=Decimal('2291.67'), remise=0, taux_tva=20)
+
+        def devis(**champs):
+            return SimpleNamespace(**dict({'regles_calcul': 14, 'date_creation': avant,
+                                           'mode_installation': 'agricole', 'reglages_figes': None},
+                                          **champs))
+        ouvert = devis(statut='brouillon', date_envoi=None)
+        ferme = devis(statut='envoye', date_envoi=avant)
+        self.assertTrue(protection_fiche_ouverte(ouvert))
+        self.assertTrue(protection_fiche_ouverte(devis(statut='envoye', date_envoi=apres)))
+        self.assertFalse(protection_fiche_ouverte(ferme))
+        # Fiche muette (None) ou négative (False) : l'affirmation disparaît, le
+        # reste de la ligne demeure.
+        for protection in (None, False):
+            texte = _item_du_devis(ligne(protection), Decimal('20'), ouvert)['description']
+            self.assertNotIn('marche à sec', texte)
+            self.assertIn('Pilotage automatique lever/coucher du soleil\n', texte)
+            self.assertIn('Compatible pompes AC', texte)
+        # Fiche qui la publie : la phrase reste.
+        self.assertEqual(_item_du_devis(ligne(True), Decimal('20'), ouvert)['description'], desc)
+        # Devis envoyé avant la coupure : l'item reste celui que le client a reçu.
+        self.assertEqual(_item_du_devis(ligne(None), Decimal('20'), ferme)['description'], desc)
+        # Un autre produit (sonde de niveau, sans fiche de variateur) garde son texte.
+        sonde = ligne(None, role='sonde_niveau')
+        sonde.produit.fiche_technique = None
+        self.assertEqual(_item_du_devis(sonde, Decimal('20'), ouvert)['description'], desc)
+
+    def test_t4_v2_010_retrait_toujours_grammatical(self):
+        # Revue du 26/11 — d'autres tournures que celle des VEICHI : jamais de
+        # parenthèses vides, de séparateur orphelin ni de double espace ; un
+        # produit qui n'est pas un variateur n'est jamais touché.
+        from apps.ventes.quote_engine.lignes_classement import _description_prouvee
+        variateur = SimpleNamespace(role_pompage='variateur_pompage', fiche_technique=None)
+        autre = SimpleNamespace(role_pompage='sonde_niveau', fiche_technique=None)
+        cas = {
+            'Relais de niveau (protection marche à sec / cuve pleine)': 'Relais de niveau (cuve pleine)',
+            'Protection marche à sec, pilotage automatique': 'Pilotage automatique',
+            'Relais (protection marche à sec)': 'Relais',
+            'MPPT intégré – protection contre la marche à sec': 'MPPT intégré',
+            'Pilotage automatique lever/coucher du soleil, protection marche à sec':
+                'Pilotage automatique lever/coucher du soleil',
+            'Arrêt sur défaut, protection marche à sec, redémarrage auto': 'Arrêt sur défaut, redémarrage auto',
+        }
+        for avant, attendu in cas.items():
+            with self.subTest(avant=avant):
+                self.assertEqual(_description_prouvee(avant, variateur, None), attendu)
+                self.assertEqual(_description_prouvee(avant, autre, None), avant)
+                self.assertEqual(_description_prouvee(avant, variateur, True), avant)
+        # Une ligne sans la clause revient à l'octet, une ligne vidée disparaît.
+        self.assertEqual(_description_prouvee('A  ,  b\nprotection marche à sec', variateur, None), 'A  ,  b')
+
+    def test_t4_v2_010_la_preuve_est_figee_a_l_envoi(self):
+        # Revue du 26/11 — la description est figée à l'envoi ; la PREUVE de la
+        # protection aussi (``envoi.figer_reglages_rendu``) : un devis envoyé
+        # garde la ligne que son client a reçue quand la fiche change ensuite.
+        from datetime import datetime, timedelta, timezone
+
+        from apps.ventes.domain.regles_calcul import COUPURE_PROTECTION_FICHE
+        from apps.ventes.quote_engine.lignes_classement import _item_du_devis
+        apres = datetime(*COUPURE_PROTECTION_FICHE, 8, 0, tzinfo=timezone.utc)
+        avant = apres - timedelta(days=1)
+        desc = 'Pilotage automatique lever/coucher du soleil, protection marche à sec'
+
+        def ligne(protection_du_jour):
+            fiche = SimpleNamespace(type_fiche='variateur_pompage',
+                                    var_protection_marche_a_sec=protection_du_jour)
+            produit = SimpleNamespace(pk=7, nom='VEICHI SI23', marque='VEICHI', description=desc,
+                                      garantie='', role_pompage='variateur_pompage', fiche_technique=fiche)
+            return SimpleNamespace(designation=produit.nom, produit=produit, quantite=1,
+                                   prix_unitaire=Decimal('1'), remise=0, taux_tva=20)
+
+        def envoye(date_envoi, **fige):
+            produit = dict({'marque': 'VEICHI', 'description': desc, 'garantie': '',
+                            'garantie_mois': None, 'garantie_production_mois': None}, **fige)
+            return SimpleNamespace(regles_calcul=14, statut='envoye', date_envoi=date_envoi,
+                                   date_creation=date_envoi, mode_installation='agricole',
+                                   clauses_appliquees=[{'type': 'reglages_figes', 'produits': {'7': produit}}])
+
+        def texte(devis, protection_du_jour):
+            return _item_du_devis(ligne(protection_du_jour), Decimal('20'), devis)['description']
+        # Envoyé avant la coupure (instantané sans la clé, d'avant ce gel) : octet-identique.
+        self.assertEqual(texte(envoye(avant), None), desc)
+        self.assertEqual(texte(envoye(avant), True), desc)
+        # Envoyé après, fiche muette à l'envoi, remplie ensuite : toujours SANS la phrase.
+        self.assertEqual(texte(envoye(apres, protection_marche_a_sec=None), True),
+                         'Pilotage automatique lever/coucher du soleil')
+        # Envoyé après, fiche vraie à l'envoi, vidée ensuite : toujours AVEC la phrase.
+        self.assertEqual(texte(envoye(apres, protection_marche_a_sec=True), None), desc)
+        self.assertEqual(texte(envoye(apres, protection_marche_a_sec=True), False), desc)
 
     # ── Niveau 3 (corrections résidentielles du 27/10/2026) ──
     def test_devis_envoye_au_niveau_2_hors_corrections_2710(self):

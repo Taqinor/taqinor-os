@@ -84,6 +84,17 @@ class KpiAlerteSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
             'created_at', 'updated_at',
         ]
 
+    def to_representation(self, instance):
+        """D-ACAL-165 — la « Valeur de stock totale » est une valorisation de
+        VENTE : sa dernière valeur n'est servie qu'à ``can_view_sale_prices``
+        (null sinon, clé gardée) ; tout autre KPI : inchangé."""
+        data = super().to_representation(instance)
+        user = getattr(self.context.get('request'), 'user', None)
+        if (getattr(instance, 'kpi', None) == KpiAlerte.Kpi.VALEUR_STOCK_TOTALE
+                and user is not None and not getattr(user, 'can_view_sale_prices', True)):
+            data['derniere_valeur'] = None
+        return data
+
     def to_internal_value(self, data):
         # ERR-ENF11-FUZZ-REPORTING — DRF itère un OBJET comme une liste de
         # clés : ``destinataires_utilisateurs: {}`` passait (liste vide) alors
@@ -116,6 +127,15 @@ class KpiAlerteSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
         metrique = attrs.get(
             'metric_definition', getattr(instance, 'metric_definition', None))
         kpi = attrs.get('kpi', getattr(instance, 'kpi', ''))
+        # D-ACAL-165 — surveiller (créer, viser, régler) la « Valeur de stock
+        # totale » revient à lire une valorisation de VENTE : réservé à qui voit
+        # les prix de vente (le seuil seul permettrait de la retrouver par essais).
+        lecteur = getattr(self.context.get('request'), 'user', None)
+        if (kpi == KpiAlerte.Kpi.VALEUR_STOCK_TOTALE and source != KpiAlerte.Source.METRIQUE
+                and lecteur is not None and not getattr(lecteur, 'can_view_sale_prices', True)):
+            raise serializers.ValidationError({'kpi': (
+                "La valeur de stock totale est une valorisation au prix de vente : "
+                "il faut la permission « Voir les prix de vente » pour la surveiller.")})
         if source == KpiAlerte.Source.METRIQUE:
             if metrique is None:
                 self._refus('metric_definition',
@@ -586,6 +606,11 @@ def _notify_kpi_alerte(alerte, valeur):
                   f'{alerte.get_operateur_display()} {alerte.seuil})')
     title = f'Alerte KPI : {sujet}'
     body = f'{sujet} — {mesure}.'
+    # D-ACAL-165 — la « Valeur de stock totale » est une valorisation de VENTE :
+    # un destinataire sans « voir les prix de vente » apprend que l'alerte s'est
+    # déclenchée, sans AUCUN chiffre (ni valeur, ni seuil — le seuil borne la valeur).
+    body_sans_chiffre = f'{sujet} — seuil franchi.'
+    valeur_de_vente = getattr(alerte, 'kpi', None) == KpiAlerte.Kpi.VALEUR_STOCK_TOTALE
 
     recipients = list(alerte.destinataires_utilisateurs.all())
     if alerte.destinataire_role:
@@ -601,7 +626,9 @@ def _notify_kpi_alerte(alerte, valeur):
             continue
         seen_ids.add(user.id)
         try:
-            notify(user, EventType.DIGEST, title, body=body,
+            masque = valeur_de_vente and not getattr(user, 'can_view_sale_prices', True)
+            notify(user, EventType.DIGEST, title,
+                   body=body_sans_chiffre if masque else body,
                    company=alerte.company)
         except Exception:  # pragma: no cover - défensif, best-effort
             logger.warning("notify kpi alerte : échec ignoré, comportement dégradé", exc_info=True)

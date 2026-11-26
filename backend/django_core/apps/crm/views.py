@@ -2,9 +2,7 @@ import logging
 from contextlib import contextmanager
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
-)
+from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import APIException
@@ -18,7 +16,7 @@ from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset
 from .params_requete import (
     CORPS_NOTER_JSON, CORPS_NOTER_MULTIPART, CORPS_REORDER_VUE, CORPS_RESOUDRE_GPS, CORPS_VILLE_STATUT,
-    NOTER_REPERE, RESOUDRE_GPS_REPERE, booleen_param, corps_lu, corps_objet, liste_ids,
+    NOTER_REPERE, PARAMETRES_MENU, RESOUDRE_GPS_REPERE, booleen_param, corps_lu, corps_objet, liste_ids,
     refus_page_reorder, texte_param, texte_verifie)
 from .models import (
     LeadActivity, Lead, LeadTag, MotifPerte, Canal, SavedView, SiteProfile,
@@ -103,10 +101,7 @@ def _save_borne_aux_champs(instance, champs):
 
 
 @extend_schema(
-    parameters=[OpenApiParameter(
-        'permission', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
-        description="Code d'une permission ERP : ne propose que les comptes qui la portent "
-                    "(ex. calepinage_voir pour le responsable d'un calepinage).")],
+    parameters=PARAMETRES_MENU,
     responses=sd.liste('CrmAssignableUser'))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
@@ -119,9 +114,8 @@ def assignable_users(request):
     """
     from authentication.avatars import presign_avatar
     from .collegues import collegues_assignables, filtrer_par_permission
-    # T4-X3-016 — « qui peut OUVRIR ce qu'on lui confie » (``?permission=``) : filtré dans ``collegues.py``.
     qs = filtrer_par_permission(collegues_assignables(request.user).order_by('username'),
-                                request.query_params.get('permission'))
+                                request.query_params.get('permission'), request.query_params.get('lead'), request.user)
     return Response([
         {
             'id': u.id,

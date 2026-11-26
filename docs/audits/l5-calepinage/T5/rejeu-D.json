@@ -1,0 +1,212 @@
+[
+ {
+  "id": "T4-U1-029",
+  "verdict": "corrige",
+  "vu": "Telephone 390 px WebKit, lead R5D-1 : apres Devis auto, « Inclure l'etude » et « Devis final (paiement + RIB) » sont de vraies cases carrees de taille normale, alignees avec leur libelle.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-u1-029-apres-devis-auto.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-U2-021",
+  "verdict": "corrige",
+  "vu": "Chromium tablette, lead R5D-4 (industriel, Kenitra, 150 000 MAD/mois, MT) : l'onglet Devis dit « Consommation (kWh), releve de factures, ou facture en MAD (hors moyenne tension declaree) », bouton Devis auto grise ; l'edition complete dit « Site en moyenne tension : la facture en MAD ne suffit pas, il faut les kWh des releves ou la visite. Aucune taille calculee. » (plus « non declaree »). Meme raison des deux cotes. Reserve : la carte Conception de la fiche dit encore « Consommation (kWh) ou facture mensuelle (MAD) manquante » sans mentionner la MT.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-u2-021-conso.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-u2-021-onglet-devis.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-U3-016",
+  "verdict": "corrige",
+  "vu": "Telephone 390 px, fenetre du devis DEV-202611-0121 (edition complete) : en-tete tient dans la largeur (reference sur une ligne, « Voir le PDF » et « Enregistrer » entiers, scrollWidth 390). Le bouton s'appelle desormais « Voir le PDF » (plus « Telecharger le PDF »). Pas de case « Devis final » dans cette fenetre.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-u3-016-edition.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-U3-019",
+  "verdict": "corrige",
+  "vu": "Chromium tablette, lead R5D-3 : « maroc » remplace par « kech » + Tab : la fiche reconnait seule Marrakech (en-tete « Marrakech », « Pret a deviser », historique « Ville : maroc -> Marrakech », conception 3,55 kWc). Pas de fenetre « Verifier la ville » a ouvrir, le bouton n'est plus la.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-u3-019-apres-tab.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-U3-020",
+  "verdict": "corrige",
+  "vu": "Chromium tablette, lead cree avec ville « maroc » : sous le champ Ville/quartier, texte « ville non reconnue : choisissez-la dans la liste ou posez le point GPS » + bouton « Verifier la ville », avec « A completer : ville » et « Devis non pret ». Reserve : le message ne cite pas « maroc » ni un exemple a taper.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-u3-020-fiche.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U4-020",
+  "verdict": "corrige",
+  "vu": "Telephone WebKit, releve cal. 15 : pente 15 puis 18 et orientation 170 saisies a la main, reseau coupe (appels API abortes, voir reserve), mesures 9,8 x 6,4, Terminer : l'ecran dit « Pente et orientation du toit : en attente » puis « envoyees » / « Releve envoye. Pente et orientation du toit enregistrees. ». Cote serveur : zone pitchDeg 18, facingAzimuthDeg 170 (facingManual true), releve 9,8 x 6,4, note enregistree. Reserve : l'ecran releve re-affiche « Toit plat » comme pente alors que 18 est stocke. Hors ligne simule par abort des appels /api (setOffline coupe aussi la lecture des fichiers en WebKit : « The I/O read operation failed »).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-u4-020-terminer-offline.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-u4-021-retour-reseau.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-U4-021",
+  "verdict": "corrige",
+  "vu": "Telephone WebKit, cal. 15 : photo Sol en ligne (1 sur 3), Oblique hors ligne (2 sur 3, « en attente d'envoi »), Terminer, retour reseau : compteur reste 2 sur 3, « Releve : envoye ». Un autre contexte (bureau 1440, nouveau navigateur WebKit, pas Chromium) rouvre le releve avec 2 sur 3, Longueur 9,8 / Largeur 6,4, orientation Sud.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-u4-021-apres-envoi2.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-u4-021-autre-contexte.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U4-023",
+  "verdict": "corrige",
+  "vu": "Telephone WebKit hors ligne : tuile « Oblique (aerienne) / en attente d'envoi » entiere et lisible ; phrases accordees : « 1 photo gardee sur ce telephone. Elle partira des le retour du reseau. », « La pente et l'orientation du toit partiront avec lui. », toast « Connexion perdue. Vos saisies sont conservees et repartiront des le retour du reseau. ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-u4-023-oblique-attente.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-X7-009",
+  "verdict": "non-corrige",
+  "vu": "WebKit tablette 1180x820, compte anon_tech sur le calepinage 16 (visite assignee), etape 5 Documents : seule la carte « Plan de pose pour l'equipe » est visible ; div.cdoc-cartes mesure 468 x 4 px pour scrollHeight 764 ; Schema, Note de calcul, Rapport d'etude, DXF absents de l'ecran et introuvables (compte 0). Identique au defaut d'origine.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x7-009-docs.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X7-010",
+  "verdict": "corrige",
+  "vu": "WebKit tablette, feuille Avance : Comparer les variantes 148x44, Photos du site 89x44, Releve de visite 98x44, Montrer au client 109x44, Demarrage rapide des reglages 197x44 (tous 44 px de haut). Lien DEV- des Resultats non mesure : la pose R5D n'a pas de devis lie.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x7-010-avance.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X7-013",
+  "verdict": "corrige",
+  "vu": "WebKit tablette (pas Chromium), cal. 16 (16 x 710 W, lead = 7 panneaux 710 W). Avant simulation : « Production de la conception : 8 086 kWh par an, calculee pour la conception du lead : 4,97 kWc (7 panneaux de 710 W) — votre pose en compte 11,36 kWc (16 panneaux) ». Apres simulation (200 s) : meme phrase inchangee (8 086 / 4,97 kWc) et « Production simulee de la pose 14 486 kWh » pour 11,36 kWc, 1 275 kWh/kWc. Plus de chiffre attache a la mauvaise taille. Reserve : le scenario exact « 5 x 710 W » n'a pas ete rejoue.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x7-013-apres-sim.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X7-018",
+  "verdict": "partiel",
+  "vu": "WebKit tablette, cal. 17 neuve, Trace libre : 4 touchers aux quatre coins de la carte puis le premier : « Surface du toit 868 298 030 010 m2 » et bandeau « Trace a verifier : mauvaise echelle ... Effacez-le et retracez le toit de pres » (defaut donc signale). Mais la surface reste affichee, « Poser les panneaux » reste actif, et le message contradictoire « Surface trop petite pour une rangee — elargissez le trace » est toujours la.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x7-018-trace.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X8-001",
+  "verdict": "corrige",
+  "vu": "Telephone WebKit sombre, anon_tech, cal. 16 : hors ligne (appels API abortes) Longueur 12,4 / Largeur 8,1 (« 2 mesures gardees sur ce telephone »), retour reseau, rechargement : champs repris 12.4 / 8.1 ; seule la Longueur est changee en 12,6 puis Terminer : le POST releve contient les DEUX chaines (Longueur 12,6 ET Largeur 8,1), serveur idem, apres rechargement 12,6 / 8,1.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-001-termine.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X8-002",
+  "verdict": "non-corrige",
+  "vu": "Telephone WebKit sombre, cal. 16, hors ligne (appels API abortes, 3 photos + mesures gardees) puis rechargement : ecran plein « Hors ligne — Vos mesures et vos photos sont gardees sur ce telephone. Elles s'afficheront et partiront au retour du reseau. — Hors ligne — reessayer » : aucun champ ni bouton « Terminer le releve ». Le texte est plus rassurant mais le comportement attendu (releve rouvert hors ligne) n'est pas obtenu. Reserve : la pile est buildee sans service worker (VITE_E2E=1), un vrai rechargement hors ligne n'est pas rejouable fidelement ; l'ecran vient de l'echec des appels API.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-002-apres-reload.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X8-003",
+  "verdict": "corrige",
+  "vu": "Telephone WebKit, 3 photos prises hors ligne puis rechargement hors ligne, reseau remis : 2,5 s apres, trois tuiles pleines (photos visibles), « 3 sur 3 », pastille « Hors ligne » absente ; serveur : photos drone/oblique/sol enregistrees. Reserve : coupure simulee par abort des appels /api.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-003-2s5.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X8-004",
+  "verdict": "corrige",
+  "vu": "Telephone WebKit : un champ « Notes de terrain » (textarea) existe sur l'ecran du releve ; texte tape hors ligne puis Terminer : enregistre cote serveur (« R5D note terrain hors ligne »).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-rel-open2.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X8-005",
+  "verdict": "corrige",
+  "vu": "Telephone WebKit sombre, preference Expert posee : /calepinage/15/client montre uniquement la 3D, le lecteur soleil, 16 panneaux / 11,36 kWc, « Retour a l'atelier » / « Envoyer le lien » ; aucun champ Adresse/Date/Source/Localiser/Angles droits/Grille. Reserve : en paysage 844x390 le lecteur est coupe en bas, la 3D ne garde que ~230 px et les chiffres ne sont pas visibles (R5D-N1). Chemin Avance > Montrer au client en Expert non joue (Avance non tapable en Expert, voir X8-006).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-005-client.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-005-paysage2.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X8-006",
+  "verdict": "partiel",
+  "vu": "Telephone WebKit sombre : en Guide, « Avance » ouvre la feuille (Calques, vues, exports, Comparer les variantes, Photos du site, Releve de visite, Montrer au client). En Expert, le bouton Avance du rail (x327-379, y786-842) est recouvert par la barre de puces du trace (rp9-trace-chips) : un toucher ne l'atteint pas (Playwright : intercepte) et aucune feuille ne s'ouvre ; « Caler le fond » chevauche aussi le rail.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-006-avance.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-006-expert.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X8-007",
+  "verdict": "corrige",
+  "vu": "Telephone WebKit, Guide : Avance > « Montrer au client » ouvre /calepinage/15/client ; le pied dit « Retour a l'atelier » et ramene a /calepinage/15 (atelier), plus au releve.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-007-retour.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X8-008",
+  "verdict": "non-corrige",
+  "vu": "Telephone WebKit sombre, Expert : la carte (canvas 390x300 a y=606) reste cachee sous le tiroir (qui commence a y~480) et le bloc Adresse/Date ; la feuille ne se reduit pas (le bouton « Agrandir ou reduire la feuille » n'est pas atteignable) ; « Placement libre » / « Ajouter un panneau » inatteignables au toucher. Un plan tactile (« touchez un panneau puis un emplacement libre ») est propose pour deplacer, pas pour ajouter.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-008-ajouter.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X8-009",
+  "verdict": "corrige",
+  "vu": "Telephone WebKit, Guide etape Toit : la barre commence par « Plan / 3D » (x22-119), entierement visible ; les outils suivent, seul « annuler » est legerement rogne a droite.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-009-mode0.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-X8-010",
+  "verdict": "corrige",
+  "vu": "Telephone WebKit : brouillon local pose ; 1re ouverture : bandeau « BROUILLON LOCAL » (258 px de haut sur 844), le bouton s'appelle maintenant « Effacer ce brouillon » ; apres l'avoir touche, le bandeau disparait, la cle de brouillon est supprimee et il ne revient pas aux 2e et 3e ouvertures. Reserve : brouillon injecte dans le stockage local, pas produit par un geste.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-010-bandeau.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X8-011",
+  "verdict": "partiel",
+  "vu": "Telephone WebKit, Guide etape Panneaux (module Canadian Solar 710 W) : la carte contient « Couvrir la facture — Recommande — 7 panneaux · 4,97 kWc · conception · ≈ 70 % de la consommation » et « Pose actuelle : 16 panneaux · 11,36 kWc » (textes entiers, 7 x 710 W = 4,97 kWc coherent). Mais le tiroir reste replie et ne se deplie pas par mes gestes : je n'ai pas pu voir la carte a l'ecran ; le cas « conception 550 W / module 710 W » n'a pas ete rejoue.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-011-panneaux.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X8-012",
+  "verdict": "partiel",
+  "vu": "Telephone WebKit sombre, Expert > Panneaux : plus de « 400 » ; « PANNEAUX NECESSAIRES 16 / 16 poses / 16 cible » dans le bloc Recommandation, alors que la carte Projet du meme ecran donne « CIBLE — PANNEAUX 7 panneaux de 710 W · 4,97 kWc · Factures du lead ». Deux cibles (16 et 7) pour la meme facture de 1 200 MAD/mois ; a une autre lecture le bloc affiche « — ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-012-PANNEA.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X8-013",
+  "verdict": "corrige",
+  "vu": "Telephone WebKit sombre, cal. 15 apres simulation (« Simulation a jour · 09:44 ») : bandeau Panneaux « Production la premiere annee 14 486 kWh », Resultats 1 275 kWh/kWc x 11,36 kWc, feuille Avance « Simulation : P50 14 486 kWh/an » ; un seul chiffre pour la meme pose.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-011-couvrir2.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x7-013-apres-sim.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X8-014",
+  "verdict": "partiel",
+  "vu": "Telephone WebKit sombre, anon_tech : lanceur avec STOCK, APRES-VENTE, CRM, VISITES, VENTES, CHANTIERS, CALEPINAGE... ; /ventes/devis/nouveau redirige vers « Acces refuse (403) — Votre role ne permet pas d'acceder a cette page » (generateur plus visible). Mais GET /api/django/stock/produits/ repond 200 pour le Technicien avec prix_vente (1667.00 sur le premier produit), prix_fixe_ht, tarif_location_*, paliers_prix_vente ; aucun prix d'achat vu.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-014-gen.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-014-apps.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X8-015",
+  "verdict": "corrige",
+  "vu": "Telephone WebKit sombre, anon_tech : /ventes/factures redirige vers « Acces refuse (403) — Votre role ne permet pas d'acceder a cette page. Contactez un administrateur... » avec seulement « Retour a l'accueil » ; plus de « Nouvelle facture ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-015-factures.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X8-016",
+  "verdict": "partiel",
+  "vu": "Telephone WebKit sombre, anon_tech : /crm/leads/1250 dit « Acces refuse — Vous n'avez pas le droit d'ouvrir ce lead. Contactez un administrateur » (corrige) ; mais /crm/leads?lead=1250 et /crm/leads affichent « Erreur : Vous n'avez pas la permission d'effectuer cette action. » avec un bouton « Reessayer » et un toast identique ; la phrase dit bien une permission (plus « verifiez votre connexion »).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-016-liste.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-x8-016-lead.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X8-017",
+  "verdict": "corrige",
+  "vu": "Telephone WebKit sombre, anon_tech avec une visite assignee (planifiee par anon_admin2 sur R5D-2) : /visites montre la visite, /calepinage/16, /calepinage/16/releve et /calepinage/16/client s'ouvrent (plus de 403) ; le calepinage 15 non assigne repond 404 a l'API. Le planificateur propose anon_tech dans « Assigner a » : coherent.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-tech-visites.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-tech-atelier.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "D-ACAL-106",
+  "verdict": "partiel",
+  "vu": "Telephone WebKit sombre, anon_tech : ouvre la visite assignee (/visites), le calepinage 16 (atelier) et son releve, qu'il remplit et termine (POST releve OK, 12,6 / 8,1) ; leads 403, devis 403 ; calepinage non assigne 404 ; API calepinages = 1 seul resultat. Ecarts : l'atelier affiche « Generer le devis » (et l'etape Documents dit « il est cree a partir du devis, avec ses prix »), un toast « Vous n'avez pas la permission d'effectuer cette action » a l'ouverture (403 photo-toit du lead), « Envoyer le lien » visible sur la vue client avec le meme message ; ouvrir le releve d'un calepinage non assigne montre un formulaire vide « Le releve enregistre n'a pas pu etre relu » + « Terminer le releve » au lieu d'un refus ; stock/produits sert prix_vente.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-tech-atelier.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5d-tech-releve-autre.png",
+  "gravite": "S3"
+ }
+]

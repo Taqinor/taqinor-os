@@ -12,7 +12,6 @@ import { TIMELINE_FILTERS, matchesTimelineFilter } from './timelineFiltres'
 import ChatterTimeline from '../../../components/ChatterTimeline'
 import { formatDate } from '../../../lib/format'
 import { toastError, errorMessageFrom } from '../../../lib/toast'
-import { ecrireStockage } from '../../../lib/stockageBestEffort.js'
 import useDroitMetier from '../../sav/useDroitMetier' // ADRG121 — code fin, sinon palier
 
 // LW20 — Onglet Historique : le chatter devient le fil unique — en-tête
@@ -23,14 +22,9 @@ import useDroitMetier from '../../sav/useDroitMetier' // ADRG121 — code fin, s
 // une note tapée sur un lead ne peut plus structurellement fuiter sur un
 // autre (blueprint D2, recon 05 P1#4).
 
-const FILTER_KEY = 'taqinor.lw.timelineFilter'
-const readFilter = () => {
-  try { return localStorage.getItem(FILTER_KEY) || 'tous' } catch { return 'tous' }
-}
-const writeFilter = (v) => {
-  ecrireStockage('local', FILTER_KEY, v)
-}
-
+// Historique du lead — le filtre n'est plus retenu d'un lead à l'autre ni d'une session à l'autre (il cachait les
+// notes du client sous « Devis » / « Appels » choisi sur une autre fiche) : un lead s'ouvre TOUJOURS sur « Tous » ; le
+// choix tient tant que CE lead reste ouvert.
 const NOTE_ACCEPT = 'application/pdf,image/png,image/jpeg,image/webp'
 
 // PACT104 — vocabulaire STRICTEMENT réutilisé de `Lead.Canal` (aucun nouveau
@@ -72,6 +66,14 @@ export default function TimelineTab({
     setJalonsPour(leadId)
     setJalonsDevis([])
   }
+  // Relus aussi quand l'historique relu (useHistoriqueLead) a CHANGÉ : un devis ouvert/signé par le client apparaît
+  // sans recharger la page (aucun sondage de plus).
+  // Le passage de l'historique vide à sa première lecture fraîche n'est pas un changement (une seule lecture à l'ouverture).
+  const signatureBrute = `${historique?.length ?? 0}:${historique?.[0]?.id ?? ''}`
+  const [premiere, setPremiere] = useState({ leadId, sig: null })
+  if (premiere.leadId !== leadId) setPremiere({ leadId, sig: null })
+  else if (premiere.sig === null && signatureBrute !== '0:') setPremiere({ leadId, sig: signatureBrute })
+  const signatureHistorique = premiere.sig === null || signatureBrute === premiere.sig ? 'ouverture' : signatureBrute
   useEffect(() => {
     if (!leadId) return undefined
     let annule = false
@@ -83,7 +85,7 @@ export default function TimelineTab({
       })
       .catch(() => {})
     return () => { annule = true }
-  }, [leadId])
+  }, [leadId, signatureHistorique])
 
   const chatter = useMemo(
     () => ((historique && historique.length > 0) ? historique : (chatterRecent ?? [])),
@@ -102,8 +104,9 @@ export default function TimelineTab({
     })
   }, [chatter, jalonsDevis])
 
-  const [filter, setFilter] = useState(readFilter)
-  const changeFilter = useCallback((key) => { setFilter(key); writeFilter(key) }, [])
+  const [choix, setChoix] = useState({ leadId, filtre: 'tous' })
+  const filter = choix.leadId === leadId ? choix.filtre : 'tous'
+  const changeFilter = useCallback((key) => setChoix({ leadId, filtre: key }), [leadId])
   const filtered = entries.filter((a) => matchesTimelineFilter(a.kind, filter))
 
   // FG204 — en-tête « 1er contact / dernier contact / N touches ». GET

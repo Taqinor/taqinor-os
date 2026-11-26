@@ -13,7 +13,8 @@ import { CONS_WINDOW_HTML } from '@roofpro/consumptionMarkup' // ERR-ACAL311-PAN
 // le nœud qu'il démasquait était remplacé (détaché), la fenêtre affichée restait `hidden`.
 const CONS_WINDOW_INNER = { __html: CONS_WINDOW_HTML }
 
-export default function InspecteurBuilder({ estCalepinage = false }) {
+// ACAL1268 — `sansReseau` (lead de pompage) : ni production visée, ni production, ni couverture, ni économies, ni consommation.
+export default function InspecteurBuilder({ estCalepinage = false, sansReseau = false }) {
   return (
     <>
         {/* RECOMMANDATION (panneaux/optimiseur visibles ici) */}
@@ -21,34 +22,34 @@ export default function InspecteurBuilder({ estCalepinage = false }) {
           <p className="text-xs font-semibold uppercase tracking-wide text-primary-text">Recommandation</p>
           <p id="rp9-reco-title" className="fig mt-4 text-2xl text-primary-text">—</p>
           <div className="mt-5 border border-border bg-card/60 p-4">
-            <label htmlFor="rp9-need-input" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Panneaux nécessaires</label>
+            <label htmlFor="rp9-need-input" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Panneaux à poser</label>
             <div className="mt-2 flex items-center gap-3">
               <button type="button" id="rp9-need-minus" aria-label="Un de moins" className="h-11 w-11 border border-border text-2xl text-foreground">−</button>
               <input id="rp9-need-input" type="text" inputMode="numeric" defaultValue="—" disabled
                 className="fig h-11 w-20 border border-border bg-background text-center text-2xl text-foreground" />
               <button type="button" id="rp9-need-plus" aria-label="Un de plus" className="h-11 w-11 border border-border text-2xl text-foreground">+</button>
             </div>
-            <label htmlFor="rp9-cible-kwh" className="mt-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Production visée (kWh/an)</label>
-            <input id="rp9-cible-kwh" type="text" inputMode="numeric" autoComplete="off" aria-label="Production annuelle visée en kWh par an"
+            <label htmlFor="rp9-cible-kwh" hidden={sansReseau} className="mt-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Production visée (kWh/an)</label>
+            <input id="rp9-cible-kwh" hidden={sansReseau} type="text" inputMode="numeric" autoComplete="off" aria-label="Production annuelle visée en kWh par an"
               className="fig mt-1 h-11 w-32 border border-border bg-background text-center text-foreground" />
             <p id="rp9-need-note" className="mt-2 min-h-[1.5rem] text-xs text-muted-foreground" aria-live="polite"></p>
           </div>
           <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-6" aria-live="polite">
             <div><dd id="rp9-reco-kwc" className="fig text-2xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Puissance<Pourquoi cle="toit.reco_puissance" /></dt></div>
             <div><dd id="rp9-reco-panels" className="fig text-2xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Panneaux<Pourquoi cle="toit.reco_panneaux" /></dt></div>
-            <div><dd id="rp9-reco-prod" className="fig text-xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Production<Pourquoi cle="toit.reco_production" /></dt></div>
-            <div><dd id="rp9-reco-cover" className="fig text-xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Couverture<Pourquoi cle="toit.reco_couverture" /></dt></div>
+            <div hidden={sansReseau}><dd id="rp9-reco-prod" className="fig text-xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Production<Pourquoi cle="toit.reco_production" /></dt></div>
+            <div hidden={sansReseau}><dd id="rp9-reco-cover" className="fig text-xl text-foreground">—</dd><dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Couverture<Pourquoi cle="toit.reco_couverture" /></dt></div>
           </dl>
-          <dl className="mt-5 border-t border-border pt-5">
+          <dl className="mt-5 border-t border-border pt-5" hidden={sansReseau}>
             <div>
               <dd id="rp9-reco-savings" className="fig text-xl text-primary-text">—</dd>
               <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-1">Économies (estimation de l’atelier, plafonnée à la facture)<Pourquoi cle="toit.reco_economies" /></dt>
               <p id="rp9-reco-savings-note" hidden className="mt-1 text-xs text-muted-foreground">Le chiffre du devis est dans l’onglet Économie</p>
             </div>
           </dl>
-          <p id="rp9-reco-why" className="mt-5 min-h-[3.5rem] text-xs text-foreground"></p>
-          <p id="rp9-reco-bifacial" className="mt-2 text-xs text-muted-foreground"></p>
-          <p id="rp9-reco-band" className="mt-2 min-h-[2.5rem] text-xs text-muted-foreground" aria-live="polite"></p>
+          <p id="rp9-reco-why" hidden={sansReseau} className="mt-5 min-h-[3.5rem] text-xs text-foreground"></p>
+          <p id="rp9-reco-bifacial" hidden={sansReseau} className="mt-2 text-xs text-muted-foreground"></p>
+          <p id="rp9-reco-band" hidden={sansReseau} className="mt-2 min-h-[2.5rem] text-xs text-muted-foreground" aria-live="polite"></p>
           <p id="rp9-maxline" className="mt-3 text-xs text-muted-foreground"></p>
         </div>
 
@@ -81,11 +82,11 @@ export default function InspecteurBuilder({ estCalepinage = false }) {
               <dd id="rp9-areas-total-kwc" className="fig text-lg text-foreground sm:text-xl">—</dd>
               <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Puissance</dt>
             </div>
-            <div>
+            <div hidden={sansReseau}>
               <dd id="rp9-areas-total-prod" className="fig text-lg text-foreground sm:text-xl">—</dd>
               <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Production estimée</dt>
             </div>
-            <div>
+            <div hidden={sansReseau}>
               <dd id="rp9-areas-total-savings" className="fig text-lg text-primary-text sm:text-xl">—</dd>
               <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">Économies estimées</dt>
             </div>
@@ -109,7 +110,7 @@ export default function InspecteurBuilder({ estCalepinage = false }) {
             balisage UNIQUE partagé avec la preview publique (`@roofpro/consumptionMarkup`),
             sans lequel `consumption.ts monterProposition` ne montait rien ici (« Reprendre du
             lead », CSV, Ramadan, classe tarifaire). Objet constant (CONS_WINDOW_INNER) : React ne la réécrit pas. */}
-        <div
+        <div hidden={sansReseau}
           // check-no-danger-allow: CONS_WINDOW_HTML est une chaîne CONSTANTE du dépôt (@roofpro/consumptionMarkup), aucune donnée utilisateur
           dangerouslySetInnerHTML={CONS_WINDOW_INNER}
         />

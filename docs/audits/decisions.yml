@@ -5157,9 +5157,9 @@ decisions:
         texte: "Un AVERTISSEMENT non bloquant sous le champ quand la valeur dépasse 10 fois l'attendu (puissance des onduleurs ; P50 du mois), sans chiffre absolu inventé"
       - cle: bornes_absolues
         texte: "Refuser au-delà de bornes absolues que vous fixez"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q1 de JUGEMENT-R3 (R3-13, R3-29) ; recommandation du juge : avertir_10x"
+    reponse: avertir_10x
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q1 de JUGEMENT-R3 (R3-13, R3-29) ; recommandation du juge : avertir_10x ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1251]
 
   - id: D-ACAL-64
@@ -5169,9 +5169,9 @@ decisions:
         texte: "Oui : la liste (`acal_dryrun_annee_moyenne`) vous est montrée, rien n'est réparé"
       - cle: nouveaux_rendus
         texte: "Nouveaux rendus seulement, sans liste"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q2 de JUGEMENT-R3 ; les nouvelles simulations sont corrigées (correcteur C3A) ; recommandation du juge : lister_et_montrer"
+    reponse: lister_et_montrer
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q2 de JUGEMENT-R3 ; les nouvelles simulations sont corrigées (correcteur C3A) ; recommandation du juge : lister_et_montrer ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1252]
 
   - id: D-ACAL-65
@@ -5181,9 +5181,9 @@ decisions:
         texte: "Oui, comme désignation explicite de l'entrée de la copie (sinon la copie simule sans onduleur et annonce + 1,9 %)"
       - cle: dire
         texte: "Non, mais l'écran de la copie dit « onduleur non désigné » avant de simuler"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q4 de JUGEMENT-R3 (R3-11) ; recommandation du juge : reprendre"
+    reponse: reprendre
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q4 de JUGEMENT-R3 (R3-11) ; recommandation du juge : reprendre ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1253]
 
   - id: D-AGNR-6
@@ -5205,9 +5205,9 @@ decisions:
         texte: "Accepter « 3 ou 4 pages » et dire la vérité (libellé du dialogue, CLAUDE.md, commentaires)"
       - cle: exiger_trois
         texte: "Exiger 3 pages : resserrer la mise en page de la rentabilité, mesurée sur le rendu réel"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q2 de JUGEMENT-R1 (R1-04) ; recommandation du juge : trois_ou_quatre"
+    reponse: trois_ou_quatre
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q2 de JUGEMENT-R1 (R1-04) ; recommandation du juge : trois_ou_quatre ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1222]
 
   - id: D-AMOT-9
@@ -5217,9 +5217,9 @@ decisions:
         texte: "L'économie annuelle des cartes (p.1-2) ; la facture « avec solaire » de la page 4 en dérive, nouveaux rendus seulement"
       - cle: facture_mensuelle
         texte: "La facture « après » calculée mois par mois ; l'économie en dérive (la carte p.1 change)"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q4 de JUGEMENT-R1 (R1-06) ; recommandation du juge : economie_annuelle"
+    reponse: economie_annuelle
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q4 de JUGEMENT-R1 (R1-06) ; recommandation du juge : economie_annuelle ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1218]
 
   - id: D-AMOT-10
@@ -5229,9 +5229,9 @@ decisions:
         texte: "« Barème national de référence » partout (vrai pour tous) ; le générateur reprend le distributeur du lead pour l'affichage"
       - cle: distributeur
         texte: "Nommer le distributeur du lead"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q6 de JUGEMENT-R1 (R1-17) ; recommandation du juge : bareme_national"
+    reponse: bareme_national
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q6 de JUGEMENT-R1 (R1-17) ; recommandation du juge : bareme_national ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1221]
 
   - id: D-AMOT-11
@@ -5241,9 +5241,9 @@ decisions:
         texte: "Non pour l'instant : deux gabarits voulus et testés ; chantier lourd sur la règle #4"
       - cle: oui
         texte: "Oui, en tâche de plan dédiée"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q7 (facultative) de JUGEMENT-R1 (R1-05, classé VOULU) ; recommandation du juge : non ; aucune tâche écrite"
+    reponse: non
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q7 (facultative) de JUGEMENT-R1 (R1-05, classé VOULU) ; recommandation du juge : non ; aucune tâche écrite ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: []
 
   - id: D-AMOT-12
@@ -5253,9 +5253,9 @@ decisions:
         texte: "Oui, par un drapeau de rendu (nouveaux rendus ; envoyés inchangés)"
       - cle: ecran_seulement
         texte: "Écran seulement (déjà fait, D-ACAL-52)"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q5 de JUGEMENT-R2, moitié PDF ; recommandation du juge : niveau_nouveaux_rendus"
+    reponse: ecran_seulement
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q5 de JUGEMENT-R2, moitié PDF ; recommandation du juge : niveau_nouveaux_rendus ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1219]
 
   - id: D-ADEV-7
@@ -5325,9 +5325,9 @@ decisions:
         texte: "Un outil de pose seulement : ni économies ni kWh de réseau, un renvoi clair vers le devis agricole, la pose limitée au champ du devis"
       - cle: panneau_pompage
         texte: "Un panneau Pompage dans l'atelier (pompe, volume d'eau), aligné sur le moteur du devis agricole"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "recette en direct du 22/11/2026 ; question Q1 de JUGEMENT-R5 (R5-14, R5-15) ; recommandation du juge : outil_pose maintenant, panneau_pompage quand D-ACAL-46 passe au niveau de règles 15"
+    reponse: outil_pose
+    date: "2026-11-26"
+    source: "recette en direct du 22/11/2026 ; question Q1 de JUGEMENT-R5 (R5-14, R5-15) ; recommandation du juge : outil_pose maintenant, panneau_pompage quand D-ACAL-46 passe au niveau de règles 15 ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1268]
 
   - id: D-AGR-15
@@ -5349,9 +5349,9 @@ decisions:
         texte: "Garder la valeur de départ, toujours marquée « à confirmer » ; rien de neuf n'est enregistré"
       - cle: etat_inconnu
         texte: "Enregistrer un état « pente inconnue », repris par « Prêt à envoyer ? » et par la visite"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : garder_depart maintenant (construit ainsi), etat_inconnu si la visite doit le reprendre"
+    reponse: garder_depart
+    date: "2026-11-26"
+    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : garder_depart maintenant (construit ainsi), etat_inconnu si la visite doit le reprendre ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1316]
 
   - id: D-ACAL-68
@@ -5361,9 +5361,9 @@ decisions:
         texte: "Les catégories de photos déjà stockées par le relevé ; « Terminer » enregistre et revient à la fiche, sans statut neuf"
       - cle: six_maquette
         texte: "Les six photos de la maquette comme liste fermée, et un statut « relevé terminé » sur le calepinage"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : categories_existantes (aucun statut inventé)"
+    reponse: categories_existantes
+    date: "2026-11-26"
+    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : categories_existantes (aucun statut inventé) ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1319]
 
   - id: D-ACAL-69
@@ -5385,9 +5385,9 @@ decisions:
         texte: "Non pour l'instant : la maquette le montre, aucune position d'onduleur n'est enregistrée aujourd'hui ; l'action reste masquée"
       - cle: construire
         texte: "Oui : enregistrer une position d'onduleur sur le plan et en déduire la longueur de câble"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : plus_tard (aucun chiffre inventé) ; construire demande une donnée neuve"
+    reponse: construire
+    date: "2026-11-26"
+    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : plus_tard (aucun chiffre inventé) ; construire demande une donnée neuve ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1317]
 
   - id: D-ACAL-71
@@ -5397,9 +5397,9 @@ decisions:
         texte: "Oui, lu du stock réel par le sélecteur du stock ; rien affiché quand la quantité n'est pas servie"
       - cle: non
         texte: "Non : le stock ne se lit pas dans l'atelier"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : si_servi"
+    reponse: si_servi
+    date: "2026-11-26"
+    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : si_servi ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1318]
 
   - id: D-ACAL-72
@@ -5421,9 +5421,9 @@ decisions:
         texte: "Oui, corrigé sur place comme tout devis envoyé (règle QJR5), et l'écran le dit avant d'agir"
       - cle: refuser
         texte: "Non : refuser et proposer une révision V2"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : corriger_dire, après le dry-run des écarts montré au fondateur"
+    reponse: corriger_dire
+    date: "2026-11-26"
+    source: "comparaison écrans / maquettes du 22/11/2026 (0 écran fidèle sur 13) ; plan de construction de la fidélité aux maquettes ; recommandation : corriger_dire, après le dry-run des écarts montré au fondateur ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1320]
 
   - id: D-AGNR-7
@@ -5483,9 +5483,9 @@ decisions:
         texte: "Le renommer « Facture ou taille souhaitée renseignée » : il ne promet plus un dimensionnement qu'il ne vérifie pas"
       - cle: ajouter_controle
         texte: "Garder ce contrôle renommé ET ajouter un contrôle « Taille proche de la cible » qui passe à régler quand la pose dépasse deux fois la cible servie"
-    reponse: ouverte
-    date: "2026-11-22"
-    source: "comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage ; constat : le contrôle teste seulement qu'une facture ou une taille souhaitée existe, et dit « Dimensionnée » pour 60 panneaux et ~6 655 kWh par an ; recommandation (de l'auteur du plan, non demandée au fondateur) : renommer d'abord, ajouter le second contrôle seulement si le fondateur veut qu'une taille démesurée gêne l'envoi"
+    reponse: renommer
+    date: "2026-11-26"
+    source: "comparaison écrans / maquettes du 22/11/2026 (1 écran fidèle sur 13 à la troisième passe) ; reconstruction des écrans du calepinage ; constat : le contrôle teste seulement qu'une facture ou une taille souhaitée existe, et dit « Dimensionnée » pour 60 panneaux et ~6 655 kWh par an ; recommandation (de l'auteur du plan, non demandée au fondateur) : renommer d'abord, ajouter le second contrôle seulement si le fondateur veut qu'une taille démesurée gêne l'envoi ; RÉPONDUE par le fondateur le 26/11/2026 (questions interactives, question posée le 2026-11-22)"
     taches: [ACAL1332]
 
   - id: D-ACAL-78
@@ -6163,7 +6163,7 @@ decisions:
         texte: "Toujours la conception électrique rangée du devis (une seule option, avec batterie quand elle est servable), jamais les chaînes du calepinage ; la page montre le même schéma quelle que soit l'option choisie"
     reponse: calepinage_sinon_conception_par_option
     date: "2026-11-26"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (option recommandée et réversible) ; demande du fondateur le 26/11/2026, mot pour mot : « i want this shema unifilaire i hade to be changed by the new schema electique that calpinage use that shows the chaines of pannels in 4 colors and show the inverter the grid and everything (if it does not show the battery make is show it) » ; conception et lanes : docs/audits/l5-calepinage/schema-electrique-devis.md ; contrat : backend/django_core/apps/ventes/contract_samples/schema_electrique.json"
+    source: "décision prise par l'orchestrateur en l'absence du fondateur, CONFIRMÉE PAR LE FONDATEUR le 26/11/2026 (« all the 18 choices are good ») (option recommandée et réversible) ; demande du fondateur le 26/11/2026, mot pour mot : « i want this shema unifilaire i hade to be changed by the new schema electique that calpinage use that shows the chaines of pannels in 4 colors and show the inverter the grid and everything (if it does not show the battery make is show it) » ; conception et lanes : docs/audits/l5-calepinage/schema-electrique-devis.md ; contrat : backend/django_core/apps/ventes/contract_samples/schema_electrique.json"
 
   - id: D-HYB-6
     question: "Le moteur de devis RÉSIDENTIEL (apps/ventes/solar_design.py::match_inverter) écarte tout onduleur au-delà d'un rapport DC/AC de 1,35 (MAX_DC_AC), hybride compris, et prend le plus gros quand aucun ne convient (« plus grosse puissance retenue, vérifier la conception »). Le calepinage et le moteur C&I jugent déjà un hybride à la puissance PV maximale de sa fiche (D-HYB-1). Le devis résidentiel doit-il juger un hybride de la même façon ?"
@@ -6172,9 +6172,9 @@ decisions:
         texte: "(recommandée) Oui : un hybride dont la fiche publie sa puissance PV maximale (ond_dc_max_kwc) est retenu jusqu'à elle, par la même fonction du noyau (core.electrique.onduleurs.capacite_dc_appareil_kwc) ; sans valeur publiée, 1,35 reste la borne. Change l'onduleur choisi par les NOUVEAUX devis résidentiels ; les devis envoyés gardent ce que le client a reçu"
       - cle: b_inchange
         texte: "Non : le devis résidentiel garde 1,35 pour tout onduleur ; le calepinage et le devis résidentiel peuvent alors se contredire sur le même hybride (le calepinage « bon », le devis « vérifier la conception »)"
-    reponse: ouverte
+    reponse: b_inchange
     date: "2026-11-26"
-    source: "lane lot6/ratio-hybride (lead 1742 : 48 × 715 W = 34,32 kWc sur un hybride Deye 20 kW, « 1,72 pour 1,35 au plus » dans « Prêt à envoyer ? ») ; conséquence calculée sur le catalogue de départ (migration stock 0182, puissances PV maximales des fiches Deye : 10 kW → 20 kWc, 12 kW → 24 kWc, 15 kW → 30 kWc, 20 kW → 40 kWc, soit 2,0 × la puissance AC) : avec (a) un hybride porte jusqu'à 2,0 × sa puissance AC au lieu de 1,35 ×, donc pour 34,32 kWc le 20 kW convient (34,32 ≤ 40) alors qu'avec (b) aucun hybride du catalogue ne passe et le 20 kW n'est pris qu'en repli signalé ; aucune lecture de la production faite (nombre de devis résidentiels concernés non mesuré)"
+    source: "RÉPONDUE par le fondateur le 26/11/2026 (soir), en deux temps : d'abord « même règle que le calepinage » sur une question MAL POSÉE (le devis résidentiel ne choisit pas par 1,35 : `match_inverter` n'a aucun appelant en production ; le choix réel est le plus petit onduleur d'au moins 0,8 × la puissance des panneaux, `domain/composition_residentielle.py::choisir_onduleur`, et le contrôle à 1,35 applique déjà la capacité publiée d'un hybride, D-HYB-1) ; puis, la question corrigée, « garder le choix d'aujourd'hui » : rien ne change dans les devis, un vendeur peut toujours choisir un hybride plus petit à la main. La branche lot8/hyb6-residentiel n'est pas pliée. lane lot6/ratio-hybride (lead 1742 : 48 × 715 W = 34,32 kWc sur un hybride Deye 20 kW, « 1,72 pour 1,35 au plus » dans « Prêt à envoyer ? ») ; conséquence calculée sur le catalogue de départ (migration stock 0182, puissances PV maximales des fiches Deye : 10 kW → 20 kWc, 12 kW → 24 kWc, 15 kW → 30 kWc, 20 kW → 40 kWc, soit 2,0 × la puissance AC) : avec (a) un hybride porte jusqu'à 2,0 × sa puissance AC au lieu de 1,35 ×, donc pour 34,32 kWc le 20 kW convient (34,32 ≤ 40) alors qu'avec (b) aucun hybride du catalogue ne passe et le 20 kW n'est pris qu'en repli signalé ; aucune lecture de la production faite (nombre de devis résidentiels concernés non mesuré)"
     taches: []
   - id: D-ACAL-132
     question: "La page client (proposition) montre une visionneuse 3D au soleil figé ; l'écran Panneaux du calepinage montre le soleil qui bouge (lecture, heure, Hiver / Été) et l'ensoleillement de chaque panneau. Quels clients ont cette visionneuse sur leur page ?"
@@ -6203,7 +6203,7 @@ decisions:
         texte: "Oui : tous les liens ont la visionneuse au soleil (la teinte et les objets voisins compris)"
     reponse: standard_inchange
     date: "2026-11-26"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER (option recommandée, la plus proche de la demande D-ACAL-132 et réversible par une ligne serveur) ; docs/audits/l5-calepinage/visionneuse-soleil-client.md"
+    source: "décision prise par l'orchestrateur en l'absence du fondateur, CONFIRMÉE PAR LE FONDATEUR le 26/11/2026 (« all the 18 choices are good ») (option recommandée, la plus proche de la demande D-ACAL-132 et réversible par une ligne serveur) ; docs/audits/l5-calepinage/visionneuse-soleil-client.md"
     taches: []
   - id: D-ACAL-135
     question: "Visionneuse de confiance : à quel instant s'ouvre-t-elle, et quels raccourcis de saison montre-t-elle ?"
@@ -6214,7 +6214,7 @@ decisions:
         texte: "Ouverture au solstice d'hiver à midi (le pire cas d'ombrage, défaut du constructeur), Hiver et Été montrés"
     reponse: comme_montrer_au_client
     date: "2026-11-26"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; règle reprise de frontend/src/features/calepinage/client/HabillageClient.jsx et vueClient.helpers.js::instantSoleilChoisi ; docs/audits/l5-calepinage/visionneuse-soleil-client.md"
+    source: "décision prise par l'orchestrateur en l'absence du fondateur, CONFIRMÉE PAR LE FONDATEUR le 26/11/2026 (« all the 18 choices are good ») ; règle reprise de frontend/src/features/calepinage/client/HabillageClient.jsx et vueClient.helpers.js::instantSoleilChoisi ; docs/audits/l5-calepinage/visionneuse-soleil-client.md"
     taches: []
   - id: D-ACAL-136
     question: "Visionneuse de confiance : d'où vient la couleur de chaque panneau, et que montre la page quand l'ombre n'a pas été mesurée ?"
@@ -6225,7 +6225,7 @@ decisions:
         texte: "Sans mesure, teindre tout le toit en « plein soleil » comme le fait l'atelier quand aucune ombre n'est saisie"
     reponse: acces_enregistre_rien_si_absent
     date: "2026-11-26"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; règle maison « une mesure absente ne vaut pas du plein soleil » (shadingUi.ts, calepinage_documents.json « manque ») ; conséquence : un toit sans obstacle à hauteur saisie ni ombre tracée verra le soleil bouger sans couleurs (cas du devis industriel du 26/11 non vérifié) ; docs/audits/l5-calepinage/visionneuse-soleil-client.md"
+    source: "décision prise par l'orchestrateur en l'absence du fondateur, CONFIRMÉE PAR LE FONDATEUR le 26/11/2026 (« all the 18 choices are good ») ; règle maison « une mesure absente ne vaut pas du plein soleil » (shadingUi.ts, calepinage_documents.json « manque ») ; conséquence : un toit sans obstacle à hauteur saisie ni ombre tracée verra le soleil bouger sans couleurs (cas du devis industriel du 26/11 non vérifié) ; docs/audits/l5-calepinage/visionneuse-soleil-client.md"
     taches: []
   - id: D-ACAL-137
     question: "Visionneuse de confiance : dessiner les objets voisins saisis dans l'atelier (arbres, bâtiments, poteaux, haies) dont l'ombre teinte les panneaux ?"
@@ -6236,7 +6236,7 @@ decisions:
         texte: "Non : seuls le bâtiment, les obstacles du toit et les panneaux sont dessinés"
     reponse: geometrie_sans_libelle
     date: "2026-11-26"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; sans eux un panneau pourrait paraître ombragé sans rien qui l'ombre à l'écran ; docs/audits/l5-calepinage/visionneuse-soleil-client.md"
+    source: "décision prise par l'orchestrateur en l'absence du fondateur, CONFIRMÉE PAR LE FONDATEUR le 26/11/2026 (« all the 18 choices are good ») ; sans eux un panneau pourrait paraître ombragé sans rien qui l'ombre à l'écran ; docs/audits/l5-calepinage/visionneuse-soleil-client.md"
     taches: []
   - id: D-ACAL-138
     question: "Visionneuse de confiance : la carte satellite reste-t-elle libre (dézoom jusqu'à la ville, comme la visionneuse d'aujourd'hui) ?"
@@ -6247,7 +6247,7 @@ decisions:
         texte: "Bornée sur toutes les pages client, tous niveaux"
     reponse: bornee_au_toit
     date: "2026-11-26"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; consigne de l'orchestrateur du 26/11 (« une image ou des tuiles pour le toit du client seulement, jamais une carte libre ») ; la visionneuse d'aujourd'hui est volontairement non bornée (apps/web/tests/propositionViewerFull.test.ts « aucune borne de navigation ») — la borner partout changerait les autres niveaux ; docs/audits/l5-calepinage/visionneuse-soleil-client.md"
+    source: "décision prise par l'orchestrateur en l'absence du fondateur, CONFIRMÉE PAR LE FONDATEUR le 26/11/2026 (« all the 18 choices are good ») ; consigne de l'orchestrateur du 26/11 (« une image ou des tuiles pour le toit du client seulement, jamais une carte libre ») ; la visionneuse d'aujourd'hui est volontairement non bornée (apps/web/tests/propositionViewerFull.test.ts « aucune borne de navigation ») — la borner partout changerait les autres niveaux ; docs/audits/l5-calepinage/visionneuse-soleil-client.md"
     taches: []
   - id: D-ACAL-139
     question: "L'étude électrique du devis propose-t-elle, comme le calepinage, des chaînes de longueurs différentes sur des entrées différentes quand la répartition à chaînes égales ne tient pas ?"
@@ -6258,7 +6258,7 @@ decisions:
         texte: "Non : l'étude du devis garde les chaînes égales, même quand elles dépassent le courant admis par une entrée de l'onduleur"
     reponse: nouveaux_rendus
     date: "2026-11-26"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; constat du 26/11 sur un vrai dossier (35 panneaux de 715 W sur un hybride 20 kW à deux entrées de 54 A : 5 chaînes de 7 mettent 66,9 A sur une entrée ; 12 + 12 sur une entrée et 11 sur l'autre tient) ; conséquence mesurée sur ce cas : seul le calibre du sectionneur DC change au bordereau (45 A au lieu de 67 A), le câble DC reste à 120 m ; une répartition égale valide sort identique ; apps/ventes/domain/regles_calcul.py::COUPURE_CHAINES_INEGALES"
+    source: "décision prise par l'orchestrateur en l'absence du fondateur, CONFIRMÉE PAR LE FONDATEUR le 26/11/2026 (« all the 18 choices are good ») ; constat du 26/11 sur un vrai dossier (35 panneaux de 715 W sur un hybride 20 kW à deux entrées de 54 A : 5 chaînes de 7 mettent 66,9 A sur une entrée ; 12 + 12 sur une entrée et 11 sur l'autre tient) ; conséquence mesurée sur ce cas : seul le calibre du sectionneur DC change au bordereau (45 A au lieu de 67 A), le câble DC reste à 120 m ; une répartition égale valide sort identique ; apps/ventes/domain/regles_calcul.py::COUPURE_CHAINES_INEGALES"
     taches: []
   - id: D-ACAL-140
     question: "Sur la page du client, de quelle étude vient le schéma électrique ?"
@@ -6269,7 +6269,7 @@ decisions:
         texte: "Aussi d'une étude calculée à l'ouverture de la page pour l'option qui n'en a pas (le schéma peut alors changer quand une fiche technique ou le calepinage change)"
     reponse: etude_rangee_seulement
     date: "2026-11-26"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; relecture indépendante du 26/11 (un devis envoyé garde ce que le client a reçu ; rien d'incertain côté client) ; l'écran du devis dans l'ERP garde les deux options ; apps/ventes/electrical_service.py::schema_electrique_public"
+    source: "décision prise par l'orchestrateur en l'absence du fondateur, CONFIRMÉE PAR LE FONDATEUR le 26/11/2026 (« all the 18 choices are good ») ; relecture indépendante du 26/11 (un devis envoyé garde ce que le client a reçu ; rien d'incertain côté client) ; l'écran du devis dans l'ERP garde les deux options ; apps/ventes/electrical_service.py::schema_electrique_public"
     taches: []
   - id: D-ACAL-141
     question: "Quand le schéma électrique du devis reprend-il les chaînes réelles du calepinage plutôt que celles de l'étude du devis ?"
@@ -6280,7 +6280,7 @@ decisions:
         texte: "Dès que le toit et le nombre de panneaux sont les mêmes, quel que soit l'onduleur"
     reponse: meme_toit_meme_onduleur
     date: "2026-11-26"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; précise D-ACAL-131 après la relecture indépendante du 26/11 (un schéma moitié calepinage, moitié devis montrait des chaînes sous un onduleur qui n'était pas le leur) ; vaut pour l'écran du devis dans l'ERP et l'annexe des nouveaux rendus"
+    source: "décision prise par l'orchestrateur en l'absence du fondateur, CONFIRMÉE PAR LE FONDATEUR le 26/11/2026 (« all the 18 choices are good ») ; précise D-ACAL-131 après la relecture indépendante du 26/11 (un schéma moitié calepinage, moitié devis montrait des chaînes sous un onduleur qui n'était pas le leur) ; vaut pour l'écran du devis dans l'ERP et l'annexe des nouveaux rendus"
     taches: []
   - id: D-ACAL-142
     question: "Sur la page du client, que montre le schéma électrique pour une partie qui n'est pas encore calculée ou pas confirmée (côté réseau non dimensionné, étage moyenne tension à confirmer) ?"
@@ -6291,7 +6291,7 @@ decisions:
         texte: "La partie est dessinée en pointillé avec la mention « à dimensionner » ou « à confirmer »"
     reponse: rien
     date: "2026-11-26"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; application de la décision du fondateur des 26-27/10/2026 (rien d'incertain côté client sur un devis commercial ou industriel) ; l'écran de l'ERP garde les mentions ; le schéma de la page est dessiné en HTML (il se replie sur un téléphone), sans visionneuse plein écran ni téléchargement SVG quand il est servi"
+    source: "décision prise par l'orchestrateur en l'absence du fondateur, CONFIRMÉE PAR LE FONDATEUR le 26/11/2026 (« all the 18 choices are good ») ; application de la décision du fondateur des 26-27/10/2026 (rien d'incertain côté client sur un devis commercial ou industriel) ; l'écran de l'ERP garde les mentions ; le schéma de la page est dessiné en HTML (il se replie sur un téléphone), sans visionneuse plein écran ni téléchargement SVG quand il est servi"
     taches: []
   - id: D-ACAL-143
     question: "Sur la visionneuse au soleil de la page du client, comment l'heure est-elle dite ?"
@@ -6302,7 +6302,7 @@ decisions:
         texte: "L'heure est affichée seule (« 12 h »), comme sur « Montrer au client » de l'ERP"
     reponse: heure_solaire_dite
     date: "2026-11-26"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; relecture indépendante du 26/11 : au Maroc le midi solaire tombe vers 13 h 30 à la montre du client, une heure nue serait lue à tort comme une heure d'horloge"
+    source: "décision prise par l'orchestrateur en l'absence du fondateur, CONFIRMÉE PAR LE FONDATEUR le 26/11/2026 (« all the 18 choices are good ») ; relecture indépendante du 26/11 : au Maroc le midi solaire tombe vers 13 h 30 à la montre du client, une heure nue serait lue à tort comme une heure d'horloge"
     taches: []
   - id: D-ACAL-144
     question: "Un pan en pente tourné au nord ne reçoit aucun panneau. La note de besoin (atelier et estimateur du site public) disait « On pose N panneaux » alors que rien n'est posé. Que doit-elle dire ?"
@@ -6313,7 +6313,7 @@ decisions:
         texte: "Garder l'ancienne phrase sur le site public"
     reponse: verite_zero
     date: "2026-11-26"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; relecture indépendante de la lane de l'atelier web (26/11) : l'ancienne phrase annonçait une pose qui n'a pas lieu (ACAL1970)"
+    source: "décision prise par l'orchestrateur en l'absence du fondateur, CONFIRMÉE PAR LE FONDATEUR le 26/11/2026 (« all the 18 choices are good ») ; relecture indépendante de la lane de l'atelier web (26/11) : l'ancienne phrase annonçait une pose qui n'a pas lieu (ACAL1970)"
     taches: [ACAL1970]
   - id: D-ACAL-145
     question: "ACAL1923 demandait d'enregistrer un toit plat avec une pente de 0. Construite ainsi, elle réécrit au prochain enregistrement tous les toits plats stockés (la pente mémorisée du curseur, 22° par défaut) : document modifié sans geste, empreinte déplacée, production recalculée. Comment la faire ?"
@@ -6324,7 +6324,7 @@ decisions:
         texte: "Écrire 0 à l'enregistrement, en acceptant que les documents stockés changent"
     reponse: lecture_seulement
     date: "2026-11-26"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; lane construite puis retirée (cinq tests d'aller-retour rouges), relecture indépendante du 26/11 ; faite pour la contenance, la reprise de visite et le diff de versions — quatre autres lecteurs attendent D-ACAL-149"
+    source: "décision prise par l'orchestrateur en l'absence du fondateur, CONFIRMÉE PAR LE FONDATEUR le 26/11/2026 (« all the 18 choices are good ») ; lane construite puis retirée (cinq tests d'aller-retour rouges), relecture indépendante du 26/11 ; faite pour la contenance, la reprise de visite et le diff de versions — quatre autres lecteurs attendent D-ACAL-149"
     taches: [ACAL1923]
   - id: D-ACAL-146
     question: "Une simulation périmée disait toujours « le document a changé ». La trace gardée au calcul ne prouve la cause que pour deux familles de réglages de la société. Que disent le motif et le bouton quand la cause n'est pas prouvée ?"
@@ -6335,7 +6335,7 @@ decisions:
         texte: "Garder « le document a changé » dans tous les cas"
     reponse: cause_prouvee_seulement
     date: "2026-11-26"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; relecture indépendante du 26/11 : la norme électrique et la grille horaire entrent dans l'empreinte sans être figées au calcul (ACAL1647)"
+    source: "décision prise par l'orchestrateur en l'absence du fondateur, CONFIRMÉE PAR LE FONDATEUR le 26/11/2026 (« all the 18 choices are good ») ; relecture indépendante du 26/11 : la norme électrique et la grille horaire entrent dans l'empreinte sans être figées au calcul (ACAL1647)"
     taches: [ACAL1647]
   - id: D-ACAL-147
     question: "Pour un fichier météo horizontal, les étapes qui dépendent du soleil (angle d'incidence, horizon, inter-rangées, ombrage, bifacial) plaçaient le soleil à l'heure pile alors que la transposition le plaçait à la demi-heure. Elles prennent maintenant le même instant : les nouvelles simulations sur ces fichiers changent légèrement. Faut-il changer la version de la simulation ?"
@@ -6346,7 +6346,7 @@ decisions:
         texte: "Oui : nouvelle version, toutes les simulations stockées deviennent « périmées »"
     reponse: trace_sans_version
     date: "2026-11-26"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; relecture indépendante du 26/11 ; mesuré sur la fixture : l'écart est-ouest passe de 12,5 % à 5,5 % en année type"
+    source: "décision prise par l'orchestrateur en l'absence du fondateur, CONFIRMÉE PAR LE FONDATEUR le 26/11/2026 (« all the 18 choices are good ») ; relecture indépendante du 26/11 ; mesuré sur la fixture : l'écart est-ouest passe de 12,5 % à 5,5 % en année type"
     taches: [ACAL1715]
   - id: D-ACAL-148
     question: "Le devis généré depuis un calepinage chiffre l'onduleur de la conception du lead, pas celui désigné à l'étape Électrique du calepinage (constaté au tour 5 : Deye 5 kW hybride désigné, « Onduleur réseau Huawei 5 kW » au devis). L'écran le dit maintenant, mais le devis ne suit pas. Le devis doit-il chiffrer l'onduleur désigné ?"
@@ -6355,9 +6355,9 @@ decisions:
         texte: "(recommandée) Oui : le devis généré depuis le calepinage reprend l'onduleur désigné quand il existe au catalogue avec un prix ; sinon il garde celui de la conception et le dit"
       - cle: b_garder_la_conception
         texte: "Non : le devis garde l'onduleur de la conception du lead ; la désignation du calepinage ne sert qu'au contrôle électrique"
-    reponse: ouverte
+    reponse: a_suivre_le_designe
     date: "2026-11-26"
-    source: "tour 5 du L5, rejeu du paquet C sur la pile de revue (26/11/2026), constat T4-X5-010 « pas corrigé » ; composition et prix relèvent d'apps/ventes"
+    source: "RÉPONDUE par le fondateur, séance de questions du 26/11/2026 (soir) ; tour 5 du L5, rejeu du paquet C sur la pile de revue (26/11/2026), constat T4-X5-010 « pas corrigé » ; composition et prix relèvent d'apps/ventes"
     taches: []
   - id: D-ACAL-149
     question: "Quatre lecteurs prennent encore la pente mémorisée d'un toit plat (22° par défaut) pour une vraie pente : la traduction vers le moteur (pose affleurante au lieu de rangées espacées, donc trop de modules — derrière un réglage aujourd'hui éteint), la pente imprimée sur la planche du PDF du devis, et l'inclinaison utilisée pour la production de l'étude (deux fonctions). Les corriger change des chiffres de documents client."
@@ -6366,9 +6366,9 @@ decisions:
         texte: "(recommandée) Les corriger pour les nouveaux rendus seulement, derrière une coupure datée ; les devis envoyés gardent ce que le client a reçu"
       - cle: b_laisser
         texte: "Ne pas y toucher"
-    reponse: ouverte
+    reponse: a_nouveaux_rendus
     date: "2026-11-26"
-    source: "lane lot6/acal-toit-plat-pente (26/11/2026) : lecteurs `apps/calepinage/services/traduction.py::_pente_et_azimut`, `services/planche.py`, `apps/ventes/domain/geometrie.py::orientation_du_pan` et `::_zone_villa_depuis_pan`"
+    source: "RÉPONDUE par le fondateur, séance de questions du 26/11/2026 (soir) ; lane lot6/acal-toit-plat-pente (26/11/2026) : lecteurs `apps/calepinage/services/traduction.py::_pente_et_azimut`, `services/planche.py`, `apps/ventes/domain/geometrie.py::orientation_du_pan` et `::_zone_villa_depuis_pan`"
     taches: [ACAL1923]
   - id: D-ACAL-150
     question: "Un calepinage sans facture ni socle où l'utilisateur ne déclare qu'une charge (voiture électrique, pompe à chaleur) : les anciens documents portent une courbe de base de 24 zéros, les nouveaux n'en portent plus. Les deux doivent-ils donner le même résultat ?"
@@ -6379,5 +6379,226 @@ decisions:
         texte: "Garder deux comportements selon l'âge du document"
     reponse: meme_regle
     date: "2026-11-26"
-    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; relecture finale du lot 7 : deux lanes justes chacune, deux résultats différents pour la même saisie selon l'âge du document (ACAL1962)"
+    source: "décision prise par l'orchestrateur en l'absence du fondateur, CONFIRMÉE PAR LE FONDATEUR le 26/11/2026 (« all the 18 choices are good ») ; relecture finale du lot 7 : deux lanes justes chacune, deux résultats différents pour la même saisie selon l'âge du document (ACAL1962)"
     taches: [ACAL1962]
+  - id: D-ACAL-151
+    question: "Les variateurs VEICHI SI22 / SI23 : la description du catalogue dit « protection marche à sec », leur fiche technique ne le dit pas et rien dans le dépôt ne le rattache à un document du fabricant. Que disent les nouveaux devis de pompage ?"
+    options:
+      - cle: retirer_tant_que_non_prouve
+        texte: "(recommandée) Les nouveaux devis n'impriment plus « protection marche à sec » pour ces variateurs tant que la fiche ne le dit pas ; la phrase revient d'elle-même quand la fiche est remplie avec sa source. Les devis envoyés ne changent pas"
+      - cle: remplir_les_fiches
+        texte: "C'est vrai : remplir les 15 fiches avec le manuel pour source"
+      - cle: verifier_d_abord
+        texte: "Le fondateur vérifie le manuel d'abord"
+    reponse: retirer_tant_que_non_prouve
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (soir) ; tour 5 du L5, constat T4-V2-010"
+    taches: []
+  - id: D-ACAL-152
+    question: "Le Technicien voit les prix de vente dans la liste du stock (colonnes « Prix vente HT » et « Prix TTC » ; aucun prix d'achat). Les lui masquer ?"
+    options:
+      - cle: masquer
+        texte: "(recommandée) Oui : une permission « voir les prix de vente », portée par tous les rôles sauf Technicien et Technicien responsable ; le serveur ne leur sert plus les champs de prix, la liste du stock et les sélecteurs de produits ne montrent aucun prix"
+      - cle: laisser
+        texte: "Non : les laisser visibles"
+    reponse: masquer
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (soir) ; tour 5 du L5, constats T4-X8-014 et R5E-X1 ; prolonge D-ACAL-106 (« aucun devis ni aucun prix »)"
+    taches: []
+  - id: D-ACAL-153
+    question: "Sur la fiche d'un lead, chaque clic sur « Devis auto » crée un nouveau brouillon au lieu de rouvrir le précédent. Changer ?"
+    options:
+      - cle: reprendre_le_brouillon
+        texte: "Rouvrir et rafraîchir le brouillon automatique non envoyé ni retouché"
+      - cle: un_brouillon_par_clic
+        texte: "Ne rien changer : un nouveau brouillon à chaque clic"
+    reponse: un_brouillon_par_clic
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (soir) ; tour 5 du L5, constat R5D-N3 — le fondateur garde le comportement actuel (la recommandation était l'autre option)"
+    taches: []
+  - id: D-ACAL-154
+    question: "La taille visée tapée dans l'onglet Devis d'un lead n'est lue que par le bouton « Devis automatique » de cet onglet ; les deux autres boutons (rail, palette de commandes) l'ignorent. Les faire tous la lire touche trois fichiers de l'écran du lead (état seulement, aucune mise en page)."
+    options:
+      - cle: tous_la_lisent
+        texte: "(recommandée) Oui : les trois boutons utilisent la taille tapée ; l'écran du lead garde exactement la même apparence"
+      - cle: laisser
+        texte: "Ne rien changer"
+    reponse: tous_la_lisent
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (soir) ; tour 5 du L5, constat T4-X1-004 (seconde moitié) — accord explicite pour toucher ces trois fichiers de l'écran du lead, sans changement de mise en page"
+    taches: []
+  - id: D-ACAL-155
+    question: "En mode Expert de l'atelier, « Panneaux nécessaires 16 » (le nombre à poser) côtoie « Cible — 7 panneaux » (ce que la facture demande). Renommer le premier ?"
+    options:
+      - cle: panneaux_a_poser
+        texte: "(recommandée) Le champ devient « Panneaux à poser » ; « Cible » garde son sens"
+      - cle: garder
+        texte: "Garder « Panneaux nécessaires »"
+    reponse: panneaux_a_poser
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (soir) ; tour 5 du L5, constat T4-X8-012"
+    taches: []
+  - id: D-ACAL-156
+    question: "Kit de pompage : le câble DC n'entre au devis que si la distance forage → champ de panneaux est renseignée sur le lead ; sinon aucune ligne de câble et aucun message. Que faire quand la distance manque ?"
+    options:
+      - cle: alerte_nommant_le_champ
+        texte: "(recommandée) Le devis est créé, avec une alerte pour le vendeur : câble non chiffré, renseigner la distance forage → champ ; aucune longueur inventée"
+      - cle: exiger_la_distance
+        texte: "Refuser le devis automatique tant que la distance manque"
+      - cle: laisser
+        texte: "Ne rien changer"
+    reponse: alerte_nommant_le_champ
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (soir) ; tour 5 du L5, D-ACAL-112 partielle (« protections et leur câble »)"
+    taches: []
+  - id: D-ACAL-157
+    question: "L'étape Électrique de l'atelier ne permet pas de désigner une batterie à l'écran. Ajouter un sélecteur ?"
+    options:
+      - cle: ajouter
+        texte: "(recommandée) Oui : un sélecteur de batterie à côté de celui de l'onduleur, depuis le catalogue, sans prix, « aucune » par défaut, proposé seulement quand l'onduleur désigné est un hybride ; le schéma montre alors la batterie"
+      - cle: pas_maintenant
+        texte: "Pas maintenant"
+    reponse: ajouter
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (soir) ; second regard sur la pile du 26/11 (constat N2 de visuel-lot7.json) ; contrat d'abord : `candidats.batteries` et le caractère hybride de l'onduleur servi par le serveur"
+    taches: []
+  - id: D-ACAL-158
+    question: "Sur la page client d'un devis à deux options, un seul schéma électrique est montré (l'option dont la conception est stockée ; D-ACAL-140 retient à la page client ce qui est calculé à la lecture). Que voit le client ?"
+    options:
+      - cle: stocker_et_montrer_les_deux
+        texte: "(recommandée) À l'envoi d'un devis à deux options, une conception est stockée pour chaque option : la page client et l'annexe du PDF montrent un schéma par option. Pour les devis envoyés à partir de maintenant"
+      - cle: un_seul
+        texte: "Garder un seul schéma"
+    reponse: stocker_et_montrer_les_deux
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (soir) ; second regard sur la pile du 26/11 (devis à deux options : `sans_batterie` nul sur la page) ; D-ACAL-140 reste vraie — le client ne reçoit que du stocké, et les deux options le deviennent"
+    taches: []
+  - id: D-ACAL-159
+    question: "Un onduleur HYBRIDE est désigné à l'étape Électrique, mais le devis est généré « sans batterie » (cas vu en essai : hybride Deye désigné, onduleur réseau chiffré). Que porte le devis ?"
+    options:
+      - cle: hybride_seul
+        texte: "(recommandée) L'hybride désigné, sans batterie ; une batterie pourra s'ajouter plus tard sans changer d'onduleur"
+      - cle: basculer_avec_batterie
+        texte: "Le devis bascule en « avec batterie » : l'hybride désigné ET une batterie"
+      - cle: garder_le_reseau_et_le_dire
+        texte: "Garder un onduleur réseau et dire à l'écran que l'hybride désigné n'a pas été repris"
+    reponse: basculer_avec_batterie
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (nuit) ; suite de D-ACAL-148 ; le fondateur n'a PAS retenu l'option recommandée. Borne posée par l'orchestrateur, à confirmer : si aucune batterie n'est composable avec l'hybride désigné selon la règle de composition du devis (en stock, tarifée, compatible), le devis garde son choix de catalogue et l'écran le dit en nommant l'hybride désigné — jamais un hybride « avec batterie » sans batterie"
+    taches: []
+  - id: D-ACAL-160
+    question: "Devis de pompage sans distance forage → champ : le câble DC n'est pas chiffré (le vendeur reçoit une alerte, D-ACAL-156). La liste « Non inclus » du PDF du client doit-elle le dire ?"
+    options:
+      - cle: lister_non_inclus
+        texte: "(recommandée) La page 3 dit que le câble DC entre le forage et les panneaux n'est pas inclus et sera chiffré après mesure"
+      - cle: ne_rien_dire_au_client
+        texte: "Le PDF reste tel quel ; seul le vendeur voit l'alerte"
+    reponse: ne_rien_dire_au_client
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (nuit) ; le fondateur n'a PAS retenu l'option recommandée ; aucun changement au PDF agricole"
+    taches: []
+  - id: D-ACAL-161
+    question: "Visionneuse 3D simplifiée de la page du client (repli quand la visionneuse pleine ne charge pas) et estimateur public : les panneaux inclinés flottent sans support. Des pieds de châssis partout, ou seulement pour les liens « client de confiance » ?"
+    options:
+      - cle: pieds_partout
+        texte: "(recommandée) Des pieds sous les panneaux inclinés pour tous les liens et sur l'estimateur public ; purement visuel, aucun chiffre ne change"
+      - cle: confiance_seulement
+        texte: "Liens ordinaires et estimateur public inchangés"
+    reponse: pieds_partout
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (nuit) ; exception explicite à D-ACAL-134 (« les liens ordinaires ne changent pas ») pour ce seul point"
+    taches: []
+  - id: D-ACAL-162
+    question: "Le bouton « Tout recalculer » des réglages de simulation (il relance toutes les simulations périmées de la société) est ouvert à Commercial, Commercial responsable et Administrateur ; changer les réglages est réservé à ceux qui approuvent un calepinage. Réserver le bouton de la même façon ?"
+    options:
+      - cle: laisser_ouvert
+        texte: "(recommandée) Non : il ne change aucun réglage, il relance seulement des calculs déjà périmés"
+      - cle: reserver_aux_approbateurs
+        texte: "Oui, le réserver à ceux qui approuvent"
+    reponse: laisser_ouvert
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (nuit) ; tour 5 du L5, paquet E"
+    taches: []
+  - id: D-ACAL-163
+    question: "D-ACAL-159 bascule le devis en « avec batterie » quand un hybride est désigné. Si AUCUNE batterie ne peut être mise au devis avec cet hybride (aucune en stock avec un prix, ou aucune compatible) ?"
+    options:
+      - cle: garder_catalogue_et_dire
+        texte: "(recommandée) Le devis est créé avec l'onduleur que choisit la règle du catalogue, et le vendeur lit que l'hybride désigné n'a pas été repris, faute de batterie"
+      - cle: refuser
+        texte: "Refuser le devis tant qu'une batterie compatible n'est pas en stock"
+    reponse: garder_catalogue_et_dire
+    date: "2026-11-26"
+    source: "fondateur, questions interactives du 26/11/2026 (quatrième séance) ; confirme la borne posée par l'orchestrateur sous D-ACAL-159"
+    taches: []
+  - id: D-ACAL-164
+    question: "L'étape Électrique permet de désigner une BATTERIE (D-ACAL-157). Quelle batterie vend le devis généré depuis ce calepinage ?"
+    options:
+      - cle: la_designee_si_tarifee
+        texte: "(recommandée) Celle désignée au calepinage quand elle a un prix de vente et convient à l'onduleur ; sinon le choix automatique habituel, dit à l'écran"
+      - cle: toujours_automatique
+        texte: "Toujours le choix automatique ; la batterie désignée ne figure qu'au schéma, l'écran dit l'écart"
+    reponse: la_designee_si_tarifee
+    date: "2026-11-26"
+    source: "fondateur, questions interactives du 26/11/2026 (quatrième séance) ; même règle que D-ACAL-148 pour l'onduleur ; nouveaux devis seulement"
+    taches: []
+  - id: D-ACAL-165
+    question: "Les prix de vente sont masqués au Technicien dans le stock (D-ACAL-152). Il les voit encore ailleurs : lignes du devis de son chantier, synthèse des coûts du SAV, produits de pompage d'un calepinage, explorateur de données. Les masquer là aussi ?"
+    options:
+      - cle: masquer_partout
+        texte: "(recommandée) Un technicien ne voit aucun prix de vente dans l'ERP ; sur son chantier il voit les produits et les quantités, sans montants"
+      - cle: stock_seulement
+        texte: "Ne masquer que dans le stock"
+    reponse: masquer_partout
+    date: "2026-11-26"
+    source: "fondateur, questions interactives du 26/11/2026 (quatrième séance) ; inventaire de la lane prix-vente-technicien (calepinage/views/pompage.py::_produit_pompage, OCTROIS_LECTURE des lignes de devis, sav/selectors.py, sav/views.py, stock/bi_datasets.py)"
+    taches: []
+  - id: D-ACAL-166
+    question: "Devis à deux options : un schéma électrique par option côté client (D-ACAL-158). Dans l'annexe technique du PDF, comment paraît le second schéma ?"
+    options:
+      - cle: une_page_par_option
+        texte: "(recommandée) Une page d'annexe par option : une page de plus, seulement pour un devis à deux options et seulement quand l'annexe est incluse ; nouveaux devis seulement"
+      - cle: deux_sur_une_page
+        texte: "Les deux schémas sur une même page, plus petits"
+      - cle: un_seul_au_pdf
+        texte: "Le PDF garde un seul schéma"
+    reponse: une_page_par_option
+    date: "2026-11-26"
+    source: "fondateur, questions interactives du 26/11/2026 (quatrième séance) ; la règle des pages du PDF (CLAUDE.md « Quote PDFs ») gagne ce cas : annexe technique d'un devis à deux options = une page par option"
+    taches: []
+  - id: D-ACAL-167
+    question: "PDF industriel (4 pages), page 3 : « bases du calcul ci-dessous » est annoncé mais aucune section ne suit ; seule la ligne « prix moyen de votre kWh évité » paraît, sans dire quel tarif a servi (constat T4-U2-020). Que faire ?"
+    options:
+      - cle: imprimer_les_bases
+        texte: "(recommandée) Imprimer le court bloc « Bases du calcul » du document commercial 3 pages : horizon, indexation, dégradation, base de production, tarif retenu pour le prix du kWh ; nouveaux devis seulement"
+      - cle: retirer_la_phrase
+        texte: "Retirer « bases du calcul ci-dessous »"
+    reponse: imprimer_les_bases
+    date: "2026-11-26"
+    source: "fondateur, questions interactives du 26/11/2026 (quatrième séance) ; tour 5 du L5, paquet F, T4-U2-020"
+    taches: []
+  - id: D-ACAL-168
+    question: "Toit plat sur lequel aucun panneau n'est encore posé au calepinage : quelle inclinaison des panneaux supposer pour la production du devis (annoncée au vendeur comme supposée) ?"
+    options:
+      - cle: dix_degres
+        texte: "(recommandée) 10°, l'inclinaison des châssis de toit plat de l'ERP"
+      - cle: defaut_societe
+        texte: "Le réglage « Inclinaison par défaut » de la société (30° aujourd'hui)"
+      - cle: vingt_degres
+        texte: "20° (réponse libre du fondateur)"
+    reponse: vingt_degres
+    date: "2026-11-26"
+    source: "fondateur, questions interactives du 26/11/2026 (cinquième séance), réponse tapée mot pour mot : « 20 degrees » ; ni la recommandation ni l'autre option ; suite de D-ACAL-149 (partie création et resynchronisation) ; la valeur n'est jamais imprimée au client comme une donnée (annexe : inclinaison omise)"
+    taches: []
+  - id: D-ACAL-169
+    question: "L'entrée électrique du calepinage peut garder un ANCIEN modèle de panneau (vu : 710 W stocké alors que la pose utilise des 715 W). Lequel fait foi ?"
+    options:
+      - cle: panneau_pose
+        texte: "(recommandée) Le panneau posé sur le toit ; l'étape Électrique le suit et le dit"
+      - cle: demander
+        texte: "Demander au vendeur à chaque fois"
+      - cle: un_panneau_par_defaut_partout
+        texte: "Un seul panneau par défaut pour tout l'ERP (le 715 W aujourd'hui), montré dans le stock (réponse libre du fondateur)"
+    reponse: un_panneau_par_defaut_partout
+    date: "2026-11-26"
+    source: "fondateur, questions interactives du 26/11/2026 (cinquième séance), réponse tapée mot pour mot : « always use 715w everywhere, and have somewhere in the stock to show the default used pannels ». Lecture de l'orchestrateur, à confirmer : (1) UN panneau par défaut par société, désigné sur la fiche produit du stock (drapeau unique, action réservée à qui modifie les produits), lu par tous les choix automatiques — devis automatique et tailles (aujourd'hui 710 en dur : ventes/domain/taille.py::_AUTO_PANEL_WATT), assistant, C&I et pompage (panneau désigné d'abord s'il est tarifé et sa fiche complète), premier module d'un nouveau pan au calepinage, valeur de départ du générateur ; (2) le stock le montre (pastille « Panneau par défaut » et ligne « Panneau par défaut : X ») ; (3) l'entrée électrique d'un calepinage suit le panneau POSÉ quand il change, et le dit ; (4) rien d'existant n'est recalculé : devis enregistrés ou envoyés, calepinages enregistrés gardent LEUR panneau ; (5) sans panneau désigné, tarifé et non archivé : la règle d'aujourd'hui s'applique et l'écran le dit. Choix pris par l'orchestrateur, à confirmer : les estimateurs du site public passent aussi au panneau par défaut (les textes d'installations réelles ne changent pas) ; les calepinages de production dont le panneau stocké diffère du toit sont d'abord LISTÉS en lecture seule. Désigner le 715 W en production reste un geste du fondateur. Note de conception : inventaire des 16 endroits (session du 26/11)"
+    taches: []

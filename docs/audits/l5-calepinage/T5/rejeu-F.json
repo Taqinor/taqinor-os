@@ -1,0 +1,219 @@
+[
+ {
+  "id": "T4-U2-004",
+  "verdict": "ok",
+  "vu": "Lead R5F-C1 (Boulangerie / pâtisserie, BT patenté, triphasé, 8-20 h, Lun-Sam) : édition complète du devis DEV-202611-0128, section Activité et horaires : « Catégorie commerciale » = « Boulangerie / pâtisserie » (plus « Non précisée »), contrat BT patenté, phases Triphasé, horaires « Retenu : ouvre 8 · 20 — saisi ». Pour l'épicerie (Supermarché) la catégorie est portée par le devis (etude_params rythme.categorie_commerciale = supermarche) ; le menu de ce 2e devis n'a pas été photographié.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-u2004-1262.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U2-019",
+  "verdict": "ok",
+  "vu": "Lead R5F-I1 (industriel, Tanger, 60 000 MAD/mois, 2×8, sans heure de début ni tension), devis brouillon DEV-202611-0130 : l'écran dit « 6 h supposée » et « lundi à samedi supposés » ; le PDF Document industriel (4 p.) ET le Devis une page impriment « Taux calculés sur un profil type de votre activité — estimation. » (plus « horaires déclarés »). Le PDF ne cite ni les 6 h ni les jours : c'est la phrase décidée par D-ACAL-102.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-ind-0130.pdf (page 1) ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-1p-0130.pdf",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-U2-020",
+  "verdict": "partiel",
+  "vu": "PDF industriel DEV-202611-0130 page 3 : la phrase fausse a disparu (« Projection sur 25 ans : flux annuels, délai de retour et TRI tirés de la même série. », plus de renvoi à des « bases du calcul ci-dessous »). Mais aucun bloc « Bases du calcul » (horizon, indexation, dégradation, base de production, tarif) n'est imprimé comme dans le document commercial ; seule la ligne « prix moyen de votre kWh évité : 1,397 MAD/kWh » sans dire quel tarif a servi.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-ind-0130-p3.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U3-002",
+  "verdict": "ok",
+  "vu": "Fiche lead R5F-1 (pompage) : dans « Origine du niveau d'eau » et « Origine du débit du forage » l'option « Mesuré en visite — posé par le relevé de la visite technique » est désactivée (non choisissable à la main) et son libellé dit pourquoi et où elle se pose ; la valeur reste « Déclaré par le client » / « Estimation du client » ; l'historique n'attribue aucun changement de provenance non voulu.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-u3002.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U3-012",
+  "verdict": "ok",
+  "vu": "Calepinage 20 (lead R5F-1 : HMT 80, débit souhaité 20, niveau 40, débit forage 30) : onglet Pompage pré-rempli : niveau statique 40 (« Repris de la fiche du lead · Déclaré par le client »), HMT saisie 80, débit forage 30, débit souhaité 20 (valeurs lues dans les champs). Calcul du dimensionnement non rejoué.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-u3012.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U3-021",
+  "verdict": "partiel",
+  "vu": "Le refus « Structure au sol : prix à renseigner » n'est plus reproductible (structure au sol 540 DH TTC, pose et protections chiffrées : le devis automatique de la pompe conservée R5F-5, 7,5 kW, est créé, DEV-202611-0127). Même famille de refus vue sur R5F-1 (HMT 80 / débit 20, pompes OSP sans prix) : « Aucune pompe chiffrable … pompes à courbe sans prix : <les 10 pompes nommées> » : articles nommés, mais le dialogue n'offre que « Fermer » et « Ouvrir l'édition complète », sans dire qui peut chiffrer ni où, ni « Demander au responsable ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-devis-auto-1256.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-U3-023",
+  "verdict": "non-corrige",
+  "vu": "Lead R5F-5 (pompe actuelle conservée, plaque 7,5 kW, 380 V, Triphasé) : la fiche affiche toujours « À compléter : Phase du site (monophasé ou triphasé) » et « Manque : … Phase du site (champ : raccordement) » (aussi après « Électricité sur place = Triphasé ») ; aucune explication de pourquoi la phase de la plaque ne suffit pas ; trois champs proches (Raccordement, Électricité sur place, Plaque : phases). Le devis n'est devenu possible qu'après saisie de Raccordement dans Profil énergétique.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-u3023.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-V2-003",
+  "verdict": "ok",
+  "vu": "Cas rejoué sur R5F-3 (triphasé, HMT 60, débit 10 ; le cas HMT 80 / débit 20 n'a que des pompes OSP sans prix donc pas d'encart) : « Inférieure » 5.5 CV (4 kW) 5,72 kWc · 8 panneaux ; « Recommandée » 7.5 CV (5,5 kW) 7,87 kWc · 11 panneaux ; « Supérieure » 10 CV 9,29 kWc · 13 panneaux : le champ croît avec la pompe (ratio ≈ 1,43 pour les deux premières).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-v2003-1258.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-V2-008",
+  "verdict": "ok",
+  "vu": "Liste des devis, DEV-202611-0124 : Document agricole complet (9,8 s puis 2,8 s), avec « Joindre la note de calcul » (7,1 s puis 2,8 s), Version courte 4,8 s : 5 PDF reçus (3, 4 et 1 pages), aucun silence, aucune fenêtre bloquée. Le cas « demande perdue » n'est pas apparu (non reproductible) ; l'icône « tâches de fond » n'a pas été examinée.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-complet-0124.pdf ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-note-0124.pdf ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-1page-0124.pdf",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-V2-010",
+  "verdict": "non-corrige",
+  "vu": "DEV-202611-0124 : l'écran du devis auto dit « la fiche du variateur VARIATEUR VEICHI SI23 4KW 380V ne dit pas s'il protège la pompe de la marche à sec : à saisir » ; le PDF 1 page (et la note de calcul, fiches produits) imprime sur la même ligne variateur « Pilotage automatique lever/coucher du soleil, protection marche à sec ». Les deux faits se contredisent.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-devis-auto-1257.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-1page-0124.pdf (p.1)",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X4-016",
+  "verdict": "ok",
+  "vu": "Boulangerie R5F-C1 / épicerie R5F-C2 / restaurant R5F-C3 : « Détails du calcul › Économies (moteur serveur) » donne le même retour que le bandeau « Devis créé » et le PDF Document commercial : boulangerie 3,9 / 5,0 ans à la création (bandeau = Détails), puis 8,1 / 10,9 ans après enregistrement de 12 mois kWh (Détails = PDF = carte du lead) ; restaurant 2,8 / 4,9 ans (bandeau = Détails = PDF) ; cumul à 5 ans cohérent avec l'investissement de chaque option.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-edit-1262.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-com-0128.pdf ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-com-0132.pdf",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X4-017",
+  "verdict": "ok",
+  "vu": "/ventes/devis/nouveau › Agricole › Mois d'irrigation : cases Jan Fév Mar Avr Mai Juin Juil Août Sep Oct Nov Déc (Juin et Juil distincts).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-irrigation.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X6-004",
+  "verdict": "ok",
+  "vu": "Lead R5F-M1 (usine, MT, contrat MT Tarif Général, 40 000 kWh/mois, visite non faite), devis auto DEV-202611-0131 (130,13 kWc) ; PDF Document industriel + « Devis Final » : le PDF n'est pas généré, toast « Devis final impossible : ce site demande une visite technique avant le devis final (site en moyenne tension, puissance souscrite inconnue, …). Enregistrez d'abord la visite (case « Visite effectuée » de la fiche du lead, ou visite validée), puis cochez « Devis final ». » Sans la case : PDF « Devis préliminaire » et étape Visite technique.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-x6004-final.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-ind-0131.pdf",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X6-006",
+  "verdict": "ok",
+  "vu": "Carte « Conception » (fiche du lead) = bandeau = PDF = édition : boulangerie 3,9 / 5,0 ans (création) puis 8,1 / 10,9 ans partout après enregistrement ; épicerie 6,3 / 5,9 puis 6,1 / 5,7 partout ; la carte indique « Retour … d'après le devis DEV-… » avec l'investissement HT ÷ économie HT du devis. Réserve (R5F-N1) : la ligne « Économies » de la même carte reste l'ancienne (35 542 MAD/an) à côté de « 139 000 MAD HT pour 17 432 MAD/an ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-conception-1262.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-conception-apres-1262.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X6-007",
+  "verdict": "ok",
+  "vu": "DEV-202611-0128/0129/0132 en édition complète : un seul retour par option, même chiffre que le bandeau et le PDF (3,9 / 5,0 à la création de 0128 ; 6,3 / 5,9 de 0129) ; cumul à 5 ans cohérent avec l'investissement de chaque option (option sans batterie 139 000 MAD HT, 17 432/an : cumul à 5 ans −52 731 HT). Plus de « 10 ans / 6 ans » ni de cumul sur un investissement étranger.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-edit-1262.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-x4016-1263.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X6-008",
+  "verdict": "non-corrige",
+  "vu": "Épicerie DEV-202611-0129 : après la frappe de 2 600 / 2 000 kWh, l'écran montre « Avec batterie : 16,45 kWc · 23 panneaux · 2 batteries » (lignes et total inchangés). Après « Enregistrer » le devis relu a l'option avec batterie à 22 panneaux (15,73 kWc) et 199 500 MAD TTC au lieu de 201 700 : l'option enregistrée n'est pas celle décrite à l'écran, sans message. (Sur la boulangerie 0128 les 12 mois kWh enregistrés ne changent pas les lignes : 35 / 58 panneaux, 5 batteries, 162 600 TTC, cohérent.)",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-x6008-1263.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X6-009",
+  "verdict": "ok",
+  "vu": "Épicerie 0129 : mode « Factures (MAD) », 12 factures (2025-01 à 2025-12, 3 000, juillet 4 200) : sous la saisie « Retenu : les 12 factures tapées — saisi », et le retour passe de 6,3 / 5,9 ans à 6,1 / 5,8 ans : les factures comptent.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-x6009-apres.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X6-010",
+  "verdict": "ok",
+  "vu": "Hors ligne puis frappe de 6 000 en janvier : « Aperçu du moteur C&I indisponible pour le moment. » + bouton « Réessayer ». Réseau rétabli : en 15 s les cartes reviennent seules (retour 5,5 / 5,5 ans) sans retaper. (5 erreurs de console pendant la coupure = requêtes coupées volontairement.)",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-x6010-hors-ligne.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-x6010-retour-reseau.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "T4-X6-011",
+  "verdict": "ok",
+  "vu": "Relevé toutes les 0,25 s après trois frappes de kWh : « Calcul en cours… » vu à 2, 5 et 6 relevés sur ~21 ; la zone « Option sans / avec batterie » n'a jamais disparu (0 relevé sans elle).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-x6009-apres.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "T4-X6-012",
+  "verdict": "non-corrige",
+  "vu": "Épicerie DEV-202611-0129 ouverte en édition complète avec texte client tapé non enregistré ; dans un 2e onglet la facture mensuelle du lead passe 3 000 → 3 200 puis 3 500 (fiche relue : 3500) : dans le 1er onglet, après 30 s (et focus) puis après rechargement et réouverture, le bandeau « La conception de ce lead a changé » n'apparaît jamais ; l'écran dit seulement « factures remplies depuis le lead (3500.00 MAD/mois) ». Le cas « retouche à la main des panneaux » n'a pas été rejoué.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-x6012-30s-2.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-x6012-rouvert3.png",
+  "gravite": "S2"
+ },
+ {
+  "id": "T4-X6-013",
+  "verdict": "ok",
+  "vu": "Restaurant R5F-C3 (deux options), DEV-202611-0132 : lignes sans batterie 35 panneaux → câble solaire 120 m ; avec batterie 89 panneaux → 360 m ; PDF page 2 « Équipement des deux options » : « Câble solaire Nexans 6mm² (au mètre) 120 / 360 ». Chaque option chiffre le câble de ses panneaux.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-com-0132.pdf (p.2)",
+  "gravite": "S1"
+ },
+ {
+  "id": "D-ACAL-112",
+  "verdict": "partiel",
+  "vu": "Devis pompage DEV-202611-0124 : le kit contient coffret DC 2 strings, disjoncteur AC et parafoudre AC type 2 ; page 1 « Pose : pompe, variateur, champ solaire et protections » (vrai, elles sont vendues) ; page 3 « Non inclus » ne cite plus les protections. Mais aucune ligne de câble (DC ou AC) n'est au kit alors que la décision parle de « protections et leur câble » (seul « câble de descente » en option).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-complet-0124.pdf",
+  "gravite": "S3"
+ },
+ {
+  "id": "D-ACAL-113",
+  "verdict": "partiel",
+  "vu": "PDF « Devis Final » de DEV-202611-0124 (visite marquée faite sur le lead de test) : l'étape « Visite du point d'eau » et la ligne « À confirmer par la visite : … » disparaissent ; « Volume d'eau par jour non calculé : à confirmer par la visite » reste (bandeau estimation). La comparaison pompe / forage n'est imprimée dans aucun des PDF (pompe sans courbe) : sa conservation n'a pas pu être vérifiée.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-final-0124.pdf",
+  "gravite": "S3"
+ },
+ {
+  "id": "D-ACAL-118",
+  "verdict": "ok",
+  "vu": "Devis auto agricole (DEV-0124 à 0127) : lignes Coffret DC 2 strings, Disjoncteur AC courbe C (16 A, tétrapolaire ou monophasé), Parafoudre AC type 2 présents dans chaque kit.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-devis-auto-1257.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "D-ACAL-121",
+  "verdict": "ok",
+  "vu": "Générateur marché Industriel : section « Équipes, registres MT et courbe mesurée » avec « Courbe de charge mesurée (CSV) » ; marché Commercial : aucune mention courbe / import, le profil horaire déclaré reste. (Libellé exact « Importer une courbe de charge » non lu tel quel ; compte anon_admin et non anon_commercial.)",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-d121-industriel.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-d121-commercial.png",
+  "gravite": "S4"
+ },
+ {
+  "id": "D-ACAL-124",
+  "verdict": "ok",
+  "vu": "R5F-2 (4 CV, 3 kW estimés) : « Calibre du disjoncteur AC déduit des 4 CV de la pompe (3 kW) et 380 V (courant estimé 4,6 A … sous-estimé) » ; R5F-3 7,5 CV / 5,5 kW 8,4 A ; R5F-4 1,5 CV / 1,1 kW 220 V 5 A ; R5F-5 7,5 kW 11,4 A : valeur supposée dite, un seul kW par pompe (variateur SI23 4KW pour 3 kW, 5.5KW pour 5,5 kW). Tous les calibres retenus = 16 A. Lead sans phase (R5F-6) : « Manque : Phase du site (monophasé ou triphasé) ».",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-devis-auto-1257.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-devis-auto-1258.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-devis-auto-1259.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "D-ACAL-125",
+  "verdict": "ok",
+  "vu": "Situation observée : prix présents (stock 0190-0195 apparemment appliquées) : le devis automatique est CRÉÉ pour R5F-2/3/4/5 (DEV-202611-0124 à 0127). Refus avec pompes nommées seulement quand la pompe n'a pas de prix (OSP 30, R5F-1).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-devis-auto-1257.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-devis-auto-1256.png",
+  "gravite": "S3"
+ },
+ {
+  "id": "D-ACAL-127",
+  "verdict": "ok",
+  "vu": "Lignes des devis : disjoncteur monophasé 16 A 66,67 HT = 80 TTC ; tétrapolaire 16 A 106,67 HT = 128 TTC ; coffret DC 2 strings 1 666,67 HT = 2 000 TTC ; parafoudre AC 833,33 HT = 1 000 TTC. Catalogue (lu via l'API de la session) : mono 20/25/32 A = 80/80/83, tétra 20/25/32 A = 132/136/141 TTC.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-devis-auto-1258.png (+ lignes des devis 629/630/631 lues)",
+  "gravite": "S3"
+ },
+ {
+  "id": "D-ACAL-128",
+  "verdict": "ok",
+  "vu": "Fiches VEICHI lues via l'API (produits 1098 à 1112) : tension d'entrée DC max 400 V (SI22 220 V), 450 V (SI23 220 V), 780 V pour les 13 variateurs 380 V ; parafoudre AC PARA-AC-T2 833,33 HT = 1 000 TTC. Écran Stock non exploité (lecture API).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-stock-si22.png (écran non exploité)",
+  "gravite": "S3"
+ },
+ {
+  "id": "D-ACAL-129",
+  "verdict": "ok",
+  "vu": "Petites pompes lues via l'API : monophasées 220 V (1,5 CV, 3 CV, Vells 2 hp) ; triphasées 380 V (3, 4, 5,5, 7,5, 10 CV) ; CV renseignés (1,5 à 10). Écran Stock non exploité.",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-stock-si22.png (écran non exploité)",
+  "gravite": "S4"
+ },
+ {
+  "id": "D-ACAL-130",
+  "verdict": "ok",
+  "vu": "Structure au sol pompage : 450 HT = 540 TTC par panneau (5 panneaux : 2 250 HT) ; « Installation pompage solaire » 3 250 HT pour 5 panneaux, 4 750 HT pour 11 = 2 000 + 250 × panneaux ; devis résidentiel R5E-1 (DEV-0123) : aucun article de pompage (câble solaire partagé).",
+  "preuve": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5f-complet-0124.pdf",
+  "gravite": "S3"
+ }
+]

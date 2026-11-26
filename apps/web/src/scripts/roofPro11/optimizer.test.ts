@@ -1381,6 +1381,19 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
     expect(texteChiffresVariante(carte, servie, null, fmt, fmtKwc, true)).toBe(`24 panneaux · 17,04 kWc · ${fmt(22000)} kWh/an`);
   });
 
+  // ACAL1268 (D-ACAL-66) — atelier ERP d'un lead de POMPAGE : la pose (panneaux, kWc) reste, aucun kWh de réseau ; résidentiel et
+  // site public : le texte d'avant, à l'octet.
+  it('ACAL1268 — cartes de variante : pompage sans kWh ; résidentiel (ERP) et site public inchangés', async () => {
+    const { chiffresDeLaPose, texteChiffresVariante } = await import('./chiffresVariante');
+    const carte = { count: 24, kwc: 17.04, annualKwh: 21735 };
+    const estimee = chiffresDeLaPose(carte, null, () => null);
+    expect(texteChiffresVariante(carte, estimee, null, fmt, fmtKwc, 'pompage')).toBe('24 panneaux · 17,04 kWc');
+    expect(texteChiffresVariante(carte, null, null, fmt, fmtKwc, 'pompage')).toBe('Estimation : 24 panneaux · 17,04 kWc');
+    expect(texteChiffresVariante(carte, estimee, null, fmt, fmtKwc, true)).toBe('24 panneaux · 17,04 kWc · production : voir le Total');
+    expect(texteChiffresVariante(carte, null, null, fmt, fmtKwc, true)).toBe(`Estimation : 24 panneaux · 17,04 kWc · ${fmt(21735)} kWh/an`);
+    expect(texteChiffresVariante(carte, estimee, null, fmt, fmtKwc, false)).toBe(`24 panneaux · 17,04 kWc · ${fmt(21735)} kWh/an`);
+  });
+
   // T4-X5-005 (rejeu X9) — la phrase de la carte disait « 8 panneaux — production ÷ consommation : 123 % », un rapport tiré
   // d'une production montrée nulle part (l'estimation du navigateur). En ERP la phrase ne porte plus aucun pourcentage : la
   // part ne se lit que dans sa case, servie avec la production qu'elle divise (et « — » quand cette production n'est pas montrée).
@@ -1603,7 +1616,7 @@ describe('Demande croisée — bande au kWc de la carte ; majChiffrage repeint p
   });
 });
 
-// ACAL1526 — la note sous « Panneaux nécessaires » dit la pose DESSINÉE : les emplacements écartés par le seuil
+// ACAL1526 — la note sous « Panneaux à poser » (ERP) dit la pose DESSINÉE : les emplacements écartés par le seuil
 // d'accès solaire (`poseSousSeuil`) sont retirés, jamais « il reste de la place » quand la pose a été rognée.
 describe('ACAL1526 — seuil d’accès : la note dit la pose dessinée', () => {
   /** Un pan plat 10 × 7 avec une cheminée de 1,1 m au milieu ; `seuil` = accès solaire minimal (0..1) ou null. */

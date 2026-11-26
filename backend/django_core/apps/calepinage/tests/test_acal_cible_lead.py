@@ -19,7 +19,7 @@ from decimal import Decimal
 from apps.calepinage.models import Calepinage
 from apps.crm.models import Client, Lead
 from apps.stock.models import Produit
-from apps.ventes.models import Devis
+from apps.ventes.models import Devis, LigneDevis
 
 from .test_api_liste import BaseApiCalepinage, url_detail
 
@@ -150,7 +150,7 @@ def _valeurs(nb, watt=550, onduleur=None, longueur=None, module=None, ratio=None
 
 
 def ranger_conception(*, lead=None, calepinage=None, nb=10, etat='complet', refus=None, option='sans',
-                      avec=None, par_avec=None, raison='remplissage', **par_option):
+                      avec=None, par_avec=None, raison='remplissage', marche='residentiel', **par_option):
     """ACAL2012 — une version COURANTE de la conception rangée par l'écrivain du modèle
     (``ConceptionLead.ranger``), valeurs posées : la fabrique des tests du calepinage."""
     from apps.ventes.models import ConceptionLead
@@ -161,7 +161,7 @@ def ranger_conception(*, lead=None, calepinage=None, nb=10, etat='complet', refu
     porteur = ({'lead': lead} if lead is not None
                else {'calepinage_id': calepinage.pk, 'company': calepinage.company})
     return ConceptionLead.ranger(
-        **porteur, etat=etat, refus=refus, marche='residentiel',
+        **porteur, etat=etat, refus=refus, marche=marche,
         option_retenue=option if etat == 'complet' else '', valeurs=valeurs, blocs={},
         entrees_utilisees={}, suppositions=[], empreinte='c' * 64, empreinte_pose='',
         niveau_regles=14, version_moteur='moteur-unique-1',
@@ -305,3 +305,52 @@ class CibleDeLaConceptionTest(BaseApiCalepinage):
         self.assertIn('Conception du lead pas encore calculée', cible['refus'])
         self.assertFalse(cible['calcul_en_cours'])
         self.assertIsNone(factures['cible_factures'])
+
+    def test_acal1268_lead_de_pompage_cible_le_champ_du_devis_agricole(self):
+        """D-ACAL-66 (outil_pose) — la pose d'un lead de pompage est bornée au champ du devis
+        agricole (même mécanisme que la cible vendue) ; sans devis agricole, le refus nommé reste."""
+        from apps.calepinage.services.devis_retenu import REFUS_AGRICOLE
+
+        lead = self._lead(type_installation='agricole')
+        ranger_conception(lead=lead, etat='refus', marche='agricole',
+                          refus={'code': 'agricole', 'champ': 'type_installation', 'message': 'Pompage.'})
+        calepinage = self._calepinage(lead)
+        sans_devis = self._contexte(calepinage)['cible']
+        self.assertEqual((sans_devis['panneaux'], sans_devis['refus']), (None, REFUS_AGRICOLE))
+        client = Client.objects.create(company=self.company, nom='Client 1268')
+        devis = Devis.objects.create(company=self.company, client=client, lead=lead, reference='DEV-202611-1268',
+                                     mode_installation=Devis.ModeInstallation.AGRICOLE)
+        # Cette classe n'a pas le catalogue de ``CibleDuLeadTest`` : le panneau du devis est créé ici.
+        panneau = Produit.objects.create(company=self.company, nom='Panneau Jinko 550W', sku='A1268-PAN',
+                                         prix_vente=Decimal('1100'), prix_achat=Decimal('1'), quantite_stock=100)
+        LigneDevis.objects.create(devis=devis, produit=panneau,
+                                  designation='Panneau Jinko 550W', quantite=Decimal(7), prix_unitaire=Decimal('1100'))
+        cible = self._contexte(calepinage)['cible']
+        self.assertEqual((cible['panneaux'], cible['source'], cible['refus']), (7, 'devis', None))
+        self.assertEqual(cible['panel_watt'], 550)
+        self.assertEqual(cible['devis_agricole'], {'id': devis.pk, 'reference': 'DEV-202611-1268'})
+        # Un brouillon agricole VIDE plus récent ne masque pas le devis plus ancien qui porte des panneaux.
+        Devis.objects.create(company=self.company, client=client, lead=lead, reference='DEV-202611-1269',
+                             mode_installation=Devis.ModeInstallation.AGRICOLE)
+        self.assertEqual(self._contexte(calepinage)['cible']['devis_agricole']['id'], devis.pk)
+        self.assertIsNone(sans_devis['devis_agricole'])
+        # Lot 8, relecture finale (D-ACAL-106) — un Technicien (sa visite, aucun code ``ventes_*``) reçoit
+        # le même champ de panneaux, un devis agricole qui existe sans être nommé ni lié. Mutant « sans
+        # _sans_devis_nomme » ⇒ rouge.
+        from django.contrib.auth import get_user_model
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.visites.models import VisiteTerrain
+
+        role = Role.objects.create(company=self.company, nom='A1268 Technicien',
+                                   permissions=list(TECHNICIEN_PERMISSIONS))
+        tech = get_user_model().objects.create_user(username='a1268-tech', password='x', company=self.company,
+                                                    role=role)
+        VisiteTerrain.objects.create(company=self.company, lead=lead, commercial=tech)
+        reponse = self._client(tech).get(url_contexte(calepinage.pk))
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        lu = reponse.data['cible']
+        self.assertEqual((lu['panneaux'], lu['source'], lu['devis_agricole']),
+                         (7, 'devis', {'id': None, 'reference': None}))
+        self.assertNotIn('DEV-202611-1268', str(reponse.data['cible']))

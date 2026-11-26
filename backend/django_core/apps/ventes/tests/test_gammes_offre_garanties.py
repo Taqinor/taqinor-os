@@ -120,7 +120,7 @@ class TestGarantiesDerivees(TestCase):
     def test_ligne_de_devis_porte_les_durees_catalogue(self):
         """``builder._line_to_item`` injecte les durées structurées (elles
         alimentent la dérivation ci-dessus)."""
-        from apps.ventes.quote_engine.builder import _line_to_item
+        from apps.ventes.quote_engine.lignes_classement import _line_to_item
         company = make_company('gamme-gar')
         user = make_user(company, 'u_gamme_gar')
         client_obj = make_client_obj(company)

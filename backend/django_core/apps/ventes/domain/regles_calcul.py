@@ -175,6 +175,16 @@ COUPURE_SCHEMA_ELECTRIQUE = (2026, 11, 27)
 #: que :data:`COUPURE_SCHEMA_ELECTRIQUE`, le niveau 15 n'est pas rendu courant ;
 #: un devis envoyé avant garde son étude, son annexe et son bordereau.
 COUPURE_CHAINES_INEGALES = (2026, 11, 27)
+#: T4-V2-010 (lot 8, 26/11/2026, « rien d'imprimé que la fiche ne prouve ») :
+#: la description d'un variateur de pompage n'imprime plus « protection marche
+#: à sec » quand sa fiche technique ne publie pas cette protection
+#: (``var_protection_marche_a_sec`` différent de vrai) — l'écran du devis dit
+#: déjà « la fiche ne dit pas s'il protège la pompe ». Nouveaux rendus
+#: seulement, même mécanique que :data:`COUPURE_SCHEMA_ELECTRIQUE` (le niveau
+#: 15 n'est pas rendu courant) ; date posée par l'orchestrateur à la PR du lot 8 :
+#: le 28/11/2026, comme toutes les coupures du lot 8 — le lot doit être déployé
+#: AVANT cette date (à déplacer avant de déployer s'il glisse).
+COUPURE_PROTECTION_FICHE = (2026, 11, 28)
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
 REGLES_COURANTES = REGLES_SENSIBILITES_1911
 
@@ -250,6 +260,15 @@ def chaines_inegales_ouvertes(devis) -> bool:
                                        COUPURE_CHAINES_INEGALES)
 
 
+def protection_fiche_ouverte(devis) -> bool:
+    """T4-V2-010 — la description d'un variateur ne dit « protection marche à
+    sec » que si sa fiche la publie, pour ce devis ? Voir
+    :data:`COUPURE_PROTECTION_FICHE`. Pas de drapeau de rendu : la description
+    retirée change elle-même l'empreinte des données des seuls devis ouverts."""
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111,
+                                       COUPURE_PROTECTION_FICHE)
+
+
 def drapeaux_schema_electrique(devis) -> dict:
     """SCHEL-B4 — drapeau de RENDU du cas OUVERT : ``{'schema_electrique_annexe':
     True}`` quand l'annexe dessine le schéma électrique, ``{}`` sinon. Posé
@@ -260,10 +279,11 @@ def drapeaux_schema_electrique(devis) -> dict:
 
 def drapeaux_nouveaux_rendus(devis, *, annexe=False) -> dict:
     """Les drapeaux de rendu « nouveaux rendus seulement » posés par le builder
-    (D-ACAL-102, D-ACAL-111 à 114) : cas OUVERT seulement. ``annexe`` (SCHEL-B4)
-    ajoute celui de l'annexe technique ; le builder ne le passe pas (l'annexe
-    pose le sien elle-même), sa charge reste donc identique."""
-    return {**drapeaux_phrases_profil(devis), **drapeaux_pdf_2511(devis),
+    (D-ACAL-102, D-ACAL-111 à 114, lot 8 : :func:`drapeaux_pdf_2611`) : cas
+    OUVERT seulement. ``annexe`` (SCHEL-B4) ajoute celui de l'annexe
+    technique ; le builder ne le passe pas (l'annexe pose le sien elle-même),
+    sa charge reste donc identique."""
+    return {**drapeaux_phrases_profil(devis), **drapeaux_pdf_2511(devis), **drapeaux_pdf_2611(devis),
             **(drapeaux_schema_electrique(devis) if annexe else {})}
 
 
@@ -304,3 +324,65 @@ def calcul_corrige(devis) -> bool:
     explicitement marquées 1 en base gardent l'ancien calcul.
     """
     return regles_au_moins(devis, REGLES_CORRIGEES)
+
+
+#: D-ACAL-149 (fondateur 26/11/2026, « nouveaux rendus seulement ») : sur un
+#: toit PLAT, ``zones[].pitchDeg`` n'est que la valeur mémorisée du curseur
+#: (22° par défaut) ; la pente lue est 0 (``core.calepinage.geo.
+#: pente_effective_du_pan``). Même mécanique que
+#: :data:`COUPURE_CHAINES_INEGALES` (prédicat seul, aucun drapeau de rendu) ;
+#: le niveau 15 n'est pas rendu courant. Date À POSER par l'orchestrateur (le
+#: lendemain du déploiement) : un devis envoyé avant garde ce qu'il a reçu.
+COUPURE_TOIT_PLAT = (2026, 11, 28)
+
+
+def toit_plat_ouvert(devis) -> bool:
+    """D-ACAL-149 — ce devis lit-il la pente d'un toit plat comme 0 (et non la
+    valeur du curseur) ? Voir :data:`COUPURE_TOIT_PLAT`."""
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111,
+                                       COUPURE_TOIT_PLAT)
+
+
+#: D-ACAL-168 (fondateur, 26/11/2026) — un toit PLAT sur lequel aucune table n'est encore posée
+#: (pas de ``geometry.tiltDeg``) prend 20° d'inclinaison des panneaux pour la production du devis,
+#: annoncée au VENDEUR comme supposée (jamais imprimée pour le client) ; ni l'« Inclinaison par
+#: défaut » de la société (30°), ni 10°. Lu par la lecture corrigée
+#: (``geometrie.extract_roof_config(toit_plat_corrige=True)``), création et resynchro d'un devis ouvert.
+INCLINAISON_TOIT_PLAT_SUPPOSEE_DEG = 20
+
+
+#: Lot 8 (fondateur 26/11/2026, « nouveaux rendus seulement ») — les
+#: corrections du PDF décidées ce jour-là : D-AMOT-9 (UNE économie « avec
+#: batterie » par PDF résidentiel : la facture « avec solaire » de la page 1
+#: et de l'exemple de la page 4 = « avant » − l'économie des cartes, la
+#: correction T4-U1-019 sortie du niveau 15), D-AMOT-10 (la puce CGV par
+#: défaut dit « barème national de référence », plus « ONEE/SRM ») et
+#: D-ACAL-167 (le document industriel imprime une ligne courte « Bases du
+#: calcul » quand le tableau des hypothèses a cédé). UNE coupure, UN prédicat
+#: (:func:`phrases_pdf_2611_ouvertes`), même mécanique que
+#: :data:`COUPURE_PDF_2511` ; le niveau 15 n'est pas rendu courant. Même date
+#: que :data:`COUPURE_TOIT_PLAT`, À POSER par l'orchestrateur (le lendemain du
+#: déploiement) : un devis envoyé avant garde ce qu'il a reçu.
+COUPURE_PDF_2611 = (2026, 11, 28)
+#: Les marchés dont le PDF ne change pas avec :data:`COUPURE_PDF_2611` (leur
+#: charge utile ne reçoit pas le drapeau) : le commercial (aucune des trois
+#: corrections ne le touche) et l'agricole (ni économie résidentielle ni
+#: puce « Tarifs de référence »).
+MARCHES_HORS_PDF_2611 = ('commercial', 'agricole')
+
+
+def phrases_pdf_2611_ouvertes(devis) -> bool:
+    """Lot 8 — les corrections du PDF du 26/11/2026 pour ce devis ? Voir
+    :data:`COUPURE_PDF_2611`."""
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111, COUPURE_PDF_2611)
+
+
+def drapeaux_pdf_2611(devis) -> dict:
+    """Lot 8 — drapeau de RENDU du cas OUVERT : ``{'phrases_pdf_2611': True}``
+    pour un devis dont le rendu change (marché hors
+    :data:`MARCHES_HORS_PDF_2611`), ``{}`` sinon : l'empreinte des données
+    bouge exactement pour les devis dont le PDF change."""
+    marche = (getattr(devis, 'mode_installation', None) or '').strip().lower()
+    if marche not in MARCHES_HORS_PDF_2611 and phrases_pdf_2611_ouvertes(devis):
+        return {'phrases_pdf_2611': True}
+    return {}

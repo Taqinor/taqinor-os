@@ -25,9 +25,15 @@ export function raisonSansValeur(chiffrage: ChiffrageAtelier | null | undefined,
 /** T4-X9-007 — la phrase des deux tailles, en texte courant (« Production et économie calculées pour la conception du
  *  lead : 4,40 kWc — votre pose en compte 5,68 kWc. »), ou `''` quand les tailles sont égales ou inconnues. */
 export function phraseTaillesDuChiffrage(chiffrage: ChiffrageAtelier | null | undefined, kwc: number | null | undefined): string {
+  if (estPompage(chiffrage)) return ''; // ACAL1268 — ni production ni économie dans l'atelier d'un lead de pompage
   const servi = serviNb(chiffrage?.kwc);
   return tailleDifferente(servi, kwc) ? phraseTailles('Production et économie', servi as number, kwc as number, true) : '';
 }
+/** ACAL1268 (D-ACAL-66 = outil_pose) — le bloc `chiffrage` passé à l'outil porte le marché du lead (`marche`, servi par le
+ *  design-context) : un atelier de POMPAGE ne dit ni kWh de réseau ni économies — la pose (panneaux, kWc) reste. */
+export const estPompage = (chiffrage: ChiffrageAtelier | null | undefined): boolean =>
+  (chiffrage as { marche?: string } | null | undefined)?.marche === 'agricole';
+
 /** ACAL2022 — le bloc servi n'a pas pu être relu (hors ligne) : les valeurs gardées sont celles du dernier calcul. */
 export const VALEURS_HORS_LIGNE = 'valeurs du dernier calcul, hors ligne';
 
@@ -89,10 +95,17 @@ export function peindreBande(band: HTMLElement | null, d: CardData, cible: numbe
 
 function texteBandeCarte(d: CardData, cible: number, erp: boolean, chiffrage: ChiffrageAtelier | null | undefined, factureInconnue: boolean, kwc: number | null): string {
   if (!(d.annualKwh > 0)) return '';
+  if (erp && estPompage(chiffrage)) return ''; // ACAL1268 — la bande « Année 1 ~… kWh/an » n'a pas lieu d'être
   if (erp) {
     // ACAL2022 — l'ERP ne montre que le SERVI à kWc égal, jamais l'estimation du navigateur ; pendant le dessin : « au prochain enregistrement ».
     const servieProd = productionServie(chiffrage, kwc); // ACAL1418 — l'Année 1 lit la production de la carte
-    if (servieProd == null) return `Année 1 : ${raisonSansValeur(chiffrage, kwc, 'production')}. ${SANS_DEGRADATION}`;
+    // T4-X2-006 (rejeu R5B) — une simulation À JOUR existe : l'Année 1 la lit (même chiffre que le Total), au lieu de dire
+    // « au prochain enregistrement » alors que la conception est enregistrée et simulée. Sinon la raison vraie.
+    if (servieProd == null) {
+      const p50 = p50ADate(chiffrage);
+      if (p50 != null) return `Année 1 ~${fmt(Math.round(p50))} kWh/an (simulation). ${SANS_DEGRADATION}`;
+      return `Année 1 : ${raisonSansValeur(chiffrage, kwc, 'production')}. ${SANS_DEGRADATION}`;
+    }
     const servie = serviNb(chiffrage?.economie_annee1_mad);
     // ACAL1612 — l'ERP n'invente aucun taux : la fiche servie ne porte pas sa dégradation, l'année N se tait en disant pourquoi.
     return `Année 1 ~${fmt(Math.round(servieProd))} kWh/an${factureInconnue || servie == null ? '' : ` (${fmtMad(servie)}/an)`}. ${SANS_DEGRADATION}`;
@@ -116,6 +129,7 @@ export function productionServie(chiffrage: ChiffrageAtelier | null | undefined,
  *  navigateur, DITE « estimation » dans l'ERP. Site public (`erp` faux) : le texte d'avant. */
 export function texteTotalProduction(annualKwh: number, kwc: number | null, erp: boolean, chiffrage: ChiffrageAtelier | null | undefined): string {
   if (!erp) return annualKwh > 0 ? `${fmt(Math.round(annualKwh))} kWh/an` : '—';
+  if (estPompage(chiffrage)) return '—'; // ACAL1268
   const servie = productionServie(chiffrage, kwc);
   if (servie != null) return `${fmt(Math.round(servie))} kWh/an${texteSimulation(servie, chiffrage)}`;
   // ACAL2022 (T4-X2-006) — une simulation à jour existe : l'estimation de l'atelier n'est plus montrée à côté d'elle.
@@ -181,7 +195,7 @@ export function besoinDeLaFacture(opts: { hydrate?: { devis?: object | null } | 
   return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : null;
 }
 
-/** Le champ « Panneaux nécessaires » : en ERP sur « le plus de panneaux », le besoin de la facture (« — » s'il n'est pas
+/** Le champ « Panneaux à poser » (site public : « Panneaux nécessaires », inchangé) : en ERP sur « le plus de panneaux », le besoin de la facture (« — » s'il n'est pas
  *  servi) et `data-le-plus="1"` (lu par l'étape Panneaux du Guidé, qui garde « Le plus de panneaux » choisi) ; sinon le
  *  besoin tel quel. `data-besoin-facture` garde le chiffre affiché pour le re-poser à la sortie du champ. */
 export function peindreChampBesoin(el: HTMLInputElement, besoin: number, erp: boolean, facture: number | null, ecrire: boolean): void {

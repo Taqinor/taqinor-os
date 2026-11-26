@@ -418,3 +418,158 @@ class SeuilsHorsReseauTest(SimpleTestCase):
         valider_hors_reseau({'seuils': None})  # null efface
         valider_hors_reseau(CONTRAT_ENTREE['exemple_hors_reseau_avance'][
             'hors_reseau'])
+
+
+class BatterieDesigneeD_ACAL_157(SimpleTestCase):
+    """D-ACAL-157 — désigner une batterie à l'étape Électrique : candidats, drapeau hybride décidé par le SERVEUR,
+    refus d'un produit étranger / hors liste des batteries ; une entrée sans batterie intacte."""
+
+    def _produit(self):
+        return mock.Mock(pk=905, nom='Batterie 5,1 kWh')
+
+    def _valider(self, postee, *, produit, en_liste=True, stockee=None, verdict='compatible'):
+        from apps.calepinage.services.validation_batterie import _valider_batterie_designee
+
+        liste = mock.Mock()
+        liste.filter.return_value.exists.return_value = en_liste
+        juge = {'statut': verdict, 'raisons': ['tension nominale 48 V hors de la plage 150-500 V de l\'onduleur']}
+        with mock.patch('apps.stock.selectors.get_produit_scoped', return_value=produit), \
+                mock.patch('apps.stock.selectors.produits_par_type_fiche_qs', return_value=liste), \
+                mock.patch('apps.calepinage.services.electrique.entree_stockee', return_value=stockee or {}), \
+                mock.patch('apps.calepinage.services.electrique.resoudre_materiel', return_value={}), \
+                mock.patch('apps.calepinage.services.validation_batterie._verdict_batterie', return_value=juge):
+            _valider_batterie_designee(mock.Mock(company=object()), {}, postee)
+
+    def test_les_categories_de_candidats_portent_les_batteries_sans_fiche_exigee(self):
+        from apps.calepinage.services.electrique import CATEGORIES_CANDIDATS, _champs_manquants
+
+        self.assertIn(('batteries', 'batterie'), CATEGORIES_CANDIDATS)
+        self.assertEqual(_champs_manquants('batterie', {}), [])
+        self.assertTrue(_champs_manquants('optimiseur', {}))  # les autres rôles gardent leurs champs exigés
+
+    def test_le_drapeau_hybride_suit_le_role_puis_la_fiche_puis_le_nom(self):
+        from apps.calepinage.services.ratio_devis import onduleur_designe_est_hybride as hybride
+
+        self.assertTrue(hybride({}, 'Onduleur X', ('onduleur_hybride', '')))        # rôle déclaré
+        self.assertFalse(hybride({'bat_max_charge_kw': 5}, 'Hybrid X', ('onduleur_reseau', '')))  # le rôle tranche
+        self.assertTrue(hybride({'bat_max_charge_kw': 5}, 'Onduleur X', ('', '')))   # port batterie publié
+        self.assertTrue(hybride({}, 'Onduleur hybride Deye 20kW', ('', '')))          # le nom, en dernier
+        self.assertFalse(hybride({'ac_kw': 10}, 'Onduleur réseau 10 kW', ('', '')))   # réseau : non
+        self.assertFalse(hybride({}, '', ('', '')))                                    # rien lu : non
+
+    def test_le_materiel_servi_ne_porte_hybride_que_sur_l_onduleur(self):
+        from apps.calepinage.services.validation_batterie import drapeau_hybride
+
+        resolu = {'onduleur': {'bat_max_decharge_kw': 6}, 'designations': {'onduleur': 'Onduleur X'},
+                  'familles': {'onduleur': ('', '')}}
+        self.assertEqual(drapeau_hybride('onduleur', resolu), {'hybride': True})
+        self.assertEqual(drapeau_hybride('module', resolu), {})
+        self.assertEqual(drapeau_hybride('optimiseur', resolu), {})
+
+    def test_batterie_acceptee_quel_que_soit_l_onduleur_et_effacement_admis(self):
+        # Pas de jugement sur l'onduleur à l'écriture : une batterie derrière son onduleur-chargeur est légitime.
+        self._valider({'batterie': {'produit': 905, 'packs': 2}}, produit=self._produit())
+        self._valider({'batterie': {'produit': None}}, produit=None)
+        self._valider({'batterie': {'produit': ''}}, produit=None)
+
+    def test_valider_batterie_appelle_la_designation_quand_le_calepinage_est_donne(self):
+        from apps.calepinage.services.electrique import EntreeInvalide
+
+        calepinage = mock.Mock(company=object())
+        with mock.patch('apps.stock.selectors.get_produit_scoped', return_value=None):
+            valider_batterie({'produit': 7})  # sans calepinage : la forme seule (comportement d'avant)
+            with self.assertRaises(EntreeInvalide):
+                valider_batterie({'produit': 7}, calepinage, {})
+
+    def test_produit_d_une_autre_societe_sans_fiche_archive_ou_non_batterie_refuse(self):
+        from apps.calepinage.services.electrique import EntreeInvalide
+
+        with self.assertRaises(EntreeInvalide) as etranger:  # get_produit_scoped borne la société : None
+            self._valider({'batterie': {'produit': 7}}, produit=None)
+        self.assertEqual(etranger.exception.champ, 'batterie.produit')
+        self.assertTrue(etranger.exception.introuvable)
+        # Câble, « Installation clé en main », produit sans fiche ou archivé : hors de la liste des candidats.
+        with self.assertRaises(EntreeInvalide) as hors_liste:
+            self._valider({'batterie': {'produit': 8}}, produit=self._produit(), en_liste=False)
+        self.assertEqual(hors_liste.exception.champ, 'batterie.produit')
+        self.assertIn("n'est pas une batterie du catalogue", str(hors_liste.exception))
+
+    def test_une_nouvelle_designation_incompatible_est_refusee_avec_la_phrase_du_juge_inconnu_passe(self):
+        from apps.calepinage.services.electrique import EntreeInvalide
+
+        with self.assertRaises(EntreeInvalide) as refus:
+            self._valider({'batterie': {'produit': 905}}, produit=self._produit(), verdict='incompatible')
+        self.assertEqual(refus.exception.champ, 'batterie.produit')
+        self.assertIn('tension nominale 48 V hors de la plage 150-500 V', str(refus.exception))
+        self._valider({'batterie': {'produit': 905}}, produit=self._produit(), verdict='inconnu')  # inconnu : offerte
+        # Une désignation INCHANGÉE n'est pas rejugée (entrée existante réenregistrable).
+        self._valider({'batterie': {'produit': 905}}, produit=self._produit(), verdict='incompatible',
+                      stockee={'batterie': {'produit': 905}})
+
+    def test_les_candidats_servis_portent_le_verdict_du_juge_et_la_batterie_du_devis(self):
+        from apps.calepinage.services import validation_batterie as vb
+
+        candidats = {'batteries': [{'id': 905}, {'id': 906}], 'onduleurs': []}
+        verdicts = {905: {'batterie_onduleur': {'statut': 'compatible', 'raisons': []}},
+                    906: {'batterie_onduleur': {'statut': 'incompatible', 'raisons': ['48 V sous un onduleur HT']}}}
+        resolu = {'produits': {'module': 11, 'onduleur': 12}}
+        bloc = {'produit': 905, 'designation': 'Batterie du devis', 'quantite': 3.0}
+        with mock.patch('apps.ventes.selectors.compatibilite_du_materiel',
+                        side_effect=lambda panneau, onduleur, company, batterie: verdicts[batterie]), \
+                mock.patch('apps.stock.selectors_disponibilite.produits_en_stock', return_value={905}), \
+                mock.patch('apps.calepinage.services.equipements.equipements_du_calepinage',
+                           return_value={'batterie': bloc}):
+            sortie = vb.enrichir_candidats(mock.Mock(company=object()), candidats, resolu)
+        self.assertEqual(sortie['batteries'][0]['compatibilite'], {'statut': 'compatible', 'raisons': []})
+        self.assertEqual(sortie['batteries'][1]['compatibilite']['statut'], 'incompatible')
+        # D-ACAL-71 (ACAL1318) — « En stock » : vrai quand le stock réel en a, sinon None (jamais False).
+        self.assertEqual([ligne['en_stock'] for ligne in sortie['batteries']], [True, None])
+        self.assertEqual(sortie['batterie_du_devis'],
+                         {'produit_id': 905, 'designation': 'Batterie du devis', 'packs': 3})
+        # Sans onduleur résolu : « inconnu » (jamais « incompatible »), sans appeler le juge ; sans devis : None.
+        with mock.patch('apps.ventes.selectors.compatibilite_du_materiel') as juge, \
+                mock.patch('apps.stock.selectors_disponibilite.produits_en_stock', return_value=set()), \
+                mock.patch('apps.calepinage.services.equipements.equipements_du_calepinage',
+                           return_value={'batterie': None}):
+            sortie = vb.enrichir_candidats(mock.Mock(company=object()), {'batteries': [{'id': 905}]}, {'produits': {}})
+        juge.assert_not_called()
+        self.assertEqual(sortie['batteries'][0]['compatibilite']['statut'], 'inconnu')
+        self.assertIsNone(sortie['batterie_du_devis'])
+
+    def test_en_stock_touche_les_roles_scope_societe_sans_prix_ni_quantite(self):
+        from apps.calepinage.services import validation_batterie as vb
+
+        candidats = {'modules': [{'id': 1}, {'id': 2}], 'onduleurs': [{'id': 3}], 'optimiseurs': [], 'batteries': []}
+        societe = object()
+        with mock.patch('apps.stock.selectors_disponibilite.produits_en_stock', return_value={1, 3}) as lu, \
+                mock.patch('apps.calepinage.services.equipements.equipements_du_calepinage',
+                           return_value={'batterie': None}):
+            sortie = vb.enrichir_candidats(mock.Mock(company=societe), candidats, {'produits': {}})
+        self.assertEqual([ligne['en_stock'] for ligne in sortie['modules']], [True, None])
+        self.assertEqual(sortie['onduleurs'][0]['en_stock'], True)
+        self.assertEqual(lu.call_count, 2)  # une lecture par rôle non vide, jamais par ligne
+        self.assertEqual(lu.call_args_list[0].args[0], societe)  # la société du calepinage, jamais du corps
+        self.assertTrue(all(set(ligne) <= {'id', 'en_stock'} for ligne in sortie['modules']))  # ni prix ni quantité
+
+    def test_une_designation_inchangee_reste_reenregistrable_meme_sans_fiche(self):
+        # La fixture / l'entrée qui porte déjà une batterie sans fiche : renvoyée telle quelle, elle passe.
+        self._valider({'batterie': {'produit': 905, 'packs': 3}}, produit=self._produit(), en_liste=False,
+                      stockee={'batterie': {'produit': 905, 'packs': 2}})
+        from apps.calepinage.services.electrique import EntreeInvalide
+
+        with self.assertRaises(EntreeInvalide):  # un AUTRE produit hors liste reste refusé
+            self._valider({'batterie': {'produit': 906}}, produit=self._produit(), en_liste=False,
+                          stockee={'batterie': {'produit': 905}})
+
+    def test_sans_batterie_rien_n_est_juge(self):
+        self._valider({'dc_m': 12}, produit=None)                    # une saisie sans batterie : aucun effet
+        self._valider({'batterie': {'strategie': 'autoconsommation'}}, produit=None)  # sans produit : aucun effet
+
+    def test_une_entree_sans_batterie_garde_ses_options_donc_ses_empreintes(self):
+        from apps.calepinage.services.electrique import _options_entree
+
+        entree = {'regime': 'TT', 'dc_m': 12, 'onduleur_produit': 901}
+        avant = _options_entree(dict(entree))
+        self._valider(dict(entree), produit=None)  # la validation n'écrit ni ne modifie rien
+        self.assertEqual(_options_entree(dict(entree)), avant)
+        self.assertNotIn('batterie', entree)

@@ -4,6 +4,7 @@ import BuilderOutils from '../BuilderOutils'
 import BuilderPose from '../BuilderPose'
 import BuilderToit from '../BuilderToit'
 import InspecteurBuilder from '../InspecteurBuilder'
+import { estAtelierPompage } from '../contexteAtelier'
 import { StatutCarte } from './BandeauxCoque'
 import CoqueAtelier from './CoqueAtelier'
 import { sousTitreProjet, titreProjet } from './projet'
@@ -38,7 +39,7 @@ export default function AtelierCoque({
         outils: <BuilderOutils {...proprietesBuilder} />,
         toit: <BuilderToit {...proprietesBuilder} />,
         // La recommandation du constructeur (`rp9-results`, cible, besoin) accompagne la pose (étape Panneaux).
-        pose: <><BuilderPose {...proprietesBuilder} /><InspecteurBuilder estCalepinage /></>,
+        pose: <><BuilderPose {...proprietesBuilder} sansReseau={estAtelierPompage(contexte)} /><InspecteurBuilder estCalepinage sansReseau={estAtelierPompage(contexte)} /></>,
       }}
       alertes={alertes}
       avance={avance}

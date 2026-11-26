@@ -130,3 +130,137 @@ class MasqueAchatRapportsProduitMixin:
         if champs and cache_montants_achat(request):
             retirer_cles(getattr(response, 'data', None), champs)
         return super().finalize_response(request, response, *args, **kwargs)
+
+
+# ── D-ACAL-152 (fondateur, 26/11/2026) — prix de VENTE masqués ──────────────
+#: LA liste des clés de prix de vente que le stock RETIRE pour un compte sans
+#: ``prix_vente_voir`` (``User.can_view_sale_prices`` : Technicien et
+#: Technicien responsable par défaut). Champs du produit, puis clés dérivées
+#: des actions (étiquette TTC, kits explosés / structure).
+PRIX_VENTE_CHAMPS = (
+    'prix_vente', 'paliers_prix_vente', 'prix_fixe_ht', 'prix_par_panneau_ht',
+    'tarif_location_jour', 'tarif_location_semaine', 'tarif_location_mois',
+    'prix_ttc', 'prix_vente_unitaire', 'prix_vente_total',
+)
+MESSAGE_PRIX_VENTE = "Permission « prix_vente_voir » requise (prix de vente)."
+
+
+def cache_prix_vente(requete):
+    """D-ACAL-152 — vrai quand la réponse à ``requete`` doit perdre ses prix de
+    VENTE. Sans requête ou sans utilisateur (usage service) : faux, la donnée
+    reste entière."""
+    user = getattr(requete, 'user', None)
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    return not getattr(user, 'can_view_sale_prices', True)
+
+
+def _cache_prix_vente_deja_authentifie(requete):
+    """``cache_prix_vente`` pour une RÉPONSE : ne lit que l'utilisateur que DRF a déjà
+    authentifié (``Request._user``), jamais ``requete.user`` (qui authentifierait)."""
+    user = vars(requete).get('_user') if hasattr(requete, '__dict__') else None
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    return not getattr(user, 'can_view_sale_prices', True)
+
+
+#: Valeurs qu'un formulaire renvoie pour un prix qu'on ne lui a pas servi.
+_PRIX_VIDES = ('', None, [], {})
+
+
+class MasquePrixVenteMixin:
+    """D-ACAL-152 — sérialiseur du stock : sans ``prix_vente_voir``, les clés de
+    ``PRIX_VENTE_CHAMPS`` sont RETIRÉES de la représentation (lecture, réponse
+    d'écriture, objets imbriqués). L'ÉCRITURE garde son contrat (ASTK20 :
+    changer un prix sans ``catalogue_prix_modifier`` = 403) ; seul un prix
+    VIDE renvoyé par un formulaire qui ne l'a jamais reçu est lu comme « pas
+    de changement » (mise à jour seulement). À placer AVANT les autres bases."""
+
+    def _prix_vente_caches(self):
+        return cache_prix_vente(self.context.get('request'))
+
+    def to_internal_value(self, data):
+        caches = self.instance is not None and self._prix_vente_caches()
+        if caches and hasattr(data, 'copy'):
+            data = data.copy()
+            for champ in PRIX_VENTE_CHAMPS:
+                if champ in data and data.get(champ) in _PRIX_VIDES:
+                    data.pop(champ)
+        attrs = super().to_internal_value(data)
+        if caches:
+            self._refuser_prix_vente_modifie(attrs)
+        return attrs
+
+    def _refuser_prix_vente_modifie(self, attrs):
+        """D-ACAL-165 — qui ne VOIT pas un prix de vente ne l'écrase pas : un
+        changement NON vide → 403. Les prix catalogue (``PRIX_CATALOGUE_CHAMPS``
+        du sérialiseur) gardent leur 403 « catalogue_prix_modifier » (ASTK20)
+        pour qui n'a pas ce code ; ce garde couvre le reste (tarifs de
+        location) et le compte qui porterait ``catalogue_prix_modifier`` sans
+        ``prix_vente_voir``."""
+        user = getattr(self.context.get('request'), 'user', None)
+        from .serializers import PRIX_CATALOGUE_CHAMPS as catalogue  # liste unique (ASTK20)
+        garde_catalogue = bool(user and user.has_erp_permission('catalogue_prix_modifier'))
+        changes = [c for c in PRIX_VENTE_CHAMPS
+                   if c in attrs and (garde_catalogue or c not in catalogue)
+                   and attrs[c] != getattr(self.instance, c, None)]
+        if changes:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(f"{MESSAGE_PRIX_VENTE} — modification refusée ({', '.join(changes)}).")
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if self._prix_vente_caches():
+            for champ in PRIX_VENTE_CHAMPS:
+                data.pop(champ, None)
+        return data
+
+
+class MasquePrixVenteReponseMixin:
+    """D-ACAL-152 — viewset du stock : sans ``prix_vente_voir``, les clés de
+    ``PRIX_VENTE_CHAMPS`` sont retirées de TOUTE réponse JSON (liste, détail,
+    recherche, actions, dictionnaires imbriqués) ; les actions de
+    ``actions_reservees_prix_vente`` (une sortie qui n'est QU'un prix, ex.
+    l'étiquette prix) répondent 403."""
+
+    actions_reservees_prix_vente = ()
+    #: D-ACAL-165 — montants de VENTE propres à une action, sous un autre nom
+    #: que ``PRIX_VENTE_CHAMPS`` (ex. le total TTC d'un devis).
+    montants_vente_par_action = {}
+
+    def check_permissions(self, request):
+        super().check_permissions(request)
+        if (getattr(self, 'action', None) in self.actions_reservees_prix_vente
+                and cache_prix_vente(request)):
+            self.permission_denied(request, message=MESSAGE_PRIX_VENTE)
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        # CI #1564 api-fuzz (``stock/produits/0.5/`` → 500) : « .5 » est lu comme un suffixe de
+        # format, la négociation répond 404 AVANT l'authentification ; lire ``request.user`` ici
+        # la déclenchait hors du gestionnaire d'exceptions de DRF. Seul l'utilisateur DÉJÀ
+        # authentifié est lu (toute réponse d'une requête authentifiée garde son masque).
+        if _cache_prix_vente_deja_authentifie(request):
+            champs = PRIX_VENTE_CHAMPS + tuple(
+                self.montants_vente_par_action.get(getattr(self, 'action', None), ()))
+            retirer_cles(getattr(response, 'data', None), champs)
+        return super().finalize_response(request, response, *args, **kwargs)
+
+
+class MasquePrixVenteProduitMixin(MasquePrixVenteReponseMixin):
+    """D-ACAL-152 — ``ProduitViewSet`` : l'étiquette PRIX de rayon n'existe que
+    pour son prix TTC → réservée à ``prix_vente_voir``. D-ACAL-165 — « Utilisé
+    dans » : ``total_ttc`` des devis retiré sans le droit ; et (D-ACAL-106,
+    « aucun devis ni aucun prix ») un compte qui ne peut pas LIRE les devis
+    (``ventes.selectors_assistant.lit_les_devis``) n'en reçoit aucune ligne."""
+
+    actions_reservees_prix_vente = ('etiquettes_prix',)
+    montants_vente_par_action = {'utilise_dans': ('total_ttc',)}
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        donnees = getattr(response, 'data', None)
+        if getattr(self, 'action', None) == 'utilise_dans' and isinstance(donnees, dict) \
+                and donnees.get('devis'):
+            from apps.ventes.selectors_assistant import lit_les_devis
+            if not lit_les_devis(getattr(request, 'user', None)):
+                donnees['devis'] = []
+        return super().finalize_response(request, response, *args, **kwargs)

@@ -488,7 +488,7 @@
     {
       "cle": "controle.taille_sans_facture",
       "famille": "controle",
-      "phrase": "Vérifie que le calepinage dispose d'une facture du lead ou d'une taille souhaitée ; sans l'une ou l'autre, le toit est rempli sans tenir compte de la consommation.",
+      "phrase": "Vérifie seulement qu'une facture du lead ou une taille souhaitée est renseignée ; il ne compare pas la taille posée à la consommation. Sans l'une ou l'autre, le toit est rempli sans tenir compte de la consommation.",
       "valeurs": {},
       "geste": "Si ce n'est pas bon : saisissez la facture du lead.",
       "lexique": null,
@@ -1128,7 +1128,7 @@
       "famille": "toit",
       "phrase": "Nombre de panneaux que la recommandation pose sur les surfaces tracées, dans les retraits et hors des obstacles.",
       "valeurs": {},
-      "geste": "Changez-le avec les boutons « Panneaux nécessaires ».",
+      "geste": "Changez-le avec les boutons « Panneaux à poser ».",
       "lexique": null,
       "ecrans": []
     },

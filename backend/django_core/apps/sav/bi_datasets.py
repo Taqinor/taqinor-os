@@ -66,6 +66,12 @@ def sav_tickets_queryset(company, user):
 
 # ── NTDATA4 — contrats de maintenance ───────────────────────────────────────
 CONTRATS_DATASET_NAME = 'sav_contrats'
+# D-ACAL-165 (fondateur, 26/11/2026) — prix de VENTE du contrat masqués au
+# LECTEUR sans « voir les prix de vente » (`core.data_explorer`
+# `masques_lecteur` : gardés sans acteur et dans les sorties de rapport d'un
+# propriétaire autorisé, contrairement à `gated_fields`).
+CONTRATS_MASQUES_LECTEUR = {'prix': 'can_view_sale_prices',
+                            'valeur_annuelle': 'can_view_sale_prices'}
 CONTRATS_FIELDS = [
     'id', 'statut', 'actif', 'frequence', 'mois_renouvellement',
     'valeur_annuelle', 'prix',
@@ -155,4 +161,5 @@ def register_dataset():
         gated_fields=GATED_FIELDS, field_meta=FIELD_META)
     data_explorer.register_dataset(
         CONTRATS_DATASET_NAME, 'Contrats de maintenance', CONTRATS_FIELDS,
-        sav_contrats_queryset, field_meta=CONTRATS_FIELD_META)
+        sav_contrats_queryset, field_meta=CONTRATS_FIELD_META,
+        masques_lecteur=CONTRATS_MASQUES_LECTEUR)

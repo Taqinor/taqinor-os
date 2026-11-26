@@ -52,6 +52,18 @@ describe('ProductionMesuree (ACAL888)', () => {
     expect(screen.getByTestId('acal888-champ-1').value).toBe('850')
   })
 
+  it('ACAL1251 — l\'avertissement servi pour un mois se lit sous son champ ; sans avertissement, rien', async () => {
+    const servi = reponseContrat('calepinage', NOM)
+    const ecarts = servi.data.ecarts.map((ligne) => (ligne.mois === 2
+      ? { ...ligne, avertissement: 'La mesure du mois 2 vaut 12 fois la prévision : vérifiez la saisie. Elle est gardée.' }
+      : ligne))
+    calepinageApi.calepinages.productionMesuree.mockResolvedValue({ ...servi, data: { ...servi.data, ecarts } })
+    rendre()
+
+    expect(await screen.findByTestId('acal1251-avertissement-2')).toHaveTextContent('vérifiez la saisie')
+    expect(screen.queryByTestId('acal1251-avertissement-1')).toBeNull()
+  })
+
   it('un mois vide s’écrit « — » (jamais 0) et n’est pas envoyé à l’enregistrement', async () => {
     rendre()
     await screen.findByTestId('acal888-tableau')

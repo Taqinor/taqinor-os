@@ -115,7 +115,7 @@ export default function CarteCreation({
               ? "Vérifiez puis enregistrez. Le devis s'affiche ensuite ici même "
                 + 'avec son PDF, sans quitter la fiche du lead.'
               : 'Vérifiez les informations ci-dessus puis créez le devis. Le PDF '
-                + 'premium 3 pages se génère ensuite depuis la liste des devis (bouton « PDF »).'}
+                + 'premium se génère ensuite depuis la liste des devis (bouton « PDF »).'}
           </p>
           {/* T4-U3-004 — la pompe que retient le dimensionnement, pourquoi, et
               QUI peut saisir son prix (jamais une liste sans suite). */}

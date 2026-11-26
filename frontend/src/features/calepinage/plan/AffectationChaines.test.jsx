@@ -17,7 +17,7 @@
    La charge utile du `resultat` vient du contrat COMMITTÉ
    `apps/calepinage/contract_samples/calepinage_resultat.json` (PACT10/13). */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { reponseContrat, exempleContrat } from '../../../test/fixtures/contractSamples'
 
@@ -36,6 +36,8 @@ vi.mock('../../../api/calepinageApi', () => ({
 import calepinageApi from '../../../api/calepinageApi'
 import AffectationChaines, { BarreRaccordement } from './AffectationChaines'
 import { couleurParModule, marquerModules } from './AffectationChaines.helpers'
+import { PROVENANCE_TRACE_PROPOSE, provenanceCable, useOnduleurSurCarte } from '../electrique/onduleurSurCarte'
+import { creerCoucheElectrique } from '@roofpro/electrique3d'
 
 const contratResultat = () => reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
 
@@ -207,6 +209,43 @@ describe('AffectationChaines (CAL234) — le verdict SERVEUR', () => {
     ])
     // Rien n'est enregistré par ce chemin.
     expect(calepinageApi.calepinages.enregistrerEntreeElectrique).not.toHaveBeenCalled()
+  })
+
+  // R3 (visuel lot 7) — numéros stables ≠ rang (pose dont le compteur a grandi) : l'écran renvoie
+  // les clés SERVIES telles quelles, jamais un rang recalculé.
+  it('modules servis `<pan>#2236…` : la proposition et l’enregistrement portent ces mêmes clés', async () => {
+    const donnees = JSON.parse(JSON.stringify(contratResultat().data))
+    donnees.electrique.affectation = donnees.electrique.affectation.map((ligne, i) => (
+      { ...ligne, module: `${ligne.module.split('#')[0]}#${2236 + i}` }))
+    const [, , m1, m2] = donnees.electrique.affectation.map((ligne) => ligne.module)
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donnees })
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: donnees })
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    glisserSur([m1, m2])
+    saisir('chaine', '2')
+    saisir('mppt', '2')
+    saisir('onduleur', '1')
+    fireEvent.click(screen.getByTestId('cal234-affecter'))
+    await waitFor(() => {
+      expect(appelsProposition()).not.toHaveLength(0)
+    })
+    const attendu = [
+      { module: m1, chaine: 2, mppt: 2, onduleur: 1 },
+      { module: m2, chaine: 2, mppt: 2, onduleur: 1 },
+    ]
+    expect(m1).toMatch(/#2238$/)
+    expect(appelsProposition().at(-1)[1].entree_electrique.affectation_manuelle).toEqual(attendu)
+    await waitFor(() => {
+      expect(screen.getByTestId('cal234-enregistrer')).not.toBeDisabled()
+    })
+    fireEvent.click(screen.getByTestId('cal234-enregistrer'))
+    await waitFor(() => {
+      expect(calepinageApi.calepinages.enregistrerEntreeElectrique).toHaveBeenCalled()
+    })
+    expect(calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls.at(-1)[1])
+      .toEqual({ affectation_manuelle: attendu })
   })
 
   it('un refus est affiché AVEC le motif du serveur et bloque l’enregistrement', async () => {
@@ -759,5 +798,326 @@ describe('AffectationChaines (ACAL647) — modules ombrés proposés pour un opt
         module, chaine: servi.chaine, mppt: servi.mppt, onduleur: servi.onduleur, optimiseur: true,
       })
     })
+  })
+})
+
+/* ACAL1317 (D-ACAL-70) — placer / déplacer / retirer l'onduleur depuis la barre de l'étape Électrique. La couche
+   électrique de la scène (`electrique3d.ts`, prouvée par ses propres tests) est remplacée par une couche d'essai qui
+   tient le même document et prévient l'écran comme elle (`ecouter`) ; la barre et le crochet sont les VRAIS. */
+function coucheEssai(equipements = []) {
+  const doc = { equipements: equipements.map((e) => ({ ...e })), cheminements: [] }
+  const ecouteurs = new Set()
+  let pose = null
+  let vise = null
+  const prevenir = () => ecouteurs.forEach((f) => f())
+  const couche = {
+    pasDeplacementM: 0.25,
+    documentElectrique: () => doc,
+    typeArme: () => pose,
+    deplacementArme: () => vise,
+    dernierRefus: () => null,
+    armerPose: vi.fn((type) => { pose = type; vise = null; return true }),
+    armerDeplacement: vi.fn((id) => { vise = id; pose = null; return true }),
+    pousser: vi.fn(() => ({ ok: true, traces: ['ch1'], refusTrace: null })),
+    retirerAvecTraces: vi.fn((id) => {
+      doc.equipements = doc.equipements.filter((e) => e.id !== id)
+      prevenir()
+      return { ok: true, tracesGardees: [] }
+    }),
+    etatTraces: vi.fn(() => ({ proposes: ['ch1'], autres: [], decales: [], pansSansTrace: [] })),
+    ecouter: (f) => { ecouteurs.add(f); return () => ecouteurs.delete(f) },
+    definirLectureSeule: vi.fn(),
+    annuler: vi.fn(() => false),
+    retablir: vi.fn(() => false),
+    profondeurHistorique: () => ({ undo: 0, redo: 0 }),
+    /** Le toucher de la carte (le constructeur appelle `clicCarte`) : pose ou déplace l'organe armé. */
+    toucher: () => {
+      if (vise) {
+        vise = null
+      } else if (pose) {
+        doc.equipements.push({ id: `eq${doc.equipements.length + 1}`, type: 'onduleur', label: 'Onduleur', lng: 0, lat: 0 })
+        pose = null
+      }
+      prevenir()
+    },
+  }
+  return couche
+}
+const ONDULEUR = { id: 'eqA', type: 'onduleur', label: 'Onduleur 1', lng: -7.6, lat: 33.5, source: 'saisie' }
+function BarreAvecOnduleur({ couche, lectureSeule = false, nombreAttendu = 1, enregistreLe = null, simulationExiste = false }) {
+  const onduleur = useOnduleurSurCarte({ builderApi: couche ? { electrique: couche } : null, nombreAttendu, lectureSeule, enregistreLe, simulationExiste })
+  return <BarreRaccordement calepinageId={1} onRaccorde={() => {}} onModifier={() => {}} lectureSeule={lectureSeule} onduleur={onduleur} />
+}
+const GESTES_ECRITS = ['armerPose', 'armerDeplacement', 'pousser', 'retirerAvecTraces']
+
+describe('BarreRaccordement (ACAL1317) — l’onduleur se place, se déplace et se retire sur la carte', () => {
+  it('sans constructeur, la barre reste celle d’avant (aucun geste d’onduleur proposé)', () => {
+    render(<BarreAvecOnduleur couche={null} />)
+    expect(screen.queryByTestId('cal-elec-onduleur-placer')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Raccorder automatiquement' })).toBeInTheDocument()
+  })
+
+  it('aucun onduleur posé : « Placer l’onduleur » arme la pose avec suivi du tracé ; le toucher de la carte le pose', () => {
+    const couche = coucheEssai()
+    render(<BarreAvecOnduleur couche={couche} simulationExiste />)
+    fireEvent.click(screen.getByRole('button', { name: 'Placer l’onduleur' }))
+    expect(couche.armerPose).toHaveBeenCalledWith('onduleur', { suivreTrace: true })
+    expect(screen.getByTestId('cal-elec-onduleur-message')).toHaveTextContent('Touchez la carte à l’endroit de l’onduleur.')
+    act(() => couche.toucher())
+    expect(screen.getByTestId('cal-elec-onduleur-message')).toHaveTextContent('Onduleur placé : le tracé du câble a suivi.')
+    // ACAL1317 (revue, point 8) — l'empreinte du document porte `electrical` : la simulation sera à refaire, et c'est dit.
+    expect(screen.getByTestId('cal-elec-onduleur-message')).toHaveTextContent('Après l’enregistrement : Simulation à refaire, le toit a changé depuis le dernier calcul.')
+    // Un onduleur attendu : la barre n'en pose pas un second, elle propose de le déplacer ou de le retirer.
+    expect(screen.queryByTestId('cal-elec-onduleur-placer')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Déplacer l’onduleur' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retirer l’onduleur' })).toBeInTheDocument()
+  })
+
+  it('« Déplacer l’onduleur » arme le déplacement ; flèches du clavier et boutons fléchés poussent d’un pas de la couche', () => {
+    const couche = coucheEssai([ONDULEUR])
+    render(<BarreAvecOnduleur couche={couche} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Déplacer l’onduleur' }))
+    expect(couche.armerDeplacement).toHaveBeenCalledWith('eqA')
+    const fleches = screen.getByTestId('cal-elec-onduleur-fleches')
+    expect(screen.getByRole('button', { name: 'Pousser l’onduleur vers le nord' })).toHaveFocus()
+    fireEvent.keyDown(fleches, { key: 'ArrowUp' })
+    expect(couche.pousser).toHaveBeenLastCalledWith('eqA', 0, 0.25)
+    fireEvent.click(screen.getByRole('button', { name: 'Pousser l’onduleur vers l’est' }))
+    expect(couche.pousser).toHaveBeenLastCalledWith('eqA', 0.25, 0)
+    act(() => couche.toucher())
+    expect(screen.getByTestId('cal-elec-onduleur-message')).toHaveTextContent('Onduleur déplacé : le tracé du câble a suivi.')
+    expect(screen.queryByTestId('cal-elec-onduleur-fleches')).toBeNull()
+  })
+
+  it('« Retirer l’onduleur » le retire avec son tracé proposé, en un geste', () => {
+    const couche = coucheEssai([ONDULEUR])
+    render(<BarreAvecOnduleur couche={couche} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Retirer l’onduleur' }))
+    expect(couche.retirerAvecTraces).toHaveBeenCalledWith('eqA')
+    expect(screen.getByTestId('cal-elec-onduleur-message')).toHaveTextContent('Onduleur retiré du plan.')
+    expect(screen.getByRole('button', { name: 'Placer l’onduleur' })).toBeInTheDocument()
+  })
+
+  it('plusieurs onduleurs au document : les gestes visent celui CHOISI', () => {
+    const couche = coucheEssai([ONDULEUR, { ...ONDULEUR, id: 'eqB', label: 'Onduleur 2' }])
+    render(<BarreAvecOnduleur couche={couche} nombreAttendu={2} />)
+    fireEvent.change(screen.getByTestId('cal-elec-onduleur-choix'), { target: { value: 'eqB' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Déplacer l’onduleur' }))
+    expect(couche.armerDeplacement).toHaveBeenCalledWith('eqB')
+    expect(screen.queryByTestId('cal-elec-onduleur-placer')).toBeNull() // deux attendus, deux posés
+  })
+
+  it('lecture seule : chaque geste est désactivé avec le motif, et rien n’est écrit', () => {
+    const couche = coucheEssai([ONDULEUR])
+    render(<BarreAvecOnduleur couche={couche} lectureSeule />)
+    for (const nom of ['Déplacer l’onduleur', 'Retirer l’onduleur']) {
+      const bouton = screen.getByRole('button', { name: nom })
+      expect(bouton).toBeDisabled()
+      expect(bouton).toHaveAttribute('title', expect.stringContaining('Conception figée'))
+      fireEvent.click(bouton)
+    }
+    for (const geste of GESTES_ECRITS) expect(couche[geste]).not.toHaveBeenCalled()
+  })
+
+  it('sans geste, l’écran n’écrit rien dans le document (il ne fait que le lire)', () => {
+    const couche = coucheEssai([ONDULEUR])
+    const avant = JSON.stringify(couche.documentElectrique())
+    render(<BarreAvecOnduleur couche={couche} />)
+    for (const geste of GESTES_ECRITS) expect(couche[geste]).not.toHaveBeenCalled()
+    expect(JSON.stringify(couche.documentElectrique())).toBe(avant)
+  })
+})
+
+describe('provenanceCable (ACAL1317) — d’où vient la longueur sous « Câble côté panneaux »', () => {
+  it('tracé proposé seul ⇒ la position de l’onduleur (la longueur à mesurer se dit dans la case, plus ici)', () => {
+    const etat = { proposes: ['ch1'], autres: [], decales: [], pansSansTrace: [] }
+    expect(provenanceCable(etat)).toBe(PROVENANCE_TRACE_PROPOSE)
+  })
+  it('tracé non reconnu décalé ⇒ il le dit SANS dire qui l’a tracé ; non reconnu qui aboutit, ou aucun onduleur ⇒ rien', () => {
+    expect(provenanceCable({ proposes: [], autres: ['ch1'], decales: ['ch1'], pansSansTrace: [] }, false)).toBe('tracé enregistré — n’aboutit plus à l’onduleur')
+    expect(provenanceCable({ proposes: [], autres: ['ch1'], decales: [], pansSansTrace: [] }, false)).toBeNull()
+    expect(provenanceCable(null, true)).toBeNull()
+  })
+  it('un pan à modules sans tracé vers l’onduleur ⇒ « tracé partiel », jamais la provenance complète', () => {
+    expect(provenanceCable({ proposes: ['ch1'], autres: [], decales: [], pansSansTrace: ['z2'] }, false)).toBe('tracé partiel : 1 pan sans tracé vers l’onduleur')
+  })
+})
+
+/* ACAL1317 (revue, point 2) — la VRAIE couche électrique (`@roofpro/electrique3d`) et le vrai crochet : un armement
+   ne survit ni au démontage de l'étape, ni à la lecture seule, ni au changement d'onduleur visé. */
+const ORIGINE_ESSAI = [-7.6, 33.5]
+const versLngLat = (e, n) => {
+  const m = (Math.PI / 180) * 6378137
+  return [ORIGINE_ESSAI[0] + e / (m * Math.cos((ORIGINE_ESSAI[1] * Math.PI) / 180)), ORIGINE_ESSAI[1] + n / m]
+}
+const panEssai = {
+  id: 'z1',
+  renderPlan: {
+    pack: { origin: ORIGINE_ESSAI, azimuthDeg: 180, ringENU: [[0, 0], [20, 0], [20, 12], [0, 12]] },
+    grid: { rowWidthM: 2, panels: [3, 5, 7, 9, 11, 13, 15, 17].map((cx) => ({ cx, cy: 6 })) },
+  },
+}
+const vraieCouche = (equipements = []) => creerCoucheElectrique({
+  electrical: equipements.length ? { equipements: equipements.map((e) => ({ ...e })), cheminements: [] } : null,
+  sceneOrigin: ORIGINE_ESSAI, areas: [panEssai], activeAreaId: 'z1',
+})
+const onduleurEssai = (id, e, n) => {
+  const [lng, lat] = versLngLat(e, n)
+  return { id, type: 'onduleur', label: `Onduleur ${id}`, lng, lat, source: 'saisie' }
+}
+
+describe('useOnduleurSurCarte (ACAL1317, revue) — un armement ne survit pas à la sortie de l’étape', () => {
+  it('« Placer » puis quitter l’étape : la couche est désarmée, le toucher suivant de la carte ne pose rien', () => {
+    const couche = vraieCouche()
+    const { unmount } = render(<BarreAvecOnduleur couche={couche} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Placer l’onduleur' }))
+    expect(couche.typeArme()).toBe('onduleur')
+    unmount()
+    expect(couche.typeArme()).toBeNull()
+    expect(couche.clicCarte(versLngLat(19, 2))).toBe(false)
+    expect(couche.documentElectrique()).toBeNull()
+  })
+
+  it('« Déplacer » armé puis la conception passe en lecture seule : désarmée, et la couche refuse d’écrire', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    const { rerender } = render(<BarreAvecOnduleur couche={couche} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Déplacer l’onduleur' }))
+    expect(couche.deplacementArme()).toBe('eqA')
+    rerender(<BarreAvecOnduleur couche={couche} lectureSeule />)
+    expect(couche.deplacementArme()).toBeNull()
+    expect(couche.lectureSeule()).toBe(true)
+    expect(couche.pousser('eqA', 1, 0).ok).toBe(false)
+  })
+
+  it('changer d’onduleur visé pendant un déplacement armé désarme le déplacement de l’autre', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2), onduleurEssai('eqB', 1, 2)])
+    render(<BarreAvecOnduleur couche={couche} nombreAttendu={2} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Déplacer l’onduleur' }))
+    expect(couche.deplacementArme()).toBe('eqA')
+    fireEvent.change(screen.getByTestId('cal-elec-onduleur-choix'), { target: { value: 'eqB' } })
+    expect(couche.deplacementArme()).toBeNull()
+    expect(couche.clicCarte(versLngLat(10, 2))).toBe(false)
+  })
+})
+
+describe('OutilsOnduleur (ACAL1317, revue, point 3) — les flèches et Échap ne fuient pas vers le constructeur', () => {
+  it('le plan clavier du constructeur, à l’écoute du document, ne reçoit ni les flèches ni Échap traitées par la barre', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    const constructeur = vi.fn()
+    document.addEventListener('keydown', constructeur) // comme `mapDraw.ts` (plan clavier sur le document)
+    try {
+      render(<BarreAvecOnduleur couche={couche} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Déplacer l’onduleur' }))
+      const fleches = screen.getByTestId('cal-elec-onduleur-fleches')
+      fireEvent.keyDown(fleches, { key: 'ArrowRight' })
+      expect(couche.documentElectrique().equipements[0].lng).toBeGreaterThan(onduleurEssai('eqA', 19, 2).lng)
+      fireEvent.keyDown(fleches, { key: 'Escape' })
+      expect(couche.deplacementArme()).toBeNull()
+      expect(constructeur).not.toHaveBeenCalled()
+      fireEvent.keyDown(screen.getByRole('button', { name: 'Déplacer l’onduleur' }), { key: 'a' })
+      expect(constructeur).toHaveBeenCalledTimes(1) // une touche que la barre ne traite pas continue son chemin
+    } finally {
+      document.removeEventListener('keydown', constructeur)
+    }
+  })
+})
+
+describe('OutilsOnduleur (ACAL1317, revue, point 5) — « Annuler » joint l’historique électrique de la couche', () => {
+  it('rien à annuler ⇒ « Annuler » désactivé ; après « Retirer l’onduleur », « Annuler » le remet à sa place', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    render(<BarreAvecOnduleur couche={couche} />)
+    expect(screen.getByTestId('cal-elec-onduleur-annuler')).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Retirer l’onduleur' }))
+    expect(couche.documentElectrique().equipements).toHaveLength(0)
+    const annuler = screen.getByTestId('cal-elec-onduleur-annuler')
+    expect(annuler).toBeEnabled()
+    fireEvent.click(annuler)
+    expect(couche.documentElectrique().equipements.map((e) => e.id)).toEqual(['eqA'])
+    expect(screen.getByTestId('cal-elec-onduleur-message')).toHaveTextContent('Dernier geste du raccordement annulé.')
+  })
+
+  it('Ctrl+Z dans la barre annule le geste ÉLECTRIQUE et n’atteint pas l’annulation du plan (écoutée sur le document)', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    const annulationDuPlan = vi.fn()
+    document.addEventListener('keydown', annulationDuPlan) // comme `annulerAtelier.ts`
+    try {
+      render(<BarreAvecOnduleur couche={couche} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Retirer l’onduleur' }))
+      fireEvent.keyDown(screen.getByRole('button', { name: 'Raccorder automatiquement' }), { key: 'z', ctrlKey: true })
+      expect(couche.documentElectrique().equipements.map((e) => e.id)).toEqual(['eqA'])
+      expect(annulationDuPlan).not.toHaveBeenCalled()
+    } finally {
+      document.removeEventListener('keydown', annulationDuPlan)
+    }
+  })
+
+  it('« Terminer » rend le focus à « Déplacer l’onduleur » (il ne retombe pas sur la page)', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    render(<BarreAvecOnduleur couche={couche} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Déplacer l’onduleur' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Terminer' }))
+    expect(screen.getByRole('button', { name: 'Déplacer l’onduleur' })).toHaveFocus()
+  })
+
+  it('lecture seule : « Annuler » et « Terminer » sont désactivés', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    const { rerender } = render(<BarreAvecOnduleur couche={couche} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Déplacer l’onduleur' }))
+    expect(screen.getByRole('button', { name: 'Terminer' })).toBeEnabled()
+    rerender(<BarreAvecOnduleur couche={couche} lectureSeule />)
+    expect(screen.getByTestId('cal-elec-onduleur-annuler')).toBeDisabled()
+  })
+})
+
+describe('useOnduleurSurCarte (ACAL1317, revue 2, point C) — le message du toucher de la carte ne ment pas', () => {
+  it('un pan refusé puis un pan tracé : le message dit le refus, jamais « le tracé du câble a suivi »', () => {
+    const pan = (id, ring) => ({ id, renderPlan: { pack: { origin: ORIGINE_ESSAI, azimuthDeg: 180, ringENU: ring },
+      grid: { rowWidthM: 2, panels: [3, 5, 7].map((cx) => ({ cx, cy: 6 })) } } })
+    const couche = creerCoucheElectrique({ electrical: null, sceneOrigin: ORIGINE_ESSAI, activeAreaId: 'z1',
+      areas: [pan('z1', []), pan('z3', [[22, 0], [40, 0], [40, 12], [22, 12]])] })
+    render(<BarreAvecOnduleur couche={couche} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Placer l’onduleur' }))
+    act(() => { couche.clicCarte(versLngLat(20, 2)) })
+    const message = screen.getByTestId('cal-elec-onduleur-message')
+    expect(message).toHaveTextContent('Onduleur placé, mais aucune rive de toit exploitable')
+    expect(message).not.toHaveTextContent('le tracé du câble a suivi')
+  })
+})
+
+describe('useOnduleurSurCarte (ACAL1317, revue 2, point D) — « Annuler » désarme une pose en attente', () => {
+  it('« Placer » armé puis « Annuler » : le toucher suivant de la carte ne pose rien', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    couche.pousser('eqA', 0, 0.25) // un geste à annuler : « Annuler » est actif
+    render(<BarreAvecOnduleur couche={couche} nombreAttendu={2} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Placer l’onduleur' }))
+    expect(couche.typeArme()).toBe('onduleur')
+    fireEvent.click(screen.getByTestId('cal-elec-onduleur-annuler'))
+    expect(couche.typeArme()).toBeNull()
+    expect(couche.clicCarte(versLngLat(1, 2))).toBe(false)
+    expect(couche.documentElectrique().equipements.map((e) => e.id)).toEqual(['eqA'])
+  })
+
+  it('Ctrl+Z dans la barre pendant un « Placer » armé désarme aussi la pose', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    couche.pousser('eqA', 0, 0.25)
+    render(<BarreAvecOnduleur couche={couche} nombreAttendu={2} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Placer l’onduleur' }))
+    expect(couche.typeArme()).toBe('onduleur')
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Raccorder automatiquement' }), { key: 'z', ctrlKey: true })
+    expect(couche.typeArme()).toBeNull()
+    expect(couche.deplacementArme()).toBeNull()
+  })
+
+  it('« Simulation à refaire » n’est dite que si le calepinage a une simulation ; le retrait la dit aussi', () => {
+    const sans = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    const { unmount } = render(<BarreAvecOnduleur couche={sans} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Retirer l’onduleur' }))
+    expect(screen.getByTestId('cal-elec-onduleur-message')).toHaveTextContent('Onduleur retiré du plan.')
+    expect(screen.getByTestId('cal-elec-onduleur-message')).not.toHaveTextContent('Simulation à refaire')
+    unmount()
+    const avec = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    render(<BarreAvecOnduleur couche={avec} simulationExiste />)
+    fireEvent.click(screen.getByRole('button', { name: 'Retirer l’onduleur' }))
+    expect(screen.getByTestId('cal-elec-onduleur-message')).toHaveTextContent('Onduleur retiré du plan. Après l’enregistrement : Simulation à refaire')
   })
 })

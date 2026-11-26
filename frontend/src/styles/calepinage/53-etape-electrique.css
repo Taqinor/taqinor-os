@@ -551,7 +551,9 @@
   .cal-coque[data-cadre='plein-panneau'] .cal-coque-centre { flex: 1 1 0; min-width: 0; min-height: 520px; }
   .cal-coque[data-cadre='plein-panneau'] .cal-panneau-etape { flex: 1 1 100%; width: auto; min-height: auto; }
   .csch-tete { padding: 16px 16px 0 20px; }
-  .csch-vue { margin: 12px 16px 0; }
+  /* S3 — panneau empilé : la vue prend la hauteur du dessin à son échelle de départ (variable posée par PlancheSchema),
+     jamais une hauteur qui coupe le bas (ligne de terre, pied du coffret côté réseau). */
+  .csch-vue { margin: 12px 16px 0; min-height: var(--csch-h-dessin, 0px); }
 }
 
 /* Cibles tactiles ≥ 44 px (pointeur grossier) */

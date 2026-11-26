@@ -139,9 +139,25 @@ class PretEgaleCeQueLeMoteurExigeALEA47(SimpleTestCase):
         lead.jours_ouverture = [1, 2, 3, 4, 5]
         self.assertEqual(champs_manquants(lead),
                          ["Heures d'ouverture ou régime d'équipes (ou catégorie d'activité)"])
+        # R5F-N3 — heures placées : aucune catégorie ne donne les jours, le
+        # libellé ne le promet plus.
         lead.jours_ouverture, lead.heure_debut, lead.heure_fin = None, 8, 18
-        self.assertEqual(champs_manquants(lead),
-                         ["Jours d'ouverture (ou catégorie d'activité)"])
+        self.assertEqual(champs_manquants(lead), ["Jours d'ouverture"])
+
+    def test_r5f_n3_categorie_et_heures_sans_jours_ne_promet_pas_la_categorie(self):
+        # Boulangerie / supermarché / restaurant avec horaires 8-20 h : la règle
+        # du moteur exige les jours dès que des heures sont placées ;
+        # l'archétype de la catégorie n'en donne aucun.
+        for categorie in ('boulangerie', 'supermarche', 'restaurant'):
+            lead = _lead_pro(conso_mensuelle_kwh=Decimal('10000'), heure_debut=8, heure_fin=20,
+                             **dict(_PRO_COMPLET, categorie_commerciale=categorie))
+            self.assertEqual(champs_manquants(lead), ["Jours d'ouverture"], categorie)
+            lead.jours_ouverture = [1, 2, 3, 4, 5, 6]
+            self.assertEqual(champs_manquants(lead), [], categorie)
+        # Sans heure ni catégorie : la catégorie peut encore lever le manque.
+        lead = _lead_pro(conso_mensuelle_kwh=Decimal('10000'), contrat_electricite='bt_patente',
+                         raccordement='triphase')
+        self.assertEqual(champs_manquants(lead), [LIB_RYTHME])
 
     def test_industriel_conso_et_contrat_sans_rythme_pas_pret(self):
         lead = Lead(nom='Usine', type_installation='industriel',

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, act, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within, act, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
@@ -113,6 +113,46 @@ describe('ToitureDesign — mode devis (PV20)', () => {
     const eco = document.getElementById('rp9-reco-savings')
     expect(eco.parentElement).toHaveTextContent('Économies (estimation de l’atelier, plafonnée à la facture)')
     expect(document.getElementById('rp9-reco-savings-note')).toHaveAttribute('hidden')
+  })
+
+  it('ACAL1268 — lead de pompage : l’atelier ne montre ni économies ni production du réseau, renvoie au devis agricole', async () => {
+    const reponse = reponseContrat('calepinage', 'calepinage_design_context')
+    reponse.data.chiffrage.marche = 'agricole'
+    reponse.data.cible = { ...reponse.data.cible, panneaux: 7, kwc: 4.97, source: 'devis', refus: null,
+      devis_agricole: { id: 77, reference: 'DEV-AGR-7' } }
+    servirConceptionDevis(reponse)
+    rendreDevis(DEVIS_ID)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const carte = await waitFor(() => {
+      const c = document.querySelector('[data-zone="pompage-outil-pose"]')
+      expect(c).not.toBeNull()
+      return c
+    })
+    expect(carte).toHaveTextContent('un outil de pose seulement')
+    const eco = document.getElementById('rp9-reco-savings')
+    expect(eco.closest('dl')).toHaveAttribute('hidden')
+    expect(document.getElementById('rp9-reco-prod').parentElement).toHaveAttribute('hidden')
+    expect(document.getElementById('rp9-reco-cover').parentElement).toHaveAttribute('hidden')
+    expect(document.getElementById('rp9-cible-kwh')).toHaveAttribute('hidden')
+    for (const id of ['rp9-reco-band', 'rp9-reco-why', 'rp9-reco-bifacial']) expect(document.getElementById(id)).toHaveAttribute('hidden')
+    expect(document.getElementById('rp9-areas-total-savings').parentElement).toHaveAttribute('hidden')
+    // La cible du devis agricole (servie par le serveur : 7 panneaux, source « devis ») est CELLE que reçoit l'atelier :
+    // le mécanisme d'un devis vendu, avec le nombre servi — pas la cible de l'exemple.
+    const devis = initRoofToolPro8.mock.calls[0][0].hydrate.devis
+    expect(devis.cible.panneaux).toBe(7)
+    expect([devis.cibleVendue, devis.origineCible]).toEqual([true, 'devis'])
+    expect(within(carte).getByRole('link', { name: 'Ouvrir le devis agricole DEV-AGR-7' })).toHaveAttribute('href', '/ventes/devis?devis=77')
+  })
+
+  it('ACAL1268 — un autre marché : les mêmes blocs, sans `hidden`, aucun renvoi', async () => {
+    servirConceptionDevis()
+    rendreDevis(DEVIS_ID)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(document.getElementById('rp9-reco-savings').closest('dl')).not.toHaveAttribute('hidden')
+    expect(document.getElementById('rp9-reco-prod').parentElement).not.toHaveAttribute('hidden')
+    expect(document.getElementById('rp9-cible-kwh')).not.toHaveAttribute('hidden')
+    for (const id of ['rp9-reco-band', 'rp9-reco-why', 'rp9-reco-bifacial']) expect(document.getElementById(id)).not.toHaveAttribute('hidden')
+    expect(document.querySelector('[data-zone="pompage-outil-pose"]')).toBeNull()
   })
 
   it('ACAL778 — devis lié ⇒ l’option devisLie est vraie ; calepinage sans devis lié ⇒ fausse (même avec cibleVendue)', async () => {
@@ -1218,6 +1258,19 @@ describe('ToitureDesign — VT13 : la photo réelle du toit sous le tracé', () 
     expect(screen.queryByTestId('photo-toit-overlay')).toBeNull()
     // Masquer la photo ne masque PAS le tracé (deux calques, deux bascules).
     expect(screen.getByTestId('rp9-toit-client')).toBeInTheDocument()
+  })
+
+  it('R5D-N2 — sans `crm_voir` (Technicien), la photo du lead n\'est jamais demandée', async () => {
+    crmApi.getLeadPhotoToit.mockResolvedValue({ data: CALAGE_TOIT })
+    const { store } = await import('../../store')
+    const espion = vi.spyOn(store, 'getState').mockReturnValue({ auth: { permissions: ['calepinage_voir', 'visites_voir'], user: { id: 9 } } })
+    try {
+      rendreLeadAvecContour()
+      await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+      await new Promise((r) => setTimeout(r, 50))
+      expect(crmApi.getLeadPhotoToit).not.toHaveBeenCalled()
+      expect(screen.queryByTestId('rp9-photo-toit-toggle')).toBeNull()
+    } finally { espion.mockRestore() }
   })
 
   it('sans visite validée (les trois clés nulles), ni photo ni bascule', async () => {

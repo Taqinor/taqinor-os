@@ -46,6 +46,12 @@
     "message": "Ratio champ/pompe 1,03× hors de la bande 1,2-1,5× (alerte seule)."
    },
    {
+    "champ": "kit.cable_dc",
+    "champ_lead": "distance_forage_champ_m",
+    "code": "cable_dc_non_chiffre",
+    "message": "Câble DC non chiffré : renseignez la distance forage → champ de panneaux sur la fiche du lead ; aucune longueur n'est supposée."
+   },
+   {
     "champ": "kit.disjoncteur_ac",
     "code": "calibre_disjoncteur_deduit",
     "message": "Calibre du disjoncteur AC déduit des 5,5 kW et 380 V de la pompe (courant estimé 8,4 A, sans facteur de puissance ni rendement du moteur : sous-estimé) ; saisir le courant nominal de la pompe sur sa fiche du catalogue le remplace."

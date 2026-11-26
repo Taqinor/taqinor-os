@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { LEAD_TYPE_TO_MODE, libelleSuccesDevisAuto, libelleOptionDevis, optionsDepuisComparaison } from './autoQuote'
+import { LEAD_TYPE_TO_MODE, libelleSuccesDevisAuto, libelleOptionDevis, optionsDepuisComparaison, titreAjustementsEnregistrement } from './autoQuote'
 import PanneauSucces from '../../pages/ventes/generator/PanneauSucces'
 import { DAY_USAGE_DEFAULTS } from './solar'
 
@@ -134,5 +134,26 @@ describe('T4-U1-026 — kWc du bandeau de succès', () => {
   it.each([[5.5, '5,5 kWc'], [3.85, '3,85 kWc'], [6, '6 kWc']])('%s → %s', (kwc, attendu) => {
     expect(normaliser(libelleSuccesDevisAuto({ reference: 'DEV-1', kwc })))
       .toBe(`DEV-1 · ${attendu}`)
+  })
+})
+
+// T4-X6-008 — le titre des ajustements faits par le serveur à l'enregistrement.
+describe('T4-X6-008 — titre des ajustements à l’enregistrement', () => {
+  it('compte les ajustements, rien sans ajustement', () => {
+    expect(titreAjustementsEnregistrement([{ message: 'a' }])).toBe('1 ajustement à l’enregistrement :')
+    expect(titreAjustementsEnregistrement([{ message: 'a' }, { message: 'b' }])).toBe('2 ajustements à l’enregistrement :')
+    expect(titreAjustementsEnregistrement([])).toBeNull()
+    expect(titreAjustementsEnregistrement(undefined)).toBeNull()
+  })
+
+  it('le panneau de succès les montre sous ce titre ; sans titre, celui du devis automatique', () => {
+    const alertes = [{ code: 'enregistrement', message: '« Structure acier » : 9 → 8 (suit 8 panneaux).' }]
+    const { unmount } = render(<PanneauSucces navigate={() => {}} succes={{
+      id: 7, reference: 'DEV-1', total: 1, alertes, titreAlertes: titreAjustementsEnregistrement(alertes) }} />)
+    expect(screen.getByTestId('ldp-alertes-auto').textContent)
+      .toBe('1 ajustement à l’enregistrement :« Structure acier » : 9 → 8 (suit 8 panneaux).')
+    unmount()
+    render(<PanneauSucces navigate={() => {}} succes={{ id: 7, reference: 'DEV-1', total: 1, alertes }} />)
+    expect(screen.getByTestId('ldp-alertes-auto').textContent).toContain('Alertes du devis automatique :')
   })
 })

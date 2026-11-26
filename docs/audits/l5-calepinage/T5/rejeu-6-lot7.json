@@ -1,0 +1,240 @@
+[
+ {
+  "id": "T4-U1-009",
+  "verdict_maintenant": "partiel",
+  "vu": "PDF Devis final de DEV-202611-0104 (2 options 29 500 / 46 700 MAD), page 4 : Modalites de paiement 30/60/10 puis deux lignes: Sans batterie 8 850,00 / 17 700,00 / 2 950,00 MAD et Avec batterie 14 010,00 / 28 020,00 / 4 670,00 MAD ; aucun RIB/IBAN imprime ni mention de son absence ; la case du dialogue s intitule toujours (ajoute modalites de paiement + RIB).",
+  "preuve": "logs/nightly-qa/playwright/_p606.b64.txt (texte du PDF)"
+ },
+ {
+  "id": "T4-X7-020",
+  "verdict_maintenant": "partiel",
+  "vu": "Meme PDF (DEV-202611-0104) : echeances par option imprimees (8 850/17 700/2 950 et 14 010/28 020/4 670), RIB promis par la case mais absent de la page 4 et non signale.",
+  "preuve": "logs/nightly-qa/playwright/_p606.b64.txt"
+ },
+ {
+  "id": "T4-X1-010",
+  "verdict_maintenant": "partiel",
+  "vu": "Lead R5A-2, devis DEV-202611-0106 coche, Darija puis Envoyer par WhatsApp : apercu dit « Variante darija : texte non redige — le message ci-dessous est en francais. Choisissez FR... » puis un message francais avec le lien une seule fois. Toujours pas de texte en darija.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X1-010.png"
+ },
+ {
+  "id": "T4-X1-016",
+  "verdict_maintenant": "corrige",
+  "vu": "Lead 1189, devis accepte DEV-202611-0100, clic Reviser (nouvelle version) : le bouton affiche « Creation de la nouvelle version… » plus de 20 s, un toast dit « La reponse n arrive pas : l action a peut-etre abouti. Verifiez avant de recommencer. » puis le navigateur ouvre quand meme le generateur en edition de la V2 (/ventes/devis/nouveau?edit=643, titre « Edition — DEV-202611-0135 », brouillon, validite 26/12/2026). Plus d echec sec ; lenteur >20 s persiste (pile chargee). Cree : DEV-202611-0135 (V2 de 0100, donnee d essai).",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X1-016-b.png"
+ },
+ {
+  "id": "R5A-N1",
+  "verdict_maintenant": "corrige",
+  "vu": "Meme parcours que T4-X1-016 : plus de toast d echec definitif, message prudent puis ouverture de la V2 creee.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X1-016-b.png"
+ },
+ {
+  "id": "T4-X6-015",
+  "verdict_maintenant": "corrige",
+  "vu": "Edition de DEV-202611-0110 (lead taille souhaitee 6 kWc), onglet Technique : texte « Taille demandee sur la fiche du lead : 6 kWc. Le nombre de panneaux la suit (avec et sans batterie, comme le devis automatique)... » + « Ce devis chiffre 9 panneaux · 6,39 kWc dans l option sans/avec batterie » ; clic Recalculer : dialogue « Quitter la taille demandee ? » avec Garder la taille demandee / Prendre la recommandation.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X6-015.png"
+ },
+ {
+  "id": "T4-X6-016",
+  "verdict_maintenant": "partiel",
+  "vu": "Edition de DEV-202611-0106, Technique : carte et rail disent la meme taille (6 panneaux · 4,26 kWc, Recommande) et « Conseille par le moteur : sans batterie 6 panneaux 4,26 kWc / avec batterie 8 panneaux 5,68 kWc ». Apres Recalculer : plus de phrase « Le moteur n a pas pu chiffrer de recommandation », plus de contradiction ; mais une seule puissance (4,26 kWp) dans le champ, pas une par option, et la phrase « Ce devis chiffre 6 panneaux dans l option avec batterie » a disparu.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X6-016.png"
+ },
+ {
+  "id": "R5A-N3",
+  "verdict_maintenant": "corrige",
+  "vu": "DEV-0106 Technique apres Recalculer : la phrase « Le moteur n a pas pu chiffrer... » n apparait plus avec les lignes « Conseille par le moteur ».",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X6-016.png"
+ },
+ {
+  "id": "R5A-N2",
+  "verdict_maintenant": "partiel",
+  "vu": "DEV-0106 Technique, clic Auto-remplir depuis le stock : le nombre reste 6 panneaux · 4,26 kWp, Total TTC 54 500 MAD en en-tete ; les lignes « Conseille par le moteur » disparaissent sans aucun message disant que l option avec batterie reste a 6 panneaux (plus de contradiction mais plus d information).",
+  "preuve": "logs/nightly-qa/playwright/r6-R5A-N2.png"
+ },
+ {
+  "id": "R5A-N5",
+  "verdict_maintenant": "non corrige",
+  "vu": "Ouvrir l edition d un devis (DEV-0106) sans rien toucher affiche tout de suite le pastille « Modifications non enregistrees » ; de plus la navigation hors de la fiche lead declenche une boite navigateur beforeunload (vue 3 fois).",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X6-016.png"
+ },
+ {
+  "id": "T4-X6-019",
+  "verdict_maintenant": "partiel",
+  "vu": "Edition DEV-202611-0114 (id 614), Lignes, Ajouter le BOQ electrique : les anciens cables 6 mm2 et « Tableau De Protection AC/DC » disparaissent, remplaces par les lignes du BOQ (ARM1 Coffret de protection AC/DC (tableau), PDC1, QDC1, QAC1, PAC1, T2, cables) : plus de double Tableau/ARM1. Reste « Coffret de protection AC — a chiffrer » a cote de ARM1 (recouvrement possible) et je n ai pas capture de message disant ce qui a ete remplace.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X6-019.png"
+ },
+ {
+  "id": "T4-X4-008",
+  "verdict_maintenant": "partiel",
+  "vu": "Edition de DEV-202611-0106 : bandeau « Valeurs du lead modifiees depuis la reprise dans ce devis : facture d hiver — Reprendre les valeurs du lead / Garder les valeurs du devis » signale l ecart devis/fiche ; le PDF d un devis retouche a la main n a pas ete rejoue.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X6-016.png"
+ },
+ {
+  "id": "T4-X4-009",
+  "verdict_maintenant": "corrige",
+  "vu": "Liste des devis, DEV-202611-0108 (lead sans telephone ni e-mail), bouton Envoyer : UN seul toast « aucun numero de telephone exploitable sur la fiche — WhatsApp est impossible. Copiez le lien pour l envoyer vous-meme (e-mail, SMS...), ou completez la fiche du lead (telephone ou e-mail). » avec bouton Copier le lien ; l ancien toast « Numero de telephone invalide » n apparait plus (console : un 409 whatsapp-preview, attendu).",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X4-009.png"
+ },
+ {
+  "id": "T4-X4-010",
+  "verdict_maintenant": "partiel",
+  "vu": "Factures, carte A ECHOIR ≤ 7 J : « 0,00 MAD · 0 facture · 7 prochains jours » (coherent) a cote de EN RETARD 128 570,00 MAD · 5 factures echues ; je n ai pas emis de facture (Emettre BROUILLON-27 ouvre une confirmation, annulee ; BROUILLON-25 refuse « le devis DEV-202611-0105 a ete remplace par DEV-202611-0106 »), donc le cas echeance ≤ 7 j n est pas rejoue.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X4-010.png"
+ },
+ {
+  "id": "R5A-N7",
+  "verdict_maintenant": "corrige",
+  "vu": "Factures, Emettre BROUILLON-25 : le refus « Le devis DEV-202611-0105 a ete remplace par DEV-202611-0106 : facturez la version en cours. » s affiche UNE fois ; la liste nomme maintenant les mentions manquantes (IF, ICE, RC du vendeur, date de livraison, conditions de paiement) sous BROUILLON-27.",
+  "preuve": "logs/nightly-qa/playwright/r6-R5A-N7.png"
+ },
+ {
+  "id": "R5A-N8",
+  "verdict_maintenant": "partiel",
+  "vu": "Ventes > Devis a froid : l en-tete « 571 devis » arrive puis les 5 cartes de statut restent « Calcul des totaux… » plus de 25 s ; elles s affichent ensuite (Brouillon 82, Envoye 68, Accepte 5, Refuse 4, Expire 412) ; pas de message de connexion expiree cette fois.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X4-009-a.png"
+ },
+ {
+  "id": "T4-U1-011",
+  "verdict_maintenant": "non rejouable",
+  "vu": "Aucun timeout de 20 s provoque : la liste Ventes > Devis a fini par charger sans erreur (lente, 25 s+) ; je n ai pas de moyen de forcer un serveur lent sur la pile.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X4-009-a.png"
+ },
+ {
+  "id": "T4-U2-018",
+  "verdict_maintenant": "non rejouable",
+  "vu": "Aucun timeout de 20 s provoque : la liste Ventes > Devis a fini par charger sans erreur (lente, 25 s+) ; je n ai pas de moyen de forcer un serveur lent sur la pile.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X4-009-a.png"
+ },
+ {
+  "id": "T4-X1-004",
+  "verdict_maintenant": "partiel",
+  "vu": "Lead R5A-3 (SansTel), Puissance cible 3 tapee puis bouton Devis automatique : POST ventes/devis/auto envoye avec {lead, remise_globale:0} SANS target_kwc ; DEV-202611-0136 cree a 4,26 kWc (37 700 MAD) sans batterie / 5,68 kWc (54 800 MAD) avec batterie : la taille cible 3 n est toujours pas lue par ce bouton (seul le chemin Devis modifiable + remise la transmet, vu au tour precedent). Cree : DEV-202611-0136 (essai). L ecran de resultat a maintenant la case « Devis final (paiement + RIB) ».",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X1-004.png"
+ },
+ {
+  "id": "R5A-N5b",
+  "verdict_maintenant": "non corrige",
+  "vu": "Fiche lead : quitter la page declenche encore beforeunload du navigateur et, dans l application, « Abandonner les modifications ? L enregistrement a echoue. Quitter en abandonnant les modifications non enregistrees ? » alors que rien n a ete tape (apres consultation de la fiche R5A-2 puis navigation).",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X1-004.png"
+ },
+ {
+  "id": "T4-X7-015",
+  "verdict_maintenant": "non corrige",
+  "vu": "Calepinage 3 (1 chaine de 4 panneaux formee, onduleur Deye 5 kW), Avance : panneau CALQUES liste Trace client, Obstacles, Zones (interdites / reservees / preferees), Mesures — toujours pas de calque Electrique.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X7-015.png"
+ },
+ {
+  "id": "T4-X7-012",
+  "verdict_maintenant": "partiel",
+  "vu": "Nouveau calepinage R6-cal-essai (CAL 23, lead R5A-4 taille souhaitee 6 kWc), toit 2 pans 12 x 8, Poser les panneaux : pose de 9 panneaux · 6,39 kWc avec la phrase « Pose d apres la taille souhaitee du lead : 9 panneaux · 6,39 kWc — ajustez si besoin » (plus « Le plus de panneaux » par defaut) ; « Retirer un panneau » est present ; le clic sur un panneau puis Suppr n a pas ete rejoue ; pas de pose « Recommande » distincte sur ce lead (« Aucune taille ne se tire des factures de ce lead » malgre la facture 900 MAD).",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X7-012.png"
+ },
+ {
+  "id": "D-ACAL-110",
+  "verdict_maintenant": "partiel",
+  "vu": "CAL 23, module 715 W choisi : « Zone 1 : module Panneau Canadien Solar 715W — le calepinage est repave a ses cotes », « Production et economie calculees pour la conception du lead : 6,39 kWc — votre pose en compte 6,44 kWc », « Pose actuelle : 9 panneaux · 6,44 kWc » : l ecart de kWc est dit, le nombre (9) n a pas change donc l arrondi n est pas discrimine ; liste de modules = 720/710/715/Jinko 710, pas de 550 W.",
+  "preuve": "logs/nightly-qa/playwright/r6-D-ACAL-110.png"
+ },
+ {
+  "id": "ACAL2047",
+  "verdict_maintenant": "partiel",
+  "vu": "Nouveau calepinage, lead R5A-4, double-clic sur Creer le calepinage : un seul POST calepinage/calepinages/depuis-modele/, un seul calepinage cree (CAL 23), ouverture de /calepinage/23. Libelle « Creation en cours… » non vu (non capture) ; coupure reseau non jouee.",
+  "preuve": "logs/nightly-qa/playwright/r6-cal23.png"
+ },
+ {
+  "id": "T4-X2-006",
+  "verdict_maintenant": "partiel",
+  "vu": "Calepinage 5, Expert > Toit : la carte TOTAL dit « 27 305 kWh/an · simulation » et le pied « 24 panneaux · 17,04 kWc · P50 27 305 kWh/an (simulation) » ; mais une carte d option garde « Estimation (module de reference 720 Wc) : 21 panneaux · 15,12 kWc · 20 507 kWh/an » (autre pose/autre module) et « Annee 1 : production au prochain enregistrement » persiste ; l estimation porte la mention « Estimation rapide de l atelier — avant la simulation ».",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X2-006.png"
+ },
+ {
+  "id": "T4-U1-018",
+  "verdict_maintenant": "corrige",
+  "vu": "Calepinage 6 (cree depuis un client sans lead) : a l ouverture GET soleil-legal repond 200 (plus de 409), aucune cle technique (Site.pin, produit-NNNN, electrique_societe.) a l ecran ; console : seulement les 403 de api.maptiler.com (cle factice).",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-U1-018.png"
+ },
+ {
+  "id": "T4-X9-010",
+  "verdict_maintenant": "non rejouable",
+  "vu": "Cal 9 > Comparer les variantes, variante « X9 variante A » : un clic sur Retenir a envoye POST variantes/1/retenir => 200 (aucun refus « verdict electrique bloquant » ni toast technique cette fois) ; la variante est donc RETENUE (cal 9 modifie : conception courante = variante A, 9 panneaux 6,39 kWc au lieu de 8 · 5,68). Le cas du refus ne se reproduit plus sur cette copie (terre probablement deja justifiee) ; je ne peux pas dire si le toast technique est corrige.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X9-010.png"
+ },
+ {
+  "id": "T4-X9-002",
+  "verdict_maintenant": "corrige",
+  "vu": "Cal 3 (4 panneaux 710 W, Deye 5 kW) : liste Onduleur et pastille « Courant des panneaux face a l entree de l onduleur » disent « Le courant des panneaux (22,3 A) depasse ce qu une entree de cet onduleur accepte (22,0 A) — comparez avec un autre onduleur » (raison lisible, plus de sigle MPPT/borne de fiche). Reserve : le meme ecran dit Controles · 4 bons a cote de Dossier electrique Bloquant : 2.",
+  "preuve": "logs/nightly-qa/playwright/r6-cal3.png"
+ },
+ {
+  "id": "T4-U4-012",
+  "verdict_maintenant": "corrige",
+  "vu": "Cal 8, onglet Resultats : « Le raccordement tel qu il est dessine fait perdre l essentiel de la production : 78,3 % de l energie est retiree par la plage de tension de l onduleur. » + « Production de la conception : 9 084 kWh par an ... votre pose en compte 2,84 kWc (4 panneaux) » ; 354 kWh/kWc, Pertes au total listees.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-U4-012.png"
+ },
+ {
+  "id": "T4-X5-004",
+  "verdict_maintenant": "partiel",
+  "vu": "Cal 7 (maintenant lie a DEV-202611-0119, brouillon V2) > Documents : « Devis lie : DEV-202611-0119 », « Non — la conception et le devis divergent : Resynchroniser », bouton Resynchroniser le devis ; pas de bouton Reviser le devis ; le scenario exact (devis ENVOYE + pose reduite) n est plus reproductible sur cet etat de la copie, aucun ecart chiffre devis↔pose lu.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X5-004.png"
+ },
+ {
+  "id": "T4-X5-015",
+  "verdict_maintenant": "non rejouable",
+  "vu": "Cal 7/8 ont change d etat depuis le tour precedent (lies a des V2 brouillon, resynchronises) : le devis envoye / accepte avec pose divergente n existe plus ; le clic sur Presentation compacte n a pas produit de reponse PDF captable en 12 s ; non rejoue faute de temps et d etat.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X5-004.png"
+ },
+ {
+  "id": "T4-X7-006",
+  "verdict_maintenant": "non rejouable",
+  "vu": "Cal 7/8 ont change d etat depuis le tour precedent (lies a des V2 brouillon, resynchronises) : le devis envoye / accepte avec pose divergente n existe plus ; le clic sur Presentation compacte n a pas produit de reponse PDF captable en 12 s ; non rejoue faute de temps et d etat.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X5-004.png"
+ },
+ {
+  "id": "T4-X5-011",
+  "verdict_maintenant": "non rejouable",
+  "vu": "Cal 7/8 ont change d etat depuis le tour precedent (lies a des V2 brouillon, resynchronises) : le devis envoye / accepte avec pose divergente n existe plus ; le clic sur Presentation compacte n a pas produit de reponse PDF captable en 12 s ; non rejoue faute de temps et d etat.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X5-004.png"
+ },
+ {
+  "id": "R5A-N6",
+  "verdict_maintenant": "non corrige",
+  "vu": "Console, ouverture de la fiche du lead 1189 : 9 reponses 404 sur GET ventes/conception/1189/ (erreur console a chaque ouverture), plus un 409 attendu sur factures/25/emettre et whatsapp-preview.",
+  "preuve": "logs/nightly-qa/playwright/console-2026-11-26T15-02-11-739Z.log"
+ },
+ {
+  "id": "R5A-N4",
+  "verdict_maintenant": "non rejouable",
+  "vu": "Les 401 apres Creer et le bandeau d echec de chargement clients/leads du generateur n ont pas ete vus pendant mes ouvertures du generateur (edition de DEV-0135, 0106, 0110, 0114) ; l ouverture a affiche « Chargement des donnees (leads, clients, produits)… » sans erreur ; non rejoue de bout en bout.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X1-016-b.png"
+ },
+ {
+  "id": "R6-N1",
+  "verdict_maintenant": "nouveau",
+  "gravite": "S3",
+  "vu": "Fiche lead 1189 (devis accepte DEV-0100) : Reviser (nouvelle version) reste sur « Creation de la nouvelle version… » plus de 20 s (le serveur finit par creer DEV-0135) ; le toast « La reponse n arrive pas : l action a peut-etre abouti » apparait puis le generateur s ouvre. Lenteur persistante meme si l echec sec est corrige.",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X1-016.png"
+ },
+ {
+  "id": "R6-N2",
+  "verdict_maintenant": "nouveau",
+  "gravite": "S3",
+  "vu": "Cal 9, Comparer les variantes : un clic sur Retenir (variante A non simulee) retient la variante sans aucun avertissement ni confirmation (POST retenir => 200) et change la conception courante de 8 panneaux 5,68 kWc a 9 panneaux 6,39 kWc ; pas de message « variante non simulee ».",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X9-010.png"
+ },
+ {
+  "id": "R6-N3",
+  "verdict_maintenant": "nouveau",
+  "gravite": "S3",
+  "vu": "Cal 3 Electrique : le panneau dit « Dossier electrique — Bloquant : 2 » et « 6 points a regler » alors que la ligne de dessous dit « Controles · 4 bons » et le rail « 6 a regler » : deux comptes differents sur le meme ecran.",
+  "preuve": "logs/nightly-qa/playwright/r6-cal3.png"
+ },
+ {
+  "id": "R6-N4",
+  "verdict_maintenant": "nouveau",
+  "gravite": "S4",
+  "vu": "Calepinage 23 (lead R5A-4 avec facture 900 MAD) : « Aucune taille ne se tire des factures de ce lead. Renseigner la facture du lead » s affiche alors que la fiche porte une facture de 900 MAD/mois (bandeau du haut : « Lead · facture 900 MAD / mois »).",
+  "preuve": "logs/nightly-qa/playwright/r6-T4-X7-012.png"
+ }
+]

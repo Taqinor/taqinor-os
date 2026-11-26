@@ -285,9 +285,17 @@ class T4X4019TailleDUneSeuleOption(_Base):
         self.assertEqual(effectif['taille.nb_panneaux']['auto'], 7)
         self.assertEqual(effectif['taille.nb_panneaux']['option'], 'sans')
         self.assertNotIn('option', effectif.get('scenario', {}))
+        # Suite : l'option « avec » est listée sous son nom, lue sur ses lignes (11 panneaux).
+        par_option = effectif['taille.nb_panneaux']['par_option']
+        self.assertEqual(par_option, {'sans': 7, 'avec': 11})
+        self.assertEqual(effectif['taille.panel_watt']['par_option'], {'sans': 710, 'avec': 710})
+        self.assertEqual(effectif['taille.kwc']['par_option'],
+                         {'sans': round(7 * 710 / 1000, 2), 'avec': round(11 * 710 / 1000, 2)})
+        self.assertNotIn('par_option', effectif.get('scenario', {}))
 
     def test_mono_option_aucune_option_nommee(self):
         devis = self.devis_neuf()
         effectif = self.api.get(self.url(devis)).data['effectif']
         self.assertEqual(effectif['taille.nb_panneaux']['auto'], 14)
         self.assertNotIn('option', effectif['taille.nb_panneaux'])
+        self.assertNotIn('par_option', effectif['taille.nb_panneaux'])

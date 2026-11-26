@@ -180,7 +180,7 @@ function ChoixModule({ etat, entrees, servis, lectureSeule, g }) {
                     className="cal-pan-option">
                     <span className="cal-pan-module-nom">{nom(o)}</span>
                     <span className="cal-pan-module-ligne">
-                      {o.grise ? (entree?.motif || 'fiche produit incomplète') : ligneModule(fiche(o.valeur))}
+                      {o.grise ? (entree?.motif || 'fiche produit incomplète') : [entree?.en_stock ? 'En stock' : '', ligneModule(fiche(o.valeur))].filter(Boolean).join(' · ')}
                     </span>
                   </button>
                 </li>
@@ -237,7 +237,7 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   // Le % n'est dit qu'à côté de la taille pour laquelle il est calculé. T4-X7-002 — ce % est la part SERVIE de la conception
   // (`chiffrage.couverture_pct` = énergie AUTOCONSOMMÉE ÷ consommation, la grandeur ET le nom de la tuile « De la consommation »
   // des Résultats), jamais « production ÷ consommation » ; tu quand la simulation dit que la conception décrit une autre pose.
-  const part = (fig) => (servi.partDeLaConception && fig?.couverture ? `≈ ${fig.couverture} de la consommation` : null)
+  const part = (fig) => (servi.partDeLaConception && fig?.couverture && servi.chiffrage?.marche !== 'agricole' ? `≈ ${fig.couverture} de la consommation` : null)
   // La part de la consommation de la carte « Couvrir la facture » : lue sur le constructeur tant que cette taille est
   // posée, gardée pour cette taille et ce module quand une autre carte est choisie (jamais déduite d'une autre pose).
   const partLue = factureChoisie && cible && figures.panneaux === cible.panneaux ? part(figures) : null

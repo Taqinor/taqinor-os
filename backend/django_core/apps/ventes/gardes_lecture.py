@@ -85,3 +85,53 @@ class BorneAuChantierMixin:
         if genre == 'chantier':
             return qs.filter(**{f'{champ}__in': visibles})
         return qs.filter(**{f'{champ}__in': visibles.values('devis_id')})
+
+
+# ── D-ACAL-165 (fondateur, 26/11/2026) — sur SON chantier, un technicien voit
+# les produits et les quantités, JAMAIS les montants. ─────────────────────────
+#: LA liste des montants de vente par vue ouverte par l'octroi
+#: ``installation_voir`` (``roles.OCTROIS_LECTURE``) qui en sert un. Les autres
+#: vues de ``_VUES_DU_CHANTIER`` (dossier réglementaire, pièces, échanges,
+#: régularisation 82-21, recette, courbes IV, dossier des ouvrages, attestations)
+#: ne portent aucun champ de montant (modèles lus le 26/11/2026).
+MONTANTS_VENTE_PAR_VUE = {
+    'LigneDevisViewSet': ('prix_unitaire', 'remise', 'total_ht'),
+    'SubventionDossierViewSet': ('montant_demande', 'montant_accorde'),
+}
+
+
+def montants_vente_masques(user):
+    """Vrai pour un lecteur entré par l'octroi (``lecteur_sans_code_ventes``)
+    qui ne porte pas « voir les prix de vente » (``can_view_sale_prices``)."""
+    return (user is not None and lecteur_sans_code_ventes(user)
+            and not getattr(user, 'can_view_sale_prices', True))
+
+
+def _retirer(donnees, champs):
+    if isinstance(donnees, dict):
+        for champ in champs:
+            donnees.pop(champ, None)
+        valeurs = donnees.values()
+    elif isinstance(donnees, list):
+        valeurs = donnees
+    else:
+        return
+    for valeur in valeurs:
+        _retirer(valeur, champs)
+
+
+class SansMontantsVenteMixin:
+    """Retire de la RÉPONSE les montants de ``MONTANTS_VENTE_PAR_VUE`` pour
+    ``montants_vente_masques(user)`` ; tout autre lecteur : réponse inchangée."""
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        # CI #1564 api-fuzz (``devis-lignes/0.5/`` → 500) : une réponse d'erreur
+        # née AVANT l'authentification (suffixe « .5 » lu comme format → 404 de
+        # négociation) ne porte aucun montant ; lire ``request.user`` ici
+        # déclenchait l'authentification hors du gestionnaire d'exceptions de
+        # DRF. Seul l'utilisateur DÉJÀ authentifié est lu, jamais ré-authentifié.
+        champs = MONTANTS_VENTE_PAR_VUE.get(type(self).__name__, ())
+        if (champs and not getattr(response, 'exception', False)
+                and montants_vente_masques(vars(request).get('_user'))):
+            _retirer(getattr(response, 'data', None), champs)
+        return super().finalize_response(request, response, *args, **kwargs)

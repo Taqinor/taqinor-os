@@ -600,8 +600,11 @@ def _alertes_uniques(*listes):
             if cle in vues:
                 continue
             vues.add(cle)
+            # D-ACAL-156 — ``champ_lead`` (le champ du lead qui lève l'alerte) suit
+            # l'alerte quand elle en porte un : l'écran le nomme par son libellé.
             sortie.append({'code': a.get('code'), 'champ': a.get('champ'),
-                           'message': a.get('message')})
+                           'message': a.get('message'),
+                           **({'champ_lead': a['champ_lead']} if a.get('champ_lead') else {})})
     return sortie
 
 

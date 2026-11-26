@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { render, screen, cleanup, waitFor, within, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
 /* « Montrer au client » (maquette TelephoneClient).
@@ -120,6 +120,21 @@ describe('Montrer au client — repli 2D, avec les seules données servies', () 
     expect(screen.getByTestId('client-tuiles').querySelector('.cal-client-pilule')).toBeNull() // pas de production : pas de pilule
     const texte = screen.getByTestId('cal-vue-client').textContent
     expect(texte).not.toMatch(/52.695|kWh|estimation|année moyenne|%/)
+  })
+
+  it('ACAL1268 — lead de pompage : ni kWh par an, ni part de consommation, ni « estimation » devant le client ; la pose (panneaux, kWc) reste', async () => {
+    api.designContext.mockResolvedValue(contexteAvec({ ...CHIFFRAGE, marche: 'agricole' })) // même si une production est servie
+    rendre()
+    await waitFor(() => expect(chiffres()).toHaveLength(2))
+    expect(chiffres().map((t) => t.dataset.testid)).toEqual(['client-tuile-panneaux', 'client-tuile-kwc'])
+    expect(screen.getByTestId('cal-vue-client').textContent).not.toMatch(/kWh|estimation|année moyenne|%/)
+  })
+
+  it('ACAL1268 — un autre marché (résidentiel) : les trois tuiles d’avant, inchangées', async () => {
+    api.designContext.mockResolvedValue(contexteAvec({ ...CHIFFRAGE, marche: 'residentiel' }))
+    rendre()
+    await waitFor(() => expect(chiffres()).toHaveLength(3))
+    expect(chiffres().map((t) => t.dataset.testid)).toEqual(['client-tuile-kwh', 'client-tuile-panneaux', 'client-tuile-couverture'])
   })
 
   it('H2 — les lectures sont partagées : un seul design-context, un seul résultat, un seul document', async () => {
@@ -627,6 +642,20 @@ describe('T4-X8-007 — le retour de la vue client', () => {
       })
     }
   }
+
+  it('ACAL1319 — « Retour au relevé » rend au relevé son origine (la page devis), pour que « Terminer » y revienne', async () => {
+    const Vue = () => <div data-testid="etat-releve">{String(useLocation().state?.depuis)}</div>
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/calepinage/7/client', state: { depuis: 'releve', origine: '/ventes/devis/3/design' } }]}>
+        <Routes>
+          <Route path="/calepinage/:id/client" element={<VueClient webgl={false} />} />
+          <Route path="/calepinage/:id/releve" element={<Vue />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    fireEvent.click(await screen.findByTestId('client-retour-releve'))
+    expect(await screen.findByTestId('etat-releve')).toHaveTextContent('/ventes/devis/3/design')
+  })
 })
 
 /* ACAL1838 — « Montrer au client » au BUREAU (≥ 1024 px, maquette Presentation) : mêmes pièces, autre disposition ; le pied
@@ -755,5 +784,55 @@ describe('ACAL1353 — la vue client n’importe plus le moteur du toit statique
     expect(typeof moteur.memeTaille).toBe('function')
     await chargerMoteur() // mis en cache : aucune seconde évaluation
     expect(evaluationsMoteur).toEqual({ geo: 1, taille: 1 })
+  })
+})
+
+describe('Vue client — « Envoyer le lien » selon le droit (D-ACAL-106)', () => {
+  it('sans `calepinage_gerer` (Technicien) ni le bouton ni sa raison ; avec, le bouton désactivé et sa raison', async () => {
+    const { Provider } = await import('react-redux')
+    const { configureStore } = await import('@reduxjs/toolkit')
+    const boutique = (permissions) => configureStore({ reducer: { auth: (s = { role: 'technicien', permissions }) => s } })
+    const { PiedClient, TuilesClient } = await import('./partiesClient')
+    const monter = (permissions) => render(
+      <Provider store={boutique(permissions)}>
+        <MemoryRouter><PiedClient id={7} /><TuilesClient tuiles={[]} ville="" /></MemoryRouter>
+      </Provider>,
+    )
+    const { unmount } = monter(['calepinage_voir'])
+    expect(screen.queryByTestId('client-envoyer-lien')).toBeNull()
+    expect(screen.queryByTestId('client-lien-raison')).toBeNull()
+    unmount()
+    monter(['calepinage_voir', 'calepinage_gerer'])
+    expect(screen.getByTestId('client-envoyer-lien')).toBeDisabled()
+    expect(screen.getByTestId('client-lien-raison')).toBeInTheDocument()
+  })
+})
+
+/* R5D-N1 — téléphone en PAYSAGE (844 × 390) : deux colonnes, la scène à gauche, la feuille défilante à droite. Les règles du bloc
+   (orientation: landscape) sont lues dans la feuille et appliquées par `matches` (jsdom ne lit pas les requêtes de média). */
+describe('R5D-N1 — vue client en paysage court', () => {
+  it('la scène prend la colonne de gauche sur toute la hauteur ; la feuille des chiffres défile à droite, le pied dessous', async () => {
+    const { readFileSync } = await import('node:fs')
+    const source = document.createElement('style')
+    source.textContent = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/58-telephone.css`, 'utf8')
+    document.head.appendChild(source)
+    const paysage = [...source.sheet.cssRules].find((r) => r.media && /orientation:\s*landscape/.test(r.media.mediaText)
+      && /max-height:\s*520px/.test(r.media.mediaText))
+    expect(paysage, 'bloc paysage court').toBeTruthy()
+    const regles = [...paysage.cssRules]
+    const hote = document.createElement('div')
+    hote.innerHTML = '<div class="cal-tel"><div class="cal-client-scene"></div><div class="cal-client-corps"></div>'
+      + '<footer class="cal-tel-pied"></footer></div>'
+    document.body.appendChild(hote)
+    try {
+      const valeur = (sel, nom) => regles.filter((r) => r.selectorText && hote.querySelector(sel)?.matches(r.selectorText))
+        .map((r) => r.style.getPropertyValue(nom)).filter(Boolean).pop()
+      expect(valeur('.cal-tel', 'display')).toBe('grid')
+      expect(valeur('.cal-client-scene', 'grid-row')).toBe('1 / span 2')
+      expect(valeur('.cal-client-scene', 'height')).toBe('auto')
+      expect(valeur('.cal-client-corps', 'overflow-y')).toBe('auto')
+      expect(valeur('.cal-client-corps', 'grid-column')).toBe('2')
+      expect(valeur('.cal-tel-pied', 'grid-row')).toBe('2')
+    } finally { source.remove(); hote.remove() }
   })
 })

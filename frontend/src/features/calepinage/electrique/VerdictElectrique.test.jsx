@@ -29,7 +29,7 @@
      6. chaque motif se range dans son domaine, et le bouton du domaine mène à
         l'onglet RESPONSABLE, nommé par le registre `atelier/onglets.js`. */
 import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, within, act } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
@@ -56,6 +56,7 @@ import { ongletParCle } from '../atelier/onglets'
 import VerdictElectrique, { CLE_ONGLET } from './VerdictElectrique'
 import EtapeElectrique from './EtapeElectrique'
 import { ContexteCoque } from '../atelier/coque/contexteCoque'
+import { creerCoucheElectrique } from '@roofpro/electrique3d'
 import {
   DOMAINE_AUTRE, DOMAINES, LIBELLE_CODE_INCONNU, domaineDuMotif, grouperMotifs, libelleCode, libelleStatut, motifsRefusants,
   statutAbstention, statutRefuse, tonStatut,
@@ -577,23 +578,26 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
   function TemoinUrl() {
     return <p data-testid="temoin-url">{useLocation().search}</p>
   }
-  const rendreEtape = ({ builderApi = null, id = 7 } = {}) => {
+  const rendreEtape = ({ builderApi = null, id = 7, contexte = undefined } = {}) => {
     const surCarte = document.createElement('div')
     document.body.appendChild(surCarte)
     const coque = { noeuds: { surCarte, panneau: null, pied: null }, prendrePied: () => () => {} }
-    render(
+    const arbre = (api) => (
       <MemoryRouter initialEntries={[`/calepinage/${id}?onglet=verdict-electrique`]}>
         <Routes>
           <Route path="/calepinage/:id" element={(
             <ContexteCoque.Provider value={coque}>
-              <EtapeElectrique calepinageId={id} builderApi={builderApi} ouvert="verdict-electrique"
+              <EtapeElectrique calepinageId={id} builderApi={api} contexte={contexte} ouvert="verdict-electrique"
                 action={{ libelle: 'Voir les résultats', onClick: () => {} }} />
               <TemoinUrl />
             </ContexteCoque.Provider>
           )} />
         </Routes>
-      </MemoryRouter>,
+      </MemoryRouter>
     )
+    const { rerender } = render(arbre(builderApi))
+    // Le constructeur de toit peut être prêt APRÈS l'arrivée des lignes : le test le fournit plus tard.
+    surCarte.fournirConstructeur = (api) => rerender(arbre(api))
     return surCarte
   }
   afterEach(() => { document.body.innerHTML = '' })
@@ -603,7 +607,7 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     rendreEtape()
     const ecran = screen.getByTestId('cal-etape-electrique-ecran')
     // Le nom désigné et la ligne SERVIE de la configuration retenue (6 kW, 2 entrées) + panneaux du chaînage servi.
-    await waitFor(() => expect(screen.getByTestId('cal-elec-onduleur')).toHaveTextContent('Onduleur réseau 10 kW (exemple)'))
+    await waitFor(() => expect(screen.getByTestId('cal-elec-onduleur')).toHaveTextContent('Onduleur hybride 10 kW (exemple)'))
     await waitFor(() => expect(screen.getByTestId('cal-elec-onduleur')).toHaveTextContent('6 kW · 2 entrées · proposé pour 12 panneaux'))
     // N = configurations servies autres que la retenue (2 dans l'échantillon).
     expect(screen.getByRole('button', { name: 'Comparer avec 2 autres onduleurs' })).toBeTruthy()
@@ -676,6 +680,17 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     const carte = screen.getByTestId('cal-elec-onduleur')
     await waitFor(() => expect(carte).toHaveTextContent('2 entrées · proposé pour 12 panneaux'))
     expect(carte).not.toHaveTextContent('En stock')
+  })
+
+  it('D-ACAL-71 — le menu de l’onduleur (étape guidée) dit « En stock » sur la ligne servie, rien sur l’autre', async () => {
+    const e = entree()
+    const servi = { ...e.candidats.onduleurs[0], id: 9101, libelle: 'Onduleur A', fiche_complete: true, champs_manquants: [], en_stock: true }
+    e.candidats.onduleurs = [servi, { ...servi, id: 9102, libelle: 'Onduleur B', en_stock: null }]
+    servirEtape({ e })
+    rendreEtape()
+    const menu = await screen.findByLabelText('Onduleur')
+    await waitFor(() => expect(within(menu).getByRole('option', { name: /Onduleur A/ })).toHaveTextContent('· En stock'))
+    expect(within(menu).getByRole('option', { name: /Onduleur B/ })).not.toHaveTextContent(/stock|rupture/i)
   })
 
   // T4-X2-004 — « proposé pour 5 panneaux » à côté d'un verdict « Bloquant : 2 » (courant de chaîne au-dessus du maxi).
@@ -852,6 +867,22 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
       .toBe('decisions-electriques'))
   })
 
+  it('ACAL1268 — lead de pompage : ni onduleur, ni batterie, ni schéma réseau ; un renvoi au devis agricole. Autre marché : inchangé', async () => {
+    servirEtape()
+    const contexte = (marche, devis = null) => ({ calepinage: { lead: 5 }, chiffrage: { marche }, cible: { devis_agricole: devis } })
+    rendreEtape({ contexte: contexte('agricole', { id: 42, reference: 'DEV-AGR-42' }) })
+    const ecran = screen.getByTestId('cal-etape-electrique-ecran')
+    expect(within(ecran).getByRole('link', { name: 'Ouvrir le devis agricole DEV-AGR-42' })).toHaveAttribute('href', '/ventes/devis?devis=42')
+    expect(ecran).toHaveTextContent('ni onduleur ni batterie')
+    for (const absent of ['cal-elec-onduleur', 'cal-elec-schema-voir', 'cal-electrique-avances']) {
+      expect(screen.queryByTestId(absent)).toBeNull()
+    }
+    cleanup()
+    rendreEtape({ contexte: contexte('residentiel') })
+    await waitFor(() => expect(screen.getByTestId('cal-elec-onduleur')).toBeTruthy())
+    expect(document.querySelector('[data-zone="pompage-outil-pose"]')).toBeNull()
+  })
+
   it('T4-U4-007 — une étape ouverte sur une section (« Régler » d’un autre point) la déplie et y met le focus', async () => {
     servirEtape()
     const surCarte = document.createElement('div')
@@ -972,6 +1003,18 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(calepinageApi.calepinages.configurationsOnduleur).toHaveBeenCalledTimes(1)
   })
 
+  it('S3 — le constructeur du toit prêt APRÈS l’arrivée des lignes : la teinte est quand même poussée, une seule fois', async () => {
+    servirEtape()
+    const carte = rendreEtape({ builderApi: null })
+    await within(carte).findByTestId('cal-sur-carte-resume') // les lignes sont arrivées, aucun constructeur
+    const builderApi = { setAffectationChaines: vi.fn() }
+    carte.fournirConstructeur(builderApi)
+    await waitFor(() => expect(builderApi.setAffectationChaines).toHaveBeenCalledTimes(1))
+    expect(builderApi.setAffectationChaines).toHaveBeenCalledWith(resultat().electrique.affectation, 'chaine')
+    // Un constructeur sans la méthode (ancien build) : rien n'est appelé, aucune erreur.
+    carte.fournirConstructeur({})
+  })
+
   it('carte : pastille « Chaînes | Onduleur | Câble côté panneaux » servie, légende des couleurs dessinées, barre d’actions', async () => {
     servirEtape()
     const builderApi = { setAffectationChaines: vi.fn() }
@@ -989,7 +1032,7 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     const barre = within(carte).getByTestId('cal-elec-actions-carte')
     expect(within(barre).getByRole('button', { name: 'Raccorder automatiquement' })).toBeTruthy()
     expect(within(barre).getByRole('button', { name: 'Modifier une chaîne' })).toBeTruthy()
-    // D-ACAL-70 : aucune position d'onduleur enregistrée ⇒ aucun « Déplacer l'onduleur ».
+    // ACAL1317 : sans couche électrique du constructeur, aucun geste d'onduleur (« Déplacer l'onduleur ») n'est proposé.
     expect(within(barre).queryByText(/Déplacer l/)).toBeNull()
   })
 
@@ -1034,6 +1077,121 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     fireEvent.click(within(carte).getByRole('button', { name: 'Raccorder automatiquement' }))
     await waitFor(() => expect(screen.getByTestId('cal234-legende')).toHaveTextContent('Chaîne 3'))
     expect(screen.getByTestId('cal234-legende')).not.toHaveTextContent('Chaîne 1')
+  })
+
+  describe('D-ACAL-157 — désigner une batterie (sélecteur à côté de celui de l’onduleur)', () => {
+    beforeEach(() => { calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} }) })
+    const entreeAvec = ({ hybride, batterie = null }) => {
+      const e = entree()
+      e.materiel.onduleur.hybride = hybride
+      e.entree.batterie = batterie
+      return e
+    }
+
+    it('onduleur réseau, aucune batterie désignée : aucun sélecteur de batterie', async () => {
+      servirEtape({ e: entreeAvec({ hybride: false }) })
+      rendreEtape()
+      await screen.findByTestId('cal-elec-onduleur')
+      expect(screen.queryByTestId('cal-elec-batterie')).toBeNull()
+      expect(screen.queryByTestId('cal-elec-batterie-inapplicable')).toBeNull()
+    })
+
+    it('onduleur hybride : sélecteur « Aucune » par défaut, candidats sans prix ; le choix envoie l’objet batterie COMPLET', async () => {
+      servirEtape({ e: entreeAvec({ hybride: true, batterie: { packs: 2, strategie: 'autoconsommation' } }) })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      const choix = within(carte).getByRole('combobox')
+      expect(choix).toHaveValue('')
+      expect(within(carte).getByRole('option', { name: 'Aucune' })).toBeTruthy()
+      expect(carte.textContent).not.toMatch(/MAD|DH|prix/i)
+      const lectures = calepinageApi.calepinages.entreeElectrique.mock.calls.length
+      fireEvent.change(choix, { target: { value: '905' } })
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique).toHaveBeenCalledWith(
+        7, { batterie: { packs: 2, strategie: 'autoconsommation', produit: 905 } }))
+      await waitFor(() => expect(calepinageApi.calepinages.entreeElectrique.mock.calls.length).toBeGreaterThan(lectures))
+    })
+
+    it('un refus du serveur (onduleur non hybride) est dit tel quel sous le sélecteur', async () => {
+      servirEtape({ e: entreeAvec({ hybride: true }) })
+      calepinageApi.calepinages.enregistrerEntreeElectrique.mockRejectedValueOnce({
+        response: { data: { 'batterie.produit': 'L’onduleur désigné n’est pas un onduleur hybride.' } } })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      fireEvent.change(within(carte).getByRole('combobox'), { target: { value: '905' } })
+      expect(await within(carte).findByRole('alert')).toHaveTextContent('n’est pas un onduleur hybride')
+    })
+
+    it('batterie désignée puis onduleur devenu non hybride : l’écran le dit, propose de la retirer, ne l’efface pas', async () => {
+      servirEtape({ e: entreeAvec({ hybride: false, batterie: { produit: 905, packs: 3 } }) })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie-inapplicable')
+      expect(carte).toHaveTextContent('la batterie « Batterie 5,1 kWh (exemple) » ne s’applique plus')
+      expect(calepinageApi.calepinages.enregistrerEntreeElectrique).not.toHaveBeenCalled()
+      fireEvent.click(within(carte).getByRole('button', { name: 'Retirer la batterie' }))
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique)
+        .toHaveBeenCalledWith(7, { batterie: null }))  // plus rien d'autre de saisi : retour à « jamais désignée »
+    })
+
+    it('retirer une batterie dont la déclaration porte d’autres saisies garde ces saisies, sans produit ni packs', async () => {
+      servirEtape({ e: entreeAvec({ hybride: true, batterie: { produit: 905, packs: 2, strategie: 'autoconsommation' } }) })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      fireEvent.change(within(carte).getByRole('combobox'), { target: { value: '' } })
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique)
+        .toHaveBeenCalledWith(7, { batterie: { strategie: 'autoconsommation', produit: null } }))
+    })
+
+    it('première désignation : `packs` part explicitement (1) pour que stocké, écran et dessin comptent pareil', async () => {
+      servirEtape({ e: entreeAvec({ hybride: true }) })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      fireEvent.change(within(carte).getByRole('combobox'), { target: { value: '905' } })
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique)
+        .toHaveBeenCalledWith(7, { batterie: { produit: 905, packs: 1 } }))
+    })
+
+    it('sans batterie désignée mais avec une ligne batterie au devis : la carte le dit, jamais un « Aucune » muet', async () => {
+      const e = entreeAvec({ hybride: true })
+      e.candidats.batterie_du_devis = { produit_id: 905, designation: 'Batterie du devis', packs: 3 }
+      servirEtape({ e })
+      rendreEtape()
+      const note = await screen.findByTestId('cal-elec-batterie-du-devis')
+      expect(note).toHaveTextContent('le schéma montre la batterie du devis (« Batterie du devis », 3 unités)')
+    })
+
+    it('ancienne entrée sans packs : la carte affiche ce que le dessin compte (la quantité du devis), pas 1', async () => {
+      const e = entreeAvec({ hybride: true, batterie: { produit: 905 } })
+      e.candidats.batterie_du_devis = { produit_id: 905, designation: 'Batterie du devis', packs: 3 }
+      servirEtape({ e })
+      rendreEtape()
+      expect(await screen.findByTestId('cal-elec-batterie-packs')).toHaveTextContent('3 batteries')
+    })
+
+    it('une batterie que le juge dit incompatible est grisée avec SES raisons ; « inconnu » reste proposée', async () => {
+      const e = entreeAvec({ hybride: true })
+      e.candidats.batteries = [
+        { id: 905, libelle: 'Batterie 48 V', marque: 'M', favori: false, fiche_complete: true, champs_manquants: [],
+          compatibilite: { statut: 'incompatible', raisons: ['tension nominale 48 V hors de la plage 150-500 V'] } },
+        { id: 906, libelle: 'Batterie sans tension', marque: 'M', favori: false, fiche_complete: true, champs_manquants: [],
+          compatibilite: { statut: 'inconnu', raisons: ['tension nominale inconnue'] } },
+      ]
+      servirEtape({ e })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      const incompatible = within(carte).getByRole('option', { name: /Batterie 48 V — incompatible : tension nominale 48 V hors de la plage 150-500 V/ })
+      expect(incompatible).toBeDisabled()
+      expect(within(carte).getByRole('option', { name: 'Batterie sans tension (M)' })).not.toBeDisabled()
+    })
+
+    it('batterie désignée : le nombre de batteries se règle par pas, avec l’objet complet', async () => {
+      servirEtape({ e: entreeAvec({ hybride: true, batterie: { produit: 905, packs: 2, couplage: 'dc' } }) })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      expect(within(carte).getByTestId('cal-elec-batterie-packs')).toHaveTextContent('2 batteries')
+      fireEvent.click(within(carte).getByRole('button', { name: 'Une batterie de plus' }))
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique)
+        .toHaveBeenCalledWith(7, { batterie: { produit: 905, packs: 3, couplage: 'dc' } }))
+    })
   })
 
   describe('S3 — « Raccorder automatiquement » depuis l’éditeur : brouillon non enregistré', () => {
@@ -1084,5 +1242,50 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(await screen.findByTestId('cal234-ecran')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Raccordement' }))
     expect(await screen.findByTestId('cal-elec-onduleur')).toBeTruthy()
+  })
+
+  it('ACAL1317 — après un geste sur l’onduleur, l’ANCIENNE longueur n’est pas montrée tant que l’atelier n’est pas enregistré et relu', async () => {
+    servirEtape()
+    const origine = [-7.6, 33.5]
+    const m = (Math.PI / 180) * 6378137
+    const versLngLat = (e, n) => [origine[0] + e / (m * Math.cos((origine[1] * Math.PI) / 180)), origine[1] + n / m]
+    const couche = creerCoucheElectrique({
+      electrical: null, sceneOrigin: origine, activeAreaId: 'z1',
+      areas: [{ id: 'z1', renderPlan: { pack: { origin: origine, azimuthDeg: 180, ringENU: [[0, 0], [20, 0], [20, 12], [0, 12]] },
+        grid: { rowWidthM: 2, panels: [3, 5, 7, 9].map((cx) => ({ cx, cy: 6 })) } } }],
+    })
+    const builderApi = { setAffectationChaines: vi.fn(), electrique: couche }
+    const surCarte = document.createElement('div')
+    document.body.appendChild(surCarte)
+    const coque = { noeuds: { surCarte, panneau: null, pied: null }, prendrePied: () => () => {} }
+    const arbre = (enregistreLe) => (
+      <MemoryRouter initialEntries={['/calepinage/7']}>
+        <Routes>
+          <Route path="/calepinage/:id" element={(
+            <ContexteCoque.Provider value={coque}>
+              <EtapeElectrique calepinageId={7} builderApi={builderApi} enregistreLe={enregistreLe}
+                action={{ libelle: 'Voir les résultats', onClick: () => {} }} />
+            </ContexteCoque.Provider>
+          )} />
+        </Routes>
+      </MemoryRouter>
+    )
+    const { rerender } = render(arbre('T0'))
+    const pastille = await within(surCarte).findByTestId('cal-sur-carte-resume')
+    await waitFor(() => expect(pastille).toHaveTextContent('Câble côté panneaux30 m'))
+    fireEvent.click(within(surCarte).getByRole('button', { name: 'Placer l’onduleur' }))
+    act(() => { couche.clicCarte(versLngLat(19, 2)) })
+    expect(pastille).toHaveTextContent('Câble côté panneauxà mesurer à l’enregistrement')
+    expect(pastille).not.toHaveTextContent('30 m')
+    expect(within(surCarte).getByTestId('cal-elec-cable-provenance')).toHaveTextContent('tracé proposé le long des rangées (position de l’onduleur)')
+    // L'atelier est enregistré : tant que le résultat n'est pas RELU, l'ancien chiffre reste retenu.
+    let servir
+    calepinageApi.calepinages.resultat.mockReturnValueOnce(new Promise((r) => { servir = r }))
+    rerender(arbre('T1'))
+    expect(pastille).toHaveTextContent('à mesurer à l’enregistrement')
+    const relu = resultat()
+    relu.troncons.troncons = relu.troncons.troncons.map((t) => (t.cote === 'dc' ? { ...t, longueur_m: 21 } : t))
+    await act(async () => { servir({ data: relu }) })
+    await waitFor(() => expect(pastille).toHaveTextContent('Câble côté panneaux42 m'))
   })
 })

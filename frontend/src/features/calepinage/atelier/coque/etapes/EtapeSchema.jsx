@@ -133,7 +133,7 @@ export default function EtapeSchema({ calepinageId: id }) {
 
   return (
     <div className="csch-ecran" data-testid="csch-ecran">
-      <PlancheSchema balisage={balisage} largeurDessin={enBlocs ? plan.largeur : null} note={balisage ? phraseRaccordement(resultat) : null}
+      <PlancheSchema balisage={balisage} largeurDessin={enBlocs ? plan.largeur : null} hauteurDessin={enBlocs ? plan.hauteur : null} note={balisage ? phraseRaccordement(resultat) : null}
         dessin={enBlocs ? <SchemaEnBlocs plan={plan} onOuvrir={ouvrirOnglet}
           coteReseau={{ texte: motifCoteReseau ?? phraseCoteReseau(resultat), onOuvrir: resultat?.simule === true ? null : () => ouvrirOnglet('production') }} /> : null}
         actions={(

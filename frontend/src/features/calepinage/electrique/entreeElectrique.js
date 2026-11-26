@@ -38,3 +38,11 @@ export function texteOuNull(texte) {
   const brut = String(texte).trim()
   return brut === '' ? null : brut
 }
+
+/** Le corps d'un retrait : sans `produit` ni `packs` ; `null` quand plus rien d'autre n'est saisi. */
+export function corpsSansBatterie(stockee) {
+  const { produit: _produit, packs: _packs, ...reste } = stockee ?? {}
+  const vide = (valeur) => valeur === null || valeur === undefined || valeur === ''
+    || (Array.isArray(valeur) && valeur.length === 0)
+  return Object.values(reste).every(vide) ? null : { ...reste, produit: null }
+}

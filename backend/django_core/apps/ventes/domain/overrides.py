@@ -417,6 +417,7 @@ def vue_effective(devis, autos, chemins_supplementaires=()):
     # T4-X4-019 — l'option que décrivent les chemins ``taille.*`` (deux options).
     option_taille = (option_decrite_par_taille(devis.lignes.all())
                      if getattr(devis, 'pk', None) and hasattr(devis, 'lignes') else None)
+    par_option = taille_par_option(devis) if option_taille else {}
     for chemin in chemins:
         auto = (autos or {}).get(chemin)
         valeur, source = effectif(devis, chemin, auto)
@@ -431,6 +432,9 @@ def vue_effective(devis, autos, chemins_supplementaires=()):
             vue['non_lu'] = True
         if option_taille and chemin.startswith('taille.'):
             vue['option'] = option_taille
+            # T4-X4-019 (suite) — chaque option sous son nom : valeur lue sur ses lignes.
+            vue['par_option'] = {opt: autos_opt[chemin] for opt, autos_opt in par_option.items()
+                                 if chemin in autos_opt}
         bloc[chemin] = vue
     return bloc
 
@@ -487,21 +491,19 @@ def option_decrite_par_taille(lignes):
                          for li in lignes) else None
 
 
-def _autos_taille_panneaux(devis):
-    """``{chemin: valeur}`` du champ PV — le lecteur unique des lignes PVUNI."""
-    from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
-
-    lignes = [
+def _lignes_pv_du_devis(devis):
+    """Les lignes PRODUIT non optionnelles du devis — la matière du champ PV."""
+    return [
         li for li in devis.lignes.select_related(
             'produit', 'produit__fiche_technique').all()
         if getattr(li, 'type_ligne', 'produit') == 'produit'
         and not getattr(li, 'optionnelle', False)]
-    # T4-X4-019 — sur un devis à DEUX options (lignes variantées), le champ PV
-    # décrit est celui de l'option SANS batterie (commun + « sans », la branche
-    # que dimensionne ``taille.nb_panneaux``), jamais la somme des deux (7 + 11
-    # = 18 panneaux qu'aucune option n'a). Mono-option : inchangé.
-    if option_decrite_par_taille(lignes):
-        lignes = [li for li in lignes if (getattr(li, 'variante', '') or '') != 'avec']
+
+
+def _autos_pv(lignes):
+    """``{chemin: valeur}`` du champ PV d'UN jeu de lignes (``panneaux_et_watt_lu``)."""
+    from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
+
     nb, watt = panneaux_et_watt_lu(lignes)
     autos = {}
     if nb:
@@ -511,6 +513,33 @@ def _autos_taille_panneaux(devis):
     if nb and watt:
         autos['taille.kwc'] = round(nb * watt / 1000, 2)
     return autos
+
+
+def _autos_taille_panneaux(devis):
+    """``{chemin: valeur}`` du champ PV — le lecteur unique des lignes PVUNI."""
+    lignes = _lignes_pv_du_devis(devis)
+    # T4-X4-019 — sur un devis à DEUX options (lignes variantées), le champ PV
+    # décrit est celui de l'option SANS batterie (commun + « sans », la branche
+    # que dimensionne ``taille.nb_panneaux``), jamais la somme des deux (7 + 11
+    # = 18 panneaux qu'aucune option n'a). Mono-option : inchangé.
+    if option_decrite_par_taille(lignes):
+        lignes = [li for li in lignes if (getattr(li, 'variante', '') or '') != 'avec']
+    return _autos_pv(lignes)
+
+
+def taille_par_option(devis):
+    """T4-X4-019 (suite) — ``{'sans': {chemin: valeur}, 'avec': {...}}`` : le
+    champ PV de CHAQUE option d'un devis à deux options (commun + sa variante),
+    lu par la MÊME lecture que ``_autos_taille_panneaux`` ; ``{}`` sur un devis
+    mono-option. Informatif : les surcharges ``taille.*`` ne pilotent que
+    l'option « sans » (aucun chemin par option n'existe au registre)."""
+    lignes = _lignes_pv_du_devis(devis)
+    if not option_decrite_par_taille(lignes):
+        return {}
+    return {
+        option: _autos_pv([li for li in lignes
+                           if (getattr(li, 'variante', '') or '') in ('', option)])
+        for option in ('sans', 'avec')}
 
 
 def _autos_banque_batterie(devis):

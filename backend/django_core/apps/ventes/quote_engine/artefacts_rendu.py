@@ -186,6 +186,23 @@ def _schema_electrique_svg(devis, data, opts) -> str:
         return ""
 
 
+def _annexes_par_option(devis, data, opts) -> list:
+    """D-ACAL-166 — ``[{option, electrical_design, sld_svg}]`` des options dont
+    la conception est RANGÉE (``electrical_service.annexes_par_option``), ``[]``
+    hors devis à deux options rangées ou en cas d'échec (l'annexe d'une page,
+    jamais un PDF cassé). Aucun montant (règle #4)."""
+    try:
+        from apps.ventes.electrical_service import annexes_par_option
+        langue = (data.get("langue_sortie") or (opts or {}).get("langue_sortie")
+                  or "fr")
+        return annexes_par_option(devis, langue=str(langue).strip().lower()[:2],
+                                  largeur_px=SCHEMA_ELECTRIQUE_LARGEUR_PX)
+    except Exception:  # noqa: BLE001 — l'annexe garde sa page unique (D-ENF22-BLE001)
+        logger.warning("D-ACAL-166: annexes par option indisponibles pour le devis %s",
+                       getattr(devis, "pk", None))
+        return []
+
+
 #: CAL182 — largeur/hauteur (px) sous lesquelles la planche A3 PAYSAGE est
 #: réduite pour tenir dans la colonne de contenu d'une page A4 PORTRAIT du
 #: devis. Le ``viewBox`` du SVG n'est PAS touché : c'est la même planche,
@@ -273,10 +290,15 @@ def _planche_calepinage(devis):
             calepinage_du_devis as _lire_calepinage,
             conception_figee_du_devis as _lire_conception_figee)
 
+        from apps.ventes.domain.regles_calcul import toit_plat_ouvert
+
         calepinage = _lire_calepinage(getattr(devis, 'pk', None),
                                       getattr(devis, 'company', None))
         if calepinage is None:
             return "", ""
+        # D-ACAL-149 — un devis envoyé avant la coupure garde la pente d'un toit
+        # plat qu'il a reçue (la valeur du curseur) ; sinon elle vaut 0.
+        toit_plat = toit_plat_ouvert(devis)
         # ACAL92 (D-ACAL-3) — un devis REMPLACÉ (calepinage re-lié à sa
         # remplaçante) se rend de SA conception figée (« Version envoyée »,
         # sinon ``Devis.roof_layout``), jamais de la conception courante.
@@ -289,7 +311,8 @@ def _planche_calepinage(devis):
                 figee.get('layout_hash', ''), '', None)
             svg = _calepinage_services.rendre_planche_svg(
                 calepinage, pied=empreinte,
-                document=figee['roof_layout']) or ""
+                document=figee['roof_layout'],
+                toit_plat_corrige=toit_plat) or ""
             return _svg_planche_inline(svg), empreinte
         # ACAL968 (D-ACAL-37) — un devis qui ne chiffre qu'une partie des
         # surfaces imprime la planche de SA copie (les seules surfaces vendues).
@@ -301,7 +324,8 @@ def _planche_calepinage(devis):
             None)
         svg = _calepinage_services.rendre_planche_svg(
             calepinage, pied=empreinte,
-            document=devis.roof_layout if partiel else None) or ""
+            document=devis.roof_layout if partiel else None,
+            toit_plat_corrige=toit_plat) or ""
         return _svg_planche_inline(svg), empreinte
     except Exception:  # noqa: BLE001 — une planche absente ne casse pas un PDF (D-ENF22-BLE001)
         logger.warning("CAL182: planche de calepinage indisponible pour le "
@@ -380,6 +404,12 @@ def ajouter_artefacts_rendu(data, devis, opts, pdf_options, layout_stale,
         data.update(_drapeaux_schema)
         data["sld_svg"] = ((_schema_electrique_svg(devis, data, opts)
                             if _drapeaux_schema else "") or _sld_svg(devis))
+        # D-ACAL-166 — devis à deux options dont les DEUX conceptions sont
+        # rangées (D-ACAL-158) : une page d'annexe par option. Sans l'entrée
+        # rangée à l'envoi, aucune clé nouvelle : annexe d'aujourd'hui.
+        _par_option = _annexes_par_option(devis, data, opts) if _drapeaux_schema else []
+        if _par_option:
+            data["annexes_options"] = _par_option
     # ── CAL182 — LA PLANCHE EST UN ARTEFACT DE RENDU (leçon CALEPDF/A8) ──────
     # Même discipline que l'affiche : ``build_quote_data`` alimente AUSSI la
     # charge utile JSON de la proposition publique, et deux raisons interdisent

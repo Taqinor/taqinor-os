@@ -2278,7 +2278,7 @@ D-ACAL-126 ; ACAL1943 (texte de tâche contre maquette) ; ACAL1635 (énergies ar
 sur la pile de revue ; déploiement après la fusion du lot 6 (avant le 27/11, sinon déplacer `COUPURE_SCHEMA_ELECTRIQUE` et
 `COUPURE_CHAINES_INEGALES`).
 
-### Point du 26/11, 12 h UTC — LOT 6 FUSIONNÉ, LOT 7 EN COURS (le plus récent — REPRENDRE ICI)
+### Point du 26/11, 12 h UTC — LOT 6 FUSIONNÉ, LOT 7 EN COURS
 
 **Lot 6.** PR #1560 fusionnée le 26/11 à 07 h 33 UTC (commit de fusion bfe152adc). Premier passage de CI rouge sur huit
 causes (toutes « figées » : garde des tests qui lisent un source, repères `cal-*` non déclarés, compte figé des clés de
@@ -2337,3 +2337,169 @@ document a changé » ; (5) trois assertions lisaient le source d'un fichier (re
 re-cadrée dite sur sa ligne, journal du paquet C). Pliées depuis la note de 12 h : `lot6/r5c-corrections`,
 `lot6/acal-module-substitue` ; `lot6/web-hero-3d` n'a rien changé (le bandeau est l'image de fond voulue de la page, grise
 sur la pile faute d'imagerie) ; `lot6/acal-schema-visuel` relue, en correction.
+
+### Point du 26/11, 19 h UTC — LOT 7 FUSIONNÉ, TOUR 5 JOUÉ EN ENTIER, LOT 8 EN COURS (le plus récent — REPRENDRE ICI)
+
+**Lot 7.** PR #1561 fusionnée le 26/11 à 11 h 00 UTC (commit de fusion 5e24d76d7). Premier passage de CI rouge sur trois
+groupes : des tests d'AUTRES modules figés sur une forme d'appel ou une phrase que le lot changeait exprès (factures,
+liste des devis, bandeau de provenance, livrables de la borne haute, registre des réglages) et un vrai défaut attrapé par
+la CI (un toast « Connexion perdue » à chaque ouverture de la fenêtre PDF quand le profil est illisible). Trois lanes de
+réparation, un seul envoi, second passage vert. NON déployé par Claude. À déployer avec le lot 6, **avant le 27/11**.
+Avant la PR, les gardes d'hôte (`ci_guards.py stage-names`) avaient attrapé trois rouges de plus (fonctions de service
+sans appelant, entrée morte d'une liste d'exceptions, appel d'API illisible pour la garde des paramètres).
+
+**Tour 5 — joué en entier sur la pile de revue** (199 lignes ; enregistrements `T5/rejeu-A.json` à `rejeu-F.json`) :
+
+| Paquet | Lignes | Corrigé | Partiel | Non corrigé | Non rejouable / non joué | Constats neufs |
+|---|---|---|---|---|---|---|
+| A — devis, PDF, lead | 56 | 34 | 13 | 2 | 7 | 8 |
+| B — atelier, toit, panneaux | 33 | 25 | 5 | 2 | 1 | 8 |
+| C — électrique, résultats, documents | 30 | 16 | 8 | 1 | 5 | 8 |
+| D — téléphone et tablette (WebKit) | 30 | 20 | 7 | 3 | 0 | 4 |
+| E — droits et réglages | 19 | 14 | 3 | 1 | 1 | 3 |
+| F — pompage et C&I | 31 | 23 | 4 | 4 | 0 | 4 |
+| **Total** | **199** | **132** | **40** | **13** | **14** | **35** |
+
+Les paquets A, B et C ont leurs corrections dans le lot 7 ; D, E et F dans le lot 8. La pile tournait sur le lot 5 (A, B, C)
+puis sur le lot 6 (D, E, F) : aucune correction des lots 7 et 8 n'a encore été rejouée.
+
+**Lot 8** — branche `dev-lot8` (coupée de `main` 5e24d76d7), baux `Reda_Laptop/dev-lot8` (calepinage, core, ventes, web,
+crm). Pliées, relues et corrigées : `lot8/r5d-corrections` (paquet D), `lot8/acal-apercu-devis` (l'aperçu du devis suit
+l'ordre de décision de la génération ; il ne nomme aucun devis à qui ne lit pas les devis). En correction après relecture :
+`lot8/r5e-corrections` (paquet E — la relecture a trouvé des tests annoncés mais jamais commités). En construction :
+`lot8/r5f-corrections` (paquet F : une phrase du PDF de pompage que la fiche ne prouve pas, un devis C&I enregistré
+différent de l'écran sans message, le bandeau « la conception a changé » qui n'apparaît pas).
+
+**En cours sur la pile** : reconstruction sur `main` 5e24d76d7 puis second regard (`T5/visuel-lot7.json` à venir) — devis à
+35 × 715 W, schéma en tablette et téléphone, couleurs des chaînes, et les trois jamais-vus : visionneuse au soleil avec un
+accès solaire enregistré, hybride avec batterie au schéma, schéma par option sur le devis et la page client.
+
+**Décisions pour Reda** (en plus de la note de 12 h) : droits du Technicien — prix de vente servis et affichés dans la liste
+du stock (aucun prix d'achat) ; « Tout recalculer » ouvert au Commercial ; un Technicien ne peut plus être mis responsable
+d'un calepinage qu'il ne pourrait pas ouvrir (assignation en impasse refusée, rien ne change dans D-ACAL-106/126) ;
+« Devis auto » qui crée un brouillon à chaque clic ; libellé « Panneaux nécessaires » contre « Cible » dans l'atelier
+(T4-X8-012) ; une cible de taille tapée dans l'onglet Devis n'est pas lue par les deux autres boutons « Devis automatique ».
+
+### Point du 26/11, 13 h 50 UTC — RÉPARATION DE LA VISIONNEUSE EN FILE DE FUSION, LOT 8 EN RELECTURE (le plus récent — REPRENDRE ICI)
+
+Correction d'horloge : le point précédent, intitulé « 19 h UTC », a été écrit vers 12 h UTC (heure de GitHub : lot 7 fusionné à
+11 h 00 UTC). Les « séance du soir » et « séance de nuit » de `decisions.yml` sont deux séances de questions du 26/11 en
+début d'après-midi.
+
+**PR en vol (une seule)** : Taqinor/taqinor-os#1562, `lot8/web-visionneuse-correctifs-a` → `main`, site seul (5 fichiers
+sous `apps/web`), Auto-fix allumé, fusion automatique demandée. Elle répare le défaut signalé par Reda (« le bouton lecture
+ne change rien ») : la visionneuse 3D de la page du devis jetait au premier rendu (`ctx.dom` absent depuis CALX111). Vérifiée
+dans un navigateur sur un build de production (enregistrement `T5/visuel-web-a.json`, clé `ship_305a1c48a`). En ligne par
+Cloudflare à la fusion, sans déploiement de l'ERP.
+
+**Suite du site (étape B)** : `lot8/web-visionneuse-b` (5cfee2618 + corrections en cours) — habillage « Montrer au client »
+des liens de confiance, ombres portées au sol et des obstacles, pas de soleil sans reconstruction de maillage, pieds de
+châssis PARTOUT (D-ACAL-161), aide des gestes traduite, repli vrai quand le style de carte est refusé. À relire par un
+relecteur neuf puis à regarder dans un navigateur avant sa PR (après la fusion de #1562).
+
+**Lot 8** (`dev-lot8`, pas de PR ; baux `Reda_Laptop/dev-lot8`) :
+- Pliées : r5d-corrections, acal-apercu-devis, r5e-corrections, acal-module-substitue-2, acal-schema-visuel-2,
+  r5f-corrections, pompage-cable-alerte (les quatre dernières sans seconde relecture neuve : à couvrir par la relecture
+  finale du lot assemblé).
+- En relecture neuve (26/11, 13 h 45) : `lot8/prix-vente-technicien` (7f2dcf4b4, migration `roles/0016`),
+  `lot8/schema-deux-options` (1211b1e7a ; l'annexe du PDF par option N'EST PAS construite), `lot8/acal-toit-plat-rendus`
+  (8fb4d21b4 ; partie (ii) — création et resynchronisation — à appliquer après le pli d'onduleur-designe),
+  `lot8/cible-et-libelle` (2cd6777f8), `lot8/acal-batterie-atelier` (dfd57cd48).
+- En correction : `lot8/acal-onduleur-designe` (relecture : 5 défauts — quantité vendue quand aucun nombre n'est accepté,
+  produit reconnu par rôle ou fiche mais pas par son nom en aval, test de batterie plus lâche que la composition, raison
+  fausse à l'aperçu, contrôles de raccordement sautés ; plus D-ACAL-159).
+- En construction : `lot8/plan-couleurs-chaines` (constat R3 du second regard : panneaux du plan blancs à l'étape
+  Électrique).
+- Abandonnée : `lot8/hyb6-residentiel` (D-HYB-6 = rien ne change).
+- À mettre en file après les relectures : annexe du PDF par option (D-ACAL-158, moteur — règle n° 4) ;
+  `apps/calepinage/views/pompage.py::_produit_pompage` sert encore le prix de vente à un technicien (suite de D-ACAL-152) ;
+  puissance du module 710 / 715 entre l'entrée électrique stockée et le plan (`electrique.py::resoudre_materiel`).
+
+**Avant la PR du lot 8** : dates de `COUPURE_PROTECTION_FICHE` et `COUPURE_TOIT_PLAT` = lendemain du déploiement ;
+instantané OpenAPI ; `codemap_fingerprint.py --write` ; marques au plan et DONE LOG ; mesure du bundle ; gardes
+`backend-lint-fast` et `stage-names` ; relecture finale du lot assemblé (Fable) ; puis PR, CI, fusion, baux rendus.
+
+**Réponses du fondateur, troisième séance du 26/11** : D-ACAL-159 (hybride désigné sans batterie → devis basculé en « avec
+batterie »), 160 (PDF de pompage inchangé), 161 (pieds partout), 162 (« Tout recalculer » reste ouvert). **Attend Reda** :
+lesquels des 18 choix changer (`choix-a-confirmer-2026-11-26.md`) ; déploiement du lot 7 (`scripts/deploy-prod.ps1`).
+
+**Jamais vu à l'écran** : toutes les corrections des lots 7 et 8 sauf le second regard du lot 7 ; la génération du devis
+35 × 715 W avec la garde refaite ; l'imagerie satellite réelle sur la page du client.
+
+### Point du 26/11, 15 h 15 UTC (intitulé d'abord « 17 h » par erreur d'horloge) — VISIONNEUSE RÉPARÉE EN LIGNE, LOT 8 : 9 BRANCHES PLIÉES, 12 EN COURS (le plus récent — REPRENDRE ICI)
+
+**Fusionné** : PR Taqinor/taqinor-os#1562 (site seul, 13 h 57 UTC) — la visionneuse 3D de la page du devis ne plante plus ;
+en ligne par Cloudflare. Lot 7 fusionné, toujours PAS déployé.
+
+**Réponses de Reda (séances 3 à 5 du 26/11)** : les 18 choix confirmés ; D-ACAL-159 à 169 ; D-ACAL-63 à 68, 70, 71, 73,
+77 ; D-AMOT-8 à 12 — tout est dans `decisions.yml` et la mémoire partagée. Liste des mots à relire envoyée
+(`mots-a-relire-2026-11-26.md`, 67 numéros) : il corrige par numéro. Huit questions d'autres audits : « plus tard ».
+
+**Pliées dans `dev-lot8` depuis 13 h 50** : cible-et-libelle, acal-toit-plat-rendus (partie i), acal-batterie-atelier,
+toit-estimation ; correctif de la commande « clean the disk » (jonctions).
+
+**En relecture neuve** : `lot8/acal-onduleur-designe` (d8a32d8a4 — onduleur ET batterie désignés, resynchronisation qui
+garde la désignation, toit plat partie (ii) à 20°), `lot8/prix-vente-technicien` (05f828e9b — masquage partout, D-ACAL-165),
+`lot8/stock-atelier` (b611e2d6b), `lot8/atelier-saisies` (e431374d9), `lot8/pompage-atelier` (c0a7b9ebc),
+`lot8/affectation-cles-modules` (5dfc1d59d — couleurs des chaînes sur la carte : clé = numéro stable, appariement par position).
+**En correction après relecture** : `lot8/generateur-autofill`, `lot8/releve-photos`.
+**En construction** : `lot8/schema-deux-options` (partie 2 : une page d'annexe par option), `lot8/moteur-pdf` (ACAL1218,
+1221, 1222, D-ACAL-167), `lot8/onduleur-position` (ACAL1317, arbre posé à la main `zz-lane-onduleur-position`),
+`lot8/liste-pluriannuel` (ACAL1252, arbre `zz-lane-liste-pluriannuel`).
+**Site, étape B** : `lot8/web-visionneuse-b` (00b1561c5), relue, corrigée, en contrôle au navigateur ; sa PR (site seul)
+part si le contrôle dit oui, puis la PR du lot 8.
+
+**À mettre en file** : panneau par défaut partout (D-ACAL-169 : stock → ventes → calepinage → générateur → site ; le stock
+attend le pli de prix-vente-technicien) ; numérotation des modules consommée à chaque sérialisation pendant l'édition
+(cause des numéros 2236… ; politique de numérotation, territoire d'ACAL1720) ; ACAL1320 (libellé de la resynchronisation
+d'un devis envoyé, D-ACAL-73 : aucun aperçu avant d'agir n'existe) ; suites du rejeu ci-dessous.
+
+**Rejeu en direct du lot 7 sur la pile (`T5/rejeu-6-lot7.json`, 39 lignes)** : 9 corrigées, 15 partielles, 4 non corrigées,
+7 non rejouables, 4 défauts neufs. Restent à traiter : R5A-N5 (« modifications non enregistrées » sans rien taper, devis et
+fiche du lead), R5A-N6 (9 réponses 404 de `ventes/conception/<lead>/` sur une fiche), T4-X7-015 (pas de calque
+« Électrique »), R6-N1 (Réviser > 20 s), R5A-N8 (cartes « Calcul des totaux… » > 25 s), R6-N2 (Retenir une variante non
+simulée sans avertissement), R6-N3, R6-N4, T4-U1-009 / T4-X7-020 (PDF « devis final » sans RIB ni mention), T4-X1-010
+(darija rendu en français). T4-X1-004 et T4-X2-006 sont corrigées dans le lot 8 (non rejouées).
+
+**Disque** : commande « clean the disk » du dépôt lancée (16 Go libres vers 15 h, 6,8 au départ) ; rapport de mesure dans le
+dossier de travail de la session (`disque/rapport.md`) : arbres de travail 53 Go dont 104 déjà dans `main`, caches 23 Go.
+
+### Point du 26/11, 18 h 30 UTC — LOT 8 ASSEMBLÉ (26 branches), RÉPARATIONS DE PRÉ-CI EN COURS, LOT 9 EN FILE (le plus récent — REPRENDRE ICI)
+
+**Branche du lot 8** : `dev-lot8`, tête `14fc3b383` (poussée). Rien n'est en PR. `dev-lot9` = même commit (les lanes du lot 9 partent de là).
+Coupures du lot 8 : `COUPURE_PROTECTION_FICHE`, `COUPURE_TOIT_PLAT`, `COUPURE_PDF_2611` = 28/11 → **le lot 8 doit être déployé avant le 28/11**
+(le lot 7, fusionné, n'est pas déployé non plus).
+
+**Pliées depuis le point précédent** : `lot8/onduleur-position` (ACAL1317, D-ACAL-70), `lot8/faux-non-enregistre` (fiche lead : historique
+et conception relus après un geste ; demande du fondateur du 26/11 sur l'action « Être rappelé » invisible).
+
+**Pré-CI sur un runner** (workflow temporaire `zz-scratch`, branches supprimées après usage ; journaux dans le dossier de travail de la
+session, `preci-dl/` et `preci2/`) :
+- 1er passage (apps.ventes, 11 580 tests) : 15 rouges, 3 causes de test corrigées (`34afe686b`) ; garde QJR6 corrigée (`87a7b8de8`).
+- 2e passage (calepinage, stock, roles, sav, reporting, crm, core, parametres, installations) : stock, reporting, installations verts.
+  Rouges attribués au lot 8, en réparation sur deux branches : `lot8/reparations-cal` (2 tests de `test_acal_resync_annonce` — la phrase
+  « toit plat 20° supposés » s'ajoute aux écarts de l'aperçu ; entrée `batterie.produit` absente ; fixture `A194-PAN` de `test_acal1268` ;
+  cliquet des imports calepinage → ventes : 47 fichiers pour un plafond de 44) et `lot8/reparations-ventes` (message de la batterie désignée
+  absent en « deux options » ; golden AST `crm/views.py::assignable_users`).
+  Environ 400 erreurs de sav / roles / core / parametres ont la forme d'un artefact du passage (clés étrangères vers des `ContentType`
+  absents, après plusieurs `manage.py test --keepdb` enchaînés dans un même job) : **hypothèse non vérifiée**, confiée au tri de
+  `lot8/reparations-ventes` ; la vraie CI tranchera.
+- Image de référence du PDF industriel, page 2 : écart de 38 %. La page passe de « un tableau + encadré option avec batterie » à « deux
+  options chiffrées côte à côte ». **Origine pas encore établie** (enquête en lecture seule lancée) : ne PAS committer la nouvelle image
+  (`base2/industriel_full_etude_p2.png` du dossier de travail) avant de savoir si le changement est voulu et s'il épargne les devis envoyés.
+
+**Reste avant la PR du lot 8** : plier les deux réparations ; trancher l'image du PDF ; mesure du bundle (en cours) ; relecture finale du
+lot assemblé (une passe Fable) ; PR `dev-lot8` → `main`, Auto-fix, file de fusion ; rendre les baux ; dire à Reda de déployer.
+
+**Lot 9** (branches poussées, aucune pliée) : prêtes — `lot8/module-pose-suivi`, `lot8/atelier-r6`, `lot9/historique-devis-public`,
+`lot9/panneau-defaut-calepinage` (le panneau par défaut passe avant les favoris), `lot9/reviser-etudes` (relecture lancée),
+`lot8/droits-technicien` (relecture lancée). En correction après relecture : `lot8/numerotation-stable` (un numéro provisoire pouvait être
+engagé sur un second panneau ; plafond perdu à la restauration d'une version et à « Retenir »), `lot8/panneau-defaut-stock` (journal
+d'audit, frontière stock → ventes, un seul watt par panneau par défaut), `lot8/resync-apercu` (un devis envoyé pouvait encore être corrigé
+sans la carte d'aperçu par « Enregistrer la conception » ; montant dans un avertissement ; confirmation non liée à l'aperçu),
+`lot8/pdf-devis-final-rib` (tests du nombre de pages, libellé du format une page), `lot8/liaison-dc-tracee` (ligne d'affichage).
+En écriture : `lot9/panneau-defaut-ventes`, `lot9/lecteurs-aval`, `lot9/une-cible` (texte dans le script du toit partagé).
+Constats à garder : la révision d'un devis par NÉGOCIATION de prix reste calculée sans l'ombrage (V2 acceptée dans la transaction) ;
+`apps/web` garde un module de repli codé en dur à 720 Wc quand aucun catalogue n'est servi (`moduleSelect.ts::MODULE_PAR_DEFAUT_ATELIER`) ;
+lenteur de « Réviser » et des cartes de la liste des devis : mesure à faire sur la pile (`mesure_lenteurs.py` du dossier de travail),
+piste : lancer `manage.py ranger_totaux_affiches` après `migrate` au déploiement.

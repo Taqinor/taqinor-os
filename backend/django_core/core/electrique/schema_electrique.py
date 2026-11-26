@@ -665,8 +665,15 @@ def _carte_batterie(batterie, y, langue):
     morceaux.append(_ligne(x1 + 7.0, ly, x2 - 7.0, ly, largeur=1.6))
     morceaux.append(_pointe(x1, ly, vers_la_droite=False))
     morceaux.append(_pointe(x2, ly))
-    morceaux.append(_t((x1 + x2) / 2.0, ly - 6.0, _libelle("charge", langue), 8.0,
-                       couleur=_SECONDAIRE, ancre="middle"))
+    # L'étiquette de la liaison ne franchit jamais une boîte : l'espace entre onduleur et batterie ne fait que
+    # `_X_BATTERIE - _X_ONDULEUR - _L_ONDULEUR` px ; « charge / décharge » (≈ 75 px) y déborderait, elle se pose donc
+    # sur deux lignes (« charge / » puis « décharge »), chacune plus étroite que l'écart.
+    libelle = _libelle("charge", langue)
+    lignes = ([libelle.split(" / ")[0] + " /", libelle.split(" / ", 1)[1]]
+              if " / " in libelle else [libelle])
+    for rang, ligne in enumerate(lignes):
+        morceaux.append(_t((x1 + x2) / 2.0, ly - 6.0 - (len(lignes) - 1 - rang) * 9.0,
+                           ligne, 8.0, couleur=_SECONDAIRE, ancre="middle"))
     return "".join(morceaux)
 
 

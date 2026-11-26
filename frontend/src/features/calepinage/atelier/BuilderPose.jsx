@@ -25,6 +25,7 @@ function useTelephoneTactile() {
 
 export default function BuilderPose({
   expert = false, // ACAL869 — le niveau expert (publié par le rail) : ouvre « Réglages avancés » d'office
+  sansReseau = false, // ACAL1268 — lead de pompage : la phrase ne promet ni production ni économies
 }) {
   const telephoneTactile = useTelephoneTactile()
   return (
@@ -47,8 +48,8 @@ export default function BuilderPose({
               touchez un panneau (bleu) puis un emplacement libre (vert) pour l'y déplacer — ou
               utilisez <strong className="text-foreground">+ / −</strong>. Vous pouvez aussi glisser un
               panneau directement sur la 3D. Les panneaux se calent toujours sur des emplacements
-              valides (jamais hors toit, hors retrait ou sur un obstacle) ; le nombre, la puissance,
-              la production et les économies se recalculent.
+              valides (jamais hors toit, hors retrait ou sur un obstacle) ;
+              {sansReseau ? ' le nombre et la puissance se recalculent.' : ' le nombre, la puissance, la production et les économies se recalculent.'}
             </p>
 
             <div id="rp9-layout-panel" hidden className="mt-5 space-y-5">

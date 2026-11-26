@@ -30,6 +30,7 @@ from .public.noyau import (
     PublicLinkRateThrottle, _niveau_lien, _noindex, _not_found,
     _resolve_proposal_link, _resolve_share_link_by_token, quote_publique,
     _rendu_memorise_du_lien, _section_servie, _sections_masquees, _strip_confidential_deep, lien_client_sur_brouillon,
+    pan_geometrique_public,
 )
 from .public.lecture_views import _notify_open, _stamp_view_si_public
 from .public.payload_batterie import (
@@ -588,7 +589,7 @@ def _safe_roof_layout(devis) -> dict | None:
     for p in (layout.get("_pans_geometry") or []):
         if not isinstance(p, dict):
             continue
-        pans.append({k: p.get(k) for k in _PAN_KEYS if k in p})
+        pans.append(pan_geometrique_public(p, _PAN_KEYS))  # D-ACAL-168 : jamais l'inclinaison supposée
 
     # Géométrie des zones (contours + obstacles + orientation), sans aucun prix.
     _ZONE_KEYS = ("id", "label", "vertices", "obstacles", "roofType",

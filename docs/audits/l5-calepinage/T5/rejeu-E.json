@@ -1,0 +1,134 @@
+[
+ {
+  "id": "T4-X3-019",
+  "verdict": "partiel",
+  "vu": "anon_admin2, Reglages simulation : « Perte LID par technologie », « Coefficients Uc/Uv par type de pose » et « Fenetres d'arret » sont maintenant des champs lisibles (une carte par technologie/pose avec Perte LID (%), Uc, Uv, Source du texte, Reference ; bouton Ajouter une fenetre). Reste : « Correspondances de nomenclature du bordereau » affiche encore « Table structuree (JSON) » avec un champ Valeur texte libre (vide ici) : le JSON brut n'est pas remplace pour ce seul champ.",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-019-lid.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-019-nomenclature.png"
+ },
+ {
+  "id": "T4-X3-001",
+  "verdict": "ok",
+  "vu": "anon_admin2 : Norme applicable = NF C 15-100 / UTE C 15-712-1 / IEC 62548 (jeu francais) ; Reference « X3-ref test » enregistree (toast « Norme electrique enregistree. »). La page Sources des parametres dit « Norme choisie NF C 15-100 ... / Reference de la norme X3-ref test / Coefficients : aucun coefficient propre a la societe, ceux de la norme s'appliquent » (plus de « Aucune norme electrique choisie »). Non rejoue : telechargement du Rapport d'etude.",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-001-sources.png"
+ },
+ {
+  "id": "T4-X3-002",
+  "verdict": "ok",
+  "vu": "anon_admin2 : Faitage 0,3 m + Source « X3 test retrait » enregistres (toast « Retraits par type d'arete enregistres. »). Sources des parametres > Degagements affiche « Retrait — Faitage 0,30 m  reglage societe  X3 test retrait », comme le lestage saisi en meme temps (« Vitesse de vent de reference 25,00 m/s reglage societe X3 test vent »). Releve apres navigation (pas de rechargement dur).",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-002-sources.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-002-retraits.png"
+ },
+ {
+  "id": "T4-X3-005",
+  "verdict": "ok",
+  "vu": "Sources : libelles francais « Vitesse de vent de reference », « Retrait — Faitage ». Bibliotheque apres rechargement : « X3 preset test — Pente : 15 °, Source : X3 test prereglage » et « Modules — 1 produit(s) : Panneau Jinko 710W — Jinko » (plus de cle technique ni de #id). Apres retrait des deux, retour a « Aucun preset regle » / « Aucun materiel favori regle ».",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-005-biblio-after.png"
+ },
+ {
+  "id": "T4-X3-018",
+  "verdict": "ok",
+  "vu": "Reglages simulation : 2.5 saisi dans Mismatch de fabrication (2) + Tab + clic Bibliotheque -> boite « Modifications non enregistrees — quitter cette page ? [Rester sur la page] [Quitter sans enregistrer] » ; en quittant sans enregistrer la valeur revient a 2 (attendu). Meme boite en choisissant « Herbe fraiche (0.26) » dans l'albedo puis clic Bibliotheque.",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-018-after-click.png"
+ },
+ {
+  "id": "T4-X3-003",
+  "verdict": "ok",
+  "vu": "Reglages > Site & imagerie : sous « Altitude du site (m) » le texte dit maintenant « Saisie : jamais devinee. Elle n'est pas utilisee pour l'instant : le calcul et le rapport prennent l'altitude donnee par la meteo du site. » (altitude 50 + source enregistrees, toast « Site et imagerie enregistres. »). Le rapport n'est donc plus muet sur l'ecart. Non verifie : le rapport PDF lui-meme apres simulation relancee.",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-003-site.png"
+ },
+ {
+  "id": "T4-X3-004",
+  "verdict": "ok",
+  "vu": "Historique 30 -> « 30 versions conservees au plus. » puis champ remis vide -> « Toutes les versions sont conservees. » ; apres rechargement la Bibliotheque dit « Aucun preset regle : les valeurs de l'atelier s'appliquent. » avant ET apres (le prereglage fantome « versions_conservees — aucun champ » n'apparait jamais).",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-004-biblio-restored.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-004-biblio-30.png"
+ },
+ {
+  "id": "T4-X3-013",
+  "verdict": "ok",
+  "vu": "Allees : largeur 1,2 + pays « ma » 1 m, source « X3 test allee », « Je confirme » -> « Defaut de la societe enregistre ». Sources > Degagements : « Allee de circulation — MA 1,00 m reglage societe X3 test allee » et « Largeur d'allee technique par defaut 1,20 reglage societe X3 test allee » (plus de « non sourcee »). Un champ Source unique existe sur l'ecran Allees. Restaure : Sources redit « Aucun degagement enregistre ».",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-013-sources.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-013-allees-saved.png"
+ },
+ {
+  "id": "T4-X3-014",
+  "verdict": "ok",
+  "vu": "Gabarit X3-TEST depose (Maroc / Autre dossier, 2 pieces, 1 champ). Onglet Dossiers de mon calepinage 18, Pays de la societe vide : « Pays de la societe : — · gabarits deposes : 0 — Le pays de votre societe n'est pas renseigne : aucun gabarit de dossier n'est propose, meme si vous en avez depose. Renseignez le pays dans Reglages > Calepinage > Site et imagerie. » ; avec Pays « ma » : « Pays de la societe : MA · gabarits deposes : 1 — X3 dossier de test, incomplet, Piece 1 / Piece 2 a completer ». Pays remis vide, gabarit supprime ensuite.",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-014-dossiers-sans-pays.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-014-dossiers-pays-ma.png"
+ },
+ {
+  "id": "D-ACAL-105",
+  "verdict": "ok",
+  "vu": "Reglages > Allees : un seul champ « SOURCE » avec l'aide « D'ou viennent la largeur d'allee par defaut et le retrait de bord par defaut (notice, norme, releve...). Cette source vaut pour les deux. » ; une fois rempli (« X3 test allee »), /calepinage/sources montre « Largeur d'allee technique par defaut 1,20 reglage societe X3 test allee » (plus « non sourcee »). Reserve : l'ecran n'a de champ de valeur que pour la largeur d'allee ; le retrait de bord par defaut n'y est pas saisissable, donc sa ligne n'a pas ete observee.",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-013-sources.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-allees.png"
+ },
+ {
+  "id": "T4-X3-006",
+  "verdict": "ok",
+  "vu": "Echec de chargement SIMULE (requetes catalogue-materiel et profils-types repondues 503 par interception du navigateur ; la pile n'etait pas lente) : la Bibliotheque dit « La bibliotheque n'a pas pu etre chargee. Le serveur a repondu par une erreur (code 503). » avec un bouton « Reessayer ». Le motif et le bouton sont la ; le geste Reessayer n'a pas ete clique.",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-006-echec-503.png"
+ },
+ {
+  "id": "T4-X4-019",
+  "verdict": "partiel",
+  "vu": "Lead R5E-1 (Residentiel, Casablanca, facture 1800), Devis auto DEV-202611-0123 (Sans 5,68 kWc 42 500 MAD / Avec 7,81 kWc 90 200 MAD), Editer > Surcharges (registre) deplie : les lignes sont maintenant par option et ne montrent plus la somme : « taille.nb_panneaux — option sans batterie : Auto 8 / Effectif 8 », « taille.panel_watt 710 », « taille.kwc 5.68 » = carte « Conseille par le moteur, sans batterie : 8 panneaux · 5,68 kWc ». Reserve : seule l'option SANS batterie est listee ; rien pour l'option avec batterie (11 panneaux · 7,81 kWc) dans le registre ni dans la liste des chemins (nb_panneaux, panel_watt, kwc, scenario, recommended_option, jour_reference).",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x4-019-surcharges.png"
+ },
+ {
+  "id": "T4-X4-020",
+  "verdict": "ok",
+  "vu": "Sur mon devis auto DEV-202611-0123 (facture 1800 MAD, jamais retouche) la carte de droite dit « MARGE INDICATIVE (INTERNE) — OPTION AVEC BATTERIE 22 320 MAD · marge partielle : 2 lignes sans prix d'achat » : positive et nommant l'option ; aucun message « vous vendez a perte ». Je n'ai pas pu reproduire le devis de perte du tour 4 (autres montants 42 500 / 90 200 MAD au lieu de 49 900 / 78 000) ; la marge de l'option sans batterie n'est pas affichee.",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x4-020-marge.png"
+ },
+ {
+  "id": "T4-X6-018",
+  "verdict": "ok",
+  "vu": "DEV-202611-0123 > Editer > Surcharges : recommended_option = « Sans batterie » > Poser : le menu « Option Recommandee » affiche « Sans batterie » sous « Impose par le registre — revenir a l'automatique ». Clic sur « revenir a l'automatique » : l'indication disparait (apres ~1-2 s) ; le menu reste sur « Sans batterie » (valeur automatique). Modifications abandonnees ensuite (devis non enregistre).",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x6-018-menu.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x6-018-revert.png"
+ },
+ {
+  "id": "D-ACAL-104",
+  "verdict": "ok",
+  "vu": "anon_commercial, /calepinage/reglages : badge « Lecture seule » + « Ces reglages de la societe se lisent ici : seules les personnes qui peuvent approuver un calepinage peuvent les changer. » ; 297 champs sur 297 desactives ; aucun bouton « Remplir les reglages vides » ni « Retirer le profil » (seul « Tout recalculer »). anon_resp : champs editables (24/297 desactives), boutons « Retirer le profil », « Aucun reglage a remplir » (desactive car rien a remplir : profil deja applique), Enregistrer le site / la norme / les reglages / le lestage / les retraits. anon_admin2 : idem (boutons presents). Ecrire un reglage (Historique 30) fait par anon_resp et admin2 : « 30 versions conservees au plus. », relu 30 apres rechargement. Non joue : « Remplir les reglages vides » et « Retirer le profil » en action (rien a remplir ; retirer puis remettre le profil de la copie sans risque de ne pas retrouver l'etat). Un « Commercial » n'a donc pas de geste refuse a nommer : les gestes sont masques et le droit est nomme dans la phrase.",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-d104-commercial-top.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-d117-resp-ecrit.png"
+ },
+ {
+  "id": "D-ACAL-117",
+  "verdict": "partiel",
+  "vu": "anon_resp (Commercial responsable) : change un reglage societe (Historique 30 -> enregistre, relu 30 apres rechargement ; remis a vide, relu vide) ; boutons Retirer le profil / Remplir (desactive, rien a remplir) / Tout recalculer actifs. anon_commercial : lecture seule, aucun geste d'ecriture (voir D-ACAL-104). Le droit est bien deja sur la pile (pas besoin du prochain deploiement). NON joue : « approuver un calepinage » — mon calepinage 18 est vide (rien a approuver : Toit/Panneaux « a faire »), et approuver celui d'un autre relecteur modifierait son enregistrement ; « Remplir » non joue (rien a remplir).",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-d117-resp-ecrit.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-d117-resp-top.png"
+ },
+ {
+  "id": "REGLAGES-RECALCUL",
+  "verdict": "ok",
+  "vu": "Reglages simulation, bouton « Tout recalculer » : anon_commercial (champs en lecture seule 297/297) le voit ET actif ; anon_resp et anon_admin2 aussi ; anon_tech (lecture seule, aucun bouton du tout) ne le voit pas. Il suit donc le droit de sa route et non la lecture seule des champs. Non clique (recalculerait tous les calepinages de la societe).",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-d104-commercial-top.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-recalcul-tech.png"
+ },
+ {
+  "id": "R5E-X1",
+  "verdict": "constat",
+  "vu": "anon_tech, GET stock/produits/?page_size=5 : 200, 217 produits ; la reponse porte prix_vente (ex. « 1667.00 »), prix_fixe_ht (« 0.00 »), paliers_prix_vente (liste, vide sur l'exemple), aussi prix_par_panneau_ht ; la cle prix_achat est ABSENTE (valeur non lue). Ecran : /stock (Produits) montre au Technicien les colonnes « PRIX VENTE HT » et « PRIX TTC » (ex. « 1 667,00 HT · 2 000,00 DH TTC · TVA 20% ») et le tableau « SANS PRIX 81 / 63% du catalogue avec prix ».",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x1-1-stock-tech.png"
+ },
+ {
+  "id": "R5E-X2",
+  "verdict": "constat",
+  "vu": "anon_tech, calepinage 16 (visite assignee, lead 1250 R5D-2) : « Generer le devis » est VISIBLE (haut de page, panneau Documents, etape Pret a envoyer ; 3 occurrences). A l'ouverture 2 toasts « Vous n'avez pas la permission d'effectuer cette action. » (403 sur crm/leads/1250/photo-toit/). Vue client (/calepinage/16/client) : « Envoyer le lien » est VISIBLE mais desactive (grise), avec la phrase « Le lien se prepare depuis la fiche du lead, onglet Devis, « Envoyer au client »... » et bandeau « Lecture seule : vous pouvez consulter cette conception, pas la modifier. » Le Technicien ouvre /calepinage (liste: 1 projet, le sien) mais /calepinage/18 (non assigne) dit « Calepinage introuvable. »",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x1-2-atelier-tech.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x1-2-vue-client-tech.png"
+ },
+ {
+  "id": "R5E-X3",
+  "verdict": "constat",
+  "vu": "anon_tech, /crm/leads : la page ne dit que « Erreur : Vous n'avez pas la permission d'effectuer cette action. » avec un bouton « Reessayer » (inutile pour un refus de droit), alors que le menu lateral CRM complet (Leads, Cockpit, Clients, Forecast, Carte, Parrainage...) reste affiche ; 403 sur crm/leads/, crm/canaux/, crm/leads/doublons/, crm/message-templates/ ; 7 erreurs console. Ne dit pas quoi faire (demander un acces / retour).",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x1-3-crm-leads-tech.png"
+ },
+ {
+  "id": "T4-X3-016",
+  "verdict": "non-corrige",
+  "vu": "Nouveau calepinage > « Non assigne » propose toujours anon_tech ET anon_tech_resp (Techniciens). Preuve du cote Technicien : calepinage 19 cree avec Responsable = anon_tech ; anon_tech le liste-t-il ? NON (sa liste /calepinage = 1 projet, celui de sa visite assignee) et /calepinage/19 repond « Calepinage introuvable. » (404). Meme chose pour anon_tech_resp (0 projet, 16/18/19 introuvables). Nuance : le Technicien peut maintenant ouvrir un calepinage de visite assignee (plus de 403 general), mais confier un calepinage a un Technicien comme responsable ne le lui rend pas accessible.",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-016-resp-menu-lead.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-x3-016-tech-cal19.png"
+ },
+ {
+  "id": "D-ACAL-126",
+  "verdict": "non-rejouable",
+  "vu": "Le compte anon_tech_resp EXISTE dans la copie (contrairement au brief). Mais son sous-arbre ne contient pas anon_tech : l'ecran Administration > Utilisateurs (Modifier / Plus d'actions : Modifier, Desactiver, Supprimer) n'offre aucun champ de hierarchie/superieur pour le definir. Observe seulement : anon_tech_resp voit 0 calepinage et « Calepinage introuvable » sur 16 (visite assignee a anon_tech), 18 et 19 ; le lead d'un collegue sans visite est bien invisible, mais ses visites d'equipe ne le sont pas non plus (le sous-arbre n'etant pas defini, non concluant).",
+  "capture": "C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-d126-calepinage.png ; C:/dev/taqinor-os/logs/nightly-qa/playwright/r5e-d126-calepinage-16.png"
+ }
+]

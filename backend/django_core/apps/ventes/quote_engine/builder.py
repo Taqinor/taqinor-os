@@ -25,8 +25,8 @@ from . import i18n_labels as _i18n
 from .lignes_classement import (
     _LigneArgentPdf, _is_battery,
     _is_hybrid_inverter, _is_offgrid_inverter, _is_panel, _is_reseau_inverter,
-    _item_classement, _item_marque, _line_to_item, _parse_marque,
-    fiches_figees, kwc_des_lignes, panneaux_et_watt_lu,
+    _item_classement, _item_du_devis, _item_marque, _parse_marque,
+    kwc_des_lignes, panneaux_et_watt_lu,
 )
 # SPL163 — la phase D1 (chiffrage de l'étude) vit dans ``etude_chiffrage``
 # (move only) ; builder n'importe ici que ce qu'il utilise lui-même.
@@ -63,7 +63,7 @@ from .options_pdf import (
 from .options_pdf import DEFAULT_PDF_OPTIONS  # noqa: F401
 # SPL166 — la phase D2 (restitution de l'étude) vit dans ``etude_restitution``
 # (move only) ; builder n'importe ici que ce qu'il utilise lui-même.
-from .etude_restitution import cle_factures_exactes, restituer_etude
+from .etude_restitution import cle_factures_exactes, economie_unique_ouverte, restituer_etude
 # SPL166 — ré-export (noqa: F401) pour d'autres propriétaires : test devis
 # test_qjr156_tarif_estime (ligne_tarif_hypothese).
 from .etude_restitution import ligne_tarif_hypothese  # noqa: F401
@@ -555,7 +555,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     option_lignes = [li for li in lignes if getattr(li, "optionnelle", False)]
     lignes = [li for li in lignes if not getattr(li, "optionnelle", False)]
 
-    items = [_line_to_item(li, taux_tva, fiches_figees(devis)) for li in lignes]
+    items = [_item_du_devis(li, taux_tva, devis) for li in lignes]
     # Mode « réforme » dès qu'une ligne porte son propre taux ; un devis
     # historique (toutes lignes NULL) reste rendu strictement comme avant.
     per_line_tva = any(getattr(li, "taux_tva", None) is not None for li in lignes)
@@ -1535,7 +1535,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         _corrige=_corrige, _utility=_utility, etude=etude, _bareme_horaire=_regles_2710(devis),
         puissance_kwc=puissance_kwc, roi=roi, savings_model=savings_model,
         libelle_avec=libelle_avec if avec_batterie_differee else None,  # BAT-DIFF seul (ERR-AMOT21)
-        savings_model_avec=savings_model_avec, _economie_unique=regles_au_moins(devis, REGLES_POSE_REELLE_2111),
+        savings_model_avec=savings_model_avec, _economie_unique=economie_unique_ouverte(devis),
         savings_model_sans=savings_model_sans, scenario=scenario, recommended=_regles_2710(devis) and recommended)
 
     # SPL164 — phase E1 : ``conditions_commerciales.delais_validite_et_kit``.
@@ -2068,7 +2068,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                                 lignes=_comptees)
         _opts = []
         for li in option_lignes:
-            it = _line_to_item(li, taux_tva, fiches_figees(devis))
+            it = _item_du_devis(li, taux_tva, devis)
             it.pop("_produit_nom", None)
             it.pop("_sans_quantite", None)
             qte = float(li.quantite or 0)

@@ -47,6 +47,7 @@ const writeTab = (v) => {
 // de secours (D2#6) qui reste inactif tant que `dispatch` n'est pas câblé.
 export default function ContextRail({
   state, users, historique, refreshHistorique, onAction, dispatch,
+  kwcCible, onKwcCibleChange,
 }) {
   const leadId = state.leadId
   const [tab, setTab] = useState(readTab)
@@ -165,7 +166,7 @@ export default function ContextRail({
   return (
     <aside className="lw-zone lw-rail-context" data-testid="lw-context-rail">
       {/* ALEA71 — la conception RANGÉE du lead (moteur unique), lue, jamais calculée. */}
-      <CarteConception key={leadId} leadId={leadId} />
+      <CarteConception key={leadId} leadId={leadId} creeLe={state.server?.date_creation ?? null} />
       <Tabs value={tab} onValueChange={changeTab}>
         <TabsList className="lw-context-tabs">
           <TabsTrigger value="historique">Historique</TabsTrigger>
@@ -207,6 +208,8 @@ export default function ContextRail({
             onWaLangue={onWaLangue}
             onWaPreview={onWaPreview}
             onWaReset={onWaReset}
+            kwcCible={kwcCible}
+            onKwcCibleChange={onKwcCibleChange}
           />
         </TabsContent>
 
