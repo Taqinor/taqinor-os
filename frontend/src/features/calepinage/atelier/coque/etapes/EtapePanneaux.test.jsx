@@ -443,6 +443,30 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(document.querySelector('[data-zone="pose-actuelle"]')).toHaveTextContent('Pose actuelle : 30 panneaux · 17,40 kWc')
   })
 
+  /* ACAL1613 — lead à 900 MAD/mois, 4 panneaux recommandés, 13 posés : la carte « Couvrir la facture » non posée disait
+     « 4 panneaux · 2,84 kWc » sans pourcentage. Elle dit la part SERVIE (`chiffrage.couverture_pct` du design-context,
+     contrat `calepinage_design_context.json`) à SA taille, par la fonction du constructeur ; une autre taille : rien. */
+  const chiffrageServi = (kwc, pct) => ({
+    ...exempleContrat('calepinage', 'calepinage_design_context', 'exemple').chiffrage,
+    kwc: { valeur: kwc, unite: 'kWc', source: 'conception', etat: 'servi' },
+    couverture_pct: { valeur: pct, unite: '%', source: 'conception', etat: 'servi' },
+  })
+  it.each([
+    ['la conception servie a la taille de la carte', 2.84, '4 panneaux · 2,84 kWc · conception · ≈ 54 % de la consommation'],
+    ['la conception servie a une autre taille', 3.55, null],
+  ])('ACAL1613 — la carte recommandée non posée dit sa part : %s', async (_cas, kwcServi, attendu) => {
+    servir({ cible: { panneaux: 4, kwc: 2.84, module_wc: 710 } })
+    monterConstructeur({ besoin: '13', panneaux: '13 × 710 W', kwc: '9,23 kWc', cover: '—',
+      note: '13 posés — il reste de la place sur le toit, laissée libre.' })
+    rendre({ contexte: { calepinage: { lead: 42 }, consommation_lead: { facture_mensuelle_mad: 900, motif: '' },
+      chiffrage: chiffrageServi(kwcServi, 54.0) } })
+    const facture = screen.getByTestId('cal-panneaux-option-facture')
+    await waitFor(() => expect(facture).toHaveTextContent('4 panneaux · 2,84 kWc'))
+    expect(facture).toHaveAttribute('aria-pressed', 'false')
+    if (attendu) expect(facture).toHaveTextContent(attendu)
+    else expect(facture).not.toHaveTextContent('%')
+  })
+
   it('sans taille tirée des factures : « Couvrir la facture » grisée avec le motif servi et le lien vers le lead', async () => {
     servir({ cible: null, motif: 'Aucune facture sur le lead.' })
     monterConstructeur({

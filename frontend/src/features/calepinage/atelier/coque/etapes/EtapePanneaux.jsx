@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { couleurAccesActive } from '@rooflib/shadingEngine'
 import { MODULE_PAR_DEFAUT_ATELIER } from '@roofpro/moduleSelect'
+import { couvertureServie } from '@roofpro/affichageErp' // ACAL1613 — LA part « De la consommation » du constructeur
 import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
 import { formatKwc, formatNumber } from '../../../../../lib/format'
@@ -11,7 +12,7 @@ import { SurCarte } from '../emplacements'
 import { BoutonMarine, CarteFlottante, Icone, Indicateur, Segmente } from '../primitives'
 import { BESOIN_MAX, gestes, useConstructeur, usePoseVivante } from './panneaux/constructeur'
 import { jourMois, ligneModule } from './panneaux/formats'
-import { useCibleFactures } from './panneaux/lectures'
+import { useCibleFactures, useLectureServie } from './panneaux/lectures'
 import ValeurUnite from './panneaux/ValeurUnite'
 import { fmtKwc, modulesServis, productionPubliee, simulationARefaire } from './panneaux/sources'
 import { SIMULATION_A_REFAIRE } from '../../../production/BandeauProvenanceProduction.helpers' // T4-X2-002
@@ -75,6 +76,8 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
   // La taille des factures : l'accesseur PARTAGÉ avec l'étape Toit (trois états ; le design-context de l'atelier,
   // `ecranProps.contexte`, prime — relu ici seulement sans lui, REP-995).
   const facture = useCibleFactures(calepinageId, servi, { attendre })
+  // ACAL1613 — le bloc `chiffrage` du MÊME design-context (lecture partagée, aucune requête de plus).
+  const contexte = useLectureServie('contexte', calepinageId, { servi, actif: !attendre })
   const catalogue = useResource((id) => calepinageApi.calepinages.modulesDisponibles(id), calepinageId, selectData).data
   const entree = useResource((id) => calepinageApi.calepinages.entreeElectrique(id), calepinageId, selectData).data
   const resultat = useResource((p) => calepinageApi.calepinages.resultat(p.id), { id: calepinageId, enregistreLe },
@@ -82,6 +85,7 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
   return {
     leadId: facture.leadId,
     facture,
+    chiffrage: contexte.etat === 'ok' ? (contexte.donnees?.chiffrage ?? null) : null,
     cible: facture.cible,
     motifFacture: facture.refus || facture.motif,
     refusFacture: facture.refus,
@@ -221,8 +225,11 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   if (partLue && (gardee?.pour !== cible.panneaux || gardee.watt !== figures.watt || gardee.texte !== partLue)) {
     setGardee({ pour: cible.panneaux, watt: figures.watt, texte: partLue })
   }
+  // ACAL1613 — la carte non posée dit aussi sa part : la part SERVIE à SA taille, par LA fonction qui écrit « De la
+  // consommation » du constructeur (`couvertureServie`, kWc égal à celui de la conception, sinon rien — jamais une autre pose).
+  const pctServi = cible && servi.partDeLaConception ? couvertureServie(servi.chiffrage, cible.kwc) : null
   const partFacture = partLue ?? (gardee && cible && gardee.pour === cible.panneaux && gardee.watt === figures.watt
-    ? gardee.texte : null)
+    ? gardee.texte : null) ?? (pctServi != null ? `≈ ${Math.round(pctServi)} % de la consommation` : null)
   // ACAL2022 (T4-X2-001) — la carte dit la taille de la CONCEPTION (son nombre de panneaux et SON kWc, nommée) : jamais un nombre
   // de panneaux à côté du kWc d'un autre module ; la pose posée se dit à part (« Posé : … »).
   // T4-X8-011 — un module d'une autre puissance : la ligne dit LE compte servi pour ce module et SON kWc servi (« 6 panneaux
