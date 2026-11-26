@@ -1131,6 +1131,71 @@ def _onduleur_juge(calepinage, devis, refus=None):
     return phrase
 
 
+def _avant_resynchro(calepinage, devis_id):
+    """``(variante, layout)`` — les décisions d'ENTRÉE de « Resynchroniser le devis », partagées avec
+    son aperçu (ACAL1320) : feu vert, document (celui de la VARIANTE qui porte ``devis_id``),
+    refus de lecture seule (409). N'écrit rien."""
+    from .feu_vert import GESTE_DEVIS, verifier_avant_publication
+
+    verifier_avant_publication(calepinage, geste=GESTE_DEVIS)
+    layout = _exiger_layout(calepinage)
+    # ACON6/ACON80 — un devis porté par une variante de CE calepinage suit
+    # le document de la variante ; tout autre ``devis_id`` est ignoré.
+    from ..selectors import variante_portant_le_devis
+
+    variante = variante_portant_le_devis(calepinage, devis_id)
+    if variante is not None:
+        layout = _exiger_layout(variante)
+    # ACAL373 — agricole / multi-villa : la raison de l'écran, 409, rien n'est
+    # écrit (le refus de STATUT reste celui de ventes, revision_possible compris).
+    from apps.ventes.selectors_calepinage import raison_lecture_seule_conception
+
+    from .verrou import est_verrouille
+    lie = (variante.devis if variante is not None
+           else getattr(calepinage, 'devis', None))
+    if lie is not None and not est_verrouille(calepinage, devis=lie):
+        raison = raison_lecture_seule_conception(lie)
+        if raison:
+            raise DevisRefuse(raison, champ='roof_layout', statut=409,
+                              donnees={'roof_layout': [raison]})
+    return variante, layout
+
+
+def _devis_a_resynchroniser(calepinage, variante, layout, surfaces_chiffrees):
+    """``(devis, layout)`` — le devis lié (société bornée) et le document aux surfaces chiffrées
+    (ACAL968 : absentes ⇒ la sélection écrite au devis), partagés avec l'aperçu (ACAL1320)."""
+    from apps.ventes.selectors import get_devis_by_pk
+
+    devis_id = (variante.devis_id if variante is not None
+                else getattr(calepinage, 'devis_id', None))
+    if not devis_id:
+        raise DevisRefuse(
+            "Aucun devis n'est rattaché à ce calepinage : utilisez d'abord "
+            "« Générer le devis ».", champ='devis')
+    devis = get_devis_by_pk(devis_id)
+    company = getattr(calepinage, 'company', None)
+    if devis is None or (company is not None
+                         and devis.company_id != company.pk):
+        raise DevisRefuse(f"Devis introuvable (#{devis_id}).", champ='devis')
+    layout = _layout_des_surfaces(layout, surfaces_chiffrees if surfaces_chiffrees
+                                  is not None else _selection_du_devis(devis, variante or calepinage))
+    return devis, layout
+
+
+def _designations_de(porteur):
+    """D-ACAL-148 / 159 / 164 — les désignations de l'étape Électrique que la resynchro (et son
+    aperçu) transmet à ``ventes``, qui les juge."""
+    return {'onduleur': _onduleur_designe(porteur), 'batterie': _batterie_designee(porteur)}
+
+
+def _refus_de_resynchro(calepinage, devis, refus):
+    """Le ``SyncLayoutError`` de ventes traduit en 409 du pont (``revision_possible`` compris),
+    l'onduleur jugé nommé (E6e) — le même pour la resynchro et son aperçu."""
+    detail = refus.detail + _onduleur_juge(calepinage, devis, refus)
+    return DevisRefuse(detail, champ='devis', statut=409,
+                       donnees={'detail': detail, 'revision_possible': refus.revision_possible})
+
+
 def resynchroniser_devis(calepinage, *, user=None,
                          derogation_electrique=None, devis_id=None,
                          surfaces_chiffrees=None):
@@ -1157,50 +1222,15 @@ def resynchroniser_devis(calepinage, *, user=None,
         DevisRefuse: aucun devis lié (400, le message NOMME le geste
             « Générer le devis »), ou refus 409 du serveur ventes propagé.
     """
-    from apps.ventes.selectors import get_devis_by_pk
     from apps.ventes.services import (
         SyncLayoutError, resynchroniser_conception)
 
-    from .feu_vert import GESTE_DEVIS, verifier_avant_publication
-
-    verifier_avant_publication(calepinage, geste=GESTE_DEVIS)
-    layout = _exiger_layout(calepinage)
-    # ACON6/ACON80 — un devis porté par une variante de CE calepinage suit
-    # le document de la variante ; tout autre ``devis_id`` est ignoré.
-    from ..selectors import variante_portant_le_devis
-
-    variante = variante_portant_le_devis(calepinage, devis_id)
-    if variante is not None:
-        layout = _exiger_layout(variante)
-    # ACAL373 — agricole / multi-villa : la raison de l'écran, 409, rien n'est
-    # écrit (le refus de STATUT reste celui de ventes, revision_possible compris).
-    from apps.ventes.selectors_calepinage import raison_lecture_seule_conception
-
-    from .verrou import est_verrouille
-    lie = (variante.devis if variante is not None
-           else getattr(calepinage, 'devis', None))
-    if lie is not None and not est_verrouille(calepinage, devis=lie):
-        raison = raison_lecture_seule_conception(lie)
-        if raison:
-            raise DevisRefuse(raison, champ='roof_layout', statut=409,
-                              donnees={'roof_layout': [raison]})
+    variante, layout = _avant_resynchro(calepinage, devis_id)
     # ACAL170 — même cliquet électrique que la génération, AVANT toute
     # écriture (un devis ENVOYÉ suit le même refus).
     garde = _garde_electrique(calepinage, derogation_electrique, user,
                               geste='resynchronisé')
-    devis_id = (variante.devis_id if variante is not None
-                else getattr(calepinage, 'devis_id', None))
-    if not devis_id:
-        raise DevisRefuse(
-            "Aucun devis n'est rattaché à ce calepinage : utilisez d'abord "
-            "« Générer le devis ».", champ='devis')
-    devis = get_devis_by_pk(devis_id)
-    company = getattr(calepinage, 'company', None)
-    if devis is None or (company is not None
-                         and devis.company_id != company.pk):
-        raise DevisRefuse(f"Devis introuvable (#{devis_id}).", champ='devis')
-    layout = _layout_des_surfaces(layout, surfaces_chiffrees if surfaces_chiffrees
-                                  is not None else _selection_du_devis(devis, variante or calepinage))
+    devis, layout = _devis_a_resynchroniser(calepinage, variante, layout, surfaces_chiffrees)
 
     try:
         # ACAL34 — l'enveloppe ventes UNIQUE : resynchro + quatre études
@@ -1217,14 +1247,9 @@ def resynchroniser_devis(calepinage, *, user=None,
             roof_image=None if variante is not None else (
                 getattr(calepinage, 'roof_image', None) or None),
             # D-ACAL-148 / 159 — la MÊME décision que « Générer le devis » (ventes la juge).
-            designations={'onduleur': _onduleur_designe(variante or calepinage),
-                          'batterie': _batterie_designee(variante or calepinage)})
+            designations=_designations_de(variante or calepinage))
     except SyncLayoutError as refus:
-        detail = refus.detail + _onduleur_juge(calepinage, devis, refus)
-        raise DevisRefuse(
-            detail, champ='devis', statut=409,
-            donnees={'detail': detail,
-                     'revision_possible': refus.revision_possible}) from refus
+        raise _refus_de_resynchro(calepinage, devis, refus) from refus
     resultat = dict(resultat or {})
     resultat['electrique'] = _consigner_et_servir(calepinage, garde,
                                                   user=user)

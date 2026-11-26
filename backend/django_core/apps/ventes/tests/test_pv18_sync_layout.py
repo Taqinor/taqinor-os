@@ -13,7 +13,7 @@ Run:
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -1267,3 +1267,32 @@ class TestSyncRefuseUneCompositionImpossible(TestCase):
             [a for a in resp.data['avertissements']
              if 'La conception 3D porte le devis' in a],
             resp.data['avertissements'])
+
+
+class EcartsDeLignesSansBaseTest(SimpleTestCase):
+    """ACAL1320 (D-ACAL-73) — l'aperçu de resynchronisation compare deux photos de lignes : ajout,
+    retrait, changement (avant → après), rien pour une ligne identique. Pure."""
+
+    def test_ajout_retrait_changement(self):
+        from apps.ventes.domain.apercu_resynchro import ecarts_de_lignes
+
+        def photo(designation, quantite, prix, produit=1):
+            return {'designation': designation, 'variante': '', 'produit': produit, 'quantite': quantite,
+                    'prix_unitaire': prix, 'remise': '0.00', 'total_ht': prix}
+        avant = {1: photo('Module', '3.00', '3000.00'), 2: photo('Onduleur 8 kW', '1.00', '16000.00', 7),
+                 3: photo('Batterie', '1.00', '9000.00', 9), 4: photo('Structure', '1.00', '500.00', 5)}
+        apres = {1: photo('Module', '2.00', '2000.00'), 2: photo('Onduleur 5 kW', '1.00', '12000.00', 8),
+                 4: photo('Structure', '1.00', '500.00', 5), 5: photo('Câble', '10.00', '100.00', 6)}
+        ajouts, retraits, changements = ecarts_de_lignes(avant, apres)
+        self.assertEqual([a['designation'] for a in ajouts], ['Câble'])
+        self.assertEqual([r['designation'] for r in retraits], ['Batterie'])
+        self.assertEqual([(c['designation_avant'], c['designation_apres'], c['quantite_apres'], c['total_ht_apres'])
+                          for c in changements],
+                         [('Module', 'Module', '2.00', '2000.00'),
+                          ('Onduleur 8 kW', 'Onduleur 5 kW', '1.00', '12000.00')])
+        self.assertEqual(ecarts_de_lignes(avant, dict(avant)), ([], [], []))
+
+    def test_texte_au_centime(self):
+        from apps.ventes.domain.apercu_resynchro import _texte
+
+        self.assertEqual((_texte(Decimal('2')), _texte(Decimal('1.005')), _texte(None)), ('2.00', '1.01', None))

@@ -83,6 +83,137 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertEqual(self.calepinage.roof_layout, document_avant)
         self.assertNotIn('_pans_geometry', self.calepinage.roof_layout)
 
+    # ── ACAL1320 (D-ACAL-73 = corriger_dire) — l'aperçu de « Resynchroniser le devis » ──
+    def _etat_ecrit(self):
+        """Tout ce qu'une resynchronisation écrirait : le devis (toutes ses colonnes : statut,
+        empreinte, échéancier, cache PDF, clauses, ``updated_at``), ses lignes, son journal, ses
+        instantanés, ses liens de partage, le chatter du lead et le calepinage."""
+        from apps.crm.models import LeadActivity
+        from apps.ventes.models import ConfigurationDevisSnapshot, Devis, DevisActivity, LigneDevis, ShareLink
+
+        pk = Calepinage.objects.get(pk=self.calepinage.pk).devis_id
+        return {
+            'devis': list(Devis.objects.filter(pk=pk).values()),
+            'lignes': list(LigneDevis.objects.filter(devis_id=pk).order_by('pk').values()),
+            'journal': list(DevisActivity.objects.filter(devis_id=pk).order_by('pk').values_list('pk', flat=True)),
+            'instantanes': ConfigurationDevisSnapshot.objects.filter(devis_id=pk).count(),
+            'liens': list(ShareLink.objects.filter(devis_id=pk).order_by('pk').values()),
+            'chatter': LeadActivity.objects.filter(lead_id=self.lead.pk).count(),
+            'calepinage': list(Calepinage.objects.filter(pk=self.calepinage.pk).values()),
+        }
+
+    def _apercu_resync(self, client=None, **params):
+        reponse = (client or self.api).get(f'{self.base}apercu-resync/', params)
+        return reponse
+
+    def test_acal1320_apercu_dit_ce_qui_change_et_n_ecrit_rien(self):
+        """Devis ENVOYÉ, pose 12 → 14 panneaux : l'aperçu dit la ligne de panneaux qui change, les
+        totaux avant → après et que le devis reçu par le client sera corrigé ; RIEN n'est écrit
+        (devis, lignes, journal, note, instantané, liens, chatter, calepinage, annonce, rappels
+        ``on_commit``). Puis la resynchronisation réelle écrit EXACTEMENT ce que l'aperçu annonçait."""
+        import json
+        import pathlib
+
+        from apps.ventes.models import Devis
+
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 14
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        self.calepinage.refresh_from_db()
+        Devis.objects.filter(pk=self.calepinage.devis_id).update(statut='envoye')
+        from apps.calepinage.services.devis_resync_apercu import apercu_resynchronisation
+
+        avant = self._etat_ecrit()
+        reponse = self._apercu_resync()
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        with self.captureOnCommitCallbacks(execute=False) as rappels:  # le service seul, hors requête HTTP
+            direct = apercu_resynchronisation(Calepinage.objects.get(pk=self.calepinage.pk), user=self.user)
+        self.assertEqual(rappels, [])  # ceux du geste joué sont abandonnés avec son point de sauvegarde
+        self.assertEqual(direct, reponse.data)
+        self.assertEqual(self.emissions, [])
+        self.assertEqual(self._etat_ecrit(), avant)
+        contrat = json.loads((pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+                              / 'calepinage_apercu_resync.json').read_text(encoding='utf-8'))
+        self.assertEqual(set(reponse.data), set(contrat['exemple']))
+        apercu = reponse.data
+        self.assertEqual((apercu['inchange'], apercu['statut'], apercu['corrige_apres_envoi']),
+                         (False, 'envoye', True))
+        panneaux = [c for c in apercu['changements'] if c['quantite_avant'] == '12.00']
+        self.assertEqual([c['quantite_apres'] for c in panneaux], ['14.00'], apercu)
+        self.assertEqual(set(panneaux[0]), set(contrat['exemple']['changements'][0]))
+        self.assertNotEqual(apercu['totaux']['avant']['ttc'], apercu['totaux']['apres']['ttc'])
+
+        reel = self.api.post(f'{self.base}sync-devis/', {}, format='json')
+        self.assertEqual(reel.status_code, 200, reel.data)
+        devis = Devis.objects.get(pk=self.calepinage.devis_id)
+        self.assertEqual(str(devis.total_ttc.quantize(Decimal('0.01'))), apercu['totaux']['apres']['ttc'])
+        self.assertEqual(reel.data['avertissements'], apercu['avertissements'])
+        self.assertEqual(devis.statut, 'envoye')  # corrigé sur place, statut lu jamais écrit (règle #4)
+        self.assertTrue(devis.activites.filter(field='correction_apres_envoi').exists())
+
+    def test_acal1320_rien_a_changer_ne_dit_rien_et_n_ecrit_rien(self):
+        avant = self._etat_ecrit()
+        reponse = self._apercu_resync()
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertTrue(reponse.data['inchange'], reponse.data)
+        self.assertEqual((reponse.data['ajouts'], reponse.data['retraits'], reponse.data['changements']), ([], [], []))
+        self.assertFalse(reponse.data['corrige_apres_envoi'])
+        self.assertEqual(self._etat_ecrit(), avant)
+
+    def test_acal1320_devis_accepte_refuse_comme_la_resynchro_sans_rien_ouvrir(self):
+        """Un devis ACCEPTÉ : l'aperçu rend le MÊME 409 que la resynchronisation (``revision_possible``)
+        — la règle de modifiabilité n'est pas élargie ; rien n'est écrit. 404 hors société."""
+        from apps.ventes.models import Devis
+
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 14
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        self.calepinage.refresh_from_db()
+        Devis.objects.filter(pk=self.calepinage.devis_id).update(statut='accepte')
+        avant = self._etat_ecrit()
+        apercu = self._apercu_resync()
+        reel = self.api.post(f'{self.base}sync-devis/', {}, format='json')
+        self.assertEqual((apercu.status_code, reel.status_code), (409, 409), apercu.data)
+        self.assertEqual(apercu.data, reel.data)
+        self.assertTrue(apercu.data['revision_possible'])
+        self.assertEqual(self._etat_ecrit()['lignes'], avant['lignes'])
+        etranger = Calepinage.objects.create(company=self.autre, lead_id=self.lead.pk, titre='Autre')
+        self.assertEqual(self.api.get(f'{url_detail(etranger.pk)}apercu-resync/').status_code, 404)
+
+    def test_acal1320_sans_lecture_des_devis_ni_reference_ni_montant(self):
+        """D-ACAL-106 — un compte qui gère le calepinage sans lire les devis : mêmes clés, aucune
+        référence, aucun montant, aucun total ; la désignation et la quantité restent."""
+        import json
+
+        from django.contrib.auth import get_user_model
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.ventes.models import Devis
+
+        role = Role.objects.create(company=self.company, nom='A1320 sans devis',
+                                   permissions=list(TECHNICIEN_PERMISSIONS) + ['calepinage_gerer'])
+        compte = get_user_model().objects.create_user(username='a1320', password='x', company=self.company, role=role)
+        from apps.visites.models import VisiteTerrain
+
+        VisiteTerrain.objects.create(company=self.company, lead=self.lead, commercial=compte)  # portée du lead
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 14
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        self.calepinage.refresh_from_db()
+        reference = Devis.objects.get(pk=self.calepinage.devis_id).reference
+        lecteur = self._apercu_resync()
+        cache = self._apercu_resync(self._client(compte))
+        self.assertEqual((lecteur.status_code, cache.status_code), (200, 200), cache.data)
+        self.assertEqual(set(cache.data), set(lecteur.data))
+        self.assertIsNone(cache.data['totaux'])
+        self.assertNotIn(reference, json.dumps(cache.data, default=str))
+        for ligne in cache.data['changements']:
+            self.assertIsNone(ligne['total_ht_apres'])
+            self.assertIsNone(ligne['prix_unitaire_avant'])
+        self.assertEqual([c['quantite_apres'] for c in cache.data['changements']],
+                         [c['quantite_apres'] for c in lecteur.data['changements']])
+
     # ── Lane E6e, item 3 (T4-X5-010) — le devis né de l'atelier et l'onduleur désigné ──
     def _designer(self, nom, **saisie):
         from apps.calepinage.services.electrique import CLE_ENTREE
@@ -908,3 +1039,32 @@ class ApercuBrouillonLibreSansBaseTest(SimpleTestCase):
         self.assertTrue(lit_les_devis(compte(COMMERCIAL_PERMISSIONS)))
         self.assertTrue(lit_les_devis(compte(DIRECTEUR_PERMISSIONS)))
         self.assertFalse(lit_les_devis(None))
+
+
+class ApercuResyncSansBaseTest(SimpleTestCase):
+    """ACAL1320 — sans base : le caviardage D-ACAL-106 de l'aperçu de resynchronisation."""
+
+    def test_caviardage_retire_reference_montants_et_totaux_garde_la_pose(self):
+        import json
+        import pathlib
+
+        from apps.calepinage.services.devis_resync_apercu import _caviarder
+
+        contrat = json.loads((pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+                              / 'calepinage_apercu_resync.json').read_text(encoding='utf-8'))
+        complet = contrat['exemple']
+        cache = _caviarder(complet)
+        self.assertEqual(set(cache), set(complet))
+        self.assertEqual((cache['reference'], cache['totaux']), (None, None))
+        self.assertEqual(cache['statut'], complet['statut'])  # le vendeur doit savoir qu'il corrige un envoyé
+        for ligne, origine in zip(cache['changements'], complet['changements']):
+            self.assertEqual(set(ligne), set(origine))
+            self.assertEqual((ligne['designation_apres'], ligne['quantite_apres']),
+                             (origine['designation_apres'], origine['quantite_apres']))
+            self.assertEqual({ligne[c] for c in ligne if c.startswith(('prix_', 'total_'))}, {None})
+        # La forme caviardée est celle que le contrat publie pour ce cas.
+        attendu = contrat['exemple_sans_lecture_devis']
+        self.assertEqual(set(cache), set(attendu))
+        self.assertEqual(set(cache['changements'][0]), set(attendu['changements'][0]))
+        self.assertIsNot(cache, complet)
+        self.assertEqual(complet['reference'], 'DEV-202611-0001')  # l'entrée n'est pas modifiée

@@ -444,6 +444,8 @@ from apps.ventes.domain import resynchronisation as _resynchronisation  # noqa: 
 SyncLayoutError = _resynchronisation.SyncLayoutError
 sync_devis_from_layout = _resynchronisation.sync_devis_from_layout
 resynchroniser_conception = _resynchronisation.resynchroniser_conception
+# ACAL1320 (D-ACAL-73) — l'aperçu de la resynchronisation : la même, jouée puis annulée.
+from apps.ventes.domain.apercu_resynchro import apercu_de_resynchronisation  # noqa: E402,F401 — anti-cycle (D-ENF22)
 
 
 # ═════════════════════════════════════════════════════════════════════════
