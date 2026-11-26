@@ -155,20 +155,35 @@ def cache_prix_vente(requete):
     return not getattr(user, 'can_view_sale_prices', True)
 
 
-class MasquePrixVenteMixin:
-    """D-ACAL-152 — sérialiseur du stock : sans ``prix_vente_voir``, les champs
-    de ``PRIX_VENTE_CHAMPS`` sont RETIRÉS de ``get_fields`` (même mécanisme que
-    ``prix_achat``) : absents de la lecture, et un prix envoyé est ignoré,
-    jamais écrit. Une CRÉATION garde ses champs (le prix est requis par le
-    modèle). À placer AVANT les autres bases."""
+#: Valeurs qu'un formulaire renvoie pour un prix qu'on ne lui a pas servi.
+_PRIX_VIDES = ('', None, [], {})
 
-    def get_fields(self):
-        fields = super().get_fields()
-        creation = self.instance is None and hasattr(self, 'initial_data')
-        if not creation and cache_prix_vente(self.context.get('request')):
+
+class MasquePrixVenteMixin:
+    """D-ACAL-152 — sérialiseur du stock : sans ``prix_vente_voir``, les clés de
+    ``PRIX_VENTE_CHAMPS`` sont RETIRÉES de la représentation (lecture, réponse
+    d'écriture, objets imbriqués). L'ÉCRITURE garde son contrat (ASTK20 :
+    changer un prix sans ``catalogue_prix_modifier`` = 403) ; seul un prix
+    VIDE renvoyé par un formulaire qui ne l'a jamais reçu est lu comme « pas
+    de changement » (mise à jour seulement). À placer AVANT les autres bases."""
+
+    def _prix_vente_caches(self):
+        return cache_prix_vente(self.context.get('request'))
+
+    def to_internal_value(self, data):
+        if self.instance is not None and hasattr(data, 'copy') and self._prix_vente_caches():
+            data = data.copy()
             for champ in PRIX_VENTE_CHAMPS:
-                fields.pop(champ, None)
-        return fields
+                if champ in data and data.get(champ) in _PRIX_VIDES:
+                    data.pop(champ)
+        return super().to_internal_value(data)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if self._prix_vente_caches():
+            for champ in PRIX_VENTE_CHAMPS:
+                data.pop(champ, None)
+        return data
 
 
 class MasquePrixVenteReponseMixin:

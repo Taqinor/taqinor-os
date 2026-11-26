@@ -646,15 +646,24 @@ class GardePrixVente(TestCase):
         self.assertEqual(chef[0], [h for h in PRODUCT_EXPORT_HEADERS if h != 'Prix vente HT'])
         self.assertNotIn('1500.00', chef[1])
 
-    def test_ecriture_inchangee_un_prix_envoye_n_est_jamais_ecrit(self):
+    def test_ecriture_inchangee_prix_vide_du_formulaire_sans_effet(self):
         """Le Technicien responsable (stock_modifier, ni catalogue_prix_modifier
-        ni prix_vente_voir) modifie le seuil ; un prix envoyé est ignoré."""
-        rep = _api(self.chef).patch(f'/api/django/stock/produits/{self.produit.id}/',
-                                    {'seuil_alerte': 3, 'prix_vente': '1'}, format='json')
+        ni prix_vente_voir) : son formulaire, servi sans prix, renvoie des prix
+        VIDES → le seuil est écrit, aucun prix ne bouge ; changer un prix reste
+        le 403 d'ASTK20 (contrat d'écriture inchangé)."""
+        url = f'/api/django/stock/produits/{self.produit.id}/'
+        api = _api(self.chef)
+        rep = api.patch(url, {'seuil_alerte': 3, 'prix_vente': '', 'prix_fixe_ht': None,
+                              'paliers_prix_vente': []}, format='json')
         self.assertEqual(rep.status_code, 200, getattr(rep, 'data', ''))
+        self.assertEqual(cles_prix_vente(rep.json()), set())
         self.produit.refresh_from_db()
-        self.assertEqual((self.produit.seuil_alerte, self.produit.prix_vente), (3, Decimal('1500')))
-        self.assertNotIn('prix_vente', rep.json())
+        self.assertEqual((self.produit.seuil_alerte, self.produit.prix_vente,
+                          self.produit.prix_fixe_ht), (3, Decimal('1500'), Decimal('100')))
+        self.assertEqual(len(self.produit.paliers_prix_vente), 1)
+        rep = api.patch(url, {'prix_vente': '1'}, format='json')
+        self.assertEqual(rep.status_code, 403, getattr(rep, 'data', ''))
+        self.assertIn('catalogue_prix_modifier', str(rep.data['detail']))
 
     def test_balayage_des_routes_stock_sans_prix_de_vente(self):
         """Garde de CLASSE : toute route GET de ``apps.stock.urls`` lue par le
