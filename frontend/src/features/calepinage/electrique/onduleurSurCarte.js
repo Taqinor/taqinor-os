@@ -19,7 +19,14 @@ export const PHRASE_TRACE_DECALE = 'Le tracé enregistré n’aboutit plus à l�
 
 /** Les gestes dont l'écran a besoin : sans eux (constructeur absent ou ancien), rien n'est proposé. */
 const GESTES = ['documentElectrique', 'armerPose', 'armerDeplacement', 'deplacementArme', 'typeArme', 'pousser',
-  'retirerAvecTraces', 'etatTraces', 'ecouter']
+  'retirerAvecTraces', 'etatTraces', 'ecouter', 'definirLectureSeule']
+
+/** Désarme ce que la couche attend d'un toucher de la carte : la scène route le clic de carte vers `clicCarte` à
+    TOUTES les étapes, un armement oublié poserait un onduleur à l'étape Toit. */
+function desarmer(couche) {
+  couche.armerDeplacement(null)
+  if (couche.typeArme() !== null) couche.armerPose(null)
+}
 
 function coucheUtilisable(builderApi) {
   const couche = builderApi?.electrique ?? null
@@ -51,7 +58,7 @@ function phraseApresGeste(couche, id, verbe) {
  * (`nombre_onduleurs`, 1 par défaut) : la barre n'en pose jamais plus. Plusieurs onduleurs au document : les gestes
  * visent celui CHOISI (`choisir`), le premier par défaut.
  */
-export function useOnduleurSurCarte({ builderApi, enregistreLe = null, nombreAttendu = 1 } = {}) {
+export function useOnduleurSurCarte({ builderApi, enregistreLe = null, nombreAttendu = 1, lectureSeule = false } = {}) {
   const couche = coucheUtilisable(builderApi)
   const [, setVersion] = useState(0)
   const [choisiId, setChoisiId] = useState(null)
@@ -81,6 +88,14 @@ export function useOnduleurSurCarte({ builderApi, enregistreLe = null, nombreAtt
       }
     })
   }, [couche])
+  // Lecture seule : la COUCHE refuse elle-même toute écriture (et désarme) ; quitter l'étape (l'écran démonte)
+  // désarme aussi, pour que le prochain toucher de la carte à une autre étape ne pose rien.
+  useEffect(() => {
+    if (!couche) return undefined
+    couche.definirLectureSeule(!!lectureSeule)
+    if (lectureSeule) attente.current = null
+    return () => { attente.current = null; desarmer(couche) }
+  }, [couche, lectureSeule])
 
   const onduleurs = couche
     ? (couche.documentElectrique()?.equipements ?? []).filter((e) => e?.type === 'onduleur')
@@ -137,7 +152,15 @@ export function useOnduleurSurCarte({ builderApi, enregistreLe = null, nombreAtt
     pas: couche?.pasDeplacementM ?? null,
     onduleurs,
     choisi,
-    choisir: setChoisiId,
+    choisir: (id) => {
+      // Un déplacement armé pour un AUTRE onduleur ne survit pas au changement de choix.
+      if (couche && couche.deplacementArme() !== null && couche.deplacementArme() !== id) {
+        attente.current = null
+        couche.armerDeplacement(null)
+        setMessage(null)
+      }
+      setChoisiId(id)
+    },
     peutPlacer: !!couche && onduleurs.length < Math.max(1, Number(nombreAttendu) || 1),
     enDeplacement,
     enPose,

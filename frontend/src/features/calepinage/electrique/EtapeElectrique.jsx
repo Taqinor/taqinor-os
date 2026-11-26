@@ -173,7 +173,7 @@ function CalquesCarte({
 }) {
   const cases = casesPastille(resultat)
   // ACAL1317 — l'onduleur posé sur la carte (document), ses gestes et la provenance du tracé de son câble.
-  const onduleur = useOnduleurSurCarte({ builderApi, enregistreLe, nombreAttendu: nombreOnduleurs })
+  const onduleur = useOnduleurSurCarte({ builderApi, enregistreLe, nombreAttendu: nombreOnduleurs, lectureSeule })
   const chaines = couleursDessinees ? chainesServies(resultat).filter((c) => c.couleur) : []
   const manuelles = (resultat?.electrique?.affectation ?? []).some((l) => l?.source === 'affectation manuelle')
   return (

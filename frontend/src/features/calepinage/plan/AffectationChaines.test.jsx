@@ -37,6 +37,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import AffectationChaines, { BarreRaccordement } from './AffectationChaines'
 import { couleurParModule, marquerModules } from './AffectationChaines.helpers'
 import { PROVENANCE_TRACE_PROPOSE, provenanceCable, useOnduleurSurCarte } from '../electrique/onduleurSurCarte'
+import { creerCoucheElectrique } from '@roofpro/electrique3d'
 
 const contratResultat = () => reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
 
@@ -825,6 +826,7 @@ function coucheEssai(equipements = []) {
     }),
     etatTraces: vi.fn(() => ({ proposes: ['ch1'], autres: [], decales: [], pansSansTrace: [] })),
     ecouter: (f) => { ecouteurs.add(f); return () => ecouteurs.delete(f) },
+    definirLectureSeule: vi.fn(),
     /** Le toucher de la carte (le constructeur appelle `clicCarte`) : pose ou déplace l'organe armé. */
     toucher: () => {
       if (vise) {
@@ -839,8 +841,8 @@ function coucheEssai(equipements = []) {
   return couche
 }
 const ONDULEUR = { id: 'eqA', type: 'onduleur', label: 'Onduleur 1', lng: -7.6, lat: 33.5, source: 'saisie' }
-function BarreAvecOnduleur({ couche, lectureSeule = false, nombreAttendu = 1 }) {
-  const onduleur = useOnduleurSurCarte({ builderApi: couche ? { electrique: couche } : null, nombreAttendu })
+function BarreAvecOnduleur({ couche, lectureSeule = false, nombreAttendu = 1, enregistreLe = null }) {
+  const onduleur = useOnduleurSurCarte({ builderApi: couche ? { electrique: couche } : null, nombreAttendu, lectureSeule, enregistreLe })
   return <BarreRaccordement calepinageId={1} onRaccorde={() => {}} onModifier={() => {}} lectureSeule={lectureSeule} onduleur={onduleur} />
 }
 const GESTES_ECRITS = ['armerPose', 'armerDeplacement', 'pousser', 'retirerAvecTraces']
@@ -934,5 +936,62 @@ describe('provenanceCable (ACAL1317) — d’où vient la longueur sous « Câbl
   })
   it('un pan à modules sans tracé vers l’onduleur ⇒ « tracé partiel », jamais la provenance complète', () => {
     expect(provenanceCable({ proposes: ['ch1'], autres: [], decales: [], pansSansTrace: ['z2'] }, false)).toBe('tracé partiel : 1 pan sans tracé vers l’onduleur')
+  })
+})
+
+/* ACAL1317 (revue, point 2) — la VRAIE couche électrique (`@roofpro/electrique3d`) et le vrai crochet : un armement
+   ne survit ni au démontage de l'étape, ni à la lecture seule, ni au changement d'onduleur visé. */
+const ORIGINE_ESSAI = [-7.6, 33.5]
+const versLngLat = (e, n) => {
+  const m = (Math.PI / 180) * 6378137
+  return [ORIGINE_ESSAI[0] + e / (m * Math.cos((ORIGINE_ESSAI[1] * Math.PI) / 180)), ORIGINE_ESSAI[1] + n / m]
+}
+const panEssai = {
+  id: 'z1',
+  renderPlan: {
+    pack: { origin: ORIGINE_ESSAI, azimuthDeg: 180, ringENU: [[0, 0], [20, 0], [20, 12], [0, 12]] },
+    grid: { rowWidthM: 2, panels: [3, 5, 7, 9, 11, 13, 15, 17].map((cx) => ({ cx, cy: 6 })) },
+  },
+}
+const vraieCouche = (equipements = []) => creerCoucheElectrique({
+  electrical: equipements.length ? { equipements: equipements.map((e) => ({ ...e })), cheminements: [] } : null,
+  sceneOrigin: ORIGINE_ESSAI, areas: [panEssai], activeAreaId: 'z1',
+})
+const onduleurEssai = (id, e, n) => {
+  const [lng, lat] = versLngLat(e, n)
+  return { id, type: 'onduleur', label: `Onduleur ${id}`, lng, lat, source: 'saisie' }
+}
+
+describe('useOnduleurSurCarte (ACAL1317, revue) — un armement ne survit pas à la sortie de l’étape', () => {
+  it('« Placer » puis quitter l’étape : la couche est désarmée, le toucher suivant de la carte ne pose rien', () => {
+    const couche = vraieCouche()
+    const { unmount } = render(<BarreAvecOnduleur couche={couche} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Placer l’onduleur' }))
+    expect(couche.typeArme()).toBe('onduleur')
+    unmount()
+    expect(couche.typeArme()).toBeNull()
+    expect(couche.clicCarte(versLngLat(19, 2))).toBe(false)
+    expect(couche.documentElectrique()).toBeNull()
+  })
+
+  it('« Déplacer » armé puis la conception passe en lecture seule : désarmée, et la couche refuse d’écrire', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2)])
+    const { rerender } = render(<BarreAvecOnduleur couche={couche} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Déplacer l’onduleur' }))
+    expect(couche.deplacementArme()).toBe('eqA')
+    rerender(<BarreAvecOnduleur couche={couche} lectureSeule />)
+    expect(couche.deplacementArme()).toBeNull()
+    expect(couche.lectureSeule()).toBe(true)
+    expect(couche.pousser('eqA', 1, 0).ok).toBe(false)
+  })
+
+  it('changer d’onduleur visé pendant un déplacement armé désarme le déplacement de l’autre', () => {
+    const couche = vraieCouche([onduleurEssai('eqA', 19, 2), onduleurEssai('eqB', 1, 2)])
+    render(<BarreAvecOnduleur couche={couche} nombreAttendu={2} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Déplacer l’onduleur' }))
+    expect(couche.deplacementArme()).toBe('eqA')
+    fireEvent.change(screen.getByTestId('cal-elec-onduleur-choix'), { target: { value: 'eqB' } })
+    expect(couche.deplacementArme()).toBeNull()
+    expect(couche.clicCarte(versLngLat(10, 2))).toBe(false)
   })
 })
