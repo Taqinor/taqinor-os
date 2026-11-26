@@ -483,3 +483,51 @@ describe('CALX22x câblage — CALQUE_ELECTRIQUE_ID mémorisé par utilisateur',
     expect(screen.getByTestId('pc-visible-electrique').checked).toBe(false)
   })
 })
+
+/* ============================================================================
+   T4-X7-015 (rejeu R6) — « Électrique » absent de la liste « Calques » alors que la carte dessine ses organes : le premier
+   organe se pose pendant que la feuille « Avancé » reste ouverte, et la liste n'était relue qu'à son ouverture.
+   ========================================================================== */
+describe('T4-X7-015 — le calque « Électrique » paraît dès que son premier organe existe, sans changer ce que montre chaque étape', () => {
+  it('un organe posé feuille ouverte : à l’approche du panneau la bascule « Électrique » est proposée, et rien n’est poussé à la scène', () => {
+    const onChange = vi.fn()
+    const api = { calquesDisponibles: () => ['zones'], electrique: { idCalque: 'electrique', calqueDisponible: vi.fn(() => false) } }
+    render(<PanneauCalques utilisateurId="u1" stockage={memStore()} builderApi={api} onChange={onChange} />)
+    expect(screen.queryByTestId('pc-calque-electrique')).toBeNull()
+
+    api.electrique.calqueDisponible.mockReturnValue(true) // l'organe vient d'être posé : aucun rendu du panneau n'a eu lieu
+    onChange.mockClear()
+    fireEvent.pointerEnter(screen.getByTestId('pc-panneau'))
+    expect(screen.getByTestId('pc-calque-electrique')).toBeTruthy()
+    expect(screen.getByTestId('pc-visible-electrique').checked).toBe(true)
+    // « Aucun changement visible avant que l'utilisateur touche à la case » : l'état par défaut n'est pas annoncé à la scène.
+    expect(onChange.mock.calls.filter(([id]) => id === 'electrique')).toEqual([])
+    fireEvent.click(screen.getByTestId('pc-visible-electrique'))
+    expect(onChange).toHaveBeenCalledWith('electrique', { visible: false, opacite: 1 })
+  })
+
+  it('le survol d’un panneau dont la disponibilité n’a pas bougé ne relit pas la liste (aucune boucle)', () => {
+    const lire = vi.fn(() => ['zones'])
+    const api = { calquesDisponibles: lire, electrique: { idCalque: 'electrique', calqueDisponible: () => false } }
+    render(<PanneauCalques utilisateurId="u1" stockage={memStore()} builderApi={api} onChange={vi.fn()} />)
+    const avant = lire.mock.calls.length
+    fireEvent.pointerEnter(screen.getByTestId('pc-panneau'))
+    fireEvent.pointerEnter(screen.getByTestId('pc-panneau'))
+    expect(lire.mock.calls.length).toBe(avant)
+  })
+
+  it('un réglage mémorisé de l’utilisateur (masquée) est restitué à l’ouverture ; l’état par défaut ne l’est pas', () => {
+    const store = memStore()
+    const premier = vi.fn()
+    const { unmount } = render(<PanneauCalques utilisateurId="u7" stockage={store}
+      builderApi={builderApiElectrique(true, ['zones'])} onChange={premier} />)
+    expect(premier.mock.calls.map(([id]) => id)).toEqual(['zones']) // défaut : l'électrique n'est pas annoncée
+    fireEvent.click(screen.getByTestId('pc-visible-electrique'))
+    unmount()
+
+    const second = vi.fn()
+    render(<PanneauCalques utilisateurId="u7" stockage={store}
+      builderApi={builderApiElectrique(true, ['zones'])} onChange={second} />)
+    expect(second).toHaveBeenCalledWith('electrique', { visible: false, opacite: 1 })
+  })
+})
