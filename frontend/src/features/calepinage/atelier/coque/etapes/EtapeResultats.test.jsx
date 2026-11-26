@@ -1218,3 +1218,31 @@ describe('Étape Résultats — ce qui est supposé (ACAL1630)', () => {
     expect(screen.queryByTestId('acal980-suppose')).toBeNull()
   })
 })
+
+/* ACAL1638 — « Le devis annonce » à l'étape Résultats guidée : le chiffre IMPRIMÉ par le devis lié et l'écart servi
+   (`ecart_devis`, ACAL104) avec l'étude technique. Sans devis lié, aucune ligne. */
+describe('Étape Résultats — « Le devis annonce » (ACAL1638)', () => {
+  const ECART = { devis: 412, reference: 'DEV-202610-0042', production_devis_kwh: 12600, p50_calepinage_kwh: 13000, ecart_pct: 3.2, mention: '' }
+
+  it('devis lié ⇒ la ligne dit ce que le devis imprime et l’écart avec l’étude technique', async () => {
+    const d = COMPLET()
+    d.ecart_devis = ECART
+    servir(d)
+    rendre()
+    const ligne = await screen.findByTestId('acal1638-devis-annonce')
+    expect(ligne).toHaveTextContent(/^Le devis annonce : 12\s600 kWh\/an \(étude technique : \+3,2 %\)$/)
+  })
+
+  it('sans devis lié, ou écart non servi ⇒ aucune ligne ; sans écart servi, le chiffre seul', async () => {
+    servir(COMPLET())
+    const { unmount } = rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    expect(screen.queryByTestId('acal1638-devis-annonce')).toBeNull()
+    unmount()
+    const d = COMPLET()
+    d.ecart_devis = { ...ECART, ecart_pct: null }
+    servir(d)
+    rendre()
+    expect(await screen.findByTestId('acal1638-devis-annonce')).toHaveTextContent(/^Le devis annonce : 12\s600 kWh\/an$/)
+  })
+})

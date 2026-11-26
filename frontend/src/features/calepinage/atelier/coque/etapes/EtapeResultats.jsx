@@ -270,6 +270,21 @@ function blocDuDevis(data) {
   return { devis: ecart.devis, reference: ecart.reference, statut: null, production_annuelle_kwh: ecart.production_devis_kwh }
 }
 
+/** ACAL1638 — « Le devis annonce » (ACAL995) à l'étape guidée : le chiffre IMPRIMÉ par le devis lié (`ecart_devis`
+    servi, ACAL104) et l'écart avec l'étude technique TEL QUE SERVI ; l'écart est tu quand la simulation est incomplète
+    (un plafond n'est pas un chiffre à comparer). Sans devis lié ou sans chiffre servi : rien. */
+function DevisAnnonce({ ecart, complet }) {
+  const kwh = ecart?.production_devis_kwh
+  if (typeof kwh !== 'number') return null
+  const pct = complet && typeof ecart.ecart_pct === 'number' ? ecart.ecart_pct : null
+  return (
+    <p className="cal-res-sourdine m-0" data-testid="acal1638-devis-annonce">
+      {`Le devis annonce : ${formatNumber(kwh, { decimals: 0 })} kWh/an`}
+      {pct !== null && ` (étude technique : ${pct < 0 ? '−' : '+'}${formatNumber(Math.abs(pct), { decimals: 1 })} %)`}
+    </p>
+  )
+}
+
 /** ACAL1912 — des panneaux posés mais raccordés à aucun onduleur : la phrase SERVIE sur sa clé `panneaux_non_raccordes`
     (revue lot 6, ACAL1623 : jamais un rang de `avertissements`, où la « borne haute » la précède), et la production rapportée
     aux panneaux COMPTÉS — jamais « 13 panneaux » à côté d'un productible calculé sur 9. Omis sans la clé ou quand
@@ -481,6 +496,7 @@ export default function EtapeResultats({
         ? <ProductionDeLaConception bloc={data.conception} pose={data?.pose} simulee={complet}
           taille={tailleDeLaConception(contexte.etat === 'ok' ? contexte.donnees : null, data.conception)} />
         : <ProductionDuDevis bloc={blocDuDevis(data)} p50={complet ? total?.p50_kwh : null} incomplet={incomplet} />}
+      <DevisAnnonce ecart={data?.ecart_devis} complet={complet} />
       {simule && <PanneauxNonRaccordes data={data} />}
       {complet && <ProductionNulle data={data} />}
       {complet && <CablagePerdLaProduction data={data} />}
