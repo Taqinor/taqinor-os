@@ -295,7 +295,7 @@ class T4X6008DeuxOptionsLaLigneAvecNEstPasReecrite(SimpleTestCase):
             {'designation': 'Structure acier', 'quantite': '23', 'variante': 'avec'},
         ]
 
-    def _appliquer(self, specs, cible):
+    def _appliquer(self, specs, cible, avertissements=None):
         from types import SimpleNamespace
         from unittest import mock
 
@@ -304,8 +304,22 @@ class T4X6008DeuxOptionsLaLigneAvecNEstPasReecrite(SimpleTestCase):
         with mock.patch('apps.ventes.domain.overrides.cible_dimensionnement_du_devis',
                         return_value=cible), \
                 mock.patch('apps.ventes.domain.overrides.preseance_nb_panneaux', side_effect=preseance):
-            _appliquer_preseance_quantite(SimpleNamespace(regles_calcul=14, roof_layout=None), specs)
+            _appliquer_preseance_quantite(SimpleNamespace(regles_calcul=14, roof_layout=None), specs,
+                                          avertissements=avertissements)
         return [(s['variante'], s['designation'], s['quantite']) for s in specs]
+
+    def test_classe_toute_quantite_reecrite_est_dite(self):
+        # T4-X6-008 (classe) — une taille de devis différente de l'option sans
+        # batterie réécrit ses lignes : chaque réécriture est DITE (servie par
+        # replace-lines dans ``alertes``) ; rien à dire quand rien ne bouge.
+        avertissements = []
+        self._appliquer(self._specs(), 20, avertissements)
+        self.assertEqual(avertissements, [
+            '« Panneau Canadian Solar 715W » : 22 → 20 (taille déclarée au niveau du devis : 20 panneaux).',
+            '« Structure acier » : 22 → 20 (suit 20 panneaux).'])
+        rien = []
+        self._appliquer(self._specs(), 22, rien)
+        self.assertEqual(rien, [])
 
     def test_compte_egal_a_l_option_sans_rien_ne_bouge(self):
         specs = self._specs()
