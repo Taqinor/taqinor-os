@@ -101,7 +101,9 @@ describe('MaterielElectrique (ACAL149)', () => {
     const incomplet = EXEMPLE.candidats.onduleurs.find((c) => c.fiche_complete === false)
     const option = screen.getByTestId(`acal149-candidat-${incomplet.id}`)
     expect(option).toBeDisabled()
-    expect(option).toHaveTextContent(incomplet.champs_manquants[0])
+    // ACAL1740 — le nom français de la table commune, jamais la clé brute.
+    expect(option).toHaveTextContent('Tension maximale absolue (V)')
+    expect(option).not.toHaveTextContent(incomplet.champs_manquants[0])
   })
 
   it('un refus 400 s’affiche sous le champ nommé, mot pour mot', async () => {
