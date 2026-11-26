@@ -272,7 +272,7 @@ class LeKitResidentielEstComplet(_Base):
         lignes = services.composition_residentielle(
             services.catalogue_de_la_societe(self.company), kwc=4.4,
             panel_watt=550, nb_panneaux=8)
-        produits_ids = {getattr(li, 'produit_id', None) for li in lignes}
+        produits_ids = {li.produit.id for li in lignes}
         self.assertNotIn(pompage.id, produits_ids)
         self.assertIn(cable.id, produits_ids)
         # Le mode agricole le sert toujours.
@@ -283,7 +283,7 @@ class LeKitResidentielEstComplet(_Base):
             services.catalogue_de_la_societe(self.company), kwc=4.4,
             panel_watt=550, nb_panneaux=8)
         self.assertIn(self.produits['STR-ACIER'].id,
-                      {getattr(li, 'produit_id', None) for li in lignes})
+                      {li.produit.id for li in lignes})
 
     def test_puissance_nulle_ne_compose_rien(self):
         self.assertEqual(services.composition_residentielle(
