@@ -99,7 +99,7 @@ describe('LW20 — en-tête multi-touch (points-contact/, silencieux)', () => {
   })
 })
 
-describe('LW20 — filtre par type, persisté', () => {
+describe('LW20 — filtre par type', () => {
   const entries = [
     { id: 1, kind: 'note', body: 'Une note', user_nom: 'Sami', created_at: new Date().toISOString() },
     { id: 2, kind: 'appel', outcome: 'joint', user_nom: 'Sami', created_at: new Date().toISOString() },
@@ -112,7 +112,73 @@ describe('LW20 — filtre par type, persisté', () => {
     await user.click(screen.getAllByRole('button', { name: 'Appels' })[0])
     expect(screen.queryByText(/Une note/)).toBeNull()
     expect(screen.getAllByText('Appel').length).toBeGreaterThan(0)
-    expect(localStorage.getItem('taqinor.lw.timelineFilter')).toBe('appels')
+    // Historique du lead : le choix n'est plus écrit en mémoire du navigateur (il cachait les notes du client).
+    expect(localStorage.getItem('taqinor.lw.timelineFilter')).toBeNull()
+  })
+
+  it('un filtre retenu d’une session précédente est ignoré : on ouvre sur « Tous »', () => {
+    localStorage.setItem('taqinor.lw.timelineFilter', 'appels')
+    renderTab({ historique: entries })
+    expect(screen.getAllByText(/Une note/).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Tous' })[0]).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('choisir « Appels » sur le lead A, puis ouvrir le lead B : B commence sur « Tous »', async () => {
+    const user = userEvent.setup()
+    const { rerender } = renderTab({ historique: entries })
+    await user.click(screen.getAllByRole('button', { name: 'Appels' })[0])
+    expect(screen.queryByText(/Une note/)).toBeNull()
+    rerender(
+      <TimelineTab state={initState({ lead: { id: 8, nom: 'Autre' }, mode: 'edit' })} historique={entries}
+        refreshHistorique={vi.fn()} composer={composerBase()} setComposer={vi.fn()} resetComposer={vi.fn()} />,
+    )
+    expect(screen.getAllByText(/Une note/).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Tous' })[0]).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('une note du client plus récente que les entrées visibles sous « Appels » : la phrase le dit, « Tout afficher » en sort', async () => {
+    const user = userEvent.setup()
+    const avecClient = [
+      { id: 3, kind: 'note', body: 'Le client demande à être contacté (DEV-1)', created_at: '2026-11-26T10:00:00Z' },
+      { id: 2, kind: 'appel', outcome: 'joint', user_nom: 'Sami', created_at: '2026-11-26T09:00:00Z' },
+      { id: 1, kind: 'note', body: 'Une note', user_nom: 'Sami', created_at: '2026-11-26T08:00:00Z' },
+    ]
+    renderTab({ historique: avecClient })
+    expect(screen.queryByTestId('lw-timeline-masques')).toBeNull()
+    await user.click(screen.getAllByRole('button', { name: 'Appels' })[0])
+    expect(screen.getByTestId('lw-timeline-masques').textContent)
+      .toContain('1 élément plus récent masqué par le filtre')
+    await user.click(screen.getByRole('button', { name: 'Tout afficher' }))
+    expect(screen.queryByTestId('lw-timeline-masques')).toBeNull()
+    expect(screen.getAllByText(/demande à être contacté/).length).toBeGreaterThan(0)
+  })
+
+  it('un élément masqué plus ANCIEN que le dernier visible ne déclenche pas la phrase', async () => {
+    const user = userEvent.setup()
+    renderTab({ historique: [
+      { id: 2, kind: 'appel', outcome: 'joint', user_nom: 'Sami', created_at: '2026-11-26T09:00:00Z' },
+      { id: 1, kind: 'note', body: 'Une note', user_nom: 'Sami', created_at: '2026-11-26T08:00:00Z' },
+    ] })
+    await user.click(screen.getAllByRole('button', { name: 'Appels' })[0])
+    expect(screen.queryByTestId('lw-timeline-masques')).toBeNull()
+  })
+})
+
+describe('Historique du lead — jalons devis lus une seule fois à l’ouverture', () => {
+  it('l’arrivée de la première lecture fraîche ne relit pas les jalons ; un historique qui CHANGE ensuite, si', async () => {
+    const un = { id: 1, kind: 'note', body: 'Une', created_at: '2026-11-26T08:00:00Z' }
+    const deux = { id: 2, kind: 'note', body: 'Deux', created_at: '2026-11-26T09:00:00Z' }
+    const rendu = (historique) => (
+      <TimelineTab state={leadState()} historique={historique} refreshHistorique={vi.fn()}
+        composer={composerBase()} setComposer={vi.fn()} resetComposer={vi.fn()} />
+    )
+    const { rerender } = render(rendu([]))
+    await waitFor(() => expect(getLeadJalonsDevis).toHaveBeenCalledTimes(1))
+    rerender(rendu([un]))
+    await new Promise((r) => { setTimeout(r, 30) })
+    expect(getLeadJalonsDevis).toHaveBeenCalledTimes(1)
+    rerender(rendu([deux, un]))
+    await waitFor(() => expect(getLeadJalonsDevis).toHaveBeenCalledTimes(2))
   })
 })
 

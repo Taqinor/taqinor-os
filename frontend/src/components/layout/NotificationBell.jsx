@@ -29,6 +29,7 @@ import { useApprobationsCount } from '../../hooks/useApprobationsCount'
 // VX56 — sondage sensible à la visibilité de l'onglet (patron partagé avec
 // `useChatPolling`) : cesse de sonder un onglet caché.
 import useVisibilityAwarePolling from '../../hooks/useVisibilityAwarePolling'
+import { signalerNotificationsRecues } from '../../lib/evenementsNotification'
 // VX217(a) — aperçu sans naviguer (survol desktop / appui long mobile).
 import AttentionPeek from '../../features/queue/AttentionPeek'
 // NTADM19 — onglet « Annonces » (nouveautés produit de l'éditeur, NTADM18).
@@ -280,12 +281,16 @@ export default function NotificationBell() {
   }
 
   // Recharge la liste in-app persistée (best-effort).
-  const refreshFeed = () => {
+  const refreshFeed = (signaler = false) => {
     notificationsApi.list({ unread: 0 })
       .then((r) => {
         const items = r.data?.results ?? r.data ?? []
         setFeed(Array.isArray(items) ? items.slice(0, 20) : [])
         setFeedError(false)
+        // Historique du lead : une fiche ouverte relit SON historique dès qu'une notification non lue la concerne.
+        if (signaler && Array.isArray(items)) {
+          signalerNotificationsRecues(items.filter((n) => !n.read && n.link).map((n) => n.link))
+        }
       })
       .catch(() => setFeedError(true))
   }
@@ -303,7 +308,7 @@ export default function NotificationBell() {
         if (prev !== null && n > prev) {
           playBeep()
           toastInfo('🔔 Nouvelle notification')
-          refreshFeed()
+          refreshFeed(true)
         }
         prevUnreadRef.current = n
         setFeedUnread(n)
