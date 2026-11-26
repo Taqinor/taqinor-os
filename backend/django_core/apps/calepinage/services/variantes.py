@@ -378,6 +378,28 @@ def _resultat_du_modele(resultat):
     return {CLE_ENTREE: materiel} if materiel else None
 
 
+def _resultat_de_la_copie(calepinage):
+    """ACAL1253 (D-ACAL-65) — le ``resultat`` de la copie : le matériel explicite de l'original
+    (:func:`_resultat_du_modele`) ET, s'il ne désigne pas lui-même son onduleur, celui qu'il lit sur
+    la conception de son devis, écrit comme SA désignation explicite (le nombre d'onduleurs du
+    schéma avec). Lecture seule de l'original ; onduleur non résolu ⇒ rien n'est inventé."""
+    from .electrique import CLE_ENTREE
+    from .equipements import materiel_de_la_conception
+
+    resultat = _resultat_du_modele(getattr(calepinage, 'resultat', None))
+    entree = (resultat or {}).get(CLE_ENTREE) or {}
+    if entree.get('onduleur_produit') not in (None, ''):
+        return resultat
+    lu = materiel_de_la_conception(calepinage)
+    onduleur = (lu.get('produits') or {}).get('onduleur')
+    if onduleur in (None, ''):
+        return resultat
+    ajout = {'onduleur_produit': onduleur}
+    if lu.get('nombre_onduleurs'):
+        ajout['nombre_onduleurs'] = lu['nombre_onduleurs']
+    return {CLE_ENTREE: {**entree, **ajout}}
+
+
 #: ACON11 (D-ACAL-15) — les clés du document propres au site et au client
 #: de la SOURCE : jamais recopiées vers un autre lead/client (modèle compris).
 CLES_D_UN_AUTRE_SITE = ('consumption', 'billKwh', 'result', 'underlay',
@@ -586,8 +608,7 @@ def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True,
     copies['layout_hash'] = copies['layout_hash'] or ''
     copies['pertes'] = (copies['pertes']
                         if isinstance(copies['pertes'], list) else [])
-    copies['resultat'] = _resultat_du_modele(  # ACAL959
-        getattr(calepinage, 'resultat', None))
+    copies['resultat'] = _resultat_de_la_copie(calepinage)  # ACAL959 + ACAL1253
 
     from .creation import _verrou_creation, responsable_par_defaut
 

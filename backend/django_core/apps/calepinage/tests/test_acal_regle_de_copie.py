@@ -261,3 +261,36 @@ class MaterielDuModeleTest(SimpleTestCase):
                          {'entree_electrique': {'temperature_min_c': -5}}):
             with self.subTest(resultat=resultat):
                 self.assertIsNone(_resultat_du_modele(resultat))
+
+
+class OnduleurDeLOriginalTest(SimpleTestCase):
+    """ACAL1253 (D-ACAL-65) — la copie désigne l'onduleur que l'original lisait sur son devis."""
+
+    def _copie(self, resultat, lu):
+        from unittest import mock
+
+        from apps.calepinage.services.variantes import _resultat_de_la_copie
+
+        original = Calepinage(resultat=copy.deepcopy(resultat))
+        with mock.patch('apps.calepinage.services.equipements.materiel_de_la_conception',
+                        return_value=lu):
+            produit = _resultat_de_la_copie(original)
+        self.assertEqual(original.resultat, resultat)  # l'original n'est jamais modifié
+        return produit
+
+    def test_onduleur_du_devis_devient_designation_explicite_avec_son_nombre(self):
+        lu = {'produits': {'module': 7, 'onduleur': 42}, 'nombre_onduleurs': 2}
+        self.assertEqual(
+            self._copie({'entree_electrique': {'module_produit': 7}}, lu),
+            {'entree_electrique': {'module_produit': 7, 'onduleur_produit': 42, 'nombre_onduleurs': 2}})
+        self.assertEqual(self._copie(None, {'produits': {'onduleur': 42}}),
+                         {'entree_electrique': {'onduleur_produit': 42}})
+
+    def test_onduleur_deja_designe_la_copie_est_inchangee(self):
+        resultat = {'entree_electrique': {'onduleur_produit': 5}}
+        self.assertEqual(self._copie(resultat, {'produits': {'onduleur': 42}, 'nombre_onduleurs': 3}),
+                         resultat)
+
+    def test_onduleur_non_resolu_rien_n_est_invente(self):
+        self.assertIsNone(self._copie(None, {}))
+        self.assertIsNone(self._copie({'production': {'p50': 1}}, {'produits': {'module': 7}}))
