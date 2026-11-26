@@ -195,6 +195,33 @@ class Options(unittest.TestCase):
         self.assertEqual(ligne["quantite"], 25)
         self.assertFalse(ligne["prix_connu"])
 
+    def _alerte_cable(self, kit):
+        return [a for a in kit["alertes"] if a["code"] == "cable_dc_non_chiffre"]
+
+    def test_d_acal_156_sans_distance_alerte_vendeur_nommant_le_champ(self):
+        # D-ACAL-156 — le devis reste composé, SANS ligne de câble DC, avec une
+        # alerte vendeur qui nomme le champ du lead ; aucune longueur supposée.
+        import re
+        for distance in (None, 0, ""):
+            kit = composer_kit(**dict(BASE, distance_champ_m=distance))
+            self.assertNotIn("cable_dc", _cles(kit))
+            self.assertNotIn("cable_dc", [ligne["cle"] for ligne in kit["lignes"]])
+            alerte = self._alerte_cable(kit)
+            self.assertEqual(len(alerte), 1, distance)
+            self.assertEqual(alerte[0], {
+                "code": "cable_dc_non_chiffre", "champ": "kit.cable_dc", "interne": True,
+                "champ_lead": "distance_forage_champ_m",
+                "message": ("Câble DC non chiffré : renseignez la distance forage → champ "
+                            "de panneaux sur la fiche du lead ; aucune longueur n'est supposée.")})
+            self.assertIsNone(re.search(r"\d", alerte[0]["message"]))
+
+    def test_d_acal_156_distance_saisie_cable_sans_alerte(self):
+        kit = composer_kit(**dict(BASE, distance_champ_m=25))
+        self.assertIn("cable_dc", _cles(kit))
+        self.assertEqual(self._alerte_cable(kit), [])
+        # Sans champ de panneaux (pompe sans prix, placeholder) : rien à câbler, rien à dire.
+        self.assertEqual(self._alerte_cable(composer_kit(**dict(BASE, nb_panneaux=None))), [])
+
     def test_cable_descente_calage_plus_marge_sinon_a_saisir(self):
         kit = composer_kit(**dict(BASE, profondeur_calage_m=60,
                                   marge_cable_m=5))
