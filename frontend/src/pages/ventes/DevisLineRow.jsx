@@ -290,9 +290,9 @@ function DevisLineRowImpl({
         )}
         {/* QJR569 — quantité TAPÉE : verrou visible (le serveur ne la
             réécrit plus à une resynchronisation) et réversible. */}
-        {l.qteAttenduePanneaux != null && (
+        {l.neSuitPasPanneaux && ( // T4-X4-001 — sans chiffre attendu : la règle est celle du serveur
           <div className="mt-0.5 text-[11px] text-warning ta-right" data-testid="ligne-ne-suit-pas-panneaux">
-            Ne suit pas les panneaux : {l.qteAttenduePanneaux} attendu
+            Ne suit pas les panneaux
           </div>
         )}
         {l.quantiteManuelle && (

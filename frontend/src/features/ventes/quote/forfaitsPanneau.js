@@ -12,7 +12,7 @@
 //
 // Module PUR (aucun React) : exécuté par `node --test` / vitest.
 import { ttcExactFromHt, tauxTvaOf } from '../solar.js'
-import { isPanel, classifyProduct } from '../calc/classification.js'
+import { isPanel, roleLigneOuProduit } from '../calc/classification.js'
 import { lignesEnvoyees } from './lignesEcran.js'
 
 const TYPES_STRUCTURE = new Set(['section', 'note'])
@@ -146,56 +146,38 @@ export function retarifierForfaitsEcran(lines, produits) {
   return change ? sortie : lines
 }
 
-/* T4-X4-001 — LES QUANTITÉS QUI DÉPENDENT DU NOMBRE DE PANNEAUX. Le composeur serveur pose N structures et 2 × N socles
-   pour N panneaux (`composition.py::quantites_fixation`). Changer la quantité de la ligne panneau laissait ces deux lignes
-   à l'ancien compte (6 structures, 12 socles pour 8 panneaux) sans le dire. Règle : une ligne structure / socle SUIT le
-   compte de panneaux de son option tant que sa quantité est celle que la règle donnait au dernier compte connu
-   (marqueur d'écran `suitPanneaux`, posé quand la quantité vaut la règle) et qu'elle n'est pas figée à la main. Une
-   quantité FIGÉE (`quantiteManuelle`) ou écartée de la règle ne bouge jamais : elle est MARQUÉE (`qteAttenduePanneaux`,
-   lu par la ligne : « ne suit pas les panneaux — N attendu ») quand elle diffère de la règle. Fonction pure ; le même
-   tableau revient quand rien ne change. */
-const FACTEUR_FIXATION = { structure: 1, socle: 2 }
-const roleFixation = (l, produits) => {
-  const role = classifyProduct(produitDe(l, produits)?.nom || l.designation || '')
-  return role === 'socle' ? 'socle' : (role === 'structure' || String(role || '').startsWith('structure') ? 'structure' : null)
-}
+/* T4-X4-001 — LES QUANTITÉS QUI DÉPENDENT DU NOMBRE DE PANNEAUX. Les quantités structure / socle sont une règle du
+   SERVEUR (`apps/ventes/domain/composition.py::quantites_derivees_du_compte`, ACAL927 / D-ACAL-39 : N panneaux NON
+   affleurants, 2 × N socles) ; l'écran ne la recopie pas (il ne connaît pas les modules affleurants du calepinage) et le
+   serveur ne lui sert aucune quantité dérivée pour un compte retouché à l'écran (le dry-run `devis/composition/` rend les
+   quantités du compte qu'IL a composé, rien d'autre). Règle d'écran : une ligne structure / socle — reconnue par son RÔLE
+   (rôle stocké de la ligne, sinon `role_devis_effectif` servi du produit : `roleLigneOuProduit`, jamais un mot du nom) — qui
+   n'a pas bougé alors que le compte de panneaux de son option a changé DIT qu'elle ne suit pas les panneaux
+   (`neSuitPasPanneaux`, lu par la ligne), SANS chiffre attendu. Marqueur d'écran `fixationVue` = { n, q } au premier
+   passage ; une quantité retouchée (q changé) ou un compte revenu à n efface l'alerte. Aucune quantité n'est réécrite.
+   Fonction pure ; le même tableau revient quand rien ne change. */
+const ROLES_FIXATION = new Set(['structure', 'structure_acier', 'structure_alu', 'socle'])
 
 export function suivreQuantitesPanneauxEcran(lines, produits) {
   if (!Array.isArray(lines)) return lines
-  const comptes = comptesPanneauxEcran(lines, produits || [])
+  const cat = Array.isArray(produits) ? produits : []
+  const comptes = comptesPanneauxEcran(lines, cat)
   let change = false
   const sortie = lines.map((l) => {
     if (!l || TYPES_STRUCTURE.has(l.typeLigne) || !l.produit || l.optionnelle || !ligneEnvoyee(l)) return l
-    const role = roleFixation(l, produits || [])
-    if (!role) return l
+    if (!ROLES_FIXATION.has(roleLigneOuProduit(l, cat))) return l
     const variante = l.variante || ''
     const n = Object.hasOwn(comptes, variante) ? comptes[variante] : comptes['']
-    if (n === null || n === undefined || !(n > 0)) return l
-    const attendu = n * FACTEUR_FIXATION[role]
+    if (n === null || n === undefined) return l
     const q = parseFloat(l.quantite) || 0
-    if (l.quantiteManuelle) {
-      const ecart = q !== attendu ? attendu : undefined
-      if (l.qteAttenduePanneaux === ecart) return l
-      change = true
-      const { qteAttenduePanneaux: _x, ...reste } = l
-      return ecart === undefined ? reste : { ...reste, qteAttenduePanneaux: ecart }
-    }
-    if (l.qteAttenduePanneaux !== undefined) { // libérée : l'alerte de la figée tombe
-      const { qteAttenduePanneaux: _x, ...libre } = l
-      change = true
-      return libre
-    }
-    const marque = l.suitPanneaux
-    if (marque === undefined) {
-      if (q !== attendu) return l // jamais suivie : écart d'origine, rien n'est deviné
-      change = true
-      return { ...l, suitPanneaux: n }
-    }
-    if (marque === n) return l
-    if (q === attendu) { change = true; return { ...l, suitPanneaux: n } } // recomposée : déjà au compte
-    if (q !== marque * FACTEUR_FIXATION[role]) return l // quantité retouchée autrement : on ne la réécrit pas
+    const vue = l.fixationVue
+    let suivante = vue
+    if (!vue || vue.q !== q) suivante = { n, q } // première vue, ou quantité retouchée : nouveau point de départ
+    const alerte = suivante.n !== n
+    if (suivante === vue && Boolean(l.neSuitPasPanneaux) === alerte) return l
     change = true
-    return { ...l, quantite: typeof l.quantite === 'string' ? String(attendu) : attendu, suitPanneaux: n }
+    const { neSuitPasPanneaux: _x, ...reste } = l
+    return alerte ? { ...reste, fixationVue: suivante, neSuitPasPanneaux: true } : { ...reste, fixationVue: suivante }
   })
   return change ? sortie : lines
 }

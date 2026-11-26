@@ -153,38 +153,48 @@ test('catalogue absent ou vide : lignes rendues telles quelles', () => {
   assert.equal(retarifierForfaitsEcran(lines, undefined), lines)
 })
 
-// T4-X4-001 — structures et socles suivent le compte de panneaux, ou disent qu'ils ne le suivent pas.
-const STRUCT = { id: 20, nom: 'Structures acier', prix_vente: '300', tva: 20 }
-const SOCLE = { id: 21, nom: 'Socles', prix_vente: '50', tva: 20 }
-const PRODUITS_FIX = [PAN, STRUCT, SOCLE]
+// T4-X4-001 — structures et socles : la règle est celle du SERVEUR (modules affleurants déduits, D-ACAL-39) ; l'écran
+// ne recopie aucune quantité, il DIT qu'une ligne ne suit pas les panneaux, sans chiffre. Lignes reconnues par leur RÔLE.
+const STRUCT = { id: 20, nom: 'Structures acier', prix_vente: '300', tva: 20, role_devis_effectif: 'structure_acier' }
+const SOCLE = { id: 21, nom: 'Socles', prix_vente: '50', tva: 20, role_devis_effectif: 'socle' }
+const SERVICE_CI = { id: 22, nom: 'Étude de structure du bâtiment', prix_vente: '5000', tva: 20, role_devis_effectif: null }
+const PRODUITS_FIX = [PAN, STRUCT, SOCLE, SERVICE_CI]
 const ligneFix = (produit, quantite, extra = {}) => ({ _key: `k${produit.id}`, produit: produit.id, designation: produit.nom, quantite: String(quantite), typeLigne: 'produit', ...extra })
+const avecPanneaux = (lignes, q) => lignes.map((l) => (l.produit === PAN.id ? { ...l, quantite: String(q) } : l))
 
-test('suivreQuantitesPanneauxEcran — 6 -> 8 panneaux : 6 structures -> 8, 12 socles -> 16 (jamais figés à l ancien compte)', () => {
-  const avant = [ligneFix(PAN, 6), ligneFix(STRUCT, 6), ligneFix(SOCLE, 12)]
-  const marquees = suivreQuantitesPanneauxEcran(avant, PRODUITS_FIX) // premier passage : en phase, on le note
-  assert.deepEqual(marquees.map((l) => l.suitPanneaux), [undefined, 6, 6])
-  assert.equal(suivreQuantitesPanneauxEcran(marquees, PRODUITS_FIX), marquees, 'rien ne change : même tableau')
-  const huit = marquees.map((l) => (l.produit === PAN.id ? { ...l, quantite: '8' } : l))
-  const apres = suivreQuantitesPanneauxEcran(huit, PRODUITS_FIX)
-  assert.deepEqual(apres.map((l) => l.quantite), ['8', '8', '16'])
+test('suivreQuantitesPanneauxEcran — 6 -> 8 panneaux (dont 2 affleurants côté serveur) : aucune quantité réécrite, aucun « 8 attendu »', () => {
+  const vues = suivreQuantitesPanneauxEcran([ligneFix(PAN, 6), ligneFix(STRUCT, 6), ligneFix(SOCLE, 12)], PRODUITS_FIX)
+  assert.deepEqual(vues.map((l) => l.neSuitPasPanneaux), [undefined, undefined, undefined])
+  assert.equal(suivreQuantitesPanneauxEcran(vues, PRODUITS_FIX), vues, 'rien ne change : même tableau')
+  const apres = suivreQuantitesPanneauxEcran(avecPanneaux(vues, 8), PRODUITS_FIX)
+  assert.deepEqual(apres.map((l) => l.quantite), ['8', '6', '12'], 'la règle du serveur (6 structures si 2 affleurants) n est pas devinée')
+  assert.deepEqual(apres.map((l) => l.neSuitPasPanneaux), [undefined, true, true])
+  assert.ok(apres.every((l) => !('qteAttenduePanneaux' in l)), 'aucun chiffre attendu n est posé')
   assert.equal(suivreQuantitesPanneauxEcran(apres, PRODUITS_FIX), apres)
 })
 
-test('suivreQuantitesPanneauxEcran — quantité figée à la main : jamais réécrite, MARQUÉE de la quantité attendue', () => {
-  const lignes = [ligneFix(PAN, 8), ligneFix(STRUCT, 6, { quantiteManuelle: true }), ligneFix(SOCLE, 16, { quantiteManuelle: true })]
-  const out = suivreQuantitesPanneauxEcran(lignes, PRODUITS_FIX)
-  assert.equal(out[1].quantite, '6')
-  assert.equal(out[1].qteAttenduePanneaux, 8)
-  assert.equal(out[2].qteAttenduePanneaux, undefined, 'la figée qui égale la règle ne porte aucune alerte')
-  const libre = out.map((l) => ({ ...l, quantiteManuelle: false }))
-  assert.equal(suivreQuantitesPanneauxEcran(libre, PRODUITS_FIX)[1].qteAttenduePanneaux, undefined)
+test('suivreQuantitesPanneauxEcran — la quantité retouchée ou le compte revenu efface l alerte', () => {
+  const huit = suivreQuantitesPanneauxEcran(avecPanneaux(suivreQuantitesPanneauxEcran(
+    [ligneFix(PAN, 6), ligneFix(STRUCT, 6), ligneFix(SOCLE, 12)], PRODUITS_FIX), 8), PRODUITS_FIX)
+  const retouchee = suivreQuantitesPanneauxEcran(huit.map((l) => (l.produit === STRUCT.id ? { ...l, quantite: '6' } : l))
+    .map((l) => (l.produit === SOCLE.id ? { ...l, quantite: '12.0' } : l)), PRODUITS_FIX)
+  assert.equal(retouchee[1].neSuitPasPanneaux, true, 'même valeur retapée : rien n a bougé')
+  const tapee = suivreQuantitesPanneauxEcran(huit.map((l) => (l.produit === STRUCT.id ? { ...l, quantite: '7' } : l)), PRODUITS_FIX)
+  assert.equal(tapee[1].neSuitPasPanneaux, undefined, 'le vendeur a retapé la quantité à ce compte')
+  assert.equal(tapee[2].neSuitPasPanneaux, true)
+  const revenu = suivreQuantitesPanneauxEcran(avecPanneaux(huit, 6), PRODUITS_FIX)
+  assert.deepEqual(revenu.map((l) => l.neSuitPasPanneaux), [undefined, undefined, undefined])
 })
 
-test('suivreQuantitesPanneauxEcran — une ligne jamais en phase, ou retouchée autrement, n est pas réécrite ; une recomposition remet le marqueur', () => {
-  const horsPhase = [ligneFix(PAN, 8), ligneFix(STRUCT, 5), ligneFix(SOCLE, 16)]
-  assert.equal(suivreQuantitesPanneauxEcran(horsPhase, PRODUITS_FIX)[1].quantite, '5')
-  const recomposee = [ligneFix(PAN, 10), ligneFix(STRUCT, 10, { suitPanneaux: 6 }), ligneFix(SOCLE, 20, { suitPanneaux: 6 })]
-  assert.deepEqual(suivreQuantitesPanneauxEcran(recomposee, PRODUITS_FIX).map((l) => l.suitPanneaux), [undefined, 10, 10])
+test('suivreQuantitesPanneauxEcran — une ligne est reconnue par son rôle, jamais par un mot de son nom', () => {
+  const lignes = suivreQuantitesPanneauxEcran([ligneFix(PAN, 6), ligneFix(SERVICE_CI, 1), ligneFix(STRUCT, 6, { role_devis: '' })], PRODUITS_FIX)
+  const apres = suivreQuantitesPanneauxEcran(avecPanneaux(lignes, 8), PRODUITS_FIX)
+  assert.equal(apres[1].neSuitPasPanneaux, undefined, 'un service C&I dont le nom contient « structure » n est pas une structure')
+  assert.equal(apres[1].fixationVue, undefined)
+  assert.equal(apres[2].neSuitPasPanneaux, true, 'le rôle servi du produit tranche')
+  const roleStocke = suivreQuantitesPanneauxEcran(avecPanneaux(suivreQuantitesPanneauxEcran(
+    [ligneFix(PAN, 6), { ...ligneFix(SERVICE_CI, 4), role_devis: 'socle' }], PRODUITS_FIX), 8), PRODUITS_FIX)
+  assert.equal(roleStocke[1].neSuitPasPanneaux, true, 'le rôle STOCKÉ de la ligne passe devant celui du produit')
 })
 
 test('reductionOptionAvec — l option avec batterie qui passe de 8 à 6 panneaux est nommée ; sinon null', () => {
