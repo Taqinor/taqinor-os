@@ -220,7 +220,7 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None, demande=None):
 
     Uses the premium quote engine when USE_PREMIUM_QUOTE_ENGINE is on (default),
     otherwise falls back to the legacy ventes WeasyPrint generator. Invoices are
-    unaffected. pdf_options picks the simulator format (full premium 3 pages,
+    unaffected. pdf_options picks the simulator format (full premium 3 or 4 pages,
     one-page, monthly-chart / devis-final modifiers); the legacy fallback
     ignores it.
 

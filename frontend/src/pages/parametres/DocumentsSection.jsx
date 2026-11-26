@@ -39,7 +39,8 @@ const DEFAULT_BULLETS = [
   '{solde}% après la mise en marche',
   'Délai d’installation : 7–14 jours ouvrés',
   '{tva_note}',
-  'Tarifs de référence : barème ONEE/SRM',
+  // ACAL1221 (D-AMOT-10) — le barème est national : plus de distributeur figé.
+  'Tarifs de référence : barème national de référence',
 ]
 
 // CIQ313 — CGV commerciales et industrielles (`cgv_par_mode`), à côté des CGV

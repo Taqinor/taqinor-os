@@ -592,9 +592,9 @@ class OnduleurDesigneDuCalepinage(TestCase):
         self.user = User.objects.create_user(username='acal148', password='x', role_legacy='responsable',
                                              company=self.company)
         seed_catalogue(self.company)
-        for nom, prix in (('Onduleur réseau Growatt 8kW Monophasé', 16000),
-                          ('Onduleur hybride Growatt 8kW Monophasé', 20000)):
-            Produit.objects.create(company=self.company, nom=nom, sku=f'A148-{nom[-16:]}-{self.company.pk}',
+        for rang, (nom, prix) in enumerate((('Onduleur réseau Growatt 8kW Monophasé', 16000),
+                                            ('Onduleur hybride Growatt 8kW Monophasé', 20000))):
+            Produit.objects.create(company=self.company, nom=nom, sku=f'A148-{rang}-{self.company.pk}',
                                    prix_vente=Decimal(prix), prix_achat=Decimal('1'), quantite_stock=10)
         self.lead = Lead.objects.create(company=self.company, nom='Designe', prenom='Lead', email='d148@ex.com')
 

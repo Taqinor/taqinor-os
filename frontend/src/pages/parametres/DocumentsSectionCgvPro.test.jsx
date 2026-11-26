@@ -90,6 +90,19 @@ describe('CIQ313 — CGV commerciales et industrielles', () => {
     expect(updateDocumentTemplates.mock.calls[1][0].cgv_par_mode).toEqual(CGV_SERVEUR)
   })
 
+  it('ACAL1221 — la liste de départ dit le barème national, une liste saisie reste telle', async () => {
+    await rendre()
+    const puces = screen.getAllByLabelText(/^Puce \d+$/).map(el => el.value)
+    expect(puces).toContain('Tarifs de référence : barème national de référence')
+    expect(puces.join(' | ')).not.toMatch(/ONEE/)
+    cleanup()
+    getDocumentTemplates.mockResolvedValue({ data: {
+      cgv_titre: '', cgv_bullets: ['Tarifs de référence : barème ONEE/SRM'], cgv_par_mode: {}, version: 3,
+    } })
+    render(<DocumentsSection />)
+    expect(await screen.findByLabelText('Puce 1')).toHaveValue('Tarifs de référence : barème ONEE/SRM')
+  })
+
   it('serveur sans cgv_par_mode : les éditeurs ne s’affichent pas', async () => {
     getDocumentTemplates.mockResolvedValue({ data: { cgv_titre: '', version: 1 } })
     render(<DocumentsSection />)

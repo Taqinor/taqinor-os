@@ -1177,6 +1177,21 @@ describe('ACAL1612 — bande sans taux inventé ; Total qui nomme la simulation'
     expect(bande(false, { simulation: { p50_kwh: 5131, a_jour: true } })).toContain('dégradation ~0,5 %/an'); // site public : aucune notion de simulation
     expect(bande(false, { simulation: { p50_kwh: 5131, a_jour: true } })).not.toContain('simulation');
   });
+  it('ACAL1268 — pompage : ni bande « Année 1 ~… kWh/an », ni Total, ni phrase « Production et économie » ; résidentiel et site public inchangés', () => {
+    const POMPAGE = { ...(SERVI as object), marche: 'agricole' };
+    const RESIDENTIEL = { ...(SERVI as object), marche: 'residentiel' };
+    expect(bande(true, POMPAGE)).toBe('');
+    expect(texteTotalProduction(4362, 3.6, true, POMPAGE as never)).toBe('—');
+    expect(phraseTaillesDuChiffrage(POMPAGE as never, 5.68)).toBe('');
+    // résidentiel (ERP) : exactement ce que produit le chiffrage sans `marche`
+    expect(bande(true, RESIDENTIEL)).toBe(bande(true, SERVI));
+    expect(texteTotalProduction(4362, 3.6, true, RESIDENTIEL as never)).toBe(texteTotalProduction(4362, 3.6, true, SERVI));
+    expect(phraseTaillesDuChiffrage(RESIDENTIEL as never, 5.68)).toBe(phraseTaillesDuChiffrage(SERVI, 5.68));
+    expect(phraseTaillesDuChiffrage(SERVI, 5.68)).toContain('Production et économie');
+    // site public (`erp` faux) : même un chiffrage de pompage ne change rien
+    expect(bande(false, POMPAGE)).toBe(bande(false));
+    expect(texteTotalProduction(4362, 3.6, false, POMPAGE as never)).toBe(texteTotalProduction(4362, 3.6, false, null));
+  });
   it('site public : le texte d’avant (taux du barème, inchangé)', () => {
     expect(bande(false)).toContain('dégradation ~0,5 %/an');
   });

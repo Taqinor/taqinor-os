@@ -1036,6 +1036,14 @@ retiré plus un hook ajouté.
 | `cal-carte-soleil` | étape Panneaux : légende d’ensoleillement et lecteur du soleil sur la carte. |
 | `cal-elec-devis-retenu` | étape Électrique : « Repris du devis <référence> (option …) » sous la carte de l’onduleur, avec l’écart d’une saisie contraire (ACAL1952). |
 | `cal-elec-onduleur` | étape Électrique : carte de l’onduleur. |
+| `cal-elec-onduleur-placer` | étape Électrique, barre de la carte : « Placer l’onduleur » (arme la pose ; le toucher de la carte le pose et propose son tracé DC — ACAL1317). |
+| `cal-elec-onduleur-deplacer` | étape Électrique, barre de la carte : « Déplacer l’onduleur » (le prochain toucher de la carte le déplace, son tracé proposé suit — ACAL1317). |
+| `cal-elec-onduleur-fleches` | étape Électrique, barre de la carte : les flèches qui poussent l’onduleur d’un pas (clavier et toucher), « Terminer » (ACAL1317). |
+| `cal-elec-onduleur-retirer` | étape Électrique, barre de la carte : « Retirer l’onduleur » (avec ses tracés proposés ; les autres tracés restent — ACAL1317). |
+| `cal-elec-onduleur-annuler` | étape Électrique, barre de la carte : « Annuler » le dernier geste du raccordement (historique de la couche électrique ; Ctrl+Z dans la barre fait de même — ACAL1317). |
+| `cal-elec-onduleur-choix` | étape Électrique, barre de la carte : l’onduleur visé quand le document en porte plusieurs (ACAL1317). |
+| `cal-elec-onduleur-message` | étape Électrique, barre de la carte : ce que le geste sur l’onduleur a fait (tracé suivi, tracé enregistré décalé, refus — ACAL1317). |
+| `cal-elec-cable-provenance` | étape Électrique, pastille de carte : sous « Câble côté panneaux », la provenance du tracé (« tracé proposé le long des rangées (position de l’onduleur) » — ACAL1317). |
 | `cal-elec-batterie` | étape Électrique : sélecteur de batterie (seulement quand l’onduleur désigné est un hybride, D-ACAL-157). |
 | `cal-elec-batterie-du-devis` | étape Électrique : « le schéma montre la batterie du devis » quand aucune batterie n’est désignée ici. |
 | `cal-elec-batterie-packs` | étape Électrique : le nombre de batteries désignées (pas − / +). |

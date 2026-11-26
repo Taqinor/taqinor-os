@@ -331,10 +331,13 @@ def _dump_devis(devis):
         'total_ttc': str(getattr(devis, 'total_ttc', '')),
         'date_validite': getattr(devis, 'date_validite', None),
         # ADVS2 — l'instantané ``reglages_figes`` est indexé par pk produit
-        # (séquence de la base) : hors digest, comme les autres ids.
+        # (séquence de la base) : hors digest, comme les autres ids. D-ACAL-158 :
+        # le marqueur ``conceptions_options_figees`` (posé à tout envoi depuis
+        # le golden) aussi — les autres gels internes restent dans le digest.
         'clauses': devis.clauses_appliquees and [
             c for c in devis.clauses_appliquees
-            if not (isinstance(c, dict) and c.get('type') == 'reglages_figes')],
+            if not (isinstance(c, dict) and c.get('type') in (
+                'reglages_figes', 'conceptions_options_figees'))],
         'lignes': [
             {'designation': li.designation, 'quantite': str(li.quantite),
              'prix_unitaire': str(li.prix_unitaire),
