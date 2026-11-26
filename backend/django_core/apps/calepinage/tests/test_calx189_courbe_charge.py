@@ -591,3 +591,60 @@ class FactureDuLeadTests(unittest.TestCase):
             self.assertIsNone(resultat['consommation'])
             self.assertTrue(any('profil' in texte
                                 for texte in resultat['avertissements']))
+
+
+class CourbeNulleRangeeTests(unittest.TestCase):
+    """ACAL1962 (suite lecture) — 24 zéros rangés avant la correction de
+    l'atelier ne sont PAS une consommation saisie : la cascade passe à la
+    source suivante, comme pour la clé absente."""
+
+    PROPOSITION = FactureDuLeadTests.PROPOSITION
+    CHARGE = {'type': 'chauffe_eau', 'puissance_kw': 2.0,
+              'heures_fonctionnement': [5, 6]}
+
+    def test_le_predicat_est_unique_et_exact(self):
+        from apps.calepinage.services.consommation import (
+            courbe24_est_nulle, profil_depuis_layout)
+        self.assertTrue(courbe24_est_nulle([0.0] * 24))
+        self.assertTrue(courbe24_est_nulle([0] * 24))
+        self.assertFalse(courbe24_est_nulle([0.0] * 23 + [0.01]))
+        self.assertFalse(courbe24_est_nulle(None))
+        profil = profil_depuis_layout(layout_de_test(0.0))
+        self.assertIsNone(profil['courbe24'])
+        self.assertIsNone(profil_depuis_layout({})['courbe24'])
+
+    def test_a_zeros_et_facture_du_lead_la_base_vient_de_la_facture(self):
+        for layout in (layout_de_test(0.0), {}):  # (d) clé absente = zéros
+            bloc = construire_courbe_charge(serie_de_test(), consommation={
+                'layout': layout,
+                'facture_lead': dict(self.PROPOSITION)})['consommation']
+            self.assertEqual(bloc['courbe_origine'], 'facture_lead')
+            self.assertAlmostEqual(bloc['total_base_kwh'], 4380.0, delta=0.01)
+
+    def test_b_zeros_sans_autre_source_avec_charges_meme_chiffres(self):
+        resultat = construire_courbe_charge(serie_de_test(), consommation={
+            'layout': layout_de_test(0.0), 'charges': [dict(self.CHARGE)]})
+        bloc = resultat['consommation']
+
+        self.assertIsNotNone(bloc)
+        self.assertEqual(bloc['courbe_origine'], 'layout')
+        self.assertAlmostEqual(bloc['total_base_kwh'], 0.0, delta=0.001)
+        self.assertAlmostEqual(bloc['total_kwh'], 2.0 * 2 * 365, delta=0.05)
+        self.assertTrue(any("Aucune consommation de base n'est connue" in t
+                            for t in bloc['avertissements']))
+
+    def test_c_une_courbe_non_nulle_reste_inchangee(self):
+        bloc = construire_courbe_charge(serie_de_test(), consommation={
+            'layout': layout_de_test(0.5),
+            'facture_lead': dict(self.PROPOSITION)})['consommation']
+        self.assertEqual(bloc['courbe_origine'], 'layout')
+        self.assertAlmostEqual(bloc['total_base_kwh'], 0.5 * 24 * 365,
+                               delta=0.05)
+        self.assertFalse(any("Aucune consommation de base" in t
+                             for t in bloc['avertissements']))
+
+    def test_d_cle_absente_sans_autre_source_reste_omise(self):
+        # Inchangé : la clé absente n'a jamais fabriqué de base nulle.
+        resultat = construire_courbe_charge(serie_de_test(), consommation={
+            'layout': {}, 'charges': [dict(self.CHARGE)]})
+        self.assertIsNone(resultat['consommation'])
