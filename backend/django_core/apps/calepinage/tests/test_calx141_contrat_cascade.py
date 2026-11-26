@@ -248,23 +248,41 @@ class AdressesPublieesIntactesTest(unittest.TestCase):
     """Revue lot 6 (ACAL1654/1656) — une adresse publiée citée comme source
     ressort de ``motif_lisible`` EXACTE (« array-incidence-loss-iam.html »
     devenait « array-incidence-loss-une donnée »). Les adresses sont relevées
-    dans les modules qui les publient : une adresse ajoutée est couverte."""
+    dans les VALEURS des modules qui les publient (modules importés, leurs
+    constantes parcourues — aucun fichier source lu, ATST53) : une adresse
+    ajoutée à une référence est couverte."""
 
     def test_toute_adresse_des_etapes_ressort_telle_quelle(self):
-        import pathlib
+        import importlib
+        import pkgutil
         import re
 
+        from apps.calepinage.services import etapes
         from apps.calepinage.services.rapport.champs_lisibles import motif_lisible
 
-        services = pathlib.Path(__file__).resolve().parents[1] / 'services'
-        fichiers = (list((services / 'etapes').glob('*.py'))
-                    + [services / nom for nom in ('chaine_pertes.py', 'transposition.py',
-                                                  'pvgis_serie.py')])
-        adresses = set()
-        for fichier in fichiers:
-            adresses.update(re.findall(r'https?://[^\s\'"»)<>]+',
-                                       fichier.read_text(encoding='utf-8')))
-        adresses = {a.rstrip('.,;:') for a in adresses}
+        noms = (['apps.calepinage.services.etapes.' + m.name
+                 for m in pkgutil.iter_modules(etapes.__path__)]
+                + ['apps.calepinage.services.etapes', 'apps.calepinage.services.chaine_pertes',
+                   'apps.calepinage.services.transposition', 'apps.calepinage.services.pvgis_serie'])
+        textes = []
+
+        def recueillir(valeur, profondeur=0):
+            if isinstance(valeur, str):
+                textes.append(valeur)
+            elif isinstance(valeur, dict) and profondeur < 4:
+                for v in valeur.values():
+                    recueillir(v, profondeur + 1)
+            elif isinstance(valeur, (list, tuple, set, frozenset)) and profondeur < 4:
+                for v in valeur:
+                    recueillir(v, profondeur + 1)
+
+        for nom in noms:
+            module = importlib.import_module(nom)
+            recueillir(module.__doc__ or '')
+            for valeur in vars(module).values():
+                recueillir(valeur)
+        adresses = {a.rstrip('.,;:') for texte in textes
+                    for a in re.findall(r'https?://[^\s\'"»)<>]+', texte)}
         self.assertGreater(len(adresses), 20)
         for adresse in sorted(adresses):
             with self.subTest(adresse=adresse):
