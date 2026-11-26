@@ -382,8 +382,9 @@ const bloc = (clef, titre, sous_titre = '') => ({ clef, titre, sous_titre: sous_
 function blocsDuDocument(doc) {
   const organes = (c) => (c?.organes ?? []).map((o) => bloc(o.clef, o.titre, o.calibre))
   const simple = (clef, b) => (b ? [bloc(clef, b.titre, b.detail)] : [])
+  // Un onduleur n'est dessiné que si le document en sert au moins un (rien d'inventé).
   return [
-    bloc('onduleur', doc.onduleurs?.[0]?.designation ?? 'Onduleur'),
+    ...(doc.onduleurs?.length ? [bloc('onduleur', doc.onduleurs[0].designation ?? 'Onduleur')] : []),
     ...organes(doc.coffret_dc),
     ...organes(doc.coffret_ac),
     ...simple('compteur_production', doc.compteur_production),

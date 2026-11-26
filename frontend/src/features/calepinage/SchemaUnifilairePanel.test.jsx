@@ -710,6 +710,12 @@ describe('planDepuisDocument — le document schema_electrique (lot 6)', () => {
     }
   })
 
+  it('aucun onduleur servi : aucun bloc onduleur inventé (pas de plan)', () => {
+    const d = doc('avec_batterie')
+    d.onduleurs = []
+    expect(planDepuisDocument(d)).toBeNull()
+  })
+
   it('un clic sur la batterie ouvre la section où elle se règle', () => {
     const onOuvrir = vi.fn()
     render(<PlancheSchema balisage={null} dessin={<SchemaEnBlocs plan={planDepuisDocument(doc('avec_batterie'))} onOuvrir={onOuvrir} />} />)
