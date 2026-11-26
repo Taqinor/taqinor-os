@@ -38,7 +38,7 @@ import { createShadingUi, seuilEffectifAccesSolaire } from './shadingUi'; // ACA
 import { cibleDepuisCarte, maxDuSolveur, panneauxPourCible, phraseCible } from './cibleProduction'; // ACAL1618, ACAL1903
 import { cotesDePavage } from '../../lib/roofPro2';
 import {
-  causeDuPanVide, ecrireMotifsDansDocument, mesurerPanVide, noterMotifPanVide, retraitApplique,
+  causeDuPanVide, ecrireMotifsDansDocument, mesurerPanVide, motifPenteNord, noterMotifPanVide, retraitApplique, // ACAL1970
   semerMotifsDepuisDocument, type MesuresPanVide,
 } from './motifPanVide'; // ACAL549
 
@@ -1034,6 +1034,39 @@ describe('ACAL549 — causeDuPanVide', () => {
     (doc.zones as Array<{ geometry: { count: number } }>)[0].geometry.count = 2;
     expect(ecrireMotifsDansDocument(doc)).toBe(false);
     semerMotifsDepuisDocument({});
+  });
+});
+
+// ACAL1970 — chemin « toit en pente » : un pan à 22° tourné au nord (azimut 0°), un besoin, aucun module posé ⇒ le
+// motif `orientation_nord` (contrat ACAL1969) est noté puis écrit au document ; tourné au sud ⇒ aucun motif.
+// Mutant : ne rien noter sur le chemin pente ⇒ pas de `motifsPansVides`.
+describe('ACAL1970 — motif orientation_nord du toit en pente', () => {
+  const resoudre = (azimut: number) => {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body></body>').window.document;
+    try {
+      const ctx = {
+        closed: true, vertices: rectRing(10, 8), roofType: 'pitched', pitchDeg: 22, facingAzimuthDeg: azimut, centroidLat: 33.5,
+        areas: [], activeAreaId: 'pan-nord', opts: {}, neededAuto: false, neededPanels: 6, pinned: new Set(),
+        pitchedYieldCache: new Map(), pitchedLocks: {}, overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], obstacles: [],
+        activeArea: () => null, dom: {}, centroid: [-7, 33],
+      } as unknown as Ctx;
+      const deps = { renderScene: vi.fn(), paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+        syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 0, factureCarte: () => 0, obstructionRings: vi.fn(() => []), setStatus: vi.fn() };
+      createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]).liveResolvePitched();
+      const doc: Record<string, unknown> = { zones: [{ id: 'pan-nord', geometry: { count: 0 } }] };
+      ecrireMotifsDansDocument(doc);
+      return { doc, nord: (ctx as unknown as { pitchedLiveResult: { northFacing: boolean } }).pitchedLiveResult.northFacing };
+    } finally { g.document = avant; semerMotifsDepuisDocument({}); }
+  };
+  it('pan nord à 22° ⇒ motif écrit avec azimutDeg et penteDeg ; pan sud ⇒ aucun motif', () => {
+    const nord = resoudre(0);
+    expect(nord.nord).toBe(true);
+    expect(nord.doc.motifsPansVides).toEqual({ 'pan-nord': {
+      code: 'orientation_nord', message: 'Aucun module : pan en pente (22°) orienté au nord (azimut 0°).', mesures: { azimutDeg: 0, penteDeg: 22 } } });
+    expect('motifsPansVides' in resoudre(180).doc).toBe(false);
+    expect(motifPenteNord(true, 0, 0, 0, 22)).toBeNull(); // sans besoin, aucune cause à dire
   });
 });
 

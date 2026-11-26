@@ -6,7 +6,7 @@
 import { resolveSetbacks, type Panel2Module, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { type PackResult, type PanelGrid } from '../../lib/estimatorBrainV2';
 
-export type CodeMotifPanVide = 'retrait_rive' | 'obstacles' | 'seuil_acces_solaire' | 'module_trop_grand' | 'inconnue';
+export type CodeMotifPanVide = 'retrait_rive' | 'obstacles' | 'seuil_acces_solaire' | 'module_trop_grand' | 'orientation_nord' | 'inconnue';
 export interface MotifPanVide { code: CodeMotifPanVide; message: string; mesures: Record<string, number> }
 export interface MesuresPanVide {
   largeurPanM: number; retraitM: number | null; coteCourtM: number; coteLongM: number;
@@ -70,6 +70,16 @@ export function causeDuPanVide(m: MesuresPanVide): MotifPanVide {
       mesures: { coteModuleM: r2(m.coteCourtM), surfacePosableM2: r2(m.surfacePosableM2) } };
   }
   return { code: 'inconnue', message: "Aucun module posé — la cause n'a pas pu être déterminée", mesures: {} };
+}
+
+/** ACAL1970 — chemin « toit en pente » : pan tourné au nord (le solveur le dit, `northFacing`), aucun module posé
+ *  alors qu'un besoin existe ⇒ la cause `orientation_nord` (contrat ACAL1969 : mesures `azimutDeg`, `penteDeg`) ;
+ *  sinon `null` (le motif noté du pan est alors retiré, comme sur le chemin plat). */
+export function motifPenteNord(nordique: boolean, poses: number, besoin: number, azimutDeg: number, penteDeg: number): MotifPanVide | null {
+  if (!nordique || poses > 0 || !(besoin > 0) || !Number.isFinite(azimutDeg) || !Number.isFinite(penteDeg)) return null;
+  return { code: 'orientation_nord',
+    message: `Aucun module : pan en pente (${Math.round(penteDeg)}°) orienté au nord (azimut ${Math.round(azimutDeg)}°).`,
+    mesures: { azimutDeg: r2(azimutDeg), penteDeg: r2(penteDeg) } };
 }
 
 // — Mémoire d'atelier : un motif par pan, semée depuis le document, écrite à la sérialisation. —
