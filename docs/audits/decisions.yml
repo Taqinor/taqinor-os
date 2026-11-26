@@ -6249,3 +6249,58 @@ decisions:
     date: "2026-11-26"
     source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; consigne de l'orchestrateur du 26/11 (« une image ou des tuiles pour le toit du client seulement, jamais une carte libre ») ; la visionneuse d'aujourd'hui est volontairement non bornée (apps/web/tests/propositionViewerFull.test.ts « aucune borne de navigation ») — la borner partout changerait les autres niveaux ; docs/audits/l5-calepinage/visionneuse-soleil-client.md"
     taches: []
+  - id: D-ACAL-139
+    question: "L'étude électrique du devis propose-t-elle, comme le calepinage, des chaînes de longueurs différentes sur des entrées différentes quand la répartition à chaînes égales ne tient pas ?"
+    options:
+      - cle: nouveaux_rendus
+        texte: "(recommandée) Oui, pour les études calculées à neuf des devis jamais envoyés ou envoyés à partir du 27/11/2026 ; un devis envoyé avant garde son étude, son annexe et son bordereau"
+      - cle: inchange
+        texte: "Non : l'étude du devis garde les chaînes égales, même quand elles dépassent le courant admis par une entrée de l'onduleur"
+    reponse: nouveaux_rendus
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; constat du 26/11 sur un vrai dossier (35 panneaux de 715 W sur un hybride 20 kW à deux entrées de 54 A : 5 chaînes de 7 mettent 66,9 A sur une entrée ; 12 + 12 sur une entrée et 11 sur l'autre tient) ; conséquence mesurée sur ce cas : seul le calibre du sectionneur DC change au bordereau (45 A au lieu de 67 A), le câble DC reste à 120 m ; une répartition égale valide sort identique ; apps/ventes/domain/regles_calcul.py::COUPURE_CHAINES_INEGALES"
+    taches: []
+  - id: D-ACAL-140
+    question: "Sur la page du client, de quelle étude vient le schéma électrique ?"
+    options:
+      - cle: etude_rangee_seulement
+        texte: "(recommandée) Seulement de l'étude électrique rangée sur le devis : rien n'est recalculé à l'ouverture de la page, une option sans étude rangée n'a pas de schéma, et l'ouverture de la page ne lance aucun calcul de calepinage"
+      - cle: calcule_a_la_lecture
+        texte: "Aussi d'une étude calculée à l'ouverture de la page pour l'option qui n'en a pas (le schéma peut alors changer quand une fiche technique ou le calepinage change)"
+    reponse: etude_rangee_seulement
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; relecture indépendante du 26/11 (un devis envoyé garde ce que le client a reçu ; rien d'incertain côté client) ; l'écran du devis dans l'ERP garde les deux options ; apps/ventes/electrical_service.py::schema_electrique_public"
+    taches: []
+  - id: D-ACAL-141
+    question: "Quand le schéma électrique du devis reprend-il les chaînes réelles du calepinage plutôt que celles de l'étude du devis ?"
+    options:
+      - cle: meme_toit_meme_onduleur
+        texte: "(recommandée) Quand le toit du devis est celui du calepinage, que le nombre de panneaux est le même et que l'onduleur est le même (désignation, puissance, nombre d'entrées, nombre d'onduleurs) ; sinon les chaînes de l'étude du devis"
+      - cle: meme_toit_seulement
+        texte: "Dès que le toit et le nombre de panneaux sont les mêmes, quel que soit l'onduleur"
+    reponse: meme_toit_meme_onduleur
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; précise D-ACAL-131 après la relecture indépendante du 26/11 (un schéma moitié calepinage, moitié devis montrait des chaînes sous un onduleur qui n'était pas le leur) ; vaut pour l'écran du devis dans l'ERP et l'annexe des nouveaux rendus"
+    taches: []
+  - id: D-ACAL-142
+    question: "Sur la page du client, que montre le schéma électrique pour une partie qui n'est pas encore calculée ou pas confirmée (côté réseau non dimensionné, étage moyenne tension à confirmer) ?"
+    options:
+      - cle: rien
+        texte: "(recommandée) Rien : la partie n'est pas dessinée, sans mention « à dimensionner » ni « à confirmer », et la phrase interne qui en donne la raison n'est pas servie"
+      - cle: mention
+        texte: "La partie est dessinée en pointillé avec la mention « à dimensionner » ou « à confirmer »"
+    reponse: rien
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; application de la décision du fondateur des 26-27/10/2026 (rien d'incertain côté client sur un devis commercial ou industriel) ; l'écran de l'ERP garde les mentions ; le schéma de la page est dessiné en HTML (il se replie sur un téléphone), sans visionneuse plein écran ni téléchargement SVG quand il est servi"
+    taches: []
+  - id: D-ACAL-143
+    question: "Sur la visionneuse au soleil de la page du client, comment l'heure est-elle dite ?"
+    options:
+      - cle: heure_solaire_dite
+        texte: "(recommandée) L'heure affichée est dite « heure solaire » dans les trois langues ; aucune conversion en heure légale n'est faite sur la page"
+      - cle: heure_nue
+        texte: "L'heure est affichée seule (« 12 h »), comme sur « Montrer au client » de l'ERP"
+    reponse: heure_solaire_dite
+    date: "2026-11-26"
+    source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; relecture indépendante du 26/11 : au Maroc le midi solaire tombe vers 13 h 30 à la montre du client, une heure nue serait lue à tort comme une heure d'horloge"
+    taches: []
