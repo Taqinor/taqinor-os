@@ -192,25 +192,6 @@ class UnSeulVerdictTest(SimpleTestCase):
             for texte in (verdict['detail'], controle['valeur_texte'], ' | '.join(messages)):
                 self.assertEqual(MOTIF_HYBRIDE_SANS_CAPACITE in texte, dit, texte)
 
-    def test_meme_verdict_que_le_moteur_de_devis(self):
-        """D-HYB-1 (lead 1742) — même module, même compte, même hybride : le calepinage et le
-        moteur de devis C&I (``moteur_ci.onduleurs._capacite_kwc``, LA règle du noyau) disent
-        tous deux oui ou tous deux non, la capacité publiée au-dessus, au-dessous ou absente."""
-        from apps.ventes.moteur_ci.onduleurs import _capacite_kwc
-        from core.electrique.onduleurs import bornes_dc_ac
-
-        haute = bornes_dc_ac().borne_usuelle.valeur
-        for dc_max, nom, role in ((40.0, 'Onduleur hybride Deye 20 kW', ''), (30.0, 'Onduleur hybride Deye 20 kW', ''),
-                                  (None, 'Onduleur hybride Deye 20 kW', ''),
-                                  (40.0, 'Deye SUN-20K-SG01HP3', 'onduleur_hybride')):  # D-HYB-1 : le rôle
-            fiche = {} if dc_max is None else {'dc_max_kwc': dc_max}
-            bloc, _m, verdict, controle = self._trois(_conception(48, 20.0, designation=nom, role=role, **fiche))
-            devis = _capacite_kwc({'kw_ac': 20.0, 'dc_max_kwc': dc_max, '_fiche_fait_foi': True},
-                                  haute)[0] >= bloc['puissance_dc_kwc'] - 1e-9
-            self.assertEqual(verdict['conforme'], devis, dc_max)
-            self.assertEqual(bloc['dans_bornes'], devis, dc_max)
-            self.assertEqual(controle['etat'], 'ok' if devis else 'a_regler', dc_max)
-
     def test_sous_le_seuil_bas_la_borne_franchie_est_dite_aux_deux_ecrans(self):
         """Rejeu T3-VAGUEC2 — « 0,99 pour 1,35 au plus (règle du devis) » était
         « à régler » sans raison dite. La règle du devis n'a PAS de borne basse
@@ -250,31 +231,6 @@ class UnSeulVerdictTest(SimpleTestCase):
         self.assertTrue(bloc['dans_bornes'])
         self.assertIs(verdict['conforme'], True)
         self.assertEqual(controle['etat'], 'ok')
-
-
-class PoseSurUnAutreOnduleurTest(SimpleTestCase):
-    """D-HYB-1 (lead 1742) — « Prêt à envoyer ? » juge une pose dont l'onduleur n'est pas
-    dans les lignes de la conception (``selectors_conception.verdicts_pour_le_calepinage`` :
-    ligne sans désignation) : la porte du moteur lit le NOM du produit pour savoir s'il
-    est hybride ; avant, un hybride publiant sa capacité était jugé à la borne 1,35."""
-
-    def test_hybride_sans_designation_juge_a_sa_fiche(self):
-        from types import SimpleNamespace
-        from unittest import mock
-
-        from apps.ventes.conception import porte_calepinage as porte
-
-        design = {'ratio_dc_ac': 1.72, 'chaines': [], 'materiel': {'onduleur': {'designation': None}}}
-        lignes = [{'produit': 7, 'designation': None, 'quantite': 1}]
-        fiche = {'ac_kw': 20.0, 'dc_max_kwc': 40.0}
-        produit = SimpleNamespace(nom='Deye hybride 20 kW', role_devis='')
-        with mock.patch.object(porte, '_onduleur_lu', return_value=(fiche, produit)), mock.patch.object(
-                porte, '_reglages_electriques', return_value={}):
-            verdicts = porte.verdicts_electriques(object(), design, lignes, 34.32)
-        self.assertIs(verdicts['ratio_dc_ac']['conforme'], True)
-        self.assertEqual(verdicts['ratio_dc_ac']['borne_source'], SOURCE_BORNE_CAPACITE)
-        self.assertIn('fiche constructeur : 40 kWc au plus', verdicts['ratio_dc_ac']['detail'])
-        self.assertIs(verdicts['capacite_hybride']['conforme'], True)
 
 
 class HybrideParRoleEtFicheTest(SimpleTestCase):
@@ -325,7 +281,7 @@ class HybrideParRoleEtFicheTest(SimpleTestCase):
         """Relecture : un onduleur-chargeur hors réseau ou un micro-onduleur, sans rôle
         déclaré, qui publie un port batterie, n'est PAS hybride ; un Deye sans rôle dont le
         nom ne dit pas « hybride » mais qui publie un port batterie l'est toujours."""
-        from apps.ventes.selectors_calepinage import autre_famille_d_onduleur_par_nom
+        from apps.calepinage.services.equipements import autre_famille_d_onduleur as autre_famille_d_onduleur_par_nom
         from core.electrique.onduleurs import est_onduleur_hybride
 
         for nom in ('Onduleur off-grid Growatt SPF 5000', 'Micro-onduleur Hoymiles 800W'):
@@ -340,23 +296,9 @@ class HybrideParRoleEtFicheTest(SimpleTestCase):
             48, 20.0, designation=self.NOM, famille='', dc_max_kwc=40.0, bat_max_decharge_kw=25.0))
         self.assertEqual((bloc['borne_source'], verdict['conforme']), (SOURCE_BORNE_CAPACITE, True))
 
-    def test_pose_sur_un_autre_onduleur_par_son_role(self):
-        from types import SimpleNamespace
-        from unittest import mock
-
-        from apps.ventes.conception import porte_calepinage as porte
-
-        design = {'ratio_dc_ac': 1.72, 'chaines': [], 'materiel': {'onduleur': {'designation': self.NOM}}}
-        lignes = [{'produit': 7, 'designation': self.NOM, 'quantite': 1}]
-        fiche = {'ac_kw': 20.0, 'dc_max_kwc': 40.0}
-        produit = SimpleNamespace(nom=self.NOM, role_devis='onduleur_hybride')
-        with mock.patch.object(porte, '_onduleur_lu', return_value=(fiche, produit)) as lu, mock.patch.object(
-                porte, '_reglages_electriques', return_value={}):
-            verdicts = porte.verdicts_electriques(object(), design, lignes, 34.32)
-        self.assertEqual(lu.call_count, 1)  # une seule lecture du produit (fiche, nom, rôle)
-        self.assertIs(verdicts['ratio_dc_ac']['conforme'], True)
-        self.assertEqual(verdicts['ratio_dc_ac']['borne_source'], SOURCE_BORNE_CAPACITE)
-        self.assertIs(verdicts['capacite_hybride']['conforme'], True)
+    # Relecture lot 6 (cliquet ACAL1009) : la comparaison avec le moteur de devis et la porte
+    # du moteur (pose sur un autre onduleur) vivent côté ventes, dans
+    # apps/ventes/tests/test_pv41_conception_electrique.py::VerdictHybrideCalepinageDevisTest.
 
 
 class EcretageTest(SimpleTestCase):
