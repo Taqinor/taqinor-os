@@ -1069,9 +1069,14 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   // annuelle reçue (obstructions tracées retirées du soleil direct, diffus conservé),
   // pondérée par les vrais profils PVGIS. Astronomie pure, aucune API, aucun chiffre
   // inventé (même modèle que le dérate de production, évalué par panneau).
+  /** ACAL1621 — y a-t-il des modules à teinter ? (plan pavé, au moins un panneau, contour fermé) */
+  const carteChiffrable = (): boolean => {
+    const plan = ctx.layoutPlan;
+    return !!plan && plan.grid.panels.length > 0 && ctx.vertices.length >= 3;
+  };
   function buildHeatmapColorFn(): ((cellIndex: number) => { r: number; g: number; b: number }) | null {
     const plan = ctx.layoutPlan;
-    if (!plan || !plan.grid.panels.length || ctx.vertices.length < 3) return null;
+    if (!plan || !carteChiffrable()) return null;
     const enu = activeShadeEntries(); // CAL66/CAL67 — toutes les sources, pas seulement les ombres tracées
     const prod = ctx.prodPerKwc ?? fallbackPerKwc();
     const panels = plan.grid.panels;
@@ -1262,10 +1267,12 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       ?? 'Ombrage par module : non calculé (aucun module posé sur ce pan).';
   }
 
+  // ACAL1621 — sans source d'ombrage OU sans module à teinter (aucun plan, aucun panneau : `buildHeatmapColorFn` rendrait
+  // null), rien n'est capturé : `null`, comme sans source — jamais la vue 3D ordinaire présentée comme une carte de chaleur.
   const avecCarteDAcces = <T,>(fn: () => Promise<T>) => executerAvecCarte(
     { on: heatmapOn, mois: heatmapMonth },
     (on, mois) => { heatmapMonth = mois; setHeatmap(on); },
-    hasShadeSources(),
+    hasShadeSources() && carteChiffrable(),
     fn,
   );
 

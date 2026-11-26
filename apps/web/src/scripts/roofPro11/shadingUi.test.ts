@@ -691,6 +691,29 @@ describe('ACAL726 — executerAvecCarte', () => {
     expect(appelee).toBe(false);
     expect(journal).toEqual([]);
   });
+  // ACAL1621 — une source d'ombrage saisie mais AUCUN module à teinter (pas de plan pavé) : la carte ne peut pas être
+  // teintée (`buildHeatmapColorFn` rend null) ; la capture n'a pas lieu (`null`), jamais la vue 3D ordinaire déposée
+  // comme carte de chaleur. Avec des modules posés, la capture a lieu. Mutant : ne tester que la source ⇒ capture.
+  it('source saisie mais aucun module posé : `null`, rien capturé ; modules posés : capturé', async () => {
+    document.body.innerHTML = '';
+    const ctx = {
+      areas: [], activeAreaId: 'z1', vertices: [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001]], closed: true,
+      obstacles: [{ id: 'o1', centerLng: -7.6001, centerLat: 33.5001, lengthM: 1, widthM: 1, heightM: 1 }],
+      batiments: [], shadeObstructions: [], environment: [], activeArea: () => null, pushWorkshopHistory: () => {},
+      centroid: [-7.6, 33.5], centroidLat: 33.5, prodPerKwc: null, shadeFactors: null, layoutPlan: null,
+    } as unknown as Ctx;
+    const map = new Proxy({}, { get: () => () => undefined }) as never;
+    const teintes: unknown[] = [];
+    const ui = createShadingUi(ctx, { map, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: (f) => teintes.push(f) });
+    let captures = 0;
+    expect(await ui.avecCarteDAcces(async () => { captures += 1; return 'png'; })).toBeNull();
+    expect(captures).toBe(0);
+    expect(teintes).toEqual([]);
+    (ctx as unknown as { layoutPlan: unknown }).layoutPlan = { grid: { panels: [{ cx: 0, cy: 0 }], kwc: 0.5 } };
+    expect(await ui.avecCarteDAcces(async () => { captures += 1; return 'png'; })).toBe('png');
+    expect(captures).toBe(1);
+    expect(typeof teintes[0]).toBe('function'); // la carte est TEINTÉE pendant la capture
+  });
 });
 
 // ACAL729 — l'info-bulle d'un module : accès annuel et chaîne en tête, jamais une valeur inventée.
