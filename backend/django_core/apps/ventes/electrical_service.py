@@ -266,11 +266,14 @@ def _option_choisie(devis):
     # SCHEL-B3 (lot 6) — une variante IMPOSÉE (``_variante_imposee``) : le
     # schéma électrique de l'AUTRE option d'un devis à deux options, calculé à
     # la lecture sans rien ranger. Hors de ce bloc ``with``, rien ne change.
+    # Revue SCHEL (point 6) : l'option imposée prend SES lignes par LA règle des
+    # paniers de l'argent et du PDF (variante, rôle stocké, mots-clés — ADVS5),
+    # jamais par celle, plus ancienne, qui choisit l'option rangée ci-dessous.
     imposee = _VARIANTE_IMPOSEE.get()
-    if imposee == VARIANTE_SANS:
-        return sans, VARIANTE_SANS
-    if imposee == VARIANTE_AVEC:
-        return avec, VARIANTE_AVEC
+    if imposee in (VARIANTE_SANS, VARIANTE_AVEC):
+        from apps.ventes.utils.options import filter_lines_for_option
+        return (filter_lines_for_option(toutes, _cle_option(imposee), devis),
+                imposee)
     if avec_servable:
         return avec, VARIANTE_AVEC
     if sans_servable:
@@ -1472,10 +1475,20 @@ def rafraichir_conception_electrique_devis(devis):
 # LECTURE (``build_electrical_design(persister=False)`` sous variante imposée,
 # précédent ADEV58) — jamais écrite, aucune empreinte touchée, aucun statut.
 
-#: La phrase servie quand aucune étude ne dimensionne le côté réseau d'une option.
-MOTIF_OPTION_SANS_ETUDE = (
-    "Le côté réseau de cette option n'est pas encore dimensionné : aucune "
-    "étude électrique n'a été faite pour elle.")
+#: La phrase servie (fiche ERP seulement, jamais à la page client — D1) quand le
+#: côté réseau d'une option n'est pas dimensionné ; ``%s`` NOMME la cause réelle.
+MOTIF_OPTION_SANS_ETUDE = "Le côté réseau de cette option n'est pas encore dimensionné : %s."
+#: Les causes nommées (``_motif_sans_etude``).
+CAUSE_FICHE_INCOMPLETE = "la fiche technique du matériel est incomplète (%s)"
+CAUSE_ETUDE_BLOQUEE = "l'étude électrique est bloquée (%s)"
+CAUSE_AUCUNE_ETUDE = "aucune étude électrique n'a pu être faite pour elle"
+
+#: D'où vient le document d'une option (jamais servi : il décide ce que la page
+#: client reçoit, D1) : l'étude RANGÉE, une étude calculée à la LECTURE, ou les
+#: seules lignes.
+_ORIGINE_RANGEE = "rangee"
+_ORIGINE_LECTURE = "lecture"
+_ORIGINE_LIGNES = "lignes"
 
 
 def _cle_option(variante):
@@ -1483,37 +1496,60 @@ def _cle_option(variante):
     return OPTION_AVEC if variante == "avec" else OPTION_SANS
 
 
-def _variantes_du_schema(devis):
-    """``((variante, imposee), …)`` des options à dessiner. Deux options
-    servables : « sans » est IMPOSÉE (l'étude rangée est celle d'« avec ») ;
-    une seule : l'étude rangée ; aucune (repli neutre) : l'étude rangée, sous
-    la clé « avec » si une batterie est vendue, sinon « sans »."""
-    from apps.ventes import solar_classification as sc
+def _lignes_de_l_option(devis, variante):
+    """Les lignes de l'option par LA règle des paniers (variante, puis rôle
+    stocké, puis mots-clés — ADVS5, ``utils.options.filter_lines_for_option``) :
+    celle de l'argent, du PDF et de la page."""
+    from apps.ventes.utils.options import filter_lines_for_option
+    return filter_lines_for_option(_lignes_du_devis(devis), _cle_option(variante), devis)
 
-    toutes, _sans, _avec, sans_ok, avec_ok = _paniers_du_devis(devis)
-    if sans_ok and avec_ok:
-        return (("sans", True), ("avec", False))
-    if avec_ok or sans_ok:
-        return (("avec" if avec_ok else "sans", False),)
-    batterie = any(sc.is_battery(_blob_ligne(ligne)) and _quantite_ligne(ligne) > 0
-                   for ligne in toutes)
-    return (("avec" if batterie else "sans", False),)
+
+def _est_onduleur(ligne):
+    from apps.ventes import solar_classification as sc
+    from core.product_roles import est_onduleur_devis
+
+    role = getattr(ligne, "role_devis", None)
+    if role:
+        return est_onduleur_devis(role)
+    produit = getattr(ligne, "produit", None)
+    if produit is not None and _flottant(_specs_produit(produit).get("ac_kw"), 0.0) > 0:
+        return True
+    # Sans rôle ni fiche : les mots-clés partagés (un câble n'est jamais un onduleur).
+    return (sc.is_any_inverter(ligne.designation or "")
+            or sc.is_any_inverter(getattr(produit, "nom", "") or ""))
+
+
+def _est_unite_de_batterie(ligne):
+    """Une UNITÉ de batterie : le rôle stocké, sinon un produit dont la fiche
+    publie une capacité — jamais le mot « batterie » d'un texte (« Câble
+    batterie ×2 » n'est pas deux unités)."""
+    role = getattr(ligne, "role_devis", None)
+    if role:
+        return role == "batterie"
+    produit = getattr(ligne, "produit", None)
+    return produit is not None and _flottant(
+        _specs_produit(produit).get("kwh_nominal"), 0.0) > 0
 
 
 def _quantites_de_l_option(lignes):
     """``(unités de batterie, onduleurs)`` lues sur les lignes de l'option —
     ``None`` quand aucune ligne ne les porte (jamais un 1 supposé)."""
-    from apps.ventes import solar_classification as sc
-
-    unites = onduleurs = 0.0
-    for ligne in lignes:
-        nom = getattr(getattr(ligne, "produit", None), "nom", "") or ""
-        designation = ligne.designation or ""
-        if sc.is_battery(designation) or sc.is_battery(nom):
-            unites += _quantite_ligne(ligne)
-        elif sc.is_any_inverter(designation) or sc.is_any_inverter(nom):
-            onduleurs += _quantite_ligne(ligne)
+    unites = sum(_quantite_ligne(li) for li in lignes if _est_unite_de_batterie(li))
+    onduleurs = sum(_quantite_ligne(li) for li in lignes if _est_onduleur(li))
     return (int(round(unites)) or None), (int(round(onduleurs)) or None)
+
+
+def _variantes_du_schema(devis):
+    """``((variante, imposee), …)`` : une option par panier qui porte un
+    onduleur ; l'étude rangée va à l'option que ``_option_choisie`` retient (à
+    défaut, l'unique option), l'autre est IMPOSÉE. Pompage : aucune."""
+    dessinables = [v for v in ("sans", "avec")
+                   if any(_est_onduleur(li) for li in _lignes_de_l_option(devis, v))]
+    if not dessinables:
+        return ()
+    choisie = _option_choisie(devis)[1]
+    rangee = choisie if choisie in dessinables else dessinables[-1]
+    return tuple((v, v != rangee) for v in dessinables)
 
 
 def _etude_dessinable(devis, design):
@@ -1529,60 +1565,95 @@ def _etude_dessinable(devis, design):
     return design
 
 
-def _document_des_lignes(devis, cle, lignes, unites, nombre, standard):
-    """L'option sans étude : le champ SANS découpage, ce que les lignes nomment."""
+def _etude_a_la_lecture(devis):
+    """L'étude de l'option sous la variante en cours, CALCULÉE sans le raccourci
+    d'empreinte (qui rendrait une étude rangée périmée) et SANS écriture."""
+    from core.electrique import concevoir
+
+    if motifs_fiche_incomplete(devis):
+        return None
+    entree, source, _lie = construire_entree_et_source(devis)
+    if not entree.groupes:
+        return None
+    return projeter_contrat(entree, concevoir(entree), source_entree=source)
+
+
+def _motif_sans_etude(devis, design):
+    """La phrase du côté réseau non dimensionné, qui NOMME la cause réelle."""
+    motifs = motifs_fiche_incomplete(devis)
+    bloquants = ((design or {}).get("conformite") or {}).get("bloquants") \
+        if isinstance(design, dict) else None
+    if motifs:
+        cause = CAUSE_FICHE_INCOMPLETE % motifs[0]
+    elif bloquants:
+        cause = CAUSE_ETUDE_BLOQUEE % bloquants[0]
+    else:
+        cause = CAUSE_AUCUNE_ETUDE
+    return MOTIF_OPTION_SANS_ETUDE % cause
+
+
+def _document_des_lignes(devis, cle, unites, nombre, standard, motif):
+    """L'option sans étude dessinable : le champ SANS découpage (fiche ERP)."""
     from apps.ventes.domain.dimensionnement_devis import comptes_panneaux_valides
     from core.electrique.schema_electrique import document_sans_repartition
 
-    variante = "avec" if cle.startswith("avec") else "sans"
-    comptes = comptes_panneaux_valides(devis, variante)
+    comptes = comptes_panneaux_valides(devis, "avec" if cle.startswith("avec") else "sans")
     module = spec_module_du_devis(devis)
     onduleur = spec_onduleur_du_devis(devis)[0]
-    presente, designation, kwh, tension = _batterie_du_devis(devis)
+    _presente, designation, kwh, tension = _batterie_du_devis(devis)
     return document_sans_repartition(
         option=cle, nb_panneaux=next(iter(comptes)) if comptes else None,
         module_designation=module.designation, puissance_wc=module.pmax_wc,
         onduleurs=[{"designation": onduleur.designation, "puissance_kw": onduleur.ac_kw,
                     "nombre": nombre, "nb_entrees": onduleur.n_mppt}],
         batterie=({"designation": designation, "unites": unites,
-                   "capacite_kwh": kwh, "tension_v": tension} if presente else None),
-        motif=MOTIF_OPTION_SANS_ETUDE, standard=standard)
+                   "capacite_kwh": kwh, "tension_v": tension} if unites else None),
+        motif=motif, standard=standard)
 
 
 def _document_de_l_option(devis, variante, imposee, standard):
-    """Le document d'UNE option, calculé sous SA variante (rien n'est rangé)."""
+    """``(document, origine)`` d'UNE option, calculé sous SA variante — rien
+    n'est rangé. Étude rangée lisible ⇒ ``rangee`` ; sinon calculée à la
+    lecture ⇒ ``lecture`` ; sinon le champ des lignes ⇒ ``lignes``."""
     from core.electrique.schema_electrique import (
         SOURCE_CONCEPTION_DEVIS, document_schema_electrique)
 
     cle = _cle_option(variante)
+    unites, nombre = _quantites_de_l_option(_lignes_de_l_option(devis, variante))
+    if nombre is None:
+        return None, None            # aucun onduleur (pompage) : aucun schéma
     with _variante_imposee(variante if imposee else None):
-        lignes = _lignes_option_choisie(devis)
-        unites, nombre = _quantites_de_l_option(lignes)
-        if nombre is None:
-            return None             # aucun onduleur (pompage) : aucun schéma
-        design = None if imposee else conception_electrique_stockee(devis)
-        if _etude_dessinable(devis, design) is None:
-            design = build_electrical_design(devis, persister=False)
-        design = _etude_dessinable(devis, design)
+        calculee = None if imposee else conception_electrique_stockee(devis)
+        design, origine = _etude_dessinable(devis, calculee), _ORIGINE_RANGEE
+        if design is None:
+            calculee = _etude_a_la_lecture(devis)
+            design, origine = _etude_dessinable(devis, calculee), _ORIGINE_LECTURE
         objets = objets_moteur_depuis_contrat(design) if design else None
         if objets is None:
-            return _document_des_lignes(devis, cle, lignes, unites, nombre, standard)
-        entree, resultat = objets
-        return document_schema_electrique(
-            entree, resultat, option=cle, source=SOURCE_CONCEPTION_DEVIS,
-            standard=standard, unites_batterie=unites, nombre_onduleurs=nombre)
+            return (_document_des_lignes(devis, cle, unites, nombre, standard,
+                                         _motif_sans_etude(devis, calculee)), _ORIGINE_LIGNES)
+    entree, resultat = objets
+    return document_schema_electrique(
+        entree, resultat, option=cle, source=SOURCE_CONCEPTION_DEVIS,
+        standard=standard, unites_batterie=unites, nombre_onduleurs=nombre), origine
+
+
+def _identite_onduleurs(document):
+    return [tuple((o or {}).get(k) for k in ("designation", "puissance_kw", "nb_entrees", "nombre"))
+            for o in (document or {}).get("onduleurs") or ()]
 
 
 def _chaines_du_calepinage(devis, documents):
-    """D-ACAL-131 — les chaînes RÉELLES du calepinage lié remplacent celles de
-    l'étude quand la conception du devis EST celle du calepinage (empreintes
-    ``layout_hash`` égales) et que l'option a le compte de panneaux du
-    calepinage (à égalité, l'option que la planche retient)."""
+    """D-ACAL-131 + D2 — les chaînes RÉELLES du calepinage lié remplacent celles
+    de l'étude quand la conception du devis EST celle du calepinage (empreintes
+    ``layout_hash`` égales), que l'option a son compte de panneaux (à égalité,
+    l'option retenue) ET le même onduleur (désignation, kW, entrées, nombre).
+    Jamais un document « lignes » : il n'a pas de chaînes à remplacer."""
     from apps.calepinage.selectors import (
         calepinage_du_devis, schema_electrique_du_calepinage)
     from apps.ventes.domain.dimensionnement_devis import comptes_panneaux_valides
     from apps.ventes.selectors_calepinage import _conception_a_jour
-    from core.electrique.schema_electrique import SOURCE_CALEPINAGE
+    from core.electrique.schema_electrique import SOURCE_CALEPINAGE, SOURCE_LIGNES_DEVIS
 
     calepinage = calepinage_du_devis(getattr(devis, "pk", None),
                                      getattr(devis, "company", None))
@@ -1593,8 +1664,9 @@ def _chaines_du_calepinage(devis, documents):
         return
     nombre = (plan.get("panneaux") or {}).get("nombre")
     candidates = [_cle_option(v) for v in ("sans", "avec")
-                  if documents.get(_cle_option(v))
-                  and comptes_panneaux_valides(devis, v) == {nombre}]
+                  if (documents.get(_cle_option(v)) or {}).get("source") not in (None, SOURCE_LIGNES_DEVIS)
+                  and comptes_panneaux_valides(devis, v) == {nombre}
+                  and _identite_onduleurs(documents[_cle_option(v)]) == _identite_onduleurs(plan)]
     if not candidates:
         return
     choisie = _cle_option(_option_choisie(devis)[1])
@@ -1603,27 +1675,39 @@ def _chaines_du_calepinage(devis, documents):
                           source=SOURCE_CALEPINAGE)
 
 
-def schema_electrique_du_devis(devis, *, standard=False):
-    """SCHEL-B3 — ``{options: {sans_batterie, avec_batterie}}`` : un document
-    « schéma électrique » par option du devis (``None`` pour une option qu'il
-    n'a pas). Lecture PURE : aucune écriture, aucun statut, aucun montant ;
-    ne lève jamais (une option illisible vaut ``None``)."""
+#: Ce qu'une lecture du calepinage peut lever sans que le schéma tombe : une
+#: donnée absente ou mal formée (la conception du devis fait alors foi).
+_LECTURE_CALEPINAGE_RATEE = (AttributeError, KeyError, LookupError, TypeError, ValueError)
+
+
+def _documents_du_devis(devis, standard, avec_calepinage):
+    """``(documents, origines)`` par clé d'option — voir ``schema_electrique_du_devis``."""
     from core.electrique.schema_electrique import OPTIONS
 
     documents = {cle: None for cle in OPTIONS}
+    origines = {}
     for variante, imposee in _variantes_du_schema(devis):
         try:
-            documents[_cle_option(variante)] = _document_de_l_option(
-                devis, variante, imposee, bool(standard))
+            documents[_cle_option(variante)], origines[_cle_option(variante)] = \
+                _document_de_l_option(devis, variante, imposee, bool(standard))
         except Exception:  # noqa: BLE001 — journalisé, l'option est omise (D-ENF22-BLE001)
             logger.warning("SCHEL-B3 : schéma électrique « %s » indisponible pour %s",
                            variante, getattr(devis, "reference", "?"), exc_info=True)
-    try:
-        _chaines_du_calepinage(devis, documents)
-    except Exception:  # noqa: BLE001 — sans calepinage lisible, l'étude fait foi (D-ENF22-BLE001)
-        logger.warning("SCHEL-B3 : chaînes du calepinage illisibles pour %s",
-                       getattr(devis, "reference", "?"), exc_info=True)
-    return {"options": documents}
+    if avec_calepinage:
+        try:
+            _chaines_du_calepinage(devis, documents)
+        except _LECTURE_CALEPINAGE_RATEE:
+            logger.warning("SCHEL-B3 : chaînes du calepinage illisibles pour %s",
+                           getattr(devis, "reference", "?"), exc_info=True)
+    return documents, origines
+
+
+def schema_electrique_du_devis(devis, *, standard=False, avec_calepinage=True):
+    """SCHEL-B3 — ``{options: {sans_batterie, avec_batterie}}`` : un document
+    « schéma électrique » par option du devis (``None`` pour une option qu'il
+    n'a pas), pour la fiche ERP. Lecture PURE : aucune écriture, aucun statut,
+    aucun montant ; une option illisible vaut ``None``."""
+    return {"options": _documents_du_devis(devis, standard, avec_calepinage)[0]}
 
 
 def rendre_schema_electrique_du_devis(devis, *, langue="fr", largeur_px=None):
@@ -1634,25 +1718,37 @@ def rendre_schema_electrique_du_devis(devis, *, langue="fr", largeur_px=None):
     from core.electrique.schema_electrique import (
         OPTIONS, SOURCE_LIGNES_DEVIS, rendre_schema_electrique_svg)
 
-    variante = next(v for v, imposee in _variantes_du_schema(devis) if not imposee)
+    variante = next((v for v, imposee in _variantes_du_schema(devis) if not imposee), None)
+    if variante is None:
+        return ""
     documents = {cle: None for cle in OPTIONS}
-    documents[_cle_option(variante)] = _document_de_l_option(devis, variante, False, False)
-    try:
-        _chaines_du_calepinage(devis, documents)
-    except Exception:  # noqa: BLE001 — sans calepinage lisible, l'étude fait foi (D-ENF22-BLE001)
-        logger.warning("SCHEL-B4 : chaînes du calepinage illisibles pour %s",
-                       getattr(devis, "reference", "?"), exc_info=True)
+    documents[_cle_option(variante)] = _document_de_l_option(devis, variante, False, False)[0]
     doc = documents[_cle_option(variante)]
     if not doc or doc.get("source") == SOURCE_LIGNES_DEVIS:
-        return ""
-    return rendre_schema_electrique_svg(doc, langue, largeur_px)
+        return ""                    # testé AVANT toute fusion du calepinage
+    try:
+        _chaines_du_calepinage(devis, documents)
+    except _LECTURE_CALEPINAGE_RATEE:
+        logger.warning("SCHEL-B4 : chaînes du calepinage illisibles pour %s",
+                       getattr(devis, "reference", "?"), exc_info=True)
+    return rendre_schema_electrique_svg(documents[_cle_option(variante)], langue, largeur_px)
 
 
 def schema_electrique_public(devis, *, standard, option_totals):
-    """SCHEL-B3 — l'enveloppe de la page client : seules les options que la
-    page PUBLIE (``option_totals`` non nul) gardent leur document ; ``None``
-    quand aucune n'en a (la clé est alors absente de la charge)."""
-    options = schema_electrique_du_devis(devis, standard=standard)["options"]
-    publiees = {cle: (doc if (option_totals or {}).get(cle) else None)
-                for cle, doc in options.items()}
+    """SCHEL-B3 + D1 — l'enveloppe de la page client. Une option n'y porte un
+    document que s'il vient de l'étude RANGÉE, côté réseau calculé, et que la
+    page la PUBLIE (``option_totals`` non nul) ; rien de conçu à la lecture, rien
+    des seules lignes, rien « à calculer », aucun motif. Le calepinage n'est pas
+    relu (D3 : aucune conception par affichage de page). ``None`` quand aucune
+    option n'a de document (la clé est alors absente de la charge)."""
+    from core.electrique.schema_electrique import ETAT_CALCULE, SOURCE_LIGNES_DEVIS
+
+    documents, origines = _documents_du_devis(devis, standard, avec_calepinage=False)
+    publiees = {}
+    for cle, doc in documents.items():
+        sur = bool(doc and origines.get(cle) == _ORIGINE_RANGEE
+                   and doc.get("source") != SOURCE_LIGNES_DEVIS
+                   and (doc.get("cote_reseau") or {}).get("etat") == ETAT_CALCULE
+                   and (option_totals or {}).get(cle))
+        publiees[cle] = dict(doc, cote_reseau={"etat": ETAT_CALCULE, "motif": None}) if sur else None
     return {"options": publiees} if any(publiees.values()) else None
