@@ -52,6 +52,24 @@ describe('AGNR21 — enregistrement partiel', () => {
     expect(vue.ventesApi.createDevisAtomic).not.toHaveBeenCalled()
   }, 60000)
 
+  it('T4-X6-008 — édition : ce que le serveur a ajusté en enregistrant est dit tout de suite', async () => {
+    const message = '« Panneau Canadien Solar 710W » : 9 → 8 (taille déclarée au niveau du devis : 8 panneaux).'
+    const vue = await monter(`/ventes/devis/nouveau?edit=${DEVIS_REGISTRE.id}`, {
+      devis: DEVIS_REGISTRE,
+      avant: ({ ventesApi }) => {
+        ventesApi.replaceLignesDevis.mockResolvedValue({
+          data: { ...DEVIS_REGISTRE, alertes: [{ code: 'enregistrement', message }] },
+        })
+      },
+    })
+    await attendreStable(vue.container, act)
+    await cliquerEnregistrer(/Enregistrer les modifications/)
+    await waitFor(() => expect(vue.ventesApi.replaceLignesDevis).toHaveBeenCalled())
+    const alertes = await screen.findByTestId('ldp-alertes-auto')
+    expect(alertes.textContent).toContain('1 ajustement à l’enregistrement :')
+    expect(alertes.textContent).toContain(message)
+  }, 60000)
+
   it('création : étude refusée ⇒ le nouvel essai édite le devis créé, jamais un second', async () => {
     const vue = await monter(`/ventes/devis/nouveau?lead=${LEAD.id}`, {
       avant: ({ ventesApi }) => {

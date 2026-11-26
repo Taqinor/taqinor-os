@@ -12,7 +12,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -157,3 +157,31 @@ class TestEditionAtomique(TestCase):
         apres = DevisActivity.objects.filter(
             devis=devis, field='correction_apres_envoi').count()
         self.assertEqual(apres - avant, 1)
+
+    def test_t4_x6_008_reponse_dit_les_quantites_ajustees(self):
+        # T4-X6-008 (classe) — une taille de devis (``taille.nb_panneaux`` = 12)
+        # différente de la ligne tapée (10) : l'écrivain réécrit 10 → 12 et la
+        # réponse le DIT dans ``alertes`` (forme du contrat) ; sans surcharge : [].
+        from apps.ventes.domain import overrides as registre
+        devis = self._devis(9, Devis.Statut.BROUILLON)
+        r = self._post(devis, {'lignes': self._lignes()})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['alertes'], [])
+        registre.ecrire_colonne(devis, registre.fusionner(
+            devis, {'taille.nb_panneaux': {'valeur': 12}}, utilisateur=self.user))
+        r = self._post(devis, {'lignes': self._lignes()})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIn({'code': 'enregistrement', 'message': (
+            '« Panneau Canadien Solar 710W » : 10 → 12 (taille déclarée au niveau du devis : 12 panneaux).')},
+            r.data['alertes'])
+        self.assertEqual(set(self.contrat['exemple']['alertes'][0]), {'code', 'message'})
+
+
+class AlertesDEcritureT4X6008(SimpleTestCase):
+    """T4-X6-008 — les avertissements de l'écrivain à la forme ``alertes``."""
+
+    def test_forme_des_alertes(self):
+        from apps.ventes.views.devis_edition import _alertes_d_ecriture
+        self.assertEqual(_alertes_d_ecriture({'avertissements': ['« A » : 1 → 2 (x).', '']}),
+                         [{'code': 'enregistrement', 'message': '« A » : 1 → 2 (x).'}])
+        self.assertEqual(_alertes_d_ecriture(None), [])

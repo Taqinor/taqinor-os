@@ -315,6 +315,15 @@ def _garde_capacite_totaux(devis):
                 'champ': nom})
 
 
+def _alertes_d_ecriture(resultat):
+    """T4-X6-008 (classe) — les avertissements de l'écrivain de lignes
+    (``appliquer`` en mode écrire) à la forme ``alertes`` du devis
+    automatique (``[{code, message}]``, rendue par ``AlertesDevisAuto``) ;
+    ``[]`` quand l'écrivain n'a rien changé ni gardé."""
+    return [{'code': 'enregistrement', 'message': str(a)}
+            for a in ((resultat or {}).get('avertissements') or ()) if a]
+
+
 def _jeton_sous_verrou(devis, request):
     """T4-X4-021 — sous la transaction d'écriture : verrouille la ligne du
     devis (``SELECT … FOR UPDATE``) puis re-juge le jeton QJR545. La garde
@@ -621,7 +630,7 @@ class DevisEditionActionsMixin:
                 # qu'hier : un échec préserve les lignes d'origine.
                 # QJR518 — ``user`` : l'auteur d'une correction après envoi
                 # (chatter + instantané), jamais lu du corps.
-                appliquer(devis, IntentionDevis(
+                ecrit = appliquer(devis, IntentionDevis(
                     origine=ORIGINE_ECRAN, mode=MODE_ECRIRE,
                     company=devis.company, user=request.user,
                     composition=lignes_in,
@@ -701,8 +710,11 @@ class DevisEditionActionsMixin:
         # et la réponse porte celui réellement en base.
         from ..domain.verrou_devis import toucher
         toucher(devis)
-        return Response(DevisSerializer(
-            devis, context={'request': request}).data)
+        # T4-X6-008 (classe) — ce que l'écrivain a changé ou gardé (quantité
+        # réécrite par la taille du devis, sœurs qui suivent, saisie gardée) :
+        # la forme ``alertes`` du devis automatique, rendue par le même composant.
+        return Response(dict(DevisSerializer(devis, context={'request': request}).data,
+                             alertes=_alertes_d_ecriture(ecrit)))
 
     def perform_update(self, serializer):
         # YDOCF2 / QJR516 / QJR521 / ERR8 / QJR539 — les gardes d'une mise à

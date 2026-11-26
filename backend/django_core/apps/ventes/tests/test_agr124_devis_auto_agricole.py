@@ -15,7 +15,7 @@ from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 
 from apps.crm.models import Lead
@@ -580,3 +580,17 @@ class DevisAutoAgricoleTests(TestCase):
                              origine='tunnel')
         self.assertEqual(ctx.exception.field, 'type_installation')
         self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
+
+class RefusPompesSansPrixT4U3021(SimpleTestCase):
+    """T4-U3-021 — le refus nomme les pompes à courbe sans prix ET où les chiffrer."""
+
+    def test_le_refus_dit_ou_chiffrer(self):
+        from apps.ventes.conception.decisions import _message_pompes_sans_prix
+        self.assertEqual(
+            _message_pompes_sans_prix('80', '20', ['OSP 30/8', 'OSP 30/10']),
+            'Aucune pompe chiffrable pour HMT 80 m / débit 20 m³/h — pompes à courbe sans prix : '
+            'OSP 30/8, OSP 30/10. Prix de vente à saisir dans Stock → Catalogue, fiche de chaque pompe.')
+        # Sans pompe nommée, la phrase d'avant.
+        self.assertEqual(_message_pompes_sans_prix('80', '20', []),
+                         'Aucune pompe chiffrable pour HMT 80 m / débit 20 m³/h.')

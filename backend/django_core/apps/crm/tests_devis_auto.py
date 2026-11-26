@@ -251,6 +251,33 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
                           pompe_debit_m3h=Decimal('20'))
         self.assertEqual(champs_manquants(lead), [])
 
+    def test_t4_u3_023_phase_lue_sur_la_plaque_ou_l_electricite_au_forage(self):
+        # Pompe conservée (plaque 7,5 kW, 380 V, triphasée), « Raccordement »
+        # vide : la phase déclarée ailleurs suffit, au devis comme au moteur.
+        from apps.ventes.domain.taille import phase_et_isolement_du_lead
+        phase = 'Phase du site (monophasé ou triphasé)'
+
+        def lead(**kw):
+            return self._lead(raccordement=kw.pop('raccordement', None), pompe_hmt_m=Decimal('60'),
+                              pompe_debit_m3h=Decimal('20'), **kw)
+        plaque = dict(mode_pompe='existante', pompe_actuelle_kw=Decimal('7.5'),
+                      pompe_actuelle_tension_v=380, pompe_actuelle_phases='tri')
+        self.assertEqual(champs_manquants(lead(**plaque)), [])
+        self.assertEqual(phase_et_isolement_du_lead(lead(**plaque)), ('triphase', False))
+        self.assertEqual(champs_manquants(lead(electricite_sur_place='triphase')), [])
+        self.assertEqual(champs_manquants(lead(electricite_sur_place='triphase', **plaque)), [])
+        # Site isolé : la plaque donne la phase, l'isolement reste dit.
+        self.assertEqual(phase_et_isolement_du_lead(lead(raccordement='aucun', **plaque)),
+                         ('triphase', True))
+        # Ambigu (plaque triphasée, électricité monophasée) ou rien de déclaré :
+        # le seul champ « Raccordement » est demandé.
+        self.assertEqual(champs_manquants(lead(electricite_sur_place='monophase', **plaque)), [phase])
+        self.assertEqual(champs_manquants(lead(electricite_sur_place='aucune')), [phase])
+        # La plaque d'une pompe NEUVE ne compte pas ; « Raccordement » déclaré prime.
+        self.assertEqual(champs_manquants(lead(**dict(plaque, mode_pompe='neuve'))), [phase])
+        self.assertEqual(phase_et_isolement_du_lead(lead(raccordement='monophase', **plaque))[0],
+                         'monophase')
+
     def test_hmt_et_besoin_m3j_est_pret(self):
         # AGQ9 (D-AGQ-5, réaligné) — la HMT saisie fait le groupe ; le niveau
         # d'eau seul ne suffit plus.

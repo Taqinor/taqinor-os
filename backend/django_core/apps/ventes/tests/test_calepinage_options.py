@@ -1341,11 +1341,14 @@ class PanExistantPublicTests(SimpleTestCase):
         self.assertNotIn('existant', json.dumps(public))  # aucune mutation
 
 
-def _devis_annexe(layout, statut, regles):
+def _devis_annexe(layout, statut, regles, envoi=None):
     from types import SimpleNamespace
 
-    return SimpleNamespace(pk=None, statut=statut, regles_calcul=regles,
-                           roof_layout=layout)
+    devis = SimpleNamespace(pk=None, statut=statut, regles_calcul=regles,
+                            roof_layout=layout)
+    if envoi is not None:  # D-ACAL-149 — un devis envoyé porte sa date d'envoi
+        devis.date_envoi = envoi
+    return devis
 
 
 class AnnexeEnvoyeeTests(SimpleTestCase):
@@ -1362,15 +1365,25 @@ class AnnexeEnvoyeeTests(SimpleTestCase):
         {'label': 'Toit — face ouest', 'kwc': 5.0, 'azimut_deg': 270, 'inclinaison_deg': 10},
         {'label': 'Sud', 'kwc': 6.0, 'azimut_deg': 180, 'inclinaison_deg': 20}]
 
-    def _annexe(self, layout, statut, regles):
-        return co.parametres_site_publics(_devis_annexe(layout, statut, regles), layout)
+    def _annexe(self, layout, statut, regles, envoi=None):
+        return co.parametres_site_publics(_devis_annexe(layout, statut, regles, envoi), layout)
 
     def test_zone_est_ouest_sans_pans_geometry(self):
+        import datetime
+
+        from apps.ventes.domain.regles_calcul import COUPURE_TOIT_PLAT
+        avant = datetime.datetime(*COUPURE_TOIT_PLAT) - datetime.timedelta(days=1)
         layout = {'zones': [copy.deepcopy(self.ZONE_EO)]}
-        for statut in ('envoye', 'accepte', 'refuse', 'expire', 'brouillon'):
-            annexe = self._annexe(layout, statut, 14)
+        for statut in ('envoye', 'accepte', 'refuse', 'expire'):
+            annexe = self._annexe(layout, statut, 14, envoi=avant)
             self.assertEqual((annexe['orientation_deg'], annexe['inclinaison_deg']),
                              (180.0, 0.0), statut)
+        # D-ACAL-149 — un brouillon aux règles 14 lit le toit plat sans tables
+        # (la lecture d'avant ACAL911 les écarte) : aucune inclinaison n'est
+        # tirée du curseur, elle est omise ; l'orientation reste celle du toit.
+        annexe = self._annexe(layout, 'brouillon', 14)
+        self.assertEqual(annexe['orientation_deg'], 180.0)
+        self.assertNotIn('inclinaison_deg', annexe)
         annexe = self._annexe(layout, 'brouillon', 15)
         self.assertEqual((annexe['orientation_deg'], annexe['inclinaison_deg']), (90.0, 10.0))
 

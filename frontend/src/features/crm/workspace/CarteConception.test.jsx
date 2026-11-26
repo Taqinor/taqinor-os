@@ -90,6 +90,22 @@ describe('ALEA71 — carte « Conception » de la fiche du lead', () => {
       expect(calcul).toContain(v.payback.calcul)
     }
     expect(texte()).toContain(`d'après le devis ${CONCEPTION.payback_devis.devis_ref}`)
+    expect(texte()).not.toContain('Économies (conception du lead)')
+  })
+
+  it('R5F-N1 — économie du devis ≠ économie de la conception : la ligne « Économies » dit qu’elle est celle de la conception', async () => {
+    const ecart = clone(CONCEPTION)
+    ecart.valeurs.sans.economies_annuelles.valeur = 35542
+    ecart.valeurs.sans.payback.economie_annuelle = 17432
+    ventesApi.getConceptionLead.mockResolvedValue({ data: ecart })
+    rendre()
+    await screen.findByTestId('carte-conception')
+    const sans = screen.getByTestId('carte-conception-option-sans').textContent
+    expect(sans).toContain('Économies (conception du lead)')
+    expect(sansEspaces(sans)).toContain(fr(35542))
+    expect(sansEspaces(screen.getByTestId('carte-conception-calcul-sans').textContent)).toContain(fr(17432))
+    // L'autre colonne, sans écart, garde « Économies ».
+    expect(screen.getByTestId('carte-conception-option-avec').textContent).not.toContain('(conception du lead)')
   })
 
   it('dit chaque supposition avec son champ, et l\'historique « Recalculé le … »', async () => {

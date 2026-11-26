@@ -115,10 +115,9 @@ def pente_du_pan(zone):
     des tables vit dans ``geometry.tiltDeg``. Même règle que l'atelier
     (``EtapeToit.jsx`` : ``plat ? 0 : Number(zone.pitchDeg)``). Ailleurs,
     ``nombre(pitchDeg)`` (``None`` si absente). Le document n'est jamais lu
-    pour autre chose ni réécrit.
+    pour autre chose ni réécrit. D-ACAL-149 : la règle vit dans
+    ``core.calepinage.geo.pente_effective_du_pan`` (lue aussi par ``apps.ventes``).
     """
-    if not isinstance(zone, dict):
-        return None
-    if zone.get('roofType') == 'flat':
-        return 0.0
-    return nombre(zone.get('pitchDeg'))
+    from core.calepinage.geo import pente_effective_du_pan
+
+    return pente_effective_du_pan(zone)

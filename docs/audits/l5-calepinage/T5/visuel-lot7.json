@@ -1,0 +1,110 @@
+[
+ {
+  "id": "S1",
+  "ecran": "Page publique /proposition/<jeton confiance>, devis 640 (toit plat, 40 panneaux, aucun obstacle, scene 21 déc 16,25 h)",
+  "etapes": "jeton confiance, payload API, page Astro locale 1440 et 390",
+  "vu": "visionneuse_soleil = {version:1, zones:[], environnement:[], instant_choisi:{jour:355,heure:16.25}} (forme exacte demandée). Page : barre soleil `#roof3d-soleil` hidden, bouton Lire (disabled, 0x0), curseur, Hiver/Été disabled et 0x0. Image du canvas identique pixel pour pixel sur 10 s après clic forcé (0 px différents sur 574 800), idem Hiver/Été et curseur. Scène = dalle grise + panneaux sombres sur fond marine, sans ombres ni teinte. Console 0 erreur 0 avertissement ; réseau : /api/roof-config, proposition-track, proposition-vu.",
+  "verdict": "defaut",
+  "gravite": "S2",
+  "capture": "lot7-visuel-soleil-01..04"
+ },
+ {
+  "id": "S2",
+  "ecran": "Même scénario dans l'ERP : atelier Panneaux + Montrer au client (calepinage 22)",
+  "etapes": "lecture, play réel, comparaison de trames",
+  "vu": "Atelier : play fait défiler 8 h, 11 h, 14 h, 16 h ; 33 000 px sur 112 000 changent (ombres portées des rangées). Montrer au client : 120 000 px sur 336 000 changent à 8 h/12 h/15 h (ciel, sol clair, volume crème, structures, ombres). Public : 0.",
+  "verdict": "defaut",
+  "gravite": "S2",
+  "capture": "lot7-visuel-soleil-05..12"
+ },
+ {
+  "id": "S3",
+  "ecran": "Public, visionneuse complète avec clé carte factice + style de carte neutre simulé dans le navigateur (calepinage 21, obstacle 4 m, solarAccess)",
+  "etapes": "astro dev avec PUBLIC_MAPTILER_KEY factice ; route Playwright pour api.maptiler.com",
+  "vu": "Sans clé : visionneuse simplifiée, barre masquée. Avec clé : visionneuse complète, barre visible (légende dégradé, 20 juin · 12 h (heure solaire), Lever 5 h · coucher 19 h, Hiver/Été) ; play fait avancer l'heure 5-6-7 h mais 0 px de différence dans l'image, aucune teinte sur les panneaux (noirs), obstacle absent du rendu, puis la barre se masque après quelques secondes. Console : TypeError « Cannot read properties of undefined (reading 'areasWindowEl') » (scene3d buildZoneMeshes) et « Worker failed to load » (maplibre, serveur de dev) ; 429 sur /api/proposition-toiture. Serveur de DEV, pas un build : à confirmer.",
+  "verdict": "defaut",
+  "gravite": "S2",
+  "capture": "lot7-visuel-soleil-13..15, 17"
+ },
+ {
+  "id": "R1",
+  "ecran": "Générer le devis depuis un calepinage 35 x 715 W (25,025 kWc), Deye 20 kW",
+  "etapes": "UI puis API",
+  "vu": "Toujours refusé (409 module_substitue) : « Le dessin porte 35 panneaux de 715 W, soit 25,025 kWc ; le catalogue compose 25,020 kWc (Panneau Canadien Solar 715W). Choisissez le module du catalogue dans l'atelier puis relancez. » Deux chiffres désormais différents (3 décimales) mais refus pour un simple arrondi. Avec 34 ou 40 panneaux : généré après dérogation motivée et confirmation de taille. Refus réel par module différent non joué.",
+  "verdict": "defaut",
+  "gravite": "S2",
+  "capture": "lot7-visuel-14-r1-refus.png, lot7-visuel-15-r1-apres-derogation.png"
+ },
+ {
+  "id": "R2",
+  "ecran": "Schéma tablette/téléphone/bureau",
+  "etapes": "820x1180, 1180x820, 390x844, 1440x900",
+  "vu": "820 : carte au-dessus du panneau, boutons zoom dans la carte, tout le haut visible mais bas coupé (ligne de terre et pied du coffret réseau). 1180x820 : dessin entier. 390 : lisible à l'ouverture, dézoom atteint le dessin entier. 1440 : identique.",
+  "verdict": "defaut",
+  "gravite": "S3",
+  "capture": "lot7-visuel-19, 20, 21, 22"
+ },
+ {
+  "id": "R3",
+  "ecran": "Couleurs des chaînes",
+  "etapes": "légende, schéma, PDF, plan",
+  "vu": "Chaîne 1 bleu, 2 orange, 3 vert partout (légende, schéma, PDF). Panneaux du plan toujours blancs à l'étape Électrique. Chaîne 3 avant 1 non rejouée.",
+  "verdict": "defaut",
+  "gravite": "S3",
+  "capture": "lot7-visuel-13, 18, 23, 24"
+ },
+ {
+  "id": "R4",
+  "ecran": "effacer l'affectation manuelle",
+  "etapes": "non joué",
+  "vu": "non joué (temps)",
+  "verdict": "non-joue",
+  "gravite": "S4",
+  "capture": ""
+ },
+ {
+  "id": "R5",
+  "ecran": "PDF du schéma",
+  "etapes": "GET schema-unifilaire.pdf",
+  "vu": "Aucun mot coupé, nom d'onduleur non doublé, 400 V reste avec son 400 ; mais ~25 % de la page vide en bas, et l'étiquette « charge / décharge » déborde de la boîte onduleur.",
+  "verdict": "defaut",
+  "gravite": "S4",
+  "capture": "lot7-visuel-24-schema-pdf-p1.png"
+ },
+ {
+  "id": "R6",
+  "ecran": "Badge Conforme · N point(s) à regarder",
+  "etapes": "code présent, écran non rejoué",
+  "vu": "libellé présent dans ConceptionElectrique.jsx ligne 214 ; non joué",
+  "verdict": "non-joue",
+  "gravite": "S4",
+  "capture": ""
+ },
+ {
+  "id": "N1",
+  "ecran": "Visionneuse soleil client de confiance, calepinage 21",
+  "etapes": "obstacle 4 m, solarAccess enregistré (34 valeurs), devis 642, jeton confiance",
+  "vu": "API confiance : zones 1 (34 valeurs 0,84-0,998), environnement [], instant_choisi null. Standard : clé absente, aucun bouton. Voir S3 pour la page.",
+  "verdict": "defaut",
+  "gravite": "S2",
+  "capture": "lot7-visuel-16, 17, soleil-13"
+ },
+ {
+  "id": "N2",
+  "ecran": "Hybride + batterie sur le schéma",
+  "etapes": "batterie désignée par l'entrée électrique (API)",
+  "vu": "Schéma : Batterie Dyness 10 kWh, 2 unités, 20,48 kWh, 51,2 V, reliée à l'onduleur. L'atelier n'a pas de sélecteur de batterie à l'étape Électrique.",
+  "verdict": "conforme",
+  "gravite": "S4",
+  "capture": "lot7-visuel-18-schema-1440-batterie.png"
+ },
+ {
+  "id": "N3",
+  "ecran": "Schéma des deux options",
+  "etapes": "devis 616, page publique",
+  "vu": "sans_batterie vaut null : la page publique ne montre que l'option avec batterie, sans NaN ni undefined ni « à dimensionner ». Panneau ERP non rejoué.",
+  "verdict": "defaut",
+  "gravite": "S3",
+  "capture": "lot7-visuel-25-public-schema-616.png"
+ }
+]

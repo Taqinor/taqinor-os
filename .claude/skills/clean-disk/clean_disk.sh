@@ -26,6 +26,21 @@ libre() { df -h /c 2>/dev/null | tail -1 | awk '{print $4}'; }
 suppr() {                      # suppr <chemin> — supprime, ou annonce en mode dry
   if [ "$MODE" = dry ]; then dire "   (à blanc) $1"; else rm -rf -- "$1" 2>/dev/null; fi
 }
+casser_jonctions() {           # casser_jonctions <dossier> — retire les jonctions (node_modules partagés
+  # des lanes) SANS suivre leur cible. Mesuré sur le portable (20/09 et 02/11/2026) : `git worktree
+  # remove` et `rm -rf` suppriment À TRAVERS une jonction et vident le vrai node_modules d'une autre
+  # session. `cmd rmdir` sans /s ne retire que le lien. Renvoie 1 s'il en reste une.
+  local j reste=0
+  while IFS= read -r j; do
+    [ -n "$j" ] || continue
+    if [ "$MODE" = dry ]; then dire "   (à blanc) jonction $j"
+    else cmd //c rmdir "$(cygpath -w "$j")" >/dev/null 2>&1; [ -L "$j" ] && reste=1
+    fi
+  done <<EOF_J
+$(find "$1" -maxdepth 3 -type l 2>/dev/null)
+EOF_J
+  return $reste
+}
 age_h() {                      # âge en heures du fichier le plus récent d'un dossier (2 niveaux)
   local m
   m=$(find "$1" -maxdepth 2 -printf '%T@\n' 2>/dev/null | sort -n | tail -1 | cut -d. -f1)
@@ -51,6 +66,7 @@ if [ -n "$COMMUN" ]; then
       nom=$(basename "$e")
       grep -qx "$nom" /tmp/cd_reg.txt && continue
       [ -e "$e/.git" ] && { dire "   laissé (arbre hors registre, à regarder) : $nom"; continue; }
+      casser_jonctions "$e" || { dire "   laissé (jonction non retirée) : $nom"; continue; }
       suppr "$e"; n=$((n+1))
     done
     dire "1a. débris hors registre git : $n"
@@ -72,6 +88,7 @@ if [ -n "$COMMUN" ]; then
           dire "   laissé (travail non enregistré) : $nom"; laisses=$((laisses+1)); continue
         fi
       fi
+      casser_jonctions "$e" || { dire "   laissé (jonction non retirée) : $nom"; laisses=$((laisses+1)); continue; }
       if [ "$MODE" = dry ]; then dire "   (à blanc) arbre d'agent $nom"
       else
         git -C "$RACINE" worktree remove "$e" >/dev/null 2>&1 \
@@ -90,7 +107,9 @@ if [ -n "$COMMUN" ]; then
       grep -qx "$arbre" /tmp/cd_verrou.txt && continue
       m=$(stat -c %Y "$COMMUN/worktrees/$arbre/index" 2>/dev/null || echo "$NOW")
       [ $(( (NOW - m) / 3600 )) -lt "$AGE_NM_H" ] && continue
-      suppr "$nm"; n=$((n+1))
+      if [ -L "$nm" ]; then casser_jonctions "$(dirname "$nm")"   # une jonction : le lien seul, jamais sa cible
+      else suppr "$nm"; fi
+      n=$((n+1))
     done
     dire "2.  node_modules de sessions arrêtées : $n"
     [ "$MODE" = dry ] || git -C "$RACINE" worktree prune 2>/dev/null

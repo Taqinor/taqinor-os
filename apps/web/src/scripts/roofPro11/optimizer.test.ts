@@ -1603,7 +1603,7 @@ describe('Demande croisée — bande au kWc de la carte ; majChiffrage repeint p
   });
 });
 
-// ACAL1526 — la note sous « Panneaux nécessaires » dit la pose DESSINÉE : les emplacements écartés par le seuil
+// ACAL1526 — la note sous « Panneaux à poser » (ERP) dit la pose DESSINÉE : les emplacements écartés par le seuil
 // d'accès solaire (`poseSousSeuil`) sont retirés, jamais « il reste de la place » quand la pose a été rognée.
 describe('ACAL1526 — seuil d’accès : la note dit la pose dessinée', () => {
   /** Un pan plat 10 × 7 avec une cheminée de 1,1 m au milieu ; `seuil` = accès solaire minimal (0..1) ou null. */

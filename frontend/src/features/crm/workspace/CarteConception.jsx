@@ -62,8 +62,14 @@ function Colonne({ option, titre, table, payback, retenue = false }) {
           <Ligne libelle="Production">{formatNumber(production, { decimals: 0 })} kWh/an</Ligne>
         )}
         {m3 != null && <Ligne libelle="Eau pompée">{formatNumber(m3, { maxDecimals: 1 })} m³/jour</Ligne>}
+        {/* R5F-N1 — en C&I, le retour lit l'économie du DEVIS (ses kWh, sa base) : quand elle diffère de
+            celle de la conception, chacune est nommée pour ce qu'elle est (aucun chiffre changé). */}
         {economies != null && (
-          <Ligne libelle="Économies">{formatMAD(economies, { decimals: 0 })}/an</Ligne>
+          <Ligne libelle={payback?.devis_ref && table?.payback?.economie_annuelle != null
+            && Math.round(table.payback.economie_annuelle) !== Math.round(economies)
+            ? 'Économies (conception du lead)' : 'Économies'}>
+            {formatMAD(economies, { decimals: 0 })}/an
+          </Ligne>
         )}
         {table?.payback !== undefined && (
           <Ligne libelle="Retour">

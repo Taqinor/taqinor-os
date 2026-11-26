@@ -16,7 +16,7 @@ vi.mock('sonner', async (importOriginal) => {
 })
 
 vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({
-  default: () => <div data-testid="panneau-devis" />,
+  default: (props) => <div data-testid="panneau-devis" data-kwc={props.targetKwc ?? ''} />,
 }))
 vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => null }))
 
@@ -100,6 +100,28 @@ describe("LW16-wire — onAction('set-field'/'change-stage')", () => {
     await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalled())
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Échec du changement d'étape — réessayez."))
     expect(toast.error).toHaveBeenCalledTimes(1)
+  })
+})
+
+// D-ACAL-154 — le bouton « Devis automatique » du rail lit la taille tapée dans
+// l'onglet Devis (même analyseur que le bouton de l'onglet : devisIntent).
+describe("D-ACAL-154 — onAction('open-devis', 'auto') du rail reprend la taille tapée", () => {
+  it('taille tapée dans l’onglet Devis → le panneau s’ouvre avec cette taille', async () => {
+    crmApi.getLead.mockImplementation((id) => Promise.resolve({
+      data: { id, nom: 'Ali', prenom: 'Ben', stage: 'NEW', is_archived: false, devis_auto: { pret: true, manquants: [] } },
+    }))
+    sessionStorage.setItem('taqinor.lw.contextTab', 'devis')
+    renderEdit()
+    fireEvent.change(await screen.findByTestId('lw-devis-kwc'), { target: { value: '4.2' } })
+    fireEvent.click(screen.getByText('open-devis-auto'))
+    expect((await screen.findByTestId('panneau-devis')).getAttribute('data-kwc')).toBe('4.2')
+    sessionStorage.clear()
+  })
+
+  it('rien tapé → aucune taille (comportement d’avant)', async () => {
+    renderEdit()
+    fireEvent.click(screen.getByText('open-devis-auto'))
+    expect((await screen.findByTestId('panneau-devis')).getAttribute('data-kwc')).toBe('')
   })
 })
 

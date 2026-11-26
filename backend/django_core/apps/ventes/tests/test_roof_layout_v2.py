@@ -299,6 +299,23 @@ class NonRegressionConsommateursVentesTest(SimpleTestCase):
         self.assertEqual(zone['obstacles'][0]['heightM'],
                          self.v2['zones'][0]['obstacles'][0]['lengthM'])
 
+    def test_zone_villa_toit_plat_au_curseur_lu_a_plat(self):
+        """D-ACAL-149 — un toit plat qui porte la valeur du curseur (22) entre
+        dans le moteur villa à pente 0 (rangées anti-ombrage) ; fermé (devis
+        envoyé avant la coupure), la lecture d'avant ; un toit en pente garde
+        sa pente."""
+        from core.calepinage.adaptateurs.villa import politique_villa
+
+        pan = dict(copy.deepcopy(self.v2['zones'][0]), roofType='flat', pitchDeg=22)
+        corrige = _zone_villa_depuis_pan(pan)
+        self.assertEqual(corrige['tilt'], 0.0)
+        self.assertEqual(politique_villa(corrige).code, 'ANTI_OMBRAGE')
+        ferme = _zone_villa_depuis_pan(pan, toit_plat_corrige=False)
+        self.assertEqual(ferme['tilt'], 22.0)
+        self.assertEqual(politique_villa(ferme).code, 'AFFLEURANT')
+        pente = dict(pan, roofType='pitched')
+        self.assertEqual(_zone_villa_depuis_pan(pente)['tilt'], 22.0)
+
     # ── 3. public_views._safe_roof_layout (section publique `#roof3d`) ──────
     def _public(self, layout):
         return _safe_roof_layout(SimpleNamespace(roof_layout=layout))

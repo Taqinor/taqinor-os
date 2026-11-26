@@ -175,6 +175,15 @@ COUPURE_SCHEMA_ELECTRIQUE = (2026, 11, 27)
 #: que :data:`COUPURE_SCHEMA_ELECTRIQUE`, le niveau 15 n'est pas rendu courant ;
 #: un devis envoyé avant garde son étude, son annexe et son bordereau.
 COUPURE_CHAINES_INEGALES = (2026, 11, 27)
+#: T4-V2-010 (lot 8, 26/11/2026, « rien d'imprimé que la fiche ne prouve ») :
+#: la description d'un variateur de pompage n'imprime plus « protection marche
+#: à sec » quand sa fiche technique ne publie pas cette protection
+#: (``var_protection_marche_a_sec`` différent de vrai) — l'écran du devis dit
+#: déjà « la fiche ne dit pas s'il protège la pompe ». Nouveaux rendus
+#: seulement, même mécanique que :data:`COUPURE_SCHEMA_ELECTRIQUE` (le niveau
+#: 15 n'est pas rendu courant) ; date À CONFIRMER avec Reda (jour du
+#: déploiement du lot 8, à déplacer avant de déployer s'il glisse).
+COUPURE_PROTECTION_FICHE = (2026, 11, 27)
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
 REGLES_COURANTES = REGLES_SENSIBILITES_1911
 
@@ -250,6 +259,15 @@ def chaines_inegales_ouvertes(devis) -> bool:
                                        COUPURE_CHAINES_INEGALES)
 
 
+def protection_fiche_ouverte(devis) -> bool:
+    """T4-V2-010 — la description d'un variateur ne dit « protection marche à
+    sec » que si sa fiche la publie, pour ce devis ? Voir
+    :data:`COUPURE_PROTECTION_FICHE`. Pas de drapeau de rendu : la description
+    retirée change elle-même l'empreinte des données des seuls devis ouverts."""
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111,
+                                       COUPURE_PROTECTION_FICHE)
+
+
 def drapeaux_schema_electrique(devis) -> dict:
     """SCHEL-B4 — drapeau de RENDU du cas OUVERT : ``{'schema_electrique_annexe':
     True}`` quand l'annexe dessine le schéma électrique, ``{}`` sinon. Posé
@@ -304,3 +322,20 @@ def calcul_corrige(devis) -> bool:
     explicitement marquées 1 en base gardent l'ancien calcul.
     """
     return regles_au_moins(devis, REGLES_CORRIGEES)
+
+
+#: D-ACAL-149 (fondateur 26/11/2026, « nouveaux rendus seulement ») : sur un
+#: toit PLAT, ``zones[].pitchDeg`` n'est que la valeur mémorisée du curseur
+#: (22° par défaut) ; la pente lue est 0 (``core.calepinage.geo.
+#: pente_effective_du_pan``). Même mécanique que
+#: :data:`COUPURE_CHAINES_INEGALES` (prédicat seul, aucun drapeau de rendu) ;
+#: le niveau 15 n'est pas rendu courant. Date À POSER par l'orchestrateur (le
+#: lendemain du déploiement) : un devis envoyé avant garde ce qu'il a reçu.
+COUPURE_TOIT_PLAT = (2026, 11, 28)
+
+
+def toit_plat_ouvert(devis) -> bool:
+    """D-ACAL-149 — ce devis lit-il la pente d'un toit plat comme 0 (et non la
+    valeur du curseur) ? Voir :data:`COUPURE_TOIT_PLAT`."""
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111,
+                                       COUPURE_TOIT_PLAT)
