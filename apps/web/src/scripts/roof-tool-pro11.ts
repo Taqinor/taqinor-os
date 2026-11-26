@@ -233,7 +233,7 @@ import {
 } from './roofPro11/optimizer';
 import { creerCoucheElectrique } from './roofPro11/electrique3d';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
-import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
+import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, selectionSansChangement, referenceContourRing, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
 import { deplacerEpingleALaMain, latitudeDuCalcul, localiserSiTraceVisible, oublierEpingleDeplacee } from './roofPro11/provenanceEpingle'; // ACAL593 — sorti de prefill.ts ; T4-U4-013, T4-X2-005
 import { masquerMarqueur, retirerMarqueur } from './roofPro11/epingleClient'; // ACAL972
 import { createReperesUi } from './roofPro11/reperesChantier'; // ACAL593
@@ -2694,9 +2694,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (id === activeAreaId) return;
     const target = areas.find((a) => a.id === id);
     if (!target) return;
-    capturerGeometrieActive(); // ACAL28
-    snapshotActiveAreaGeometry();
-    snapshotActiveAreaResult();
+    const actif = activeArea();
+    const geoVive = actif && closed && vertices.length >= 3 ? geometrieZoneActive(ctx, activeSolarAccessMeta() ?? undefined) : null;
+    if (!(actif && selectionSansChangement(actif, { vertices, obstacles, roofType, pitchDeg, facingAzimuthDeg, facingManual, neededPanels, neededAuto }, geoVive))) { // ACAL1916 — « Voir » ne réécrit pas un pan intact
+      capturerGeometrieActive(); // ACAL28
+      snapshotActiveAreaGeometry();
+      snapshotActiveAreaResult();
+    }
     activeAreaId = id;
     loadArea(target);
   }

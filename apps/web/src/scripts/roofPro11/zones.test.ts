@@ -40,7 +40,7 @@ import {
   ajoutDePanEnCours, monterToitGriseSousTrace, toitExistantGeoJSON, // ACAL1329
   type ExclusionZone,
 } from './zones';
-import { deserializeLayout, hydrateFromDevis, serializeLayout, type SerializedLayout } from './prefill'; // ACAL64, ACAL1415
+import { deserializeLayout, hydrateFromDevis, serializeLayout, selectionSansChangement, type SerializedLayout } from './prefill'; // ACAL64, ACAL1415, ACAL1916
 import { MENTION_MODULE_DE_DEPART, affectationDesPans } from './moduleSelect'; // ACAL1415
 import { panAuModuleChoisi, remplacerParPanVierge, reprendreModuleChoisi } from './repriseModule'; // ACAL1416
 import { type Ctx } from './context'; // ACAL64
@@ -1498,5 +1498,31 @@ describe('T4-X2-010 — un pan non actif rouvert garde sa pose : document, table
       // Le plan posé ne change pas le document : le pan non actif est réémis tel qu'enregistré.
       expect(serializeLayout(ctx).zones[0].geometry).toEqual(doc.zones[0].geometry);
     } finally { g.document = avant; }
+  });
+});
+
+describe('ACAL1916 — choisir un pan ne marque pas le document modifié', () => {
+  const pan = () => ({
+    id: 'area-1', vertices: [A, B, [-7.5990, 33.5]] as LngLat[], obstacles: [], roofType: 'flat', pitchDeg: 0,
+    facingAzimuthDeg: 180, facingManual: false, neededPanels: 4, neededAuto: true,
+    geometrieEnregistree: { count: 4, panels: [{ cx: 1, cy: 2 }] },
+  });
+  const vif = (a: ReturnType<typeof pan>) => ({
+    vertices: [...a.vertices], obstacles: [...a.obstacles], roofType: a.roofType, pitchDeg: a.pitchDeg,
+    facingAzimuthDeg: a.facingAzimuthDeg, facingManual: a.facingManual, neededPanels: a.neededPanels, neededAuto: a.neededAuto,
+  });
+  it('rien n’a bougé depuis le chargement ⇒ la sélection ne réécrit rien', () => {
+    const a = pan();
+    expect(selectionSansChangement(a as never, vif(a), { count: 4, panels: [{ cx: 1, cy: 2 }] } as never)).toBe(true);
+  });
+  it('un panneau déplacé, une pente ou un nombre changés ⇒ la sélection capture (modifié)', () => {
+    const a = pan();
+    expect(selectionSansChangement(a as never, vif(a), { count: 4, panels: [{ cx: 9, cy: 2 }] } as never)).toBe(false);
+    expect(selectionSansChangement(a as never, { ...vif(a), pitchDeg: 22 }, a.geometrieEnregistree as never)).toBe(false);
+    expect(selectionSansChangement(a as never, { ...vif(a), neededPanels: 5 }, a.geometrieEnregistree as never)).toBe(false);
+  });
+  it('un pan sans pose enregistrée n’est jamais « inchangé »', () => {
+    const a = { ...pan(), geometrieEnregistree: undefined };
+    expect(selectionSansChangement(a as never, vif(a as never), null)).toBe(false);
   });
 });
