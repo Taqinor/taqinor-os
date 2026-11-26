@@ -65,6 +65,18 @@ export function AvisEchec3D({ onReessayer }) {
   )
 }
 
+/** ACAL1353 — le moteur du toit (chargé à part) n'a pas pu se charger : les panneaux ne sont pas dessinés et la production
+ *  n'est pas montrée. Dit en mots simples ; « Réessayer » RECHARGE LA PAGE (un nouvel `import()` peut retomber sur l'échec
+ *  gardé en cache par le navigateur). */
+export function AvisMoteurEchec() {
+  return (
+    <p className="cal-client-repli-retard" role="status" data-testid="cal-client-moteur-echec">
+      {'Les panneaux n’ont pas pu s’afficher. '}
+      <button type="button" className="cal-client-repli-reessayer" onClick={() => window.location.reload()}>Réessayer</button>
+    </p>
+  )
+}
+
 /** J1 — pendant le démarrage de la 3D : dit AU CLIENT, en mots simples (aucun « atelier »). */
 export function PastilleAttente() {
   return (

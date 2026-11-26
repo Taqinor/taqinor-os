@@ -1081,6 +1081,7 @@ retiré plus un hook ajouté.
 | `cal-signal` | liste : pastille « N point à régler » d’une carte (suffixe = identifiant du calepinage). |
 | `cal-releve` | écran « Relevé de visite » au téléphone (`/calepinage/:id/releve`). |
 | `cal-vue-client` | écran « Montrer au client » (`/calepinage/:id/client`). |
+| `cal-client-moteur-echec` | « Montrer au client » : le moteur du toit n’a pas pu se charger (panneaux non dessinés) — « Réessayer » recharge la page (ACAL1353). |
 
 ## AlertesEnregistrement — déplacées de `ToitureDesign.jsx` (`atelier/AlertesEnregistrement.jsx`)
 

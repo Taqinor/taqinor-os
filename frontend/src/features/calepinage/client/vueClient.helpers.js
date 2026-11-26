@@ -186,14 +186,14 @@ function useRelectures(lectures) {
     enregistré, contexte, résultat publié. `contexte` déjà chargé par l'atelier : aucune seconde lecture ;
     `lireContexte: false` (l'atelier démarre et le lira) : le contexte n'est pas lu ici.
     J1 — tenues par la vue client HORS de l'atelier : les tuiles ne dépendent pas du démarrage de la 3D. */
-export function useDonneesClient(id, { contexte: contexteServi = null, lireContexte = true } = {}) {
+export function useDonneesClient(id, { contexte: contexteServi = null, lireContexte = true, chargerMoteur: charger = chargerMoteur } = {}) {
   const lu = useLectureServie('document', id)
   const lectureContexte = useLectureServie('contexte', id, { servi: contexteServi, actif: lireContexte })
   const lectureResultat = useLectureServie('resultat', id)
   const contexte = lectureContexte.donnees
   const resultat = lectureResultat.donnees
   const relireLectures = useRelectures([lu, lectureResultat, lectureContexte])
-  const { moteur, echec: moteurEchec, reessayer: relireMoteur } = useMoteurToit() // ACAL1353
+  const { moteur, echec: moteurEchec, reessayer: relireMoteur } = useMoteurToit(charger) // ACAL1353
   const reessayer = useCallback(() => { relireLectures(); relireMoteur() }, [relireLectures, relireMoteur])
   const donnees = lu.donnees
   const ok = lu.etat === 'ok' && donnees !== null && typeof donnees === 'object'
@@ -203,7 +203,7 @@ export function useDonneesClient(id, { contexte: contexteServi = null, lireConte
   return {
     doc,
     plan: ok ? planDessus(document, moteur) : null,
-    moteurEchec, // ACAL1353 — le moteur n'a pas pu se charger : plan 2D des pans seul, « Réessayer » le relance
+    moteurEchec, // ACAL1353 — le moteur n'a pas pu se charger : plan 2D des pans seul ; l'écran le dit (`AvisMoteurEchec`)
     // ACAL2023 — la conception courante servie (bloc `chiffrage` du design-context) : la vue ne calcule rien.
     tuiles: ok ? tuilesClient(document, resultat, contexte?.chiffrage ?? null, moteur) : [],
     // Le nom servi du projet ; sinon le client du devis lié (servi) ; sinon le nom que l'atelier donne lui-même

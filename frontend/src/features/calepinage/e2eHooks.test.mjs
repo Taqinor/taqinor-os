@@ -937,6 +937,7 @@ export const ALL_HOOKS = [
   'cal-signal',
   'cal-releve',
   'cal-vue-client',
+  'cal-client-moteur-echec',
   // ── Lot 6 (hooks lus par les tests d'écran) ──
   'cal-horizon-enregistrer-rangee',
   'cal-terrain-contour-trace',

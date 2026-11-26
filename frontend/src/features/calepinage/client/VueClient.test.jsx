@@ -674,6 +674,71 @@ describe('ACAL1838 — le grand écran sur sa maquette v2', () => {
 })
 
 describe('ACAL1353 — la vue client n’importe plus le moteur du toit statiquement', () => {
+  it('échec du chargement : le hook dit l’échec (plan 2D des pans seul), « Réessayer » relance et le moteur arrive', async () => {
+    const { useMoteurToit, planDessus } = await import('./vueClient.helpers')
+    const { renderHook } = await import('@testing-library/react')
+    const moteurSimule = { modulesDuDocument: () => [], memeTaille: () => true }
+    const charger = vi.fn().mockRejectedValueOnce(new Error('chunk perdu')).mockResolvedValue(moteurSimule)
+    const { result } = renderHook(() => useMoteurToit(charger))
+    await waitFor(() => expect(result.current.echec).toBe(true))
+    expect(result.current.moteur).toBeNull()
+    expect(planDessus({ zones: [ZONE] }, result.current.moteur).sansModules).toBe(true)
+    act(() => result.current.reessayer())
+    await waitFor(() => expect(result.current.moteur).toBe(moteurSimule))
+    expect(result.current.echec).toBe(false)
+    expect(charger).toHaveBeenCalledTimes(2)
+  })
+
+  /** `window.location.reload` simulé le temps du test (jsdom ne le rend pas espionnable). */
+  const simulerRechargement = () => {
+    const origine = window.location
+    const reload = vi.fn()
+    Object.defineProperty(window, 'location', { configurable: true, value: { ...origine, reload } })
+    onTestFinished(() => Object.defineProperty(window, 'location', { configurable: true, value: origine }))
+    return reload
+  }
+  const moteurPerdu = () => Promise.reject(new Error('chunk roof-tool perdu'))
+
+  it('échec du moteur, téléphone SANS WebGL : l’écran le dit et « Réessayer » recharge la page', async () => {
+    const reload = simulerRechargement()
+    rendre({ webgl: false, chargerMoteur: moteurPerdu })
+    const avis = await screen.findByTestId('cal-client-moteur-echec')
+    expect(avis).toHaveTextContent('Les panneaux n’ont pas pu s’afficher.')
+    expect(screen.getByTestId('client-voir-3d')).toHaveTextContent('Vue de dessus')
+    fireEvent.click(within(avis).getByRole('button', { name: 'Réessayer' }))
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('échec du moteur, vue 3D (présentation) : le même avis, « Réessayer » recharge la page', async () => {
+    reinitialiserBoot({ appliquerVue: vi.fn() })
+    rendre({ webgl: true, chargerMoteur: moteurPerdu })
+    await screen.findByTestId('client-soleil', {}, ATTENTE_ATELIER)
+    const reload = simulerRechargement() // après le démarrage : l'atelier lit window.location
+    const avis = await screen.findByTestId('cal-client-moteur-echec', {}, ATTENTE_ATELIER)
+    expect(avis.closest('[data-testid="cal-vue-client"]')).not.toBeNull()
+    fireEvent.click(within(avis).getByRole('button', { name: 'Réessayer' }))
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('moteur chargé : aucun avis d’échec', async () => {
+    rendre({ webgl: false, chargerMoteur: () => Promise.resolve({ modulesDuDocument: () => [], memeTaille: () => true }) })
+    await screen.findByTestId('client-voir-3d')
+    await act(async () => {})
+    expect(screen.queryByTestId('cal-client-moteur-echec')).toBeNull()
+  })
+
+  it('sans moteur : le plan 2D des pans seul (aucun module deviné) et des tuiles sans production ni part', async () => {
+    const { planDessus, tuilesClient } = await import('./vueClient.helpers')
+    const document = { zones: [ZONE] }
+    const plan = planDessus(document)
+    expect(plan.pans).toHaveLength(1)
+    expect(plan.modules).toEqual([])
+    expect(plan.sansModules).toBe(true)
+    expect(tuilesClient(document, RESULTAT, CHIFFRAGE).map((t) => t.cle)).toEqual(['panneaux', 'kwc'])
+  })
+
+  // DERNIER TEST DU FICHIER, à garder dernier : `vi.resetModules()` vide le registre des modules — un test d'atelier joué après
+  // chargerait un ToitureDesign NEUF, que le harnais (`reinitialiserBoot`, instance d'avant) ne pilote plus.
   it('le graphe de la vue client n’évalue pas le moteur du toit tant qu’on ne le demande pas ; chargerMoteur() l’évalue une fois', async () => {
     // Un graphe neuf, où chaque ÉVALUATION des deux modules du moteur du toit est comptée (le vrai module est rendu tel quel).
     vi.resetModules()
@@ -690,30 +755,5 @@ describe('ACAL1353 — la vue client n’importe plus le moteur du toit statique
     expect(typeof moteur.memeTaille).toBe('function')
     await chargerMoteur() // mis en cache : aucune seconde évaluation
     expect(evaluationsMoteur).toEqual({ geo: 1, taille: 1 })
-  })
-
-  it('échec du chargement : le hook dit l’échec (plan 2D des pans seul), « Réessayer » relance et le moteur arrive', async () => {
-    const { useMoteurToit, planDessus } = await import('./vueClient.helpers')
-    const { renderHook } = await import('@testing-library/react')
-    const moteurSimule = { modulesDuDocument: () => [], memeTaille: () => true }
-    const charger = vi.fn().mockRejectedValueOnce(new Error('chunk perdu')).mockResolvedValue(moteurSimule)
-    const { result } = renderHook(() => useMoteurToit(charger))
-    await waitFor(() => expect(result.current.echec).toBe(true))
-    expect(result.current.moteur).toBeNull()
-    expect(planDessus({ zones: [ZONE] }, result.current.moteur).sansModules).toBe(true)
-    act(() => result.current.reessayer())
-    await waitFor(() => expect(result.current.moteur).toBe(moteurSimule))
-    expect(result.current.echec).toBe(false)
-    expect(charger).toHaveBeenCalledTimes(2)
-  })
-
-  it('sans moteur : le plan 2D des pans seul (aucun module deviné) et des tuiles sans production ni part', async () => {
-    const { planDessus, tuilesClient } = await import('./vueClient.helpers')
-    const document = { zones: [ZONE] }
-    const plan = planDessus(document)
-    expect(plan.pans).toHaveLength(1)
-    expect(plan.modules).toEqual([])
-    expect(plan.sansModules).toBe(true)
-    expect(tuilesClient(document, RESULTAT, CHIFFRAGE).map((t) => t.cle)).toEqual(['panneaux', 'kwc'])
   })
 })
