@@ -151,7 +151,8 @@ test('ACAL1800 : chaque jeton dont la valeur change en sombre est redéfini sous
    Sans Arabic », NTI18N7) ; les titres de la coque, du téléphone et de la vue client la lisent. Mutant : Noto en tête. */
 test('ACAL1941 : le jeton de police des titres commence par Archivo ; coque, téléphone et vue client le lisent', () => {
   const pile = blocDe(RACINES)?.['--cal-police-titre'] ?? ''
-  assert.match(pile, /^'Archivo'/, `--cal-police-titre : ${pile}`)
+  // `pile` est la VALEUR du jeton lue par l'analyseur de feuille (blocDe), pas un motif sur le texte du source
+  assert.ok(pile.startsWith("'Archivo'"), `--cal-police-titre : ${pile}`)
   assert.ok(pile.includes("'Noto Sans Arabic'"), 'l’arabe reste servi par Noto, en repli')
   const feuille = (f) => regles(readFileSync(new URL(`../../styles/calepinage/${f}`, import.meta.url), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, ''))
