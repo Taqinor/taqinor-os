@@ -2000,7 +2000,7 @@ export default function DevisGenerator({
           kwp={kwp} panneauxLignes={panneauxLignes} produits={produits}
           structureProduitId={structureProduitId} structureType={structureType}
           sizingInfo={sizingInfo} modeInstallation={modeInstallation} showSans={showSans}
-          deuxValeursDim={deuxValeursDim} showAvec={showAvec}
+          deuxValeursDim={deuxValeursDim} showAvec={showAvec} nbSaisiPourLesDeux={toucheNbPanneauxPourComposition(sizing)}
           sizingServeurMessage={sizingServeurMessage} dayUsage={dayUsage}
           errors={errors} pompageManquants={pompageManquants} autoFillLoading={autoFillLoading}
           marcheCi={marcheCi} fHiver={fHiver}

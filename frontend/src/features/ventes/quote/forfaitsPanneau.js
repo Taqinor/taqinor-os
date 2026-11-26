@@ -202,6 +202,17 @@ export function phraseReductionOptionAvec(avant, apres, produits, nbSaisi) {
     : null
 }
 
+/** R5A-N2 — la même règle, DITE AVANT le geste : tant qu'un compte est saisi (`nbSaisi`), « Auto-remplir » compose l'option avec
+    batterie au compte du champ, pas à celui que le moteur conseille. `conseilAvec` = `deuxValeursDim.avec.nbPanneaux`, `nbChamp` =
+    le champ panneaux. `null` quand les deux comptes coïncident ou qu'aucun compte n'est saisi (le conseil est alors appliqué). */
+export function phraseAvantAutoRemplirAvec(nbSaisi, conseilAvec, nbChamp) {
+  const conseil = Number(conseilAvec)
+  const champ = parseInt(nbChamp, 10)
+  return nbSaisi && conseil > 0 && champ > 0 && champ !== conseil
+    ? `« Auto-remplir » posera l'option avec batterie à ${champ} panneaux, pas aux ${conseil} conseillés : le nombre de panneaux saisi vaut pour les deux options (« Recalculer le dimensionnement » reprend le conseil).`
+    : null
+}
+
 /** Prix des forfaits au panneau PUIS quantités structure / socle : UN seul passage, le même tableau quand rien ne change
     (appelé pendant le rendu du générateur, sans boucle). */
 export const ajusterAuxPanneauxEcran = (lines, produits) => suivreQuantitesPanneauxEcran(retarifierForfaitsEcran(lines, produits), produits)

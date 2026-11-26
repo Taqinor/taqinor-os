@@ -217,6 +217,17 @@ describe('T4-V2-018 — CarteParametresTechniques : conseil du moteur et taille 
     expect(document.querySelector('.gen-kwp').textContent).toBe('2,20 kWp')
   })
 
+  it('R5A-N2 — compte saisi (6) ≠ conseil avec batterie (10) : l écran dit AVANT le geste ce qu Auto-remplir posera', () => {
+    rendreCarte({ panelW: '550', nbPanneaux: '6', showAvec: true, deuxValeursDim: DIM, nbSaisiPourLesDeux: true })
+    expect(screen.getByTestId('auto-remplir-avec-prevenu').textContent)
+      .toMatch(/posera l'option avec batterie à 6 panneaux, pas aux 10 conseillés/)
+  })
+
+  it('R5A-N2 — rien de saisi, ou un seul compte : aucune phrase', () => {
+    rendreCarte({ panelW: '550', nbPanneaux: '6', showAvec: true, deuxValeursDim: DIM })
+    expect(screen.queryByTestId('auto-remplir-avec-prevenu')).toBeNull()
+  })
+
   it('les lignes suivent le conseil : aucun écart affiché', () => {
     carte([ligne('Panneau mono 550W', 6), ligne('Panneau mono 550W', 4, { variante: 'avec' })])
     expect(screen.queryByTestId('dimensionnement-ecart-sans')).toBeNull()

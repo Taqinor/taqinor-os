@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import {
   prixForfaitHt, porteBaremeParPanneau, comptesPanneauxEcran, retarifierForfaitsEcran, suivreQuantitesPanneauxEcran, reductionOptionAvec,
   phraseReductionOptionAvec,
+  phraseAvantAutoRemplirAvec,
 } from './forfaitsPanneau.js'
 import { lignesEcranVersPayload } from './lignesEcran.js'
 import { ETAT_INITIAL, sizingReducer, toucheNbPanneauxPourComposition } from './sizingReducer.js'
@@ -220,4 +221,14 @@ test('R5A-N2 (revue) — « le nombre de panneaux saisi » n est la raison QUE s
   // Rien de tapé : `resolveKwcAvec` a rendu la taille sans batterie (moteur sans `recommandation_avec`, ou la sienne plus petite).
   assert.equal(toucheNbPanneauxPourComposition(ETAT_INITIAL), false)
   assert.equal(phraseReductionOptionAvec(avant, apres, [PAN], toucheNbPanneauxPourComposition(ETAT_INITIAL)), null)
+})
+
+test('R5A-N2 — la phrase d AVANT le geste : 8 conseillés, 6 saisis ⇒ dite ; rien de saisi, mêmes comptes, ou pas de conseil ⇒ null', () => {
+  const saisi = sizingReducer(ETAT_INITIAL, { type: 'SAISI', champ: 'nbPanneaux', valeur: '6' })
+  const nbSaisi = toucheNbPanneauxPourComposition(saisi)
+  assert.match(phraseAvantAutoRemplirAvec(nbSaisi, 8, '6'), /posera l'option avec batterie à 6 panneaux, pas aux 8 conseillés/)
+  assert.equal(phraseAvantAutoRemplirAvec(toucheNbPanneauxPourComposition(ETAT_INITIAL), 8, '6'), null, 'rien de saisi : le conseil est appliqué')
+  assert.equal(phraseAvantAutoRemplirAvec(nbSaisi, 6, '6'), null)
+  assert.equal(phraseAvantAutoRemplirAvec(nbSaisi, undefined, '6'), null)
+  assert.equal(phraseAvantAutoRemplirAvec(nbSaisi, 8, ''), null)
 })
