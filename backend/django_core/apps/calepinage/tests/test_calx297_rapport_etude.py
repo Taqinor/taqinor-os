@@ -646,6 +646,50 @@ class PagesDixOnzeTest(unittest.TestCase):
         self.assertIn('overflow-wrap:anywhere', CSS_SECTION)
 
 
+class ProvenanceDesPostesTest(unittest.TestCase):
+    """ACAL1656 — pp. 7-9 et 19 : chaque poste dit sa provenance réelle, aucun
+    chemin de code ni nom de tâche."""
+
+    def _html(self, pertes):
+        from apps.calepinage.services.rapport.pertes import html_de_section
+
+        etapes = [
+            {'etape': 'lid', 'libelle': 'LID', 'kwh_avant': 100.0, 'kwh_apres': 98.0,
+             'perte_pct': 2.0, 'motif_omission': '', 'source': 'saisie'},
+            {'etape': 'iam', 'libelle': 'IAM', 'kwh_avant': 98.0, 'kwh_apres': 97.0,
+             'perte_pct': 1.0, 'motif_omission': '', 'source': 'texte',
+             'reference': 'core.calepinage.soleil (CALX146)'}]
+        return html_de_section({'resultat': {'cascade': {'etapes': etapes, 'total_pct': 3.0},
+                                             'pertes': pertes},
+                                'langue': 'fr', 'section': {'motif_si_absent': 'x'}})
+
+    def ligne(self, html, etape):
+        return re.search(r'<tr[^>]*data-etape="%s">.*?</tr>' % etape, html).group(0)
+
+    def test_poste_du_calepinage_dit_saisie_du_calepinage(self):
+        html = self._html([{'poste': 'lid', 'pct': 2.0, 'source': 'saisie'}])
+        self.assertIn('saisie du calepinage', self.ligne(html, 'lid'))
+        self.assertNotIn('saisie société', self.ligne(html, 'lid'))
+        # Sans poste saisi en face : le glossaire de la note (inchangé).
+        self.assertIn('saisie société', self.ligne(self._html([]), 'lid'))
+
+    def test_source_texte_et_reference_sans_code(self):
+        iam = self.ligne(self._html([]), 'iam')
+        self.assertIn('page publiée', iam)
+        self.assertIn('position du soleil', iam)
+        self.assertNotIn('CALX146', iam)
+        self.assertNotIn('core.calepinage', iam)
+
+    def test_donnee_manquante_en_intitule(self):
+        from apps.calepinage.services.rapport import _motif_html
+
+        html = _motif_html({'motif_si_absent': 'Absent.',
+                            'manque': ['electrique.chainage', 'production.total.p50_kwh']}, 'fr')
+        self.assertIn('câblage des chaînes', html)
+        self.assertIn('production annuelle P50 (kWh)', html)
+        self.assertNotIn('electrique.chainage', html)
+
+
 class RenduPartageTest(unittest.TestCase):
     OPTIONS = dict(resultat=None, site=SITE, identite=IDENTITE, styles=STYLES)
 

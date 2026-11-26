@@ -65,7 +65,7 @@ from . import (
     sections_declarees,
 )
 from ..note_calcul import LIBELLE_SOURCE
-from .champs_lisibles import motif_lisible
+from .champs_lisibles import SOURCES_LISIBLES, motif_lisible
 
 __all__ = ['CSS_SECTION', 'SOURCE_NON_RENSEIGNEE', 'html_de_section']
 
@@ -101,7 +101,8 @@ def _source_lisible(code):
     code = str(code or '').strip()
     if not code:
         return None
-    return LIBELLE_SOURCE.get(code.lower(), code)
+    # ACAL1656 — la MÊME table que l'écran et la section des pertes.
+    return SOURCES_LISIBLES.get(code.lower()) or LIBELLE_SOURCE.get(code.lower(), code)
 
 
 def _postes_employes(resultat):

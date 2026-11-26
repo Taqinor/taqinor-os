@@ -98,6 +98,21 @@ INTITULES_CHEMINS = {
                          'lié, puis relancez la simulation'),
     'hors_reseau': 'hors réseau',
     'electrique.chainage': 'câblage des chaînes',
+    # ACAL1656 — les données exigées des sections du rapport (« Donnée
+    # manquante : … » ne cite plus jamais leur chemin).
+    'pose.kwc': 'puissance crête posée (kWc)',
+    'pose.total_modules': 'nombre de modules posés',
+    'pose.pans': 'pans posés',
+    'production.total.p50_kwh': 'production annuelle P50 (kWh)',
+    'production.base': "base d'irradiance de la production",
+    'production.mensuel': 'production mois par mois',
+    'consommation.total_kwh': 'consommation annuelle (kWh)',
+    'hors_reseau.defaillance_kwh': 'énergie non servie hors réseau (kWh)',
+    'hors_reseau.par_mois': 'bilan hors réseau mois par mois',
+    'autoconsommation': 'autoconsommation',
+    'ombrage.par_pan': 'ombrage pan par pan',
+    'electrique.verdicts': 'verdicts électriques',
+    'hash_entree': 'empreinte des entrées du calcul',
     'roof_layout.pin': 'point GPS du site',
     # ACAL1323 — chemins encore servis bruts à l'écran (Économie, Production).
     'remplacements': 'remplacements de matériel prévus',
