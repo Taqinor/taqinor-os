@@ -1107,9 +1107,9 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     document.head.appendChild(brut)
     const regles = [...brut.sheet.cssRules]
     const style = document.createElement('style')
-    style.textContent = regles.filter((r) => r.type !== 4).map((r) => r.cssText)
-      .concat(regles.filter((r) => r.type === 4 && /max-width: 1300px/.test(r.conditionText))
-        .flatMap((m) => [...m.cssRules].map((r) => r.cssText))).join(' ')
+    // L'ORDRE DE LA FEUILLE est gardé : le bloc ≤ 1300 px posé avant les règles de base était battu par elles (rejeu R5D).
+    style.textContent = regles.flatMap((r) => (r.type !== 4 ? [r.cssText]
+      : /max-width: 1300px/.test(r.conditionText) ? [...r.cssRules].map((x) => x.cssText) : [])).join(' ')
     brut.remove()
     document.head.appendChild(style)
     try {
@@ -1123,6 +1123,39 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     } finally {
       style.remove()
     }
+  })
+
+  it('D-ACAL-106 — la note de la colonne ne promet ni devis ni prix à qui n\'a pas `calepinage_gerer`', async () => {
+    const { Provider } = await import('react-redux')
+    const { configureStore } = await import('@reduxjs/toolkit')
+    const boutique = (permissions) => configureStore({ reducer: { auth: (s = { role: 'technicien', permissions }) => s } })
+    servir()
+    render(
+      <Provider store={boutique(['calepinage_voir'])}>
+        <MemoryRouter><EtapeDocuments calepinageId={1} actionDevis={null} /></MemoryRouter>
+      </Provider>,
+    )
+    const note = await screen.findByTestId('cal-docs-info-devis')
+    expect(note).toHaveTextContent('Le devis remis au client ne se fait pas ici.')
+    expect(note.textContent).not.toMatch(/prix|Générer le devis/)
+  })
+
+  it('D-ACAL-106 — le pied « Générer le devis » de l\'étape : absent pour le Technicien, présent avec calepinage_gerer', async () => {
+    const { Provider } = await import('react-redux')
+    const { configureStore } = await import('@reduxjs/toolkit')
+    const boutique = (permissions) => configureStore({ reducer: { auth: (s = { role: 'technicien', permissions }) => s } })
+    servir()
+    const monterAvec = (permissions) => render(
+      <Provider store={boutique(permissions)}>
+        <MemoryRouter><EtapeDocuments calepinageId={1} actionDevis={<button type="button">Générer le devis</button>} /></MemoryRouter>
+      </Provider>,
+    )
+    const { unmount } = monterAvec(['calepinage_voir', 'calepinage_releve'])
+    await screen.findByTestId('cal-docs-controles')
+    expect(screen.queryByTestId('cal-etape-documents-devis')).toBeNull()
+    unmount()
+    monterAvec(['calepinage_voir', 'calepinage_gerer'])
+    expect(await screen.findByTestId('cal-etape-documents-devis')).toBeInTheDocument()
   })
 
   it('ACAL1193 — contrôles visibles de l’écran guidé : au plus 26 (la maquette v2 en dessine 24 ; + les trois lignes de groupe repliées, ACAL1725)', async () => {

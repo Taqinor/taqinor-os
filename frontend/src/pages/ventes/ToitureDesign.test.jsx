@@ -1220,6 +1220,19 @@ describe('ToitureDesign — VT13 : la photo réelle du toit sous le tracé', () 
     expect(screen.getByTestId('rp9-toit-client')).toBeInTheDocument()
   })
 
+  it('R5D-N2 — sans `crm_voir` (Technicien), la photo du lead n\'est jamais demandée', async () => {
+    crmApi.getLeadPhotoToit.mockResolvedValue({ data: CALAGE_TOIT })
+    const { store } = await import('../../store')
+    const espion = vi.spyOn(store, 'getState').mockReturnValue({ auth: { permissions: ['calepinage_voir', 'visites_voir'], user: { id: 9 } } })
+    try {
+      rendreLeadAvecContour()
+      await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+      await new Promise((r) => setTimeout(r, 50))
+      expect(crmApi.getLeadPhotoToit).not.toHaveBeenCalled()
+      expect(screen.queryByTestId('rp9-photo-toit-toggle')).toBeNull()
+    } finally { espion.mockRestore() }
+  })
+
   it('sans visite validée (les trois clés nulles), ni photo ni bascule', async () => {
     crmApi.getLeadPhotoToit.mockResolvedValue({
       data: { visite_id: null, url: null, texture_calage: null },

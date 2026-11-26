@@ -492,8 +492,17 @@ function AtelierToiture({
   // La texture est mémorisée AVEC l'id du lead : aucun `setState` synchrone
   // dans le corps de l'effet (react-hooks v7) et jamais la photo d'un lead
   // précédent — un id qui ne correspond plus n'est simplement pas lu.
+  // R5D-N2 — un écran ne demande pas ce qu'il sait refusé : sans le droit de lire les leads (`crm_voir`, la permission de la
+  // porte VT12 — un Technicien ne l'a pas), la photo n'est pas demandée (ni 403, ni toast à chaque ouverture, ni erreur de
+  // console). Lue sur le store comme le reste de l'écran ; liste vide (compte hérité) ou store absent : on demande, le serveur juge.
+  const droitLireLeads = () => {
+    try {
+      const permissions = store.getState()?.auth?.permissions
+      return !Array.isArray(permissions) || permissions.length === 0 || permissions.includes('crm_voir')
+    } catch { return true }
+  }
   useEffect(() => {
-    if (!leadPourPhoto) return undefined
+    if (!leadPourPhoto || !droitLireLeads()) return undefined
     let annule = false
     crmApi.getLeadPhotoToit(leadPourPhoto)
       .then((res) => {

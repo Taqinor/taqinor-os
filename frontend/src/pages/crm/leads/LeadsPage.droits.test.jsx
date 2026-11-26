@@ -151,3 +151,17 @@ describe('LeadsPage — liste en échec, fiche par son lien (T4-U3-014)', () => 
     expect(await screen.findByRole('button', { name: 'Fermer' })).toBeInTheDocument()
   })
 })
+
+// T4-X8-016 — un 403 sur la liste dit le droit manquant : l'état « droit refusé » du produit, sans « Réessayer ».
+describe('LeadsPage — liste refusée (T4-X8-016)', () => {
+  it('403 : la phrase du droit (Forbidden::RefusDeDroit), jamais « Erreur » ni « Réessayer »', async () => {
+    crmApi.getLeads.mockRejectedValue({
+      response: { status: 403, data: { error: { code: 'permission_denied', message: "Vous n'avez pas la permission d'effectuer cette action." } } },
+    })
+    monter(COMMERCIAL, 'liste')
+    expect(await screen.findByText('Accès refusé')).toBeInTheDocument()
+    expect(screen.getByText(/Vous n'avez pas le droit d'ouvrir les leads\./)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Réessayer/ })).toBeNull()
+    expect(document.body.textContent).not.toMatch(/Erreur :/)
+  })
+})

@@ -19,15 +19,6 @@
 .cdoc-colonne { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; min-height: 0; }
 .cdoc-colonne:last-child { overflow-y: auto; }
 .cdoc-colonne > .cdoc-pret { flex: 1 1 auto; min-height: 0; }
-@media (max-width: 1300px) {
-  /* Pas la place des trois colonnes : l'aperçu passe AU-DESSUS des cartes, la colonne de droite défile. */
-  .cdoc-docs-corps { flex-direction: column; flex: none; }
-  .cdoc-apercu-col { width: auto; }
-  .cdoc-apercu { flex: none; }
-  /* T4-X7-009 — la colonne n'a plus de hauteur fixée : la liste prend la hauteur de ses cartes (avec flex-basis 0 elle
-     mesurait 4 px à 1180 × 820 et 820 × 1180, le rapport d'étude ne s'atteignait pas). */
-  .cdoc-cartes { flex: none; overflow-y: visible; }
-}
 @media (max-width: 520px) {
   /* Téléphone : « Régler dans … » passe sous le texte de la ligne, qui garde toute sa largeur. */
   .cdoc-ligne[data-etat='a_regler'], .cdoc-ligne[data-etat='bloquant'] { flex-wrap: wrap; }
@@ -232,4 +223,16 @@
 .cdoc-inventaire-attente {
   display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 16px; font-size: 14px;
   background: var(--cal-surface); border-radius: var(--cal-rayon-piece); box-shadow: var(--cal-ombre-posee);
+}
+
+/* T4-X7-009 (rejeu R5D) — ce bloc est APRÈS les règles de base : placé avant, `.cdoc-cartes { flex: 1 1 0 }` (même spécificité, plus bas)
+   le battait et la liste mesurait encore 4 px à 1180 × 820. */
+@media (max-width: 1300px) {
+  /* Pas la place des trois colonnes : l'aperçu passe AU-DESSUS des cartes, la colonne de droite défile. */
+  .cdoc-docs-corps { flex-direction: column; flex: none; }
+  .cdoc-apercu-col { width: auto; }
+  .cdoc-apercu { flex: none; }
+  /* T4-X7-009 — la colonne n'a plus de hauteur fixée : la liste prend la hauteur de ses cartes (avec flex-basis 0 elle
+     mesurait 4 px à 1180 × 820 et 820 × 1180, le rapport d'étude ne s'atteignait pas). */
+  .cdoc-cartes { flex: none; overflow-y: visible; }
 }
