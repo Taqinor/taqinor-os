@@ -1,0 +1,427 @@
+---
+/**
+ * LOT 6 (SCHEL-W2) — le « schéma électrique » du devis sur la page client, section #sld.
+ *
+ * Remplace le schéma unifilaire (SVG du moteur) par le dessin du calepinage : deux bandes
+ * « Côté panneaux · courant continu » / « Côté réseau · courant alternatif », une rangée colorée par
+ * chaîne, le coffret côté panneaux, l’onduleur, la batterie quand le document en a une, puis le côté
+ * réseau. Un panneau par option servie ; celui de l’option cochée est visible (la page le bascule,
+ * voir le script `setupSldOption` de [...token].astro). Une option sans document n’affiche aucun
+ * schéma, jamais celui de l’autre option.
+ *
+ * Tout vient de `lib/schemaElectrique.ts` (lecture défensive + plan) : aucun montant, aucune valeur
+ * recalculée ici ; une grandeur absente est omise. HTML/CSS (pas de SVG) : les rangées s’empilent
+ * sur téléphone, le texte suit la langue et le sens de lecture de la page.
+ */
+import { OPTIONS_SCHEMA, planSchema, type SchemaElectrique, type Tri } from '../../lib/schemaElectrique';
+
+interface Props {
+  schema: SchemaElectrique;
+  /** Option cochée au premier rendu (`defaultSelectedOption`). */
+  selected: string | null;
+}
+
+const { schema, selected } = Astro.props;
+
+const panneaux = OPTIONS_SCHEMA.flatMap((cle) => {
+  const doc = schema.options[cle];
+  return doc ? [{ cle, plan: planSchema(doc) }] : [];
+});
+// Option cochée sans document : aucun panneau visible (jamais le schéma de l’autre option).
+const visibleCle = selected ?? panneaux[0]?.cle ?? null;
+const aucunPourSelection = visibleCle !== null && !panneaux.some((p) => p.cle === visibleCle);
+
+const T = {
+  dc: { fr: 'Côté panneaux · courant continu', en: 'Panel side · direct current', ar: 'جهة الألواح · تيار مستمر' } as Tri,
+  ac: { fr: 'Côté réseau · courant alternatif', en: 'Grid side · alternating current', ar: 'جهة الشبكة · تيار متناوب' } as Tri,
+  coffretDc: { fr: 'Coffret côté panneaux', en: 'Panel-side box', ar: 'علبة جهة الألواح' } as Tri,
+  coffretAc: { fr: 'Coffret côté réseau', en: 'Grid-side box', ar: 'علبة جهة الشبكة' } as Tri,
+  onduleur: { fr: 'Onduleur', en: 'Inverter', ar: 'العاكس' } as Tri,
+  conversion: { fr: 'continu → alternatif', en: 'DC → AC', ar: 'مستمر → متناوب' } as Tri,
+  batterie: { fr: 'Batterie', en: 'Battery', ar: 'البطارية' } as Tri,
+  chargeDecharge: { fr: 'charge / décharge', en: 'charge / discharge', ar: 'شحن / تفريغ' } as Tri,
+  reseau: { fr: 'Réseau du distributeur', en: 'Utility grid', ar: 'شبكة الموزّع' } as Tri,
+  aConfirmer: { fr: 'à confirmer', en: 'to be confirmed', ar: 'قيد التأكيد' } as Tri,
+  aCalculer: { fr: 'à dimensionner', en: 'to be sized', ar: 'قيد التحديد' } as Tri,
+  lgReseau: { fr: 'Côté réseau (courant alternatif)', en: 'Grid side (alternating current)', ar: 'جهة الشبكة (تيار متناوب)' } as Tri,
+  lgBatterie: { fr: 'Liaison batterie', en: 'Battery link', ar: 'وصلة البطارية' } as Tri,
+  lgTerre: { fr: 'Liaison à la terre', en: 'Earth link', ar: 'وصلة التأريض' } as Tri,
+  sansDecoupage: {
+    fr: 'Répartition des panneaux en chaînes précisée à la visite technique.',
+    en: 'Split of the panels into strings confirmed at the technical visit.',
+    ar: 'يتم تأكيد توزيع الألواح على السلاسل خلال الزيارة التقنية.',
+  } as Tri,
+  indispo: {
+    fr: 'Schéma non disponible pour cette option.',
+    en: 'Diagram not available for this option.',
+    ar: 'المخطط غير متوفر لهذا الخيار.',
+  } as Tri,
+};
+---
+
+<div class="sch" id="sld-svg-wrap" data-sld-schema>
+  {panneaux.map(({ cle, plan }) => (
+    <div class="sch-panel" data-sld-option={cle} hidden={cle !== visibleCle}>
+      <section class="sch-band" aria-label="Côté panneaux">
+        <p class="sch-band-title" data-i18n data-fr={T.dc.fr} data-en={T.dc.en} data-ar={T.dc.ar}>{T.dc.fr}</p>
+
+        {plan.chaines.length > 0 && (
+          <ol class="sch-chains">
+            {plan.chaines.map((c) => (
+              <li class="sch-chain" style={c.couleur ? `--c:${c.couleur}` : undefined}>
+                <div class="sch-chain-head">
+                  <span class="sch-chain-title" data-i18n data-fr={c.titre.fr} data-en={c.titre.en} data-ar={c.titre.ar}>{c.titre.fr}</span>
+                  {c.puissance && <span class="sch-chain-power" dir="ltr">{c.puissance}</span>}
+                </div>
+                <div class="sch-tiles" aria-hidden="true">
+                  {Array.from({ length: c.tuiles }, () => <i class="sch-tile"></i>)}
+                </div>
+                <div class="sch-wire" aria-hidden="true">
+                  {c.entree && <span class="sch-wire-label" data-i18n data-fr={'→ ' + c.entree.fr} data-en={'→ ' + c.entree.en} data-ar={'→ ' + c.entree.ar}>{'→ ' + c.entree.fr}</span>}
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+
+        {plan.sansDecoupage && (
+          <div class="sch-chain sch-chain-neutre">
+            <div class="sch-chain-head">
+              <span class="sch-chain-title" data-i18n data-fr={plan.sansDecoupage.titre.fr} data-en={plan.sansDecoupage.titre.en} data-ar={plan.sansDecoupage.titre.ar}>{plan.sansDecoupage.titre.fr}</span>
+              {plan.sansDecoupage.puissance && <span class="sch-chain-power" dir="ltr">{plan.sansDecoupage.puissance}</span>}
+            </div>
+            <p class="sch-note" data-i18n data-fr={T.sansDecoupage.fr} data-en={T.sansDecoupage.en} data-ar={T.sansDecoupage.ar}>{T.sansDecoupage.fr}</p>
+          </div>
+        )}
+
+        {plan.coffretDc && (
+          <div class="sch-card sch-card-coffret">
+            <p class="sch-card-title" data-i18n data-fr={T.coffretDc.fr} data-en={T.coffretDc.en} data-ar={T.coffretDc.ar}>{T.coffretDc.fr}</p>
+            <ul class="sch-organes">
+              {plan.coffretDc.organes.map((o) => (
+                <li dir="ltr" data-i18n data-fr={o.texte} data-en={o.texte} data-ar={o.texte}>{o.texte}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {plan.chaines.some((c) => c.flux) && (
+          <ul class="sch-feeds" aria-label="Entrées de l’onduleur">
+            {plan.chaines.filter((c) => c.flux).map((c) => (
+              <li class="sch-feed" style={c.couleur ? `--c:${c.couleur}` : undefined}>
+                <span data-i18n data-fr={c.flux!.fr} data-en={c.flux!.en} data-ar={c.flux!.ar}>{c.flux!.fr}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {plan.onduleurs.map((o) => (
+          <div class="sch-card sch-card-onduleur">
+            <p class="sch-card-title">
+              <span data-i18n data-fr={T.onduleur.fr} data-en={T.onduleur.en} data-ar={T.onduleur.ar}>{T.onduleur.fr}</span>
+              {o.puissanceKw && <span class="sch-fig" data-i18n data-fr={o.puissanceKw.fr} data-en={o.puissanceKw.en} data-ar={o.puissanceKw.ar}>{o.puissanceKw.fr}</span>}
+            </p>
+            {o.designation && <p class="sch-line" dir="ltr">{o.designation}</p>}
+            <p class="sch-line sch-line-faint">
+              {o.entrees && <span data-i18n data-fr={o.entrees.fr} data-en={o.entrees.en} data-ar={o.entrees.ar}>{o.entrees.fr}</span>}
+              <span class="sch-pill" data-i18n data-fr={T.conversion.fr} data-en={T.conversion.en} data-ar={T.conversion.ar}>{T.conversion.fr}</span>
+            </p>
+          </div>
+        ))}
+
+        {plan.batterie && (
+          <>
+            <p class="sch-link" aria-hidden="true">
+              <span class="sch-link-arrow">⇅</span>
+              <span data-i18n data-fr={T.chargeDecharge.fr} data-en={T.chargeDecharge.en} data-ar={T.chargeDecharge.ar}>{T.chargeDecharge.fr}</span>
+            </p>
+            <div class="sch-card sch-card-batterie">
+              <p class="sch-card-title" data-i18n data-fr={T.batterie.fr} data-en={T.batterie.en} data-ar={T.batterie.ar}>{T.batterie.fr}</p>
+              {plan.batterie.designation && <p class="sch-line" dir="ltr">{plan.batterie.designation}</p>}
+              <p class="sch-line sch-line-faint">
+                {plan.batterie.unites && <span data-i18n data-fr={plan.batterie.unites.fr} data-en={plan.batterie.unites.en} data-ar={plan.batterie.unites.ar}>{plan.batterie.unites.fr}</span>}
+                {plan.batterie.capacite && <span data-i18n data-fr={plan.batterie.capacite.fr} data-en={plan.batterie.capacite.en} data-ar={plan.batterie.capacite.ar}>{plan.batterie.capacite.fr}</span>}
+                {plan.batterie.tension && <span dir="ltr">{plan.batterie.tension.fr}</span>}
+              </p>
+            </div>
+          </>
+        )}
+      </section>
+
+      {plan.coteReseau && (
+        <section class="sch-band sch-band-ac" aria-label="Côté réseau">
+          <p class="sch-band-title" data-i18n data-fr={T.ac.fr} data-en={T.ac.en} data-ar={T.ac.ar}>{T.ac.fr}</p>
+          {plan.coteReseau.etat === 'a_calculer' && plan.coteReseau.motif && <p class="sch-note">{plan.coteReseau.motif}</p>}
+          <ol class="sch-ac">
+            <li>
+              <div class={`sch-card sch-card-coffret${plan.coteReseau.coffretAc ? '' : ' sch-card-creux'}`}>
+                <p class="sch-card-title">
+                  <span data-i18n data-fr={T.coffretAc.fr} data-en={T.coffretAc.en} data-ar={T.coffretAc.ar}>{T.coffretAc.fr}</span>
+                  {!plan.coteReseau.coffretAc && <span class="sch-pill" data-i18n data-fr={T.aCalculer.fr} data-en={T.aCalculer.en} data-ar={T.aCalculer.ar}>{T.aCalculer.fr}</span>}
+                </p>
+                {plan.coteReseau.coffretAc && (
+                  <ul class="sch-organes">
+                    {plan.coteReseau.coffretAc.organes.map((o) => (
+                      <li dir="ltr" data-i18n data-fr={o.texte} data-en={o.texte} data-ar={o.texte}>{o.texte}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </li>
+            {plan.coteReseau.blocs.map((b) => (
+              <li>
+                <div class={`sch-card${plan.coteReseau!.etat === 'a_calculer' ? ' sch-card-creux' : ''}`}>
+                  <p class="sch-card-title">
+                    {b.cle === 'reseau' && <span class="sch-kicker" data-i18n data-fr={T.reseau.fr} data-en={T.reseau.en} data-ar={T.reseau.ar}>{T.reseau.fr}</span>}
+                    <span data-i18n data-fr={b.titre.fr} data-en={b.titre.en} data-ar={b.titre.ar}>{b.titre.fr}</span>
+                    {b.aConfirmer && <span class="sch-pill" data-i18n data-fr={T.aConfirmer.fr} data-en={T.aConfirmer.en} data-ar={T.aConfirmer.ar}>{T.aConfirmer.fr}</span>}
+                  </p>
+                  {b.detail && plan.coteReseau!.etat !== 'a_calculer' && <p class="sch-line sch-line-faint" data-i18n data-fr={b.detail.fr} data-en={b.detail.en} data-ar={b.detail.ar}>{b.detail.fr}</p>}
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      <ul class="sch-legend">
+        {plan.legende.reseau && <li><i class="sch-key sch-key-ac"></i><span data-i18n data-fr={T.lgReseau.fr} data-en={T.lgReseau.en} data-ar={T.lgReseau.ar}>{T.lgReseau.fr}</span></li>}
+        {plan.legende.batterie && <li><i class="sch-key sch-key-bat"></i><span data-i18n data-fr={T.lgBatterie.fr} data-en={T.lgBatterie.en} data-ar={T.lgBatterie.ar}>{T.lgBatterie.fr}</span></li>}
+        {plan.legende.terre && <li><i class="sch-key sch-key-terre"></i><span data-i18n data-fr={T.lgTerre.fr} data-en={T.lgTerre.en} data-ar={T.lgTerre.ar}>{T.lgTerre.fr}</span></li>}
+        {plan.legende.sections && <li><span data-i18n data-fr={plan.legende.sections.fr} data-en={plan.legende.sections.en} data-ar={plan.legende.sections.ar}>{plan.legende.sections.fr}</span></li>}
+      </ul>
+    </div>
+  ))}
+  <p class="sch-note sch-indispo" data-sld-indispo hidden={!aucunPourSelection} data-i18n data-fr={T.indispo.fr} data-en={T.indispo.en} data-ar={T.indispo.ar}>{T.indispo.fr}</p>
+</div>
+
+<style>
+  .sch {
+    display: block;
+    color: var(--color-lune, #d6dbe9);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .sch-panel[hidden],
+  .sch-indispo[hidden] {
+    display: none;
+  }
+  .sch-band {
+    margin-top: 1rem;
+    border: 1px solid rgb(255 255 255 / 0.12);
+    border-radius: 0.875rem;
+    background: rgb(255 255 255 / 0.04);
+    padding: 0.875rem;
+  }
+  .sch-band-title {
+    margin: 0 0 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-brass-300, #f3cc66);
+  }
+  .sch-chains,
+  .sch-ac,
+  .sch-feeds,
+  .sch-legend,
+  .sch-organes {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .sch-chain {
+    --c: var(--color-lune-faint, #8d96b4);
+    margin-bottom: 0.75rem;
+  }
+  .sch-chain-head {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.25rem 0.75rem;
+    font-size: 0.875rem;
+  }
+  .sch-chain-title {
+    font-weight: 700;
+  }
+  .sch-chain-power,
+  .sch-fig {
+    font-variant-numeric: tabular-nums;
+    color: var(--color-lune-soft, #adb5cd);
+  }
+  .sch-tiles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-top: 0.4rem;
+  }
+  .sch-tile {
+    display: block;
+    width: 18px;
+    height: 26px;
+    border-radius: 3px;
+    background: var(--c);
+    opacity: 0.92;
+  }
+  .sch-wire {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+    border-bottom: 3px solid var(--c);
+    padding-bottom: 0.2rem;
+    font-size: 0.75rem;
+    color: var(--color-lune-soft, #adb5cd);
+    min-height: 0.5rem;
+  }
+  .sch-card {
+    margin-top: 0.75rem;
+    border: 1px solid rgb(255 255 255 / 0.18);
+    border-radius: 0.75rem;
+    padding: 0.625rem 0.75rem;
+    background: rgb(255 255 255 / 0.05);
+  }
+  .sch-card-creux {
+    border-style: dashed;
+    background: transparent;
+  }
+  .sch-card-batterie {
+    border-color: #2f9e8f;
+  }
+  .sch-card-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.6rem;
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 700;
+  }
+  .sch-kicker {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-lune-soft, #adb5cd);
+  }
+  .sch-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem 0.75rem;
+    align-items: center;
+    margin: 0.2rem 0 0;
+    font-size: 0.8125rem;
+    overflow-wrap: anywhere;
+  }
+  .sch-line-faint {
+    color: var(--color-lune-soft, #adb5cd);
+  }
+  .sch-organes {
+    margin-top: 0.35rem;
+    font-size: 0.8125rem;
+    color: var(--color-lune-soft, #adb5cd);
+    overflow-wrap: anywhere;
+  }
+  .sch-pill {
+    border: 1px solid rgb(255 255 255 / 0.25);
+    border-radius: 999px;
+    padding: 0 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .sch-feeds {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.6rem;
+  }
+  .sch-feed {
+    --c: var(--color-lune-faint, #8d96b4);
+    border-inline-start: 4px solid var(--c);
+    padding: 0.1rem 0.5rem;
+    font-size: 0.75rem;
+    background: rgb(255 255 255 / 0.05);
+    border-radius: 0.25rem;
+  }
+  .sch-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin: 0.5rem 0 0;
+    font-size: 0.75rem;
+    color: var(--color-lune-soft, #adb5cd);
+  }
+  .sch-link-arrow {
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+  .sch-ac > li + li::before {
+    content: '';
+    display: block;
+    width: 2px;
+    height: 0.75rem;
+    margin-inline-start: 1.25rem;
+    background: var(--color-lune-soft, #adb5cd);
+  }
+  .sch-ac > li > .sch-card {
+    margin-top: 0;
+  }
+  .sch-note {
+    margin: 0.5rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--color-lune-soft, #adb5cd);
+  }
+  .sch-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
+    margin-top: 0.75rem;
+    font-size: 0.75rem;
+    color: var(--color-lune-soft, #adb5cd);
+  }
+  .sch-legend li {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .sch-key {
+    display: inline-block;
+    width: 1.5rem;
+    border-top: 3px solid var(--color-lune-soft, #adb5cd);
+  }
+  .sch-key-bat {
+    border-top-color: #2f9e8f;
+  }
+  .sch-key-terre {
+    border-top-style: dashed;
+    border-top-color: #4aa85a;
+  }
+  @media (min-width: 640px) {
+    .sch-band {
+      padding: 1.125rem;
+    }
+    .sch-tile {
+      width: 22px;
+      height: 30px;
+    }
+  }
+  @media print {
+    .sch,
+    .sch-line-faint,
+    .sch-organes,
+    .sch-note,
+    .sch-legend,
+    .sch-chain-power {
+      color: #111 !important;
+    }
+    .sch-band,
+    .sch-card {
+      border-color: #999 !important;
+      background: #fff !important;
+      break-inside: avoid;
+    }
+    .sch-band-title {
+      color: #111 !important;
+    }
+  }
+</style>

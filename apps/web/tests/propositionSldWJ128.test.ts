@@ -6,6 +6,7 @@
 // téléchargement (Blob + URL.createObjectURL côté client).
 import { describe, expect, it } from 'vitest';
 import { hasSldSvg, sldSvgFilename } from '../src/lib/proposition';
+import { choisirSld } from '../src/lib/schemaElectrique';
 
 describe('WJ128 — hasSldSvg (présence conditionnelle de la section « Schéma électrique »)', () => {
   it('SVG non vide → true (la section doit s’afficher)', () => {
@@ -54,5 +55,25 @@ describe('WJ128 — sldSvgFilename (nom de fichier du téléchargement SVG)', ()
 
   it('toujours une extension .svg unique, jamais dupliquée', () => {
     expect(sldSvgFilename('REF.svg')).toMatch(/^schema-electrique-REF-svg\.svg$/);
+  });
+});
+
+// LOT 6 (SCHEL-W2) — la section #sld ne régresse JAMAIS sur l'ancien payload : tant que le backend ne
+// sert pas `schema_electrique` (site déployé avant l'ERP, devis ancien), le SVG historique s'affiche
+// comme avant, et `hasSldSvg` garde ses règles. Le schéma neuf n'ajoute qu'une voie.
+describe('WJ128 — repli sur sld_svg sans schema_electrique (LOT 6)', () => {
+  const svg = '<svg viewBox="0 0 10 10"></svg>';
+  it('ancien payload : choisirSld rend le même SVG que celui que hasSldSvg valide', () => {
+    expect(hasSldSvg({ sld_svg: svg })).toBe(true);
+    expect(choisirSld({ sld_svg: svg })).toEqual({ mode: 'svg', svg });
+  });
+  it('ancien payload sans schéma : section absente exactement quand hasSldSvg est faux', () => {
+    for (const sld_svg of [null, undefined, '', '   ']) {
+      expect(hasSldSvg({ sld_svg })).toBe(false);
+      expect(choisirSld({ sld_svg }).mode).toBe('aucun');
+    }
+  });
+  it('clé schema_electrique malformée : le SVG historique reste servi', () => {
+    expect(choisirSld({ sld_svg: svg, schema_electrique: 'x' })).toEqual({ mode: 'svg', svg });
   });
 });
