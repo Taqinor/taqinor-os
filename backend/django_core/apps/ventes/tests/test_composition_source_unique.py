@@ -841,3 +841,40 @@ class LePanneauParDefautDecideLesChoixAutomatiques(_Base):
         contexte = contexte_sonde_du_devis(devis)
         self.assertFalse(contexte.panneau_defaut.designe)
         self.assertEqual(sonder_wattage(contexte), 710)  # le calcul d'aujourd'hui, jamais recalculé autrement
+
+    def test_reprendre_le_lead_dimensionne_sur_la_ligne_panneau_du_devis(self):
+        """Revue 3 — « Reprendre les valeurs du lead » (``_reconcilier_sur_le_lead``) : la taille d'un devis
+        EXISTANT se calcule sur SA ligne panneau (brouillon : le Canadien 710 W qu'il vend), jamais sur le défaut
+        désigné ensuite ; envoyé : la sonde d'aujourd'hui."""
+        from unittest import mock
+
+        from apps.ventes.domain import pipeline
+        from apps.ventes.models import Devis
+        devis = self._devis_auto()  # sans défaut : 8 × Canadien 710 W
+        canadien = Produit.objects.get(company=self.company, nom='Panneau Canadien Solar 710W')
+        self.designer()
+        refus = (0, None, 'facture_absente', None)
+        for statut, attendu in ((Devis.Statut.BROUILLON, canadien.pk), (Devis.Statut.ENVOYE, None)):
+            with self.subTest(statut=statut):
+                Devis.objects.filter(pk=devis.pk).update(statut=statut)
+                devis.refresh_from_db()
+                with mock.patch.object(pipeline, '_panneaux_dimensionnement_horaire', return_value=refus) as moteur:
+                    pipeline._reconcilier_sur_le_lead(devis, devis.lead, self.company, self.user)
+                self.assertEqual(moteur.call_args.kwargs['panneau'].produit_id, attendu)
+
+    def test_un_devis_envoye_garde_sa_taille_quand_un_defaut_est_designe(self):
+        from apps.ventes.domain.panneau_defaut import panneau_du_devis
+        from apps.ventes.domain.taille import _panneaux_dimensionnement_horaire, phase_client_pour_dimensionnement
+        from apps.ventes.models import Devis
+        devis = self._devis_auto()
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ENVOYE)
+        devis.refresh_from_db()
+        lead = self.lead(facture_hiver=Decimal('1800'), ville='Casablanca')
+
+        def taille():
+            return _panneaux_dimensionnement_horaire(
+                lead=lead, company=self.company, phase=phase_client_pour_dimensionnement(lead),
+                panneau=panneau_du_devis(devis))[:2]
+        avant = taille()
+        self.designer()
+        self.assertEqual(taille(), avant)

@@ -267,6 +267,34 @@ class LeDevisExistantLitSonProprePanneau(SimpleTestCase):
         self.assertIn('Le panneau du devis « Panneau Jinko 550W »', auto.refus("l'étude C&I", 'r').motif)
 
 
+class LeMoteurHoraireRecoitLePanneauDuDevis(SimpleTestCase):
+    """Revue 3 — ``taille._panneaux_dimensionnement_horaire(panneau=…)`` le transmet au balayage ; sans lui
+    (devis à naître) l'appel au balayage est celui d'aujourd'hui, au mot près."""
+
+    def _appel(self, **kw):
+        from apps.ventes.domain.taille import _panneaux_dimensionnement_horaire
+        entrees = SimpleNamespace(
+            company=None, conso_kwh_mensuelles=[300] * 12, ville='Casablanca', lat=None, lon=None,
+            occupation=None, equipements=None, source_conso='kwh', jour_reference=None, gamme_nom_devis=None,
+            tranches=None, charges_fixes_mad=None, hors_reseau=False)
+        reco = {'recommandation': {'panneaux': 8, 'panel_watt': 710}, 'recommandation_avec': None}
+        with mock.patch('apps.ventes.domain.entrees.entrees_depuis_lead', return_value=entrees), \
+                mock.patch('apps.ventes.dimensionnement.recommander_taille', return_value=reco) as moteur:
+            resultat = _panneaux_dimensionnement_horaire(lead=object(), company=None, phase=None, **kw)
+        return resultat, moteur.call_args.kwargs
+
+    def test_sans_panneau_l_appel_d_aujourd_hui(self):
+        resultat, kwargs = self._appel()
+        self.assertEqual(tuple(resultat)[:2], (8, 710))
+        self.assertNotIn('panneau', kwargs)
+
+    def test_le_panneau_du_devis_va_au_balayage(self):
+        from apps.ventes.domain.panneau_defaut import PanneauAuto
+        panneau = PanneauAuto(produit_id=7, watt=550, nom='Panneau Jinko 550W', source='devis')
+        _resultat, kwargs = self._appel(panneau=panneau)
+        self.assertIs(kwargs['panneau'], panneau)
+
+
 class AucunLitteral715(SimpleTestCase):
     """La puissance du panneau par défaut vient du produit désigné, jamais d'un littéral."""
 
