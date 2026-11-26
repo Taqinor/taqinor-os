@@ -395,9 +395,13 @@ def drapeaux_pdf_2611(devis) -> dict:
 #: SIMULATION (perte ohmique DC) et de la vérification de chute du calepinage
 #: est ce tracé (``apps/calepinage/services/cables.py::longueur_dc``). Calculs
 #: faits à partir de ce jour seulement : une simulation rangée n'est jamais
-#: réécrite, elle ne change qu'à sa prochaine simulation. Aucun devis n'en
-#: dépend (le devis ne lit que la longueur SAISIE ``dc_m``). Même date que
-#: :data:`COUPURE_TOIT_PLAT`, À POSER par l'orchestrateur avec elle.
+#: réécrite, elle ne change qu'à sa prochaine simulation. L'étude électrique
+#: du devis n'en dépend pas (elle ne lit que la longueur SAISIE ``dc_m``) ; un
+#: devis au niveau :data:`REGLES_POSE_REELLE_2111` (DORMANT) lit la production
+#: de la simulation du calepinage, donc cette perte — seulement une fois ce
+#: niveau rendu courant, jamais un devis déjà envoyé. Même date que
+#: :data:`COUPURE_TOIT_PLAT`, À POSER par l'orchestrateur avec elle. Le tracé
+#: n'y remplace que la partie HORIZONTALE de la liaison.
 COUPURE_LIAISON_DC_TRACEE = (2026, 11, 28)
 
 
