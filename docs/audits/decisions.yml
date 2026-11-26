@@ -6172,9 +6172,9 @@ decisions:
         texte: "(recommandée) Oui : un hybride dont la fiche publie sa puissance PV maximale (ond_dc_max_kwc) est retenu jusqu'à elle, par la même fonction du noyau (core.electrique.onduleurs.capacite_dc_appareil_kwc) ; sans valeur publiée, 1,35 reste la borne. Change l'onduleur choisi par les NOUVEAUX devis résidentiels ; les devis envoyés gardent ce que le client a reçu"
       - cle: b_inchange
         texte: "Non : le devis résidentiel garde 1,35 pour tout onduleur ; le calepinage et le devis résidentiel peuvent alors se contredire sur le même hybride (le calepinage « bon », le devis « vérifier la conception »)"
-    reponse: ouverte
+    reponse: a_capacite_publiee
     date: "2026-11-26"
-    source: "lane lot6/ratio-hybride (lead 1742 : 48 × 715 W = 34,32 kWc sur un hybride Deye 20 kW, « 1,72 pour 1,35 au plus » dans « Prêt à envoyer ? ») ; conséquence calculée sur le catalogue de départ (migration stock 0182, puissances PV maximales des fiches Deye : 10 kW → 20 kWc, 12 kW → 24 kWc, 15 kW → 30 kWc, 20 kW → 40 kWc, soit 2,0 × la puissance AC) : avec (a) un hybride porte jusqu'à 2,0 × sa puissance AC au lieu de 1,35 ×, donc pour 34,32 kWc le 20 kW convient (34,32 ≤ 40) alors qu'avec (b) aucun hybride du catalogue ne passe et le 20 kW n'est pris qu'en repli signalé ; aucune lecture de la production faite (nombre de devis résidentiels concernés non mesuré)"
+    source: "RÉPONDUE par le fondateur, séance de questions du 26/11/2026 (soir) ; lane lot6/ratio-hybride (lead 1742 : 48 × 715 W = 34,32 kWc sur un hybride Deye 20 kW, « 1,72 pour 1,35 au plus » dans « Prêt à envoyer ? ») ; conséquence calculée sur le catalogue de départ (migration stock 0182, puissances PV maximales des fiches Deye : 10 kW → 20 kWc, 12 kW → 24 kWc, 15 kW → 30 kWc, 20 kW → 40 kWc, soit 2,0 × la puissance AC) : avec (a) un hybride porte jusqu'à 2,0 × sa puissance AC au lieu de 1,35 ×, donc pour 34,32 kWc le 20 kW convient (34,32 ≤ 40) alors qu'avec (b) aucun hybride du catalogue ne passe et le 20 kW n'est pris qu'en repli signalé ; aucune lecture de la production faite (nombre de devis résidentiels concernés non mesuré)"
     taches: []
   - id: D-ACAL-132
     question: "La page client (proposition) montre une visionneuse 3D au soleil figé ; l'écran Panneaux du calepinage montre le soleil qui bouge (lecture, heure, Hiver / Été) et l'ensoleillement de chaque panneau. Quels clients ont cette visionneuse sur leur page ?"
@@ -6355,9 +6355,9 @@ decisions:
         texte: "(recommandée) Oui : le devis généré depuis le calepinage reprend l'onduleur désigné quand il existe au catalogue avec un prix ; sinon il garde celui de la conception et le dit"
       - cle: b_garder_la_conception
         texte: "Non : le devis garde l'onduleur de la conception du lead ; la désignation du calepinage ne sert qu'au contrôle électrique"
-    reponse: ouverte
+    reponse: a_suivre_le_designe
     date: "2026-11-26"
-    source: "tour 5 du L5, rejeu du paquet C sur la pile de revue (26/11/2026), constat T4-X5-010 « pas corrigé » ; composition et prix relèvent d'apps/ventes"
+    source: "RÉPONDUE par le fondateur, séance de questions du 26/11/2026 (soir) ; tour 5 du L5, rejeu du paquet C sur la pile de revue (26/11/2026), constat T4-X5-010 « pas corrigé » ; composition et prix relèvent d'apps/ventes"
     taches: []
   - id: D-ACAL-149
     question: "Quatre lecteurs prennent encore la pente mémorisée d'un toit plat (22° par défaut) pour une vraie pente : la traduction vers le moteur (pose affleurante au lieu de rangées espacées, donc trop de modules — derrière un réglage aujourd'hui éteint), la pente imprimée sur la planche du PDF du devis, et l'inclinaison utilisée pour la production de l'étude (deux fonctions). Les corriger change des chiffres de documents client."
@@ -6366,9 +6366,9 @@ decisions:
         texte: "(recommandée) Les corriger pour les nouveaux rendus seulement, derrière une coupure datée ; les devis envoyés gardent ce que le client a reçu"
       - cle: b_laisser
         texte: "Ne pas y toucher"
-    reponse: ouverte
+    reponse: a_nouveaux_rendus
     date: "2026-11-26"
-    source: "lane lot6/acal-toit-plat-pente (26/11/2026) : lecteurs `apps/calepinage/services/traduction.py::_pente_et_azimut`, `services/planche.py`, `apps/ventes/domain/geometrie.py::orientation_du_pan` et `::_zone_villa_depuis_pan`"
+    source: "RÉPONDUE par le fondateur, séance de questions du 26/11/2026 (soir) ; lane lot6/acal-toit-plat-pente (26/11/2026) : lecteurs `apps/calepinage/services/traduction.py::_pente_et_azimut`, `services/planche.py`, `apps/ventes/domain/geometrie.py::orientation_du_pan` et `::_zone_villa_depuis_pan`"
     taches: [ACAL1923]
   - id: D-ACAL-150
     question: "Un calepinage sans facture ni socle où l'utilisateur ne déclare qu'une charge (voiture électrique, pompe à chaleur) : les anciens documents portent une courbe de base de 24 zéros, les nouveaux n'en portent plus. Les deux doivent-ils donner le même résultat ?"
@@ -6381,3 +6381,95 @@ decisions:
     date: "2026-11-26"
     source: "décision PRISE PAR L'ORCHESTRATEUR EN L'ABSENCE DU FONDATEUR, À CONFIRMER ; relecture finale du lot 7 : deux lanes justes chacune, deux résultats différents pour la même saisie selon l'âge du document (ACAL1962)"
     taches: [ACAL1962]
+  - id: D-ACAL-151
+    question: "Les variateurs VEICHI SI22 / SI23 : la description du catalogue dit « protection marche à sec », leur fiche technique ne le dit pas et rien dans le dépôt ne le rattache à un document du fabricant. Que disent les nouveaux devis de pompage ?"
+    options:
+      - cle: retirer_tant_que_non_prouve
+        texte: "(recommandée) Les nouveaux devis n'impriment plus « protection marche à sec » pour ces variateurs tant que la fiche ne le dit pas ; la phrase revient d'elle-même quand la fiche est remplie avec sa source. Les devis envoyés ne changent pas"
+      - cle: remplir_les_fiches
+        texte: "C'est vrai : remplir les 15 fiches avec le manuel pour source"
+      - cle: verifier_d_abord
+        texte: "Le fondateur vérifie le manuel d'abord"
+    reponse: retirer_tant_que_non_prouve
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (soir) ; tour 5 du L5, constat T4-V2-010"
+    taches: []
+  - id: D-ACAL-152
+    question: "Le Technicien voit les prix de vente dans la liste du stock (colonnes « Prix vente HT » et « Prix TTC » ; aucun prix d'achat). Les lui masquer ?"
+    options:
+      - cle: masquer
+        texte: "(recommandée) Oui : une permission « voir les prix de vente », portée par tous les rôles sauf Technicien et Technicien responsable ; le serveur ne leur sert plus les champs de prix, la liste du stock et les sélecteurs de produits ne montrent aucun prix"
+      - cle: laisser
+        texte: "Non : les laisser visibles"
+    reponse: masquer
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (soir) ; tour 5 du L5, constats T4-X8-014 et R5E-X1 ; prolonge D-ACAL-106 (« aucun devis ni aucun prix »)"
+    taches: []
+  - id: D-ACAL-153
+    question: "Sur la fiche d'un lead, chaque clic sur « Devis auto » crée un nouveau brouillon au lieu de rouvrir le précédent. Changer ?"
+    options:
+      - cle: reprendre_le_brouillon
+        texte: "Rouvrir et rafraîchir le brouillon automatique non envoyé ni retouché"
+      - cle: un_brouillon_par_clic
+        texte: "Ne rien changer : un nouveau brouillon à chaque clic"
+    reponse: un_brouillon_par_clic
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (soir) ; tour 5 du L5, constat R5D-N3 — le fondateur garde le comportement actuel (la recommandation était l'autre option)"
+    taches: []
+  - id: D-ACAL-154
+    question: "La taille visée tapée dans l'onglet Devis d'un lead n'est lue que par le bouton « Devis automatique » de cet onglet ; les deux autres boutons (rail, palette de commandes) l'ignorent. Les faire tous la lire touche trois fichiers de l'écran du lead (état seulement, aucune mise en page)."
+    options:
+      - cle: tous_la_lisent
+        texte: "(recommandée) Oui : les trois boutons utilisent la taille tapée ; l'écran du lead garde exactement la même apparence"
+      - cle: laisser
+        texte: "Ne rien changer"
+    reponse: tous_la_lisent
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (soir) ; tour 5 du L5, constat T4-X1-004 (seconde moitié) — accord explicite pour toucher ces trois fichiers de l'écran du lead, sans changement de mise en page"
+    taches: []
+  - id: D-ACAL-155
+    question: "En mode Expert de l'atelier, « Panneaux nécessaires 16 » (le nombre à poser) côtoie « Cible — 7 panneaux » (ce que la facture demande). Renommer le premier ?"
+    options:
+      - cle: panneaux_a_poser
+        texte: "(recommandée) Le champ devient « Panneaux à poser » ; « Cible » garde son sens"
+      - cle: garder
+        texte: "Garder « Panneaux nécessaires »"
+    reponse: panneaux_a_poser
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (soir) ; tour 5 du L5, constat T4-X8-012"
+    taches: []
+  - id: D-ACAL-156
+    question: "Kit de pompage : le câble DC n'entre au devis que si la distance forage → champ de panneaux est renseignée sur le lead ; sinon aucune ligne de câble et aucun message. Que faire quand la distance manque ?"
+    options:
+      - cle: alerte_nommant_le_champ
+        texte: "(recommandée) Le devis est créé, avec une alerte pour le vendeur : câble non chiffré, renseigner la distance forage → champ ; aucune longueur inventée"
+      - cle: exiger_la_distance
+        texte: "Refuser le devis automatique tant que la distance manque"
+      - cle: laisser
+        texte: "Ne rien changer"
+    reponse: alerte_nommant_le_champ
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (soir) ; tour 5 du L5, D-ACAL-112 partielle (« protections et leur câble »)"
+    taches: []
+  - id: D-ACAL-157
+    question: "L'étape Électrique de l'atelier ne permet pas de désigner une batterie à l'écran. Ajouter un sélecteur ?"
+    options:
+      - cle: ajouter
+        texte: "(recommandée) Oui : un sélecteur de batterie à côté de celui de l'onduleur, depuis le catalogue, sans prix, « aucune » par défaut, proposé seulement quand l'onduleur désigné est un hybride ; le schéma montre alors la batterie"
+      - cle: pas_maintenant
+        texte: "Pas maintenant"
+    reponse: ajouter
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (soir) ; second regard sur la pile du 26/11 (constat N2 de visuel-lot7.json) ; contrat d'abord : `candidats.batteries` et le caractère hybride de l'onduleur servi par le serveur"
+    taches: []
+  - id: D-ACAL-158
+    question: "Sur la page client d'un devis à deux options, un seul schéma électrique est montré (l'option dont la conception est stockée ; D-ACAL-140 retient à la page client ce qui est calculé à la lecture). Que voit le client ?"
+    options:
+      - cle: stocker_et_montrer_les_deux
+        texte: "(recommandée) À l'envoi d'un devis à deux options, une conception est stockée pour chaque option : la page client et l'annexe du PDF montrent un schéma par option. Pour les devis envoyés à partir de maintenant"
+      - cle: un_seul
+        texte: "Garder un seul schéma"
+    reponse: stocker_et_montrer_les_deux
+    date: "2026-11-26"
+    source: "fondateur, séance de questions du 26/11/2026 (soir) ; second regard sur la pile du 26/11 (devis à deux options : `sans_batterie` nul sur la page) ; D-ACAL-140 reste vraie — le client ne reçoit que du stocké, et les deux options le deviennent"
+    taches: []
