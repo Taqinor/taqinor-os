@@ -399,13 +399,7 @@ export function creerRegistre(): RegistreNumerotation {
       return derniers.get(panId) ?? [];
     },
     appliquer(panId, poses, convention, azimutDeg) {
-      const deja = historiques.get(panId) ?? HISTORIQUE_VIDE;
-      // ACAL1720 — pose REMPLACÉE d'un bloc (repavage complet : aucun emplacement posé n'était numéroté) : la
-      // numérotation repart du premier numéro (1…78, plus 6…83) ; la feuille d'avant est périmée. Un retrait ou un
-      // ajout garde la règle CALX111 (un numéro libéré n'est jamais redonné). Sans premier numéro : inchangé.
-      const remplacee = deja.plafond >= 1 && poses.length > 0 && typeof convention.depart === 'number'
-        && !poses.some((m) => deja.numeros.has(cleEmplacement(m.cx, m.cy)));
-      const resultat = attribuerNumeros(poses, remplacee ? HISTORIQUE_VIDE : deja, convention, azimutDeg);
+      const resultat = attribuerNumeros(poses, historiques.get(panId) ?? HISTORIQUE_VIDE, convention, azimutDeg);
       if (resultat.refus) return resultat;
       historiques.set(panId, resultat.historique);
       derniers.set(panId, resultat.modules);
