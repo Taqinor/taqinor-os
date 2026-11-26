@@ -401,3 +401,93 @@ class LeDevisNeBougePasTest(SimpleTestCase):
             return empreinte_entree(devis, entree), concevoir(entree).cables
 
         self.assertEqual(du_devis(LAYOUT_TRACE), du_devis(LAYOUT))
+
+
+class _Pivot:
+    """Le strict minimum que ``resultat_calepinage`` lit sur un pivot — aucun ORM."""
+
+    def __init__(self, layout, resultat):
+        self.pk, self.roof_layout, self.resultat, self.company = 1, layout, resultat, None
+
+    def save(self, update_fields=None):
+        pass
+
+
+MATERIEL_INJECTE = {'module': MODULE, 'onduleur': ONDULEUR, 'optimiseur': None,
+                    'designations': {'module': 'Module d essai', 'onduleur': 'Onduleur d essai',
+                                     'optimiseur': ''}, 'absents': ()}
+REGLAGES_FR = {'imagerie': {'pays': 'fr'}, 'norme_electrique': {}}
+
+
+class LaLectureMontreCeQueLaSimulationACalcule(SimpleTestCase):
+    """``GET resultat/`` : le W1 servi suit la DATE de la simulation servie."""
+
+    def _servi(self, simulation=None, aujourd_hui=None):
+        from unittest import mock
+
+        from apps.calepinage.services.electrique import CLE_ENTREE, CLE_SIMULATION, resultat_calepinage
+
+        stocke = {CLE_ENTREE: {'cheminement': NON_SAISI, 'temperature_min_c': -5.0,
+                               'temperature_max_c': 70.0}}
+        if simulation is not None:
+            stocke[CLE_SIMULATION] = simulation
+        with mock.patch('django.utils.timezone.localdate',
+                        return_value=aujourd_hui or _jour_de_coupure()):
+            return resultat_calepinage(_Pivot(LAYOUT_TRACE, stocke), materiel=MATERIEL_INJECTE,
+                                       reglages=REGLAGES_FR)
+
+    def _empreinte(self):
+        return self._servi()['hash_entree']
+
+    def test_simulation_fraiche_d_avant_la_coupure_le_w1_reste_celui_qu_elle_a_compte(self):
+        from apps.calepinage.services.cables import SOURCE_DC_DEFAUT
+
+        veille = '%sT10:00:00Z' % _jour_de_coupure(-1).isoformat()
+        servi = self._servi({'hash_entree': self._empreinte(), 'calcule_le': veille})
+
+        self.assertFalse(servi['simulation_perimee'])
+        self.assertNotIn('W1', [c['repere'] for c in servi['cables']])
+        self.assertEqual(servi['longueurs']['source_dc'], SOURCE_DC_DEFAUT)
+        # Sans date enregistrée, une simulation fraîche est d'AVANT la coupure.
+        sans_date = self._servi({'hash_entree': self._empreinte()})
+        self.assertEqual(sans_date['longueurs'], servi['longueurs'])
+
+    def test_simulation_fraiche_du_jour_de_la_coupure_le_w1_compte_le_trace(self):
+        from apps.calepinage.services.cables import SOURCE_DC_DEFAUT
+
+        jour = '%sT10:00:00Z' % _jour_de_coupure().isoformat()
+        servi = self._servi({'hash_entree': self._empreinte(), 'calcule_le': jour},
+                            aujourd_hui=_jour_de_coupure(-1))
+
+        self.assertIn('W1', [c['repere'] for c in servi['cables']])
+        self.assertNotEqual(servi['longueurs']['source_dc'], SOURCE_DC_DEFAUT)
+
+    def test_sans_simulation_ou_perimee_le_w1_est_celui_d_aujourd_hui(self):
+        apres = self._servi()
+        perimee = self._servi({'hash_entree': 'autre-document', 'calcule_le': '2026-01-01T10:00:00Z'})
+
+        self.assertTrue(perimee['simulation_perimee'])
+        for servi in (apres, perimee):
+            self.assertIn('W1', [c['repere'] for c in servi['cables']])
+        self.assertNotIn('W1', [c['repere'] for c in self._servi(
+            aujourd_hui=_jour_de_coupure(-1))['cables']])
+
+    def test_la_date_est_celle_du_fuseau_du_projet(self):
+        import datetime
+        from types import SimpleNamespace
+
+        from apps.calepinage.services.cables import jour_du_calcul_servi
+
+        from django.utils import timezone
+
+        fraiche = SimpleNamespace(resultat={'simulation': {'hash_entree': 'h'}})
+        # Le MÊME jour que celui que la simulation lit (``timezone.localdate`` du
+        # sélecteur) : la date LOCALE de l'instant UTC enregistré, jamais sa date UTC.
+        veille_tard = '%sT23:30:00Z' % _jour_de_coupure(-1).isoformat()
+        instant = datetime.datetime.combine(_jour_de_coupure(-1), datetime.time(23, 30),
+                                            tzinfo=datetime.timezone.utc)
+        self.assertEqual(jour_du_calcul_servi(fraiche, False, veille_tard),
+                         timezone.localdate(instant))
+        self.assertEqual(jour_du_calcul_servi(fraiche, False, None), datetime.date.min)
+        self.assertIsNone(jour_du_calcul_servi(fraiche, True, veille_tard))
+        self.assertIsNone(jour_du_calcul_servi(SimpleNamespace(resultat={}), False, None))

@@ -561,6 +561,42 @@ def _document(conception):
     return {'zones': []}
 
 
+def jour_du_calcul_servi(porteur, perimee, calcule_le):
+    """Liaison DC tracée — la date à passer à :func:`cables_du_calepinage` sur une LECTURE.
+
+    Ce qu'une lecture MONTRE (câble ``W1``, sa chute, ``longueurs.source_dc``)
+    doit être ce que la simulation SERVIE a calculé : sans cela, le jour de la
+    coupure, une simulation fraîche d'hier (calculée sans le tracé) serait
+    servie à côté d'un ``W1`` qui dit compter le tracé. Donc :
+
+    * simulation FRAÎCHE (``porteur.resultat.simulation.hash_entree`` posé et
+      ``perimee`` faux) → la date LOCALE de son ``calcule_le`` ; sans date
+      enregistrée → ``date.min`` (avant toute coupure : elle est d'avant) ;
+    * aucune simulation, ou une simulation périmée → ``None`` (aujourd'hui :
+      le prochain calcul sera fait aujourd'hui).
+    """
+    import datetime
+
+    from django.utils import timezone
+    from django.utils.dateparse import parse_datetime
+
+    from .electrique import CLE_SIMULATION
+
+    stocke = getattr(porteur, 'resultat', None)
+    simulation = stocke.get(CLE_SIMULATION) if isinstance(stocke, dict) else None
+    if perimee or not isinstance(simulation, dict) or not simulation.get('hash_entree'):
+        return None
+    try:
+        instant = parse_datetime(str(calcule_le or '').strip())
+    except ValueError:
+        instant = None
+    if instant is None:
+        return datetime.date.min
+    if timezone.is_naive(instant):
+        instant = timezone.make_aware(instant, datetime.timezone.utc)
+    return timezone.localtime(instant).date()
+
+
 def _tracees(document, cheminement, entree, jour=None):
     """Liaison DC tracée (suite ACAL1317) — les liaisons TRACÉES par pan, ou ``None``.
 
