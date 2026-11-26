@@ -1215,6 +1215,55 @@ describe('T4-X8-008 — Expert au téléphone : tiroir réductible, rien ne déb
   })
 })
 
+/* T4-X8-011 — le tiroir du bas se déplie au toucher ET au balayage (la poignée de 96 × 20 px était la seule prise, sans geste). */
+describe('T4-X8-011 — geste du tiroir', () => {
+  it('décision : balayage haut ≥ 40 px ouvre, bas ≥ 40 px referme, toucher < 10 px bascule, entre les deux rien', async () => {
+    const { decisionGesteTiroir } = await import('../gesteTiroir')
+    expect(decisionGesteTiroir({ dy: -60, deplie: false })).toBe('ouvrir')
+    expect(decisionGesteTiroir({ dy: -60, deplie: true })).toBeNull()
+    expect(decisionGesteTiroir({ dy: 60, deplie: true })).toBe('fermer')
+    expect(decisionGesteTiroir({ dy: 60, deplie: false })).toBeNull()
+    expect(decisionGesteTiroir({ dy: 3, deplie: false })).toBe('basculer')
+    expect(decisionGesteTiroir({ dy: -25, deplie: false })).toBeNull()
+    expect(decisionGesteTiroir({ dy: Number.NaN, deplie: false })).toBeNull()
+  })
+
+  it('le composant : toucher de la poignée ou du titre bascule, balayage haut ouvre (sans double bascule), le bureau n’a aucun geste', async () => {
+    const { default: PanneauEtape } = await import('../PanneauEtape')
+    const onDeplier = vi.fn()
+    const monter = (props) => render(<PanneauEtape titre="Les panneaux" refCorps={() => {}} refPied={() => {}} {...props} />)
+    const { unmount } = monter({ tiroir: true, deplie: false, onDeplier })
+    const poignee = screen.getByRole('button', { name: 'Agrandir ou réduire le panneau du bas' })
+    // toucher sur la poignée : son clic
+    fireEvent.click(poignee)
+    expect(onDeplier).toHaveBeenLastCalledWith(true)
+    // balayage vers le haut sur la poignée : ouvre UNE fois, le clic qui suit est avalé
+    onDeplier.mockClear()
+    fireEvent.pointerDown(poignee, { clientY: 700, pointerId: 1 })
+    fireEvent.pointerUp(poignee, { clientY: 640, pointerId: 1 })
+    fireEvent.click(poignee)
+    expect(onDeplier.mock.calls).toEqual([[true]])
+    // toucher et balayage sur la rangée du titre
+    onDeplier.mockClear()
+    const tete = screen.getByTestId('cal-panneau-etape-titre').parentElement
+    fireEvent.pointerDown(tete, { clientY: 700, pointerId: 2 })
+    fireEvent.pointerUp(tete, { clientY: 698, pointerId: 2 })
+    expect(onDeplier.mock.calls).toEqual([[true]])
+    onDeplier.mockClear()
+    fireEvent.pointerDown(tete, { clientY: 700, pointerId: 3 })
+    fireEvent.pointerUp(tete, { clientY: 650, pointerId: 3 })
+    expect(onDeplier.mock.calls).toEqual([[true]])
+    unmount()
+    // hors tiroir (bureau, tablette) : ni poignée ni geste
+    onDeplier.mockClear()
+    monter({ tiroir: false, onDeplier })
+    const tete2 = screen.getByTestId('cal-panneau-etape-titre').parentElement
+    fireEvent.pointerDown(tete2, { clientY: 700, pointerId: 4 })
+    fireEvent.pointerUp(tete2, { clientY: 700, pointerId: 4 })
+    expect(onDeplier).not.toHaveBeenCalled()
+  })
+})
+
 describe('T4-X5-017 — plein écran de la carte (useAtelierVues)', () => {
   // T4-X5-017 (rejeu X9) — le toit restait dans la moitié gauche : la coque re-cadrait dans la zone libre (pièces comptées)
   // après la bascule. Le recadrage passe par LE cadrage de la coque, à l'entrée ET à la sortie, au rendu du nouvel état.

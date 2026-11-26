@@ -179,6 +179,8 @@
     transition: height 0.2s ease;
   }
   .cal-coque .cal-panneau-etape[data-tiroir='1'][data-deplie='1']:not([hidden]) { height: calc(100% - 24px); }
+  /* T4-X8-011 — le balayage du tiroir (PanneauEtape.jsx::useGesteTiroir) : sans ceci le navigateur prend le geste pour un défilement. */
+  .cal-coque .cal-panneau-etape[data-tiroir='1'] :is(.cal-tiroir-poignee, .cal-panneau-etape-tete) { touch-action: none; }
   .cal-coque .cal-tiroir-poignee {
     grid-area: poignee;
     justify-self: center;
