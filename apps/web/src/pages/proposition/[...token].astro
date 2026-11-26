@@ -21,6 +21,9 @@ import OtpLectureForm from '../../components/OtpLectureForm.astro';
 import ChainePrix from '../../components/proposition/ChainePrix.astro';
 import { avenantASigner } from '../../lib/avenant';
 import BandeauAvenant from '../../components/proposition/BandeauAvenant.astro';
+// LOT 6 (SCHEL-W2) — schéma électrique du devis (remplace le schéma unifilaire quand le backend le sert).
+import SchemaElectrique from '../../components/proposition/SchemaElectrique.astro';
+import { choisirSld } from '../../lib/schemaElectrique';
 // CPRW (27/10/2026) — blocs C&I et agricoles déplacés tels quels dans leurs composants (chaque composant
 // commence par sa balise : la condition d'affichage reste ici, les espaces du rendu ne bougent pas).
 import SectionAutoconso from '../../components/proposition/ci/SectionAutoconso.astro';
@@ -1808,8 +1811,14 @@ const viewerConfig = show3d ? JSON.stringify({ model: viewerModel, roofOutlineLa
 // fournit `sld_svg` (étude électrique du devis existante) — absent/null →
 // rien de nouveau sur la page (comportement actuel inchangé). Le SVG est déjà
 // nettoyé côté serveur (client-safe) : injecté tel quel, jamais reparsé.
-const showSld = ok && data ? hasSldSvg(data) : false;
-const sldSvg = showSld ? (data!.sld_svg ?? '') : '';
+// LOT 6 (SCHEL-W2) — `schema_electrique` (clé additive) PRIME quand il est exploitable ; sans lui
+// (backend pas encore déployé, ancien devis) la section garde `sld_svg` EXACTEMENT comme avant.
+const sldSchema = ok && data ? (() => { const c = choisirSld(data); return c.mode === 'schema' ? c.schema : null; })() : null;
+const showSld = ok && data ? (sldSchema !== null || hasSldSvg(data)) : false;
+const sldSvg = showSld && !sldSchema ? (data!.sld_svg ?? '') : '';
+// Option cochée sans document : la section entière reste cachée (ni titre orphelin, ni note) — jamais
+// le schéma de l'autre option sous son nom. Le script `setupSldOption` la rouvre si le client change d'option.
+const sldAbsentPourSelection = !!sldSchema && !!preselect && !sldSchema.options[preselect];
 const sldFilename = showSld ? sldSvgFilename(reference) : '';
 
 // ── L-NIV-VU — « Version simplifiée », affichée SEULEMENT si c'est vrai.
@@ -6991,8 +7000,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
            de génération (CLAUDE.md règle #4, flux PDF inchangé). */}
       {showSld && (
         <>
-        <div class="seam-soft" aria-hidden="true"></div>
-      <section id="sld" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8 sm:pt-20" data-track-section="sld">
+        <div class="seam-soft" id="sld-seam" aria-hidden="true" hidden={sldAbsentPourSelection}></div>
+      <section id="sld" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8 sm:pt-20" data-track-section="sld" hidden={sldAbsentPourSelection}>
           {/* PREVIEW v2 (fondateur Reda, 2026-09-16) — le sur-titre, le <h2> et
               la phrase d'introduction occupaient un écran pour annoncer un
               document que presque personne n'ouvre AVANT de signer (et que le
@@ -7016,12 +7025,25 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               data-en="See the installation’s electrical diagram"
               data-ar="عرض المخطط الكهربائي للتركيب">Voir le schéma électrique de l’installation</summary>
             <h2 class="display cine-in cine-in-1 mt-4 text-2xl text-lune sm:text-3xl" data-i18n data-fr="Schéma électrique" data-en="Electrical diagram" data-ar="المخطط الكهربائي">Schéma électrique</h2>
+            {sldSchema ? (
+            <p class="v2-body cine-in cine-in-2 mt-2 text-sm text-lune-soft" data-i18n
+              data-fr="Le schéma électrique de votre installation : vos panneaux en chaînes, l’onduleur, la batterie si votre option en comporte une, puis le raccordement au réseau."
+              data-en="Your installation’s electrical diagram: your panels in strings, the inverter, the battery if your option includes one, then the grid connection."
+              data-ar="المخطط الكهربائي لتركيبتكم: ألواحكم في سلاسل، العاكس، البطارية إن كان خياركم يتضمنها، ثم الربط بالشبكة.">
+              Le schéma électrique de votre installation : vos panneaux en chaînes, l’onduleur, la batterie si votre option en comporte une, puis le raccordement au réseau.
+            </p>
+            ) : (
             <p class="v2-body cine-in cine-in-2 mt-2 text-sm text-lune-soft" data-i18n
               data-fr="Le schéma unifilaire de votre installation, tel qu’étudié par nos techniciens."
               data-en="Your installation’s single-line diagram, as designed by our technicians."
               data-ar="المخطط الأحادي الخط لتركيبتكم، كما درسه فنيونا.">
               Le schéma unifilaire de votre installation, tel qu’étudié par nos techniciens.
             </p>
+            )}
+            {sldSchema ? (
+              <div class="cine-in cine-in-3 mt-5"><SchemaElectrique schema={sldSchema} selected={preselect} /></div>
+            ) : (
+            <>
           <button
             type="button"
             id="sld-teaser"
@@ -7063,9 +7085,13 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               Télécharger le schéma (SVG)
             </button>
           </div>
+            </>
+            )}
           </details>
         </section>
 
+        {!sldSchema && (
+        <>
         {/* WJ129 — visionneuse plein écran (pan/pinch/molette/double-tap,
              AUCUNE bibliothèque — géométrie pure dans lib/sldViewer.ts).
              SIBLING du <section id="sld"> (jamais imbriquée dans .cine-in/
@@ -7136,6 +7162,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             </button>
           </div>
         </div>
+        </>
+        )}
         </>
       )}
 
@@ -10557,6 +10585,36 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+    });
+  })();
+
+  // ── LOT 6 (SCHEL-W2) — le schéma électrique suit l'option cochée. Un panneau par option servie
+  // (`[data-sld-option]`) ; on montre celui de la case cochée, jamais celui de l'autre option
+  // (option sans document → toute la section cachée, aucune note). Sans schéma neuf (ancien payload)
+  // aucun `[data-sld-option]` dans le DOM : ce bloc ne fait rien. À l'impression, le repli
+  // <details> du schéma est ouvert pour que la feuille le porte.
+  (function setupSldOption(): void {
+    const panels = Array.from(document.querySelectorAll<HTMLElement>('[data-sld-option]'));
+    if (panels.length === 0) return;
+    const sync = (): void => {
+      const coche = document.querySelector<HTMLInputElement>('input[name="option"]:checked');
+      if (!coche) return;
+      panels.forEach((el) => {
+        el.hidden = el.dataset.sldOption !== coche.value;
+      });
+      const montre = panels.some((el) => !el.hidden);
+      const section = document.getElementById('sld');
+      const seam = document.getElementById('sld-seam');
+      if (section) section.hidden = !montre;
+      if (seam) seam.hidden = !montre;
+    };
+    document.querySelectorAll<HTMLInputElement>('input[name="option"]').forEach((radio) => {
+      radio.addEventListener('change', sync);
+    });
+    sync();
+    window.addEventListener('beforeprint', () => {
+      const fold = document.querySelector<HTMLDetailsElement>('#sld details.prop-fold');
+      if (fold) fold.open = true;
     });
   })();
 
