@@ -635,14 +635,15 @@ class EntreeSuitLeModulePose(BaseMateriel):
             voc_v=49.5, isc_a=18.65, imp_a=17.19, pmax_wc=715.0)
 
     def _notes(self, calepinage):
+        """Les entrées du journal qui disent le suivi du module (tous genres)."""
         from django.contrib.contenttypes.models import ContentType
 
         from apps.records.models import Activity
 
         return list(Activity.objects.filter(
             content_type=ContentType.objects.get_for_model(Calepinage),
-            object_id=calepinage.pk, kind=Activity.Kind.NOTE)
-            .values_list('body', flat=True))
+            object_id=calepinage.pk, field='module_produit')
+            .values_list('kind', 'old_value', 'new_value', 'body'))
 
     def test_module_change_l_entree_suit_et_le_dit(self):
         from apps.ventes.services import layout_hash
@@ -659,8 +660,12 @@ class EntreeSuitLeModulePose(BaseMateriel):
                          self.module_715.pk)
         self.assertEqual(calepinage.resultat[CLE_ENTREE]['temperature_min_c'],
                          TEMPERATURES['temperature_min_c'])
-        self.assertIn(PHRASE_SUIVI % ('Module devis 710', 'Module 715'),
-                      self._notes(calepinage))
+        # Entrée AUTOMATIQUE (modification ancien → nouveau), jamais une note du vendeur.
+        from apps.records.models import Activity
+
+        self.assertEqual(self._notes(calepinage), [(
+            Activity.Kind.MODIFICATION, 'Module devis 710', 'Module 715',
+            PHRASE_SUIVI % ('Module devis 710', 'Module 715'))])
         # Les empreintes stockées ne lisent que le document : elles ne bougent pas.
         self.assertEqual(calepinage.layout_hash, layout_hash(document))
         self.assertEqual(rendu['empreinte_document'], empreinte_document(document))
@@ -677,7 +682,7 @@ class EntreeSuitLeModulePose(BaseMateriel):
         calepinage.refresh_from_db()
         self.assertEqual(calepinage.resultat[CLE_ENTREE]['module_produit'],
                          self.module_devis.pk)
-        self.assertFalse([n for n in self._notes(calepinage) if 'suit maintenant' in n])
+        self.assertEqual(self._notes(calepinage), [])
 
     def test_toit_sans_module_pose_entree_intacte(self):
         calepinage = self._calepinage(

@@ -246,6 +246,17 @@ def journaliser_pose_reelle(calepinage, *, pan, ancien=None, nouveau=None,
                    body=(ecarts_position or '').strip())
 
 
+def journaliser_module_suivi(calepinage, *, ancien, nouveau, phrase, user=None):
+    """D-ACAL-169 — l'entrée électrique a SUIVI le module posé : une entrée
+    AUTOMATIQUE (ancien → nouveau module, la phrase dans le corps), jamais une
+    note manuelle du vendeur."""
+    return _ecrire(calepinage, 'MODIFICATION', user=user,
+                   field='module_produit',
+                   field_label="Module de l'étape Électrique",
+                   old_value=ancien or '', new_value=nouveau or '',
+                   body=(phrase or '').strip())
+
+
 def journaliser_version_pose(calepinage, *, version=None, user=None):
     """CALX366 — la version gelée depuis les écarts de pose réelle, par son
     LIBELLÉ (qui nomme les pans en écart), jamais par son seul identifiant."""

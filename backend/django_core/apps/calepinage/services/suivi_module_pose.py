@@ -67,7 +67,7 @@ def suivre_le_module_pose(calepinage, document, *, user=None):
     suivi, sinon ``None`` (rien n'est écrit). Un module posé introuvable dans le
     catalogue de la société ne remplace rien."""
     from .electrique import CLE_ENTREE, _designation
-    from .journal import noter
+    from .journal import journaliser_module_suivi
     from .resultat import modifier_resultat
 
     resultat = getattr(calepinage, 'resultat', None)
@@ -92,8 +92,10 @@ def suivre_le_module_pose(calepinage, document, *, user=None):
     if modifier_resultat(calepinage, _suivre) is None:
         return None
     nom_ancien = _designation(_produit(company, ancien)) or '#%s' % ancien
-    noter(calepinage, PHRASE_SUIVI % (nom_ancien, _designation(produit)
-                                      or '#%s' % produit.pk), user=user)
+    nom_nouveau = _designation(produit) or '#%s' % produit.pk
+    journaliser_module_suivi(calepinage, ancien=nom_ancien, nouveau=nom_nouveau,
+                             phrase=PHRASE_SUIVI % (nom_ancien, nom_nouveau),
+                             user=user)
     return {'ancien': ancien, 'nouveau': produit.pk}
 
 
