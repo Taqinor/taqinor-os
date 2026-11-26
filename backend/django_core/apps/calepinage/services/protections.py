@@ -143,8 +143,34 @@ MOTIF_EXIGE_DOSSIER = 'exigé par le dossier'
 _REPONSES = {'oui': True, 'non': False, True: True, False: False}
 
 
+#: ACAL1973 — par question, son libellé SEUL (l'étiquette que l'écran affiche)
+#: et le champ où sa réponse s'enregistre.
+_QUESTIONS = {
+    'ARRET_RAPIDE': (LIBELLE_ARRET_RAPIDE, 'protections.exigences.arret_rapide'),
+    'PARATONNERRE': ('Paratonnerre : distance de séparation',
+                     'protections.exigences.paratonnerre')}
+
+
 def _question(code, libelle, statut):
-    return {'code': code, 'libelle': libelle, 'statut': statut}
+    question, champ = next(valeur for prefixe, valeur in _QUESTIONS.items()
+                           if code.startswith(prefixe))
+    return {'code': code, 'libelle': libelle, 'statut': statut,
+            'question': question, 'champ': champ}
+
+
+def questions_du_dossier(decisions, reglages=None):
+    """ACAL1973 — les questions du DOSSIER (``protections.questions``),
+    servies par l'évaluation électrique et reprises par la check-list.
+    Lecture tolérante : une réponse illisible laisse la question posée,
+    « non renseigné » (le refus nommé reste à l'enregistrement)."""
+    if not isinstance(decisions, dict) or not isinstance(
+            decisions.get('exigences') or {}, dict):
+        decisions = None
+    try:
+        question = _arret_rapide(decisions, 1)[1]
+    except DecisionInvalide:
+        question = _arret_rapide(None, 1)[1]
+    return [question] + [q for q in (_paratonnerre(decisions, reglages),) if q]
 
 
 def _arret_rapide(decisions, rang):
@@ -286,7 +312,7 @@ def checklist_protections(conception, *, decisions=None, norme=None,
         organes.append(_ajout(brut, rang))
 
     # ACAL675 — les exigences du dossier : questions posées, organe ajouté.
-    organe, question = _arret_rapide(
+    organe, _question_posee = _arret_rapide(
         decisions, len((decisions or {}).get('ajouts') or ()) + 1)
     if organe is not None:
         organes.append(organe)
@@ -295,8 +321,7 @@ def checklist_protections(conception, *, decisions=None, norme=None,
         'organes': organes,
         'justifications': list(resultat.justifications),
         'omissions': [],
-        'questions': [question] + [
-            q for q in (_paratonnerre(decisions, reglages),) if q],
+        'questions': questions_du_dossier(decisions, reglages),
     }
 
 

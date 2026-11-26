@@ -2156,6 +2156,7 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
     from .etat_dossier_electrique import etat_a_chaud
     from .onduleurs_minimum import onduleurs_suggeres
     from .ombrage_chaines import modules_sous_seuil
+    from .protections import questions_du_dossier
     from .raccordement import _reglage
     from .tensions_chaines import (
         conception_cablee, imposee_et_refus, tensions_par_chaine)
@@ -2179,6 +2180,9 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
         rapport = verdict_publiable(calepinage)
         return {cle: rapport[cle] for cle in ('publiable', 'etat', 'points')}
 
+    # ACAL1973 — les questions du dossier : l'écran lit leur libellé ICI.
+    protections = {'questions': questions_du_dossier(
+        donnees.get('protections'), _reglages_electrique_societe(calepinage))}
     if manquantes:
         return {
             'verdict': 'indetermine', **_lecture((), manquantes),
@@ -2194,7 +2198,7 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
             'chaines': [],
             'onduleurs_suggeres': None,
             'boucles_dc': [],
-            'modules_sous_seuil': [],
+            'modules_sous_seuil': [], 'protections': protections,
         }
     # Une proposition MALFORMÉE est un bloquant NOMMÉ, pas une erreur 500 :
     # l'atelier envoie sa proposition à chaud, il doit lire pourquoi elle ne
@@ -2259,6 +2263,7 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
         'modules_sous_seuil': modules_sous_seuil(
             _document, affectation(conception, imposee=imposee),
             _reglage(_reglages_electrique_societe(calepinage), 'seuil_acces_optimiseur')[0]),
+        'protections': protections,
     }
 
 
