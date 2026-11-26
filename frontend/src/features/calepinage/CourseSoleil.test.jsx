@@ -40,4 +40,26 @@ describe('CourseSoleil — onglet monté', () => {
     rendre()
     expect(await screen.findByText('Impossible de charger la conception.')).toBeInTheDocument()
   })
+
+  // ACAL1444 — rendu dans un panneau de ≈ 270 px : libellés à ≥ 12 px RENDUS, diagramme ≥ 200 px de haut,
+  // axe vertical gradué 0/30/60/90°. Mutant : viewBox fixe 640 × 260 ⇒ 11 px × 270/640 ≈ 4,6 px, 110 px de haut.
+  it('dans un panneau de 270 px : libellés rendus à 12 px au moins, plus haut, axe gradué en degrés', async () => {
+    const largeurRendue = 270
+    const espion = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function rect() {
+      const l = this.dataset?.testid === 'cal-sundiagram' ? largeurRendue : 0
+      return { width: l, height: 0, top: 0, left: 0, right: l, bottom: 0, x: 0, y: 0 }
+    })
+    espions.layout.mockResolvedValue({ data: { roof_layout: { pin: { lat: 33.6, lng: -7.6 }, zones: [ZONE] } } })
+    rendre()
+    await screen.findByTestId('cal-course-soleil')
+    const svg = screen.getByTestId('cal-sundiagram')
+    const [, , vbL, vbH] = svg.getAttribute('viewBox').split(' ').map(Number)
+    const echelle = largeurRendue / vbL
+    expect(vbH * echelle).toBeGreaterThanOrEqual(200)
+    for (const texte of svg.querySelectorAll('text')) {
+      expect(Number(texte.getAttribute('font-size')) * echelle).toBeGreaterThanOrEqual(12)
+    }
+    expect(screen.getAllByTestId('cal-sundiagram-graduation').map((g) => g.textContent)).toEqual(['0°', '30°', '60°', '90°'])
+    espion.mockRestore()
+  })
 })
