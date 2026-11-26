@@ -7,8 +7,10 @@ import assert from 'node:assert/strict'
 
 import {
   prixForfaitHt, porteBaremeParPanneau, comptesPanneauxEcran, retarifierForfaitsEcran, suivreQuantitesPanneauxEcran, reductionOptionAvec,
+  phraseReductionOptionAvec,
 } from './forfaitsPanneau.js'
 import { lignesEcranVersPayload } from './lignesEcran.js'
+import { ETAT_INITIAL, sizingReducer, toucheNbPanneauxPourComposition } from './sizingReducer.js'
 
 // Mêmes barèmes que `apps/ventes/tests/test_pvkit_composition.py::BAREMES_FORFAIT`
 // (chaînes telles que DRF les sert : DecimalField 2 et 4 décimales).
@@ -204,4 +206,18 @@ test('reductionOptionAvec — l option avec batterie qui passe de 8 à 6 panneau
   assert.equal(reductionOptionAvec([sans('6'), avec('8')], [sans('6'), avec('8')], [PAN]), null)
   assert.equal(reductionOptionAvec([sans('6'), avec('6')], [sans('6'), avec('8')], [PAN]), null, 'une hausse n est pas une réduction')
   assert.equal(reductionOptionAvec([], [sans('6'), avec('6')], [PAN]), null)
+})
+
+test('R5A-N2 (revue) — « le nombre de panneaux saisi » n est la raison QUE si un compte a été saisi (état réel du reducer)', () => {
+  const sans = (q) => ({ produit: PAN.id, designation: PAN.nom, quantite: q, variante: 'sans' })
+  const avec = (q) => ({ produit: PAN.id, designation: PAN.nom, quantite: q, variante: 'avec' })
+  const avant = [sans('6'), avec('8')]
+  const apres = [sans('6'), avec('6')]
+  const saisi = sizingReducer(ETAT_INITIAL, { type: 'SAISI', champ: 'nbPanneaux', valeur: '6' })
+  assert.equal(toucheNbPanneauxPourComposition(saisi), true)
+  assert.equal(phraseReductionOptionAvec(avant, apres, [PAN], toucheNbPanneauxPourComposition(saisi)),
+    'L\'option avec batterie passe de 8 à 6 panneaux : le nombre de panneaux saisi vaut pour les deux options.')
+  // Rien de tapé : `resolveKwcAvec` a rendu la taille sans batterie (moteur sans `recommandation_avec`, ou la sienne plus petite).
+  assert.equal(toucheNbPanneauxPourComposition(ETAT_INITIAL), false)
+  assert.equal(phraseReductionOptionAvec(avant, apres, [PAN], toucheNbPanneauxPourComposition(ETAT_INITIAL)), null)
 })

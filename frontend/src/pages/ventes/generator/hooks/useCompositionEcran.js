@@ -7,10 +7,12 @@
 import { roleLabel, tauxTvaOf, tauxTvaOuDefaut, ttcExactFromHt } from '../../../../features/ventes/solar'
 import { lignesDepuisKit } from '../../../../features/ventes/quote/etudeMarcheBloc'
 import { tailleAutoRemplirPompage } from '../../../../features/ventes/quote/reouverture'
-import { reductionOptionAvec } from '../../../../features/ventes/quote/forfaitsPanneau'
+import { phraseReductionOptionAvec } from '../../../../features/ventes/quote/forfaitsPanneau'
 import { recommandationServie } from '../../../../features/ventes/quote/paireDimensionnement'
 import { refusAutoRemplirPompage } from '../../../../features/ventes/etudePompagePreviewPur'
-import { SCENARIO_AVEC, SCENARIO_LES_DEUX, tailleDemandeeParLead } from '../../../../features/ventes/quote/sizingReducer'
+import {
+  SCENARIO_AVEC, SCENARIO_LES_DEUX, tailleDemandeeParLead, toucheNbPanneauxPourComposition,
+} from '../../../../features/ventes/quote/sizingReducer'
 import ventesApi from '../../../../api/ventesApi'
 import { formatKwc, formatNumber } from '../../../../lib/format'
 import {
@@ -137,12 +139,12 @@ export function useCompositionEcran(ctx) {
     // affichait localement pour un onduleur incomplet, un rôle absent, etc. —
     // rendus tels quels dans le même bandeau, jamais tus.
     const avertissementsMsg = (data.avertissements || []).join(' ') || null
-    const reduction = reductionOptionAvec(lines, generated, produits)
+    // R5A-N2 — l'option « avec batterie » qui perd des panneaux À CAUSE d'un compte saisi le dit, les deux comptes nommés.
+    const reduction = phraseReductionOptionAvec(lines, generated, produits, toucheNbPanneauxPourComposition(sizing))
     setErrors(e => ({
       ...e,
       autofill: [manquantsMsg, avertissementsMsg].filter(Boolean).join(' ') || null,
-      // R5A-N2 — l'option « avec batterie » qui perd des panneaux le dit au moment où ça arrive, les deux comptes nommés.
-      autofillKwc: [mismatch, reduction ? `L'option avec batterie passe de ${reduction.avant} à ${reduction.apres} panneaux : le nombre de panneaux saisi vaut pour les deux options.` : null].filter(Boolean).join(' ') || null,
+      autofillKwc: [mismatch, reduction].filter(Boolean).join(' ') || null,
       marquesManquantes: marquesMsg,
     }))
     recomposerLignes(generated)

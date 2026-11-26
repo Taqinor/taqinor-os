@@ -192,6 +192,16 @@ export function reductionOptionAvec(avant, apres, produits = []) {
   return a > 0 && b > 0 && b < a ? { avant: a, apres: b } : null
 }
 
+/** R5A-N2 (revue) — LA phrase de l'Auto-remplir, ou `null`. Elle ne donne « le nombre de panneaux saisi » pour raison QUE si
+    un compte a été saisi (`nbSaisi` = `toucheNbPanneauxPourComposition`) : `resolveKwcAvec` rend aussi la taille sans batterie
+    quand le moteur n'a pas de `recommandation_avec` ou que la sienne est plus petite — personne n'a alors rien tapé. */
+export function phraseReductionOptionAvec(avant, apres, produits, nbSaisi) {
+  const reduction = nbSaisi ? reductionOptionAvec(avant, apres, produits) : null
+  return reduction
+    ? `L'option avec batterie passe de ${reduction.avant} à ${reduction.apres} panneaux : le nombre de panneaux saisi vaut pour les deux options.`
+    : null
+}
+
 /** Prix des forfaits au panneau PUIS quantités structure / socle : UN seul passage, le même tableau quand rien ne change
     (appelé pendant le rendu du générateur, sans boucle). */
 export const ajusterAuxPanneauxEcran = (lines, produits) => suivreQuantitesPanneauxEcran(retarifierForfaitsEcran(lines, produits), produits)
