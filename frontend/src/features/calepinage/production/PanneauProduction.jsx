@@ -108,7 +108,7 @@ export function BandeauPerime({ motif }) {
    ----------------------------------------------------------------------------
    Un seul bouton, toujours visible pour qui peut gérer (`calepinage_gerer`),
    dont le libellé dit l'état RÉEL du résultat servi : « Lancer » (jamais
-   simulé), « Relancer (document modifié) » (périmé), « Recalculer »
+   simulé), « Relancer la simulation » (périmé ; « Relancer (réglages modifiés) » quand le serveur prouve la cause), « Recalculer »
    (frais → `forcer: true`). Il suit le travail de fond par
    `moteur/resultat/<job_id>/` avec les statuts réels du serveur
    (`suiviSimulation.js` : queued/running = attente, done = succès, failed =

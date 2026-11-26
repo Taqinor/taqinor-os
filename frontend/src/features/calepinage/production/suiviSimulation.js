@@ -128,7 +128,8 @@ export function etatCalcul(data) {
 
 export const LIBELLE_BOUTON = {
   lancer: 'Lancer la simulation',
-  perime: 'Relancer (document modifié)',
+  // ACAL1647 — la cause n'est nommée que si le serveur la prouve (`libelleBouton`) : sans preuve, aucune.
+  perime: 'Relancer la simulation',
   frais: 'Recalculer',
 }
 
