@@ -8,6 +8,7 @@ import { affectationComplete, couleurParModule, drapeauOptimiseur, libelleGroupe
 import { phrasesChaines } from '../electrique/tensionsChaines'
 import { etatAffiche, libelleEtat } from '../electrique/etatVerdict'
 import ImportAffectation from './ImportAffectation'
+import OutilsOnduleur from '../electrique/OutilsOnduleur'
 
 /* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
 const MOTIF_LECTURE_SEULE = 'Conception figée : révisez le devis (nouvelle version) pour la modifier.'
@@ -61,7 +62,7 @@ function causeSansChaine(absents) {
    serveur affichés tels quels) ; « Modifier une chaîne » ouvre l'écran d'affectation (`onModifier`).
    « Déplacer l'onduleur » n'est PAS proposé : aucune position d'onduleur n'est enregistrée (D-ACAL-70). */
 export function BarreRaccordement({
-  calepinageId, manuelles = false, nonEnregistre = false, lectureSeule = false, onRaccorde, onModifier,
+  calepinageId, manuelles = false, nonEnregistre = false, lectureSeule = false, onRaccorde, onModifier, onduleur = null,
 }) {
   const [arme, setArme] = useState(false)
   const [enCours, setEnCours] = useState(false)
@@ -117,6 +118,8 @@ export function BarreRaccordement({
           {arme ? (nonEnregistre && !manuelles ? 'Confirmer : perdre mes modifications' : 'Confirmer : effacer l’affectation manuelle') : 'Raccorder automatiquement'}
         </button>
         <button type="button" className="cel-barre-texte" onClick={onModifier}>Modifier une chaîne</button>
+        {/* ACAL1317 — placer / déplacer / retirer l'onduleur (la position est celle du document, `electrical.equipements`). */}
+        <OutilsOnduleur onduleur={onduleur} lectureSeule={lectureSeule} motifLectureSeule={MOTIF_LECTURE_SEULE} />
       </div>
     </div>
   )

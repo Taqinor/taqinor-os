@@ -178,6 +178,18 @@ const PASTILLE_LARGEUR_M = 3.2;
  *  que l'organe est au sol, et aucune longueur n'en est tirée. */
 const ALTITUDE_DESSIN_PAR_DEFAUT_M = 0;
 
+/** ACAL1317 — PAS D'UNE FLÈCHE quand l'onduleur se déplace au clavier ou par les boutons fléchés (m). Incrément
+ *  d'interface, jamais un chiffre montré ni mesuré : le pas fin du placement libre des modules (`FREE_STEP_M`, 1 cm)
+ *  demanderait cent appuis pour un mètre, et un organe électrique n'a ni rangée ni lattice dont reprendre le pas. */
+export const PAS_DEPLACEMENT_ORGANE_M = 0.25;
+
+/** ACAL1317 — un tracé « aboutit » à un organe quand son bout tombe à moins de ce rayon du point posé (m). Seuil
+ *  d'une PHRASE (« le tracé n'aboutit plus à l'onduleur »), aucune longueur n'en est tirée. */
+const TOLERANCE_ABOUTISSEMENT_M = 0.5;
+
+/** ACAL1317 — deux points de tracé sont le même point à 1e-9° près (≈ 0,1 mm) : bruit du recalcul flottant. */
+const EGALITE_POINT_DEG = 1e-9;
+
 const DEG2RAD = Math.PI / 180;
 import { WGS84_RADIUS as RAYON_TERRE_M } from '../../lib/geo';
 const DEG2M = DEG2RAD * RAYON_TERRE_M;
@@ -579,6 +591,20 @@ export interface CheminementReussi {
   cheminement: CheminementElectrique;
 }
 
+/** ACAL1317 — ce que le geste a fait du tracé : les tracés (re)proposés, et le refus s'il n'a pu l'être. */
+export interface SuiviTrace {
+  traces: string[];
+  refusTrace: RefusElectrique | null;
+}
+
+/** ACAL1317 — les tracés d'un organe : PROPOSÉS (reproposés quand il bouge), À LA MAIN (jamais touchés) et, parmi
+ *  ceux-ci, ceux dont le bout ne tombe plus sur l'organe. */
+export interface EtatTracesOrgane {
+  proposes: string[];
+  aLaMain: string[];
+  decales: string[];
+}
+
 export interface EtatCalque {
   visible: boolean;
   opacite: number;
@@ -599,8 +625,23 @@ export interface CoucheElectrique {
   setLayerState: (id: string, etat: { visible: boolean; opacite?: number }) => boolean;
   etatCalque: () => EtatCalque;
   // — CALX220 : poser, déplacer, retirer —
-  armerPose: (type: TypeEquipement | null) => boolean;
+  /** ACAL1317 — `{ suivreTrace: true }` : la pose propose aussi le tracé DC depuis le pan (un seul cran d'annulation). */
+  armerPose: (type: TypeEquipement | null, options?: { suivreTrace?: boolean }) => boolean;
   typeArme: () => TypeEquipement | null;
+  /** ACAL1317 — le prochain clic sur la carte DÉPLACE l'organe `id` (au lieu d'en poser un) et son tracé proposé
+   *  suit ; `null` désarme. Rend `false` pour un organe absent du plan. */
+  armerDeplacement: (id: string | null) => boolean;
+  deplacementArme: () => string | null;
+  /** ACAL1317 — le pas d'une flèche (`PAS_DEPLACEMENT_ORGANE_M`), relu par l'écran de l'ERP. */
+  readonly pasDeplacementM: number;
+  /** ACAL1317 — déplace de (est, nord) mètres, le tracé proposé suit (flèches du clavier ou boutons fléchés). */
+  pousser:(id: string, dEstM: number, dNordM: number) => (PoseReussie & SuiviTrace) | RefusElectrique;
+  /** ACAL1317 — retire l'organe et ses tracés proposés en un cran ; les tracés à la main restent. */
+  retirerAvecTraces: (id: string) => { ok: boolean; tracesGardees: string[] };
+  /** ACAL1317 — l'état des tracés d'un organe (lecture seule). */
+  etatTraces: (id: string) => EtatTracesOrgane;
+  /** ACAL1317 — appelé après chaque changement du document (clic sur la carte compris) ; rend le désabonnement. */
+  ecouter: (f: () => void) => () => void;
   poser: (lngLat: LngLat, options?: { label?: string; altitudeM?: number | null; rotationDeg?: number; produitId?: number | null }) => PoseReussie | RefusElectrique;
   /** CALX222 — un clic sur la carte pose l'organe armé (« Armer la pose ») puis désarme ;
    *  rend `true` si le clic est consommé (un type était armé), `false` sinon. */
@@ -675,6 +716,8 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
   };
   let ignores: string[] = [];
   let arme: TypeEquipement | null = null;
+  let suivreALaPose = false; // ACAL1317
+  let deplacementVise: string | null = null; // ACAL1317
   let selectionne: string | null = null;
   let refus: RefusElectrique | null = null;
   let etat: EtatCalque = { visible: true, opacite: 1 };
@@ -696,9 +739,25 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     return ctx.electrical;
   };
 
+  // ACAL1317 — un geste COMPOSÉ (déplacer l'onduleur PUIS reproposer son tracé) est UN cran d'annulation : la photo
+  // est prise une fois à l'entrée, les gestes élémentaires de l'intérieur n'en reprennent pas.
+  let enGeste = 0;
+  const ecouteurs = new Set<() => void>();
+  const notifier = (): void => { for (const f of [...ecouteurs]) f(); };
   const photographier = (): void => {
+    if (enGeste > 0) return;
     histoire.push(copieDocument(document()));
   };
+  function enUnGeste<T>(f: () => T): T {
+    photographier();
+    enGeste += 1;
+    try {
+      return f();
+    } finally {
+      enGeste -= 1;
+      if (enGeste === 0) notifier();
+    }
+  }
 
   let origineDessinee: LngLat | null = null;
   function rafraichir(): void {
@@ -713,6 +772,7 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     }
     for (const e of lu.equipements) groupe.add(creerMarqueur(e, o));
     appliquerEtat();
+    if (enGeste === 0) notifier(); // ACAL1317 — l'écran relit le document après chaque geste (clic sur la carte compris)
   }
 
   function appliquerEtat(): void {
@@ -912,15 +972,16 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     return true;
   }
 
-  /** ACAL472 — le tracé proposé : points calculés en mètres (ENU du pan) par plus court chemin,
-   *  écrits par les gestes existants ; un tracé `plan` déjà proposé pour la même liaison est remplacé. */
-  function proposerCheminement(depart: { cote: CoteCheminement; de: string; vers: string }): CheminementReussi | RefusElectrique {
+  /** ACAL472 — les points du tracé PROPOSÉ (`[lng, lat]`), calculés sans rien écrire ; un refus est RENDU, jamais
+   *  mémorisé (ACAL1317 : la même fonction juge si un tracé existant EST un tracé proposé). */
+  function pointsProposes(depart: { cote: CoteCheminement; de: string; vers: string }): { ok: true; points: LngLat[] } | RefusElectrique {
+    const refusPoints = (message: string): RefusElectrique => ({ ok: false, champ: 'electrical.cheminements.points', message });
     const pans = (ctx.areas ?? []).filter((a) => a.renderPlan);
     const pan = pans.find((a) => a.id === depart?.de || a.id === depart?.vers)
       ?? pans.find((a) => a.id === ctx.activeAreaId) ?? pans[0];
     const plan = pan?.renderPlan;
     if (!plan) {
-      return refuser('electrical.cheminements.points', 'Aucun pan posé : la rive et les rangées sont inconnues, le tracé ne peut pas être proposé.');
+      return refusPoints('Aucun pan posé : la rive et les rangées sont inconnues, le tracé ne peut pas être proposé.');
     }
     const o = plan.pack.origin;
     const enu = (id: string): Pt | null => {
@@ -933,7 +994,7 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     };
     const [de, vers] = [enu(texteOuVide(depart?.de).trim()), enu(texteOuVide(depart?.vers).trim())];
     if (!de || !vers) {
-      return refuser('electrical.cheminements.points', 'Une extrémité du tracé n’a pas de position sur ce pan : posez l’organe ou choisissez le pan.');
+      return refusPoints('Une extrémité du tracé n’a pas de position sur ce pan : posez l’organe ou choisissez le pan.');
     }
     const az = plan.pack.azimuthDeg * DEG2RAD;
     const f: Pt = [Math.sin(az), Math.cos(az)]; // empilement ; l'axe d'une rangée est u = (−f.y, f.x)
@@ -949,13 +1010,21 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
       hors([Math.min(...u) - plan.grid.rowWidthM / 2, v]), hors([Math.max(...u) + plan.grid.rowWidthM / 2, v]),
     ] as [Pt, Pt]);
     const res = proposerPointsCheminement({ de, vers, rangees, rive: plan.pack.ringENU as Pt[] });
-    if (!res.ok) return refuser('electrical.cheminements.points', res.motif);
+    if (!res.ok) return refusPoints(res.motif);
+    const cosLat = Math.cos(o[1] * DEG2RAD);
+    return { ok: true, points: res.points.map(([e, n]) => [o[0] + e / (DEG2M * cosLat), o[1] + n / DEG2M] as LngLat) };
+  }
+
+  /** ACAL472 — le tracé proposé, écrit par les gestes existants ; un tracé `plan` déjà proposé pour la même liaison
+   *  est remplacé. */
+  function proposerCheminement(depart: { cote: CoteCheminement; de: string; vers: string }): CheminementReussi | RefusElectrique {
+    const propose = pointsProposes(depart);
+    if (!propose.ok) return refuser(propose.champ, propose.message);
     const anciens = ((document()?.cheminements ?? []) as CheminementElectrique[])
       .filter((c) => c.origine === 'plan' && c.cote === depart.cote && c.de === depart.de && c.vers === depart.vers).map((c) => c.id);
     const d = demarrerCheminement({ cote: depart.cote, de: depart.de });
     if (d !== true) return d;
-    const cosLat = Math.cos(o[1] * DEG2RAD);
-    for (const [e, n] of res.points) ajouterPointCheminement([o[0] + e / (DEG2M * cosLat), o[1] + n / DEG2M]);
+    for (const p of propose.points) ajouterPointCheminement(p);
     const fin = terminerCheminement(depart.vers);
     if (!fin.ok) enCours = null; // un tracé refusé ne reste pas à moitié ouvert
     if (fin.ok && anciens.length) {
@@ -964,6 +1033,105 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
       rafraichir();
     }
     return fin;
+  }
+
+  // ── ACAL1317 — l'onduleur se pose et se DÉPLACE depuis l'étape Électrique, son tracé suit ──────────────
+
+  /** Les tracés qui touchent l'organe `id` (par `de` ou par `vers`), tels que le document les porte. */
+  const tracesDe = (id: string): CheminementElectrique[] => ((document()?.cheminements ?? []) as CheminementElectrique[])
+    .filter((c) => c && (c.de === id || c.vers === id));
+
+  /** Un tracé EST un tracé proposé quand ses points sont exactement ceux que `pointsProposes` rend AUJOURD'HUI pour
+   *  sa liaison : un tracé dessiné à la main (même d'origine `plan`) ou devenu ancien ne l'est pas, et n'est donc
+   *  jamais remplacé. */
+  function estTraceProposee(c: CheminementElectrique): boolean {
+    const pts = c.points ?? [];
+    if (c.origine !== 'plan' || pts.length < 2 || c.longueurSaisieM != null) return false;
+    const p = pointsProposes({ cote: c.cote, de: c.de, vers: c.vers });
+    return p.ok && p.points.length === pts.length
+      && p.points.every(([lng, lat], i) => Math.abs(lng - pts[i].lng) < EGALITE_POINT_DEG && Math.abs(lat - pts[i].lat) < EGALITE_POINT_DEG);
+  }
+
+  /** Le bout d'un tracé côté organe tombe-t-il sur l'organe ? Un tracé SAISI (sans points) n'a pas de bout à juger. */
+  function aboutit(c: CheminementElectrique, organe: EquipementElectrique): boolean {
+    const pts = c.points ?? [];
+    if (pts.length < 2) return true;
+    const bout = c.vers === organe.id ? pts[pts.length - 1] : pts[0];
+    const [e, n] = versScene(bout.lng, bout.lat, [organe.lng, organe.lat]);
+    return Math.hypot(e, n) <= TOLERANCE_ABOUTISSEMENT_M;
+  }
+
+  function etatTraces(id: string): EtatTracesOrgane {
+    const organe = ((document()?.equipements ?? []) as EquipementElectrique[]).find((x) => x.id === id) ?? null;
+    const proposes: string[] = [];
+    const aLaMain: string[] = [];
+    const decales: string[] = [];
+    for (const c of tracesDe(id)) {
+      if (estTraceProposee(c)) { proposes.push(c.id); continue; }
+      aLaMain.push(c.id);
+      if (organe && !aboutit(c, organe)) decales.push(c.id);
+    }
+    return { proposes, aLaMain, decales };
+  }
+
+  /** Le pan d'où part le tracé DC d'un organe neuf : le pan actif s'il est posé, sinon le premier pan posé. */
+  const panDeDepart = (): string => {
+    const poses = (ctx.areas ?? []).filter((a) => a.renderPlan);
+    return (poses.find((a) => a.id === ctx.activeAreaId) ?? poses[0])?.id ?? '';
+  };
+
+  /** Repropose les liaisons PROPOSÉES relevées avant le geste ; un organe sans aucun tracé reçoit le tracé DC depuis
+   *  le pan de départ. Un tracé à la main n'est jamais touché (ni sa liaison reproposée par-dessus). */
+  function suivreTrace(id: string, proposesAvant: readonly CheminementElectrique[]): SuiviTrace {
+    const aLaMain = tracesDe(id).filter((c) => !proposesAvant.some((p) => p.id === c.id));
+    const liaisons = proposesAvant.length
+      ? proposesAvant.map((c) => ({ cote: c.cote, de: c.de, vers: c.vers }))
+      : aLaMain.length ? [] : [{ cote: 'dc' as CoteCheminement, de: panDeDepart(), vers: id }];
+    const traces: string[] = [];
+    let refusTrace: RefusElectrique | null = null;
+    for (const l of liaisons) {
+      if (aLaMain.some((c) => c.cote === l.cote && c.de === l.de && c.vers === l.vers)) continue;
+      const r = l.de ? proposerCheminement(l) : refuser('electrical.cheminements.de', 'Aucun pan posé : le tracé du câble ne peut pas être proposé.');
+      if (r.ok) traces.push(r.cheminement.id); else refusTrace = r;
+    }
+    return { traces, refusTrace };
+  }
+
+  function deplacerEtSuivre(id: string, lngLat: LngLat): (PoseReussie & SuiviTrace) | RefusElectrique {
+    const cible = ((document()?.equipements ?? []) as EquipementElectrique[]).find((e) => e.id === id);
+    if (!cible || !Array.isArray(lngLat) || !nombreFini(lngLat[0]) || !nombreFini(lngLat[1])) return deplacer(id, lngLat) as RefusElectrique;
+    const proposesAvant = tracesDe(id).filter(estTraceProposee).map((c) => ({ ...c }));
+    return enUnGeste(() => {
+      const d = deplacer(id, lngLat) as PoseReussie;
+      return { ...d, ...suivreTrace(id, proposesAvant) };
+    });
+  }
+
+  function poserEtSuivre(lngLat: LngLat): (PoseReussie & SuiviTrace) | RefusElectrique {
+    if (!arme || !Array.isArray(lngLat) || !nombreFini(lngLat[0]) || !nombreFini(lngLat[1])) return poser(lngLat);
+    return enUnGeste(() => {
+      const p = poser(lngLat) as PoseReussie;
+      return { ...p, ...suivreTrace(p.equipement.id, []) };
+    });
+  }
+
+  function pousser(id: string, dEstM: number, dNordM: number): (PoseReussie & SuiviTrace) | RefusElectrique {
+    const cible = ((document()?.equipements ?? []) as EquipementElectrique[]).find((e) => e.id === id);
+    if (!cible || !nombreFini(dEstM) || !nombreFini(dNordM)) return deplacer(id, [Number.NaN, Number.NaN]) as RefusElectrique;
+    const cosLat = Math.cos(cible.lat * DEG2RAD);
+    return deplacerEtSuivre(id, [cible.lng + dEstM / (DEG2M * cosLat), cible.lat + dNordM / DEG2M]);
+  }
+
+  /** Retire l'organe ET ses tracés PROPOSÉS, en un cran ; les tracés à la main restent (rendus par leur id). */
+  function retirerAvecTraces(id: string): { ok: boolean; tracesGardees: string[] } {
+    if (!((document()?.equipements ?? []) as EquipementElectrique[]).some((e) => e.id === id)) return { ok: false, tracesGardees: [] };
+    const proposes = tracesDe(id).filter(estTraceProposee).map((c) => c.id);
+    const tracesGardees = tracesDe(id).map((c) => c.id).filter((c) => !proposes.includes(c));
+    enUnGeste(() => {
+      for (const c of proposes) retirer(c);
+      retirer(id);
+    });
+    return { ok: true, tracesGardees };
   }
 
   function saisirCheminement(saisie: {
@@ -1022,6 +1190,7 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     ctx.electrical = histoire.undo(copieDocument(document())) ?? null;
     selectionne = null;
     enCours = null;
+    deplacementVise = null; // ACAL1317
     rafraichir();
     return true;
   }
@@ -1031,6 +1200,7 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     ctx.electrical = histoire.redo(copieDocument(document())) ?? null;
     selectionne = null;
     enCours = null;
+    deplacementVise = null; // ACAL1317
     rafraichir();
     return true;
   }
@@ -1059,19 +1229,44 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     calqueDisponible: () => document() != null,
     setLayerState,
     etatCalque: () => ({ ...etat }),
-    armerPose: (type) => {
+    armerPose: (type, options) => {
+      deplacementVise = null; // ACAL1317 — poser et déplacer ne s'arment pas ensemble
       if (type === null) {
         arme = null;
+        suivreALaPose = false;
         return true;
       }
       if (!estTypeEquipement(type)) return false;
       arme = type;
+      suivreALaPose = options?.suivreTrace === true;
       return true;
     },
     typeArme: () => arme,
+    armerDeplacement: (id) => {
+      if (id === null) { deplacementVise = null; return true; }
+      if (!((document()?.equipements ?? []) as EquipementElectrique[]).some((e) => e.id === id)) return false;
+      arme = null;
+      suivreALaPose = false;
+      deplacementVise = id;
+      return true;
+    },
+    deplacementArme: () => deplacementVise,
+    pasDeplacementM: PAS_DEPLACEMENT_ORGANE_M,
+    pousser,
+    retirerAvecTraces,
+    etatTraces,
+    ecouter: (f) => { ecouteurs.add(f); return () => { ecouteurs.delete(f); }; },
     poser,
     clicCarte: (lngLat) => {
+      if (deplacementVise) { // ACAL1317 — le clic déplace l'organe visé, jamais n'en pose un second
+        if (deplacerEtSuivre(deplacementVise, lngLat).ok) deplacementVise = null;
+        return true;
+      }
       if (!arme) return false;
+      if (suivreALaPose) {
+        if (poserEtSuivre(lngLat).ok) { arme = null; suivreALaPose = false; }
+        return true;
+      }
       if (poser(lngLat).ok) arme = null; // un clic = un organe ; un refus garde l'armement (nommé)
       return true;
     },
