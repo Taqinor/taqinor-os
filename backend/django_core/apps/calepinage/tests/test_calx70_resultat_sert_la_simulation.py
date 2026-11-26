@@ -240,6 +240,42 @@ class SimulationPerimeeTest(SimpleTestCase):
             "précédent, dont la date n'a pas été enregistrée")
 
 
+class PeremptionParUnReglageSocieteTest(SimpleTestCase):
+    """ACAL1647 — un réglage de la société changé depuis le calcul est DIT
+    comme tel ; un document changé garde le motif d'aujourd'hui."""
+
+    AVANT = {'simulation': {'albedo': {'valeur': 0.2, 'source': 'societe'}}}
+    APRES = {'simulation': {'albedo': {'valeur': 0.3, 'source': 'societe'}}}
+
+    def _servi(self, layout, reglages):
+        from apps.calepinage.services.simulation import _reglages_utilises
+
+        empreinte = resultat_calepinage(_Calepinage(LAYOUT), materiel=MATERIEL,
+                                        reglages=self.AVANT)['hash_entree']
+        depose = _document_simule(empreinte)
+        depose[CLE_SIMULATION]['reglages_utilises'] = _reglages_utilises(
+            self.AVANT)
+        return resultat_calepinage(_Calepinage(layout, resultat=depose),
+                                   materiel=MATERIEL, reglages=reglages)
+
+    def test_reglage_change_le_motif_nomme_les_reglages(self):
+        servi = self._servi(LAYOUT, self.APRES)
+        self.assertTrue(servi['simulation_perimee'])
+        self.assertEqual(servi['motif'],
+                         'simulation périmée : un réglage de la société a '
+                         'changé depuis le calcul du 19/09/2026')
+
+    def test_document_change_le_motif_d_aujourd_hui(self):
+        servi = self._servi(LAYOUT_MODIFIE, self.AVANT)
+        self.assertTrue(servi['simulation_perimee'])
+        self.assertEqual(servi['motif'],
+                         'simulation périmée : le document a changé depuis '
+                         'le calcul du 19/09/2026')
+
+    def test_memes_reglages_meme_document_rien_n_est_perime(self):
+        self.assertFalse(self._servi(LAYOUT, self.AVANT)['simulation_perimee'])
+
+
 class AucuneSimulationTest(SimpleTestCase):
     """Rien n'a jamais été calculé : le comportement d'hier est intact."""
 
