@@ -155,6 +155,15 @@ def cache_prix_vente(requete):
     return not getattr(user, 'can_view_sale_prices', True)
 
 
+def _cache_prix_vente_deja_authentifie(requete):
+    """``cache_prix_vente`` pour une RÉPONSE : ne lit que l'utilisateur que DRF a déjà
+    authentifié (``Request._user``), jamais ``requete.user`` (qui authentifierait)."""
+    user = vars(requete).get('_user') if hasattr(requete, '__dict__') else None
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    return not getattr(user, 'can_view_sale_prices', True)
+
+
 #: Valeurs qu'un formulaire renvoie pour un prix qu'on ne lui a pas servi.
 _PRIX_VIDES = ('', None, [], {})
 
@@ -226,7 +235,11 @@ class MasquePrixVenteReponseMixin:
             self.permission_denied(request, message=MESSAGE_PRIX_VENTE)
 
     def finalize_response(self, request, response, *args, **kwargs):
-        if cache_prix_vente(request):
+        # CI #1564 api-fuzz (``stock/produits/0.5/`` → 500) : « .5 » est lu comme un suffixe de
+        # format, la négociation répond 404 AVANT l'authentification ; lire ``request.user`` ici
+        # la déclenchait hors du gestionnaire d'exceptions de DRF. Seul l'utilisateur DÉJÀ
+        # authentifié est lu (toute réponse d'une requête authentifiée garde son masque).
+        if _cache_prix_vente_deja_authentifie(request):
             champs = PRIX_VENTE_CHAMPS + tuple(
                 self.montants_vente_par_action.get(getattr(self, 'action', None), ()))
             retirer_cles(getattr(response, 'data', None), champs)

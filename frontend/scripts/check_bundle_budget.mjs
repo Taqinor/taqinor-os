@@ -314,7 +314,10 @@ const VENDOR_CHUNK_BUDGETS_KB = {
   // arête au balayage, bandes de zone, cadrage après le tracé, panneaux teintés…) : mesuré 636,0 Ko gzip sur le
   // runner (job frontend-static du run 45135923717, tête cf6c37e195), aucune dépendance ajoutée → 635 -> 650
   // (mesure arrondie aux 5 Ko + 10).
-  'roof-tool': 650,
+  // 26/11/2026 (calepinage L5, lot 8 : position de l'onduleur sur le plan et son tracé de câble, étiquettes
+  // d'affectation, pose d'un lead de pompage) : mesuré 650,4 Ko gzip sur le runner (job frontend-static du run
+  // 45890779350, PR #1564), aucune dépendance ajoutée → 650 -> 665 (mesure arrondie aux 5 Ko + 10).
+  'roof-tool': 665,
   // AOF192 — Atelier de calepinage AO (`features/ao/studio/`, canvas/
   // géométrie/relevé), isolé par `manualChunks` dans vite.config.js sous le
   // même patron que `roof-tool` (voir son commentaire, ligne au-dessus).
