@@ -401,7 +401,7 @@ jobs:
           fi
       - name: Ouvrir/mettre à jour ou fermer l'issue api-fuzz-regression
         if: ${{ github.event_name == 'schedule' }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           REGRESSION: ${{ steps.verdict.outputs.regression }}
           CORPS: ${{ runner.temp }}/api-fuzz-regressions.md
