@@ -347,6 +347,23 @@ _LIBELLES = {
     'heure_debut': "Heures d'ouverture ou régime d'équipes (ou catégorie d'activité)",
 }
 LIBELLE_RYTHME = "Jours et heures d'ouverture (ou catégorie d'activité)"
+#: R5F-N3 — la promesse des libellés de rythme, retirée quand elle est fausse.
+_PROMESSE_CATEGORIE = " (ou catégorie d'activité)"
+
+
+def _categorie_peut_lever_le_rythme(lead):
+    """R5F-N3 — une catégorie d'activité peut-elle encore lever le manque de
+    rythme ? Seulement SANS heures placées : dès que des heures (ou un régime
+    d'équipes) sont déclarées, la règle du moteur
+    (``moteur_ci.charge.profil_charge_prerequis``) exige les jours ouverts et
+    l'archétype de la catégorie n'en donne aucun ; une consommation estimée par
+    la seule puissance maximale ignore l'archétype. Même règle, appelée sans
+    catégorie : « heure_debut » manque ⇔ aucune heure placée."""
+    from apps.ventes.selectors import profil_charge_prerequis_ci
+
+    if conso_par_puissance_seule(lead):
+        return False
+    return 'heure_debut' in profil_charge_prerequis_ci(_rythme_ci(lead), None, en_champs_lead=True)
 
 
 def champs_manquants_detail(lead, requis=None) -> list[dict]:
@@ -365,6 +382,8 @@ def champs_manquants_detail(lead, requis=None) -> list[dict]:
                  and groupe[0] in GROUPE_CONSO_PRO
                  else LIBELLE_RYTHME if rythme and rythmes > 1
                  else _LIBELLES[groupe[0]])
+        if rythme and not _categorie_peut_lever_le_rythme(lead):
+            label = label.replace(_PROMESSE_CATEGORIE, '')
         if all(entree['label'] != label for entree in detail):
             detail.append({'champ': groupe[0], 'label': label})
     return detail
