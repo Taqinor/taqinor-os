@@ -865,6 +865,8 @@ describe('BarreRaccordement (ACAL1317) — l’onduleur se place, se déplace et
     expect(screen.getByTestId('cal-elec-onduleur-message')).toHaveTextContent('Touchez la carte à l’endroit de l’onduleur.')
     act(() => couche.toucher())
     expect(screen.getByTestId('cal-elec-onduleur-message')).toHaveTextContent('Onduleur placé : le tracé du câble a suivi.')
+    // ACAL1317 (revue, point 8) — l'empreinte du document porte `electrical` : la simulation sera à refaire, et c'est dit.
+    expect(screen.getByTestId('cal-elec-onduleur-message')).toHaveTextContent('Après l’enregistrement : Simulation à refaire, le toit a changé depuis le dernier calcul.')
     // Un onduleur attendu : la barre n'en pose pas un second, elle propose de le déplacer ou de le retirer.
     expect(screen.queryByTestId('cal-elec-onduleur-placer')).toBeNull()
     expect(screen.getByRole('button', { name: 'Déplacer l’onduleur' })).toBeInTheDocument()

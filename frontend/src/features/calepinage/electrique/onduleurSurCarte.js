@@ -23,6 +23,9 @@ export const PROVENANCE_TRACE_PROPOSE = 'tracé proposé le long des rangées (p
 // L'écran ne sait PAS qui a tracé un tracé non reconnu (point par point, saisi, ou proposé sur un toit qui a changé) :
 // il ne dit que ce qu'il sait.
 export const PHRASE_TRACE_DECALE = 'Le tracé enregistré n’aboutit plus à l’onduleur ; il n’a pas été remplacé.'
+// Le document porte `electrical` dans son empreinte : enregistrer un geste sur l'onduleur périme la simulation, comme
+// tout geste sur le toit. Mêmes mots que le bandeau de l'atelier (« Simulation à refaire : le toit … a changé … »).
+export const PHRASE_SIMULATION_A_REFAIRE = 'Après l’enregistrement : Simulation à refaire, le toit a changé depuis le dernier calcul.'
 
 /** Les gestes dont l'écran a besoin : sans eux (constructeur absent ou ancien), rien n'est proposé. */
 const GESTES = ['documentElectrique', 'armerPose', 'armerDeplacement', 'deplacementArme', 'typeArme', 'pousser',
@@ -68,10 +71,10 @@ export function provenanceCable(etat) {
 
 function phraseApresGeste(couche, id, verbe) {
   const refus = couche.dernierRefus?.()
-  if (refus) return `Onduleur ${verbe}, mais ${refus.message.charAt(0).toLowerCase()}${refus.message.slice(1)}`
+  if (refus) return `Onduleur ${verbe}, mais ${refus.message.charAt(0).toLowerCase()}${refus.message.slice(1)} ${PHRASE_SIMULATION_A_REFAIRE}`
   const etat = id ? couche.etatTraces(id) : null
-  if (etat?.decales?.length) return PHRASE_TRACE_DECALE
-  return `Onduleur ${verbe} : le tracé du câble a suivi. Enregistrez le calepinage pour mesurer sa longueur.`
+  if (etat?.decales?.length) return `${PHRASE_TRACE_DECALE} ${PHRASE_SIMULATION_A_REFAIRE}`
+  return `Onduleur ${verbe} : le tracé du câble a suivi. Enregistrez le calepinage pour mesurer sa longueur. ${PHRASE_SIMULATION_A_REFAIRE}`
 }
 
 /**
@@ -145,7 +148,7 @@ export function useOnduleurSurCarte({ builderApi, enregistreLe = null, nombreAtt
     const r = couche.pousser(choisi.id, dEstM, dNordM)
     if (!r.ok) { setMessage(r.message); return }
     marquerGeste()
-    setMessage(r.refusTrace ? `Onduleur déplacé, mais ${r.refusTrace.message}` : phraseApresGeste(couche, choisi.id, 'déplacé'))
+    setMessage(r.refusTrace ? `Onduleur déplacé, mais ${r.refusTrace.message} ${PHRASE_SIMULATION_A_REFAIRE}` : phraseApresGeste(couche, choisi.id, 'déplacé'))
   }
   const terminer = () => {
     if (!couche) return
@@ -179,7 +182,7 @@ export function useOnduleurSurCarte({ builderApi, enregistreLe = null, nombreAtt
     const n = r.tracesGardees.length
     setMessage(n
       ? `Onduleur retiré. ${n} autre${n > 1 ? 's' : ''} tracé${n > 1 ? 's' : ''} vers lui reste${n > 1 ? 'nt' : ''} sur le plan : il${n > 1 ? 's n’ont' : ' n’a'} pas été retiré${n > 1 ? 's' : ''}.`
-      : 'Onduleur retiré du plan.')
+      : `Onduleur retiré du plan. ${PHRASE_SIMULATION_A_REFAIRE}`)
   }
 
   return {
