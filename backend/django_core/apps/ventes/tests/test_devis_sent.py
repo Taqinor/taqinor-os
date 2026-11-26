@@ -114,9 +114,10 @@ class TestMarkDevisSentService(TestCase):
 
     def test_d_acal_158_un_calcul_qui_leve_n_arrete_pas_l_envoi(self):
         from unittest import mock
-        from apps.ventes import electrical_service as es
+        from apps.ventes import conceptions_options
         devis = self._devis_deux_options('DEV-ACAL158-2')
-        with mock.patch.object(es, '_conception_de_l_option', side_effect=RuntimeError('fiche absente')):
+        with mock.patch.object(conceptions_options, '_conception_de_l_option',
+                               side_effect=RuntimeError('fiche absente')):
             mark_devis_sent(devis=devis, user=None)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)

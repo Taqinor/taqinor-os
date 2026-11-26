@@ -583,7 +583,7 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
         public = es.schema_electrique_public(devis, standard=False, option_totals=_TOTAUX)["options"]
         self.assertIsNone(public["sans_batterie"])
         self.assertIsNotNone(public["avec_batterie"])
-        with mock.patch.object(es, "_conception_de_l_option", side_effect=RuntimeError("panne")):
+        with mock.patch("apps.ventes.conceptions_options._conception_de_l_option", side_effect=RuntimeError("panne")):
             self.assertEqual(es.figer_conceptions_des_options(devis), {})
 
     def test_d_acal_158_chaines_du_calepinage_a_l_option_de_son_onduleur(self):
