@@ -980,6 +980,12 @@ class DesignationOptionAvecTests(SimpleTestCase):
         self.assertEqual(m.alertes_articles_ecartes(bat), [])
 
 
+#: D-ACAL-103 (T4-X6-013, 87cf062aa) — une option « avec » n'est composée que sur une
+#: combinaison d'hybrides câblable (``moteur_ci.batterie._cablable``) : les évaluations
+#: simulées d'une option COMPOSÉE en portent une, comme celles du vrai dimensionnement.
+HYBRIDE_CABLABLE = [{'produit': 1, 'nom': 'Hybride 30 kW', 'kw_ac': 30, 'quantite': 1}]
+
+
 class BanqueRecommandeeD4Tests(SimpleTestCase):
     """D4 (fondateur 17/11/2026) — « moins de batteries au départ, prêt pour
     plus » : la recommandation de la création, les deux clés ADDITIVES du bloc
@@ -1011,7 +1017,7 @@ class BanqueRecommandeeD4Tests(SimpleTestCase):
         from apps.ventes.domain import etude_ci_batterie as m
         evaluation = {'kwc': 35.0, 'cout': 300000.0, 'economie': 90000.0,
                       'batterie': {'produit': 7, 'nom': 'Dyness 10', 'quantite': 3},
-                      'bilan': {}, 'composition': None, 'onduleurs': {'combinaison': []}}
+                      'bilan': {}, 'composition': None, 'onduleurs': {'combinaison': HYBRIDE_CABLABLE}}
         resultat = {'evaluation': evaluation, 'prix_a_renseigner': [], 'hypotheses': [],
                     'alertes': [], 'motif': None}
         catalogue = {'batterie': {'hybrides': [1], 'batteries': [{'produit': 7}]}}
@@ -1074,7 +1080,7 @@ class RetourOptionAvecFluxTests(SimpleTestCase):
             'kwc': 50, 'puissance_ac': 30, 'batterie': {'produit': 1},
             'cout': 540000.0, 'economie': self.ECONOMIE_AN1,
             'bilan': {'production_kwh': 80000.0},
-            'onduleurs': {'combinaison': [], 'prix_vente_total_ht': '60000.00'},
+            'onduleurs': {'combinaison': HYBRIDE_CABLABLE, 'prix_vente_total_ht': '60000.00'},
             'composition': {'incomplet': incomplet, 'lignes': [
                 {'role': 'panneau', 'designation': 'Panneau', 'quantite': 80,
                  'prix_connu': True, 'prix_unitaire_ht': '3000'},
@@ -1282,7 +1288,7 @@ class OptionAvecDomineeTests(SimpleTestCase):
 
     def _avec(self, cout, economie):
         return {'kwc': 199, 'cout': cout, 'economie': economie, 'batterie': {'produit': 1},
-                'bilan': {}, 'composition': {'lignes': []}, 'onduleurs': {'combinaison': []}}
+                'bilan': {}, 'composition': {'lignes': []}, 'onduleurs': {'combinaison': HYBRIDE_CABLABLE}}
 
     def _lancer(self, avec, choix='les_deux', alertes=()):
         from apps.ventes.domain import etude_ci_batterie as m
@@ -1433,7 +1439,7 @@ class OptionAvecNonRentableTests(SimpleTestCase):
     def _avec(self, cout, economie):
         return {'kwc': 199, 'cout': cout, 'economie': economie, 'batterie': {'produit': 1},
                 'bilan': {}, 'composition': {'lignes': list(self.LIGNES)},
-                'onduleurs': {'combinaison': []}}
+                'onduleurs': {'combinaison': HYBRIDE_CABLABLE}}
 
     def _lancer(self, avec, regles_3010b=True):
         from apps.ventes.domain import etude_ci_batterie as m
