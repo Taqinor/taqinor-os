@@ -133,6 +133,23 @@ export async function ecrireSection({
   }
 }
 
+/**
+ * ACAL1816 — `documentVivant.appliquerSection` de l'atelier (`ecrireSection` ci-dessus) :
+ * appliquer à la scène une section ÉCRITE par l'onglet et reprendre le jeton rendu. Une section
+ * écrite (empreinte servie) EST enregistrée : si la scène était propre avant, sa référence est
+ * reprise (`rebaserScene`), sinon le profil d'horizon enregistré repassait l'en-tête à
+ * « Modifications non enregistrées ». Une scène déjà modifiée ailleurs le reste.
+ */
+export function appliquerSectionEcrite(
+  { appliquerALaScene, poserEmpreinte, sceneModifiee, rebaserScene }, cle, valeur, empreinteApres,
+) {
+  const propreAvant = !sceneModifiee()
+  appliquerALaScene(cle, valeur)
+  if (!empreinteApres) return
+  poserEmpreinte(empreinteApres)
+  if (propreAvant) rebaserScene()
+}
+
 /** Une latitude lisible (nombre fini dans [-90, 90]), sinon `null`. */
 function latitude(brut) {
   if (brut === null || brut === undefined || brut === '') return null
