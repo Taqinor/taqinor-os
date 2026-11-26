@@ -150,6 +150,19 @@ class ControlesDePorteTest(SimpleTestCase):
         self.assertEqual(controles['kwh_declare']['etat'], 'bloquant')
         self.assertEqual(controles['kwh_declare']['cause'], refus['detail'])
 
+    def test_revision_perimee_dit_qu_elle_reprend_les_lignes_de_la_precedente(self):
+        """T4-X7-006 — une V2 née de « Réviser (nouvelle version) » copie les lignes de la V1 : la cause le dit
+        (version servie), jamais pour une V1 ; aucun prix, aucune ligne n'est touchée."""
+        class _V2(_Devis):
+            version = 2
+        with mock.patch(PEREMPTION, return_value={'layout_stale': True}), mock.patch(KWH, return_value=None):
+            v2 = self._controles(_Calepinage(devis=_V2()))['conception_perimee']
+            v1 = self._controles(_Calepinage(devis=_Devis()))['conception_perimee']
+        self.assertEqual(v2['cause'], 'Cette version reprend les lignes de la V1 ; '
+                         '« Resynchroniser le devis » les aligne sur la pose.')
+        self.assertEqual(v2['geste'], 'Resynchroniser le devis')
+        self.assertEqual(v1['cause'], 'La conception a changé depuis la dernière mise à jour du devis.')
+
     def test_devis_lie_a_jour(self):
         with mock.patch(PEREMPTION, return_value={'layout_stale': False}), \
                 mock.patch(KWH, return_value=None):
