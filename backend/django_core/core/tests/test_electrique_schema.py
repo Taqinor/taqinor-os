@@ -1021,3 +1021,55 @@ class LeBandeauTientDansLaPlanche(unittest.TestCase):
             self.assertIn(repere, textes)
             self.assertEqual(calibre, "")
             self.assertIn(quantite, textes)
+
+
+class BandeauEtLegendeNeSeChevauchentPas(unittest.TestCase):
+    """ACAL1713 (revue) — le bandeau replié et la légende des chaînes ne partagent jamais une boîte.
+
+    Largeur estimée à 0,6 em par signe (bandeau gras ou légende), hauteur de la ligne de base
+    -corps à +0,25 corps ; l'échantillon de couleur fait 16 px de large sur 2 px de haut.
+    """
+
+    PHRASE = LeBandeauTientDansLaPlanche.PHRASE
+
+    @staticmethod
+    def _boites(svg):
+        boites = []
+        for x, y, taille, texte in re.findall(
+                r'<text x="([\d.]+)" y="([\d.]+)" font-size="([\d.]+)"[^>]*>([^<]+)</text>', svg):
+            x, y, taille = float(x), float(y), float(taille)
+            boites.append((texte, x, y - taille, x + 0.6 * taille * len(texte), y + 0.25 * taille))
+        return boites
+
+    @staticmethod
+    def _chevauchent(a, b):
+        return a[1] < b[3] and b[1] < a[3] and a[2] < b[4] and b[2] < a[4]
+
+    def _verifier(self, entree, nombre, blocs=None):
+        couleurs = [("Chaîne %d" % (i + 1), "rgb(%d, 10, 10)" % (i * 20)) for i in range(nombre)]
+        svg = rendre_schema(entree, concevoir(entree), bandeau=self.PHRASE, couleurs_chaines=couleurs,
+                            blocs=blocs)
+        boites = self._boites(svg)
+        bandeau = [b for b in boites if b[0] in self.PHRASE or b[0] in self.PHRASE.replace("'", "&#x27;")]
+        legende = [b for b in boites if b[0].startswith("Chaîne ")]
+        self.assertEqual(len(legende), nombre)
+        self.assertGreater(len(bandeau), 1)
+        for b in bandeau:
+            for g in legende:
+                self.assertFalse(self._chevauchent(b, g), (b, g))
+        for g in legende:  # l'échantillon de couleur, à gauche du libellé
+            echantillon = ("", g[1] - 20.0, g[4] - 12.0, g[1] - 4.0, g[4] - 8.0)
+            for b in bandeau:
+                self.assertFalse(self._chevauchent(b, echantillon), (b, g))
+        return float(re.search(r'viewBox="0 0 ([\d.]+)', svg).group(1))
+
+    def test_a4_avec_1_2_4_et_8_chaines(self):
+        largeurs = {self._verifier(_mono_reseau(), n) for n in (1, 2, 4, 8)}
+        self.assertEqual(largeurs, {FORMAT_A4_PAYSAGE[0]})
+
+    def test_a3_avec_1_2_4_et_8_chaines(self):
+        entree = _triphase_deux_pans()
+        blocs = blocs_du_schema(entree, concevoir(entree)) + tuple(
+            Bloc("extra%d" % i, "Extra", "d") for i in range(6))
+        largeurs = {self._verifier(entree, n, blocs=blocs) for n in (1, 2, 4, 8)}
+        self.assertEqual(largeurs, {FORMAT_A3_PAYSAGE[0]})

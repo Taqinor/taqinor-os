@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { Link, useMatch } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 
@@ -56,6 +56,36 @@ export function anneeDuChampSoleil() {
   return m ? Number(m[1]) : new Date().getFullYear()
 }
 
+/** Abonnement partagé aux écritures du champ date / heure de la barre du soleil (saisie, saison, champ créé après le montage). */
+function abonnerBarreSoleil(rappel) {
+  const apres = () => setTimeout(rappel, 0)
+  const surEvenement = (e) => {
+    if (e.target?.id === 'rp9-sun-hour' || e.target?.id === 'rp9-sun-date') rappel()
+    else if (e.target?.closest?.('[data-sun-season]')) apres()
+  }
+  document.addEventListener('input', surEvenement)
+  document.addEventListener('change', surEvenement)
+  document.addEventListener('click', surEvenement)
+  // Le champ est créé, ou écrit par le script SANS événement : un observateur sur le document (création) et une relecture
+  // lente (une écriture de `.value` n'émet rien) ; le rappel ne rend que si l'année a changé (instantané primitif).
+  const observateur = typeof MutationObserver === 'function' ? new MutationObserver(rappel) : null
+  observateur?.observe(document.body, { childList: true, subtree: true })
+  const minuteur = setInterval(rappel, 1000)
+  return () => {
+    document.removeEventListener('input', surEvenement)
+    document.removeEventListener('change', surEvenement)
+    document.removeEventListener('click', surEvenement)
+    observateur?.disconnect()
+    clearInterval(minuteur)
+  }
+}
+
+/** T5 — LA source réactive de l'année du soleil : la phrase d'heure légale et la course du soleil la lisent ici, jamais deux fois. */
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé, testé directement (D-ENF22)
+export function useAnneeSoleil() {
+  return useSyncExternalStore(abonnerBarreSoleil, anneeDuChampSoleil)
+}
+
 // eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé, testé directement (D-ENF22)
 export function useHeureLegale(calepinageId, date) {
   const [lu, setLu] = useState({ cle: '', etat: 'chargement', ecart: null })
@@ -99,27 +129,11 @@ export default function HeureLegale({ calepinageId } = {}) {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture initiale de la barre du soleil, hors React (D-ENF22)
     relire()
-    const apres = () => setTimeout(relire, 0)
-    const surEvenement = (e) => {
-      if (e.target?.id === 'rp9-sun-hour' || e.target?.id === 'rp9-sun-date') relire()
-      else if (e.target?.closest?.('[data-sun-season]')) apres()
-    }
-    document.addEventListener('input', surEvenement)
-    document.addEventListener('change', surEvenement)
-    document.addEventListener('click', surEvenement)
-    const hote = document.getElementById('rp9-sun-controls')
-    const observateur = hote && typeof MutationObserver === 'function' ? new MutationObserver(relire) : null // la date est créée par le script après le montage
-    observateur?.observe(hote, { childList: true })
-    return () => {
-      document.removeEventListener('input', surEvenement)
-      document.removeEventListener('change', surEvenement)
-      document.removeEventListener('click', surEvenement)
-      observateur?.disconnect()
-    }
+    return abonnerBarreSoleil(relire)
   }, [relire])
 
   // ACAL1640 — une seule année : celle du champ de la barre du soleil, pour la phrase comme pour l'écart servi
-  const annee = bar.annee ?? new Date().getFullYear()
+  const annee = useAnneeSoleil()
   const date = bar.md ? `${annee}-${bar.md}` : null
   const { etat, ecart } = useHeureLegale(id, date)
   if (!id || bar.heure === null) return null

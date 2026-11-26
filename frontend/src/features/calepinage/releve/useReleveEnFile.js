@@ -35,5 +35,5 @@ export default function useReleveEnFile(calepinageId, { onEnvoye, onRefus }) {
     await oublierReleveEnFile(calepinageId)
     setEnAttente(false)
   }
-  return { enAttente, garder, oublier }
+  return { enAttente, garder, oublier, renvoyer }
 }

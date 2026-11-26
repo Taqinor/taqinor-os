@@ -81,6 +81,22 @@ describe('session-bridge — emitAuthLogout', () => {
     }
   })
 
+  // ACAL1949 (revue) — le module calepinage n'est JAMAIS importé ici : après un rechargement, une déconnexion faite
+  // avant d'ouvrir un écran du calepinage vide quand même ses photos et relevés gardés, et rien d'autre.
+  it('emitAuthLogout sans le module calepinage chargé vide ses photos et relevés gardés', async () => {
+    const { createBinaryOutboxStore } = await import('../lib/offlineStore')
+    const { store } = createBinaryOutboxStore()
+    const etrangere = { client_op_id: 'op-3', op_type: 'photo_intervention', meta: { intervention: 4 } }
+    await store.save([
+      { client_op_id: 'op-1', op_type: 'calepinage.releve', meta: { calepinageId: 1, utilisateurId: 7, corps: {} } },
+      { client_op_id: 'op-2', op_type: 'calepinage.photo', meta: { calepinageId: 1, utilisateurId: 7, genre: 'drone' } },
+      etrangere,
+    ])
+    emitAuthLogout()
+    await vi.waitFor(async () => expect(await createBinaryOutboxStore().store.load()).toEqual([etrangere]))
+    await store.save([])
+  })
+
   it('les préfixes vidés couvrent ceux du module Tâches (cache de journée, brouillon)', async () => {
     const { PREFIXE_CACHE } = await import('../features/taches/horsligne/cacheJournee')
     const { PREFIXE_BROUILLON } = await import('../features/taches/saisie/FeuilleSaisie')

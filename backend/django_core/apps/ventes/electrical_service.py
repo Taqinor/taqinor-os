@@ -272,7 +272,7 @@ def _option_choisie(devis):
     imposee = _VARIANTE_IMPOSEE.get()
     if imposee in (VARIANTE_SANS, VARIANTE_AVEC):
         from apps.ventes.utils.options import filter_lines_for_option
-        return (filter_lines_for_option(toutes, _cle_option(imposee), devis),
+        return (filter_lines_for_option(toutes, _cle_option(imposee), devis=devis),
                 imposee)
     if avec_servable:
         return avec, VARIANTE_AVEC
@@ -846,8 +846,12 @@ def construire_entree_et_source(devis, overrides=None, *,
         zone_keraunique=bool(reglages.get("zone_keraunique")),
         inclure_prise_terre=bool(reglages.get("inclure_prise_terre")),
         # D-ACAL-139 — calculs NEUFS seulement (envoyé avant la coupure : le
-        # calcul d'avant) ; hors de ``empreinte_entree``, qui énumère ses clés.
-        chaines_inegales_entre_entrees=chaines_inegales_ouvertes(devis),
+        # calcul d'avant), et SEULEMENT quand la partition égale est bloquante
+        # (Isc publié dépassé, modules hors chaîne) : une alerte d'écrêtage ne
+        # change pas le devis (le calepinage, lui, câble aussi pour l'écrêtage).
+        # LA porte unique : devis automatique ET moteur du lead passent ICI.
+        # Hors de ``empreinte_entree``, qui énumère ses clés.
+        chaines_inegales_sur_bloquant_seul=chaines_inegales_ouvertes(devis),
     )
 
     if "dc_m" in reglages:
@@ -1506,7 +1510,7 @@ def _lignes_de_l_option(devis, variante):
     stocké, puis mots-clés — ADVS5, ``utils.options.filter_lines_for_option``) :
     celle de l'argent, du PDF et de la page."""
     from apps.ventes.utils.options import filter_lines_for_option
-    return filter_lines_for_option(_lignes_du_devis(devis), _cle_option(variante), devis)
+    return filter_lines_for_option(_lignes_du_devis(devis), _cle_option(variante), devis=devis)
 
 
 def _est_onduleur(ligne):

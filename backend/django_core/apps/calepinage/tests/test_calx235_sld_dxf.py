@@ -479,3 +479,76 @@ class SchemaPdfTest(SimpleTestCase):
             PeutVoirCalepinage,
             SchemaUnifilaireMixin.schema_unifilaire_pdf
             .kwargs['permission_classes'])
+
+
+class SchemaPdfRevueTest(SimpleTestCase):
+    """ACAL1507 (revue) — refus qui nomme le bon fichier et la vraie raison ; une seule lecture ;
+    la page garde une marge de sécurité."""
+
+    def _avec_conception(self, document_retourne):
+        from unittest import mock
+
+        from apps.calepinage.services import electrique as _electrique
+        from apps.calepinage.services import sld as _sld
+        from apps.calepinage.services import sld_export
+
+        class _Propre:
+            manquantes = ()
+            micro_seul = False
+
+        lectures = []
+
+        def _lecture(_calepinage, **_options):
+            lectures.append(1)
+            return (_Propre(), {}, {}, None)
+
+        recus = []
+
+        def _document(_calepinage, *, lecture=None):
+            recus.append(lecture)
+            return document_retourne
+
+        with mock.patch.object(_electrique, 'conception_du_calepinage', _lecture), \
+                mock.patch.object(_sld, 'document_electrique_du_calepinage', _document), \
+                mock.patch.object(_sld, 'bloquants_du_cablage', lambda *_a: []), \
+                mock.patch.object(_sld, 'cartouche_du_calepinage', lambda _c: {}):
+            with self.assertRaises(SldRefuse) as refus:
+                sld_export.exporter_sld_pdf(object())
+        return refus.exception, lectures, recus
+
+    def test_le_refus_du_pdf_nomme_un_pdf_et_celui_du_dxf_un_dxf(self):
+        from apps.calepinage.services.sld_export import _refuser_si_empeche
+
+        muette = _ConceptionMuette()
+        with self.assertRaises(SldRefuse) as pdf:
+            _refuser_si_empeche(muette, {}, fichier='PDF')
+        with self.assertRaises(SldRefuse) as dxf:
+            _refuser_si_empeche(muette, {})
+        self.assertIn("un PDF d'aspect officiel", str(pdf.exception))
+        self.assertNotIn('DXF', str(pdf.exception))
+        self.assertIn("un DXF d'aspect officiel", str(dxf.exception))
+
+    def test_un_document_qui_n_a_pas_pu_etre_construit_ne_pretend_pas_qu_il_manque_un_onduleur(self):
+        refus, _lectures, _recus = self._avec_conception(None)
+        self.assertEqual(refus.champ, 'schema')
+        self.assertIn('pas pu être construit', str(refus))
+        self.assertNotIn('onduleur', str(refus))
+
+    def test_un_document_sans_onduleur_dit_qu_aucun_onduleur_n_est_retenu(self):
+        refus, _lectures, _recus = self._avec_conception({'onduleurs': []})
+        self.assertEqual(refus.champ, 'onduleur')
+        self.assertIn("aucun onduleur", str(refus))
+
+    def test_la_conception_n_est_lue_qu_une_fois_et_partagee(self):
+        _refus, lectures, recus = self._avec_conception(None)
+        self.assertEqual(len(lectures), 1)
+        self.assertEqual(len(recus), 1)
+        self.assertIsNotNone(recus[0])
+
+    def test_la_page_a_une_marge_de_securite(self):
+        from apps.calepinage.services import sld_export as e
+
+        total = e._CARTOUCHE_MM + e._DESSIN_MM
+        self.assertLess(total, e._FEUILLE_HAUTEUR_MM)
+        self.assertGreaterEqual(e._FEUILLE_HAUTEUR_MM - total, 5)
+        self.assertIn('height:%dmm;}' % e._DESSIN_MM, e._STYLE_PDF)

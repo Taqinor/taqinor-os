@@ -148,10 +148,14 @@ class VerdictUnique(BaseApiCalepinage):
         for role, source, conforme in (('onduleur_hybride', SOURCE_BORNE_CAPACITE, True),
                                        ('', SOURCE_BORNE_DEVIS, False)):
             with self.subTest(role=role):
-                onduleur = self._produit(nom='Deye SUN-10K-SG04 %s' % (role or 'sans role'),
+                # Nom SANS « hybride » (ni le rôle écrit dedans : le nom est le dernier rang).
+                onduleur = self._produit(nom='Deye SUN-10K-SG04 %s' % ('A' if role else 'B'),
                                          type_fiche='onduleur', **champs)
                 Produit.objects.filter(pk=onduleur.pk).update(role_devis=role)
-                conception = conception_du_calepinage(self._calepinage(onduleur_produit=onduleur.pk))
+                # ``conception_du_calepinage`` rend ``(conception, materiel, donnees, document)``.
+                conception, materiel, _donnees, _document = conception_du_calepinage(
+                    self._calepinage(onduleur_produit=onduleur.pk))
+                self.assertEqual(materiel['familles']['onduleur'], (role, ''))  # lu par resoudre_materiel
                 self.assertEqual(conception.entree.onduleur.role, role)
                 bloc, _avertissements = _bloc_ratio_dc_ac(conception)
                 self.assertEqual((bloc['borne_source'], bloc['dans_bornes']), (source, conforme))

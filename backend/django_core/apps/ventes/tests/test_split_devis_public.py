@@ -190,9 +190,14 @@ _CHAMPS_POSTERIEURS_AU_GOLDEN = ('suivi_prolonge_le', 'revoque_le',
 #: hache des clés primaires (produit, client) : il varierait d'un run à
 #: l'autre de toute façon. APDF110 : + ``emetteur`` (clé de BASE, identité
 #: de la société émettrice), prouvée par ``test_arc5_proposal_public_access``.
+#: D-ACAL-132/133 (lot 6) : + ``visionneuse_soleil`` (clé ADDITIVE, liens
+#: « confiance » au calepinage servi seulement — d'où le seul scénario
+#: ``data_confiance_calepinage`` qui bougeait), prouvée par
+#: ``test_qj26_roof_layout_proposal`` et ``test_acal_liste_blanche_3d_publique``.
 _CLES_POSTERIEURES_AU_GOLDEN = frozenset({
     'economies_cumul_25_ans', 'empreinte_contenu', 'offre_expiree',
     'date_expiration', 'pdf_disponible', 'emetteur', 'gain_net_25_ans',
+    'visionneuse_soleil',
 })
 
 

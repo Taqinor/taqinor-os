@@ -2186,7 +2186,7 @@ activation du niveau 15 ; ACAL2029 (@acceptation) non jouée.
 **Reste ouvert :** T4-X3-017 (ci-dessus) ; T4-X4-003 (formulation d'une erreur 500, facultatif) ; D-AMOT-8 et D-AMOT-9
 (constats T4-X1-005, T4-X1-006, T4-X4-007) ; prix des articles de protection du pompage à saisir au catalogue.
 
-### Point du 26/11, 02 h UTC — LOT 5 FUSIONNÉ (le plus récent — REPRENDRE ICI)
+### Point du 26/11, 02 h UTC — LOT 5 FUSIONNÉ
 
 **Fusionné, pas en ligne.** PR Taqinor/taqinor-os#1559 fusionnée sur `main` le 26/11 à 01 h 45 UTC (commit de fusion
 `86844ac4d`), par la file de fusion. Quatre passages de CI : 18 rouges, puis 9, puis 1 (lane 2 du front annulée à
@@ -2230,3 +2230,50 @@ le dossier de travail de la session), relecteur des maquettes, enregistrements d
 **Attend Reda :** barre du haut en tablette (T4-X3-017) ; D-AMOT-8 et D-AMOT-9 ; lecture de D-ACAL-126 (un Technicien
 responsable lit-il les calepinages des visites d'un commercial qu'il supervise ?) ; D-HYB-2 ; D-ACAL-131.
 
+### Point du 26/11, 07 h UTC — LOT 6 PRÊT POUR SA PR (le plus récent — REPRENDRE ICI)
+
+**Lot 5 : en ligne d'après Reda** (« i deployed », 26/11 vers 03 h UTC) ; le serveur n'a pas été vérifié par cette session.
+
+**Lot 6 = branche `dev-lot6` (partie de `origin/main` 86844ac4d), pas encore de PR au moment de cette note.** Contenu, tout
+relu par un relecteur neuf puis corrigé :
+- Schéma électrique du devis (demande de Reda du 26/11) : un document unique `schema_electrique` (`core/electrique/schema_electrique.py`,
+  contrat `apps/ventes/contract_samples/schema_electrique.json`) dessiné par l'écran du calepinage (batterie, étage MT, plusieurs
+  onduleurs), l'écran du devis, la page du client (HTML, trois langues) et l'annexe du PDF des nouveaux rendus (coupure 27/11).
+  Décisions D-ACAL-131, 140, 141, 142 (à confirmer) : le client ne reçoit qu'un schéma tiré de l'étude RANGÉE ; rien d'incertain.
+- Visionneuse au soleil pour les liens de confiance (D-ACAL-132 et 133 du fondateur ; 134 à 138 et 143 à confirmer) : clé publique
+  `visionneuse_soleil` (`apps/ventes/public/visionneuse_soleil.py`), barre et lecture sur la page (`viewerSoleil.ts`, `BarreSoleil.astro`),
+  teinte = valeur enregistrée par le calepinage, heure dite « heure solaire ». Jamais vue dans un navigateur.
+- Hybride jugé sur sa fiche et reconnu par son rôle (D-HYB-1, décision du 24/11 ; D-HYB-6 ouverte pour le résidentiel).
+- Chaînes inégales entre entrées : câblage automatique du calepinage (35 panneaux sur un hybride à deux entrées de 54 A → 12 + 12 | 11),
+  refus manuel sur la vraie fenêtre de tension, entrée saisie respectée, étude du devis pour les nouveaux rendus (D-ACAL-139, coupure 27/11).
+- 58 tâches ACAL du plan marquées « code livré le 26/11, preuve en direct due » (aide, atelier, liste, pompage, fixation, terrain,
+  résultats, documents, contrats, relevé, étape Panneaux, carte, schéma PDF et DXF) ; 42 tâches constructibles restent au plan.
+- Gardes d'hôte vertes sur la branche (`ci_guards.py backend-lint-fast`, `stage-names`), instantané OpenAPI régénéré, bundle mesuré
+  4 205,1 Ko pour 4 210 (installation propre, commit f524f1f3b).
+
+**Hors du lot 6, prêts ou en cours pour le lot 7 (branches `origin/lot6/...`) :** `acal-reglages` (15 tâches du moteur de simulation ;
+relecture : liens de source abîmés, mauvaise phrase en tête d'alerte, heure du soleil en année type → corrections en cours),
+`acal-atelier-etat` (ACAL1661 : « modifié » ne compte qu'à partir d'un geste ; ACAL1353), `acal-roofpro` (12 tâches des scripts du toit),
+`acal-electrique-serveur` (ACAL1627, 1647, 1675, 1551), `r5a-corrections` (constats du tour 5 côté devis).
+
+**Pile de revue de ce poste : `C:/dev/taqinor-pile-revue/`** (front 127.0.0.1:5251, API 127.0.0.1:8041, comptes `comptes.txt`, notes
+`LISEZ-MOI.md`, instantanés `dumps/`). Code de `main` 86844ac4d, copie anonymisée (preuve : 0 courriel, téléphone, IBAN réel), 109 fiches
+techniques et réglages de simulation repris de la production, pas d'imagerie satellite (fond neutre). Trou de l'outil d'export :
+`authentication/anonymise.py::EXPORT_ORDER` n'exporte ni `stock.FicheTechnique` ni `calepinage.ParametresCalepinage`.
+
+**Tour 5 (rejeux sur la pile), paquet A joué (56 rejeux, devis et PDF) :** 34 corrigés vus, 13 partiels, 2 non corrigés (T4-X1-007,
+T4-X4-001), 5 non rejouables, 2 non joués, 8 constats neufs (R5A-N1 à N8). Résultats : dossier de travail de la session,
+`tour5/rejeu-A.json`. Paquet B en cours ; C à F à lancer l'un après l'autre (un seul navigateur piloté à la fois).
+
+**Fait en production pour le lead 1742 (26/11) :** devis DEV-202611-0104 envoyé par Reda (35 panneaux, hybride, une batterie) ; calepinage 12
+(copie du 9, 35 panneaux, rattachée au client) ; toit de 35 panneaux écrit sur ce devis par mise à jour ciblée (lignes, total et date
+inchangés). Le câblage 12 + 12 | 11 n'a pas pu être enregistré avec le code en ligne (défaut corrigé au lot 6).
+
+**JAMAIS VÉRIFIÉ :** aucun écran du lot 6 vu dans un navigateur (ni le schéma, ni la visionneuse, ni les 58 tâches) ; aucun test avec base
+du lot 6 n'a tourné (la CI sera le premier passage) ; aucun PDF réel rendu ; paquets B à F du tour 5 ; relecteur des maquettes ;
+enregistrements d'acceptation ; contrat de sortie K1 à K17.
+
+**Attend Reda :** D-ACAL-131, 134 à 143 et D-HYB-6 à confirmer ; barre du haut en tablette (T4-X3-017) ; D-AMOT-8 et 9 ; lecture de
+D-ACAL-126 ; ACAL1943 (texte de tâche contre maquette) ; ACAL1635 (énergies arrondies au kWh dans le rapport) ; une vraie clé de carte
+sur la pile de revue ; déploiement après la fusion du lot 6 (avant le 27/11, sinon déplacer `COUPURE_SCHEMA_ELECTRIQUE` et
+`COUPURE_CHAINES_INEGALES`).
