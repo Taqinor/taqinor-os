@@ -305,6 +305,33 @@ def lignes_produits_calepinage(devis):
     ]
 
 
+def cible_du_devis_agricole_du_lead(lead_id, company):
+    """ACAL1268 (D-ACAL-66 = outil_pose) — le CHAMP DE PANNEAUX du devis agricole
+    du lead : ``{panneaux, kwc, panel_watt, devis: {id, reference}}``, lu dans les
+    lignes du devis agricole courant (ni refusé, ni expiré, ni remplacé) le plus
+    récent QUI PORTE DES PANNEAUX (un brouillon vide plus récent ne masque pas un
+    devis plus ancien), ou ``None``. La MÊME lecture que l'atelier devis
+    (``cible_depuis_lignes``) : aucun second dimensionnement. Lecture seule,
+    bornée par ``company``."""
+    from .models import Devis
+    from .selectors import devis_en_jeu
+    from .services import cible_depuis_lignes
+    if not lead_id or company is None:
+        return None
+    candidats = (devis_en_jeu(Devis.objects.filter(
+        company=company, lead_id=lead_id,
+        mode_installation=Devis.ModeInstallation.AGRICOLE))
+        .exclude(statut__in=[Devis.Statut.REFUSE, Devis.Statut.EXPIRE])
+        .order_by('-id'))
+    for devis in candidats:
+        cible = cible_depuis_lignes(devis)
+        if cible.get('panneaux'):
+            return {'panneaux': int(cible['panneaux']), 'kwc': cible.get('kwc'),
+                    'panel_watt': cible.get('panel_watt'),
+                    'devis': {'id': devis.pk, 'reference': devis.reference or ''}}
+    return None
+
+
 def dernier_devis_recu_du_lead(company, lead_id):
     """ACAL1955 — le dernier devis ACTIF du lead que le client a reçu (envoyé ou
     accepté ; le plus récemment envoyé), ou ``None``. Borné société, lecture

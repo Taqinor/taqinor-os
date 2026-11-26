@@ -5,12 +5,14 @@ Contrat ``contract_samples/calepinage_production_mesuree.json`` (ACAL886).
 une seule année par calepinage) ; ``GET`` rend, par mois, le ``p50_kwh`` du
 résultat servi, le ``kwh_mesure`` et ``ecart_pct`` = (mesuré − P50) ÷ P50 × 100
 au dixième. Un mois sans mesure vaut ``null`` (jamais 0). L'écart est publié,
-jamais jugé : aucun seuil, aucune alerte. La société et l'auteur viennent du
+jamais jugé ; seule exception (ACAL1251) : une mesure de plus de dix fois le P50 du
+mois est gardée et porte un ``avertissement`` (aucune valeur absolue inventée). La société et l'auteur viennent du
 serveur ; rien du corps de la requête ne désigne l'une ou l'autre.
 """
 from __future__ import annotations
 
 import datetime
+import math
 
 from django.db import transaction
 
@@ -123,6 +125,24 @@ def _pct(mesure, p50):
     return round((mesure - p50) / p50 * 100.0, 1)
 
 
+#: ACAL1251 (D-ACAL-63) — au-delà de dix fois le P50 du mois, la mesure est gardée et signalée.
+FACTEUR_AVERTISSEMENT = 10
+
+
+def _avertissement(mesure, p50, mois):
+    """Le message sous le champ du mois, ou ``None`` : aucune référence (P50 absent) ⇒ rien."""
+    if mesure is None or p50 is None or p50 <= 0 or mesure <= FACTEUR_AVERTISSEMENT * p50:
+        return None
+    return ("La mesure du mois %d (%s kWh) dépasse %s fois la prévision P50 du mois (%s kWh) : "
+            "vérifiez la saisie. Elle est gardée."
+            % (mois, _lisible(mesure), _lisible(math.floor(round(mesure / p50, 6))), _lisible(p50)))
+
+
+def _lisible(valeur):
+    texte = ('{:,.2f}'.format(valeur)).rstrip('0').rstrip('.')
+    return texte.replace(',', ' ').replace('.', ',')
+
+
 def _p50_mensuels(servi):
     """Les douze ``p50_kwh`` du résultat SERVI, ``None`` si la simulation est
     absente ou périmée."""
@@ -143,7 +163,8 @@ def _composer_etat(calepinage_id, annee, mesures, servi):
     p50 = _p50_mensuels(servi)
     ecarts = [{'mois': mois, 'p50_kwh': p50[mois - 1],
                'kwh_mesure': kwh.get(mois),
-               'ecart_pct': _pct(kwh.get(mois), p50[mois - 1])}
+               'ecart_pct': _pct(kwh.get(mois), p50[mois - 1]),
+               'avertissement': _avertissement(kwh.get(mois), p50[mois - 1], mois)}
               for mois in range(1, 13)]
     comparables = [ligne for ligne in ecarts if ligne['ecart_pct'] is not None]
     somme_p50 = sum(ligne['p50_kwh'] for ligne in comparables)

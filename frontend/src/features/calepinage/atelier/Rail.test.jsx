@@ -894,3 +894,31 @@ describe('useParcours — relu à chaque enregistrement (T4-U1-023)', () => {
     mocks.parcours.mockReset()
   })
 })
+
+/* ACAL1268 (D-ACAL-66 = outil_pose) — le VRAI rail : pour un lead de pompage, les onglets de résultats et d'électrique du réseau
+   (expert ET guidé) ne s'ouvrent pas ; ils disent le renvoi au devis agricole. Un autre marché : le panneau d'avant. */
+describe('ACAL1268 — le rail d’un lead de pompage', () => {
+  const CTX = (marche) => ({ calepinage: { lead: 5 }, chiffrage: { marche }, cible: { devis_agricole: { id: 9, reference: 'DEV-AGR-9' } } })
+  const rendreAvec = (contexte, recherche) => render(
+    <MemoryRouter initialEntries={[`/calepinage/${ID}${recherche}`]}>
+      <Routes><Route path="/calepinage/:id" element={<Rail contexte={contexte} />} /></Routes>
+    </MemoryRouter>,
+  )
+  const zone = () => document.querySelector('[data-zone="pompage-outil-pose"]')
+
+  it.each([
+    ['?onglet=production&mode=expert'], ['?onglet=pertes&mode=expert'], ['?onglet=economie&mode=expert'],
+    ['?onglet=raccordement&mode=expert'], ['?onglet=verdict-electrique'],
+  ])('%s : carte de renvoi au lieu du panneau, lien vers CE devis', async (recherche) => {
+    rendreAvec(CTX('agricole'), recherche)
+    const panneau = await screen.findByTestId('cal-onglet-panneau', {}, { timeout: DELAI_PANNEAU })
+    expect(zone()).not.toBeNull()
+    expect(within(panneau).getByRole('link', { name: 'Ouvrir le devis agricole DEV-AGR-9' })).toHaveAttribute('href', '/ventes/devis?devis=9')
+  })
+
+  it('un autre marché : aucune carte de renvoi', async () => {
+    rendreAvec(CTX('residentiel'), '?onglet=production&mode=expert')
+    await panneauOuvert()
+    expect(zone()).toBeNull()
+  })
+})

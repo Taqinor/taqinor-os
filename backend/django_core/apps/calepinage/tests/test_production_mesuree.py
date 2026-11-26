@@ -83,6 +83,21 @@ class ContratCommitteTest(SimpleTestCase):
             self.assertTrue(etat['motif'])
             self.assertEqual(len(etat['mesures']), 11)
 
+    def test_plus_de_dix_fois_le_p50_du_mois_est_garde_et_avertit(self):
+        # ACAL1251 (D-ACAL-63) : jamais refusé, aucune borne absolue ; la référence est le P50 du mois.
+        p50_janvier = CONTRAT['exemple']['ecarts'][0]['p50_kwh']
+        enorme = [(1, p50_janvier * 11, '2026-11-21T10:00:00Z')]
+        etat = service._composer_etat(1, 2026, enorme, SERVI)
+        self.assertEqual(etat['mesures'][0]['kwh_mesure'], p50_janvier * 11)
+        self.assertIn('vérifiez', etat['ecarts'][0]['avertissement'])
+        self.assertIn('dépasse 11 fois', etat['ecarts'][0]['avertissement'])
+        self.assertTrue(all(ligne['avertissement'] is None for ligne in etat['ecarts'][1:]))
+        # Pile dix fois : rien ; sans P50 servi : aucune référence, rien.
+        dix = [(1, p50_janvier * 10, '2026-11-21T10:00:00Z')]
+        self.assertIsNone(service._composer_etat(1, 2026, dix, SERVI)['ecarts'][0]['avertissement'])
+        sans = service._composer_etat(1, 2026, enorme, {'simule': False})
+        self.assertTrue(all(ligne['avertissement'] is None for ligne in sans['ecarts']))
+
     def test_la_forme_du_get_est_celle_du_contrat(self):
         etat = service._composer_etat(1, 2026, mesures_du_contrat(), SERVI)
         self.assertEqual(sorted(etat), sorted(CONTRAT['exemple']))

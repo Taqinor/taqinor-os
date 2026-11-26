@@ -88,10 +88,11 @@ import {
   dataUrlToBlob, repereDuLead, contourUtilisableDuLead, httpMessage,
   stockageBrouillonLocal, stockageSessionLocal, formaterHeureBrouillon,
   messageRefusRepere, libelleEcartRepere, libelleCibleEstimee, phraseToitureLead,
-  cibleActiveDuContexte, phraseSiteNonLocalise,
+  cibleActiveDuContexte, phraseSiteNonLocalise, estAtelierPompage,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
 import BuilderDom from '../../features/calepinage/atelier/BuilderDom.jsx'
 import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
+import OutilPosePompage from '../../features/calepinage/atelier/OutilPosePompage.jsx'
 import { useAtelierVues } from '../../features/calepinage/atelier/useAtelierVues.js'
 import { useAtelierBoot, pousserAffectationAtelier, MESSAGE_ACCES_REFUSE } from '../../features/calepinage/atelier/useAtelierBoot.js'
 import '../../styles/roofbuilder.css'
@@ -1461,6 +1462,10 @@ function AtelierToiture({
         alertes={(
           <>
             {bandeaux}
+            {estAtelierPompage(contexte) && (
+              <OutilPosePompage contexte={contexte}
+                phrase="Atelier d’un lead de pompage : un outil de pose seulement. Il n’affiche ni économies ni énergie du réseau ; la pose est limitée au champ de panneaux du devis agricole." />
+            )}
             {noteAuto}
             <BandeauConceptionRapide calepinageId={calepinageId} rechargerLe={enregistreLe}
               onVerifier={lectureSeule || varianteId ? null : enregistrerCalepinage} />
@@ -1478,7 +1483,7 @@ function AtelierToiture({
         {/* CALX65 — sous la carte du constructeur, en mode calepinage
             UNIQUEMENT : dit laquelle des deux productions on regarde, sans
             jamais toucher un seul chiffre de `rp9-results` ci-dessus. */}
-        {estCalepinage && calepinageId && (
+        {estCalepinage && calepinageId && !estAtelierPompage(contexte) && ( // ACAL1268 : aucun kWh de réseau pour un pompage
           <BandeauProvenanceProduction calepinageId={calepinageId} chiffrage={contexte?.chiffrage}
             devisLie={Boolean(contexte?.calepinage?.devis_lie || contexte?.calepinage?.devis || contexte?.variante?.devis)}
             variante={Boolean(contexte?.variante)} />
@@ -1488,8 +1493,10 @@ function AtelierToiture({
               vue2d={vue2d} setVue2d={setVue2d} plan2d={plan2d} panId2d={panId2d} ouvrirVue2d={ouvrirVue2d}
               hdBusy={hdBusy} hdMessage={hdMessage} exporterHd={exporterHd}
               gltfBusy={gltfBusy} gltfMessage={gltfMessage} exporterGltf={exporterGltf} />
-            <ResumeAtelier calepinageId={calepinageId} rechargerLe={enregistreLe}
-              lireLayout={() => (sceneHydratee ? builderApi.current?.serializeLayout?.() ?? null : null)} />
+            {!estAtelierPompage(contexte) && (
+              <ResumeAtelier calepinageId={calepinageId} rechargerLe={enregistreLe}
+                lireLayout={() => (sceneHydratee ? builderApi.current?.serializeLayout?.() ?? null : null)} />
+            )}
           </>
         )}
         atelierPanneaux={contexte && {

@@ -3,6 +3,7 @@
 Extraite de ``services/electrique.py`` : ``electrique`` ré-importe le module
 (``_validation_batterie.valider_batterie``), jamais un alias de la fonction.
 """
+from .disponibilite_stock import marquer_en_stock
 from .valeurs import nombre as _nombre
 
 
@@ -142,4 +143,7 @@ def enrichir_candidats(calepinage, candidats, resolu):
     candidats['batterie_du_devis'] = ({
         'produit_id': bloc['produit'], 'designation': bloc.get('designation') or '',
         'packs': int(round(quantite)) if quantite is not None and quantite >= 1 else 1} if bloc else None)
+    for lignes in candidats.values():  # D-ACAL-71 — « En stock » (stock réel, sans quantité ni prix)
+        if isinstance(lignes, list):
+            marquer_en_stock(company, lignes, lambda ligne: ligne.get('id'))
     return candidats
