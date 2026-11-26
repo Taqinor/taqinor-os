@@ -217,7 +217,7 @@ class DevisPdfActionsMixin:
             motif = refus_devis_final(devis) if raw.get('devis_final') else None
             if motif:  # T4-X6-004
                 return _reponse_refus_devis_final(motif)
-            # Page « Étude » (4e page premium) — dégrade proprement à 3 pages
+            # Page « Étude » (une page de plus au premium) — dégrade proprement sans elle
             # si le devis n'a pas de données d'étude (géré par le moteur).
             if 'include_etude' in request.query_params:
                 raw['include_etude'] = request.query_params['include_etude'] in ('1', 'true')

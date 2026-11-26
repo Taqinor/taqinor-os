@@ -90,6 +90,25 @@ describe('QJR581 — brouillon local en Édition complète', () => {
     await waitFor(() => expect(quitterBloque()).toBe(true))
   }, 20000)
 
+  // R5A-N5 (2) — cliquer une puce de la navigation des sections (« Technique », « Lignes »…) ne fait que défiler : ce n'est
+  // pas un geste d'édition (sinon la référence se figeait au premier clic de navigation et tout ce que l'écran posait ensuite
+  // tout seul devenait « modification »). Ce test prouve que la puce n'arme rien et qu'une saisie arme toujours ; il ne
+  // reproduit pas l'écriture tardive de la vraie pile (voir plus haut) : le rejeu en direct reste la preuve.
+  it('R5A-N5 — un clic sur une puce de navigation n’arme ni pastille ni garde ; une saisie ensuite arme', async () => {
+    renderEdition()
+    await screen.findByRole('button', { name: /Enregistrer les modifications/ })
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(7))
+    const puce = document.querySelector('.gen-nav-puce')
+    expect(puce).not.toBeNull()
+    fireEvent.pointerDown(puce)
+    await new Promise(r => setTimeout(r, 1800))
+    expect(quitterBloque()).toBe(false)
+    expect(screen.queryByTestId('gen-barre-non-enregistre')).toBeNull()
+    fireEvent.change(screen.getByPlaceholderText(/Conditions particulières/), { target: { value: 'Acompte 30 %' } })
+    await waitFor(() => expect(quitterBloque()).toBe(true))
+    expect(screen.getByTestId('gen-barre-non-enregistre')).toBeTruthy()
+  }, 15000)
+
   it('brouillon local à updated_at ancien : aucun bandeau « Reprendre », brouillon purgé', async () => {
     window.localStorage.setItem(CLE, JSON.stringify({
       savedAt: '2026-09-29T08:00:00Z', version: '2026-09-29T07:00:00Z', data: { note: 'vieux' },

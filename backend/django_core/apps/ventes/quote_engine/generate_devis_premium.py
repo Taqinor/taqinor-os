@@ -317,7 +317,7 @@ PAGE3_NUM = 3                  # numéro de la page de signature
 # sans les clés du builder rendent exactement le PDF d'aujourd'hui).
 INCLUDE_ANNEXE = False
 ELECTRICAL_DESIGN = {}
-SLD_SVG = ""
+SLD_SVG, ANNEXES_OPTIONS = "", []  # D-ACAL-166 : une page d'annexe par option rangée
 # CAL182 — page « Calepinage » (planche cotée CAL171) : mêmes défauts INERTES.
 # Sans les clés du builder, la page n'existe pas et le PDF est byte-identique.
 INCLUDE_CALEPINAGE = False
@@ -951,7 +951,7 @@ def _cgv_bullets_html():
     aussi. Défaut → puces identiques au caractère près.
     """
     bullets = _puces_cgv(_doc_text("cgv_bullets"), LANGUE_SORTIE,
-                         globals().get("MODE_INSTALLATION"))
+                         globals().get("MODE_INSTALLATION"), globals().get("RENDUS_2611", False))  # ACAL1221
     out = ""
     for txt in remplir_cgv_bullets(
             bullets, acompte=PAY_A, materiel=PAY_M, solde=PAY_S,
@@ -2849,6 +2849,7 @@ from .bankable import TOLERANCE_KWC_SIMULATION  # noqa: E402 — fin de module (
 from .agricole.garanties import garantie_ligne_onepage  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 from .ci import installation as ci_installation, onepage as ci_onepage, tableau as ci_tableau  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 from .bankable import TOLERANCE_PRODUCTION_PAGE  # noqa: E402,F401 — fin de module (anti-cycle) (D-ENF22)
+from .annexe_options import nombre_pages_annexe, pages_annexe_technique  # noqa: E402 — D-ACAL-166 (D-ENF22)
 
 
 #: QJR115 \u2014 \u00e9cart RELATIF tol\u00e9r\u00e9 entre la P50 du bloc bancable et la
@@ -2877,7 +2878,7 @@ def _composition_avec():
     return _L("lg_compo_hybride") if _batterie_differee() else _L("lg_compo_stockage")
 
 
-def page_annexe_technique():
+def page_annexe_technique(design=None, svg=None, titre=""):
     """PV46 \u2014 annexe technique : sch\u00e9ma unifilaire + nomenclature \u00e9lectrique.
 
     Rendue depuis ``devis.electrical_design`` (PV41) et le SVG du sch\u00e9ma, tous
@@ -2887,15 +2888,15 @@ def page_annexe_technique():
     d'\u00e9quipements de la page 2). Une section sans donn\u00e9e est OMISE \u2014 jamais un
     tableau vide ni un tiret fabriqu\u00e9.
     """
-    design = ELECTRICAL_DESIGN or {}
+    design, svg = (ELECTRICAL_DESIGN if design is None else design) or {}, SLD_SVG if svg is None else svg
 
     schema_html = (
         f'<div style="background:white;border:1px solid {CG2};border-radius:7px;'
         f'padding:8px 10px;margin-bottom:10px;">'
         f'<div style="font-size:7pt;font-weight:700;color:{CN};'
         f'text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">'
-        f'{_L("lg_schema")}</div>{SLD_SVG}</div>'
-    ) if SLD_SVG else ""
+        f'{_L("lg_schema")}</div>{svg}</div>'
+    ) if svg else ""
 
     def _cell(texte, align="left", bold=False):
         return (f'<td style="padding:3px 6px;border-bottom:1px solid {CG2};'
@@ -2906,8 +2907,7 @@ def page_annexe_technique():
     # coupée à 22 lignes sans mention ni marqueur : le lecteur croyait
     # tenir la liste complète des composants.
     _bom = [it for it in (design.get("bom") or []) if isinstance(it, dict)]
-    _bom_reste = max(0, len(_bom) - BOM_MAX_LIGNES)
-    lignes = []
+    _bom_reste, lignes = max(0, len(_bom) - BOM_MAX_LIGNES), []
     for item in _bom[:BOM_MAX_LIGNES]:
         if not isinstance(item, dict):
             continue
@@ -2961,7 +2961,7 @@ def page_annexe_technique():
 <div class="page">
   <div style="background:{CN};padding:12px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
     <div>
-      <div style="color:white;font-size:10pt;font-weight:700;">{_L("lg_annexe_technique")}</div>
+      <div style="color:white;font-size:10pt;font-weight:700;">{_L("lg_annexe_technique")}{titre}</div>
       <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">{_L("lg_devis_n_nbsp").format(ref=REF)} \u2014 {CLIENT_NAME} \u2014 {DATE_STR}</div>
     </div>
     {logo_html("entete")}
@@ -3112,7 +3112,7 @@ def build_html():
                else make_chart_roi())
     img_mon = "" if (_sans_economies or not SHOW_MONTHLY) else make_chart_monthly()
     etude_html = page_etude() if etude_rendue() else ""
-    annexe_html = (page_annexe_technique()
+    annexe_html = (pages_annexe_technique(sys.modules[__name__])
                    if (INCLUDE_ANNEXE and ELECTRICAL_DESIGN) else "")
     # CAL182 — la planche s'intercale APRÈS l'annexe, avant la signature :
     # l'ordre du document va du commercial au technique, puis à l'engagement.
@@ -3536,7 +3536,7 @@ def apply_quote_data(data: dict) -> None:
     # PV46 — annexe technique (schéma unifilaire + nomenclature). Même patron
     # de global que INCLUDE_ETUDE, mêmes défauts inertes : sans les clés du
     # builder, la page n'existe pas et le PDF est byte-identique.
-    global INCLUDE_ANNEXE, ELECTRICAL_DESIGN, SLD_SVG
+    global INCLUDE_ANNEXE, ELECTRICAL_DESIGN, SLD_SVG, ANNEXES_OPTIONS
     # CAL182 — page « Calepinage » (planche cotée). Même patron, mêmes défauts
     # inertes : sans les clés du builder, la page n'existe pas.
     global INCLUDE_CALEPINAGE, CALEPINAGE_SVG, CALEPINAGE_EMPREINTE
@@ -3641,7 +3641,7 @@ def apply_quote_data(data: dict) -> None:
     INCLUDE_ETUDE  = bool(data.get("include_etude", False))
     INCLUDE_ANNEXE = bool(data.get("include_annexe_technique", False))
     ELECTRICAL_DESIGN = data.get("electrical_design") or {}
-    SLD_SVG        = data.get("sld_svg") or ""
+    SLD_SVG, ANNEXES_OPTIONS = data.get("sld_svg") or "", list(data.get("annexes_options") or [])
     INCLUDE_CALEPINAGE = bool(data.get("include_calepinage", False))
     # ACAL103 (C-ACAL-117, QJR666) — un devis RÉSIDENTIEL rendu par ce moteur
     # (cas « + étude ») n'ajoute la planche que sur une demande EXPLICITE
@@ -3796,8 +3796,8 @@ def apply_quote_data(data: dict) -> None:
     _dl = data.get("delais") or {}
     from .residential.theme import delai_doc as _dd  # RPDF : délais dans la langue du document
     DELAI_VISITE, DELAI_INSTALLATION = (_dd(data, (_dl.get(k) or "").strip()) for k in ("visite_technique", "installation"))
-    global SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, RENDUS_2511, UNE_OPTION_SANS_NUMERO  # M10 ; ACAL1033 ; niveau 15 ; D-ACAL-114
-    SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, RENDUS_2511, UNE_OPTION_SANS_NUMERO = bool(data.get("savings_estimated")), _economies_sans_ancrage(data), bool(data.get("regles_pose_reelle") or data.get("phrases_pdf_2511")), bool(data.get("phrases_pdf_2511")) and data.get("scenario") in ("Avec batterie", "Sans batterie")
+    global SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, RENDUS_2511, UNE_OPTION_SANS_NUMERO, RENDUS_2611  # M10 ; ACAL1033 ; niveau 15 ; D-ACAL-114 ; ACAL1221
+    SAVINGS_ESTIMATED, ECONOMIES_SANS_ANCRAGE, RENDUS_2511, UNE_OPTION_SANS_NUMERO, RENDUS_2611 = bool(data.get("savings_estimated")), _economies_sans_ancrage(data), bool(data.get("regles_pose_reelle") or data.get("phrases_pdf_2511")), bool(data.get("phrases_pdf_2511")) and data.get("scenario") in ("Avec batterie", "Sans batterie"), bool(data.get("phrases_pdf_2611"))
     # XSAL14/XSAL5 — structure (sections/notes) + options proposées (rendu seul,
     # hors totaux). Absents → byte-identique. Escapés à l'ingestion (ERR37).
     global LIGNES_STRUCTURE, OPTIONS_PROPOSEES
@@ -3846,7 +3846,7 @@ def apply_quote_data(data: dict) -> None:
     # CAL182 — la planche suit la même dégradation : sans SVG rendu, la page
     # n'est ni rendue ni comptée. Le format 'onepage' reste à UNE page.
     _with_calepinage = bool(INCLUDE_CALEPINAGE and CALEPINAGE_SVG) and _full
-    PAGES_TOTAL = (3 + (1 if _with_etude else 0) + (1 if _with_annexe else 0)
+    PAGES_TOTAL = (3 + (1 if _with_etude else 0) + (nombre_pages_annexe(ANNEXES_OPTIONS) if _with_annexe else 0)
                    + (1 if _with_calepinage else 0))
     PAGE3_NUM = PAGES_TOTAL
     # ERR37 — escape user text in line items at the ingestion boundary so every

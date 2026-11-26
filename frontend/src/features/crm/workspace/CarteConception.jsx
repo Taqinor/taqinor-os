@@ -5,11 +5,13 @@
 //
 // Aucun calcul ici : des lectures de `GET ventes/conception/<lead>/` (contrat
 // `apps/ventes/contract_samples/conception_lead.json`). La carte n'écrit rien.
-// Un lead tout neuf n'a pas encore de conception (404 quelques secondes) :
-// la carte le dit et relit d'elle-même, un nombre BORNÉ de fois.
+// Un lead tout neuf n'a pas encore de conception (404 = la réponse NORMALE du serveur) :
+// la carte le dit calmement ; la lecture est partagée avec l'onglet Devis (useConceptionLead). La PREMIÈRE conception d'un
+// lead se calcule en arrière-plan : après une action (ou à l'ouverture d'un lead créé à l'instant) un 404 est « en cours de
+// calcul », relu de façon BORNÉE par le store partagé (une minuterie par lead).
 import { useEffect, useState } from 'react'
 import { Button } from '../../../ui'
-import ventesApi from '../../../api/ventesApi'
+import useConceptionLead, { relireConceptionLead } from './useConceptionLead'
 import { formatKwc, formatMAD, formatNumber } from '../../../lib/format'
 
 const OPTIONS = [['sans', 'Sans batterie'], ['avec', 'Avec batterie']]
@@ -140,43 +142,34 @@ function LigneFiche({ ligne }) {
   )
 }
 
-export default function CarteConception({ leadId, delaiRelectureMs = 4000, maxRelectures = 6 }) {
-  const [etat, setEtat] = useState({ statut: 'charge', conception: null })
-  const [relance, setRelance] = useState(0) // m1 — « Relire » : une lecture de plus, jamais une chaîne
-
+export default function CarteConception({ leadId, creeLe = null, delaiRelectureMs = 4000, maxRelectures = 6 }) {
+  // R5A-N6 — la conception est lue UNE fois par fiche (useConceptionLead, partagée avec l'onglet Devis) ; un 404 est l'état
+  // calme « pas encore de conception », jamais rejoué. Seule une version PÉRIMÉE (réponse 200 « recalcul en cours ») est
+  // relue, bornée ; « Relire » est une lecture de plus, jamais une chaîne.
+  const lu = useConceptionLead(leadId, { creeLe })
+  const conception = lu.donnees?.etat ? lu.donnees : null
+  const perimee = Boolean(conception?.perimee)
+  const [relectures, setRelectures] = useState(0)
+  const [perimeeVue, setPerimeeVue] = useState(false)
+  if (perimeeVue !== perimee) {
+    setPerimeeVue(perimee)
+    if (!perimee) setRelectures(0)
+  }
   useEffect(() => {
-    let vivant = true
-    let minuterie = null
-    const relire = async (fait) => {
-      let suite = null  // 'attente' | 'perimee' quand une relecture reste utile
-      try {
-        const { data } = await ventesApi.getConceptionLead(leadId)
-        if (!vivant) return
-        const conception = data?.etat ? data : null
-        suite = conception?.perimee ? 'perimee' : (conception ? null : 'attente')
-        setEtat({ statut: conception ? 'ok' : 'absente', conception, epuisee: false })
-      } catch (err) {
-        if (!vivant) return
-        if (err?.response?.status === 404) {
-          suite = 'attente'
-          setEtat({ statut: 'absente', conception: null })
-        } else {
-          setEtat((e) => (e.conception ? e : { statut: 'erreur', conception: null }))
-        }
-      }
-      if (suite && fait < maxRelectures) {
-        minuterie = setTimeout(() => relire(fait + 1), delaiRelectureMs)
-      } else if (suite === 'attente') {
-        setEtat({ statut: 'vide', conception: null })
-      } else if (suite === 'perimee') {
-        setEtat((e) => ({ ...e, epuisee: true })) // m1 — plus de relecture automatique : la carte le dit
-      }
-    }
-    if (leadId) relire(relance > 0 ? maxRelectures : 0)
-    return () => { vivant = false; if (minuterie) clearTimeout(minuterie) }
-  }, [leadId, delaiRelectureMs, maxRelectures, relance])
+    if (!leadId || !perimee || relectures >= maxRelectures) return undefined
+    const minuterie = setTimeout(() => {
+      setRelectures((n) => n + 1)
+      relireConceptionLead(leadId)
+    }, delaiRelectureMs)
+    return () => clearTimeout(minuterie)
+  }, [leadId, perimee, relectures, maxRelectures, delaiRelectureMs])
 
-  const { statut, conception } = etat
+  const epuisee = perimee && relectures >= maxRelectures // m1 — plus de relecture automatique : la carte le dit
+  let statut = 'charge'
+  if (lu.statut === 'erreur') statut = 'erreur'
+  else if (lu.statut === 'attente') statut = 'absente'
+  else if (lu.statut !== 'charge') statut = conception ? 'ok' : 'vide'
+  const etat = { epuisee }
   if (!leadId || statut === 'charge') return null
   const boite = 'mb-3 rounded-lg border border-border bg-card p-3 text-sm'
   const titre = <h3 className="mb-2 text-sm font-semibold text-foreground">Conception</h3>
@@ -238,7 +231,7 @@ export default function CarteConception({ leadId, delaiRelectureMs = 4000, maxRe
         {conception.perimee && etat.epuisee && (
           <span className="flex items-center gap-2 text-xs text-warning" role="status" data-testid="carte-conception-recalcul-long">
             Le recalcul n'est pas terminé.
-            <Button type="button" size="sm" variant="outline" onClick={() => setRelance((n) => n + 1)}>Relire</Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => relireConceptionLead(leadId)}>Relire</Button>
           </span>
         )}
       </div>

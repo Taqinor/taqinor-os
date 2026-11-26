@@ -476,6 +476,9 @@ class DevisCalepinageActionsMixin:
         surcharges = request.data
         hash_avant = devis.electrical_design_hash
         design = build_electrical_design(devis, overrides=surcharges)
+        # D-ACAL-158 — l'autre option rangée à l'envoi suit le même site.
+        from ..conceptions_options import suivre_conceptions_figees
+        suivre_conceptions_figees(devis)
         # Un ENVOYÉ se corrige sur place (D-QJR5-1) : une étude réellement
         # réécrite est tracée « corrigé après envoi — étude » et avance le
         # jeton d'édition. Aux mêmes entrées (idempotence) : rien.
