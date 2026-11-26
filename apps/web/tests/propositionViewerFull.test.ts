@@ -792,7 +792,7 @@ describe('monterVisionneusePleine — barre au soleil branchée après le rendu,
     document.body.innerHTML = '';
   });
 
-  async function monter() {
+  async function monter(extra: Record<string, unknown> = {}) {
     const { monterVisionneusePleine } = await import('../src/scripts/roofPro11/viewerFullBoot');
     document.body.innerHTML = `<div id="scene"></div>${BARRE}`;
     const barre = document.getElementById('roof3d-soleil')!;
@@ -802,7 +802,7 @@ describe('monterVisionneusePleine — barre au soleil branchée après le rendu,
     const avertir = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const brancherSoleil = vi.fn(async (poignee: ViewerFullHandle) =>
       attacherSoleil({ barre, poignee, soleil, layout: LAYOUT_PLAT_35, avecTeinte: true, reducedMotion: true }));
-    const vue = monterVisionneusePleine(document.getElementById('scene'), LAYOUT_PLAT_35, { maptilerKey: 'cle-test', reducedMotion: true, instant: soleil.ouverture, onReady }, { barre, brancherSoleil, replier });
+    const vue = monterVisionneusePleine(document.getElementById('scene'), LAYOUT_PLAT_35, { maptilerKey: 'cle-test', reducedMotion: true, instant: soleil.ouverture, onReady, ...extra }, { barre, brancherSoleil, replier });
     const q = <T extends HTMLElement>(s: string) => barre.querySelector<T>(s)!;
     return { vue, barre, carte: carteFactice.cartes[0], onReady, replier, brancherSoleil, avertir, q };
   }
@@ -856,5 +856,38 @@ describe('monterVisionneusePleine — barre au soleil branchée après le rendu,
     expect(curseur.disabled).toBe(true);
     expect(carte.retiree).toBe(true);
     expect(replier).toHaveBeenCalledTimes(1);
+  });
+
+  it('B0 — une tuile refusée (429) ou une réponse HTTP ne retire pas la barre ; une panne de style, si', async () => {
+    const onMapError = vi.fn();
+    const { barre, carte } = await monter({ onMapError: () => { onMapError(); barre.hidden = true; } }); // comme showFallback de la page
+    carte.fire('load');
+    await attendre();
+    carte.fire('error', { sourceId: 'satellite', tile: {}, error: { status: 429, message: 'Too Many Requests' } });
+    carte.fire('error', { error: { status: 404, message: 'glyphes absents' } });
+    expect(onMapError).not.toHaveBeenCalled();
+    expect(barre.hidden).toBe(false);
+    carte.fire('error', { error: new Error('Style is not done loading') });
+    expect(onMapError).toHaveBeenCalledTimes(1);
+    expect(barre.hidden).toBe(true);
+  });
+
+  it('B0 — contexte WebGL perdu : restauré à temps, rien ; jamais restauré, la page replie', async () => {
+    vi.useFakeTimers();
+    try {
+      const { DELAI_RESTAURATION_GL_MS } = await import('../src/scripts/roofPro11/viewerFullBoot');
+      const onMapError = vi.fn();
+      const { carte } = await monter({ onMapError });
+      carte.fire('load');
+      carte.fire('webglcontextlost');
+      carte.fire('webglcontextrestored');
+      vi.advanceTimersByTime(DELAI_RESTAURATION_GL_MS + 1);
+      expect(onMapError).not.toHaveBeenCalled();
+      carte.fire('webglcontextlost');
+      vi.advanceTimersByTime(DELAI_RESTAURATION_GL_MS + 1);
+      expect(onMapError).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
