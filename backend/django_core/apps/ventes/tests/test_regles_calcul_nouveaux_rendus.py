@@ -202,6 +202,30 @@ class ReglesCalculTests(SimpleTestCase):
         sonde.produit.fiche_technique = None
         self.assertEqual(_item_du_devis(sonde, Decimal('20'), ouvert)['description'], desc)
 
+    def test_t4_v2_010_retrait_toujours_grammatical(self):
+        # Revue du 26/11 — d'autres tournures que celle des VEICHI : jamais de
+        # parenthèses vides, de séparateur orphelin ni de double espace ; un
+        # produit qui n'est pas un variateur n'est jamais touché.
+        from apps.ventes.quote_engine.lignes_classement import _description_prouvee
+        variateur = SimpleNamespace(role_pompage='variateur_pompage', fiche_technique=None)
+        autre = SimpleNamespace(role_pompage='sonde_niveau', fiche_technique=None)
+        cas = {
+            'Relais de niveau (protection marche à sec / cuve pleine)': 'Relais de niveau (cuve pleine)',
+            'Protection marche à sec, pilotage automatique': 'Pilotage automatique',
+            'Relais (protection marche à sec)': 'Relais',
+            'MPPT intégré – protection contre la marche à sec': 'MPPT intégré',
+            'Pilotage automatique lever/coucher du soleil, protection marche à sec':
+                'Pilotage automatique lever/coucher du soleil',
+            'Arrêt sur défaut, protection marche à sec, redémarrage auto': 'Arrêt sur défaut, redémarrage auto',
+        }
+        for avant, attendu in cas.items():
+            with self.subTest(avant=avant):
+                self.assertEqual(_description_prouvee(avant, variateur, None), attendu)
+                self.assertEqual(_description_prouvee(avant, autre, None), avant)
+                self.assertEqual(_description_prouvee(avant, variateur, True), avant)
+        # Une ligne sans la clause revient à l'octet, une ligne vidée disparaît.
+        self.assertEqual(_description_prouvee('A  ,  b\nprotection marche à sec', variateur, None), 'A  ,  b')
+
     def test_t4_v2_010_la_preuve_est_figee_a_l_envoi(self):
         # Revue du 26/11 — la description est figée à l'envoi ; la PREUVE de la
         # protection aussi (``envoi.figer_reglages_rendu``) : un devis envoyé

@@ -291,9 +291,37 @@ def _description_prouvee(description: str, produit, protection) -> str:
                  or (getattr(fiche, "type_fiche", None) or "") == "variateur_pompage")
     if not variateur or protection is True:
         return description
-    lignes = [_PROTECTION_MARCHE_A_SEC_RE.sub("", ligne).rstrip(" ,;")
-              for ligne in description.split("\n")]
+    lignes = [_ligne_sans_clause(ligne) for ligne in description.split("\n")]
     return "\n".join(ligne for ligne in lignes if ligne.strip())
+
+
+#: Séparateurs qu'un retrait peut laisser orphelins (« ( / cuve pleine) »).
+_SEP = r"[/,;:\-–]"
+_NETTOYAGE_CLAUSE = (
+    (re.compile(r"\(\s*" + _SEP + r"+\s*"), "("),
+    (re.compile(r"\s*" + _SEP + r"+\s*\)"), ")"),
+    (re.compile(r"\s*\(\s*\)"), ""),
+    (re.compile(r"^\s*" + _SEP + r"+\s*"), ""),
+    (re.compile(r"\s*" + _SEP + r"+\s*$"), ""),
+    (re.compile(r"\s*,(\s*,)+"), ","),
+    (re.compile(r"\s+([),.;:])"), r"\1"),
+    (re.compile(r"\s{2,}"), " "),
+)
+
+
+def _ligne_sans_clause(ligne: str) -> str:
+    """T4-V2-010 (revue) — UNE ligne de description sans « protection marche à
+    sec », toujours grammaticale : ni parenthèses vides, ni séparateur en tête
+    ou en fin, ni double espace ; une ligne qui COMMENÇAIT par la clause garde
+    une majuscule. Une ligne sans la clause revient à l'octet."""
+    if not _PROTECTION_MARCHE_A_SEC_RE.search(ligne):
+        return ligne
+    en_tete = _PROTECTION_MARCHE_A_SEC_RE.match(ligne.lstrip()) is not None
+    texte = _PROTECTION_MARCHE_A_SEC_RE.sub("", ligne)
+    for motif, remplacement in _NETTOYAGE_CLAUSE:
+        texte = motif.sub(remplacement, texte)
+    texte = texte.strip()
+    return texte[:1].upper() + texte[1:] if en_tete else texte
 
 
 def _line_to_item(ligne, taux_tva: Decimal, fiches=None, *,
