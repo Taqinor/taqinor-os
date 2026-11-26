@@ -104,3 +104,17 @@ class NombreUniqueTest(unittest.TestCase):
         self.assertEqual(pente_du_pan({'pitchDeg': '15'}), 15.0)
         self.assertIsNone(pente_du_pan({'roofType': 'pitched'}))
         self.assertIsNone(pente_du_pan(None))
+
+    def test_pente_du_pan_est_la_regle_du_noyau(self):
+        """D-ACAL-149 — ``apps.ventes`` lit la MÊME règle par
+        ``core.calepinage.geo`` : la table des nombres rend à l'identique sur
+        un pan en pente, et un toit plat vaut 0 quelle que soit sa saisie."""
+        from core.calepinage.geo import pente_effective_du_pan
+
+        for valeur in TABLE + [10 ** 400]:
+            with self.subTest(valeur=valeur):
+                pan = {'roofType': 'pitched', 'pitchDeg': valeur}
+                self.assertEqual(pente_effective_du_pan(pan), nombre(valeur))
+                self.assertEqual(pente_du_pan(pan), nombre(valeur))
+                self.assertEqual(pente_effective_du_pan(
+                    {'roofType': 'flat', 'pitchDeg': valeur}), 0.0)
