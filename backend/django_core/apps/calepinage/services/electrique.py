@@ -1237,7 +1237,7 @@ def entree_electrique_servie(calepinage, stockee):
         'entree': entree,
         'materiel': materiel,
         'absents': [role for role in ROLES_MATERIEL if materiel[role] is None],
-        'candidats': _candidats_materiel(calepinage),
+        'candidats': _validation_batterie.enrichir_candidats(calepinage, _candidats_materiel(calepinage), resolu),
         'devis_retenu': bloc_devis_retenu(calepinage, stockee, resolu),  # ACAL1952
     }
 

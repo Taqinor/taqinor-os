@@ -427,14 +427,17 @@ class BatterieDesigneeD_ACAL_157(SimpleTestCase):
     def _produit(self):
         return mock.Mock(pk=905, nom='Batterie 5,1 kWh')
 
-    def _valider(self, postee, *, produit, en_liste=True, stockee=None):
+    def _valider(self, postee, *, produit, en_liste=True, stockee=None, verdict='compatible'):
         from apps.calepinage.services.validation_batterie import _valider_batterie_designee
 
         liste = mock.Mock()
         liste.filter.return_value.exists.return_value = en_liste
+        juge = {'statut': verdict, 'raisons': ['tension nominale 48 V hors de la plage 150-500 V de l\'onduleur']}
         with mock.patch('apps.stock.selectors.get_produit_scoped', return_value=produit), \
                 mock.patch('apps.stock.selectors.produits_par_type_fiche_qs', return_value=liste), \
-                mock.patch('apps.calepinage.services.electrique.entree_stockee', return_value=stockee or {}):
+                mock.patch('apps.calepinage.services.electrique.entree_stockee', return_value=stockee or {}), \
+                mock.patch('apps.calepinage.services.electrique.resoudre_materiel', return_value={}), \
+                mock.patch('apps.calepinage.services.validation_batterie._verdict_batterie', return_value=juge):
             _valider_batterie_designee(mock.Mock(company=object()), {}, postee)
 
     def test_les_categories_de_candidats_portent_les_batteries_sans_fiche_exigee(self):
@@ -490,6 +493,44 @@ class BatterieDesigneeD_ACAL_157(SimpleTestCase):
             self._valider({'batterie': {'produit': 8}}, produit=self._produit(), en_liste=False)
         self.assertEqual(hors_liste.exception.champ, 'batterie.produit')
         self.assertIn("n'est pas une batterie du catalogue", str(hors_liste.exception))
+
+    def test_une_nouvelle_designation_incompatible_est_refusee_avec_la_phrase_du_juge_inconnu_passe(self):
+        from apps.calepinage.services.electrique import EntreeInvalide
+
+        with self.assertRaises(EntreeInvalide) as refus:
+            self._valider({'batterie': {'produit': 905}}, produit=self._produit(), verdict='incompatible')
+        self.assertEqual(refus.exception.champ, 'batterie.produit')
+        self.assertIn('tension nominale 48 V hors de la plage 150-500 V', str(refus.exception))
+        self._valider({'batterie': {'produit': 905}}, produit=self._produit(), verdict='inconnu')  # inconnu : offerte
+        # Une désignation INCHANGÉE n'est pas rejugée (entrée existante réenregistrable).
+        self._valider({'batterie': {'produit': 905}}, produit=self._produit(), verdict='incompatible',
+                      stockee={'batterie': {'produit': 905}})
+
+    def test_les_candidats_servis_portent_le_verdict_du_juge_et_la_batterie_du_devis(self):
+        from apps.calepinage.services import validation_batterie as vb
+
+        candidats = {'batteries': [{'id': 905}, {'id': 906}], 'onduleurs': []}
+        verdicts = {905: {'batterie_onduleur': {'statut': 'compatible', 'raisons': []}},
+                    906: {'batterie_onduleur': {'statut': 'incompatible', 'raisons': ['48 V sous un onduleur HT']}}}
+        resolu = {'produits': {'module': 11, 'onduleur': 12}}
+        bloc = {'produit': 905, 'designation': 'Batterie du devis', 'quantite': 3.0}
+        with mock.patch('apps.ventes.selectors.compatibilite_du_materiel',
+                        side_effect=lambda panneau, onduleur, company, batterie: verdicts[batterie]), \
+                mock.patch('apps.calepinage.services.equipements.equipements_du_calepinage',
+                           return_value={'batterie': bloc}):
+            sortie = vb.enrichir_candidats(mock.Mock(company=object()), candidats, resolu)
+        self.assertEqual(sortie['batteries'][0]['compatibilite'], {'statut': 'compatible', 'raisons': []})
+        self.assertEqual(sortie['batteries'][1]['compatibilite']['statut'], 'incompatible')
+        self.assertEqual(sortie['batterie_du_devis'],
+                         {'produit_id': 905, 'designation': 'Batterie du devis', 'packs': 3})
+        # Sans onduleur résolu : « inconnu » (jamais « incompatible »), sans appeler le juge ; sans devis : None.
+        with mock.patch('apps.ventes.selectors.compatibilite_du_materiel') as juge, \
+                mock.patch('apps.calepinage.services.equipements.equipements_du_calepinage',
+                           return_value={'batterie': None}):
+            sortie = vb.enrichir_candidats(mock.Mock(company=object()), {'batteries': [{'id': 905}]}, {'produits': {}})
+        juge.assert_not_called()
+        self.assertEqual(sortie['batteries'][0]['compatibilite']['statut'], 'inconnu')
+        self.assertIsNone(sortie['batterie_du_devis'])
 
     def test_une_designation_inchangee_reste_reenregistrable_meme_sans_fiche(self):
         # La fixture / l'entrée qui porte déjà une batterie sans fiche : renvoyée telle quelle, elle passe.

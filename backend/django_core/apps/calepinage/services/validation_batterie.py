@@ -106,3 +106,40 @@ def _valider_batterie_designee(calepinage, fusionnee, postee):
     if not produits_par_type_fiche_qs(company, 'batterie').filter(pk=produit.pk).exists():
         raise EntreeInvalide("« %s » n'est pas une batterie du catalogue : choisissez un produit actif de la catégorie "
                              "Batterie." % (getattr(produit, 'nom', '') or identifiant), champ='batterie.produit')
+    from .electrique import resoudre_materiel
+
+    verdict = _verdict_batterie(company, resoudre_materiel(company, fusionnee, calepinage=calepinage), produit.pk)
+    if verdict['statut'] == 'incompatible':  # « inconnu » (fiche sans tension) n'est PAS incompatible
+        raise EntreeInvalide("La batterie « %s » ne convient pas à l'onduleur désigné : %s." % (
+            getattr(produit, 'nom', '') or identifiant, ' ; '.join(verdict['raisons']) or 'incompatible'),
+            champ='batterie.produit')
+
+
+def _verdict_batterie(company, resolu, batterie_id):
+    """D-ACAL-157 — le verdict de l'UNIQUE juge (``apps.ventes.selectors.compatibilite_du_materiel`` ->
+    ``verdict_batterie_onduleur``) de cette batterie sous l'onduleur RÉSOLU ; sans onduleur : ``inconnu``."""
+    from apps.ventes.selectors import compatibilite_du_materiel
+
+    produits = (resolu or {}).get('produits') or {}
+    if produits.get('onduleur') is None:
+        return {'statut': 'inconnu', 'raisons': []}
+    servi = compatibilite_du_materiel(produits.get('module'), produits.get('onduleur'), company, batterie_id)
+    verdict = servi.get('batterie_onduleur') or {}
+    return {'statut': verdict.get('statut') or 'inconnu', 'raisons': list(verdict.get('raisons') or [])}
+
+
+def enrichir_candidats(calepinage, candidats, resolu):
+    """D-ACAL-157 — les candidats servis, enrichis : chaque batterie porte ``compatibilite`` (le verdict du juge pour
+    l'onduleur désigné) et ``batterie_du_devis`` dit la ligne batterie du devis lié que le schéma reprend quand aucune
+    batterie n'est désignée ici (``{produit_id, designation, packs}``, sinon ``None``)."""
+    from .equipements import equipements_du_calepinage
+
+    company = getattr(calepinage, 'company', None)
+    for ligne in candidats.get('batteries') or ():
+        ligne['compatibilite'] = _verdict_batterie(company, resolu, ligne['id'])
+    bloc = (equipements_du_calepinage(calepinage) or {}).get('batterie')
+    quantite = _nombre((bloc or {}).get('quantite'))
+    candidats['batterie_du_devis'] = ({
+        'produit_id': bloc['produit'], 'designation': bloc.get('designation') or '',
+        'packs': int(round(quantite)) if quantite is not None and quantite >= 1 else 1} if bloc else None)
+    return candidats
