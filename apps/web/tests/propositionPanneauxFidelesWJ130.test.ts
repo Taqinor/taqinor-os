@@ -425,7 +425,7 @@ describe('lot 8 — pieds de châssis de la visionneuse simplifiée : tirés de 
     expect(matricesPiedsChassis(pente, [pose(0, pente.tiltDeg)], pente.panelSlopeM)).toEqual([]);
   });
 
-  it('les pieds ne sont dessinés QUE sur demande (lien de confiance) : lien standard et pages d’estimation inchangés', () => {
+  it('D-ACAL-161 — pieds PARTOUT par défaut (tous les liens, estimateur public) ; `false` les retire ; jamais sous une pose affleurante', () => {
     const plat = buildViewerModel(parseRoofLayout({ version: 2, zones: [{
       id: 'z', label: 'P', vertices: rectLngLat(12, 12), obstacles: [], roofType: 'flat', pitchDeg: 0, facingAzimuthDeg: 180, neededPanels: 0,
       geometry: { azimuthDeg: 180, tiltDeg: t, family: 'south', flush: false, count: 2, origin: [LNG0, LAT0], panels: [{ cx: -0.7, cy: 0 }, { cx: 0.7, cy: 0 }] },
@@ -435,14 +435,24 @@ describe('lot 8 — pieds de châssis de la visionneuse simplifiée : tirés de 
       const racine = new THREE.Group();
       buildZone(racine, zone, [], null, ...option);
       const instances = racine.children.filter((o) => (o as THREE.InstancedMesh).isInstancedMesh) as THREE.InstancedMesh[];
+      let texte = 0; // garde B4 étendue à la visionneuse simplifiée : les pieds n'apportent ni étiquette ni texte
+      racine.traverse((o) => { if ((o as THREE.Sprite).isSprite || (o as { element?: unknown }).element) texte++; });
+      expect(texte).toBe(0);
       return { enfants: racine.children.length, instances: instances.map((im) => im.count) };
     };
-    // Sans l'option (lien standard, devis/mon-toit en FR/EN/AR) : un seul InstancedMesh, les panneaux — comme avant.
-    expect(dessiner(plat)).toEqual({ enfants: dessiner(plat, false).enfants, instances: [2] });
-    expect(dessiner(repli).instances).toEqual([repli.panels.length]); // repli illustratif à 15° : aucun pied
-    // Avec l'option (lien de confiance) : un InstancedMesh de plus, deux pieds par panneau.
-    const confiance = dessiner(plat, true);
-    expect(confiance.instances).toEqual([2, 4]);
-    expect(confiance.enfants).toBe(dessiner(plat).enfants + 1);
+    const pente = buildViewerModel(parseRoofLayout({ version: 2, zones: [{
+      id: 'z', label: 'P', vertices: rectLngLat(12, 12), obstacles: [], roofType: 'pitched', pitchDeg: 20, facingAzimuthDeg: 180, neededPanels: 0,
+      geometry: { azimuthDeg: 180, tiltDeg: 20, family: 'south', flush: true, count: 2, origin: [LNG0, LAT0], panels: [{ cx: -0.7, cy: 0 }, { cx: 0.7, cy: 0 }] },
+    }] })!)!.zones[0];
+    // Par défaut (createRoofViewer sans option : page client, tout lien ; estimateur devis/mon-toit FR/EN/AR) :
+    // un InstancedMesh de pieds en plus des panneaux, deux pieds par panneau.
+    const parDefaut = dessiner(plat);
+    expect(parDefaut.instances).toEqual([2, 4]);
+    expect(parDefaut).toEqual(dessiner(plat, true));
+    expect(dessiner(repli).instances).toEqual([repli.panels.length, 2 * repli.panels.length]); // repli à 15° aussi
+    // `false` (le booléen à basculer) : la visionneuse d'avant le lot 8, panneaux seuls.
+    expect(dessiner(plat, false)).toEqual({ enfants: parDefaut.enfants - 1, instances: [2] });
+    // Pose affleurante sur pan en pente : aucun pied, même par défaut.
+    expect(dessiner(pente).instances).toEqual([2]);
   });
 });

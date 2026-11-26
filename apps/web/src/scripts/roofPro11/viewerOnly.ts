@@ -98,9 +98,9 @@ export interface ViewerInitOptions {
   /** Photo satellite du toit du visiteur (buildPublicRoofImageSpec). Absent ou
    *  null → rendu abstrait actuel, strictement inchangé. */
   roofImage?: RoofImageSpec | null;
-  /** Lot 8 — pieds de châssis sous les panneaux inclinés d'un toit plat (`matricesPiedsChassis`). Posé par la page
-   *  client SEULEMENT pour un lien de confiance (D-ACAL-134 : un lien standard et les pages d'estimation gardent la
-   *  visionneuse d'aujourd'hui au bit près). Absent = aucun pied. */
+  /** Lot 8 — pieds de châssis sous les panneaux inclinés d'un toit plat (`matricesPiedsChassis`). D-ACAL-161 (fondateur,
+   *  26/11) : PARTOUT — tous les liens client et l'estimateur public (exception explicite à D-ACAL-134 pour ce seul
+   *  point, purement visuel). Absent = pieds ; `false` les retire (un seul booléen à basculer). */
   piedsChassis?: boolean;
 }
 
@@ -514,7 +514,7 @@ export function buildZone(
   zone: ViewerZone,
   disposables: Array<{ dispose: () => void }>,
   drape: RoofDrape | null = null,
-  avecPieds = false, // lot 8 — lien de confiance seulement (ViewerInitOptions.piedsChassis)
+  avecPieds = true, // lot 8, D-ACAL-161 — pieds partout (ViewerInitOptions.piedsChassis)
 ): void {
   const ring = zone.ringENU;
   if (ring.length < 3) return;
@@ -764,7 +764,7 @@ export function createRoofViewer(
     disposables.push(drape.texture);
     buildGroundPlane(root, drape, disposables);
   }
-  for (const zone of model.zones) buildZone(root, zone, disposables, drape, opts.piedsChassis === true);
+  for (const zone of model.zones) buildZone(root, zone, disposables, drape, opts.piedsChassis !== false);
 
   const radius = Math.max(model.radiusM, 6);
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, radius * 40);
