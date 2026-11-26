@@ -77,8 +77,8 @@ from .artefacts_rendu import _roof_photo_data_uri, ajouter_artefacts_rendu
 # calepinage test_pv41_conception_electrique (_sld_svg) et devis
 # test_acal_planche_devis_remplace (_svg_planche_inline).
 from .artefacts_rendu import _sld_svg, _svg_planche_inline  # noqa: F401
-# Lecteurs en aval (rôle/fiche) — la classe d'une ligne : rôle déclaré du produit, puis mots-clés
-# (le rang de la fiche n'est pas lu ici : servabilité liée à l'argent, ``domain.classe_ligne``).
+# Lecteurs en aval (rôle/fiche) — la classe d'une ligne : le rôle RANGÉ sur la ligne à son
+# écriture, puis les mots-clés d'hier (``domain.classe_ligne``).
 from apps.ventes.domain.classe_ligne import paires_portent
 
 logger = logging.getLogger(__name__)
@@ -635,7 +635,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     sans_lignes = [li for li, _ in _sans_paires]
     avec_lignes = [li for li, _ in _avec_paires]
 
-    # Lecteurs en aval (fondateur 24/11/2026) — le rôle déclaré du produit
+    # Lecteurs en aval (fondateur 24/11/2026) — le rôle rangé sur la ligne
     # d'abord, les mots-clés du texte de l'item ensuite (``paires_portent``).
     has_reseau = paires_portent(_sans_paires, _is_reseau_inverter, devis)
     has_hybride = paires_portent(_avec_paires, _is_hybrid_inverter, devis)

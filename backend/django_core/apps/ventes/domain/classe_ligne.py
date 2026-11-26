@@ -1,36 +1,23 @@
-"""Lecteurs en aval (rôle/fiche) — LA classe d'une ligne de devis.
+"""Lecteurs en aval (rôle/fiche) — LA classe d'une ligne de devis, LUE sur la ligne.
 
 Règle du fondateur du 24/11/2026 : « un produit se reconnaît à son rôle et à sa
-fiche avant son nom ». La composition l'applique déjà (``stock.etat_ci``,
-``creation_calepinage.famille_onduleur_du_produit``) ; les LECTEURS d'une ligne
-déjà posée (moteur PDF, noyau des paniers, étude électrique, lectures de
-lignes) classaient encore par les seuls mots-clés de la désignation : un
-onduleur hybride haute tension reconnu par son rôle, dont le nom ne dit pas
-« hybride », devenait « autre » pour eux.
+fiche avant son nom ». Elle s'applique UNE fois, quand la ligne est ÉCRITE et que
+le produit est en main (``domain.lignes._role_a_la_creation`` : rôle déclaré,
+fiche, puis nom), et la décision est RANGÉE sur la ligne
+(``LigneDevis.role_devis``, la colonne que les paniers d'options lisent déjà).
 
-L'ordre, et rien d'autre :
+Ici, tous les lecteurs aval (servabilité du PDF et du noyau des paniers, compte
+de panneaux et watt, capacité batterie, étude électrique, lectures de lignes)
+lisent la MÊME chose : le rôle RANGÉ de la ligne, sinon la règle d'aujourd'hui
+(``repli`` : les mots-clés de la désignation), inchangée. Aucun lecteur ne relit
+le rôle ni la fiche VIVANTS du produit : une retouche du catalogue après
+l'écriture ne reclasse jamais une ligne. Zéro requête : c'est une colonne de la
+ligne (ou la clé ``role_devis`` de l'item du moteur PDF).
 
-1. le rôle DÉCLARÉ du produit lié (``Produit.role_devis``, ``role_declare``) :
-   panneau / batterie / une famille d'onduleur — ou un AUTRE rôle (structure,
-   câble…), qui exclut la ligne de ces classes ;
-2. la FICHE du produit (``domain.classe_ligne_fiche``) : module ⇒ panneau,
-   batterie ⇒ batterie, onduleur ⇒ onduleur, hybride quand la fiche publie un
-   port batterie (D-HYB-1) — sinon la famille reste celle des mots-clés ;
-3. la règle d'aujourd'hui (``repli``), INCHANGÉE.
-
-Une ligne sans produit, ou dont le produit ne déclare aucun rôle et n'a pas de
-fiche, rend EXACTEMENT le verdict d'aujourd'hui. « Nouveaux rendus seulement »
-(``regles_calcul.classe_par_role_ouverte``) : un devis envoyé avant la coupure
-garde les mots-clés.
-
-CE MODULE NE SAIT QUE LE RÔLE (rang 1), et c'est voulu : il est lu par le noyau
-des paniers (``utils.options``, sur le chemin de ``ventes.models``, contrats
-import-linter) et par la servabilité du moteur PDF — deux lecteurs liés à
-l'ARGENT, qui doivent rendre le même verdict sans requête : le rôle est une
-colonne du produit qu'ils chargent déjà, alors que les listes qui calculent un
-total ne préchargent pas les fiches (une fiche lue là ferait un N+1 par devis,
-ou deux prix pour une vente entre le PDF et le noyau). Le rang de la fiche vit
-à côté (``domain.classe_ligne_fiche``) et s'injecte par ``resoudre``.
+« Nouveaux rendus seulement » (``regles_calcul.classe_par_role_ouverte``) : les
+lecteurs qui ne lisaient que les mots-clés les gardent pour un devis envoyé
+avant ``COUPURE_CLASSE_PAR_ROLE``, et pour toute ligne dont le devis n'est pas
+connu SANS requête (passé par l'appelant, ou déjà chargé sur la ligne).
 """
 from __future__ import annotations
 
@@ -39,7 +26,7 @@ BATTERIE = 'batterie'
 RESEAU = 'onduleur_reseau'
 HYBRIDE = 'onduleur_hybride'
 AUTONOME = 'onduleur_offgrid'
-#: Un onduleur dont la famille n'est pas dite (fiche onduleur sans port batterie).
+#: Tout onduleur, quelle que soit sa famille.
 ONDULEUR = 'onduleur'
 #: Une ligne que son rôle range hors de toutes les classes ci-dessus.
 AUTRE = 'autre'
@@ -48,8 +35,8 @@ CLASSES_DE_ROLE = (PANNEAU, BATTERIE) + FAMILLES_ONDULEUR
 
 
 def classe_du_role(role_devis):
-    """La classe que le rôle DÉCLARÉ donne, :data:`AUTRE` pour un autre rôle
-    du vocabulaire, ``None`` sans rôle. Fonction PURE."""
+    """La classe d'un rôle du vocabulaire, :data:`AUTRE` pour un autre rôle,
+    ``None`` sans rôle (ou hors vocabulaire). Fonction PURE."""
     from core.product_roles import role_declare
 
     role = role_declare(role_devis)
@@ -60,14 +47,11 @@ def classe_du_role(role_devis):
 
 def verdict(declaree, classe, repli):
     """La ligne de classe ``declaree`` est-elle de la classe ``classe`` ?
-    ``repli`` (sans argument) rend le verdict des mots-clés. Fonction PURE."""
+    ``repli`` (sans argument) rend le verdict d'aujourd'hui. Fonction PURE."""
     if declaree is None or classe is None:
         return bool(repli())
     if declaree == AUTRE:
         return False
-    if declaree == ONDULEUR:
-        return True if classe == ONDULEUR else (
-            bool(repli()) if classe in FAMILLES_ONDULEUR else False)
     if classe == ONDULEUR:
         return declaree in FAMILLES_ONDULEUR
     return declaree == classe
@@ -89,45 +73,53 @@ def en_cache(objet, champ):
     return True if est is None else bool(est(objet))
 
 
-def devis_de(ligne, devis=None):
-    """Le devis de ``ligne`` : celui passé, sinon le sien (déjà chargé quand la
-    ligne vient de ``devis.lignes``), ``None`` pour une ligne sans devis."""
+def devis_connu(ligne, devis=None):
+    """Le devis de ``ligne`` SANS requête : celui passé, sinon le sien quand il est
+    déjà chargé (une ligne lue par ``devis.lignes``) ; ``None`` sinon."""
     if devis is not None:
         return devis
-    if en_cache(ligne, 'devis') or getattr(ligne, 'devis_id', None) is not None:
-        return getattr(ligne, 'devis', None)
-    return None
-
-
-def _classe_par_le_role(ligne, devis):
-    """Rang 1 seul : le rôle déclaré du produit lié (colonne déjà chargée)."""
-    if hasattr(ligne, 'produit_id') and ligne.produit_id is None:
+    if isinstance(ligne, dict) or not en_cache(ligne, 'devis'):
         return None
-    return classe_du_role(getattr(getattr(ligne, 'produit', None), 'role_devis', None))
+    return getattr(ligne, 'devis', None)
 
 
-def classe_de_ligne(ligne, classe, repli, *, devis=None, resoudre=None):
-    """LA question des lecteurs aval : ``ligne`` est-elle de la classe ``classe``
-    (:data:`PANNEAU`, :data:`BATTERIE`, une famille d'onduleur, :data:`ONDULEUR`) ?
-    ``repli`` : le verdict d'aujourd'hui (mots-clés), appelé seulement quand le
-    produit ne dit rien — ou pour un devis fermé (envoyé avant
-    ``regles_calcul.COUPURE_CLASSE_PAR_ROLE``). ``resoudre(ligne, devis)`` rend la
-    classe déclarée (défaut : le rôle seul ; ``classe_ligne_fiche`` y ajoute la fiche)."""
+def role_stocke(ligne, devis=None):
+    """Le rôle RANGÉ sur ``ligne`` (objet ou item) quand ce devis le lit, sinon ``None``."""
+    from core.product_roles import role_declare
+
     from apps.ventes.domain.regles_calcul import classe_par_role_ouverte
 
-    devis = devis_de(ligne, devis)
-    if classe is None or not classe_par_role_ouverte(devis):
+    connu = devis_connu(ligne, devis)
+    if connu is None or not classe_par_role_ouverte(connu):
+        return None
+    brut = ligne.get('role_devis') if isinstance(ligne, dict) else getattr(ligne, 'role_devis', None)
+    return role_declare(brut)
+
+
+def role_de_ligne(ligne, repli, *, devis=None):
+    """Le rôle d'une ligne pour un lecteur qui raisonne en RÔLES : le rôle rangé,
+    sinon ``repli()`` (le classifieur d'aujourd'hui, ``classer_produit``)."""
+    return role_stocke(ligne, devis) or repli()
+
+
+def classe_de_ligne(ligne, classe, repli, *, devis=None):
+    """LA question des lecteurs aval : ``ligne`` (objet ou item) est-elle de la
+    classe ``classe`` (:data:`PANNEAU`, :data:`BATTERIE`, une famille d'onduleur,
+    :data:`ONDULEUR`) ? Le rôle rangé, sinon ``repli()`` (mots-clés d'aujourd'hui)."""
+    if classe is None:
         return bool(repli())
-    return verdict((resoudre or _classe_par_le_role)(ligne, devis), classe, repli)
+    return verdict(classe_du_role(role_stocke(ligne, devis)), classe, repli)
+
+
+def est(ligne, predicat, repli, *, devis=None):
+    """:func:`classe_de_ligne` pour la classe d'un prédicat de ``solar_classification``."""
+    return classe_de_ligne(ligne, classe_du_predicat(predicat), repli, devis=devis)
 
 
 def paires_portent(paires, predicat, devis=None):
     """Moteur PDF — une ligne de quantité > 0 de la classe de ``predicat`` parmi
-    les couples ``(ligne, item)`` ; le repli lit le texte de l'item comme hier
-    (``_item_classement``). Rang du rôle seul (lié à l'argent, voir l'en-tête)."""
+    les couples ``(ligne, item)`` ; le repli lit le texte de l'item comme hier."""
     from apps.ventes.quote_engine.lignes_classement import _item_classement
 
-    classe = classe_du_predicat(predicat)
-    return any(classe_de_ligne(li, classe, lambda it=it: predicat(_item_classement(it)),
-                               devis=devis) and it["quantite"] > 0
-               for li, it in paires)
+    return any(est(li, predicat, lambda it=it: predicat(_item_classement(it)), devis=devis)
+               and it["quantite"] > 0 for li, it in paires)

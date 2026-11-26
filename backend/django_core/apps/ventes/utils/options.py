@@ -700,17 +700,14 @@ def familles_des_lignes(lignes) -> dict:
     ``domain.classe_ligne.paires_portent``) : elle n'équipe rien.
 
     Lecteurs en aval (fondateur 24/11/2026) — la MÊME règle que le moteur PDF :
-    le rôle déclaré du produit, puis les mots-clés (sans le rang de la fiche,
-    que les listes ne préchargent pas — ``domain.classe_ligne``).
+    le rôle RANGÉ sur la ligne, puis les mots-clés (``domain.classe_ligne``).
     """
-    from apps.ventes.domain.classe_ligne import classe_de_ligne, classe_du_predicat
+    from apps.ventes.domain.classe_ligne import est
 
     vivantes = [li for li in lignes if float(getattr(li, 'quantite', 0) or 0) > 0]
 
     def _porte(predicat):
-        classe = classe_du_predicat(predicat)
-        return any(classe_de_ligne(li, classe, lambda li=li: predicat(_blob(li)))
-                   for li in vivantes)
+        return any(est(li, predicat, lambda li=li: predicat(_blob(li))) for li in vivantes)
     return {
         'has_reseau': _porte(_is_reseau_inverter),
         'has_hybride': _porte(_is_hybrid_inverter),

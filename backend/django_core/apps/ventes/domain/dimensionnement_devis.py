@@ -440,6 +440,7 @@ def comptes_panneaux_valides(devis, option=None):
 
     Un devis sans aucune ligne panneau rend un ensemble VIDE (rien à
     comparer : jamais une alerte inventée). Lecture pure, ne lève jamais."""
+    from apps.ventes.domain.classe_ligne import est
     from apps.ventes.solar_classification import is_panel
 
     try:
@@ -455,8 +456,9 @@ def comptes_panneaux_valides(devis, option=None):
         if getattr(ligne, 'optionnelle', False):
             continue
         produit = getattr(ligne, 'produit', None)
-        if not is_panel(getattr(ligne, 'designation', '') or '',
-                        getattr(produit, 'nom', '') or ''):
+        # Lecteurs en aval — le rôle RANGÉ sur la ligne d'abord (``domain.classe_ligne``).
+        if not est(ligne, is_panel, lambda li=ligne, p=produit: is_panel(
+                getattr(li, 'designation', '') or '', getattr(p, 'nom', '') or ''), devis=devis):
             continue
         try:
             quantite = int(round(float(getattr(ligne, 'quantite', 0) or 0)))
@@ -575,6 +577,7 @@ def capacite_batterie_des_lignes(devis, lignes=None):
     alors marqué ``retenu`` — jamais un marquage au hasard."""
     try:
         from apps.ventes.domain.catalogue import _is_battery
+        from apps.ventes.domain.classe_ligne import est
 
         capacite_kwh = 0.0
         source = (_lignes_produit_du_devis(devis) if lignes is None
@@ -583,7 +586,8 @@ def capacite_batterie_des_lignes(devis, lignes=None):
                         and getattr(li, 'quantite', None) is not None])
         for ligne in source:
             designation = getattr(ligne, 'designation', '') or ''
-            if not _is_battery(designation):
+            # Lecteurs en aval — le rôle RANGÉ sur la ligne d'abord (``domain.classe_ligne``).
+            if not est(ligne, _is_battery, lambda d=designation: _is_battery(d), devis=devis):
                 continue
             quantite = _num(ligne.quantite)
             if quantite <= 0:
@@ -639,11 +643,13 @@ def module_batterie_du_devis(devis):
     catalogue (comportement inchangé)."""
     try:
         from apps.ventes.domain.catalogue import _is_battery, _parse_kwh
+        from apps.ventes.domain.classe_ligne import est
 
         capacites = {}  # calibre (kWh, ouvert par la 1re ligne) -> capacité
         for ligne in lignes_vendues(devis, 'avec'):
             designation = getattr(ligne, 'designation', '') or ''
-            if not _is_battery(designation):
+            # Lecteurs en aval — le rôle RANGÉ sur la ligne d'abord (``domain.classe_ligne``).
+            if not est(ligne, _is_battery, lambda d=designation: _is_battery(d), devis=devis):
                 continue
             quantite = _num(ligne.quantite)
             if quantite <= 0:

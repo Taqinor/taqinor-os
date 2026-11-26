@@ -547,7 +547,7 @@ def delais_validite_et_kit(*, _blob, _items_libres, avec_items, avec_lignes,
     # Dérivation technique lue APRÈS ce point : figée AVANT la dégradation,
     # sur les lignes RÉELLES (une ligne « protection batterie » agrégée ne peut
     # donc pas déplacer d'un kWh la capacité publiée).
-    _batterie_kwh_total = _battery_kwh_from_items(avec_items, _blob) or None
+    _batterie_kwh_total = _battery_kwh_from_items(avec_items, _blob, devis) or None
     # QJR609 — la capacité UTILE vendue (fiche, puis nominal × DoD, puis nom),
     # lue sur les lignes ORM de l'option AVEC par LA lecture de la garde web
     # (``capacite_batterie_des_lignes``). Elle ne sert QU'À la garde « cet

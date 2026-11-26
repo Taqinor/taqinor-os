@@ -85,14 +85,13 @@ def _classe_ligne(ligne, predicat):
     (« Modules PV posés » sur un produit « Panneau Jinko 550W »).
 
     Lecteurs en aval (fondateur 24/11/2026) — AVANT ces mots-clés, le rôle
-    déclaré du produit lié puis sa fiche (``domain.classe_ligne_fiche``) ;
-    nouveaux rendus seulement, et un prédicat hors de ``solar_classification``
-    garde les seuls mots-clés.
+    RANGÉ sur la ligne à son écriture (``domain.classe_ligne``) ; nouveaux
+    rendus seulement, et un prédicat hors de ``solar_classification`` garde
+    les seuls mots-clés.
     """
-    from apps.ventes.domain.classe_ligne import classe_du_predicat
-    from apps.ventes.domain.classe_ligne_fiche import classe_de_ligne
+    from apps.ventes.domain.classe_ligne import est
 
-    return classe_de_ligne(ligne, classe_du_predicat(predicat), lambda: (
+    return est(ligne, predicat, lambda: (
         predicat(ligne.designation or '')
         or predicat(getattr(ligne.produit, 'nom', '') or '')))
 
