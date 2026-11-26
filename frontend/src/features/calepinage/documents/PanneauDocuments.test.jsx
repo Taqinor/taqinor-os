@@ -1107,9 +1107,9 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     document.head.appendChild(brut)
     const regles = [...brut.sheet.cssRules]
     const style = document.createElement('style')
-    style.textContent = regles.filter((r) => r.type !== 4).map((r) => r.cssText)
-      .concat(regles.filter((r) => r.type === 4 && /max-width: 1300px/.test(r.conditionText))
-        .flatMap((m) => [...m.cssRules].map((r) => r.cssText))).join(' ')
+    // L'ORDRE DE LA FEUILLE est gardé : le bloc ≤ 1300 px posé avant les règles de base était battu par elles (rejeu R5D).
+    style.textContent = regles.flatMap((r) => (r.type !== 4 ? [r.cssText]
+      : /max-width: 1300px/.test(r.conditionText) ? [...r.cssRules].map((x) => x.cssText) : [])).join(' ')
     brut.remove()
     document.head.appendChild(style)
     try {
