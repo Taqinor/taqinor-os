@@ -55,7 +55,7 @@ import { makeCanadianPanelTexture, type JeuPanneau } from './panelTexture';
 import { aplatirEnPlan, poserOeil, verreEtOeilAtelier } from './oeilCamera'; // ACAL1984, T4-U1-017, LOT 6
 import { boiteObstacle } from './obstacle3d'; // ACAL1820
 import { etiquettesChaines, type ChaineAPoser } from './electrique3d'; // ACAL1944
-import { teintesBatiment, eclatPresentation, TEINTES_PRESENTATION, jeuDeLaScene } from './jeuPresentation'; // ACAL1839 ; lot 8
+import { teintesBatiment, eclatPresentation, TEINTES_PRESENTATION, jeuDeLaScene, cadreOmbreClient, solOmbreClient } from './jeuPresentation'; // ACAL1839 ; lot 8
 import { geometrieJupe } from './jupePignon'; // ACAL1839
 import { enPresentation, montreALEtape, surEtape, surPresentation } from './presentationCarte'; // ACAL1839 ; suites v2 — l'étape
 import { type Ctx } from './context';
@@ -2588,12 +2588,12 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // visible autour du bâtiment, qui se lit comme un volume 3D posé dans son
     // contexte, son toit texturé sur le dessus (détouré au tracé). La photo du toit
     // (surélevée) et le sol viennent de la même imagerie source.
-    cadreSoleil = { cx: cxm, cy: cym, z: wallH + 0.5, span, lat: pack.origin[1] }; // W87 — soleil visé au-dessus du toit
+    cadreSoleil = { cx: cxm, cy: cym, z: wallH + 0.5, span: cadreOmbreClient(opts, span, shadowRings, wallH), lat: pack.origin[1] }; // W87 ; lot 8 : élargi au sol (confiance)
     poserSoleil(false); // lot 8 — le soleil seul (threeShared.ts::placerSoleilScene) : un pas de lecture ne rejoue que lui
 
     attacherCoucheElectrique(); // CALX219 câblage — la couche électrique revient sur la scène
     if (scene) poignees3d.poser(scene, !readOnly && ctx.closed ? ctx.vertices : [], pack.origin, wallH); // ACAL1185
-    for (const m of construireMaillagesPose(ctx.surfacesPose, pack.origin, readOnly)) sceneRoot!.add(m); // CALX124 — surfaces de pose (sol/ombrière) : volumes et ombres portées ; aucune surface ⇒ rien d'ajouté
+    for (const m of [...construireMaillagesPose(ctx.surfacesPose, pack.origin, readOnly), ...solOmbreClient(opts, shadowRings, wallH)]) sceneRoot!.add(m); // CALX124 — surfaces de pose : volumes et ombres portées ; aucune surface ⇒ rien d'ajouté ; lot 8 — sol qui reçoit les ombres (lien de confiance)
     map.triggerRepaint();
   }
 

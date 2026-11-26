@@ -823,6 +823,48 @@ describe('visionneuse pleine — premier rendu réel (scene3d + contexte du boot
     expect(teintes).toBeGreaterThan(0);
   });
 
+  it('B2 — sol d’ombre sur le lien de confiance : l’ombre la plus longue de l’après-midi d’hiver n’est pas coupée', async () => {
+    const { poignee, carte } = await demarrer({ presentationClient: true });
+    carte.fire('load');
+    const lever = bornesJournee(LAT0, INSTANT_REEL.jour)!;
+    poignee.poserInstant(INSTANT_REEL.jour, lever.setHour); // dernière heure de la lecture : soleil le plus bas
+    soleilDessine(carte);
+    let sol: Record<string, any> | null = null;
+    let lumiere: Record<string, any> | null = null;
+    (carteFactice.rendus.at(-1) as { traverse: (f: (o: Record<string, any>) => void) => void }).traverse((o) => {
+      if (o.name === 'sol-ombre-client') sol = o;
+      if (o.isDirectionalLight) lumiere = o;
+    });
+    expect(sol).not.toBeNull();
+    const s = sol as unknown as Record<string, any>;
+    const l = lumiere as unknown as Record<string, any>;
+    expect(s.material.isShadowMaterial).toBe(true);
+    // Le coin haut du bâtiment (6 m de dessin + châssis) projette son ombre à l'opposé du soleil.
+    const d = { x: l.position.x - l.target.position.x, y: l.position.y - l.target.position.y, z: l.position.z - l.target.position.z };
+    const n = Math.hypot(d.x, d.y, d.z);
+    const h = Math.hypot(d.x, d.y);
+    const elevation = Math.atan2(d.z, h);
+    const longueur = (6 + 1.5) / Math.tan(elevation);
+    const ring = buildViewerFullPlan(LAYOUT_PLAT_35)!.zones[0].plan!.pack.ringENU;
+    const demiPlan = s.geometry.parameters.width / 2;
+    const right = l.shadow.camera.right as number;
+    for (const [x, y] of ring) {
+      const bout = { x: x - (d.x / h) * longueur, y: y - (d.y / h) * longueur, z: 0 };
+      expect(Math.max(Math.abs(bout.x - s.position.x), Math.abs(bout.y - s.position.y))).toBeLessThanOrEqual(demiPlan); // sur le sol
+      const v = { x: bout.x - l.target.position.x, y: bout.y - l.target.position.y, z: bout.z - l.target.position.z };
+      const p = (v.x * d.x + v.y * d.y + v.z * d.z) / n;
+      expect(Math.hypot(v.x - (p * d.x) / n, v.y - (p * d.y) / n, v.z - (p * d.z) / n)).toBeLessThanOrEqual(right); // dans le cadre d'ombre
+    }
+    poignee.destroy();
+    carteFactice.cartes.length = 0;
+    const standard = await demarrer();
+    standard.carte.fire('load');
+    soleilDessine(standard.carte);
+    let solStandard = false;
+    (carteFactice.rendus.at(-1) as { traverse: (f: (o: Record<string, any>) => void) => void }).traverse((o) => { if (o.name === 'sol-ombre-client') solStandard = true; });
+    expect(solStandard).toBe(false);
+  });
+
   /** Démarre avec un token Mapbox et compte les demandes de la photo du toit ; `images` = les <img> demandées. */
   async function photoDuToit() {
     const images: HTMLImageElement[] = [];
