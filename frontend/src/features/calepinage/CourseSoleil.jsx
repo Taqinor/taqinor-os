@@ -5,6 +5,7 @@ import SunDiagram from './SunDiagram'
 import { LegendeCourbes } from './LegendeCourbes'
 import { sunDirection as sunPosition, WINTER_SOLSTICE_DAY as JOUR_SOLSTICE_HIVER } from '@rooflib/roofPro2'
 import { HAUTEUR_TOIT_HYPOTHESE_M, centroideDuContour, obstructionsDuPan } from './obstructionMath'
+import { idBatimentDuPan } from '@roofpro/batiment'
 import RetourAtelier from './atelier/RetourAtelier'
 import { PhraseHeureIndisponible, dateDuJourDeScene, formaterHeureLegale, useHeureLegale } from './HeureLegale'
 
@@ -121,8 +122,10 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
   // (`buildings[].hauteurM`, avec sa `source`) quand le document la porte ; sinon
   // l'hypothèse documentée, affichée comme telle. Jamais un NaN ni un 0 muet.
   const batiments = Array.isArray(layout?.buildings) ? layout.buildings : []
-  const batiment = zone?.buildingId
-    ? batiments.find((b) => b?.id === zone.buildingId) ?? null
+  // ACAL1447 — un pan sans `buildingId` lit le bâtiment de la convention de l'atelier
+  // (`ID_BATIMENT_SANS_ID`, via `idBatimentDuPan`), comme l'atelier : jamais « supposée » à tort.
+  const batiment = zone
+    ? batiments.find((b) => b?.id === idBatimentDuPan(zone.buildingId)) ?? null
     : null
   const hauteurBatiment = typeof batiment?.hauteurM === 'number'
     && Number.isFinite(batiment.hauteurM) && batiment.hauteurM > 0

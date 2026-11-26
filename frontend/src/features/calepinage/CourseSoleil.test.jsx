@@ -41,6 +41,22 @@ describe('CourseSoleil — onglet monté', () => {
     expect(await screen.findByText('Impossible de charger la conception.')).toBeInTheDocument()
   })
 
+  // ACAL1447 — un pan SANS `buildingId` lit le bâtiment de la convention de l'atelier (`bat-sans-id`) :
+  // la hauteur saisie est employée et dite ; « supposée » seulement sans hauteur saisie.
+  it('pan sans buildingId + hauteur saisie : hauteur du bâtiment, pas supposée', async () => {
+    const buildings = [{ id: 'bat-sans-id', hauteurM: 6, source: 'mesurée au télémètre' }]
+    espions.layout.mockResolvedValue({ data: { roof_layout: { pin: { lat: 33.6, lng: -7.6 }, zones: [ZONE], buildings } } })
+    rendre()
+    await screen.findByTestId('cal-course-soleil')
+    expect(screen.getByTestId('cal-course-soleil-hauteur-toit-provenance'))
+      .toHaveTextContent('hauteur du bâtiment : 6 m (mesurée au télémètre)')
+    cleanup()
+    espions.layout.mockResolvedValue({ data: { roof_layout: { pin: { lat: 33.6, lng: -7.6 }, zones: [ZONE] } } })
+    rendre()
+    await screen.findByTestId('cal-course-soleil')
+    expect(screen.getByTestId('cal-course-soleil-hauteur-toit-provenance')).toHaveTextContent(/supposée à 6 m/)
+  })
+
   // ACAL1444 — rendu dans un panneau de ≈ 270 px : libellés à ≥ 12 px RENDUS, diagramme ≥ 200 px de haut,
   // axe vertical gradué 0/30/60/90°. Mutant : viewBox fixe 640 × 260 ⇒ 11 px × 270/640 ≈ 4,6 px, 110 px de haut.
   it('dans un panneau de 270 px : libellés rendus à 12 px au moins, plus haut, axe gradué en degrés', async () => {
