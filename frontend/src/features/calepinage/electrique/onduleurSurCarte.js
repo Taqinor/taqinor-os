@@ -7,9 +7,16 @@ import { useEffect, useRef, useState } from 'react'
    contrat `electrique_equipements.json`), écrite par la couche électrique de la scène (`electrique3d.ts`,
    `builderApi.electrique`) et enregistrée avec le calepinage. Ce crochet n'ajoute AUCUNE valeur stockée : il
    arme les gestes de la couche (le clic sur la carte pose ou déplace), relit le document après chaque geste
-   (`ecouter`) et dit d'où vient le tracé du câble. La longueur reste celle que le serveur MESURE sur ce tracé
-   (`troncons`, pastille « Câble côté panneaux ») — une valeur d'AFFICHAGE : elle ne nourrit ni `dc_m`, ni la
-   simulation, ni rien de ce que le devis lit (décision du 26/11, option 2).
+   (`ecouter`) et dit d'où vient le tracé du câble. La longueur est celle que le serveur MESURE sur ce tracé.
+   CE QU'UN DÉPLACEMENT CHANGE, À L'ENREGISTREMENT SUIVANT (c'est le sens de « en déduire la longueur de câble ») :
+   `services/troncons.py` mesure chaque tronçon tracé, en dimensionne la SECTION et en calcule la CHUTE de tension,
+   puis prononce un verdict DC et AC sur les cumuls (CALX224-226, `resultat.troncons`, pastille « Câble côté
+   panneaux ») ; `services/bordereau_calepinage.py` prend son métré de câble sur les mêmes tronçons (CALX227). Ces
+   verdicts et ce métré bougent donc avec l'onduleur. CE QU'IL NE CHANGE PAS (décision du 26/11, option 2) : `dc_m`
+   de l'entrée électrique, la perte câbles de la SIMULATION (`cables_du_calepinage`, qui lit le cheminement saisi —
+   son alignement est l'affaire d'une autre tâche), et rien de ce que lit `apps/ventes` (le devis ne lit que `dc_m`
+   SAISI, `selectors.entree_electrique_du_devis`). L'empreinte du document porte `electrical` : enregistrer un
+   déplacement rend la simulation « à refaire », comme tout geste sur le toit — l'écran le dit après le geste.
    ========================================================================== */
 
 export const PROVENANCE_TRACE_PROPOSE = 'tracé proposé le long des rangées (position de l’onduleur)'
