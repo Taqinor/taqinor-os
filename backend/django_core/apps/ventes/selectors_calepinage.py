@@ -1295,3 +1295,11 @@ def forme_horaire_du_lead(lead):
             'libelle': libelles.get(drapeau, drapeau),
             'suppose': cj.profil_suppose(source),
             'reponse': str(getattr(lead, 'occupation_jour', '') or '')}
+
+
+def devis_suit_les_designations(devis):
+    """Relecture D-ACAL-148 round 4 — le devis est-il NÉ sous la règle des désignations (il porte le
+    marqueur privé de sa création depuis un calepinage) ? Lecture seule, lue par l'aperçu du calepinage."""
+    from .domain.creation_calepinage import suit_les_designations
+
+    return suit_les_designations(devis)

@@ -29,8 +29,12 @@ RAISON_PAR_DEFAUT = ('le devis généré depuis l’atelier compose son matérie
                      'la désignation de l’étape Électrique n’y entre pas')
 #: D-ACAL-148 — le brouillon que « Générer » rendrait garde les produits qu'il porte (PV18) : son
 #: onduleur n'est pas re-choisi d'après la désignation.
-RAISON_BROUILLON_EXISTANT = ('ce devis existe déjà et garde les produits qu’il porte : « Générer le devis » '
-                             'l’ouvre tel quel, la désignation ne vaut que pour un devis neuf')
+#: Round 4, point 6 a — vraie selon le cas : brouillon NÉ sous la règle (marqueur) ⇒ « Resynchroniser »
+#: lui appliquera la désignation ; créé avant ⇒ il ne la suivra pas.
+RAISON_BROUILLON_SOUS_LA_REGLE = ('ce devis existe déjà : « Générer le devis » l’ouvre tel quel, et « Resynchroniser '
+                                  'le devis » lui appliquera la désignation')
+RAISON_BROUILLON_AVANT_LA_REGLE = ('ce devis, créé avant que le devis suive la désignation, garde les produits qu’il '
+                                   'porte ; un nouveau devis généré depuis le calepinage la suivra')
 #: Relecture D-ACAL-148, point 4 — l'onduleur imposé que la composition n'a pourtant pas posé sur
 #: l'option qui doit le porter (aucun cas connu ; jamais la raison par défaut, fausse depuis D-ACAL-148).
 RAISON_IMPOSE_NON_POSE = 'la composition du devis ne l’a pas posé sur cette option'
@@ -53,7 +57,7 @@ def _materiel_par_option(specs):
     return options
 
 
-def _ecarts(calepinage, options, decision_onduleur=None, *, brouillon=False):
+def _ecarts(calepinage, options, decision_onduleur=None, *, brouillon=False, sous_la_regle=False):
     """Une phrase par produit désigné à l'étape Électrique qu'une option ne portera pas.
     ``decision_onduleur`` (D-ACAL-148) : la décision de la composition pour l'onduleur désigné
     (``journal['onduleur_designe']``) — chiffré, seule l'option qui le porte est jugée ; en
@@ -94,12 +98,19 @@ def _ecarts(calepinage, options, decision_onduleur=None, *, brouillon=False):
         if champ == 'onduleur_produit' and decision_onduleur:
             raison = RAISON_IMPOSE_NON_POSE
         elif champ == 'onduleur_produit' and brouillon:
-            raison = RAISON_BROUILLON_EXISTANT
+            raison = RAISON_BROUILLON_SOUS_LA_REGLE if sous_la_regle else RAISON_BROUILLON_AVANT_LA_REGLE
         porte = ' / '.join(sorted({o[cle] or 'aucun' for o in portes}))
         nom = getattr(produit, 'nom', None) or 'produit inconnu'
         motif = (raison or RAISON_PAR_DEFAUT).rstrip('. ') + '.'
         phrases.append({'champ': champ, 'message': MESSAGE_ECART % (sujet, nom, porte, motif)})
     return phrases
+
+
+def _suit_les_designations(devis):
+    """Le brouillon rendu est-il né sous la règle des désignations (lecture ``ventes``) ?"""
+    from apps.ventes.selectors_calepinage import devis_suit_les_designations
+
+    return devis_suit_les_designations(devis)
 
 
 def _ecart_batterie(decision):
@@ -239,8 +250,11 @@ def _apercu_complet(calepinage, surfaces):
         return {'options': [], 'ecarts': [], 'refus': getattr(refus, 'message', None) or str(refus),
                 'source': None, 'reference': None}, issue
     options = _materiel_par_option(specs)
-    ecarts = (_ecarts(calepinage, options, journal.get('onduleur_designe'), brouillon=source == 'brouillon_existant')
-              + ([libre] if libre else []) + _ecart_batterie(journal.get('batterie_designee')))
+    sous_la_regle = source == 'brouillon_existant' and _suit_les_designations(retenu)
+    ecarts = (_ecarts(calepinage, options, journal.get('onduleur_designe'), brouillon=source == 'brouillon_existant',
+                      sous_la_regle=sous_la_regle)
+              + ([libre] if libre else []) + _ecart_batterie(journal.get('batterie_designee'))
+              + [{'champ': 'geometry.tiltDeg', 'message': m} for m in journal.get('suppositions_toit') or ()])
     for option in options:
         option.pop('module_produit')
         option.pop('onduleur_produit')

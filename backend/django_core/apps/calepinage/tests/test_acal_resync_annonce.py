@@ -28,6 +28,12 @@ TOIT = {
 }
 
 
+def _materiel(apercu):
+    """Les écarts de MATÉRIEL de l'aperçu (round 4 : le toit plat de ``TOIT`` sans tables y ajoute
+    aussi la phrase des 20° supposés, champ ``geometry.tiltDeg``, la même qu'à la génération)."""
+    return [e for e in apercu['ecarts'] if e['champ'] != 'geometry.tiltDeg']
+
+
 class ResyncAnnonceTest(BaseApiCalepinage):
     def setUp(self):
         super().setUp()
@@ -134,7 +140,7 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertEqual(set(reponse.data), set(contrat['exemple']))
         self.assertEqual(set(reponse.data['options'][0]), set(contrat['exemple']['options'][0]))
         self.assertEqual([o['onduleur'] for o in reponse.data['options']], ['Onduleur réseau Huawei 5kW Monophasé'])
-        self.assertEqual([e['champ'] for e in reponse.data['ecarts']], ['onduleur_produit'])
+        self.assertEqual([e['champ'] for e in _materiel(reponse.data)], ['onduleur_produit'])
         self.assertIn('« Onduleur hybride Deye 5kW Monophasé »', reponse.data['ecarts'][0]['message'])
         # D-ACAL-148 (relecture, point 4) — la phrase est celle de la décision (ici : aucun nombre
         # d'onduleurs accepté ni établi par un schéma sans fiche) ; l'onduleur porté est lu dans ``options``.
@@ -504,7 +510,7 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self._designer('Onduleur réseau Growatt 8kW Monophasé', nombre_onduleurs=1)
         apercu, _genere, onduleurs = self._apercu_puis_generation()
         self.assertEqual([o['onduleur'] for o in apercu['options']], ['Onduleur réseau Growatt 8kW Monophasé'])
-        self.assertEqual(apercu['ecarts'], [])
+        self.assertEqual(_materiel(apercu), [])
         self.assertEqual(onduleurs, {None: ('Onduleur réseau Growatt 8kW Monophasé', 'onduleur_reseau')})
 
     def test_d_acal_148_sans_prix_le_repli_est_dit_a_l_apercu_et_a_la_generation(self):
@@ -517,7 +523,7 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self._designer('Onduleur réseau Growatt 3kW Monophasé', nombre_onduleurs=1)
         apercu, genere, onduleurs = self._apercu_puis_generation()
         self.assertEqual([o['onduleur'] for o in apercu['options']], ['Onduleur réseau Huawei 5kW Monophasé'])
-        self.assertEqual([e['champ'] for e in apercu['ecarts']], ['onduleur_produit'])
+        self.assertEqual([e['champ'] for e in _materiel(apercu)], ['onduleur_produit'])
         self.assertIn('pas de prix de vente', apercu['ecarts'][0]['message'])
         self.assertTrue(any('pas de prix de vente' in m for m in genere['avertissements']), genere)
         self.assertEqual(onduleurs, {None: ('Onduleur réseau Huawei 5kW Monophasé', 'onduleur_reseau')})
@@ -566,7 +572,7 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertEqual({o['option']: o['onduleur'] for o in apercu['options']},
                          {'sans': 'Onduleur réseau Huawei 5kW Monophasé',
                           'avec': 'Onduleur hybride Deye 5kW Monophasé'})
-        self.assertEqual(apercu['ecarts'], [])
+        self.assertEqual(_materiel(apercu), [])
         self.assertEqual(onduleurs['avec'], ('Onduleur hybride Deye 5kW Monophasé', 'onduleur_hybride'))
         self.assertEqual(onduleurs['sans'], ('Onduleur réseau Huawei 5kW Monophasé', 'onduleur_reseau'))
 
@@ -697,6 +703,15 @@ class ResyncAnnonceTest(BaseApiCalepinage):
             self.assertEqual(onduleurs, [('Onduleur réseau Growatt 8kW Monophasé', 1)])
             self.assertEqual(any('a été posé à la main' in m for m in data['avertissements']), attendue, data)
 
+    def test_round_4_la_phrase_des_20_degres_est_la_meme_a_l_apercu_et_a_la_generation(self):
+        from apps.ventes.domain.geometrie import SUPPOSITION_INCLINAISON_TOIT_PLAT
+
+        self._nouvelle_pose()
+        apercu, genere, _o = self._apercu_puis_generation()
+        phrase = SUPPOSITION_INCLINAISON_TOIT_PLAT['message']
+        self.assertIn({'champ': 'geometry.tiltDeg', 'message': phrase}, apercu['ecarts'])
+        self.assertIn(phrase, genere['avertissements'])
+
     # ── Relecture round 4, point 6 — chaque phrase vraie dans son état ──
     def test_6_d_onduleur_plus_chiffrable_la_phrase_dit_la_raison_et_la_reprise(self):
         from apps.stock.models import Produit
@@ -808,6 +823,15 @@ class ApercuBrouillonLibreSansBaseTest(SimpleTestCase):
             self.assertEqual(service._ecarts(calepinage, porte, impose), [])
             non_pose = service._ecarts(calepinage, autre, impose)
         self.assertIn(service.RAISON_IMPOSE_NON_POSE, non_pose[0]['message'])
+        # Round 4, point 6 a — le brouillon rendu : la raison vraie selon qu'il est né sous la règle.
+        with (mock.patch('apps.calepinage.services.electrique.entree_stockee', return_value={'onduleur_produit': 9}),
+              mock.patch('apps.calepinage.services.devis_retenu.conception_du_calepinage', return_value={}),
+              mock.patch('apps.stock.selectors.get_produit_scoped', return_value=SimpleNamespace(nom=nom))):
+            for sous, attendue in ((True, service.RAISON_BROUILLON_SOUS_LA_REGLE),
+                                   (False, service.RAISON_BROUILLON_AVANT_LA_REGLE)):
+                message = service._ecarts(calepinage, autre, None, brouillon=True, sous_la_regle=sous)[0]['message']
+                self.assertIn(attendue, message)
+                self.assertNotIn('ne vaut que pour un devis neuf', message)
         self.assertNotIn(service.RAISON_PAR_DEFAUT, non_pose[0]['message'])
 
     def test_role_fige_puis_mots_cles_et_aucun_onduleur(self):

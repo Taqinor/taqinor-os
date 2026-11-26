@@ -1205,7 +1205,10 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     # D-ACAL-148 / 159 / 164 — batterie désignée, batterie de l'onduleur, marqueur, journal, phrases.
     intention, annonces = _appliquer_les_designations(intention, designe, batterie_designee, scenario, journal,
                                                       marquer=marquer_designations)
-    annonces += phrases_des_suppositions(toiture)  # D-ACAL-149 (ii) / 168 — dites au vendeur
+    suppositions = phrases_des_suppositions(toiture)  # D-ACAL-149 (ii) / 168 — dites au vendeur
+    annonces += suppositions
+    if journal is not None and suppositions:  # la même phrase à l'aperçu (round 4)
+        journal['suppositions_toit'] = suppositions
     if a_blanc:
         from apps.ventes.domain.pipeline import composer_l_intention, specs_de_composition
 
