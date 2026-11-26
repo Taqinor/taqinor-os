@@ -40,17 +40,23 @@ function usePublierHauteurAlertes(ref) {
    par 50-coque-atelier.css) ou un texte tronqué à une ligne. Avant : un bouton fixe qui ne dépliait rien. */
 function useADeplier(ref) {
   const [aDeplier, setADeplier] = useState(true) // comme avant tant que rien n'est mesuré
+  const mesure = useRef(null)
   useEffect(() => {
     const contenu = ref.current?.querySelector('.cal-coque-alertes-contenu')
     if (!contenu) return undefined
     const mesurer = () => setADeplier(
       [...contenu.children].filter((e) => !e.classList.contains('sr-only')).length > 1
       || [...contenu.querySelectorAll('p')].some((p) => p.scrollWidth > p.clientWidth + 1))
-    mesurer()
+    mesure.current = mesurer
+    // UN seul observateur par montage (jamais un nouveau à chaque rendu) ; la mutation voit une alerte ajoutée ou retirée.
     const obs = typeof ResizeObserver === 'function' ? new ResizeObserver(mesurer) : null
     obs?.observe(contenu)
-    return () => obs?.disconnect()
-  })
+    const mutation = typeof MutationObserver === 'function' ? new MutationObserver(mesurer) : null
+    mutation?.observe(contenu, { childList: true, subtree: true, characterData: true })
+    return () => { mesure.current = null; obs?.disconnect(); mutation?.disconnect() }
+  }, [ref])
+  // Chaque rendu relit seulement la mesure (aucun observateur créé ici).
+  useEffect(() => { mesure.current?.() })
   return aDeplier
 }
 

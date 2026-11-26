@@ -1180,21 +1180,38 @@ describe('EtapeDocuments — la carte « Schéma électrique » livre le schéma
     expect(calepinageApi.calepinages.telechargerDocument).not.toHaveBeenCalled()
   })
 
-  it('« Aperçu » de la colonne ouvre le même PDF dans un onglet ; un refus du serveur est dit sous la carte', async () => {
+  it('« Aperçu » de la colonne ouvre l’onglet AVANT la réponse, y pose le PDF puis révoque l’URL ; un refus ferme l’onglet et est dit sous la carte', async () => {
     servirPieceCablagePrete()
-    const ouvrir = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const onglet = { location: { href: '' }, close: vi.fn(), opener: 'x' }
+    const ouvrir = vi.spyOn(window, 'open').mockImplementation(() => onglet)
     globalThis.URL.createObjectURL = vi.fn(() => 'blob:schema')
+    globalThis.URL.revokeObjectURL = vi.fn()
+    const minuteurs = vi.spyOn(globalThis, 'setTimeout')
+    let rendre
     calepinageApi.calepinages.sldPdf
-      .mockResolvedValueOnce({ data: new Blob(['%PDF']) })
+      .mockImplementationOnce(() => new Promise((resoudre) => { rendre = () => resoudre({ data: new Blob(['%PDF']) }) }))
       .mockRejectedValueOnce({ response: { status: 409, data: { onduleur: 'Le schéma unifilaire n’est pas exportable.' } } })
     const utilisateur = userEvent.setup()
     monter()
     await utilisateur.click(await screen.findByRole('button', { name: 'Schéma électrique' }))
     await waitFor(() => expect(screen.getByTestId('cal-docs-apercu-schema')).not.toBeDisabled())
     await utilisateur.click(screen.getByTestId('cal-docs-apercu-schema'))
-    await waitFor(() => expect(ouvrir).toHaveBeenCalledWith('blob:schema', '_blank', 'noopener'))
-    await utilisateur.click(screen.getByTestId('cal-docs-telecharger-schema'))
+    // L'onglet est déjà ouvert alors que le serveur n'a pas encore répondu (le geste du clic n'est pas perdu).
+    expect(ouvrir).toHaveBeenCalledWith('', '_blank')
+    expect(onglet.opener).toBeNull()
+    expect(onglet.location.href).toBe('')
+    rendre()
+    await waitFor(() => expect(onglet.location.href).toBe('blob:schema'))
+    expect(globalThis.URL.revokeObjectURL).not.toHaveBeenCalled()
+    const revoquer = minuteurs.mock.calls.find(([, delai]) => delai === 60000)
+    expect(revoquer).toBeTruthy()
+    revoquer[0]()
+    expect(globalThis.URL.revokeObjectURL).toHaveBeenCalledWith('blob:schema')
+    await waitFor(() => expect(screen.getByTestId('cal-docs-apercu-schema')).not.toBeDisabled())
+    await utilisateur.click(screen.getByTestId('cal-docs-apercu-schema'))
     expect(await screen.findByText(/n’est pas exportable/)).toBeTruthy()
+    expect(onglet.close).toHaveBeenCalledTimes(1)
     ouvrir.mockRestore()
+    minuteurs.mockRestore()
   })
 })
