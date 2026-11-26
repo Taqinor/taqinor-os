@@ -911,6 +911,56 @@ class LeDessinDuSchemaElectrique(unittest.TestCase):
             "{http://www.w3.org/2000/svg}g") if "data-repere" in n.attrib}
         self.assertEqual(reperes, {"PDC1", "QDC1", "QAC1", "PAC1", "DDR1"})
 
+    def _chaines(self, n):
+        return [{"numero": k, "nb_panneaux": 12, "onduleur": 1, "entree": 1 + k % 2}
+                for k in range(1, n + 1)]
+
+    def test_hauteur_bornee_et_suite_aux_vrais_totaux(self):
+        """SCHEL-B4 (revue) — 8, 16 ou 30 chaînes : la planche de l'annexe garde
+        la MÊME hauteur bornée ; au-delà de 4 rangées, une ligne de suite porte
+        les vrais totaux des autres chaînes ; le document les garde toutes."""
+        from core.electrique.schema_electrique import (
+            document_schema_electrique, rendre_schema_electrique_svg)
+        entree = _triphase_deux_pans()
+        hauteurs = set()
+        for n in (8, 16, 30):
+            doc = document_schema_electrique(entree, concevoir(entree), chaines=self._chaines(n))
+            self.assertEqual(len(doc["chaines"]), n)
+            svg = rendre_schema_electrique_svg(doc, "fr", largeur_px=680)
+            hauteurs.add(float(ET.fromstring(svg).attrib["height"]))
+            textes = _textes(svg)
+            self.assertIn("+ %d chaînes · %d panneaux" % (n - 3, 12 * (n - 3)), textes)
+            for numero in (1, 2, 3):
+                self.assertIn("Chaîne %d · 12 panneaux" % numero, textes)
+            self.assertNotIn("Chaîne 4 · 12 panneaux", textes)
+        self.assertEqual(len(hauteurs), 1, hauteurs)
+        self.assertLessEqual(hauteurs.pop(), 380.0)
+        quatre = rendre_schema_electrique_svg(document_schema_electrique(
+            entree, concevoir(entree), chaines=self._chaines(4)), "fr", largeur_px=680)
+        self.assertIn("Chaîne 4 · 12 panneaux", _textes(quatre))
+        self.assertFalse([t for t in _textes(quatre) if t.startswith("+ ")])
+
+    def test_les_blocs_du_cote_reseau_ne_se_chevauchent_pas(self):
+        import dataclasses
+        from core.electrique.schema_electrique import (
+            document_schema_electrique, rendre_schema_electrique_svg)
+        from core.electrique.types import EtageMt, TransformateurMt
+        entree = dataclasses.replace(_triphase_deux_pans(), etage_mt=EtageMt(
+            transformateurs=(TransformateurMt(nb=1, kva=400.0),), cellule="IM",
+            compteur_production=True, injection_limitee=True))
+        for e in (entree, _mono_reseau()):
+            svg = rendre_schema_electrique_svg(document_schema_electrique(e, concevoir(e)))
+            rects = list(ET.fromstring(svg).iter("{http://www.w3.org/2000/svg}rect"))
+            haut_ac = next(float(r.attrib["y"]) for r in rects
+                           if r.attrib.get("fill") == "#f7f4fb")
+            bande = [r for r in rects if r.attrib.get("rx")
+                     and float(r.attrib["y"]) > haut_ac and float(r.attrib["x"]) < 600]
+            boites = sorted((float(r.attrib["x"]), float(r.attrib["x"]) + float(r.attrib["width"]))
+                            for r in bande)
+            self.assertGreaterEqual(boites[0][0], 16.0)
+            for (_a, fin), (debut, _b) in zip(boites, boites[1:]):
+                self.assertLessEqual(fin, debut, boites)
+
     def test_cote_reseau_a_calculer_en_creux(self):
         from core.electrique.schema_electrique import (
             document_sans_repartition, rendre_schema_electrique_svg)
