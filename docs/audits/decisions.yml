@@ -6154,7 +6154,7 @@ decisions:
     date: "2026-11-25"
     source: "lecture seule de la production du 25/11/2026 (catalogue et lignes de devis des 90 derniers jours et des douze derniers mois, agrégats) ; RÉPONSES DU FONDATEUR le 25/11/2026 (questions interactives), mot pour mot : « 540 DH TTC per panel » et « 2 000 + 250 per panel HT (Recommended) » ; posés au déploiement par migration de données, seulement là où le prix ou le barème est vide"
     taches: []
-  - id: D-HYB-2
+  - id: D-HYB-6
     question: "Le moteur de devis RÉSIDENTIEL (apps/ventes/solar_design.py::match_inverter) écarte tout onduleur au-delà d'un rapport DC/AC de 1,35 (MAX_DC_AC), hybride compris, et prend le plus gros quand aucun ne convient (« plus grosse puissance retenue, vérifier la conception »). Le calepinage et le moteur C&I jugent déjà un hybride à la puissance PV maximale de sa fiche (D-HYB-1). Le devis résidentiel doit-il juger un hybride de la même façon ?"
     options:
       - cle: a_capacite_publiee
