@@ -362,14 +362,17 @@ class RefusTest(BaseGabarits):
             self.assertEqual(r.status_code, 400, (brut, r.data))
         self.assertEqual(GabaritDossierReglementaire.objects.count(), avant)
 
-    def test_403_sans_calepinage_gerer(self):
+    def test_lecteur_lit_mais_ne_depose_pas(self):
+        """D-ACAL-104 (25/11/2026, commit 1e948c91c) — LIRE les gabarits de la
+        société : ``calepinage_voir`` ; les ÉCRIRE reste refusé (403) à qui ne
+        porte pas le droit d'écrire les réglages de la société."""
         lecteur = Role.objects.create(
             company=self.company, nom='Lecteur calepinage',
             permissions=['calepinage_voir'])
         self.user_sans.role = lecteur
         self.user_sans.save(update_fields=['role'])
         api = self._client(self.user_sans)
-        self.assertEqual(api.get(URL).status_code, 403)
+        self.assertEqual(api.get(URL).status_code, 200)
         self.assertEqual(self._deposer(api=api).status_code, 403)
         self.assertFalse(GabaritDossierReglementaire.objects.exists())
 
