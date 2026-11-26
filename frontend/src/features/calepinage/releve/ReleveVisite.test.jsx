@@ -31,6 +31,12 @@ vi.mock('../fileEnvoiPhotos', async (importOriginal) => ({
   deposerOuMettreEnFile: (...a) => file.deposerOuMettreEnFile(...a),
   rejouerFile: (...a) => file.rejouerFile(...a),
 }))
+// ACAL1319 — « Terminer » revient à la fiche : la navigation est observée (l'écran reste monté pour les assertions de message).
+const allerA = vi.fn()
+vi.mock('react-router-dom', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useNavigate: () => (...a) => allerA(...a),
+}))
 const capteurs = { demarrerCapteurs: vi.fn(), lireInclinaison: vi.fn(), lireVisee: vi.fn(), arreter: vi.fn() }
 vi.mock('../capteursTelephone', () => ({
   demarrerCapteurs: (...a) => capteurs.demarrerCapteurs(...a),
@@ -985,5 +991,100 @@ describe('T4-U4-020..023 — ce qui est tapé n’est jamais perdu, l’écran d
     fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
     await waitFor(() => expect(api.releve).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(screen.queryByTestId('releve-lecture-erreur')).toBeNull())
+  })
+})
+
+describe('ACAL1319 / D-ACAL-68 — « Terminer le relevé » enregistre puis revient à la fiche', () => {
+  it('relevé enregistré en ligne : le serveur est appelé, puis retour à la fiche du calepinage (aucun autre appel de statut)', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(allerA).toHaveBeenCalledWith('/calepinage/1'))
+    expect(api.corrigerReleve).toHaveBeenCalledTimes(1)
+    expect(allerA).toHaveBeenCalledTimes(1)
+  })
+
+  it('relevé gardé sur le téléphone (hors ligne) : on reste sur l’écran qui le dit', async () => {
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalled())
+    enLigne = false
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Relevé gardé'))
+    expect(allerA).not.toHaveBeenCalled()
+  })
+
+  it('refus du serveur : on reste sur l’écran, sans retour', async () => {
+    api.corrigerReleve.mockRejectedValueOnce({ response: { status: 400, data: { detail: 'refusé' } } })
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toBeInTheDocument())
+    expect(allerA).not.toHaveBeenCalled()
+  })
+
+  it('les vignettes sont exactement les genres stockés (PhotoSite.Genre), dans leur ordre et avec leurs libellés', async () => {
+    rendre()
+    const section = await screen.findByTestId('releve-photos')
+    expect(within(section).getAllByTestId(/^releve-photo-(drone|oblique|sol)$/).map((e) => e.getAttribute('data-testid')))
+      .toEqual(['releve-photo-drone', 'releve-photo-oblique', 'releve-photo-sol'])
+    expect(within(section).getByLabelText('Prendre la photo « Oblique (aérienne) »')).toBeInTheDocument()
+    expect(within(section).getByLabelText('Prendre la photo « Depuis le sol »')).toBeInTheDocument()
+  })
+
+  const deposerPhoto = (genre) => act(async () => {
+    const entree = screen.getByTestId(`releve-photo-${genre}`).querySelector('input[type="file"]')
+    fireEvent.change(entree, { target: { files: [new File(['x'], 'o.jpg', { type: 'image/jpeg' })] } })
+  })
+
+  it('une photo encore en cours d’envoi : le relevé part mais on RESTE, et l’écran le dit', async () => {
+    let finir
+    file.deposerOuMettreEnFile.mockImplementation(() => new Promise((r) => { finir = r }))
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalled())
+    await deposerPhoto('oblique')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Une photo est encore en cours d’envoi'))
+    expect(allerA).not.toHaveBeenCalled()
+    await act(async () => { finir({ enFile: true }) })
+  })
+
+  it('une photo refusée : on RESTE et l’écran le dit', async () => {
+    file.deposerOuMettreEnFile.mockRejectedValue(new Error('Fichier illisible'))
+    rendre()
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalled())
+    await deposerPhoto('oblique')
+    await screen.findByTestId('releve-photos-erreur')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(screen.getByTestId('releve-message')).toHaveTextContent('Une photo a été refusée'))
+    expect(allerA).not.toHaveBeenCalled()
+  })
+
+  const rendreDepuis = (entree) => render(
+    <MemoryRouter initialEntries={[entree]}>
+      <Routes><Route path="/calepinage/:id/releve" element={<ReleveVisite />} /></Routes>
+    </MemoryRouter>,
+  )
+
+  it('ouvert depuis la page devis (état d’adresse) : « Terminer » ET la flèche « Retour » ramènent là', async () => {
+    rendreDepuis({ pathname: '/calepinage/1/releve', state: { depuis: '/ventes/devis/7/design' } })
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalled())
+    expect(screen.getByRole('link', { name: 'Retour' }).getAttribute('href')).toBe('/ventes/devis/7/design')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(allerA).toHaveBeenCalledWith('/ventes/devis/7/design'))
+  })
+
+  it('lien profond (aucun état) : retour à la fiche du calepinage ; une adresse hors application n’est jamais suivie', async () => {
+    rendreDepuis({ pathname: '/calepinage/1/releve', state: { depuis: '//autre.exemple/x' } })
+    await screen.findByTestId('releve-projet')
+    await waitFor(() => expect(api.releve).toHaveBeenCalled())
+    expect(screen.getByRole('link', { name: 'Retour' }).getAttribute('href')).toBe('/calepinage/1')
+    fireEvent.click(screen.getByTestId('releve-terminer'))
+    await waitFor(() => expect(allerA).toHaveBeenCalledWith('/calepinage/1'))
   })
 })

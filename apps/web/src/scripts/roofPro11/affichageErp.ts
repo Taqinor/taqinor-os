@@ -92,7 +92,13 @@ function texteBandeCarte(d: CardData, cible: number, erp: boolean, chiffrage: Ch
   if (erp) {
     // ACAL2022 — l'ERP ne montre que le SERVI à kWc égal, jamais l'estimation du navigateur ; pendant le dessin : « au prochain enregistrement ».
     const servieProd = productionServie(chiffrage, kwc); // ACAL1418 — l'Année 1 lit la production de la carte
-    if (servieProd == null) return `Année 1 : ${raisonSansValeur(chiffrage, kwc, 'production')}. ${SANS_DEGRADATION}`;
+    // T4-X2-006 (rejeu R5B) — une simulation À JOUR existe : l'Année 1 la lit (même chiffre que le Total), au lieu de dire
+    // « au prochain enregistrement » alors que la conception est enregistrée et simulée. Sinon la raison vraie.
+    if (servieProd == null) {
+      const p50 = p50ADate(chiffrage);
+      if (p50 != null) return `Année 1 ~${fmt(Math.round(p50))} kWh/an (simulation). ${SANS_DEGRADATION}`;
+      return `Année 1 : ${raisonSansValeur(chiffrage, kwc, 'production')}. ${SANS_DEGRADATION}`;
+    }
     const servie = serviNb(chiffrage?.economie_annee1_mad);
     // ACAL1612 — l'ERP n'invente aucun taux : la fiche servie ne porte pas sa dégradation, l'année N se tait en disant pourquoi.
     return `Année 1 ~${fmt(Math.round(servieProd))} kWh/an${factureInconnue || servie == null ? '' : ` (${fmtMad(servie)}/an)`}. ${SANS_DEGRADATION}`;

@@ -32,11 +32,22 @@
         "champs_manquants": []
       }
     ],
-    "optimiseurs": []
+    "optimiseurs": [],
+    "batteries": [
+      {
+        "id": 905,
+        "libelle": "Batterie 5,1 kWh (exemple)",
+        "marque": "Marque exemple",
+        "favori": false,
+        "fiche_complete": true,
+        "champs_manquants": []
+      }
+    ]
   },
   "exemple_vide": {
     "modules": [],
     "onduleurs": [],
-    "optimiseurs": []
+    "optimiseurs": [],
+    "batteries": []
   }
 }

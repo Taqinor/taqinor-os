@@ -90,7 +90,7 @@ class CatalogueMateriel(Favoris):
         reponse = self.api.get(self.URL)
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertEqual(set(reponse.data),
-                         {'modules', 'onduleurs', 'optimiseurs'})
+                         {'modules', 'onduleurs', 'optimiseurs', 'batteries'})  # D-ACAL-157
         modules = reponse.data['modules']
         self.assertEqual([ligne['id'] for ligne in modules],
                          [self.a.pk, self.b.pk])

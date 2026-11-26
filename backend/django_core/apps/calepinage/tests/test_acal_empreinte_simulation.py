@@ -352,6 +352,32 @@ class SimulerApresModificationApiTest(TestCase):
                 message_erreur='')
             return self.api.post(self.url, {}, format='json')
 
+    def _hash(self):
+        from apps.calepinage.services.simulation import construire_contexte
+
+        with mock.patch(
+                'apps.calepinage.services.electrique.resoudre_materiel',
+                return_value=MATERIEL), \
+                mock.patch(
+                    'apps.calepinage.services.electrique.parametres_societe',
+                    return_value=REGLAGES):
+            return construire_contexte(self.calepinage)[1]['hash_entree']
+
+    def test_batterie_designee_puis_retiree_rend_l_empreinte_d_avant(self):
+        """D-ACAL-157 — « Retirer la batterie » envoie `batterie: null` : l'entrée retrouve l'état « jamais désignée »
+        (une clé à None n'entre pas dans l'empreinte), alors qu'un objet `{produit: None}` la ferait différer."""
+        from apps.calepinage.services.electrique import entree_stockee
+
+        avant = self._hash()
+        self.calepinage.resultat = {'entree_electrique': {'batterie': {'produit': 5, 'packs': 1}}}
+        designee = self._hash()
+        self.assertNotEqual(designee, avant)
+        self.calepinage.resultat = {'entree_electrique': {'batterie': {'produit': None, 'packs': 1}}}
+        self.assertNotEqual(self._hash(), avant)  # l'ancien « Aucune » : un objet non nul, empreinte différente
+        self.calepinage.resultat = {'entree_electrique': {'batterie': None}}
+        self.assertIsNone(entree_stockee(self.calepinage)['batterie'])
+        self.assertEqual(self._hash(), avant)
+
     def test_simuler_sans_forcer_recalcule_apres_modification(self):
         self._poser_simulation_fraiche()
 
