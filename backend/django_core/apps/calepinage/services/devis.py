@@ -1123,7 +1123,9 @@ def _onduleur_juge(calepinage, devis, refus=None):
     if not onduleurs or produit is None or designe in {o.pk for o in onduleurs}:
         return ''
     du_devis = onduleurs[0].nom
-    phrase = (f" L'étape Électrique juge l'onduleur désigné « {produit.nom} » ; ce devis porte "
+    from .variantes import onduleur_designe_a_la_main  # revue du 26/11 : un onduleur repris n'est pas « désigné »
+    mot = 'désigné' if onduleur_designe_a_la_main(calepinage) else 'repris de l’original'
+    phrase = (f" L'étape Électrique juge l'onduleur {mot} « {produit.nom} » ; ce devis porte "
               f"« {du_devis} », c'est lui que ce refus juge : désigner un onduleur à l'étape "
               f"Électrique ne le change pas.")
     if getattr(refus, 'code', '') == 'couple_incompatible':  # ventes.domain.resynchronisation.COUPLE_INCOMPATIBLE
