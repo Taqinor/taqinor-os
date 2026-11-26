@@ -1051,6 +1051,70 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(screen.getByTestId('cal234-legende')).not.toHaveTextContent('Chaîne 1')
   })
 
+  describe('D-ACAL-157 — désigner une batterie (sélecteur à côté de celui de l’onduleur)', () => {
+    beforeEach(() => { calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} }) })
+    const entreeAvec = ({ hybride, batterie = null }) => {
+      const e = entree()
+      e.materiel.onduleur.hybride = hybride
+      e.entree.batterie = batterie
+      return e
+    }
+
+    it('onduleur réseau, aucune batterie désignée : aucun sélecteur de batterie', async () => {
+      servirEtape({ e: entreeAvec({ hybride: false }) })
+      rendreEtape()
+      await screen.findByTestId('cal-elec-onduleur')
+      expect(screen.queryByTestId('cal-elec-batterie')).toBeNull()
+      expect(screen.queryByTestId('cal-elec-batterie-inapplicable')).toBeNull()
+    })
+
+    it('onduleur hybride : sélecteur « Aucune » par défaut, candidats sans prix ; le choix envoie l’objet batterie COMPLET', async () => {
+      servirEtape({ e: entreeAvec({ hybride: true, batterie: { packs: 2, strategie: 'autoconsommation' } }) })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      const choix = within(carte).getByRole('combobox')
+      expect(choix).toHaveValue('')
+      expect(within(carte).getByRole('option', { name: 'Aucune' })).toBeTruthy()
+      expect(carte.textContent).not.toMatch(/MAD|DH|prix/i)
+      const lectures = calepinageApi.calepinages.entreeElectrique.mock.calls.length
+      fireEvent.change(choix, { target: { value: '905' } })
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique).toHaveBeenCalledWith(
+        7, { batterie: { packs: 2, strategie: 'autoconsommation', produit: 905 } }))
+      await waitFor(() => expect(calepinageApi.calepinages.entreeElectrique.mock.calls.length).toBeGreaterThan(lectures))
+    })
+
+    it('un refus du serveur (onduleur non hybride) est dit tel quel sous le sélecteur', async () => {
+      servirEtape({ e: entreeAvec({ hybride: true }) })
+      calepinageApi.calepinages.enregistrerEntreeElectrique.mockRejectedValueOnce({
+        response: { data: { 'batterie.produit': 'L’onduleur désigné n’est pas un onduleur hybride.' } } })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      fireEvent.change(within(carte).getByRole('combobox'), { target: { value: '905' } })
+      expect(await within(carte).findByRole('alert')).toHaveTextContent('n’est pas un onduleur hybride')
+    })
+
+    it('batterie désignée puis onduleur devenu non hybride : l’écran le dit, propose de la retirer, ne l’efface pas', async () => {
+      servirEtape({ e: entreeAvec({ hybride: false, batterie: { produit: 905, packs: 3 } }) })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie-inapplicable')
+      expect(carte).toHaveTextContent('la batterie « Batterie 5,1 kWh (exemple) » ne s’applique plus')
+      expect(calepinageApi.calepinages.enregistrerEntreeElectrique).not.toHaveBeenCalled()
+      fireEvent.click(within(carte).getByRole('button', { name: 'Retirer la batterie' }))
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique)
+        .toHaveBeenCalledWith(7, { batterie: { produit: null, packs: 3 } }))
+    })
+
+    it('batterie désignée : le nombre de batteries se règle par pas, avec l’objet complet', async () => {
+      servirEtape({ e: entreeAvec({ hybride: true, batterie: { produit: 905, packs: 2, couplage: 'dc' } }) })
+      rendreEtape()
+      const carte = await screen.findByTestId('cal-elec-batterie')
+      expect(within(carte).getByTestId('cal-elec-batterie-packs')).toHaveTextContent('2 batteries')
+      fireEvent.click(within(carte).getByRole('button', { name: 'Une batterie de plus' }))
+      await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique)
+        .toHaveBeenCalledWith(7, { batterie: { produit: 905, packs: 3, couplage: 'dc' } }))
+    })
+  })
+
   describe('S3 — « Raccorder automatiquement » depuis l’éditeur : brouillon non enregistré', () => {
     const ouvrirEditeur = async () => {
       servirEtape()
