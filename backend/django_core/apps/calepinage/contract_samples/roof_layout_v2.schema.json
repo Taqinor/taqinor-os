@@ -400,7 +400,7 @@
           ]
         },
         "pitchDeg": {
-          "description": "OPTIONNEL — même raison que `roofType` (F2).",
+          "description": "OPTIONNEL — même raison que `roofType` (F2). Pente du PLAN de toiture, en degrés, sur un pan `roofType: pitched`. ACAL1923 — sur un pan `roofType: flat`, `pitchDeg` N'EST PAS une pente : c'est la valeur mémorisée du curseur (22 à la création ; un simple « Enregistrer » la garde), l'inclinaison des tables vit dans `geometry.tiltDeg`. Tout lecteur prend alors la pente pour 0 (serveur : `services/valeurs.py::pente_du_pan` ; atelier : `EtapeToit.jsx`). Un document plat qui porte une valeur > 0 reste CONFORME et n'est jamais réécrit.",
           "type": "number"
         },
         "facingAzimuthDeg": {
@@ -2366,7 +2366,7 @@
       }
     },
     "pitchSource": {
-      "description": "ACAL2 — PROVENANCE de la pente du PAN, écrite par l'onglet Pente : `mode` degres | pourcentage | cotes | plat. Chaque mode ne porte que ses propres champs ; la pente RÉSULTANTE vit dans `zones[].pitchDeg`. ACAL1400 — `plat` = toit plat CONFIRMÉ (pan `roofType: flat`, aucun champ propre ; « Confirmer » écrit `pitchDeg: 0`, ACAL1341) ; absent = pan jamais confirmé.",
+      "description": "ACAL2 — PROVENANCE de la pente du PAN, écrite par l'onglet Pente : `mode` degres | pourcentage | cotes | plat. Chaque mode ne porte que ses propres champs ; la pente RÉSULTANTE vit dans `zones[].pitchDeg`. ACAL1400 — `plat` = toit plat CONFIRMÉ (pan `roofType: flat`, aucun champ propre ; le geste « Confirmer » écrit `pitchDeg: 0`, ACAL1341) ; absent = pan jamais confirmé. ACAL1923 — un pan plat enregistré sans ce geste garde la valeur du curseur dans `pitchDeg` (souvent 22) : ce n'est pas une pente, les lecteurs l'ignorent (voir `zones[].pitchDeg`).",
       "type": "object",
       "additionalProperties": true,
       "required": [

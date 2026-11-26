@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import math
 
-__all__ = ['ValeurRefusee', 'nombre', 'nombre_fini']
+__all__ = ['ValeurRefusee', 'nombre', 'nombre_fini', 'pente_du_pan']
 
 
 class ValeurRefusee(ValueError):
@@ -105,3 +105,20 @@ def nombre(valeur):
     except (TypeError, ValueError, OverflowError):
         return None
     return lu if math.isfinite(lu) else None
+
+
+def pente_du_pan(zone):
+    """ACAL1923 — la pente EFFECTIVE d'un pan du document : 0 sur un toit plat.
+
+    Sur un pan ``roofType: flat``, ``pitchDeg`` n'est PAS une pente : c'est la
+    valeur mémorisée du curseur (22 par défaut à la création) ; l'inclinaison
+    des tables vit dans ``geometry.tiltDeg``. Même règle que l'atelier
+    (``EtapeToit.jsx`` : ``plat ? 0 : Number(zone.pitchDeg)``). Ailleurs,
+    ``nombre(pitchDeg)`` (``None`` si absente). Le document n'est jamais lu
+    pour autre chose ni réécrit.
+    """
+    if not isinstance(zone, dict):
+        return None
+    if zone.get('roofType') == 'flat':
+        return 0.0
+    return nombre(zone.get('pitchDeg'))
