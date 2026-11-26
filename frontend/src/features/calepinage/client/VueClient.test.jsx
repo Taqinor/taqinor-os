@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { render, screen, cleanup, waitFor, within, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -674,16 +674,22 @@ describe('ACAL1838 — le grand écran sur sa maquette v2', () => {
 })
 
 describe('ACAL1353 — la vue client n’importe plus le moteur du toit statiquement', () => {
-  it('garde de source : aucun import statique de @roofpro dans le dossier client (le moteur passe par `import()` dans chargerMoteur)', async () => {
-    const { readFileSync, readdirSync } = await import('node:fs')
-    const dossier = `${globalThis.process.cwd()}/src/features/calepinage/client`
-    const fichiers = readdirSync(dossier).filter((f) => /\.(js|jsx)$/.test(f) && !/\.test\./.test(f))
-    expect(fichiers).toContain('vueClient.helpers.js')
-    fichiers.forEach((f) => {
-      const statiques = readFileSync(`${dossier}/${f}`, 'utf8').split('\n').filter((l) => /^\s*(import|export)\b[^(]*from\s+['"]@roofpro\//.test(l))
-      expect(statiques, f).toEqual([])
-    })
-    expect(readFileSync(`${dossier}/vueClient.helpers.js`, 'utf8')).toMatch(/import\('@roofpro\/modulesGeo'\)/)
+  it('le graphe de la vue client n’évalue pas le moteur du toit tant qu’on ne le demande pas ; chargerMoteur() l’évalue une fois', async () => {
+    // Un graphe neuf, où chaque ÉVALUATION des deux modules du moteur du toit est comptée (le vrai module est rendu tel quel).
+    vi.resetModules()
+    const evaluationsMoteur = { geo: 0, taille: 0 }
+    vi.doMock('@roofpro/modulesGeo', async (importOriginal) => { evaluationsMoteur.geo += 1; return importOriginal() })
+    vi.doMock('@roofpro/tailleConception', async (importOriginal) => { evaluationsMoteur.taille += 1; return importOriginal() })
+    onTestFinished(() => { vi.doUnmock('@roofpro/modulesGeo'); vi.doUnmock('@roofpro/tailleConception') })
+    await import('./VueClient')
+    const { chargerMoteur } = await import('./vueClient.helpers')
+    expect(evaluationsMoteur).toEqual({ geo: 0, taille: 0 })
+    const moteur = await chargerMoteur()
+    expect(evaluationsMoteur).toEqual({ geo: 1, taille: 1 })
+    expect(typeof moteur.modulesDuDocument).toBe('function')
+    expect(typeof moteur.memeTaille).toBe('function')
+    await chargerMoteur() // mis en cache : aucune seconde évaluation
+    expect(evaluationsMoteur).toEqual({ geo: 1, taille: 1 })
   })
 
   it('échec du chargement : le hook dit l’échec (plan 2D des pans seul), « Réessayer » relance et le moteur arrive', async () => {
