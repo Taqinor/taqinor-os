@@ -146,7 +146,7 @@ export interface Scene3d {
   /** WJ21 — teinte CHAQUE panneau de la zone active par son accès solaire (0–1) via
    *  `colorFor(cellIndex)` (rouge=faible → vert=plein soleil), ou remet tout à blanc si
    *  `colorFor` est null (heatmap désactivée). Réutilise le buffer instanceColor. */
-  setSolarAccessHeatmap: (colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) => void;
+  setSolarAccessHeatmap: (colorFor: CouleurDe) => void;
   /** CAL126 — teinte les modules PAR CHAÎNE / PAR MPPT. Même canal que la carte
    *  d'accès solaire (buffer `instanceColor`), source DIFFÉRENTE : la table
    *  `electrique.affectation` du serveur, traduite par `affectationColorFn`.
@@ -1057,12 +1057,12 @@ export function materiauVerre(map: THREE.Texture | null, erp: boolean): THREE.Me
  *  0–1 brute y restait noire (carte d'accès et chaînes invisibles). Même gain que le surlignage (PV31). */
 export const GAIN_TEINTE_PANNEAU = 14;
 
-/** ACAL1408 — écrit la teinte GAINÉE de chaque instance (`idxMap[i]` = sa cellule) ; `colorFor` null ⇒ blanc
- *  (teinte d'origine). Seule écriture des teintes « par module » (accès solaire, chaînes). */
+/** ACAL1408 — écrit la teinte GAINÉE de chaque instance (`idxMap[i]` = sa cellule) ; `colorFor` null, ou une cellule
+ *  qui rend `null`, ⇒ 1,1,1 (teinte d'origine). Seule écriture des teintes « par module » (accès solaire, chaînes). */
 export function ecrireTeintesPanneaux(
   col: { setXYZ(i: number, x: number, y: number, z: number): unknown; needsUpdate: boolean },
   idxMap: readonly number[],
-  colorFor: ((cellIndex: number) => Rgb01) | null,
+  colorFor: ((cellIndex: number) => Rgb01 | null) | null,
 ): void {
   for (let i = 0; i < idxMap.length; i++) {
     const c = colorFor ? colorFor(idxMap[i]) : null;

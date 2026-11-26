@@ -49,9 +49,10 @@ export function bornesJournee(lat: number, jour: number): SunriseSunset | null {
 export function couleurParPanneau(soleil: VisionneuseSoleil, indexActif: number) {
   const zone = soleil.zones.find((z) => z.index === indexActif);
   if (!zone) return null;
+  // Module non calculé (`null`) ou absent : `null`, la scène y garde la teinte d'origine (jamais un blanc gainé).
   return (cellule: number) => {
     const a = zone.acces[cellule];
-    return typeof a === 'number' ? couleurAccesActive(a, 'atelier') : { r: 1, g: 1, b: 1 };
+    return typeof a === 'number' ? couleurAccesActive(a, 'atelier') : null;
   };
 }
 

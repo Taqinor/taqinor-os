@@ -33,6 +33,7 @@ import { bornesCarte, degradeLegende, libelleInstant, lireVisionneuseSoleil } fr
 import { couleurAccesActive } from '../src/lib/shadingEngine';
 import { attacherSoleil, bornesJournee, couleurParPanneau } from '../src/scripts/roofPro11/viewerSoleil';
 import type { ViewerFullHandle } from '../src/scripts/roofPro11/viewerFullBoot';
+import { ecrireTeintesPanneaux, GAIN_TEINTE_PANNEAU } from '../src/scripts/roofPro11/scene3d';
 
 // ── Un toit carré réaliste au Maroc (Casablanca), convention x=Est / y=Nord ──
 const LAT0 = 33.5;
@@ -438,12 +439,18 @@ describe('visionneuse au soleil — libellé, bornes de carte, légende, teinte'
     expect(degradeLegende()).toContain('rgb(245,158,11) 100%');
   });
 
-  it('teinte du pan actif seulement ; module non calculé = teinte d’origine, jamais « plein soleil »', () => {
+  it('teinte du pan actif seulement ; module non calculé = null (la scène garde sa teinte d’origine), jamais un blanc', () => {
     const v = lireVisionneuseSoleil(payloadSoleil(), LAYOUT_SOLEIL)!;
     expect(couleurParPanneau(v, 1)).toBeNull();
     const f = couleurParPanneau(v, 0)!;
     expect(f(0)).toEqual(couleurAccesActive(0.981, 'atelier'));
-    expect(f(4)).toEqual({ r: 1, g: 1, b: 1 });
+    expect(f(4)).toBeNull();
+    expect(f(99)).toBeNull();
+    // Écrit par la scène : le module non calculé reste à 1,1,1 (neutre), le module mesuré est gainé.
+    const rgb: number[][] = [];
+    ecrireTeintesPanneaux({ needsUpdate: false, setXYZ: (i, r, g, b) => { rgb[i] = [r, g, b]; } }, [0, 4], f);
+    expect(rgb[1]).toEqual([1, 1, 1]);
+    expect(rgb[0][0]).toBeCloseTo(couleurAccesActive(0.981, 'atelier').r * GAIN_TEINTE_PANNEAU);
   });
 
   it('journée : lever et coucher en heures pleines, de la même formule que l’atelier', () => {
