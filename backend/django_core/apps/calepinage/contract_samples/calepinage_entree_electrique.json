@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/entree-electrique/",
-  "pourquoi": "ACAL9 (a) (C-ACAL-050/053/058) — RELECTURE DE L'ENTRÉE ÉLECTRIQUE STOCKÉE : le GET rend l'entrée telle que le POST l'a écrite, à l'identique (aucune donnée recalculée). `entree` = les clés de CHAMPS_ENTREE (services/electrique.py) SAUF `derogations` (un GESTE, jamais rangé dans l'entrée : il part dans le fil du calepinage), + `regime` (régime de neutre — jamais déduit), `transformateur` {declare, perte_a_vide_kw, perte_en_charge_kw_nominale, puissance_nominale_kw : chacun {valeur, source, reference}}, `batterie` {produit, packs, strategie, couplage, onduleur_ref, seuil_effacement_kw, heures_charge, heures_decharge, reserve_backup_kwh, motivation, et depuis ACAL786 appareils, duree_secours_h, fenetres, part_effacable_pct, plafond_effacable_kw, et depuis ACAL796 coupures {nombre_par_an, duree_h, heure_debut} | null — corps d'essai `exemple_secours` et `exemple_commande_avancee`} | null, `hors_reseau` {actif, jours_autonomie, etat_initial_kwh, seuils, et depuis ACAL800 groupe {actif, puissance_kw, soc_demarrage_pct, soc_arret_pct, heures_max_par_jour} | null} | null. `materiel` = le matériel RÉSOLU {module | onduleur | optimiseur : {produit_id, designation, provenance 'explicite' | 'moteur' (ACAL2013 : le matériel de la conception COURANTE du lead, défaut quand rien n'est désigné — le devis lié n'est plus lu) | 'pose' (T4-B4-007 : le module posé à l'étape Panneaux, quand rien d'autre n'est désigné) | 'devis' (historique, plus servi) | null, fiche_complete, champs_manquants}, modules_par_pan (ACAL359) : [{pan, module_id, designation, produit_id, fiche_resolue, fiche_complete}] dans l'ordre du document — le module RÉELLEMENT posé sur chaque pan ; un pan sans fiche produit résolue (module saisi, produit introuvable) a fiche_resolue false et est chaîné avec la fiche du module par défaut} (D-ACAL-10 : par défaut les lignes du devis lié, provenance visible ; jamais un produit supposé) ; `absents` = les rôles sans matériel ; `candidats` = {modules | onduleurs | optimiseurs : [{id, libelle, marque, favori, fiche_complete, champs_manquants}]}. Refus 400 = {champ: message}. PACT10 : le contrat part AVANT les moitiés D05-T03/T04.",
+  "pourquoi": "ACAL9 (a) (C-ACAL-050/053/058) — RELECTURE DE L'ENTRÉE ÉLECTRIQUE STOCKÉE : le GET rend l'entrée telle que le POST l'a écrite, à l'identique (aucune donnée recalculée). `entree` = les clés de CHAMPS_ENTREE (services/electrique.py) SAUF `derogations` (un GESTE, jamais rangé dans l'entrée : il part dans le fil du calepinage), + `regime` (régime de neutre — jamais déduit), `transformateur` {declare, perte_a_vide_kw, perte_en_charge_kw_nominale, puissance_nominale_kw : chacun {valeur, source, reference}}, `batterie` {produit, packs, strategie, couplage, onduleur_ref, seuil_effacement_kw, heures_charge, heures_decharge, reserve_backup_kwh, motivation, et depuis ACAL786 appareils, duree_secours_h, fenetres, part_effacable_pct, plafond_effacable_kw, et depuis ACAL796 coupures {nombre_par_an, duree_h, heure_debut} | null — corps d'essai `exemple_secours` et `exemple_commande_avancee`} | null, `hors_reseau` {actif, jours_autonomie, etat_initial_kwh, seuils, et depuis ACAL800 groupe {actif, puissance_kw, soc_demarrage_pct, soc_arret_pct, heures_max_par_jour} | null} | null. `materiel` = le matériel RÉSOLU {module | onduleur | optimiseur : {produit_id, designation, provenance 'explicite' | 'moteur' (ACAL2013 : le matériel de la conception COURANTE du lead, défaut quand rien n'est désigné — le devis lié n'est plus lu) | 'pose' (T4-B4-007 : le module posé à l'étape Panneaux, quand rien d'autre n'est désigné) | 'devis' (historique, plus servi) | null, fiche_complete, champs_manquants}, modules_par_pan (ACAL359) : [{pan, module_id, designation, produit_id, fiche_resolue, fiche_complete}] dans l'ordre du document — le module RÉELLEMENT posé sur chaque pan ; un pan sans fiche produit résolue (module saisi, produit introuvable) a fiche_resolue false et est chaîné avec la fiche du module par défaut} (D-ACAL-10 : par défaut les lignes du devis lié, provenance visible ; jamais un produit supposé) ; `absents` = les rôles sans matériel ; `candidats` = {modules | onduleurs | optimiseurs | batteries : [{id, libelle, marque, favori, fiche_complete, champs_manquants}]} (D-ACAL-157 : `batteries` = les produits ACTIFS de la société à fiche « batterie », jamais un prix ; une batterie n'a aucun champ de fiche exigé, `fiche_complete` y vaut toujours true) ; `materiel.onduleur.hybride` = booléen décidé par le SERVEUR (`core.electrique.onduleurs.est_onduleur_hybride` : rôle, puis fiche, puis nom) — l'écran ne devine jamais un hybride sur un nom ; il ne propose la désignation d'une batterie (`entree.batterie.produit`) que s'il vaut true. Refus 400 = {champ: message}. PACT10 : le contrat part AVANT les moitiés D05-T03/T04.",
   "exemple": {
     "calepinage": 1,
     "entree": {
@@ -89,7 +89,8 @@
         "designation": "Onduleur réseau 10 kW (exemple)",
         "provenance": "moteur",
         "fiche_complete": true,
-        "champs_manquants": []
+        "champs_manquants": [],
+        "hybride": false
       },
       "optimiseur": null,
       "modules_par_pan": [
@@ -138,7 +139,17 @@
           ]
         }
       ],
-      "optimiseurs": []
+      "optimiseurs": [],
+      "batteries": [
+        {
+          "id": 905,
+          "libelle": "Batterie 5,1 kWh (exemple)",
+          "marque": "Marque C",
+          "favori": false,
+          "fiche_complete": true,
+          "champs_manquants": []
+        }
+      ]
     }
   },
   "exemple_vide": {
@@ -188,7 +199,8 @@
     "candidats": {
       "modules": [],
       "onduleurs": [],
-      "optimiseurs": []
+      "optimiseurs": [],
+      "batteries": []
     }
   },
   "exemple_refus_400": {
