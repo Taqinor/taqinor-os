@@ -398,9 +398,12 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
     // réémet pas (un seul PATCH, un seul toast par refus). « Réessayer »
     // (flush forcé) reste possible ; toute modification change la signature.
     if (chargeRefusee) return undefined
+    // R5A-N5b — un brouillon RESTAURÉ de la session n'est envoyé qu'après un geste de l'utilisateur sur la fiche (saisie, ou
+    // « OK » du chip) : l'ouvrir ne doit écrire aucune requête (le miroir le garde, le garde de sortie reste armé).
+    if (state.restored && !state.touched) return undefined
     const t = setTimeout(() => { flush({}) }, AUTOSAVE_DEBOUNCE_MS)
     return () => clearTimeout(t)
-  }, [state.mode, state.draft, draftDirty, state.inflight, chargeRefusee, flush])
+  }, [state.mode, state.draft, draftDirty, state.inflight, chargeRefusee, state.restored, state.touched, flush])
 
   // ── AERR108 — démontage / changement de lead : le brouillon part ───────────
   // Une frappe de < 1,5 s suivie d'un démontage (raccourci, clic de menu,
@@ -413,6 +416,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
     if (abandonneRef.current) { abandonneRef.current = false; return }
     if (st.mode !== 'edit' || !isDirty(st)) return
     if (st.refused && st.refused === signatureCharge(st)) return  // ALEA18
+    if (st.restored && !st.touched) return  // R5A-N5b — brouillon restauré, aucun geste : rien ne part, le miroir le garde
     flushRef.current({})
   }, [lead?.id, mode])
 
