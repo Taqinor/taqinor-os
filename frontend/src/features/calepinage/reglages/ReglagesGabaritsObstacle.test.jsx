@@ -74,6 +74,9 @@ describe('ReglagesGabaritsObstacle (ACAL494)', () => {
     expect(within(ligne).getByTestId('acal494-erreur-source')).toHaveTextContent('sans SOURCE')
     expect(champ('source')).toHaveAttribute('aria-invalid', 'true')
     expect(screen.getByTestId('acal494-bandeau')).toHaveTextContent('source')
+    // ACAL1434 — la requête coupe le toast de l'intercepteur : le refus n'est
+    // dit qu'une fois, sous le champ. Mutant : retirer l'option ⇒ échec.
+    expect(espions.putParametres.mock.calls[0][1]).toEqual({ suppressErrorToast: true })
   })
 
   it('cercle : demande son rayon, aucune longueur ni largeur envoyée', async () => {
