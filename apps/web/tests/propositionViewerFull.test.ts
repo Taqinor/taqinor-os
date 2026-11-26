@@ -1,4 +1,6 @@
+// @vitest-environment jsdom
 // VISIONNEUSE PLEINE (page publique /proposition) — la moitié TESTABLE.
+// (LOT 6 — jsdom pour la barre de la visionneuse au soleil, section 7 ; les sections 1-6 restent pures.)
 //
 // Le client doit voir le VRAI rendu du builder (scene3d.ts : verre, cadres,
 // rails, châssis, ombres), figé, avec la carte complète. Le rendu WebGL lui-même
@@ -12,7 +14,7 @@
 //      aucun module d'édition importé) — garde de source, même convention que
 //      mobilePerfWJ18.test.ts.
 // Aucun DOM, aucun Three.js, aucun MapLibre : modules purs seulement.
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseRoofLayout, type RoofLayout } from '../src/lib/proposition';
@@ -27,6 +29,10 @@ import {
   VIEWER_FULL_MAX_ZOOM,
   VIEWER_FULL_MIN_ZOOM,
 } from '../src/scripts/roofPro11/viewerFullModel';
+import { bornesCarte, degradeLegende, libelleInstant, lireVisionneuseSoleil } from '../src/lib/visionneuseSoleil';
+import { couleurAccesActive } from '../src/lib/shadingEngine';
+import { attacherSoleil, bornesJournee, couleurParPanneau } from '../src/scripts/roofPro11/viewerSoleil';
+import type { ViewerFullHandle } from '../src/scripts/roofPro11/viewerFullBoot';
 
 // ── Un toit carré réaliste au Maroc (Casablanca), convention x=Est / y=Nord ──
 const LAT0 = 33.5;
@@ -308,5 +314,225 @@ describe('visionneuse pleine — lecture seule STRICTE', () => {
     // Le pan « autre » reste identifié même quand il n'est plus atténué : la
     // valeur par défaut rend les deux appels historiques inchangés.
     expect(SCENE).toContain('isOtherZone: boolean = dim');
+  });
+
+  it('LOT 6 — poignée ADDITIVE : sans `instant` ni `environnement`, soleil et contexte d’aujourd’hui', () => {
+    expect(BOOT).toContain('sunHour: opts.instant?.heure ?? DEFAULT_SUN_HOUR,');
+    expect(BOOT).toContain('sunDay: opts.instant?.jour ?? WINTER_SOLSTICE_DAY,');
+    expect(BOOT).toContain('...(opts.environnement?.length ? { environment: opts.environnement } : {}),');
+    expect(BOOT).toContain('scene3d.setSolarAccessHeatmap(');
+    // Les bornes de la visionneuse de confiance vivent dans viewerSoleil.ts, jamais ici.
+    const SOLEIL = readFileSync(root('../src/scripts/roofPro11/viewerSoleil.ts'), 'utf-8');
+    expect(SOLEIL).toContain('poignee.carte.setMaxBounds(');
+    expect(SOLEIL).toContain('poignee.carte.setMinZoom(');
+    expect(SOLEIL).toContain('poignee.carte.setMaxPitch(INCLINAISON_MAX)');
+    expect(SOLEIL).not.toMatch(/\.on\('(click|dblclick|mousedown|touchstart)'/);
+    for (const m of ['mapDraw', 'obstaclesUi', 'layoutEditor', 'optimizer', 'shadingUi', 'shadingEngine\\.ts']) {
+      expect(SOLEIL).not.toMatch(new RegExp(`from '\\./${m}'`));
+    }
+  });
+});
+
+// ── 7. LOT 6 — la visionneuse au soleil des liens de confiance (D-ACAL-132 à 138) ──
+
+const CONTRAT_SOLEIL = JSON.parse(readFileSync(root('../src/contract_samples/visionneuse_soleil.json'), 'utf-8')) as Record<string, any>;
+const payloadSoleil = (cle: 'exemple' | 'exemple_sans_mesure' = 'exemple') => structuredClone(CONTRAT_SOLEIL[cle]) as Record<string, any>;
+// Le pan du contrat : `zone-1`, six modules.
+const LAYOUT_SOLEIL = layoutOf(rawZone({ geometry: { ...(rawZone().geometry as object), count: 6, panels: columns(PORTRAIT_PITCH, 6) } }));
+
+describe('lireVisionneuseSoleil — exemples du contrat', () => {
+  it('exemple : accès servis tels quels, objets voisins en géométrie seule, instant choisi', () => {
+    const v = lireVisionneuseSoleil(payloadSoleil(), LAYOUT_SOLEIL)!;
+    expect(v.zones).toEqual([{ index: 0, id: 'zone-1', acces: [0.981, 0.979, 0.962, 0.874, null, 0.988] }]);
+    expect(v.environnement).toHaveLength(2);
+    expect(v.environnement[0]).toEqual({ id: 'voisin-0', kind: 'arbre', centerLng: -7.6195, centerLat: 33.5741, heightM: 7.5, crownDiameterM: 5, evergreen: true });
+    expect(v.environnement[1].footprint).toHaveLength(4);
+    expect(v.ouverture).toEqual({ jour: 355, heure: 16 });
+  });
+
+  it('exemple sans mesure : aucune zone, aucun objet, ouverture l’été à midi (D-ACAL-135)', () => {
+    expect(lireVisionneuseSoleil(payloadSoleil('exemple_sans_mesure'), LAYOUT_SOLEIL)).toEqual({ zones: [], environnement: [], ouverture: { jour: 172, heure: 12 } });
+  });
+});
+
+describe('lireVisionneuseSoleil — absent ou malformé → null, jamais un throw', () => {
+  const sans = (cle: string) => {
+    const p = payloadSoleil();
+    delete p.visionneuse_soleil[cle];
+    return p;
+  };
+  const piege = { get visionneuse_soleil(): unknown { throw new Error('piège'); } };
+  const mauvais: unknown[] = [
+    undefined, null, 0, 'x', [], {}, { visionneuse_soleil: null }, { visionneuse_soleil: [] }, { visionneuse_soleil: { version: 2, zones: [], environnement: [], instant_choisi: null } },
+    sans('zones'), sans('environnement'), sans('instant_choisi'), sans('version'),
+    { visionneuse_soleil: { version: 1, zones: {}, environnement: [], instant_choisi: null } },
+    { visionneuse_soleil: { version: 1, zones: [], environnement: [], instant_choisi: { jour: 400, heure: 12 } } },
+    piege,
+  ];
+  it.each(mauvais.map((m, i) => [i, m]))('entrée %s', (_i, m) => {
+    expect(lireVisionneuseSoleil(m, LAYOUT_SOLEIL)).toBeNull();
+  });
+
+  it('sans layout lu → null', () => {
+    expect(lireVisionneuseSoleil(payloadSoleil(), null)).toBeNull();
+  });
+
+  it('pan écarté EN BLOC : id différent, longueur différente, valeur hors [0 ; 1] ou non numérique, tout null', () => {
+    const variantes: Array<(z: Record<string, any>) => void> = [
+      (z) => { z.id = 'zone-2'; },
+      (z) => { z.acces.pop(); },
+      (z) => { z.acces[0] = 1.2; },
+      (z) => { z.acces[1] = '0.5'; },
+      (z) => { z.acces = z.acces.map(() => null); },
+      (z) => { z.index = 3; },
+    ];
+    for (const casse of variantes) {
+      const p = payloadSoleil();
+      casse(p.visionneuse_soleil.zones[0]);
+      expect(lireVisionneuseSoleil(p, LAYOUT_SOLEIL)!.zones).toEqual([]);
+    }
+  });
+
+  it('objets voisins : jamais le libellé ni la hauteur future ; supposé coupé, sans hauteur ou genre inconnu → écarté', () => {
+    const p = payloadSoleil();
+    const arbre = p.visionneuse_soleil.environnement[0];
+    Object.assign(arbre, { label: 'Chez M. Voisin', id: 'env-7', hauteurFutureM: 12, dansAns: 5 });
+    p.visionneuse_soleil.environnement.push({ ...arbre, supposeCoupe: true }, { ...arbre, heightM: 0 }, { ...arbre, kind: 'piscine' });
+    const v = lireVisionneuseSoleil(p, LAYOUT_SOLEIL)!;
+    expect(v.environnement).toHaveLength(2);
+    expect(JSON.stringify(v)).not.toMatch(/Voisin|env-7|hauteurFutureM|dansAns|label/);
+  });
+});
+
+describe('visionneuse au soleil — libellé, bornes de carte, légende, teinte', () => {
+  it('libellé de l’instant dans l’année de dessin 2028 de l’atelier, trois langues', () => {
+    expect(libelleInstant(355, 12, 'fr')).toBe('20 décembre · 12 h');
+    expect(libelleInstant(172, 16, 'en')).toBe('20 June · 16:00');
+    expect(libelleInstant(172, 16, 'ar')).toBe('20 يونيو · الساعة 16');
+  });
+
+  it('bornes : emprise des sommets + 150 m, zoom mini = zoom initial − 2 (D-ACAL-138)', () => {
+    const b = bornesCarte(LAYOUT_SOLEIL, 19.2)!;
+    expect(b.zoomMin).toBeCloseTo(17.2);
+    const [[w, s], [e, n]] = b.bornes;
+    for (const [lng, lat] of LAYOUT_SOLEIL.zones[0].vertices) {
+      expect((lat - s) * DEG2M).toBeGreaterThan(149);
+      expect((n - lat) * DEG2M).toBeGreaterThan(149);
+      expect((lng - w) * DEG2M * COS).toBeGreaterThan(149);
+      expect((e - lng) * DEG2M * COS).toBeGreaterThan(149);
+    }
+    expect((n - s) * DEG2M).toBeLessThan(24 + 301);
+  });
+
+  it('légende : les couleurs MÊMES que la teinte (palette atelier)', () => {
+    const c0 = couleurAccesActive(0, 'atelier');
+    expect(degradeLegende()).toContain(`rgb(${Math.round(c0.r * 255)},${Math.round(c0.g * 255)},${Math.round(c0.b * 255)}) 0%`);
+    expect(degradeLegende()).toContain('rgb(245,158,11) 100%');
+  });
+
+  it('teinte du pan actif seulement ; module non calculé = teinte d’origine, jamais « plein soleil »', () => {
+    const v = lireVisionneuseSoleil(payloadSoleil(), LAYOUT_SOLEIL)!;
+    expect(couleurParPanneau(v, 1)).toBeNull();
+    const f = couleurParPanneau(v, 0)!;
+    expect(f(0)).toEqual(couleurAccesActive(0.981, 'atelier'));
+    expect(f(4)).toEqual({ r: 1, g: 1, b: 1 });
+  });
+
+  it('journée : lever et coucher en heures pleines, de la même formule que l’atelier', () => {
+    const hiver = bornesJournee(LAT0, 355)!;
+    const ete = bornesJournee(LAT0, 172)!;
+    expect(Number.isInteger(hiver.riseHour) && Number.isInteger(hiver.setHour)).toBe(true);
+    expect(ete.setHour - ete.riseHour).toBeGreaterThan(hiver.setHour - hiver.riseHour);
+    expect(bornesJournee(89, 355)).toBeNull();
+  });
+});
+
+describe('attacherSoleil — la barre pilote la poignée (jsdom)', () => {
+  const BARRE = `<div id="roof3d-soleil"><div data-soleil-legende></div>
+    <button data-soleil-lecture disabled></button><span data-soleil-min></span><strong data-soleil-quand></strong><span data-soleil-max></span>
+    <input type="range" data-soleil-heure disabled /><button data-soleil-saison="hiver" disabled></button><button data-soleil-saison="ete" disabled></button></div>`;
+  function monter(over: Partial<Parameters<typeof attacherSoleil>[0]> = {}, payload = payloadSoleil()) {
+    document.body.innerHTML = BARRE;
+    const barre = document.getElementById('roof3d-soleil')!;
+    const carte = { setMaxBounds: vi.fn(), setMinZoom: vi.fn(), setMaxPitch: vi.fn() };
+    const poignee = { carte, zoomInitial: 19, indexActif: 0, panelCount: 6, destroy: vi.fn(), poserInstant: vi.fn(), teinter: vi.fn() };
+    const soleil = lireVisionneuseSoleil(payload, LAYOUT_SOLEIL)!;
+    const debrancher = attacherSoleil({ barre, poignee: poignee as unknown as ViewerFullHandle, soleil, layout: LAYOUT_SOLEIL, avecTeinte: true, reducedMotion: false, ...over });
+    const q = <T extends HTMLElement>(s: string) => barre.querySelector<T>(s)!;
+    return { barre, poignee, carte, debrancher, q };
+  }
+  afterEach(() => {
+    vi.useRealTimers();
+    document.documentElement.lang = 'fr';
+  });
+
+  it('branchée : contrôles actifs, teinte posée, légende visible, carte bornée, instant affiché', () => {
+    const { poignee, carte, q } = monter();
+    expect(q<HTMLButtonElement>('[data-soleil-lecture]').disabled).toBe(false);
+    expect(q<HTMLInputElement>('[data-soleil-heure]').disabled).toBe(false);
+    expect(poignee.teinter).toHaveBeenCalledTimes(1);
+    expect(q('[data-soleil-legende]').hasAttribute('data-soleil-visible')).toBe(true);
+    expect(carte.setMaxBounds).toHaveBeenCalledWith(bornesCarte(LAYOUT_SOLEIL, 19)!.bornes);
+    expect(carte.setMinZoom).toHaveBeenCalledWith(17);
+    expect(carte.setMaxPitch).toHaveBeenCalledWith(60);
+    expect(q('[data-soleil-quand]').textContent).toBe('20 décembre · 16 h');
+    expect(q('[data-soleil-saison="hiver"]').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('aucune valeur enregistrée, ou autre taille montrée : ni teinte ni légende (D-ACAL-136)', () => {
+    const a = monter({}, payloadSoleil('exemple_sans_mesure'));
+    expect(a.poignee.teinter).not.toHaveBeenCalled();
+    expect(a.q('[data-soleil-legende]').hasAttribute('data-soleil-visible')).toBe(false);
+    const b = monter({ avecTeinte: false });
+    expect(b.poignee.teinter).not.toHaveBeenCalled();
+  });
+
+  it('lecture : un pas toutes les 700 ms depuis le lever ; second clic = pause', () => {
+    vi.useFakeTimers();
+    const { poignee, q } = monter();
+    const lever = bornesJournee(LAYOUT_SOLEIL.zones[0].vertices[0][1], 355)!.riseHour;
+    q<HTMLButtonElement>('[data-soleil-lecture]').click();
+    expect(q('[data-soleil-lecture]').getAttribute('aria-pressed')).toBe('true');
+    vi.advanceTimersByTime(700);
+    expect(poignee.poserInstant).toHaveBeenLastCalledWith(355, lever);
+    vi.advanceTimersByTime(700);
+    expect(poignee.poserInstant).toHaveBeenLastCalledWith(355, lever + 1);
+    q<HTMLButtonElement>('[data-soleil-lecture]').click();
+    expect(q('[data-soleil-lecture]').getAttribute('aria-pressed')).toBe('false');
+    vi.advanceTimersByTime(5000);
+    expect(poignee.poserInstant).toHaveBeenCalledTimes(2);
+  });
+
+  it('reduced-motion : un seul pas (l’heure suivante), aucune boucle programmée', () => {
+    vi.useFakeTimers();
+    const { poignee, q } = monter({ reducedMotion: true });
+    const b = bornesJournee(LAYOUT_SOLEIL.zones[0].vertices[0][1], 355)!;
+    q<HTMLButtonElement>('[data-soleil-lecture]').click();
+    expect(poignee.poserInstant).toHaveBeenCalledTimes(1);
+    expect(poignee.poserInstant).toHaveBeenCalledWith(355, 16 + 1 <= b.setHour ? 17 : b.riseHour);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('curseur et saisons : l’instant suit, l’heure reste dans la journée', () => {
+    const { poignee, q } = monter();
+    const curseur = q<HTMLInputElement>('[data-soleil-heure]');
+    curseur.value = '10';
+    curseur.dispatchEvent(new Event('input'));
+    expect(poignee.poserInstant).toHaveBeenLastCalledWith(355, 10);
+    q<HTMLButtonElement>('[data-soleil-saison="ete"]').click();
+    expect(poignee.poserInstant).toHaveBeenLastCalledWith(172, 10);
+    expect(q('[data-soleil-saison="ete"]').getAttribute('aria-pressed')).toBe('true');
+    expect(q('[data-soleil-quand]').textContent).toBe('20 juin · 10 h');
+  });
+
+  it('la langue de la page change : le libellé suit ; débranchée : contrôles inertes', async () => {
+    const { q, debrancher, poignee } = monter();
+    document.documentElement.lang = 'ar';
+    await new Promise((r) => setTimeout(r, 0));
+    expect(q('[data-soleil-quand]').textContent).toBe('20 دجنبر · الساعة 16');
+    debrancher();
+    expect(q<HTMLButtonElement>('[data-soleil-lecture]').disabled).toBe(true);
+    q<HTMLButtonElement>('[data-soleil-saison="ete"]').click();
+    expect(poignee.poserInstant).not.toHaveBeenCalled();
   });
 });
