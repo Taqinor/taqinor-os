@@ -767,6 +767,29 @@ describe('PanneauDocuments — section Plans et exports (ACAL228)', () => {
     expect(downloadBlob).toHaveBeenCalled()
   })
 
+  it('ACAL1534 — la pièce plan_lestage_pdf porte Aperçu et Télécharger, et l’aperçu ouvre le même PDF dans un onglet', async () => {
+    servirInventaire('exemple')
+    const sorties = reponseContrat(APP, 'calepinage_sorties', 'exemple')
+    sorties.data.sorties = sorties.data.sorties.map((x) => (
+      x.code === 'plan_lestage_pdf' ? { ...x, disponible: true, motif_indisponible: null } : x))
+    calepinageApi.calepinages.sorties.mockResolvedValue(sorties)
+    calepinageApi.calepinages.telechargerSortie.mockResolvedValue({ data: new Blob(['x']), headers: {} })
+    const ouvrir = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const creer = vi.fn(() => 'blob:lestage')
+    URL.createObjectURL = creer
+    const utilisateur = userEvent.setup()
+    rendre()
+    expect(await screen.findByTestId('cal-doc-bouton-plan_lestage_pdf')).toBeEnabled()
+    await utilisateur.click(await screen.findByTestId('cal-doc-sorties-apercu-plan_lestage_pdf'))
+    await waitFor(() => expect(ouvrir).toHaveBeenCalledWith('blob:lestage', '_blank', 'noopener'))
+    expect(calepinageApi.calepinages.telechargerSortie)
+      .toHaveBeenCalledWith(sortieDe('plan_lestage_pdf').endpoint, undefined,
+        { timeout: 120000, suppressErrorToast: true })
+    // une pièce qui n'est pas un PDF n'a pas d'Aperçu
+    expect(screen.queryByTestId('cal-doc-sorties-apercu-dxf')).toBeNull()
+    ouvrir.mockRestore()
+  })
+
   it('pack technique appelle composerPackTechnique et affiche les signalements', async () => {
     servirSorties()
     calepinageApi.calepinages.composerPackTechnique.mockResolvedValue({
