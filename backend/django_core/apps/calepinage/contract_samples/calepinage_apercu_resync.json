@@ -88,5 +88,9 @@
     "kwc": 1.42,
     "scenario": "reseau",
     "batterie": false
+  },
+  "corps_confirmation_note": "Revue du 26/11 (D-ACAL-73, « le dire AVANT d'agir » quel que soit le bouton) — POST calepinages/<pk>/sync-devis/ accepte `apercu_confirme` (booléen, défaut faux) : SEUL le bouton de confirmation de la carte d'aperçu l'envoie. Sans lui, sur un devis ENVOYÉ, l'onduleur et la batterie désignés à l'étape Électrique ne sont PAS appliqués (une phrase dit d'utiliser « Resynchroniser le devis » pour voir le changement et le confirmer) ; avec lui, ils le sont comme sur un brouillon né sous la règle. Un brouillon ne dépend pas du drapeau. Les autres chemins de la resynchronisation (sync-layout et POST layout du devis, assistant, rattachement, taille appliquée) ne l'envoient jamais. L'aperçu montre ce que la resynchronisation CONFIRMÉE écrirait.",
+  "corps_confirmation": {
+    "apercu_confirme": true
   }
 }
