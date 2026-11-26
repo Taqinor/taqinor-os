@@ -81,6 +81,8 @@ export interface ViewerFullOptions {
    * premier rendu), soit une carte qui ne se charge JAMAIS (réseau muet) —
    * sans ce second cas, un visiteur hors couverture resterait devant un voile
    * de chargement éternel. La page peut alors replier sur sa photo d'étude.
+   * Lot 8 — avec `onFail`, ces pannes démontent la carte et passent par `onFail` (la page monte alors la
+   * visionneuse simplifiée ou laisse voir sa photo) : `onMapError` ne sert plus qu'aux appelants sans `onFail`.
    */
   onMapError?: () => void;
   /** Lot 8 — la SCÈNE a jeté (premier rendu ou pas de soleil) : la visionneuse s'est déjà démontée et
@@ -131,6 +133,16 @@ export function erreurCarteFatale(e: unknown): boolean {
   const ev = e as { sourceId?: unknown; tile?: unknown; error?: { status?: unknown } | null };
   if (ev.sourceId != null || ev.tile != null) return false;
   return typeof ev.error?.status !== 'number';
+}
+
+/** Lot 8 — l'erreur dit-elle que le STYLE de la carte est refusé (403, 404 : même adresse que le style demandé) ?
+ *  Une tuile ou une source n'est jamais un refus de style. */
+export function erreurDeStyle(e: unknown, styleUrl: string | null): boolean {
+  if (!styleUrl || !e || typeof e !== 'object') return false;
+  const ev = e as { sourceId?: unknown; tile?: unknown; error?: { url?: unknown } | null };
+  if (ev.sourceId != null || ev.tile != null) return false;
+  const url = ev.error?.url;
+  return typeof url === 'string' && url.split('?')[0] === styleUrl.split('?')[0];
 }
 
 /** La feuille MapLibre n'est injectée qu'UNE fois par document (idempotent). */
@@ -240,11 +252,12 @@ export function bootViewerFull(
   //   /Maxar si un token public est fourni, sinon style hybride MapTiler).
   const viewportPx = Math.max(240, Math.min(el.clientWidth || 0, el.clientHeight || 0) || el.clientWidth || 640);
   const zoom = zoomForSpanM(plan.spanM, viewportPx, plan.center[1]);
+  const style = buildSatelliteStyle({ maptilerKey, mapboxToken });
   let map: maplibregl.Map;
   try {
     map = new maplibregl.Map({
       container: el,
-      style: buildSatelliteStyle({ maptilerKey, mapboxToken }) as maplibregl.StyleSpecification | string,
+      style: style as maplibregl.StyleSpecification | string,
       center: plan.center as [number, number],
       zoom,
       // Vue 3D d'emblée (le client « reçoit l'image finale »), inclinaison de la
@@ -271,7 +284,7 @@ export function bootViewerFull(
   // injoignable) ne doit pas laisser le visiteur devant un voile éternel.
   let loadTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
     loadTimer = null;
-    if (!hasRenderedOnce) opts.onMapError?.();
+    if (!hasRenderedOnce) panneCarte('carte jamais chargée');
   }, opts.loadTimeoutMs ?? 15_000);
   const clearLoadTimer = () => {
     if (loadTimer !== null) {
@@ -287,14 +300,15 @@ export function bootViewerFull(
     const msg = (e as { error?: { message?: string } } | undefined)?.error?.message ?? e;
     console.warn('[visionneuse-toit] erreur carte :', msg);
     // Lot 8 (B0) — une tuile refusée (429, réseau) laisse la scène utilisable : seule une panne qui la rend
-    // inutilisable replie la page (et cache la barre au soleil).
-    if (hasRenderedOnce && erreurCarteFatale(e)) opts.onMapError?.();
+    // inutilisable replie la page (et cache la barre au soleil). Avant le premier chargement, un style refusé
+    // (403, 404) ou une panne interne replie TOUT DE SUITE, sans attendre le chien de garde.
+    if (hasRenderedOnce ? erreurCarteFatale(e) : erreurCarteFatale(e) || erreurDeStyle(e, typeof style === 'string' ? style : null)) panneCarte(e);
   };
   map.on('error', onError);
   // Contexte WebGL perdu : la scène se reconstruit à la restauration (W89) ; jamais restauré = scène morte.
   let perteGl: ReturnType<typeof setTimeout> | null = null;
   const surPerteGl = () => {
-    if (perteGl === null) perteGl = setTimeout(() => opts.onMapError?.(), DELAI_RESTAURATION_GL_MS);
+    if (perteGl === null) perteGl = setTimeout(() => panneCarte('contexte WebGL jamais restauré'), DELAI_RESTAURATION_GL_MS);
   };
   const surRestaurationGl = () => {
     if (perteGl !== null) clearTimeout(perteGl);
@@ -334,6 +348,12 @@ export function bootViewerFull(
     poignee.destroy();
     opts.onFail?.(raison);
   };
+  // Lot 8 — carte en panne (style refusé, jamais chargée, panne fatale, contexte perdu) : avec `onFail`, la carte
+  // est démontée (plus de boîte sombre devant la photo) et l'appelant replie ; sans, l'ancien `onMapError`.
+  function panneCarte(raison: unknown): void {
+    if (opts.onFail) echouer(raison);
+    else opts.onMapError?.();
+  }
   const essayer = (geste: () => void) => {
     if (!charge || destroyed) return;
     try {
@@ -344,6 +364,7 @@ export function bootViewerFull(
   };
 
   map.on('load', () => {
+    if (destroyed) return; // démontée avant son chargement (panne de style, délai) : plus rien à rendre
     try {
       // `addLayer` déclenche `onAdd` (renderer + scène + soleil) : renderScene ne
       // peut être appelé qu'APRÈS.

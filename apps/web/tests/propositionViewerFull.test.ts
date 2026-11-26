@@ -1085,34 +1085,73 @@ describe('monterVisionneusePleine — barre au soleil branchée après le rendu,
     expect([aide.dataset.fr, aide.dataset.en, aide.dataset.ar, aide.textContent]).toEqual([AIDE_SIMPLE.fr, AIDE_SIMPLE.en, AIDE_SIMPLE.ar, AIDE_SIMPLE.fr]);
   });
 
-  it('B0 — une tuile refusée (429) ou une réponse HTTP ne retire pas la barre ; une panne de style, si', async () => {
+  it('B0 — une tuile refusée (429) ou une réponse HTTP ne retire pas la barre ; une panne de style, si (repli, carte démontée)', async () => {
     const onMapError = vi.fn();
-    const { barre, carte } = await monter({ onMapError: () => { onMapError(); barre.hidden = true; } }); // comme showFallback de la page
+    const { barre, carte, replier } = await monter({ onMapError });
     carte.fire('load');
     await attendre();
     carte.fire('error', { sourceId: 'satellite', tile: {}, error: { status: 429, message: 'Too Many Requests' } });
     carte.fire('error', { error: { status: 404, message: 'glyphes absents' } });
-    expect(onMapError).not.toHaveBeenCalled();
+    expect(replier).not.toHaveBeenCalled();
     expect(barre.hidden).toBe(false);
     carte.fire('error', { error: new Error('Style is not done loading') });
-    expect(onMapError).toHaveBeenCalledTimes(1);
+    expect(replier).toHaveBeenCalledTimes(1);
     expect(barre.hidden).toBe(true);
+    expect(carte.retiree).toBe(true); // plus de carte devant la photo ou la visionneuse simplifiée
+    expect(onMapError).not.toHaveBeenCalled(); // avec onFail, la panne passe par le repli
   });
 
-  it('B0 — contexte WebGL perdu : restauré à temps, rien ; jamais restauré, la page replie', async () => {
+  it('B0 — contexte WebGL perdu : restauré à temps, rien ; jamais restauré, repli', async () => {
     vi.useFakeTimers();
     try {
       const { DELAI_RESTAURATION_GL_MS } = await import('../src/scripts/roofPro11/viewerFullBoot');
-      const onMapError = vi.fn();
-      const { carte } = await monter({ onMapError });
+      const { carte, replier } = await monter();
       carte.fire('load');
       carte.fire('webglcontextlost');
       carte.fire('webglcontextrestored');
       vi.advanceTimersByTime(DELAI_RESTAURATION_GL_MS + 1);
-      expect(onMapError).not.toHaveBeenCalled();
+      expect(replier).not.toHaveBeenCalled();
       carte.fire('webglcontextlost');
       vi.advanceTimersByTime(DELAI_RESTAURATION_GL_MS + 1);
-      expect(onMapError).toHaveBeenCalledTimes(1);
+      expect(replier).toHaveBeenCalledTimes(1);
+      expect(carte.retiree).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('style de carte refusé (403) avant le chargement : repli IMMÉDIAT, carte démontée, barre jamais montrée, aucun rendu', async () => {
+    const { erreurDeStyle } = await import('../src/scripts/roofPro11/viewerFullBoot');
+    const { barre, carte, replier, onReady, brancherSoleil, scene } = await monter();
+    const style = (carte.options as { style: unknown }).style as string;
+    expect(typeof style).toBe('string'); // clé MapTiler seule : le style est une adresse
+    // Une tuile refusée avant le chargement n'est pas un refus de style : on attend encore.
+    carte.fire('error', { sourceId: 'satellite', tile: {}, error: { status: 403, url: 'https://tuiles/1/2/3.jpg' } });
+    expect(replier).not.toHaveBeenCalled();
+    expect(erreurDeStyle({ error: { status: 403, url: style } }, style)).toBe(true);
+    carte.fire('error', { error: { status: 403, message: 'Forbidden', url: style } });
+    await attendre();
+    expect(replier).toHaveBeenCalledTimes(1);
+    expect(carte.retiree).toBe(true); // la boîte sombre de la carte quitte la scène : la photo ou la simplifiée se voient
+    expect(onReady).not.toHaveBeenCalled();
+    expect(brancherSoleil).not.toHaveBeenCalled();
+    expect(barre.hidden).toBe(true);
+    expect(scene.classList.contains('roof3d-stage--map')).toBe(false);
+    carte.fire('load'); // une carte démontée ne rend plus rien
+    expect(onReady).not.toHaveBeenCalled();
+  });
+
+  it('carte qui ne charge JAMAIS : au délai, repli (plus d’attente devant une boîte vide)', async () => {
+    vi.useFakeTimers();
+    try {
+      const { barre, carte, replier, onReady } = await monter({ loadTimeoutMs: 15_000 });
+      vi.advanceTimersByTime(14_999);
+      expect(replier).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(2);
+      expect(replier).toHaveBeenCalledTimes(1);
+      expect(carte.retiree).toBe(true);
+      expect(onReady).not.toHaveBeenCalled();
+      expect(barre.hidden).toBe(true);
     } finally {
       vi.useRealTimers();
     }
