@@ -339,3 +339,24 @@ def toit_plat_ouvert(devis) -> bool:
     valeur du curseur) ? Voir :data:`COUPURE_TOIT_PLAT`."""
     return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111,
                                        COUPURE_TOIT_PLAT)
+
+
+#: Liaison DC tracée (suite ACAL1317, lot 8, 26/11/2026 — règle fondateur du
+#: 23/11 « un seul moteur, un seul chiffre par valeur, le plus réaliste ») :
+#: quand le plan du calepinage porte un tracé DC MESURÉ du pan jusqu'à
+#: l'onduleur et qu'aucune longueur n'est saisie, la liaison DC de la
+#: SIMULATION (perte ohmique DC) et de la vérification de chute du calepinage
+#: est ce tracé (``apps/calepinage/services/cables.py::longueur_dc``). Calculs
+#: faits à partir de ce jour seulement : une simulation rangée n'est jamais
+#: réécrite, elle ne change qu'à sa prochaine simulation. Aucun devis n'en
+#: dépend (le devis ne lit que la longueur SAISIE ``dc_m``). Même date que
+#: :data:`COUPURE_TOIT_PLAT`, À POSER par l'orchestrateur avec elle.
+COUPURE_LIAISON_DC_TRACEE = (2026, 11, 28)
+
+
+def liaison_dc_tracee_ouverte(jour) -> bool:
+    """Liaison DC tracée — un calcul du calepinage fait le ``jour``
+    (``datetime.date``) prend-il le tracé DC du plan ? Voir
+    :data:`COUPURE_LIAISON_DC_TRACEE`."""
+    from datetime import date
+    return jour >= date(*COUPURE_LIAISON_DC_TRACEE)
