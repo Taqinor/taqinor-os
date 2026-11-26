@@ -233,9 +233,11 @@ def _onduleur_designe(calepinage):
     (``electrique.entree_stockee``), ``None`` sans désignation. Lu par la génération ET l'aperçu :
     ``ventes`` décide seul s'il est chiffré (catalogue, prix, forme du devis)."""
     from .electrique import entree_stockee
+    from .variantes import onduleur_designe_a_la_main
 
     entree = entree_stockee(calepinage)
-    if entree.get('onduleur_produit') in (None, ''):
+    # Lot 8 — un onduleur « repris de l'original » (copie, ACAL1253) n'est pas une désignation du vendeur.
+    if entree.get('onduleur_produit') in (None, '') or not onduleur_designe_a_la_main(calepinage):
         return None
     brut = entree.get('nombre_onduleurs')
     if brut in (None, ''):  # aucun nombre accepté : celui que le SCHÉMA dessine
