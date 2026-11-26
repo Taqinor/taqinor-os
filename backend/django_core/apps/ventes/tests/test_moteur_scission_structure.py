@@ -97,7 +97,7 @@ class Spl162LignesClassementTests(SimpleTestCase):
         dont le nom reste lié) lit toujours le MÊME objet via builder."""
         from apps.ventes.quote_engine import builder, lignes_classement
         for nom in ("_is_battery", "_is_panel", "_parse_marque",
-                    "_line_to_item", "panneaux_et_watt_lu",
+                    "_item_du_devis", "panneaux_et_watt_lu",
                     "_item_classement", "_item_marque"):
             with self.subTest(nom=nom):
                 self.assertIs(getattr(builder, nom),
@@ -106,8 +106,11 @@ class Spl162LignesClassementTests(SimpleTestCase):
         # importeurs lisent ces noms dans ``lignes_classement`` directement.
         # SPL163 — ``_cout_onduleur`` n'est plus lu que par la phase D1
         # (``etude_chiffrage``) : builder ne le lie plus.
+        # T4-V2-010 — builder passe par ``_item_du_devis`` : ``_line_to_item`` et
+        # ``fiches_figees`` se lisent dans ``lignes_classement`` (aucun importeur via builder).
         for nom in ("_is_inverter", "_is_smart_meter", "_is_wifi_dongle",
-                    "_parse_watt", "_parse_kwh", "_cout_onduleur"):
+                    "_parse_watt", "_parse_kwh", "_cout_onduleur",
+                    "_line_to_item", "fiches_figees"):
             with self.subTest(absent=nom):
                 self.assertFalse(hasattr(builder, nom))
 

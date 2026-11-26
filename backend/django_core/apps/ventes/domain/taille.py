@@ -74,7 +74,26 @@ def phase_et_isolement_du_lead(lead):
     pré-vol, devis automatique et contexte de sonde le lisent ici."""
     from apps.ventes.compatibilites import est_site_isole, normaliser_phase
     raccordement = getattr(lead, 'raccordement', None)
-    return normaliser_phase(raccordement), bool(est_site_isole(raccordement))
+    phase = normaliser_phase(raccordement)
+    if phase is None and (getattr(lead, 'type_installation', None) or '') == 'agricole':
+        phase = _phase_pompage_declaree(lead)
+    return phase, bool(est_site_isole(raccordement))
+
+
+def _phase_pompage_declaree(lead):
+    """T4-U3-023 — lead de POMPAGE sans « Raccordement » lisible : la phase que
+    la fiche DÉCLARE ailleurs, lue seulement quand elle est sans ambiguïté —
+    plaque de la pompe actuelle conservée (``pompe_actuelle_phases``) et
+    « Électricité au forage » (``electricite_sur_place`` monophasé /
+    triphasé). Une seule valeur déclarée, ou deux qui concordent : elle ;
+    deux qui se contredisent, ou aucune : ``None`` (le devis demande alors le
+    seul champ « Raccordement »). Jamais une phase supposée."""
+    from apps.ventes.compatibilites import normaliser_phase
+    declarees = {normaliser_phase(getattr(lead, 'electricite_sur_place', None))}
+    if (getattr(lead, 'mode_pompe', None) or '') == 'existante':
+        declarees.add(normaliser_phase(getattr(lead, 'pompe_actuelle_phases', None)))
+    declarees.discard(None)
+    return declarees.pop() if len(declarees) == 1 else None
 
 
 def phase_client_pour_dimensionnement(lead):

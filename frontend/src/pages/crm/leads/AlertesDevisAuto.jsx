@@ -27,12 +27,14 @@ export function PointeurChampLead({ champLead, onAllerAuChamp }) {
   )
 }
 
-export default function AlertesDevisAuto({ alertes, onAllerAuChamp }) {
+// T4-X6-008 — `titre` : le même rendu dit aussi ce que l'ENREGISTREMENT d'une
+// édition a ajusté (réponse `alertes` de replace-lines) ; défaut inchangé.
+export default function AlertesDevisAuto({ alertes, onAllerAuChamp, titre = null }) {
   if (!Array.isArray(alertes) || alertes.length === 0) return null
   return (
     <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-left text-sm"
          role="status" data-testid="ldp-alertes-auto">
-      <strong>Alertes du devis automatique :</strong>
+      <strong>{titre || 'Alertes du devis automatique :'}</strong>
       <ul>
         {alertes.map((a, i) => (
           <li key={`${a.code || 'alerte'}-${i}`}>

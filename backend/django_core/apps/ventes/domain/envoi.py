@@ -161,7 +161,7 @@ def figer_reglages_rendu(devis):
     redevance = TariffSettings.get(company=company).redevance_compteur_mad_mois
     produits = {}
     lignes = (LigneDevis.objects.filter(devis_id=devis.pk, type_ligne='produit')
-              .select_related('produit'))
+              .select_related('produit', 'produit__fiche_technique'))
     for ligne in lignes:
         produit = ligne.produit
         if produit is None:
@@ -172,6 +172,10 @@ def figer_reglages_rendu(devis):
             'garantie': produit.garantie or '',
             'garantie_mois': produit.garantie_mois,
             'garantie_production_mois': produit.garantie_production_mois,
+            # T4-V2-010 — la PREUVE du jour de l'envoi : la description figée
+            # n'imprime « protection marche à sec » que si elle la publiait.
+            'protection_marche_a_sec': getattr(
+                getattr(produit, 'fiche_technique', None), 'var_protection_marche_a_sec', None),
         }
     devis.clauses_appliquees = [
         c for c in (devis.clauses_appliquees or [])

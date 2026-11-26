@@ -368,7 +368,7 @@ export default function DevisGenerator({
       options: optionsDepuisComparaison(devisData),
       // ALEA51 — devis AUTOMATIQUE lancé d'ici (`?auto=1`) : les alertes du
       // serveur et le retour (économie, postes à chiffrer…) suivent le devis.
-      alertes: devisData?.alertes ?? [],
+      alertes: devisData?.alertes ?? [], titreAlertes: devisData?.titreAlertes,  // T4-X6-008
       resultat: devisData?.resultat ?? null,
     })
   }

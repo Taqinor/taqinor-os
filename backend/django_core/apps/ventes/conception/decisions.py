@@ -339,12 +339,9 @@ def decider_agricole(*, lead, company):
     lignes = _lignes_chiffrees(lignes, company)
     if mode_pompe != 'existante' and (
             pompe.get('placeholder') or not any(ligne['role_pompage'] == 'pompe' for ligne in lignes)):
-        noms = sortie.get('prix_a_renseigner') or []
-        message = 'Aucune pompe chiffrable pour HMT %s m / débit %s m³/h' % (
-            A._fr_nombre(hmt_m), A._fr_nombre(debit))
-        if noms:
-            message += ' — pompes à courbe sans prix : %s' % ', '.join(noms)
-        raise AutoDevisError(message + '.', field='pompe')
+        raise AutoDevisError(_message_pompes_sans_prix(
+            A._fr_nombre(hmt_m), A._fr_nombre(debit), sortie.get('prix_a_renseigner') or []),
+            field='pompe')
     if manquants:
         premier = manquants[0]
         message = '%s : %s' % (premier['libelle'], premier['motif'])
@@ -358,6 +355,17 @@ def decider_agricole(*, lead, company):
                 A._fr_nombre((sortie.get('puissance_retenue') or {}).get('kw')), alim)
         raise AutoDevisError(message, field='kit.%s' % premier['cle'])
     return DecisionAgricole(corps=corps, sortie=sortie, lignes=lignes, omises=omises, pompe=pompe)
+
+
+def _message_pompes_sans_prix(hmt, debit, noms):
+    """Refus « aucune pompe chiffrable » : les pompes à courbe sans prix NOMMÉES
+    et (T4-U3-021) OÙ les chiffrer — le prix de vente de leur fiche, dans Stock
+    → Catalogue (même renvoi que les autres manques du catalogue)."""
+    message = 'Aucune pompe chiffrable pour HMT %s m / débit %s m³/h' % (hmt, debit)
+    if noms:
+        message += (' — pompes à courbe sans prix : %s. Prix de vente à saisir dans '
+                    'Stock → Catalogue, fiche de chaque pompe' % ', '.join(noms))
+    return message + '.'
 
 
 def _lignes_chiffrees(lignes, company):
