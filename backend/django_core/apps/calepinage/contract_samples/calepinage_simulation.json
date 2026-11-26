@@ -3947,17 +3947,17 @@
   },
   "exemple_refus_manquants": {
     "parametres.simulation.mode_meteo": [
-      "Le mode météo n'est pas choisi : la simulation est refusée. Renseignez « parametres.simulation.mode_meteo » avec sa source — tmy ou pluriannuel. Aucun mode par défaut n'est appliqué : une année météo type et une fenêtre pluriannuelle ne rendent pas le même chiffre, et choisir à la place de la société reviendrait à inventer le sien."
+      "Choisissez le mode météo : année type ou plusieurs années."
     ],
     "manquants": [
       {
         "champ": "parametres.simulation.mode_meteo",
-        "motif": "Le mode météo n'est pas choisi : la simulation est refusée. Renseignez « parametres.simulation.mode_meteo » avec sa source — tmy ou pluriannuel. Aucun mode par défaut n'est appliqué : une année météo type et une fenêtre pluriannuelle ne rendent pas le même chiffre, et choisir à la place de la société reviendrait à inventer le sien.",
+        "motif": "Choisissez le mode météo : année type ou plusieurs années.",
         "cible": {"onglet": "reglages", "champ": "calx69-mode_meteo"}
       },
       {
         "champ": "parametres.simulation.fenetre_annees",
-        "motif": "La fenêtre d'années météo n'est pas renseignée alors que le mode « pluriannuel » est choisi : la simulation est refusée. Renseignez « parametres.simulation.fenetre_annees » avec sa source — toute la base disponible, dans la limite de 10 ans. Aucune fenêtre par défaut n'est appliquée.",
+        "motif": "Choisissez la fenêtre d'années météo : toute la base disponible, dans la limite de 10 ans.",
         "cible": {"onglet": "reglages", "champ": "calx69-fenetre_annees"}
       },
       {

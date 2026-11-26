@@ -104,6 +104,20 @@ class ManquantsDeSimulationTest(SimpleTestCase):
             {}, {'plans_equipes': 1})
         self.assertEqual(lignes, attendu['manquants'])
 
+    def test_acal1649_le_refus_meteo_se_dit_sans_cle_brute(self):
+        from apps.calepinage.services import manquants_simulation
+
+        lignes = manquants_simulation.manquants_de_simulation(
+            {'site': {'lat': 33.5, 'lon': -7.6}}, {'plans_equipes': 1})
+        self.assertEqual([ligne['champ'] for ligne in lignes],
+                         ['parametres.simulation.mode_meteo',
+                          'parametres.simulation.fenetre_annees'])
+        self.assertEqual(lignes[0]['motif'],
+                         'Choisissez le mode météo : année type ou plusieurs années.')
+        for ligne in lignes:
+            for brut in ('parametres.', 'tmy', 'pluriannuel'):
+                self.assertNotIn(brut, ligne['motif'])
+
     def test_avec_epingle_deux_lignes(self):
         from apps.calepinage.services import manquants_simulation
 
