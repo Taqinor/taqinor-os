@@ -8,7 +8,7 @@ import { Button, Card, Input, Label } from '../../ui'
 import RetourAtelier from './atelier/RetourAtelier'
 import { telechargerBlob } from './exportImage'
 import {
-  CIBLE_DU_BLOC, corpsEdition, couperTexte, echelleAjustee, exporterSchemaPng, exporterSchemaSvg, motifDuRefusDxf, nomFichierSchema,
+  CIBLE_DU_BLOC, corpsEdition, couperTexte, echelleAjustee, echelleDeDepart, exporterSchemaPng, exporterSchemaSvg, motifDuRefusDxf, nomFichierSchema,
 } from './SchemaUnifilairePanel.helpers'
 import EtatEcranAtelier from './atelier/EtatEcranAtelier'
 import { OPTIONS_TELECHARGEMENT } from './documents/telechargement'
@@ -73,9 +73,14 @@ export function PlancheSchema({ balisage, dessin = null, largeurDessin = null, a
   const vue = useRef(null)
   const glisse = useRef(null)
   const aGlisse = useRef(false)
-  const base = dessin && largeurDessin ? ajuste : 1
+  // `ajuste` = l'échelle qui fait tenir TOUT le dessin ; le départ ne descend jamais sous le plancher lisible
+  // (téléphone) : le dessin déborde alors, calé sur son bord gauche (là où sont les chaînes), et se déplace au doigt
+  // ou aux flèches. Le dézoom, lui, va jusqu'à l'échelle qui fait tout tenir.
+  const mesure = Boolean(dessin) && Boolean(largeurDessin)
+  const base = mesure ? echelleDeDepart(ajuste) : 1
+  const deborde = mesure && base > ajuste + 1e-9
   const echelle = zoomUtilisateur ?? base
-  const zoomMin = Math.min(ZOOM_MIN, base)
+  const zoomMin = Math.min(ZOOM_MIN, mesure ? ajuste : 1)
   const mesurable = Boolean(dessin) && Boolean(largeurDessin)
   useEffect(() => {
     const noeud = vue.current
@@ -146,7 +151,8 @@ export function PlancheSchema({ balisage, dessin = null, largeurDessin = null, a
                 <div className="csch-dessin csch-dessin-blocs" data-testid="csch-blocs"
                   style={{
                     transform: `translate(${decalage.x}px, ${decalage.y}px) scale(${echelle})`,
-                    ...(largeurDessin ? { width: largeurDessin, marginLeft: -largeurDessin / 2 } : null),
+                    ...(largeurDessin ? { width: largeurDessin, marginLeft: deborde ? 0 : -largeurDessin / 2 } : null),
+                    ...(deborde ? { left: 0, transformOrigin: 'top left' } : null),
                   }}>
                   {dessin}
                 </div>

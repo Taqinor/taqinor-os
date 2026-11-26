@@ -946,6 +946,7 @@ class LeDessinDuSchemaElectrique(unittest.TestCase):
         from core.electrique.schema_electrique import (
             _couper, _designation_affichee, document_schema_electrique, rendre_schema_electrique_svg)
         self.assertEqual(_couper("3P + N + T · 400 V", 16, 3), ["3P + N + T ·", "400 V"])
+        self.assertEqual(_couper("SUN2000-100KTL-M2-ABCDEFGH", 10, 3), ["SUN2000-10", "0KTL-M2-AB", "CDEFGH"])
         self.assertEqual(_couper("Parafoudre In 20 kA, Up ≤ 1,5 kV", 22, 2), ["Parafoudre In 20 kA,", "Up ≤ 1,5 kV"])
         for ligne in _couper("Parafoudre In 20 kA, Up ≤ 1,5 kV", 14, 3):
             self.assertNotRegex(ligne, r"^(kV|kA|V|A)\b")

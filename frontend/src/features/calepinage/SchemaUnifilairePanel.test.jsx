@@ -24,7 +24,7 @@ vi.mock('./exportImage', () => ({
 import calepinageApi from '../../api/calepinageApi'
 import SchemaUnifilairePanel, { PlancheSchema, SchemaEnBlocs } from './SchemaUnifilairePanel'
 import {
-  motifDuRefusDxf, corpsEdition, couperTexte, designationAffichee, echelleAjustee, estHorsReseau, lignesCartouche, lignesLegende, phraseCoteReseau, planDepuisDocument, planSchemaEnBlocs,
+  motifDuRefusDxf, corpsEdition, couperTexte, designationAffichee, ECHELLE_LISIBLE_MIN, echelleAjustee, echelleDeDepart, estHorsReseau, lignesCartouche, lignesLegende, phraseCoteReseau, planDepuisDocument, planSchemaEnBlocs,
 } from './SchemaUnifilairePanel.helpers'
 import { documentContrat, exempleContrat } from '../../test/fixtures/contractSamples'
 import { OPTIONS_TELECHARGEMENT } from './documents/telechargement'
@@ -436,24 +436,51 @@ describe('PlancheSchema, légende et cartouche (ACAL1301)', () => {
     expect(echelleAjustee(300, null)).toBe(1)
   })
 
-  it('S2 — dans un cadre étroit (tablette), le schéma en blocs démarre à l’échelle qui le fait tenir, puis le zoom reprend', async () => {
-    const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(436)
+  it('S2 — echelleDeDepart : plancher lisible 9/12 = 0,75 (le plus petit texte du dessin fait 12 px)', () => {
+    expect(ECHELLE_LISIBLE_MIN).toBe(0.75)
+    expect(echelleDeDepart(echelleAjustee(340, 872))).toBe(0.75) // téléphone : 0,389 -> plancher
+    expect(echelleDeDepart(echelleAjustee(436, 872))).toBe(0.75) // 0,5 -> plancher
+    expect(echelleDeDepart(echelleAjustee(780, 872))).toBe(0.894) // tablette empilée : ajustement pur
+    expect(echelleDeDepart(echelleAjustee(1200, 872))).toBe(1)
+  })
+
+  const avecCadre = async (largeur, essai) => {
+    const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(largeur)
     const ancien = globalThis.ResizeObserver
     globalThis.ResizeObserver = class { observe() {} disconnect() {} }
-    try {
-      render(<PlancheSchema dessin={<svg />} largeurDessin={872} />)
-      const vue = screen.getByTestId('csch-vue')
-      await waitFor(() => expect(vue).toHaveAttribute('data-echelle', '0.5'))
-      expect(screen.getByTestId('csch-blocs').style.width).toBe('872px')
-      const u = userEvent.setup()
-      await u.click(screen.getByRole('button', { name: 'Zoomer' }))
-      expect(vue).toHaveAttribute('data-echelle', '0.625')
-      // Dézoomer sous l'échelle de départ est permis (le départ n'est jamais un plancher plus haut que 0,5).
-      expect(screen.getByRole('button', { name: 'Dézoomer' })).not.toBeDisabled()
-    } finally {
+    try { await essai() } finally {
       clientWidth.mockRestore()
       globalThis.ResizeObserver = ancien
     }
+  }
+
+  it('S2 — cadre de tablette empilée (780 px) : le schéma en blocs tient en entier (ajustement pur), centré, le zoom reprend', async () => {
+    await avecCadre(780, async () => {
+      render(<PlancheSchema dessin={<svg />} largeurDessin={872} />)
+      const vue = screen.getByTestId('csch-vue')
+      await waitFor(() => expect(vue).toHaveAttribute('data-echelle', '0.894'))
+      expect(screen.getByTestId('csch-blocs').style.width).toBe('872px')
+      expect(screen.getByTestId('csch-blocs').style.marginLeft).toBe('-436px')
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Zoomer' }))
+      expect(Number(vue.getAttribute('data-echelle'))).toBeCloseTo(0.894 * 1.25, 3)
+    })
+  })
+
+  it('S2 — téléphone (cadre 340 px) : départ au plancher lisible 0,75, calé à gauche ; le dézoom va jusqu’à l’ajustement complet', async () => {
+    await avecCadre(340, async () => {
+      render(<PlancheSchema dessin={<svg />} largeurDessin={872} />)
+      const vue = screen.getByTestId('csch-vue')
+      await waitFor(() => expect(vue).toHaveAttribute('data-echelle', '0.75'))
+      const blocs = screen.getByTestId('csch-blocs')
+      expect(blocs.style.left).toBe('0px')
+      expect(blocs.style.transformOrigin).toBe('top left')
+      const u = userEvent.setup()
+      await u.click(screen.getByRole('button', { name: 'Dézoomer' }))
+      await u.click(screen.getByRole('button', { name: 'Dézoomer' }))
+      await u.click(screen.getByRole('button', { name: 'Dézoomer' }))
+      expect(Number(vue.getAttribute('data-echelle'))).toBeCloseTo(0.389, 2) // l'ajustement complet : tout le dessin visible
+      expect(screen.getByRole('button', { name: 'Dézoomer' })).toBeDisabled()
+    })
   })
 
   it('sans SVG : pas de zoom, les motifs (enfants) à la place', () => {
@@ -658,6 +685,8 @@ describe('planSchemaEnBlocs / SchemaEnBlocs (maquette Schema, tour 2)', () => {
     expect(longue).toEqual(['Onduleur hybride', 'très long…'])
     expect(designationAffichee('Deye Onduleur hybride Deye 20kW Triphasé')).toBe('Onduleur hybride Deye 20kW Triphasé')
     expect(designationAffichee('Deye SUN-10K-SG05LP3')).toBe('Deye SUN-10K-SG05LP3')
+    // Un mot seul plus long que la ligne est coupé à la largeur de la ligne.
+    expect(couperTexte('SUN2000-100KTL-M2-ABCDEFGH', 10, 3)).toEqual(['SUN2000-10', '0KTL-M2-AB', 'CDEFGH'])
   })
 })
 

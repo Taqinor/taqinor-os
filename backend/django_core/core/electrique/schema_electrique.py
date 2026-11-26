@@ -768,7 +768,14 @@ def _couper(texte, largeur, lignes):
     unité ; trop long, le texte finit par « … » posé à une FRONTIÈRE de mot (jamais au milieu d'un mot) —
     un texte, jamais un chiffre."""
     sortie = []
+    morceaux = []
     for mot in _mots(texte):
+        # Un mot seul plus long que la ligne (code de modèle) est coupé à la largeur de la ligne.
+        while largeur > 0 and len(mot) > largeur:
+            morceaux.append(mot[:largeur])
+            mot = mot[largeur:]
+        morceaux.append(mot)
+    for mot in morceaux:
         if sortie and len(sortie[-1]) + 1 + len(mot) <= largeur:
             sortie[-1] += " " + mot
         else:

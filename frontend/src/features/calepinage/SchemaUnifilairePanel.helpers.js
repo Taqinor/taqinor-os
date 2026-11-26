@@ -192,10 +192,21 @@ export function designationAffichee(designation) {
     : mots.join(' ')
 }
 
+/** Le plus petit texte du schéma en blocs fait 12 px (`.csch-t12`) : sous 9 px réels il ne se lit plus ; le plancher
+    de l'échelle de DÉPART est donc 9 / 12 = 0,75. En dessous (téléphone), le dessin s'ouvre à 0,75 et se fait défiler. */
+export const ECHELLE_LISIBLE_MIN = 9 / 12
+
+/** L'échelle de départ : celle qui fait tout tenir (`echelleAjustee`), jamais sous le plancher lisible. */
+export function echelleDeDepart(echelleQuiFaitTenir) {
+  return Math.max(Number(echelleQuiFaitTenir) || 1, ECHELLE_LISIBLE_MIN)
+}
+
 /** Coupe un texte en lignes d'au plus `max` caractères (mots entiers ; une valeur ne quitte jamais son unité),
     `n` lignes au plus — le « … » final se pose à une frontière de mot, jamais au milieu d'un mot. */
 export function couperTexte(texte, max, n = 2) {
   const mots = String(texte ?? '').trim().replace(NOMBRE_UNITE, `$1${INSECABLE}$2`).split(/[ \t\r\n]+/).filter(Boolean)
+    // Un mot seul plus long que la ligne (code de modèle) est coupé à la largeur de la ligne : il ne déborde pas.
+    .flatMap((m) => (max > 0 && m.length > max ? m.match(new RegExp(`.{1,${max}}`, 'g')) : [m]))
   const lignes = []
   for (const mot of mots) {
     const derniere = lignes[lignes.length - 1]
