@@ -96,6 +96,9 @@ export interface ViewerFullOptions {
   /** LOT 6 (D-ACAL-136) — index des pans que la visionneuse au soleil TEINTERA. Le pan actif en fait partie ⇒ la scène
    *  prend le verre et l'œil de l'atelier (`teinteAccesVisible`, sinon la teinte reste invisible). Absent = inchangé. */
   indexTeintes?: readonly number[];
+  /** Lot 8 (D-ACAL-132) — lien de CONFIANCE (`visionneuse_soleil` servie) : l'habit « Montrer au client » de l'ERP
+   *  (`types.ts::InitOptions.presentationClient`). Absent = la visionneuse d'aujourd'hui (liens standard). */
+  presentationClient?: boolean;
 }
 
 export interface ViewerFullHandle {
@@ -190,6 +193,7 @@ export function bootViewerFull(
   // LOT 6 (P1) — verre et œil de l'atelier SEULEMENT quand le pan actif sera teinté (ACAL1984) ; sinon aucune clé.
   const teinteAccesVisible = opts.indexTeintes?.includes(plan.activeIndex) === true;
   const toolOpts: InitOptions = { maptilerKey, mapboxToken, reducedMotion, ...(teinteAccesVisible ? { teinteAccesVisible } : {}) };
+  if (opts.presentationClient === true) toolOpts.presentationClient = true; // lot 8 — lien de confiance seulement
   const areas = viewerAreaRecords(plan);
   const ctx = {
     opts: toolOpts,

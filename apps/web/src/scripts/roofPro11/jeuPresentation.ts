@@ -13,6 +13,19 @@ export const TEINTES_PRESENTATION = {
   cadre: 0xdfe5f3,
 } as const;
 
+type OptsPresentation = { productionAtelier?: unknown; presentationClient?: boolean } | null | undefined;
+
+/** Lot 8 (D-ACAL-132) — la visionneuse des liens de CONFIANCE porte l'habit « Montrer au client » ; l'ERP
+ *  (`productionAtelier`) ignore ce drapeau : il a son propre interrupteur (`enPresentation`). */
+export function presentationClient(opts: OptsPresentation): boolean {
+  return opts?.productionAtelier === undefined && opts?.presentationClient === true;
+}
+
+/** Le jeu de matériaux de la scène : « presentation » dans l'ERP montré au client, ou sur un lien de confiance. */
+export function jeuDeLaScene(opts: OptsPresentation, erpEnPresentation: boolean): JeuPanneau {
+  return erpEnPresentation || presentationClient(opts) ? 'presentation' : 'atelier';
+}
+
 /** Teintes du bâtiment d'un pan : `null` = les matériaux de travail (atelier), inchangés. */
 export function teintesBatiment(jeu: JeuPanneau, enPente: boolean): { mur: number; pignon: number; dalle: number } | null {
   if (jeu !== 'presentation') return null;
