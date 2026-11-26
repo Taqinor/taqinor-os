@@ -14,6 +14,7 @@ from __future__ import annotations
 from html import escape
 
 from . import nombre_tel_que_servi
+from .production import _mois_libelle
 
 __all__ = ['CSS_SECTION', 'html_de_section']
 
@@ -51,8 +52,8 @@ def _mois(par_mois, pire):
         '<tr%s><th>%s</th><td class="valeur">%s</td>'
         '<td class="valeur">%s</td></tr>' % (
             ' class="pire-mois"' if m.get('mois') == pire else '',
-            _n(m.get('mois')) + (' (mois le plus défavorable)'
-                                 if m.get('mois') == pire else ''),
+            _mois_libelle(m.get('mois')) + (  # ACAL1744 — le mois en lettres
+                ' (mois le plus défavorable)' if m.get('mois') == pire else ''),
             _n(m.get('defaillance_kwh')), _n(m.get('heures_defaillantes')))
         for m in par_mois)
     return ('<table class="hors-reseau generique"><tr><th>Mois</th>'

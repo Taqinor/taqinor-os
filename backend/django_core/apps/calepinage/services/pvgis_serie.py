@@ -169,15 +169,14 @@ MOTIF_COMPOSANTES_ABSENTES = (
 #: CALX153 — le motif UNIQUE du refus d'une série qui ne porte que
 #: l'irradiance GLOBALE HORIZONTALE. Il vit ICI parce que c'est le SERVICE
 #: PVGIS qui décide de la colonne servie : ``tmy`` rend ``G(h)`` (horizontal)
-#: là où ``seriescalc`` rend ``G(i)`` (sur le plan des modules). Transposer
-#: l'un vers l'autre demanderait un modèle de transposition que ce module
-#: n'a pas, et le supposer fabriquerait une irradiance de plan qui n'a été
-#: ni mesurée ni calculée (D-CALX 7).
+#: là où ``seriescalc`` rend ``G(i)`` (sur le plan des modules). ACAL1715 :
+#: la simulation transpose l'année type par ``transposition.py`` (modèle et
+#: albédo SAISIS) AVANT la chaîne ; ce motif ne garde que la série brute.
 MOTIF_TMY_HORIZONTAL = (
     "La série météo ne porte que l'irradiance HORIZONTALE (« gh_w_m2 ») : "
-    "sans irradiance sur le PLAN des modules (« gi_w_m2 »), la chaîne de "
-    'pertes ne peut pas démarrer. Aucune transposition horizontal → plan '
-    "n'est supposée — elle demanderait un modèle que ce module n'a pas.")
+    "elle se transpose sur le PLAN des modules (« gi_w_m2 ») avant d'entrer "
+    "dans la chaîne de pertes, avec le modèle de transposition et l'albédo "
+    'choisis dans les réglages de simulation.')
 
 
 class PvgisIndisponible(RuntimeError):
@@ -767,9 +766,13 @@ class ClientPvgis:
             t2m = _flottant(ligne.get('T2m'))
             if t2m is not None:
                 temperatures.append(t2m)
+            # ACAL1715 — l'année du mois retenu et les composantes direct
+            # normal / diffus horizontal : ce que la transposition lit.
             points.append({
-                'mois': mois, 'jour': jour, 'heure': heure, 't2m_c': t2m,
-                'gh_w_m2': _flottant(ligne.get('G(h)')),
+                'annee': _annee, 'mois': mois, 'jour': jour, 'heure': heure,
+                't2m_c': t2m, 'gh_w_m2': _flottant(ligne.get('G(h)')),
+                'gb_n_w_m2': _flottant(ligne.get('Gb(n)')),
+                'gd_h_w_m2': _flottant(ligne.get('Gd(h)')),
                 'ws10m': _flottant(ligne.get('WS10m')),
             })
         if not points:
@@ -804,6 +807,11 @@ class ClientPvgis:
             'fenetre_annees': (f'{an_min}-{an_max}'
                                if an_min is not None and an_max is not None
                                else None),
+            # Revue lot 6 (ACAL1715) — l'INSTANT des valeurs, tel que PVGIS le
+            # publie (heures après l'horodatage) ; ``None`` s'il ne le dit pas.
+            'irradiance_time_offset_h': _flottant(
+                (((charge or {}).get('inputs') or {}).get('location') or {})
+                .get('irradiance_time_offset')),
             'url': self.construire_url('tmy', params),
             'depuis_cache': depuis_cache,
         }

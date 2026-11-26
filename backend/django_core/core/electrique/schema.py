@@ -29,7 +29,7 @@ import re
 from dataclasses import dataclass
 from html import escape
 
-from core.electrique.types import fr
+from core.electrique.types import COTE_DC, fr
 
 __all__ = [
     "FORMAT_A4_PAYSAGE", "FORMAT_A3_PAYSAGE", "RANGEES_MAX_A4",
@@ -128,6 +128,7 @@ _TEINTES = (
     ("coffret_dc", "#eef6ff"),
     ("parafoudre_dc", "#eef6ff"),
     ("sectionneur_dc", "#eef6ff"),
+    ("organe_dc", "#eef6ff"),
     ("onduleur", "#e9f7ef"),
     ("batterie", "#fff0f3"),
     ("disjoncteur_ac", "#f3eefb"),
@@ -277,6 +278,7 @@ def blocs_du_schema(entree, resultat, standard=False, branches_onduleur=None):
         blocs.append(Bloc("sectionneur_dc", "Sectionneur DC",
                           "" if standard else sectionneur.calibre,
                           repere=sectionneur.repere))
+    blocs.extend(_blocs_organes_dc(resultat, standard))
 
     onduleur = entree.onduleur
     detail_onduleur = [
@@ -322,6 +324,37 @@ def blocs_du_schema(entree, resultat, standard=False, branches_onduleur=None):
         blocs.append(Bloc("reseau", "Compteur ONEE",
                           "injection / soutirage"))
     return tuple(blocs)
+
+
+#: Les organes côté continu que la chaîne canonique dessine déjà (repères du
+#: noyau, ``core/electrique/protections.py``).
+_REPERES_DC_CANONIQUES = ("F1", "PDC1", "QDC1")
+
+
+def organes_dc_hors_chaine(resultat):
+    """ACAL1551 — les protections côté CONTINU retenues que la chaîne
+    canonique ne dessine pas (une décision société du calepinage : la coupure
+    d'urgence DC exigée par le dossier). Dessinées APRÈS le sectionneur, avant
+    l'onduleur ; l'applicatif lit la même liste pour ne plus les dire « non
+    dessinées »."""
+    return tuple(p for p in getattr(resultat, "protections", ()) or ()
+                 if getattr(p, "cote", "") == COTE_DC
+                 and p.repere not in _REPERES_DC_CANONIQUES)
+
+
+def _blocs_organes_dc(resultat, standard):
+    """Un bloc ``organe_dc`` (``organe_dc#2``…) par organe de
+    :func:`organes_dc_hors_chaine` : titre = sa désignation, sous-titre = son
+    calibre, sinon la provenance écrite par la décision (« décision
+    société »)."""
+    blocs = []
+    for rang, protection in enumerate(organes_dc_hors_chaine(resultat), 1):
+        provenance = (protection.regle_source or "").split(" — ", 1)[0]
+        detail = ("" if standard else protection.calibre) or provenance
+        blocs.append(Bloc("organe_dc" if rang == 1 else "organe_dc#%d" % rang,
+                          protection.designation or protection.repere, detail,
+                          repere=protection.repere))
+    return blocs
 
 
 #: CIQ664 — la mention posée EN TÊTE du sous-titre de chaque bloc MT : aucune

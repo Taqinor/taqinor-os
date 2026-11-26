@@ -72,7 +72,9 @@ CLES_DOCUMENT = (
 )
 
 #: Les organes de chaque coffret (clefs de ``Bloc``), dans l'ordre du moteur.
-_ORGANES_DC = ("fusibles", "parafoudre_dc", "sectionneur_dc")
+#: ``organe_dc`` (ACAL1551) : un organe côté continu retenu hors chaîne canonique
+#: (``schema.organes_dc_hors_chaine``) — ``organe_dc#2``… pour les suivants.
+_ORGANES_DC = ("fusibles", "parafoudre_dc", "sectionneur_dc", "organe_dc")
 _ORGANES_AC = ("disjoncteur_ac", "parafoudre_ac", "ddr")
 #: Les blocs de l'étage moyenne tension (``blocs_etage_mt``).
 _BLOCS_MT = ("transformateur_mt", "cellule_mt", "decouplage_mt",
@@ -205,7 +207,7 @@ def _coffret(blocs, protections, clefs, masque, libelles):
     """``{organes: [...]}`` des organes RETENUS du coffret, ou ``None``."""
     organes = []
     for bloc in blocs:
-        if bloc.clef not in clefs:
+        if bloc.clef.split("#", 1)[0] not in clefs:
             continue
         protection = protections.get(bloc.repere)
         organes.append({

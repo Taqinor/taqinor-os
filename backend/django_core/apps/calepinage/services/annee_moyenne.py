@@ -15,8 +15,8 @@ La division a lieu à la PUBLICATION, jamais dans le calcul : la chaîne, la
 validation PVcalc, le PR et les pourcentages tournent sur les sommes, comme
 avant ; seuls les nombres publiés changent. Une année type (N = 1) n'est pas
 touchée (identique au bit). Aucune grandeur qui n'est pas une énergie
-cumulée n'est divisée : pourcentages, ratios, puissances, comptes et
-températures restent tels quels.
+cumulée n'est divisée : pourcentages, ratios, puissances, comptes (sauf les
+heures de :data:`CLES_COMPTE_PAR_AN`, ACAL1960) et températures restent tels quels.
 """
 from __future__ import annotations
 
@@ -37,6 +37,11 @@ CLES_ENERGIE_CASCADE = frozenset((
     'energie_sous_demarrage_kwh', 'energie_sous_demarrage_deja_retiree_kwh',
     'energie_a_vide_kwh', 'energie_en_charge_kwh',
 ))
+
+#: ACAL1960 — les COMPTES d'heures de la cascade dits « par an » : l'écrêtage
+#: compte ses heures sur toute la fenêtre (87 600 h pour 2014-2023) ; publiées,
+#: elles sont ramenées à l'année moyenne comme les énergies (liste FERMÉE).
+CLES_COMPTE_PAR_AN = frozenset(('heures_ecretees',))
 
 #: Les décimales publiées — celles de la cascade (``chaine_pertes._arrondi``).
 DECIMALES = 3
@@ -70,7 +75,7 @@ def _ramener(noeud, annees, vus):
     enfants = noeud.values() if isinstance(noeud, dict) else noeud
     if isinstance(noeud, dict):
         for cle, valeur in list(noeud.items()):
-            if cle in CLES_ENERGIE_CASCADE and _est_nombre(valeur):
+            if (cle in CLES_ENERGIE_CASCADE or cle in CLES_COMPTE_PAR_AN) and _est_nombre(valeur):
                 noeud[cle] = moyenne(valeur, annees)
     for enfant in list(enfants):
         _ramener(enfant, annees, vus)

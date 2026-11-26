@@ -150,6 +150,19 @@ export const LIBELLES_SANS_SOURCE = {
   gabarit_verification_max_jours: "Nombre de jours au-delà duquel un gabarit vérifié est à redemander",
   fiche_ecart_pmax_pct: "Écart toléré entre Pmax et Vmp × Imp d’une fiche module importée",
   seuil_acces_optimiseur: "Accès solaire sous lequel un module est proposé pour un optimiseur",
+  // ACAL1624 — les douze réglages de lestage (registre servi `registre.lestage`), sans valeur publiée.
+  vitesse_vent_reference_m_s: 'Vitesse de vent de référence',
+  categorie_terrain: 'Catégorie de terrain',
+  coefficient_terrain: 'Coefficient de terrain',
+  coefficient_pression_soulevement: 'Coefficient de pression (soulèvement)',
+  coefficient_pression_horizontal: 'Coefficient de pression (horizontal)',
+  coefficient_frottement: 'Coefficient de frottement',
+  charge_neige_kn_m2: 'Charge de neige',
+  masse_structure_kg_par_module: 'Masse de structure par module (kit)',
+  largeur_bande_rive_m: 'Largeur de la bande de rive',
+  largeur_coin_m: 'Largeur de coin',
+  lest_rive_kg_par_module: 'Lest additionnel en rive',
+  lest_coin_kg_par_module: 'Lest additionnel en coin',
 }
 
 /** Le nom lisible d une clé sans source (jamais la clé elle-même). */

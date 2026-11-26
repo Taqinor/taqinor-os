@@ -148,6 +148,18 @@ def phrase_non_raccordes(nombre):
             "part, « hors chaîne »)." % nombre)
 
 
+def non_raccordes_servis(production):
+    """Revue lot 6 (ACAL1623) — ``{modules, phrase}`` quand la production
+    servie compte des panneaux raccordés à aucun onduleur
+    (``hors_chaine.modules`` > 0), sinon ``None`` : l'écran lit la phrase
+    sur SA clé, jamais à un rang de ``avertissements``. Lecture seule."""
+    hors = (production or {}).get('hors_chaine') if isinstance(production, dict) else None
+    nombre = hors.get('modules') if isinstance(hors, dict) else None
+    if not isinstance(nombre, int) or isinstance(nombre, bool) or nombre <= 0:
+        return None
+    return {'modules': nombre, 'phrase': phrase_non_raccordes(nombre)}
+
+
 def plans_raccordes(plans, affectation):
     """ACAL1602 — ``(plans, nombre, avertissement)`` : chaque pan réduit à
     ses modules RACCORDÉS (``chaine`` non nulle dans la table ;

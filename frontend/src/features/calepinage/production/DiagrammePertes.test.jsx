@@ -270,6 +270,19 @@ describe('DiagrammePertes — cascade séquentielle (CALX48)', () => {
     expect(detail.textContent).not.toContain('[object Object]')
   })
 
+  it('revue lot 6 (ACAL1654) : la ligne dépliée nomme la source par la table de l’écran — « Page publiée », jamais « texte »', async () => {
+    const d = donneesAvecCascadeDetaillee()
+    d.cascade = { ...d.cascade, etapes: d.cascade.etapes.map((e) => (e.etape === 'thermique' ? { ...e, source: 'texte' } : e)) }
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: d })
+    rendre()
+    const lignes = within(await screen.findByTestId('calx48-cascade-detaillee')).getByTestId('acal444-lignes')
+    fireEvent.click(within(within(lignes).getByTestId('acal444-ligne-thermique')).getByRole('button'))
+    const detail = within(lignes).getByTestId('acal444-detail-thermique')
+    const source = within(detail).getByText('Source').nextElementSibling
+    expect(source).toHaveTextContent('Page publiée')
+    expect(source.textContent).not.toBe('texte')
+  })
+
   /* ACAL1671 / ACAL1968 — la mention SERVIE d'une entrée (pose retenue du thermique, valeur supposée d'une perte)
      s'affiche telle quelle sous la ligne dépliée ; une entrée non supposée et sans mention n'ajoute rien. */
   const avecEntrees = (entrees) => {
@@ -394,6 +407,24 @@ describe('DiagrammePertes — barres depuis les énergies servies (ACAL140)', ()
     const lignes = construireCascadeDetaillee(deuxEtapes, 19)
     expect(lignes[2].niveau).toBeCloseTo(81, 6)
     expect(lignes[3].valeur).toBeCloseTo(81, 6)
+  })
+
+  it('revue lot 6 — la source servie en CODE se nomme par la table de l’écran (« texte » → « Page publiée »)', async () => {
+    const etapes = [
+      { ...deuxEtapes[0], source: 'texte' },
+      { ...deuxEtapes[1], source: 'societe' },
+    ]
+    const resultatAvecSources = () => ({
+      ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple'),
+      cascade: { ...exempleContrat('calepinage', 'calepinage_pertes_cascade', 'exemple').cascade,
+        etapes, total_pct: 19 },
+    })
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: resultatAvecSources() })
+    rendre()
+    const table = within(await screen.findByTestId('calx48-cascade-detaillee')).getByRole('table')
+    expect(within(table).getByText('Page publiée')).toBeInTheDocument()
+    expect(within(table).getByText('Réglage société')).toBeInTheDocument()
+    expect(within(table).queryByText('texte')).toBeNull()
   })
 
   it("R3-19 — une étape omise montre le texte lisible du serveur, jamais le chemin du motif", () => {

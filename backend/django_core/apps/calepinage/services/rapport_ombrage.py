@@ -119,6 +119,15 @@ def _moyennes_mensuelles(matrice):
     return lignes
 
 
+def _en_pourcent(fraction):
+    """ACAL1660 — une fraction d'accès solaire en %, une décimale au plus
+    (entier quand la décimale est nulle) ; ``None`` reste ``None``."""
+    if not isinstance(fraction, (int, float)) or isinstance(fraction, bool):
+        return None
+    valeur = round(100.0 * fraction, 1)
+    return int(valeur) if valeur.is_integer() else valeur
+
+
 def _bloc_pan(pan_pose, acces_module, ombrage_par_pan, production_par_pan,
               chaine_faible):
     """Un bloc PAR PAN — LU, jamais recalculé (voir docstring du module)."""
@@ -129,9 +138,11 @@ def _bloc_pan(pan_pose, acces_module, ombrage_par_pan, production_par_pan,
     acces_moyen = None
     acces_min = None
     if valeurs_mesurees:
+        # ACAL1660 — ``solarAccess.values`` est une FRACTION [0 ; 1] : publiée
+        # en %, à une décimale au plus (« 89 % », jamais « 0,9 »).
         methode_acces = 'mesure'
-        acces_moyen = round(sum(valeurs_mesurees) / len(valeurs_mesurees), 1)
-        acces_min = round(min(valeurs_mesurees), 1)
+        acces_moyen = _en_pourcent(sum(valeurs_mesurees) / len(valeurs_mesurees))
+        acces_min = _en_pourcent(min(valeurs_mesurees))
     else:
         ligne_ombrage = ombrage_par_pan.get(repere) or {}
         if ligne_ombrage.get('acces_solaire_moyen_pct') is not None:
@@ -286,7 +297,7 @@ def _construire_rapport_ombrage(calepinage, *, langue=None, resultat=None,
 
 
 def _table_blocs(blocs, langue_libelle):
-    from .rapport import nombre_tel_que_servi
+    from .rapport import nombre_tel_que_servi, valeur_imprimable
 
     lignes = []
     for bloc in blocs:
@@ -306,7 +317,7 @@ def _table_blocs(blocs, langue_libelle):
                 '<p class="note">Chaîne la plus faible du toit : chaîne %s '
                 '— accès solaire %s %% (raison : %s)</p>'
                 % (escape(str(chaine.get('chaine', ''))),
-                   nombre_tel_que_servi(chaine.get('acces_solaire')),
+                   valeur_imprimable(_en_pourcent(chaine.get('acces_solaire'))),
                    escape(str(chaine.get('raison', '')))))
         lignes.append(
             '<section class="bloc-pan"><h3>Pan %s</h3>'

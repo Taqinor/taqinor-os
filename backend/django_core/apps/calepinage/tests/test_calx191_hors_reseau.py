@@ -154,6 +154,21 @@ class ContenuPublieTest(SimpleTestCase):
         self.assertIn(resultat['mois_le_plus_defavorable'], range(1, 13))
         self.assertTrue(resultat['par_mois'])
 
+    def test_acal1960_les_heures_sont_comptees_par_an(self):
+        # Deux ans de fenêtre : ``heures`` dit l'année moyenne (720 h), pas la
+        # longueur de la série (1 440 h) ; un an : inchangé. Mutant : ne pas
+        # diviser ⇒ 1 440.
+        serie = serie_de_test(heures=1440)
+        contexte = contexte_de_test(heures=1440, jours=1.0)
+        self.assertEqual(bloc.bloc_hors_reseau(serie, contexte)[1]['heures'], 1440)
+        contexte[chaine_pertes.CLE_ANNEES_FENETRE] = 2
+        rendu = bloc.bloc_hors_reseau(serie, contexte)[1]
+        self.assertEqual(rendu['heures'], 720)
+        # Revue lot 6 — la portée est DITE ; un bloc omis la laisse nulle.
+        self.assertEqual(rendu['portee_heures'], 'annee_moyenne')
+        omis = bloc.bloc_hors_reseau(serie, contexte_de_test(heures=1440))[1]
+        self.assertIsNone(omis['portee_heures'])
+
     def test_le_soc_minimal_est_publie_et_borne(self):
         serie = serie_de_test(heures=720)
         suite, resultat = bloc.bloc_hors_reseau(

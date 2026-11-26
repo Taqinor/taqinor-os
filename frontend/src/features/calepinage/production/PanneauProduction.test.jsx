@@ -46,6 +46,7 @@ import sourceBibliotheque from '../Bibliotheque.jsx?raw'
 import { BandeauBorneHaute, EcartPvgis } from './BandeauProvenanceProduction'
 import { suivreSimulationDuServeur, viderSimulationsAuto } from './simulationAuto'
 import { OPTIONS_TELECHARGEMENT } from '../documents/telechargement'
+import { libelleSource } from './DiagrammePertes.helpers'
 
 const servir = (variante) => {
   calepinageApi.calepinages.resultat
@@ -444,12 +445,26 @@ describe('PanneauProduction — bouton de calcul (CALX48, ACAL125)', () => {
       .toHaveBeenCalledWith(1, { forcer: true }))
   })
 
-  it('périmé : « Relancer (document modifié) »', async () => {
+  it('périmé sans cause prouvée : « Relancer la simulation » (aucune cause nommée)', async () => {
     servir('exemple_perime')
     rendre()
 
     await screen.findByTestId('cal236-panneau')
-    expect(screen.getByTestId('calx48-lancer-bouton')).toHaveTextContent('Relancer (document modifié)')
+    expect(screen.getByTestId('calx48-lancer-bouton')).toHaveTextContent('Relancer la simulation')
+  })
+
+  it('ACAL1647 — périmé par un réglage de la société : « Relancer (réglages modifiés) »', async () => {
+    const servi = exempleContrat('calepinage', 'calepinage_resultat', 'exemple_perime')
+    calepinageApi.calepinages.resultat.mockResolvedValue({
+      data: {
+        ...servi,
+        motif: 'simulation périmée : un réglage de la société a changé depuis le calcul du 19/09/2026',
+      },
+    })
+    rendre()
+
+    await screen.findByTestId('cal236-panneau')
+    expect(screen.getByTestId('calx48-lancer-bouton')).toHaveTextContent('Relancer (réglages modifiés)')
   })
 
   it('sans la permission de gestion : aucun bouton de calcul', async () => {
@@ -1253,7 +1268,9 @@ describe('PanneauProduction — Pourquoi ce chiffre ? (ACAL880)', () => {
     const thermique = CASCADE.etapes.find((e) => e.etape === 'thermique')
     expect(postes[0]).toHaveTextContent(thermique.libelle)
     expect(postes[0].textContent.replace(/\s/g, ' ')).toContain('8,0 %')
-    expect(postes[0]).toHaveTextContent(thermique.source)
+    // ACAL1654 — la source se lit par la table de l'écran (« Fiche technique »), jamais le code brut.
+    expect(postes[0]).toHaveTextContent(libelleSource(thermique.source))
+    expect(libelleSource(thermique.source)).not.toBe(thermique.source)
     const geste = REGISTRE.find((e) => e.cle === 'pertes.etape').geste
     expect(await within(postes[0]).findByText(geste)).toBeInTheDocument()
   })

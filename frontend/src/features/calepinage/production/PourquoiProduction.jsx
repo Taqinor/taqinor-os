@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { formatNumber } from '../../../lib/format'
 import { useModeExpert } from '../atelier/modeExpert'
+import { libelleSource } from './DiagrammePertes.helpers'
 import useExplications from '../commun/useExplications'
 
 /* ============================================================================
@@ -50,7 +51,7 @@ export default function PourquoiProduction({ cascade }) {
             <li key={p.etape} className="rounded-md border border-border p-3" data-testid={`acal880-poste-${p.etape}`}>
               <p className="font-medium">
                 {p.libelle}{' — '}{formatNumber(p.perte_pct, { decimals: 1 })}{' %'}
-                <span className="text-muted-foreground">{` (source : ${p.source || 'non publiée'})`}</span>
+                <span className="text-muted-foreground">{` (source : ${p.source ? libelleSource(p.source) : 'non publiée'})`}</span>
               </p>
               {geste(p.etape) && (
                 <p className="text-muted-foreground" data-testid={`acal880-geste-${p.etape}`}>{geste(p.etape)}</p>

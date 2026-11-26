@@ -157,6 +157,66 @@ class ModePluriannuelTest(unittest.TestCase):
         self.assertEqual(decision['plafond_annees'], PLAFOND_FENETRE_ANNEES)
 
 
+class AnneeTypeTransposeeTest(unittest.TestCase):
+    """Revue lot 6 (ACAL1715) — l'année type transposée à l'INSTANT que PVGIS
+    publie (``irradiance_time_offset`` : horodatage + 0,1608 h), le même pour
+    toutes les étapes qui placent le soleil, et des propriétés PHYSIQUES sur
+    les douze jours enregistrés (Perez, albédo 0,2, pente 30°)."""
+
+    REGLAGES = reglages(modele_transposition='perez', albedo_mensuel=0.2)
+
+    def _plan(self, aspect, charge=None):
+        from apps.calepinage.services import transposition
+
+        client = ClientPvgis(TransportEnregistre(charge or charger('tmy_casablanca.json')),
+                             cache=_Cache(), dormir=lambda _s: None)
+        plan = {'lat': 33.5, 'lon': -7.6, 'inclinaison_deg': 30.0,
+                'azimut_pvgis_deg': aspect}
+        return transposition.transposer_annee_type(client, plan, self.REGLAGES, None,
+                                                   {'appels': 0})
+
+    @staticmethod
+    def _kwh_m2(reponse):
+        return sum(point['gi_w_m2'] for point in reponse['points']) / 1000.0
+
+    def test_instant_publie_par_pvgis_et_partage_par_les_etapes(self):
+        import datetime
+
+        from apps.calepinage.services import etapes
+
+        reponse = self._plan(0.0)
+        instant = reponse['meteo']['transposition']['instant_soleil']
+        self.assertEqual(instant['minutes_apres_l_heure'], 10)  # 0,1608 h
+        self.assertIn('irradiance_time_offset', instant['source'])
+        self.assertEqual(instant['hypothese'], '')
+        point = {'annee': 2020, 'mois': 6, 'jour': 15, 'heure': 12}
+        self.assertEqual(etapes.instant_utc(point, reponse['meteo']),
+                         datetime.datetime(2020, 6, 15, 12, 10, tzinfo=datetime.timezone.utc))
+        # Une série non transposée : l'instant d'avant, inchangé.
+        self.assertEqual(etapes.instant_utc(point, {'heure': {'base': 'utc'}}),
+                         datetime.datetime(2020, 6, 15, 12, 0, tzinfo=datetime.timezone.utc))
+
+    def test_sans_instant_publie_l_hypothese_est_dite(self):
+        charge = charger('tmy_casablanca.json')
+        del charge['inputs']['location']['irradiance_time_offset']
+        instant = self._plan(0.0, charge)['meteo']['transposition']['instant_soleil']
+        self.assertEqual(instant['minutes_apres_l_heure'], 30)
+        self.assertIn('par hypothèse', instant['hypothese'])
+
+    def test_proprietes_physiques_des_quatre_orientations(self):
+        horizontal = sum(ligne['G(h)'] or 0.0 for ligne in charger(
+            'tmy_casablanca.json')['outputs']['tmy_hourly']) / 1000.0
+        sud, nord, est, ouest = (self._kwh_m2(self._plan(aspect))
+                                 for aspect in (0.0, 180.0, -90.0, 90.0))
+        self.assertGreater(sud, nord)
+        self.assertGreater(sud, max(est, ouest))
+        self.assertTrue(1.0 < sud / horizontal < 1.3, sud / horizontal)
+        self.assertTrue(0.5 < nord / horizontal < 1.0, nord / horizontal)
+        # Est et ouest dans une bande de 8 % l'un de l'autre (au milieu de
+        # l'heure, sans l'instant publié, l'écart montait à 12,5 %).
+        self.assertLess(abs(ouest - est) / ((ouest + est) / 2.0), 0.08)
+
+
 class IrradianceHorizontaleRefuseeTest(unittest.TestCase):
     """Le TMY sert du GLOBAL HORIZONTAL : la chaîne refuse d'y démarrer."""
 

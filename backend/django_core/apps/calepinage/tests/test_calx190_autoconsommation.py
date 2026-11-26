@@ -332,6 +332,23 @@ class PlagesPlafondInjectionTest(SimpleTestCase):
         self.assertEqual(len(limites.plages_saisies(
             [plage, {'debut_h': 10, 'fin_h': 24, 'plafond_kw': 0}])), 2)
 
+    def test_le_refus_d_une_plage_publie_son_champ_et_son_rang(self):
+        # ACAL1675 — une règle liant DEUX plages (chevauchement) ne s'écrit
+        # pas dans le schéma : le service la refuse en 409 (ENF11) et le corps
+        # publié nomme la plage fautive par son RANG, ici 1.
+        from apps.calepinage.services.raccordement import (
+            RaccordementInvalide, _saisie_publiee)
+        from apps.calepinage.views.raccordement import champ_du_refus
+
+        corps = {'plages_plafond_injection': [
+            {'debut_h': 8, 'fin_h': 10, 'plafond_kw': 1.0},
+            {'debut_h': 9, 'fin_h': 12, 'plafond_kw': 1.0}]}
+        with self.assertRaises(RaccordementInvalide) as refus:
+            _saisie_publiee(corps)
+        self.assertTrue(refus.exception.etat)  # 409, pas 400
+        self.assertEqual(champ_du_refus(refus.exception.champ),
+                         'plages_plafond_injection[1]')
+
 
 class ApresBatterieTest(SimpleTestCase):
     """La production vue au compteur est celle que CALX188 a laissée."""

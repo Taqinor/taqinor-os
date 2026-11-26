@@ -435,6 +435,66 @@
       "cle": "seuil_acces_optimiseur",
       "section": "electrique_societe",
       "motif": "Accès solaire sous lequel un module est proposé pour un optimiseur : réglage société, aucune page publiée relue ne le fixe, laissé sans valeur (D-CALX 7, ACAL647)."
+    },
+    {
+      "cle": "vitesse_vent_reference_m_s",
+      "section": "lestage",
+      "motif": "Vitesse de vent de référence : elle dépend de la zone de vent du site (carte de l'annexe nationale de l'Eurocode 1, NF EN 1991-1-4) ; aucune page publiée relue le 26/11/2026 ne la fixe pour une toiture quelconque, laissée sans valeur (D-CALX 7, ACAL1624)."
+    },
+    {
+      "cle": "categorie_terrain",
+      "section": "lestage",
+      "motif": "Catégorie de terrain : elle se lit sur les abords du site (rugosité, NF EN 1991-1-4) ; aucune page publiée relue le 26/11/2026 ne la fixe pour une toiture quelconque, laissée sans valeur (D-CALX 7, ACAL1624)."
+    },
+    {
+      "cle": "coefficient_terrain",
+      "section": "lestage",
+      "motif": "Coefficient de terrain : il découle de la catégorie de terrain du site (NF EN 1991-1-4) ; aucune page publiée relue le 26/11/2026 ne la fixe pour une toiture quelconque, laissée sans valeur (D-CALX 7, ACAL1624)."
+    },
+    {
+      "cle": "coefficient_pression_soulevement",
+      "section": "lestage",
+      "motif": "Coefficient de pression en soulèvement : il est propre au système de fixation et à la toiture (essai ou note du fabricant du système) ; aucune page publiée relue le 26/11/2026 ne la fixe pour une toiture quelconque, laissée sans valeur (D-CALX 7, ACAL1624)."
+    },
+    {
+      "cle": "coefficient_pression_horizontal",
+      "section": "lestage",
+      "motif": "Coefficient de pression horizontal : il est propre au système de fixation et à la toiture (essai ou note du fabricant du système) ; aucune page publiée relue le 26/11/2026 ne la fixe pour une toiture quelconque, laissée sans valeur (D-CALX 7, ACAL1624)."
+    },
+    {
+      "cle": "coefficient_frottement",
+      "section": "lestage",
+      "motif": "Coefficient de frottement entre le lest et la membrane : il dépend des deux matériaux en contact (note du fabricant du système) ; aucune page publiée relue le 26/11/2026 ne la fixe pour une toiture quelconque, laissée sans valeur (D-CALX 7, ACAL1624)."
+    },
+    {
+      "cle": "charge_neige_kn_m2",
+      "section": "lestage",
+      "motif": "Charge de neige : elle dépend de la zone de neige et de l'altitude du site (NF EN 1991-1-3) ; aucune page publiée relue le 26/11/2026 ne la fixe pour une toiture quelconque, laissée sans valeur (D-CALX 7, ACAL1624)."
+    },
+    {
+      "cle": "masse_structure_kg_par_module",
+      "section": "lestage",
+      "motif": "Masse de structure par module : elle se lit sur la fiche du kit de fixation retenu ; aucune page publiée relue le 26/11/2026 ne la fixe pour une toiture quelconque, laissée sans valeur (D-CALX 7, ACAL1624)."
+    },
+    {
+      "cle": "largeur_bande_rive_m",
+      "section": "lestage",
+      "motif": "Largeur de la bande de rive : elle dépend de la hauteur et des dimensions du bâtiment (NF EN 1991-1-4) et de la note du fabricant du système ; aucune page publiée relue le 26/11/2026 ne la fixe pour une toiture quelconque, laissée sans valeur (D-CALX 7, ACAL1624)."
+    },
+    {
+      "cle": "largeur_coin_m",
+      "section": "lestage",
+      "motif": "Largeur de coin : elle dépend de la hauteur et des dimensions du bâtiment (NF EN 1991-1-4) et de la note du fabricant du système ; aucune page publiée relue le 26/11/2026 ne la fixe pour une toiture quelconque, laissée sans valeur (D-CALX 7, ACAL1624)."
+    },
+    {
+      "cle": "lest_rive_kg_par_module",
+      "section": "lestage",
+      "motif": "Lest additionnel en rive : il sort de la note de calcul du fabricant du système pour le site ; aucune page publiée relue le 26/11/2026 ne la fixe pour une toiture quelconque, laissée sans valeur (D-CALX 7, ACAL1624)."
+    },
+    {
+      "cle": "lest_coin_kg_par_module",
+      "section": "lestage",
+      "motif": "Lest additionnel en coin : il sort de la note de calcul du fabricant du système pour le site ; aucune page publiée relue le 26/11/2026 ne la fixe pour une toiture quelconque, laissée sans valeur (D-CALX 7, ACAL1624)."
     }
   ]
 }

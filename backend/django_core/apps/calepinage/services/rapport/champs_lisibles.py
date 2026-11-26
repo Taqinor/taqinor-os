@@ -98,6 +98,21 @@ INTITULES_CHEMINS = {
                          'lié, puis relancez la simulation'),
     'hors_reseau': 'hors réseau',
     'electrique.chainage': 'câblage des chaînes',
+    # ACAL1656 — les données exigées des sections du rapport (« Donnée
+    # manquante : … » ne cite plus jamais leur chemin).
+    'pose.kwc': 'puissance crête posée (kWc)',
+    'pose.total_modules': 'nombre de modules posés',
+    'pose.pans': 'pans posés',
+    'production.total.p50_kwh': 'production annuelle P50 (kWh)',
+    'production.base': "base d'irradiance de la production",
+    'production.mensuel': 'production mois par mois',
+    'consommation.total_kwh': 'consommation annuelle (kWh)',
+    'hors_reseau.defaillance_kwh': 'énergie non servie hors réseau (kWh)',
+    'hors_reseau.par_mois': 'bilan hors réseau mois par mois',
+    'autoconsommation': 'autoconsommation',
+    'ombrage.par_pan': 'ombrage pan par pan',
+    'electrique.verdicts': 'verdicts électriques',
+    'hash_entree': 'empreinte des entrées du calcul',
     'roof_layout.pin': 'point GPS du site',
     # ACAL1323 — chemins encore servis bruts à l'écran (Économie, Production).
     'remplacements': 'remplacements de matériel prévus',
@@ -283,6 +298,11 @@ def _nettoyer(texte):
     return re.sub(r'\s+([,.])', r'\1', texte).strip()
 
 
+#: Une adresse web dans un motif ou une référence, et son jeton de mise de côté.
+_URL = re.compile(r'https?://\S+')
+_URL_DE_COTE = re.compile('\ue000([0-9]+)\ue001')
+
+
 def motif_lisible(motif):
     """Le motif servi, rendu lisible pour celui qui lit le document.
 
@@ -293,7 +313,18 @@ def motif_lisible(motif):
     chemin inconnu après « Champ manquant : » devient « Une donnée manque ».
     """
     brut = str(motif) if motif is not None else ''
-    texte = _retirer_codes(brut)
+    # Une adresse publiée (« https://… ») est mise de côté AVANT toute
+    # substitution et remise telle quelle à la fin : une source reste exacte.
+    urls = []
+
+    def de_cote(correspondance):
+        adresse = correspondance.group(0)
+        fin = len(adresse.rstrip('.,;:!?)»'))
+        urls.append(adresse[:fin])
+        return '\ue000%d\ue001%s' % (len(urls) - 1, adresse[fin:])
+
+    protege = _URL.sub(de_cote, brut)
+    texte = _retirer_codes(protege)
 
     def champ_manquant(correspondance):
         libelle = _intitule_champ(correspondance.group(2))
@@ -322,7 +353,41 @@ def motif_lisible(motif):
     texte = _FICHIER.sub('', texte) if '.py' in texte else texte
     texte = _ENTRE_GUILLEMETS_TECH.sub(_guillemets_techniques, texte)
     texte = _TECHNIQUE.sub(_technique_en_prose, texte)
-    return texte if texte == brut else _nettoyer(texte)
+    texte = texte if texte == protege else _nettoyer(texte)
+    return _URL_DE_COTE.sub(lambda c: urls[int(c.group(1))], _phrases_uniques(texte))
+
+
+def _phrases_uniques(texte):
+    """ACAL1654 — une phrase répétée (motifs concaténés) ne s'imprime qu'une
+    fois ; un texte sans répétition est rendu tel quel."""
+    phrases = re.split(r'(?<=[.!?])\s+', texte)
+    uniques = list(dict.fromkeys(phrases))
+    return texte if len(uniques) == len(phrases) else ' '.join(uniques)
+
+
+#: ACAL1656 — la provenance IMPRIMÉE d'une étape (rapport d'étude), en mots,
+#: pour les codes que le glossaire de la note ne nomme pas. À l'ÉCRAN, le code
+#: ``source`` est servi TEL QUEL et l'écran le nomme par SA table
+#: (``DiagrammePertes.jsx::SOURCE_LABELS``, revue lot 6 : une seule table par
+#: support, jamais un mot traduit deux fois).
+SOURCES_LISIBLES = {
+    'texte': 'page publiée',
+    'societe': 'réglage société',
+    'document': 'document du calepinage',
+    'materiel': 'matériel du calepinage',
+}
+
+
+def _etape_servie(etape):
+    """ACAL1654 — l'étape SERVIE : motif lisible (étape omise) et référence
+    sans code de tâche ni chemin ; le code ``source`` reste celui du moteur
+    (l'écran le nomme). La MÊME étape si rien ne change."""
+    servie = dict(etape)
+    if etape.get('motif_omission'):
+        servie['motif_lisible'] = motif_lisible(etape['motif_omission'])
+    if isinstance(etape.get('reference'), str) and etape['reference']:
+        servie['reference'] = motif_lisible(etape['reference'])
+    return servie if servie != etape else etape
 
 
 #: ACAL1323 — les motifs SERVIS à l'écran, où qu'ils soient dans le résultat.
@@ -338,6 +403,13 @@ def _phrases_lisibles(phrases):
     return phrases if lues == phrases else lues
 
 
+def _cle_de_motif(cle, cles):
+    """ACAL1928 — une clé de motif servie : celles de ``cles``, et (au parcours
+    du résultat entier) toute clé ``*_motif`` (« p75_kwh_motif » porte
+    « Pertes non renseignées (salissure, lid…) »)."""
+    return cle in cles or (cles is _CLES_MOTIF_SERVI and str(cle).endswith('_motif'))
+
+
 def _servis_lisibles(noeud, cles=_CLES_MOTIF_SERVI):
     """``noeud`` dont chaque motif servi est rendu lisible (même objet s'il
     n'en porte aucun : rien n'est recopié pour rien)."""
@@ -346,7 +418,7 @@ def _servis_lisibles(noeud, cles=_CLES_MOTIF_SERVI):
         return lus if any(a is not b for a, b in zip(lus, noeud)) else noeud
     if not isinstance(noeud, dict):
         return noeud
-    lus = {c: (motif_lisible(v) if c in cles and isinstance(v, str) and v
+    lus = {c: (motif_lisible(v) if _cle_de_motif(c, cles) and isinstance(v, str) and v
                else _phrases_lisibles(v)
                if c in _CLES_PHRASES_SERVIES and isinstance(v, list)
                and cles is _CLES_MOTIF_SERVI
@@ -368,9 +440,7 @@ def avec_motifs_lisibles(resultat):
     cascade = resultat.get('cascade') if isinstance(resultat, dict) else None
     etapes = cascade.get('etapes') if isinstance(cascade, dict) else None
     if isinstance(etapes, list):
-        lues = [dict(e, motif_lisible=motif_lisible(e['motif_omission']))
-                if isinstance(e, dict) and e.get('motif_omission') else e
-                for e in etapes]
+        lues = [_etape_servie(e) if isinstance(e, dict) else e for e in etapes]
         ailleurs = _servis_lisibles(cascade.get('a_renseigner'), {'motif'})
         cascade = dict(cascade, etapes=lues, **(
             {'a_renseigner': ailleurs} if 'a_renseigner' in cascade else {}))

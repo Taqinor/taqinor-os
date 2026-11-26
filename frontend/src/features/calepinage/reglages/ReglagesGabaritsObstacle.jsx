@@ -109,7 +109,8 @@ export default function ReglagesGabaritsObstacle({ zonesTypes = null }) {
     setErreurs({})
     setEnCours(true)
     try {
-      await calepinageApi.parametres.update({ zones_types: section })
+      // ACAL1434 — le refus se dit une fois, sous le champ : pas de toast.
+      await calepinageApi.parametres.update({ zones_types: section }, { suppressErrorToast: true })
       const res = await calepinageApi.parametres.get()
       setServi(res?.data?.zones_types ?? section)
       setBrouillon(null)

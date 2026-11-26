@@ -9,7 +9,7 @@ import { Button, Card } from '../../../ui'
 import ListeManques from './ListeManques'
 import RetourAtelier from '../atelier/RetourAtelier'
 import {
-  LIBELLE_BOUTON, cibleDuManque, etatCalcul, lienReglage, refusDepuisErreur, refusRenvoieAuxReglages,
+  libelleBouton, cibleDuManque, etatCalcul, lienReglage, refusDepuisErreur, refusRenvoieAuxReglages,
 } from './suiviSimulation'
 import { premierOngletEtape } from '../atelier/parcoursGuide' // ACAL1639 — l'onglet qui ouvre une étape
 import { lienManque } from './lienManque'
@@ -108,7 +108,7 @@ export function BandeauPerime({ motif }) {
    ----------------------------------------------------------------------------
    Un seul bouton, toujours visible pour qui peut gérer (`calepinage_gerer`),
    dont le libellé dit l'état RÉEL du résultat servi : « Lancer » (jamais
-   simulé), « Relancer (document modifié) » (périmé), « Recalculer »
+   simulé), « Relancer la simulation » (périmé ; « Relancer (réglages modifiés) » quand le serveur prouve la cause), « Recalculer »
    (frais → `forcer: true`). Il suit le travail de fond par
    `moteur/resultat/<job_id>/` avec les statuts réels du serveur
    (`suiviSimulation.js` : queued/running = attente, done = succès, failed =
@@ -201,7 +201,7 @@ export function BoutonCalculer({
       {variante === 'carte' ? (
         <button type="button" onClick={() => lancer()} disabled={enCours || !calepinageId}
           data-testid="calx48-lancer-bouton" data-etat={etat} className="cal-res-cta w-fit disabled:opacity-60">
-          {enCours ? 'Simulation en cours…' : LIBELLE_BOUTON[etat]}
+          {enCours ? 'Simulation en cours…' : libelleBouton(etat, data?.motif)}
         </button>
       ) : (
         <Button
@@ -213,7 +213,7 @@ export function BoutonCalculer({
           data-etat={etat}
           className="w-fit"
         >
-          {enCours ? 'Simulation en cours…' : LIBELLE_BOUTON[etat]}
+          {enCours ? 'Simulation en cours…' : libelleBouton(etat, data?.motif)}
         </Button>
       )}
 

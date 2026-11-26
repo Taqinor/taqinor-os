@@ -222,6 +222,32 @@ class LaChaineCanoniqueSuitLesRegles(unittest.TestCase):
         self.assertIn("branche DC ⇄",
                       _textes(rendre_schema(entree, concevoir(entree))))
 
+    def test_un_organe_dc_hors_chaine_est_dessine_apres_le_sectionneur(self):
+        """ACAL1551 — une protection côté continu RETENUE que la chaîne ne
+        dessine pas (décision société : la coupure d'urgence DC) a son bloc."""
+        import dataclasses
+
+        from core.electrique.types import COTE_DC, Protection
+
+        entree = _mono_reseau()
+        resultat = concevoir(entree)
+        soc = Protection(repere="SOC1", designation="Coupure d'urgence DC",
+                         calibre="", quantite=1, cote=COTE_DC,
+                         regle_source="décision société — exigé par le dossier")
+        avec = dataclasses.replace(resultat,
+                                   protections=resultat.protections + (soc,))
+        blocs = blocs_du_schema(entree, avec)
+        clefs = [b.clef for b in blocs]
+        self.assertEqual(clefs.index("organe_dc"),
+                         clefs.index("sectionneur_dc") + 1)
+        organe = blocs[clefs.index("organe_dc")]
+        self.assertEqual((organe.titre, organe.sous_titre, organe.repere),
+                         ("Coupure d'urgence DC", "décision société", "SOC1"))
+        self.assertIn('data-repere="SOC1"', rendre_schema(entree, avec))
+        # Sans organe hors chaîne : la chaîne d'avant, bloc pour bloc.
+        self.assertNotIn("organe_dc", [b.clef for b in blocs_du_schema(
+            entree, resultat)])
+
     def test_la_barrette_de_terre_est_unique(self):
         entree = _mono_reseau()
         textes = _textes(rendre_schema(entree, concevoir(entree)))
