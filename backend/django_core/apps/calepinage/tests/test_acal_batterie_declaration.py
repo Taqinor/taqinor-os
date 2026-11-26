@@ -516,7 +516,7 @@ class BatterieDesigneeD_ACAL_157(SimpleTestCase):
         bloc = {'produit': 905, 'designation': 'Batterie du devis', 'quantite': 3.0}
         with mock.patch('apps.ventes.selectors.compatibilite_du_materiel',
                         side_effect=lambda panneau, onduleur, company, batterie: verdicts[batterie]), \
-                mock.patch('apps.stock.selectors.produits_en_stock', return_value={905}), \
+                mock.patch('apps.stock.selectors_disponibilite.produits_en_stock', return_value={905}), \
                 mock.patch('apps.calepinage.services.equipements.equipements_du_calepinage',
                            return_value={'batterie': bloc}):
             sortie = vb.enrichir_candidats(mock.Mock(company=object()), candidats, resolu)
@@ -528,7 +528,7 @@ class BatterieDesigneeD_ACAL_157(SimpleTestCase):
                          {'produit_id': 905, 'designation': 'Batterie du devis', 'packs': 3})
         # Sans onduleur résolu : « inconnu » (jamais « incompatible »), sans appeler le juge ; sans devis : None.
         with mock.patch('apps.ventes.selectors.compatibilite_du_materiel') as juge, \
-                mock.patch('apps.stock.selectors.produits_en_stock', return_value=set()), \
+                mock.patch('apps.stock.selectors_disponibilite.produits_en_stock', return_value=set()), \
                 mock.patch('apps.calepinage.services.equipements.equipements_du_calepinage',
                            return_value={'batterie': None}):
             sortie = vb.enrichir_candidats(mock.Mock(company=object()), {'batteries': [{'id': 905}]}, {'produits': {}})
@@ -541,7 +541,7 @@ class BatterieDesigneeD_ACAL_157(SimpleTestCase):
 
         candidats = {'modules': [{'id': 1}, {'id': 2}], 'onduleurs': [{'id': 3}], 'optimiseurs': [], 'batteries': []}
         societe = object()
-        with mock.patch('apps.stock.selectors.produits_en_stock', return_value={1, 3}) as lu, \
+        with mock.patch('apps.stock.selectors_disponibilite.produits_en_stock', return_value={1, 3}) as lu, \
                 mock.patch('apps.calepinage.services.equipements.equipements_du_calepinage',
                            return_value={'batterie': None}):
             sortie = vb.enrichir_candidats(mock.Mock(company=societe), candidats, {'produits': {}})

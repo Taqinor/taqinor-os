@@ -73,17 +73,6 @@ def produit_does_not_exist():
     return Produit.DoesNotExist
 
 
-def produits_en_stock(company, ids):
-    """D-ACAL-71 (ACAL1318) — l'ensemble des ids (parmi ``ids``) dont le stock RÉEL de la société est > 0.
-
-    Lecture seule, une requête, bornée à ``company`` ; ni prix ni quantité n'en sortent : un produit à 0
-    n'entre pas dans l'ensemble (l'appelant n'affiche alors RIEN pour lui)."""
-    from .models import Produit
-
-    return set(Produit.objects.filter(company=company, pk__in=list(ids), quantite_stock__gt=0)
-               .values_list('pk', flat=True))
-
-
 def taux_tva_produit(pk):
     """TVA-LIGNE — le taux de TVA (``Produit.tva``) d'un produit par id, ou
     ``None`` (produit absent ou sans taux). Lecture seule, UNE requête d'une
