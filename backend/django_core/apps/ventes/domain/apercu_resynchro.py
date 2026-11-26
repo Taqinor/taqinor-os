@@ -20,7 +20,7 @@ Les montants sont LUS sur le devis (lignes : ``LigneDevis.total_ht`` ; totaux : 
 """
 from decimal import ROUND_HALF_UP, Decimal
 
-__all__ = ['apercu_de_resynchronisation', 'ecarts_de_lignes']
+__all__ = ['apercu_de_resynchronisation', 'ecarts_de_lignes', 'jeton_de_resynchronisation']
 
 _CENTIME = Decimal('0.01')
 
@@ -80,6 +80,30 @@ def ecarts_de_lignes(avant, apres):
     return ajouts, retraits, changements
 
 
+def jeton_de_resynchronisation(devis, layout, designations=None):
+    """Revue du 26/11 — l'empreinte des ENTRÉES d'une resynchronisation (rien n'est stocké) : le document
+    du calepinage (aux surfaces chiffrées), l'onduleur et la batterie désignés, et l'état du devis que
+    ``reconcilier`` lit (statut, empreinte de pose, marqueur des désignations, scénario, lignes). Même
+    calcul à l'aperçu et à la confirmation : différent ⇒ l'aperçu ne décrit plus ce qui serait écrit."""
+    import hashlib
+    import json
+
+    from apps.ventes.models import Devis
+
+    frais = Devis.objects.get(pk=devis.pk)
+    entrees = {
+        'layout': layout if isinstance(layout, dict) else {},
+        'designations': {cle: (designations or {}).get(cle) for cle in ('onduleur', 'batterie')},
+        'devis': {'statut': frais.statut, 'layout_hash': frais.layout_hash or '',
+                  'marqueur': (frais.roof_layout or {}).get('_designations') if isinstance(frais.roof_layout, dict)
+                  else None,
+                  'scenario': (frais.etude_params or {}).get('scenario'),
+                  'lignes': sorted(_photo(frais)['lignes'].items())},
+    }
+    brut = json.dumps(entrees, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(brut.encode('utf-8')).hexdigest()
+
+
 def apercu_de_resynchronisation(devis, layout, user=None, *, designations=None):
     """Ce que ``sync_devis_from_layout(devis, layout, user, designations=…)`` CHANGERAIT, sans rien
     écrire (forme : ``apps/calepinage/contract_samples/calepinage_apercu_resync.json``).
@@ -94,6 +118,7 @@ def apercu_de_resynchronisation(devis, layout, user=None, *, designations=None):
 
     from .resynchronisation import sync_devis_from_layout
 
+    jeton = jeton_de_resynchronisation(devis, layout, designations)  # AVANT de jouer : les entrées lues
     avant = _photo(Devis.objects.get(pk=devis.pk))
     statut = Devis.objects.filter(pk=devis.pk).values_list('statut', flat=True).first()
     traces_avant = _traces_de_correction(devis.pk)
@@ -121,4 +146,5 @@ def apercu_de_resynchronisation(devis, layout, user=None, *, designations=None):
         'avertissements': list(resultat.get('avertissements') or ()),
         'panneaux': resultat.get('panneaux'), 'kwc': resultat.get('kwc'),
         'scenario': resultat.get('scenario'), 'batterie': resultat.get('batterie'),
+        'jeton': jeton,
     }

@@ -26,7 +26,10 @@ vi.mock('react-router-dom', async (importOriginal) => {
 
 import calepinageApi from '../../api/calepinageApi'
 import ventesApi from '../../api/ventesApi'
-import BoutonDevis, { MESSAGE_BROUILLON_MIS_A_JOUR, MESSAGE_RIEN_A_CHANGER } from './BoutonDevis'
+import BoutonDevis, {
+  MESSAGE_APERCU_FERME, MESSAGE_APERCU_RELU, MESSAGE_BROUILLON_MIS_A_JOUR, MESSAGE_RIEN_A_CHANGER,
+  MESSAGE_VERIFICATION_A_LA_CONFIRMATION,
+} from './BoutonDevis'
 
 const DETAIL = exempleContrat('calepinage', 'calepinage_detail')
 const DETAIL_VIDE = exempleContrat('calepinage', 'calepinage_detail',
@@ -506,7 +509,8 @@ describe('BoutonDevis — enregistrer avant le geste (ACAL94)', () => {
   })
 
   it('Réviser sur accepté : avertit sans refuser', async () => {
-    calepinageApi.calepinages.syncDevis.mockRejectedValue({
+    // ACAL1320 — un devis accepté : le 409 révisable arrive dès l'aperçu (aucune carte à confirmer).
+    calepinageApi.calepinages.apercuResync.mockRejectedValue({
       response: {
         status: 409,
         data: { detail: 'Le devis lié est accepté : utilisez « Réviser ».', revision_possible: true },
@@ -517,7 +521,7 @@ describe('BoutonDevis — enregistrer avant le geste (ACAL94)', () => {
     const aDesRetouches = vi.fn(() => true)
 
     rendre({ enregistrerAvant: vi.fn(async () => true), aDesRetouches })
-    await resynchroniserEtConfirmer()
+    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
     await userEvent.click(await screen.findByTestId('cal-devis-reviser'))
 
     expect(await screen.findByTestId('cal-devis-retouches'))
@@ -889,6 +893,35 @@ describe('ACAL1320 — l’aperçu avant « Resynchroniser le devis »', () => {
       { surfaces_chiffrees: [DETAIL.surfaces_chiffrables.find((s) => s.chiffree).cle],
         ...exempleContrat('calepinage', 'calepinage_apercu_resync', 'corps_confirmation') }, SANS_TOAST)
     expect(screen.queryByTestId('cal-devis-resync-apercu')).toBeNull()
+  })
+
+  it('revue — la carte dit que la vérification électrique se fait à la confirmation', async () => {
+    rendre()
+    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+    expect(await screen.findByTestId('cal-devis-resync-apercu')).toHaveTextContent(MESSAGE_VERIFICATION_A_LA_CONFIRMATION)
+  })
+
+  it('revue — 409 apercu_perime à la confirmation : rien d’écrit, l’aperçu est relu et le dit', async () => {
+    const PERIME = exempleContrat('calepinage', 'calepinage_apercu_resync', 'reponse_409_apercu_perime')
+    calepinageApi.calepinages.syncDevis.mockRejectedValueOnce({ response: { status: 409, data: PERIME } })
+    rendre()
+    await resynchroniserEtConfirmer()
+    expect(await screen.findByTestId('cal-devis-resync-avis')).toHaveTextContent(MESSAGE_APERCU_RELU)
+    expect(calepinageApi.calepinages.apercuResync).toHaveBeenCalledTimes(2)
+    expect(calepinageApi.calepinages.syncDevis).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('cal-devis-resync-apercu')).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-devis-conflit')).toBeNull()
+  })
+
+  it('revue — une retouche de la scène ferme la carte : rien n’est envoyé, l’écran dit de relancer', async () => {
+    let retouchee = false
+    rendre({ enregistrerAvant: vi.fn(async () => true), aDesRetouches: () => retouchee })
+    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+    await screen.findByTestId('cal-devis-resync-apercu')
+    retouchee = true
+    expect(await screen.findByTestId('cal-devis-resync-ferme')).toHaveTextContent(MESSAGE_APERCU_FERME)
+    expect(screen.queryByTestId('cal-devis-resync-apercu')).toBeNull()
+    expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
   })
 
   it('« Annuler » : la carte se ferme, rien n’est envoyé', async () => {

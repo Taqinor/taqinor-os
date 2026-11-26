@@ -121,6 +121,8 @@ retiré plus un hook ajouté.
 | `cal-devis-resync-statut` | devis : la phrase de l'aperçu selon le statut (envoyé ⇒ corrigé sur place, page et PDF du client compris ; ACAL1320). |
 | `cal-devis-resync-confirmer` | devis : « Corriger le devis envoyé » / « Confirmer et resynchroniser » — seul geste qui écrit (ACAL1320). |
 | `cal-devis-resync-annuler` | devis : « Annuler » l'aperçu, rien n'est envoyé (ACAL1320). |
+| `cal-devis-resync-avis` | devis : pourquoi l'aperçu a été relu (409 `apercu_perime`, scène retouchée ; revue du 26/11). |
+| `cal-devis-resync-ferme` | devis : la carte d'aperçu fermée par une retouche de la scène, rien n'a été écrit (revue du 26/11). |
 | `cal-devis-cree` | devis : carte « Devis … créé » après la génération (ACAL866). |
 | `cal-devis-alertes` | devis : avertissements de composition lisibles sur la carte du devis créé, jamais repliés (T4-X7-008). |
 | `cal-devis-details-technicien` | devis : détails techniques repliés sous la carte (ACAL866). |

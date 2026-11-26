@@ -1192,6 +1192,28 @@ def _designations_de(porteur, *, apercu_confirme=False):
             'apercu_confirme': bool(apercu_confirme)}
 
 
+#: Revue du 26/11 — l'aperçu confirmé ne décrit plus ce que la resynchronisation écrirait (contrat
+#: ``calepinage_apercu_resync.json``, ``reponse_409_apercu_perime``).
+MESSAGE_APERCU_PERIME = "L'aperçu a changé depuis son affichage : relancez-le avant de confirmer."
+CODE_APERCU_PERIME = 'apercu_perime'
+
+
+def _exiger_apercu_a_jour(devis, layout, designations, apercu_confirme, jeton_apercu):
+    """La confirmation est LIÉE à l'aperçu : ``apercu_confirme`` sans jeton ⇒ 400 nommant
+    ``jeton_apercu`` ; un jeton qui ne décrit plus les entrées d'aujourd'hui ⇒ 409 ``apercu_perime``.
+    Sans confirmation : rien à vérifier (les autres appelants n'appliquent rien de plus à un envoyé)."""
+    if not apercu_confirme:
+        return
+    if not isinstance(jeton_apercu, str) or not jeton_apercu:
+        raise DevisRefuse("La confirmation de l'aperçu doit renvoyer son jeton : relancez l'aperçu.",
+                          champ='jeton_apercu')
+    from apps.ventes.services import jeton_de_resynchronisation
+
+    if jeton_de_resynchronisation(devis, layout, designations) != jeton_apercu:
+        raise DevisRefuse(MESSAGE_APERCU_PERIME, champ='jeton_apercu', statut=409,
+                          donnees={'detail': MESSAGE_APERCU_PERIME, 'code': CODE_APERCU_PERIME})
+
+
 def _refus_de_resynchro(calepinage, devis, refus):
     """Le ``SyncLayoutError`` de ventes traduit en 409 du pont (``revision_possible`` compris),
     l'onduleur jugé nommé (E6e) — le même pour la resynchro et son aperçu."""
@@ -1202,12 +1224,14 @@ def _refus_de_resynchro(calepinage, devis, refus):
 
 def resynchroniser_devis(calepinage, *, user=None,
                          derogation_electrique=None, devis_id=None,
-                         surfaces_chiffrees=None, apercu_confirme=False):
+                         surfaces_chiffrees=None, apercu_confirme=False, jeton_apercu=None):
     """CAL25 — resynchronise le devis lié sur la conception COURANTE.
 
     Revue du 26/11 (D-ACAL-73) — ``apercu_confirme`` : vrai SEULEMENT quand le vendeur confirme la
     carte d'aperçu (vue ``sync-devis``) ; faux (tous les autres appelants), un devis ENVOYÉ ne reçoit
-    pas l'onduleur / la batterie désignés et une phrase le dit.
+    pas l'onduleur / la batterie désignés et une phrase le dit. ``jeton_apercu`` (obligatoire avec
+    ``apercu_confirme``) : le ``jeton`` de l'aperçu ; s'il ne décrit plus les entrées d'aujourd'hui,
+    409 ``apercu_perime`` et rien n'est écrit.
 
     ACAL968 — ``surfaces_chiffrees`` absent : la sélection ÉCRITE au devis
     (``choixConception.surfacesChiffrees``) est relue ; aucune ⇒ tout.
@@ -1239,6 +1263,8 @@ def resynchroniser_devis(calepinage, *, user=None,
     garde = _garde_electrique(calepinage, derogation_electrique, user,
                               geste='resynchronisé')
     devis, layout = _devis_a_resynchroniser(calepinage, variante, layout, surfaces_chiffrees)
+    designations = _designations_de(variante or calepinage, apercu_confirme=apercu_confirme)
+    _exiger_apercu_a_jour(devis, layout, designations, apercu_confirme, jeton_apercu)
 
     try:
         # ACAL34 — l'enveloppe ventes UNIQUE : resynchro + quatre études
@@ -1255,7 +1281,7 @@ def resynchroniser_devis(calepinage, *, user=None,
             roof_image=None if variante is not None else (
                 getattr(calepinage, 'roof_image', None) or None),
             # D-ACAL-148 / 159 — la MÊME décision que « Générer le devis » (ventes la juge).
-            designations=_designations_de(variante or calepinage, apercu_confirme=apercu_confirme))
+            designations=designations)
     except SyncLayoutError as refus:
         raise _refus_de_resynchro(calepinage, devis, refus) from refus
     resultat = dict(resultat or {})

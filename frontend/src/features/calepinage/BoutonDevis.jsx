@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import CarteDevisCree from './CarteDevisCree'
 import ApercuMaterielDevis from './commun/ApercuMaterielDevis'
@@ -134,6 +134,14 @@ export const MESSAGE_ENVOYE_CORRIGE = 'Ce devis a déjà été envoyé au client
 export const MESSAGE_ENVOYE_INVISIBLE = 'Ce devis a déjà été envoyé au client : ce qu’il voit ne change pas ; le devis '
   + 'suit la conception.'
 export const MESSAGE_BROUILLON_MIS_A_JOUR = 'Le devis brouillon sera mis à jour.'
+/* Revue du 26/11 — la confirmation est liée à l'aperçu (jeton) et la vérification électrique se fait à ce moment-là. */
+export const MESSAGE_VERIFICATION_A_LA_CONFIRMATION = 'La vérification électrique se fait à la confirmation : si elle '
+  + 'bloque, rien n’est écrit et l’écran dit pourquoi.'
+export const MESSAGE_APERCU_RELU = 'La conception ou le devis a changé depuis l’aperçu : voici ce que la '
+  + 'resynchronisation changera maintenant.'
+export const MESSAGE_APERCU_FERME = 'La conception a été retouchée : l’aperçu est fermé, rien n’a été écrit. '
+  + '« Resynchroniser le devis » montre ce qui changera maintenant.'
+const DELAI_SURVEILLANCE_RETOUCHES_MS = 500
 
 function phraseStatutApercu(apercu) {
   if (apercu?.statut === 'envoye') return apercu.corrige_apres_envoi ? MESSAGE_ENVOYE_CORRIGE : MESSAGE_ENVOYE_INVISIBLE
@@ -161,12 +169,13 @@ function lignesApercu(apercu) {
   return lignes
 }
 
-function ApercuResync({ apercu, enCours, onConfirmer, onAnnuler }) {
+function ApercuResync({ apercu, avis, enCours, onConfirmer, onAnnuler }) {
   const lignes = lignesApercu(apercu)
   const totaux = apercu?.totaux
   const avertissements = (apercu?.avertissements ?? []).filter((m) => typeof m === 'string' && m.trim())
   return (
     <div className="border border-warning/40 bg-warning/10 p-3" data-testid="cal-devis-resync-apercu">
+      {avis && <p className="mb-2 text-sm text-foreground" role="status" data-testid="cal-devis-resync-avis">{avis}</p>}
       <p className="text-sm font-semibold text-foreground" role="alert" data-testid="cal-devis-resync-statut">
         {apercu?.reference ? `Devis ${apercu.reference} — ` : ''}{phraseStatutApercu(apercu)}
       </p>
@@ -184,6 +193,7 @@ function ApercuResync({ apercu, enCours, onConfirmer, onAnnuler }) {
           {avertissements.map((m) => <li key={m}>{m}</li>)}
         </ul>
       )}
+      <p className="mt-2 text-xs text-muted-foreground">{MESSAGE_VERIFICATION_A_LA_CONFIRMATION}</p>
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" onClick={onConfirmer} disabled={enCours} data-testid="cal-devis-resync-confirmer"
           className="inline-flex min-h-[44px] items-center border border-brass-400 px-4 py-2 text-sm font-bold text-primary-text disabled:cursor-not-allowed disabled:opacity-60">
@@ -239,6 +249,23 @@ function BoutonDevisCalepinage({
   const [retour, setRetour] = useState(null)
   // ACAL1320 — l'aperçu servi de la resynchronisation, à confirmer (`null` : rien en attente).
   const [apercuResync, setApercuResync] = useState(null)
+  const [avisApercu, setAvisApercu] = useState(null) // revue du 26/11 — pourquoi l'aperçu a été relu
+  const [apercuFerme, setApercuFerme] = useState(false) // la carte fermée par une retouche de la scène
+  const apercuPerime = useRef(false) // le dernier sync-devis a répondu 409 `apercu_perime`
+  // Revue du 26/11 — la carte se ferme dès que la scène est retouchée (`aDesRetouches`) : son aperçu ne
+  // décrirait plus ce qui serait écrit ; « Resynchroniser le devis » le relit (enregistré d'abord).
+  useEffect(() => {
+    if (!apercuResync || typeof aDesRetouches !== 'function') return undefined
+    const minuterie = setInterval(() => {
+      let retouchee = false
+      try { retouchee = !!aDesRetouches() } catch { retouchee = false }
+      if (retouchee) {
+        setApercuResync(null)
+        setApercuFerme(true)
+      }
+    }, DELAI_SURVEILLANCE_RETOUCHES_MS)
+    return () => clearInterval(minuterie)
+  }, [apercuResync, aDesRetouches])
   // ACAL94 — avertissement (jamais un refus) avant une révision.
   const [retouches, setRetouches] = useState(false)
   const [refusRevision, setRefusRevision] = useState(null) // T4-X7-016 — `{texte, successeur}`
@@ -311,6 +338,11 @@ function BoutonDevisCalepinage({
       // ACAL923 — rien ne dimensionne le devis : une QUESTION, jamais « devis figé ».
       if (statut === 409 && data?.code === 'confirmation_taille') {
         setConfirmation({ detail: data.detail, refus: data.refus })
+        return null
+      }
+      // Revue du 26/11 — l'aperçu confirmé ne décrit plus ce qui serait écrit : il est relu (`syncConfirmee`).
+      if (statut === 409 && data?.code === 'apercu_perime') {
+        apercuPerime.current = true
         return null
       }
       // Recette R2-22 — le lead a déjà un brouillon libre : rattacher, ou créer un autre devis.
@@ -419,9 +451,11 @@ function BoutonDevisCalepinage({
   }
 
   // ACAL1320 — 1er temps : enregistrer l'écran (sans toucher au devis), lire l'aperçu, le montrer. Rien d'écrit au
-  // devis. « Rien à changer » se dit et s'arrête là.
-  const apercevoir = unSeulGeste(async () => {
+  // devis. « Rien à changer » se dit et s'arrête là. Revue du 26/11 — `avis` : pourquoi l'aperçu est relu.
+  const lireApercu = async (avis = null) => {
     setApercuResync(null)
+    setAvisApercu(avis)
+    setApercuFerme(false)
     if (!(await enregistrerDabord({ sansDevis: true }))) return
     const params = selection.surfaces_chiffrees ? { surfaces: selection.surfaces_chiffrees.join(',') } : null
     const res = await executer(() => calepinageApi.calepinages.apercuResync(calepinageId,
@@ -434,18 +468,27 @@ function BoutonDevisCalepinage({
       return
     }
     setApercuResync(data)
-  })
+  }
+  const apercevoir = unSeulGeste(() => lireApercu())
 
   // 2d temps (confirmé) : la resynchronisation réelle, `sync-devis`, avec ou sans dérogation électrique.
-  // Revue du 26/11 (D-ACAL-73) — `apercu_confirme` n'est envoyé QUE d'ici (carte confirmée) : sans lui, le
-  // serveur n'applique pas les désignations à un devis envoyé. « Passer outre » rejoue le même corps.
-  const resynchroniser = unSeulGeste(async (corps = {}) => {
+  // Revue du 26/11 (D-ACAL-73) — `apercu_confirme` + `jeton_apercu` (le jeton de L'aperçu montré) ne partent QUE
+  // de la carte : sans eux, le serveur n'applique pas les désignations à un envoyé ; jeton périmé ⇒ 409
+  // `apercu_perime`, rien n'est écrit et l'aperçu est relu. « Passer outre » rejoue le même corps.
+  const syncConfirmee = async (corps = {}) => {
     setApercuResync(null)
     const { derogation_electrique: _derogation, ...confirmation } = corps
     dernierCorpsSync.current = confirmation
     if (!corps.derogation_electrique) setBloquage({ geste: 'sync' })
+    apercuPerime.current = false
     const res = await executer(
       () => calepinageApi.calepinages.syncDevis(calepinageId, { ...selection, ...corps }, { suppressErrorToast: true }))
+    if (!res && apercuPerime.current) {
+      apercuPerime.current = false
+      setBloquage(null)
+      await lireApercu(MESSAGE_APERCU_RELU)
+      return
+    }
     if (!res) return
     setBloquage(null)
     setMotif('')
@@ -465,6 +508,19 @@ function BoutonDevisCalepinage({
       return
     }
     await relireEtRecharger()
+  }
+  const resynchroniser = unSeulGeste(syncConfirmee)
+
+  const sceneRetouchee = () => {
+    try { return typeof aDesRetouches === 'function' && !!aDesRetouches() } catch { return false }
+  }
+  // La carte confirmée : une scène retouchée depuis l'aperçu ⇒ l'aperçu est relu (enregistré d'abord), jamais confirmé.
+  const confirmerApercu = unSeulGeste(async () => {
+    if (sceneRetouchee()) {
+      await lireApercu(MESSAGE_APERCU_RELU)
+      return
+    }
+    await syncConfirmee({ apercu_confirme: true, jeton_apercu: apercuResync?.jeton })
   })
 
   // ACAL171 — « Passer outre et générer » : le MÊME geste, relancé avec
@@ -711,8 +767,11 @@ function BoutonDevisCalepinage({
 
       {/* ACAL1320 — ce que la resynchronisation changera, DIT avant d'agir ; rien n'est écrit avant « Confirmer ». */}
       {apercuResync && (
-        <ApercuResync apercu={apercuResync} enCours={enCours}
-          onConfirmer={() => resynchroniser({ apercu_confirme: true })} onAnnuler={() => setApercuResync(null)} />
+        <ApercuResync apercu={apercuResync} avis={avisApercu} enCours={enCours}
+          onConfirmer={() => confirmerApercu()} onAnnuler={() => setApercuResync(null)} />
+      )}
+      {apercuFerme && !apercuResync && (
+        <p className="text-xs text-primary-text" role="status" data-testid="cal-devis-resync-ferme">{MESSAGE_APERCU_FERME}</p>
       )}
 
       {/* ACAL95 — le retour du serveur, LU avant de poursuivre. */}

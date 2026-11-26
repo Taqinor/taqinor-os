@@ -112,6 +112,8 @@ export const ALL_HOOKS = [
   'cal-devis-resync-statut',
   'cal-devis-resync-confirmer',
   'cal-devis-resync-annuler',
+  'cal-devis-resync-avis',
+  'cal-devis-resync-ferme',
   'cal-devis-cree',
   'cal-devis-alertes',
   'cal-devis-details-technicien',

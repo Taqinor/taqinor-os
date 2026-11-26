@@ -844,6 +844,8 @@ class ResyncAnnonceTest(BaseApiCalepinage):
             lu = self._apercu_resync()
             self.assertEqual(lu.status_code, 200, lu.data)
             apercu.append(lu.data)
+            if corps and corps.get('apercu_confirme'):  # la carte renvoie le jeton de SON aperçu
+                corps = dict(corps, jeton_apercu=lu.data['jeton'])
         return self._resynchroniser(corps)
 
     def test_a_brouillon_cree_avant_la_regle_ne_suit_pas_la_designation_et_le_dit(self):
@@ -899,10 +901,44 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertEqual(sorted(li.designation for li in devis.lignes.all() if 'nduleur' in li.designation),
                          ['Onduleur réseau Growatt 8kW Monophasé'])
         self.assertIn(phrase, rendu['avertissements'])
-        # Avec la carte confirmée : appliquée, et la correction tracée.
-        data, onduleurs, _b = self._resynchroniser({'apercu_confirme': True})
+        # Avec la carte confirmée (son jeton) : appliquée, et la correction tracée.
+        jeton = self._apercu_resync().data['jeton']
+        data, onduleurs, _b = self._resynchroniser({'apercu_confirme': True, 'jeton_apercu': jeton})
         self.assertEqual(onduleurs, [('Onduleur réseau Huawei 5kW Monophasé', 1)])
         self.assertTrue(Devis.objects.get(pk=devis.pk).activites.filter(field='correction_apres_envoi').exists())
+
+    def test_revue_confirmation_liee_a_l_apercu_409_si_les_entrees_ont_change(self):
+        """Revue du 26/11 — la confirmation renvoie le jeton de l'aperçu : sans jeton ⇒ 400 nommant
+        ``jeton_apercu`` ; la conception change entre l'aperçu et la confirmation (autre onglet,
+        re-simulation, retouche) ⇒ 409 ``apercu_perime`` et RIEN n'est écrit ; un nouvel aperçu rend un
+        nouveau jeton, qui passe. Mutant « jeton non vérifié » ⇒ rouge."""
+        from apps.calepinage.services.devis import CODE_APERCU_PERIME
+        from apps.ventes.models import Devis
+
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 14
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        Devis.objects.filter(pk=self.calepinage.devis_id).update(statut='envoye')
+        premier = self._apercu_resync().data
+        sans_jeton = self.api.post(f'{self.base}sync-devis/', {'apercu_confirme': True}, format='json')
+        self.assertEqual(sans_jeton.status_code, 400, sans_jeton.data)
+        self.assertIn('jeton_apercu', sans_jeton.data)
+        autre = copy.deepcopy(modifie)
+        autre['result']['panels'] = 13  # la conception bouge APRÈS l'aperçu
+        self.calepinage.refresh_from_db()
+        enregistrer_layout(self.calepinage, autre, user=self.user)
+        avant = self._etat_ecrit()
+        perime = self.api.post(f'{self.base}sync-devis/', {'apercu_confirme': True, 'jeton_apercu': premier['jeton']},
+                               format='json')
+        self.assertEqual(perime.status_code, 409, perime.data)
+        self.assertEqual(perime.data['code'], CODE_APERCU_PERIME)
+        self.assertEqual(self._etat_ecrit()['lignes'], avant['lignes'])
+        self.assertEqual(self._etat_ecrit()['journal'], avant['journal'])
+        second = self._apercu_resync().data
+        self.assertNotEqual(second['jeton'], premier['jeton'])
+        ok = self.api.post(f'{self.base}sync-devis/', {'apercu_confirme': True, 'jeton_apercu': second['jeton']},
+                           format='json')
+        self.assertEqual(ok.status_code, 200, ok.data)
 
     def test_acal1320_devis_envoye_cree_avant_la_regle_ne_suit_pas_et_le_dit(self):
         data, onduleurs, _b = self._sans_marqueur_ou_envoye(envoye=True, marqueur=False)

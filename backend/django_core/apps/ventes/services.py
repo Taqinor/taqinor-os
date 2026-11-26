@@ -454,6 +454,14 @@ def apercu_de_resynchronisation(devis, layout, user=None, *, designations=None):
     return apercu_resynchro.apercu_de_resynchronisation(devis, layout, user, designations=designations)
 
 
+def jeton_de_resynchronisation(devis, layout, designations=None):
+    """Revue du 26/11 — l'empreinte des entrées d'une resynchronisation (``domain/apercu_resynchro``) :
+    celle que l'aperçu a lue, recalculée à la confirmation (différente ⇒ 409 ``apercu_perime``)."""
+    from apps.ventes.domain import apercu_resynchro
+
+    return apercu_resynchro.jeton_de_resynchronisation(devis, layout, designations)
+
+
 def avertissements_sans_montant(avertissements):
     """Revue du 26/11 (D-ACAL-106/165) — les avertissements d'une resynchronisation pour qui ne lit pas
     les devis : chaque phrase qui porte un montant de vente servie sous sa forme sans montant

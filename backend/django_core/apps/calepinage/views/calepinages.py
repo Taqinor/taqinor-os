@@ -821,7 +821,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
             'devis': drf_serializers.IntegerField(required=False),
             'surfaces_chiffrees': drf_serializers.JSONField(required=False),  # ACAL968
             # Revue du 26/11 (D-ACAL-73) — envoyé SEULEMENT par la carte d'aperçu confirmée.
-            'apercu_confirme': drf_serializers.BooleanField(required=False)}),
+            'apercu_confirme': drf_serializers.BooleanField(required=False),
+            'jeton_apercu': drf_serializers.CharField(required=False)}),  # le jeton de l'aperçu
         responses={200: forme_reponse(
             'CalepinageSyncDevis', 'inchange', 'panneaux', 'kwc', 'scenario',
             'batterie', 'lignes_modifiees', 'lignes_ajoutees',
@@ -849,7 +850,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
                 derogation_electrique=corps.get('derogation_electrique'),
                 devis_id=_entier_ou_none(corps.get('devis')),
                 surfaces_chiffrees=corps.get('surfaces_chiffrees'),
-                apercu_confirme=corps.get('apercu_confirme') is True)
+                apercu_confirme=corps.get('apercu_confirme') is True, jeton_apercu=corps.get('jeton_apercu'))
         except DevisRefuse as refus:
             return Response(_refus_devis(refus),
                             status=_statut_refus_devis(refus))
