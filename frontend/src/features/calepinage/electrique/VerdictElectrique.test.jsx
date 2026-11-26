@@ -29,7 +29,7 @@
      6. chaque motif se range dans son domaine, et le bouton du domaine mène à
         l'onglet RESPONSABLE, nommé par le registre `atelier/onglets.js`. */
 import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, within, act } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
@@ -56,6 +56,7 @@ import { ongletParCle } from '../atelier/onglets'
 import VerdictElectrique, { CLE_ONGLET } from './VerdictElectrique'
 import EtapeElectrique from './EtapeElectrique'
 import { ContexteCoque } from '../atelier/coque/contexteCoque'
+import { creerCoucheElectrique } from '@roofpro/electrique3d'
 import {
   DOMAINE_AUTRE, DOMAINES, LIBELLE_CODE_INCONNU, domaineDuMotif, grouperMotifs, libelleCode, libelleStatut, motifsRefusants,
   statutAbstention, statutRefuse, tonStatut,
@@ -1032,7 +1033,7 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     const barre = within(carte).getByTestId('cal-elec-actions-carte')
     expect(within(barre).getByRole('button', { name: 'Raccorder automatiquement' })).toBeTruthy()
     expect(within(barre).getByRole('button', { name: 'Modifier une chaîne' })).toBeTruthy()
-    // D-ACAL-70 : aucune position d'onduleur enregistrée ⇒ aucun « Déplacer l'onduleur ».
+    // ACAL1317 : sans couche électrique du constructeur, aucun geste d'onduleur (« Déplacer l'onduleur ») n'est proposé.
     expect(within(barre).queryByText(/Déplacer l/)).toBeNull()
   })
 
@@ -1242,6 +1243,51 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(await screen.findByTestId('cal234-ecran')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Raccordement' }))
     expect(await screen.findByTestId('cal-elec-onduleur')).toBeTruthy()
+  })
+
+  it('ACAL1317 — après un geste sur l’onduleur, l’ANCIENNE longueur n’est pas montrée tant que l’atelier n’est pas enregistré et relu', async () => {
+    servirEtape()
+    const origine = [-7.6, 33.5]
+    const m = (Math.PI / 180) * 6378137
+    const versLngLat = (e, n) => [origine[0] + e / (m * Math.cos((origine[1] * Math.PI) / 180)), origine[1] + n / m]
+    const couche = creerCoucheElectrique({
+      electrical: null, sceneOrigin: origine, activeAreaId: 'z1',
+      areas: [{ id: 'z1', renderPlan: { pack: { origin: origine, azimuthDeg: 180, ringENU: [[0, 0], [20, 0], [20, 12], [0, 12]] },
+        grid: { rowWidthM: 2, panels: [3, 5, 7, 9].map((cx) => ({ cx, cy: 6 })) } } }],
+    })
+    const builderApi = { setAffectationChaines: vi.fn(), electrique: couche }
+    const surCarte = document.createElement('div')
+    document.body.appendChild(surCarte)
+    const coque = { noeuds: { surCarte, panneau: null, pied: null }, prendrePied: () => () => {} }
+    const arbre = (enregistreLe) => (
+      <MemoryRouter initialEntries={['/calepinage/7']}>
+        <Routes>
+          <Route path="/calepinage/:id" element={(
+            <ContexteCoque.Provider value={coque}>
+              <EtapeElectrique calepinageId={7} builderApi={builderApi} enregistreLe={enregistreLe}
+                action={{ libelle: 'Voir les résultats', onClick: () => {} }} />
+            </ContexteCoque.Provider>
+          )} />
+        </Routes>
+      </MemoryRouter>
+    )
+    const { rerender } = render(arbre('T0'))
+    const pastille = await within(surCarte).findByTestId('cal-sur-carte-resume')
+    await waitFor(() => expect(pastille).toHaveTextContent('Câble côté panneaux30 m'))
+    fireEvent.click(within(surCarte).getByRole('button', { name: 'Placer l’onduleur' }))
+    act(() => { couche.clicCarte(versLngLat(19, 2)) })
+    expect(pastille).toHaveTextContent('Câble côté panneauxà mesurer à l’enregistrement')
+    expect(pastille).not.toHaveTextContent('30 m')
+    expect(within(surCarte).getByTestId('cal-elec-cable-provenance')).toHaveTextContent('tracé proposé le long des rangées (position de l’onduleur)')
+    // L'atelier est enregistré : tant que le résultat n'est pas RELU, l'ancien chiffre reste retenu.
+    let servir
+    calepinageApi.calepinages.resultat.mockReturnValueOnce(new Promise((r) => { servir = r }))
+    rerender(arbre('T1'))
+    expect(pastille).toHaveTextContent('à mesurer à l’enregistrement')
+    const relu = resultat()
+    relu.troncons.troncons = relu.troncons.troncons.map((t) => (t.cote === 'dc' ? { ...t, longueur_m: 21 } : t))
+    await act(async () => { servir({ data: relu }) })
+    await waitFor(() => expect(pastille).toHaveTextContent('Câble côté panneaux42 m'))
   })
 })
 

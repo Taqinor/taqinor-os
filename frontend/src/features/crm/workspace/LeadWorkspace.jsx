@@ -1,7 +1,6 @@
 import { createElement, useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
-import api from '../../../api/axios'
 import crmApi from '../../../api/crmApi'
 import fetchAllPages from '../../../utils/fetchAllPages'
 import ventesApi from '../../../api/ventesApi'
@@ -34,6 +33,7 @@ import { isSortieSigne } from '../stages'
 // font reculer un lead.
 import { useConfirmerRecul } from '../confirmRecul'
 import { useLeadDraft, rememberVille } from './useLeadDraft'
+import useHistoriqueLead from './useHistoriqueLead'
 import { schedulePrefetch } from './leadPrefetch'
 import { getField, usersAvecResponsable } from './draftCore'
 import { sectionDuChamp } from './missingFields'
@@ -219,7 +219,6 @@ export default function LeadWorkspace({
   const users = useMemo(() => usersAvecResponsable(usersCharges, state.server), [usersCharges, state.server])
   const [tagOptions, setTagOptions] = useState([])
   const [motifOptions, setMotifOptions] = useState([])
-  const [historique, setHistorique] = useState([])
   const peutAssignables = useCanListAssignableUsers() // ADRG113 — sinon 403 (Viewer)
 
   useEffect(() => {
@@ -232,42 +231,14 @@ export default function LeadWorkspace({
       crmApi.getMotifsPerte({ page, page_size: pageSize }).then((r) => r.data))
       .then((rows) => setMotifOptions((Array.isArray(rows) ? rows : (rows?.results ?? [])).filter((m) => !m.archived))).catch(() => {})
   }, [peutAssignables])
-
-  // LW43 — garde d'identité : `leadId` capturé À L'ENVOI (`requestedId`),
-  // comparé au VRAI courant (`leadIdRef`, tenu à jour à chaque rendu — jamais
-  // le seul `leadId` fermé dans ce callback, qui resterait figé sur l'ancien
-  // lead pour CETTE requête déjà en vol) — une réponse lente du lead A ne
-  // peint plus jamais sur le lead B après un J/K rapide (même patron
-  // `cancelled` que LeadDetailPage.jsx, décliné en ref pour un callback
-  // réutilisable hors effet).
-  const leadIdRef = useRef(leadId)
   // Racine de la fiche : les raccourcis (d/n/1-4, J/K) se taisent dès qu'une
   // boîte ouverte ne la contient pas (satellite posé par-dessus — incident
   // 02/10/2026, voir dialogueParDessus).
   const rootRef = useRef(null)
-  useEffect(() => { leadIdRef.current = leadId })
-  const refreshHistorique = useCallback(() => {
-    if (!leadId) return
-    const requestedId = leadId
-    api.get(`/crm/leads/${requestedId}/historique/`)
-      .then((r) => { if (leadIdRef.current === requestedId) setHistorique(r.data) })
-      .catch(() => {})
-  }, [leadId])
-
-  useEffect(() => {
-    if (mode !== 'edit' || !leadId) return
-    // LW41 — le GET détail embarque déjà `chatter_recent` (LW30) : ne
-    // déclencher le fetch initial d'historique QUE s'il est absent/vide à
-    // l'ouverture (sinon l'ouverture d'un lead coûtait PLUS cher qu'avant :
-    // le GET détail PUIS toujours /historique/ en plus). Les rafraîchissements
-    // APRÈS action (note postée, pièce jointe, appel loggé, « voir plus » —
-    // TimelineTab/ContextRail) restent inchangés, appelés explicitement
-    // ailleurs via `refreshHistorique`. `state.server` volontairement HORS
-    // deps (lu à l'exécution) : seul le premier
-    // rendu de CE lead doit décider, jamais un ré-arbitrage à chaque PATCH.
-    if (!state.server?.chatter_recent?.length) refreshHistorique()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- décision prise une fois par lead, pas à chaque state.server (D-ENF22)
-  }, [mode, leadId, refreshHistorique])
+  // Historique du lead — relu à l'ouverture (`chatter_recent` n'est que le premier rendu), au retour au premier plan, à
+  // intervalle calme et à l'arrivée d'une notification de CE lead (useHistoriqueLead) ; `refreshHistorique` reste le geste
+  // des actions de l'utilisateur (note, appel, épingle).
+  const { historique, refreshHistorique } = useHistoriqueLead(leadId, mode)
 
   // ERR-QAH-CRM-HISTORIQUE-VIDE-RELANCE — un autosave RÉUSSI (« Relance le »,
   // responsable, tout champ suivi) écrit côté serveur une entrée de chatter

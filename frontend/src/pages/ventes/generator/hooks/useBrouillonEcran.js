@@ -125,11 +125,14 @@ export function useBrouillonEcran(ctx) {
   // l'écran (le mappeur `?edit=`, les réglages société et les relectures qui se posent APRÈS la fenêtre de 1,5 s ne
   // sont pas ses retouches). Au premier geste (capture, avant qu'il n'agisse) la référence est figée à l'écran d'avant lui.
   const gestesRef = useRef(null)
+  // Le geste est AUSSI un état : `dirty` ne peut jamais être vrai, même le temps d'un rendu, avant lui (la référence qui suit
+  // l'écran n'est posée qu'en effet, un rendu plus tard : sans cela l'écran affichait un instant « Modifications non enregistrées »).
+  const [gesteSur, setGesteSur] = useState(null)
   const snapshotRef = useRef(snapshotJson)
   snapshotRef.current = snapshotJson // eslint-disable-line react-hooks/refs -- dernier écran rendu, lu au geste (D-ENF22)
   useEffect(() => {
     if (!editId) return undefined
-    const suivi = suivreGestes(document, () => setReferenceEcran(snapshotRef.current))
+    const suivi = suivreGestes(document, () => { setReferenceEcran(snapshotRef.current); setGesteSur(editId) })
     gestesRef.current = suivi
     return () => { suivi.arreter(); gestesRef.current = null }
   }, [editId])
@@ -140,7 +143,7 @@ export function useBrouillonEcran(ctx) {
     }
   }, [snapshotJson, editId]) // eslint-disable-line react-hooks/exhaustive-deps -- captureReferenceJusqua est un ref (stable) (D-ENF22)
   const dirty = referenceEcran != null
-    ? snapshotJson !== referenceEcran
+    ? (!editId || gesteSur === editId) && snapshotJson !== referenceEcran
     : (editId ? false : formulaireNonVierge)
   const { restored, restore, discard, clear, savedAt } = useDraftAutosave(draftKey, draftSnapshot, {
     enabled: dirty,

@@ -48,12 +48,15 @@ describe('ERR-QAH-CRM-HISTORIQUE-VIDE-RELANCE — l’historique survit à l’a
     }
     renderEdit(lead)
     await waitFor(() => expect(railOnAction).toBeTypeOf('function'))
-    expect(api.get).not.toHaveBeenCalledWith('/crm/leads/1/historique/')
+    // Historique du lead : l'historique est relu dès l'ouverture ; on compte donc les lectures AVANT le geste.
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/crm/leads/1/historique/'))
+    const avant = api.get.mock.calls.filter(([u]) => u === '/crm/leads/1/historique/').length
 
     act(() => { railOnAction('set-field', { key: 'relance_date', value: '2026-10-15T09:00' }) })
 
     await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalled(), { timeout: 5000 })
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/crm/leads/1/historique/'), { timeout: 5000 })
+    await waitFor(() => expect(
+      api.get.mock.calls.filter(([u]) => u === '/crm/leads/1/historique/').length).toBeGreaterThan(avant), { timeout: 5000 })
     expect(railServer?.chatter_recent).toEqual([ancienne])
   })
 })

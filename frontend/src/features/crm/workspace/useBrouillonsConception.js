@@ -4,28 +4,20 @@
 // servie (`GET conception/<lead>/`, clé `brouillons_a_mettre_a_jour`, contrat
 // `apps/ventes/contract_samples/conception_lead.json`) : l'ensemble des ids de
 // devis à mettre à jour. Aucune route nouvelle, aucun calcul.
-import { useEffect, useState } from 'react'
-import ventesApi from '../../../api/ventesApi'
+import { useMemo } from 'react'
+import useConceptionLead from './useConceptionLead'
 
 //: La phrase affichée sur la carte d'un brouillon listé.
 export const AVIS_BROUILLON_AVANT_CALCUL =
   'Ce brouillon date d’avant le dernier calcul de la fiche : ouvrez-le pour le mettre à jour.'
 
-export function useBrouillonsConception(leadId, cle = '') {
-  const [ids, setIds] = useState(() => new Set())
-  useEffect(() => {
-    let vivant = true
-    const lire = async () => {
-      if (!leadId) { setIds(new Set()); return }
-      try {
-        const { data } = await ventesApi.getConceptionLead(leadId)
-        if (vivant) setIds(new Set((data?.brouillons_a_mettre_a_jour || []).map((b) => b.devis)))
-      } catch {
-        if (vivant) setIds(new Set())  // aucune conception rangée : rien à dire
-      }
-    }
-    lire()
-    return () => { vivant = false }
-  }, [leadId, cle])
-  return ids
+// R5A-N6 — plus de lecture propre : la conception du lead est lue UNE fois par fiche (useConceptionLead), partagée avec la
+// carte « Conception » ; un 404 (aucune conception rangée) = « rien à dire ». Elle est relue par les ACTIONS (fiche
+// enregistrée, devis créé ou modifié : `relireConceptionLead`), plus par un changement de la liste des devis.
+export function useBrouillonsConception(leadId) {
+  const { donnees } = useConceptionLead(leadId)
+  return useMemo(
+    () => new Set((donnees?.brouillons_a_mettre_a_jour || []).map((b) => b.devis)),
+    [donnees],
+  )
 }
