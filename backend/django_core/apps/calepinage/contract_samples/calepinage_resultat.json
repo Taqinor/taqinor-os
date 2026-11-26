@@ -1430,9 +1430,9 @@
     "ombrage": null,
     "validation": null,
     "simulation_perimee": true,
-    "motif": "simulation périmée : le document a changé depuis le calcul du 19/09/2026",
+    "motif": "simulation périmée : le document ou un réglage de la société a changé depuis le calcul du 19/09/2026",
     "avertissements": [
-      "simulation périmée : le document a changé depuis le calcul du 19/09/2026",
+      "simulation périmée : le document ou un réglage de la société a changé depuis le calcul du 19/09/2026",
       "La production n'est pas encore calculée : lancez la simulation à l'étape Résultats pour connaître ce que l'installation produira."
     ],
     "nomenclature": [],

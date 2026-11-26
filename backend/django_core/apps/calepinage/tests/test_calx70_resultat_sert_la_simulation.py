@@ -215,8 +215,8 @@ class SimulationPerimeeTest(SimpleTestCase):
         self.assertTrue(self.resultat['simulation_perimee'])
         self.assertEqual(
             self.resultat['motif'],
-            'simulation périmée : le document a changé depuis le calcul '
-            'du 19/09/2026')
+            'simulation périmée : le document ou un réglage de la société a '
+            'changé depuis le calcul du 19/09/2026')
 
     def test_le_motif_ouvre_les_avertissements(self):
         self.assertEqual(self.resultat['avertissements'][0],
@@ -236,8 +236,9 @@ class SimulationPerimeeTest(SimpleTestCase):
         self.assertTrue(resultat['simulation_perimee'])
         self.assertEqual(
             resultat['motif'],
-            'simulation périmée : le document a changé depuis le calcul '
-            "précédent, dont la date n'a pas été enregistrée")
+            'simulation périmée : le document ou un réglage de la société a '
+            "changé depuis le calcul précédent, dont la date n'a pas été "
+            'enregistrée')
 
 
 class PeremptionParUnReglageSocieteTest(SimpleTestCase):
@@ -269,8 +270,27 @@ class PeremptionParUnReglageSocieteTest(SimpleTestCase):
         servi = self._servi(LAYOUT_MODIFIE, self.AVANT)
         self.assertTrue(servi['simulation_perimee'])
         self.assertEqual(servi['motif'],
-                         'simulation périmée : le document a changé depuis '
-                         'le calcul du 19/09/2026')
+                         'simulation périmée : le document ou un réglage de '
+                         'la société a changé depuis le calcul du 19/09/2026')
+
+    def test_norme_ou_grille_horaire_non_figees_ne_nomment_pas_le_document(self):
+        # ``norme_electrique`` entre dans l'empreinte mais n'est PAS figée :
+        # la trace ne prouve rien, la phrase nomme donc les deux côtés.
+        avec_norme = dict(self.AVANT, norme_electrique={'x': {'valeur': 1}})
+        servi = self._servi(LAYOUT, avec_norme)
+        self.assertTrue(servi['simulation_perimee'])
+        self.assertIn('le document ou un réglage de la société',
+                      servi['motif'])
+
+    def test_l_empreinte_d_un_dossier_fixe_est_inchangee(self):
+        # Le motif est le SEUL changement d'ACAL1647 : l'empreinte d'un dossier
+        # fixe (littéral relevé avant la correction) ne bouge pas.
+        empreinte = resultat_calepinage(
+            _Calepinage(LAYOUT), materiel=MATERIEL,
+            reglages=self.AVANT)['hash_entree']
+        self.assertEqual(
+            empreinte,
+            '394cdd83e85290aaed8afc9ccfe14bae358a804da7d2fcb4e67041bba6dace6e')
 
     def test_memes_reglages_meme_document_rien_n_est_perime(self):
         self.assertFalse(self._servi(LAYOUT, self.AVANT)['simulation_perimee'])

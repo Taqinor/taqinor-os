@@ -1574,8 +1574,11 @@ def _simulation_servie(calepinage, empreinte, *, defauts=None, reglages=None):
 
     if hash_calcule != empreinte:
         date = _date_de_calcul(simulation)
-        # ACAL1647 — la VRAIE cause : les réglages société FIGÉS au calcul
-        # (``reglages_utilises``, D-ACAL-8) diffèrent de ceux d'aujourd'hui.
+        # ACAL1647 — la cause DÉMONTRÉE seulement : les réglages société FIGÉS
+        # au calcul (``reglages_utilises``, D-ACAL-8 : sections ``simulation``
+        # et ``electrique_societe``) diffèrent d'aujourd'hui. Rien d'autre
+        # n'est figé (``norme_electrique``, grille horaire, document) : sans
+        # preuve, le motif nomme les deux côtés, jamais une cause devinée.
         from .simulation import _reglages_utilises
 
         figes = simulation.get('reglages_utilises')
@@ -1583,7 +1586,9 @@ def _simulation_servie(calepinage, empreinte, *, defauts=None, reglages=None):
                        and figes != _reglages_utilises(reglages))
         motif = ('simulation périmée : '
                  + ('un réglage de la société a changé depuis le calcul '
-                    if par_reglage else 'le document a changé depuis le calcul ')
+                    if par_reglage else
+                    'le document ou un réglage de la société a changé '
+                    'depuis le calcul ')
                  + ('du %s' % date if date
                     else "précédent, dont la date n'a pas été enregistrée"))
         return ({cle: ([] if cle in BLOCS_LISTE else None)
