@@ -100,4 +100,14 @@ describe('T4-X1-004 — la taille réelle est dite quand elle diffère de la cib
     expect(alerteTailleArrondie(3, { })).toBeNull()
     expect(alerteTailleArrondie(0, { kwc: 3.55 })).toBeNull()
   })
+
+  it('« jamais en dessous de la demande » n’est dit que si chaque taille servie est ≥ la cible', async () => {
+    const { alerteTailleArrondie } = await import('./autoQuote')
+    expect(alerteTailleArrondie(3, { kwc: 3.55 }).message).toContain('(jamais en dessous de la demande)')
+    const dessous = alerteTailleArrondie(3, { kwc: 2.84 })
+    expect(dessous.message).toContain('le devis est à 2,84 kWc')
+    expect(dessous.message).not.toMatch(/jamais en dessous/)
+    const mixte = alerteTailleArrondie(3, { options: [{ variante: 'sans', libelle: 'Sans batterie', kwc: 2.84 }, { variante: 'avec', libelle: 'Avec batterie', kwc: 3.55 }] })
+    expect(mixte.message).not.toMatch(/jamais en dessous/)
+  })
 })

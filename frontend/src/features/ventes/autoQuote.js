@@ -137,10 +137,12 @@ export function alerteTailleArrondie(cibleKwc, donnees) {
   const ecarts = servis.filter((o) => Math.abs(o.kwc - cible) > 0.005)
   if (!ecarts.length) return null
   const reel = ecarts.map((o) => `${o.nom ? `${o.nom} : ` : ''}${formatKwc(o.kwc)}`).join(' · ')
+  // « jamais en dessous de la demande » seulement quand c'est VRAI des valeurs servies (chaque option ≥ la cible).
+  const auDessus = ecarts.every((o) => o.kwc >= cible)
   return {
     code: 'taille_arrondie',
     message: `Vous avez demandé ${formatKwc(cible)} ; le devis est à ${reel} : le nombre de panneaux est entier, `
-      + 'la puissance se règle donc au panneau près (jamais en dessous de la demande).',
+      + `la puissance se règle donc au panneau près${auDessus ? ' (jamais en dessous de la demande)' : ''}.`,
   }
 }
 
