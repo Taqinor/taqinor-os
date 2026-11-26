@@ -298,6 +298,11 @@ def _nettoyer(texte):
     return re.sub(r'\s+([,.])', r'\1', texte).strip()
 
 
+#: Une adresse web dans un motif ou une référence, et son jeton de mise de côté.
+_URL = re.compile(r'https?://\S+')
+_URL_DE_COTE = re.compile('\ue000([0-9]+)\ue001')
+
+
 def motif_lisible(motif):
     """Le motif servi, rendu lisible pour celui qui lit le document.
 
@@ -308,7 +313,18 @@ def motif_lisible(motif):
     chemin inconnu après « Champ manquant : » devient « Une donnée manque ».
     """
     brut = str(motif) if motif is not None else ''
-    texte = _retirer_codes(brut)
+    # Une adresse publiée (« https://… ») est mise de côté AVANT toute
+    # substitution et remise telle quelle à la fin : une source reste exacte.
+    urls = []
+
+    def de_cote(correspondance):
+        adresse = correspondance.group(0)
+        fin = len(adresse.rstrip('.,;:!?)»'))
+        urls.append(adresse[:fin])
+        return '\ue000%d\ue001%s' % (len(urls) - 1, adresse[fin:])
+
+    protege = _URL.sub(de_cote, brut)
+    texte = _retirer_codes(protege)
 
     def champ_manquant(correspondance):
         libelle = _intitule_champ(correspondance.group(2))
@@ -337,8 +353,8 @@ def motif_lisible(motif):
     texte = _FICHIER.sub('', texte) if '.py' in texte else texte
     texte = _ENTRE_GUILLEMETS_TECH.sub(_guillemets_techniques, texte)
     texte = _TECHNIQUE.sub(_technique_en_prose, texte)
-    texte = texte if texte == brut else _nettoyer(texte)
-    return _phrases_uniques(texte)
+    texte = texte if texte == protege else _nettoyer(texte)
+    return _URL_DE_COTE.sub(lambda c: urls[int(c.group(1))], _phrases_uniques(texte))
 
 
 def _phrases_uniques(texte):

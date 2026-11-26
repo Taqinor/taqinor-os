@@ -242,6 +242,35 @@ class MotifServiLisibleTest(unittest.TestCase):
         self.assertEqual(stocke, avant, 'le résultat stocké ne bouge pas')
 
 
+class AdressesPublieesIntactesTest(unittest.TestCase):
+    """Revue lot 6 (ACAL1654/1656) — une adresse publiée citée comme source
+    ressort de ``motif_lisible`` EXACTE (« array-incidence-loss-iam.html »
+    devenait « array-incidence-loss-une donnée »). Les adresses sont relevées
+    dans les modules qui les publient : une adresse ajoutée est couverte."""
+
+    def test_toute_adresse_des_etapes_ressort_telle_quelle(self):
+        import pathlib
+        import re
+
+        from apps.calepinage.services.rapport.champs_lisibles import motif_lisible
+
+        services = pathlib.Path(__file__).resolve().parents[1] / 'services'
+        fichiers = (list((services / 'etapes').glob('*.py'))
+                    + [services / nom for nom in ('chaine_pertes.py', 'transposition.py',
+                                                  'pvgis_serie.py')])
+        adresses = set()
+        for fichier in fichiers:
+            adresses.update(re.findall(r'https?://[^\s\'"»)<>]+',
+                                       fichier.read_text(encoding='utf-8')))
+        adresses = {a.rstrip('.,;:') for a in adresses}
+        self.assertGreater(len(adresses), 20)
+        for adresse in sorted(adresses):
+            with self.subTest(adresse=adresse):
+                self.assertEqual(motif_lisible(adresse), adresse)
+                phrase = 'PVsyst (CALX146) — %s.' % adresse
+                self.assertEqual(motif_lisible(phrase), 'PVsyst — %s.' % adresse)
+
+
 class PasDeDeriveTest(unittest.TestCase):
     """Le bloc détaillé ici reste celui que CALX4 annonce, et `pertes` reste
     une LISTE (D-CALX 11)."""
