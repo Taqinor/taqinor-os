@@ -38,6 +38,7 @@ from apps.roles.models import Role
 from apps.roles.permissions_registre import (
     DIRECTEUR_PERMISSIONS,
     TECHNICIEN_PERMISSIONS,
+    TECHNICIEN_RESP_PERMISSIONS,
 )
 from authentication.models import Company
 
@@ -210,6 +211,133 @@ class ResponsablesPossiblesTest(BaseApiCalepinage):
         reponse = self.api.get(self.URL, {'permission': 'inventee'})
         self.assertEqual(reponse.status_code, 400)
         self.assertIn('permission', reponse.data)
+
+
+class ResponsableQuiOuvreTest(BaseApiCalepinage):
+    """T4-X3-016 (suite) — D-ACAL-106/126 : un Technicien (``calepinage_voir`` +
+    ``calepinage_releve``, sans ``calepinage_gerer``) ne lit que les calepinages
+    de SES visites ; « responsable » ne lui ouvre rien. Le menu ne le propose
+    donc que s'il a une visite sur le lead, et l'API refuse de lui confier un
+    calepinage qu'il ne pourrait pas ouvrir. Aucun droit n'est changé."""
+
+    MENU = '/api/django/crm/assignable-users/'
+
+    def setUp(self):
+        super().setUp()
+        role_tech = Role.objects.create(
+            company=self.company, nom='Technicien reel',
+            permissions=list(TECHNICIEN_PERMISSIONS))
+        self.tech = User.objects.create_user(
+            username='cal_api_releve', password='x', company=self.company,
+            role=role_tech)
+
+    def _menu(self, **params):
+        reponse = self.api.get(self.MENU, {'permission': CAL_VOIR, **params})
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        return {u['username'] for u in reponse.data}
+
+    def _visite(self, technicien, lead=None):
+        from apps.visites.models import VisiteTerrain
+
+        return VisiteTerrain.objects.create(
+            company=self.company, lead=lead or self.lead, commercial=technicien)
+
+    def test_le_technicien_a_les_droits_de_lecture_et_ne_lit_que_par_le_releve(self):
+        from apps.calepinage.selectors import lit_par_le_seul_releve
+
+        self.assertIn(CAL_VOIR, TECHNICIEN_PERMISSIONS)
+        self.assertTrue(lit_par_le_seul_releve(self.tech))
+
+    def test_le_menu_ecarte_le_technicien_sans_lead_ou_sans_visite(self):
+        proposes = self._menu()
+        self.assertIn('cal_api', proposes)
+        self.assertNotIn('cal_api_releve', proposes)
+        # Un lead où il n'a AUCUNE visite : pas proposé non plus.
+        self.assertNotIn('cal_api_releve', self._menu(lead=self.lead.pk))
+
+    def test_le_menu_propose_le_technicien_qui_a_une_visite_sur_le_lead(self):
+        self._visite(self.tech)
+        self.assertIn('cal_api_releve', self._menu(lead=self.lead.pk))
+        # Autre lead, ou sans lead : pas proposé.
+        self.assertNotIn('cal_api_releve', self._menu(lead=self.lead_2.pk))
+        self.assertNotIn('cal_api_releve', self._menu())
+
+    def test_un_lead_d_une_autre_societe_est_ignore_comme_aucun_lead(self):
+        self._visite(self.tech)
+        lead_voisin = Lead.objects.create(company=self.autre, nom='Voisin')
+        self.assertNotIn('cal_api_releve', self._menu(lead=lead_voisin.pk))
+        self.assertNotIn('cal_api_releve', self._menu(lead='abc'))
+
+    def test_creation_confiee_a_un_technicien_sans_visite_refusee_400(self):
+        reponse = self.api.post(URL, {'lead': self.lead.pk,
+                                      'responsable': self.tech.pk},
+                                format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('responsable', reponse.data)
+        self.assertFalse(Calepinage.objects.filter(lead_id=self.lead.pk).exists())
+
+    def test_creation_sur_client_sans_lead_confiee_a_un_technicien_refusee(self):
+        reponse = self.api.post(URL, {'client': self.client_a.pk,
+                                      'responsable': self.tech.pk},
+                                format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('responsable', reponse.data)
+
+    def test_modification_confiee_a_un_technicien_sans_visite_refusee_409(self):
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Villa')
+        reponse = self.api.patch(url_detail(calepinage.pk),
+                                 {'responsable': self.tech.pk}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('responsable', reponse.data)
+        calepinage.refresh_from_db()
+        self.assertIsNone(calepinage.responsable)
+
+    def test_le_technicien_de_la_visite_est_admis_et_ouvre_le_calepinage(self):
+        self._visite(self.tech)
+        reponse = self.api.post(URL, {'lead': self.lead.pk,
+                                      'responsable': self.tech.pk},
+                                format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        ouvre = self._client(self.tech).get(url_detail(reponse.data['id']))
+        self.assertEqual(ouvre.status_code, 200)
+
+    def test_un_responsable_de_droit_complet_est_admis(self):
+        reponse = self.api.post(URL, {'lead': self.lead.pk,
+                                      'responsable': self.user.pk},
+                                format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+
+    def test_renvoyer_le_responsable_deja_en_place_passe(self):
+        # Un calepinage dont le responsable est DÉJÀ un Technicien (passif) : un
+        # PATCH d'un autre champ qui renvoie ce même responsable n'est pas jugé.
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Villa',
+            responsable=self.tech)
+        reponse = self.api.patch(
+            url_detail(calepinage.pk),
+            {'titre': 'Villa Anfa', 'responsable': self.tech.pk}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+
+    def test_technicien_responsable_d_equipe_d_acal_126(self):
+        # D-ACAL-126 : « Technicien responsable » lit les calepinages des visites
+        # de son sous-arbre ; il est donc admis quand un technicien de SON équipe
+        # a la visite — et refusé sans visite d'équipe sur le lead.
+        resp = User.objects.create_user(
+            username='cal_api_resp', password='x', company=self.company,
+            role=Role.objects.create(
+                company=self.company, nom='Technicien responsable',
+                permissions=list(TECHNICIEN_RESP_PERMISSIONS)))
+        User.objects.filter(pk=self.tech.pk).update(supervisor=resp)
+        self.assertEqual(self.api.post(
+            URL, {'lead': self.lead.pk, 'responsable': resp.pk},
+            format='json').status_code, 400)
+        self._visite(self.tech)
+        reponse = self.api.post(URL, {'lead': self.lead.pk,
+                                      'responsable': resp.pk}, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertEqual(
+            self._client(resp).get(url_detail(reponse.data['id'])).status_code, 200)
 
 
 class CreationTest(BaseApiCalepinage):
