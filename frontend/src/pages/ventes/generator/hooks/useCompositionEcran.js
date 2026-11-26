@@ -217,6 +217,12 @@ export function useCompositionEcran(ctx) {
         setErrors(e => ({ ...e, autofill: 'Entrez le nombre de panneaux' }))
         return
       }
+      // ACAL1205 — la taille « avec batterie » vient de l'étude horaire : pendant son chargement
+      // `resolveKwcAvec()` rendrait la taille SANS (6 ou 7 panneaux selon l'horloge) ; rien n'est composé.
+      if (!horsReseau && etudeHoraireChargement && (scenario === SCENARIO_LES_DEUX || scenario === SCENARIO_AVEC)) {
+        setErrors(e => ({ ...e, autofill: 'Dimensionnement en cours — réessayez dans un instant.' }))
+        return
+      }
       setAutoFillLoading(true)
       try {
         const body = {

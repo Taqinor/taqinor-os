@@ -6,7 +6,7 @@
 //
 // Run : npx vitest run src/pages/ventes/DevisGeneratorEditBlocs.test.jsx
 import { describe, it, expect, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, renderHook, act } from '@testing-library/react'
 
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 
@@ -81,6 +81,50 @@ describe('QJR540 — blocs repris de DevisForm dans l’Édition complète', () 
     await waitFor(() => expect(recordsApi.getAttachments).toHaveBeenCalledWith('ventes.devis', 12))
     expect(screen.queryByTestId('cal-bloc-calepinage-devis')).toBeNull()
     expect(screen.queryByTestId('devis-attente-signature')).toBeNull()
+  })
+})
+
+// ACAL1205/1206/1212 — « Auto-remplir » : le hook RÉEL (`useCompositionEcran`), son `setErrors` observé.
+async function bancAutoFill() {
+  const { useCompositionEcran } = await import('./generator/hooks/useCompositionEcran')
+  const { SCENARIO_LES_DEUX } = await import('../../features/ventes/quote/scenarios.js')
+  const etat = { erreurs: {} }
+  const setErrors = (f) => { etat.erreurs = typeof f === 'function' ? f(etat.erreurs) : f }
+  const composerDevis = vi.fn(() => Promise.resolve({ data: { lignes: [] } }))
+  const etudeCiPreview = vi.fn(() => Promise.resolve({ data: {} }))
+  ventesApi.composerDevis = composerDevis
+  ventesApi.etudeCiPreview = etudeCiPreview
+  const ctx = (surcharge = {}) => {
+    const etudeHoraireDonnees = surcharge.etudeHoraireDonnees ?? null
+    return {
+      produits: [], setErrors, dispatchSizing: vi.fn(), panelW: '710', scenario: SCENARIO_LES_DEUX,
+      modeInstallation: 'residentiel', recalcDimTick: 0, etudeHoraireDonnees, etudeHoraireChargement: false,
+      marcheCi: false, apercuCi: {}, avecQuantitesFigees: (f) => f(), sizing: { nbPanneaux: '6', touche: {} },
+      lines: [], kwp: 4.26, horsReseau: false, structureType: 'acier', selectedLead: null,
+      setOnduleursIncomplets: vi.fn(), setAutoFillLoading: vi.fn(), setCompositionErreur: vi.fn(),
+      recomposerLignes: vi.fn(), profilCi: null, ctxProfilCi: {},
+      resolveKwcAvec: () => etudeHoraireDonnees?.dimensionnement?.recommandation_avec?.kwc ?? 4.26,
+      ...surcharge,
+    }
+  }
+  const monte = (initial) => renderHook((props) => useCompositionEcran(props), { initialProps: initial })
+  return { etat, composerDevis, etudeCiPreview, ctx, monte }
+}
+
+describe('ACAL1205 — Auto-remplir attend l\'étude horaire (taille « avec batterie »)', () => {
+  it('clic pendant le chargement de l\'étude ⇒ rien composé + « en cours » ; après l\'étude ⇒ la composition porte la taille avec batterie', async () => {
+    const { etat, composerDevis, ctx, monte } = await bancAutoFill()
+    const { result, rerender } = monte(ctx({ etudeHoraireChargement: true }))
+    await act(async () => { await result.current.handleAutoFill() })
+    expect(composerDevis).not.toHaveBeenCalled()
+    expect(etat.erreurs.autofill).toMatch(/Dimensionnement en cours/)
+    await act(async () => {
+      rerender(ctx({ etudeHoraireDonnees: { dimensionnement: {
+        recommandation: { panneaux: 6, kwc: 4.26 }, recommandation_avec: { panneaux: 8, kwc: 5.68 } } } }))
+    })
+    await act(async () => { await result.current.handleAutoFill() })
+    expect(composerDevis).toHaveBeenCalledTimes(1)
+    expect(composerDevis.mock.calls[0][0].dimensionnement_avec).toMatchObject({ nb_panneaux: 8, kwc: 5.68 })
   })
 })
 
