@@ -18,8 +18,8 @@ RAISON_REFUS_CI = 'Pmax non publiée ou prix de vente absent'
 
 def module_ci_retenu(objets, *, panneau_defaut=None, alertes=None):
     """``(module, module_spec)`` de l'étude C&I parmi ``objets`` (``{id: Produit}`` du catalogue de la société)."""
-    from apps.calepinage.services.chaines import specs_module
     from apps.stock.selectors import specs_for_produit
+    from apps.ventes.conception.porte_calepinage import specs_module_du_calepinage as specs_module
 
     from .catalogue import classer_produit
     from .panneau_defaut import choisir_avec_defaut

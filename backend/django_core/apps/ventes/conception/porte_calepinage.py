@@ -383,3 +383,31 @@ def designations_ecartees(company, calepinage_id):
              'message': (MESSAGE_HORS_CATALOGUE % e['nom'] if e['nom'] else
                          MESSAGE_HORS_CATALOGUE.replace('« %s »', "à l'étape Électrique"))}
             for e in _designations(company, calepinage_id)[1]]
+
+
+# Cliquet ACAL1009 — portes minces pour le reste de ``ventes`` (pur ré-acheminement,
+# lecture à l'appel : un ``mock.patch`` du module du calepinage reste vu).
+
+def calepinage_lie_au_devis(devis_id, company):
+    """Le calepinage du devis (``apps.calepinage.selectors.calepinage_du_devis``) —
+    lu par ``domain/revision.py``."""
+    from apps.calepinage.selectors import calepinage_du_devis
+
+    return calepinage_du_devis(devis_id, company)
+
+
+def relier_calepinage_au_devis_revise(ancien, nouveau, *, user=None):
+    """LE service de re-liaison du calepinage à la V+1
+    (``apps.calepinage.services.relier_au_devis_revise``) — appelé par
+    ``domain/revision.py``."""
+    from apps.calepinage import services as calepinage_services
+
+    return calepinage_services.relier_au_devis_revise(ancien, nouveau, user=user)
+
+
+def specs_module_du_calepinage(specs, nom):
+    """La fiche électrique d'un module (``apps.calepinage.services.chaines.specs_module``)
+    — lue par ``domain/etude_ci_module.py``."""
+    from apps.calepinage.services.chaines import specs_module
+
+    return specs_module(specs, nom)

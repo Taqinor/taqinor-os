@@ -623,8 +623,7 @@ def _tracees(document, cheminement, entree, jour=None):
     n'éteignent PAS le tracé : chacun l'emporte pour SA part
     (``liaison_dc_tracee.liaison_du_pan``).
     """
-    from apps.ventes.selectors_calepinage import liaison_dc_tracee_ouverte
-
+    from .equipements import liaison_dc_tracee_ouverte
     from .liaison_dc_tracee import courses_tracees
 
     if (_nombre(getattr(entree, 'dc_m', None)) or 0) > 0 or not liaison_dc_tracee_ouverte(jour):

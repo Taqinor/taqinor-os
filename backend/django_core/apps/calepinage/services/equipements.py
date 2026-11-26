@@ -315,6 +315,24 @@ def borne_dc_ac_devis(mode_installation=None):
     return borne_dc_ac_du_moteur_devis(mode_installation)
 
 
+def liaison_dc_tracee_ouverte(jour=None):
+    """Liaison DC tracée (suite ACAL1317) — la coupure du tracé DC du plan, lue par la
+    porte ``apps.ventes.selectors_calepinage.liaison_dc_tracee_ouverte`` (cliquet
+    ACAL1009 : ``services/cables.py`` passe par ici)."""
+    from apps.ventes.selectors_calepinage import liaison_dc_tracee_ouverte as ouverte
+
+    return ouverte(jour)
+
+
+def pans_du_document(document):
+    """D-ACAL-169 — les pans d'un document de pose, lus par la porte
+    ``apps.ventes.services.pans_du_document`` (cliquet ACAL1009 :
+    ``services/suivi_module_pose.py`` passe par ici)."""
+    from apps.ventes.services import pans_du_document as lire
+
+    return lire(document)
+
+
 def _devis_lie(calepinage):
     """Le devis lié au calepinage, borné à SA société — ou ``None``."""
     devis_id = getattr(calepinage, 'devis_id', None)
