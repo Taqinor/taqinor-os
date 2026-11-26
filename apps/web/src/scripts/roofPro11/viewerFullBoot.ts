@@ -111,7 +111,7 @@ export interface ViewerFullHandle {
   zoomInitial: number;
   /** Index (dans `roof_layout.zones`) du pan actif : le seul que la scène teinte. */
   indexActif: number;
-  /** Écrit le soleil (jour, heure) et rejoue la scène avec les mêmes arguments ; la teinte est reposée. */
+  /** Écrit le soleil (jour, heure) et repose le soleil seul (lumière, ombres, ciel) : aucun maillage reconstruit. */
   poserInstant: (jour: number, heure: number) => void;
   /** `scene3d.setSolarAccessHeatmap` (pan actif), reposée après chaque rendu ; `null` l'éteint. */
   teinter: (colorFor: CouleurDe) => void;
@@ -368,7 +368,8 @@ export function bootViewerFull(
     poserInstant(jour, heure) {
       ctx.sunDay = jour;
       ctx.sunHour = heure;
-      essayer(rendre);
+      // Lot 8 (B3) — le soleil SEUL (lumière, ombres, ciel) : aucun maillage reconstruit, la teinte reste posée.
+      essayer(() => scene3d.poserSoleil());
     },
     teinter(colorFor) {
       teinte = colorFor;
