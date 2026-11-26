@@ -25,7 +25,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import PretAEnvoyer from './PretAEnvoyer'
 import RailGuide from './RailGuide'
 import { ongletParCle } from '../atelier/onglets'
-import { ETAPE_DU_CODE, MESSAGE_ECHEC, MESSAGE_LENT, rangerControles } from './PretAEnvoyer.helpers'
+import { ETAPE_DU_CODE, MESSAGE_ECHEC, MESSAGE_LENT, rangerControles, valeurAffichee } from './PretAEnvoyer.helpers'
 
 const pret = exempleContrat('calepinage', 'calepinage_pret_a_envoyer', 'exemple')
 const etapeDuCode = exempleContrat('calepinage', 'calepinage_pret_a_envoyer', 'etape_du_code')
@@ -82,6 +82,40 @@ describe('PretAEnvoyer — ordre des listes (H3)', () => {
     expect(boutons.length).toBeGreaterThan(1)
     expect(boutons.filter((b) => b.dataset.recommande === 'oui')).toHaveLength(1)
     expect(boutons[0].dataset.recommande).toBe('oui')
+  })
+
+  // R6-N3 — « Dossier électrique — Bloquant : 2 » à côté de « 6 points à régler », « 6 à régler » (rail) et « Contrôles · 4 bons » :
+  // les trois derniers comptent des CONTRÔLES (une même liste servie) ; le premier compte les POINTS DU DOSSIER — il le dit.
+  it('R6-N3 — badge, rail et « Contrôles · N bons » lisent la même liste ; « Bloquant : 2 » dit qu’il compte des points du dossier', async () => {
+    const dossier = { ...ligne(modeleBloquant, 'verdict_electrique'), libelle: 'Dossier électrique', valeur_texte: 'Bloquant : 2' }
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue(servi([
+      dossier,
+      ligne(modeleARegler, 'chutes_tension'), ligne(modeleARegler, 'terre_protections'), ligne(modeleARegler, 'ratio_dc_ac'),
+      ligne(modeleARegler, 'orientation_mppt'), ligne(modeleARegler, 'compatibilite_equipements'),
+      ligne(modeleOk, 'tension_froid'), ligne(modeleOk, 'tension_chaud'), ligne(modeleOk, 'courant_entree'),
+      ligne(modeleOk, 'materiel_designe'),
+    ]))
+    render(
+      <MemoryRouter>
+        <RailGuide vertical calepinageId={108} etapeActive="electrique" onChoisir={() => {}}
+          etats={{}} manque={[]} />
+        <PretAEnvoyer testIdCompte="compte" calepinageId={108} filtre="electrique" court />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByTestId('compte')).toHaveTextContent('6 points à régler')
+    await waitFor(() => expect(screen.getByTestId('cal-etape-electrique')).toHaveTextContent('6 à régler'))
+    expect(screen.getByTestId('cal-pret-bons')).toHaveTextContent('Contrôles · 4 bons')
+    // 6 + 4 : les lignes de la carte sont exactement les contrôles comptés.
+    expect(codesAffiches(screen.getByTestId('cal-pret-a-envoyer'))).toHaveLength(10)
+    expect(screen.getByTestId('cal-pret-ligne-verdict_electrique')).toHaveTextContent('Bloquant : 2 points du dossier')
+    expect(screen.getByTestId('cal-pret-ligne-chutes_tension')).not.toHaveTextContent('du dossier')
+  })
+
+  it('R6-N3 — valeurAffichee : singulier, autre état ou autre contrôle laissés tels que servis', () => {
+    expect(valeurAffichee({ code: 'verdict_electrique', etat: 'bloquant', valeur_texte: 'Bloquant : 1' })).toBe('Bloquant : 1 point du dossier')
+    expect(valeurAffichee({ code: 'verdict_electrique', etat: 'a_regler', valeur_texte: 'À compléter' })).toBe('À compléter')
+    expect(valeurAffichee({ code: 'tension_froid', etat: 'bloquant', valeur_texte: 'Bloquant : 2' })).toBe('Bloquant : 2')
+    expect(valeurAffichee({ code: 'verdict_electrique', etat: 'bloquant', valeur_texte: 'Autre phrase' })).toBe('Autre phrase')
   })
 
   it('par étape (Documents) : le groupe qui porte un point à régler passe en tête, ses points à régler d’abord', async () => {

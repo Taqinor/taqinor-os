@@ -5,7 +5,9 @@ import useResource from '../../../hooks/useResource'
 import { Popover, PopoverContent, PopoverTrigger } from '../../../ui/Popover'
 import { Icone as Picto } from '../atelier/coque/primitives'
 import { ETAPES, etapeDeOnglet } from '../atelier/parcoursGuide'
-import { cibleDuReglage, phraseDesBons, pointsServis, rangerControles, sansCleInterne } from './PretAEnvoyer.helpers'
+import {
+  cibleDuReglage, phraseDesBons, pointsServis, rangerControles, sansCleInterne, valeurAffichee,
+} from './PretAEnvoyer.helpers'
 import useExplications, { remplirPhrase } from './useExplications'
 
 /* ACAL1193 — la présentation « par étape » de « Prêt à envoyer ? » (maquette `Documents.dc.html`,
@@ -209,7 +211,7 @@ function Ligne({ controle, onRegler }) {
       <Pastille etat={controle.etat} />
       <span className="cdoc-ligne-texte">
         <span className="cdoc-ligne-titre">{controle.libelle}</span>
-        {controle.valeur_texte ? <span className="cdoc-ligne-detail">{controle.valeur_texte}</span> : null}
+        {controle.valeur_texte ? <span className="cdoc-ligne-detail">{valeurAffichee(controle)}</span> : null}
       </span>
       <Pourquoi controle={controle} />
       {aRegler && (
@@ -295,7 +297,7 @@ function LigneCourte({ c, premierARegler, onRegler }) {
         : <Pastille etat={c.etat} taille={18} />}
       <span className="cel-pret-texte">
         <span className="cel-pret-titre">{c.libelle}</span>
-        {c.valeur_texte ? <span className="cel-pret-detail">{c.valeur_texte}</span> : null}
+        {c.valeur_texte ? <span className="cel-pret-detail">{valeurAffichee(c)}</span> : null}
       </span>
       <Pourquoi controle={c} />
       {aRegler && (

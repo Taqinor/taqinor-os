@@ -87,6 +87,20 @@ export function pointsServis(controle) {
     .filter((p) => p.phrase)
 }
 
+/* R6-N3 — « Dossier électrique — Bloquant : 2 » compte les POINTS DU DOSSIER (les motifs de son verdict), alors que
+   « 6 points à régler », « N à régler » du rail et « Contrôles · 4 bons » comptent des CONTRÔLES (une ligne chacun) : la
+   même formule « N points » désignait deux choses sur le même écran. Le chiffre du dossier dit désormais ce qu'il compte ;
+   le texte servi (« Bloquant : N », mots communs au Verdict et au cadre du devis, ACAL935) n'est pas touché. */
+const BLOQUANT_N = /^Bloquant : (\d+)$/
+
+/** La valeur affichée à droite du titre d'un contrôle : celle du serveur, sauf le décompte du dossier électrique. */
+export function valeurAffichee(controle) {
+  const texte = controle?.valeur_texte
+  if (controle?.code !== 'verdict_electrique' || controle?.etat !== 'bloquant') return texte
+  const n = Number(String(texte ?? '').match(BLOQUANT_N)?.[1])
+  return Number.isInteger(n) && n > 0 ? `${texte} point${n > 1 ? 's' : ''} du dossier` : texte
+}
+
 /** La cible de « Régler » : celle du premier point servi quand il en porte une, sinon celle du contrôle. */
 export function cibleDuReglage(controle) {
   return pointsServis(controle).find((p) => p.cible?.onglet)?.cible ?? controle?.cible
