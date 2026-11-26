@@ -1907,7 +1907,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     appliquerHydratationAuCtx(ctx, h);
     if (h.environment !== undefined) obstaclesUi.relireEnvironment(); // ACAL1406 — liste + ombrage relus
     if (h.electrical !== undefined) coucheElectrique.rafraichir();
-    if (h.shadeObstructions !== undefined || h.documentRelu) shadingUi.rafraichirOmbres(); // ACAL27 ; ACAL1921 — document relu : le seuil saisi se relit aussi
+    if (h.shadeObstructions !== undefined) shadingUi.rafraichirOmbres(); // ACAL27
     if (h.surfacesPose !== undefined) {
       monterAtelierPose(ctx, { setStatus: (msg: string) => setStatus(msg), recalc: () => updateAreaReadout(), rendreSite: () => renderAreasPanel() }); // T4-X9-012
       updateAreaReadout();
