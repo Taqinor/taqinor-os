@@ -83,9 +83,17 @@ def _classe_ligne(ligne, predicat):
     d'alignement des mots-clés, CLAUDE.md règle #4) ; le nom du produit n'est
     consulté qu'en second, pour rattraper une désignation réécrite à la main
     (« Modules PV posés » sur un produit « Panneau Jinko 550W »).
+
+    Lecteurs en aval (fondateur 24/11/2026) — AVANT ces mots-clés, le rôle
+    déclaré du produit lié puis sa fiche (``domain.classe_ligne``) ; nouveaux
+    rendus seulement, et un prédicat hors de ``solar_classification`` garde les
+    seuls mots-clés.
     """
-    return (predicat(ligne.designation or '')
-            or predicat(getattr(ligne.produit, 'nom', '') or ''))
+    from apps.ventes.domain.classe_ligne import classe_de_ligne, classe_du_predicat
+
+    return classe_de_ligne(ligne, classe_du_predicat(predicat), lambda: (
+        predicat(ligne.designation or '')
+        or predicat(getattr(ligne.produit, 'nom', '') or '')))
 
 
 def _pmax_wc_du_produit(produit):

@@ -354,3 +354,106 @@ class CasLigneProduitTest(SimpleTestCase):
                         valeur, c[col],
                         '« {} » + « {} » : {} attendu {} (contrat AGNR2), '
                         'obtenu {}'.format(d, nom, col, c[col], valeur))
+
+
+class _FicheLue:
+    """Fiche technique en doublure : un champ non posé vaut ``None`` (non publié)."""
+
+    def __init__(self, type_fiche, **valeurs):
+        self.type_fiche = type_fiche
+        self._valeurs = valeurs
+
+    def __getattr__(self, nom):
+        return self.__dict__.get('_valeurs', {}).get(nom)
+
+
+def _ligne_produit(designation, *, role=None, fiche=None, devis=None):
+    """Une ligne LIÉE à un produit (``produit_id`` posé) : rôle et fiche au choix."""
+    produit = SimpleNamespace(nom=designation, role_devis=role, fiche_technique=fiche)
+    return SimpleNamespace(designation=designation, quantite=1, produit=produit,
+                           produit_id=7, devis=devis)
+
+
+class LecteursAvalRoleFicheTest(SimpleTestCase):
+    """Lecteurs en aval (fondateur 24/11/2026, « un produit se reconnaît à son
+    rôle et à sa fiche avant son nom ») — ``domain.classe_ligne``, lu par
+    ``domain.lignes._classe_ligne``, le moteur PDF et le noyau des paniers."""
+
+    #: Désignations RÉELLES de ``seed_catalogue`` (et le nom réel du 80 kW de Reda).
+    DESIGNATIONS = (
+        'Onduleur réseau Huawei 10kW Triphasé', 'Onduleur hybride Deye 10kW Monophasé',
+        'Panneau Canadien Solar 710W', 'Panneau Jinko 710W', 'Batterie Dyness 10 kWh',
+        'Batterie Dyness PowerBrick SC 16 kWh', 'Batterie Gel 2.2 kWh', 'Structures acier',
+        'Câble solaire Nexans 6 mm² (au mètre)', 'Smart Meter', 'Deye off-Grid 6kw',
+        'DEYE SUN-80K-SG02HP3-EU-EM6', 'Installation')
+    PREDICATS = (_is_panel, _is_battery, _is_hybrid_inverter, _is_reseau_inverter,
+                 _is_offgrid_inverter, _is_inverter)
+
+    def test_sans_role_ni_fiche_le_verdict_d_hier(self):
+        from apps.ventes.domain.lignes import _classe_ligne
+        for designation in self.DESIGNATIONS:
+            for predicat in self.PREDICATS:
+                for ligne in (_ligne_produit(designation),
+                              SimpleNamespace(designation=designation, produit=None, produit_id=None)):
+                    with self.subTest(designation=designation, predicat=predicat.__name__):
+                        self.assertEqual(_classe_ligne(ligne, predicat), bool(predicat(designation)))
+
+    def test_le_role_passe_devant_le_nom(self):
+        from apps.ventes.domain.lignes import _classe_ligne
+        hybride = _ligne_produit('DEYE SUN-80K-SG02HP3-EU-EM6', role='onduleur_hybride')
+        self.assertFalse(_is_hybrid_inverter('DEYE SUN-80K-SG02HP3-EU-EM6'))  # le nom ne le dit pas
+        self.assertTrue(_classe_ligne(hybride, _is_hybrid_inverter))
+        self.assertTrue(_classe_ligne(hybride, _is_inverter))
+        self.assertFalse(_classe_ligne(hybride, _is_reseau_inverter))
+        cable = _ligne_produit('Câble batterie 35 mm²', role='cable_dc')
+        self.assertTrue(_is_battery('Câble batterie 35 mm²'))  # les mots-clés s'y trompent
+        self.assertFalse(_classe_ligne(cable, _is_battery))
+
+    def test_la_fiche_passe_devant_le_nom(self):
+        from apps.ventes.domain.lignes import _classe_ligne
+        nom = 'Canadian Solar TOPBiHiKu7 CS7N-715TB'
+        self.assertFalse(_is_panel(nom))
+        self.assertTrue(_classe_ligne(_ligne_produit(nom, fiche=_FicheLue('module')), _is_panel))
+        self.assertTrue(_classe_ligne(_ligne_produit('Deye BOS-B Pro-A3', fiche=_FicheLue('batterie')),
+                                      _is_battery))
+        port = _FicheLue('onduleur', ond_bat_max_charge_kw=80, ond_bat_max_decharge_kw=80)
+        self.assertTrue(_classe_ligne(_ligne_produit('DEYE SUN-80K-SG02HP3-EU-EM6', fiche=port),
+                                      _is_hybrid_inverter))
+        # Fiche onduleur sans port batterie : la famille reste celle du nom.
+        reseau = _ligne_produit('Onduleur réseau Huawei 10kW Triphasé', fiche=_FicheLue('onduleur'))
+        self.assertTrue(_classe_ligne(reseau, _is_reseau_inverter))
+        self.assertFalse(_classe_ligne(reseau, _is_hybrid_inverter))
+        self.assertFalse(_classe_ligne(reseau, _is_panel))
+
+    def test_devis_envoye_avant_la_coupure_garde_les_mots_cles(self):
+        from datetime import date, timedelta
+
+        from apps.ventes.domain.lignes import _classe_ligne
+        from apps.ventes.domain.regles_calcul import COUPURE_CLASSE_PAR_ROLE
+        avant = SimpleNamespace(statut='envoye', regles_calcul=14,
+                                date_envoi=date(*COUPURE_CLASSE_PAR_ROLE) - timedelta(days=1))
+        apres = SimpleNamespace(statut='envoye', regles_calcul=14, date_envoi=date(*COUPURE_CLASSE_PAR_ROLE))
+        nom = 'DEYE SUN-80K-SG02HP3-EU-EM6'
+        self.assertFalse(_classe_ligne(_ligne_produit(nom, role='onduleur_hybride', devis=avant),
+                                       _is_hybrid_inverter))
+        self.assertTrue(_classe_ligne(_ligne_produit(nom, role='onduleur_hybride', devis=apres),
+                                      _is_hybrid_inverter))
+
+    def test_pdf_et_noyau_lisent_la_meme_famille(self):
+        """La servabilité du PDF (``paires_portent``) et celle du noyau des
+        paniers (``familles_des_lignes``) suivent le même rôle — sans la fiche."""
+        from apps.ventes.domain.classe_ligne import paires_portent
+        from apps.ventes.utils.options import familles_des_lignes
+        lignes = [_ligne_produit('DEYE SUN-80K-SG02HP3-EU-EM6', role='onduleur_hybride'),
+                  _ligne_produit('Deye BOS-B Pro-A3 16 kWh', role='batterie'),
+                  _ligne_produit('Module CS7N-715TB', fiche=_FicheLue('module'))]
+        paires = [(li, {'designation': li.designation, '_produit_nom': li.produit.nom,
+                        'quantite': 1.0}) for li in lignes]
+        familles = familles_des_lignes(lignes)
+        self.assertEqual(familles, {'has_reseau': False, 'has_hybride': True,
+                                    'has_offgrid': False, 'has_batterie': True})
+        for cle, predicat in (('has_reseau', _is_reseau_inverter), ('has_hybride', _is_hybrid_inverter),
+                              ('has_offgrid', _is_offgrid_inverter), ('has_batterie', _is_battery)):
+            self.assertEqual(paires_portent(paires, predicat), familles[cle], cle)
+        paires[0][1]['quantite'] = 0.0
+        self.assertFalse(paires_portent(paires, _is_hybrid_inverter))

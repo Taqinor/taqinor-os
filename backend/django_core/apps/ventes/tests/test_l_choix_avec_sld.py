@@ -636,3 +636,79 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
                         side_effect=RuntimeError("chemin cassé")):
             with self.assertRaises(RuntimeError):
                 es.schema_electrique_du_devis(devis)
+
+
+def _envoye_avant_la_coupure(devis):
+    """``devis`` envoyé la veille de la coupure « rôle / fiche » : il garde les mots-clés."""
+    from datetime import date, timedelta
+
+    from apps.ventes.domain.regles_calcul import COUPURE_CLASSE_PAR_ROLE
+    devis.statut, devis.regles_calcul = "envoye", 14
+    devis.date_envoi = date(*COUPURE_CLASSE_PAR_ROLE) - timedelta(days=1)
+    return devis
+
+
+def _lie(ligne, produit_id, role=None):
+    """La ligne LIÉE à son produit (``produit_id`` posé), au rôle déclaré ``role``."""
+    ligne.produit_id = produit_id
+    ligne.produit.role_devis = role
+    return ligne
+
+
+def _devis_hybride_haute_tension():
+    """Le 80 kW de Reda (rôle déclaré, nom muet), sa batterie BOS-B (rôle déclaré)
+    et des panneaux 715 Wc que seule leur fiche dit « module »."""
+    fiche_715 = dict(FICHE_CS710, pmax_wc=Decimal("715.00"))
+    return _FauxDevis(lignes=[
+        _lie(_FausseLigne("Canadian Solar TOPBiHiKu7 CS7N-715TB", 30, produit=_FauxProduit(
+            "Canadian Solar TOPBiHiKu7 CS7N-715TB", marque="Canadian Solar",
+            fiche=_FausseFiche("module", **fiche_715))), 1),
+        _lie(_FausseLigne("DEYE SUN-80K-SG02HP3-EU-EM6", 1, produit=_FauxProduit(
+            "DEYE SUN-80K-SG02HP3-EU-EM6", marque="Deye", fiche=_FausseFiche(
+                "onduleur", ond_bat_max_charge_kw=Decimal("80"), **FICHE_ONDULEUR_HYBRIDE))),
+             2, "onduleur_hybride"),
+        _lie(_FausseLigne("Deye BOS-B Pro-A3 16 kWh", 1, produit=_FauxProduit(
+            "Deye BOS-B Pro-A3 16 kWh", marque="Deye", fiche=_FausseFiche(
+                "batterie", bat_kwh_nominal=Decimal("16.08"), bat_v_nominal=Decimal("51.2")))),
+             3, "batterie"),
+    ], roof_layout=_roof(30))
+
+
+class LecteursAvalRoleFicheTest(SimpleTestCase):
+    """Lecteurs en aval (fondateur 24/11/2026, « un produit se reconnaît à son
+    rôle et à sa fiche avant son nom ») — l'étude électrique lit l'onduleur, la
+    batterie et le module par le rôle déclaré puis la fiche ; un devis envoyé
+    avant la coupure garde les mots-clés, et une empreinte rangée ne bouge pas."""
+
+    def test_hybride_haute_tension_reconnu_par_son_role(self):
+        devis = _devis_hybride_haute_tension()
+        self.assertEqual(es._option_choisie(devis)[1], "avec")
+        onduleur, _phases = es.spec_onduleur_du_devis(devis)
+        self.assertIn("Deye", onduleur.designation)
+        self.assertEqual(onduleur.ac_kw, 15.0)
+        self.assertEqual(es.spec_module_du_devis(devis).pmax_wc, 715.0)
+        presente, designation, kwh, _v = es._batterie_du_devis(devis)
+        self.assertTrue(presente)
+        self.assertAlmostEqual(kwh, 16.08)
+        self.assertIn("Deye", designation)
+
+    def test_devis_envoye_avant_la_coupure_garde_les_mots_cles(self):
+        devis = _envoye_avant_la_coupure(_devis_hybride_haute_tension())
+        self.assertEqual(es.spec_module_du_devis(devis).pmax_wc, 0.0)
+        self.assertEqual(es.spec_onduleur_du_devis(devis)[0].ac_kw, 0.0)
+        self.assertFalse(es._batterie_du_devis(devis)[0])
+
+    def test_empreinte_inchangee_quand_role_fiche_et_nom_s_accordent(self):
+        """Un devis d'aujourd'hui (rôle absent, fiches cohérentes avec les noms) :
+        la même entrée, donc la même ``electrical_design_hash``, que le classement
+        lise le produit lié (ouvert), les seuls mots-clés (envoyé avant) ou une
+        ligne sans produit lié."""
+        def devis(lie, ferme=False):
+            d = _devis_deux_options_servables()
+            if lie:
+                for k, ligne in enumerate(d.lignes.all(), start=1):
+                    _lie(ligne, k)
+            return _envoye_avant_la_coupure(d) if ferme else d
+        empreintes = {es.empreinte_entree(d, es.construire_entree(d))
+                      for d in (devis(False), devis(True), devis(True, ferme=True))}
+        self.assertEqual(len(empreintes), 1)
