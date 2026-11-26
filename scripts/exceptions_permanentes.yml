@@ -449,6 +449,7 @@ tests_sautes_environnement:
     - "backend/django_core/apps/ventes/tests/test_pdf_apdf_pictos.py::PictosCategoriesTests.test_page_une_sans_glyphe_manquant"
     - "backend/django_core/apps/ventes/tests/test_qjr428_promesse_carburant_agricole.py::TestAgr316TroisPagesEconomiesDeclarees.setUp"
     - "backend/django_core/apps/ventes/tests/test_qjr666_premium_residentiel_options.py::PaginationReelle.setUp"
+    - "backend/django_core/apps/ventes/tests/test_quote_engine.py::RibDevisFinalPagesTest.setUp"
     - "backend/django_core/apps/ventes/tests/test_quote_engine_adev67_agricole_blocs_communs.py::BlocsCommunsPdfReelTests.setUp"
     - "backend/django_core/apps/ventes/tests/test_quote_engine_amot20_onepage_dernier_bloc.py::OnepageDernierBlocTests"
     - "backend/django_core/apps/ventes/tests/test_quote_engine_amot36_pages_ci.py::PagesCiTests.setUp"
