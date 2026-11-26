@@ -699,7 +699,7 @@ def _poser_produit(ligne, produit, famille, avertissements, *, nombre=None):
     """Pose ``produit`` sur une ligne (produit, désignation, prix catalogue, rôle, et le nombre
     désigné hors quantité saisie à la main) ; un prix saisi à la main n'est jamais écrasé
     (abstention DITE, comme ``reconcilier._permuter_onduleur``). Rend vrai si la ligne a bougé."""
-    from apps.ventes.domain.lignes import poser_prix_unitaire
+    from apps.ventes.domain.lignes import porter_quantite, poser_prix_unitaire
 
     if getattr(ligne, 'prix_manuel', False) and ligne.produit_id != produit.pk:
         avertissements.append(MSG_RESYNC_PRIX_MANUEL % (ligne.designation or 'ligne sans désignation',
@@ -713,11 +713,11 @@ def _poser_produit(ligne, produit, famille, avertissements, *, nombre=None):
     if getattr(ligne, 'role_devis', '') and ligne.role_devis != famille:
         ligne.role_devis = famille
         champs.append('role_devis')
-    if nombre and not getattr(ligne, 'quantite_manuelle', False) and ligne.quantite != Decimal(nombre):
-        ligne.quantite = Decimal(nombre)
-        champs.append('quantite')
     if champs:
         ligne.save(update_fields=champs)
+    if nombre and not getattr(ligne, 'quantite_manuelle', False) and ligne.quantite != Decimal(nombre):
+        porter_quantite(ligne, Decimal(nombre))  # QJR6 : l'écrivain sanctionné d'une quantité recalculée
+        return True
     return bool(champs)
 
 
