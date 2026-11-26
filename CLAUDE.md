@@ -399,8 +399,11 @@ the merge gate). Every SUBAGENT is dispatched via `Agent` `model:` / `Workflow` 
     verdict shapes many downstream tasks. HARD LIMITS: cap 1-3 Fable calls per run; NEVER for
     build lanes, scouts, or verifier fleets; each Fable call gets a one-line DONE-LOG note
     (what it was for + what it caught) so the founder sees whether it earned its cost. Fable is
-    the MOST capable AND MOST EXPENSIVE model ($10/$50 per 1M — 2× Opus, 10× Haiku); a scalpel,
-    not the house model. A small batch (<~40 routine tasks, no high-risk surface) does NOT get
+    the MOST capable AND MOST EXPENSIVE model (Fable 5.2, read 26/11/2026 in the claude-api skill:
+    $8/$40 per 1M — 2× Opus 5.5 on new tokens and output, the SAME price as Opus for re-reading
+    cached context, $0.20 per 1M; current prices always come from that skill, never from this
+    line); a scalpel, not the house model. Measured on the calepinage L5 (619 agents): the same
+    lane work costs ×1.4 on Fable instead of Opus, ×3 instead of Sonnet. A small batch (<~40 routine tasks, no high-risk surface) does NOT get
     a Fable pass — Opus review is enough there.
   The orchestrator still adversarially reviews + locally tests EVERY lane regardless of which model
   built it, so a cheaper builder never lowers the merge bar. Config (`.claude/settings.json`):
