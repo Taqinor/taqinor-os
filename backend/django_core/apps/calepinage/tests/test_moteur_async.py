@@ -200,6 +200,19 @@ class LivraisonSansBaseTest(SimpleTestCase):
             self.assertEqual(tasks._livraison_de_trop(self._job()),
                              tasks.MOTIF_COMPTE_INDISPONIBLE)
 
+    def test_purge_en_echec_la_livraison_reste_acceptee(self):
+        # Revue lot 6 — la purge a son propre try : son erreur est journalisée
+        # et ne change jamais le verdict du compte (déjà incrémenté).
+        from django.db import DatabaseError
+
+        from apps.calepinage import tasks
+
+        with mock.patch('core.models.SequenceCounter.next', side_effect=[1, 3]), \
+                mock.patch('core.models.SequenceCounter.objects') as objets:
+            objets.filter.return_value.delete.side_effect = DatabaseError('interblocage')
+            self.assertEqual(tasks._livraison_de_trop(self._job()), '')
+            self.assertEqual(tasks._livraison_de_trop(self._job()), tasks.MOTIF_INTERROMPU)
+
     def test_au_dela_de_la_borne_interrompu_sinon_rien(self):
         from apps.calepinage import tasks
 

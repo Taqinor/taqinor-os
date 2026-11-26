@@ -233,12 +233,17 @@ def _livraison_de_trop(job):
     limite = timezone.now() - datetime.timedelta(hours=HEURES_COMPTEUR_LIVRAISONS)
     try:
         rang = SequenceCounter.next(job.company, cle)
+    except DatabaseError:
+        logger.exception('calepinage : compte des livraisons du job #%s impossible', job.pk)
+        return MOTIF_COMPTE_INDISPONIBLE
+    try:
+        # Revue lot 6 — le ménage a SON try : un verrou ou un interblocage entre
+        # deux purges est journalisé et ne change jamais le verdict du compte.
         SequenceCounter.objects.filter(
             company_id=job.company_id, cle__startswith=PREFIXE_COMPTEUR_LIVRAISONS,
             updated_at__lt=limite).delete()
     except DatabaseError:
-        logger.exception('calepinage : compte des livraisons du job #%s impossible', job.pk)
-        return MOTIF_COMPTE_INDISPONIBLE
+        logger.exception('calepinage : purge des compteurs de livraison impossible (job #%s)', job.pk)
     return MOTIF_INTERROMPU if rang > LIVRAISONS_MAX else ''
 
 
