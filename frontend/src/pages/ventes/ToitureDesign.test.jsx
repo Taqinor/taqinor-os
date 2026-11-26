@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, act } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, act, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
@@ -210,6 +210,7 @@ describe('ToitureDesign — mode devis (PV20)', () => {
         expect(beforeunloadArme()).toBe(false)
 
         // On retire 3 panneaux : la sérialisation change.
+        fireEvent.pointerDown(document.body) // ACAL1661 — une vraie retouche suit un geste de l'utilisateur
         serializeLayout.mockReturnValue({ ...LAYOUT, result: { panels: 9 } })
         await waitFor(() => expect(beforeunloadArme()).toBe(true), { timeout: 5000 })
 
@@ -259,6 +260,7 @@ describe('ToitureDesign — mode devis (PV20)', () => {
         const fermer = await screen.findByTestId('cal-retour-liste') // Coque (22/11) : « ‹ Devis » du bandeau referme l'atelier
         await waitFor(() => expect(serializeLayout).toHaveBeenCalled())
         const modifie = { ...LAYOUT, result: { panels: CTX_CAL.cible.panneaux } }
+        fireEvent.pointerDown(document.body) // ACAL1661 — idem
         serializeLayout.mockReturnValue(modifie)
         await waitFor(() => expect(beforeunloadArme()).toBe(true), { timeout: 5000 })
 
