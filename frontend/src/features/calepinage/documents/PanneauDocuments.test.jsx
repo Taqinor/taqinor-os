@@ -35,6 +35,7 @@ vi.mock('../../../api/calepinageApi', () => ({
       apercuDocument: vi.fn(), // ACAL223
       pretAEnvoyer: vi.fn(), // ACAL1193
       explications: vi.fn(() => Promise.resolve({ data: { entrees: [] } })), // ACAL1193
+      sldPdf: vi.fn(), // ACAL1723
     },
   },
 }))
@@ -52,6 +53,7 @@ vi.mock('../../../utils/downloadBlob', () => ({
 import calepinageApi from '../../../api/calepinageApi'
 import { downloadBlob, filenameFromResponse } from '../../../utils/downloadBlob'
 import { ONGLETS } from '../atelier/onglets'
+import { OPTIONS_TELECHARGEMENT } from './telechargement'
 import PanneauDocuments from './PanneauDocuments'
 import EtapeDocuments from './EtapeDocuments'
 import PretAEnvoyer from '../commun/PretAEnvoyer'
@@ -1142,5 +1144,57 @@ describe('EtapeDocuments — l’écran guidé de la maquette (ACAL1193)', () =>
     expect(screen.queryByTestId('cal-pret-ligne-visite_validee')).toBeNull()
     expect(screen.queryByTestId('cal-pret-groupe-electrique')).toBeNull() // pas `groupes` : présentation d'origine
     expect(screen.getByTestId('cal-pret-reussis')).toHaveTextContent('Voir les 3 contrôles réussis')
+  })
+})
+
+
+describe('EtapeDocuments — la carte « Schéma électrique » livre le schéma dessiné (ACAL1723)', () => {
+  const pret = exempleContrat(APP, 'calepinage_pret_a_envoyer', 'exemple')
+  const servirPieceCablagePrete = () => {
+    const inventaire = structuredClone(reponseContrat(APP, NOM, 'exemple'))
+    const cablage = inventaire.data.documents.find((d) => d.code === 'plan_cablage')
+    cablage.disponible = true
+    cablage.manque = []
+    cablage.motif_indisponible = ''
+    calepinageApi.calepinages.documents.mockResolvedValue(inventaire)
+    calepinageApi.calepinages.sorties.mockResolvedValue(reponseContrat(APP, 'calepinage_sorties', 'exemple'))
+    calepinageApi.calepinages.pretAEnvoyer.mockResolvedValue({ data: { ...pret } })
+  }
+  const monter = () => render(
+    <MemoryRouter>
+      <EtapeDocuments calepinageId={1} actionDevis={<button type="button">Générer le devis</button>} />
+    </MemoryRouter>,
+  )
+
+  it('« Télécharger » de la carte appelle le PDF du schéma unifilaire, jamais le plan de câblage', async () => {
+    servirPieceCablagePrete()
+    calepinageApi.calepinages.sldPdf.mockResolvedValue({
+      data: new Blob(['%PDF']), headers: { 'content-disposition': 'attachment; filename="calepinage-1-schema.pdf"' } })
+    const utilisateur = userEvent.setup()
+    monter()
+    const bouton = await screen.findByTestId('cal-docs-telecharger-schema')
+    await waitFor(() => expect(bouton).not.toBeDisabled())
+    await utilisateur.click(bouton)
+    await waitFor(() => expect(calepinageApi.calepinages.sldPdf).toHaveBeenCalledWith(1, OPTIONS_TELECHARGEMENT))
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledWith(expect.any(Blob), 'calepinage-1-schema.pdf'))
+    expect(calepinageApi.calepinages.telechargerDocument).not.toHaveBeenCalled()
+  })
+
+  it('« Aperçu » de la colonne ouvre le même PDF dans un onglet ; un refus du serveur est dit sous la carte', async () => {
+    servirPieceCablagePrete()
+    const ouvrir = vi.spyOn(window, 'open').mockImplementation(() => null)
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:schema')
+    calepinageApi.calepinages.sldPdf
+      .mockResolvedValueOnce({ data: new Blob(['%PDF']) })
+      .mockRejectedValueOnce({ response: { status: 409, data: { onduleur: 'Le schéma unifilaire n’est pas exportable.' } } })
+    const utilisateur = userEvent.setup()
+    monter()
+    await utilisateur.click(await screen.findByRole('button', { name: 'Schéma électrique' }))
+    await waitFor(() => expect(screen.getByTestId('cal-docs-apercu-schema')).not.toBeDisabled())
+    await utilisateur.click(screen.getByTestId('cal-docs-apercu-schema'))
+    await waitFor(() => expect(ouvrir).toHaveBeenCalledWith('blob:schema', '_blank', 'noopener'))
+    await utilisateur.click(screen.getByTestId('cal-docs-telecharger-schema'))
+    expect(await screen.findByText(/n’est pas exportable/)).toBeTruthy()
+    ouvrir.mockRestore()
   })
 })

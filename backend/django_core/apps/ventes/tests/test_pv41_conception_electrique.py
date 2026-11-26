@@ -713,3 +713,75 @@ class ConceptionElectriqueEndpointTest(TestCase):
                 PRIX_ONDULEUR_VENTE, PRIX_ONDULEUR_ACHAT)]
         for interdit in interdits:
             self.assertNotIn(interdit, blob)
+
+
+#: D-HYB-1 — aides du test du ratio côté calepinage, lues par le MODULE (jamais ses classes
+#: au niveau du module : le chargeur de tests les rejouerait ici) et jamais recopiées.
+from apps.calepinage.services.electrique import SOURCE_BORNE_CAPACITE  # noqa: E402
+from apps.calepinage.tests import test_elec_ratio_dc_ac as ratio_calepinage  # noqa: E402
+
+NOM_SANS_HYBRIDE = 'Deye SUN-20K-SG01HP3-EU-AM2'  # référence constructeur, sans le mot « hybride »
+
+
+class VerdictHybrideCalepinageDevisTest(SimpleTestCase):
+    """D-HYB-1 (lead 1742) — déplacés de ``apps/calepinage/tests/test_elec_ratio_dc_ac.py``
+    (cliquet ACAL1009 : le calepinage ne lit ventes que par ses portes) : le verdict du
+    calepinage comparé au moteur de devis C&I, et la porte du moteur
+    (``conception.porte_calepinage``) qui juge une pose sur un autre onduleur — par son NOM
+    quand la ligne n'a pas de désignation, par son RÔLE quand le nom ne dit pas « hybride »."""
+
+    def test_meme_verdict_que_le_moteur_de_devis(self):
+        """D-HYB-1 (lead 1742) — même module, même compte, même hybride : le calepinage et le
+        moteur de devis C&I (``moteur_ci.onduleurs._capacite_kwc``, LA règle du noyau) disent
+        tous deux oui ou tous deux non, la capacité publiée au-dessus, au-dessous ou absente."""
+        from apps.ventes.moteur_ci.onduleurs import _capacite_kwc
+        from core.electrique.onduleurs import bornes_dc_ac
+
+        haute = bornes_dc_ac().borne_usuelle.valeur
+        for dc_max, nom, role in ((40.0, 'Onduleur hybride Deye 20 kW', ''), (30.0, 'Onduleur hybride Deye 20 kW', ''),
+                                  (None, 'Onduleur hybride Deye 20 kW', ''),
+                                  (40.0, 'Deye SUN-20K-SG01HP3', 'onduleur_hybride')):  # D-HYB-1 : le rôle
+            fiche = {} if dc_max is None else {'dc_max_kwc': dc_max}
+            bloc, _m, verdict, controle = ratio_calepinage.UnSeulVerdictTest._trois(
+                self, ratio_calepinage._conception(48, 20.0, designation=nom, role=role, **fiche))
+            devis = _capacite_kwc({'kw_ac': 20.0, 'dc_max_kwc': dc_max, '_fiche_fait_foi': True},
+                                  haute)[0] >= bloc['puissance_dc_kwc'] - 1e-9
+            self.assertEqual(verdict['conforme'], devis, dc_max)
+            self.assertEqual(bloc['dans_bornes'], devis, dc_max)
+            self.assertEqual(controle['etat'], 'ok' if devis else 'a_regler', dc_max)
+
+    def test_hybride_sans_designation_juge_a_sa_fiche(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.ventes.conception import porte_calepinage as porte
+
+        design = {'ratio_dc_ac': 1.72, 'chaines': [], 'materiel': {'onduleur': {'designation': None}}}
+        lignes = [{'produit': 7, 'designation': None, 'quantite': 1}]
+        fiche = {'ac_kw': 20.0, 'dc_max_kwc': 40.0}
+        produit = SimpleNamespace(nom='Deye hybride 20 kW', role_devis='')
+        with mock.patch.object(porte, '_onduleur_lu', return_value=(fiche, produit)), mock.patch.object(
+                porte, '_reglages_electriques', return_value={}):
+            verdicts = porte.verdicts_electriques(object(), design, lignes, 34.32)
+        self.assertIs(verdicts['ratio_dc_ac']['conforme'], True)
+        self.assertEqual(verdicts['ratio_dc_ac']['borne_source'], SOURCE_BORNE_CAPACITE)
+        self.assertIn('fiche constructeur : 40 kWc au plus', verdicts['ratio_dc_ac']['detail'])
+        self.assertIs(verdicts['capacite_hybride']['conforme'], True)
+
+    def test_pose_sur_un_autre_onduleur_par_son_role(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.ventes.conception import porte_calepinage as porte
+
+        design = {'ratio_dc_ac': 1.72, 'chaines': [], 'materiel': {'onduleur': {'designation': NOM_SANS_HYBRIDE}}}
+        lignes = [{'produit': 7, 'designation': NOM_SANS_HYBRIDE, 'quantite': 1}]
+        fiche = {'ac_kw': 20.0, 'dc_max_kwc': 40.0}
+        produit = SimpleNamespace(nom=NOM_SANS_HYBRIDE, role_devis='onduleur_hybride')
+        with mock.patch.object(porte, '_onduleur_lu', return_value=(fiche, produit)) as lu, mock.patch.object(
+                porte, '_reglages_electriques', return_value={}):
+            verdicts = porte.verdicts_electriques(object(), design, lignes, 34.32)
+        self.assertEqual(lu.call_count, 1)  # une seule lecture du produit (fiche, nom, rôle)
+        self.assertIs(verdicts['ratio_dc_ac']['conforme'], True)
+        self.assertEqual(verdicts['ratio_dc_ac']['borne_source'], SOURCE_BORNE_CAPACITE)
+        self.assertIs(verdicts['capacite_hybride']['conforme'], True)

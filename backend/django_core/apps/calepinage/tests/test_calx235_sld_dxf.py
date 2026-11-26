@@ -267,6 +267,91 @@ class FicheIncompleteTest(SimpleTestCase):
         self.assertIn('Aucun fichier', str(refus.exception))
 
 
+class CablageEffectifTest(SimpleTestCase):
+    """DXF et PDF refusent et acceptent dans les MÊMES cas, jugés sur le
+    câblage EFFECTIF (``sld_export._refuser_si_empeche`` →
+    ``sld.bloquants_du_cablage``) : automatique forcé à 7 (5 × 7, 66,9 A sur
+    l'entrée 1 d'un hybride 2 entrées à 54 A), manuel 12 + 12 | 11 valide."""
+
+    MODULE_715 = {'vmp_v': 41.0, 'voc_v': 49.1, 'isc_a': 22.3, 'imp_a': 17.44,
+                  'pmax_wc': 715.0, 'temp_coeff_voc_pct_c': -0.25,
+                  'temp_coeff_pmax_pct_c': -0.35}
+    DEYE_20K = {'n_mppt': 2, 'mppt_v_min': 150.0, 'mppt_v_max': 750.0,
+                'v_max_abs': 800.0, 'i_max_mppt_a': 36.0, 'ac_kw': 20.0,
+                'phases': 3, 'isc_max_mppt_a': 54.0}
+
+    def _conception(self):
+        from apps.calepinage.services.chaines import concevoir_par_pan
+        from apps.calepinage.services.electrique import temperatures_site
+
+        return concevoir_par_pan(
+            {'version': 2, 'zones': [{'id': 'z1', 'label': 'PAN-1', 'geometry': {
+                'count': 35, 'azimuthDeg': 180.0, 'tiltDeg': 15.0}}]},
+            module_specs=self.MODULE_715, onduleur_specs=self.DEYE_20K,
+            temperatures=temperatures_site(saisie={
+                'temperature_min_c': -5.0, 'temperature_max_c': 70.0}),
+            longueur_forcee=7)
+
+    def _manuel(self):
+        lignes, rang = [], 0
+        for numero, (longueur, mppt) in enumerate(((12, 1), (12, 1), (11, 2)),
+                                                  start=1):
+            for _ in range(longueur):
+                rang += 1
+                lignes.append({'module': 'z1#%d' % rang, 'chaine': numero,
+                               'mppt': mppt, 'onduleur': 1})
+        return {'affectation_manuelle': lignes}
+
+    def _exporter(self, format_, donnees):
+        """``'produit'``, ou l'exception ``SldRefuse`` levée."""
+        from unittest import mock
+
+        from apps.calepinage.services import electrique as _electrique
+        from apps.calepinage.services import sld as _sld
+        from apps.calepinage.services.sld_export import exporter_sld_pdf
+
+        class _Passe(Exception):
+            pass
+
+        def _passe(*_args, **_kwargs):
+            raise _Passe()
+
+        with mock.patch.object(_electrique, 'conception_du_calepinage',
+                               return_value=(self._conception(), {}, donnees,
+                                             None)), \
+                mock.patch.object(_electrique, 'parametres_societe',
+                                  return_value={}), \
+                mock.patch.object(_electrique, '_reglages_electrique_societe',
+                                  return_value={}), \
+                mock.patch.object(_sld, 'resultat_et_gabarit_decides',
+                                  side_effect=_passe), \
+                mock.patch.object(_sld, 'document_electrique_du_calepinage',
+                                  side_effect=_passe):
+            try:
+                (exporter_sld_dxf if format_ == 'dxf' else exporter_sld_pdf)(
+                    object())
+            except _Passe:
+                return 'produit'   # la garde est passée : la pièce se compose
+            except SldRefuse as refus:
+                return refus
+        raise AssertionError('ni produit ni refusé')
+
+    def test_manuel_valide_sur_automatique_bloque_le_dxf_et_le_pdf_sortent(self):
+        for format_ in ('dxf', 'pdf'):
+            with self.subTest(format_=format_):
+                self.assertEqual(self._exporter(format_, self._manuel()),
+                                 'produit')
+
+    def test_cablage_effectif_bloquant_refuse_les_deux_en_nommant(self):
+        for format_ in ('dxf', 'pdf'):
+            with self.subTest(format_=format_):
+                refus = self._exporter(format_, {})
+                self.assertIsInstance(refus, SldRefuse)
+                self.assertEqual(refus.champ, 'Isc')
+                self.assertIn('66,9 A', str(refus))
+                self.assertIn('Aucun fichier', str(refus))
+
+
 class PorteHttpDxfTest(SimpleTestCase):
     """La route existe, en GET, gardée en LECTURE."""
 
@@ -318,3 +403,79 @@ class GabaritNeutreTest(SimpleTestCase):
         for protection in resultat.protections:
             if protection.calibre:
                 self.assertNotIn(protection.calibre, textes)
+
+
+class SchemaPdfTest(SimpleTestCase):
+    """ACAL1507 — le MÊME schéma, en PDF A3 : onduleur, coffrets, terre.
+
+    ``render_pdf`` est remplacé (WeasyPrint n'existe pas sur ce poste) : on
+    juge le HTML A3 qui lui est remis — celui que le PDF réel mettrait en page.
+    """
+
+    def _html_rendu(self, cartouche=None):
+        from unittest import mock
+
+        from core.electrique.schema_electrique import document_schema_electrique
+
+        from apps.calepinage.services.sld_export import exporter_sld_pdf
+
+        entree = _entree()
+        document = document_schema_electrique(entree, concevoir(entree))
+        capte = {}
+
+        def _faux_pdf(html=None, **_options):
+            capte['html'] = html
+            return b'%PDF-faux'
+
+        with mock.patch('core.pdf.render_pdf', _faux_pdf):
+            octets = exporter_sld_pdf(object(), document=document,
+                                      cartouche=cartouche)
+        self.assertEqual(octets, b'%PDF-faux')
+        return capte['html']
+
+    def test_le_pdf_porte_l_onduleur_les_coffrets_et_la_terre(self):
+        html = self._html_rendu({'client': 'Mme <Alami>',
+                                 'reference': 'Villa 1',
+                                 'date': '23/11/2026'})
+        self.assertIn('@page{size:A3 landscape', html)
+        self.assertIn('data-schema="electrique"', html)
+        self.assertIn('Deye SUN-10K-SG05LP3', html)
+        self.assertIn('Client : Mme &lt;Alami&gt;', html)
+        self.assertIn('Référence : Villa 1', html)
+        self.assertNotIn('plan de câblage', html.lower())
+
+    def test_un_document_sans_onduleur_ne_produit_aucun_fichier(self):
+        from apps.calepinage.services.sld_export import exporter_sld_pdf
+
+        with self.assertRaises(SldRefuse) as refus:
+            exporter_sld_pdf(object(), document={'onduleurs': []})
+        self.assertEqual(refus.exception.champ, 'onduleur')
+
+    def test_une_conception_incomplete_ne_produit_aucun_pdf(self):
+        from apps.calepinage.services import electrique as _electrique
+        from apps.calepinage.services.sld_export import exporter_sld_pdf
+
+        original = _electrique.conception_du_calepinage
+        _electrique.conception_du_calepinage = (
+            lambda _c, **_o: (_ConceptionMuette(), {}, {}, None))
+        try:
+            with self.assertRaises(SldRefuse) as refus:
+                exporter_sld_pdf(object())
+        finally:
+            _electrique.conception_du_calepinage = original
+        self.assertEqual(refus.exception.champ, 'onduleur')
+        self.assertIn('Aucun fichier', str(refus.exception))
+
+    def test_la_route_pdf_existe_en_lecture(self):
+        from django.urls import reverse
+
+        from apps.calepinage.permissions import PeutVoirCalepinage
+        from apps.calepinage.views.schema import SchemaUnifilaireMixin
+
+        self.assertEqual(
+            reverse('calepinage-schema-unifilaire-pdf', args=('1',)),
+            '/api/django/calepinage/calepinages/1/schema-unifilaire.pdf/')
+        self.assertIn(
+            PeutVoirCalepinage,
+            SchemaUnifilaireMixin.schema_unifilaire_pdf
+            .kwargs['permission_classes'])

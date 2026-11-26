@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { PARAM_CHAMP } from '../../ouvrirChamp'
 import SaisiePente from '../../../SaisiePente'
 import { panParDefaut, sourceDePente, zonesDuDocument } from '../../../SaisiePente.helpers'
 import useDocumentCalepinage from '../../../useDocumentCalepinage'
@@ -217,8 +219,23 @@ function Cadran({ azimut }) {
 /** Les obstacles du toit (lus dans le tableau « Objets du site » du script) ; un clic sur une ligne la
     sélectionne comme ce tableau le fait. Liste à une seule tabulation (flèches + Entrée). */
 function Obstacles({ obstacles, relire }) {
-  const [actif, setActif] = useState(0)
-  const [choisi, setChoisi] = useState(null)
+  const [actifManuel, setActif] = useState(0)
+  const [choisiManuel, setChoisi] = useState(null)
+  // ACAL1971 — « Régler » sur « Obstacles dans leur pan » arrive avec `?champ=<id de l'obstacle fautif>` : la ligne
+  // visée est la ligne choisie tant que l'utilisateur n'en a pas choisi une autre, et le script reçoit UNE fois le même
+  // clic que sur sa ligne du tableau « Objets du site ».
+  const [parametres] = useSearchParams()
+  const visee = parametres.get(PARAM_CHAMP)
+  const iVisee = visee ? obstacles.findIndex((o) => o.id === visee) : -1
+  const choisi = choisiManuel ?? (iVisee >= 0 ? obstacles[iVisee].id : null)
+  const actif = choisiManuel == null && iVisee >= 0 ? iVisee : actifManuel
+  const dejaVisee = useRef(null)
+  useEffect(() => {
+    if (iVisee < 0 || dejaVisee.current === visee) return
+    dejaVisee.current = visee
+    selectionnerObstacle(document, obstacles[iVisee])
+    relire()
+  }, [visee, iVisee, obstacles, relire])
   const choisir = (o, i) => {
     setActif(i)
     setChoisi(o.id)

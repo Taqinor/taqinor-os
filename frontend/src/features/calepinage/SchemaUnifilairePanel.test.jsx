@@ -26,7 +26,7 @@ import SchemaUnifilairePanel, { PlancheSchema, SchemaEnBlocs } from './SchemaUni
 import {
   motifDuRefusDxf, corpsEdition, couperTexte, estHorsReseau, lignesCartouche, lignesLegende, phraseCoteReseau, planDepuisDocument, planSchemaEnBlocs,
 } from './SchemaUnifilairePanel.helpers'
-import { exempleContrat } from '../../test/fixtures/contractSamples'
+import { documentContrat, exempleContrat } from '../../test/fixtures/contractSamples'
 import { OPTIONS_TELECHARGEMENT } from './documents/telechargement'
 
 const servir = (data) => {
@@ -784,6 +784,31 @@ describe('planDepuisDocument — le document schema_electrique (lot 6)', () => {
     expect(new Set(ids).size).toBe(2)
     const liens = [...document.querySelectorAll('[data-testid="csch-lien-batterie"]')]
     expect(liens.map((l) => l.getAttribute('marker-end'))).toEqual(ids.map((i) => `url(#${i})`))
+  })
+
+  // Tous les états que porte `calepinage_sld.json` (clés `exemple*`), puis leurs variantes extrêmes : chacun se dessine sans
+  // lever, sans « undefined / NaN / null » à l'écran ; un état sans document (`exemple_vide`) ne dessine rien.
+  const etats = Object.keys(documentContrat('calepinage', 'calepinage_sld')).filter((k) => k.startsWith('exemple'))
+  const variantes = {
+    tel_quel: () => {},
+    onduleur_sans_fiche: (d) => { d.onduleurs = [{ designation: null, puissance_kw: null, nombre: null, nb_entrees: null }] },
+    micro_onduleurs: (d) => { d.onduleurs = [{ designation: 'Micro-onduleur 400 W', puissance_kw: 0.4, nombre: 24, nb_entrees: 1 }] },
+    cote_reseau_a_calculer: (d) => {
+      Object.assign(d, { coffret_ac: null, compteur_production: null, tgbt: null, reseau: null,
+        cote_reseau: { etat: 'a_calculer', motif: 'Le côté réseau n’est pas encore dimensionné.' } })
+    },
+    champ_de_300_panneaux: (d) => { d.chaines_reparties = false; d.chaines = []; d.panneaux.nombre = 300 },
+    sans_module: (d) => { d.panneaux.module = { designation: null, puissance_wc: null } },
+  }
+  describe.each(etats)('état « %s » de calepinage_sld.json', (etat) => {
+    it.each(Object.keys(variantes))('%s : dessiné sans lever', (variante) => {
+      const d = structuredClone(exempleContrat('calepinage', 'calepinage_sld', etat).schema_electrique)
+      if (d === null) { expect(planDepuisDocument(d)).toBeNull(); return }
+      variantes[variante](d)
+      const plan = planDepuisDocument(d, {})
+      expect(plan).not.toBeNull()
+      expect(dessiner(plan).textContent).not.toMatch(/undefined|NaN|\bnull\b/)
+    })
   })
 
   it('aucun onduleur servi : aucun bloc onduleur inventé (pas de plan)', () => {

@@ -5,7 +5,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import { Badge, Button, Card, Label, Spinner } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
 import { refusParChamp } from './entreeElectrique'
-import { ROLES, libelleProvenance } from './MaterielElectrique.helpers'
+import { ROLES, libelleProvenance, libelleChampManquant } from './MaterielElectrique.helpers'
 import ConfigurationsOnduleur from './ConfigurationsOnduleur'
 import DevisRetenu from './DevisRetenu'
 
@@ -149,7 +149,7 @@ export default function MaterielElectrique({ calepinageId, lectureSeule = false,
                         data-testid={`acal149-candidat-${c.id}`}
                       >
                         {incomplet
-                          ? `${c.libelle} — fiche incomplète : ${(c.champs_manquants ?? []).join(', ')}`
+                          ? `${c.libelle} — fiche incomplète : ${(c.champs_manquants ?? []).map((k) => libelleChampManquant(k, role.role)).join(', ')}`
                           : `${c.libelle}${c.marque ? ` (${c.marque})` : ''}${c.favori ? ' ★' : ''}`}
                       </option>
                     )
@@ -158,7 +158,7 @@ export default function MaterielElectrique({ calepinageId, lectureSeule = false,
                 {lu && lu.fiche_complete === false && (lu.champs_manquants ?? []).length
                   ? (
                     <p className="text-xs text-warning" data-testid={`acal149-manquants-${role.role}`}>
-                      {`Champs manquants : ${lu.champs_manquants.join(', ')}`}
+                      {`Champs manquants : ${lu.champs_manquants.map((k) => libelleChampManquant(k, role.role)).join(', ')}`}
                     </p>
                   ) : null}
                 {erreurs[role.champ]

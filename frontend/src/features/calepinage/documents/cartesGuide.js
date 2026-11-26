@@ -7,7 +7,9 @@
 const CARTES = [
   { cle: 'plan_pose', vignette: 'plan_pose', source: 'sortie', code: 'plan_pose_pdf', titre: 'Plan de pose pour l’équipe',
     description: 'Place de chaque panneau, distances aux bords du toit, chaînes en couleur. PDF.' },
-  { cle: 'schema', vignette: 'schema', source: 'document', code: 'plan_cablage', titre: 'Schéma électrique',
+  // ACAL1723 — l'ÉTAT de la carte (prête / il manque) est celui de la pièce `plan_cablage` servie ; ce qu'elle LIVRE est
+  // le schéma unifilaire dessiné (`schema-unifilaire.pdf/`, ACAL1507), plus le plan de câblage (modules teintés).
+  { cle: 'schema', vignette: 'schema', source: 'document', code: 'plan_cablage', livre: 'schema_unifilaire', titre: 'Schéma électrique',
     description: 'Des panneaux au compteur, avec la section de chaque câble. PDF.' },
   { cle: 'note_calcul', vignette: 'note_calcul', source: 'sortie', code: 'note_calcul_pdf', titre: 'Note de calcul',
     description: 'Tension par temps froid, câbles, protections : chaque chiffre avec sa règle. PDF.' },
@@ -34,7 +36,8 @@ export function cartesGuide(documents, sorties, { sortiesIllisibles = false } = 
     const entree = (liste || []).find((e) => e.code === carte.code)
     if (!entree) return []
     let apercu = null
-    if (carte.source === 'document' && entree.apercu) apercu = 'html'
+    if (carte.livre === 'schema_unifilaire') apercu = 'pdf'
+    else if (carte.source === 'document' && entree.apercu) apercu = 'html'
     else if (entree.format === 'pdf') apercu = 'pdf'
     return [{ ...carte, entree, disponible: Boolean(entree.disponible), motif: entree.motif_indisponible || '', apercu }]
   })

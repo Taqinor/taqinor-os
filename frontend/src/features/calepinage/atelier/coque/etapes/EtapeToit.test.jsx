@@ -76,7 +76,7 @@ const $ = (id) => document.getElementById(id)
 let surCarte
 let builderApi
 
-function rendre(props = {}, avant = null) {
+function rendre(props = {}, avant = null, url = '/') {
   const hote = document.createElement('div')
   hote.className = 'rp9-host cal-coque'
   hote.dataset.avance = '0'
@@ -91,7 +91,7 @@ function rendre(props = {}, avant = null) {
   document.body.appendChild(hote)
   const coque = { noeuds: { surCarte, panneau: null, pied: null }, prendrePied: () => () => {} }
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[url]}>
       <ContexteCoque.Provider value={coque}>
         <EtapeToit calepinageId={7} builderApi={builderApi} documentVivant={null} {...props} />
       </ContexteCoque.Provider>
@@ -166,6 +166,22 @@ describe('Étape Toit — le panneau de la maquette Main', () => {
     $('rp9-obstacle').addEventListener('click', ajouter)
     fireEvent.click(screen.getByRole('button', { name: '+ Ajouter' }))
     expect(ajouter).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('ACAL1971 — « Régler » d’un obstacle fautif', () => {
+  it('?champ=<id de l’obstacle> : l’obstacle est sélectionné à l’arrivée, comme un clic sur sa ligne', async () => {
+    const surLigne = vi.fn()
+    rendre({}, (hote) => hote.querySelector('[data-objet="o2"]').addEventListener('click', surLigne), '/?onglet=pente&champ=o2')
+    await waitFor(() => expect(surLigne).toHaveBeenCalledTimes(1))
+    expect(screen.getAllByRole('option')[1]).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'false')
+  })
+
+  it('un champ qui n’est pas un obstacle ne sélectionne rien', async () => {
+    rendre({}, null, '/?onglet=pente&champ=inconnu')
+    await screen.findAllByRole('option')
+    screen.getAllByRole('option').forEach((o) => expect(o).toHaveAttribute('aria-selected', 'false'))
   })
 })
 

@@ -49,7 +49,7 @@ import re
 
 __all__ = [
     'CALQUE_BLOCS', 'CALQUE_LIAISONS', 'CALQUE_TEXTES', 'CALQUE_TABLEAU',
-    'CALQUES', 'MM_PAR_PX', 'exporter_sld_dxf',
+    'CALQUES', 'MM_PAR_PX', 'exporter_sld_dxf', 'exporter_sld_pdf',
 ]
 
 CALQUE_BLOCS = 'SLD_BLOCS'
@@ -113,6 +113,34 @@ def _point(x, y, hauteur_px):
     return (_mm(x), _mm(hauteur_px - y))
 
 
+def _refuser_si_empeche(conception, donnees):
+    """Le refus commun au DXF et au PDF : fiche muette, bloquant, micro seul.
+
+    Les bloquants sont ceux du câblage EFFECTIF (``donnees`` porte
+    l'affectation manuelle enregistrée — ``sld.bloquants_du_cablage``), jamais
+    ceux des seules chaînes automatiques qu'elle remplace.
+
+    Raises:
+        SldRefuse: aucune pièce n'est produite, et le refus NOMME le champ.
+    """
+    from .sld import SldRefuse, bloquants_du_cablage
+
+    empechements = (list(getattr(conception, 'manquantes', ()) or ())
+                    + list(bloquants_du_cablage(conception, donnees) or ()))
+    if getattr(conception, 'micro_seul', False):
+        from .sld import MOTIF_SCHEMA_MICRO_SEUL
+
+        empechements.append(MOTIF_SCHEMA_MICRO_SEUL)
+    if empechements:
+        premier = empechements[0]
+        champ = premier.split(' : ', 1)[0] if ' : ' in premier else 'schema'
+        raise SldRefuse(
+            "Le schéma unifilaire n'est pas exportable : %s Aucun fichier "
+            "n'est produit — un DXF d'aspect officiel bâti sur une "
+            "caractéristique devinée est un défaut invisible." % premier,
+            champ=champ)
+
+
 def _dessin_et_tableau(calepinage):
     """Le dessin d'aujourd'hui et sa nomenclature — ou un REFUS qui nomme.
 
@@ -129,27 +157,14 @@ def _dessin_et_tableau(calepinage):
     )
     from .norme import norme_applicable
     from .sld import (
-        SldRefuse, bloquants_du_cablage, branches_onduleur_de_la_conception,
+        branches_onduleur_de_la_conception,
         cartouche_du_calepinage, edition_sld, gabarit_de_schema,
         rendu_du_schema, resultat_et_gabarit_decides,
     )
 
     conception, _materiel, donnees, _document = conception_du_calepinage(
         calepinage)
-    empechements = (list(getattr(conception, 'manquantes', ()) or ())
-                    + list(bloquants_du_cablage(conception, donnees) or ()))
-    if getattr(conception, 'micro_seul', False):
-        from .sld import MOTIF_SCHEMA_MICRO_SEUL
-
-        empechements.append(MOTIF_SCHEMA_MICRO_SEUL)
-    if empechements:
-        premier = empechements[0]
-        champ = premier.split(' : ', 1)[0] if ' : ' in premier else 'schema'
-        raise SldRefuse(
-            "Le schéma unifilaire n'est pas exportable : %s Aucun fichier "
-            "n'est produit — un DXF d'aspect officiel bâti sur une "
-            "caractéristique devinée est un défaut invisible." % premier,
-            champ=champ)
+    _refuser_si_empeche(conception, donnees)
 
     norme = norme_applicable(parametres_societe(calepinage))
     # ACAL55 — le DXF transpose un ``ResultatElectrique`` COMPLET (le tableau
@@ -277,3 +292,76 @@ def exporter_sld_dxf(calepinage, *, dessin=None, lignes=None):
     if dessin is None or lignes is None:
         dessin, lignes = _dessin_et_tableau(calepinage)
     return _octets_dxf(_document_dxf(dessin, lignes))
+
+
+# ── ACAL1507 — le MÊME schéma, en PDF A3 paysage ──────────────────────────
+#: La planche tient dans UNE feuille A3 paysage (420 × 297 mm) : le cartouche
+#: prend ``_CARTOUCHE_MM``, le dessin le reste, sans seconde page.
+_CARTOUCHE_MM = 16
+_FEUILLE_HAUTEUR_MM = 297
+_STYLE_PDF = (
+    '.cartouche{height:%(c)dmm;box-sizing:border-box;padding:3mm 8mm 0;'
+    'font:11pt Helvetica,Arial,sans-serif;color:#1f2937;}'
+    '.cartouche b{font-size:14pt;}'
+    '.cartouche span{margin-left:10mm;}'
+    'svg{width:100%%;height:%(h)dmm;}'
+) % {'c': _CARTOUCHE_MM, 'h': _FEUILLE_HAUTEUR_MM - _CARTOUCHE_MM}
+
+
+def _html_du_schema_pdf(document, cartouche):
+    """Le HTML A3 du schéma : cartouche + dessin du document (aucun montant).
+
+    Le dessin est celui de l'écran : ``rendre_schema_electrique_svg`` lit le
+    même document que la clé ``schema_electrique`` de ``schema-unifilaire/``.
+    """
+    from django.utils.html import escape
+
+    from core.electrique.schema_electrique import rendre_schema_electrique_svg
+
+    from .planche import html_de_planche
+
+    svg = rendre_schema_electrique_svg(document, 'fr')
+    cartouche = cartouche or {}
+    morceaux = ['<b>Schéma unifilaire</b>']
+    for etiquette, clef in (('Client', 'client'), ('Référence', 'reference'),
+                            ('Date', 'date')):
+        if cartouche.get(clef):
+            morceaux.append('<span>%s : %s</span>'
+                            % (etiquette, escape(cartouche[clef])))
+    entete = '<div class="cartouche">%s</div>' % ''.join(morceaux)
+    return html_de_planche(entete + svg, _STYLE_PDF)
+
+
+def exporter_sld_pdf(calepinage, *, company=None, document=None,
+                     cartouche=None):
+    """Le PDF A3 du schéma unifilaire de CE calepinage, en octets.
+
+    ``document``/``cartouche`` court-circuitent le calcul : réservés aux
+    appels internes et aux tests (jamais exposés par une vue). Le PDF est
+    calculé à chaque appel, jamais stocké ; il passe par ``core.pdf.render_pdf``
+    (ARC11), jamais par un import direct de WeasyPrint.
+
+    Raises:
+        SldRefuse: conception incomplète ou bloquée — AUCUN fichier.
+    """
+    from core.pdf import render_pdf
+
+    from .electrique import conception_du_calepinage
+    from .sld import (
+        SldRefuse, cartouche_du_calepinage, document_electrique_du_calepinage,
+    )
+
+    if document is None:
+        conception, _materiel, donnees, _document = conception_du_calepinage(
+            calepinage)
+        _refuser_si_empeche(conception, donnees)
+        document = document_electrique_du_calepinage(calepinage)
+        cartouche = cartouche_du_calepinage(calepinage)
+    if not document or not document.get('onduleurs'):
+        raise SldRefuse(
+            "Le schéma unifilaire n'est pas exportable : aucun onduleur "
+            "n'est retenu par la conception. Aucun fichier n'est produit.",
+            champ='onduleur')
+    return render_pdf(
+        html=_html_du_schema_pdf(document, cartouche),
+        company=company or getattr(calepinage, 'company', None))

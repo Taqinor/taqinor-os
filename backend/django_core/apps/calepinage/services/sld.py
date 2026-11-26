@@ -880,6 +880,28 @@ def branches_onduleur_de_la_conception(conception):
 
 
 # ────────────────────────────────── CALX234 — la réponse servie par la vue
+def _nom_du_client_ou_du_lead(calepinage):
+    """ACAL1713 — « Client » du cartouche : le client rattaché, sinon le LEAD.
+
+    Un calepinage né d'un lead n'a pas de client (OU INCLUSIF, contrainte
+    ``calepinage_lead_ou_client``) : son cartouche restait vide. Le lead est
+    lu par le sélecteur du CRM, borné société, corbeille comprise (une lecture) ;
+    même composition « nom prénom » que ``serializers._lead_apercu``.
+    """
+    nom = getattr(getattr(calepinage, 'client', None), 'nom', '') or ''
+    if nom:
+        return nom
+    lead_id = getattr(calepinage, 'lead_id', None)
+    if not lead_id:
+        return ''
+    from apps.crm.selectors import get_company_lead
+
+    lead = get_company_lead(getattr(calepinage, 'company', None), lead_id,
+                            avec_corbeille=True)
+    return ' '.join(p for p in (getattr(lead, 'nom', ''),
+                                getattr(lead, 'prenom', '') or '') if p).strip()
+
+
 def cartouche_du_calepinage(calepinage):
     """Le cartouche technique de CE calepinage : client, référence, date.
 
@@ -891,8 +913,7 @@ def cartouche_du_calepinage(calepinage):
     """
     cree_le = getattr(calepinage, 'created_at', None)
     return {
-        'client': getattr(getattr(calepinage, 'client', None), 'nom', '')
-        or '',
+        'client': _nom_du_client_ou_du_lead(calepinage),
         'reference': getattr(calepinage, 'titre', '') or '',
         'date': cree_le.strftime('%d/%m/%Y') if cree_le else '',
     }

@@ -25,6 +25,7 @@ un format donné : deux schémas du même format se superposent au pixel près.
 Aucun prix, aucun montant : uniquement des grandeurs électriques et des repères.
 """
 
+import re
 from dataclasses import dataclass
 from html import escape
 
@@ -824,16 +825,43 @@ def _symbole_terre(x, y):
 
 
 # ────────────────────────────────────────────────────────────────── planche
-def _bandeau_svg(texte, hauteur):
-    """La ligne d'omission posée sous la planche — une ligne, rien d'autre.
+def _lignes_du_bandeau(texte, largeur):
+    """Le texte du bandeau, REPLIÉ pour tenir dans la planche (ACAL1713).
 
-    Elle est APPOSÉE : elle ne filtre ni ne réinterprète quoi que ce soit du
-    dessin, et sa marge est celle du moteur (jamais une seconde valeur).
+    Le bandeau d'omission est une phrase de ~330 signes : posée sur UNE ligne
+    elle sortait de la feuille (1 568 px dans 1 122). Largeur utile = la
+    planche moins ses marges et moins le cartouche posé à droite ; ~0,58 em
+    par signe en gras. Un nom entre guillemets français (« Norme
+    électrique ») n'est jamais coupé en deux lignes. Une phrase qui tient
+    rend UNE ligne : la planche est alors celle d'avant, octet pour octet.
     """
-    return ('<text x="%.1f" y="%.1f" font-size="%.1f" font-weight="700" '
-            'fill="%s">%s</text>'
-            % (_MARGE, hauteur - _MARGE, _BANDEAU_TAILLE, _BANDEAU_COULEUR,
-               escape(texte, quote=True)))
+    import textwrap
+
+    utile = float(largeur) - 2 * _MARGE - _TABLEAU_L - _ECART
+    signes = max(20, int(utile / (_BANDEAU_TAILLE * 0.58)))
+    insecable = chr(0xA0)
+    protege = re.sub(r"«[^»]*»",
+                     lambda m: m.group(0).replace(" ", insecable), texte)
+    lignes = textwrap.wrap(protege, width=signes, break_long_words=False,
+                           break_on_hyphens=False) or [protege]
+    return [ligne.replace(insecable, " ") for ligne in lignes]
+
+
+def _bandeau_svg(texte, hauteur, largeur=None):
+    """Le bandeau d'omission posé sous la planche, replié dans sa largeur.
+
+    Il est APPOSÉ : il ne filtre ni ne réinterprète quoi que ce soit du
+    dessin, et sa marge est celle du moteur (jamais une seconde valeur). La
+    dernière ligne reste sur la marge basse ; les suivantes montent.
+    """
+    lignes = (_lignes_du_bandeau(texte, largeur) if largeur else [texte])
+    pas = _BANDEAU_TAILLE + 3.0
+    return "".join(
+        '<text x="%.1f" y="%.1f" font-size="%.1f" font-weight="700" '
+        'fill="%s">%s</text>'
+        % (_MARGE, hauteur - _MARGE - (len(lignes) - 1 - rang) * pas,
+           _BANDEAU_TAILLE, _BANDEAU_COULEUR, escape(ligne, quote=True))
+        for rang, ligne in enumerate(lignes))
 
 
 def rendre_schema(entree, resultat, cartouche=None, positions=None,
@@ -904,7 +932,7 @@ def rendre_schema(entree, resultat, cartouche=None, positions=None,
     svg.append(_tableau(resultat, largeur, standard=standard))
     svg.append(_cartouche(entree, resultat, largeur, hauteur, cartouche))
     if bandeau:
-        svg.append(_bandeau_svg(bandeau, hauteur))
+        svg.append(_bandeau_svg(bandeau, hauteur, largeur))
     svg.append("</svg>")
     return "".join(svg)
 
