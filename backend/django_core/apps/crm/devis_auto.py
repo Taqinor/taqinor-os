@@ -138,10 +138,13 @@ def _rempli(lead, champ):
         return _releve_rempli(lead)
     if champ == 'ville':
         return _ville_situee(lead)
-    if not getattr(lead, champ, None):
-        return False
+    # T4-U3-023 — pompage : la phase telle que le moteur la lit (raccordement,
+    # sinon plaque de la pompe conservée ou électricité au forage concordantes),
+    # même quand « Raccordement » est vide.
     if champ == 'raccordement' and lead.type_installation == _MODE_AGRICOLE:
         return _phase_du_moteur(lead) is not None
+    if not getattr(lead, champ, None):
+        return False
     if champ == 'contrat_electricite':
         return lead.contrat_electricite != 'ne_sait_pas'
     if champ == 'raccordement':
