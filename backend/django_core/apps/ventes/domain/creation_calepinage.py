@@ -102,7 +102,7 @@ def _calepinage_range(layout, toiture, kwc, designations=None):
     layout_stocke = dict(layout or {})
     if toiture and toiture.get('pans'):
         layout_stocke['_pans_geometry'] = toiture['pans']
-    if designations:  # D-ACAL-148 — la désignation APPLIQUÉE, clé privée (ni empreinte, ni page client)
+    if designations is not None:  # D-ACAL-148 — clé privée (ni empreinte, ni page client) ; ``{}`` compris
         layout_stocke[CLE_DESIGNATIONS] = designations
     etude_initiale = {}
     if kwc:
@@ -245,7 +245,7 @@ def repli_onduleur_designe(nom, motif, famille=None):
     texte = MOTIFS_REPLI_ONDULEUR[motif]
     if motif == 'nom_muet':
         texte = texte % LIBELLE_FAMILLE_ONDULEUR[famille]
-    return {'impose': None, 'option': None, 'nom': nom, 'batterie_a_verifier': False,
+    return {'impose': None, 'option': None, 'nom': nom, 'batterie_a_verifier': False, 'raison': texte,
             'motif': '%s ; %s' % (texte, SUITE_REPLI_ONDULEUR),
             'message': MESSAGE_ONDULEUR_NON_CHIFFRE % (nom, texte)}
 
@@ -425,7 +425,8 @@ def decision_batterie_designee(*, produit_id, nom, etat, nom_dit_batterie, scena
     « avec » d'un devis « les deux ». Comme l'onduleur désigné : un prix suffit, le stock n'est pas
     exigé (la banque imposée de la composition ne lit pas le stock)."""
     if scenario == COMPOSITION_SANS:
-        return {'impose': None, 'option': None, 'motif': 'sans', 'message': MESSAGE_BATTERIE_SANS % nom}
+        return {'impose': None, 'option': None, 'motif': 'sans', 'nom': nom, 'raison': None,
+                'message': MESSAGE_BATTERIE_SANS % nom}
     motif = None if etat == 'tarife' else etat
     if motif is None:
         if not nom_dit_batterie:
@@ -440,9 +441,11 @@ def decision_batterie_designee(*, produit_id, nom, etat, nom_dit_batterie, scena
             motif = 'packs_inconnu'
     if motif is not None:
         texte = MOTIFS_REPLI_BATTERIE[motif] % ((hybride_nom,) if motif == 'incompatible' else ())
-        return {'impose': None, 'option': None, 'motif': motif, 'message': MESSAGE_BATTERIE_NON_CHIFFREE % (nom, texte)}
-    return {'impose': {'produit_id': int(produit_id), 'nombre': int(packs), 'designee': True},
-            'option': 'avec' if scenario == COMPOSITION_LES_DEUX else '', 'motif': None, 'message': None}
+        return {'impose': None, 'option': None, 'motif': motif, 'nom': nom, 'raison': texte,
+                'message': MESSAGE_BATTERIE_NON_CHIFFREE % (nom, texte)}
+    return {'impose': {'produit_id': int(produit_id), 'nombre': int(packs), 'designee': True}, 'nom': nom,
+            'option': 'avec' if scenario == COMPOSITION_LES_DEUX else '', 'motif': None, 'raison': None,
+            'message': None}
 
 
 def batterie_designee_pour_le_devis(company, designe, *, scenario, hybride):
@@ -506,11 +509,12 @@ def _avec_la_batterie(intention, batterie):
     return replace(intention, cible=replace(intention.cible, batterie_imposee=impose))
 
 
-def _appliquer_les_designations(intention, designe, batterie_brute, scenario, journal):
+def _appliquer_les_designations(intention, designe, batterie_brute, scenario, journal, *, marquer=False):
     """D-ACAL-148 / 159 / 164 — à la création : la batterie désignée jugée sur l'onduleur du devis,
     la batterie de l'onduleur désigné jugée par la composition (:func:`juger_la_batterie` ; repli :
     scénario d'origine, et la batterie re-jugée), le marqueur privé, le journal et les phrases.
-    Rend ``(intention, annonces)``."""
+    ``marquer`` (relecture, point 1) : création depuis un calepinage — le marqueur est posé même
+    vide (``{}`` : le devis est NÉ sous la règle). Rend ``(intention, annonces)``."""
     batterie = _decider_la_batterie(intention, batterie_brute)
     intention = _avec_la_batterie(intention, batterie)
     designe = juger_la_batterie(designe, intention)
@@ -521,15 +525,15 @@ def _appliquer_les_designations(intention, designe, batterie_brute, scenario, jo
         batterie = _decider_la_batterie(intention, batterie_brute)
         intention = _avec_la_batterie(intention, batterie)
     marqueur = marqueur_des_designations(designe, batterie)
-    if marqueur:  # la désignation APPLIQUÉE, relue par la resynchro
-        intention = replace(intention, layout=dict(intention.layout, **{CLE_DESIGNATIONS: marqueur}))
+    if marqueur or marquer:  # la désignation APPLIQUÉE (``{}`` : aucune), relue par la resynchro
+        intention = replace(intention, layout=dict(intention.layout, **{CLE_DESIGNATIONS: marqueur or {}}))
     if journal is not None:
         journal.update({cle: d for cle, d in (('onduleur_designe', designe), ('batterie_designee', batterie))
                         if d is not None})
     return intention, [d['message'] for d in (designe, batterie) if d is not None and d['message']]
 
 
-# ── D-ACAL-148 / 159 (relecture, A) — LA RESYNCHRONISATION APPLIQUE LA MÊME DÉCISION ──────
+# ── D-ACAL-148 / 159 / 164 (relecture, A) — LA RESYNCHRONISATION APPLIQUE LA MÊME DÉCISION ─────
 #: ``CibleDevis.source`` d'une resynchronisation qui porte les désignations BRUTES du calepinage
 #: (mode « réconcilier » : ``reconcilier`` est le seul lecteur de la cible).
 SOURCE_DESIGNATIONS = 'designations_calepinage'
@@ -539,23 +543,64 @@ MSG_RESYNC_RETIREE = ('L’onduleur « %s » n’est plus désigné à l’étap
                       'reprend le choix du catalogue (« %s »).')
 MSG_RESYNC_RETIREE_REGLE = ('L’onduleur « %s » n’est plus désigné à l’étape Électrique : la '
                             'resynchronisation reprend la règle du catalogue.')
+#: Relecture (point 6 b / d) — la désignation est toujours là, mais n'est plus chiffrable : ce que la
+#: resynchronisation fait de la ligne ACTUELLE, dit dans la même phrase que la raison.
+MSG_RESYNC_NON_CHIFFRE_REPRISE = ('L’onduleur désigné à l’étape Électrique (« %s ») n’est plus chiffrable : %s ; la '
+                                  'resynchronisation reprend le choix du catalogue (« %s »).')
+MSG_RESYNC_NON_CHIFFRE_REGLE = ('L’onduleur désigné à l’étape Électrique (« %s ») n’est plus chiffrable : %s ; la '
+                                'resynchronisation reprend la règle du catalogue.')
+MSG_RESYNC_NON_APPLIQUE = ('L’onduleur désigné à l’étape Électrique (« %s ») n’est pas appliqué : %s ; le devis '
+                           'garde son onduleur actuel%s.')
 MSG_RESYNC_PRIX_MANUEL = ('Prix saisi à la main sur « %s » : « %s » n’a pas été posé à sa place '
                           '— remplacez-le à la main s’il le faut.')
+MSG_RESYNC_QUANTITE_MANUELLE = ('Quantité saisie à la main sur « %s » : la ligne est gardée telle quelle '
+                                '— retirez-la à la main s’il le faut.')
+#: Relecture (point 2) — la ligne a été changée À LA MAIN depuis que la désignation a été appliquée.
+MSG_RESYNC_CHANGE_A_LA_MAIN = ('« %s » a été posé à la main à la place de l’onduleur désigné « %s » : la '
+                               'resynchronisation garde le choix fait à la main.')
+MSG_RESYNC_BATTERIE_A_LA_MAIN = ('« %s » a été posée à la main à la place de la batterie désignée « %s » : la '
+                                 'resynchronisation garde le choix fait à la main.')
+#: Relecture (point 1) — la règle n'est appliquée qu'aux brouillons nés sous elle.
+MSG_RESYNC_AVANT_LA_REGLE = ('Le calepinage désigne %s à l’étape Électrique : ce devis, créé avant que le devis '
+                             'suive la désignation, ne la suit pas ; un nouveau devis généré depuis le calepinage '
+                             'la suivra.')
+MSG_RESYNC_ENVOYE = ('Le calepinage désigne %s à l’étape Électrique : la désignation n’est pas appliquée à un devis '
+                     'envoyé — révisez-le (V2) pour l’appliquer.')
+MSG_RESYNC_BATTERIE_SUIT = 'La batterie suit la désignation de l’étape Électrique : « %s » (%d pack(s)).'
+MSG_RESYNC_BATTERIE_RETIREE = ('La batterie « %s » n’est plus désignée à l’étape Électrique : la '
+                               'resynchronisation reprend le choix automatique de la batterie.')
+MSG_RESYNC_BATTERIE_NON_CHIFFREE_REPRISE = ('La batterie désignée à l’étape Électrique (« %s ») n’est plus '
+                                            'chiffrable : %s ; la resynchronisation reprend le choix automatique '
+                                            'de la batterie.')
+MSG_RESYNC_BATTERIE_NON_APPLIQUEE = ('La batterie désignée à l’étape Électrique (« %s ») n’est pas appliquée : %s ; '
+                                     '%s.')
 
 
 def cible_des_designations(onduleur_designe, batterie_designee=None):
     """La ``CibleDevis`` d'une resynchronisation depuis le calepinage : les désignations BRUTES
-    (``calepinage.services.devis._onduleur_designe``), jugées dans ``reconcilier`` par
-    :func:`appliquer_designations_a_la_resynchro`."""
+    (``calepinage.services.devis._onduleur_designe`` / ``_batterie_designee``), jugées dans
+    ``reconcilier`` par :func:`appliquer_designations_a_la_resynchro`."""
     return CibleDevis(source=SOURCE_DESIGNATIONS, onduleur_impose=onduleur_designe,
                       batterie_imposee=batterie_designee)
 
 
 def marqueur_stocke(devis):
-    """Le marqueur :data:`CLE_DESIGNATIONS` du devis, ou ``None``."""
+    """Le marqueur :data:`CLE_DESIGNATIONS` du devis (``{}`` compris), ou ``None`` s'il n'en porte pas."""
     layout = getattr(devis, 'roof_layout', None)
     marqueur = layout.get(CLE_DESIGNATIONS) if isinstance(layout, dict) else None
     return dict(marqueur) if isinstance(marqueur, dict) else None
+
+
+def suit_les_designations(devis):
+    """Relecture (point 1) — le devis est-il NÉ sous la règle (création depuis un calepinage avec ce
+    code : il porte le marqueur, ``{}`` compris) ? Seul un tel BROUILLON reçoit les désignations."""
+    return marqueur_stocke(devis) is not None
+
+
+def _quoi_est_designe(cible):
+    onduleur, batterie = bool(getattr(cible, 'onduleur_impose', None)), bool(getattr(cible, 'batterie_imposee', None))
+    return ('un onduleur et une batterie' if onduleur and batterie else 'un onduleur' if onduleur
+            else 'une batterie' if batterie else None)
 
 
 def _kwc_du_layout(layout):
@@ -625,18 +670,22 @@ def _poser_produit(ligne, produit, famille, avertissements, *, nombre=None):
     return bool(champs)
 
 
-def _reprendre_le_catalogue(verrou, onduleurs, precedent, veut_batterie, layout, phase, isole, avertissements):
-    """La désignation a été RETIRÉE (ou n'est plus chiffrable) : la ligne qui porte encore l'onduleur
-    désigné d'AVANT reprend le choix du catalogue (``catalogue.choisir_onduleur_permutation``, la
-    règle de ``reconcilier``) ; une famille qui ne suit plus le scénario est laissée à
-    ``reconcilier``, qui la permute lui-même. Une ligne déjà changée à la main n'est jamais
-    re-choisie (PV18)."""
+def _reprendre_le_catalogue(verrou, onduleurs, precedent, veut_batterie, layout, phase, isole, avertissements,
+                            *, decision=None):
+    """L'onduleur désigné d'AVANT n'est plus appliqué (retiré, ou plus chiffrable — ``decision`` est
+    alors son repli) : la ligne qui le porte encore reprend le choix du catalogue
+    (``catalogue.choisir_onduleur_permutation``, la règle de ``reconcilier``) ; une famille qui ne suit
+    plus le scénario est laissée à ``reconcilier``, qui la permute lui-même. Une ligne déjà changée à
+    la main n'est jamais re-choisie (PV18). UNE phrase, vraie dans l'état : la raison quand il est
+    toujours désigné, « n'est plus désigné » sinon."""
     from apps.ventes.domain.catalogue import (
         _is_hybrid_inverter, _is_offgrid_inverter, _is_reseau_inverter, choisir_onduleur_permutation)
     from apps.ventes.domain.gammes import gamme_nom
 
     ligne = next((li for li in onduleurs if li.produit_id == precedent), None)
-    if ligne is None:
+    if ligne is None:  # déjà changée à la main : gardée (PV18)
+        if decision is not None:
+            avertissements.append(MSG_RESYNC_NON_APPLIQUE % (decision['nom'], decision['raison'], ''))
         return 0
     famille = _famille_de_ligne(ligne)
     voulue = ('onduleur_offgrid' if isole else famille if scenario_du_layout(layout) == COMPOSITION_LES_DEUX
@@ -649,138 +698,202 @@ def _reprendre_le_catalogue(verrou, onduleurs, precedent, veut_batterie, layout,
                                                   phase=phase, role=voulue, gamme=gamme_nom(verrou))
     ancien = ligne.designation or 'ligne sans désignation'
     if remplacant is None or remplacant.pk == ligne.produit_id:
-        avertissements.append(MSG_RESYNC_RETIREE_REGLE % ancien)
+        avertissements.append(MSG_RESYNC_NON_CHIFFRE_REGLE % (decision['nom'], decision['raison'])
+                              if decision else MSG_RESYNC_RETIREE_REGLE % ancien)
         return 0
     if not _poser_produit(ligne, remplacant, voulue, avertissements):
         return 0
-    avertissements.append(MSG_RESYNC_RETIREE % (ancien, remplacant.nom))
+    avertissements.append(MSG_RESYNC_NON_CHIFFRE_REPRISE % (decision['nom'], decision['raison'], remplacant.nom)
+                          if decision else MSG_RESYNC_RETIREE % (ancien, remplacant.nom))
     return 1
 
 
-def appliquer_designations_a_la_resynchro(verrou, intention, layout, veut_batterie, avertissements):
-    """D-ACAL-148 / D-ACAL-159 (relecture, A) — « Resynchroniser » applique la MÊME décision que la
-    création (:func:`onduleur_designe_pour_le_devis`, :func:`juger_la_batterie`) ; appelée par
-    ``resynchronisation.reconcilier`` sous son verrou, AVANT qu'il lise ses lignes et applique ses
-    propres règles (batterie, permutation) : il relit donc ce qui vient d'être écrit. La batterie
-    désignée (D-ACAL-164) suit la même règle (:func:`_batterie_a_la_resynchro`).
+def _a_une_batterie(verrou):
+    from apps.ventes.domain.catalogue import _is_battery
+    from apps.ventes.domain.lignes import _classe_ligne, _lignes_produit
 
-    * désignation chiffrable : la ligne d'onduleur de SA famille (« les deux ») ou l'unique ligne
-      d'onduleur la porte, au nombre désigné ; changée depuis la dernière fois, ou posée sur un
-      devis d'avant ce changement, la phrase le dit ; un hybride sur une pose « sans » garde le
-      devis « avec batterie » (``veut_batterie`` rendu vrai, D-ACAL-159) ;
-    * retirée, ou plus chiffrable : la ligne qui porte encore l'ancienne désignation reprend la
-      règle du catalogue (:func:`_reprendre_le_catalogue`), et la phrase le dit ;
+    return any(_classe_ligne(li, _is_battery) for li in _lignes_produit(verrou))
+
+
+def _resynchro_inchangee(veut_batterie, stocke):
+    return veut_batterie, {'modifiees': 0, 'a_ecrire': False, 'marqueur': stocke}
+
+
+def appliquer_designations_a_la_resynchro(verrou, intention, layout, veut_batterie, avertissements):
+    """D-ACAL-148 / 159 / 164 (relecture, A) — « Resynchroniser » applique la MÊME décision que la
+    création (:func:`onduleur_designe_pour_le_devis`, :func:`juger_la_batterie`,
+    :func:`batterie_designee_pour_le_devis`) ; appelée par ``resynchronisation.reconcilier`` sous son
+    verrou, AVANT qu'il lise ses lignes et applique ses propres règles : il relit ce qui vient d'être
+    écrit.
+
+    Relecture, point 1 (règle de l'orchestrateur) — appliquée SEULEMENT à un BROUILLON NÉ sous la
+    règle (:func:`suit_les_designations`). Un devis envoyé, ou créé avant (sans marqueur) : rien
+    n'est appliqué (aucune écriture de plus, le court-circuit « inchangé » reste pris comme avant)
+    et UNE phrase dit pourquoi.
+
+    * chiffrable : la ligne d'onduleur de SA famille (« les deux ») ou l'unique ligne d'onduleur le
+      porte, au nombre désigné, sauf une ligne CHANGÉE À LA MAIN depuis (point 2, gardée et dit une
+      fois) ; un hybride sur une pose « sans » garde le devis « avec batterie » (D-ACAL-159, la
+      phrase seulement quand la bascule a lieu, point 6 e) ;
+    * retiré, ou plus chiffrable : la ligne qui porte encore l'ancien reprend la règle du catalogue
+      (:func:`_reprendre_le_catalogue`), ou la ligne actuelle est gardée — une phrase vraie ;
     * aucune désignation, avant comme après : rien ne bouge (PV18, résultat identique à hier).
 
     Rend ``(veut_batterie, {'modifiees', 'a_ecrire', 'marqueur'})`` — ``a_ecrire`` interdit le
-    court-circuit « inchangé » de ``reconcilier`` (la désignation vit dans le calepinage, hors
-    empreinte du toit) ; ``marqueur`` : le :data:`CLE_DESIGNATIONS` à ranger."""
+    court-circuit « inchangé » de ``reconcilier`` ; ``marqueur`` : le :data:`CLE_DESIGNATIONS` à ranger."""
     stocke = marqueur_stocke(verrou)
     cible = getattr(intention, 'cible', None)
     if getattr(cible, 'source', '') != SOURCE_DESIGNATIONS:
-        return veut_batterie, {'modifiees': 0, 'a_ecrire': False, 'marqueur': stocke}
-    precedent = (stocke or {}).get('onduleur')
-    decision, scenario, phase, isole = _decision_de_resynchro(verrou, layout, cible.onduleur_impose)
+        return _resynchro_inchangee(veut_batterie, stocke)
+    quoi = _quoi_est_designe(cible)
+    if getattr(verrou, 'statut', '') != 'brouillon' or stocke is None:
+        if quoi:
+            avertissements.append((MSG_RESYNC_ENVOYE if getattr(verrou, 'statut', '') != 'brouillon'
+                                   else MSG_RESYNC_AVANT_LA_REGLE) % quoi)
+        return _resynchro_inchangee(veut_batterie, stocke)
     from apps.ventes.domain.lignes import _lignes_produit
 
+    precedent = stocke.get('onduleur')
+    decision, scenario, phase, isole = _decision_de_resynchro(verrou, layout, cible.onduleur_impose)
     onduleurs = [li for li in _lignes_produit(verrou) if _est_onduleur(li)]
     impose = (decision or {}).get('impose')
-    modifiees = 0
-    if decision is not None and decision['message']:
-        avertissements.append(decision['message'])
+    modifiees, main = 0, {}
     if impose:
-        modifiees += _poser_le_designe(verrou, impose, onduleurs, scenario, precedent, avertissements)
+        if decision['message'] and not _a_une_batterie(verrou):  # point 6 e — la bascule a lieu MAINTENANT
+            avertissements.append(decision['message'])
+        poses, main['onduleur_main'] = _poser_le_designe(verrou, impose, onduleurs, scenario, precedent, stocke,
+                                                         avertissements)
+        modifiees += poses
         if decision['scenario'] == COMPOSITION_AVEC and scenario == COMPOSITION_SANS:
             veut_batterie = True  # D-ACAL-159 — le devis garde « avec batterie »
     elif precedent:
-        modifiees += _reprendre_le_catalogue(verrou, onduleurs, precedent, veut_batterie, layout, phase,
-                                             isole, avertissements)
-    decision_b, modifiees_b = _batterie_a_la_resynchro(
-        verrou, cible.batterie_imposee, scenario, veut_batterie, (stocke or {}).get('batterie'), avertissements)
-    marqueur = marqueur_des_designations(decision, decision_b)
-    return veut_batterie, {'modifiees': modifiees + modifiees_b, 'a_ecrire': bool(modifiees + modifiees_b)
-                           or marqueur != stocke, 'marqueur': marqueur}
+        modifiees += _reprendre_le_catalogue(verrou, onduleurs, precedent, veut_batterie, layout, phase, isole,
+                                             avertissements, decision=decision)
+    elif decision is not None:
+        actuel = next(iter(onduleurs), None)
+        avertissements.append(MSG_RESYNC_NON_APPLIQUE % (
+            decision['nom'], decision['raison'], ' (« %s »)' % actuel.designation if actuel is not None else ''))
+    decision_b, modifiees_b, main['batterie_main'] = _batterie_a_la_resynchro(
+        verrou, cible.batterie_imposee, scenario, veut_batterie, stocke, avertissements, layout=layout, phase=phase)
+    marqueur = dict(marqueur_des_designations(decision, decision_b) or {},
+                    **{cle: True for cle, valeur in main.items() if valeur})
+    return veut_batterie, {'modifiees': modifiees + modifiees_b,
+                           'a_ecrire': bool(modifiees + modifiees_b) or marqueur != stocke, 'marqueur': marqueur}
 
 
-def _poser_le_designe(verrou, impose, onduleurs, scenario, precedent, avertissements):
+def _poser_le_designe(verrou, impose, onduleurs, scenario, precedent, stocke, avertissements):
     """La ligne d'onduleur (de SA famille dans un « les deux ») porte l'onduleur désigné ; la phrase
-    dit ce qu'il remplace. Rend 1 si une ligne a bougé."""
+    dit ce qu'il remplace. Point 2 — la désignation n'a pas changé (``precedent`` = celui-ci) mais la
+    ligne ne le porte plus : le vendeur l'a changé à la main, la ligne est gardée et la phrase dite
+    UNE fois (``onduleur_main`` du marqueur). Rend ``(1 si une ligne a bougé, changé à la main)``."""
     from apps.ventes.domain.etape_composer import _fiche_tarifee
 
     produit = _fiche_tarifee(verrou.company, impose['produit_id'])
     ligne = (next((li for li in onduleurs if _famille_de_ligne(li) == impose['categorie']), None)
              if scenario == COMPOSITION_LES_DEUX else next(iter(onduleurs), None))
     if produit is None or ligne is None:
-        return 0
+        return 0, False
+    if precedent == produit.pk and ligne.produit_id != produit.pk:
+        if not stocke.get('onduleur_main'):
+            avertissements.append(MSG_RESYNC_CHANGE_A_LA_MAIN % (ligne.designation or '', produit.nom))
+        return 0, True
     ancien = ligne.designation or ''
     if not _poser_produit(ligne, produit, impose['categorie'], avertissements, nombre=impose['nombre']):
-        return 0
+        return 0, False
     if ancien != produit.nom:
         avertissements.append((MSG_RESYNC_CHANGE if precedent and precedent != produit.pk
                                else MSG_RESYNC_SUIT) % (produit.nom, ancien))
-    return 1
+    return 1, False
 
 
-MSG_RESYNC_BATTERIE_SUIT = 'La batterie suit la désignation de l’étape Électrique : « %s » (%d pack(s)).'
-MSG_RESYNC_BATTERIE_RETIREE = ('La batterie « %s » n’est plus désignée à l’étape Électrique : la '
-                               'resynchronisation reprend le choix automatique de la batterie.')
+def _hybride_de_la_resynchro(verrou, lignes, veut_batterie, scenario, layout, phase):
+    """Point 5 — l'onduleur qui portera la batterie APRÈS ``reconcilier`` : celui des lignes, sinon,
+    quand ``reconcilier`` va permuter le réseau en hybride (le devis veut une batterie, mono-option),
+    celui qu'il posera (``catalogue.choisir_onduleur_permutation``, SA règle, mêmes entrées)."""
+    from apps.ventes.domain.catalogue import (
+        _is_hybrid_inverter, _is_offgrid_inverter, choisir_onduleur_permutation)
+    from apps.ventes.domain.gammes import gamme_nom
+    from apps.ventes.domain.lignes import _classe_ligne
+
+    hybride = next((li.produit for li in lignes if getattr(li, 'produit', None) is not None and (
+        _classe_ligne(li, _is_hybrid_inverter) or _classe_ligne(li, _is_offgrid_inverter))), None)
+    if hybride is not None or not veut_batterie or scenario == COMPOSITION_LES_DEUX:
+        return hybride
+    return choisir_onduleur_permutation(verrou.company, _is_hybrid_inverter, kwc=_kwc_du_layout(layout)[1],
+                                        phase=phase, role='onduleur_hybride', gamme=gamme_nom(verrou))
 
 
-def _batterie_a_la_resynchro(verrou, brute, scenario, veut_batterie, precedent, avertissements):
+def _batterie_a_la_resynchro(verrou, brute, scenario, veut_batterie, stocke, avertissements, *, layout, phase):
     """D-ACAL-164 (A) — la batterie désignée à la resynchronisation, par :func:`batterie_designee_pour_le_devis`
-    (la décision de la création), jugée sur l'onduleur hybride ou autonome que le devis porte APRÈS
-    l'étape onduleur. Chiffrable : la ligne batterie la porte au nombre de packs (ou elle est créée
-    quand le devis veut une batterie et n'en a pas — ``reconcilier`` voit alors la batterie et n'en
-    ajoute pas d'autre) ; retirée ou plus chiffrable : la ligne qui porte encore l'ancienne au prix
-    catalogue est retirée et ``reconcilier`` reprend son choix automatique (dit). Rend ``(décision, n)``."""
-    from apps.ventes.domain.catalogue import _is_battery, _is_hybrid_inverter, _is_offgrid_inverter
+    (la décision de la création), jugée sur l'onduleur qui la portera APRÈS ``reconcilier``
+    (:func:`_hybride_de_la_resynchro`, point 5). Chiffrable : la ligne batterie la porte au nombre de
+    packs, ou elle est créée quand le devis veut une batterie et n'en a pas ; une ligne changée à la
+    main depuis est gardée (point 2). Plus appliquée : la ligne de l'ancienne au prix catalogue est
+    retirée et ``reconcilier`` pose son choix automatique — seulement quand le devis veut une batterie
+    (« sans » : ``reconcilier`` la retire lui-même, la phrase « sans batterie » suffit). Rend
+    ``(décision, n, changée à la main)``."""
+    from apps.ventes.domain.catalogue import _is_battery
     from apps.ventes.domain.composition import _est_au_prix_catalogue
     from apps.ventes.domain.lignes import _classe_ligne, _lignes_produit
 
     lignes = _lignes_produit(verrou)
     batteries = [li for li in lignes if _classe_ligne(li, _is_battery)]
-    hybride = next((li.produit for li in lignes if getattr(li, 'produit', None) is not None and (
-        _classe_ligne(li, _is_hybrid_inverter) or _classe_ligne(li, _is_offgrid_inverter))), None)
     effectif = (COMPOSITION_LES_DEUX if scenario == COMPOSITION_LES_DEUX
                 else COMPOSITION_AVEC if veut_batterie else COMPOSITION_SANS)
+    hybride = _hybride_de_la_resynchro(verrou, lignes, veut_batterie, scenario, layout, phase)
     decision = (batterie_designee_pour_le_devis(verrou.company, brute, scenario=effectif, hybride=hybride)
                 if brute else None)
-    if decision is not None and decision['message']:
-        avertissements.append(decision['message'])
     impose = (decision or {}).get('impose')
+    precedent = stocke.get('batterie')
     if impose:
-        return decision, _poser_la_batterie(verrou, impose, batteries, veut_batterie, effectif, avertissements)
+        if decision['message']:
+            avertissements.append(decision['message'])
+        n, main = _poser_la_batterie(verrou, impose, batteries, veut_batterie, effectif, precedent, stocke,
+                                     avertissements)
+        return decision, n, main
+    if decision is not None and decision['motif'] == 'sans':
+        avertissements.append(decision['message'])
+        return decision, 0, False
     ancienne = next((li for li in batteries if li.produit_id == precedent), None) if precedent else None
-    if ancienne is None:
-        return decision, 0
+    if ancienne is None or effectif == COMPOSITION_SANS:
+        if decision is not None:
+            avertissements.append(MSG_RESYNC_BATTERIE_NON_APPLIQUEE % (decision['nom'], decision['raison'], (
+                'le devis garde sa batterie actuelle' if batteries else 'la batterie suit la règle automatique')))
+        return decision, 0, False
     if not _est_au_prix_catalogue(ancienne) or getattr(ancienne, 'quantite_manuelle', False):
-        avertissements.append(MSG_RESYNC_PRIX_MANUEL % (ancienne.designation or 'ligne sans désignation',
-                                                        'le choix automatique'))
-        return decision, 0
-    avertissements.append(MSG_RESYNC_BATTERIE_RETIREE % (ancienne.designation or ''))
+        avertissements.append((MSG_RESYNC_QUANTITE_MANUELLE % (ancienne.designation or 'ligne sans désignation'))
+                              if _est_au_prix_catalogue(ancienne) else MSG_RESYNC_PRIX_MANUEL % (
+                                  ancienne.designation or 'ligne sans désignation', 'le choix automatique'))
+        return decision, 0, False
+    avertissements.append(MSG_RESYNC_BATTERIE_NON_CHIFFREE_REPRISE % (decision['nom'], decision['raison'])
+                          if decision is not None else MSG_RESYNC_BATTERIE_RETIREE % (ancienne.designation or ''))
     ancienne.delete()
-    return decision, 1
+    return decision, 1, False
 
 
-def _poser_la_batterie(verrou, impose, batteries, veut_batterie, scenario, avertissements):
+def _poser_la_batterie(verrou, impose, batteries, veut_batterie, scenario, precedent, stocke, avertissements):
     from apps.ventes.domain.etape_composer import _fiche_tarifee
     from apps.ventes.domain.lignes import creer_ligne
     from apps.ventes.domain.resynchronisation import _ordre_suivant
 
     produit = _fiche_tarifee(verrou.company, impose['produit_id'])
     if produit is None:
-        return 0
+        return 0, False
     ligne = next(iter(batteries), None)
+    if ligne is not None and precedent == produit.pk and ligne.produit_id != produit.pk:
+        if not stocke.get('batterie_main'):  # point 2 — changée à la main depuis : gardée, dit une fois
+            avertissements.append(MSG_RESYNC_BATTERIE_A_LA_MAIN % (ligne.designation or '', produit.nom))
+        return 0, True
     if ligne is None:
         if not veut_batterie:
-            return 0
+            return 0, False
         creer_ligne(verrou, produit=produit, designation=produit.nom, quantite=Decimal(impose['nombre']),
                     prix_unitaire=Decimal(produit.prix_vente), remise=Decimal('0'), ordre=_ordre_suivant(verrou),
                     **({'variante': 'avec'} if scenario == COMPOSITION_LES_DEUX else {}))
     elif not _poser_produit(ligne, produit, 'batterie', avertissements, nombre=impose['nombre']):
-        return 0
+        return 0, False
     avertissements.append(MSG_RESYNC_BATTERIE_SUIT % (produit.nom, impose['nombre']))
-    return 1
+    return 1, False
 
 
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
@@ -789,7 +902,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             dimensionnement_avec=None,
                             mppt_paires=1, structure_type=None,
                             structure_produit_id=None, hors_reseau=None, a_blanc=False,
-                            onduleur_designe=None, batterie_designee=None):
+                            onduleur_designe=None, batterie_designee=None, marquer_designations=False):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
 
     ``onduleur_designe`` (D-ACAL-148, fondateur 26/11/2026) — l'onduleur DÉSIGNÉ à l'étape
@@ -802,7 +915,8 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     ``batterie_designee`` (D-ACAL-164) — la batterie DÉSIGNÉE à l'étape Électrique,
     ``{'produit_id', 'packs', 'packs_illisible'}`` : vendue au nombre de packs quand elle a un prix et
     convient à l'onduleur du devis (:func:`decision_batterie_designee`), sinon le choix automatique,
-    dit ; ``journal['batterie_designee']``. ``None`` ⇒ inchangé.
+    dit ; ``journal['batterie_designee']``. ``None`` ⇒ inchangé. ``marquer_designations`` (la
+    génération du calepinage) : le marqueur privé est posé même sans désignation (né sous la règle).
 
     ``a_blanc`` (lane E9, T4-X5-010) — LE DRY-RUN de ce même chemin : aucun client résolu
     (``resolve_client_for_lead`` écrit), aucun devis ; la composition des étapes 1-4 du
@@ -1038,7 +1152,8 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         hors_reseau=hors_reseau,
     )
     # D-ACAL-148 / 159 / 164 — batterie désignée, batterie de l'onduleur, marqueur, journal, phrases.
-    intention, annonces = _appliquer_les_designations(intention, designe, batterie_designee, scenario, journal)
+    intention, annonces = _appliquer_les_designations(intention, designe, batterie_designee, scenario, journal,
+                                                      marquer=marquer_designations)
     annonces += phrases_des_suppositions(toiture)  # D-ACAL-149 (ii) / 168 — dites au vendeur
     if a_blanc:
         from apps.ventes.domain.pipeline import composer_l_intention, specs_de_composition

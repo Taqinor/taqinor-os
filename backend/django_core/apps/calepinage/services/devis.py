@@ -802,7 +802,8 @@ def _generer_sous_verrou(calepinage, layout, company, lead, client, montants,
                 layout=layout, user=user, company=company, lead=lead,
                 client=client, journal=journal_composition,
                 onduleur_designe=_onduleur_designe(calepinage),  # D-ACAL-148
-                batterie_designee=_batterie_designee(calepinage), **montants)  # D-ACAL-164
+                batterie_designee=_batterie_designee(calepinage),  # D-ACAL-164
+                marquer_designations=True, **montants)  # né sous la règle (relecture, point 1)
             _garde_kwh_declare(devis)
             _garde_module_substitue(devis, layout)  # ACAL914
             _garde_taille(devis, calepinage, choix['confirmer_taille'])  # ACAL922

@@ -456,6 +456,34 @@ class OnduleurDesigneDecisionSansBase(SimpleTestCase):
         self.assertEqual(avertissements, [])
         self.assertIsNone(marqueur_stocke(SimpleNamespace(roof_layout={})))
 
+    def test_a_point_1_seul_un_brouillon_ne_sous_la_regle_recoit_les_designations(self):
+        """Relecture round 4, point 1 — envoyé (marqueur ou non) ou brouillon sans marqueur : rien
+        n'est appliqué, le court-circuit reste permis, UNE phrase ; rien de désigné : aucune phrase."""
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.creation_calepinage import (
+            CLE_DESIGNATIONS, MSG_RESYNC_AVANT_LA_REGLE, MSG_RESYNC_ENVOYE, SOURCE_DESIGNATIONS,
+            appliquer_designations_a_la_resynchro, suit_les_designations)
+
+        cible = SimpleNamespace(source=SOURCE_DESIGNATIONS, onduleur_impose={'produit_id': 3, 'nombre': 1},
+                                batterie_imposee={'produit_id': 4, 'packs': 1})
+        vide = SimpleNamespace(source=SOURCE_DESIGNATIONS, onduleur_impose=None, batterie_imposee=None)
+        for statut, layout, attendu in (('envoye', {CLE_DESIGNATIONS: {'onduleur': 3}}, MSG_RESYNC_ENVOYE),
+                                        ('envoye', {}, MSG_RESYNC_ENVOYE),
+                                        ('brouillon', {}, MSG_RESYNC_AVANT_LA_REGLE)):
+            with self.subTest(statut=statut, marqueur=bool(layout)):
+                verrou = SimpleNamespace(statut=statut, roof_layout=layout)
+                avertissements = []
+                veut, rendu = appliquer_designations_a_la_resynchro(
+                    verrou, SimpleNamespace(cible=cible), {}, False, avertissements)
+                self.assertEqual((veut, rendu['modifiees'], rendu['a_ecrire']), (False, 0, False))
+                self.assertEqual(avertissements, [attendu % 'un onduleur et une batterie'])
+                avertissements = []
+                appliquer_designations_a_la_resynchro(verrou, SimpleNamespace(cible=vide), {}, False, avertissements)
+                self.assertEqual(avertissements, [])
+        self.assertTrue(suit_les_designations(SimpleNamespace(roof_layout={CLE_DESIGNATIONS: {}})))
+        self.assertFalse(suit_les_designations(SimpleNamespace(roof_layout={})))
+
     def test_a_poser_le_produit_respecte_prix_et_quantite_saisis(self):
         from decimal import Decimal as D
         from types import SimpleNamespace
