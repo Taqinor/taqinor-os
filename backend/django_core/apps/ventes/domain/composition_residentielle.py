@@ -209,6 +209,18 @@ def _quantite_imposee(onduleur_impose):
     return nombre if nombre is not None and nombre >= 1 else None
 
 
+def _quantite_onduleur(onduleur_impose, kw, seuil, kwp):
+    """Un onduleur suffit dès qu'il couvre le seuil ; sinon assez pour absorber le champ (blocs
+    entiers, jamais moins d'un). Imposé : :func:`_quantite_imposee` (COP2-V3 : 1 ; D-ACAL-148 :
+    le nombre accepté à l'étape Électrique, sinon la règle)."""
+    impose = _quantite_imposee(onduleur_impose) if onduleur_impose is not None else None
+    if impose is not None:
+        return impose
+    if not kw or kw >= seuil:
+        return 1
+    return max(1, int(math.ceil(kwp / kw)))
+
+
 def _onduleur_impose(imposes, categorie, replis_phase, refus_tri):
     """COP2-V3 — ``(produit, kW)`` de l'onduleur IMPOSÉ : ni repli de phase,
     ni marque épinglée, ni remplaçant (fiche absente ⇒ ``(None, None)``)."""
@@ -649,13 +661,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         un onduleur IMPOSÉ se vend à l'unité. D-ACAL-148 : l'onduleur DÉSIGNÉ
         par le calepinage, au nombre accepté à l'étape Électrique (sinon la
         règle ci-dessous)."""
-        impose = (_quantite_imposee(onduleur_impose)
-                  if onduleur_impose is not None else None)
-        if impose is not None:
-            return impose
-        if not kw or kw >= seuil:
-            return 1
-        return max(1, int(math.ceil(kwp / kw)))
+        return _quantite_onduleur(onduleur_impose, kw, seuil, kwp)
 
     if hors_reseau:
         # QJR-OFFGRID — les deux familles RACCORDÉES ne sont même pas
