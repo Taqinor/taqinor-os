@@ -9085,7 +9085,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               mapboxToken: cfg.mapboxToken,
               reducedMotion: reduced,
               lowEnd: strategy.lowEnd,
-              ...(soleil ? { instant: soleil.ouverture, environnement: soleil.environnement } : {}),
+              ...(soleil ? { instant: soleil.ouverture, environnement: soleil.environnement, indexTeintes: fullLayout === layoutRacine ? soleil.zones.map((z) => z.index) : [] } : {}),
               onReady: () => {
                 if (overlay) overlay.hidden = true;
                 if (hintEl) {

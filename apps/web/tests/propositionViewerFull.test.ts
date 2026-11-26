@@ -322,6 +322,11 @@ describe('visionneuse pleine — lecture seule STRICTE', () => {
     expect(BOOT).toContain('sunDay: opts.instant?.jour ?? WINTER_SOLSTICE_DAY,');
     expect(BOOT).toContain('...(opts.environnement?.length ? { environment: opts.environnement } : {}),');
     expect(BOOT).toContain('scene3d.setSolarAccessHeatmap(');
+    // P1 — verre et œil de l'atelier SEULEMENT quand le pan actif sera teinté (drapeau absent sinon).
+    expect(BOOT).toContain('const teinteAccesVisible = opts.indexTeintes?.includes(plan.activeIndex) === true;');
+    expect(BOOT).toContain('...(teinteAccesVisible ? { teinteAccesVisible } : {})');
+    expect(SCENE).toContain('materiauVerre(panelTexOf(rapport, jeu), verreAtelier)');
+    expect(SCENE).toContain('if (!(verreAtelier && poserOeil(threeCamera, m)))');
     // Les bornes de la visionneuse de confiance vivent dans viewerSoleil.ts, jamais ici.
     const SOLEIL = readFileSync(root('../src/scripts/roofPro11/viewerSoleil.ts'), 'utf-8');
     expect(SOLEIL).toContain('poignee.carte.setMaxBounds(');

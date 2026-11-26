@@ -37,6 +37,7 @@ import {
   GAIN_TEINTE_PANNEAU, // ACAL1408
   clePanAffectation, // ACAL1516
   materiauVerre, // ACAL1984
+  verreEtOeilAtelier, // LOT 6
 } from './scene3d';
 import { couleurAccesActive } from '../../lib/shadingEngine'; // ACAL1408
 import { buildAreasFromShape } from './zones';
@@ -449,6 +450,20 @@ describe('ACAL1408 — la teinte d’accès modifie la couleur effective du pann
     const pub = materiauVerre(null, false);
     expect([pub.clearcoat, pub.clearcoatRoughness, pub.roughness, pub.metalness]).toEqual([1, 0.08, 0.22, 0.1]);
     expect(lum(rendu(pub, [or.r, or.g, or.b]))).toBeLessThan(0.01); // la panne d'origine, gardée hors ERP
+  });
+
+  it('LOT 6 — `teinteAccesVisible` (visionneuse au soleil) prend le verre sans vernis ; absent, le site public garde le sien', () => {
+    const params = (m: { clearcoat: number; clearcoatRoughness: number; roughness: number; metalness: number }) =>
+      [m.clearcoat, m.clearcoatRoughness, m.roughness, m.metalness];
+    // Défaut (pages publiques, page sans la clé, visionneuse simplifiée) : inchangé.
+    expect(verreEtOeilAtelier(undefined, undefined)).toBe(false);
+    expect(verreEtOeilAtelier(undefined, false)).toBe(false);
+    expect(params(materiauVerre(null, verreEtOeilAtelier(undefined, undefined)))).toEqual([1, 0.08, 0.22, 0.1]);
+    // Visionneuse au soleil qui teinte : le verre de l'atelier, la teinte devient lisible.
+    expect(verreEtOeilAtelier(undefined, true)).toBe(true);
+    expect(params(materiauVerre(null, verreEtOeilAtelier(undefined, true)))).toEqual([0, 0.08, 0.22, 0.1]);
+    // ERP : inchangé (toujours le verre de l'atelier, avec ou sans le drapeau).
+    expect(verreEtOeilAtelier({}, undefined)).toBe(true);
   });
 
   it('la teinte de chaîne (setStringColoring, même canal) est gainée de la même façon', () => {

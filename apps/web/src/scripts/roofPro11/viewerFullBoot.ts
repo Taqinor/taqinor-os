@@ -90,6 +90,9 @@ export interface ViewerFullOptions {
   instant?: { jour: number; heure: number };
   /** LOT 6 (D-ACAL-137) — objets voisins à hauteur saisie (géométrie seule). Absent = aucun, comme avant. */
   environnement?: EnvironmentObject[];
+  /** LOT 6 (D-ACAL-136) — index des pans que la visionneuse au soleil TEINTERA. Le pan actif en fait partie ⇒ la scène
+   *  prend le verre et l'œil de l'atelier (`teinteAccesVisible`, sinon la teinte reste invisible). Absent = inchangé. */
+  indexTeintes?: readonly number[];
 }
 
 export interface ViewerFullHandle {
@@ -259,7 +262,8 @@ export function bootViewerFull(
   map.on('error', onError);
 
   // — Scène 3D : le module de l'ERP, en lecture seule —
-  const scene3d = createScene3d(ctx, { map, lowEnd, shadowSize, readOnly: true });
+  const teinteAccesVisible = opts.indexTeintes?.includes(plan.activeIndex) === true;
+  const scene3d = createScene3d(ctx, { map, lowEnd, shadowSize, readOnly: true, ...(teinteAccesVisible ? { teinteAccesVisible } : {}) });
 
   let charge = false;
   let teinte: CouleurDe = null;
