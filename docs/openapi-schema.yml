@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5326, operations: 8180, components: 4110}
+counts: {paths: 5328, operations: 8182, components: 4110}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -677,6 +677,7 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/roof-image/ -> django_calepinage_calepinages_roof_image_create
 - get /api/django/calepinage/calepinages/{id}/roof-image/fichier/ -> django_calepinage_calepinages_roof_image_fichier_retrieve
 - get /api/django/calepinage/calepinages/{id}/schema-unifilaire.dxf/ -> django_calepinage_calepinages_schema_unifilaire.dxf_retrieve
+- get /api/django/calepinage/calepinages/{id}/schema-unifilaire.pdf/ -> django_calepinage_calepinages_schema_unifilaire.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/schema-unifilaire/ -> django_calepinage_calepinages_schema_unifilaire_retrieve
 - post /api/django/calepinage/calepinages/{id}/schema-unifilaire/ -> django_calepinage_calepinages_schema_unifilaire_create
 - post /api/django/calepinage/calepinages/{id}/simuler/ -> django_calepinage_calepinages_simuler_create
@@ -4808,6 +4809,7 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/roof-image/ -> v1_calepinage_calepinages_roof_image_create
 - get /api/v1/calepinage/calepinages/{id}/roof-image/fichier/ -> v1_calepinage_calepinages_roof_image_fichier_retrieve
 - get /api/v1/calepinage/calepinages/{id}/schema-unifilaire.dxf/ -> v1_calepinage_calepinages_schema_unifilaire.dxf_retrieve
+- get /api/v1/calepinage/calepinages/{id}/schema-unifilaire.pdf/ -> v1_calepinage_calepinages_schema_unifilaire.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/schema-unifilaire/ -> v1_calepinage_calepinages_schema_unifilaire_retrieve
 - post /api/v1/calepinage/calepinages/{id}/schema-unifilaire/ -> v1_calepinage_calepinages_schema_unifilaire_create
 - post /api/v1/calepinage/calepinages/{id}/simuler/ -> v1_calepinage_calepinages_simuler_create
