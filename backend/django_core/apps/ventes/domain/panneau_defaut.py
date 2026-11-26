@@ -12,9 +12,16 @@ viennent TOUJOURS du même endroit —
   puissance) ; ``motif`` dit pourquoi au vendeur quand un panneau EST désigné mais inutilisable, et vaut ``None``
   quand aucun n'est désigné (rien n'est dit, rien ne change).
 
-Aucune valeur de puissance n'est écrite ici : elle vient du produit désigné. Le défaut ne s'applique qu'aux
-compositions NOUVELLES (création, aperçu d'un devis à naître) : chaque appelant le passe explicitement, un devis
-existant ne le lit jamais.
+Aucune valeur de puissance n'est écrite ici : elle vient du produit désigné.
+
+LA RÈGLE (revue du 26/11/2026) : « The company's default panel decides the panel of a NEW composition only. As
+soon as a quote EXISTS, every computation about that quote — its studies, its sizing table, its size cards, its
+battery ladder, a recount of its panels — reads the quote's OWN panel (the product and wattage of its panel line).
+Never the default, never 710, when the quote carries a panel line. » Traduction : :func:`panneau_du_contexte` —
+devis À NAÎTRE (:func:`devis_a_naitre`) ⇒ le panneau par défaut ; devis EXISTANT ⇒ :func:`panneau_du_devis`, le
+produit et le watt de SA ligne panneau. Garde de statut : seul un BROUILLON suit la règle ; un devis envoyé,
+accepté, refusé ou expiré garde le calcul d'aujourd'hui (jamais des chiffres client recalculés autrement), comme un
+devis sans ligne panneau.
 """
 from dataclasses import dataclass, replace
 import logging
@@ -25,11 +32,13 @@ logger = logging.getLogger(__name__)
 MOTIF_SANS_PUISSANCE = ("Le panneau désigné « {nom} » n'a pas de puissance lisible (fiche ou nom) : "
                         "les choix automatiques gardent leur règle d'aujourd'hui.")
 #: Le panneau désigné est utilisable au stock, mais le moteur qui choisit ne l'accepte pas.
-MOTIF_REFUSE = ("Le panneau par défaut « {nom} » n'est pas retenu par {moteur} ({raison}) : "
+MOTIF_REFUSE = ("Le {quoi} « {nom} » n'est pas retenu par {moteur} ({raison}) : "
                 "la règle d'aujourd'hui s'applique.")
 #: ``source`` d'un panneau DÉSIGNÉ et utilisable au stock que le choix automatique ne peut pas retenir (puissance
 #: illisible, ou refusé par le moteur qui choisit) — les autres valeurs sont celles du stock.
 REFUSE = 'refuse'
+#: ``source`` du panneau d'un devis EXISTANT (sa ligne panneau) — :func:`panneau_du_devis`.
+DU_DEVIS = 'devis'
 
 
 @dataclass(frozen=True)
@@ -60,8 +69,9 @@ class PanneauAuto:
 
     def refus(self, moteur, raison):
         """Le même choix réduit à la règle d'aujourd'hui, ``motif`` = pourquoi ``moteur`` refuse le désigné."""
+        quoi = 'panneau du devis' if self.source == DU_DEVIS else 'panneau par défaut'
         return PanneauAuto(watt=_repli(), nom=self.nom, source=REFUSE,
-                           motif=MOTIF_REFUSE.format(nom=self.nom, moteur=moteur, raison=raison))
+                           motif=MOTIF_REFUSE.format(quoi=quoi, nom=self.nom, moteur=moteur, raison=raison))
 
     def resume(self):
         """La forme ``contract_samples/panneau_par_defaut.json`` (cinq clés) de CE choix : ``pmax_wc`` n'est servi
@@ -137,6 +147,46 @@ def panneaux_de_la_taille(company, taille_kwc):
     from apps.ventes.domain.taille import _residential_panel_count
     watt = panneau_auto_composition(company).watt
     return _residential_panel_count(taille_kwc=taille_kwc, panel_watt=watt), watt
+
+
+def devis_a_naitre(devis):
+    """LE prédicat unique « composition NOUVELLE » : aucun devis, ou un devis pas encore enregistré."""
+    return devis is None or getattr(devis, 'pk', None) is None
+
+
+def panneau_du_devis(devis):
+    """Le panneau d'un devis EXISTANT pour SES propres calculs (:data:`DU_DEVIS`) : le produit de sa première ligne
+    panneau à fiche (``geometrie._produit_panneau_du_devis``, le lecteur des calepinages) et le watt que la
+    composition lit de ce produit (nom, à défaut la fiche du stock). La règle d'aujourd'hui (rien) pour un devis
+    qui n'est plus un BROUILLON — ses chiffres envoyés ne sont jamais recalculés autrement —, un devis sans ligne
+    panneau à fiche, ou un produit sans puissance lisible."""
+    from apps.ventes.models import Devis
+    if devis_a_naitre(devis) or getattr(devis, 'statut', None) != Devis.Statut.BROUILLON:
+        return aucun_panneau_auto()
+    from apps.stock.selectors_panneau_defaut import watt_du_panneau
+    from apps.ventes.domain.catalogue import _parse_watt
+    from apps.ventes.domain.geometrie import _produit_panneau_du_devis
+    produit = _produit_panneau_du_devis(devis)
+    if produit is None:
+        return aucun_panneau_auto()
+    watt = _parse_watt(getattr(produit, 'nom', '') or '') or watt_du_panneau(produit)
+    if not watt:
+        return aucun_panneau_auto()
+    return PanneauAuto(produit_id=produit.pk, watt=watt, nom=produit.nom, source=DU_DEVIS)
+
+
+def panneau_du_contexte(company, devis=None, *, reglages=None, gamme_nom_devis=None):
+    """LA RÈGLE (en-tête) : devis à naître ⇒ le panneau par défaut que la composition accepte ; devis existant ⇒
+    :func:`panneau_du_devis` (brouillon : sa ligne panneau ; sinon la règle d'aujourd'hui)."""
+    if devis_a_naitre(devis):
+        return panneau_auto_composition(company, reglages=reglages, gamme_nom_devis=gamme_nom_devis)
+    return panneau_du_devis(devis)
+
+
+def panneau_pour_etude(company, devis=None):
+    """C&I : devis à naître ⇒ le panneau par défaut (l'étude applique SA propre acceptation) ; devis existant ⇒
+    :func:`panneau_du_devis`."""
+    return panneau_auto(company) if devis_a_naitre(devis) else panneau_du_devis(devis)
 
 
 def choisir_avec_defaut(auto, candidats, accepte, *, moteur, raison):

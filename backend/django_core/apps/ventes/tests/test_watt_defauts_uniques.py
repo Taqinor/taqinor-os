@@ -224,6 +224,49 @@ class LeChoixDesMoteursCiEtPompage(SimpleTestCase):
                                              moteur='m', raison='r'), (None, motif))
 
 
+class LeDevisExistantLitSonProprePanneau(SimpleTestCase):
+    """LA RÈGLE (``panneau_defaut``) : un devis EXISTANT se calcule sur SA ligne panneau (brouillon), jamais sur le
+    défaut ni sur 710 ; un devis envoyé garde le calcul d'aujourd'hui."""
+
+    LIGNE = 'apps.ventes.domain.geometrie._produit_panneau_du_devis'
+
+    def _du_devis(self, devis, produit=_produit(7, 'Panneau Jinko 550W')):
+        from apps.ventes.domain.panneau_defaut import panneau_du_devis
+        with mock.patch(self.LIGNE, return_value=produit), mock.patch(_RESUME, return_value=_resume()):
+            return panneau_du_devis(devis)
+
+    def test_brouillon_sa_ligne_panneau(self):
+        auto = self._du_devis(SimpleNamespace(pk=3, statut='brouillon'))
+        self.assertEqual((auto.produit_id, auto.watt, auto.source), (7, 550, 'devis'))
+        self.assertEqual(auto.prefere(550), 7)
+
+    def test_envoye_accepte_ou_sans_ligne_la_regle_d_aujourd_hui(self):
+        from apps.ventes.domain.panneau_defaut import aucun_panneau_auto
+        for statut in ('envoye', 'accepte', 'refuse', 'expire'):
+            with self.subTest(statut=statut):
+                self.assertEqual(self._du_devis(SimpleNamespace(pk=3, statut=statut)), aucun_panneau_auto())
+        self.assertEqual(self._du_devis(SimpleNamespace(pk=3, statut='brouillon'), produit=None),
+                         aucun_panneau_auto())
+
+    def test_un_seul_predicat_devis_a_naitre(self):
+        from apps.ventes.domain.panneau_defaut import devis_a_naitre, panneau_du_contexte
+        self.assertTrue(devis_a_naitre(None))
+        self.assertTrue(devis_a_naitre(SimpleNamespace(pk=None, statut='brouillon')))
+        self.assertFalse(devis_a_naitre(SimpleNamespace(pk=3, statut='brouillon')))
+        reglages = SimpleNamespace(catalogue=[_produit(42, 'Panneau Longi 715W')], marques={}, ordre_lignes=None)
+        with mock.patch(self.LIGNE, return_value=_produit(7, 'Panneau Jinko 550W')), \
+                mock.patch(_RESUME, return_value=_resume()):
+            neuf = panneau_du_contexte(SimpleNamespace(pk=1), SimpleNamespace(pk=None), reglages=reglages)
+            existant = panneau_du_contexte(SimpleNamespace(pk=1), SimpleNamespace(pk=3, statut='brouillon'),
+                                           reglages=reglages)
+        self.assertEqual((neuf.produit_id, neuf.watt), (42, 715))
+        self.assertEqual((existant.produit_id, existant.watt), (7, 550))
+
+    def test_le_moteur_qui_refuse_le_panneau_du_devis_le_dit(self):
+        auto = self._du_devis(SimpleNamespace(pk=3, statut='brouillon'))
+        self.assertIn('Le panneau du devis « Panneau Jinko 550W »', auto.refus("l'étude C&I", 'r').motif)
+
+
 class AucunLitteral715(SimpleTestCase):
     """La puissance du panneau par défaut vient du produit désigné, jamais d'un littéral."""
 

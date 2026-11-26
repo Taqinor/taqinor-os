@@ -804,3 +804,40 @@ class LePanneauParDefautDecideLesChoixAutomatiques(_Base):
                          'Panneau Jinko 550W')
         cible = cible_depuis_lead(self.lead(taille_souhaitee_kwc=Decimal('5')), self.company)
         self.assertEqual((cible['panneaux'], cible['panel_watt']), (7, 715))
+
+    def _devis_auto(self):
+        from apps.ventes.models import Devis
+        cree = self.api.post(AUTO_URL, {'lead': self.lead(taille_souhaitee_kwc=Decimal('5')).id}, format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+        return Devis.objects.get(pk=cree.data['id'])
+
+    def test_les_sondes_d_un_brouillon_lisent_sa_ligne_panneau(self):
+        """Finding 1 : cartes de taille, échelle batterie et balayage d'un devis EXISTANT se sondent sur SA
+        ligne panneau (Longi 715) — ni le Canadien 710, ni le défaut une fois retiré."""
+        import dataclasses
+
+        from apps.ventes.domain.etape_composer import (
+            composer_sonde, contexte_sonde_du_devis, contexte_sonde_neuf, reglages_de_composition, sonder_wattage)
+        self.designer()
+        devis = self._devis_auto()
+        Produit.objects.filter(pk=self.defaut.pk).update(panneau_par_defaut=False)  # le défaut ne décide plus
+        for contexte in (contexte_sonde_du_devis(devis),
+                         contexte_sonde_neuf(devis=devis, company=self.company,
+                                             reglages=reglages_de_composition(self.company))):
+            with self.subTest(contexte=type(contexte).__name__):
+                self.assertEqual(contexte.panneau_defaut.produit_id, self.defaut.pk)
+                self.assertEqual(sonder_wattage(contexte), 715)
+                kit = composer_sonde(dataclasses.replace(contexte, panel_watt=715), 7, avec_batterie=False)
+                self.assertEqual({li.designation for li in kit if 'Panneau' in li.designation},
+                                 {'Panneau Longi 715W'})
+
+    def test_un_devis_envoye_garde_la_sonde_d_aujourd_hui(self):
+        from apps.ventes.domain.etape_composer import contexte_sonde_du_devis, sonder_wattage
+        from apps.ventes.models import Devis
+        self.designer()
+        devis = self._devis_auto()
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ENVOYE)
+        devis.refresh_from_db()
+        contexte = contexte_sonde_du_devis(devis)
+        self.assertFalse(contexte.panneau_defaut.designe)
+        self.assertEqual(sonder_wattage(contexte), 710)  # le calcul d'aujourd'hui, jamais recalculé autrement

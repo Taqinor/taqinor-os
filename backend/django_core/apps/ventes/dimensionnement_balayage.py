@@ -91,7 +91,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
                     max_panneaux=None, source_conso=None,
                     cible_falaise_kwh_mois=None, jour_reference=None,
                     hors_reseau=False, mppt_paires=1, perte_ombrage_pct=None,
-                    regles_2710=True, devis=None):  # AMOT130 : devis ⇒ bornes batterie à son niveau
+                    regles_2710=True, devis=None,  # AMOT130 : devis ⇒ bornes batterie à son niveau
+                    panneau=None):  # D-ACAL-169 : le panneau de la sonde (None ⇒ panneau_du_contexte)
     """Le TABLEAU complet : une ligne par taille candidate, DEUX dimensions.
 
     ``tranches`` / ``charges_fixes_mad`` sont KEYWORD-REQUIS (QJR46). Ils
@@ -185,11 +186,12 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
     # CHAQUE taille composée par ``pipeline.composer_sonde`` — le même
     # constructeur que le devis (gamme, phase, MPPT, TVA, hors-réseau,
     # structure), jamais un appel direct qui en oublierait un.
-    # D-ACAL-169 — sans ``devis`` (taille d'un devis à naître) le contexte porte
-    # le panneau par défaut de la société ; un devis existant garde la sonde.
+    # D-ACAL-169 — LE panneau du contexte : sans ``devis`` (taille d'un devis à
+    # naître) le panneau par défaut ; avec un devis BROUILLON sa ligne panneau ;
+    # ``panneau`` quand l'appelant le donne (« reprendre le lead »).
     import dataclasses
     sonde_ctx = contexte_sonde_neuf(
-        devis=devis, company=company,
+        devis=devis, panneau=panneau, company=company,
         reglages=reglages_de_composition(company, gamme_nom_devis),
         gamme_nom_devis=gamme_nom_devis,
         structure_type=structure_type,

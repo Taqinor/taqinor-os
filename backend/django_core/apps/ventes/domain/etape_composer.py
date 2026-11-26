@@ -359,23 +359,25 @@ class ContexteSonde:
     regles_2710: bool = True
     #: ADEV156 — cf. ``IntentionComposition.froid`` (même froid que le pipeline).
     froid: object = None
-    #: D-ACAL-169 — le ``panneau_defaut.PanneauAuto`` d'un balayage NEUF
-    #: (:func:`contexte_sonde_neuf`, aucun devis) ; ``None`` (LE DÉFAUT, et tout
-    #: contexte d'un devis existant) ⇒ la sonde d'aujourd'hui.
+    #: D-ACAL-169 — LE panneau du contexte (``panneau_defaut.PanneauAuto``) :
+    #: le panneau par défaut d'un balayage NEUF, la ligne panneau d'un devis
+    #: BROUILLON (``panneau_defaut.panneau_du_contexte``) ; ``None`` (LE DÉFAUT)
+    #: ou un choix sans produit ⇒ la sonde d'aujourd'hui.
     panneau_defaut: object = None
 
 
-def contexte_sonde_neuf(*, devis=None, **champs):
-    """D-ACAL-169 — le ``ContexteSonde`` d'un balayage de tailles : avec un
-    ``devis`` (existant), tel quel ; sans devis (une composition à naître), il
-    porte le panneau par défaut que la composition accepte
-    (``panneau_defaut.panneau_auto_composition``, sur SES ``reglages``)."""
+def contexte_sonde_neuf(*, devis=None, panneau=None, **champs):
+    """D-ACAL-169 — le ``ContexteSonde`` d'un balayage de tailles, qui porte LE
+    panneau du contexte (règle de ``domain/panneau_defaut``) : ``panneau`` quand
+    l'appelant le donne, sinon ``panneau_du_contexte`` — sans devis (une
+    composition à naître) le panneau par défaut accepté sur SES ``reglages``,
+    avec un devis existant SA ligne panneau (brouillon) ou rien (envoyé…)."""
     contexte = ContexteSonde(**champs)
-    if devis is not None:
-        return contexte
-    from apps.ventes.domain.panneau_defaut import panneau_auto_composition
-    return dataclasses.replace(contexte, panneau_defaut=panneau_auto_composition(
-        contexte.company, reglages=contexte.reglages, gamme_nom_devis=contexte.gamme_nom_devis))
+    if panneau is None:
+        from apps.ventes.domain.panneau_defaut import panneau_du_contexte
+        panneau = panneau_du_contexte(contexte.company, devis, reglages=contexte.reglages,
+                                      gamme_nom_devis=contexte.gamme_nom_devis)
+    return dataclasses.replace(contexte, panneau_defaut=panneau)
 
 
 def _panneau_prefere(contexte, watt):
@@ -419,6 +421,7 @@ def contexte_sonde_du_devis(devis, *, reglages=None):
     from apps.ventes.domain.gammes import gamme_nom
     from apps.ventes.domain.regles_calcul import (
         REGLES_CORRIGEES_2710, regles_au_moins)
+    from apps.ventes.domain.panneau_defaut import panneau_du_devis
     from apps.ventes.domain.taille import phase_et_isolement_du_lead
     lead = lead_du_devis(devis)
     # ACAL32 — phase et site isolé du lead lus par LE survivant
@@ -443,7 +446,9 @@ def contexte_sonde_du_devis(devis, *, reglages=None):
         ville=ville_du_lead(lead),
         # RSIZ2/3/5 — un devis aux règles d'origine (< 3) garde ses règles.
         regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710),
-        froid=froid_du_lead(lead, devis))  # ADEV156
+        froid=froid_du_lead(lead, devis),  # ADEV156
+        # D-ACAL-169 — un devis BROUILLON se sonde sur SA ligne panneau.
+        panneau_defaut=panneau_du_devis(devis))
 
 
 def composer_sonde(contexte, nb_panneaux, *, avec_batterie, cible_kwh=None,
