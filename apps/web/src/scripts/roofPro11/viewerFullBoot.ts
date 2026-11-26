@@ -312,14 +312,37 @@ export function bootViewerFull(
     if (hasRenderedOnce ? erreurCarteFatale(e) : erreurCarteFatale(e) || erreurDeStyle(e, typeof style === 'string' ? style : null)) panneCarte(e);
   };
   map.on('error', onError);
-  // Contexte WebGL perdu : la scène se reconstruit à la restauration (W89) ; jamais restauré = scène morte.
+  // Contexte WebGL perdu : MapLibre détruit son style, couche 3D comprise, et à la restauration ne remet qu'un style
+  // SANS elle (une couche personnalisée ne se restaure pas seule ; le W89 de scene3d ne refait que le renderer Three).
+  // Jamais restauré = scène morte → repli. Restauré = style revenu, couche reposée, scène rejouée (instant et teinte
+  // courants) ; si la couche ne revient pas, repli (visionneuse simplifiée ou photo, barre débranchée).
   let perteGl: ReturnType<typeof setTimeout> | null = null;
   const surPerteGl = () => {
     if (perteGl === null) perteGl = setTimeout(() => panneCarte('contexte WebGL jamais restauré'), DELAI_RESTAURATION_GL_MS);
   };
-  const surRestaurationGl = () => {
+  const annulerPerteGl = () => {
     if (perteGl !== null) clearTimeout(perteGl);
     perteGl = null;
+  };
+  const surRestaurationGl = () => {
+    annulerPerteGl();
+    if (destroyed || !charge) return; // pas encore chargée : `load` posera la couche
+    const garde = setTimeout(() => panneCarte('style non revenu après la restauration du contexte'), DELAI_RESTAURATION_GL_MS);
+    const reprendre = () => {
+      clearTimeout(garde);
+      if (destroyed) return;
+      try {
+        const id = scene3d.customLayer.id;
+        if (!map.getLayer(id)) map.addLayer(scene3d.customLayer);
+        if (!map.getLayer(id)) throw new Error('couche 3D non reposée après la restauration du contexte');
+        rendre();
+        map.triggerRepaint();
+      } catch (e) {
+        echouer(e);
+      }
+    };
+    if (map.isStyleLoaded()) reprendre();
+    else map.once('style.load', reprendre);
   };
   map.on('webglcontextlost', surPerteGl);
   map.on('webglcontextrestored', surRestaurationGl);
@@ -358,6 +381,7 @@ export function bootViewerFull(
   // Lot 8 — carte en panne (style refusé, jamais chargée, panne fatale, contexte perdu) : avec `onFail`, la carte
   // est démontée (plus de boîte sombre devant la photo) et l'appelant replie ; sans, l'ancien `onMapError`.
   function panneCarte(raison: unknown): void {
+    if (destroyed) return;
     if (opts.onFail) echouer(raison);
     else opts.onMapError?.();
   }
@@ -407,7 +431,7 @@ export function bootViewerFull(
       if (destroyed) return;
       destroyed = true;
       clearLoadTimer();
-      surRestaurationGl();
+      annulerPerteGl();
       map.off('error', onError);
       map.off('webglcontextlost', surPerteGl);
       map.off('webglcontextrestored', surRestaurationGl);

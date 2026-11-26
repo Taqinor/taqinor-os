@@ -57,13 +57,19 @@ const carteFactice = vi.hoisted(() => {
     off(ev: string, fn: Ecouteur) { this.ecouteurs.set(ev, (this.ecouteurs.get(ev) ?? []).filter((f) => f !== fn)); return this; }
     fire(ev: string, e?: unknown) { for (const fn of [...(this.ecouteurs.get(ev) ?? [])]) fn(e); }
     addControl() { return this; }
-    addLayer(c: Couche) { this.couches.push(c); c.onAdd?.(this, {}); return this; }
+    ajouts = 0;
+    styleCharge = true;
+    addLayer(c: Couche) { this.ajouts++; this.couches.push(c); c.onAdd?.(this, {}); return this; }
+    isStyleLoaded() { return this.styleCharge; }
+    /** Comme MapLibre à la perte du contexte : le style est détruit, couches personnalisées comprises ; à la
+     *  restauration il revient SANS elles (ici : `styleCharge` faux jusqu'à `style.load`). */
+    perdreContexte() { for (const c of this.couches) c.onRemove?.(this, {}); this.couches = []; this.styleCharge = false; this.fire('webglcontextlost'); }
     resize() { return this; }
     getZoom() { return 19; }
     getPitch() { return 58; }
     getBearing() { return 0; }
     getCanvas() { return this.canevas; }
-    getLayer() { return undefined; }
+    getLayer(id?: string) { return this.couches.find((c) => (c as { id?: string }).id === id); }
     triggerRepaint() { this.repeints++; }
     ciels: unknown[] = [];
     setSky(s: unknown) { this.ciels.push(s); }
@@ -1101,20 +1107,71 @@ describe('monterVisionneusePleine — barre au soleil branchée après le rendu,
     expect(onMapError).not.toHaveBeenCalled(); // avec onFail, la panne passe par le repli
   });
 
-  it('B0 — contexte WebGL perdu : restauré à temps, rien ; jamais restauré, repli', async () => {
+  it('B0 — contexte WebGL perdu puis restauré : la couche 3D est reposée UNE fois et la scène rejouée au même instant', async () => {
     vi.useFakeTimers();
     try {
       const { DELAI_RESTAURATION_GL_MS } = await import('../src/scripts/roofPro11/viewerFullBoot');
-      const { carte, replier } = await monter();
+      const { carte, replier, barre, q } = await monter();
       carte.fire('load');
-      carte.fire('webglcontextlost');
-      carte.fire('webglcontextrestored');
-      vi.advanceTimersByTime(DELAI_RESTAURATION_GL_MS + 1);
+      await vi.advanceTimersByTimeAsync(1);
+      const curseur = q<HTMLInputElement>('[data-soleil-heure]');
+      curseur.value = '10';
+      curseur.dispatchEvent(new Event('input'));
+      const soleilAvant = soleilDessine(carte);
+      expect(carte.ajouts).toBe(1);
+      carte.perdreContexte(); // MapLibre détruit le style, couche 3D comprise
+      expect(carte.couches).toHaveLength(0);
+      carte.fire('webglcontextrestored'); // le style revient… plus tard
+      expect(carte.ajouts).toBe(1);
+      const repeints = carte.repeints;
+      carte.styleCharge = true;
+      carte.fire('style.load');
+      expect(carte.ajouts).toBe(2); // reposée une fois
+      expect(carte.couches).toHaveLength(1);
+      expect(carte.repeints).toBeGreaterThan(repeints);
+      expect(soleilDessine(carte)).toEqual(soleilAvant); // même instant (10 h) qu'avant la perte
+      vi.advanceTimersByTime(DELAI_RESTAURATION_GL_MS * 3);
       expect(replier).not.toHaveBeenCalled();
-      carte.fire('webglcontextlost');
+      expect(barre.hidden).toBe(false);
+      expect(carte.retiree).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('B0 — contexte restauré mais couche non reposée, style jamais revenu, ou contexte jamais restauré : repli, une fois', async () => {
+    vi.useFakeTimers();
+    try {
+      const { DELAI_RESTAURATION_GL_MS } = await import('../src/scripts/roofPro11/viewerFullBoot');
+      // a) la couche refuse de revenir
+      const a = await monter();
+      a.carte.fire('load');
+      a.carte.perdreContexte();
+      a.carte.addLayer = function () { this.ajouts++; return this; }; // ne pose rien
+      a.carte.styleCharge = true;
+      a.carte.fire('webglcontextrestored');
+      expect(a.replier).toHaveBeenCalledTimes(1);
+      expect(a.carte.retiree).toBe(true);
+      expect(a.barre.hidden).toBe(true);
+      vi.advanceTimersByTime(DELAI_RESTAURATION_GL_MS * 3);
+      expect(a.replier).toHaveBeenCalledTimes(1);
+      // b) le style ne revient jamais après la restauration
+      carteFactice.cartes.length = 0;
+      const b = await monter();
+      b.carte.fire('load');
+      b.carte.perdreContexte();
+      b.carte.fire('webglcontextrestored');
       vi.advanceTimersByTime(DELAI_RESTAURATION_GL_MS + 1);
-      expect(replier).toHaveBeenCalledTimes(1);
-      expect(carte.retiree).toBe(true);
+      expect(b.replier).toHaveBeenCalledTimes(1);
+      expect(b.carte.retiree).toBe(true);
+      // c) le contexte n'est jamais restauré
+      carteFactice.cartes.length = 0;
+      const c = await monter();
+      c.carte.fire('load');
+      c.carte.perdreContexte();
+      vi.advanceTimersByTime(DELAI_RESTAURATION_GL_MS + 1);
+      expect(c.replier).toHaveBeenCalledTimes(1);
+      expect(c.carte.retiree).toBe(true);
     } finally {
       vi.useRealTimers();
     }

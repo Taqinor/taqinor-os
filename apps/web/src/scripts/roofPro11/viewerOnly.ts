@@ -646,7 +646,7 @@ export function buildZone(
     root.add(im);
     disposables.push(panelGeo, panelMat, im);
     // Lot 8 — châssis de toit plat : un pied AVANT et un pied ARRIÈRE sous chaque panneau incliné (plus de verre
-    // qui flotte au-dessus de la dalle). Aucun pied en pose affleurante, sur un pan en pente ou sans inclinaison servie.
+    // qui flotte au-dessus de la dalle), repli illustratif à 15° compris. Aucun pied en pose affleurante ou sur un pan en pente.
     const pieds = avecPieds ? matricesPiedsChassis(zone, poses, slopeLenM) : [];
     if (pieds.length) {
       const piedGeo = new THREE.BoxGeometry(PIED_SECTION_M, PIED_SECTION_M, 1);
@@ -666,9 +666,10 @@ export const PIED_SECTION_M = 0.04;
 /**
  * Lot 8 — les pieds du châssis de toit plat de la visionneuse simplifiée : pour chaque panneau, un pied vertical
  * de la dalle (`WALL_H_M + 0,02`) jusqu'à son bord HAUT et un jusqu'à son bord BAS, aux points que la matrice du
- * panneau (pose servie : inclinaison, module, orientation) donne à ses deux bords. Rien n'est inventé : aucun pied
- * quand la pose est affleurante (`flush`), le pan en pente, ou l'inclinaison absente ou nulle. Matrices unitaires
- * (boîte de hauteur 1) mises à l'échelle de chaque pied.
+ * panneau (inclinaison DESSINÉE, module, orientation) donne à ses deux bords — l'inclinaison servie, ou les 15°
+ * illustratifs du repli sans calepinage réel, qui ont donc aussi leurs pieds. Aucun pied quand la pose est affleurante
+ * (`flush`), le pan en pente, ou l'inclinaison dessinée nulle ou non numérique. Matrices unitaires (boîte de hauteur 1)
+ * mises à l'échelle de chaque pied.
  */
 export function matricesPiedsChassis(zone: Pick<ViewerZone, 'flush' | 'roofType' | 'tiltDeg'>, poses: readonly THREE.Matrix4[], slopeLenM: number): THREE.Matrix4[] {
   if (zone.flush || zone.roofType === 'pitched' || !(Number.isFinite(zone.tiltDeg) && zone.tiltDeg > 0) || !(slopeLenM > 0)) return [];
