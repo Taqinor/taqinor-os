@@ -551,6 +551,29 @@ class ChainesInegalesDuDevisTest(SimpleTestCase):
         self.assertEqual(neuf, avant)
         self.assertEqual([c["nb_modules"] for c in neuf["chaines"]], [12] * 4)
 
+    def test_garde_du_devis_reel_35_x_715_hybride_deye_20k_une_batterie(self):
+        """Le devis réel du 26/11/2026 : 35 × 715 Wc, « Onduleur hybride Deye
+        20kW Triphasé » (2 entrées, Isc 54,0 A par entrée, 800 V), UNE
+        batterie. Après la coupure : aucun bloquant, 12 + 12 | 11. Avant : le
+        calcul d'avant, inchangé."""
+        batterie = _FausseLigne(
+            "Batterie lithium 16 kWh", 1, produit=_FauxProduit(
+                "Batterie lithium 16 kWh", fiche=_FausseFiche(
+                    "batterie", bat_kwh_nominal=Decimal("16"),
+                    bat_kwh_usable=None, bat_dod_pct=None,
+                    bat_v_nominal=Decimal("51.2"), bat_max_charge_kw=None)))
+        apres = _devis_deye(35, lignes=[batterie])
+        design = es.build_electrical_design(apres)
+        self.assertTrue(es.construire_entree(apres).batterie)
+        self.assertEqual(design["conformite"]["bloquants"], [])
+        self.assertEqual([(c["nb_modules"], c["mppt"]) for c in design["chaines"]],
+                         [(12, 1), (12, 1), (11, 2)])
+        avant = _devis_deye(35, envoye_le=(2026, 11, 26), lignes=[batterie])
+        self.assertEqual(es.build_electrical_design(avant),
+                         _etude_du_moteur(avant, False))
+        self.assertEqual([c["nb_modules"] for c in
+                          es.build_electrical_design(avant)["chaines"]], [7] * 5)
+
 
 class ConceptionElectriqueEndpointTest(TestCase):
     def setUp(self):
