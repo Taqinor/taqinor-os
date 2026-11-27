@@ -72,6 +72,34 @@ class PompeExistante(unittest.TestCase):
         for interdit in ("×", "0,7355"):
             self.assertNotIn(interdit, message)
 
+    def test_cv_seul_sert_le_kw_derive_sans_l_ecrire_dans_la_plaque(self):
+        """ACAL1260 — 7,5 CV : le kW dérivé est SERVI (``pompe.kw_derive``,
+        ``source_kw`` « cv »), jamais écrit dans ``plaque.kw`` ; l'alerte et
+        tous les chiffres de dimensionnement restent ceux d'avant."""
+        from core.pompage.selection import kw_normalise_depuis_cv
+
+        res = pompe_existante(plaque={"cv": 7.5, "tension_v": 380,
+                                      "phases": 3},
+                              variateurs=VARIATEURS)
+        pompe = res["pompe"]
+        self.assertEqual(pompe["kw_derive"], kw_normalise_depuis_cv(7.5)[0])
+        self.assertEqual(pompe["source_kw"], "cv")
+        self.assertIsNone(pompe["plaque"]["kw"])
+        self.assertIsNone(pompe["kw"])
+        self.assertIn("kw_plaque_a_relever",
+                      [a["code"] for a in res["alertes"]])
+        self.assertIsNone(res["variateur"]["produit"])
+        self.assertEqual(res["puissance_retenue"], {"kw": 5.52, "cv": 7.5})
+
+    def test_kw_de_plaque_source_plaque_sans_kw_derive(self):
+        res = pompe_existante(plaque={"kw": 4, "tension_v": 380, "phases": 3},
+                              variateurs=VARIATEURS)
+        self.assertEqual(res["pompe"]["source_kw"], "plaque")
+        self.assertIsNone(res["pompe"]["kw_derive"])
+        vide = pompe_existante(plaque={}, variateurs=VARIATEURS)
+        self.assertIsNone(vide["pompe"]["source_kw"])
+        self.assertIsNone(vide["pompe"]["kw_derive"])
+
     def test_sans_debit_declare_production_null(self):
         res = pompe_existante(
             plaque={"kw": 4, "tension_v": 380, "phases": 3},

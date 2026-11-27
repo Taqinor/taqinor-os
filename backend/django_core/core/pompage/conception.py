@@ -544,7 +544,7 @@ def pompe_existante(*, plaque, variateurs, panneau=None,
         phases_sortie_variateur, tension_sortie_variateur,
     )
     from core.pompage.selection import (
-        TENSION_MONO_V, TENSION_TRI_V, prix_connu,
+        TENSION_MONO_V, TENSION_TRI_V, kw_normalise_depuis_cv, prix_connu,
         variateurs_compatibles_plaque,
     )
 
@@ -569,7 +569,15 @@ def pompe_existante(*, plaque, variateurs, panneau=None,
         "alimentation": alimentation, "kw": p["kw"], "tension_v": tension,
         "plaque": dict(p), "courbe": None, "point_fonctionnement": None,
         "debit_a_hmt_m3h": None, "prix_connu": None,
+        # ACAL1260 — le kW tiré des CV est SERVI avec son origine, jamais
+        # écrit dans ``plaque.kw`` ni ``pompe.kw`` (alerte et variateur
+        # inchangés ci-dessous).
+        "kw_derive": None,
+        "source_kw": ("plaque" if p["kw"] is not None
+                      else "cv" if p["cv"] else None),
     }
+    if pompe["source_kw"] == "cv":
+        pompe["kw_derive"] = kw_normalise_depuis_cv(p["cv"])[0]
     variateur = {"produit": None, "nom": None, "kw": None, "tension_v": None,
                  "phases_sortie": None, "fiche_saisie": False,
                  "prix_connu": False, "motif": None}
