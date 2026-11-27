@@ -929,3 +929,40 @@ describe('R2-09 / R2-05 — fenêtre de pose : kWc au format français, « Posé
     expect(rendreAvec(undefined)).toBe('3,60 kWc');
   });
 });
+
+describe('ACAL1945 — à l’étape Toit en Guidé, la carte ne montre aucun panneau posé ; ils reviennent à l’étape Panneaux', () => {
+  const monter = () => {
+    document.body.innerHTML = '<div class="rp9-host cal-coque" data-etape="toit" data-expert="0"></div>';
+    const { map } = makeMap();
+    const ctx = makeFreeCtx(makePlan(40), [0, 1, 2, 3, 4].map((i) => ({ cx: -4 * i, cy: 0 })));
+    const deps = makeDeps(map);
+    const editor = createLayoutEditor(ctx, deps);
+    const coque = document.querySelector('.cal-coque') as HTMLElement;
+    const dernierRendu = () => {
+      const appels = (deps.renderScene as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      const a = appels[appels.length - 1];
+      return { maxCount: a[4] as number, occupes: (a[6] as Set<number>).size };
+    };
+    return { editor, ctx, coque, dernierRendu };
+  };
+  it('drapeau posé par l’étape Toit (Guidé) : la scène est rendue SANS panneau, la pose n’est pas modifiée', () => {
+    const { editor, ctx, coque, dernierRendu } = monter();
+    coque.dataset.poseMasquee = '1';
+    editor.renderCustomLayout();
+    expect(dernierRendu()).toEqual({ maxCount: 0, occupes: 0 });
+    expect((ctx.freeState as { panels: unknown[] }).panels).toHaveLength(5);
+  });
+  it('drapeau retiré (étape Panneaux) puis signal d’étape : les 5 panneaux reviennent sans geste de l’utilisateur', () => {
+    const { editor, coque, dernierRendu } = monter();
+    coque.dataset.poseMasquee = '1';
+    editor.renderCustomLayout();
+    delete coque.dataset.poseMasquee;
+    document.dispatchEvent(new CustomEvent('cal:pose-etape'));
+    expect(dernierRendu()).toEqual({ maxCount: 5, occupes: 5 });
+  });
+  it('sans drapeau (Expert, étape Panneaux, site public) : rendu d’avant, 5 panneaux', () => {
+    const { editor, dernierRendu } = monter();
+    editor.renderCustomLayout();
+    expect(dernierRendu()).toEqual({ maxCount: 5, occupes: 5 });
+  });
+});

@@ -1298,12 +1298,18 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    * un déplacement ne change NI le nombre de panneaux NI la production, il serait donc
    * absurde (et lent) de recalculer la fenêtre de production 60 fois par seconde.
    */
+  /** ACAL1945 — l'étape Toit du Guidé (`EtapeToit.jsx` pose `data-pose-masquee` sur la coque) ne montre aucun panneau ; ce
+   *  drapeau est relu à chaque rendu, et un changement d'étape (`cal:pose-etape`) re-rend la scène : la pose revient à l'étape Panneaux. */
+  const poseMasquee = (): boolean => typeof document !== 'undefined' && !!document.querySelector('.cal-coque[data-pose-masquee]');
+  if (typeof document !== 'undefined') document.addEventListener('cal:pose-etape', () => renderCustomLayout());
+
   function renderFreeScene() {
     if (!ctx.layoutPlan || !ctx.freeState) return;
     const st = ctx.freeState;
     const grid = { ...ctx.layoutPlan.grid, panels: st.panels.map((p) => ({ ...p })), count: st.panels.length };
     const all = new Set(st.panels.map((_, i) => i));
-    renderScene(ctx.layoutPlan.pack, grid, ctx.layoutPlan.tiltDeg, ctx.layoutPlan.family, st.panels.length, ctx.layoutPlan.flush, all);
+    if (poseMasquee()) all.clear(); // ACAL1945 — étape Toit (Guidé) : aucun panneau sur la carte
+    renderScene(ctx.layoutPlan.pack, grid, ctx.layoutPlan.tiltDeg, ctx.layoutPlan.family, all.size, ctx.layoutPlan.flush, all);
     // Re-rendre la scène reconstruit les instances (teintes remises à blanc) : on REPEINT
     // la sélection juste après, sinon elle disparaîtrait à chaque image de l'aperçu.
     paintScene();
@@ -1331,10 +1337,11 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     }
     if (!ctx.layoutState) return;
     const occ = new Set(ctx.layoutState.occupied);
-    renderScene(ctx.layoutPlan.pack, ctx.layoutPlan.grid, ctx.layoutPlan.tiltDeg, ctx.layoutPlan.family, occ.size, ctx.layoutPlan.flush, occ);
+    const count = occ.size;
+    const vus = poseMasquee() ? new Set<number>() : occ; // ACAL1945 — étape Toit (Guidé) : la pose n'est pas montrée, ni modifiée
+    renderScene(ctx.layoutPlan.pack, ctx.layoutPlan.grid, ctx.layoutPlan.tiltDeg, ctx.layoutPlan.family, vus.size, ctx.layoutPlan.flush, vus);
     // Recompute par COMPTAGE (jamais un rendement inventé) : on met prodPanels au nombre
     // posé et on laisse la fenêtre de production rescaler en kWc (linéaire) côté client.
-    const count = occ.size;
     const cfg = prodConfigFromState();
     if (cfg) updateProductionWindow({ ...cfg, panels: count });
     // « Plusieurs zones » — garde l'instantané + le total à jour après chaque édition de
