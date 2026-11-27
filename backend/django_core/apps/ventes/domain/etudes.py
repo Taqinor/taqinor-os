@@ -579,6 +579,8 @@ CLES_DERIVEES_NON_COPIEES = (
     'production_source_backfill',
     # R4-02 — une copie / V2 est un document neuf : l'étiquette juste.
     'regles_source_conso_historique',
+    # ACAL1217 / ACAL1266 — idem : une copie / V2 imprime le texte corrigé.
+    'regles_pdf_historique_lot10',
     'etude_horaire',
     CLE_ETUDE_HORAIRE_SANS,
     'dimensionnement',

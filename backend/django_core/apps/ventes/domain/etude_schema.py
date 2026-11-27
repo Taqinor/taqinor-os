@@ -254,6 +254,12 @@ SCHEMA = {
         (bool,), ORPHELINE, DERIVEE,
         'R4-02 — posé par la migration ventes 0160 ; lu par '
         '`quote_engine/ci/synthese.py::synthese_ci` ; jamais copié (V2, copie).'),
+    # ACAL1217 / ACAL1266 — drapeau de rendu posé par la migration 0164 (devis
+    # non brouillons) : le une-page et le PDF agricole gardent le texte reçu.
+    'regles_pdf_historique_lot10': _cle(
+        (bool,), ORPHELINE, DERIVEE,
+        'ACAL1217 — posé par la migration ventes 0164 ; lu par '
+        '`quote_engine/ci/onepage.py::pdf_historique_lot10` ; jamais copié (V2, copie).'),
     'economies_annuelles': _cle((int, float), CALEPINAGE, DERIVEE),
     'autoconso_sans': _cle((int, float), CALEPINAGE, DERIVEE),
     'autoconso_avec': _cle((int, float), CALEPINAGE, DERIVEE),

@@ -29,7 +29,7 @@ export default function GroupeAppoint({ groupe, erreurs = {}, onChange }) {
   return (
     <div className="flex flex-col gap-2" data-testid="acal803-saisie">
       <label className="flex min-h-11 items-center gap-2 text-sm" htmlFor="acal803-actif">
-        <input id="acal803-actif" type="checkbox" checked={groupe.actif}
+        <input id="acal803-actif" type="checkbox" className="size-5" checked={groupe.actif}
           onChange={(e) => onChange({ ...groupe, actif: e.target.checked })} />
         Il y a un groupe sur le site
       </label>
@@ -37,7 +37,7 @@ export default function GroupeAppoint({ groupe, erreurs = {}, onChange }) {
         ? <p role="alert" className="text-xs text-destructive" data-testid="acal803-erreur">{erreurs['hors_reseau.groupe']}</p>
         : null}
       {groupe.actif && (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3">
           {CHAMPS_GROUPE.map(({ cle, libelle }) => (
             <Champ key={cle} id={`acal803-${cle}`} libelle={libelle} type="number"
               valeur={groupe[cle]} refus={erreurs[`hors_reseau.groupe.${cle}`]}
@@ -62,6 +62,7 @@ export function LectureGroupe({ horsReseau, nomMois }) {
         <>
           <p data-testid="acal803-groupe">
             Le groupe a tourné {heures(g.heures_de_marche)} dans l’année ({kwh(g.energie_fournie_kwh)} fournis)
+            {g.cause_inactif ? ` — ${g.cause_inactif}` : ''}
           </p>
           {g.par_mois?.length > 0 && (
             <table className="w-full text-sm" data-testid="acal803-groupe-par-mois">

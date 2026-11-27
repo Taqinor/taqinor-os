@@ -147,20 +147,9 @@ def economie_ci_preview(request):
                                    "etude_ci_preview.json.",
                          'champ': 'sortie_etude_ci'},
                         status=status.HTTP_400_BAD_REQUEST)
-    return Response(_avec_retour_imprime(bloc))
-
-
-def _avec_retour_imprime(bloc):
-    """T4-X6-007 — ``indicateurs.retour_dixieme_ans`` : le retour au dixième que le PDF
-    imprime (``quote_engine.ci.couverture.retour_dixieme`` sur le flux servi, la fonction
-    de la couverture et du bandeau « Devis créé ») ; l'écran n'affiche plus un second
-    retour en années pleines. Sans indicateurs : le bloc tel quel."""
-    from .quote_engine.ci.couverture import retour_dixieme
-
-    indicateurs = bloc.get('indicateurs') if isinstance(bloc, dict) else None
-    if isinstance(indicateurs, dict):
-        indicateurs['retour_dixieme_ans'] = retour_dixieme(bloc, indicateurs.get('retour_ans'))
-    return bloc
+    # T4-X6-007 / ACAL1224 — ``indicateurs.retour_dixieme_ans`` (le retour imprimé au PDF)
+    # est servi par ``assembler_economie_ci`` lui-même, en lecture comme en aperçu.
+    return Response(bloc)
 
 
 def _mode(sortie):

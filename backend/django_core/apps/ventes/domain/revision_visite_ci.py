@@ -110,7 +110,7 @@ def reviser_devis_apres_visite(devis, *, user=None):
 
     from apps.visites.selectors import releve_ci_pour_lead
 
-    from .etude_ci import (CLE_OPTION_AVEC, entrees_pour_etude_params, etudier_ci,
+    from .etude_ci import (CLE_OPTION_AVEC, CLE_TAILLE_CREATION, entrees_pour_etude_params, etudier_ci,
                            lignes_du_devis_ci, lire_catalogue_ci, provenance_lignes_du_devis,
                            refus_devis_auto_ci)
     from .etude_ci_batterie import lignes_des_options, option_imposee_des_lignes
@@ -167,7 +167,9 @@ def reviser_devis_apres_visite(devis, *, user=None):
         ttc_avant = ttc_du_devis(cible)  # AGNR77 — TTC lu AVANT la recomposition
         etude = etudier_ci(company, {'mode': mode, 'taille_explicite_kwc': taille},
                            devis=cible, lead=lead, option_avec_imposee=imposee,
-                           provenance_corps=provenance_lignes_du_devis())
+                           provenance_corps=provenance_lignes_du_devis(),
+                           # ACAL1226 — taille du verdict de création : « calculée à la création ».
+                           verdict_creation=(getattr(devis, 'etude_params', None) or {}).get(CLE_TAILLE_CREATION))
         refus = refus_devis_auto_ci(etude)
         if refus:
             raise RevisionVisiteError(*refus)

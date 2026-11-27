@@ -2,7 +2,13 @@
    `maquettes-v2/LANGAGE.md`) : cartes posées sans cadre, ombre teintée, chiffres dessinés, une seule
    action dorée. Jetons seulement (aucune couleur littérale) : le thème sombre suit par les jetons. */
 
-.cliste { --cliste-ombre: color-mix(in oklch, var(--foreground) 8%, transparent); }
+/* ACAL1825 — la page de la liste est posée sur le papier de la maquette v2 (jeton `--cal-papier`, clair et sombre) ; le papier
+   déborde de la colonne de l'ERP à gauche et à droite, jamais ailleurs. Ombres et pastille active : jetons d'ACAL1800. */
+.cliste-page {
+  background: var(--cal-papier);
+  box-shadow: 0 0 0 100vmax var(--cal-papier);
+  clip-path: inset(0 -100vmax);
+}
 /* ACAL1747 — le compteur « N projets » / « Chargement… » : le jeton de texte secondaire de l'écran (≈ 7,4 : 1 en
    clair, ≈ 8,3 : 1 en sombre sur le papier de la liste), pas le gris pâle du thème que l'apparition de la liste
    (fondu) faisait passer sous 4,5 : 1. */
@@ -19,7 +25,7 @@
   border: 0;
   border-radius: 13px;
   background: var(--card);
-  box-shadow: 0 1px 2px var(--cliste-ombre), 0 6px 18px var(--cliste-ombre);
+  box-shadow: var(--cal-ombre-posee);
 }
 .cliste-action { border-radius: 13px; box-shadow: 0 8px 20px color-mix(in oklch, var(--primary) 36%, transparent); }
 
@@ -29,9 +35,9 @@
   height: 44px; padding: 0 16px; border: 0; border-radius: 22px;
   font-size: 13px; font-weight: 500;
   background: var(--card); color: var(--foreground);
-  box-shadow: 0 1px 2px var(--cliste-ombre);
+  box-shadow: var(--cal-ombre-posee);
 }
-.cliste-puce[aria-pressed='true'] { background: var(--foreground); color: var(--background); font-weight: 600; }
+.cliste-puce[aria-pressed='true'] { background: var(--cal-actif); color: var(--cal-actif-texte); font-weight: 600; }
 .cliste-puce-n { color: var(--muted-foreground); }
 .cliste-puce[aria-pressed='true'] .cliste-puce-n { color: inherit; opacity: 0.75; }
 
@@ -40,11 +46,11 @@
   border: 0;
   border-radius: 20px;
   background: var(--card);
-  box-shadow: 0 1px 2px var(--cliste-ombre), 0 10px 28px var(--cliste-ombre);
+  box-shadow: var(--cal-ombre-posee);
   transition: box-shadow 120ms cubic-bezier(0.05, 0.7, 0.1, 1);
 }
 @media (hover: hover) {
-  .cliste-carte:hover { box-shadow: 0 2px 4px var(--cliste-ombre), 0 16px 36px var(--cliste-ombre); }
+  .cliste-carte:hover { box-shadow: var(--cal-actif-ombre); }
 }
 .cliste-apercu { position: relative; height: 168px; flex: none; }
 .cliste-etat {
@@ -95,3 +101,14 @@
   vector-effect: non-scaling-stroke;
 }
 @media (prefers-reduced-motion: reduce) { .cliste-carte { transition-duration: 80ms; } }
+
+/* ACAL1819 — au téléphone, le premier écran lit la première carte : titre et « + » (44 × 44) sur une ligne, la recherche
+   dessous, les pastilles d'état derrière « Filtres » (un filtre actif les garde à la vue). Le libellé reste le nom du bouton. */
+@media (max-width: 639px) {
+  .cliste-tete-titre { order: 1; min-width: 0; }
+  .cliste .cliste-action { order: 2; width: 44px; height: 44px; padding: 0; }
+  .cliste-action-texte { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .cliste .cliste-recherche { order: 3; }
+  .cliste-titre { font-size: 28px; }
+  .cliste-puces[data-replie='true'] { display: none; }
+}

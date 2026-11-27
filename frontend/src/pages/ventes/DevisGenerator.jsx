@@ -1200,14 +1200,14 @@ export default function DevisGenerator({
 
   // SPL50 — lien lead/client du devis (déplacé tel quel dans le hook ; l'effet d'arrivée du lead reste plus bas).
   const {
-    applyLead, applyClient, runAutoQuote,
+    applyLead, applyClient, runAutoQuote, arriveeResolue, signalerLeadIntrouvable,
   } = useLeadClientEcran({
     leads, structuresCatalogue, setSaving, setErrors, sizing, dispatchSizing, finish, leadId,
     setLeadId, clientId, setClientId, setFHiver, setFEte, setMonthly: poserMoisDerives, modeInstallation,
     setConsoMensuelle, setHorsReseau, horsReseauTouched, setPompeCv, setPompeHmt, setPompeDebit,
     appliquerEntreesPompage,
     facturesProtegeesRef, reinitialiserFactures, setAvisFactures, consoMensuelle,
-    pompeCv, pompeHmt, pompeDebit, baremeSociete,
+    pompeCv, pompeHmt, pompeDebit, baremeSociete, distributeurChoisi, setDistributeur,
   })
 
   // SPL45 — chargeur `?edit=` (déplacé tel quel dans le hook, même position : l'ordre des effets est inchangé).
@@ -1314,7 +1314,7 @@ export default function DevisGenerator({
     // un id introuvable des deux côtés est DIT.
     const appliquerArrivee = (lead) => {
       if (!lead) {
-        setErrors(prev => ({ ...prev, client: `Lead introuvable (n° ${leadParam}).` }))
+        signalerLeadIntrouvable(leadParam)
         return
       }
       // Initialisation unique (garde autoRan) — pas de cascade.
@@ -1503,7 +1503,7 @@ export default function DevisGenerator({
     structureProduitId, recalcDimTick, setPompageAutoFilled, setOnduleursIncomplets,
     setAutoFillLoading, setCompositionErreur, profilCi, horsReseau, kwp, selectedLead,
     etudeHoraireDonnees, etudeHoraireChargement, marcheCi, ctxProfilCi, apercuCi, resolveKwcAvec,
-    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard: quoteLogic.tvaStandard, sizing, lines, editId,
+    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard: quoteLogic.tvaStandard, sizing, lines, editId, leadAttendu: editId || arriveeResolue ? null : (embedded ? leadIdProp : searchParams.get('lead')),
   })
 
   const selectedClient = clientsConnus.find(c => String(c.id) === String(clientId))
@@ -1829,7 +1829,7 @@ export default function DevisGenerator({
           <CardContent className="grid gap-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="grid gap-1.5">
               <Label htmlFor="gen-num">N° de Devis</Label>
-              <Input id="gen-num" value="Généré automatiquement" disabled />
+              <Input id="gen-num" value={editDevis?.reference || 'Généré automatiquement'} disabled />
             </div>
             <div className={modeInstallation === 'agricole' ? 'hidden' : 'grid gap-1.5'}>
               {/* OFFGRID — « Raccordement » du devis : défaut « Raccordé au
@@ -2036,7 +2036,7 @@ export default function DevisGenerator({
           verdictBatterieServeur={verdictBatterieServeur} apercuEcoAvec={apercuEcoAvec}
           apercuPaybackAvecJamais={apercuPaybackAvecJamais} apercuPaybackAvec={apercuPaybackAvec} apercuPaybackAvecAbsent={apercuPaybackAvecAbsent}
           capaciteBatterieInconnue={capaciteBatterieInconnue} facturesSaisies={facturesSaisies}
-          chartData={chartData} apercuAvecAbsent={apercuAvecAbsent}
+          chartData={chartData} apercuAvecAbsent={apercuAvecAbsent} leadId={leadId}
           editDevis={editDevis} simulationRepliee={simulationRepliee}
           basculerCarte={basculerCarte}
         />

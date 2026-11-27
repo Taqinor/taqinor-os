@@ -245,7 +245,6 @@ export default function CarteParametresTechniques({
         )}
         <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
           {errors.recalcDim && <span className="text-xs text-destructive">{errors.recalcDim}</span>}
-          {errors.autofill && <span className="text-xs text-destructive">{errors.autofill}</span>}
           {/* AGR128 — agricole : aucun devis plausible sans le besoin, la
               hauteur et le cas de pompe ; le message NOMME ce qui manque. */}
           {pompageManquants.length > 0 && (
@@ -279,6 +278,8 @@ export default function CarteParametresTechniques({
             <Zap /> Auto-remplir depuis le stock
           </Button>
         </div>
+        {/* ACAL1206 — le refus d'Auto-remplir se lit SOUS le bouton, en texte lisible. */}
+        {errors.autofill && <p className="mt-2 text-right text-sm text-destructive" data-testid="autofill-erreur">{errors.autofill}</p>}
         {/* QJR577 (D-QJR5-9) — le dry-run serveur a échoué : AUCUNE
             composition de secours, l'erreur est dite et « Réessayer »
             rejoue le même dry-run. */}
