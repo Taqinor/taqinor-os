@@ -577,7 +577,12 @@ def pompe_existante(*, plaque, variateurs, panneau=None,
                       else "cv" if p["cv"] else None),
     }
     if pompe["source_kw"] == "cv":
-        pompe["kw_derive"] = kw_normalise_depuis_cv(p["cv"])[0]
+        # Revue 12 — un moteur, UN kW : le moteur normalisé (D-AGM-1, celui
+        # sur lequel ``choisir_variateur`` choisit depuis des CV), arrondi à
+        # 2 décimales, servi ici ET sous ``puissance_retenue.kw`` (affiché).
+        derive = kw_normalise_depuis_cv(p["cv"])[0]
+        pompe["kw_derive"] = round(derive, 2) if derive else None
+        affiche_kw = pompe["kw_derive"]
     variateur = {"produit": None, "nom": None, "kw": None, "tension_v": None,
                  "phases_sortie": None, "fiche_saisie": False,
                  "prix_connu": False, "motif": None}
