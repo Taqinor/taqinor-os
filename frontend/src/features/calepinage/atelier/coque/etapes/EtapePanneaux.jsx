@@ -458,12 +458,23 @@ function AvisOmbresNonComptees({ manque }) {
 function AlerteOmbre({ ombre, g }) {
   const [garde, setGarde] = useState(false)
   if (!ombre || garde) return null
-  const { n, origine } = ombre
+  const { n, origine, de, perte } = ombre
+  // ACAL1532 — sans seuil réglé : pas de proposition, mais la perte SERVIE (`shadeAnnualFactor`) est dite, avec son obstacle.
+  if (!n) {
+    return (
+      <section className="cal-pan-alerte" data-testid="cal-panneaux-ombre" role="status">
+        <h2 className="cal-pan-alerte-titre">
+          <span className="cal-pan-alerte-pastille" aria-hidden="true"><span /><span /></span>
+          {`L’ombre ${de ?? 'des obstacles'} retire ≈ ${perte} % de la production`}
+        </h2>
+      </section>
+    )
+  }
   return (
     <section className="cal-pan-alerte" data-testid="cal-panneaux-ombre">
       <h2 className="cal-pan-alerte-titre">
         <span className="cal-pan-alerte-pastille" aria-hidden="true"><span /><span /></span>
-        {n === 1 ? '1 panneau à l’ombre' : `${n} panneaux à l’ombre`}
+        {`${n === 1 ? '1 panneau à l’ombre' : `${n} panneaux à l’ombre`}${de ? ` ${de}` : ''}`}
       </h2>
       <p className="cal-pan-alerte-texte">
         {`${n === 1 ? 'Il reçoit' : 'Ils reçoivent'} moins de soleil que le seuil réglé ${
@@ -626,7 +637,7 @@ export default function EtapePanneaux({
         )}
       </section>
       <PersonnaliserDisposition lectureSeule={lectureSeule} rafraichir={rafraichir} />
-      <AlerteOmbre key={etat.ombre?.n ?? 0} ombre={etat.ombre} g={g} />
+      <AlerteOmbre key={`${etat.ombre?.n ?? 0}-${etat.ombre?.perte ?? 0}`}ombre={etat.ombre} g={g} />
       <AvisOmbresNonComptees manque={parcours?.manque} />
       <SurCarte>
         <PuceResume figures={etat.figures} publiee={servi.publiee} site={site} aRefaire={servi.aRefaire}

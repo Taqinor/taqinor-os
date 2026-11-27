@@ -706,6 +706,25 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(retirer).toHaveBeenCalledTimes(1)
   })
 
+  // ACAL1532 — un calepinage rouvert : l'alerte porte l'obstacle (publié par le script), et sans seuil elle dit la perte.
+  it('ACAL1532 alerte d’ombrage : nomme l’obstacle publié par le script (« de la cheminée »)', () => {
+    monterConstructeur({ ombre: 4 })
+    document.getElementById('rp9-solar-access').dataset.ombreDe = 'de la cheminée'
+    rendre()
+    expect(screen.getByTestId('cal-panneaux-ombre')).toHaveTextContent('4 panneaux à l’ombre de la cheminée')
+  })
+
+  it('ACAL1532 alerte d’ombrage : sans seuil réglé, dit la perte annuelle servie, sans bouton Retirer', () => {
+    monterConstructeur()
+    const zone = document.getElementById('rp9-solar-access')
+    zone.dataset.ombreDe = 'de la cheminée'
+    zone.dataset.ombrePerte = '7'
+    rendre()
+    const alerte = screen.getByTestId('cal-panneaux-ombre')
+    expect(alerte).toHaveTextContent('L’ombre de la cheminée retire ≈ 7 % de la production')
+    expect(within(alerte).queryByRole('button')).toBeNull()
+  })
+
   // ACAL1728 (reprise d'ACAL869) — l'étape guidée n'offrait ni l'alignement des rangées ni Annuler / Rétablir dans son panneau.
   it('ACAL1728 — « Personnaliser la disposition » : alignement des rangées, Annuler et Rétablir renvoyés aux vrais contrôles', () => {
     const { racine, espion } = monterConstructeur()

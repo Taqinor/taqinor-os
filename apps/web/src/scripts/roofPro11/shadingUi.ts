@@ -592,6 +592,31 @@ export async function executerAvecCarte<T>(
   }
 }
 
+/** ACAL1532 — « de la cheminée » : le complément de nom (article accordé) d'un type d'obstacle. */
+const DE_PAR_TYPE: Record<string, string> = {
+  cheminee: 'de la cheminée', ventilation: 'de la ventilation', chien_assis: 'du chien-assis', edicule: 'de l’édicule',
+  antenne: 'de l’antenne', lanterneau: 'du lanterneau', exutoire: 'de l’exutoire', climatiseur: 'du climatiseur',
+  citerne: 'de la citerne', garde_corps: 'du garde-corps', joint_dilatation: 'du joint de dilatation',
+};
+
+/**
+ * ACAL1532 — qui fait l'ombre, en mots : « de la cheminée » (un type), « de la cheminée et du climatiseur » (deux),
+ * sinon « des obstacles du toit ». Les ombres tracées / objets d'environnement ne se nomment pas : « des ombres relevées ».
+ * `null` quand rien ne fait d'ombre. PURE.
+ */
+export function designationDeLOmbre(
+  obstacles: readonly { type?: string; heightM?: number }[] | null | undefined,
+  nbOmbresTracees = 0,
+  environnement: readonly { heightM?: number; supposeCoupe?: boolean }[] | null | undefined = [],
+): string | null {
+  const hauts = (obstacles ?? []).filter((o) => typeof o.heightM === 'number' && o.heightM > 0);
+  const autres = nbOmbresTracees > 0 || (environnement ?? []).some((o) => typeof o.heightM === 'number' && o.heightM > 0 && o.supposeCoupe !== true);
+  if (!hauts.length) return autres ? 'des ombres relevées' : null;
+  if (autres) return 'des obstacles du toit et des ombres relevées';
+  const noms = [...new Set(hauts.map((o) => (o.type ? DE_PAR_TYPE[o.type] : undefined) ?? 'de l’obstacle'))];
+  return noms.length === 1 ? noms[0] : noms.length === 2 ? `${noms[0]} et ${noms[1]}` : 'des obstacles du toit';
+}
+
 /** ACAL729 — le début de l'info-bulle d'un module : « Accès solaire 82 % (année entière) · chaîne 2 · », ou rien. */
 export function teteInfoBulleModule(acces: number | null, chaine: string | null): string {
   const morceaux = [
@@ -1178,12 +1203,23 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     return etiquette(numerote, registreAtelier.convention(panId)) || `nº${i + 1}`;
   }
 
+  /** ACAL1532 — ce que l'écran Panneaux lit de `#rp9-solar-access` SANS parser le texte : le nom de l'obstacle
+   *  (`data-ombre-de`) et, SEULEMENT sans seuil réglé, la perte annuelle de `shadeAnnualFactor` (`data-ombre-perte`,
+   *  % entier ≥ 1). Recalculé à chaque rendu, jamais écrit au document ; aucun seuil par défaut. */
+  function publierOmbrePourEcran(el: HTMLElement, s: SolarAccessSummary | null) {
+    const de = s ? designationDeLOmbre(ctx.obstacles, ctx.shadeObstructions?.length ?? 0, ctx.environment) : null;
+    if (de) el.dataset.ombreDe = de; else delete el.dataset.ombreDe;
+    const perte = s && seuilRetrait() == null && ctx.shadeFactors ? Math.round((1 - ctx.shadeAnnualFactor) * 100) : 0;
+    if (perte >= 1) el.dataset.ombrePerte = String(perte); else delete el.dataset.ombrePerte;
+  }
+
   /** CAL97 — publie le chiffre (et sa méthode) à côté de la carte, ou dit clairement
    *  POURQUOI il est absent — jamais une estimation de remplacement. */
   function renderSolarAccess() {
     const el = accessEl;
     if (!el) return;
     const s = solarAccess();
+    publierOmbrePourEcran(el, s);
     if (!s) {
       el.textContent = hasShadeSources()
         ? 'Accès solaire : non calculé (aucun module posé sur ce pan).'
