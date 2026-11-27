@@ -27,7 +27,8 @@ import {
   daysInMonth,
   rescaleByPanels,
 } from '../../lib/productionWindow';
-import { PANEL_KWC, type PerKwcProduction, type SpecificDateProfile } from '../../lib/productionEngine';
+import { PANEL_KWC, type PerKwcProduction, type ScaledProduction, type SpecificDateProfile } from '../../lib/productionEngine';
+import { facteurDerateAnnuel } from './optimizer'; // lot 10 — LE dérate de la carte de la pose
 import { clipDcAcKwh, effectiveDcAcRatio, type ConfigFamily } from '../../lib/estimatorBrainV2';
 import { catalogueAvecModulesDuDocument, estRefus, kwcDuPan, lireModulesDisponibles, resoudreModuleDuPan } from './moduleSelect'; // demande croisée
 import { occupiedCount } from '../../lib/layoutVariability';
@@ -129,6 +130,25 @@ function combinerDates(dates: (SpecificDateProfile | null | undefined)[], poids:
   };
 }
 
+/** Lot 10 (production-un-chiffre) — la production AFFICHÉE par la fenêtre : la série posée × `f`, LE dérate
+ *  annuel de la carte de la pose (`optimizer.ts::facteurDerateAnnuel`, ombrage tracé × horizon). `f` = 1 ⇒ la
+ *  série telle quelle. Pur : `ctx.prodScaled` (lu par la conso) n'est jamais modifié. */
+export function productionAffichee<T extends PerKwcProduction>(prod: T, f: number): T {
+  if (f === 1) return prod;
+  return {
+    ...prod,
+    annualKwh: prod.annualKwh * f,
+    monthlyKwh: prod.monthlyKwh.map((v) => v * f),
+    typicalDayByMonth: prod.typicalDayByMonth.map((jour) => jour.map((v) => v * f)),
+    dailyKwhByMonth: prod.dailyKwhByMonth.map((v) => v * f),
+  };
+}
+
+/** Même dérate pour le profil d'une date précise (jour choisi de la fenêtre). */
+function dateAffichee(d: SpecificDateProfile | null, f: number): SpecificDateProfile | null {
+  return d && f !== 1 ? { ...d, hourlyKw: d.hourlyKw.map((v) => v * f), dailyKwh: d.dailyKwh * f } : d;
+}
+
 export function createProdWindow(ctx: Ctx, dom: ProdWindowDom, deps: ProdWindowDeps): ProdWindow {
   const { graphs, renderConsumption, renderLayoutPanel, snapshotActiveAreaResult, renderAreasPanel } = deps;
 
@@ -190,11 +210,14 @@ export function createProdWindow(ctx: Ctx, dom: ProdWindowDom, deps: ProdWindowD
   function renderProdWindow() {
     const { prodWindowEl, prodMonthPickerEl, prodDayPickerEl, prodScopeWrap, prodMonthLabelEl, prodDayLabelEl, prodDayResetEl, prodHeadlineEl, prodSubEl, prodGraphEl, prodSourceEl, prodSavingsEl } = dom;
     if (!prodWindowEl) return;
-    const prod = ctx.prodScaled;
-    if (!prod || ctx.prodPanels <= 0) {
+    if (!ctx.prodScaled || ctx.prodPanels <= 0) {
       prodWindowEl.hidden = true;
       return;
     }
+    // Lot 10 — un chiffre par pose : la fenêtre dit la production de la carte (même dérate ombrage × horizon).
+    const derate = facteurDerateAnnuel(ctx);
+    const prod: ScaledProduction = productionAffichee(ctx.prodScaled, derate);
+    const date = dateAffichee(ctx.prodSpecificDate, derate);
     prodWindowEl.hidden = false;
     const prodScope = ctx.prodScope;
     const prodMonth = ctx.prodMonth;
@@ -243,11 +266,11 @@ export function createProdWindow(ctx: Ctx, dom: ProdWindowDom, deps: ProdWindowD
       const s = monthlySavings(totalKwh, prodTarget);
       savingsTxt = prodTarget > 0 ? `Économies estimées (plafonnées) : ${fmtSavings(s.low, s.high)}/mois` : '';
     } else {
-      const { totalKwh, isTypical } = daySeries(prod, prodMonth, ctx.prodSpecificDate);
+      const { totalKwh, isTypical } = daySeries(prod, prodMonth, date);
       headline = `${fmtKwh(totalKwh, approx)}${tag}`;
       const dayTxt = prodDay == null ? `jour type de ${MONTH_NAMES_FR[prodMonth]}` : `${prodDay} ${MONTH_NAMES_FR[prodMonth]}`;
       sub = `Courbe horaire · ${dayTxt}${isTypical ? ' (moyenne du mois)' : ''}`;
-      graph = graphs.renderDayGraph(prod);
+      graph = graphs.renderDayGraph(prod, date);
       const s = dailySavings(totalKwh, prodTarget);
       savingsTxt = prodTarget > 0 ? `Économies estimées (plafonnées) : ${fmtSavings(s.low, s.high)}/jour` : '';
     }

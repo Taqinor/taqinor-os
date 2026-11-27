@@ -318,3 +318,36 @@ describe('prodWindow — kWc du module désigné du pan, comme le bandeau', () =
     expect(ctx.prodScaled?.placedKwc).toBeCloseTo(3.55, 9);
   });
 });
+
+// Lot 10 (production-un-chiffre) — la fenêtre « Production estimée » et la carte de la pose
+// (`optimizer.ts::renderConfig`) disent la MÊME production : le dérate ombrage × horizon de
+// `facteurDerateAnnuel` s'applique aux deux, jamais à la carte seule.
+describe('prodWindow — même dérate ombrage × horizon que la carte de la pose', () => {
+  const chiffre = (id: string): number =>
+    Number((document.getElementById(id)?.textContent ?? '').replace(/[^\d]/g, ''));
+
+  it('ombrage 0,8 × horizon 0,9 : têtes de l’année et du mois réduites de 28 %', async () => {
+    const { facteurDerateAnnuel } = await import('../src/scripts/roofPro11/optimizer');
+    setupDom();
+    const ctx = Object.assign(makeCtx(null), { shadeAnnualFactor: 0.8, horizonAnnualFactor: 0.9 });
+    const brut = makeProd().annualKwh;
+    expect(facteurDerateAnnuel(ctx)).toBeCloseTo(0.72, 12);
+    const pw = makeProdWindow(ctx);
+
+    pw.renderProdWindow();
+    expect(chiffre('prod-headline')).toBe(Math.round(brut * facteurDerateAnnuel(ctx)));
+    // La production rangée du contexte (lue par la conso) n'est pas touchée.
+    expect(ctx.prodScaled?.annualKwh).toBe(brut);
+
+    ctx.prodScope = 'month';
+    pw.renderProdWindow();
+    expect(chiffre('prod-headline')).toBe(Math.round(makeProd().monthlyKwh[0] * 0.72));
+  });
+
+  it('sans ombrage ni horizon (facteurs 1) : rendu inchangé', () => {
+    setupDom();
+    const ctx = Object.assign(makeCtx(null), { shadeAnnualFactor: 1, horizonAnnualFactor: 1 });
+    makeProdWindow(ctx).renderProdWindow();
+    expect(chiffre('prod-headline')).toBe(makeProd().annualKwh);
+  });
+});

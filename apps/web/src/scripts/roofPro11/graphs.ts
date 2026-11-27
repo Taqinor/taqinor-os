@@ -13,14 +13,14 @@ import {
   dayAreaPath,
   fmtKwh,
 } from '../../lib/productionWindow';
-import { type ScaledProduction } from '../../lib/productionEngine';
+import { type ScaledProduction, type SpecificDateProfile } from '../../lib/productionEngine';
 import { esc } from './dom';
 import { type Ctx } from './context';
 
 export interface Graphs {
   renderYearGraph: (prod: ScaledProduction) => string;
   renderMonthGraph: (prod: ScaledProduction) => string;
-  renderDayGraph: (prod: ScaledProduction) => string;
+  renderDayGraph: (prod: ScaledProduction, date?: SpecificDateProfile | null) => string;
   /** PV75 — mini cascade des pertes (barres horizontales, libellés FR), à partir du
    *  `loss_breakdown` bancable {poste: pct} injecté par la page hôte. SVG autonome
    *  (pas rempli dans le graphe de scope année/mois/jour) ; chaîne vide si aucun poste
@@ -94,8 +94,9 @@ export function createGraphs(ctx: Ctx): Graphs {
   }
 
   /** Graphe JOUR : courbe 24 h de puissance (kW) + aire remplie. */
-  function renderDayGraph(prod: ScaledProduction): string {
-    const { points } = daySeries(prod, ctx.prodMonth, ctx.prodSpecificDate);
+  /** Lot 10 — `date` : le profil de la date tel que la fenêtre l'affiche (dérate compris) ; absent ⇒ celui du contexte. */
+  function renderDayGraph(prod: ScaledProduction, date?: SpecificDateProfile | null): string {
+    const { points } = daySeries(prod, ctx.prodMonth, date === undefined ? ctx.prodSpecificDate : date);
     const area = dayAreaPath(points, SVG_BOX);
     const line = dayCurvePath(points, SVG_BOX);
     const baseY = SVG_BOX.height - SVG_BOX.padBottom;
