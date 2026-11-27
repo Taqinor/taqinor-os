@@ -723,3 +723,95 @@ class LecteursAvalTextesPdfTest(SimpleTestCase):
         from apps.ventes.quote_engine.builder import _drapeau_classe_par_role
         self.assertEqual(_drapeau_classe_par_role(_BROUILLON), {'classe_par_role': True})
         self.assertEqual(_drapeau_classe_par_role(_avant_la_coupure()), {})
+
+
+class LecteursAvalPariteDuPaybackTest(SimpleTestCase):
+    """Constat 5 — un devis, UN retour sur investissement : l'aperçu horaire
+    (batterie du devis ou des produits envoyés) et le payback servi par la
+    conception lisent la batterie A et l'hybride C par leur rôle, comme le PDF
+    (``capacite_batterie_du_devis``, ``etude_chiffrage._cout_onduleur``)."""
+
+    def setUp(self):
+        from unittest import mock
+        # Aucune fiche publiée : la capacité tombe sur le nominal du nom (16 kWh).
+        patch = mock.patch('apps.stock.selectors.specs_for_produit', return_value={})
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    @staticmethod
+    def _devis_a(devis):
+        devis.lignes = _Lignes([_ligne(_NOM_A, role='batterie', devis=devis, quantite=1)])
+        return devis
+
+    def test_apercu_du_devis_prend_les_grandeurs_du_devis_pour_la_batterie_rangee(self):
+        from apps.ventes.etude_horaire_view import _batterie_de_l_apercu
+        from apps.ventes.horaire.batterie_lignes import (
+            capacite_batterie_du_devis, rendement_batterie_du_devis)
+        devis = self._devis_a(SimpleNamespace(statut='brouillon', date_envoi=None, regles_calcul=14))
+        apercu = _batterie_de_l_apercu(devis, 16.0)
+        self.assertEqual(apercu['batterie_kwh_utile'], capacite_batterie_du_devis(devis, 'avec'))
+        self.assertEqual(apercu['batterie_rendement'], rendement_batterie_du_devis(devis)['rendement'])
+
+    def test_apercu_du_devis_envoye_avant_la_coupure_garde_la_capacite_du_corps(self):
+        from apps.ventes.etude_horaire_view import _batterie_de_l_apercu
+        self.assertEqual(_batterie_de_l_apercu(self._devis_a(_avant_la_coupure()), 16.0),
+                         {'batterie_kwh_utile': 16.0})
+
+    def test_apercu_des_produits_reconnait_la_batterie_par_son_role_declare(self):
+        from unittest import mock
+
+        from apps.stock.models import Produit
+        from apps.ventes.horaire.batterie_apercu import batterie_des_produits
+        produit = Produit(pk=5, nom=_NOM_A, role_devis='batterie')
+        with mock.patch('apps.stock.selectors.get_produit_scoped', return_value=produit):
+            sortie = batterie_des_produits([{'produit': 5, 'quantite': 1}], company=None)
+        self.assertIsNotNone(sortie)
+        self.assertEqual(sortie['batterie_kwh_utile'], 16.0)
+        sans_role = Produit(pk=5, nom=_NOM_A)
+        with mock.patch('apps.stock.selectors.get_produit_scoped', return_value=sans_role):
+            self.assertIsNone(batterie_des_produits([{'produit': 5, 'quantite': 1}], company=None))
+
+    @staticmethod
+    def _payback(devis_reel):
+        from decimal import Decimal
+        from unittest import mock
+
+        from apps.stock.models import Produit
+        from apps.ventes import selectors_conception
+        from apps.ventes.models import LigneDevis
+
+        def ligne(nom, role, quantite, prix):
+            return LigneDevis(devis=devis_reel, designation=nom, role_devis=role, type_ligne='produit',
+                              quantite=Decimal(quantite), prix_unitaire=Decimal(prix), remise=Decimal('0'),
+                              taux_tva=Decimal('20'), produit=Produit(nom=nom))
+        lignes = [ligne(_NOM_B, 'panneau', '30', '1200'), ligne(_NOM_C, 'onduleur_hybride', '1', '60000'),
+                  ligne(_NOM_A, 'batterie', '1', '30000')]
+        version = SimpleNamespace(etat='complet', marche='residentiel')
+        # Un retour au-delà de l'année 12 : la provision d'onduleur y pèse.
+        valeurs = {'avec': {'payback': None, 'economies_annuelles': {'valeur': 10000}}}
+        with mock.patch.object(selectors_conception, '_devis_de_reference', return_value=devis_reel), \
+                mock.patch('apps.ventes.utils.options.lignes_avec_produit', return_value=lignes):
+            servies, _ = selectors_conception._payback_servi(version, valeurs)
+        return servies['avec']['payback']
+
+    def test_payback_servi_provisionne_l_hybride_range_comme_le_pdf(self):
+        from apps.ventes.models import Devis
+        from apps.ventes.quote_engine.lignes_classement import _cout_onduleur
+        devis = Devis(pk=41, reference='DEV-LAV-5', statut='brouillon', date_envoi=None, regles_calcul=14,
+                      remise_globale=0, taux_tva=20)
+        payback = self._payback(devis)
+        items = [{'designation': _NOM_C, 'quantite': 1.0, 'prix_unit_ttc': 72000.0,
+                  'role_devis': 'onduleur_hybride'}]
+        cout_pdf = _cout_onduleur(items, devis=devis)
+        self.assertEqual(payback['cout_onduleur_ttc'], cout_pdf)
+        from apps.ventes.quote_engine.pricing import payback_publiable
+        investissement = (30 * 1200 + 60000 + 30000) * 1.2
+        self.assertEqual(payback['valeur'], payback_publiable(
+            investissement, 10000, stockage=True, cout_onduleur_ttc=cout_pdf, part_batterie=0)['payback_years'])
+
+    def test_payback_servi_envoye_avant_la_coupure_garde_le_calcul_d_hier(self):
+        from apps.ventes.models import Devis
+        avant = _avant_la_coupure()
+        devis = Devis(pk=41, reference='DEV-LAV-5', statut='envoye', date_envoi=avant.date_envoi,
+                      regles_calcul=14, remise_globale=0, taux_tva=20)
+        self.assertIsNone(self._payback(devis)['cout_onduleur_ttc'])
