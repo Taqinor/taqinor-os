@@ -42,6 +42,13 @@ DU_DEVIS = 'devis'
 #: D-ACAL-169 (c), fondateur 27/11/2026 — la raison du refus d'un panneau par défaut qui n'est pas de la marque
 #: épinglée des panneaux de la gamme : la MÊME phrase en résidentiel, en C&I et en pompage.
 RAISON_MARQUE = 'la marque épinglée des panneaux est « %s »'
+#: Une étude qui écarte le panneau par défaut pour la marque épinglée dit QUEL panneau de la marque elle retient.
+MOTIF_MARQUE_RETENUE = ("Le panneau par défaut « {nom} » n'est pas retenu par {moteur} ({raison}) : "
+                        "le panneau « {retenu} » de cette marque est retenu.")
+#: Revue 16 (A1) — une étude dont le catalogue n'a AUCUN panneau utilisable de la marque épinglée garde le panneau
+#: par défaut : la phrase dit qu'il est retenu, et pourquoi.
+MOTIF_MARQUE_ABSENTE = ("Aucun panneau de la marque épinglée « {marque} » n'est utilisable par {moteur} (absent "
+                        "du catalogue, ou {raison}) : le panneau par défaut « {nom} » est retenu.")
 
 
 @dataclass(frozen=True)
@@ -222,16 +229,26 @@ def choisir_avec_defaut(auto, candidats, accepte, *, moteur, raison):
 
     D-ACAL-169 (c) — la marque épinglée (``auto.marque``) gagne : un désigné d'une autre marque est refusé
     (:data:`RAISON_MARQUE`) et le candidat retenu est celui que la règle d'aujourd'hui (le plus grand ``cle``)
-    choisit parmi les candidats DE LA MARQUE ; aucun de la marque ⇒ ``None`` (la règle d'aujourd'hui)."""
+    choisit parmi les candidats DE LA MARQUE que le moteur ACCEPTE (jamais un panneau sans prix chiffré d'office) ;
+    aucun de la marque utilisable ⇒ le désigné reste retenu s'il est accepté, avec :data:`MOTIF_MARQUE_ABSENTE`
+    (la phrase dit ce que l'étude fait), sinon ``None`` et le refus du moteur (la règle d'aujourd'hui)."""
     if auto is None or not auto.designe:
         return None, getattr(auto, 'motif', None)
     for candidat in candidats:
         if getattr(candidat[1], 'pk', None) == auto.produit_id:
             raison_marque = raison_de_marque(candidat[1], auto.marque)
             if raison_marque:
-                de_la_marque = [c for c in candidats if raison_de_marque(c[1], auto.marque) is None]
-                retenu = max(de_la_marque, key=lambda c: c[0]) if de_la_marque else None
-                return retenu, auto.refus(moteur, raison_marque).motif
+                de_la_marque = [c for c in candidats
+                                if accepte(c[0]) and raison_de_marque(c[1], auto.marque) is None]
+                if de_la_marque:
+                    retenu = max(de_la_marque, key=lambda c: c[0])
+                    return retenu, MOTIF_MARQUE_RETENUE.format(nom=auto.nom, moteur=moteur, raison=raison_marque,
+                                                               retenu=getattr(retenu[1], 'nom', ''))
+                if accepte(candidat[0]):
+                    # Revue 16 (A1) — rien de la marque n'est utilisable : le défaut est retenu, et c'est dit.
+                    return candidat, MOTIF_MARQUE_ABSENTE.format(marque=auto.marque.strip(), moteur=moteur,
+                                                                 raison=raison, nom=auto.nom)
+                return None, auto.refus(moteur, raison).motif
             if accepte(candidat[0]):
                 return candidat, None
             return None, auto.refus(moteur, raison).motif
