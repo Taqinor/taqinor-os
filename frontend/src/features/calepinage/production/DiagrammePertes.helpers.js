@@ -41,6 +41,13 @@ export const libelleSource = (source) => (source ? (SOURCE_LABELS[source] || sou
  * Sans énergie servie (aucun `kwh_avant`), repli MULTIPLICATIF sur `perte_pct`
  * (jamais additif).
  */
+/** ACAL1658 — « 5 131 kWh · 80,4 % » : l'énergie livrée et sa part (servies), sans kWh si non servi. */
+export function texteEnergieLivree(ligne, formatNombre, formatPct) {
+  const part = formatPct(ligne.niveau)
+  return ligne.kwhLivree === null || ligne.kwhLivree === undefined
+    ? part : `${formatNombre(ligne.kwhLivree)} kWh · ${part}`
+}
+
 export function construireCascadeDetaillee(etapes, totalPct = null, plages = null) {
   const reference = Number(etapes[0]?.kwh_avant)
   const parKwh = Number.isFinite(reference) && reference > 0
@@ -93,6 +100,9 @@ export function construireCascadeDetaillee(etapes, totalPct = null, plages = nul
   lignes.push({
     nom: CASCADE_ARRIVEE, base: 0, valeur: Math.max(livree, 0), total: true,
     arrivee: true, niveau: livree,
+    // ACAL1658 — l'énergie livrée en kWh : celle SERVIE par la dernière étape calculée, jamais recalculée.
+    kwhLivree: [...etapes].reverse().find((e) => e.perte_pct !== null && e.perte_pct !== undefined
+      && Number.isFinite(Number(e.kwh_apres)) && e.kwh_apres !== null)?.kwh_apres ?? null,
   })
   return lignes
 }
