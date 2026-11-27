@@ -995,3 +995,21 @@ class LecteursAvalSuite3Test(SimpleTestCase):
         for devis in (_BROUILLON, _avant_la_coupure()):
             self.assertEqual(comptes(devis, _ligne('Panneau Jinko 710W', quantite=12, variante='avec')),
                              {'avec': 12})
+
+    def test_4_fiche_batterie_publique_lit_le_role_range(self):
+        """Cas A — la batterie « BOS-B Pro-A3 » rangée ``batterie`` ouvre la clé
+        ``fiche_batterie`` de la page (fiche muette ⇒ simulation OMISE, dite) ;
+        avant la coupure : clé absente, comme hier."""
+        from apps.ventes.public.payload_batterie import MOTIF_SIMULATION_OMISE, _fiche_batterie_publique
+
+        def fiche(devis, *lignes):
+            return _fiche_batterie_publique(self._devis_aux_lignes(devis, *lignes))
+        abc = (_ligne(_NOM_A, role='batterie'), _ligne(_NOM_B, role='panneau', quantite=30),
+               _ligne(_NOM_C, role='onduleur_hybride'))
+        omise = {'rendement_ar_pct': None, 'dod_pct': None, 'source': None,
+                 'simulation_omise_motif': MOTIF_SIMULATION_OMISE}
+        self.assertEqual(fiche(_BROUILLON, *abc), omise)
+        self.assertIsNone(fiche(_avant_la_coupure(), *abc))
+        for devis in (_BROUILLON, _avant_la_coupure()):
+            self.assertEqual(fiche(devis, _ligne('Batterie Lithium Pylontech 5kWh')), omise)
+            self.assertIsNone(fiche(devis, _ligne('Panneau Jinko 710W', quantite=12)))
