@@ -69,6 +69,18 @@ export default function DecisionsElectriques({ calepinageId, lectureSeule = fals
 
   useEffect(() => { lire() }, [lire])
 
+  // ACAL1973 — les questions du dossier sont SERVIES (`protections.questions[]` de l'évaluation, corps vide : on lit ce
+  // qui est enregistré) ; l'étiquette de l'arrêt rapide est la `question` dont le `champ` est celui de la réponse.
+  const [questions, setQuestions] = useState([])
+  useEffect(() => {
+    let vivant = true
+    Promise.resolve(calepinageApi.calepinages.evaluerElectrique(id, {}))
+      .then((res) => { if (vivant) setQuestions(res?.data?.protections?.questions ?? []) })
+      .catch(() => { if (vivant) setQuestions([]) })
+    return () => { vivant = false }
+  }, [id])
+  const questionArret = questions.find((q) => q?.champ === 'protections.exigences.arret_rapide')?.question
+
   const changer = (liste, i, cle, valeur) => setEtat((s) => ({
     ...s, [liste]: s[liste].map((l, j) => (j === i ? { ...l, [cle]: valeur } : l)),
   }))
@@ -169,7 +181,7 @@ export default function DecisionsElectriques({ calepinageId, lectureSeule = fals
 
             {/* ACAL1550 — la réponse du dossier à l'arrêt rapide : le serveur en déduit l'organe et sa question. */}
             <div className="flex flex-col gap-1" data-testid="acal1550-arret-rapide">
-              <Label htmlFor={idChamp('arret-rapide')}>Coupure d’urgence DC / arrêt rapide exigé ?</Label>
+              <Label htmlFor={idChamp('arret-rapide')}>{questionArret || 'Arrêt rapide'}</Label>
               <select id={idChamp('arret-rapide')} value={etat.arretRapide} disabled={lectureSeule}
                 onChange={(e) => setEtat((s) => ({ ...s, arretRapide: e.target.value }))}
                 className="h-11 border border-border bg-background px-2 text-sm text-foreground">

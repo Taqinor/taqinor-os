@@ -11,7 +11,8 @@ import { exempleContrat } from '../../../test/fixtures/contractSamples'
 vi.mock('../../../api/calepinageApi', () => {
   const lecture = vi.fn()
   const ecriture = vi.fn()
-  return { default: { calepinages: { entreeElectrique: lecture, enregistrerEntreeElectrique: ecriture } } }
+  const evaluation = vi.fn()
+  return { default: { calepinages: { entreeElectrique: lecture, enregistrerEntreeElectrique: ecriture, evaluerElectrique: evaluation } } }
 })
 
 import calepinageApi from '../../../api/calepinageApi'
@@ -29,7 +30,14 @@ const rendre = () => render(
 const champ = (cle) => document.getElementById(`acal154-champ-${cle}`)
 const poste = () => calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[0][1]
 
-beforeEach(() => { vi.clearAllMocks() })
+// ACAL1973 — les questions du dossier viennent de l'évaluation servie (`protections.questions[]`, contrat
+// `calepinage_evaluation_electrique.json`) ; corps VIDE, comme le verdict (on lit ce qui est enregistré).
+const EVALUATION = exempleContrat('calepinage', 'calepinage_evaluation_electrique', 'exemple_vide')
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({ data: EVALUATION })
+})
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('DecisionsElectriques (ACAL154)', () => {
@@ -170,6 +178,19 @@ describe('DecisionsElectriques (ACAL154)', () => {
     expect(await screen.findByLabelText(/arrêt rapide exigé/)).toHaveValue('oui')
     expect(corpsDeDecisions(depuisEntree({ protections: { exigences: { arret_rapide: 'non' } } }), {}))
       .toEqual({ protections: { ecartes: [], ajouts: [], exigences: { arret_rapide: 'non' } } })
+  })
+
+  it('ACAL1973 : l’étiquette de l’arrêt rapide est la question SERVIE (`protections.questions[].question`), jamais un texte recopié', async () => {
+    servir(VIDE.entree)
+    const question = 'Le dossier exige-t-il la coupure rapide côté DC ?'
+    const questions = [{ ...EVALUATION.protections.questions[0], question }]
+    calepinageApi.calepinages.evaluerElectrique.mockResolvedValue({ data: { ...EVALUATION, protections: { questions } } })
+
+    rendre()
+
+    expect(await screen.findByLabelText(question)).toBeInTheDocument()
+    expect(calepinageApi.calepinages.evaluerElectrique).toHaveBeenCalledWith(5, {})
+    expect(screen.queryByText(/Coupure d’urgence DC/)).toBeNull()
   })
 
   it('une lecture en panne le DIT', async () => {
