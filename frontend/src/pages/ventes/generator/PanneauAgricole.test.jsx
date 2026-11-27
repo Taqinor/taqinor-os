@@ -306,6 +306,19 @@ describe('résultat serveur (AGR129)', () => {
     expect(screen.queryByTestId('besoin-debit-souhaite')).toBeNull()
   })
 
+  // ACAL1259 — même mention qu'au PDF (pastille `agricole/pages.py`).
+  it('production au débit déclaré ⇒ « estimation · débit déclaré par vous » ; courbe ⇒ rien', () => {
+    const existante = CONTRAT.exemple_pompe_existante
+    expect(existante.production.mode).toBe('debit_declare')
+    const { rerender } = render(<PanneauAgricole {...PROPS_VIDES}
+      apercuPompage={{ donnees: existante }} />)
+    const entete = () => screen.getByTestId('resultat-mois').querySelector('thead th:nth-child(2)')
+    expect(entete().textContent).toBe('Production (m³/j)estimation · débit déclaré par vous')
+    rerender(<PanneauAgricole {...PROPS_VIDES} apercuPompage={{ donnees: REPONSE }} />)
+    expect(REPONSE.production.mode).toBe('courbe')
+    expect(entete().textContent).toBe('Production (m³/j)')
+  })
+
   it('aucune valeur affichée sans réponse serveur', () => {
     render(<PanneauAgricole {...PROPS_VIDES} apercuPompage={null} />)
     expect(screen.queryByTestId('resultat-pompage')).toBeNull()

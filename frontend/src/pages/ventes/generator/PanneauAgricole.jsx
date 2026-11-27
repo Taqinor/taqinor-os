@@ -169,7 +169,13 @@ function ResultatPompage({ donnees, saisie, majPompage }) {
       {couv && (
         <table className="w-full text-xs" data-testid="resultat-mois">
           <thead>
-            <tr><th className="text-left">Mois</th><th>Production (m³/j)</th>
+            {/* ACAL1259 — m³/jour sur débit DÉCLARÉ (pompe sans courbe) : même
+                mention que la pastille du PDF (`agricole/pages.py`). */}
+            <tr><th className="text-left">Mois</th><th>Production (m³/j)
+              {d.production?.mode === 'debit_declare' && (
+                <span className="block text-[10px] font-normal" data-testid="production-debit-declare">
+                  estimation · débit déclaré par vous</span>
+              )}</th>
               <th>Besoin (m³/j)</th><th>Couverture</th></tr>
           </thead>
           <tbody>
