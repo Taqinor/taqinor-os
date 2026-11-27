@@ -4,6 +4,7 @@ import { documentContrat, exempleContrat, reponseContrat } from '../../../test/f
 import { initState } from './draftCore'
 import IdentityRail from './IdentityRail'
 import crmApi from '../../../api/crmApi'
+import calepinageApi from '../../../api/calepinageApi'
 import { EVENEMENT_OUVRIR } from '../../ia/copilotMessages'
 import { CANAL_LABELS, formatMAD } from '../stages'
 
@@ -176,6 +177,37 @@ describe('LW14 — IdentityRail identité + actions', () => {
     await screen.findByRole('menuitem', { name: /Convertir en client/ })
     expect(screen.queryByRole('menuitem', { name: /Concevoir la toiture/ })).toBeNull()
     expect(screen.queryByRole('menuitem', { name: /module Calepinage/ })).toBeNull()
+    ouvrir.mockRestore()
+  })
+
+  // ACAL1271 — Safari iOS bloque un window.open posé APRÈS un await : l'onglet est pré-ouvert dans le tap.
+  it('ACAL1271 — « Dessiner le toit » pré-ouvre l’onglet AVANT la réponse du serveur, puis le dirige vers l’atelier', async () => {
+    let resoudre
+    calepinageApi.calepinages.depuisLead.mockImplementationOnce(
+      () => new Promise((r) => { resoudre = r }),
+    )
+    const onglet = { location: { href: '' }, close: vi.fn(), opener: {} }
+    const ouvrir = vi.spyOn(window, 'open').mockImplementation(() => onglet)
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Dessiner le toit/ }))
+    // Le serveur n'a pas encore répondu : l'onglet est déjà ouvert (dans le geste).
+    expect(ouvrir).toHaveBeenCalledTimes(1)
+    expect(onglet.location.href).toBe('')
+    resoudre({ data: { calepinage: 77 } })
+    await waitFor(() => expect(onglet.location.href).toBe('/calepinage/77'))
+    expect(ouvrir).toHaveBeenCalledTimes(1)
+    expect(onglet.close).not.toHaveBeenCalled()
+    ouvrir.mockRestore()
+  })
+
+  it('ACAL1271 — refus du serveur : l’onglet pré-ouvert est refermé', async () => {
+    calepinageApi.calepinages.depuisLead.mockRejectedValueOnce({ response: { data: { lead: ['Refusé.'] } } })
+    const onglet = { location: { href: '' }, close: vi.fn(), opener: {} }
+    const ouvrir = vi.spyOn(window, 'open').mockImplementation(() => onglet)
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Dessiner le toit/ }))
+    await waitFor(() => expect(onglet.close).toHaveBeenCalledTimes(1))
+    expect(onglet.location.href).toBe('')
     ouvrir.mockRestore()
   })
 

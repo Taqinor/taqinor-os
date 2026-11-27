@@ -203,16 +203,24 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
      sortie. Le refus du serveur est affiché tel quel, précédé du nom du geste
      — jamais un « non enregistré » générique. */
   const ouvrirModuleCalepinage = async () => {
+    // ACAL1271 — Safari iOS bloque un window.open posé après un await : l'onglet
+    // est pré-ouvert ICI, dans le tap (patron VX48), puis dirigé vers l'atelier.
+    // Sans `noopener` (il rendrait null) ; le lien opener est coupé à la main.
+    const onglet = window.open('', '_blank')
+    if (onglet) { try { onglet.opener = null } catch { /* sans effet */ } }
     try {
       const res = await calepinageApi.calepinages.depuisLead(leadId)
       const id = res?.data?.calepinage
       if (!id) {
+        onglet?.close()
         toast.error('Module Calepinage : le serveur n’a rendu aucun '
           + 'calepinage — rien n’a été ouvert.')
         return
       }
-      window.open(`/calepinage/${id}`, '_blank', 'noopener')
+      if (onglet) onglet.location.href = `/calepinage/${id}`
+      else window.open(`/calepinage/${id}`, '_blank', 'noopener')
     } catch (err) {
+      onglet?.close()
       const corps = err?.response?.data
       const motif = typeof corps === 'string'
         ? corps
