@@ -612,6 +612,12 @@ def _safe_roof_layout(devis) -> dict | None:
     for k in ("panels", "kwc", "annualKwh"):
         if isinstance(_res, dict) and _res.get(k) is not None:
             result[k] = _res.get(k)
+    # ACAL1240 — un pan « existant » (modules déjà en place) est publié comme tel et ses modules ne sont pas vendus.
+    from .calepinage_options import _marquer_existants, _zone_existante
+    zones = _marquer_existants({"zones": zones}, layout)["zones"]
+    deja = sum(len((z.get("geometry") or {}).get("panels") or []) for z in zones if _zone_existante(z))
+    if deja and isinstance(result.get("panels"), (int, float)):
+        result["panels"] = max(0, result["panels"] - deja)
 
     safe = {}
     if pans:

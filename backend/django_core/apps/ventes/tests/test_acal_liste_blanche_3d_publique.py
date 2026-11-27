@@ -169,6 +169,33 @@ class ListeBlanche3DPublique(TestCase):
         self.devis.save(update_fields=['roof_layout'])
         self.assertIsNone(_safe_roof_layout(self.devis))
 
+    def test_acal1240_pan_existant_publie_modules_retires_de_result_panels(self):
+        """ACAL1240 — extension (pan A existant, 10 modules ; pan B neuf, 6) :
+        la zone A porte ``existant: true``, ``result.panels`` ne compte que les
+        6 modules vendus (mutant : publier tous les modules ⇒ 16, échec) ; sans
+        pan existant, le layout est identique à l'octet."""
+        def pan(ident, n, **extra):
+            return dict(LAYOUT['zones'][0], id=ident, **extra, geometry={
+                'moduleId': 'm550', 'mode': 'free', 'count': n,
+                'panels': [{'cx': float(i), 'cy': 0.0} for i in range(n)]})
+        sans = dict(LAYOUT, zones=[pan('a', 10), pan('b', 6)],
+                    result={'panels': 16, 'kwc': 8.8})
+        self.devis.roof_layout = sans
+        self.devis.save(update_fields=['roof_layout'])
+        servie = json.dumps(_safe_roof_layout(self.devis), sort_keys=True)
+        self.assertEqual(json.loads(servie)['result']['panels'], 16)
+        self.assertNotIn('existant', servie)
+        self.devis.roof_layout = dict(
+            sans, zones=[pan('a', 10, existant=True), pan('b', 6)])
+        self.devis.statut = 'envoye'
+        self.devis.save(update_fields=['roof_layout', 'statut'])
+        safe = _safe_roof_layout(self.devis)
+        self.assertEqual([z.get('existant') for z in safe['zones']], [True, None])
+        self.assertEqual(safe['result']['panels'], 6)
+        self.devis.roof_layout = sans
+        self.devis.save(update_fields=['roof_layout'])
+        self.assertEqual(json.dumps(_safe_roof_layout(self.devis), sort_keys=True), servie)
+
 
 class ListeBlancheVisionneuseSoleil(SimpleTestCase):
     """D-ACAL-132/137 — la clé ``visionneuse_soleil`` est une liste blanche :
