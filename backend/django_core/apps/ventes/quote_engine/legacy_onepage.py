@@ -142,6 +142,14 @@ def _onepage_header_html():
         f'{ref_html}</div></div>')
 
 
+def _totaux_et_historique():
+    """:func:`page_onepage` — les totaux canoniques du builder et le drapeau ACAL1217."""
+    totaux = _g.TOTAUX_ALL
+    # ACAL1217 — devis envoyé (drapeau de la migration 0164) : adresse et téléphone reçus.
+    _hist = _g.ci_onepage.pdf_historique_lot10(_g.ETUDE)
+    return totaux, _hist
+
+
 def page_onepage(items, tronquees=0):
     """Single A4 page: header + summary strip + client block + HT product table + footer.
 
@@ -161,9 +169,7 @@ def page_onepage(items, tronquees=0):
         raise ValueError(
             "page_onepage: totaux canoniques manquants (totaux_all) — le "
             "moteur ne fabrique pas de chaîne de totaux (QJR162).")
-    totaux = _g.TOTAUX_ALL
-    # ACAL1217 — devis envoyé (drapeau de la migration 0164) : adresse et téléphone reçus.
-    _hist = _g.ci_onepage.pdf_historique_lot10(_g.ETUDE)
+    totaux, _hist = _totaux_et_historique()
     total_ht = totaux["ht_brut"]
     remise = totaux["remise"]
     net_ht = totaux["ht_net"]
