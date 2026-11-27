@@ -5,6 +5,7 @@
 // (`taux_actualisation`, `pret`) — aucun taux par défaut, aucun calcul ici.
 import { useState } from 'react'
 import { Input, Label } from '../../../ui'
+import ChampDecimal from './ChampDecimal'
 import { formatNumber } from '../../../lib/format'
 
 const MENTION_INTERNE = 'Interne — jamais sur un document client (jamais imprimé)'
@@ -29,12 +30,13 @@ const MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août'
 
 const mad = (v) => (v === null || v === undefined ? 'non calculé' : `${formatNumber(v)} MAD`)
 
-function Champ({ id, label, valeur, onChange, type = 'number', erreur }) {
+function Champ({ id, label, valeur, onChange, type = 'nombre', erreur }) {
   return (
     <div className="grid gap-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} type={type} {...(type === 'number' ? { step: 'any', min: '0' } : {})}
-             value={valeur ?? ''} onChange={(e) => onChange(e.target.value)} />
+      {type === 'nombre'
+        ? <ChampDecimal id={id} value={valeur ?? ''} onValeur={onChange} />
+        : <Input id={id} type={type} value={valeur ?? ''} onChange={(e) => onChange(e.target.value)} />}
       {erreur && <p className="text-xs text-destructive" role="alert" data-testid={`${id}-erreur`}>{erreur}</p>}
     </div>
   )

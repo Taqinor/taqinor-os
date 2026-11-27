@@ -35,7 +35,7 @@ const crmApi = {
   // Leads / opportunities
   // VX55 — même `config` optionnel (signal d'annulation) que getClients.
   getLeads: (params, config) => api.get('/crm/leads/', { params, ...config }),
-  getLead: (id) => api.get(`/crm/leads/${id}/`),
+  getLead: (id, config) => api.get(`/crm/leads/${id}/`, config),
   createLead: (data) => api.post('/crm/leads/', data),
   updateLead: (id, data) => api.patch(`/crm/leads/${id}/`, data),
   // Garde serveur du « Devis auto » : 200 {ok:true} si le lead est prêt,

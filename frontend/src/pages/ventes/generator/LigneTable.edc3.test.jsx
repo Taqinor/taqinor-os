@@ -92,6 +92,16 @@ describe('EDC3 — LigneTable : en-tête collant, table separate, barre proxy', 
     expect(rendre().container.querySelector('[role="alert"]')).toBeNull()
   })
 
+  it('ACAL1210 — gen-nbprop : « 0 » reste tel que tapé, le refus est un message (jamais un arrondi)', () => {
+    const set = vi.fn()
+    const { container } = rendre({ multiMode: 'multiplier', multiAccordionOpen: true,
+      nombreProprietes: '0', setNombreProprietes: set })
+    const champ = container.querySelector('#gen-nbprop')
+    expect(champ.value).toBe('0')
+    expect(champ.getAttribute('type')).toBe('text')
+    expect(container.querySelector('[data-testid="nbprop-minimum"]').textContent).toContain('au moins 1')
+  })
+
   it('le ref de la table (VX90, focus de la nouvelle ligne) pointe toujours sur la table', () => {
     const ref = { current: null }
     const { container } = rendre({ linesTableRef: ref })

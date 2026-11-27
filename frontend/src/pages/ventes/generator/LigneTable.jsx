@@ -129,6 +129,13 @@ export default function LigneTable({
                 <ChampDecimal id="gen-nbprop" className="w-40"
                        value={nombreProprietes}
                        onValeur={setNombreProprietes} />
+                {/* ACAL1210 — le minimum (1) se DIT, il ne se force jamais :
+                    la valeur tapée reste telle quelle (aucun snap). */}
+                {nombreProprietes !== '' && Number(String(nombreProprietes).replace(',', '.')) < 1 && (
+                  <p className="text-xs text-warning" role="status" data-testid="nbprop-minimum">
+                    Indiquez au moins 1 propriété : sinon le total reste celui d'une seule.
+                  </p>
+                )}
               </div>
               {multiPreview?.mode === 'multiplicateur' && (
                 <div className="text-sm text-muted-foreground">
