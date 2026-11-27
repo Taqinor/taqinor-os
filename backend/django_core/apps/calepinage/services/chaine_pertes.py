@@ -224,7 +224,8 @@ ETAPES_HORS_CATALOGUE = {
                      'rangées.',
     'bifacial': 'Le bifacial est un GAIN : le catalogue ne décrit que des '
                 'pertes.',
-    'spectral': 'Poste non modélisé en v1 (voir TOUJOURS_OMISES).',
+    'spectral': "L'effet spectral n'est pas modélisé : aucun forfait n'est "
+                'appliqué à sa place.',
     'neige': 'Poste mensuel neuf, saisi par la société (CALX161).',
     'mismatch_ombrage': "La dispersion d'ombrage se calcule par chaîne à "
                         'partir des I-V, jamais en pourcentage saisi.',
@@ -319,10 +320,9 @@ EXCLUSIVITES = {
     'diodes': (
         _diodes_sans_donnees,
         "Les diodes se calculent par sous-chaînes : il faut le nombre de "
-        "sous-chaînes de la fiche (FicheTechnique.sous_chaines_par_module) et "
-        "l'accès par bande (solarAccess.bandes). L'un des deux manque : "
-        "aucun forfait n'est appliqué (PV*SOL assume 0,5 %, chiffre de "
-        'leur logiciel et non du nôtre).'),
+        "sous-chaînes de la fiche du module et l'accès solaire par bande du "
+        "document. L'un des deux manque : aucun forfait n'est appliqué à "
+        'leur place.'),
     'optimiseur': (
         _aucun_optimiseur,
         "Aucun optimiseur n'est déclaré (ni produit pour le document, ni "
@@ -339,9 +339,8 @@ EXCLUSIVITES = {
 #: lirait « gratuite » —, avec leur motif et ``perte_pct`` à ``null``. Une
 #: saisie société SOURCÉE du même nom les réveille (arbitrage CALX149).
 TOUJOURS_OMISES = {
-    'spectral': 'Étape non modélisée en v1 : PVsyst applique un modèle '
-                'spectral, nous n\'en avons aucun — aucun forfait n\'est '
-                'appliqué à sa place.',
+    'spectral': 'Effet spectral non modélisé : aucun modèle spectral n\'est '
+                'disponible, et aucun forfait n\'est appliqué à sa place.',
 }
 
 #: ACAL463 — les étapes CALCULÉES quand une saisie existe, mais dont l'omission

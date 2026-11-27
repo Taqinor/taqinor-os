@@ -79,11 +79,11 @@ MENTION_DECLASSEMENT_ABSENT = (
 
 MOTIF_SERIE_ILLISIBLE = (
     "Aucune colonne d'énergie lisible sur la série : il n'y a pas de "
-    "puissance à plafonner. Étape OMISE.")
+    "puissance à plafonner. Étape omise.")
 
 MOTIF_SANS_ONDULEUR = (
     "Aucun onduleur au bloc « electrique.onduleurs » : ni puissance, ni "
-    "nombre d'appareils, donc aucune borne d'écrêtage. Étape OMISE.")
+    "nombre d'appareils, donc aucune borne d'écrêtage. Étape omise.")
 
 REFERENCE_ECRETAGE = (
     'HelioScope — Understanding DC/AC Ratio : table chiffrée de la perte '

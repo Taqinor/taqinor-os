@@ -104,7 +104,7 @@ CHAMPS_SANS_CONTRAINTE = ('micro_onduleur', 'microonduleur', 'optimiseur',
 MOTIF_SANS_AFFECTATION = (
     "Le contexte ne porte pas la table d'affectation des modules aux chaînes "
     '(« affectation », services/chaines.py) : sans elle, on ne sait pas '
-    'QUELS modules sont en série, donc aucune contrainte de chaîne ne peut '
+    'quels modules sont en série, donc aucune contrainte de chaîne ne peut '
     "être mesurée. Rien n'est supposé.")
 
 MOTIF_SANS_LAYOUT = (

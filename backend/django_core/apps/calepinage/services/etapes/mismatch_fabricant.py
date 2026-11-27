@@ -91,18 +91,18 @@ REFERENCE_AURORA = (
 
 MOTIF_SANS_SAISIE = (
     "Aucune dispersion de fabrication saisie pour cette société : l'étape "
-    "est OMISE et la série ressort inchangée. Le 2 % employé ailleurs dans "
-    "le dépôt est un littéral non sourcé qui ne concerne pas le calepinage.")
+    "est omise et la série ressort inchangée : aucun pourcentage par "
+    "défaut n'est appliqué à la place.")
 
 MOTIF_VALEUR_ILLISIBLE = (
     "La dispersion de fabrication saisie n'est pas un pourcentage lisible "
-    "entre 0 et 100 : l'étape est OMISE plutôt que de retrancher un chiffre "
+    "entre 0 et 100 : l'étape est omise plutôt que de retrancher un chiffre "
     "qu'on ne sait pas relire.")
 
 MOTIF_MEME_ORIGINE = (
     "L'étape « mismatch_ombrage » (CALX168) tire sa dispersion de la MÊME "
     "entrée que celle-ci : appliquer les deux compterait une seule "
-    "dispersion deux fois. La dispersion de fabrication est donc OMISE, et "
+    "dispersion deux fois. La dispersion de fabrication est donc omise, et "
     "c'est la dispersion d'ombrage, calculée par chaîne, qui s'applique.")
 
 MOTIF_SUIVI_MPP = (
