@@ -113,7 +113,7 @@ import { maxDuSolveur, phraseCouvertureMax, type MaxDuToit } from './cibleProduc
 import { heatmapAccessValues } from './shadingUi'; // ACAL552
 import { causeDuPanVide, mesurerPanVide, motifPenteNord, noterMotifPanVide, retraitApplique, type MotifPanVide } from './motifPanVide'; // ACAL549, ACAL1970
 import { cotesDePavage } from '../../lib/roofPro2';
-import { carteDeLaPoseTenue, direEcartALaPose, motifPanExistant, poseTenue } from './panExistant'; import { noteTailleAuto } from './tailleAuto'; import { chiffresDeLaPose, texteChiffresVariante } from './chiffresVariante'; // ACAL574, ACAL1900, ACAL1331, T4-V2-021
+import { carteDeLaPoseTenue, direEcartALaPose, motifPanExistant, poseTenue } from './panExistant'; import { noteTailleAuto } from './tailleAuto'; import { chiffresDeLaPose, partRaccordeeDuPan, texteChiffresVariante } from './chiffresVariante'; // ACAL574, ACAL1900, ACAL1331, T4-V2-021
 
 // ═══════════ PV64 — TROIS VARIANTES LISIBLES DU BALAYAGE DÉJÀ CALCULÉ ═══════════
 // Le balayage V6 (`fineGridMatrixV6`) évalue déjà des centaines de configurations, mais
@@ -1116,6 +1116,10 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
 
   /** ACAL1900 — l'ERP : la carte (et ce qui la lit : bande, indicateurs, Guidé) suit la pose TENUE rendue (n panneaux). */
   function peindreCartePosee(n: number) { const d = modeErp() && derniereCarte ? carteDeLaPoseTenue(derniereCarte, n, fmt) : null; if (d) { paintCard(d, derniereCarte?.sourceLabel); direEcartALaPose(n, ctx, wattPose(), fmt, false, suiteAuDevis(ctx)); } }
+  /** ACAL1914 — la part des panneaux du pan actif que les chaînes raccordent (table servie), ou `null` : estimation inchangée. */
+  const partRaccordee = (): number | null => partRaccordeeDuPan(ctx.affectationColoration, ctx.activeAreaId);
+  /** ACAL1914 — la table d'affectation vient d'arriver : la carte est repeinte avec la même estimation, comptée sur les raccordés. */
+  function repeindreCarte() { if (derniereCarte) paintCard(derniereCarte, derniereCarte.sourceLabel); }
   function paintCard(d: CardData, sourceLabel?: string) {
     for (const p of Array.from(document.querySelectorAll<HTMLElement>('[data-couverture-max]'))) p.hidden = modeErp() && d.pct >= 100; // R3-04
     // ACAL852 — sans facture (cible absente ou nulle ET aucune économie) : « facture inconnue », jamais « 0 MAD – 0 MAD/an ».
@@ -1130,7 +1134,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // valeur exacte (aucune perte), donc la somme affichée == le total affiché.
     // ACAL851 — la puissance du module RÉELLEMENT posé (« 8 × 710 W ») ; sans choix, le défaut.
     // T4-V2-021 — UNE définition (chiffresVariante.ts), relue telle quelle par la carte de la variante posée.
-    const { kwc, watt, annualKwh: prodPose } = chiffresDeLaPose(d, moduleDuPanActif(), prodServieAuKwc);
+    const { kwc, watt, annualKwh: prodPose } = chiffresDeLaPose(d, moduleDuPanActif(), prodServieAuKwc, partRaccordee());
     set('rp9-reco-kwc', kwc == null ? '—' : `${fmtKwc(kwc)} kWc`);
     set('rp9-reco-panels', watt ? `${fmt(d.count)} × ${fmt(watt)} W` : `${fmt(d.count)} panneaux`);
     // R2-17 — à kWc égal, la production SERVIE (celle du PDF) remplace l'estimation du navigateur (`prodServieAuKwc`).
@@ -1244,7 +1248,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       title.textContent = c.title;
       const figures = document.createElement('span');
       figures.className = 'rp9-variant-figures';
-      figures.textContent = texteChiffresVariante(c, variantIsCurrent(c) && derniereCarte ? chiffresDeLaPose(derniereCarte, moduleDuPanActif(), prodServieAuKwc) : null, moduleDuPanActif(), fmt, fmtKwc, modeErp() && estPompage(etatEco(ctx).chiffrage) ? 'pompage' : modeErp()); // T4-V2-021, T4-X2-006 ; ACAL1268
+      figures.textContent = texteChiffresVariante(c, variantIsCurrent(c) && derniereCarte ? chiffresDeLaPose(derniereCarte, moduleDuPanActif(), prodServieAuKwc, partRaccordee()) : null, moduleDuPanActif(), fmt, fmtKwc, modeErp() && estPompage(etatEco(ctx).chiffrage) ? 'pompage' : modeErp()); // T4-V2-021, T4-X2-006 ; ACAL1268
       const why = document.createElement('span');
       why.className = 'rp9-variant-why';
       why.textContent = c.reason;
@@ -1755,7 +1759,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     buildMatrix,
     computeMatrixPvgis,
     clampNeeded,
-    majChiffrage, peindreCartePosee, // ACAL1900
+    majChiffrage, peindreCartePosee, repeindreCarte, // ACAL1900, ACAL1914
     etatCarte: () => (derniereCarte && derniereCarte.count > 0 && derniereCarte.annualKwh > 0 ? { kwhParPanneau: derniereCarte.annualKwh / derniereCarte.count, tiennent: dernierFit, get maxSens() { return maxSensCarte(); } } : null), // ACAL1903 — le solveur ne tourne qu'à la lecture
   };
 }

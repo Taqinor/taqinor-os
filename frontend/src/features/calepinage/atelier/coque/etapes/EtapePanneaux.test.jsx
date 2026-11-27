@@ -706,6 +706,25 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(retirer).toHaveBeenCalledTimes(1)
   })
 
+  // ACAL1532 — un calepinage rouvert : l'alerte porte l'obstacle (publié par le script), et sans seuil elle dit la perte.
+  it('ACAL1532 alerte d’ombrage : nomme l’obstacle publié par le script (« de la cheminée »)', () => {
+    monterConstructeur({ ombre: 4 })
+    document.getElementById('rp9-solar-access').dataset.ombreDe = 'de la cheminée'
+    rendre()
+    expect(screen.getByTestId('cal-panneaux-ombre')).toHaveTextContent('4 panneaux à l’ombre de la cheminée')
+  })
+
+  it('ACAL1532 alerte d’ombrage : sans seuil réglé, dit la perte annuelle servie, sans bouton Retirer', () => {
+    monterConstructeur()
+    const zone = document.getElementById('rp9-solar-access')
+    zone.dataset.ombreDe = 'de la cheminée'
+    zone.dataset.ombrePerte = '7'
+    rendre()
+    const alerte = screen.getByTestId('cal-panneaux-ombre')
+    expect(alerte).toHaveTextContent('L’ombre de la cheminée retire ≈ 7 % de la production')
+    expect(within(alerte).queryByRole('button')).toBeNull()
+  })
+
   // ACAL1728 (reprise d'ACAL869) — l'étape guidée n'offrait ni l'alignement des rangées ni Annuler / Rétablir dans son panneau.
   it('ACAL1728 — « Personnaliser la disposition » : alignement des rangées, Annuler et Rétablir renvoyés aux vrais contrôles', () => {
     const { racine, espion } = monterConstructeur()
@@ -836,7 +855,7 @@ describe('étape Panneaux — sur la carte', () => {
     expect(puce).not.toHaveTextContent('estimation')
   })
 
-  it('puce : résultat publié INCOMPLET (traité comme périmé par le devis) → l’estimation, nommée « estimation »', async () => {
+  it('puce : résultat publié INCOMPLET → l’estimation reste, et la simulation est CITÉE à côté (ACAL1914), jamais à sa place', async () => {
     servir({ resultat: { simule: true, simulation_perimee: false,
       production: { total: { p50_kwh: 52695, complete: false } }, pose: { total_modules: 36 } } })
     monterConstructeur()
@@ -844,7 +863,32 @@ describe('étape Panneaux — sur la carte', () => {
     await waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalled())
     const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
     expect(puce).toHaveTextContent('Production · conception')
-    expect(puce).not.toHaveTextContent('52 695')
+    expect(puce).not.toHaveTextContent('Production la première année')
+    await waitFor(() => expect(within(puce).getByTestId('cal-puce-simulation-incomplete')).toHaveTextContent('La simulation dit 52 695 kWh'))
+    expect(puce).toHaveTextContent('borne haute')
+    // ACAL1914 (revue) — incomplet pour une AUTRE raison (pertes manquantes) : aucun panneau non raccordé servi, aucune phrase dessus.
+    expect(within(puce).getByTestId('cal-puce-simulation-incomplete')).not.toHaveTextContent('raccordé')
+  })
+
+  it('puce : résultat incomplet AVEC panneaux non raccordés servis → la phrase dit combien, et que l’estimation ne compte que les raccordés', async () => {
+    servir({ resultat: { simule: true, simulation_perimee: false,
+      production: { total: { p50_kwh: 52695, complete: false }, hors_chaine: { modules: 2 } }, pose: { total_modules: 36 } } })
+    monterConstructeur()
+    rendre()
+    const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+    const phrase = await waitFor(() => within(puce).getByTestId('cal-puce-simulation-incomplete'))
+    expect(phrase).toHaveTextContent('La simulation dit 52 695 kWh')
+    expect(phrase).toHaveTextContent('2 panneaux posés non raccordés')
+    expect(phrase).toHaveTextContent('ne compte que les panneaux raccordés')
+  })
+
+  it('puce : résultat périmé ou complet → aucune phrase « la simulation dit » (ACAL1914)', async () => {
+    servir({ resultat: { simule: true, simulation_perimee: true,
+      production: { total: { p50_kwh: 52695, complete: false } }, pose: { total_modules: 36 } } })
+    monterConstructeur()
+    rendre()
+    await waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalled())
+    expect(within(noeudCarte).queryByTestId('cal-puce-simulation-incomplete')).toBeNull()
   })
 
   it('puce : résultat périmé → l’estimation du constructeur, nommée « estimation »', async () => {
