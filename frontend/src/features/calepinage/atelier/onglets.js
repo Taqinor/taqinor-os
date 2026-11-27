@@ -86,7 +86,7 @@ export const ONGLETS = [
   { cle: 'fixation', libelle: 'Fixation', groupe: 'Système', ordre: 195, composant: lazy(() => import('./Fixation')) }, // CALX360
   { cle: 'reprise-visite', libelle: 'Reprise de la visite', groupe: 'Site', ordre: 165, composant: lazy(() => import('./RepriseVisite')) }, // CALX365
   { cle: 'pose-reelle', libelle: 'Pose réelle', groupe: 'Dossiers', ordre: 186, composant: lazy(() => import('./PoseReelle')) }, // CALX367 (ordre 186 : 185 collisionnait avec « diff-versions » CALX346, fold M5)
-  { cle: 'projet', libelle: 'Projet', groupe: 'Dossiers', ordre: 270, composant: lazy(() => import('./Projet')) }, // CALX371
+  { cle: 'projet', libelle: 'Projet', groupe: 'Dossiers', ordre: 270, composant: lazy(() => import('./PanneauProjet')) }, // CALX371
 
   { cle: 'diff-versions', libelle: 'Comparer les versions', groupe: 'Dossiers', ordre: 185, composant: lazy(() => import('./DiffVersions')) }, // CALX346
 
