@@ -25,6 +25,7 @@ import {
   lireCalageDeuxPoints,
   lireUnderlay,
   OPACITE_FOND_PAR_DEFAUT,
+  peintureFondSelonTheme,
   placementDuFond,
   specCoucheFond,
   specSourceFond,
@@ -314,6 +315,24 @@ describe('CALX107 — le placement et ses refus', () => {
     expect(couche.id).toBe(UNDERLAY_PLAN_LAYER_ID);
     expect(couche.source).toBe(UNDERLAY_PLAN_LAYER_ID);
     expect(opacityPropFor(couche.type)).toBe('raster-opacity');
+  });
+});
+
+describe('ACAL1828 — thème sombre : le fond est assombri (saturation -15 %, luminosité -6 %)', () => {
+  it('clair : peinture inchangée ; sombre : saturation et luminosité réduites, opacité conservée', () => {
+    const plan = (lireUnderlay(EXEMPLE_PLAN) as { ok: true; fond: DocumentUnderlay }).fond;
+    const coins: LngLat[] = [[-7.62, 33.58], [-7.61, 33.58], [-7.61, 33.57], [-7.62, 33.57]];
+    const r = placementDuFond(plan, { url: 'u', coinsPlan: coins });
+    if (!r.ok) throw new Error('placement attendu');
+    const clair =specCoucheFond(r, false).paint;
+    expect(clair).toEqual({ 'raster-opacity': r.opacite });
+    const sombre = specCoucheFond(r, true).paint;
+    expect(sombre['raster-opacity']).toBe(r.opacite);
+    expect(sombre['raster-saturation']).toBe(-0.15);
+    expect(sombre['raster-brightness-max']).toBe(0.94);
+    expect(peintureFondSelonTheme(true)).toEqual({ 'raster-saturation': -0.15, 'raster-brightness-max': 0.94 });
+    // Retour au clair : les deux propriétés reviennent à leur valeur MapLibre par défaut (0 et 1).
+    expect(peintureFondSelonTheme(false)).toEqual({ 'raster-saturation': 0, 'raster-brightness-max': 1 });
   });
 });
 

@@ -166,6 +166,24 @@ class ChecklistTest(SimpleTestCase):
         self.assertEqual(capture.exception.champ,
                          'protections.exigences.arret_rapide')
 
+    def test_les_questions_du_dossier_portent_leur_libelle_seul(self):
+        """ACAL1973 — la question servie (``protections.questions``) porte
+        son libellé SEUL et son champ : l'écran ne le recopie plus en dur.
+        Les MÊMES questions que la check-list ; une réponse illisible n'est
+        jamais une exception, la question reste « non renseigné »."""
+        from apps.calepinage.services.protections import questions_du_dossier
+
+        oui = {'exigences': {'arret_rapide': 'oui'}}
+        question = questions_du_dossier(oui)[0]
+        self.assertEqual(question['question'],
+                         "Coupure d'urgence DC / arrêt rapide exigé ?")
+        self.assertEqual(question['champ'], 'protections.exigences.arret_rapide')
+        self.assertEqual(questions_du_dossier(oui),
+                         self._arret_rapide('oui')['questions'])
+        for illisible in ({'exigences': {'arret_rapide': 'peut-être'}}, ['x']):
+            self.assertEqual(questions_du_dossier(illisible)[0]['statut'],
+                             'non_renseigne')
+
     # ── ACAL676 — distance de séparation foudre ──
     def _paratonnerre(self, paratonnerre, reglages=None):
         return checklist_protections(

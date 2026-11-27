@@ -86,6 +86,7 @@ export function estAutoriseEntree(entree, tier, permissions) {
   if (!entree) return false
   const roles = entree.roles || []
   const perms = permissions || []
+  if (entree.permModule) return estAutoriseParModule(entree, roles, tier, perms)
   if (!entree.perm) return roles.includes(tier)
   if (entree.permRepliPalier) {
     // T4-X8-014 — `permRepliPalier: REPLI_ROLES` suit la garde du serveur `LectureDuModule`
@@ -98,4 +99,30 @@ export function estAutoriseEntree(entree, tier, permissions) {
       : repli.includes(tier)
   }
   return roles.includes(tier) && perms.includes(entree.perm)
+}
+
+/* T4-X8-016 (lot 8) — `permModule: '<module>'` : miroir EXACT de la garde serveur `LectureDuModule`
+   (backend/django_core/authentication/permissions.py) — une entrée passe pour :
+     • un compte de palier admin (`is_admin_role` : superuser ou `roles_gerer`, palier de menu 'admin'
+       par `authentication/role_tiers.py`) ;
+     • un compte LÉGACY (aucune permission servie, aucun rôle fin) : le serveur le laisse lire ; côté menu
+       il retombe sur le repli déclaré (`permRepliPalier: REPLI_ROLES` → le palier de l'entrée) ;
+     • un rôle FIN qui porte AU MOINS UN code du module : les codes `<module>_*`, la règle même du
+       registre pour les modules dont le préfixe EST la clé (`PERMISSION_MODULE`,
+       apps/roles/permissions_registre.py — `crm_*` → 'crm') ; le palier ne restreint pas un rôle fin.
+   Un module dont des codes n'ont pas ce préfixe (installations, sav, gestion_projet…) ne doit PAS utiliser
+   cette règle : `router/moduleGating.test.js` compare, pour chaque `permModule` déclaré, les codes
+   reconnus ici à ceux du registre (golden `apps/roles/golden/registre_permissions.json`). */
+export function porteUnCodeDuModule(permissions, module) {
+  const prefixe = `${module}_`
+  return (permissions || []).some((c) => typeof c === 'string' && c.startsWith(prefixe))
+}
+
+function estAutoriseParModule(entree, roles, tier, perms) {
+  if (perms.length === 0) {
+    const repli = entree.permRepliPalier === REPLI_ROLES ? roles : PALIERS_LEGACY
+    return repli.includes(tier)
+  }
+  if (tier === 'admin' || perms.includes('roles_gerer')) return true
+  return porteUnCodeDuModule(perms, entree.permModule)
 }

@@ -170,6 +170,28 @@ class ImporterLayoutTest(TestCase):
         self.assertEqual(self._refus_pan(porteeEntrePieds={'valeurM': 2.4}),
                          'zones.0.porteeEntrePieds')
 
+    def test_import_d_un_export_plus_ancien_garde_le_plafond(self):
+        """Revue lot 8 (suite ACAL1720) — importer un export d'AVANT des
+        numéros dépensés : la conception du fichier revient, le plafond
+        stocké couvre les numéros dépensés depuis (jamais redonnés) ; clé
+        volatile : l'empreinte « document » est celle du fichier."""
+        from apps.calepinage.services.layout import empreinte_document
+
+        ancien = copy.deepcopy(_DOCUMENT_VALIDE)
+        pan = ancien['zones'][0]
+        poses = [p['n'] for p in pan['geometry']['panels']]
+        depense = copy.deepcopy(ancien)
+        depense['zones'][0]['geometry']['panels'][-1]['n'] = max(poses) + 50
+        importer_layout(self.calepinage, depense)
+        importer_layout(self.calepinage, copy.deepcopy(ancien))
+        self.calepinage.refresh_from_db()
+        stocke = self.calepinage.roof_layout
+        self.assertEqual(stocke['zones'], ancien['zones'])
+        self.assertEqual(stocke['plafondsNumerotation'],
+                         {pan['id']: max(poses) + 50})
+        self.assertEqual(empreinte_document(stocke), empreinte_document(ancien))
+        self.assertEqual(self.calepinage.layout_hash, layout_hash(ancien))
+
 
 class ContratDePanSansBaseTest(SimpleTestCase):
     """Les mêmes refus par la porte ``valider_document``, sans base."""

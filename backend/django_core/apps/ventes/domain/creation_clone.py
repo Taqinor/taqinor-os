@@ -17,7 +17,7 @@ logger = logging.getLogger("apps.ventes.services")
 
 
 def cloner_devis(devis, *, user, note=None, version=1, version_parent=None,
-                 remplacements=None, revision=False):
+                 remplacements=None, revision=False, etudes=True):
     """QJR407 — LE CLONEUR DU DOMAINE : le SEUL endroit où la liste des champs
     qu'une copie de devis porte est écrite.
 
@@ -50,6 +50,11 @@ def cloner_devis(devis, *, user, note=None, version=1, version_parent=None,
       les dérivées sont purgées par ``etude_params_pour_copie`` et recalculées
       (``force=True``) ci-dessous. ``date_validite`` n'est JAMAIS copiée
       (re-dérivée, ``utils/expiry``). Duplicata, variante et gamme : inchangés.
+    * ``etudes`` — R6-N1 : ``False`` (seul ``reviser_devis`` le passe : hors
+      transaction, prix négocié, ou atelier quand le calepinage de la V1 va
+      être re-lié) ⇒ la copie naît SANS calcul d'études ; l'appelant les
+      calcule lui-même, une fois, après la re-liaison du calepinage à la copie
+      (``revision._etudes_apres_reliaison``). Défaut ``True`` : inchangé.
 
     ATOMICITÉ (S5-4) : la création du devis ET le clonage de ses lignes se font
     dans UNE transaction. Les deux vues créaient le devis PUIS clonaient ses
@@ -120,8 +125,10 @@ def cloner_devis(devis, *, user, note=None, version=1, version_parent=None,
     # ``force`` : sans lui, le dimensionnement se court-circuite sur empreinte
     # concordante et l'édition de ligne ne rattrape jamais. Best-effort — aucun
     # rafraîchisseur ne lève, aucun ne touche statut/lignes/totaux (règle #4).
-    # HORS transaction : un rafraîchissement raté n'annule jamais une copie.
-    rafraichir_etudes_du_devis(copie, force=True)
+    # HORS de SA transaction : un rafraîchissement raté n'annule jamais une
+    # copie (mais DANS celle de l'appelant s'il en tient une, R6-N1).
+    if etudes:
+        rafraichir_etudes_du_devis(copie, force=True)
     return copie
 
 

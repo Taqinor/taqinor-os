@@ -663,7 +663,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         if public:
             from apps.parametres.models import CompanyProfile
             try:
-                profil = CompanyProfile.get(company=request.user.company)
+                profil = CompanyProfile.lire(company=request.user.company)
                 telephone = (getattr(profil, 'telephone', '') or '').strip()
             except Exception:
                 logging.getLogger(__name__).warning("sav.etiquettes : exception ignorée", exc_info=True)

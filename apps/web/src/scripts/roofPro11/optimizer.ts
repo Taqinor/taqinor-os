@@ -78,6 +78,8 @@ import {
   type MatrixV6Result,
 } from '../../lib/estimatorBrainV6';
 import { majNoteChassis, optionChassis } from './chassisPavage'; // ACAL585
+import { phraseDensiteMax } from './phrasesRecommandation'; // ACAL1919
+import { axesDepartage, distanceAuBord } from './departageGeometrie'; // CAL83
 import {
   anneauPosableParArete, // CALX95 câblage
   solveLive,
@@ -103,16 +105,16 @@ import {
   type FiltrageAccesSolaire,
 } from './shadingUi'; // CALX115 — le seuil d'accès solaire lu par le posable
 import { $, celluleEconomies, fmt, fmtKwc, fmtMad, renommerDt } from './dom';
-import { besoinDeLaFacture, estPompage, estLePlus, noteLePlus, peindreChampBesoin, raisonSansValeur, VALEURS_HORS_LIGNE, compteDevis, couvertureServie, phraseSurplus, peindreBande, phraseTaillesDuChiffrage, productionServie, quiDuDevis, suiteAuDevis, texteEconomie, texteSurDevis } from './affichageErp'; import { peindrePhraseTailles, suiteCouverture } from './tailleConception'; // R2-13/16/17, ACAL2022, T4-X9-007
+import { besoinDeLaFacture, estPompage, estLePlus, noteLePlus, peindreChampBesoin, raisonSansValeur, VALEURS_HORS_LIGNE, compteDevis, couvertureServie, phraseSurplus, peindreBande, phraseTaillesDuChiffrage, productionServie, quiDuDevis, suiteAuDevis, texteEconomie, texteSurDevis, cibleDeLAtelier, phraseTiennent } from './affichageErp'; import { peindrePhraseTailles, suiteCouverture } from './tailleConception'; // R2-13/16/17, ACAL2022, T4-X9-007
 import { type CardData, type ChiffrageAtelier, type RenderConfigOpts, type RenderSceneFn } from './types';
 import { type Ctx } from './context';
 import { besoinAutoRelu } from './cible'; // ACAL367
 import { lignesSensDePose, afficherSensDePose } from './orientationOmbre'; // ACAL552
 import { maxDuSolveur, phraseCouvertureMax, type MaxDuToit } from './cibleProduction'; // ACAL547, ACAL1903
 import { heatmapAccessValues } from './shadingUi'; // ACAL552
-import { causeDuPanVide, mesurerPanVide, motifPenteNord, noterMotifPanVide, retraitApplique, type MotifPanVide } from './motifPanVide'; // ACAL549, ACAL1970
+import { causeDuPanVide, contourPanENU, mesurerPanVide, motifPenteNord, noterMotifPanVide, retraitApplique, type MotifPanVide } from './motifPanVide'; // ACAL549, ACAL1970
 import { cotesDePavage } from '../../lib/roofPro2';
-import { carteDeLaPoseTenue, direEcartPoseRelue, motifPanExistant, poseTenue } from './panExistant'; import { noteTailleAuto } from './tailleAuto'; import { chiffresDeLaPose, texteChiffresVariante } from './chiffresVariante'; // ACAL574, ACAL1900, ACAL1331, T4-V2-021
+import { carteDeLaPoseTenue, direEcartALaPose, motifPanExistant, poseTenue } from './panExistant'; import { noteTailleAuto } from './tailleAuto'; import { chiffresDeLaPose, partRaccordeeDuPan, texteChiffresVariante } from './chiffresVariante'; // ACAL574, ACAL1900, ACAL1331, T4-V2-021
 
 // ═══════════ PV64 — TROIS VARIANTES LISIBLES DU BALAYAGE DÉJÀ CALCULÉ ═══════════
 // Le balayage V6 (`fineGridMatrixV6`) évalue déjà des centaines de configurations, mais
@@ -190,10 +192,9 @@ export function pickVariantCards(result: MatrixV6Result | null | undefined): Var
     },
     {
       id: 'south-max',
-      // Densité = le plus de panneaux qui TIENNENT (fitCount, pas le nombre posé : celui-ci
-      // est plafonné au besoin et ne dirait rien de la densité). À égalité, le plus productif.
+      // Densité = le plus de panneaux qui TIENNENT (fitCount, pas le nombre posé, plafonné au besoin). À égalité, le plus productif.
       row: pick((r) => r.family === 'south', (r) => r.fitCount),
-      reason: (r) => `La plus dense en plein sud : ${r.fitCount} panneaux tiennent à ${r.tiltDeg}°, ${r.layoutLabel}.`,
+      reason: phraseDensiteMax, // ACAL1919 — un seul nombre, ou les deux nommés
     },
     {
       id: 'eastwest',
@@ -617,11 +618,10 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   /** ACAL549 — cause mesurée du pan actif vide (besoin > 0, rien posé), notée pour le document. */
   const motifPanActif = (pack: PackResult, grid: PanelGrid, placed: number, retraitM: number | null, module?: Panel2Module): MotifPanVide | null =>
     noterMotifPanVide(ctx.activeAreaId, ctx.neededPanels > 0 && placed === 0
-      ? causeDuPanVide(mesurerPanVide(pack, grid, retraitM, cotesDePavage(module), filtrageSeuil(grid.panels))) : null);
-  /** R2-13/22/23 — l'atelier ERP (`opts.chiffrage` défini, `null` compris) dit « cible » pour le nombre MODIFIABLE et ne dit
-   *  « au devis » que pour un devis lié, avec le compte réel des panneaux de CE devis. Site public : libellé d'avant. */
-  const modeErp = (): boolean => ctx.opts?.chiffrage !== undefined; const besoinFacture = (): number | null => besoinDeLaFacture(ctx.opts, (moduleDuPanActif() ?? MODULE_PAR_DEFAUT_ATELIER).pmaxWc); // T4-X8-012 — le besoin de la facture au module posé (servi)
-  const surDevis = (placed: number): string => texteSurDevis(placed, ctx.neededPanels, modeErp(), Boolean(ctx.opts?.devisLie && ctx.cibleVendue), ctx.panneauxDevis, quiDuDevis(ctx.opts)); // ACAL1951
+      ? causeDuPanVide(mesurerPanVide(pack, grid, retraitM, cotesDePavage(module), filtrageSeuil(grid.panels), contourPanENU(ctx.vertices), retraitsParArete())) : null);
+  /** R2-13/22/23 — l'atelier ERP (`opts.chiffrage` défini, `null` compris) dit « cible » pour LA cible servie (`cibleServie`) — sans cible servie, pour le nombre MODIFIABLE comme avant — et « au devis » que pour un devis lié (compte réel de CE devis). Site public : libellé d'avant. */
+  const modeErp = (): boolean => ctx.opts?.chiffrage !== undefined; const wattPose = (): number => (moduleDuPanActif() ?? MODULE_PAR_DEFAUT_ATELIER).pmaxWc; const besoinFacture = (): number | null => besoinDeLaFacture(ctx.opts, wattPose()); const cibleServie = () => cibleDeLAtelier(ctx, wattPose()); // T4-X8-012 — le besoin de la facture au module posé (servi)
+  const surDevis = (placed: number): string => texteSurDevis(placed, ctx.neededPanels, modeErp(), Boolean(ctx.opts?.devisLie && ctx.cibleVendue), ctx.panneauxDevis, quiDuDevis(ctx.opts), cibleServie()); // ACAL1951, T4-X8-012 (une cible)
   /** ACAL1526 — `ecartes` = emplacements retirés par le seuil d'accès solaire (`poseSousSeuil`) : la capacité dite
    *  est celle qui reste, donc la note lit la pose DESSINÉE (jamais « il reste de la place » sur une pose rognée). */
   function syncNeedControl(fitCount: number, familyLabel: string, motif?: MotifPanVide | null, ecartes = 0, pack: PackResult | null = null) {
@@ -650,7 +650,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       needNoteEl.textContent = ctx.devisMode && ctx.cibleVendue
         ? 'Ce devis ne porte aucun panneau — fixez le nombre (facture ou saisie) pour poser des modules.'
         : ctx.devisMode
-          ? `Aucune cible de puissance sur ce calepinage — on pose ce qui tient (${fmt(fitCount)}). Saisissez un nombre pour le plafonner.`
+          ? `${cibleServie() ? `La cible est de ${fmt(cibleServie()!.panneaux)} panneaux (${cibleServie()!.origine})` : 'Aucune cible de puissance sur ce calepinage'} — on pose ce qui tient (${fmt(fitCount)}). Saisissez un nombre pour le plafonner.`
           : 'Indiquez votre facture pour dimensionner le nombre de panneaux.';
       return;
     }
@@ -662,7 +662,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     } else if (placed < ctx.neededPanels) {
       const cause = motif ? ` — ${motif.message}` : ' (toit ou obstacles)'; // ACAL549
       needNoteEl.textContent = ctx.devisMode
-        ? `${surDevis(placed)} — seuls ${fmt(placed)} tiennent en ${familyLabel}${cause}.`
+        ? `${surDevis(placed)} — ${phraseTiennent(placed, cibleServie())} en ${familyLabel}${cause}.`
         : `${fmt(ctx.neededPanels)} nécessaires — ${fmt(placed)} tiennent en ${familyLabel}${cause}. On pose ${fmt(placed)}.`;
     } else if (capacite > ctx.neededPanels) {
       needNoteEl.textContent = ctx.devisMode
@@ -1112,10 +1112,14 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     etiquetteEconomie();
     if (derniereCarte) paintCard(derniereCarte, derniereCarte.sourceLabel); // R2-16 + demande croisée — production, bande et économie relues
     if (derniereNote) syncNeedControl(derniereNote.fit, derniereNote.famille, derniereNote.motif, derniereNote.ecartes, derniereNote.pack); // R2-13, ACAL1526 — « au devis » relu avec le contexte
-    if (derniereCarte?.tenue) direEcartPoseRelue(derniereCarte.count, ctx.neededPanels, fmt, false, suiteAuDevis(ctx)); } // ACAL1900, ACAL1951 — la note du nombre parle de la pose tenue
+    if (derniereCarte?.tenue) direEcartALaPose(derniereCarte.count, ctx, wattPose(), fmt, false, suiteAuDevis(ctx)); } // ACAL1900, ACAL1951 — la note du nombre parle de la pose tenue
 
   /** ACAL1900 — l'ERP : la carte (et ce qui la lit : bande, indicateurs, Guidé) suit la pose TENUE rendue (n panneaux). */
-  function peindreCartePosee(n: number) { const d = modeErp() && derniereCarte ? carteDeLaPoseTenue(derniereCarte, n, fmt) : null; if (d) { paintCard(d, derniereCarte?.sourceLabel); direEcartPoseRelue(n, ctx.neededPanels, fmt, false, suiteAuDevis(ctx)); } }
+  function peindreCartePosee(n: number) { const d = modeErp() && derniereCarte ? carteDeLaPoseTenue(derniereCarte, n, fmt) : null; if (d) { paintCard(d, derniereCarte?.sourceLabel); direEcartALaPose(n, ctx, wattPose(), fmt, false, suiteAuDevis(ctx)); } }
+  /** ACAL1914 — la part des panneaux du pan actif que les chaînes raccordent (table servie), ou `null` : estimation inchangée. */
+  const partRaccordee = (): number | null => partRaccordeeDuPan(ctx.affectationColoration, ctx.activeAreaId);
+  /** ACAL1914 — la table d'affectation vient d'arriver : la carte est repeinte avec la même estimation, comptée sur les raccordés. */
+  function repeindreCarte() { if (derniereCarte) paintCard(derniereCarte, derniereCarte.sourceLabel); }
   function paintCard(d: CardData, sourceLabel?: string) {
     for (const p of Array.from(document.querySelectorAll<HTMLElement>('[data-couverture-max]'))) p.hidden = modeErp() && d.pct >= 100; // R3-04
     // ACAL852 — sans facture (cible absente ou nulle ET aucune économie) : « facture inconnue », jamais « 0 MAD – 0 MAD/an ».
@@ -1130,7 +1134,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // valeur exacte (aucune perte), donc la somme affichée == le total affiché.
     // ACAL851 — la puissance du module RÉELLEMENT posé (« 8 × 710 W ») ; sans choix, le défaut.
     // T4-V2-021 — UNE définition (chiffresVariante.ts), relue telle quelle par la carte de la variante posée.
-    const { kwc, watt, annualKwh: prodPose } = chiffresDeLaPose(d, moduleDuPanActif(), prodServieAuKwc);
+    const { kwc, watt, annualKwh: prodPose } = chiffresDeLaPose(d, moduleDuPanActif(), prodServieAuKwc, partRaccordee());
     set('rp9-reco-kwc', kwc == null ? '—' : `${fmtKwc(kwc)} kWc`);
     set('rp9-reco-panels', watt ? `${fmt(d.count)} × ${fmt(watt)} W` : `${fmt(d.count)} panneaux`);
     // R2-17 — à kWc égal, la production SERVIE (celle du PDF) remplace l'estimation du navigateur (`prodServieAuKwc`).
@@ -1244,7 +1248,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       title.textContent = c.title;
       const figures = document.createElement('span');
       figures.className = 'rp9-variant-figures';
-      figures.textContent = texteChiffresVariante(c, variantIsCurrent(c) && derniereCarte ? chiffresDeLaPose(derniereCarte, moduleDuPanActif(), prodServieAuKwc) : null, moduleDuPanActif(), fmt, fmtKwc, modeErp() && estPompage(etatEco(ctx).chiffrage) ? 'pompage' : modeErp()); // T4-V2-021, T4-X2-006 ; ACAL1268
+      figures.textContent = texteChiffresVariante(c, variantIsCurrent(c) && derniereCarte ? chiffresDeLaPose(derniereCarte, moduleDuPanActif(), prodServieAuKwc, partRaccordee()) : null, moduleDuPanActif(), fmt, fmtKwc, modeErp() && estPompage(etatEco(ctx).chiffrage) ? 'pompage' : modeErp()); // T4-V2-021, T4-X2-006 ; ACAL1268
       const why = document.createElement('span');
       why.className = 'rp9-variant-why';
       why.textContent = c.reason;
@@ -1697,6 +1701,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       obstructionClearancesM: obstructionClearances(), // PV61
       setbacksM: keepSetbacks(), // PV63
       optimisation: choixOptimisation, // CALX114 — l'objectif SAISI, null = celui d'hier
+      neededPanelsPose: ctx.neededPanels, // ACAL1918 — même plafond que le tableau « Comparer les poses »
     });
     paintComparison();
     renderMatrixOptimumCard();
@@ -1754,7 +1759,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     buildMatrix,
     computeMatrixPvgis,
     clampNeeded,
-    majChiffrage, peindreCartePosee, // ACAL1900
+    majChiffrage, peindreCartePosee, repeindreCarte, // ACAL1900, ACAL1914
     etatCarte: () => (derniereCarte && derniereCarte.count > 0 && derniereCarte.annualKwh > 0 ? { kwhParPanneau: derniereCarte.annualKwh / derniereCarte.count, tiennent: dernierFit, get maxSens() { return maxSensCarte(); } } : null), // ACAL1903 — le solveur ne tourne qu'à la lecture
   };
 }
@@ -1847,29 +1852,6 @@ export interface ResultatDepartage {
 const PAS_DEPARTAGE_M = 0.01;
 /** Mou maximal exploré (m) — au-delà, il y aurait une rangée de plus, pas du mou. */
 const MOU_MAX_M = 20;
-
-/** Repère (u, v) du pavage à partir de l'azimut d'empilement. */
-function axesDepartage(azimuthDeg: number): { u: [number, number]; v: [number, number] } {
-  const az = (azimuthDeg * Math.PI) / 180;
-  const f: [number, number] = [Math.sin(az), Math.cos(az)]; // visée (E, N) = progression
-  return { u: [-f[1], f[0]], v: f };
-}
-
-/** Distance d'un point au bord du tracé (m) — même mesure que le pavage. */
-function distanceAuBord(p: [number, number], ring: [number, number][]): number {
-  let min = Infinity;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const ax = ring[j][0];
-    const ay = ring[j][1];
-    const dx = ring[i][0] - ax;
-    const dy = ring[i][1] - ay;
-    const len2 = dx * dx + dy * dy;
-    let t = len2 === 0 ? 0 : ((p[0] - ax) * dx + (p[1] - ay) * dy) / len2;
-    t = Math.max(0, Math.min(1, t));
-    min = Math.min(min, Math.hypot(p[0] - (ax + t * dx), p[1] - (ay + t * dy)));
-  }
-  return min;
-}
 
 /**
  * CAL83 — le pavage translaté de (du, dv) tient-il ENCORE, panneau par panneau ?

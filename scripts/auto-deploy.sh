@@ -345,6 +345,17 @@ if [ "$ok" = "1" ] && [ "$RESTART_BACKEND" = "1" ]; then
                    celery_beat fastapi_ia || ok=0
 fi
 
+# D-27/11-7 — range le total affiché des devis (cache de l'en-tête de la liste :
+# sans lui, la liste recalcule et met ~13 s). APRÈS migrate et APRÈS up/restart :
+# c'est le code DÉPLOYÉ qui range. BEST-EFFORT : n'écrit que les deux colonnes de
+# cache, idempotent ; un échec est journalisé et ne fait JAMAIS échouer le deploy
+# (pas de `|| ok=0`). Sans délai imposé : aucune durée mesurée de cette commande.
+etape ranger_totaux
+if [ "$ok" = "1" ]; then
+  $COMPOSE exec -T django_core python manage.py ranger_totaux_affiches \
+    || log "AVERTISSEMENT: ranger_totaux_affiches en échec"
+fi
+
 etape showmigrations
 if [ "$ok" = "1" ]; then
   # AANA64 — rôle Postgres lecture seule de l'agent SQL (idempotent, mot de passe

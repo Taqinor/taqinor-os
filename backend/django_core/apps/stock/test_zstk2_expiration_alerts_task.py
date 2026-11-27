@@ -16,7 +16,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from authentication.models import Company
@@ -139,3 +139,15 @@ class TestScopingSociete(Zstk2Base):
         self.assertFalse(Notification.objects.filter(
             company=autre,
             event_type=EventType.STOCK_EXPIRATION_SOON).exists())
+
+
+class ProfilLuSansCreationTests(SimpleTestCase):
+    """Profil société — l alerte de péremption lit le profil sans le créer."""
+
+    def test_alertes_de_peremption(self):
+        import inspect
+        from apps.stock.tasks import expiration_alerts_task
+        fonction = expiration_alerts_task
+        source = inspect.getsource(fonction)
+        self.assertNotIn("CompanyProfile.get(", source)
+        self.assertIn("CompanyProfile.lire(", source)

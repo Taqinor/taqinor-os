@@ -15,7 +15,7 @@ from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.db import migrations
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -259,3 +259,26 @@ class CheminRecurrentInchangeTest(TestCase):
         self.assertEqual(contrat.prestations.count(), 0)
         self.assertIsNone(contrat.origine_devis_id)
         self.assertIsNone(contrat.delai_intervention_heures)
+
+
+class DelaiSocieteLecturePureTests(SimpleTestCase):
+    """Profil société — le délai d'intervention lu pour le contrat O&M né de
+    l'acceptation passe par ``CompanyProfile.lire`` (jamais ``get``, qui
+    crée la ligne au fuseau par défaut et périmait les simulations de
+    calepinage). Sans profil : None (non engagé), comme hier. Sans base."""
+
+    def test_lit_par_lire_jamais_par_get(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.parametres.models import CompanyProfile
+        from apps.sav.services import _delai_intervention_societe
+        company = SimpleNamespace(pk=7, id=7, nom='Sans Profil')
+        with mock.patch.object(CompanyProfile, 'get',
+                               side_effect=AssertionError('get')) as get, \
+                mock.patch.object(CompanyProfile, 'lire',
+                                  return_value=CompanyProfile(
+                                      nom='Sans Profil')) as lu:
+            self.assertIsNone(_delai_intervention_societe(company))
+        get.assert_not_called()
+        lu.assert_called_once()

@@ -110,6 +110,23 @@ export function contexteToDevisPayload(contexte) {
   }
 }
 
+// T4-X8-012 (une cible) — la source de la cible en mots : UNE table pour la carte « Cible — panneaux » (AtelierPanneaux) et la
+// note « N posés / T cible (source) » du constructeur (portée par `libelleOrigineCible`). Une valeur inconnue reste telle quelle.
+export const LIBELLES_SOURCE_CIBLE = {
+  devis: 'Devis lié',
+  lead: 'Taille souhaitée sur la fiche du lead',
+  factures: 'Factures du lead',
+}
+export const libelleSourceCible = (source) => LIBELLES_SOURCE_CIBLE[source] ?? source ?? null
+// La MÊME source après « d'après » (« Posé d'après les factures du lead : 8 panneaux ») : une seconde forme de chaque mot de la table
+// ci-dessus, jamais le libellé de la carte collé derrière la préposition. Une source inconnue n'a pas de seconde forme (`null`).
+export const LIBELLES_APRES_SOURCE_CIBLE = {
+  devis: 'le devis lié',
+  lead: 'la taille souhaitée sur la fiche du lead',
+  factures: 'les factures du lead',
+}
+export const libelleApresSourceCible = (source) => LIBELLES_APRES_SOURCE_CIBLE[source] ?? null
+
 // CAL37 — MODE CALEPINAGE. Jumeau NEUTRE de la projection devis ci-dessus, pour
 // le contexte servi par `GET /calepinage/calepinages/<pk>/design-context/`
 // (contrat `apps/calepinage/contract_samples/calepinage_design_context.json`).
@@ -167,6 +184,9 @@ export function contexteCalepinageVersPayload(contexte) {
     // ACAL1331 (D-ACAL-76 « dimensionner ») — d'où vient la cible servie (`devis` | `factures` | `lead`, `null` sans
     // cible) : sur un calepinage VIERGE, l'atelier pose cette taille dès le toit fermé et DIT « Posé d'après … ».
     origineCible: contexte.cible?.source ?? null,
+    // T4-X8-012 (une cible) — la même source, dans les mots de la carte « Cible — panneaux » : la note du nombre de panneaux la reprend.
+    libelleOrigineCible: contexte.cible?.source ? libelleSourceCible(contexte.cible.source) : null,
+    libelleApresOrigineCible: libelleApresSourceCible(contexte.cible?.source),
     // ACAL1951 — le devis lié (sa référence) et l'option que sa cible suit (`sans` | `avec`, `null` pour une cible estimée) :
     // l'atelier les nomme dans la note du nombre de panneaux.
     referenceDevis: contexte.calepinage?.devis_lie?.reference ?? null,
@@ -417,5 +437,67 @@ export function phraseSiteNonLocalise(siteDeRepli) {
     ? `sinon le calcul se fait sur ${v}`
     : 'sinon le calcul est refusé'
   return `Site non localisé — carte au niveau Maroc. Cherchez l’adresse du client puis « Localiser », ou zoomez jusqu’au toit avant de le tracer : ${sinon}.`
+}
+
+// ACAL1957 — « Générer le devis » a répondu 201 : l'atelier ouvert sur ce calepinage relit son contexte.
+const ecouteursDevisGenere = new Set()
+export function annoncerDevisGenere(calepinageId) { ecouteursDevisGenere.forEach((f) => f(calepinageId)) }
+export function ecouterDevisGenere(calepinageId, f) {
+  if (!calepinageId) return () => {}
+  const ecouter = (id) => { if (String(id) === String(calepinageId)) f() }
+  ecouteursDevisGenere.add(ecouter)
+  return () => { ecouteursDevisGenere.delete(ecouter) }
+}
+
+/* ACAL1946 — l'issue du dernier geste « Générer le devis » (devis créé, question de taille, refus nommé), PAR
+   calepinage, hors du composant : quand le portail de l'étape se remonte pendant la requête (contexte relu après
+   l'enregistrement), la réponse arrive à l'instance montée au lieu de se perdre avec l'ancienne.
+   Revue ACAL1946 — sa DURÉE DE VIE est celle de l'atelier ouvert sur CE calepinage : `useAtelierBoot` l'oublie quand
+   l'atelier se ferme (on le quitte, on se déconnecte : la page se démonte) ou que l'utilisateur change ; la clé porte
+   l'utilisateur (un autre compte du même onglet ne lit rien) ; un geste qui démarre efface l'issue précédente
+   (`executer`). Une réponse arrivée APRÈS la fermeture est jetée : l'oubli change l'« époque » du calepinage, et une
+   écriture faite pour une époque passée ne pose plus rien. */
+const issuesDevis = new Map()
+const abonnesIssuesDevis = new Set()
+const epoquesIssuesDevis = new Map()
+const prefixeIssuesDevis = (calepinageId) => `${calepinageId}:`
+export function cleIssueDevis(calepinageId, nom, utilisateurId = null) {
+  return `${prefixeIssuesDevis(calepinageId)}${utilisateurId ?? ''}:${nom}`
+}
+export function epoqueIssuesDevis(calepinageId) { return epoquesIssuesDevis.get(String(calepinageId)) ?? 0 }
+export function abonnerIssuesDevis(f) { abonnesIssuesDevis.add(f); return () => { abonnesIssuesDevis.delete(f) } }
+export function lireIssueDevis(cle) { return issuesDevis.get(cle) ?? null }
+export function poserIssueDevis(cle, valeur, { calepinageId = null, epoque = null } = {}) {
+  if (calepinageId != null && epoque != null && epoque !== epoqueIssuesDevis(calepinageId)) return
+  issuesDevis.set(cle, valeur)
+  abonnesIssuesDevis.forEach((f) => f())
+}
+/* Revue ACAL1738 — le cadre « Confirmer et générer » AFFICHÉ (409 `confirmation_taille`) et son motif structuré
+   servi par le serveur (`facture_absente` : son `refus` EST `cible.refus`, `services/devis.py::_garde_taille`). Le
+   bandeau de l'atelier (`acal-cible-estimee`) se tait tant que ce cadre dit la même consigne : elle est dite une fois. */
+export const MOTIF_TAILLE_FACTURE_ABSENTE = 'facture_absente'
+const cadresTailleAffiches = new Map()
+export function afficherCadreTaille(calepinageId, motif) {
+  const jeton = {}
+  cadresTailleAffiches.set(jeton, { calepinageId: String(calepinageId), motif: motif ?? null })
+  abonnesIssuesDevis.forEach((f) => f())
+  return () => { cadresTailleAffiches.delete(jeton); abonnesIssuesDevis.forEach((f) => f()) }
+}
+export function motifDuCadreTailleAffiche(calepinageId) {
+  for (const cadre of cadresTailleAffiches.values()) {
+    if (cadre.calepinageId === String(calepinageId) && cadre.motif) return cadre.motif
+  }
+  return null
+}
+
+// Sans argument (tests) : tout ; avec un calepinage : ses seules issues, et son époque avance.
+export function oublierIssuesDevis(calepinageId) {
+  if (calepinageId == null) issuesDevis.clear()
+  else {
+    const prefixe = prefixeIssuesDevis(calepinageId)
+    ;[...issuesDevis.keys()].forEach((cle) => { if (cle.startsWith(prefixe)) issuesDevis.delete(cle) })
+    epoquesIssuesDevis.set(String(calepinageId), epoqueIssuesDevis(calepinageId) + 1)
+  }
+  abonnesIssuesDevis.forEach((f) => f())
 }
 

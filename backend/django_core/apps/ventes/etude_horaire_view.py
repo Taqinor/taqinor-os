@@ -706,12 +706,17 @@ def _batterie_de_l_apercu(devis, batterie_kwh_corps):
             capacite_batterie_du_devis, ligne_dans_option,
             puissance_batterie_du_devis, rendement_batterie_du_devis,
         )
+        from apps.ventes.domain.classe_ligne import role_de_ligne
         from apps.ventes.services import _parse_kwh, classer_produit
         nominal = 0.0
         for ligne in devis.lignes.all():
             designation = getattr(ligne, 'designation', '') or ''
+            # Lecteurs en aval (constat 5) — le rôle RANGÉ, comme
+            # ``capacite_batterie_du_devis`` (le bloc du PDF) ; devis envoyé
+            # avant ``COUPURE_CLASSE_PAR_ROLE`` : l'expression d'hier.
             if (not ligne_dans_option(ligne, 'avec')
-                    or classer_produit(designation) != 'batterie'):
+                    or role_de_ligne(ligne, lambda d=designation: classer_produit(d),
+                                     devis=devis) != 'batterie'):
                 continue
             nominal += float(_parse_kwh(designation) or 0) * float(
                 getattr(ligne, 'quantite', 0) or 0)

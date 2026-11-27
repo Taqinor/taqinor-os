@@ -125,3 +125,28 @@ test('QJR35 — rejoué : au montage (aucune facture saisie, aucune étude serve
   assert.equal(apercuEstimationExemple(false, true), false)
   assert.equal(apercuEstimationExemple(true, true), false)
 })
+
+// ACAL1204 — lignes par défaut (panneaux à 0) ⇒ aucun retour chiffré (« ROI 0,9 an »
+// sur une composition sans panneau) : « à chiffrer : ajoutez les panneaux ».
+test('ACAL1204 — lignes par défaut sans panneau ⇒ aucun retour chiffré, « à chiffrer : ajoutez les panneaux »', () => {
+  const HOOK = readFileSync(join(HERE, 'generator/hooks/useApercuEtude.js'), 'utf8')
+  assert.match(HOOK, /comptePanneauxOption\(\s*lines,\s*'sans'/,
+    'le compte des panneaux de l\'option sans doit garder le retour')
+  assert.match(HOOK, /comptePanneauxOption\(\s*lines,\s*'avec'/,
+    'le compte des panneaux de l\'option avec doit garder le retour')
+  assert.match(HOOK, /const chiffre = \(total, v, panneaux\) => \(surApercu && panneaux > 0 && /,
+    'la garde « au moins un panneau » est absente de `chiffre`')
+  assert.match(HOOK, /à chiffrer : ajoutez les panneaux/)
+})
+
+// ACAL1211 — sans facture, l'aperçu NOMME le champ de la fiche du lead (règle du
+// 17/11 : tout ce qui est supposé est dit avec le champ) et mène à la fiche.
+test('ACAL1211 — sans facture ⇒ « Facture Hiver/Été (MAD/mois) » nommée, avec un lien vers la fiche du lead', () => {
+  const APERCU = readFileSync(join(HERE, 'generator/ApercuSimulation.jsx'), 'utf8')
+  const bloc = APERCU.slice(APERCU.indexOf('data-testid="chart-no-bills"'))
+  assert.match(bloc.slice(0, 900), /Facture Hiver\/Été \(MAD\/mois\)/,
+    'le champ de la fiche du lead doit être nommé')
+  assert.match(bloc.slice(0, 900), /to=\{`\/crm\/leads\/\$\{leadId\}`\}/,
+    'le lien vers la fiche du lead est absent')
+  assert.match(APERCU, /apercuAvecAbsent = null,\s*leadId = ''/)
+})

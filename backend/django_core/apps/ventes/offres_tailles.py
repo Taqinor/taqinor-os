@@ -322,7 +322,7 @@ def _materiel_du_devis(devis, variante):
         designation = (getattr(ligne, 'designation', '') or '').strip()
         if not designation:
             continue
-        role = _role_de_la_ligne(designation)
+        role = _role_de_la_ligne(designation, ligne, devis)
         if role is None:
             tout_classe = False
             continue
@@ -343,8 +343,13 @@ def _materiel_du_devis(devis, variante):
     return materiel, tout_classe
 
 
-def _role_de_la_ligne(designation):
+def _role_de_la_ligne(designation, ligne=None, devis=None):
     """Le RÔLE catalogue d'une désignation de ligne, ou ``None``.
+
+    Lecteurs en aval (fondateur 24/11/2026) — avec ``ligne`` : le rôle RANGÉ
+    sur la ligne à son écriture d'abord (``domain.classe_ligne.role_de_ligne``,
+    ``devis`` porte la coupure ``COUPURE_CLASSE_PAR_ROLE``), sinon la lecture
+    ci-dessous, inchangée — celle d'un devis envoyé avant la coupure.
 
     MÊME CLASSIFIEUR DES DEUX CÔTÉS. Les cartes Éco et Max lisent les rôles que
     ``composition_residentielle`` a POSÉS sur sa composition ; la carte
@@ -360,6 +365,9 @@ def _role_de_la_ligne(designation):
     hybride » ou « onduleur réseau/injection » explicites). ``None`` = la ligne
     reste NON CLASSÉE : l'appelant le signale plutôt que de deviner.
     """
+    if ligne is not None:
+        from apps.ventes.domain.classe_ligne import role_de_ligne
+        return role_de_ligne(ligne, lambda: _role_de_la_ligne(designation), devis=devis)
     from apps.ventes.services import (
         _is_battery, _is_hybrid_inverter, _is_panel, _is_reseau_inverter,
         classer_produit)
@@ -1304,7 +1312,8 @@ def _carte_du_devis(contexte, data, variante):
     paye = dd._payback_servi(data, variante, repli=lambda: (_payback_publie(prix, economie, **(
         {'stockage': True, 'part_batterie': 0.0, 'cout_onduleur_ttc': _cout_onduleur_ttc(
             (lv := dd.lignes_vendues(contexte.devis, 'avec')),
-            [_role_de_la_ligne(getattr(ln, 'designation', '') or '') for ln in lv], contexte.facteur_remise,
+            [_role_de_la_ligne(getattr(ln, 'designation', '') or '', ln, contexte.devis) for ln in lv],
+            contexte.facteur_remise,
             getattr(contexte.devis, 'taux_tva', None), (contexte.entrees or {}).get('company'), contexte.devis),
          'battery_roundtrip': ((getattr(contexte.devis, 'etude_params', None) or {}).get('etude_horaire')
                                or {}).get('rendement_batterie')}
@@ -1397,14 +1406,22 @@ def _banque_du_devis(contexte, kwc):
 
 
 def _compter_modules_du_devis(devis):
-    """Le NOMBRE de modules batterie des lignes réelles (0 = aucun)."""
+    """Le NOMBRE de modules batterie des lignes réelles (0 = aucun).
+
+    Lecteurs en aval — une ligne BATTERIE : son rôle RANGÉ d'abord
+    (``domain.classe_ligne.est``, même lecture que la resynchronisation),
+    sinon les mots-clés d'hier. Un compte à 0 sur une batterie au nom muet
+    faisait écrire ``battery: None`` dans la cible d'« Appliquer », et la
+    resynchronisation (qui lit le rôle) SUPPRIMAIT la ligne de batterie."""
+    from apps.ventes.domain.classe_ligne import est
     from apps.ventes.domain.dimensionnement_devis import lignes_vendues
     from apps.ventes.services import _is_battery
 
     total = 0
     # AMOT31 — lignes VENDUES de l'option avec (jamais une optionnelle).
     for ligne in lignes_vendues(devis, 'avec'):
-        if not _is_battery(getattr(ligne, 'designation', '') or ''):
+        if not est(ligne, _is_battery, lambda li=ligne: _is_battery(
+                getattr(li, 'designation', '') or ''), devis=devis):
             continue
         total += int(_num(getattr(ligne, 'quantite', 0)))
     return total
@@ -2012,13 +2029,18 @@ def _compter_panneaux_du_devis(devis):
     Même lecture par variante que ``_materiel_du_devis`` : sur un devis à deux
     options, le compte affiché est celui de l'option 1, jamais la somme des
     deux — un nombre qui ne décrit aucune installation.
+
+    Lecteurs en aval — une ligne PANNEAU : son rôle RANGÉ d'abord
+    (``domain.classe_ligne.est``), sinon les mots-clés d'hier.
     """
+    from apps.ventes.domain.classe_ligne import est
     from apps.ventes.domain.dimensionnement_devis import lignes_vendues
     from apps.ventes.services import _is_panel
 
     total = 0
     for ligne in lignes_vendues(devis, 'sans'):
-        if not _is_panel(getattr(ligne, 'designation', '') or ''):
+        if not est(ligne, _is_panel, lambda li=ligne: _is_panel(
+                getattr(li, 'designation', '') or ''), devis=devis):
             continue
         total += int(_num(getattr(ligne, 'quantite', 0)))
     return total
@@ -2034,9 +2056,13 @@ def _porter_modules_batterie(devis, modules):
 
     Plusieurs lignes batterie (rare) : seule la PLUS GROSSE bouge, même règle
     que la ligne dominante des panneaux.
+
+    Lecteurs en aval — une ligne BATTERIE : son rôle RANGÉ d'abord
+    (``domain.classe_ligne.est``), sinon les mots-clés d'hier.
     """
     from decimal import Decimal as _Decimal
 
+    from apps.ventes.domain.classe_ligne import est
     from apps.ventes.domain.dimensionnement_devis import lignes_vendues
     from apps.ventes.domain.lignes import porter_quantite
     from apps.ventes.services import _is_battery
@@ -2047,7 +2073,8 @@ def _porter_modules_batterie(devis, modules):
     # optionnelle (add-on hors total) n'est jamais réécrite.
     candidats = [ligne for ligne in lignes_vendues(devis, 'avec')
                  if getattr(ligne, 'produit', None) is not None
-                 and _is_battery(getattr(ligne, 'designation', '') or '')]
+                 and est(ligne, _is_battery, lambda li=ligne: _is_battery(
+                     getattr(li, 'designation', '') or ''), devis=devis)]
     if not candidats:
         return None
     dominante = max(candidats, key=lambda li: _num(getattr(li, 'quantite', 0)))
@@ -2095,7 +2122,7 @@ def _substituer_sur_le_devis(devis, equipements, contexte):
     for role, produit in produits.items():
         cibles = [ligne for ligne in lignes
                   if _role_de_la_ligne(
-                      getattr(ligne, 'designation', '') or '') == role]
+                      getattr(ligne, 'designation', '') or '', ligne, devis) == role]
         if not cibles:
             continue
         # TOUT LE CONTRÔLE D'ABORD — une seule ligne négociée refuse le geste

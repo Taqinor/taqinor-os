@@ -124,6 +124,9 @@ export function useCibleFactures(calepinageId, servi = null, { attendre = false 
     // ACAL1517 — le refus servi par `cible-factures/` (`refus`, ex. lead industriel) : dit tel quel, jamais réécrit.
     refus: etat === 'ok' && contexte.donnees?.calepinage?.lead ? (taille.donnees?.refus || '') : '',
     leadId: contexte.donnees?.calepinage?.lead ?? null,
+    // R6-N4 — la taille vient de la taille SOUHAITÉE sur la fiche du lead (cible du design-context `source: 'lead'`) : il ne
+    // manque alors aucune facture, la carte ne renvoie pas vers la saisie d'une facture.
+    tailleSouhaitee: contexte.donnees?.cible?.source === 'lead' && Number(contexte.donnees?.cible?.panneaux) > 0,
     // Critique ACAL1517 — une facture est-elle saisie sur le lead ? (`consommation_lead.facture_mensuelle_mad` du design-context) :
     // un refus servi AVEC une facture saisie (C&I, agricole) ne renvoie pas vers la fiche ; faute de facture, le lien reste.
     factureSaisie: Number(contexte.donnees?.consommation_lead?.facture_mensuelle_mad) > 0,

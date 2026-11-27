@@ -468,6 +468,27 @@ class SerieHorizontaleBifacialeTest(unittest.TestCase):
         self.assertEqual(
             len(contexte['serie_horizontale_legale']['points']), 1)
 
+    def test_acal1959_le_module_pose_bifacial_declenche_l_appel(self):
+        # Défaut monofacial, module POSÉ bifacial : l'étape bifaciale lit le posé, la série horizontale aussi.
+        from apps.calepinage.services.simulation import _poser_horizontale
+
+        client = ClientHorizontal()
+        contexte = {'fiche_module': {'puissance_wc': 500.0},
+                    'fiche_module_pose': {'bifacialite_pct': 70.0},
+                    'meteo': {'heure': {'base': 'utc'}}, 'site': dict(SITE)}
+        compteur = {'appels': 0}
+        _poser_horizontale(
+            contexte, client=client, decision={'fenetre_annees': (2020, 2020)},
+            fichier=None, compteur=compteur, plan={'lat': 33.5, 'lon': -7.6})
+        self.assertEqual(compteur['appels'], 1)
+        # Posé == défaut (aucune fiche posée) : lecture inchangée.
+        contexte.pop('fiche_module_pose')
+        compteur['appels'] = 0
+        _poser_horizontale(
+            contexte, client=ClientHorizontal(), decision={'fenetre_annees': (2020, 2020)},
+            fichier=None, compteur=compteur, plan={'lat': 33.5, 'lon': -7.6})
+        self.assertEqual(compteur['appels'], 0)
+
     def test_fiche_monofaciale_ou_fichier_depose_aucun_appel(self):
         for fiche, fichier in (({'puissance_wc': 500.0}, None),
                                ({'bifacialite_pct': 70.0}, {'points': []})):

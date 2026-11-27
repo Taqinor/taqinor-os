@@ -204,7 +204,7 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
         if 'devise' not in serializer.validated_data:
             from apps.parametres.models import CompanyProfile
             save_kwargs['devise'] = (
-                getattr(CompanyProfile.get(company=company), 'devise_defaut', '')
+                getattr(CompanyProfile.lire(company=company), 'devise_defaut', '')
                 or 'MAD')
 
         # XFAC12 — escompte : si le corps n'en fournit pas, proposer les
@@ -212,7 +212,7 @@ class FactureViewSet(OrdreTotalMixin, FactureCycleActionsMixin,
         # reste prioritaire). NULL/absent des deux côtés = comportement actuel
         # inchangé (aucun escompte).
         from apps.parametres.models import CompanyProfile
-        profile = CompanyProfile.get(company=company)
+        profile = CompanyProfile.lire(company=company)
         if 'escompte_pct' not in serializer.validated_data and \
                 getattr(profile, 'escompte_pct_defaut', None) is not None:
             save_kwargs['escompte_pct'] = profile.escompte_pct_defaut

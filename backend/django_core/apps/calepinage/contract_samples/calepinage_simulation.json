@@ -431,6 +431,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -439,6 +440,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -447,6 +449,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -455,6 +458,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -463,6 +467,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "non calculé : modèle spectral",
             "etapes": [
               {
                 "etape": "spectral",
@@ -1096,6 +1101,7 @@
         "par_mois": [
           {"mois": 1, "heures_de_marche": 90.0, "energie_fournie_kwh": 343.014}
         ],
+        "cause_inactif": null,
         "mention": "Groupe d'appoint de 5 kW : il démarre quand l'état de charge au début du pas est au plus 20 % et s'arrête à 80 % au moins, dans la limite de 6 h de marche par jour ; en marche il sert d'abord le besoin que le soleil ne couvre pas, puis recharge la batterie. Le courant de démarrage des moteurs n'est pas modélisé. Aucun carburant, aucun prix."
       },
       "banque_mois_charge": {
@@ -1147,7 +1153,8 @@
             "libelle": "Échauffement des modules",
             "perte_pct": 6.0
           }
-        ]
+        ],
+        "omises_vs_pvgis": []
       },
       "mensuel": [
         {
@@ -1958,6 +1965,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -1966,6 +1974,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -1974,6 +1983,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -1982,6 +1992,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -1990,6 +2001,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "non calculé : modèle spectral",
             "etapes": [
               {
                 "etape": "spectral",
@@ -2595,6 +2607,7 @@
         "par_mois": [
           {"mois": 1, "heures_de_marche": 90.0, "energie_fournie_kwh": 343.014}
         ],
+        "cause_inactif": null,
         "mention": "Groupe d'appoint de 5 kW : il démarre quand l'état de charge au début du pas est au plus 20 % et s'arrête à 80 % au moins, dans la limite de 6 h de marche par jour ; en marche il sert d'abord le besoin que le soleil ne couvre pas, puis recharge la batterie. Le courant de démarrage des moteurs n'est pas modélisé. Aucun carburant, aucun prix."
       },
       "banque_mois_charge": {
@@ -2646,7 +2659,8 @@
             "libelle": "Échauffement des modules",
             "perte_pct": 6.0
           }
-        ]
+        ],
+        "omises_vs_pvgis": []
       },
       "mensuel": [
         {
@@ -3194,6 +3208,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -3202,6 +3217,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -3210,6 +3226,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -3218,6 +3235,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -3226,6 +3244,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "non calculé : modèle spectral",
             "etapes": [
               {
                 "etape": "spectral",
@@ -3762,6 +3781,7 @@
         "par_mois": [
           {"mois": 1, "heures_de_marche": 90.0, "energie_fournie_kwh": 343.014}
         ],
+        "cause_inactif": null,
         "mention": "Groupe d'appoint de 5 kW : il démarre quand l'état de charge au début du pas est au plus 20 % et s'arrête à 80 % au moins, dans la limite de 6 h de marche par jour ; en marche il sert d'abord le besoin que le soleil ne couvre pas, puis recharge la batterie. Le courant de démarrage des moteurs n'est pas modélisé. Aucun carburant, aucun prix."
       },
       "banque_mois_charge": {
@@ -3813,7 +3833,8 @@
             "libelle": "Échauffement des modules",
             "perte_pct": 6.0
           }
-        ]
+        ],
+        "omises_vs_pvgis": []
       },
       "mensuel": [
         {
@@ -3925,6 +3946,22 @@
       ],
       "plafond_points": 8784,
       "motif_troncature": ""
+    }
+  },
+  "exemple_ligne_a_renseigner_avec_motif": {
+    "pourquoi": "ACAL1934 — une ligne de `cascade.a_renseigner.lignes[]` d'un réglage société dont le champ est REMPLI mais que l'étape ne peut pas lire (ici : la table des coefficients par type de pose n'a pas de ligne pour la pose du calepinage). Le serveur sert alors `motif` = la phrase d'omission de l'étape (une seule définition : `services/etapes/thermique.py`). Clé FACULTATIVE : absente quand le réglage est vraiment vide. L'écran cite ce motif et ne compte pas la ligne comme un réglage vide.",
+    "etape": "thermique",
+    "libelle": "Chaleur des panneaux",
+    "nature": "reglage_societe",
+    "section": "simulation",
+    "cle": "thermique_par_pose",
+    "libelle_champ": "Coefficients Uc/Uv par type de pose",
+    "unite": "",
+    "ou_trouver": "Où lire la valeur : exemple. Aucune valeur n'est proposée ici.",
+    "motif": "aucune ligne « south » dans la table société des coefficients par type de pose.",
+    "cible": {
+      "onglet": "reglages",
+      "champ": "thermique_par_pose"
     }
   },
   "exemple_refus": {

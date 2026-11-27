@@ -58,6 +58,9 @@ SOURCES_CLIENT = {
         "ci_src_economie",
     "etude_ci.bilan (moteur C&I)": "ci_src_production",
     "etude_ci.bilan": "ci_src_production",
+    # ACAL1225 — le texte servi aujourd'hui (``economie_ci.HORIZON_CI_SOURCE``)
+    # et l'ancien, gardé pour l'étude rangée d'un devis déjà envoyé.
+    "horizon d'analyse : 25 ans": "ci_src_horizon",
     "D-CIQ-10 : 25 ans": "ci_src_horizon",
     # AMOT88 — chemin d'écran interne : jamais imprimé au client.
     "réglage société — Paramètres › Tarification & ROI":
@@ -114,6 +117,21 @@ _CODES_INTERNES = re.compile(
     r"|\s*\(moteur C&(?:amp;)?I\)")
 
 
+def cle_texte_servi(texte):
+    """ACAL1225 (revue-13) — un texte servi tel que le moteur l'a écrit, pour
+    le lire dans une table (``SOURCES_CLIENT``, ``MOTIFS_ARGENT``…) ou le
+    comparer à une constante : ``builder.echapper_textes_client`` a changé
+    « ' & < > " » en entités avant le rendu ; on les défait ici, à CHAQUE
+    lecture, sinon la clé manque et le texte brut s'imprime."""
+    return html.unescape(str(texte or "")).strip()
+
+
+def cle_source_client(texte):
+    """La clé du libellé client d'une source servie (``SOURCES_CLIENT``),
+    lue sur le texte déséchappé ; None hors table."""
+    return SOURCES_CLIENT.get(cle_texte_servi(texte))
+
+
 def texte_client(d, texte):
     """AMOT80 — un texte SERVI par le moteur (source d'hypothèse, motif)
     dans les mots du client : la table ``SOURCES_CLIENT`` (traduite), sinon
@@ -121,7 +139,7 @@ def texte_client(d, texte):
     brut = str(texte or "").strip()
     # CPDF5 — la table se lit sur le texte NON échappé : ``builder.
     # echapper_textes_client`` a déjà changé « & » en « &amp; ».
-    cle = SOURCES_CLIENT.get(html.unescape(brut))
+    cle = cle_source_client(brut)
     if cle is not None:
         from .. import i18n_labels
         return libelle(d, cle, i18n_labels.LIBELLES[cle]["fr"])
@@ -245,12 +263,13 @@ def ligne_non_chiffre(d, cle, prefixe):
     if phrase:
         return f'<div class="{prefixe}-mtsrc">{phrase}</div>'
     motif = d.get(f"{cle}_motif_argent") or MOTIF_ARGENT_BT
-    if motif in MOTIFS_INTERNES_SANS_PHRASE:
+    # ACAL1225 (revue-13) — tables lues sur le motif déséchappé.
+    if cle_texte_servi(motif) in MOTIFS_INTERNES_SANS_PHRASE:
         # CPDF1/CPDF5 — un motif INTERNE (argent de l'option avec batterie
         # non chiffré) n'est jamais une demande au client : rien d'imprimé.
         return ""
-    if motif in MOTIFS_ARGENT:
-        motif = libelle(d, MOTIFS_ARGENT[motif], motif)
+    if cle_texte_servi(motif) in MOTIFS_ARGENT:
+        motif = libelle(d, MOTIFS_ARGENT[cle_texte_servi(motif)], motif)
     if _argent_mt(d, cle):
         phrase = libelle(d, "ci_non_chiffre_mt", TEXTE_MT_NON_CHIFFRE,
                          motif=motif)

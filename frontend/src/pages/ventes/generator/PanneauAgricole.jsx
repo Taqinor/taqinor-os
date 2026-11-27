@@ -39,6 +39,7 @@ import {
   alertesAffichables, besoinDepuisDebitSouhaite, refusAutoRemplirPompage,
 } from '../../../features/ventes/etudePompagePreviewPur'
 import CarteEconomiePompage from './CarteEconomiePompage'
+import { LIBELLES_VALEURS_LEAD } from '../../../features/ventes/quote/entreesPompageLead'
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
 
@@ -117,6 +118,38 @@ function phrasePlanIrradiation(plan) {
     + (plan.motif ? ` : ${plan.motif}` : '')
 }
 
+// ACAL1258 — les articles d'une taille dont le prix manque, NOMMÉS (liste servie
+// `articles_sans_prix`, clé absente = []) ; jamais un prix. Une ligne du kit dont
+// le `motif` dit « non choisi » n'est pas « sans prix » : elle est à CHOISIR.
+// Les lignes (`kit.inclus`) sont celles de la taille retenue.
+const SUFFIXE_PRIX = ' — prix à renseigner'
+function ArticlesSansPrix({ t, kit }) {
+  const noms = Array.isArray(t.articles_sans_prix) ? t.articles_sans_prix : []
+  const lignes = t.retenue ? (kit?.inclus || []) : []
+  const sansPrix = []
+  const nonChoisis = []
+  for (const nom of noms) {
+    const ligne = lignes.find((l) => String(l.designation || '').replace(SUFFIXE_PRIX, '') === nom)
+    if (ligne?.motif && /non choisi/i.test(ligne.motif)) nonChoisis.push(`${nom} (${ligne.motif})`)
+    else sansPrix.push(nom)
+  }
+  if (!sansPrix.length && !nonChoisis.length) return <div className="text-warning">prix à renseigner</div>
+  return (
+    <>
+      {sansPrix.length > 0 && (
+        <div className="text-warning" data-testid={`taille-sans-prix-${t.cle}`}>
+          Prix à renseigner : {sansPrix.join(', ')}
+        </div>
+      )}
+      {nonChoisis.length > 0 && (
+        <div className="text-warning" data-testid={`taille-non-choisis-${t.cle}`}>
+          À choisir : {nonChoisis.join(' ; ')}
+        </div>
+      )}
+    </>
+  )
+}
+
 // AGR129 — le RÉSULTAT SERVEUR en direct (aucune valeur calculée ici : tout
 // vient de la réponse de l'aperçu AGR127).
 function ResultatPompage({ donnees, saisie, majPompage }) {
@@ -169,7 +202,13 @@ function ResultatPompage({ donnees, saisie, majPompage }) {
       {couv && (
         <table className="w-full text-xs" data-testid="resultat-mois">
           <thead>
-            <tr><th className="text-left">Mois</th><th>Production (m³/j)</th>
+            {/* ACAL1259 — m³/jour sur débit DÉCLARÉ (pompe sans courbe) : même
+                mention que la pastille du PDF (`agricole/pages.py`). */}
+            <tr><th className="text-left">Mois</th><th>Production (m³/j)
+              {d.production?.mode === 'debit_declare' && (
+                <span className="block text-[10px] font-normal" data-testid="production-debit-declare">
+                  estimation · débit déclaré par vous</span>
+              )}</th>
               <th>Besoin (m³/j)</th><th>Couverture</th></tr>
           </thead>
           <tbody>
@@ -222,7 +261,7 @@ function ResultatPompage({ donnees, saisie, majPompage }) {
               {t.couverture_mois_critique_pct != null && (
                 <div>Couverture au mois critique : {t.couverture_mois_critique_pct} %</div>
               )}
-              {!t.prix_connu && <div className="text-warning">prix à renseigner</div>}
+              {!t.prix_connu && <ArticlesSansPrix t={t} kit={d.kit} />}
               {/* T4-V2-003 — le motif SERVI de la taille (pompe qui ne délivre
                   pas le débit à cette HMT, pompe sans courbe…) se lit sur sa carte. */}
               {t.motif && <div className="text-warning" data-testid={`taille-motif-${t.cle}`}>{t.motif}</div>}
@@ -313,10 +352,9 @@ function EconomieDeclaree({ eco, majEco, reperes, moisCalendrier, coherenceAvert
                   onChange={ev => majEco?.('energie', ev.target.value)}
                   className="h-9 rounded-md border border-input bg-card px-2 text-sm">
             <option value="">Non renseignée</option>
-            <option value="aucune">Aucune (nouveau forage)</option>
-            <option value="butane">Butane</option>
-            <option value="diesel">Gasoil</option>
-            <option value="electrique">Réseau électrique</option>
+            {Object.entries(LIBELLES_VALEURS_LEAD.pompe_alim_actuelle).map(([v, l]) => (
+              <option key={v} value={v}>{l}</option>
+            ))}
           </select>
         </div>
         {/* AGNR38 — vide tant que rien n'est daté dans la session : « aujourd'hui »
@@ -539,8 +577,13 @@ export default function PanneauAgricole({
               { value: 'volume_declare', label: 'Volume déclaré' },
               { value: 'pompe_actuelle', label: 'Pompe actuelle' },
               { value: 'agronomique', label: 'Cultures' },
+              // ACAL1262 — le débit souhaité × heures (mode serveur
+              // `debit_souhaite`) a son onglet : sans mode choisi, c'est LUI
+              // qui fait le besoin, il est donc sélectionné.
+              { value: 'debit_souhaite', label: 'Débit souhaité' },
             ]}
-            value={besoin.mode || ''}
+            value={besoin.mode
+              || (besoinDepuisDebitSouhaite({ ...besoin, debit_souhaite_m3h: pompeDebit }) ? 'debit_souhaite' : '')}
             onChange={maj('besoin.mode')}
           />
         </div>
@@ -723,13 +766,9 @@ export default function PanneauAgricole({
               <Select value={farmCrop} onValueChange={setFarmCrop}>
                 <SelectTrigger id="gen-farm-crop"><SelectValue placeholder="Non renseignée" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="agrumes">Agrumes</SelectItem>
-                  <SelectItem value="maraichage">Maraîchage</SelectItem>
-                  <SelectItem value="olivier">Olivier</SelectItem>
-                  <SelectItem value="dattier">Dattier (palmier)</SelectItem>
-                  <SelectItem value="cereales">Céréales</SelectItem>
-                  <SelectItem value="luzerne">Luzerne / fourrage</SelectItem>
-                  <SelectItem value="arganier">Arganier</SelectItem>
+                  {Object.entries(LIBELLES_VALEURS_LEAD.culture).map(([v, l]) => (
+                    <SelectItem key={v} value={v}>{l}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -738,14 +777,9 @@ export default function PanneauAgricole({
               <Select value={farmRegion} onValueChange={setFarmRegion}>
                 <SelectTrigger id="gen-farm-region"><SelectValue placeholder="Non renseignée" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="souss-massa">Souss-Massa (Agadir)</SelectItem>
-                  <SelectItem value="doukkala">Doukkala (El Jadida)</SelectItem>
-                  <SelectItem value="tadla">Tadla (Béni Mellal)</SelectItem>
-                  <SelectItem value="saiss">Saïss (Fès-Meknès)</SelectItem>
-                  <SelectItem value="oriental">Oriental (Berkane)</SelectItem>
-                  <SelectItem value="draa-tafilalet">Drâa-Tafilalet</SelectItem>
-                  <SelectItem value="gharb-loukkos">Gharb-Loukkos</SelectItem>
-                  <SelectItem value="haouz">Haouz (Marrakech)</SelectItem>
+                  {Object.entries(LIBELLES_VALEURS_LEAD.region_agricole).map(([v, l]) => (
+                    <SelectItem key={v} value={v}>{l}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -754,9 +788,9 @@ export default function PanneauAgricole({
               <Select value={farmIrrigation} onValueChange={setFarmIrrigation}>
                 <SelectTrigger id="gen-farm-irrigation"><SelectValue placeholder="Non renseigné" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="goutte">Goutte-à-goutte</SelectItem>
-                  <SelectItem value="aspersion">Aspersion</SelectItem>
-                  <SelectItem value="gravitaire">Gravitaire</SelectItem>
+                  {Object.entries(LIBELLES_VALEURS_LEAD.irrigation_methode).map(([v, l]) => (
+                    <SelectItem key={v} value={v}>{l}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

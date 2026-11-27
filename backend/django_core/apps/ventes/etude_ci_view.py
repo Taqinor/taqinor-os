@@ -118,7 +118,7 @@ def _lead_de_la_societe(company, lead_id):
 @permission_classes([IsAnyRole])
 def etude_ci_preview(request):
     """POST /ventes/etude-ci/preview/ — calcule, n'écrit rien."""
-    from .domain.etude_ci import devis_auto_possible, etudier_ci
+    from .domain.etude_ci import CLE_TAILLE_CREATION, devis_auto_possible, etudier_ci
     from .domain.etude_ci_batterie import CLE as CLE_OPTION_AVEC
 
     # CI #997 — corps non objet (``[null, null]``) : 400, plus un calcul
@@ -144,7 +144,11 @@ def etude_ci_preview(request):
         from .conception.etudes_lignes import etude_ci_de_l_ecran
         etude = etude_ci_de_l_ecran(devis, corps['lignes'], entrees, vu=vu)
     if etude is None:
-        etude = etudier_ci(company, entrees, devis=vu, lead=lead)
+        # ACAL1226 (revue-7) — un brouillon né du balayage garde son verdict de
+        # création (taille « calculée à la création », pas « saisie ») ; un devis
+        # à naître n'en a pas (None).
+        etude = etudier_ci(company, entrees, devis=vu, lead=lead, verdict_creation=(
+            getattr(vu or devis, 'etude_params', None) or {}).get(CLE_TAILLE_CREATION))
     return Response({
         'entrees_resolues': etude['entrees_resolues'],
         'niveau_donnees': etude['niveau_donnees'],

@@ -329,6 +329,7 @@ class TestLeadActivity(TestCase):
         self.company = make_company()
         self.user = User.objects.create_user(
             username='chatter_user', password='x',
+            first_name='Chat', last_name='Teur',
             role_legacy='responsable', company=self.company,
         )
         self.api = APIClient()
@@ -393,7 +394,7 @@ class TestLeadActivity(TestCase):
         resp = self.api.post(f'/api/django/crm/leads/{lead_id}/noter/',
                              {'body': 'Rappelé, pas de réponse'}, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
-        self.assertEqual(resp.data['user_nom'], 'chatter_user')
+        self.assertEqual(resp.data['user_nom'], 'Chat Teur')
         hist = self.api.get(f'/api/django/crm/leads/{lead_id}/historique/')
         self.assertEqual(hist.status_code, 200)
         kinds = [a['kind'] for a in hist.data]
@@ -1299,3 +1300,86 @@ class ReancrerRelancesDemoTest(TestCase):
         self.assertEqual(
             settings.CELERY_TASK_ROUTES['crm.reancrer_relances_demo']['queue'],
             'scheduled')
+
+
+class NomAfficheTests(__import__("django.test", fromlist=["x"]).SimpleTestCase):
+    """Décision 8 — un seul nom d'affichage : prénom + nom, login en dernier."""
+
+    def test_formes(self):
+        from types import SimpleNamespace as U
+        from core.user_display import nom_affiche
+        self.assertEqual(nom_affiche(U(first_name="Reda", last_name="Kasri", username="reda.k")), "Reda Kasri")
+        self.assertEqual(nom_affiche(U(first_name="", last_name="Kasri", username="reda.k")), "Kasri")
+        self.assertEqual(nom_affiche(U(first_name=" ", last_name="", username="reda.k")), "reda.k")
+        self.assertIsNone(nom_affiche(None))
+
+
+class HistoriqueNomCompletTests(__import__("django.test", fromlist=["x"]).SimpleTestCase):
+    """Décision du 27/11 — les NOUVELLES lignes d'historique et la file des
+    relances nomment la personne par son nom complet, jamais son login."""
+
+    def _user(self):
+        from types import SimpleNamespace as U
+        return U(first_name="Meryem", last_name="Alaoui", username="meryem.a")
+
+    def _corps(self, fonction, *args):
+        from unittest import mock
+        from apps.crm.models import LeadActivity
+        with mock.patch.object(LeadActivity.objects, 'create') as creer:
+            fonction(*args)
+        return creer.call_args.kwargs['body']
+
+    def test_lignes_ecrites_par_activity(self):
+        from types import SimpleNamespace as L
+        from apps.crm import activity
+        lead, user = L(company=None), self._user()
+        for fonction, attendu in ((activity.log_creation, 'Lead créé par Meryem Alaoui'),
+                                  (activity.log_archive, 'Lead archivé par Meryem Alaoui'),
+                                  (activity.log_restore, 'Lead restauré par Meryem Alaoui')):
+            self.assertEqual(self._corps(fonction, lead, user), attendu)
+
+    def test_responsable_du_champ_owner(self):
+        from apps.crm import activity
+        self.assertEqual(activity._display(None, 'owner', self._user()), 'Meryem Alaoui')
+
+    def test_assigner_lead_a_nomme_les_deux_responsables(self):
+        from types import SimpleNamespace as U
+        from unittest import mock
+        from apps.crm import fiche_funnel
+        from apps.crm.models import LeadActivity
+        ancien = U(first_name="Sara", last_name="Idrissi", username="sara.i")
+        lead = U(company=None, owner=ancien, save=lambda **kw: None)
+        with mock.patch.object(fiche_funnel, '_resolve_owner', return_value=self._user()), \
+                mock.patch.object(LeadActivity.objects, 'create') as creer:
+            fiche_funnel.assigner_lead_a(lead, self._user(), 5)
+        champs = creer.call_args.kwargs
+        self.assertEqual((champs['old_value'], champs['new_value']), ('Sara Idrissi', 'Meryem Alaoui'))
+
+    def test_noter_rdv_nomme_l_acteur(self):
+        from types import SimpleNamespace as U
+        from unittest import mock
+        from apps.crm import visites_views
+        with mock.patch.object(visites_views.activity, 'log_note') as note:
+            visites_views._noter_rdv(U(), self._user(), 'RDV déplacé')
+        self.assertEqual(note.call_args.args[2], 'RDV déplacé (par Meryem Alaoui).')
+
+    def test_aucun_login_dans_les_autres_textes_d_historique(self):
+        """Chemins profonds (base requise pour les exécuter) : garde de source."""
+        import pathlib
+        dossier = pathlib.Path(__file__).parent
+        motifs = {
+            'fiche_bulk.py': ["par {getattr(user, 'username', '?')}\"", "par {getattr(user, 'username', '?')}'"],
+            'devis_views.py': ['par {getattr(request.user, "username", "?")}'],
+            'cadence_touche.py': ["qui = getattr(user, 'username'"],
+            'leads_fusion.py': ['par {getattr(user, "username", "?")}'],
+            'receivers.py': ["qui = getattr(user, 'username'"],
+        }
+        for fichier, interdits in motifs.items():
+            source = (dossier / fichier).read_text(encoding='utf-8')
+            for interdit in interdits:
+                self.assertNotIn(interdit, source, fichier)
+
+    def test_nom_affichable_responsable(self):
+        from apps.crm.serializers import nom_affichable_responsable
+        self.assertEqual(nom_affichable_responsable(self._user()), 'Meryem Alaoui')
+        self.assertIsNone(nom_affichable_responsable(None))

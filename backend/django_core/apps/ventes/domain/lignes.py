@@ -76,16 +76,28 @@ def _lignes_produit(devis):
             if getattr(ligne, 'type_ligne', 'produit') == 'produit']
 
 
-def _classe_ligne(ligne, predicat):
+def _classe_ligne(ligne, predicat, devis=None):
     """Classe une ligne sur sa DÉSIGNATION, à défaut sur le nom du produit.
 
     La désignation est ce que lit ``quote_engine/builder.py`` (contrat
     d'alignement des mots-clés, CLAUDE.md règle #4) ; le nom du produit n'est
     consulté qu'en second, pour rattraper une désignation réécrite à la main
     (« Modules PV posés » sur un produit « Panneau Jinko 550W »).
+
+    Lecteurs en aval (fondateur 24/11/2026) — AVANT ces mots-clés, le rôle
+    RANGÉ sur la ligne à son écriture (``domain.classe_ligne``) ; nouveaux
+    rendus seulement, et un prédicat hors de ``solar_classification`` garde
+    les seuls mots-clés.
+
+    ``devis`` — celui de la ligne, à transmettre quand la ligne a été lue SANS
+    lui (``LigneDevis.objects.filter(devis_id=…)``) : sans devis connu, le rôle
+    rangé ne se lit pas et seuls les mots-clés parlent.
     """
-    return (predicat(ligne.designation or '')
-            or predicat(getattr(ligne.produit, 'nom', '') or ''))
+    from apps.ventes.domain.classe_ligne import est
+
+    return est(ligne, predicat, lambda: (
+        predicat(ligne.designation or '')
+        or predicat(getattr(ligne.produit, 'nom', '') or '')), devis=devis)
 
 
 def _pmax_wc_du_produit(produit):
@@ -531,7 +543,7 @@ def _champs_a_la_creation(devis, champs):
                 'Une ligne se rattache à son %s par « %s » OU par « %s », '
                 'jamais par les deux.' % (objet, objet, cle))
     if 'role_devis' not in champs:
-        champs['role_devis'] = _role_a_la_creation(champs)
+        champs['role_devis'] = _role_a_la_creation(champs, devis)
     if champs.get('taux_tva') is None:
         taux_produit = _taux_tva_du_produit(champs)
         if taux_produit is not None:
@@ -573,8 +585,18 @@ def _taux_tva_du_produit(champs):
     return taux_tva_produit(produit_id)
 
 
-def _role_a_la_creation(champs):
+def _role_a_la_creation(champs, devis=None):
     """STKCAT23 — le RÔLE à figer sur une ligne qu'on crée, ou ``None``.
+
+    Lecteurs en aval (fondateur 24/11/2026, « un produit se reconnaît à son
+    rôle et à sa fiche avant son nom ») — TROIS rangs désormais, décidés ICI,
+    une fois, avec le produit en main, et RANGÉS sur la ligne que tous les
+    lecteurs aval lisent (``domain.classe_ligne``) : le rôle DÉCLARÉ, puis la
+    FICHE du produit (:func:`_role_de_la_fiche`, lue seulement quand
+    l'écrivain l'a chargée — jamais une requête par ligne), puis les
+    mots-clés. Le rang de la fiche : nouvelles écritures d'un devis ouvert
+    seulement (``regles_calcul.classe_par_role_ouverte``) ; un devis envoyé
+    avant la coupure garde les deux rangs d'hier.
 
     DEUX RANGS, ET PAS TROIS. Le rôle DÉCLARÉ du produit passe devant (c'est
     une donnée, posée par le fondateur sur la fiche) ; sinon les MOTS-CLÉS de
@@ -596,14 +618,50 @@ def _role_a_la_creation(champs):
     """
     from core.product_roles import role_declare
 
+    from apps.ventes.domain.regles_calcul import classe_par_role_ouverte
+
     produit = champs.get('produit')
     declare = role_declare(getattr(produit, 'role_devis', None))
     if declare:
         return declare
+    par_fiche = _role_de_la_fiche(produit) if classe_par_role_ouverte(devis) else None
+    if par_fiche:
+        return par_fiche
     # ``designation`` peut manquer (une section/note n'en porte pas toujours) :
     # le classifieur rend alors None, et la ligne naît sans rôle.
     from .catalogue import classer_produit
     return role_declare(classer_produit(champs.get('designation') or ''))
+
+
+def _role_de_la_fiche(produit):
+    """Le rôle que la FICHE du produit prouve, ou ``None`` : module ⇒ panneau,
+    batterie ⇒ batterie, onduleur au port batterie publié ⇒ hybride (D-HYB-1,
+    ``core.electrique.onduleurs.est_onduleur_hybride``, sauf un nom d'une autre
+    famille : chargeur hors réseau, micro-onduleur) ; une fiche onduleur sans
+    port laisse la famille aux mots-clés. Lue par le sélecteur du stock, et
+    SEULEMENT quand l'écrivain l'a déjà chargée (``select_related`` du vivier
+    ou de l'écran) : aucune requête ici."""
+    from apps.ventes.domain.classe_ligne import en_cache
+
+    if produit is None or not en_cache(produit, 'fiche_technique'):
+        return None
+    from apps.stock.selectors import specs_for_produit, type_fiche_produit
+    try:
+        type_fiche = type_fiche_produit(produit) or ''
+    except AttributeError:  # doublure de fiche sans ``type_fiche`` : rien de prouvé
+        return None
+    if type_fiche in ('module', 'batterie'):
+        return 'panneau' if type_fiche == 'module' else 'batterie'
+    if type_fiche != 'onduleur':
+        return None
+    from core.electrique.onduleurs import est_onduleur_hybride
+
+    from apps.ventes.selectors_calepinage import autre_famille_d_onduleur_par_nom
+    specs = specs_for_produit(produit) or {}
+    hybride = est_onduleur_hybride(
+        '', ports_batterie_kw=(specs.get('bat_max_charge_kw'), specs.get('bat_max_decharge_kw')),
+        autre_famille_par_nom=autre_famille_d_onduleur_par_nom(getattr(produit, 'nom', '') or ''))
+    return 'onduleur_hybride' if hybride else None
 
 
 # ── QJR116 — UN SEUL CLONEUR DE LIGNES POUR LES TROIS CHEMINS DE COPIE ──────
@@ -775,12 +833,34 @@ def poser_prix_unitaire(ligne, prix):
         ligne.prix_unitaire = prix
 
 
+class AvertissementChiffre(str):
+    """Revue du 26/11 (D-ACAL-106/165) — un avertissement qui porte un MONTANT de vente : la phrase
+    complète (un ``str`` ordinaire pour tous les lecteurs d'aujourd'hui) et ``sans_montant``, la même
+    sans le chiffre, que sert le calepinage à qui ne lit pas les devis (:func:`avertissements_sans_montant`)."""
+
+    def __new__(cls, texte, sans_montant=None):
+        objet = super().__new__(cls, texte)
+        objet.sans_montant = sans_montant if sans_montant is not None else str(texte)
+        return objet
+
+
+def avertissements_sans_montant(avertissements):
+    """Les avertissements pour un lecteur SANS droit sur les devis : chaque :class:`AvertissementChiffre`
+    remplacé par sa phrase sans montant, les autres inchangés (aucune phrase n'est filtrée au texte)."""
+    return [getattr(a, 'sans_montant', a) for a in avertissements or ()]
+
+
 def avertissement_forfait_verrouille(designation, nb_panneaux, attendu):
-    """Le message FR d'un forfait au barème que ``prix_manuel`` protège."""
-    return ('« %s » : prix saisi à la main — il n\'a PAS été re-tarifé sur '
-            'les %d panneaux du devis (barème du stock : %s MAD HT). Effacez '
-            'la saisie manuelle sur cette ligne pour qu\'elle suive de nouveau '
-            'le barème.' % (designation, nb_panneaux, attendu))
+    """Le message FR d'un forfait au barème que ``prix_manuel`` protège (revue du 26/11 : avec sa
+    forme sans montant, :class:`AvertissementChiffre`)."""
+    texte = ('« %s » : prix saisi à la main — il n\'a PAS été re-tarifé sur '
+             'les %d panneaux du devis (barème du stock : %s MAD HT). Effacez '
+             'la saisie manuelle sur cette ligne pour qu\'elle suive de nouveau '
+             'le barème.' % (designation, nb_panneaux, attendu))
+    return AvertissementChiffre(texte, sans_montant=(
+        '« %s » : prix saisi à la main — il n\'a PAS été re-tarifé sur les %d panneaux du devis. '
+        'Effacez la saisie manuelle sur cette ligne pour qu\'elle suive de nouveau le barème.'
+        % (designation, nb_panneaux)))
 
 
 def avertissement_forfait_commun_divergent(designation):
@@ -792,7 +872,7 @@ def avertissement_forfait_commun_divergent(designation):
             'qu\'il suive chaque compte.' % designation)
 
 
-def _comptes_panneaux(lignes):
+def _comptes_panneaux(lignes, devis=None):
     """Le compte de panneaux de CHAQUE vue, lu sur les lignes du devis.
 
     Rend ``{variante: nb}`` pour les trois valeurs de ``variante``. Sur un
@@ -801,6 +881,8 @@ def _comptes_panneaux(lignes):
     les lignes COMMUNES plus les leurs (même règle que
     ``lignes_de_variante``), et la clé COMMUNE vaut ``None`` quand les deux
     divergent : il n'existe alors AUCUN compte qui décrive les deux options.
+
+    ``devis`` — transmis à :func:`_classe_ligne` (lignes lues sans leur devis).
     """
     def _quantite(ligne):
         try:
@@ -809,7 +891,7 @@ def _comptes_panneaux(lignes):
         except (ArithmeticError, TypeError, ValueError):
             return 0
 
-    panneaux = [li for li in lignes if _classe_ligne(li, _is_panel)]
+    panneaux = [li for li in lignes if _classe_ligne(li, _is_panel, devis)]
     if not any((getattr(li, 'variante', '') or '') for li in panneaux):
         total = sum(_quantite(li) for li in panneaux)
         return {VARIANTE_COMMUNE: total,
@@ -833,7 +915,10 @@ def comptes_panneaux_du_devis(devis):
     from apps.ventes.models import LigneDevis
     lignes = list(LigneDevis.objects.filter(
         devis_id=devis.pk, type_ligne='produit').select_related('produit'))
-    return _comptes_panneaux(lignes)
+    # Lecteurs en aval (constat 3) — ces lignes ne portent PAS leur devis : le
+    # transmettre, sinon ce compte (mots-clés seuls) diverge de celui du
+    # re-tarif (rôle rangé) qu'il est censé égaler.
+    return _comptes_panneaux(lignes, devis)
 
 
 def _statut_en_base(devis):
@@ -900,7 +985,7 @@ def retarifer_forfaits_par_panneau(devis, *, avertissements=None,
     """
     messages = avertissements if isinstance(avertissements, list) else []
     lignes = _lignes_produit(devis)
-    comptes = _comptes_panneaux(lignes)
+    comptes = _comptes_panneaux(lignes, devis)
     geles = {}
     if _statut_en_base(devis) not in (None, 'brouillon'):
         if comptes_avant is None or comptes_avant == comptes:
@@ -1192,9 +1277,11 @@ def _champs_des_lignes(lignes_in, company, lot_emis):
         # ré-enregistrement). La portée reste bornée : société de
         # l'utilisateur OU catalogue global — jamais celui d'un autre
         # tenant.
+        # Lecteurs en aval — la fiche jointe à la MÊME requête : le rôle rangé à
+        # l'écriture la lit (``_role_a_la_creation``) sans requête de plus.
         produit = produits_qs().filter(
             Q(company=company) | Q(company__isnull=True),
-            id=produit_id).first()
+            id=produit_id).select_related('fiche_technique').first()
         if produit is None:
             raise ValueError(f'Produit {produit_id} inconnu.')
         try:
@@ -1264,7 +1351,7 @@ def lignes_neuves(devis, lignes_in, company, *, avertissements=None):
               for champs in _champs_des_lignes(lignes_in, company, lambda _lot: None)]
     produits = [li for li in lignes if li.type_ligne == 'produit']
     messages = avertissements if isinstance(avertissements, list) else []
-    for ligne, attendu in _retarifs(produits, _comptes_panneaux(produits), {}, messages):
+    for ligne, attendu in _retarifs(produits, _comptes_panneaux(produits, devis), {}, messages):
         ligne.prix_unitaire = attendu
     return lignes
 

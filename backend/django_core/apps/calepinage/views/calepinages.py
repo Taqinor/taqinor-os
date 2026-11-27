@@ -819,7 +819,10 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
                 required=False),
             # ACON80 — le devis porté par une variante de ce calepinage.
             'devis': drf_serializers.IntegerField(required=False),
-            'surfaces_chiffrees': drf_serializers.JSONField(required=False)}),  # ACAL968
+            'surfaces_chiffrees': drf_serializers.JSONField(required=False),  # ACAL968
+            # Revue du 26/11 (D-ACAL-73) — envoyé SEULEMENT par la carte d'aperçu confirmée.
+            'apercu_confirme': drf_serializers.BooleanField(required=False),
+            'jeton_apercu': drf_serializers.CharField(required=False)}),  # le jeton de l'aperçu
         responses={200: forme_reponse(
             'CalepinageSyncDevis', 'inchange', 'panneaux', 'kwc', 'scenario',
             'batterie', 'lignes_modifiees', 'lignes_ajoutees',
@@ -846,10 +849,14 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
                 calepinage, user=request.user,
                 derogation_electrique=corps.get('derogation_electrique'),
                 devis_id=_entier_ou_none(corps.get('devis')),
-                surfaces_chiffrees=corps.get('surfaces_chiffrees'))
+                surfaces_chiffrees=corps.get('surfaces_chiffrees'),
+                apercu_confirme=corps.get('apercu_confirme') is True, jeton_apercu=corps.get('jeton_apercu'))
         except DevisRefuse as refus:
             return Response(_refus_devis(refus),
                             status=_statut_refus_devis(refus))
+        from ..services.devis import avertissements_sans_montant, lit_les_devis
+        if not lit_les_devis(request.user):  # D-ACAL-106/165 — aucun montant de vente à qui ne lit pas les devis
+            resultat = dict(resultat, avertissements=avertissements_sans_montant(resultat.get('avertissements')))
         return Response(resultat)
 
     # ── Les variantes : CRUD, bascule idempotente, comparatif ──────────────
@@ -1639,6 +1646,8 @@ def detail_calepinage(calepinage, request=None):
         'modifie_le': _horodatage(getattr(calepinage, 'updated_at', None)),
         'cree_par': _personne(getattr(calepinage, 'cree_par', None)),
         'responsable': _responsable(calepinage, company),
+        # T4-X3-016 — le responsable ne peut pas l'ouvrir (donnée d'avant lot 8) : la fiche le dit.
+        'responsable_sans_acces': cal_selectors.responsable_sans_acces(calepinage),
         'lead': _lead(calepinage, company),
         'client': _client(calepinage),
         'devis': _devis(devis_lie),

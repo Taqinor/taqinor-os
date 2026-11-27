@@ -67,12 +67,12 @@ async function creerDevisServeur({ lead, discountStr, onAlertes, onResultat, tar
     // AGQ22 — agricole : l'écran (panneau lead, générateur) affiche lui-même
     // le refus nommé ; le toast global ferait un second message. AGQ23 — la
     // clé d'idempotence du panneau (agricole seulement : C&I inchangé).
-    }, marche === 'agricole'
-      ? { suppressErrorToast: true, ...(idempotencyKey ? { idempotencyKey } : {}) }
-      : undefined)
+    // ACAL1325 — C&I aussi : la création peut durer ~50 s, l'écran dit seul le
+    // résultat (créé ou refusé), jamais un toast d'expiration en plus.
+    }, { suppressErrorToast: true, ...(marche === 'agricole' && idempotencyKey ? { idempotencyKey } : {}) })
   } catch (err) {
     // AGQ23 (C-AGQ-022) — délai dépassé : le serveur a pu finir la création.
-    if (marche === 'agricole' && err?.code === 'ECONNABORTED') {
+    if (err?.code === 'ECONNABORTED') {
       throw {
         detail: 'Le devis a peut-être été créé : la liste se rafraîchit.',
         delaiDepasse: true,
@@ -222,7 +222,7 @@ export async function createAutoQuote({ lead, discountStr, onAlertes, onResultat
         // auto-calculée côté écran n'est expédiée.
         ...(kwpAuto > 0 ? { target_kwc: kwpAuto } : {}),
         ...(Object.keys(etudeExtra).length ? { etude_params: etudeExtra } : {}),
-      })
+      }, { suppressErrorToast: true }) // ACAL1325 — l'écran dit seul le résultat
     } catch (err) {
       // Le serveur parle FRANÇAIS (422 : marque épinglée introuvable,
       // données de dimensionnement manquantes…) et ses appelants lisent

@@ -652,6 +652,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -660,6 +661,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -668,6 +670,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -676,6 +679,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -684,6 +688,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "non calculé : modèle spectral",
             "etapes": [
               {
                 "etape": "spectral",
@@ -1210,6 +1215,7 @@
     "production_devis": null,
     "conception": null,
     "ecart_devis": null,
+    "ecart_devis_motif": "",
     "derogations": [],
     "ecarts_longueur": [],
     "suppose": [
@@ -1217,7 +1223,8 @@
         "code": "allee_par_defaut",
         "libelle": "allée technique de 0,60 m (valeur du moteur : rien n'est réglé)",
         "valeur": 0.6,
-        "champ": "panneau Allées de l'atelier (largeur de l'allée technique)"
+        "champ": "panneau Allées de l'atelier (largeur de l'allée technique)",
+        "cible": {"onglet": "reglages", "champ": "allees"}
       }
     ]
   },
@@ -1463,6 +1470,7 @@
     "production_devis": null,
     "conception": null,
     "ecart_devis": null,
+    "ecart_devis_motif": "",
     "derogations": [],
     "ecarts_longueur": [],
     "suppose": [
@@ -1470,7 +1478,8 @@
         "code": "allee_par_defaut",
         "libelle": "allée technique de 0,60 m (valeur du moteur : rien n'est réglé)",
         "valeur": 0.6,
-        "champ": "panneau Allées de l'atelier (largeur de l'allée technique)"
+        "champ": "panneau Allées de l'atelier (largeur de l'allée technique)",
+        "cible": {"onglet": "reglages", "champ": "allees"}
       }
     ]
   },
@@ -1643,6 +1652,7 @@
     "production_devis": null,
     "conception": null,
     "ecart_devis": null,
+    "ecart_devis_motif": "",
     "derogations": [],
     "ecarts_longueur": [],
     "suppose": [
@@ -1650,13 +1660,15 @@
         "code": "longueur_chaine_dossier",
         "libelle": "Choisissez l'onduleur pour vérifier la longueur des chaînes (16 modules par défaut, à confirmer)",
         "valeur": 16,
-        "champ": "fiche technique du module et de l'onduleur"
+        "champ": "fiche technique du module et de l'onduleur",
+        "cible": {"onglet": "fiches"}
       },
       {
         "code": "allee_par_defaut",
         "libelle": "allée technique de 0,60 m (valeur du moteur : rien n'est réglé)",
         "valeur": 0.6,
-        "champ": "panneau Allées de l'atelier (largeur de l'allée technique)"
+        "champ": "panneau Allées de l'atelier (largeur de l'allée technique)",
+        "cible": {"onglet": "reglages", "champ": "allees"}
       }
     ]
   },
@@ -2286,6 +2298,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -2294,6 +2307,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -2302,6 +2316,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -2310,6 +2325,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -2318,6 +2334,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "non calculé : modèle spectral",
             "etapes": [
               {
                 "etape": "spectral",
@@ -2833,6 +2850,7 @@
       "ecart_pct": 3.2,
       "mention": "Deux chiffres : celui du devis déjà remis au client et celui de la simulation de la pose, le plus réaliste. Le devis envoyé n'est pas modifié : une révision est proposée."
     },
+    "ecart_devis_motif": "",
     "derogations": [
       {
         "code": "electrique_bloquant",
@@ -2866,6 +2884,15 @@
   "e5_m2_note": "Relecture E5 M2 (25/11) — `conception.devis_envoye.option` et `.production_annuelle_kwh` : l'option et la production annuelle que le DEVIS ENVOYÉ a rangées (`conception_retenue_du_devis`, aucun recalcul ; `production_annuelle_kwh` vaut `null` quand le devis n'en range aucune). L'étape Résultats compare CE chiffre à celui qu'elle affiche : égaux ⇒ « Le devis envoyé porte le même chiffre » ; différents ⇒ les deux chiffres nommés et « Réviser le devis » ; `null` ⇒ « Le devis envoyé ne porte pas de production enregistrée ». Le devis n'est jamais modifié.",
   "acal1956_note": "ACAL1956 (D-ACAL-90) — `production_devis` : pour un calepinage lié à un devis ENVOYÉ ou ACCEPTÉ, la production annuelle RETENUE PAR LE DEVIS (`conception_retenue_du_devis`, contrat `calepinage_conception_retenue.json` : `production_annuelle_kwh`, `production_origine`, `null` quand la clé manque — jamais recalculée) avec `devis`/`reference`/`statut` ; servie même sans simulation (l'étape Résultats n'est jamais vide), et à côté du P50 quand la simulation existe. `null` sans devis lié ou devis brouillon.",
   "acal1987_simulation_automatique": {"en_cours": false, "job_id": null, "manquants": [{"champ": "materiel.onduleur", "motif": "Aucun onduleur n'est désigné pour cette pose : choisissez l'onduleur.", "cible": null}]},
+  "acal1608_note": "ACAL1608 — `consommation.courbe_origine` NOMME la source de la courbe de BASE de la simulation, première disponible dans cet ordre (`services/courbe_charge.py::ORIGINES`) : `layout` (courbe saisie dans l'atelier), `import_intervalle` (relevé importé), `profil_mensuel` (douze mois saisis), `profil_type` (profil type de la société), `facture_lead` (repli quand RIEN n'est saisi dans l'atelier : la courbe que `services/consommation.py` propose pour la facture du lead, même conversion que la carte, barème société ; lead RÉSIDENTIEL seulement — un lead C&I ou agricole sans profil garde l'omission motivée). L'origine est publiée dans le résultat, le document n'est pas réécrit. L'écran dit sa source par cette valeur (libellé « facture du lead »). L'exemple `acal1608_consommation` est un FRAGMENT du résultat servi.",
+  "acal1608_consommation": {"consommation": {"courbe_origine": "facture_lead", "pas_minutes": 60}},
+  "acal1915_note": "ACAL1915 — `ecart_devis_motif` (clé racine TOUJOURS présente, chaîne) dit, en UNE phrase, pourquoi `ecart_devis` vaut `null` alors qu'un devis est LIÉ : jamais un silence. `''` quand il n'y a rien à dire : aucun devis lié, ou écart servi. Sinon la phrase de la PREMIÈRE garde en cause, dans cet ordre (`services/ecart_devis.py`) : `simulation` (aucun P50 servi : jamais simulé, ou simulation périmée), `devis_introuvable` (devis absent ou d'une autre société), `a_resynchroniser` (`_conception_a_jour` faux : le devis décrit une autre conception), `production_recalculee_au_rendu` (`figure_stockee_imprimee` faux : règles corrigées, ou chiffrage C&I/agricole), `sans_production` (aucune production au devis). Les phrases sont celles de `acal1915_motifs`, mot pour mot ; l'onglet Économie les affiche telles quelles. Lecture pure : aucun rendu du devis, rien n'est rangé.",
+  "acal1915_motifs": {"simulation": "Écart au devis non calculé : la pose n'a pas de simulation à jour. Lancez la simulation.", "devis_introuvable": "Écart au devis non calculé : le devis lié est introuvable dans votre société.", "a_resynchroniser": "Écart au devis non calculé : devis à resynchroniser, il décrit une autre conception que cette pose.", "production_recalculee_au_rendu": "Écart au devis non calculé : ce devis imprime une production recalculée à son rendu (règles corrigées, ou chiffrage C&I ou agricole) ; l'atelier ne la lit pas sans rendre le devis.", "sans_production": "Écart au devis non calculé : le devis ne porte aucune production annuelle."},
+  "acal1915_ecart_devis_motif": {"ecart_devis": null, "ecart_devis_motif": "Écart au devis non calculé : devis à resynchroniser, il décrit une autre conception que cette pose."},
+  "acal1933_note": "ACAL1933 — `validation.pertes_totales.omises_vs_pvgis` (liste, TOUJOURS présente dans `pertes_totales`, vide quand rien n'est omis) nomme les étapes que PVGIS calcule lui-même (`iam`, `spectral`, `niveau_irradiance`, `thermique`) et que NOTRE chaîne a omises POUR CE calepinage faute de donnée (`etapes_omises` de la cascade, ex. la chaleur des panneaux sans NOCT ni Uc sur la fiche ; les étapes toujours omises en v1, `chaine_pertes.TOUJOURS_OMISES` = le spectre, n'y figurent jamais : elles sont omises de tout calepinage) : `{etape, libelle, designation}`, `designation` = les mots de tous les jours (« la chaleur des panneaux »). Une étape omise ⇒ `egales` vaut `false` même si les deux pourcentages coïncident : la comparaison n'est PAS à pertes système égales, et `validation.motif` ne le dit plus ; il dit « Notre chaîne calcule sans <designations>, que PVGIS compte » (`services/validation.py`, `MOTIF_OMISES_VS_PVGIS`). L'écran écrit « à pertes système égales » seulement quand `egales === true` et, la liste non vide, « sans <designation>, que PVGIS compte ». Recalculé à chaque simulation ; la valeur de l'écart ne change pas.",
+  "acal1933_omises_vs_pvgis": {"validation": {"pertes_totales": {"chaine_pct": 6.8, "pvgis_pct": 6.8, "egales": false, "cascade_pct": 9.6, "etapes_exclues": [{"etape": "iam", "libelle": "Incidence (IAM)", "perte_pct": 3.0}], "omises_vs_pvgis": [{"etape": "thermique", "libelle": "Échauffement des modules", "designation": "la chaleur des panneaux"}]}}},
   "acal1623_note": "ACAL1623 (revue lot 6) — `panneaux_non_raccordes` : null, ou {modules, phrase} quand la simulation servie compte des panneaux posés raccordés à aucun onduleur (`production.hors_chaine.modules` > 0). `phrase` est celle de `agregation_electrique.phrase_non_raccordes` : l'écran (Guidé > Résultats) la lit SUR CETTE CLÉ, jamais à un rang de `avertissements` (où la « borne haute » la précède).",
-  "acal1623_non_raccordes": {"panneaux_non_raccordes": {"modules": 4, "phrase": "4 panneaux ne sont raccordés à aucun onduleur : ils ne sont pas comptés dans la production (leur énergie possible est donnée à part, « hors chaîne »)."}, "production": {"hors_chaine": {"modules": 4, "p50_kwh": null}}, "avertissements": ["Production publiée en « borne haute » : PR, P75, P90 et P95 non publiés tant que les pertes du socle ne sont pas saisies (salissure, lid).", "4 panneaux ne sont raccordés à aucun onduleur : ils ne sont pas comptés dans la production (leur énergie possible est donnée à part, « hors chaîne »)."]}
+  "acal1623_non_raccordes": {"panneaux_non_raccordes": {"modules": 4, "phrase": "4 panneaux ne sont raccordés à aucun onduleur : ils ne sont pas comptés dans la production (leur énergie possible est donnée à part, « hors chaîne »)."}, "production": {"hors_chaine": {"modules": 4, "p50_kwh": null}}, "avertissements": ["Production publiée en « borne haute » : PR, P75, P90 et P95 non publiés tant que les pertes du socle ne sont pas saisies (salissure, lid).", "4 panneaux ne sont raccordés à aucun onduleur : ils ne sont pas comptés dans la production (leur énergie possible est donnée à part, « hors chaîne »)."]},
+  "liaison_dc_tracee_note": "Liaison DC tracée (suite ACAL1317) — `longueurs` (services/cables.py::cables_du_calepinage) porte `source_dc` : d'où vient la liaison DC (câble `W1`) que la simulation (perte ohmique DC) et la vérification de chute emploient. « saisie » = règle d'avant : course du module le plus éloigné au point de collecte + descente + coffret → onduleur, tous SAISIS (ou `dc_m` saisi). « trace » = le plan seul : course du module le plus éloigné jusqu'au DÉPART du tracé DC + le tracé jusqu'à un onduleur posé, compté À PLAT (même projeteur que `troncons`) + le dénivelé des deux bouts du tracé quand tous deux portent `altitudeM`. « trace_et_saisie » = le tracé est entré dans la longueur avec au moins une part SAISIE (la descente, ou le coffret → onduleur à la place du tracé) — le cas courant : l'atelier propose un tracé sans altitude. « defaut » = aucune longueur connue (`longueurs.dc` null, aucune section DC ; un tracé sans altitude ni descente saisie laisse la liaison inconnue et le motif nomme la descente). Le tracé ne sert qu'aux calculs faits à partir de `regles_calcul.COUPURE_LIAISON_DC_TRACEE` ; une lecture (`GET resultat/`) sert le W1 que la simulation SERVIE a calculé (date de son `calcule_le`). L'exemple `liaison_dc_tracee` est un FRAGMENT du résultat servi : un pan, tracé tel que l'atelier l'écrit (départ au centre du pan, points sans altitude), descente saisie.",
+  "liaison_dc_tracee": {"longueurs": {"dc": {"valeur_m": 28.0, "origine": "plan et saisie", "detail": "liaison relevée sur le tracé du plan (pan « PAN-A ») : module le plus éloigné → départ du tracé « chA » (plan) + tracé « chA » jusqu'à l'onduleur « eq1 », à plat (plan) + descente verticale (saisie)", "composantes": [{"poste": "module le plus éloigné → départ du tracé « chA »", "valeur_m": 3.0, "origine": "plan"}, {"poste": "tracé « chA » jusqu'à l'onduleur « eq1 », à plat", "valeur_m": 19.0, "origine": "plan"}, {"poste": "descente verticale", "valeur_m": 6.0, "origine": "saisie"}]}, "ac": {"valeur_m": 12.0, "origine": "saisie", "detail": "liaison onduleur → TGBT saisie", "composantes": [{"poste": "onduleur → TGBT", "valeur_m": 12.0, "origine": "saisie"}]}, "source_dc": "trace_et_saisie"}, "cables": [{"repere": "W1", "longueur_m": 28.0, "longueur_origine": "plan et saisie", "longueur_detail": "liaison relevée sur le tracé du plan (pan « PAN-A ») : module le plus éloigné → départ du tracé « chA » (plan) + tracé « chA » jusqu'à l'onduleur « eq1 », à plat (plan) + descente verticale (saisie)"}], "troncons": {"troncons": [{"id": "chA", "cote": "dc", "de": "PAN-A", "vers": "eq1", "longueur_m": 19.0, "longueur_origine": "plan"}]}}
 }

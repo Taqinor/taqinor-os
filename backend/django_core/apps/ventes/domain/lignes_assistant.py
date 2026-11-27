@@ -113,7 +113,9 @@ def produit_vendable(devis, produit_id):
     archivé et TARIFÉ ; sinon un refus nommé (404 introuvable, 409 sinon)."""
     from apps.stock.selectors import produits_qs
 
-    produit = produits_qs().filter(
+    # Lecteurs aval (constat 6) — la fiche jointe : l'écrivain unique range le
+    # rôle qu'elle prouve (``lignes._role_de_la_fiche``), comme le générateur.
+    produit = produits_qs().select_related('fiche_technique').filter(
         Q(company_id=devis.company_id) | Q(company__isnull=True),
         pk=produit_id).first()
     if produit is None:

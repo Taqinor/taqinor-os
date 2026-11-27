@@ -58,12 +58,13 @@ def capacite_batterie_du_devis(devis, option='avec'):
     try:
         from apps.ventes.dimensionnement import capacite_utile_batterie
         from apps.ventes.services import classer_produit
+        from apps.ventes.domain.classe_ligne import role_de_ligne  # rôle RANGÉ, puis mots-clés
         total = 0.0
         for ligne in devis.lignes.all():
             if not ligne_dans_option(ligne, option):
                 continue
             designation = getattr(ligne, 'designation', '') or ''
-            if classer_produit(designation) != 'batterie':
+            if role_de_ligne(ligne, lambda d=designation: classer_produit(d), devis=devis) != 'batterie':
                 continue
             kwh = capacite_utile_batterie(
                 getattr(ligne, 'produit', None), designation)
@@ -117,13 +118,14 @@ def banque_batterie_du_devis(devis, option='avec'):
     try:
         from apps.ventes.dimensionnement import capacite_utile_batterie
         from apps.ventes.services import classer_produit
+        from apps.ventes.domain.classe_ligne import role_de_ligne  # rôle RANGÉ, puis mots-clés
         nb_packs = 0.0
         capacite_totale = 0.0
         for ligne in devis.lignes.all():
             if not ligne_dans_option(ligne, option):
                 continue
             designation = getattr(ligne, 'designation', '') or ''
-            if classer_produit(designation) != 'batterie':
+            if role_de_ligne(ligne, lambda d=designation: classer_produit(d), devis=devis) != 'batterie':
                 continue
             quantite = float(getattr(ligne, 'quantite', 0) or 0)
             if quantite <= 0:
@@ -232,6 +234,7 @@ def puissances_batterie_des_lignes(lignes, roles=None, devis=None):
     }
     try:
         from apps.ventes.services import classer_produit
+        from apps.ventes.domain.classe_ligne import role_de_ligne  # rôle RANGÉ, puis mots-clés
         from apps.ventes.domain.regles_calcul import REGLES_ECARTS_0411, regles_au_moins
         from core.product_roles import est_onduleur_devis
         est_onduleur = (est_onduleur_devis if regles_au_moins(devis, REGLES_ECARTS_0411)
@@ -246,7 +249,8 @@ def puissances_batterie_des_lignes(lignes, roles=None, devis=None):
             if index < len(roles):
                 role = roles[index]
             else:
-                role = classer_produit(getattr(ligne, 'designation', '') or '')
+                role = role_de_ligne(ligne, lambda li=ligne: classer_produit(
+                    getattr(li, 'designation', '') or ''), devis=devis)
             if role == 'batterie':
                 champs = (('packs_decharge_kw', 'max_decharge_kw'),
                           ('packs_charge_kw', 'max_charge_kw'))
@@ -340,6 +344,7 @@ def rendement_batterie_des_lignes(lignes, roles=None):
     resultat = {'rendement': None, 'source': RENDEMENT_SOURCE_HYPOTHESE}
     try:
         from apps.ventes.services import classer_produit
+        from apps.ventes.domain.classe_ligne import role_de_ligne  # rôle RANGÉ, puis mots-clés
         roles = list(roles or ())
         publies = []
         lignes_batterie = 0
@@ -347,7 +352,8 @@ def rendement_batterie_des_lignes(lignes, roles=None):
             if index < len(roles):
                 role = roles[index]
             else:
-                role = classer_produit(getattr(ligne, 'designation', '') or '')
+                role = role_de_ligne(ligne, lambda li=ligne: classer_produit(
+                    getattr(li, 'designation', '') or ''))
             if role != 'batterie':
                 continue
             quantite = float(getattr(ligne, 'quantite', 0) or 0)

@@ -12,6 +12,7 @@ import { MemoryRouter } from 'react-router-dom'
 import authReducer from '../../../features/auth/store/authSlice'
 import ventesReducer from '../../../features/ventes/store/ventesSlice'
 import PanneauAgricole from './PanneauAgricole'
+import CarteCreation from './CarteCreation'
 import { ECO_POMPAGE_VIDE } from '../../../features/ventes/quote/etudeMarcheBloc'
 import { documentContrat, exempleContrat } from '../../../test/fixtures/contractSamples'
 import {
@@ -261,6 +262,53 @@ describe('résultat serveur (AGR129)', () => {
     expect(screen.getByTestId('taille-recommandee').textContent).not.toContain('ne délivre pas')
   })
 
+  // ACAL1258 — le serveur NOMME les articles sans prix (`articles_sans_prix`) ;
+  // un article « non choisi » (motif de sa ligne du kit) n'est pas « sans prix ».
+  it('ACAL1258 — taille au prix incomplet : les articles sans prix sont NOMMÉS, jamais un prix', () => {
+    const reco = REPONSE.tailles.find((t) => t.cle === 'recommandee')
+    const taille = { ...reco, prix_connu: false, total_ttc: null,
+      articles_sans_prix: ['Structure au sol pompage', 'Câble DC'] }
+    render(<PanneauAgricole {...PROPS_VIDES}
+      apercuPompage={{ donnees: { ...REPONSE, tailles: [taille] } }} />)
+    const carte = screen.getByTestId('taille-recommandee')
+    const nommes = screen.getByTestId('taille-sans-prix-recommandee')
+    expect(nommes.textContent).toContain('Structure au sol pompage')
+    expect(nommes.textContent).toContain('Câble DC')
+    expect(carte.textContent).not.toMatch(/MAD|DH/)
+  })
+
+  it('ACAL1258 — un article « non choisi » (motif de sa ligne) est dit à choisir, pas sans prix', () => {
+    const reco = REPONSE.tailles.find((t) => t.cle === 'recommandee')
+    const motif = 'coffret DC non choisi : nombre de chaînes en parallèle du champ inconnu'
+    const taille = { ...reco, prix_connu: false, total_ttc: null,
+      articles_sans_prix: ['Coffret de protection DC', 'Câble DC'] }
+    const kit = { ...REPONSE.kit, inclus: [...REPONSE.kit.inclus,
+      { cle: 'protection_dc', designation: 'Coffret de protection DC — prix à renseigner', prix_connu: false, motif },
+      { cle: 'cable_dc', designation: 'Câble DC — prix à renseigner', prix_connu: false }] }
+    render(<PanneauAgricole {...PROPS_VIDES}
+      apercuPompage={{ donnees: { ...REPONSE, kit, tailles: [taille] } }} />)
+    expect(screen.getByTestId('taille-sans-prix-recommandee').textContent).toContain('Câble DC')
+    expect(screen.getByTestId('taille-sans-prix-recommandee').textContent).not.toContain('Coffret')
+    expect(screen.getByTestId('taille-non-choisis-recommandee').textContent).toContain(motif)
+  })
+
+  it('ACAL1258 — clé absente : jamais d’article inventé, la mention générique reste', () => {
+    const reco = REPONSE.tailles.find((t) => t.cle === 'recommandee')
+    const { articles_sans_prix: _omis, ...sansCle } = reco
+    render(<PanneauAgricole {...PROPS_VIDES}
+      apercuPompage={{ donnees: { ...REPONSE, tailles: [{ ...sansCle, prix_connu: false }] } }} />)
+    expect(screen.getByTestId('taille-recommandee').textContent).toContain('prix à renseigner')
+    expect(screen.queryByTestId('taille-sans-prix-recommandee')).toBeNull()
+  })
+
+  it('ACAL1261 — une seule table de libellés des valeurs du lead (plus de copie dans le panneau)', () => {
+    const source = readFileSync(path.resolve(ICI, 'PanneauAgricole.jsx'), 'utf8')
+    expect(source).toContain('LIBELLES_VALEURS_LEAD')
+    for (const copie of ['Souss-Massa (Agadir)', 'Goutte-à-goutte', 'Dattier (palmier)', 'Réseau électrique']) {
+      expect(source).not.toContain(copie)
+    }
+  })
+
   it('pastilles de couverture : vert 95-120, orange > 120, rouge < 95', () => {
     const donnees = { ...REPONSE, couverture_pct_mois: [99, 169, 80, ...REPONSE.couverture_pct_mois.slice(3)] }
     render(<PanneauAgricole {...PROPS_VIDES} apercuPompage={{ donnees }} />)
@@ -305,6 +353,41 @@ describe('résultat serveur (AGR129)', () => {
     expect(screen.queryByTestId('besoin-debit-souhaite')).toBeNull()
   })
 
+  // ACAL1259 — même mention qu'au PDF (pastille `agricole/pages.py`).
+  it('production au débit déclaré ⇒ « estimation · débit déclaré par vous » ; courbe ⇒ rien', () => {
+    const existante = CONTRAT.exemple_pompe_existante
+    expect(existante.production.mode).toBe('debit_declare')
+    const { rerender } = render(<PanneauAgricole {...PROPS_VIDES}
+      apercuPompage={{ donnees: existante }} />)
+    const entete = () => screen.getByTestId('resultat-mois').querySelector('thead th:nth-child(2)')
+    expect(entete().textContent).toBe('Production (m³/j)estimation · débit déclaré par vous')
+    rerender(<PanneauAgricole {...PROPS_VIDES} apercuPompage={{ donnees: REPONSE }} />)
+    expect(REPONSE.production.mode).toBe('courbe')
+    expect(entete().textContent).toBe('Production (m³/j)')
+  })
+
+  // ACAL1262 — le besoin calculé depuis le débit souhaité a SON onglet
+  // sélectionné (mode serveur `debit_souhaite`, `domain/pompage.py::_besoin`).
+  it('besoin du débit souhaité ⇒ onglet « Débit souhaité » sélectionné', () => {
+    const majPompage = vi.fn()
+    const coche = () => [...screen.getByTestId('bloc-besoin').querySelectorAll('[role="radio"]')]
+      .filter((b) => b.getAttribute('aria-checked') === 'true').map((b) => b.textContent)
+    const { rerender } = render(<PanneauAgricole {...PROPS_VIDES} pompeDebit="10" majPompage={majPompage} />)
+    expect(coche()).toEqual(['Débit souhaité'])
+    expect(screen.getByTestId('besoin-debit-souhaite')).toBeTruthy()
+    rerender(<PanneauAgricole {...PROPS_VIDES} pompeDebit="" />)
+    expect(coche()).toEqual([])
+    rerender(<PanneauAgricole {...PROPS_VIDES} pompeDebit="10"
+      pompageSaisie={poserSaisie(POMPAGE_SAISIE_VIDE, 'besoin.mode', 'volume_declare')} />)
+    expect(coche()).toEqual(['Volume déclaré'])
+    rerender(<PanneauAgricole {...PROPS_VIDES} pompeDebit="10" majPompage={majPompage}
+      pompageSaisie={poserSaisie(POMPAGE_SAISIE_VIDE, 'besoin.mode', 'debit_souhaite')} />)
+    expect(coche()).toEqual(['Débit souhaité'])
+    expect(screen.getByTestId('besoin-debit-souhaite')).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', { name: 'Cultures' }))
+    expect(majPompage).toHaveBeenCalledWith('besoin.mode', 'agronomique')
+  })
+
   it('aucune valeur affichée sans réponse serveur', () => {
     render(<PanneauAgricole {...PROPS_VIDES} apercuPompage={null} />)
     expect(screen.queryByTestId('resultat-pompage')).toBeNull()
@@ -334,6 +417,43 @@ describe('résultat serveur (AGR129)', () => {
     expect(ligne()).toBeNull()
     rerender(<PanneauAgricole {...PROPS_VIDES} apercuPompage={{ donnees: { ...REPONSE, production: null } }} />)
     expect(ligne()).toBeNull()
+  })
+})
+
+// ACAL1256 — le bandeau « prix à renseigner » de la carte Création : une pompe
+// SANS COURBE chiffrée retenue (pré-dimensionnement) n'est pas « non chiffrée »,
+// seules les pompes à courbe qui conviendraient n'ont pas de prix.
+describe('bandeau pompes sans prix (ACAL1256)', () => {
+  const carte = (donnees) => render(
+    <MemoryRouter>
+      <CarteCreation errors={{}} warnings={{}} modeInstallation="agricole"
+        apercuPompage={{ donnees }} kpiTotal={0} cancel={vi.fn()} handleReset={vi.fn()}
+        setNote={vi.fn()} note="" />
+    </MemoryRouter>)
+  const SANS_COURBE = {
+    ...CONTRAT.exemple,
+    pompe: { ...CONTRAT.exemple.pompe, nom: 'Pompe immergée 4" 7.5 kW', courbe: null,
+      placeholder: false, prix_connu: true },
+    prix_a_renseigner: ['Pompe immergée OSP 30/8 — 10 CV', 'Pompe immergée OSP 30/11 — 12.5 CV'],
+  }
+
+  it('pompe sans courbe chiffrée retenue + pompes à courbe sans prix ⇒ « d’autres pompes »', () => {
+    carte(SANS_COURBE)
+    const texte = screen.getByTestId('pompage-prix-a-renseigner').textContent
+    expect(texte).toBe("D'autres pompes à courbe conviendraient mais n'ont pas de prix : "
+      + 'Pompe immergée OSP 30/8 — 10 CV, Pompe immergée OSP 30/11 — 12.5 CV.')
+    expect(texte).not.toMatch(/ne peut donc pas être chiffrée|Aucune pompe/)
+  })
+
+  it('pompe servie placeholder ⇒ le texte d’aujourd’hui reste', () => {
+    carte(CONTRAT.exemple_aucune_pompe_chiffrable)
+    expect(screen.getByTestId('pompage-prix-a-renseigner').textContent)
+      .toMatch(/Son prix de vente n'est pas saisi, elle ne peut donc pas être chiffrée/)
+  })
+
+  it('pompe chiffrée sans pompe à courbe manquante ⇒ aucun bandeau', () => {
+    carte(CONTRAT.exemple)
+    expect(screen.queryByTestId('pompage-prix-a-renseigner')).toBeNull()
   })
 })
 

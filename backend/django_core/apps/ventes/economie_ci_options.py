@@ -17,11 +17,17 @@
   d'année (interpolé dans l'année du passage à zéro), pour comparer deux
   options à la même précision.
 
+* :func:`revente_bt` et :func:`libelle_poste` (lot 10, C20) : la revente BT
+  absente et le libellé de métier d'un poste, déplacés tels quels depuis
+  ``economie_ci``.
+
 Aucun accès base, aucun import de modèle ; ne change aucun statut (règle #4).
 """
 from __future__ import annotations
 
 import math
+
+from apps.ventes.quote_engine.constants_82_21 import MENTION_ART13, MENTION_BT
 
 ROLE_OM = 'om_ci'
 
@@ -539,3 +545,35 @@ def apercu_production_comparable(apercu, facteur, par_cellule, *, origine, motif
     if bilan is None:
         return None, MOTIF_SENSIBILITE_NON_REPRODUCTIBLE
     return dict(apercu, bilan=dict(apercu.get('bilan') or {}, **bilan)), None
+
+
+def revente_bt(apercu):
+    bilan = apercu.get('bilan') or {}
+    non_valorise = bilan.get('non_valorise_kwh')
+    if non_valorise is None:
+        non_valorise = bilan.get('surplus_kwh')
+    hyp = []
+    if non_valorise is not None:
+        hyp.append({'cle': 'surplus_non_valorise_kwh',
+                    'valeur': non_valorise, 'statut': 'source',
+                    'source': 'etude_ci.bilan'})
+    return {
+        'statut': 'absente_bt',
+        'kwh_an': None,
+        'plafond_kwh': None,
+        'tarifs': [],
+        'valeur_mad_an': None,
+        'mentions': [MENTION_BT, MENTION_ART13],
+        'hypotheses': hyp,
+    }
+
+
+_LIBELLES_POSTE = {'pointe': 'Énergie heures de pointe', 'pleines': 'Énergie heures pleines',
+                   'creuses': 'Énergie heures creuses', 'normales': 'Énergie heures normales'}
+
+
+def libelle_poste(poste):
+    """ACAL1225 — le libellé de métier d'un poste (``tranche_3`` → « Énergie tranche 3 »)."""
+    if '+' in poste:
+        return 'Énergie, toutes tranches'
+    return _LIBELLES_POSTE.get(poste) or 'Énergie ' + poste.replace('_', ' ')

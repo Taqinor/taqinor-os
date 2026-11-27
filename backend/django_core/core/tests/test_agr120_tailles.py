@@ -285,5 +285,45 @@ class DisjoncteurSurLeKwDuVariateur(unittest.TestCase):
         self.assertIn("11,4 A", inclus["disjoncteur_ac"]["hypothese"])
 
 
+class ArticlesSansPrix(unittest.TestCase):
+    """ACAL1257 — chaque taille NOMME les lignes ``inclus`` de son kit sans
+    prix (libellé du catalogue, dans l'ordre du kit, jamais un prix) ; liste
+    vide quand tout est chiffré ; ``prix_connu`` inchangé."""
+
+    def test_structure_sans_prix_nommee(self):
+        kit = {"structure": {"id": 51, "nom": "Structure au sol pompage",
+                             "prix_connu": False}}
+        _choix, res = _neuve(kit=kit)
+        self.assertEqual(len(res["tailles"]), 3)
+        for taille in res["tailles"]:
+            attendus = [x for x in taille["composition"]["inclus"]
+                        if not x["prix_connu"]]
+            self.assertIn("Structure au sol pompage",
+                          taille["articles_sans_prix"])
+            self.assertEqual(len(taille["articles_sans_prix"]),
+                             len(attendus))
+            self.assertFalse(taille["prix_connu"])
+            self.assertFalse(any("prix à renseigner" in a
+                                 for a in taille["articles_sans_prix"]))
+
+    def test_kit_tout_chiffre_liste_vide(self):
+        _choix, res = _neuve()
+        for taille in res["tailles"]:
+            self.assertEqual(taille["prix_connu"],
+                             taille["articles_sans_prix"] == [])
+
+    def test_pompe_existante_porte_la_cle(self):
+        kit = {"structure": {"id": 51, "nom": "Structure au sol pompage",
+                             "prix_connu": False}}
+        res = proposer_tailles(
+            mode_pompe="existante",
+            plaque={"kw": 4, "tension_v": 380, "phases": 3},
+            debit_declare_m3h=12, besoin_m3_jour_mois=[60.0] * 12,
+            hmt_m=50, variateurs=VARIATEURS, panneau=PANNEAU,
+            profils_horaires=PROFILS, kit=kit)
+        self.assertIn("Structure au sol pompage",
+                      res["tailles"][0]["articles_sans_prix"])
+
+
 if __name__ == "__main__":
     unittest.main()

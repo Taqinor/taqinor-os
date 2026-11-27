@@ -28,6 +28,12 @@ L2_PLUS = {'schema_version': 2, 'result': {'panels': 12},
            'setbacksM': 0.5}
 
 
+def _doc_numerote(numeros):
+    """Revue lot 8 (suite ACAL1720) — un pan ``P`` dont les modules portent ``numeros``."""
+    return {'version': 2, 'zones': [{'id': 'P', 'geometry': {'panels': [
+        {'cx': i * 1.2, 'cy': 0.0, 'n': n} for i, n in enumerate(numeros)]}}]}
+
+
 def url_restaurer(pk, version_id):
     return f'{url_detail(pk)}versions/{version_id}/restaurer/'
 
@@ -116,3 +122,26 @@ class RestaurationReversibleTest(BaseApiCalepinage):
         self._restaurer(self.v1)
         self.assertEqual(Calepinage.objects.get(
             pk=self.calepinage.pk).roof_image, '')
+
+    def test_restaurer_garde_le_plafond_des_numeros_depenses(self):
+        """Revue lot 8 (suite ACAL1720) — restaurer une version d'AVANT des
+        numéros dépensés (4, 5) : la conception revient, son plafond reste 5 —
+        le prochain module neuf ne reprend jamais le 4 ni le 5. Clé volatile :
+        aucune empreinte ne bouge, et la re-restaurer (« courante ») la garde."""
+        from apps.calepinage.services.layout import empreinte_document
+        from apps.ventes.domain.geometrie import layout_hash
+
+        enregistrer_layout(self.calepinage, _doc_numerote([1, 2, 3]), user=self.user)
+        ancienne = (CalepinageVersion.objects.filter(calepinage=self.calepinage)
+                    .order_by('-created_at', '-id').first())
+        self.assertEqual(ancienne.roof_layout, _doc_numerote([1, 2, 3]))
+        enregistrer_layout(self.calepinage, _doc_numerote([1, 2, 3, 4, 5]), user=self.user)
+        self._restaurer(ancienne)
+        roof_layout, _resultat = self._etat()
+        self.assertEqual(roof_layout['zones'], _doc_numerote([1, 2, 3])['zones'])
+        self.assertEqual(roof_layout['plafondsNumerotation'], {'P': 5})
+        self.assertEqual(empreinte_document(roof_layout), empreinte_document(ancienne.roof_layout))
+        self.assertEqual(Calepinage.objects.get(pk=self.calepinage.pk).layout_hash,
+                         layout_hash(ancienne.roof_layout))
+        self._restaurer(ancienne)  # déjà courante : la clé reste
+        self.assertEqual(self._etat()[0]['plafondsNumerotation'], {'P': 5})

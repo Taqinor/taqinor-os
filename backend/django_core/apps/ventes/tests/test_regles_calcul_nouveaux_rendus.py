@@ -174,6 +174,90 @@ class ReglesCalculTests(SimpleTestCase):
             self.assertEqual(drapeaux_pdf_2611(devis(mode, statut='brouillon', date_envoi=None)), {})
         self.assertIn('phrases_pdf_2611', drapeaux_nouveaux_rendus(devis(statut='brouillon', date_envoi=None)))
 
+    def test_lecteurs_aval_role_fiche_nouveaux_rendus_seulement(self):
+        # Lecteurs en aval (fondateur 24/11/2026) — la classe d'une ligne par le
+        # rôle et la fiche du produit : même littéral que la coupure du toit plat.
+        from datetime import datetime, time, timedelta, timezone
+
+        from apps.ventes.domain.regles_calcul import (
+            COUPURE_CLASSE_PAR_ROLE, COUPURE_TOIT_PLAT, classe_par_role_ouverte)
+        self.assertEqual(COUPURE_CLASSE_PAR_ROLE, COUPURE_TOIT_PLAT)
+        coupure = datetime.combine(datetime(*COUPURE_CLASSE_PAR_ROLE), time(8), tzinfo=timezone.utc)
+        avant = coupure - timedelta(days=1)
+
+        def devis(**champs):
+            return SimpleNamespace(**dict({'regles_calcul': 14, 'date_creation': avant}, **champs))
+        self.assertTrue(classe_par_role_ouverte(None))
+        self.assertTrue(classe_par_role_ouverte(devis(statut='brouillon', date_envoi=None)))
+        self.assertTrue(classe_par_role_ouverte(devis(statut='envoye', date_envoi=coupure)))
+        self.assertFalse(classe_par_role_ouverte(devis(statut='envoye', date_envoi=avant)))
+        self.assertFalse(classe_par_role_ouverte(devis(statut='accepte', date_envoi=avant)))
+
+    def test_t4_u1_009_rib_sous_echeancier_nouveaux_rendus_seulement(self):
+        # T4-U1-009 / T4-X7-020 — « Devis final » commercial / industriel /
+        # agricole : le RIB du profil sous l'échéancier, même coupure que les
+        # corrections du 26/11 ; un devis envoyé avant n'a pas la clé.
+        from datetime import datetime, time, timedelta, timezone
+
+        from apps.ventes.domain.regles_calcul import COUPURE_PDF_2611
+        from apps.ventes.quote_engine.builder import _avec_regles_pose_reelle
+        from apps.ventes.quote_engine.rib_devis_final import CLE, drapeau_rib, drapeaux_rendu
+        coupure = datetime.combine(datetime(*COUPURE_PDF_2611), time(8), tzinfo=timezone.utc)
+        avant = coupure - timedelta(days=2)
+        profil = {'nom': 'SOCIETE 43 SARL', 'ice': '1', 'rib': '011 780 0000000000000000 12', 'banque': 'Banque X'}
+        data = {'devis_final': True, 'pdf_mode': 'full', 'entreprise': profil}
+
+        def devis(mode, **champs):
+            return SimpleNamespace(**dict({'regles_calcul': 14, 'date_creation': avant,
+                                           'mode_installation': mode}, **champs))
+        for mode in ('commercial', 'industriel', 'agricole', 'Agricole'):
+            for ouvert in (devis(mode, statut='brouillon', date_envoi=None),
+                           devis(mode, statut='envoye', date_envoi=coupure)):
+                self.assertEqual(drapeau_rib(ouvert, data), {CLE: True})
+            ferme = devis(mode, statut='envoye', date_envoi=avant)
+            self.assertEqual(drapeau_rib(ferme, data), {})
+            # La charge utile d'un devis envoyé avant : clé ABSENTE (jamais False).
+            self.assertNotIn(CLE, drapeaux_rendu(ferme, data))
+            self.assertNotIn(CLE, _avec_regles_pose_reelle(dict(data), False, ferme))
+        ouvert = devis('commercial', statut='brouillon', date_envoi=None)
+        self.assertIn(CLE, _avec_regles_pose_reelle(dict(data), False, ouvert))
+        # Résidentiel (sa page 3 imprime déjà la ligne), une-page, sans « Devis
+        # final », profil sans RIB ni banque : aucune clé.
+        self.assertEqual(drapeau_rib(devis('residentiel', statut='brouillon', date_envoi=None), data), {})
+        for autre in (dict(data, pdf_mode='onepage'), dict(data, devis_final=False),
+                      dict(data, entreprise=dict(profil, rib='', banque=' ')), dict(data, entreprise={})):
+            self.assertEqual(drapeau_rib(ouvert, autre), {})
+
+    def test_t4_u1_009_rib_imprime_du_profil_seul_sous_l_echeancier(self):
+        # Clé absente : les deux échéanciers sont rendus octet pour octet comme
+        # avant, même avec un RIB au profil. Clé posée : la ligne du profil.
+        from apps.ventes.quote_engine.agricole.pages import _echeancier
+        from apps.ventes.quote_engine.ci.blocs import bloc_echeancier
+        from apps.ventes.quote_engine.rib_devis_final import CLE
+        profil = {'nom': 'SOCIETE 43 SARL', 'ice': '1', 'rib': '011 780 0000000000000000 12', 'banque': 'Banque X'}
+        synthese = {'echeancier': [{'cle': 'commande', 'libelle': 'Commande', 'pct': 30, 'montant_ttc': 3000},
+                                   {'cle': 'reception', 'libelle': 'Réception', 'pct': 70, 'montant_ttc': 7000}]}
+        agricole = {'payment_terms': {'acompte': 30, 'materiel': 60, 'solde': 10}}
+        ci_avant = bloc_echeancier(synthese, 'c3', doc={})
+        agri_avant = _echeancier(dict(agricole), 'fr')
+        self.assertEqual(bloc_echeancier(synthese, 'c3', doc={'entreprise': profil}), ci_avant)
+        self.assertEqual(_echeancier(dict(agricole, entreprise=profil), 'fr'), agri_avant)
+        self.assertNotIn('Virement', ci_avant + agri_avant)
+        for rendu in (bloc_echeancier(synthese, 'c3', doc={'entreprise': profil, CLE: True}),
+                      _echeancier(dict(agricole, entreprise=profil, **{CLE: True}), 'fr')):
+            self.assertIn('Virement bancaire&nbsp;:', rendu)
+            self.assertIn('<b>SOCIETE 43 SARL</b> · Banque X · RIB 011 780 0000000000000000 12', rendu)
+            self.assertNotIn('0002720029379418', rendu)  # jamais le RIB historique
+        # Agricole : le RIB vient APRÈS la note « acompte après l'accord FDA », sous tout l'échéancier.
+        from apps.ventes.quote_engine.agricole.pages import _t
+        agri = _echeancier(dict(agricole, entreprise=profil, **{CLE: True}), 'fr')
+        self.assertLess(agri.index(_t('fr', 'agr_acompte_apres_fda')), agri.index('ag-ech-rib'))
+        # Clé posée mais profil vidé depuis : rien (jamais « RIB à communiquer »).
+        vide = dict(profil, rib='', banque='')
+        self.assertEqual(bloc_echeancier(synthese, 'c3', doc={'entreprise': vide, CLE: True}), ci_avant)
+        self.assertEqual(_echeancier(dict(agricole, entreprise=vide, **{CLE: True}), 'fr'), agri_avant)
+        self.assertEqual(bloc_echeancier({}, 'c3', doc={'entreprise': profil, CLE: True}), '')
+
     def test_t4_v2_010_protection_marche_a_sec_prouvee_par_la_fiche(self):
         # T4-V2-010 — le PDF n'imprime « protection marche à sec » sur la ligne
         # du variateur que si sa fiche la publie ; nouveaux rendus seulement.

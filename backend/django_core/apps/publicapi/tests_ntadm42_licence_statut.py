@@ -6,7 +6,7 @@ de la clé — aucun champ interne (prix, historique). Clé invalide → 401."""
 from django.contrib.auth import get_user_model
 import json
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 
 from apps.crm.models import Client
@@ -169,3 +169,15 @@ class Nti18n42ClientLangueTests(TestCase):
         self.assertIn(chemin, schema['paths'])
         params = schema['paths'][chemin]['get']['parameters']
         self.assertEqual([p['name'] for p in params], ['id'])
+
+
+class ProfilLuSansCreationTests(SimpleTestCase):
+    """Profil société — le statut de licence public ne crée pas le profil."""
+
+    def test_statut_de_licence(self):
+        import inspect
+        from apps.publicapi.public_licence_views import PublicLicenceStatutView
+        fonction = PublicLicenceStatutView.get
+        source = inspect.getsource(fonction)
+        self.assertNotIn("CompanyProfile.get(", source)
+        self.assertIn("CompanyProfile.lire(", source)

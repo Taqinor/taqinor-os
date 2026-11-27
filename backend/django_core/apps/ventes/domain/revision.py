@@ -173,7 +173,31 @@ class RevisionError(Exception):
         self.successeur = successeur
 
 
-def reviser_devis(devis, *, user=None):
+#: R6-N1 (suite) — QUI calcule les études de la V+1, et QUAND
+#: (``reviser_devis(etudes=…)``). Défaut : le chemin d'hier (la vue
+#: « Réviser », hors transaction, les calcule une fois après la re-liaison ;
+#: dans une transaction, le clonage les calcule et elles sont refaites au
+#: commit si un calepinage est re-lié à une V+1 restée brouillon).
+ETUDES_REVISION = 'revision'
+#: « Prix négocié » : la V+1 est ACCEPTÉE dans la transaction de l'appelant et
+#: rien n'est réécrit après l'acceptation. Le clonage ne calcule RIEN (avec ou
+#: sans calepinage) ; le calepinage lié à la V1 est re-lié à la V+1 DANS la
+#: transaction ; l'APPELANT calcule les études UNE fois, après avoir posé le
+#: prix négocié et avant l'acceptation (l'option « avec batterie » C&I lit
+#: ``option_totaux``). Rien au commit.
+ETUDES_AVANT_ACCEPTATION = 'avant_acceptation'
+#: « Réviser le devis » de l'atelier : l'appelant recompose la V+1. Quand un
+#: calepinage lié à la V1 va être re-lié, le clonage ne calcule rien : UN
+#: calcul forcé au commit, après la re-liaison (le dernier calcul d'hier).
+ETUDES_APRES_RECOMPOSITION = 'apres_recomposition'
+#: Révision après la visite C&I : l'appelant re-lie le calepinage à la fin de
+#: sa recomposition (:func:`relier_calepinage_de_la_revision`) et refait
+#: lui-même les études, forcées, après son commit ; le clonage calcule comme
+#: hier. Aucun calcul au commit ici quand un calepinage est à re-lier.
+ETUDES_PAR_L_APPELANT = 'par_l_appelant'
+
+
+def reviser_devis(devis, *, user=None, etudes=ETUDES_REVISION):
     """QJR521 — « Réviser » : LE service de domaine qui crée la V+1.
 
     Une seule V+1, jamais de fourche, jamais de réactivation :
@@ -188,13 +212,33 @@ def reviser_devis(devis, *, user=None):
       * chatter v1 « Remplacé par <ref v2> (révision) » et v2 « Révision de
         <ref v1> ».
     Le statut de v1 n'est JAMAIS écrit (règle #4) — seuls ``is_active`` et
-    ``superseded_by`` bougent. Renvoie la nouvelle version."""
+    ``superseded_by`` bougent. Renvoie la nouvelle version.
+
+    R6-N1 — LES ÉTUDES DE LA V+1 SUIVENT SON CALEPINAGE. Le calepinage n'est
+    re-lié à la V+1 qu'APRÈS le commit (abonné ``devis_revise`` du
+    calepinage) : calculées dans le clonage, ses études ne le voyaient pas
+    (``calepinage_du_devis(V+1)`` vide ⇒ ni l'ombrage servi, ni la pose
+    réelle, ni les chaînes du calepinage) et rien ne les refaisait. Appelé
+    HORS transaction (la vue « Réviser ») : le clonage ne calcule plus rien,
+    les études sont calculées UNE fois, après la re-liaison, hors du verrou
+    de la V1, et avant le retour (la réponse les porte). Appelé DANS la
+    transaction d'un appelant (prix négocié, révision après visite,
+    révision sur la conception) : le clonage les calcule comme avant, et
+    elles sont refaites au commit seulement si un calepinage a été re-lié à
+    une V+1 restée brouillon (:func:`_etudes_apres_reliaison`).
+
+    R6-N1 (suite) — ``etudes`` (:data:`ETUDES_REVISION` par défaut) : les
+    trois appelants qui tiennent une transaction disent qui calcule. Sans
+    calepinage lié à la V1, l'atelier et la visite sont le défaut, à l'octet ;
+    le prix négocié ne calcule jamais au clonage (l'appelant calcule au prix
+    négocié, décision de l'orchestrateur du 26/11)."""
     from django.db import transaction
     from apps.ventes.models import Devis
     from apps.ventes import activity
     from apps.ventes.domain.creation_clone import cloner_devis
     from apps.ventes.selectors import racine_groupe
 
+    differees = etudes == ETUDES_REVISION and _hors_transaction()
     with transaction.atomic():
         old = (Devis.objects.select_for_update(of=('self',))
                .get(pk=devis.pk))
@@ -210,12 +254,19 @@ def reviser_devis(devis, *, user=None):
             raise RevisionError(
                 'Un brouillon se modifie directement (pas de révision).',
                 code='brouillon')
+        # R6-N1 (suite) — un mode explicite avec un calepinage à re-lier :
+        # ``au_commit`` dit le calcul qui reste à faire au commit (None :
+        # aucun), ``au_clonage`` si le clonage calcule.
+        a_relier = etudes != ETUDES_REVISION and _calepinage_a_relier(old)
+        au_clonage = (not differees and etudes != ETUDES_AVANT_ACCEPTATION
+                      and not (a_relier and etudes == ETUDES_APRES_RECOMPOSITION))
         # QJR558 — ``revision=True`` : la V+1 garde le travail manuel
         # (toiture 3D, registre D12, tailles explorées, rendu toiture).
         nd = cloner_devis(
             old, user=user, note=old.note,
             version=old.version + 1,
-            version_parent=racine_groupe(old), revision=True)
+            version_parent=racine_groupe(old), revision=True,
+            etudes=au_clonage)
         old.is_active = False
         old.superseded_by = nd
         old.save(update_fields=['is_active', 'superseded_by'])
@@ -223,6 +274,12 @@ def reviser_devis(devis, *, user=None):
             old, user, f'Remplacé par {nd.reference} (révision).')
         activity.log_devis_note(
             nd, user, f'Révision de {old.reference}.')
+        if a_relier and etudes == ETUDES_AVANT_ACCEPTATION:
+            # V1 inactive : la re-liaison est permise ; les études que
+            # l'appelant calculera (celles que l'acceptation portera) voient
+            # SON calepinage.
+            relier_calepinage_de_la_revision(old, nd, user=user)
+        au_commit = _calcul_au_commit(etudes, a_relier, differees)
 
     # ACAL91 (C-ACAL-115) — l'événement de domaine ``devis_revise`` part APRÈS
     # le commit (jamais pour une V+1 annulée par un rollback), UNE fois, en
@@ -238,9 +295,120 @@ def reviser_devis(devis, *, user=None):
                 logger.warning(
                     'ACAL91 : abonné %r de devis_revise en échec (%s -> %s) : %s',
                     recepteur, old.reference, nd.reference, resultat)
+        # R6-N1 — APRÈS les abonnés (calepinage re-lié, ou re-liaison en
+        # échec journalisée) : les études de la V+1 voient sa conception.
+        if au_commit is not None:
+            _etudes_apres_reliaison(
+                nd, differees=differees,
+                exiger_calepinage=au_commit == _AU_COMMIT_SI_RELIE)
 
     transaction.on_commit(_emettre_devis_revise)
     return nd
+
+
+def _hors_transaction():
+    """R6-N1 — vrai quand ``reviser_devis`` est appelé HORS de toute
+    transaction (la vue « Réviser », en autocommit) : son ``on_commit`` part
+    alors tout de suite, avant le retour."""
+    from django.db import transaction
+    return not transaction.get_connection().in_atomic_block
+
+
+#: R6-N1 (suite) — le calcul au commit : refait si un calepinage est re-lié à
+#: une V+1 restée brouillon (hier) / LE calcul d'une V+1 que le clonage n'a
+#: pas calculée, re-liaison réussie ou non.
+_AU_COMMIT_SI_RELIE = 'si_relie'
+_AU_COMMIT_TOUJOURS = 'toujours'
+
+
+def _calcul_au_commit(etudes, a_relier, differees):
+    """R6-N1 (suite) — le calcul que ``_emettre_devis_revise`` fait après les
+    abonnés, ou ``None``. Avant l'acceptation, l'appelant les calcule au prix
+    négocié, dans sa transaction : rien. L'appelant de la visite les refait
+    lui-même : rien. Après la recomposition de l'atelier : LE calcul de la
+    V+1. Sinon : hier."""
+    if differees:
+        return _AU_COMMIT_TOUJOURS
+    if etudes == ETUDES_AVANT_ACCEPTATION:
+        return None
+    if a_relier and etudes == ETUDES_PAR_L_APPELANT:
+        return None
+    if a_relier and etudes == ETUDES_APRES_RECOMPOSITION:
+        return _AU_COMMIT_TOUJOURS
+    return _AU_COMMIT_SI_RELIE
+
+
+def _calepinage_a_relier(ancien):
+    """R6-N1 (suite) — vrai quand un calepinage est lié DIRECTEMENT à
+    ``ancien`` : celui que l'abonné ``devis_revise`` du calepinage re-lie à
+    la V+1 (même test que lui, ``calepinage.devis_id == ancien.pk``)."""
+    from apps.ventes.conception.porte_calepinage import calepinage_lie_au_devis
+    calepinage = calepinage_lie_au_devis(ancien.pk, ancien.company)
+    return calepinage is not None and calepinage.devis_id == ancien.pk
+
+
+def relier_calepinage_de_la_revision(ancien, nouveau, *, user=None):
+    """R6-N1 (suite) — re-lie MAINTENANT, dans la transaction de l'appelant,
+    le calepinage lié directement à ``ancien`` (la V1, déjà inactive) à
+    ``nouveau`` (sa V+1) : LE service du calepinage
+    (``services.relier_au_devis_revise`` : version figée « Version envoyée —
+    <réf.> » puis ``lier_devis``), celui que son abonné ``devis_revise``
+    appelle au commit — il y trouve alors le calepinage déjà sur la V+1 et
+    n'écrit rien : un seul lien, une seule version figée. Un rollback de
+    l'appelant défait les deux (le calepinage reste sur la V1). Point de
+    sauvegarde ; un échec est journalisé, jamais propagé (l'abonné du commit
+    retente). Rend vrai quand ``nouveau`` porte désormais ce calepinage."""
+    from django.db import transaction
+
+    from apps.ventes.conception.porte_calepinage import (
+        calepinage_lie_au_devis as calepinage_du_devis,
+        relier_calepinage_au_devis_revise)
+
+    try:
+        with transaction.atomic():
+            relier_calepinage_au_devis_revise(
+                ancien, nouveau, user=user)
+    except Exception:  # noqa: BLE001 — la révision ne casse jamais sur une re-liaison (D-ENF22-BLE001)
+        logger.exception('R6-N1 : re-liaison du calepinage en échec (%s -> %s)',
+                         getattr(ancien, 'reference', '?'),
+                         getattr(nouveau, 'reference', '?'))
+    calepinage = calepinage_du_devis(nouveau.pk, nouveau.company)
+    return calepinage is not None and calepinage.devis_id == nouveau.pk
+
+
+def _etudes_apres_reliaison(nd, *, differees, exiger_calepinage=True):
+    """R6-N1 — les études de la V+1 ``nd``, après la re-liaison du calepinage.
+
+    ``differees`` (appel hors transaction) : le clonage n'a rien calculé — LE
+    calcul, une fois, sur l'instance rendue à la vue. Sinon le clonage les a
+    calculées sans calepinage : refaites seulement si un calepinage est
+    désormais celui de la V+1 et qu'elle est encore un brouillon actif (une
+    V+1 déjà acceptée dans la transaction de l'appelant n'est jamais
+    réécrite) ; sans calepinage, rien (le résultat d'hier, à l'octet).
+    ``exiger_calepinage=False`` (R6-N1 suite, atelier) : le clonage n'a rien
+    calculé — LE calcul de la V+1 relue, brouillon actif, re-liaison réussie
+    ou non.
+    Best-effort : la révision est actée ; un échec est journalisé (jamais
+    muet) et la première écriture suivante du brouillon recalcule (clés
+    dérivées absentes)."""
+    from apps.ventes.models import Devis
+    try:
+        cible = nd
+        if not differees:
+            from apps.ventes.conception.porte_calepinage import (
+                calepinage_lie_au_devis as calepinage_du_devis)
+            if exiger_calepinage and calepinage_du_devis(
+                    nd.pk, nd.company) is None:
+                return
+            cible = Devis.objects.filter(
+                pk=nd.pk, company_id=nd.company_id, is_active=True,
+                statut=Devis.Statut.BROUILLON).first()
+            if cible is None:
+                return
+        rafraichir_etudes_du_devis(cible, force=True)
+    except Exception:  # noqa: BLE001 — la révision est actée, l'échec journalisé (D-ENF22-BLE001)
+        logger.exception('R6-N1 : études de la révision %s non calculées',
+                         getattr(nd, 'reference', '?'))
 
 
 def abandonner_revision(v2, user=None, *, retrait=False):

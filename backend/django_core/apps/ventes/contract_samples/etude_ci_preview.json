@@ -2131,7 +2131,7 @@
     "regime_8221_suggere": {
       "regime": "accord_raccordement",
       "seuil": "11 kW – 5 MW",
-      "source": "loi 82-21 + décret 2.25.100 (BO 7489) — déclaration < 11 kW, accord de raccordement 11 kW–5 MW, autorisation ≥ 5 MW (D-CIQ-4)"
+      "source": "loi 82-21 + décret 2.25.100 (BO 7489) — déclaration < 11 kW, accord de raccordement 11 kW–5 MW, autorisation ≥ 5 MW"
     },
     "alertes": [
       {
@@ -2156,13 +2156,13 @@
         "cle": "pas_kwc",
         "valeur": 5,
         "statut": "source",
-        "source": "D-CIQ-2"
+        "source": "taille étudiée par tranches de 5 kWc"
       },
       {
         "cle": "horizon_marginal_annees",
         "valeur": 10,
         "statut": "source",
-        "source": "horizon marginal C&I unique, panneaux et batteries — 10 ans (moteur_ci/taille.py HORIZON_MARGINAL_CI ; D-CIQ-2 du 25/08, confirmé par le fondateur le 30/10/2026)"
+        "source": "un ajout (une tranche de 5 kWc de panneaux, ou une batterie) n'est retenu que s'il se rembourse en 10 ans au plus par l'économie qu'il ajoute — même règle pour les panneaux et les batteries (décision fondateur du 25/08, confirmée le 30/10/2026)"
       },
       {
         "cle": "tarif",
@@ -2183,7 +2183,7 @@
         "source": "PVGIS seriescalc 2014-2023, année type (mois représentatifs [2019, 2016, 2021, 2018, 2015, 2020, 2017, 2022, 2019, 2014, 2023, 2016]), montage « free » : 8 760 h croisées heure par heure avec le profil déclaré"
       }
     ],
-    "methode": "autoconsommation horaire : production PVGIS de l'année type du site (8 760 h, pente/azimut/pose déclarés) × profil déclaré, heure par heure ; taille par tranches de 5 kWc jusqu'à l'horizon marginal de 10 ans (D-CIQ-1, D-CIQ-2, D-ACI-18)",
+    "methode": "autoconsommation horaire : production PVGIS de l'année type du site (8 760 h, pente/azimut/pose déclarés) × profil déclaré, heure par heure ; taille par tranches de 5 kWc jusqu'à l'horizon marginal de 10 ans",
     "version_moteur": "ci-1",
     "devis_auto": {
       "possible": true,
@@ -2247,7 +2247,7 @@
     "niveau_donnees": "declare",
     "sous_reserve_visite": {
       "valeur": true,
-      "motif": "site MT : visite avant le devis final (D-CIQ-5)"
+      "motif": "site MT : visite avant le devis final"
     },
     "profil_charge": {
       "methode": "registres_mt",
@@ -2767,7 +2767,7 @@
     "regime_8221_suggere": {
       "regime": "accord_raccordement",
       "seuil": "11 kW – 5 MW",
-      "source": "loi 82-21 + décret 2.25.100 (BO 7489) — déclaration < 11 kW, accord de raccordement 11 kW–5 MW, autorisation ≥ 5 MW (D-CIQ-4)"
+      "source": "loi 82-21 + décret 2.25.100 (BO 7489) — déclaration < 11 kW, accord de raccordement 11 kW–5 MW, autorisation ≥ 5 MW"
     },
     "alertes": [
       {
@@ -2784,13 +2784,13 @@
         "cle": "pas_kwc",
         "valeur": 5,
         "statut": "source",
-        "source": "D-CIQ-2"
+        "source": "taille étudiée par tranches de 5 kWc"
       },
       {
         "cle": "horizon_marginal_annees",
         "valeur": 10,
         "statut": "source",
-        "source": "horizon marginal C&I unique, panneaux et batteries — 10 ans (moteur_ci/taille.py HORIZON_MARGINAL_CI ; D-CIQ-2 du 25/08, confirmé par le fondateur le 30/10/2026)"
+        "source": "un ajout (une tranche de 5 kWc de panneaux, ou une batterie) n'est retenu que s'il se rembourse en 10 ans au plus par l'économie qu'il ajoute — même règle pour les panneaux et les batteries (décision fondateur du 25/08, confirmée le 30/10/2026)"
       },
       {
         "cle": "tarif",
@@ -2811,7 +2811,7 @@
         "source": "série horaire PVGIS indisponible (coordonnées GPS absentes, PVGIS injoignable ou production figée sans série) : repli sur 12 journées moyennes PVGIS (30° plein sud) × types de jour"
       }
     ],
-    "methode": "autoconsommation horaire : production PVGIS du site × profil déclaré, 12 mois × types de jour ; taille par tranches de 5 kWc jusqu'à l'horizon marginal de 10 ans (D-CIQ-1, D-CIQ-2)",
+    "methode": "autoconsommation horaire : production PVGIS du site × profil déclaré, 12 mois × types de jour ; taille par tranches de 5 kWc jusqu'à l'horizon marginal de 10 ans",
     "version_moteur": "ci-1",
     "feuille_consommation_retenue": "registres_mt"
   },

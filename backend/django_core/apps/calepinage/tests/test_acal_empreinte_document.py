@@ -101,7 +101,8 @@ class EmpreinteDocumentPureTest(SimpleTestCase):
         self.assertEqual(set(CLES_VOLATILES), {
             'activeAreaId', 'scene',
             'zones[].geometry.solarAccess.computedAt',
-            'consumption.source.saisi_le'})
+            'consumption.source.saisi_le',
+            'plafondsNumerotation'})  # suite ACAL1720
 
     def test_volatiles_hors_empreinte(self):
         self.assertEqual(empreinte_document(D0),

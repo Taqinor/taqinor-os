@@ -697,15 +697,22 @@ def familles_des_lignes(lignes) -> dict:
     """Les quatre familles d'équipement présentes dans ``lignes``.
 
     Une ligne de quantité nulle ne compte pas (même règle que le moteur PDF,
-    ``builder._has_qty``) : elle n'équipe rien.
+    ``domain.classe_ligne.paires_portent``) : elle n'équipe rien.
+
+    Lecteurs en aval (fondateur 24/11/2026) — la MÊME règle que le moteur PDF :
+    le rôle RANGÉ sur la ligne, puis les mots-clés (``domain.classe_ligne``).
     """
-    blobs = [_blob(li) for li in lignes
-             if float(getattr(li, 'quantite', 0) or 0) > 0]
+    from apps.ventes.domain.classe_ligne import est
+
+    vivantes = [li for li in lignes if float(getattr(li, 'quantite', 0) or 0) > 0]
+
+    def _porte(predicat):
+        return any(est(li, predicat, lambda li=li: predicat(_blob(li))) for li in vivantes)
     return {
-        'has_reseau': any(_is_reseau_inverter(b) for b in blobs),
-        'has_hybride': any(_is_hybrid_inverter(b) for b in blobs),
-        'has_offgrid': any(_is_offgrid_inverter(b) for b in blobs),
-        'has_batterie': any(_is_battery(b) for b in blobs),
+        'has_reseau': _porte(_is_reseau_inverter),
+        'has_hybride': _porte(_is_hybrid_inverter),
+        'has_offgrid': _porte(_is_offgrid_inverter),
+        'has_batterie': _porte(_is_battery),
     }
 
 

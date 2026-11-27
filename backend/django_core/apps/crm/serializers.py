@@ -127,7 +127,8 @@ class LeadActivitySerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_user_nom(self, obj):
-        return getattr(obj.user, 'username', None)
+        from core.user_display import nom_affiche
+        return nom_affiche(obj.user)
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_attachment_url(self, obj):
@@ -172,9 +173,11 @@ def nom_affichable_lead(lead) -> str:
 
 def nom_affichable_responsable(user) -> str | None:
     """Le nom affiché du RESPONSABLE d'un lead — ``lead_owner_nom`` de
-    ``RelanceEtapeSerializer`` (l'identifiant de connexion), ``None`` sans
-    responsable. Partagé avec ``controle_suivi.py`` : aucun prénom en dur."""
-    return getattr(user, 'username', None)
+    ``RelanceEtapeSerializer`` (prénom + nom, login en dernier recours),
+    ``None`` sans responsable. Partagé avec ``controle_suivi.py`` : aucun
+    prénom en dur."""
+    from core.user_display import nom_affiche
+    return nom_affiche(user)
 
 
 class _CurrentCompanyDefault:
@@ -1174,14 +1177,14 @@ class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
 
         if 'heure_debut' in attrs or 'heure_fin' in attrs:
             debut, fin = _valeur('heure_debut'), _valeur('heure_fin')
-            if debut is not None and fin is not None and debut >= fin:
+            if debut is not None and fin is not None and debut == fin:
                 champ = 'heure_fin' if 'heure_fin' in attrs else 'heure_debut'
                 # Règle ENTRE deux nombres (ou avec l'heure déjà enregistrée) :
                 # aucun schéma ne la dit -> 409, jamais un 400 sur un corps
                 # conforme. ``useLeadDraft`` lit 400 et 409 pareil.
                 raise ConflitEtat({champ: [
-                    "« Heure de fin » : elle doit être après l'heure de "
-                    'début.']})
+                    "« Heure de fin » : une plage de 0 h n'existe pas ; pour "
+                    '24 h sur 24, choisissez 0 → 24.']})
         # CIQ666 — le bi-horaire n'est ouvert qu'à la force motrice
         # (``tarifs_officiels.grille_bt``) : jamais à un patenté ni en MT.
         if 'option_tarifaire_bt' in attrs or 'contrat_electricite' in attrs:

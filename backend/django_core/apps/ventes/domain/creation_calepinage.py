@@ -599,6 +599,10 @@ def _appliquer_les_designations(intention, designe, batterie_brute, scenario, jo
 #: ``CibleDevis.source`` d'une resynchronisation qui porte les désignations BRUTES du calepinage
 #: (mode « réconcilier » : ``reconcilier`` est le seul lecteur de la cible).
 SOURCE_DESIGNATIONS = 'designations_calepinage'
+#: Revue du 26/11 (D-ACAL-73) — les mêmes désignations, portées par une resynchronisation que le vendeur a
+#: CONFIRMÉE sur la carte d'aperçu (``apercu_confirme``) : seule celle-ci les applique à un devis ENVOYÉ.
+SOURCE_DESIGNATIONS_CONFIRMEES = 'designations_calepinage_confirmees'
+SOURCES_DESIGNATIONS = (SOURCE_DESIGNATIONS, SOURCE_DESIGNATIONS_CONFIRMEES)
 MSG_RESYNC_SUIT = 'L’onduleur suit la désignation de l’étape Électrique : « %s » remplace « %s ».'
 MSG_RESYNC_CHANGE = 'La désignation de l’onduleur a changé à l’étape Électrique : « %s » remplace « %s ».'
 MSG_RESYNC_RETIREE = ('L’onduleur « %s » n’est plus désigné à l’étape Électrique : la resynchronisation '
@@ -626,8 +630,16 @@ MSG_RESYNC_BATTERIE_A_LA_MAIN = ('« %s » a été posée à la main à la place
 MSG_RESYNC_AVANT_LA_REGLE = ('Le calepinage désigne %s à l’étape Électrique : ce devis, créé avant que le devis '
                              'suive la désignation, ne la suit pas ; un nouveau devis généré depuis le calepinage '
                              'la suivra.')
-MSG_RESYNC_ENVOYE = ('Le calepinage désigne %s à l’étape Électrique : la désignation n’est pas appliquée à un devis '
-                     'envoyé — révisez-le (V2) pour l’appliquer.')
+#: ACAL1320 (D-ACAL-73 = corriger_dire, 26/11/2026) — les statuts dont la resynchronisation corrige
+#: le devis SUR PLACE (règle QJR5 ; un envoyé, sa trace « corrigé après envoi » posée, et l'écran le
+#: dit AVANT d'agir par l'aperçu) : un devis né sous la règle y suit la désignation. La phrase
+#: « révisez-le (V2) » d'un envoyé est retirée : elle n'était vraie pour aucun devis (une V2 d'un devis
+#: sans marqueur n'en porte pas davantage). Revue du 26/11 — l'envoyé ne la suit QUE par une
+#: resynchronisation confirmée sur l'aperçu (:data:`SOURCE_DESIGNATIONS_CONFIRMEES`).
+STATUTS_CORRIGES_SUR_PLACE = ('brouillon', 'envoye')
+MSG_RESYNC_ENVOYE_SANS_APERCU = ('Le calepinage désigne %s à l’étape Électrique : sur un devis envoyé, la '
+                                 'désignation n’est appliquée qu’après son aperçu — utilisez « Resynchroniser le '
+                                 'devis » dans l’atelier pour voir le changement et le confirmer.')
 MSG_RESYNC_BATTERIE_SUIT = 'La batterie suit la désignation de l’étape Électrique : « %s » (%d pack(s)).'
 MSG_RESYNC_BATTERIE_RETIREE = ('La batterie « %s » n’est plus désignée à l’étape Électrique : la '
                                'resynchronisation reprend le choix automatique de la batterie.')
@@ -638,12 +650,13 @@ MSG_RESYNC_BATTERIE_NON_APPLIQUEE = ('La batterie désignée à l’étape Élec
                                      '%s.')
 
 
-def cible_des_designations(onduleur_designe, batterie_designee=None):
+def cible_des_designations(onduleur_designe, batterie_designee=None, *, apercu_confirme=False):
     """La ``CibleDevis`` d'une resynchronisation depuis le calepinage : les désignations BRUTES
     (``calepinage.services.devis._onduleur_designe`` / ``_batterie_designee``), jugées dans
-    ``reconcilier`` par :func:`appliquer_designations_a_la_resynchro`."""
-    return CibleDevis(source=SOURCE_DESIGNATIONS, onduleur_impose=onduleur_designe,
-                      batterie_imposee=batterie_designee)
+    ``reconcilier`` par :func:`appliquer_designations_a_la_resynchro`. ``apercu_confirme`` : la
+    resynchronisation a été confirmée sur la carte d'aperçu (seule à pouvoir corriger un envoyé)."""
+    return CibleDevis(source=SOURCE_DESIGNATIONS_CONFIRMEES if apercu_confirme else SOURCE_DESIGNATIONS,
+                      onduleur_impose=onduleur_designe, batterie_imposee=batterie_designee)
 
 
 def marqueur_stocke(devis):
@@ -721,7 +734,8 @@ def _poser_produit(ligne, produit, famille, avertissements, *, nombre=None):
         ligne.produit, ligne.designation = produit, produit.nom
         poser_prix_unitaire(ligne, Decimal(produit.prix_vente))
         champs += ['produit', 'designation', 'prix_unitaire']
-    if getattr(ligne, 'role_devis', '') and ligne.role_devis != famille:
+    # Lecteurs en aval — un produit POSÉ (écriture neuve) range sa famille, même sur une ligne sans rôle.
+    if (getattr(ligne, 'role_devis', '') or 'produit' in champs) and ligne.role_devis != famille:
         ligne.role_devis = famille
         champs.append('role_devis')
     if champs:
@@ -783,10 +797,16 @@ def _resynchro_inchangee(veut_batterie, stocke):
 
 def designations_appliquees(verrou, intention):
     """Relecture, point 1 — la règle en UN prédicat : la resynchronisation applique les désignations
-    seulement quand elles viennent du calepinage (:data:`SOURCE_DESIGNATIONS`) et que le devis est un
-    BROUILLON NÉ sous la règle (:func:`suit_les_designations`)."""
-    return (getattr(getattr(intention, 'cible', None), 'source', '') == SOURCE_DESIGNATIONS
-            and getattr(verrou, 'statut', '') == 'brouillon' and marqueur_stocke(verrou) is not None)
+    seulement quand elles viennent du calepinage (:data:`SOURCES_DESIGNATIONS`) à un devis NÉ sous la
+    règle (:func:`suit_les_designations`) : un BROUILLON (toute source du calepinage), ou — ACAL1320
+    (D-ACAL-73 = corriger_dire) — un ENVOYÉ seulement par une resynchronisation CONFIRMÉE sur la carte
+    d'aperçu (:data:`SOURCE_DESIGNATIONS_CONFIRMEES`). Aucun autre statut (:data:`STATUTS_CORRIGES_SUR_PLACE`)."""
+    source = getattr(getattr(intention, 'cible', None), 'source', '')
+    statut = getattr(verrou, 'statut', '')
+    if source not in SOURCES_DESIGNATIONS or statut not in STATUTS_CORRIGES_SUR_PLACE \
+            or marqueur_stocke(verrou) is None:
+        return False
+    return statut == 'brouillon' or source == SOURCE_DESIGNATIONS_CONFIRMEES
 
 
 #: Lot 8, relecture finale — la phrase de :func:`option_batterie_gardee`, vraie dans l'état.
@@ -826,8 +846,10 @@ def appliquer_designations_a_la_resynchro(verrou, intention, layout, veut_batter
     verrou, AVANT qu'il lise ses lignes et applique ses propres règles : il relit ce qui vient d'être
     écrit.
 
-    Relecture, point 1 (règle de l'orchestrateur) — appliquée SEULEMENT à un BROUILLON NÉ sous la
-    règle (:func:`suit_les_designations`). Un devis envoyé, ou créé avant (sans marqueur) : rien
+    Relecture, point 1 — appliquée SEULEMENT à un devis NÉ sous la règle
+    (:func:`suit_les_designations`) ; ACAL1320 (D-ACAL-73) — brouillon OU envoyé
+    (:data:`STATUTS_CORRIGES_SUR_PLACE` : l'envoyé est corrigé sur place, l'aperçu de la
+    resynchronisation le dit avant la confirmation). Un devis créé avant (sans marqueur) : rien
     n'est appliqué (aucune écriture de plus, le court-circuit « inchangé » reste pris comme avant)
     et UNE phrase dit pourquoi.
 
@@ -844,10 +866,13 @@ def appliquer_designations_a_la_resynchro(verrou, intention, layout, veut_batter
     stocke = marqueur_stocke(verrou)
     cible = getattr(intention, 'cible', None)
     if not designations_appliquees(verrou, intention):
-        quoi = _quoi_est_designe(cible) if getattr(cible, 'source', '') == SOURCE_DESIGNATIONS else None
-        if quoi:
-            avertissements.append((MSG_RESYNC_ENVOYE if getattr(verrou, 'statut', '') != 'brouillon'
-                                   else MSG_RESYNC_AVANT_LA_REGLE) % quoi)
+        # La phrase vraie de ce qui n'a PAS été fait (seulement quand le calepinage désigne quelque chose) :
+        # devis d'avant la règle (sans marqueur) ; envoyé sans la carte d'aperçu confirmée (D-ACAL-73).
+        quoi = _quoi_est_designe(cible) if getattr(cible, 'source', '') in SOURCES_DESIGNATIONS else None
+        if quoi and stocke is None:
+            avertissements.append(MSG_RESYNC_AVANT_LA_REGLE % quoi)
+        elif quoi and getattr(verrou, 'statut', '') == 'envoye':
+            avertissements.append(MSG_RESYNC_ENVOYE_SANS_APERCU % quoi)
         return _resynchro_inchangee(veut_batterie, stocke)
     from apps.ventes.domain.lignes import _lignes_produit
 

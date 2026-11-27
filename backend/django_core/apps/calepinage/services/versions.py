@@ -236,16 +236,23 @@ def restaurer_version(version, *, user=None, libelle=''):
 
     from django.db import transaction
 
-    from .layout import empreinte_document
+    from .layout import avec_plafonds_gardes, empreinte_document
 
     with transaction.atomic():
         courante = (empreinte_document(calepinage.roof_layout)
                     == empreinte_document(version.roof_layout))
+        # Revue lot 8 (suite ACAL1720) — la version revient avec le plafond de
+        # numérotation COURANT : un numéro dépensé depuis n'est jamais redonné.
+        # 2e revue : le document remplacé est relu SOUS VERROU de ligne (comme `retenir_variante`).
+        from ..models import Calepinage
+
+        remplace = (Calepinage.objects.select_for_update().filter(pk=calepinage.pk)
+                    .values_list('roof_layout', flat=True).first())
+        entrant = avec_plafonds_gardes(remplace, version.roof_layout)
         if courante:
             # ACAL45 — restaurer la version DÉJÀ courante : rien à faire,
             # aucun instantané, ``resultat`` et rendu intacts.
-            resultat = enregistrer_layout(calepinage, version.roof_layout,
-                                          user=user)
+            resultat = enregistrer_layout(calepinage, entrant, user=user)
         else:
             # ACAL45 — le verrou refuse AVANT l'instantané (rien n'est écrit).
             from .verrou import verifier_ecriture_autorisee
@@ -262,7 +269,7 @@ def restaurer_version(version, *, user=None, libelle=''):
             # n'est pas touché — la simulation devient périmée par sa
             # propre empreinte ; (3) le rendu 3D (``roof_image``) est vidé.
             resultat = enregistrer_layout(
-                calepinage, version.roof_layout, user=user,
+                calepinage, entrant, user=user,
                 libelle=(libelle
                          or f'Restauration de la version #{version.pk}'),
                 roof_image='')

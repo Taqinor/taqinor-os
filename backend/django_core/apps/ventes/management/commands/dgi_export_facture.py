@@ -70,7 +70,7 @@ class Command(BaseCommand):
                 "« dgi_export_actif » dans Paramètres (défaut OFF) avant "
                 "d'exporter.")
 
-        profile = CompanyProfile.get(company=facture.company)
+        profile = CompanyProfile.lire(company=facture.company)
         problemes = validate_dgi_conformity(facture, profile)
         if problemes:
             self.stderr.write("Conformité DGI — problèmes détectés :")

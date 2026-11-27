@@ -52,6 +52,28 @@ ORIGINE_PLAN = 'plan'
 ORIGINE_SAISIE = 'saisie'
 ORIGINE_MIXTE = 'plan et saisie'
 
+# Liaison DC tracée (suite ACAL1317) — D'OÙ VIENT la liaison DC (``W1``) que la
+# simulation (perte ohmique DC) et la chute de tension emploient, servie dans
+# ``longueurs.source_dc`` de ``GET resultat/`` pour que l'écran le DISE.
+#: Les longueurs SAISIES (course jusqu'au point de collecte + descente +
+#: coffret → onduleur) — la règle d'avant, toujours prioritaire.
+SOURCE_DC_SAISIE = 'saisie'
+#: Le plan seul : course depuis le module le plus éloigné, tracé DC jusqu'à
+#: l'onduleur et dénivelé de ses deux bouts (``liaison_dc_tracee``).
+SOURCE_DC_TRACE = 'trace'
+#: Le tracé est ENTRÉ dans la longueur, avec au moins une longueur SAISIE
+#: (descente, ou coffret → onduleur à la place du tracé).
+SOURCE_DC_TRACE_ET_SAISIE = 'trace_et_saisie'
+#: Aucune longueur connue : aucune section DC ; la perte ohmique DC prend la
+#: valeur de conception de la société quand elle en a une (ACAL1968).
+SOURCE_DC_DEFAUT = 'defaut'
+
+MOTIF_PAN_SANS_TRACE = (
+    "un pan au moins n'a pas de tracé DC mesuré jusqu'à un onduleur posé : sa "
+    "course suit alors les longueurs saisies (point de collecte, descente, "
+    "coffret → onduleur), et elles ne le sont pas — tracez chaque pan jusqu'à "
+    "l'onduleur, ou saisissez ces longueurs")
+
 # ═══════════════════════════════════════════════════════════════════════════
 # CALX218 — LE MOTIF DE PARCOURS D'UNE CHAÎNE, ET LA LONGUEUR QUI EN DÉCOULE
 # ═══════════════════════════════════════════════════════════════════════════
@@ -259,7 +281,7 @@ def _course_du_pan(pan_document, point_collecte, motif=None):
     return (None, '') if course is None else (course.valeur_m, course.detail)
 
 
-def longueur_dc(layout, cheminement):
+def longueur_dc(layout, cheminement, *, tracees=None):
     """``(Longueur | None, manques)`` — la liaison DC la plus longue.
 
     Trois composantes : la course dans le pan (PLAN), la descente (SAISIE) et
@@ -270,6 +292,15 @@ def longueur_dc(layout, cheminement):
     saisi (``cheminement.pans.<pan>.motif_parcours``) ; le détail publié cite
     alors le motif retenu. Sans saisie, la course est celle d'aujourd'hui, et
     le détail DIT que le trajet le long des modules n'a pas été parcouru.
+
+    Liaison DC tracée (suite ACAL1317) — ``tracees`` (``{clé de pan:
+    CheminTrace}``, ``liaison_dc_tracee.courses_tracees``) : un pan tracé
+    remplace par son tracé la seule partie HORIZONTALE (course depuis le module
+    le plus éloigné jusqu'au départ du tracé + le tracé, ou le coffret →
+    onduleur saisi), la descente saisie (ou le dénivelé du tracé) fait la
+    partie verticale (``liaison_dc_tracee.liaison_du_pan``) ; un pan sans
+    tracé, ou dont point de collecte ET coffret → onduleur sont saisis, garde
+    la règle ci-dessus.
     """
     from .production import cle_de_pan
 
@@ -279,6 +310,8 @@ def longueur_dc(layout, cheminement):
     zones = zones if isinstance(zones, (list, tuple)) else []
     points = (cheminement.get('pans') or {}) if isinstance(
         cheminement.get('pans'), dict) else {}
+    descente = _nombre(cheminement.get('descente_m'))
+    vers_onduleur = _nombre(cheminement.get('coffret_vers_onduleur_m'))
 
     courses = []
     for rang, zone in enumerate(zones, start=1):
@@ -292,6 +325,20 @@ def longueur_dc(layout, cheminement):
         if not isinstance(geometrie, dict) or not geometrie.get('panels'):
             continue
         saisie_du_pan = points.get(cle) or {}
+        chemin = (tracees or {}).get(cle)
+        if chemin is not None and not (vers_onduleur is not None
+                                       and _point_saisi(saisie_du_pan.get('point_collecte'))):
+            from .liaison_dc_tracee import liaison_du_pan
+            try:
+                tracee, motif = liaison_du_pan(zone, chemin, saisie_du_pan, descente, vers_onduleur)
+            except MotifDeParcoursInvalide as refus:
+                manques.append("pan « %s » : %s" % (libelle, refus))
+                continue
+            if tracee is None:
+                manques.append("pan « %s » : %s" % (libelle, motif))
+            else:
+                courses.append((libelle, tracee.valeur_m, tracee))
+            continue
         try:
             course, detail = _course_du_pan(
                 zone, saisie_du_pan.get('point_collecte'),
@@ -307,14 +354,16 @@ def longueur_dc(layout, cheminement):
             continue
         courses.append((libelle, course, detail))
 
+    if any(isinstance(triplet[2], Longueur) for triplet in courses):
+        from .liaison_dc_tracee import liaison_retenue
+        return liaison_retenue(courses, manques, descente, vers_onduleur)
+
     if not courses:
         if not manques:
             manques.append("aucun module posé avec des centres exploitables : "
                            "la course DC n'est pas mesurable")
         return (None, tuple(manques))
 
-    descente = _nombre(cheminement.get('descente_m'))
-    vers_onduleur = _nombre(cheminement.get('coffret_vers_onduleur_m'))
     if descente is None:
         manques.append("descente verticale non saisie (m) — elle ne se lit "
                        "sur aucun plan")
@@ -400,7 +449,7 @@ def _longueur_de_branche(branche, cable):
 
 
 def cables_du_calepinage(conception, *, cheminement=None, norme=None,
-                         layout=None, branches_ac=None):
+                         layout=None, branches_ac=None, jour=None):
     """CAL131 — les câbles DC et AC dimensionnés sur les longueurs du plan.
 
     Args:
@@ -417,6 +466,13 @@ def cables_du_calepinage(conception, *, cheminement=None, norme=None,
             ``W2`` forfaitaire ferait un câble qui n'existe pas. Absentes (tout
             onduleur de chaîne), la sortie est celle d'aujourd'hui, champ pour
             champ.
+        jour: la date du calcul (aujourd'hui par défaut) — liaison DC tracée
+            (suite ACAL1317) : un calcul fait à partir de
+            ``regles_calcul.COUPURE_LIAISON_DC_TRACEE`` prend le tracé DC du
+            plan pour sa partie horizontale (``_tracees``) ; ``longueurs.source_dc``
+            dit ce qui a servi (``saisie`` / ``trace`` / ``trace_et_saisie`` /
+            ``defaut``). Une LECTURE passe la date de la simulation servie
+            (:func:`jour_du_calcul_servi`).
 
     Returns:
         ``{cables, longueurs, omissions, noyau}`` — ``omissions`` dit, en
@@ -439,18 +495,19 @@ def cables_du_calepinage(conception, *, cheminement=None, norme=None,
 
     omissions = []
     if norme is not None and not norme.get('applicable', False):
-        return {'cables': [], 'longueurs': {'dc': None, 'ac': None},
+        return {'cables': [], 'longueurs': {'dc': None, 'ac': None, 'source_dc': SOURCE_DC_DEFAUT},
                 'omissions': [norme.get('motif') or _sans_norme()],
                 'noyau': None}
     if conception.fiche_incomplete or conception.resultat is None \
             or not conception.chaines:
-        return {'cables': [], 'longueurs': {'dc': None, 'ac': None},
+        return {'cables': [], 'longueurs': {'dc': None, 'ac': None, 'source_dc': SOURCE_DC_DEFAUT},
                 'omissions': ["aucune chaîne calculée : il n'y a pas de "
                               "liaison à dimensionner"],
                 'noyau': None}
 
     document = layout if layout is not None else _document(conception)
-    dc, manques_dc = longueur_dc(document, cheminement)
+    dc, manques_dc = longueur_dc(document, cheminement,
+                                 tracees=_tracees(document, cheminement, conception.entree, jour))
     omissions.extend(manques_dc)
     if branches_ac:
         # Régime micro-onduleurs : il n'y a pas de liaison « onduleur → TGBT »
@@ -492,8 +549,8 @@ def cables_du_calepinage(conception, *, cheminement=None, norme=None,
             publies.append(_cable_publie(
                 cable, _longueur_de_branche(par_repere.get(cable.repere),
                                             cable)))
-    omissions.extend(resultat.bloquants)
-    omissions.extend(resultat.alertes)
+    omissions.extend(_ce_que_mesure_w1(resultat.bloquants))
+    omissions.extend(_ce_que_mesure_w1(resultat.alertes))
 
     return {
         'cables': publies,
@@ -503,7 +560,8 @@ def cables_du_calepinage(conception, *, cheminement=None, norme=None,
                       # TGBT » à côté de N départs ferait croire à un câble de
                       # plus. La clé reste PRÉSENTE, à ``null``.
                       'ac': (None if branches
-                             else (ac.en_dict() if ac is not None else None))},
+                             else (ac.en_dict() if ac is not None else None)),
+                      'source_dc': _source_dc(dc)},
         'omissions': omissions,
         'noyau': {'entree': entree, 'protections': protections,
                   'cables': resultat},
@@ -517,6 +575,98 @@ def _document(conception):
     sont pas devinables) ; ce repli ne sert qu'à ne pas planter.
     """
     return {'zones': []}
+
+
+def jour_du_calcul_servi(porteur, perimee, calcule_le):
+    """Liaison DC tracée — la date à passer à :func:`cables_du_calepinage` sur une LECTURE.
+
+    Ce qu'une lecture MONTRE (câble ``W1``, sa chute, ``longueurs.source_dc``)
+    doit être ce que la simulation SERVIE a calculé : sans cela, le jour de la
+    coupure, une simulation fraîche d'hier (calculée sans le tracé) serait
+    servie à côté d'un ``W1`` qui dit compter le tracé. Donc :
+
+    * simulation FRAÎCHE (``porteur.resultat.simulation.hash_entree`` posé et
+      ``perimee`` faux) → la date LOCALE de son ``calcule_le`` ; sans date
+      enregistrée → ``date.min`` (avant toute coupure : elle est d'avant) ;
+    * aucune simulation, ou une simulation périmée → ``None`` (aujourd'hui :
+      le prochain calcul sera fait aujourd'hui).
+    """
+    import datetime
+
+    from django.utils import timezone
+    from django.utils.dateparse import parse_datetime
+
+    from .electrique import CLE_SIMULATION
+
+    stocke = getattr(porteur, 'resultat', None)
+    simulation = stocke.get(CLE_SIMULATION) if isinstance(stocke, dict) else None
+    if perimee or not isinstance(simulation, dict) or not simulation.get('hash_entree'):
+        return None
+    try:
+        instant = parse_datetime(str(calcule_le or '').strip())
+    except ValueError:
+        instant = None
+    if instant is None:
+        return datetime.date.min
+    if timezone.is_naive(instant):
+        instant = timezone.make_aware(instant, datetime.timezone.utc)
+    return timezone.localtime(instant).date()
+
+
+def _tracees(document, cheminement, entree, jour=None):
+    """Liaison DC tracée (suite ACAL1317) — les chemins TRACÉS par pan, ou ``None``.
+
+    ``None`` (la règle des longueurs saisies, inchangée) quand ``dc_m`` est
+    SAISI dans l'entrée (> 0 : il garde son sens d'aujourd'hui) ou que le
+    calcul précède la coupure ``regles_calcul.COUPURE_LIAISON_DC_TRACEE`` (lue
+    par le sélecteur ventes). Descente et coffret → onduleur saisis
+    n'éteignent PAS le tracé : chacun l'emporte pour SA part
+    (``liaison_dc_tracee.liaison_du_pan``).
+    """
+    from .equipements import liaison_dc_tracee_ouverte
+    from .liaison_dc_tracee import courses_tracees
+
+    if (_nombre(getattr(entree, 'dc_m', None)) or 0) > 0 or not liaison_dc_tracee_ouverte(jour):
+        return None
+    return courses_tracees(document) or None
+
+
+#: Liaison DC tracée (revue, point 3) — le préfixe des messages du câble ``W1``
+#: (``core.electrique.cables.dimensionner_cables``) et ce qu'il devient dans le
+#: calepinage : W1 est vérifié au courant d'UNE chaîne (1,25 × Isc), une paire
+#: + / − par entrée MPPT, sur la liaison la plus longue ; la chute « cumulée DC »
+#: des tronçons (``troncons.py``, CALX225/226) porte, elle, les chaînes de chaque
+#: tronçon tracé. Les deux s'affichent ensemble (avertissements et verdicts de
+#: l'étape Électrique, rapport) : chaque ligne DIT ce qu'elle mesure, aucune
+#: n'est choisie en silence. Le noyau (et donc le devis) n'est pas touché.
+PREFIXE_W1_NOYAU = 'câble DC : '
+PREFIXE_W1_CALEPINAGE = ("câble DC W1 (par paire d'entrées MPPT, au courant d'une chaîne, sur la "
+                         "liaison la plus longue — distinct de la chute cumulée par tronçon) : ")
+
+
+def _ce_que_mesure_w1(messages):
+    """Les messages du noyau, ceux du câble ``W1`` dits avec ce qu'ils mesurent."""
+    return [PREFIXE_W1_CALEPINAGE + message[len(PREFIXE_W1_NOYAU):]
+            if isinstance(message, str) and message.startswith(PREFIXE_W1_NOYAU) else message
+            for message in messages or ()]
+
+
+def _point_saisi(point):
+    """Le point de collecte d'un pan est-il SAISI (``cx`` et ``cy`` numériques) ?"""
+    return isinstance(point, dict) and _nombre(point.get('cx')) is not None \
+        and _nombre(point.get('cy')) is not None
+
+
+def _source_dc(dc):
+    """``saisie`` / ``trace`` / ``trace_et_saisie`` / ``defaut`` — d'où vient la liaison DC retenue."""
+    from .liaison_dc_tracee import PREFIXE_DETAIL_TRACE
+
+    if dc is None:
+        return SOURCE_DC_DEFAUT
+    if not dc.detail.startswith(PREFIXE_DETAIL_TRACE):
+        return SOURCE_DC_SAISIE
+    saisie = any(origine != ORIGINE_PLAN for _poste, _valeur, origine in dc.composantes)
+    return SOURCE_DC_TRACE_ET_SAISIE if saisie else SOURCE_DC_TRACE
 
 
 def _sans_norme():

@@ -31,7 +31,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, within, act } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
 
 vi.mock('../../../api/calepinageApi', () => ({
   default: { calepinages: {
@@ -62,6 +62,7 @@ import {
   statutAbstention, statutRefuse, tonStatut,
 } from './VerdictElectrique.helpers'
 import LIBELLES_CODES from './libellesCodesVerdict.json'
+import { provenanceLiaisonDc } from './resumeRaccordement'
 
 /** Un motif, dans la forme EXACTE de `_motif_publication` — quatre clés. */
 const motif = (code, statut, libelle, source = '') => ({
@@ -250,6 +251,23 @@ describe('VerdictElectrique (CALX249)', () => {
     expect(screen.getByTestId('calx249-pourquoi-oui').textContent).toBe(donnees.publication.phrase)
     expect(screen.queryByText('Publiable')).toBeNull()
     expect(screen.getByTestId('calx249-statut-FICHE_INCOMPLETE')).toBeTruthy()
+  })
+
+  it('ACAL1937 — le rail dit 3 : le titre, le badge et le résumé de l’affectation disent 3, jamais le compte des motifs', async () => {
+    const donnees = structuredClone(exempleContrat('calepinage', 'calepinage_evaluation_electrique', 'exemple_a_completer'))
+    donnees.publication.points = 3
+    donnees.publication.titre = 'À compléter : 3 points'
+    donnees.publication.phrase = 'Aucun motif bloquant ; 3 points restent à compléter : x'
+    servir(donnees)
+
+    rendre()
+
+    await screen.findByTestId('calx249-panneau')
+    expect(screen.getByTestId('calx249-publiable').textContent).toBe('À compléter : 3 points')
+    expect(screen.getByTestId('calx249-pourquoi-oui').textContent).toContain('3 points restent')
+    // Le même nombre servi nourrit le résumé de l'Affectation (etatVerdict.js::etatAffiche).
+    const { etatAffiche } = await import('./etatVerdict')
+    expect(etatAffiche({ etat: 'pret', points: 0 }, donnees.publication).libelle).toBe('À compléter : 3 points')
   })
 
   it('ACAL613 — prêt garde le vert avec le titre du serveur', async () => {
@@ -814,6 +832,65 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(await within(section).findByTestId('calx249-panneau')).toBeTruthy()
   })
 
+  /* ACAL1936 — les TROIS « Régler » de « Prêt à envoyer ? » amènent la section d'arrivée dans la partie visible : après
+     son montage (les volets animent leur hauteur), jamais avant. La coque remonte l'écran à chaque changement d'onglet
+     (clé `étape:onglet` de CoqueAtelier) : le harnais fait de même, avec la VRAIE étape et le VRAI « Prêt à envoyer ? ». */
+  describe('ACAL1936 — « Régler » défile jusqu’à la section ouverte', () => {
+    function Coque() {
+      const [parametres] = useSearchParams()
+      const onglet = parametres.get('onglet') ?? 'verdict-electrique'
+      return (
+        <EtapeElectrique key={onglet} calepinageId={7} ouvert={onglet}
+          action={{ libelle: 'Voir les résultats', onClick: () => {} }} />
+      )
+    }
+    const rendreCoque = () => {
+      const surCarte = document.createElement('div')
+      document.body.appendChild(surCarte)
+      const coque = { noeuds: { surCarte, panneau: null, pied: null }, prendrePied: () => () => {} }
+      render(
+        <MemoryRouter initialEntries={['/calepinage/7?onglet=verdict-electrique']}>
+          <Routes>
+            <Route path="/calepinage/:id" element={<ContexteCoque.Provider value={coque}><Coque /><TemoinUrl /></ContexteCoque.Provider>} />
+          </Routes>
+        </MemoryRouter>,
+      )
+    }
+    const controles = () => {
+      const ok = pret().controles.find((c) => c.code === 'tension_froid')
+      const ligne = (code, libelle, onglet) => ({ ...ok, code, libelle, etat: 'a_regler', valeur_texte: 'À régler',
+        cible: { etape: 'electrique', onglet, champ: '' } })
+      return [ok,
+        ligne('verdict_electrique', 'Dossier électrique', 'verdict-electrique'),
+        ligne('chutes_tension', 'Chutes de tension', 'cheminement-cables'),
+        ligne('terre_protections', 'Terre et protections', 'decisions-electriques')]
+    }
+    let defiles
+    beforeEach(() => {
+      defiles = []
+      HTMLElement.prototype.scrollIntoView = function suivre() {
+        const section = this.closest('[data-testid^="cal-electrique-section-"]')
+        defiles.push({ testid: section?.getAttribute('data-testid'), etat: section?.getAttribute('data-state') })
+      }
+    })
+    afterEach(() => { delete HTMLElement.prototype.scrollIntoView })
+
+    it.each([
+      ['verdict_electrique', 'verdict-electrique'],
+      ['chutes_tension', 'cheminement-cables'],
+      ['terre_protections', 'decisions-electriques'],
+    ])('« Régler » sur %s : la section %s est dépliée PUIS amenée à l’écran', async (code, section) => {
+      servirEtape({ p: pret(controles()) })
+      servir(REPONSE)
+      rendreCoque()
+      const ligne = await screen.findByTestId(`cal-pret-ligne-${code}`)
+      expect(defiles).toEqual([]) // rien ne défile avant le geste
+      fireEvent.click(within(ligne).getByRole('button', { name: 'Régler' }))
+      await waitFor(() => expect(defiles.length).toBeGreaterThan(0))
+      expect(defiles.at(-1)).toEqual({ testid: `cal-electrique-section-${section}`, etat: 'open' })
+    })
+  })
+
   it('T4-U4-007 — le « ? » de « Dossier électrique » nomme le point qui bloque (motif servi par evaluer-electrique)', async () => {
     servirEtape({ p: pret(dossierBloquant()) })
     servir(REPONSE)
@@ -1287,5 +1364,91 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     relu.troncons.troncons = relu.troncons.troncons.map((t) => (t.cote === 'dc' ? { ...t, longueur_m: 21 } : t))
     await act(async () => { servir({ data: relu }) })
     await waitFor(() => expect(pastille).toHaveTextContent('Câble côté panneaux42 m'))
+  })
+
+  it('liaison DC tracée — la longueur que la simulation compte sous « Câble côté panneaux », retenue après un geste, relue après l’enregistrement', async () => {
+    // Le fragment COMMITTÉ du contrat : 28 m = 3 m dans le pan + 19 m de tracé + 6 m de descente saisie.
+    const liaison = exempleContrat('calepinage', 'calepinage_resultat', 'liaison_dc_tracee')
+    servirEtape({ r: { ...resultat(), simule: true, simulation_perimee: false, longueurs: structuredClone(liaison.longueurs) } })
+    const origine = [-7.6, 33.5]
+    const m = (Math.PI / 180) * 6378137
+    const versLngLat = (e, n) => [origine[0] + e / (m * Math.cos((origine[1] * Math.PI) / 180)), origine[1] + n / m]
+    const couche = creerCoucheElectrique({
+      electrical: null, sceneOrigin: origine, activeAreaId: 'z1',
+      areas: [{ id: 'z1', renderPlan: { pack: { origin: origine, azimuthDeg: 180, ringENU: [[0, 0], [20, 0], [20, 12], [0, 12]] },
+        grid: { rowWidthM: 2, panels: [3, 5, 7, 9].map((cx) => ({ cx, cy: 6 })) } } }],
+    })
+    const builderApi = { setAffectationChaines: vi.fn(), electrique: couche }
+    const surCarte = document.createElement('div')
+    document.body.appendChild(surCarte)
+    const coque = { noeuds: { surCarte, panneau: null, pied: null }, prendrePied: () => () => {} }
+    const arbre = (enregistreLe) => (
+      <MemoryRouter initialEntries={['/calepinage/7']}>
+        <Routes>
+          <Route path="/calepinage/:id" element={(
+            <ContexteCoque.Provider value={coque}>
+              <EtapeElectrique calepinageId={7} builderApi={builderApi} enregistreLe={enregistreLe}
+                action={{ libelle: 'Voir les résultats', onClick: () => {} }} />
+            </ContexteCoque.Provider>
+          )} />
+        </Routes>
+      </MemoryRouter>
+    )
+    const { rerender } = render(arbre('T0'))
+    const ligne = await within(surCarte).findByTestId('cal-elec-cable-simulation')
+    expect(ligne).toHaveTextContent('La simulation compte 28 m (tracé du plan et longueurs saisies — une longueur saisie l’emporte sur le plan)')
+    expect(ligne).toHaveTextContent('+ 6 m descente verticale (saisie)')
+    // Un geste sur l'onduleur : la longueur comptée décrit l'ANCIEN tracé, elle n'est plus montrée.
+    fireEvent.click(within(surCarte).getByRole('button', { name: 'Placer l’onduleur' }))
+    act(() => { couche.clicCarte(versLngLat(19, 2)) })
+    expect(within(surCarte).getByTestId('cal-sur-carte-resume')).toHaveTextContent('à mesurer à l’enregistrement')
+    expect(within(surCarte).queryByTestId('cal-elec-cable-simulation')).toBeNull()
+    // Enregistré, pas encore relu : toujours retenue.
+    let servir
+    calepinageApi.calepinages.resultat.mockReturnValueOnce(new Promise((r) => { servir = r }))
+    rerender(arbre('T1'))
+    expect(within(surCarte).queryByTestId('cal-elec-cable-simulation')).toBeNull()
+    // Relu : le document a changé, la simulation rangée est périmée — la longueur est celle que la PROCHAINE comptera.
+    const relu = { ...resultat(), simule: false, simulation_perimee: true, longueurs: structuredClone(liaison.longueurs) }
+    relu.longueurs.dc.valeur_m = 33
+    await act(async () => { servir({ data: relu }) })
+    const relue = await within(surCarte).findByTestId('cal-elec-cable-simulation')
+    expect(relue).toHaveTextContent('La simulation comptera 33 m')
+  })
+})
+
+/* Liaison DC tracée (suite ACAL1317) — la provenance de la longueur que la simulation compte, lue sur le fragment
+   COMMITTÉ du contrat (`calepinage_resultat.json` › `liaison_dc_tracee`), jamais sur une charge inventée. */
+describe('provenanceLiaisonDc — quelle longueur la simulation compte', () => {
+  const servi = () => structuredClone(exempleContrat('calepinage', 'calepinage_resultat', 'liaison_dc_tracee'))
+
+  const parts = ' : 3 m module le plus éloigné → départ du tracé « chA » (plan) + 19 m tracé « chA » jusqu\'à '
+    + 'l\'onduleur « eq1 », à plat (plan) + 6 m descente verticale (saisie)'
+
+  it('tracé + descente saisie (le tracé tel que l’atelier l’écrit) : la longueur comptée, ses parts et leur source', () => {
+    // 28 m servis = 3 m dans le pan + 19 m de tracé (la pastille) + 6 m de descente : jamais la pastille seule.
+    // Sans simulation fraîche servie (le fragment n'en porte pas), c'est la PROCHAINE qui comptera.
+    expect(provenanceLiaisonDc(servi())).toBe('La simulation comptera 28 m (tracé du plan et longueurs saisies — une '
+      + `longueur saisie l’emporte sur le plan)${parts}`)
+    expect(provenanceLiaisonDc({ ...servi(), simule: true, simulation_perimee: false }))
+      .toMatch(/^La simulation compte 28 m \(/)
+  })
+
+  it('plan seul, longueurs saisies, aucune longueur, ou rien de servi', () => {
+    const plan = servi()
+    plan.longueurs.source_dc = 'trace'
+    expect(provenanceLiaisonDc(plan)).toBe(`La simulation comptera 28 m (relevée sur le plan)${parts}`)
+    const saisie = servi()
+    saisie.longueurs.source_dc = 'saisie'
+    expect(provenanceLiaisonDc(saisie)).toBe(`La simulation comptera 28 m (longueurs saisies)${parts}`)
+    const defaut = servi()
+    defaut.longueurs = { dc: null, ac: null, source_dc: 'defaut' }
+    expect(provenanceLiaisonDc(defaut))
+      .toBe('Longueur inconnue de la simulation : la perte de ce câble y est supposée, ou non comptée')
+    const inconnue = servi()
+    inconnue.longueurs.source_dc = 'toString'
+    expect(provenanceLiaisonDc(inconnue)).toBeNull()
+    expect(provenanceLiaisonDc({ troncons: servi().troncons })).toBeNull()
+    expect(provenanceLiaisonDc(null)).toBeNull()
   })
 })

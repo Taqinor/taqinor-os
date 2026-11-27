@@ -59,6 +59,7 @@ import {
   type BatimentOsmServeur,
   type PropositionOsm,
 } from './batiment'; // CALX100 — la hauteur vient du DOCUMENT, plus d'une Map locale
+import { OBSTACLE_TYPES } from './types'; // ACAL1532 — la seule définition des types d'obstacle
 import { etiquette, registreAtelier } from './numerotation'; // CALX111 câblage
 import { $, esc } from './dom';
 import { phraseCouleursAcces, poserLegendeAcces } from './legendeAcces'; // ACAL441, ACAL1821
@@ -592,6 +593,24 @@ export async function executerAvecCarte<T>(
   }
 }
 
+/**
+ * ACAL1532 — qui fait l'ombre, en mots : « de la cheminée » (un type), « de la cheminée et du climatiseur » (deux),
+ * sinon « des obstacles du toit ». Les ombres tracées / objets d'environnement ne se nomment pas : « des ombres relevées ».
+ * `null` quand rien ne fait d'ombre. PURE.
+ */
+export function designationDeLOmbre(
+  obstacles: readonly { type?: string; heightM?: number }[] | null | undefined,
+  nbOmbresTracees = 0,
+  environnement: readonly { heightM?: number; supposeCoupe?: boolean }[] | null | undefined = [],
+): string | null {
+  const hauts = (obstacles ?? []).filter((o) => typeof o.heightM === 'number' && o.heightM > 0);
+  const autres = nbOmbresTracees > 0 || (environnement ?? []).some((o) => typeof o.heightM === 'number' && o.heightM > 0 && o.supposeCoupe !== true);
+  if (!hauts.length) return autres ? 'des ombres relevées' : null;
+  if (autres) return 'des obstacles du toit et des ombres relevées';
+  const noms = [...new Set(hauts.map((o) => (o.type ? OBSTACLE_TYPES.find((t) => t.id === o.type)?.de : undefined) ?? 'de l’obstacle'))];
+  return noms.length === 1 ? noms[0] : noms.length === 2 ? `${noms[0]} et ${noms[1]}` : 'des obstacles du toit';
+}
+
 /** ACAL729 — le début de l'info-bulle d'un module : « Accès solaire 82 % (année entière) · chaîne 2 · », ou rien. */
 export function teteInfoBulleModule(acces: number | null, chaine: string | null): string {
   const morceaux = [
@@ -1111,8 +1130,23 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     hote.innerHTML = `${svgCourbeDirectPerdu(serie, phrase)}<p>${esc(phrase)}</p>`;
   }
 
+  /** ACAL1620 — le chiffre d'accès et la lecture par module suivent le plan et les sources À L'ÉCRAN : un document rouvert
+   *  (obstacle relu, panneaux posés après la naissance de l'UI) disait « non renseigné » jusqu'à une retouche. Mémorisé par
+   *  plan + sources + mois + seuil : un redessin qui ne change rien ne recalcule rien. */
+  let cleAccesPublie: string | null = null;
+  let planAccesPublie: unknown = null;
+  function rafraichirAccesPublie() {
+    const cle = JSON.stringify([signatureSourcesOmbrage(ctx), hasShadeSources(), heatmapMonth, seuilRetrait(), ctx.vertices.length, ctx.layoutPlan?.grid.panels.length ?? 0]);
+    if (cle === cleAccesPublie && ctx.layoutPlan === planAccesPublie) return;
+    cleAccesPublie = cle;
+    planAccesPublie = ctx.layoutPlan;
+    renderSolarAccess();
+    renderModuleShadeReadings();
+  }
+
   function refreshHeatmap() {
     rafraichirCourbeDirectPerdu();
+    rafraichirAccesPublie(); // ACAL1620
     if (!heatmapOn) return;
     applyHeatmap(buildHeatmapColorFn());
   }
@@ -1163,12 +1197,38 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     return etiquette(numerote, registreAtelier.convention(panId)) || `nº${i + 1}`;
   }
 
+  /** ACAL1532 — les obstacles de toit dont l'ombre atteint les modules SIGNALÉS (même `perModule` que la proposition :
+   *  sous le seuil réglé, sinon tout module dont l'accès est < 1). Un obstacle haut qui n'ombre aucun d'eux n'est pas nommé. */
+  function obstaclesQuiOmbrent(s: SolarAccessSummary): Obstacle[] {
+    const plan = ctx.layoutPlan;
+    if (!plan) return [];
+    const seuil = seuilRetrait() ?? 1;
+    const signales = plan.grid.panels.filter((_, i) => s.perModule[i] < seuil);
+    if (!signales.length) return [];
+    const prod = ctx.prodPerKwc ?? fallbackPerKwc();
+    return ctx.obstacles.filter((o) => {
+      const seul = roofObstacleShadeEntries([o], ctx.centroid);
+      return seul.length > 0 && signales.some((p) => pointSolarAccess(ctx.centroidLat, seul, prod, p.cx, p.cy) < 1 - 1e-6);
+    });
+  }
+
+  /** ACAL1532 — ce que l'écran Panneaux lit de `#rp9-solar-access` SANS parser le texte : le nom de l'obstacle
+   *  (`data-ombre-de`) et, SEULEMENT sans seuil réglé, la perte annuelle de `shadeAnnualFactor` (`data-ombre-perte`,
+   *  % entier ≥ 1). Recalculé à chaque rendu, jamais écrit au document ; aucun seuil par défaut. */
+  function publierOmbrePourEcran(el: HTMLElement, s: SolarAccessSummary | null) {
+    const de = s ? designationDeLOmbre(obstaclesQuiOmbrent(s), ctx.shadeObstructions?.length ?? 0, ctx.environment) : null;
+    if (de) el.dataset.ombreDe = de; else delete el.dataset.ombreDe;
+    const perte = s && seuilRetrait() == null && ctx.shadeFactors ? Math.round((1 - ctx.shadeAnnualFactor) * 100) : 0;
+    if (perte >= 1) el.dataset.ombrePerte = String(perte); else delete el.dataset.ombrePerte;
+  }
+
   /** CAL97 — publie le chiffre (et sa méthode) à côté de la carte, ou dit clairement
    *  POURQUOI il est absent — jamais une estimation de remplacement. */
   function renderSolarAccess() {
     const el = accessEl;
     if (!el) return;
     const s = solarAccess();
+    publierOmbrePourEcran(el, s);
     if (!s) {
       el.textContent = hasShadeSources()
         ? 'Accès solaire : non calculé (aucun module posé sur ce pan).'
@@ -1234,7 +1294,10 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     // ACAL729 — accès annuel du module et sa chaîne (table servie), en TÊTE ; rien d'inventé sinon.
     const aire = ctx.areas.find((a) => a.id === ctx.activeAreaId);
     const id = identifiantsModulesParCellule(ctx.activePanelCellIndex ?? [], clePanAffectation(aire, ctx.activeAreaId))[cellIndex]; // ACAL1947 — la clé de la coloration
-    return teteInfoBulleModule(accesAnnuelDuModule(cellIndex), id ? ctx.affectationColoration?.labelByModule?.get(id) ?? null : null) + ombrage;
+    // ACAL1641 — une ligne SERVIE sans chaîne = module « non raccordé » ; module absent de la table (ou table non servie) : rien dit.
+    const servi = ctx.affectationColoration;
+    const chaine = id && servi ? servi.labelByModule?.get(id) ?? (servi.colorByModule?.has(id) ? 'non raccordé' : null) : null;
+    return teteInfoBulleModule(accesAnnuelDuModule(cellIndex), chaine) + ombrage;
   }
 
   /** ACAL729 — accès solaire ANNUEL d'un module du pan actif (mémorisé par plan + sources), ou `null`. */
@@ -1542,6 +1605,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     syncSeuilUi(); // ACAL548 — le champ se relit depuis le document
     renderList();
     drawShadeLines();
+    rafraichirAccesPublie(); // ACAL1620
   }
 
   return {

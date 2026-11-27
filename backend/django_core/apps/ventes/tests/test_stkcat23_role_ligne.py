@@ -325,3 +325,150 @@ class EcritureDuRoleTest(TestCase):
             quantite=Decimal('1'), prix_unitaire=Decimal('980'))
         ligne.refresh_from_db()
         self.assertIsNone(ligne.role_devis)
+
+    def _batterie_bos(self, sku='STKCAT23-BOS'):
+        """« Deye BOS-B Pro-A3 16 kWh » : aucun rôle déclaré, une fiche batterie."""
+        from apps.stock.models import FicheTechnique
+        produit = Produit.objects.create(
+            company=self.company, nom='Deye BOS-B Pro-A3 16 kWh', sku=sku,
+            prix_vente=Decimal('36400'), prix_achat=Decimal('1'))
+        FicheTechnique.objects.create(company=self.company, produit=produit, type_fiche='batterie',
+                                      bat_kwh_nominal=Decimal('16.08'), bat_v_nominal=Decimal('51.2'))
+        return Produit.objects.select_related('fiche_technique').get(pk=produit.pk)
+
+    def test_lecteurs_aval_la_fiche_range_le_role_sans_requete_de_la_fiche(self):
+        """Lecteurs en aval — la fiche chargée par l'écrivain range ``batterie``
+        sur la ligne ; l'écriture ne relit pas la fiche en base."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.stock.models import FicheTechnique
+        produit = self._batterie_bos()
+        with CaptureQueriesContext(connection) as requetes:
+            ligne = creer_ligne(self.devis, produit=produit, designation=produit.nom,
+                                quantite=Decimal('1'), prix_unitaire=Decimal('36400'))
+        table = FicheTechnique._meta.db_table
+        self.assertEqual([q['sql'] for q in requetes.captured_queries if table in q['sql']], [])
+        ligne.refresh_from_db()
+        self.assertEqual(ligne.role_devis, 'batterie')
+
+    def test_lecteurs_aval_l_ecran_range_le_role_par_la_fiche(self):
+        """L'enregistrement de l'écran (``remplacer_lignes``) range le même rôle."""
+        from apps.ventes.domain.lignes import remplacer_lignes
+        produit = self._batterie_bos('STKCAT23-BOS-ECRAN')
+        remplacer_lignes(self.devis, [{'produit': produit.id, 'quantite': '1',
+                                       'prix_unitaire': '36400'}], self.company)
+        self.assertEqual(list(self.devis.lignes.values_list('role_devis', flat=True)), ['batterie'])
+
+    def test_lecteurs_aval_l_assistant_range_le_role_par_la_fiche(self):
+        """Constat 6 — l'assistant (« ajouter ») range le rôle du générateur."""
+        from apps.ventes.domain.lignes_assistant import appliquer_operation
+        produit = self._batterie_bos('STKCAT23-BOS-ASSISTANT')
+        appliquer_operation(self.devis, 'ajouter', {'produit': produit.id, 'quantite': '1'},
+                            utilisateur=self.user)
+        self.assertEqual(list(self.devis.lignes.values_list('role_devis', flat=True)), ['batterie'])
+
+    def test_lecteurs_aval_l_api_d_une_ligne_seule_range_le_role_par_la_fiche(self):
+        """Constat 6 — ``POST /devis-lignes/`` range le rôle du générateur."""
+        from rest_framework.test import APIClient
+        produit = self._batterie_bos('STKCAT23-BOS-API')
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+        rep = api.post('/api/django/ventes/devis-lignes/', {
+            'devis': self.devis.id, 'produit': produit.id, 'designation': produit.nom,
+            'quantite': '1', 'prix_unitaire': '36400'}, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        self.assertEqual(list(self.devis.lignes.values_list('role_devis', flat=True)), ['batterie'])
+
+    def test_lecteurs_aval_retouche_du_catalogue_apres_l_ecriture_sans_effet(self):
+        """Le rôle est RANGÉ : déclarer ensuite un autre rôle au produit ne
+        reclasse pas la ligne déjà écrite, pour aucun lecteur."""
+        from apps.ventes.domain.lignes import _classe_ligne
+        from apps.ventes.models import Devis
+        from apps.ventes.quote_engine.lignes_classement import _is_battery
+        produit = self._batterie_bos('STKCAT23-BOS-RETOUCHE')
+        creer_ligne(self.devis, produit=produit, designation=produit.nom,
+                    quantite=Decimal('1'), prix_unitaire=Decimal('36400'))
+        Produit.objects.filter(pk=produit.pk).update(role_devis='accessoires')
+        ligne = Devis.objects.get(pk=self.devis.pk).lignes.select_related('produit').get()
+        self.assertEqual(ligne.role_devis, 'batterie')
+        self.assertTrue(_classe_ligne(ligne, _is_battery))
+
+    def test_lecteurs_aval_zero_requete_sur_des_lignes_a_produits(self):
+        """Budget : un devis dont les lignes portent des PRODUITS — les lecteurs
+        aval ne font aucune requête (le rôle est une colonne de la ligne)."""
+        from apps.ventes.domain.classe_ligne import paires_portent
+        from apps.ventes.domain.lignes import _classe_ligne
+        from apps.ventes.models import Devis
+        from apps.ventes.quote_engine.lignes_classement import (
+            _is_battery, _is_hybrid_inverter, _is_panel, _line_to_item, panneaux_et_watt_lu)
+        from apps.ventes.utils.options import familles_des_lignes
+        hybride = Produit.objects.create(
+            company=self.company, nom='DEYE SUN-80K-SG02HP3-EU-EM6', sku='STKCAT23-HT',
+            prix_vente=Decimal('90000'), prix_achat=Decimal('1'), role_devis='onduleur_hybride')
+        panneau = Produit.objects.create(
+            company=self.company, nom='Panneau Jinko 710W', sku='STKCAT23-PAN',
+            prix_vente=Decimal('980'), prix_achat=Decimal('1'))
+        for produit, quantite in ((self._batterie_bos('STKCAT23-BOS-BUDGET'), 1), (hybride, 1),
+                                  (panneau, 20)):
+            creer_ligne(self.devis, produit=produit, designation=produit.nom,
+                        quantite=Decimal(quantite), prix_unitaire=Decimal('1'))
+        devis = Devis.objects.get(pk=self.devis.pk)
+        lignes = list(devis.lignes.select_related('produit', 'produit__fiche_technique'))
+        with self.assertNumQueries(0):
+            familles = familles_des_lignes(lignes)
+            paires = [(li, _line_to_item(li, Decimal('20'))) for li in lignes]
+            self.assertTrue(paires_portent(paires, _is_hybrid_inverter, devis))
+            self.assertEqual(sum(_classe_ligne(li, _is_battery) for li in lignes), 1)
+            self.assertEqual(panneaux_et_watt_lu(lignes), (20, 710))
+            self.assertTrue(all(_classe_ligne(li, _is_panel) == (li.produit_id == panneau.pk)
+                                for li in lignes))
+        self.assertTrue(familles['has_hybride'] and familles['has_batterie'])
+
+
+class RoleRangeParLaFicheTest(SimpleTestCase):
+    """Lecteurs en aval — ``_role_a_la_creation`` : rôle déclaré, puis la FICHE
+    chargée du produit, puis les mots-clés ; un devis envoyé avant la coupure
+    garde les deux rangs d'hier."""
+
+    class _Fiche:
+        def __init__(self, type_fiche, **valeurs):
+            self.type_fiche = type_fiche
+            self._valeurs = valeurs
+
+        def __getattr__(self, nom):
+            return self.__dict__.get('_valeurs', {}).get(nom)
+
+    def _champs(self, nom, fiche=None, role=None):
+        from types import SimpleNamespace
+        return {'designation': nom,
+                'produit': SimpleNamespace(nom=nom, role_devis=role, fiche_technique=fiche)}
+
+    def test_la_fiche_avant_le_nom(self):
+        self.assertIsNone(_role_a_la_creation({'designation': 'Deye BOS-B Pro-A3 16 kWh'}))
+        self.assertEqual(_role_a_la_creation(self._champs(
+            'Deye BOS-B Pro-A3 16 kWh', self._Fiche('batterie'))), 'batterie')
+        self.assertEqual(_role_a_la_creation(self._champs(
+            'Canadian Solar TOPBiHiKu7 CS7N-715TB', self._Fiche('module'))), 'panneau')
+        self.assertEqual(_role_a_la_creation(self._champs(
+            'DEYE SUN-80K-SG02HP3-EU-EM6', self._Fiche('onduleur', ond_bat_max_charge_kw=80))),
+            'onduleur_hybride')
+        # Fiche onduleur sans port batterie : la famille reste celle du nom.
+        self.assertEqual(_role_a_la_creation(self._champs(
+            'Onduleur réseau Huawei 10kW Triphasé', self._Fiche('onduleur'))), 'onduleur_reseau')
+
+    def test_le_role_declare_avant_la_fiche(self):
+        self.assertEqual(_role_a_la_creation(self._champs(
+            'Deye BOS-B Pro-A3 16 kWh', self._Fiche('batterie'), role='accessoires')), 'accessoires')
+
+    def test_devis_envoye_avant_la_coupure_garde_les_deux_rangs_d_hier(self):
+        from datetime import date, timedelta
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.regles_calcul import COUPURE_CLASSE_PAR_ROLE
+        avant = SimpleNamespace(statut='envoye', regles_calcul=14,
+                                date_envoi=date(*COUPURE_CLASSE_PAR_ROLE) - timedelta(days=1))
+        champs = self._champs('Deye BOS-B Pro-A3 16 kWh', self._Fiche('batterie'))
+        self.assertIsNone(_role_a_la_creation(champs, avant))
+        self.assertEqual(_role_a_la_creation(champs, SimpleNamespace(
+            statut='brouillon', date_envoi=None, regles_calcul=14)), 'batterie')

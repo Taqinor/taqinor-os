@@ -13,6 +13,7 @@ import logging
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
+from core.user_display import nom_affiche
 from core.events import (
     appointment_effectue,
     conception_recalculee,
@@ -221,7 +222,7 @@ def _defaire_acceptation_on_acceptation_annulee(sender, devis, user,
         lead = Lead.objects.filter(pk=lead_id, company=company).first()
         if lead is not None:
             from . import activity as crm_activity
-            qui = getattr(user, 'username', None) or 'le système'
+            qui = nom_affiche(user) or 'le système'
             option = kwargs.get('option_acceptee') or ''
             crm_activity.log_note(
                 lead, user,

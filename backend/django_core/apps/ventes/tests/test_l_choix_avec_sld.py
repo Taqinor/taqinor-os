@@ -636,3 +636,89 @@ class RevueSchemaElectriqueTest(SimpleTestCase):
                         side_effect=RuntimeError("chemin cassé")):
             with self.assertRaises(RuntimeError):
                 es.schema_electrique_du_devis(devis)
+
+
+def _envoye_avant_la_coupure(devis):
+    """``devis`` envoyé la veille de la coupure « rôle rangé » : il garde les mots-clés."""
+    from datetime import date, timedelta
+
+    from apps.ventes.domain.regles_calcul import COUPURE_CLASSE_PAR_ROLE
+    devis.statut, devis.regles_calcul = "envoye", 14
+    devis.date_envoi = date(*COUPURE_CLASSE_PAR_ROLE) - timedelta(days=1)
+    return devis
+
+
+def _rangee(ligne, produit_id, role=None):
+    """La ligne LIÉE à son produit, avec le rôle RANGÉ à son écriture (``role_devis``)."""
+    ligne.produit_id, ligne.role_devis = produit_id, role
+    return ligne
+
+
+def _devis_hybride_haute_tension():
+    """Cas A en lignes : le 80 kW de Reda et sa batterie BOS-B, aux noms muets,
+    RANGÉS hybride / batterie à l'écriture ; des panneaux 715 Wc rangés panneau."""
+    fiche_715 = dict(FICHE_CS710, pmax_wc=Decimal("715.00"))
+    return _FauxDevis(lignes=[
+        _rangee(_FausseLigne("Canadian Solar TOPBiHiKu7 CS7N-715TB", 30, produit=_FauxProduit(
+            "Canadian Solar TOPBiHiKu7 CS7N-715TB", marque="Canadian Solar",
+            fiche=_FausseFiche("module", **fiche_715))), 1, "panneau"),
+        _rangee(_FausseLigne("DEYE SUN-80K-SG02HP3-EU-EM6", 1, produit=_FauxProduit(
+            "DEYE SUN-80K-SG02HP3-EU-EM6", marque="Deye", fiche=_FausseFiche(
+                "onduleur", ond_bat_max_charge_kw=Decimal("80"), **FICHE_ONDULEUR_HYBRIDE))),
+                2, "onduleur_hybride"),
+        _rangee(_FausseLigne("Deye BOS-B Pro-A3 16 kWh", 1, produit=_FauxProduit(
+            "Deye BOS-B Pro-A3 16 kWh", marque="Deye", fiche=_FausseFiche(
+                "batterie", bat_kwh_nominal=Decimal("16.08"), bat_v_nominal=Decimal("51.2")))),
+                3, "batterie"),
+    ], roof_layout=_roof(30))
+
+
+class LecteursAvalRoleRangeTest(SimpleTestCase):
+    """Lecteurs en aval (fondateur 24/11/2026) — l'étude électrique lit
+    l'onduleur, la batterie et le module par le rôle RANGÉ sur la ligne à son
+    écriture, puis les mots-clés ; un devis envoyé avant la coupure garde les
+    mots-clés, et une empreinte ne bouge pas quand la classe ne change pas."""
+
+    def test_cas_a_hybride_et_batterie_ranges(self):
+        devis = _devis_hybride_haute_tension()
+        self.assertEqual(es._option_choisie(devis)[1], "avec")
+        onduleur, _phases = es.spec_onduleur_du_devis(devis)
+        self.assertIn("Deye", onduleur.designation)
+        self.assertEqual(onduleur.ac_kw, 15.0)
+        self.assertEqual(es.spec_module_du_devis(devis).pmax_wc, 715.0)
+        presente, designation, kwh, _v = es._batterie_du_devis(devis)
+        self.assertTrue(presente)
+        self.assertAlmostEqual(kwh, 16.08)
+        self.assertIn("Deye", designation)
+
+    def test_devis_envoye_avant_la_coupure_garde_les_mots_cles(self):
+        devis = _envoye_avant_la_coupure(_devis_hybride_haute_tension())
+        self.assertEqual(es.spec_module_du_devis(devis).pmax_wc, 0.0)
+        self.assertEqual(es.spec_onduleur_du_devis(devis)[0].ac_kw, 0.0)
+        self.assertFalse(es._batterie_du_devis(devis)[0])
+
+    def test_le_produit_vivant_n_est_jamais_relu(self):
+        """Les mêmes produits (rôle déclaré et fiche) sur des lignes écrites SANS
+        rôle : les mots-clés d'hier, comme avant toute retouche du catalogue."""
+        devis = _devis_hybride_haute_tension()
+        for ligne in devis.lignes.all():
+            ligne.produit.role_devis, ligne.role_devis = ligne.role_devis, None
+        self.assertFalse(es._batterie_du_devis(devis)[0])
+        self.assertEqual(es.spec_module_du_devis(devis).pmax_wc, 0.0)
+
+    def test_empreinte_inchangee_quand_la_classe_ne_change_pas(self):
+        """Un devis d'aujourd'hui dont les rôles rangés disent ce que disent les
+        noms : la même entrée, donc la même ``electrical_design_hash``, que la
+        ligne porte son rôle (ouvert), ne le porte pas, ou que le devis soit
+        envoyé avant la coupure."""
+        roles = ("panneau", "onduleur_reseau", "onduleur_hybride", "batterie")
+
+        def devis(ranges, ferme=False):
+            d = _devis_deux_options_servables()
+            if ranges:
+                for k, (ligne, role) in enumerate(zip(d.lignes.all(), roles), start=1):
+                    _rangee(ligne, k, role)
+            return _envoye_avant_la_coupure(d) if ferme else d
+        empreintes = {es.empreinte_entree(d, es.construire_entree(d))
+                      for d in (devis(False), devis(True), devis(True, ferme=True))}
+        self.assertEqual(len(empreintes), 1)

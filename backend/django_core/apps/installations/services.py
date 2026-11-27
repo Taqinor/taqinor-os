@@ -34,7 +34,7 @@ def default_installer_for(company):
         return None
     try:
         from apps.parametres.models import CompanyProfile
-        prof = CompanyProfile.get(company)
+        prof = CompanyProfile.lire(company)
         return prof.default_installer if prof else None
     except Exception:
         logger.warning("installations.default_installer_for : exception ignorée", exc_info=True)
@@ -57,7 +57,7 @@ def methode_reservation_stock(company):
         return 'confirmation'
     try:
         from apps.parametres.models import CompanyProfile
-        prof = CompanyProfile.get(company)
+        prof = CompanyProfile.lire(company)
         return getattr(prof, 'methode_reservation_stock', 'confirmation') \
             if prof else 'confirmation'
     except Exception:  # pragma: no cover - défensif
@@ -2905,7 +2905,7 @@ def date_definitive_prevue(installation):
         return None
     from dateutil.relativedelta import relativedelta
     from apps.parametres.models import CompanyProfile
-    delai = (CompanyProfile.get(installation.company).delai_reception_definitive_mois
+    delai = (CompanyProfile.lire(installation.company).delai_reception_definitive_mois
              if installation.company_id is not None else None)
     if not delai:
         return None
@@ -3390,7 +3390,7 @@ def _reglage_recette(company, champ):
         return None
     try:
         from apps.parametres.models import CompanyProfile
-        return getattr(CompanyProfile.get(company), champ, None)
+        return getattr(CompanyProfile.lire(company), champ, None)
     except Exception:  # pragma: no cover - défensif
         logger.warning("installations._reglage_recette : exception ignorée", exc_info=True)
         return None
@@ -5627,7 +5627,7 @@ def verifier_gate_acompte_planification(installation):
         return None
     try:
         from apps.parametres.models import CompanyProfile
-        profil = CompanyProfile.get(company)
+        profil = CompanyProfile.lire(company)
     except Exception:  # pragma: no cover - défensif
         logger.warning("installations.verifier_gate_acompte_planification : exception ignorée", exc_info=True)
         return None
@@ -6280,7 +6280,7 @@ def verifier_securite_avant_demarrage(intervention, nouveau_statut):
         return None
     try:
         from apps.parametres.models import CompanyProfile
-        profil = CompanyProfile.get(company)
+        profil = CompanyProfile.lire(company)
     except Exception:  # pragma: no cover - défensif
         logger.warning("installations.verifier_securite_avant_demarrage : exception ignorée", exc_info=True)
         return None

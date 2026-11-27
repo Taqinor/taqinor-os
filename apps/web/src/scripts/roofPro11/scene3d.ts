@@ -54,7 +54,9 @@ import { type AreaRecord, type ZoneRenderPlan, type RenderSceneFn } from './type
 import { makeCanadianPanelTexture, type JeuPanneau } from './panelTexture';
 import { aplatirEnPlan, poserOeil, verreEtOeilAtelier } from './oeilCamera'; // ACAL1984, T4-U1-017, LOT 6
 import { boiteObstacle } from './obstacle3d'; // ACAL1820
-import { etiquettesChaines, type ChaineAPoser } from './electrique3d'; // ACAL1944
+import { poseMasqueeSurCoque, celluleDessinee } from './poseMasquee'; // ACAL1945
+import { shapeToEnu, shapeFromEnu, enuAzimuthDeg, enuVertexAverage, outwardEdgeAzimuthDeg } from './roofShapeEnu';
+import { etiquettesChaines, calqueElectriqueVisible, brancherCalqueElectrique, type ChaineAPoser } from './electrique3d'; // ACAL1944 ; T4-X7-015
 import { teintesBatiment, eclatPresentation, TEINTES_PRESENTATION, jeuDeLaScene, cadreOmbreClient, solOmbreClient, ombresObstacles } from './jeuPresentation'; // ACAL1839 ; lot 8
 import { geometrieJupe } from './jupePignon'; // ACAL1839
 import { enPresentation, montreALEtape, surEtape, surPresentation } from './presentationCarte'; // ACAL1839 ; suites v2 — l'étape
@@ -385,48 +387,6 @@ export type RoofShapePreset = 'flat' | 'shed' | 'gable' | 'hip' | 'l_gable' | 't
 export interface RoofShapePan {
   vertices: LngLat[];
   facingAzimuthDeg: number;
-}
-
-/** Projection ENU locale (mètres) autour d'une origine — même formule que partout ailleurs
- *  dans roofPro11 (freeMode.toEnu, estimatorBrainV2.roofDominantAzimuthDeg). */
-function shapeToEnu(pt: LngLat, origin: LngLat): [number, number] {
-  const cosLat = Math.cos(origin[1] * DEG2RAD);
-  return [(pt[0] - origin[0]) * DEG2M * cosLat, (pt[1] - origin[1]) * DEG2M];
-}
-function shapeFromEnu(p: [number, number], origin: LngLat): LngLat {
-  const cosLat = Math.cos(origin[1] * DEG2RAD);
-  return [origin[0] + p[0] / (DEG2M * cosLat), origin[1] + p[1] / DEG2M];
-}
-
-/** Azimut (0=N, 90=E…) d'un vecteur ENU (E, N) — même convention que roofDominantAzimuthDeg. */
-function enuAzimuthDeg(de: number, dn: number): number {
-  return (Math.atan2(de, dn) / DEG2RAD + 360) % 360;
-}
-
-/** Centre (moyenne des sommets, ENU) — suffit à déterminer le côté « extérieur » d'une
- *  arête sur un contour convexe (le cas visé : un pan de toit tracé est quasi convexe). */
-function enuVertexAverage(pts: [number, number][]): [number, number] {
-  let sx = 0;
-  let sy = 0;
-  for (const [x, y] of pts) {
-    sx += x;
-    sy += y;
-  }
-  return [sx / pts.length, sy / pts.length];
-}
-
-/** Azimut de face sortant de l'arête (a→b), perpendiculaire à l'arête et pointant à
- *  l'opposé du centre du contour. */
-function outwardEdgeAzimuthDeg(a: [number, number], b: [number, number], center: [number, number]): number {
-  const de = b[0] - a[0];
-  const dn = b[1] - a[1];
-  // Deux perpendiculaires possibles ; on garde celle qui s'éloigne du centre.
-  const n1: [number, number] = [dn, -de];
-  const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-  const toMid: [number, number] = [mid[0] - center[0], mid[1] - center[1]];
-  const dot1 = n1[0] * toMid[0] + n1[1] * toMid[1];
-  const outward: [number, number] = dot1 >= 0 ? n1 : [-n1[0], -n1[1]];
-  return enuAzimuthDeg(outward[0], outward[1]);
 }
 
 /** Découpe un polygone ENU par un demi-plan (Sutherland-Hodgman) : garde les points du
@@ -1372,7 +1332,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     if (groupeElectrique && atelierErp) { // ACAL1839 — au client, aucun organe d'édition (onduleur, tracés) ; rendue à la sortie
       const client = jeuScene() === 'presentation' || !montreALEtape(map, 'electrique'); // suites v2 — l'onduleur est celui de la maquette Électrique
       if (client && groupeElectrique.visible) { groupeElectrique.visible = false; groupeElectrique.userData.tuAuClient = true; }
-      else if (!client && groupeElectrique.userData.tuAuClient) { groupeElectrique.visible = true; groupeElectrique.userData.tuAuClient = false; }
+      else if (!client && groupeElectrique.userData.tuAuClient) { groupeElectrique.visible = calqueElectriqueVisible(groupeElectrique); groupeElectrique.userData.tuAuClient = false; } // T4-X7-015 — la case décochée reste décochée
     }
     if (groupeElectrique && sceneRoot && groupeElectrique.parent !== sceneRoot) sceneRoot.add(groupeElectrique);
   }
@@ -2031,8 +1991,9 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // W88 — on garde aussi l'INDEX de lattice de chaque panneau rendu (ordre des instances),
     // pour relier un panneau 3D survolé/tapé à sa cellule (highlight + suppression ciblée).
     const panelCellIndices: number[] = [];
+    const masquee = poseMasqueeSurCoque(); // ACAL1945 (revue) — étape Toit (Guidé) : aucune cellule, même au premier dessin
     const panels = grid.panels.filter((_, i) => {
-      const keep = occupiedSet ? occupiedSet.has(i) : i < Math.max(0, plan.count);
+      const keep = celluleDessinee(i, occupiedSet, plan.count, masquee);
       if (keep) panelCellIndices.push(i);
       return keep;
     });
@@ -2713,7 +2674,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     if (groupeChaines) { groupeChaines.removeFromParent(); groupeChaines.traverse(disposeObject); groupeChaines = null; }
     const col = ctx.affectationColoration;
     const mesh = ctx.activePanelMesh;
-    if (!montrer || !col || !mesh || !sceneRoot || jeuScene() !== 'atelier' || !montreALEtape(map, 'electrique')) return; // suites v2 — maquette Électrique
+    if (!montrer || !col || !mesh || !sceneRoot || jeuScene() !== 'atelier' || !montreALEtape(map, 'electrique') || !calqueElectriqueVisible(groupeElectrique)) return; // T4-X7-015 — case Électrique décochée : pas d'étiquette // suites v2 — maquette Électrique
     const ids = identifiantsModulesParCellule(ctx.activePanelCellIndex, clePanAffectation(ctx.areas.find((a) => a.id === ctx.activeAreaId), ctx.activeAreaId));
     const parChaine = new Map<string, ChaineAPoser & { points: [number, number, number][] }>();
     const m = new THREE.Matrix4();
@@ -2732,7 +2693,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     groupeChaines = etiquettesChaines([...parChaine.values()]);
     sceneRoot.add(groupeChaines);
   }
-  const couleurAffectation = () => (derniereChaines = jeuScene() === 'presentation' ? null : couleurParAffectation(ctx.affectationColoration, ctx.activePanelCellIndex, clePanAffectation(ctx.areas.find((a) => a.id === ctx.activeAreaId), ctx.activeAreaId))); // ACAL1516
+  const couleurAffectation = () => (derniereChaines = jeuScene() === 'presentation' || !calqueElectriqueVisible(groupeElectrique) ? null : couleurParAffectation(ctx.affectationColoration, ctx.activePanelCellIndex, clePanAffectation(ctx.areas.find((a) => a.id === ctx.activeAreaId), ctx.activeAreaId))); // ACAL1516
   /** WJ21 — teinte les instances de panneaux de la zone active par leur accès solaire ; `null` l'éteint (la teinte par
    *  chaîne revient, sinon la teinte d'origine). Réutilise le buffer instanceColor. */
   function setSolarAccessHeatmap(colorFor: CouleurDe) { canal.acces(colorFor, couleurAffectation); }
@@ -2827,7 +2788,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       sceneRoot?.remove(groupeElectrique); // détaché, jamais disposé : il ne nous appartient pas
     }
     groupeElectrique = groupe;
-    attacherCoucheElectrique();
+    brancherCalqueElectrique(groupe, attacherCoucheElectrique, rafraichirAffectation); // T4-X7-015 — la case « Électrique » de Calques redit aussi les chaînes
   }
 
   /** ACAL1839 — le VOLUME de la maison d'après ses DONNÉES, connu avant le premier rendu : chaque sommet de pan à la

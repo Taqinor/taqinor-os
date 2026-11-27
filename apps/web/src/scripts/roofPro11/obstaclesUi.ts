@@ -76,6 +76,7 @@ import {
   exclusionZoneFromDrag,
   exclusionZoneRing,
   largeurAlleeDepuisReglages,
+  poserMotifAvecLien, // ACAL1737 (revue)
   modulesSurAllee,
   withZoneNature,
   withZoneSetback,
@@ -1087,7 +1088,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   // reste MODIFIABLE. Pays sans largeur saisie ⇒ le champ reste VIDE et le motif nomme le
   // pays et le réglage manquant : rien n'est supposé.
   if (alleeLargeurEl && largeurReglee.largeurM != null) alleeLargeurEl.value = fmt1(largeurReglee.largeurM);
-  if (alleeReglageEl) alleeReglageEl.textContent = largeurReglee.motif;
+  if (alleeReglageEl) poserMotifAvecLien(alleeReglageEl, largeurReglee.motif); // ACAL1737 (revue) : la mention du réglage est un lien
 
   const LIBELLE_MODE: Record<ModeTrace, string> = {
     polygone: 'Cliquez les sommets de l’obstacle, double-clic pour fermer.',

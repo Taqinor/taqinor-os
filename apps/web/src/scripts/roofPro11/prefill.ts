@@ -457,6 +457,9 @@ export interface SerializeMeta {
    * dans le document sérialisé, `panelWatt` et `result.kwc` inchangés.
    */
   modules?: AffectationModules | null;
+  /** Numérotation stable (suite ACAL1720) — `true` pour la SEULE sérialisation qui est enregistrée : elle engage
+   *  les numéros des modules. Absente (sondage, capture, lecture) : numéros provisoires, rien n'est engagé. */
+  engagerNumeros?: boolean;
 }
 
 // ═══════════ PV71 — MATRICE D'OMBRAGE 12 × 24 (sérialisation) ═══════════
@@ -861,6 +864,9 @@ export interface SerializedLayout {
    * figée par `roof_layout_v2.schema.json` (`$defs/consumption`).
    */
   consumption?: SerializedConsumption;
+  /** Suite ACAL1720 — par pan, le plus haut numéro de module JAMAIS attribué, quand il dépasse le plus haut `n`
+   *  encore posé (`numerotation.ts::ecrirePlafonds`). Absente = le plafond est le plus haut `n` posé. */
+  plafondsNumerotation?: Record<string, number>;
 }
 
 /** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
@@ -1151,7 +1157,8 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   // ACAL307 — les pans PAVÉS dans la session (pose différente de celle du document relu,
   // ou pan sans pose relue) sont numérotés d'office ; un pan dont la pose est celle du
   // document n'est jamais renuméroté par un simple enregistrement.
-  numeroterDocument(layout, undefined, undefined, { pansPaves: pansPavesDansLaSession(layout, ctx) });
+  // Suite ACAL1720 — seule la sérialisation ENREGISTRÉE engage des numéros (`meta.engagerNumeros`).
+  numeroterDocument(layout, undefined, undefined, { pansPaves: pansPavesDansLaSession(layout, ctx), engager: meta?.engagerNumeros === true });
   // CALX110 — le catalogue `modules[]` + le `moduleId` de chaque pan (contrat CALX82) :
   // le kWc de chaque pan est recalculé depuis SON module, le total du site en devient la
   // somme, et `panelWatt` racine reste servi (watt du module MAJORITAIRE). Sans catalogue
@@ -1214,6 +1221,7 @@ const CLES_RACINE_ATELIER = new Set([
   'environment', 'exclusionZones', 'setbacksM', 'horizonProfile', 'scene', 'buildings', 'underlay', 'imageCapture',
   'poseSurfaces', 'consumption', 'modules', 'optimisation', 'motifsPansVides', 'electrical', 'parcelle', 'alleeTechnique',
   'pinSource', 'repereAcquitte', // ACAL193 — réémises par `emettreProvenanceEpingle`
+  'plafondsNumerotation', // suite ACAL1720 — réémise (ou retirée) par `numeroterDocument`, jamais recopiée telle quelle
 ]);
 /** Clés de PAN que l'atelier écrit lui-même ; toute autre clé relue est transmise telle quelle. */
 const CLES_PAN_ATELIER = new Set([
@@ -1450,6 +1458,18 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
 export function geometrieZoneActive(ctx: Ctx, meta?: SerializeMeta): SerializedZoneGeometry | null {
   const zone = serializeLayout(ctx, null, meta).zones.find((z) => z.id === ctx.activeAreaId);
   return zone?.geometry ? (JSON.parse(JSON.stringify(zone.geometry)) as SerializedZoneGeometry) : null;
+}
+
+/** ACAL1916 — « Voir » un pan : vrai quand le pan actif est EXACTEMENT ce que le document porte déjà (forme, réglages,
+ *  nombre, pose), donc quitter ce pan n'a rien à réécrire. Faux dès qu'une valeur diffère ou qu'aucune pose n'est enregistrée. */
+export function selectionSansChangement(
+  a: Pick<AreaRecord, 'vertices' | 'obstacles' | 'roofType' | 'pitchDeg' | 'facingAzimuthDeg' | 'facingManual' | 'neededPanels' | 'neededAuto' | 'geometrieEnregistree'>,
+  vif: Pick<AreaRecord, 'vertices' | 'obstacles' | 'roofType' | 'pitchDeg' | 'facingAzimuthDeg' | 'facingManual' | 'neededPanels' | 'neededAuto'>,
+  geo: SerializedZoneGeometry | null,
+): boolean {
+  if (!a.geometrieEnregistree || !geo) return false;
+  const cles = ['vertices', 'obstacles', 'roofType', 'pitchDeg', 'facingAzimuthDeg', 'facingManual', 'neededPanels', 'neededAuto'] as const;
+  return cles.every((k) => memeJson(a[k] ?? null, vif[k] ?? null)) && (['count', 'panels', 'azimuthDeg', 'tiltDeg'] as const).every((k) => memeJson(a.geometrieEnregistree?.[k] ?? null, geo[k] ?? null)); // la pose ; tables d'ombrage / accès solaire relus restent ceux du document
 }
 
 // ═══════════ PV19 — HYDRATATION DEPUIS UN DEVIS ═══════════

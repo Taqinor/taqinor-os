@@ -190,7 +190,7 @@ def identite_vendeur_courante(company):
     """APAR61 — instantané JSON de l'identité vendeur du jour (sans aucun
     téléchargement MinIO : le logo est désigné par sa clé)."""
     from apps.parametres.models import CompanyProfile
-    profile = CompanyProfile.get(company=company)
+    profile = CompanyProfile.lire(company=company)
     textes = _identite_textes(profile)
     instantane = {k: (textes.get(k) or '') for k in CLES_IDENTITE_VENDEUR}
     instantane['logo_key'] = profile.logo_key or ''
@@ -325,7 +325,7 @@ def _mention_capital(context, facture):
 def _company_context(company=None):
     """Return branding variables for PDF templates."""
     from apps.parametres.models import CompanyProfile
-    profile = CompanyProfile.get(company=company)
+    profile = CompanyProfile.lire(company=company)
 
     ctx = {
         # AMSG41 — le SEUL profil de la société, sans repli ``ENTREPRISE_*``.

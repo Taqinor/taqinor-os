@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from apps.ventes import economie_ci_options as _options, tarif_ci
 from apps.ventes.moteur_ci import degradation as _deg
-from apps.ventes.quote_engine.constants_82_21 import MENTION_ART13, MENTION_BT
+from apps.ventes.quote_engine.constants_82_21 import MENTION_ART13
 
 STATUT_CALCULE = 'calcule'
 STATUT_OMIS = 'omis'
@@ -100,29 +100,8 @@ def _tension(apercu, tarif):
     return (t or 'bt').lower()
 
 
-def _revente_bt(apercu):
-    bilan = apercu.get('bilan') or {}
-    non_valorise = bilan.get('non_valorise_kwh')
-    if non_valorise is None:
-        non_valorise = bilan.get('surplus_kwh')
-    hyp = []
-    if non_valorise is not None:
-        hyp.append({'cle': 'surplus_non_valorise_kwh',
-                    'valeur': non_valorise, 'statut': 'source',
-                    'source': 'etude_ci.bilan'})
-    return {
-        'statut': 'absente_bt',
-        'kwh_an': None,
-        'plafond_kwh': None,
-        'tarifs': [],
-        'valeur_mad_an': None,
-        'mentions': [MENTION_BT, MENTION_ART13],
-        'hypotheses': hyp,
-    }
-
-
 def _ligne(poste, kwh, ht, ttc):
-    return {'poste': poste, 'kwh_evites': int(round(kwh)),
+    return {'poste': poste, 'libelle': _options.libelle_poste(poste), 'kwh_evites': int(round(kwh)),
             'tarif_kwh': ht, 'mad': round(kwh * ht, 2),
             'tarif_kwh_ttc': ttc, 'mad_ttc': round(kwh * ttc, 2)}
 
@@ -148,10 +127,10 @@ def _valoriser_mt(cellules, tarif):
     for p in prix:
         ht, ttc = prix[p]['tarif_kwh_ht'], prix[p]['tarif_kwh_ttc']
         apres = max(0.0, avant[p] - evites[p])
-        fav.append({'poste': p, 'kwh': int(round(avant[p])),
+        fav.append({'poste': p, 'libelle': _options.libelle_poste(p), 'kwh': int(round(avant[p])),
                     'mad_ht': round(avant[p] * ht, 2),
                     'mad_ttc': round(avant[p] * ttc, 2)})
-        fap.append({'poste': p, 'kwh': int(round(apres)),
+        fap.append({'poste': p, 'libelle': _options.libelle_poste(p), 'kwh': int(round(apres)),
                     'mad_ht': round(apres * ht, 2),
                     'mad_ttc': round(apres * ttc, 2)})
     return par_poste, fav, fap
@@ -201,7 +180,7 @@ def _valoriser_bt(cellules, tarif, apercu, tarif_declare, origine=False):
     nom = '+'.join(p['poste'] for p in postes)
 
     def _facture(kwhs):
-        return [{'poste': nom,
+        return [{'poste': nom, 'libelle': _options.libelle_poste(nom),
                  'mad_ht': round(sum(k * p['tarif_kwh_ht']
                                      for k, p in zip(kwhs, postes)), 2),
                  'mad_ttc': round(sum(k * p['tarif_kwh_ttc']
@@ -283,7 +262,7 @@ def valoriser(apercu_ci, tarif, *, millesime=2026, tarif_declare=None,
                           {'energie_par_poste': fap, 'prime_fixe_mad': prime}),
         # BT : aucune ligne de revente ; MT : valorisée par l'étape dédiée,
         # seulement si la revente est demandée (jamais ici).
-        'revente': _revente_bt(apercu) if tension != 'mt' else None,
+        'revente': _options.revente_bt(apercu) if tension != 'mt' else None,
         'hypotheses': hypotheses,
     }
 
@@ -311,12 +290,9 @@ BASE_HT = 'ht'
 BASE_TTC = 'ttc'
 BASE_DEUX = 'deux'
 
-MOTIF_BASE_HT = "TVA récupérable déclarée « oui » : économies en HT (D-CIQ-3)"
-MOTIF_BASE_TTC = (
-    "TVA non récupérable déclarée « non » : économies en TTC (D-CIQ-3)")
-MOTIF_BASE_DEUX = (
-    "statut TVA non déclaré : les deux bases sont montrées (HT et TTC, "
-    "D-CIQ-3)")
+MOTIF_BASE_HT = "TVA récupérable déclarée « oui » : économies en HT"  # ACAL1225 : aucun code
+MOTIF_BASE_TTC = "TVA non récupérable déclarée « non » : économies en TTC"
+MOTIF_BASE_DEUX = "statut TVA non déclaré : les deux bases sont montrées (HT et TTC)"
 
 
 class SaisieEconomieCiInvalide(ValueError):
@@ -462,7 +438,10 @@ def base_economique(tva_recuperable, *, investissement=None,
 
 #: Horizon d'analyse C&I (D-CIQ-10).
 HORIZON_CI_ANS = 25
-HORIZON_CI_SOURCE = 'D-CIQ-10 : 25 ans'
+#: ACAL1225 — la règle dite en clair (aucun code de décision servi) ; l'ancien
+#: texte « D-CIQ-10 : 25 ans » reste une clé de ``quote_engine.ci.couverture.
+#: SOURCES_CLIENT`` pour les études rangées des devis déjà envoyés.
+HORIZON_CI_SOURCE = "horizon d'analyse : %d ans" % HORIZON_CI_ANS
 #: Jalons publiés du cumul (D-CIQ-10).
 JALONS_CI_ANS = (5, 10, 15, 20, 25)
 #: Indexation : tarif de vente CONSTANT (QX39 / QRES54), saisie à 0.
@@ -834,7 +813,7 @@ def revente_ci(apercu_ci, *, tension, revente_demandee,
     apercu = apercu_ci if isinstance(apercu_ci, dict) else {}
     t = (tension or '').strip().lower() if isinstance(tension, str) else None
     if t and t not in TENSIONS_REVENTE:
-        bloc = _revente_bt(apercu)
+        bloc = _options.revente_bt(apercu)
         if revente_demandee:
             bloc['mentions'].append(MENTION_REVENTE_IGNOREE_BT)
         return bloc
@@ -1217,7 +1196,7 @@ def economie_ci_publique(bloc):
 MOTIF_ETUDE_CI_ABSENTE = (
     "étude C&I du devis absente (aucun panneau au devis ou étude non "
     "calculée) — économies non chiffrées")
-MOTIF_FINANCEMENT_ABSENT = "aucune offre écrite de prêteur saisie (D-CIQ-15)"
+MOTIF_FINANCEMENT_ABSENT = "aucune offre écrite de prêteur saisie"
 ALERTE_TARIF_REPLI = (
     "Tarif valorisé sur la grille officielle (repli) : lire une facture du "
     "client pour un chiffre déclaré.")
@@ -1226,7 +1205,7 @@ ALERTE_TARIF_REPLI = (
 CODES_ALERTES_RELAYEES = ('cos_phi_apres_pv',)
 PARCOURS_AIDE = ('aucun', 'sr500', 'autre')
 MOTIF_SR500_AUCUN = "aucun parcours d'aide déclaré"
-MOTIF_SR500 = ("candidature SR500 manuelle d'abord (D-CIQ-17) — indicateur "
+MOTIF_SR500 = ("candidature SR500 manuelle d'abord — indicateur "
                "interne seulement, jamais un montant")
 MOTIF_AIDE_AUTRE = ("parcours d'aide « autre » déclaré — non évalué, jamais "
                     "un montant")
@@ -1558,6 +1537,12 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
         vue_interne['apres_impot'] = apres
         if motif_apres is not None:
             vue_interne['apres_impot_motif'] = motif_apres
+    indicateurs = flux['indicateurs']
+    if isinstance(indicateurs, dict):  # ACAL1224 — le retour au dixième que le PDF imprime
+        servi = indicateurs.get('retour_ans')  # (couverture.retour_dixieme ; avant le niveau 3 : l'entier)
+        dixieme = None if servi is None or reglages.get('regles_origine') else _options.retour_au_dixieme(
+            flux['flux_ttc'] if flux['base'] == BASE_TTC else flux['flux_ht'])
+        indicateurs['retour_dixieme_ans'] = servi if dixieme is None else dixieme
     hypotheses = [dict(HYPOTHESE_VALORISATION), _hypothese_tarif(tarif)]
     hypotheses.extend(valo.get('hypotheses') or [])
     bloc = {

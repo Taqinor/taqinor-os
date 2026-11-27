@@ -88,14 +88,21 @@ ROLES_DE_TAILLE = frozenset({
     'socle_ci',
 })
 
-SOURCE_PS = 'décision fondateur du 03/10/2026 (D-CIQ-2) — puissance souscrite déclarée'
+#: ACAL1225 — les sources SERVIES disent la règle en clair, sans code de
+#: décision (D-CIQ-2 : décision fondateur du 03/10/2026 pour la puissance
+#: souscrite, du 25/08 pour l'horizon marginal, confirmé le 30/10/2026).
+SOURCE_PS = ('puissance souscrite déclarée : la puissance AC des onduleurs ne la dépasse pas '
+             '(décision fondateur du 03/10/2026)')
+SOURCE_PAS = 'taille étudiée par tranches de %g kWc' % PAS_KWC
 SOURCE_RASANTE = 'décision fondateur du 28/10/2026 (R1 — pose rasante)'
 #: R1 — le texte client quand même la pose rasante ne loge pas la taille
 #: économique (repris trilingue par ``quote_engine.i18n_labels_ci``).
 TEXTE_TAILLE_LIMITEE_TOIT = 'taille limitée par le toit : %g m² déclarés → %g kWc en pose rasante'
 TEXTE_TAILLE_LIMITEE_TOIT_SANS_SURFACE = 'taille limitée par le toit : %g kWc en pose rasante'
-SOURCE_HORIZON = ('horizon marginal C&I unique, panneaux et batteries — 10 ans (moteur_ci/taille.py '
-                  'HORIZON_MARGINAL_CI ; D-CIQ-2 du 25/08, confirmé par le fondateur le 30/10/2026)')
+SOURCE_HORIZON = ("un ajout (une tranche de %g kWc de panneaux, ou une batterie) n'est retenu que "
+                  "s'il se rembourse en %d ans au plus par l'économie qu'il ajoute — même règle "
+                  "pour les panneaux et les batteries (décision fondateur du 25/08, confirmée "
+                  "le 30/10/2026)" % (PAS_KWC, HORIZON_MARGINAL_CI))
 
 
 def _alerte(code, champ, message, niveau='alerte', interne=True):
@@ -457,7 +464,7 @@ def _palier(e, precedent, admis, borne):
 def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, combiner,
                     composer, valoriser, bornes=None, puissance_souscrite_kva=None,
                     revente_choisie=False, taille_explicite_kwc=None, taux_tva_pct=None,
-                    pmax_wc=None, production_rasante=None):
+                    pmax_wc=None, production_rasante=None, taille_issue_creation=False):
     """Bloc ``taille`` du contrat + l'évaluation retenue, alertes, hypothèses.
 
     ``bornes`` : ``{toit: {kwc, source} | None, phase: {...}, regime_8221: {...}}``
@@ -479,7 +486,7 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
     """
     alertes = []
     hypotheses = [
-        {'cle': 'pas_kwc', 'valeur': PAS_KWC, 'statut': 'source', 'source': 'D-CIQ-2'},
+        {'cle': 'pas_kwc', 'valeur': PAS_KWC, 'statut': 'source', 'source': SOURCE_PAS},
         {'cle': 'horizon_marginal_annees', 'valeur': HORIZON_MARGINAL_CI,
          'statut': 'source', 'source': SOURCE_HORIZON},
     ]
@@ -509,7 +516,7 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
     explicite = _pos(taille_explicite_kwc)
     if explicite is not None:
         return _taille_explicite(explicite, evaluer(explicite), bornes_pub, kwc_toit, ps_kva,
-                                 alertes, hypotheses)
+                                 alertes, hypotheses, taille_issue_creation)
 
     evals, paliers = [], []
     meilleur, refus, base_refus = None, 0, None
@@ -686,7 +693,8 @@ def _alerte_onduleurs(onduleurs):
                    'Aucun onduleur C&I éligible : %s.' % detail, niveau='bloquant')
 
 
-def _taille_explicite(kwc, e, bornes_pub, kwc_toit, ps_kva, alertes, hypotheses):
+def _taille_explicite(kwc, e, bornes_pub, kwc_toit, ps_kva, alertes, hypotheses,
+                      issue_creation=False):
     """D-QJR5-13 : une taille saisie est SOUVERAINE — calculée telle quelle.
     R1 (B1) — elle n'est JAMAIS « limitée par le toit » : l'économie n'a pas
     été balayée ; le verdict calculé à la création d'un devis est relu par
@@ -712,8 +720,11 @@ def _taille_explicite(kwc, e, bornes_pub, kwc_toit, ps_kva, alertes, hypotheses)
                                niveau='bloquant'))
         if not e['onduleurs'].get('combinaison') and e['onduleurs'].get('exclus'):
             alertes.append(_alerte_onduleurs(e['onduleurs']))
-    hypotheses.append({'cle': 'taille_explicite_kwc', 'valeur': kwc, 'statut': 'declare',
-                       'source': 'D-QJR5-13 — taille saisie souveraine'})
+    # ACAL1226 — relue du verdict de création (lignes inchangées) : calculée, jamais « saisie ».
+    source = ('taille calculée à la création (règle des %d ans), relue sur les lignes du devis'
+              % HORIZON_MARGINAL_CI if issue_creation else 'D-QJR5-13 — taille saisie souveraine')
+    hypotheses.append({'cle': 'taille_explicite_kwc', 'valeur': kwc,
+                       'statut': 'calcule' if issue_creation else 'declare', 'source': source})
     inclinaison, limite_toit = _hypotheses_toit(e, bornes_pub, 'taille_explicite', hypotheses)
     taille = {
         'retenue_kwc': kwc, 'nb_panneaux': _nb_panneaux(e), 'pas_kwc': PAS_KWC,

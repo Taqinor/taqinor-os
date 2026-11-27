@@ -489,10 +489,12 @@ export default function DevisTab({
                     {/* Devis final (fondateur, 30/10/2026) — le Premium avec les
                         modalités de paiement (acompte · matériel · solde) + le
                         RIB : résidentiel seul (le C&I et l'agricole impriment
-                        toujours leur échéancier). Même devis, jamais un second. */}
+                        toujours leur échéancier). Même devis, jamais un second.
+                        T4-U1-009 — le RIB n'est imprimé que s'il est au profil
+                        société : l'intitulé ne le promet pas sans condition. */}
                     {(d.mode_installation ?? state.server?.type_installation ?? 'residentiel') === 'residentiel' && (
                       <DropdownMenuItem onSelect={() => onAction?.('view-devis', { id: d.id, pdf: 'final' })}>
-                        Devis final (paiement + RIB)
+                        Devis final (paiement + RIB s’il est renseigné)
                       </DropdownMenuItem>
                     )}
                   </DropdownMenuContent>

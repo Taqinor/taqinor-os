@@ -12,6 +12,7 @@
  */
 import type { LngLat } from '../../lib/roof';
 import { areaLabel, type AreaRecord } from '../../lib/roofAreas';
+import { pointeurTactile } from './etatVide';
 import { generateRoofShapePans, type RoofShapePreset } from './scene3d';
 import { buildAreasFromShape, prochainId } from './zones';
 
@@ -27,6 +28,8 @@ export const FORMES_TOIT: ReadonlyArray<{ forme: RoofShapePreset; libelle: strin
 /** La tuile « Tracé libre » : le tracé au clic est le mode de dessin EXISTANT ; elle le dit, rien n'est découpé. */
 export const MOTIF_TRACE_LIBRE = {
   ouvert: 'Tracé libre : cliquez sur la carte pour poser chaque coin du toit, puis « Terminer le tracé ».',
+  /** ACAL1808 — la même consigne au doigt (aucun mot de souris). */
+  ouvertTactile: 'Tracé libre : touchez la carte pour poser chaque coin du toit, puis « Terminer le tracé ».',
   ferme: 'Tracé libre : le contour reste tel que tracé — glissez un coin pour le déplacer.',
 } as const;
 
@@ -105,6 +108,29 @@ export function decouperContour(
   } catch (e) {
     return { ok: false, motif: e instanceof Error ? e.message : 'Forme du toit : découpe impossible.' };
   }
+}
+
+/** ACAL1735 — confirmer la pente d'un pan d'une découpe la confirme pour les pans de la MÊME découpe qui avaient la même pente
+ *  (`avantDeg`) et aucune provenance : ils suivent (pente + `pitchSource`). Un pan d'une autre pente, déjà confirmé, ou hors
+ *  découpe n'est jamais touché. Rend les ids modifiés. */
+export function propagerPenteDecoupe(
+  pans: ReadonlyArray<{ id: string; roofType: string; pitchDeg: number; pitchSource?: Record<string, unknown> }>,
+  idsDecoupe: ReadonlySet<string>,
+  idActif: string,
+  avantDeg: number,
+  apresDeg: number,
+  source: Record<string, unknown>,
+): string[] {
+  const touches: string[] = [];
+  if (!idsDecoupe.has(idActif)) return touches;
+  for (const p of pans) {
+    if (p.id === idActif || !idsDecoupe.has(p.id) || p.roofType !== 'pitched' || p.pitchDeg !== avantDeg
+      || (p.pitchSource && !(p.pitchSource.mode === 'degres' && p.pitchSource.degres === avantDeg))) continue; // un pan déjà confirmé à cette pente suit aussi (curseur)
+    p.pitchDeg = apresDeg;
+    p.pitchSource = JSON.parse(JSON.stringify(source)) as Record<string, unknown>;
+    touches.push(p.id);
+  }
+  return touches;
 }
 
 export interface FormesToitDeps {
@@ -193,7 +219,8 @@ export function monterFormesToit(deps: FormesToitDeps): {
     poser('libre', 'Tracé libre', () => {
       choisie = 'libre';
       marquer();
-      deps.setStatus(deps.contour().length >= 3 ? MOTIF_TRACE_LIBRE.ferme : MOTIF_TRACE_LIBRE.ouvert);
+      const tactile = pointeurTactile(typeof window === 'undefined' ? undefined : window);
+      deps.setStatus(deps.contour().length >= 3 ? MOTIF_TRACE_LIBRE.ferme : tactile ? MOTIF_TRACE_LIBRE.ouvertTactile : MOTIF_TRACE_LIBRE.ouvert);
     });
     marquer = () => tuiles.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.forme === (choisie ?? deduite))));
   }

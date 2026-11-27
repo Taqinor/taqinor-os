@@ -16,6 +16,9 @@
 #      est rendu ici.
 # -ZeroDowntime pose le drapeau /opt/autodeploy/zero_downtime, lu puis effacé
 # par auto-deploy.sh (bascule django à 2 répliques, voir le script).
+# D-27/11-7 — `ranger_totaux_affiches` (total affiché des devis) tourne à chaque
+# deploy après migrate et restart : l'étape `ranger_totaux` vit dans
+# `scripts/auto-deploy.sh`, pas ici.
 # Le serveur est la SOURCE DE VÉRITÉ des données ; ce PC reste le dev.
 # Clé SSH dédiée : %USERPROFILE%\.ssh\taqinor_hetzner (jamais dans le dépôt).
 param(

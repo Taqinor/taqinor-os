@@ -40,7 +40,7 @@ def _resolve_profile(facture, profile):
     if profile is not None:
         return profile
     from apps.parametres.models import CompanyProfile
-    return CompanyProfile.get(company=facture.company)
+    return CompanyProfile.lire(company=facture.company)
 
 
 def _client_nom(client):

@@ -19,6 +19,8 @@ import { LIBELLE_MODE, motifGesteIndisponible, resoudreRaccourci } from './clavi
 import { ID_INFO_BULLE_OMBRAGE, creerInfoBulleOmbrage } from './infoBulleOmbrage';
 import { fondDuDocument, motifFondRefuse, semerFondDepuisDocument } from './fondDocument';
 import { type Ctx } from './context';
+import { createShadingUi } from './shadingUi'; // ACAL1641
+import { buildAffectationColoring } from './scene3d'; // ACAL1641
 
 /** Les SOURCES câblés ici (pages à effets de bord, non importables en test). Chemins
  *  depuis le dossier de travail (`apps/web`), comme `cablageLot2.test.ts`. */
@@ -325,5 +327,43 @@ describe('CALX107 câblage — un dossier rouvert retrouve son calque de fond', 
     // CALX108 câblage — `poserFond` mémorise en plus la RESSOURCE (URL servie + taille
     // naturelle) pour la vignette de calage : la pose reste le MÊME appel à `setFond`.
     expect(SOURCE_ENTREE).toContain('return mapDraw.setFond(fond, ressource); // CALX107 câblage');
+  });
+});
+
+// ACAL1641 — le survol d'un module dit sa chaîne (affectation SERVIE) ou « non raccordé » ; chemin réel :
+// createShadingUi.moduleShadeTooltip → creerInfoBulleOmbrage.montrer, sur un pan à obstacle et deux modules posés.
+describe('ACAL1641 — l’info-bulle d’un module dit sa chaîne ou « non raccordé »', () => {
+  afterEach(() => {
+    document.getElementById(ID_INFO_BULLE_OMBRAGE)?.remove();
+  });
+
+  function atelier(rows: { module: string; chaine: number | null; mppt: number | null }[] | null) {
+    document.body.innerHTML = '';
+    const zone = { id: 'z1', label: 'Zone 1', vertices: [], obstacles: [], buildingId: null };
+    const ctx = {
+      areas: [zone], activeAreaId: 'z1', vertices: [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001]], closed: true,
+      obstacles: [{ id: 'o1', centerLng: -7.6001, centerLat: 33.5001, lengthM: 3, widthM: 3, heightM: 8 }],
+      batiments: [], shadeObstructions: [], environment: [], activeArea: () => zone, pushWorkshopHistory: () => {},
+      centroid: [-7.6, 33.5], centroidLat: 33.5, prodPerKwc: null, shadeFactors: null,
+      layoutPlan: { grid: { panels: [{ cx: 0, cy: 0 }, { cx: 2, cy: 0 }], kwc: 1 } }, activePanelCellIndex: [0, 1],
+      ...(rows ? { affectationColoration: buildAffectationColoring(rows, 'chaine') } : {}),
+    } as unknown as Ctx;
+    const map = new Proxy({}, { get: () => () => undefined }) as never;
+    return createShadingUi(ctx, { map, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {} });
+  }
+
+  it('affectation servie : le module raccordé dit « · chaîne 1 », le module hors chaîne « · non raccordé »', () => {
+    const ui = atelier([{ module: 'z1#1', chaine: 1, mppt: 1 }, { module: 'z1#2', chaine: null, mppt: null }]);
+    const bulle = creerInfoBulleOmbrage();
+    bulle.montrer(ui.moduleShadeTooltip(0), 10, 10);
+    expect(bulle.texte()).toContain('· chaîne 1 ·');
+    bulle.montrer(ui.moduleShadeTooltip(1), 10, 10);
+    expect(bulle.texte()).toContain('· non raccordé ·');
+    expect(bulle.texte()).not.toContain('chaîne');
+  });
+
+  it('aucune affectation servie : l’info-bulle ne dit NI chaîne NI « non raccordé » (rien d’inventé)', () => {
+    const ui = atelier(null);
+    expect(ui.moduleShadeTooltip(0)).not.toMatch(/chaîne|raccordé/);
   });
 });

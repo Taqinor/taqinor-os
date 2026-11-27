@@ -21,6 +21,10 @@ vi.mock('../../api/stockApi', () => ({
     rebuterProduit: vi.fn(),
     // STKCAT25 — onglet « Utilisé dans » (devis / leads / chantiers).
     getProduitUtiliseDans: vi.fn(),
+    // D-ACAL-169 — désigner / retirer LE panneau par défaut ; (rejeu) l'état servi qui colore la pastille.
+    getPanneauParDefaut: vi.fn(),
+    definirPanneauParDefaut: vi.fn(),
+    retirerPanneauParDefaut: vi.fn(),
   },
 }))
 
@@ -633,5 +637,100 @@ describe('CCAT4 — fiche C&I : type de pose et prix', () => {
   it('sans droit d\'écriture (pas de onEdit) ou motif inconnu : aucun bouton', async () => {
     await ouvrir(ciProduit('onduleur_hybride', { eligible_ci: false, motif_exclusion: 'fiche incomplète : puissance AC' }))
     expect(screen.queryByTestId('pdet-completer-ci')).toBeNull()
+  })
+})
+
+
+/* D-ACAL-169 — la fiche d'un PANNEAU porte la pastille « Panneau par défaut »
+   (tous) et le geste « Définir comme panneau par défaut » / « Retirer » (droit
+   `catalogue_prix_modifier`, celui du serveur). Charges utiles LUES dans
+   apps/stock/contract_samples/panneau_par_defaut.json, jamais tapées ici. */
+describe('D-ACAL-169 — panneau par défaut sur la fiche produit', () => {
+  const contrat = exempleContrat('stock', 'panneau_par_defaut')
+  const panneau = (over = {}) => ({
+    id: contrat.produit_id, nom: contrat.nom, sku: 'PAN-715',
+    role_devis_effectif: 'panneau', panneau_par_defaut: false,
+    quantite_en_commande: 0, bcf_sources_en_commande: [], ...over,
+  })
+  const avecDroits = (permissions) => {
+    const s = configureStore({
+      reducer: { auth: (x = { role: 'normal', role_nom: 'Rôle', permissions }) => x },
+    })
+    return function Enveloppe({ children }) {
+      return <Provider store={s}><MemoryRouter><ThemeProvider>{children}</ThemeProvider></MemoryRouter></Provider>
+    }
+  }
+  const RESPONSABLE = avecDroits(['stock_voir', 'catalogue_prix_modifier'])
+  const TECHNICIEN = avecDroits(['stock_voir', 'stock_mouvement'])
+
+  it('responsable : « Définir » appelle le serveur, puis pastille + « Retirer »', async () => {
+    stockApi.definirPanneauParDefaut.mockResolvedValue(reponseContrat('stock', 'panneau_par_defaut'))
+    const onPanneauParDefaut = vi.fn()
+    render(<ProduitDetail produit={panneau()} onClose={() => {}} onPanneauParDefaut={onPanneauParDefaut} />,
+      { wrapper: RESPONSABLE })
+    const zone = screen.getByTestId('panneau-par-defaut-action')
+    expect(within(zone).queryByText('Panneau par défaut')).toBeNull()
+    await userEvent.click(within(zone).getByRole('button', { name: 'Définir comme panneau par défaut' }))
+    expect(stockApi.definirPanneauParDefaut).toHaveBeenCalledWith(contrat.produit_id)
+    expect(await within(zone).findByRole('button', { name: 'Retirer' })).toBeInTheDocument()
+    expect(within(zone).getByText('Panneau par défaut')).toBeInTheDocument()
+    expect(onPanneauParDefaut).toHaveBeenCalledWith(contrat)
+  })
+
+  it('responsable : « Retirer » sur le panneau désigné', async () => {
+    stockApi.retirerPanneauParDefaut.mockResolvedValue(reponseContrat('stock', 'panneau_par_defaut', 'exemple_aucun'))
+    render(<ProduitDetail produit={panneau({ panneau_par_defaut: true })} onClose={() => {}} />,
+      { wrapper: RESPONSABLE })
+    const zone = screen.getByTestId('panneau-par-defaut-action')
+    await userEvent.click(within(zone).getByRole('button', { name: 'Retirer' }))
+    expect(stockApi.retirerPanneauParDefaut).toHaveBeenCalledWith(contrat.produit_id)
+    expect(await within(zone).findByRole('button', { name: 'Définir comme panneau par défaut' })).toBeInTheDocument()
+    expect(within(zone).queryByText('Panneau par défaut')).toBeNull()
+  })
+
+  it('refus du serveur : la phrase servie sous le bouton', async () => {
+    const refus = exempleContrat('stock', 'panneau_par_defaut', 'exemple_erreur_400')
+    stockApi.definirPanneauParDefaut.mockRejectedValue({ response: { status: 400, data: refus } })
+    render(<ProduitDetail produit={panneau()} onClose={() => {}} />, { wrapper: RESPONSABLE })
+    await userEvent.click(screen.getByRole('button', { name: 'Définir comme panneau par défaut' }))
+    expect((await screen.findByRole('alert')).textContent).toBe(refus.panneau_par_defaut[0])
+  })
+
+  it('D-ACAL-169 (rejeu) — désigné mais inutilisable : la pastille de la fiche dit le même état que la ligne', async () => {
+    const resume = exempleContrat('stock', 'panneau_par_defaut', 'exemple_watt_contradictoire')
+    stockApi.getPanneauParDefaut.mockResolvedValue(reponseContrat('stock', 'panneau_par_defaut', 'exemple_watt_contradictoire'))
+    render(<ProduitDetail produit={panneau({ panneau_par_defaut: true })} onClose={() => {}} />,
+      { wrapper: TECHNICIEN })
+    const zone = screen.getByTestId('panneau-par-defaut-action')
+    expect(await within(zone).findByText('Panneau par défaut non utilisable')).toBeInTheDocument()
+    expect(within(zone).getByText(resume.motif)).toBeInTheDocument()
+    expect(within(zone).queryByText('Panneau par défaut')).toBeNull()
+  })
+
+  it('Technicien : voit QUEL panneau est le défaut, jamais le geste', () => {
+    render(<ProduitDetail produit={panneau({ panneau_par_defaut: true })} onClose={() => {}} />,
+      { wrapper: TECHNICIEN })
+    const zone = screen.getByTestId('panneau-par-defaut-action')
+    expect(within(zone).getByText('Panneau par défaut')).toBeInTheDocument()
+    expect(within(zone).queryByRole('button')).toBeNull()
+  })
+
+  it('la fiche passe à un autre produit sans se refermer : l’état suit le produit affiché', () => {
+    const { rerender } = render(
+      <ProduitDetail produit={panneau({ panneau_par_defaut: true })} onClose={() => {}} />,
+      { wrapper: RESPONSABLE })
+    expect(within(screen.getByTestId('panneau-par-defaut-action')).getByText('Panneau par défaut'))
+      .toBeInTheDocument()
+    rerender(<ProduitDetail produit={panneau({ id: contrat.produit_id + 1, nom: 'Panneau Jinko 710W' })}
+                            onClose={() => {}} />)
+    const zone = screen.getByTestId('panneau-par-defaut-action')
+    expect(within(zone).queryByText('Panneau par défaut')).toBeNull()
+    expect(within(zone).getByRole('button', { name: 'Définir comme panneau par défaut' })).toBeInTheDocument()
+  })
+
+  it('produit qui n’est pas un panneau : rien', () => {
+    render(<ProduitDetail produit={panneau({ role_devis_effectif: 'onduleur_reseau' })} onClose={() => {}} />,
+      { wrapper: RESPONSABLE })
+    expect(screen.queryByTestId('panneau-par-defaut-action')).toBeNull()
   })
 })

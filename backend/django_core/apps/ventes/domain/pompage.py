@@ -435,6 +435,13 @@ def _specs_module(produit):
         'temp_coeff_voc_pct_c', 'temp_coeff_pmax_pct_c')}
 
 
+def _panneau_de_l_etude(company, devis):
+    """D-ACAL-169 — devis à naître : le panneau par défaut ; devis BROUILLON : SA ligne panneau ; devis envoyé :
+    le panneau d'aujourd'hui (``panneau_defaut.panneau_pour_etude``)."""
+    from .panneau_defaut import panneau_pour_etude
+    return panneau_pour_etude(company, devis)
+
+
 def _dict_catalogue(produit, **extra):
     """Dict SIMPLE d'un produit catalogue (aucune clé d'achat ni de marge)."""
     d = {'id': produit.id, 'nom': produit.nom, 'sku': produit.sku or '',
@@ -462,11 +469,17 @@ def _premier_chiffrable(produits):
     return None
 
 
-def lire_catalogue(company):
+def lire_catalogue(company, panneau_defaut=None, alertes=None):
     """Le catalogue pompage (AGR103) + panneau, structure, installations,
     socle et transport du catalogue de la société. Lecture seule, bornée
     société. AGQ5 — l'installation de repli et le socle sont trouvés par RÔLE
-    (``role_devis`` sinon ``classer_produit``), jamais par un SKU codé."""
+    (``role_devis`` sinon ``classer_produit``), jamais par un SKU codé.
+
+    D-ACAL-169 — ``panneau_defaut`` (``panneau_defaut.PanneauAuto``, passé
+    seulement pour une étude SANS devis) : le panneau par défaut passe devant
+    s'il est tarifé ET à fiche électrique complète (l'acceptation de CE
+    moteur) ; sinon la règle d'aujourd'hui et la phrase dans ``alertes``.
+    ``None`` (LE DÉFAUT) ⇒ panneau d'aujourd'hui, rien n'est dit."""
     from apps.stock.selectors import produits_pompage
 
     from .catalogue import catalogue_de_la_societe, classer_produit
@@ -507,8 +520,14 @@ def lire_catalogue(company):
         prix = bool(produit.prix_vente and produit.prix_vente > 0)
         candidats.append(((prix, complet, specs['pmax_wc'] or 0,
                            -produit.id), produit, specs))
+    from .panneau_defaut import choisir_avec_defaut
+    choisi, motif = choisir_avec_defaut(panneau_defaut, candidats, lambda cle: cle[0] and cle[1],
+                                        moteur="l'étude de pompage",
+                                        raison='prix de vente absent ou fiche électrique incomplète')
+    if motif and alertes is not None:
+        alertes.append(_alerte('panneau_par_defaut', 'panneau', motif))
     if candidats:
-        _cle, produit, specs = max(candidats, key=lambda c: c[0])
+        _cle, produit, specs = choisi or max(candidats, key=lambda c: c[0])
         panneau = _dict_catalogue(produit, **specs)
 
     transport = None
@@ -708,6 +727,8 @@ def _forme_taille(taille, retenue):
             'couverture_mois_critique_pct'),
         'total_ttc': taille.get('total_ttc'),
         'prix_connu': taille.get('prix_connu'),
+        # ACAL1257 — les lignes du kit sans prix, NOMMÉES (jamais un prix).
+        'articles_sans_prix': taille.get('articles_sans_prix') or [],
         'retenue': retenue, 'motif': taille.get('motif'),
     }
 
@@ -993,7 +1014,8 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
     hmt = _hmt(res, debit_hmt)
     hmt_m = hmt.get('valeur_m')
 
-    catalogue = lire_catalogue(company)
+    catalogue = lire_catalogue(  # D-ACAL-169 — le panneau de l'étude : défaut (à naître) ou celui du devis
+        company, panneau_defaut=_panneau_de_l_etude(company, devis), alertes=alertes_entree)
     produits = catalogue['pompage']
     pompes = [p for p in produits if p.get('role_pompage') == 'pompe']
     variateurs = [p for p in produits

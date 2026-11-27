@@ -1,12 +1,12 @@
 import { Link } from 'react-router-dom'
 import { Icone } from '../atelier/coque/primitives'
-import { lienManque } from './lienManque'
+import { lienManque, lienEtape } from './lienManque'
 import { BandeauBorneHaute } from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import { nomDePerte } from './nomsPertes'
 import { kwh } from './ResultatHeros.helpers'
 import { GrosChiffre } from './TuilesResultat'
-import { compteDuResultat } from './ResultatIncomplet.helpers'
+import { compteDuResultat, regrouperParChamp } from './ResultatIncomplet.helpers'
 
 /* ACAL700 / ACAL1833 — L'ÉTAT « RÉSULTAT INCOMPLET » (maquette v2 ResultatsIncomplet.dc.html) :
    un plafond, pas un résultat. Tout est SERVI (`production.total`, `cascade.a_renseigner`,
@@ -23,6 +23,17 @@ const RAISON = {
   reglage_societe: 'Aucune valeur pour votre société',
   fiche_panneau: 'Absent de la fiche du panneau',
 }
+
+/* ACAL1940 — les étapes qui lisent la fiche de l'ONDULEUR : sans onduleur désigné (le parcours sert `materiel_designe`
+   qui le nomme), leur ligne dit « Aucun onduleur désigné » au lieu de « Absent de la fiche du panneau ». */
+const ETAPES_ONDULEUR = new Set(['mppt', 'onduleur', 'ecretage'])
+/* ACAL1652 — « Salissure », « Chaleur et Salissure », « A, B et C » : chaque étape qui demande le champ est nommée. */
+const nomsDesEtapes = (etapes) => {
+  const noms = etapes.map((e) => nomDePerte(e.etape, e.libelle).nom)
+  return noms.length < 2 ? (noms[0] ?? '') : `${noms.slice(0, -1).join(', ')} et ${noms[noms.length - 1]}`
+}
+const sansOnduleurDesigne = (parcours) => (parcours?.manque || [])
+  .some((m) => m?.code === 'materiel_designe' && /onduleur non désigné/i.test(m?.message || ''))
 
 /** « Remplir les 3 réglages vides » quand « Remplir » les remplit tous ; sinon « Remplir 1 des 3 réglages vides ». */
 function libelleRemplir(compte) {
@@ -213,6 +224,15 @@ function DemarrageRapideBloc({ compte }) {
 
 const MAX_PASTILLES = 4
 
+/* ACAL1939 — « Voir les étapes » ouvre le détail PUIS y défile, une fois monté (requestAnimationFrame) : défiler
+   avant le montage s'arrêtait à la hauteur de la page d'alors, seul le titre du détail se voyait. */
+function voirLesEtapes(onVoirEtapes) {
+  onVoirEtapes()
+  globalThis.requestAnimationFrame?.(() => {
+    globalThis.document?.querySelector('[data-zone="avance"]')?.scrollIntoView?.({ block: 'start' })
+  })
+}
+
 export default function ResultatIncomplet({ calepinageId, data, parcours = null, onVoirEtapes = null, nomProduction = null }) {
   const total = data?.production?.total
   // Relecture E5 M1 — la conception servie à côté : la production de la POSE porte son nom exact.
@@ -225,6 +245,8 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null,
   // Le compte annoncé (« N pertes ») égale les lignes listées, sinon « et K autres » avec « Voir les étapes ».
   const compte = compteDuResultat(aRenseigner)
   const { autres, reglagesVides: societe } = compte
+  const sansOnduleur = sansOnduleurDesigne(parcours)
+  const champs = regrouperParChamp(lignes) // ACAL1652 — une ligne par champ, même si deux étapes le demandent
   return (
     <div className="cal-resinc" data-testid="acal700-incomplet">
       <div className="cal-resinc-haut">
@@ -260,24 +282,29 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null,
             <div className="cal-res-entete">
               <h1 className="cal-res-titre">Pour un résultat complet</h1>
               <span className="cal-res-sourdine cal-resinc-compteur" data-testid="acal1833-compteur">
-                {societe === lignes.length
+                {societe === champs.length
                   ? `${societe} ${societe > 1 ? 'réglages vides' : 'réglage vide'}`
-                  : `${lignes.length} à renseigner`}
+                  : `${champs.length} à renseigner`}
               </span>
             </div>
             <ol className="cal-resinc-liste">
-              {lignes.map((ligne, i) => (
+              {champs.map((ligne, i) => (
                 <li key={`${ligne.etape}-${ligne.cle}`} className="cal-resinc-ligne" data-testid="acal700-ligne">
                   <span className="cal-resinc-rang" aria-hidden="true">{i + 1}</span>
                   <span className="cal-resinc-texte">
                     <span className="cal-resinc-nom" title={nomDePerte(ligne.etape, ligne.libelle).technique || undefined}>
-                      {nomDePerte(ligne.etape, ligne.libelle).nom}
+                      {nomsDesEtapes(ligne.etapes)}
                     </span>
-                    {RAISON[ligne.nature] && <span className="cal-resinc-raison">{RAISON[ligne.nature]}</span>}
+                    {RAISON[ligne.nature] && (
+                      <span className="cal-resinc-raison">
+                        {sansOnduleur && ETAPES_ONDULEUR.has(ligne.etape) ? 'Aucun onduleur désigné' : (ligne.motif || RAISON[ligne.nature])}
+                      </span>
+                    )}
                   </span>
-                  <Link to={lienManque(calepinageId, ligne.cible)} className="cal-resinc-bouton"
-                    data-testid="acal700-renseigner">
-                    Renseigner
+                  <Link to={sansOnduleur && ETAPES_ONDULEUR.has(ligne.etape)
+                    ? lienEtape(calepinageId, 'electrique') : lienManque(calepinageId, ligne.cible)}
+                  className="cal-resinc-bouton" data-testid="acal700-renseigner">
+                    {sansOnduleur && ETAPES_ONDULEUR.has(ligne.etape) ? 'Désigner' : 'Renseigner'}
                   </Link>
                 </li>
               ))}
@@ -288,7 +315,7 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null,
                     <span className="cal-resinc-raison">{`${autres > 1 ? 'pertes pas encore comptées' : 'perte pas encore comptée'}, dans le détail du calcul`}</span>
                   </span>
                   {onVoirEtapes && (
-                    <button type="button" className="cal-resinc-bouton" onClick={onVoirEtapes}>Voir les étapes</button>
+                    <button type="button" className="cal-resinc-bouton" onClick={() => voirLesEtapes(onVoirEtapes)}>Voir les étapes</button>
                   )}
                 </li>
               )}

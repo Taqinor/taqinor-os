@@ -573,11 +573,13 @@ def _fiche_batterie_publique(devis):
             RENDEMENT_SOURCE_FICHE, _puissance_fiche,
             rendement_batterie_des_lignes,
         )
+        from ..domain.classe_ligne import role_de_ligne
         from ..services import classer_produit
         lignes = []
         for ligne in devis.lignes.all():
             designation = getattr(ligne, 'designation', '') or ''
-            if classer_produit(designation) != 'batterie':
+            # Lecteurs aval (suite 3) — le rôle RANGÉ d'abord, sinon les mots-clés.
+            if role_de_ligne(ligne, lambda d=designation: classer_produit(d), devis=devis) != 'batterie':
                 continue
             if float(getattr(ligne, 'quantite', 0) or 0) <= 0:
                 continue

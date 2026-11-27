@@ -161,10 +161,65 @@ def _taux(autoconsommation, cle):
                    unite=' %')
 
 
+_RENVOI_VOLUMES = 'voir les volumes mensuels de la section Pompage'
+
+
+def _ligne_volume(bloc, volumes, motif):
+    """Revue 12 — ``m3_jour_plat`` est le calcul PLAT (débit × heures) : il
+    ignore l'irradiation et le plafond du forage. La synthèse n'imprime donc
+    jamais un autre chiffre que la section Pompage (qui imprime
+    ``m3_mois_pvgis`` d'abord, ``m3_mois_plat`` à défaut) : série physique
+    servie ou plafond atteint ⇒ renvoi à la section, sans chiffre ; seul le
+    plat servi ⇒ le m³/jour plat, étiqueté comme tel (m3_mois_plat ÷ jours).
+    """
+    if not bloc or not volumes:
+        return _ligne('Volume pompé par jour', _valeur(None, motif))
+    if volumes.get('plafond_atteint'):
+        return _ligne('Volume pompé par jour', NON_CALCULEE + ' — %s' % escape(
+            'plafond du forage atteint : ' + _RENVOI_VOLUMES))
+    if volumes.get('m3_mois_pvgis'):
+        return _ligne('Volume pompé', escape(_RENVOI_VOLUMES))
+    return _ligne(
+        'Volume pompé par jour (calcul plat : débit × heures de pompage)',
+        _valeur(volumes.get('m3_jour_plat'), unite=' m³/jour'))
+
+
+def _lignes_pompage(contexte, pose, pertes):
+    """Décision fondateur 6 — la synthèse d'un calepinage de POMPAGE : ni
+    production, ni autoconsommation, ni onduleur (une composition de pompage
+    n'en a pas), ni écart PVGIS ; le débit, la HMT et le volume par jour du
+    dernier dimensionnement enregistré (``pompage_dernier``), TELS QUE
+    SERVIS. Le m³/jour n'est servi que pour une pompe à COURBE
+    (``views/pompage.py``) : absent, il est « non calculée », jamais estimé."""
+    bloc = (contexte.get('resultat_stocke') or {}).get('pompage_dernier') or {}
+    pompe = bloc.get('pompe') if isinstance(bloc.get('pompe'), dict) else {}
+    point = pompe.get('point_fonctionnement') or {}
+    hmt = bloc.get('hmt') if isinstance(bloc.get('hmt'), dict) else {}
+    volumes = (bloc.get('volumes') if isinstance(bloc.get('volumes'), dict)
+               else {})
+    motif = None if bloc else 'aucun dimensionnement de pompage enregistré'
+    return [
+        _ligne('Puissance crête', _valeur(pose.get('kwc'), unite=' kWc')),
+        _ligne('Modules posés', _valeur(pose.get('total_modules'))),
+        _ligne('Débit au point de fonctionnement',
+               _valeur(point.get('debit_m3h'), motif, unite=' m³/h')),
+        _ligne('Hauteur manométrique totale (HMT)',
+               _valeur(hmt.get('hmt_m'), motif, unite=' m')),
+        _ligne_volume(bloc, volumes, motif),
+        _ligne('Pertes totales', _valeur(pertes, unite=' %')),
+        _ligne('Contrôles électriques non conformes',
+               _controles(contexte.get('resultat') or {})),
+    ]
+
+
 def html_de_section(contexte):
     """Le corps de la section ``synthese`` : au plus 12 lignes, une page."""
     resultat = contexte.get('resultat') or {}
     pose = resultat.get('pose') or {}
+    if contexte.get('pompage'):
+        lignes = _lignes_pompage(
+            contexte, pose, (resultat.get('cascade') or {}).get('total_pct'))
+        return '<table class="synthese generique">%s</table>' % ''.join(lignes)
     total = (resultat.get('production') or {}).get('total') or {}
     autoconso = resultat.get('autoconsommation')
     pertes = (resultat.get('cascade') or {}).get('total_pct')

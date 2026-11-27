@@ -5,8 +5,9 @@
 // Rien de ce volet n'atteint le client : il ne lit JAMAIS
 // `economie_ci_publique` (seulement la réponse INTERNE de l'aperçu) et n'est
 // monté que dans la carte « Économies » du générateur. Aucun taux par défaut,
-// aucun nom de concurrent ; chaque nombre tel que tapé (`step="any"`).
+// aucun nom de concurrent ; chaque nombre tel que tapé (`ChampDecimal`, `step="any"`).
 import { Input, Label } from '../../../ui'
+import ChampDecimal from './ChampDecimal'
 import { formatNumber } from '../../../lib/format'
 
 const SELECT = 'form-control form-control-sm'
@@ -16,19 +17,19 @@ const CHAMPS_FINANCEMENT = [
   ['preteur', 'Prêteur / bailleur', 'text'],
   ['reference_offre', "Référence de l'offre", 'text'],
   ['date_offre', "Date de l'offre", 'date'],
-  ['montant_finance_mad', 'Montant financé (MAD)', 'number'],
-  ['apport_mad', 'Apport (MAD)', 'number'],
-  ['duree_mois', 'Durée (mois)', 'number'],
-  ['echeance_mad', 'Échéance (MAD)', 'number'],
-  ['frais_mad', 'Frais (MAD)', 'number'],
-  ['taux_annuel_pct', "Taux annuel (%) — seulement s'il est écrit", 'number'],
-  ['valeur_residuelle_mad', 'Valeur résiduelle (MAD)', 'number'],
+  ['montant_finance_mad', 'Montant financé (MAD)', 'nombre'],
+  ['apport_mad', 'Apport (MAD)', 'nombre'],
+  ['duree_mois', 'Durée (mois)', 'nombre'],
+  ['echeance_mad', 'Échéance (MAD)', 'nombre'],
+  ['frais_mad', 'Frais (MAD)', 'nombre'],
+  ['taux_annuel_pct', "Taux annuel (%) — seulement s'il est écrit", 'nombre'],
+  ['valeur_residuelle_mad', 'Valeur résiduelle (MAD)', 'nombre'],
   ['source', 'Source (offre écrite)', 'text'],
 ]
 const CHAMPS_CSE = [
-  ['tarif_kwh_ht', 'Tarif CSE (MAD/kWh HT)', 'number'],
-  ['duree_ans', 'Durée (ans)', 'number'],
-  ['indexation_pct_an', "Indexation (%/an) — seulement si écrite", 'number'],
+  ['tarif_kwh_ht', 'Tarif CSE (MAD/kWh HT)', 'nombre'],
+  ['duree_ans', 'Durée (ans)', 'nombre'],
+  ['indexation_pct_an', "Indexation (%/an) — seulement si écrite", 'nombre'],
   ['source', 'Source (offre écrite)', 'text'],
 ]
 
@@ -38,9 +39,11 @@ function Champs({ prefixe, champs, valeur, poser, erreur, erreurChamp }) {
       {champs.map(([cle, libelle, type]) => (
         <div className="grid gap-1.5" key={cle}>
           <Label htmlFor={`gen-${prefixe}-${cle}`}>{libelle}</Label>
-          <Input id={`gen-${prefixe}-${cle}`} type={type}
-                 {...(type === 'number' ? { min: '0', step: 'any' } : {})}
-                 value={valeur?.[cle] ?? ''} onChange={(e) => poser(cle, e.target.value)} />
+          {type === 'nombre'
+            ? <ChampDecimal id={`gen-${prefixe}-${cle}`}
+                            value={valeur?.[cle] ?? ''} onValeur={(v) => poser(cle, v)} />
+            : <Input id={`gen-${prefixe}-${cle}`} type={type}
+                     value={valeur?.[cle] ?? ''} onChange={(e) => poser(cle, e.target.value)} />}
           {erreurChamp === `${prefixe}.${cle}` && erreur && (
             <p className="text-xs text-destructive" data-testid={`erreur-${prefixe}.${cle}`}>{erreur}</p>
           )}

@@ -10,7 +10,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -190,3 +190,63 @@ class TestReappliquerLead(TestCase):
         r = self.api.post(self._url('reappliquer-lead'), {}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(Devis.objects.get(pk=self.devis.pk).echeancier, tout_pct)
+
+
+class ACAL1228CiHorairesReprisPhraseDeTaille(SimpleTestCase):
+    """ACAL1228 — C&I : horaires repris, phrase de taille. La copie « devis » de
+    ``etude_params.rythme`` (1x8, 8-17) passait devant le lead (3x8, 8 h → 23 h) au
+    rafraîchissement ; la taille, non réconciliée en C&I, n'était pas dite."""
+
+    LEAD = {'entrees': [{'chemin': 'rythme.equipes', 'valeur': '3x8'},
+                        {'chemin': 'rythme.plages', 'valeur': {'ouvre': [[8, 23]]}},
+                        {'chemin': 'tension', 'valeur': ''}]}
+    PHRASE = ("Taille non recalculée : la taille d'un devis C&I suit ses lignes ; "
+              'appliquez une taille pour la recalculer')
+
+    def _devis(self, statut='brouillon'):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            mode_installation='commercial', statut=statut, company=None, refresh_from_db=lambda: None,
+            etude_params={'tension': 'BT', 'rythme': {
+                'equipes': '1x8', 'plages': {'ouvre': [[8, 17]]}, 'categorie_commerciale': 'bureau'}})
+
+    def _reappliquer(self, devis):
+        """``(réponse, etude_params vus par le rafraîchissement)``."""
+        from contextlib import ExitStack
+        from unittest import mock
+
+        from apps.ventes.domain import pipeline
+
+        vus = []
+
+        def ecrire(d, proprietaire=None, **cles):
+            d.etude_params = {k: v for k, v in dict(d.etude_params, **cles).items() if v is not None}
+        with ExitStack() as pile:
+            for cible, valeur in (('apps.crm.selectors.lead_du_devis', object()),
+                                  ('apps.crm.selectors.entrees_ci_du_lead', self.LEAD),
+                                  ('apps.ventes.domain.modifiabilite.debut_de_geste_devis', None),
+                                  ('apps.ventes.domain.modifiabilite.ttc_du_devis', Decimal('0')),
+                                  ('apps.ventes.domain.modifiabilite.rebaser_echeancier_ou_409', None),
+                                  ('apps.ventes.domain.pipeline.restamper_provenance', None)):
+                pile.enter_context(mock.patch(cible, return_value=valeur))
+            pile.enter_context(mock.patch.object(pipeline, 'transaction'))
+            pile.enter_context(mock.patch.object(pipeline, 'ecrire_etude', side_effect=ecrire))
+            pile.enter_context(mock.patch.object(
+                pipeline, 'appliquer', side_effect=lambda d, _i: vus.append(json.loads(json.dumps(d.etude_params)))))
+            return pipeline.reappliquer_lead(devis), vus[-1]
+
+    def test_le_lead_gagne_sur_les_horaires_et_la_phrase_est_dite(self):
+        reponse, vu = self._reappliquer(self._devis())
+        self.assertEqual(vu['rythme'], {'categorie_commerciale': 'bureau'})  # le lead pose 3x8, 8 → 23
+        self.assertEqual(vu['tension'], 'BT')  # le lead ne dit rien : la copie reste
+        self.assertEqual(reponse['avertissements'], [self.PHRASE])
+
+    def test_reappliquer_deux_fois_identique(self):
+        devis = self._devis()
+        premier = self._reappliquer(devis)
+        self.assertEqual(self._reappliquer(devis), premier)
+
+    def test_un_envoye_garde_ses_entrees(self):
+        reponse, vu = self._reappliquer(self._devis(statut='envoye'))
+        self.assertEqual(vu, self._devis().etude_params)
+        self.assertEqual(reponse['avertissements'], [self.PHRASE])

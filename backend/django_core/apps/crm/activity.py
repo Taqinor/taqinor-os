@@ -6,6 +6,8 @@ instance is compared to the validated new values and one LeadActivity row is
 written per changed field, with human-readable labels and display values.
 The acting user and the company are taken from the request, never the body.
 """
+from core.user_display import nom_affiche
+
 from .models import Client, Lead, LeadActivity
 
 # Champ suivi → libellé français affiché dans l'Historique.
@@ -358,7 +360,7 @@ def _display(lead: Lead, field: str, value):
     if isinstance(value, bool):
         return _BOOL_LABELS[value]
     if field == 'owner':
-        return getattr(value, 'username', str(value))
+        return nom_affiche(value) or str(value)
     return str(value)
 
 
@@ -399,7 +401,7 @@ def log_creation(lead: Lead, user, *, origine: str = ''):
     if user is None and origine:
         corps = f'Lead créé via {origine}'
     else:
-        corps = f"Lead créé par {getattr(user, 'username', '?')}"
+        corps = f"Lead créé par {nom_affiche(user) or '?'}"
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.CREATION,
@@ -461,7 +463,7 @@ def log_archive(lead: Lead, user) -> LeadActivity:
     return LeadActivity.objects.create(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.NOTE,
-        body=f"Lead archivé par {getattr(user, 'username', '?')}",
+        body=f"Lead archivé par {nom_affiche(user) or '?'}",
     )
 
 
@@ -470,7 +472,7 @@ def log_restore(lead: Lead, user) -> LeadActivity:
     return LeadActivity.objects.create(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.NOTE,
-        body=f"Lead restauré par {getattr(user, 'username', '?')}",
+        body=f"Lead restauré par {nom_affiche(user) or '?'}",
     )
 
 

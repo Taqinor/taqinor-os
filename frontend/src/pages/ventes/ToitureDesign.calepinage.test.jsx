@@ -89,6 +89,9 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       cibleVendue: true,
       // ACAL1331 — l'origine de la cible servie (ici le devis lié) : l'atelier la dit à la pose.
       origineCible: CTX.cible.source,
+      // T4-X8-012 (une cible) — la même source dans les mots de la carte « Cible — panneaux ».
+      libelleOrigineCible: 'Devis lié',
+      libelleApresOrigineCible: 'le devis lié',
       // ACAL1951 — le devis lié et l'option servie : l'atelier les NOMME dans sa note (« 7 au devis DEV-… (option avec batterie) »).
       referenceDevis: CTX.calepinage.devis_lie.reference,
       optionCible: CTX.cible.option,
@@ -527,6 +530,8 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     const devis = initRoofToolPro8.mock.calls[0][0].hydrate.devis
     expect(FACTURES.cible.source).toBe('factures')
     expect([devis.cible.panneaux, devis.cibleVendue, devis.origineCible]).toEqual([FACTURES.cible.panneaux, false, 'factures'])
+    expect(devis.libelleOrigineCible).toBe('Factures du lead') // T4-X8-012 (une cible) — les mots de la carte « Source de la cible »
+    expect(devis.libelleApresOrigineCible).toBe('les factures du lead')
 
     cleanup(); vi.clearAllMocks(); reinitialiserBoot()
     calepinageApi.calepinages.designContext.mockResolvedValue(
@@ -535,6 +540,8 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     const sans = initRoofToolPro8.mock.calls[0][0].hydrate.devis
     expect([sans.cible.panneaux, sans.origineCible]).toEqual([null, null])
+    expect(sans.libelleOrigineCible).toBeNull()
+    expect(sans.libelleApresOrigineCible).toBeNull()
   })
 
   /* ACAL84 — brouillon local : rien en lecture seule ; jamais bloquant. */
@@ -1099,6 +1106,31 @@ describe('ToitureDesign — cible estimée vs cible vendue (ACAL195)', () => {
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(screen.queryByTestId('acal-cible-estimee')).toBeNull()
     expect(screen.queryByRole('link', { name: 'Ouvrir la fiche du lead' })).toBeNull()
+  })
+
+  it('Revue ACAL1738 — « renseignez la facture » dite UNE fois : le bandeau se tait tant que le cadre de taille la dit', async () => {
+    // Le 409 du contrat (motif `facture_absente`) : son `refus` EST `cible.refus` du design-context (services/devis.py).
+    const QUESTION = exempleContrat('calepinage', 'calepinage_publication', 'exemple_409_confirmation_taille')
+    expect(QUESTION.motif).toBe('facture_absente')
+    const base = exempleContrat('calepinage', 'calepinage_design_context', 'exemple_cible_refus')
+    const ctx = { ...base, cible: { ...base.cible, refus: QUESTION.refus } }
+    expect(ctx.calepinage.lead).toBeTruthy()
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: ctx })
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: true, version: null } })
+    calepinageApi.calepinages.genererDevis.mockRejectedValue({ response: { status: 409, data: QUESTION } })
+    calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail', 'exemple_vide'))
+
+    rendreCalepinage(ctx.calepinage.id, '?onglet=documents')
+    expect(await screen.findByTestId('acal-cible-estimee', {}, { timeout: 15_000 })).toHaveTextContent(QUESTION.refus)
+    await screen.findByTestId('cal-generer-devis', {}, { timeout: 15_000 })
+    await waitFor(() => expect(screen.getByTestId('cal-generer-devis')).toBeEnabled())
+    await userEvent.click(screen.getByTestId('cal-generer-devis'))
+
+    expect(await screen.findByTestId('cal-devis-confirmation-taille', {}, { timeout: 10_000 }))
+      .toHaveTextContent(QUESTION.detail)
+    await waitFor(() => expect(screen.queryByTestId('acal-cible-estimee')).toBeNull())
+    expect(screen.getAllByText(/renseignez la facture/i)).toHaveLength(1)
   })
 
   it('R2-15 / R2-01 — la toiture déclarée sur le lead est AFFICHÉE avec « Voir la fiche du lead » ; rien quand il ne dit rien', async () => {

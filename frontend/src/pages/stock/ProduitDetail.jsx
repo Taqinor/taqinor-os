@@ -39,6 +39,8 @@ import { STATUS_LABELS as CHANTIER_STATUT_LABELS } from '../../features/installa
 import { AlerteErreur } from '../../ui/AlertesServeur'
 import { TableauLignes } from '../../ui/TableauDefilant'
 import { estEntierSaisi, MESSAGE_ENTIER } from './validationEntiers'
+// D-ACAL-169 — pastille + geste « panneau par défaut » sur la fiche d'un panneau.
+import { ActionPanneauParDefaut } from './PanneauParDefaut.jsx'
 
 // ZPUR10 / ZSTK3 — Fiche produit (au-delà du catalogue) : quantité « en
 // commande » (BCF brouillon/envoyé, jamais annulé/reçu) + rapport
@@ -870,7 +872,7 @@ export function RebutModal({ produit, emplacements = [], onClose, onDone }) {
 // Export nommé : testé directement. `onRebut` suit le même patron que
 // `onEdit` : le PARENT le passe seulement quand le rôle a le droit
 // d'écriture (`canWrite ? refresh : null`) — sans lui, aucun bouton.
-export function ProduitDetail({ produit, onClose, onEdit, onRebut }) {
+export function ProduitDetail({ produit, onClose, onEdit, onRebut, onPanneauParDefaut }) {
   // VX98 — bouton « Historique » → Journal pré-filtré sur CE produit, visible
   // uniquement avec la permission journal_activite_voir (AuditLog couvre tous
   // les modèles ; le backend re-vérifie la permission).
@@ -904,6 +906,13 @@ export function ProduitDetail({ produit, onClose, onEdit, onRebut }) {
         </DialogHeader>
 
         <EnTetePhoto produit={produit} />
+
+        {/* D-ACAL-169 — rien pour un produit qui n'est pas un panneau ; le geste
+            seulement pour qui porte `catalogue_prix_modifier` (droit du serveur). */}
+        {/* La clé = produit + drapeau SERVI : un autre produit (ou le même relu avec
+            un autre drapeau) remonte l'action, jamais un état d'un produit précédent. */}
+        <ActionPanneauParDefaut key={`${produit.id}:${Boolean(produit.panneau_par_defaut)}`}
+                                produit={produit} onChange={onPanneauParDefaut} />
 
         {/* VX159/VX250 — RelationCounters : réutilise `produit.bcf_sources_en_commande`
             déjà chargé (prop, ZÉRO appel réseau nouveau).

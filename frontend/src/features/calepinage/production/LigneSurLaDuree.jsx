@@ -1,7 +1,10 @@
+import { Link, useParams } from 'react-router-dom'
 import { formatNumber } from '../../../lib/format'
 import { useModeExpert } from '../atelier/modeExpert'
+import { lienManque } from './lienManque'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import { kwh, nonCalculee, nonPublie } from './ResultatHeros.helpers'
+import { libelleAnneeBasse, cibleDuMotifDuree } from './LigneSurLaDuree.helpers'
 
 /* ACAL710 — LA PRODUCTION SUR LA DURÉE : année basse (P90), dernière année de
    la projection et garantie du fabricant, puis le tableau « Sur N ans » replié.
@@ -17,21 +20,23 @@ const garantieDe = (annee, garantie) => {
   return typeof pct === 'number' ? pct : null
 }
 
-export default function LigneSurLaDuree({ production }) {
+export default function LigneSurLaDuree({ production, incertitude = null }) {
   const [expert] = useModeExpert()
+  const { id } = useParams()
   if (!expert) return null
   const total = production?.total
   const duree = production?.duree_de_vie
   const projection = Array.isArray(production?.projection) ? production.projection : []
   const omis = Boolean(duree?.motif_omission) || projection.length < 2
   const derniere = projection[projection.length - 1]
+  const cibleMotif = cibleDuMotifDuree(duree?.motif_omission)
   const garantieFinale = garantieDe(derniere?.annee, duree?.garantie)
   const basse = estIncomplet(total) ? nonPublie(total?.p90_kwh_motif) : kwh(total?.p90_kwh)
   return (
     <div data-testid="acal710-ligne" className="flex flex-col gap-2 text-sm">
       <p>
         <span data-testid="acal710-basse">
-          Année basse (9 fois sur 10 au-dessus) : {basse}
+          {libelleAnneeBasse(incertitude)} : {basse}
         </span>
         {!omis && (
           <span data-testid="acal710-derniere">
@@ -43,6 +48,9 @@ export default function LigneSurLaDuree({ production }) {
       {omis ? (
         <p data-testid="acal710-motif" className="text-muted-foreground">
           {duree?.motif_omission || 'Aucune projection sur la durée n\'a été servie.'}
+          {cibleMotif && id && (
+            <>{' '}<Link to={lienManque(id, cibleMotif.cible)} className="text-primary-text underline">{cibleMotif.libelle}</Link></>
+          )}
         </p>
       ) : (
         <details data-testid="acal710-tableau">

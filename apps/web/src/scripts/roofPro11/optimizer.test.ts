@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom'; // ACAL574
 import { type Ctx } from './context'; // ACAL574
-import { carteDeLaPoseTenue, direEcartPoseRelue, motifPanExistant, noteEcartPoseRelue, remettreSurLePlan } from './panExistant'; // ACAL574, ACAL1900
+import { carteDeLaPoseTenue, direEcartALaPose, direEcartPoseRelue, motifPanExistant, noteEcartPoseRelue, remettreSurLePlan } from './panExistant'; // ACAL574, ACAL1900
 import { createLayoutState } from '../../lib/layoutVariability'; // ACAL1900
 import { serializeLayout } from './prefill'; // ACAL1900
 import { annualSavingsMad, packConfig, defaultEastWestGeometry, type PackOptions } from '../../lib/estimatorBrainV2';
@@ -31,7 +31,7 @@ import type { LayoutPlan } from './types'; // ACAL2032
 import { DEG2M as DEG2M_TEST } from './constants'; // ACAL2032
 import { fmt, fmtKwc, fmtMad } from './dom'; // ACAL994 + R2-09
 import { suiteCouverture } from './tailleConception'; // T4-X5-005
-import { phraseSurplus } from './affichageErp'; // R2-17
+import { phraseSurplus, phraseTiennent, texteSurDevis } from './affichageErp'; // R2-17, T4-X8-012 (une cible)
 import { createZones } from './zones'; // ACAL1418
 import { factureCarteDe, lireFactureSaisie } from './factureCarte'; // ACAL777
 import { createShadingUi, seuilEffectifAccesSolaire } from './shadingUi'; // ACAL548, ACAL1900
@@ -398,8 +398,7 @@ describe('CALX114 — dépôt de `optimisation` (CALX88) pour le balayage', () =
 // ACAL79 — une seule borne `clampNeeded`, et la cible VENDUE n'est jamais plafonnée.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { besoinVendu, clampNeeded, lireRendement, RENDEMENT_PVGIS_DEFAUT } from './optimizer';
-import { hydrateFromDevis, type DevisPayload } from './prefill';
-import { heriterDuPanDecoupe } from './tailleAuto'; // ACAL1448
+import { hydrateFromDevis } from './prefill';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -1006,6 +1005,8 @@ describe('ACAL549 — causeDuPanVide', () => {
     expect(m.mesures).toMatchObject({ retraitM: 0.8, largeurPanM: 1.5, largeurUtileM: 0 });
   });
 
+  // ACAL1966 — les cas « anneau posable vide » vivent dans motifPanVide.test.ts (fichier gelé, C20).
+
   it('obstacles couvrant tout ⇒ obstacles (et passe AVANT le seuil) ; seuil ⇒ seuil_acces_solaire ; rien ⇒ module_trop_grand / inconnue', () => {
     expect(causeDuPanVide(mesures({ surfacePosableM2: 0, seuil: 0.8, ecartes: 3 })).code).toBe('obstacles');
     const s = causeDuPanVide(mesures({ seuil: 0.8, ecartes: 3 }));
@@ -1296,6 +1297,25 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
   const MAD = /MAD\/an/g;
   const prodEstimee = (): number => { const b = monter({}); const v = b.t('rp9-reco-prod'); b.fin(); return Number(v.replace(/\D/g, '')); }; // ACAL2022 — l'estimation locale ne se lit plus qu'en mode public
 
+  // ACAL1914 (revue) — des panneaux posés que AUCUNE chaîne ne raccorde ne gonflent plus l'estimation du navigateur : quand la table
+  // d'affectation servie existe, l'estimation est celle des modules raccordés du pan (part = raccordés ÷ modules servis du pan) ;
+  // sans chaîne formée, l'estimation d'aujourd'hui reste telle quelle.
+  it('ACAL1914 — l’estimation ne compte que les panneaux raccordés quand des chaînes existent ; sans chaîne, inchangée', () => {
+    const modules = (n: number, raccordes: number) => {
+      const colorByModule = new Map<string, unknown>(); const labelByModule = new Map<string, string>();
+      for (let i = 1; i <= n; i++) { colorByModule.set(`z1#${i}`, [0, 0, 0]); if (i <= raccordes) labelByModule.set(`z1#${i}`, 'chaîne 1'); }
+      return { colorByModule, labelByModule, legend: [] };
+    };
+    const tous = prodEstimee(); // 10 panneaux posés, aucune table : l'estimation d'aujourd'hui
+    const lire = (coloration: unknown) => { const b = monter({}, { activeAreaId: 'z1', affectationColoration: coloration }); const v = Number(b.t('rp9-reco-prod').replace(/\D/g, '')); b.fin(); return v; };
+    expect(tous).toBeGreaterThan(0);
+    expect(lire(modules(10, 10))).toBe(tous); // tous raccordés : rien ne change
+    expect(lire(modules(10, 0))).toBe(tous); // aucune chaîne encore : l'estimation reste (un design sans chaîne)
+    const huit = lire(modules(10, 8)); // 2 panneaux non raccordés
+    expect(Math.abs(huit - (tous * 8) / 10)).toBeLessThanOrEqual(1); // = la production des 8 raccordés (production par panneau × 8)
+    expect(huit).toBeLessThan(tous);
+  });
+
   it('PRODUCTION : la production SERVIE à kWc égal ; l’estimation sinon (jamais une valeur servie pour un autre kWc)', () => {
     const base = erp(null);
     const estimation = base.t('rp9-reco-prod');
@@ -1446,6 +1466,70 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
       a.opt.majChiffrage(null);
       expect(a.t('rp9-need-note')).toContain('· 16 au devis');
     } finally { for (const x of [a, sansDevis, nonVendu, sansCompte, publique]) x.fin(); }
+  });
+
+  // T4-X8-012 (une cible) — « 16 posés / 16 cible » à côté de la carte « Cible — panneaux : 7 » : le nombre à poser (« Panneaux à
+  // poser », choisi ou enregistré) était écrit « cible ». « cible » = la cible SERVIE (la conception du lead), avec sa source dans
+  // les mots de la carte ; le nombre à poser garde son nom.
+  describe('T4-X8-012 (une cible) — la note dit LA cible servie, jamais le nombre à poser', () => {
+    const watt = MODULE_PAR_DEFAUT_ATELIER.pmaxWc as number;
+    const hydrate = (cible: Record<string, unknown> | null, extra: Record<string, unknown> = {}) => ({ devis: { origineCible: 'factures', libelleOrigineCible: 'Factures du lead', cible, ...extra } });
+    const note = (opts: Record<string, unknown>, neededPanels: number) => { const x = monter(opts, { devisMode: true, cibleVendue: false, neededPanels }); const t = x.t('rp9-need-note'); x.fin(); return t; };
+    const SERVIE = (n: number) => hydrate({ panneaux: n, panel_watt: watt });
+
+    it('cibles tapée (12), du devis (14) et des factures (7) toutes différentes : une seule cible dite, avec sa source', () => {
+      // la pose en tient 10 : 3 de plus que la cible des factures ; le champ « à poser » (12) n’apparaît plus comme « cible »
+      expect(note({ chiffrage: null, hydrate: SERVIE(7) }, 12))
+        .toBe('10 posés / 7 cible (Factures du lead) · 3 de plus que la cible — le toit n’en tient pas davantage en plein sud (toit ou obstacles).');
+      // même cible par la table servie du module posé (la carte « Couvrir la facture »), prioritaire sur le compte de la conception
+      expect(note({ chiffrage: null, hydrate: hydrate({ panneaux: 99, panel_watt: 550 }, { panneauxSelonWatt: { [String(watt)]: 7 } }) }, 12))
+        .toContain('10 posés / 7 cible (Factures du lead) · 3 de plus que la cible');
+      // un devis lié vendu de 14 : la note garde « · 14 au devis » mais la cible reste la servie
+      const lie = monter({ chiffrage: null, devisLie: true, hydrate: SERVIE(7) }, { devisMode: true, cibleVendue: true, neededPanels: 12, panneauxDevis: 14 });
+      try { expect(lie.t('rp9-need-note')).toContain('10 posés / 7 cible (Factures du lead) · 3 de plus que la cible · 14 au devis — le toit n’en tient pas'); } finally { lie.fin(); }
+    });
+
+    it('sous la cible : « k de moins » et « seuls N tiennent » reste vrai ; à la cible : aucun écart ; place libre : phrase d’avant', () => {
+      expect(note({ chiffrage: null, hydrate: SERVIE(14) }, 12))
+        .toBe('10 posés / 14 cible (Factures du lead) · 4 de moins que la cible — seuls 10 tiennent en plein sud (toit ou obstacles).');
+      expect(note({ chiffrage: null, hydrate: SERVIE(10) }, 12))
+        .toBe('10 posés / 10 cible (Factures du lead) — le toit n’en tient pas davantage en plein sud (toit ou obstacles).');
+      // 8 à poser (choisis), le toit en tient 10 : posés 8 / cible 7, la place restante est dite comme avant
+      expect(note({ chiffrage: null, hydrate: SERVIE(7) }, 8)).toBe('8 posés / 7 cible (Factures du lead) · 1 de plus que la cible — il reste de la place sur le toit, laissée libre.');
+    });
+
+    it('sans cible servie, ou sans compte servi pour le module posé : le texte d’avant, jamais « 0 cible »', () => {
+      const avant = '10 posés / 12 cible — seuls 10 tiennent en plein sud (toit ou obstacles).';
+      expect(note({ chiffrage: null }, 12)).toBe(avant);
+      expect(note({ chiffrage: null, hydrate: { devis: { panneauxSelonWatt: { [String(watt)]: 7 } } } }, 12)).toBe(avant); // une table seule n'est pas une origine
+      expect(note({ chiffrage: null, hydrate: hydrate({ panneaux: null, panel_watt: null }) }, 12)).toBe(avant); // refus du moteur : aucune cible
+      expect(note({ chiffrage: null, hydrate: hydrate({ panneaux: 7, panel_watt: watt + 100 }) }, 12)).toBe(avant); // autre module, aucun compte servi
+      // rien à poser : aucune phrase « N posés / T cible » ; la note ne dit « aucune cible » que s'il n'y en a aucune de servie
+      expect(note({ chiffrage: null, hydrate: SERVIE(7) }, 0)).toBe('La cible est de 7 panneaux (Factures du lead) — on pose ce qui tient (10). Saisissez un nombre pour le plafonner.');
+      expect(note({ chiffrage: null }, 0)).toBe('Aucune cible de puissance sur ce calepinage — on pose ce qui tient (10). Saisissez un nombre pour le plafonner.');
+      expect(note({ chiffrage: null, hydrate: SERVIE(7) }, 0)).not.toContain('0 cible');
+    });
+
+    it('SITE PUBLIC : mêmes textes à l’octet près, même quand le payload porte une cible servie', () => {
+      const sans = note({}, 12);
+      expect(sans).toBe('10 posés / 12 au devis — seuls 10 tiennent en plein sud (toit ou obstacles).');
+      expect(note({ hydrate: SERVIE(7) }, 12)).toBe(sans);
+      expect(texteSurDevis(10, 12, false, true, 14, ' X', { panneaux: 7, origine: 'Factures du lead' })).toBe('10 posés / 12 au devis');
+      expect(phraseTiennent(10, null)).toBe('seuls 10 tiennent'); // sans cible : la phrase d'avant
+    });
+
+    it('les notes de pose tenue disent la même cible et la même source ; sans cible servie, le nombre à poser comme avant', () => {
+      document.body.innerHTML = '<p id="rp9-need-note"></p>';
+      const ctx = { neededPanels: 12, opts: { chiffrage: null, hydrate: SERVIE(7) } };
+      direEcartALaPose(16, ctx as never, watt, fmt, false, '');
+      expect(document.getElementById('rp9-need-note')!.textContent)
+        .toBe('16 posés / 7 cible (Factures du lead) — pose tenue telle quelle (9 de plus que la cible, rien n’est retiré ni ajouté).');
+      direEcartALaPose(16, { neededPanels: 12, opts: { chiffrage: null } } as never, watt, fmt, true, '');
+      expect(document.getElementById('rp9-need-note')!.textContent).toBe(noteEcartPoseRelue(16, 12, fmt, true));
+      document.body.innerHTML = '<p id="rp9-need-note">intact</p>';
+      direEcartALaPose(7, ctx as never, watt, fmt, true, ''); // pose = cible : rien à dire
+      expect(document.getElementById('rp9-need-note')!.textContent).toBe('intact');
+    });
   });
 
   // T4-X8-012 — après « Le plus de panneaux » (le plafond 400 de `clampNeeded`, « tout ce qui tient ») puis Enregistrer, l'Expert
@@ -1773,110 +1857,5 @@ describe('R3-25 (b) / R3-04 — cartes de variante espacées, phrase « aucune p
       const phrase = host.querySelector<HTMLElement>('p[data-couverture-max]');
       expect(phrase?.textContent).toMatch(/^Aucune pose ne couvre le besoin \(estimation\) : le toit donne au plus \d+ % \(\d+ panneaux\)\.$/);
     } finally { fin(); }
-  });
-});
-
-// ACAL1331 + ACAL1448 (D-ACAL-76 « dimensionner », 23/11/2026) — un calepinage VIERGE de l'atelier ERP se pose, dès que son
-// toit est fermé, à la taille de la cible servie (celle du devis lié, sinon celle tirée de la facture du lead), et l'écran
-// le DIT ; le commercial ajuste ; une pose tenue n'est jamais re-posée (ACAL1900) ; le site public ne change pas.
-describe('ACAL1331 — la taille de la cible posée d’elle-même sur un calepinage vierge, et dite', () => {
-  const payload = (origineCible: string | null, roofLayout: unknown = null) => ({
-    id: null, geometrie: { roof_layout: roofLayout, roof_point: null, roof_outline: null },
-    cible: { panneaux: 8, panel_watt: 710, scenario: null }, cibleVendue: origineCible === 'devis', origineCible,
-  });
-  /** Boot d'un plat `l × p` m depuis le payload de l'atelier (`hydrateFromDevis`, cible imposée au pan unique comme
-   *  `imposeTarget`), puis `close()` : le premier rendu de l'optimiseur. */
-  const fermer = (l: number, p: number, opts: Record<string, unknown>) => {
-    const g = globalThis as unknown as { document?: Document };
-    const avant = g.document;
-    g.document = new JSDOM('<!doctype html><body><p id="rp9-need-note"></p><dd id="rp9-reco-kwc"></dd><tbody id="rp9-compare"></tbody></body>').window.document;
-    const h = hydrateFromDevis((opts.hydrate as { devis?: DevisPayload } | undefined)?.devis ?? null);
-    const vertices = rectRing(l, p);
-    const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
-    const pan = { id: 'z1', label: 'Zone 1', vertices, obstacles: [], roofType: 'flat' };
-    const ctx = {
-      closed: true, vertices, roofType: 'flat', areas: [pan], activeAreaId: 'z1', activeArea: () => pan, opts, dom: {},
-      centroid: [cLng, cLat], centroidLat: cLat, pinned: new Set<string>(), sel: { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' },
-      v4YieldCache: new Map(), overhangM: 0, documentRelu: h.documentRelu, batiments: [], environment: [], shadeObstructions: [], obstacles: [],
-      neededAuto: h.neededAuto, neededPanels: h.neededPanels ?? 0, devisMode: true, cibleVendue: h.cibleVendue, panneauxDevis: h.neededPanels,
-      layoutPlan: null, layoutState: null, layoutOptimalCount: 0, useRecommended: true, freeMode: false, freeState: null,
-    } as unknown as Ctx;
-    let dessinee = -1;
-    const renderScene = vi.fn((pack: unknown, grid: { panels: unknown[] }, tiltDeg: number, family: string, maxCount: number, flush: boolean, occ?: Set<number>) => {
-      dessinee = maxCount;
-      if (!occ) Object.assign(ctx, { layoutPlan: { pack, grid, tiltDeg, family, flush }, layoutOptimalCount: Math.min(grid.panels.length, Math.round(maxCount)), layoutState: null });
-    });
-    const deps = { renderScene, paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
-      syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 0, obstructionRings: () => [], obstructionClearances: () => [], setStatus: vi.fn() };
-    const opt = createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]);
-    opt.liveResolveFlat(); // close() : le toit vient d'être fermé
-    const note = () => document.getElementById('rp9-need-note')!.textContent ?? '';
-    const kwc = () => (document.getElementById('rp9-reco-kwc')!.textContent ?? '').replace(/\s*kWc$/, '');
-    return { ctx, opt, dessinee: () => dessinee, note, kwc, fin: () => { g.document = avant; } };
-  };
-  const ERP = (origine: string | null, roofLayout: unknown = null) => ({ chiffrage: null, rendementPvgis: null, hydrate: { devis: payload(origine, roofLayout) } });
-
-  it('cible 8 tirée de la facture, toit qui en tient plus : 8 posés et DITS ; « + » ⇒ 9 et la phrase ne prétend plus la facture', () => {
-    const a = fermer(12, 8, ERP('factures'));
-    try {
-      expect(a.dessinee()).toBe(8);
-      expect(a.note()).toBe(`Posé d’après la facture : 8 panneaux · ${a.kwc()} kWc — ajustez si besoin.`);
-      a.ctx.neededPanels = 9; // « + »
-      a.opt.liveResolveFlat();
-      expect(a.dessinee()).toBe(9);
-      expect(a.note()).not.toContain('d’après');
-      expect(serializeLayout(a.ctx, null).zones[0].geometry!.count).toBe(9);
-    } finally { a.fin(); }
-  });
-
-  it('pose tenue (le commercial a déplacé ou enregistré) : le recalcul de fond ne re-pose rien', async () => {
-    const a = fermer(12, 8, ERP('factures'));
-    try {
-      const cellules = a.ctx.layoutPlan!.grid.panels;
-      a.ctx.layoutState = createLayoutState(cellules, 7); // un panneau retiré à la main : 7
-      await a.opt.computeMatrixPvgis();
-      a.opt.liveResolveFlat(false);
-      expect(serializeLayout(a.ctx, null).zones[0].geometry!.count).toBe(7);
-    } finally { a.fin(); }
-  });
-
-  it('toit trop petit pour la cible : ce qui tient est posé, et l’écart est dit', () => {
-    const a = fermer(5, 4, ERP('factures'));
-    try {
-      const n = a.dessinee();
-      expect(n).toBeGreaterThan(0);
-      expect(n).toBeLessThan(8);
-      expect(a.note()).toMatch(new RegExp(`^Posé d’après la facture : ${n} panneaux · ${a.kwc()} kWc sur 8 — seuls ${n} tiennent .+ ; ajustez si besoin\\.$`));
-    } finally { a.fin(); }
-  });
-
-  it('devis lié : « Posé d’après le devis » ; taille souhaitée du lead : dite telle', () => {
-    for (const [origine, mot] of [['devis', 'le devis'], ['lead', 'la taille souhaitée du lead']]) {
-      const a = fermer(12, 8, ERP(origine));
-      try {
-        expect(a.dessinee()).toBe(8);
-        expect(a.note().startsWith(`Posé d’après ${mot} : 8 panneaux`)).toBe(true);
-      } finally { a.fin(); }
-    }
-  });
-
-  it('jumeaux inchangés : pose déjà enregistrée, aucune origine servie, site public', () => {
-    const posee = { schema_version: 2, zones: [{ id: 'z1', vertices: rectRing(12, 8), geometry: { count: 8, panels: [{ cx: 0, cy: 0 }] } }] };
-    for (const opts of [ERP('factures', posee), ERP(null), { rendementPvgis: null, hydrate: { devis: payload('factures') } }]) {
-      const a = fermer(12, 8, opts);
-      try { expect(a.note()).not.toContain('d’après'); } finally { a.fin(); }
-    }
-  });
-
-  it('ACAL1448 — « 2 pans » sur un toit posé : le premier pan (le mieux exposé) garde la taille, tous gardent le module', () => {
-    const pans = [{ id: 'area-2', neededPanels: 0, neededAuto: true }, { id: 'area-3', neededPanels: 0, neededAuto: true, existant: false }];
-    heriterDuPanDecoupe({ moduleId: 'produit-710' }, { neededPanels: 5, neededAuto: false }, pans as never, true);
-    expect(pans).toEqual([
-      { id: 'area-2', neededPanels: 5, neededAuto: false, moduleId: 'produit-710' },
-      { id: 'area-3', neededPanels: 0, neededAuto: true, existant: false, moduleId: 'produit-710' },
-    ]);
-    const publics = [{ id: 'area-2', neededPanels: 0, neededAuto: true }];
-    heriterDuPanDecoupe({ moduleId: 'produit-710' }, { neededPanels: 5, neededAuto: false }, publics as never, false); // site public : rien
-    expect(publics).toEqual([{ id: 'area-2', neededPanels: 0, neededAuto: true }]);
   });
 });

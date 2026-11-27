@@ -20,14 +20,22 @@ export function useLeadClientEcran(ctx) {
     setConsoMensuelle, setHorsReseau, horsReseauTouched, setPompeCv, setPompeHmt, setPompeDebit,
     appliquerEntreesPompage,
     facturesProtegeesRef, reinitialiserFactures, setAvisFactures, consoMensuelle,
-    pompeCv, pompeHmt, pompeDebit, baremeSociete,
+    pompeCv, pompeHmt, pompeDebit, baremeSociete, distributeurChoisi, setDistributeur,
   } = ctx
   const vide = (v) => v == null || String(v).trim() === ''
+  // ACAL1212 (revue 4) — la recherche du lead d'arrivée est TERMINÉE : lead appliqué (ou choisi/effacé au
+  // sélecteur) ou introuvable. Auto-remplir n'attend plus ensuite un lead qui ne viendra jamais.
+  const [arriveeResolue, setArriveeResolue] = useState(false)
+  const signalerLeadIntrouvable = (leadParam) => {
+    setErrors(prev => ({ ...prev, client: `Lead introuvable (n° ${leadParam}).` }))
+    setArriveeResolue(true)
+  }
 
   // AGNR19 — `leadLu` : le lead déjà relu par son id (arrivée `?lead=`,
   // prop `leadId`) ; à défaut, la liste chargée (sélecteur).
   const applyLead = (id, leadLu = null) => {
     setLeadId(id)
+    setArriveeResolue(true)
     if (!id) return
     setClientId('') // le client est résolu côté serveur depuis le lead
     const lead = leadLu || leads.find(l => String(l.id) === String(id))
@@ -81,6 +89,10 @@ export function useLeadClientEcran(ctx) {
     // choisi lui-même (même garde « touché » que pompeAlim/structure/tension
     // ci-dessus dans le reducer — ici en état simple, voir sa déclaration).
     if (!horsReseauTouched) setHorsReseau(lead.raccordement === 'aucun')
+    // ACAL1209 — le distributeur du lead (déduit de sa ville, CAD167) est repris
+    // tant que le vendeur n'a pas choisi ; un choix manuel n'est jamais écrasé.
+    // Libellé seul : le barème est national. Mêmes codes que le sélecteur.
+    if (!distributeurChoisi && ['onee', 'lydec', 'redal'].includes(lead.distributeur)) setDistributeur(lead.distributeur)
     if (facturesProtegeesRef.current) {
       if (hiver > 0) setAvisFactures('Factures du lead non appliquées : des factures sont déjà saisies.')
     } else if (hiver > 0) {
@@ -206,6 +218,6 @@ export function useLeadClientEcran(ctx) {
   }
 
   return {
-    applyLead, applyClient, runAutoQuote, alertesAuto,
+    applyLead, applyClient, runAutoQuote, alertesAuto, arriveeResolue, signalerLeadIntrouvable,
   }
 }

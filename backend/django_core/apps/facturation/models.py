@@ -732,7 +732,7 @@ class Facture(TotauxDocumentMixin, VerrouOptimisteMixin, RechercheFTSMixin, mode
         """
         manquantes = []
         from apps.parametres.models import CompanyProfile
-        profile = CompanyProfile.get(company=self.company)
+        profile = CompanyProfile.lire(company=self.company)
 
         # Identité + identifiants légaux du vendeur.
         if not (profile.nom or '').strip():

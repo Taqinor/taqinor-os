@@ -81,8 +81,13 @@ MOTIF_AUCUNE_COMPLETE = (
     'calepinage : complétez la longueur, la largeur et la puissance crête sur '
     'la fiche technique du panneau.')
 
+#: D-ACAL-169 — ce que dit le motif d'une entrée quand le panneau par défaut de la société est LISTÉ mais ne peut pas
+#: démarrer le calepinage (fiche incomplète pour le pavage, ou pas de fiche « module ») : la règle d'aujourd'hui
+#: s'applique, et le vendeur lit pourquoi par le canal que l'entrée a déjà (``motif``). Le motif de fiche suit.
+MOTIF_PAR_DEFAUT_NON_RETENU = 'Panneau par défaut de la société non retenu au départ : '
+
 __all__ = ['CHAMPS_REQUIS', 'LIBELLES_CHAMPS', 'SOURCE_FICHE', 'PREFIXE_ID',
-           'modules_disponibles_du_calepinage']
+           'MOTIF_PAR_DEFAUT_NON_RETENU', 'modules_disponibles_du_calepinage']
 
 
 def _cote_positive(valeur):
@@ -187,6 +192,35 @@ def _module_de_la_conception(calepinage):
     return str(produit) if produit not in (None, '') else None
 
 
+def _panneau_par_defaut(calepinage):
+    """D-ACAL-169 — le panneau par défaut UTILISABLE de la société du calepinage, ou ``None``.
+
+    Lu par le sélecteur du stock (``panneau_par_defaut`` : désigné, non archivé, tarifé, toujours un panneau) ;
+    la société vient du calepinage, jamais d'une requête. Sans société enregistrée (calcul hors base, double de
+    test) : aucune lecture, donc la règle d'aujourd'hui."""
+    company = getattr(calepinage, 'company', None)
+    if getattr(company, 'pk', None) is None:
+        return None
+    from apps.stock.selectors_panneau_defaut import panneau_par_defaut
+
+    return panneau_par_defaut(company)
+
+
+def _marquer_le_panneau_par_defaut(entrees, defaut):
+    """D-ACAL-169 — pose ``par_defaut: True`` sur l'entrée du panneau par défaut (clé ABSENTE ailleurs).
+
+    Ce panneau est LISTÉ même s'il n'a pas de fiche « module » (il est alors ajouté, grisé) : le vendeur doit voir
+    qu'il existe et POURQUOI il ne démarre pas le calepinage. Son ``motif`` — le canal existant de l'entrée —
+    le dit en tête quand la fiche est incomplète pour le pavage."""
+    entree = next((e for e in entrees if e['module']['produitId'] == defaut.pk), None)
+    if entree is None:
+        entree = _entree_module(defaut)
+        entrees.append(entree)
+    entree['par_defaut'] = True
+    if not entree['selectionnable']:
+        entree['motif'] = MOTIF_PAR_DEFAUT_NON_RETENU + (entree['motif'] or '')
+
+
 def modules_disponibles_du_calepinage(calepinage, produits):
     """CALX109 — le contrat ``calepinage_modules_disponibles.json`` COMPLET.
 
@@ -201,6 +235,14 @@ def modules_disponibles_du_calepinage(calepinage, produits):
     invente aucun et ne retombe sur aucun module par défaut en silence.
     """
     entrees = [_entree_module(produit) for produit in (produits or [])]
+    fiches_du_catalogue = len(entrees)
+    # D-ACAL-169 (rejeu) — le panneau par défaut UTILISABLE de la société passe EN TÊTE, devant le module de la
+    # conception et les favoris : c'est lui que l'atelier pose d'office sur un pan NEUF (« 715 partout »). Un pan
+    # existant cite son module par ``moduleId`` : ce module reste servi et choisissable, rien n'est réécrit.
+    # Grisé (fiche incomplète), il est listé et dit pourquoi ; l'ordre d'aujourd'hui reste.
+    defaut = _panneau_par_defaut(calepinage)
+    if defaut is not None:
+        _marquer_le_panneau_par_defaut(entrees, defaut)
     # ACAL174 — les favoris de la société EN TÊTE (dans l'ordre épinglé),
     # drapeau ``favori`` sur chaque entrée ; un favori archivé ou introuvable
     # n'est simplement pas dans ``produits`` (sélecteur borné société,
@@ -210,19 +252,21 @@ def modules_disponibles_du_calepinage(calepinage, produits):
             for position, identifiant in enumerate(favoris)}
     for entree in entrees:
         entree['favori'] = str(entree['module']['produitId']) in rang
-    # Rejeu T3-VAGUEC2 + ACAL2025 — le module de la CONCEPTION passe EN TÊTE,
-    # devant les favoris. L'atelier pose d'office le premier module du catalogue
-    # (``moduleDeDepart``) : c'est donc lui, jamais un module d'essai de même
-    # puissance. Le choisir autrement reste un geste de l'atelier.
+    # Rejeu T3-VAGUEC2 + ACAL2025 — le module de la CONCEPTION passe devant les
+    # favoris (derrière le seul panneau par défaut utilisable, D-ACAL-169 rejeu).
+    # L'atelier pose d'office le premier module du catalogue (``moduleDeDepart``) :
+    # jamais un module d'essai de même puissance. Le choisir autrement reste un
+    # geste de l'atelier.
     du_devis = _module_de_la_conception(calepinage)
     entrees.sort(key=lambda entree: (
+        0 if entree.get('par_defaut') and entree['selectionnable'] else 1,
         0 if du_devis is not None and str(entree['module']['produitId']) == du_devis else 1,
         0 if entree['favori'] else 1,
         rang.get(str(entree['module']['produitId']), 0)))
     selectionnables = [entree for entree in entrees if entree['selectionnable']]
     if selectionnables:
         motif = None
-    elif entrees:
+    elif fiches_du_catalogue:
         motif = MOTIF_AUCUNE_COMPLETE
     else:
         motif = MOTIF_AUCUNE_FICHE

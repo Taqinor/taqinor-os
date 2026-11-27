@@ -74,6 +74,8 @@ Module PUR : aucune base, aucun réseau, aucun appel PVGIS.
 """
 from __future__ import annotations
 
+from apps.calepinage.services.etapes import fiche_du_module
+
 from apps.calepinage.services import etapes
 from apps.calepinage.services.ombrage_chaines import (
     MOTIF_SANS_ACCES, ombrage_des_chaines)
@@ -104,7 +106,7 @@ CHAMPS_SANS_CONTRAINTE = ('micro_onduleur', 'microonduleur', 'optimiseur',
 MOTIF_SANS_AFFECTATION = (
     "Le contexte ne porte pas la table d'affectation des modules aux chaînes "
     '(« affectation », services/chaines.py) : sans elle, on ne sait pas '
-    'QUELS modules sont en série, donc aucune contrainte de chaîne ne peut '
+    'quels modules sont en série, donc aucune contrainte de chaîne ne peut '
     "être mesurée. Rien n'est supposé.")
 
 MOTIF_SANS_LAYOUT = (
@@ -113,7 +115,7 @@ MOTIF_SANS_LAYOUT = (
     "lui aucune dispersion I-V n'est mesurable.")
 
 MOTIF_AUCUNE_CHAINE_MESURABLE = (
-    "La table d'affectation et le document sont bien là, mais AUCUNE chaîne "
+    "La table d'affectation et le document sont bien là, mais aucune chaîne "
     "n'a d'accès solaire calculé sur ses modules : un module sans accès "
     "calculé n'est pas un module non ombré, et rien n'est complété.")
 
@@ -125,7 +127,7 @@ MOTIF_CHAINES_A_VIDE = (
 MOTIF_SEUIL_ABSENT = (
     "Aucun seuil d'accès solaire de dérivation n'est saisi pour cette "
     'société : la borne « module dérivé » ne se calcule pas sans lui, et '
-    "aucune valeur n'est supposée à sa place (D-CALX 7).")
+    "aucune valeur n'est supposée à sa place.")
 
 #: Ce qui est publié quand la granularité reste le module entier.
 HYPOTHESE_MODULE = (
@@ -497,7 +499,7 @@ def _brins_proteges(contexte):
     donc aucune migration n'est demandée ici : l'absence est la règle, et
     elle est publiée.
     """
-    fiche = contexte.get('fiche_module')
+    fiche = fiche_du_module(contexte)
     if fiche is None:
         return None
     for champ in CHAMPS_BRINS:

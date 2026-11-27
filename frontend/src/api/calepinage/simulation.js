@@ -81,6 +81,9 @@ export const simulation = {
     cibleFactures: (id) => api.get(`${pivot(id)}cible-factures/`),
     // Lane E9 (T4-X5-010) — AVANT « Générer le devis » : le matériel que chaque option du devis portera (lecture seule).
     apercuDevis: (id, config) => api.get(`${pivot(id)}apercu-devis/`, config), // E9b : `config.params.surfaces`
+    // ACAL1320 (D-ACAL-73) — AVANT « Resynchroniser le devis » : ce que la resynchronisation changera au devis lié,
+    // rien d'écrit (contrat `calepinage_apercu_resync.json`) ; `config.params` : `surfaces`, `devis` (variante).
+    apercuResync: (id, config) => api.get(`${pivot(id)}apercu-resync/`, config),
 
     // CALX229 — le métré et la chute, TRONÇON PAR TRONÇON (contrat
     // `contract_samples/calepinage_troncons.json`, CALX203). ÉTAT DU SERVEUR

@@ -25,16 +25,24 @@
 // aucun appel réseau — les entrées viennent de la fiche déjà chargée
 // (`historique` du shell LeadWorkspace, repli `chatter_recent` du GET lead,
 // EXACTEMENT la précédence de TimelineTab — zéro requête ajoutée).
+import { useContext } from 'react'
+import { ReactReduxContext } from 'react-redux'
 import { dayLabel } from '../../../../components/ChatterTimeline'
 import { entreeArbre } from './arbreEntree'
 
-const heureCourte = (iso) => {
+// Heure d'une entrée DANS LE FUSEAU DE LA SOCIÉTÉ (défaut Africa/Casablanca, comme useCompanyTimeZone et comme la
+// phrase « Recalculé le … à … » servie par le serveur) — jamais celui du poste : un même instant UTC doit donner la
+// même heure ici et dans la carte Conception. Lecture du profil sans abonnement (hors Provider : le défaut).
+const FUSEAU_DEFAUT = 'Africa/Casablanca'
+const heureCourte = (iso, timeZone = FUSEAU_DEFAUT) => {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone })
 }
 
 export default function ArbreHistorique({ historique, chatterRecent }) {
+  const redux = useContext(ReactReduxContext)
+  const fuseau = redux?.store?.getState?.()?.parametres?.profile?.fuseau_horaire || FUSEAU_DEFAUT
   // Même précédence que TimelineTab (LW30/LW41) : `historique` (rafraîchi par
   // le shell) dès qu'il existe, sinon `chatter_recent` embarqué au GET lead.
   const source = (historique?.length ? historique : chatterRecent) ?? []
@@ -96,7 +104,7 @@ export default function ArbreHistorique({ historique, chatterRecent }) {
                         )}
                         {rendu.texte && <span className="lw-arbre-corps"> {rendu.texte}</span>}
                       </span>
-                      <span className="lw-arbre-heure">{heureCourte(a.created_at)}</span>
+                      <span className="lw-arbre-heure">{heureCourte(a.created_at, fuseau)}</span>
                     </li>
                   )
                 })}

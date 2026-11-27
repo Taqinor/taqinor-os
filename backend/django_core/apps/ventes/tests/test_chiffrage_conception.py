@@ -142,6 +142,23 @@ class ChiffrerConceptionTest(SimpleTestCase):
         self.assertEqual({sans[c]['etat'] for c in cc.UNITES}, {'non_servi'})
         self.assertEqual(sans['omissions'][0]['motif'], cc.MOTIF_SANS_LEAD)
 
+    def test_acal1239_sans_devis_puis_avec_devis_meme_economie(self):
+        """ACAL1239 — 8 panneaux, un bloc horaire : l'économie année 1 de l'atelier (conception rangée,
+        ``conception/valeurs._bilan``), sans puis avec devis lié, égale celle du PDF
+        (``pricing.calculate_savings_roi`` sur le MÊME bloc) à l'arrondi près du PDF."""
+        from apps.ventes.conception.valeurs import _bilan
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+
+        mois = [{'production_kwh': 400.0, 'economie_sans_mad': 425.37, 'economie_avec_mad': 470.12}] * 12
+        bloc = {'kwc': 5.68, 'mois': mois, 'annuel': {
+            'production_kwh': 4800.0, 'consommation_kwh': 5200.0, 'economie_sans_mad': 5104.44,
+            'economie_avec_mad': 5641.44, 'taux_autoconso_sans': 0.61, 'taux_autoconso_avec': 0.74}}
+        economie = _bilan(N(marche='residentiel', etude_params={'etude_horaire': bloc}), 'sans')[4]
+        atelier = [self._chiffrer(_conception(nb=8, kwc=5.68, economie=economie), calepinage=_calepinage(
+            devis_id=devis))[0]['economie_annee1_mad']['valeur'] for devis in (None, 42)]
+        pdf = calculate_savings_roi(5.68, 60000.0, 80000.0, etude_horaire=bloc)['eco_s_ann']
+        self.assertEqual([round(a) for a in atelier], [pdf, pdf])
+
     def test_une_lecture_en_echec_est_indisponible_jamais_une_exception(self):
         with mock.patch('apps.ventes.conception.service.conception_ou_calcul', side_effect=RuntimeError('panne')), \
                 mock.patch('apps.crm.selectors.get_company_lead', return_value=N(type_installation=None)):

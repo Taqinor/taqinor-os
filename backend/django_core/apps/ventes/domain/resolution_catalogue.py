@@ -16,8 +16,11 @@ classés par ``catalogue.classer_produit`` — les mêmes catégories que
 Règles de rapprochement (lecture du COMPOSITEUR, pas une seconde règle) :
 
 * panneau — wattage lu au NOM (``_parse_watt``), la fiche (``pmax_wc``) à
-  défaut ; sans wattage demandé : 710 Wc (``taille._AUTO_PANEL_WATT``) ; à
-  wattage égal un Canadien Solar passe devant (``_choisir_panneau``) ;
+  défaut ; sans wattage demandé : la puissance du panneau PAR DÉFAUT de la
+  société s'il est au vivier (D-ACAL-169, ``domain/panneau_defaut``), sinon
+  710 Wc (``taille._AUTO_PANEL_WATT``) ; à la puissance du panneau par défaut,
+  CE produit passe devant ; à wattage égal un Canadien Solar passe devant
+  (``_choisir_panneau``) ;
 * onduleur — puissance lue au NOM (``_parse_kw``, ±0,05 kW), la fiche
   (``ac_kw``) seulement quand le nom n'en porte pas ; phase par
   ``compatibilites.est_triphase_produit`` (fiche d'abord, nom ensuite) ;
@@ -301,20 +304,52 @@ def _conclure(retenues, *, nom_genre, nombre=1, alertes=None):
         alertes=list(alertes or []), nombre=nombre)
 
 
+def _panneau_auto_du_vivier(company, vivier_marque, *, marque=None):
+    """D-ACAL-169 — le panneau par défaut de ``company`` s'il est dans le vivier
+    du résolveur (tarifé, classé panneau, marque retenue) ; sinon la règle
+    d'aujourd'hui — DITE quand rien ne l'explique, muette quand l'appelant a
+    lui-même demandé une autre ``marque``."""
+    from dataclasses import replace
+
+    from apps.ventes.domain.panneau_defaut import aucun_panneau_auto, panneau_auto
+    auto = panneau_auto(company)
+    if not auto.designe:
+        return auto
+    entree = next((e for e in vivier_marque if e.produit.pk == auto.produit_id), None)
+    if entree is not None:
+        # Contrat du stock : le watt de LA lecture du résolveur (nom, puis fiche), jamais un second.
+        return replace(auto, watt=entree.wc or auto.watt)
+    if marque:
+        return aucun_panneau_auto()
+    return auto.refus('le catalogue des devis', "il n'est pas parmi ses panneaux tarifés de la marque retenue")
+
+
+def _alerte_puissance_non_precisee(auto, cible):
+    if auto.designe:
+        return ('Puissance du panneau non précisée : %s Wc retenus (panneau par '
+                'défaut de la société : « %s »).' % (_fmt(cible), auto.nom))
+    return ('Puissance du panneau non précisée : %s Wc retenus '
+            '(panneau par défaut du devis automatique).' % _fmt(cible))
+
+
 # ── Les trois genres ─────────────────────────────────────────────────────────
 def resoudre_panneau(company, entrees, *, wc=None, marque=None, gamme=None):
-    from apps.ventes.domain.taille import _AUTO_PANEL_WATT
     alertes = []
-    cible = float(wc) if wc else float(_AUTO_PANEL_WATT)
     panneaux = [e for e in entrees if e.genre == GENRE_PANNEAU]
-    if not wc:
-        alertes.append('Puissance du panneau non précisée : %s Wc retenus '
-                       '(panneau par défaut du devis automatique).' % _fmt(cible))
     vivier_marque, raison = _appliquer_marque(
         panneaux, company=company, role='panneau', marque=marque, gamme=gamme,
         alertes=alertes)
+    # D-ACAL-169 — le panneau par défaut, s'il est au vivier (marque comprise) :
+    # SA puissance quand rien n'est précisé, et CE produit à cette puissance.
+    auto = _panneau_auto_du_vivier(company, vivier_marque, marque=marque)
+    cible = float(wc) if wc else float(auto.watt)
+    if not wc:
+        alertes[:0] = [_alerte_puissance_non_precisee(auto, cible)] + ([auto.motif] if auto.motif else [])
     if raison:
         return Resolution(STATUT_AUCUN, raison=raison, alertes=alertes)
+    defaut = [e for e in vivier_marque if auto.prefere(cible) is not None and e.produit.pk == auto.produit_id]
+    if defaut:
+        return _conclure(defaut, nom_genre='panneaux', alertes=alertes)
     exacts = [e for e in vivier_marque if e.wc and abs(float(e.wc) - cible) < 0.5]
     if not exacts:
         proches = _tailles_proches([e.wc for e in vivier_marque], cible, 'Wc')

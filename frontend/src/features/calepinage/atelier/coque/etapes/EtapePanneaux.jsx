@@ -7,6 +7,7 @@ import calepinageApi from '../../../../../api/calepinageApi'
 import useResource from '../../../../../hooks/useResource'
 import { formatKwc, formatNumber } from '../../../../../lib/format'
 import { cibleAuModule } from '../../cibleAuModule'
+import { libelleSourceCible } from '../../contexteAtelier' // T4-X8-012 (une cible) — UNE table de mots pour la source de la cible
 import { kwh } from '../../../production/ResultatHeros.helpers'
 import { SurCarte } from '../emplacements'
 import { BoutonMarine, CarteFlottante, Icone, Indicateur, Segmente } from '../primitives'
@@ -14,7 +15,7 @@ import { BESOIN_MAX, gestes, useConstructeur, usePoseVivante } from './panneaux/
 import { jourMois, ligneModule } from './panneaux/formats'
 import { useCibleFactures, useLectureServie } from './panneaux/lectures'
 import ValeurUnite from './panneaux/ValeurUnite'
-import { fmtKwc, modulesServis, productionPubliee, simulationARefaire } from './panneaux/sources'
+import { fmtKwc, modulesServis, productionPubliee, simulationARefaire, simulationIncomplete } from './panneaux/sources'
 import { SIMULATION_A_REFAIRE } from '../../../production/BandeauProvenanceProduction.helpers' // T4-X2-002
 import Pourquoi from '../../../commun/Pourquoi' // ACAL1728 — le « ? » unique des chiffres
 import { GESTES, lireOutils } from './EtapeToit.helpers' // ACAL1728 — Annuler / Rétablir de la barre de carte
@@ -101,6 +102,7 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
     cible: facture.cible,
     motifFacture: facture.refus || facture.motif,
     refusFacture: facture.refus,
+    tailleSouhaitee: facture.tailleSouhaitee, // R6-N4
     factureSaisie: facture.factureSaisie,
     entrees: Array.isArray(catalogue?.modules) ? catalogue.modules : [],
     // Lane E9 — la taille de la conception comptée dans chaque puissance de la liste (`modules-disponibles/`).
@@ -110,6 +112,7 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
     publiee: productionPubliee(resultat),
     resultat, // ACAL1728 — les valeurs des « ? » de la production publiée
     aRefaire: simulationARefaire(resultat), // T4-X2-002
+    incomplete: simulationIncomplete(resultat), // ACAL1914 — la simulation dit son chiffre à côté de l'estimation
     // T4-X7-002 — la simulation de la pose a trouvé un ÉCART RÉEL avec la conception (`taux_source: 'autre_installation'` :
     // autre puissance, ou batterie d'un seul côté) : sa part de la consommation ne se lit plus à côté de cette pose. Seul ce
     // signal la tait (`'pose'` = aucun taux de conception, résultat rangé sans clé : comme avant).
@@ -174,11 +177,15 @@ function ChoixModule({ etat, entrees, servis, lectureSeule, g }) {
             onKeyDown={(e) => { if (e.key === 'Escape') setOuvert(false) }}>
             {options.map((o) => {
               const entree = fiches.get(o.valeur)
+              const intitule = <span className="cal-pan-module-nom">{nom(o)}</span>
               return (
                 <li key={o.valeur || 'defaut'} role="option" aria-selected={o.valeur === module.valeur}>
                   <button type="button" disabled={o.grise} onClick={() => choisir(o.valeur)}
                     className="cal-pan-option">
-                    <span className="cal-pan-module-nom">{nom(o)}</span>
+                    {/* D-ACAL-169 — le panneau par défaut de la société (désigné au stock, servi `par_defaut`) porte une pastille. */}
+                    {entree?.par_defaut
+                      ? <span className="cal-pan-option-tete">{intitule}<span className="cal-pan-badge" data-testid="cal-pan-par-defaut">Par défaut</span></span>
+                      : intitule}
                     <span className="cal-pan-module-ligne">
                       {o.grise ? (entree?.motif || 'fiche produit incomplète') : [entree?.en_stock ? 'En stock' : '', ligneModule(fiche(o.valeur))].filter(Boolean).join(' · ')}
                     </span>
@@ -231,8 +238,12 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   const max = etat.max && !factureChoisie
   // La taille des factures n'est promise que si elle tient sur le toit : « seuls N tiennent » (note du constructeur).
   const tient = cible && besoin?.tiennent != null && besoin.tiennent < cible.panneaux ? besoin.tiennent : null
+  // T4-X8-012 (une cible) — la cible dite comme la note du constructeur (« N posés / T cible (source) · k de moins que la cible ») :
+  // ce qui tient, LA cible et sa source (`cible_factures` n'est servie que pour une cible tirée des factures), l'écart.
+  const sourceCible = libelleSourceCible('factures')
   const ligneTaille = tient == null ? null : [
-    compte(tient), cible.kwc != null ? fmtKwc((cible.kwc * tient) / cible.panneaux) : null, `sur ${cible.panneaux} nécessaires`,
+    compte(tient), cible.kwc != null ? fmtKwc((cible.kwc * tient) / cible.panneaux) : null,
+    `${cible.panneaux} cible (${sourceCible})`, `${cible.panneaux - tient} de moins que la cible`,
   ].filter(Boolean).join(' · ')
   // Le % n'est dit qu'à côté de la taille pour laquelle il est calculé. T4-X7-002 — ce % est la part SERVIE de la conception
   // (`chiffrage.couverture_pct` = énergie AUTOCONSOMMÉE ÷ consommation, la grandeur ET le nom de la tuile « De la consommation »
@@ -259,7 +270,7 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
       .filter(Boolean).join(' · ')
     : null
   const ligneFacture = cible && (cible.conception ? (ligneTaille ?? ligneConversion) : (ligneTaille ?? [
-    compte(cible.panneaux), cible.kwc != null ? fmtKwc(cible.kwc) : null, 'conception',
+    compte(cible.panneaux), cible.kwc != null ? fmtKwc(cible.kwc) : null, sourceCible,
     partFacture,
   ].filter(Boolean).join(' · ')))
   const posee = factureChoisie && cible && figures.panneaux > 0 && figures.kwc
@@ -275,8 +286,13 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
   const ligneMax = figuresMax?.panneaux ? [compte(figuresMax.panneaux), figuresMax.kwc, part(figuresMax)]
     .filter(Boolean).join(' · ') : ''
   // T4-X9-013 (reste) — sans lead, la phrase de repli ne nomme pas « ce lead ».
+  // R6-N4 — un lead qui PORTE une facture ne se voit jamais dire « aucune taille ne se tire des factures » (le serveur nomme
+  // d'ordinaire la cause dans `refus` : taille souhaitée, C&I…) : à défaut de cause servie, la phrase dit ce qui est vrai.
+  const factureSansCause = Boolean(servi.leadId) && servi.factureSaisie && !servi.motifFacture
   const raison = servi.motifFacture || (servi.leadId
-    ? 'Aucune taille ne se tire des factures de ce lead.'
+    ? (factureSansCause
+      ? 'La facture de ce lead est renseignée, mais le moteur n’en a tiré aucune taille pour l’instant. Choisissez le nombre de panneaux à poser.'
+      : 'Aucune taille ne se tire des factures de ce lead.')
     : 'Ce calepinage n’a pas de lead : aucune taille n’est tirée d’une facture. Choisissez le nombre de panneaux à poser.')
   return (
     <section className="cal-pan-section">
@@ -333,7 +349,7 @@ function CombienDePanneaux({ etat, servi, lectureSeule, g }) {
       {servi.facture.etat === 'ok' && !cible && !servi.facture.calculEnCours && (
         <p className="cal-pan-note">
           {raison}
-          {servi.leadId && !(servi.refusFacture && servi.factureSaisie) && (
+          {servi.leadId && !(servi.refusFacture && servi.factureSaisie) && !factureSansCause && !servi.tailleSouhaitee && (
             <>{' '}<Link to={`/crm/leads/${servi.leadId}`} className="cal-pan-lien">Renseigner la facture du lead</Link></>
           )}
         </p>
@@ -443,12 +459,23 @@ function AvisOmbresNonComptees({ manque }) {
 function AlerteOmbre({ ombre, g }) {
   const [garde, setGarde] = useState(false)
   if (!ombre || garde) return null
-  const { n, origine } = ombre
+  const { n, origine, de, perte } = ombre
+  // ACAL1532 — sans seuil réglé : pas de proposition, mais la perte SERVIE (`shadeAnnualFactor`) est dite, avec son obstacle.
+  if (!n) {
+    return (
+      <section className="cal-pan-alerte" data-testid="cal-panneaux-ombre" role="status">
+        <h2 className="cal-pan-alerte-titre">
+          <span className="cal-pan-alerte-pastille" aria-hidden="true"><span /><span /></span>
+          {`L’ombre ${de ?? 'des obstacles'} retire ≈ ${perte} % de la production`}
+        </h2>
+      </section>
+    )
+  }
   return (
     <section className="cal-pan-alerte" data-testid="cal-panneaux-ombre">
       <h2 className="cal-pan-alerte-titre">
         <span className="cal-pan-alerte-pastille" aria-hidden="true"><span /><span /></span>
-        {n === 1 ? '1 panneau à l’ombre' : `${n} panneaux à l’ombre`}
+        {`${n === 1 ? '1 panneau à l’ombre' : `${n} panneaux à l’ombre`}${de ? ` ${de}` : ''}`}
       </h2>
       <p className="cal-pan-alerte-texte">
         {`${n === 1 ? 'Il reçoit' : 'Ils reçoivent'} moins de soleil que le seuil réglé ${
@@ -467,7 +494,7 @@ function AlerteOmbre({ ombre, g }) {
 /** La puce de la carte. Production publiée FRAÎCHE et COMPLÈTE → la pose simulée et sa production, libellé de l'étape
     Résultats ; sinon la pose du constructeur, son estimation nommée « estimation » et la part de la consommation servie
     (T4-X7-002 : énergie autoconsommée ÷ consommation, le nom et la grandeur des Résultats ; tue par `partDeLaConception`). */
-function PuceResume({ figures, publiee, site = null, aRefaire = false, partDeLaConception = true, resultat = null }) {
+function PuceResume({ figures, publiee, site = null, aRefaire = false, partDeLaConception = true, resultat = null, incomplete = null }) {
   // ACAL2022 (T4-X2-009) — le site compte plus que ce pan (champ au sol, autre pan) : la bande dit qu'elle compte CE pan et le total du site est dit.
   const autrePan = !publiee && site?.panneaux > 0 && figures.panneaux > 0 && site.panneaux !== figures.panneaux
   const pan = autrePan ? ' · ce pan' : ''
@@ -498,7 +525,12 @@ function PuceResume({ figures, publiee, site = null, aRefaire = false, partDeLaC
   const phrase = publiee ? null : figures.tailles
   // T4-X2-002 — la simulation enregistrée est périmée : DIT, avec le geste pour la refaire (jamais un silence).
   const aRefaireTexte = !publiee && aRefaire ? `${SIMULATION_A_REFAIRE} Relancez-la à l’étape Les résultats.` : null
-  if (lus.length === 0 && !phrase && !aRefaireTexte) return null
+  // ACAL1914 — la simulation est faite mais incomplète : sa production servie est DITE à côté de l'estimation, nommée borne haute.
+  const incompleteTexte = !publiee && incomplete
+    ? `La simulation dit ${kwh(incomplete.p50)} (résultat incomplet : borne haute)${incomplete.nonRaccordes > 0
+      ? ` ; ${incomplete.nonRaccordes} panneau${incomplete.nonRaccordes > 1 ? 'x' : ''} posé${incomplete.nonRaccordes > 1 ? 's' : ''} non raccordé${incomplete.nonRaccordes > 1 ? 's' : ''} : l’estimation ci-dessus ne compte que les panneaux raccordés.` : '.'}`
+    : null
+  if (lus.length === 0 && !phrase && !aRefaireTexte && !incompleteTexte) return null
   return (
     <CarteFlottante className="cal-pan-puce" data-testid="cal-sur-carte-resume">
       {lus.map(([libelle, valeur, aide]) => (
@@ -506,6 +538,7 @@ function PuceResume({ figures, publiee, site = null, aRefaire = false, partDeLaC
       ))}
       {phrase && <p className="cal-pan-puce-phrase">{phrase}</p>}
       {aRefaireTexte && <p className="cal-pan-puce-phrase">{aRefaireTexte}</p>}
+      {incompleteTexte && <p className="cal-pan-puce-phrase" data-testid="cal-puce-simulation-incomplete">{incompleteTexte}</p>}
     </CarteFlottante>
   )
 }
@@ -611,10 +644,10 @@ export default function EtapePanneaux({
         )}
       </section>
       <PersonnaliserDisposition lectureSeule={lectureSeule} rafraichir={rafraichir} />
-      <AlerteOmbre key={etat.ombre?.n ?? 0} ombre={etat.ombre} g={g} />
+      <AlerteOmbre key={`${etat.ombre?.n ?? 0}-${etat.ombre?.perte ?? 0}`}ombre={etat.ombre} g={g} />
       <AvisOmbresNonComptees manque={parcours?.manque} />
       <SurCarte>
-        <PuceResume figures={etat.figures} publiee={servi.publiee} site={site} aRefaire={servi.aRefaire}
+        <PuceResume figures={etat.figures} publiee={servi.publiee} site={site} aRefaire={servi.aRefaire} incomplete={servi.incomplete}
           partDeLaConception={servi.partDeLaConception} resultat={servi.resultat} />
         <div className="cal-carte-soleil" data-testid="cal-carte-soleil">
           {etat.soleil.carte && <LegendeSoleil carte={etat.soleil.carte} g={g} />}

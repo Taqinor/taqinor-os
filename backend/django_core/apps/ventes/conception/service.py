@@ -132,7 +132,7 @@ def relancer(lead, *, company, declencheur, auteur=None, forcer=False, toit=None
     version = ConceptionLead.ranger(
         lead=porteur.get('lead'), calepinage_id=calepinage_id, company=company,
         calcule_le=maintenant, calcule_par=auteur,
-        declencheur={'raison': phrase_du_declencheur(porteur.get('lead'), champs, origine, maintenant),
+        declencheur={'raison': phrase_du_declencheur(porteur.get('lead'), champs, origine, maintenant, company),
                      'champs': champs, 'origine': origine},
         empreinte_pose=entrees.empreinte_pose, sauf_empreinte=None if forcer else resultat.empreinte,
         garde=_garde_de_rangement(company, porteur.get('lead'), debut), **_champs_ranges(resultat))
@@ -464,13 +464,14 @@ def _conception_ou_calcul(company, lead_id, calepinage_id, en_liste=False):
 
 # ── La phrase « pourquoi » (lue telle quelle au chatter du lead) ─────────────
 
-def phrase_du_declencheur(lead, champs, origine, quand):
+def phrase_du_declencheur(lead, champs, origine, quand, company=None):
     """« Recalculé le 23/11 à 14 h 05 : Facture hiver 900 → 1 200 MAD » — date et
     heure locales, chaque champ changé sous le libellé que montrent la fiche et
     l'historique du lead (``crm.activity.TRACKED_FIELDS``), avant → après."""
-    from django.utils import timezone
+    from core.tz_display import to_company_tz
 
-    moment = timezone.localtime(quand)
+    # Heure de la SOCIÉTÉ (la même que l'arbre du lead), pas celle du serveur.
+    moment = to_company_tz(quand, company or getattr(lead, 'company', None))
     debut = 'Recalculé le %s à %d h %02d' % (moment.strftime('%d/%m'), moment.hour, moment.minute)
     if not champs:
         return '%s : %s' % (debut, MOTIFS_ORIGINE[origine])

@@ -339,8 +339,13 @@ function perKwcFixture() {
   }
   return { annual, monthly, typicalDayByMonth, dailyKwhByMonth };
 }
-function installProductionFetch(urls: string[]) {
+/** ACAL982 (revue) — rendement par kWc d'UN plan (lat, inclinaison, aspect PVGIS) : un nombre fixe, ou la table
+ *  COMMITTÉE (`specificYield`) pour que les deux routes du banc répondent selon l'orientation réelle. */
+type RendementBanc = number | ((lat: number, tiltDeg: number, aspect: number) => number);
+function installProductionFetch(urls: string[], kwhParKwcRendement: RendementBanc = 1700) {
   const fx = perKwcFixture();
+  const rendement = (lat: unknown, tilt: unknown, aspect: unknown): number =>
+    typeof kwhParKwcRendement === 'number' ? kwhParKwcRendement : kwhParKwcRendement(Number(lat), Number(tilt), Number(aspect));
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: { body?: string }) => {
@@ -348,7 +353,8 @@ function installProductionFetch(urls: string[]) {
       const body = init?.body ? (JSON.parse(init.body) as Record<string, unknown>) : {};
       if (url.includes('/api/roof-production')) {
         const panels = Number(body.placedPanels) || 1;
-        const kwc = panels * PANEL_KWC_TEST;
+        // Rendement fixe : la fixture telle quelle (inchangé) ; table : la même forme ramenée au rendement du PLAN demandé.
+        const kwc = panels * PANEL_KWC_TEST * (typeof kwhParKwcRendement === 'number' ? 1 : rendement(body.lat, body.tiltDeg, body.aspect) / fx.annual);
         return {
           ok: true,
           json: async () => ({
@@ -357,7 +363,7 @@ function installProductionFetch(urls: string[]) {
             cacheHit: false,
             placedPanels: panels,
             panelKwc: PANEL_KWC_TEST,
-            placedKwc: kwc,
+            placedKwc: panels * PANEL_KWC_TEST,
             annualKwh: fx.annual * kwc,
             monthlyKwh: fx.monthly.map((v) => v * kwc),
             dailyKwhByMonth: fx.dailyKwhByMonth.map((v) => v * kwc),
@@ -366,8 +372,8 @@ function installProductionFetch(urls: string[]) {
           }),
         } as unknown as Response;
       }
-      const legs = (body.legs as { kwc?: number }[]) || [];
-      const annual = legs.reduce((a, lg) => a + (lg.kwc || 1) * 1700, 0);
+      const legs = (body.legs as { kwc?: number; tiltDeg?: number; aspect?: number }[]) || [];
+      const annual = legs.reduce((a, lg) => a + (lg.kwc || 1) * rendement(body.lat, lg.tiltDeg, lg.aspect), 0);
       return { ok: true, json: async () => ({ ok: true, annualKwh: annual }) } as unknown as Response;
     }),
   );
@@ -635,7 +641,7 @@ describe('parcours utilisateur complet pro-11 — session résidentielle toit pl
     const src = (doc.consumption as { source?: Record<string, unknown> } | undefined)?.source;
     if (src) src.saisi_le = '<horodatage>'; // volatile 2
     const fs = await import('node:fs');
-    const golden = (await import('node:path')).resolve(process.cwd(), 'tests/userJourneyPro11.document.json');
+    const golden = (await import('node:path')).resolve(process.cwd(), '../../backend/django_core/apps/calepinage/tests/fixtures/userJourneyPro11.document.json');
     if (process.env.ACAL383_REGEN === '1') fs.writeFileSync(golden, JSON.stringify(doc, null, 2) + '\n');
     const attendu = JSON.parse(fs.readFileSync(golden, 'utf-8')) as Record<string, unknown>;
     const chemins = (v: unknown, p = ''): Record<string, unknown> =>
@@ -667,6 +673,66 @@ describe('parcours utilisateur complet pro-11 — session résidentielle toit pl
     expect(api).not.toBeNull();
     expect(document.getElementById('rp9-pan-module-mention')?.textContent)
       .toBe('Canadian Solar 710 W — module de départ, à confirmer');
+  }, 180000);
+
+  // ACAL982 — UNE grandeur, UNE valeur : carte, Total « Zones », document émis et onglet Production. Un cas = une
+  // ligne ; l'échec nomme le cas, la grandeur, les deux surfaces. `geometry.kwc` (non émis sous jsdom) : le serveur
+  // (`test_acal_verdict_unique.py::GrandeurUnique`). Mutant : `720` remis dans `paintCard` ⇒ échec.
+  const MODULE_710 = { id: 'cs-710', produitId: 41, libelle: 'Canadian Solar 710 W', longueurMm: 2384,
+    largeurMm: 1303, epaisseurMm: 35, poidsKg: 34, pmaxWc: 710, source: 'fiche produit du stock' };
+  // ACAL982 (revue) — le champ au sol du jumeau serveur (`test_acal_verdict_unique.py::CHAMP_982`), recopié tel quel.
+  const CHAMP_982 = { id: 'champ-1', kind: 'sol', label: 'CHAMP-SOL', moduleWc: 710, tiltDeg: 20.0, rowAzimuthDeg: 90.0,
+    engine: { modules: 24 } };
+  const CAS_982: { cas: string; catalogue?: boolean; puces?: string[]; table?: boolean; champ?: boolean }[] = [
+    { cas: 'pan Sud' },
+    { cas: 'pan est-ouest 15°', puces: ['[data-family="eastwest"]', '[data-tilt="15"]'] },
+    // ACAL982 (revue) — les deux routes répondent selon le PLAN demandé (table committée `specificYield`) : un onglet
+    // qui interroge UN plan sud au lieu des deux jambes est-ouest y diffère de la carte (le banc fixe ne le voit pas).
+    { cas: 'pan est-ouest 15° (rendement de la table par plan)', puces: ['[data-family="eastwest"]', '[data-tilt="15"]'], table: true },
+    { cas: 'module catalogue 710 W', catalogue: true },
+    { cas: 'toit + champ', catalogue: true, champ: true },
+  ];
+  it.each(CAS_982)('une grandeur, une valeur — $cas (ACAL982)', async ({ cas, catalogue, puces, table, champ }) => {
+    type Api = import('../src/scripts/roofPro11/types').RoofToolApi;
+    // UN rendement par kWc pour les deux routes (le banc par défaut met 1 700 au rendement, 1 550 à la production) ;
+    // `table` : celui de la table committée au plan demandé, pour les deux routes.
+    const { specificYield } = await import('../src/lib/estimatorBrainV2');
+    installProductionFetch([], table ? (lat, tilt, aspect) => specificYield(lat, tilt, aspect) : perKwcFixture().annual);
+    let api: Api | null = null;
+    const modulesDisponibles = catalogue ? { calepinage: 1, champs_requis: [], motif_liste_vide: null,
+      modules: [{ module: MODULE_710, selectionnable: true, champs_manquants: [], motif: null }] } : undefined;
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document), modulesDisponibles,
+      onApiReady: (a: Api) => { api = a; } } as Parameters<typeof init>[0]);
+    fakeMaps[0].fire('load', {}); setBill('1500'); await flush(); traceRoof(fakeMaps[0], 16); await flush();
+    for (const puce of puces ?? []) { document.querySelector<HTMLButtonElement>(puce)!.click(); await flush(); }
+    if (champ) { api!.appliquerSection('poseSurfaces', [CHAMP_982]); await flush(); }
+    document.querySelector<HTMLButtonElement>('[data-prod-scope="year"]')?.click(); await flush();
+    const doc = api!.serializeLayout() as unknown as { result: { annualKwh: number }; zones: { result?: { annualKwh?: number } }[];
+      poseSurfaces?: { id?: string }[] };
+    // Le champ est bien dans la session (sinon le cas ne prouverait rien) ; il n'entre ni dans la carte, ni au Total des pans.
+    if (champ) expect(doc.poseSurfaces?.map((s) => s.id), `${cas} — le champ au document`).toEqual(['champ-1']);
+    const surfaces: Record<string, Record<string, number | undefined>> = {
+      kWc: { 'carte Recommandation': kwcOf('rp9-reco-kwc'), 'Total « Zones »': kwcOf('rp9-areas-total-kwc') },
+      'production annuelle': { 'carte Recommandation': intOf('rp9-reco-prod'), 'Total « Zones »': intOf('rp9-areas-total-prod'),
+        'document result.annualKwh': Math.round(doc.result.annualKwh),
+        'document zones[0].result.annualKwh': Math.round(doc.zones[0].result?.annualKwh ?? NaN),
+        'onglet Production': intOf('rp9-prod-headline') },
+      // Le champ compte au site, une fois : « Total du site » = pan (carte) + 24 modules × 710 W (la ligne recopiée).
+      ...(champ ? { 'kWc du site': {
+        'table du site « Total du site »': Number((document.querySelector('[data-site-resume]')?.textContent ?? '')
+          .match(/([\d   ]+(?:[.,]\d+)?) kWc/)?.[1].replace(/[   ]/g, '').replace(',', '.') ?? NaN),
+        'carte + champ (24 × 710 W)': Math.round((kwcOf('rp9-reco-kwc') + (CHAMP_982.engine.modules * CHAMP_982.moduleWc) / 1000) * 100) / 100,
+      } } : {}),
+    };
+    if (catalogue) expect(txt('rp9-reco-panels'), `${cas} — le module posé`).toMatch(/× 710 W$/);
+    for (const [grandeur, lues] of Object.entries(surfaces)) {
+      const [[premiere, attendu], ...autres] = Object.entries(lues);
+      expect(attendu, `${cas} — ${grandeur} : ${premiere} absente`).toBeGreaterThan(0);
+      for (const [surface, valeur] of autres) {
+        expect(valeur, `${cas} — ${grandeur} : ${premiere} = ${attendu}, ${surface} = ${valeur}`).toBeCloseTo(attendu!, 3);
+      }
+    }
   }, 180000);
 });
 

@@ -36,6 +36,7 @@ from decimal import Decimal
 from apps.ventes.moteur_ci.taille import HORIZON_MARGINAL_CI
 
 from .etude_ci_batterie import CLE as CLE_OPTION_AVEC, CLE_BANQUE_RECOMMANDEE, option_avec_de_l_etude
+from .panneau_defaut import panneau_pour_etude  # D-ACAL-169
 from .sensibilites_option_avec import scenarios_du_devis
 from .regles_calcul import (
     REGLES_CORRIGEES_2710, REGLES_CYCLES_BATTERIE_1911, REGLES_RETOURS_3010B, hybrides_ht_ouverts, regles_au_moins)
@@ -52,12 +53,12 @@ VERSION_MOTEUR = 'ci-1'
 METHODE = (
     "autoconsommation horaire : production PVGIS du site × profil déclaré, "
     "12 mois × types de jour ; taille par tranches de 5 kWc jusqu'à "
-    "l'horizon marginal de %d ans (D-CIQ-1, D-CIQ-2)" % HORIZON_MARGINAL_CI)
+    "l'horizon marginal de %d ans" % HORIZON_MARGINAL_CI)  # ACAL1225 : aucun code servi
 #: AMOT99 (D-ACI-18=a) — avec la série horaire ; ``METHODE`` = le repli (dit).
 METHODE_8760 = (
     "autoconsommation horaire : production PVGIS de l'année type du site (8 760 h, "
     "pente/azimut/pose déclarés) × profil déclaré, heure par heure ; taille par "
-    "tranches de 5 kWc jusqu'à l'horizon marginal de %d ans (D-CIQ-1, D-CIQ-2, D-ACI-18)"
+    "tranches de 5 kWc jusqu'à l'horizon marginal de %d ans"
     % HORIZON_MARGINAL_CI)
 CLES_INTERDITES = frozenset({'prix_achat', 'marge'})
 MODES = ('commercial', 'industriel')
@@ -178,7 +179,7 @@ REGIMES_CONTRAT = {
     'autorisation_anre': ('autorisation', '≥ 5 MW'),
 }
 SOURCE_REGIME = ('loi 82-21 + décret 2.25.100 (BO 7489) — déclaration < 11 kW, '
-                 'accord de raccordement 11 kW–5 MW, autorisation ≥ 5 MW (D-CIQ-4)')
+                 'accord de raccordement 11 kW–5 MW, autorisation ≥ 5 MW')
 
 
 # ── petits outils ────────────────────────────────────────────────────────────
@@ -702,15 +703,18 @@ def _profil_societe(company, mode, cle):
             'courbe': choisi.get('courbes'), 'provenance': choisi.get('provenance')}
 
 
-def lire_catalogue_ci(company):
+def lire_catalogue_ci(company, panneau_defaut=None, alertes=None):
     """Catalogue C&I (``stock.selectors.produits_ci``) + prix de VENTE HT du
-    catalogue de la société + module retenu. Jamais ``prix_achat``."""
-    from apps.calepinage.services.chaines import specs_module, specs_onduleur
+    catalogue de la société + module retenu. Jamais ``prix_achat``.
+    ``panneau_defaut`` / ``alertes`` : D-ACAL-169 (``etude_ci_module``) ;
+    ``None`` (LE DÉFAUT) ⇒ module d'aujourd'hui, rien n'est dit."""
+    from apps.calepinage.services.chaines import specs_onduleur
     from apps.stock.selectors import produits_ci, specs_for_produit
     from core.product_roles import ROLES_CI_BAREME_COFFRET, ROLES_ONDULEUR_CI
 
     from ..compatibilites import est_triphase_produit
-    from .catalogue import catalogue_de_la_societe, classer_produit
+    from .catalogue import catalogue_de_la_societe
+    from .etude_ci_module import module_ci_retenu
 
     objets = {p.id: p for p in catalogue_de_la_societe(company)}
     elements = []
@@ -762,38 +766,8 @@ def lire_catalogue_ci(company):
             'spec': specs_onduleur(specs, element.get('nom') or '')[0] if specs else None,
         })
 
-    module = module_spec = None
-    candidats = []
-    for produit in objets.values():
-        role = getattr(produit, 'role_devis', None) or classer_produit(produit.nom)
-        if role != 'panneau':
-            continue
-        try:
-            specs = specs_for_produit(produit) or {}
-        except Exception:  # fiche illisible
-            logger.warning("etude_ci.lire_catalogue_ci : erreur ignorée (mode dégradé)", exc_info=True)
-            specs = {}
-        pmax = _num(specs.get('pmax_wc'))
-        prix = bool(produit.prix_vente and produit.prix_vente > 0)
-        # ADEV78 — un module à puissance PUBLIÉE passe devant un module tarifé
-        # sans Pmax (sans Pmax, aucun panneau ne se compte).
-        candidats.append(((bool(pmax), prix, pmax or 0, -produit.id), produit, specs))
-    if candidats:
-        _cle, produit, specs = max(candidats, key=lambda c: c[0])
-        module = {
-            'produit': produit.id, 'designation': produit.nom,
-            'pmax_wc': _num(specs.get('pmax_wc')),
-            'prix_connu': bool(produit.prix_vente and produit.prix_vente > 0),
-            'prix_vente_ht': produit.prix_vente,
-            'tva_pct': getattr(produit, 'tva', None),
-            # ADEV82 — le module porte aussi ses paliers (prix de la taille).
-            'paliers_prix_vente': list(getattr(produit, 'paliers_prix_vente', None) or []),
-            'longueur_mm': _num(specs.get('longueur_mm')),
-            'largeur_mm': _num(specs.get('largeur_mm')),
-            'poids_kg': _num(specs.get('poids_kg')),
-        }
-        # ADEV87 — la fiche électrique du module retenu (chaînes).
-        module_spec = specs_module(specs, produit.nom)[0] if specs else None
+    # Le module retenu (ADEV78/82/87, D-ACAL-169 : le panneau par défaut d'abord).
+    module, module_spec = module_ci_retenu(objets, panneau_defaut=panneau_defaut, alertes=alertes)
     # Fondateur 26/10/2026 — hybrides BT et batteries de l'option « avec » ;
     # D-SOC-1 (17/11/2026) — l'article « Socles » du résidentiel (toit plat lesté).
     from .etude_ci_batterie import catalogue_batterie_ci, elements_socle_ci
@@ -971,6 +945,15 @@ def verdict_taille_creation(etude):
             'toit': {k: toit.get(k) for k in ('kwc', 'kwc_30', 'kwc_10', 'surface_m2')}}
 
 
+def taille_issue_de_creation(verdict, kwc):
+    """ACAL1226 — la taille explicite relue sur les lignes EST celle que le
+    balayage de création a calculée (``taille_creation_ci``, kWc inchangé)."""
+    if not isinstance(verdict, dict) or verdict.get('raison_arret') in (None, 'taille_explicite'):
+        return False
+    cree, pose = _num(verdict.get('retenue_kwc')), _num(kwc)
+    return cree is not None and pose is not None and abs(cree - pose) < 1e-6
+
+
 def _relire_verdict_toit(taille, verdict, hypotheses):
     """R1 (B1) — l'étude STOCKÉE est rafraîchie depuis les LIGNES (taille
     explicite) : le verdict « limitée par le toit » calculé à la création est
@@ -1048,7 +1031,7 @@ def _sous_reserve_visite(res, lead, niveau_donnees):
     else:
         tension = res.valeur('tension')
         if tension == 'mt':
-            motifs.append('site MT : visite avant le devis final (D-CIQ-5)')
+            motifs.append('site MT : visite avant le devis final')
         elif tension in (None, 'inconnue'):
             motifs.append('tension de raccordement inconnue')
         if _ps_kva(res) is None:
@@ -1373,6 +1356,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     ``provenance_corps`` : voir :func:`resoudre_entrees` (défaut « saisie »).
     """
     from apps.ventes import tarif_ci
+    from apps.ventes.domain.suppositions_ci import alerte_facture_ete_non_lue
     from apps.ventes.moteur_ci.composition import composer_ci
     from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
     from apps.ventes.moteur_ci.production import (
@@ -1404,6 +1388,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     conso, feuille_retenue, registres, mesuree = _consommation_retenue(
         res, tarif, alertes, hypotheses)
     _garde_kwh_factures(res, tarif, alertes)
+    alertes.extend(alerte_facture_ete_non_lue(lead, feuille_retenue))  # ACAL1227
 
     site = res.valeur('site') or {}
     toit_declare, toit_serie = _toit_declare(res)
@@ -1471,7 +1456,10 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
                      'archetype': prov_charge.get('archetype'),
                      'jours_types': jours_types, 'talon': prov_charge.get('talon')}
 
-    catalogue = dict(lire_catalogue_ci(company), froid=froid_du_site(_point_du_site(site)))  # ADEV122
+    # D-ACAL-169 — devis à naître : le panneau par défaut ; devis BROUILLON : SA ligne panneau (jamais « la plus
+    # haute Pmax » d'un autre module) ; devis envoyé : le module d'aujourd'hui (panneau_defaut.panneau_pour_etude).
+    catalogue = dict(lire_catalogue_ci(company, panneau_defaut=panneau_pour_etude(company, devis),
+                                       alertes=alertes), froid=froid_du_site(_point_du_site(site)))  # ADEV122
     reglages = _reglages_societe(company)
     forfaits = getattr(reglages, 'forfaits_ci', None) or {}
     phase = res.valeur('phases')
@@ -1495,9 +1483,10 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     valoriser = _valoriseur(tarif, res.valeur('tarif_declare'), jours_types, tension)
     hypotheses.append({'cle': 'base_taille', 'valeur': 'HT', 'statut': 'estimation',
                        'source': 'coût de vente HT ÷ économie HT (la base HT/TTC du '
-                                 'document suit D-CIQ-3, economie_ci)'})
+                                 'document suit celle de l\'économie)'})
     borne_toit = _borne_toit(res, devis, catalogue['module'], alertes)
     _charge_toiture(res, catalogue, alertes)
+    kwc_explicite = _taille_en_panneaux_entiers(res.valeur('taille_explicite_kwc'), catalogue['module'], hypotheses)
     resultat = dimensionner_ci(
         charge_jours_types=jours_types, production_jours_types=production_pour_bilan(production),
         tension=tension, combiner=combiner, composer=composer, valoriser=valoriser,
@@ -1506,8 +1495,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
                           if phase == 'tri' else 'phase : voir la combinaison d’onduleurs'}},
         puissance_souscrite_kva=res.valeur('puissance_souscrite_kva'),
         revente_choisie=revente,
-        taille_explicite_kwc=_taille_en_panneaux_entiers(
-            res.valeur('taille_explicite_kwc'), catalogue['module'], hypotheses),
+        taille_explicite_kwc=kwc_explicite,
+        taille_issue_creation=taille_issue_de_creation(verdict_creation, kwc_explicite),
         # ADEV79 — TTC des paliers → HT : TVA de l'article, à défaut le taux
         # standard SAISI de la société (lecture seule), jamais un 20 codé.
         taux_tva_pct=getattr(reglages, 'tva_standard', None), pmax_wc=(catalogue['module'] or {}).get('pmax_wc'),

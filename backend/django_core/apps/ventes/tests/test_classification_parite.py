@@ -35,7 +35,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.ventes.domain.catalogue import _parse_kwh, classer_produit
 from apps.ventes.quote_engine.lignes_classement import (
@@ -354,3 +354,682 @@ class CasLigneProduitTest(SimpleTestCase):
                         valeur, c[col],
                         '« {} » + « {} » : {} attendu {} (contrat AGNR2), '
                         'obtenu {}'.format(d, nom, col, c[col], valeur))
+
+
+class _FicheLue:
+    """Fiche technique en doublure : un champ non posé vaut ``None`` (non publié)."""
+
+    def __init__(self, type_fiche, **valeurs):
+        self.type_fiche = type_fiche
+        self._valeurs = valeurs
+
+    def __getattr__(self, nom):
+        return self.__dict__.get('_valeurs', {}).get(nom)
+
+
+#: Un brouillon jamais envoyé : la règle du rôle rangé s'applique.
+_BROUILLON = SimpleNamespace(statut='brouillon', date_envoi=None, regles_calcul=14)
+
+
+def _ligne(designation, *, role=None, devis=_BROUILLON, produit=None, quantite=1, variante=''):
+    """Une ligne de devis en doublure : son rôle RANGÉ (``role_devis``) et son devis."""
+    return SimpleNamespace(designation=designation, quantite=quantite, role_devis=role,
+                           produit=produit, produit_id=None if produit is None else 7,
+                           devis=devis, variante=variante, type_ligne='produit',
+                           optionnelle=False)
+
+
+def _item(ligne):
+    """L'item du moteur PDF de ``ligne`` (``_line_to_item`` transporte ``role_devis``)."""
+    return {'designation': ligne.designation, 'quantite': float(ligne.quantite),
+            '_produit_nom': getattr(ligne.produit, 'nom', '') or '', 'role_devis': ligne.role_devis}
+
+
+class _Lignes:
+    def __init__(self, lignes):
+        self._lignes = lignes
+
+    def all(self):
+        return list(self._lignes)
+
+
+class LecteursAvalRoleRangeTest(SimpleTestCase):
+    """Lecteurs en aval (fondateur 24/11/2026) — la classe d'une ligne est
+    décidée à son ÉCRITURE et RANGÉE (``LigneDevis.role_devis``) ; tous les
+    lecteurs aval lisent ce rôle rangé, puis les mots-clés d'aujourd'hui
+    (``domain.classe_ligne``). Aucun ne relit le produit vivant."""
+
+    #: Désignations RÉELLES de ``seed_catalogue`` (et le nom réel du 80 kW de Reda).
+    DESIGNATIONS = (
+        'Onduleur réseau Huawei 10kW Triphasé', 'Onduleur hybride Deye 10kW Monophasé',
+        'Panneau Canadien Solar 710W', 'Panneau Jinko 710W', 'Batterie Dyness 10 kWh',
+        'Batterie Dyness PowerBrick SC 16 kWh', 'Batterie Gel 2.2 kWh', 'Structures acier',
+        'Câble solaire Nexans 6 mm² (au mètre)', 'Smart Meter', 'Deye off-Grid 6kw',
+        'DEYE SUN-80K-SG02HP3-EU-EM6', 'Installation')
+    PREDICATS = (_is_panel, _is_battery, _is_hybrid_inverter, _is_reseau_inverter,
+                 _is_offgrid_inverter, _is_inverter)
+
+    def test_sans_role_range_le_verdict_d_hier(self):
+        from apps.ventes.domain.lignes import _classe_ligne
+        for designation in self.DESIGNATIONS:
+            for predicat in self.PREDICATS:
+                for ligne in (_ligne(designation), _ligne(designation, devis=None),
+                              _ligne(designation, produit=SimpleNamespace(nom=designation))):
+                    with self.subTest(designation=designation, predicat=predicat.__name__):
+                        self.assertEqual(_classe_ligne(ligne, predicat), bool(predicat(designation)))
+
+    def test_le_role_range_passe_devant_le_nom(self):
+        from apps.ventes.domain.lignes import _classe_ligne
+        hybride = _ligne('DEYE SUN-80K-SG02HP3-EU-EM6', role='onduleur_hybride')
+        self.assertFalse(_is_hybrid_inverter('DEYE SUN-80K-SG02HP3-EU-EM6'))  # le nom ne le dit pas
+        self.assertTrue(_classe_ligne(hybride, _is_hybrid_inverter))
+        self.assertTrue(_classe_ligne(hybride, _is_inverter))
+        self.assertFalse(_classe_ligne(hybride, _is_reseau_inverter))
+        cable = _ligne('Câble batterie 35 mm²', role='cable_dc')
+        self.assertTrue(_is_battery('Câble batterie 35 mm²'))  # les mots-clés s'y trompent
+        self.assertFalse(_classe_ligne(cable, _is_battery))
+
+    def test_une_retouche_du_catalogue_apres_l_ecriture_ne_change_rien(self):
+        """Le produit déclare DEPUIS un rôle et une fiche : la ligne, écrite sans
+        rôle, garde le verdict d'hier — aucun lecteur ne relit le produit."""
+        from apps.ventes.domain.lignes import _classe_ligne
+        from apps.ventes.utils.options import familles_des_lignes
+        produit = SimpleNamespace(nom='DEYE SUN-80K-SG02HP3-EU-EM6', role_devis='onduleur_hybride',
+                                  fiche_technique=_FicheLue('onduleur', ond_bat_max_charge_kw=80))
+        ligne = _ligne('DEYE SUN-80K-SG02HP3-EU-EM6', produit=produit)
+        self.assertFalse(_classe_ligne(ligne, _is_hybrid_inverter))
+        self.assertFalse(familles_des_lignes([ligne])['has_hybride'])
+
+    def test_devis_envoye_avant_la_coupure_ou_inconnu_garde_les_mots_cles(self):
+        from datetime import date, timedelta
+
+        from apps.ventes.domain.lignes import _classe_ligne
+        from apps.ventes.domain.regles_calcul import COUPURE_CLASSE_PAR_ROLE
+        avant = SimpleNamespace(statut='envoye', regles_calcul=14,
+                                date_envoi=date(*COUPURE_CLASSE_PAR_ROLE) - timedelta(days=1))
+        apres = SimpleNamespace(statut='envoye', regles_calcul=14, date_envoi=date(*COUPURE_CLASSE_PAR_ROLE))
+        nom = 'DEYE SUN-80K-SG02HP3-EU-EM6'
+        for devis, attendu in ((avant, False), (None, False), (apres, True), (_BROUILLON, True)):
+            with self.subTest(devis=devis):
+                self.assertEqual(_classe_ligne(_ligne(nom, role='onduleur_hybride', devis=devis),
+                                               _is_hybrid_inverter), attendu)
+
+    def test_cas_a_batterie_rangee_tous_les_lecteurs_d_accord(self):
+        """Cas A — batterie au nom muet (« Deye BOS-B Pro-A3 16 kWh ») rangée
+        ``batterie`` à l'écriture : servabilité du PDF, familles du noyau,
+        paniers, ``_classe_ligne``, kWh du PDF, capacité horaire : la MÊME
+        batterie, dans la seule option « avec »."""
+        from apps.ventes.domain.classe_ligne import paires_portent
+        from apps.ventes.domain.lignes import _classe_ligne
+        from apps.ventes.horaire.batterie_lignes import capacite_batterie_du_devis
+        from apps.ventes.quote_engine.lignes_classement import _battery_kwh_from_items
+        from apps.ventes.utils.options import (
+            AVEC_BATTERIE, SANS_BATTERIE, familles_des_lignes, filter_lines_for_option)
+        devis = SimpleNamespace(statut='brouillon', date_envoi=None, regles_calcul=14)
+        batterie = _ligne('Deye BOS-B Pro-A3 16 kWh', role='batterie', devis=devis)
+        lignes = [_ligne('Panneau Jinko 710W', role='panneau', devis=devis, quantite=20),
+                  _ligne('DEYE SUN-80K-SG02HP3-EU-EM6', role='onduleur_hybride', devis=devis),
+                  _ligne('Onduleur réseau Huawei 10kW Triphasé', role='onduleur_reseau', devis=devis),
+                  batterie]
+        devis.lignes = _Lignes(lignes)
+        self.assertFalse(_is_battery(batterie.designation))  # les mots-clés ne la voient pas
+        paires = [(li, _item(li)) for li in lignes]
+        self.assertEqual(familles_des_lignes(lignes), {'has_reseau': True, 'has_hybride': True,
+                                                       'has_offgrid': False, 'has_batterie': True})
+        for cle, predicat in (('has_reseau', _is_reseau_inverter), ('has_hybride', _is_hybrid_inverter),
+                              ('has_batterie', _is_battery)):
+            self.assertTrue(paires_portent(paires, predicat, devis), cle)
+        self.assertTrue(_classe_ligne(batterie, _is_battery))
+        self.assertIn(batterie, filter_lines_for_option(lignes, AVEC_BATTERIE, devis=devis))
+        self.assertNotIn(batterie, filter_lines_for_option(lignes, SANS_BATTERIE, devis=devis))
+        self.assertEqual(_battery_kwh_from_items([_item(batterie)], devis=devis), 16.0)
+        self.assertEqual(capacite_batterie_du_devis(devis), 16.0)
+        # Le même devis envoyé avant la coupure : les mots-clés d'hier partout.
+        self.assertEqual(_battery_kwh_from_items([_item(batterie)]), 0.0)
+
+    def test_cas_b_panneaux_ranges_tous_les_comptes_d_accord(self):
+        """Cas B — « Canadian Solar TOPBiHiKu7 CS7N-715TB » ×30 rangé ``panneau`` :
+        compte du PDF (``panneaux_et_watt_lu``), paires kWc, compte du re-tarif
+        (``retarifer`` : ``_comptes_panneaux`` sur ``devis.lignes``), compte
+        CAPTURÉ avant un geste (``comptes_panneaux_du_devis``, relu EN BASE),
+        compte de la garde (``comptes_panneaux_valides``) et dimensionnement
+        public : 30 partout.
+
+        Constat 3 — sur le CHEMIN RÉEL : des ``LigneDevis`` (pas des doublures,
+        qui ont toujours leur devis « chargé »). Les lignes de ``devis.lignes``
+        portent leur devis ; celles que ``comptes_panneaux_du_devis`` relit par
+        ``LigneDevis.objects.filter(devis_id=…)`` ne le portent PAS — seul le
+        devis transmis ouvre alors la lecture par rôle. Avant le correctif, le
+        compte capturé valait 0 face aux 30 du re-tarif : un écart que la garde
+        des devis envoyés lit comme un changement de compte."""
+        from datetime import date, timedelta
+        from decimal import Decimal
+        from unittest import mock
+
+        from apps.stock.models import FicheTechnique, Produit
+        from apps.ventes.domain.dimensionnement_devis import comptes_panneaux_valides
+        from apps.ventes.domain.lignes import _comptes_panneaux, comptes_panneaux_du_devis
+        from apps.ventes.domain.regles_calcul import COUPURE_CLASSE_PAR_ROLE
+        from apps.ventes.models import Devis, LigneDevis
+        from apps.ventes.public.payload_horaire import _dimensionnement_option_depuis_items
+        from apps.ventes.quote_engine.lignes_classement import (
+            paires_panneaux_lues, panneaux_et_watt_lu)
+        nom = 'Canadian Solar TOPBiHiKu7 CS7N-715TB'
+        self.assertFalse(_is_panel(nom))
+        produit = Produit(nom=nom)
+        FicheTechnique(produit=produit, type_fiche='module', pmax_wc=Decimal('715'))
+
+        def ligne(role, devis=None):
+            champs = dict(designation=nom, role_devis=role, type_ligne='produit', produit=produit,
+                          quantite=Decimal('30'), prix_unitaire=Decimal('1200'), remise=Decimal('0'))
+            return LigneDevis(devis=devis, **champs) if devis is not None else LigneDevis(**champs)
+
+        def capture(devis, lignes_en_base):
+            requete = mock.Mock()
+            requete.filter.return_value.select_related.return_value = lignes_en_base
+            with mock.patch.object(LigneDevis, 'objects', requete):
+                return comptes_panneaux_du_devis(devis)
+
+        reel = Devis(pk=41, statut='brouillon', date_envoi=None, regles_calcul=14)
+        panneau = ligne('panneau', reel)  # telle que la rend ``devis.lignes.all()``
+        devis = SimpleNamespace(pk=41, statut='brouillon', date_envoi=None, regles_calcul=14,
+                                lignes=_Lignes([panneau]))
+        self.assertEqual(panneaux_et_watt_lu([panneau]), (30, 715))
+        self.assertEqual(paires_panneaux_lues([panneau]), [(30, 715)])
+        self.assertEqual(_comptes_panneaux([panneau])[''], 30)
+        self.assertEqual(capture(devis, [ligne('panneau')])[''], 30)
+        self.assertEqual(comptes_panneaux_valides(devis), {30})
+        self.assertEqual(_dimensionnement_option_depuis_items([_item(panneau)], devis)['nb_panneaux'], 30)
+        # Envoyé avant la coupure : 0 des DEUX côtés, le verdict d'hier, aucun écart.
+        avant = SimpleNamespace(pk=41, statut='envoye', regles_calcul=14,
+                                date_envoi=date(*COUPURE_CLASSE_PAR_ROLE) - timedelta(days=1))
+        self.assertEqual(capture(avant, [ligne('panneau')])[''], 0)
+        self.assertEqual(_comptes_panneaux([ligne('panneau')], devis=avant)[''], 0)
+        # Sans rôle rangé : 0 partout, le verdict d'hier.
+        muet = ligne(None, reel)
+        self.assertEqual(panneaux_et_watt_lu([muet])[0], 0)
+        self.assertEqual(_comptes_panneaux([muet])[''], 0)
+        self.assertEqual(capture(devis, [ligne(None)])[''], 0)
+
+    def test_le_scenario_de_l_etude_lit_les_roles_emis_par_la_composition(self):
+        """Constat 2 — ``cles_etude_de_composition`` (étape 6 du pipeline et
+        moteur de conception) dérive le scénario servable des rôles ÉMIS par la
+        composition (``composition.roles``), plus des mots-clés : cas B + C + A
+        (aucun nom ne porte de mot-clé) composés « avec » rangent « Avec
+        batterie », pas « Sans batterie »."""
+        from datetime import date, timedelta
+
+        from apps.ventes.domain.composition import CompositionLignes
+        from apps.ventes.domain.pipeline import cles_etude_de_composition
+        from apps.ventes.domain.regles_calcul import COUPURE_CLASSE_PAR_ROLE
+        from apps.ventes.domain.scenario import SCENARIO_AVEC_BATTERIE, SCENARIO_SANS_BATTERIE
+
+        def kit(nom, quantite):
+            return SimpleNamespace(designation=nom, produit=None, quantite=quantite,
+                                   prix_unitaire=1000, variante='')
+        composition = CompositionLignes([kit('Canadian Solar TOPBiHiKu7 CS7N-715TB', 30),
+                                         kit('DEYE SUN-80K-SG02HP3-EU-EM6', 1),
+                                         kit('Deye BOS-B Pro-A3 16 kWh', 2)])
+        composition.roles = ['panneau', 'onduleur_hybride', 'batterie']
+        intention = SimpleNamespace(scenario='', layout={}, mode_installation='residentiel')
+        avant = SimpleNamespace(statut='envoye', regles_calcul=14,
+                                date_envoi=date(*COUPURE_CLASSE_PAR_ROLE) - timedelta(days=1))
+        for devis, attendu in ((_BROUILLON, SCENARIO_AVEC_BATTERIE),
+                               (avant, SCENARIO_SANS_BATTERIE)):
+            with self.subTest(devis=devis):
+                self.assertEqual(cles_etude_de_composition(devis, intention, composition)['scenario'],
+                                 attendu)
+        # Sans rôle émis : les mots-clés d'hier, même sur un brouillon.
+        composition.roles = ()
+        self.assertEqual(cles_etude_de_composition(_BROUILLON, intention, composition)['scenario'],
+                         SCENARIO_SANS_BATTERIE)
+
+    def test_les_autos_du_registre_lisent_le_role_range(self):
+        """Constat 2 (suite) — le bloc ``auto`` du registre (``overrides``) :
+        scénario servable (``_auto_scenario``) et banque de batterie
+        (``_autos_banque_batterie``) lisent le rôle RANGÉ des lignes réelles
+        (devis NON chargé sur la ligne), puis les mots-clés d'hier."""
+        from datetime import date, timedelta
+        from decimal import Decimal
+
+        from apps.ventes.domain.overrides import _auto_scenario, _autos_banque_batterie
+        from apps.ventes.domain.regles_calcul import COUPURE_CLASSE_PAR_ROLE
+        from apps.ventes.domain.scenario import SCENARIO_AVEC_BATTERIE, SCENARIO_SANS_BATTERIE
+        from apps.ventes.models import LigneDevis
+        from apps.stock.models import Produit
+
+        class _Requete(_Lignes):
+            def select_related(self, *_champs):
+                return self
+
+        def ligne(nom, role, quantite):
+            return LigneDevis(designation=nom, role_devis=role, type_ligne='produit',
+                              quantite=Decimal(quantite), prix_unitaire=Decimal('1000'),
+                              remise=Decimal('0'), produit=Produit(nom=nom))
+
+        def devis(**etat):
+            lignes = [ligne('Canadian Solar TOPBiHiKu7 CS7N-715TB', 'panneau', '30'),
+                      ligne('DEYE SUN-80K-SG02HP3-EU-EM6', 'onduleur_hybride', '1'),
+                      ligne('Deye BOS-B Pro-A3 16 kWh', 'batterie', '2')]
+            return SimpleNamespace(regles_calcul=14, etude_params={}, overrides={},
+                                   lignes=_Requete(lignes), **etat)
+        ouvert = devis(statut='brouillon', date_envoi=None)
+        self.assertEqual(_auto_scenario(ouvert), SCENARIO_AVEC_BATTERIE)
+        self.assertEqual(_autos_banque_batterie(ouvert).get('taille.batterie_nb_modules'), 2)
+        avant = devis(statut='envoye', date_envoi=date(*COUPURE_CLASSE_PAR_ROLE) - timedelta(days=1))
+        self.assertEqual(_auto_scenario(avant), SCENARIO_SANS_BATTERIE)
+        self.assertEqual(_autos_banque_batterie(avant), {})
+
+
+class LecteursAvalComptesEnBaseTest(TestCase):
+    """Constat 3 — EN BASE (CI) : le compte capturé avant un geste
+    (``comptes_panneaux_du_devis``, lignes relues SANS leur devis) égale le
+    compte du re-tarif (``devis.lignes``) pour le cas B rangé ``panneau``."""
+
+    def test_cas_b_compte_capture_egal_au_compte_du_retarif(self):
+        from decimal import Decimal
+
+        from authentication.models import Company
+
+        from apps.crm.models import Client
+        from apps.stock.models import Produit
+        from apps.ventes.domain.lignes import _comptes_panneaux, _lignes_produit, comptes_panneaux_du_devis
+        from apps.ventes.models import Devis, LigneDevis
+        company = Company.objects.create(slug='lav-comptes-b', nom='lav-comptes-b')
+        client_obj = Client.objects.create(company=company, nom='Client cas B')
+        devis = Devis.objects.create(company=company, reference='DEV-LAV-B-01', client=client_obj,
+                                     statut='brouillon', taux_tva=Decimal('20'),
+                                     mode_installation='residentiel')
+        nom = 'Canadian Solar TOPBiHiKu7 CS7N-715TB'
+        produit = Produit.objects.create(company=company, nom=nom, prix_vente=1200, quantite_stock=50)
+        LigneDevis.objects.create(devis=devis, produit=produit, designation=nom, role_devis='panneau',
+                                  quantite=Decimal('30'), prix_unitaire=Decimal('1200'),
+                                  remise=Decimal('0'))
+        devis = Devis.objects.get(pk=devis.pk)
+        capture = comptes_panneaux_du_devis(devis)
+        self.assertEqual(capture[''], 30)
+        self.assertEqual(capture, _comptes_panneaux(_lignes_produit(devis), devis))
+
+
+#: Les trois cas de preuve de la revue : A batterie, B panneaux, C hybride (noms muets).
+_NOM_A, _NOM_B, _NOM_C = ('Deye BOS-B Pro-A3 16 kWh', 'Canadian Solar TOPBiHiKu7 CS7N-715TB',
+                          'DEYE SUN-80K-SG02HP3-EU-EM6')
+
+
+def _avant_la_coupure():
+    from datetime import date, timedelta
+
+    from apps.ventes.domain.regles_calcul import COUPURE_CLASSE_PAR_ROLE
+    return SimpleNamespace(statut='envoye', regles_calcul=14,
+                           date_envoi=date(*COUPURE_CLASSE_PAR_ROLE) - timedelta(days=1))
+
+
+def _items_abc():
+    """Les items du moteur PDF (``_line_to_item`` transporte ``role_devis``) des cas A, B, C."""
+    def item(nom, role, quantite):
+        return {'designation': nom, '_produit_nom': nom, 'quantite': float(quantite),
+                'role_devis': role, 'prix_unit_ht': 1000.0, 'prix_unit_ttc': 1200.0}
+    return [item(_NOM_B, 'panneau', 30), item(_NOM_C, 'onduleur_hybride', 1),
+            item(_NOM_A, 'batterie', 1)]
+
+
+class LecteursAvalTextesPdfTest(SimpleTestCase):
+    """Constat 4 — les textes du PDF lisent le rôle RANGÉ : la carte « Avec
+    batterie » (``conditions_commerciales.remises_et_puces``) et la fiche
+    « Votre installation en bref » (``commercial.equip``) listent la batterie A,
+    les 30 panneaux B et l'hybride C. Envoyé avant la coupure : les puces d'hier."""
+
+    @staticmethod
+    def _puces(devis):
+        from apps.ventes.quote_engine.conditions_commerciales import remises_et_puces
+        sortie = remises_et_puces(
+            PUCE_AVEC_BATTERIE_DIFFEREE='(différée)', _corrige=True, _scal={}, all_items=[],
+            avec_batterie_differee=False, avec_items=_items_abc(), mode='residentiel',
+            opts={'include_etude': False}, sans_items=_items_abc()[:2], totaux_all={},
+            totaux_avec={}, totaux_sans={}, tva_pct=20, watt=715, devis=devis)
+        return sortie[5], sortie[1]  # sans_bullets, avec_bullets
+
+    def test_cartes_d_option_listent_les_lignes_rangees(self):
+        sans, avec = self._puces(_BROUILLON)
+        self.assertEqual(avec[:3], ['30 panneaux 715 W', _NOM_C, _NOM_A])
+        self.assertEqual(sans[:2], ['30 panneaux 715 W', _NOM_C])
+        self.assertNotIn(_NOM_A, sans)
+
+    def test_cartes_d_option_envoye_avant_la_coupure_les_puces_d_hier(self):
+        sans, avec = self._puces(_avant_la_coupure())
+        self.assertEqual(avec, [])
+        self.assertEqual(sans, [])
+
+    @staticmethod
+    def _installation(**drapeaux):
+        from apps.ventes.quote_engine.commercial.equip import _rangees_installation
+        d = dict(all_items=_items_abc(), watt_par_panneau=715, **drapeaux)
+        return dict(_rangees_installation(
+            d, lambda _cle, fr, **valeurs: fr.format(**valeurs), str))
+
+    def test_installation_en_bref_lit_les_lignes_rangees(self):
+        rangees = self._installation(classe_par_role=True)
+        self.assertTrue(rangees['Modules'].startswith('30 × ' + _NOM_B))
+        self.assertEqual(rangees['Onduleurs'], '1 × ' + _NOM_C)
+
+    def test_installation_en_bref_sans_drapeau_les_rangees_d_hier(self):
+        rangees = self._installation()
+        self.assertNotIn('Modules', rangees)
+        self.assertNotIn('Onduleurs', rangees)
+
+    def test_le_drapeau_suit_la_coupure(self):
+        """Le moteur pose ``classe_par_role`` aux seuls devis que la coupure ouvre
+        (un devis envoyé avant reste octet-identique : aucune clé de plus)."""
+        from apps.ventes.quote_engine.builder import _drapeau_classe_par_role
+        self.assertEqual(_drapeau_classe_par_role(_BROUILLON), {'classe_par_role': True})
+        self.assertEqual(_drapeau_classe_par_role(_avant_la_coupure()), {})
+
+
+class LecteursAvalPariteDuPaybackTest(SimpleTestCase):
+    """Constat 5 — un devis, UN retour sur investissement : l'aperçu horaire
+    (batterie du devis ou des produits envoyés) et le payback servi par la
+    conception lisent la batterie A et l'hybride C par leur rôle, comme le PDF
+    (``capacite_batterie_du_devis``, ``etude_chiffrage._cout_onduleur``)."""
+
+    def setUp(self):
+        from unittest import mock
+        # Aucune fiche publiée : la capacité tombe sur le nominal du nom (16 kWh).
+        patch = mock.patch('apps.stock.selectors.specs_for_produit', return_value={})
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    @staticmethod
+    def _devis_a(devis):
+        devis.lignes = _Lignes([_ligne(_NOM_A, role='batterie', devis=devis, quantite=1)])
+        return devis
+
+    def test_apercu_du_devis_prend_les_grandeurs_du_devis_pour_la_batterie_rangee(self):
+        from apps.ventes.etude_horaire_view import _batterie_de_l_apercu
+        from apps.ventes.horaire.batterie_lignes import (
+            capacite_batterie_du_devis, rendement_batterie_du_devis)
+        devis = self._devis_a(SimpleNamespace(statut='brouillon', date_envoi=None, regles_calcul=14))
+        apercu = _batterie_de_l_apercu(devis, 16.0)
+        self.assertEqual(apercu['batterie_kwh_utile'], capacite_batterie_du_devis(devis, 'avec'))
+        self.assertEqual(apercu['batterie_rendement'], rendement_batterie_du_devis(devis)['rendement'])
+
+    def test_apercu_du_devis_envoye_avant_la_coupure_garde_la_capacite_du_corps(self):
+        from apps.ventes.etude_horaire_view import _batterie_de_l_apercu
+        self.assertEqual(_batterie_de_l_apercu(self._devis_a(_avant_la_coupure()), 16.0),
+                         {'batterie_kwh_utile': 16.0})
+
+    def test_apercu_des_produits_reconnait_la_batterie_par_son_role_declare(self):
+        from unittest import mock
+
+        from apps.stock.models import Produit
+        from apps.ventes.horaire.batterie_apercu import batterie_des_produits
+        produit = Produit(pk=5, nom=_NOM_A, role_devis='batterie')
+        with mock.patch('apps.stock.selectors.get_produit_scoped', return_value=produit):
+            sortie = batterie_des_produits([{'produit': 5, 'quantite': 1}], company=None)
+        self.assertIsNotNone(sortie)
+        self.assertEqual(sortie['batterie_kwh_utile'], 16.0)
+        sans_role = Produit(pk=5, nom=_NOM_A)
+        with mock.patch('apps.stock.selectors.get_produit_scoped', return_value=sans_role):
+            self.assertIsNone(batterie_des_produits([{'produit': 5, 'quantite': 1}], company=None))
+
+    @staticmethod
+    def _payback(devis_reel):
+        from decimal import Decimal
+        from unittest import mock
+
+        from apps.stock.models import Produit
+        from apps.ventes import selectors_conception
+        from apps.ventes.models import LigneDevis
+
+        def ligne(nom, role, quantite, prix):
+            return LigneDevis(devis=devis_reel, designation=nom, role_devis=role, type_ligne='produit',
+                              quantite=Decimal(quantite), prix_unitaire=Decimal(prix), remise=Decimal('0'),
+                              taux_tva=Decimal('20'), produit=Produit(nom=nom))
+        lignes = [ligne(_NOM_B, 'panneau', '30', '1200'), ligne(_NOM_C, 'onduleur_hybride', '1', '60000'),
+                  ligne(_NOM_A, 'batterie', '1', '30000')]
+        version = SimpleNamespace(etat='complet', marche='residentiel')
+        # Un retour au-delà de l'année 12 : la provision d'onduleur y pèse.
+        valeurs = {'avec': {'payback': None, 'economies_annuelles': {'valeur': 10000}}}
+        with mock.patch.object(selectors_conception, '_devis_de_reference', return_value=devis_reel), \
+                mock.patch('apps.ventes.utils.options.lignes_avec_produit', return_value=lignes):
+            servies, _ = selectors_conception._payback_servi(version, valeurs)
+        return servies['avec']['payback']
+
+    def test_payback_servi_provisionne_l_hybride_range_comme_le_pdf(self):
+        from apps.ventes.models import Devis
+        from apps.ventes.quote_engine.lignes_classement import _cout_onduleur
+        devis = Devis(pk=41, reference='DEV-LAV-5', statut='brouillon', date_envoi=None, regles_calcul=14,
+                      remise_globale=0, taux_tva=20)
+        payback = self._payback(devis)
+        items = [{'designation': _NOM_C, 'quantite': 1.0, 'prix_unit_ttc': 72000.0,
+                  'role_devis': 'onduleur_hybride'}]
+        cout_pdf = _cout_onduleur(items, devis=devis)
+        self.assertEqual(payback['cout_onduleur_ttc'], cout_pdf)
+        from apps.ventes.quote_engine.pricing import payback_publiable
+        investissement = (30 * 1200 + 60000 + 30000) * 1.2
+        self.assertEqual(payback['valeur'], payback_publiable(
+            investissement, 10000, stockage=True, cout_onduleur_ttc=cout_pdf, part_batterie=0)['payback_years'])
+
+    def test_payback_servi_envoye_avant_la_coupure_garde_le_calcul_d_hier(self):
+        from apps.ventes.models import Devis
+        avant = _avant_la_coupure()
+        devis = Devis(pk=41, reference='DEV-LAV-5', statut='envoye', date_envoi=avant.date_envoi,
+                      regles_calcul=14, remise_globale=0, taux_tva=20)
+        self.assertIsNone(self._payback(devis)['cout_onduleur_ttc'])
+
+
+#: Le rôle que le GÉNÉRATEUR range pour les cas A, B, C (vivier chargé avec la fiche ;
+#: C ne tient son hybride que de son rôle déclaré, sa fiche réelle ne publie aucun port).
+_ROLES_DU_GENERATEUR = {_NOM_A: 'batterie', _NOM_B: 'panneau', _NOM_C: 'onduleur_hybride'}
+
+
+def _produits_abc(*, fiche_chargee):
+    """Les produits A, B, C tels que les rend une requête, avec ou sans la fiche chargée."""
+    from decimal import Decimal
+
+    from apps.stock.models import FicheTechnique, Produit
+    sortie = []
+    for pk, (nom, role, type_fiche) in enumerate(
+            ((_NOM_A, None, 'batterie'), (_NOM_B, None, 'module'),
+             (_NOM_C, 'onduleur_hybride', 'onduleur')), start=1):
+        produit = Produit(pk=pk, nom=nom, role_devis=role, prix_vente=Decimal('1000'), company_id=1)
+        if fiche_chargee:
+            produit.fiche_technique = FicheTechnique(type_fiche=type_fiche)
+        sortie.append(produit)
+    return sortie
+
+
+class _Catalogue:
+    """Doublure de ``stock.selectors.produits_qs`` : la fiche n'est chargée que
+    si l'appelant la joint (``select_related('fiche_technique')``)."""
+
+    def __init__(self, pk, jointe=False):
+        self.pk, self.jointe = pk, jointe
+
+    def select_related(self, *noms):
+        return _Catalogue(self.pk, self.jointe or 'fiche_technique' in noms)
+
+    def filter(self, *args, **kwargs):
+        return self
+
+    def first(self):
+        return _produits_abc(fiche_chargee=self.jointe)[self.pk - 1]
+
+
+class LecteursAvalEcrivainsTest(SimpleTestCase):
+    """Constat 6 — les écrivains rangent TOUS le rôle du générateur : l'assistant
+    (``lignes_assistant.produit_vendable`` puis l'écrivain unique) et la création
+    d'une ligne seule par l'API (``LigneDevisSerializer``) ; un devis envoyé avant
+    la coupure garde l'écriture d'hier."""
+
+    def _par_l_assistant(self, devis, pk):
+        from unittest import mock
+
+        from apps.ventes.domain.lignes import _champs_a_la_creation
+        from apps.ventes.domain.lignes_assistant import produit_vendable
+        with mock.patch('apps.stock.selectors.produits_qs', return_value=_Catalogue(pk)):
+            produit = produit_vendable(devis, pk)
+        return _champs_a_la_creation(devis, {'produit': produit, 'designation': produit.nom})['role_devis']
+
+    def _par_l_api(self, devis, produit):
+        from decimal import Decimal
+        from unittest import mock
+
+        from rest_framework import serializers
+
+        from apps.ventes.serializers import LigneDevisSerializer
+        with mock.patch.object(serializers.ModelSerializer, 'create', lambda self, donnees: donnees):
+            return LigneDevisSerializer().create({
+                'devis': devis, 'produit': produit, 'designation': produit.nom,
+                'quantite': Decimal('1'), 'prix_unitaire': Decimal('1000'), 'taux_tva': Decimal('20')})
+
+    def test_l_assistant_range_le_role_du_generateur(self):
+        devis = SimpleNamespace(**vars(_BROUILLON), company_id=1, taux_tva=20)
+        self.assertEqual({nom: self._par_l_assistant(devis, pk) for pk, nom in
+                          enumerate((_NOM_A, _NOM_B, _NOM_C), start=1)}, _ROLES_DU_GENERATEUR)
+
+    def test_l_assistant_avant_la_coupure_garde_l_ecriture_d_hier(self):
+        devis = SimpleNamespace(**vars(_avant_la_coupure()), company_id=1, taux_tva=20)
+        self.assertEqual([self._par_l_assistant(devis, pk) for pk in (1, 2, 3)],
+                         [None, None, 'onduleur_hybride'])
+
+    def test_l_api_joint_la_fiche_du_produit(self):
+        from apps.stock.models import Produit
+        from apps.ventes.serializers import _ProduitSocieteOuCatalogueGlobalField
+        champ = _ProduitSocieteOuCatalogueGlobalField(queryset=Produit.objects.all())
+        champ._context = {}
+        self.assertIn('fiche_technique', champ.get_queryset().query.select_related or {})
+
+    def test_l_api_range_le_role_du_generateur(self):
+        devis = SimpleNamespace(**vars(_BROUILLON), company_id=1, taux_tva=20)
+        self.assertEqual({p.nom: self._par_l_api(devis, p).get('role_devis')
+                          for p in _produits_abc(fiche_chargee=True)}, _ROLES_DU_GENERATEUR)
+
+    def test_l_api_avant_la_coupure_garde_l_ecriture_d_hier(self):
+        devis = SimpleNamespace(**vars(_avant_la_coupure()), company_id=1, taux_tva=20)
+        for produit in _produits_abc(fiche_chargee=True):
+            self.assertNotIn('role_devis', self._par_l_api(devis, produit), produit.nom)
+
+
+def _devis_taille(devis, nb):
+    """``devis`` (doublure) portant la surcharge de NIVEAU DEVIS ``taille.nb_panneaux = nb``."""
+    return SimpleNamespace(**vars(devis), pk=41, reference='DEV-LAV-S3', mode_installation='residentiel',
+                           roof_layout=None, overrides={'taille.nb_panneaux': {'valeur': nb, 'origine': 'manuel'}})
+
+
+class LecteursAvalSuite3Test(SimpleTestCase):
+    """Lecteurs aval (suite 3) — les lecteurs que les lanes précédentes ont
+    laissés lisent le rôle RANGÉ (``domain.classe_ligne``), puis les mots-clés
+    d'hier ; un devis envoyé avant la coupure garde l'expression d'hier."""
+
+    @staticmethod
+    def _preseance(devis, designation, role):
+        from apps.ventes.domain.pipeline import _appliquer_preseance_quantite
+        specs = [{'designation': designation, 'quantite': '14', 'role_devis': role, 'produit': 1}]
+        _appliquer_preseance_quantite(_devis_taille(devis, 21), specs)
+        return specs[0]['quantite']
+
+    def test_1_ligne_panneau_dominante_lit_le_role_range(self):
+        """Cas B — la ligne de 30 « CS7N-715TB » rangée ``panneau`` est LA dominante
+        (préséance R4-A de ``taille.nb_panneaux`` : 14 → 21 sur la spec, kWc) ;
+        envoyé avant la coupure : aucune dominante, comme hier."""
+        from apps.ventes.domain.scenario import ligne_panneau_dominante
+        b = _ligne(_NOM_B, role='panneau', quantite=30)
+        a = _ligne(_NOM_A, role='batterie', quantite=1)
+        self.assertIs(ligne_panneau_dominante([a, b]), b)
+        self.assertIsNone(ligne_panneau_dominante([a, b], devis=_avant_la_coupure()))
+        self.assertEqual(self._preseance(_BROUILLON, _NOM_B, 'panneau'), '21')
+        self.assertEqual(self._preseance(_avant_la_coupure(), _NOM_B, 'panneau'), '14')
+        # Nom ordinaire : inchangé, avant comme après la coupure.
+        jinko = _ligne('Panneau Jinko 710W', quantite=12)
+        self.assertIs(ligne_panneau_dominante([a, jinko]), jinko)
+        self.assertIs(ligne_panneau_dominante([a, jinko], devis=_avant_la_coupure()), jinko)
+        for devis in (_BROUILLON, _avant_la_coupure()):
+            self.assertEqual(self._preseance(devis, 'Panneau Jinko 710W', ''), '21')
+
+    @staticmethod
+    def _materiel(devis, *noms_roles):
+        from apps.ventes.conception.moteur import _materiel_des_lignes
+        lignes = []
+        for pid, (nom, role) in enumerate(noms_roles, start=1):
+            li = _ligne(nom, role=role, devis=devis, variante='avec')
+            li.produit_id = pid
+            lignes.append(li)
+        return _materiel_des_lignes(SimpleNamespace(lignes=lignes), devis)
+
+    def test_2_materiel_des_lignes_du_moteur_lit_le_role_range(self):
+        """Cas B et C — le module et l'onduleur que le plan par défaut / la pose simulent
+        sont les lignes RANGÉES panneau et onduleur_hybride ; avant la coupure : rien, comme hier."""
+        abc = ((_NOM_A, 'batterie'), (_NOM_B, 'panneau'), (_NOM_C, 'onduleur_hybride'))
+        self.assertEqual(self._materiel(_BROUILLON, *abc), {'module': 2, 'onduleur': 3})
+        self.assertEqual(self._materiel(_avant_la_coupure(), *abc), {'module': None, 'onduleur': None})
+        ordinaires = (('Panneau Jinko 710W', None), ('Onduleur hybride Deye 10kW', None))
+        for devis in (_BROUILLON, _avant_la_coupure()):
+            self.assertEqual(self._materiel(devis, *ordinaires), {'module': 1, 'onduleur': 2})
+
+    @staticmethod
+    def _devis_aux_lignes(devis, *lignes):
+        """``devis`` (doublure) dont ``lignes`` répond à ``all`` / ``filter`` / ``select_related``."""
+        class _Filtrables(_Lignes):
+            def filter(self, **criteres):
+                return _Filtrables([li for li in self._lignes
+                                    if all(getattr(li, k) == v for k, v in criteres.items())])
+
+            def select_related(self, *_):
+                return self
+
+            def __iter__(self):
+                return iter(self._lignes)
+        return SimpleNamespace(**vars(devis), lignes=_Filtrables(lignes))
+
+    def test_3_comptes_des_brouillons_lisent_le_role_range(self):
+        """Cas B — les 30 « CS7N-715TB » rangés ``panneau`` comptent dans la taille du
+        brouillon (historique « 30 », avance du pointeur) ; avant la coupure : 0, comme hier."""
+        from apps.ventes.conception.brouillons import _comptes
+
+        def comptes(devis, *lignes):
+            return _comptes(self._devis_aux_lignes(devis, *lignes))
+        abc = (_ligne(_NOM_A, role='batterie'), _ligne(_NOM_B, role='panneau', quantite=30),
+               _ligne(_NOM_C, role='onduleur_hybride'))
+        self.assertEqual(comptes(_BROUILLON, *abc), {'': 30})
+        self.assertEqual(comptes(_avant_la_coupure(), *abc), {})
+        for devis in (_BROUILLON, _avant_la_coupure()):
+            self.assertEqual(comptes(devis, _ligne('Panneau Jinko 710W', quantite=12, variante='avec')),
+                             {'avec': 12})
+
+    def test_4_fiche_batterie_publique_lit_le_role_range(self):
+        """Cas A — la batterie « BOS-B Pro-A3 » rangée ``batterie`` ouvre la clé
+        ``fiche_batterie`` de la page (fiche muette ⇒ simulation OMISE, dite) ;
+        avant la coupure : clé absente, comme hier."""
+        from apps.ventes.public.payload_batterie import MOTIF_SIMULATION_OMISE, _fiche_batterie_publique
+
+        def fiche(devis, *lignes):
+            return _fiche_batterie_publique(self._devis_aux_lignes(devis, *lignes))
+        abc = (_ligne(_NOM_A, role='batterie'), _ligne(_NOM_B, role='panneau', quantite=30),
+               _ligne(_NOM_C, role='onduleur_hybride'))
+        omise = {'rendement_ar_pct': None, 'dod_pct': None, 'source': None,
+                 'simulation_omise_motif': MOTIF_SIMULATION_OMISE}
+        self.assertEqual(fiche(_BROUILLON, *abc), omise)
+        self.assertIsNone(fiche(_avant_la_coupure(), *abc))
+        for devis in (_BROUILLON, _avant_la_coupure()):
+            self.assertEqual(fiche(devis, _ligne('Batterie Lithium Pylontech 5kWh')), omise)
+            self.assertIsNone(fiche(devis, _ligne('Panneau Jinko 710W', quantite=12)))
+
+    def _structure_apres_retouche(self, devis, nom, role):
+        """La quantité de la structure quand le vendeur passe 10 panneaux « ``nom`` » à 12."""
+        from apps.ventes.domain.pipeline import _soeurs_suivent_panneaux_retouches
+        en_base = self._devis_aux_lignes(_devis_taille(devis, 12), _ligne(nom, role=role, quantite=10))
+        specs = [{'designation': nom, 'quantite': '12', 'role_devis': role or ''},
+                 {'designation': 'Structure aluminium', 'quantite': '1'}]
+        _soeurs_suivent_panneaux_retouches(en_base, specs)
+        return specs[1]['quantite']
+
+    def test_5_soeurs_suivent_les_panneaux_ranges_retouches(self):
+        """Cas B — 10 → 12 « CS7N-715TB » rangés ``panneau`` : la structure de l'option
+        suit (règle de la composition) ; avant la coupure : rien ne bouge, comme hier."""
+        from apps.ventes.domain.composition import quantites_derivees_du_compte
+        suit = str(quantites_derivees_du_compte(12, 0)['structure'])
+        self.assertNotEqual(suit, '1')
+        self.assertEqual(self._structure_apres_retouche(_BROUILLON, _NOM_B, 'panneau'), suit)
+        self.assertEqual(self._structure_apres_retouche(_avant_la_coupure(), _NOM_B, 'panneau'), '1')
+        for devis in (_BROUILLON, _avant_la_coupure()):
+            self.assertEqual(self._structure_apres_retouche(devis, 'Panneau Jinko 710W', None), suit)

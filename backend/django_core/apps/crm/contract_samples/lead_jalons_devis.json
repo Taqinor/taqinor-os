@@ -10,7 +10,7 @@
         "created_at": "2026-08-14T09:30:00+00:00",
         "devis_id": 42,
         "reference": "DEV-2026-0042",
-        "user_nom": null,
+        "user_nom": "Reda Kasri",
         "pinned": false
       },
       {
@@ -39,7 +39,7 @@
     "ordre": "Plus récent d'abord — le sélecteur ventes trie déjà par horodatage décroissant ; l'écran fusionne ensuite avec le chatter et retrie.",
     "kind": "Exactement les quatre valeurs devis_sent / devis_opened / devis_signed / devis_refused. Un kind inconnu renvoyé par ventes est IGNORÉ plutôt que rendu en ligne muette.",
     "vide": "Un lead sans devis renvoie {\"results\": []} — jamais 404.",
-    "user_nom": "Toujours null : un jalon de devis est un fait système, pas le geste d'un utilisateur nommé.",
+    "user_nom": "Nom COMPLET (prénom + nom ; le login seulement si les deux sont vides, même forme que le chatter) de l'auteur de l'acceptation sur le jalon devis_signed (activité d'acceptation) ; null sans acteur connu et sur les autres jalons — l'écran n'affiche alors rien.",
     "pinned": "Toujours false : seules les notes du chatter s'épinglent (LW28)."
   }
 }

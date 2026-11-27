@@ -27,6 +27,9 @@ from django.test import SimpleTestCase, TestCase
 
 from apps.calepinage.services import annee_moyenne
 from apps.calepinage.services import simulation as service
+from apps.calepinage.services.courbe_charge import (
+    construire_courbe_charge,
+)
 from apps.calepinage.services.chaine_pertes import (
     CLE_ANNEES_FENETRE, MOTIF_RENDEMENT_INVRAISEMBLABLE,
 )
@@ -41,8 +44,10 @@ from .test_calx188_batterie import (
     contexte_de_test as contexte_batterie, serie_de_test as serie_batterie,
 )
 from .test_calx190_autoconsommation import (
-    contexte_de_test as contexte_auto, serie_de_test as serie_auto,
+    JUSTIFICATION, contexte_de_test as contexte_auto,
+    serie_de_test as serie_auto,
 )
+from . import test_calx191_hors_reseau as hr191
 
 #: Trois années NON bissextiles : trois années pleines identiques.
 ANNEES = (2018, 2019, 2021)
@@ -655,3 +660,126 @@ class CommandeAnneeMoyenneTest(TestCase):
                            side_effect=AssertionError('tâche')):
             call_command('acal_dryrun_annee_moyenne', '--dry-run',
                          stdout=io.StringIO())
+
+
+# ---------------------------------------------------------------------------
+# ACAL1670 — la GARDE de la classe K-ANNEE-MOYENNE (fiche T2/classes) : deux
+# années IDENTIQUES publient, pour chaque grandeur annuelle, ce que publie une
+# année. La liste n'est pas écrite à la main : on PARCOURT le résultat, donc
+# une clé neuve non ramenée échoue sans que personne ne pense à l'ajouter.
+# ---------------------------------------------------------------------------
+
+#: Une grandeur « par an » : une énergie (``*_kwh``, ``kwh_an``,
+#: ``kwh_hors_production_an``), un compte d'heures (``heures*``) ou, sous
+#: ``profil_mensuel``, la ligne ``kwh`` d'un mois.
+def _est_annuelle(cle, dans_profil):
+    return (cle.endswith('_kwh') or cle.startswith('heures')
+            or cle.startswith('kwh_') or (dans_profil and cle == 'kwh'))
+
+
+def _grandeurs_annuelles(noeud, chemin='', dans_profil=False, trouvees=None):
+    """``{chemin: nombre}`` de chaque grandeur annuelle publiée sous ``noeud``."""
+    trouvees = {} if trouvees is None else trouvees
+    if isinstance(noeud, dict):
+        for cle, valeur in noeud.items():
+            sous = '%s.%s' % (chemin, cle) if chemin else cle
+            if (isinstance(valeur, (int, float))
+                    and not isinstance(valeur, bool)
+                    and _est_annuelle(cle, dans_profil)):
+                trouvees[sous] = float(valeur)
+            _grandeurs_annuelles(valeur, sous,
+                                 dans_profil or cle == 'profil_mensuel',
+                                 trouvees)
+    elif isinstance(noeud, list):
+        for rang, valeur in enumerate(noeud):
+            _grandeurs_annuelles(valeur, '%s[%d]' % (chemin, rang),
+                                 dans_profil, trouvees)
+    return trouvees
+
+
+def _deux_ans(fabrique, **kwargs):
+    series = [fabrique(annee=annee, **kwargs) for annee in ANNEES[:2]]
+    return {'points': [point for serie in series
+                       for point in serie['points']],
+            'pas_minutes': 60, 'colonne_energie': 'p_ac_kw'}
+
+
+def _fenetre(contexte, annees):
+    contexte[CLE_ANNEES_FENETRE] = annees
+    return contexte
+
+
+def _scenario_consommation(annees):
+    serie = serie_auto() if annees == 1 else _deux_ans(serie_auto)
+    contexte = _fenetre(contexte_auto(heures=annees * 8760), annees)
+    rendu = construire_courbe_charge(serie, contexte)
+    assert rendu['omissions']['consommation'] == ''
+    return rendu['consommation']
+
+
+def _scenario_plafond(annees):
+    serie = serie_auto() if annees == 1 else _deux_ans(serie_auto)
+    contexte = _fenetre(contexte_auto(
+        heures=annees * 8760, plafond=3.0, justification=JUSTIFICATION),
+        annees)
+    _suite, resultat = bloc_auto.bloc_autoconsommation(serie, contexte)
+    assert resultat['motif_absence'] == ''
+    return resultat
+
+
+def _scenario_batterie(annees):
+    serie = serie_batterie() if annees == 1 else _deux_ans(serie_batterie)
+    contexte = _fenetre(contexte_batterie(heures=annees * 8760), annees)
+    _suite, resultat = bloc_bat.bloc_batterie(serie, contexte)
+    assert resultat['motif_absence'] == ''
+    return resultat
+
+
+def _scenario_hors_reseau(annees):
+    serie = (hr191.serie_de_test() if annees == 1
+             else _deux_ans(hr191.serie_de_test))
+    contexte = _fenetre(hr191.contexte_de_test(heures=annees * 8760,
+                                               jours=0.1), annees)
+    contexte[hr191.bloc.CLE_CONTEXTE]['groupe'] = dict(hr191.GROUPE)
+    _suite, resultat = hr191.bloc.bloc_hors_reseau(serie, contexte)
+    assert resultat['motif_absence'] == ''
+    return resultat
+
+
+class GardeAnneeMoyenneTest(SimpleTestCase):
+    """ACAL1670 — une ligne par ligne de la matrice : consommation, batterie,
+    plafond d'injection, hors réseau (avec groupe) ; énergies, heures, profil
+    mensuel. Deux années identiques ⇒ les nombres d'UNE année (à l'arrondi et
+    au report d'état de charge de la 2e année près)."""
+
+    SCENARIOS = (('consommation', _scenario_consommation),
+                 ('plafond d\'injection', _scenario_plafond),
+                 ('batterie', _scenario_batterie),
+                 ('hors réseau', _scenario_hors_reseau))
+
+    def test_deux_annees_identiques_publient_les_nombres_d_une_annee(self):
+        heures_lues = []
+        for nom, scenario in self.SCENARIOS:
+            with self.subTest(bloc=nom):
+                une = _grandeurs_annuelles(scenario(1))
+                deux = _grandeurs_annuelles(scenario(2))
+                # Garde de couverture : un bloc qui ne publie rien ne passe pas.
+                self.assertGreater(len(une), 3, nom)
+                self.assertTrue(any(abs(v) > 9.0 for v in une.values()), nom)
+                for chemin, attendu in une.items():
+                    self.assertIn(chemin, deux, '%s : %s manque' % (nom, chemin))
+                    self.assertAlmostEqual(
+                        deux[chemin], attendu,
+                        delta=max(3.0, abs(attendu) * 0.01),
+                        msg='%s : %s (une année %s, deux années %s)'
+                            % (nom, chemin, attendu, deux[chemin]))
+                heures_lues += [c for c, v in une.items()
+                                if c.split('.')[-1].startswith('heures')
+                                and abs(v) > 9.0]
+        # La matrice a une ligne « heures » : au moins une a été COMPARÉE.
+        self.assertTrue(heures_lues)
+
+    def test_le_profil_mensuel_de_la_consommation_est_compare(self):
+        une = _grandeurs_annuelles(_scenario_consommation(1))
+        mois = [c for c in une if c.startswith('profil_mensuel[')]
+        self.assertEqual(len(mois), 12)

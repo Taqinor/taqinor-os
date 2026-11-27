@@ -11,16 +11,17 @@
  * garde ses charges : tant que l'utilisateur n'y touche pas, `consommationSerialisee.ts` les
  * réémet telles quelles (jamais effacées au prochain enregistrement).
  *
- * CLIMATISATION NON PROPOSÉE : `courbe_charge.py::_bloc_de_charge` ne lit ni `btu` ni `eer` pour
- * le type `clim` (il exige `puissance_kw`) ; l'écran n'offre que ce que le serveur lit, aucune
- * conversion BTU/EER n'est inventée.
+ * CLIMATISATION (ACAL1645) : saisie en BTU/h, EER et heures de marche. `courbe_charge.py::_bloc_de_charge`
+ * ne lit ni `btu` ni `eer` pour le type `clim` (il exige `puissance_kw` et `heures_fonctionnement`) :
+ * la charge porte donc `btu` et `eer` SAISIS et `puissance_kw` = BTU/h ÷ EER ÷ 1000, la définition
+ * même de l'EER (BTU/h par watt électrique) ; aucun autre coefficient n'est ajouté.
  *
  * Câblage : `Ctx.consCharges` (`context.ts`, absent tant que l'utilisateur n'y a pas touché),
  * monté par `consumption.ts` dans `[data-cons-charges]` (conteneur de `ToitureDesign.jsx`).
  */
 import { esc } from './dom';
 
-export type TypeCharge = 'vehicule' | 'pac';
+export type TypeCharge = 'vehicule' | 'pac' | 'clim';
 
 /** Une charge telle qu'elle voyage dans `consumption.charges` (forme ouverte côté serveur). */
 export interface ChargeAvenir {
@@ -32,6 +33,8 @@ export interface ChargeAvenir {
   fenetre_recharge?: number[];
   puissance_kw?: number;
   cop?: number;
+  btu?: number;
+  eer?: number;
   heures_fonctionnement?: number[];
 }
 
@@ -52,9 +55,14 @@ export const CHAMPS_PAR_TYPE: Record<TypeCharge, ReadonlyArray<{ cle: string; li
     { cle: 'cop', libelle: 'COP' },
     { cle: 'heures_fonctionnement', libelle: 'Heures de marche (ex. 6-9)', fenetre: true },
   ],
+  clim: [
+    { cle: 'btu', libelle: 'Puissance frigorifique (BTU/h)' },
+    { cle: 'eer', libelle: 'EER (BTU/h par W)' },
+    { cle: 'heures_fonctionnement', libelle: 'Heures de marche (ex. 10-15)', fenetre: true },
+  ],
 };
 
-export const LIBELLE_TYPE: Record<TypeCharge, string> = { vehicule: 'Voiture électrique', pac: 'Pompe à chaleur' };
+export const LIBELLE_TYPE: Record<TypeCharge, string> = { vehicule: 'Voiture électrique', pac: 'Pompe à chaleur', clim: 'Climatisation' };
 
 /** « 22-24 » → [22, 23, 0] : de la première à la dernière heure INCLUSE, modulo 24 ; « 7 » → [7]. */
 export function fenetreDepuisTexte(texte: string): number[] | null {
@@ -89,6 +97,7 @@ export function chargeDepuisSaisie(
       charge[cle] = nombre;
     }
   }
+  if (type === 'clim') charge.puissance_kw = (charge.btu as number) / (charge.eer as number) / 1000;
   if (dejaDansFactures) charge.deja_dans_les_factures = true;
   return charge as unknown as ChargeAvenir;
 }
@@ -100,16 +109,18 @@ export function chargesPourDocument(charges: readonly ChargeAvenir[]): ChargeAve
   return charges.map((c) => JSON.parse(JSON.stringify(c)) as ChargeAvenir);
 }
 
-/** Relit `consumption.charges` d'un document : seules les charges `vehicule`/`pac` bien formées. */
+/** Relit `consumption.charges` d'un document : seules les charges `vehicule`/`pac`/`clim` bien formées. */
 export function releireCharges(documentConsumption: unknown): ChargeAvenir[] {
   const brut = (documentConsumption as { charges?: unknown } | null | undefined)?.charges;
   if (!Array.isArray(brut)) return [];
-  return brut.filter((c): c is ChargeAvenir => !!c && typeof c === 'object' && ((c as ChargeAvenir).type === 'vehicule' || (c as ChargeAvenir).type === 'pac'));
+  return brut.filter((c): c is ChargeAvenir => !!c && typeof c === 'object' && (['vehicule', 'pac', 'clim'] as string[]).includes((c as ChargeAvenir).type));
 }
 
 const resume = (c: ChargeAvenir): string => (c.type === 'vehicule'
   ? `${c.km_par_jour} km/jour · ${c.kwh_par_100km} kWh/100 km · ${(c.fenetre_recharge || []).join(', ')} h`
-  : `${c.puissance_kw} kW · COP ${c.cop} · ${(c.heures_fonctionnement || []).join(', ')} h`);
+  : c.type === 'clim'
+    ? `${c.btu} BTU/h · EER ${c.eer} · ${(c.heures_fonctionnement || []).join(', ')} h`
+    : `${c.puissance_kw} kW · COP ${c.cop} · ${(c.heures_fonctionnement || []).join(', ')} h`);
 
 /** Accès de l'écran à la liste : `lire` rend la liste COURANTE (écran, sinon relue), `ecrire` la pose. */
 export interface AccesCharges {
@@ -141,7 +152,8 @@ export function monterChargesAvenir(hote: HTMLElement, acces: AccesCharges): { r
       ${refus?.champ === cle ? `<span role="alert" data-cons-charge-refus="${cle}">${esc(refus.message)}</span>` : ''}</label>`).join('');
     hote.innerHTML = `<ul>${lignes}</ul><div data-cons-charge-form>
       <select data-cons-charge-type style="min-height:44px"><option value="vehicule"${type === 'vehicule' ? ' selected' : ''}>Voiture électrique</option>
-      <option value="pac"${type === 'pac' ? ' selected' : ''}>Pompe à chaleur</option></select>${champs}
+      <option value="pac"${type === 'pac' ? ' selected' : ''}>Pompe à chaleur</option>
+      <option value="clim"${type === 'clim' ? ' selected' : ''}>Climatisation</option></select>${champs}
       <label class="text-xs"><input type="checkbox" data-cons-charge-nouvelle-deja> déjà dans mes factures</label>
       <button type="button" data-cons-charge-ajouter style="min-height:44px">Ajouter une charge à venir</button></div>`;
   };

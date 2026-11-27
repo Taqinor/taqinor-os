@@ -212,6 +212,16 @@ def _quantite_ligne(ligne):
         return 0.0
 
 
+def _est(devis, ligne, predicat, *textes):
+    """Lecteurs en aval (fondateur 24/11/2026) — ``ligne`` est-elle de la classe
+    du prédicat ``predicat`` (``solar_classification``) ? Le rôle RANGÉ sur la
+    ligne (``domain.classe_ligne``) ; sinon le prédicat sur l'un des
+    ``textes``, le verdict d'hier. Nouveaux rendus seulement."""
+    from apps.ventes.domain.classe_ligne import est
+
+    return est(ligne, predicat, lambda: any(predicat(texte) for texte in textes), devis=devis)
+
+
 def _option_choisie(devis):
     """``(lignes, variante)`` de l'UNIQUE option que la conception lit.
 
@@ -308,8 +318,10 @@ def _paniers_du_devis(devis):
     for ligne in toutes:
         variante = str(getattr(ligne, "variante", "") or "").strip().lower()
         blob = _blob_ligne(ligne)
-        ok_sans = not sc.is_battery(blob) and not sc.is_hybrid_inverter(blob)
-        ok_avec = not sc.is_reseau_inverter(blob)
+        # Lecteurs en aval — le rôle et la fiche du produit d'abord (``_est``).
+        ok_sans = (not _est(devis, ligne, sc.is_battery, blob)
+                   and not _est(devis, ligne, sc.is_hybrid_inverter, blob))
+        ok_avec = not _est(devis, ligne, sc.is_reseau_inverter, blob)
         if variante == "sans":
             sans.append(ligne)
         elif variante == "avec":
@@ -321,8 +333,8 @@ def _paniers_du_devis(devis):
                 avec.append(ligne)
 
     def _presente(lignes, predicat):
-        return any(predicat(_blob_ligne(ligne)) and _quantite_ligne(ligne) > 0
-                   for ligne in lignes)
+        return any(_est(devis, ligne, predicat, _blob_ligne(ligne))
+                   and _quantite_ligne(ligne) > 0 for ligne in lignes)
 
     avec_servable = (_presente(avec, sc.is_hybrid_inverter)
                      and _presente(avec, sc.is_battery))
@@ -335,8 +347,12 @@ def _lignes_option_choisie(devis):
     return _option_choisie(devis)[0]
 
 
-def _produit_de_famille(devis, predicat):
+def _produit_de_famille(devis, predicat, classe=None):
     """``(produit, libellé)`` de la première ligne classée par ``predicat``.
+
+    Lecteurs en aval (fondateur 24/11/2026) — ``classe`` (``domain.classe_ligne``)
+    passe le rôle RANGÉ sur la ligne DEVANT ``predicat``, qui reste le repli
+    (nouveaux rendus seulement).
 
     Classification par les mots-clés PARTAGÉS de ``solar_design`` (alignés sur
     ``quote_engine/builder.py``) : la désignation d'abord, le nom du produit
@@ -354,12 +370,15 @@ def _produit_de_famille(devis, predicat):
     évite de retourner le premier onduleur trouvé par ordre d'insertion
     plutôt que celui de l'option retenue (cf. sa docstring, DEV-202608-0024).
     """
+    from apps.ventes.domain.classe_ligne import classe_de_ligne
+
     repli = (None, "")
     for ligne in _lignes_option_choisie(devis):
         produit = getattr(ligne, "produit", None)
         designation = ligne.designation or ""
         nom = getattr(produit, "nom", "") or ""
-        if not predicat(designation, nom):
+        if not classe_de_ligne(ligne, classe, lambda d=designation, n=nom: predicat(d, n),
+                               devis=devis):
             continue
         libelle = designation or nom
         if produit is not None:
@@ -421,9 +440,10 @@ def specs_module_du_devis(devis):
     aucun repli. ``specs`` est le dict de ``specs_for_produit`` : une variable
     non saisie y est simplement ABSENTE (jamais rendue à ``None``)."""
     from apps.ventes import solar_classification as sc
+    from apps.ventes.domain.classe_ligne import PANNEAU
 
     produit, libelle = _produit_de_famille(
-        devis, lambda designation, nom: sc.is_panel(designation, nom))
+        devis, lambda designation, nom: sc.is_panel(designation, nom), PANNEAU)
     return _specs_produit(produit), produit, libelle
 
 
@@ -459,10 +479,11 @@ def spec_module_du_devis(devis):
 def specs_onduleur_du_devis(devis):
     """``(specs, produit, libellé)`` de l'onduleur du devis — fiche BRUTE."""
     from apps.ventes import solar_classification as sc
+    from apps.ventes.domain.classe_ligne import ONDULEUR
 
     produit, libelle = _produit_de_famille(
         devis, lambda designation, nom: sc.is_any_inverter(designation)
-        or sc.is_any_inverter(nom))
+        or sc.is_any_inverter(nom), ONDULEUR)
     return _specs_produit(produit), produit, libelle
 
 
@@ -607,7 +628,7 @@ def _batterie_du_devis(devis):
         designation = ligne.designation or ""
         produit = getattr(ligne, "produit", None)
         nom = getattr(produit, "nom", "") or ""
-        if not (sc.is_battery(designation) or sc.is_battery(nom)):
+        if not _est(devis, ligne, sc.is_battery, designation, nom):
             continue
         specs = _specs_produit(produit)
         quantite = _flottant(getattr(ligne, "quantite", 1), 1.0) or 1.0

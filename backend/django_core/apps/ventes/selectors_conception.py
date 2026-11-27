@@ -127,6 +127,7 @@ def _payback_servi(version, valeurs):
     from . import offres_tailles
     from .domain.catalogue import classer_produit
     from .conception.valeurs import entrees_du_payback
+    from .domain.classe_ligne import role_de_ligne
     from .quote_engine.pricing import payback_publiable
     from .utils.options import (AVEC_BATTERIE, SANS_BATTERIE, deux_options_declarees, filter_lines_for_option,
                                 lignes_avec_produit, option_totaux)
@@ -150,9 +151,12 @@ def _payback_servi(version, valeurs):
         de_l_option = filter_lines_for_option(lignes, panier, devis=devis) if deux_au_devis else lignes
         portees = [li for li in de_l_option if li.type_ligne == 'produit']
         # Lane E6d — LA provision d'onduleur des cartes (``offres_tailles._cout_onduleur_ttc``),
-        # rôles du classifieur catalogue, remise du devis : un seul calcul.
+        # rôles du classifieur catalogue, remise du devis : un seul calcul. Lecteurs en aval
+        # (constat 5) : le rôle RANGÉ d'abord, comme le PDF (``etude_chiffrage._cout_onduleur``) ;
+        # devis envoyé avant ``COUPURE_CLASSE_PAR_ROLE`` : le classifieur d'hier.
         cout = offres_tailles._cout_onduleur_ttc(
-            portees, [classer_produit(getattr(li.produit, 'nom', '') or li.designation) for li in portees],
+            portees, [role_de_ligne(li, lambda li=li: classer_produit(
+                getattr(li.produit, 'nom', '') or li.designation), devis=devis) for li in portees],
             1 - float(devis.remise_globale or 0) / 100, devis.taux_tva, getattr(devis, 'company', None), devis)
         investissement = option_totaux(devis, '', lignes=de_l_option)['ttc']
         economie = (table.get('economies_annuelles') or {}).get('valeur')

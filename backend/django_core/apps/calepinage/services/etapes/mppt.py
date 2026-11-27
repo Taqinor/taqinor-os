@@ -51,6 +51,8 @@ n'a pas d'énergie à perdre, et sa tension ne veut rien dire.
 """
 from __future__ import annotations
 
+from apps.calepinage.services.etapes import fiche_du_module
+
 from apps.calepinage.services import etapes
 from core.electrique.types import TEMPERATURE_STC_C
 from ..valeurs import nombre as _nombre
@@ -71,33 +73,33 @@ REFERENCE_PVSOL = (
 MOTIF_SANS_TEMPERATURE = (
     "La série ne porte pas de température de cellule heure par heure : sans "
     "elle, la tension de la chaîne ne se calcule pour aucune heure et "
-    "l'étape est OMISE. Elle est écrite par l'étape « thermique » (CALX163) "
+    "l'étape est omise. Elle est écrite par l'étape « thermique » "
     "quand celle-ci s'applique.")
 
 MOTIF_SANS_COEFFICIENT = (
     "La fiche du module ne publie pas son coefficient de température de "
-    "puissance : la dérive du Vmp n'est pas calculable. L'étape est OMISE — "
-    "le défaut du noyau n'est pas employé ici, il ferait passer un littéral "
-    "de code pour une donnée constructeur.")
+    "puissance : la dérive du Vmp n'est pas calculable. L'étape est omise — "
+    "aucune valeur par défaut n'est employée ici : elle ferait passer "
+    "un chiffre du logiciel pour une donnée constructeur.")
 
 MOTIF_SANS_TENSION_STC = (
     "La tension de la chaîne au STC n'est pas connue : il y faut le Vmp de "
     "la fiche module et le nombre de modules par chaîne (bloc « "
-    "electrique.chainage »). Étape OMISE.")
+    "electrique.chainage »). Étape omise.")
 
 MOTIF_SANS_FENETRE = (
     "La fiche de l'onduleur ne publie aucune borne de fenêtre MPPT : il n'y "
-    "a rien à vérifier, et l'étape est OMISE plutôt que de supposer une "
+    "a rien à vérifier, et l'étape est omise plutôt que de supposer une "
     "plage.")
 
 MOTIF_SERIE_ILLISIBLE = (
     "Aucune colonne d'énergie lisible sur la série : les heures hors plage "
-    "n'ont pas d'énergie à retirer. Étape OMISE.")
+    "n'ont pas d'énergie à retirer. Étape omise.")
 
 MOTIF_AUCUNE_HEURE = (
     "Aucune heure de production ne porte à la fois une énergie et une "
     "température de cellule : il n'y a aucune heure à examiner, et l'étape "
-    "est OMISE plutôt que de publier 0 % sur un échantillon vide.")
+    "est omise plutôt que de publier 0 % sur un échantillon vide.")
 
 __all__ = ['appliquer', 'LIBELLE', 'COLONNE_TEMPERATURE',
            'CHAMP_COEFFICIENT']
@@ -112,7 +114,7 @@ def appliquer(serie, contexte):
     if colonne is None:
         return serie, etapes.etape_omise(LIBELLE, MOTIF_SERIE_ILLISIBLE)
 
-    fiche_module = contexte.get('fiche_module') or {}
+    fiche_module = fiche_du_module(contexte) or {}
     coefficient = _nombre(fiche_module.get(CHAMP_COEFFICIENT))
     if coefficient is None:
         return serie, etapes.etape_omise(LIBELLE, MOTIF_SANS_COEFFICIENT,

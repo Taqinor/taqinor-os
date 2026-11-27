@@ -428,7 +428,7 @@ def anomalies_emission_facture(facture):
 
     # Remise globale au-delà du seuil société.
     from apps.parametres.models import CompanyProfile
-    profile = CompanyProfile.get(company=facture.company)
+    profile = CompanyProfile.lire(company=facture.company)
     remise_max = getattr(profile, 'remise_max_pct', None)
     if remise_max is not None and (facture.remise_globale or 0) > remise_max:
         anomalies.append({
@@ -479,7 +479,7 @@ def verifier_credit_hold(client, *, override=False, user=None,
     Assiette : les factures ``emise``/``en_retard`` du client. Ne JAMAIS
     dupliquer ici un second calcul d'encours."""
     from apps.parametres.models import CompanyProfile
-    profile = CompanyProfile.get(company=client.company)
+    profile = CompanyProfile.lire(company=client.company)
     if not getattr(profile, 'credit_hold_actif', False):
         return
 

@@ -61,3 +61,15 @@ class LogoBucketTests(SimpleTestCase):
             second = report_pdf._logo_data_uri(LOGO_KEY)
         self.assertIsNotNone(premier)
         self.assertEqual(premier, second)
+
+
+class ProfilLuSansCreationTests(SimpleTestCase):
+    """Profil société — commissions et export PDF lisent le profil sans le créer."""
+
+    def test_commissions_et_export_pdf(self):
+        import inspect
+        from apps.reporting import insights, reports
+        for fonction in (insights, reports):
+            source = inspect.getsource(fonction)
+            self.assertNotIn("CompanyProfile.get(", source)
+            self.assertIn("CompanyProfile.lire(", source)

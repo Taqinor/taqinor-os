@@ -645,7 +645,7 @@ def commissions(request):
     from apps.installations.models import Installation
 
     company = getattr(request.user, 'company', None)
-    profile = CompanyProfile.get(company)
+    profile = CompanyProfile.lire(company)
     mode = getattr(profile, 'commission_mode', 'off') or 'off'
     valeur = profile.commission_valeur
     mode_active = mode in ('pct_devis', 'par_kwc') and valeur is not None

@@ -1,6 +1,7 @@
 // CAL56 — préréts de forme de toiture (2/4 pans, appentis, plat) : géométrie PURE qui
 // GÉNÈRE les pans depuis un contour fermé + une pente saisie, au lieu du choix binaire
 // plat/pente par zone. Testé hors DOM/Three (pure geometry in, geometry out).
+import { JSDOM } from 'jsdom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { numeroterDocument, poserEtiquettesNumeros, registreAtelier } from './numerotation'; // R3 (visuel lot 7)
 import { identifiantsModulesParCellule, numerosStablesDuPan } from './libellesAffectation'; // R3 (visuel lot 7)
@@ -46,6 +47,7 @@ import { couleurAccesActive } from '../../lib/shadingEngine'; // ACAL1408
 import { buildAreasFromShape } from './zones';
 import { coinLePlusProche, positionsPoignees, projeterPoignees } from './poigneesSommets3d'; // ACAL1185
 import { DEG2M } from './constants'; // ACAL1185
+import { poseMasqueeSurCoque, celluleDessinee } from './poseMasquee'; // ACAL1945 (revue)
 import { decouperContour, monterFormesToit } from './formesToit';
 import { geodesicAreaM2, type LngLat } from '../../lib/roof';
 import { rectRing } from './harnaisAtelier';
@@ -55,6 +57,10 @@ import { readFileSync } from 'node:fs'; // ACAL579
 import { resolve } from 'node:path'; // ACAL579
 import { panelQuadsLngLat as panelQuadsViaScene3d } from './scene3d';
 import { MODULE_ATELIER_PAR_DEFAUT } from '../../lib/roofPro2';
+import { createScene3d } from './scene3d'; // T4-X7-015
+import { creerCoucheElectrique, ID_CALQUE_ELECTRIQUE } from './electrique3d'; // T4-X7-015
+import type { Ctx } from './context'; // T4-X7-015
+import { poserEtapeAtelier } from './presentationCarte'; // T4-X7-015
 
 const sumAreaM2 = (pans: RoofShapePan[]): number => pans.reduce((s, p) => s + geodesicAreaM2(p.vertices), 0);
 
@@ -1312,5 +1318,92 @@ describe('ACAL1185 — poignées des coins au haut des murs', () => {
     const derriere = [...m];
     derriere[15] = -1;
     expect(projeterPoignees(positionsPoignees(sommets, origine, 6), derriere, 1000, 800)).toEqual([]);
+  });
+});
+
+// T4-X7-015 (calque Électrique) — la case « Électrique » du panneau Calques gouverne AUSSI « Chaîne n » et les teintes.
+describe('T4-X7-015 — la case Électrique redit les étiquettes « Chaîne n » et les teintes des chaînes', () => {
+  const lignes: AffectationRow[] = [1, 2, 3, 4].map((n) => ({ module: `PAN-A#${n}`, chaine: 1, mppt: 1, couleur_chaine: BLEU }));
+  /** Une scène réelle (aucun GL : seule la racine est montée), un pan actif de 4 modules teintés par une chaîne servie. */
+  // Aucun DOM ici : un « canvas » factice (toute méthode est un no-op) suffit aux textures de verre de la scène.
+  const faux = (): unknown => new Proxy(function () { /* no-op */ }, { get: (_c, k) => (typeof k === 'symbol' ? (k === Symbol.toPrimitive ? () => 0 : undefined) : k === 'then' ? undefined : faux()), apply: () => faux(), set: () => true });
+  afterEach(() => { vi.unstubAllGlobals(); });
+  function monter(atelier: boolean, avecColoration = true) {
+    vi.stubGlobal('document', { createElement: () => faux() });
+    const map = { getPitch: () => 0, getZoom: () => 18, getLayer: () => undefined, triggerRepaint: vi.fn(), on: vi.fn(), off: vi.fn() };
+    const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial(), 4);
+    mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(12).fill(1), 3);
+    for (let i = 0; i < 4; i++) mesh.setMatrixAt(i, new THREE.Matrix4().makeTranslation(i * 1.2, 0, 7));
+    const ctx = {
+      opts: atelier ? { productionAtelier: {} } : {}, areas: [{ id: 'PAN-A' }], activeAreaId: 'PAN-A',
+      activePanelMesh: mesh, activePanelCellIndex: [0, 1, 2, 3], obstacles: [], batiments: [],
+      affectationColoration: avecColoration ? buildAffectationColoring(lignes, 'chaine') : null,
+    } as unknown as Ctx;
+    const scene = createScene3d(ctx, { map: map as never, lowEnd: true, shadowSize: 512 });
+    try { scene.customLayer.onAdd?.(map as never, {} as never); } catch { /* le moteur de rendu n'existe pas hors navigateur : la racine, elle, est montée */ }
+    const couche = creerCoucheElectrique(ctx as never);
+    scene.setCoucheElectrique(couche.groupe);
+    return { ctx, scene, couche, mesh, map };
+  }
+  const etiquettes = (couche: ReturnType<typeof monter>['couche']) => (couche.groupe.parent?.children ?? [])
+    .filter((o) => o.children.some((e) => typeof e.userData.texte === 'string' && String(e.userData.texte).startsWith('Chaîne')));
+  const teinte = (mesh: THREE.InstancedMesh) => Array.from((mesh.instanceColor as THREE.InstancedBufferAttribute).array.slice(0, 3));
+
+  it('case cochée : « Chaîne 1 » et la teinte ; case décochée : ni l’un ni l’autre ; recochée : les deux reviennent', () => {
+    const { scene, couche, mesh } = monter(true);
+    scene.rafraichirAffectation();
+    expect(etiquettes(couche)).toHaveLength(1);
+    expect(teinte(mesh)).not.toEqual([1, 1, 1]);
+    couche.setLayerState(ID_CALQUE_ELECTRIQUE, { visible: false });
+    expect(etiquettes(couche)).toHaveLength(0);
+    expect(teinte(mesh)).toEqual([1, 1, 1]);
+    couche.setLayerState(ID_CALQUE_ELECTRIQUE, { visible: true });
+    expect(etiquettes(couche)).toHaveLength(1);
+    expect(teinte(mesh)).not.toEqual([1, 1, 1]);
+  });
+
+  it('décochée hors de l’étape Électrique, la case reste décochée en y entrant (la scène ne la rallume pas)', () => {
+    const { scene, couche, map } = monter(true);
+    poserEtapeAtelier(map as never, 'toit');
+    scene.setCoucheElectrique(couche.groupe); // la scène se rattache : la couche est cachée hors de son étape
+    expect(couche.groupe.visible).toBe(false);
+    couche.setLayerState(ID_CALQUE_ELECTRIQUE, { visible: false });
+    poserEtapeAtelier(map as never, 'electrique');
+    scene.setCoucheElectrique(couche.groupe);
+    expect(couche.groupe.visible).toBe(false);
+    couche.setLayerState(ID_CALQUE_ELECTRIQUE, { visible: true });
+    expect(couche.groupe.visible).toBe(true);
+  });
+
+  it('le calque est proposé dès que des chaînes sont formées, sans organe posé', () => {
+    const { couche } = monter(true);
+    expect(couche.calqueDisponible()).toBe(true);
+    expect(monter(true, false).couche.calqueDisponible()).toBe(false);
+  });
+
+  it('page publique / estimateur (aucun contexte ERP) : aucune étiquette, aucune teinte, aucun calque proposé', () => {
+    const { scene, couche, mesh, ctx } = monter(false, false);
+    scene.rafraichirAffectation();
+    expect(couche.calqueDisponible()).toBe(false);
+    expect(etiquettes(couche)).toHaveLength(0);
+    expect(teinte(mesh)).toEqual([1, 1, 1]);
+    expect(ctx.affectationColoration).toBeNull();
+  });
+});
+
+describe('ACAL1945 (revue) — étape Toit du Guidé : la première pose de l’optimiseur n’est pas dessinée', () => {
+  it('le drapeau de la coque masque toute cellule, avec ou sans occupation explicite', () => {
+    const doc = new JSDOM('<!doctype html><body><div class="cal-coque"></div></body>').window.document;
+    expect(poseMasqueeSurCoque(doc)).toBe(false);
+    doc.querySelector('.cal-coque')!.setAttribute('data-pose-masquee', '1');
+    expect(poseMasqueeSurCoque(doc)).toBe(true);
+    expect(celluleDessinee(0, undefined, 12, true)).toBe(false); // rendu de l’optimiseur (sans occupation)
+    expect(celluleDessinee(0, new Set([0]), 12, true)).toBe(false);
+    expect(celluleDessinee(0, undefined, 12, false)).toBe(true); // hors étape Toit : inchangé
+    expect(celluleDessinee(12, undefined, 12, false)).toBe(false);
+  });
+  it('buildZoneMeshes (tous les pans, optimiseur compris) filtre ses cellules par ce test', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/scripts/roofPro11/scene3d.ts'), 'utf8');
+    expect(src).toContain('celluleDessinee(i, occupiedSet, plan.count, masquee)');
   });
 });

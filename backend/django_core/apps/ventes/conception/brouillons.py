@@ -121,12 +121,15 @@ def brouillons_a_mettre_a_jour(company_id, lead_id, version):
 
 
 def _comptes(devis):
-    """``{option: panneaux}`` (« '' » = commune) — classement du moteur PDF."""
+    """``{option: panneaux}`` (« '' » = commune) — classement du moteur PDF : le rôle
+    RANGÉ d'abord (``domain.classe_ligne.role_de_ligne``), sinon les mots-clés."""
     from apps.ventes.domain.catalogue import classer_produit
+    from apps.ventes.domain.classe_ligne import role_de_ligne
 
     par_option = {}
     for ligne in devis.lignes.filter(type_ligne='produit', optionnelle=False).select_related('produit'):
-        if classer_produit(getattr(ligne.produit, 'nom', '') or ligne.designation) == 'panneau':
+        if role_de_ligne(ligne, lambda li=ligne: classer_produit(
+                getattr(li.produit, 'nom', '') or li.designation), devis=devis) == 'panneau':
             option = ligne.variante or ''
             par_option[option] = par_option.get(option, 0) + int(ligne.quantite)
     return par_option
@@ -402,13 +405,18 @@ def reviser_sur_la_conception(devis, user):
     """Lane E6e (T4-X5-011) — « Réviser le devis » de l'atelier : la V2 (``revision.
     reviser_devis``, le devis envoyé jamais touché) est composée sur la conception COURANTE
     du lead par LA recomposition des brouillons (:func:`appliquer_a_la_demande`), sous UNE
-    transaction : une recomposition refusée n'a créé aucune V2 (l'exception remonte)."""
+    transaction : une recomposition refusée n'a créé aucune V2 (l'exception remonte).
+
+    R6-N1 (suite) — avec un calepinage lié à la V1, le clonage ne calcule plus d'études
+    (la recomposition les refait, et le calcul forcé du commit, après la re-liaison, a le
+    dernier mot) : UN calcul forcé, hors du verrou de la V1, sur la V2 recomposée et re-liée.
+    Sans calepinage : comme hier."""
     from django.db import transaction
 
-    from apps.ventes.domain.revision import reviser_devis
+    from apps.ventes.domain.revision import ETUDES_APRES_RECOMPOSITION, reviser_devis
 
     with transaction.atomic():
-        nouveau = reviser_devis(devis, user=user)
+        nouveau = reviser_devis(devis, user=user, etudes=ETUDES_APRES_RECOMPOSITION)
         appliquer_a_la_demande(nouveau, user)
     nouveau.refresh_from_db()
     return nouveau

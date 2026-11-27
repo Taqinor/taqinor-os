@@ -594,3 +594,75 @@ test('T4-X6-015 — un devis ROUVERT qui suit la taille demandée sur la fiche l
   assert.equal(tailleDemandeeParLead(sizingReducer(relu, { type: 'REOUVERTURE', devis: { scenario: SCENARIO_SANS } })), 6)
   assert.equal(tailleDemandeeParLead(sizingReducer(relu, { type: 'REOUVERTURE', devis: { panneaux: 12 } })), null)
 })
+
+// ── D-ACAL-169 — le panneau par défaut de la société, puissance de départ ───────
+// Précédence : tapé > devis rouvert > moteur / conception > défaut > '710'.
+
+const DEFAUT = { type: 'PANNEAU_DEFAUT_LU', pmaxWc: 715 }
+
+test('D-ACAL-169 — devis NEUF : la puissance de départ est celle du défaut, aucun drapeau « touché »', () => {
+  const s = red(ETAT_INITIAL, DEFAUT)
+  assert.equal(s.panelW, '715')
+  assert.equal(s.panelWFixe, false)             // le serveur choisira lui-même (la composition n'envoie rien)
+  assert.deepEqual(drapeauxPoses(s), [])
+  // Un compte déjà posé (pré-remplissage) est reconverti à la puissance du défaut.
+  const apresLead = red(ETAT_INITIAL,
+    { type: 'LEAD_APPLIQUE', lead: { taille_souhaitee_kwc: 7.15 } }, DEFAUT)
+  assert.equal(red(ETAT_INITIAL, { type: 'LEAD_APPLIQUE', lead: { taille_souhaitee_kwc: 7.15 } }).nbPanneaux, '11') // 710 W
+  assert.equal(apresLead.nbPanneaux, '10')     // 715 W : la fiche demande une PUISSANCE
+  assert.equal(apresLead.kwcCible, '7.15')
+})
+
+test('D-ACAL-169 — sans défaut désigné : l’écran reste byte-identique (710)', () => {
+  assert.equal(ETAT_INITIAL.panelW, '710')
+  assert.equal(ETAT_INITIAL.panelWFixe, false)
+  for (const pmaxWc of [undefined, null, 0, '', 'abc']) {
+    assert.equal(sizingReducer(ETAT_INITIAL, { type: 'PANNEAU_DEFAUT_LU', pmaxWc }), ETAT_INITIAL)
+  }
+})
+
+test('D-ACAL-169 — un wattage TAPÉ gagne toujours, avant ou après la lecture du défaut', () => {
+  const avant = red(ETAT_INITIAL, { type: 'SAISI', champ: 'panelW', valeur: '600' }, DEFAUT)
+  assert.equal(avant.panelW, '600')
+  assert.equal(avant.panelWFixe, true)
+  const apres = red(ETAT_INITIAL, DEFAUT, { type: 'SAISI', champ: 'panelW', valeur: '600' })
+  assert.equal(apres.panelW, '600')
+  assert.equal(apres.panelWFixe, true)
+  // Taper la valeur du défaut est aussi une frappe : le serveur reçoit alors ce wattage.
+  assert.equal(red(ETAT_INITIAL, DEFAUT, { type: 'SAISI', champ: 'panelW', valeur: '715' }).panelWFixe, true)
+})
+
+test('D-ACAL-169 — le recalage interne de la cible (fixe:false) n’est pas une frappe', () => {
+  const s = red(ETAT_INITIAL, { type: 'SAISI', champ: 'panelW', valeur: '710', fixe: false })
+  assert.equal(s.panelWFixe, false)
+  assert.equal(red(s, DEFAUT).panelW, '715')
+})
+
+test('D-ACAL-169 — un devis ROUVERT garde le wattage de SON panneau (jamais le défaut)', () => {
+  const rouvert = red(ETAT_INITIAL,
+    { type: 'REOUVERTURE', devis: { mode_installation: 'residentiel', panneaux: 10, panel_watt: 550 } }, DEFAUT)
+  assert.equal(rouvert.panelW, '550')
+  assert.equal(rouvert.kwcCible, '5.5')
+  assert.equal(rouvert.panelWFixe, true)
+})
+
+test('D-ACAL-169 — la recommandation du moteur / une taille appliquée passent avant le défaut', () => {
+  const moteur = red({ ...ETAT_INITIAL, attenteMoteur: true },
+    { type: 'MOTEUR_A_REPONDU', recommandation: { panneaux: 9, panel_watt: 700, kwc: 6.3 } }, DEFAUT)
+  assert.equal(moteur.panelW, '700')
+  assert.equal(moteur.panelWFixe, true)
+  const taille = red(ETAT_INITIAL,
+    { type: 'TAILLE_APPLIQUEE', ligne: { panneaux: 8, panel_watt: 620, kwc: 4.96 } }, DEFAUT)
+  assert.equal(taille.panelW, '620')
+  // Un moteur qui répond SANS wattage ne ferme pas la porte : le défaut s'applique ensuite.
+  const sansWatt = red({ ...ETAT_INITIAL, attenteMoteur: true },
+    { type: 'MOTEUR_A_REPONDU', recommandation: { panneaux: 9, kwc: 6.4 } }, DEFAUT)
+  assert.equal(sansWatt.panelW, '715')
+})
+
+test('D-ACAL-169 — un compte de panneaux déjà TAPÉ garde son 710 : le défaut ne change rien sous ses doigts', () => {
+  const tape = red(ETAT_INITIAL, { type: 'SAISI', champ: 'nbPanneaux', valeur: '12' }, DEFAUT)
+  assert.equal(tape.panelW, '710')
+  assert.equal(tape.kwcCible, '8.52')
+  assert.equal(tape.panelWFixe, true)           // la composition enverra donc 710, jamais le choix du serveur
+})

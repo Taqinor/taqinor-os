@@ -40,7 +40,8 @@ from apps.stock.models import FicheTechnique, Produit
 from apps.ventes.domain import etude_ci
 from apps.ventes.domain.estimation_puissance_ci import (
     FEUILLE_ESTIMEE, MOTIF_SOUS_RESERVE, estimer_consommation)
-from apps.ventes.domain.suppositions_ci import alertes_pour_la_commerciale
+from apps.ventes.domain.suppositions_ci import (
+    MESSAGE_FACTURE_ETE_NON_LUE, alerte_facture_ete_non_lue, alertes_pour_la_commerciale)
 from apps.ventes.moteur_ci.charge import heures_ouverture_par_mois
 from apps.ventes.moteur_ci.production import (
     CLE_POSE_RASANTE,
@@ -360,6 +361,19 @@ class LeadTests(_Base):
         res = etude_ci.resoudre_entrees(self._corps_lead(lead), lead=lead)
         conso, feuille = etude_ci._consommation(res, {}, [], [])
         self.assertEqual((feuille, sum(conso)), ('kwh_mensuel_declare', 48000))
+
+    def test_acal1227_ete_different_alerte_nommant_facture_ete_sans_changer_un_chiffre(self):
+        # ACAL1227 — hôtel 117 : été 1,4 × hiver déclaré, feuille facture_hiver_mad.
+        commun = dict(facture_hiver=Decimal('5000'), categorie_commerciale='hotel',
+                      tension_raccordement='bt', contrat_electricite='bt_patente')
+        avec = self.post(self._corps_lead(self._lead(
+            facture_ete=Decimal('7000'), ete_differente=True, **commun)))
+        sans = self.post(self._corps_lead(self._lead(**commun)))
+        alerte = next(a for a in avec['alertes'] if a['champ_lead'] == 'facture_ete')
+        self.assertEqual(alerte['message'], MESSAGE_FACTURE_ETE_NON_LUE)
+        self.assertTrue(alerte['interne'])
+        self.assertNotIn('facture_ete', [a['champ_lead'] for a in sans['alertes']])
+        self.assertEqual(avec['bilan']['par_mois'], sans['bilan']['par_mois'])
 
     def test_lead_kwh_seulement_meme_taille_aperçu_et_moteur(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale='bureau')
@@ -1006,6 +1020,25 @@ class EstimationPuissanceMaxTests(SimpleTestCase):
         self.assertNotIn('profil horaire non déclaré', reserve['motif'])
 
 
+class FactureEteNonLueAcal1227(SimpleTestCase):
+    """ACAL1227 — l'été déclaré n'entre pas dans la consommation C&I : DIT."""
+
+    def test_ete_different_sur_la_feuille_d_hiver_dit_avec_facture_ete(self):
+        from types import SimpleNamespace
+        lead = SimpleNamespace(ete_differente=True, facture_ete=Decimal('1400'))
+        alertes = alerte_facture_ete_non_lue(lead, 'facture_hiver_mad')
+        dites = alertes_pour_la_commerciale({'alertes': alertes, 'hypotheses': []})
+        self.assertEqual([(a['champ_lead'], a['message'], a['interne']) for a in dites],
+                         [('facture_ete', "Facture d'été non prise en compte : la consommation "
+                                          "répète la facture d'hiver sur 12 mois", True)])
+        for lead_, feuille in ((lead, 'kwh_mensuel_declare'), (None, 'facture_hiver_mad'),
+                               (SimpleNamespace(ete_differente=False, facture_ete=Decimal('1400')),
+                                'facture_hiver_mad'),
+                               (SimpleNamespace(ete_differente=True, facture_ete=None),
+                                'facture_hiver_mad')):
+            self.assertEqual(alerte_facture_ete_non_lue(lead_, feuille), [], feuille)
+
+
 class EstimationPuissanceMaxLeadTests(_Base):
     """Le lead Hasnaoui (aucune consommation, 380 kVA) jusqu'à l'étude."""
 
@@ -1155,3 +1188,50 @@ class EcranEditionSurLesLignesTests(TestCase):
         apercu, _eco = self._servi_a_l_ecran(devis, {'consommation': consommation})
         self.assertEqual(apercu['feuille_consommation_retenue'], 'factures_mad')
         self.assertIsNone((apercu['entrees_resolues'].get('kwh_mensuels') or {}).get('valeur'))
+
+
+class ModuleRetenuPanneauParDefautTests(SimpleTestCase):
+    """D-ACAL-169 — le module de l'étude C&I : le panneau par défaut d'abord s'il passe
+    l'acceptation du moteur (Pmax publiée ET prix), sinon la règle d'aujourd'hui (Pmax publiée,
+    tarifé, plus haute Pmax, plus petit id) et la phrase dans les alertes. Sans fiche lue
+    (base) : fiches et chaînes simulées."""
+
+    SPECS = {1: {'pmax_wc': 720}, 42: {'pmax_wc': 715}, 5: {}}
+
+    def _objets(self, prix_defaut='1500'):
+        from types import SimpleNamespace
+
+        def produit(pk, nom, prix):
+            return SimpleNamespace(pk=pk, id=pk, nom=nom, prix_vente=Decimal(prix) if prix else None,
+                                   role_devis='panneau', tva=None, paliers_prix_vente=[])
+        return {1: produit(1, 'Panneau 720W', '1600'), 42: produit(42, 'Panneau Longi 715W', prix_defaut),
+                5: produit(5, 'Panneau 600W', '900')}
+
+    def _module(self, panneau_defaut, objets=None):
+        from apps.ventes.domain.etude_ci_module import module_ci_retenu
+        alertes = []
+        with mock.patch('apps.stock.selectors.specs_for_produit', side_effect=lambda p: self.SPECS[p.pk]), \
+                mock.patch('apps.calepinage.services.chaines.specs_module', return_value=(None, [])):
+            module, _spec = module_ci_retenu(objets or self._objets(), panneau_defaut=panneau_defaut,
+                                             alertes=alertes)
+        return module, alertes
+
+    def _auto(self, produit_id=42):
+        from apps.ventes.domain.panneau_defaut import PanneauAuto
+        return PanneauAuto(produit_id=produit_id, watt=715, nom='Panneau Longi 715W', source='designe')
+
+    def test_sans_defaut_la_plus_haute_pmax_et_rien_n_est_dit(self):
+        module, alertes = self._module(None)
+        self.assertEqual((module['produit'], alertes), (1, []))
+
+    def test_le_defaut_accepte_passe_devant(self):
+        module, alertes = self._module(self._auto())
+        self.assertEqual((module['produit'], module['pmax_wc'], alertes), (42, 715.0, []))
+
+    def test_le_defaut_sans_prix_ou_sans_pmax_regle_d_aujourd_hui_dite(self):
+        for objets, auto in ((self._objets(prix_defaut=None), self._auto()), (None, self._auto(produit_id=5))):
+            with self.subTest(auto=auto.produit_id):
+                module, alertes = self._module(auto, objets)
+                self.assertEqual(module['produit'], 1)
+                self.assertEqual([a['code'] for a in alertes], ['panneau_par_defaut'])
+                self.assertIn("l'étude C&I", alertes[0]['message'])

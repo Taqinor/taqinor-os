@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { BuilderStatut } from '../BuilderPose'
+import { usePointARegler } from '../../commun/lecturePretAEnvoyer'
 
 /* ============================================================================
    COQUE — CE QUI CONCERNE LE CALEPINAGE ENTIER, HORS DU PANNEAU D'ÉTAPE.
@@ -60,14 +61,75 @@ function useADeplier(ref) {
   return aDeplier
 }
 
-export function BandeauAlertes({ children, cache = false }) {
+/* ACAL1980 — « module absent du catalogue » : le script (zones.ts::direRefusModule) écrit le motif dans
+   `#rp9-pan-module-erreur` et le marque `data-ton="a-regler"`. Avant, il n'apparaissait que dans la pilule grise du bas de
+   carte. La bande le dit au ton « À régler », avec le geste de réparation (choisir un module à l'étape Panneaux, où se
+   trouve le sélecteur — qui, lui, porte déjà le motif : la bande ne le répète pas là). */
+function useMotifARegler(ref) {
+  const [motif, setMotif] = useState(null)
+  useEffect(() => {
+    const racine = ref.current?.closest?.('.cal-coque') ?? document
+    const lire = () => {
+      const noeud = racine.querySelector('#rp9-pan-module-erreur[data-code]')
+      const etape = racine.getAttribute?.('data-etape')
+      const texte = noeud && !noeud.hidden && etape !== 'panneaux' ? (noeud.textContent ?? '').trim() : ''
+      // Deux causes, deux gestes : `module-absent` (choisir un module) ≠ `catalogue-illisible` (relire le catalogue).
+      const reessayable = Boolean(racine.querySelector?.('[data-testid="cal-reessayer-lecture"]'))
+      setMotif(texte ? { texte, code: noeud.dataset.code ?? 'module-absent', reessayable } : null)
+    }
+    lire()
+    if (typeof MutationObserver === 'undefined') return undefined
+    const obs = new MutationObserver(lire)
+    obs.observe(racine, { subtree: true, childList: true, characterData: true, attributes: true,
+      attributeFilter: ['hidden', 'data-ton', 'data-etape'] })
+    return () => obs.disconnect()
+  }, [ref])
+  return motif
+}
+
+/* ACAL1980 (revue) — la bande ne dit « À régler » que si la lecture servie « Prêt à envoyer ? » liste AUSSI le point
+   (code `materiel_designe`) : le rail compte sur la même liste. Sinon c'est une information qu'on peut traiter, dite
+   comme telle, pour que la bande et le rail ne se contredisent pas. Un catalogue illisible n'est jamais « À régler » :
+   le module n'est pas retiré, il n'a pas pu être vérifié. */
+function LigneModule({ motif, calepinageId, bande }) {
+  const compte = usePointARegler(calepinageId, 'materiel_designe')
+  if (motif.code === 'catalogue-illisible') {
+    const coque = () => bande.current?.closest?.('.cal-coque')
+    const reessayer = () => coque()?.querySelector?.('[data-testid="cal-reessayer-lecture"]')?.click()
+    return (
+      <div className="cal-alerte-entiere" data-testid="cal-catalogue-illisible" data-ton="info">
+        <p><strong>Catalogue des modules illisible</strong></p>
+        <p>{motif.texte}</p>
+        {motif.reessayable && <div><button type="button" onClick={reessayer}>Réessayer</button></div>}
+      </div>
+    )
+  }
+  const allerAuxPanneaux = () => bande.current?.closest?.('.cal-coque')?.querySelector?.('[data-testid="cal-etape-panneaux"]')?.click()
+  return (
+    <div className="cal-alerte-entiere" data-testid="cal-a-regler-module" data-ton={compte ? 'a-regler' : 'info'}>
+      <p><strong>{compte ? 'À régler' : 'Module retiré du catalogue — choisissez-en un'}</strong></p>
+      <p>{motif.texte}</p>
+      <div>
+        <button type="button" onClick={allerAuxPanneaux}>Choisir un module</button>
+      </div>
+    </div>
+  )
+}
+
+export function BandeauAlertes({ children, cache = false, calepinageId = null }) {
   const [deplie, setDeplie] = useState(false)
   const bande = useRef(null)
   usePublierHauteurAlertes(bande)
   const aDeplier = useADeplier(bande)
+  const motifARegler = useMotifARegler(bande)
   return (
     <div ref={bande} className="cal-coque-alertes" data-deplie={deplie ? '1' : '0'} hidden={cache || undefined}>
-      <div className="cal-coque-alertes-contenu">{children}</div>
+      <div className="cal-coque-alertes-contenu">
+        {children}
+        {motifARegler && (
+          <LigneModule motif={motifARegler} calepinageId={calepinageId} bande={bande} />
+        )}
+      </div>
       {(aDeplier || deplie) && (
         <button type="button" className="cal-coque-alertes-plus" aria-expanded={deplie}
           onClick={() => setDeplie((d) => !d)}>

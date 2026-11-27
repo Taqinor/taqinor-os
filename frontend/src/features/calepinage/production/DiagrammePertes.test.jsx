@@ -24,6 +24,7 @@ vi.mock('../../../hooks/useHasPermission', () => ({ useHasPermission: () => true
 import calepinageApi from '../../../api/calepinageApi'
 import DiagrammePertes from './DiagrammePertes'
 import { construireCascadeDetaillee } from './DiagrammePertes.helpers'
+import { NOMS_PERTES, nomDePerte } from './nomsPertes'
 import { polyfillResizeObserver } from '../../../test/selectNatif'
 
 beforeAll(polyfillResizeObserver)
@@ -400,7 +401,13 @@ describe('DiagrammePertes — barres depuis les énergies servies (ACAL140)', ()
     const table = within(cascade).getByRole('table')
     const ligne = within(table).getByText('Énergie livrée').closest('tr')
     expect(ligne.querySelector('td[data-label="Énergie restante"]').textContent).toMatch(/^81,0/)
-    expect(ligne.querySelector('td[data-label="Perte"]').textContent).toMatch(/^19,0.*pertes totales/)
+    // ACAL1658 — la ligne d'arrivée dit l'énergie livrée (servie) et sa part, non « pertes totales ».
+    expect(ligne.querySelector('td[data-label="Perte"]').textContent).toMatch(/^81 kWh · 81,0/)
+    expect(ligne.textContent).not.toMatch(/pertes totales/)
+    // La même ligne dans la liste de lignes (CascadePertesLignes), jumeau traité ensemble.
+    const arrivee = within(cascade).getByTestId('acal444-ligne-arrivee')
+    expect(arrivee.textContent).toMatch(/Énergie livrée.*81 kWh · 81,0/)
+    expect(arrivee.textContent).not.toMatch(/pertes totales/)
     // La dernière colonne n'est plus libellée « Perte (cumulé) » à tort.
     expect(within(table).queryByText(/\(cumulé\)/)).toBeNull()
     // Les barres : 100 → 90 → 81, pas 100 → 90 → 80.
@@ -509,5 +516,14 @@ describe('DiagrammePertes — pastille inhabituel (ACAL703)', () => {
     const plage = { statut: 'dans_la_plage', ...BANDE }
     expect(construireCascadeDetaillee(etapes, null, { etapes: { a: plage } })[1].plage).toEqual(plage)
     expect(construireCascadeDetaillee(etapes, null, null)[1].plage).toBeNull()
+  })
+})
+
+/* ACAL1652 — la fenêtre MPPT se lit « Plage de tension de l'onduleur » (ce que le calcul fait : couper ce qui sort de la plage
+   de tension), jamais « Réglage de la puissance » ; le terme servi reste en infobulle. */
+describe('nomsPertes — la fenêtre MPPT en clair (ACAL1652)', () => {
+  it('l’étape « mppt » se lit « Plage de tension de l’onduleur », le terme servi reste en infobulle', () => {
+    expect(nomDePerte('mppt', 'Fenêtre MPPT')).toEqual({ nom: 'Plage de tension de l’onduleur', technique: 'Fenêtre MPPT' })
+    expect(JSON.stringify(NOMS_PERTES)).not.toContain('Réglage de la puissance')
   })
 })

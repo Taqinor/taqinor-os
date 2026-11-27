@@ -62,6 +62,7 @@ from . import (agregation_electrique as _agregation_electrique,  # ACAL1623 (rev
                suppositions as _suppositions)  # ACAL980
 from .regle_chaine_publiee import _regle_chaine_publiee  # ACAL645 — extraite
 from .valeurs import nombre as _nombre
+from .ecart_devis import cles_ecart_devis  # ACAL1915 : extrait
 from .devis_retenu import bloc_conception, bloc_devis_retenu, bloc_production_devis  # ACAL1952-1956, 2015
 from .equipements import PROVENANCE_MOTEUR, materiel_de_la_conception, options_de_la_conception  # ACAL2013
 
@@ -1390,22 +1391,20 @@ def _nommer_module_pose(conception, materiel, document):
     """ACAL1910 (moitié planche) — la planche unifilaire et le rapport nomment
     le module POSÉ (celui qui couvre le plus de modules), plus le module par
     défaut de l'entrée. Même source que l'étape thermique (ACAL1607,
-    ``simulation._fiche_du_module_pose``) ; seule la désignation du champ change,
-    les chaînes et leurs messages restent calculés tels quels."""
+    ``simulation._fiche_du_module_pose``) ; R7-N2 : sa PUISSANCE avec son nom
+    (``modules_pans._module_pose_de_la_planche``). Les chaînes, leurs messages et
+    les empreintes (lues sur ``materiel``, jamais sur ce retour) restent tels quels."""
     from dataclasses import replace
 
-    from .simulation import _fiche_du_module_pose
+    from .modules_pans import _module_pose_de_la_planche
 
     entree = getattr(conception, 'entree', None)
-    fiches = (materiel or {}).get('fiches_modules') or {}
-    if entree is None or getattr(entree, 'module', None) is None or not fiches:
+    if entree is None or getattr(entree, 'module', None) is None:
         return conception
-    pose = _fiche_du_module_pose(materiel, document)
-    nom = next((str(f.get('designation') or '') for f in fiches.values()
-                if isinstance(f, dict) and dict(f.get('specs') or {}) == dict(pose)), '')
-    if not nom or nom == entree.module.designation:
+    champs = _module_pose_de_la_planche(conception, materiel, document)
+    if not champs:
         return conception
-    return replace(conception, entree=replace(entree, module=replace(entree.module, designation=nom)))
+    return replace(conception, entree=replace(entree, module=replace(entree.module, **champs)))
 
 
 def resultat_electrique_complet(conception, *, norme=None, noyau=None,
@@ -1635,6 +1634,16 @@ def _chiffrage_des_zones(document):
     return chiffrage_zones(zones, arrondi=2)
 
 
+def _avertissements_hors_reseau(declaration):
+    """ACAL1667 — les avertissements de ``valider_hors_reseau`` (groupe sous la
+    veille…) sur la déclaration STOCKÉE. Une déclaration devenue illisible ne
+    fait pas tomber le résultat : le refus est dit à l'écriture."""
+    try:
+        return list(_hors_reseau_declaration.valider_hors_reseau(declaration))
+    except EntreeInvalide:
+        return []
+
+
 def resultat_calepinage(calepinage, *, entree=None, layout=None,
                         materiel=None, reglages=None, porteur_simulation=None):
     """Le ``resultat`` publié du calepinage — forme du contrat CAL244.
@@ -1751,13 +1760,17 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
 
     # CAL130/CAL131 — la norme applicable commande ce qui peut être publié :
     # sans elle, sections et chutes de tension sont OMISES (règle D5).
-    from .cables import cables_du_calepinage
+    from .cables import cables_du_calepinage, jour_du_calcul_servi
     from .norme import norme_applicable
 
     norme = norme_applicable(reglages)
     cables = cables_du_calepinage(
         conception, cheminement=donnees.get('cheminement'), norme=norme,
         layout=document,
+        # Liaison DC tracée — W1 suit la DATE de la simulation servie : ce qui
+        # est montré est ce qu'elle a calculé (aujourd'hui sans simulation fraîche).
+        jour=jour_du_calcul_servi(porteur_simulation if porteur_simulation is not None
+                                  else calepinage, perimee, calcule_le),
         # CALX209/CALX210 (crochet de phase 2) — en régime micro-onduleurs,
         # les ``W2.1 … W2.N`` REMPLACENT la liaison AC unique dans
         # ``resultat['cables']`` : jusqu'ici elles n'existaient que dans le
@@ -1810,6 +1823,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         pose.get('puissance_module_wc')))
 
     messages = list(blocs.get('avertissements') or ()) + list(avertissements) + list(messages_ratio)
+    messages.extend(_avertissements_hors_reseau(donnees.get('hors_reseau')))  # ACAL1667
     messages.extend(poly['bloquants'])
     messages.extend(poly['alertes'])
     messages.extend(micro['omissions'])
@@ -1933,8 +1947,9 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         'motif': motif,
         # ACAL104 (D-ACAL-6) — l'écart entre la production IMPRIMÉE au
         # client (moteur du devis) et le P50 de l'étude technique ; ``null``
-        # sans devis lié, sans simulation fraîche ou sans production devis.
-        'ecart_devis': _ecart_devis(calepinage, p50 if simule else None),
+        # sans devis lié, sans simulation fraîche ou sans production devis ;
+        # ACAL1915 — ``ecart_devis_motif`` dit alors la garde en cause.
+        **cles_ecart_devis(calepinage, p50 if simule else None),
         'production_devis': bloc_production_devis(calepinage),  # ACAL1956 — le chiffre du devis envoyé
         'conception': bloc_conception(calepinage),  # ACAL2015 — LE chiffre de la conception (+ devis reçu nommé)
         # ACAL48 — l'en-tête de la simulation STOCKÉE (empreinte, version de
@@ -1953,50 +1968,6 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # simulation est périmée.
         'derogations': _fil_enregistre(calepinage, CLE_FIL_DEROGATIONS),
         'ecarts_longueur': _fil_enregistre(calepinage, CLE_FIL_ECARTS),
-    }
-
-
-#: ACAL104 + ACAL1755 (D-ACAL-86, D-ACAL-96) — la mention publiée avec l'écart
-#: (contrat ``calepinage_resultat.json``, ``exemple_ecart_devis``), mot pour mot.
-MENTION_ECART_DEVIS = ("Deux chiffres : celui du devis déjà remis au client et celui de la "
-                       "simulation de la pose, le plus réaliste. Le devis envoyé n'est pas "
-                       "modifié : une révision est proposée.")
-
-
-def _ecart_devis(calepinage, p50):
-    """ACAL104 (C-ACAL-101) — ``{devis, reference, production_devis_kwh,
-    p50_calepinage_kwh, ecart_pct, mention}`` ou ``None``.
-
-    ``production_devis_kwh`` est la figure du devis (recalée sur les lignes —
-    ``figure_production_du_devis``), LUE par ``apps.ventes.selectors.
-    production_attendue_pour_devis`` — JAMAIS un rendu du devis ici (boucle
-    devis → ombrage servi → ce résultat ; profil créé, ACON87) ; ``ecart_pct`` = (P50 − devis) /
-    devis, au dixième. Jamais l'inverse : le devis ne lit pas le P50
-    (D-ACAL-6). ``None`` sans devis lié (ou d'une autre société), sans P50
-    servi (jamais simulé, ou périmé), sans production au devis, ou quand le
-    PDF n'imprime pas cette figure (ACAL1274). LECTURE PURE."""
-    devis_id = getattr(calepinage, 'devis_id', None)
-    if not devis_id or not _est_un_nombre(p50):
-        return None
-    from apps.ventes.selectors import get_devis_by_pk, production_attendue_pour_devis
-    from apps.ventes.selectors_calepinage import _conception_a_jour, figure_stockee_imprimee
-
-    if ((devis := get_devis_by_pk(devis_id)) is None
-            or devis.company_id != getattr(calepinage, 'company_id', None)
-            or _conception_a_jour(devis, calepinage) is False or not figure_stockee_imprimee(devis)):  # ACON27 ACAL1274
-        return None
-    production = production_attendue_pour_devis(devis_id)
-    if production is None or production <= 0:
-        return None
-    production = float(production)
-    p50 = float(p50)
-    return {
-        'devis': devis.pk,
-        'reference': devis.reference or '',
-        'production_devis_kwh': production,
-        'p50_calepinage_kwh': p50,
-        'ecart_pct': round((p50 - production) / production * 100.0, 1),
-        'mention': MENTION_ECART_DEVIS,
     }
 
 
@@ -2196,6 +2167,7 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
     from .etat_dossier_electrique import etat_a_chaud
     from .onduleurs_minimum import onduleurs_suggeres
     from .ombrage_chaines import modules_sous_seuil
+    from .protections import questions_du_dossier
     from .raccordement import _reglage
     from .tensions_chaines import (
         conception_cablee, imposee_et_refus, tensions_par_chaine)
@@ -2219,6 +2191,9 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
         rapport = verdict_publiable(calepinage)
         return {cle: rapport[cle] for cle in ('publiable', 'etat', 'points')}
 
+    # ACAL1973 — les questions du dossier : l'écran lit leur libellé ICI.
+    protections = {'questions': questions_du_dossier(
+        donnees.get('protections'), _reglages_electrique_societe(calepinage))}
     if manquantes:
         return {
             'verdict': 'indetermine', **_lecture((), manquantes),
@@ -2234,7 +2209,7 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
             'chaines': [],
             'onduleurs_suggeres': None,
             'boucles_dc': [],
-            'modules_sous_seuil': [],
+            'modules_sous_seuil': [], 'protections': protections,
         }
     # Une proposition MALFORMÉE est un bloquant NOMMÉ, pas une erreur 500 :
     # l'atelier envoie sa proposition à chaud, il doit lire pourquoi elle ne
@@ -2299,6 +2274,7 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
         'modules_sous_seuil': modules_sous_seuil(
             _document, affectation(conception, imposee=imposee),
             _reglage(_reglages_electrique_societe(calepinage), 'seuil_acces_optimiseur')[0]),
+        'protections': protections,
     }
 
 

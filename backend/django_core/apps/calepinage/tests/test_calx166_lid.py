@@ -129,6 +129,23 @@ TABLE_PROFIL = {
                  'reference': 'Profil de départ'}}
 
 
+class ModulePoseTest(unittest.TestCase):
+    """ACAL1959 — module posé ≠ module par défaut : la LID du module POSÉ est appliquée."""
+
+    def test_la_lid_du_module_pose_est_appliquee(self):
+        contexte = contexte_de(techno='p-type PERC', table=TABLE)  # défaut : Jinko PERC
+        contexte['fiche_module_pose'] = {'techno_cellule': 'N-type TOPCon'}  # posé : Canadian
+        rendue, etape = lid.appliquer(SERIE, contexte)
+        self.assertEqual(etape['entree']['techno_lue'], 'N-type TOPCon')
+        self.assertAlmostEqual(etapes.energie_kwh(rendue), 4.0 * (1 - 0.004), places=9)
+
+    def test_un_seul_module_le_defaut_est_inchange(self):
+        contexte = contexte_de(techno='p-type PERC', table=TABLE)
+        rendue, etape = lid.appliquer(SERIE, contexte)
+        self.assertEqual(etape['entree']['techno_lue'], 'p-type PERC')
+        self.assertAlmostEqual(etapes.energie_kwh(rendue), 4.0 * (1 - 0.015), places=9)
+
+
 class LigneInconnueTest(unittest.TestCase):
     """ACAL1968 (D-ACAL-82) — la ligne « inconnue » sert, DITE supposée, quand la
     fiche ne dit pas sa technologie ou qu'elle n'est pas dans la table."""

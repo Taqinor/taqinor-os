@@ -68,7 +68,7 @@ MOTIF_SANS_MATRICE = (
 
 #: Le motif publié quand l'accès solaire par module prend la main.
 MOTIF_ACCES_MODULE = (
-    "Le document porte une lecture d'accès solaire MODULE PAR MODULE : c'est "
+    "Le document porte une lecture d'accès solaire module par module : c'est "
     "elle qui s'applique, et la matrice 12×24 du même moteur d'ombrage est "
     "écartée pour ne pas compter l'ombre deux fois.")
 

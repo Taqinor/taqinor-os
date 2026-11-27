@@ -110,7 +110,7 @@ def reviser_devis_apres_visite(devis, *, user=None):
 
     from apps.visites.selectors import releve_ci_pour_lead
 
-    from .etude_ci import (CLE_OPTION_AVEC, entrees_pour_etude_params, etudier_ci,
+    from .etude_ci import (CLE_OPTION_AVEC, CLE_TAILLE_CREATION, entrees_pour_etude_params, etudier_ci,
                            lignes_du_devis_ci, lire_catalogue_ci, provenance_lignes_du_devis,
                            refus_devis_auto_ci)
     from .etude_ci_batterie import lignes_des_options, option_imposee_des_lignes
@@ -121,7 +121,8 @@ def reviser_devis_apres_visite(devis, *, user=None):
     from .modifiabilite import rebaser_echeancier, ttc_du_devis
     from .pipeline import (MODE_ECRIRE, MODE_RAFRAICHIR, ORIGINE_AUTO,
                            IntentionDevis, appliquer)
-    from .revision import reviser_devis
+    from .revision import (ETUDES_PAR_L_APPELANT,
+                           relier_calepinage_de_la_revision, reviser_devis)
     from .scenario import (SCENARIO_AVEC_BATTERIE, SCENARIO_LES_DEUX,
                            SCENARIO_SANS_BATTERIE)
 
@@ -157,11 +158,18 @@ def reviser_devis_apres_visite(devis, *, user=None):
     # (prix à renseigner, PVGIS indisponible…) après ``reviser_devis`` ne
     # laisse jamais une V1 remplacée par une V2 non recomposée.
     with transaction.atomic():
-        cible = reviser_devis(devis, user=user) if cree else devis
+        # R6-N1 (suite) — ``ETUDES_PAR_L_APPELANT`` : le rafraîchissement forcé
+        # ci-dessous, après le commit, est LE calcul de la V+1 re-liée ; la
+        # révision n'en refait pas un au commit (hier : deux calculs forcés
+        # d'affilée, mêmes entrées).
+        cible = (reviser_devis(devis, user=user, etudes=ETUDES_PAR_L_APPELANT)
+                 if cree else devis)
         ttc_avant = ttc_du_devis(cible)  # AGNR77 — TTC lu AVANT la recomposition
         etude = etudier_ci(company, {'mode': mode, 'taille_explicite_kwc': taille},
                            devis=cible, lead=lead, option_avec_imposee=imposee,
-                           provenance_corps=provenance_lignes_du_devis())
+                           provenance_corps=provenance_lignes_du_devis(),
+                           # ACAL1226 — taille du verdict de création : « calculée à la création ».
+                           verdict_creation=(getattr(devis, 'etude_params', None) or {}).get(CLE_TAILLE_CREATION))
         refus = refus_devis_auto_ci(etude)
         if refus:
             raise RevisionVisiteError(*refus)
@@ -193,6 +201,12 @@ def reviser_devis_apres_visite(devis, *, user=None):
             rebaser_echeancier(cible, ttc_avant=ttc_avant)
         except EcheancierIncoherent as exc:
             raise RevisionVisiteError(str(exc), 'echeancier')
+        if cree:
+            # R6-N1 (suite) — la composition est faite (la visite l'a lue sans
+            # calepinage, comme hier) : le calepinage de la V1 passe à la V+1
+            # AVANT le rafraîchissement ci-dessous, quel que soit le contexte
+            # transactionnel de l'appelant ; l'abonné du commit n'écrit rien.
+            relier_calepinage_de_la_revision(devis, cible, user=user)
     appliquer(cible, IntentionDevis(
         origine=ORIGINE_AUTO, mode=MODE_RAFRAICHIR, company=company, user=user,
         lead=lead, mode_installation=mode, force_etudes=True))

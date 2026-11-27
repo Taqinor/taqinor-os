@@ -1215,3 +1215,136 @@ _sans_tests_herites(RemplacementCyclesNiveau13DevisTests)
 _sans_tests_herites(SensibilitesNiveau14DevisTests)
 _sans_tests_herites(DepartUneBatterieRemiseTests)
 _sans_tests_herites(DevisFinalEnregistreTests)
+
+
+class ContratDixiemeEtLibellePosteTests(SimpleTestCase):
+    """ACAL1223 — le contrat ``economie_ci.json`` porte, posées SEULES (PACT10)
+    pour ACAL1224/ACAL1225 (serveur) et ACAL1213/ACAL1214 (écran),
+    ``indicateurs.retour_dixieme_ans`` de l'offre réseau et ``libelle`` sur
+    chaque poste ; les clés d'hier restent là (ajout seulement)."""
+
+    def _contrat(self):
+        import json
+        from pathlib import Path
+        chemin = Path(__file__).resolve().parent.parent / 'contract_samples' / 'economie_ci.json'
+        return json.loads(chemin.read_text(encoding='utf-8'))
+
+    def test_l_offre_reseau_porte_son_retour_au_dixieme_derive_du_flux_servi(self):
+        from apps.ventes.economie_ci_options import retour_au_dixieme
+        doc = self._contrat()
+        ex = doc['exemple_industriel_mt']
+        ind = ex['indicateurs']
+        self.assertEqual(ex['base'], 'ht')
+        # Le nombre de l'exemple est DÉRIVÉ : la fonction du PDF sur le flux principal.
+        self.assertEqual(ind['retour_dixieme_ans'], retour_au_dixieme(ex['flux_ht']))
+        self.assertEqual(ind['retour_dixieme_ans'], round(ind['retour_dixieme_ans'], 1))
+        self.assertGreater(ind['retour_dixieme_ans'], ind['retour_ans'] - 1)
+        self.assertLessEqual(ind['retour_dixieme_ans'], ind['retour_ans'])
+        self.assertIn('retour_dixieme_ans', doc['regles_sortie']['indicateurs'])
+
+    def test_chaque_poste_porte_un_libelle_de_metier(self):
+        doc = self._contrat()
+        ex = doc['exemple']
+        postes = (ex['economie_annee1']['par_poste'] + ex['facture_avant']['energie_par_poste']
+                  + ex['facture_apres']['energie_par_poste'])
+        self.assertTrue(postes)
+        for p in postes:
+            with self.subTest(poste=p['poste']):
+                self.assertIsInstance(p['libelle'], str)
+                self.assertTrue(p['libelle'].strip())
+                self.assertNotEqual(p['libelle'], p['poste'])
+                self.assertNotIn('D-CIQ', p['libelle'])
+                self.assertNotIn('_', p['libelle'])
+        self.assertEqual([p['poste'] for p in ex['economie_annee1']['par_poste']], ['tranche_2'])
+        for cle in ('economie_annee1', 'facture_avant / facture_apres'):
+            self.assertIn('libelle', doc['regles_sortie'][cle])
+
+
+def _etude_industrielle_realiste():
+    """Le devis industriel de l'empreinte de conception (``golden/conception/ci_industriel.json``,
+    ~115 kWc, 18 lignes, total HT 416 833,33) : son étude C&I stockée COMPLÈTE (matrice
+    horaire du moteur), ses lignes CLIENT (onduleurs comptés) et ses totaux."""
+    import json
+    from pathlib import Path
+    golden = json.loads((Path(__file__).resolve().parent / 'golden' / 'conception'
+                         / 'ci_industriel.json').read_text(encoding='utf-8'))
+    lignes = []
+    for li in golden['lignes']:
+        if li.get('type_ligne', 'produit') != 'produit':
+            continue
+        ht = float(li['quantite']) * float(li['prix_unitaire']) * (1 - float(li['remise'] or 0) / 100)
+        lignes.append({'designation': li['designation'], 'ht': ht,
+                       'ttc': ht * (1 + float(li['taux_tva']) / 100),
+                       'optionnelle': li['optionnelle'],
+                       'onduleur': str(li.get('role_devis') or '').startswith('onduleur'),
+                       'panneau': li.get('role_devis') == 'panneau', 'role_ci': None})
+    champs = golden['champs_devis']
+    return (golden['etude_params']['etude_ci'], lignes,
+            {'ht': float(champs['total_ht']), 'ttc': float(champs['total_ttc'])})
+
+
+class OffreReseauRetourDixiemeTests(SimpleTestCase):
+    """ACAL1224 — ``assembler_economie_ci`` sert ``indicateurs.retour_dixieme_ans`` de
+    l'offre réseau : le retour que le PDF imprime (``quote_engine.ci.couverture.retour_dixieme``
+    sur le bloc servi), en lecture comme en aperçu ; ``retour_ans`` (entier) inchangé ; un
+    devis aux règles d'avant le niveau 3 garde l'entier que son PDF imprime. Étude COMPLÈTE
+    d'un vrai devis industriel, dans les trois bases."""
+
+    def _bloc(self, tva, **reglages):
+        import copy
+        etude, lignes, investissement = _etude_industrielle_realiste()
+        return eco.assembler_economie_ci(
+            copy.deepcopy(etude), tarif_declare={'contrat': 'bt_patente'},
+            saisies={'tva_recuperable': {'valeur': tva, 'provenance': 'declare_client',
+                                         'saisi_le': '2026-11-20'}},
+            investissement=investissement, lignes=lignes,
+            mode_installation='industriel', reglages=reglages)
+
+    def _imprime(self, bloc, regles_origine=False):
+        """Le retour que le PDF imprime, sous les drapeaux de règles du rendu."""
+        import contextvars
+        from apps.ventes.quote_engine.ci import couverture
+        from apps.ventes.quote_engine.montants import poser_regles_origine
+
+        def rendu():
+            poser_regles_origine(False, avant_2710=regles_origine)
+            argent = eco.economie_ci_publique(bloc)
+            return couverture.retour_dixieme(argent, argent['indicateurs']['retour_ans'])
+        return contextvars.copy_context().run(rendu)
+
+    def test_offre_reseau_dixieme_egal_au_pdf_dans_les_trois_bases(self):
+        from apps.ventes.economie_ci_options import retour_au_dixieme
+        for tva, base, cle in (('oui', 'ht', 'flux_ht'), ('non', 'ttc', 'flux_ttc'),
+                               ('inconnu', 'deux', 'flux_ht')):
+            with self.subTest(tva=tva):
+                bloc = self._bloc(tva)
+                self.assertEqual(bloc['base'], base)
+                ind = bloc['indicateurs']
+                self.assertEqual(ind['retour_ans'], bloc[cle]['retour_ans'])
+                self.assertIsInstance(ind['retour_ans'], int)
+                self.assertIn('retour_dixieme_ans', ind)
+                self.assertEqual(ind['retour_dixieme_ans'], self._imprime(bloc))
+                self.assertEqual(ind['retour_dixieme_ans'], retour_au_dixieme(bloc[cle]))
+                # Cumul de l'an 3 à peine négatif sur ce devis : 3,0 (arrondi) pour un entier 4.
+                self.assertGreaterEqual(ind['retour_dixieme_ans'], ind['retour_ans'] - 1)
+                self.assertLessEqual(ind['retour_dixieme_ans'], ind['retour_ans'])
+                # Même valeur dans la charge utile client (écran, PDF, /proposition).
+                self.assertEqual(eco.economie_ci_publique(bloc)['indicateurs']['retour_dixieme_ans'],
+                                 ind['retour_dixieme_ans'])
+
+    def test_devis_envoye_avant_le_niveau_3_garde_l_entier_imprime(self):
+        bloc = self._bloc('oui', regles_origine=True)
+        ind = bloc['indicateurs']
+        self.assertEqual(ind['retour_dixieme_ans'], ind['retour_ans'])
+        self.assertEqual(ind['retour_dixieme_ans'], self._imprime(bloc, regles_origine=True))
+
+    def test_investissement_non_chiffre_aucun_dixieme_invente(self):
+        import copy
+        etude, lignes, _inv = _etude_industrielle_realiste()
+        bloc = eco.assembler_economie_ci(
+            copy.deepcopy(etude), tarif_declare={'contrat': 'bt_patente'},
+            investissement={'ht': None, 'ttc': None}, lignes=lignes,
+            mode_installation='industriel')
+        ind = bloc['indicateurs'] or {}
+        self.assertIsNone(ind.get('retour_ans'))
+        self.assertIsNone(ind.get('retour_dixieme_ans'))

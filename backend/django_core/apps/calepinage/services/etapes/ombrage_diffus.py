@@ -20,9 +20,9 @@ POSTE = 'ombrage_diffus'
 CHAMP = 'ombrage.skyViewFactor'
 
 MOTIF_SANS_FACTEUR = (
-    "Le document de toiture ne porte aucun facteur de vue du ciel "
-    ": le diffus n'est pas "
-    "dérate, rien n'est supposé.")
+    "Le document de toiture ne porte aucun facteur de vue du ciel : "
+    "l'ombrage de la lumière diffuse n'est pas calculé, et rien n'est "
+    "supposé.")
 MOTIF_HORIZON_INCLUS = (
     "Le facteur de vue du ciel déclare inclure l'horizon lointain "
     "(« horizon: true ») : l'horizon a son propre poste, l'appliquer ici le "

@@ -33,6 +33,17 @@ test("les 5 fichiers de l'enveloppe n'ont plus aucune classe de L", () => {
 test('ACAL479 : aucune classe héritée du site public, nulle part, sans exception', () => {
   for (const f of cibles) assert.equal(compte(f), 0, `${f} : ${(readFileSync(join(SRC, f), 'utf8').match(L) || []).join(', ')} (classe(s) du site public)`)
 })
+// ACAL1823 — plus aucun fond noir/blanc translucide littéral (`bg-black/30` : pavé gris moyen en thème clair).
+// Le champ actif lit `--cal-surface`, qui suit le thème.
+test('ACAL1823 : aucune classe bg-black/ ni bg-white/ dans les écrans du module', () => {
+  const FOND = /bg-(?:black|white)\/\d+/g
+  const fautifs = []
+  for (const p of fichiers(join(SRC, C))) {
+    const trouves = readFileSync(p, 'utf8').match(FOND)
+    if (trouves) fautifs.push(`${relative(SRC, p).split(sep).join('/')} : ${trouves.join(', ')}`)
+  }
+  assert.deepEqual(fautifs, [])
+})
 const SOUS_DOSSIERS = [
   'pompage/PompagePanel.jsx', 'equipements/FichesIncompletes.jsx', 'electrique/SaisiesElectriques.jsx',
   'electrique/Raccordement.jsx', 'electrique/VerdictElectrique.jsx', 'electrique/MaterielElectrique.jsx',
@@ -102,4 +113,17 @@ test('ACAL969 : UN seul état « choisi » (fond doré sur [aria-pressed]) ; le 
   assert.ok(badge, 'règle .rp9-reco-badge absente')
   assert.ok(!/background/.test(badge.corps), '.rp9-reco-badge ne doit pas porter de fond doré')
   assert.ok(parseFloat(declarations(badge.corps)['font-size']) >= 0.75, '.rp9-reco-badge : texte sous 12 px')
+})
+
+// ACAL1823 (revue) — le jeton `--cal-surface` n'existe que sous `.cal-coque, .cliste, .cal-tel, .cal-client, .cal-reglages`
+// (`49-jetons-v2.css`). Une PAGE (écran de route, hors coque) qui le lit doit poser elle-même l'une de ces classes,
+// sinon le fond est indéfini, donc transparent.
+test('ACAL1823 : une page qui lit --cal-surface porte la classe qui le définit', () => {
+  const DEFINISSEURS = /\b(?:cal-coque|cliste|cal-tel|cal-client|cal-reglages)\b/
+  const pages = fichiers(join(SRC, C)).filter((p) => /[\\/]reglages[\\/]/.test(p) || /Page\.jsx$/.test(p))
+  const fautifs = pages.filter((p) => {
+    const src = readFileSync(p, 'utf8')
+    return src.includes('--cal-surface') && !DEFINISSEURS.test(src)
+  }).map((p) => relative(SRC, p).split(sep).join('/'))
+  assert.deepEqual(fautifs, [])
 })

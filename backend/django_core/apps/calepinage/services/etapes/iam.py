@@ -62,6 +62,8 @@ champ manquant.
 """
 from __future__ import annotations
 
+from apps.calepinage.services.etapes import fiche_du_module
+
 import math
 
 from apps.calepinage.services import etapes
@@ -351,7 +353,7 @@ def _modele(contexte):
 
 def _indice(contexte):
     """L'indice de réfraction employé, et d'où vient le choix."""
-    fiche = contexte.get('fiche_module') or {}
+    fiche = fiche_du_module(contexte) or {}
     antireflet = any(fiche.get(cle) is True for cle in CLES_ANTIREFLET)
     return {
         'valeur': INDICE_VERRE_ANTIREFLET if antireflet else INDICE_VERRE,

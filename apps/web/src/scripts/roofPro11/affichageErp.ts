@@ -4,6 +4,7 @@ import { fmt, fmtMad } from './dom';
 import { annualSavingsMad, degradationFactor, ANNUAL_DEGRADATION, LIFETIME_YEARS } from '../../lib/estimatorBrainV2';
 import { type CardData, type ChiffrageAtelier } from './types';
 import { memeTaille, phraseTailles, tailleDifferente } from './tailleConception'; // T4-X9 — LE prédicat de taille
+import { catalogueAvecModulesDuDocument, estRefus, lireModulesDisponibles, resoudreModuleDuPan } from './moduleSelect'; // T4-X8-012 (une cible)
 
 /** ACAL2022 — ce que l'atelier ERP dit à la place d'un chiffre qu'il ne calcule plus : la production et l'économie sont celles de
  *  la conception SERVIE ; pendant le dessin (kWc posé ≠ kWc servi) il ne montre que panneaux et kWc posés. */
@@ -60,10 +61,52 @@ export function texteBande(p: { degPct: number; annualKwh: number; kwhFin: numbe
   );
 }
 
-/** R2-13/22/23 — « N posés / M cible » (atelier ERP) et, pour un devis LIÉ au compte connu, « · K au devis ». Site public : « au devis ». */
-export function texteSurDevis(placed: number, besoin: number, erp: boolean, devisLie: boolean, duDevis: number | null | undefined, qui = ''): string {
+/** T4-X8-012 (une cible) — LA cible de l'atelier ERP : celle que le serveur sert pour CE calepinage (`design-context` → `cible`,
+ *  projetée par l'ERP en `hydrate.devis.cible` + `origineCible` + `libelleOrigineCible`), comptée dans le module POSÉ (la table
+ *  servie `panneaux_selon_watt`, comme la carte « Couvrir la facture » ; repli : le compte de la conception si le module posé a sa
+ *  puissance). `origine` = les MOTS de la carte « Cible — panneaux » (« Source de la cible » : Factures du lead, Devis lié…).
+ *  `null` : aucune cible servie, ou aucun compte servi pour ce module, ou site public — les phrases gardent alors leur texte
+ *  d'avant ; le nombre choisi s'appelle « Panneaux à poser » (D-ACAL-155), jamais « cible » quand une cible est servie. */
+export interface CibleAtelier { panneaux: number; origine: string }
+export function cibleDeLAtelier(ctx: { opts?: { chiffrage?: unknown; hydrate?: { devis?: object | null } | null } | null }, watt: number | null | undefined): CibleAtelier | null {
+  if (ctx.opts?.chiffrage === undefined) return null;
+  const p = ctx.opts?.hydrate?.devis as { origineCible?: unknown; libelleOrigineCible?: unknown; cible?: { panneaux?: unknown; panel_watt?: unknown } | null } | null | undefined;
+  const origine = typeof p?.libelleOrigineCible === 'string' ? p.libelleOrigineCible.trim() : '';
+  if (!origine || typeof p?.origineCible !== 'string') return null;
+  const conception = Number(p.cible?.panneaux);
+  const wattConception = Number(p.cible?.panel_watt);
+  const memeModule = !(wattConception > 0) || !(Number(watt) > 0) || Math.abs(Number(watt) - wattConception) < 0.5;
+  const panneaux = besoinDeLaFacture(ctx.opts, watt) ?? (conception > 0 && memeModule ? conception : null);
+  return panneaux ? { panneaux, origine } : null;
+}
+
+/** La puissance (Wc) du module posé sur le pan actif — le même résolveur que la pastille du panneau de pose (`layoutEditor`) ;
+ *  `null` quand le module désigné est refusé. Sert à compter LA cible dans ce module. */
+export function wattDuPanActif(ctx: { opts?: { modulesDisponibles?: unknown } | null; modulesDuDocument?: Array<Record<string, unknown>>; activeArea?: () => { moduleId?: string | null } | undefined }): number | null {
+  const m = resoudreModuleDuPan(catalogueAvecModulesDuDocument(lireModulesDisponibles(ctx.opts?.modulesDisponibles).choisissables, ctx.modulesDuDocument).catalogue, ctx.activeArea?.()?.moduleId);
+  return estRefus(m) ? null : m.pmaxWc;
+}
+
+/** Le nombre contre lequel « Posés ÷ cible » se calcule : LA cible servie (module posé `watt`), sinon le nombre à poser comme avant. */
+export const cibleOuABesoin = (ctx: Parameters<typeof cibleDeLAtelier>[0] & { neededPanels: number }, watt: number | null | undefined): number =>
+  cibleDeLAtelier(ctx, watt)?.panneaux ?? ctx.neededPanels;
+
+/** L'écart entre ce qui est posé et LA cible, avec les deux nombres déjà à l'écran (jamais un troisième). */
+const ecartALaCible = (placed: number, cible: number): string =>
+  placed === cible ? '' : ` · ${fmt(Math.abs(placed - cible))} de ${placed > cible ? 'plus' : 'moins'} que la cible`;
+
+/** « seuls N tiennent » dit un manque : faux quand ce que le toit tient atteint LA cible servie — la phrase dit alors seulement
+ *  que le toit n'en tient pas davantage (le nombre à poser demandé en voulait plus). Sans cible servie : la phrase d'avant. */
+export const phraseTiennent = (placed: number, cible: CibleAtelier | null): string =>
+  cible && placed >= cible.panneaux ? 'le toit n’en tient pas davantage' : `seuls ${fmt(placed)} tiennent`;
+
+/** R2-13/22/23 — « N posés / M cible » (atelier ERP) et, pour un devis LIÉ au compte connu, « · K au devis ». Site public : « au devis ».
+ *  T4-X8-012 (une cible) — avec une cible SERVIE (`cible`), M est LA cible suivie de sa source (mots de la carte) et de l'écart :
+ *  « 16 posés / 7 cible (Factures du lead) · 9 de plus que la cible ». Sans cible servie : M = le nombre à poser, comme avant. */
+export function texteSurDevis(placed: number, besoin: number, erp: boolean, devisLie: boolean, duDevis: number | null | undefined, qui = '', cible: CibleAtelier | null = null): string {
   if (!erp) return `${fmt(placed)} posés / ${fmt(besoin)} au devis`;
-  const base = `${fmt(placed)} posés / ${fmt(besoin)} cible`;
+  // ACAL1665 — « le plus de panneaux » (le plafond 400) n'est pas une cible : dit en mots, jamais « / 400 cible ».
+  const base = cible ? `${fmt(placed)} posés / ${fmt(cible.panneaux)} cible (${cible.origine})${ecartALaCible(placed, cible.panneaux)}` : estLePlus(besoin) ? `${fmt(placed)} posés — le plus possible` : `${fmt(placed)} posés / ${fmt(besoin)} cible`;
   return devisLie && typeof duDevis === 'number' && duDevis > 0 ? `${base} · ${fmt(duDevis)} au devis${qui}` : base;
 }
 

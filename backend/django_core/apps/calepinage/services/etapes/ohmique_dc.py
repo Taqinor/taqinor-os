@@ -64,6 +64,8 @@ défaut de ce module.
 """
 from __future__ import annotations
 
+from apps.calepinage.services.etapes import fiche_du_module
+
 from apps.calepinage.services import etapes
 from core.electrique.cables import RHO_CUIVRE_20C
 from ..valeurs import nombre as _nombre
@@ -96,30 +98,30 @@ REFERENCE_PVSYST = (
 MOTIF_SANS_CABLE = (
     "Aucun câble DC de repère « {repere} » n'est publié par le métré du "
     "plan : sans section ni longueur retenues, la perte ohmique n'est pas "
-    "calculable et l'étape est OMISE. {detail}")
+    "calculable et l'étape est omise. {detail}")
 
 MOTIF_SANS_TENSION = (
     "La tension continue de la liaison n'est pas connue : il y faut le "
     "nombre de modules par chaîne (bloc « electrique.chainage ») et le Vmp "
-    "de la fiche module. L'étape est OMISE plutôt que de supposer une "
+    "de la fiche module. L'étape est omise plutôt que de supposer une "
     "tension.")
 
 MOTIF_SANS_PUISSANCE_STC = (
     "La puissance STC du champ n'est pas connue (bloc « electrique.chainage "
     "» : modules et puissance_module_wc) : la fraction au STC, qui sert de "
-    "repère au calcul horaire, n'est pas publiable. Étape OMISE.")
+    "repère au calcul horaire, n'est pas publiable. Étape omise.")
 
 MOTIF_MICRO_SANS_SAISIE = (
     "Groupe déclaré sous micro-onduleur : il n'existe aucune liaison DC de "
     "chaîne, et la seule perte continue porte sur le câble module → "
-    "micro-onduleur, dont la longueur et la section sont SAISIES. Elles ne "
-    "le sont pas : l'étape est OMISE, et aucun forfait n'est appliqué à "
+    "micro-onduleur, dont la longueur et la section sont saisies. Elles ne "
+    "le sont pas : l'étape est omise, et aucun forfait n'est appliqué à "
     "leur place.")
 
 MOTIF_SERIE_ILLISIBLE = (
     "Aucune colonne d'énergie lisible sur la série : la perte ohmique se "
     "calcule sur le courant de chaque heure, elle n'a rien à quoi "
-    "s'appliquer. Étape OMISE.")
+    "s'appliquer. Étape omise.")
 
 __all__ = ['appliquer', 'LIBELLE', 'REPERE_DC', 'CHAMP_MICRO_LONGUEUR',
            'CHAMP_MICRO_SECTION', 'CLE_SUIVI_MPP', 'SUIVI_MICRO_ONDULEUR']
@@ -200,7 +202,7 @@ def _liaison_de_chaine(contexte):
 
     chainage = _chainage(contexte)
     modules_par_chaine = _nombre(chainage.get('modules_par_chaine'))
-    fiche_module = contexte.get('fiche_module') or {}
+    fiche_module = fiche_du_module(contexte) or {}
     vmp = _nombre(fiche_module.get('vmp_v'))
     if not modules_par_chaine or not vmp:
         return etapes.etape_omise(LIBELLE, MOTIF_SANS_TENSION,
@@ -237,7 +239,7 @@ def _liaison_micro_onduleur(contexte):
 
     chainage = _chainage(contexte)
     modules = _nombre(chainage.get('modules'))
-    fiche_module = contexte.get('fiche_module') or {}
+    fiche_module = fiche_du_module(contexte) or {}
     vmp = _nombre(fiche_module.get('vmp_v'))
     if not modules or not vmp:
         return etapes.etape_omise(LIBELLE, MOTIF_SANS_TENSION,

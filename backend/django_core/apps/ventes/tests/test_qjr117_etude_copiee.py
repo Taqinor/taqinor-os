@@ -88,6 +88,20 @@ class LeJeuPurgeEstCoherentAvecLeSchema(SimpleTestCase):
         self.assertEqual(
             etude_params_pour_copie({'journal_auto': {'alertes': []}}), None)
 
+    def test_la_base_figee_a_l_envoi_n_est_pas_copiee(self):
+        """ACAL1237 (revue) — la base de production FIGÉE à l'ENVOI d'un
+        devis envoyé ne passe pas à sa V+1, à son clone/variante ni à sa
+        gamme sœur (les trois passent par ``etude_params_pour_copie``) : une
+        copie est un brouillon qui lit la pose servie, la source garde la
+        sienne."""
+        from apps.ventes.horaire.productible_pose import CLE_BASE_ENVOI
+        base = {'source': 'calepinage', 'kwh_kwc_annuel': 1650.0}
+        source = {'scenario': 'Sans batterie', CLE_BASE_ENVOI: base}
+        copie = etude_params_pour_copie(source)
+        self.assertEqual(copie, {'scenario': 'Sans batterie'})
+        self.assertEqual(source[CLE_BASE_ENVOI], base)
+        self.assertIsNone(etude_params_pour_copie({CLE_BASE_ENVOI: base}))
+
     def test_un_bloc_sans_configuration_rend_none(self):
         """``Devis.etude_params`` est ``null=True`` : un devis dont l'étude
         n'était QUE dérivée repart sans étude, pas avec un dict vide."""

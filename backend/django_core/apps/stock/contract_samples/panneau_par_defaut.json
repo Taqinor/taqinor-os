@@ -1,0 +1,100 @@
+{
+  "endpoint": "GET /api/django/stock/panneau-par-defaut/",
+  "forme_serveur": "complete",
+  "pourquoi": "D-ACAL-169 (fondateur, 26/11/2026 : « always use 715w everywhere, and have somewhere in the stock to show the default used pannels ») — UN panneau par défaut par société, désigné sur la fiche produit du STOCK (drapeau `stock.Produit.panneau_par_defaut`, au plus un vrai par société, contrainte de base), montré par le stock et LU plus tard par tous les choix automatiques d'un panneau (devis automatique, tailles, assistant, C&I, pompage, premier module d'un pan, valeur de départ du générateur — lanes suivantes, pas celle-ci). PACT10 : ce fichier part SEUL, avant les deux moitiés. Les cinq clés sont TOUJOURS présentes. `source` dit d'où vient la réponse : `designe` = un panneau désigné, non archivé, tarifé et toujours reconnu comme un panneau (seul cas où `produit_id`/`nom` sont servis et où les appelants l'utilisent) ; `aucun` = aucun produit désigné ; `archive` = le produit désigné est archivé ; `sans_prix` = le produit désigné n'a pas de prix de vente saisi ; `pas_un_panneau` = le produit désigné n'est plus reconnu comme un panneau (rôle déclaré, puis fiche technique de type module, puis catégorie et nom). `watt_contradictoire` = le nom du produit désigné porte un wattage ET sa fiche technique une puissance Pmax, et les deux diffèrent (le nom a été modifié après la désignation) — les moteurs de devis ne lisant pas le watt dans le même ordre (résidentiel : nom d'abord ; C&I : fiche seule), un tel produit vaudrait deux puissances : il n'est pas utilisable et l'action `definir` le refuse. Hors `designe`, `produit_id`, `nom` et `pmax_wc` valent null et `motif` dit pourquoi, en une phrase française affichable telle quelle qui NOMME le produit désigné (hors `aucun`) (l'appelant garde alors SA règle d'aujourd'hui et l'écran le dit). D-ACAL-169 (rejeu) — une seule vérité sur la page du stock : hors `designe` et `aucun`, la ligne en tête du catalogue dit « Panneau par défaut non utilisable — <motif> » (jamais « Aucun panneau par défaut ») et la pastille du produit qui porte le drapeau dit « Panneau par défaut non utilisable », sur la ligne du catalogue comme sur sa fiche. `pmax_wc` = la puissance Pmax de la fiche technique MODULE, sinon le wattage lu au nom par la regex unique de la fondation (`core.product_roles.WATT_RE`, dont `solar_classification._WATT_RE` est l'alias), sinon null — jamais un nombre inventé. Pour un panneau `designe`, nom et fiche ne se contredisent jamais : `pmax_wc` sert l'AFFICHAGE du stock ; un moteur de devis prend le watt de SA PROPRE lecture de ce produit (son résolveur : `resolution_catalogue`, l'acceptation C&I ou pompage) et, s'il ne peut pas utiliser le produit désigné, retombe sur sa règle d'avant en disant pourquoi. Le stock n'écrit aucune règle d'acceptation propre à un moteur : « est un panneau » reste rôle déclaré → fiche → catégorie → nom. AUCUN prix (ni vente ni achat) n'entre dans cette charge utile : elle est lue par tout compte qui ouvre le stock, Technicien compris. Les deux actions POST ci-dessous rendent cette même forme (l'état APRÈS le geste).",
+  "exemple": {
+    "produit_id": 42,
+    "nom": "Panneau Canadian Solar 715 Wc bifacial",
+    "pmax_wc": 715,
+    "source": "designe",
+    "motif": null
+  },
+  "exemple_aucun": {
+    "produit_id": null,
+    "nom": null,
+    "pmax_wc": null,
+    "source": "aucun",
+    "motif": "Aucun panneau par défaut n'est désigné : les choix automatiques gardent leur règle d'aujourd'hui."
+  },
+  "exemple_archive": {
+    "produit_id": null,
+    "nom": null,
+    "pmax_wc": null,
+    "source": "archive",
+    "motif": "Le panneau désigné « Panneau Canadian Solar 715 Wc bifacial » est archivé : les choix automatiques gardent leur règle d'aujourd'hui."
+  },
+  "exemple_sans_prix": {
+    "produit_id": null,
+    "nom": null,
+    "pmax_wc": null,
+    "source": "sans_prix",
+    "motif": "Le panneau désigné « Panneau Canadian Solar 715 Wc bifacial » n'a pas de prix de vente : les choix automatiques gardent leur règle d'aujourd'hui."
+  },
+  "exemple_pas_un_panneau": {
+    "produit_id": null,
+    "nom": null,
+    "pmax_wc": null,
+    "source": "pas_un_panneau",
+    "motif": "Le produit désigné « Panneau Canadian Solar 715 Wc bifacial » n'est plus reconnu comme un panneau : les choix automatiques gardent leur règle d'aujourd'hui."
+  },
+  "exemple_watt_contradictoire": {
+    "produit_id": null,
+    "nom": null,
+    "pmax_wc": null,
+    "source": "watt_contradictoire",
+    "motif": "Le panneau désigné « Panneau Jinko 710 W » n'est pas utilisable : son nom dit 710 W et sa fiche technique 715 Wc. Corrigez l'un des deux ; d'ici là, les choix automatiques gardent leur règle d'aujourd'hui."
+  },
+  "sources": [
+    "designe",
+    "aucun",
+    "archive",
+    "sans_prix",
+    "pas_un_panneau",
+    "watt_contradictoire"
+  ],
+  "actions": {
+    "definir": {
+      "endpoint": "POST /api/django/stock/produits/<int:pk>/definir-panneau-par-defaut/",
+      "corps": {},
+      "reponse_200": "la forme `exemple` ci-dessus (état après le geste)",
+      "regle": "Désigne CE produit comme panneau par défaut de la société de l'utilisateur et retire le drapeau du précédent dans la MÊME transaction (verrou sur la société : deux gestes simultanés ne laissent jamais deux défauts). Société jamais lue du corps. Produit d'une autre société ou hors de la portée d'entités du rôle : 404. Droit : `catalogue_prix_modifier` (compte à rôle fin) ; compte hérité sans rôle fin : responsable/admin (HasPermissionOrLegacy). Ne recalcule RIEN : aucun devis, aucun calepinage, aucun choix automatique n'est touché par le geste."
+    },
+    "retirer": {
+      "endpoint": "POST /api/django/stock/produits/<int:pk>/retirer-panneau-par-defaut/",
+      "corps": {},
+      "reponse_200": "la forme `exemple_aucun` si ce produit était le défaut (sinon l'état inchangé)",
+      "regle": "Retire le drapeau de CE produit s'il le portait (idempotent : sinon rien ne change). Même droit, même portée que `definir`."
+    }
+  },
+  "exemple_erreur_400": {
+    "panneau_par_defaut": [
+      "« Onduleur Deye 10 kW » n'est pas un panneau : seul un panneau peut être le panneau par défaut."
+    ]
+  },
+  "erreurs_400": [
+    "« <nom> » n'est pas un panneau : seul un panneau peut être le panneau par défaut.",
+    "« <nom> » est archivé : désarchivez-le avant d'en faire le panneau par défaut.",
+    "« <nom> » n'a pas de prix de vente : saisissez son prix avant d'en faire le panneau par défaut.",
+    "Le nom de ce produit dit <watt du nom> W et sa fiche technique <Pmax de la fiche> Wc : corrigez l'un des deux, puis désignez-le."
+  ],
+  "champ_produit": {
+    "endpoints": [
+      "GET /api/django/stock/produits/",
+      "GET /api/django/stock/produits/<int:pk>/"
+    ],
+    "cle": "panneau_par_defaut",
+    "nature": "booleen, LECTURE SEULE (ignoré dans un corps POST/PATCH ; ne se pose que par les deux actions ci-dessus)",
+    "regle": "Clé AJOUTÉE à ProduitSerializer : faux pour tout produit tant qu'aucun n'est désigné — les autres clés des réponses produit restent octet pour octet identiques. Ce n'est pas un prix : servie à tous les comptes, Technicien compris. Un produit GLOBAL (company null) ne peut pas la porter (contrainte de base `stock_produit_panneau_defaut_societe`).",
+    "exemple": {
+      "id": 42,
+      "nom": "Panneau Canadian Solar 715 Wc bifacial",
+      "panneau_par_defaut": true
+    }
+  },
+  "selecteurs_pour_les_autres_apps": {
+    "module": "apps/stock/selectors_panneau_defaut.py",
+    "panneau_par_defaut(company)": "le Produit désigné (source `designe`), sinon None",
+    "watt_panneau_par_defaut(company)": "la puissance du panneau par défaut UTILISABLE (fiche MODULE, sinon wattage lu au nom — les deux ne se contredisent jamais pour un panneau utilisable), sinon None — l'appelant garde SON repli d'aujourd'hui ; un moteur de devis relit de toute façon le watt par SA propre résolution du produit",
+    "resume_panneau_par_defaut(company)": "la forme `exemple` ci-dessus"
+  }
+}

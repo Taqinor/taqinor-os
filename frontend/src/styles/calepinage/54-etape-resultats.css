@@ -234,11 +234,15 @@
 .cal-resinc-texte { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .cal-resinc-nom { font: 600 15px var(--font-brand); }
 .cal-resinc-raison { font-size: 13px; color: var(--cal-texte-2); }
-.cal-resinc-bouton { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; flex: none;
+/* ACAL1942 — « Recalculer » (Expert > Pertes, résultat frais : plus d'action suivante) prend le même gabarit contour : l'or reste
+   à l'action qui fait avancer. */
+.cal-resinc-bouton,
+.cal-coque [data-testid='calx48-lancer-bouton'][data-etat='frais'] { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; flex: none;
   padding: 0 18px; box-sizing: border-box; border: 1px solid var(--cal-filet-fort); border-radius: var(--cal-rayon-bouton);
   background: var(--cal-surface); color: var(--cal-texte-1); font: 600 14px var(--font-brand); text-decoration: none; }
 @media (hover: hover) {
-  .cal-resinc-bouton:hover { background: var(--cal-papier); }
+  .cal-resinc-bouton:hover,
+  .cal-coque [data-testid='calx48-lancer-bouton'][data-etat='frais']:hover { background: var(--cal-papier); }
 }
 .cal-resinc-demarrage { display: flex; align-items: center; gap: 18px; padding: 18px 18px 18px 20px;
   border-radius: var(--cal-rayon-piece); background: var(--cal-surveiller-fond);

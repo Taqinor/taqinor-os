@@ -346,7 +346,12 @@ def brief_ventes(user, aujourdhui=None):
 
 def panneau_par_defaut_id(company):
     """Identifiant du panneau que le devis automatique retient quand rien n'est
-    précisé (LE résolveur du compositeur) ; ``None`` s'il n'en désigne pas UN."""
+    précisé (LE résolveur du compositeur) ; ``None`` s'il n'en désigne pas UN.
+
+    D-ACAL-169 — réconcilié avec le stock : ``resoudre_panneau`` rend le panneau
+    PAR DÉFAUT désigné quand il est utilisable et au vivier, sinon le choix
+    d'aujourd'hui (710 Wc, « Canadien » au départage). Appelant hors tests :
+    ``calepinage/services/contenance.py::_panneau``."""
     from .domain.resolution_catalogue import STATUT_UNIQUE, resoudre_panneau, vivier
 
     resolution = resoudre_panneau(company, vivier(company))

@@ -56,9 +56,14 @@ def batterie_des_produits(batteries, company):
         from apps.ventes.dimensionnement import capacite_utile_batterie
         from apps.ventes.horaire.batterie_lignes import (
             puissances_batterie_des_lignes, rendement_batterie_des_lignes)
-        from apps.ventes.services import classer_produit
+        from apps.ventes.domain.lignes import _role_a_la_creation
+        # Lecteurs en aval (constat 5) — LE rôle que l'écrivain rangera sur la
+        # ligne (rôle déclaré du produit, sa fiche, puis les mots-clés) : la
+        # batterie de l'aperçu est celle du devis qui naîtra (aucun devis
+        # encore : aucune coupure à garder).
         lignes = [ligne for ligne in _lignes_du_corps(batteries, company)
-                  if classer_produit(ligne.designation) == 'batterie']
+                  if _role_a_la_creation({'produit': ligne.produit,
+                                          'designation': ligne.designation}) == 'batterie']
         capacite = sum(
             float(capacite_utile_batterie(ligne.produit, ligne.designation)
                   or 0) * ligne.quantite

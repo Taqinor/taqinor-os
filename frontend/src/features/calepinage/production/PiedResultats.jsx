@@ -1,8 +1,10 @@
 import { ArrowRight } from 'lucide-react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { formatNumber } from '../../../lib/format'
 import { PARAM_ONGLET } from '../atelier/onglets'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
+import { libelleAnneeBasse, cibleDuMotifDuree } from './LigneSurLaDuree.helpers'
+import { lienManque } from './lienManque'
 
 /* LE PIED de l'étape Résultats (maquette Resultats.dc.html) : « Année basse (9 fois sur 10 au-dessus) :
    … · Dans N ans : … » et le bouton doré de l'étape suivante. La phrase n'est faite que de valeurs
@@ -14,11 +16,11 @@ import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 const servi = (v) => typeof v === 'number' && Number.isFinite(v)
 const enKwh = (v) => `${formatNumber(v, { decimals: 0 })} kWh`
 
-function phraseSurLaDuree(production) {
+function phraseSurLaDuree(production, incertitude) {
   const total = production?.total
   const segments = []
   if (!estIncomplet(total) && servi(total?.p90_kwh)) {
-    segments.push(`Année basse (9 fois sur 10 au-dessus) : ${enKwh(total.p90_kwh)}`)
+    segments.push(`${libelleAnneeBasse(incertitude)} : ${enKwh(total.p90_kwh)}`)
   }
   const projection = Array.isArray(production?.projection) ? production.projection : []
   const derniere = projection[projection.length - 1]
@@ -28,9 +30,14 @@ function phraseSurLaDuree(production) {
   return segments.join(' · ')
 }
 
-export default function PiedResultats({ production, action = null }) {
+export default function PiedResultats({ production, incertitude = null, action = null }) {
   const [parametres, setParametres] = useSearchParams()
-  const phrase = phraseSurLaDuree(production)
+  const phrase = phraseSurLaDuree(production, incertitude)
+  const { id } = useParams()
+  // ACAL1634 (revue) — la durée omise DIT pourquoi (le motif servi) et, quand un champ la règle, y mène : le même
+  // motif et le même lien que la ligne « sur la durée » de l'onglet Production (jamais « Dans N ans » sans cause).
+  const motifDuree = production?.duree_de_vie?.motif_omission || ''
+  const cibleMotif = cibleDuMotifDuree(motifDuree)
   const versDocuments = () => {
     const suivants = new URLSearchParams(parametres)
     suivants.set(PARAM_ONGLET, 'documents')
@@ -40,7 +47,17 @@ export default function PiedResultats({ production, action = null }) {
   const contenu = (<>{libelle}<ArrowRight size={18} aria-hidden="true" /></>)
   return (
     <div className="cal-res-pied" data-testid="cal-resultats-pied">
-      <span className="cal-res-pied-ligne">{phrase}</span>
+      <span className="cal-res-pied-ligne">
+        {phrase}
+        {motifDuree && (
+          <span data-testid="cal-resultats-pied-motif">
+            {phrase ? ' · ' : ''}{motifDuree}
+            {cibleMotif && id && (
+              <>{' '}<Link to={lienManque(id, cibleMotif.cible)} className="underline">{cibleMotif.libelle}</Link></>
+            )}
+          </span>
+        )}
+      </span>
       <button type="button" className="cal-res-cta" onClick={action?.onClick ?? versDocuments}>{contenu}</button>
     </div>
   )

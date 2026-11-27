@@ -343,6 +343,23 @@ def toit_plat_ouvert(devis) -> bool:
                                        COUPURE_TOIT_PLAT)
 
 
+#: Lecteurs en aval (fondateur 24/11/2026, « un produit se reconnaît à son rôle
+#: et à sa fiche avant son nom ») : le moteur PDF, le noyau des paniers, l'étude
+#: électrique et les lectures de lignes classent une ligne par le rôle déclaré
+#: de son produit, puis sa fiche, puis les mots-clés (``domain.classe_ligne``).
+#: « Nouveaux rendus seulement » : même mécanique et même date que
+#: :data:`COUPURE_TOIT_PLAT` (le niveau 15 n'est pas rendu courant) ; un devis
+#: envoyé avant garde le classement par les mots-clés qu'il a reçu.
+COUPURE_CLASSE_PAR_ROLE = (2026, 11, 28)
+
+
+def classe_par_role_ouverte(devis) -> bool:
+    """Lecteurs en aval — ce devis classe-t-il ses lignes par le rôle et la
+    fiche du produit avant les mots-clés ? Voir :data:`COUPURE_CLASSE_PAR_ROLE`."""
+    return _ouvert_aux_nouveaux_rendus(devis, REGLES_POSE_REELLE_2111,
+                                       COUPURE_CLASSE_PAR_ROLE)
+
+
 #: D-ACAL-168 (fondateur, 26/11/2026) — un toit PLAT sur lequel aucune table n'est encore posée
 #: (pas de ``geometry.tiltDeg``) prend 20° d'inclinaison des panneaux pour la production du devis,
 #: annoncée au VENDEUR comme supposée (jamais imprimée pour le client) ; ni l'« Inclinaison par
@@ -386,3 +403,30 @@ def drapeaux_pdf_2611(devis) -> dict:
     if marche not in MARCHES_HORS_PDF_2611 and phrases_pdf_2611_ouvertes(devis):
         return {'phrases_pdf_2611': True}
     return {}
+
+
+#: Liaison DC tracée (suite ACAL1317, lot 8, 26/11/2026 — règle fondateur du
+#: 23/11 « un seul moteur, un seul chiffre par valeur, le plus réaliste ») :
+#: quand le plan du calepinage porte un tracé DC MESURÉ du pan jusqu'à
+#: l'onduleur et qu'aucune longueur n'est saisie, la liaison DC de la
+#: SIMULATION (perte ohmique DC) et de la vérification de chute du calepinage
+#: est ce tracé (``apps/calepinage/services/cables.py::longueur_dc``). Calculs
+#: faits à partir de ce jour seulement : une simulation rangée n'est jamais
+#: réécrite, elle ne change qu'à sa prochaine simulation. L'étude électrique
+#: du devis n'en dépend pas (elle ne lit que la longueur SAISIE ``dc_m``) ; un
+#: devis au niveau :data:`REGLES_POSE_REELLE_2111` (DORMANT) lit la production
+#: de la simulation du calepinage, donc cette perte — seulement une fois ce
+#: niveau rendu courant, jamais un devis déjà envoyé. Date = lendemain du
+#: déploiement du LOT 9 (posée le 26/11 au soir : le lot 9 part après le lot 8,
+#: donc un jour après :data:`COUPURE_TOIT_PLAT` ; à repousser si le lot 9
+#: n'est pas déployé le 28/11 au plus tard). Le tracé n'y remplace que la
+#: partie HORIZONTALE de la liaison.
+COUPURE_LIAISON_DC_TRACEE = (2026, 11, 29)
+
+
+def liaison_dc_tracee_ouverte(jour) -> bool:
+    """Liaison DC tracée — un calcul du calepinage fait le ``jour``
+    (``datetime.date``) prend-il le tracé DC du plan ? Voir
+    :data:`COUPURE_LIAISON_DC_TRACEE`."""
+    from datetime import date
+    return jour >= date(*COUPURE_LIAISON_DC_TRACEE)

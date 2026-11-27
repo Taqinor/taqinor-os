@@ -108,6 +108,12 @@ export const ALL_HOOKS = [
   'cal-devis-retouches',
   'cal-devis-avertissements',
   'cal-devis-j-ai-lu',
+  'cal-devis-resync-apercu',
+  'cal-devis-resync-statut',
+  'cal-devis-resync-confirmer',
+  'cal-devis-resync-annuler',
+  'cal-devis-resync-avis',
+  'cal-devis-resync-ferme',
   'cal-devis-cree',
   'cal-devis-alertes',
   'cal-devis-details-technicien',
@@ -161,6 +167,7 @@ export const ALL_HOOKS = [
   'cal-fiche-nom-enregistrer',
   'cal-fiche-nom-erreur',
   'cal-fiche-restaurer',
+  'cal-fiche-responsable-sans-acces',
   'cal-fiche-custom-data-saisie',
   'cal-fiche-custom-data-enregistrer',
   'cal-fiche-custom_data-erreur',
@@ -382,6 +389,8 @@ export const ALL_HOOKS = [
   'cal-variante-confirmer',
   'cal-variante-dupliquer',
   'cal-variante-refus', // T4-X9-010
+  'cal-variante-retenue-sans-simulation', // R6-N2
+  'cal-variante-sans-simulation', // R6-N2
   'cal-simulation-a-refaire', // T4-X2-002
   'cal-variante-formulaire',
   'cal-variante-nom',
@@ -727,7 +736,7 @@ export const ALL_HOOKS = [
   'cal-diff-versions-ligne',
   'cal-diff-versions-rappel',
   'cal-diff-versions-tableau',
-  // atelier/Projet.jsx
+  // atelier/PanneauProjet.jsx
   'cal-projet',
   'cal-projet-annuler',
   'cal-projet-apercu',
@@ -879,6 +888,7 @@ export const ALL_HOOKS = [
   'cal-toit-obstacles',
   'cal-toit-soleil',
   'cal-panneaux-module',
+  'cal-pan-par-defaut',
   'cal-panneaux-option-facture',
   'cal-panneaux-actualiser-conception',
   'cal-panneaux-option-max',
@@ -896,6 +906,7 @@ export const ALL_HOOKS = [
   'cal-elec-onduleur-choix',
   'cal-elec-onduleur-message',
   'cal-elec-cable-provenance',
+  'cal-elec-cable-simulation',
   'cal-elec-batterie',
   'cal-elec-batterie-du-devis',
   'cal-elec-batterie-packs',

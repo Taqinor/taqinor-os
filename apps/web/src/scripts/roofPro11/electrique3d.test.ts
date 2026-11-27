@@ -31,6 +31,8 @@ import {
   creerCoucheElectrique,
   creerMarqueur,
   etiquettesChaines, // ACAL1944
+  calqueElectriqueVisible, // T4-X7-015
+  brancherCalqueElectrique, // T4-X7-015
   estTypeEquipement,
   lireCoucheElectrique,
   versScene,
@@ -712,6 +714,63 @@ describe('CALX221 — le calque électrique', () => {
     // Annuler la première pose retire la couche : le calque disparaît avec elle.
     couche.annuler();
     expect(couche.calqueDisponible()).toBe(false);
+  });
+});
+
+describe('T4-X7-015 (calque Électrique) — une seule case pour tout l’électrique de la scène', () => {
+  const chainesServies = { labelByModule: new Map([['PAN-A#1', 'chaîne 1'], ['PAN-A#2', 'chaîne 1']]) };
+
+  it('des chaînes formées SANS organe posé suffisent à proposer le calque ; pas de chaîne, pas d’organe : rien', () => {
+    const avec = creerCoucheElectrique({ sceneOrigin: ORIGINE, affectationColoration: chainesServies });
+    expect(avec.documentElectrique()).toBeNull();
+    expect(avec.calqueDisponible()).toBe(true);
+    for (const rien of [undefined, null, { labelByModule: new Map() }]) {
+      expect(creerCoucheElectrique({ sceneOrigin: ORIGINE, affectationColoration: rien }).calqueDisponible()).toBe(false);
+    }
+    expect(creerCoucheElectrique({ sceneOrigin: ORIGINE }).calqueDisponible()).toBe(false); // estimateur public : aucun contexte ERP
+  });
+
+  it('la case est UN seul état : le groupe, l’état relu par la scène et le crochet de la scène bougent ensemble', () => {
+    const couche = creerCoucheElectrique({ electrical: DOC_HUIT, sceneOrigin: ORIGINE });
+    expect(calqueElectriqueVisible(couche.groupe)).toBe(true);
+    let appels = 0;
+    couche.groupe.userData.siEtatChange = () => { appels += 1; };
+    couche.setLayerState(ID_CALQUE_ELECTRIQUE, { visible: false });
+    expect([calqueElectriqueVisible(couche.groupe), couche.groupe.visible, couche.etatCalque().visible, appels]).toEqual([false, false, false, 1]);
+    couche.rafraichir(); // un geste reconstruit le groupe : la case décochée le reste
+    expect([calqueElectriqueVisible(couche.groupe), couche.groupe.visible]).toEqual([false, false]);
+    couche.setLayerState(ID_CALQUE_ELECTRIQUE, { visible: true });
+    expect([calqueElectriqueVisible(couche.groupe), couche.groupe.visible, appels]).toEqual([true, true, 2]);
+    couche.setLayerState('zones', { visible: false }); // le calque d’un autre : ni l’état ni la scène ne bougent
+    expect([calqueElectriqueVisible(couche.groupe), appels]).toEqual([true, 2]);
+  });
+
+  it('préférence de VUE : masquer la couche n’écrit rien au document (octet-identique), couche posée ou non', () => {
+    const avant = JSON.stringify(creerCoucheElectrique({ electrical: DOC_HUIT, sceneOrigin: ORIGINE }).ecrireDansDocument({}));
+    const couche = creerCoucheElectrique({ electrical: DOC_HUIT, sceneOrigin: ORIGINE });
+    couche.setLayerState(ID_CALQUE_ELECTRIQUE, { visible: false, opacite: 0.3 });
+    expect(JSON.stringify(couche.ecrireDansDocument({}))).toBe(avant);
+    const seule = creerCoucheElectrique({ sceneOrigin: ORIGINE, affectationColoration: chainesServies });
+    seule.setLayerState(ID_CALQUE_ELECTRIQUE, { visible: false });
+    expect(seule.ecrireDansDocument({ a: 1 })).toEqual({ a: 1 }); // des chaînes seules : toujours pas de clé `electrical`
+    expect(seule.documentElectrique()).toBeNull();
+  });
+
+  it('sans couche (estimateur public, page client) : rien n’est masqué et le branchement ne fait que rattacher', () => {
+    expect(calqueElectriqueVisible(null)).toBe(true);
+    expect(calqueElectriqueVisible({ userData: {} })).toBe(true);
+    const journal: string[] = [];
+    brancherCalqueElectrique(null, () => journal.push('rattache'), () => journal.push('apres'));
+    expect(journal).toEqual(['rattache']);
+  });
+
+  it('branché : rattache aussitôt ; à chaque changement de la case, rattache puis redit les chaînes', () => {
+    const couche = creerCoucheElectrique({ electrical: DOC_HUIT, sceneOrigin: ORIGINE });
+    const journal: string[] = [];
+    brancherCalqueElectrique(couche.groupe, () => journal.push('rattache'), () => journal.push('chaines'));
+    expect(journal).toEqual(['rattache']);
+    couche.setLayerState(ID_CALQUE_ELECTRIQUE, { visible: false });
+    expect(journal).toEqual(['rattache', 'rattache', 'chaines']);
   });
 });
 

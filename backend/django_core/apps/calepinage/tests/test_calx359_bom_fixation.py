@@ -504,6 +504,22 @@ class FixationParPanTest(SimpleTestCase):
     def test_sans_conception_aucun_pan(self):
         self.assertEqual(fixation._lignes_par_pan(None, self.composants()), {})
 
+    def test_composant_d_egout_l_encart_nomme_la_quantite_du_projet_ou_la_saisie(self):
+        # ACAL1722 — une grandeur du PROJET : jamais « illisible sur le document ».
+        echafaudage = EchafaudageTest.ECHAFAUDAGE
+        document = avec_egout(layout(deux_rangees_de_cinq()))
+        globale = fixation._lignes_de_fixation(echafaudage, fixation._grandeurs_du_document(document))
+        for ligne, projet in zip(fixation._lignes_par_pan(document, echafaudage)['z1'], globale):
+            self.assertIsNone(ligne['quantite'])
+            self.assertEqual(ligne['manquant'], 'Quantité du projet : voir la nomenclature (%s m²).'
+                             % fixation._fr(projet['quantite']))
+        sans_hauteur = avec_egout(layout(deux_rangees_de_cinq()), hauteur=None, source=None)
+        self.assertIn('Hauteur du bâtiment « Villa » non saisie',
+                      fixation._lignes_par_pan(sans_hauteur, echafaudage)['z1'][0]['manquant'])
+        for ligne in fixation._lignes_par_pan(layout(deux_rangees_de_cinq()), echafaudage)['z1']:
+            self.assertEqual(ligne['manquant'], "Arêtes d'égout non typées sur ce pan : l'échafaudage "
+                                                "n'est pas calculé.")
+
     def test_sans_societe_pas_de_systeme_donc_pas_d_encart(self):
         self.assertIsNone(fixation.fixation_par_pan(
             SimpleNamespace(company=None, roof_layout=self.deux_pans())))

@@ -433,7 +433,7 @@ def _entreprise_avec_logo(devis, entreprise, pdf_options):
         from django.conf import settings as _st
         from apps.parametres.models import CompanyProfile
         from apps.ventes.utils import pdf as _pdf
-        _cle_logo = CompanyProfile.get(company=devis.company).logo_key
+        _cle_logo = CompanyProfile.lire(company=devis.company).logo_key
         _brut = _cle_logo and _pdf._download(
             _st.MINIO_BUCKET_UPLOADS, _cle_logo)
         if _brut:
@@ -459,7 +459,7 @@ def delais_validite_et_kit(*, _blob, _items_libres, avec_items, avec_lignes,
     _delais = {"visite_technique": "", "installation": ""}
     try:
         from apps.parametres.models import CompanyProfile
-        _prof = CompanyProfile.get(getattr(devis, "company", None))
+        _prof = CompanyProfile.lire(getattr(devis, "company", None))
         _delais = {
             "visite_technique": (
                 getattr(_prof, "delai_visite_technique", "") or "").strip(),
@@ -547,7 +547,7 @@ def delais_validite_et_kit(*, _blob, _items_libres, avec_items, avec_lignes,
     # Dérivation technique lue APRÈS ce point : figée AVANT la dégradation,
     # sur les lignes RÉELLES (une ligne « protection batterie » agrégée ne peut
     # donc pas déplacer d'un kWh la capacité publiée).
-    _batterie_kwh_total = _battery_kwh_from_items(avec_items, _blob) or None
+    _batterie_kwh_total = _battery_kwh_from_items(avec_items, _blob, devis) or None
     # QJR609 — la capacité UTILE vendue (fiche, puis nominal × DoD, puis nom),
     # lue sur les lignes ORM de l'option AVEC par LA lecture de la garde web
     # (``capacite_batterie_des_lignes``). Elle ne sert QU'À la garde « cet
@@ -579,7 +579,7 @@ def delais_validite_et_kit(*, _blob, _items_libres, avec_items, avec_lignes,
 def remises_et_puces(*, PUCE_AVEC_BATTERIE_DIFFEREE, _corrige, _scal,
                      all_items, avec_batterie_differee, avec_items, mode, opts,
                      sans_items, totaux_all, totaux_avec, totaux_sans, tva_pct,
-                     watt):
+                     watt, devis=None):
     # ── QJRREM — CHAQUE LIGNE PORTE LA REMISE GLOBALE ───────────────────────
     # Demande fondateur (07/09/2026) : « la remise de 5 % est gardée partout et
     # s'applique aussi à chaque poste de la liste des composants, de
@@ -665,6 +665,11 @@ def remises_et_puces(*, PUCE_AVEC_BATTERIE_DIFFEREE, _corrige, _scal,
         return (_classer_puce(r.get("designation", ""))
                 or _classer_puce(r.get("_produit_nom", "")))
 
+    from apps.ventes.domain import classe_ligne as _CL
+
+    def _est_puce(r, classe, repli):
+        return _CL.classe_de_ligne(r, classe, repli, devis=devis)
+
     def _porte_structure_et_pose(rows):
         vendues = [r for r in rows if (r.get("quantite") or 0) > 0]
         structure = any(
@@ -686,8 +691,12 @@ def remises_et_puces(*, PUCE_AVEC_BATTERIE_DIFFEREE, _corrige, _scal,
         # « Module PV 550 W » était compté comme panneau par le scalaire et
         # ABSENT de la puce du même document (celle-ci ne lisait que la
         # désignation, et via une seconde écriture de la règle).
+        # Lecteurs en aval (constat 4) — le rôle RANGÉ de l'item d'abord
+        # (``domain.classe_ligne``, ``devis`` porte la coupure) ; sans rôle, ou
+        # devis envoyé avant ``COUPURE_CLASSE_PAR_ROLE`` : l'expression d'hier.
         panels = [r for r in rows
-                  if _is_panel(r["designation"], r.get("_produit_nom", ""))
+                  if _est_puce(r, _CL.PANNEAU, lambda r=r: _is_panel(
+                      r["designation"], r.get("_produit_nom", "")))
                   and r["quantite"] > 0]
         if panels:
             n = int(sum(r["quantite"] for r in panels))
@@ -703,12 +712,14 @@ def remises_et_puces(*, PUCE_AVEC_BATTERIE_DIFFEREE, _corrige, _scal,
             # QJR-OFFGRID — l'onduleur AUTONOME est une puce comme les deux
             # autres : sans lui, un « Onduleur hors réseau » (qui comptait
             # jusqu'ici pour un onduleur réseau) DISPARAÎTRAIT de la puce.
-            if (_is_reseau_inverter(d) or _is_hybrid_inverter(d)
-                    or _is_offgrid_inverter(d)):
+            if _est_puce(r, _CL.ONDULEUR, lambda d=d: (
+                    _is_reseau_inverter(d) or _is_hybrid_inverter(d)
+                    or _is_offgrid_inverter(d))):
                 q = int(r["quantite"]) if r["quantite"] == int(r["quantite"]) else r["quantite"]
                 out.append(f"{q} × {d}" if q > 1 else d)
         for r in rows:
-            if _is_battery(r["designation"]) and r["quantite"] > 0:
+            if _est_puce(r, _CL.BATTERIE, lambda r=r: _is_battery(
+                    r["designation"])) and r["quantite"] > 0:
                 q = int(r["quantite"]) if r["quantite"] == int(r["quantite"]) else r["quantite"]
                 out.append(f"{q} × {r['designation']}" if q > 1 else r["designation"])
         if any("smart meter" in r["designation"].lower() and r["quantite"] > 0 for r in rows):

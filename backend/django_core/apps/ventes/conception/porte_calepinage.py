@@ -304,11 +304,16 @@ def _designations(company, calepinage_id, lu=None):
     champs imposés) et ``[{champ, nom}]`` de celles qu'il refuse (archivé, sans prix de
     vente, d'un autre genre, inconnu) — jamais imposées (relecture E6 B2)."""
     from apps.calepinage.services.electrique import entree_stockee
+    from apps.calepinage.services.variantes import onduleur_designe_a_la_main
     from apps.ventes.selectors_calepinage import calepinage_de_societe
 
     calepinage = (lu if lu is not None and lu.pk == calepinage_id
                   else calepinage_de_societe(calepinage_id, company) if calepinage_id else None)
     entree = (entree_stockee(calepinage) or {}) if calepinage is not None else {}
+    # Lot 8 — un onduleur « repris de l'original » (copie, ACAL1253) n'est pas imposé : seul ce que le
+    # vendeur a désigné à la main l'est (lu par le calepinage, qui porte le marqueur).
+    if entree.get('onduleur_produit') not in (None, '') and not onduleur_designe_a_la_main(calepinage):
+        entree.pop('onduleur_produit')
     designes = [(role, cle, genre, entree[role]) for role, cle, genre in _ROLES_DESIGNES
                 if entree.get(role) not in (None, '')]
     if not designes:
@@ -378,3 +383,31 @@ def designations_ecartees(company, calepinage_id):
              'message': (MESSAGE_HORS_CATALOGUE % e['nom'] if e['nom'] else
                          MESSAGE_HORS_CATALOGUE.replace('« %s »', "à l'étape Électrique"))}
             for e in _designations(company, calepinage_id)[1]]
+
+
+# Cliquet ACAL1009 — portes minces pour le reste de ``ventes`` (pur ré-acheminement,
+# lecture à l'appel : un ``mock.patch`` du module du calepinage reste vu).
+
+def calepinage_lie_au_devis(devis_id, company):
+    """Le calepinage du devis (``apps.calepinage.selectors.calepinage_du_devis``) —
+    lu par ``domain/revision.py``."""
+    from apps.calepinage.selectors import calepinage_du_devis
+
+    return calepinage_du_devis(devis_id, company)
+
+
+def relier_calepinage_au_devis_revise(ancien, nouveau, *, user=None):
+    """LE service de re-liaison du calepinage à la V+1
+    (``apps.calepinage.services.relier_au_devis_revise``) — appelé par
+    ``domain/revision.py``."""
+    from apps.calepinage import services as calepinage_services
+
+    return calepinage_services.relier_au_devis_revise(ancien, nouveau, user=user)
+
+
+def specs_module_du_calepinage(specs, nom):
+    """La fiche électrique d'un module (``apps.calepinage.services.chaines.specs_module``)
+    — lue par ``domain/etude_ci_module.py``."""
+    from apps.calepinage.services.chaines import specs_module
+
+    return specs_module(specs, nom)

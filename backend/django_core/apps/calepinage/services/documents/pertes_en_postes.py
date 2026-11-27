@@ -19,7 +19,7 @@ from __future__ import annotations
 from html import escape
 
 from ..rapport import nombre_tel_que_servi, verifier_etancheite
-from ..rapport.champs_lisibles import motif_lisible
+from ..regroupement_pertes import cause_courte
 
 __all__ = [
     'CODE_DOCUMENT', 'MENTION_ETUDE', 'PHRASES', 'TITRE',
@@ -63,46 +63,8 @@ CSS_FICHE = (
 )
 
 
-#: ACAL1616 — ce qui manque à une étape omise, en mots de métier : une table
-#: FERMÉE ``étape -> cause``. Le motif servi reste au rapport d'étude
-#: (document technique) ; la fiche client n'en recopie jamais le texte.
-CAUSE_PAR_ETAPE = {
-    'horizon': 'horizon du site', 'ombrage_proche': 'aucun obstacle saisi',
-    'acces_module': 'ombre par panneau', 'ombrage_diffus': 'vue du ciel',
-    'inter_rangees': 'géométrie des rangées',
-    'mismatch_ombrage': 'ombre par panneau', 'salissure': 'salissure du site',
-    'neige': 'neige du site', 'thermique': 'fiche du module',
-    'ohmique_dc': 'câbles', 'mppt': 'température des cellules',
-    'onduleur': "fiche de l'onduleur", 'ecretage': "fiche de l'onduleur",
-    'ohmique_ac': "sortie de l'onduleur", 'transformateur': 'transformateur',
-    'bifacial': 'face arrière du module', 'iam': 'heure du site',
-    'spectral': 'modèle spectral', 'niveau_irradiance': 'fiche du module',
-    'qualite_module': 'fiche du module', 'lid': 'perte de mise en service',
-    'mismatch_fabricant': 'dispersion des modules',
-    'diodes': 'fiche du module', 'optimiseur': 'optimiseurs',
-    'auxiliaires': 'consommation des auxiliaires',
-    'indisponibilite': "périodes d'arrêt",
-}
-
-#: Le mot court d'état, lu dans le motif servi : la PREMIÈRE famille gagne.
-ETAT_PAR_CAUSE = (
-    (('sans objet', 'aucune perte'), 'sans objet'),
-    (('deux fois', 'déjà'), 'déjà compté'),
-    (('non modélis',), 'non modélisé'),
-    (('saisi', 'renseign', 'fiche', 'déclar'), 'non renseigné'),
-)
-
-
-def _cause_courte(etape):
-    """« <état> : <ce qui manque> » — jamais le motif servi recopié."""
-    motif = str(etape.get('motif_omission') or '').lower()
-    etat = next((mot for indices, mot in ETAT_PAR_CAUSE
-                 if any(indice in motif for indice in indices)),
-                'non calculé')
-    cause = CAUSE_PAR_ETAPE.get(etape.get('etape'))
-    if cause is None:  # étape neuve : son libellé, rendu lisible
-        cause = motif_lisible(etape.get('libelle') or 'donnée manquante')
-    return '%s : %s' % (etat, cause)
+# ACAL1676 — la cause courte vit dans `regroupement_pertes` (UNE source, lue aussi par l'écran des résultats).
+_cause_courte = cause_courte
 
 
 def _non_comptees(poste):

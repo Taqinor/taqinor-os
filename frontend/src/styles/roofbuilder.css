@@ -147,6 +147,10 @@
 /* ── Compas + dimensionnement de la carte (FONCTIONNEL) ─────────────────── */
 .rp9-host #rp9-map { position: relative; }
 .rp9-host #rp9-map .maplibregl-map { position: absolute; inset: 0; }
+/* ACAL1813 — le voile coopératif de MapLibre (« Utilisez deux doigts… », z-index 99999) vit dans le conteneur du canvas :
+   sans contexte d'empilement il passait par-dessus le tiroir et le bandeau. Le conteneur isolé le borne à la carte ;
+   les contrôles de la carte (z-index 2) restent au-dessus. Voile MapLibre réutilisé, aucun voile maison. */
+.rp9-host #rp9-map .maplibregl-canvas-container.maplibregl-cooperative-gestures { isolation: isolate; }
 .rp9-host .rp9-compass {
   position: absolute;
   top: 12px;
@@ -631,6 +635,9 @@
   .rp9-host .rp9-chip { display: inline-flex; align-items: center; justify-content: center; }
   .rp9-host .rp9-layout-grid { grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); }
   .rp9-host .rp9-layout-cell { min-height: 44px; }
+  /* ACAL1815 — les puces du tracé (« Caler le fond », `#rp9-trace-chips`, créées par mapDraw.ts) restent dans le flux et
+     SOUS la barre des étapes (`.cal-rail`, z-base + 40) : elles ne la recouvrent jamais ; leur contenu passe à la ligne. */
+  .rp9-host .rp9-trace-chips { position: relative; z-index: 0; max-width: 100%; }
 }
 
 .rp9-host .text-\[11px\],

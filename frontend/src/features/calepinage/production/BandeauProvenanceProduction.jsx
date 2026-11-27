@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { PVGIS_LIVE_LOSS_PCT } from '@rooflib/systemLoss'
 import { tailleDifferente, texteKwc } from '@roofpro/tailleConception' // T4-X9 — LE prédicat de taille
 import calepinageApi from '../../../api/calepinageApi'
@@ -10,6 +10,7 @@ import { ecouterResultat } from '../atelier/simulationFraiche'
 import { estProfilDepart, MENTION_PUBLIEE } from '../reglages/profilDepart'
 import { estIncomplet, SIMULATION_A_REFAIRE, simulationARefaire } from './BandeauProvenanceProduction.helpers'
 import Pourquoi from '../commun/Pourquoi'
+import { lienManque } from './lienManque'
 
 /* ============================================================================
    CALX65 — DIRE, DANS L'ATELIER, LAQUELLE DES DEUX PRODUCTIONS PARLE.
@@ -214,7 +215,9 @@ function EcartDevis({ ecart, borneHaute = null }) {
 /* ACAL980 — « Ce qui est supposé » : les replis cachés du moteur (`suppose[]` de
    `GET resultat/`, contrat `calepinage_resultat.json`), chacun avec sa valeur et
    le champ à renseigner. Rien n'est calculé ici ; liste vide ou absente ⇒ rien. */
-export function Suppose({ suppose }) {
+export function Suppose({ suppose, calepinageId = null }) {
+  const { id: idUrl } = useParams()
+  const id = calepinageId ?? idUrl
   if (!Array.isArray(suppose) || suppose.length === 0) return null
   return (
     <div className="text-sm" data-testid="acal980-suppose">
@@ -223,7 +226,13 @@ export function Suppose({ suppose }) {
         {suppose.map((repli) => (
           <li key={repli.code} data-testid={`acal980-${repli.code}`}>
             {repli.libelle}
-            <span className="block text-muted-foreground">{`À renseigner : ${repli.champ}`}</span>
+            {/* ACAL1630 (revue) — la cible SERVIE (`suppose[].cible`) fait du champ un lien ; sans cible, du texte. */}
+            <span className="block text-muted-foreground">
+              {'À renseigner : '}
+              {repli.cible && id
+                ? <Link to={lienManque(id, repli.cible)} className="text-primary-text underline">{repli.champ}</Link>
+                : repli.champ}
+            </span>
           </li>
         ))}
       </ul>
@@ -239,9 +248,15 @@ export function EcartPvgis({ validation }) {
   if (typeof pct !== 'number') return null
   const signe = pct < 0 ? '−' : (pct > 0 ? '+' : '')
   const sansVerdict = validation.tolerance_pct == null && validation.verdict == null
+  // ACAL1933 — « sans <designation>, que PVGIS compte » : les étapes omises SERVIES (`pertes_totales.omises_vs_pvgis`).
+  const omises = (Array.isArray(validation.pertes_totales?.omises_vs_pvgis) ? validation.pertes_totales.omises_vs_pvgis : [])
+    .map((o) => o?.designation).filter((d) => typeof d === 'string' && d)
+  const sans = omises.length > 0
+    ? `, sans ${omises.length > 1 ? `${omises.slice(0, -1).join(', ')} ni ${omises[omises.length - 1]}` : omises[0]}, que PVGIS compte`
+    : ''
   return (
     <p className="text-sm text-muted-foreground" data-testid="acal854-ecart-pvgis">
-      {`Comparé à PVGIS au même endroit${validation.pertes_totales?.egales === true ? ', à pertes système égales' : ''} : `}{signe}{formatNumber(Math.abs(pct), { decimals: 1 })}{' %'}
+      {`Comparé à PVGIS au même endroit${validation.pertes_totales?.egales === true ? ', à pertes système égales' : ''}${sans} : `}{signe}{formatNumber(Math.abs(pct), { decimals: 1 })}{' %'}
       <Pourquoi cle="production.ecart_pvgis" valeurs={{ validation }} />{/* ACAL873 */}
       {sansVerdict && (
         <span className="block text-xs" data-testid="acal854-sans-verdict">

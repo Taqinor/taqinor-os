@@ -93,7 +93,7 @@ def licence_statut_view(request):
             {'detail': "Permission 'adminops_licences_voir' requise."},
             status=403)
     company = request.user.company
-    profile = CompanyProfile.get(company=company)
+    profile = CompanyProfile.lire(company=company)
     return Response({
         'plan': _statut_plan(profile),
         **_statut_sieges(company, profile),
@@ -138,7 +138,7 @@ def licence_pdf_view(request):
     from core.pdf import render_pdf
 
     company = request.user.company
-    profile = CompanyProfile.get(company=company)
+    profile = CompanyProfile.lire(company=company)
     plan = _statut_plan(profile)
     sieges = _statut_sieges(company, profile)
     comptes = _comptes_actifs_nominatifs(company)

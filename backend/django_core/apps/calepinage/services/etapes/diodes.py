@@ -22,6 +22,8 @@ logiciel que nous n'employons jamais.
 """
 from __future__ import annotations
 
+from apps.calepinage.services.etapes import fiche_du_module
+
 from apps.calepinage.services import etapes
 from apps.calepinage.services.ombrage_chaines import acces_par_bande
 from apps.calepinage.services.production import (
@@ -41,7 +43,7 @@ MOTIF_SANS_DONNEES = (
     'document. Aucun forfait n\'est appliqué à leur place.')
 
 MOTIF_AUCUNE_CHAINE_AFFINEE = (
-    'Aucune chaîne ne porte, sur TOUS ses modules, des bandes en nombre égal '
+    'Aucune chaîne ne porte, sur tous ses modules, des bandes en nombre égal '
     'aux sous-chaînes de la fiche : rien n\'est affiné, et aucun chiffre '
     'n\'est supposé.')
 
@@ -61,7 +63,7 @@ __all__ = ['POSTE', 'MOTIF_SANS_DONNEES', 'MOTIF_AUCUNE_CHAINE_AFFINEE',
 
 def _sous_chaines(contexte):
     """Le nombre de sous-chaînes de la FICHE du module, ou ``None``."""
-    fiche = contexte.get('fiche_module')
+    fiche = fiche_du_module(contexte)
     brut = fiche.get(CHAMP_SOUS_CHAINES) if isinstance(fiche, dict) else None
     lu = _nombre(brut)
     return int(lu) if lu is not None and lu >= 1 and lu == int(lu) else None

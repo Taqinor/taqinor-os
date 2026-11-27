@@ -211,6 +211,41 @@ class ACAL927PoseAffleuranteKitDeFixation(_Base):
             self.assertEqual((par_designation['Structure acier'], par_designation['Socle béton']), attendu)
 
 
+class ACAL1238LeKitSuitLesAffleurants(SimpleTestCase):
+    """ACAL1238 — tout affleurant, 8 → 10 panneaux au niveau 15 : la ligne « kit de fixation »
+    suit les modules affleurants (10), jamais 0 ni l'ancien 8 ; niveau 14 inchangé ; idempotent."""
+
+    LAYOUT = {'zones': [{'id': 'A', 'geometry': {'count': 10, 'flush': True}}]}
+    KIT = 'Kit de fixation toit en pente'
+
+    def _appliquer(self, specs, niveau, cible=10):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        with mock.patch('apps.ventes.domain.overrides.cible_dimensionnement_du_devis', return_value=cible), \
+                mock.patch('apps.ventes.domain.overrides.preseance_nb_panneaux',
+                           return_value=SimpleNamespace(quantite_ligne=cible)):
+            _appliquer_preseance_quantite(
+                SimpleNamespace(regles_calcul=niveau, roof_layout=self.LAYOUT), specs)
+        return {s['designation']: s['quantite'] for s in specs}
+
+    def _specs(self, nb=8):
+        return [{'designation': 'Panneau Canadian Solar 710W', 'quantite': str(nb)},
+                {'designation': self.KIT, 'quantite': str(nb)}]
+
+    def test_tout_affleurant_8_vers_10_le_kit_a_10(self):
+        self.assertEqual(self._appliquer(self._specs(), 15)[self.KIT], '10')
+
+    def test_reecrire_deux_fois_donne_les_memes_quantites(self):
+        specs = self._specs()
+        premiere = dict(self._appliquer(specs, 15))
+        specs[0]['quantite'] = '8'
+        self.assertEqual(self._appliquer(specs, 15), premiere)
+
+    def test_niveau_14_le_kit_inchange(self):
+        self.assertEqual(self._appliquer(self._specs(), 14)[self.KIT], '8')
+
+
 class T4X4001PanneauxRetouchesALEcran(_Base):
     """T4-X4-001 — le vendeur passe 5 → 7 panneaux à l'écran : structure et
     socles de la MÊME option suivent par LA règle de la composition ; une

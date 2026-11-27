@@ -8,6 +8,7 @@ import re
 from django.db.models import Q
 from django.utils import timezone
 
+from core.user_display import nom_affiche
 from core.conflit_etat import ConflitEtat
 
 from . import activity, stages
@@ -609,7 +610,7 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
                 try:
                     archiver_lead(
                         lead, user,
-                        note=f"Lead archivé en masse par {getattr(user, 'username', '?')}")
+                        note=f"Lead archivé en masse par {nom_affiche(user) or '?'}")
                 except ConflitEtat as exc:  # ASUP48 — signé à suite réelle : sauté
                     skip(lead, str(exc.detail))
                     continue
@@ -623,7 +624,7 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
                 from .fiche_ecritures import restaurer_lead
                 if restaurer_lead(  # ASUP9 — même garde : un refus est compté avec son motif
                         lead, user, sur_refus=lambda motif, lead=lead: skip(lead, motif),
-                        note=f"Lead restauré en masse par {getattr(user, 'username', '?')}"):
+                        note=f"Lead restauré en masse par {nom_affiche(user) or '?'}"):
                     updated += 1
 
             elif op == 'plan_activity':

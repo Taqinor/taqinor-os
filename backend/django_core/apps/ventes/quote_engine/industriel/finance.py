@@ -241,8 +241,10 @@ def _rangees_flux(flux, fmt, L, d, compact):
         if valeur is None:
             continue
         cat, fr = LIBELLES_HYPOTHESES[h["cle"]]
-        if h["cle"] == "horizon_ans" and ci_couverture.SOURCES_CLIENT.get(
-                str(h.get("source") or "").strip()) == "ci_src_horizon":
+        # ACAL1225 (revue-13) — lue sur la source DÉSÉCHAPPÉE : « horizon
+        # d'analyse : 25 ans » arrive « horizon d&#x27;analyse… » au rendu.
+        if h["cle"] == "horizon_ans" and ci_couverture.cle_source_client(
+                h.get("source")) == "ci_src_horizon":
             # « Horizon : 25 ans » — la source servie (« durée d'analyse :
             # 25 ans ») ne ferait que le répéter.
             rangees.append((L(cat, fr), valeur))
@@ -769,7 +771,7 @@ def _pied_investissement(d, argent, fmt_mad, L):
 def _argent_option_avec_omis(d):
     from ..ci.synthese import MOTIF_ARGENT_OPTION_AVEC
     return any(isinstance(o, dict) and o.get("bloc") == "argent"
-               and o.get("motif") == MOTIF_ARGENT_OPTION_AVEC
+               and ci_couverture.cle_texte_servi(o.get("motif")) == MOTIF_ARGENT_OPTION_AVEC
                for o in (d.get("ind_synthese") or {}).get("omissions") or [])
 
 

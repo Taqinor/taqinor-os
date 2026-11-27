@@ -26,7 +26,7 @@ def valider_hors_reseau(saisie):
     from .electrique import _fini, _refus_champ
 
     if saisie is None:
-        return
+        return []
     if not isinstance(saisie, dict):
         _refus_champ("« hors_reseau » doit être un objet {actif, "
                      "jours_autonomie…} (reçu : %s)."
@@ -55,6 +55,22 @@ def valider_hors_reseau(saisie):
                          'hors_reseau.etat_initial_kwh')
     _valider_seuils(saisie.get('seuils'), _refus_champ)
     _groupe_appoint.valider_groupe(saisie.get('groupe'), _refus_champ)  # ACAL800
+    return _avertir_demarrage(saisie.get('seuils'), saisie.get('groupe'))
+
+
+def _avertir_demarrage(seuils, groupe):
+    """ACAL1667 — AVERTIT (jamais un refus) quand le groupe démarre sous la
+    veille : la déclaration reste enregistrée telle quelle."""
+    if not (isinstance(seuils, dict) and isinstance(groupe, dict)
+            and groupe.get('actif')):
+        return []
+    demarrage = _nombre(groupe.get('soc_demarrage_pct'))
+    veille = _nombre(seuils.get('veille_pct'))
+    if demarrage is None or veille is None or demarrage >= veille:
+        return []
+    return ['Le groupe démarre sous le seuil de veille : il ne tournera '
+            'jamais (démarrage à %g %%, veille à %g %%).'
+            % (demarrage, veille)]
 
 
 def _valider_seuils(seuils, refuser):

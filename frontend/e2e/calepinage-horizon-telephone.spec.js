@@ -71,6 +71,27 @@ test('ACAL521 : douze visées simulées donnent un profil enregistré avec son r
   await page.getByRole('button', { name: 'Enregistrer le profil' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Profil d’horizon enregistré' })).toBeVisible()
 
+  // ACAL1815 — à 390 × 664 : le message est SOUS le bouton (sans le recouvrir), champs et bouton ≥ 44 px de haut,
+  // la pastille « Caler le fond » (si elle est affichée) ne recouvre pas la barre du bas.
+  const boite = (loc) => loc.first().boundingBox()
+  const bouton = await boite(page.getByRole('button', { name: 'Enregistrer le profil' }))
+  const message = await boite(page.getByRole('status').filter({ hasText: 'Profil d’horizon enregistré' }))
+  expect(message.y, 'message sous le bouton (pas sur sa rangée)').toBeGreaterThanOrEqual(bouton.y + bouton.height - 1)
+  expect(bouton.height, 'hauteur du bouton Enregistrer le profil').toBeGreaterThanOrEqual(44)
+  for (const champ of ['azimut', 'hauteur']) {
+    const b = await boite(page.getByTestId(`cal-horizon-champ-${champ}`).locator('input'))
+    expect(b.height, `hauteur du champ ${champ}`).toBeGreaterThanOrEqual(44)
+  }
+  const pastille = page.locator('#rp9-fond-chip')
+  // ACAL1815 (revue) — INCONDITIONNEL : la pastille est affichée dans cet état (jamais masquée par `ensureCalageChip`) ;
+  // un `if (isVisible)` laissait passer le test sans rien mesurer. Si elle disparaît, c'est le test qui échoue.
+  await expect(pastille, 'la pastille « Caler le fond » doit être affichée dans cet état').toBeVisible()
+  const [p, rail] = [await boite(pastille), await boite(page.locator('.cal-rail'))]
+  expect(p, 'boîte de la pastille mesurable').toBeTruthy()
+  expect(rail, 'boîte de la barre du bas (.cal-rail) mesurable').toBeTruthy()
+  const recouvre = p.x < rail.x + rail.width && p.x + p.width > rail.x && p.y < rail.y + rail.height && p.y + p.height > rail.y
+  expect(recouvre, 'la pastille « Caler le fond » recouvre la barre du bas').toBe(false)
+
   // Le document de conception se lit sur `layout/` (le détail du calepinage ne le porte plus).
   const detail = await page.request.get(`${API}/calepinages/${id}/layout/`)
   expect(detail.ok(), `GET layout (${detail.status()})`).toBeTruthy()

@@ -656,6 +656,31 @@ describe('PanneauBatterie — groupe d’appoint hors réseau (ACAL803)', () => 
     expect(await screen.findByTestId('acal803-soc_demarrage_pct-erreur')).toHaveTextContent(motif)
   })
 
+  it('ACAL1932 — seuils veille 30 % / démarrage 20 % : « 0 h » s’accompagne de la cause servie ; un groupe qui a tourné n’en porte pas', async () => {
+    const cause = 'le groupe ne démarre jamais : seuil de démarrage sous la veille '
+      + '(démarrage à 20 %, veille à 30 %) — la batterie cesse de se décharger à la veille, '
+      + 'son état de charge n’atteint donc jamais le démarrage'
+    servirHorsReseau({
+      ...SERVI,
+      groupe: { ...SERVI.groupe, heures_de_marche: 0, energie_fournie_kwh: 0, par_mois: [], cause_inactif: cause },
+    })
+    rendreExpert()
+    await declaration()
+    const lecture = await screen.findByTestId('acal803-groupe')
+    expect(lecture).toHaveTextContent(/Le groupe a tourné 0 h dans l’année/)
+    expect(lecture).toHaveTextContent('le groupe ne démarre jamais : seuil de démarrage sous la veille')
+    expect(lecture).toHaveTextContent('démarrage à 20 %, veille à 30 %')
+  })
+
+  it('ACAL1932 — le groupe de l’exemple (90 h de marche, cause nulle) ne porte aucune phrase de cause', async () => {
+    expect(SERVI.groupe.cause_inactif).toBeNull()
+    servirHorsReseau(SERVI)
+    rendreExpert()
+    await declaration()
+    const lecture = await screen.findByTestId('acal803-groupe')
+    expect(lecture).not.toHaveTextContent('ne démarre jamais')
+  })
+
   it('case décochée et rien au stock : aucun groupe posté ; sans groupe servi, rien de nouveau', async () => {
     calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
     servirHorsReseau({ ...SERVI, groupe: null, banque_mois_charge: null, motif_banque_mois_charge: 'Mois non calculé.' })
@@ -884,5 +909,124 @@ describe('PanneauBatterie — garde-fou, faits de la série et verdict (ACAL795)
     rendreExpert(false)
     await screen.findByTestId('calx14-batterie')
     expect(screen.queryByTestId('acal795-faits')).toBeNull()
+  })
+})
+
+/* ACAL1644 — champs touchables (≥ 44 px, un par ligne) et refus nommés en mots, par le vrai formulaire. */
+describe('PanneauBatterie — champs lisibles et refus en mots (ACAL1644)', () => {
+  const VIDE = exempleContrat('calepinage', 'calepinage_entree_electrique', 'exemple_vide')
+  const regler = (id, valeur) => fireEvent.change(document.getElementById(id), { target: { value: String(valeur) } })
+  const champReserve = () => document.getElementById('acal167-reserve_backup_kwh')
+  const rendreExpert = () => render(
+    <MemoryRouter initialEntries={['/?mode=expert']}><PanneauBatterie calepinageId={1} /></MemoryRouter>,
+  )
+
+  beforeEach(() => {
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: { entree: VIDE.entree } })
+    servir('exemple')
+  })
+
+  it('un refus sur −1 se lit sous le champ, en mots, sans chemin technique', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockRejectedValue({
+      response: {
+        status: 400,
+        data: { 'batterie.appareils[0].puissance_continue_kw': 'Batterie.appareils[0].puissance continue kw : « Appareil 1 » : est à saisir' },
+      },
+    })
+    rendreExpert()
+    await screen.findByTestId('acal167-declaration')
+    fireEvent.change(document.getElementById('acal167-strategie'), { target: { value: 'backup' } })
+    fireEvent.click(screen.getByTestId('acal788-ajouter'))
+    regler('acal788-0-puissance_continue_kw', -1)
+    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
+
+    expect(await screen.findByTestId('acal788-0-puissance_continue_kw-erreur'))
+      .toHaveTextContent('Puissance en marche de l’appareil 1 : saisissez un nombre positif')
+    expect(document.body.textContent).not.toMatch(/Batterie\.appareils|puissance continue kw/)
+  })
+
+  it('une fenêtre refusée est nommée « La 2e fenêtre de charge », sans chemin technique', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockRejectedValue({
+      response: { status: 400, data: { 'batterie.fenetres.charge[1]': 'Batterie.fenetres.charge[1] : recouvre une fenêtre de décharge.' } },
+    })
+    rendreExpert()
+    await screen.findByTestId('acal167-declaration')
+    fireEvent.change(document.getElementById('acal167-strategie'), { target: { value: 'decalage' } })
+    fireEvent.click(screen.getByTestId('acal792-ajouter-charge'))
+    fireEvent.click(screen.getByTestId('acal792-ajouter-charge'))
+    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
+
+    expect(await screen.findByTestId('acal792-charge-1-erreur'))
+      .toHaveTextContent('La 2e fenêtre de charge : recouvre une fenêtre de décharge.')
+    expect(document.body.textContent).not.toMatch(/Batterie\.fenetres/)
+  })
+
+  it('ACAL1666 — stratégie changée : appareils, durée et fenêtres masqués ne sont plus postés, mais restent à l’écran', async () => {
+    const SECOURS = exempleContrat('calepinage', 'calepinage_entree_electrique', 'exemple_secours').batterie
+    const stocke = { ...VIDE.entree, batterie: { ...SECOURS, strategie: 'backup', fenetres: { charge: [{ heures: [10, 11], soc_cible_pct: 80 }], decharge: [] } } }
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: { entree: stocke } })
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+    rendreExpert()
+    await screen.findByTestId('acal167-declaration')
+    expect(document.getElementById('acal788-0-nom')).toHaveValue(SECOURS.appareils[0].nom)
+    fireEvent.change(document.getElementById('acal167-strategie'), { target: { value: 'peak_shaving' } })
+    regler('acal167-seuil_effacement_kw', 1.2)
+    expect(champReserve()).not.toBeDisabled()
+    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
+    await screen.findByTestId('acal167-message')
+    const { batterie } = calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[0][1]
+    expect(batterie.strategie).toBe('peak_shaving')
+    expect(batterie.seuil_effacement_kw).toBe(1.2)
+    ;['appareils', 'duree_secours_h', 'coupures', 'fenetres'].forEach((cle) => expect(batterie[cle]).toBeNull())
+    // Revenir à « Secours » retrouve les appareils, gardés à l'écran.
+    fireEvent.change(document.getElementById('acal167-strategie'), { target: { value: 'backup' } })
+    expect(document.getElementById('acal788-0-nom')).toHaveValue(SECOURS.appareils[0].nom)
+    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique).toHaveBeenCalledTimes(2))
+    expect(calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[1][1].batterie.appareils).toEqual(SECOURS.appareils)
+  })
+
+  it('ACAL1668 — sans devis lié, la liste des batteries du stock (celle du comparateur) pose batterie.produit', async () => {
+    const donnees = donneesSimulees()
+    const stock = donnees.batterie.capacites_candidates.capacites_stock
+    expect(stock.length).toBeGreaterThan(1)
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donnees })
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+    rendreExpert()
+    await screen.findByTestId('acal167-declaration', {}, { timeout: 8000 })
+    const liste = document.getElementById('acal167-produit')
+    const options = Array.from(liste.querySelectorAll('option')).slice(1)
+    expect(options.map((o) => o.value)).toEqual(stock.map((s) => String(s.produit)))
+    expect(options[1]).toHaveTextContent(stock[1].libelle)
+    fireEvent.change(liste, { target: { value: String(stock[1].produit) } })
+    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
+    await screen.findByTestId('acal167-message')
+    expect(calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[0][1])
+      .toEqual({ batterie: { produit: stock[1].produit } })
+  })
+
+  it('ACAL1668 — sans choix de produit, rien n’est posté (la ligne du devis lié reste le défaut)', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donneesSimulees() })
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+    rendreExpert()
+    await screen.findByTestId('acal167-declaration', {}, { timeout: 8000 })
+    expect(document.getElementById('acal167-produit')).toHaveValue('')
+    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
+    await screen.findByTestId('acal167-message')
+    expect(calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[0][1]).toEqual({})
+  })
+
+  it('chaque champ fait au moins 44 px (min-h-11) et s’empile sur une colonne', async () => {
+    rendreExpert()
+    await screen.findByTestId('acal167-declaration')
+    fireEvent.change(document.getElementById('acal167-strategie'), { target: { value: 'backup' } })
+    fireEvent.click(screen.getByTestId('acal788-ajouter'))
+    fireEvent.click(document.getElementById('acal167-actif'))
+    fireEvent.click(await screen.findByLabelText('Il y a un groupe sur le site'))
+    const ids = ['acal788-0-puissance_continue_kw', 'acal788-duree', 'acal791-veille_pct', 'acal803-puissance_kw']
+    ids.forEach((id) => expect(document.getElementById(id).className).toContain('min-h-11'))
+    expect(screen.getByTestId('acal788-appareil').className).toContain('grid-cols-1')
+    expect(screen.getByTestId('acal788-appareil').className).not.toMatch(/sm:grid-cols/)
+    expect(document.getElementById('acal803-actif').className).toContain('size-5')
   })
 })

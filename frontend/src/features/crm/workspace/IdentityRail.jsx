@@ -203,16 +203,24 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
      sortie. Le refus du serveur est affiché tel quel, précédé du nom du geste
      — jamais un « non enregistré » générique. */
   const ouvrirModuleCalepinage = async () => {
+    // ACAL1271 — Safari iOS bloque un window.open posé après un await : l'onglet
+    // est pré-ouvert ICI, dans le tap (patron VX48), puis dirigé vers l'atelier.
+    // Sans `noopener` (il rendrait null) ; le lien opener est coupé à la main.
+    const onglet = window.open('', '_blank')
+    if (onglet) { try { onglet.opener = null } catch { /* sans effet */ } }
     try {
       const res = await calepinageApi.calepinages.depuisLead(leadId)
       const id = res?.data?.calepinage
       if (!id) {
+        onglet?.close()
         toast.error('Module Calepinage : le serveur n’a rendu aucun '
           + 'calepinage — rien n’a été ouvert.')
         return
       }
-      window.open(`/calepinage/${id}`, '_blank', 'noopener')
+      if (onglet) onglet.location.href = `/calepinage/${id}`
+      else window.open(`/calepinage/${id}`, '_blank', 'noopener')
     } catch (err) {
+      onglet?.close()
       const corps = err?.response?.data
       const motif = typeof corps === 'string'
         ? corps
@@ -290,6 +298,8 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   // savait jamais qu'un tracé complet l'attendait dans l'écran 3D.
   const roofOutlineReady = Array.isArray(server.roof_outline)
     && server.roof_outline.length >= 3
+  // ACAL1269 — pompage : ni toit ni facture d'électricité (champ au sol, gasoil).
+  const pompage = getField(state, 'type_installation') === 'agricole'
   const roofReady = roofOutlineReady || !!server.roof_point
   const factureReady = server.facture_hiver != null && server.facture_hiver !== ''
   // T4-U1-022 — une consommation déclarée en kWh (sans facture) est une donnée d'énergie saisie : la puce ne dit
@@ -623,7 +633,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           <span className="lw-rail-label">Responsable</span>
           <AssigneePicker
             users={users} disabled={!peutReassigner}
-            value={owner ?? ''}
+            value={owner ?? ''} nomServi={server.owner_nom}
             onChange={(id) => onAction('set-field', { key: 'owner', value: id ?? '' })}
           />
         </div>
@@ -669,6 +679,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           micro-icônes denses, jamais de chip « manquant » — un choix
           délibéré pour cette carte-là, pas une régression à répliquer ici). */}
       <div className="lw-rail-chips">
+        {!pompage && (<>
         <Badge
           tone={roofReady ? 'success' : 'neutral'}
           title={roofOutlineReady
@@ -686,6 +697,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
         >
           🧾 {factureReady ? 'Facture saisie' : consoKwhSaisie ? 'Consommation saisie (kWh)' : 'Facture manquante'}
         </Badge>
+        </>)}
         <Badge
           tone={devisReady ? 'success' : 'neutral'}
           title={devisReady ? 'Toutes les données nécessaires sont réunies pour générer un devis' : devisNotReadyMsg}

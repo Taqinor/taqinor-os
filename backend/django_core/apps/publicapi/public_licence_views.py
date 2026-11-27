@@ -34,7 +34,7 @@ class PublicLicenceStatutView(PublicApiResponseMixin, APIView):
     }))
     def get(self, request):
         company = request.auth.company
-        profile = CompanyProfile.get(company=company)
+        profile = CompanyProfile.lire(company=company)
         plan = profile.plan
         return Response({
             'plan_code': plan.code if plan else None,

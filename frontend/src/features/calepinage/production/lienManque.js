@@ -10,6 +10,8 @@ export function lienManque(calepinageId, cible) {
   const onglet = cible?.onglet || ''
   const champ = cible?.champ || ''
   if (onglet === 'reglages') {
+    // ACAL1630 (revue) — les allées de la société ont leur écran (`/calepinage/reglages/allees`), pas un champ du registre.
+    if (champ === 'allees') return '/calepinage/reglages/allees'
     // Le champ d'une clé de registre est monté sous `calx69-<clé>` (ReglagesSimulation) ; le serveur de
     // « à renseigner » (ACAL700) sert la clé nue, celui des refus de simulation l'id déjà préfixé. Les autres
     // ancres (`norme`, `lestage`, `lestage-<clé>`…) n'ont pas de « _ » et passent telles quelles.
@@ -32,4 +34,9 @@ export function destinationManque(calepinageId, m) {
   return etape
     ? { to: lienManque(calepinageId, { onglet: premierOngletEtape(etape) }), state: { etapeChoisie: true } }
     : { to: lienManque(calepinageId, m?.cible), state: undefined }
+}
+
+/** ACAL1940 — le lien vers l'ÉCRAN d'une étape (son premier onglet), p. ex. « Désigner » l'onduleur → Électrique. */
+export function lienEtape(calepinageId, etape) {
+  return lienManque(calepinageId, { onglet: premierOngletEtape(etape) })
 }

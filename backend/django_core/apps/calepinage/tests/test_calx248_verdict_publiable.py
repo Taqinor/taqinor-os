@@ -401,6 +401,30 @@ class SynthesePublicationTest(unittest.TestCase):
             servie['phrase'], 'Aucun motif bloquant ; 11 points restent à '
                               'compléter : motif 0 ; motif 1…')
 
+    def test_acal1937_le_titre_dit_le_compte_du_rail(self):
+        """Le rail dit 3 points à régler : le Verdict dit 3, pas les 11 motifs."""
+        from unittest import mock
+        from apps.calepinage.services.synthese_publication import (
+            synthese_de_publication,
+        )
+        from apps.calepinage.views import electrique as vue
+        publication = self._publication('a_completer', 11, STATUT_NON_VERIFIABLE, 3)
+        lu = {'nombre_a_regler': 2, 'nombre_bloquants': 1}
+        with mock.patch('apps.calepinage.services.pret_a_envoyer.agreger', return_value=lu):
+            rail = vue._points_du_rail(object(), publication)
+        self.assertEqual(rail, 3)
+        servie = synthese_de_publication(publication, rail)
+        self.assertEqual(servie['titre'], 'À compléter : 3 points')
+        self.assertIn('3 points restent', servie['phrase'])
+        # Un seul nombre : la clé `points` servie est celle du rail, pas celle des motifs.
+        self.assertEqual(servie['points'], 3)
+        # Sans compte du rail, le compte des motifs reste servi tel quel.
+        self.assertEqual(synthese_de_publication(publication)['titre'],
+                         'À compléter : 11 points')
+        # Dossier non « à compléter » : rien à compter.
+        pret = self._publication('pret', 0, STATUT_OK, 0)
+        self.assertIsNone(vue._points_du_rail(object(), pret))
+
     def test_singulier(self):
         servie = self._synthese('a_completer', 1, STATUT_MOTIF_OMIS, 1)
         self.assertEqual(servie['titre'], 'À compléter : 1 point')

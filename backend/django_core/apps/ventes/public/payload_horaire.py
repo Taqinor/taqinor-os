@@ -299,7 +299,7 @@ def _localisation_pour_moteur_horaire(devis, data):
     return ville, lat, lon
 
 
-def _dimensionnement_option_depuis_items(items):
+def _dimensionnement_option_depuis_items(items, devis=None):
     """PACT10 (« deux optimiseurs ») — nb panneaux / kWc / batteries D'UNE
     option, dérivés des lignes RÉELLES de cette option (``sans_items``/
     ``avec_items`` du builder — déjà splittés par option). MÊME discipline
@@ -314,8 +314,12 @@ def _dimensionnement_option_depuis_items(items):
     quand AUCUNE ligne batterie n'a de capacité lisible : le client OMET la
     valeur (contrat ``dimensionnement_options.json``, note ``derivation``)
     au lieu de lire un nombre inventé. ``nb_batteries`` reste le compte RÉEL —
-    c'est ainsi que l'inconnu remonte plutôt que d'être tu."""
+    c'est ainsi que l'inconnu remonte plutôt que d'être tu.
+
+    Lecteurs en aval — le rôle RANGÉ de l'item d'abord (``domain.classe_ligne``,
+    ``devis`` porte la coupure ; absent : les mots-clés d'hier)."""
     from ..domain.catalogue import _parse_kwh
+    from ..domain.classe_ligne import est
     from ..quote_engine.lignes_classement import (
         _is_battery, _is_panel, _parse_watt)
     nb_panneaux = 0
@@ -331,10 +335,10 @@ def _dimensionnement_option_depuis_items(items):
             qty = 0.0
         if qty <= 0:
             continue
-        if _is_panel(designation, produit_nom):
+        if est(it, _is_panel, lambda: _is_panel(designation, produit_nom), devis=devis):
             nb_panneaux += int(round(qty))
             watt = watt or _parse_watt(designation, produit_nom)
-        elif _is_battery(designation):
+        elif est(it, _is_battery, lambda: _is_battery(designation), devis=devis):
             nb_batteries += qty
             capacite_batterie_kwh += qty * (_parse_kwh(designation) or 0.0)
     puissance_kwc = (
@@ -374,11 +378,11 @@ def _dimensionnement_options_publique(devis, data):
         from ..horaire.ombrage import perte_ombrage_du_devis
         from ..horaire.productible_pose import base_de_production
         from ..horaire.public import production_annuelle_pour_kwc
-        sans = _dimensionnement_option_depuis_items(data.get('sans_items'))
+        sans = _dimensionnement_option_depuis_items(data.get('sans_items'), devis)
         out = {'sans': sans, 'divergent': False}
         avec = None
         if bool(data.get('avec_ok')):
-            avec = _dimensionnement_option_depuis_items(data.get('avec_items'))
+            avec = _dimensionnement_option_depuis_items(data.get('avec_items'), devis)
             out['avec'] = avec
             out['divergent'] = sans['nb_panneaux'] != avec['nb_panneaux']
         ville, lat, lon = _localisation_pour_moteur_horaire(devis, data)

@@ -902,6 +902,15 @@ describe('R2-09 / R2-05 — fenêtre de pose : kWc au format français, « Posé
     expect(pub.kwc).toMatch(/^\d+,\d{2} kWc$/);
   });
 
+  // T4-X8-012 (une cible) — « Posés ÷ cible » se divise par LA cible servie (le nombre à poser, 6, est un autre champ) ; sans cible servie : d'avant.
+  it('T4-X8-012 (une cible) : « Posés ÷ cible » compte contre la cible servie dans le module posé ; sans cible servie, contre le nombre à poser ; public inchangé', () => {
+    const servie = (n: number, watt = 720) => ({ chiffrage: null, hydrate: { devis: { origineCible: 'factures', libelleOrigineCible: 'Factures du lead', cible: { panneaux: n, panel_watt: watt } } } });
+    expect(rendre(servie(4)).cover).toBe('75 %'); // 3 posés / 4 servis (le nombre à poser, 6, donnerait 50 %)
+    expect(rendre({ chiffrage: null }).cover).toBe('50 %');
+    expect(rendre(servie(4, 550)).cover).toBe('50 %'); // aucun compte servi pour ce module : le nombre à poser, comme avant
+    expect(rendre({ hydrate: servie(4).hydrate }).cover).toBe('50 %'); // site public : jamais lu
+  });
+
   // ACAL1520 — la puissance du bandeau suit le module DÉSIGNÉ du pan (comme la pastille), pas le 720 Wc par défaut.
   it('ACAL1520 — 5 panneaux de 710 Wc lisent « 3,55 kWc » ; sans module désigné : 3,60 (défaut 720 Wc)', () => {
     const module710 = { id: 'm710', libelle: 'Module 710', source: 'catalogue', longueurMm: 2384, largeurMm: 1303, pmaxWc: 710 };
@@ -918,5 +927,42 @@ describe('R2-09 / R2-05 — fenêtre de pose : kWc au format français, « Posé
     };
     expect(rendreAvec('m710')).toBe('3,55 kWc');
     expect(rendreAvec(undefined)).toBe('3,60 kWc');
+  });
+});
+
+describe('ACAL1945 — à l’étape Toit en Guidé, la carte ne montre aucun panneau posé ; ils reviennent à l’étape Panneaux', () => {
+  const monter = () => {
+    document.body.innerHTML = '<div class="rp9-host cal-coque" data-etape="toit" data-expert="0"></div>';
+    const { map } = makeMap();
+    const ctx = makeFreeCtx(makePlan(40), [0, 1, 2, 3, 4].map((i) => ({ cx: -4 * i, cy: 0 })));
+    const deps = makeDeps(map);
+    const editor = createLayoutEditor(ctx, deps);
+    const coque = document.querySelector('.cal-coque') as HTMLElement;
+    const dernierRendu = () => {
+      const appels = (deps.renderScene as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      const a = appels[appels.length - 1];
+      return { maxCount: a[4] as number, occupes: (a[6] as Set<number>).size };
+    };
+    return { editor, ctx, coque, dernierRendu };
+  };
+  it('drapeau posé par l’étape Toit (Guidé) : la scène est rendue SANS panneau, la pose n’est pas modifiée', () => {
+    const { editor, ctx, coque, dernierRendu } = monter();
+    coque.dataset.poseMasquee = '1';
+    editor.renderCustomLayout();
+    expect(dernierRendu()).toEqual({ maxCount: 0, occupes: 0 });
+    expect((ctx.freeState as { panels: unknown[] }).panels).toHaveLength(5);
+  });
+  it('drapeau retiré (étape Panneaux) puis signal d’étape : les 5 panneaux reviennent sans geste de l’utilisateur', () => {
+    const { editor, coque, dernierRendu } = monter();
+    coque.dataset.poseMasquee = '1';
+    editor.renderCustomLayout();
+    delete coque.dataset.poseMasquee;
+    document.dispatchEvent(new CustomEvent('cal:pose-etape'));
+    expect(dernierRendu()).toEqual({ maxCount: 5, occupes: 5 });
+  });
+  it('sans drapeau (Expert, étape Panneaux, site public) : rendu d’avant, 5 panneaux', () => {
+    const { editor, dernierRendu } = monter();
+    editor.renderCustomLayout();
+    expect(dernierRendu()).toEqual({ maxCount: 5, occupes: 5 });
   });
 });

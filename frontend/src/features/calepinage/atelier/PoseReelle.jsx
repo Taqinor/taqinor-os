@@ -279,7 +279,7 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
                         data-testid={`cal-pose-modules-${cle}`}
                         value={saisie.modules}
                         onChange={(e) => majSaisie(cle, 'modules', e.target.value)}
-                        className="w-20 rounded border border-border bg-black/30 px-2 py-1 text-foreground"
+                        className="w-20 rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-foreground"
                       />
                       {erreurModules && (
                         <p role="alert" data-testid={`cal-pose-erreur-modules-${cle}`} className="mt-1 text-xs text-red-300">
@@ -302,7 +302,7 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
                         data-testid={`cal-pose-date-${cle}`}
                         value={saisie.date}
                         onChange={(e) => majSaisie(cle, 'date', e.target.value)}
-                        className="rounded border border-border bg-black/30 px-2 py-1 text-foreground"
+                        className="rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-foreground"
                       />
                       {ligne.releve_par?.nom_complet && (
                         <p className="mt-1 text-xs text-muted-foreground" data-testid={`cal-pose-auteur-${cle}`}>
@@ -326,7 +326,7 @@ export default function PoseReelle({ calepinageId: idPropose } = {}) {
                         data-testid={`cal-pose-position-${cle}`}
                         value={saisie.position}
                         onChange={(e) => majSaisie(cle, 'position', e.target.value)}
-                        className="w-full rounded border border-border bg-black/30 px-2 py-1 text-foreground"
+                        className="w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-foreground"
                       />
                     </td>
                     <td className="py-2">

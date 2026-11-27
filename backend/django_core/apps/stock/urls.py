@@ -38,6 +38,9 @@ from .views import (
 )
 
 from .views.negoce import NiveauxStockAssistantView  # STK3 (copilote vague 2)
+from .views.panneau_par_defaut import (  # D-ACAL-169
+    DefinirPanneauParDefautView, PanneauParDefautView, RetirerPanneauParDefautView,
+)
 
 router = DefaultRouter()
 router.register(r'produits', ProduitViewSet)
@@ -177,5 +180,17 @@ urlpatterns = [
     # headless: lecture servie à l'assistant (relais FastAPI), aucun écran ERP
     path('assistant/niveaux/', NiveauxStockAssistantView.as_view(),
          name='stock-assistant-niveaux'),
+    # D-ACAL-169 — LE panneau par défaut de la société (contrat
+    # ``panneau_par_defaut.json``) : lecture pour tout le stock, désignation
+    # par un responsable. Hors ProduitViewSet (views/produit.py ne grossit
+    # plus) ; posées AVANT le routeur.
+    path('panneau-par-defaut/', PanneauParDefautView.as_view(),
+         name='stock-panneau-par-defaut'),
+    path('produits/<int:pk>/definir-panneau-par-defaut/',
+         DefinirPanneauParDefautView.as_view(),
+         name='stock-produit-definir-panneau-par-defaut'),
+    path('produits/<int:pk>/retirer-panneau-par-defaut/',
+         RetirerPanneauParDefautView.as_view(),
+         name='stock-produit-retirer-panneau-par-defaut'),
     path('', include(router.urls)),
 ]
