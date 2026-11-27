@@ -552,14 +552,18 @@ def _autos_banque_batterie(devis):
     ``auto`` à son écrivain. Aucune ligne batterie ⇒ aucune des deux clés.
     """
     from apps.ventes.domain.catalogue import _is_battery
+    from apps.ventes.domain.classe_ligne import est
     from apps.ventes.domain.dimensionnement_devis import (
         _lignes_produit_du_devis, module_batterie_du_devis,
     )
 
+    # Lecteurs en aval (constat 2) — le rôle RANGÉ, puis le mot-clé d'hier.
     candidats = [
         li for li in _lignes_produit_du_devis(devis)
         if (getattr(li, 'variante', '') or '') != 'sans'
-        and _is_battery(getattr(li, 'designation', '') or '')]
+        and est(li, _is_battery,
+                lambda li=li: _is_battery(getattr(li, 'designation', '') or ''),
+                devis=devis)]
     if not candidats:
         return {}
     dominante = max(
@@ -588,21 +592,28 @@ def _auto_scenario(devis):
         _is_battery, _is_hybrid_inverter, _is_offgrid_inverter,
         _is_reseau_inverter,
     )
+    from apps.ventes.domain.classe_ligne import est
     from apps.ventes.domain.scenario import scenario_servable
 
-    blobs = [
-        '%s %s' % (getattr(li, 'designation', '') or '',
-                   getattr(getattr(li, 'produit', None), 'nom', '') or '')
+    paires = [
+        (li, '%s %s' % (getattr(li, 'designation', '') or '',
+                        getattr(getattr(li, 'produit', None), 'nom', '') or ''))
         for li in devis.lignes.select_related('produit').all()
         if getattr(li, 'type_ligne', 'produit') == 'produit']
-    if not blobs:
+    if not paires:
         return None
+
+    # Lecteurs en aval (constat 2) — le rôle RANGÉ, puis les mots-clés d'hier
+    # sur le même texte (devis envoyé avant ``COUPURE_CLASSE_PAR_ROLE``).
+    def _porte(predicat):
+        return any(est(li, predicat, lambda b=b: predicat(b), devis=devis)
+                   for li, b in paires)
     return scenario_servable(
         True,
-        a_reseau=any(_is_reseau_inverter(b) for b in blobs),
-        a_hybride=any(_is_hybrid_inverter(b) for b in blobs),
-        a_batterie=any(_is_battery(b) for b in blobs),
-        a_offgrid=any(_is_offgrid_inverter(b) for b in blobs))
+        a_reseau=_porte(_is_reseau_inverter),
+        a_hybride=_porte(_is_hybrid_inverter),
+        a_batterie=_porte(_is_battery),
+        a_offgrid=_porte(_is_offgrid_inverter))
 
 
 class _DevisSansRegistre:

@@ -512,3 +512,72 @@ class LecteursAvalRoleRangeTest(SimpleTestCase):
         muet = _ligne(nom, devis=devis, quantite=30)
         self.assertEqual(panneaux_et_watt_lu([muet])[0], 0)
         self.assertEqual(_comptes_panneaux([muet])[''], 0)
+
+    def test_le_scenario_de_l_etude_lit_les_roles_emis_par_la_composition(self):
+        """Constat 2 — ``cles_etude_de_composition`` (étape 6 du pipeline et
+        moteur de conception) dérive le scénario servable des rôles ÉMIS par la
+        composition (``composition.roles``), plus des mots-clés : cas B + C + A
+        (aucun nom ne porte de mot-clé) composés « avec » rangent « Avec
+        batterie », pas « Sans batterie »."""
+        from datetime import date, timedelta
+
+        from apps.ventes.domain.composition import CompositionLignes
+        from apps.ventes.domain.pipeline import cles_etude_de_composition
+        from apps.ventes.domain.regles_calcul import COUPURE_CLASSE_PAR_ROLE
+        from apps.ventes.domain.scenario import SCENARIO_AVEC_BATTERIE, SCENARIO_SANS_BATTERIE
+
+        def kit(nom, quantite):
+            return SimpleNamespace(designation=nom, produit=None, quantite=quantite,
+                                   prix_unitaire=1000, variante='')
+        composition = CompositionLignes([kit('Canadian Solar TOPBiHiKu7 CS7N-715TB', 30),
+                                         kit('DEYE SUN-80K-SG02HP3-EU-EM6', 1),
+                                         kit('Deye BOS-B Pro-A3 16 kWh', 2)])
+        composition.roles = ['panneau', 'onduleur_hybride', 'batterie']
+        intention = SimpleNamespace(scenario='', layout={}, mode_installation='residentiel')
+        avant = SimpleNamespace(statut='envoye', regles_calcul=14,
+                                date_envoi=date(*COUPURE_CLASSE_PAR_ROLE) - timedelta(days=1))
+        for devis, attendu in ((_BROUILLON, SCENARIO_AVEC_BATTERIE),
+                               (avant, SCENARIO_SANS_BATTERIE)):
+            with self.subTest(devis=devis):
+                self.assertEqual(cles_etude_de_composition(devis, intention, composition)['scenario'],
+                                 attendu)
+        # Sans rôle émis : les mots-clés d'hier, même sur un brouillon.
+        composition.roles = ()
+        self.assertEqual(cles_etude_de_composition(_BROUILLON, intention, composition)['scenario'],
+                         SCENARIO_SANS_BATTERIE)
+
+    def test_les_autos_du_registre_lisent_le_role_range(self):
+        """Constat 2 (suite) — le bloc ``auto`` du registre (``overrides``) :
+        scénario servable (``_auto_scenario``) et banque de batterie
+        (``_autos_banque_batterie``) lisent le rôle RANGÉ des lignes réelles
+        (devis NON chargé sur la ligne), puis les mots-clés d'hier."""
+        from datetime import date, timedelta
+        from decimal import Decimal
+
+        from apps.ventes.domain.overrides import _auto_scenario, _autos_banque_batterie
+        from apps.ventes.domain.regles_calcul import COUPURE_CLASSE_PAR_ROLE
+        from apps.ventes.domain.scenario import SCENARIO_AVEC_BATTERIE, SCENARIO_SANS_BATTERIE
+        from apps.ventes.models import LigneDevis
+        from apps.stock.models import Produit
+
+        class _Requete(_Lignes):
+            def select_related(self, *_champs):
+                return self
+
+        def ligne(nom, role, quantite):
+            return LigneDevis(designation=nom, role_devis=role, type_ligne='produit',
+                              quantite=Decimal(quantite), prix_unitaire=Decimal('1000'),
+                              remise=Decimal('0'), produit=Produit(nom=nom))
+
+        def devis(**etat):
+            lignes = [ligne('Canadian Solar TOPBiHiKu7 CS7N-715TB', 'panneau', '30'),
+                      ligne('DEYE SUN-80K-SG02HP3-EU-EM6', 'onduleur_hybride', '1'),
+                      ligne('Deye BOS-B Pro-A3 16 kWh', 'batterie', '2')]
+            return SimpleNamespace(regles_calcul=14, etude_params={}, overrides={},
+                                   lignes=_Requete(lignes), **etat)
+        ouvert = devis(statut='brouillon', date_envoi=None)
+        self.assertEqual(_auto_scenario(ouvert), SCENARIO_AVEC_BATTERIE)
+        self.assertEqual(_autos_banque_batterie(ouvert).get('taille.batterie_nb_modules'), 2)
+        avant = devis(statut='envoye', date_envoi=date(*COUPURE_CLASSE_PAR_ROLE) - timedelta(days=1))
+        self.assertEqual(_auto_scenario(avant), SCENARIO_SANS_BATTERIE)
+        self.assertEqual(_autos_banque_batterie(avant), {})

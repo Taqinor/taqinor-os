@@ -762,16 +762,22 @@ def cles_etude_de_composition(devis, intention, composition):
     # ``domain/scenario``. Ce site et la resynchronisation la portaient tous
     # deux EN ENTIER, sous deux formulations : les deux appellent désormais la
     # MÊME fonction, sur les mêmes trois faits.
+    # Lecteurs en aval (constat 2) — les trois faits se lisent sur le rôle
+    # ÉMIS par la composition (``composition.roles``, porté par la spec que
+    # l'écrivain range), puis les mots-clés d'hier. Un devis envoyé avant
+    # ``COUPURE_CLASSE_PAR_ROLE`` garde l'expression d'hier (le repli).
+    from apps.ventes.domain.classe_ligne import est
+    paires = list(zip(composition or (), specs_de_composition(composition)))
+
+    def _porte(predicat):
+        return any(est(spec, predicat, lambda s=s: predicat(s.designation), devis=devis)
+                   for s, spec in paires)
     scenario = scenario_servable(
         _scenario_de(intention) == COMPOSITION_LES_DEUX,
-        a_reseau=any(_is_reseau_inverter(s.designation)
-                     for s in (composition or ())),
-        a_hybride=any(_is_hybrid_inverter(s.designation)
-                      for s in (composition or ())),
-        a_batterie=any(_is_battery(s.designation)
-                       for s in (composition or ())),
-        a_offgrid=any(_is_offgrid_inverter(s.designation)
-                      for s in (composition or ())))
+        a_reseau=_porte(_is_reseau_inverter),
+        a_hybride=_porte(_is_hybrid_inverter),
+        a_batterie=_porte(_is_battery),
+        a_offgrid=_porte(_is_offgrid_inverter))
 
     cles = {'scenario': scenario}
     resultat = (intention.layout or {}).get('result') or {}
