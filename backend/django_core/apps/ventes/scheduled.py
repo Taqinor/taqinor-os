@@ -635,7 +635,7 @@ def pre_echeance_reminders():
             continue
         company_id = facture.company_id
         if company_id not in profiles_cache:
-            profiles_cache[company_id] = CompanyProfile.get(
+            profiles_cache[company_id] = CompanyProfile.lire(
                 company=facture.company)
         profile = profiles_cache[company_id]
         n = getattr(profile, 'rappel_pre_echeance_jours', 5) or 0

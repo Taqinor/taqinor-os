@@ -138,3 +138,28 @@ class LecturesMoteurSansCreationTests(SimpleTestCase):
             source = inspect.getsource(fonction)
             self.assertNotIn("CompanyProfile.get(", source)
             self.assertIn("CompanyProfile.lire(", source)
+
+    def test_seuil_de_remise_et_reservation_bc(self):
+        from apps.ventes.domain.tarification import seuil_approbation_remise
+        from apps.ventes.views.bon_commande import _reserver_stock_bc_actif
+        seuil, defaut = self._sans_get(seuil_approbation_remise)
+        self.assertEqual(seuil, defaut.discount_approval_threshold)
+        reserve, defaut = self._sans_get(_reserver_stock_bc_actif)
+        self.assertEqual(reserve, bool(defaut.reserver_stock_bc))
+
+    def test_taux_sav_relance_variante_et_commande_dgi(self):
+        # Fonctions à base de données : on inspecte leur code (CI les rejoue).
+        import inspect
+        from apps.ventes import scheduled
+        from apps.ventes.domain import facturation_ops, facturation_ticket_sav
+        from apps.ventes.management.commands import dgi_export_facture
+        from apps.ventes.views.devis_cycle import DevisCycleActionsMixin
+        for fonction in (
+                facturation_ops.generer_facture_intervention,
+                facturation_ticket_sav.lignes_ticket_sav,
+                scheduled.pre_echeance_reminders,
+                DevisCycleActionsMixin.dupliquer_variante,
+                dgi_export_facture.Command.handle):
+            source = inspect.getsource(fonction)
+            self.assertNotIn("CompanyProfile.get(", source)
+            self.assertIn("CompanyProfile.lire(", source)

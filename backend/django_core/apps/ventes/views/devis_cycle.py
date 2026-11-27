@@ -294,7 +294,7 @@ class DevisCycleActionsMixin:
             pct = request.data.get('variante_pct')
             if pct is None:
                 from apps.parametres.models import CompanyProfile
-                pct = getattr(CompanyProfile.get(company=company),
+                pct = getattr(CompanyProfile.lire(company=company),
                               'variante_pct', 20)
             scales = _scales_from_pct(pct) or [0.8, 1.0, 1.25]
         if not scales:

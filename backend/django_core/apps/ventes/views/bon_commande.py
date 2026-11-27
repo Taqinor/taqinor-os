@@ -63,7 +63,7 @@ def _reserver_stock_bc_actif(company):
         return False
     try:
         from apps.parametres.models import CompanyProfile
-        return bool(CompanyProfile.get(company=company).reserver_stock_bc)
+        return bool(CompanyProfile.lire(company=company).reserver_stock_bc)
     except Exception:  # pragma: no cover - défensif
         logger.warning("bon_commande._reserver_stock_bc_actif : erreur ignorée (mode dégradé)", exc_info=True)
         return False
