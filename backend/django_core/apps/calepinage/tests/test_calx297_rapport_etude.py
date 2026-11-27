@@ -283,6 +283,85 @@ class PompageTest(unittest.TestCase):
         self.assertNotIn('1\u202f441,3', self.page(stocke))
 
 
+class RapportDePompageTest(unittest.TestCase):
+    """Décision fondateur 6 (27/11/2026) — le rapport d'un calepinage de
+    POMPAGE (conception du marché agricole) n'imprime ni production ni
+    autoconsommation : il garde débit, HMT et volume par jour. Tout autre
+    calepinage rend le rapport d'aujourd'hui, octet pour octet."""
+
+    CONCEPTION = 'apps.calepinage.services.devis_retenu.conception_du_calepinage'
+
+    def page(self, marche, res=None):
+        with mock.patch(self.CONCEPTION, return_value={'marche': marche}):
+            return html_du_rapport(
+                NU, resultat=res or resultat(),
+                resultat_stocke=copy.deepcopy(POMPAGE_STOCKE), site=SITE,
+                identite=IDENTITE, styles=STYLES, paginer=False)
+
+    @staticmethod
+    def texte(page):
+        page = re.sub(r'<style.*?</style>', ' ', page, flags=re.S)
+        return re.sub(r'<[^>]+>', ' ', page)
+
+    def resultat_de_pompe(self):
+        res = resultat()
+        res['batterie'] = None  # une composition de pompage n'a pas de batterie
+        return res
+
+    def test_ni_production_ni_autoconsommation_dans_le_texte(self):
+        from apps.calepinage.services.rapport import nombre_tel_que_servi
+        res = self.resultat_de_pompe()
+        texte = self.texte(self.page('agricole', res))
+        # « Date de production » de la page de garde est la date d'édition du
+        # document, pas une énergie : c'est la seule occurrence admise.
+        texte = texte.replace('Date de production', 'Date d’édition')
+        self.assertNotRegex(texte, r'(?i)production|autoconsomm|productible')
+        total = res['production']['total']
+        energie = res['autoconsommation']['energie']
+        for chiffre in (total['p50_kwh'], total['p90_kwh'],
+                        total['specific_yield_kwh_kwc'],
+                        energie['production_brute_kwh'],
+                        energie['export_reseau_kwh']):
+            with self.subTest(chiffre=chiffre):
+                self.assertNotIn(nombre_tel_que_servi(chiffre), texte)
+
+    def test_les_sections_de_production_sont_omises(self):
+        with mock.patch(self.CONCEPTION, return_value={'marche': 'agricole'}):
+            codes = [s['code'] for s in rapport()['sections']]
+        for code in ('production', 'autoconsommation', 'validation'):
+            self.assertNotIn(code, codes)
+        self.assertIn('pompage', codes)
+
+    def test_la_synthese_garde_debit_hmt_et_volume_par_jour(self):
+        page = self.page('agricole', self.resultat_de_pompe())
+        synthese = re.search(r'data-section="synthese".*?</section>', page,
+                             re.S).group(0)
+        for attendu in ('8,2 m³/h', '62,4 m<', '57,4 m³/jour'):
+            self.assertIn(attendu, synthese)
+        self.assertNotIn('Onduleurs', synthese)
+
+    def test_sans_volume_servi_aucun_m3_jour(self):
+        res = self.resultat_de_pompe()
+        with mock.patch(self.CONCEPTION, return_value={'marche': 'agricole'}):
+            stocke = copy.deepcopy(POMPAGE_STOCKE)
+            stocke['pompage_dernier']['volumes'] = None
+            page = html_du_rapport(NU, resultat=res, resultat_stocke=stocke,
+                                   site=SITE, identite=IDENTITE,
+                                   styles=STYLES, paginer=False)
+        self.assertNotIn('57,4', page)
+        self.assertIn('Volume pompé par jour</th><td>non calculée', page)
+
+    def test_un_autre_marche_rend_le_rapport_d_aujourd_hui(self):
+        aujourd_hui = html_du_rapport(
+            NU, resultat=resultat(),
+            resultat_stocke=copy.deepcopy(POMPAGE_STOCKE), site=SITE,
+            identite=IDENTITE, styles=STYLES, paginer=False)
+        for marche in ('residentiel', 'commercial', 'industriel', None):
+            with self.subTest(marche=marche):
+                self.assertEqual(self.page(marche), aujourd_hui)
+        self.assertIn('Production annuelle P50', aujourd_hui)
+
+
 class HorsReseauTest(unittest.TestCase):
     """ACAL833 — défaillance, pire mois et banque ; omise si raccordé."""
 

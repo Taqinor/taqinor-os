@@ -161,10 +161,43 @@ def _taux(autoconsommation, cle):
                    unite=' %')
 
 
+def _lignes_pompage(contexte, pose, pertes):
+    """Décision fondateur 6 — la synthèse d'un calepinage de POMPAGE : ni
+    production, ni autoconsommation, ni onduleur (une composition de pompage
+    n'en a pas), ni écart PVGIS ; le débit, la HMT et le volume par jour du
+    dernier dimensionnement enregistré (``pompage_dernier``), TELS QUE
+    SERVIS. Le m³/jour n'est servi que pour une pompe à COURBE
+    (``views/pompage.py``) : absent, il est « non calculée », jamais estimé."""
+    bloc = (contexte.get('resultat_stocke') or {}).get('pompage_dernier') or {}
+    pompe = bloc.get('pompe') if isinstance(bloc.get('pompe'), dict) else {}
+    point = pompe.get('point_fonctionnement') or {}
+    hmt = bloc.get('hmt') if isinstance(bloc.get('hmt'), dict) else {}
+    volumes = (bloc.get('volumes') if isinstance(bloc.get('volumes'), dict)
+               else {})
+    motif = None if bloc else 'aucun dimensionnement de pompage enregistré'
+    return [
+        _ligne('Puissance crête', _valeur(pose.get('kwc'), unite=' kWc')),
+        _ligne('Modules posés', _valeur(pose.get('total_modules'))),
+        _ligne('Débit au point de fonctionnement',
+               _valeur(point.get('debit_m3h'), motif, unite=' m³/h')),
+        _ligne('Hauteur manométrique totale (HMT)',
+               _valeur(hmt.get('hmt_m'), motif, unite=' m')),
+        _ligne('Volume pompé par jour',
+               _valeur(volumes.get('m3_jour_plat'), motif, unite=' m³/jour')),
+        _ligne('Pertes totales', _valeur(pertes, unite=' %')),
+        _ligne('Contrôles électriques non conformes',
+               _controles(contexte.get('resultat') or {})),
+    ]
+
+
 def html_de_section(contexte):
     """Le corps de la section ``synthese`` : au plus 12 lignes, une page."""
     resultat = contexte.get('resultat') or {}
     pose = resultat.get('pose') or {}
+    if contexte.get('pompage'):
+        lignes = _lignes_pompage(
+            contexte, pose, (resultat.get('cascade') or {}).get('total_pct'))
+        return '<table class="synthese generique">%s</table>' % ''.join(lignes)
     total = (resultat.get('production') or {}).get('total') or {}
     autoconso = resultat.get('autoconsommation')
     pertes = (resultat.get('cascade') or {}).get('total_pct')
