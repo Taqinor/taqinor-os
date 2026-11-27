@@ -154,6 +154,39 @@ class RefusTest(unittest.TestCase):
         self.assertEqual(refus.exception.champ, 'seuils')
 
 
+class DemarrageSousLaVeilleTest(SimpleTestCase):
+    """ACAL1667 — un groupe qui démarre sous la veille est AVERTI, jamais
+    refusé : la déclaration est acceptée telle quelle."""
+
+    def _declaration(self, demarrage, veille=30, actif=True):
+        return {'actif': True, 'jours_autonomie': 2,
+                'seuils': {'veille_pct': veille, 'entretien_pct': 20,
+                           'arret_pct': 10},
+                'groupe': {'actif': actif, 'puissance_kw': 5,
+                           'soc_demarrage_pct': demarrage,
+                           'soc_arret_pct': 90, 'heures_max_par_jour': 8}}
+
+    def test_demarrage_sous_la_veille_avertit_sans_refuser(self):
+        from apps.calepinage.services.hors_reseau_declaration import (
+            valider_hors_reseau,
+        )
+        avertissements = valider_hors_reseau(self._declaration(20))
+        self.assertEqual(len(avertissements), 1)
+        self.assertIn('groupe démarre sous le seuil de veille : il ne '
+                      'tournera jamais', avertissements[0])
+
+    def test_demarrage_au_dessus_de_la_veille_ne_dit_rien(self):
+        from apps.calepinage.services.hors_reseau_declaration import (
+            valider_hors_reseau,
+        )
+        for cas in (self._declaration(30), self._declaration(45),
+                    self._declaration(20, actif=False),
+                    dict(self._declaration(20), seuils=None)):
+            with self.subTest(cas=cas):
+                self.assertEqual(valider_hors_reseau(cas), [])
+        self.assertEqual(valider_hors_reseau(None), [])
+
+
 class SansSeuilsTest(unittest.TestCase):
     """Sans seuils : la sortie d'AUJOURD'HUI, terme à terme, et c'est DIT."""
 
