@@ -2,13 +2,21 @@
 // RWEB17-M5 — section « estimation pro et agricole » du tunnel mon-toit
 // (lib/tunnel/estimationPro.ts). Entrées = celles des goldens tunnelExecution
 // (industriel 42000 MAD, commercial 9000 kWh, agricole HMT 85 / 30 m³/h).
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as estimatorPro from '../src/lib/estimatorPro';
 import { creerContexte, type ConfigLocale } from '../src/lib/tunnel/contexte';
 import { creerDom } from '../src/lib/tunnel/dom';
 import { creerEtat, type EtatPage, type LocaleTunnel } from '../src/lib/tunnel/etat';
 import {
   installerEstimationPro, TEXTES_ESTIMATION_PRO, type ConfigEstimationPro, type ContexteEstimationPro,
 } from '../src/lib/tunnel/estimationPro';
+
+// D-ACAL-169 (a) — espion qui DÉLÈGUE au vrai `estimatePro` : les autres tests de ce fichier
+// voient exactement le même calcul ; seuls les blocs « câblage » lisent les entrées reçues.
+vi.mock('../src/lib/estimatorPro', async (original) => {
+  const reel = await original<typeof import('../src/lib/estimatorPro')>();
+  return { ...reel, estimatePro: vi.fn(reel.estimatePro) };
+});
 
 const HTML = `
 <p id="mt-estimate-unavailable"></p><p id="mt-estimate-toolarge"></p><p id="mt-estimate-toolarge-pro" hidden></p>
@@ -151,4 +159,66 @@ describe('estimation agricole', () => {
     const e = monter('fr', true, ETAT);
     expect(e.ctx.crochets.appeler('computeAgricoleEstimate')).toBeNull();
   });
+});
+
+describe('D-ACAL-169 (a) — câblage tunnel : le watt du relais atteint les estimateurs', () => {
+  const ETAT_AGRI = { mode: 'agricole', waterSource: 'forage', waterUnit: 'm3h' } as Partial<EtatPage>;
+  const ETAT_PRO = { mode: 'industriel', tension: 'mt', activity: 'continuous', equipes: '3x8', surfaceType: 'terrasse' } as Partial<EtatPage>;
+  const espion = vi.mocked(estimatorPro.estimatePro);
+  /** Le relais répond `corps` (ou échoue si `corps` est une Error) ; le watt est attendu
+   *  via la lecture mémoïsée que `installerEstimationPro` a lancée à l'installation. */
+  async function monterAvecRelais(etatPartiel: Partial<EtatPage>, corps: unknown) {
+    estimatorPro.reinitialiserWattPanneauDefaut();
+    espion.mockClear();
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      urls.push(String(url));
+      if (corps instanceof Error) throw corps;
+      return { ok: true, json: async () => corps } as unknown as Response;
+    }));
+    const e = monter('fr', true, etatPartiel);
+    await estimatorPro.chargerWattPanneauDefaut();
+    return { e, urls };
+  }
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    estimatorPro.reinitialiserWattPanneauDefaut();
+    espion.mockClear();
+  });
+
+  it('relais 715 : le tunnel appelle /api/panneau-defaut à l\'installation et estimatePro reçoit 715', async () => {
+    const { e, urls } = await monterAvecRelais(ETAT_PRO, { pmax_wc: 715, source: 'designe' });
+    expect(urls).toEqual(['/api/panneau-defaut']);
+    saisir('mt-pro-bill', '42000'); saisir('mt-surface-m2', '900');
+    expect(e.ctx.crochets.appeler('computeProEstimate')).toBe(true);
+    expect(espion).toHaveBeenCalledTimes(1);
+    expect(espion.mock.calls[0][0].panelW).toBe(715);
+  });
+
+  it('relais 715 : le champ agricole envoyé au lead = nbPanneaux × 715', async () => {
+    const { e } = await monterAvecRelais(ETAT_AGRI, { pmax_wc: 715, source: 'designe' });
+    saisir('mt-profondeur', '60'); saisir('mt-hmt', '85'); saisir('mt-water-need', '30');
+    saisir('mt-heures-pompage', '9'); saisir('mt-fuel-spend', '2500');
+    e.ctx.crochets.appeler('renderAgricoleEstimate', e.ctx.crochets.appeler('computeAgricoleEstimate'));
+    const vu = e.etat.estimateShown as { champKwc: number; nbPanneaux: number };
+    expect(vu.champKwc).toBe(Math.round((vu.nbPanneaux * 715) / 10) / 100);
+    expect(vu).toMatchObject({ pompeCv: 30, nbPanneaux: 44, champKwc: 31.46 });
+  });
+
+  for (const [nom, corps] of [
+    ['relais en échec (réseau)', new TypeError('fetch failed')],
+    ['relais « aucun »', { pmax_wc: null, source: 'aucun' }],
+  ] as const) {
+    it(`${nom} : estimatePro reçoit null (constante 710) et l'agricole garde son golden`, async () => {
+      const pro = await monterAvecRelais(ETAT_PRO, corps);
+      saisir('mt-pro-bill', '42000'); saisir('mt-surface-m2', '900');
+      pro.e.ctx.crochets.appeler('computeProEstimate');
+      expect(espion.mock.calls[0][0].panelW).toBeNull();
+      const { e } = await monterAvecRelais(ETAT_AGRI, corps);
+      saisir('mt-profondeur', '60'); saisir('mt-hmt', '85'); saisir('mt-water-need', '30');
+      saisir('mt-heures-pompage', '9'); saisir('mt-fuel-spend', '2500');
+      e.ctx.crochets.appeler('renderAgricoleEstimate', e.ctx.crochets.appeler('computeAgricoleEstimate'));
+      expect(e.etat.estimateShown).toEqual({ pompeCv: 30, champKwc: 31.24, nbPanneaux: 44, m3Jour: 270, bassinM3: 270 });
+    });
+  }
 });
