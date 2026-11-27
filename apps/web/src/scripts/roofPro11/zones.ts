@@ -1612,6 +1612,23 @@ function motifAlleeSansLargeur(code: string): string {
     : 'Allée non tracée : le pays du site n’est pas réglé. Réglez-le dans Réglages simulation › Site & imagerie.';
 }
 
+/** ACAL1737 (revue) — la mention « Réglages simulation › Site & imagerie » d'un motif devient un VRAI lien vers la même ancre
+ *  que l'heure légale (`/calepinage/reglages#site`). Nouvel onglet : le tracé en cours n'est pas perdu par un rechargement. */
+export const MENTION_REGLAGE_SITE = 'Réglages simulation › Site & imagerie';
+export function poserMotifAvecLien(el: HTMLElement, motif: string): void {
+  const i = motif.indexOf(MENTION_REGLAGE_SITE);
+  el.textContent = '';
+  if (i < 0) { el.textContent = motif; return; }
+  const doc = el.ownerDocument;
+  const lien = doc.createElement('a');
+  lien.href = '/calepinage/reglages#site';
+  lien.target = '_blank';
+  lien.rel = 'noopener';
+  lien.className = 'underline';
+  lien.textContent = MENTION_REGLAGE_SITE;
+  el.append(motif.slice(0, i), lien, motif.slice(i + MENTION_REGLAGE_SITE.length));
+}
+
 /** Verdict d'un tracé d'allée — un refus NOMME toujours sa raison. */
 export type VerdictAllee = { ok: true; zone: ExclusionZone } | { ok: false; motif: string };
 

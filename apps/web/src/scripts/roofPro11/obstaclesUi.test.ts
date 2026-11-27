@@ -57,6 +57,7 @@ import {
   exclusionObstructionRings,
   exclusionZoneFromDrag,
   largeurAlleeDepuisReglages,
+  poserMotifAvecLien,
   modulesSurAllee,
   motifLargeurAllee,
   serializeExclusionZones,
@@ -520,6 +521,18 @@ describe('CALX403 — une allée de circulation se trace, et retire sa surface',
     expect(phrases[0]).toBe('Allée non tracée : aucune largeur d’allée n’est réglée pour le pays « ma ». Réglez-la dans Réglages › Allées.');
     expect(phrases[1]).toBe('Allée non tracée : le pays du site n’est pas réglé. Réglez-le dans Réglages simulation › Site & imagerie.');
     expect(phrases[3]).toBe(phrases[1]);
+  });
+
+  it('ACAL1737 (revue) — la phrase d’allée porte un lien vers l’ancre #site, comme l’heure légale', () => {
+    const el = document.createElement('span');
+    poserMotifAvecLien(el, largeurAlleeDepuisReglages(DEGAGEMENTS, null).motif);
+    const a = el.querySelector('a');
+    expect(a?.getAttribute('href')).toBe('/calepinage/reglages#site');
+    expect(a?.textContent).toBe('Réglages simulation › Site & imagerie');
+    expect(el.textContent).toBe(largeurAlleeDepuisReglages(DEGAGEMENTS, null).motif); // le texte lu ne change pas
+    const sans = document.createElement('span');
+    poserMotifAvecLien(sans, largeurAlleeDepuisReglages(DEGAGEMENTS, 'ma').motif);
+    expect(sans.querySelector('a')).toBeNull(); // « Réglages › Allées » : pas de lien inventé
   });
 
   it('un pays réglé prérremplit la largeur SAISIE et CITE sa source', () => {
