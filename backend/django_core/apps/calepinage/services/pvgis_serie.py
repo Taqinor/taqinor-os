@@ -173,8 +173,8 @@ MOTIF_COMPOSANTES_ABSENTES = (
 #: la simulation transpose l'année type par ``transposition.py`` (modèle et
 #: albédo SAISIS) AVANT la chaîne ; ce motif ne garde que la série brute.
 MOTIF_TMY_HORIZONTAL = (
-    "La série météo ne porte que l'irradiance HORIZONTALE (« gh_w_m2 ») : "
-    "elle se transpose sur le PLAN des modules (« gi_w_m2 ») avant d'entrer "
+    "La série météo ne porte que l'irradiance horizontale (« gh_w_m2 ») : "
+    "elle se transpose sur le plan des modules (« gi_w_m2 ») avant d'entrer "
     "dans la chaîne de pertes, avec le modèle de transposition et l'albédo "
     'choisis dans les réglages de simulation.')
 

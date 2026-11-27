@@ -81,6 +81,51 @@ def _statut_couple_panneau(panneau, onduleurs, froid=None):
     return pire[1], pire[2]
 
 
+def _raison_du_couple(coince):
+    """D-ACAL-169 (rejeu) — la raison, en clair, d'un couple panneau / onduleur
+    INCOMPATIBLE : l'onduleur nommé et les bloquants du noyau, mot pour mot."""
+    onduleur, verdict = coince
+    raisons = ' ; '.join(verdict.get('raisons') or []) or 'couple électrique incompatible'
+    return "il ne se raccorde pas à l'onduleur « %s » : %s" % (
+        getattr(onduleur, 'nom', '') or '?', raisons)
+
+
+def _replier_panneau(panneau, statut, coince, exacts, tries, watt,
+                     onduleurs_vendus, froid, avertir, prefere_id=None):
+    """PVCOMPAT — repli d'un panneau INCOMPATIBLE avec l'onduleur retenu.
+
+    Repli ORDONNÉ : d'abord les wattages exacts (l'ordre de départage de
+    l'écran), puis les plus proches — la même préférence que le choix initial,
+    appliquée aux candidats restants. Rend ``(panneau, statut, coince,
+    refuse)`` : ``refuse`` (D-ACAL-169, rejeu) dit pourquoi le panneau PAR
+    DÉFAUT a été remplacé ; ``None`` = retenu, ou aucun défaut passé.
+    """
+    from apps.ventes.compatibilites import STATUT_INCOMPATIBLE
+    replis = [c[1] for c in exacts] + [
+        c[1] for c in sorted(tries, key=lambda c: abs(c[0] - watt))]
+    vus = set()
+    for candidat in replis:
+        if id(candidat) in vus or candidat is panneau:
+            vus.add(id(candidat))
+            continue
+        vus.add(id(candidat))
+        statut_bis, coince_bis = _statut_couple_panneau(
+            candidat, onduleurs_vendus, froid)
+        if statut_bis != STATUT_INCOMPATIBLE:
+            avertir(
+                'Panneau remplacé pour compatibilité électrique : '
+                '« %s » ne se raccorde pas à l\'onduleur retenu, '
+                '« %s » a été composé à la place.'
+                % (getattr(panneau, 'nom', '') or '?',
+                   getattr(candidat, 'nom', '') or '?'))
+            refuse = None
+            if (prefere_id is not None and coince
+                    and getattr(panneau, 'pk', None) == prefere_id):
+                refuse = _raison_du_couple(coince)
+            return candidat, statut_bis, coince_bis, refuse
+    return panneau, statut, coince, None
+
+
 def _choisir_panneau(pool, watt, prefere_id=None):
     """Panneau : wattage demandé d'abord, à défaut le plus proche.
 
@@ -735,6 +780,9 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # RSIZ4 — corps extrait tel quel dans :func:`_choisir_panneau`.
     tries, exacts, panneau = _choisir_panneau(
         par_marque(par_type.get('panneau'), 'panneau'), watt, panneau_prefere_id)
+    # D-ACAL-169 (rejeu) — pourquoi le panneau PAR DÉFAUT retenu ci-dessus a été
+    # remplacé (couple électrique) ; ``None`` = retenu, ou aucun défaut passé.
+    panneau_prefere_refuse = None
 
     # ── PVCOMPAT — LE COUPLE PANNEAU / ONDULEUR EST VÉRIFIÉ ────────────────
     # Les deux choix ci-dessus sont INDÉPENDANTS : rien ne garantissait qu'ils
@@ -757,28 +805,10 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
             avertissement_panneau_onduleur)
         statut, coince = _statut_couple_panneau(panneau, onduleurs_vendus, froid)
         if statut == STATUT_INCOMPATIBLE:
-            # Repli ORDONNÉ : d'abord les wattages exacts (l'ordre de départage
-            # de l'écran), puis les plus proches — la même préférence que le
-            # choix initial, appliquée aux candidats restants.
-            replis = [c[1] for c in exacts] + [
-                c[1] for c in sorted(tries, key=lambda c: abs(c[0] - watt))]
-            vus = set()
-            for candidat in replis:
-                if id(candidat) in vus or candidat is panneau:
-                    vus.add(id(candidat))
-                    continue
-                vus.add(id(candidat))
-                statut_bis, coince_bis = _statut_couple_panneau(
-                    candidat, onduleurs_vendus, froid)
-                if statut_bis != STATUT_INCOMPATIBLE:
-                    _avertir(
-                        'Panneau remplacé pour compatibilité électrique : '
-                        '« %s » ne se raccorde pas à l\'onduleur retenu, '
-                        '« %s » a été composé à la place.'
-                        % (getattr(panneau, 'nom', '') or '?',
-                           getattr(candidat, 'nom', '') or '?'))
-                    panneau, statut, coince = candidat, statut_bis, coince_bis
-                    break
+            # Repli ORDONNÉ — corps extrait tel quel dans :func:`_replier_panneau`.
+            panneau, statut, coince, panneau_prefere_refuse = _replier_panneau(
+                panneau, statut, coince, exacts, tries, watt,
+                onduleurs_vendus, froid, _avertir, panneau_prefere_id)
         if statut in (STATUT_INCOMPATIBLE, STATUT_RESERVE) and coince:
             _avertir(avertissement_panneau_onduleur(
                 panneau, coince[0], coince[1]))
@@ -1216,6 +1246,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # rend le vrai, pour que personne n'affiche un kWc théorique divergent.
     _watt_reel = _parse_watt(getattr(panneau, 'nom', '')) if panneau else None
     lignes.panel_watt_reel = _watt_reel or watt
+    lignes.panneau_prefere_refuse = panneau_prefere_refuse  # D-ACAL-169 (rejeu)
     lignes.kwc_reel = round(nb * float(lignes.panel_watt_reel) / 1000.0, 3)
     if panneaux_designes:
         # ACAL63 — kWc des lignes = kWc du dessin : la somme modèle par modèle.

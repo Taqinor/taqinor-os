@@ -19,10 +19,13 @@ export function nomDuReglage(cle, { registre = {}, courant = false } = {}) {
   return courant ? NOM_SANS_LIBELLE.toLowerCase() : NOM_SANS_LIBELLE
 }
 
-/** Les clés des réglages FIGÉS au calcul dont la référence est une valeur publiée (profil de départ). */
+/** Les clés des réglages FIGÉS au calcul dont la référence est une valeur publiée (profil de départ). La note parle des
+    PERTES : les réglages de la section `electrique_societe.*` (seuils et tolérances du câblage) n'y sont ni nommés ni
+    comptés (ACAL1632). */
+const SECTION_ELECTRIQUE = 'electrique_societe.'
 export function reglagesPublies(simulation) {
   const reglages = simulation?.reglages_utilises
   return reglages && typeof reglages === 'object'
-    ? Object.keys(reglages).filter((cle) => estProfilDepart(reglages[cle]?.reference))
+    ? Object.keys(reglages).filter((cle) => !cle.startsWith(SECTION_ELECTRIQUE) && estProfilDepart(reglages[cle]?.reference))
     : []
 }

@@ -43,7 +43,7 @@ MOTIF_SANS_DONNEES = (
     'document. Aucun forfait n\'est appliqué à leur place.')
 
 MOTIF_AUCUNE_CHAINE_AFFINEE = (
-    'Aucune chaîne ne porte, sur TOUS ses modules, des bandes en nombre égal '
+    'Aucune chaîne ne porte, sur tous ses modules, des bandes en nombre égal '
     'aux sous-chaînes de la fiche : rien n\'est affiné, et aucun chiffre '
     'n\'est supposé.')
 

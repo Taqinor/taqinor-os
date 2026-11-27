@@ -11,7 +11,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -984,3 +984,49 @@ class AcompteAutomatiqueVNT62(_BaseVente):
         # Le brouillon de la V1 est retiré par « Prix négocié », la V2
         # acceptée n'en pose pas de nouveau.
         self.assertEqual(self._brouillons_acompte(ids).count(), 0)
+
+
+class LecturesProfilAcceptationTests(SimpleTestCase):
+    """Profil société — les lectures de réglage que fait l'acceptation d'un
+    devis (brouillon d'acompte : revue initiale, escompte par défaut de
+    l'en-tête ; émission : revue active) passent par
+    ``CompanyProfile.lire`` (la lecture qui n'écrit pas), jamais par
+    ``get`` (get_or_create : la ligne créée portait un fuseau par défaut qui
+    périmait toutes les simulations de calepinage). Sans base."""
+
+    def test_aucune_lecture_ne_passe_par_get(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.domain import facturation_ops, facturation_vente
+        company = SimpleNamespace(pk=7, id=7, nom='Sans Profil')
+        devis = SimpleNamespace(company=company, taux_tva=None,
+                                reference_commande_client='',
+                                retenue_garantie=None)
+        facture = SimpleNamespace(company=company, client_id=None,
+                                  revue_statut='', created_by_id=None)
+        lectures = {
+            '_revue_initiale': lambda: facturation_vente._revue_initiale(
+                devis, None),
+            'entete_facture_depuis_devis':
+                lambda: facturation_ops.entete_facture_depuis_devis(devis),
+            '_poser_emise': lambda: facturation_ops._poser_emise(
+                facture, user=None, source='', verifier_credit=False,
+                statut='emise'),
+        }
+        for nom, lire in lectures.items():
+            with self.subTest(nom), \
+                    mock.patch.object(CompanyProfile, 'get',
+                                      side_effect=AssertionError(nom)) as get, \
+                    mock.patch.object(CompanyProfile, 'lire',
+                                      return_value=CompanyProfile(
+                                          nom='Sans Profil')) as lu:
+                try:
+                    lire()
+                except AssertionError:
+                    raise
+                except Exception:  # noqa: BLE001 — seul l'accès au profil compte
+                    pass
+                get.assert_not_called()
+                self.assertTrue(lu.called, nom)

@@ -1634,6 +1634,16 @@ def _chiffrage_des_zones(document):
     return chiffrage_zones(zones, arrondi=2)
 
 
+def _avertissements_hors_reseau(declaration):
+    """ACAL1667 — les avertissements de ``valider_hors_reseau`` (groupe sous la
+    veille…) sur la déclaration STOCKÉE. Une déclaration devenue illisible ne
+    fait pas tomber le résultat : le refus est dit à l'écriture."""
+    try:
+        return list(_hors_reseau_declaration.valider_hors_reseau(declaration))
+    except EntreeInvalide:
+        return []
+
+
 def resultat_calepinage(calepinage, *, entree=None, layout=None,
                         materiel=None, reglages=None, porteur_simulation=None):
     """Le ``resultat`` publié du calepinage — forme du contrat CAL244.
@@ -1813,6 +1823,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         pose.get('puissance_module_wc')))
 
     messages = list(blocs.get('avertissements') or ()) + list(avertissements) + list(messages_ratio)
+    messages.extend(_avertissements_hors_reseau(donnees.get('hors_reseau')))  # ACAL1667
     messages.extend(poly['bloquants'])
     messages.extend(poly['alertes'])
     messages.extend(micro['omissions'])

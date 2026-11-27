@@ -224,7 +224,8 @@ ETAPES_HORS_CATALOGUE = {
                      'rangées.',
     'bifacial': 'Le bifacial est un GAIN : le catalogue ne décrit que des '
                 'pertes.',
-    'spectral': 'Poste non modélisé en v1 (voir TOUJOURS_OMISES).',
+    'spectral': "L'effet spectral n'est pas modélisé : aucun forfait n'est "
+                'appliqué à sa place.',
     'neige': 'Poste mensuel neuf, saisi par la société (CALX161).',
     'mismatch_ombrage': "La dispersion d'ombrage se calcule par chaîne à "
                         'partir des I-V, jamais en pourcentage saisi.',
@@ -308,7 +309,7 @@ def _acces_module(contexte):
 EXCLUSIVITES = {
     'ombrage_proche': (
         _acces_module_disponible,
-        "Le document porte une lecture d'accès solaire MODULE PAR MODULE : "
+        "Le document porte une lecture d'accès solaire module par module : "
         "c'est elle qui s'applique, et la matrice 12×24 du même moteur "
         "d'ombrage est écartée pour ne pas compter l'ombre deux fois."),
     'inter_rangees': (
@@ -319,17 +320,16 @@ EXCLUSIVITES = {
     'diodes': (
         _diodes_sans_donnees,
         "Les diodes se calculent par sous-chaînes : il faut le nombre de "
-        "sous-chaînes de la fiche (FicheTechnique.sous_chaines_par_module) et "
-        "l'accès par bande (solarAccess.bandes). L'un des deux manque : "
-        "aucun forfait n'est appliqué (PV*SOL assume 0,5 %, chiffre de "
-        'leur logiciel et non du nôtre).'),
+        "sous-chaînes de la fiche du module et l'accès solaire par bande du "
+        "document. L'un des deux manque : aucun forfait n'est appliqué à "
+        'leur place.'),
     'optimiseur': (
         _aucun_optimiseur,
         "Aucun optimiseur n'est déclaré (ni produit pour le document, ni "
         'module marqué) : aucune perte de conversion à compter.'),
     'horizon': (
         _horizon_deja_dans_la_meteo,
-        "L'horizon vient du modèle de terrain de PVGIS, qui l'a DÉJÀ "
+        "L'horizon vient du modèle de terrain de PVGIS, qui l'a déjà "
         "retranché de l'irradiance rendue : le retrancher ici le compterait "
         'deux fois.'),
 }
@@ -339,9 +339,8 @@ EXCLUSIVITES = {
 #: lirait « gratuite » —, avec leur motif et ``perte_pct`` à ``null``. Une
 #: saisie société SOURCÉE du même nom les réveille (arbitrage CALX149).
 TOUJOURS_OMISES = {
-    'spectral': 'Étape non modélisée en v1 : PVsyst applique un modèle '
-                'spectral, nous n\'en avons aucun — aucun forfait n\'est '
-                'appliqué à sa place.',
+    'spectral': 'Effet spectral non modélisé : aucun modèle spectral n\'est '
+                'disponible, et aucun forfait n\'est appliqué à sa place.',
 }
 
 #: ACAL463 — les étapes CALCULÉES quand une saisie existe, mais dont l'omission
@@ -955,7 +954,7 @@ PAS_JOURNALIER_MINUTES = 24 * 60
 MOTIF_SERIE_AGREGEE = (
     'La série calculée porte {points} points au pas de {pas} min, au-delà de '
     'la borne de {plafond} points ({jours} jours) que le résultat persiste. '
-    'Elle est publiée AGRÉGÉE AU JOUR (moyenne de chaque colonne sur les '
+    'Elle est publiée agrégée au jour (moyenne de chaque colonne sur les '
     'points du jour, donc la même énergie) plutôt que coupée au milieu de '
     "l'année : le détail horaire se recalcule, il ne se devine pas.")
 
@@ -1397,6 +1396,18 @@ def _bloc_production(resultat, serie, contexte, cascade, decision,
     return production
 
 
+def _omissions_sans_objet():
+    """ACAL1674 — ``{étape: début du motif}`` des omissions « sans objet » :
+    l'étape ne trouve rien à affiner dans CE document (aucune chaîne ne porte
+    de bandes en nombre égal aux sous-chaînes de la fiche). Ce n'est pas une
+    donnée que l'utilisateur peut saisir : l'omission reste motivée, mais
+    n'est jamais comptée comme perte manquante (comme l'optimiseur non
+    déclaré)."""
+    from apps.calepinage.services.etapes import diodes
+
+    return {'diodes': diodes.MOTIF_AUCUNE_CHAINE_AFFINEE}
+
+
 def completude_de_la_chaine(cascade, contexte=None):
     """ACAL49 — la complétude d'une simulation, LUE sur ses cascades.
 
@@ -1416,6 +1427,7 @@ def completude_de_la_chaine(cascade, contexte=None):
         cascades.extend(c for c in posees.values() if isinstance(c, dict))
     omises = set((cascade or {}).get('etapes_omises') or ())
     non_renseignees = set()
+    sans_objet = _omissions_sans_objet()
     for courante in cascades:
         for etape in courante.get('etapes') or ():
             nom = etape.get('etape')
@@ -1426,7 +1438,8 @@ def completude_de_la_chaine(cascade, contexte=None):
             exclusivite = EXCLUSIVITES.get(nom)
             if (nom in TOUJOURS_OMISES or nom in OMISES_NON_COMPTEES
                     or (exclusivite is not None
-                        and motif == exclusivite[1])):
+                        and motif == exclusivite[1])
+                    or motif.startswith(sans_objet.get(nom, '\0'))):
                 continue
             non_renseignees.add(nom)
     socle = [nom for nom in SOCLE_PHYSIQUE if nom in omises]
@@ -2210,10 +2223,10 @@ def _refuser_si_modifiee(nom, avant, apres):
 
 #: Ce qui est dit à l'écran quand une étape calculée écarte une saisie.
 MOTIF_SAISIE_ECARTEE = (
-    'Le poste saisi « {poste} » est ÉCARTÉ : l\'étape « {etape} » l\'a '
-    'CALCULÉ à partir de ses propres entrées, et cumuler les deux '
-    'compterait la même perte deux fois. Le poste reste servi en LECTURE '
-    'SEULE au panneau de saisie, avec le nom de l\'étape qui l\'a calculé.')
+    'Le poste saisi « {poste} » est écarté : l\'étape « {etape} » l\'a '
+    'calculé à partir de ses propres entrées, et cumuler les deux '
+    'compterait la même perte deux fois. Le poste reste servi en lecture '
+    'seule au panneau de saisie, avec le nom de l\'étape qui l\'a calculé.')
 
 #: ACAL135 — la source publiée d'un poste FORCÉ (forçage signé).
 SOURCE_SAISIE_FORCEE = 'saisie_forcee'
@@ -2234,8 +2247,8 @@ AVERTISSEMENT_HORS_CHAINE = (
 
 #: Ce qui est ajouté au motif d'omission quand la saisie n'a pas de source.
 MOTIF_SAISIE_SANS_SOURCE = (
-    ' Le poste saisi « {poste} » porte bien un pourcentage, mais SANS '
-    'SOURCE : il n\'entre pas dans la cascade, et son nom figure dans '
+    ' Le poste saisi « {poste} » porte bien un pourcentage, mais sans '
+    'source : il n\'entre pas dans la cascade, et son nom figure dans '
     '« postes_non_sources ».')
 
 

@@ -123,7 +123,7 @@ def resolve_langue_sortie(*, langue_explicite=None, client=None, company=None) -
         # sans le champ en base, ne peut jamais faire lever cette fonction).
         try:
             from apps.parametres.models_company import CompanyProfile
-            profile = CompanyProfile.get(company)
+            profile = CompanyProfile.lire(company)
             company_langue = _valide(getattr(profile, 'langue_repli', None))
             if company_langue:
                 return company_langue

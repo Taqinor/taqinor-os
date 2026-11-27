@@ -60,27 +60,27 @@ COLONNES_POSEES = ('charge_kwh', 'batterie_soc_pct')
 
 MOTIF_RACCORDE = (
     "Ce calepinage n'est pas déclaré hors réseau : il n'y a donc aucun défaut "
-    "d'alimentation à chiffrer. Le bloc « hors_reseau » est OMIS — c'est le "
-    'bloc « autoconsommation » (CALX190) qui décrit un site raccordé.')
+    "d'alimentation à chiffrer. Le bloc « hors_reseau » est omis — c'est le "
+    'bloc « autoconsommation » qui décrit un site raccordé.')
 
 MOTIF_SANS_COURBE = (
     "Aucune courbe de consommation n'est disponible : le défaut "
-    "d'alimentation se compte heure par heure CONTRE une consommation. Le "
-    'bloc « hors_reseau » est OMIS — une consommation supposée ferait vendre '
+    "d'alimentation se compte heure par heure contre une consommation. Le "
+    'bloc « hors_reseau » est omis — une consommation supposée ferait vendre '
     'une banque sous-dimensionnée comme suffisante.')
 
 MOTIF_SANS_PRODUCTION = (
     "Aucune colonne d'énergie n'est lisible sur la série sortie de chaîne : "
-    "le défaut d'alimentation se compte CONTRE une production, et celle-ci "
-    "n'est pas calculée. Le bloc « hors_reseau » est OMIS.")
+    "le défaut d'alimentation se compte contre une production, et celle-ci "
+    "n'est pas calculée. Le bloc « hors_reseau » est omis.")
 
 MOTIF_SANS_AUTONOMIE = (
     "Le nombre de jours d'autonomie n'est pas saisi : il n'est jamais "
     'supposé, et c’est lui qui dimensionne la banque. Le bloc '
-    '« hors_reseau » est OMIS.')
+    '« hors_reseau » est omis.')
 
 MOTIF_QUANTILES = (
-    "Hors réseau, aucun quantile de production (P50/P90, CALX186-187) n'est "
+    "Hors réseau, aucun quantile de production (P50/P90) n'est "
     "publié : ce qui décide d'un site isolé n'est pas l'énergie produite une "
     "année sur dix, c'est l'heure où la charge n'est pas servie. Le taux de "
     'défaillance et le mois le plus défavorable tiennent ce rôle.')

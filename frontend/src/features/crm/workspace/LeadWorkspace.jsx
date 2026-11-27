@@ -406,7 +406,9 @@ export default function LeadWorkspace({
     }
 
     try {
-      const res = await ventesApi.creerDevisAuto({ lead: leadId })
+      // ACAL1325 — la création peut durer ~50 s : l'écran dit seul le résultat,
+      // jamais le toast global « La connexion a expiré » (comme autoQuote.js).
+      const res = await ventesApi.creerDevisAuto({ lead: leadId }, { suppressErrorToast: true })
       const nouveau = res?.data?.id
       if (nouveau) {
         navigate(`/ventes/devis/${nouveau}/design`)
@@ -414,6 +416,11 @@ export default function LeadWorkspace({
       }
       setDesignBloque('Devis créé sans identifiant — ouvrez-le depuis la liste des devis.')
     } catch (err) {
+      if (err?.code === 'ECONNABORTED') {
+        // Délai dépassé : le serveur a pu finir la création (même début de message qu'autoQuote.js).
+        setDesignBloque('Le devis a peut-être été créé : vérifiez la liste des devis avant de réessayer.')
+        return
+      }
       setDesignBloque(
         err?.response?.data?.detail
         || "Impossible de créer un devis pour ce lead — ouvrez le générateur.")

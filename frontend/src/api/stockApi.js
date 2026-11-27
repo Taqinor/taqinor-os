@@ -120,8 +120,11 @@ const stockApi = {
   getPretDevisResidentiel: () => api.get('/stock/produits/pret-devis-residentiel/'),
   // D-ACAL-169 — LE panneau par défaut de la société (contrat panneau_par_defaut.json).
   getPanneauParDefaut: () => api.get('/stock/panneau-par-defaut/'),
-  definirPanneauParDefaut: (id) => api.post(`/stock/produits/${id}/definir-panneau-par-defaut/`),
-  retirerPanneauParDefaut: (id) => api.post(`/stock/produits/${id}/retirer-panneau-par-defaut/`),
+  // D-ACAL-169 (rejeu) — le refus est dit UNE fois, sous le bouton (ActionPanneauParDefaut) : pas de toast global.
+  definirPanneauParDefaut: (id) => api.post(`/stock/produits/${id}/definir-panneau-par-defaut/`, undefined,
+    { suppressErrorToast: true }),
+  retirerPanneauParDefaut: (id) => api.post(`/stock/produits/${id}/retirer-panneau-par-defaut/`, undefined,
+    { suppressErrorToast: true }),
   exportProduitsXlsx: (ids) =>
     api.post('/stock/produits/export-xlsx/', { ids }, { responseType: 'blob' }),
   // N15 — Stock multi-emplacements (dépôt principal + camionnette …).

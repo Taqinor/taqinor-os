@@ -116,11 +116,13 @@ export function DuSoleilAuReseau({ cascade, note = null }) {
   const [ouvert, setOuvert] = useState(false)
   const postes = cascade?.postes_lisibles
   const liste = (Array.isArray(postes?.postes) ? postes.postes : [])
-    .filter((p) => p.statut !== 'non_compte' && typeof p.perte_pct === 'number')
+    .filter((p) => p.statut === 'non_compte' || typeof p.perte_pct === 'number')
   if (liste.length === 0) return null
   const etapes = Array.isArray(cascade?.etapes) ? cascade.etapes : []
   const arrivee = typeof postes?.arrivee_pct === 'number' ? postes.arrivee_pct : null
-  const restes = liste.map((_, i) => 100 - liste.slice(0, i + 1).reduce((somme, p) => somme + p.perte_pct, 0))
+  // Les barres ne cumulent que les postes COMPTÉS (un poste « non compté » ne retire rien).
+  const restes = liste.map((_, i) => 100 - liste.slice(0, i + 1)
+    .reduce((somme, p) => somme + (p.statut === 'non_compte' ? 0 : p.perte_pct), 0))
   return (
     <section className="cal-res-carte" data-testid="cal-resultats-pertes">
       <div className="cal-res-entete">
@@ -140,6 +142,19 @@ export function DuSoleilAuReseau({ cascade, note = null }) {
         </li>
         {liste.map((p, i) => {
           const omises = Array.isArray(p.etapes) ? p.etapes.length : 0
+          if (p.statut === 'non_compte') {
+            // ACAL1676 — le poste non compté est MONTRÉ : « non compté » et le motif servi, aucune barre, aucun 0.
+            const motif = (Array.isArray(p.etapes) ? p.etapes : []).map((e) => e?.motif_omission).filter(Boolean).join(' ')
+            return (
+              <li key={p.poste} className="cal-res-poste" data-poste={p.poste} data-statut={p.statut}>
+                <span>{p.libelle}</span>
+                <span className="cal-res-sourdine text-xs" data-testid={`cal-res-poste-motif-${p.poste}`}>
+                  {motif ? `non compté — ${motif}` : 'non compté'}
+                </span>
+                <span className="cal-res-poste-pct">—</span>
+              </li>
+            )
+          }
           return (
             <li key={p.poste} className="cal-res-poste" data-poste={p.poste} data-statut={p.statut}>
               <span>

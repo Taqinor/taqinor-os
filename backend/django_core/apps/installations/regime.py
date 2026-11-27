@@ -71,7 +71,7 @@ def regime_surcharges(company):
         return None, None
     try:
         from apps.parametres.models import CompanyProfile
-        prof = CompanyProfile.get(company=company)
+        prof = CompanyProfile.lire(company=company)
     except Exception:
         logger.warning("regime surcharges : échec ignoré, comportement dégradé", exc_info=True)
         return None, None

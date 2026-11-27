@@ -18,7 +18,7 @@ PENDING_STATUTS = ('brouillon', 'envoye')
 def _validity_days(company):
     try:
         from apps.parametres.models import CompanyProfile
-        prof = CompanyProfile.get(company)
+        prof = CompanyProfile.lire(company)
         return int(prof.quote_validity_days or 30)
     except Exception:
         logger.warning("expiry._validity_days : erreur ignorée (mode dégradé)", exc_info=True)

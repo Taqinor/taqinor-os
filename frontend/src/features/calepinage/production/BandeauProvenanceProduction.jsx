@@ -239,9 +239,15 @@ export function EcartPvgis({ validation }) {
   if (typeof pct !== 'number') return null
   const signe = pct < 0 ? '−' : (pct > 0 ? '+' : '')
   const sansVerdict = validation.tolerance_pct == null && validation.verdict == null
+  // ACAL1933 — « sans <designation>, que PVGIS compte » : les étapes omises SERVIES (`pertes_totales.omises_vs_pvgis`).
+  const omises = (Array.isArray(validation.pertes_totales?.omises_vs_pvgis) ? validation.pertes_totales.omises_vs_pvgis : [])
+    .map((o) => o?.designation).filter((d) => typeof d === 'string' && d)
+  const sans = omises.length > 0
+    ? `, sans ${omises.length > 1 ? `${omises.slice(0, -1).join(', ')} ni ${omises[omises.length - 1]}` : omises[0]}, que PVGIS compte`
+    : ''
   return (
     <p className="text-sm text-muted-foreground" data-testid="acal854-ecart-pvgis">
-      {`Comparé à PVGIS au même endroit${validation.pertes_totales?.egales === true ? ', à pertes système égales' : ''} : `}{signe}{formatNumber(Math.abs(pct), { decimals: 1 })}{' %'}
+      {`Comparé à PVGIS au même endroit${validation.pertes_totales?.egales === true ? ', à pertes système égales' : ''}${sans} : `}{signe}{formatNumber(Math.abs(pct), { decimals: 1 })}{' %'}
       <Pourquoi cle="production.ecart_pvgis" valeurs={{ validation }} />{/* ACAL873 */}
       {sansVerdict && (
         <span className="block text-xs" data-testid="acal854-sans-verdict">

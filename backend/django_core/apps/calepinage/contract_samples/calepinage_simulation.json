@@ -431,6 +431,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -439,6 +440,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -447,6 +449,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -455,6 +458,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -463,6 +467,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "non calculé : modèle spectral",
             "etapes": [
               {
                 "etape": "spectral",
@@ -1960,6 +1965,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -1968,6 +1974,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -1976,6 +1983,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -1984,6 +1992,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -1992,6 +2001,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "non calculé : modèle spectral",
             "etapes": [
               {
                 "etape": "spectral",
@@ -3198,6 +3208,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -3206,6 +3217,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -3214,6 +3226,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -3222,6 +3235,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -3230,6 +3244,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "non calculé : modèle spectral",
             "etapes": [
               {
                 "etape": "spectral",

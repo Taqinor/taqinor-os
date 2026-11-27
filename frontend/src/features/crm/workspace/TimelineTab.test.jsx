@@ -179,6 +179,32 @@ describe('Historique du lead — jalons devis lus une seule fois à l’ouvertur
   })
 })
 
+describe('Fondateur 9 — ligne « N éléments masqués par le filtre »', () => {
+  const t = new Date().toISOString()
+  const entries = [
+    { id: 1, kind: 'note', body: 'Une note', user_nom: 'Sami', created_at: t },
+    { id: 2, kind: 'appel', outcome: 'joint', user_nom: 'Sami', created_at: t },
+    { id: 3, kind: 'email', user_nom: 'Sami', created_at: t },
+    { id: 4, kind: 'note', body: 'Autre note', user_nom: 'Sami', created_at: t },
+  ]
+
+  it('rien à 0 masqué (filtre « Tous »)', () => {
+    renderTab({ historique: entries })
+    expect(screen.queryByTestId('timeline-masques')).toBeNull()
+  })
+
+  it('singulier à 1 masqué, pluriel à 3 masqués', async () => {
+    const user = userEvent.setup()
+    renderTab({ historique: [entries[0], entries[1]] })
+    await user.click(screen.getAllByRole('button', { name: 'Appels' })[0])
+    expect(screen.getByTestId('timeline-masques').textContent).toBe('1 élément masqué par le filtre')
+    cleanup()
+    renderTab({ historique: entries })
+    await user.click(screen.getAllByRole('button', { name: 'Appels' })[0])
+    expect(screen.getByTestId('timeline-masques').textContent).toBe('3 éléments masqués par le filtre')
+  })
+})
+
 describe('LW20 — notes épinglées (📌) + épingler/désépingler', () => {
   it('une note épinglée est rendue en tête avec l\'icône 📌', () => {
     const entries = [

@@ -350,7 +350,12 @@ class TestPanneauParDefautSelecteurs(SimpleTestCase):
         self.assertEqual(spd.desaccord_watt(produit), (710, 715))
         self.assertEqual(spd.source_du_produit(produit), spd.WATT_CONTRADICTOIRE)
         self.assertEqual(spd.resume_du_produit(produit), _CONTRAT_PANNEAU['exemple_watt_contradictoire'])
-        self.assertIn(spd.phrase_desaccord_watt(710, 715), _CONTRAT_PANNEAU['exemple_watt_contradictoire']['motif'])
+        # D-ACAL-169 (rejeu) — le motif du résumé NOMME le produit désigné (jamais « ce produit ») et les deux watts.
+        motif = spd.resume_du_produit(produit)['motif']
+        self.assertIn('« Panneau Jinko 710 W »', motif)
+        self.assertNotIn('ce produit', motif)
+        self.assertIn('710 W', motif)
+        self.assertIn('715 Wc', motif)
         self.assertEqual(spd.phrase_desaccord_watt(710, 712.5),
                          "Le nom de ce produit dit 710 W et sa fiche technique 712,5 Wc : corrigez l'un des deux, "
                          "puis désignez-le.")

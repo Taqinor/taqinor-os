@@ -830,7 +830,7 @@ def signature_client_requise(intervention):
         return False
     try:
         from apps.parametres.models import CompanyProfile
-        prof = CompanyProfile.get(company)
+        prof = CompanyProfile.lire(company)
         return bool(getattr(prof, 'signature_client_obligatoire', False))
     except Exception:
         logger.warning("signature client requise : échec ignoré, comportement dégradé", exc_info=True)

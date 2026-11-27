@@ -329,6 +329,7 @@ class TestLeadActivity(TestCase):
         self.company = make_company()
         self.user = User.objects.create_user(
             username='chatter_user', password='x',
+            first_name='Chat', last_name='Teur',
             role_legacy='responsable', company=self.company,
         )
         self.api = APIClient()
@@ -393,7 +394,7 @@ class TestLeadActivity(TestCase):
         resp = self.api.post(f'/api/django/crm/leads/{lead_id}/noter/',
                              {'body': 'Rappelé, pas de réponse'}, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
-        self.assertEqual(resp.data['user_nom'], 'chatter_user')
+        self.assertEqual(resp.data['user_nom'], 'Chat Teur')
         hist = self.api.get(f'/api/django/crm/leads/{lead_id}/historique/')
         self.assertEqual(hist.status_code, 200)
         kinds = [a['kind'] for a in hist.data]
@@ -1299,3 +1300,15 @@ class ReancrerRelancesDemoTest(TestCase):
         self.assertEqual(
             settings.CELERY_TASK_ROUTES['crm.reancrer_relances_demo']['queue'],
             'scheduled')
+
+
+class NomAfficheTests(__import__("django.test", fromlist=["x"]).SimpleTestCase):
+    """Décision 8 — un seul nom d'affichage : prénom + nom, login en dernier."""
+
+    def test_formes(self):
+        from types import SimpleNamespace as U
+        from core.user_display import nom_affiche
+        self.assertEqual(nom_affiche(U(first_name="Reda", last_name="Kasri", username="reda.k")), "Reda Kasri")
+        self.assertEqual(nom_affiche(U(first_name="", last_name="Kasri", username="reda.k")), "Kasri")
+        self.assertEqual(nom_affiche(U(first_name=" ", last_name="", username="reda.k")), "reda.k")
+        self.assertIsNone(nom_affiche(None))

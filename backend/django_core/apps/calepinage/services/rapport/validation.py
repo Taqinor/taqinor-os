@@ -16,6 +16,7 @@ import pathlib
 from html import escape
 
 from . import nombre_tel_que_servi
+from .champs_lisibles import _minuscule, libelle_de_poste
 
 __all__ = ['CSS_SECTION', 'MENTION_ECART_INFORMATIF', 'html_de_section']
 
@@ -88,7 +89,9 @@ def html_de_section(contexte):
     resultat = contexte.get('resultat') or {}
     banc = _banc()
     sites = banc.get('sites') or {}
-    chaine = ', '.join(banc.get('chaine_mesuree') or ())
+    chaine = ', '.join(  # ACAL1716 — les postes en mots, pas leurs codes
+        _minuscule(libelle_de_poste(c) or 'un poste de pertes')
+        for c in banc.get('chaine_mesuree') or ())
     methode = ("Méthode : la production de notre chaîne (%s) est rejouée sur "
                "des sites marocains et comparée aux réponses PVGIS "
                "enregistrées (PVcalc) et à pvlib ; mesure du %s."

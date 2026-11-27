@@ -24,6 +24,7 @@ vi.mock('../../../hooks/useHasPermission', () => ({ useHasPermission: () => true
 import calepinageApi from '../../../api/calepinageApi'
 import DiagrammePertes from './DiagrammePertes'
 import { construireCascadeDetaillee } from './DiagrammePertes.helpers'
+import { NOMS_PERTES, nomDePerte } from './nomsPertes'
 import { polyfillResizeObserver } from '../../../test/selectNatif'
 
 beforeAll(polyfillResizeObserver)
@@ -509,5 +510,14 @@ describe('DiagrammePertes — pastille inhabituel (ACAL703)', () => {
     const plage = { statut: 'dans_la_plage', ...BANDE }
     expect(construireCascadeDetaillee(etapes, null, { etapes: { a: plage } })[1].plage).toEqual(plage)
     expect(construireCascadeDetaillee(etapes, null, null)[1].plage).toBeNull()
+  })
+})
+
+/* ACAL1652 — la fenêtre MPPT se lit « Plage de tension de l'onduleur » (ce que le calcul fait : couper ce qui sort de la plage
+   de tension), jamais « Réglage de la puissance » ; le terme servi reste en infobulle. */
+describe('nomsPertes — la fenêtre MPPT en clair (ACAL1652)', () => {
+  it('l’étape « mppt » se lit « Plage de tension de l’onduleur », le terme servi reste en infobulle', () => {
+    expect(nomDePerte('mppt', 'Fenêtre MPPT')).toEqual({ nom: 'Plage de tension de l’onduleur', technique: 'Fenêtre MPPT' })
+    expect(JSON.stringify(NOMS_PERTES)).not.toContain('Réglage de la puissance')
   })
 })

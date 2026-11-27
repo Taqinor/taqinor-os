@@ -104,6 +104,9 @@ class CompositionLignes(list):
     kwc_reel = 0.0
     blocs = 1
     marques_manquantes = ()
+    #: D-ACAL-169 (rejeu) — pourquoi le panneau PAR DÉFAUT passé à la
+    #: composition a été remplacé (couple électrique) ; ``None`` sinon.
+    panneau_prefere_refuse = None
     # ── L-2OPT — métadonnées de la composition FUSIONNÉE (deux optimiseurs) ──
     # ``variantes`` reste False sur toute composition d'hier : une composition
     # mono-optimum n'a que des lignes communes. Les deux clés ``_avec`` ne
@@ -628,6 +631,8 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
     # a ses propres clés, à côté, jamais à la place.
     lignes.nb_panneaux = getattr(kit_sans, 'nb_panneaux', nb_sans)
     lignes.panel_watt_reel = getattr(kit_sans, 'panel_watt_reel', panel_watt)
+    lignes.panneau_prefere_refuse = (getattr(kit_sans, 'panneau_prefere_refuse', None)
+                                     or getattr(kit_avec, 'panneau_prefere_refuse', None))
     lignes.kwc_reel = getattr(kit_sans, 'kwc_reel', 0.0)
     lignes.blocs = getattr(kit_sans, 'blocs', 1)
     lignes.nb_panneaux_avec = getattr(kit_avec, 'nb_panneaux', nb_avec)

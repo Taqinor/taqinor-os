@@ -750,7 +750,7 @@ def _avertissement_coefficients_non_sources(module):
     non_sources = tuple(getattr(module, 'coefficients_non_sources', ()) or ())
     if not non_sources:
         return ''
-    nom_module = getattr(module, 'designation', '') or 'le module retenu'
+    nom_module = getattr(module, 'designation', '') or 'ce module'
     details = ', '.join(
         '« %s » — %s : %s %%/°C'
         % (nom, LIBELLES_COEFFICIENTS.get(nom, nom),

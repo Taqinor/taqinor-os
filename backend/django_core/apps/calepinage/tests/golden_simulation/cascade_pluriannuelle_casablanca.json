@@ -2,8 +2,8 @@
  "_provenance": {
   "tache": "CALX196",
   "produit_par": "python -m apps.calepinage.tests.test_calx196_golden --write",
-  "produit_le": "2026-11-23",
-  "arbre_sha": "c4b66e7682",
+  "produit_le": "2026-11-27",
+  "arbre_sha": "a2f73b990ff39a6c3ee6a827f4840fc796b74f6e",
   "fixture": "seriescalc_casablanca_sud_deux_annees.json",
   "fixture_url": "https://re.jrc.ec.europa.eu/api/v5_3/seriescalc?lat=33.5&lon=-7.6&startyear=2019&endyear=2020&pvcalculation=0&angle=15&aspect=0&raddatabase=PVGIS-SARAH3&outputformat=json&localtime=1",
   "fenetre_annees": "2019-2020",
@@ -195,7 +195,7 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "Le document de toiture ne porte aucun facteur de vue du ciel : le diffus n'est pas dérate, rien n'est supposé. Champ manquant : « ombrage.skyViewFactor »."
+     "motif_omission_non_compare": "Le document de toiture ne porte aucun facteur de vue du ciel : l'ombrage de la lumière diffuse n'est pas calculé, et rien n'est supposé. Champ manquant : « ombrage.skyViewFactor »."
     },
     {
      "omise": true,
@@ -209,7 +209,7 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "L'auto-ombrage entre rangées se calcule sur la GÉOMÉTRIE des rangées posées (pas, inclinaison, côté de table dans la pente) : elle est incomplète dans le document, et aucune ombre n'est supposée à sa place. Champ manquant : « zones[].geometry.panelSlopeLenM (côté de table dans la pente) »."
+     "motif_omission_non_compare": "L'auto-ombrage entre rangées se calcule sur la géométrie des rangées posées (pas, inclinaison, côté de table dans la pente) : elle est incomplète dans le document, et aucune ombre n'est supposée à sa place. Champ manquant : « zones[].geometry.panelSlopeLenM (côté de table dans la pente) »."
     },
     {
      "omise": true,
@@ -251,7 +251,7 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "Étape non modélisée en v1 : PVsyst applique un modèle spectral, nous n'en avons aucun — aucun forfait n'est appliqué à sa place."
+     "motif_omission_non_compare": "Effet spectral non modélisé : aucun modèle spectral n'est disponible, et aucun forfait n'est appliqué à sa place."
     },
     {
      "omise": false,
@@ -334,7 +334,7 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "Aucune courbe de rendement à éclairement partiel n'est publiée sur la fiche de le module retenu : le rendement de la fiche est celui du STC seul, et rien ne permet de dire ce que le module rend sous faible éclairement. L'étape est OMISE — aucun forfait n'est appliqué à sa place. Champ manquant : « FicheTechnique.rendement_par_irradiance »."
+     "motif_omission_non_compare": "Aucune courbe de rendement à éclairement partiel n'est publiée sur la fiche de ce module : le rendement de la fiche est celui du STC seul, et rien ne permet de dire ce que le module rend sous faible éclairement. L'étape est omise — aucun forfait n'est appliqué à sa place. Champ manquant : « FicheTechnique.rendement_par_irradiance »."
     },
     {
      "omise": true,
@@ -407,7 +407,7 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "Le contexte ne porte pas la table d'affectation des modules aux chaînes (« affectation », services/chaines.py) : sans elle, on ne sait pas QUELS modules sont en série, donc aucune contrainte de chaîne ne peut être mesurée. Rien n'est supposé. Champ manquant : « affectation »."
+     "motif_omission_non_compare": "Le contexte ne porte pas la table d'affectation des modules aux chaînes (« affectation », services/chaines.py) : sans elle, on ne sait pas quels modules sont en série, donc aucune contrainte de chaîne ne peut être mesurée. Rien n'est supposé. Champ manquant : « affectation »."
     },
     {
      "omise": true,
@@ -421,7 +421,7 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "Les diodes se calculent par sous-chaînes : il faut le nombre de sous-chaînes de la fiche (FicheTechnique.sous_chaines_par_module) et l'accès par bande (solarAccess.bandes). L'un des deux manque : aucun forfait n'est appliqué (PV*SOL assume 0,5 %, chiffre de leur logiciel et non du nôtre)."
+     "motif_omission_non_compare": "Les diodes se calculent par sous-chaînes : il faut le nombre de sous-chaînes de la fiche du module et l'accès solaire par bande du document. L'un des deux manque : aucun forfait n'est appliqué à leur place."
     },
     {
      "omise": true,
@@ -463,7 +463,7 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "La fiche du module ne publie pas son coefficient de température de puissance : la dérive du Vmp n'est pas calculable. L'étape est OMISE — le défaut du noyau n'est pas employé ici, il ferait passer un littéral de code pour une donnée constructeur. Champ manquant : « fiche_module.temp_coeff_pmax_pct_c »."
+     "motif_omission_non_compare": "La fiche du module ne publie pas son coefficient de température de puissance : la dérive du Vmp n'est pas calculable. L'étape est omise — aucune valeur par défaut n'est employée ici : elle ferait passer un chiffre du logiciel pour une donnée constructeur. Champ manquant : « fiche_module.temp_coeff_pmax_pct_c »."
     },
     {
      "omise": false,
@@ -491,7 +491,7 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "Aucun onduleur au bloc « electrique.onduleurs » : ni puissance, ni nombre d'appareils, donc aucune borne d'écrêtage. Étape OMISE. Champ manquant : « electrique.onduleurs »."
+     "motif_omission_non_compare": "Aucun onduleur au bloc « electrique.onduleurs » : ni puissance, ni nombre d'appareils, donc aucune borne d'écrêtage. Étape omise. Champ manquant : « electrique.onduleurs »."
     },
     {
      "omise": false,
@@ -533,7 +533,7 @@
      "kwh_apres": null,
      "perte_kwh": null,
      "perte_pct": null,
-     "motif_omission_non_compare": "La série ne déclare pas de puissance alternative : les auxiliaires se retranchent APRÈS la conversion de l'onduleur (CALX170), jamais sur la puissance continue. Étape OMISE. Champ manquant : « serie.colonne_energie »."
+     "motif_omission_non_compare": "La série ne déclare pas de puissance alternative : les auxiliaires se retranchent après la conversion de l'onduleur (CALX170), jamais sur la puissance continue. Étape omise. Champ manquant : « serie.colonne_energie »."
     },
     {
      "omise": false,

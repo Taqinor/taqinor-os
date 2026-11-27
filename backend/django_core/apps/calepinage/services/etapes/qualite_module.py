@@ -108,7 +108,7 @@ REGLES = {
 MOTIF_TOLERANCE_ABSENTE = (
     "Aucune tolérance de puissance n'est publiée sur la fiche de {produit} : "
     "rien ne dit de combien la puissance réelle des modules s'écarte du "
-    "nominal. L'étape est OMISE — aucun forfait n'est appliqué à sa place.")
+    "nominal. L'étape est omise — aucun forfait n'est appliqué à sa place.")
 
 #: D-ACAL-98 (fondateur, 24/11/2026) — la tolérance supposée d'une fiche qui
 #: n'en publie pas : le tri usuel des fabricants de premier rang, en % du nominal.
@@ -123,31 +123,31 @@ MOTIF_REGLE_ABSENTE = (
     "La tolérance de puissance de {produit} est publiée, mais la société n'a "
     "pas choisi ce qu'il faut en faire : retenir la borne basse, la moyenne "
     'ou le quart proposé par PVsyst sont trois décisions différentes. '
-    "L'étape est OMISE tant que la règle n'est pas saisie et sourcée.")
+    "L'étape est omise tant que la règle n'est pas saisie et sourcée.")
 
 MOTIF_REGLE_INCONNUE = (
     'La règle de qualité module saisie par la société, « {valeur} », ne fait '
     'partie des règles connues ({connues}). Aucune règle n\'est devinée : '
-    "l'étape est OMISE.")
+    "l'étape est omise.")
 
 MOTIF_REGLE_AUCUNE = (
-    'La société a choisi de n\'appliquer AUCUNE perte de qualité module '
+    'La société a choisi de n\'appliquer aucune perte de qualité module '
     '({source}) : l\'étape figure dans la cascade pour être VUE et reste '
     "sans effet. C'est une décision déclarée, pas une donnée manquante.")
 
 MOTIF_BORNE_HAUTE_ABSENTE = (
-    'La règle « {regle} » a besoin des DEUX bornes de tolérance, et la borne '
-    "haute de {produit} n'est pas publiée. L'étape est OMISE plutôt que "
+    'La règle « {regle} » a besoin des deux bornes de tolérance, et la borne '
+    "haute de {produit} n'est pas publiée. L'étape est omise plutôt que "
     'calculée sur une seule borne.')
 
 MOTIF_BORNES_INCOHERENTES = (
     'La tolérance publiée de {produit} a une borne haute ({maximum} %) '
-    'INFÉRIEURE à sa borne basse ({minimum} %) : la plage ne se lit pas. '
-    "L'étape est OMISE plutôt que calculée sur une plage retournée.")
+    'inférieure à sa borne basse ({minimum} %) : la plage ne se lit pas. '
+    "L'étape est omise plutôt que calculée sur une plage retournée.")
 
 MOTIF_ENERGIE_ILLISIBLE = (
     "Aucune colonne d'énergie lisible dans la série ({colonnes}) : il n'y a "
-    "rien à quoi appliquer la tolérance de {produit}. L'étape est OMISE.")
+    "rien à quoi appliquer la tolérance de {produit}. L'étape est omise.")
 
 __all__ = ['CHAMP_MIN', 'CHAMP_MAX', 'CHAMP_MIN_AFFICHE',
            'CHAMP_MAX_AFFICHE', 'CLE_REGLAGE', 'REGLAGE_AFFICHE', 'REGLES',
@@ -354,7 +354,7 @@ def _produit_designe(contexte):
         nom = (designations.get('module') or '').strip()
         if nom:
             return nom
-    return 'le module retenu'
+    return 'ce module'
 
 
 def _libelle():

@@ -352,6 +352,17 @@ class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
         self.c = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, client=self.client_a,
             devis=self.v1, titre='R6-N1 révision', roof_layout=layout)
+        # Le profil de la société EXISTE avant le calcul, comme pour une
+        # société en service. Sans lui, la simulation est faite sans fuseau
+        # (``site._fuseau_du_profil`` → ``None``) ; puis l'acceptation crée la
+        # ligne (abonné chantier → ``installations.services.default_installer_for``
+        # → ``CompanyProfile.get``, fuseau par défaut « Africa/Casablanca ») :
+        # le fuseau du site change, l'empreinte de simulation aussi, et la
+        # péremption est VRAIE (les blocs horaires dépendent du fuseau).
+        from apps.parametres.models_company import CompanyProfile
+        CompanyProfile.objects.create(company=self.company,
+                                      nom=self.company.nom,
+                                      fuseau_horaire='Africa/Casablanca')
         with patch_materiel():
             simuler_calepinage(self.c, client=_ClientParOrientation(),
                                materiel=MATERIEL, enregistrer=True)
@@ -376,6 +387,65 @@ class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
         with self.materiel(), self.captureOnCommitCallbacks(execute=True):
             v2 = reviser_devis(self.v1, user=self.user)
         return v2, [appel for appel in journal if appel[1] == v2.pk]
+
+    def test_accepter_sans_profil_ne_perime_pas_la_simulation(self):
+        """Profil société — accepter le devis d'une société SANS profil ne
+        crée plus le profil (``CompanyProfile.get`` dans l'aval : chantier,
+        acompte, O&M) : son fuseau par défaut entrait dans l'empreinte de
+        simulation (``site.fuseau_du_site``) et périmait le calepinage.
+        Chaîne réelle : ``accept_devis`` + rappels du commit exécutés.
+        ``build_quote_data`` (détection des options, lu à CHAQUE acceptation :
+        langue, délais, validité) n'est PAS bouchonné. Seul le stockage de
+        l'exemplaire signé l'est (MinIO, WeasyPrint) : ses lecteurs du profil
+        (moteur + ``utils/pdf._company_context``) sont tenus sans base par
+        ``apps.ventes.tests.test_profil_lecture_moteur``."""
+        from datetime import date
+        from unittest import mock
+
+        from apps.calepinage.services.electrique import (
+            conception_du_calepinage, parametres_societe,
+        )
+        from apps.calepinage.services.simulation import empreinte_simulation
+        from apps.calepinage.services.site import fuseau_du_site
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.domain.cycle_vie import accept_devis
+        from apps.ventes.models import LigneDevis
+        from apps.ventes.tests._quote_engine_common import make_produit
+
+        CompanyProfile.objects.filter(company=self.company).delete()
+
+        def empreinte():
+            calepinage = Calepinage.objects.get(pk=self.c.pk)
+            with self.materiel():
+                _, materiel, donnees, document = conception_du_calepinage(
+                    calepinage)
+                return empreinte_simulation(
+                    calepinage, document=document, donnees=donnees,
+                    materiel=materiel,
+                    reglages=parametres_societe(calepinage))
+
+        avant = empreinte()
+        LigneDevis.objects.create(
+            devis=self.v1, designation='Panneaux', quantite=Decimal('1'),
+            produit=make_produit(self.company, 'Panneaux', 'PSL-1',
+                                 '9600.00'),
+            prix_unitaire=Decimal('9600.00'), remise=Decimal('0'),
+            taux_tva=Decimal('10'))
+        with mock.patch('apps.ventes.domain.cycle_vie._send_acceptance_emails'), \
+                mock.patch('apps.ventes.domain.cycle_vie._store_signed_pdf'), \
+                self.materiel(), \
+                self.captureOnCommitCallbacks(execute=True):
+            accept_devis(devis=Devis.objects.get(pk=self.v1.pk),
+                         user=self.user, nom='Client sans profil',
+                         date_acceptation=date.today(),
+                         option='sans_batterie')
+        self.assertEqual(Devis.objects.get(pk=self.v1.pk).statut,
+                         Devis.Statut.ACCEPTE)
+        self.assertFalse(
+            CompanyProfile.objects.filter(company=self.company).exists())
+        self.assertIsNone(
+            fuseau_du_site({}, company=self.company)['provenance'])
+        self.assertEqual(empreinte(), avant)
 
     def test_hors_transaction_un_calcul_avec_l_ombrage_du_calepinage(self):
         v2, appels = self._reviser(hors_transaction=True)
@@ -487,7 +557,34 @@ class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
                               user=vendeur, nom='Client R6-N1',
                               date_acceptation=date.today(),
                               option='sans_batterie')
-            journal = self._espion()
+            # Ce que la lecture de l'ombrage VOIT au moment du calcul (statut
+            # du devis, verdict du calepinage) : dit par l'assertion plus bas,
+            # au lieu d'un ``None`` sans cause.
+            vu = {}
+
+            def _mesure(d):
+                from apps.calepinage import selectors as cal
+                from apps.ventes.horaire.ombrage import perte_ombrage_du_devis
+                from apps.ventes.selectors_calepinage import _conception_a_jour
+                vu['statut'] = d.statut
+                try:
+                    c = cal._calepinage_lisible_pour_devis(d.pk, d.company)
+                    vu['lisible'] = getattr(c, 'pk', None)
+                    vu['devis_du_calepinage'] = getattr(c, 'devis_id', None)
+                    if c is not None:
+                        vu['conception_a_jour'] = _conception_a_jour(d, c)
+                        servi = cal.resultat_servi(c)
+                        vu['resultat'] = {k: servi.get(k) for k in (
+                            'statut', 'simulation_perimee', 'motif')}
+                    vu['ombrage_servi'] = cal.ombrage_servi(d.pk, d.company)
+                except Exception as exc:  # noqa: BLE001 — diagnostic de test
+                    vu['erreur'] = repr(exc)
+                return perte_ombrage_du_devis(d)
+
+            from apps.ventes.tests.test_acal_devis_revise_evenement import (
+                espionner_etudes)
+            journal = []
+            espionner_etudes(self, journal, mesure=_mesure)
             # Sans rejouer les rappels du commit (abonnés de l'acceptation) :
             # tout ce qui est vérifié ici se joue DANS la transaction du geste.
             # Aucun échec SILENCIEUX : la re-liaison (journal ERROR de
@@ -507,6 +604,7 @@ class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
         self.assertEqual(self.c.devis_id, v2.pk)
         appels = [a for a in journal if a[1] == v2.pk]
         self.assertEqual(len(appels), 1, appels)
+        self.assertIsNotNone(appels[0][3], vu)
         self.assertAlmostEqual(appels[0][3], self.perte_servie, places=6)
         self.assertEqual(self._versions_envoyees(), 1)
 

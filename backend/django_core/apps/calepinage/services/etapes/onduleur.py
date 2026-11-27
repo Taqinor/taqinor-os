@@ -65,30 +65,30 @@ REFERENCE_PVSOL = (
 
 MOTIF_VALEUR_UNIQUE = (
     "Aucune courbe de rendement n'est publiée sur la fiche : le rendement "
-    "européen est une valeur UNIQUE, une moyenne pondérée de la norme, "
+    "européen est une valeur unique, une moyenne pondérée de la norme, "
     "appliquée à plat à chaque heure. Elle ne distingue pas une heure à "
     "pleine charge d'une heure à 10 % de charge.")
 
 MOTIF_SANS_RENDEMENT = (
     "La fiche de l'onduleur {produit} ne publie ni courbe de rendement ni "
     "rendement européen : la conversion du continu en alternatif n'est pas "
-    "calculable et l'étape est OMISE. Aucun rendement n'est supposé.")
+    "calculable et l'étape est omise. Aucun rendement n'est supposé.")
 
 MOTIF_PLUSIEURS_COURBES = (
-    "La fiche publie une courbe de rendement PAR TENSION d'entrée, et la "
-    "tension de la chaîne n'est pas connue : l'étape est OMISE plutôt que "
+    "La fiche publie une courbe de rendement par tension d'entrée, et la "
+    "tension de la chaîne n'est pas connue : l'étape est omise plutôt que "
     "d'élire une courbe au hasard. Il y faut le Vmp de la fiche module et le "
     "nombre de modules par chaîne (bloc « electrique.chainage »).")
 
 MOTIF_SERIE_ILLISIBLE = (
     "Aucune colonne d'énergie lisible sur la série : il n'y a pas de "
-    "puissance continue à convertir. Étape OMISE.")
+    "puissance continue à convertir. Étape omise.")
 
 MOTIF_SANS_PUISSANCE_NOMINALE = (
     "La puissance nominale de l'onduleur n'est pas connue (ni la puissance "
     "AC nominale ni la puissance continue maximale sur la fiche, ou aucun "
     "nombre d'onduleurs retenu) : la courbe η(P) n'a pas d'abscisse sur "
-    "laquelle se poser. Étape OMISE.")
+    "laquelle se poser. Étape omise.")
 
 __all__ = ['appliquer', 'LIBELLE', 'COLONNE_SORTIE',
            'CHAMP_FICHE_RENDEMENT']
