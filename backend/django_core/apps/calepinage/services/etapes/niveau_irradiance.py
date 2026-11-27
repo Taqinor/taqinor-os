@@ -82,29 +82,29 @@ MOTIF_COURBE_ABSENTE = (
     "Aucune courbe de rendement à éclairement partiel n'est publiée sur la "
     'fiche de {produit} : le rendement de la fiche est celui du STC seul, et '
     "rien ne permet de dire ce que le module rend sous faible éclairement. "
-    "L'étape est OMISE — aucun forfait n'est appliqué à sa place.")
+    "L'étape est omise — aucun forfait n'est appliqué à sa place.")
 
 MOTIF_POINT_ILLISIBLE = (
     'La courbe de rendement à éclairement partiel de {produit} porte un '
     'point illisible au rang {index} : un point doit publier « {abscisse} » '
-    "(W/m²) et « {ordonnee} » (% du rendement STC). L'étape est OMISE plutôt "
+    "(W/m²) et « {ordonnee} » (% du rendement STC). L'étape est omise plutôt "
     "que calculée sur une courbe qu'on ne sait pas lire.")
 
 MOTIF_ORDRE_ROMPU = (
     "La courbe de rendement à éclairement partiel de {produit} n'est pas "
     "strictement croissante en abscisse au rang {index} : l'interpolation "
-    "serait ambiguë. L'étape est OMISE plutôt que calculée sur une courbe "
+    "serait ambiguë. L'étape est omise plutôt que calculée sur une courbe "
     'remise en ordre à la volée.')
 
 MOTIF_IRRADIANCE_ABSENTE = (
     "La série horaire ne porte aucune irradiance lisible : sans elle, le "
     'niveau auquel lire la courbe de {produit} est inconnu. '
-    "L'étape est OMISE.")
+    "L'étape est omise.")
 
 MOTIF_ENERGIE_ILLISIBLE = (
     "Aucune colonne d'énergie lisible dans la série ({colonnes}) : il n'y a "
     'rien à quoi appliquer le rendement relatif de {produit}. '
-    "L'étape est OMISE.")
+    "L'étape est omise.")
 
 __all__ = ['CHAMP_COURBE', 'CHAMP_AFFICHE', 'COLONNE_IRRADIANCE',
            'CLE_ABSCISSE', 'CLE_ORDONNEE', 'REFERENCE', 'appliquer']
@@ -308,7 +308,7 @@ def _produit_designe(contexte):
         nom = (designations.get('module') or '').strip()
         if nom:
             return nom
-    return 'le module retenu'
+    return 'ce module'
 
 
 def _libelle():

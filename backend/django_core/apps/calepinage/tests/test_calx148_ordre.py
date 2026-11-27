@@ -197,7 +197,7 @@ class ToujoursOmisesTest(unittest.TestCase):
 
     def test_leur_motif_ne_forfaitise_jamais_le_chiffre_du_concurrent(self):
         self.assertNotIn('diodes', TOUJOURS_OMISES)
-        self.assertIn('0,5 %', EXCLUSIVITES['diodes'][1])
+        self.assertNotIn('0,5 %', EXCLUSIVITES['diodes'][1])  # ACAL1655
         self.assertIn('aucun forfait', EXCLUSIVITES['diodes'][1])
 
     def test_un_module_livre_ne_les_reveille_pas_tout_seul(self):

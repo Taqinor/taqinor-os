@@ -257,3 +257,46 @@ class PertesServiesTest(TestCase):
             'pertes=poste&pertes=mensuel',
             content_type='application/x-www-form-urlencoded')
         self.assertEqual(reponse.status_code, 415, reponse.content[:300])
+
+
+class DiodesSansBandesNonComptees(SimpleTestCase):
+    """ACAL1674 — « diodes » omise faute de chaîne portant des bandes n'est
+    pas une perte à renseigner : elle quitte le compte et `non_localisables`."""
+
+    def _servi(self, **reglages):
+        from apps.calepinage.services import a_renseigner
+        from apps.calepinage.services.chaine_pertes import (
+            appliquer_chaine, completude_de_la_chaine,
+        )
+
+        from .test_acal_etape_diodes import SERIE, contexte_de
+
+        contexte = contexte_de([[1, 1, 1], [1, 1, 0.5]], **reglages)
+        _, cascade = appliquer_chaine(SERIE, contexte)
+        completude = completude_de_la_chaine(cascade, contexte)
+        cascade['a_renseigner'] = a_renseigner.construire(
+            cascade, completude['non_renseignees'])
+        etape = next(e for e in cascade['etapes'] if e['etape'] == 'diodes')
+        return cascade, completude, etape
+
+    def test_aucune_chaine_a_bandes_diodes_omise_motivee_et_non_comptee(self):
+        # La fiche dit 2 sous-chaînes, les modules portent 3 bandes : aucune
+        # chaîne n'est affinée, la diode reste omise avec son motif.
+        cascade, completude, etape = self._servi(n=2)
+        self.assertTrue(etape['motif_omission'])
+        self.assertIsNone(etape['perte_pct'])
+        self.assertNotIn('diodes', completude['non_renseignees'])
+        bloc = cascade['a_renseigner']
+        self.assertNotIn('diodes', [c['etape'] for c in bloc['non_localisables']])
+        self.assertNotIn('diodes', [c['etape'] for c in bloc['lignes']])
+        # Le même calepinage AVEC des bandes lues : appliquée et comptée.
+        appliquee, _, etape_ok = self._servi(n=3)
+        self.assertEqual(etape_ok['motif_omission'], '')
+        avec = appliquee['a_renseigner']
+        self.assertEqual(avec['etapes_a_compter'] - 1, bloc['etapes_a_compter'])
+        self.assertEqual(avec['etapes_comptees'] - 1, bloc['etapes_comptees'])
+
+    def test_un_vrai_manque_de_diodes_reste_compte(self):
+        # Sans seuil de dérivation : c'est une donnée à saisir, donc comptée.
+        _, completude, _ = self._servi(n=3, seuil=None)
+        self.assertIn('diodes', completude['non_renseignees'])

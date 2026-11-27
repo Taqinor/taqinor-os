@@ -207,7 +207,7 @@ def appliquer(serie, contexte):
 # ── les motifs d'omission, chacun nommant ce qui manque ─────────────────
 
 _MOTIF_GEOMETRIE = (
-    "L'auto-ombrage entre rangées se calcule sur la GÉOMÉTRIE des rangées "
+    "L'auto-ombrage entre rangées se calcule sur la géométrie des rangées "
     'posées (pas, inclinaison, côté de table dans la pente) : elle est '
     "incomplète dans le document, et aucune ombre n'est supposée à sa "
     'place.')
