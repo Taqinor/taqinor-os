@@ -279,6 +279,15 @@ export default function LeadWorkspace({
   // (ses propres boutons Relancer/Arrêter), pour que CadenceFrise recharge
   // AUSSI après un geste pris hors de SectionPipeline.
   const [relanceVersion, setRelanceVersion] = useState(0)
+  // R8-N1 — UN seul point pour « un geste a bougé la cadence / la prochaine touche » : relit la
+  // fiche, recharge la frise ET relit l'historique (le serveur y écrit la ligne ; rien n'est
+  // inventé à l'écran). `refreshHistorique` ne part qu'une fois par geste (une lecture en vol).
+  const apresGesteRelance = useCallback(() => {
+    const relu = draft.refreshServer()
+    setRelanceVersion((n) => n + 1)
+    refreshHistorique()
+    return relu
+  }, [draft, refreshHistorique])
   // PV22 — « Concevoir la toiture (3D) » : la liste des brouillons à départager
   // (plusieurs candidats) et le message SERVEUR quand le dimensionnement
   // automatique est refusé. `null` = aucun dialogue ouvert.
@@ -490,7 +499,7 @@ export default function LeadWorkspace({
       // que son contrat annonce — un déclencheur qui ne patche jamais.
       case 'change-stage': return changeStageConfirme(payload)
       // 'apply-card' : volontairement inerte pour l'instant (hors périmètre).
-      case 'refresh': return draft.refreshServer()
+      case 'refresh': return apresGesteRelance()
       // MRY15 — raccourcis du menu « ⋯ » du rail identité (contrat
       // PerduPopover : jamais de crmApi direct dans le rail, il passe
       // toujours par onAction). Cadence par défaut 'contact' — le choix
@@ -501,12 +510,12 @@ export default function LeadWorkspace({
       // donc pas le voir — sans ce bump la frise de la fiche (CadenceFrise)
       // restait figée après un geste pris ICI.
       // Geste fait ailleurs (recontact d'un lead Froid) : recharge fiche + frise.
-      case 'cadence-refresh': draft.refreshServer(); setRelanceVersion((n) => n + 1); return undefined
+      case 'cadence-refresh': apresGesteRelance(); return undefined
       case 'relance-cadence': {
         if (!leadId) return undefined
         return toastPromise(
           crmApi.initialiserRelance(leadId, { cadence: 'contact' })
-            .then(() => { draft.refreshServer(); setRelanceVersion((n) => n + 1) }),
+            .then(() => apresGesteRelance()),
           {
             loading: 'Relance de la cadence…',
             success: 'Cadence relancée.',
@@ -520,7 +529,7 @@ export default function LeadWorkspace({
           if (!motif) return undefined
           return toastPromise(
             crmApi.arreterCadence(leadId, { motif })
-              .then(() => { draft.refreshServer(); setRelanceVersion((n) => n + 1) }),
+              .then(() => apresGesteRelance()),
             {
               loading: 'Arrêt de la cadence…',
               success: 'Cadence arrêtée.',
@@ -532,8 +541,8 @@ export default function LeadWorkspace({
       case 'close': return leaveGuard(onClose)
       default: return undefined
     }
-  }, [doArchive, leaveGuard, draft, onClose, setField, leadId, kwcCible,
-    changeStageConfirme, ouvrirConceptionToiture, demanderSaisie])
+  }, [doArchive, leaveGuard, onClose, setField, leadId, kwcCible,
+    changeStageConfirme, ouvrirConceptionToiture, demanderSaisie, apresGesteRelance])
 
   // ── File de rafale (◀▶ + J/K), gardée par leaveGuard (draft flushé) ───────
   const queueIndex = (leadsQueue && mode === 'edit')
@@ -911,7 +920,7 @@ export default function LeadWorkspace({
                 // elle-même) — même geste que 'relance-cadence'/'relance-
                 // arreter' ci-dessus (onAction), factorisé ici pour ne pas
                 // dupliquer `draft.refreshServer()` + `setRelanceVersion`.
-                onRelanceChanged: () => { draft.refreshServer(); setRelanceVersion((n) => n + 1) },
+                onRelanceChanged: apresGesteRelance,
               }}
             />
             {/* LW34 — 768-1023 : le rail contexte quitte la grille 2 colonnes,
