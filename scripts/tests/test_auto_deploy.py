@@ -206,6 +206,42 @@ class AutoDeployTests(unittest.TestCase):
         self.assertIsNone(banc.index(f"^git reset --hard {B}$"), banc.appels)
         self.assertIn("ECHEC", banc.journal)
 
+    def test_ranger_totaux_apres_migrate_et_restart(self):
+        """D-27/11-7 — chaque deploy range les totaux affichés des devis, une fois,
+        APRÈS migrate et APRÈS le restart (le code déployé), en best-effort."""
+        ranger = r"exec -T django_core python manage\.py ranger_totaux_affiches$"
+        banc = self.banc("vert", changes=LOT_ECRAN_API)
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        ordre = [banc.index(r"run --rm --no-deps django_core python manage\.py migrate --noinput"),
+                 banc.index(r" restart django_core "),
+                 banc.index(ranger)]
+        self.assertNotIn(None, ordre, banc.appels)
+        self.assertEqual(ordre, sorted(ordre), banc.appels)
+        self.assertEqual(banc.compte(r"ranger_totaux_affiches"), 1, banc.appels)
+        # Image django reconstruite (pas de restart) : toujours après `up -d`.
+        banc = self.banc("image", changes="backend/django_core/requirements.txt\n")
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        self.assertGreater(banc.index(ranger), banc.index(r"prod\.yml up -d"), banc.appels)
+        # Deploy docs/markdown uniquement : rien n'est rangé.
+        banc = self.banc("docs", changes="docs/notes.md\n")
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie)
+        self.assertIsNone(banc.index("ranger_totaux_affiches"), banc.appels)
+        # Une étape antérieure en échec : rien n'est rangé.
+        banc = self.banc("migrate_ko", changes=LOT_ECRAN_API)
+        rc, _ = banc.jouer(FAIL="manage.py migrate --noinput")
+        self.assertNotEqual(rc, 0)
+        self.assertIsNone(banc.index("ranger_totaux_affiches"), banc.appels)
+        # La commande échoue : le deploy reste OK, avec l'avertissement.
+        banc = self.banc("ranger_ko", changes=LOT_ECRAN_API)
+        rc, sortie = banc.jouer(FAIL="ranger_totaux_affiches")
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        self.assertIn("AVERTISSEMENT: ranger_totaux_affiches en échec", banc.journal)
+        self.assertIn("— OK", banc.journal)
+        self.assertEqual(banc.lire("last_deployed_commit"), B)
+
     def test_echec_meme_commit_pas_rejoue(self):
         """ADCG3 — deux cycles sur un commit en échec = un seul migrate."""
         banc = self.banc(changes="backend/django_core/apps/crm/views.py\n")
