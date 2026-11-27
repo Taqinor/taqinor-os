@@ -19,7 +19,7 @@ from __future__ import annotations
 from html import escape
 
 from ..rapport import nombre_tel_que_servi, verifier_etancheite
-from ..regroupement_pertes import CAUSE_PAR_ETAPE, ETAT_PAR_CAUSE, cause_courte  # noqa: F401
+from ..regroupement_pertes import cause_courte
 
 __all__ = [
     'CODE_DOCUMENT', 'MENTION_ETUDE', 'PHRASES', 'TITRE',
