@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 
@@ -30,7 +31,7 @@ import BoutonDevis, {
   MESSAGE_APERCU_FERME, MESSAGE_APERCU_RELU, MESSAGE_BROUILLON_MIS_A_JOUR, MESSAGE_RIEN_A_CHANGER,
   MESSAGE_VERIFICATION_A_LA_CONFIRMATION,
 } from './BoutonDevis'
-import { oublierIssuesDevis } from './atelier/contexteAtelier'
+import { ecouterDevisGenere, oublierIssuesDevis } from './atelier/contexteAtelier'
 
 const DETAIL = exempleContrat('calepinage', 'calepinage_detail')
 const DETAIL_VIDE = exempleContrat('calepinage', 'calepinage_detail',
@@ -878,6 +879,32 @@ describe('ACAL1946 — le résultat de « Générer le devis » est dit dès la 
     rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
     repondre(attente)
     expect(await screen.findByTestId(testId)).toHaveTextContent(texte)
+  })
+})
+
+/* ACAL1972 — la carte « Devis … créé » à boîte nulle : le 201 relit le contexte de l'atelier (ACAL1957), la coque
+   remonte le nœud de son portail ; la carte est rendue DANS le nœud monté, pas dans l'ancien, détaché. */
+describe('ACAL1972 — 201 ⇒ la carte est rendue avec sa boîte après le rechargement du contexte', () => {
+  function CoqueQuiSeRemonte() {
+    const [tour, setTour] = useState(0)
+    useEffect(() => ecouterDevisGenere(DETAIL_VIDE.id, () => setTour((t) => t + 1)), [])
+    return (
+      <MemoryRouter>
+        <div key={tour} data-testid={`portail-${tour}`}>
+          <BoutonDevis calepinageId={DETAIL_VIDE.id} detail={tour ? DETAIL : DETAIL_VIDE} />
+        </div>
+      </MemoryRouter>
+    )
+  }
+
+  it('la carte et « Voir le devis » sont dans le portail remonté', async () => {
+    calepinageApi.calepinages.genererDevis.mockResolvedValue({ data: { devis: 44, reference: 'DEV-2611-0044' } })
+    render(<CoqueQuiSeRemonte />)
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    const carte = await within(await screen.findByTestId('portail-1')).findByTestId('cal-devis-cree')
+    expect(carte.isConnected).toBe(true)
+    expect(carte).toHaveTextContent('Devis DEV-2611-0044 créé')
+    expect(within(carte).getByTestId('cal-devis-ouvrir')).toHaveAttribute('href', '/ventes/devis?devis=44')
   })
 })
 
