@@ -262,6 +262,45 @@ describe('résultat serveur (AGR129)', () => {
     expect(screen.getByTestId('taille-recommandee').textContent).not.toContain('ne délivre pas')
   })
 
+  // ACAL1258 — le serveur NOMME les articles sans prix (`articles_sans_prix`) ;
+  // un article « non choisi » (motif de sa ligne du kit) n'est pas « sans prix ».
+  it('ACAL1258 — taille au prix incomplet : les articles sans prix sont NOMMÉS, jamais un prix', () => {
+    const reco = REPONSE.tailles.find((t) => t.cle === 'recommandee')
+    const taille = { ...reco, prix_connu: false, total_ttc: null,
+      articles_sans_prix: ['Structure au sol pompage', 'Câble DC'] }
+    render(<PanneauAgricole {...PROPS_VIDES}
+      apercuPompage={{ donnees: { ...REPONSE, tailles: [taille] } }} />)
+    const carte = screen.getByTestId('taille-recommandee')
+    const nommes = screen.getByTestId('taille-sans-prix-recommandee')
+    expect(nommes.textContent).toContain('Structure au sol pompage')
+    expect(nommes.textContent).toContain('Câble DC')
+    expect(carte.textContent).not.toMatch(/MAD|DH/)
+  })
+
+  it('ACAL1258 — un article « non choisi » (motif de sa ligne) est dit à choisir, pas sans prix', () => {
+    const reco = REPONSE.tailles.find((t) => t.cle === 'recommandee')
+    const motif = 'coffret DC non choisi : nombre de chaînes en parallèle du champ inconnu'
+    const taille = { ...reco, prix_connu: false, total_ttc: null,
+      articles_sans_prix: ['Coffret de protection DC', 'Câble DC'] }
+    const kit = { ...REPONSE.kit, inclus: [...REPONSE.kit.inclus,
+      { cle: 'protection_dc', designation: 'Coffret de protection DC — prix à renseigner', prix_connu: false, motif },
+      { cle: 'cable_dc', designation: 'Câble DC — prix à renseigner', prix_connu: false }] }
+    render(<PanneauAgricole {...PROPS_VIDES}
+      apercuPompage={{ donnees: { ...REPONSE, kit, tailles: [taille] } }} />)
+    expect(screen.getByTestId('taille-sans-prix-recommandee').textContent).toContain('Câble DC')
+    expect(screen.getByTestId('taille-sans-prix-recommandee').textContent).not.toContain('Coffret')
+    expect(screen.getByTestId('taille-non-choisis-recommandee').textContent).toContain(motif)
+  })
+
+  it('ACAL1258 — clé absente : jamais d’article inventé, la mention générique reste', () => {
+    const reco = REPONSE.tailles.find((t) => t.cle === 'recommandee')
+    const { articles_sans_prix: _omis, ...sansCle } = reco
+    render(<PanneauAgricole {...PROPS_VIDES}
+      apercuPompage={{ donnees: { ...REPONSE, tailles: [{ ...sansCle, prix_connu: false }] } }} />)
+    expect(screen.getByTestId('taille-recommandee').textContent).toContain('prix à renseigner')
+    expect(screen.queryByTestId('taille-sans-prix-recommandee')).toBeNull()
+  })
+
   it('pastilles de couverture : vert 95-120, orange > 120, rouge < 95', () => {
     const donnees = { ...REPONSE, couverture_pct_mois: [99, 169, 80, ...REPONSE.couverture_pct_mois.slice(3)] }
     render(<PanneauAgricole {...PROPS_VIDES} apercuPompage={{ donnees }} />)

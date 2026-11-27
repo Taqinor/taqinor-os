@@ -117,6 +117,38 @@ function phrasePlanIrradiation(plan) {
     + (plan.motif ? ` : ${plan.motif}` : '')
 }
 
+// ACAL1258 — les articles d'une taille dont le prix manque, NOMMÉS (liste servie
+// `articles_sans_prix`, clé absente = []) ; jamais un prix. Une ligne du kit dont
+// le `motif` dit « non choisi » n'est pas « sans prix » : elle est à CHOISIR.
+// Les lignes (`kit.inclus`) sont celles de la taille retenue.
+const SUFFIXE_PRIX = ' — prix à renseigner'
+function ArticlesSansPrix({ t, kit }) {
+  const noms = Array.isArray(t.articles_sans_prix) ? t.articles_sans_prix : []
+  const lignes = t.retenue ? (kit?.inclus || []) : []
+  const sansPrix = []
+  const nonChoisis = []
+  for (const nom of noms) {
+    const ligne = lignes.find((l) => String(l.designation || '').replace(SUFFIXE_PRIX, '') === nom)
+    if (ligne?.motif && /non choisi/i.test(ligne.motif)) nonChoisis.push(`${nom} (${ligne.motif})`)
+    else sansPrix.push(nom)
+  }
+  if (!sansPrix.length && !nonChoisis.length) return <div className="text-warning">prix à renseigner</div>
+  return (
+    <>
+      {sansPrix.length > 0 && (
+        <div className="text-warning" data-testid={`taille-sans-prix-${t.cle}`}>
+          Prix à renseigner : {sansPrix.join(', ')}
+        </div>
+      )}
+      {nonChoisis.length > 0 && (
+        <div className="text-warning" data-testid={`taille-non-choisis-${t.cle}`}>
+          À choisir : {nonChoisis.join(' ; ')}
+        </div>
+      )}
+    </>
+  )
+}
+
 // AGR129 — le RÉSULTAT SERVEUR en direct (aucune valeur calculée ici : tout
 // vient de la réponse de l'aperçu AGR127).
 function ResultatPompage({ donnees, saisie, majPompage }) {
@@ -228,7 +260,7 @@ function ResultatPompage({ donnees, saisie, majPompage }) {
               {t.couverture_mois_critique_pct != null && (
                 <div>Couverture au mois critique : {t.couverture_mois_critique_pct} %</div>
               )}
-              {!t.prix_connu && <div className="text-warning">prix à renseigner</div>}
+              {!t.prix_connu && <ArticlesSansPrix t={t} kit={d.kit} />}
               {/* T4-V2-003 — le motif SERVI de la taille (pompe qui ne délivre
                   pas le débit à cette HMT, pompe sans courbe…) se lit sur sa carte. */}
               {t.motif && <div className="text-warning" data-testid={`taille-motif-${t.cle}`}>{t.motif}</div>}
