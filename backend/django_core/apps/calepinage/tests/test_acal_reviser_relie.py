@@ -388,6 +388,65 @@ class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
             v2 = reviser_devis(self.v1, user=self.user)
         return v2, [appel for appel in journal if appel[1] == v2.pk]
 
+    def test_accepter_sans_profil_ne_perime_pas_la_simulation(self):
+        """Profil société — accepter le devis d'une société SANS profil ne
+        crée plus le profil (``CompanyProfile.get`` dans l'aval : chantier,
+        acompte, O&M) : son fuseau par défaut entrait dans l'empreinte de
+        simulation (``site.fuseau_du_site``) et périmait le calepinage.
+        Chaîne réelle : ``accept_devis`` + rappels du commit exécutés.
+        ``build_quote_data`` (détection des options, lu à CHAQUE acceptation :
+        langue, délais, validité) n'est PAS bouchonné. Seul le stockage de
+        l'exemplaire signé l'est (MinIO, WeasyPrint) : ses lecteurs du profil
+        (moteur + ``utils/pdf._company_context``) sont tenus sans base par
+        ``apps.ventes.tests.test_profil_lecture_moteur``."""
+        from datetime import date
+        from unittest import mock
+
+        from apps.calepinage.services.electrique import (
+            conception_du_calepinage, parametres_societe,
+        )
+        from apps.calepinage.services.simulation import empreinte_simulation
+        from apps.calepinage.services.site import fuseau_du_site
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.domain.cycle_vie import accept_devis
+        from apps.ventes.models import LigneDevis
+        from apps.ventes.tests._quote_engine_common import make_produit
+
+        CompanyProfile.objects.filter(company=self.company).delete()
+
+        def empreinte():
+            calepinage = Calepinage.objects.get(pk=self.c.pk)
+            with self.materiel():
+                _, materiel, donnees, document = conception_du_calepinage(
+                    calepinage)
+                return empreinte_simulation(
+                    calepinage, document=document, donnees=donnees,
+                    materiel=materiel,
+                    reglages=parametres_societe(calepinage))
+
+        avant = empreinte()
+        LigneDevis.objects.create(
+            devis=self.v1, designation='Panneaux', quantite=Decimal('1'),
+            produit=make_produit(self.company, 'Panneaux', 'PSL-1',
+                                 '9600.00'),
+            prix_unitaire=Decimal('9600.00'), remise=Decimal('0'),
+            taux_tva=Decimal('10'))
+        with mock.patch('apps.ventes.domain.cycle_vie._send_acceptance_emails'), \
+                mock.patch('apps.ventes.domain.cycle_vie._store_signed_pdf'), \
+                self.materiel(), \
+                self.captureOnCommitCallbacks(execute=True):
+            accept_devis(devis=Devis.objects.get(pk=self.v1.pk),
+                         user=self.user, nom='Client sans profil',
+                         date_acceptation=date.today(),
+                         option='sans_batterie')
+        self.assertEqual(Devis.objects.get(pk=self.v1.pk).statut,
+                         Devis.Statut.ACCEPTE)
+        self.assertFalse(
+            CompanyProfile.objects.filter(company=self.company).exists())
+        self.assertIsNone(
+            fuseau_du_site({}, company=self.company)['provenance'])
+        self.assertEqual(empreinte(), avant)
+
     def test_hors_transaction_un_calcul_avec_l_ombrage_du_calepinage(self):
         v2, appels = self._reviser(hors_transaction=True)
         self.c.refresh_from_db()

@@ -124,7 +124,7 @@ def recompense_par_defaut(company):
     parrainage, pour TOUTE création (manuelle ou par le lien) ; ``None``."""
     try:
         from apps.parametres.models import CompanyProfile
-        prof = CompanyProfile.get(company)
+        prof = CompanyProfile.lire(company)
         return prof.referral_reward if prof else None
     except Exception:  # noqa: BLE001 — dégradé, jamais bloquant (D-ENF22-BLE001)
         logger.warning('recompense_par_defaut : échec ignoré', exc_info=True)
@@ -135,7 +135,7 @@ def parrainage_actif(company):
     """ASOC70 (D-ASOC-7) — le réglage ``referral_enabled`` de la société :
     éteint, ni parrainage créé par le lien, ni notification de parrainage."""
     from apps.parametres.models import CompanyProfile
-    prof = CompanyProfile.get(company) if company is not None else None
+    prof = CompanyProfile.lire(company) if company is not None else None
     return bool(prof and prof.referral_enabled)
 
 

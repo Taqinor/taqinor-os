@@ -107,7 +107,7 @@ def acompte_exige_par_societe(company):
     if company is None:
         return False
     from apps.parametres.models import CompanyProfile
-    return bool(getattr(CompanyProfile.get(company),
+    return bool(getattr(CompanyProfile.lire(company),
                         'exiger_acompte_avant_planification', False))
 
 

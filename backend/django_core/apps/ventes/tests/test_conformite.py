@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -109,6 +109,45 @@ class TestFactureConformite(TestCase):
             client_obj, date_livraison=date(2026, 6, 1),
             conditions_paiement='Virement à 30 jours')
         self.assertEqual(facture.mentions_manquantes, [])
+
+    def test_sans_profil_avertit_sans_creer_le_profil(self):
+        """Profil société — lire les mentions d'une société SANS profil
+        avertit des identifiants absents et n'écrit AUCUNE ligne (le profil
+        créé portait un fuseau par défaut qui périmait les simulations)."""
+        from apps.parametres.models import CompanyProfile
+        CompanyProfile.objects.filter(company=self.company).delete()
+        client_obj = make_client(self.company, email='sans@example.com')
+        facture = self._make_facture(client_obj)
+        manquantes = facture.mentions_manquantes
+        self.assertIn('Identifiant fiscal (IF) du vendeur', manquantes)
+        self.assertIn('ICE du vendeur', manquantes)
+        self.assertNotIn('Identité du vendeur (raison sociale)', manquantes)
+        self.assertFalse(
+            CompanyProfile.objects.filter(company=self.company).exists())
+
+
+class TestMentionsLecturePure(SimpleTestCase):
+    """Profil société — ``mentions_manquantes`` lit par
+    ``CompanyProfile.lire`` (jamais ``get``, qui crée la ligne). Sans base."""
+
+    def test_lit_par_lire_jamais_par_get(self):
+        from unittest import mock
+
+        from apps.parametres.models import CompanyProfile
+        facture = Facture(company=Company(id=9, nom='Sans Profil'))
+        with mock.patch.object(CompanyProfile, 'get',
+                               side_effect=AssertionError('get')) as get, \
+                mock.patch.object(CompanyProfile, 'lire',
+                                  return_value=CompanyProfile(
+                                      nom='Sans Profil')) as lu:
+            try:
+                facture.mentions_manquantes
+            except AssertionError:
+                raise
+            except Exception:  # noqa: BLE001 — seul l'accès au profil compte
+                pass
+        get.assert_not_called()
+        lu.assert_called_once()
 
 
 class TestClearanceStatut(TestCase):

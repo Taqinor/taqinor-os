@@ -142,7 +142,7 @@ class Lecture:
     def profil(self):
         def lire():
             from apps.parametres.models import CompanyProfile
-            return CompanyProfile.get(company=self.chantier.company)
+            return CompanyProfile.lire(company=self.chantier.company)
         return self._une_fois('profil', lire)
 
     def logo_uri(self):

@@ -433,7 +433,7 @@ def _entreprise_avec_logo(devis, entreprise, pdf_options):
         from django.conf import settings as _st
         from apps.parametres.models import CompanyProfile
         from apps.ventes.utils import pdf as _pdf
-        _cle_logo = CompanyProfile.get(company=devis.company).logo_key
+        _cle_logo = CompanyProfile.lire(company=devis.company).logo_key
         _brut = _cle_logo and _pdf._download(
             _st.MINIO_BUCKET_UPLOADS, _cle_logo)
         if _brut:
@@ -459,7 +459,7 @@ def delais_validite_et_kit(*, _blob, _items_libres, avec_items, avec_lignes,
     _delais = {"visite_technique": "", "installation": ""}
     try:
         from apps.parametres.models import CompanyProfile
-        _prof = CompanyProfile.get(getattr(devis, "company", None))
+        _prof = CompanyProfile.lire(getattr(devis, "company", None))
         _delais = {
             "visite_technique": (
                 getattr(_prof, "delai_visite_technique", "") or "").strip(),

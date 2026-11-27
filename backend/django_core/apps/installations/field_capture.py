@@ -472,7 +472,7 @@ def overage_threshold_pct(company):
         return Decimal('10')
     try:
         from apps.parametres.models import CompanyProfile
-        prof = CompanyProfile.get(company)
+        prof = CompanyProfile.lire(company)
         val = getattr(prof, 'overage_seuil_pct', None)
         return Decimal(str(val)) if val is not None else Decimal('10')
     except Exception:

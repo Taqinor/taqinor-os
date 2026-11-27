@@ -185,7 +185,7 @@ def _revue_initiale(devis, user):
     from apps.parametres.models import CompanyProfile
     from apps.ventes.models import Facture
     from authentication.models import CustomUser
-    profil = CompanyProfile.get(company=devis.company)
+    profil = CompanyProfile.lire(company=devis.company)
     if getattr(profil, 'revue_factures_active', False) and getattr(
             user, 'menu_tier', None) not in (CustomUser.ROLE_ADMIN,
                                              CustomUser.ROLE_RESPONSABLE):
