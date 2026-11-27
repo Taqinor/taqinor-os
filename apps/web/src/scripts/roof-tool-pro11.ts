@@ -244,6 +244,7 @@ import { apiCamera, appliquerVue } from './roofPro11/cadrageToit'; // ACAL435 + 
 import { cibleDepuisCarte, phraseCible } from './roofPro11/cibleProduction'; // ACAL470, ACAL1618
 import { majBadgesReco } from './roofPro11/recoBadges'; // ACAL562
 import { poserRetraitsPuisRecalculer } from './roofPro11/fermetureDuPan'; // ACAL562
+import { ensureMixedOrientChip } from './roofPro11/puceMixte'; // PV62
 
 let booted = false;
 
@@ -3178,34 +3179,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       renderSelection();
     });
   });
-  // PV62 — PUCE « Mixte » (pose choisie rangée par rangée) : ajoutée au groupe de pose si
-  // la page ne la fournit pas déjà, AVANT le câblage ci-dessous pour qu'elle reçoive le
-  // même écouteur que les autres puces `[data-orient]` (verrou / re-clic = auto). Toit
-  // PLAT uniquement : en pente la pose affleurante n'a pas de mixte (masquée par
-  // `syncRoofTypeChips`). Idempotente.
-  function ensureMixedOrientChip() {
-    if (document.querySelector('[data-orient="mixed"]')) return;
-    const sibling =
-      document.querySelector<HTMLButtonElement>('[data-orient="landscape"]') ??
-      document.querySelector<HTMLButtonElement>('[data-orient="portrait"]');
-    const group = sibling?.parentElement;
-    if (!sibling || !group) return;
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = sibling.className;
-    chip.dataset.orient = 'mixed';
-    chip.setAttribute('aria-pressed', 'false');
-    chip.title =
-      'Pose mixte : portrait ou paysage choisi rangée par rangée. Ne pose jamais moins de panneaux qu’une pose uniforme.';
-    chip.textContent = 'Mixte';
-    const badge = sibling.querySelector('.rp9-reco-badge');
-    if (badge) {
-      const clone = badge.cloneNode(true) as HTMLElement;
-      clone.hidden = true; // le mixte ne se BADGE jamais « Recommandé » (il ne balaie pas)
-      chip.appendChild(clone);
-    }
-    group.appendChild(chip);
-  }
   ensureMixedOrientChip();
 
   // ═══════════ CALX49 — « PRIORITÉ DE POSE » (le départage, enfin pilotable) ═══════════
