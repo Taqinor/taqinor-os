@@ -207,7 +207,7 @@ def devise_par_defaut(company):
         return 'MAD'
     from apps.parametres.models import CompanyProfile
     try:
-        profil = CompanyProfile.get(company=company)
+        profil = CompanyProfile.lire(company=company)
     except Exception:  # noqa: BLE001 — jamais bloquant : repli MAD (D-ENF22-BLE001)
         logger.warning("creation.devise_par_defaut : erreur ignorée (mode dégradé)", exc_info=True)
         return 'MAD'

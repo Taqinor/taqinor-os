@@ -163,3 +163,29 @@ class LecturesMoteurSansCreationTests(SimpleTestCase):
             source = inspect.getsource(fonction)
             self.assertNotIn("CompanyProfile.get(", source)
             self.assertIn("CompanyProfile.lire(", source)
+
+    def test_devise_par_defaut_des_devis(self):
+        from apps.ventes.domain.creation import devise_par_defaut
+        devise, defaut = self._sans_get(devise_par_defaut)
+        self.assertEqual(devise, defaut.devise_defaut or 'MAD')
+
+    def test_profil_des_totaux_de_la_liste(self):
+        from apps.ventes.selectors_listes import profil_pour_les_totaux
+        servi, defaut = self._sans_get(profil_pour_les_totaux)
+        # Sans ligne en base : pas de relecture, les valeurs du lecteur et
+        # de l ecrivain (meme helper) sont celles du defaut du modele.
+        self.assertIs(servi, defaut)
+        self.assertIsNone(servi.pk)
+
+    def test_licences_et_variante_en_lecture(self):
+        # Vues a base de donnees : on inspecte leur code (CI les rejoue).
+        import inspect
+        from apps.adminops import views_licences
+        from apps.ventes.views.devis import DevisViewSet
+        source = inspect.getsource(views_licences)
+        self.assertNotIn("CompanyProfile.get(", source)
+        self.assertEqual(source.count("CompanyProfile.lire("), 2)
+        source = inspect.getsource(DevisViewSet.variante_config)
+        self.assertIn("CompanyProfile.lire(", source)
+        # l ecriture (PUT) garde get : elle enregistre le profil
+        self.assertIn("CompanyProfile.get(", source)
