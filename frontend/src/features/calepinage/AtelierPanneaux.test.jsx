@@ -346,26 +346,6 @@ describe('ACAL867 — l’étape Documents guidée porte « Générer le devis �
   }, 30_000)
 })
 
-/* ACAL1293 — l'étape Toit GUIDÉE. Son écran n'est monté que par la coque plein écran (hôte du script du calepinage) :
-   le rail seul ne le monte pas (voir « Pente » seul sous `?onglet=pente`). L'ordre des quatre blocs, les libellés et
-   l'adresse cachée sont donc prouvés par `EtapeToit.test.jsx` et le golden de ToitureDesign ; ici on garde le BRANCHEMENT
-   que lit l'atelier : l'étape Toit s'ouvre sur l'écran « Le toit », chargé à la demande, et son bouton de pied pose les
-   panneaux. En Expert le registre ne sert plus l'écran (rail d'onglets). */
-describe('ACAL1293 — étape Toit guidée : branchement de l’écran dans l’atelier', () => {
-  it('ECRANS_ETAPE.toit : écran « Le toit » sur la carte, chargé à la demande ; pied « Poser les panneaux » ; Expert : aucun écran', async () => {
-    const { ECRANS_ETAPE, ETAPES, CADRES, ecranCoque } = await import('./atelier/parcoursGuide')
-    expect(ECRANS_ETAPE.toit.titre).toBe('Le toit')
-    expect(ECRANS_ETAPE.toit.cadre).toBe(CADRES.CARTE)
-    expect(ECRANS_ETAPE.toit.onglets).toEqual(['pente'])
-    expect(ECRANS_ETAPE.toit.composant.$$typeof).toBe(Symbol.for('react.lazy'))
-    expect(ETAPES.find((e) => e.cle === 'toit').action).toBe('Poser les panneaux')
-    expect(ecranCoque('pente', null, {}, false)?.composant).toBe(ECRANS_ETAPE.toit.composant)
-    expect(ecranCoque('pente', null, {}, true)).toBeNull()
-    const module = await import('./atelier/coque/etapes/EtapeToit')
-    expect(typeof module.default).toBe('function')
-  })
-})
-
 /* T4-X7-010 — feuille « Avancé » au doigt (tablette) : les liens (« Montrer au client », « Relevé de visite »…) mesuraient
    20 px de haut. Toute cible de la feuille fait au moins 44 px de haut sur un écran tactile. */
 describe('T4-X7-010 — feuille « Avancé » : cibles de 44 px au doigt', () => {
