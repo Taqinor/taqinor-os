@@ -11,7 +11,7 @@ seul (retirer ``_bas_bloc_fin`` de ``_mesure_onepage``) ⇒
 """
 import unittest
 
-from django.test import TestCase, tag
+from django.test import SimpleTestCase, TestCase, tag
 
 from apps.ventes.models import Devis
 from apps.ventes.quote_engine import generate_devis_premium as G
@@ -168,3 +168,46 @@ class OnepageSansAncrageTests(TestCase):
         data = self._data(15, mode='full')
         sans_niveau = {k: v for k, v in data.items() if k != 'regles_pose_reelle'}
         self.assertEqual(self._html(data, 'full'), self._html(sans_niveau, 'full'))
+
+
+class OnepageAdresseTelephoneAcal1217Tests(SimpleTestCase):
+    """ACAL1217 (C-ACAL-REC-R1-19) — le une-page d'un devis neuf imprime
+    l'adresse jointe à la ville SANS la répéter (« Agadir, Agadir » du devis
+    72 ⇒ « Agadir ») et le téléphone formaté comme le premium ; un devis
+    ENVOYÉ (drapeau ``regles_pdf_historique_lot10`` de la migration 0164)
+    garde l'adresse et le téléphone bruts reçus. Mutant : retirer
+    ``theme.join_meta`` de ``ci_onepage.adresse`` ⇒ « Agadir, Agadir », échec."""
+
+    def _html(self, adresse, historique=False):
+        from apps.ventes.quote_engine.ci.onepage import DRAPEAU_PDF_HISTORIQUE_LOT10
+        from apps.ventes.tests import _moteur_fixtures as F
+        etude = dict(F.donnees_legacy('deux').get('etude') or {'kwc': 5.5})
+        if historique:
+            etude[DRAPEAU_PDF_HISTORIQUE_LOT10] = True
+        with G._RENDER_LOCK:
+            return _plat(F.html_onepage(client_addr=adresse, client_city='Agadir', client_ville_libelle=None,
+                                        client_phone='0612345678', etude=etude))
+
+    def test_brouillon_adresse_sans_ville_repetee_et_telephone_formate(self):
+        html = self._html('Agadir, Agadir')
+        self.assertNotIn('Agadir, Agadir', html)
+        self.assertIn('margin-top:2px;">Agadir</div>', html)
+        self.assertIn('+212 6 12 34 56 78', html)
+        self.assertNotIn('0612345678', html)
+        self.assertIn('margin-top:2px;">Quartier Founty, Agadir</div>', self._html('Quartier Founty, Agadir'))
+
+    def test_envoye_flagge_garde_le_texte_recu(self):
+        html = self._html('Agadir, Agadir', historique=True)
+        self.assertIn('margin-top:2px;">Agadir, Agadir</div>', html)
+        self.assertIn('margin-top:1px;">0612345678</div>', html)
+        self.assertNotIn('+212 6 12 34 56 78', html)
+        # Rendre deux fois ⇒ même texte.
+        self.assertEqual(html, self._html('Agadir, Agadir', historique=True))
+
+    def test_migration_0164_marque_les_etudes_non_vides_seulement(self):
+        import importlib
+        mod = importlib.import_module('apps.ventes.migrations.0164_acal1217_pdf_historique_lot10')
+        self.assertTrue(mod.doit_marquer({'kwc': 5}))
+        self.assertFalse(mod.doit_marquer({}))
+        self.assertFalse(mod.doit_marquer(None))
+        self.assertFalse(mod.doit_marquer({'kwc': 5, mod.DRAPEAU: True}))

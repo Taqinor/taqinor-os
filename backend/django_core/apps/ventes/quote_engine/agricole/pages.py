@@ -25,6 +25,7 @@ from __future__ import annotations
 from core.pompage import hypotheses as hypotheses_noyau
 
 from .. import i18n_labels, i18n_labels_agricole
+from ..ci.onepage import pdf_historique_lot10
 from ..ci.synthese import _pcts_au_reliquat
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
@@ -540,10 +541,10 @@ def page1(ctx):
         entete = f'<div class="ag-logo">{logo}</div>{entete}'
     # AGC12 — un bloc argent absent n'empile plus deux respirations.
     argent = _argent(synthese, lg) or _depense_declaree(synthese, lg)
-    # ACAL1266 — ``phrases_pdf_lot10`` : drapeau de RENDU « nouveaux rendus », à poser par
-    # ``regles_calcul.drapeaux_nouveaux_rendus`` quand sa coupure sera datée (absent : texte reçu).
+    # ACAL1266 — nouveaux rendus : une ligne par entrée non mesurée ; un devis envoyé (drapeau
+    # ``regles_pdf_historique_lot10`` de la migration 0164) garde ses deux listes reçues.
     provenance = _provenance(synthese, lg, ctx["nom_societe"], bool(d.get("phrases_pdf_2511")),
-                             une_ligne=bool(d.get("phrases_pdf_lot10")))
+                             une_ligne=not pdf_historique_lot10(d.get("etude")))
     return (f'<div class="ag-pad">{entete}{_qj(10)}{_hero(synthese, lg, declare)}'
             f'{_qj(15)}{_cartes(synthese, lg)}{_qj(25)}'
             f'{argent}{_qj(25) if argent else ""}'

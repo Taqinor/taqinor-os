@@ -162,6 +162,8 @@ def page_onepage(items, tronquees=0):
             "page_onepage: totaux canoniques manquants (totaux_all) — le "
             "moteur ne fabrique pas de chaîne de totaux (QJR162).")
     totaux = _g.TOTAUX_ALL
+    # ACAL1217 — devis envoyé (drapeau de la migration 0164) : adresse et téléphone reçus.
+    _hist = _g.ci_onepage.pdf_historique_lot10(_g.ETUDE)
     total_ht = totaux["ht_brut"]
     remise = totaux["remise"]
     net_ht = totaux["ht_net"]
@@ -527,8 +529,8 @@ def page_onepage(items, tronquees=0):
   <div style="background:{_g.CG1};padding:12px 24px;border-bottom:1px solid {_g.CG2};">
     <div style="font-size:6.5pt;font-weight:700;color:{_g.CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">{_g._L("client")}</div>
     <div style="font-size:11pt;font-weight:700;color:{_g.CN};">{_g.CLIENT_NAME}</div>
-    <div style="font-size:8.5pt;color:{_g.CG7};margin-top:2px;">{_g.CLIENT_ADDR}</div>
-    <div style="font-size:8.5pt;color:{_g.CG4};margin-top:1px;">{_g.ci_onepage.telephone(_g.CLIENT_PHONE, _g.CHIFFRES_CI)}</div>
+    <div style="font-size:8.5pt;color:{_g.CG7};margin-top:2px;">{_g.ci_onepage.adresse(_g.CLIENT_ADDR, _g._esc(_g.VILLE_CALCUL), _hist)}</div>
+    <div style="font-size:8.5pt;color:{_g.CG4};margin-top:1px;">{_g.ci_onepage.telephone(_g.CLIENT_PHONE, _g.CHIFFRES_CI, _hist)}</div>
     {'<div style="font-size:8pt;color:' + _g.CG7 + ';margin-top:3px;"><span style="color:' + _g.CG4 + ';font-weight:600;">ICE&#160;:</span>&#160;' + _g.CLIENT_ICE + '</div>' if _g.CLIENT_ICE else ''}
   </div>
 
