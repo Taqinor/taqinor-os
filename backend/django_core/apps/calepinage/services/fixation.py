@@ -699,6 +699,14 @@ def bom_de_fixation(calepinage, systeme, refus=(), source=None):
     }
 
 
+#: ACAL1722 — les bases du projet (``_grandeurs_ajoutees``) et leurs renvois.
+BASES_DU_PROJET = ('tables', 'poteaux', 'pieds', 'longueur_egouts_m',
+                   'facade_egouts_m2')
+RENVOI_AU_PROJET = 'Quantité du projet : voir la nomenclature'
+MOTIF_EGOUT_DU_PAN = ("Arêtes d'égout non typées sur ce pan : l'échafaudage "
+                      "n'est pas calculé.")
+
+
 def _lignes_par_pan(roof_layout, composants):
     """ACAL592 — ``{repere de pan: lignes}`` : la MÊME règle et le même
     arrondi que ``_lignes_de_fixation``, sur les grandeurs de CHAQUE pan à
@@ -710,6 +718,13 @@ def _lignes_par_pan(roof_layout, composants):
         geometrie = geometrie_de_planche(roof_layout)
     except PlancheRefusee:
         return {}
+    # ACAL1722 — une grandeur du PROJET (égouts, tables, poteaux, pieds) ne se
+    # lit pas par pan : l'encart renvoie à la nomenclature, ou nomme la saisie.
+    du_projet = _grandeurs_du_document(roof_layout)
+    projet = _lignes_de_fixation(composants, du_projet)
+    renvois = {base: du_projet['manquants'].get(base) or (
+        MOTIF_EGOUT_DU_PAN if 'egouts' in base else RENVOI_AU_PROJET + '.')
+        for base in BASES_DU_PROJET}
     sortie = {}
     for pan in _pans_a_commander(geometrie):
         (rangees, jonctions, extremites, longueur,
@@ -726,8 +741,13 @@ def _lignes_par_pan(roof_layout, composants):
         motifs.update(_motifs_orientation(
             [] if lue else [pan.get('libelle') or pan.get('repere')],
             lue[1] if lue else 0))
-        sortie[pan['repere']] = _lignes_de_fixation(
-            composants, {'valeurs': valeurs, 'manquants': motifs})
+        lignes = _lignes_de_fixation(
+            composants, {'valeurs': valeurs, 'manquants': {**renvois, **motifs}})
+        sortie[pan['repere']] = [
+            dict(ligne, manquant='%s (%s %s).' % (
+                RENVOI_AU_PROJET, _fr(globale['quantite']), globale['unite']))
+            if ligne['quantite'] is None and globale['quantite'] is not None
+            else ligne for ligne, globale in zip(lignes, projet)]
     return sortie
 
 
