@@ -164,6 +164,126 @@ class TestDefaultInstaller(TestCase):
         self.assertEqual(r.data['technicien_responsable'], self.user.id)
 
 
+def _lectures_profil_installations(company):
+    """Profil société — les LECTURES de réglage de l'app (une par appelant) :
+    aucune ne doit créer la ligne ``CompanyProfile`` (son fuseau par défaut
+    périmait toutes les simulations de calepinage de la société)."""
+    import datetime
+    from types import SimpleNamespace
+
+    from apps.installations import (
+        field_capture, field_services, regime, selectors_assistant, services,
+        swappable,
+    )
+    installation = SimpleNamespace(company=company, company_id=company.pk,
+                                   date_reception=datetime.date(2026, 1, 5),
+                                   devis_id=None)
+    intervention = SimpleNamespace(company=company)
+    return {
+        'default_installer_for': lambda: services.default_installer_for(
+            company),
+        'methode_reservation_stock': lambda: services.methode_reservation_stock(
+            company),
+        'date_definitive_prevue': lambda: services.date_definitive_prevue(
+            installation),
+        '_reglage_recette': lambda: services._reglage_recette(
+            company, 'recette_ecart_pmax_pct'),
+        'verifier_gate_acompte_planification':
+            lambda: services.verifier_gate_acompte_planification(installation),
+        'verifier_securite_avant_demarrage':
+            lambda: services.verifier_securite_avant_demarrage(
+                intervention, 'sur_site'),
+        'overage_threshold_pct': lambda: field_capture.overage_threshold_pct(
+            company),
+        'signature_client_requise': lambda: field_services
+        .signature_client_requise(intervention),
+        'regime_surcharges': lambda: regime.regime_surcharges(company),
+        'acompte_exige_par_societe':
+            lambda: selectors_assistant.acompte_exige_par_societe(company),
+        '_provider': lambda: swappable._provider(company, 'ocr_provider'),
+    }
+
+
+class TestLecturesProfilSansCreation(SimpleTestCase):
+    """Profil société — chaque lecture passe par ``CompanyProfile.lire`` (la
+    lecture qui n'écrit pas), jamais par ``get`` (get_or_create). Sans base :
+    ``get`` lève, ``lire`` sert l'objet par défaut non enregistré."""
+
+    def test_aucune_lecture_ne_passe_par_get(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.parametres.models import CompanyProfile
+        company = SimpleNamespace(pk=7, id=7, nom='Sans Profil')
+        defaut = CompanyProfile(nom='Sans Profil')
+        lectures = _lectures_profil_installations(company)
+        for nom, lire in lectures.items():
+            with self.subTest(nom), \
+                    mock.patch.object(CompanyProfile, 'get',
+                                      side_effect=AssertionError(nom)) as get, \
+                    mock.patch.object(CompanyProfile, 'lire',
+                                      return_value=defaut) as lu:
+                try:
+                    lire()
+                except AssertionError:
+                    raise
+                except Exception:  # noqa: BLE001 — seul l'accès au profil compte
+                    pass
+                get.assert_not_called()
+                self.assertTrue(lu.called, nom)
+
+    def test_defauts_d_hier_sans_profil(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.installations import field_capture, regime, services
+        from apps.parametres.models import CompanyProfile
+        company = SimpleNamespace(pk=7, id=7, nom='Sans Profil')
+        with mock.patch.object(CompanyProfile, 'lire',
+                               return_value=CompanyProfile(nom='x')):
+            self.assertIsNone(services.default_installer_for(company))
+            self.assertEqual(services.methode_reservation_stock(company),
+                             'confirmation')
+            self.assertEqual(field_capture.overage_threshold_pct(company),
+                             Decimal(str(CompanyProfile(nom='x')
+                                         .overage_seuil_pct)))
+            self.assertEqual(regime.regime_surcharges(company), (None, None))
+
+
+class TestLecturesProfilSansLigne(TestCase):
+    """Profil société — en base : une société SANS profil reste sans profil
+    après chaque lecture (``objects.filter(company=…).exists()`` faux)."""
+
+    def test_aucune_ligne_creee(self):
+        from apps.parametres.models import CompanyProfile
+        company = make_company(slug='sans-profil-lire', nom='Sans Profil')
+        CompanyProfile.objects.filter(company=company).delete()
+        for nom, lire in _lectures_profil_installations(company).items():
+            with self.subTest(nom):
+                try:
+                    lire()
+                except Exception:  # noqa: BLE001 — seul l'accès au profil compte
+                    pass
+                self.assertFalse(
+                    CompanyProfile.objects.filter(company=company).exists(),
+                    nom)
+
+    def test_profil_existant_lu_a_l_identique(self):
+        from apps.installations import services
+        from apps.parametres.models import CompanyProfile
+        company = make_company(slug='avec-profil-lire', nom='Avec Profil')
+        installateur = User.objects.create_user(
+            username='cht_lire_inst', password='x', company=company)
+        profil = CompanyProfile.get(company)
+        profil.default_installer = installateur
+        profil.methode_reservation_stock = (
+            CompanyProfile.MethodeReservationStock.MANUELLE)
+        profil.save()
+        self.assertEqual(services.default_installer_for(company), installateur)
+        self.assertEqual(services.methode_reservation_stock(company),
+                         CompanyProfile.MethodeReservationStock.MANUELLE)
+
+
 class TestStatusAndMES(TestCase):
     def setUp(self):
         self.company = make_company()

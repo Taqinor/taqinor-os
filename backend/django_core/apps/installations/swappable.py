@@ -33,7 +33,7 @@ def _provider(company, field):
         return ''
     try:
         from apps.parametres.models import CompanyProfile
-        prof = CompanyProfile.get(company)
+        prof = CompanyProfile.lire(company)
         return (getattr(prof, field, '') or '').strip()
     except Exception:  # pragma: no cover - défensif
         logger.warning("provider : échec ignoré, comportement dégradé", exc_info=True)
