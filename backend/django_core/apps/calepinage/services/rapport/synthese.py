@@ -161,6 +161,29 @@ def _taux(autoconsommation, cle):
                    unite=' %')
 
 
+_RENVOI_VOLUMES = 'voir les volumes mensuels de la section Pompage'
+
+
+def _ligne_volume(bloc, volumes, motif):
+    """Revue 12 — ``m3_jour_plat`` est le calcul PLAT (débit × heures) : il
+    ignore l'irradiation et le plafond du forage. La synthèse n'imprime donc
+    jamais un autre chiffre que la section Pompage (qui imprime
+    ``m3_mois_pvgis`` d'abord, ``m3_mois_plat`` à défaut) : série physique
+    servie ou plafond atteint ⇒ renvoi à la section, sans chiffre ; seul le
+    plat servi ⇒ le m³/jour plat, étiqueté comme tel (m3_mois_plat ÷ jours).
+    """
+    if not bloc or not volumes:
+        return _ligne('Volume pompé par jour', _valeur(None, motif))
+    if volumes.get('plafond_atteint'):
+        return _ligne('Volume pompé par jour', NON_CALCULEE + ' — %s' % escape(
+            'plafond du forage atteint : ' + _RENVOI_VOLUMES))
+    if volumes.get('m3_mois_pvgis'):
+        return _ligne('Volume pompé', escape(_RENVOI_VOLUMES))
+    return _ligne(
+        'Volume pompé par jour (calcul plat : débit × heures de pompage)',
+        _valeur(volumes.get('m3_jour_plat'), unite=' m³/jour'))
+
+
 def _lignes_pompage(contexte, pose, pertes):
     """Décision fondateur 6 — la synthèse d'un calepinage de POMPAGE : ni
     production, ni autoconsommation, ni onduleur (une composition de pompage
@@ -182,8 +205,7 @@ def _lignes_pompage(contexte, pose, pertes):
                _valeur(point.get('debit_m3h'), motif, unite=' m³/h')),
         _ligne('Hauteur manométrique totale (HMT)',
                _valeur(hmt.get('hmt_m'), motif, unite=' m')),
-        _ligne('Volume pompé par jour',
-               _valeur(volumes.get('m3_jour_plat'), motif, unite=' m³/jour')),
+        _ligne_volume(bloc, volumes, motif),
         _ligne('Pertes totales', _valeur(pertes, unite=' %')),
         _ligne('Contrôles électriques non conformes',
                _controles(contexte.get('resultat') or {})),

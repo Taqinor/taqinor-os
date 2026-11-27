@@ -332,13 +332,56 @@ class RapportDePompageTest(unittest.TestCase):
             self.assertNotIn(code, codes)
         self.assertIn('pompage', codes)
 
-    def test_la_synthese_garde_debit_hmt_et_volume_par_jour(self):
-        page = self.page('agricole', self.resultat_de_pompe())
-        synthese = re.search(r'data-section="synthese".*?</section>', page,
-                             re.S).group(0)
-        for attendu in ('8,2 m³/h', '62,4 m<', '57,4 m³/jour'):
+    def synthese(self, volumes):
+        stocke = copy.deepcopy(POMPAGE_STOCKE)
+        stocke['pompage_dernier']['volumes'] = volumes
+        with mock.patch(self.CONCEPTION, return_value={'marche': 'agricole'}):
+            page = html_du_rapport(NU, resultat=self.resultat_de_pompe(),
+                                   resultat_stocke=stocke, site=SITE,
+                                   identite=IDENTITE, styles=STYLES,
+                                   paginer=False)
+        return re.search(r'data-section="synthese".*?</section>', page,
+                         re.S).group(0)
+
+    def test_la_synthese_garde_debit_hmt_et_renvoie_aux_volumes(self):
+        synthese = self.synthese(
+            copy.deepcopy(POMPAGE_STOCKE['pompage_dernier']['volumes']))
+        for attendu in ('8,2 m³/h', '62,4 m<'):
             self.assertIn(attendu, synthese)
         self.assertNotIn('Onduleurs', synthese)
+
+    def test_plafond_atteint_aucun_m3_jour_plat(self):
+        """Revue 12 — le calcul PLAT (débit × heures) ignore le plafond du
+        forage : jamais imprimé quand le plafond est atteint."""
+        volumes = copy.deepcopy(POMPAGE_STOCKE['pompage_dernier']['volumes'])
+        self.assertTrue(volumes['plafond_atteint'])
+        synthese = self.synthese(volumes)
+        self.assertNotIn('57,4', synthese)
+        self.assertIn('plafond du forage atteint', synthese)
+        self.assertIn('section Pompage', synthese)
+        # même sans série physique : le plat n'est pas imprimé non plus.
+        volumes['m3_mois_pvgis'] = None
+        self.assertNotIn('57,4', self.synthese(volumes))
+
+    def test_serie_physique_servie_la_synthese_renvoie_a_la_section(self):
+        """La section Pompage imprime la série physique d'abord : la synthèse
+        n'imprime pas un autre chiffre (le plat), elle y renvoie."""
+        volumes = copy.deepcopy(POMPAGE_STOCKE['pompage_dernier']['volumes'])
+        volumes['plafond_atteint'] = False
+        synthese = self.synthese(volumes)
+        self.assertNotIn('57,4', synthese)
+        self.assertIn('section Pompage', synthese)
+
+    def test_plafond_non_atteint_sans_serie_physique_plat_etiquete(self):
+        """Seul le plat est servi : la section imprime m3_mois_plat (= m³/jour
+        plat × jours) ; la synthèse imprime le m³/jour plat, étiqueté."""
+        volumes = copy.deepcopy(POMPAGE_STOCKE['pompage_dernier']['volumes'])
+        volumes.update(plafond_atteint=False, m3_mois_pvgis=None)
+        synthese = self.synthese(volumes)
+        self.assertIn('Volume pompé par jour (calcul plat : débit × heures '
+                      'de pompage)</th><td>57,4 m³/jour', synthese)
+        self.assertAlmostEqual(volumes['m3_mois_plat'][0],
+                               volumes['m3_jour_plat'] * 31, places=0)
 
     def test_sans_volume_servi_aucun_m3_jour(self):
         res = self.resultat_de_pompe()
