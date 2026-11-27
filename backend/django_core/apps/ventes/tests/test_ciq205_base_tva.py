@@ -1,9 +1,10 @@
 """CIQ205 — ``economie_ci`` (2/6) : base HT si la TVA est récupérable, TTC
 sinon, les deux bases quand c'est inconnu (D-CIQ-3).
 
-SimpleTestCase : aucune base.
+SimpleTestCase : aucune base — sauf ``AucunCodeDeDecisionEtudeServieTest``
+(ACAL1225 : la sortie RÉELLE de ``etudier_ci``, catalogue en base).
 """
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.ventes import economie_ci as eco
 from apps.ventes import tarif_ci as tc
@@ -253,6 +254,20 @@ def _textes(o):
             yield from _textes(v)
 
 
+def _sources_de(o, cle):
+    """Les ``source`` des hypothèses ``cle`` (dicts ``{cle, source}`` ou clé ``cle``)."""
+    if isinstance(o, dict):
+        if o.get('cle') == cle and isinstance(o.get('source'), str):
+            yield o['source']
+        if isinstance(o.get(cle), dict) and isinstance(o[cle].get('source'), str):
+            yield o[cle]['source']
+        for v in o.values():
+            yield from _sources_de(v, cle)
+    elif isinstance(o, list):
+        for v in o:
+            yield from _sources_de(v, cle)
+
+
 class AucunCodeDeDecisionServiTest(SimpleTestCase):
     """ACAL1225 — l'économie C&I ne sert aucun code de décision (« D-CIQ-n »)
     à l'écran, et chaque poste porte son libellé de métier ; ``poste`` et
@@ -278,15 +293,53 @@ class AucunCodeDeDecisionServiTest(SimpleTestCase):
                 mode_installation='industriel')
 
     def test_aucun_texte_servi_ne_porte_de_code(self):
+        # ACAL1225 (revue-7) — plus d'exception : la source de l'horizon est
+        # dite en clair ; l'ancienne reste une CLÉ du PDF (devis déjà envoyés).
+        vus = set()
         for tva, tension, bloc in self._blocs():
+            vus.update(_sources_de(bloc, 'horizon_ans'))
             for texte in _textes(bloc):
-                # Seule exception : la source de l'horizon, CLÉ du PDF
-                # (``couverture.SOURCES_CLIENT`` → ``ci_src_horizon``) — à changer
-                # là d'abord ; le PDF l'imprime déjà sans le code.
-                if texte == eco.HORIZON_CI_SOURCE:
-                    continue
                 with self.subTest(tva=tva, tension=tension, texte=texte):
                     self.assertNotIn('D-CIQ', texte)
+        self.assertEqual(vus, {"horizon d'analyse : 25 ans"})
+
+    def test_dimensionnement_servi_sans_code(self):
+        """ACAL1225 (revue-7) — le bloc ``taille`` et les hypothèses du
+        dimensionnement (pas, horizon marginal, borne de la puissance
+        souscrite) que ``etudier_ci`` sert tels quels : aucun « D-CIQ »."""
+        from functools import partial
+
+        from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
+        from apps.ventes.moteur_ci.taille import dimensionner_ci
+        from apps.ventes.tests.test_ciq110_autoconso_horaire import _charge, _production
+        from apps.ventes.tests.test_ciq111_combinaison_onduleurs import _catalogue_huawei
+        from apps.ventes.tests.test_ciq116_taille_ci import PANNEAU_WC, _composer, _valoriser
+        prod, _ = _production()
+        for categorie, kwh_mois in (('hotel', 100000), ('bureau', 6000)):
+            charge = _charge(categorie, kwh_mois)
+            r = dimensionner_ci(
+                charge_jours_types=charge, production_jours_types=prod, tension='bt',
+                combiner=partial(combiner_onduleurs, candidats=_catalogue_huawei(), phase='tri'),
+                composer=_composer, valoriser=_valoriser(charge), taux_tva_pct=20,
+                pmax_wc=PANNEAU_WC, puissance_souscrite_kva=80)
+            cles = {h['cle'] for h in r['hypotheses']}
+            self.assertLessEqual({'pas_kwc', 'horizon_marginal_annees'}, cles)
+            self.assertTrue(r['taille']['bornes']['puissance_souscrite']['source'])
+            servi = {'taille': r['taille'], 'hypotheses': r['hypotheses'], 'alertes': r['alertes']}
+            for texte in _textes(servi):
+                with self.subTest(categorie=categorie, texte=texte):
+                    self.assertNotIn('D-CIQ', texte)
+
+    def test_devis_envoye_garde_sa_source_imprimee(self):
+        """ACAL1225 — un devis DÉJÀ envoyé garde l'étude qu'il a rangée (jamais
+        recalculée) : sa source « D-CIQ-10 : 25 ans » s'imprime toujours par
+        ``SOURCES_CLIENT``, comme la nouvelle."""
+        from apps.ventes.quote_engine.ci.couverture import SOURCES_CLIENT, texte_client
+        doc = {'langue_sortie': 'fr'}
+        for source in ('D-CIQ-10 : 25 ans', eco.HORIZON_CI_SOURCE):
+            with self.subTest(source=source):
+                self.assertEqual(SOURCES_CLIENT.get(source), 'ci_src_horizon')
+                self.assertEqual(texte_client(doc, source), "durée d'analyse : 25 ans")
 
     def test_constantes_sans_code(self):
         from apps.ventes.domain import etude_ci
@@ -316,3 +369,61 @@ class AucunCodeDeDecisionServiTest(SimpleTestCase):
                             for poste, libelle in vus), vus)
         self.assertTrue(any(poste.startswith('tranche_') and libelle == 'Énergie tranche '
                             + poste.split('_')[1] for poste, libelle in vus), vus)
+
+
+class AucunCodeDeDecisionEtudeServieTest(TestCase):
+    """ACAL1225 (revue-7) — la SORTIE RÉELLE de ``etudier_ci`` (aperçu servi
+    par la vue et étude directe) et ``assembler_economie_ci`` sur cette étude,
+    pour un cas commercial BT et un cas industriel MT (puissance souscrite
+    déclarée) : aucun texte ne porte « D-CIQ ». Fabriques de l'aperçu C&I
+    (CIQ118) empruntées à l'appel, jamais importées au niveau du module (le
+    chargeur rejouerait leurs tests)."""
+
+    @staticmethod
+    def _base():
+        from apps.ventes.tests import test_ciq118_etude_ci_preview as ciq118
+        return ciq118._Base
+
+    @classmethod
+    def setUpTestData(cls):
+        base = cls._base()
+        cls._produit = base._produit
+        cls._onduleur = base._onduleur
+        base.setUpTestData.__func__(cls)
+
+    def setUp(self):
+        self._base().setUp(self)
+
+    def test_etude_et_economie_servies_sans_code(self):
+        import copy
+        from apps.ventes.domain import etude_ci
+        from apps.ventes.moteur_ci.taille import SOURCE_PS
+        base = self._base()
+        registres = [{'pointe_kwh': 1800, 'pleines_kwh': 9000, 'creuses_kwh': 3200}] * 12
+        cas = {
+            'commercial_bt': {},
+            'industriel_mt': dict(consommation={'kwh_mensuels': None, 'registres_mt': registres},
+                                  mode='industriel', tension='mt', tarif={'contrat': 'mt_general'},
+                                  taille_explicite_kwc=50, puissance_souscrite_kva=250),
+        }
+        saisies = {'tva_recuperable': {'valeur': 'inconnu', 'provenance': 'declare_client',
+                                       'saisi_le': '2026-11-20'}}
+        for nom, extra in cas.items():
+            corps = base.corps(self, **extra)
+            servi = base.post(self, corps)
+            etude = etude_ci.etudier_ci(self.co, base.corps(self, **extra))
+            bloc = eco.assembler_economie_ci(
+                copy.deepcopy(etude), saisies=saisies, tarif_declare=corps['tarif'],
+                investissement={'ht': 900000.0, 'ttc': 1080000.0},
+                mode_installation=corps.get('mode') or 'commercial')
+            with self.subTest(cas=nom):
+                cles = {h.get('cle') for h in servi['hypotheses']}
+                self.assertLessEqual({'pas_kwc', 'horizon_marginal_annees'}, cles)
+                self.assertEqual(set(_sources_de(bloc, 'horizon_ans')), {eco.HORIZON_CI_SOURCE})
+            if nom == 'industriel_mt':
+                self.assertEqual(servi['taille']['bornes']['puissance_souscrite']['source'],
+                                 SOURCE_PS)
+            for quoi, sortie in (('apercu', servi), ('etude', etude), ('economie_ci', bloc)):
+                for texte in _textes(sortie):
+                    with self.subTest(cas=nom, sortie=quoi, texte=texte[:120]):
+                        self.assertNotIn('D-CIQ', texte)

@@ -58,6 +58,9 @@ SOURCES_CLIENT = {
         "ci_src_economie",
     "etude_ci.bilan (moteur C&I)": "ci_src_production",
     "etude_ci.bilan": "ci_src_production",
+    # ACAL1225 — le texte servi aujourd'hui (``economie_ci.HORIZON_CI_SOURCE``)
+    # et l'ancien, gardé pour l'étude rangée d'un devis déjà envoyé.
+    "horizon d'analyse : 25 ans": "ci_src_horizon",
     "D-CIQ-10 : 25 ans": "ci_src_horizon",
     # AMOT88 — chemin d'écran interne : jamais imprimé au client.
     "réglage société — Paramètres › Tarification & ROI":

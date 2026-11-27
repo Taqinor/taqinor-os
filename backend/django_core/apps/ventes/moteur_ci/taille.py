@@ -88,14 +88,21 @@ ROLES_DE_TAILLE = frozenset({
     'socle_ci',
 })
 
-SOURCE_PS = 'décision fondateur du 03/10/2026 (D-CIQ-2) — puissance souscrite déclarée'
+#: ACAL1225 — les sources SERVIES disent la règle en clair, sans code de
+#: décision (D-CIQ-2 : décision fondateur du 03/10/2026 pour la puissance
+#: souscrite, du 25/08 pour l'horizon marginal, confirmé le 30/10/2026).
+SOURCE_PS = ('puissance souscrite déclarée : la puissance AC des onduleurs ne la dépasse pas '
+             '(décision fondateur du 03/10/2026)')
+SOURCE_PAS = 'taille étudiée par tranches de %g kWc' % PAS_KWC
 SOURCE_RASANTE = 'décision fondateur du 28/10/2026 (R1 — pose rasante)'
 #: R1 — le texte client quand même la pose rasante ne loge pas la taille
 #: économique (repris trilingue par ``quote_engine.i18n_labels_ci``).
 TEXTE_TAILLE_LIMITEE_TOIT = 'taille limitée par le toit : %g m² déclarés → %g kWc en pose rasante'
 TEXTE_TAILLE_LIMITEE_TOIT_SANS_SURFACE = 'taille limitée par le toit : %g kWc en pose rasante'
-SOURCE_HORIZON = ('horizon marginal C&I unique, panneaux et batteries — 10 ans (moteur_ci/taille.py '
-                  'HORIZON_MARGINAL_CI ; D-CIQ-2 du 25/08, confirmé par le fondateur le 30/10/2026)')
+SOURCE_HORIZON = ("un ajout (une tranche de %g kWc de panneaux, ou une batterie) n'est retenu que "
+                  "s'il se rembourse en %d ans au plus par l'économie qu'il ajoute — même règle "
+                  "pour les panneaux et les batteries (décision fondateur du 25/08, confirmée "
+                  "le 30/10/2026)" % (PAS_KWC, HORIZON_MARGINAL_CI))
 
 
 def _alerte(code, champ, message, niveau='alerte', interne=True):
@@ -479,7 +486,7 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
     """
     alertes = []
     hypotheses = [
-        {'cle': 'pas_kwc', 'valeur': PAS_KWC, 'statut': 'source', 'source': 'D-CIQ-2'},
+        {'cle': 'pas_kwc', 'valeur': PAS_KWC, 'statut': 'source', 'source': SOURCE_PAS},
         {'cle': 'horizon_marginal_annees', 'valeur': HORIZON_MARGINAL_CI,
          'statut': 'source', 'source': SOURCE_HORIZON},
     ]

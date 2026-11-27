@@ -470,7 +470,10 @@ def base_economique(tva_recuperable, *, investissement=None,
 
 #: Horizon d'analyse C&I (D-CIQ-10).
 HORIZON_CI_ANS = 25
-HORIZON_CI_SOURCE = 'D-CIQ-10 : 25 ans'
+#: ACAL1225 — la règle dite en clair (aucun code de décision servi) ; l'ancien
+#: texte « D-CIQ-10 : 25 ans » reste une clé de ``quote_engine.ci.couverture.
+#: SOURCES_CLIENT`` pour les études rangées des devis déjà envoyés.
+HORIZON_CI_SOURCE = "horizon d'analyse : %d ans" % HORIZON_CI_ANS
 #: Jalons publiés du cumul (D-CIQ-10).
 JALONS_CI_ANS = (5, 10, 15, 20, 25)
 #: Indexation : tarif de vente CONSTANT (QX39 / QRES54), saisie à 0.
