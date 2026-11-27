@@ -141,7 +141,7 @@ def _poser_emise(facture, *, user, source, verifier_credit, statut):
 
     anomalies = []
     from apps.parametres.models import CompanyProfile
-    profile = CompanyProfile.get(company=facture.company)
+    profile = CompanyProfile.lire(company=facture.company)
     if getattr(profile, 'revue_factures_active', False) and \
             facture.revue_statut == Facture.RevueStatut.A_VALIDER:
         if user is not None and facture.created_by_id == getattr(
@@ -482,7 +482,7 @@ def entete_facture_depuis_devis(devis, *, ttc=None):
         entete['conditions_paiement'] = retenue['phrase']
     # ASOC87 — escompte par défaut de la société, comme la facture manuelle (XFAC12).
     from apps.parametres.models import CompanyProfile
-    profil = CompanyProfile.get(company=devis.company)
+    profil = CompanyProfile.lire(company=devis.company)
     for champ in ('escompte_pct', 'escompte_jours'):
         if getattr(profil, f'{champ}_defaut', None) is not None:
             entete[champ] = getattr(profil, f'{champ}_defaut')
