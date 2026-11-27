@@ -1906,7 +1906,7 @@ def _delai_intervention_societe(company):
     None (non engagé)."""
     from apps.parametres.models import CompanyProfile
     try:
-        return CompanyProfile.get(company=company).delai_intervention_suivi_heures
+        return CompanyProfile.lire(company=company).delai_intervention_suivi_heures
     except CompanyProfile.DoesNotExist:  # profil absent : non engagé
         return None
 
