@@ -382,7 +382,12 @@ class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
         crée plus le profil (``CompanyProfile.get`` dans l'aval : chantier,
         acompte, O&M) : son fuseau par défaut entrait dans l'empreinte de
         simulation (``site.fuseau_du_site``) et périmait le calepinage.
-        Chaîne réelle : ``accept_devis`` + rappels du commit exécutés."""
+        Chaîne réelle : ``accept_devis`` + rappels du commit exécutés.
+        ``build_quote_data`` (détection des options, lu à CHAQUE acceptation :
+        langue, délais, validité) n'est PAS bouchonné. Seul le stockage de
+        l'exemplaire signé l'est (MinIO, WeasyPrint) : ses lecteurs du profil
+        (moteur + ``utils/pdf._company_context``) sont tenus sans base par
+        ``apps.ventes.tests.test_profil_lecture_moteur``."""
         from datetime import date
         from unittest import mock
 
