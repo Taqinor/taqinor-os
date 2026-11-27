@@ -604,6 +604,29 @@ describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet
     expect(await screen.findByTestId('acal700-demarrage-texte')).toHaveTextContent('Aucune valeur publiée n’existe')
   })
 
+  it('ACAL1934 — un réglage rempli mais illisible dit sa cause servie, et « Démarrage rapide » ne le compte pas comme vide', async () => {
+    const base = COMPLET()
+    const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    const modele = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_ligne_a_renseigner_avec_motif')
+    const data = { ...base, production: borne.production, simulation: borne.simulation, cascade: JSON.parse(JSON.stringify(borne.cascade)) }
+    data.cascade.a_renseigner.lignes = [...data.cascade.a_renseigner.lignes, modele]
+    data.cascade.a_renseigner.etapes_a_compter += 1
+    servir(data)
+    rendre()
+    const lignes = await screen.findAllByTestId('acal700-ligne')
+    expect(lignes).toHaveLength(4)
+    const chaleur = lignes[3]
+    expect(chaleur).toHaveTextContent('aucune ligne « south » dans la table société des coefficients par type de pose')
+    expect(chaleur).not.toHaveTextContent('Aucune valeur pour votre société')
+    expect(within(chaleur).getByRole('link', { name: 'Renseigner' })).toBeInTheDocument()
+    // Les trois lignes SANS motif servi gardent leur raison : le cas commun ne change pas.
+    for (const l of lignes.slice(0, 3)) expect(l).toHaveTextContent('Aucune valeur pour votre société')
+    // 3 vides sur 4 : la ligne au motif n'est pas un réglage vide.
+    expect(screen.getByTestId('acal700-demarrage-texte')).toHaveTextContent(/réglages vides/)
+    expect(screen.getByTestId('acal700-demarrage-texte')).not.toHaveTextContent(/4 réglages|des 4/)
+    expect(screen.getByTestId('acal700-demarrage-texte')).toHaveTextContent(/3 réglages vides/)
+  })
+
   it('« Démarrage rapide » ne compte que ce que « Remplir » remplit (même liste que la page Démarrage rapide)', async () => {
     const base = COMPLET()
     const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')

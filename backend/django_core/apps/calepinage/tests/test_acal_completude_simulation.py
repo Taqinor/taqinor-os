@@ -240,6 +240,42 @@ class ARenseignerTest(SimpleTestCase):
             self.assertFalse(any(c.isdigit() for c in ligne['ou_trouver']),
                              ligne['ou_trouver'])
 
+    def test_reglage_rempli_mais_table_sans_ligne_sert_le_motif(self):
+        # ACAL1934 — la société a REMPLI la table des coefficients par type de
+        # pose (profil de départ : « pose_libre », « dos_isole »), mais le
+        # calepinage est « south » : la ligne « Chaleur des panneaux » doit
+        # citer la vraie cause, pas « aucune valeur ». Chemin réel : l'étape
+        # thermique s'omet, ``construire`` lit son motif.
+        from apps.calepinage.services import a_renseigner as ar
+        from apps.calepinage.services.etapes import thermique
+
+        serie = {'pas_minutes': 60, 'points': [
+            {'annee': 2020, 'mois': 7, 'jour': 15, 'heure': 12, 'p_w': 4000.0,
+             'gi_w_m2': 950.0, 't2m_c': 35.0, 'ws10m': 1.5}]}
+        table = {'pose_libre': {'uc_w_m2k': 29.0, 'uv_w_m3sk': 0.0,
+                                'source': 'profil', 'reference': 'x'},
+                 'dos_isole': {'uc_w_m2k': 15.0, 'uv_w_m3sk': 0.0,
+                               'source': 'profil', 'reference': 'x'}}
+        contexte = {
+            'fiche_module': {'temp_coeff_pmax_pct_c': -0.35},
+            'plans': [{'cle': 'A', 'kind': 'south'}],
+            'reglages_simulation': {'thermique_par_pose': {
+                'valeur': table, 'source': 'societe', 'reference': 'T'}}}
+        _, etape = thermique.appliquer(serie, contexte)
+        etape['etape'] = 'thermique'
+        bloc = ar.construire({'etapes': [etape]}, ['thermique'])
+        ligne = bloc['lignes'][0]
+        self.assertEqual((ligne['nature'], ligne['cle']),
+                         ('reglage_societe', 'thermique_par_pose'))
+        self.assertEqual(ligne['motif'], 'aucune ligne « south » dans la '
+                         'table société des coefficients par type de pose.')
+        # Le cas commun : table vide ⇒ aucune clé « motif » (vraiment vide).
+        contexte.pop('reglages_simulation')
+        _, vide = thermique.appliquer(serie, contexte)
+        vide['etape'] = 'thermique'
+        ligne = ar.construire({'etapes': [vide]}, ['thermique'])['lignes'][0]
+        self.assertNotIn('motif', ligne)
+
     def test_un_champ_de_site_n_est_jamais_un_reglage(self):
         # Mutant « serie.points traité comme un réglage » : échec ici.
         from apps.calepinage.services import a_renseigner as ar

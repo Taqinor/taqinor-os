@@ -30,6 +30,9 @@ _MOTIF_CHAMP = re.compile(
 SECTIONS_REGLAGE = {'simulation': 'simulation',
                     'reglages_simulation': 'simulation',
                     'electrique_societe': 'electrique_societe'}
+#: ACAL1934 — la phrase posée par ``etapes.thermique`` quand la table société est
+#: REMPLIE mais n'a pas de ligne pour la pose (« Table société : <phrase> »).
+_MOTIF_TABLE = re.compile(r'Table société : (?P<phrase>.+?)(?: Champ manquant|$)')
 PREFIXE_FICHE_PANNEAU = 'fiche_module'
 
 OU_TROUVER_REGLAGE = ('Où lire la valeur : {reference}. Aucune valeur '
@@ -103,6 +106,10 @@ def construire(cascade, non_renseignees):
             continue
         vues.add((etape.get('etape'), champ))
         ligne = _ligne_du_champ(etape, champ) if champ else None
+        table = _MOTIF_TABLE.search(motif)
+        if (ligne is not None and table
+                and ligne['nature'] == 'reglage_societe'):
+            ligne['motif'] = table.group('phrase').strip()
         if ligne is not None:
             lignes.append(ligne)
             continue

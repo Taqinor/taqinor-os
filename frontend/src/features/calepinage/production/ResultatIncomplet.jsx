@@ -291,7 +291,7 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null,
                     </span>
                     {RAISON[ligne.nature] && (
                       <span className="cal-resinc-raison">
-                        {sansOnduleur && ETAPES_ONDULEUR.has(ligne.etape) ? 'Aucun onduleur désigné' : RAISON[ligne.nature]}
+                        {sansOnduleur && ETAPES_ONDULEUR.has(ligne.etape) ? 'Aucun onduleur désigné' : (ligne.motif || RAISON[ligne.nature])}
                       </span>
                     )}
                   </span>
