@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from apps.ventes import economie_ci_options as _options, tarif_ci
 from apps.ventes.moteur_ci import degradation as _deg
-from apps.ventes.quote_engine.constants_82_21 import MENTION_ART13, MENTION_BT
+from apps.ventes.quote_engine.constants_82_21 import MENTION_ART13
 
 STATUT_CALCULE = 'calcule'
 STATUT_OMIS = 'omis'
@@ -100,40 +100,8 @@ def _tension(apercu, tarif):
     return (t or 'bt').lower()
 
 
-def _revente_bt(apercu):
-    bilan = apercu.get('bilan') or {}
-    non_valorise = bilan.get('non_valorise_kwh')
-    if non_valorise is None:
-        non_valorise = bilan.get('surplus_kwh')
-    hyp = []
-    if non_valorise is not None:
-        hyp.append({'cle': 'surplus_non_valorise_kwh',
-                    'valeur': non_valorise, 'statut': 'source',
-                    'source': 'etude_ci.bilan'})
-    return {
-        'statut': 'absente_bt',
-        'kwh_an': None,
-        'plafond_kwh': None,
-        'tarifs': [],
-        'valeur_mad_an': None,
-        'mentions': [MENTION_BT, MENTION_ART13],
-        'hypotheses': hyp,
-    }
-
-
-_LIBELLES_POSTE = {'pointe': 'Énergie heures de pointe', 'pleines': 'Énergie heures pleines',
-                   'creuses': 'Énergie heures creuses', 'normales': 'Énergie heures normales'}
-
-
-def libelle_poste(poste):
-    """ACAL1225 — le libellé de métier d'un poste (``tranche_3`` → « Énergie tranche 3 »)."""
-    if '+' in poste:
-        return 'Énergie, toutes tranches'
-    return _LIBELLES_POSTE.get(poste) or 'Énergie ' + poste.replace('_', ' ')
-
-
 def _ligne(poste, kwh, ht, ttc):
-    return {'poste': poste, 'libelle': libelle_poste(poste), 'kwh_evites': int(round(kwh)),
+    return {'poste': poste, 'libelle': _options.libelle_poste(poste), 'kwh_evites': int(round(kwh)),
             'tarif_kwh': ht, 'mad': round(kwh * ht, 2),
             'tarif_kwh_ttc': ttc, 'mad_ttc': round(kwh * ttc, 2)}
 
@@ -159,10 +127,10 @@ def _valoriser_mt(cellules, tarif):
     for p in prix:
         ht, ttc = prix[p]['tarif_kwh_ht'], prix[p]['tarif_kwh_ttc']
         apres = max(0.0, avant[p] - evites[p])
-        fav.append({'poste': p, 'libelle': libelle_poste(p), 'kwh': int(round(avant[p])),
+        fav.append({'poste': p, 'libelle': _options.libelle_poste(p), 'kwh': int(round(avant[p])),
                     'mad_ht': round(avant[p] * ht, 2),
                     'mad_ttc': round(avant[p] * ttc, 2)})
-        fap.append({'poste': p, 'libelle': libelle_poste(p), 'kwh': int(round(apres)),
+        fap.append({'poste': p, 'libelle': _options.libelle_poste(p), 'kwh': int(round(apres)),
                     'mad_ht': round(apres * ht, 2),
                     'mad_ttc': round(apres * ttc, 2)})
     return par_poste, fav, fap
@@ -212,7 +180,7 @@ def _valoriser_bt(cellules, tarif, apercu, tarif_declare, origine=False):
     nom = '+'.join(p['poste'] for p in postes)
 
     def _facture(kwhs):
-        return [{'poste': nom, 'libelle': libelle_poste(nom),
+        return [{'poste': nom, 'libelle': _options.libelle_poste(nom),
                  'mad_ht': round(sum(k * p['tarif_kwh_ht']
                                      for k, p in zip(kwhs, postes)), 2),
                  'mad_ttc': round(sum(k * p['tarif_kwh_ttc']
@@ -294,7 +262,7 @@ def valoriser(apercu_ci, tarif, *, millesime=2026, tarif_declare=None,
                           {'energie_par_poste': fap, 'prime_fixe_mad': prime}),
         # BT : aucune ligne de revente ; MT : valorisée par l'étape dédiée,
         # seulement si la revente est demandée (jamais ici).
-        'revente': _revente_bt(apercu) if tension != 'mt' else None,
+        'revente': _options.revente_bt(apercu) if tension != 'mt' else None,
         'hypotheses': hypotheses,
     }
 
@@ -845,7 +813,7 @@ def revente_ci(apercu_ci, *, tension, revente_demandee,
     apercu = apercu_ci if isinstance(apercu_ci, dict) else {}
     t = (tension or '').strip().lower() if isinstance(tension, str) else None
     if t and t not in TENSIONS_REVENTE:
-        bloc = _revente_bt(apercu)
+        bloc = _options.revente_bt(apercu)
         if revente_demandee:
             bloc['mentions'].append(MENTION_REVENTE_IGNOREE_BT)
         return bloc
