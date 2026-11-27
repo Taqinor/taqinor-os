@@ -14,7 +14,7 @@ vi.mock('../../../../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       resultat: vi.fn(), exportCsv: vi.fn(), simuler: vi.fn(), explications: vi.fn(),
-      pertes: vi.fn(), enregistrerPertes: vi.fn(), designContext: vi.fn(),
+      pertes: vi.fn(), enregistrerPertes: vi.fn(), designContext: vi.fn(), parcours: vi.fn(), get: vi.fn(),
     },
     moteur: { resultat: vi.fn() },
     parametres: { get: vi.fn() },
@@ -26,9 +26,12 @@ vi.mock('../../../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn(
 import calepinageApi from '../../../../../api/calepinageApi'
 import ventesApi from '../../../../../api/ventesApi'
 import EtapeResultats from './EtapeResultats'
-import BarreEnregistrement from '../../BarreEnregistrement'
+import CoqueAtelier from '../CoqueAtelier'
+import { formaterHeureBrouillon } from '../../contexteAtelier'
 import { oublierLecturesServies } from './panneaux/lectures'
 import PanneauPertesUnifie from '../../PanneauPertesUnifie'
+import RailGuide from '../../../commun/RailGuide'
+import { publierRefus } from '../../../production/refusPublie'
 
 const COMPLET = () => {
   const base = JSON.parse(JSON.stringify(exempleContrat('calepinage', 'calepinage_resultat', 'exemple')))
@@ -526,6 +529,89 @@ describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet
     expect(screen.queryByTestId('acal700-autres')).toBeNull()
   })
 
+  it('ACAL1939 — « Voir les étapes » défile jusqu’au détail APRÈS son montage, pas avant (sinon le contenu n’existe pas encore)', async () => {
+    const base = COMPLET()
+    const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    const data = { ...base, production: borne.production, simulation: borne.simulation, cascade: JSON.parse(JSON.stringify(borne.cascade)) }
+    data.cascade.a_renseigner.etapes_comptees = 4
+    data.cascade.a_renseigner.etapes_a_compter = 22
+    servir(data)
+    const defilements = []
+    const origine = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function defiler(options) {
+      defilements.push({ zone: this.getAttribute('data-zone'), ouvert: this.open === true, options })
+    }
+    try {
+      rendre()
+      const autres = await screen.findByTestId('acal700-autres')
+      fireEvent.click(within(autres).getByRole('button', { name: 'Voir les étapes' }))
+      await waitFor(() => expect(defilements.length).toBeGreaterThan(0))
+      // Le détail est déjà ouvert (monté) quand on y défile, et c'est bien lui qu'on amène à l'écran.
+      expect(defilements.every((d) => d.zone === 'avance' && d.ouvert)).toBe(true)
+      expect(defilements[0].options).toEqual({ block: 'start' })
+    } finally {
+      Element.prototype.scrollIntoView = origine
+    }
+  })
+
+  it('ACAL1940 — sans onduleur désigné : « Aucun onduleur désigné » et « Désigner » vers l’Électrique, pas « Absent de la fiche du panneau »', async () => {
+    const base = COMPLET()
+    const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    const data = { ...base, production: borne.production, simulation: borne.simulation, cascade: JSON.parse(JSON.stringify(borne.cascade)) }
+    const [societe] = data.cascade.a_renseigner.lignes
+    const mppt = { etape: 'mppt', libelle: 'Fenêtre MPPT', nature: 'fiche_panneau', section: 'fiche_module', cle: 'vmp_v',
+      libelle_champ: 'vmp_v', unite: '', ou_trouver: 'Fiche technique du panneau', cible: { onglet: 'fiches', champ: 'vmp_v' } }
+    data.cascade.a_renseigner.lignes = [societe, mppt]
+    servir(data)
+    const sansOnduleur = { manque: [{ code: 'materiel_designe', etape: 'electrique', gravite: 'a_regler', nombre: 1,
+      cible: { onglet: 'electrique', champ: '' }, message: 'onduleur non désigné — désignez-le dans l’onglet Matériel électrique' }] }
+    rendre({ parcours: sansOnduleur })
+    const lignes = await screen.findAllByTestId('acal700-ligne')
+    const ligne = lignes.find((l) => l.textContent.includes('onduleur'))
+    expect(ligne).toHaveTextContent('Aucun onduleur désigné')
+    expect(ligne).not.toHaveTextContent('Absent de la fiche du panneau')
+    const lien = within(ligne).getByRole('link', { name: 'Désigner' })
+    expect(lien.getAttribute('href')).toMatch(/^\/calepinage\/1\?.*onglet=/)
+    expect(lien.getAttribute('href')).not.toContain('fiches')
+    cleanup()
+    // Onduleur DÉSIGNÉ mais fiche incomplète : même code, cause « <rôle> : <champ> » (pret_a_envoyer) — jamais « Aucun onduleur désigné ».
+    cleanup()
+    servir(data)
+    rendre({ parcours: { manque: [{ code: 'materiel_designe', etape: 'electrique', gravite: 'a_regler', nombre: 1,
+      cible: { onglet: 'electrique', champ: '' }, message: 'onduleur : tension MPPT min' }] } })
+    const incomplete = (await screen.findAllByTestId('acal700-ligne')).find((l) => l.textContent.includes('onduleur'))
+    expect(incomplete).not.toHaveTextContent('Aucun onduleur désigné')
+    expect(incomplete).toHaveTextContent('Absent de la fiche du panneau')
+    expect(within(incomplete).getByRole('link', { name: 'Renseigner' }).getAttribute('href')).toContain('fiches')
+    cleanup()
+    // Un onduleur désigné (aucune ligne « matériel » à compléter) : le cas courant garde sa raison de fiche et « Renseigner ».
+    servir(data)
+    rendre({ parcours: { manque: [] } })
+    const lignes2 = await screen.findAllByTestId('acal700-ligne')
+    const fiche = lignes2.find((l) => l.textContent.includes('onduleur'))
+    expect(fiche).toHaveTextContent('Absent de la fiche du panneau')
+    expect(within(fiche).getByRole('link', { name: 'Renseigner' })).toBeInTheDocument()
+  })
+
+  it('ACAL1652 — deux étapes qui demandent le même champ : UNE ligne qui nomme les deux, un seul « à renseigner »', async () => {
+    const base = COMPLET()
+    const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    const data = { ...base, production: borne.production, simulation: borne.simulation, cascade: JSON.parse(JSON.stringify(borne.cascade)) }
+    const [salissure, mismatch] = data.cascade.a_renseigner.lignes
+    // Le même champ servi pour deux étapes (le cas du coefficient de température) : mêmes `section` et `cle`, étapes différentes.
+    const jumelle = { ...mismatch, etape: 'chaleur', libelle: 'Chaleur', section: salissure.section, cle: salissure.cle, cible: salissure.cible }
+    data.cascade.a_renseigner.lignes = [salissure, jumelle, mismatch]
+    servir(data)
+    rendre()
+    const lignes = await screen.findAllByTestId('acal700-ligne')
+    expect(lignes.filter((l) => l.textContent.includes('Chaleur'))).toHaveLength(1)
+    const commune = lignes.find((l) => l.textContent.includes('Chaleur'))
+    expect(commune.textContent).toContain(' et ')
+    expect(commune.textContent).toMatch(/Salissure|poussi/i)
+    expect(lignes.filter((l) => within(l).queryByTestId('acal700-renseigner'))).toHaveLength(2)
+    expect(screen.getByTestId('acal1833-compteur')).toHaveTextContent(/^2 /)
+  })
+
   it('Demande croisée — « Démarrage rapide » ne compte que les lignes `reglage_societe` (pas les lignes de fiche panneau)', async () => {
     const base = COMPLET()
     const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
@@ -548,6 +634,29 @@ describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet
     servir(data)
     rendre()
     expect(await screen.findByTestId('acal700-demarrage-texte')).toHaveTextContent('Aucune valeur publiée n’existe')
+  })
+
+  it('ACAL1934 — un réglage rempli mais illisible dit sa cause servie, et « Démarrage rapide » ne le compte pas comme vide', async () => {
+    const base = COMPLET()
+    const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    const modele = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_ligne_a_renseigner_avec_motif')
+    const data = { ...base, production: borne.production, simulation: borne.simulation, cascade: JSON.parse(JSON.stringify(borne.cascade)) }
+    data.cascade.a_renseigner.lignes = [...data.cascade.a_renseigner.lignes, modele]
+    data.cascade.a_renseigner.etapes_a_compter += 1
+    servir(data)
+    rendre()
+    const lignes = await screen.findAllByTestId('acal700-ligne')
+    expect(lignes).toHaveLength(4)
+    const chaleur = lignes[3]
+    expect(chaleur).toHaveTextContent('aucune ligne « south » dans la table société des coefficients par type de pose')
+    expect(chaleur).not.toHaveTextContent('Aucune valeur pour votre société')
+    expect(within(chaleur).getByRole('link', { name: 'Renseigner' })).toBeInTheDocument()
+    // Les trois lignes SANS motif servi gardent leur raison : le cas commun ne change pas.
+    for (const l of lignes.slice(0, 3)) expect(l).toHaveTextContent('Aucune valeur pour votre société')
+    // 3 vides sur 4 : la ligne au motif n'est pas un réglage vide.
+    expect(screen.getByTestId('acal700-demarrage-texte')).toHaveTextContent(/réglages vides/)
+    expect(screen.getByTestId('acal700-demarrage-texte')).not.toHaveTextContent(/4 réglages|des 4/)
+    expect(screen.getByTestId('acal700-demarrage-texte')).toHaveTextContent(/3 réglages vides/)
   })
 
   it('« Démarrage rapide » ne compte que ce que « Remplir » remplit (même liste que la page Démarrage rapide)', async () => {
@@ -732,6 +841,30 @@ describe('Étape Résultats — la simulation part seule (ACAL1987)', () => {
     expect(calepinageApi.calepinages.resultat.mock.calls.length).toBeGreaterThanOrEqual(3)
   })
 
+  it('ACAL1650 — guidé : la pastille Résultats du rail compte les manquants de la simulation automatique, et les retire au démontage sans effacer le bouton de calcul', async () => {
+    const etats = { toit: 'fait', panneaux: 'fait', electrique: 'fait', resultats: 'a_faire' }
+    const parcoursServi = [1, 2, 3, 4, 5].map((n) => ({ code: `x${n}`, message: `Point ${n}`, etape: 'resultats', gravite: 'a_regler', nombre: 1, cible: { onglet: 'reglages', champ: '' } }))
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: avecAuto(INCOMPLETE()) })
+    const nManquants = INCOMPLETE().manquants.length
+    const { unmount } = render(
+      <MemoryRouter>
+        <RailGuide vertical calepinageId={1} etapeActive="resultats" etats={etats} manque={parcoursServi} onChoisir={() => {}} />
+        <EtapeResultats calepinageId={1} />
+      </MemoryRouter>,
+    )
+    const pastille = () => within(screen.getByTestId('cal-etape-resultats'))
+    expect(pastille().getByText('5 à régler')).toBeInTheDocument() // avant la lecture : le parcours servi
+    await waitFor(() => expect(pastille().getByText(`${nManquants} à régler`)).toBeInTheDocument())
+    // le bouton de calcul publie aussi : démonter l'étape ne retire que la publication de l'étape
+    publierRefus(1, [{ champ: 'a', motif: 'A' }, { champ: 'b', motif: 'B' }, { champ: 'c', motif: 'C' }], 'autre')
+    unmount()
+    cleanup()
+    render(<MemoryRouter><RailGuide vertical calepinageId={1} etapeActive="resultats" etats={etats} manque={parcoursServi} onChoisir={() => {}} /></MemoryRouter>)
+    expect(within(screen.getByTestId('cal-etape-resultats')).getByText('3 à régler')).toBeInTheDocument()
+    publierRefus(1, [], 'autre')
+    await waitFor(() => expect(within(screen.getByTestId('cal-etape-resultats')).getByText('5 à régler')).toBeInTheDocument())
+  })
+
   it('pose incomplète : « Il manque … » avec les phrases servies ; le bouton de calcul reste', async () => {
     rendreAvec(avecAuto(INCOMPLETE()))
     const zone = await waitFor(() => {
@@ -756,26 +889,55 @@ describe('Étape Résultats — la simulation part seule (ACAL1987)', () => {
 /* ACAL1653 — à la fin d'une simulation, le bandeau d'enregistrement passe à « Simulation à jour · HH:MM » sans recharger :
    la barre écoute le résultat publié par l'étape (même canal que le résumé Expert). */
 describe('Étape Résultats — le bandeau suit la fin du calcul (ACAL1653)', () => {
-  it('fin de simulation : « Enregistré à… » devient « Simulation à jour · HH:MM », sans rechargement', async () => {
-    const enCours = { ...JAMAIS(), simulation_automatique: { ...JAMAIS().simulation_automatique, en_cours: true, job_id: 7 } }
-    const fini = { ...COMPLET(), simulation_perimee: false, calcule_le: '2026-11-26T14:32:00Z' }
+  // ACAL1653 (revue) — par la VRAIE coque : sa lecture de l'ouverture (`etatPropre`) primait sur la fin du calcul publiée.
+  it('fin de simulation : le bandeau de la coque dit l\'heure du calcul qui vient de finir, pas celle de la lecture d\'avant', async () => {
+    const ancien = { ...COMPLET(), simulation_perimee: false, calcule_le: '2026-11-26T13:10:00Z' }
+    const recent = { ...COMPLET(), simulation_perimee: false, calcule_le: '2026-11-26T14:32:00Z' }
+    calepinageApi.calepinages.parcours.mockResolvedValue({ data: { etapes: [], manque: [] } })
+    calepinageApi.calepinages.get.mockResolvedValue({ data: {} })
     calepinageApi.calepinages.resultat
-      .mockResolvedValueOnce({ data: enCours })
-      .mockResolvedValueOnce({ data: enCours })
-      .mockResolvedValue({ data: fini })
+      .mockResolvedValueOnce({ data: ancien }) // la lecture de la coque à l'ouverture
+      .mockResolvedValue({ data: recent }) // celle de l'étape Résultats : le calcul vient de finir
     render(
       <MemoryRouter initialEntries={['/calepinage/1?onglet=production']}>
         <Routes><Route path="/calepinage/:id" element={(
-          <>
-            <BarreEnregistrement libelle="Enregistrer le calepinage" enregistreLe="2026-11-26T14:00:00Z" />
-            <EtapeResultats calepinageId={1} intervalleMs={5} />
-          </>
+          <CoqueAtelier calepinageId={1} titre="Pose" retour={{ to: "/calepinage", libelle: "Calepinages" }} enregistreLe="2026-11-26T12:00:00Z"
+            enregistrement={{ libelle: 'Enregistrer le calepinage', enregistreLe: '2026-11-26T12:00:00Z' }} />
         )} /></Routes>
       </MemoryRouter>,
     )
-    expect(screen.getByTestId('cal-etat-enregistrement')).toHaveTextContent(/^Enregistré/)
     await screen.findByTestId('cal-resultats-tuiles')
-    await waitFor(() => expect(screen.getByTestId('cal-etat-enregistrement')).toHaveTextContent(/Simulation à jour · \d{2}:\d{2}/))
+    const attendu = `Simulation à jour · ${formaterHeureBrouillon('2026-11-26T14:32:00Z')}`
+    await waitFor(() => expect(screen.getByRole('button', { name: new RegExp(attendu) })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: new RegExp(formaterHeureBrouillon('2026-11-26T13:10:00Z')) })).toBeNull()
+  })
+})
+
+/* ACAL1653 (revue) — la pastille « N à régler » du rail est relue quand le calcul se termine (la VRAIE coque). */
+describe('Étape Résultats — la pastille du rail est relue à la fin du calcul (ACAL1653)', () => {
+  it('trois points à régler avant le calcul, un seul après : le rail dit le compte servi après le calcul', async () => {
+    const ancien = { ...COMPLET(), simulation_perimee: false, calcule_le: '2026-11-26T13:10:00Z' }
+    const recent = { ...COMPLET(), simulation_perimee: false, calcule_le: '2026-11-26T14:32:00Z' }
+    const ligne = (n) => ({ code: `p${n}`, message: `Point ${n}`, etape: 'resultats', gravite: 'a_regler', nombre: 1, cible: { onglet: 'reglages', champ: '' } })
+    const etapes = [{ cle: 'toit', etat: 'fait' }, { cle: 'panneaux', etat: 'fait' }, { cle: 'electrique', etat: 'fait' }, { cle: 'resultats', etat: 'en_cours' }]
+    calepinageApi.calepinages.parcours
+      .mockResolvedValueOnce({ data: { etapes, manque: [ligne(1), ligne(2), ligne(3)] } })
+      .mockResolvedValue({ data: { etapes, manque: [ligne(1)] } })
+    calepinageApi.calepinages.get.mockResolvedValue({ data: {} })
+    calepinageApi.calepinages.resultat
+      .mockResolvedValueOnce({ data: ancien })
+      .mockResolvedValue({ data: recent })
+    render(
+      <MemoryRouter initialEntries={['/calepinage/1?onglet=production']}>
+        <Routes><Route path="/calepinage/:id" element={(
+          <CoqueAtelier calepinageId={1} titre="Pose" retour={{ to: '/calepinage', libelle: 'Calepinages' }} enregistreLe="2026-11-26T12:00:00Z"
+            enregistrement={{ libelle: 'Enregistrer le calepinage', enregistreLe: '2026-11-26T12:00:00Z' }} />
+        )} /></Routes>
+      </MemoryRouter>,
+    )
+    await screen.findByTestId('cal-resultats-tuiles')
+    await waitFor(() => expect(within(screen.getByTestId('cal-etape-resultats')).getByText('1 à régler')).toBeInTheDocument())
+    expect(calepinageApi.calepinages.parcours.mock.calls.length).toBeGreaterThanOrEqual(2)
   })
 })
 
@@ -1270,6 +1432,24 @@ describe('Étape Résultats — ce qui est supposé (ACAL1630)', () => {
     expect(screen.getByTestId('cal-resultats-tuiles').compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  it('ACAL1630 (revue) — un repli qui porte sa cible mène au champ ; sans cible, le champ reste du texte', async () => {
+    const d = COMPLET()
+    d.suppose = [
+      { code: 'longueur_chaine_dossier', libelle: 'Longueur : 16 modules', valeur: 16, champ: 'fiche technique du module et de l’onduleur', cible: { onglet: 'fiches' } },
+      { code: 'allee_par_defaut', libelle: 'Allée : 0,60 m', valeur: 0.6, champ: 'panneau Allées de l’atelier', cible: { onglet: 'reglages', champ: 'allees' } },
+      { code: 'sans_cible', libelle: 'Autre repli', valeur: 1, champ: 'un champ sans cible' },
+    ]
+    servir(d)
+    rendre()
+    const fiches = await screen.findByTestId('acal980-longueur_chaine_dossier')
+    expect(within(fiches).getByRole('link', { name: /fiche technique du module/ })).toHaveAttribute('href', '/calepinage/1?onglet=fiches')
+    expect(within(screen.getByTestId('acal980-allee_par_defaut')).getByRole('link', { name: /Allées de l’atelier/ }))
+      .toHaveAttribute('href', '/calepinage/reglages/allees')
+    const sans = screen.getByTestId('acal980-sans_cible')
+    expect(sans).toHaveTextContent('À renseigner : un champ sans cible')
+    expect(within(sans).queryByRole('link')).toBeNull()
+  })
+
   it('aucune supposition servie ⇒ aucune section', async () => {
     const d = COMPLET()
     d.suppose = []
@@ -1316,8 +1496,8 @@ describe('Étape Résultats — « Du soleil au réseau » à cinq postes (ACAL1
     const d = COMPLET_MAQUETTE()
     const [ombres, ...autres] = d.cascade.postes_lisibles.postes
     d.cascade.postes_lisibles.postes = [
-      { ...ombres, perte_kwh: null, perte_pct: null, statut: 'non_compte',
-        etapes: [{ etape: 'ombrage_proche', motif_omission: 'Aucun obstacle saisi.' }] },
+      { ...ombres, perte_kwh: null, perte_pct: null, statut: 'non_compte', cause: 'aucun obstacle saisi',
+        etapes: [{ etape: 'ombrage_proche', motif_omission: 'Le document de toiture ne porte aucun obstacle saisi : l’ombre portée par les objets hauts du toit ne peut pas être comptée (ACAL1676, texte technique long).' }] },
       ...autres,
     ]
     d.cascade.postes_lisibles.arrivee_pct = 84.4
@@ -1333,13 +1513,34 @@ describe('Étape Résultats — « Du soleil au réseau » à cinq postes (ACAL1
     const ombres = carte.querySelector('[data-poste="ombres_proches"]')
     expect(ombres).toHaveTextContent('Ombres proches')
     expect(ombres).toHaveTextContent('non compté')
-    expect(ombres).toHaveTextContent('Aucun obstacle saisi.')
+    // La CAUSE courte servie (`cause`), jamais le paragraphe technique de `etapes[].motif_omission`.
+    expect(ombres).toHaveTextContent('non compté — aucun obstacle saisi')
+    expect(ombres).not.toHaveTextContent('document de toiture')
     expect(ombres.querySelector('.cal-res-piste')).toBeNull()
     // Les quatre autres : le restant part de 100 (le poste non compté ne retire rien).
     const pistes = [...carte.querySelectorAll('.cal-res-poste[data-statut="compte"] .cal-res-piste')]
     expect(pistes).toHaveLength(4)
     expect(Number.parseFloat(pistes[0].firstElementChild.style.width)).toBeCloseTo(97, 5)
     expect(Number.parseFloat(pistes[3].firstElementChild.style.width)).toBeCloseTo(100 - 3 - 6.4 - 4.5 - 3.1, 5)
+  })
+})
+
+describe('Étape Résultats — poste non compté sans `cause` servie (ACAL1676)', () => {
+  it('ancienne réponse : « non compté » seul, aucun paragraphe brut recopié', async () => {
+    const d = COMPLET_MAQUETTE()
+    const [ombres, ...autres] = d.cascade.postes_lisibles.postes
+    d.cascade.postes_lisibles.postes = [
+      { ...ombres, perte_kwh: null, perte_pct: null, statut: 'non_compte',
+        etapes: [{ etape: 'ombrage_proche', motif_omission: 'Paragraphe technique du serveur qui ne doit pas être recopié.' }] },
+      ...autres,
+    ]
+    servir(d)
+    rendre()
+    const carte = await screen.findByTestId('cal-resultats-pertes')
+    const poste = carte.querySelector('[data-poste="ombres_proches"]')
+    expect(poste).toHaveTextContent('non compté')
+    expect(poste).not.toHaveTextContent('Paragraphe technique')
+    expect(poste).not.toHaveTextContent('non compté —')
   })
 })
 

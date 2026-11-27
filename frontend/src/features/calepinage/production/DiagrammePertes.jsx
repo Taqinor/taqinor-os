@@ -13,7 +13,7 @@ import { ChartFrame, ChartTooltip, ChartEmpty } from '../../../ui/charts'
 import {
   CHART_TOKENS, CHART_GRID_STYLE, BAR_RADIUS, animationDuration, CHART_ANIM_EASING,
 } from '../../../ui/charts/chart-theme.js'
-import { CASCADE_ARRIVEE, CASCADE_DEPART, construireCascadeDetaillee, libelleSource } from './DiagrammePertes.helpers'
+import { CASCADE_ARRIVEE, CASCADE_DEPART, construireCascadeDetaillee, libelleSource, texteEnergieLivree } from './DiagrammePertes.helpers'
 import CascadePertesLignes from './CascadePertesLignes'
 import EtatEcranAtelier from '../atelier/EtatEcranAtelier'
 import useExpertParUrl from './useExpertParUrl'
@@ -272,7 +272,7 @@ function DiagrammePertesCascadeDetaillee({ etapes, totalPct = null, plages = nul
       header: 'Perte',
       align: 'right',
       format: (v, row) => {
-        if (row.arrivee) return `${formatPercent(100 - row.niveau, { decimals: 1 })} (pertes totales)`
+        if (row.arrivee) return texteEnergieLivree(row, (n) => formatNumber(n, { decimals: 0 }), (n) => formatPercent(n, { decimals: 1 }))
         return row.total ? '—' : pctCascadeDetaillee(v)
       },
     },

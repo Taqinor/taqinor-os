@@ -25,6 +25,7 @@ import { useModeExpert } from '../../modeExpert'
 import { PARAM_ONGLET } from '../../onglets'
 import { premierOngletEtape } from '../../parcoursGuide'
 import { publierResultat } from '../../simulationFraiche'
+import { publierRefus } from '../../../production/refusPublie'
 import PanneauPertes from '../../PanneauPertes'
 import { useLectureServie } from './panneaux/lectures'
 
@@ -450,6 +451,13 @@ export default function EtapeResultats({
   )
   // T4-X8-013 — le résultat lu ici est celui que reprennent le résumé de la feuille « Avancé » et le Total du constructeur.
   useEffect(() => { if (data) publierResultat(id, data) }, [id, data])
+  // ACAL1650 — en guidé le blocage vient de `simulation_automatique.manquants` (pas du bouton de calcul) : publié, le
+  // rail compte les mêmes lignes que l'écran. Source propre : le retrait n'efface pas la publication du bouton.
+  const manquantsAuto = data?.simulation_automatique?.manquants
+  useEffect(() => {
+    publierRefus(id, manquantsAuto, 'simulation_automatique')
+    return () => publierRefus(id, [], 'simulation_automatique')
+  }, [id, manquantsAuto])
   // T4-X5-001 — la taille de la conception (lecture partagée du design-context, jamais un second appel en vol).
   const contexte = useLectureServie('contexte', id, { actif: data?.conception != null })
   if (loading || error) {
@@ -480,11 +488,9 @@ export default function EtapeResultats({
   const ouvert = avanceOuvert ?? expert
   const publiees = reglagesPublies(data?.simulation)
   const voirSources = () => { setSourcesOuvertes(true); setAvanceOuvert(true) }
-  // « Voir les étapes » (pertes pas encore comptées) : ouvre « Détail des pertes et réglages » et y amène.
-  const voirEtapes = () => {
-    setAvanceOuvert(true)
-    globalThis.document?.querySelector('[data-zone="avance"]')?.scrollIntoView?.({ block: 'start' })
-  }
+  // « Voir les étapes » (pertes pas encore comptées) : ouvre « Détail des pertes et réglages » ; le défilement
+  // jusqu'à lui se fait APRÈS son montage, dans `ResultatIncomplet` (ACAL1939).
+  const voirEtapes = () => setAvanceOuvert(true)
   const note = publiees.length > 0
     ? <NoteValeursPubliees simulation={data?.simulation} onVoirSources={voirSources} /> : null
   const auto = data?.simulation_automatique
@@ -521,7 +527,7 @@ export default function EtapeResultats({
         </>
       )}
       {/* ACAL1630 — les replis cachés du moteur, servis (`suppose[]`), sous la production ; vide ⇒ rien. */}
-      <Suppose suppose={data?.suppose} />
+      <Suppose suppose={data?.suppose} calepinageId={calepinageId} />
       {/* ACAL1958 — le bouton de l'étape est là dans les TROIS états (avant simulation, incomplet, complet) ;
           la phrase de durée ne lit que les valeurs d'un résultat complet. */}
       <PiedResultats production={complet ? data?.production : null} incertitude={data?.incertitude} action={action} />

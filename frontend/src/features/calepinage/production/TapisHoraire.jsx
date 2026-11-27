@@ -316,7 +316,9 @@ export default function TapisHoraire({
   return (
     <Card className="flex flex-col gap-3 p-4" data-testid="cal-tapis">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-base font-semibold">Série horaire</h3>
+        <h3 className="text-base font-semibold">
+          {serie?.tronquee ? 'Série journalière (météo pluriannuelle)' : 'Série horaire'}
+        </h3>
         <div className="flex gap-1">
           {disponibles.map((g) => (
             <Button

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { PVGIS_LIVE_LOSS_PCT } from '@rooflib/systemLoss'
 import { tailleDifferente, texteKwc } from '@roofpro/tailleConception' // T4-X9 — LE prédicat de taille
 import calepinageApi from '../../../api/calepinageApi'
@@ -10,6 +10,7 @@ import { ecouterResultat } from '../atelier/simulationFraiche'
 import { estProfilDepart, MENTION_PUBLIEE } from '../reglages/profilDepart'
 import { estIncomplet, SIMULATION_A_REFAIRE, simulationARefaire } from './BandeauProvenanceProduction.helpers'
 import Pourquoi from '../commun/Pourquoi'
+import { lienManque } from './lienManque'
 
 /* ============================================================================
    CALX65 — DIRE, DANS L'ATELIER, LAQUELLE DES DEUX PRODUCTIONS PARLE.
@@ -214,7 +215,9 @@ function EcartDevis({ ecart, borneHaute = null }) {
 /* ACAL980 — « Ce qui est supposé » : les replis cachés du moteur (`suppose[]` de
    `GET resultat/`, contrat `calepinage_resultat.json`), chacun avec sa valeur et
    le champ à renseigner. Rien n'est calculé ici ; liste vide ou absente ⇒ rien. */
-export function Suppose({ suppose }) {
+export function Suppose({ suppose, calepinageId = null }) {
+  const { id: idUrl } = useParams()
+  const id = calepinageId ?? idUrl
   if (!Array.isArray(suppose) || suppose.length === 0) return null
   return (
     <div className="text-sm" data-testid="acal980-suppose">
@@ -223,7 +226,13 @@ export function Suppose({ suppose }) {
         {suppose.map((repli) => (
           <li key={repli.code} data-testid={`acal980-${repli.code}`}>
             {repli.libelle}
-            <span className="block text-muted-foreground">{`À renseigner : ${repli.champ}`}</span>
+            {/* ACAL1630 (revue) — la cible SERVIE (`suppose[].cible`) fait du champ un lien ; sans cible, du texte. */}
+            <span className="block text-muted-foreground">
+              {'À renseigner : '}
+              {repli.cible && id
+                ? <Link to={lienManque(id, repli.cible)} className="text-primary-text underline">{repli.champ}</Link>
+                : repli.champ}
+            </span>
           </li>
         ))}
       </ul>

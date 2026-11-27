@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { formatNumber, formatPercent } from '../../../lib/format'
 import { CHART_TOKENS } from '../../../ui/charts/chart-theme.js'
 import { useModeExpert } from '../atelier/modeExpert'
-import { libelleSource } from './DiagrammePertes.helpers'
+import { libelleSource, texteEnergieLivree } from './DiagrammePertes.helpers'
 
 /* ACAL444 — la cascade de pertes en LIGNES horizontales, une par étape, dans
    l'ordre servi (`rang`). Aucun calcul : `niveau`, `base`, `valeur` viennent de
@@ -143,7 +143,7 @@ function Ligne({ ligne, ouverte, onBascule, expert }) {
   const debut = Math.max(0, Math.min(100, ligne.base ?? 0))
   const taille = Math.max(0, Math.min(100 - debut, ligne.valeur ?? 0))
   const perte = ligne.arrivee
-    ? `${formatPercent(100 - ligne.niveau, { decimals: 1 })} (pertes totales)`
+    ? texteEnergieLivree(ligne, (v) => formatNumber(v, { decimals: 0 }), (v) => formatPercent(v, { decimals: 1 }))
     : (ligne.pertePct === null || ligne.pertePct === undefined || ligne.total
       ? '' : formatPercent(ligne.pertePct, { decimals: 1 }))
 
@@ -173,7 +173,7 @@ function Ligne({ ligne, ouverte, onBascule, expert }) {
           />
         </span>
       )}
-      <span className="w-24 shrink-0 text-right text-xs tabular-nums">{perte}</span>
+      <span className={`${ligne.arrivee ? 'min-w-24' : 'w-24'} shrink-0 text-right text-xs tabular-nums`}>{perte}</span>
     </>
   )
 

@@ -22,6 +22,10 @@ __all__ = ['liste_des_suppositions', 'reference_de_longueur', 'repli_longueur_do
 
 CHAMP_FICHES = 'fiche technique du module et de l\'onduleur'
 CHAMP_ALLEE = ("panneau Allées de l'atelier (largeur de l'allée technique)")
+# ACAL1630 (revue) — OÙ renseigner chaque champ : la même forme que `a_renseigner.lignes[].cible` (lue par
+# `lienManque`) ; les allées ont leur propre écran des réglages de la société.
+CIBLE_FICHES = {'onglet': 'fiches'}
+CIBLE_ALLEE = {'onglet': 'reglages', 'champ': 'allees'}
 
 
 def reference_de_longueur(calepinage):
@@ -77,7 +81,7 @@ def _libelle_longueur(valeur, manquantes):
 
 
 def liste_des_suppositions(longueur, societe, origine_dossier, manquantes=()):
-    """``[{code, libelle, valeur, champ}]`` — un repli caché par entrée.
+    """``[{code, libelle, valeur, champ, cible}]`` — un repli caché par entrée.
 
     ``manquantes`` : ce que la conception dit manquer (ACAL1648).
     ``longueur`` : le dictionnaire ``longueur_chaine`` ; ``societe`` : les
@@ -92,12 +96,14 @@ def liste_des_suppositions(longueur, societe, origine_dossier, manquantes=()):
                         "%d modules par chaîne (longueur retenue au dossier : fiche du module ou de "
                         "l'onduleur incomplète)" % valeur if valeur else
                         "longueur de chaîne non calculée (fiche du module ou de l'onduleur incomplète)"),
-            'valeur': valeur, 'champ': CHAMP_FICHES})
+            'valeur': valeur, 'champ': CHAMP_FICHES,
+            'cible': dict(CIBLE_FICHES)})
     if allee_technique((societe or {}).get(SECTION))[0] is None:
         allee = _allee_du_moteur()
         suppose.append({
             'code': 'allee_par_defaut',
             'libelle': "allée technique de %s m (valeur du moteur : rien "
                        "n'est réglé)" % ('%.2f' % allee).replace('.', ','),
-            'valeur': allee, 'champ': CHAMP_ALLEE})
+            'valeur': allee, 'champ': CHAMP_ALLEE,
+            'cible': dict(CIBLE_ALLEE)})
     return suppose

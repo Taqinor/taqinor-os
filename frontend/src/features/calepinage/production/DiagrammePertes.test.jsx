@@ -401,7 +401,13 @@ describe('DiagrammePertes — barres depuis les énergies servies (ACAL140)', ()
     const table = within(cascade).getByRole('table')
     const ligne = within(table).getByText('Énergie livrée').closest('tr')
     expect(ligne.querySelector('td[data-label="Énergie restante"]').textContent).toMatch(/^81,0/)
-    expect(ligne.querySelector('td[data-label="Perte"]').textContent).toMatch(/^19,0.*pertes totales/)
+    // ACAL1658 — la ligne d'arrivée dit l'énergie livrée (servie) et sa part, non « pertes totales ».
+    expect(ligne.querySelector('td[data-label="Perte"]').textContent).toMatch(/^81 kWh · 81,0/)
+    expect(ligne.textContent).not.toMatch(/pertes totales/)
+    // La même ligne dans la liste de lignes (CascadePertesLignes), jumeau traité ensemble.
+    const arrivee = within(cascade).getByTestId('acal444-ligne-arrivee')
+    expect(arrivee.textContent).toMatch(/Énergie livrée.*81 kWh · 81,0/)
+    expect(arrivee.textContent).not.toMatch(/pertes totales/)
     // La dernière colonne n'est plus libellée « Perte (cumulé) » à tort.
     expect(within(table).queryByText(/\(cumulé\)/)).toBeNull()
     // Les barres : 100 → 90 → 81, pas 100 → 90 → 80.

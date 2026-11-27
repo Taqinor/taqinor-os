@@ -173,6 +173,41 @@ describe('CALX64 — la série lue par la MÊME porte que le panneau Séries', (
   })
 })
 
+describe('ACAL1664 — la série lue depuis le CSV dit son pas du jour', () => {
+  it('en-tête « Pas de temps : jour » ⇒ titre journalier, motif servi, aucune journée type', async () => {
+    const motif = 'Série agrégée au jour : 175 320 points au pas de 60 min.'
+    const csv = [
+      'Provenance;Module Calepinage',
+      `Pas de temps;jour (série agrégée au jour, fenêtre 2005-2020) — ${motif}`,
+      'annee;mois;jour;heure;production_kw;irradiance_plan_w_m2',
+      '2021;1;15;;41,200;880,00',
+      '2021;1;16;;38,900;910,00',
+    ].join('\r\n')
+    exportCsv.mockResolvedValue({ data: csv })
+    rendre()
+
+    await screen.findByTestId('cal-tapis')
+    expect(screen.getByRole('heading', { name: 'Série journalière (météo pluriannuelle)' })).toBeInTheDocument()
+    expect(screen.getByTestId('cal-tapis-tronquee')).toHaveTextContent(motif)
+    expect(screen.getAllByTestId('cal-tapis-jour')).toHaveLength(2)
+    expect(screen.queryByTestId('cal-tapis-journee-type')).toBeNull()
+  })
+
+  it('un CSV sans ligne « Pas de temps » (série horaire) garde le titre « Série horaire » et aucun avertissement', async () => {
+    const csv = [
+      'Provenance;Module Calepinage',
+      'annee;mois;jour;heure;production_kw;irradiance_plan_w_m2',
+      '2021;1;15;12;6,800;880,00',
+    ].join('\r\n')
+    exportCsv.mockResolvedValue({ data: csv })
+    rendre()
+
+    await screen.findByTestId('cal-tapis')
+    expect(screen.getByRole('heading', { name: 'Série horaire' })).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-tapis-tronquee')).toBeNull()
+  })
+})
+
 describe('CALX64 — série agrégée au jour (CALX193)', () => {
   it('affiche UNE ligne par journée et publie le motif de troncature', async () => {
     const motif = 'Série agrégée au jour : 35 136 points au pas de 15 min.'

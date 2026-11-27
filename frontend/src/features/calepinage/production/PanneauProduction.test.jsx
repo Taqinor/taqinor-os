@@ -1329,6 +1329,54 @@ describe('PanneauProduction — sur la durée (ACAL710)', () => {
     expect(await screen.findByTestId('acal710-derniere')).toHaveTextContent('Dans 25 ans')
     expect(screen.queryByRole('link', { name: 'Voir la fiche du module' })).toBeNull()
   })
+  // ACAL1634 (revue) — le serveur sert QUATRE motifs ; seul celui de la fiche mène à la fiche du module.
+  const MOTIFS_DUREE = {
+    modele: "Aucun modèle de dégradation choisi : PV*SOL en décrit deux. Le tableau pluriannuel est OMIS. Non renseigné : « simulation.modele_degradation ».",
+    horizon: "Aucune durée d'exploitation saisie. Le tableau pluriannuel est OMIS. Non renseigné : « simulation.horizon_annees » ou « Produit.garantie_production_mois ».",
+    annee1: "La production P50 de l'année 1 n'est pas connue : aucune projection pluriannuelle n'est publiée.",
+  }
+  const sousRoute = (element) => render(<MemoryRouter initialEntries={['/calepinage/7']}><Routes>
+    <Route path="/calepinage/:id" element={element} />
+  </Routes></MemoryRouter>)
+
+  it('ACAL1634 (revue) — un motif de RÉGLAGE mène au réglage, jamais à la fiche du module ; l\'année 1 inconnue : aucun lien', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    for (const [cle, motif] of Object.entries(MOTIFS_DUREE)) {
+      servirDuree((p) => { p.duree_de_vie.motif_omission = motif; p.projection = projectionSur(1) })
+      sousRoute(<PanneauProduction calepinageId={7} />)
+      const zone = await screen.findByTestId('acal710-motif')
+      expect(zone).toHaveTextContent(motif.slice(0, 30))
+      expect(within(zone).queryByRole('link', { name: 'Voir la fiche du module' })).toBeNull()
+      if (cle === 'annee1') {
+        expect(within(zone).queryByRole('link')).toBeNull()
+      } else {
+        const champ = cle === 'modele' ? 'modele_degradation' : 'horizon_annees'
+        expect(within(zone).getByRole('link', { name: 'Renseigner le réglage' }))
+          .toHaveAttribute('href', `/calepinage/reglages#calx69-${champ}`)
+      }
+      cleanup()
+    }
+  })
+
+  it('ACAL1634 (revue) — le pied de l\'étape Résultats dit le motif servi et mène au même endroit', () => {
+    const complet = exempleContrat('calepinage', 'calepinage_resultat')
+    const production = JSON.parse(JSON.stringify(complet.production))
+    production.projection = production.projection.slice(0, 1)
+    for (const [motif, nom, href] of [
+      ['La fiche du module ne porte pas sa dégradation : le tableau pluriannuel est OMIS.', 'Voir la fiche du module', '/calepinage/7?onglet=fiches'],
+      [MOTIFS_DUREE.modele, 'Renseigner le réglage', '/calepinage/reglages#calx69-modele_degradation'],
+      [MOTIFS_DUREE.annee1, null, null],
+    ]) {
+      production.duree_de_vie = { ...production.duree_de_vie, motif_omission: motif }
+      sousRoute(<PiedResultats production={production} incertitude={complet.incertitude} />)
+      const pied = screen.getByTestId('cal-resultats-pied')
+      expect(pied).not.toHaveTextContent('Dans ')
+      expect(within(pied).getByTestId('cal-resultats-pied-motif')).toHaveTextContent(motif.slice(0, 30))
+      if (nom) expect(within(pied).getByRole('link', { name: nom })).toHaveAttribute('href', href)
+      else expect(within(pied).queryByRole('link')).toBeNull()
+      cleanup()
+    }
+  })
 })
 
 /* ACAL873 — le « ? » de la famille PRODUCTION : chaque tuile, chaque mois et

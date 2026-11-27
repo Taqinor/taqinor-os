@@ -3948,6 +3948,22 @@
       "motif_troncature": ""
     }
   },
+  "exemple_ligne_a_renseigner_avec_motif": {
+    "pourquoi": "ACAL1934 — une ligne de `cascade.a_renseigner.lignes[]` d'un réglage société dont le champ est REMPLI mais que l'étape ne peut pas lire (ici : la table des coefficients par type de pose n'a pas de ligne pour la pose du calepinage). Le serveur sert alors `motif` = la phrase d'omission de l'étape (une seule définition : `services/etapes/thermique.py`). Clé FACULTATIVE : absente quand le réglage est vraiment vide. L'écran cite ce motif et ne compte pas la ligne comme un réglage vide.",
+    "etape": "thermique",
+    "libelle": "Chaleur des panneaux",
+    "nature": "reglage_societe",
+    "section": "simulation",
+    "cle": "thermique_par_pose",
+    "libelle_champ": "Coefficients Uc/Uv par type de pose",
+    "unite": "",
+    "ou_trouver": "Où lire la valeur : exemple. Aucune valeur n'est proposée ici.",
+    "motif": "aucune ligne « south » dans la table société des coefficients par type de pose.",
+    "cible": {
+      "onglet": "reglages",
+      "champ": "thermique_par_pose"
+    }
+  },
   "exemple_refus": {
     "endpoint": "GET /api/django/calepinage/moteur/resultat/<int:job_id>/",
     "job_id": 1,

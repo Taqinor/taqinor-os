@@ -145,6 +145,10 @@ def appliquer(serie, contexte):
             # ACAL1607 — aucun poste « thermique » saisi : aucun forfait
             # n'est conservé, la phrase de ``services/thermique.py`` mentirait.
             motif = motif.replace(PHRASE_FORFAIT, '')
+        if ecart_societe:
+            # ACAL1934 — la table société est REMPLIE mais ne sert pas cette
+            # pose : la vraie cause part avec l'omission (``a_renseigner``).
+            motif = f'{motif} Table société : {ecart_societe}'
         return serie, _etapes.etape_omise(
             LIBELLE, motif, champ=_champ_manquant(specs))
 

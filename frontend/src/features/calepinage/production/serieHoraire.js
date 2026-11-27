@@ -34,6 +34,11 @@ export function lireCsvHoraire(texte) {
   const lignes = sansBom.split('\n').map((ligne) => ligne.replace('\r', ''))
   const depart = lignes.findIndex((ligne) => ligne.split(';')[0] === 'annee')
   if (depart < 0) return null
+  // ACAL1664 — « Pas de temps » (ACAL1614) : une série agrégée au jour l'écrit AVANT les titres ; son texte servi, après
+  // « — », est le motif de troncature (sinon la cellule entière). Absente : série horaire, aucun avertissement.
+  const pas = lignes.slice(0, depart).find((ligne) => ligne.split(';')[0] === 'Pas de temps')
+  const cellulePas = pas ? pas.slice(pas.indexOf(';') + 1).replace(/^"|"$/g, '').trim() : ''
+  const auJour = /^jour(?![a-zà-ÿ])/i.test(cellulePas)
   const titres = lignes[depart].split(';').map((titre) => titre.trim())
   const points = []
   for (const ligne of lignes.slice(depart + 1)) {
@@ -59,7 +64,12 @@ export function lireCsvHoraire(texte) {
       reseau_import_kwh: nombreFrancais(point.reseau_import_kwh),
     })
   }
-  return { points, colonnes: titres, tronquee: null, motif_troncature: '' }
+  return {
+    points,
+    colonnes: titres,
+    tronquee: auJour ? true : null,
+    motif_troncature: auJour ? (cellulePas.split(' — ').slice(1).join(' — ') || cellulePas) : '',
+  }
 }
 
 /**

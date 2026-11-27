@@ -18,3 +18,17 @@ export function libelleAnneeBasse(incertitude) {
     : `${noms.slice(0, -1).join(', ')} et ${noms[noms.length - 1]}`
   return `Année basse (${compte}, 9 années sur 10 au-dessus)`
 }
+
+/* ACAL1634 (revue) — où mène le motif d'omission de la projection sur la durée. Le serveur en sert quatre
+   (`etapes/vieillissement.py`) : la production de l'année 1 inconnue (rien à ouvrir), la fiche du module sans
+   dégradation (la FICHE), puis le modèle de dégradation et la durée d'exploitation, deux RÉGLAGES de la société que
+   le motif nomme « simulation.<clé> ». Aucun lien pour ce qui n'a pas de champ à remplir. */
+export function cibleDuMotifDuree(motif) {
+  const texte = String(motif || '')
+  if (/fiche du module ne porte pas sa dégradation/i.test(texte)) {
+    return { libelle: 'Voir la fiche du module', cible: { onglet: 'fiches' } }
+  }
+  const reglage = /« simulation\.(\w+) »/.exec(texte)
+  if (reglage) return { libelle: 'Renseigner le réglage', cible: { onglet: 'reglages', champ: reglage[1] } }
+  return null
+}
