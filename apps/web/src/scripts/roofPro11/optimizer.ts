@@ -79,6 +79,7 @@ import {
 } from '../../lib/estimatorBrainV6';
 import { majNoteChassis, optionChassis } from './chassisPavage'; // ACAL585
 import { phraseDensiteMax } from './phrasesRecommandation'; // ACAL1919
+import { axesDepartage, distanceAuBord } from './departageGeometrie'; // CAL83
 import {
   anneauPosableParArete, // CALX95 câblage
   solveLive,
@@ -1851,29 +1852,6 @@ export interface ResultatDepartage {
 const PAS_DEPARTAGE_M = 0.01;
 /** Mou maximal exploré (m) — au-delà, il y aurait une rangée de plus, pas du mou. */
 const MOU_MAX_M = 20;
-
-/** Repère (u, v) du pavage à partir de l'azimut d'empilement. */
-function axesDepartage(azimuthDeg: number): { u: [number, number]; v: [number, number] } {
-  const az = (azimuthDeg * Math.PI) / 180;
-  const f: [number, number] = [Math.sin(az), Math.cos(az)]; // visée (E, N) = progression
-  return { u: [-f[1], f[0]], v: f };
-}
-
-/** Distance d'un point au bord du tracé (m) — même mesure que le pavage. */
-function distanceAuBord(p: [number, number], ring: [number, number][]): number {
-  let min = Infinity;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const ax = ring[j][0];
-    const ay = ring[j][1];
-    const dx = ring[i][0] - ax;
-    const dy = ring[i][1] - ay;
-    const len2 = dx * dx + dy * dy;
-    let t = len2 === 0 ? 0 : ((p[0] - ax) * dx + (p[1] - ay) * dy) / len2;
-    t = Math.max(0, Math.min(1, t));
-    min = Math.min(min, Math.hypot(p[0] - (ax + t * dx), p[1] - (ay + t * dy)));
-  }
-  return min;
-}
 
 /**
  * CAL83 — le pavage translaté de (du, dv) tient-il ENCORE, panneau par panneau ?
