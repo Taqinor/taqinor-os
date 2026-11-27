@@ -1,6 +1,7 @@
 {
   "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/evaluer-electrique/",
   "pourquoi": "ACAL611 (C-ACAL-L5-611, PACT10) — le verdict électrique À CHAUD et, sur la conception ENREGISTRÉE, le verdict PUBLIABLE complet. Corps : `layout` (dessin en cours) et `entree_electrique` (dont `module_produit`, `onduleur_produit`, `optimiseur_produit` : identifiants de produits du stock de la société ; jamais une clé `materiel`, le corps ne fournit pas de fiche). Réponse : verdict, publiable, bloquants, alertes, manquantes, regle_mppt, regle_chaine, temperatures, publication. `publication` (null dès que le corps porte `layout` ou `entree_electrique` : on publie ce qui est enregistré) = {publiable, motifs[{code, statut, libelle, source}], etat, points, titre, phrase}. `publiable` garde D-ACAL-9 (un indéterminé ne bloque pas) ; `etat` est le vocabulaire d'ACAL934 (`pret` / `a_completer` / `bloquant`, jamais un second) ; `points` = nombre de motifs `bloquant` quand l'état est `bloquant`, sinon nombre de motifs de statut `non_verifiable`, `omis` ou `sans_source` (ACAL934) ; `titre` et `phrase` sont COMPOSÉS PAR LE SERVEUR (l'écran ne compose rien). Les nombres, textes et identifiants ci-dessous sont un EXEMPLE DE FORME, jamais des valeurs de fiche ni des seuils produit. ACAL620 — `chaines[]` : une ligne PAR CHAÎNE conçue {chaine, pan, mppt, nombre_modules, source (`automatique` | `affectation manuelle`), voc_froid_v, voc_froid_limite_v, voc_froid_conforme, temperature_froide_c, vmp_chaud_v, temperature_chaude_c, demarrage_v, demarrage_source (`fiche` | `bas_de_plage_mppt` | null), vmp_chaud_conforme, isc_a, temperature_source (`saisie` | `tmy` | null), indetermine[]} ; un nombre non calculable vaut null (jamais 0) et sa cause est une phrase de `indetermine` ; volts arrondis à 0,1 V par le serveur, l'écran ne recalcule rien. PLACEHOLDERS arithmétiquement cohérents (tension = N × tension d'un module) : Voc à froid d'un module 53,5 V et Vmp à chaud 36,0 V d'exemple ⇒ 12 modules = 642,0 V et 432,0 V ; 10 modules = 535,0 V et 360,0 V ; Isc 13,9 A d'exemple — aucun n'est une valeur de fiche. `exemple_vide` (fiche incomplète) porte `chaines: []` ; `exemple_indetermine` nomme un pan sans chaîne conçue. ACAL632 — `onduleurs_suggeres` : {nombre, motif, signaux_avec_1[]} — le plus petit nombre d'onduleurs du modèle retenu qui lève les trois signaux (dépassement des entrées MPPT, surcharge de courant d'entrée, modules hors chaîne) ; `nombre` 1 sans motif quand tout est déjà au vert, `nombre` null quand aucun nombre ne suffit (le motif nomme l'obstacle), la clé vaut null quand la fiche est incomplète ; exemple de forme, jamais une valeur de fiche. ACAL677 — `boucles_dc[]` : une ligne PAR CHAÎNE {chaine, pan, nombre_modules, surface_m2, base, indetermine[]} ; `surface_m2` = aire (m², 0,1 près) du polygone « module 1 … module N, point de collecte du pan » (estimation géométrique, dite dans `base`), null (jamais 0) avec la cause dans `indetermine` quand le point de collecte n'est pas saisi, la chaîne n'a qu'un module ou se répartit sur deux pans ; fiche incomplète ⇒ `[]` ; exemple de forme (quatre modules alignés, collecte à (1,5 ; 3) ⇒ 4,5 m²). ACAL678 — chaque ligne de `boucles_dc[]` gagne `limite_m2`, `limite_source`, `depasse` : la limite est le réglage société `electrique_societe.boucle_dc_max_m2` ({valeur, source}, vide par défaut) ; sans valeur ou sans source ⇒ `limite_m2`/`limite_source`/`depasse` null, aucune alerte, et `indetermine` nomme « limite non saisie : réglage `boucle_dc_max_m2` » ; surface au-dessus de la limite ⇒ `depasse` vrai ET une phrase dans `alertes[]` (verdict « alerte », jamais « bloquant », `publiable` inchangé) ; exemple de forme : 3 m² avec la source « societe » est une valeur d'essai, jamais une valeur proposée.",
+  "acal1973_note": "ACAL1973 — `protections.questions` (TOUJOURS présente, y compris `indetermine`) : les questions du DOSSIER que l'écran « Décisions électriques » pose, servies par `services/protections.py::questions_du_dossier` — la même fonction que la check-list (`checklist_protections`). Chaque question : `{code, libelle, statut, question, champ}` ; `question` = le libellé SEUL de la question (l'écran l'affiche comme étiquette, jamais un libellé recopié en dur), `libelle` = la question et sa réponse, `champ` = où la réponse s'enregistre (`entree-electrique`). L'arrêt rapide est toujours posé ; la distance au paratonnerre seulement quand un paratonnerre est déclaré. Une réponse illisible n'est jamais un 500 : la question reste « non renseigné ».",
   "exemple_corps": {},
   "exemple_corps_a_chaud": {
     "layout": {"version": 2, "zones": []},
@@ -12,6 +13,7 @@
   },
   "exemple": {
     "verdict": "conforme",
+    "protections": {"questions": [{"code": "ARRET_RAPIDE_EXIGE", "libelle": "Coupure d'urgence DC / arrêt rapide exigé ? — oui (exigé par le dossier)", "statut": "exige", "question": "Coupure d'urgence DC / arrêt rapide exigé ?", "champ": "protections.exigences.arret_rapide"}]},
     "publiable": true,
     "bloquants": [],
     "alertes": [],
@@ -46,6 +48,7 @@
   },
   "exemple_a_completer": {
     "verdict": "indetermine",
+    "protections": {"questions": [{"code": "ARRET_RAPIDE_NON_RENSEIGNE", "libelle": "Coupure d'urgence DC / arrêt rapide exigé ? — non renseigné", "statut": "non_renseigne", "question": "Coupure d'urgence DC / arrêt rapide exigé ?", "champ": "protections.exigences.arret_rapide"}]},
     "publiable": true,
     "bloquants": [],
     "alertes": [],
@@ -71,6 +74,7 @@
   },
   "exemple_bloque": {
     "verdict": "bloquant",
+    "protections": {"questions": [{"code": "ARRET_RAPIDE_NON_RENSEIGNE", "libelle": "Coupure d'urgence DC / arrêt rapide exigé ? — non renseigné", "statut": "non_renseigne", "question": "Coupure d'urgence DC / arrêt rapide exigé ?", "champ": "protections.exigences.arret_rapide"}]},
     "publiable": false,
     "bloquants": ["Pan 1, chaîne 1 : Voc à froid 1 070 V pour 1 000 V admis par l'onduleur."],
     "alertes": [],
@@ -106,6 +110,7 @@
   },
   "exemple_a_chaud": {
     "verdict": "conforme",
+    "protections": {"questions": [{"code": "ARRET_RAPIDE_NON_RENSEIGNE", "libelle": "Coupure d'urgence DC / arrêt rapide exigé ? — non renseigné", "statut": "non_renseigne", "question": "Coupure d'urgence DC / arrêt rapide exigé ?", "champ": "protections.exigences.arret_rapide"}]},
     "publiable": true,
     "bloquants": [],
     "alertes": [],
@@ -132,6 +137,7 @@
   },
   "exemple_vide": {
     "verdict": "indetermine",
+    "protections": {"questions": [{"code": "ARRET_RAPIDE_NON_RENSEIGNE", "libelle": "Coupure d'urgence DC / arrêt rapide exigé ? — non renseigné", "statut": "non_renseigne", "question": "Coupure d'urgence DC / arrêt rapide exigé ?", "champ": "protections.exigences.arret_rapide"}]},
     "publiable": false,
     "bloquants": [],
     "alertes": [],
@@ -147,6 +153,7 @@
   },
   "exemple_indetermine": {
     "verdict": "alerte",
+    "protections": {"questions": [{"code": "ARRET_RAPIDE_NON_RENSEIGNE", "libelle": "Coupure d'urgence DC / arrêt rapide exigé ? — non renseigné", "statut": "non_renseigne", "question": "Coupure d'urgence DC / arrêt rapide exigé ?", "champ": "protections.exigences.arret_rapide"}]},
     "publiable": true,
     "bloquants": [],
     "alertes": ["Pan PAN-C : aucune chaîne conçue."],

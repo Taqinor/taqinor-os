@@ -1147,7 +1147,8 @@
             "libelle": "Échauffement des modules",
             "perte_pct": 6.0
           }
-        ]
+        ],
+        "omises_vs_pvgis": []
       },
       "mensuel": [
         {
@@ -2646,7 +2647,8 @@
             "libelle": "Échauffement des modules",
             "perte_pct": 6.0
           }
-        ]
+        ],
+        "omises_vs_pvgis": []
       },
       "mensuel": [
         {
@@ -3813,7 +3815,8 @@
             "libelle": "Échauffement des modules",
             "perte_pct": 6.0
           }
-        ]
+        ],
+        "omises_vs_pvgis": []
       },
       "mensuel": [
         {
