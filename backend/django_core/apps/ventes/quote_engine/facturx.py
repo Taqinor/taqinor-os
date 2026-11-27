@@ -513,7 +513,7 @@ def pack_pays_de(company) -> str:
         return ''
     try:
         from apps.parametres.models import CompanyProfile
-        profil = CompanyProfile.get(company)
+        profil = CompanyProfile.lire(company)
         return str(getattr(profil, 'pack_pays', '') or '').upper()
     except Exception:  # noqa: BLE001 — jamais bloquant pour une facture (D-ENF22-BLE001)
         logger.warning("facturx.pack_pays_de : erreur ignorée (mode dégradé)", exc_info=True)

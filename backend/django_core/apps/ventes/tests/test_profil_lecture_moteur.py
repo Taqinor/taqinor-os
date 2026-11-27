@@ -96,3 +96,13 @@ class LecturesMoteurSansCreationTests(SimpleTestCase):
         self.assertEqual(identite['entreprise_nom'], 'Sans Profil')
         self.assertEqual(identite['logo_key'], defaut.logo_key or '')
         self.assertEqual(identite['signature_key'], '')
+
+    def test_nom_de_fichier_des_telechargements(self):
+        from apps.ventes.utils.filenames import _company_slug
+        slug, defaut = self._sans_get(_company_slug)
+        self.assertEqual(slug, 'Sans-Profil')
+
+    def test_pack_pays_de_la_facture_electronique(self):
+        from apps.ventes.quote_engine.facturx import pack_pays_de
+        pack, defaut = self._sans_get(pack_pays_de)
+        self.assertEqual(pack, str(getattr(defaut, 'pack_pays', '') or '').upper())
