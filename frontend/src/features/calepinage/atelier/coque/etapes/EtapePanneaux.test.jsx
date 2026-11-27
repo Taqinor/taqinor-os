@@ -855,7 +855,7 @@ describe('étape Panneaux — sur la carte', () => {
     expect(puce).not.toHaveTextContent('estimation')
   })
 
-  it('puce : résultat publié INCOMPLET (traité comme périmé par le devis) → l’estimation, nommée « estimation »', async () => {
+  it('puce : résultat publié INCOMPLET → l’estimation reste, et la simulation est CITÉE à côté (ACAL1914), jamais à sa place', async () => {
     servir({ resultat: { simule: true, simulation_perimee: false,
       production: { total: { p50_kwh: 52695, complete: false } }, pose: { total_modules: 36 } } })
     monterConstructeur()
@@ -863,7 +863,18 @@ describe('étape Panneaux — sur la carte', () => {
     await waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalled())
     const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
     expect(puce).toHaveTextContent('Production · conception')
-    expect(puce).not.toHaveTextContent('52 695')
+    expect(puce).not.toHaveTextContent('Production la première année')
+    await waitFor(() => expect(within(puce).getByTestId('cal-puce-simulation-incomplete')).toHaveTextContent('La simulation dit 52 695 kWh'))
+    expect(puce).toHaveTextContent('borne haute')
+  })
+
+  it('puce : résultat périmé ou complet → aucune phrase « la simulation dit » (ACAL1914)', async () => {
+    servir({ resultat: { simule: true, simulation_perimee: true,
+      production: { total: { p50_kwh: 52695, complete: false } }, pose: { total_modules: 36 } } })
+    monterConstructeur()
+    rendre()
+    await waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalled())
+    expect(within(noeudCarte).queryByTestId('cal-puce-simulation-incomplete')).toBeNull()
   })
 
   it('puce : résultat périmé → l’estimation du constructeur, nommée « estimation »', async () => {

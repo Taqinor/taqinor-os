@@ -15,7 +15,7 @@ import { BESOIN_MAX, gestes, useConstructeur, usePoseVivante } from './panneaux/
 import { jourMois, ligneModule } from './panneaux/formats'
 import { useCibleFactures, useLectureServie } from './panneaux/lectures'
 import ValeurUnite from './panneaux/ValeurUnite'
-import { fmtKwc, modulesServis, productionPubliee, simulationARefaire } from './panneaux/sources'
+import { fmtKwc, modulesServis, productionPubliee, simulationARefaire, simulationIncomplete } from './panneaux/sources'
 import { SIMULATION_A_REFAIRE } from '../../../production/BandeauProvenanceProduction.helpers' // T4-X2-002
 import Pourquoi from '../../../commun/Pourquoi' // ACAL1728 — le « ? » unique des chiffres
 import { GESTES, lireOutils } from './EtapeToit.helpers' // ACAL1728 — Annuler / Rétablir de la barre de carte
@@ -112,6 +112,7 @@ function useServi(calepinageId, enregistreLe, servi = null, attendre = false) {
     publiee: productionPubliee(resultat),
     resultat, // ACAL1728 — les valeurs des « ? » de la production publiée
     aRefaire: simulationARefaire(resultat), // T4-X2-002
+    incomplete: simulationIncomplete(resultat), // ACAL1914 — la simulation dit son chiffre à côté de l'estimation
     // T4-X7-002 — la simulation de la pose a trouvé un ÉCART RÉEL avec la conception (`taux_source: 'autre_installation'` :
     // autre puissance, ou batterie d'un seul côté) : sa part de la consommation ne se lit plus à côté de cette pose. Seul ce
     // signal la tait (`'pose'` = aucun taux de conception, résultat rangé sans clé : comme avant).
@@ -493,7 +494,7 @@ function AlerteOmbre({ ombre, g }) {
 /** La puce de la carte. Production publiée FRAÎCHE et COMPLÈTE → la pose simulée et sa production, libellé de l'étape
     Résultats ; sinon la pose du constructeur, son estimation nommée « estimation » et la part de la consommation servie
     (T4-X7-002 : énergie autoconsommée ÷ consommation, le nom et la grandeur des Résultats ; tue par `partDeLaConception`). */
-function PuceResume({ figures, publiee, site = null, aRefaire = false, partDeLaConception = true, resultat = null }) {
+function PuceResume({ figures, publiee, site = null, aRefaire = false, partDeLaConception = true, resultat = null, incomplete = null }) {
   // ACAL2022 (T4-X2-009) — le site compte plus que ce pan (champ au sol, autre pan) : la bande dit qu'elle compte CE pan et le total du site est dit.
   const autrePan = !publiee && site?.panneaux > 0 && figures.panneaux > 0 && site.panneaux !== figures.panneaux
   const pan = autrePan ? ' · ce pan' : ''
@@ -524,7 +525,11 @@ function PuceResume({ figures, publiee, site = null, aRefaire = false, partDeLaC
   const phrase = publiee ? null : figures.tailles
   // T4-X2-002 — la simulation enregistrée est périmée : DIT, avec le geste pour la refaire (jamais un silence).
   const aRefaireTexte = !publiee && aRefaire ? `${SIMULATION_A_REFAIRE} Relancez-la à l’étape Les résultats.` : null
-  if (lus.length === 0 && !phrase && !aRefaireTexte) return null
+  // ACAL1914 — la simulation est faite mais incomplète : sa production servie est DITE à côté de l'estimation, nommée borne haute.
+  const incompleteTexte = !publiee && incomplete
+    ? `La simulation dit ${kwh(incomplete.p50)} (résultat incomplet : borne haute) ; l’estimation ci-dessus peut compter des panneaux non raccordés.`
+    : null
+  if (lus.length === 0 && !phrase && !aRefaireTexte && !incompleteTexte) return null
   return (
     <CarteFlottante className="cal-pan-puce" data-testid="cal-sur-carte-resume">
       {lus.map(([libelle, valeur, aide]) => (
@@ -532,6 +537,7 @@ function PuceResume({ figures, publiee, site = null, aRefaire = false, partDeLaC
       ))}
       {phrase && <p className="cal-pan-puce-phrase">{phrase}</p>}
       {aRefaireTexte && <p className="cal-pan-puce-phrase">{aRefaireTexte}</p>}
+      {incompleteTexte && <p className="cal-pan-puce-phrase" data-testid="cal-puce-simulation-incomplete">{incompleteTexte}</p>}
     </CarteFlottante>
   )
 }
@@ -640,7 +646,7 @@ export default function EtapePanneaux({
       <AlerteOmbre key={`${etat.ombre?.n ?? 0}-${etat.ombre?.perte ?? 0}`}ombre={etat.ombre} g={g} />
       <AvisOmbresNonComptees manque={parcours?.manque} />
       <SurCarte>
-        <PuceResume figures={etat.figures} publiee={servi.publiee} site={site} aRefaire={servi.aRefaire}
+        <PuceResume figures={etat.figures} publiee={servi.publiee} site={site} aRefaire={servi.aRefaire} incomplete={servi.incomplete}
           partDeLaConception={servi.partDeLaConception} resultat={servi.resultat} />
         <div className="cal-carte-soleil" data-testid="cal-carte-soleil">
           {etat.soleil.carte && <LegendeSoleil carte={etat.soleil.carte} g={g} />}
