@@ -1096,6 +1096,7 @@
         "par_mois": [
           {"mois": 1, "heures_de_marche": 90.0, "energie_fournie_kwh": 343.014}
         ],
+        "cause_inactif": null,
         "mention": "Groupe d'appoint de 5 kW : il démarre quand l'état de charge au début du pas est au plus 20 % et s'arrête à 80 % au moins, dans la limite de 6 h de marche par jour ; en marche il sert d'abord le besoin que le soleil ne couvre pas, puis recharge la batterie. Le courant de démarrage des moteurs n'est pas modélisé. Aucun carburant, aucun prix."
       },
       "banque_mois_charge": {
@@ -2595,6 +2596,7 @@
         "par_mois": [
           {"mois": 1, "heures_de_marche": 90.0, "energie_fournie_kwh": 343.014}
         ],
+        "cause_inactif": null,
         "mention": "Groupe d'appoint de 5 kW : il démarre quand l'état de charge au début du pas est au plus 20 % et s'arrête à 80 % au moins, dans la limite de 6 h de marche par jour ; en marche il sert d'abord le besoin que le soleil ne couvre pas, puis recharge la batterie. Le courant de démarrage des moteurs n'est pas modélisé. Aucun carburant, aucun prix."
       },
       "banque_mois_charge": {
@@ -3762,6 +3764,7 @@
         "par_mois": [
           {"mois": 1, "heures_de_marche": 90.0, "energie_fournie_kwh": 343.014}
         ],
+        "cause_inactif": null,
         "mention": "Groupe d'appoint de 5 kW : il démarre quand l'état de charge au début du pas est au plus 20 % et s'arrête à 80 % au moins, dans la limite de 6 h de marche par jour ; en marche il sert d'abord le besoin que le soleil ne couvre pas, puis recharge la batterie. Le courant de démarrage des moteurs n'est pas modélisé. Aucun carburant, aucun prix."
       },
       "banque_mois_charge": {
