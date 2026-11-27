@@ -27,7 +27,7 @@
  * (login form + token + cross-domain) est remplacée par celle-ci. La source du
  * builder n'est PAS modifiée : on l'importe seulement via l'alias `@roofbuilder`.
  */
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import api from '../../api/axios'
@@ -89,6 +89,7 @@ import {
   stockageBrouillonLocal, stockageSessionLocal, formaterHeureBrouillon,
   messageRefusRepere, libelleEcartRepere, libelleCibleEstimee, phraseToitureLead,
   cibleActiveDuContexte, phraseSiteNonLocalise, estAtelierPompage,
+  abonnerIssuesDevis, motifDuCadreTailleAffiche, MOTIF_TAILLE_FACTURE_ABSENTE,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
 import BuilderDom from '../../features/calepinage/atelier/BuilderDom.jsx'
 import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
@@ -1075,7 +1076,11 @@ function AtelierToiture({
   // « aucune » n'affiche rien. Toute translation est décidée par le SERVEUR.
   // ACAL195 — refus nommé du moteur, affiché tel quel. ACAL1805 — une cible estimée SANS refus n'ouvre plus de bande
   // (absente des maquettes v2) : elle se lit dans la pilule « Besoin d'après la facture » de l'étape Toit.
-  const cibleEstimee = estCalepinage && contexte?.cible?.refus
+  // Revue ACAL1738 — « renseignez la facture » se dit UNE fois : tant que le cadre « Confirmer et générer » (motif
+  // `facture_absente`, dont le `refus` EST `cible.refus` côté serveur) est à l'écran, ce bandeau se tait.
+  const motifCadreTaille = useSyncExternalStore(abonnerIssuesDevis,
+    () => (calepinageId ? motifDuCadreTailleAffiche(calepinageId) : null))
+  const cibleEstimee = estCalepinage && contexte?.cible?.refus && motifCadreTaille !== MOTIF_TAILLE_FACTURE_ABSENTE
     ? libelleCibleEstimee(contexte?.cible, { sansLead: !contexte?.calepinage?.lead }) : null // T4-X9-013
   const toitureLead = estCalepinage ? phraseToitureLead(contexte?.toiture_lead) : null // R2-15 — lecture seule
   const deriveRepere = estCalepinage ? contexte?.geometrie?.derive?.etat ?? null : null

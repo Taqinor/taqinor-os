@@ -472,6 +472,24 @@ export function poserIssueDevis(cle, valeur, { calepinageId = null, epoque = nul
   issuesDevis.set(cle, valeur)
   abonnesIssuesDevis.forEach((f) => f())
 }
+/* Revue ACAL1738 — le cadre « Confirmer et générer » AFFICHÉ (409 `confirmation_taille`) et son motif structuré
+   servi par le serveur (`facture_absente` : son `refus` EST `cible.refus`, `services/devis.py::_garde_taille`). Le
+   bandeau de l'atelier (`acal-cible-estimee`) se tait tant que ce cadre dit la même consigne : elle est dite une fois. */
+export const MOTIF_TAILLE_FACTURE_ABSENTE = 'facture_absente'
+const cadresTailleAffiches = new Map()
+export function afficherCadreTaille(calepinageId, motif) {
+  const jeton = {}
+  cadresTailleAffiches.set(jeton, { calepinageId: String(calepinageId), motif: motif ?? null })
+  abonnesIssuesDevis.forEach((f) => f())
+  return () => { cadresTailleAffiches.delete(jeton); abonnesIssuesDevis.forEach((f) => f()) }
+}
+export function motifDuCadreTailleAffiche(calepinageId) {
+  for (const cadre of cadresTailleAffiches.values()) {
+    if (cadre.calepinageId === String(calepinageId) && cadre.motif) return cadre.motif
+  }
+  return null
+}
+
 // Sans argument (tests) : tout ; avec un calepinage : ses seules issues, et son époque avance.
 export function oublierIssuesDevis(calepinageId) {
   if (calepinageId == null) issuesDevis.clear()

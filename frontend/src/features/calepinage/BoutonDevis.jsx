@@ -15,7 +15,8 @@ import {
 } from './refusDevis'
 import usePeutGenererDevis from './usePeutGenererDevis'
 import {
-  abonnerIssuesDevis, annoncerDevisGenere, cleIssueDevis, epoqueIssuesDevis, lireIssueDevis, poserIssueDevis,
+  abonnerIssuesDevis, afficherCadreTaille, annoncerDevisGenere, cleIssueDevis, epoqueIssuesDevis, lireIssueDevis,
+  poserIssueDevis,
 } from './atelier/contexteAtelier'
 
 /* ============================================================================
@@ -271,6 +272,12 @@ function BoutonDevisCalepinage({
   const [confirmation, setConfirmation] = useIssueRetenue(calepinageId, 'confirmation', utilisateurId)
   // Recette R2-22 — le 409 `devis_existant` : `{detail, devis, reference}` du serveur.
   const [devisExistant, setDevisExistant] = useIssueRetenue(calepinageId, 'devisExistant', utilisateurId)
+  // Revue ACAL1738 — tant que le cadre « Confirmer et générer » est À L'ÉCRAN, son motif est connu de l'atelier :
+  // le bandeau `acal-cible-estimee` se tait quand il dirait la même consigne (retiré au démontage du cadre).
+  const motifCadreTaille = confirmation ? (confirmation.motif ?? null) : null
+  useEffect(() => (
+    calepinageId && motifCadreTaille ? afficherCadreTaille(calepinageId, motifCadreTaille) : undefined
+  ), [calepinageId, motifCadreTaille])
   // Le corps du dernier « Générer » : une réponse à une question le complète, sans perdre l'autre.
   const dernierCorps = useRef({})
   // Revue du 26/11 — le corps de la dernière resynchro CONFIRMÉE (sans dérogation), rejoué par « Passer outre ».
@@ -368,7 +375,8 @@ function BoutonDevisCalepinage({
       }
       // ACAL923 — rien ne dimensionne le devis : une QUESTION, jamais « devis figé ».
       if (statut === 409 && data?.code === 'confirmation_taille') {
-        setConfirmation({ detail: data.detail, refus: data.refus })
+        // Revue ACAL1738 — le motif structuré du serveur : le bandeau de l'atelier se tait quand il dit la même chose.
+        setConfirmation({ detail: data.detail, refus: data.refus, motif: data.motif ?? null })
         return null
       }
       // Revue du 26/11 — l'aperçu confirmé ne décrit plus ce qui serait écrit : il est relu (`syncConfirmee`).
