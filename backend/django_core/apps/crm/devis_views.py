@@ -10,6 +10,8 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from core.user_display import nom_affiche
+
 from . import activity
 from . import schema_docs as sd
 from .devis_auto import champs_manquants, message_manquants
@@ -224,7 +226,7 @@ class LeadDevisActionsMixin:
         activity.log_note(
             lead, request.user,
             f'Lien WhatsApp généré pour {refs} '
-            f'par {getattr(request.user, "username", "?")}.')
+            f'par {nom_affiche(request.user) or "?"}.')
         return Response({
             'wa_url': build_wa_url(phone, message),
             'phone': phone, 'message': message, 'links': links,

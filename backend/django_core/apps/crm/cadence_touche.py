@@ -8,6 +8,8 @@ import logging
 
 from django.utils import timezone
 
+from core.user_display import nom_affiche
+
 from . import activity, stages
 from .cadence_config import CLE_DEVIS, CLE_DEVIS_MODIFIE, cle_de, est_etape
 from .cadence_filet import assurer_prochaine_etape_apres_succes, poser_filet_visite_a_planifier
@@ -664,7 +666,7 @@ def annuler_touche_relance(etape, user):
         # ACRM37 — LE recalage unique de la file.
         _recaler_file(lead, user)
         # JAMAIS un prénom en dur : l'auteur vient de la variable `user`.
-        qui = getattr(user, 'username', '') or 'système'
+        qui = nom_affiche(user) or 'système'
         morceaux = [
             f'Annulation par {qui} : touche « {libelle} » '
             f'({etape.get_canal_display()}, cadence {etape.cadence}) remise '

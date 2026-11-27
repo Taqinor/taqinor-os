@@ -814,8 +814,7 @@ def assigner_lead_a(lead, user, owner_id):
     activity.log_bulk_change(
         lead, user,
         'owner',
-        getattr(ancien, 'username', '') if ancien else '',
-        getattr(nouveau, 'username', '') if nouveau else '')
+        ancien, nouveau)  # objets : ``_display`` les nomme (nom complet)
     return lead
 
 

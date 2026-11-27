@@ -86,6 +86,25 @@ def _cles_interdites(noeud, chemin='$'):
     return trouves
 
 
+class PhraseDuDeclencheurFuseauTests(SimpleTestCase):
+    def test_heure_de_la_societe_pas_du_serveur(self):
+        """Serveur en UTC, société dans un autre fuseau (UTC+9, sans heure d'été) :
+        23 h 30 UTC s'affiche le lendemain à 8 h 30, l'heure que montre l'arbre du lead."""
+        from datetime import datetime, timezone as tz
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from django.utils import timezone
+
+        from apps.ventes.conception.service import phrase_du_declencheur
+
+        quand = datetime(2026, 11, 23, 23, 30, tzinfo=tz.utc)
+        with timezone.override(tz.utc), mock.patch('core.tz_display._company_timezone_name',
+                                                   return_value='Asia/Tokyo'):
+            phrase = phrase_du_declencheur(SimpleNamespace(company=object()), [], 'pose_enregistree', quand)
+        self.assertTrue(phrase.startswith('Recalculé le 24/11 à 8 h 30'), phrase)
+
+
 class ContratConceptionLeadTests(SimpleTestCase):
     """ADEV129 — l'échantillon porte chaque clé du §4 et aucune clé interdite."""
 

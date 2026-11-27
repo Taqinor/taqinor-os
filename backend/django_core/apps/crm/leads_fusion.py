@@ -7,6 +7,8 @@ import logging
 
 from apps.records.provenance import ecrire_si_libre
 
+from core.user_display import nom_affiche
+
 from .cadence_filet import assurer_prochaine_etape_apres_succes
 from .leads_doublons import _MERGE_FILL_FIELDS, _est_vide
 from .leads_score import recompute_lead_score
@@ -285,7 +287,7 @@ def merge_leads(survivor, others, user):
             absorbed.archived_at = timezone.now()
             absorbed.note = ((absorbed.note or '') +
                              f'\n{NOTE_FUSION}{survivor.id} '
-                             f'par {getattr(user, "username", "?")}]').strip()
+                             f'par {nom_affiche(user) or "?"}]').strip()
             absorbed.save()
             creer_activite(
                 company=survivor.company, lead=survivor, user=user,
