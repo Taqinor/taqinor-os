@@ -36,7 +36,9 @@ const grille = (nb) => {
   return { cols, rows, O: versLngLat(-dx, -dy), N: versLngLat(dx, dy),
     centre: (i) => [((i % cols) - (cols - 1) / 2) * 2.5, (Math.floor(i / cols) - (rows - 1) / 2) * 2.5] }
 }
-const nombreLu = (nb) => new RegExp(`${String(nb).replace(/\B(?=(\d{3})+(?!\d))/g, '[\\s\\u00a0\\u202f]?')} posés`)
+const NB_MESURES = 3
+const mediane = (v) => [...v].sort((a, b) => a - b)[Math.floor(v.length / 2)]
+const nombreLu =(nb) => new RegExp(`${String(nb).replace(/\B(?=(\d{3})+(?!\d))/g, '[\\s\\u00a0\\u202f]?')} posés`)
 
 test.describe.configure({ timeout: 600_000 })
 test.use({ viewport: { width: 1600, height: 1000 }, actionTimeout: 60_000 })
@@ -146,10 +148,15 @@ async function mesurerGlisse(page, id, nb = NB) {
 
 test('ACAL440: glissé de panneaux sur 500 modules — pire interaction sous le plafond', async ({ page, context }) => {
   await carteRefusee(context)
-  const pire = await mesurerGlisse(page, (await calepinageA500(page.request)).id)
-  consigner(`Atelier 500 modules (${VERSION}) — pire interaction`, pire,
+  // ACAL1347 — trois mesures sur le même calepinage (rechargé à chaque fois) ; la MÉDIANE est comparée au plafond
+  // et reportée avec les trois valeurs : une mesure isolée sur un poste chargé ne tranche rien.
+  const id = (await calepinageA500(page.request)).id
+  const mesures = []
+  for (let i = 0; i < NB_MESURES; i += 1) mesures.push(await mesurerGlisse(page, id))
+  const pire = mediane(mesures)
+  consigner(`Atelier 500 modules (${VERSION}) — pire interaction, médiane de ${NB_MESURES} (${mesures.join(' / ')})`, pire,
     `plafond ${PLAFOND} ms, ${process.env.CI ? 'CI = seuil mauvais' : 'local = seuil bon'} de vitals.js`)
-  expect(pire, 'la pire interaction du glissé reste sous le plafond').toBeLessThanOrEqual(PLAFOND)
+  expect(pire, `la médiane des pires interactions (${mesures.join(', ')} ms) reste sous le plafond`).toBeLessThanOrEqual(PLAFOND)
 })
 
 test('ACAL440: mode bas de gamme (deviceMemory 4) — mesure consignée sans plafond', async ({ page, context }) => {
