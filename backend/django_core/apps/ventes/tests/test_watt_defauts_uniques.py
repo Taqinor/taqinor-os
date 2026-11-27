@@ -300,3 +300,175 @@ class AucunLitteral715(SimpleTestCase):
 
     def test_715_jamais_ecrit_dans_domain_ni_views(self):
         self.assertEqual(_occurrences(715), [])
+
+
+# ── D-ACAL-169 (c), fondateur 27/11/2026 — la marque épinglée gagne PARTOUT ──
+# Le résidentiel refusait déjà un panneau par défaut d'une autre marque que celle épinglée sur la gamme ; l'étude
+# C&I et l'étude de pompage le refusent aussi, avec la MÊME phrase, et retiennent un panneau de la marque.
+_MARQUE = 'apps.ventes.domain.catalogue.marque_preferee'
+
+
+def _pour_etude(marque, devis=None, resume=None):
+    from apps.ventes.domain.panneau_defaut import panneau_pour_etude
+    with mock.patch(_RESUME, return_value=resume or _resume()), mock.patch(_MARQUE, return_value=marque):
+        return panneau_pour_etude(SimpleNamespace(pk=1), devis)
+
+
+class LaMarqueEpingleeGagneDansLesEtudes(SimpleTestCase):
+    """``panneau_pour_etude`` + la sélection RÉELLE de chaque étude (``etude_ci_module.module_ci_retenu``,
+    ``pompage.lire_catalogue``) ; fiches et catalogue simulés (aucune base)."""
+
+    REFUS = 'la marque épinglée des panneaux est « Jinko »'
+    COMPLETE = {'vmp_v': 41.0, 'voc_v': 49.0, 'isc_a': 18.0, 'imp_a': 17.0,
+                'temp_coeff_voc_pct_c': None, 'temp_coeff_pmax_pct_c': None}
+
+    @staticmethod
+    def _produits():
+        from decimal import Decimal
+
+        def produit(pk, nom, marque):
+            return SimpleNamespace(pk=pk, id=pk, nom=nom, sku='', marque=marque, prix_vente=Decimal('1500'),
+                                   role_devis='panneau', tva=None, paliers_prix_vente=[])
+        return [produit(42, 'Panneau Longi 715W', 'Longi'), produit(9, 'Panneau Jinko 600W', 'Jinko'),
+                produit(1, 'Panneau Trina 720W', 'Trina')]
+
+    def _ci(self, marque):
+        from apps.ventes.domain.etude_ci_module import module_ci_retenu
+        pmax = {42: 715, 9: 600, 1: 720}
+        alertes = []
+        with mock.patch('apps.stock.selectors.specs_for_produit', side_effect=lambda p: {'pmax_wc': pmax[p.pk]}), \
+                mock.patch('apps.calepinage.services.chaines.specs_module', return_value=(None, [])):
+            module, _spec = module_ci_retenu({p.pk: p for p in self._produits()},
+                                             panneau_defaut=_pour_etude(marque), alertes=alertes)
+        return module['produit'], [a['message'] for a in alertes if a['code'] == 'panneau_par_defaut']
+
+    def _pompage(self, marque):
+        from apps.ventes.domain import pompage
+        pmax = {42: 715.0, 9: 600.0, 1: 720.0}
+        alertes = []
+        with mock.patch('apps.stock.selectors.produits_pompage', return_value=[]), \
+                mock.patch('apps.ventes.domain.catalogue.catalogue_de_la_societe', return_value=self._produits()), \
+                mock.patch.object(pompage, '_specs_module', side_effect=lambda p: dict(self.COMPLETE,
+                                                                                       pmax_wc=pmax[p.pk])):
+            catalogue = pompage.lire_catalogue(object(), panneau_defaut=_pour_etude(marque), alertes=alertes)
+        return catalogue['panneau']['id'], [a['message'] for a in alertes if a['code'] == 'panneau_par_defaut']
+
+    def test_marque_epinglee_autre_le_defaut_n_est_pas_retenu_et_c_est_dit(self):
+        for etude, moteur in ((self._ci, "l'étude C&I"), (self._pompage, "l'étude de pompage")):
+            with self.subTest(moteur=moteur):
+                retenu, motifs = etude('Jinko')
+                self.assertEqual(retenu, 9)  # le panneau de la marque épinglée, jamais le 715 W Longi
+                self.assertEqual(len(motifs), 1, motifs)
+                self.assertIn('« Panneau Longi 715W »', motifs[0])
+                self.assertIn(moteur, motifs[0])
+                self.assertIn(self.REFUS, motifs[0])
+
+    def test_sans_marque_ou_de_la_marque_du_defaut_rien_ne_change(self):
+        for etude in (self._ci, self._pompage):
+            for marque in (None, '', 'Longi', 'longi '):
+                with self.subTest(etude=etude.__name__, marque=marque):
+                    self.assertEqual(etude(marque), (42, []))
+
+    def test_sans_marque_le_panneau_d_aujourd_hui_a_l_identique(self):
+        from apps.ventes.domain.panneau_defaut import panneau_auto
+        with mock.patch(_RESUME, return_value=_resume()):
+            aujourd_hui = panneau_auto(SimpleNamespace(pk=1))
+        self.assertEqual(_pour_etude(None), aujourd_hui)
+        self.assertEqual(getattr(_pour_etude('Jinko'), 'marque', None), 'Jinko')
+
+    def test_un_devis_existant_garde_son_panneau_sans_marque(self):
+        from apps.ventes.domain.panneau_defaut import aucun_panneau_auto
+        ligne = 'apps.ventes.domain.geometrie._produit_panneau_du_devis'
+        with mock.patch(ligne, return_value=_produit(7, 'Panneau Longi 550W')):
+            brouillon = _pour_etude('Jinko', SimpleNamespace(pk=3, statut='brouillon'))
+            envoye = _pour_etude('Jinko', SimpleNamespace(pk=3, statut='envoye'))
+        self.assertEqual((brouillon.produit_id, brouillon.watt, getattr(brouillon, 'marque', None)), (7, 550, None))
+        self.assertEqual(envoye, aucun_panneau_auto())
+
+    def test_la_meme_phrase_qu_en_residentiel(self):
+        from apps.ventes.domain.panneau_defaut import panneau_auto_composition
+        reglages = SimpleNamespace(catalogue=[_produit(42, 'Panneau Longi 715W')], marques={'panneau': 'Jinko'},
+                                   ordre_lignes=None)
+        with mock.patch(_RESUME, return_value=_resume()):
+            residentiel = panneau_auto_composition(SimpleNamespace(pk=1), reglages=reglages)
+        self.assertIn(self.REFUS, residentiel.motif)
+
+
+def _ids_produits(obj):
+    if isinstance(obj, dict):
+        for cle, valeur in obj.items():
+            if cle in ('produit', 'id') and isinstance(valeur, int):
+                yield valeur
+            yield from _ids_produits(valeur)
+    elif isinstance(obj, list):
+        for valeur in obj:
+            yield from _ids_produits(valeur)
+
+
+class _MarqueEpingleeDeBout:
+    """Les points d'entrée RÉELS (``POST etude-ci/preview`` → ``etude_ci.etudier_ci``, ``POST
+    etude-pompage/preview`` → ``pompage.etudier_pompage``) : le panneau des fixtures (« Panneau 710W », marque
+    Longi) est le panneau par défaut ; un panneau Jinko 700W tarifé à fiche complète est au catalogue."""
+
+    @classmethod
+    def _ajouter_jinko(cls):
+        from decimal import Decimal
+
+        from apps.stock.models import FicheTechnique, Produit
+        Produit.objects.filter(pk=cls.panneau.pk).update(panneau_par_defaut=True, marque='Longi')
+        cls.jinko = Produit.objects.create(company=cls.co, nom='Panneau Jinko 700W', marque='Jinko',
+                                           prix_vente=Decimal('1200'), prix_achat=Decimal('600'))
+        FicheTechnique.objects.create(
+            company=cls.co, produit=cls.jinko, type_fiche='module', pmax_wc=Decimal('700'), vmp_v=Decimal('40'),
+            voc_v=Decimal('48'), isc_a=Decimal('18'), imp_a=Decimal('17'))
+
+    def _epingler(self, marque):
+        from apps.ventes.models import ParametresGammes
+        ParametresGammes.objects.update_or_create(company=self.co, defaults={'marques': {
+            ParametresGammes.SLOT_ESSENTIELLE: {'panneau': marque}}})
+
+    def _etude(self):
+        data = self.post(self.corps())
+        ids = set(_ids_produits(data))
+        motifs = [a.get('message') for a in data.get('alertes') or [] if a.get('code') == 'panneau_par_defaut']
+        return ids, motifs
+
+    def test_marque_epinglee_autre_le_defaut_n_est_pas_retenu(self):
+        self._epingler('Jinko')
+        ids, motifs = self._etude()
+        self.assertIn(self.jinko.pk, ids)
+        self.assertNotIn(self.panneau.pk, ids)
+        self.assertEqual(len(motifs), 1, motifs)
+        self.assertIn('la marque épinglée des panneaux est « Jinko »', motifs[0])
+
+    def test_sans_marque_ou_de_la_marque_du_defaut_le_defaut_reste(self):
+        for marque in (None, 'Longi'):
+            with self.subTest(marque=marque):
+                if marque:
+                    self._epingler(marque)
+                ids, motifs = self._etude()
+                self.assertIn(self.panneau.pk, ids)
+                self.assertNotIn(self.jinko.pk, ids)
+                self.assertEqual(motifs, [])
+
+
+from apps.ventes.tests import test_agr121_etude_pompage_preview as _pompage_t  # noqa: E402 — bloc D-ACAL-169 (D-ENF22)
+from apps.ventes.tests import test_ciq118_etude_ci_preview as _ci_t  # noqa: E402 — bloc D-ACAL-169 (D-ENF22)
+
+_BasePompage, _BaseCi = _pompage_t._Base, _ci_t._Base
+
+
+class EtudeCiMarqueEpinglee(_MarqueEpingleeDeBout, _BaseCi):
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls._ajouter_jinko()
+
+
+class EtudePompageMarqueEpinglee(_MarqueEpingleeDeBout, _BasePompage):
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls._ajouter_jinko()

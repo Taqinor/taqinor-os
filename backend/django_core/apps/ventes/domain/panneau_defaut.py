@@ -39,19 +39,24 @@ MOTIF_REFUSE = ("Le {quoi} « {nom} » n'est pas retenu par {moteur} ({raison}) 
 REFUSE = 'refuse'
 #: ``source`` du panneau d'un devis EXISTANT (sa ligne panneau) — :func:`panneau_du_devis`.
 DU_DEVIS = 'devis'
+#: D-ACAL-169 (c), fondateur 27/11/2026 — la raison du refus d'un panneau par défaut qui n'est pas de la marque
+#: épinglée des panneaux de la gamme : la MÊME phrase en résidentiel, en C&I et en pompage.
+RAISON_MARQUE = 'la marque épinglée des panneaux est « %s »'
 
 
 @dataclass(frozen=True)
 class PanneauAuto:
     """Le panneau d'un choix automatique : ``produit_id`` (``None`` = règle d'aujourd'hui), ``watt`` (sa
-    puissance, sinon le repli d'aujourd'hui), ``nom``, ``motif`` (la phrase au vendeur, ou ``None``) et
-    ``source`` (celle du stock, ou :data:`REFUSE`)."""
+    puissance, sinon le repli d'aujourd'hui), ``nom``, ``motif`` (la phrase au vendeur, ou ``None``),
+    ``source`` (celle du stock, ou :data:`REFUSE`) et ``marque`` (la marque épinglée des panneaux qu'une ÉTUDE
+    C&I ou pompage doit encore vérifier sur SON candidat — :func:`panneau_pour_etude` ; ``None`` sinon)."""
 
     produit_id: object = None
     watt: float = None
     nom: str = None
     motif: str = None
     source: str = 'aucun'
+    marque: str = None
 
     @property
     def designe(self):
@@ -90,6 +95,16 @@ def _repli():
     return _AUTO_PANEL_WATT
 
 
+def raison_de_marque(produit, marque):
+    """LA vérification de marque (D-ACAL-169 (c)) : ``None`` sans marque épinglée ou quand ``produit`` la porte
+    (``catalogue._marque_correspond``), sinon :data:`RAISON_MARQUE` — la raison du refus."""
+    marque = str(marque or '').strip()
+    if not marque:
+        return None
+    from apps.ventes.domain.catalogue import _marque_correspond
+    return None if _marque_correspond(produit, marque) else RAISON_MARQUE % marque
+
+
 def aucun_panneau_auto():
     """Le choix d'aujourd'hui, sans rien dire (aucun panneau désigné, ou un appelant qui n'en veut pas)."""
     return PanneauAuto(watt=_repli())
@@ -124,7 +139,7 @@ def panneau_auto_composition(company, *, reglages=None, gamme_nom_devis=None):
     auto = panneau_auto(company)
     if not auto.designe:
         return auto
-    from apps.ventes.domain.catalogue import _has_price, _marque_correspond, classer_produit, est_article_pompage
+    from apps.ventes.domain.catalogue import _has_price, classer_produit, est_article_pompage
     if reglages is None:
         from apps.ventes.domain.etape_composer import reglages_de_composition
         reglages = reglages_de_composition(company, gamme_nom_devis)
@@ -132,9 +147,9 @@ def panneau_auto_composition(company, *, reglages=None, gamme_nom_devis=None):
     if (produit is None or not _has_price(produit) or est_article_pompage(produit)
             or classer_produit(getattr(produit, 'nom', '') or '') != 'panneau'):
         return auto.refus('la composition', "il n'est pas parmi les panneaux tarifés qu'elle compose")
-    marque = str((reglages.marques or {}).get('panneau') or '').strip()
-    if marque and not _marque_correspond(produit, marque):
-        return auto.refus('la composition', 'la marque épinglée des panneaux est « %s »' % marque)
+    raison = raison_de_marque(produit, (reglages.marques or {}).get('panneau'))
+    if raison:
+        return auto.refus('la composition', raison)
     # Contrat du stock : chaque moteur prend le watt de SA lecture du produit — la composition lit le NOM
     # (``catalogue._parse_watt``), à défaut la puissance du stock (nom et fiche ne se contredisent jamais).
     from apps.ventes.domain.catalogue import _parse_watt
@@ -184,20 +199,39 @@ def panneau_du_contexte(company, devis=None, *, reglages=None, gamme_nom_devis=N
 
 
 def panneau_pour_etude(company, devis=None):
-    """C&I : devis à naître ⇒ le panneau par défaut (l'étude applique SA propre acceptation) ; devis existant ⇒
-    :func:`panneau_du_devis`."""
-    return panneau_auto(company) if devis_a_naitre(devis) else panneau_du_devis(devis)
+    """C&I et pompage : devis à naître ⇒ le panneau par défaut (l'étude applique SA propre acceptation) portant la
+    marque épinglée des panneaux de la gamme par défaut (``catalogue.marque_preferee(company, None, 'panneau')``,
+    la lecture de ``carte_marques_composition(company, None)`` pour ce rôle) — :func:`choisir_avec_defaut` la
+    vérifie sur le candidat, D-ACAL-169 (c) ; devis existant ⇒ :func:`panneau_du_devis` (inchangé : un devis
+    envoyé n'est jamais recalculé)."""
+    if not devis_a_naitre(devis):
+        return panneau_du_devis(devis)
+    auto = panneau_auto(company)
+    if not auto.designe:
+        return auto
+    from apps.ventes.domain.catalogue import marque_preferee
+    marque = str(marque_preferee(company, None, 'panneau') or '').strip()
+    return replace(auto, marque=marque) if marque else auto
 
 
 def choisir_avec_defaut(auto, candidats, accepte, *, moteur, raison):
     """C&I et pompage — ``(candidat retenu ou None, motif)`` parmi ``candidats`` ``[(cle, produit, specs)]`` :
     le panneau désigné s'il y figure ET que ``accepte(cle)`` (l'acceptation propre au moteur), sinon ``None``
     (l'appelant applique sa règle d'aujourd'hui) avec la phrase qui dit pourquoi (``raison`` quand le moteur le
-    refuse ; ``None`` sans désigné, ou le motif du stock quand le désigné est inutilisable)."""
+    refuse ; ``None`` sans désigné, ou le motif du stock quand le désigné est inutilisable).
+
+    D-ACAL-169 (c) — la marque épinglée (``auto.marque``) gagne : un désigné d'une autre marque est refusé
+    (:data:`RAISON_MARQUE`) et le candidat retenu est celui que la règle d'aujourd'hui (le plus grand ``cle``)
+    choisit parmi les candidats DE LA MARQUE ; aucun de la marque ⇒ ``None`` (la règle d'aujourd'hui)."""
     if auto is None or not auto.designe:
         return None, getattr(auto, 'motif', None)
     for candidat in candidats:
         if getattr(candidat[1], 'pk', None) == auto.produit_id:
+            raison_marque = raison_de_marque(candidat[1], auto.marque)
+            if raison_marque:
+                de_la_marque = [c for c in candidats if raison_de_marque(c[1], auto.marque) is None]
+                retenu = max(de_la_marque, key=lambda c: c[0]) if de_la_marque else None
+                return retenu, auto.refus(moteur, raison_marque).motif
             if accepte(candidat[0]):
                 return candidat, None
             return None, auto.refus(moteur, raison).motif
