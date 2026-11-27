@@ -143,8 +143,9 @@ export function DuSoleilAuReseau({ cascade, note = null }) {
         {liste.map((p, i) => {
           const omises = Array.isArray(p.etapes) ? p.etapes.length : 0
           if (p.statut === 'non_compte') {
-            // ACAL1676 — le poste non compté est MONTRÉ : « non compté » et le motif servi, aucune barre, aucun 0.
-            const motif = (Array.isArray(p.etapes) ? p.etapes : []).map((e) => e?.motif_omission).filter(Boolean).join(' ')
+            // ACAL1676 — le poste non compté est MONTRÉ : « non compté » et sa CAUSE courte servie (`cause`), aucune
+            // barre, aucun 0. Sans `cause` (ancienne réponse) : « non compté » seul, jamais les motifs bruts des étapes.
+            const motif = typeof p.cause === 'string' ? p.cause.trim() : ''
             return (
               <li key={p.poste} className="cal-res-poste" data-poste={p.poste} data-statut={p.statut}>
                 <span>{p.libelle}</span>

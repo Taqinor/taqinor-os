@@ -1316,8 +1316,8 @@ describe('Étape Résultats — « Du soleil au réseau » à cinq postes (ACAL1
     const d = COMPLET_MAQUETTE()
     const [ombres, ...autres] = d.cascade.postes_lisibles.postes
     d.cascade.postes_lisibles.postes = [
-      { ...ombres, perte_kwh: null, perte_pct: null, statut: 'non_compte',
-        etapes: [{ etape: 'ombrage_proche', motif_omission: 'Aucun obstacle saisi.' }] },
+      { ...ombres, perte_kwh: null, perte_pct: null, statut: 'non_compte', cause: 'aucun obstacle saisi',
+        etapes: [{ etape: 'ombrage_proche', motif_omission: 'Le document de toiture ne porte aucun obstacle saisi : l’ombre portée par les objets hauts du toit ne peut pas être comptée (ACAL1676, texte technique long).' }] },
       ...autres,
     ]
     d.cascade.postes_lisibles.arrivee_pct = 84.4
@@ -1333,13 +1333,34 @@ describe('Étape Résultats — « Du soleil au réseau » à cinq postes (ACAL1
     const ombres = carte.querySelector('[data-poste="ombres_proches"]')
     expect(ombres).toHaveTextContent('Ombres proches')
     expect(ombres).toHaveTextContent('non compté')
-    expect(ombres).toHaveTextContent('Aucun obstacle saisi.')
+    // La CAUSE courte servie (`cause`), jamais le paragraphe technique de `etapes[].motif_omission`.
+    expect(ombres).toHaveTextContent('non compté — aucun obstacle saisi')
+    expect(ombres).not.toHaveTextContent('document de toiture')
     expect(ombres.querySelector('.cal-res-piste')).toBeNull()
     // Les quatre autres : le restant part de 100 (le poste non compté ne retire rien).
     const pistes = [...carte.querySelectorAll('.cal-res-poste[data-statut="compte"] .cal-res-piste')]
     expect(pistes).toHaveLength(4)
     expect(Number.parseFloat(pistes[0].firstElementChild.style.width)).toBeCloseTo(97, 5)
     expect(Number.parseFloat(pistes[3].firstElementChild.style.width)).toBeCloseTo(100 - 3 - 6.4 - 4.5 - 3.1, 5)
+  })
+})
+
+describe('Étape Résultats — poste non compté sans `cause` servie (ACAL1676)', () => {
+  it('ancienne réponse : « non compté » seul, aucun paragraphe brut recopié', async () => {
+    const d = COMPLET_MAQUETTE()
+    const [ombres, ...autres] = d.cascade.postes_lisibles.postes
+    d.cascade.postes_lisibles.postes = [
+      { ...ombres, perte_kwh: null, perte_pct: null, statut: 'non_compte',
+        etapes: [{ etape: 'ombrage_proche', motif_omission: 'Paragraphe technique du serveur qui ne doit pas être recopié.' }] },
+      ...autres,
+    ]
+    servir(d)
+    rendre()
+    const carte = await screen.findByTestId('cal-resultats-pertes')
+    const poste = carte.querySelector('[data-poste="ombres_proches"]')
+    expect(poste).toHaveTextContent('non compté')
+    expect(poste).not.toHaveTextContent('Paragraphe technique')
+    expect(poste).not.toHaveTextContent('non compté —')
   })
 })
 
