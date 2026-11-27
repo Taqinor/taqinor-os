@@ -187,6 +187,10 @@ const SURFACES_SAISIE = [
   '../../pages/ventes/generator/RailArgent.jsx',
   // R1-09 (22/11) — le taux d'actualisation C&I est un `ChampDecimal` : la carte rejoint la garde.
   '../../pages/ventes/generator/CarteEconomieCi.jsx',
+  // ACAL1210 (suite) — les deux volets INTERNES d'économie : leurs champs
+  // nombre passent par un `type={type}` dynamique que la garde lit aussi.
+  '../../pages/ventes/generator/VoletInterneEconomieCi.jsx',
+  '../../pages/ventes/generator/CarteEconomiePompageInterne.jsx',
 ]
 const CHAMP_DECIMAL = '../../pages/ventes/generator/ChampDecimal.jsx'
 
@@ -220,6 +224,16 @@ test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => 
       .filter(l => !/^\s*(\/\/|\*|\{?\/\*)/.test(l) && l.includes('type="number"'))
     assert.deepEqual(champsNatifs, [], `${rel} : champ type="number" natif restant`)
   }
+  // ACAL1210 (suite) — un `type={type}` dynamique est un champ natif en puissance :
+  // si le fichier peut y passer 'number' (défaut ou table de champs), c'est refusé.
+  for (const rel of SURFACES_SAISIE.filter(r => r.includes('/generator/'))) {
+    const jsx = lire(rel)
+    const dynamiques = jsx.split('\n')
+      .filter(l => !/^\s*(\/\/|\*|\{?\/\*)/.test(l) && l.includes('type={type}'))
+    if (dynamiques.length) {
+      assert.ok(!/type = 'number'|, 'number'\]/.test(jsx), `${rel} : type={type} peut valoir 'number' (champ natif)`)
+    }
+  }
   // Le champ décimal lui-même : texte à clavier décimal, `step="any"`, rien ne
   // le borne (ni min, ni max, ni pattern).
   const champ = lire(CHAMP_DECIMAL)
@@ -252,9 +266,11 @@ test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => 
   // (jamais des champs) disparaissent : 45 − 3 = 42. Puis 43 (mesuré) : les trois
   // champs de `CarteParametresTechniques.jsx` passent en `ChampDecimal` (comptés à
   // l'identique) et la carte C&I `CarteEconomieCi.jsx` (taux d'actualisation,
-  // 1 champ) entre sous garde : 42 + 1 = 43.
-  assert.ok(champsNombre >= 43,
-    `seulement ${champsNombre} champs nombres sous garde (43 attendus)`)
+  // 1 champ) entre sous garde : 42 + 1 = 43. Puis 45 : les deux volets internes
+  // d'économie (`VoletInterneEconomieCi`, `CarteEconomiePompageInterne`) passent
+  // en `ChampDecimal` (1 occurrence source chacun) : 43 + 2 = 45.
+  assert.ok(champsNombre >= 45,
+    `seulement ${champsNombre} champs nombres sous garde (45 attendus)`)
 })
 
 // QJR109 — CETTE GARDE A CESSÉ DE LIRE LE SOURCE. Elle cherchait la chaîne

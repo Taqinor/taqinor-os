@@ -104,7 +104,7 @@ describe('PV22 — résolution du devis à concevoir', () => {
     rendre()
     cliquer()
     await waitFor(() => expect(ventesApi.creerDevisAuto)
-      .toHaveBeenCalledWith({ lead: 88 }))
+      .toHaveBeenCalledWith({ lead: 88 }, { suppressErrorToast: true }))
     await waitFor(() => expect(navigateMock)
       .toHaveBeenCalledWith(`/ventes/devis/${exempleContrat('ventes', 'assistant_devis_cree').id}/design`))
   })
@@ -127,5 +127,16 @@ describe('PV22 — résolution du devis à concevoir', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Ouvrir le générateur' }))
     expect(navigateMock).toHaveBeenCalledWith('/ventes/devis/nouveau?lead=88')
+  })
+
+  it('ACAL1325 — création trop lente : jamais le toast global, « Le devis a peut-être été créé » dit par l’écran', async () => {
+    ventesApi.getDevis.mockResolvedValue({ data: [] })
+    ventesApi.creerDevisAuto.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 120000ms exceeded' })
+    rendre()
+    cliquer()
+    const message = await screen.findByTestId('pv22-devis-auto-impossible')
+    expect(message).toHaveTextContent('Le devis a peut-être été créé')
+    expect(ventesApi.creerDevisAuto).toHaveBeenCalledWith({ lead: 88 }, { suppressErrorToast: true })
+    expect(navigateMock).not.toHaveBeenCalled()
   })
 })
