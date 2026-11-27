@@ -439,7 +439,7 @@ class PompeExistanteSansKwPlaqueTests(SimpleTestCase):
     """Sans DB : catalogue, PVGIS et TMY simulés (``etudier_pompage(None, …)``
     ne lit aucune société)."""
 
-    def _etude(self, heures=7):
+    def _etude(self, heures=7, catalogue=None):
         corps = json.loads(json.dumps(CONTRAT['corps']))
         corps.update(
             mode_pompe='existante',
@@ -449,7 +449,8 @@ class PompeExistanteSansKwPlaqueTests(SimpleTestCase):
                         volume_m3_jour=None, debit_actuel_m3h=12,
                         heures_actuelles_jour=heures))
         with mock.patch.object(pompage, 'lire_catalogue',
-                               return_value=_catalogue_existante()), \
+                               return_value=(catalogue
+                                             or _catalogue_existante())), \
                 mock.patch.object(pompage, 'profils_horaires_site',
                                   return_value=PROFILS_SAISONNIERS), \
                 mock.patch.object(pompage, 'temperatures_du_site',
@@ -498,6 +499,27 @@ class PompeExistanteSansKwPlaqueTests(SimpleTestCase):
         self.assertNotIn('pompe', roles)
         self.assertNotIn('variateur',
                          [ligne['cle'] for ligne in data['kit']['inclus']])
+
+    def test_acal1257_taille_sert_les_articles_sans_prix(self):
+        """ACAL1257 — l'aperçu sert ``tailles[].articles_sans_prix`` (clé du
+        contrat) : la structure semée sans prix est NOMMÉE, jamais chiffrée."""
+        catalogue = _catalogue_existante()
+        for produit in catalogue['pompage']:
+            if produit['role_pompage'] == 'structure_sol':
+                produit['prix_connu'] = False
+        data = self._etude(catalogue=catalogue)
+        self.assertTrue(data['tailles'])
+        for taille in data['tailles']:
+            self.assertEqual(set(taille),
+                             set(CONTRAT['exemple']['tailles'][0]))
+            self.assertIn('Structure au sol pompage',
+                          taille['articles_sans_prix'])
+            self.assertFalse(taille['prix_connu'])
+        # Structure chiffrée : elle n'est plus nommée (seules les lignes à
+        # prix_connu false le sont, ici câble DC et coffret DC sans article).
+        for taille in self._etude()['tailles']:
+            self.assertNotIn('Structure au sol pompage',
+                             taille['articles_sans_prix'])
 
 
 class CodesChampNonDimensionneTests(SimpleTestCase):
