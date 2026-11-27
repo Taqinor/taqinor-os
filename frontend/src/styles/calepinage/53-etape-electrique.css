@@ -288,8 +288,9 @@
   position: absolute;
   left: 16px;
   bottom: 28px;
-  /* R8-N8 : bornée sous l'en-tête (70 strings = 1 558 px) ; elle défile au-delà. */
-  max-height: calc(100% - 28px - var(--cal-haut-barre, 56px) - 16px);
+  /* R8-N8 : bornée SOUS la pastille de synthèse (haut 16 px, hauteur 62 px, écart 16 px) —
+     100 % est la scène, déjà sous la barre du projet ; 70 strings = 1 558 px, elle défile au-delà. */
+  max-height: calc(100% - 28px - 16px - 62px - 16px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
