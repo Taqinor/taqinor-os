@@ -19,6 +19,7 @@
 // AGQ33/AGQ35 — contenu agricole sans dépendance (étapes, FAQ) : module à part (C20, fichier-mur).
 import { etapesAgricole, objectionFaqAgricole, type SyntheseEtape, type SyntheseNote } from './propositionAgricole';
 import { avenantASigner } from './avenant';
+import { wattPanneauUtilisable } from './estimatorPro';
 import type { OccupancyId, SeasonId, ServedProduction } from './dayProfiles';
 // L-DEUXOPT (25/08/2026) — lecture de `production_par_option` : réutilise
 // STRICTEMENT le même validateur que `courbes_journalieres.production`
@@ -3597,6 +3598,8 @@ export const CAPTURE_PANEL_WATT = 720;
 export function capturePreviewLayout(
   outlineLatLng: Array<[number, number]>,
   kwc: number | null,
+  /** D-ACAL-169 (a) — watt relayé par l'ERP ; fini et dans [100, 1000] W, sinon 720. */
+  panelWatt?: number | null,
 ): RoofLayout | null {
   if (!Array.isArray(outlineLatLng) || outlineLatLng.length < 3) return null;
   if (!Number.isFinite(kwc) || (kwc as number) <= 0) return null;
@@ -3608,7 +3611,8 @@ export function capturePreviewLayout(
     vertices.push([lng, lat]); // RoofLayoutZone attend [lng,lat]
   }
   if (vertices.length < 3) return null;
-  const neededPanels = Math.max(1, Math.ceil(((kwc as number) * 1000) / CAPTURE_PANEL_WATT));
+  const panneauW = wattPanneauUtilisable(panelWatt, CAPTURE_PANEL_WATT);
+  const neededPanels = Math.max(1, Math.ceil(((kwc as number) * 1000) / panneauW));
   return {
     version: 1,
     zones: [

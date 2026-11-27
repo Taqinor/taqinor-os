@@ -2,7 +2,7 @@
 // solar.js computeEtudeIndustrielle) + billRangeFromExact + champs lead pro.
 // Honnêteté : entrées manquantes ⇒ ok:false (jamais un chiffre fabriqué),
 // hypothèses (tarif, prix kWc) exposées dans le résultat.
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DAY_SHARE_BY_PROFILE,
   DEFAULT_DAY_SHARE,
@@ -14,6 +14,10 @@ import {
   TARIF_BT_PRO_MAD_KWH,
   TARIF_MT_MAD_KWH,
   estimatePro,
+  wattPanneauUtilisable,
+  chargerWattPanneauDefaut,
+  wattPanneauDefautConnu,
+  reinitialiserWattPanneauDefaut,
 } from '../src/lib/estimatorPro';
 import { billRangeFromExact, localEstimateBand } from '../src/lib/billRange';
 import { MAX_BILL_BY_MODE, buildLeadRecord, validateLead } from '../src/lib/lead';
@@ -318,5 +322,80 @@ describe('lead.ts — qualification résidentiel/professionnel INCHANGÉE (seuil
     if (!low.ok || !mid.ok) return;
     expect(buildLeadRecord(low.lead, localEstimateBand('lt800'), now).qualified).toBe(false);
     expect(buildLeadRecord(mid.lead, localEstimateBand('1500-3000'), now).qualified).toBe(true);
+  });
+});
+
+// D-ACAL-169 (a) — le site estime avec le panneau par défaut de l'ERP, relayé par
+// GET /api/panneau-defaut (contrat panneau_par_defaut_site.json). Arrondi : nb =
+// Math.ceil(kWc × 1000 / W) — 10 kWc : 10000/710 = 14,08 → 15 ; 10000/715 = 13,99 → 14.
+describe('estimatePro — puissance du panneau relayée (D-ACAL-169)', () => {
+  const DIX_KWC = { monthlyKwh: 10_000, activityProfile: 'day' as const, surfaceM2: 60 };
+
+  it('715 W relayés : 10 kWc donnent 14 panneaux (au lieu de 15)', () => {
+    const r = estimatePro({ ...DIX_KWC, panelW: 715 });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.kwc).toBe(10);
+    expect(r.nbPanneaux).toBe(14);
+  });
+
+  it('relais null, absent ou hors bornes : le compte d’aujourd’hui (15)', () => {
+    for (const panelW of [null, undefined, Number.NaN, Infinity, 0, -715, 99, 1001, '715' as unknown as number]) {
+      const r = estimatePro({ ...DIX_KWC, panelW });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.nbPanneaux).toBe(15);
+    }
+  });
+
+  it('bornes du contrat : un watt fini entre 100 et 1000, sinon le repli', () => {
+    expect(wattPanneauUtilisable(715, PANEL_W)).toBe(715);
+    expect(wattPanneauUtilisable(100, PANEL_W)).toBe(100);
+    expect(wattPanneauUtilisable(1000, PANEL_W)).toBe(1000);
+    expect(wattPanneauUtilisable(99.9, PANEL_W)).toBe(PANEL_W);
+    expect(wattPanneauUtilisable(1000.1, PANEL_W)).toBe(PANEL_W);
+    expect(wattPanneauUtilisable(null, PANEL_W)).toBe(PANEL_W);
+    expect(wattPanneauUtilisable(Number.NaN, PANEL_W)).toBe(PANEL_W);
+  });
+});
+
+describe('chargerWattPanneauDefaut — lecture du relais /api/panneau-defaut', () => {
+  afterEach(() => {
+    reinitialiserWattPanneauDefaut();
+    vi.unstubAllGlobals();
+  });
+  const repond = (corps: unknown, ok = true) => vi.fn().mockResolvedValue({ ok, json: async () => corps });
+
+  it('715 relayés → 715, connu ensuite en synchrone, une seule lecture (mémoïsée)', async () => {
+    const fn = repond({ pmax_wc: 715, source: 'designe' });
+    vi.stubGlobal('fetch', fn);
+    expect(wattPanneauDefautConnu()).toBeNull();
+    expect(await chargerWattPanneauDefaut()).toBe(715);
+    expect(await chargerWattPanneauDefaut()).toBe(715);
+    expect(wattPanneauDefautConnu()).toBe(715);
+    expect(fn).toHaveBeenCalledTimes(1);
+    const [url, init] = fn.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/panneau-defaut');
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('relais « aucun », en erreur, illisible, hors bornes ou en panne → null (repli 710)', async () => {
+    const cas: Array<() => unknown> = [
+      () => repond({ pmax_wc: null, source: 'aucun' }),
+      () => repond({ pmax_wc: 715 }, false),
+      () => repond({ pmax_wc: 1500, source: 'designe' }),
+      () => repond(null),
+      () => vi.fn().mockResolvedValue(undefined),
+      () => vi.fn().mockRejectedValue(new Error('hors ligne')),
+      () => vi.fn().mockRejectedValue(new DOMException('timeout', 'TimeoutError')),
+    ];
+    for (const fabrique of cas) {
+      reinitialiserWattPanneauDefaut();
+      vi.stubGlobal('fetch', fabrique());
+      expect(await chargerWattPanneauDefaut()).toBeNull();
+      expect(wattPanneauDefautConnu()).toBeNull();
+      const r = estimatePro({ monthlyKwh: 10_000, activityProfile: 'day', surfaceM2: 60, panelW: wattPanneauDefautConnu() });
+      expect(r.ok && r.nbPanneaux).toBe(15);
+    }
   });
 });

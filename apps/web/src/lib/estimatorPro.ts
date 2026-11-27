@@ -28,6 +28,63 @@ export const EFFICIENCY = 0.8;
 /** Puissance panneau de référence (W) — miroir solar.js (panneau 710 W). */
 export const PANEL_W = 710;
 
+// ── D-ACAL-169 (a) — panneau par défaut de l'ERP, relayé par GET /api/panneau-defaut ──
+// Contrat : backend/django_core/apps/stock/contract_samples/panneau_par_defaut_site.json.
+// Le site n'utilise le watt relayé que s'il est fini et dans [100, 1000] ; sinon il garde
+// sa constante (710 / 710 / 720). Le calcul ne bloque jamais sur le relais.
+export const PANEL_W_RELAYE_MIN = 100;
+export const PANEL_W_RELAYE_MAX = 1000;
+export const PANNEAU_DEFAUT_URL = '/api/panneau-defaut';
+export const DELAI_PANNEAU_DEFAUT_MS = 2000;
+
+/** Watt relayé utilisable (fini, 100–1000 W), sinon `repli` (la constante du module). */
+export function wattPanneauUtilisable(watt: unknown, repli: number): number {
+  return typeof watt === 'number' && Number.isFinite(watt)
+    && watt >= PANEL_W_RELAYE_MIN && watt <= PANEL_W_RELAYE_MAX ? watt : repli;
+}
+
+let wattRelaye: number | null = null;
+let lectureRelais: Promise<number | null> | null = null;
+
+/**
+ * Lit UNE fois (mémoïsé) le watt du panneau par défaut via le relais du site, coupé à
+ * 2 s. Relais « aucun », en erreur, lent, hors bornes ou absent → null : l'appelant
+ * garde sa constante. Ne lève jamais.
+ */
+export function chargerWattPanneauDefaut(): Promise<number | null> {
+  if (!lectureRelais) {
+    lectureRelais = (async () => {
+      try {
+        if (typeof fetch !== 'function') return null;
+        const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+          ? AbortSignal.timeout(DELAI_PANNEAU_DEFAUT_MS)
+          : undefined;
+        const res = await fetch(PANNEAU_DEFAUT_URL, { headers: { accept: 'application/json' }, signal });
+        if (!res || !res.ok) return null;
+        const corps = (await res.json()) as { pmax_wc?: unknown } | null;
+        const watt = corps && typeof corps === 'object' ? corps.pmax_wc : null;
+        const utilisable = wattPanneauUtilisable(watt, Number.NaN);
+        wattRelaye = Number.isNaN(utilisable) ? null : utilisable;
+        return wattRelaye;
+      } catch {
+        return null;
+      }
+    })();
+  }
+  return lectureRelais;
+}
+
+/** Watt relayé déjà reçu (lecture synchrone), null tant qu'il n'est pas arrivé ou s'il manque. */
+export function wattPanneauDefautConnu(): number | null {
+  return wattRelaye;
+}
+
+/** Tests uniquement : oublie la lecture mémoïsée. */
+export function reinitialiserWattPanneauDefaut(): void {
+  wattRelaye = null;
+  lectureRelais = null;
+}
+
 // ── Hypothèses PROPRES à ce module (documentées, à affiner) ──────────────────
 /**
  * Tarifs électricité PROFESSIONNELS (MAD/kWh TTC) — CONSTANTES D'HYPOTHÈSE,
@@ -121,6 +178,11 @@ export interface ProInputs {
    * mention réglementaire OBLIGATOIRE).
    */
   enableInjection?: boolean;
+  /**
+   * D-ACAL-169 (a) — watt du panneau par défaut relayé par l'ERP. Utilisé s'il est
+   * fini et dans [100, 1000] W ; sinon (null, absent, hors bornes) PANEL_W = 710.
+   */
+  panelW?: number | null;
 }
 
 export interface ProEstimate {
@@ -214,7 +276,7 @@ export function estimatePro(inputs: ProInputs): ProEstimateResult {
     }
   }
 
-  const nbPanneaux = Math.ceil((kwc * 1000) / PANEL_W);
+  const nbPanneaux = Math.ceil((kwc * 1000) / wattPanneauUtilisable(inputs.panelW, PANEL_W));
 
   // Production/autoconsommation recalculées avec le kWc FINAL — mêmes formules
   // que solar.js computeEtudeIndustrielle (prod mensuelle GHI × kwc × EFF).

@@ -22,6 +22,7 @@
  * affiché est une ESTIMATION (le rendement groupe est une hypothèse « EST. »).
  */
 import hypothesesPompage from '../contract_samples/hypotheses_pompage.json';
+import { wattPanneauUtilisable } from './estimatorPro';
 
 /** Valeur numérique d'une hypothèse de la table unique — échoue fort si absente. */
 function hypothese(cle: string): number {
@@ -82,6 +83,11 @@ export interface AgriInputs {
   pompeType?: 'immergee' | 'surface' | null;
   /** Dépense carburant DÉCLARÉE (MAD/mois) : validée mais jamais transformée en économie (AGW404). */
   fuelSpendMadMonth?: number | null;
+  /**
+   * D-ACAL-169 (a) — watt du panneau par défaut relayé par l'ERP. Utilisé s'il est
+   * fini et dans [100, 1000] W ; sinon PANEL_W = 710.
+   */
+  panelW?: number | null;
 }
 
 export interface AgriEstimate {
@@ -177,8 +183,9 @@ export function estimateAgricole(inputs: AgriInputs): AgriEstimateResult {
   // depuis le nombre de panneaux réellement posés.
   const pompeKw = round2(pompeCv * CV_TO_KW);
   const champKw = round2(pompeKw * PV_FACTOR);
-  const nbPanneaux = Math.max(2, Math.ceil((champKw * 1000) / PANEL_W));
-  const champKwc = Math.round((nbPanneaux * PANEL_W) / 10) / 100;
+  const panneauW = wattPanneauUtilisable(inputs.panelW, PANEL_W);
+  const nbPanneaux = Math.max(2, Math.ceil((champKw * 1000) / panneauW));
+  const champKwc = Math.round((nbPanneaux * panneauW) / 10) / 100;
 
   // m³/jour = débit × heures — même règle que l'ERP (calculé UNE fois ici).
   const m3Jour = Math.round(debit * heures);

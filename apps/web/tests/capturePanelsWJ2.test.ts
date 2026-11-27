@@ -85,3 +85,19 @@ describe('WJ2 — capturePreviewLayout : construction du RoofLayout illustratif'
     expect(model!.radiusM).toBeGreaterThan(0);
   });
 });
+
+// D-ACAL-169 (a) — aperçu capture avec le panneau par défaut relayé. Arrondi :
+// max(1, ceil(kWc × 1000 / W)) — 11,5 kWc : 11500/720 = 15,97 → 16 ; 11500/715 = 16,08 → 17.
+describe('capturePreviewLayout — puissance du panneau relayée (D-ACAL-169)', () => {
+  it('715 W relayés : 11,5 kWc demandent 17 panneaux (au lieu de 16)', () => {
+    expect(capturePreviewLayout(SQUARE_OUTLINE, 11.5, 715)!.zones[0].neededPanels).toBe(17);
+  });
+
+  it('relais null, absent ou hors bornes : le compte d’aujourd’hui (16, panneau 720 W)', () => {
+    expect(CAPTURE_PANEL_WATT).toBe(720);
+    expect(capturePreviewLayout(SQUARE_OUTLINE, 11.5)!.zones[0].neededPanels).toBe(16);
+    for (const w of [null, Number.NaN, 0, 99, 1001]) {
+      expect(capturePreviewLayout(SQUARE_OUTLINE, 11.5, w)!.zones[0].neededPanels).toBe(16);
+    }
+  });
+});

@@ -379,11 +379,14 @@ function construireCarte(ctx: ContexteCarte) {
     if (etat.panels3dStarted || !panels3dStage || etat.lastKwc == null) return;
     etat.panels3dStarted = true;
     try {
-      const [{ capturePreviewLayout, buildViewerModel }, { createRoofViewer }] = await Promise.all([
+      // D-ACAL-169 (a) — panneau par défaut de l'ERP (relais /api/panneau-defaut, 2 s max,
+      // mémoïsé) lu en parallèle des chargements ; null → 720 W comme aujourd'hui.
+      const [{ capturePreviewLayout, buildViewerModel }, { createRoofViewer }, panneauW] = await Promise.all([
         import('../proposition'),
         config.chargeurs.viewerOnly(),
+        import('../estimatorPro').then((m) => m.chargerWattPanneauDefaut()).catch(() => null),
       ]);
-      const layout = capturePreviewLayout(etat.captureOutline, etat.lastKwc);
+      const layout = capturePreviewLayout(etat.captureOutline, etat.lastKwc, panneauW);
       const model = layout ? buildViewerModel(layout) : null;
       if (!model) throw new Error(config.locale === 'en' ? 'model unavailable' : 'modèle indisponible');
       const roofImage = await fetchRoofImageSpec().catch(() => null);

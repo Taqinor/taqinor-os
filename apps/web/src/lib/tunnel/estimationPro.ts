@@ -19,7 +19,7 @@
 // pages : arrondi à 0,1 puis `toLocaleString`, `fr-FR` pour FR/AR, `en-GB` pour EN).
 
 import { formatMad, formatMadRange } from '../billEstimate';
-import { estimatePro } from '../estimatorPro';
+import { chargerWattPanneauDefaut, estimatePro, wattPanneauDefautConnu } from '../estimatorPro';
 import { estimateAgricole } from '../estimatorAgricole';
 import { monthlyWaterDemand } from '../agronomy';
 import { formatKwc } from '../proposition';
@@ -161,6 +161,10 @@ export function installerEstimationPro(ctx: ContexteEstimationPro): void {
   const fmtNum = config.formatNombre;
   const fmtYears = config.formatNombre;
   const h = (nom: string, ...args: any[]) => crochets.appeler(nom, ...args);
+  // D-ACAL-169 (a) — le panneau par défaut de l'ERP est lu dès l'installation (relais
+  // /api/panneau-defaut, 2 s max) ; tant qu'il n'est pas arrivé ou s'il manque, les
+  // estimateurs gardent leur 710 W. Une estimation déjà affichée n'est pas recalculée.
+  void chargerWattPanneauDefaut();
 
   // WJ122 — la facture C&I vient du panneau ACTIF : 'commercial' a son propre
   // champ (mt-cc-bill / ccUnit), 'industriel' garde mt-pro-bill / proUnit.
@@ -217,6 +221,7 @@ export function installerEstimationPro(ctx: ContexteEstimationPro): void {
       categorieCommerciale: etat.mode === 'commercial' && etat.commercialCategory ? etat.commercialCategory : undefined,
       // WJ123 — le pattern d'équipes industriel impose son plafond honnête.
       equipes: (etat.mode === 'industriel' || etat.mode === 'professionnel') && etat.equipes ? etat.equipes : undefined,
+      panelW: wattPanneauDefautConnu(),
     }) as unknown as ProEstimateOk | { ok: false; reason: 'missing_conso' | 'too_large' | 'invalid' };
     if (!raw.ok) {
       if (raw.reason === 'too_large') {
@@ -348,6 +353,7 @@ export function installerEstimationPro(ctx: ContexteEstimationPro): void {
       heuresPompage: num('mt-heures-pompage') ?? undefined,
       pompeType: etat.waterSource === 'puits' || etat.waterSource === 'forage' ? 'immergee' : etat.waterSource ? 'surface' : undefined,
       fuelSpendMadMonth: num('mt-fuel-spend') ?? undefined,
+      panelW: wattPanneauDefautConnu(),
     }) as unknown as AgricoleEstimateOk | { ok: false; reason: string };
     return raw && raw.ok === true ? raw : null;
   }

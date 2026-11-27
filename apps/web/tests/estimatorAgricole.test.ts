@@ -344,3 +344,26 @@ describe('lead.ts — champs AGRICOLES facultatifs (sanitisés, forwardés au we
     expect(r.lead.estimateShown).toEqual({ pompeCv: 5.5, champKwc: 5.68, m3Jour: 70 });
   });
 });
+
+// D-ACAL-169 (a) — panneau par défaut relayé : nb = max(2, ceil(champKw × 1000 / W)),
+// champKwc recalculé depuis les panneaux posés. 7,5 CV → champ 7,73 kW :
+// 7730/710 = 10,89 → 11 (7,81 kWc) ; 7730/715 = 10,81 → 11 (7,87 kWc).
+describe('estimateAgricole — puissance du panneau relayée (D-ACAL-169)', () => {
+  it('715 W relayés : 11 panneaux, champ recalculé à 7,87 kWc', () => {
+    const r = estimateAgricole({ hmtM: 60, debitM3h: 10, panelW: 715 });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.nbPanneaux).toBe(11);
+    expect(r.champKwc).toBe(7.87);
+  });
+
+  it('relais null ou hors bornes : les chiffres d’aujourd’hui (11 panneaux, 7,81 kWc)', () => {
+    for (const panelW of [null, undefined, Number.NaN, 50, 5000]) {
+      const r = estimateAgricole({ hmtM: 60, debitM3h: 10, panelW });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      expect(r.nbPanneaux).toBe(11);
+      expect(r.champKwc).toBe(7.81);
+    }
+  });
+});
