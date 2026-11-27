@@ -77,7 +77,8 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     'CODE_DOCUMENT', 'CHEMIN_CONTRAT', 'MODULES_DE_SECTION', 'RapportRefuse',
-    'SECTIONS_OMISES_SANS_DONNEES', 'SOURCE_STOCKEE',
+    'SECTIONS_OMISES_SANS_DONNEES', 'SECTIONS_SANS_OBJET_POMPAGE',
+    'SOURCE_STOCKEE', 'est_pompage',
     'sections_declarees', 'valeur_au_chemin', 'entrees_manquantes',
     'verifier_etancheite', 'resultat_du_rapport', 'redacteur_de_section',
     'feuille_de_section',
@@ -120,6 +121,14 @@ SECTIONS_OMISES_SANS_DONNEES = frozenset({'consommation', 'hors_reseau',
 #: le résultat servi) : ``code -> clé du stocké``. Disponible si la clé est
 #: présente et non vide ; absente, la section est omise.
 SOURCE_STOCKEE = {'pompage': 'pompage_dernier'}
+
+#: Décision fondateur 6 (27/11/2026) — un calepinage de POMPAGE n'imprime ni
+#: production ni autoconsommation (elles ne disent rien d'une pompe) : ces
+#: sections, et la note de validation (le banc compare une PRODUCTION à
+#: PVGIS), sont OMISES — ni imprimées, ni listées « non calculé ». Le pompage
+#: garde débit, HMT et volume par jour (section ``pompage``, synthèse).
+SECTIONS_SANS_OBJET_POMPAGE = frozenset({'production', 'autoconsommation',
+                                         'validation'})
 
 #: Motif servi quand le calepinage n'a jamais été calculé.
 SANS_RESULTAT = ("Aucun résultat de moteur enregistré pour ce calepinage : le "
@@ -214,6 +223,19 @@ def resultat_du_rapport(calepinage):
                             champ=refus.champ or 'temperatures') from refus
     verifier_etancheite(servi)
     return servi, stocke
+
+
+def est_pompage(calepinage):
+    """Décision fondateur 6 — vrai quand la conception courante du calepinage
+    est du marché AGRICOLE (le pompage) : le même prédicat que l'atelier
+    (``contexteAtelier.estAtelierPompage`` : ``chiffrage.marche ===
+    'agricole'``) et que la fiche de récolement (``asbuilt._sans_pompage``).
+    Sans conception rangée (ou calepinage non enregistré), faux : le rapport
+    reste celui d'aujourd'hui."""
+    from ..devis_retenu import conception_du_calepinage
+
+    marche = (conception_du_calepinage(calepinage) or {}).get('marche')
+    return marche == 'agricole'
 
 
 def _provenance_de_simulation(resultat):
@@ -405,7 +427,8 @@ def _codes_retenus(sections, declarees):
 def construire_rapport(calepinage, *, langue=None, sections=None,
                        resultat=None, resultat_stocke=None, site=None,
                        identite=None, styles=None, mentions=None, etat=None,
-                       fiches_sans_pdf=None, motif_schema='', photos=None):
+                       fiches_sans_pdf=None, motif_schema='', photos=None,
+                       pompage=None):
     """Le rapport, prêt à mettre en page — aucune grandeur recalculée.
 
     Args:
@@ -452,6 +475,9 @@ def construire_rapport(calepinage, *, langue=None, sections=None,
         styles = styles_de_societe(getattr(calepinage, 'company', None))
     if etat is None:
         etat = etat_de_conception(calepinage)
+    if pompage is None:
+        pompage = est_pompage(calepinage)
+    pompage = bool(pompage)
 
     declarees = sections_declarees()
     retenus = _codes_retenus(sections, declarees)
@@ -459,6 +485,8 @@ def construire_rapport(calepinage, *, langue=None, sections=None,
     for section in declarees:
         if section['code'] not in retenus:
             continue
+        if pompage and section['code'] in SECTIONS_SANS_OBJET_POMPAGE:
+            continue  # décision fondateur 6 — sans objet pour une pompe
         manque = entrees_manquantes(resultat, section)
         cle_stockee = SOURCE_STOCKEE.get(section['code'])
         if cle_stockee and not (resultat_stocke or {}).get(cle_stockee):
@@ -493,6 +521,7 @@ def construire_rapport(calepinage, *, langue=None, sections=None,
         'fiches_sans_pdf': [str(f) for f in fiches_sans_pdf or () if f],
         'motif_schema': str(motif_schema or ''),
         'photos': list(photos or ()),
+        'pompage': pompage,
     }
 
 
@@ -512,6 +541,7 @@ def contexte_de_section(rapport, section):
         'fiches_sans_pdf': rapport.get('fiches_sans_pdf') or [],
         'motif_schema': rapport.get('motif_schema') or '',
         'photos': rapport.get('photos') or [],
+        'pompage': bool(rapport.get('pompage')),
         'libelle': functools.partial(libelle, langue=rapport['langue']),
     }
 

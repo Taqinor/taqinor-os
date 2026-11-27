@@ -64,13 +64,55 @@ class PompeExistante(unittest.TestCase):
         self.assertIn("kw_plaque_a_relever",
                       [a["code"] for a in res["alertes"]])
         self.assertIsNone(res["variateur"]["produit"])
-        # Affichage seulement : 3 × 0,7355 = 2,21 kW.
-        self.assertEqual(res["puissance_retenue"], {"kw": 2.21, "cv": 3})
+        # Affichage seulement : 3 × 0,7355 = 2,21 kW ⇒ moteur normalisé 2,2
+        # kW (revue 12 — le même kW que ``pompe.kw_derive``).
+        self.assertEqual(res["puissance_retenue"], {"kw": 2.2, "cv": 3})
         # T4-X1-014 (jumeau) — le message dit la règle en mots, sans formule.
         message = [a["message"] for a in res["alertes"]
                    if a["code"] == "kw_plaque_a_relever"][0]
         for interdit in ("×", "0,7355"):
             self.assertNotIn(interdit, message)
+
+    def test_cv_seul_sert_le_kw_derive_sans_l_ecrire_dans_la_plaque(self):
+        """ACAL1260 — 7,5 CV : le kW dérivé est SERVI (``pompe.kw_derive``,
+        ``source_kw`` « cv »), jamais écrit dans ``plaque.kw`` ; l'alerte et
+        tous les chiffres de dimensionnement restent ceux d'avant."""
+        from core.pompage.selection import kw_normalise_depuis_cv
+
+        res = pompe_existante(plaque={"cv": 7.5, "tension_v": 380,
+                                      "phases": 3},
+                              variateurs=VARIATEURS)
+        pompe = res["pompe"]
+        self.assertEqual(pompe["kw_derive"], kw_normalise_depuis_cv(7.5)[0])
+        self.assertEqual(pompe["source_kw"], "cv")
+        self.assertIsNone(pompe["plaque"]["kw"])
+        self.assertIsNone(pompe["kw"])
+        self.assertIn("kw_plaque_a_relever",
+                      [a["code"] for a in res["alertes"]])
+        self.assertIsNone(res["variateur"]["produit"])
+        self.assertEqual(res["puissance_retenue"], {"kw": 5.5, "cv": 7.5})
+
+    def test_cv_seul_un_seul_kw_sous_les_deux_cles(self):
+        """Revue 12 — un moteur, un kW : ``puissance_retenue.kw`` (affiché)
+        et ``pompe.kw_derive`` servent le MÊME moteur normalisé (D-AGM-1,
+        celui sur lequel ``choisir_variateur`` choisit), arrondi à 2
+        décimales hors bande."""
+        for cv, attendu in ((7.5, 5.5), (10, 7.5), (12.5, 9.19)):
+            with self.subTest(cv=cv):
+                res = pompe_existante(plaque={"cv": cv, "phases": 3},
+                                      variateurs=VARIATEURS)
+                self.assertEqual(res["pompe"]["kw_derive"], attendu)
+                self.assertEqual(res["puissance_retenue"]["kw"], attendu)
+                self.assertEqual(res["puissance_retenue"]["cv"], cv)
+
+    def test_kw_de_plaque_source_plaque_sans_kw_derive(self):
+        res = pompe_existante(plaque={"kw": 4, "tension_v": 380, "phases": 3},
+                              variateurs=VARIATEURS)
+        self.assertEqual(res["pompe"]["source_kw"], "plaque")
+        self.assertIsNone(res["pompe"]["kw_derive"])
+        vide = pompe_existante(plaque={}, variateurs=VARIATEURS)
+        self.assertIsNone(vide["pompe"]["source_kw"])
+        self.assertIsNone(vide["pompe"]["kw_derive"])
 
     def test_sans_debit_declare_production_null(self):
         res = pompe_existante(

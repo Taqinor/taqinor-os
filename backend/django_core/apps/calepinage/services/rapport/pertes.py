@@ -40,6 +40,7 @@ Rien n'est masqué
 """
 from __future__ import annotations
 
+import re
 from html import escape
 
 from . import nombre_tel_que_servi
@@ -199,7 +200,35 @@ def _table_iam(contexte, cascade, langue):
                escape(_libelle(contexte, 'iam_col_facteur')), lignes, legende))
 
 
+def _ligne_etape_sans_kwh(contexte, etape, langue):
+    """Décision fondateur 6 — la ligne d'étape d'un calepinage de POMPAGE :
+    les mêmes cellules, sans les deux colonnes kWh (l'énergie qui sort de la
+    chaîne EST la production, sans objet pour une pompe)."""
+    return re.sub(r'<td class="kwh kwh-(?:avant|apres)">.*?</td>', '',
+                  _ligne_etape(contexte, etape, langue))
+
+
+def _table_cascade_pompage(contexte, cascade, langue):
+    """La chaîne de pertes d'un calepinage de POMPAGE : postes, parts et
+    sources telles que servies ; ni kWh, ni « énergie livrée », ni diagramme
+    de la cascade (il imprime ces kWh), ni « où va l'énergie »
+    (autoconsommation, export)."""
+    entete = ''.join('<th>%s</th>' % escape(_libelle(contexte, code))
+                     for code in ('col_etape', 'col_poste', 'col_part',
+                                  'col_source'))
+    lignes = ''.join(_ligne_etape_sans_kwh(contexte, etape, langue)
+                     for etape in _etapes(cascade))
+    total = ('<tr class="total"><th colspan="2">%s</th><td>%s</td><td>—</td>'
+             '</tr>' % (escape(_libelle(contexte, 'total_chaine')),
+                        nombre_tel_que_servi(cascade.get('total_pct'),
+                                             langue)))
+    return ('<table class="pertes-cascade"><tr>%s</tr>%s%s</table>%s'
+            % (entete, lignes, total, _table_iam(contexte, cascade, langue)))
+
+
 def _table_cascade(contexte, cascade, langue):
+    if contexte.get('pompage'):
+        return _table_cascade_pompage(contexte, cascade, langue)
     etapes = _etapes(cascade)
     entete = ''.join(
         '<th%s>%s</th>' % (' class="kwh"' if code.startswith('col_kwh')
