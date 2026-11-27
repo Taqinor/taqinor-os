@@ -199,7 +199,21 @@ MOTIF_BALAYAGE_TEMPS_DEPASSE = (
 MOTIF_BALAYAGE_METEO = (
     "L'optimisation demande une année type ou une série horaire : passez la "
     'fenêtre météo à un an (Réglages simulation).')
-CHAMPS_METEO_BALAYAGE = ('meteo.gi_w_m2', 'parametres.simulation.mode_meteo')
+CHAMP_METEO_PLURIANNUEL = 'meteo.gi_w_m2'
+CHAMP_MODE_METEO = 'parametres.simulation.mode_meteo'
+
+
+def motif_refus_balayage(refus):
+    """Revue ACAL1629 — la phrase vraie d'un refus de simulation du balayage :
+    la fenêtre à un an pour le seul cas pluriannuel ; le mode météo non choisi
+    ou non reconnu garde SA phrase (``manquants_simulation``) ; sinon le motif."""
+    from apps.calepinage.services import manquants_simulation
+
+    if refus.champ == CHAMP_METEO_PLURIANNUEL:
+        return MOTIF_BALAYAGE_METEO
+    if refus.champ == CHAMP_MODE_METEO:
+        return manquants_simulation.motif_mode_meteo_du_refus(refus)
+    return refus.motif
 
 
 def _echec_inattendu(erreur, balayage=False):
@@ -465,9 +479,7 @@ def balayer_calepinage(job_id=None, company_id=None, calepinage_id=None,
         return {'statut': 'failed', 'champ': refus.champ}
     except SimulationRefusee as refus:
         _publier_echec(job, calepinage, refus.champ or 'simulation',
-                       MOTIF_BALAYAGE_METEO
-                       if refus.champ in CHAMPS_METEO_BALAYAGE
-                       else refus.motif)  # ACAL1629
+                       motif_refus_balayage(refus))  # ACAL1629
         return {'statut': 'failed', 'champ': refus.champ}
     except Exception as erreur:  # l'issue est publiée, pas avalée
         logger.exception('calepinage.balayer : calepinage #%s en échec',

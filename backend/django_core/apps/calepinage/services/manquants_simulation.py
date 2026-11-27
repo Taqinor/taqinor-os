@@ -38,14 +38,27 @@ def _ligne(champ, motif):
     return {'champ': champ, 'motif': motif, 'cible': cible}
 
 
+MOTIF_MODE_METEO_ABSENT = "Choisissez le mode météo : année type ou plusieurs années."
+MOTIF_MODE_METEO_INCONNU = (
+    "Le mode météo choisi n'est pas reconnu : choisissez année type ou plusieurs années.")
+
+
+def motif_mode_meteo_du_refus(refus):
+    """Fonction pure (revue ACAL1629) : la phrase de métier d'un refus du champ
+    ``mode_meteo``, tirée de la RAISON du refus (mode non choisi, ou non reconnu)."""
+    if "n'est pas choisi" in (refus.motif or '').replace('’', "'"):
+        return MOTIF_MODE_METEO_ABSENT
+    return MOTIF_MODE_METEO_INCONNU
+
+
 def _motif_meteo(refus, contexte):
     """ACAL1649 — le refus d'un réglage météo en mots de métier, sans clé ni valeur
     d'énumération (``champ`` garde le chemin pour le lien) ; un autre champ : motif tel quel."""
     saisi = _cp._etapes.reglage(contexte, refus.champ.rsplit('.', 1)[-1])
     if refus.champ == _cp.CLE_REGLAGE_MODE_METEO:
         if saisi is None:
-            return "Choisissez le mode météo : année type ou plusieurs années."
-        return "Le mode météo choisi n'est pas reconnu : choisissez année type ou plusieurs années."
+            return MOTIF_MODE_METEO_ABSENT
+        return MOTIF_MODE_METEO_INCONNU
     if refus.champ == _cp.CLE_REGLAGE_FENETRE_ANNEES:
         if saisi is None:
             return ("Choisissez la fenêtre d'années météo : toute la base disponible, dans la limite de %s ans."
