@@ -731,15 +731,15 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     el.className = 'rp9-pan-geometry mt-3 flex flex-wrap items-center gap-2 text-xs';
     el.innerHTML =
       `<span class="font-semibold" id="rp9-pan-geometry-nom"></span>` +
-      `<label class="inline-flex items-center gap-1" for="rp9-pan-largeur">Largeur (m)` +
+      `<label class="flex min-w-0 flex-col gap-1" for="rp9-pan-largeur">Largeur (m)` +
       `<input type="text" id="rp9-pan-largeur" class="rp9-input w-20" inputmode="decimal" /></label>` +
-      `<label class="inline-flex items-center gap-1" for="rp9-pan-longueur">Longueur (m)` +
+      `<label class="flex min-w-0 flex-col gap-1" for="rp9-pan-longueur">Longueur (m)` +
       `<input type="text" id="rp9-pan-longueur" class="rp9-input w-20" inputmode="decimal" /></label>` +
       `<button type="button" id="rp9-pan-coter" class="rp9-btn">Appliquer les cotes</button>` +
-      `<label class="inline-flex items-center gap-1" for="rp9-pan-rotation">Rotation (°)` +
+      `<label class="flex min-w-0 flex-col gap-1" for="rp9-pan-rotation">Rotation (°)` +
       `<input type="text" id="rp9-pan-rotation" class="rp9-input w-20" inputmode="decimal" /></label>` +
       `<button type="button" id="rp9-pan-pivoter" class="rp9-btn">Pivoter le pan</button>` +
-      `<label class="inline-flex items-center gap-1" for="rp9-site-rotation">Rotation du site (°)` +
+      `<label class="flex min-w-0 flex-col gap-1" for="rp9-site-rotation">Rotation du site (°)` +
       `<input type="text" id="rp9-site-rotation" class="rp9-input w-20" inputmode="decimal" /></label>` +
       `<button type="button" id="rp9-site-pivoter" class="rp9-btn">Pivoter le site</button>` +
       `<span id="rp9-pan-geometry-erreur" class="text-alert-300" role="alert" hidden></span>` +
@@ -1025,7 +1025,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     el.id = 'rp9-pan-duplicate';
     el.className = 'rp9-pan-duplicate mt-2 flex flex-wrap items-center gap-2 text-xs';
     el.innerHTML =
-      `<label class="inline-flex items-center gap-1" for="rp9-pan-dup-pas">Décalage de la copie (m)` +
+      `<label class="flex min-w-0 flex-col gap-1" for="rp9-pan-dup-pas">Décalage de la copie (m)` +
       `<input type="text" id="rp9-pan-dup-pas" class="rp9-input w-20" inputmode="decimal" value="" /></label>` +
       `<button type="button" id="rp9-pan-dup" class="rp9-btn" disabled>Dupliquer ce pan</button>` +
       `<span id="rp9-pan-dup-motif" class="text-alert-300" role="status"></span>`;
@@ -1121,8 +1121,8 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
       ),
     ].join('');
     el.innerHTML =
-      `<label class="inline-flex items-center gap-1" for="rp9-pan-module-select">Module du pan` +
-      `<select id="rp9-pan-module-select" class="rp9-input">${options}</select></label>` +
+      `<label class="flex w-full min-w-0 flex-col gap-1" for="rp9-pan-module-select">Module du pan` +
+      `<select id="rp9-pan-module-select" class="rp9-input w-full min-w-0">${options}</select></label>` +
       `<span id="rp9-pan-module-mention" class="text-lune-faint"></span>` +
       `<span id="rp9-pan-module-erreur" class="text-alert-300" role="alert" hidden></span>`;
     areasWindowEl.appendChild(el);

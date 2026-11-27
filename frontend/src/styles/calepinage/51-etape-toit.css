@@ -282,6 +282,11 @@
 .cal-coque .rp9-setbacks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
 .cal-coque .rp9-setbacks > label { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 0.8125rem; color: var(--muted-foreground); }
 .cal-coque .rp9-setbacks .rp9-input { width: 100%; min-height: 44px; }
+/* ACAL1925 — panneau du pan : l'étiquette est au-dessus du champ (colonne, comme `.cal-toit-champ`) et le sélecteur reste contenu. */
+.cal-coque #rp9-pan-geometry > label,
+.cal-coque #rp9-pan-duplicate > label,
+.cal-coque #rp9-pan-module > label { font-size: 0.75rem; color: var(--cal-texte-3); }
+.cal-coque #rp9-pan-module-select { max-width: 100%; min-height: 44px; }
 .cal-coque .rp9-setbacks > .rp9-note { grid-column: 1 / -1; margin: 0; }
 .cal-coque div:has(> #rp9-obstacle) { gap: 10px; }
 .cal-coque #rp9-env-panel > div:first-child { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }

@@ -860,6 +860,48 @@ describe('ACAL520 — motifPanVerrouille', () => {
   });
 });
 
+// ACAL1925 / ACAL1964 — le panneau d'un pan en Expert : étiquette AU-DESSUS du champ, sélecteur contenu, tableau par pan
+// sans largeur minimale. Le vrai gabarit est monté par `createZones` + `renderAreasPanel` (rien n'est recopié ici).
+describe('ACAL1925 / ACAL1964 — panneau du pan : étiquettes en colonne, tableau sans largeur minimale', () => {
+  const m710 = { id: 'produit-7', produitId: 7, libelle: 'Module 710 W', longueurMm: 2384, largeurMm: 1303, epaisseurMm: 33, poidsKg: 38, pmaxWc: 710, source: 'fiche' };
+  const catalogue = { calepinage: 1, modules: [{ module: m710, selectionnable: true, champs_manquants: [], motif: null }], champs_requis: [], motif_liste_vide: null };
+  function monterPanneau() {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"><ul id="liste"></ul></div></body>').window.document;
+    try {
+      const areas = [panDeTest('area-1'), panDeTest('area-2')];
+      const ctx = { ...ctxDeBase(areas, 'area-1'), opts: { modulesDisponibles: catalogue }, activeArea: () => areas[0], closed: true,
+        dom: { areasWindowEl: document.getElementById('rp9-areas'), areasListEl: document.getElementById('liste') } } as unknown as Ctx;
+      createZones(ctx, { recalc: vi.fn(), setStatus: vi.fn() }).renderAreasPanel();
+      const pris = (sel: string) => [...document.querySelectorAll(sel)] as HTMLElement[];
+      return {
+        etiquettes: pris('#rp9-pan-geometry label, #rp9-pan-duplicate label, #rp9-pan-module label').map((l) => ({ texte: l.textContent ?? '', classe: l.className })),
+        selecteur: document.getElementById('rp9-pan-module-select')?.className ?? '',
+        tableau: document.querySelector('[data-pan-stat]')?.closest('table')?.className ?? '',
+      };
+    } finally { g.document = avant; }
+  }
+
+  it('« Largeur », « Rotation », « Rotation du site », « Décalage de la copie », « Module du pan » : étiquette au-dessus du champ', () => {
+    const { etiquettes } = monterPanneau();
+    const noms = ['Largeur', 'Rotation (', 'Rotation du site', 'Décalage de la copie', 'Module du pan'];
+    for (const nom of noms) {
+      const e = etiquettes.find((x) => x.texte.includes(nom));
+      expect(e, nom).toBeDefined();
+      expect(e!.classe, nom).toContain('flex-col');
+      expect(e!.classe, nom).not.toContain('inline-flex');
+    }
+  });
+
+  it('le sélecteur « Module du pan » prend la largeur de son panneau (ne dépasse pas le bord droit)', () => {
+    const { selecteur } = monterPanneau();
+    expect(selecteur).toContain('w-full');
+    expect(selecteur).toContain('min-w-0');
+  });
+
+});
+
 // ACAL1430 — après « 2 pans » (identifiants area-2 / area-3), la liste, le cadenas, le refus et le tableau disent le
 // MÊME nom (« Zone 1 », « Zone 2 ») ; avant, le cadenas et le refus lisaient le `label` de l'identifiant (« Zone 2 »).
 describe('ACAL1430 — après découpe en 2 pans : même nom partout', () => {
