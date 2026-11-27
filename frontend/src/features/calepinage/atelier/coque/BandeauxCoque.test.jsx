@@ -5,22 +5,25 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup, act, fireEvent } from '@testing-library/react'
 import { BandeauAlertes } from './BandeauxCoque'
+import { publierLecturePret } from '../../commun/lecturePretAEnvoyer'
 
+const relances = []
 const MOTIF = 'Zone 1 : le module « Module 715 W » ne figure plus dans le catalogue de la société — rechargez le catalogue, ou choisissez un module de la liste.'
 
-function monter(etape = 'electrique') {
+function monter(etape = 'electrique', id = null) {
   const surEtape = vi.fn()
   const r = render(
     <div className="cal-coque" data-etape={etape}>
-      <BandeauAlertes />
+      <BandeauAlertes calepinageId={id} />
+      <button type="button" data-testid="cal-reessayer-lecture" onClick={() => relances.push(1)} hidden />
       <button type="button" data-testid="cal-etape-panneaux" onClick={surEtape}>Panneaux</button>
       <p id="rp9-pan-module-erreur" role="alert" hidden />
     </div>)
   const noeud = r.container.querySelector('#rp9-pan-module-erreur')
-  const ecrire = (motif, ton = 'a-regler') => act(async () => {
+  const ecrire = (motif, ton = 'a-regler', code = 'module-absent') => act(async () => {
     noeud.textContent = motif
     noeud.hidden = !motif
-    if (motif && ton) { noeud.dataset.ton = ton; noeud.dataset.code = 'module-absent' } else { delete noeud.dataset.ton; delete noeud.dataset.code }
+    if (motif && ton) { noeud.dataset.ton = ton; noeud.dataset.code = code } else { delete noeud.dataset.ton; delete noeud.dataset.code }
     await Promise.resolve()
   })
   return { ...r, ecrire, surEtape }
@@ -34,7 +37,8 @@ describe('BandeauAlertes — « module absent du catalogue » au ton « À régl
     expect(screen.queryByTestId('cal-a-regler-module')).toBeNull()
     await t.ecrire(MOTIF)
     const ligne = screen.getByTestId('cal-a-regler-module')
-    expect(ligne.textContent).toContain('À régler')
+    expect(ligne.textContent).not.toContain('À régler') // aucune lecture servie ne le compte : une information, pas un « À régler »
+    expect(ligne.textContent).toContain('Module retiré du catalogue — choisissez-en un')
     expect(ligne.textContent).toContain(MOTIF)
     fireEvent.click(screen.getByRole('button', { name: /choisir un module/i }))
     expect(t.surEtape).toHaveBeenCalledTimes(1) // mène à l'étape Panneaux, où se choisit le module
@@ -58,5 +62,26 @@ describe('BandeauAlertes — « module absent du catalogue » au ton « À régl
     const t = monter('panneaux')
     await t.ecrire(MOTIF)
     expect(screen.queryByTestId('cal-a-regler-module')).toBeNull()
+  })
+
+  it('la lecture servie liste le point (materiel_designe à régler) : « À régler » reste', async () => {
+    publierLecturePret('77', null, [{ code: 'materiel_designe', etat: 'a_regler' }])
+    const t = monter('electrique', '77')
+    await t.ecrire(MOTIF)
+    await act(async () => { await Promise.resolve() })
+    expect(screen.getByTestId('cal-a-regler-module').textContent).toContain('À régler')
+    publierLecturePret('77', null, [])
+  })
+
+  it('catalogue illisible : ni « À régler » ni « Choisir un module » ; le geste est « Réessayer »', async () => {
+    const t = monter('electrique')
+    await t.ecrire('Zone 1 : le catalogue des modules n’a pas pu être lu.', 'info', 'catalogue-illisible')
+    const ligne = screen.getByTestId('cal-catalogue-illisible')
+    expect(ligne.textContent).not.toContain('À régler')
+    expect(screen.queryByRole('button', { name: /choisir un module/i })).toBeNull()
+    relances.length = 0
+    fireEvent.click(screen.getByRole('button', { name: /réessayer/i }))
+    expect(relances).toHaveLength(1)
+    expect(t.surEtape).not.toHaveBeenCalled()
   })
 })

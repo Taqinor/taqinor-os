@@ -1140,7 +1140,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
       moduleErreurEl.hidden = !motif;
       // ACAL1980 — un blocage « module absent » est AUSSI posé au canal « À régler » : la coque (`BandeauxCoque`) lit ce
       // marqueur et le dit dans le panneau de l'étape, au ton « À régler » ; la pilule du bas de carte reste.
-      if (motif && code) { moduleErreurEl.dataset.ton = 'a-regler'; moduleErreurEl.dataset.code = code; }
+      if (motif && code) { moduleErreurEl.dataset.ton = code === 'catalogue-illisible' ? 'info' : 'a-regler'; moduleErreurEl.dataset.code = code; }
       else { delete moduleErreurEl.dataset.ton; delete moduleErreurEl.dataset.code; }
     }
     if (motif) deps.setStatus?.(motif);
@@ -1186,7 +1186,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
           : `${nomDuPanActif()} : ${nom} ne figure plus dans le catalogue de la société —`
             + ' rechargez le catalogue, ou choisissez un module de la liste.',
         ctx.opts?.modulesDisponibles === null ? 'catalogue-illisible' : 'module-absent');
-      } else if (moduleErreurEl?.dataset.ton === 'a-regler') direRefusModule(null); // le module est revenu : le motif part
+      } else if (moduleErreurEl?.dataset.code) direRefusModule(null); // le module est revenu : le motif part
     }
     // ACAL913/ACAL1415 — un module posé d'office reste « à confirmer » tant que le pan ne porte pas le drapeau
     // `moduleChoisi` (écrit au document : il survit à l'enregistrement, contrairement à un état de session).

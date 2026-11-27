@@ -669,6 +669,22 @@ describe('ACAL1415 — module de départ « à confirmer » / module choisi, apr
     } finally { g.document = avant; }
   });
 
+  it('ACAL1980 (revue) — un catalogue illisible n’est pas marqué « À régler » : sa cause se lit au code', () => {
+    const m715 = { ...m710, id: 'produit-23019', produitId: 23019, libelle: 'Module 715 W', epaisseurMm: null }
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"></div></body>').window.document;
+    try {
+      const areas = [panDeTest('area-1', { renderPlan: plan, roofType: 'flat', moduleId: 'produit-23019' })];
+      const ctx = { ...ctxDeBase(areas, 'area-1'), opts: { modulesDisponibles: null }, modulesDuDocument: [m715],
+        activeArea: () => areas[0], closed: true, dom: { areasWindowEl: document.getElementById('rp9-areas') } } as unknown as Ctx;
+      createZones(ctx, { recalc: vi.fn(), setStatus: vi.fn() });
+      const noeud = document.getElementById('rp9-pan-module-erreur')!;
+      expect(noeud.dataset.code).toBe('catalogue-illisible');
+      expect(noeud.dataset.ton).not.toBe('a-regler');
+    } finally { g.document = avant; }
+  });
+
   it('ACAL1980 — un module qui revient au catalogue retire le motif du canal « À régler »', () => {
     const m715 = { ...m710, id: 'produit-23019', produitId: 23019, libelle: 'Module 715 W', epaisseurMm: null }
     const g = globalThis as unknown as { document?: Document };
