@@ -4,7 +4,8 @@ L'écran ne compose aucun texte : il lit ``titre`` (« Prêt », « À compléte
 N points », « Bloquant : N ») et ``phrase``, faits de l'``etat`` et des
 ``points`` déjà posés par ACAL934 (``etat_dossier_electrique``) — jamais
 recalculés — et des libellés RÉELS des motifs, recopiés tels quels.
-``publiable``, ``etat``, ``points`` et ``motifs`` gardent leur valeur exacte.
+``publiable``, ``etat`` et ``motifs`` gardent leur valeur exacte ; ``points`` aussi, sauf
+ACAL1937 : « à compléter » sert le compte du rail quand l'appelant le fournit.
 """
 from __future__ import annotations
 
@@ -52,4 +53,7 @@ def synthese_de_publication(publication, points_du_rail=None):
                 STATUT_NON_VERIFIABLE, STATUT_MOTIF_OMIS, STATUT_MOTIF_SANS_SOURCE)))
     else:
         titre, phrase = 'Prêt', 'Aucun motif bloquant, aucun point à compléter.'
-    return {**publication, 'titre': titre, 'phrase': phrase}
+    servie = {**publication, 'titre': titre, 'phrase': phrase}
+    if etat == 'a_completer' and points_du_rail:
+        servie['points'] = points_du_rail  # un seul nombre : celui du titre, du rail, de la pastille
+    return servie

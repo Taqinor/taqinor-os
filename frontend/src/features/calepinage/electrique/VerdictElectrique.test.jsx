@@ -253,6 +253,23 @@ describe('VerdictElectrique (CALX249)', () => {
     expect(screen.getByTestId('calx249-statut-FICHE_INCOMPLETE')).toBeTruthy()
   })
 
+  it('ACAL1937 — le rail dit 3 : le titre, le badge et le résumé de l’affectation disent 3, jamais le compte des motifs', async () => {
+    const donnees = structuredClone(exempleContrat('calepinage', 'calepinage_evaluation_electrique', 'exemple_a_completer'))
+    donnees.publication.points = 3
+    donnees.publication.titre = 'À compléter : 3 points'
+    donnees.publication.phrase = 'Aucun motif bloquant ; 3 points restent à compléter : x'
+    servir(donnees)
+
+    rendre()
+
+    await screen.findByTestId('calx249-panneau')
+    expect(screen.getByTestId('calx249-publiable').textContent).toBe('À compléter : 3 points')
+    expect(screen.getByTestId('calx249-pourquoi-oui').textContent).toContain('3 points restent')
+    // Le même nombre servi nourrit le résumé de l'Affectation (etatVerdict.js::etatAffiche).
+    const { etatAffiche } = await import('./etatVerdict')
+    expect(etatAffiche({ etat: 'pret', points: 0 }, donnees.publication).libelle).toBe('À compléter : 3 points')
+  })
+
   it('ACAL613 — prêt garde le vert avec le titre du serveur', async () => {
     const donnees = exempleContrat('calepinage', 'calepinage_evaluation_electrique', 'exemple')
     servir(donnees)

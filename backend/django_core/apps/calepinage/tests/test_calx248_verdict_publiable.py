@@ -416,6 +416,8 @@ class SynthesePublicationTest(unittest.TestCase):
         servie = synthese_de_publication(publication, rail)
         self.assertEqual(servie['titre'], 'À compléter : 3 points')
         self.assertIn('3 points restent', servie['phrase'])
+        # Un seul nombre : la clé `points` servie est celle du rail, pas celle des motifs.
+        self.assertEqual(servie['points'], 3)
         # Sans compte du rail, le compte des motifs reste servi tel quel.
         self.assertEqual(synthese_de_publication(publication)['titre'],
                          'À compléter : 11 points')
