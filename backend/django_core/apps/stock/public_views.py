@@ -13,6 +13,10 @@ de marge. Le fournisseur peut :
 Protections : X-Robots-Tag noindex sur chaque réponse ; throttle cache-based
 par IP + jeton (sans dépendance externe).
 """
+import logging
+import math
+
+from django.conf import settings
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import (
@@ -21,6 +25,10 @@ from rest_framework.decorators import (
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
+
+from .selectors_panneau_defaut import watt_panneau_par_defaut
+
+logger = logging.getLogger(__name__)
 
 
 class PortailFournisseurThrottle(SimpleRateThrottle):
@@ -413,3 +421,80 @@ def portail_fournisseur_reserver_creneau_view(request, token):
         'fin': rdv.date_heure_fin.isoformat(),
         'code_checkin': rdv.code_checkin,
     }, status=status.HTTP_201_CREATED))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# D-ACAL-169 (a) — la puissance du panneau par défaut, lue par le SITE PUBLIC
+# (contrat ``contract_samples/panneau_par_defaut_site.json``).
+# ═══════════════════════════════════════════════════════════════════════════
+
+PANNEAU_SITE_DESIGNE = 'designe'
+PANNEAU_SITE_AUCUN = 'aucun'
+
+
+class PanneauDefautSiteThrottle(SimpleRateThrottle):
+    """Débit par IP du relais du site (cache-based, débit inline : aucun réglage nouveau)."""
+    scope = 'stock_panneau_defaut_site'
+    rate = '60/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {
+            'scope': self.scope, 'ident': self.get_ident(request),
+        }
+
+
+def forme_publique_panneau(watt):
+    """Les DEUX clés du contrat : la puissance si c'est un nombre fini > 0, sinon ``aucun``."""
+    est_nombre = isinstance(watt, (int, float)) and not isinstance(watt, bool)
+    if est_nombre and math.isfinite(watt) and watt > 0:
+        return {'pmax_wc': watt, 'source': PANNEAU_SITE_DESIGNE}
+    return {'pmax_wc': None, 'source': PANNEAU_SITE_AUCUN}
+
+
+def _societe_du_site():
+    """La société du site, par ``WEBSITE_LEADS_COMPANY_ID`` SEULEMENT — jamais de la requête.
+
+    Contrairement au livechat, AUCUN repli « première Company » : un watt d'un
+    autre tenant ne doit jamais atteindre le site. Réglage absent ou faux : None
+    + une erreur journalisée (le site garde alors sa constante)."""
+    from authentication.models import Company
+
+    company_id = getattr(settings, 'WEBSITE_LEADS_COMPANY_ID', None)
+    if not company_id:
+        logger.error("panneau-par-defaut public : WEBSITE_LEADS_COMPANY_ID n'est pas configuré — "
+                     "le site garde sa puissance de panneau d'aujourd'hui.")
+        return None
+    company = Company.objects.filter(pk=company_id).first()
+    if company is None:
+        logger.error("panneau-par-defaut public : WEBSITE_LEADS_COMPANY_ID=%r ne correspond à aucune "
+                     "Company — le site garde sa puissance de panneau d'aujourd'hui.", company_id)
+    return company
+
+
+@extend_schema(request=None, responses={
+    200: inline_serializer('StockPanneauParDefautSite', {
+        'pmax_wc': serializers.FloatField(allow_null=True),
+        'source': serializers.ChoiceField(choices=[PANNEAU_SITE_DESIGNE, PANNEAU_SITE_AUCUN]),
+    }),
+})
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+@throttle_classes([PanneauDefautSiteThrottle])
+def panneau_par_defaut_site_view(request):
+    """D-ACAL-169 (a) — la puissance (Wc) du panneau par défaut, pour les estimateurs du site.
+
+    Rien d'autre qu'une puissance : ni nom, ni identifiant, ni prix, ni stock.
+    Toute panne de lecture rend ``aucun`` (200), jamais un 500."""
+    try:
+        company = _societe_du_site()
+        watt = watt_panneau_par_defaut(company) if company is not None else None
+    except Exception:  # réglage illisible, base indisponible : le site garde sa constante
+        logger.exception('panneau-par-defaut public : lecture impossible.')
+        watt = None
+    response = _noindex(Response(forme_publique_panneau(watt)))
+    response['Cache-Control'] = 'public, max-age=300'
+    return response

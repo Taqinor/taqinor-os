@@ -22,9 +22,10 @@ Run :
 import json
 from decimal import Decimal
 from pathlib import Path
+from unittest import mock
 
 from django.db import IntegrityError, transaction
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from apps.stock import selectors_panneau_defaut as spd
 from apps.stock.management.commands import seed_catalogue as seed
@@ -580,3 +581,129 @@ class TestPanneauParDefautApi(TestCase):
         self.assertIsNone(spd.panneau_par_defaut(self.company))
         self.assertIsNone(spd.watt_panneau_par_defaut(self.company))
         self.assertEqual(spd.resume_panneau_par_defaut(self.company)['source'], spd.ARCHIVE)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# D-ACAL-169 (a) — la lecture PUBLIQUE du site (contrat
+# ``contract_samples/panneau_par_defaut_site.json``) : deux clés, une puissance
+# en Wc ou rien ; jamais un nom, un identifiant ni un prix ; la société vient
+# de WEBSITE_LEADS_COMPANY_ID, jamais d'un repli « première Company ».
+# ═══════════════════════════════════════════════════════════════════════════
+
+_CONTRAT_SITE = json.loads(
+    (Path(__file__).resolve().parent / 'contract_samples' / 'panneau_par_defaut_site.json')
+    .read_text(encoding='utf-8'))
+_URL_SITE = '/api/django/public/stock/panneau-par-defaut/'
+_CACHE_LOCAL = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+                            'LOCATION': 'dacal169a-site'}}
+
+
+@override_settings(CACHES=_CACHE_LOCAL)
+class TestPanneauParDefautSitePublic(SimpleTestCase):
+    """Sans base : la forme publique, la route, les en-têtes, les replis."""
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+
+    def _get(self):
+        from rest_framework.test import APIRequestFactory
+
+        from apps.stock import public_views
+
+        return public_views.panneau_par_defaut_site_view(APIRequestFactory().get(_URL_SITE))
+
+    def test_route_publique(self):
+        from django.urls import reverse
+
+        self.assertEqual(reverse('stock-public-panneau-par-defaut'), _URL_SITE)
+
+    def test_forme_publique(self):
+        from apps.stock.public_views import forme_publique_panneau
+
+        self.assertEqual(forme_publique_panneau(715), _CONTRAT_SITE['exemple'])
+        self.assertEqual(forme_publique_panneau(712.5), {'pmax_wc': 712.5, 'source': 'designe'})
+        for vide in (None, 0, -5, float('nan'), float('inf'), '715', True):
+            with self.subTest(valeur=vide):
+                self.assertEqual(forme_publique_panneau(vide), _CONTRAT_SITE['exemple_aucun'])
+
+    def test_designe_deux_cles_exactes_et_en_tetes(self):
+        with mock.patch('apps.stock.public_views._societe_du_site', return_value=object()), \
+                mock.patch('apps.stock.public_views.watt_panneau_par_defaut', return_value=715):
+            rep = self._get()
+        self.assertEqual(rep.status_code, 200)
+        self.assertEqual(rep.data, _CONTRAT_SITE['exemple'])
+        self.assertEqual(set(rep.data), set(_CONTRAT_SITE['cles']))
+        self.assertEqual(rep['Cache-Control'], 'public, max-age=300')
+        self.assertIn('noindex', rep['X-Robots-Tag'])
+
+    @override_settings(WEBSITE_LEADS_COMPANY_ID=None)
+    def test_reglage_absent_aucun_sans_500(self):
+        with self.assertLogs('apps.stock.public_views', level='ERROR'):
+            rep = self._get()
+        self.assertEqual(rep.status_code, 200)
+        self.assertEqual(rep.data, _CONTRAT_SITE['exemple_aucun'])
+
+    def test_lecture_qui_casse_aucun_sans_500(self):
+        with mock.patch('apps.stock.public_views._societe_du_site', return_value=object()), \
+                mock.patch('apps.stock.public_views.watt_panneau_par_defaut', side_effect=RuntimeError('x')), \
+                self.assertLogs('apps.stock.public_views', level='ERROR'):
+            rep = self._get()
+        self.assertEqual(rep.status_code, 200)
+        self.assertEqual(rep.data, _CONTRAT_SITE['exemple_aucun'])
+
+    def test_get_seul(self):
+        from rest_framework.test import APIRequestFactory
+
+        from apps.stock import public_views
+
+        rep = public_views.panneau_par_defaut_site_view(APIRequestFactory().post(_URL_SITE, {}))
+        self.assertEqual(rep.status_code, 405)
+
+    def test_debit_limite_par_ip(self):
+        from apps.stock.public_views import PanneauDefautSiteThrottle
+
+        self.assertEqual(PanneauDefautSiteThrottle().get_rate(), '60/minute')
+
+
+@override_settings(CACHES=_CACHE_LOCAL)
+class TestPanneauParDefautSitePublicBase(TestCase):
+    """Base (CI) : la vraie lecture par la route publique, sans login."""
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        self.company = _make_company('dacal169a-site', 'D-ACAL-169a Site')
+        self.autre = _make_company('dacal169a-autre', 'D-ACAL-169a Autre')
+        self.p715 = Produit.objects.create(company=self.company, nom='Panneau Canadian Solar 715 Wc',
+                                           prix_vente=Decimal('1200'), panneau_par_defaut=True)
+        FicheTechnique.objects.create(company=self.company, produit=self.p715, type_fiche='module',
+                                      pmax_wc=Decimal('715'))
+
+    def _get(self, company_id):
+        with override_settings(WEBSITE_LEADS_COMPANY_ID=company_id):
+            return self.client.get(_URL_SITE)
+
+    def test_designe_715_rien_d_autre(self):
+        rep = self._get(self.company.pk)
+        self.assertEqual(rep.status_code, 200, rep.content)
+        self.assertEqual(rep.json(), _CONTRAT_SITE['exemple'])
+        texte = rep.content.decode('utf-8')
+        for interdit in ('prix', 'produit_id', 'nom', 'motif', 'Canadian'):
+            self.assertNotIn(interdit, texte)
+
+    def test_archive_aucun(self):
+        Produit.objects.filter(pk=self.p715.pk).update(is_archived=True)
+        self.assertEqual(self._get(self.company.pk).json(), _CONTRAT_SITE['exemple_aucun'])
+
+    def test_autre_societe_ne_voit_pas_le_defaut(self):
+        self.assertEqual(self._get(self.autre.pk).json(), _CONTRAT_SITE['exemple_aucun'])
+
+    def test_reglage_absent_ou_faux_jamais_la_premiere_societe(self):
+        for reglage in (None, '', 987654321, 'pas-un-id'):
+            with self.subTest(reglage=reglage), self.assertLogs('apps.stock.public_views', level='ERROR'):
+                rep = self._get(reglage)
+                self.assertEqual(rep.status_code, 200, rep.content)
+                self.assertEqual(rep.json(), _CONTRAT_SITE['exemple_aucun'])
