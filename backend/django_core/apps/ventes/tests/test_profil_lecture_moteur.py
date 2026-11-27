@@ -106,3 +106,35 @@ class LecturesMoteurSansCreationTests(SimpleTestCase):
         from apps.ventes.quote_engine.facturx import pack_pays_de
         pack, defaut = self._sans_get(pack_pays_de)
         self.assertEqual(pack, str(getattr(defaut, 'pack_pays', '') or '').upper())
+
+    def test_dgi_profil_vendeur_export_et_validation(self):
+        from apps.ventes.dgi import dgi_export, dgi_validator
+        for module in (dgi_export, dgi_validator):
+            servi, defaut = self._sans_get(
+                lambda c, m=module: m._resolve_profile(
+                    SimpleNamespace(company=c), None))
+            self.assertIs(servi, defaut)
+
+    def test_arrondi_caisse_et_credit_hold(self):
+        from decimal import Decimal
+        from apps.ventes.domain.encaissements import proposer_arrondi_caisse
+        from apps.ventes.domain.recouvrement import verifier_credit_hold
+        res, defaut = self._sans_get(lambda c: proposer_arrondi_caisse(
+            SimpleNamespace(company=c), "virement", reste=Decimal("10")))
+        self.assertFalse(res["applicable"])
+        self.assertEqual(res["pas"], defaut.arrondi_caisse or Decimal("0"))
+        res, defaut = self._sans_get(
+            lambda c: verifier_credit_hold(SimpleNamespace(company=c)))
+        self.assertIsNone(res)
+        self.assertFalse(defaut.credit_hold_actif)
+
+    def test_encaissement_et_anomalies_d_emission(self):
+        # Fonctions à base de données : on inspecte leur code (les rejouer
+        # demande la base, CI).
+        import inspect
+        from apps.ventes.domain import encaissements, recouvrement
+        for fonction in (encaissements.encaisser_sur_facture,
+                         recouvrement.anomalies_emission_facture):
+            source = inspect.getsource(fonction)
+            self.assertNotIn("CompanyProfile.get(", source)
+            self.assertIn("CompanyProfile.lire(", source)
