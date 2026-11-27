@@ -287,6 +287,44 @@ describe('CalepinageList (CAL35)', () => {
     expect(jetons).toMatch(/\.dark \.cliste,[^{]*\{[^}]*--cal-texte-2:/)
   })
 
+  // ACAL1825 — la page de la liste est posée sur le papier de la maquette v2 ; cartes et puces lisent les jetons d'ombre
+  // posée et d'actif (49-jetons-v2.css), plus l'ombre locale `--cliste-ombre`.
+  it('la page de liste porte la classe de fond papier ; ombres et pastille active par les jetons', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { container } = rendre()
+    await screen.findByTestId('liste-compteur')
+    expect(container.querySelector('.cliste')).toHaveClass('cliste-page')
+    const css = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/57-liste.css`, 'utf8')
+    expect(css).toMatch(/\.cliste-page\s*\{[^}]*background:\s*var\(--cal-papier\)/)
+    expect(css).not.toContain('--cliste-ombre')
+    expect(css).toMatch(/\.cliste-carte\s*\{[^}]*box-shadow:\s*var\(--cal-ombre-posee\)/)
+    expect(css).toMatch(/\.cliste-puce\[aria-pressed='true'\]\s*\{[^}]*background:\s*var\(--cal-actif\)/)
+  })
+
+  // ACAL1819 — au téléphone (≤ 639 px) : titre + « + » 44 × 44 sur une ligne, recherche puis « Filtres », les pastilles
+  // d'état derrière « Filtres » : la première carte se lit dans le premier écran. Le DOM garde tout (jsdom n'applique pas le CSS).
+  it('ACAL1819 — les pastilles sont repliées derrière « Filtres » (donnée), le libellé du bouton « Nouveau calepinage » reste son nom', async () => {
+    const { readFileSync } = await import('node:fs')
+    rendre()
+    const groupe = await screen.findByTestId('cal-liste-filtres-etat')
+    expect(groupe).toHaveClass('cliste-puces')
+    expect(groupe).toHaveAttribute('data-replie', 'true')
+    fireEvent.click(screen.getByTestId('acal957-filtres-basculer'))
+    expect(groupe).toHaveAttribute('data-replie', 'false')
+    fireEvent.click(screen.getByTestId('acal957-filtres-basculer'))
+    expect(groupe).toHaveAttribute('data-replie', 'true')
+    // Un statut choisi garde les pastilles à la vue : un filtre actif ne se cache jamais.
+    fireEvent.click(screen.getByRole('button', { name: /^Brouillon/ }))
+    expect(groupe).toHaveAttribute('data-replie', 'false')
+    const nouveau = screen.getByRole('button', { name: /Nouveau calepinage/ })
+    expect(nouveau.querySelector('.cliste-action-texte')).toHaveTextContent('Nouveau calepinage')
+    const css = readFileSync(`${globalThis.process.cwd()}/src/styles/calepinage/57-liste.css`, 'utf8')
+    const telephone = css.slice(css.indexOf('@media (max-width: 639px)'))
+    expect(telephone).toMatch(/\.cliste-puces\[data-replie='true'\]\s*\{\s*display:\s*none/)
+    expect(telephone).toMatch(/\.cliste-action\s*\{[^}]*width:\s*44px[^}]*height:\s*44px/)
+    expect(telephone).toMatch(/\.cliste-action-texte\s*\{[^}]*clip:/)
+  })
+
   it('un échec qui dure propose « Réessayer », qui relance la lecture', async () => {
     mocks.list.mockRejectedValue({ response: { status: 503, data: { detail: 'Service indisponible.' } } })
     rendre()
