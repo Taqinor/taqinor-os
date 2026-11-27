@@ -1342,6 +1342,43 @@ class HistoriqueNomCompletTests(__import__("django.test", fromlist=["x"]).Simple
         from apps.crm import activity
         self.assertEqual(activity._display(None, 'owner', self._user()), 'Meryem Alaoui')
 
+    def test_assigner_lead_a_nomme_les_deux_responsables(self):
+        from types import SimpleNamespace as U
+        from unittest import mock
+        from apps.crm import fiche_funnel
+        from apps.crm.models import LeadActivity
+        ancien = U(first_name="Sara", last_name="Idrissi", username="sara.i")
+        lead = U(company=None, owner=ancien, save=lambda **kw: None)
+        with mock.patch.object(fiche_funnel, '_resolve_owner', return_value=self._user()), \
+                mock.patch.object(LeadActivity.objects, 'create') as creer:
+            fiche_funnel.assigner_lead_a(lead, self._user(), 5)
+        champs = creer.call_args.kwargs
+        self.assertEqual((champs['old_value'], champs['new_value']), ('Sara Idrissi', 'Meryem Alaoui'))
+
+    def test_noter_rdv_nomme_l_acteur(self):
+        from types import SimpleNamespace as U
+        from unittest import mock
+        from apps.crm import visites_views
+        with mock.patch.object(visites_views.activity, 'log_note') as note:
+            visites_views._noter_rdv(U(), self._user(), 'RDV déplacé')
+        self.assertEqual(note.call_args.args[2], 'RDV déplacé (par Meryem Alaoui).')
+
+    def test_aucun_login_dans_les_autres_textes_d_historique(self):
+        """Chemins profonds (base requise pour les exécuter) : garde de source."""
+        import pathlib
+        dossier = pathlib.Path(__file__).parent
+        motifs = {
+            'fiche_bulk.py': ["par {getattr(user, 'username', '?')}\"", "par {getattr(user, 'username', '?')}'"],
+            'devis_views.py': ['par {getattr(request.user, "username", "?")}'],
+            'cadence_touche.py': ["qui = getattr(user, 'username'"],
+            'leads_fusion.py': ['par {getattr(user, "username", "?")}'],
+            'receivers.py': ["qui = getattr(user, 'username'"],
+        }
+        for fichier, interdits in motifs.items():
+            source = (dossier / fichier).read_text(encoding='utf-8')
+            for interdit in interdits:
+                self.assertNotIn(interdit, source, fichier)
+
     def test_nom_affichable_responsable(self):
         from apps.crm.serializers import nom_affichable_responsable
         self.assertEqual(nom_affichable_responsable(self._user()), 'Meryem Alaoui')

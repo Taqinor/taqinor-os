@@ -14,6 +14,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
+from core.user_display import nom_affiche
 from core.champs_stricts import ChaineStricte
 from core.conflit_etat import ConflitEtat
 from core.parseurs import ChoixDocumente
@@ -52,7 +53,7 @@ def _noter_rdv(lead, user, corps):
     l'acteur nommé (jamais un prénom en dur)."""
     if lead is None:
         return
-    qui = getattr(user, 'username', '') or 'système'
+    qui = nom_affiche(user) or 'système'
     activity.log_note(lead, user, f'{corps} (par {qui}).')
 
 
