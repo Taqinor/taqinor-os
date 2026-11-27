@@ -62,4 +62,26 @@ describe('AssigneePicker (LW32)', () => {
     const fallback = container.querySelector('.ap-trigger .ap-avatar-fallback')
     expect(fallback?.style.color).toBe('var(--muted-foreground)')
   })
+
+  it('ACAL1245 — liste vide + nomServi : le nom servi, jamais « Non assigné »', () => {
+    const { container } = render(
+      <AssigneePicker users={[]} value={70} nomServi="Sami Alami" onChange={() => {}} />,
+    )
+    expect(container.querySelector('.ap-name')).toHaveTextContent('Sami Alami')
+    expect(container.querySelector('.ap-trigger')).toHaveAttribute('title', 'Responsable : Sami Alami')
+  })
+
+  it('ACAL1245 — liste chargée : le nom de la liste prime sur nomServi', () => {
+    const { container } = render(
+      <AssigneePicker users={USERS} value={11} nomServi="Autre" onChange={() => {}} />,
+    )
+    expect(container.querySelector('.ap-name')).toHaveTextContent('Reda Kasri')
+  })
+
+  it('ACAL1245 — sans responsable, nomServi ignoré : « Non assigné »', () => {
+    const { container } = render(
+      <AssigneePicker users={[]} value="" nomServi="Sami Alami" onChange={() => {}} />,
+    )
+    expect(container.querySelector('.ap-name')).toHaveTextContent('Non assigné')
+  })
 })

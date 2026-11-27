@@ -623,7 +623,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           <span className="lw-rail-label">Responsable</span>
           <AssigneePicker
             users={users} disabled={!peutReassigner}
-            value={owner ?? ''}
+            value={owner ?? ''} nomServi={server.owner_nom}
             onChange={(id) => onAction('set-field', { key: 'owner', value: id ?? '' })}
           />
         </div>

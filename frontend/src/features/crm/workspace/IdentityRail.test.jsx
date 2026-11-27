@@ -48,8 +48,8 @@ vi.mock('../../../ui/confirm', async (importOriginal) => {
 vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
 // AssigneePicker mocké en bouton cliquable pour tester le PATCH du responsable.
 vi.mock('../../../components/AssigneePicker', () => ({
-  default: ({ value, onChange, disabled }) => (
-    <button type="button" data-testid="assignee" disabled={disabled} onClick={() => onChange(9)}>{String(value ?? '')}</button>
+  default: ({ value, onChange, disabled, nomServi }) => (
+    <button type="button" data-testid="assignee" data-nom-servi={nomServi ?? ''} disabled={disabled} onClick={() => onChange(9)}>{String(value ?? '')}</button>
   ),
 }))
 // ADRG20 — droits des gestes (code fin, sinon palier) : tous accordés par
@@ -290,6 +290,11 @@ describe('LW15 — triade responsable · prochaine action · relance', () => {
     render(<IdentityRail state={makeState()} onAction={onAction} users={[{ id: 9, username: 'Meriem' }]} />)
     fireEvent.click(screen.getByTestId('assignee'))
     expect(onAction).toHaveBeenCalledWith('set-field', { key: 'owner', value: 9 })
+  })
+
+  it('ACAL1245 — le rail passe le nom du responsable servi (owner_nom) au sélecteur, liste vide', () => {
+    render(<IdentityRail state={makeState({ owner_nom: 'Sami Alami' })} onAction={onAction} users={[]} />)
+    expect(screen.getByTestId('assignee')).toHaveAttribute('data-nom-servi', 'Sami Alami')
   })
 
   it('changer la relance PATCHe via onAction(set-field, relance_date) en date locale', () => {
