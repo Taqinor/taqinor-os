@@ -90,6 +90,19 @@ class NoteDeCalculSurCalepinageReelTest(SimpleTestCase):
             motif = motif_note_indisponible(perime)
         self.assertTrue(motif)
 
+    def test_sans_simulation_la_note_dit_la_phrase_neuve(self):
+        # ACAL1724 — la MÊME phrase que les autres cartes, jamais le motif du
+        # rapport d'étude.
+        from types import SimpleNamespace
+
+        from apps.calepinage.services.documents import (
+            MOTIF_SANS_SIMULATION_DOCUMENT)
+
+        sans_calcul = SimpleNamespace(pk=7, roof_layout=self.pivot.roof_layout,
+                                      resultat={}, company=None)
+        self.assertEqual(motif_note_indisponible(sans_calcul),
+                         MOTIF_SANS_SIMULATION_DOCUMENT)
+
     def test_inventaire_note_et_pack_disponibles_sur_calepinage_frais(self):
         class Inventorie:
             pk = 7
