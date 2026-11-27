@@ -90,7 +90,7 @@ export default function ReglagesAllees() {
   }
 
   return (
-    <div className="page flex flex-col gap-4" data-testid="acal893-ecran">
+    <div className="page cal-reglages flex flex-col gap-4" data-testid="acal893-ecran">
       <div className="flex flex-col gap-1">
         <a href="/calepinage/reglages" className="text-xs underline">← Réglages simulation</a>
         <h1 className="text-lg font-semibold text-foreground">Allées</h1>

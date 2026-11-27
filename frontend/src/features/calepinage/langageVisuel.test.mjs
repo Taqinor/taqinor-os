@@ -114,3 +114,16 @@ test('ACAL969 : UN seul état « choisi » (fond doré sur [aria-pressed]) ; le 
   assert.ok(!/background/.test(badge.corps), '.rp9-reco-badge ne doit pas porter de fond doré')
   assert.ok(parseFloat(declarations(badge.corps)['font-size']) >= 0.75, '.rp9-reco-badge : texte sous 12 px')
 })
+
+// ACAL1823 (revue) — le jeton `--cal-surface` n'existe que sous `.cal-coque, .cliste, .cal-tel, .cal-client, .cal-reglages`
+// (`49-jetons-v2.css`). Une PAGE (écran de route, hors coque) qui le lit doit poser elle-même l'une de ces classes,
+// sinon le fond est indéfini, donc transparent.
+test('ACAL1823 : une page qui lit --cal-surface porte la classe qui le définit', () => {
+  const DEFINISSEURS = /\b(?:cal-coque|cliste|cal-tel|cal-client|cal-reglages)\b/
+  const pages = fichiers(join(SRC, C)).filter((p) => /[\\/]reglages[\\/]/.test(p) || /Page\.jsx$/.test(p))
+  const fautifs = pages.filter((p) => {
+    const src = readFileSync(p, 'utf8')
+    return src.includes('--cal-surface') && !DEFINISSEURS.test(src)
+  }).map((p) => relative(SRC, p).split(sep).join('/'))
+  assert.deepEqual(fautifs, [])
+})
