@@ -13,10 +13,12 @@ de marge. Le fournisseur peut :
 Protections : X-Robots-Tag noindex sur chaque réponse ; throttle cache-based
 par IP + jeton (sans dépendance externe).
 """
+import functools
 import logging
 import math
 
 from django.conf import settings
+from django.utils.cache import patch_cache_control
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import (
@@ -51,6 +53,15 @@ class PortailFournisseurThrottle(SimpleRateThrottle):
 def _noindex(response):
     response['X-Robots-Tag'] = 'noindex, nofollow, noarchive'
     return response
+
+
+def _noindex_toujours(vue):
+    """Pose ``X-Robots-Tag`` sur TOUTE réponse de la vue, y compris les 405 / 429 que DRF
+    construit lui-même (chemin d'exception, hors du corps de la vue)."""
+    @functools.wraps(vue)
+    def enveloppe(request, *args, **kwargs):
+        return _noindex(vue(request, *args, **kwargs))
+    return enveloppe
 
 
 def _not_found():
@@ -474,6 +485,7 @@ def _societe_du_site():
     return company
 
 
+@_noindex_toujours
 @extend_schema(request=None, responses={
     200: inline_serializer('StockPanneauParDefautSite', {
         'pmax_wc': serializers.FloatField(allow_null=True),
@@ -496,5 +508,5 @@ def panneau_par_defaut_site_view(request):
         logger.exception('panneau-par-defaut public : lecture impossible.')
         watt = None
     response = _noindex(Response(forme_publique_panneau(watt)))
-    response['Cache-Control'] = 'public, max-age=300'
+    patch_cache_control(response, public=True, max_age=300)
     return response

@@ -660,11 +660,23 @@ class TestPanneauParDefautSitePublic(SimpleTestCase):
 
         rep = public_views.panneau_par_defaut_site_view(APIRequestFactory().post(_URL_SITE, {}))
         self.assertEqual(rep.status_code, 405)
+        # Revue 17 — même les réponses d'erreur DRF (405) ne s'indexent pas.
+        self.assertIn('noindex', rep['X-Robots-Tag'])
 
     def test_debit_limite_par_ip(self):
         from apps.stock.public_views import PanneauDefautSiteThrottle
 
         self.assertEqual(PanneauDefautSiteThrottle().get_rate(), '60/minute')
+
+    def test_debit_depasse_429_noindex(self):
+        """Revue 17 — le 429 du débit porte aussi X-Robots-Tag (chemin d'exception DRF)."""
+        from apps.stock.public_views import PanneauDefautSiteThrottle
+
+        with mock.patch.object(PanneauDefautSiteThrottle, 'allow_request', return_value=False), \
+                mock.patch.object(PanneauDefautSiteThrottle, 'wait', return_value=60):
+            rep = self._get()
+        self.assertEqual(rep.status_code, 429)
+        self.assertIn('noindex', rep['X-Robots-Tag'])
 
 
 @override_settings(CACHES=_CACHE_LOCAL)
