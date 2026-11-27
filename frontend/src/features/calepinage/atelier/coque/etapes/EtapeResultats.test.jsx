@@ -562,7 +562,7 @@ describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet
     data.cascade.a_renseigner.lignes = [societe, mppt]
     servir(data)
     const sansOnduleur = { manque: [{ code: 'materiel_designe', etape: 'electrique', gravite: 'a_regler', nombre: 1,
-      cible: { onglet: 'electrique', champ: '' }, message: 'Aucun onduleur désigné : le raccordement ne peut pas être vérifié.' }] }
+      cible: { onglet: 'electrique', champ: '' }, message: 'onduleur non désigné — désignez-le dans l’onglet Matériel électrique' }] }
     rendre({ parcours: sansOnduleur })
     const lignes = await screen.findAllByTestId('acal700-ligne')
     const ligne = lignes.find((l) => l.textContent.includes('onduleur'))
@@ -571,6 +571,16 @@ describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet
     const lien = within(ligne).getByRole('link', { name: 'Désigner' })
     expect(lien.getAttribute('href')).toMatch(/^\/calepinage\/1\?.*onglet=/)
     expect(lien.getAttribute('href')).not.toContain('fiches')
+    cleanup()
+    // Onduleur DÉSIGNÉ mais fiche incomplète : même code, cause « <rôle> : <champ> » (pret_a_envoyer) — jamais « Aucun onduleur désigné ».
+    cleanup()
+    servir(data)
+    rendre({ parcours: { manque: [{ code: 'materiel_designe', etape: 'electrique', gravite: 'a_regler', nombre: 1,
+      cible: { onglet: 'electrique', champ: '' }, message: 'onduleur : tension MPPT min' }] } })
+    const incomplete = (await screen.findAllByTestId('acal700-ligne')).find((l) => l.textContent.includes('onduleur'))
+    expect(incomplete).not.toHaveTextContent('Aucun onduleur désigné')
+    expect(incomplete).toHaveTextContent('Absent de la fiche du panneau')
+    expect(within(incomplete).getByRole('link', { name: 'Renseigner' }).getAttribute('href')).toContain('fiches')
     cleanup()
     // Un onduleur désigné (aucune ligne « matériel » à compléter) : le cas courant garde sa raison de fiche et « Renseigner ».
     servir(data)

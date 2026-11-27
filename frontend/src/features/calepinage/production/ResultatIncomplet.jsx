@@ -28,7 +28,7 @@ const RAISON = {
    qui le nomme), leur ligne dit « Aucun onduleur désigné » au lieu de « Absent de la fiche du panneau ». */
 const ETAPES_ONDULEUR = new Set(['mppt', 'onduleur', 'ecretage'])
 const sansOnduleurDesigne = (parcours) => (parcours?.manque || [])
-  .some((m) => m?.code === 'materiel_designe' && /onduleur/i.test(m?.message || ''))
+  .some((m) => m?.code === 'materiel_designe' && /onduleur non désigné/i.test(m?.message || ''))
 
 /** « Remplir les 3 réglages vides » quand « Remplir » les remplit tous ; sinon « Remplir 1 des 3 réglages vides ». */
 function libelleRemplir(compte) {
