@@ -5,6 +5,7 @@
 // une mesure absente (`null`) rend sa cause intestable, jamais vraie.
 import { resolveSetbacks, type Panel2Module, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { type PackResult, type PanelGrid } from '../../lib/estimatorBrainV2';
+import { projectRingENU, type LngLat } from '../../lib/roofGrid'; // ACAL1966 — le contour du pan en mètres
 import { nomDeFace } from './hypotheses'; // ACAL1970 — le nom de la face, vocabulaire partagé
 
 export type CodeMotifPanVide = 'retrait_rive' | 'obstacles' | 'seuil_acces_solaire' | 'module_trop_grand' | 'orientation_nord' | 'inconnue';
@@ -12,6 +13,7 @@ export interface MotifPanVide { code: CodeMotifPanVide; message: string; mesures
 export interface MesuresPanVide {
   largeurPanM: number; retraitM: number | null; coteCourtM: number; coteLongM: number;
   aireM2: number; surfacePosableM2: number; candidats: number; seuil: number | null; ecartes: number;
+  anneauVide?: boolean; // ACAL1966 — l'anneau posable est vide (la largeur citée est alors celle du pan)
 }
 
 export const CLE_MOTIFS_PANS_VIDES = 'motifsPansVides';
@@ -39,13 +41,17 @@ export function retraitApplique(setbacks: Partial<PerimeterSetbacks> | undefined
   return Math.min(s.lateralM, s.extremityM, s.parapetM);
 }
 
+/** ACAL1966 — le contour tracé du pan (lng/lat) en mètres, pour `mesurerPanVide`. */
+export const contourPanENU = (sommets: readonly LngLat[]): [number, number][] => projectRingENU([...sommets]).ringENU;
+
 /** Mesures d'un pavage vide, toutes lues sur le pack rendu (aucune valeur par défaut). */
 export function mesurerPanVide(pack: PackResult, grid: PanelGrid, retraitM: number | null, module: Panel2Module,
-  filtrage: { ecartes: number[]; seuilApplique: number | null } | null): MesuresPanVide {
+  filtrage: { ecartes: number[]; seuilApplique: number | null } | null, ringPanENU?: readonly [number, number][]): MesuresPanVide {
   return {
-    largeurPanM: largeurMinimaleM(pack.ringENU), retraitM, coteCourtM: module.courtM, coteLongM: module.longM,
+    // ACAL1966 — le contour du PAN (avant retrait) donne la largeur quand l'anneau posable est vide.
+    largeurPanM: largeurMinimaleM(ringPanENU && ringPanENU.length >= 3 ? ringPanENU : pack.ringENU), retraitM, coteCourtM: module.courtM, coteLongM: module.longM,
     aireM2: pack.areaM2, surfacePosableM2: pack.usableAreaM2, candidats: grid.panels.length,
-    seuil: filtrage?.seuilApplique ?? null, ecartes: filtrage?.ecartes.length ?? 0,
+    seuil: filtrage?.seuilApplique ?? null, ecartes: filtrage?.ecartes.length ?? 0, anneauVide: pack.ringENU.length < 3,
   };
 }
 
@@ -53,9 +59,9 @@ export function causeDuPanVide(m: MesuresPanVide): MotifPanVide {
   const utile = Math.max(0, m.largeurPanM - 2 * (m.retraitM ?? 0));
   if (m.retraitM != null && m.retraitM > 0 && utile < m.coteCourtM) {
     // ACAL1966 — anneau posable VIDE : aucune largeur à citer (« 0,00 m sur 0,00 m » n'est pas une mesure du pan).
-    const message = m.largeurPanM > 0
+    const message = m.largeurPanM > 0 && !m.anneauVide
       ? `Aucun module : le retrait de rive (${fr(m.retraitM)} m de chaque côté) ne laisse que ${fr(utile)} m sur ${fr(m.largeurPanM)} m de large`
-      : `Aucun module : aucun anneau posable — le retrait de rive (${fr(m.retraitM)} m de chaque côté) ne laisse aucune surface sur ce pan`;
+      : `Aucun module : aucun anneau posable — le retrait de rive (${fr(m.retraitM)} m de chaque côté) ne laisse aucune surface sur ce pan${m.largeurPanM > 0 ? ` de ${fr(m.largeurPanM)} m de large` : ''}`;
     return { code: 'retrait_rive',
       message,
       mesures: { retraitM: r2(m.retraitM), largeurPanM: r2(m.largeurPanM), largeurUtileM: r2(utile), coteModuleM: r2(m.coteCourtM) } };
