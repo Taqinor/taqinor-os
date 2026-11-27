@@ -387,7 +387,8 @@ class ProvenanceUneLigneAcal1266Test(SimpleTestCase):
     DÉCLARÉE et non mesurée tient sur UNE ligne « 30 m — déclaré par vous le …,
     à confirmer par la visite » et ne revient plus dans la liste « À confirmer
     par la visite » ; une entrée mesurée reste sur sa ligne sans réserve.
-    Nouveaux rendus seulement (drapeau ``phrases_pdf_lot10``) : sans lui, le
+    Nouveaux rendus seulement (``une_ligne``, que ``page1`` refuse à un devis
+    marqué ``regles_pdf_historique_lot10``) : sans lui, le
     texte reçu par un devis envoyé ne bouge pas. Mutant : garder les deux
     listes ⇒ le libellé « Niveau statique » sort deux fois, échec."""
 
@@ -417,6 +418,36 @@ class ProvenanceUneLigneAcal1266Test(SimpleTestCase):
     def test_sans_drapeau_texte_recu_inchange(self):
         from apps.ventes.quote_engine.agricole.pages import _entree
         html = self._html(False)
+        self.assertNotIn(', à confirmer par la visite', html)
+        self.assertEqual(html.count(_entree('fr', 'niveau_statique_m')), 2)
+
+
+class Page1UneLigneAcal1266Test(SimpleTestCase):
+    """ACAL1266 (revue) — par ``page1`` (le chemin de ``/proposal``) : un
+    devis NEUF (sans drapeau) imprime le niveau statique déclaré, non mesuré,
+    sur UNE ligne ; un devis ENVOYÉ (drapeau ``regles_pdf_historique_lot10``
+    de la migration 0164) garde ses deux listes reçues. Mutant : ne plus lire
+    le drapeau dans ``page1`` ⇒ le cas neuf cite le niveau deux fois, échec."""
+
+    def _page1(self, historique):
+        from apps.ventes.quote_engine.agricole import pages, renderer
+        from apps.ventes.quote_engine.ci.onepage import DRAPEAU_PDF_HISTORIQUE_LOT10
+        from apps.ventes.tests.test_agr310_renderer_agricole import data_complete
+        d = renderer._augment(data_complete())
+        if historique:
+            d['etude'] = {**d['etude'], DRAPEAU_PDF_HISTORIQUE_LOT10: True}
+        d['synthese'] = {**d['synthese'], **ProvenanceUneLigneAcal1266Test.SYNTHESE}
+        return pages.page1(pages.build_ctx(d))
+
+    def test_devis_neuf_une_seule_ligne(self):
+        from apps.ventes.quote_engine.agricole.pages import _entree
+        html = self._page1(False)
+        self.assertIn('30 m — déclaré par vous le 20/11/2026, à confirmer par la visite', html)
+        self.assertEqual(html.count(_entree('fr', 'niveau_statique_m')), 1)
+
+    def test_devis_envoye_garde_les_deux_listes(self):
+        from apps.ventes.quote_engine.agricole.pages import _entree
+        html = self._page1(True)
         self.assertNotIn(', à confirmer par la visite', html)
         self.assertEqual(html.count(_entree('fr', 'niveau_statique_m')), 2)
 
