@@ -42,7 +42,8 @@ import {
 } from './zones';
 import { deserializeLayout, hydrateFromDevis, serializeLayout, selectionSansChangement, type SerializedLayout } from './prefill';
 import { heriterDuPanDecoupe } from './tailleAuto'; // ACAL1707
-import { propagerPenteDecoupe } from './formesToit'; // ACAL1735 // ACAL64, ACAL1415, ACAL1916
+import { createLayoutState } from '../../lib/layoutVariability'; // ACAL1707
+import { decouperContour, propagerPenteDecoupe } from './formesToit'; // ACAL1735 // ACAL64, ACAL1415, ACAL1916
 import { MENTION_MODULE_DE_DEPART, affectationDesPans } from './moduleSelect'; // ACAL1415
 import { panAuModuleChoisi, remplacerParPanVierge, reprendreModuleChoisi } from './repriseModule'; // ACAL1416
 import { type Ctx } from './context'; // ACAL64
@@ -1529,29 +1530,47 @@ describe('ACAL1916 — choisir un pan ne marque pas le document modifié', () =>
   });
 });
 
-describe('ACAL1707 — « 2 pans » sur un toit à 4 panneaux garde 4 panneaux', () => {
-  const pan = (id: string, x: number, w: number, az: number) => ({
-    id, neededPanels: 0, neededAuto: true, facingAzimuthDeg: az,
-    vertices: [[x, 33.5], [x + w, 33.5], [x + w, 33.5004], [x, 33.5004]] as LngLat[],
+describe('ACAL1707 — « 2 pans » sur un toit à 4 panneaux pose et enregistre 4 panneaux', () => {
+  // Le geste réel (`appliquer` de `monterFormesToit`, roof-tool-pro11.ts) : découpe, nombre hérité, le pan découpé remplacé
+  // par les pans, le PREMIER chargé (`loadArea(pans[0])` : son nombre pilote la pose vivante). Puis « Enregistrer » sans
+  // ouvrir le pan 2 : ce que `serializeLayout` écrit. Toit long nord-sud : deux pans est / ouest, tous deux exposés.
+  function decouperPuisEnregistrer(besoin: { neededPanels: number; neededAuto: boolean }) {
+    const avant = panDeTest('area-1', { vertices: rectRing(9, 12), roofType: 'pitched', pitchDeg: 22, ...besoin, moduleId: 'm' } as never);
+    const areas: AreaRecord[] = [avant];
+    const v = decouperContour(avant.vertices, 'gable', 22, areas);
+    if (!v.ok) throw new Error(v.motif);
+    const pans = v.pans;
+    heriterDuPanDecoupe(avant, besoin, pans, true);
+    areas.splice(0, 1, ...pans);
+    const actif = pans[0];
+    const cellules = Array.from({ length: 12 }, (_, i) => ({ cx: (i % 4) * 1.2 - 2, cy: Math.floor(i / 4) * 2.2 - 2 })); // 12 tiennent sur le pan
+    const pose = Math.min(actif.neededPanels, cellules.length); // `placedFor` : min(nombre voulu, ce qui tient)
+    const ctx = {
+      ...ctxDeBase(areas, actif.id), activeArea: () => actif, closed: true,
+      layoutPlan: {
+        pack: { origin: [-7.6, 33.5], ringENU: [[-6, -6], [6, -6], [6, 6], [-6, 6]], azimuthDeg: 180 },
+        grid: { rowWidthM: 2, footprintPerPanelM2: 2, slopeLenM: 1, kwc: 12 * 0.71, panels: cellules },
+        tiltDeg: 22, family: 'south', flush: true,
+      },
+      layoutOptimalCount: pose,
+      layoutState: createLayoutState(cellules, pose),
+    } as unknown as Ctx;
+    return { pans, pose, doc: serializeLayout(ctx) };
+  }
+
+  it('nombre figé à 4 : 4 posés sur le pan chargé, 4 écrits au document (aucun pan non ouvert ne retire de panneau)', () => {
+    const { pans, pose, doc } = decouperPuisEnregistrer({ neededPanels: 4, neededAuto: false });
+    expect(pans.length).toBe(2);
+    expect(pose).toBe(4);
+    expect(doc.zones.reduce((s, z) => s + (z.geometry?.count ?? 0), 0)).toBe(4);
+    expect(doc.zones[0].geometry?.panels.length).toBe(4);
+    expect(doc.zones[0].neededPanels).toBe(4);
   });
-  it('la somme des pans est la pose d’avant (4), répartie au prorata de la surface, aucun pan n’est rempli', () => {
-    const pans = [pan('area-2', -7.6, 0.0003, 180), pan('area-3', -7.5997, 0.0001, 180)];
-    heriterDuPanDecoupe({ moduleId: 'm' }, { neededPanels: 4, neededAuto: false }, pans as never, true);
-    expect(pans.map((p) => p.neededPanels)).toEqual([3, 1]);
-    expect(pans.every((p) => p.neededAuto === false)).toBe(true);
-  });
-  it('un pan tourné vers le nord ne reçoit rien : tout reste sur le pan exposé', () => {
-    const pans = [pan('area-2', -7.6, 0.0002, 180), pan('area-3', -7.5998, 0.0002, 0)];
-    heriterDuPanDecoupe(null, { neededPanels: 4, neededAuto: false }, pans as never, true);
-    expect(pans.map((p) => p.neededPanels)).toEqual([4, 0]);
-  });
-  it('nombre non figé (auto) ou site public : rien n’est réparti', () => {
-    const pans = [pan('area-2', -7.6, 0.0002, 180), pan('area-3', -7.5998, 0.0002, 180)];
-    heriterDuPanDecoupe(null, { neededPanels: 4, neededAuto: true }, pans as never, true);
-    expect(pans.map((p) => p.neededPanels)).toEqual([4, 0]);
-    const publics = [pan('area-2', -7.6, 0.0002, 180), pan('area-3', -7.5998, 0.0002, 180)];
-    heriterDuPanDecoupe(null, { neededPanels: 4, neededAuto: false }, publics as never, false);
-    expect(publics.map((p) => p.neededPanels)).toEqual([0, 0]);
+
+  it('nombre d’après la facture (auto) : le pan chargé garde la cible, aucun pan n’est rempli en plus', () => {
+    const { pose, doc } = decouperPuisEnregistrer({ neededPanels: 4, neededAuto: true });
+    expect(pose).toBe(4);
+    expect(doc.zones.reduce((s, z) => s + (z.geometry?.count ?? 0), 0)).toBe(4);
   });
 });
 
