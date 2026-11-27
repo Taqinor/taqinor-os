@@ -4,7 +4,7 @@ import calepinageApi from '../../../../api/calepinageApi'
 import { ErrorBoundary, SkeletonCard, SkeletonText } from '../../../../ui'
 import BarreEnregistrement from '../BarreEnregistrement'
 import { formaterHeureBrouillon } from '../contexteAtelier'
-import { publierResultat } from '../simulationFraiche' // T4-X9-004 — un seul résultat relu, partagé
+import { ecouterResultat, publierResultat } from '../simulationFraiche' // T4-X9-004 — un seul résultat relu, partagé
 import { PARAM_MODE, useModeExpert } from '../modeExpert'
 import { PARAM_ONGLET, resoudreOnglet } from '../onglets'
 import { cadrerDansZoneLibre } from './cadrageZoneLibre' // T4-X5-017 — sorti tel quel (partagé avec le plein écran)
@@ -175,6 +175,10 @@ function useResultatServi(calepinageId, actif, relecture) {
       .catch(() => { if (vivant) setData(null) })
     return () => { vivant = false }
   }, [calepinageId, actif, relecture])
+  // ACAL1653 (revue) — la fin d'une simulation, publiée par l'étape Résultats, remplace la lecture tenue ici : le bandeau
+  // (`etatPropre`) dit « Simulation à jour · HH:MM » du calcul qui vient de finir, sans recharger, et jamais celui d'avant.
+  useEffect(() => (actif ? ecouterResultat(calepinageId, (resultat) => { if (resultat) setData(resultat) }) : undefined),
+    [calepinageId, actif])
   return actif ? data : null
 }
 

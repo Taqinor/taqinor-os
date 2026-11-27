@@ -14,7 +14,7 @@ vi.mock('../../../../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       resultat: vi.fn(), exportCsv: vi.fn(), simuler: vi.fn(), explications: vi.fn(),
-      pertes: vi.fn(), enregistrerPertes: vi.fn(), designContext: vi.fn(),
+      pertes: vi.fn(), enregistrerPertes: vi.fn(), designContext: vi.fn(), parcours: vi.fn(), get: vi.fn(),
     },
     moteur: { resultat: vi.fn() },
     parametres: { get: vi.fn() },
@@ -26,7 +26,8 @@ vi.mock('../../../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn(
 import calepinageApi from '../../../../../api/calepinageApi'
 import ventesApi from '../../../../../api/ventesApi'
 import EtapeResultats from './EtapeResultats'
-import BarreEnregistrement from '../../BarreEnregistrement'
+import CoqueAtelier from '../CoqueAtelier'
+import { formaterHeureBrouillon } from '../../contexteAtelier'
 import { oublierLecturesServies } from './panneaux/lectures'
 import PanneauPertesUnifie from '../../PanneauPertesUnifie'
 
@@ -833,26 +834,27 @@ describe('Étape Résultats — la simulation part seule (ACAL1987)', () => {
 /* ACAL1653 — à la fin d'une simulation, le bandeau d'enregistrement passe à « Simulation à jour · HH:MM » sans recharger :
    la barre écoute le résultat publié par l'étape (même canal que le résumé Expert). */
 describe('Étape Résultats — le bandeau suit la fin du calcul (ACAL1653)', () => {
-  it('fin de simulation : « Enregistré à… » devient « Simulation à jour · HH:MM », sans rechargement', async () => {
-    const enCours = { ...JAMAIS(), simulation_automatique: { ...JAMAIS().simulation_automatique, en_cours: true, job_id: 7 } }
-    const fini = { ...COMPLET(), simulation_perimee: false, calcule_le: '2026-11-26T14:32:00Z' }
+  // ACAL1653 (revue) — par la VRAIE coque : sa lecture de l'ouverture (`etatPropre`) primait sur la fin du calcul publiée.
+  it('fin de simulation : le bandeau de la coque dit l\'heure du calcul qui vient de finir, pas celle de la lecture d\'avant', async () => {
+    const ancien = { ...COMPLET(), simulation_perimee: false, calcule_le: '2026-11-26T13:10:00Z' }
+    const recent = { ...COMPLET(), simulation_perimee: false, calcule_le: '2026-11-26T14:32:00Z' }
+    calepinageApi.calepinages.parcours.mockResolvedValue({ data: { etapes: [], manque: [] } })
+    calepinageApi.calepinages.get.mockResolvedValue({ data: {} })
     calepinageApi.calepinages.resultat
-      .mockResolvedValueOnce({ data: enCours })
-      .mockResolvedValueOnce({ data: enCours })
-      .mockResolvedValue({ data: fini })
+      .mockResolvedValueOnce({ data: ancien }) // la lecture de la coque à l'ouverture
+      .mockResolvedValue({ data: recent }) // celle de l'étape Résultats : le calcul vient de finir
     render(
       <MemoryRouter initialEntries={['/calepinage/1?onglet=production']}>
         <Routes><Route path="/calepinage/:id" element={(
-          <>
-            <BarreEnregistrement libelle="Enregistrer le calepinage" enregistreLe="2026-11-26T14:00:00Z" />
-            <EtapeResultats calepinageId={1} intervalleMs={5} />
-          </>
+          <CoqueAtelier calepinageId={1} titre="Pose" retour={{ to: "/calepinage", libelle: "Calepinages" }} enregistreLe="2026-11-26T12:00:00Z"
+            enregistrement={{ libelle: 'Enregistrer le calepinage', enregistreLe: '2026-11-26T12:00:00Z' }} />
         )} /></Routes>
       </MemoryRouter>,
     )
-    expect(screen.getByTestId('cal-etat-enregistrement')).toHaveTextContent(/^Enregistré/)
     await screen.findByTestId('cal-resultats-tuiles')
-    await waitFor(() => expect(screen.getByTestId('cal-etat-enregistrement')).toHaveTextContent(/Simulation à jour · \d{2}:\d{2}/))
+    const attendu = `Simulation à jour · ${formaterHeureBrouillon('2026-11-26T14:32:00Z')}`
+    await waitFor(() => expect(screen.getByRole('button', { name: new RegExp(attendu) })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: new RegExp(formaterHeureBrouillon('2026-11-26T13:10:00Z')) })).toBeNull()
   })
 })
 
