@@ -499,7 +499,9 @@ export default function LeadWorkspace({
       // que son contrat annonce — un déclencheur qui ne patche jamais.
       case 'change-stage': return changeStageConfirme(payload)
       // 'apply-card' : volontairement inerte pour l'instant (hors périmètre).
-      case 'refresh': return apresGesteRelance()
+      // Un `refresh` générique ne change pas la relance : fiche + historique seulement, aucun bump
+      // de `relanceVersion` (il relirait la frise et les étapes pour rien).
+      case 'refresh': { const relu = draft.refreshServer(); refreshHistorique(); return relu }
       // MRY15 — raccourcis du menu « ⋯ » du rail identité (contrat
       // PerduPopover : jamais de crmApi direct dans le rail, il passe
       // toujours par onAction). Cadence par défaut 'contact' — le choix
@@ -542,7 +544,7 @@ export default function LeadWorkspace({
       default: return undefined
     }
   }, [doArchive, leaveGuard, onClose, setField, leadId, kwcCible,
-    changeStageConfirme, ouvrirConceptionToiture, demanderSaisie, apresGesteRelance])
+    changeStageConfirme, ouvrirConceptionToiture, demanderSaisie, apresGesteRelance, refreshHistorique, draft])
 
   // ── File de rafale (◀▶ + J/K), gardée par leaveGuard (draft flushé) ───────
   const queueIndex = (leadsQueue && mode === 'edit')

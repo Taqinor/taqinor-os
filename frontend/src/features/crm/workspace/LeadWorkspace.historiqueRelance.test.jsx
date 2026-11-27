@@ -86,4 +86,25 @@ describe('ERR-QAH-CRM-HISTORIQUE-VIDE-RELANCE — l’historique survit à l’a
     await screen.findAllByText(/Prochaine touche ramenée/)
     expect(appels()).toBe(avant + 1)
   })
+
+  // Un `refresh` générique (devis, rail, appel…) ne change pas la relance : la fiche et l'historique
+  // sont relus UNE fois, rien de ce qui dépend de `relanceVersion` (frise, étapes) n'est relu.
+  it('un refresh générique : historique +1, fiche +1, frise/étapes inchangées ; cadence-refresh relit la frise', async () => {
+    const url = '/crm/leads/1/historique/'
+    const hist = () => api.get.mock.calls.filter(([u]) => u === url).length
+    api.get.mockImplementation((u) => Promise.resolve({ data: u === url ? [] : [] }))
+    renderEdit({ id: 1, nom: 'Ali', prenom: 'Ben', stage: 'NEW', is_archived: false, chatter_recent: [] })
+    await waitFor(() => expect(railOnAction).toBeTypeOf('function'))
+    await waitFor(() => expect(crmApi.getRelanceEtapesLead).toHaveBeenCalled())
+    await new Promise((r) => { setTimeout(r, 50) })
+    const h0 = hist(); const f0 = crmApi.getLead.mock.calls.length; const e0 = crmApi.getRelanceEtapesLead.mock.calls.length
+    act(() => { railOnAction('refresh') })
+    await waitFor(() => expect(hist()).toBe(h0 + 1))
+    await new Promise((r) => { setTimeout(r, 100) })
+    expect(hist()).toBe(h0 + 1)
+    expect(crmApi.getLead.mock.calls.length).toBe(f0 + 1)
+    expect(crmApi.getRelanceEtapesLead.mock.calls.length).toBe(e0)
+    act(() => { railOnAction('cadence-refresh') })
+    await waitFor(() => expect(crmApi.getRelanceEtapesLead.mock.calls.length).toBeGreaterThan(e0))
+  })
 })
