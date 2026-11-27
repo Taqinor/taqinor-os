@@ -39,6 +39,7 @@ import {
   alertesAffichables, besoinDepuisDebitSouhaite, refusAutoRemplirPompage,
 } from '../../../features/ventes/etudePompagePreviewPur'
 import CarteEconomiePompage from './CarteEconomiePompage'
+import { LIBELLES_VALEURS_LEAD } from '../../../features/ventes/quote/entreesPompageLead'
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
 
@@ -351,10 +352,9 @@ function EconomieDeclaree({ eco, majEco, reperes, moisCalendrier, coherenceAvert
                   onChange={ev => majEco?.('energie', ev.target.value)}
                   className="h-9 rounded-md border border-input bg-card px-2 text-sm">
             <option value="">Non renseignée</option>
-            <option value="aucune">Aucune (nouveau forage)</option>
-            <option value="butane">Butane</option>
-            <option value="diesel">Gasoil</option>
-            <option value="electrique">Réseau électrique</option>
+            {Object.entries(LIBELLES_VALEURS_LEAD.pompe_alim_actuelle).map(([v, l]) => (
+              <option key={v} value={v}>{l}</option>
+            ))}
           </select>
         </div>
         {/* AGNR38 — vide tant que rien n'est daté dans la session : « aujourd'hui »
@@ -766,13 +766,9 @@ export default function PanneauAgricole({
               <Select value={farmCrop} onValueChange={setFarmCrop}>
                 <SelectTrigger id="gen-farm-crop"><SelectValue placeholder="Non renseignée" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="agrumes">Agrumes</SelectItem>
-                  <SelectItem value="maraichage">Maraîchage</SelectItem>
-                  <SelectItem value="olivier">Olivier</SelectItem>
-                  <SelectItem value="dattier">Dattier (palmier)</SelectItem>
-                  <SelectItem value="cereales">Céréales</SelectItem>
-                  <SelectItem value="luzerne">Luzerne / fourrage</SelectItem>
-                  <SelectItem value="arganier">Arganier</SelectItem>
+                  {Object.entries(LIBELLES_VALEURS_LEAD.culture).map(([v, l]) => (
+                    <SelectItem key={v} value={v}>{l}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -781,14 +777,9 @@ export default function PanneauAgricole({
               <Select value={farmRegion} onValueChange={setFarmRegion}>
                 <SelectTrigger id="gen-farm-region"><SelectValue placeholder="Non renseignée" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="souss-massa">Souss-Massa (Agadir)</SelectItem>
-                  <SelectItem value="doukkala">Doukkala (El Jadida)</SelectItem>
-                  <SelectItem value="tadla">Tadla (Béni Mellal)</SelectItem>
-                  <SelectItem value="saiss">Saïss (Fès-Meknès)</SelectItem>
-                  <SelectItem value="oriental">Oriental (Berkane)</SelectItem>
-                  <SelectItem value="draa-tafilalet">Drâa-Tafilalet</SelectItem>
-                  <SelectItem value="gharb-loukkos">Gharb-Loukkos</SelectItem>
-                  <SelectItem value="haouz">Haouz (Marrakech)</SelectItem>
+                  {Object.entries(LIBELLES_VALEURS_LEAD.region_agricole).map(([v, l]) => (
+                    <SelectItem key={v} value={v}>{l}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -797,9 +788,9 @@ export default function PanneauAgricole({
               <Select value={farmIrrigation} onValueChange={setFarmIrrigation}>
                 <SelectTrigger id="gen-farm-irrigation"><SelectValue placeholder="Non renseigné" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="goutte">Goutte-à-goutte</SelectItem>
-                  <SelectItem value="aspersion">Aspersion</SelectItem>
-                  <SelectItem value="gravitaire">Gravitaire</SelectItem>
+                  {Object.entries(LIBELLES_VALEURS_LEAD.irrigation_methode).map(([v, l]) => (
+                    <SelectItem key={v} value={v}>{l}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

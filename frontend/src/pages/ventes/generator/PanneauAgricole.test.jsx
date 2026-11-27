@@ -301,6 +301,14 @@ describe('résultat serveur (AGR129)', () => {
     expect(screen.queryByTestId('taille-sans-prix-recommandee')).toBeNull()
   })
 
+  it('ACAL1261 — une seule table de libellés des valeurs du lead (plus de copie dans le panneau)', () => {
+    const source = readFileSync(path.resolve(ICI, 'PanneauAgricole.jsx'), 'utf8')
+    expect(source).toContain('LIBELLES_VALEURS_LEAD')
+    for (const copie of ['Souss-Massa (Agadir)', 'Goutte-à-goutte', 'Dattier (palmier)', 'Réseau électrique']) {
+      expect(source).not.toContain(copie)
+    }
+  })
+
   it('pastilles de couverture : vert 95-120, orange > 120, rouge < 95', () => {
     const donnees = { ...REPONSE, couverture_pct_mois: [99, 169, 80, ...REPONSE.couverture_pct_mois.slice(3)] }
     render(<PanneauAgricole {...PROPS_VIDES} apercuPompage={{ donnees }} />)
