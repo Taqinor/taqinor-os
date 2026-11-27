@@ -1249,7 +1249,10 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     // ACAL729 — accès annuel du module et sa chaîne (table servie), en TÊTE ; rien d'inventé sinon.
     const aire = ctx.areas.find((a) => a.id === ctx.activeAreaId);
     const id = identifiantsModulesParCellule(ctx.activePanelCellIndex ?? [], clePanAffectation(aire, ctx.activeAreaId))[cellIndex]; // ACAL1947 — la clé de la coloration
-    return teteInfoBulleModule(accesAnnuelDuModule(cellIndex), id ? ctx.affectationColoration?.labelByModule?.get(id) ?? null : null) + ombrage;
+    // ACAL1641 — une ligne SERVIE sans chaîne = module « non raccordé » ; module absent de la table (ou table non servie) : rien dit.
+    const servi = ctx.affectationColoration;
+    const chaine = id && servi ? servi.labelByModule?.get(id) ?? (servi.colorByModule?.has(id) ? 'non raccordé' : null) : null;
+    return teteInfoBulleModule(accesAnnuelDuModule(cellIndex), chaine) + ombrage;
   }
 
   /** ACAL729 — accès solaire ANNUEL d'un module du pan actif (mémorisé par plan + sources), ou `null`. */
