@@ -1389,3 +1389,20 @@ class RegistreLestageTest(unittest.TestCase):
         attendu = registre_des_reglages()['lestage']
         for etat in ('exemple', 'exemple_vide'):
             self.assertEqual(contrat[etat]['registre']['lestage'], attendu)
+
+
+class OriginesDeLaCourbeTest(unittest.TestCase):
+    """ACAL1608 — ``consommation.courbe_origine`` : le contrat nomme CHAQUE
+    origine que ``courbe_charge.ORIGINES`` publie, dont le repli
+    ``facture_lead`` (rien saisi dans l'atelier), lu par l'écran."""
+
+    def test_le_contrat_nomme_chaque_origine_dont_la_facture_du_lead(self):
+        from apps.calepinage.services.courbe_charge import ORIGINES
+
+        contrat = _charger('calepinage_resultat.json')
+        note = contrat['acal1608_note']
+        for origine in ORIGINES:
+            self.assertIn(f'`{origine}`', note, origine)
+        exemple = contrat['acal1608_consommation']['consommation']
+        self.assertEqual(exemple['courbe_origine'], 'facture_lead')
+        self.assertIn(exemple['courbe_origine'], ORIGINES)
