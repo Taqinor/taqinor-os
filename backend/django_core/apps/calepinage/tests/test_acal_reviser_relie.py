@@ -490,16 +490,24 @@ class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
             journal = self._espion()
             # Sans rejouer les rappels du commit (abonnés de l'acceptation) :
             # tout ce qui est vérifié ici se joue DANS la transaction du geste.
-            with self.materiel():
+            # Aucun échec SILENCIEUX : la re-liaison (journal ERROR de
+            # ``domain.revision``) et la lecture de l'ombrage (journal WARNING
+            # de ``horaire.ombrage``) avalent leurs exceptions — un rouge ici
+            # nomme la cause au lieu d'un ``None`` muet plus bas.
+            with self.materiel(), \
+                    self.assertNoLogs('apps.ventes.domain.revision',
+                                      level='ERROR'), \
+                    self.assertNoLogs('apps.ventes.horaire.ombrage',
+                                      level='WARNING'):
                 corps = appliquer_prix_negocie(v1, user=vendeur,
                                                remise_pct='2')
         v2 = Devis.objects.get(pk=corps['devis_v2']['id'])
         self.assertEqual(v2.statut, Devis.Statut.ACCEPTE)
+        self.c.refresh_from_db()
+        self.assertEqual(self.c.devis_id, v2.pk)
         appels = [a for a in journal if a[1] == v2.pk]
         self.assertEqual(len(appels), 1, appels)
         self.assertAlmostEqual(appels[0][3], self.perte_servie, places=6)
-        self.c.refresh_from_db()
-        self.assertEqual(self.c.devis_id, v2.pk)
         self.assertEqual(self._versions_envoyees(), 1)
 
     def test_avant_acceptation_rollback_laisse_le_calepinage_sur_la_v1(self):
