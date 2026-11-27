@@ -12,6 +12,7 @@
  */
 import type { LngLat } from '../../lib/roof';
 import { areaLabel, type AreaRecord } from '../../lib/roofAreas';
+import { pointeurTactile } from './etatVide';
 import { generateRoofShapePans, type RoofShapePreset } from './scene3d';
 import { buildAreasFromShape, prochainId } from './zones';
 
@@ -27,6 +28,8 @@ export const FORMES_TOIT: ReadonlyArray<{ forme: RoofShapePreset; libelle: strin
 /** La tuile « Tracé libre » : le tracé au clic est le mode de dessin EXISTANT ; elle le dit, rien n'est découpé. */
 export const MOTIF_TRACE_LIBRE = {
   ouvert: 'Tracé libre : cliquez sur la carte pour poser chaque coin du toit, puis « Terminer le tracé ».',
+  /** ACAL1808 — la même consigne au doigt (aucun mot de souris). */
+  ouvertTactile: 'Tracé libre : touchez la carte pour poser chaque coin du toit, puis « Terminer le tracé ».',
   ferme: 'Tracé libre : le contour reste tel que tracé — glissez un coin pour le déplacer.',
 } as const;
 
@@ -216,7 +219,8 @@ export function monterFormesToit(deps: FormesToitDeps): {
     poser('libre', 'Tracé libre', () => {
       choisie = 'libre';
       marquer();
-      deps.setStatus(deps.contour().length >= 3 ? MOTIF_TRACE_LIBRE.ferme : MOTIF_TRACE_LIBRE.ouvert);
+      const tactile = pointeurTactile(typeof window === 'undefined' ? undefined : window);
+      deps.setStatus(deps.contour().length >= 3 ? MOTIF_TRACE_LIBRE.ferme : tactile ? MOTIF_TRACE_LIBRE.ouvertTactile : MOTIF_TRACE_LIBRE.ouvert);
     });
     marquer = () => tuiles.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.forme === (choisie ?? deduite))));
   }
