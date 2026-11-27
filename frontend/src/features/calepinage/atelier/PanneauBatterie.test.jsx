@@ -886,3 +886,66 @@ describe('PanneauBatterie — garde-fou, faits de la série et verdict (ACAL795)
     expect(screen.queryByTestId('acal795-faits')).toBeNull()
   })
 })
+
+/* ACAL1644 — champs touchables (≥ 44 px, un par ligne) et refus nommés en mots, par le vrai formulaire. */
+describe('PanneauBatterie — champs lisibles et refus en mots (ACAL1644)', () => {
+  const VIDE = exempleContrat('calepinage', 'calepinage_entree_electrique', 'exemple_vide')
+  const regler = (id, valeur) => fireEvent.change(document.getElementById(id), { target: { value: String(valeur) } })
+  const rendreExpert = () => render(
+    <MemoryRouter initialEntries={['/?mode=expert']}><PanneauBatterie calepinageId={1} /></MemoryRouter>,
+  )
+
+  beforeEach(() => {
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: { entree: VIDE.entree } })
+    servir('exemple')
+  })
+
+  it('un refus sur −1 se lit sous le champ, en mots, sans chemin technique', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockRejectedValue({
+      response: {
+        status: 400,
+        data: { 'batterie.appareils[0].puissance_continue_kw': 'Batterie.appareils[0].puissance continue kw : « Appareil 1 » : est à saisir' },
+      },
+    })
+    rendreExpert()
+    await screen.findByTestId('acal167-declaration')
+    fireEvent.change(document.getElementById('acal167-strategie'), { target: { value: 'backup' } })
+    fireEvent.click(screen.getByTestId('acal788-ajouter'))
+    regler('acal788-0-puissance_continue_kw', -1)
+    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
+
+    expect(await screen.findByTestId('acal788-0-puissance_continue_kw-erreur'))
+      .toHaveTextContent('Puissance en marche de l’appareil 1 : saisissez un nombre positif')
+    expect(document.body.textContent).not.toMatch(/Batterie\.appareils|puissance continue kw/)
+  })
+
+  it('une fenêtre refusée est nommée « La 2e fenêtre de charge », sans chemin technique', async () => {
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockRejectedValue({
+      response: { status: 400, data: { 'batterie.fenetres.charge[1]': 'Batterie.fenetres.charge[1] : recouvre une fenêtre de décharge.' } },
+    })
+    rendreExpert()
+    await screen.findByTestId('acal167-declaration')
+    fireEvent.change(document.getElementById('acal167-strategie'), { target: { value: 'decalage' } })
+    fireEvent.click(screen.getByTestId('acal792-ajouter-charge'))
+    fireEvent.click(screen.getByTestId('acal792-ajouter-charge'))
+    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
+
+    expect(await screen.findByTestId('acal792-charge-1-erreur'))
+      .toHaveTextContent('La 2e fenêtre de charge : recouvre une fenêtre de décharge.')
+    expect(document.body.textContent).not.toMatch(/Batterie\.fenetres/)
+  })
+
+  it('chaque champ fait au moins 44 px (min-h-11) et s’empile sur une colonne', async () => {
+    rendreExpert()
+    await screen.findByTestId('acal167-declaration')
+    fireEvent.change(document.getElementById('acal167-strategie'), { target: { value: 'backup' } })
+    fireEvent.click(screen.getByTestId('acal788-ajouter'))
+    fireEvent.click(document.getElementById('acal167-actif'))
+    fireEvent.click(await screen.findByLabelText('Il y a un groupe sur le site'))
+    const ids = ['acal788-0-puissance_continue_kw', 'acal788-duree', 'acal791-veille_pct', 'acal803-puissance_kw']
+    ids.forEach((id) => expect(document.getElementById(id).className).toContain('min-h-11'))
+    expect(screen.getByTestId('acal788-appareil').className).toContain('grid-cols-1')
+    expect(screen.getByTestId('acal788-appareil').className).not.toMatch(/sm:grid-cols/)
+    expect(document.getElementById('acal803-actif').className).toContain('size-5')
+  })
+})

@@ -30,6 +30,7 @@ export function Champ({ id, libelle, type, valeur, refus, onChange }) {
         type={type}
         step={type === 'number' ? 'any' : undefined}
         invalid={Boolean(refus)}
+        className="min-h-11"
         value={valeur}
         onChange={(e) => onChange(e.target.value)}
       />
@@ -94,7 +95,7 @@ function Coupures({ coupures, erreurs, secours, onCoupures }) {
   return (
     <fieldset className="flex flex-col gap-3 border-t border-border/60 pt-3" data-testid="acal799-coupures">
       <legend className="text-sm font-semibold">Coupures</legend>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3">
         {QUESTIONS_COUPURES.map(({ cle, libelle }) => (
           <Champ key={cle} id={`acal799-${cle}`} libelle={libelle} type="number"
             valeur={coupures?.[cle] ?? ''} refus={erreurs[`batterie.coupures.${cle}`]}
@@ -123,7 +124,7 @@ export default function SecoursBatterie({
         ? <p role="alert" className="text-xs text-destructive" data-testid="acal788-erreur-appareils">{erreurs['batterie.appareils']}</p>
         : null}
       {appareils.map((ligne, rang) => (
-        <div key={rang} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" data-testid="acal788-appareil">
+        <div key={rang} className="grid grid-cols-1 gap-3" data-testid="acal788-appareil">
           {CHAMPS.map(({ cle, libelle, type }) => (
             <Champ
               key={cle}

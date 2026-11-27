@@ -7,7 +7,7 @@ import { formatNumber, formatPercent } from '../../../lib/format'
 import { Button, Card, Checkbox, Input, Label, Spinner, Stat } from '../../../ui'
 import { refusParChamp } from '../electrique/entreeElectrique'
 import { BoutonCalculer } from '../production/PanneauProduction'
-import { CHAMPS_BATTERIE, STRATEGIES, corpsDeclaration, depuisEntree } from './PanneauBatterie.helpers'
+import { CHAMPS_BATTERIE, STRATEGIES, corpsDeclaration, depuisEntree, refusEnMots } from './PanneauBatterie.helpers'
 import { MotifAbsence } from '../MotifAbsence'
 import SemaineBatterie from './SemaineBatterie'
 import Pourquoi from '../commun/Pourquoi'
@@ -156,7 +156,7 @@ function DeclarationBatterie({ id, onRelancer, reserve = null, secours = null })
       })
       .catch((err) => {
         const parChamp = refusParChamp(err?.response?.data)
-        setErreurs(Object.keys(parChamp).length ? parChamp : { declaration: 'Déclaration non enregistrée : le serveur n’a pas accepté la saisie.' })
+        setErreurs(Object.keys(parChamp).length ? refusEnMots(parChamp, etat) : { declaration: 'Déclaration non enregistrée : le serveur n’a pas accepté la saisie.' })
       })
       .finally(() => setEnCours(false))
   }

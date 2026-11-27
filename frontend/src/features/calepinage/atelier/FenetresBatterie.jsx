@@ -30,9 +30,9 @@ function FenetreLigne({ sorte, rang, fenetre, refus, onChange, onRetirer }) {
   const modifier = (cle, valeur) => onChange({ ...fenetre, [cle]: valeur })
   return (
     <div className="flex flex-col gap-1" data-testid={`acal792-fenetre-${sorte}`}>
-      <div className="grid items-end gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-1 items-end gap-3">
         {fenetre.brut
-          ? <p className="text-sm sm:col-span-2">Heures enregistrées : {fenetre.brut.join(', ')}</p>
+          ? <p className="text-sm">Heures enregistrées : {fenetre.brut.join(', ')}</p>
           : (
             <>
               <Champ id={`${id}-debut`} libelle="De (heure, 0 à 23)" type="number" valeur={fenetre.debut}
@@ -93,13 +93,13 @@ export function FenetresBatterie({ fenetres, erreurs = {}, onChange }) {
 
 export function ReglagesPointe({ part, plafond, erreurs = {}, onPart, onPlafond }) {
   return (
-    <fieldset className="grid gap-3 sm:grid-cols-2" data-testid="acal792-pointe">
+    <fieldset className="grid grid-cols-1 gap-3" data-testid="acal792-pointe">
       <legend className="text-sm font-semibold">Part effaçable</legend>
       <Champ id="acal792-part" libelle="Part de la consommation qu’on accepte d’effacer (%)" type="number"
         valeur={part} refus={erreurs['batterie.part_effacable_pct']} onChange={onPart} />
       <Champ id="acal792-plafond" libelle="Puissance effaçable maximale (kW)" type="number"
         valeur={plafond} refus={erreurs['batterie.plafond_effacable_kw']} onChange={onPlafond} />
-      <p className="text-xs text-muted-foreground sm:col-span-2">Vide = aucune borne.</p>
+      <p className="text-xs text-muted-foreground">Vide = aucune borne.</p>
     </fieldset>
   )
 }
