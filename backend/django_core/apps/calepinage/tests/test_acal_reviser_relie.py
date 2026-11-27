@@ -487,7 +487,34 @@ class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
                               user=vendeur, nom='Client R6-N1',
                               date_acceptation=date.today(),
                               option='sans_batterie')
-            journal = self._espion()
+            # Ce que la lecture de l'ombrage VOIT au moment du calcul (statut
+            # du devis, verdict du calepinage) : dit par l'assertion plus bas,
+            # au lieu d'un ``None`` sans cause.
+            vu = {}
+
+            def _mesure(d):
+                from apps.calepinage import selectors as cal
+                from apps.ventes.horaire.ombrage import perte_ombrage_du_devis
+                from apps.ventes.selectors_calepinage import _conception_a_jour
+                vu['statut'] = d.statut
+                try:
+                    c = cal._calepinage_lisible_pour_devis(d.pk, d.company)
+                    vu['lisible'] = getattr(c, 'pk', None)
+                    vu['devis_du_calepinage'] = getattr(c, 'devis_id', None)
+                    if c is not None:
+                        vu['conception_a_jour'] = _conception_a_jour(d, c)
+                        servi = cal.resultat_servi(c)
+                        vu['resultat'] = {k: servi.get(k) for k in (
+                            'statut', 'simulation_perimee', 'motif')}
+                    vu['ombrage_servi'] = cal.ombrage_servi(d.pk, d.company)
+                except Exception as exc:  # noqa: BLE001 — diagnostic de test
+                    vu['erreur'] = repr(exc)
+                return perte_ombrage_du_devis(d)
+
+            from apps.ventes.tests.test_acal_devis_revise_evenement import (
+                espionner_etudes)
+            journal = []
+            espionner_etudes(self, journal, mesure=_mesure)
             # Sans rejouer les rappels du commit (abonnés de l'acceptation) :
             # tout ce qui est vérifié ici se joue DANS la transaction du geste.
             # Aucun échec SILENCIEUX : la re-liaison (journal ERROR de
@@ -507,6 +534,7 @@ class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
         self.assertEqual(self.c.devis_id, v2.pk)
         appels = [a for a in journal if a[1] == v2.pk]
         self.assertEqual(len(appels), 1, appels)
+        self.assertIsNotNone(appels[0][3], vu)
         self.assertAlmostEqual(appels[0][3], self.perte_servie, places=6)
         self.assertEqual(self._versions_envoyees(), 1)
 
