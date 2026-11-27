@@ -37,9 +37,9 @@ def historique_avec_archive(request, lead):
         company_id=lead.company_id, lead_id=lead.pk,
         user_id__isnull=False).values_list('user_id', flat=True)
         .distinct()[:500])
-    noms = dict(get_user_model().objects.filter(
-        pk__in=ids, company_id=lead.company_id)
-        .values_list('pk', 'username'))
+    from core.user_display import nom_affiche
+    noms = {u.pk: nom_affiche(u) for u in get_user_model().objects.filter(
+        pk__in=ids, company_id=lead.company_id)}
     return reponse_union_archive(
         request,
         live_qs=lead.activites.select_related('user', 'attachment'),
