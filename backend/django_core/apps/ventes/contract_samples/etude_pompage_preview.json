@@ -334,6 +334,7 @@
         "couverture_mois_critique_pct": 99,
         "total_ttc": null,
         "prix_connu": true,
+        "articles_sans_prix": [],
         "retenue": true,
         "motif": null
       },
@@ -347,6 +348,7 @@
         "couverture_mois_critique_pct": 121,
         "total_ttc": null,
         "prix_connu": true,
+        "articles_sans_prix": [],
         "retenue": false,
         "motif": null
       }
@@ -694,6 +696,7 @@
         "couverture_mois_critique_pct": 78,
         "total_ttc": null,
         "prix_connu": true,
+        "articles_sans_prix": [],
         "retenue": true,
         "motif": "pompe existante imposée : une seule taille"
       }
@@ -1208,6 +1211,7 @@
         "couverture_mois_critique_pct": 158,
         "total_ttc": null,
         "prix_connu": true,
+        "articles_sans_prix": [],
         "retenue": true,
         "motif": null
       }
@@ -1315,7 +1319,7 @@
     "controle_conception.statut": "conforme | couverture_insuffisante (< 95 % au mois critique, ou un mois d'irrigation listé dans `mois_sous_tolerance` — AGQ2/D-AGQ-2 : le mois critique est le mois d'irrigation au ratio production ÷ besoin le plus bas) | surdimensionnement (> 120 %) | non_verifiable — bornes = la tolérance de la table d'hypothèses, aucun autre seuil ; jamais bloquant (QX48(f))",
     "ha_irrigables": "{valeur, base, motif} — seulement avec un besoin agronomique (« estimation » si l'ET0 est EST.)",
     "autonomie_reservoir_jours": "{valeur, motif} — volume de réservoir DÉCLARÉ ÷ besoin ; aucun bassin dimensionné, aucun « ×2 »",
-    "tailles": "≤ 3, clés recommandee | inferieure | superieure ; défaut = recommandee ; palier absent ⇒ dans `tailles_omises` avec motif ; mode existante ⇒ une seule taille",
+    "tailles": "≤ 3, clés recommandee | inferieure | superieure ; défaut = recommandee ; palier absent ⇒ dans `tailles_omises` avec motif ; mode existante ⇒ une seule taille ; `articles_sans_prix` (ACAL1257) = liste des `designation` des lignes `kit.inclus` de CETTE taille à `prix_connu` false, sans le suffixe « — prix à renseigner », dans l'ordre du kit ; [] quand chaque ligne est chiffrée (`prix_connu` true) — des NOMS, jamais un prix ; `prix_connu` reste servi à l'identique",
     "kit": "inclus = pompe (si neuve), variateur, panneaux, structure (+ prestations) ; options nommées à cocher ; option sans produit pricé ⇒ prix_connu false + motif « prix à renseigner », jamais 0 MAD ; non_inclus = forage, genie_civil ; aucune batterie, aucun onduleur",
     "roles_minimum_manquants": "[{cle, libelle, motif, articles}] — T4-U3-021 : `articles` = [{id, nom}] de l'article du catalogue de la société en cause (ligne du kit sans prix), [] sans article ; jamais un prix. Les rôles du kit minimum (pompe sauf pompe existante, variateur, panneaux, structure, installation) absents de kit.inclus ou sans prix connu ; [] = kit complet. Rejeu live AGQ41 (24/10/2026) : l'écran REFUSE Auto-remplir quand un rôle n'a AUCUNE ligne dans kit.inclus (ex. pompe existante sans kW de plaque : variateur non choisi) en nommant la cause ; la cause d'un variateur absent est `variateur.motif` quand il est servi. Même fonction que le refus du devis automatique (`roles_minimum_manquants`)",
     "alertes": "[{code, champ, message}] — message en français, `champ` nomme la saisie fautive ; jamais bloquant ; codes nommés : `alimentation_inconnue` (champ `alim` : mono/tri non déclaré, pompe « Pompe — alimentation à renseigner », AGQ7) ; `rendement_non_publie` (champ `pompe.fiche` ou `variateur.fiche` : rendement pompe / MPPT non publié, kW minimal sur η EST. et production en borne haute, AGQ8/D-AGQ-8) ; `debit_limite_forage` (champ `source.debit_exploitation_m3h` : production horaire plafonnée par le forage, AGQ40/D-AGQ-9) ; `site_inconnu` (champ `localisation` : ni ville ni GPS transmis, « Site non renseigné (ville ou GPS) : production en repli plat », DISTINCT de `pvgis_indisponible` qui reste réservé à un site connu dont PVGIS ne répond pas, AGQ26) ; `mode_pompe_invalide` (champ `mode_pompe` : mode ni neuve ni existante, pompe neuve étudiée, AGM6) ; `type_pompe_supposee` (champ `type_pompe` : pompe neuve sans type déclaré, immergée supposée, AGM6) ; `heures_superieures_24` (champ `besoin.heures_actuelles_jour`, AGM5) ; `hmt_inconnue` / `besoin_nul` (champ non dimensionné, vraie cause, AGM3) ; `coefficients_temperature_non_sources` (champ `panneau.fiche`, AGM4) ; `pompes_multiples` / `variateurs_multiples` / `panneaux_modeles_multiples` (devis à plusieurs articles du même rôle : étude omise, AGM7) ; ces codes AGM sont vendeur seulement, jamais au PDF ; D-ACAL-156 : `cable_dc_non_chiffre` (champ `kit.cable_dc` : champ de panneaux dimensionné mais distance forage → champ non renseignée — aucune ligne de câble DC, aucune longueur supposée ; vendeur seulement, hors `CODES_NOTES_CLIENT`) porte en plus `champ_lead` = `distance_forage_champ_m`, la colonne du lead que l'écran nomme par son libellé (« À compléter sur la fiche : … ») ; une alerte sans champ du lead n'a pas cette clé",
