@@ -337,7 +337,7 @@
         {
           "cle": "horizon_ans",
           "valeur": 25,
-          "source": "D-CIQ-10 : 25 ans",
+          "source": "horizon d'analyse : 25 ans",
           "saisie_le": null
         },
         {
@@ -362,7 +362,7 @@
       "omissions": [
         {
           "cle": "van_mad",
-          "motif": "aucun taux d'actualisation déclaré par le client — VAN omise (D-CIQ-10)"
+          "motif": "VAN omise : taux d'actualisation non déclaré par le client"
         },
         {
           "cle": "charges_annuelles_mad",
@@ -609,7 +609,7 @@
         {
           "cle": "horizon_ans",
           "valeur": 25,
-          "source": "D-CIQ-10 : 25 ans",
+          "source": "horizon d'analyse : 25 ans",
           "saisie_le": null
         },
         {
@@ -634,7 +634,7 @@
       "omissions": [
         {
           "cle": "van_mad",
-          "motif": "aucun taux d'actualisation déclaré par le client — VAN omise (D-CIQ-10)"
+          "motif": "VAN omise : taux d'actualisation non déclaré par le client"
         },
         {
           "cle": "charges_annuelles_mad",
@@ -691,7 +691,7 @@
       "tri_horizon_ans": 25,
       "retour_ans": 3,
       "van_mad": null,
-      "van_motif": "aucun taux d'actualisation déclaré par le client (D-CIQ-10)",
+      "van_motif": "VAN omise : taux d'actualisation non déclaré par le client",
       "lcoe_mad_kwh": 0.123,
       "lcoe_actualise": false,
       "tarif_kwh_evite_moyen": 1.4242
@@ -709,7 +709,7 @@
     "om": {
       "statut": "tarif_a_renseigner",
       "montant_mad_an": null,
-      "source": "option O&M nommée (D-CIQ-12) — prix saisi par Reda, aucun défaut"
+      "source": "tarif O&M à renseigner — non déduit"
     },
     "entretien": {
       "statut": "non_chiffre",
@@ -1146,7 +1146,7 @@
         {
           "cle": "horizon_ans",
           "valeur": 25,
-          "source": "D-CIQ-10 : 25 ans",
+          "source": "horizon d'analyse : 25 ans",
           "saisie_le": null
         },
         {
