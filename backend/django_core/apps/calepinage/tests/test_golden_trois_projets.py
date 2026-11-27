@@ -134,12 +134,14 @@ PROJETS = {
 }
 
 
-def simuler_projet(nom, pertes=None):
+def simuler_projet(nom, pertes=None, layout=None, watt=None):  # ACAL982
     calepinage = _Calepinage(
-        layout=copy.deepcopy(PROJETS[nom]),
+        layout=copy.deepcopy(PROJETS[nom] if layout is None else layout),
         pertes=pertes if pertes is not None else POSTES)
     materiel = copy.deepcopy(MATERIEL)
     materiel['onduleur']['ac_kw'] = 30.0
+    if watt is not None:
+        materiel['module']['pmax_wc'] = float(watt)
     rendu = simuler_calepinage(
         calepinage, client=_ClientEnregistre(), materiel=materiel,
         reglages=_reglages(), enregistrer=False)
