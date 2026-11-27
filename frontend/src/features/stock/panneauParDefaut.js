@@ -12,6 +12,14 @@ export const DROIT_PANNEAU_PAR_DEFAUT = 'catalogue_prix_modifier'
 export const estResumePanneau = (resume) => Boolean(resume) && typeof resume === 'object'
   && !Array.isArray(resume) && typeof resume.source === 'string'
 
+/** D-ACAL-169 (rejeu) — un produit EST désigné mais n'est pas utilisable (archivé, sans prix, plus un panneau,
+ *  watt du nom ≠ watt de la fiche) : toute source servie autre que `designe` et `aucun`. Le motif servi le nomme. */
+export const panneauDefautInutilisable = (resume) => estResumePanneau(resume)
+  && resume.source !== 'designe' && resume.source !== 'aucun'
+
+/** Le libellé unique de cet état : ligne du catalogue, pastille de la ligne, pastille de la fiche. */
+export const LIBELLE_DEFAUT_INUTILISABLE = 'Panneau par défaut non utilisable'
+
 /** Le résumé servi par `GET stock/panneau-par-defaut/`, relu à la demande.
  *  Un échec de lecture garde la dernière réponse (une aide, jamais un verrou). */
 export function usePanneauParDefaut() {

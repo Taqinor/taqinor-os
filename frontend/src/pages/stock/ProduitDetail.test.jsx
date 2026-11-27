@@ -21,7 +21,8 @@ vi.mock('../../api/stockApi', () => ({
     rebuterProduit: vi.fn(),
     // STKCAT25 — onglet « Utilisé dans » (devis / leads / chantiers).
     getProduitUtiliseDans: vi.fn(),
-    // D-ACAL-169 — désigner / retirer LE panneau par défaut.
+    // D-ACAL-169 — désigner / retirer LE panneau par défaut ; (rejeu) l'état servi qui colore la pastille.
+    getPanneauParDefaut: vi.fn(),
     definirPanneauParDefaut: vi.fn(),
     retirerPanneauParDefaut: vi.fn(),
   },
@@ -693,6 +694,17 @@ describe('D-ACAL-169 — panneau par défaut sur la fiche produit', () => {
     render(<ProduitDetail produit={panneau()} onClose={() => {}} />, { wrapper: RESPONSABLE })
     await userEvent.click(screen.getByRole('button', { name: 'Définir comme panneau par défaut' }))
     expect((await screen.findByRole('alert')).textContent).toBe(refus.panneau_par_defaut[0])
+  })
+
+  it('D-ACAL-169 (rejeu) — désigné mais inutilisable : la pastille de la fiche dit le même état que la ligne', async () => {
+    const resume = exempleContrat('stock', 'panneau_par_defaut', 'exemple_watt_contradictoire')
+    stockApi.getPanneauParDefaut.mockResolvedValue(reponseContrat('stock', 'panneau_par_defaut', 'exemple_watt_contradictoire'))
+    render(<ProduitDetail produit={panneau({ panneau_par_defaut: true })} onClose={() => {}} />,
+      { wrapper: TECHNICIEN })
+    const zone = screen.getByTestId('panneau-par-defaut-action')
+    expect(await within(zone).findByText('Panneau par défaut non utilisable')).toBeInTheDocument()
+    expect(within(zone).getByText(resume.motif)).toBeInTheDocument()
+    expect(within(zone).queryByText('Panneau par défaut')).toBeNull()
   })
 
   it('Technicien : voit QUEL panneau est le défaut, jamais le geste', () => {
