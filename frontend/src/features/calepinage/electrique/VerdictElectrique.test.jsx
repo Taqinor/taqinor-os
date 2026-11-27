@@ -31,7 +31,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, within, act } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
 
 vi.mock('../../../api/calepinageApi', () => ({
   default: { calepinages: {
@@ -813,6 +813,65 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     expect(section).toHaveAttribute('data-state', 'open')
     await waitFor(() => expect(document.activeElement).toBe(within(section).getByRole('button', { name: 'Verdict' })))
     expect(await within(section).findByTestId('calx249-panneau')).toBeTruthy()
+  })
+
+  /* ACAL1936 — les TROIS « Régler » de « Prêt à envoyer ? » amènent la section d'arrivée dans la partie visible : après
+     son montage (les volets animent leur hauteur), jamais avant. La coque remonte l'écran à chaque changement d'onglet
+     (clé `étape:onglet` de CoqueAtelier) : le harnais fait de même, avec la VRAIE étape et le VRAI « Prêt à envoyer ? ». */
+  describe('ACAL1936 — « Régler » défile jusqu’à la section ouverte', () => {
+    function Coque() {
+      const [parametres] = useSearchParams()
+      const onglet = parametres.get('onglet') ?? 'verdict-electrique'
+      return (
+        <EtapeElectrique key={onglet} calepinageId={7} ouvert={onglet}
+          action={{ libelle: 'Voir les résultats', onClick: () => {} }} />
+      )
+    }
+    const rendreCoque = () => {
+      const surCarte = document.createElement('div')
+      document.body.appendChild(surCarte)
+      const coque = { noeuds: { surCarte, panneau: null, pied: null }, prendrePied: () => () => {} }
+      render(
+        <MemoryRouter initialEntries={['/calepinage/7?onglet=verdict-electrique']}>
+          <Routes>
+            <Route path="/calepinage/:id" element={<ContexteCoque.Provider value={coque}><Coque /><TemoinUrl /></ContexteCoque.Provider>} />
+          </Routes>
+        </MemoryRouter>,
+      )
+    }
+    const controles = () => {
+      const ok = pret().controles.find((c) => c.code === 'tension_froid')
+      const ligne = (code, libelle, onglet) => ({ ...ok, code, libelle, etat: 'a_regler', valeur_texte: 'À régler',
+        cible: { etape: 'electrique', onglet, champ: '' } })
+      return [ok,
+        ligne('verdict_electrique', 'Dossier électrique', 'verdict-electrique'),
+        ligne('chutes_tension', 'Chutes de tension', 'cheminement-cables'),
+        ligne('terre_protections', 'Terre et protections', 'decisions-electriques')]
+    }
+    let defiles
+    beforeEach(() => {
+      defiles = []
+      HTMLElement.prototype.scrollIntoView = function suivre() {
+        const section = this.closest('[data-testid^="cal-electrique-section-"]')
+        defiles.push({ testid: section?.getAttribute('data-testid'), etat: section?.getAttribute('data-state') })
+      }
+    })
+    afterEach(() => { delete HTMLElement.prototype.scrollIntoView })
+
+    it.each([
+      ['verdict_electrique', 'verdict-electrique'],
+      ['chutes_tension', 'cheminement-cables'],
+      ['terre_protections', 'decisions-electriques'],
+    ])('« Régler » sur %s : la section %s est dépliée PUIS amenée à l’écran', async (code, section) => {
+      servirEtape({ p: pret(controles()) })
+      servir(REPONSE)
+      rendreCoque()
+      const ligne = await screen.findByTestId(`cal-pret-ligne-${code}`)
+      expect(defiles).toEqual([]) // rien ne défile avant le geste
+      fireEvent.click(within(ligne).getByRole('button', { name: 'Régler' }))
+      await waitFor(() => expect(defiles.length).toBeGreaterThan(0))
+      expect(defiles.at(-1)).toEqual({ testid: `cal-electrique-section-${section}`, etat: 'open' })
+    })
   })
 
   it('T4-U4-007 — le « ? » de « Dossier électrique » nomme le point qui bloque (motif servi par evaluer-electrique)', async () => {
