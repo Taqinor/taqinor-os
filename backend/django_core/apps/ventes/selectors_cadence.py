@@ -482,3 +482,29 @@ def controle_kwh_declare_du_lead(lead, company=None):
     rien à confronter, sinon ``{…, coherent}`` (``etude_horaire``, jamais recodée)."""
     from .etude_horaire import controle_kwh_declare_du_lead as controle
     return controle(lead, company)
+
+
+def lectures_jalons_par_devis(lead_id, company):
+    """``selectors.devis_events_for_lead`` — par devis du lead (borné à la société) :
+    ``(eng_by_devis, first_view_by_devis, acceptations)``."""
+    from .models import DevisActivity, ShareLink
+
+    # Résumé d'engagement par devis (dernier ShareLink vu).
+    links = (ShareLink.objects
+             .filter(devis__lead_id=lead_id, devis__company=company)
+             .order_by('devis_id', '-created_at'))
+    eng_by_devis = {}
+    first_view_by_devis = {}
+    for lk in links:
+        if lk.devis_id not in eng_by_devis:
+            eng_by_devis[lk.devis_id] = lk.engagement_summary
+            first_view_by_devis[lk.devis_id] = lk.first_viewed_at
+
+    # ACAL1233 — dernière activité d'acceptation par devis (plus récente d'abord).
+    acceptations = {}
+    for act in (DevisActivity.objects.select_related('user')
+                .filter(devis__lead_id=lead_id, company=company,
+                        field_label='Acceptation')
+                .order_by('devis_id', '-created_at')):
+        acceptations.setdefault(act.devis_id, act)
+    return eng_by_devis, first_view_by_devis, acceptations

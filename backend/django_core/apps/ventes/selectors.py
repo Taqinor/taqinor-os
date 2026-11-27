@@ -698,7 +698,8 @@ def devis_events_for_lead(lead_id, company):
     """
     from core.user_display import nom_affiche
 
-    from .models import Devis, DevisActivity, ShareLink
+    from .models import Devis
+    from .selectors_cadence import lectures_jalons_par_devis
 
     if not lead_id:
         return []
@@ -706,27 +707,11 @@ def devis_events_for_lead(lead_id, company):
                 .filter(lead_id=lead_id, company=company)
                 .order_by('-date_creation'))
 
-    # Résumé d'engagement par devis (dernier ShareLink vu).
-    links = (ShareLink.objects
-             .filter(devis__lead_id=lead_id, devis__company=company)
-             .order_by('devis_id', '-created_at'))
-    eng_by_devis = {}
-    first_view_by_devis = {}
-    for lk in links:
-        if lk.devis_id not in eng_by_devis:
-            eng_by_devis[lk.devis_id] = lk.engagement_summary
-            first_view_by_devis[lk.devis_id] = lk.first_viewed_at
+    # Résumé d'engagement (dernier ShareLink vu) et dernière acceptation (ACAL1233) par devis.
+    eng_by_devis, first_view_by_devis, acceptations = lectures_jalons_par_devis(lead_id, company)
 
     def _iso(d):
         return d.isoformat() if d is not None else None
-
-    # ACAL1233 — dernière activité d'acceptation par devis (plus récente d'abord).
-    acceptations = {}
-    for act in (DevisActivity.objects.select_related('user')
-                .filter(devis__lead_id=lead_id, company=company,
-                        field_label='Acceptation')
-                .order_by('devis_id', '-created_at')):
-        acceptations.setdefault(act.devis_id, act)
 
     events = []
     for devis in devis_qs:
