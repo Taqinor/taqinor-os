@@ -664,3 +664,47 @@ describe('T4-U4-013 — la provenance du site suit les gestes', () => {
     expect(latitudeDuCalcul(publicSite.ctx, 31.79)).toBe(31.79);
   });
 });
+
+// ACAL1828 (revue) — l'observateur de thème ne survit pas à la carte, et le fond neutre suit la bascule.
+describe('ACAL1828 — observateur de thème', () => {
+  it('débranché au retrait de la carte ; le fond neutre sans photo est repeint selon html.dark', () => {
+    const observateurs: { cb: () => void; disconnect: ReturnType<typeof vi.fn> }[] = [];
+    vi.stubGlobal('MutationObserver', class {
+      cb: () => void; disconnect = vi.fn();
+      constructor(cb: () => void) { this.cb = cb; observateurs.push(this); }
+      observe() { /* doublure */ }
+    });
+    try {
+      const surCarte: Record<string, () => void> = {};
+      const setPaintProperty = vi.fn();
+      const map = {
+        ...methodesCarteInertes(),
+        getLayer: (id: string) => (id === 'fond-sans-imagerie' ? {} : undefined),
+        setPaintProperty,
+        on: (ev: string, f: () => void) => { surCarte[ev] = f; },
+        once: vi.fn(),
+        getZoom: () => 19,
+        getCenter: () => ({ lng: -7.62, lat: 33.58 }),
+        getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }),
+      };
+      const ctx = {
+        opts: { maptilerKey: 'K', imagery: { pays: 'ma' }, reducedMotion: true },
+        vertices: [], obstacles: [], areas: [], activeAreaId: 'a1', closed: false, centroid: [-7.62, 33.58],
+      } as unknown as Ctx;
+      createMapDraw(ctx, { map: map as never, setStatus: vi.fn(), updateAreaReadout: vi.fn() });
+      expect(observateurs).toHaveLength(1);
+      document.documentElement.classList.add('dark');
+      observateurs[0].cb();
+      expect(setPaintProperty).toHaveBeenCalledWith('fond-sans-imagerie', 'background-color', '#0a0f2a');
+      document.documentElement.classList.remove('dark');
+      observateurs[0].cb();
+      expect(setPaintProperty).toHaveBeenLastCalledWith('fond-sans-imagerie', 'background-color', '#e7e5df');
+      expect(observateurs[0].disconnect).not.toHaveBeenCalled();
+      surCarte.remove();
+      expect(observateurs[0].disconnect).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+      document.documentElement.classList.remove('dark');
+    }
+  });
+});

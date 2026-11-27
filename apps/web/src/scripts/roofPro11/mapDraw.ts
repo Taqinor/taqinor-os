@@ -12,7 +12,7 @@
 import * as maplibregl from 'maplibre-gl';
 import { isSimplePolygon, type LngLat } from '../../lib/roof';
 import {
-  availableOptionalLayers, getOptionalLayer, imageryDisclosure, optionalLayerSourceSpec, resolveImageryProvider,
+  availableOptionalLayers, FOND_SANS_IMAGERIE_CLAIR, FOND_SANS_IMAGERIE_SOMBRE, getOptionalLayer, imageryDisclosure, optionalLayerSourceSpec, resolveImageryProvider,
 } from '../../lib/roofConfig';
 import { $ } from './dom';
 import {
@@ -648,8 +648,28 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
       }
     }
   }
+  /** ACAL1828 (revue) — le « fond neutre sans photo » (calque `background`, pas raster) suit le même interrupteur de thème. */
+  function peindreFondNeutreSelonTheme() {
+    try {
+      if (map.getLayer?.('fond-sans-imagerie')) {
+        map.setPaintProperty('fond-sans-imagerie', 'background-color', themeSombre() ? FOND_SANS_IMAGERIE_SOMBRE : FOND_SANS_IMAGERIE_CLAIR);
+      }
+    } catch {
+      /* style pas prêt */
+    }
+  }
+  // ACAL1828 (revue) — l'observateur est GARDÉ et débranché au retrait de la carte (sinon un de plus par montage de l'atelier, chacun tenant une carte morte).
+  let observateurTheme: MutationObserver | null = null;
   if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined' && document.documentElement) {
-    new MutationObserver(peindreFondSelonTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    observateurTheme = new MutationObserver(() => {
+      peindreFondSelonTheme();
+      peindreFondNeutreSelonTheme();
+    });
+    observateurTheme.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    map.on?.('remove', () => {
+      observateurTheme?.disconnect();
+      observateurTheme = null;
+    });
   }
 
   /** CALX108 — la ressource d'affichage du fond courant (URL pré-signée, calage photo,
