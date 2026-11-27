@@ -900,6 +900,12 @@ describe('ACAL1925 / ACAL1964 — panneau du pan : étiquettes en colonne, table
     expect(selecteur).toContain('min-w-0');
   });
 
+  it('ACAL1964 — le tableau par pan n’a aucune largeur minimale (520 px dans un panneau de 384 px)', () => {
+    const { tableau } = monterPanneau();
+    expect(tableau).toContain('w-full');
+    expect(tableau).not.toMatch(/min-w-\[/);
+  });
+
 });
 
 // ACAL1430 — après « 2 pans » (identifiants area-2 / area-3), la liste, le cadenas, le refus et le tableau disent le

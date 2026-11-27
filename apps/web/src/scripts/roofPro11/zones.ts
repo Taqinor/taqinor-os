@@ -699,7 +699,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
         </tr>`,
       )
       .join('');
-    el.innerHTML = `<table class="w-full min-w-[520px] border-collapse text-xs text-lune-soft">
+    el.innerHTML = `<table class="w-full border-collapse text-xs text-lune-soft">
       <thead>
         <tr class="border-b border-white/15 text-left text-[11px] uppercase tracking-wide text-lune-faint">
           <th class="px-2 py-1">Pan</th>
