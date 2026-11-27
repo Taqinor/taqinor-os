@@ -234,7 +234,7 @@ class SupposeTest(SimpleTestCase):
         self.assertEqual(suppose[1]['cible'], {'onglet': 'reglages', 'champ': 'allees'})
         for repli in suppose:
             self.assertEqual(sorted(repli),
-                             ['champ', 'code', 'libelle', 'valeur'])
+                             ['champ', 'cible', 'code', 'libelle', 'valeur'])
 
     def test_acal1648_la_ligne_nomme_ce_qui_manque_en_mots_de_metier(self):
         from apps.calepinage.services.suppositions import liste_des_suppositions
