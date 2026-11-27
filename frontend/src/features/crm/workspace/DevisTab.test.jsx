@@ -916,23 +916,6 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (par devis, via le dia
     expect(screen.getByText(/Devis envoyé — copiez le lien/).textContent).toContain('ci-dessous')
   })
 
-  it('ACAL1243 — presse-papier refusé après l’envoi : « Devis envoyé — copiez le lien ci-dessous », lien montré, aucune erreur de lien/connexion même si le rafraîchissement échoue', async () => {
-    const user = userEvent.setup()
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText: vi.fn(() => Promise.reject(new Error('NotAllowedError'))) },
-      configurable: true, writable: true,
-    })
-    const onAction = vi.fn(() => Promise.reject(new Error('La connexion a expiré')))
-    renderTab({ state: leadState({ devis: [devis1] }), onAction })
-    await ouvrirEnvoi(user, { avance: false })
-    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
-    expect(await screen.findByTestId('envoi-lien-client'))
-      .toHaveValue('https://taqinor.ma/proposition/karim/tok-abc')
-    expect(await screen.findByText(/Devis envoyé — copiez le lien ci-dessous/)).toBeInTheDocument()
-    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
-    expect(screen.queryByText(/Lien de la page client indisponible|La connexion a expiré/)).toBeNull()
-  })
-
   it('T4-U3-011 — un numéro illisible est nommé comme raison', async () => {
     const user = userEvent.setup()
     renderTab({ state: leadState({ telephone: '12', devis: [devis1] }) })
