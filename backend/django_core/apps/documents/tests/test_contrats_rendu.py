@@ -521,6 +521,25 @@ class ProfilLecturePureTests(unittest.TestCase):
         get.assert_not_called()
         lu.assert_called_once_with(company=company)
 
+    def test_logo_du_bloc_societe_lit_par_lire(self):
+        """Revue — ``_bloc_societe`` lit aussi ``logo_uri()`` →
+        ``utils/pdf._company_context`` : même règle, jamais ``get``."""
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.documents.contrats.contenu import Lecture
+        from apps.parametres.models import CompanyProfile
+        company = SimpleNamespace(pk=7, id=7, nom='Sans Profil')
+        defaut = CompanyProfile(nom='Sans Profil')
+        lecture = Lecture(SimpleNamespace(company=company))
+        with mock.patch.object(CompanyProfile, 'get',
+                               side_effect=AssertionError('get')) as get, \
+                mock.patch.object(CompanyProfile, 'lire',
+                                  return_value=defaut) as lu:
+            self.assertEqual(lecture.logo_uri(), '')
+        get.assert_not_called()
+        lu.assert_called_once_with(company=company)
+
 
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()
