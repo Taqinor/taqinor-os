@@ -93,7 +93,7 @@ class FactureDocumentsActionsMixin:
         facture = self.get_object()
         from apps.parametres.models import CompanyProfile
         from apps.ventes.utils.ubl import build_ubl_xml, store_ubl_xml
-        profile = CompanyProfile.get(company=facture.company)
+        profile = CompanyProfile.lire(company=facture.company)
         xml_str = build_ubl_xml(facture, profile)
         key = store_ubl_xml(facture, xml_str)
         if key and facture.fichier_ubl != key:

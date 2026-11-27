@@ -253,7 +253,7 @@ def proposer_arrondi_caisse(facture, mode, reste=None):
     from apps.parametres.models import CompanyProfile
     from apps.ventes.models import Paiement
     reste = facture.montant_du if reste is None else reste
-    profile = CompanyProfile.get(company=facture.company)
+    profile = CompanyProfile.lire(company=facture.company)
     pas = getattr(profile, 'arrondi_caisse', None) or Decimal('0')
     if mode != Paiement.Mode.ESPECES or pas <= 0 or reste <= 0:
         return {
@@ -503,7 +503,7 @@ def encaisser_sur_facture(*, facture, donnees, user, confirmer_doublon=False):
                 # automatiquement à l'encaissement plutôt que de laisser la
                 # facture « en retard » pour quelques centimes.
                 from apps.parametres.models import CompanyProfile
-                profile = CompanyProfile.get(company=locked.company)
+                profile = CompanyProfile.lire(company=locked.company)
                 tolerance = getattr(
                     profile, 'tolerance_ecart_reglement', None) or Decimal('0')
                 if tolerance > 0 and locked.montant_du <= tolerance:

@@ -368,7 +368,7 @@ def expiration_alerts_task():
     result = {}
     for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
-            profile = CompanyProfile.get(company=company)
+            profile = CompanyProfile.lire(company=company)
             jours = profile.jours_alerte_peremption or 30
             expirants = produits_expirant_bientot(company, jours=jours)
         except Exception:  # noqa: BLE001 — société suivante (D-ENF22-BLE001)

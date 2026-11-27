@@ -211,7 +211,7 @@ def seuil_approbation_remise(company):
     if company is None:
         return None
     from apps.parametres.models import CompanyProfile
-    return CompanyProfile.get(company).discount_approval_threshold
+    return CompanyProfile.lire(company).discount_approval_threshold
 
 
 def _approbation_couvre(devis, remise):

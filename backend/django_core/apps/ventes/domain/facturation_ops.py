@@ -1456,7 +1456,7 @@ def generer_facture_intervention(*, intervention, user):
         profile_taux = None
         try:
             from apps.parametres.models import CompanyProfile
-            profile_taux = CompanyProfile.get(company).taux_horaire_sav
+            profile_taux = CompanyProfile.lire(company).taux_horaire_sav
         except Exception:  # pragma: no cover - défensif
             logger.warning("facturation_ops.generer_facture_intervention "
                            ": erreur ignorée (mode dégradé)", exc_info=True)

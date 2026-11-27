@@ -96,3 +96,96 @@ class LecturesMoteurSansCreationTests(SimpleTestCase):
         self.assertEqual(identite['entreprise_nom'], 'Sans Profil')
         self.assertEqual(identite['logo_key'], defaut.logo_key or '')
         self.assertEqual(identite['signature_key'], '')
+
+    def test_nom_de_fichier_des_telechargements(self):
+        from apps.ventes.utils.filenames import _company_slug
+        slug, defaut = self._sans_get(_company_slug)
+        self.assertEqual(slug, 'Sans-Profil')
+
+    def test_pack_pays_de_la_facture_electronique(self):
+        from apps.ventes.quote_engine.facturx import pack_pays_de
+        pack, defaut = self._sans_get(pack_pays_de)
+        self.assertEqual(pack, str(getattr(defaut, 'pack_pays', '') or '').upper())
+
+    def test_dgi_profil_vendeur_export_et_validation(self):
+        from apps.ventes.dgi import dgi_export, dgi_validator
+        for module in (dgi_export, dgi_validator):
+            servi, defaut = self._sans_get(
+                lambda c, m=module: m._resolve_profile(
+                    SimpleNamespace(company=c), None))
+            self.assertIs(servi, defaut)
+
+    def test_arrondi_caisse_et_credit_hold(self):
+        from decimal import Decimal
+        from apps.ventes.domain.encaissements import proposer_arrondi_caisse
+        from apps.ventes.domain.recouvrement import verifier_credit_hold
+        res, defaut = self._sans_get(lambda c: proposer_arrondi_caisse(
+            SimpleNamespace(company=c), "virement", reste=Decimal("10")))
+        self.assertFalse(res["applicable"])
+        self.assertEqual(res["pas"], defaut.arrondi_caisse or Decimal("0"))
+        res, defaut = self._sans_get(
+            lambda c: verifier_credit_hold(SimpleNamespace(company=c)))
+        self.assertIsNone(res)
+        self.assertFalse(defaut.credit_hold_actif)
+
+    def test_encaissement_et_anomalies_d_emission(self):
+        # Fonctions à base de données : on inspecte leur code (les rejouer
+        # demande la base, CI).
+        import inspect
+        from apps.ventes.domain import encaissements, recouvrement
+        for fonction in (encaissements.encaisser_sur_facture,
+                         recouvrement.anomalies_emission_facture):
+            source = inspect.getsource(fonction)
+            self.assertNotIn("CompanyProfile.get(", source)
+            self.assertIn("CompanyProfile.lire(", source)
+
+    def test_seuil_de_remise_et_reservation_bc(self):
+        from apps.ventes.domain.tarification import seuil_approbation_remise
+        from apps.ventes.views.bon_commande import _reserver_stock_bc_actif
+        seuil, defaut = self._sans_get(seuil_approbation_remise)
+        self.assertEqual(seuil, defaut.discount_approval_threshold)
+        reserve, defaut = self._sans_get(_reserver_stock_bc_actif)
+        self.assertEqual(reserve, bool(defaut.reserver_stock_bc))
+
+    def test_taux_sav_relance_variante_et_commande_dgi(self):
+        # Fonctions à base de données : on inspecte leur code (CI les rejoue).
+        import inspect
+        from apps.ventes import scheduled
+        from apps.ventes.domain import facturation_ops, facturation_ticket_sav
+        from apps.ventes.management.commands import dgi_export_facture
+        from apps.ventes.views.devis_cycle import DevisCycleActionsMixin
+        for fonction in (
+                facturation_ops.generer_facture_intervention,
+                facturation_ticket_sav.lignes_ticket_sav,
+                scheduled.pre_echeance_reminders,
+                DevisCycleActionsMixin.dupliquer_variante,
+                dgi_export_facture.Command.handle):
+            source = inspect.getsource(fonction)
+            self.assertNotIn("CompanyProfile.get(", source)
+            self.assertIn("CompanyProfile.lire(", source)
+
+    def test_devise_par_defaut_des_devis(self):
+        from apps.ventes.domain.creation import devise_par_defaut
+        devise, defaut = self._sans_get(devise_par_defaut)
+        self.assertEqual(devise, defaut.devise_defaut or 'MAD')
+
+    def test_profil_des_totaux_de_la_liste(self):
+        from apps.ventes.selectors_listes import profil_pour_les_totaux
+        servi, defaut = self._sans_get(profil_pour_les_totaux)
+        # Sans ligne en base : pas de relecture, les valeurs du lecteur et
+        # de l ecrivain (meme helper) sont celles du defaut du modele.
+        self.assertIs(servi, defaut)
+        self.assertIsNone(servi.pk)
+
+    def test_licences_et_variante_en_lecture(self):
+        # Vues a base de donnees : on inspecte leur code (CI les rejoue).
+        import inspect
+        from apps.adminops import views_licences
+        from apps.ventes.views.devis import DevisViewSet
+        source = inspect.getsource(views_licences)
+        self.assertNotIn("CompanyProfile.get(", source)
+        self.assertEqual(source.count("CompanyProfile.lire("), 2)
+        source = inspect.getsource(DevisViewSet.variante_config)
+        self.assertIn("CompanyProfile.lire(", source)
+        # l ecriture (PUT) garde get : elle enregistre le profil
+        self.assertIn("CompanyProfile.get(", source)

@@ -56,7 +56,7 @@ def _maybe_pdf(request, pdf_title, sections, pdf_filename, period_label=''):
     from apps.parametres.models import CompanyProfile
     from apps.reporting.report_pdf import render_report_pdf, pdf_response
     try:
-        profile = CompanyProfile.get(company=request.user.company)
+        profile = CompanyProfile.lire(company=request.user.company)
     except Exception:
         logger.warning("maybe pdf : échec ignoré, comportement dégradé", exc_info=True)
         profile = None

@@ -243,7 +243,7 @@ def profil_pour_les_totaux(company):
     """Le profil société relu EN BASE (un profil tout juste créé garde en
     mémoire ses valeurs par défaut non normalisées : l'empreinte différerait)."""
     from apps.parametres.models import CompanyProfile
-    profil = CompanyProfile.get(company)
+    profil = CompanyProfile.lire(company)
     if getattr(profil, 'pk', None):
         profil.refresh_from_db()
     return profil

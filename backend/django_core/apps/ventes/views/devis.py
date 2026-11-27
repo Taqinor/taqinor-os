@@ -927,7 +927,10 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
                 {'detail': 'Utilisateur sans société.'},
                 status=status.HTTP_400_BAD_REQUEST)
         from apps.parametres.models import CompanyProfile
-        profile = CompanyProfile.get(company=company)
+        # GET = lecture pure : ne crée pas le profil ; PUT l'enregistre.
+        profile = (CompanyProfile.lire(company=company)
+                   if request.method == 'GET'
+                   else CompanyProfile.get(company=company))
 
         if request.method == 'GET':
             return Response({'variante_pct': str(profile.variante_pct)})
