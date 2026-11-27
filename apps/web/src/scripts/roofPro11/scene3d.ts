@@ -243,6 +243,18 @@ function naturalRidgeHeightM(pan: RidgePan): number {
  * `lift = ridgeCommun − faîtièreNaturelle` (≥ 0 ; le plan monte, l'égout reste ≥ base). Un
  * pan isolé (groupe de 1) ou non-pente garde lift 0 → rendu inchangé. Pur.
  */
+/** ACAL1945 (revue) — l'étape Toit du Guidé (`data-pose-masquee` sur la coque) ne montre AUCUN panneau : ce test est lu par
+ *  le point de passage unique des panneaux de la scène (`buildZoneMeshes`), donc la première pose de l'optimiseur
+ *  (`optimizer.ts` → `renderScene`) est couverte comme les rendus de l'éditeur de disposition. */
+export function poseMasqueeSurCoque(doc: Document | undefined = typeof document === 'undefined' ? undefined : document): boolean {
+  return !!doc?.querySelector?.('.cal-coque[data-pose-masquee]');
+}
+/** La cellule `i` du pavage est-elle dessinée ? Jamais quand la pose est masquée. */
+export function celluleDessinee(i: number, occupiedSet: Set<number> | undefined, count: number, masquee: boolean): boolean {
+  if (masquee) return false;
+  return occupiedSet ? occupiedSet.has(i) : i < Math.max(0, count);
+}
+
 export function computeRidgeLifts(pans: RidgePan[]): number[] {
   const n = pans.length;
   const lifts = new Array<number>(n).fill(0);
@@ -2031,8 +2043,9 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // W88 — on garde aussi l'INDEX de lattice de chaque panneau rendu (ordre des instances),
     // pour relier un panneau 3D survolé/tapé à sa cellule (highlight + suppression ciblée).
     const panelCellIndices: number[] = [];
+    const masquee = poseMasqueeSurCoque(); // ACAL1945 (revue) — étape Toit (Guidé) : aucune cellule, même au premier dessin
     const panels = grid.panels.filter((_, i) => {
-      const keep = occupiedSet ? occupiedSet.has(i) : i < Math.max(0, plan.count);
+      const keep = celluleDessinee(i, occupiedSet, plan.count, masquee);
       if (keep) panelCellIndices.push(i);
       return keep;
     });
