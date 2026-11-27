@@ -64,7 +64,8 @@ def _societe(request):
     responses={200: OpenApiResponse(description=_FORME), 404: _ERREUR},
     summary='ADEV137 — conception courante du lead (moteur unique, lecture seule)',
     description="La version COURANTE de la conception rangée du lead. 404 pour un lead d'une autre "
-                "société, et (code `conception_absente`) tant qu'aucune version n'est calculée. " + _FORME)
+                "société ou introuvable ; 200 `{etat: 'aucune', code: 'conception_absente'}` tant qu'aucune version "
+                "n'est calculée (état normal d'un lead neuf). " + _FORME)
 @api_view(['GET'])
 @permission_classes([IsAnyRole, HasPermissionOrLegacy('crm_voir')])
 def conception_du_lead(request, lead_id):
@@ -76,8 +77,10 @@ def conception_du_lead(request, lead_id):
         return Response({'detail': 'Lead introuvable.'}, status=404)
     forme = conception_courante(company, lead.pk)
     if forme is None:
-        return Response({'detail': 'Aucune conception calculée pour ce lead.', 'code': 'conception_absente'},
-                        status=404)
+        # Un lead neuf n'a pas de conception : état NORMAL, servi en 200 (contrat `exemple_aucune`) ; le 404
+        # reste réservé au lead introuvable (autre société, hors portée, inexistant), tous indistincts.
+        return Response({'etat': 'aucune', 'code': 'conception_absente',
+                         'detail': 'Aucune conception calculée pour ce lead.'})
     return Response(forme)
 
 

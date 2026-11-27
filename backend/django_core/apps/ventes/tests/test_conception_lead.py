@@ -2192,7 +2192,9 @@ class ServirConceptionTests(_emprunt(RelanceConceptionTests, '_relancer'),
         sans_version = Lead.objects.create(company=company, nom='Sans', prenom='Version',
                                            telephone='+212600000098')
         absente = api.get(URL_CONCEPTION % sans_version.pk)
-        self.assertEqual((absente.status_code, absente.json()['code']), (404, 'conception_absente'))
+        self.assertEqual((absente.status_code, absente.json()),
+                         (200, json.loads(CONTRAT.read_text(encoding='utf-8'))['exemple_aucune']))
+        self.assertEqual(api.get(URL_CONCEPTION % 2147483000).status_code, 404)  # inexistant
 
     def _avec_role(self, company, nom, permissions):
         """Un utilisateur portant un VRAI rôle du registre (portée comprise)."""

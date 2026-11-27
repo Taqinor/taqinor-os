@@ -397,8 +397,8 @@ class GardePorteeVentesTests(TestCase):
         Commercial sur ``conception/<lead_id>/`` et ``conception/apercu/`` :
         404 « Lead introuvable. » SANS ``code`` — jamais le 404
         ``conception_absente`` (qui dit que la portée est passée). Test-du-test :
-        le propriétaire du lead (même rôle) passe la portée — GET → 404
-        ``conception_absente`` (aucune version rangée), aperçu → 400 sur le
+        le propriétaire du lead (même rôle) passe la portée — GET → 200
+        ``etat: aucune`` (aucune version rangée), aperçu → 400 sur le
         champ imposé inconnu, lu APRÈS la résolution du porteur."""
         url_lead = BASE + 'conception/%s/' % self.lead_hors.pk
         url_apercu = BASE + 'conception/apercu/'
@@ -412,8 +412,8 @@ class GardePorteeVentesTests(TestCase):
 
         proprio = self._api(self.collegue)
         resp = proprio.get(url_lead)
-        self.assertEqual((resp.status_code, resp.json().get('code')),
-                         (404, 'conception_absente'), resp.content[:300])
+        self.assertEqual((resp.status_code, resp.json().get('etat'), resp.json().get('code')),
+                         (200, 'aucune', 'conception_absente'), resp.content[:300])
         resp = proprio.post(url_apercu, corps, format='json')
         self.assertEqual(resp.status_code, 400, resp.content[:300])
         self.assertEqual(resp.json().get('champ'), 'champ_inconnu_adev41')
