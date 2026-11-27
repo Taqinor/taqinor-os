@@ -15,6 +15,7 @@
 //     barres étant en flux, il créerait un trou mort ~66 px (régression mesurée).
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { resolveCss } from './test/readCss.mjs'
 
@@ -192,4 +193,16 @@ test('ACAL977: .header-menu-btn suit le thème (aucune couleur littérale : var(
   const corps = ruleBody(css, '.header-menu-btn') ?? ''
   assert.match(corps, /color:\s*var\(--foreground\)/, 'l\'icône ☰ doit suivre le thème (sombre compris)')
   assert.doesNotMatch(corps, /color:\s*#/, 'aucune couleur en dur sur .header-menu-btn')
+})
+
+// ACAL1277 — la croix du bandeau « Installer Taqinor OS » est une cible tactile
+// d'au moins 44 × 44 px (règle maison), pas 24 × 44.
+test('ACAL1277: la croix du bandeau d’installation mesure au moins 44 × 44 px', () => {
+  const src = readFileSync(fileURLToPath(new URL('./features/pwa/PwaPrompts.jsx', import.meta.url)), 'utf8')
+  const debut = src.indexOf('const ghostBtn = {')
+  assert.ok(debut >= 0, 'le style ghostBtn doit exister')
+  const corps = src.slice(debut, src.indexOf('}', debut))
+  const min = (cle) => Number((new RegExp(cle + ": *([0-9]+)").exec(corps) || [])[1] || 0)
+  assert.ok(min('minWidth') >= 44, 'minWidth >= 44')
+  assert.ok(min('minHeight') >= 44, 'minHeight >= 44')
 })

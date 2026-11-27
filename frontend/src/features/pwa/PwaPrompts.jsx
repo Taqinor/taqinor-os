@@ -46,7 +46,7 @@ const primaryBtn = {
 }
 const ghostBtn = {
   background: 'transparent', color: '#94a3b8', border: 'none',
-  fontSize: 20, lineHeight: 1, cursor: 'pointer', padding: '0 4px',
+  fontSize: 20, lineHeight: 1, cursor: 'pointer', padding: '0 4px', minWidth: 44, minHeight: 44,
 }
 
 function eligible() {
