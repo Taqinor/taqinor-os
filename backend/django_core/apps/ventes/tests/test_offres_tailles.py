@@ -176,6 +176,102 @@ class LecteursTests(SimpleTestCase):
             ot._garantie_ans(SimpleNamespace(garantie_mois=144)), 12)
 
 
+class _LignesEnMain:
+    """``devis.lignes`` en doublure : ``all()`` rend les lignes telles quelles."""
+
+    def __init__(self, lignes):
+        self._lignes = lignes
+
+    def all(self):
+        return list(self._lignes)
+
+
+class LecteursAvalRoleRangeTaillesTests(SimpleTestCase):
+    """Lecteurs en aval (2e relecture de ``lot9/lecteurs-aval``, constat 1) —
+    « Appliquer une taille » lit le rôle RANGÉ sur la ligne, comme la
+    resynchronisation qu'il commande.
+
+    Lignes ``LigneDevis`` RÉELLES (non enregistrées) dont le devis n'est PAS
+    chargé sur la ligne — exactement ce que rend une requête qui ne passe pas
+    par ``devis.lignes`` : seul le ``devis`` transmis par le lecteur ouvre la
+    lecture par rôle. Cas de preuve : A batterie « Deye BOS-B Pro-A3 16 kWh »
+    (rôle ``batterie``), B 30 × « …CS7N-715TB » (rôle ``panneau``), C hybride
+    « DEYE SUN-80K-SG02HP3 » (rôle ``onduleur_hybride``) — aucun mot-clé.
+    """
+
+    PANNEAU = 'Canadian Solar TOPBiHiKu7 CS7N-715TB'
+    HYBRIDE = 'DEYE SUN-80K-SG02HP3-EU-EM6'
+    BATTERIE = 'Deye BOS-B Pro-A3 16 kWh'
+
+    def _devis(self, *, envoye_avant=False):
+        from datetime import date, timedelta
+
+        from apps.ventes.domain.regles_calcul import COUPURE_CLASSE_PAR_ROLE
+
+        def ligne(nom, role, quantite, prix):
+            return LigneDevis(designation=nom, role_devis=role, type_ligne='produit',
+                              quantite=Decimal(quantite), prix_unitaire=Decimal(prix),
+                              remise=Decimal('0'), produit=Produit(nom=nom))
+        lignes = [ligne(self.PANNEAU, 'panneau', '30', '1200'),
+                  ligne(self.HYBRIDE, 'onduleur_hybride', '1', '90000'),
+                  ligne(self.BATTERIE, 'batterie', '2', '30000')]
+        if envoye_avant:
+            etat = {'statut': 'envoye',
+                    'date_envoi': date(*COUPURE_CLASSE_PAR_ROLE) - timedelta(days=1)}
+        else:
+            etat = {'statut': 'brouillon', 'date_envoi': None}
+        return SimpleNamespace(regles_calcul=14, etude_params={'scenario': 'Avec batterie'},
+                               roof_layout={}, lignes=_LignesEnMain(lignes), **etat), lignes
+
+    def test_aucun_mot_cle_ne_reconnait_les_cas_de_preuve(self):
+        from apps.ventes.services import _is_battery, _is_hybrid_inverter, _is_panel
+        self.assertFalse(_is_panel(self.PANNEAU))
+        self.assertFalse(_is_hybrid_inverter(self.HYBRIDE))
+        self.assertFalse(_is_battery(self.BATTERIE))
+
+    def test_comptes_de_la_taille_lisent_le_role_range(self):
+        devis, _ = self._devis()
+        self.assertEqual(ot._compter_panneaux_du_devis(devis), 30)
+        self.assertEqual(ot._compter_modules_du_devis(devis), 2)
+
+    def test_la_cible_d_appliquer_garde_la_batterie_vendue(self):
+        # Le trou d'argent : modules à 0 ⇒ ``battery: None`` ⇒ la
+        # resynchronisation (lecture par rôle) SUPPRIMAIT la ligne de batterie
+        # d'un devis à une option.
+        devis, _ = self._devis()
+        layout = ot._layout_de_la_taille(
+            devis, SimpleNamespace(panel_watt=715.0, module_batterie_kwh=16.0), 30, 0,
+            lambda _layout: {})
+        self.assertEqual(layout['battery'], {'kwh': 32.0})
+        self.assertEqual(layout['scenario'], 'avec_batterie')
+
+    def test_appliquer_porte_les_modules_sur_la_ligne_batterie_rangee(self):
+        devis, lignes = self._devis()
+        with mock.patch('apps.ventes.domain.lignes.porter_quantite') as porter:
+            self.assertEqual(ot._porter_modules_batterie(devis, 5), 5)
+        porter.assert_called_once_with(lignes[2], Decimal('5'))
+
+    def test_le_materiel_et_les_roles_de_la_carte_lisent_le_role_range(self):
+        devis, lignes = self._devis()
+        materiel, tout_classe = ot._materiel_du_devis(devis, 'avec')
+        self.assertTrue(tout_classe)
+        self.assertEqual({e['famille']: e['role'] for e in materiel},
+                         {'panneau': 'panneau', 'onduleur': 'onduleur_hybride',
+                          'batterie': 'batterie'})
+        self.assertEqual([ot._role_de_la_ligne(li.designation, li, devis) for li in lignes],
+                         ['panneau', 'onduleur_hybride', 'batterie'])
+
+    def test_devis_envoye_avant_la_coupure_garde_la_lecture_d_hier(self):
+        devis, lignes = self._devis(envoye_avant=True)
+        self.assertEqual(ot._compter_panneaux_du_devis(devis), 0)
+        self.assertEqual(ot._compter_modules_du_devis(devis), 0)
+        with mock.patch('apps.ventes.domain.lignes.porter_quantite') as porter:
+            self.assertIsNone(ot._porter_modules_batterie(devis, 5))
+        porter.assert_not_called()
+        self.assertEqual([ot._role_de_la_ligne(li.designation, li, devis) for li in lignes],
+                         [ot._role_de_la_ligne(li.designation) for li in lignes])
+
+
 class FamillesTests(SimpleTestCase):
 
     def test_familles_bornees_aux_trois_comparables(self):
@@ -1825,6 +1921,38 @@ class AppliquerAuDevisTests(_Base):
         devis.refresh_from_db()
         ligne = devis.lignes.get(designation__startswith='Batterie')
         self.assertEqual(int(ligne.quantite), 5)
+
+    def test_cas_a_devis_a_une_option_la_batterie_rangee_suit_et_reste(self):
+        """Lecteurs en aval (constat 1) — devis « Avec batterie » à UNE option,
+        lignes au rôle RANGÉ et aux noms sans mot-clé (cas A, B, C) : appliquer
+        porte les modules sur la batterie, et ne la supprime jamais."""
+        company = self._company('app-role-range')
+        client_obj = Client.objects.create(company=company, nom='Client rôle rangé')
+        devis = Devis.objects.create(
+            company=company, reference='DEV-APP-ROLE-01', client=client_obj,
+            statut='brouillon', taux_tva=Decimal('20'), mode_installation='residentiel',
+            etude_params={'scenario': 'Avec batterie'})
+        for nom, role, qte, pu in (
+                ('Canadian Solar TOPBiHiKu7 CS7N-715TB', 'panneau', '30', '1200'),
+                ('DEYE SUN-80K-SG02HP3-EU-EM6', 'onduleur_hybride', '1', '90000'),
+                ('Deye BOS-B Pro-A3 16 kWh', 'batterie', '2', '30000')):
+            produit = Produit.objects.create(company=company, nom=nom, prix_vente=pu,
+                                             quantite_stock=50)
+            LigneDevis.objects.create(devis=devis, produit=produit, designation=nom,
+                                      role_devis=role, quantite=Decimal(qte),
+                                      prix_unitaire=Decimal(pu), remise=Decimal('0'))
+        contexte = SimpleNamespace(panel_watt=715.0, module_batterie_kwh=16.0,
+                                   entrees={'company': company})
+        ot.enregistrer_config(devis, 'recommande', {'nb_panneaux': 30, 'batterie_nb_modules': 3})
+        with mock.patch.object(ot, '_contexte', return_value=contexte):
+            resume = ot.appliquer_au_devis(devis, 'recommande')
+        self.assertEqual(resume['panneaux_avant'], 30)
+        self.assertEqual(resume['batterie_modules'], 3)
+        self.assertEqual(int(devis.lignes.get(role_devis='batterie').quantite), 3)
+        ot.enregistrer_config(devis, 'recommande', {'nb_panneaux': 30})
+        with mock.patch.object(ot, '_contexte', return_value=contexte):
+            ot.appliquer_au_devis(devis, 'recommande')
+        self.assertEqual(int(devis.lignes.get(role_devis='batterie').quantite), 3)
 
     # ── Les REFUS, et le fait qu'ils n'écrivent RIEN ────────────────────────
 
