@@ -368,3 +368,39 @@ class EchecDeJobStructureTest(_BaseApi):
         for texte in (element['motif'], job.message_erreur, issue['motif']):
             self.assertNotIn('KeyError', texte)
             self.assertNotIn("'zones'", texte)
+
+    def _echouer_balayage(self, exception):
+        from apps.calepinage.tasks import balayer_calepinage as tache
+        from apps.calepinage.tasks import resultat_du_job
+
+        job = self._job()
+        with mock.patch('apps.calepinage.services.balayage.balayer',
+                        side_effect=exception):
+            issue = tache(job_id=job.pk, company_id=self.societe.pk,
+                          calepinage_id=self.calepinage.pk,
+                          corps={'pan': 'p1', 'axes': {}})
+        job.refresh_from_db()
+        return issue, job, resultat_du_job(job)['elements'][0]
+
+    def test_acal1629_balayage_temps_depasse_dit_de_reduire_la_grille(self):
+        from celery.exceptions import SoftTimeLimitExceeded
+
+        issue, job, element = self._echouer_balayage(SoftTimeLimitExceeded())
+        self.assertEqual(issue['statut'], 'failed')
+        self.assertIn('Le balayage a dépassé le temps permis : réduisez la '
+                      'grille', element['motif'])
+        for texte in (element['motif'], job.message_erreur, issue['motif']):
+            self.assertNotIn('SoftTimeLimitExceeded', texte)
+
+    def test_acal1629_balayage_meteo_refusee_sans_cle_technique(self):
+        refus = SimulationRefusee(
+            "La série météo ne porte que l'irradiance HORIZONTALE "
+            "(« gh_w_m2 ») : elle se transpose sur le PLAN (« gi_w_m2 »).",
+            champ='meteo.gi_w_m2')
+        issue, job, element = self._echouer_balayage(refus)
+        self.assertEqual(issue['statut'], 'failed')
+        self.assertIn("L'optimisation demande une année type ou une série "
+                      'horaire : passez la fenêtre météo à un an',
+                      element['motif'])
+        for cle in ('gh_w_m2', 'gi_w_m2', 'mode_meteo'):
+            self.assertNotIn(cle, element['motif'])

@@ -27,6 +27,10 @@ const AXES = [
   { nom: 'azimut_deg', libelle: 'Azimut (°, 180 = Sud)', defaut: { min: '150', max: '210', pas: '30' } },
 ]
 
+/* ACAL1629 — un chemin de réglage (« parametres.simulation.mode_meteo »,
+   « meteo.gi_w_m2 ») n'est jamais montré : la phrase du serveur suffit. */
+const CLE_TECHNIQUE = /^[a-z0-9_]+(\.[a-z0-9_[\]]+)+$/i
+
 const nombre = (v) => (v === '' || v === null ? NaN : Number(v))
 
 /* ACAL813 — « Optimiser pour le mois de » : critère `{nom: 'mois', mois}` du
@@ -123,6 +127,11 @@ export default function PanneauOptimiser({ calepinageId, builderApi = null, lect
         Balayage d’un pan à orientation libre (champ au sol, ombrière, toit plat à châssis).
         Rien n’est enregistré avant « Enregistrer le calepinage ».
       </p>
+      <p className="text-sm text-muted-foreground" data-testid="acal1629-meteo">
+        L’optimisation demande une année type ou une série horaire : si la météo de la
+        société est réglée sur plusieurs années, passez la fenêtre météo à un an
+        (Réglages simulation) avant de lancer.
+      </p>
       <div className="flex flex-wrap items-end gap-3">
         <div>
           <Label htmlFor="acal469-pan">Pan n°</Label>
@@ -160,7 +169,7 @@ export default function PanneauOptimiser({ calepinageId, builderApi = null, lect
 
       {refus && (
         <p className="text-sm text-danger" role="alert" data-testid="acal469-refus">
-          {refus.champ ? `${refus.champ} : ` : ''}{refus.motif}
+          {refus.champ && !CLE_TECHNIQUE.test(refus.champ) ? `${refus.champ} : ` : ''}{refus.motif}
         </p>
       )}
 
