@@ -177,6 +177,19 @@ describe('R5A-N5b — une fiche ouverte sans rien taper n’est jamais « sale �
     expect(conception404).toHaveBeenCalledWith(1)
   }, 15000)
 
+  it('lead neuf sans conception (200 « aucune » du contrat) : UNE requête, aucune erreur console, carte calme', async () => {
+    const { exempleContrat } = await import('../../../test/fixtures/contractSamples')
+    conception404.mockImplementationOnce(() => Promise.resolve({ data: exempleContrat('ventes', 'conception_lead', 'exemple_aucune') }))
+    const erreurs = vi.spyOn(console, 'error').mockImplementation(() => {})
+    ouvrir()
+    await screen.findByDisplayValue('chaud, villa')
+    await screen.findByTestId('carte-conception-sans-conception')
+    await new Promise((r) => { setTimeout(r, 4600) })
+    expect(conception404).toHaveBeenCalledTimes(1)
+    expect(erreurs).not.toHaveBeenCalled()
+    erreurs.mockRestore()
+  }, 15000)
+
   it('une vraie saisie arme la garde, puis part en PATCH partiel', async () => {
     ouvrir()
     await screen.findByDisplayValue('chaud, villa')

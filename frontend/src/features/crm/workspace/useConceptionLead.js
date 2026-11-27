@@ -36,24 +36,33 @@ function poser(e, snap) {
   e.abonnes.forEach((rappel) => rappel())
 }
 
+/** Le serveur dit « aucune conception » pour un lead visible (200 `etat: 'aucune'`, contrat `exemple_aucune`) : autrefois un
+ *  404 `conception_absente`. Même état que l'ancien 404 : `attente` borné d'un lead neuf, sinon `vide`. */
+export const estAucuneConception = (data) => data?.etat === 'aucune'
+
+function absente(e, leadId) {
+  if (e.attente && e.essais < ATTENTE_MAX_RELECTURES) {
+    e.essais += 1
+    poser(e, { statut: 'attente', donnees: null })
+    clearTimeout(e.minuterie)
+    e.minuterie = setTimeout(() => { e.minuterie = null; if (entrees.get(leadId) === e) lire(leadId) }, ATTENTE_DELAI_MS)
+  } else {
+    e.attente = false
+    poser(e, { statut: 'vide', donnees: null })
+  }
+}
+
 function lire(leadId) {
   const e = entree(leadId)
   if (e.enVol) { e.rejouer = true; return }
   e.enVol = true
   Promise.resolve().then(() => ventesApi.getConceptionLead(leadId)) // jamais d'exception synchrone dans l'abonnement
-    .then(({ data }) => { e.attente = false; e.essais = 0; poser(e, { statut: 'ok', donnees: data ?? null }) })
+    .then(({ data }) => {
+      if (estAucuneConception(data)) { absente(e, leadId); return }
+      e.attente = false; e.essais = 0; poser(e, { statut: 'ok', donnees: data ?? null })
+    })
     .catch((err) => {
-      if (err?.response?.status === 404) {
-        if (e.attente && e.essais < ATTENTE_MAX_RELECTURES) {
-          e.essais += 1
-          poser(e, { statut: 'attente', donnees: null })
-          clearTimeout(e.minuterie)
-          e.minuterie = setTimeout(() => { e.minuterie = null; if (entrees.get(leadId) === e) lire(leadId) }, ATTENTE_DELAI_MS)
-        } else {
-          e.attente = false
-          poser(e, { statut: 'vide', donnees: null })
-        }
-      }
+      if (err?.response?.status === 404) absente(e, leadId) // lead introuvable (ou ancien serveur) : même état calme
       else if (e.snap.donnees) poser(e, e.snap) // rien n'est jamais effacé par un échec
       else poser(e, { statut: 'erreur', donnees: null })
     })

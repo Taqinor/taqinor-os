@@ -147,7 +147,7 @@ export default function CarteConception({ leadId, creeLe = null, delaiRelectureM
   // calme « pas encore de conception », jamais rejoué. Seule une version PÉRIMÉE (réponse 200 « recalcul en cours ») est
   // relue, bornée ; « Relire » est une lecture de plus, jamais une chaîne.
   const lu = useConceptionLead(leadId, { creeLe })
-  const conception = lu.donnees?.etat ? lu.donnees : null
+  const conception = lu.donnees?.etat && lu.donnees.etat !== 'aucune' ? lu.donnees : null
   const perimee = Boolean(conception?.perimee)
   const [relectures, setRelectures] = useState(0)
   const [perimeeVue, setPerimeeVue] = useState(false)

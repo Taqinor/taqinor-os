@@ -240,6 +240,38 @@ describe('ALEA71 — carte « Conception » de la fiche du lead', () => {
     expect(screen.queryByTestId('carte-conception-indisponible')).toBeNull()
   })
 
+  // Lead neuf : le serveur répond 200 `exemple_aucune` (contrat), plus un 404 — même état calme, aucune erreur console.
+  it('lead neuf — 200 « aucune » du contrat : phrase calme, UNE lecture partagée, aucune erreur console, aucune relecture', async () => {
+    const aucune = exempleContrat('ventes', 'conception_lead', 'exemple_aucune')
+    ventesApi.getConceptionLead.mockResolvedValue({ data: aucune })
+    const erreurs = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const Brouillons = () => { useBrouillonsConception(1); return null }
+    render(<><CarteConception leadId={1} creeLe="2026-01-01T10:00:00Z" /><Brouillons /><Brouillons /></>)
+    expect((await screen.findByTestId('carte-conception-sans-conception')).textContent).toContain('Pas encore de conception')
+    await new Promise((r) => setTimeout(r, 60))
+    expect(ventesApi.getConceptionLead).toHaveBeenCalledTimes(1)
+    expect(screen.queryByTestId('carte-conception-attente')).toBeNull()
+    expect(screen.queryByTestId('carte-conception-indisponible')).toBeNull()
+    expect(erreurs).not.toHaveBeenCalled()
+    erreurs.mockRestore()
+  })
+
+  it('lead neuf — 200 « aucune » puis une action qui crée la conception : la carte se remplit', async () => {
+    const aucune = exempleContrat('ventes', 'conception_lead', 'exemple_aucune')
+    ventesApi.getConceptionLead.mockResolvedValueOnce({ data: aucune }).mockResolvedValue({ data: CONCEPTION })
+    rendre()
+    await screen.findByTestId('carte-conception-sans-conception')
+    await act(async () => { relireConceptionLead(1) })
+    await screen.findByTestId('carte-conception-option-avec')
+  })
+
+  it('lead récent — 200 « aucune » : « en cours de calcul », relu de façon bornée comme l’était le 404', async () => {
+    const aucune = exempleContrat('ventes', 'conception_lead', 'exemple_aucune')
+    ventesApi.getConceptionLead.mockResolvedValue({ data: aucune })
+    render(<CarteConception leadId={1} creeLe={new Date().toISOString()} />)
+    expect((await screen.findByTestId('carte-conception-attente')).textContent).toContain('en cours de calcul')
+  })
+
   it('un refus nomme le champ à remplir, jamais des zéros', async () => {
     const refus = exempleContrat('ventes', 'conception_lead', 'exemple_refus')
     ventesApi.getConceptionLead.mockResolvedValue({ data: refus })

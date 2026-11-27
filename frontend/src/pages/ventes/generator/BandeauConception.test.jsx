@@ -68,6 +68,14 @@ describe('AGEN12 — bandeau « La conception a changé »', () => {
     expect(screen.queryByTestId('bandeau-conception-mettre-a-jour')).toBeNull()
   })
 
+  it('lead neuf — 200 « aucune » du contrat : aucun bandeau, aucune erreur', async () => {
+    ventesApi.getConceptionLead.mockResolvedValue({ data: exempleContrat('ventes', 'conception_lead', 'exemple_aucune') })
+    const { container } = rendre({ id: 999, reference: 'DEV-X', statut: 'brouillon', lead: 4, lignes: panneaux(8) })
+    await waitFor(() => expect(ventesApi.getConceptionLead).toHaveBeenCalledWith(4))
+    await act(async () => {})
+    expect(container.textContent).toBe('')
+  })
+
   it('sans lead : rien n’est demandé', () => {
     const { container } = rendre({ id: 5, reference: 'DEV-Y', statut: 'brouillon', lead: null, lignes: [] })
     expect(container.textContent).toBe('')

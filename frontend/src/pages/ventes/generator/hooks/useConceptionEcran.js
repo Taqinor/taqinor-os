@@ -180,7 +180,7 @@ export function useConceptionEcran({ leadId, corps, composition = null }) {
       if (!leadId) { setRangee({ lead: null, donnees: null }); return }
       try {
         const { data } = await ventesApi.getConceptionLead(leadId)
-        if (vivant) setRangee({ lead: leadId, donnees: data?.etat ? data : null })
+        if (vivant) setRangee({ lead: leadId, donnees: data?.etat && data.etat !== 'aucune' ? data : null })
       } catch {
         if (vivant) setRangee({ lead: leadId, donnees: null })  // 404 « conception_absente » : rien de rangé
       }

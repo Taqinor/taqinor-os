@@ -47,7 +47,7 @@ function useConceptionRelue(leadId, devisId, tour, jeton) {
       if (!leadId) { setConception(null); return }
       try {
         const { data } = await ventesApi.getConceptionLead(leadId)
-        if (vivant) setConception(data?.etat ? data : null)
+        if (vivant) setConception(data?.etat && data.etat !== 'aucune' ? data : null)
       } catch {
         if (vivant) setConception(null)  // aucune conception rangée : rien à dire
       }
