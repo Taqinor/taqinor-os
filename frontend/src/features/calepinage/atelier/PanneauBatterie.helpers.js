@@ -113,13 +113,19 @@ export function corpsDeclaration(etat, entree) {
     puissance_pointe_kw: nombreOuNull(a.puissance_pointe_kw),
     quantite: nombreOuNull(a.quantite),
   }))
-  pose('appareils', appareils.length ? appareils : null)
-  pose('duree_secours_h', nombreOuNull(etat.duree_secours_h))
+  // ACAL1666 — ce qu'on ne voit plus n'agit plus : les champs d'une stratégie non retenue restent à
+  // l'écran (rien n'est perdu) mais ne sont plus postés ; ceux déjà au stock sont remis à `null`.
+  const secours = etat.strategie === 'backup'
+  const decalage = etat.strategie === 'decalage'
+  const pointe = etat.strategie === 'peak_shaving'
+  const appareilsPostes = secours ? appareils : []
+  pose('appareils', appareilsPostes.length ? appareilsPostes : null)
+  pose('duree_secours_h', secours ? nombreOuNull(etat.duree_secours_h) : null)
   // ACAL799 — `batterie.coupures` : posé dès qu'une réponse est donnée (ou déjà au stock), jamais inventé.
   const coupures = Object.fromEntries(CHAMPS_COUPURES.map((cle) => [cle, nombreOuNull(etat.coupures?.[cle])]))
-  pose('coupures', Object.values(coupures).some((v) => v !== null) ? coupures : null)
+  pose('coupures', secours && Object.values(coupures).some((v) => v !== null) ? coupures : null)
   // ACAL792 — des fenêtres posées remplacent les deux listes d'heures (jamais les deux formes).
-  const fenetres = etat.fenetres ?? { charge: [], decharge: [] }
+  const fenetres = decalage ? (etat.fenetres ?? { charge: [], decharge: [] }) : { charge: [], decharge: [] }
   if (fenetres.charge.length || fenetres.decharge.length) {
     const versCorps = (f) => ({ heures: heuresDeFenetre(f), soc_cible_pct: nombreOuNull(f.soc) })
     batterie.fenetres = { charge: fenetres.charge.map(versCorps), decharge: fenetres.decharge.map(versCorps) }
@@ -128,9 +134,9 @@ export function corpsDeclaration(etat, entree) {
   } else {
     pose('fenetres', null)
   }
-  pose('part_effacable_pct', nombreOuNull(etat.part_effacable_pct))
-  pose('plafond_effacable_kw', nombreOuNull(etat.plafond_effacable_kw))
-  if (appareils.length) batterie.reserve_backup_kwh = null
+  pose('part_effacable_pct', pointe ? nombreOuNull(etat.part_effacable_pct) : null)
+  pose('plafond_effacable_kw', pointe ? nombreOuNull(etat.plafond_effacable_kw) : null)
+  if (appareilsPostes.length) batterie.reserve_backup_kwh = null
   const stockeH = estObjet(entree?.hors_reseau) ? entree.hors_reseau : null
   const horsReseau = { ...(stockeH ?? {}) }
   const jours = nombreOuNull(etat.jours)

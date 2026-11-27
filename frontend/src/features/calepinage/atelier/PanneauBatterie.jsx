@@ -214,7 +214,7 @@ function DeclarationBatterie({ id, onRelancer, reserve = null, secours = null })
         {liste('couplage', 'Couplage', etat.couplage, [['ac', 'AC'], ['dc', 'DC']], erreur('couplage'))}
         {CHAMPS_BATTERIE.map((c) => champ(
           c.cle, c.libelle, etat[c.cle], (v) => poser(c.cle, v), c.genre === 'nombre' ? 'number' : 'text',
-          erreur(c.cle), c.cle === 'reserve_backup_kwh' && etat.appareils.length > 0))}
+          erreur(c.cle), c.cle === 'reserve_backup_kwh' && etat.strategie === 'backup' && etat.appareils.length > 0))}
       </div>
       {expert && etat.strategie === 'decalage' && (
         <FenetresBatterie fenetres={etat.fenetres} erreurs={erreurs} onChange={(v) => poser('fenetres', v)} />

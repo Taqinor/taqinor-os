@@ -891,6 +891,7 @@ describe('PanneauBatterie — garde-fou, faits de la série et verdict (ACAL795)
 describe('PanneauBatterie — champs lisibles et refus en mots (ACAL1644)', () => {
   const VIDE = exempleContrat('calepinage', 'calepinage_entree_electrique', 'exemple_vide')
   const regler = (id, valeur) => fireEvent.change(document.getElementById(id), { target: { value: String(valeur) } })
+  const champReserve = () => document.getElementById('acal167-reserve_backup_kwh')
   const rendreExpert = () => render(
     <MemoryRouter initialEntries={['/?mode=expert']}><PanneauBatterie calepinageId={1} /></MemoryRouter>,
   )
@@ -933,6 +934,31 @@ describe('PanneauBatterie — champs lisibles et refus en mots (ACAL1644)', () =
     expect(await screen.findByTestId('acal792-charge-1-erreur'))
       .toHaveTextContent('La 2e fenêtre de charge : recouvre une fenêtre de décharge.')
     expect(document.body.textContent).not.toMatch(/Batterie\.fenetres/)
+  })
+
+  it('ACAL1666 — stratégie changée : appareils, durée et fenêtres masqués ne sont plus postés, mais restent à l’écran', async () => {
+    const SECOURS = exempleContrat('calepinage', 'calepinage_entree_electrique', 'exemple_secours').batterie
+    const stocke = { ...VIDE.entree, batterie: { ...SECOURS, strategie: 'backup', fenetres: { charge: [{ heures: [10, 11], soc_cible_pct: 80 }], decharge: [] } } }
+    calepinageApi.calepinages.entreeElectrique.mockResolvedValue({ data: { entree: stocke } })
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+    rendreExpert()
+    await screen.findByTestId('acal167-declaration')
+    expect(document.getElementById('acal788-0-nom')).toHaveValue(SECOURS.appareils[0].nom)
+    fireEvent.change(document.getElementById('acal167-strategie'), { target: { value: 'peak_shaving' } })
+    regler('acal167-seuil_effacement_kw', 1.2)
+    expect(champReserve()).not.toBeDisabled()
+    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
+    await screen.findByTestId('acal167-message')
+    const { batterie } = calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[0][1]
+    expect(batterie.strategie).toBe('peak_shaving')
+    expect(batterie.seuil_effacement_kw).toBe(1.2)
+    ;['appareils', 'duree_secours_h', 'coupures', 'fenetres'].forEach((cle) => expect(batterie[cle]).toBeNull())
+    // Revenir à « Secours » retrouve les appareils, gardés à l'écran.
+    fireEvent.change(document.getElementById('acal167-strategie'), { target: { value: 'backup' } })
+    expect(document.getElementById('acal788-0-nom')).toHaveValue(SECOURS.appareils[0].nom)
+    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerEntreeElectrique).toHaveBeenCalledTimes(2))
+    expect(calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[1][1].batterie.appareils).toEqual(SECOURS.appareils)
   })
 
   it('chaque champ fait au moins 44 px (min-h-11) et s’empile sur une colonne', async () => {
