@@ -13,6 +13,29 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+#: ACAL1217 / ACAL1266 — drapeau de RENDU (``etude_params``) posé par la
+#: migration ventes 0164 sur tout devis NON brouillon : son PDF garde le texte
+#: que le client a reçu (adresse et téléphone bruts du une-page, double liste
+#: du point d'eau agricole). Un devis neuf ne le porte pas : texte corrigé.
+DRAPEAU_PDF_HISTORIQUE_LOT10 = "regles_pdf_historique_lot10"
+
+
+def pdf_historique_lot10(etude):
+    """Rendre le texte d'AVANT le lot 10 ? Vrai pour un devis marqué par la
+    migration 0164 et pour une étude vide (la migration n'y écrit rien : un
+    envoyé sans étude garde lui aussi le texte reçu, à l'octet)."""
+    return not isinstance(etude, dict) or not etude or bool(etude.get(DRAPEAU_PDF_HISTORIQUE_LOT10))
+
+
+def adresse(adresse_esc, ville_esc, historique=True):
+    """ACAL1217 — l'adresse du une-page : jointe à la ville sans répéter un
+    morceau (``theme.join_meta``, comme ``couverture.identite_client``) ;
+    ``historique`` : l'adresse brute d'hier, octet pour octet."""
+    if historique:
+        return adresse_esc
+    from ..residential import theme
+    return theme.join_meta(adresse_esc, ville_esc, sep=", ")
+
 
 def lire_synthese(data, mode_installation):
     """``(synthese_ci, chiffres_cles)`` d'un devis commercial / industriel,
@@ -118,10 +141,11 @@ def totaux_hors_total(totaux_html, chiffres, synthese, langue, libelles,
               f'{ligne_postes_hors_total(doc, synthese)}</div>')
 
 
-def telephone(brut, chiffres):
+def telephone(brut, chiffres, historique=True):
     """AMOT92 — une-page C&I : le téléphone mis en forme comme sur les
-    couvertures (« +212 6 61 23 45 93 ») ; résidentiel inchangé."""
-    if chiffres is None:
+    couvertures (« +212 6 61 23 45 93 ») ; ACAL1217 — le résidentiel aussi,
+    sauf ``historique`` (devis envoyé : le brut reçu)."""
+    if chiffres is None and historique:
         return brut
     from .couverture import format_telephone
     return format_telephone(brut)
