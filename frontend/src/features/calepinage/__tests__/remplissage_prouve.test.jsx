@@ -227,6 +227,51 @@ describe('CAL79 — l’écran, branché sur la porte moteur CAL22', () => {
   })
 })
 
+describe('ACAL450 — les conseils du moteur se lisent en phrases', () => {
+  const CONSEILS = [
+    ...RESULTAT.suggestions,
+    {
+      code: 'RIVE_RELACHEE', titre: 'Rive latérale relâchée à 0,3 m',
+      gain_modules: 3, gain_kwc: 2.16, confiance: 'MOYENNE',
+      question_a_poser: 'Le maître d’ouvrage accepte-t-il une rive de 0,3 m ?',
+      action: { type: 'parametres', patch: { rive_laterale_m: 0.3 } },
+    },
+    {
+      code: 'KITS_MIXTES', titre: 'Deux types de tables sur la toiture',
+      gain_modules: 1, gain_kwc: 0.72, confiance: 'HAUTE',
+      question_a_poser: 'Acceptez-vous deux types de tables sur la toiture ?',
+      action: { type: 'parametres', patch: { kits: 'A+B' } },
+    },
+  ]
+
+  it('chaque suggestion servie se lit : titre, gain, confiance, question', async () => {
+    calculer.mockResolvedValue({ data: { ...RESULTAT, suggestions: CONSEILS } })
+    rendre()
+    fireEvent.click(screen.getByTestId('cal-remplissage-lancer'))
+
+    const carte = await screen.findByTestId('acal450-conseils')
+    const lignes = screen.getAllByTestId('acal450-conseil')
+    expect(lignes).toHaveLength(3)
+    expect(carte).toHaveTextContent('Conseils du moteur')
+    expect(lignes[1]).toHaveTextContent('Rive latérale relâchée à 0,3 m')
+    expect(lignes[1]).toHaveTextContent('+3 modules (+2,16 kWc)')
+    expect(lignes[1]).toHaveTextContent('MOYENNE')
+    expect(lignes[1]).toHaveTextContent('Le maître d’ouvrage accepte-t-il une rive de 0,3 m ?')
+    expect(lignes[2]).toHaveTextContent('+1 module (+0,72 kWc)')
+    // L'allée gratuite renvoie à l'existant ; les autres codes n'ont pas de bouton.
+    expect(lignes[0]).toHaveTextContent('Reprendre')
+    expect(lignes[1]).not.toHaveTextContent('Reprendre')
+  })
+
+  it('aucune suggestion, aucune carte', async () => {
+    calculer.mockResolvedValue({ data: { ...RESULTAT, suggestions: [] } })
+    rendre()
+    fireEvent.click(screen.getByTestId('cal-remplissage-lancer'))
+    await screen.findByTestId('cal-remplissage-regime')
+    expect(screen.queryByTestId('acal450-conseils')).toBeNull()
+  })
+})
+
 describe('CAL79 — le panneau est monté dans l’atelier', () => {
   /* Un composant écrit pour PERSONNE est l'oubli du 03/08/2026. On le vérifie
      ici sur la SOURCE de l'atelier plutôt qu'en le remontant : le rendu réel

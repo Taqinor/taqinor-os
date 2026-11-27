@@ -33,7 +33,7 @@ const corpsCirculation = (l) => ({
 })
 const CHAMPS_LIGNE = [['pays', 'Pays (2 lettres)'], ['largeur_m', 'Largeur (m)'], ['source', 'Source'], ['reference', 'Référence']]
 const CLASSE_ETIQUETTE = 'text-xs font-semibold uppercase tracking-wide text-muted-foreground'
-const CLASSE_CHAMP = 'mt-1 rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground'
+const CLASSE_CHAMP = 'mt-1 rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground'
 
 export default function ReglagesAllees() {
   const peutGerer = usePeutReglerSociete()
@@ -90,7 +90,7 @@ export default function ReglagesAllees() {
   }
 
   return (
-    <div className="page flex flex-col gap-4" data-testid="acal893-ecran">
+    <div className="page cal-reglages flex flex-col gap-4" data-testid="acal893-ecran">
       <div className="flex flex-col gap-1">
         <a href="/calepinage/reglages" className="text-xs underline">← Réglages simulation</a>
         <h1 className="text-lg font-semibold text-foreground">Allées</h1>

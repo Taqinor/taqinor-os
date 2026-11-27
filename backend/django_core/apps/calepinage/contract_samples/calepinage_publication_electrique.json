@@ -138,7 +138,7 @@
     }
   },
   "exemple_evaluation": {
-    "pourquoi": "ACAL934 — l'état à trois valeurs (pret | a_completer | bloquant) et son nombre de `points`, calculés UNE fois (services/etat_dossier_electrique.py::etat_de_publication) : bloquant = nombre de motifs bloquants ; a_completer = nombre de motifs non_verifiable, omis ou sans_source ; pret = 0. `publiable` et les quatre mots de `verdict` sont inchangés (D-ACAL-9 : « à compléter » publie). `publication` = verdict_publiable ; `electrique` = verdict_de_conception, evaluation_electrique et le bloc de l'assistant portent les mêmes `etat` et `points`.",
+    "pourquoi": "ACAL934 — l'état à trois valeurs (pret | a_completer | bloquant) et son nombre de `points`, calculés UNE fois (services/etat_dossier_electrique.py::etat_de_publication) : bloquant = nombre de motifs bloquants ; a_completer = nombre de motifs non_verifiable, omis ou sans_source ; pret = 0 ; ACAL1937 — côté `GET /electrique/`, en `a_completer`, `publication.points` est le nombre du rail « Prêt à envoyer ? » (étape Électrique : à régler + bloquants), le même que le titre : un seul nombre ; la liste `motifs` garde le détail. `publiable` et les quatre mots de `verdict` sont inchangés (D-ACAL-9 : « à compléter » publie). `publication` = verdict_publiable ; `electrique` = verdict_de_conception, evaluation_electrique et le bloc de l'assistant portent les mêmes `etat` et `points`.",
     "publication": {
       "publiable": true,
       "motifs": [

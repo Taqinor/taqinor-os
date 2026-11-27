@@ -65,6 +65,8 @@ Module PUR : aucune base, aucun réseau.
 """
 from __future__ import annotations
 
+from apps.calepinage.services.etapes import fiche_du_module
+
 from apps.calepinage.services import etapes as _etapes
 from ..valeurs import nombre as _nombre
 
@@ -138,7 +140,7 @@ def tableau_pluriannuel(p50_annee1_kwh, contexte, parts=None):
     annee1 = [{'annee': 1, 'facteur': None, 'p50_kwh': round(p50, 3),
                'source': SOURCE_CHAINE}]
 
-    fiche = contexte.get('fiche_module')
+    fiche = fiche_du_module(contexte)
     fiche = fiche if isinstance(fiche, dict) else {}
     degradation = _pourcentage(fiche.get(CHAMP_DEGRADATION))
     premiere = _pourcentage(fiche.get(CHAMP_ANNEE1))
@@ -252,7 +254,7 @@ def _fiches(contexte):
     plusieurs = contexte.get('fiches_modules')
     if isinstance(plusieurs, (list, tuple)):
         return [fiche for fiche in plusieurs if isinstance(fiche, dict)]
-    fiche = contexte.get('fiche_module')
+    fiche = fiche_du_module(contexte)
     return [fiche] if isinstance(fiche, dict) else []
 
 

@@ -64,6 +64,8 @@ défaut de ce module.
 """
 from __future__ import annotations
 
+from apps.calepinage.services.etapes import fiche_du_module
+
 from apps.calepinage.services import etapes
 from core.electrique.cables import RHO_CUIVRE_20C
 from ..valeurs import nombre as _nombre
@@ -200,7 +202,7 @@ def _liaison_de_chaine(contexte):
 
     chainage = _chainage(contexte)
     modules_par_chaine = _nombre(chainage.get('modules_par_chaine'))
-    fiche_module = contexte.get('fiche_module') or {}
+    fiche_module = fiche_du_module(contexte) or {}
     vmp = _nombre(fiche_module.get('vmp_v'))
     if not modules_par_chaine or not vmp:
         return etapes.etape_omise(LIBELLE, MOTIF_SANS_TENSION,
@@ -237,7 +239,7 @@ def _liaison_micro_onduleur(contexte):
 
     chainage = _chainage(contexte)
     modules = _nombre(chainage.get('modules'))
-    fiche_module = contexte.get('fiche_module') or {}
+    fiche_module = fiche_du_module(contexte) or {}
     vmp = _nombre(fiche_module.get('vmp_v'))
     if not modules or not vmp:
         return etapes.etape_omise(LIBELLE, MOTIF_SANS_TENSION,

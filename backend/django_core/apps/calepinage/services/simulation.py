@@ -54,6 +54,7 @@ from .chaine_pertes import (
     bloc_serie_horaire, completude_de_la_chaine, decision_meteo,
 )
 from . import consommation as _conso
+from .etapes import fiche_du_module
 from .etapes.autoconsommation import (CLE_TAUX_CONCEPTION, bloc_autoconsommation,
                                       taux_de_la_conception)
 from .etapes.batterie import bloc_batterie
@@ -1057,7 +1058,7 @@ def _poser_horizontale(contexte, *, client, decision, fichier, compteur,
     masque dans la géométrie car l'étape « horizon » le retire déjà), borné par
     le cache du client et compté dans ``appels_pvgis``. Une réponse refusée ou
     absente laisse le gain bifacial mensuel s'appliquer."""
-    fiche = contexte.get('fiche_module')
+    fiche = fiche_du_module(contexte)  # ACAL1959 : le module POSÉ, comme l'étape bifaciale
     if (fichier is not None or not isinstance(fiche, dict)
             or _nombre(fiche.get('bifacialite_pct')) is None):
         return
@@ -1616,7 +1617,7 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     # température, lue sur la série du site au kWc total.
     blocs['performance'] = bloc_performance(
         serie_production, kwc=meta['kwc'],
-        fiche_module=contexte['fiche_module'],
+        fiche_module=fiche_du_module(contexte),  # ACAL1959 : coefficients du module POSÉ
         pr=total.get('performance_ratio'),
         irradiation_incidente=cascade.get('irradiation_incidente_kwh_m2'),
         mode_meteo=decision['mode'])  # revue lot 6 : une année type reste UNE année
