@@ -97,6 +97,28 @@ describe('PanneauOptimiser (ACAL469)', () => {
     expect(screen.queryByTestId('acal813-mois')).toBeNull()
   })
 
+  /* ACAL1629 — la météo dite AVANT le bouton, jamais une clé de réglage. */
+  it('ACAL1629 — une phrase d’avant-lancement dit ce que la météo permet, sans clé technique', () => {
+    render(<PanneauOptimiser calepinageId={7} />)
+    const phrase = screen.getByTestId('acal1629-meteo')
+    expect(phrase).toHaveTextContent('une année type ou une série horaire')
+    expect(phrase).toHaveTextContent('fenêtre météo à un an')
+    expect(phrase.textContent).not.toMatch(/mode_meteo|gh_w_m2|gi_w_m2|parametres\./)
+    const lancer = screen.getByTestId('acal469-lancer')
+    expect(phrase.compareDocumentPosition(lancer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('ACAL1629 — un refus météo du balayage ne montre jamais la clé du réglage', async () => {
+    calepinageApi.calepinages.balayer.mockRejectedValue({ response: { data: {
+      'parametres.simulation.mode_meteo': ['L’optimisation demande une année type ou une série horaire : passez la fenêtre météo à un an (Réglages simulation).'],
+    } } })
+    render(<PanneauOptimiser calepinageId={7} />)
+    fireEvent.click(screen.getByTestId('acal469-lancer'))
+    const refus = await screen.findByTestId('acal469-refus')
+    expect(refus).toHaveTextContent('passez la fenêtre météo à un an')
+    expect(refus.textContent).not.toMatch(/mode_meteo|parametres\./)
+  })
+
   it('un refus 400 du serveur nomme le champ fautif', async () => {
     calepinageApi.calepinages.balayer.mockRejectedValue({ response: { data: { pan: ['Pan introuvable dans le document : 9.'] } } })
     render(<PanneauOptimiser calepinageId={7} />)

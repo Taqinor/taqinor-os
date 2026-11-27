@@ -60,7 +60,8 @@ def lire_socle(servi, serie, n0):
         raise refus(servi.get('motif') or 'La simulation est périmée.')
     if serie.get('tronquee'):
         raise refus("La série est agrégée au jour : le bilan horaire n'est "
-                    'pas lisible.')
+                    'pas lisible. Passez la fenêtre météo à une année '
+                    '(Réglages simulation) pour dimensionner par objectif.')
     if not isinstance(n0, int) or n0 < 1:
         raise refus("Aucun module posé : rien à dimensionner.", 'pose')
     if any(p.get('batterie_soc_pct') is not None for p in points):

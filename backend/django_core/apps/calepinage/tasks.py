@@ -189,11 +189,27 @@ MOTIF_ERREUR_INATTENDUE = (
     "la ; si cela se reproduit, signalez-le à l'administrateur.")
 
 
-def _echec_inattendu(erreur):
-    """``(champ, motif)`` FRANÇAIS d'une exception non prévue — T4-V1-012."""
+#: ACAL1629 — le balayage Optimiser : le levier d'un dépassement de temps est
+#: la GRILLE (nombre d'orientations), pas la fenêtre météo de la simulation.
+MOTIF_BALAYAGE_TEMPS_DEPASSE = (
+    'Le balayage a dépassé le temps permis : réduisez la grille (moins '
+    "d'inclinaisons ou d'orientations) puis relancez-le.")
+#: ACAL1629 — table fermée champ de refus météo → phrase de métier : jamais
+#: une clé de réglage ni un nom de colonne (« gh_w_m2 ») à l'écran.
+MOTIF_BALAYAGE_METEO = (
+    "L'optimisation demande une année type ou une série horaire : passez la "
+    'fenêtre météo à un an (Réglages simulation).')
+CHAMPS_METEO_BALAYAGE = ('meteo.gi_w_m2', 'parametres.simulation.mode_meteo')
+
+
+def _echec_inattendu(erreur, balayage=False):
+    """``(champ, motif)`` FRANÇAIS d'une exception non prévue — T4-V1-012 ;
+    ``balayage`` (ACAL1629) : le dépassement de temps parle de la grille."""
     from celery.exceptions import SoftTimeLimitExceeded
 
     if isinstance(erreur, SoftTimeLimitExceeded):
+        if balayage:
+            return '', MOTIF_BALAYAGE_TEMPS_DEPASSE
         return CHAMP_TEMPS_DEPASSE, MOTIF_TEMPS_DEPASSE
     return '', MOTIF_ERREUR_INATTENDUE
 
@@ -449,12 +465,14 @@ def balayer_calepinage(job_id=None, company_id=None, calepinage_id=None,
         return {'statut': 'failed', 'champ': refus.champ}
     except SimulationRefusee as refus:
         _publier_echec(job, calepinage, refus.champ or 'simulation',
-                       refus.motif)
+                       MOTIF_BALAYAGE_METEO
+                       if refus.champ in CHAMPS_METEO_BALAYAGE
+                       else refus.motif)  # ACAL1629
         return {'statut': 'failed', 'champ': refus.champ}
     except Exception as erreur:  # l'issue est publiée, pas avalée
         logger.exception('calepinage.balayer : calepinage #%s en échec',
                          calepinage_id)
-        champ, motif = _echec_inattendu(erreur)  # T4-V1-012
+        champ, motif = _echec_inattendu(erreur, balayage=True)  # T4-V1-012
         _publier_echec(job, calepinage, champ, motif)
         return {'statut': 'failed', 'champ': champ, 'motif': motif}
 
