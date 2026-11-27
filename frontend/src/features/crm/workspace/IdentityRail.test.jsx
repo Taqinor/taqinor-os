@@ -226,6 +226,24 @@ describe('LW14 — IdentityRail identité + actions', () => {
     expect(screen.getByText(/Prêt à deviser/)).toBeInTheDocument()
   })
 
+  // ACAL1269 — pompage (agricole) : champ au sol, gasoil — ni toit ni facture d'électricité.
+  it('ACAL1269 — lead agricole : ni « Toit non épinglé » ni « Facture manquante », « Prêt à deviser » reste', () => {
+    render(<IdentityRail
+      state={makeState({ type_installation: 'agricole', devis_auto: { pret: true, manquants: [], requis: [] } })}
+      onAction={onAction}
+      users={[]}
+    />)
+    expect(screen.queryByText(/Toit/)).toBeNull()
+    expect(screen.queryByText(/Facture/)).toBeNull()
+    expect(screen.getByText(/Prêt à deviser/)).toBeInTheDocument()
+  })
+
+  it('ACAL1269 — lead résidentiel : les deux badges restent', () => {
+    render(<IdentityRail state={makeState({ type_installation: 'residentiel' })} onAction={onAction} users={[]} />)
+    expect(screen.getByText(/Toit non épinglé/)).toBeInTheDocument()
+    expect(screen.getByText(/Facture manquante/)).toBeInTheDocument()
+  })
+
   // T4-U1-022 — un lead résidentiel déclaré en kWh, sans facture : le serveur le dit prêt (groupe
   // facture_hiver OU conso_mensuelle_kwh) ; la fiche ne dit plus « Facture manquante » à côté de « Prêt à deviser ».
   it('consommation déclarée en kWh, sans facture : « Consommation saisie (kWh) », prêt selon le serveur', () => {

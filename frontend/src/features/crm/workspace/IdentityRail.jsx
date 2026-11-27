@@ -290,6 +290,8 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   // savait jamais qu'un tracé complet l'attendait dans l'écran 3D.
   const roofOutlineReady = Array.isArray(server.roof_outline)
     && server.roof_outline.length >= 3
+  // ACAL1269 — pompage : ni toit ni facture d'électricité (champ au sol, gasoil).
+  const pompage = getField(state, 'type_installation') === 'agricole'
   const roofReady = roofOutlineReady || !!server.roof_point
   const factureReady = server.facture_hiver != null && server.facture_hiver !== ''
   // T4-U1-022 — une consommation déclarée en kWh (sans facture) est une donnée d'énergie saisie : la puce ne dit
@@ -669,6 +671,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           micro-icônes denses, jamais de chip « manquant » — un choix
           délibéré pour cette carte-là, pas une régression à répliquer ici). */}
       <div className="lw-rail-chips">
+        {!pompage && (<>
         <Badge
           tone={roofReady ? 'success' : 'neutral'}
           title={roofOutlineReady
@@ -686,6 +689,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
         >
           🧾 {factureReady ? 'Facture saisie' : consoKwhSaisie ? 'Consommation saisie (kWh)' : 'Facture manquante'}
         </Badge>
+        </>)}
         <Badge
           tone={devisReady ? 'success' : 'neutral'}
           title={devisReady ? 'Toutes les données nécessaires sont réunies pour générer un devis' : devisNotReadyMsg}
