@@ -829,12 +829,34 @@ def poser_prix_unitaire(ligne, prix):
         ligne.prix_unitaire = prix
 
 
+class AvertissementChiffre(str):
+    """Revue du 26/11 (D-ACAL-106/165) — un avertissement qui porte un MONTANT de vente : la phrase
+    complète (un ``str`` ordinaire pour tous les lecteurs d'aujourd'hui) et ``sans_montant``, la même
+    sans le chiffre, que sert le calepinage à qui ne lit pas les devis (:func:`avertissements_sans_montant`)."""
+
+    def __new__(cls, texte, sans_montant=None):
+        objet = super().__new__(cls, texte)
+        objet.sans_montant = sans_montant if sans_montant is not None else str(texte)
+        return objet
+
+
+def avertissements_sans_montant(avertissements):
+    """Les avertissements pour un lecteur SANS droit sur les devis : chaque :class:`AvertissementChiffre`
+    remplacé par sa phrase sans montant, les autres inchangés (aucune phrase n'est filtrée au texte)."""
+    return [getattr(a, 'sans_montant', a) for a in avertissements or ()]
+
+
 def avertissement_forfait_verrouille(designation, nb_panneaux, attendu):
-    """Le message FR d'un forfait au barème que ``prix_manuel`` protège."""
-    return ('« %s » : prix saisi à la main — il n\'a PAS été re-tarifé sur '
-            'les %d panneaux du devis (barème du stock : %s MAD HT). Effacez '
-            'la saisie manuelle sur cette ligne pour qu\'elle suive de nouveau '
-            'le barème.' % (designation, nb_panneaux, attendu))
+    """Le message FR d'un forfait au barème que ``prix_manuel`` protège (revue du 26/11 : avec sa
+    forme sans montant, :class:`AvertissementChiffre`)."""
+    texte = ('« %s » : prix saisi à la main — il n\'a PAS été re-tarifé sur '
+             'les %d panneaux du devis (barème du stock : %s MAD HT). Effacez '
+             'la saisie manuelle sur cette ligne pour qu\'elle suive de nouveau '
+             'le barème.' % (designation, nb_panneaux, attendu))
+    return AvertissementChiffre(texte, sans_montant=(
+        '« %s » : prix saisi à la main — il n\'a PAS été re-tarifé sur les %d panneaux du devis. '
+        'Effacez la saisie manuelle sur cette ligne pour qu\'elle suive de nouveau le barème.'
+        % (designation, nb_panneaux)))
 
 
 def avertissement_forfait_commun_divergent(designation):

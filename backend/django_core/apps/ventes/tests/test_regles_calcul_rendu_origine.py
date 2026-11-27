@@ -28,7 +28,7 @@ from pathlib import Path
 from unittest import mock
 
 from django.db import transaction
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, tag
 from freezegun import freeze_time
 
 from apps.ventes.models import Devis, LigneDevis, ShareLink
@@ -734,6 +734,7 @@ class AnnexeParOptionTests(SimpleTestCase):
         self.assertEqual(annexe_options.pages_annexe_technique(G), G.page_annexe_technique())
         self.assertEqual(G.page_annexe_technique(), G.page_annexe_technique(None, None, ''))
 
+    @tag('pdf')  # rendu WeasyPrint réel (WOW5) : release-verify, hors gate PR
     def test_deux_options_et_l_annexe_font_une_page_de_plus(self):
         """Compte de pages WeasyPrint (CI) : 4 avec l'annexe d'aujourd'hui, 5 avec
         une page par option (le compte d'aujourd'hui, 3 / 4, est épinglé par

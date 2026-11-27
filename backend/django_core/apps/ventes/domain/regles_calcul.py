@@ -416,10 +416,12 @@ def drapeaux_pdf_2611(devis) -> dict:
 #: du devis n'en dépend pas (elle ne lit que la longueur SAISIE ``dc_m``) ; un
 #: devis au niveau :data:`REGLES_POSE_REELLE_2111` (DORMANT) lit la production
 #: de la simulation du calepinage, donc cette perte — seulement une fois ce
-#: niveau rendu courant, jamais un devis déjà envoyé. Même date que
-#: :data:`COUPURE_TOIT_PLAT`, À POSER par l'orchestrateur avec elle. Le tracé
-#: n'y remplace que la partie HORIZONTALE de la liaison.
-COUPURE_LIAISON_DC_TRACEE = (2026, 11, 28)
+#: niveau rendu courant, jamais un devis déjà envoyé. Date = lendemain du
+#: déploiement du LOT 9 (posée le 26/11 au soir : le lot 9 part après le lot 8,
+#: donc un jour après :data:`COUPURE_TOIT_PLAT` ; à repousser si le lot 9
+#: n'est pas déployé le 28/11 au plus tard). Le tracé n'y remplace que la
+#: partie HORIZONTALE de la liaison.
+COUPURE_LIAISON_DC_TRACEE = (2026, 11, 29)
 
 
 def liaison_dc_tracee_ouverte(jour) -> bool:

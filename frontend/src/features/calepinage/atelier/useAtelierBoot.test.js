@@ -233,3 +233,69 @@ describe('T4-X2-006 — la production simulée fraîche de la pose (useSimulatio
     expect(chiffrageAvecSimulation(sansLead, null)).toBe(sansLead)
   })
 })
+
+/* ACAL1957 — après « Générer le devis » (201), l'atelier RELIT design-context : le bandeau et la cible lisent les
+   panneaux du devis créé, jamais le contexte d'avant la création (« Aucune ligne de panneau dans ce devis »). */
+describe('ACAL1957 — après generer-devis, le contexte relu porte la cible du devis', () => {
+  it('201 annoncé ⇒ design-context relu, la cible servie (source devis) remplace l’ancienne ; un autre calepinage n’y touche pas', async () => {
+    const { annoncerDevisGenere } = await import('./contexteAtelier')
+    calepinageApi.calepinages.designContext = vi.fn(() => Promise.resolve({ data: CTX }))
+    const setContexte = vi.fn()
+    // Sans `cibleId`, le boot ne part pas : seule l'écoute du devis généré est en jeu.
+    const { unmount } = renderHook(() => useAtelierBoot({ calepinageId: 2046, estCalepinage: true, setContexte }))
+    act(() => annoncerDevisGenere(9999))
+    expect(calepinageApi.calepinages.designContext).not.toHaveBeenCalled()
+    act(() => annoncerDevisGenere('2046'))
+    await waitFor(() => expect(setContexte).toHaveBeenCalledWith(CTX))
+    expect(calepinageApi.calepinages.designContext).toHaveBeenCalledWith(2046)
+    expect(setContexte.mock.calls[0][0].cible).toMatchObject({ source: 'devis', panneaux: CTX.cible.panneaux })
+    unmount()
+    act(() => annoncerDevisGenere(2046))
+    expect(calepinageApi.calepinages.designContext).toHaveBeenCalledTimes(1)
+  })
+})
+
+/* Revue ACAL1946 — l'issue de « Générer le devis » vit le temps de l'atelier : le quitter (la page se démonte, y compris
+   à la déconnexion) puis rouvrir le MÊME calepinage ne montre plus « Devis … créé » ; une réponse arrivée après la
+   fermeture ne repose rien. Vrais `useAtelierBoot` et `BoutonDevis`. */
+describe('Revue ACAL1946 — quitter l’atelier oublie l’issue du devis', () => {
+  const DETAIL_VIDE = exempleContrat('calepinage', 'calepinage_detail', 'exemple_vide')
+  async function ouvrir() {
+    const { createElement: h } = await import('react')
+    const { render } = await import('@testing-library/react')
+    const { MemoryRouter } = await import('react-router-dom')
+    const { default: BoutonDevis } = await import('../BoutonDevis')
+    function Atelier() {
+      useAtelierBoot({ calepinageId: DETAIL_VIDE.id, estCalepinage: true, setContexte: () => {} })
+      return h(MemoryRouter, null, h(BoutonDevis, { calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE }))
+    }
+    return render(h(Atelier))
+  }
+
+  it('créé, quitté, rouvert ⇒ aucune carte ; réponse tardive après fermeture ⇒ jetée', async () => {
+    const { screen, cleanup } = await import('@testing-library/react')
+    const userEvent = (await import('@testing-library/user-event')).default
+    calepinageApi.calepinages.designContext = vi.fn(() => new Promise(() => {}))
+    calepinageApi.calepinages.genererDevis = vi.fn(() => Promise.resolve({ data: { devis: 44, reference: 'DEV-2611-0044' } }))
+    const premier = await ouvrir()
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    expect(await screen.findByTestId('cal-devis-cree')).toHaveTextContent('Devis DEV-2611-0044 créé')
+    premier.unmount() // on quitte l'atelier
+    const rouvert = await ouvrir()
+    await screen.findByTestId('cal-generer-devis')
+    expect(screen.queryByTestId('cal-devis-cree')).toBeNull()
+    rouvert.unmount()
+
+    const attente = {}
+    calepinageApi.calepinages.genererDevis = vi.fn(() => new Promise((ok) => { attente.ok = ok }))
+    const second = await ouvrir()
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    await waitFor(() => expect(calepinageApi.calepinages.genererDevis).toHaveBeenCalledTimes(1))
+    second.unmount() // fermé pendant la requête
+    await act(async () => { attente.ok({ data: { devis: 45, reference: 'DEV-2611-0045' } }) })
+    await ouvrir()
+    await screen.findByTestId('cal-generer-devis')
+    expect(screen.queryByTestId('cal-devis-cree')).toBeNull()
+    cleanup()
+  })
+})

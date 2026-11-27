@@ -14,3 +14,13 @@ export function epingleDuSite(actif: Point | null, documentRelu: unknown, premie
   if (relue && Number.isFinite(relue.lat) && Number.isFinite(relue.lng)) return { lat: relue.lat as number, lng: relue.lng as number };
   return premierPanTrace;
 }
+
+/** ACAL1926 — « Effacer » sur un calepinage rouvert avec son toit : aucun repère du lead n'a été planté au chargement,
+ *  donc rien à réafficher. Rend le point où en poser un (l'épingle du document `pin`, sinon le point GPS du lead), ou null s'il
+ *  y a déjà un repère / aucune des deux. */
+export function epingleAReposer(repereDejaPose: boolean, documentRelu: unknown, pointLead: Partial<Point> | null = null): [number, number] | null {
+  if (repereDejaPose) return null;
+  const lead = pointLead && Number.isFinite(pointLead.lat) && Number.isFinite(pointLead.lng) ? (pointLead as Point) : null;
+  const p = epingleDuSite(null, documentRelu, lead);
+  return p ? [p.lng, p.lat] : null;
+}

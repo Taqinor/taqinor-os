@@ -466,6 +466,10 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_apercu_devis.json':  # lane E9 (T4-X5-010)
         'dry-run de « Générer le devis » : compose sur le catalogue de la société en base — la forme est '
         'affirmée contre l’exemple committé par apps/calepinage/tests/test_acal_resync_annonce.py',
+    'calepinage_apercu_resync.json':  # ACAL1320 (D-ACAL-73)
+        'dry-run de « Resynchroniser le devis » : joue la resynchronisation réelle sur le devis en base '
+        'dans un point de sauvegarde annulé — forme affirmée contre l’exemple committé par '
+        'apps/calepinage/tests/test_acal_resync_annonce.py',
     'calepinage_cible_factures.json':  # H3
         'taille tirée des factures : lit le lead et dimensionne par le moteur de devis '
         '(cible_depuis_lead) en base — la forme est affirmée contre l’exemple committé '
@@ -555,6 +559,8 @@ POSES_AVANT_LEUR_ROUTE = {
     # ACAL558 a livré ``GET``/``POST calepinages/systemes-fixation/``
     # (``views/systemes_fixation.py``) : ``calepinage_systemes_fixation.json``
     # en est SORTI.
+    # ACAL1320 a livré ``GET calepinages/<pk>/apercu-resync/`` (``views/pret_a_envoyer.py``) :
+    # ``calepinage_apercu_resync.json`` en est SORTI.
 }
 
 #: Clés promises par un contrat M0 (PACT10) AVANT que leur producteur pur ne
@@ -1383,3 +1389,20 @@ class RegistreLestageTest(unittest.TestCase):
         attendu = registre_des_reglages()['lestage']
         for etat in ('exemple', 'exemple_vide'):
             self.assertEqual(contrat[etat]['registre']['lestage'], attendu)
+
+
+class OriginesDeLaCourbeTest(unittest.TestCase):
+    """ACAL1608 — ``consommation.courbe_origine`` : le contrat nomme CHAQUE
+    origine que ``courbe_charge.ORIGINES`` publie, dont le repli
+    ``facture_lead`` (rien saisi dans l'atelier), lu par l'écran."""
+
+    def test_le_contrat_nomme_chaque_origine_dont_la_facture_du_lead(self):
+        from apps.calepinage.services.courbe_charge import ORIGINES
+
+        contrat = _charger('calepinage_resultat.json')
+        note = contrat['acal1608_note']
+        for origine in ORIGINES:
+            self.assertIn(f'`{origine}`', note, origine)
+        exemple = contrat['acal1608_consommation']['consommation']
+        self.assertEqual(exemple['courbe_origine'], 'facture_lead')
+        self.assertIn(exemple['courbe_origine'], ORIGINES)

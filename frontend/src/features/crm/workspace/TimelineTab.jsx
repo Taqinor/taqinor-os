@@ -8,7 +8,7 @@ import {
 import api from '../../../api/axios'
 import crmApi from '../../../api/crmApi'
 import CallLogPopover from '../CallLogPopover'
-import { TIMELINE_FILTERS, matchesTimelineFilter, nombreMasquesPlusRecents } from './timelineFiltres'
+import { TIMELINE_FILTERS, matchesTimelineFilter } from './timelineFiltres'
 import ChatterTimeline from '../../../components/ChatterTimeline'
 import { formatDate } from '../../../lib/format'
 import { toastError, errorMessageFrom } from '../../../lib/toast'
@@ -108,7 +108,6 @@ export default function TimelineTab({
   const filter = choix.leadId === leadId ? choix.filtre : 'tous'
   const changeFilter = useCallback((key) => setChoix({ leadId, filtre: key }), [leadId])
   const filtered = entries.filter((a) => matchesTimelineFilter(a.kind, filter, a.body))
-  const nbMasquesRecents = nombreMasquesPlusRecents(entries, filter)
 
   // FG204 — en-tête « 1er contact / dernier contact / N touches ». GET
   // paresseux (une fois par lead), silencieux si vide ou en erreur (jamais de
@@ -359,13 +358,6 @@ export default function TimelineTab({
           >
             ✕
           </button>
-        </p>
-      )}
-
-      {nbMasquesRecents > 0 && (
-        <p className="m-0 text-xs text-muted-foreground" data-testid="lw-timeline-masques">
-          {`${nbMasquesRecents} élément${nbMasquesRecents > 1 ? 's' : ''} plus récent${nbMasquesRecents > 1 ? 's' : ''} masqué${nbMasquesRecents > 1 ? 's' : ''} par le filtre — `}
-          <Button type="button" variant="ghost" size="sm" onClick={() => changeFilter('tous')}>Tout afficher</Button>
         </p>
       )}
 

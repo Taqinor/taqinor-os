@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createZones } from './zones';
 import { couleursAretes, EDGE_COLOR_BY_TYPE, type EdgeDeductionZone } from './edges';
-import { deserializeLayout, serializeLayout } from './prefill';
+import { deserializeLayout, geometrieZoneActive, selectionSansChangement, serializeLayout } from './prefill'; // ACAL1916
 import { etiquette, registreAtelier, reinitialiserNumerotation } from './numerotation';
 import { createLayoutEditor } from './layoutEditor';
 import { createWorkshopHistory, photoAtelierDepuisCtx, restaurerEnvZonesMesures } from './layoutHistory'; // ACAL515
@@ -15,6 +15,7 @@ import { type Ctx } from './context';
 import { panDeTest, ctxDeBase, ptM, LNG0, LAT0, carteEditeurFactice, depsEditeur } from './harnaisAtelier';
 import { type AreaRecord, type LayoutPlan } from './types';
 import { type LngLat } from '../../lib/roof';
+import { createLayoutState } from '../../lib/layoutVariability'; // ACAL1916
 
 const CARRE: LngLat[] = [ptM(-5, -5), ptM(5, -5), ptM(5, 5), ptM(-5, 5)];
 
@@ -356,5 +357,60 @@ describe('ACAL520 — pan verrouillé : cotes et rotation refusées', () => {
     expect(setStatus).toHaveBeenCalledWith('Zone 1 verrouillé — déverrouillez-le d’abord.'); // ACAL1430
     delete areas[0].verrouille;
     expect(zones.pivoterPanActif(90)).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACAL1916 (revue) — « Voir » un autre pan d'un calepinage rouvert ne réécrit rien.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('ACAL1916 — choisir un pan intact ne capture rien (entrée `selectArea`)', () => {
+  /** Le corps de `selectArea` dans l'entrée (une page à effets de bord, non importable : voir SOURCE_ENTREE). */
+  const corpsSelectArea = (): string => {
+    const i = SOURCE_ENTREE.indexOf('function selectArea(id: string)');
+    expect(i).toBeGreaterThan(0);
+    return SOURCE_ENTREE.slice(i, SOURCE_ENTREE.indexOf('loadArea(target);', i));
+  };
+
+  it('les trois captures du pan quitté passent derrière `selectionSansChangement` sur la pose vivante', () => {
+    const corps = corpsSelectArea();
+    const garde = corps.indexOf('selectionSansChangement(actif,');
+    expect(garde).toBeGreaterThan(0);
+    expect(corps).toContain('geometrieZoneActive(ctx,');
+    for (const capture of ['capturerGeometrieActive();', 'snapshotActiveAreaGeometry();', 'snapshotActiveAreaResult();']) {
+      expect(corps.indexOf(capture)).toBeGreaterThan(garde); // jamais capturé avant la garde (mutant : capturer à chaque sélection)
+    }
+  });
+
+  it('enregistré, rouvert, reposé tel quel : « inchangé » ; un panneau retiré le rend modifié', () => {
+    const centres = Array.from({ length: 10 }, (_, i) => ({ cx: -2 * (i % 5), cy: 2 * Math.floor(i / 5) }));
+    const conteneur = document.createElement('div');
+    document.body.appendChild(conteneur);
+    const monter = (areas: AreaRecord[], poses: number) => {
+      const ctx = {
+        ...(makeCtx(areas, 'z1') as unknown as Record<string, unknown>),
+        layoutMode: true,
+        layoutPlan: {
+          pack: { origin: [LNG0, LAT0], ringENU: [[-60, -60], [60, -60], [60, 60], [-60, 60]], azimuthDeg: 0 },
+          grid: { rowWidthM: 2, footprintPerPanelM2: 2, slopeLenM: 1, kwc: 10 * 0.71, panels: centres },
+          tiltDeg: 0, family: 'south', flush: false,
+        } as unknown as LayoutPlan,
+        layoutState: createLayoutState(centres, poses),
+        layoutOptimalCount: 6,
+        layoutSel: null, freeMode: false, freeState: null,
+      } as unknown as Ctx;
+      return { ctx, editor: createLayoutEditor(ctx, depsEditeur(carteEditeurFactice(conteneur))) };
+    };
+    // « Enregistrer » : le document tel que l'atelier l'écrit (6 posés sur le pan 1, pan 2 vide).
+    const z1 = panDeTest('z1', { vertices: [...CARRE], roofType: 'flat', neededPanels: 6, neededAuto: false });
+    const z2 = panDeTest('z2', { vertices: CARRE.map(([x, y]) => [x + 0.0002, y] as LngLat), roofType: 'flat' });
+    const doc = JSON.parse(JSON.stringify(serializeLayout(monter([z1, z2], 6).ctx)));
+    // Réouverture : le pan relu porte sa pose, l'optimum repave (10), puis la pose enregistrée est reposée (PV27).
+    const areas = deserializeLayout(doc);
+    const { ctx, editor } = monter(areas, 10);
+    expect(editor.hydrateLayout(doc.zones[0].geometry.panels, doc.zones[0].geometry.origin, 'lattice')).toBe(true);
+    const vif = { vertices: ctx.vertices, obstacles: ctx.obstacles, roofType: ctx.roofType, pitchDeg: ctx.pitchDeg, facingAzimuthDeg: ctx.facingAzimuthDeg, facingManual: ctx.facingManual, neededPanels: ctx.neededPanels, neededAuto: ctx.neededAuto };
+    expect(selectionSansChangement(areas[0], vif, geometrieZoneActive(ctx))).toBe(true);
+    ctx.layoutState!.occupied.delete(5); // un panneau retiré à la main
+    expect(selectionSansChangement(areas[0], vif, geometrieZoneActive(ctx))).toBe(false);
   });
 });

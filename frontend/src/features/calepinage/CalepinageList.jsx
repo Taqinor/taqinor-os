@@ -390,9 +390,9 @@ export default function CalepinageList() {
   const calme = (actif) => `h-11 gap-2 rounded-full text-sm text-muted-foreground ${actif ? 'px-3' : 'w-11 px-0'}`
 
   return (
-    <div className="cliste space-y-4">
+    <div className="cliste cliste-page space-y-4">
       <div className="flex flex-wrap items-center gap-4">
-        <div className="flex flex-1 items-baseline gap-3">
+        <div className="cliste-tete-titre flex flex-1 items-baseline gap-3">
           <h1 className="cliste-titre">Calepinages</h1>
           <span className="cliste-compteur text-sm" data-testid="liste-compteur">
             {/* T4-B4-013 — rien de lu (lecture en cours, ou échec dit plus bas) : jamais un faux « 0 projet ». */}
@@ -413,14 +413,15 @@ export default function CalepinageList() {
         </div>
         <Button className="cliste-action h-11 gap-2 px-[18px] font-bold" onClick={() => navigate('/calepinage/nouveau')}>
           <Plus size={18} aria-hidden="true" />
-          Nouveau calepinage
+          <span className="cliste-action-texte">Nouveau calepinage</span>
         </Button>
       </div>
 
       {/* Les puces d'état : celles du serveur (Brouillon, Validé, Périmé, Refusé), chacune avec son effectif quand il est servi. */}
       <div className="flex flex-wrap items-center gap-2">
       <div role="group" aria-label="Filtrer par état" data-testid="cal-liste-filtres-etat"
-        className="flex flex-wrap items-center gap-2">
+        className="cliste-puces flex flex-wrap items-center gap-2"
+        data-replie={String(!filtresVisibles && !statut && !estMoi)}>
         {puces.map(([valeur, libelle]) => (
           <button key={valeur || 'tous'} type="button" aria-pressed={statut === valeur}
             className="cliste-puce"

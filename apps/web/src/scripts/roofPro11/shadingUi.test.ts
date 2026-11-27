@@ -41,6 +41,7 @@ import {
 } from './prefill'; // ACAL27
 import { appliquerHydratationAuCtx } from './hydratation'; // ACAL27
 import { type Ctx } from './context'; // ACAL27
+import { poserChoixOptimisation } from './optimizer'; // ACAL1532
 import { propositionOsm, type Batiment, type BatimentOsmServeur } from './batiment';
 import { FLOORS, FLOOR_HEIGHT_M } from './constants';
 import { phraseVerdictOmbrage } from './verdictOmbrage'; // ACAL715
@@ -1043,5 +1044,105 @@ describe('ACAL1407 + ACAL1501 — ombre proche mesurée sur les panneaux posés'
     expect(ctx.shadeObstructions).toHaveLength(0);
     expect(ctx.shadeFactors).toEqual(matriceOmbrageDesSources(ctx, 6).factors);
     expect(ctx.shadeAnnualFactor).toBeLessThan(1);
+  });
+
+  // ACAL1620 — T2-F2-RESU-b-006 : le calepinage rouvert (obstacle 3 × 3 × 8 m, accès enregistré, AUCUNE ombre tracée) disait
+  // « non renseigné — aucune obstruction n'a été saisie » jusqu'à ce qu'on retouche la hauteur. Ordre réel d'un boot :
+  // l'UI d'ombrage naît d'abord (rien à ombrer), puis le document est relu, le pan et sa pose arrivent, l'écran se redessine.
+  it('ACAL1620 — document rouvert avec obstacle 3×3×8 m et sans shadeObstructions : l’accès est chiffré sans geste', () => {
+    document.body.innerHTML = '<div id="parent"><div id="rp9-solar-access"></div></div>';
+    const grand = { ...cheminee(0, 0.5), lengthM: 3, widthM: 3, heightM: 8 };
+    const avant = ctxPan(grand);
+    avant.shadeFactors = matriceOmbrageDesSources(avant, 6, rangee(4)).factors;
+    const doc = serializeLayout(avant);
+    delete (doc as { shadeObstructions?: unknown }).shadeObstructions; // document d'avant ACAL27 : aucune ombre tracée
+
+    const ctx = ctxPan(grand);
+    ctx.obstacles.length = 0; // le pan n'est pas encore rechargé
+    const ui = createShadingUi(ctx, {
+      map: new Proxy({}, { get: () => () => undefined }) as never, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {},
+    });
+    const bloc = document.getElementById('rp9-solar-access')!;
+    expect(bloc.textContent).toContain('non renseigné'); // l'état de naissance, avant la relecture
+
+    appliquerHydratationAuCtx(ctx, hydrateFromDevis({ id: 9, geometrie: { roof_layout: doc }, cibleVendue: false }));
+    ctx.obstacles.push(grand); // le pan relu pose ses obstacles
+    Object.assign(ctx, { layoutPlan: { grid: { panels: rangee(4).map((p) => ({ cx: p.x, cy: p.y })), kwc: 2.5 } }, layoutOptimalCount: 5 });
+    ui.refreshHeatmap(); // ce que l'écran appelle après chaque re-rendu des panneaux (recalcDisplays)
+
+    const attendu = ui.solarAccess()!;
+    expect(attendu).not.toBeNull();
+    expect(attendu.average).toBeLessThan(1);
+    expect(bloc.textContent).not.toContain('non renseigné');
+    expect(bloc.textContent).toContain(`${(attendu.average * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`);
+    expect(ui.moduleShadeTooltip(0)).toContain('Accès solaire');
+  });
+
+  // ACAL1532 — l'écran Panneaux lit ces deux clés de `#rp9-solar-access` (jamais le texte) : le nom de l'obstacle (`data-ombre-de`)
+  // et, SANS seuil réglé, la perte annuelle tirée de `shadeAnnualFactor` (`data-ombre-perte`) — aucun seuil inventé.
+  function rouvert(seuil: number | null, avecBouton: boolean) {
+    document.body.innerHTML = '<div id="parent"><div id="rp9-solar-access"></div></div>';
+    const grand = { ...cheminee(0, 0.5), lengthM: 3, widthM: 3, heightM: 8 };
+    const ctx = ctxPan(grand);
+    const ui = createShadingUi(ctx, {
+      map: new Proxy({}, { get: () => () => undefined }) as never, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {},
+      ...(avecBouton ? { removePanels: () => 0 } : {}),
+    });
+    poserChoixOptimisation(seuil == null ? null : { seuilAccesSolaire: seuil });
+    // Deux modules au sud de la cheminée (dégagés), trois juste au nord (dans son ombre) : une proposition de retrait existe.
+    const poses = [...rangee(-3).slice(0, 2), ...rangee(1.5).slice(1, 4)];
+    Object.assign(ctx, { layoutPlan: { grid: { panels: poses.map((p) => ({ cx: p.x, cy: p.y })), kwc: 2.5 } }, layoutOptimalCount: 5 });
+    ui.recomputeShading();
+    return { ctx, bloc: document.getElementById('rp9-solar-access')! };
+  }
+
+  it('ACAL1532 — seuil 95 % du dossier : la proposition de retrait et le nom « de la cheminée » sont publiés à l’ouverture', () => {
+    try {
+      const { bloc } = rouvert(0.95, true);
+      expect(bloc.querySelector('#rp9-solar-access-apply')).not.toBeNull();
+      expect(bloc.dataset.ombreDe).toBe('de la cheminée');
+      expect(bloc.dataset.ombrePerte).toBeUndefined(); // un seuil est réglé : l'alerte parle de panneaux, pas de perte
+    } finally { poserChoixOptimisation(null); }
+  });
+
+  it('ACAL1532 — sans seuil réglé : la perte annuelle publiée est celle de shadeAnnualFactor, arrondie, jamais un seuil', () => {
+    try {
+      const { ctx, bloc } = rouvert(null, true);
+      expect(ctx.shadeAnnualFactor).toBeLessThan(1);
+      expect(bloc.dataset.ombrePerte).toBe(String(Math.round((1 - ctx.shadeAnnualFactor) * 100)));
+      expect(bloc.dataset.ombreDe).toBe('de la cheminée');
+      expect(bloc.querySelector('#rp9-solar-access-apply')).toBeNull();
+    } finally { poserChoixOptimisation(null); }
+  });
+
+  it('ACAL1532 (revue) — deux obstacles hauts dont une VMC qui n’ombre aucun module signalé : seule la cheminée est nommée', () => {
+    try {
+      document.body.innerHTML = '<div id="parent"><div id="rp9-solar-access"></div></div>';
+      const grand = { ...cheminee(0, 0.5), lengthM: 3, widthM: 3, heightM: 8 };
+      const vmc = { ...cheminee(-4.8, -3.4), id: 'vmc-1', type: 'ventilation', lengthM: 0.2, widthM: 0.2, heightM: 0.3 };
+      const ctx = ctxPan(grand);
+      ctx.obstacles.push(vmc);
+      const ui = createShadingUi(ctx, {
+        map: new Proxy({}, { get: () => () => undefined }) as never, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {},
+        removePanels: () => 0,
+      });
+      poserChoixOptimisation({ seuilAccesSolaire: 0.95 });
+      const poses = [...rangee(-3).slice(0, 2), ...rangee(1.5).slice(1, 4)];
+      Object.assign(ctx, { layoutPlan: { grid: { panels: poses.map((p) => ({ cx: p.x, cy: p.y })), kwc: 2.5 } }, layoutOptimalCount: 5 });
+      ui.recomputeShading();
+      const bloc = document.getElementById('rp9-solar-access')!;
+      expect(bloc.dataset.ombreDe).toBe('de la cheminée');
+    } finally { poserChoixOptimisation(null); }
+  });
+
+  it('ACAL1532 — aucune obstruction : rien n’est publié', () => {
+    document.body.innerHTML = '<div id="parent"><div id="rp9-solar-access"></div></div>';
+    const ctx = ctxPan(cheminee(0, 0));
+    ctx.obstacles.length = 0;
+    const ui = createShadingUi(ctx, { map: new Proxy({}, { get: () => () => undefined }) as never, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {} });
+    ui.refreshHeatmap();
+    const bloc = document.getElementById('rp9-solar-access')!;
+    expect(bloc.dataset.ombreDe).toBeUndefined();
+    expect(bloc.dataset.ombrePerte).toBeUndefined();
   });
 });

@@ -363,12 +363,19 @@ const nombreFr = (v) => (Number.isFinite(Number(v)) && v !== null && v !== ''
  * message la nomme, dit pourquoi, et dit QUI peut saisir son prix : le droit
  * « Modifier les prix du catalogue » (`catalogue_prix_modifier`,
  * apps/roles/permissions_registre.py — Directeur et Administrateur par
- * défaut). `null` quand une pompe est chiffrée ou que rien ne manque.
+ * défaut). `null` quand rien ne manque.
+ * ACAL1256 — une pompe CHIFFRÉE est retenue (p. ex. sans courbe, étape
+ * `pre_dimensionnement`) et `prix_a_renseigner` liste quand même des pompes à
+ * courbe sans prix (`choisir_pompe` les sert) : le message ne dit plus qu'elle
+ * ne peut pas être chiffrée, il nomme ces autres pompes.
  */
 export function messagePompeSansPrix(donnees) {
   const d = donnees || {}
   const noms = Array.isArray(d.prix_a_renseigner) ? d.prix_a_renseigner.filter(Boolean) : []
-  if (!d.pompe?.placeholder || !noms.length) return null
+  if (!d.pompe || !noms.length) return null
+  if (!d.pompe.placeholder && d.pompe.prix_connu !== false) {
+    return `D'autres pompes à courbe conviendraient mais n'ont pas de prix : ${noms.join(', ')}.`
+  }
   const [retenue, ...autres] = noms
   const debit = nombreFr(d.conception?.debit_conception_m3h)
   const hmt = nombreFr(d.hmt?.valeur_m)

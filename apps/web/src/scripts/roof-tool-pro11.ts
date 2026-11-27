@@ -153,6 +153,7 @@ import { affectationDesPans, lireModulesDisponibles, moduleDeDepart } from './ro
 import { remplacerParPanVierge } from './roofPro11/repriseModule'; // ACAL1416
 import { cibleFermetureToit } from './roofPro11/vueFermetureToit'; // ACAL1422
 import { reafficherEpingleApresEffacement } from './roofPro11/repriseEpingle'; // ACAL1423
+import { epingleAReposer } from './roofPro11/epingleSite'; // ACAL1926
 import { enregistrerOrbite } from './roofPro11/videoOrbite'; // ACAL896
 import { factureCarteDe, lireFactureSaisie } from './roofPro11/factureCarte'; // ACAL777
 import { bandesDuPan, enveloppeAccesSolaire, type MemoAcces } from './roofPro11/bandesAcces'; // ACAL721
@@ -202,7 +203,7 @@ import { type ModeClavier } from './roofPro11/clavier'; // CALX128 câblage
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
 import { createEdgesUi } from './roofPro11/edgesUi'; // CALX94 câblage
-import { monterFormesToit } from './roofPro11/formesToit'; // ACAL410
+import { monterFormesToit, propagerPenteDecoupe } from './roofPro11/formesToit'; // ACAL410, ACAL1735
 import { creerBarreSelection } from './roofPro11/barreSelection'; // ACAL411
 import { creerAnnulerAtelier } from './roofPro11/annulerAtelier'; // ACAL412
 import { appliquerHypotheses, etatHypotheses, sourcePenteClic, type EtatHypotheses } from './roofPro11/hypotheses'; // ACAL417
@@ -233,7 +234,7 @@ import {
 } from './roofPro11/optimizer';
 import { creerCoucheElectrique } from './roofPro11/electrique3d';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
-import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, referenceContourRing, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
+import { hydrateFromLead, hydrateFromDevis, serializeLayout, geometrieZoneActive, selectionSansChangement, referenceContourRing, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
 import { deplacerEpingleALaMain, latitudeDuCalcul, localiserSiTraceVisible, oublierEpingleDeplacee } from './roofPro11/provenanceEpingle'; // ACAL593 — sorti de prefill.ts ; T4-U4-013, T4-X2-005
 import { masquerMarqueur, retirerMarqueur } from './roofPro11/epingleClient'; // ACAL972
 import { createReperesUi } from './roofPro11/reperesChantier'; // ACAL593
@@ -456,7 +457,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // pin (pas de contour ≥3 sommets), on plante un marqueur laiton à l'endroit exact pointé
   // par le client, distinct du contour que Meriem trace. Posé dans applyHydration, retiré
   // dans clearEditorState (nouveau lead / effacement). null hors flux d'hydratation.
-  let clientPinMarker: maplibregl.Marker | null = null;
+  let clientPinMarker: maplibregl.Marker | null = null; let pointLeadSite: { lat: number; lng: number } | null = null; // ACAL1926 — le GPS du lead d'un document rouvert
   const removeClientPinMarker = () => { clientPinMarker = retirerMarqueur(clientPinMarker); };
   // ACAL193 (D-ACAL-13) — le repère client est DÉPLAÇABLE à la main : le relâcher ailleurs
   // pose `pinSource: 'manuel'` (et cette épingle) dans le prochain document — elle ne
@@ -1174,10 +1175,12 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     creer: (anneau) => { localiserSiTraceVisible(ctx, typeof map.getZoom === 'function' ? map.getZoom() : Number.NaN); vertices = anneau; close(); }, // T4-U4-013 — créé sur le toit VU : site localisé
   });
   // ACAL410 — « Forme du toit » : un clic remplace le pan actif par les pans de la forme.
+  let idsDecoupe = new Set<string>(); // ACAL1735 — les pans de la dernière découpe : une confirmation de pente vaut pour eux
   const formesToit = monterFormesToit({
     ancre: addAreaBtn, contour: () => (closed ? vertices : []), pente: () => pitchDeg, existants: () => areas,
     obstacles: () => obstacles.length, setStatus: (m) => setStatus(m),
     appliquer: (pans) => { heriterDuPanDecoupe(activeArea(), { neededPanels, neededAuto }, pans, opts.chiffrage !== undefined); // ACAL1448 — taille et module du pan découpé
+      idsDecoupe = new Set(pans.length > 1 ? pans.map((p) => p.id) : []);
       areas.splice(Math.max(0, areas.findIndex((a) => a.id === activeAreaId)), 1, ...pans);
       activeAreaId = pans[0].id;
       loadArea(pans[0]);
@@ -2062,7 +2065,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    * Le mode LEAD (cette fonction jamais appelée) garde le remplissage-au-mieux historique.
    */
   function applyDevisHydration(devis: import('./roofPro11/prefill').DevisPayload): boolean {
-    devisMode = true;
+    devisMode = true; pointLeadSite = devis.geometrie?.roof_point ?? null; // ACAL1926 — repli de l'épingle reposée par « Effacer »
     const h = hydrateFromDevis(devis);
     appliquerHydratation(h); // ACAL26 — même fonction que le boot lead
     // CAL37 — figé pour la session, comme `devisMode` : un calepinage autonome
@@ -2525,6 +2528,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   function reset() {
     clearEditorState();
     reafficherEpingleApresEffacement(clientPinMarker); // ACAL1423 — « Effacer » SEUL rend le repère du lead masqué à la fermeture (jamais retiré)
+    const aReposer = epingleAReposer(!!clientPinMarker, ctx.documentRelu, pointLeadSite); // ACAL1926 — document rouvert avec son toit : aucun repère planté au chargement ; `pin` du document, sinon le lead
+    if (aReposer) planterClientPinMarker(aReposer);
     shadingUi.reset(); // WJ19/ACAL357 — les ombres et la matrice appartiennent au SITE : « Effacer » seul les vide
     oublierEpingleDeplacee(ctx); // ACAL193 — un site vierge n'a plus d'épingle déplacée
     // ACAL26 — « Effacer » repart d'un site vierge : la consommation du site (courbe,
@@ -2694,9 +2699,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (id === activeAreaId) return;
     const target = areas.find((a) => a.id === id);
     if (!target) return;
-    capturerGeometrieActive(); // ACAL28
-    snapshotActiveAreaGeometry();
-    snapshotActiveAreaResult();
+    const actif = activeArea();
+    const geoVive = actif && closed && vertices.length >= 3 ? geometrieZoneActive(ctx, activeSolarAccessMeta() ?? undefined) : null;
+    if (!(actif && selectionSansChangement(actif, { vertices, obstacles, roofType, pitchDeg, facingAzimuthDeg, facingManual, neededPanels, neededAuto }, geoVive))) { // ACAL1916 — « Voir » ne réécrit pas un pan intact
+      capturerGeometrieActive(); // ACAL28
+      snapshotActiveAreaGeometry();
+      snapshotActiveAreaResult();
+    }
     activeAreaId = id;
     loadArea(target);
   }
@@ -3676,13 +3685,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     else if (facingManual) facingNoteEl.textContent = 'Face réglée à la main (votre choix est tenu pour cette zone).';
     else facingNoteEl.textContent = etatHypotheses(h).noteFace;
   }
-  const confirmerPente = () => { const a = activeArea(); if (a) a.pitchSource = sourcePenteClic(pitchDeg); };
+  const confirmerPente = (avantDeg: number = pitchDeg) => { const a = activeArea(); if (a) { a.pitchSource = sourcePenteClic(pitchDeg); propagerPenteDecoupe(areas, idsDecoupe, a.id, avantDeg, pitchDeg, a.pitchSource as Record<string, unknown>); } }; // ACAL1735
   document.querySelectorAll<HTMLButtonElement>('[data-pitch]').forEach((b) => {
     b.addEventListener('click', () => {
+      const avant = pitchDeg;
       pitchDeg = Number(b.dataset.pitch);
       if (pitchRangeEl) pitchRangeEl.value = String(Math.round(pitchDeg));
       if (pitchValueEl) pitchValueEl.textContent = `${Math.round(pitchDeg)}°`;
-      confirmerPente();
+      confirmerPente(avant);
       syncPitchChips();
       if (roofType === 'pitched' && closed) pitchedRecompute();
     });
@@ -3690,9 +3700,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   pitchRangeEl?.addEventListener('input', () => {
     const v = Number(pitchRangeEl.value);
     if (!Number.isFinite(v)) return;
+    const avant = pitchDeg;
     pitchDeg = v;
     if (pitchValueEl) pitchValueEl.textContent = `${Math.round(v)}°`;
-    confirmerPente();
+    confirmerPente(avant);
     syncPitchChips();
     if (roofType === 'pitched' && closed) pitchedRecompute();
   });
@@ -4274,6 +4285,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     setAffectationChaines: (rows: readonly AffectationRow[] | null | undefined, mode: AffectationMode = 'chaine') => {
       const coloring = buildAffectationColoring(rows, mode);
       ctx.affectationColoration = coloring.colorByModule.size > 0 ? coloring : null;
+      optimizer.repeindreCarte(); // ACAL1914 — l'estimation de la carte ne compte que les panneaux raccordés
       scene3d.rafraichirAffectation();
     },
     // ACAL87 — PROMESSE : l'aperçu est lu après un rendu réel ; null si l'image est vide.

@@ -51,7 +51,8 @@
     "champ": "confirmer_taille",
     "kwc": 34.08,
     "total_ttc": "168800.00",
-    "refus": "Données insuffisantes pour dimensionner le devis : renseignez la facture d'électricité d'hiver (ou la taille souhaitée en kWc) du lead."
+    "refus": "Données insuffisantes pour dimensionner le devis : renseignez la facture d'électricité d'hiver (ou la taille souhaitée en kWc) du lead.",
+    "motif": "facture_absente"
   },
   "exemple_409_devis_existant": {
     "detail": "Ce lead a déjà le devis DEV-202611-0013 (brouillon, 115 800,00 MAD TTC), créé avant ce calepinage : rattachez-lui ce calepinage, ou créez un autre devis.",

@@ -2283,7 +2283,7 @@
     "valeurs": "ILLUSTRATIVES (mêmes chiffres que `etude_ci_preview.json` et `economie_ci.json`) ; aucun client réel ; ICE factice.",
     "ciq306": "CIQ306 — la vue émet `synthese_ci` (clé additive, ajoutée à `exemple` : 23 additives) et `mode_kpis` C&I v2 PROJETÉ de `synthese_ci`. CIQ304 : `argent` = le bloc PUBLIC `economie_ci` recopié tel quel ; en COMMERCIAL, VAN, LCOE, payback actualisé et sensibilités sont RETIRÉS (D-CIQ-10, industriel seulement) — `exemple_commercial.synthese_ci.argent` les a perdus en conséquence. CIQ305 : `hypotheses` = la table `quote_engine/ci/mentions.py`."
   },
-  "pourquoi_roof_layout_riche": "ACAL18 (PACT10, C-ACAL-035/042/116) — `exemple_roof_layout_riche` est un FRAGMENT (seule la clé `roof_layout` est montrée, comme `exemple_agricole`) : la forme que la page /proposition RECEVRA une fois la liste blanche `public_views._safe_roof_layout` (:1205-1265) élargie (D08-T21/T22). GÉOMÉTRIE SEULE, jamais un prix : `zones[].geometry` {azimuthDeg, tiltDeg, kwc, count, family, flush, origin, moduleId, mode, panels[{cx, cy, face, angleDeg}]} ; racine `modules` [{id, longueurMm, largeurMm, pmaxWc}] (JAMAIS produitId, libellé marque ni prix) ; racine `setbacksM` {lateralM, extremityM, parapetM, jointM} ; racine `exclusionZones` [{id, nature ENVELOPPE|INTERDITE|RESERVEE|PREFEREE, vertices, setbackM}] ; racine `poseSurfaces` [{id, kind sol|ombriere|facade, vertices|contourM, tiltDeg, rowAzimuthDeg, moduleLongM, moduleCourtM, moduleWc, engine{modules, rowPitchM, tables[{x0,x1,y0,y1}]}}]. Clés absentes TOLÉRÉES (anciens devis : `{version: 2, zones: []}` reste valide). Source : roof_layout_v2.schema.json ($defs zoneGeometry, moduleDocument, perimeterSetbacks, exclusionZone, poseSurface, posePlanMoteur, poseTable). Émetteur : `apps/ventes/public_views.py` (`_safe_roof_layout`, `_safe_zone_geometry`) ; lecteurs : `apps/web/src/lib/proposition.ts` (parseRoofLayout), `apps/web/src/scripts/roofPro11/viewerFullModel.ts`, `viewerOnly.ts`. Un test de liste noire (prix, prix_achat, marge, produitId absents) est écrit par D08-T21.",
+  "pourquoi_roof_layout_riche": "ACAL18 (PACT10, C-ACAL-035/042/116) — `exemple_roof_layout_riche` est un FRAGMENT (seule la clé `roof_layout` est montrée, comme `exemple_agricole`) : la forme que la page /proposition RECEVRA une fois la liste blanche `public_views._safe_roof_layout` (:1205-1265) élargie (D08-T21/T22). GÉOMÉTRIE SEULE, jamais un prix : `zones[].geometry` {azimuthDeg, tiltDeg, kwc, count, family, flush, origin, moduleId, mode, panels[{cx, cy, face, angleDeg}]} ; racine `modules` [{id, longueurMm, largeurMm, pmaxWc}] (JAMAIS produitId, libellé marque ni prix) ; racine `setbacksM` {lateralM, extremityM, parapetM, jointM} ; racine `exclusionZones` [{id, nature ENVELOPPE|INTERDITE|RESERVEE|PREFEREE, vertices, setbackM}] ; racine `poseSurfaces` [{id, kind sol|ombriere|facade, vertices|contourM, tiltDeg, rowAzimuthDeg, moduleLongM, moduleCourtM, moduleWc, engine{modules, rowPitchM, tables[{x0,x1,y0,y1}]}}]. Clés absentes TOLÉRÉES (anciens devis : `{version: 2, zones: []}` reste valide). Source : roof_layout_v2.schema.json ($defs zoneGeometry, moduleDocument, perimeterSetbacks, exclusionZone, poseSurface, posePlanMoteur, poseTable). Émetteur : `apps/ventes/public_views.py` (`_safe_roof_layout`, `_safe_zone_geometry`) ; lecteurs : `apps/web/src/lib/proposition.ts` (parseRoofLayout), `apps/web/src/scripts/roofPro11/viewerFullModel.ts`, `viewerOnly.ts`. Un test de liste noire (prix, prix_achat, marge, produitId absents) est écrit par D08-T21. ACAL1240 (revue) — `zones[].existant` (booléen, ADDITIF : présent et `true` sur un pan dont les modules sont DÉJÀ en place, absent sinon, jamais `false`) : la zone `z0` de l'exemple. Ses modules ne sont pas vendus : `result.panels` ne les compte pas, lus comme le devis les lit (`apps/ventes/domain/geometrie.py::pans_du_document` : `geometry.panels`, sinon `geometry.count`, sinon `result.count`). Aucune autre clé n'est ajoutée à la zone.",
   "exemple_roof_layout_riche": {
     "roof_layout": {
       "version": 2,
@@ -2315,6 +2315,18 @@
                 "angleDeg": 0
               }
             ]
+          }
+        },
+        {
+          "id": "z0",
+          "label": "Pan existant",
+          "existant": true,
+          "geometry": {
+            "azimuthDeg": 180,
+            "tiltDeg": 15,
+            "count": 6,
+            "moduleId": "mod-1",
+            "mode": "free"
           }
         }
       ],

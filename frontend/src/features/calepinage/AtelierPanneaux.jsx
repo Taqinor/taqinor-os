@@ -92,12 +92,14 @@ function valeur(brut, suffixe = '') {
    ========================================================================== */
 /* Recette V1-01 — ce que « Resynchroniser » fera du devis lié, selon son statut (règle QJR5, miroir
    de `ventes/domain/resynchronisation.py`) : brouillon et envoyé se corrigent sur place (l'envoyé :
-   correction notée sur le devis) ; accepté, refusé, expiré se révisent (V2), jamais modifiés. */
+   correction notée sur le devis) ; accepté, refusé, expiré se révisent (V2), jamais modifiés.
+   ACAL1320 (D-ACAL-73) — l'envoyé : ce qui change est montré AVANT, puis le devis déjà reçu par le client
+   est corrigé sur place (sa page et son PDF montrent la version corrigée) — la phrase dit les deux. */
 const LIBELLES_DEVIS_FIGES = { accepte: 'accepté', refuse: 'refusé', expire: 'expiré' }
+const LIBELLE_DEVIS_ENVOYE_PERIME = 'Devis envoyé : « Resynchroniser le devis » montre d’abord ce qui change, '
+  + 'puis corrige sur place le devis déjà reçu par le client (sa page et son PDF montreront la version corrigée)'
 function libelleDevisPerime(statut) {
-  if (statut === 'envoye') {
-    return 'Devis envoyé : la resynchronisation le corrigera, et la correction sera notée sur le devis'
-  }
+  if (statut === 'envoye') return LIBELLE_DEVIS_ENVOYE_PERIME
   if (LIBELLES_DEVIS_FIGES[statut]) {
     return `Devis ${LIBELLES_DEVIS_FIGES[statut]} : il ne sera pas modifié — créez une révision`
   }

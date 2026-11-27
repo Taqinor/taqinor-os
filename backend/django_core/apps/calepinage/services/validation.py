@@ -69,7 +69,8 @@ import datetime
 
 from apps.calepinage.services import etapes as _etapes
 from apps.calepinage.services.chaine_pertes import (
-    DECIMALES_KWH, annees_de_la_fenetre, appliquer_chaine,
+    DECIMALES_KWH, LIBELLES, TOUJOURS_OMISES, annees_de_la_fenetre,
+    appliquer_chaine,
 )
 from .valeurs import nombre as _flottant
 
@@ -125,6 +126,20 @@ MOTIF_ECART_INFORMATIF = (
     'température, faible éclairement et spectre, que PVGIS calcule lui-même, '
     'ne lui sont pas envoyés) — jamais une « validation », jamais un '
     'ajustement.')
+
+#: ACAL1933 — une étape de :data:`ETAPES_MODELISEES_PAR_PVGIS` omise chez nous
+#: (``etapes_omises`` de la cascade) : la comparaison n'est plus à pertes
+#: système égales, et l'étape est nommée en mots de tous les jours.
+DESIGNATIONS_PVGIS = {'iam': 'la réflexion sur le verre',
+                      'spectral': "l'effet du spectre de la lumière",
+                      'niveau_irradiance': 'la perte par faible éclairement',
+                      'thermique': 'la chaleur des panneaux'}
+MOTIF_ECART_SANS_EGALITE = MOTIF_ECART_INFORMATIF.replace(
+    ' à pertes système égales', '')
+MOTIF_OMISES_VS_PVGIS = (
+    " Notre chaîne calcule sans {designations}, que PVGIS compte : l'écart "
+    'ci-dessus inclut cette perte non comptée, il ne se lit pas comme un '
+    'écart de modèle.')
 
 MOTIF_SANS_ECART = (
     "Aucune simulation lancée : aucun écart n'a été mesuré contre PVcalc.")
@@ -243,10 +258,7 @@ def ecart_vs_pvcalc(serie, contexte, reponse_pvgis, *, kwc=None,
 
     total_pvgis = mesure_pvgis['annuel_kwh']
     pertes = _pertes_totales(cascade, mesure_pvgis)
-    motif = MOTIF_ECART_INFORMATIF
-    if not pertes['egales']:
-        motif += MOTIF_PERTES_INEGALES.format(chaine=pertes['chaine_pct'],
-                                              pvgis=pertes['pvgis_pct'])
+    motif = _motif_pertes(pertes)
 
     ecart = _ecart_pct(total_local, total_pvgis)
     tolerance = _etapes.reglage(contexte, CLE_TOLERANCE)
@@ -279,8 +291,8 @@ def _poste_principal(cascade, pertes, ecart, tolerance=None):
     perd PLUS que PVGIS et produit MOINS, ou (ACAL1606, pertes système
     égales) quand l'écart dépasse la ``tolerance`` saisie ; sinon ``None``."""
     chaine, pvgis = pertes.get('chaine_pct'), pertes.get('pvgis_pct')
-    hors_tolerance = (pertes.get('egales') and ecart is not None
-                      and tolerance is not None and abs(ecart) > tolerance)
+    hors_tolerance = (pertes.get('egales') and ecart is not None  # ACAL1961
+                      and tolerance is not None and -ecart > tolerance)
     if not hors_tolerance and (
             pertes.get('egales') or chaine is None or pvgis is None
             or ecart is None or not float(chaine) > float(pvgis)
@@ -469,11 +481,33 @@ def _pertes_totales(cascade, mesure_pvgis):
     l'arrondi près, la perte de la cascade entière et les étapes retirées."""
     chaine, exclues = perte_systeme(cascade)
     pvgis = mesure_pvgis.get('loss_pct')
-    egales = (chaine is not None and pvgis is not None
+    # ACAL1933 — une étape que PVGIS calcule, OMISE chez nous PAR CHOIX pour
+    # ce calepinage (donnée absente) : pas d'égalité. Les étapes TOUJOURS
+    # omises en v1 (``TOUJOURS_OMISES``, le spectre) sont omises de TOUT
+    # calepinage : les compter retirerait « à pertes système égales » et la
+    # branche de tolérance (ACAL1606) à chaque calepinage (revue ACAL1933).
+    omises = [{'etape': nom, 'libelle': LIBELLES.get(nom),
+               'designation': DESIGNATIONS_PVGIS[nom]}
+              for nom in (cascade or {}).get('etapes_omises') or ()
+              if nom in DESIGNATIONS_PVGIS and nom not in TOUJOURS_OMISES]
+    egales = (not omises and chaine is not None and pvgis is not None
               and abs(float(chaine) - float(pvgis)) <= EPSILON_PERTE_PCT)
     return {'chaine_pct': chaine, 'pvgis_pct': pvgis, 'egales': bool(egales),
             'cascade_pct': (cascade or {}).get('total_pct'),
-            'etapes_exclues': exclues}
+            'etapes_exclues': exclues, 'omises_vs_pvgis': omises}
+
+
+def _motif_pertes(pertes):
+    """Le motif de l'écart : à pertes système égales, inégales (ACAL1606), ou
+    sans les étapes que PVGIS compte et que la chaîne omet (ACAL1933)."""
+    if pertes['omises_vs_pvgis']:
+        return MOTIF_ECART_SANS_EGALITE + MOTIF_OMISES_VS_PVGIS.format(
+            designations=' ni '.join(
+                o['designation'] for o in pertes['omises_vs_pvgis']))
+    if not pertes['egales']:
+        return MOTIF_ECART_INFORMATIF + MOTIF_PERTES_INEGALES.format(
+            chaine=pertes['chaine_pct'], pvgis=pertes['pvgis_pct'])
+    return MOTIF_ECART_INFORMATIF
 
 
 def _verdict(ecart, tolerance, motif):

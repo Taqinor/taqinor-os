@@ -278,6 +278,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
       // fichier ouvert est rendu dans SES options.
       const suivi = lance?.demande ? [lance.demande] : []
       let attempts = 0
+      let manquesDeSuite = 0 // ACAL1236 — sondages manqués consécutifs
       const debut = maintenant()
       // WIR217 — le drapeau « lent » était lu dans `pdfSlowPoll[d.id]`, une
       // CLÔTURE PÉRIMÉE figée à `false` à la création de la boucle : la
@@ -319,6 +320,7 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
           const res = await avecDelai(
             ventesApi.etatPdfDevis(d.id, ...suivi), DELAI_REPONSE_ETAT_MS)
           if (pollAnnule.current) return
+          manquesDeSuite = 0
           if (res.data.statut === 'echec') {
             // État TERMINAL : on arrête le sondage et on rend l'échec
             // ACTIONNABLE (le message du serveur nomme la cause).
@@ -366,9 +368,18 @@ export function useDevisPdf({ dispatch, devis, selectedIds, setSelectedIds }) {
           // Un sondage manqué (délai, 5xx, réseau) ne coupe PAS le suivi : la
           // boucle re-sonde, bornée par le délai maximal ci-dessus.
           console.warn('useDevisPdf.poll : sondage manqué, on réessaie', err)
-          if (!pollAnnule.current) {
-            pollTimers.current[d.id] = setTimeout(poll, slow ? 10000 : 2000)
+          if (pollAnnule.current) return
+          manquesDeSuite += 1
+          if (manquesDeSuite >= 5) {
+            // ACAL1236 — 5 manqués de suite : on le dit et on s'arrête.
+            setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
+            finGeneration()
+            toast.error(`${d.reference} : la vérification du PDF a échoué — le PDF est peut-être prêt.`, {
+              action: { label: 'Réessayer', onClick: () => genererUnPdf(d, { autoOpen }) }, duration: Infinity,
+            })
+            return
           }
+          pollTimers.current[d.id] = setTimeout(poll, slow ? 10000 : 2000)
         }
       }
       pollTimers.current[d.id] = setTimeout(poll, 2000)

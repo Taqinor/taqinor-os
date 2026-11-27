@@ -1,5 +1,4 @@
 import { estAtelierPompage } from './contexteAtelier'
-import OutilPosePompage from './OutilPosePompage'
 import { Suspense, useCallback, useEffect, useRef } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../../api/axios'
@@ -12,6 +11,7 @@ import { PARAM_ONGLET, ongletParCle, resoudreOnglet } from './onglets'
 // Le bandeau des étapes du mode guidé n'est PAS un onglet : il vit hors d'atelier/ (CALX383).
 // Le bandeau d'étapes du mode guidé n'est pas un onglet : il vit hors d'atelier/ (CALX383).
 import RailGuide from '../commun/RailGuide'
+import OutilPosePompage from '../commun/OutilPosePompage'
 import { PARAM_MODE, useModeExpert } from './modeExpert'
 import { PARAM_CHAMP, useOuvrirChamp } from './ouvrirChamp'
 import {

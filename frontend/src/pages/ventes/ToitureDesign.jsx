@@ -27,7 +27,7 @@
  * (login form + token + cross-domain) est remplacée par celle-ci. La source du
  * builder n'est PAS modifiée : on l'importe seulement via l'alias `@roofbuilder`.
  */
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import api from '../../api/axios'
@@ -89,10 +89,11 @@ import {
   stockageBrouillonLocal, stockageSessionLocal, formaterHeureBrouillon,
   messageRefusRepere, libelleEcartRepere, libelleCibleEstimee, phraseToitureLead,
   cibleActiveDuContexte, phraseSiteNonLocalise, estAtelierPompage,
+  abonnerIssuesDevis, motifDuCadreTailleAffiche, MOTIF_TAILLE_FACTURE_ABSENTE,
 } from '../../features/calepinage/atelier/contexteAtelier.js'
 import BuilderDom from '../../features/calepinage/atelier/BuilderDom.jsx'
 import OutilsVue from '../../features/calepinage/atelier/OutilsVue.jsx'
-import OutilPosePompage from '../../features/calepinage/atelier/OutilPosePompage.jsx'
+import OutilPosePompage from '../../features/calepinage/commun/OutilPosePompage.jsx'
 import { useAtelierVues } from '../../features/calepinage/atelier/useAtelierVues.js'
 import { useAtelierBoot, pousserAffectationAtelier, MESSAGE_ACCES_REFUSE } from '../../features/calepinage/atelier/useAtelierBoot.js'
 import '../../styles/roofbuilder.css'
@@ -107,6 +108,9 @@ const MESSAGE_CATALOGUE_INDISPONIBLE = 'Catalogue des modules indisponible : rie
 const messageResyncRefusee = (raison) => (
   `Conception enregistrée — devis NON resynchronisé : ${raison}`)
 const MESSAGE_RESYNC_RESEAU = 'Conception enregistrée — resynchronisation du devis impossible (réseau)'
+/** Revue du 26/11 (D-ACAL-73) — un devis envoyé ne se corrige que par la carte d'aperçu. */
+const MESSAGE_DEVIS_ENVOYE_PAR_LA_CARTE = 'Le devis envoyé n’est pas modifié par l’enregistrement : '
+  + '« Resynchroniser le devis » montre d’abord ce qui change, puis le corrige.'
 
 function AtelierToiture({
   mode = 'lead', calepinageImpose = null, devisSynchronise = null, lectureSeuleImposee = false,
@@ -614,7 +618,7 @@ function AtelierToiture({
     setSending(true)
     setGenStatus('Génération du devis…')
     try {
-      const layout = apiTool.serializeLayout()
+      const layout = apiTool.serializeLayout(null, { engagerNumeros: true }) // suite ACAL1720 — seul l'enregistrement engage les numéros
       // 1) Crée le devis depuis le layout (cookie = auth, pas de Bearer).
       //    QJ17 — le backend renvoie 200 si un brouillon identique existe déjà
       //    (idempotency par lead + hash du layout), 201 pour un nouveau devis, et
@@ -763,8 +767,16 @@ function AtelierToiture({
 
   // ACAL1275 — `{ silencieux: true }` (« Générer / Resynchroniser » : enregistrement préalable) : un document inchangé
   // ne montre pas « Aucun changement » avant la réponse du devis ; le bouton « Enregistrer » (événement) le garde.
+  // ACAL1320 (D-ACAL-73) — `{ sansDevis: true }` (« Resynchroniser le devis ») : la conception est rangée, le devis lié
+  // n'est PAS resynchronisé ici — il le sera après l'aperçu, à la confirmation (rien d'écrit au devis avant).
+  // Revue du 26/11 (D-ACAL-73, « le dire AVANT ») — un devis lié ENVOYÉ n'est jamais corrigé par un enregistrement
+  // (« Enregistrer », « Vérifier ») : la conception est rangée et l'écran renvoie à « Resynchroniser le devis », qui
+  // montre ce qui change avant de corriger.
   const enregistrerCalepinage = async (options) => {
     const silencieux = options?.silencieux === true
+    const devisEnvoye = !!devisSynchronise && contexte?.calepinage?.devis_lie?.statut === 'envoye'
+    const sansDevis = options?.sansDevis === true || devisEnvoye
+    const suiteEnvoye = devisEnvoye && options?.sansDevis !== true ? ` ${MESSAGE_DEVIS_ENVOYE_PAR_LA_CARTE}` : ''
     if (sending) return false
     setGenError(null)
     setApercuMessage(null) // ACAL87
@@ -793,7 +805,7 @@ function AtelierToiture({
     enregistrementEnVolRef.current = true // T4-U4-025
     setGenStatus('Enregistrement du calepinage…')
     try {
-      const layout = apiTool.serializeLayout()
+      const layout = apiTool.serializeLayout(null, { engagerNumeros: true }) // suite ACAL1720 — seul l'enregistrement engage les numéros
       let resultat
       let heureReponse = null
       try {
@@ -869,11 +881,11 @@ function AtelierToiture({
         if (!silencieux) toastInfo('Aucun changement')
         setGenStatus(null)
         setSending(false)
-        setStatus('Conception inchangée — le calepinage n’a pas bougé.')
+        setStatus(`Conception inchangée — le calepinage n’a pas bougé.${suiteEnvoye}`)
         marquerSceneEnregistree(layout) // ACAL85
         setEnregistreLe(heureReponse) // ACAL399
         await rafraichirContexte() // ACAL83
-        return resynchroniserDevisLie() // ACAL37
+        return sansDevis ? true : resynchroniserDevisLie() // ACAL37 ; ACAL1320 : sansDevis
       }
 
       // L'aperçu de toiture, même patron que les autres modes (best-effort,
@@ -893,7 +905,7 @@ function AtelierToiture({
       setGenStatus(null)
       setSending(false)
       // R2-04 — `resultat.version` est l'identifiant GLOBAL de la version, pas son rang : jamais affiché.
-      setStatus('Conception enregistrée.')
+      setStatus(`Conception enregistrée.${suiteEnvoye}`)
       // ACAL1987 — un seul déclencheur : le SERVEUR lance la simulation d'une pose complète. Le navigateur ne poste
       // plus `simuler/` ; il lit l'état servi et retient le job pour l'onglet Production.
       if (!varianteId) suivreSimulationDuServeur(calepinageId)
@@ -901,7 +913,7 @@ function AtelierToiture({
       marquerSceneEnregistree(layout) // ACAL85
       setEnregistreLe(heureReponse) // ACAL399
       await rafraichirContexte() // ACAL83
-      return resynchroniserDevisLie() // ACAL37
+      return sansDevis ? true : resynchroniserDevisLie() // ACAL37 ; ACAL1320 : sansDevis
     } catch (err) {
       setGenStatus(null)
       // ACAL64 — un document que l'atelier REFUSE d'émettre (pans de même identifiant) porte
@@ -1064,7 +1076,11 @@ function AtelierToiture({
   // « aucune » n'affiche rien. Toute translation est décidée par le SERVEUR.
   // ACAL195 — refus nommé du moteur, affiché tel quel. ACAL1805 — une cible estimée SANS refus n'ouvre plus de bande
   // (absente des maquettes v2) : elle se lit dans la pilule « Besoin d'après la facture » de l'étape Toit.
-  const cibleEstimee = estCalepinage && contexte?.cible?.refus
+  // Revue ACAL1738 — « renseignez la facture » se dit UNE fois : tant que le cadre « Confirmer et générer » (motif
+  // `facture_absente`, dont le `refus` EST `cible.refus` côté serveur) est à l'écran, ce bandeau se tait.
+  const motifCadreTaille = useSyncExternalStore(abonnerIssuesDevis,
+    () => (calepinageId ? motifDuCadreTailleAffiche(calepinageId) : null))
+  const cibleEstimee = estCalepinage && contexte?.cible?.refus && motifCadreTaille !== MOTIF_TAILLE_FACTURE_ABSENTE
     ? libelleCibleEstimee(contexte?.cible, { sansLead: !contexte?.calepinage?.lead }) : null // T4-X9-013
   const toitureLead = estCalepinage ? phraseToitureLead(contexte?.toiture_lead) : null // R2-15 — lecture seule
   const deriveRepere = estCalepinage ? contexte?.geometrie?.derive?.etat ?? null : null

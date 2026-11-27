@@ -108,6 +108,12 @@ export const ALL_HOOKS = [
   'cal-devis-retouches',
   'cal-devis-avertissements',
   'cal-devis-j-ai-lu',
+  'cal-devis-resync-apercu',
+  'cal-devis-resync-statut',
+  'cal-devis-resync-confirmer',
+  'cal-devis-resync-annuler',
+  'cal-devis-resync-avis',
+  'cal-devis-resync-ferme',
   'cal-devis-cree',
   'cal-devis-alertes',
   'cal-devis-details-technicien',
@@ -730,7 +736,7 @@ export const ALL_HOOKS = [
   'cal-diff-versions-ligne',
   'cal-diff-versions-rappel',
   'cal-diff-versions-tableau',
-  // atelier/Projet.jsx
+  // atelier/PanneauProjet.jsx
   'cal-projet',
   'cal-projet-annuler',
   'cal-projet-apercu',

@@ -613,6 +613,22 @@ class ModuleASuivre(SimpleTestCase):
         for entree in (None, {}, {'module_produit': None}, {'module_produit': ''}):
             self.assertIsNone(_module_a_suivre(document, entree))
 
+    def test_r7n2_sans_designation_le_module_de_la_conception_est_juge(self):
+        # Rien de stocké : la lecture prend le 710 de la conception ⇒ il est jugé
+        # comme une désignation stockée.
+        document = _document_pose((715, 35))
+        for entree in (None, {}, {'module_produit': None}, {'module_produit': ''}):
+            self.assertEqual(_module_a_suivre(document, entree, 710), 715)
+        # Module de la conception encore posé (toit mixte) : rien.
+        self.assertIsNone(_module_a_suivre(_document_pose((710, 4), (715, 8)), {}, 710))
+        # Rien de posé, ou pan posé sans produit : rien.
+        self.assertIsNone(_module_a_suivre(_document_pose((715, 0)), {}, 710))
+        self.assertIsNone(_module_a_suivre(_document_pose((None, 12), (715, 4)), {}, 710))
+        # Pans existants écartés, comme pour une désignation stockée.
+        self.assertEqual(_module_a_suivre(_document_pose((999, 20, True), (715, 12)), {}, 710), 715)
+        # Une désignation stockée garde la main sur la conception.
+        self.assertIsNone(_module_a_suivre(document, {'module_produit': 715}, 710))
+
     def test_liste_en_lecture_seule_les_seuls_identifiants_concernes(self):
         lignes = [
             (1, _document_pose((715, 12)), {CLE_ENTREE: {'module_produit': 710}}),
@@ -673,6 +689,54 @@ class EntreeSuitLeModulePose(BaseMateriel):
         self.assertEqual(devis.electrical_design_hash, 'empreinte-figee')
         _c, materiel, _d, _doc = conception_du_calepinage(calepinage)
         self.assertEqual(materiel['produits']['module'], self.module_715.pk)
+
+    def test_r7n2_sans_designation_la_conception_suivie_devient_le_module_pose(self):
+        # Calepinage 24 du 26/11 : rien de désigné, conception à 710, 715 posés.
+        self._conception()
+        calepinage = self._calepinage()
+        avant = conception_du_calepinage(calepinage)[1]
+        self.assertEqual(avant['provenances']['module'], 'moteur')  # la LECTURE ne change pas
+        document = _document_pose((self.module_715.pk, 12))
+        rendu = enregistrer_layout(calepinage, document, user=self.user)
+        calepinage.refresh_from_db()
+        self.assertEqual(calepinage.resultat[CLE_ENTREE]['module_produit'], self.module_715.pk)
+        from apps.records.models import Activity
+
+        self.assertEqual(self._notes(calepinage), [(
+            Activity.Kind.MODIFICATION, 'Module devis 710', 'Module 715',
+            PHRASE_SUIVI % ('Module devis 710', 'Module 715'))])
+        self.assertEqual(rendu['empreinte_document'], empreinte_document(document))
+        _c, materiel, _d, _doc = conception_du_calepinage(calepinage)
+        self.assertEqual((materiel['produits']['module'], materiel['provenances']['module']),
+                         (self.module_715.pk, PROVENANCE_EXPLICITE))
+
+    def test_r7n2_sans_designation_conception_encore_posee_ou_absente_rien(self):
+        self._conception()
+        calepinage = self._calepinage()
+        enregistrer_layout(calepinage, _document_pose(
+            (self.module_devis.pk, 4), (self.module_715.pk, 8)), user=self.user)
+        calepinage.refresh_from_db()
+        self.assertNotIn('module_produit', calepinage.resultat[CLE_ENTREE])
+        self.assertEqual(self._notes(calepinage), [])
+
+    def test_r7n2_sans_conception_rien_n_est_ecrit(self):
+        calepinage = self._calepinage()
+        enregistrer_layout(calepinage, _document_pose((self.module_715.pk, 12)), user=self.user)
+        calepinage.refresh_from_db()
+        self.assertNotIn('module_produit', calepinage.resultat[CLE_ENTREE])
+
+    def test_r7n2_module_pose_archive_ou_d_une_autre_famille_refuse(self):
+        self._conception()
+        Produit.objects.filter(pk=self.module_715.pk).update(is_archived=True)
+        onduleur_pose = self._produit(nom='Pas un module', type_fiche='onduleur', ond_n_mppt=1,
+                                      ond_mppt_v_min=100.0, ond_mppt_v_max=500.0, ond_v_max_abs=600.0,
+                                      ond_i_max_mppt_a=13.0, ond_ac_kw=5.0, ond_phases=1)
+        for produit in (self.module_715, onduleur_pose):
+            calepinage = self._calepinage()
+            enregistrer_layout(calepinage, _document_pose((produit.pk, 12)), user=self.user)
+            calepinage.refresh_from_db()
+            self.assertNotIn('module_produit', calepinage.resultat[CLE_ENTREE], produit.nom)
+            self.assertEqual(self._notes(calepinage), [], produit.nom)
 
     def test_toit_mixte_entree_intacte(self):
         calepinage = self._calepinage(

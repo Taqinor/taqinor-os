@@ -50,7 +50,11 @@ from core.events import pose_enregistree
 #: * ``zones[].geometry.solarAccess.computedAt`` — l'horodatage d'un calcul,
 #:   pas son résultat ;
 #: * ``consumption.source.saisi_le`` — l'horodatage d'une saisie, pas la
-#:   saisie.
+#:   saisie ;
+#: * ``plafondsNumerotation`` — numérotation stable (suite ACAL1720) : le plus
+#:   haut numéro de module jamais attribué par pan, TENUE DE COMPTE de
+#:   l'atelier (aucun module, aucun chiffre) ; elle ne bouge qu'avec un retrait
+#:   de modules, déjà versionné par ``zones``.
 #:
 #: ``pin`` n'y est PAS : un recentrage de l'épingle est versionné (D-ACAL-13).
 CLES_VOLATILES = (
@@ -58,6 +62,7 @@ CLES_VOLATILES = (
     'scene',
     'zones[].geometry.solarAccess.computedAt',
     'consumption.source.saisi_le',
+    'plafondsNumerotation',
 )
 
 _ALIAS_PANS = ('zones', 'areas', 'pans')
@@ -205,6 +210,71 @@ def _sans_obstacles_hors_toit(document):
         if isinstance(zone.get('obstacles'), list):
             zone['obstacles'] = [o for o in zone['obstacles'] if not hors_toit(o)]
     return document
+
+
+#: Numérotation stable (suite ACAL1720) — la clé racine des plafonds de
+#: numérotation (même nom que ``roofPro11/numerotation.ts::CLE_PLAFONDS``).
+CLE_PLAFONDS_NUMEROTATION = 'plafondsNumerotation'
+
+
+def _plafonds_du_document(roof_layout):
+    """``({pan: plafond}, {pan: plus haut n posé})`` d'un document : le plafond
+    est le plus grand de la clé ``plafondsNumerotation`` et des ``n`` posés."""
+    plafonds, poses = {}, {}
+    if not isinstance(roof_layout, dict):
+        return plafonds, poses
+    lus = roof_layout.get(CLE_PLAFONDS_NUMEROTATION)
+    for pan, valeur in (lus.items() if isinstance(lus, dict) else ()):
+        if isinstance(valeur, int) and not isinstance(valeur, bool) and valeur >= 1:
+            plafonds[pan] = max(plafonds.get(pan, 0), valeur)
+    zones = next((roof_layout[a] for a in _ALIAS_PANS
+                  if isinstance(roof_layout.get(a), list)), [])
+    for zone in zones:
+        pan = zone.get('id') if isinstance(zone, dict) else None
+        geometrie = zone.get('geometry') if isinstance(zone, dict) else None
+        panneaux = geometrie.get('panels') if isinstance(geometrie, dict) else None
+        if not isinstance(pan, str) or not pan:
+            continue
+        haut = max((p['n'] for p in (panneaux if isinstance(panneaux, list) else ())
+                    if isinstance(p, dict) and isinstance(p.get('n'), int)
+                    and not isinstance(p.get('n'), bool)), default=0)
+        poses[pan] = max(poses.get(pan, 0), haut)
+        plafonds[pan] = max(plafonds.get(pan, 0), haut)
+    return plafonds, poses
+
+
+def avec_plafonds_gardes(remplace, entrant):
+    """Numérotation stable (suite ACAL1720, revue lot 8) — ``entrant`` (le
+    document qui va REMPLACER ``remplace`` : version restaurée, variante
+    retenue) avec, par pan, ``plafondsNumerotation`` = le plus grand des deux
+    plafonds (clé, sinon plus haut ``n``), écrit SEULEMENT quand il dépasse le
+    plus haut ``n`` posé d'``entrant`` (même règle que l'atelier). Sans cela,
+    les numéros dépensés depuis la version seraient redonnés à d'autres
+    panneaux et une affectation manuelle ``<pan>#<n>`` les viserait.
+
+    Clé VOLATILE (:data:`CLES_VOLATILES`) : ni l'empreinte « document », ni
+    ``layout_hash`` ne bougent. Rend ``entrant`` LUI-MÊME quand il n'y a rien
+    à changer, une copie sinon ; ``entrant`` n'est jamais modifié."""
+    import copy
+
+    if not isinstance(entrant, dict):
+        return entrant
+    anciens, _ = _plafonds_du_document(remplace)
+    neufs, poses = _plafonds_du_document(entrant)
+    plafonds = {}
+    for pan in sorted(set(anciens) | set(neufs)):
+        plafond = max(anciens.get(pan, 0), neufs.get(pan, 0))
+        if plafond > poses.get(pan, 0):
+            plafonds[pan] = plafond
+    if plafonds == entrant.get(CLE_PLAFONDS_NUMEROTATION) or (
+            not plafonds and CLE_PLAFONDS_NUMEROTATION not in entrant):
+        return entrant
+    sortie = copy.deepcopy(entrant)
+    if plafonds:
+        sortie[CLE_PLAFONDS_NUMEROTATION] = plafonds
+    else:
+        sortie.pop(CLE_PLAFONDS_NUMEROTATION, None)
+    return sortie
 
 
 def _est_nombre(valeur):

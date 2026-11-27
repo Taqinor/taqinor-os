@@ -50,9 +50,10 @@ def cloner_devis(devis, *, user, note=None, version=1, version_parent=None,
       les dérivées sont purgées par ``etude_params_pour_copie`` et recalculées
       (``force=True``) ci-dessous. ``date_validite`` n'est JAMAIS copiée
       (re-dérivée, ``utils/expiry``). Duplicata, variante et gamme : inchangés.
-    * ``etudes`` — R6-N1 : ``False`` (seul ``reviser_devis`` hors transaction
-      le passe) ⇒ la copie naît SANS calcul d'études ; l'appelant les calcule
-      lui-même, une fois, après la re-liaison du calepinage à la copie
+    * ``etudes`` — R6-N1 : ``False`` (seul ``reviser_devis`` le passe : hors
+      transaction, prix négocié, ou atelier quand le calepinage de la V1 va
+      être re-lié) ⇒ la copie naît SANS calcul d'études ; l'appelant les
+      calcule lui-même, une fois, après la re-liaison du calepinage à la copie
       (``revision._etudes_apres_reliaison``). Défaut ``True`` : inchangé.
 
     ATOMICITÉ (S5-4) : la création du devis ET le clonage de ses lignes se font

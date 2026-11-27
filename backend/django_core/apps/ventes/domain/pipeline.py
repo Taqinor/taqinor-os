@@ -163,6 +163,10 @@ class CibleDevis:
     #: ``None`` (LE DÉFAUT) ⇒ pipeline strictement inchangé.
     onduleur_impose: object = None
     batterie_imposee: object = None
+    #: D-ACAL-169 — le panneau PAR DÉFAUT de la société (id ``stock.Produit``),
+    #: posé seulement quand la cible d'un devis NOUVEAU est à SA puissance
+    #: (``panneau_defaut.PanneauAuto.prefere``). ``None`` (LE DÉFAUT) ⇒ inchangé.
+    panneau_prefere_id: object = None
 
 
 @dataclass(frozen=True)
@@ -381,16 +385,20 @@ def decider_taille(intention, devis=None):
         return declaree
     if intention.lead is None:
         return None
+    # D-ACAL-169 — LE panneau du contexte (un seul prédicat, ``panneau_defaut.devis_a_naitre``) :
+    # devis à naître ⇒ le panneau par défaut ; devis EXISTANT ⇒ SA ligne panneau
+    # (brouillon) ou la règle d'aujourd'hui (envoyé…), pour la sonde ET le produit.
+    auto = panneau_du_contexte(intention.company, devis, gamme_nom_devis=intention.gamme_nom_devis)
     nb_panneaux, watt, source, avec = _panneaux_dimensionnement_horaire(
         lead=intention.lead, company=intention.company,
-        phase=phase_client_pour_dimensionnement(intention.lead))
+        phase=phase_client_pour_dimensionnement(intention.lead), panneau=auto)
     if nb_panneaux <= 0:
         raise _refus_dimensionnement(source)
-    watt = watt or _AUTO_PANEL_WATT
+    watt = watt or auto.watt
     return CibleDevis(
         nb_panneaux=nb_panneaux, panel_watt=watt,
         kwc=round(nb_panneaux * float(watt) / 1000.0, 2),
-        source=source, dimensionnement_avec=avec)
+        source=source, dimensionnement_avec=avec, panneau_prefere_id=auto.prefere(watt))
 
 
 def intention_de_composition(intention, cible, *, avertissements=None,
@@ -432,6 +440,7 @@ def intention_de_composition(intention, cible, *, avertissements=None,
         modules_affleurants=_affleurants_au_niveau(devis, getattr(intention, 'layout', None)),
         # ADEV156 (D-ACAL-80) — le froid du site du lead ; un devis envoyé garde −5 °C.
         froid=froid_du_lead(intention.lead, devis),
+        panneau_prefere_id=getattr(cible, 'panneau_prefere_id', None),  # D-ACAL-169
     )
 
 
@@ -648,6 +657,9 @@ def _reecrire_quantites_soeurs(lignes_in, nb_panneaux, affleurants=0, avertissem
     from apps.ventes.domain.composition import quantites_derivees_du_compte
 
     derivees = quantites_derivees_du_compte(nb_panneaux, affleurants)  # ACAL927
+    # ACAL1238 — le kit de fixation suit les affleurants comme à la composition (mot-clé de
+    # ``composition_residentielle._kit_de_fixation``, quantité ``min(affleurants, nb)``).
+    kit = min(int(affleurants or 0), int(nb_panneaux or 0))
     for spec in lignes_in:
         if not isinstance(spec, dict):
             continue
@@ -656,6 +668,8 @@ def _reecrire_quantites_soeurs(lignes_in, nb_panneaux, affleurants=0, avertissem
         if spec.get('optionnelle') or spec.get('quantite_manuelle'):
             continue
         categorie = classer_produit(spec.get('designation') or '')
+        if kit > 0 and 'kit de fixation' in (spec.get('designation') or '').lower():
+            categorie, derivees = 'kit', dict(derivees, kit=kit)
         if categorie in derivees:
             if _entier_lisible(spec.get('quantite')) != _entier_lisible(derivees[categorie]):
                 _dire_ajustement(avertissements, spec.get('designation'), spec.get('quantite'),
@@ -895,13 +909,17 @@ def reappliquer_lead(devis, *, user=None, company=None):
     with transaction.atomic():
         avant = debut_de_geste_devis(devis, user)
         ttc_avant = ttc_du_devis(devis)  # AGNR77 — TTC lu AVANT le geste
+        residentiel = (getattr(devis, 'mode_installation', '') or 'residentiel') == 'residentiel'
+        if lead is not None and not residentiel and getattr(devis, 'statut', None) == 'brouillon':
+            _retirer_copies_du_lead(devis, lead)  # ACAL1228 — le lead gagne (un envoyé : inchangé)
         appliquer(devis, IntentionDevis(
             origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR, company=company,
             force_etudes=True))
-        if lead is not None and (getattr(devis, 'mode_installation', '')
-                                 or 'residentiel') == 'residentiel':
+        if lead is not None and residentiel:
             avertissements.extend(
                 _reconcilier_sur_le_lead(devis, lead, company, user))
+        elif lead is not None:
+            avertissements.append(PHRASE_TAILLE_CI)
         devis.refresh_from_db()
         # AGNR77 — LA règle d'AGNR49 au nouveau TTC ; dépassement ⇒ 409
         # ``{detail, echeancier}``, tout le geste annulé.
@@ -914,6 +932,29 @@ def reappliquer_lead(devis, *, user=None, company=None):
             corrige = True
     return {'champs_repris': list(champs), 'corrige_apres_envoi': corrige,
             'avertissements': avertissements}
+
+
+#: ACAL1228 — jumelle des « Taille non recalculée » résidentielles, pour un devis C&I.
+PHRASE_TAILLE_CI = ('Taille non recalculée : la taille d\'un devis C&I suit ses lignes ; '
+                    'appliquez une taille pour la recalculer')
+
+
+def _retirer_copies_du_lead(devis, lead):
+    """ACAL1228 — retire de ``etude_params`` les copies « devis » des feuilles que le lead
+    renseigne (``etude_ci.CHEMINS_LEAD`` → ``FEUILLES``) : la couche devis passant devant le
+    lead, le rafraîchissement gardait sinon les horaires d'hier (1x8 au lieu de 3x8)."""
+    from apps.crm.selectors import entrees_ci_du_lead
+    from apps.ventes.domain.etude_ci import CHEMINS_LEAD, FEUILLES, _vide
+
+    params, chemins = dict(devis.etude_params or {}), dict(FEUILLES)
+    for entree in (entrees_ci_du_lead(lead) or {}).get('entrees') or ():
+        tete, _, feuille = (chemins.get(CHEMINS_LEAD.get(entree.get('chemin') or '')) or '').partition('.')
+        bloc = params.get(tete)
+        if bloc is not None and not _vide(entree.get('valeur')) and (not feuille or isinstance(bloc, dict)):
+            params[tete] = {k: v for k, v in bloc.items() if k != feuille} if feuille else None
+    retire = {cle: v or None for cle, v in params.items() if v != (devis.etude_params or {}).get(cle)}
+    if retire:
+        ecrire_etude(devis, proprietaire=PIPELINE, **retire)
 
 
 def _reconcilier_sur_le_lead(devis, lead, company, user):
@@ -932,9 +973,11 @@ def _reconcilier_sur_le_lead(devis, lead, company, user):
                 'imposée (nombre de panneaux, onduleur, batterie) ; '
                 'appliquez une taille pour revenir au dimensionnement.']
     try:
+        # D-ACAL-169 — un devis EXISTANT se redimensionne sur SA ligne panneau
+        # (brouillon) ; envoyé : la sonde d'aujourd'hui — jamais le défaut.
         nb, _watt, _source, _avec = _panneaux_dimensionnement_horaire(
             lead=lead, company=company,
-            phase=phase_client_pour_dimensionnement(lead))
+            phase=phase_client_pour_dimensionnement(lead), panneau=panneau_du_devis(devis))
     except AutoDevisError as erreur:
         return ['Taille non recalculée : %s' % erreur]
     if not nb:
@@ -1375,6 +1418,10 @@ from apps.ventes.domain.etape_composer import (  # noqa: E402 — fin de module 
 from apps.ventes.domain.scenario import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     poser_puissance_kwc,
     scenario_servable,
+)
+from apps.ventes.domain.panneau_defaut import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    panneau_du_contexte,
+    panneau_du_devis,
 )
 from apps.ventes.domain.taille import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _AUTO_PANEL_WATT,

@@ -22,6 +22,7 @@ import {
 } from '../../../ui'
 import { ShoppingCart, Plus, Trash2 } from 'lucide-react'
 import DevisLineRow from '../DevisLineRow'
+import ChampDecimal from './ChampDecimal'
 import { GenCardHeader } from './CarteMetrique'
 import { formatMoney } from '../../../features/ventes/solar'
 // R2 (fondateur 28/10/2026) — en-têtes « Tableau de protection AC/DC — total
@@ -125,9 +126,9 @@ export default function LigneTable({
             <div className="mt-3 flex flex-wrap items-end gap-3">
               <div className="grid gap-1.5">
                 <Label htmlFor="gen-nbprop">Nombre de propriétés identiques</Label>
-                <Input id="gen-nbprop" type="number" min="1" step="any" className="w-40"
+                <ChampDecimal id="gen-nbprop" className="w-40"
                        value={nombreProprietes}
-                       onChange={e => setNombreProprietes(e.target.value)} />
+                       onValeur={setNombreProprietes} />
               </div>
               {multiPreview?.mode === 'multiplicateur' && (
                 <div className="text-sm text-muted-foreground">

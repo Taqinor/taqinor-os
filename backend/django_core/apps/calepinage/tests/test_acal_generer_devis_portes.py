@@ -503,6 +503,24 @@ class RecetteR2SansBaseTest(SimpleTestCase):
             self._poser(FACTEUR_POSE_SUR_CIBLE * 4 + 1, self.CIBLE)
         self._poser(84, self.CIBLE, confirmer=True)
 
+    def test_revue_acal1738_motif_structure_de_la_question(self):
+        """Revue ACAL1738 — le 409 ``confirmation_taille`` nomme son motif : ``facture_absente`` quand ``refus`` est
+        celui de la cible (l'écran tait alors le bandeau qui le répète), ``pose_sur_cible`` au-delà de 2 × la cible
+        (mutant : sans ``motif`` ⇒ échec)."""
+        from apps.calepinage.services.devis import DevisRefuse
+        from apps.ventes.services import MOTIF_FACTURE_ABSENTE
+
+        sans_facture = {'panneaux': None, 'source': None, 'motif_code': MOTIF_FACTURE_ABSENTE,
+                        'refus': CONTRAT['exemple_409_confirmation_taille']['refus']}
+        with self.assertRaises(DevisRefuse) as question:
+            self._poser(84, sans_facture)
+        self.assertEqual(question.exception.donnees['motif'], 'facture_absente')
+        self.assertEqual(question.exception.donnees['motif'], CONTRAT['exemple_409_confirmation_taille']['motif'])
+        self.assertEqual(question.exception.donnees['refus'], sans_facture['refus'])
+        with self.assertRaises(DevisRefuse) as pose:
+            self._poser(84, self.CIBLE)
+        self.assertEqual(pose.exception.donnees['motif'], 'pose_sur_cible')
+
     def test_r2_17_sans_cible_des_factures_aucune_question(self):
         for cible in ({**self.CIBLE, 'source': 'lead'},  # taille souhaitée saisie
                       {'panneaux': None, 'panel_watt': None, 'kwc': None, 'source': 'lead',

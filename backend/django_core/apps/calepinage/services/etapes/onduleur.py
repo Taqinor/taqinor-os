@@ -42,6 +42,8 @@ n'est jamais comptée deux fois.
 """
 from __future__ import annotations
 
+from apps.calepinage.services.etapes import fiche_du_module
+
 from apps.calepinage.services import etapes
 from ..valeurs import nombre as _nombre
 
@@ -289,7 +291,7 @@ def _nombre_d_onduleurs(contexte):
 
 def _tension_chaine_v(contexte):
     """La tension de la chaîne au STC, ou ``None``."""
-    fiche_module = contexte.get('fiche_module') or {}
+    fiche_module = fiche_du_module(contexte) or {}
     vmp = _nombre(fiche_module.get('vmp_v'))
     electrique = contexte.get('electrique')
     chainage = (electrique.get('chainage')

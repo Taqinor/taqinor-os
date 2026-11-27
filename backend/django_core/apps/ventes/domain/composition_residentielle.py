@@ -81,12 +81,17 @@ def _statut_couple_panneau(panneau, onduleurs, froid=None):
     return pire[1], pire[2]
 
 
-def _choisir_panneau(pool, watt):
+def _choisir_panneau(pool, watt, prefere_id=None):
     """Panneau : wattage demandé d'abord, à défaut le plus proche.
 
     RSIZ4 — corps EXTRAIT tel quel de :func:`composition_residentielle`.
     ``pool`` est le vivier DÉJÀ restreint à la marque épinglée (PVMRQ). Rend
     ``(tries, exacts, panneau)`` : les deux listes servent au repli PVCOMPAT.
+
+    D-ACAL-169 — ``prefere_id`` : le panneau PAR DÉFAUT de la société (id
+    ``stock.Produit``), passé par un appelant qui compose un devis NOUVEAU à SA
+    puissance (``panneau_defaut.PanneauAuto.prefere``) ; présent au vivier, il
+    passe devant le départage. ``None`` (LE DÉFAUT) ⇒ choix byte-identique.
     """
     tries = []
     for produit in pool:
@@ -94,6 +99,9 @@ def _choisir_panneau(pool, watt):
         if w is not None:
             tries.append((w, produit))
     exacts = [c for c in tries if c[0] == int(watt)]
+    designe = next((p for p in pool if prefere_id is not None and getattr(p, 'pk', None) == prefere_id), None)
+    if designe is not None:
+        return tries, exacts, designe
     if exacts:
         # Même départage qu'à l'écran : un Canadien Solar passe devant.
         exacts.sort(key=lambda c: 0 if 'canadien' in _sans_accents(
@@ -284,8 +292,12 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               hors_reseau=False, modeles=None,
                               regles_2710=True, onduleur_impose=None,
                               batterie_imposee=None, modules_affleurants=0,
-                              froid=None):
+                              froid=None, panneau_prefere_id=None):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
+
+    ``panneau_prefere_id`` (D-ACAL-169) — le panneau par défaut de la société,
+    passé SEULEMENT par un appelant qui compose un devis nouveau à la puissance
+    de ce panneau (:func:`_choisir_panneau`) ; ``None`` (LE DÉFAUT) ⇒ inchangé.
 
     ``froid`` (ADEV156) — le froid du SITE (``compatibilites.froid_du_lead``)
     du verdict panneau / onduleur ; ``None`` (LE DÉFAUT) ⇒ −5 °C, inchangé.
@@ -722,7 +734,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # DANS la marque retenue, jamais hors d'elle (miroir de l'écran).
     # RSIZ4 — corps extrait tel quel dans :func:`_choisir_panneau`.
     tries, exacts, panneau = _choisir_panneau(
-        par_marque(par_type.get('panneau'), 'panneau'), watt)
+        par_marque(par_type.get('panneau'), 'panneau'), watt, panneau_prefere_id)
 
     # ── PVCOMPAT — LE COUPLE PANNEAU / ONDULEUR EST VÉRIFIÉ ────────────────
     # Les deux choix ci-dessus sont INDÉPENDANTS : rien ne garantissait qu'ils

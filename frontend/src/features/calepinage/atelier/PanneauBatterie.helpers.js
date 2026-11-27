@@ -37,7 +37,7 @@ const estObjet = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 export function depuisEntree(entree) {
   const b = estObjet(entree?.batterie) ? entree.batterie : {}
   const h = estObjet(entree?.hors_reseau) ? entree.hors_reseau : {}
-  const etat = { strategie: enTexte(b.strategie), couplage: enTexte(b.couplage), actif: h.actif === true, jours: enTexte(h.jours_autonomie) }
+  const etat = { produit: enTexte(b.produit), strategie: enTexte(b.strategie), couplage: enTexte(b.couplage), actif: h.actif === true, jours: enTexte(h.jours_autonomie) }
   for (const { cle } of CHAMPS_BATTERIE) etat[cle] = enTexte(b[cle])
   // ACAL788 — appareils à tenir pendant une coupure : relus du stock, jamais préremplis.
   etat.appareils = Array.isArray(b.appareils)
@@ -101,6 +101,8 @@ export function corpsDeclaration(etat, entree) {
   }
   pose('strategie', texteOuNull(etat.strategie))
   pose('couplage', texteOuNull(etat.couplage))
+  // ACAL1668 — la batterie choisie dans le stock ; vide = la ligne batterie du devis lié (rien n'est posté).
+  pose('produit', nombreOuNull(etat.produit))
   for (const { cle, genre } of CHAMPS_BATTERIE) {
     pose(cle, genre === 'heures'
       ? (String(etat[cle]).trim() === '' ? null : lireHeures(etat[cle]))
@@ -113,13 +115,19 @@ export function corpsDeclaration(etat, entree) {
     puissance_pointe_kw: nombreOuNull(a.puissance_pointe_kw),
     quantite: nombreOuNull(a.quantite),
   }))
-  pose('appareils', appareils.length ? appareils : null)
-  pose('duree_secours_h', nombreOuNull(etat.duree_secours_h))
+  // ACAL1666 — ce qu'on ne voit plus n'agit plus : les champs d'une stratégie non retenue restent à
+  // l'écran (rien n'est perdu) mais ne sont plus postés ; ceux déjà au stock sont remis à `null`.
+  const secours = etat.strategie === 'backup'
+  const decalage = etat.strategie === 'decalage'
+  const pointe = etat.strategie === 'peak_shaving'
+  const appareilsPostes = secours ? appareils : []
+  pose('appareils', appareilsPostes.length ? appareilsPostes : null)
+  pose('duree_secours_h', secours ? nombreOuNull(etat.duree_secours_h) : null)
   // ACAL799 — `batterie.coupures` : posé dès qu'une réponse est donnée (ou déjà au stock), jamais inventé.
   const coupures = Object.fromEntries(CHAMPS_COUPURES.map((cle) => [cle, nombreOuNull(etat.coupures?.[cle])]))
-  pose('coupures', Object.values(coupures).some((v) => v !== null) ? coupures : null)
+  pose('coupures', secours && Object.values(coupures).some((v) => v !== null) ? coupures : null)
   // ACAL792 — des fenêtres posées remplacent les deux listes d'heures (jamais les deux formes).
-  const fenetres = etat.fenetres ?? { charge: [], decharge: [] }
+  const fenetres = decalage ? (etat.fenetres ?? { charge: [], decharge: [] }) : { charge: [], decharge: [] }
   if (fenetres.charge.length || fenetres.decharge.length) {
     const versCorps = (f) => ({ heures: heuresDeFenetre(f), soc_cible_pct: nombreOuNull(f.soc) })
     batterie.fenetres = { charge: fenetres.charge.map(versCorps), decharge: fenetres.decharge.map(versCorps) }
@@ -128,9 +136,9 @@ export function corpsDeclaration(etat, entree) {
   } else {
     pose('fenetres', null)
   }
-  pose('part_effacable_pct', nombreOuNull(etat.part_effacable_pct))
-  pose('plafond_effacable_kw', nombreOuNull(etat.plafond_effacable_kw))
-  if (appareils.length) batterie.reserve_backup_kwh = null
+  pose('part_effacable_pct', pointe ? nombreOuNull(etat.part_effacable_pct) : null)
+  pose('plafond_effacable_kw', pointe ? nombreOuNull(etat.plafond_effacable_kw) : null)
+  if (appareilsPostes.length) batterie.reserve_backup_kwh = null
   const stockeH = estObjet(entree?.hors_reseau) ? entree.hors_reseau : null
   const horsReseau = { ...(stockeH ?? {}) }
   const jours = nombreOuNull(etat.jours)
@@ -149,4 +157,60 @@ export function corpsDeclaration(etat, entree) {
   if (stockeB || Object.keys(batterie).length) corps.batterie = batterie
   if (stockeH || Object.keys(horsReseau).length) corps.hors_reseau = horsReseau
   return corps
+}
+
+/* ACAL1644 — LES REFUS DU SERVEUR, EN MOTS. Une seule fonction chemin → libellé : la clé technique
+   (`batterie.appareils[0].puissance_continue_kw`) devient « Puissance en marche de l'appareil 1 »,
+   `batterie.fenetres.charge[1]` « La 2e fenêtre de charge » ; un préfixe technique dans le message
+   (« Batterie.appareils[0].puissance continue kw : … ») est retiré, et une valeur saisie ≤ 0 sur un
+   champ strictement positif dit « saisissez un nombre positif ». */
+const LIBELLES_APPAREIL = {
+  nom: 'Nom', puissance_continue_kw: 'Puissance en marche', puissance_pointe_kw: 'Puissance au démarrage', quantite: 'Quantité',
+}
+const LIBELLES_SIMPLES = {
+  'batterie.duree_secours_h': 'Durée de coupure à tenir',
+  'batterie.appareils': 'Les appareils à tenir',
+  'batterie.part_effacable_pct': 'Part effaçable',
+  'batterie.plafond_effacable_kw': 'Puissance effaçable maximale',
+  'hors_reseau.jours_autonomie': 'Jours d’autonomie',
+  'hors_reseau.seuils.veille_pct': 'Seuil de mise en veille',
+  'hors_reseau.seuils.entretien_pct': 'Seuil de recharge d’entretien',
+  'hors_reseau.seuils.arret_pct': 'Seuil d’arrêt complet',
+  'hors_reseau.groupe.puissance_kw': 'Puissance du groupe',
+  'hors_reseau.groupe.soc_demarrage_pct': 'Seuil de démarrage du groupe',
+  'hors_reseau.groupe.soc_arret_pct': 'Seuil d’arrêt du groupe',
+  'hors_reseau.groupe.heures_max_par_jour': 'Heures de marche maximum par jour',
+  'batterie.coupures.nombre_par_an': 'Nombre de coupures par an',
+  'batterie.coupures.duree_h': 'Durée des coupures',
+  'batterie.coupures.heure_debut': 'Heure de début des coupures',
+  ...Object.fromEntries(CHAMPS_BATTERIE.map((c) => [`batterie.${c.cle}`, c.libelle.replace(/\s*\(.*$/, '')])),
+}
+const CHAMPS_POSITIFS = /^(batterie\.appareils\[\d+\]\.(puissance_continue_kw|quantite)|batterie\.duree_secours_h|hors_reseau\.groupe\.puissance_kw)$/
+const PREFIXE_TECHNIQUE = /^\s*(?:batterie|hors_reseau)[\w.[\]\s]*:\s*/i
+const ordinal = (n) => (n === 1 ? '1re' : `${n}e`)
+
+export function libelleDuChemin(cle) {
+  const app = /^batterie\.appareils\[(\d+)\](?:\.(\w+))?$/.exec(cle)
+  if (app) {
+    const rang = Number(app[1]) + 1
+    return app[2] && LIBELLES_APPAREIL[app[2]] ? `${LIBELLES_APPAREIL[app[2]]} de l’appareil ${rang}` : `L’appareil ${rang}`
+  }
+  const fen = /^batterie\.fenetres\.(charge|decharge)\[(\d+)\]/.exec(cle)
+  if (fen) return `La ${ordinal(Number(fen[2]) + 1)} fenêtre de ${fen[1] === 'charge' ? 'charge' : 'décharge'}`
+  return LIBELLES_SIMPLES[cle] ?? null
+}
+
+/** Les refus `{chemin: message}` du serveur → `{chemin: phrase en mots}` (les clés restent celles que les champs lisent). */
+export function refusEnMots(parChamp, etat) {
+  return Object.fromEntries(Object.entries(parChamp).map(([cle, message]) => {
+    const texte = String(message)
+    const libelle = libelleDuChemin(cle)
+    const reste = texte.replace(PREFIXE_TECHNIQUE, '')
+    if (!libelle) return [cle, reste]
+    const app = /^batterie\.appareils\[(\d+)\]\.(\w+)$/.exec(cle)
+    const brut = app ? etat?.appareils?.[Number(app[1])]?.[app[2]] : (cle === 'batterie.duree_secours_h' ? etat?.duree_secours_h : undefined)
+    const saisi = nombreOuNull(brut)
+    if (CHAMPS_POSITIFS.test(cle) && saisi !== null && saisi <= 0) return [cle, `${libelle} : saisissez un nombre positif`]
+    return [cle, reste !== texte ? `${libelle} : ${reste}` : texte]
+  }))
 }

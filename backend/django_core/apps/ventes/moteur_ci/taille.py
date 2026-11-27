@@ -457,7 +457,7 @@ def _palier(e, precedent, admis, borne):
 def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, combiner,
                     composer, valoriser, bornes=None, puissance_souscrite_kva=None,
                     revente_choisie=False, taille_explicite_kwc=None, taux_tva_pct=None,
-                    pmax_wc=None, production_rasante=None):
+                    pmax_wc=None, production_rasante=None, taille_issue_creation=False):
     """Bloc ``taille`` du contrat + l'évaluation retenue, alertes, hypothèses.
 
     ``bornes`` : ``{toit: {kwc, source} | None, phase: {...}, regime_8221: {...}}``
@@ -509,7 +509,7 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
     explicite = _pos(taille_explicite_kwc)
     if explicite is not None:
         return _taille_explicite(explicite, evaluer(explicite), bornes_pub, kwc_toit, ps_kva,
-                                 alertes, hypotheses)
+                                 alertes, hypotheses, taille_issue_creation)
 
     evals, paliers = [], []
     meilleur, refus, base_refus = None, 0, None
@@ -686,7 +686,8 @@ def _alerte_onduleurs(onduleurs):
                    'Aucun onduleur C&I éligible : %s.' % detail, niveau='bloquant')
 
 
-def _taille_explicite(kwc, e, bornes_pub, kwc_toit, ps_kva, alertes, hypotheses):
+def _taille_explicite(kwc, e, bornes_pub, kwc_toit, ps_kva, alertes, hypotheses,
+                      issue_creation=False):
     """D-QJR5-13 : une taille saisie est SOUVERAINE — calculée telle quelle.
     R1 (B1) — elle n'est JAMAIS « limitée par le toit » : l'économie n'a pas
     été balayée ; le verdict calculé à la création d'un devis est relu par
@@ -712,8 +713,11 @@ def _taille_explicite(kwc, e, bornes_pub, kwc_toit, ps_kva, alertes, hypotheses)
                                niveau='bloquant'))
         if not e['onduleurs'].get('combinaison') and e['onduleurs'].get('exclus'):
             alertes.append(_alerte_onduleurs(e['onduleurs']))
-    hypotheses.append({'cle': 'taille_explicite_kwc', 'valeur': kwc, 'statut': 'declare',
-                       'source': 'D-QJR5-13 — taille saisie souveraine'})
+    # ACAL1226 — relue du verdict de création (lignes inchangées) : calculée, jamais « saisie ».
+    source = ('taille calculée à la création (règle des %d ans), relue sur les lignes du devis'
+              % HORIZON_MARGINAL_CI if issue_creation else 'D-QJR5-13 — taille saisie souveraine')
+    hypotheses.append({'cle': 'taille_explicite_kwc', 'valeur': kwc,
+                       'statut': 'calcule' if issue_creation else 'declare', 'source': source})
     inclinaison, limite_toit = _hypotheses_toit(e, bornes_pub, 'taille_explicite', hypotheses)
     taille = {
         'retenue_kwc': kwc, 'nb_panneaux': _nb_panneaux(e), 'pas_kwc': PAS_KWC,

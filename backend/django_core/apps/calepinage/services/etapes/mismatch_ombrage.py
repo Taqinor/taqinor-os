@@ -74,6 +74,8 @@ Module PUR : aucune base, aucun réseau, aucun appel PVGIS.
 """
 from __future__ import annotations
 
+from apps.calepinage.services.etapes import fiche_du_module
+
 from apps.calepinage.services import etapes
 from apps.calepinage.services.ombrage_chaines import (
     MOTIF_SANS_ACCES, ombrage_des_chaines)
@@ -497,7 +499,7 @@ def _brins_proteges(contexte):
     donc aucune migration n'est demandée ici : l'absence est la règle, et
     elle est publiée.
     """
-    fiche = contexte.get('fiche_module')
+    fiche = fiche_du_module(contexte)
     if fiche is None:
         return None
     for champ in CHAMPS_BRINS:

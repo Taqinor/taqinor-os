@@ -367,7 +367,9 @@ def _simuler_hors_reseau(charge_horaire, production_horaire, *,
     etats_de_protection = []
     appoint = None
     if isinstance(groupe, dict) and groupe.get('actif'):
-        appoint = _groupe_appoint.Groupe(groupe, capacite, pas)
+        appoint = _groupe_appoint.Groupe(
+            groupe, capacite, pas,
+            veille_pct=protection['veille_pct'] if protection else None)
 
     etats = []
     total_charge = 0.0

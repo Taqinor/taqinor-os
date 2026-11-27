@@ -178,7 +178,7 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
             id="cal-course-soleil-pan"
             value={zone?.id ?? ''}
             onChange={(e) => setPanChoisi(e.target.value)}
-            className="mt-1 block rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+            className="mt-1 block rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground"
           >
             {zones.map((z, i) => (
               <option key={z.id} value={z.id}>{libellePan(z, i)}</option>

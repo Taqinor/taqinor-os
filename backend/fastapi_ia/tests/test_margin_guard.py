@@ -156,6 +156,19 @@ class MarginGuardTests(unittest.TestCase):
                 "SELECT nom, prix_vente FROM stock_produit", 7, permissions=permissions))
         self.assertTrue(svc._references_forbidden_column(
             "SELECT * FROM ventes_lignedevis", allow_price=True, allow_sale=False))
+        # Lot 8, relecture finale — contrat de maintenance : un role personnalise
+        # `sav_voir` SANS le code ne lit ni `prix` ni `valeur_annuelle`, nommes ou
+        # par ligne entiere ; avec le droit de vente, la garde ne s'en mele pas.
+        for sql in ("SELECT reference, prix FROM sav_contratmaintenance",
+                    "SELECT c.PRIX * 12 AS valeur_annuelle FROM sav_contratmaintenance c"):
+            with self.subTest(sql=sql), self.assertRaisesRegex(svc.RefusDeDroit, "prix_vente_voir"):
+                svc._validate_and_secure(sql, 7, permissions=["sav_voir"])
+        self.assertTrue(svc._references_forbidden_column(
+            "SELECT * FROM sav_contratmaintenance", allow_price=True, allow_sale=False))
+        self.assertFalse(svc._references_forbidden_column(
+            "SELECT reference, prix FROM sav_contratmaintenance", allow_price=True, allow_sale=True))
+        self.assertFalse(svc._references_forbidden_column(
+            "SELECT reference FROM sav_contratmaintenance", allow_price=True, allow_sale=False))
 
     def test_refusal_reply_hides_value(self):
         # Le message de refus ne fuit jamais la colonne / la donnee interdite.

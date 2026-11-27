@@ -152,36 +152,64 @@ describe('ALEA71 — carte « Conception » de la fiche du lead', () => {
   })
 
   // La PREMIÈRE conception d'un lead se calcule en ARRIÈRE-PLAN (regroupement ~5 s + calcul) : jusqu'à sa première version le
-  // serveur répond 404. Après une ACTION (fiche enregistrée…) ce 404 est « en cours de calcul », relu d'elle-même, borné.
-  it('action → 404 → la conception apparaît SANS aucune action de l’utilisateur (relue d’elle-même, minuterie partagée)', async () => {
+  // serveur répond 404. Pour un lead qui vient d'être créé (ou déjà « en cours de calcul »), ce 404 est « en cours de calcul »,
+  // relu d'elle-même, borné ; un ACTION (fiche enregistrée) pendant l'attente la relance.
+  const recent = () => new Date().toISOString()
+
+  it('lead récent + action pendant l’attente : la conception apparaît SANS aucune autre action (relue d’elle-même)', async () => {
     vi.useFakeTimers()
-    ventesApi.getConceptionLead.mockRejectedValueOnce(introuvable()) // ouverture : calme
-    rendre()
-    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
-    expect(screen.getByTestId('carte-conception-sans-conception')).toBeTruthy()
     ventesApi.getConceptionLead
-      .mockRejectedValueOnce(introuvable()) // l'action relit : la tâche de fond n'a pas démarré
+      .mockRejectedValueOnce(introuvable()) // ouverture : lead créé à l'instant
+      .mockRejectedValueOnce(introuvable()) // l'enregistrement relit : la tâche de fond n'a pas démarré
       .mockRejectedValueOnce(introuvable())
       .mockResolvedValue({ data: CONCEPTION })
-    await act(async () => { relireConceptionLead(1); await vi.advanceTimersByTimeAsync(0) })
+    render(<CarteConception leadId={1} creeLe={recent()} />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
     expect(screen.getByTestId('carte-conception-attente').textContent).toContain('Conception en cours de calcul…')
+    await act(async () => { relireConceptionLead(1); await vi.advanceTimersByTimeAsync(0) })
+    expect(screen.getByTestId('carte-conception-attente')).toBeTruthy()
     await act(async () => { await vi.advanceTimersByTimeAsync(ATTENTE_DELAI_MS * 2 + 50) })
     expect(screen.getByTestId('carte-conception-option-avec')).toBeTruthy()
     expect(screen.queryByTestId('carte-conception-attente')).toBeNull()
     expect(ventesApi.getConceptionLead).toHaveBeenCalledTimes(4)
   })
 
-  it('action → 404 persistant : relue 6 × 4 s au plus (une minuterie), puis l’état calme « Pas encore de conception »', async () => {
+  it('lead récent, 404 persistant : relue 6 × 4 s au plus (une minuterie pour deux cartes), puis l’état calme', async () => {
     vi.useFakeTimers()
     ventesApi.getConceptionLead.mockRejectedValue(introuvable())
-    render(<><CarteConception leadId={1} /><CarteConception leadId={1} /></>)
+    render(<><CarteConception leadId={1} creeLe={recent()} /><CarteConception leadId={1} creeLe={recent()} /></>)
     await act(async () => { await vi.advanceTimersByTimeAsync(0) })
-    expect(ventesApi.getConceptionLead).toHaveBeenCalledTimes(1)
-    await act(async () => { relireConceptionLead(1); await vi.advanceTimersByTimeAsync(0) })
     expect(screen.getAllByTestId('carte-conception-attente').length).toBe(2)
     await act(async () => { await vi.advanceTimersByTimeAsync(ATTENTE_DELAI_MS * (ATTENTE_MAX_RELECTURES + 3)) })
-    expect(ventesApi.getConceptionLead).toHaveBeenCalledTimes(1 + 1 + ATTENTE_MAX_RELECTURES) // ouverture + action + 6 relectures, deux cartes, une seule file
+    expect(ventesApi.getConceptionLead).toHaveBeenCalledTimes(1 + ATTENTE_MAX_RELECTURES) // ouverture + 6 relectures, une seule file
     expect(screen.getAllByTestId('carte-conception-sans-conception').length).toBe(2)
+  })
+
+  it('lead ANCIEN sans conception + enregistrement d’un champ sans rapport : UNE lecture de plus, jamais « en cours de calcul »', async () => {
+    vi.useFakeTimers()
+    ventesApi.getConceptionLead.mockRejectedValue(introuvable())
+    render(<CarteConception leadId={1} creeLe="2026-01-01T10:00:00Z" />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(screen.getByTestId('carte-conception-sans-conception')).toBeTruthy()
+    await act(async () => { relireConceptionLead(1); await vi.advanceTimersByTimeAsync(0) })
+    expect(screen.queryByTestId('carte-conception-attente')).toBeNull()
+    expect(screen.getByTestId('carte-conception-sans-conception')).toBeTruthy()
+    await act(async () => { await vi.advanceTimersByTimeAsync(ATTENTE_DELAI_MS * (ATTENTE_MAX_RELECTURES + 2)) })
+    expect(ventesApi.getConceptionLead).toHaveBeenCalledTimes(2)
+  })
+
+  it('lead ancien : la saisie fait naître la conception — l’historique qui change la relit, elle apparaît sans rechargement', async () => {
+    vi.useFakeTimers()
+    ventesApi.getConceptionLead.mockRejectedValueOnce(introuvable()).mockRejectedValueOnce(introuvable())
+      .mockResolvedValue({ data: CONCEPTION })
+    render(<CarteConception leadId={1} creeLe="2026-01-01T10:00:00Z" />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    await act(async () => { relireConceptionLead(1); await vi.advanceTimersByTimeAsync(0) }) // enregistrement : 404 calme
+    expect(screen.queryByTestId('carte-conception-attente')).toBeNull()
+    // Le serveur a rangé la première version : la ligne « Conception recalculée » change l'historique -> relecture simple.
+    await act(async () => { relireConceptionLead(1, { attendre: false }); await vi.advanceTimersByTimeAsync(0) })
+    expect(screen.getByTestId('carte-conception-option-avec')).toBeTruthy()
+    expect(ventesApi.getConceptionLead).toHaveBeenCalledTimes(3)
   })
 
   it('lead créé à l’instant, ouvert sans action : le 404 de la première lecture est « en cours de calcul », puis la conception apparaît', async () => {

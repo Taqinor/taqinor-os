@@ -64,6 +64,8 @@ Module PUR : aucune base, aucun réseau, aucun appel PVGIS.
 """
 from __future__ import annotations
 
+from apps.calepinage.services.etapes import fiche_du_module
+
 import math
 
 from apps.calepinage.services import bifacial_sheds
@@ -181,7 +183,7 @@ def appliquer(serie, contexte):
     contexte = contexte if isinstance(contexte, dict) else {}
     serie = serie if isinstance(serie, dict) else {}
 
-    fiche = contexte.get('fiche_module')
+    fiche = fiche_du_module(contexte)
     fiche = fiche if isinstance(fiche, dict) else {}
     bifacialite = _nombre(fiche.get(CHAMP_BIFACIALITE))
     if fiche and bifacialite is None:

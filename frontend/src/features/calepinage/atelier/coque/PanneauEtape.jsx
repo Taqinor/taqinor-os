@@ -24,6 +24,17 @@ export function ProgressionEtapes({ numero, etats = {} }) {
   )
 }
 
+/** Capture le pointeur sur la poignée ; rend `false` quand le navigateur la refuse (pointeur déjà levé, événement
+    synthétique) : le geste reste alors lisible sans capture. */
+function capturerLeDoigt(e) {
+  try {
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Les poignées de geste du tiroir : la poignée (bouton) ET la rangée du titre. Le toucher de la poignée reste son `click`
     (clavier compris) ; un balayage la dépasse sans déclencher le `click` qui suit ; la rangée du titre, qui n'a aucun
     contrôle, prend aussi le toucher. `touch-action: none` (56-coque-responsive.css) garde le geste au tiroir. */
@@ -38,7 +49,7 @@ function useGesteTiroir({ tiroir, deplie, onDeplier }) {
   const bas = (e) => {
     depart.current = e.clientY
     balaye.current = false
-    try { e.currentTarget.setPointerCapture?.(e.pointerId) } catch { /* sans capture le geste reste lisible */ }
+    capturerLeDoigt(e)
   }
   const lever = (e, { toucher }) => {
     if (depart.current == null) return

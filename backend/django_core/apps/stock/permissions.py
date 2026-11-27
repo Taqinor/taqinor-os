@@ -16,6 +16,8 @@ que la case correspondante soit administrable dans l'éditeur de rôles.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from rest_framework.permissions import BasePermission
 
 from authentication.permissions import HasPermission, IsAdminRole
@@ -126,9 +128,15 @@ class MasqueAchatRapportsProduitMixin:
     }
 
     def finalize_response(self, request, response, *args, **kwargs):
+        # Jumeau de 17b278df9 / f3056a536 : une réponse d'erreur n'a rien à masquer, et lire
+        # ``request.user`` ici authentifiait hors du gestionnaire d'exceptions de DRF (en-tête
+        # ``Authorization`` mal formé → 500 au lieu de 401). Seul l'utilisateur DÉJÀ authentifié
+        # (``Request._user``) est lu.
         champs = self.champs_achat_par_action.get(getattr(self, 'action', None))
-        if champs and cache_montants_achat(request):
-            retirer_cles(getattr(response, 'data', None), champs)
+        if champs and not getattr(response, 'exception', False):
+            user = vars(request).get('_user') if hasattr(request, '__dict__') else None
+            if cache_montants_achat(SimpleNamespace(user=user)):
+                retirer_cles(getattr(response, 'data', None), champs)
         return super().finalize_response(request, response, *args, **kwargs)
 
 
@@ -150,6 +158,15 @@ def cache_prix_vente(requete):
     VENTE. Sans requête ou sans utilisateur (usage service) : faux, la donnée
     reste entière."""
     user = getattr(requete, 'user', None)
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    return not getattr(user, 'can_view_sale_prices', True)
+
+
+def _cache_prix_vente_deja_authentifie(requete):
+    """``cache_prix_vente`` pour une RÉPONSE : ne lit que l'utilisateur que DRF a déjà
+    authentifié (``Request._user``), jamais ``requete.user`` (qui authentifierait)."""
+    user = vars(requete).get('_user') if hasattr(requete, '__dict__') else None
     if user is None or not getattr(user, 'is_authenticated', False):
         return False
     return not getattr(user, 'can_view_sale_prices', True)
@@ -226,7 +243,11 @@ class MasquePrixVenteReponseMixin:
             self.permission_denied(request, message=MESSAGE_PRIX_VENTE)
 
     def finalize_response(self, request, response, *args, **kwargs):
-        if cache_prix_vente(request):
+        # CI #1564 api-fuzz (``stock/produits/0.5/`` → 500) : « .5 » est lu comme un suffixe de
+        # format, la négociation répond 404 AVANT l'authentification ; lire ``request.user`` ici
+        # la déclenchait hors du gestionnaire d'exceptions de DRF. Seul l'utilisateur DÉJÀ
+        # authentifié est lu (toute réponse d'une requête authentifiée garde son masque).
+        if _cache_prix_vente_deja_authentifie(request):
             champs = PRIX_VENTE_CHAMPS + tuple(
                 self.montants_vente_par_action.get(getattr(self, 'action', None), ()))
             retirer_cles(getattr(response, 'data', None), champs)

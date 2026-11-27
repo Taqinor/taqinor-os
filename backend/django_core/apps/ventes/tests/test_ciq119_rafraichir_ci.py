@@ -272,6 +272,57 @@ class RafraichisseurTests(_Base):
         self.assertEqual(devis.statut, 'brouillon')
 
 
+class ModuleDuDevisTests(_Base):
+    """D-ACAL-169 (revue 2) — l'étude C&I d'un devis BROUILLON lit SON module (sa ligne panneau), jamais « la plus
+    haute Pmax » d'un autre panneau du catalogue ; un devis envoyé garde le module d'aujourd'hui."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.panneau_720 = Produit.objects.create(
+            company=cls.co, nom='Panneau 720W', prix_vente=Decimal('1300'), prix_achat=Decimal('800'))
+        FicheTechnique.objects.create(
+            company=cls.co, produit=cls.panneau_720, type_fiche='module',
+            pmax_wc=Decimal('720'), vmp_v=Decimal('41'), voc_v=Decimal('49'),
+            isc_a=Decimal('18'), imp_a=Decimal('17.5'))
+
+    def test_le_rafraichissement_etudie_le_module_des_lignes(self):
+        from apps.ventes.domain.panneau_defaut import panneau_pour_etude
+        self.assertEqual(etude_ci.lire_catalogue_ci(self.co)['module']['produit'], self.panneau_720.pk)  # hier
+        devis = self._devis()
+        with mock.patch.object(etude_ci, 'lire_catalogue_ci', wraps=etude_ci.lire_catalogue_ci) as espion:
+            rafraichir_etudes_du_devis(devis)
+        self.assertTrue(espion.called)
+        self.assertEqual(espion.call_args.kwargs['panneau_defaut'].produit_id, self.panneau.pk)
+        self.assertEqual(etude_ci.lire_catalogue_ci(self.co, panneau_defaut=panneau_pour_etude(self.co, devis))
+                         ['module']['produit'], self.panneau.pk)
+        devis.refresh_from_db()
+        self.assertNotIn('720 Wc', str((devis.etude_params or {}).get('etude_ci')))
+
+    def test_un_devis_envoye_garde_le_module_d_aujourd_hui(self):
+        from apps.ventes.domain.panneau_defaut import panneau_pour_etude
+        devis = self._devis()
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye')
+        devis.refresh_from_db()
+        self.assertFalse(panneau_pour_etude(self.co, devis).designe)
+        self.assertEqual(etude_ci.lire_catalogue_ci(self.co, panneau_defaut=panneau_pour_etude(self.co, devis))
+                         ['module']['produit'], self.panneau_720.pk)
+
+    def test_module_du_devis_sans_prix_regle_d_aujourd_hui_dite(self):
+        from apps.ventes.domain.panneau_defaut import panneau_pour_etude
+        devis = self._devis()
+        auto = panneau_pour_etude(self.co, devis)
+        # « Sans prix » pour le moteur C&I : ``prix_vente`` nul ou négatif
+        # (``etude_ci_module.module_ci_retenu`` / ``lire_catalogue_ci``) ; le
+        # champ est NOT NULL, ``0`` est donc l'état « sans prix » réel.
+        Produit.objects.filter(pk=self.panneau.pk).update(prix_vente=Decimal('0'))
+        alertes = []
+        catalogue = etude_ci.lire_catalogue_ci(self.co, panneau_defaut=auto, alertes=alertes)
+        self.assertEqual(catalogue['module']['produit'], self.panneau_720.pk)
+        self.assertEqual([a['code'] for a in alertes], ['panneau_par_defaut'])
+        self.assertIn('Le panneau du devis « Panneau 710W »', alertes[0]['message'])
+
+
 class CreationAtomiqueCompleteTests(_Base):
     """ERR-AGNR-CI-ETUDE-AJOUTEE-AU-REENREGISTREMENT — le geste de l'écran
     générateur : ``POST /devis/atomic/`` (choix + entrées C&I dans le corps,

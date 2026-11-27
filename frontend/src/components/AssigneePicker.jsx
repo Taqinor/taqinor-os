@@ -52,9 +52,11 @@ export default function AssigneePicker({
   disabled = false,
   allowUnassigned = true,
   compact = false,      // true = bouton pastille seule (carte kanban)
+  nomServi = null,      // ACAL1245 — nom servi par le serveur (liste non chargée)
 }) {
   const current = users.find((u) => String(u.id) === String(value)) || null
-  const currentName = current?.username || null
+  const hasValue = value != null && value !== ''
+  const currentName = current?.username || (hasValue ? nomServi : null) || null
 
   const pick = (id) => {
     if (String(id ?? '') !== String(value ?? '')) onChange?.(id)

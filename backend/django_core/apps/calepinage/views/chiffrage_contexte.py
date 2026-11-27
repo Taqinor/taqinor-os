@@ -30,7 +30,26 @@ def avec_chiffrage(contexte, calepinage, user=None):
     servi = dict(contexte, chiffrage=chiffrer_conception(
         calepinage=_conception_servie(contexte, calepinage),
         company=getattr(calepinage, 'company', None)))
-    return servi if _lit_les_devis(user) else _sans_montants(servi)
+    servi = servi if _lit_les_devis(user) else _sans_montants(servi)
+    return servi if _nomme_les_devis(user) else _sans_devis_nomme(servi)
+
+
+def _nomme_les_devis(user):
+    """Lot 8, relecture finale (D-ACAL-106) — LA garde qui décide si un devis peut être NOMMÉ à ce
+    lecteur : ``services.devis.lit_les_devis``, celle que la vue passe à ``devis_apercu._caviarder``."""
+    from ..services.devis import lit_les_devis
+
+    return user is None or lit_les_devis(user)
+
+
+def _sans_devis_nomme(contexte):
+    """``cible.devis_agricole`` (``{id, reference}``, ACAL1268) devient ``{id: null, reference: null}`` :
+    l'écran dit qu'un devis agricole existe, sans le nommer ni le lier ; le champ de panneaux repris du
+    devis reste (la pose en a besoin). Sans devis agricole (``null``) : inchangé."""
+    cible = contexte.get('cible')
+    if not isinstance(cible, dict) or cible.get('devis_agricole') is None:
+        return contexte
+    return dict(contexte, cible=dict(cible, devis_agricole={'id': None, 'reference': None}))
 
 
 def _lit_les_devis(user):

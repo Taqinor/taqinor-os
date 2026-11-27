@@ -40,7 +40,10 @@ import {
   ajoutDePanEnCours, monterToitGriseSousTrace, toitExistantGeoJSON, // ACAL1329
   type ExclusionZone,
 } from './zones';
-import { deserializeLayout, hydrateFromDevis, serializeLayout, type SerializedLayout } from './prefill'; // ACAL64, ACAL1415
+import { deserializeLayout, hydrateFromDevis, serializeLayout, selectionSansChangement, type SerializedLayout } from './prefill';
+import { heriterDuPanDecoupe } from './tailleAuto'; // ACAL1707
+import { createLayoutState } from '../../lib/layoutVariability'; // ACAL1707
+import { decouperContour, propagerPenteDecoupe } from './formesToit'; // ACAL1735 // ACAL64, ACAL1415, ACAL1916
 import { MENTION_MODULE_DE_DEPART, affectationDesPans } from './moduleSelect'; // ACAL1415
 import { panAuModuleChoisi, remplacerParPanVierge, reprendreModuleChoisi } from './repriseModule'; // ACAL1416
 import { type Ctx } from './context'; // ACAL64
@@ -1498,5 +1501,96 @@ describe('T4-X2-010 — un pan non actif rouvert garde sa pose : document, table
       // Le plan posé ne change pas le document : le pan non actif est réémis tel qu'enregistré.
       expect(serializeLayout(ctx).zones[0].geometry).toEqual(doc.zones[0].geometry);
     } finally { g.document = avant; }
+  });
+});
+
+describe('ACAL1916 — choisir un pan ne marque pas le document modifié', () => {
+  const pan = () => ({
+    id: 'area-1', vertices: [A, B, [-7.5990, 33.5]] as LngLat[], obstacles: [], roofType: 'flat', pitchDeg: 0,
+    facingAzimuthDeg: 180, facingManual: false, neededPanels: 4, neededAuto: true,
+    geometrieEnregistree: { count: 4, panels: [{ cx: 1, cy: 2 }] },
+  });
+  const vif = (a: ReturnType<typeof pan>) => ({
+    vertices: [...a.vertices], obstacles: [...a.obstacles], roofType: a.roofType, pitchDeg: a.pitchDeg,
+    facingAzimuthDeg: a.facingAzimuthDeg, facingManual: a.facingManual, neededPanels: a.neededPanels, neededAuto: a.neededAuto,
+  });
+  it('rien n’a bougé depuis le chargement ⇒ la sélection ne réécrit rien', () => {
+    const a = pan();
+    expect(selectionSansChangement(a as never, vif(a), { count: 4, panels: [{ cx: 1, cy: 2 }] } as never)).toBe(true);
+  });
+  it('un panneau déplacé, une pente ou un nombre changés ⇒ la sélection capture (modifié)', () => {
+    const a = pan();
+    expect(selectionSansChangement(a as never, vif(a), { count: 4, panels: [{ cx: 9, cy: 2 }] } as never)).toBe(false);
+    expect(selectionSansChangement(a as never, { ...vif(a), pitchDeg: 22 }, a.geometrieEnregistree as never)).toBe(false);
+    expect(selectionSansChangement(a as never, { ...vif(a), neededPanels: 5 }, a.geometrieEnregistree as never)).toBe(false);
+  });
+  it('un pan sans pose enregistrée n’est jamais « inchangé »', () => {
+    const a = { ...pan(), geometrieEnregistree: undefined };
+    expect(selectionSansChangement(a as never, vif(a as never), null)).toBe(false);
+  });
+});
+
+describe('ACAL1707 — « 2 pans » sur un toit à 4 panneaux pose et enregistre 4 panneaux', () => {
+  // Le geste réel (`appliquer` de `monterFormesToit`, roof-tool-pro11.ts) : découpe, nombre hérité, le pan découpé remplacé
+  // par les pans, le PREMIER chargé (`loadArea(pans[0])` : son nombre pilote la pose vivante). Puis « Enregistrer » sans
+  // ouvrir le pan 2 : ce que `serializeLayout` écrit. Toit long nord-sud : deux pans est / ouest, tous deux exposés.
+  function decouperPuisEnregistrer(besoin: { neededPanels: number; neededAuto: boolean }) {
+    const avant = panDeTest('area-1', { vertices: rectRing(9, 12), roofType: 'pitched', pitchDeg: 22, ...besoin, moduleId: 'm' } as never);
+    const areas: AreaRecord[] = [avant];
+    const v = decouperContour(avant.vertices, 'gable', 22, areas);
+    if (!v.ok) throw new Error(v.motif);
+    const pans = v.pans;
+    heriterDuPanDecoupe(avant, besoin, pans, true);
+    areas.splice(0, 1, ...pans);
+    const actif = pans[0];
+    const cellules = Array.from({ length: 12 }, (_, i) => ({ cx: (i % 4) * 1.2 - 2, cy: Math.floor(i / 4) * 2.2 - 2 })); // 12 tiennent sur le pan
+    const pose = Math.min(actif.neededPanels, cellules.length); // `placedFor` : min(nombre voulu, ce qui tient)
+    const ctx = {
+      ...ctxDeBase(areas, actif.id), activeArea: () => actif, closed: true,
+      layoutPlan: {
+        pack: { origin: [-7.6, 33.5], ringENU: [[-6, -6], [6, -6], [6, 6], [-6, 6]], azimuthDeg: 180 },
+        grid: { rowWidthM: 2, footprintPerPanelM2: 2, slopeLenM: 1, kwc: 12 * 0.71, panels: cellules },
+        tiltDeg: 22, family: 'south', flush: true,
+      },
+      layoutOptimalCount: pose,
+      layoutState: createLayoutState(cellules, pose),
+    } as unknown as Ctx;
+    return { pans, pose, doc: serializeLayout(ctx) };
+  }
+
+  it('nombre figé à 4 : 4 posés sur le pan chargé, 4 écrits au document (aucun pan non ouvert ne retire de panneau)', () => {
+    const { pans, pose, doc } = decouperPuisEnregistrer({ neededPanels: 4, neededAuto: false });
+    expect(pans.length).toBe(2);
+    expect(pose).toBe(4);
+    expect(doc.zones.reduce((s, z) => s + (z.geometry?.count ?? 0), 0)).toBe(4);
+    expect(doc.zones[0].geometry?.panels.length).toBe(4);
+    expect(doc.zones[0].neededPanels).toBe(4);
+  });
+
+  it('nombre d’après la facture (auto) : le pan chargé garde la cible, aucun pan n’est rempli en plus', () => {
+    const { pose, doc } = decouperPuisEnregistrer({ neededPanels: 4, neededAuto: true });
+    expect(pose).toBe(4);
+    expect(doc.zones.reduce((s, z) => s + (z.geometry?.count ?? 0), 0)).toBe(4);
+  });
+});
+
+describe('ACAL1735 — confirmer la pente d’un pan la confirme pour la même découpe', () => {
+  const p = (id: string, pitchDeg: number, extra: object = {}) => ({ id, roofType: 'pitched' as const, pitchDeg, ...extra });
+  it('les pans de la même découpe, de même pente et sans provenance, suivent', () => {
+    const pans = [p('area-2', 22, { pitchSource: { mode: 'degres', degres: 22 } }), p('area-3', 22)];
+    const src = { mode: 'degres', degres: 22 };
+    expect(propagerPenteDecoupe(pans, new Set(['area-2', 'area-3']), 'area-2', 22, 22, src)).toEqual(['area-3']);
+    expect((pans[1] as { pitchSource?: unknown }).pitchSource).toEqual(src);
+  });
+  it('un pan d’une autre découpe, d’une autre pente ou déjà confirmé n’est pas touché', () => {
+    const pans = [p('area-2', 22), p('area-3', 30), p('area-4', 22), p('area-5', 22, { pitchSource: { mode: 'mesure' } })];
+    const src = { mode: 'degres', degres: 22 };
+    expect(propagerPenteDecoupe(pans, new Set(['area-2', 'area-3', 'area-5']), 'area-2', 22, 22, src)).toEqual([]);
+    expect(propagerPenteDecoupe(pans, new Set(['area-3']), 'area-2', 22, 22, src)).toEqual([]);
+  });
+  it('la pente changée est suivie par les pans qui l’avaient', () => {
+    const pans = [p('area-2', 30), p('area-3', 22)];
+    expect(propagerPenteDecoupe(pans, new Set(['area-2', 'area-3']), 'area-2', 22, 30, { mode: 'degres', degres: 30 })).toEqual(['area-3']);
+    expect(pans[1].pitchDeg).toBe(30);
   });
 });

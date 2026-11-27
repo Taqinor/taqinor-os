@@ -43,6 +43,7 @@ CHAMP_LEAD_PAR_CODE = {
     'consommation_estimee_puissance': 'conso_mensuelle_kwh',
     'estimation_puissance_sans_jours': 'jours_ouverture',
     'estimation_puissance_sans_heures': 'heure_debut',
+    'facture_ete_non_lue': 'facture_ete',  # ACAL1227
 }
 
 #: Consigne lisible quand le texte du moteur parlait son jargon.
@@ -196,6 +197,21 @@ def _nombre(valeur):
         return '%g' % float(valeur)
     except (TypeError, ValueError):
         return '?'
+
+
+MESSAGE_FACTURE_ETE_NON_LUE = ("Facture d'été non prise en compte : la consommation répète "
+                               "la facture d'hiver sur 12 mois")
+
+
+def alerte_facture_ete_non_lue(lead, feuille_retenue):
+    """ACAL1227 (règle du 17/11) — été déclaré différent, mais la consommation
+    C&I répète la facture d'hiver (``facture_hiver_mad``) : DIT, aucun chiffre ne bouge."""
+    ete = getattr(lead, 'facture_ete', None)
+    if feuille_retenue != 'facture_hiver_mad' or not getattr(lead, 'ete_differente', False) \
+            or ete in (None, '') or float(ete) <= 0:
+        return []
+    return [{'code': 'facture_ete_non_lue', 'champ': 'consommation.facture_mad',
+             'message': MESSAGE_FACTURE_ETE_NON_LUE, 'niveau': 'alerte', 'interne': True}]
 
 
 def alertes_pour_la_commerciale(etude):

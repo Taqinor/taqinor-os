@@ -12,8 +12,15 @@ alors qu'un module du catalogue est posé, est remplacée par le module posé
 dominant (``modules_pans._produit_du_module_pose``, la règle existante) ; le
 chatter le dit. Restent intacts : un module encore posé sur un pan (toit
 mixte), un toit sans module posé, un pan posé sans produit du catalogue (la
-désignation y est le module par défaut, ``chaines.bloc_pose``), une entrée sans
-désignation (la lecture prend déjà le module posé).
+désignation y est le module par défaut, ``chaines.bloc_pose``).
+
+R7-N2 (module posé, 26/11) — une entrée SANS désignation suit aussi : la lecture y
+prend le module de la CONCEPTION du lead (``equipements.materiel_de_la_conception``)
+avant le module posé ; quand ce module n'est posé sur AUCUN pan, l'enregistrement
+écrit ``module_produit`` = le module posé dominant — seulement un produit ACTIF de
+la société de famille « module » (``equipements._produit_actif``) — et le chatter
+le dit (« suivait <module de la conception> »). Sans conception, rien n'est écrit
+(la lecture prend déjà le module posé).
 
 Les LECTURES ne changent pas : un calepinage enregistré garde son panneau
 jusqu'à son prochain enregistrement de conception (D-ACAL-169 point 4 :
@@ -29,16 +36,19 @@ PHRASE_SUIVI = ("Le module de l'étape Électrique suivait « %s » ; il suit "
                 "maintenant « %s », posé sur le toit.")
 
 
-def _module_a_suivre(document, entree):
+def _module_a_suivre(document, entree, conception=None):
     """Le ``produit_id`` qui doit remplacer la désignation stockée, ou ``None``.
 
     Lecture pure (aucune base) : ``document`` = la conception (``roof_layout``),
-    ``entree`` = l'entrée électrique stockée."""
-    from apps.ventes.services import pans_du_document
-
+    ``entree`` = l'entrée électrique stockée. R7-N2 — ``conception`` = le
+    ``produit_id`` du module de la conception du lead, que la lecture prend quand
+    rien n'est stocké : il est jugé comme une désignation stockée."""
+    from .equipements import pans_du_document
     from .modules_pans import _produit_du_module_pose
 
     stocke = entree.get('module_produit') if isinstance(entree, dict) else None
+    if stocke in (None, ''):
+        stocke = conception
     if stocke in (None, ''):
         return None
     # Un pan « existant » (ACAL573) n'est jamais pavé par l'atelier : il ne
@@ -50,6 +60,24 @@ def _module_a_suivre(document, entree):
     if any(str(pan.get('produit_id')) == str(stocke) for pan in poses):
         return None
     return _produit_du_module_pose(document, sans_existants=True)
+
+
+def _module_de_la_conception(calepinage):
+    """R7-N2 — le ``produit_id`` du module de la conception courante du lead (celui
+    que la lecture prend sans désignation), ou ``None``."""
+    from .equipements import materiel_de_la_conception
+
+    return (materiel_de_la_conception(calepinage).get('produits') or {}).get('module')
+
+
+def _module_actif(company, identifiant):
+    """R7-N2 — ``identifiant`` s'il est un MODULE actif de ``company``, sinon ``None``."""
+    from .equipements import _produit_actif
+
+    try:
+        return _produit_actif(company, int(identifiant), 'module')
+    except (TypeError, ValueError):
+        return None
 
 
 def _produit(company, identifiant):
@@ -72,18 +100,22 @@ def suivre_le_module_pose(calepinage, document, *, user=None):
 
     resultat = getattr(calepinage, 'resultat', None)
     entree = resultat.get(CLE_ENTREE) if isinstance(resultat, dict) else None
-    identifiant = _module_a_suivre(document, entree)
+    ancien = (entree or {}).get('module_produit') if isinstance(entree, dict) else None
+    ancien = None if ancien in (None, '') else ancien
+    conception = None if ancien is not None else _module_de_la_conception(calepinage)
+    identifiant = _module_a_suivre(document, entree, conception)
     if identifiant is None:
         return None
     company = getattr(calepinage, 'company', None)
+    if ancien is None and _module_actif(company, identifiant) is None:
+        return None  # R7-N2 : jamais un produit archivé, d'une autre famille ou société
     produit = _produit(company, identifiant)
     if produit is None:
         return None
-    ancien = entree.get('module_produit')
 
     def _suivre(frais):
         courante = dict(frais.get(CLE_ENTREE) or {})
-        if courante.get('module_produit') != ancien:
+        if (courante.get('module_produit') or None) != ancien:
             return None  # désignation changée entre-temps : la saisie gagne
         courante['module_produit'] = produit.pk
         frais[CLE_ENTREE] = courante
@@ -91,7 +123,8 @@ def suivre_le_module_pose(calepinage, document, *, user=None):
 
     if modifier_resultat(calepinage, _suivre) is None:
         return None
-    nom_ancien = _designation(_produit(company, ancien)) or '#%s' % ancien
+    suivi = ancien if ancien is not None else conception  # ce que l'étape Électrique suivait
+    nom_ancien = _designation(_produit(company, suivi)) or '#%s' % suivi
     nom_nouveau = _designation(produit) or '#%s' % produit.pk
     journaliser_module_suivi(calepinage, ancien=nom_ancien, nouveau=nom_nouveau,
                              phrase=PHRASE_SUIVI % (nom_ancien, nom_nouveau),

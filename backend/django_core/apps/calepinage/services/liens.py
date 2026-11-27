@@ -120,6 +120,46 @@ def lier_devis(calepinage, devis_id, *, user=None, ancien_abandonne=None):
     return calepinage
 
 
+def relier_au_devis_revise(ancien, nouveau, *, user=None):
+    """ACAL92 (D-ACAL-3) — à la révision, le calepinage lié DIRECTEMENT à
+    ``ancien`` (la V1, déjà inactive) est re-lié à ``nouveau`` (sa V+1) :
+
+    1. une version FIGÉE « Version envoyée — <référence V1> » est déposée
+       (``enregistrer_version``, même empreinte admise : la preuve de ce qui a
+       été envoyé, sans sac de simulation) ;
+    2. :func:`lier_devis` re-pointe le calepinage (l'ancien devis est
+       inactif) : variantes, pertes, entrée électrique et versions restent.
+
+    LA seule implémentation : l'abonné ``devis_revise``
+    (``receivers.relier_calepinage_au_devis_revise``) et ``ventes`` (R6-N1,
+    re-liaison DANS la transaction de la révision, avant le calcul des
+    études) l'appellent. IDEMPOTENT : un calepinage qui n'est plus lié
+    directement à ``ancien`` (déjà re-lié) n'est pas touché — le second appel
+    n'écrit rien, une seule version figée. Aucun statut écrit (règle #4).
+    Rend le calepinage re-lié, ou ``None`` (rien à re-lier). Lève en cas
+    d'échec : l'appelant journalise (une révision ne casse jamais)."""
+    from django.db import transaction
+
+    from ..selectors import calepinage_du_devis
+    from .versions import LIBELLE_VERSION_ENVOYEE, enregistrer_version
+
+    company = getattr(ancien, 'company', None)
+    if ancien is None or nouveau is None or company is None:
+        return None
+    calepinage = calepinage_du_devis(ancien.pk, company)
+    if calepinage is None or calepinage.devis_id != ancien.pk:
+        return None
+    reference = (getattr(ancien, 'reference', '') or '').strip() or (
+        f'#{ancien.pk}')
+    with transaction.atomic():
+        enregistrer_version(
+            calepinage, user=user,
+            libelle=LIBELLE_VERSION_ENVOYEE.format(reference=reference),
+            resultat=None, meme_empreinte_admise=True)
+        lier_devis(calepinage, nouveau.pk, user=user)
+    return calepinage
+
+
 def _reference(devis, devis_id=None):
     """La référence lisible d'un devis (``DEV-…``), sinon son numéro."""
     reference = (getattr(devis, 'reference', '') or '').strip()

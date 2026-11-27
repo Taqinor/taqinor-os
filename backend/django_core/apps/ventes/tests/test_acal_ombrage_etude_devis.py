@@ -10,6 +10,7 @@ rejoués, comme dans PV69/PV70.
 Run :
     python manage.py test apps.ventes.tests.test_acal_ombrage_etude_devis -v2
 """
+import contextlib
 import copy
 import json
 from pathlib import Path
@@ -349,6 +350,25 @@ class OmbrageEtudeDevisTest(BaseApiCalepinage):
             SimpleNamespace(**{c: entrees[c] for c in entrees.keys()
                                if c != 'base_production'})))
 
+    def test_acal1237_sans_conso_meme_kwh_an_brouillon_et_envoye(self, *_m):
+        """ACAL1237 — niveau 15 sans consommation (aucun bloc horaire) : la base
+        imprimée par le brouillon est rangée à l'envoi et relue après."""
+        from apps.ventes.domain.envoi import geler_document_engage
+        from apps.ventes.horaire.productible_pose import (
+            CLE_BASE_ENVOI, base_de_production)
+        self._niveau(15, etude_params={})
+        with patch_materiel():
+            avant = base_de_production(self.devis)
+            geler_document_engage(self.devis, self.user, statut=Devis.Statut.ENVOYE)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, Devis.Statut.ENVOYE)
+        self.assertEqual(self.devis.etude_params.get(CLE_BASE_ENVOI), avant)
+        with mock.patch('apps.calepinage.selectors_devis.'
+                        'productible_pose_servi') as vivant:
+            self.assertEqual(base_de_production(self.devis), avant)
+            self.assertEqual(base_de_production(self.devis), avant)
+        vivant.assert_not_called()
+
 
 _SERVI_POSE = {
     'perime': False, 'motif': '', 'kwc_simule': 71.0,
@@ -422,6 +442,74 @@ class BaseDeProductionSansBaseTest(SimpleTestCase):
         lu.assert_not_called()
         (base, _m), _lu = self._diag(self._devis(statut='envoye'))
         self.assertIsNone(base)
+
+    # ── ACAL1237 — la base rangée À L'ENVOI d'un devis sans consommation ──
+    def _a_ranger(self, devis):
+        from apps.ventes.horaire.productible_pose import base_a_ranger_a_l_envoi
+        with mock.patch('apps.calepinage.selectors_devis.productible_pose_servi',
+                        return_value=_SERVI_POSE), \
+                mock.patch('apps.ventes.horaire.productible_pose._kwc_du_devis',
+                           return_value=71.0):
+            return base_a_ranger_a_l_envoi(devis)
+
+    def test_acal1237_sans_conso_envoye_relit_la_base_rangee_a_l_envoi(self):
+        from apps.ventes.horaire.productible_pose import CLE_BASE_ENVOI
+        brouillon = self._devis()
+        (imprimee, _m), _lu = self._diag(brouillon)
+        rangee = self._a_ranger(brouillon)
+        self.assertEqual(rangee, imprimee)
+        envoye = self._devis(statut='envoye', etude_params={CLE_BASE_ENVOI: rangee})
+        (base, _m), lu = self._diag(envoye)
+        self.assertEqual(base, imprimee)  # même kWh/an avant et après l'envoi
+        lu.assert_not_called()
+        # Le bloc horaire, quand il porte la base, reste lu en premier (et rien à ranger).
+        bloc = {'kwh_kwc_annuel': 1300.0, 'kwh_kwc_mensuel': [108.3] * 12,
+                'pertes_incluses': True, 'source': 'calepinage_enregistre'}
+        horaire = {'etude_horaire': {'base_production': bloc}}
+        self.assertIsNone(self._a_ranger(self._devis(etude_params=horaire)))
+        (base, _m), _lu = self._diag(self._devis(
+            statut='envoye', etude_params=dict(horaire, **{CLE_BASE_ENVOI: rangee})))
+        self.assertEqual(base, bloc)
+
+    def test_acal1237_niveau_14_rien_a_ranger(self):
+        self.assertIsNone(self._a_ranger(self._devis(regles_calcul=14)))
+        self.assertIsNone(self._a_ranger(self._devis(mode_installation='industriel')))
+
+    def _geler(self, devis, base):
+        from apps.ventes.domain import envoi
+        vu = []
+        noms = ('refresh_marge_snapshot', 'figer_clauses_devis', 'figer_baremes_forfaits',
+                'figer_reglages_rendu', 'poser_validite_devis', 'date_validite_credit')
+        with contextlib.ExitStack() as pile:
+            for nom in noms:
+                pile.enter_context(mock.patch.object(envoi, nom))
+            for cible in ('apps.ventes.domain.tarification.exiger_approbation_remise',
+                          'apps.ventes.conceptions_options.figer_conceptions_des_options',
+                          'apps.ventes.utils.echeancier.figer_echeancier',
+                          'apps.ventes.domain.verrou_devis.toucher'):
+                pile.enter_context(mock.patch(cible))
+            pile.enter_context(mock.patch(
+                'apps.ventes.horaire.productible_pose.base_a_ranger_a_l_envoi',
+                side_effect=lambda d: vu.append(d.statut) or base))
+            envoi.geler_document_engage(devis, None, statut='envoye')
+        return vu
+
+    def test_acal1237_geler_range_la_base_lue_avant_la_bascule(self):
+        from apps.ventes.horaire.productible_pose import CLE_BASE_ENVOI
+        base = {'kwh_kwc_annuel': 1388.4, 'kwh_kwc_mensuel': [115.7] * 12,
+                'pertes_incluses': True, 'source': 'calepinage_enregistre'}
+        devis = self._devis(save=mock.Mock())
+        self.assertEqual(self._geler(devis, base), ['brouillon'])  # lue brouillon
+        self.assertEqual(devis.statut, 'envoye')
+        self.assertEqual(devis.etude_params[CLE_BASE_ENVOI], base)
+        # Une clé héritée (copie, V2) sans base à ranger : retirée, jamais relue.
+        devis = self._devis(save=mock.Mock(), etude_params={CLE_BASE_ENVOI: base})
+        self._geler(devis, None)
+        self.assertNotIn(CLE_BASE_ENVOI, devis.etude_params)
+        # Niveau 14 / bloc horaire porteur : etude_params intouché.
+        devis = self._devis(save=mock.Mock())
+        self._geler(devis, None)
+        self.assertEqual(devis.etude_params, {})
 
     def test_page_publique_lit_la_base_sans_derate(self):
         from apps.ventes.horaire.public import (

@@ -1435,6 +1435,7 @@ def _injection_publiee(autoconsommation, plafond_legal):
     }, None
 
 
+#: décision fondateur 26/11/2026 (D-ACAL-63 = avertir_10x, docs/audits/decisions.yml).
 #: ACAL1251 (D-ACAL-63) — au-delà de dix fois l'attendu, la saisie est gardée et signalée.
 FACTEUR_AVERTISSEMENT = 10
 

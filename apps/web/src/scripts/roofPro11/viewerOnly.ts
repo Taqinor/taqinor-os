@@ -98,6 +98,10 @@ export interface ViewerInitOptions {
   /** Photo satellite du toit du visiteur (buildPublicRoofImageSpec). Absent ou
    *  null → rendu abstrait actuel, strictement inchangé. */
   roofImage?: RoofImageSpec | null;
+  /** Lot 8 — pieds de châssis sous les panneaux inclinés d'un toit plat (`matricesPiedsChassis`). D-ACAL-161 (fondateur,
+   *  26/11) : PARTOUT — tous les liens client et l'estimateur public (exception explicite à D-ACAL-134 pour ce seul
+   *  point, purement visuel). Absent = pieds ; `false` les retire (un seul booléen à basculer). */
+  piedsChassis?: boolean;
 }
 
 export interface ViewerHandle {
@@ -505,11 +509,12 @@ function buildGroundPlane(
 }
 
 /** Construit tous les meshes d'une zone dans `root`. Renvoie les ressources à libérer. */
-function buildZone(
+export function buildZone(
   root: THREE.Group,
   zone: ViewerZone,
   disposables: Array<{ dispose: () => void }>,
   drape: RoofDrape | null = null,
+  avecPieds = true, // lot 8, D-ACAL-161 — pieds partout (ViewerInitOptions.piedsChassis)
 ): void {
   const ring = zone.ringENU;
   if (ring.length < 3) return;
@@ -626,6 +631,7 @@ function buildZone(
     const rise = slopeLenM * Math.abs(Math.sin(tiltRad));
     const m = new THREE.Matrix4();
     const pos = new THREE.Vector3();
+    const poses: THREE.Matrix4[] = [];
     for (let i = 0; i < zone.panels.length; i++) {
       const p = zone.panels[i];
       const zBase = pitched
@@ -634,11 +640,51 @@ function buildZone(
       pos.set(p.x, p.y, zBase);
       m.compose(pos, p.face === 'E' ? qDown : qUp, scl);
       im.setMatrixAt(i, m);
+      poses.push(m.clone());
     }
     im.instanceMatrix.needsUpdate = true;
     root.add(im);
     disposables.push(panelGeo, panelMat, im);
+    // Lot 8 — châssis de toit plat : un pied AVANT et un pied ARRIÈRE sous chaque panneau incliné (plus de verre
+    // qui flotte au-dessus de la dalle), repli illustratif à 15° compris. Aucun pied en pose affleurante ou sur un pan en pente.
+    const pieds = avecPieds ? matricesPiedsChassis(zone, poses, slopeLenM) : [];
+    if (pieds.length) {
+      const piedGeo = new THREE.BoxGeometry(PIED_SECTION_M, PIED_SECTION_M, 1);
+      const piedMat = new THREE.MeshStandardMaterial({ color: 0xb0b7be, roughness: 0.38, metalness: 0.78 });
+      const piedsIm = new THREE.InstancedMesh(piedGeo, piedMat, pieds.length);
+      pieds.forEach((pm, i) => piedsIm.setMatrixAt(i, pm));
+      piedsIm.instanceMatrix.needsUpdate = true;
+      root.add(piedsIm);
+      disposables.push(piedGeo, piedMat, piedsIm);
+    }
   }
+}
+
+/** Section d'un pied de châssis (m) — le profilé galvanisé de ~41 mm des rails du builder (apparence). */
+export const PIED_SECTION_M = 0.04;
+
+/**
+ * Lot 8 — les pieds du châssis de toit plat de la visionneuse simplifiée : pour chaque panneau, un pied vertical
+ * de la dalle (`WALL_H_M + 0,02`) jusqu'à son bord HAUT et un jusqu'à son bord BAS, aux points que la matrice du
+ * panneau (inclinaison DESSINÉE, module, orientation) donne à ses deux bords — l'inclinaison servie, ou les 15°
+ * illustratifs du repli sans calepinage réel, qui ont donc aussi leurs pieds. Aucun pied quand la pose est affleurante
+ * (`flush`), le pan en pente, ou l'inclinaison dessinée nulle ou non numérique. Matrices unitaires (boîte de hauteur 1)
+ * mises à l'échelle de chaque pied.
+ */
+export function matricesPiedsChassis(zone: Pick<ViewerZone, 'flush' | 'roofType' | 'tiltDeg'>, poses: readonly THREE.Matrix4[], slopeLenM: number): THREE.Matrix4[] {
+  if (zone.flush || zone.roofType === 'pitched' || !(Number.isFinite(zone.tiltDeg) && zone.tiltDeg > 0) || !(slopeLenM > 0)) return [];
+  const dalle = WALL_H_M + 0.02;
+  const pieds: THREE.Matrix4[] = [];
+  const bord = new THREE.Vector3();
+  const id = new THREE.Quaternion();
+  for (const pose of poses) {
+    for (const s of [1, -1]) {
+      bord.set(0, (s * slopeLenM) / 2, -PANEL_THICK_M / 2).applyMatrix4(pose);
+      const h = bord.z - dalle;
+      if (h > 0.01) pieds.push(new THREE.Matrix4().compose(new THREE.Vector3(bord.x, bord.y, dalle + h / 2), id, new THREE.Vector3(1, 1, h)));
+    }
+  }
+  return pieds;
 }
 
 /**
@@ -719,7 +765,7 @@ export function createRoofViewer(
     disposables.push(drape.texture);
     buildGroundPlane(root, drape, disposables);
   }
-  for (const zone of model.zones) buildZone(root, zone, disposables, drape);
+  for (const zone of model.zones) buildZone(root, zone, disposables, drape, opts.piedsChassis !== false);
 
   const radius = Math.max(model.radiusM, 6);
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, radius * 40);

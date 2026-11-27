@@ -185,6 +185,21 @@ class ReviserRelieTest(BaseApiCalepinage):
         self.c.refresh_from_db()
         self.assertEqual(self.c.devis_id, v2.pk)  # savepoint annulé
 
+    def test_service_relier_au_devis_revise_idempotent(self):
+        """R6-N1 (suite) — LE service (appelé par l'abonné ET par ventes) :
+        un second appel n'écrit rien, une seule version figée."""
+        from apps.calepinage.services.liens import relier_au_devis_revise
+
+        v2 = reviser_devis(self.v1, user=self.user)  # rappels non rejoués
+        self.assertEqual(relier_au_devis_revise(self.v1, v2, user=self.user),
+                         self.c)
+        self.assertIsNone(relier_au_devis_revise(self.v1, v2, user=self.user))
+        self.c.refresh_from_db()
+        self.assertEqual(self.c.devis_id, v2.pk)
+        libelle = LIBELLE_VERSION_ENVOYEE.format(reference=self.v1.reference)
+        self.assertEqual(CalepinageVersion.objects.filter(
+            calepinage=self.c, libelle=libelle).count(), 1)
+
     def test_version_envoyee_figee(self):
         self._reviser()
         libelle = LIBELLE_VERSION_ENVOYEE.format(reference=self.v1.reference)
@@ -395,6 +410,165 @@ class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
         self.assertEqual(len(appels), 1, appels)
         self.assertIsNone(appels[0][3])
         self.assertTrue(Devis.objects.filter(pk=v2.pk).exists())
+
+    # ── R6-N1 (suite) — les trois appelants qui tiennent une transaction ──
+
+    def _espion(self):
+        from apps.ventes.horaire.ombrage import perte_ombrage_du_devis
+        from apps.ventes.tests.test_acal_devis_revise_evenement import (
+            espionner_etudes)
+
+        journal = []
+        espionner_etudes(self, journal, mesure=perte_ombrage_du_devis)
+        return journal
+
+    def _versions_envoyees(self):
+        return CalepinageVersion.objects.filter(
+            calepinage=self.c, libelle=LIBELLE_VERSION_ENVOYEE.format(
+                reference=self.v1.reference)).count()
+
+    def test_avant_acceptation_un_calcul_relie_dans_la_transaction(self):
+        """Prix négocié : AVANT le commit (là où la V2 est acceptée), le
+        calepinage est déjà sur la V2 ; la révision ne calcule rien, le calcul
+        de l'appelant (au prix négocié) voit l'ombrage du calepinage ; au
+        commit, rien n'est refait (V2 acceptée) et une SEULE version figée
+        existe. ROUGE AVANT : un calcul dans le clonage, perte ``None``, et la
+        V2 acceptée le gardait."""
+        from apps.ventes.domain import etudes
+        from apps.ventes.domain.revision import ETUDES_AVANT_ACCEPTATION
+
+        journal = self._espion()
+        with self.materiel(), self.captureOnCommitCallbacks(execute=True):
+            v2 = reviser_devis(self.v1, user=self.user,
+                               etudes=ETUDES_AVANT_ACCEPTATION)
+            self.c.refresh_from_db()
+            self.assertEqual(self.c.devis_id, v2.pk)
+            self.assertEqual([a for a in journal if a[1] == v2.pk], [])
+            etudes.rafraichir_etudes_du_devis(v2, force=True)  # l'appelant
+            avant = [a for a in journal if a[1] == v2.pk]
+            self.assertEqual(len(avant), 1, avant)
+            self.assertTrue(avant[0][2])  # force
+            self.assertAlmostEqual(avant[0][3], self.perte_servie, places=6)
+            # Comme ``appliquer_prix_negocie`` : acceptée avant le commit.
+            Devis.objects.filter(pk=v2.pk).update(
+                statut=Devis.Statut.ACCEPTE)
+        self.assertEqual([a for a in journal if a[1] == v2.pk], avant)
+        self.assertEqual(self._versions_envoyees(), 1)
+        self.assertFalse(any(a[1] == self.v1.pk for a in journal))  # V1 jamais recalculée
+
+    def test_prix_negocie_la_v2_acceptee_porte_l_ombrage_de_son_calepinage(self):
+        """Le vrai geste « Prix négocié » (V2 créée ET acceptée en une
+        transaction) sur une vente dont la V1 porte un calepinage simulé."""
+        from datetime import date
+        from unittest import mock
+
+        from django.contrib.auth import get_user_model
+
+        from apps.ventes.domain.cycle_vie import accept_devis
+        from apps.ventes.domain.negociation import appliquer_prix_negocie
+        from apps.ventes.models import LigneDevis
+        from apps.ventes.tests._quote_engine_common import make_produit
+
+        vendeur = get_user_model().objects.create_user(
+            username='r6n1_negocie', password='x', role_legacy='responsable',
+            company=self.company)
+        for rang, (designation, pu, taux) in enumerate((
+                ('Panneaux 10 %', '9600.00', '10'),
+                ('Installation 20 %', '36643.50', '20'))):
+            LigneDevis.objects.create(
+                devis=self.v1, designation=designation, quantite=Decimal('1'),
+                produit=make_produit(self.company, designation,
+                                     f'R6N1-{rang}', pu),
+                prix_unitaire=Decimal(pu), remise=Decimal('0'),
+                taux_tva=Decimal(taux))
+        with mock.patch('apps.ventes.domain.cycle_vie._send_acceptance_emails'), \
+                mock.patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
+            v1 = accept_devis(devis=Devis.objects.get(pk=self.v1.pk),
+                              user=vendeur, nom='Client R6-N1',
+                              date_acceptation=date.today(),
+                              option='sans_batterie')
+            journal = self._espion()
+            # Sans rejouer les rappels du commit (abonnés de l'acceptation) :
+            # tout ce qui est vérifié ici se joue DANS la transaction du geste.
+            # Aucun échec SILENCIEUX : la re-liaison (journal ERROR de
+            # ``domain.revision``) et la lecture de l'ombrage (journal WARNING
+            # de ``horaire.ombrage``) avalent leurs exceptions — un rouge ici
+            # nomme la cause au lieu d'un ``None`` muet plus bas.
+            with self.materiel(), \
+                    self.assertNoLogs('apps.ventes.domain.revision',
+                                      level='ERROR'), \
+                    self.assertNoLogs('apps.ventes.horaire.ombrage',
+                                      level='WARNING'):
+                corps = appliquer_prix_negocie(v1, user=vendeur,
+                                               remise_pct='2')
+        v2 = Devis.objects.get(pk=corps['devis_v2']['id'])
+        self.assertEqual(v2.statut, Devis.Statut.ACCEPTE)
+        self.c.refresh_from_db()
+        self.assertEqual(self.c.devis_id, v2.pk)
+        appels = [a for a in journal if a[1] == v2.pk]
+        self.assertEqual(len(appels), 1, appels)
+        self.assertAlmostEqual(appels[0][3], self.perte_servie, places=6)
+        self.assertEqual(self._versions_envoyees(), 1)
+
+    def test_avant_acceptation_rollback_laisse_le_calepinage_sur_la_v1(self):
+        from django.db import transaction
+
+        from apps.ventes.domain.revision import ETUDES_AVANT_ACCEPTATION
+
+        class _Annule(Exception):
+            pass
+
+        nb_devis = Devis.objects.count()
+        with self.materiel(), self.captureOnCommitCallbacks(execute=True):
+            with self.assertRaises(_Annule):
+                with transaction.atomic():
+                    reviser_devis(self.v1, user=self.user,
+                                  etudes=ETUDES_AVANT_ACCEPTATION)
+                    raise _Annule
+        self.c.refresh_from_db()
+        self.assertEqual(self.c.devis_id, self.v1.pk)
+        self.assertEqual(self._versions_envoyees(), 0)
+        self.assertEqual(Devis.objects.count(), nb_devis)
+        self.v1.refresh_from_db()
+        self.assertTrue(self.v1.is_active)
+
+    def test_apres_recomposition_un_calcul_au_commit_apres_la_reliaison(self):
+        """Atelier : le clonage ne calcule rien, LE calcul part au commit
+        après la re-liaison (hier : clonage + commit)."""
+        from apps.ventes.domain.revision import ETUDES_APRES_RECOMPOSITION
+
+        journal = self._espion()
+        with self.materiel(), self.captureOnCommitCallbacks(execute=True):
+            v2 = reviser_devis(self.v1, user=self.user,
+                               etudes=ETUDES_APRES_RECOMPOSITION)
+            self.assertEqual([a for a in journal if a[1] == v2.pk], [])
+        appels = [a for a in journal if a[1] == v2.pk]
+        self.assertEqual(len(appels), 1, appels)
+        self.assertTrue(appels[0][2])
+        self.assertAlmostEqual(appels[0][3], self.perte_servie, places=6)
+        self.c.refresh_from_db()
+        self.assertEqual(self.c.devis_id, v2.pk)
+        self.assertEqual(self._versions_envoyees(), 1)
+
+    def test_par_l_appelant_relie_par_lui_aucun_calcul_au_commit(self):
+        """Visite C&I : clonage comme hier, l'appelant re-lie à la fin de sa
+        recomposition ; le commit ne refait ni lien, ni version, ni calcul."""
+        from apps.ventes.domain.revision import (
+            ETUDES_PAR_L_APPELANT, relier_calepinage_de_la_revision)
+
+        journal = self._espion()
+        with self.materiel(), self.captureOnCommitCallbacks(execute=True):
+            v2 = reviser_devis(self.v1, user=self.user,
+                               etudes=ETUDES_PAR_L_APPELANT)
+            self.assertTrue(relier_calepinage_de_la_revision(
+                self.v1, v2, user=self.user))
+            self.assertEqual(self._versions_envoyees(), 1)
+        appels = [a for a in journal if a[1] == v2.pk]
+        self.assertEqual(len(appels), 1, appels)
+        self.assertIsNone(appels[0][3])  # le clonage, comme hier
+        self.c.refresh_from_db()
+        self.assertEqual(self.c.devis_id, v2.pk)
+        self.assertEqual(self._versions_envoyees(), 1)
 
 
 class SuitLeDevisEnvoyeTest(BaseApiCalepinage):

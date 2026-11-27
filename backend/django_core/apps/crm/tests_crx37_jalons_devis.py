@@ -100,9 +100,21 @@ class JalonsDevisContratTests(TestCase):
         for identifiant in ids:
             self.assertIsInstance(identifiant, str)
 
+    def test_acal1235_signe_nomme_l_utilisateur_de_l_acceptation(self):
+        """ACAL1235 — « Devis signé » sert le nom de l'utilisateur qui a fait
+        accepter le devis ; sans acteur connu, null (jamais « ? »)."""
+        from apps.ventes.activity import log_devis_acceptance
+        sans = {l['kind']: l['user_nom'] for l in self._resultats()['results']}
+        self.assertIsNone(sans['devis_signed'])
+        log_devis_acceptance(self.devis, self.user, '',
+                             self.devis.date_acceptation)
+        lignes = {l['kind']: l['user_nom'] for l in self._resultats()['results']}
+        self.assertEqual(lignes['devis_signed'], 'resp_crx37')
+        self.assertIsNone(lignes['devis_sent'])
+
     def test_les_notes_du_contrat_sont_vraies(self):
-        """Le contrat promet ``user_nom`` toujours nul, ``pinned`` toujours
-        faux, la référence en ``body``, et le plus récent d'abord."""
+        """Le contrat promet ``user_nom`` nul sans acteur connu, ``pinned``
+        toujours faux, la référence en ``body``, et le plus récent d'abord."""
         lignes = self._resultats()['results']
         for ligne in lignes:
             self.assertIsNone(ligne['user_nom'])

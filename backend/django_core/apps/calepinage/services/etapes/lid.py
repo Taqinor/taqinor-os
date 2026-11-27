@@ -49,6 +49,8 @@ Module PUR : aucune base, aucun réseau.
 """
 from __future__ import annotations
 
+from apps.calepinage.services.etapes import fiche_du_module
+
 from apps.calepinage.services import etapes as _etapes
 
 #: La clé de réglage société lue ici (registre CALX145).
@@ -88,7 +90,7 @@ def appliquer(serie, contexte):
             'source.',
             champ=f'simulation.{CLE_REGLAGE}')
 
-    fiche = contexte.get('fiche_module')
+    fiche = fiche_du_module(contexte)
     fiche = fiche if isinstance(fiche, dict) else {}
     brute = fiche.get(CHAMP_TECHNO)
     lue = brute.strip() if isinstance(brute, str) else ''

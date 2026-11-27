@@ -9080,75 +9080,84 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             .catch(() => null)) as { maptilerKey?: string; mapboxToken?: string } | null;
           if (cfg && (cfg.maptilerKey || cfg.mapboxToken)) {
             const full = await import('../../scripts/roofPro11/viewerFullBoot');
-            const fullHandle = full.bootViewerFull(stage, fullLayout, {
+            const s = soleil, barre = barreSoleil;
+            // Lot 8 — la barre au soleil n'est branchée (donc montrée) qu'une fois la scène VRAIMENT rendue ;
+            // une scène qui jette la cache et replie sur la visionneuse simplifiée, comme sans clé d'imagerie.
+            const pleine = full.monterVisionneusePleine(stage, fullLayout, {
               maptilerKey: cfg.maptilerKey,
               mapboxToken: cfg.mapboxToken,
               reducedMotion: reduced,
               lowEnd: strategy.lowEnd,
-              ...(soleil ? { instant: soleil.ouverture, environnement: soleil.environnement, indexTeintes: fullLayout === layoutRacine ? soleil.zones.map((z) => z.index) : [] } : {}),
+              ...(soleil ? { instant: soleil.ouverture, environnement: soleil.environnement, indexTeintes: fullLayout === layoutRacine ? soleil.zones.map((z) => z.index) : [], presentationClient: true } : {}),
               onReady: () => {
                 if (overlay) overlay.hidden = true;
-                if (hintEl) {
-                  hintEl.hidden = false;
-                  // Gestes carte ≠ gestes Three : réécrit data-i18n ET le texte,
-                  // sinon le sélecteur de langue remet l'ancien libellé.
-                  hintEl.dataset.fr = 'Deux doigts pour déplacer et zoomer · clic droit ou Ctrl + glisser pour tourner';
-                  hintEl.dataset.en = 'Two fingers to pan and zoom · right-click or Ctrl + drag to rotate';
-                  hintEl.dataset.ar = 'إصبعان للتحريك والتكبير · زر أيمن أو Ctrl + سحب للتدوير';
-                  hintEl.textContent = hintEl.dataset.fr;
-                }
-                stage.classList.add('roof3d-stage--sky', 'roof3d-stage--map');
               },
               onMapError: () => showFallback('Vue 3D interrompue — voici la photo de votre étude.'),
-            });
-            if (fullHandle) {
-              handle = { dispose: () => fullHandle.destroy() };
+            }, {
+              barre,
+              // Cadre et aide des gestes CARTE posés au rendu, rendus tels qu'avant au repli (viewerFullBoot.ts::habillerPourCarte).
+              scene: stage,
+              aide: hintEl,
               // LOT 6 — barre au soleil chargée APRÈS la visionneuse ; tout échec la masque et laisse la visionneuse.
-              const courant = handle, s = soleil, barre = barreSoleil;
-              if (s && barre) {
-                import('../../scripts/roofPro11/viewerSoleil').then((m) => {
-                  if (handle !== courant) return; // démontée entre-temps (autre taille choisie)
-                  const debrancher = m.attacherSoleil({ barre, poignee: fullHandle, soleil: s, layout: fullLayout, avecTeinte: fullLayout === layoutRacine, reducedMotion: reduced });
-                  handle = { dispose: () => { debrancher(); courant.dispose(); } };
-                }).catch(() => { barre.hidden = true; });
-              }
+              brancherSoleil: s && barre
+                ? async (poignee) => (await import('../../scripts/roofPro11/viewerSoleil')).attacherSoleil({ barre, poignee, soleil: s, layout: fullLayout, avecTeinte: fullLayout === layoutRacine, reducedMotion: reduced })
+                : undefined,
+              replier: () => {
+                if (handle !== pleine) return; // démontée entre-temps (autre taille choisie)
+                handle = null;
+                // Échec TARDIF : onReady avait caché le voile ; il porte la note de showFallback si rien ne se rend.
+                if (overlay) overlay.hidden = false;
+                monterLegere(mod, strategy).catch(() => showFallback('Vue 3D momentanément indisponible — voici la photo de votre étude.'));
+              },
+            });
+            if (pleine) {
+              handle = pleine;
               return;
             }
           }
         }
-        if (barreSoleil) barreSoleil.hidden = true; // visionneuse simplifiée : aucun soleil à piloter
-        // WJ118 — photo satellite RÉELLE du toit du client (contrat viewerOnly
-        // ci-dessus) : TOUT échec (pas de clé MAPTILER/MAPBOX, contour < 3
-        // sommets, /api/roof-config en échec, image cassée/trop lente) → null,
-        // jamais un throw — createRoofViewer traite alors roofImage absent/null
-        // EXACTEMENT comme avant (rendu abstrait, aucune régression).
-        let roofImage: RoofImageSpec | null = null;
-        if (roofOutlineLatLng.length >= 3) {
-          roofImage = await mod.buildPublicRoofImageSpec({ outline: roofOutlineLatLng }).catch(() => null);
-        }
-        handle = mod.createRoofViewer(stage, model, {
-          reducedMotion: reduced,
-          lowEnd: strategy.lowEnd,
-          roofImage,
-          onReady: () => {
-            if (overlay) overlay.hidden = true;
-            if (hintEl) hintEl.hidden = false;
-            // WJ118 — bascule le fond en ciel clair/jour UNIQUEMENT quand la
-            // photo a été réellement drapée ; sans elle, le fond nuit abstrait
-            // actuel reste (aucune classe ajoutée = dégradation byte-identique).
-            if (roofImage && stage) stage.classList.add('roof3d-stage--sky');
-          },
-          onFail: () => {
-            if (overlay) overlay.hidden = false;
-            showFallback('Vue 3D interrompue — voici la photo de votre étude.');
-          },
-        });
-        if (!handle) {
-          showFallback('Vue 3D indisponible sur cet appareil — voici la photo de votre étude.');
-        }
+        await monterLegere(mod, strategy);
       } catch {
         // Réseau lent / import échoué : le poster reste, message honnête.
         showFallback('Vue 3D momentanément indisponible — voici la photo de votre étude.');
+      }
+    }
+
+    /** La visionneuse simplifiée (`viewerOnly.ts`) : refus de la pleine, ou repli quand sa scène a échoué. */
+    async function monterLegere(
+      mod: typeof import('../../scripts/roofPro11/viewerOnly'),
+      strategy: ReturnType<typeof import('../../scripts/roofPro11/viewerOnly')['viewerBootStrategy']>,
+    ): Promise<void> {
+      if (!model || !stage) return;
+      if (barreSoleil) barreSoleil.hidden = true; // visionneuse simplifiée : aucun soleil à piloter
+      // WJ118 — photo satellite RÉELLE du toit du client (contrat viewerOnly
+      // ci-dessus) : TOUT échec (pas de clé MAPTILER/MAPBOX, contour < 3
+      // sommets, /api/roof-config en échec, image cassée/trop lente) → null,
+      // jamais un throw — createRoofViewer traite alors roofImage absent/null
+      // EXACTEMENT comme avant (rendu abstrait, aucune régression).
+      let roofImage: RoofImageSpec | null = null;
+      if (roofOutlineLatLng.length >= 3) {
+        roofImage = await mod.buildPublicRoofImageSpec({ outline: roofOutlineLatLng }).catch(() => null);
+      }
+      handle = mod.createRoofViewer(stage, model, {
+        reducedMotion: reduced,
+        lowEnd: strategy.lowEnd,
+        roofImage,
+        onReady: () => {
+          if (overlay) overlay.hidden = true;
+          if (hintEl) hintEl.hidden = false;
+          // WJ118 — bascule le fond en ciel clair/jour UNIQUEMENT quand la
+          // photo a été réellement drapée ; sans elle, le fond nuit abstrait
+          // actuel reste (aucune classe ajoutée = dégradation byte-identique).
+          if (roofImage && stage) stage.classList.add('roof3d-stage--sky');
+        },
+        onFail: () => {
+          if (overlay) overlay.hidden = false;
+          showFallback('Vue 3D interrompue — voici la photo de votre étude.');
+        },
+      });
+      if (!handle) {
+        showFallback('Vue 3D indisponible sur cet appareil — voici la photo de votre étude.');
       }
     }
 

@@ -404,6 +404,9 @@ def _bloc_saisies(calepinage):
         valeur = resultat.get(cle)
         return copy.deepcopy(valeur) if isinstance(valeur, dict) else None
 
+    from .variantes import CLE_ONDULEUR_REPRIS, onduleur_repris_valide
+
+    repris = onduleur_repris_valide(resultat)
     return {
         CLE_ENTREE: {cle: copy.deepcopy(entree[cle])
                      for cle in CLES_ENTREE_PORTABLES if cle in entree},
@@ -411,6 +414,9 @@ def _bloc_saisies(calepinage):
                               for cle in CLES_PRODUITS_DESIGNES},
         CLE_SAISIE: _objet(CLE_SAISIE),
         CLE_EDITION: _objet(CLE_EDITION),
+        # Lot 8 — la provenance d'un onduleur repris de l'original voyage avec l'entrée (sinon il se
+        # relirait comme une désignation du vendeur) ; caduque ou absente : ``None``.
+        CLE_ONDULEUR_REPRIS: copy.deepcopy(repris) if repris is not None else None,
     }
 
 
@@ -728,12 +734,13 @@ def _valider_saisies(saisies):
     )
 
     vide = {'entree_electrique': {}, 'produits': {},
-            'raccordement_saisie': None, 'sld_edition': None}
+            'raccordement_saisie': None, 'sld_edition': None,
+            'onduleur_repris': None}
     if saisies is None:
         return vide
     _objet_ou_rien(saisies, 'saisies')
     connus = ('entree_electrique', 'produits_designes',
-              'raccordement_saisie', 'sld_edition')
+              'raccordement_saisie', 'sld_edition', 'onduleur_repris')
     inconnues = sorted(set(saisies) - set(connus))
     if inconnues:
         raise _refus_saisie('saisies.%s' % inconnues[0],
@@ -777,7 +784,24 @@ def _valider_saisies(saisies):
     return {'entree_electrique': copy.deepcopy(entree),
             'produits': produits,
             'raccordement_saisie': raccordement,
-            'sld_edition': _valider_edition_sld(saisies.get('sld_edition'))}
+            'sld_edition': _valider_edition_sld(saisies.get('sld_edition')),
+            'onduleur_repris': _valider_onduleur_repris(saisies.get('onduleur_repris'))}
+
+
+def _valider_onduleur_repris(brut):
+    """Lot 8 — ``saisies.onduleur_repris`` : ``null``, ou ``{onduleur_produit: <entier>, calepinage?}``
+    (provenance ACAL1253) ; autre chose est refusé en nommant le chemin. Pure."""
+    chemin = 'saisies.onduleur_repris'
+    repris = _objet_ou_rien(brut, chemin)
+    if repris is None:
+        return None
+    pid = repris.get('onduleur_produit')
+    if isinstance(pid, bool) or not isinstance(pid, int):
+        raise _refus_saisie(chemin + '.onduleur_produit', 'un identifiant entier est attendu.')
+    inconnues = sorted(set(repris) - {'onduleur_produit', 'calepinage'})
+    if inconnues:
+        raise _refus_saisie('%s.%s' % (chemin, inconnues[0]), 'clé inconnue (clés : calepinage, onduleur_produit).')
+    return copy.deepcopy(repris)
 
 
 def _modules_du_document(document):
@@ -1051,6 +1075,13 @@ def _ecrire_saisies(calepinage, saisies, *, user=None):
              for cle, bloc in ((CLE_SAISIE, 'raccordement_saisie'),
                                (CLE_EDITION, 'sld_edition'))
              if saisies[bloc] is not None}
+    # Lot 8 — la provenance « repris de l'original » n'est reposée que si l'onduleur réimporté (présent
+    # dans la société d'arrivée, ``_trier_produits``) est CE produit ; sinon elle tombe.
+    from .variantes import CLE_ONDULEUR_REPRIS
+
+    repris = saisies.get('onduleur_repris')
+    if repris is not None and repris.get('onduleur_produit') == donnees.get('onduleur_produit'):
+        poses[CLE_ONDULEUR_REPRIS] = repris
     if poses:
         def _poser(resultat):
             resultat.update(copy.deepcopy(poses))

@@ -747,7 +747,9 @@ COMPOSER_DEVIS = AgentAction(
                               'le plus récent.'),
             'nb_panneaux': _entier('Nombre de panneaux (1 à 200), obligatoire.'),
             'panneau_produit_id': _entier('Produit panneau (catalogue) ; '
-                                          'absent : 710 Wc du catalogue.'),
+                                          'absent : le panneau par défaut '
+                                          'de la société, sinon celui du '
+                                          'catalogue.'),
             'onduleur_produit_id': _entier('Produit onduleur, OU onduleur_kw '
                                            '+ onduleur_phase.'),
             'onduleur_kw': {'type': 'number',

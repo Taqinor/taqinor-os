@@ -4,6 +4,12 @@
  * Les teintes sont des constantes d'APPARENCE nommées, jamais une donnée.
  */
 import type { Map as MapLibreMap } from 'maplibre-gl';
+import { presentationClient } from './jeuPresentation';
+
+/** Le ciel suit-il le soleil ? L'atelier oui ; la visionneuse lecture seule seulement sur un lien de confiance (lot 8). */
+export function cielSuitLeSoleil(readOnly: boolean, opts: Parameters<typeof presentationClient>[0]): boolean {
+  return !readOnly || presentationClient(opts);
+}
 
 export interface CouleursCiel { skyColor: string; horizonColor: string; fogColor: string }
 

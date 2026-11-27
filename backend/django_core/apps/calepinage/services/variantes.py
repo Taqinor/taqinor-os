@@ -324,11 +324,15 @@ def retenir_variante(variante, *, user=None, appliquer=True):
                 variante.retenue = True
                 variante.save(update_fields=['retenue', 'updated_at'])
         if appliquer:
-            from .layout import LayoutRefuse, enregistrer_layout
+            from .layout import LayoutRefuse, avec_plafonds_gardes, enregistrer_layout
 
+            # Revue lot 8 (suite ACAL1720) — la variante devient la conception avec le plafond de numérotation
+            # COURANT (document du pivot verrouillé) : un numéro dépensé depuis n'est jamais redonné.
+            courant = (Calepinage.objects.filter(pk=variante.calepinage_id)
+                       .values_list('roof_layout', flat=True).first())
             try:
                 enregistrer_layout(
-                    calepinage, document, user=user,
+                    calepinage, avec_plafonds_gardes(courant, document), user=user,
                     libelle=f'Variante « {variante.nom} » retenue')
             except LayoutRefuse as refus:
                 raise VarianteRefusee(
@@ -383,6 +387,33 @@ def _resultat_du_modele(resultat):
 #: onduleur_produit}``. Une désignation n'est « reprise » que tant que l'onduleur de l'entrée est
 #: encore celui-là : un choix fait à la main ensuite la rend caduque d'elle-même.
 CLE_ONDULEUR_REPRIS = 'onduleur_repris'
+
+
+def onduleur_repris_valide(resultat):
+    """Lot 8 (resync-apercu, tâche 2) — le marqueur :data:`CLE_ONDULEUR_REPRIS` de ``resultat`` tant
+    qu'il est VALIDE (l'entrée électrique porte encore l'onduleur marqué), sinon ``None``. Pure."""
+    from .electrique import CLE_ENTREE
+
+    resultat = resultat if isinstance(resultat, dict) else {}
+    repris = resultat.get(CLE_ONDULEUR_REPRIS)
+    entree = resultat.get(CLE_ENTREE) if isinstance(resultat.get(CLE_ENTREE), dict) else {}
+    if not isinstance(repris, dict) or entree.get('onduleur_produit') in (None, ''):
+        return None
+    return repris if repris.get('onduleur_produit') == entree.get('onduleur_produit') else None
+
+
+def onduleur_designe_a_la_main(calepinage):
+    """L'onduleur de l'entrée électrique est-il une désignation DU VENDEUR ? Faux sans onduleur, et faux
+    quand il est « repris de l'original » (:func:`onduleur_repris_valide`) : la copie n'a pas choisi cet
+    onduleur, il n'est ni imposé au moteur du lead (``ventes.conception.porte_calepinage``) ni chiffré
+    comme une désignation par le devis (``services.devis._onduleur_designe``). Un choix fait à la main
+    ensuite (autre onduleur) rend le marqueur caduc : la désignation redevient celle du vendeur."""
+    resultat = getattr(calepinage, 'resultat', None)
+    from .electrique import entree_stockee
+
+    if entree_stockee(calepinage).get('onduleur_produit') in (None, ''):
+        return False
+    return onduleur_repris_valide(resultat) is None
 
 
 def _resultat_de_la_copie(calepinage, lead_cible):

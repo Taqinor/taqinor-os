@@ -19,7 +19,7 @@ import { memeTaille, phraseTailles, tailleDifferente } from '@roofpro/tailleConc
 import { messageResultatIndisponible } from '../../../delaiReseau'
 import { estAtelierPompage } from '../../contexteAtelier'
 import EtatEcranAtelier from '../../EtatEcranAtelier'
-import OutilPosePompage from '../../OutilPosePompage'
+import OutilPosePompage from '../../../commun/OutilPosePompage'
 import { useModeExpert } from '../../modeExpert'
 import { PARAM_ONGLET } from '../../onglets'
 import { premierOngletEtape } from '../../parcoursGuide'

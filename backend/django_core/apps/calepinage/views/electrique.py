@@ -69,6 +69,19 @@ _FORME_RESULTAT = forme_du_contrat(
     'CalepinageResultatServi', 'calepinage_resultat.json')
 
 
+def _points_du_rail(calepinage, publication):
+    """ACAL1937 — le nombre de points « à régler » que dit le rail de l'étape Électrique
+    (``pret-a-envoyer/?etape=electrique``), pour que le Verdict dise le même ; ``None`` quand
+    il n'y a rien à compter (pas de publication, ou dossier non « à compléter »)."""
+    if not publication or publication.get('etat') != 'a_completer':
+        return None
+    from ..services import pret_a_envoyer as controles
+    from .pret_a_envoyer import PRODUCTEURS_PAR_ETAPE  # import tardif : ce module est chargé avant la vue
+
+    lu = controles.agreger(calepinage, PRODUCTEURS_PAR_ETAPE['electrique'], etape='electrique')
+    return (lu['nombre_a_regler'] + lu['nombre_bloquants']) or None
+
+
 class ElectriqueActionsMixin:
     """Les ``@action`` électriques du viewset pivot."""
 
@@ -330,9 +343,10 @@ class ElectriqueActionsMixin:
             # ACAL612 — ``titre`` et ``phrase`` composés par le serveur.
             from ..services.synthese_publication import synthese_de_publication
 
+            publication = (None if (layout is not None or entree is not None)
+                           else verdict_publiable(calepinage))
             evaluation[CLE_PUBLICATION] = synthese_de_publication(
-                None if (layout is not None or entree is not None)
-                else verdict_publiable(calepinage))
+                publication, _points_du_rail(calepinage, publication))
             return Response(evaluation)
         except (EntreeInvalide, *_REFUS_DE_LECTURE) as refus:
             introuvable = getattr(refus, 'introuvable', False)

@@ -146,7 +146,9 @@ export function useEnvoiDevis({
   // Après un ENVOI réussi : relance J+3 si demandée, puis rechargement de la fiche.
   const apresEnvoi = async () => {
     await relance.appliquer()
-    onRefresh?.()
+    // ACAL1243 — le rafraîchissement est best-effort : son échec (délai) ne dit
+    // jamais « connexion expirée » sur un devis bien envoyé.
+    Promise.resolve(onRefresh?.()).catch(() => {})
   }
 
   // Un geste réseau : busy PAR devis + PAR action, message d'échec commun.
@@ -165,14 +167,17 @@ export function useEnvoiDevis({
     setter(id)
     window.setTimeout(() => setter((cur) => (cur === id ? null : cur)), 2000)
   }
-  const copier = async (url, setter, id) => {
+  const copier = async (url, setter, id, { envoye = false } = {}) => {
     try {
       await navigator.clipboard?.writeText(url)
       poserCopie(setter, id)
     } catch (err) {
       // presse-papier indisponible (contexte non sécurisé, permission) : le lien
       // reste ouvrable dans la boîte — dit au commercial, jamais avalé (AFAC95).
-      setActionMsg(errorMessageFrom(err, 'Copie impossible : sélectionnez le lien ci-dessous et copiez-le.'))
+      // ACAL1243 — après un ENVOI, le devis est parti : on le dit, le lien reste visible.
+      setActionMsg(envoye
+        ? 'Devis envoyé — copiez le lien ci-dessous.'
+        : errorMessageFrom(err, 'Copie impossible : sélectionnez le lien ci-dessous et copiez-le.'))
     }
   }
 
@@ -198,7 +203,7 @@ export function useEnvoiDevis({
   })
   const copierPageClient = (d) => lancer(`l-${d.id}`, 'Lien de la page client indisponible.', async () => {
     // QJ-FUNNEL — copier le lien = l'envoyer (devis « envoyé », funnel avance).
-    await copier(await mint(d, { envoi: true }), setCopiedId, d.id)
+    await copier(await mint(d, { envoi: true }), setCopiedId, d.id, { envoye: true })
     await apresEnvoi()
   })
   const ouvrirPageClient = (d) => lancer(`o-${d.id}`, 'Lien de la page client indisponible.', async () => {

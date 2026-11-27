@@ -7,6 +7,7 @@
 import { roleLabel, tauxTvaOf, tauxTvaOuDefaut, ttcExactFromHt } from '../../../../features/ventes/solar'
 import { lignesDepuisKit } from '../../../../features/ventes/quote/etudeMarcheBloc'
 import { tailleAutoRemplirPompage } from '../../../../features/ventes/quote/reouverture'
+import { laisserLeServeurChoisirLeWatt, motifRefusComposition, usePanneauParDefautDepart } from '../../../../features/ventes/quote/panneauDefautEcran'
 import { phraseReductionOptionAvec } from '../../../../features/ventes/quote/forfaitsPanneau'
 import { DIMENSIONNEMENT_PRET, issueRecalculDimensionnement } from '../../../../features/ventes/quote/paireDimensionnement'
 import { refusAutoRemplirPompage } from '../../../../features/ventes/etudePompagePreviewPur'
@@ -43,6 +44,9 @@ export function avertissementCompositionCi(composition) {
   return parties.length ? createElement(Fragment, null, ...parties) : null
 }
 
+const MESSAGE_ETUDE_EN_COURS = 'Dimensionnement en cours — réessayez dans un instant.'
+const MESSAGE_LEAD_EN_COURS = 'Lead en cours de chargement — réessayez dans un instant.'
+
 export function useCompositionEcran(ctx) {
   const {
     produits, setErrors, dispatchSizing, panelW, scenario, modeInstallation, structureType,
@@ -50,7 +54,12 @@ export function useCompositionEcran(ctx) {
     setAutoFillLoading, setCompositionErreur, profilCi, horsReseau, kwp, selectedLead,
     etudeHoraireDonnees, etudeHoraireChargement, marcheCi, ctxProfilCi, apercuCi, resolveKwcAvec,
     recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard, sizing, lines,
+    editId, leadAttendu = null,
   } = ctx
+  // D-ACAL-169 — le panneau par défaut de la société : UNE lecture à l'ouverture d'un devis NEUF
+  // (jamais d'un devis rouvert), qui pose la puissance de départ (précédence : `ETAT_INITIAL.panelW`,
+  // sizingReducer.js). Ne bloque jamais l'écran ; rendu à l'écran pour l'indication sous le champ.
+  const panneauDefaut = usePanneauParDefautDepart({ editId, dispatchSizing })
 
   // U3COMPOSE — l'optimum AXE BATTERIE envoyé au dry-run serveur : même
   // précédence que `resolveKwcAvec` ci-dessus (le moteur horaire serveur
@@ -144,7 +153,8 @@ export function useCompositionEcran(ctx) {
     setErrors(e => ({
       ...e,
       autofill: [manquantsMsg, avertissementsMsg].filter(Boolean).join(' ') || null,
-      autofillKwc: [mismatch, reduction].filter(Boolean).join(' ') || null,
+      // D-ACAL-169 — le panneau par défaut que la composition n'a pas pu retenir : son motif, tel quel.
+      autofillKwc: [mismatch, motifRefusComposition(data), reduction].filter(Boolean).join(' ') || null,
       marquesManquantes: marquesMsg,
     }))
     recomposerLignes(generated)
@@ -160,6 +170,27 @@ export function useCompositionEcran(ctx) {
   useEffect(() => {
     queueMicrotask(() => setErrors(e => (e.recalcDim && e.recalcDim !== messageRecalcul ? { ...e, recalcDim: messageRecalcul } : e)))
   }, [messageRecalcul, setErrors])
+
+  // ACAL1205 (revue 4) — l'attente ne porte que sur la taille « avec » ABSENTE ; son message est réécrit dès
+  // que l'attente cesse : « prêt — réessayez » si la taille est arrivée, effacé sinon (l'erreur d'étude parle).
+  const tailleAvecServie = Number(etudeHoraireDonnees?.dimensionnement?.recommandation_avec?.kwc) > 0
+  const attendEtudeAvec = modeInstallation === 'residentiel' && !horsReseau && !!etudeHoraireChargement
+    && (scenario === SCENARIO_LES_DEUX || scenario === SCENARIO_AVEC) && !tailleAvecServie
+  useEffect(() => {
+    if (attendEtudeAvec) return
+    const suite = tailleAvecServie ? DIMENSIONNEMENT_PRET : null
+    queueMicrotask(() => setErrors(e => (e.autofill === MESSAGE_ETUDE_EN_COURS ? { ...e, autofill: suite } : e)))
+  }, [attendEtudeAvec, tailleAvecServie, setErrors])
+
+  // ACAL1212 (revue 4) — la recherche du lead terminée, « en cours de chargement » ne reste jamais affiché :
+  // effacé quand le lead est appliqué, sinon il dit qu'aucun lead n'est appliqué (Auto-remplir compose sans lui).
+  const attendLead = !!leadAttendu && !selectedLead
+  const leadApplique = !!selectedLead
+  useEffect(() => {
+    if (attendLead) return
+    const suite = leadApplique ? null : 'Aucun lead appliqué — Auto-remplir composera sans lead : réessayez.'
+    queueMicrotask(() => setErrors(e => (e.autofill === MESSAGE_LEAD_EN_COURS ? { ...e, autofill: suite } : e)))
+  }, [attendLead, leadApplique, setErrors])
 
   const handleAutoFill = async () => {
     // PVOND — le bandeau des onduleurs grisés appartient au DERNIER
@@ -200,6 +231,12 @@ export function useCompositionEcran(ctx) {
       setPompageAutoFilled(true)
       return
     }
+    // ACAL1212 — `?lead=` attendu mais pas encore appliqué : le marché affiché est celui d'AVANT le lead
+    // (résidentiel par défaut) ; jamais une branche résidentielle ni son message. On relit `selectedLead`, jamais un doublon.
+    if (attendLead) {
+      setErrors(e => ({ ...e, autofill: MESSAGE_LEAD_EN_COURS }))
+      return
+    }
     // U3COMPOSE (26/08/2026) — RÉSIDENTIEL SEULEMENT : le dry-run serveur
     // (POST /ventes/devis/composition/, U3) devient la source de vérité de
     // l'aperçu écran au lieu de la recomposition locale (deux implémentations
@@ -211,14 +248,31 @@ export function useCompositionEcran(ctx) {
     // pour ces marchés — comportement local strictement inchangé.
     if (modeInstallation === 'residentiel') {
       if (kwp <= 0) {
-        setErrors(e => ({ ...e, autofill: 'Entrez le nombre de panneaux' }))
+        // ACAL1206 — le refus nomme les DEUX gestes : la facture du lead (lien vers sa fiche) ou les panneaux.
+        const ficheLead = selectedLead?.id
+          ? createElement(Link, { to: `/crm/leads/${selectedLead.id}`, className: 'underline' }, 'fiche du lead')
+          : 'fiche du lead'
+        setErrors(e => ({ ...e, autofill: createElement(Fragment, null,
+          'Aucune taille : saisissez la facture hiver/été du lead (', ficheLead, ') ou un nombre de panneaux') }))
+        return
+      }
+      // ACAL1205 — la taille « avec batterie » vient de l'étude horaire : tant qu'elle MANQUE et se charge,
+      // `resolveKwcAvec()` rendrait la taille SANS (6 ou 7 panneaux selon l'horloge) ; rien n'est composé.
+      // Revue 4 — jamais sur le seul `chargement` : il repasse à vrai à chaque changement des lignes,
+      // l'étude déjà servie restant valable (Auto-remplir, « Appliquer cette taille », « Recalculer »).
+      if (attendEtudeAvec) {
+        setErrors(e => ({ ...e, autofill: MESSAGE_ETUDE_EN_COURS }))
         return
       }
       setAutoFillLoading(true)
       try {
         const body = {
           kwc: kwp,
-          panel_watt: parseFloat(panelW) || 710,
+          // D-ACAL-169 — écran resté sur le panneau par défaut de la société : aucun wattage
+          // n'est envoyé, le serveur applique SA règle (wattage ET produit de la même source) ;
+          // un wattage tapé / relu d'un devis / du moteur part toujours. Sans défaut : inchangé.
+          ...(laisserLeServeurChoisirLeWatt(panneauDefaut, sizing?.panelWFixe)
+            ? {} : { panel_watt: parseFloat(panelW) || 710 }),
           // STKCAT1/STKCAT7 — `structure_type` reste envoyé comme ALIAS
           // DÉPRÉCIÉ (compatibilité descendante ET repli quand aucun produit
           // n'est choisi) ; `structure_produit_id`, quand il est là, est
@@ -431,6 +485,6 @@ export function useCompositionEcran(ctx) {
   }, [recalcDimTick])
 
   return {
-    handleAutoFill, appliquerTailleDimensionnement, recalculerDimensionnement,
+    handleAutoFill, appliquerTailleDimensionnement, recalculerDimensionnement, panneauDefaut,
   }
 }

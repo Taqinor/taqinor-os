@@ -284,6 +284,13 @@ def _designations(verrou, intention, layout, veut_batterie, avertissements):
     return appliquer_designations_a_la_resynchro(verrou, intention, layout, veut_batterie, avertissements)
 
 
+def _option_gardee(verrou, intention, lignes, veut_batterie, avertissements):
+    """Lot 8, relecture finale — porte de :func:`creation_calepinage.option_batterie_gardee`."""
+    from apps.ventes.domain.creation_calepinage import option_batterie_gardee
+
+    return option_batterie_gardee(verrou, intention, lignes, veut_batterie, avertissements)
+
+
 def reconcilier(devis, intention):
     """QJR97 — L'ÉTAPE « RÉCONCILIER » du pipeline (``MODE_RECONCILIER``).
 
@@ -537,6 +544,9 @@ def reconcilier(devis, intention):
             }
 
         lignes_modifiees = designations['modifiees']
+        # Lot 8, relecture finale — une resynchro qui n'applique pas les désignations ne bascule jamais
+        # l'option d'un devis né « avec batterie » par un hybride désigné (D-ACAL-159).
+        veut_batterie = _option_gardee(verrou, intention, lignes, veut_batterie, avertissements)
         # F8 — vrai UNIQUEMENT quand le compte de panneaux a réellement bougé
         # (ligne créée, ou ligne dominante réajustée) : c'est ce qui déclenche
         # la resynchro des câbles plus bas, jamais un layout qui ne change
@@ -1442,12 +1452,14 @@ def sync_devis_from_layout(devis, layout, user=None, *, cible_exacte=False, desi
 
     ``designations`` (D-ACAL-148 / 159 / 164) — ``{'onduleur': …, 'batterie': …}`` du calepinage (la resynchro du
     MODULE) : portées par ``IntentionDevis.cible`` jusqu'à ``reconcilier``. ``None`` (LE DÉFAUT :
-    apply-taille, réparations) ⇒ intention identique à hier.
+    apply-taille, réparations) ⇒ intention identique à hier. Revue du 26/11 (D-ACAL-73) — la clé
+    ``apercu_confirme`` (vraie seulement après la carte d'aperçu) permet de les appliquer à un envoyé.
     """
     from apps.ventes.domain.creation_calepinage import cible_des_designations
 
     resultat = appliquer(devis, IntentionDevis(
-        cible=(cible_des_designations(designations.get('onduleur'), designations.get('batterie'))
+        cible=(cible_des_designations(designations.get('onduleur'), designations.get('batterie'),
+                                      apercu_confirme=bool(designations.get('apercu_confirme')))
                if designations is not None else None),
         origine=ORIGINE_RESYNCHRONISATION,
         company=getattr(devis, 'company', None),
