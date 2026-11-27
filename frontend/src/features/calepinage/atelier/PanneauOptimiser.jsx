@@ -27,9 +27,10 @@ const AXES = [
   { nom: 'azimut_deg', libelle: 'Azimut (°, 180 = Sud)', defaut: { min: '150', max: '210', pas: '30' } },
 ]
 
-/* ACAL1629 — un chemin de réglage (« parametres.simulation.mode_meteo »,
-   « meteo.gi_w_m2 ») n'est jamais montré : la phrase du serveur suffit. */
-const CLE_TECHNIQUE = /^[a-z0-9_]+(\.[a-z0-9_[\]]+)+$/i
+/* ACAL1629 — un chemin de réglage société (« parametres.simulation.mode_meteo »,
+   « meteo.gi_w_m2 ») n'est jamais montré : la phrase du serveur suffit. Un autre
+   champ pointé (« axes.inclinaison_deg ») reste nommé. */
+const CLE_TECHNIQUE = /^(parametres|meteo)\.[a-z0-9_.[\]]+$/i
 
 const nombre = (v) => (v === '' || v === null ? NaN : Number(v))
 
