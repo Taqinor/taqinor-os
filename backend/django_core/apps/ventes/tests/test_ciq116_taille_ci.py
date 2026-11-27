@@ -13,6 +13,8 @@ from decimal import Decimal
 from functools import partial
 from pathlib import Path
 
+from django.test import TestCase
+
 from apps.stock.management.commands.seed_catalogue import CATALOGUE, ht_at
 from apps.ventes import economie_ci, tarif_ci
 from apps.ventes.moteur_ci.charge import courbe_declaree
@@ -447,6 +449,98 @@ class VerdictCreationJumeauxAcal1226Tests(unittest.TestCase):
             mock.patch('django.db.transaction.atomic', nullcontext))
         self.assertEqual(vus['entrees']['taille_explicite_kwc'], 55.38)
         self.assertEqual(vus.get('verdict_creation'), self.VERDICT)
+
+
+class ApercuVerdictCreationAcal1226Tests(unittest.TestCase):
+    """ACAL1226 (revue-7) — l'aperçu ``etude-ci/preview/`` sur un brouillon
+    existant SANS ``lignes`` au corps passe lui aussi le verdict de création
+    rangé (``taille_creation_ci``) à ``etudier_ci`` ; un devis à naître (aucun
+    devis) n'en a pas. Mutant : retirer ``verdict_creation=`` de la vue ⇒
+    le premier cas échoue."""
+
+    VERDICT = {'retenue_kwc': 55.38, 'raison_arret': 'horizon_marginal'}
+
+    def _appel(self, corps, devis):
+        from types import SimpleNamespace
+        from unittest import mock
+        from apps.ventes import etude_ci_view as V
+        vus = {}
+
+        def etudier(company, entrees, **kw):
+            vus.update(kw, company=company, entrees=entrees)
+            raise _Arret
+        societe = object()
+        requete = SimpleNamespace(data=corps, user=SimpleNamespace(company=societe))
+        with mock.patch('apps.ventes.domain.etude_ci.etudier_ci', etudier), \
+                mock.patch.object(V, '_devis_de_la_societe', return_value=devis), \
+                mock.patch.object(V, '_lead_de_la_societe', return_value=None):
+            with self.assertRaises(_Arret):
+                V.etude_ci_preview.cls().post(requete)
+        self.assertIs(vus['company'], societe)
+        return vus
+
+    def _devis(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(pk=7, mode_installation='commercial',
+                               etude_params={'taille_creation_ci': dict(self.VERDICT)})
+
+    def test_brouillon_sans_lignes_passe_le_verdict(self):
+        vus = self._appel({'mode': 'commercial', 'devis': 7, 'taille_explicite_kwc': 55.38},
+                          self._devis())
+        self.assertEqual(vus.get('verdict_creation'), self.VERDICT)
+
+    def test_consommation_de_l_ecran_garde_le_verdict(self):
+        # T4-X6-009 — le devis vu à la saisie (consommation de l'écran) garde ses
+        # autres clés, dont le verdict de création.
+        vus = self._appel({'mode': 'commercial', 'devis': 7, 'taille_explicite_kwc': 55.38,
+                           'consommation': {'conso_mensuelle_kwh': 6000}}, self._devis())
+        self.assertEqual(vus.get('verdict_creation'), self.VERDICT)
+
+    def test_devis_a_naitre_sans_verdict(self):
+        vus = self._appel({'mode': 'commercial', 'taille_explicite_kwc': 55.38}, None)
+        self.assertIsNone(vus.get('verdict_creation'))
+
+
+class ApercuBrouillonBalayeAcal1226Test(TestCase):
+    """ACAL1226 (revue-7) — bout en bout : un brouillon C&I né du balayage de
+    création (``taille_creation_ci`` rangé), ouvert dans l'aperçu sans toucher
+    aux lignes, sert sa taille « calculée à la création », jamais « taille
+    saisie souveraine ». Fabriques CIQ120 empruntées à l'appel, jamais importées
+    au niveau du module (le chargeur rejouerait leurs tests)."""
+
+    @staticmethod
+    def _base():
+        from apps.ventes.tests import test_ciq120_devis_auto_ci as ciq120
+        return ciq120
+
+    @classmethod
+    def setUpTestData(cls):
+        cls._base()._Base.setUpTestData.__func__(cls)
+
+    def setUp(self):
+        self._base()._Base.setUp(self)
+
+    def test_apercu_sans_lignes_dit_calculee_a_la_creation(self):
+        from unittest import mock
+        from rest_framework.test import APIClient
+        from apps.ventes.domain.etude_ci import CLE_TAILLE_CREATION
+        ciq120 = self._base()
+        lead = ciq120._Base._lead(self, conso_mensuelle_kwh=Decimal('6000'))
+        devis = ciq120._Base._auto(self, lead)
+        verdict = devis.etude_params[CLE_TAILLE_CREATION]
+        self.assertNotEqual(verdict.get('raison_arret'), 'taille_explicite')
+        api = APIClient()
+        api.force_authenticate(self.user)
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=ciq120._tarif_grille):
+            rep = api.post('/api/django/ventes/etude-ci/preview/', {
+                'mode': devis.mode_installation, 'devis': devis.pk, 'lead': lead.pk,
+                'taille_explicite_kwc': verdict['retenue_kwc']}, format='json')
+        self.assertEqual(rep.status_code, 200, rep.content[:300])
+        taille = [h for h in rep.data['hypotheses'] if h.get('cle') == 'taille_explicite_kwc']
+        self.assertEqual(len(taille), 1, rep.data['hypotheses'])
+        self.assertEqual(taille[0]['statut'], 'calcule')
+        self.assertTrue(taille[0]['source'].startswith('taille calculée à la création'),
+                        taille[0]['source'])
 
 
 class SautOnduleurTests(unittest.TestCase):
