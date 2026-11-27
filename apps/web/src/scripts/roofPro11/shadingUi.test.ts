@@ -1044,4 +1044,36 @@ describe('ACAL1407 + ACAL1501 — ombre proche mesurée sur les panneaux posés'
     expect(ctx.shadeFactors).toEqual(matriceOmbrageDesSources(ctx, 6).factors);
     expect(ctx.shadeAnnualFactor).toBeLessThan(1);
   });
+
+  // ACAL1620 — T2-F2-RESU-b-006 : le calepinage rouvert (obstacle 3 × 3 × 8 m, accès enregistré, AUCUNE ombre tracée) disait
+  // « non renseigné — aucune obstruction n'a été saisie » jusqu'à ce qu'on retouche la hauteur. Ordre réel d'un boot :
+  // l'UI d'ombrage naît d'abord (rien à ombrer), puis le document est relu, le pan et sa pose arrivent, l'écran se redessine.
+  it('ACAL1620 — document rouvert avec obstacle 3×3×8 m et sans shadeObstructions : l’accès est chiffré sans geste', () => {
+    document.body.innerHTML = '<div id="parent"><div id="rp9-solar-access"></div></div>';
+    const grand = { ...cheminee(0, 0.5), lengthM: 3, widthM: 3, heightM: 8 };
+    const avant = ctxPan(grand);
+    avant.shadeFactors = matriceOmbrageDesSources(avant, 6, rangee(4)).factors;
+    const doc = serializeLayout(avant);
+    delete (doc as { shadeObstructions?: unknown }).shadeObstructions; // document d'avant ACAL27 : aucune ombre tracée
+
+    const ctx = ctxPan(grand);
+    ctx.obstacles.length = 0; // le pan n'est pas encore rechargé
+    const ui = createShadingUi(ctx, {
+      map: new Proxy({}, { get: () => () => undefined }) as never, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {},
+    });
+    const bloc = document.getElementById('rp9-solar-access')!;
+    expect(bloc.textContent).toContain('non renseigné'); // l'état de naissance, avant la relecture
+
+    appliquerHydratationAuCtx(ctx, hydrateFromDevis({ id: 9, geometrie: { roof_layout: doc }, cibleVendue: false }));
+    ctx.obstacles.push(grand); // le pan relu pose ses obstacles
+    Object.assign(ctx, { layoutPlan: { grid: { panels: rangee(4).map((p) => ({ cx: p.x, cy: p.y })), kwc: 2.5 } }, layoutOptimalCount: 5 });
+    ui.refreshHeatmap(); // ce que l'écran appelle après chaque re-rendu des panneaux (recalcDisplays)
+
+    const attendu = ui.solarAccess()!;
+    expect(attendu).not.toBeNull();
+    expect(attendu.average).toBeLessThan(1);
+    expect(bloc.textContent).not.toContain('non renseigné');
+    expect(bloc.textContent).toContain(`${(attendu.average * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`);
+    expect(ui.moduleShadeTooltip(0)).toContain('Accès solaire');
+  });
 });

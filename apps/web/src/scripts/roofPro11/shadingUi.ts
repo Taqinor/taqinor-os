@@ -1111,8 +1111,23 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     hote.innerHTML = `${svgCourbeDirectPerdu(serie, phrase)}<p>${esc(phrase)}</p>`;
   }
 
+  /** ACAL1620 — le chiffre d'accès et la lecture par module suivent le plan et les sources À L'ÉCRAN : un document rouvert
+   *  (obstacle relu, panneaux posés après la naissance de l'UI) disait « non renseigné » jusqu'à une retouche. Mémorisé par
+   *  plan + sources + mois + seuil : un redessin qui ne change rien ne recalcule rien. */
+  let cleAccesPublie: string | null = null;
+  let planAccesPublie: unknown = null;
+  function rafraichirAccesPublie() {
+    const cle = JSON.stringify([signatureSourcesOmbrage(ctx), hasShadeSources(), heatmapMonth, seuilRetrait(), ctx.vertices.length, ctx.layoutPlan?.grid.panels.length ?? 0]);
+    if (cle === cleAccesPublie && ctx.layoutPlan === planAccesPublie) return;
+    cleAccesPublie = cle;
+    planAccesPublie = ctx.layoutPlan;
+    renderSolarAccess();
+    renderModuleShadeReadings();
+  }
+
   function refreshHeatmap() {
     rafraichirCourbeDirectPerdu();
+    rafraichirAccesPublie(); // ACAL1620
     if (!heatmapOn) return;
     applyHeatmap(buildHeatmapColorFn());
   }
@@ -1542,6 +1557,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     syncSeuilUi(); // ACAL548 — le champ se relit depuis le document
     renderList();
     drawShadeLines();
+    rafraichirAccesPublie(); // ACAL1620
   }
 
   return {
