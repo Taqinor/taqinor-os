@@ -334,10 +334,15 @@ def _chaines_a_fleche(plan):
             if len(modules) > 1}
 
 
-def _fleche_de_chaine(modules, couleur, vers_feuille):
-    """ACAL643 — la flèche d'une chaîne : une ligne brisée par les centres
-    de ses modules, du plus petit au plus grand numéro, dans la couleur de
-    la chaîne, et sa pointe sur le dernier. Aucun « + » ni « − »."""
+_LISERE = '#ffffff'
+
+
+def _fleche_de_chaine(modules, vers_feuille, bouts=(True, True)):
+    """ACAL643 / ACAL1719 — la flèche d'une chaîne : une ligne brisée par les
+    centres de ses modules, du plus petit au plus grand numéro, en encre
+    foncée sur un liseré clair (jamais la teinte des modules qu'elle
+    traverse), pointe pleine sur le dernier, « + » au premier et « − » au
+    dernier."""
     from ..planche import TRAIT_PAN, _n
 
     points = [vers_feuille(m['centre']) for m in modules]
@@ -352,13 +357,26 @@ def _fleche_de_chaine(modules, couleur, vers_feuille):
         (xb, yb),
         (base[0] - uy * taille / 2, base[1] + ux * taille / 2),
         (base[0] + uy * taille / 2, base[1] - ux * taille / 2)))
+    trace = ' '.join('%s,%s' % (_n(x), _n(y)) for x, y in points)
+    bouts = ''.join(
+        '<text x="%s" y="%s" font-size="3.6" font-weight="bold" '
+        'text-anchor="middle" fill="%s" stroke="%s" stroke-width="0.5" '
+        'paint-order="stroke">%s</text>'
+        % (_n(x), _n(y - 1.6), _NOIR, _LISERE, signe)
+        for (x, y), signe, imprime in ((points[0], '+', bouts[0]),
+                                       (points[-1], '−', bouts[1]))
+        if imprime)
     return ('<g class="fleche-chaine" data-chaine="%s">'
             '<polyline points="%s" fill="none" stroke="%s" '
+            'stroke-width="%s" stroke-linejoin="round" />'
+            '<polyline points="%s" fill="none" stroke="%s" '
             'stroke-width="%s" />'
-            '<polygon points="%s" fill="%s" /></g>'
+            '<polygon points="%s" fill="%s" stroke="%s" stroke-width="%s" />'
+            '%s</g>'
             % (escape(str(modules[0]['chaine']), quote=True),
-               ' '.join('%s,%s' % (_n(x), _n(y)) for x, y in points),
-               couleur, _n(TRAIT_PAN * 3), pointe, couleur))
+               trace, _LISERE, _n(TRAIT_PAN * 6), trace, _NOIR,
+               _n(TRAIT_PAN * 3), pointe, _NOIR, _LISERE, _n(TRAIT_PAN),
+               bouts))
 
 
 def _lignes_de_legende(plan):
@@ -494,7 +512,7 @@ def _legende_svg(plan):
     if _chaines_a_fleche(plan):
         def sens(y):
             return ('<text class="legende-sens" x="%s" y="%s" '
-                    'font-size="2.5" fill="%s">%s</text>'
+                    'font-size="3.2" fill="%s">%s</text>'
                     % (_n(x), _n(y), _GRIS_TEXTE, escape(LEGENDE_SENS)))
         blocs.append((_PAS_SOUS_LIGNE + 1.0, sens))
 
@@ -574,10 +592,8 @@ def _svg_de_plan_cablage(plan, *, titre='', sous_titre='', pied=''):
         for module in plan['modules']:
             if module['manuel']:
                 couche.append(_marque_manuelle(module, vers_feuille))
-        couleurs = {e['chaine']: e['couleur'] for e in plan['legende']}
-        for chaine, modules in _chaines_a_fleche(plan).items():
-            couche.append(_fleche_de_chaine(modules, couleurs[chaine],
-                                            vers_feuille))
+        for modules in _chaines_a_fleche(plan).values():
+            couche.append(_fleche_de_chaine(modules, vers_feuille))
     couche.append('</g>')
     couche.append(_legende_svg(plan))
     # ACAL260 — un SVG empilé (toit + surfaces de pose) reçoit la couche dans

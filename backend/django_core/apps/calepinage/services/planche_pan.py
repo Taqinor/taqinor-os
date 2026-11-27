@@ -92,7 +92,13 @@ def _chaines_du_pan(modules_du_pan, modules, entrees, pans):
                          if m['chaine'] == chaine
                          and m['pan'] != lot[0]['pan']},
                         key=lambda cle: ordre.get(cle, 0))
+        # ACAL1719 — « + » / « − » seulement sur le pan du premier / dernier
+        # module de TOUTE la chaîne (même ordre que le plan de câblage).
+        tous = sorted((m for m in modules if m['chaine'] == chaine),
+                      key=lambda m: (ordre.get(m['pan'], 0),
+                                     _ordre_de_numero(m)))
         sortie.append({
+            'bouts': (tous[0] is lot[0], tous[-1] is lot[-1]),
             'chaine': chaine, 'couleur': lot[0]['couleur'], 'modules': lot,
             'total': totaux.get(chaine), 'suite': [noms.get(c, c)
                                                    for c in autres]})
@@ -132,13 +138,14 @@ def _dessin_du_module(module, vers_feuille):
 def _reperes_de_chaine(chaine, vers_feuille):
     """La flèche de la chaîne sur ce pan (``plan_cablage._fleche_de_chaine``,
     la même que le plan de câblage) : par les centres, du premier au dernier
-    numéro. Aucun « + » ni « − » (ACAL643) ; rien pour un module seul."""
+    numéro, encre foncée, « + » et « − » aux bouts (ACAL1719) ; rien pour un
+    module seul."""
     from .documents.plan_cablage import _fleche_de_chaine
 
     lot = chaine['modules']
     if len(lot) < 2:
         return []
-    return [_fleche_de_chaine(lot, chaine['couleur'], vers_feuille)]
+    return [_fleche_de_chaine(lot, vers_feuille, chaine['bouts'])]
 
 
 def _colonne_de_legende(chaines, sans_chaine):

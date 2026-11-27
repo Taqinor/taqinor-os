@@ -288,8 +288,9 @@ def fleches(svg):
 class FeuilleDePanTest(SimpleTestCase):
     """ACAL590 - une feuille A4 par pan : teintes, numeros, fleches de chaine.
 
-    Aucun repere « + » / « − » : l'affectation ne connait pas la polarite
-    (meme convention et meme legende que le plan de cablage, ACAL643)."""
+    « + » au premier numero, « − » au dernier (ACAL1719), la polarite se
+    verifie sur site (meme convention et meme legende que le plan de cablage,
+    ACAL643)."""
 
     def feuilles(self, layout, table):
         from apps.calepinage.services.planche_pan import _svgs_de_pans
@@ -315,8 +316,9 @@ class FeuilleDePanTest(SimpleTestCase):
                               for m in modules}), 2)
         for numero in range(1, 7):
             self.assertIn('>%d</text>' % numero, svg)
-        self.assertNotIn('>+</text>', svg)
-        self.assertNotIn('>−</text>', svg)
+        # ACAL1719 — « + » au premier module, « − » au dernier, par chaîne.
+        self.assertEqual(svg.count('>+</text>'), 2)
+        self.assertEqual(svg.count('>−</text>'), 2)
         self.assertNotIn('début', texte_de_svg(svg))
         self.assertIn(LEGENDE_SENS, texte_de_svg(svg))
         self.assertEqual(svg.count('class="fleche-chaine"'), 2)
@@ -362,8 +364,11 @@ class FeuilleDePanTest(SimpleTestCase):
         feuille_a, feuille_b = self.feuilles(layout, table)
         for feuille in (feuille_a, feuille_b):
             self.assertEqual(len(fleches(feuille)), 1)
-            self.assertNotIn('>+</text>', feuille)
-            self.assertNotIn('>−</text>', feuille)
+        # ACAL1719 — « + » sur le pan du premier module, « − » sur le dernier.
+        self.assertEqual((feuille_a.count('>+</text>'),
+                          feuille_a.count('>−</text>')), (1, 0))
+        self.assertEqual((feuille_b.count('>+</text>'),
+                          feuille_b.count('>−</text>')), (0, 1))
         self.assertIn('suite sur Pan B', feuille_a)
         self.assertIn('suite sur Pan Sud', feuille_b)
 

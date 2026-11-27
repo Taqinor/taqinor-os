@@ -570,22 +570,38 @@ if __name__ == '__main__':  # pragma: no cover
 class SensDeNumerotationTest(unittest.TestCase):
     """ACAL643 — une flèche par chaîne de plus d'un module, sans polarité."""
 
-    def test_une_fleche_par_chaine_dans_sa_couleur_et_la_legende(self):
+    def test_une_fleche_par_chaine_et_la_legende(self):
         plan = _plan_de_cablage(LAYOUT, AFFECTATION)
         svg = svg_de(plan)
         fleches = formes(svg, 'fleche-chaine')
         self.assertEqual([e.get('data-chaine') for e in fleches], ['1', '2'])
-        for fleche, couleur in zip(fleches, PALETTE_CHAINES):
-            lignes = [e for e in fleche.iter() if e.tag.endswith('polyline')]
-            self.assertEqual(lignes[0].get('stroke'), couleur)
         self.assertIn('sens de numérotation — la polarité se vérifie sur '
                       'site', _lignes_de_legende(plan))
         self.assertIn('sens de numérotation — la polarité se vérifie sur '
                       'site', svg)
-        # Aucun repère de polarité n'est inventé.
-        for fleche in fleches:
-            texte = ET.tostring(fleche, encoding='unicode')
-            self.assertNotIn('<text', texte)
+
+    def test_la_fleche_n_a_pas_la_couleur_des_modules_plus_et_moins(self):
+        # ACAL1719 — encre foncée sur liseré clair, pointe pleine, « + » au
+        # premier module et « − » au dernier, aussi sur une chaîne de 3.
+        trois = AFFECTATION[:6] + [ligne(r, 2) for r in range(7, 10)] + [
+            ligne(r, None) for r in range(10, 13)]
+        for table in (AFFECTATION, trois):
+            plan = _plan_de_cablage(LAYOUT, table)
+            svg = svg_de(plan)
+            fleches = formes(svg, 'fleche-chaine')
+            self.assertEqual(len(fleches), 2)
+            for fleche, couleur in zip(fleches, PALETTE_CHAINES):
+                traits = [e.get('stroke') for e in fleche.iter()
+                          if e.tag.endswith('polyline')]
+                pointe = [e for e in fleche.iter()
+                          if e.tag.endswith('polygon')][0]
+                self.assertEqual(traits, ['#ffffff', '#111111'])
+                self.assertEqual(pointe.get('fill'), '#111111')
+                self.assertNotIn(couleur, ET.tostring(fleche, 'unicode'))
+                self.assertEqual([e.text for e in fleche.iter()
+                                  if e.tag.endswith('text')], ['+', '−'])
+            sens = formes(svg, 'legende-sens')[0]
+            self.assertGreaterEqual(float(sens.get('font-size')), 3.18)
 
     def test_la_fleche_va_du_plus_petit_au_plus_grand_numero(self):
         # La table est donnée DANS LE DÉSORDRE : le sens suit les numéros.
