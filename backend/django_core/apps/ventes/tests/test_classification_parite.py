@@ -945,3 +945,23 @@ class LecteursAvalSuite3Test(SimpleTestCase):
         self.assertIs(ligne_panneau_dominante([a, jinko], devis=_avant_la_coupure()), jinko)
         for devis in (_BROUILLON, _avant_la_coupure()):
             self.assertEqual(self._preseance(devis, 'Panneau Jinko 710W', ''), '21')
+
+    @staticmethod
+    def _materiel(devis, *noms_roles):
+        from apps.ventes.conception.moteur import _materiel_des_lignes
+        lignes = []
+        for pid, (nom, role) in enumerate(noms_roles, start=1):
+            li = _ligne(nom, role=role, devis=devis, variante='avec')
+            li.produit_id = pid
+            lignes.append(li)
+        return _materiel_des_lignes(SimpleNamespace(lignes=lignes), devis)
+
+    def test_2_materiel_des_lignes_du_moteur_lit_le_role_range(self):
+        """Cas B et C — le module et l'onduleur que le plan par défaut / la pose simulent
+        sont les lignes RANGÉES panneau et onduleur_hybride ; avant la coupure : rien, comme hier."""
+        abc = ((_NOM_A, 'batterie'), (_NOM_B, 'panneau'), (_NOM_C, 'onduleur_hybride'))
+        self.assertEqual(self._materiel(_BROUILLON, *abc), {'module': 2, 'onduleur': 3})
+        self.assertEqual(self._materiel(_avant_la_coupure(), *abc), {'module': None, 'onduleur': None})
+        ordinaires = (('Panneau Jinko 710W', None), ('Onduleur hybride Deye 10kW', None))
+        for devis in (_BROUILLON, _avant_la_coupure()):
+            self.assertEqual(self._materiel(devis, *ordinaires), {'module': 1, 'onduleur': 2})

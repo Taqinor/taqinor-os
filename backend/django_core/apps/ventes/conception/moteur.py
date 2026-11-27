@@ -346,12 +346,14 @@ def marche_au_plan_par_defaut(marche):
     return marche != 'agricole'
 
 
-def _materiel_des_lignes(resultat):
+def _materiel_des_lignes(resultat, devis=None):
     """``{module, onduleur}`` (identifiants produit) des lignes du moteur : l'onduleur de
-    l'option « avec » d'abord."""
+    l'option « avec » d'abord. Le rôle RANGÉ d'abord (``domain.classe_ligne``), sinon les mots-clés."""
     from apps.ventes.domain.catalogue import classer_produit
+    from apps.ventes.domain.classe_ligne import role_de_ligne
 
-    classes = [(li, classer_produit(getattr(li.produit, 'nom', '') or li.designation) or '')
+    classes = [(li, role_de_ligne(li, lambda li=li: classer_produit(
+        getattr(li.produit, 'nom', '') or li.designation), devis=devis) or '')
                for li in resultat.lignes if li.type_ligne == 'produit' and not li.optionnelle]
     return {'module': next((li.produit_id for li, c in classes if c == 'panneau'), None),
             'onduleur': next((li.produit_id for li, c in sorted(
@@ -380,7 +382,7 @@ def _base_du_plan(resultat, devis, company):
     try:
         servi, suppositions, motif = productible_du_plan_par_defaut(
             company, resultat.plan_a_produire, puissances_des_lignes(devis, resultat.lignes)[0],
-            _materiel_des_lignes(resultat))
+            _materiel_des_lignes(resultat, devis))
     except Exception as exc:  # noqa: BLE001 — dite absente, la production de la ville reste (D-ENF22-BLE001)
         logger.warning('Plan par défaut non simulé (moteur unique)', exc_info=True)
         servi, suppositions, motif = None, [], 'erreur : %s' % type(exc).__name__
@@ -410,7 +412,7 @@ def _base_de_la_pose(resultat, devis, company):
     from apps.ventes.conception.porte_calepinage import SimulationEnCours, productible_de_la_pose
 
     calepinage_id, _pose = resultat.pose_a_produire
-    materiel = _materiel_des_lignes(resultat)
+    materiel = _materiel_des_lignes(resultat, devis)
     try:
         servi = productible_de_la_pose(company, calepinage_id, materiel)
     except SimulationEnCours:
