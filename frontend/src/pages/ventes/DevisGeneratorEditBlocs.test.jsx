@@ -156,6 +156,33 @@ describe('ACAL1205 —Auto-remplir attend l\'étude horaire (taille « avec batt
     expect(composerDevis).toHaveBeenCalledTimes(1)
     expect(composerDevis.mock.calls[0][0].dimensionnement_avec).toMatchObject({ nb_panneaux: 8, kwc: 5.68 })
   })
+
+  // Revue 4 — `chargement` repasse à vrai à CHAQUE changement des lignes (clé de l'aperçu = leur TTC) alors que
+  // l'étude est déjà là : Auto-remplir, « Appliquer cette taille » et « Recalculer » (compteur de composition) composent.
+  const etude = { dimensionnement: {
+    recommandation: { panneaux: 6, kwc: 4.26 }, recommandation_avec: { panneaux: 8, kwc: 5.68 } } }
+  it('étude présente + rechargement en cours ⇒ les trois gestes composent avec la taille avec batterie', async () => {
+    const { composerDevis, ctx, monte } = await bancAutoFill()
+    const { result, rerender } = monte(ctx({ etudeHoraireDonnees: etude, etudeHoraireChargement: true }))
+    await act(async () => { await result.current.handleAutoFill() })
+    expect(composerDevis).toHaveBeenCalledTimes(1)
+    for (const tick of [1, 2]) {
+      await act(async () => { rerender(ctx({ etudeHoraireDonnees: etude, etudeHoraireChargement: true, recalcDimTick: tick })) })
+      await waitFor(() => expect(composerDevis).toHaveBeenCalledTimes(1 + tick))
+    }
+    for (const appel of composerDevis.mock.calls) {
+      expect(appel[0].dimensionnement_avec).toMatchObject({ nb_panneaux: 8, kwc: 5.68 })
+    }
+  })
+  it('étude vraiment absente ⇒ Auto-remplir attend ; son arrivée remplace « en cours » par « prêt — réessayez »', async () => {
+    const { etat, composerDevis, ctx, monte } = await bancAutoFill()
+    const { result, rerender } = monte(ctx({ etudeHoraireChargement: true }))
+    await act(async () => { await result.current.handleAutoFill() })
+    expect(composerDevis).not.toHaveBeenCalled()
+    expect(etat.erreurs.autofill).toMatch(/Dimensionnement en cours/)
+    await act(async () => { rerender(ctx({ etudeHoraireDonnees: etude, etudeHoraireChargement: false })) })
+    await waitFor(() => expect(etat.erreurs.autofill).toMatch(/Dimensionnement prêt/))
+  })
 })
 
 

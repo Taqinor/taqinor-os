@@ -44,6 +44,8 @@ export function avertissementCompositionCi(composition) {
   return parties.length ? createElement(Fragment, null, ...parties) : null
 }
 
+const MESSAGE_ETUDE_EN_COURS = 'Dimensionnement en cours — réessayez dans un instant.'
+
 export function useCompositionEcran(ctx) {
   const {
     produits, setErrors, dispatchSizing, panelW, scenario, modeInstallation, structureType,
@@ -164,6 +166,17 @@ export function useCompositionEcran(ctx) {
     queueMicrotask(() => setErrors(e => (e.recalcDim && e.recalcDim !== messageRecalcul ? { ...e, recalcDim: messageRecalcul } : e)))
   }, [messageRecalcul, setErrors])
 
+  // ACAL1205 (revue 4) — l'attente ne porte que sur la taille « avec » ABSENTE ; son message est réécrit dès
+  // que l'attente cesse : « prêt — réessayez » si la taille est arrivée, effacé sinon (l'erreur d'étude parle).
+  const tailleAvecServie = Number(etudeHoraireDonnees?.dimensionnement?.recommandation_avec?.kwc) > 0
+  const attendEtudeAvec = modeInstallation === 'residentiel' && !horsReseau && !!etudeHoraireChargement
+    && (scenario === SCENARIO_LES_DEUX || scenario === SCENARIO_AVEC) && !tailleAvecServie
+  useEffect(() => {
+    if (attendEtudeAvec) return
+    const suite = tailleAvecServie ? DIMENSIONNEMENT_PRET : null
+    queueMicrotask(() => setErrors(e => (e.autofill === MESSAGE_ETUDE_EN_COURS ? { ...e, autofill: suite } : e)))
+  }, [attendEtudeAvec, tailleAvecServie, setErrors])
+
   const handleAutoFill = async () => {
     // PVOND — le bandeau des onduleurs grisés appartient au DERNIER
     // auto-remplissage : on le vide d'abord, sinon un message du run précédent
@@ -228,10 +241,12 @@ export function useCompositionEcran(ctx) {
           'Aucune taille : saisissez la facture hiver/été du lead (', ficheLead, ') ou un nombre de panneaux') }))
         return
       }
-      // ACAL1205 — la taille « avec batterie » vient de l'étude horaire : pendant son chargement
+      // ACAL1205 — la taille « avec batterie » vient de l'étude horaire : tant qu'elle MANQUE et se charge,
       // `resolveKwcAvec()` rendrait la taille SANS (6 ou 7 panneaux selon l'horloge) ; rien n'est composé.
-      if (!horsReseau && etudeHoraireChargement && (scenario === SCENARIO_LES_DEUX || scenario === SCENARIO_AVEC)) {
-        setErrors(e => ({ ...e, autofill: 'Dimensionnement en cours — réessayez dans un instant.' }))
+      // Revue 4 — jamais sur le seul `chargement` : il repasse à vrai à chaque changement des lignes,
+      // l'étude déjà servie restant valable (Auto-remplir, « Appliquer cette taille », « Recalculer »).
+      if (attendEtudeAvec) {
+        setErrors(e => ({ ...e, autofill: MESSAGE_ETUDE_EN_COURS }))
         return
       }
       setAutoFillLoading(true)
