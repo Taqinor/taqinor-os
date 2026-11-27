@@ -30,7 +30,7 @@ from core.pompage.champ import (
 from core.pompage.conception import NOM_POMPE_EXISTANTE, pompe_existante
 from core.pompage.hydraulique import _flottant, debit_a_hmt
 from core.pompage.hypotheses import valeur
-from core.pompage.kit import composer_kit
+from core.pompage.kit import SUFFIXE_PRIX, composer_kit
 from core.pompage.selection import _fr as _fr_kw, _sortie_pompe, kw_pompe
 
 CLES = ("inferieure", "recommandee", "superieure")
@@ -137,6 +137,10 @@ def _taille(cle, *, pompe_sortie, champ, kit, besoin, mois,
         "total_ttc": kit.get("total_ttc") if kit else None,
         "prix_connu": bool(kit and kit["inclus"]
                            and all(x["prix_connu"] for x in kit["inclus"])),
+        # ACAL1257 — les lignes sans prix NOMMÉES (libellé, jamais un prix).
+        "articles_sans_prix": [
+            (x.get("designation") or "").removesuffix(SUFFIXE_PRIX)
+            for x in ((kit or {}).get("inclus") or ()) if not x["prix_connu"]],
         "retenue": cle == "recommandee",
         "motif": motif,
         "m3_jour_mois": (production.get("m3_jour_mois")
