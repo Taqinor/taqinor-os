@@ -617,7 +617,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   /** ACAL549 — cause mesurée du pan actif vide (besoin > 0, rien posé), notée pour le document. */
   const motifPanActif = (pack: PackResult, grid: PanelGrid, placed: number, retraitM: number | null, module?: Panel2Module): MotifPanVide | null =>
     noterMotifPanVide(ctx.activeAreaId, ctx.neededPanels > 0 && placed === 0
-      ? causeDuPanVide(mesurerPanVide(pack, grid, retraitM, cotesDePavage(module), filtrageSeuil(grid.panels), contourPanENU(ctx.vertices))) : null);
+      ? causeDuPanVide(mesurerPanVide(pack, grid, retraitM, cotesDePavage(module), filtrageSeuil(grid.panels), contourPanENU(ctx.vertices), retraitsParArete())) : null);
   /** R2-13/22/23 — l'atelier ERP (`opts.chiffrage` défini, `null` compris) dit « cible » pour LA cible servie (`cibleServie`) — sans cible servie, pour le nombre MODIFIABLE comme avant — et « au devis » que pour un devis lié (compte réel de CE devis). Site public : libellé d'avant. */
   const modeErp = (): boolean => ctx.opts?.chiffrage !== undefined; const wattPose = (): number => (moduleDuPanActif() ?? MODULE_PAR_DEFAUT_ATELIER).pmaxWc; const besoinFacture = (): number | null => besoinDeLaFacture(ctx.opts, wattPose()); const cibleServie = () => cibleDeLAtelier(ctx, wattPose()); // T4-X8-012 — le besoin de la facture au module posé (servi)
   const surDevis = (placed: number): string => texteSurDevis(placed, ctx.neededPanels, modeErp(), Boolean(ctx.opts?.devisLie && ctx.cibleVendue), ctx.panneauxDevis, quiDuDevis(ctx.opts), cibleServie()); // ACAL1951, T4-X8-012 (une cible)
