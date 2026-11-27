@@ -233,3 +233,24 @@ describe('T4-X2-006 — la production simulée fraîche de la pose (useSimulatio
     expect(chiffrageAvecSimulation(sansLead, null)).toBe(sansLead)
   })
 })
+
+/* ACAL1957 — après « Générer le devis » (201), l'atelier RELIT design-context : le bandeau et la cible lisent les
+   panneaux du devis créé, jamais le contexte d'avant la création (« Aucune ligne de panneau dans ce devis »). */
+describe('ACAL1957 — après generer-devis, le contexte relu porte la cible du devis', () => {
+  it('201 annoncé ⇒ design-context relu, la cible servie (source devis) remplace l’ancienne ; un autre calepinage n’y touche pas', async () => {
+    const { annoncerDevisGenere } = await import('./contexteAtelier')
+    calepinageApi.calepinages.designContext = vi.fn(() => Promise.resolve({ data: CTX }))
+    const setContexte = vi.fn()
+    // Sans `cibleId`, le boot ne part pas : seule l'écoute du devis généré est en jeu.
+    const { unmount } = renderHook(() => useAtelierBoot({ calepinageId: 2046, estCalepinage: true, setContexte }))
+    act(() => annoncerDevisGenere(9999))
+    expect(calepinageApi.calepinages.designContext).not.toHaveBeenCalled()
+    act(() => annoncerDevisGenere('2046'))
+    await waitFor(() => expect(setContexte).toHaveBeenCalledWith(CTX))
+    expect(calepinageApi.calepinages.designContext).toHaveBeenCalledWith(2046)
+    expect(setContexte.mock.calls[0][0].cible).toMatchObject({ source: 'devis', panneaux: CTX.cible.panneaux })
+    unmount()
+    act(() => annoncerDevisGenere(2046))
+    expect(calepinageApi.calepinages.designContext).toHaveBeenCalledTimes(1)
+  })
+})

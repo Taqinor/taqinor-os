@@ -439,3 +439,13 @@ export function phraseSiteNonLocalise(siteDeRepli) {
   return `Site non localisé — carte au niveau Maroc. Cherchez l’adresse du client puis « Localiser », ou zoomez jusqu’au toit avant de le tracer : ${sinon}.`
 }
 
+// ACAL1957 — « Générer le devis » a répondu 201 : l'atelier ouvert sur ce calepinage relit son contexte.
+const ecouteursDevisGenere = new Set()
+export function annoncerDevisGenere(calepinageId) { ecouteursDevisGenere.forEach((f) => f(calepinageId)) }
+export function ecouterDevisGenere(calepinageId, f) {
+  if (!calepinageId) return () => {}
+  const ecouter = (id) => { if (String(id) === String(calepinageId)) f() }
+  ecouteursDevisGenere.add(ecouter)
+  return () => { ecouteursDevisGenere.delete(ecouter) }
+}
+

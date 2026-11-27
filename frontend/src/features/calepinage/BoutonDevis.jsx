@@ -13,6 +13,7 @@ import {
   bloquageElectrique, refusServeur, texteBloquant,
 } from './refusDevis'
 import usePeutGenererDevis from './usePeutGenererDevis'
+import { annoncerDevisGenere } from './atelier/contexteAtelier'
 
 /* ============================================================================
    CAL38 — LA SORTIE VERS LE DEVIS d'un calepinage, et elle n'existait nulle
@@ -408,6 +409,7 @@ function BoutonDevisCalepinage({
       () => calepinageApi.calepinages.genererDevis(calepinageId, { ...selection, ...corps }, { suppressErrorToast: true }))
     const nouveau = res?.data?.devis
     if (!nouveau) return
+    annoncerDevisGenere(calepinageId) // ACAL1957 — l'atelier relit son contexte : la cible lit ce devis
     setBloquage(null)
     setMotif('')
     // Recette R2-22 — rattaché à un brouillon EXISTANT : le dire (jamais « Devis … créé »).

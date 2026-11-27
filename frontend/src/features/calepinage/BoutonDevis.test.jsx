@@ -825,6 +825,23 @@ describe('ACAL1705 — le devis lié se rouvre d’un clic, lu sur le calepinage
     expect(within(carte).getByRole('link', { name: 'Voir le devis' })).toHaveAttribute('href', '/ventes/devis?devis=42')
     expect(within(carte).getByRole('button', { name: 'Revenir à la conception' })).toBeTruthy()
   })
+
+  it('ACAL1957 — un 201 est annoncé à l’atelier de CE calepinage (qui relit son contexte) ; un refus ne l’est pas', async () => {
+    const { ecouterDevisGenere } = await import('./atelier/contexteAtelier')
+    const relu = vi.fn()
+    const arreter = ecouterDevisGenere(DETAIL_VIDE.id, relu)
+    try {
+      calepinageApi.calepinages.genererDevis.mockRejectedValueOnce({ response: { status: 400, data: { detail: 'Refusé.' } } })
+      rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+      await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+      await screen.findByText('Refusé.')
+      expect(relu).not.toHaveBeenCalled()
+      calepinageApi.calepinages.genererDevis.mockResolvedValue({ data: { devis: 42, reference: 'DEV-2609-0042' } })
+      await userEvent.click(screen.getByTestId('cal-generer-devis'))
+      await screen.findByTestId('cal-devis-cree')
+      expect(relu).toHaveBeenCalledTimes(1)
+    } finally { arreter() }
+  })
 })
 
 describe('ACAL1414 — la réouverture relit les surfaces que le devis lié chiffre', () => {
