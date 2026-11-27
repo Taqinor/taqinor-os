@@ -192,9 +192,42 @@ class ListeBlanche3DPublique(TestCase):
         safe = _safe_roof_layout(self.devis)
         self.assertEqual([z.get('existant') for z in safe['zones']], [True, None])
         self.assertEqual(safe['result']['panels'], 6)
+        # Revue ACAL1240 — un pan existant qui ne porte que son compte (``geometry.count`` ou ``result.count``,
+        # sans ``panels``) se lit comme le devis le lit (``pans_du_document``) : ses 10 modules ne sont pas vendus.
+        self.devis.roof_layout = dict(sans, zones=[_pan_existant_compte_seul('a', 10), pan('b', 6)])
+        self.devis.save(update_fields=['roof_layout'])
+        self.assertEqual(_safe_roof_layout(self.devis)['result']['panels'], 6)
         self.devis.roof_layout = sans
         self.devis.save(update_fields=['roof_layout'])
         self.assertEqual(json.dumps(_safe_roof_layout(self.devis), sort_keys=True), servie)
+
+
+def _pan_existant_compte_seul(ident, n, cle='count'):
+    """Revue ACAL1240 — un pan existant sans ``geometry.panels`` : son compte seul
+    (``geometry.count``, ou ``result.count`` pour la zone synthétique)."""
+    zone = {'id': ident, 'label': 'Pan existant', 'vertices': [[0, 0], [1, 1]], 'existant': True}
+    if cle == 'result':
+        zone['result'] = {'count': n}
+    else:
+        zone['geometry'] = {'moduleId': 'm550', 'mode': 'free', 'count': n}
+    return zone
+
+
+class Acal1240ExistantCompteSeulSansBase(SimpleTestCase):
+    """Revue ACAL1240 — sans base (devis envoyé : aucune lecture du calepinage) :
+    le compte des modules en place publié = celui du devis, quelle que soit la
+    clé qui le porte ; seul ``existant`` s'ajoute à la zone publique."""
+
+    def test_compte_seul_retire_de_result_panels(self):
+        neuf = dict(LAYOUT['zones'][0], id='b')
+        for cle in ('count', 'result'):
+            with self.subTest(cle=cle):
+                layout = dict(LAYOUT, zones=[_pan_existant_compte_seul('a', 10, cle), neuf],
+                              result={'panels': 12, 'kwc': 6.6})
+                safe = _safe_roof_layout(SimpleNamespace(roof_layout=layout, statut='envoye', pk=None))
+                self.assertEqual(safe['result']['panels'], 2)
+                self.assertEqual([z.get('existant') for z in safe['zones']], [True, None])
+                self.assertEqual(set(safe['zones'][0]) - {'id', 'label', 'vertices', 'geometry'}, {'existant'})
 
 
 class ListeBlancheVisionneuseSoleil(SimpleTestCase):
