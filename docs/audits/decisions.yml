@@ -6600,5 +6600,68 @@ decisions:
         texte: "Un seul panneau par défaut pour tout l'ERP (le 715 W aujourd'hui), montré dans le stock (réponse libre du fondateur)"
     reponse: un_panneau_par_defaut_partout
     date: "2026-11-26"
-    source: "fondateur, questions interactives du 26/11/2026 (cinquième séance), réponse tapée mot pour mot : « always use 715w everywhere, and have somewhere in the stock to show the default used pannels ». Lecture de l'orchestrateur, à confirmer : (1) UN panneau par défaut par société, désigné sur la fiche produit du stock (drapeau unique, action réservée à qui modifie les produits), lu par tous les choix automatiques — devis automatique et tailles (aujourd'hui 710 en dur : ventes/domain/taille.py::_AUTO_PANEL_WATT), assistant, C&I et pompage (panneau désigné d'abord s'il est tarifé et sa fiche complète), premier module d'un nouveau pan au calepinage, valeur de départ du générateur ; (2) le stock le montre (pastille « Panneau par défaut » et ligne « Panneau par défaut : X ») ; (3) l'entrée électrique d'un calepinage suit le panneau POSÉ quand il change, et le dit ; (4) rien d'existant n'est recalculé : devis enregistrés ou envoyés, calepinages enregistrés gardent LEUR panneau ; (5) sans panneau désigné, tarifé et non archivé : la règle d'aujourd'hui s'applique et l'écran le dit. Choix pris par l'orchestrateur, à confirmer : les estimateurs du site public passent aussi au panneau par défaut (les textes d'installations réelles ne changent pas) ; les calepinages de production dont le panneau stocké diffère du toit sont d'abord LISTÉS en lecture seule. Désigner le 715 W en production reste un geste du fondateur. Note de conception : inventaire des 16 endroits (session du 26/11). Construit au lot 9 : la désignation est réservée à la permission `catalogue_prix_modifier` ; à l'atelier le panneau par défaut passe avant les favoris ; une désignation est refusée si la puissance du nom diffère de celle de la fiche ; le panneau par défaut ne décide que d'une composition NEUVE (un devis existant lit son propre panneau, brouillons seulement). NON construit, questions ouvertes au fondateur : le site public (aucune voie propre sans point d'accès relayé, rapport de la branche `lot9/panneau-defaut-web`) ; les leads qui ont déjà une conception n'y passent qu'à leur prochain recalcul ; la marque de panneau épinglée d'une gamme l'emporte en résidentiel, pas en C&I ni en pompage"
+    source: "fondateur, questions interactives du 26/11/2026 (cinquième séance), réponse tapée mot pour mot : « always use 715w everywhere, and have somewhere in the stock to show the default used pannels ». Lecture de l'orchestrateur, à confirmer : (1) UN panneau par défaut par société, désigné sur la fiche produit du stock (drapeau unique, action réservée à qui modifie les produits), lu par tous les choix automatiques — devis automatique et tailles (aujourd'hui 710 en dur : ventes/domain/taille.py::_AUTO_PANEL_WATT), assistant, C&I et pompage (panneau désigné d'abord s'il est tarifé et sa fiche complète), premier module d'un nouveau pan au calepinage, valeur de départ du générateur ; (2) le stock le montre (pastille « Panneau par défaut » et ligne « Panneau par défaut : X ») ; (3) l'entrée électrique d'un calepinage suit le panneau POSÉ quand il change, et le dit ; (4) rien d'existant n'est recalculé : devis enregistrés ou envoyés, calepinages enregistrés gardent LEUR panneau ; (5) sans panneau désigné, tarifé et non archivé : la règle d'aujourd'hui s'applique et l'écran le dit. Choix pris par l'orchestrateur, à confirmer : les estimateurs du site public passent aussi au panneau par défaut (les textes d'installations réelles ne changent pas) ; les calepinages de production dont le panneau stocké diffère du toit sont d'abord LISTÉS en lecture seule. Désigner le 715 W en production reste un geste du fondateur. Note de conception : inventaire des 16 endroits (session du 26/11). Construit au lot 9 : la désignation est réservée à la permission `catalogue_prix_modifier` ; à l'atelier le panneau par défaut passe avant les favoris ; une désignation est refusée si la puissance du nom diffère de celle de la fiche ; le panneau par défaut ne décide que d'une composition NEUVE (un devis existant lit son propre panneau, brouillons seulement). NON construit, questions ouvertes au fondateur : le site public (aucune voie propre sans point d'accès relayé, rapport de la branche `lot9/panneau-defaut-web`) ; les leads qui ont déjà une conception n'y passent qu'à leur prochain recalcul ; la marque de panneau épinglée d'une gamme l'emporte en résidentiel, pas en C&I ni en pompage. RÉPONDU PAR LE FONDATEUR le 27/11/2026 (questions interactives, option recommandée à chaque fois) : (a) le SITE PUBLIC estime aussi avec le panneau par défaut — point d'accès relayé pour que le site lise le panneau par défaut de la société (10 kWc : 15 → 14 panneaux), les textes d'installations réelles ne changent pas ; état : lane site-panneau-defaut pliée en local (51c8761a4), contestée avec preuve sur un point (l'estimateur résidentiel du site ne lit aucun watt de panneau), point d'accès relayé à vérifier ; (b) un lead qui a déjà une conception passe au panneau par défaut AU PROCHAIN RECALCUL, rien d'existant n'est recalculé seul (comportement d'aujourd'hui, rien à construire) ; (c) la marque de panneau ÉPINGLÉE d'une gamme l'emporte PARTOUT (résidentiel, C&I, pompage) sur le panneau par défaut — construit sous l'alias D-27/11-4 (266595fd0, 5d168e177 : sans panneau utilisable de la marque épinglée le défaut est retenu et c'est dit) ; reste ouvert : l'épingle est ignorée quand le défaut EST de la marque mais refusé ou absent"
     taches: [ACAL2049]
+  - id: D-ACAL-170
+    question: "Les lots 7 et 8 sont-ils déployés aujourd'hui, et que deviennent les trois coupures datées ?"
+    options:
+      - cle: deploi_aujourdhui
+        texte: "Reda déploie les lots 7 et 8 AUJOURD'HUI 27/11 : les trois coupures restent au 28/11 (COUPURE_PROTECTION_FICHE, COUPURE_TOIT_PLAT, COUPURE_PDF_2611)"
+    reponse: deploi_aujourdhui
+    date: "2026-11-27"
+    source: "fondateur, questions interactives du 27/11/2026 (répondu par le fondateur, option recommandée) ; alias D-27/11-1 ; état à vérifier (le déploiement est un geste de Reda). Conséquence pour le code : les trois dates de coupure ne bougent pas"
+    taches: []
+  - id: D-ACAL-171
+    question: "Poids des pages : à quel niveau figer les plafonds de taille du front ?"
+    options:
+      - cle: figer_au_mesure
+        texte: "Plafonds figés au poids mesuré aujourd'hui par la CI : global 4 235 Ko confirmé (= D-ACAL-74), module calepinage = valeur mesurée sur le runner au lieu de 73 Ko ; le cliquet ne fait que baisser ; une tâche réduit le module calepinage"
+    reponse: figer_au_mesure
+    date: "2026-11-27"
+    source: "fondateur, questions interactives du 27/11/2026 (répondu par le fondateur, option recommandée) ; alias D-27/11-5 ; débloque ACAL1352 et ACAL2046 ; construit en partie : plafond du module calepinage figé à 125 Ko (ef9806c2d, lane calepinage-specs-carte), à CONFIRMER sur le run CI du lot 10 ; tâche de réduction du module : état à vérifier. Conséquence pour le code : les plafonds se lisent dans la CI et ne montent plus jamais"
+    taches: [ACAL1352, ACAL2046]
+  - id: D-ACAL-172
+    question: "Rapport d'étude d'un calepinage de POMPAGE : que garde-t-il ?"
+    options:
+      - cle: sans_production
+        texte: "Le rapport N'IMPRIME PLUS production ni autoconsommation ; débit, HMT et volume par jour restent"
+    reponse: sans_production
+    date: "2026-11-27"
+    source: "fondateur, questions interactives du 27/11/2026 (répondu par le fondateur, option recommandée) ; alias D-27/11-6 ; état à vérifier (lanes pompage-ecran, pompage-suites pliées, mais rien ne dit que cette ligne y est faite). Conséquence pour le code : retirer ces deux chiffres du rapport de pompage, jamais les trois chiffres hydrauliques"
+    taches: []
+  - id: D-ACAL-173
+    question: "Déploiement : que fait scripts/deploy-prod.ps1 des totaux affichés des devis ?"
+    options:
+      - cle: ranger_a_chaque_deploy
+        texte: "Le script lance `ranger_totaux_affiches` après `migrate` à chaque déploiement"
+    reponse: ranger_a_chaque_deploy
+    date: "2026-11-27"
+    source: "fondateur, questions interactives du 27/11/2026 (répondu par le fondateur, option recommandée) ; alias D-27/11-7 ; construit (9fb5091f0, relu par l'orchestrateur : étape best-effort après restart, jamais bloquante, sans délai ; durée à mesurer au premier deploy). Conséquence pour le code : une ligne de plus dans le script de déploiement"
+    taches: []
+  - id: D-ACAL-174
+    question: "Historique du lead, ligne « Devis signé » : qui est nommé ?"
+    options:
+      - cle: nom_complet
+        texte: "Le NOM COMPLET de la personne, pas son identifiant ; le reste de l'historique s'aligne sur la même forme"
+    reponse: nom_complet
+    date: "2026-11-27"
+    source: "fondateur, questions interactives du 27/11/2026 (répondu par le fondateur, option recommandée) ; alias D-27/11-8 ; construit en grande partie (lane lead-historique d81c7347a, lead-historique-restes 1b6fd2ac0 : 7 chemins au nom complet) ; restes : `crm/activity.py` écrit encore le login à quelques lignes, `leads_consentement` (registre légal, non tranché). Conséquence pour le code : l'historique sert le nom complet, plus `username`"
+    taches: [ACAL1235]
+  - id: D-ACAL-175
+    question: "Historique du lead : que dit-il quand un filtre masque des entrées ?"
+    options:
+      - cle: ligne_masques
+        texte: "Une ligne « N éléments masqués par le filtre » quand un filtre masque des entrées"
+    reponse: ligne_masques
+    date: "2026-11-27"
+    source: "fondateur, questions interactives du 27/11/2026 (répondu par le fondateur, option recommandée) ; alias D-27/11-9 ; état à vérifier. Conséquence pour le code : ajouter cette ligne à l'historique filtré"
+    taches: []
+  - id: D-ACAL-176
+    question: "Niveau de règles 15 (pose réelle, ACAL1001) : que faire maintenant ?"
+    options:
+      - cle: preparer_la_page
+        texte: "PRÉPARER MAINTENANT la page à lire (chaque règle qui change, exemple avant/après sur un devis de forme réelle) ; Reda dira go ou no-go ensuite"
+    reponse: preparer_la_page
+    date: "2026-11-27"
+    source: "fondateur, questions interactives du 27/11/2026 (répondu par le fondateur, option recommandée) ; alias D-27/11-10 ; page préparée : docs/audits/l5-calepinage/niveau15-a-lire.md ; le niveau 15 reste éteint ; prérequis NON réunis (liste ACAL1000 inexistante, ACAL921 non construite, preuves en direct 1031/2029 non jouées) ; le go / no-go reste ouvert. Conséquence pour le code : aucun allumage du niveau 15 avant la réponse de Reda"
+    taches: [ACAL1001]
