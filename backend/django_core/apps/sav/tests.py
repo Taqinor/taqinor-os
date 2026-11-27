@@ -888,3 +888,15 @@ class EnfOnzeCorpsStrictsSavTests(SimpleTestCase):
             entier_param(deux, 'n')
         self.assertIn({'type': 'string', 'enum': ['']},
                       ou_vide({'type': 'integer'})['oneOf'])
+
+
+class ProfilLuSansCreationTests(SimpleTestCase):
+    """Profil société — l étiquette publique lit le téléphone sans créer le profil."""
+
+    def test_etiquettes_publiques(self):
+        import inspect
+        from apps.sav.views import EquipementViewSet
+        fonction = EquipementViewSet.etiquettes
+        source = inspect.getsource(fonction)
+        self.assertNotIn("CompanyProfile.get(", source)
+        self.assertIn("CompanyProfile.lire(", source)
