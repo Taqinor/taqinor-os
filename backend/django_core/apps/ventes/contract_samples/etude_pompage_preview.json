@@ -575,7 +575,9 @@
       "courbe": null,
       "point_fonctionnement": null,
       "debit_a_hmt_m3h": null,
-      "prix_connu": null
+      "prix_connu": null,
+      "kw_derive": null,
+      "source_kw": "plaque"
     },
     "variateur": {
       "produit": 411,
@@ -1312,6 +1314,7 @@
     "besoin.nature": "declare | debit_souhaite | agronomique_plein (D-AGR-3 ; `debit_souhaite` = dérivé du débit souhaité × heures-pic du mois, AGQ1/D-AGQ-1) ; `source_et0` = {station, url, releve_le} ou « EST. » en mode agronomique, null sinon ; `autre_besoin` = l'autre besoin connu et son écart, servi SANS seuil (jamais le maximum des deux)",
     "conception.plafonds": "plafond dur = débit d'exploitation déclaré × part du réglage AGR107 (si saisie) et débit autorisé ABH ; `atteint` true ⇒ alerte « forage »",
     "pompe.mode": "neuve | existante ; `placeholder` true = ligne « Pompe — prix à renseigner : <noms> », jamais un article gratuit",
+    "pompe.kw_derive": "ACAL1260 — mode existante seulement (clé absente en mode neuve). `source_kw` = plaque | cv | null : `plaque` = kW de plaque saisi ou relevé, `kw_derive` null ; `cv` = plaque connue par ses seuls CV, `kw_derive` = moteur normalisé le plus proche de CV × cv_vers_kw (`core.pompage.selection.kw_normalise_depuis_cv`, ex. 7,5 CV ⇒ 5,5 kW), le kW calculé tel quel hors bande ; null = ni kW ni CV. Le kW dérivé est SERVI ici pour l'affichage, JAMAIS écrit dans `plaque.kw` (qui reste null) ni dans `pompe.kw` : l'alerte `kw_plaque_a_relever` reste levée et aucun variateur n'est choisi dessus",
     "puissance_retenue": "SORTIE du dimensionnement (le CV n'est plus une entrée) ; cv = kw / 0,7355 pour l'affichage",
     "champ.chaines.verifiable": "false ⇒ `motif` obligatoire (fiche variateur absente, températures absentes…), jamais un blocage muet",
     "production": "null quand aucune pompe à courbe et aucun débit déclaré (« jamais de m³/jour sans courbe ») ; `mode` courbe | debit_declare | repli_plat ; `source_irradiation` pvgis | repli ; `coordonnees_figees` = coordonnées + date de l'appel PVGIS gardées dans l'étude (reproductibilité) ; `plafond_forage_m3h` = plafond horaire appliqué (débit d'exploitation du forage × part du réglage société, ou débit ABH — `conception.plafonds.plafond_retenu_m3h`), null sans plafond ; une heure écrêtée lève l'alerte `debit_limite_forage` (AGQ40/D-AGQ-9) ; `etiquettes` (AGM8, AMOT65) = les étiquettes d'honnêteté du noyau (« estimation » de similitude, « estimation sur débit déclaré », « repli », « rendement non publié ») recopiées telles quelles, liste jamais absente (vide si aucune) : INTERNES, le rendu ne lit que leur présence pour étiqueter un m³/jour estimé",
