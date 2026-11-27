@@ -229,6 +229,9 @@ class SupposeTest(SimpleTestCase):
         self.assertEqual(suppose[1]['valeur'], Parametres.__dataclass_fields__[
             'allee_m'].default)
         self.assertIn('0,60 m', suppose[1]['libelle'])
+        # ACAL1630 (revue) — chaque repli dit OÙ le renseigner (lu par ``lienManque`` côté écran).
+        self.assertEqual(suppose[0]['cible'], {'onglet': 'fiches'})
+        self.assertEqual(suppose[1]['cible'], {'onglet': 'reglages', 'champ': 'allees'})
         for repli in suppose:
             self.assertEqual(sorted(repli),
                              ['champ', 'code', 'libelle', 'valeur'])

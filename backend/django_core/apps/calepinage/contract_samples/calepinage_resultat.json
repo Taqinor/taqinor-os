@@ -1218,7 +1218,8 @@
         "code": "allee_par_defaut",
         "libelle": "allée technique de 0,60 m (valeur du moteur : rien n'est réglé)",
         "valeur": 0.6,
-        "champ": "panneau Allées de l'atelier (largeur de l'allée technique)"
+        "champ": "panneau Allées de l'atelier (largeur de l'allée technique)",
+        "cible": {"onglet": "reglages", "champ": "allees"}
       }
     ]
   },
@@ -1472,7 +1473,8 @@
         "code": "allee_par_defaut",
         "libelle": "allée technique de 0,60 m (valeur du moteur : rien n'est réglé)",
         "valeur": 0.6,
-        "champ": "panneau Allées de l'atelier (largeur de l'allée technique)"
+        "champ": "panneau Allées de l'atelier (largeur de l'allée technique)",
+        "cible": {"onglet": "reglages", "champ": "allees"}
       }
     ]
   },
@@ -1653,13 +1655,15 @@
         "code": "longueur_chaine_dossier",
         "libelle": "Choisissez l'onduleur pour vérifier la longueur des chaînes (16 modules par défaut, à confirmer)",
         "valeur": 16,
-        "champ": "fiche technique du module et de l'onduleur"
+        "champ": "fiche technique du module et de l'onduleur",
+        "cible": {"onglet": "fiches"}
       },
       {
         "code": "allee_par_defaut",
         "libelle": "allée technique de 0,60 m (valeur du moteur : rien n'est réglé)",
         "valeur": 0.6,
-        "champ": "panneau Allées de l'atelier (largeur de l'allée technique)"
+        "champ": "panneau Allées de l'atelier (largeur de l'allée technique)",
+        "cible": {"onglet": "reglages", "champ": "allees"}
       }
     ]
   },
