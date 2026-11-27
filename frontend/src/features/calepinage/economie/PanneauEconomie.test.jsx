@@ -250,6 +250,28 @@ describe('PanneauEconomie (CALX289)', () => {
       expect(within(bloc).queryByTestId('acal1611-ecart-production')).toBeNull()
     })
 
+    it('ACAL1915 — écart non servi mais motif servi (`ecart_devis_motif`) : la phrase du serveur, telle quelle ; écart servi : pas de motif', async () => {
+      calepinageApi.calepinages.get.mockResolvedValue({ data: exempleContrat('calepinage', 'calepinage_detail', 'exemple') })
+      ventesApi.getEconomieDevis.mockResolvedValue(reponseContrat('ventes', 'ventes_economie', 'exemple'))
+      const resultat = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+      const motif = exempleContrat('calepinage', 'calepinage_resultat', 'acal1915_ecart_devis_motif').ecart_devis_motif
+      resultat.data.ecart_devis = null
+      resultat.data.ecart_devis_motif = motif
+      calepinageApi.calepinages.resultat.mockResolvedValue(resultat)
+      rendre()
+      const bloc = await screen.findByTestId('calx289-bloc')
+      expect(await within(bloc).findByTestId('acal1915-ecart-motif')).toHaveTextContent(motif)
+      expect(within(bloc).queryByTestId('acal1611-ecart-production')).toBeNull()
+      cleanup()
+      resultat.data.ecart_devis = { ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple_ecart_devis').ecart_devis }
+      resultat.data.ecart_devis_motif = ''
+      calepinageApi.calepinages.resultat.mockResolvedValue(resultat)
+      rendre()
+      const bloc2 = await screen.findByTestId('calx289-bloc')
+      await vi.waitFor(() => expect(calepinageApi.calepinages.resultat).toHaveBeenCalledTimes(2))
+      expect(within(bloc2).queryByTestId('acal1915-ecart-motif')).toBeNull()
+    })
+
     it('sans simulation (P50 null) : aucune phrase', async () => {
       calepinageApi.calepinages.get.mockResolvedValue({ data: exempleContrat('calepinage', 'calepinage_detail', 'exemple') })
       ventesApi.getEconomieDevis.mockResolvedValue(reponseContrat('ventes', 'ventes_economie', 'exemple'))
