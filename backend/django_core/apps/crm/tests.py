@@ -1312,3 +1312,37 @@ class NomAfficheTests(__import__("django.test", fromlist=["x"]).SimpleTestCase):
         self.assertEqual(nom_affiche(U(first_name="", last_name="Kasri", username="reda.k")), "Kasri")
         self.assertEqual(nom_affiche(U(first_name=" ", last_name="", username="reda.k")), "reda.k")
         self.assertIsNone(nom_affiche(None))
+
+
+class HistoriqueNomCompletTests(__import__("django.test", fromlist=["x"]).SimpleTestCase):
+    """Décision du 27/11 — les NOUVELLES lignes d'historique et la file des
+    relances nomment la personne par son nom complet, jamais son login."""
+
+    def _user(self):
+        from types import SimpleNamespace as U
+        return U(first_name="Meryem", last_name="Alaoui", username="meryem.a")
+
+    def _corps(self, fonction, *args):
+        from unittest import mock
+        from apps.crm.models import LeadActivity
+        with mock.patch.object(LeadActivity.objects, 'create') as creer:
+            fonction(*args)
+        return creer.call_args.kwargs['body']
+
+    def test_lignes_ecrites_par_activity(self):
+        from types import SimpleNamespace as L
+        from apps.crm import activity
+        lead, user = L(company=None), self._user()
+        for fonction, attendu in ((activity.log_creation, 'Lead créé par Meryem Alaoui'),
+                                  (activity.log_archive, 'Lead archivé par Meryem Alaoui'),
+                                  (activity.log_restore, 'Lead restauré par Meryem Alaoui')):
+            self.assertEqual(self._corps(fonction, lead, user), attendu)
+
+    def test_responsable_du_champ_owner(self):
+        from apps.crm import activity
+        self.assertEqual(activity._display(None, 'owner', self._user()), 'Meryem Alaoui')
+
+    def test_nom_affichable_responsable(self):
+        from apps.crm.serializers import nom_affichable_responsable
+        self.assertEqual(nom_affichable_responsable(self._user()), 'Meryem Alaoui')
+        self.assertIsNone(nom_affichable_responsable(None))

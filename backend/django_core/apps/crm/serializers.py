@@ -173,9 +173,11 @@ def nom_affichable_lead(lead) -> str:
 
 def nom_affichable_responsable(user) -> str | None:
     """Le nom affiché du RESPONSABLE d'un lead — ``lead_owner_nom`` de
-    ``RelanceEtapeSerializer`` (l'identifiant de connexion), ``None`` sans
-    responsable. Partagé avec ``controle_suivi.py`` : aucun prénom en dur."""
-    return getattr(user, 'username', None)
+    ``RelanceEtapeSerializer`` (prénom + nom, login en dernier recours),
+    ``None`` sans responsable. Partagé avec ``controle_suivi.py`` : aucun
+    prénom en dur."""
+    from core.user_display import nom_affiche
+    return nom_affiche(user)
 
 
 class _CurrentCompanyDefault:
