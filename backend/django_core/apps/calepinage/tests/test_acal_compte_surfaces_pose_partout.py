@@ -89,6 +89,37 @@ class CompteSurfacesPosePartoutTest(SimpleTestCase):
         self.assertEqual(pan.source_orientation, 'saisie')
 
 
+class UneSurfaceNEstComptee1FoisTest(SimpleTestCase):
+    """ACAL984 (5) — zone + champ au sol : 42 + 176 = 218, chacune UNE fois,
+    pour la primitive, la chaîne et la production."""
+
+    LAYOUT = {
+        'version': 2, 'panelWatt': 720,
+        'zones': [{'id': 'z1', 'label': 'Zone 1', 'pitchDeg': 20,
+                   'facingAzimuthDeg': 180,
+                   'geometry': {'azimuthDeg': 180.0, 'tiltDeg': 20.0,
+                                'panels': [{'cx': float(i), 'cy': 1.0}
+                                           for i in range(42)]}}],
+        'poseSurfaces': [{
+            'id': 'champ-1', 'kind': 'sol', 'label': 'Champ au sol 1',
+            'moduleWc': 550, 'tiltDeg': 20, 'rowAzimuthDeg': 90,
+            'engine': {'modules': 176}}],
+    }
+
+    def test_218_egal_42_plus_176_chaque_surface_une_fois(self):
+        pans = pans_du_document(self.LAYOUT)
+        self.assertEqual([(p['cle'], p['modules']) for p in pans],
+                         [('z1', 42), ('champ-1', 176)])
+        self.assertEqual(sum(p['modules'] for p in pans), 218)
+
+        chaines = _pans_poses(self.LAYOUT)
+        self.assertEqual(sorted(p.modules for p in chaines), [42, 176])
+        self.assertEqual(sum(p.modules for p in chaines), 218)
+        production = _pans_du_layout(self.LAYOUT)
+        self.assertEqual(sum(p['modules'] for p in production), 218,
+                         'production : une surface comptée 0 ou 2 fois')
+
+
 def _surface(kind, azimut, ident='s1'):
     return {'version': 2, 'zones': [], 'poseSurfaces': [
         {'id': ident, 'kind': kind, 'rowAzimuthDeg': azimut}]}

@@ -492,3 +492,132 @@ class MotifOrientationNordTest(SimpleTestCase):
         # Le plan de pose (CAL211) est la feuille qui imprime le motif.
         self.assertIn(self.motif['message'],
                       svg_de_planche(planche, contenu=CONTENU_POSE))
+
+
+# ── ACAL984 — une conception, trois documents, une seule vérité ─────────────
+
+def _layout_croise(pose):
+    """LAYOUT à 30° : 6 modules en deux rangées, pas de 2,6 m (aucun recouvrement
+    possible en portrait comme en paysage)."""
+    import copy
+
+    layout = copy.deepcopy(LAYOUT)
+    geometrie = layout['zones'][0]['geometry']
+    geometrie.update(tiltDeg=30.0, panelOrientation=pose, count=6)
+    geometrie['panels'] = [{'cx': 1.5 + 2.6 * (i % 3), 'cy': 1.5 + 3.5 * (i // 3)}
+                           for i in range(6)]
+    return layout
+
+
+def _boite(points):
+    xs, ys = [p[0] for p in points], [p[1] for p in points]
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+class CroisementDesDocumentsTest(SimpleTestCase):
+    """ACAL984 — planche, DXF et plan de câblage dessinent la MÊME conception :
+    mêmes emprises (1 mm), échelle imprimée = échelle mesurée, un seul tracé
+    TOITURE par contour. L'échec nomme le document et le module."""
+
+    def _attendues(self, geometrie, pose):
+        """Boîtes ATTENDUES, calculées des cotes du kit et des centres
+        stockés — sans passer par ``coins_du_module``."""
+        import math
+
+        long_, court = 2.384, 1.303
+        rangee, pente = (court, long_) if pose == 'portrait' else (long_, court)
+        demi_x, demi_y = rangee / 2.0, pente * math.cos(math.radians(30)) / 2.0
+        return [(c[0] - demi_x, c[1] - demi_y, c[0] + demi_x, c[1] + demi_y)
+                for c in geometrie['pans'][0]['modules']]
+
+    @staticmethod
+    def _planche(geometrie):
+        """Boîtes des modules lues DANS le SVG, ramenées en mètres avec
+        l'échelle MESURÉE sur la barre ; + (échelle mesurée, rang imprimé)."""
+        import re
+
+        from apps.calepinage.services.planche import (
+            VERT_MODULE, _transformation,
+        )
+
+        svg = svg_de_planche(geometrie)
+        barre = re.search(r'<g><rect x="[\d.]+" y="[\d.]+" width="([\d.]+)" '
+                          r'height="1.6"', svg)
+        metres = re.search(r'<text x="[\d.]+" y="[\d.]+" font-size="3" '
+                           r'text-anchor="end" fill="[^"]+">([\d,]+) m</text>',
+                           svg)
+        rang = re.search(r'Échelle du tracé 1/(\d+)', svg)
+        assert barre and metres and rang, 'planche : barre ou mention absente'
+        echelle = 2.0 * float(barre.group(1)) / float(
+            metres.group(1).replace(',', '.'))
+        vers_feuille, _interne = _transformation(geometrie['etendue'])
+        ox, oy = vers_feuille((0.0, 0.0))
+        boites = []
+        for brut in re.findall(r'<polygon points="([^"]+)" fill="[^"]+" '
+                               r'stroke="%s"' % VERT_MODULE, svg):
+            pts = [tuple(float(c) for c in couple.split(','))
+                   for couple in brut.split()]
+            boites.append(_boite([((x - ox) / echelle, (oy - y) / echelle)
+                                  for x, y in pts]))
+        return boites, echelle, int(rang.group(1))
+
+    def _verifier(self, nom, boites, attendues):
+        self.assertEqual(len(boites), len(attendues), '%s : compte' % nom)
+        for rang, (lue, voulue) in enumerate(
+                zip(sorted(boites), sorted(attendues)), start=1):
+            for a, b in zip(lue, voulue):
+                self.assertAlmostEqual(
+                    a, b, delta=0.001,
+                    msg='%s, module %d : %s au lieu de %s' % (nom, rang, lue, voulue))
+        for i, a in enumerate(boites):
+            for b in boites[i + 1:]:
+                self.assertFalse(
+                    _se_recouvrent(
+                        [(a[0], a[1]), (a[2], a[3])],
+                        [(b[0], b[1]), (b[2], b[3])]),
+                    '%s : deux modules se recouvrent' % nom)
+
+    def test_planche_dxf_et_cablage_ont_les_emprises_de_la_conception(self):
+        import io
+
+        import ezdxf
+
+        from apps.calepinage.services.documents.plan_cablage import (
+            _plan_de_cablage,
+        )
+        from apps.calepinage.services.export_dxf import (
+            CALQUE_MODULES, CALQUE_TOITURE, octets_dxf,
+        )
+
+        for pose in ('portrait', 'landscape'):
+            layout = _layout_croise(pose)
+            geometrie = geometrie_de_planche(layout)
+            attendues = self._attendues(geometrie, pose)
+            self.assertEqual(len(attendues), 6, pose)
+
+            boites, echelle, rang = self._planche(geometrie)
+            self._verifier('planche %s' % pose, boites, attendues)
+            # (3) l'échelle mesurée dans le SVG est l'imprimée.
+            self.assertLessEqual(abs(1000.0 / echelle - rang), 0.5,
+                                 'planche %s : 1/%d imprimé, 1/%.1f dessiné'
+                                 % (pose, rang, 1000.0 / echelle))
+
+            dxf = ezdxf.read(io.StringIO(octets_dxf(geometrie).decode('utf-8')))
+            modules = [e for e in dxf.modelspace()
+                       if e.dxf.layer == CALQUE_MODULES]
+            self._verifier('DXF %s' % pose,
+                           [_boite([(p[0], p[1]) for p in e.get_points()])
+                            for e in modules], attendues)
+            # (4) un seul tracé TOITURE : le pan est égal au contour.
+            self.assertEqual(
+                len([e for e in dxf.modelspace()
+                     if e.dxf.layer == CALQUE_TOITURE]), 1,
+                'DXF %s : TOITURE en double' % pose)
+
+            affectation = [{'module': 'z1#%d' % r, 'pan': 'Pan Sud',
+                            'chaine': 1, 'onduleur': 1, 'mppt': 1,
+                            'source': 'automatique'} for r in range(1, 7)]
+            plan = _plan_de_cablage(layout, affectation)
+            self._verifier('câblage %s' % pose,
+                           [_boite(m['coins']) for m in plan['modules']],
+                           attendues)
