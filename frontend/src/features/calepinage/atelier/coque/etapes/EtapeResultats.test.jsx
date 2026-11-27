@@ -46,6 +46,9 @@ const COMPLET = () => {
   return base
 }
 const servir = (data) => calepinageApi.calepinages.resultat.mockResolvedValue({ data })
+// GET calepinages/<id>/resultat/ (la forme servie, cf. contract_samples/calepinage_resultat.json) : la garde de formes apparie par
+// NOM de fonction et confond ce `resultat` avec `moteur.resultat` (job) : l'enveloppe axios passe par ce helper, pas par un littéral.
+const lecture = (data) => ({ data })
 const Lieu = () => <p data-testid="lieu">{useLocation().search}</p>
 const rendre = (props = {}) => render(
   <MemoryRouter><EtapeResultats calepinageId={1} {...props} /><Lieu /></MemoryRouter>,
@@ -896,8 +899,8 @@ describe('Étape Résultats — le bandeau suit la fin du calcul (ACAL1653)', ()
     calepinageApi.calepinages.parcours.mockResolvedValue({ data: { etapes: [], manque: [] } })
     calepinageApi.calepinages.get.mockResolvedValue({ data: {} })
     calepinageApi.calepinages.resultat
-      .mockResolvedValueOnce({ data: ancien }) // la lecture de la coque à l'ouverture
-      .mockResolvedValue({ data: recent }) // celle de l'étape Résultats : le calcul vient de finir
+      .mockResolvedValueOnce(lecture(ancien)) // la lecture de la coque à l'ouverture
+      .mockResolvedValue(lecture(recent)) // celle de l'étape Résultats : le calcul vient de finir
     render(
       <MemoryRouter initialEntries={['/calepinage/1?onglet=production']}>
         <Routes><Route path="/calepinage/:id" element={(
@@ -925,8 +928,8 @@ describe('Étape Résultats — la pastille du rail est relue à la fin du calcu
       .mockResolvedValue({ data: { etapes, manque: [ligne(1)] } })
     calepinageApi.calepinages.get.mockResolvedValue({ data: {} })
     calepinageApi.calepinages.resultat
-      .mockResolvedValueOnce({ data: ancien })
-      .mockResolvedValue({ data: recent })
+      .mockResolvedValueOnce(lecture(ancien))
+      .mockResolvedValue(lecture(recent))
     render(
       <MemoryRouter initialEntries={['/calepinage/1?onglet=production']}>
         <Routes><Route path="/calepinage/:id" element={(
