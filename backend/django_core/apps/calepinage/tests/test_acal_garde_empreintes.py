@@ -34,6 +34,7 @@ VOLATILE, DOCUMENT, IMPRIMEE = 'volatile', 'document', 'imprimee'
 CLASSEMENT_RACINE = {
     'activeAreaId': VOLATILE,
     'scene': VOLATILE,
+    'plafondsNumerotation': VOLATILE,  # suite ACAL1720 : tenue de compte des numéros
     'zones': IMPRIMEE,
     'result': IMPRIMEE,
     'scenario': IMPRIMEE,

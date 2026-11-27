@@ -13,7 +13,7 @@ import { exempleContrat } from '../../test/fixtures/contractSamples'
    objet tapé à la main. */
 
 vi.mock('../../api/calepinageApi', () => ({
-  default: { calepinages: { genererDevis: vi.fn(), syncDevis: vi.fn(), apercuDevis: vi.fn() } },
+  default: { calepinages: { genererDevis: vi.fn(), syncDevis: vi.fn(), apercuDevis: vi.fn(), apercuResync: vi.fn() } },
 }))
 vi.mock('../../api/ventesApi', () => ({
   default: { reviserDevis: vi.fn() },
@@ -26,7 +26,10 @@ vi.mock('react-router-dom', async (importOriginal) => {
 
 import calepinageApi from '../../api/calepinageApi'
 import ventesApi from '../../api/ventesApi'
-import BoutonDevis from './BoutonDevis'
+import BoutonDevis, {
+  MESSAGE_APERCU_FERME, MESSAGE_APERCU_RELU, MESSAGE_BROUILLON_MIS_A_JOUR, MESSAGE_RIEN_A_CHANGER,
+  MESSAGE_VERIFICATION_A_LA_CONFIRMATION,
+} from './BoutonDevis'
 
 const DETAIL = exempleContrat('calepinage', 'calepinage_detail')
 const DETAIL_VIDE = exempleContrat('calepinage', 'calepinage_detail',
@@ -47,7 +50,20 @@ function rendre(props = {}) {
 const SURFACES_SANS_SELECTION = DETAIL.surfaces_chiffrables.map((s) => ({ ...s, chiffree: null }))
 const DETAIL_SANS_SELECTION = { ...DETAIL, surfaces_chiffrables: SURFACES_SANS_SELECTION }
 
-beforeEach(() => { vi.clearAllMocks() })
+/* ACAL1320 (D-ACAL-73) — « Resynchroniser le devis » lit d'abord l'aperçu servi (contrat
+   `calepinage_apercu_resync.json`) puis attend la confirmation ; par défaut, l'exemple committé (un devis
+   envoyé qui change). */
+const APERCU_RESYNC = exempleContrat('calepinage', 'calepinage_apercu_resync')
+
+async function resynchroniserEtConfirmer() {
+  await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+  await userEvent.click(await screen.findByTestId('cal-devis-resync-confirmer'))
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  calepinageApi.calepinages.apercuResync.mockResolvedValue({ data: APERCU_RESYNC })
+})
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 /* ACAL2002 — un seul bouton doré : « Générer le devis » n'est le bouton d'étape v2 que là où il EST l'action de l'étape
@@ -196,7 +212,7 @@ describe('BoutonDevis (CAL38)', () => {
 
     rendre()
     // L'état SERVEUR décide du geste : un devis lié ⇒ « Resynchroniser ».
-    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+    await resynchroniserEtConfirmer()
 
     const conflit = await screen.findByTestId('cal-devis-conflit')
     expect(conflit).toHaveTextContent(DETAIL_409)
@@ -217,7 +233,7 @@ describe('BoutonDevis (CAL38)', () => {
     })
 
     rendre()
-    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+    await resynchroniserEtConfirmer()
 
     expect(await screen.findByTestId('cal-devis-conflit'))
       .toHaveTextContent('Ce devis est clos.')
@@ -312,7 +328,7 @@ describe('BoutonDevis — retour du serveur (ACAL95)', () => {
     })
 
     rendre({ onRecharger, onRelire })
-    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+    await resynchroniserEtConfirmer()
 
     const bloc = await screen.findByTestId('cal-devis-avertissements')
     expect(bloc).toHaveTextContent(SYNC.exemple.avertissements[0])
@@ -353,7 +369,7 @@ describe('BoutonDevis — retour du serveur (ACAL95)', () => {
     calepinageApi.calepinages.syncDevis.mockResolvedValue({ data: SYNC.exemple_inchange })
 
     rendre({ onRecharger })
-    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+    await resynchroniserEtConfirmer()
 
     expect(await screen.findByTestId('cal-devis-avertissements'))
       .toHaveTextContent('Aucun changement')
@@ -431,7 +447,7 @@ describe('BoutonDevis — enregistrer avant le geste (ACAL94)', () => {
     const onRecharger = vi.fn(async () => { ordre.push('recharger') })
 
     rendre({ enregistrerAvant, onRecharger })
-    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+    await resynchroniserEtConfirmer()
 
     await waitFor(() => expect(onRecharger).toHaveBeenCalledTimes(1))
     expect(ordre).toEqual(['enregistrer', 'sync-devis', 'recharger'])
@@ -464,6 +480,7 @@ describe('BoutonDevis — enregistrer avant le geste (ACAL94)', () => {
     expect(await screen.findByTestId('cal-devis-refus'))
       .toHaveTextContent('n’a pas pu être enregistrée')
     expect(enregistrerAvant).toHaveBeenCalledTimes(1)
+    expect(calepinageApi.calepinages.apercuResync).not.toHaveBeenCalled()
     expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
     expect(onRecharger).not.toHaveBeenCalled()
   })
@@ -492,7 +509,8 @@ describe('BoutonDevis — enregistrer avant le geste (ACAL94)', () => {
   })
 
   it('Réviser sur accepté : avertit sans refuser', async () => {
-    calepinageApi.calepinages.syncDevis.mockRejectedValue({
+    // ACAL1320 — un devis accepté : le 409 révisable arrive dès l'aperçu (aucune carte à confirmer).
+    calepinageApi.calepinages.apercuResync.mockRejectedValue({
       response: {
         status: 409,
         data: { detail: 'Le devis lié est accepté : utilisez « Réviser ».', revision_possible: true },
@@ -784,6 +802,7 @@ describe('BoutonDevis — recette R2 (pose au-delà de la cible, devis existant,
     expect(refus).toHaveTextContent(
       `La conception est enregistrée, mais le devis lié ${DETAIL.devis.reference} n’a pas été modifié : ${MOTIF}`)
     expect(refus).not.toHaveTextContent('n’a pas pu être enregistrée')
+    expect(calepinageApi.calepinages.apercuResync).not.toHaveBeenCalled()
     expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
   })
 })
@@ -825,9 +844,12 @@ describe('ACAL1414 — la réouverture relit les surfaces que le devis lié chif
   it('« Resynchroniser le devis » envoie la même sélection', async () => {
     calepinageApi.calepinages.syncDevis.mockResolvedValue({ data: { inchange: true, devis: DETAIL.devis.id } })
     rendre()
-    await userEvent.click(screen.getByTestId('cal-resynchroniser-devis'))
+    await resynchroniserEtConfirmer()
     await waitFor(() => expect(calepinageApi.calepinages.syncDevis).toHaveBeenCalled())
     expect(calepinageApi.calepinages.syncDevis.mock.calls[0][1].surfaces_chiffrees).toEqual([sol.cle])
+    // ACAL1320 — l'aperçu lu avant porte la MÊME sélection.
+    expect(calepinageApi.calepinages.apercuResync).toHaveBeenCalledWith(DETAIL.id,
+      { params: { surfaces: sol.cle }, suppressErrorToast: true })
   })
 
   it('le serveur change la sélection : l’écran la relit', () => {
@@ -839,6 +861,110 @@ describe('ACAL1414 — la réouverture relit les surfaces que le devis lié chif
       </MemoryRouter>,
     )
     expect(screen.getByRole('checkbox', { name: new RegExp(toit.libelle) })).not.toBeChecked()
+  })
+})
+
+/* ACAL1320 (D-ACAL-73 = corriger_dire) — « Resynchroniser le devis » DIT ce qu'il va changer AVANT d'agir ;
+   pour un devis envoyé, que le devis reçu par le client sera corrigé ; rien n'est écrit avant la confirmation. */
+describe('ACAL1320 — l’aperçu avant « Resynchroniser le devis »', () => {
+  const INCHANGE = exempleContrat('calepinage', 'calepinage_apercu_resync', 'exemple_inchange')
+  const CAVIARDE = exempleContrat('calepinage', 'calepinage_apercu_resync', 'exemple_sans_lecture_devis')
+
+  it('devis envoyé : la correction est dite, les lignes et totaux servis ; sync-devis seulement après « Corriger »', async () => {
+    const onRecharger = vi.fn()
+    calepinageApi.calepinages.syncDevis.mockResolvedValue({ data: { inchange: false, avertissements: [] } })
+    rendre({ onRecharger })
+    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+
+    const carte = await screen.findByTestId('cal-devis-resync-apercu')
+    expect(screen.getByTestId('cal-devis-resync-statut')).toHaveTextContent(
+      `Devis ${APERCU_RESYNC.reference} — Ce devis a déjà été envoyé au client : il sera corrigé sur place. Sa page `
+      + 'et son PDF montreront la version corrigée, et la correction sera notée sur le devis.')
+    const onduleur = APERCU_RESYNC.changements[1]
+    expect(carte).toHaveTextContent(`${onduleur.designation_avant} → ${onduleur.designation_apres}`)
+    expect(carte).toHaveTextContent('Total TTC :')
+    expect(carte).toHaveTextContent(APERCU_RESYNC.avertissements[0])
+    expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
+
+    await userEvent.click(within(carte).getByTestId('cal-devis-resync-confirmer'))
+    await waitFor(() => expect(calepinageApi.calepinages.syncDevis).toHaveBeenCalledTimes(1))
+    // Revue du 26/11 — SEULE la carte confirmée envoie `apercu_confirme` (contrat `corps_confirmation`).
+    expect(calepinageApi.calepinages.syncDevis).toHaveBeenCalledWith(DETAIL.id,
+      { surfaces_chiffrees: [DETAIL.surfaces_chiffrables.find((s) => s.chiffree).cle],
+        ...exempleContrat('calepinage', 'calepinage_apercu_resync', 'corps_confirmation') }, SANS_TOAST)
+    expect(screen.queryByTestId('cal-devis-resync-apercu')).toBeNull()
+  })
+
+  it('revue — la carte dit que la vérification électrique se fait à la confirmation', async () => {
+    rendre()
+    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+    expect(await screen.findByTestId('cal-devis-resync-apercu')).toHaveTextContent(MESSAGE_VERIFICATION_A_LA_CONFIRMATION)
+  })
+
+  it('revue — 409 apercu_perime à la confirmation : rien d’écrit, l’aperçu est relu et le dit', async () => {
+    const PERIME = exempleContrat('calepinage', 'calepinage_apercu_resync', 'reponse_409_apercu_perime')
+    calepinageApi.calepinages.syncDevis.mockRejectedValueOnce({ response: { status: 409, data: PERIME } })
+    rendre()
+    await resynchroniserEtConfirmer()
+    expect(await screen.findByTestId('cal-devis-resync-avis')).toHaveTextContent(MESSAGE_APERCU_RELU)
+    expect(calepinageApi.calepinages.apercuResync).toHaveBeenCalledTimes(2)
+    expect(calepinageApi.calepinages.syncDevis).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('cal-devis-resync-apercu')).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-devis-conflit')).toBeNull()
+  })
+
+  it('revue — une retouche de la scène ferme la carte : rien n’est envoyé, l’écran dit de relancer', async () => {
+    let retouchee = false
+    rendre({ enregistrerAvant: vi.fn(async () => true), aDesRetouches: () => retouchee })
+    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+    await screen.findByTestId('cal-devis-resync-apercu')
+    retouchee = true
+    expect(await screen.findByTestId('cal-devis-resync-ferme')).toHaveTextContent(MESSAGE_APERCU_FERME)
+    expect(screen.queryByTestId('cal-devis-resync-apercu')).toBeNull()
+    expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
+  })
+
+  it('« Annuler » : la carte se ferme, rien n’est envoyé', async () => {
+    rendre()
+    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+    await userEvent.click(await screen.findByTestId('cal-devis-resync-annuler'))
+    expect(screen.queryByTestId('cal-devis-resync-apercu')).toBeNull()
+    expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
+  })
+
+  it('rien à changer : la phrase est dite, aucune confirmation demandée, rien n’est envoyé', async () => {
+    calepinageApi.calepinages.apercuResync.mockResolvedValue({ data: INCHANGE })
+    rendre()
+    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+    expect(await screen.findByTestId('cal-devis-avertissements')).toHaveTextContent(MESSAGE_RIEN_A_CHANGER)
+    expect(screen.queryByTestId('cal-devis-resync-confirmer')).toBeNull()
+    expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
+  })
+
+  it('devis accepté : le 409 du serveur (révisable) dès l’aperçu, aucune confirmation, aucun sync-devis', async () => {
+    calepinageApi.calepinages.apercuResync.mockRejectedValue({
+      response: { status: 409, data: { detail: 'Devis accepté : révisez-le.', revision_possible: true } },
+    })
+    rendre()
+    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+    expect(await screen.findByTestId('cal-devis-conflit')).toHaveTextContent('Devis accepté : révisez-le.')
+    expect(screen.getByTestId('cal-devis-reviser')).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-devis-resync-apercu')).toBeNull()
+    expect(calepinageApi.calepinages.syncDevis).not.toHaveBeenCalled()
+  })
+
+  it('brouillon : « mis à jour » ; sans lecture des devis (montants null) : aucun montant affiché', async () => {
+    calepinageApi.calepinages.apercuResync.mockResolvedValue({ data: { ...CAVIARDE, statut: 'brouillon',
+      corrige_apres_envoi: false } })
+    rendre()
+    await userEvent.click(await screen.findByTestId('cal-resynchroniser-devis'))
+    const carte = await screen.findByTestId('cal-devis-resync-apercu')
+    expect(screen.getByTestId('cal-devis-resync-statut')).toHaveTextContent(MESSAGE_BROUILLON_MIS_A_JOUR)
+    expect(screen.getByTestId('cal-devis-resync-statut')).not.toHaveTextContent('Devis DEV')
+    expect(carte).toHaveTextContent(`${CAVIARDE.changements[0].designation_apres} : quantité 3 → 2`)
+    expect(carte).not.toHaveTextContent('MAD')
+    expect(carte).not.toHaveTextContent('Total TTC')
+    expect(within(carte).getByTestId('cal-devis-resync-confirmer')).toHaveTextContent('Confirmer et resynchroniser')
   })
 })
 

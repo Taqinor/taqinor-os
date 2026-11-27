@@ -122,15 +122,61 @@ describe('AMOT68 — note de calcul FDA demandable', () => {
     expect(recus[2].corps).not.toHaveProperty('include_note_calcul')
   })
 
-  it('Devis final : l’indice dépend du marché', () => {
+  it('Devis final : l’indice dépend du marché', async () => {
     const { unmount } = dialogue({ targetIsAgricole: false, targetIsCi: true, targetMode: 'industriel' })
     expect(screen.getByText('(visite faite — retire la mention « Devis préliminaire »)')).toBeInTheDocument()
     unmount()
     const r2 = dialogue({ targetIsAgricole: true, targetMode: 'agricole' })
     expect(screen.getByText('(visite faite — retire « à confirmer par la visite »)')).toBeInTheDocument()
     r2.unmount()
+    profilServi.courant = { nom: 'TAQINOR Démo', ice: '001', rib: '007 780 0001234567890123 45', banque: 'Banque X' }
     dialogue({ targetIsAgricole: false, targetMode: 'residentiel' })
-    expect(screen.getByText('(ajoute modalités de paiement + RIB)')).toBeInTheDocument()
+    expect(await screen.findByText('(ajoute modalités de paiement + RIB)')).toBeInTheDocument()
+  })
+
+  // T4-U1-009 (rejeu du 26/11) — la fenêtre tout juste ouverte, ou une lecture du profil en échec : rien ne
+  // promet le RIB (avant, l'intitulé disait « + RIB » tant que la réponse n'était pas arrivée).
+  it('T4-U1-009 — profil pas encore lu ou illisible : l’intitulé ne promet pas le RIB', async () => {
+    profilServi.courant = { nom: 'TAQINOR Démo', ice: '001', rib: '007 780 0001234567890123 45', banque: 'Banque X' }
+    const r = dialogue({ targetIsAgricole: false, targetMode: 'residentiel' })
+    expect(screen.getByText('(ajoute modalités de paiement)')).toBeInTheDocument()
+    expect(await screen.findByText('(ajoute modalités de paiement + RIB)')).toBeInTheDocument()
+    r.unmount()
+    profilServi.courant = null // la route rend une liste : pas un profil
+    dialogue({ targetIsAgricole: false, targetMode: 'residentiel' })
+    await new Promise((fin) => { setTimeout(fin, 0) }) // la réponse est arrivée
+    expect(screen.queryByText('(ajoute modalités de paiement + RIB)')).toBeNull()
+    expect(screen.getByText('(ajoute modalités de paiement)')).toBeInTheDocument()
+  })
+
+  // T4-U1-009 (revue) — la une page n'imprime ni échéancier ni RIB (`legacy_onepage` : « Devis final » n'y retire
+  // que « Devis préliminaire » du C&I) ; un lot ne promet que ce qui vaut pour chacun de ses devis.
+  it('T4-U1-009 — une page et lot : l’indice ne promet jamais un RIB ou un échéancier non imprimé', async () => {
+    const UNE_PAGE = '(le format une page n’imprime ni échéancier ni RIB)'
+    profilServi.courant = { nom: 'TAQINOR Démo', ice: '001', rib: '007 780 0001234567890123 45', banque: 'Banque X' }
+    for (const props of [{ targetIsAgricole: false, targetMode: 'residentiel' },
+      { targetIsAgricole: true, targetMode: 'agricole' }]) {
+      const r = dialogue({ ...props, pdfMode: 'onepage' })
+      await new Promise((fin) => { setTimeout(fin, 0) }) // le profil (avec RIB) est lu
+      expect(screen.getByText(UNE_PAGE)).toBeInTheDocument()
+      expect(screen.queryByText(/\+ RIB|modalités de paiement/)).toBeNull()
+      r.unmount()
+    }
+    const ci = dialogue({ targetIsAgricole: false, targetIsCi: true, targetMode: 'commercial', pdfMode: 'onepage' })
+    expect(screen.getByText('(visite faite — retire la mention « Devis préliminaire »)')).toBeInTheDocument()
+    ci.unmount()
+    const lot = { pdfTarget: null, batchPdf: true, selectedIds: [1, 2], targetIsAgricole: false, targetMode: 'residentiel' }
+    const r1 = dialogue(lot)
+    expect(await screen.findByText('(selon le devis : modalités de paiement, RIB s’il est au profil société)'))
+      .toBeInTheDocument()
+    expect(screen.queryByText(/\+ RIB/)).toBeNull()
+    r1.unmount()
+    profilServi.courant = { nom: 'TAQINOR Démo', ice: '001', rib: '', banque: '' }
+    const r2 = dialogue(lot)
+    expect(await screen.findByText('(selon le devis : modalités de paiement)')).toBeInTheDocument()
+    r2.unmount()
+    dialogue({ ...lot, pdfMode: 'onepage' })
+    expect(screen.getByText(UNE_PAGE)).toBeInTheDocument()
   })
 
   it('T4-U3-009 — seules les options qui agissent sur le document du marché sont proposées', () => {

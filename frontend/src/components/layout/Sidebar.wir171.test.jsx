@@ -100,3 +100,67 @@ describe('WIR171 — le seul module MVP solaire à repli légacy suit la sémant
     expect(navHrefs(container)).not.toContain('/journal')
   })
 })
+
+/* T4-X8-016 (lot 8) — le menu CRM d'un rôle qui ne lit pas le CRM ne montre plus que les écrans qui
+   s'ouvrent sans `crm_voir`. Permissions = extraits RÉELS du registre
+   (`backend/django_core/apps/roles/permissions_registre.py`) : la liste complète pour le Technicien,
+   les codes `crm_*` + quelques voisins pour les trois autres ; palier de menu = `authentication/role_tiers.py`. */
+const TECHNICIEN = [
+  'installation_voir', 'installation_gerer', 'intervention_gerer', 'equipement_voir', 'sav_voir', 'sav_gerer',
+  'sav_repondre_client_externe', 'stock_voir', 'stock_mouvement', 'parametres_voir', 'reporting_voir',
+  'client_pii_voir', 'qhse_voir', 'qhse_gerer', 'projet_voir', 'projet_gerer', 'contrat_voir', 'contrat_gerer',
+  'litige_voir', 'litige_gerer', 'kb_voir', 'kb_gerer', 'ged_voir', 'ged_gerer', 'adsengine_view',
+  'adsengine_manage', 'btp_voir', 'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role', 'records_scope_equipe',
+  'visites_voir', 'visites_modifier', 'calepinage_voir', 'calepinage_releve',
+]
+const COMMERCIAL_REEL = ['crm_voir', 'crm_creer', 'crm_modifier', 'crm_export', 'ventes_voir', 'prix_vente_voir']
+const COMMERCIAL_RESP = [...COMMERCIAL_REEL, 'crm_reassign', 'crm_supprimer', 'users_voir']
+const ADMINISTRATEUR = [...COMMERCIAL_RESP, 'roles_gerer', 'users_gerer']
+
+// Le menu CRM tel qu'il était AVANT ce lot : chaque entrée jugée sur son seul palier.
+const crmConfig = moduleConfigs.find((c) => c.key === 'crm')
+const CRM_HREFS = new Set(crmConfig.nav.items.map((i) => i.to))
+const menuCrm = (container) => navHrefs(container).filter((h) => CRM_HREFS.has(h))
+const parPalier = (tier) => crmConfig.nav.items.filter((i) => i.roles.includes(tier)).map((i) => i.to)
+
+describe('T4-X8-016 — le menu CRM suit la règle de ses routes', () => {
+  it.each([
+    ['Commercial', 'normal', COMMERCIAL_REEL],
+    ['Commercial responsable', 'responsable', COMMERCIAL_RESP],
+    ['Administrateur', 'admin', ADMINISTRATEUR],
+  ])('%s : menu CRM inchangé (toutes les entrées de son palier)', (_nom, role, permissions) => {
+    const { container } = renderSidebar({ path: '/calendrier', role, permissions })
+    expect(menuCrm(container)).toEqual(parPalier(role))
+    expect(menuCrm(container)).toContain('/crm/leads')
+  })
+
+  it('Technicien : plus aucune entrée dont l’écran exige crm_voir ou un code du module crm', () => {
+    const { container } = renderSidebar({ path: '/calendrier', role: 'normal', permissions: TECHNICIEN })
+    expect(menuCrm(container)).toEqual([
+      '/calendrier', '/crm', '/crm/forecast', '/carte', '/crm/visiteurs', '/crm/attribution', '/crm/cockpit-equipe',
+    ])
+  })
+
+  it('rôle PERSONNALISÉ « crm_creer » sans crm_voir : Défis, Parrainage et Profils site, jamais Leads', () => {
+    const { container } = renderSidebar({ path: '/calendrier', role: 'normal', permissions: ['crm_creer'] })
+    const menu = menuCrm(container)
+    for (const lu of ['/crm/defis', '/crm/parrainage', '/crm/profils-site']) expect(menu).toContain(lu)
+    for (const refuse of ['/crm/leads', '/crm/cockpit', '/crm/concurrents-perte', '/crm/relances']) {
+      expect(menu).not.toContain(refuse)
+    }
+  })
+
+  it('compte LÉGACY de palier normal (aucune permission servie) : menu CRM inchangé', () => {
+    const { container } = renderSidebar({ path: '/calendrier', role: 'normal', permissions: [] })
+    expect(menuCrm(container)).toEqual(parPalier('normal'))
+  })
+
+  it('lanceur : le CRM du Technicien s’ouvre sur une page qu’il peut lire, celui du Commercial sur les Leads', () => {
+    const tech = buildInstalledApps(moduleConfigs, { role: 'normal', permissions: TECHNICIEN })
+    expect(tech.find((a) => a.key === 'crm')?.to).toBe('/calendrier')
+    const commercial = buildInstalledApps(moduleConfigs, { role: 'normal', permissions: COMMERCIAL_REEL })
+    expect(commercial.find((a) => a.key === 'crm')?.to).toBe('/crm/leads')
+    const personnalise = buildInstalledApps(moduleConfigs, { role: 'normal', permissions: ['crm_creer'] })
+    expect(personnalise.find((a) => a.key === 'crm')?.to).toBe('/calendrier')
+  })
+})

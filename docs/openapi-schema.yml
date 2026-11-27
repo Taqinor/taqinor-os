@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5328, operations: 8182, components: 4110}
+counts: {paths: 5336, operations: 8190, components: 4115}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -560,6 +560,7 @@ operations:
 - patch /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_partial_update
 - get /api/django/calepinage/calepinages/{id}/apercu-devis/ -> django_calepinage_calepinages_apercu_devis_retrieve
 - get /api/django/calepinage/calepinages/{id}/apercu-document/ -> django_calepinage_calepinages_apercu_document_retrieve
+- get /api/django/calepinage/calepinages/{id}/apercu-resync/ -> django_calepinage_calepinages_apercu_resync_retrieve
 - get /api/django/calepinage/calepinages/{id}/approbation/ -> django_calepinage_calepinages_approbation_retrieve
 - post /api/django/calepinage/calepinages/{id}/approbation/ -> django_calepinage_calepinages_approbation_create
 - post /api/django/calepinage/calepinages/{id}/archiver/ -> django_calepinage_calepinages_archiver_create
@@ -3380,6 +3381,7 @@ operations:
 - get /api/django/stock/paiements-fournisseur/ras-tva/export/ -> django_stock_paiements_fournisseur_ras_tva_export_retrieve
 - delete /api/django/stock/paiements-fournisseur/{id}/ -> django_stock_paiements_fournisseur_destroy
 - get /api/django/stock/paiements-fournisseur/{id}/ -> django_stock_paiements_fournisseur_retrieve
+- get /api/django/stock/panneau-par-defaut/ -> django_stock_panneau_par_defaut_retrieve
 - get /api/django/stock/parametres-negoce/ -> django_stock_parametres_negoce_retrieve
 - patch /api/django/stock/parametres-negoce/ -> django_stock_parametres_negoce_partial_update
 - get /api/django/stock/plans-chargement/ -> django_stock_plans_chargement_list
@@ -3454,6 +3456,7 @@ operations:
 - get /api/django/stock/produits/{id}/comparer-fournisseurs/ -> django_stock_produits_comparer_fournisseurs_retrieve
 - get /api/django/stock/produits/{id}/comparer-tco/ -> django_stock_produits_comparer_tco_retrieve
 - get /api/django/stock/produits/{id}/compatibilites/ -> django_stock_produits_compatibilites_retrieve
+- post /api/django/stock/produits/{id}/definir-panneau-par-defaut/ -> django_stock_produits_definir_panneau_par_defaut_create
 - post /api/django/stock/produits/{id}/dupliquer/ -> django_stock_produits_dupliquer_create
 - get /api/django/stock/produits/{id}/emplacements/ -> django_stock_produits_emplacements_retrieve
 - delete /api/django/stock/produits/{id}/force-delete/ -> django_stock_produits_force_delete_destroy
@@ -3464,6 +3467,7 @@ operations:
 - get /api/django/stock/produits/{id}/previsionnel/ -> django_stock_produits_previsionnel_retrieve
 - get /api/django/stock/produits/{id}/prix-fournisseurs/ -> django_stock_produits_prix_fournisseurs_list
 - post /api/django/stock/produits/{id}/rebuter/ -> django_stock_produits_rebuter_create
+- post /api/django/stock/produits/{id}/retirer-panneau-par-defaut/ -> django_stock_produits_retirer_panneau_par_defaut_create
 - patch /api/django/stock/produits/{id}/unarchive/ -> django_stock_produits_unarchive_partial_update
 - get /api/django/stock/produits/{id}/utilise-dans/ -> django_stock_produits_utilise_dans_retrieve
 - get /api/django/stock/profils-saisonniers/ -> django_stock_profils_saisonniers_list
@@ -4692,6 +4696,7 @@ operations:
 - patch /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_partial_update
 - get /api/v1/calepinage/calepinages/{id}/apercu-devis/ -> v1_calepinage_calepinages_apercu_devis_retrieve
 - get /api/v1/calepinage/calepinages/{id}/apercu-document/ -> v1_calepinage_calepinages_apercu_document_retrieve
+- get /api/v1/calepinage/calepinages/{id}/apercu-resync/ -> v1_calepinage_calepinages_apercu_resync_retrieve
 - get /api/v1/calepinage/calepinages/{id}/approbation/ -> v1_calepinage_calepinages_approbation_retrieve
 - post /api/v1/calepinage/calepinages/{id}/approbation/ -> v1_calepinage_calepinages_approbation_create
 - post /api/v1/calepinage/calepinages/{id}/archiver/ -> v1_calepinage_calepinages_archiver_create
@@ -7478,6 +7483,7 @@ operations:
 - get /api/v1/stock/paiements-fournisseur/ras-tva/export/ -> v1_stock_paiements_fournisseur_ras_tva_export_retrieve
 - delete /api/v1/stock/paiements-fournisseur/{id}/ -> v1_stock_paiements_fournisseur_destroy
 - get /api/v1/stock/paiements-fournisseur/{id}/ -> v1_stock_paiements_fournisseur_retrieve
+- get /api/v1/stock/panneau-par-defaut/ -> v1_stock_panneau_par_defaut_retrieve
 - get /api/v1/stock/parametres-negoce/ -> v1_stock_parametres_negoce_retrieve
 - patch /api/v1/stock/parametres-negoce/ -> v1_stock_parametres_negoce_partial_update
 - get /api/v1/stock/plans-chargement/ -> v1_stock_plans_chargement_list
@@ -7552,6 +7558,7 @@ operations:
 - get /api/v1/stock/produits/{id}/comparer-fournisseurs/ -> v1_stock_produits_comparer_fournisseurs_retrieve
 - get /api/v1/stock/produits/{id}/comparer-tco/ -> v1_stock_produits_comparer_tco_retrieve
 - get /api/v1/stock/produits/{id}/compatibilites/ -> v1_stock_produits_compatibilites_retrieve
+- post /api/v1/stock/produits/{id}/definir-panneau-par-defaut/ -> v1_stock_produits_definir_panneau_par_defaut_create
 - post /api/v1/stock/produits/{id}/dupliquer/ -> v1_stock_produits_dupliquer_create
 - get /api/v1/stock/produits/{id}/emplacements/ -> v1_stock_produits_emplacements_retrieve
 - delete /api/v1/stock/produits/{id}/force-delete/ -> v1_stock_produits_force_delete_destroy
@@ -7562,6 +7569,7 @@ operations:
 - get /api/v1/stock/produits/{id}/previsionnel/ -> v1_stock_produits_previsionnel_retrieve
 - get /api/v1/stock/produits/{id}/prix-fournisseurs/ -> v1_stock_produits_prix_fournisseurs_list
 - post /api/v1/stock/produits/{id}/rebuter/ -> v1_stock_produits_rebuter_create
+- post /api/v1/stock/produits/{id}/retirer-panneau-par-defaut/ -> v1_stock_produits_retirer_panneau_par_defaut_create
 - patch /api/v1/stock/produits/{id}/unarchive/ -> v1_stock_produits_unarchive_partial_update
 - get /api/v1/stock/produits/{id}/utilise-dans/ -> v1_stock_produits_utilise_dans_retrieve
 - get /api/v1/stock/profils-saisonniers/ -> v1_stock_profils_saisonniers_list
@@ -8321,6 +8329,7 @@ query_params:
   get /api/django/calepinage/calepinages/modeles/: ordering
   get /api/django/calepinage/calepinages/{id}/apercu-devis/: surfaces
   get /api/django/calepinage/calepinages/{id}/apercu-document/: code langue
+  get /api/django/calepinage/calepinages/{id}/apercu-resync/: devis surfaces
   get /api/django/calepinage/calepinages/{id}/bom-fixation/: systeme
   get /api/django/calepinage/calepinages/{id}/chatter/historique/: ordering
   get /api/django/calepinage/calepinages/{id}/comparatif.xlsx/: ids
@@ -9173,6 +9182,7 @@ query_params:
   get /api/v1/calepinage/calepinages/modeles/: ordering
   get /api/v1/calepinage/calepinages/{id}/apercu-devis/: surfaces
   get /api/v1/calepinage/calepinages/{id}/apercu-document/: code langue
+  get /api/v1/calepinage/calepinages/{id}/apercu-resync/: devis surfaces
   get /api/v1/calepinage/calepinages/{id}/bom-fixation/: systeme
   get /api/v1/calepinage/calepinages/{id}/chatter/historique/: ordering
   get /api/v1/calepinage/calepinages/{id}/comparatif.xlsx/: ids
@@ -10317,6 +10327,7 @@ components:
 - CalendrierReglementaire
 - CalendrierResume
 - CalepinageApercuDevis
+- CalepinageApercuResync
 - CalepinageAppliquerCote
 - CalepinageAppliquerCoteCorpsRequest
 - CalepinageApprobation
@@ -10912,6 +10923,7 @@ components:
 - DevisBoqLigneCreee
 - DevisBoqManque
 - DevisBoqRemplacee
+- DevisCompositionPanneauParDefaut
 - DevisCompositionResponse
 - DevisConceptionElectriqueRequestRequest
 - DevisConceptionElectriqueResponse
@@ -13356,6 +13368,9 @@ components:
 - StockHistoriqueCasier
 - StockNiveauxAssistant
 - StockNiveauxAssistantErreur
+- StockPanneauParDefaut
+- StockPanneauParDefautErreur
+- StockPanneauParDefautSourceEnum
 - StockPlanChargementAjout
 - StockPlanChargementCapacite
 - StockPortailCreneauReservationRequest

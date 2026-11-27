@@ -1390,22 +1390,20 @@ def _nommer_module_pose(conception, materiel, document):
     """ACAL1910 (moitié planche) — la planche unifilaire et le rapport nomment
     le module POSÉ (celui qui couvre le plus de modules), plus le module par
     défaut de l'entrée. Même source que l'étape thermique (ACAL1607,
-    ``simulation._fiche_du_module_pose``) ; seule la désignation du champ change,
-    les chaînes et leurs messages restent calculés tels quels."""
+    ``simulation._fiche_du_module_pose``) ; R7-N2 : sa PUISSANCE avec son nom
+    (``modules_pans._module_pose_de_la_planche``). Les chaînes, leurs messages et
+    les empreintes (lues sur ``materiel``, jamais sur ce retour) restent tels quels."""
     from dataclasses import replace
 
-    from .simulation import _fiche_du_module_pose
+    from .modules_pans import _module_pose_de_la_planche
 
     entree = getattr(conception, 'entree', None)
-    fiches = (materiel or {}).get('fiches_modules') or {}
-    if entree is None or getattr(entree, 'module', None) is None or not fiches:
+    if entree is None or getattr(entree, 'module', None) is None:
         return conception
-    pose = _fiche_du_module_pose(materiel, document)
-    nom = next((str(f.get('designation') or '') for f in fiches.values()
-                if isinstance(f, dict) and dict(f.get('specs') or {}) == dict(pose)), '')
-    if not nom or nom == entree.module.designation:
+    champs = _module_pose_de_la_planche(conception, materiel, document)
+    if not champs:
         return conception
-    return replace(conception, entree=replace(entree, module=replace(entree.module, designation=nom)))
+    return replace(conception, entree=replace(entree, module=replace(entree.module, **champs)))
 
 
 def resultat_electrique_complet(conception, *, norme=None, noyau=None,
@@ -1751,13 +1749,17 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
 
     # CAL130/CAL131 — la norme applicable commande ce qui peut être publié :
     # sans elle, sections et chutes de tension sont OMISES (règle D5).
-    from .cables import cables_du_calepinage
+    from .cables import cables_du_calepinage, jour_du_calcul_servi
     from .norme import norme_applicable
 
     norme = norme_applicable(reglages)
     cables = cables_du_calepinage(
         conception, cheminement=donnees.get('cheminement'), norme=norme,
         layout=document,
+        # Liaison DC tracée — W1 suit la DATE de la simulation servie : ce qui
+        # est montré est ce qu'elle a calculé (aujourd'hui sans simulation fraîche).
+        jour=jour_du_calcul_servi(porteur_simulation if porteur_simulation is not None
+                                  else calepinage, perimee, calcule_le),
         # CALX209/CALX210 (crochet de phase 2) — en régime micro-onduleurs,
         # les ``W2.1 … W2.N`` REMPLACENT la liaison AC unique dans
         # ``resultat['cables']`` : jusqu'ici elles n'existaient que dans le

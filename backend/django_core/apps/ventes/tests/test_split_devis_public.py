@@ -198,6 +198,7 @@ _CLES_POSTERIEURES_AU_GOLDEN = frozenset({
     'economies_cumul_25_ans', 'empreinte_contenu', 'offre_expiree',
     'date_expiration', 'pdf_disponible', 'emetteur', 'gain_net_25_ans',
     'visionneuse_soleil',
+    'rib_sous_echeancier',  # T4-U1-009 — clé de rendu du « Devis final » C&I / agricole (nouveaux rendus)
 })
 
 

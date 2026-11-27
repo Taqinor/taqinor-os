@@ -574,8 +574,11 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
 
         kwc = _nombre('kwc')
         nb_panneaux = _nombre('nb_panneaux', Decimal('0'))
-        from ..domain.taille import _AUTO_PANEL_WATT
-        panel_watt = _nombre('panel_watt', Decimal(_AUTO_PANEL_WATT))
+        # D-ACAL-169 — sans puissance tapée : celle du panneau par défaut que la
+        # composition accepte (et CE produit), sinon le 710 Wc d'aujourd'hui.
+        from ..domain.panneau_defaut import panneau_auto_composition
+        auto = panneau_auto_composition(company)
+        panel_watt = _nombre('panel_watt', Decimal(str(auto.watt)))
         # APAR49 — défaut = taux STANDARD de la société, jamais 20 codé.
         from ..utils.company_settings import tva_standard
         taux_tva = _nombre('taux_tva', tva_standard(company))
@@ -657,6 +660,7 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
                 dimensionnement_avec=dimensionnement_avec,
                 hors_reseau=hors_reseau,
                 ville=ville,
+                panneau_prefere_id=None if impose else auto.prefere(panel_watt),
                 **impose,
             )
         except AutoDevisError as exc:
@@ -669,9 +673,13 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
             if getattr(exc, 'choix', None) is not None:
                 refus['choix'] = exc.choix
             return Response(refus, status=status.HTTP_409_CONFLICT)
+        # D-ACAL-169 — le motif (désigné mais inutilisable) n'est dit que si la
+        # puissance n'a pas été tapée ; la clé ``panneau_par_defaut`` sert l'écran.
         for alerte in alertes_imposees:
             resultat['avertissements'].append(alerte['message'])
-        return Response(resultat, status=status.HTTP_200_OK)
+        if auto.motif and corps.get('panel_watt') is None and not impose:
+            resultat['avertissements'].append(auto.motif)
+        return Response(dict(resultat, panneau_par_defaut=auto.resume()), status=status.HTTP_200_OK)
 
     @extend_schema(request=D.AutoDevisRequest,
                    responses={201: D.AutoDevisResponse,

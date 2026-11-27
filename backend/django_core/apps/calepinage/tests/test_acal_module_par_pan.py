@@ -176,6 +176,87 @@ class ModuleParPanTest(SimpleTestCase):
                             for a in conception.alertes), conception.alertes)
 
 
+class PlancheDuModulePoseTest(SimpleTestCase):
+    """R7-N2 (module posé) — défaut du 26/11 : la planche NOMMAIT le module posé
+    (ACAL1910) mais imprimait la puissance du défaut (« 7 × 710 Wc » sous 715 W
+    posés). Le module de la planche porte maintenant le nom ET la puissance de la
+    même fiche ; les chaînes, ``bloc_pose`` et ``materiel`` ne bougent pas.
+    Vraies fonctions : ``concevoir_par_pan``, ``_nommer_module_pose``,
+    ``resultat_electrique_complet``, ``document_schema_electrique``,
+    ``rendre_schema_electrique_svg``."""
+
+    MATERIEL = {'module': FICHE_550, 'designations': {'module': 'Module 550'}, 'fiches_modules': FICHES}
+
+    @staticmethod
+    def _svg(conception):
+        from apps.calepinage.services.electrique import resultat_electrique_complet
+        from core.electrique.schema_electrique import (
+            document_schema_electrique, rendre_schema_electrique_svg)
+
+        return rendre_schema_electrique_svg(document_schema_electrique(
+            conception.entree, resultat_electrique_complet(conception)))
+
+    def _planche(self, layout, materiel=None):
+        from apps.calepinage.services.electrique import _nommer_module_pose
+
+        materiel = materiel or self.MATERIEL
+        conception = _concevoir(layout, materiel['fiches_modules'] and FICHES)
+        return conception, _nommer_module_pose(conception, materiel, layout)
+
+    def test_le_defaut_pose_nulle_part_la_planche_dit_le_module_pose(self):
+        layout = _layout()
+        layout['zones'][0]['geometry']['moduleId'] = 'm400'  # tout le toit en 400, défaut 550
+        avant, planche = self._planche(layout)
+        self.assertRegex(self._svg(avant), r'550(,0)? Wc')  # le défaut du 26/11
+        self.assertEqual((planche.entree.module.designation, planche.entree.module.pmax_wc),
+                         ('Module 400', 400.0))
+        svg = self._svg(planche)
+        self.assertRegex(svg, r'400(,0)? Wc')
+        self.assertNotRegex(svg, r'550(,0)? Wc')
+        # Les chaînes et la pose sont celles calculées avant le renommage.
+        self.assertEqual(planche.chaines, avant.chaines)
+        self.assertEqual(bloc_pose(planche)['pans'], bloc_pose(avant)['pans'])
+        self.assertEqual(self.MATERIEL['module'], FICHE_550)
+
+    def test_toit_mixte_nom_et_puissance_du_meme_module_dominant(self):
+        layout = _layout()
+        layout['zones'][1]['geometry']['count'] = 13  # 13 × 400 contre 10 × 550
+        avant, planche = self._planche(layout)
+        self.assertEqual((planche.entree.module.designation, planche.entree.module.pmax_wc),
+                         ('Module 400', 400.0))
+        self.assertEqual(bloc_pose(planche)['pans'], bloc_pose(avant)['pans'])
+        # Égalité (10/10) : le défaut reste, rien n'est renommé.
+        egal, inchange = self._planche(_layout())
+        self.assertIs(inchange, egal)
+
+    def test_fiche_posee_sans_puissance_la_ligne_d_aujourd_hui(self):
+        sans_pmax = {c: v for c, v in FICHE_400.items() if c != 'pmax_wc'}
+        materiel = dict(self.MATERIEL, fiches_modules={2: {'specs': sans_pmax, 'designation': 'Module 400'}})
+        layout = _layout()
+        layout['zones'][1]['geometry']['count'] = 13
+        _avant, planche = self._planche(layout, materiel)
+        self.assertEqual((planche.entree.module.designation, planche.entree.module.pmax_wc),
+                         ('Module 400', 550.0))
+
+    def test_pan_sans_module_garde_la_puissance_du_defaut(self):
+        layout = _layout()
+        layout['zones'][1]['geometry']['count'] = 20  # 20 × 400 contre 10 + 4 au défaut
+        layout['zones'].append({'id': 'C', 'label': 'C', 'facingAzimuthDeg': 180.0,
+                                'pitchDeg': 15.0, 'geometry': {'count': 4}})
+        avant, planche = self._planche(layout)
+        self.assertEqual([pan.label for pan in avant.pans if pan.module is None], ['C'])
+        self.assertEqual((planche.entree.module.designation, planche.entree.module.pmax_wc),
+                         ('Module 400', 550.0))
+        self.assertEqual(bloc_pose(planche)['pans'], bloc_pose(avant)['pans'])
+
+    def test_sans_pan_d_un_autre_produit_rien_ne_change(self):
+        layout = copy.deepcopy(_layout())
+        layout['zones'][1]['geometry']['moduleId'] = 'm550'
+        materiel = dict(self.MATERIEL, fiches_modules={})
+        avant, planche = self._planche(layout, materiel)
+        self.assertIs(planche, avant)
+
+
 class ModuleParPanStockReelTest(BaseApiCalepinage):
     """Fiches RÉELLES du stock, lues par le sélecteur — aucun mock."""
 

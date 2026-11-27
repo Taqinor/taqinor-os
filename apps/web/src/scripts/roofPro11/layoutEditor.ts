@@ -98,7 +98,7 @@ import { DEFAULT_FREE_MARGINS, FREE_STEP_M, freeGeomFrom, freeStateFromCenters, 
 import { cm, peindreSilhouette, silhouetteDuLot, texteDeMesure, violationLabel } from './silhouetteGlisse'; import { direPoseIndisponible } from './structurePose'; // ACAL551, ACAL1530
 import { resnapEnMasse } from './layoutResnap'; // ACAL510 — sorti de ce fichier, ré-exporté ci-dessous
 export { resnapEnMasse, resnapNaif, type CentreASnapper } from './layoutResnap';
-import { motifPanExistant, direEcartPoseRelue, phrasePoseLibreTenue, tenirPoseLibre } from './panExistant'; import { lePlusErp, suiteAuDevis } from './affichageErp'; // ACAL510, ACAL1900, ACAL1951, T4-X8-012
+import { motifPanExistant, direEcartALaPose, phrasePoseLibreTenue, tenirPoseLibre } from './panExistant'; import { lePlusErp, suiteAuDevis, cibleOuABesoin, wattDuPanActif } from './affichageErp'; // ACAL510, ACAL1900, ACAL1951, T4-X8-012
 import { EVT_POSE_RELUE } from './alignementRangees'; // ACAL1521
 import { catalogueAvecModulesDuDocument, estRefus, kwcDuPan, lireModulesDisponibles, resoudreModuleDuPan } from './moduleSelect'; // ACAL1520
 
@@ -1383,7 +1383,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (layoutCountEl) layoutCountEl.textContent = fmt(count);
     if (layoutKwcEl) layoutKwcEl.textContent = `${fmtKwc(kwc)} kWc`;
     if (layoutFreeEl) layoutFreeEl.textContent = fmt(free);
-    const cover = ctx.neededPanels > 0 && !lePlusErp(ctx) ? Math.round((count / ctx.neededPanels) * 100) : 0; // T4-X8-012 — jamais contre le plafond « le plus »
+    const besoinCouv = cibleOuABesoin(ctx, estRefus(moduleDuPan) ? null : moduleDuPan.pmaxWc); const cover = ctx.neededPanels > 0 && !lePlusErp(ctx) ? Math.round((count / besoinCouv) * 100) : 0; // T4-X8-012 — jamais contre le plafond « le plus »
     if (layoutCoverEl) layoutCoverEl.textContent = ctx.neededPanels > 0 && !lePlusErp(ctx) ? `${cover} %` : '—';
     if (layoutMinusEl) layoutMinusEl.disabled = count <= 0;
     // PV30 — en libre, « + » n'est jamais bloqué par un stock de cellules : c'est la
@@ -1776,7 +1776,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     renderCustomLayout();
     renderLayoutPanel();
     if (layoutNoteEl && placed) layoutNoteEl.textContent = `Disposition du dossier rechargée — ${fmt(placed)} panneaux reposés à l'identique.`;
-    if (placed !== ctx.layoutOptimalCount) direEcartPoseRelue(placed, ctx.neededPanels, fmt, true, suiteAuDevis(ctx)); // ACAL1900, ACAL1951 — l'écart est DIT, jamais appliqué (D-ACAL-75) ; égale au gagnant : sa note dit déjà tout
+    if (placed !== ctx.layoutOptimalCount) direEcartALaPose(placed, ctx, wattDuPanActif(ctx), fmt, true, suiteAuDevis(ctx)); // ACAL1900, ACAL1951 — l'écart est DIT, jamais appliqué (D-ACAL-75) ; égale au gagnant : sa note dit déjà tout
     return placed > 0;
   }
 

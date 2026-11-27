@@ -15,7 +15,10 @@ import {
   produitCiACompleter, raisonCiACompleter,
   etatPrixCi, TEXTE_TARIF_PARAMETRES_CI, TEXTE_PRIX_BAREME_CI, ROUTE_PARAMETRES_PRESTATIONS_CI,
 } from '../../features/stock/catalogue'
-import { formatMAD } from '../../lib/format'
+import { formatMAD, formatNumber } from '../../lib/format'
+import {
+  estResumePanneau, panneauDefautInutilisable, LIBELLE_DEFAUT_INUTILISABLE,
+} from '../../features/stock/panneauParDefaut'
 import {
   FICHE_ABSENTE, FICHE_PARTIELLE, FICHE_COMPLETE,
   completudeFiche, TON_FICHE, LABEL_FICHE,
@@ -139,6 +142,29 @@ const validateEntierPositif = (v) => {
   return Number.isInteger(Number(v)) ? null : 'Entier requis'
 }
 
+/** D-ACAL-169 — « Panneau par défaut : <nom> (<Pmax> Wc) », ou « Aucun panneau
+ *  par défaut » et la raison servie (contrat `panneau_par_defaut.json`, lu par
+ *  `usePanneauParDefaut` de l'écran). Aucun prix ; rien sans résumé servi. */
+export function LignePanneauParDefaut({ resume }) {
+  if (!estResumePanneau(resume)) return null
+  if (resume.source === 'designe') {
+    return (
+      <p data-testid="panneau-par-defaut-ligne" className="text-sm text-foreground">
+        Panneau par défaut : <strong>{resume.nom}</strong>
+        {resume.pmax_wc != null && ` (${formatNumber(resume.pmax_wc)} Wc)`}
+      </p>
+    )
+  }
+  // D-ACAL-169 (rejeu) — un produit désigné mais inutilisable n'est pas « aucun » : le motif servi le nomme.
+  const titre = panneauDefautInutilisable(resume) ? LIBELLE_DEFAUT_INUTILISABLE : 'Aucun panneau par défaut'
+  return (
+    <p data-testid="panneau-par-defaut-ligne" className="text-sm text-muted-foreground">
+      <span className="font-medium text-foreground">{titre}</span>
+      {resume.motif && <> — {resume.motif}</>}
+    </p>
+  )
+}
+
 export function CatalogueTable({
   produits,
   loading = false,
@@ -172,6 +198,9 @@ export function CatalogueTable({
   // STKCAT26 — export délégué par l'écran (StockList) au serveur (xlsx) ;
   // sans lui, repli CSV client du moteur (comportement historique inchangé).
   onExport,
+  // D-ACAL-169 — résumé « panneau par défaut » servi par le stock (contrat
+  // panneau_par_defaut.json) ; absent → aucune ligne (rendu d'hier).
+  panneauParDefaut,
 }) {
   // L153 — n'affiche les squelettes que si l'attente se prolonge (anti-clignotement).
   const { showSkeleton } = useDelayedLoading(loading && (produits?.length ?? 0) === 0)
@@ -289,6 +318,9 @@ export function CatalogueTable({
                   ? <span className="font-mono">{p.sku}</span>
                   : <Badge tone="warning">SKU manquant</Badge>}
                 {(p.marque || '').trim() && <span>· {p.marque}</span>}
+                {p.panneau_par_defaut && (panneauDefautInutilisable(panneauParDefaut)
+                  ? <Badge tone="warning" title={panneauParDefaut.motif}>{LIBELLE_DEFAUT_INUTILISABLE}</Badge>
+                  : <Badge tone="success">Panneau par défaut</Badge>)}
                 {manquantesOnduleur.length > 0 && (
                   <Badge
                     tone="warning"
@@ -508,7 +540,7 @@ export function CatalogueTable({
       },
       exportValue: (p) => p.seuil_alerte,
     },
-  ], [editable, canWrite, canEditPrix, voitPrixVente, onInlineSave, onAjusterStock, selectable, selected, onToggleSelect, fichesParProduit])
+  ], [editable, canWrite, canEditPrix, voitPrixVente, onInlineSave, onAjusterStock, selectable, selected, onToggleSelect, fichesParProduit, panneauParDefaut])
 
   // Actions de ligne (≤2 rapides + menu kebab) — historique / éditer / supprimer.
   const rowActions = (p) => {
@@ -551,6 +583,7 @@ export function CatalogueTable({
   // se prolonge — on ne fait clignoter aucun écran sur une attente brève.
   return (
     <div className="flex flex-col gap-2">
+      <LignePanneauParDefaut resume={panneauParDefaut} />
       {/* STKCAT26 — bascule groupement (moteur DataTable `groupBy`), à côté
           de l'export propre au moteur (celui de l'en-tête StockList a disparu,
           devenu redondant — même export xlsx serveur des deux côtés). */}

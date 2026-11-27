@@ -335,6 +335,46 @@ class RpdfLegacyMiseEnPageTest(SimpleTestCase):
         self.assertIn('position:absolute;bottom:0;left:0;right:0;', p3)
 
 
+@tag('pdf')  # rendu WeasyPrint + PyMuPDF réel (WOW5)
+class RibDevisFinalPagesTest(SimpleTestCase):
+    """T4-U1-009 — « Devis final » d'une société AVEC RIB et banque au profil :
+    la ligne « Virement bancaire » sous l'échéancier (clé ``rib_sous_echeancier``
+    du builder, nouveaux rendus) n'ajoute aucune page aux documents les plus
+    denses de chaque marché — commercial 3, industriel 4, agricole 3 — et sort
+    UNE fois. Mêmes fixtures que les gardes de densité CIQ317 (40 lignes,
+    6 options, une note) et AGR310 (40 lignes)."""
+
+    PROFIL = {'nom': 'SOCIETE RIB SARL', 'ice': '002222222000022',
+              'rib': '011 780 0000123456789012 34', 'banque': 'Banque Exemple'}
+
+    def _verifier(self, renderer, data, pages):
+        import fitz
+        from apps.ventes.quote_engine.rib_devis_final import CLE
+        data.update({'devis_final': True, CLE: True, 'entreprise': dict(self.PROFIL)})
+        with fitz.open(stream=renderer.render_pdf_bytes(data), filetype='pdf') as pdf:
+            self.assertEqual(len(pdf), pages)
+            texte = ''.join(page.get_text() for page in pdf)
+        self.assertEqual(texte.count('Virement bancaire'), 1)
+        self.assertIn('Banque Exemple', texte)
+
+    def test_commercial_et_industriel_les_plus_denses(self):
+        from apps.ventes.quote_engine.commercial import renderer as c_renderer
+        from apps.ventes.quote_engine.commercial import sample_data as c_sample
+        from apps.ventes.quote_engine.industriel import renderer as i_renderer
+        from apps.ventes.quote_engine.industriel import sample_data as i_sample
+        from apps.ventes.tests.test_ciq317_nomenclature_longue import _data
+        for nom, sample, renderer, pages in (('commercial', c_sample, c_renderer, 3),
+                                             ('industriel', i_sample, i_renderer, 4)):
+            with self.subTest(marche=nom):
+                self._verifier(renderer, _data(sample, 40, 6,
+                                               note="Accès au toit par l'escalier de service."), pages)
+
+    def test_agricole_le_plus_dense(self):
+        from apps.ventes.quote_engine.agricole import renderer
+        from apps.ventes.tests.test_agr310_renderer_agricole import data_complete
+        self._verifier(renderer, data_complete(nb_lignes_extra=40), 3)
+
+
 class FicheRemisePremiumMultivilla(TestCase):
     """ADOC198 (C-ADOC-VER4-002) — la fiche de remise premium liste le
     matériel VENDU × nombre de villas (``lignes_vendues``), comme le dossier

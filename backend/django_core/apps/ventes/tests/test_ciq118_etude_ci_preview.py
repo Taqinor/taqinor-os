@@ -1155,3 +1155,50 @@ class EcranEditionSurLesLignesTests(TestCase):
         apercu, _eco = self._servi_a_l_ecran(devis, {'consommation': consommation})
         self.assertEqual(apercu['feuille_consommation_retenue'], 'factures_mad')
         self.assertIsNone((apercu['entrees_resolues'].get('kwh_mensuels') or {}).get('valeur'))
+
+
+class ModuleRetenuPanneauParDefautTests(SimpleTestCase):
+    """D-ACAL-169 — le module de l'étude C&I : le panneau par défaut d'abord s'il passe
+    l'acceptation du moteur (Pmax publiée ET prix), sinon la règle d'aujourd'hui (Pmax publiée,
+    tarifé, plus haute Pmax, plus petit id) et la phrase dans les alertes. Sans fiche lue
+    (base) : fiches et chaînes simulées."""
+
+    SPECS = {1: {'pmax_wc': 720}, 42: {'pmax_wc': 715}, 5: {}}
+
+    def _objets(self, prix_defaut='1500'):
+        from types import SimpleNamespace
+
+        def produit(pk, nom, prix):
+            return SimpleNamespace(pk=pk, id=pk, nom=nom, prix_vente=Decimal(prix) if prix else None,
+                                   role_devis='panneau', tva=None, paliers_prix_vente=[])
+        return {1: produit(1, 'Panneau 720W', '1600'), 42: produit(42, 'Panneau Longi 715W', prix_defaut),
+                5: produit(5, 'Panneau 600W', '900')}
+
+    def _module(self, panneau_defaut, objets=None):
+        from apps.ventes.domain.etude_ci_module import module_ci_retenu
+        alertes = []
+        with mock.patch('apps.stock.selectors.specs_for_produit', side_effect=lambda p: self.SPECS[p.pk]), \
+                mock.patch('apps.calepinage.services.chaines.specs_module', return_value=(None, [])):
+            module, _spec = module_ci_retenu(objets or self._objets(), panneau_defaut=panneau_defaut,
+                                             alertes=alertes)
+        return module, alertes
+
+    def _auto(self, produit_id=42):
+        from apps.ventes.domain.panneau_defaut import PanneauAuto
+        return PanneauAuto(produit_id=produit_id, watt=715, nom='Panneau Longi 715W', source='designe')
+
+    def test_sans_defaut_la_plus_haute_pmax_et_rien_n_est_dit(self):
+        module, alertes = self._module(None)
+        self.assertEqual((module['produit'], alertes), (1, []))
+
+    def test_le_defaut_accepte_passe_devant(self):
+        module, alertes = self._module(self._auto())
+        self.assertEqual((module['produit'], module['pmax_wc'], alertes), (42, 715.0, []))
+
+    def test_le_defaut_sans_prix_ou_sans_pmax_regle_d_aujourd_hui_dite(self):
+        for objets, auto in ((self._objets(prix_defaut=None), self._auto()), (None, self._auto(produit_id=5))):
+            with self.subTest(auto=auto.produit_id):
+                module, alertes = self._module(auto, objets)
+                self.assertEqual(module['produit'], 1)
+                self.assertEqual([a['code'] for a in alertes], ['panneau_par_defaut'])
+                self.assertIn("l'étude C&I", alertes[0]['message'])

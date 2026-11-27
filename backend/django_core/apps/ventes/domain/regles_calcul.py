@@ -386,3 +386,30 @@ def drapeaux_pdf_2611(devis) -> dict:
     if marche not in MARCHES_HORS_PDF_2611 and phrases_pdf_2611_ouvertes(devis):
         return {'phrases_pdf_2611': True}
     return {}
+
+
+#: Liaison DC tracée (suite ACAL1317, lot 8, 26/11/2026 — règle fondateur du
+#: 23/11 « un seul moteur, un seul chiffre par valeur, le plus réaliste ») :
+#: quand le plan du calepinage porte un tracé DC MESURÉ du pan jusqu'à
+#: l'onduleur et qu'aucune longueur n'est saisie, la liaison DC de la
+#: SIMULATION (perte ohmique DC) et de la vérification de chute du calepinage
+#: est ce tracé (``apps/calepinage/services/cables.py::longueur_dc``). Calculs
+#: faits à partir de ce jour seulement : une simulation rangée n'est jamais
+#: réécrite, elle ne change qu'à sa prochaine simulation. L'étude électrique
+#: du devis n'en dépend pas (elle ne lit que la longueur SAISIE ``dc_m``) ; un
+#: devis au niveau :data:`REGLES_POSE_REELLE_2111` (DORMANT) lit la production
+#: de la simulation du calepinage, donc cette perte — seulement une fois ce
+#: niveau rendu courant, jamais un devis déjà envoyé. Date = lendemain du
+#: déploiement du LOT 9 (posée le 26/11 au soir : le lot 9 part après le lot 8,
+#: donc un jour après :data:`COUPURE_TOIT_PLAT` ; à repousser si le lot 9
+#: n'est pas déployé le 28/11 au plus tard). Le tracé n'y remplace que la
+#: partie HORIZONTALE de la liaison.
+COUPURE_LIAISON_DC_TRACEE = (2026, 11, 29)
+
+
+def liaison_dc_tracee_ouverte(jour) -> bool:
+    """Liaison DC tracée — un calcul du calepinage fait le ``jour``
+    (``datetime.date``) prend-il le tracé DC du plan ? Voir
+    :data:`COUPURE_LIAISON_DC_TRACEE`."""
+    from datetime import date
+    return jour >= date(*COUPURE_LIAISON_DC_TRACEE)

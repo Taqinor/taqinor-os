@@ -83,6 +83,174 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertEqual(self.calepinage.roof_layout, document_avant)
         self.assertNotIn('_pans_geometry', self.calepinage.roof_layout)
 
+    # ── ACAL1320 (D-ACAL-73 = corriger_dire) — l'aperçu de « Resynchroniser le devis » ──
+    def _etat_ecrit(self):
+        """Tout ce qu'une resynchronisation écrirait : le devis (toutes ses colonnes : statut,
+        empreinte, échéancier, cache PDF, clauses, ``updated_at``), ses lignes, son journal, ses
+        instantanés, ses liens de partage, le chatter du lead et le calepinage."""
+        from apps.crm.models import LeadActivity
+        from apps.ventes.models import ConfigurationDevisSnapshot, Devis, DevisActivity, LigneDevis, ShareLink
+
+        pk = Calepinage.objects.get(pk=self.calepinage.pk).devis_id
+        return {
+            'devis': list(Devis.objects.filter(pk=pk).values()),
+            'lignes': list(LigneDevis.objects.filter(devis_id=pk).order_by('pk').values()),
+            'journal': list(DevisActivity.objects.filter(devis_id=pk).order_by('pk').values_list('pk', flat=True)),
+            'instantanes': ConfigurationDevisSnapshot.objects.filter(devis_id=pk).count(),
+            'liens': list(ShareLink.objects.filter(devis_id=pk).order_by('pk').values()),
+            'chatter': LeadActivity.objects.filter(lead_id=self.lead.pk).count(),
+            'calepinage': list(Calepinage.objects.filter(pk=self.calepinage.pk).values()),
+        }
+
+    def _apercu_resync(self, client=None, **params):
+        reponse = (client or self.api).get(f'{self.base}apercu-resync/', params)
+        return reponse
+
+    def test_acal1320_apercu_dit_ce_qui_change_et_n_ecrit_rien(self):
+        """Devis ENVOYÉ, pose 12 → 14 panneaux : l'aperçu dit la ligne de panneaux qui change, les
+        totaux avant → après et que le devis reçu par le client sera corrigé ; RIEN n'est écrit
+        (devis, lignes, journal, note, instantané, liens, chatter, calepinage, annonce, rappels
+        ``on_commit``). Puis la resynchronisation réelle écrit EXACTEMENT ce que l'aperçu annonçait."""
+        import json
+        import pathlib
+
+        from apps.ventes.models import Devis
+
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 14
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        self.calepinage.refresh_from_db()
+        Devis.objects.filter(pk=self.calepinage.devis_id).update(statut='envoye')
+        from apps.calepinage.services.devis_resync_apercu import apercu_resynchronisation
+
+        avant = self._etat_ecrit()
+        reponse = self._apercu_resync()
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        with self.captureOnCommitCallbacks(execute=False) as rappels:  # le service seul, hors requête HTTP
+            direct = apercu_resynchronisation(Calepinage.objects.get(pk=self.calepinage.pk), user=self.user)
+        self.assertEqual(rappels, [])  # ceux du geste joué sont abandonnés avec son point de sauvegarde
+        self.assertEqual(direct, reponse.data)
+        self.assertEqual(self.emissions, [])
+        self.assertEqual(self._etat_ecrit(), avant)
+        contrat = json.loads((pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+                              / 'calepinage_apercu_resync.json').read_text(encoding='utf-8'))
+        self.assertEqual(set(reponse.data), set(contrat['exemple']))
+        apercu = reponse.data
+        self.assertEqual((apercu['inchange'], apercu['statut'], apercu['corrige_apres_envoi']),
+                         (False, 'envoye', True))
+        panneaux = [c for c in apercu['changements'] if c['designation_apres'].startswith('Panneau')]
+        self.assertEqual([c['quantite_apres'] for c in panneaux], ['14.00'], apercu)  # la pose : 14 panneaux
+        self.assertNotEqual(panneaux[0]['quantite_avant'], '14.00')
+        self.assertEqual(set(panneaux[0]), set(contrat['exemple']['changements'][0]))
+        self.assertNotEqual(apercu['totaux']['avant']['ttc'], apercu['totaux']['apres']['ttc'])
+
+        reel = self.api.post(f'{self.base}sync-devis/', {}, format='json')
+        self.assertEqual(reel.status_code, 200, reel.data)
+        devis = Devis.objects.get(pk=self.calepinage.devis_id)
+        self.assertEqual(str(devis.total_ttc.quantize(Decimal('0.01'))), apercu['totaux']['apres']['ttc'])
+        self.assertEqual(reel.data['avertissements'], apercu['avertissements'])
+        self.assertEqual(devis.statut, 'envoye')  # corrigé sur place, statut lu jamais écrit (règle #4)
+        self.assertTrue(devis.activites.filter(field='correction_apres_envoi').exists())
+
+    def test_acal1320_rien_a_changer_ne_dit_rien_et_n_ecrit_rien(self):
+        avant = self._etat_ecrit()
+        reponse = self._apercu_resync()
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertTrue(reponse.data['inchange'], reponse.data)
+        self.assertEqual((reponse.data['ajouts'], reponse.data['retraits'], reponse.data['changements']), ([], [], []))
+        self.assertFalse(reponse.data['corrige_apres_envoi'])
+        self.assertEqual(self._etat_ecrit(), avant)
+
+    def test_acal1320_devis_accepte_refuse_comme_la_resynchro_sans_rien_ouvrir(self):
+        """Un devis ACCEPTÉ : l'aperçu rend le MÊME 409 que la resynchronisation (``revision_possible``)
+        — la règle de modifiabilité n'est pas élargie ; rien n'est écrit. 404 hors société."""
+        from apps.ventes.models import Devis
+
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 14
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        self.calepinage.refresh_from_db()
+        Devis.objects.filter(pk=self.calepinage.devis_id).update(statut='accepte')
+        avant = self._etat_ecrit()
+        apercu = self._apercu_resync()
+        reel = self.api.post(f'{self.base}sync-devis/', {}, format='json')
+        self.assertEqual((apercu.status_code, reel.status_code), (409, 409), apercu.data)
+        self.assertEqual(apercu.data, reel.data)
+        self.assertTrue(apercu.data['revision_possible'])
+        self.assertEqual(self._etat_ecrit()['lignes'], avant['lignes'])
+        etranger = Calepinage.objects.create(company=self.autre, lead_id=self.lead.pk, titre='Autre')
+        self.assertEqual(self.api.get(f'{url_detail(etranger.pk)}apercu-resync/').status_code, 404)
+
+    def test_acal1320_sans_lecture_des_devis_ni_reference_ni_montant(self):
+        """D-ACAL-106 — un compte qui gère le calepinage sans lire les devis : mêmes clés, aucune
+        référence, aucun montant, aucun total ; la désignation et la quantité restent."""
+        import json
+
+        from django.contrib.auth import get_user_model
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.ventes.models import Devis
+
+        role = Role.objects.create(company=self.company, nom='A1320 sans devis',
+                                   permissions=list(TECHNICIEN_PERMISSIONS) + ['calepinage_gerer'])
+        compte = get_user_model().objects.create_user(username='a1320', password='x', company=self.company, role=role)
+        from apps.visites.models import VisiteTerrain
+
+        VisiteTerrain.objects.create(company=self.company, lead=self.lead, commercial=compte)  # portée du lead
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 14
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        self.calepinage.refresh_from_db()
+        reference = Devis.objects.get(pk=self.calepinage.devis_id).reference
+        lecteur = self._apercu_resync()
+        cache = self._apercu_resync(self._client(compte))
+        self.assertEqual((lecteur.status_code, cache.status_code), (200, 200), cache.data)
+        self.assertEqual(set(cache.data), set(lecteur.data))
+        self.assertIsNone(cache.data['totaux'])
+        self.assertNotIn(reference, json.dumps(cache.data, default=str))
+        for ligne in cache.data['changements']:
+            self.assertIsNone(ligne['total_ht_apres'])
+            self.assertIsNone(ligne['prix_unitaire_avant'])
+        self.assertEqual([c['quantite_apres'] for c in cache.data['changements']],
+                         [c['quantite_apres'] for c in lecteur.data['changements']])
+
+    def test_revue_sans_lecture_des_devis_aucun_montant_dans_les_avertissements(self):
+        """Revue du 26/11 (D-ACAL-106/165) — la phrase du forfait au prix saisi (« barème du stock : …
+        MAD HT », ``lignes.avertissement_forfait_verrouille``) n'arrive JAMAIS avec son montant à un compte
+        qui gère le calepinage sans lire les devis : ni par l'aperçu, ni par la réponse de ``sync-devis`` ;
+        le lecteur des devis la reçoit entière. La phrase vient de la VRAIE fonction de ventes."""
+        from unittest import mock
+
+        from django.contrib.auth import get_user_model
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+        from apps.ventes.domain.lignes import avertissement_forfait_verrouille
+        from apps.visites.models import VisiteTerrain
+
+        role = Role.objects.create(company=self.company, nom='Revue sans devis',
+                                   permissions=list(TECHNICIEN_PERMISSIONS) + ['calepinage_gerer'])
+        compte = get_user_model().objects.create_user(username='revue-165', password='x', company=self.company,
+                                                      role=role)
+        VisiteTerrain.objects.create(company=self.company, lead=self.lead, commercial=compte)
+        phrase = avertissement_forfait_verrouille('Pose', 14, '4 200,00')
+        reel = {'inchange': False, 'panneaux': 14, 'kwc': 7.7, 'scenario': 'reseau', 'batterie': False,
+                'lignes_modifiees': 1, 'lignes_ajoutees': 0, 'avertissements': [phrase]}
+        apercu = {'inchange': False, 'statut': 'brouillon', 'reference': 'DEV-X', 'corrige_apres_envoi': False,
+                  'ajouts': [], 'retraits': [], 'changements': [], 'totaux': None, 'avertissements': [phrase],
+                  'panneaux': 14, 'kwc': 7.7, 'scenario': 'reseau', 'batterie': False}
+        technicien = self._client(compte)
+        with mock.patch('apps.calepinage.views.calepinages.resynchroniser_devis', return_value=dict(reel)), \
+                mock.patch('apps.ventes.services.apercu_de_resynchronisation', return_value=dict(apercu)):
+            for client, attendu in ((technicien, False), (self.api, True)):
+                for reponse in (client.post(f'{self.base}sync-devis/', {}, format='json'),
+                                client.get(f'{self.base}apercu-resync/')):
+                    self.assertEqual(reponse.status_code, 200, reponse.data)
+                    texte = ' '.join(reponse.data['avertissements'])
+                    self.assertEqual(('4 200,00 MAD HT' in texte), attendu, texte)
+                    self.assertIn('« Pose » : prix saisi à la main', texte)
+
     # ── Lane E6e, item 3 (T4-X5-010) — le devis né de l'atelier et l'onduleur désigné ──
     def _designer(self, nom, **saisie):
         from apps.calepinage.services.electrique import CLE_ENTREE
@@ -579,10 +747,10 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertEqual(onduleurs['sans'], ('Onduleur réseau Huawei 5kW Monophasé', 'onduleur_reseau'))
 
     # ── D-ACAL-148 / 159 (relecture, A) — « Resynchroniser » ne défait pas une désignation ──
-    def _resynchroniser(self):
+    def _resynchroniser(self, corps=None):
         from apps.ventes.models import Devis
 
-        reponse = self.api.post(f'{self.base}sync-devis/', {}, format='json')
+        reponse = self.api.post(f'{self.base}sync-devis/', corps or {}, format='json')
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.calepinage.refresh_from_db()
         lignes = Devis.objects.get(pk=self.calepinage.devis_id).lignes.all()
@@ -657,7 +825,10 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertIn('L’onduleur suit la désignation de l’étape Électrique : « Onduleur réseau Huawei 5kW '
                       'Monophasé » remplace « Onduleur réseau Growatt 8kW Monophasé ».', data['avertissements'])
 
-    def _sans_marqueur_ou_envoye(self, *, envoye):
+    def _sans_marqueur_ou_envoye(self, *, envoye, marqueur=None, apercu=None, corps=None):
+        """``marqueur`` (défaut : vrai pour un envoyé, faux pour un brouillon) — le devis est-il né
+        sous la règle ? ``apercu`` : une liste où ranger l'aperçu lu AVANT la resynchronisation ;
+        ``corps`` : le corps de ``sync-devis`` (``{'apercu_confirme': True}`` = la carte confirmée)."""
         from apps.ventes.models import Devis
 
         self._growatt_8()
@@ -667,11 +838,17 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         devis = Devis.objects.get(pk=self.calepinage.devis_id)
         if envoye:
             Devis.objects.filter(pk=devis.pk).update(statut='envoye')
-        else:  # un devis créé AVANT la règle : aucun marqueur
+        if not (envoye if marqueur is None else marqueur):  # un devis créé AVANT la règle : aucun marqueur
             Devis.objects.filter(pk=devis.pk).update(roof_layout={
                 k: v for k, v in devis.roof_layout.items() if k != '_designations'})
         self._designer('Onduleur réseau Huawei 5kW Monophasé', nombre_onduleurs=1)
-        return self._resynchroniser()
+        if apercu is not None:
+            lu = self._apercu_resync()
+            self.assertEqual(lu.status_code, 200, lu.data)
+            apercu.append(lu.data)
+            if corps and corps.get('apercu_confirme'):  # la carte renvoie le jeton de SON aperçu
+                corps = dict(corps, jeton_apercu=lu.data['jeton'])
+        return self._resynchroniser(corps)
 
     def test_a_brouillon_cree_avant_la_regle_ne_suit_pas_la_designation_et_le_dit(self):
         data, onduleurs, _b = self._sans_marqueur_ou_envoye(envoye=False)
@@ -681,11 +858,96 @@ class ResyncAnnonceTest(BaseApiCalepinage):
                       'devis suive la désignation, ne la suit pas ; un nouveau devis généré depuis le calepinage '
                       'la suivra.', data['avertissements'])
 
-    def test_a_devis_envoye_ne_recoit_pas_la_designation_et_le_dit(self):
+    def test_acal1320_devis_envoye_ne_sous_la_regle_suit_la_designation_annoncee_avant(self):
+        """D-ACAL-73 (corriger_dire) — un ENVOYÉ né sous la règle (marqueur) reçoit l'onduleur désigné
+        à la resynchronisation confirmée, comme un brouillon ; l'aperçu l'a dit AVANT, montants
+        compris, et le devis reçu par le client est corrigé sur place (trace posée). Remplace le
+        refus « révisez-le (V2) » posé faute d'aperçu."""
+        from apps.ventes.models import Devis
+
+        lus = []
+        data, onduleurs, _b = self._sans_marqueur_ou_envoye(envoye=True, apercu=lus,
+                                                            corps={'apercu_confirme': True})
+        self.assertEqual(onduleurs, [('Onduleur réseau Huawei 5kW Monophasé', 1)])
+        self.assertFalse(any('révisez-le (V2)' in m for m in data['avertissements']), data)
+        apercu = lus[0]
+        self.assertEqual((apercu['statut'], apercu['corrige_apres_envoi']), ('envoye', True))
+        onduleur = next(c for c in apercu['changements'] if c['designation_avant'] != c['designation_apres'])
+        self.assertEqual((onduleur['designation_avant'], onduleur['designation_apres']),
+                         ('Onduleur réseau Growatt 8kW Monophasé', 'Onduleur réseau Huawei 5kW Monophasé'))
+        self.assertIsNotNone(onduleur['prix_unitaire_apres'])
+        self.assertNotEqual(onduleur['total_ht_avant'], onduleur['total_ht_apres'])
+        self.assertEqual(apercu['avertissements'], data['avertissements'])  # mêmes phrases, avant et pendant
+        devis = Devis.objects.get(pk=self.calepinage.devis_id)
+        self.assertEqual(devis.statut, 'envoye')
+        self.assertTrue(devis.activites.filter(field='correction_apres_envoi').exists())
+
+    def test_revue_envoye_sans_la_carte_ne_recoit_pas_la_designation_et_le_dit(self):
+        """Revue du 26/11 (D-ACAL-73 « le dire AVANT ») — un envoyé né sous la règle, resynchronisé SANS
+        la confirmation de l'aperçu (``sync-devis`` sans ``apercu_confirme``, ou ``sync-layout`` /
+        POST layout du devis : ``ecrire_conception_du_devis``) : la désignation n'est pas appliquée,
+        une phrase dit d'utiliser « Resynchroniser le devis ». Mutant « drapeau ignoré » ⇒ rouge."""
+        from apps.ventes.domain.creation_calepinage import MSG_RESYNC_ENVOYE_SANS_APERCU
+        from apps.ventes.domain.resynchronisation import ecrire_conception_du_devis
+        from apps.ventes.models import Devis
+
+        phrase = MSG_RESYNC_ENVOYE_SANS_APERCU % 'un onduleur'
         data, onduleurs, _b = self._sans_marqueur_ou_envoye(envoye=True)
         self.assertEqual(onduleurs, [('Onduleur réseau Growatt 8kW Monophasé', 1)])
-        self.assertIn('Le calepinage désigne un onduleur à l’étape Électrique : la désignation n’est pas '
-                      'appliquée à un devis envoyé — révisez-le (V2) pour l’appliquer.', data['avertissements'])
+        self.assertIn(phrase, data['avertissements'])
+        # Le jumeau de la route devis (sync-layout / POST layout) ne passe jamais le drapeau.
+        self.calepinage.refresh_from_db()
+        devis = Devis.objects.get(pk=self.calepinage.devis_id)
+        rendu = ecrire_conception_du_devis(devis, copy.deepcopy(self.calepinage.roof_layout), self.user)
+        devis.refresh_from_db()
+        self.assertEqual(sorted(li.designation for li in devis.lignes.all() if 'nduleur' in li.designation),
+                         ['Onduleur réseau Growatt 8kW Monophasé'])
+        self.assertIn(phrase, rendu['avertissements'])
+        # Avec la carte confirmée (son jeton) : appliquée, et la correction tracée.
+        jeton = self._apercu_resync().data['jeton']
+        data, onduleurs, _b = self._resynchroniser({'apercu_confirme': True, 'jeton_apercu': jeton})
+        self.assertEqual(onduleurs, [('Onduleur réseau Huawei 5kW Monophasé', 1)])
+        self.assertTrue(Devis.objects.get(pk=devis.pk).activites.filter(field='correction_apres_envoi').exists())
+
+    def test_revue_confirmation_liee_a_l_apercu_409_si_les_entrees_ont_change(self):
+        """Revue du 26/11 — la confirmation renvoie le jeton de l'aperçu : sans jeton ⇒ 400 nommant
+        ``jeton_apercu`` ; la conception change entre l'aperçu et la confirmation (autre onglet,
+        re-simulation, retouche) ⇒ 409 ``apercu_perime`` et RIEN n'est écrit ; un nouvel aperçu rend un
+        nouveau jeton, qui passe. Mutant « jeton non vérifié » ⇒ rouge."""
+        from apps.calepinage.services.devis import CODE_APERCU_PERIME
+        from apps.ventes.models import Devis
+
+        modifie = copy.deepcopy(TOIT)
+        modifie['result']['panels'] = 14
+        enregistrer_layout(self.calepinage, modifie, user=self.user)
+        Devis.objects.filter(pk=self.calepinage.devis_id).update(statut='envoye')
+        premier = self._apercu_resync().data
+        sans_jeton = self.api.post(f'{self.base}sync-devis/', {'apercu_confirme': True}, format='json')
+        self.assertEqual(sans_jeton.status_code, 400, sans_jeton.data)
+        self.assertIn('jeton_apercu', sans_jeton.data)
+        autre = copy.deepcopy(modifie)
+        autre['result']['panels'] = 13  # la conception bouge APRÈS l'aperçu
+        self.calepinage.refresh_from_db()
+        enregistrer_layout(self.calepinage, autre, user=self.user)
+        avant = self._etat_ecrit()
+        perime = self.api.post(f'{self.base}sync-devis/', {'apercu_confirme': True, 'jeton_apercu': premier['jeton']},
+                               format='json')
+        self.assertEqual(perime.status_code, 409, perime.data)
+        self.assertEqual(perime.data['code'], CODE_APERCU_PERIME)
+        self.assertEqual(self._etat_ecrit()['lignes'], avant['lignes'])
+        self.assertEqual(self._etat_ecrit()['journal'], avant['journal'])
+        second = self._apercu_resync().data
+        self.assertNotEqual(second['jeton'], premier['jeton'])
+        ok = self.api.post(f'{self.base}sync-devis/', {'apercu_confirme': True, 'jeton_apercu': second['jeton']},
+                           format='json')
+        self.assertEqual(ok.status_code, 200, ok.data)
+
+    def test_acal1320_devis_envoye_cree_avant_la_regle_ne_suit_pas_et_le_dit(self):
+        data, onduleurs, _b = self._sans_marqueur_ou_envoye(envoye=True, marqueur=False)
+        self.assertEqual(onduleurs, [('Onduleur réseau Growatt 8kW Monophasé', 1)])
+        self.assertIn('Le calepinage désigne un onduleur à l’étape Électrique : ce devis, créé avant que le '
+                      'devis suive la désignation, ne la suit pas ; un nouveau devis généré depuis le calepinage '
+                      'la suivra.', data['avertissements'])
 
     def test_a_onduleur_change_a_la_main_garde_et_dit_une_fois(self):
         from apps.stock.models import Produit
@@ -777,7 +1039,7 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         « Resynchroniser le devis » : le panneau suit le toit, l'hybride et la batterie (même quantité)
         restent, et la phrase dit ce qui s'est passé. Mutant « sans option_batterie_gardee » ⇒ la batterie
         est retirée et l'hybride permuté en réseau ⇒ rouge."""
-        from apps.ventes.domain.creation_calepinage import MSG_RESYNC_ENVOYE, MSG_RESYNC_OPTION_GARDEE
+        from apps.ventes.domain.creation_calepinage import MSG_RESYNC_ENVOYE_SANS_APERCU, MSG_RESYNC_OPTION_GARDEE
         from apps.ventes.models import Devis
 
         devis, avant = self._ne_d_acal_159()
@@ -788,7 +1050,30 @@ class ResyncAnnonceTest(BaseApiCalepinage):
         self.assertEqual(apres, dict(avant, panneaux=11))
         self.assertEqual((data['scenario'], data['batterie']), ('avec_batterie', True), data)
         self.assertIn(MSG_RESYNC_OPTION_GARDEE % self.HYBRIDE, data['avertissements'])
-        self.assertIn(MSG_RESYNC_ENVOYE % 'un onduleur', data['avertissements'])  # désignation non ré-appliquée
+        self.assertIn(MSG_RESYNC_ENVOYE_SANS_APERCU % 'un onduleur', data['avertissements'])  # sans la carte
+
+    def test_revue_envoye_ne_d_acal_159_carte_confirmee_garde_l_option_et_l_apercu_le_montre(self):
+        """Cas 4 de la règle combinée — le même devis envoyé né « avec batterie » par l'hybride désigné ;
+        le vendeur a seulement bougé un panneau (désignation INCHANGÉE) et confirme la carte : l'aperçu
+        ne montre AUCUN changement d'onduleur ni de batterie (seule la ligne de panneaux), et la
+        resynchronisation confirmée (désignations appliquées, D-ACAL-159 : l'hybride garde « avec ») écrit
+        exactement cela. Mutant « l'envoyé confirmé bascule en sans » ⇒ batterie retirée ⇒ rouge."""
+        from apps.ventes.models import Devis
+
+        devis, avant = self._ne_d_acal_159()
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye')
+        self._toit_de(11)
+        lu = self._apercu_resync()
+        self.assertEqual(lu.status_code, 200, lu.data)
+        apercu = lu.data
+        self.assertEqual(apercu['retraits'], [], apercu)
+        self.assertFalse([c for c in apercu['changements'] if c['designation_avant'] != c['designation_apres']], apercu)
+        self.assertFalse([c for c in apercu['changements'] if 'nduleur' in c['designation_apres']
+                          or 'atterie' in c['designation_apres']], apercu)
+        data, _o, _b = self._resynchroniser({'apercu_confirme': True, 'jeton_apercu': apercu['jeton']})
+        self.assertEqual(self._etat(devis), dict(avant, panneaux=11))
+        self.assertEqual((data['scenario'], data['batterie']), ('avec_batterie', True), data)
+        self.assertEqual(data['avertissements'], apercu['avertissements'])  # la carte a dit ce qui est écrit
 
     def test_relecture_finale_brouillon_libre_rattache_garde_hybride_et_batterie(self):
         """Le brouillon né « avec batterie » par l'hybride désigné, devenu LIBRE (plus lié, né avant le
@@ -1023,3 +1308,36 @@ class ApercuBrouillonLibreSansBaseTest(SimpleTestCase):
         self.assertTrue(lit_les_devis(compte(COMMERCIAL_PERMISSIONS)))
         self.assertTrue(lit_les_devis(compte(DIRECTEUR_PERMISSIONS)))
         self.assertFalse(lit_les_devis(None))
+
+
+class ApercuResyncSansBaseTest(SimpleTestCase):
+    """ACAL1320 — sans base : le caviardage D-ACAL-106 de l'aperçu de resynchronisation."""
+
+    def test_caviardage_retire_reference_montants_et_totaux_garde_la_pose(self):
+        import json
+        import pathlib
+
+        from apps.calepinage.services.devis_resync_apercu import _caviarder
+
+        contrat = json.loads((pathlib.Path(__file__).resolve().parents[1] / 'contract_samples'
+                              / 'calepinage_apercu_resync.json').read_text(encoding='utf-8'))
+        complet = contrat['exemple']
+        cache = _caviarder(complet)
+        self.assertEqual(set(cache), set(complet))
+        self.assertEqual((cache['reference'], cache['totaux']), (None, None))
+        self.assertEqual(cache['statut'], complet['statut'])  # le vendeur doit savoir qu'il corrige un envoyé
+        for ligne, origine in zip(cache['changements'], complet['changements']):
+            self.assertEqual(set(ligne), set(origine))
+            self.assertEqual((ligne['designation_apres'], ligne['quantite_apres']),
+                             (origine['designation_apres'], origine['quantite_apres']))
+            self.assertEqual({ligne[c] for c in ligne if c.startswith(('prix_', 'total_'))}, {None})
+        # La forme caviardée est celle que le contrat publie pour ce cas.
+        attendu = contrat['exemple_sans_lecture_devis']
+        self.assertEqual(set(cache), set(attendu))
+        self.assertEqual(set(cache['changements'][0]), set(attendu['changements'][0]))
+        self.assertIsNot(cache, complet)
+        self.assertEqual(complet['reference'], 'DEV-202611-0001')  # l'entrée n'est pas modifiée
+        # Revue du 26/11 (D-ACAL-165) — l'avertissement au montant de vente (vraie fonction de ventes).
+        from apps.ventes.domain.lignes import avertissement_forfait_verrouille
+        chiffre = dict(complet, avertissements=[avertissement_forfait_verrouille('Pose', 14, '4 200,00')])
+        self.assertNotIn('MAD', ' '.join(_caviarder(chiffre)['avertissements']))

@@ -1629,9 +1629,7 @@ def cible_depuis_lead(lead, company):
     from .domain.pipeline import (
         ORIGINE_AUTO, IntentionDevis, decider_taille,
     )
-    from .domain.taille import (
-        _AUTO_PANEL_WATT, AutoDevisError, _residential_panel_count,
-    )
+    from .domain import panneau_defaut, taille as domaine_taille  # D-ACAL-169 : le panneau automatique
 
     if lead is None:
         return None
@@ -1654,9 +1652,9 @@ def cible_depuis_lead(lead, company):
     except (InvalidOperation, TypeError, ValueError):
         taille_ok = False
     if taille_ok:
-        panneaux = _residential_panel_count(taille_kwc=taille)
-        return {'panneaux': panneaux, 'panel_watt': _AUTO_PANEL_WATT,
-                'kwc': round(panneaux * _AUTO_PANEL_WATT / 1000, 2),
+        panneaux, watt = panneau_defaut.panneaux_de_la_taille(company, taille)
+        return {'panneaux': panneaux, 'panel_watt': watt,
+                'kwc': round(panneaux * watt / 1000, 2),
                 'source': 'lead', 'refus': None, 'motif_code': None}
 
     # Même garde que le devis automatique : un kWh déclaré que les factures
@@ -1669,12 +1667,12 @@ def cible_depuis_lead(lead, company):
     try:
         cible = decider_taille(IntentionDevis(
             origine=ORIGINE_AUTO, company=company, lead=lead))
-    except AutoDevisError as erreur:
+    except domaine_taille.AutoDevisError as erreur:
         return refus(str(erreur), code=getattr(erreur, 'motif', None))
     if cible is None or not cible.nb_panneaux:
         return refus("Le devis n'a pas pu être dimensionné depuis la fiche "
                      "du lead.")
-    watt = int(float(cible.panel_watt or _AUTO_PANEL_WATT))
+    watt = int(float(cible.panel_watt))  # decider_taille pose toujours la puissance (D-ACAL-169)
     return {'panneaux': int(cible.nb_panneaux), 'panel_watt': watt,
             'kwc': round(int(cible.nb_panneaux) * watt / 1000, 2),
             'source': 'factures', 'refus': None, 'motif_code': None}

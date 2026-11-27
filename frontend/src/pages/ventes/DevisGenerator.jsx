@@ -890,7 +890,7 @@ export default function DevisGenerator({
   useEffect(() => {
     if (kwcCible !== '' || kwp <= 0) return
      
-    dispatchSizing({ type: 'SAISI', champ: 'panelW', valeur: panelW })
+    dispatchSizing({ type: 'SAISI', champ: 'panelW', valeur: panelW, fixe: false })
   }, [kwp, kwcCible, panelW])
 
   // QJR572 — ce que le registre IMPOSE (indications sous les Select).
@@ -1497,13 +1497,13 @@ export default function DevisGenerator({
 
   // SPL48 — composition, Auto-remplir et recalcul du dimensionnement (déplacés tels quels dans le hook).
   const {
-    handleAutoFill, appliquerTailleDimensionnement, recalculerDimensionnement,
+    handleAutoFill, appliquerTailleDimensionnement, recalculerDimensionnement, panneauDefaut,
   } = useCompositionEcran({
     produits, setErrors, dispatchSizing, panelW, scenario, modeInstallation, structureType,
     structureProduitId, recalcDimTick, setPompageAutoFilled, setOnduleursIncomplets,
     setAutoFillLoading, setCompositionErreur, profilCi, horsReseau, kwp, selectedLead,
     etudeHoraireDonnees, etudeHoraireChargement, marcheCi, ctxProfilCi, apercuCi, resolveKwcAvec,
-    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard: quoteLogic.tvaStandard, sizing, lines,
+    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard: quoteLogic.tvaStandard, sizing, lines, editId,
   })
 
   const selectedClient = clientsConnus.find(c => String(c.id) === String(clientId))
@@ -1996,7 +1996,7 @@ export default function DevisGenerator({
         {/* ── Paramètres techniques ── */}
         <CarteParametresTechniques
           kwcCible={kwcCible} onKwcCibleChange={onKwcCibleChange} nbPanneaux={nbPanneaux}
-          onNbPanneauxChange={onNbPanneauxChange} panelW={panelW} dispatchSizing={dispatchSizing}
+          onNbPanneauxChange={onNbPanneauxChange} panelW={panelW} dispatchSizing={dispatchSizing} panneauDefaut={panneauDefaut}
           kwp={kwp} panneauxLignes={panneauxLignes} produits={produits}
           structureProduitId={structureProduitId} structureType={structureType}
           sizingInfo={sizingInfo} modeInstallation={modeInstallation} showSans={showSans}

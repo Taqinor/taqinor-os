@@ -531,6 +531,37 @@ for (const [nom, viewport] of [['téléphone 390×664', { width: 390, height: 66
   })
 }
 
+// ACAL1813 — le voile « Utilisez deux doigts pour déplacer la carte » (MapLibre) n'apparaît qu'après un glisser d'UN
+// doigt sur la carte, jamais au chargement sans geste, et reste BORNÉ à la carte : son z-index (99999) ne doit plus
+// passer par-dessus le tiroir ni le bandeau (conteneur du canvas isolé, `roofbuilder.css`).
+test.describe('ACAL1813 — voile des deux doigts (téléphone 390×664)', () => {
+  test.use({ viewport: { width: 390, height: 664 }, hasTouch: true, isMobile: true })
+
+  test('invisible à 3 s sans geste ; visible au glisser d’un doigt ; borné à la carte', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'le glissé d’un doigt passe par le protocole DevTools (Chromium seulement)')
+    test.setTimeout(600_000)
+    await carteRefusee(page.context())
+    const id = await calepinageVide(page.request)
+    await ouvrirAtelierGestes(page, id)
+    const voile = page.locator('#rp9-map .maplibregl-cooperative-gesture-screen')
+    await expect(voile, 'la carte tactile porte le voile des deux doigts').toHaveCount(1)
+    await expect(voile, 'chargement sans geste : voile invisible').toHaveCSS('opacity', '0', { timeout: 10_000 })
+    const bornes = await voile.evaluate((el) => {
+      const r = el.getBoundingClientRect()
+      const carte = document.querySelector('#rp9-map').getBoundingClientRect()
+      return {
+        dansLaCarte: r.top >= carte.top - 1 && r.bottom <= carte.bottom + 1 && r.left >= carte.left - 1 && r.right <= carte.right + 1,
+        isole: getComputedStyle(el.parentElement).isolation,
+      }
+    })
+    expect(bornes.dansLaCarte, 'le voile ne dépasse pas la carte').toBe(true)
+    expect(bornes.isole, 'le voile est borné à la carte (conteneur du canvas isolé : sous le tiroir et le bandeau)').toBe('isolate')
+    const c = await centreCarte(page)
+    await doigts(page, [{ de: { x: c.x, y: c.y + 40 }, vers: { x: c.x, y: c.y - 40 } }], 4)
+    await expect.poll(() => voile.evaluate((el) => getComputedStyle(el).opacity), { message: 'un doigt qui glisse sur la carte montre le voile' }).toBe('1')
+  })
+})
+
 // WebKit réel (iPhone 13) : les gestes à un point (tap, « + » / « − », plein écran). Ignoré, en le disant, quand
 // le navigateur WebKit n'est pas installé (aucune installation n'est tentée) ; les gestes à deux doigts restent
 // jouables seulement sous Chromium (protocole DevTools).

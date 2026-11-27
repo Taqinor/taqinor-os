@@ -87,7 +87,9 @@ const ARCHIVABLE = {
 // ACAL966 — `id` et `statut` restent SERVIS par le contrat mais ne sont plus rendus (l'identifiant est dans
 // l'adresse, le statut se lit en mots par `statut_libelle`) : les autres clés sont toutes rendues.
 // ACAL1005 — `etat_conception` (+ motif) : lus par l'atelier (bandeau ACAL1007), pas par la fiche.
-const NON_RENDUES = ['id', 'statut', 'etat_conception', 'etat_conception_motif']
+// T4-X3-016 (lot 8) — `responsable_sans_acces` n'a pas de champ à lui : il ne parle que VRAI, sous le champ
+// Responsable (`cal-fiche-responsable-sans-acces`, test dédié plus bas).
+const NON_RENDUES = ['id', 'statut', 'etat_conception', 'etat_conception_motif', 'responsable_sans_acces']
 const CLES = Object.keys(DOC.exemple).filter((cle) => !NON_RENDUES.includes(cle))
 
 const rendre = (detail) => render(
@@ -111,6 +113,26 @@ describe('FicheCalepinage — T4-X3-016 le menu Responsable connaît le lead', (
     rendre(DETAIL)
     await waitFor(() => expect(crmApi.getAssignableUsers)
       .toHaveBeenCalledWith({ permission: 'calepinage_voir', lead: DETAIL.lead.id }))
+  })
+})
+
+describe('FicheCalepinage — T4-X3-016 un responsable qui ne peut pas ouvrir le calepinage', () => {
+  it('le serveur le dit (`responsable_sans_acces`) : la fiche le nomme sous le champ Responsable', () => {
+    rendre({ ...DETAIL, responsable_sans_acces: true })
+    const phrase = screen.getByTestId('cal-fiche-responsable-sans-acces')
+    expect(phrase).toHaveTextContent(
+      `${DETAIL.responsable.nom_complet} est responsable de ce calepinage mais ne peut pas l'ouvrir`)
+    expect(phrase).toHaveTextContent('Choisissez un autre responsable.')
+    expect(within(screen.getByTestId('cal-fiche-responsable')).getByTestId('cal-fiche-responsable-sans-acces'))
+      .toBe(phrase)
+  })
+
+  it('faux, ou sans responsable : rien n’est dit', () => {
+    rendre(DETAIL)
+    expect(screen.queryByTestId('cal-fiche-responsable-sans-acces')).toBeNull()
+    cleanup()
+    rendre({ ...DETAIL, responsable: null, responsable_sans_acces: true })
+    expect(screen.queryByTestId('cal-fiche-responsable-sans-acces')).toBeNull()
   })
 })
 

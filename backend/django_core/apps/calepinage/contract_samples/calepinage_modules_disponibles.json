@@ -67,5 +67,58 @@
     "kwc_selon_watt": {}
   },
   "x8_kwc_selon_watt_note": "T4-X8-011 — `kwc_selon_watt` (objet, toujours présent, mêmes clés que `panneaux_selon_watt`) : `{\"<Wc>\": kWc}`, le kWc de CE compte dans CE module (compte × Wc ÷ 1000, deux décimales), calculé au serveur. Ex. conception 8 × 550 W = 4,40 kWc, liste 710 / 715 Wc ⇒ `panneaux_selon_watt` `{\"710\": 6, \"715\": 6}` et `kwc_selon_watt` `{\"710\": 4.26, \"715\": 4.29}`. La carte « Couvrir la facture » dit ce compte et CE kWc ensemble (« 6 panneaux de 710 W · 4,26 kWc »), la conception dans une seconde phrase (« La conception du lead compte 8 panneaux de 550 W, 4,4 kWc. ») — jamais le kWc de la conception à côté d'un compte d'un autre module, jamais une multiplication dans le navigateur. `{}` sans conception complète.",
-  "e9_panneaux_selon_watt_note": "Lane E9 (T4-X2-001 / T4-X9-005) — `panneaux_selon_watt` (objet, toujours présent) : `{\"<Wc>\": panneaux}`, la puissance de la conception COURANTE du lead (option retenue, `puissance_kwc`) comptée dans CHAQUE puissance de module que cette liste offre, la clé étant `modules[].module.pmaxWc` écrit sans zéro inutile (`\"710\"`, `\"712.5\"`), par LA règle du moteur (`apps.ventes.services.panneaux_pour_la_meme_puissance` : même puissance crête au panneau près — celle de `conception/moteur.py::_compte_designe`, décision 28 ouverte). Ex. conception 8 × 550 W = 4,40 kWc, liste 710 / 715 Wc ⇒ `{\"710\": 6, \"715\": 6}`. `{}` sans conception complète (comme ici : calepinage sans lead). La carte « Couvrir la facture » pose ce compte pour le module CHOISI ; un module absent de la table ⇒ la puissance seule, jamais un compte calculé dans le navigateur. Aucune lecture de plus : la conception est celle déjà lue pour placer son module en tête."
+  "e9_panneaux_selon_watt_note": "Lane E9 (T4-X2-001 / T4-X9-005) — `panneaux_selon_watt` (objet, toujours présent) : `{\"<Wc>\": panneaux}`, la puissance de la conception COURANTE du lead (option retenue, `puissance_kwc`) comptée dans CHAQUE puissance de module que cette liste offre, la clé étant `modules[].module.pmaxWc` écrit sans zéro inutile (`\"710\"`, `\"712.5\"`), par LA règle du moteur (`apps.ventes.services.panneaux_pour_la_meme_puissance` : même puissance crête au panneau près — celle de `conception/moteur.py::_compte_designe`, décision 28 ouverte). Ex. conception 8 × 550 W = 4,40 kWc, liste 710 / 715 Wc ⇒ `{\"710\": 6, \"715\": 6}`. `{}` sans conception complète (comme ici : calepinage sans lead). La carte « Couvrir la facture » pose ce compte pour le module CHOISI ; un module absent de la table ⇒ la puissance seule, jamais un compte calculé dans le navigateur. Aucune lecture de plus : la conception est celle déjà lue pour placer son module en tête.",
+  "d_acal_169_par_defaut_note": "D-ACAL-169 (fondateur, 26/11/2026 : « always use 715w everywhere, and have somewhere in the stock to show the default used pannels ») — `modules[].par_defaut` : `true` UNIQUEMENT sur l'entrée du panneau par défaut de la société (`apps.stock.selectors_panneau_defaut.panneau_par_defaut`), clé ABSENTE sur toutes les autres et sur toutes quand aucun panneau n'est désigné (ou qu'il n'est pas utilisable : archivé, sans prix, plus un panneau) — une réponse sans panneau par défaut est donc octet pour octet celle d'avant. Quand ce panneau est sélectionnable et que rien d'autre ne décide (le module de la conception du devis lié garde la tête, puis vient le panneau par défaut, puis les favoris), il est PREMIER de la liste : l'atelier pose d'office le premier module choisissable (`moduleDeDepart`), c'est donc lui qui démarre le calepinage. Un module déjà écrit dans le document, un module du devis lié et un module choisi par le vendeur gardent la priorité côté atelier : cette clé ne change aucun calepinage enregistré. Quand sa fiche est incomplète pour le pavage (longueur, largeur ou puissance crête manquante) ou n'est pas une fiche « module », l'entrée est LISTÉE (ajoutée à la liste si elle n'y était pas), non sélectionnable, `par_defaut: true`, et son `motif` — le canal existant de l'entrée — commence par « Panneau par défaut de la société non retenu au départ » puis nomme ce qui manque : la règle d'aujourd'hui s'applique alors, et le vendeur le lit. Aucun prix, aucune quantité.",
+  "exemple_avec_panneau_par_defaut": {
+    "calepinage": 1,
+    "modules": [
+      {
+        "module": {
+          "id": "produit-4140",
+          "produitId": 4140,
+          "libelle": "Module monocristallin 715 Wc (exemple)",
+          "longueurMm": 2384.0,
+          "largeurMm": 1303.0,
+          "epaisseurMm": 33.0,
+          "poidsKg": 33.0,
+          "pmaxWc": 715.0,
+          "sousChaines": null,
+          "source": "fiche produit"
+        },
+        "selectionnable": true,
+        "champs_manquants": [],
+        "motif": null,
+        "favori": false,
+        "par_defaut": true,
+        "en_stock": true
+      },
+      {
+        "module": {
+          "id": "produit-4112",
+          "produitId": 4112,
+          "libelle": "Module monocristallin 580 Wc (exemple)",
+          "longueurMm": 2278.0,
+          "largeurMm": 1134.0,
+          "epaisseurMm": 35.0,
+          "poidsKg": 27.5,
+          "pmaxWc": 580.0,
+          "sousChaines": 3,
+          "source": "fiche produit"
+        },
+        "selectionnable": true,
+        "champs_manquants": [],
+        "motif": null,
+        "favori": true,
+        "en_stock": null
+      }
+    ],
+    "champs_requis": [
+      "longueurMm",
+      "largeurMm",
+      "pmaxWc"
+    ],
+    "motif_liste_vide": null,
+    "panneaux_selon_watt": {},
+    "kwc_selon_watt": {}
+  }
 }

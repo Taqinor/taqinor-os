@@ -192,6 +192,19 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(within(carte).getAllByRole('option')[2]).not.toHaveTextContent(/stock/i)
   })
 
+  it('D-ACAL-169 — le panneau par défaut de la société porte la pastille « Par défaut », les autres modèles aucune', async () => {
+    monterConstructeur()
+    calepinageApi.calepinages.modulesDisponibles.mockResolvedValue({
+      data: { modules: [{ ...CATALOGUE[0], par_defaut: true }, CATALOGUE[1]] },
+    })
+    rendre()
+    const carte = screen.getByTestId('cal-panneaux-module')
+    fireEvent.click(within(carte).getByRole('button', { name: /Module par défaut/ }))
+    await waitFor(() => expect(within(within(carte).getAllByRole('option')[1]).getByTestId('cal-pan-par-defaut')).toHaveTextContent('Par défaut'))
+    expect(within(carte).getAllByTestId('cal-pan-par-defaut')).toHaveLength(1)
+    expect(within(carte).getAllByRole('option')[2]).not.toHaveTextContent('Par défaut')
+  })
+
   it('lane E9 (T4-X2-001) — module de 710 W pour une conception de 8 × 550 W : la carte dit la puissance et le compte servi, la pose reçoit 6', async () => {
     monterConstructeur({ besoin: '12' })
     document.getElementById('rp9-pan-module-select').value = 'produit-1'
@@ -270,7 +283,7 @@ describe('étape Panneaux — panneau de droite', () => {
     document.getElementById('rp9-pan-module-select').value = 'produit-1'
     rendre()
     const facture = screen.getByTestId('cal-panneaux-option-facture')
-    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc · conception'))
+    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc · Factures du lead'))
     expect(facture.querySelector('[data-zone="conception-du-lead"]')).toBeNull()
   })
 
@@ -320,7 +333,7 @@ describe('étape Panneaux — panneau de droite', () => {
     document.getElementById('rp9-reco-kwc').textContent = '8,64 kWc'
     document.getElementById('rp9-reco-prod').textContent = '9 589 kWh/an'
     document.getElementById('rp9-reco-cover').textContent = '144 %'
-    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc · conception · ≈ 144 % de la consommation'), { timeout: 3000 })
+    await waitFor(() => expect(facture).toHaveTextContent('12 panneaux · 6,96 kWc · Factures du lead · ≈ 144 % de la consommation'), { timeout: 3000 })
     expect(facture).toHaveAttribute('aria-pressed', 'true')
     expect(max).toHaveAttribute('aria-pressed', 'false')
     // l'autre carte garde les chiffres lus quand elle était posée
@@ -338,7 +351,7 @@ describe('étape Panneaux — panneau de droite', () => {
     const surInput = espion('#rp9-need-input', 'input')
     rendre()
     const facture = screen.getByTestId('cal-panneaux-option-facture')
-    await waitFor(() => expect(facture).toHaveTextContent('Couvrir la factureRecommandé1 panneau · 0,71 kWc · sur 6 nécessaires'))
+    await waitFor(() => expect(facture).toHaveTextContent('Couvrir la factureRecommandé1 panneau · 0,71 kWc · 6 cible (Factures du lead) · 5 de moins que la cible'))
     expect(facture).not.toHaveTextContent('4,26')
     expect(facture).not.toHaveTextContent('6 panneaux')
     fireEvent.click(facture)
@@ -348,7 +361,7 @@ describe('étape Panneaux — panneau de droite', () => {
   // ACAL1331 (D-ACAL-76) — calepinage vierge : le constructeur a posé la taille de la cible et l'a dite dans sa note ;
   // le Guidé la DIT sous « Combien de panneaux ? ». Le commercial ajuste (« + ») : la note change, la phrase part.
   it('ACAL1331 — la taille posée d’elle-même est dite ; ajustée, la phrase part', async () => {
-    const phrase = 'Posé d’après la facture : 12 panneaux · 6,96 kWc — ajustez si besoin.'
+    const phrase = 'Posé d’après les factures du lead : 12 panneaux · 6,96 kWc — ajustez si besoin.'
     monterConstructeur({ besoin: '12', note: phrase })
     rendre()
     const dite = () => document.querySelector('[data-zone="taille-auto"]')
@@ -441,6 +454,40 @@ describe('étape Panneaux — panneau de droite', () => {
     expect(lien).toHaveAttribute('href', '/crm/leads/42')
   })
 
+  // R6-N4 — lead R5A-4 (facture 900 MAD + taille souhaitée 6 kWc) : le serveur nomme la cause dans `refus`, dite telle quelle ;
+  // sans cause servie, un lead qui porte une facture ne lit jamais « Aucune taille ne se tire des factures » ni le lien
+  // « Renseigner la facture du lead ».
+  it('R6-N4 — facture saisie : la cause servie est dite, et sans cause jamais « aucune taille » ni « renseigner la facture »', async () => {
+    servir({ cible: null })
+    const CAUSE = 'La taille de ce lead vient de la taille souhaitée sur sa fiche (6 kWc ; conception : 9 panneaux · 6,39 kWc), pas de ses factures.'
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: { cible_factures: null, refus: CAUSE } })
+    rendre()
+    await screen.findByText(CAUSE)
+    expect(document.body).not.toHaveTextContent('Aucune taille ne se tire des factures')
+    expect(screen.queryByRole('link', { name: 'Renseigner la facture du lead' })).toBeNull()
+    cleanup()
+    oublierLecturesServies()
+    servir({ cible: null })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: { cible_factures: null, refus: '' } })
+    rendre()
+    await screen.findByText(/La facture de ce lead est renseignée, mais le moteur n’en a tiré aucune taille/)
+    expect(document.body).not.toHaveTextContent('Aucune taille ne se tire des factures')
+    expect(screen.queryByRole('link', { name: 'Renseigner la facture du lead' })).toBeNull()
+  })
+
+  // R6-N4 — taille souhaitée SANS facture : il ne manque rien, la phrase n'est pas suivie du lien de saisie d'une facture.
+  it('R6-N4 — taille souhaitée sur la fiche, sans facture : la cause est dite, aucun lien « Renseigner la facture du lead »', async () => {
+    servir({ cible: null })
+    const CAUSE = 'La taille de ce lead vient de la taille souhaitée sur sa fiche (6 kWc ; conception : 9 panneaux · 6,39 kWc), pas de ses factures.'
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: {
+      calepinage: { lead: 42 }, consommation_lead: { facture_mensuelle_mad: null, motif: '' },
+      cible: { source: 'lead', panneaux: 9, kwc: 6.39 } } })
+    calepinageApi.calepinages.cibleFactures.mockResolvedValue({ data: { cible_factures: null, refus: CAUSE } })
+    rendre()
+    await screen.findByText(CAUSE)
+    expect(screen.queryByRole('link', { name: 'Renseigner la facture du lead' })).toBeNull()
+  })
+
   // T4-X9-013 — calepinage SANS lead : « Ville inconnue du moteur : renseigner la ville ou le point GPS du lead. » sous
   // « Couvrir la facture », alors qu'aucun lead n'existe (refus du moteur sur la conception du calepinage porteur).
   it('T4-X9-013 — sans lead : aucune phrase qui demande de remplir le lead (refus et motif du moteur tus)', async () => {
@@ -494,7 +541,7 @@ describe('étape Panneaux — panneau de droite', () => {
     couverture_pct: { valeur: pct, unite: '%', source: 'conception', etat: 'servi' },
   })
   it.each([
-    ['la conception servie a la taille de la carte', 2.84, '4 panneaux · 2,84 kWc · conception · ≈ 54 % de la consommation'],
+    ['la conception servie a la taille de la carte', 2.84, '4 panneaux · 2,84 kWc · Factures du lead · ≈ 54 % de la consommation'],
     ['la conception servie a une autre taille', 3.55, null],
   ])('ACAL1613 — la carte recommandée non posée dit sa part : %s', async (_cas, kwcServi, attendu) => {
     servir({ cible: { panneaux: 4, kwc: 2.84, module_wc: 710 } })
@@ -878,7 +925,7 @@ describe('étape Panneaux — sur la carte', () => {
     monterConstructeur({ besoin: '8', panneaux: '8 × 710 W', kwc: '5,68 kWc', cover: '—', note: '' })
     rendre()
     const facture = screen.getByTestId('cal-panneaux-option-facture')
-    await waitFor(() => expect(facture).toHaveTextContent('8 panneaux · 4,40 kWc · conception'))
+    await waitFor(() => expect(facture).toHaveTextContent('8 panneaux · 4,40 kWc · Factures du lead'))
     expect(facture).toHaveAttribute('aria-pressed', 'true')
     expect(document.querySelector('[data-zone="pose-posee"]')).toHaveTextContent('Posé : 8 panneaux · 5,68 kWc')
     expect(facture).not.toHaveTextContent('5,68')
@@ -887,7 +934,7 @@ describe('étape Panneaux — sur la carte', () => {
     document.getElementById('faux-constructeur').remove()
     monterConstructeur({ besoin: '8', panneaux: '8 × 550 W', kwc: '4,40 kWc', cover: '—', note: '' })
     rendre()
-    await waitFor(() => expect(screen.getByTestId('cal-panneaux-option-facture')).toHaveTextContent('8 panneaux · 4,40 kWc · conception'))
+    await waitFor(() => expect(screen.getByTestId('cal-panneaux-option-facture')).toHaveTextContent('8 panneaux · 4,40 kWc · Factures du lead'))
     expect(document.querySelector('[data-zone="pose-posee"]')).toBeNull()
   })
 

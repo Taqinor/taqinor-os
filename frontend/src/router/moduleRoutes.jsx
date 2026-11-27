@@ -93,7 +93,8 @@ export function buildModuleRoutes(deps) {
       const Enveloppe = r.plein ? WithAtelier : WithLayout
       // WIR171 — `permRepliPalier` transmis tel quel : c'est lui qui fait
       // basculer `roleLoader` sur la sémantique `HasPermissionOrLegacy`.
-      const base = r.roles ? roleLoader(r.roles, r.perm, r.permRepliPalier) : authLoader
+      // T4-X8-016 — `permModule` transmis de même (même sémantique que `LectureDuModule`).
+      const base = r.roles ? roleLoader(r.roles, r.perm, r.permRepliPalier, r.permModule) : authLoader
       const loader = (c.key && moduleLoader) ? moduleLoader(c.key, base) : base
       return {
         path: r.path,

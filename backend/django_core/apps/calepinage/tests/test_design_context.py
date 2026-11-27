@@ -592,6 +592,45 @@ class CibleFacturesTest(unittest.TestCase):
             with self.subTest(cible=cible):
                 self.assertIsNone(self.servi(cible))
 
+    # R6-N4 — lead R5A-4 : facture 900 MAD ET taille souhaitée 6 kWc. La taille souhaitée est souveraine (« lead »),
+    # aucune taille ne vient des factures, mais ce n'est PAS parce que la facture manque — la phrase le dit.
+    def test_taille_souhaitee_dite_et_non_une_facture_absente(self):
+        from decimal import Decimal
+
+        from apps.calepinage.views.toiture_lead import cible_factures_et_refus
+
+        cible = {'panneaux': 9, 'panel_watt': 710, 'kwc': 6.39, 'source': 'lead', 'refus': None, 'motif_code': None}
+
+        def refus_pour(souhait, cible=cible):
+            lead = mock.Mock(taille_souhaitee_kwc=souhait)
+            return cible_factures_et_refus(mock.Mock(), lire_cible=lambda calepinage: cible,
+                                           lire_lead=lambda company, pk: lead)
+
+        servi, refus = refus_pour(Decimal('6'))
+        self.assertIsNone(servi)
+        # Le SOUHAIT tel qu'il est sur la fiche (rond : « 6 kWc », jamais « 6,00 »),
+        # la pose calculée nommée « conception ».
+        self.assertEqual(refus, 'La taille de ce lead vient de la taille souhaitée sur sa fiche '
+                                '(6 kWc ; conception : 9 panneaux · 6,39 kWc), pas de ses factures.')
+        self.assertNotIn('Aucune taille', refus)
+        self.assertIn('(6,5 kWc ; conception', refus_pour(Decimal('6.5'))[1])
+        # Souhait illisible : jamais inventé — seule la conception, nommée comme telle.
+        self.assertIn('(conception : 9 panneaux · 6,39 kWc)', refus_pour(None)[1])
+        un = dict(cible, panneaux=1, kwc=None)
+        self.assertIn('(6 kWc ; conception : 1 panneau)', refus_pour(Decimal('6'), un)[1])
+
+    def test_les_autres_refus_et_la_cible_des_factures_ne_changent_pas(self):
+        from apps.calepinage.views.toiture_lead import cible_factures_et_refus
+
+        refus = {'panneaux': None, 'source': 'factures', 'refus': 'Aucune facture.'}
+        self.assertEqual(cible_factures_et_refus(mock.Mock(), lire_cible=lambda c: refus), (None, 'Aucune facture.'))
+        self.assertEqual(cible_factures_et_refus(mock.Mock(), lire_cible=lambda c: None), (None, ''))
+        sans_lead = {'panneaux': 16, 'source': 'conception', 'refus': None}
+        self.assertEqual(cible_factures_et_refus(mock.Mock(), lire_cible=lambda c: sans_lead), (None, ''))
+        factures = {'panneaux': 12, 'panel_watt': 580, 'kwc': 6.96, 'source': 'factures', 'refus': None}
+        servi, texte = cible_factures_et_refus(mock.Mock(), lire_cible=lambda c: factures)
+        self.assertEqual((servi['panneaux'], texte), (12, ''))
+
 
 class FactureMensuelleDuLeadTest(unittest.TestCase):
     """ACAL776 — la facture mensuelle moyenne du lead, sans base."""

@@ -217,3 +217,18 @@ checks.not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx", 502]
 [[operations]]
 include-name = 'POST /api/django/monitoring/configs/{id}/email-om-report/'
 checks.not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx", 502]
+
+# ── 12. Produit qui n'est pas un panneau : le 400 est la règle métier (D-ACAL-169) ─
+# `POST …/stock/produits/{id}/definir-panneau-par-defaut/` désigne le panneau
+# par défaut de la société et refuse par 400 un produit qui n'en est pas un
+# (« Batterie Gel 2.2 kWh n'est pas un panneau », archivé, sans puissance…).
+# Le 400 est déclaré au schéma (`@extend_schema`). « Ce produit est un panneau »
+# est un ÉTAT de la ligne choisie, qu'aucun schéma OpenAPI ne peut exprimer :
+# l'id d'inventaire du fuzz est une ligne quelconque du catalogue (ici une
+# batterie), l'opération n'a pas de corps. Même forme que les § 6, 8 et 9 : 400
+# AJOUTÉ aux statuts attendus de `positive_data_acceptance` pour CETTE SEULE
+# opération (un seul filtre `include-name`) ; le check reste actif partout
+# ailleurs, la vue est inchangée, la dette `api_fuzz_dette.txt` n'augmente pas.
+[[operations]]
+include-name = 'POST /api/django/stock/produits/{id}/definir-panneau-par-defaut/'
+checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 409, 429, "5xx"]

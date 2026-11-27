@@ -62,6 +62,7 @@ import {
   statutAbstention, statutRefuse, tonStatut,
 } from './VerdictElectrique.helpers'
 import LIBELLES_CODES from './libellesCodesVerdict.json'
+import { provenanceLiaisonDc } from './resumeRaccordement'
 
 /** Un motif, dans la forme EXACTE de `_motif_publication` — quatre clés. */
 const motif = (code, statut, libelle, source = '') => ({
@@ -1287,5 +1288,91 @@ describe('EtapeElectrique — étape guidée de la coque (maquette Électrique)'
     relu.troncons.troncons = relu.troncons.troncons.map((t) => (t.cote === 'dc' ? { ...t, longueur_m: 21 } : t))
     await act(async () => { servir({ data: relu }) })
     await waitFor(() => expect(pastille).toHaveTextContent('Câble côté panneaux42 m'))
+  })
+
+  it('liaison DC tracée — la longueur que la simulation compte sous « Câble côté panneaux », retenue après un geste, relue après l’enregistrement', async () => {
+    // Le fragment COMMITTÉ du contrat : 28 m = 3 m dans le pan + 19 m de tracé + 6 m de descente saisie.
+    const liaison = exempleContrat('calepinage', 'calepinage_resultat', 'liaison_dc_tracee')
+    servirEtape({ r: { ...resultat(), simule: true, simulation_perimee: false, longueurs: structuredClone(liaison.longueurs) } })
+    const origine = [-7.6, 33.5]
+    const m = (Math.PI / 180) * 6378137
+    const versLngLat = (e, n) => [origine[0] + e / (m * Math.cos((origine[1] * Math.PI) / 180)), origine[1] + n / m]
+    const couche = creerCoucheElectrique({
+      electrical: null, sceneOrigin: origine, activeAreaId: 'z1',
+      areas: [{ id: 'z1', renderPlan: { pack: { origin: origine, azimuthDeg: 180, ringENU: [[0, 0], [20, 0], [20, 12], [0, 12]] },
+        grid: { rowWidthM: 2, panels: [3, 5, 7, 9].map((cx) => ({ cx, cy: 6 })) } } }],
+    })
+    const builderApi = { setAffectationChaines: vi.fn(), electrique: couche }
+    const surCarte = document.createElement('div')
+    document.body.appendChild(surCarte)
+    const coque = { noeuds: { surCarte, panneau: null, pied: null }, prendrePied: () => () => {} }
+    const arbre = (enregistreLe) => (
+      <MemoryRouter initialEntries={['/calepinage/7']}>
+        <Routes>
+          <Route path="/calepinage/:id" element={(
+            <ContexteCoque.Provider value={coque}>
+              <EtapeElectrique calepinageId={7} builderApi={builderApi} enregistreLe={enregistreLe}
+                action={{ libelle: 'Voir les résultats', onClick: () => {} }} />
+            </ContexteCoque.Provider>
+          )} />
+        </Routes>
+      </MemoryRouter>
+    )
+    const { rerender } = render(arbre('T0'))
+    const ligne = await within(surCarte).findByTestId('cal-elec-cable-simulation')
+    expect(ligne).toHaveTextContent('La simulation compte 28 m (tracé du plan et longueurs saisies — une longueur saisie l’emporte sur le plan)')
+    expect(ligne).toHaveTextContent('+ 6 m descente verticale (saisie)')
+    // Un geste sur l'onduleur : la longueur comptée décrit l'ANCIEN tracé, elle n'est plus montrée.
+    fireEvent.click(within(surCarte).getByRole('button', { name: 'Placer l’onduleur' }))
+    act(() => { couche.clicCarte(versLngLat(19, 2)) })
+    expect(within(surCarte).getByTestId('cal-sur-carte-resume')).toHaveTextContent('à mesurer à l’enregistrement')
+    expect(within(surCarte).queryByTestId('cal-elec-cable-simulation')).toBeNull()
+    // Enregistré, pas encore relu : toujours retenue.
+    let servir
+    calepinageApi.calepinages.resultat.mockReturnValueOnce(new Promise((r) => { servir = r }))
+    rerender(arbre('T1'))
+    expect(within(surCarte).queryByTestId('cal-elec-cable-simulation')).toBeNull()
+    // Relu : le document a changé, la simulation rangée est périmée — la longueur est celle que la PROCHAINE comptera.
+    const relu = { ...resultat(), simule: false, simulation_perimee: true, longueurs: structuredClone(liaison.longueurs) }
+    relu.longueurs.dc.valeur_m = 33
+    await act(async () => { servir({ data: relu }) })
+    const relue = await within(surCarte).findByTestId('cal-elec-cable-simulation')
+    expect(relue).toHaveTextContent('La simulation comptera 33 m')
+  })
+})
+
+/* Liaison DC tracée (suite ACAL1317) — la provenance de la longueur que la simulation compte, lue sur le fragment
+   COMMITTÉ du contrat (`calepinage_resultat.json` › `liaison_dc_tracee`), jamais sur une charge inventée. */
+describe('provenanceLiaisonDc — quelle longueur la simulation compte', () => {
+  const servi = () => structuredClone(exempleContrat('calepinage', 'calepinage_resultat', 'liaison_dc_tracee'))
+
+  const parts = ' : 3 m module le plus éloigné → départ du tracé « chA » (plan) + 19 m tracé « chA » jusqu\'à '
+    + 'l\'onduleur « eq1 », à plat (plan) + 6 m descente verticale (saisie)'
+
+  it('tracé + descente saisie (le tracé tel que l’atelier l’écrit) : la longueur comptée, ses parts et leur source', () => {
+    // 28 m servis = 3 m dans le pan + 19 m de tracé (la pastille) + 6 m de descente : jamais la pastille seule.
+    // Sans simulation fraîche servie (le fragment n'en porte pas), c'est la PROCHAINE qui comptera.
+    expect(provenanceLiaisonDc(servi())).toBe('La simulation comptera 28 m (tracé du plan et longueurs saisies — une '
+      + `longueur saisie l’emporte sur le plan)${parts}`)
+    expect(provenanceLiaisonDc({ ...servi(), simule: true, simulation_perimee: false }))
+      .toMatch(/^La simulation compte 28 m \(/)
+  })
+
+  it('plan seul, longueurs saisies, aucune longueur, ou rien de servi', () => {
+    const plan = servi()
+    plan.longueurs.source_dc = 'trace'
+    expect(provenanceLiaisonDc(plan)).toBe(`La simulation comptera 28 m (relevée sur le plan)${parts}`)
+    const saisie = servi()
+    saisie.longueurs.source_dc = 'saisie'
+    expect(provenanceLiaisonDc(saisie)).toBe(`La simulation comptera 28 m (longueurs saisies)${parts}`)
+    const defaut = servi()
+    defaut.longueurs = { dc: null, ac: null, source_dc: 'defaut' }
+    expect(provenanceLiaisonDc(defaut))
+      .toBe('Longueur inconnue de la simulation : la perte de ce câble y est supposée, ou non comptée')
+    const inconnue = servi()
+    inconnue.longueurs.source_dc = 'toString'
+    expect(provenanceLiaisonDc(inconnue)).toBeNull()
+    expect(provenanceLiaisonDc({ troncons: servi().troncons })).toBeNull()
+    expect(provenanceLiaisonDc(null)).toBeNull()
   })
 })

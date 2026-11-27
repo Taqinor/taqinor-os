@@ -34,7 +34,7 @@ from unittest import mock
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.modules_stock import (
-    CHAMPS_REQUIS, PREFIXE_ID, SOURCE_FICHE,
+    CHAMPS_REQUIS, MOTIF_AUCUNE_FICHE, MOTIF_PAR_DEFAUT_NON_RETENU, PREFIXE_ID, SOURCE_FICHE,
     _entree_module as entree_module,
     _identifiant_module as identifiant_module,
     modules_disponibles_du_calepinage,
@@ -177,6 +177,98 @@ class LExempleEstCeQueLeServiceProduitTest(SimpleTestCase):
             with self.subTest(champ=champ):
                 self.assertIsInstance(module[champ], float)
         json.dumps(module)  # aucun Decimal ne survit jusqu'à la réponse
+
+
+class LePanneauParDefautDeLaSocieteDemarreLeCalepinageTest(SimpleTestCase):
+    """D-ACAL-169 — un seul panneau par défaut par société (désigné au stock) : quand rien d'autre ne décide, c'est
+    le PREMIER module servi, donc celui que l'atelier pose d'office (``moduleDeDepart``). Sans panneau désigné, la
+    réponse est celle d'aujourd'hui, octet pour octet (les tests ci-dessus, inchangés, le disent aussi)."""
+
+    SELECTEUR = 'apps.stock.selectors_panneau_defaut.panneau_par_defaut'
+
+    def _calepinage(self):
+        calepinage = _FauxCalepinage()
+        calepinage.company = mock.Mock(pk=7)  # société ENREGISTRÉE : le sélecteur du stock est lu
+        return calepinage
+
+    def _produit_715(self, fiche=True):
+        return _FauxProduit(4140, 'Module monocristallin 715 Wc (exemple)', _FausseFiche(
+            longueur_mm=2384, largeur_mm=1303, epaisseur_mm=33, poids_kg=Decimal('33'),
+            pmax_wc=Decimal('715')) if fiche else None)
+
+    def _servi(self, defaut, produits, du_devis=None, favoris=(4112,)):
+        with mock.patch('apps.calepinage.selectors.parametres_de_societe',
+                        return_value={'favoris_materiel': {'modules': list(favoris)}}), \
+                mock.patch(self.SELECTEUR, return_value=defaut), \
+                mock.patch('apps.calepinage.services.modules_stock._module_de_la_conception',
+                           return_value=du_devis):
+            return modules_disponibles_du_calepinage(self._calepinage(), produits)
+
+    def test_le_panneau_par_defaut_utilisable_est_le_premier_module_servi(self):
+        servi = self._servi(self._produit_715(), [_produit_complet(), self._produit_715()])
+        self.assertEqual([e['module']['produitId'] for e in servi['modules']], [4140, 4112])
+        # Le favori (4112) passait en tête sans panneau par défaut : le panneau par défaut le précède.
+        from apps.calepinage.services.disponibilite_stock import marquer_en_stock
+
+        with mock.patch('apps.stock.selectors_disponibilite.produits_en_stock', return_value={4140}):
+            marquer_en_stock(self._calepinage().company, servi['modules'], lambda e: e['module']['produitId'])
+        self.assertEqual(servi, CONTRAT['exemple_avec_panneau_par_defaut'])
+
+    def test_sans_panneau_par_defaut_aucune_cle_et_l_ordre_d_aujourd_hui(self):
+        servi = self._servi(None, [self._produit_715(), _produit_complet()])
+        self.assertEqual([e['module']['produitId'] for e in servi['modules']], [4112, 4140])  # favori d'abord
+        self.assertTrue(all('par_defaut' not in e for e in servi['modules']))
+
+    def test_rejeu_un_pan_neuf_part_du_panneau_par_defaut_meme_si_la_conception_dit_un_autre_module(self):
+        """D-ACAL-169 (rejeu) — 715 Wc désigné, conception du lead au 710 : le premier module d'un pan NEUF était
+        « CS 710W — module de départ » (le module de la conception en tête). L'atelier pose d'office le premier
+        choisissable (``moduleDeDepart``) : c'est désormais le panneau par défaut utilisable."""
+        servi = self._servi(self._produit_715(), [_produit_complet(), self._produit_715()], du_devis='4112')
+        self.assertEqual([e['module']['produitId'] for e in servi['modules']], [4140, 4112])
+        premier = next(e for e in servi['modules'] if e['selectionnable'])
+        self.assertTrue(premier['par_defaut'])
+        self.assertEqual(premier['module']['id'], 'produit-4140')
+
+    def test_rejeu_un_pan_existant_garde_son_module_il_reste_servi_et_choisissable(self):
+        """D-ACAL-169 (rejeu) — un pan EXISTANT (ou un calepinage enregistré) cite son module par
+        ``zones[].geometry.moduleId`` : ce module reste servi, choisissable, au même identifiant stable, juste
+        après le panneau par défaut. Rien n'est réécrit dans le document."""
+        servi = self._servi(self._produit_715(), [_produit_complet(), self._produit_715()], du_devis='4112')
+        cite = next(e for e in servi['modules'] if e['module']['id'] == 'produit-4112')
+        self.assertTrue(cite['selectionnable'])
+        self.assertNotIn('par_defaut', cite)
+
+    def test_un_panneau_par_defaut_grise_laisse_la_tete_au_module_de_la_conception(self):
+        incomplet = _FauxProduit(4140, 'Module 715 Wc', _FausseFiche(longueur_mm=2384, largeur_mm=1303))
+        servi = self._servi(incomplet, [_produit_complet(), incomplet], du_devis='4112')
+        self.assertEqual([e['module']['produitId'] for e in servi['modules']], [4112, 4140])
+
+    def test_une_fiche_incomplete_n_ouvre_pas_le_calepinage_et_le_dit(self):
+        incomplet = _FauxProduit(4140, 'Module 715 Wc', _FausseFiche(longueur_mm=2384, largeur_mm=1303))
+        servi = self._servi(incomplet, [_produit_complet(), incomplet])
+        # L'ordre d'aujourd'hui (le favori en tête), le panneau par défaut listé, grisé, avec sa raison.
+        self.assertEqual([e['module']['produitId'] for e in servi['modules']], [4112, 4140])
+        entree = servi['modules'][1]
+        self.assertTrue(entree['par_defaut'])
+        self.assertFalse(entree['selectionnable'])
+        self.assertTrue(entree['motif'].startswith(MOTIF_PAR_DEFAUT_NON_RETENU))
+        self.assertIn('la puissance crête (Wc)', entree['motif'])
+        self.assertIsNone(servi['motif_liste_vide'])
+
+    def test_un_panneau_par_defaut_sans_fiche_module_est_liste_et_grise(self):
+        servi = self._servi(self._produit_715(fiche=False), [])
+        self.assertEqual([e['module']['produitId'] for e in servi['modules']], [4140])
+        entree = servi['modules'][0]
+        self.assertTrue(entree['par_defaut'] and not entree['selectionnable'])
+        self.assertTrue(entree['motif'].startswith(MOTIF_PAR_DEFAUT_NON_RETENU))
+        # Aucun module sélectionnable ni fiche « module » au catalogue : le motif de liste vide reste celui d'avant.
+        self.assertEqual(servi['motif_liste_vide'], MOTIF_AUCUNE_FICHE)
+
+    def test_sans_societe_enregistree_le_stock_n_est_pas_lu(self):
+        with mock.patch(self.SELECTEUR) as lecture:
+            servi = modules_disponibles_du_calepinage(_FauxCalepinage(), [_produit_complet()])
+        lecture.assert_not_called()
+        self.assertTrue(all('par_defaut' not in e for e in servi['modules']))
 
 
 class UneEntreeEstUneEntreeDuDocumentTest(SimpleTestCase):

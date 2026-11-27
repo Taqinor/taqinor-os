@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom'; // ACAL574
 import { type Ctx } from './context'; // ACAL574
-import { carteDeLaPoseTenue, direEcartPoseRelue, motifPanExistant, noteEcartPoseRelue, remettreSurLePlan } from './panExistant'; // ACAL574, ACAL1900
+import { carteDeLaPoseTenue, direEcartALaPose, direEcartPoseRelue, motifPanExistant, noteEcartPoseRelue, remettreSurLePlan } from './panExistant'; // ACAL574, ACAL1900
 import { createLayoutState } from '../../lib/layoutVariability'; // ACAL1900
 import { serializeLayout } from './prefill'; // ACAL1900
 import { annualSavingsMad, packConfig, defaultEastWestGeometry, type PackOptions } from '../../lib/estimatorBrainV2';
@@ -31,7 +31,7 @@ import type { LayoutPlan } from './types'; // ACAL2032
 import { DEG2M as DEG2M_TEST } from './constants'; // ACAL2032
 import { fmt, fmtKwc, fmtMad } from './dom'; // ACAL994 + R2-09
 import { suiteCouverture } from './tailleConception'; // T4-X5-005
-import { phraseSurplus } from './affichageErp'; // R2-17
+import { phraseSurplus, phraseTiennent, texteSurDevis } from './affichageErp'; // R2-17, T4-X8-012 (une cible)
 import { createZones } from './zones'; // ACAL1418
 import { factureCarteDe, lireFactureSaisie } from './factureCarte'; // ACAL777
 import { createShadingUi, seuilEffectifAccesSolaire } from './shadingUi'; // ACAL548, ACAL1900
@@ -1448,6 +1448,70 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
     } finally { for (const x of [a, sansDevis, nonVendu, sansCompte, publique]) x.fin(); }
   });
 
+  // T4-X8-012 (une cible) — « 16 posés / 16 cible » à côté de la carte « Cible — panneaux : 7 » : le nombre à poser (« Panneaux à
+  // poser », choisi ou enregistré) était écrit « cible ». « cible » = la cible SERVIE (la conception du lead), avec sa source dans
+  // les mots de la carte ; le nombre à poser garde son nom.
+  describe('T4-X8-012 (une cible) — la note dit LA cible servie, jamais le nombre à poser', () => {
+    const watt = MODULE_PAR_DEFAUT_ATELIER.pmaxWc as number;
+    const hydrate = (cible: Record<string, unknown> | null, extra: Record<string, unknown> = {}) => ({ devis: { origineCible: 'factures', libelleOrigineCible: 'Factures du lead', cible, ...extra } });
+    const note = (opts: Record<string, unknown>, neededPanels: number) => { const x = monter(opts, { devisMode: true, cibleVendue: false, neededPanels }); const t = x.t('rp9-need-note'); x.fin(); return t; };
+    const SERVIE = (n: number) => hydrate({ panneaux: n, panel_watt: watt });
+
+    it('cibles tapée (12), du devis (14) et des factures (7) toutes différentes : une seule cible dite, avec sa source', () => {
+      // la pose en tient 10 : 3 de plus que la cible des factures ; le champ « à poser » (12) n’apparaît plus comme « cible »
+      expect(note({ chiffrage: null, hydrate: SERVIE(7) }, 12))
+        .toBe('10 posés / 7 cible (Factures du lead) · 3 de plus que la cible — le toit n’en tient pas davantage en plein sud (toit ou obstacles).');
+      // même cible par la table servie du module posé (la carte « Couvrir la facture »), prioritaire sur le compte de la conception
+      expect(note({ chiffrage: null, hydrate: hydrate({ panneaux: 99, panel_watt: 550 }, { panneauxSelonWatt: { [String(watt)]: 7 } }) }, 12))
+        .toContain('10 posés / 7 cible (Factures du lead) · 3 de plus que la cible');
+      // un devis lié vendu de 14 : la note garde « · 14 au devis » mais la cible reste la servie
+      const lie = monter({ chiffrage: null, devisLie: true, hydrate: SERVIE(7) }, { devisMode: true, cibleVendue: true, neededPanels: 12, panneauxDevis: 14 });
+      try { expect(lie.t('rp9-need-note')).toContain('10 posés / 7 cible (Factures du lead) · 3 de plus que la cible · 14 au devis — le toit n’en tient pas'); } finally { lie.fin(); }
+    });
+
+    it('sous la cible : « k de moins » et « seuls N tiennent » reste vrai ; à la cible : aucun écart ; place libre : phrase d’avant', () => {
+      expect(note({ chiffrage: null, hydrate: SERVIE(14) }, 12))
+        .toBe('10 posés / 14 cible (Factures du lead) · 4 de moins que la cible — seuls 10 tiennent en plein sud (toit ou obstacles).');
+      expect(note({ chiffrage: null, hydrate: SERVIE(10) }, 12))
+        .toBe('10 posés / 10 cible (Factures du lead) — le toit n’en tient pas davantage en plein sud (toit ou obstacles).');
+      // 8 à poser (choisis), le toit en tient 10 : posés 8 / cible 7, la place restante est dite comme avant
+      expect(note({ chiffrage: null, hydrate: SERVIE(7) }, 8)).toBe('8 posés / 7 cible (Factures du lead) · 1 de plus que la cible — il reste de la place sur le toit, laissée libre.');
+    });
+
+    it('sans cible servie, ou sans compte servi pour le module posé : le texte d’avant, jamais « 0 cible »', () => {
+      const avant = '10 posés / 12 cible — seuls 10 tiennent en plein sud (toit ou obstacles).';
+      expect(note({ chiffrage: null }, 12)).toBe(avant);
+      expect(note({ chiffrage: null, hydrate: { devis: { panneauxSelonWatt: { [String(watt)]: 7 } } } }, 12)).toBe(avant); // une table seule n'est pas une origine
+      expect(note({ chiffrage: null, hydrate: hydrate({ panneaux: null, panel_watt: null }) }, 12)).toBe(avant); // refus du moteur : aucune cible
+      expect(note({ chiffrage: null, hydrate: hydrate({ panneaux: 7, panel_watt: watt + 100 }) }, 12)).toBe(avant); // autre module, aucun compte servi
+      // rien à poser : aucune phrase « N posés / T cible » ; la note ne dit « aucune cible » que s'il n'y en a aucune de servie
+      expect(note({ chiffrage: null, hydrate: SERVIE(7) }, 0)).toBe('La cible est de 7 panneaux (Factures du lead) — on pose ce qui tient (10). Saisissez un nombre pour le plafonner.');
+      expect(note({ chiffrage: null }, 0)).toBe('Aucune cible de puissance sur ce calepinage — on pose ce qui tient (10). Saisissez un nombre pour le plafonner.');
+      expect(note({ chiffrage: null, hydrate: SERVIE(7) }, 0)).not.toContain('0 cible');
+    });
+
+    it('SITE PUBLIC : mêmes textes à l’octet près, même quand le payload porte une cible servie', () => {
+      const sans = note({}, 12);
+      expect(sans).toBe('10 posés / 12 au devis — seuls 10 tiennent en plein sud (toit ou obstacles).');
+      expect(note({ hydrate: SERVIE(7) }, 12)).toBe(sans);
+      expect(texteSurDevis(10, 12, false, true, 14, ' X', { panneaux: 7, origine: 'Factures du lead' })).toBe('10 posés / 12 au devis');
+      expect(phraseTiennent(10, null)).toBe('seuls 10 tiennent'); // sans cible : la phrase d'avant
+    });
+
+    it('les notes de pose tenue disent la même cible et la même source ; sans cible servie, le nombre à poser comme avant', () => {
+      document.body.innerHTML = '<p id="rp9-need-note"></p>';
+      const ctx = { neededPanels: 12, opts: { chiffrage: null, hydrate: SERVIE(7) } };
+      direEcartALaPose(16, ctx as never, watt, fmt, false, '');
+      expect(document.getElementById('rp9-need-note')!.textContent)
+        .toBe('16 posés / 7 cible (Factures du lead) — pose tenue telle quelle (9 de plus que la cible, rien n’est retiré ni ajouté).');
+      direEcartALaPose(16, { neededPanels: 12, opts: { chiffrage: null } } as never, watt, fmt, true, '');
+      expect(document.getElementById('rp9-need-note')!.textContent).toBe(noteEcartPoseRelue(16, 12, fmt, true));
+      document.body.innerHTML = '<p id="rp9-need-note">intact</p>';
+      direEcartALaPose(7, ctx as never, watt, fmt, true, ''); // pose = cible : rien à dire
+      expect(document.getElementById('rp9-need-note')!.textContent).toBe('intact');
+    });
+  });
+
   // T4-X8-012 — après « Le plus de panneaux » (le plafond 400 de `clampNeeded`, « tout ce qui tient ») puis Enregistrer, l'Expert
   // disait « PANNEAUX NÉCESSAIRES 400 » et « 9 posés / 400 cible » : le plafond lu comme le besoin de la facture.
   it('T4-X8-012 — ERP, « le plus de panneaux » : le champ dit le besoin de la FACTURE (servi), la note dit le choix en mots, jamais « 400 cible »', () => {
@@ -1780,9 +1844,16 @@ describe('R3-25 (b) / R3-04 — cartes de variante espacées, phrase « aucune p
 // toit est fermé, à la taille de la cible servie (celle du devis lié, sinon celle tirée de la facture du lead), et l'écran
 // le DIT ; le commercial ajuste ; une pose tenue n'est jamais re-posée (ACAL1900) ; le site public ne change pas.
 describe('ACAL1331 — la taille de la cible posée d’elle-même sur un calepinage vierge, et dite', () => {
+  // les mots que l'ERP pose dans le payload (contexteAtelier.js : LIBELLES_SOURCE_CIBLE et sa forme « d'après »)
+  const motsDeLaCarte: Record<string, { libelleOrigineCible: string; libelleApresOrigineCible: string }> = {
+    factures: { libelleOrigineCible: 'Factures du lead', libelleApresOrigineCible: 'les factures du lead' },
+    devis: { libelleOrigineCible: 'Devis lié', libelleApresOrigineCible: 'le devis lié' },
+    lead: { libelleOrigineCible: 'Taille souhaitée sur la fiche du lead', libelleApresOrigineCible: 'la taille souhaitée sur la fiche du lead' },
+  };
   const payload = (origineCible: string | null, roofLayout: unknown = null) => ({
     id: null, geometrie: { roof_layout: roofLayout, roof_point: null, roof_outline: null },
     cible: { panneaux: 8, panel_watt: 710, scenario: null }, cibleVendue: origineCible === 'devis', origineCible,
+    ...(motsDeLaCarte[origineCible ?? ''] ?? {}),
   });
   /** Boot d'un plat `l × p` m depuis le payload de l'atelier (`hydrateFromDevis`, cible imposée au pan unique comme
    *  `imposeTarget`), puis `close()` : le premier rendu de l'optimiseur. */
@@ -1820,7 +1891,7 @@ describe('ACAL1331 — la taille de la cible posée d’elle-même sur un calepi
     const a = fermer(12, 8, ERP('factures'));
     try {
       expect(a.dessinee()).toBe(8);
-      expect(a.note()).toBe(`Posé d’après la facture : 8 panneaux · ${a.kwc()} kWc — ajustez si besoin.`);
+      expect(a.note()).toBe(`Posé d’après les factures du lead : 8 panneaux · ${a.kwc()} kWc — ajustez si besoin.`);
       a.ctx.neededPanels = 9; // « + »
       a.opt.liveResolveFlat();
       expect(a.dessinee()).toBe(9);
@@ -1846,18 +1917,34 @@ describe('ACAL1331 — la taille de la cible posée d’elle-même sur un calepi
       const n = a.dessinee();
       expect(n).toBeGreaterThan(0);
       expect(n).toBeLessThan(8);
-      expect(a.note()).toMatch(new RegExp(`^Posé d’après la facture : ${n} panneaux · ${a.kwc()} kWc sur 8 — seuls ${n} tiennent .+ ; ajustez si besoin\\.$`));
+      expect(a.note()).toMatch(new RegExp(`^Posé d’après les factures du lead : ${n} panneaux · ${a.kwc()} kWc sur 8 — seuls ${n} tiennent .+ ; ajustez si besoin\\.$`));
     } finally { a.fin(); }
   });
 
-  it('devis lié : « Posé d’après le devis » ; taille souhaitée du lead : dite telle', () => {
-    for (const [origine, mot] of [['devis', 'le devis'], ['lead', 'la taille souhaitée du lead']]) {
+  it('devis lié : « Posé d’après le devis lié » ; taille souhaitée du lead : dite telle', () => {
+    for (const [origine, mot] of [['devis', 'le devis lié'], ['lead', 'la taille souhaitée sur la fiche du lead']]) {
       const a = fermer(12, 8, ERP(origine));
       try {
         expect(a.dessinee()).toBe(8);
         expect(a.note().startsWith(`Posé d’après ${mot} : 8 panneaux`)).toBe(true);
       } finally { a.fin(); }
     }
+  });
+
+  it('T4-X8-012 (une cible) — la note nomme la MÊME source que la carte (même table) ; un payload sans ces mots garde le repli d’avant ; site public octet pour octet', () => {
+    // la tête de la note dit la source de la carte « Cible — panneaux » (« Factures du lead ») après « d’après » : « les factures du lead »
+    const a = fermer(5, 4, ERP('factures'));
+    try { expect(a.note().startsWith('Posé d’après les factures du lead : ')).toBe(true); } finally { a.fin(); }
+    // payload sans les mots de la table (jamais produit par l'ERP d'aujourd'hui) : le repli, texte d'avant
+    const sansMots = fermer(12, 8, { chiffrage: null, rendementPvgis: null, hydrate: { devis: { ...payload('factures'), libelleOrigineCible: undefined, libelleApresOrigineCible: undefined } } });
+    try { expect(sansMots.note()).toBe(`Posé d’après la facture : 8 panneaux · ${sansMots.kwc()} kWc — ajustez si besoin.`); } finally { sansMots.fin(); }
+    // site public : le texte est le même avec ou sans les mots de l'ERP dans le payload (aucune note « d'après », aucun « cible »)
+    const sans = fermer(12, 8, { rendementPvgis: null, hydrate: { devis: { ...payload('factures'), libelleOrigineCible: undefined, libelleApresOrigineCible: undefined } } });
+    const avec = fermer(12, 8, { rendementPvgis: null, hydrate: { devis: payload('factures') } });
+    try {
+      expect(avec.note()).toBe(sans.note());
+      expect(avec.note()).not.toMatch(/d’après|cible/);
+    } finally { sans.fin(); avec.fin(); }
   });
 
   it('jumeaux inchangés : pose déjà enregistrée, aucune origine servie, site public', () => {

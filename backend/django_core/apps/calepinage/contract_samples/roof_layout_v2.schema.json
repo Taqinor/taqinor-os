@@ -274,6 +274,15 @@
         "source": {"type": "string", "minLength": 1}
       },
       "x-hors-exemple": true
+    },
+    "plafondsNumerotation": {
+      "description": "Numérotation stable (suite ACAL1720) — par identifiant de pan, le plus haut numéro de module (`panels[].n`) JAMAIS attribué sur ce pan. Écrite par l'atelier (`roofPro11/numerotation.ts::ecrirePlafonds`) SEULEMENT quand elle dépasse le plus haut `n` encore posé (modules du haut retirés, pan supprimé) : sans elle, rouvrir le document redonnait ces numéros à d'autres modules, et une affectation manuelle de chaîne enregistrée par `<pan>#<n>` désignait alors d'autres panneaux. OPTIONNELLE ; absente = le plafond est le plus haut `n` posé (comportement d'avant). Tenue de compte, pas une conception : hors des trois empreintes (volatile de l'empreinte « document », hors `CLES_IMPRIMEES`).",
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "x-hors-exemple": true
     }
   },
   "$defs": {

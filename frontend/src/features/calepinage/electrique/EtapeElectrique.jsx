@@ -17,7 +17,7 @@ import ConfigurationsOnduleur from './ConfigurationsOnduleur'
 import DevisRetenu from './DevisRetenu'
 import { refusParChamp } from './entreeElectrique'
 import { ROLES, libelleChampManquant } from './MaterielElectrique.helpers'
-import { CASE_CABLE, casesPastille, chainesServies, libelleChaine } from './resumeRaccordement'
+import { CASE_CABLE, casesPastille, chainesServies, libelleChaine, provenanceLiaisonDc } from './resumeRaccordement'
 import { useOnduleurSurCarte } from './onduleurSurCarte'
 
 /* ============================================================================
@@ -177,7 +177,11 @@ function CalquesCarte({
   })
   // Après un geste sur l'onduleur, la longueur servie est celle de l'ANCIEN tracé tant que l'atelier n'est pas
   // enregistré ET relu : elle n'est pas montrée (« à mesurer à l'enregistrement »), jamais un ancien chiffre.
-  const cases = casesPastille(resultat, { cableEnAttente: onduleur.aGeste && (onduleur.aEnregistrer || !resultatAJour) })
+  const cableEnAttente = onduleur.aGeste && (onduleur.aEnregistrer || !resultatAJour)
+  const cases = casesPastille(resultat, { cableEnAttente })
+  // Liaison DC tracée (suite ACAL1317) — la longueur DC que la simulation COMPTE, ses parts et leur source : retenue,
+  // comme la longueur, tant que le geste sur l'onduleur n'est pas enregistré et relu (elle décrirait l'ancien tracé).
+  const liaisonComptee = cableEnAttente ? null : provenanceLiaisonDc(resultat)
   const chaines = couleursDessinees ? chainesServies(resultat).filter((c) => c.couleur) : []
   const manuelles = (resultat?.electrique?.affectation ?? []).some((l) => l?.source === 'affectation manuelle')
   return (
@@ -190,6 +194,9 @@ function CalquesCarte({
               <Indicateur libelle={c.libelle} valeur={c.valeur} />
               {c.libelle === CASE_CABLE && onduleur.provenance && (
                 <span className="cal-indicateur-libelle" data-testid="cal-elec-cable-provenance">{onduleur.provenance}</span>
+              )}
+              {c.libelle === CASE_CABLE && liaisonComptee && (
+                <span className="cal-indicateur-libelle" data-testid="cal-elec-cable-simulation">{liaisonComptee}</span>
               )}
             </div>
           ))}

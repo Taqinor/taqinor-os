@@ -107,28 +107,18 @@ def relier_calepinage_au_devis_revise(sender, ancien=None, nouveau=None,
     (``selectors.calepinage_du_devis`` suit ``superseded_by``). Aucun statut
     n'est écrit (règle #4). BEST-EFFORT : la révision est déjà actée, un
     échec est journalisé, jamais propagé.
+
+    R6-N1 (suite) — le corps est LE service ``services.liens.
+    relier_au_devis_revise`` (idempotent : déjà re-lié en avance par
+    ``ventes``, rien n'est écrit ici).
     """
     company = getattr(ancien, 'company', None)
     if ancien is None or nouveau is None or company is None:
         return
     try:
-        from django.db import transaction
+        from .services.liens import relier_au_devis_revise
 
-        from .selectors import calepinage_du_devis
-        from .services.liens import lier_devis
-        from .services.versions import enregistrer_version
-
-        calepinage = calepinage_du_devis(ancien.pk, company)
-        if calepinage is None or calepinage.devis_id != ancien.pk:
-            return
-        reference = (getattr(ancien, 'reference', '') or '').strip() or (
-            f'#{ancien.pk}')
-        with transaction.atomic():
-            enregistrer_version(
-                calepinage, user=user,
-                libelle=LIBELLE_VERSION_ENVOYEE.format(reference=reference),
-                resultat=None, meme_empreinte_admise=True)
-            lier_devis(calepinage, nouveau.pk, user=user)
+        relier_au_devis_revise(ancien, nouveau, user=user)
     except Exception:  # une re-liaison ne casse jamais la révision
         logger.exception(
             'ACAL92 : re-liaison du calepinage en échec (%s -> %s)',

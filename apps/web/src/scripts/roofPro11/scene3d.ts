@@ -54,7 +54,7 @@ import { type AreaRecord, type ZoneRenderPlan, type RenderSceneFn } from './type
 import { makeCanadianPanelTexture, type JeuPanneau } from './panelTexture';
 import { aplatirEnPlan, poserOeil, verreEtOeilAtelier } from './oeilCamera'; // ACAL1984, T4-U1-017, LOT 6
 import { boiteObstacle } from './obstacle3d'; // ACAL1820
-import { etiquettesChaines, type ChaineAPoser } from './electrique3d'; // ACAL1944
+import { etiquettesChaines, calqueElectriqueVisible, brancherCalqueElectrique, type ChaineAPoser } from './electrique3d'; // ACAL1944 ; T4-X7-015
 import { teintesBatiment, eclatPresentation, TEINTES_PRESENTATION, jeuDeLaScene, cadreOmbreClient, solOmbreClient, ombresObstacles } from './jeuPresentation'; // ACAL1839 ; lot 8
 import { geometrieJupe } from './jupePignon'; // ACAL1839
 import { enPresentation, montreALEtape, surEtape, surPresentation } from './presentationCarte'; // ACAL1839 ; suites v2 — l'étape
@@ -1372,7 +1372,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     if (groupeElectrique && atelierErp) { // ACAL1839 — au client, aucun organe d'édition (onduleur, tracés) ; rendue à la sortie
       const client = jeuScene() === 'presentation' || !montreALEtape(map, 'electrique'); // suites v2 — l'onduleur est celui de la maquette Électrique
       if (client && groupeElectrique.visible) { groupeElectrique.visible = false; groupeElectrique.userData.tuAuClient = true; }
-      else if (!client && groupeElectrique.userData.tuAuClient) { groupeElectrique.visible = true; groupeElectrique.userData.tuAuClient = false; }
+      else if (!client && groupeElectrique.userData.tuAuClient) { groupeElectrique.visible = calqueElectriqueVisible(groupeElectrique); groupeElectrique.userData.tuAuClient = false; } // T4-X7-015 — la case décochée reste décochée
     }
     if (groupeElectrique && sceneRoot && groupeElectrique.parent !== sceneRoot) sceneRoot.add(groupeElectrique);
   }
@@ -2713,7 +2713,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     if (groupeChaines) { groupeChaines.removeFromParent(); groupeChaines.traverse(disposeObject); groupeChaines = null; }
     const col = ctx.affectationColoration;
     const mesh = ctx.activePanelMesh;
-    if (!montrer || !col || !mesh || !sceneRoot || jeuScene() !== 'atelier' || !montreALEtape(map, 'electrique')) return; // suites v2 — maquette Électrique
+    if (!montrer || !col || !mesh || !sceneRoot || jeuScene() !== 'atelier' || !montreALEtape(map, 'electrique') || !calqueElectriqueVisible(groupeElectrique)) return; // T4-X7-015 — case Électrique décochée : pas d'étiquette // suites v2 — maquette Électrique
     const ids = identifiantsModulesParCellule(ctx.activePanelCellIndex, clePanAffectation(ctx.areas.find((a) => a.id === ctx.activeAreaId), ctx.activeAreaId));
     const parChaine = new Map<string, ChaineAPoser & { points: [number, number, number][] }>();
     const m = new THREE.Matrix4();
@@ -2732,7 +2732,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     groupeChaines = etiquettesChaines([...parChaine.values()]);
     sceneRoot.add(groupeChaines);
   }
-  const couleurAffectation = () => (derniereChaines = jeuScene() === 'presentation' ? null : couleurParAffectation(ctx.affectationColoration, ctx.activePanelCellIndex, clePanAffectation(ctx.areas.find((a) => a.id === ctx.activeAreaId), ctx.activeAreaId))); // ACAL1516
+  const couleurAffectation = () => (derniereChaines = jeuScene() === 'presentation' || !calqueElectriqueVisible(groupeElectrique) ? null : couleurParAffectation(ctx.affectationColoration, ctx.activePanelCellIndex, clePanAffectation(ctx.areas.find((a) => a.id === ctx.activeAreaId), ctx.activeAreaId))); // ACAL1516
   /** WJ21 — teinte les instances de panneaux de la zone active par leur accès solaire ; `null` l'éteint (la teinte par
    *  chaîne revient, sinon la teinte d'origine). Réutilise le buffer instanceColor. */
   function setSolarAccessHeatmap(colorFor: CouleurDe) { canal.acces(colorFor, couleurAffectation); }
@@ -2827,7 +2827,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       sceneRoot?.remove(groupeElectrique); // détaché, jamais disposé : il ne nous appartient pas
     }
     groupeElectrique = groupe;
-    attacherCoucheElectrique();
+    brancherCalqueElectrique(groupe, attacherCoucheElectrique, rafraichirAffectation); // T4-X7-015 — la case « Électrique » de Calques redit aussi les chaînes
   }
 
   /** ACAL1839 — le VOLUME de la maison d'après ses DONNÉES, connu avant le premier rendu : chaque sommet de pan à la

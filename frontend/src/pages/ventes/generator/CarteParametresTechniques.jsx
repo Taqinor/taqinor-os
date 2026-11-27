@@ -13,6 +13,7 @@ import { roleLabel, comptePanneauxOption, kwcPanneauxOption } from '../../../fea
 import { phraseAvantAutoRemplirAvec } from '../../../features/ventes/quote/forfaitsPanneau'
 import BandeauDeriveLead from '../../../features/ventes/quote/BandeauDeriveLead'
 import StructureSelector from '../../../features/stock/StructureSelector'
+import { indicationPanneauDefaut } from '../../../features/ventes/quote/panneauDefautEcran'
 import { GenCardHeader } from './CarteMetrique'
 import ChampDecimal from './ChampDecimal'
 
@@ -23,8 +24,10 @@ export default function CarteParametresTechniques({
   pompageManquants, autoFillLoading, marcheCi, fHiver, recalculerDimensionnement,
   avecQuantitesFigees, handleAutoFill, compositionErreur, editDevis, leadValeursModifiees,
   setLeadValeursModifiees, clear, setRechargeEdit, onduleursIncomplets, pompageAutoFilled,
-  apercuPompage, lines, nbSaisiPourLesDeux = false,
+  apercuPompage, lines, nbSaisiPourLesDeux = false, panneauDefaut = null,
 }) {
+  // D-ACAL-169 — le panneau par défaut de la société, dit discrètement sous la puissance.
+  const indicationPanneau = indicationPanneauDefaut(panneauDefaut, panelW)
   // T4-V2-018 — ce que les LIGNES chiffrent dans chaque option (même règle que
   // les totaux : commun + variante de l'option), à côté du conseil du moteur.
   const chiffre = (option) => ({
@@ -85,6 +88,12 @@ export default function CarteParametresTechniques({
             <ChampDecimal id="gen-panelw"
                    value={panelW}
                    onValeur={v => dispatchSizing({ type: 'SAISI', champ: 'panelW', valeur: v })} />
+            {indicationPanneau && (
+              <p className={`text-xs ${indicationPanneau.ton === 'alerte' ? 'text-warning' : 'text-muted-foreground'}`}
+                 data-testid="gen-panneau-defaut">
+                {indicationPanneau.texte}
+              </p>
+            )}
           </div>
           <div className="grid gap-1.5">
             <Label>Puissance PV (kWp) — calculée</Label>

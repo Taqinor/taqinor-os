@@ -76,7 +76,18 @@ export const DRAPEAUX_TOUCHE = [
 export const ETAT_INITIAL = Object.freeze({
   // Champs (défauts identiques à `DevisGenerator.jsx:433-621`).
   nbPanneaux: '',
+  // D-ACAL-169 — PUISSANCE DE DÉPART du panneau. Précédence (la plus forte d'abord) :
+  //   1. un wattage TAPÉ par le vendeur (`SAISI panelW`) ;
+  //   2. le wattage du panneau d'un devis EXISTANT (`REOUVERTURE`) — un devis rouvert
+  //      ne lit JAMAIS le défaut de la société (l'écran ne le demande même pas) ;
+  //   3. la recommandation du moteur / de la conception (`MOTEUR_A_REPONDU`,
+  //      `TAILLE_APPLIQUEE`) — le serveur la calcule déjà sur le même panneau par défaut ;
+  //   4. le panneau par défaut de la société (`PANNEAU_DEFAUT_LU`, 1 seule lecture) ;
+  //   5. '710', le départ d'avant (aucun défaut désigné : écran inchangé).
+  // `panelWFixe` dit « 1 à 3 a parlé » : le défaut n'écrase plus rien, et la composition
+  // envoie alors son wattage au serveur (sinon elle le laisse appliquer sa règle).
   panelW: '710',
+  panelWFixe: false,
   kwcCible: '',
   scenario: SCENARIO_LES_DEUX,
   modeInstallation: 'residentiel',
@@ -158,6 +169,27 @@ function appliquerMarche(etat, mode, { marquerTouche = false } = {}) {
   return suivant
 }
 
+/**
+ * Pose la puissance du panneau. RGEN3 — la taille de la fiche est une PUISSANCE :
+ * un autre wattage recompte les panneaux pour la tenir (comme le devis auto) ;
+ * sinon la puissance suit la frappe et la cible se recale sur le compte courant.
+ * Aucun drapeau « touché » (comme aujourd'hui) ; `fixe` ferme seulement la porte
+ * au défaut de la société (D-ACAL-169).
+ */
+function poserPuissancePanneau(etat, valeur, { fixe }) {
+  const suivant = fixe ? { ...etat, panelWFixe: true } : etat
+  const nTaille = tailleDemandeeParLead(suivant) != null
+    ? panneauxPourKwc(suivant.tailleLead, valeur) : 0
+  if (nTaille > 0) {
+    return { ...suivant, panelW: valeur, nbPanneaux: String(nTaille),
+      kwcCible: kwcDepuisPanneaux(nTaille, valeur) }
+  }
+  return {
+    ...suivant, panelW: valeur,
+    kwcCible: kwcDepuisPanneaux(suivant.nbPanneaux, valeur) || suivant.kwcCible,
+  }
+}
+
 /** Pose un compte de panneaux SANS marquer le drapeau (pré-remplissages). */
 const poserPanneaux = (etat, n) => ({
   ...etat,
@@ -202,22 +234,11 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
             tailleLead: null,
           }
         }
-        case 'panelW': {
-          // RGEN3 — la taille de la fiche est une PUISSANCE : un autre
-          // wattage recompte les panneaux pour la tenir (comme le devis auto).
-          const nTaille = tailleDemandeeParLead(base) != null
-            ? panneauxPourKwc(base.tailleLead, valeur) : 0
-          if (nTaille > 0) {
-            return { ...base, panelW: valeur, nbPanneaux: String(nTaille),
-              kwcCible: kwcDepuisPanneaux(nTaille, valeur) }
-          }
-          // Pas de drapeau propre (comme aujourd'hui) : la puissance panneau
-          // suit la frappe et la cible se recale sur le compte courant.
-          return {
-            ...base, panelW: valeur,
-            kwcCible: kwcDepuisPanneaux(base.nbPanneaux, valeur) || base.kwcCible,
-          }
-        }
+        case 'panelW':
+          // `fixe: false` : un RECALAGE interne de la cible (l'écran redit la
+          // puissance courante) n'est pas une frappe — il ne ferme pas la porte
+          // au panneau par défaut.
+          return poserPuissancePanneau(base, valeur, { fixe: action.fixe !== false })
         case 'mode':
           return appliquerMarche(base, valeur, { marquerTouche: true })
         case 'scenario':
@@ -376,7 +397,7 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
         motifMoteur: null,
         nbPanneaux: String(reco.panneaux),
       }
-      if (reco.panel_watt) s = { ...s, panelW: String(reco.panel_watt) }
+      if (reco.panel_watt) s = { ...s, panelW: String(reco.panel_watt), panelWFixe: true }
       if (reco.kwc != null) s = { ...s, kwcCible: String(reco.kwc) }
       return s
     }
@@ -402,9 +423,23 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
         attenteMoteur: false,
         tailleLead: null,
       }
-      if (ligne.panel_watt) s = { ...s, panelW: String(ligne.panel_watt) }
+      if (ligne.panel_watt) s = { ...s, panelW: String(ligne.panel_watt), panelWFixe: true }
       // Relance la composition par le chemin EXACT de l'Auto-remplir.
       return { ...s, compositionSeq: s.compositionSeq + 1 }
+    }
+
+    // ── D-ACAL-169 — le panneau par défaut de la société a été lu ──────────
+    // Appliqué UNE fois, au départ d'un devis NEUF, et seulement si rien n'a
+    // encore fixé le wattage (précédence au-dessus de `ETAT_INITIAL`). Le
+    // vendeur a déjà tapé un compte de panneaux : son 710 d'écran devient SON
+    // choix (jamais changé sous ses doigts) et le défaut n'est plus appliqué.
+    // `pmaxWc` vient de `GET stock/panneau-par-defaut/` (`source: 'designe'`) —
+    // l'appelant n'envoie rien d'autre ; sans wattage lisible : écran inchangé.
+    case 'PANNEAU_DEFAUT_LU': {
+      const watt = nombre(action.pmaxWc)
+      if (!(watt > 0) || base.panelWFixe) return base
+      if (base.touche.nbPanneaux) return { ...base, panelWFixe: true }
+      return poserPuissancePanneau(base, String(watt), { fixe: false })
     }
 
     // ── Réouverture d'un brouillon (?edit=ID, :1706-1781) ──────────────────
@@ -426,7 +461,9 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
       // QJR526 — le wattage LU sur les lignes du devis est posé AVANT le
       // compte : sinon kwcCible = n × 710 (défaut) et un 10 × 550 W revient
       // à 7,1 kWc au lieu de 5,5. Pas de drapeau propre (comme `SAISI panelW`).
-      if (nombre(d.panel_watt) > 0) s = { ...s, panelW: String(nombre(d.panel_watt)) }
+      if (nombre(d.panel_watt) > 0) {
+        s = { ...s, panelW: String(nombre(d.panel_watt)), panelWFixe: true }
+      }
       if (nombre(d.panneaux) > 0) s = poserPanneaux(s, nombre(d.panneaux))
       // QJR526 — la structure du devis est un choix DÉJÀ fait : drapeau fermé
       // (une composition ultérieure ne la ramène pas au défaut acier).

@@ -72,7 +72,11 @@ def _ecarts(calepinage, options, decision_onduleur=None, *, brouillon=False, sou
     from .devis_retenu import conception_du_calepinage
     from .electrique import entree_stockee
 
+    from .variantes import onduleur_designe_a_la_main
+
     entree = entree_stockee(calepinage)
+    if not onduleur_designe_a_la_main(calepinage):  # Lot 8 — « repris de l'original » : aucune désignation à juger
+        entree.pop('onduleur_produit', None)
     rangees = [s for s in ((conception_du_calepinage(calepinage) or {}).get('suppositions') or ())
                if s.get('code') in CODES_ECARTEES]
     phrases = []

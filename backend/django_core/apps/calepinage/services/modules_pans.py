@@ -46,17 +46,21 @@ def modules_par_pan_servis(calepinage, materiel, resolu, fiches, manquants,
         getattr(calepinage, 'roof_layout', None), defaut, fiches, manquants)
 
 
-def _produit_du_module_pose(document):
+def _produit_du_module_pose(document, *, sans_existants=False):
     """T4-B4-007 — le ``produit_id`` du module CHOISI à l'étape Panneaux : celui
     qui couvre le PLUS de modules posés (``geometry.moduleId`` →
     ``modules[].produitId``), ou ``None`` (aucun pan posé avec un produit du
-    catalogue). Lecture pure ; rien n'est supposé."""
+    catalogue). Lecture pure ; rien n'est supposé. ``sans_existants``
+    (D-ACAL-169) écarte les pans « existant » (ACAL573) ; FAUX par défaut :
+    les autres appelants lisent ce qu'ils lisaient."""
     from apps.ventes.services import pans_du_document
 
     comptes = {}
     for pan in pans_du_document(document):
         produit_id = pan.get('produit_id')
         modules = int(pan.get('modules') or 0)
+        if sans_existants and pan.get('existant'):
+            continue
         if produit_id in (None, '') or modules <= 0:
             continue
         comptes[produit_id] = comptes.get(produit_id, 0) + modules
@@ -82,3 +86,37 @@ def repli_materiel(role, du_devis, calepinage):
         if pose is not None:
             return pose, PROVENANCE_POSE
     return identifiant, 'devis'
+
+
+def _module_pose_de_la_planche(conception, materiel, document):
+    """ACAL1910 + R7-N2 — ``{designation[, pmax_wc]}`` du module POSÉ dominant
+    (``simulation._fiche_du_module_pose``) à porter sur le module de la planche
+    (``conception.entree.module``), ou ``{}`` (rien à changer : aucun pan d'un
+    autre produit, module posé = défaut, ou nom identique).
+
+    Défaut du 26/11 : la planche nommait le 715 W posé mais imprimait « n × 710 Wc »,
+    la puissance du défaut. La puissance suit désormais le NOM — même fiche — sauf
+    quand un pan posé SANS module (``pan.module`` absent) prendrait la puissance du
+    défaut dans ``chaines.bloc_pose`` : la ligne d'aujourd'hui y est gardée, comme
+    quand la fiche posée ne publie pas de puissance. Lecture pure ; ``materiel``
+    (d'où se calculent les empreintes) n'est jamais modifié."""
+    from .simulation import _fiche_du_module_pose
+
+    fiches = (materiel or {}).get('fiches_modules') or {}
+    if not fiches:
+        return {}
+    pose = _fiche_du_module_pose(materiel, document)
+    nom = next((str(f.get('designation') or '') for f in fiches.values()
+                if isinstance(f, dict) and dict(f.get('specs') or {}) == dict(pose)), '')
+    if not nom or nom == conception.entree.module.designation:
+        return {}
+    champs = {'designation': nom}
+    try:
+        puissance = float((pose or {}).get('pmax_wc'))
+    except (TypeError, ValueError):
+        return champs
+    pans = getattr(conception, 'pans', None) or ()
+    if puissance > 0 and all(getattr(getattr(pan, 'module', None), 'pmax_wc', None)
+                             for pan in pans if int(getattr(pan, 'modules', 0) or 0) > 0):
+        champs['pmax_wc'] = puissance
+    return champs

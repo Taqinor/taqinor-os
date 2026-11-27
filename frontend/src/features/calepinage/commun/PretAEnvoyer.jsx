@@ -12,6 +12,7 @@ import { lienManque } from '../production/lienManque'
 import Pourquoi from './Pourquoi'
 import {
   GROUPES, GROUPE_AUTRES, MESSAGE_ECHEC, MESSAGE_LENT, cibleDuReglage, estDelaiDepasse, groupeDuControle, heureDe,
+  nombreDePointsDuDossier, valeurAffichee,
 } from './PretAEnvoyer.helpers'
 import GroupesPretAEnvoyer from './GroupesPretAEnvoyer'
 
@@ -49,7 +50,7 @@ const ETAT_DOSSIER = { ok: 'pret', a_regler: 'a_completer', bloquant: 'bloquant'
 
 function pastille(controle) {
   if (controle.code === 'verdict_electrique') {
-    const points = Number(String(controle.valeur_texte ?? '').match(/\d+/)?.[0] ?? 0)
+    const points = nombreDePointsDuDossier(controle) // R6-N3 — le champ structuré `points`, à défaut le texte servi
     const dossier = libelleEtat(ETAT_DOSSIER[controle.etat], points)
     if (dossier) return dossier
   }
@@ -67,8 +68,8 @@ function Ligne({ controle, onRegler }) {
       {pastilleAffichee && <Badge tone={marque.ton}>{marque.libelle}</Badge>}
       <span className="font-medium">{controle.libelle}</span>
       {/* R3-10 : la pastille dit déjà « À compléter : 3 points » — pas deux fois. */}
-      {!(pastilleAffichee && controle.valeur_texte === marque.libelle) && (
-        <span className="text-muted-foreground">{controle.valeur_texte}</span>
+      {!(pastilleAffichee && [controle.valeur_texte, valeurAffichee(controle)].includes(marque.libelle)) && (
+        <span className="text-muted-foreground">{valeurAffichee(controle)}</span>
       )}
       <Pourquoi cle={`controle.${controle.code}`} valeurs={controle} />
       {aRegler && (

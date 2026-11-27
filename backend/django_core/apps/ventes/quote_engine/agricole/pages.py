@@ -1027,8 +1027,11 @@ def _echeancier(d, lg):
     fda = (f'<div class="ag-sig-h" style="margin:-2px 0 3px;">'
            f'{_t(lg, "agr_acompte_apres_fda")}</div>'
            if _num(termes.get("acompte")) else "")
+    # T4-U1-009 — « Devis final » : le RIB du profil sous l'échéancier
+    # (nouveaux rendus, clé ``rib_sous_echeancier`` du builder) ; sinon rien.
+    from ..rib_devis_final import bloc_agricole
     return (f'<table class="ag-ech"><tr>{"".join(cases)}</tr></table>'
-            f'{fda}')
+            f'{fda}{bloc_agricole(d, _t(lg, "res_virement"))}')
 
 
 def cloture(ctx):

@@ -1315,7 +1315,7 @@ def _rangs_par_groupe_brut(pan, chaines, repartitions):
 
 def _appliquer_imposee(lignes, imposee):
     """CAL234 — l'affectation manuelle ÉCRASE l'automatique, et se voit."""
-    par_module = {ligne['module']: ligne for ligne in (imposee or ())}
+    par_module = {ligne['module']: ligne for ligne in (imposee or ()) if not ligne.get(_ORPHELINE)}
     if not par_module:
         return lignes
     for ligne in lignes:
@@ -1570,6 +1570,8 @@ def bloc_electrique(conception, *, verdicts=(), imposee=None):
 #: ACAL265 — les motifs d'une affectation manuelle devenue orpheline.
 MOTIF_MODULE_INTROUVABLE = 'module introuvable'
 MOTIF_PAN_INCONNU = 'pan inconnu'
+#: Revue lot 8 (suite ACAL1720) — marque de CALCUL (jamais stockée) : centre mémorisé sans module.
+_ORPHELINE = '_orpheline'
 
 
 def _demi_pas(centres):
@@ -1587,7 +1589,10 @@ def _reancrer_par_position(conception, imposee):
     rattachée au module du pan posé à moins d'un demi-pas de ce centre :
     retirer le module 3 d'un pan non numéroté ne décale plus l'affectation
     des suivants. Sans centre (ligne d'avant la tâche), sans centres au
-    document ou sans module voisin : la ligne reste telle quelle. Calcul de
+    document : la ligne reste telle quelle. Revue lot 8 (suite ACAL1720) — un
+    centre mémorisé sans AUCUN module à moins d'un demi-pas : la ligne est
+    ORPHELINE (``_ORPHELINE``) — jamais appliquée au module qui porte
+    aujourd'hui son numéro, publiée « module introuvable ». Calcul de
     lecture : l'affectation enregistrée n'est pas réécrite.
     """
     pans = {pan.cle_stable: pan for pan in conception.pans if pan.centres}
@@ -1603,7 +1608,7 @@ def _reancrer_par_position(conception, imposee):
             for rang, (cx, cy) in enumerate(pan.centres, start=1))
         module = pan.cle_module(rang)
         if ecart > demi or module == ligne['module']:
-            sortie.append(ligne)
+            sortie.append(dict(ligne, **{_ORPHELINE: True}) if ecart > demi else ligne)
             continue
         reancrees.append((ligne['module'], module))
         sortie.append(dict(ligne, module=module))
@@ -1652,7 +1657,7 @@ def _affectation_obsolete(conception, imposee, *, table=None):
     obsoletes = []
     for ligne in imposee:
         module = ligne['module']
-        if module in connus:
+        if module in connus and not ligne.get(_ORPHELINE):
             continue
         pan = module.rsplit('#', 1)[0] if '#' in module else module
         obsoletes.append({
@@ -1826,9 +1831,11 @@ def verdict_affectation(conception, imposee, *, specs_onduleur=None,
     refus = []
 
     modules_par_chaine, pans_par_chaine, chaines_par_mppt = {}, {}, {}
-    for ligne in imposee:
+    # Revue lot 8 (suite ACAL1720) — ligne ORPHELINE (centre sans module) : obsolète, même si son numéro est porté.
+    orphelines = [ligne.get(_ORPHELINE, False) for ligne in _reancrer_par_position(conception, imposee)[0]]
+    for ligne, orpheline in zip(imposee, orphelines):
         module = ligne['module']
-        pan = pan_par_module.get(module)
+        pan = None if orpheline else pan_par_module.get(module)
         if pan is None:
             # ACAL265 — une ligne ORPHELINE (pan renommé n'en crée plus ; pan
             # réduit ou supprimé) est publiée « obsolète » et bloque la

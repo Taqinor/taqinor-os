@@ -422,3 +422,65 @@ class NotifySellerAcceptedTests(TestCase):
 
         _notify_seller_accepted(devis=devis_stub, user=None)
         self.assertEqual(Notification.objects.count(), 0)
+
+
+# ── (d) historique du lead : ce que le CLIENT fait sur la page de son devis ───
+
+class ActionsClientPageDevisDansHistoriqueTests(TestCase):
+    """26/11/2026 — chaque geste du client sur la page publique du devis laisse
+    au chatter du lead une note SYSTÈME (kind « note », user ``None``) dont le
+    corps commence par le début que le filtre « Devis » du fil Historique
+    reconnaît (``frontend/.../timelineFiltres.js``, ``DEBUTS_ACTIONS_CLIENT_DEVIS``).
+    Ces tests lisent ce que les vraies fonctions ÉCRIVENT ; ils tombent si un
+    libellé change sans que le filtre suive."""
+
+    def setUp(self):
+        self.company = _make_company('co-hist')
+        self.owner = _make_user(self.company, 'owner_hist')
+        self.lead = _make_lead(self.company, owner=self.owner)
+
+    def _corps(self):
+        from apps.crm.models import LeadActivity
+        lignes = LeadActivity.objects.filter(lead=self.lead).order_by('pk')
+        self.assertTrue(all(a.kind == LeadActivity.Kind.NOTE and a.user_id is None for a in lignes))
+        return [a.body for a in lignes]
+
+    def test_ouverture_et_reouverture(self):
+        from apps.crm.devis_chatter import noter_devis_ouvert, noter_devis_reouvert
+        noter_devis_ouvert('DEV-TEST-1', self.lead)
+        noter_devis_reouvert('DEV-TEST-1', self.lead, vues=3)
+        corps = self._corps()
+        self.assertTrue(corps[0].startswith('Le client a ouvert le devis'), corps)
+        self.assertTrue(corps[1].startswith('Le client a rouvert le devis'), corps)
+
+    def test_demande_de_contact_rappel_question_revision(self):
+        from apps.crm.cadence_signaux import notify_client_contact_request
+        for canal in ('rappel', 'question', 'revision', 'whatsapp'):
+            notify_client_contact_request('DEV-TEST-1', self.lead, canal=canal)
+        corps = [c for c in self._corps() if c.startswith('Le client demande à être contacté')]
+        self.assertEqual(len(corps), 4)
+
+    def test_rappel_sur_lead_oppose_ecrit_la_note_d_opposition(self):
+        from apps.crm.cadence_signaux import notify_client_contact_request
+        Lead.objects.filter(pk=self.lead.pk).update(ne_plus_contacter=True)
+        self.lead.refresh_from_db()
+        notify_client_contact_request('DEV-TEST-1', self.lead, canal='rappel')
+        self.assertTrue(any(c.startswith('Rappel demandé — opposition') for c in self._corps()))
+
+    def test_signaux_de_lecture_et_ancienne_version(self):
+        from apps.crm.cadence_signaux import notifier_signal_lecture
+        notifier_signal_lecture('DEV-TEST-1', self.lead, resume='Prix (40s)')
+        notifier_signal_lecture('DEV-TEST-1', self.lead, friction_section='Prix')
+        notifier_signal_lecture('DEV-TEST-1', self.lead, remplacee_par='DEV-TEST-2')
+        corps = self._corps()
+        self.assertTrue(corps[0].startswith('Le client a commencé à lire la proposition'), corps)
+        self.assertTrue(corps[1].startswith('Le client relit la section'), corps)
+        self.assertTrue(corps[2].startswith('Ancienne version '), corps)
+
+    def test_declin(self):
+        from types import SimpleNamespace
+        from apps.ventes.domain.declin_client import enregistrer_declin
+        devis = SimpleNamespace(reference='DEV-TEST-1', company=self.company, lead=self.lead, pk=1,
+                                created_by=None)
+        enregistrer_declin(devis, motif='prix')
+        self.assertTrue(any(c.startswith('Le client décline la proposition') for c in self._corps()))

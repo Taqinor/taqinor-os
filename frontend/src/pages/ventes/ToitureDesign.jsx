@@ -107,6 +107,9 @@ const MESSAGE_CATALOGUE_INDISPONIBLE = 'Catalogue des modules indisponible : rie
 const messageResyncRefusee = (raison) => (
   `Conception enregistrée — devis NON resynchronisé : ${raison}`)
 const MESSAGE_RESYNC_RESEAU = 'Conception enregistrée — resynchronisation du devis impossible (réseau)'
+/** Revue du 26/11 (D-ACAL-73) — un devis envoyé ne se corrige que par la carte d'aperçu. */
+const MESSAGE_DEVIS_ENVOYE_PAR_LA_CARTE = 'Le devis envoyé n’est pas modifié par l’enregistrement : '
+  + '« Resynchroniser le devis » montre d’abord ce qui change, puis le corrige.'
 
 function AtelierToiture({
   mode = 'lead', calepinageImpose = null, devisSynchronise = null, lectureSeuleImposee = false,
@@ -614,7 +617,7 @@ function AtelierToiture({
     setSending(true)
     setGenStatus('Génération du devis…')
     try {
-      const layout = apiTool.serializeLayout()
+      const layout = apiTool.serializeLayout(null, { engagerNumeros: true }) // suite ACAL1720 — seul l'enregistrement engage les numéros
       // 1) Crée le devis depuis le layout (cookie = auth, pas de Bearer).
       //    QJ17 — le backend renvoie 200 si un brouillon identique existe déjà
       //    (idempotency par lead + hash du layout), 201 pour un nouveau devis, et
@@ -763,8 +766,16 @@ function AtelierToiture({
 
   // ACAL1275 — `{ silencieux: true }` (« Générer / Resynchroniser » : enregistrement préalable) : un document inchangé
   // ne montre pas « Aucun changement » avant la réponse du devis ; le bouton « Enregistrer » (événement) le garde.
+  // ACAL1320 (D-ACAL-73) — `{ sansDevis: true }` (« Resynchroniser le devis ») : la conception est rangée, le devis lié
+  // n'est PAS resynchronisé ici — il le sera après l'aperçu, à la confirmation (rien d'écrit au devis avant).
+  // Revue du 26/11 (D-ACAL-73, « le dire AVANT ») — un devis lié ENVOYÉ n'est jamais corrigé par un enregistrement
+  // (« Enregistrer », « Vérifier ») : la conception est rangée et l'écran renvoie à « Resynchroniser le devis », qui
+  // montre ce qui change avant de corriger.
   const enregistrerCalepinage = async (options) => {
     const silencieux = options?.silencieux === true
+    const devisEnvoye = !!devisSynchronise && contexte?.calepinage?.devis_lie?.statut === 'envoye'
+    const sansDevis = options?.sansDevis === true || devisEnvoye
+    const suiteEnvoye = devisEnvoye && options?.sansDevis !== true ? ` ${MESSAGE_DEVIS_ENVOYE_PAR_LA_CARTE}` : ''
     if (sending) return false
     setGenError(null)
     setApercuMessage(null) // ACAL87
@@ -793,7 +804,7 @@ function AtelierToiture({
     enregistrementEnVolRef.current = true // T4-U4-025
     setGenStatus('Enregistrement du calepinage…')
     try {
-      const layout = apiTool.serializeLayout()
+      const layout = apiTool.serializeLayout(null, { engagerNumeros: true }) // suite ACAL1720 — seul l'enregistrement engage les numéros
       let resultat
       let heureReponse = null
       try {
@@ -869,11 +880,11 @@ function AtelierToiture({
         if (!silencieux) toastInfo('Aucun changement')
         setGenStatus(null)
         setSending(false)
-        setStatus('Conception inchangée — le calepinage n’a pas bougé.')
+        setStatus(`Conception inchangée — le calepinage n’a pas bougé.${suiteEnvoye}`)
         marquerSceneEnregistree(layout) // ACAL85
         setEnregistreLe(heureReponse) // ACAL399
         await rafraichirContexte() // ACAL83
-        return resynchroniserDevisLie() // ACAL37
+        return sansDevis ? true : resynchroniserDevisLie() // ACAL37 ; ACAL1320 : sansDevis
       }
 
       // L'aperçu de toiture, même patron que les autres modes (best-effort,
@@ -893,7 +904,7 @@ function AtelierToiture({
       setGenStatus(null)
       setSending(false)
       // R2-04 — `resultat.version` est l'identifiant GLOBAL de la version, pas son rang : jamais affiché.
-      setStatus('Conception enregistrée.')
+      setStatus(`Conception enregistrée.${suiteEnvoye}`)
       // ACAL1987 — un seul déclencheur : le SERVEUR lance la simulation d'une pose complète. Le navigateur ne poste
       // plus `simuler/` ; il lit l'état servi et retient le job pour l'onglet Production.
       if (!varianteId) suivreSimulationDuServeur(calepinageId)
@@ -901,7 +912,7 @@ function AtelierToiture({
       marquerSceneEnregistree(layout) // ACAL85
       setEnregistreLe(heureReponse) // ACAL399
       await rafraichirContexte() // ACAL83
-      return resynchroniserDevisLie() // ACAL37
+      return sansDevis ? true : resynchroniserDevisLie() // ACAL37 ; ACAL1320 : sansDevis
     } catch (err) {
       setGenStatus(null)
       // ACAL64 — un document que l'atelier REFUSE d'émettre (pans de même identifiant) porte
