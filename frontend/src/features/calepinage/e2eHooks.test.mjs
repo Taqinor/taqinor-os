@@ -736,7 +736,7 @@ export const ALL_HOOKS = [
   'cal-diff-versions-ligne',
   'cal-diff-versions-rappel',
   'cal-diff-versions-tableau',
-  // atelier/Projet.jsx
+  // atelier/PanneauProjet.jsx
   'cal-projet',
   'cal-projet-annuler',
   'cal-projet-apercu',

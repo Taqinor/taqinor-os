@@ -577,8 +577,13 @@ def _garde_taille(devis, calepinage, confirmer_taille):
     kwc = _kwc_compose_du_devis(devis)
     ttc, ttc_texte = _ttc_lisible(devis)
     chiffres = ([f'{fr(float(kwc), 2)} kWc'] if kwc is not None else []) + [ttc_texte]
+    # Revue ACAL1738 — le motif STRUCTURÉ de la question (contrat ``calepinage_publication.json``) : ``facture_absente``
+    # quand ``refus`` est celui de la cible de la conception (le bandeau de l'atelier le dit déjà : l'écran ne le
+    # répète pas), ``sans_lead`` (aucun lead), ``pose_sur_cible`` (R2-17).
+    motif = 'facture_absente' if getattr(calepinage, 'lead_id', None) else 'sans_lead'
     if au_dela is not None:
         question = au_dela
+        motif = 'pose_sur_cible'
         detail = (f"La pose compte {au_dela['poses']} panneaux ({', '.join(chiffres)}), "
                   f"plus de {FACTEUR_POSE_SUR_CIBLE} fois les {au_dela['cible']} panneaux "
                   'de la cible tirée des factures du lead. Confirmez, ou réduisez la '
@@ -591,7 +596,7 @@ def _garde_taille(devis, calepinage, confirmer_taille):
         'detail': detail, 'code': 'confirmation_taille',
         'champ': 'confirmer_taille', 'total_ttc': str(ttc),
         'kwc': float(kwc) if kwc is not None else None,
-        'refus': question['refus']})
+        'refus': question['refus'], 'motif': motif})
 
 
 #: Repli SANS puissance unitaire des deux côtés : le kWc dessiné est arrondi à deux décimales par l'outil de

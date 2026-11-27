@@ -348,19 +348,20 @@ export interface LeadPayload {
 export type { ObstacleType, ObstacleProvenance };
 
 /** Choix du sélecteur « type d'obstacle » (libellés FR, ordre du menu). */
-export const OBSTACLE_TYPES: { id: ObstacleType; label: string }[] = [
-  { id: 'cheminee', label: 'Cheminée' },
-  { id: 'ventilation', label: 'Ventilation / VMC' },
-  { id: 'chien_assis', label: 'Chien-assis / lucarne' },
-  { id: 'edicule', label: 'Édicule / local technique' },
-  { id: 'antenne', label: 'Antenne / parabole' },
-  { id: 'lanterneau', label: 'Lanterneau' },
-  { id: 'exutoire', label: 'Exutoire de fumée' },
-  { id: 'climatiseur', label: 'Climatiseur / groupe de clim' },
-  { id: 'citerne', label: 'Citerne / réservoir' },
-  { id: 'garde_corps', label: 'Garde-corps' },
-  { id: 'joint_dilatation', label: 'Joint de dilatation' },
-  { id: 'autre', label: 'Autre' },
+/** `de` : le complément de nom accordé (« de la cheminée »), pour dire QUI fait l'ombre (ACAL1532) — une seule définition des types. */
+export const OBSTACLE_TYPES: { id: ObstacleType; label: string; de: string }[] = [
+  { id: 'cheminee', label: 'Cheminée', de: 'de la cheminée' },
+  { id: 'ventilation', label: 'Ventilation / VMC', de: 'de la ventilation' },
+  { id: 'chien_assis', label: 'Chien-assis / lucarne', de: 'du chien-assis' },
+  { id: 'edicule', label: 'Édicule / local technique', de: 'de l’édicule' },
+  { id: 'antenne', label: 'Antenne / parabole', de: 'de l’antenne' },
+  { id: 'lanterneau', label: 'Lanterneau', de: 'du lanterneau' },
+  { id: 'exutoire', label: 'Exutoire de fumée', de: 'de l’exutoire' },
+  { id: 'climatiseur', label: 'Climatiseur / groupe de clim', de: 'du climatiseur' },
+  { id: 'citerne', label: 'Citerne / réservoir', de: 'de la citerne' },
+  { id: 'garde_corps', label: 'Garde-corps', de: 'du garde-corps' },
+  { id: 'joint_dilatation', label: 'Joint de dilatation', de: 'du joint de dilatation' },
+  { id: 'autre', label: 'Autre', de: 'de l’obstacle' },
 ];
 
 /**
@@ -827,6 +828,8 @@ export interface ProdPlaneKey {
   tiltDeg: number;
   aspect: number;
   mountingplace: 'building' | 'free';
+  /** ACAL982 (revue) — famille de pose du toit plat : `eastwest` = deux jambes (`aspect ∓ 90`). Absente = un plan. */
+  family?: ConfigFamily;
 }
 
 /** Configuration de production du plan courant (déduite du winner de l'optimiseur). */
@@ -834,8 +837,11 @@ export interface ProdConfig {
   lat: number;
   lon: number;
   tiltDeg: number;
+  /** Écart au sud de la FACE (Sud, pente) ou du FAÎTE (est-ouest : les jambes sont `aspect − 90` et `aspect + 90`). */
   aspect: number;
   mountingplace: 'building' | 'free';
+  /** ACAL982 (revue) — famille de pose du toit plat (`aspect` du gagnant, `estimatorBrainV7.ts::LiveConfigEval`). */
+  family?: ConfigFamily;
   panels: number;
   target: number;
 }

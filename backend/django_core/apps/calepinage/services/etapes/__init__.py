@@ -110,7 +110,7 @@ __all__ = [
     'PAS_MINUTES_PVGIS', 'FACTEURS_KW', 'ORDRE_COLONNES_ENERGIE',
     'CLES_ETAPE', 'MOTIF_NON_LIVREE', 'chemin_module', 'charger',
     'colonne_energie', 'energie_kwh', 'mettre_a_l_echelle', 'etape_omise',
-    'etape_appliquee', 'reglage', 'repli_de_conception',
+    'etape_appliquee', 'reglage', 'repli_de_conception', 'fiche_du_module',
 ]
 
 
@@ -213,6 +213,13 @@ def mettre_a_l_echelle(serie, facteur):
     suite['points'] = points
     suite['colonne_energie'] = nom
     return suite
+
+
+def fiche_du_module(contexte):
+    """ACAL1959 — la fiche du module POSÉ sur le pan (``fiche_module_pose``), à défaut celle
+    du module par défaut de l'entrée (``fiche_module``). Une seule lecture pour toutes les
+    étapes : avec un seul module posé, les deux fiches sont les mêmes et rien ne change."""
+    return contexte.get('fiche_module_pose') or contexte.get('fiche_module')
 
 
 def etape_omise(libelle, motif, *, champ=''):

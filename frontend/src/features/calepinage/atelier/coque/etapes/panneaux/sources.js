@@ -41,6 +41,19 @@ export function productionPubliee(resultat) {
 }
 
 /**
+ * ACAL1914 — la simulation FRAÎCHE mais INCOMPLÈTE (`total.complete === false`, p50 servi : borne haute, des panneaux ne
+ * sont pas comptés) : `productionPubliee` la tait, la carte gardait l'estimation seule. Ici sa production servie, à DIRE à
+ * côté de l'estimation (jamais à sa place : elle est incomplète). `null` sinon (rien de simulé, périmée, ou complète).
+ */
+export function simulationIncomplete(resultat) {
+  const total = resultat?.production?.total
+  if (resultat?.simule !== true || resultat?.simulation_perimee !== false) return null
+  if (typeof total?.p50_kwh !== 'number' || !estIncomplet(total)) return null
+  const horsChaine = resultat?.production?.hors_chaine?.modules // panneaux posés raccordés à aucune chaîne, servis par le résultat
+  return { p50: total.p50_kwh, nonRaccordes: typeof horsChaine === 'number' && horsChaine > 0 ? horsChaine : 0 }
+}
+
+/**
  * Le module RÉELLEMENT posé sur chaque pan selon le serveur (`entree-electrique` → `materiel.modules_par_pan`,
  * ACAL359 ; à défaut `materiel.module`) — la même source que le schéma. Rend les désignations distinctes avec
  * leur produit, `[]` si rien n'est servi.

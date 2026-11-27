@@ -1108,6 +1108,31 @@ describe('ToitureDesign — cible estimée vs cible vendue (ACAL195)', () => {
     expect(screen.queryByRole('link', { name: 'Ouvrir la fiche du lead' })).toBeNull()
   })
 
+  it('Revue ACAL1738 — « renseignez la facture » dite UNE fois : le bandeau se tait tant que le cadre de taille la dit', async () => {
+    // Le 409 du contrat (motif `facture_absente`) : son `refus` EST `cible.refus` du design-context (services/devis.py).
+    const QUESTION = exempleContrat('calepinage', 'calepinage_publication', 'exemple_409_confirmation_taille')
+    expect(QUESTION.motif).toBe('facture_absente')
+    const base = exempleContrat('calepinage', 'calepinage_design_context', 'exemple_cible_refus')
+    const ctx = { ...base, cible: { ...base.cible, refus: QUESTION.refus } }
+    expect(ctx.calepinage.lead).toBeTruthy()
+    calepinageApi.calepinages.designContext.mockResolvedValue({ data: ctx })
+    calepinageApi.calepinages.enregistrerLayoutCalepinageConditionnel.mockResolvedValue(
+      { data: { inchange: true, version: null } })
+    calepinageApi.calepinages.genererDevis.mockRejectedValue({ response: { status: 409, data: QUESTION } })
+    calepinageApi.calepinages.get.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail', 'exemple_vide'))
+
+    rendreCalepinage(ctx.calepinage.id, '?onglet=documents')
+    expect(await screen.findByTestId('acal-cible-estimee', {}, { timeout: 15_000 })).toHaveTextContent(QUESTION.refus)
+    await screen.findByTestId('cal-generer-devis', {}, { timeout: 15_000 })
+    await waitFor(() => expect(screen.getByTestId('cal-generer-devis')).toBeEnabled())
+    await userEvent.click(screen.getByTestId('cal-generer-devis'))
+
+    expect(await screen.findByTestId('cal-devis-confirmation-taille', {}, { timeout: 10_000 }))
+      .toHaveTextContent(QUESTION.detail)
+    await waitFor(() => expect(screen.queryByTestId('acal-cible-estimee')).toBeNull())
+    expect(screen.getAllByText(/renseignez la facture/i)).toHaveLength(1)
+  })
+
   it('R2-15 / R2-01 — la toiture déclarée sur le lead est AFFICHÉE avec « Voir la fiche du lead » ; rien quand il ne dit rien', async () => {
     const ctx = exempleContrat('calepinage', 'calepinage_design_context')
     calepinageApi.calepinages.designContext.mockResolvedValue({ data: ctx })

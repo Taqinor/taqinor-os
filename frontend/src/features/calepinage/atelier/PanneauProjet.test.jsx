@@ -35,7 +35,7 @@ vi.mock('../../../api/calepinageApi', () => ({
 
 vi.mock('../../../utils/downloadBlob', () => ({ downloadBlob: mocks.downloadBlob }))
 
-const { default: Projet } = await import('./Projet')
+const { default: Projet } = await import('./PanneauProjet')
 const { documentContrat, exempleContrat } = await import('../../../test/fixtures/contractSamples')
 
 const EXPORT_EXEMPLE = exempleContrat('calepinage', 'export_projet')

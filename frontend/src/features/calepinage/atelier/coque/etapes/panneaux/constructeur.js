@@ -130,12 +130,18 @@ function lireModule() {
 
 /** L'avis d'ombrage du constructeur (`shadingUi.ts`) : seulement quand il propose de retirer des modules. */
 function lireOmbre() {
+  const zone = $('rp9-solar-access')
+  // ACAL1532 — l'obstacle (`data-ombre-de`) et, SANS seuil réglé, la perte annuelle (`data-ombre-perte`) sont PUBLIÉS par
+  // le script (jamais parsés dans le texte) ; sans seuil il n'y a pas de proposition, mais l'ombre se dit quand même.
+  const de = zone?.dataset?.ombreDe || null
+  const perte = Number(zone?.dataset?.ombrePerte) >= 1 ? Number(zone.dataset.ombrePerte) : null
   const bouton = $('rp9-solar-access-apply')
-  if (!bouton) return null
   const texte = texteDe('rp9-solar-access')
-  const retirer = /retirer les (\d+) module/.exec(texte)
-  if (!retirer) return null
-  return { n: Number(retirer[1]), origine: texte.includes('seuil de ce dossier') ? 'dossier' : 'societe' }
+  const retirer = bouton ? /retirer les (\d+) module/.exec(texte) : null
+  if (retirer) {
+    return { n: Number(retirer[1]), origine: texte.includes('seuil de ce dossier') ? 'dossier' : 'societe', de, perte: null }
+  }
+  return perte ? { n: 0, origine: null, de, perte } : null
 }
 
 function lireSoleil() {

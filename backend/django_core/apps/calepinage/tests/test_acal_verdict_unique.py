@@ -9,6 +9,8 @@ Base RÉELLE (Produit / FicheTechnique / réglages), aucun patch.
 """
 from __future__ import annotations
 
+import json
+import pathlib
 from decimal import Decimal
 
 from django.test import SimpleTestCase
@@ -303,3 +305,95 @@ class EtatDePublicationPur(SimpleTestCase):
         self.assertEqual(etat_a_chaud([], ['y', 'z']),
                          {'etat': 'a_completer', 'points': 2})
         self.assertEqual(etat_a_chaud([], []), {'etat': 'pret', 'points': 0})
+
+
+DOCUMENT_982 = pathlib.Path(__file__).resolve().parent / 'fixtures' / 'userJourneyPro11.document.json'
+
+
+def _pan_982(count, azimut, inclinaison, famille, watt):
+    return {'count': count, 'azimuthDeg': azimut, 'tiltDeg': inclinaison, 'family': famille,
+            'kwc': round(count * watt / 1000, 3), 'moduleId': 'module-%d' % watt}
+
+
+CHAMP_982 = {'id': 'champ-1', 'kind': 'sol', 'label': 'CHAMP-SOL', 'moduleWc': 710, 'tiltDeg': 20.0,
+             'rowAzimuthDeg': 90.0, 'engine': {'modules': 24}}
+#: ACAL982 — un cas = une ligne (nom, pan, fiche W, surface de pose). L'est-ouest est à 10° : la seule
+#: série PVGIS enregistrée (aucune à 15°).
+CAS_982 = (
+    ('pan Sud', _pan_982(12, 180.0, 15.0, 'surimposition', 720), 720, None),
+    ('pan est-ouest', _pan_982(20, 90.0, 10.0, 'eastwest', 720), 720, None),
+    ('module catalogue 710 W', _pan_982(12, 180.0, 15.0, 'surimposition', 710), 710, None),
+    ('toit + champ', _pan_982(12, 180.0, 15.0, 'surimposition', 710), 710, CHAMP_982),
+)
+#: L'écart DÉCIDÉ, publié (jamais une exemption de code) : atelier et PDF du devis peuvent différer, nommé à l'écran.
+ECARTS_DECIDES_982 = ({'grandeur': 'production annuelle', 'surfaces': ('atelier', 'PDF'), 'statut': 'écart décidé',
+                       'decision': 'ACAL1001', 'nomme_par': 'BandeauProvenanceProduction.jsx::EcartDevis'},)
+
+
+def document_982(pan, watt, champ):
+    doc = json.loads(DOCUMENT_982.read_text(encoding='utf-8'))
+    doc['zones'][0].update(id='z1', geometry=dict(pan), pitchDeg=pan['tiltDeg'], facingAzimuthDeg=pan['azimuthDeg'],
+                           roofType='flat' if pan['family'] == 'eastwest' else 'pitched')
+    doc['modules'] = [{'id': pan['moduleId'], 'pmaxWc': watt}]
+    if champ:
+        doc['poseSurfaces'] = [dict(champ)]
+    return doc
+
+
+def surfaces_982(doc, watt):
+    """{grandeur: {surface: valeur}} — chaque lecture du serveur."""
+    from apps.calepinage.services.mesures import mesures_du_document
+    from apps.calepinage.tests.test_golden_trois_projets import simuler_projet
+    from apps.ventes.domain.etude_schema import cles_etude_du_layout
+    from apps.ventes.domain.geometrie import lire_layout
+
+    simule, mesures = simuler_projet(None, layout=doc, watt=watt), mesures_du_document(doc)
+    p50 = simule['total']['p50_kwh']
+    stockee = cles_etude_du_layout('residentiel', {'annualKwh': p50}, doc).get('production_annuelle')
+    production = {'simulation Total': round(p50),
+                  'somme des pans simulés': round(sum(pan['p50_kwh'] for pan in simule['par_pan']))}
+    if stockee is not None:
+        production['devis production_annuelle'] = stockee
+    return {
+        'kWc du pan toit': {
+            'document geometry.kwc': doc['zones'][0]['geometry']['kwc'],
+            'liste (mesures du pan)': mesures['pans'][0]['kwc'],
+            'simulation (pan)': simule['par_pan'][0]['kwc']},
+        'kWc total': {
+            'liste (kwc_pose)': mesures['kwc'],
+            'étude (puissance_kwc)': lire_layout(doc, toit_plat_corrige=True).kwc,
+            'simulation Total': simule['total']['kwc'],
+            'somme des pans simulés': sum(pan['kwc'] for pan in simule['par_pan'])},
+        'production annuelle': production,
+    }
+
+
+def ecarts_982(cas, surfaces):
+    ecarts = []
+    for grandeur, lues in surfaces.items():
+        (premiere, attendu), *autres = lues.items()
+        for surface, valeur in autres:
+            if attendu is None or valeur is None or round(float(valeur), 3) != round(float(attendu), 3):
+                ecarts.append('%s — %s : %s = %s, %s = %s' % (cas, grandeur, premiere, attendu, surface, valeur))
+    return ecarts
+
+
+class GrandeurUnique(SimpleTestCase):
+    """ACAL982 — une grandeur, une valeur, sur le document golden (jumeau web : userJourneyPro11.test.ts). Les
+    quatre lectures « à compléter » sans matériel : ``VerdictUnique.test_sans_module_ni_onduleur_quatre_fois_a_
+    completer`` (base réelle, jouée en CI)."""
+
+    def test_chaque_cas_une_valeur(self):
+        for cas, pan, watt, champ in CAS_982:
+            with self.subTest(cas=cas):
+                self.assertEqual(ecarts_982(cas, surfaces_982(document_982(pan, watt, champ), watt)), [])
+
+    def test_la_garde_nomme_un_document_faux(self):
+        cas, pan, watt, champ = CAS_982[2]
+        faux = document_982(dict(pan, kwc=8.64), watt, champ)
+        self.assertIn('module catalogue 710 W — kWc du pan toit : document geometry.kwc = 8.64, '
+                      'liste (mesures du pan) = 8.52', ecarts_982(cas, surfaces_982(faux, watt)))
+
+    def test_le_seul_ecart_admis_est_publie(self):
+        self.assertEqual([(e['statut'], e['decision'], e['nomme_par']) for e in ECARTS_DECIDES_982],
+                         [('écart décidé', 'ACAL1001', 'BandeauProvenanceProduction.jsx::EcartDevis')])
