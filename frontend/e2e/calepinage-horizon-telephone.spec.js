@@ -83,11 +83,14 @@ test('ACAL521 : douze visées simulées donnent un profil enregistré avec son r
     expect(b.height, `hauteur du champ ${champ}`).toBeGreaterThanOrEqual(44)
   }
   const pastille = page.locator('#rp9-fond-chip')
-  if (await pastille.isVisible()) {
-    const [p, rail] = [await boite(pastille), await boite(page.locator('.cal-rail'))]
-    const recouvre = p.x < rail.x + rail.width && p.x + p.width > rail.x && p.y < rail.y + rail.height && p.y + p.height > rail.y
-    expect(recouvre, 'la pastille « Caler le fond » recouvre la barre du bas').toBe(false)
-  }
+  // ACAL1815 (revue) — INCONDITIONNEL : la pastille est affichée dans cet état (jamais masquée par `ensureCalageChip`) ;
+  // un `if (isVisible)` laissait passer le test sans rien mesurer. Si elle disparaît, c'est le test qui échoue.
+  await expect(pastille, 'la pastille « Caler le fond » doit être affichée dans cet état').toBeVisible()
+  const [p, rail] = [await boite(pastille), await boite(page.locator('.cal-rail'))]
+  expect(p, 'boîte de la pastille mesurable').toBeTruthy()
+  expect(rail, 'boîte de la barre du bas (.cal-rail) mesurable').toBeTruthy()
+  const recouvre = p.x < rail.x + rail.width && p.x + p.width > rail.x && p.y < rail.y + rail.height && p.y + p.height > rail.y
+  expect(recouvre, 'la pastille « Caler le fond » recouvre la barre du bas').toBe(false)
 
   // Le document de conception se lit sur `layout/` (le détail du calepinage ne le porte plus).
   const detail = await page.request.get(`${API}/calepinages/${id}/layout/`)
