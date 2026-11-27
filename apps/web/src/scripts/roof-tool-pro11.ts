@@ -457,7 +457,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // pin (pas de contour ≥3 sommets), on plante un marqueur laiton à l'endroit exact pointé
   // par le client, distinct du contour que Meriem trace. Posé dans applyHydration, retiré
   // dans clearEditorState (nouveau lead / effacement). null hors flux d'hydratation.
-  let clientPinMarker: maplibregl.Marker | null = null;
+  let clientPinMarker: maplibregl.Marker | null = null; let pointLeadSite: { lat: number; lng: number } | null = null; // ACAL1926 — le GPS du lead d'un document rouvert
   const removeClientPinMarker = () => { clientPinMarker = retirerMarqueur(clientPinMarker); };
   // ACAL193 (D-ACAL-13) — le repère client est DÉPLAÇABLE à la main : le relâcher ailleurs
   // pose `pinSource: 'manuel'` (et cette épingle) dans le prochain document — elle ne
@@ -2065,7 +2065,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    * Le mode LEAD (cette fonction jamais appelée) garde le remplissage-au-mieux historique.
    */
   function applyDevisHydration(devis: import('./roofPro11/prefill').DevisPayload): boolean {
-    devisMode = true;
+    devisMode = true; pointLeadSite = devis.geometrie?.roof_point ?? null; // ACAL1926 — repli de l'épingle reposée par « Effacer »
     const h = hydrateFromDevis(devis);
     appliquerHydratation(h); // ACAL26 — même fonction que le boot lead
     // CAL37 — figé pour la session, comme `devisMode` : un calepinage autonome
@@ -2528,7 +2528,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   function reset() {
     clearEditorState();
     reafficherEpingleApresEffacement(clientPinMarker); // ACAL1423 — « Effacer » SEUL rend le repère du lead masqué à la fermeture (jamais retiré)
-    const aReposer = epingleAReposer(!!clientPinMarker, ctx.documentRelu); // ACAL1926 — document rouvert avec son toit : aucun repère planté au chargement
+    const aReposer = epingleAReposer(!!clientPinMarker, ctx.documentRelu, pointLeadSite); // ACAL1926 — document rouvert avec son toit : aucun repère planté au chargement ; `pin` du document, sinon le lead
     if (aReposer) planterClientPinMarker(aReposer);
     shadingUi.reset(); // WJ19/ACAL357 — les ombres et la matrice appartiennent au SITE : « Effacer » seul les vide
     oublierEpingleDeplacee(ctx); // ACAL193 — un site vierge n'a plus d'épingle déplacée
