@@ -61,6 +61,38 @@ export const LIBELLES_ENTREES_LEAD = {
   pompage_heures_jour: 'Heures de pompage actuelles / jour',
 }
 
+// ACAL1261 — libellés français des VALEURS (clé machine → libellé), mêmes
+// libellés que les sélecteurs de `PanneauAgricole.jsx`. Affichage seul :
+// l'état d'écran garde la clé machine ; une valeur absente de la table
+// s'affiche telle quelle.
+export const LIBELLES_VALEURS_LEAD = {
+  pompe_actuelle_type: { immergee: 'Immergée', surface: 'Surface' },
+  pompe_alim_actuelle: {
+    aucune: 'Aucune (nouveau forage)', butane: 'Butane', diesel: 'Gasoil',
+    electrique: 'Réseau électrique',
+  },
+  mode_pompe: { neuve: 'Pompe neuve', existante: 'Pompe existante conservée' },
+  // Servies au moteur en 1 / 3 (contrat lead_pompage), saisies mono / tri.
+  pompe_actuelle_phases: { 1: 'Monophasé', 3: 'Triphasé', mono: 'Monophasé', tri: 'Triphasé' },
+  irrigation_methode: { goutte: 'Goutte-à-goutte', aspersion: 'Aspersion', gravitaire: 'Gravitaire' },
+  culture: {
+    agrumes: 'Agrumes', maraichage: 'Maraîchage', olivier: 'Olivier',
+    dattier: 'Dattier (palmier)', cereales: 'Céréales', luzerne: 'Luzerne / fourrage',
+    arganier: 'Arganier',
+  },
+  region_agricole: {
+    'souss-massa': 'Souss-Massa (Agadir)', doukkala: 'Doukkala (El Jadida)',
+    tadla: 'Tadla (Béni Mellal)', saiss: 'Saïss (Fès-Meknès)', oriental: 'Oriental (Berkane)',
+    'draa-tafilalet': 'Drâa-Tafilalet', 'gharb-loukkos': 'Gharb-Loukkos',
+    haouz: 'Haouz (Marrakech)',
+  },
+}
+
+const libelleValeur = (col, v) => {
+  if (Array.isArray(v)) return v.join(', ')
+  return LIBELLES_VALEURS_LEAD[col]?.[v] ?? String(v)
+}
+
 // T4-U3-022 — colonnes du besoin déclaré → chemin de `pompageSaisie.besoin`.
 const BESOIN_PAR_COLONNE = {
   besoin_eau_m3j: 'besoin.volume_m3_jour',
@@ -161,7 +193,7 @@ export function entreesPompageDuLead(lead) {
     provenances.push({
       colonne: col,
       libelle: LIBELLES_ENTREES_LEAD[col] || col,
-      valeur: Array.isArray(e.valeur) ? e.valeur.join(', ') : String(e.valeur),
+      valeur: libelleValeur(col, e.valeur),
       provenance: provenance(e),
     })
   }
