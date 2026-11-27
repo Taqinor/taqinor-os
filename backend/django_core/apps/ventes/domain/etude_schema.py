@@ -60,6 +60,8 @@ PIPELINE = 'pipeline'
 #: marqueur ``composition_imposee``. Un corps de requête ne le forge ni ne
 #: l'efface jamais (clé DÉRIVÉE d'un propriétaire qui n'est pas l'écran).
 COMPOSITION_IMPOSEE = 'composition_imposee'
+#: ACAL1237 — le gel du document engagé (``domain/envoi.geler_document_engage``).
+ENVOI = 'envoi'
 #: Personne : clé HISTORIQUE que plus aucun chemin ne pose (voir les notes).
 ORPHELINE = 'orpheline'
 
@@ -214,6 +216,11 @@ SCHEMA = {
 
     # ── Ce que le MOTEUR calcule (DÉRIVÉES) ──────────────────────────────────
     'etude_horaire': _cle((dict,), MOTEUR_HORAIRE, DERIVEE),
+    'base_production_envoi': _cle((dict,), ENVOI, DERIVEE,
+                                  'ACAL1237 — la base de la pose réelle imprimée par le brouillon '
+                                  '(niveau 15, sans bloc horaire), rangée à l’envoi ; relue par '
+                                  '`horaire/productible_pose._base_rangee`. Hors empreinte (dérivée) ; '
+                                  'retirée au gel d’une copie/V2 qui n’en a pas.'),
     'etude_horaire_sans': _cle((dict,), MOTEUR_HORAIRE, DERIVEE,
                                'I7 — le bloc horaire de l’option SANS, posé '
                                'SEULEMENT quand les deux options portent des '
