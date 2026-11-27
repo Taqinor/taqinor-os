@@ -124,7 +124,7 @@ from apps.ventes.domain.kwh_lecture import _KWH_RE as _KWH_RE_LECTURE, _parse_kw
 _KWH_RE = _KWH_RE_LECTURE  # SPL162 : nom DÉFINI ici (même objet que la feuille pure)
 
 
-def _battery_kwh_from_items(rows, blob=None) -> float:
+def _battery_kwh_from_items(rows, blob=None, devis=None) -> float:
     """Capacité batterie TOTALE (kWh) d'une liste d'items : Σ quantité × kWh
     LUS sur la désignation.
 
@@ -139,11 +139,15 @@ def _battery_kwh_from_items(rows, blob=None) -> float:
     deux lecteurs est VÉRIFIÉE par
     ``apps/ventes/contract_samples/classification_lignes.json`` (QJR2) et le
     test de parité QJR91.
+
+    Lecteurs en aval — le rôle RANGÉ de l'item d'abord (``domain.classe_ligne``,
+    ``devis`` porte la coupure ; absent : les mots-clés d'hier).
     """
+    from apps.ventes.domain.classe_ligne import est
     total = 0.0
     for it in rows or []:
         text = blob(it) if blob else (it.get("designation") or "")
-        if not _is_battery(text):
+        if not est(it, _is_battery, lambda text=text: _is_battery(text), devis=devis):
             continue
         try:
             qty = float(it.get("quantite") or 0)
@@ -155,19 +159,21 @@ def _battery_kwh_from_items(rows, blob=None) -> float:
     return total
 
 
-def _cout_onduleur(rows, blob=None):
+def _cout_onduleur(rows, blob=None, devis=None):
     """Q1 — prix TTC RÉEL des lignes onduleur d'une option, ou ``None``.
 
     Décision fondateur du 20/08/2026 : la provision de remplacement de
     l'onduleur (année 12, principe mi-vie IEA PVPS) vaut le PRIX FACTURÉ de
     l'onduleur de ce devis — plus un pourcentage du CAPEX, qui ne correspondait
     au prix d'aucun onduleur réel. Aucune ligne onduleur identifiable ⇒ ``None``
-    ⇒ aucune provision, et l'hypothèse affichée le dit.
+    ⇒ aucune provision, et l'hypothèse affichée le dit. Le rôle RANGÉ de l'item
+    d'abord (``domain.classe_ligne``), comme :func:`_battery_kwh_from_items`.
     """
+    from apps.ventes.domain.classe_ligne import est
     total = 0.0
     for it in rows or []:
         text = blob(it) if blob else (it.get("designation") or "")
-        if not _is_inverter(text):
+        if not est(it, _is_inverter, lambda text=text: _is_inverter(text), devis=devis):
             continue
         try:
             qty = float(it.get("quantite") or 0)
@@ -468,7 +474,8 @@ def panneaux_et_watt_lu(lignes) -> tuple:
     désormais absente, et le document écrit « N panneaux » tout court.
 
     Ordre de lecture, inchangé : fiche technique du produit (PV11) puis
-    désignation / nom du produit.
+    désignation / nom du produit. Une ligne PANNEAU : son rôle RANGÉ, sinon les
+    mots-clés (:func:`_est_panneau_lu`).
     """
     nb_panneaux = 0
     watt = None
@@ -476,12 +483,19 @@ def panneaux_et_watt_lu(lignes) -> tuple:
         designation = getattr(li, "designation", "") or ""
         produit = getattr(li, "produit", None)
         produit_nom = getattr(produit, "nom", "") or ""
-        if _is_panel(designation, produit_nom):
+        if _est_panneau_lu(li, designation, produit_nom):
             nb_panneaux += int(round(float(getattr(li, "quantite", 0) or 0)))
             watt = (watt
                     or _fiche_watt(produit)
                     or _parse_watt(designation, produit_nom))
     return nb_panneaux, watt
+
+
+def _est_panneau_lu(ligne, designation, produit_nom):
+    """Lecteurs en aval — ``ligne`` est-elle un panneau ? Le rôle RANGÉ sur la
+    ligne (``domain.classe_ligne``), sinon ``_is_panel`` sur désignation + nom."""
+    from apps.ventes.domain.classe_ligne import est
+    return est(ligne, _is_panel, lambda: _is_panel(designation, produit_nom))
 
 
 def paires_panneaux_lues(lignes):
@@ -492,7 +506,7 @@ def paires_panneaux_lues(lignes):
         designation = getattr(li, "designation", "") or ""
         produit = getattr(li, "produit", None)
         produit_nom = getattr(produit, "nom", "") or ""
-        if _is_panel(designation, produit_nom):
+        if _est_panneau_lu(li, designation, produit_nom):
             paires.append((int(round(float(getattr(li, "quantite", 0) or 0))),
                            _fiche_watt(produit) or _parse_watt(designation, produit_nom)))
     return paires

@@ -74,6 +74,9 @@ class _ProduitSocieteOuCatalogueGlobalField(CompanyScopedPrimaryKeyRelatedField)
         queryset = serializers.PrimaryKeyRelatedField.get_queryset(self)
         if queryset is None:
             return queryset
+        # Lecteurs aval (constat 6) — la fiche jointe : la création d'une ligne
+        # seule range le rôle qu'elle prouve, sans requête de plus par ligne.
+        queryset = queryset.select_related('fiche_technique')
         company_id = request_company_id(self.context)
         if company_id is None:
             return queryset
@@ -331,6 +334,17 @@ class LigneDevisSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
                 company = getattr(validated_data.get('devis'), 'company', None)
                 validated_data['taux_tva'] = _fallback_taux_tva(
                     company, validated_data.get('designation'))
+        # Lecteurs aval (constat 6) — une ligne produit créée seule range LE
+        # rôle de l'écrivain unique (rôle déclaré, fiche jointe, mots-clés),
+        # celui du générateur ; un rôle du corps n'est jamais recalculé. Un
+        # devis envoyé avant ``COUPURE_CLASSE_PAR_ROLE`` garde l'écriture
+        # d'hier : aucun rôle rangé (NULL, les mots-clés décident).
+        if 'role_devis' not in validated_data:
+            from .domain.lignes import _role_a_la_creation
+            from .domain.regles_calcul import classe_par_role_ouverte
+            devis = validated_data.get('devis')
+            if classe_par_role_ouverte(devis):
+                validated_data['role_devis'] = _role_a_la_creation(validated_data, devis)
         return super().create(validated_data)
 
 

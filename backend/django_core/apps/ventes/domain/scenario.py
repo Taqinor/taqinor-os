@@ -116,7 +116,7 @@ def recommended_option_effective(devis, auto):
     return valeur
 
 
-def ligne_panneau_dominante(lignes):
+def ligne_panneau_dominante(lignes, devis=None):
     """La ligne PANNEAU qui porte le plus grand nombre de panneaux, ou ``None``.
 
     QJR217 — c'est l'argument que :func:`domain.overrides.preseance_nb_panneaux`
@@ -125,13 +125,18 @@ def ligne_panneau_dominante(lignes):
     que ``domain/resynchronisation`` applique déjà (le plus grand compte), et le
     prédicat panneau est le lecteur unique ``solar_design.is_panel`` — jamais
     une seconde définition.
+
+    Lecteurs aval (suite 3) — le rôle RANGÉ d'abord (``domain.classe_ligne.est``,
+    ``devis`` porte la coupure ``COUPURE_CLASSE_PAR_ROLE``), sinon ce prédicat.
     """
     from apps.ventes import solar_classification as _sc
+    from apps.ventes.domain.classe_ligne import est
 
     panneaux = [
         li for li in lignes
-        if _sc.is_panel(getattr(li, 'designation', '') or '',
-                        getattr(getattr(li, 'produit', None), 'nom', '') or '')]
+        if est(li, _sc.is_panel, lambda li=li: _sc.is_panel(
+            getattr(li, 'designation', '') or '',
+            getattr(getattr(li, 'produit', None), 'nom', '') or ''), devis=devis)]
     if not panneaux:
         return None
     return max(panneaux,
@@ -245,7 +250,7 @@ def puissance_kwc_du_devis(devis, *, avertissements=None):
         except (TypeError, ValueError):
             pass
     verdict = preseance_nb_panneaux(
-        devis, ligne_panneau_dominante(lignes),
+        devis, ligne_panneau_dominante(lignes, devis),
         avertissements=avertissements)
     # Seule la préséance de NIVEAU DEVIS déplace le kWc : quand la ligne est
     # verrouillée (R4-A phrase 1), le kWc décrit ce qui est RÉELLEMENT vendu,

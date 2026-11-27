@@ -174,6 +174,25 @@ class ReglesCalculTests(SimpleTestCase):
             self.assertEqual(drapeaux_pdf_2611(devis(mode, statut='brouillon', date_envoi=None)), {})
         self.assertIn('phrases_pdf_2611', drapeaux_nouveaux_rendus(devis(statut='brouillon', date_envoi=None)))
 
+    def test_lecteurs_aval_role_fiche_nouveaux_rendus_seulement(self):
+        # Lecteurs en aval (fondateur 24/11/2026) — la classe d'une ligne par le
+        # rôle et la fiche du produit : même littéral que la coupure du toit plat.
+        from datetime import datetime, time, timedelta, timezone
+
+        from apps.ventes.domain.regles_calcul import (
+            COUPURE_CLASSE_PAR_ROLE, COUPURE_TOIT_PLAT, classe_par_role_ouverte)
+        self.assertEqual(COUPURE_CLASSE_PAR_ROLE, COUPURE_TOIT_PLAT)
+        coupure = datetime.combine(datetime(*COUPURE_CLASSE_PAR_ROLE), time(8), tzinfo=timezone.utc)
+        avant = coupure - timedelta(days=1)
+
+        def devis(**champs):
+            return SimpleNamespace(**dict({'regles_calcul': 14, 'date_creation': avant}, **champs))
+        self.assertTrue(classe_par_role_ouverte(None))
+        self.assertTrue(classe_par_role_ouverte(devis(statut='brouillon', date_envoi=None)))
+        self.assertTrue(classe_par_role_ouverte(devis(statut='envoye', date_envoi=coupure)))
+        self.assertFalse(classe_par_role_ouverte(devis(statut='envoye', date_envoi=avant)))
+        self.assertFalse(classe_par_role_ouverte(devis(statut='accepte', date_envoi=avant)))
+
     def test_t4_u1_009_rib_sous_echeancier_nouveaux_rendus_seulement(self):
         # T4-U1-009 / T4-X7-020 — « Devis final » commercial / industriel /
         # agricole : le RIB du profil sous l'échéancier, même coupure que les

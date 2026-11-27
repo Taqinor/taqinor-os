@@ -522,11 +522,12 @@ class _SpecCommeLigne:
     """
 
     __slots__ = ('index', 'designation', 'produit', 'quantite_manuelle',
-                 '_quantite')
+                 '_quantite', 'role_devis')
 
     def __init__(self, index, spec):
         self.index = index
         self.designation = spec.get('designation') or ''
+        self.role_devis = spec.get('role_devis') or ''
         self.produit = spec.get('produit')
         self.quantite_manuelle = bool(spec.get('quantite_manuelle', False))
         try:
@@ -677,10 +678,11 @@ def _reecrire_quantites_soeurs(lignes_in, nb_panneaux, affleurants=0, avertissem
             spec['quantite'] = str(derivees[categorie])
 
 
-def _panneaux_par_variante(lignes):
-    """``{variante: nb panneaux}`` de lignes (specs dict ou ``LigneDevis``) :
-    lignes produit non optionnelles que ``classer_produit`` dit ``panneau``."""
+def _panneaux_par_variante(lignes, devis=None):
+    """``{variante: nb panneaux}`` de lignes (specs dict ou ``LigneDevis``) : lignes produit non
+    optionnelles de rôle RANGÉ ``panneau`` (``domain.classe_ligne``), sinon dites panneau par ``classer_produit``."""
     from apps.ventes.domain.catalogue import classer_produit
+    from apps.ventes.domain.classe_ligne import role_de_ligne
 
     def lire(li, champ, defaut=None):
         return li.get(champ, defaut) if isinstance(li, dict) else getattr(li, champ, defaut)
@@ -688,7 +690,7 @@ def _panneaux_par_variante(lignes):
     for li in lignes:
         if (lire(li, 'type_ligne') or 'produit') != 'produit' or lire(li, 'optionnelle'):
             continue
-        if classer_produit(lire(li, 'designation') or '') != 'panneau':
+        if role_de_ligne(li, lambda li=li: classer_produit(lire(li, 'designation') or ''), devis=devis) != 'panneau':
             continue
         try:
             q = int(float(lire(li, 'quantite') or 0))
@@ -716,8 +718,8 @@ def _soeurs_suivent_panneaux_retouches(devis, lignes_in, avertissements=None):
     # industriel ou agricole porte les quantités que SON moteur a composées.
     if (getattr(devis, 'mode_installation', None) or 'residentiel') != 'residentiel':
         return
-    avant = _panneaux_par_variante(devis.lignes.all())
-    apres = _panneaux_par_variante(lignes_in)
+    avant = _panneaux_par_variante(devis.lignes.all(), devis)
+    apres = _panneaux_par_variante(lignes_in, devis)
     affleurants = _affleurants_au_niveau(devis, getattr(devis, 'roof_layout', None))
     for variante, nb in apres.items():
         if variante not in avant or avant[variante] == nb or nb <= 0:
@@ -762,16 +764,22 @@ def cles_etude_de_composition(devis, intention, composition):
     # ``domain/scenario``. Ce site et la resynchronisation la portaient tous
     # deux EN ENTIER, sous deux formulations : les deux appellent désormais la
     # MÊME fonction, sur les mêmes trois faits.
+    # Lecteurs en aval (constat 2) — les trois faits se lisent sur le rôle
+    # ÉMIS par la composition (``composition.roles``, porté par la spec que
+    # l'écrivain range), puis les mots-clés d'hier. Un devis envoyé avant
+    # ``COUPURE_CLASSE_PAR_ROLE`` garde l'expression d'hier (le repli).
+    from apps.ventes.domain.classe_ligne import est
+    paires = list(zip(composition or (), specs_de_composition(composition)))
+
+    def _porte(predicat):
+        return any(est(spec, predicat, lambda s=s: predicat(s.designation), devis=devis)
+                   for s, spec in paires)
     scenario = scenario_servable(
         _scenario_de(intention) == COMPOSITION_LES_DEUX,
-        a_reseau=any(_is_reseau_inverter(s.designation)
-                     for s in (composition or ())),
-        a_hybride=any(_is_hybrid_inverter(s.designation)
-                      for s in (composition or ())),
-        a_batterie=any(_is_battery(s.designation)
-                       for s in (composition or ())),
-        a_offgrid=any(_is_offgrid_inverter(s.designation)
-                      for s in (composition or ())))
+        a_reseau=_porte(_is_reseau_inverter),
+        a_hybride=_porte(_is_hybrid_inverter),
+        a_batterie=_porte(_is_battery),
+        a_offgrid=_porte(_is_offgrid_inverter))
 
     cles = {'scenario': scenario}
     resultat = (intention.layout or {}).get('result') or {}

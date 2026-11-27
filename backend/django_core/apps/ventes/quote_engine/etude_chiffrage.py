@@ -218,7 +218,7 @@ def _cout_onduleur_paye(devis, items, blob):
     l'onduleur : la remise globale du devis s'applique aussi à cette ligne
     (devis 1344 : 36 000 imprimés, 34 200 payés). Niveau de règles 3
     seulement : un devis déjà envoyé garde la provision qu'il a imprimée."""
-    cout = _cout_onduleur(items, blob)
+    cout = _cout_onduleur(items, blob, devis)
     remise = _nombre(getattr(devis, "remise_globale", None))
     if cout and remise > 0 and _regles_2710(devis):
         return float(quantize_mad(cout * (1 - remise / 100)))
@@ -489,7 +489,7 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, _totaux_seuls, avec_batterie_di
         # explicitement forcé par le vendeur (etude_params.autoconso_avec)
         # reste souverain : on ne dérive alors rien.
         battery_kwh=(None if (_autoconso_avec or avec_batterie_differee)
-                     else (_battery_kwh_from_items(avec_items, _blob) or None)),
+                     else (_battery_kwh_from_items(avec_items, _blob, devis) or None)),
         productible=_productible,
         fallback_tarif_kwh=_onee_tarif,
         # M9 — l'abattement de rendement batterie ne s'applique qu'à une option

@@ -77,6 +77,9 @@ from .artefacts_rendu import _roof_photo_data_uri, ajouter_artefacts_rendu
 # calepinage test_pv41_conception_electrique (_sld_svg) et devis
 # test_acal_planche_devis_remplace (_svg_planche_inline).
 from .artefacts_rendu import _sld_svg, _svg_planche_inline  # noqa: F401
+# Lecteurs en aval (rôle/fiche) — la classe d'une ligne : le rôle RANGÉ sur la ligne à son
+# écriture, puis les mots-clés d'hier (``domain.classe_ligne``).
+from apps.ventes.domain.classe_ligne import paires_portent
 
 logger = logging.getLogger(__name__)
 
@@ -487,6 +490,14 @@ def _avec_regles_pose_reelle(data, pose_reelle, devis=None):
     return data
 
 
+def _drapeau_classe_par_role(devis):
+    """Lecteurs en aval — ``{"classe_par_role": True}`` quand ce devis classe ses
+    lignes par le rôle rangé (``regles_calcul.classe_par_role_ouverte``), sinon
+    ``{}`` : un devis envoyé avant la coupure reste octet-identique."""
+    from apps.ventes.domain.regles_calcul import classe_par_role_ouverte
+    return {"classe_par_role": True} if classe_par_role_ouverte(devis) else {}
+
+
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from apps.ventes.domain.regles_calcul import (
@@ -632,15 +643,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     sans_lignes = [li for li, _ in _sans_paires]
     avec_lignes = [li for li, _ in _avec_paires]
 
-    def _has_qty(rows, pred):
-        return any(pred(_blob(r)) and r["quantite"] > 0 for r in rows)
-
-    has_reseau = _has_qty(sans_items, _is_reseau_inverter)
-    has_hybride = _has_qty(avec_items, _is_hybrid_inverter)
+    # Lecteurs en aval (fondateur 24/11/2026) — le rôle rangé sur la ligne
+    # d'abord, les mots-clés du texte de l'item ensuite (``paires_portent``).
+    has_reseau = paires_portent(_sans_paires, _is_reseau_inverter, devis)
+    has_hybride = paires_portent(_avec_paires, _is_hybrid_inverter, devis)
     # QJR-OFFGRID — dérivé du panier « avec », exactement comme l'hybride :
     # c'est le seul panier où un onduleur autonome peut se trouver.
-    has_offgrid = _has_qty(avec_items, _is_offgrid_inverter)
-    has_batterie = _has_qty(avec_items, _is_battery)
+    has_offgrid = paires_portent(_avec_paires, _is_offgrid_inverter, devis)
+    has_batterie = paires_portent(_avec_paires, _is_battery, devis)
 
     # ── M2 (audit adversarial du 19/08/2026) — LE kWc N'EST PLUS DÉDUIT DU PRIX ─
     # L'ancien repli sans ligne de panneau : ``kWc = max(3,0 ; total TTC / 12 000)``
@@ -920,7 +930,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # peut plus lire un prix d'option fantôme. L'étiquette suit la réalité
         # des lignes : batterie RÉELLE (jamais la batterie de synthèse, qui
         # n'est pas une ligne du devis) → « Avec batterie ».
-        _batterie_reelle = _has_qty(items, _is_battery)
+        _batterie_reelle = paires_portent(zip(lignes, items), _is_battery, devis)
         sans_items = [dict(it) for it in items]
         avec_items = [dict(it) for it in items]
         # L-2OPT — les deux paniers portent la MÊME vérité : mêmes lignes des
@@ -1556,7 +1566,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         avec_batterie_differee=avec_batterie_differee, avec_items=avec_items,
         mode=mode, opts=opts, sans_items=sans_items, totaux_all=totaux_all,
         totaux_avec=totaux_avec, totaux_sans=totaux_sans, tva_pct=tva_pct,
-        watt=watt)
+        watt=watt, devis=devis)
 
     # SPL164 — phase E3 : ``conditions_commerciales.conditions_et_liens``.
     (_dates_prevues, _tenant_site, doc_texts, entreprise, links, payment_terms,
@@ -2160,6 +2170,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         ("regles_0411_historique", not regles_au_moins(devis, REGLES_ECARTS_0411)),  # AMOT123/AMOT126
         ("regles_sensibilites_historique", not regles_au_moins(devis, REGLES_SENSIBILITES_1911)),  # D-SENS-1
         ("regles_arrondi_historique", not regles_au_moins(devis, REGLES_ARRONDI_3010))) if pose})  # CE2E4 : tout mode
+
+    # Lecteurs en aval (constat 4) — les gabarits (``commercial.equip``) lisent
+    # le rôle RANGÉ des items aux seuls devis que la coupure ouvre.
+    data.update(_drapeau_classe_par_role(devis))
 
     # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),
     # exposée pour le rendu (D3). Additif : la clé n'est posée QUE lorsqu'une

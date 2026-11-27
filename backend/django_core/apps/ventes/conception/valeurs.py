@@ -31,7 +31,9 @@ def _materiel(resultat, option):
     from apps.ventes.quote_engine.lignes_classement import panneaux_et_watt_lu
     lignes = [li for li in resultat.lignes if li.type_ligne == 'produit' and not li.optionnelle
               and (li.variante or '') in ('', option)]
-    classes = [(li, classer_produit(getattr(li.produit, 'nom', '') or li.designation) or '') for li in lignes]
+    from apps.ventes.domain.classe_ligne import role_de_ligne  # rôle RANGÉ à l'écriture, puis le nom
+    classes = [(li, role_de_ligne(li, lambda li=li: classer_produit(
+        getattr(li.produit, 'nom', '') or li.designation)) or '') for li in lignes]
     panneaux = [li for li, c in classes if c == 'panneau']
     onduleurs = [{'produit': li.produit_id, 'designation': li.designation, 'quantite': int(li.quantite)}
                  for li, c in classes if c.startswith('onduleur')]

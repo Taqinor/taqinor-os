@@ -734,7 +734,8 @@ def _poser_produit(ligne, produit, famille, avertissements, *, nombre=None):
         ligne.produit, ligne.designation = produit, produit.nom
         poser_prix_unitaire(ligne, Decimal(produit.prix_vente))
         champs += ['produit', 'designation', 'prix_unitaire']
-    if getattr(ligne, 'role_devis', '') and ligne.role_devis != famille:
+    # Lecteurs en aval — un produit POSÉ (écriture neuve) range sa famille, même sur une ligne sans rôle.
+    if (getattr(ligne, 'role_devis', '') or 'produit' in champs) and ligne.role_devis != famille:
         ligne.role_devis = famille
         champs.append('role_devis')
     if champs:
