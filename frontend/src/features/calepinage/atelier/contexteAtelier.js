@@ -449,3 +449,13 @@ export function ecouterDevisGenere(calepinageId, f) {
   return () => { ecouteursDevisGenere.delete(ecouter) }
 }
 
+/* ACAL1946 — l'issue du dernier geste « Générer le devis » (devis créé, question de taille, refus nommé), PAR
+   calepinage, hors du composant : quand le portail de l'étape se remonte pendant la requête (contexte relu après
+   l'enregistrement), la réponse arrive à l'instance montée au lieu de se perdre avec l'ancienne. */
+const issuesDevis = new Map()
+const abonnesIssuesDevis = new Set()
+export function abonnerIssuesDevis(f) { abonnesIssuesDevis.add(f); return () => { abonnesIssuesDevis.delete(f) } }
+export function lireIssueDevis(cle) { return issuesDevis.get(cle) ?? null }
+export function poserIssueDevis(cle, valeur) { issuesDevis.set(cle, valeur); abonnesIssuesDevis.forEach((f) => f()) }
+export function oublierIssuesDevis() { issuesDevis.clear() }
+

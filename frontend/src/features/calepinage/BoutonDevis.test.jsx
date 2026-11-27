@@ -30,6 +30,7 @@ import BoutonDevis, {
   MESSAGE_APERCU_FERME, MESSAGE_APERCU_RELU, MESSAGE_BROUILLON_MIS_A_JOUR, MESSAGE_RIEN_A_CHANGER,
   MESSAGE_VERIFICATION_A_LA_CONFIRMATION,
 } from './BoutonDevis'
+import { oublierIssuesDevis } from './atelier/contexteAtelier'
 
 const DETAIL = exempleContrat('calepinage', 'calepinage_detail')
 const DETAIL_VIDE = exempleContrat('calepinage', 'calepinage_detail',
@@ -62,6 +63,7 @@ async function resynchroniserEtConfirmer() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  oublierIssuesDevis() // ACAL1946 — l'issue retenue d'un test ne déborde pas sur le suivant
   calepinageApi.calepinages.apercuResync.mockResolvedValue({ data: APERCU_RESYNC })
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
@@ -852,6 +854,30 @@ describe('ACAL1705 — le devis lié se rouvre d’un clic, lu sur le calepinage
       await screen.findByTestId('cal-devis-cree')
       expect(relu).toHaveBeenCalledTimes(1)
     } finally { arreter() }
+  })
+})
+
+/* ACAL1946 — le résultat de « Générer le devis » est dit dès la réponse, même quand l'écran s'est remonté pendant la
+   requête (l'enregistrement préalable relit le contexte : le portail de l'étape Documents se remonte). */
+describe('ACAL1946 — le résultat de « Générer le devis » est dit dès la réponse', () => {
+  const QUESTION = exempleContrat('calepinage', 'calepinage_publication', 'exemple_409_confirmation_taille')
+  it.each([
+    ['réponse 201 ⇒ « Devis … créé » dit', (r) => r.ok({ data: { devis: 44, reference: 'DEV-2611-0044' } }),
+      'cal-devis-cree', 'Devis DEV-2611-0044 créé'],
+    ['409 confirmation_taille ⇒ la question dite', (r) => r.ko({ response: { status: 409, data: QUESTION } }),
+      'cal-devis-confirmation-taille', QUESTION.detail],
+    ['refus ⇒ le refus nommé', (r) => r.ko({ response: { status: 400, data: { detail: 'Calepinage verrouillé.' } } }),
+      'cal-devis-refus', 'Calepinage verrouillé.'],
+  ])('%s', async (_cas, repondre, testId, texte) => {
+    const attente = {}
+    calepinageApi.calepinages.genererDevis.mockImplementation(() => new Promise((ok, ko) => Object.assign(attente, { ok, ko })))
+    const premier = rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    await waitFor(() => expect(calepinageApi.calepinages.genererDevis).toHaveBeenCalledTimes(1))
+    premier.unmount() // le portail se remonte pendant la requête
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    repondre(attente)
+    expect(await screen.findByTestId(testId)).toHaveTextContent(texte)
   })
 })
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import CarteDevisCree from './CarteDevisCree'
 import ApercuMaterielDevis from './commun/ApercuMaterielDevis'
@@ -13,7 +13,9 @@ import {
   bloquageElectrique, refusServeur, texteBloquant,
 } from './refusDevis'
 import usePeutGenererDevis from './usePeutGenererDevis'
-import { annoncerDevisGenere } from './atelier/contexteAtelier'
+import {
+  abonnerIssuesDevis, annoncerDevisGenere, lireIssueDevis, poserIssueDevis,
+} from './atelier/contexteAtelier'
 
 /* ============================================================================
    CAL38 — LA SORTIE VERS LE DEVIS d'un calepinage, et elle n'existait nulle
@@ -211,6 +213,13 @@ function ApercuResync({ apercu, avis, enCours, onConfirmer, onAnnuler }) {
   )
 }
 
+// ACAL1946 — l'issue du geste est retenue par calepinage hors du composant (contexteAtelier) : elle survit au remontage du portail.
+function useIssueRetenue(calepinageId, nom) {
+  const cle = `${calepinageId}:${nom}`
+  const valeur = useSyncExternalStore(abonnerIssuesDevis, () => lireIssueDevis(cle))
+  return [valeur, (v) => poserIssueDevis(cle, v)]
+}
+
 function BoutonDevisCalepinage({
   calepinageId, detail = null, lectureSeule = false, onRecharger, onRelire,
   enregistrerAvant = null, aDesRetouches = null, revisionPossible = false,
@@ -237,19 +246,20 @@ function BoutonDevisCalepinage({
   const [bloquage, setBloquage] = useState(null)
   const [motif, setMotif] = useState('')
   const [motifErreur, setMotifErreur] = useState(null)
-  const [refus, setRefus] = useState(null)
-  const [conflit, setConflit] = useState(null)
+  // ACAL1946 — les issues d'un geste survivent au remontage du portail pendant la requête (`useIssueRetenue`).
+  const [refus, setRefus] = useIssueRetenue(calepinageId, 'refus')
+  const [conflit, setConflit] = useIssueRetenue(calepinageId, 'conflit')
   // ACAL923 — la question du 409 `confirmation_taille` (ACAL922) : `{detail, refus}` du serveur.
-  const [confirmation, setConfirmation] = useState(null)
+  const [confirmation, setConfirmation] = useIssueRetenue(calepinageId, 'confirmation')
   // Recette R2-22 — le 409 `devis_existant` : `{detail, devis, reference}` du serveur.
-  const [devisExistant, setDevisExistant] = useState(null)
+  const [devisExistant, setDevisExistant] = useIssueRetenue(calepinageId, 'devisExistant')
   // Le corps du dernier « Générer » : une réponse à une question le complète, sans perdre l'autre.
   const dernierCorps = useRef({})
   // Revue du 26/11 — le corps de la dernière resynchro CONFIRMÉE (sans dérogation), rejoué par « Passer outre ».
   const dernierCorpsSync = useRef({})
   // ACAL95 — le retour du serveur à LIRE avant de poursuivre :
   // `{messages, lignes, inchange, devisId, suite: 'recharger' | 'ouvrir' | null}`.
-  const [retour, setRetour] = useState(null)
+  const [retour, setRetour] = useIssueRetenue(calepinageId, 'retour')
   // ACAL1320 — l'aperçu servi de la resynchronisation, à confirmer (`null` : rien en attente).
   const [apercuResync, setApercuResync] = useState(null)
   const [avisApercu, setAvisApercu] = useState(null) // revue du 26/11 — pourquoi l'aperçu a été relu
