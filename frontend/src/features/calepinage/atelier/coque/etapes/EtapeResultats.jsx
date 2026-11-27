@@ -480,11 +480,9 @@ export default function EtapeResultats({
   const ouvert = avanceOuvert ?? expert
   const publiees = reglagesPublies(data?.simulation)
   const voirSources = () => { setSourcesOuvertes(true); setAvanceOuvert(true) }
-  // « Voir les étapes » (pertes pas encore comptées) : ouvre « Détail des pertes et réglages » et y amène.
-  const voirEtapes = () => {
-    setAvanceOuvert(true)
-    globalThis.document?.querySelector('[data-zone="avance"]')?.scrollIntoView?.({ block: 'start' })
-  }
+  // « Voir les étapes » (pertes pas encore comptées) : ouvre « Détail des pertes et réglages » ; le défilement
+  // jusqu'à lui se fait APRÈS son montage, dans `ResultatIncomplet` (ACAL1939).
+  const voirEtapes = () => setAvanceOuvert(true)
   const note = publiees.length > 0
     ? <NoteValeursPubliees simulation={data?.simulation} onVoirSources={voirSources} /> : null
   const auto = data?.simulation_automatique

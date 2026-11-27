@@ -213,6 +213,15 @@ function DemarrageRapideBloc({ compte }) {
 
 const MAX_PASTILLES = 4
 
+/* ACAL1939 — « Voir les étapes » ouvre le détail PUIS y défile, une fois monté (requestAnimationFrame) : défiler
+   avant le montage s'arrêtait à la hauteur de la page d'alors, seul le titre du détail se voyait. */
+function voirLesEtapes(onVoirEtapes) {
+  onVoirEtapes()
+  globalThis.requestAnimationFrame?.(() => {
+    globalThis.document?.querySelector('[data-zone="avance"]')?.scrollIntoView?.({ block: 'start' })
+  })
+}
+
 export default function ResultatIncomplet({ calepinageId, data, parcours = null, onVoirEtapes = null, nomProduction = null }) {
   const total = data?.production?.total
   // Relecture E5 M1 — la conception servie à côté : la production de la POSE porte son nom exact.
@@ -288,7 +297,7 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null,
                     <span className="cal-resinc-raison">{`${autres > 1 ? 'pertes pas encore comptées' : 'perte pas encore comptée'}, dans le détail du calcul`}</span>
                   </span>
                   {onVoirEtapes && (
-                    <button type="button" className="cal-resinc-bouton" onClick={onVoirEtapes}>Voir les étapes</button>
+                    <button type="button" className="cal-resinc-bouton" onClick={() => voirLesEtapes(onVoirEtapes)}>Voir les étapes</button>
                   )}
                 </li>
               )}

@@ -526,6 +526,31 @@ describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet
     expect(screen.queryByTestId('acal700-autres')).toBeNull()
   })
 
+  it('ACAL1939 — « Voir les étapes » défile jusqu’au détail APRÈS son montage, pas avant (sinon le contenu n’existe pas encore)', async () => {
+    const base = COMPLET()
+    const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    const data = { ...base, production: borne.production, simulation: borne.simulation, cascade: JSON.parse(JSON.stringify(borne.cascade)) }
+    data.cascade.a_renseigner.etapes_comptees = 4
+    data.cascade.a_renseigner.etapes_a_compter = 22
+    servir(data)
+    const defilements = []
+    const origine = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function defiler(options) {
+      defilements.push({ zone: this.getAttribute('data-zone'), ouvert: this.open === true, options })
+    }
+    try {
+      rendre()
+      const autres = await screen.findByTestId('acal700-autres')
+      fireEvent.click(within(autres).getByRole('button', { name: 'Voir les étapes' }))
+      await waitFor(() => expect(defilements.length).toBeGreaterThan(0))
+      // Le détail est déjà ouvert (monté) quand on y défile, et c'est bien lui qu'on amène à l'écran.
+      expect(defilements.every((d) => d.zone === 'avance' && d.ouvert)).toBe(true)
+      expect(defilements[0].options).toEqual({ block: 'start' })
+    } finally {
+      Element.prototype.scrollIntoView = origine
+    }
+  })
+
   it('Demande croisée — « Démarrage rapide » ne compte que les lignes `reglage_societe` (pas les lignes de fiche panneau)', async () => {
     const base = COMPLET()
     const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
