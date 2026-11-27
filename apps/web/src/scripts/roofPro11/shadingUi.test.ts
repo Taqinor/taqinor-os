@@ -1115,6 +1115,26 @@ describe('ACAL1407 + ACAL1501 — ombre proche mesurée sur les panneaux posés'
     } finally { poserChoixOptimisation(null); }
   });
 
+  it('ACAL1532 (revue) — deux obstacles hauts dont une VMC qui n’ombre aucun module signalé : seule la cheminée est nommée', () => {
+    try {
+      document.body.innerHTML = '<div id="parent"><div id="rp9-solar-access"></div></div>';
+      const grand = { ...cheminee(0, 0.5), lengthM: 3, widthM: 3, heightM: 8 };
+      const vmc = { ...cheminee(-4.8, -3.4), id: 'vmc-1', type: 'ventilation', lengthM: 0.2, widthM: 0.2, heightM: 0.3 };
+      const ctx = ctxPan(grand);
+      ctx.obstacles.push(vmc);
+      const ui = createShadingUi(ctx, {
+        map: new Proxy({}, { get: () => () => undefined }) as never, setStatus: () => {}, recalcDisplays: () => {}, applyHeatmap: () => {},
+        removePanels: () => 0,
+      });
+      poserChoixOptimisation({ seuilAccesSolaire: 0.95 });
+      const poses = [...rangee(-3).slice(0, 2), ...rangee(1.5).slice(1, 4)];
+      Object.assign(ctx, { layoutPlan: { grid: { panels: poses.map((p) => ({ cx: p.x, cy: p.y })), kwc: 2.5 } }, layoutOptimalCount: 5 });
+      ui.recomputeShading();
+      const bloc = document.getElementById('rp9-solar-access')!;
+      expect(bloc.dataset.ombreDe).toBe('de la cheminée');
+    } finally { poserChoixOptimisation(null); }
+  });
+
   it('ACAL1532 — aucune obstruction : rien n’est publié', () => {
     document.body.innerHTML = '<div id="parent"><div id="rp9-solar-access"></div></div>';
     const ctx = ctxPan(cheminee(0, 0));

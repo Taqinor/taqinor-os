@@ -59,6 +59,7 @@ import {
   type BatimentOsmServeur,
   type PropositionOsm,
 } from './batiment'; // CALX100 — la hauteur vient du DOCUMENT, plus d'une Map locale
+import { OBSTACLE_TYPES } from './types'; // ACAL1532 — la seule définition des types d'obstacle
 import { etiquette, registreAtelier } from './numerotation'; // CALX111 câblage
 import { $, esc } from './dom';
 import { phraseCouleursAcces, poserLegendeAcces } from './legendeAcces'; // ACAL441, ACAL1821
@@ -592,13 +593,6 @@ export async function executerAvecCarte<T>(
   }
 }
 
-/** ACAL1532 — « de la cheminée » : le complément de nom (article accordé) d'un type d'obstacle. */
-const DE_PAR_TYPE: Record<string, string> = {
-  cheminee: 'de la cheminée', ventilation: 'de la ventilation', chien_assis: 'du chien-assis', edicule: 'de l’édicule',
-  antenne: 'de l’antenne', lanterneau: 'du lanterneau', exutoire: 'de l’exutoire', climatiseur: 'du climatiseur',
-  citerne: 'de la citerne', garde_corps: 'du garde-corps', joint_dilatation: 'du joint de dilatation',
-};
-
 /**
  * ACAL1532 — qui fait l'ombre, en mots : « de la cheminée » (un type), « de la cheminée et du climatiseur » (deux),
  * sinon « des obstacles du toit ». Les ombres tracées / objets d'environnement ne se nomment pas : « des ombres relevées ».
@@ -613,7 +607,7 @@ export function designationDeLOmbre(
   const autres = nbOmbresTracees > 0 || (environnement ?? []).some((o) => typeof o.heightM === 'number' && o.heightM > 0 && o.supposeCoupe !== true);
   if (!hauts.length) return autres ? 'des ombres relevées' : null;
   if (autres) return 'des obstacles du toit et des ombres relevées';
-  const noms = [...new Set(hauts.map((o) => (o.type ? DE_PAR_TYPE[o.type] : undefined) ?? 'de l’obstacle'))];
+  const noms = [...new Set(hauts.map((o) => (o.type ? OBSTACLE_TYPES.find((t) => t.id === o.type)?.de : undefined) ?? 'de l’obstacle'))];
   return noms.length === 1 ? noms[0] : noms.length === 2 ? `${noms[0]} et ${noms[1]}` : 'des obstacles du toit';
 }
 
@@ -1203,11 +1197,26 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     return etiquette(numerote, registreAtelier.convention(panId)) || `nº${i + 1}`;
   }
 
+  /** ACAL1532 — les obstacles de toit dont l'ombre atteint les modules SIGNALÉS (même `perModule` que la proposition :
+   *  sous le seuil réglé, sinon tout module dont l'accès est < 1). Un obstacle haut qui n'ombre aucun d'eux n'est pas nommé. */
+  function obstaclesQuiOmbrent(s: SolarAccessSummary): Obstacle[] {
+    const plan = ctx.layoutPlan;
+    if (!plan) return [];
+    const seuil = seuilRetrait() ?? 1;
+    const signales = plan.grid.panels.filter((_, i) => s.perModule[i] < seuil);
+    if (!signales.length) return [];
+    const prod = ctx.prodPerKwc ?? fallbackPerKwc();
+    return ctx.obstacles.filter((o) => {
+      const seul = roofObstacleShadeEntries([o], ctx.centroid);
+      return seul.length > 0 && signales.some((p) => pointSolarAccess(ctx.centroidLat, seul, prod, p.cx, p.cy) < 1 - 1e-6);
+    });
+  }
+
   /** ACAL1532 — ce que l'écran Panneaux lit de `#rp9-solar-access` SANS parser le texte : le nom de l'obstacle
    *  (`data-ombre-de`) et, SEULEMENT sans seuil réglé, la perte annuelle de `shadeAnnualFactor` (`data-ombre-perte`,
    *  % entier ≥ 1). Recalculé à chaque rendu, jamais écrit au document ; aucun seuil par défaut. */
   function publierOmbrePourEcran(el: HTMLElement, s: SolarAccessSummary | null) {
-    const de = s ? designationDeLOmbre(ctx.obstacles, ctx.shadeObstructions?.length ?? 0, ctx.environment) : null;
+    const de = s ? designationDeLOmbre(obstaclesQuiOmbrent(s), ctx.shadeObstructions?.length ?? 0, ctx.environment) : null;
     if (de) el.dataset.ombreDe = de; else delete el.dataset.ombreDe;
     const perte = s && seuilRetrait() == null && ctx.shadeFactors ? Math.round((1 - ctx.shadeAnnualFactor) * 100) : 0;
     if (perte >= 1) el.dataset.ombrePerte = String(perte); else delete el.dataset.ombrePerte;
