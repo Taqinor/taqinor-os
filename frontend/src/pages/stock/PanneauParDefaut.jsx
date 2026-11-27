@@ -3,7 +3,9 @@ import { Badge, Button } from '../../ui'
 import stockApi from '../../api/stockApi'
 import { frenchError } from '../../lib/frenchError'
 import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
-import { DROIT_PANNEAU_PAR_DEFAUT } from '../../features/stock/panneauParDefaut'
+import {
+  DROIT_PANNEAU_PAR_DEFAUT, LIBELLE_DEFAUT_INUTILISABLE, panneauDefautInutilisable, usePanneauParDefaut,
+} from '../../features/stock/panneauParDefaut'
 
 /* ============================================================================
    D-ACAL-169 (fondateur, 26/11/2026) — LE panneau par défaut de la société,
@@ -21,6 +23,10 @@ export function ActionPanneauParDefaut({ produit, onChange }) {
   const [estDefaut, setEstDefaut] = useState(Boolean(produit?.panneau_par_defaut))
   const [busy, setBusy] = useState(false)
   const [erreur, setErreur] = useState(null)
+  // D-ACAL-169 (rejeu) — l'état servi : un désigné inutilisable le dit ici comme sur la ligne du catalogue
+  // (au plus un désigné par société : si CE produit l'est, le résumé parle de lui).
+  const [resume, relire] = usePanneauParDefaut()
+  const inutilisable = estDefaut && panneauDefautInutilisable(resume)
   const estPanneau = produit?.role_devis_effectif === 'panneau'
   if (!produit || (!estPanneau && !estDefaut)) return null
 
@@ -32,6 +38,7 @@ export function ActionPanneauParDefaut({ produit, onChange }) {
         ? await stockApi.retirerPanneauParDefaut(produit.id)
         : await stockApi.definirPanneauParDefaut(produit.id)
       setEstDefaut(r?.data?.produit_id === produit.id)
+      relire()
       onChange?.(r?.data ?? null)
     } catch (err) {
       setErreur(err?.response?.data?.panneau_par_defaut?.[0] ?? frenchError(err))
@@ -43,13 +50,16 @@ export function ActionPanneauParDefaut({ produit, onChange }) {
   return (
     <div data-testid="panneau-par-defaut-action" className="mb-3 flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-2">
-        {estDefaut && <Badge tone="success">Panneau par défaut</Badge>}
+        {estDefaut && (inutilisable
+          ? <Badge tone="warning" title={resume.motif}>{LIBELLE_DEFAUT_INUTILISABLE}</Badge>
+          : <Badge tone="success">Panneau par défaut</Badge>)}
         {peutDesigner && (
           <Button type="button" size="sm" variant="outline" loading={busy} onClick={basculer}>
             {estDefaut ? 'Retirer' : 'Définir comme panneau par défaut'}
           </Button>
         )}
       </div>
+      {inutilisable && resume.motif && <p className="text-xs text-muted-foreground">{resume.motif}</p>}
       {erreur && <p role="alert" className="text-xs text-destructive">{erreur}</p>}
     </div>
   )
