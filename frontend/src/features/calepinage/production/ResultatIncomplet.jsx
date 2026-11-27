@@ -6,7 +6,7 @@ import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import { nomDePerte } from './nomsPertes'
 import { kwh } from './ResultatHeros.helpers'
 import { GrosChiffre } from './TuilesResultat'
-import { compteDuResultat } from './ResultatIncomplet.helpers'
+import { compteDuResultat, regrouperParChamp } from './ResultatIncomplet.helpers'
 
 /* ACAL700 / ACAL1833 — L'ÉTAT « RÉSULTAT INCOMPLET » (maquette v2 ResultatsIncomplet.dc.html) :
    un plafond, pas un résultat. Tout est SERVI (`production.total`, `cascade.a_renseigner`,
@@ -27,6 +27,11 @@ const RAISON = {
 /* ACAL1940 — les étapes qui lisent la fiche de l'ONDULEUR : sans onduleur désigné (le parcours sert `materiel_designe`
    qui le nomme), leur ligne dit « Aucun onduleur désigné » au lieu de « Absent de la fiche du panneau ». */
 const ETAPES_ONDULEUR = new Set(['mppt', 'onduleur', 'ecretage'])
+/* ACAL1652 — « Salissure », « Chaleur et Salissure », « A, B et C » : chaque étape qui demande le champ est nommée. */
+const nomsDesEtapes = (etapes) => {
+  const noms = etapes.map((e) => nomDePerte(e.etape, e.libelle).nom)
+  return noms.length < 2 ? (noms[0] ?? '') : `${noms.slice(0, -1).join(', ')} et ${noms[noms.length - 1]}`
+}
 const sansOnduleurDesigne = (parcours) => (parcours?.manque || [])
   .some((m) => m?.code === 'materiel_designe' && /onduleur non désigné/i.test(m?.message || ''))
 
@@ -241,6 +246,7 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null,
   const compte = compteDuResultat(aRenseigner)
   const { autres, reglagesVides: societe } = compte
   const sansOnduleur = sansOnduleurDesigne(parcours)
+  const champs = regrouperParChamp(lignes) // ACAL1652 — une ligne par champ, même si deux étapes le demandent
   return (
     <div className="cal-resinc" data-testid="acal700-incomplet">
       <div className="cal-resinc-haut">
@@ -276,18 +282,18 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null,
             <div className="cal-res-entete">
               <h1 className="cal-res-titre">Pour un résultat complet</h1>
               <span className="cal-res-sourdine cal-resinc-compteur" data-testid="acal1833-compteur">
-                {societe === lignes.length
+                {societe === champs.length
                   ? `${societe} ${societe > 1 ? 'réglages vides' : 'réglage vide'}`
-                  : `${lignes.length} à renseigner`}
+                  : `${champs.length} à renseigner`}
               </span>
             </div>
             <ol className="cal-resinc-liste">
-              {lignes.map((ligne, i) => (
+              {champs.map((ligne, i) => (
                 <li key={`${ligne.etape}-${ligne.cle}`} className="cal-resinc-ligne" data-testid="acal700-ligne">
                   <span className="cal-resinc-rang" aria-hidden="true">{i + 1}</span>
                   <span className="cal-resinc-texte">
                     <span className="cal-resinc-nom" title={nomDePerte(ligne.etape, ligne.libelle).technique || undefined}>
-                      {nomDePerte(ligne.etape, ligne.libelle).nom}
+                      {nomsDesEtapes(ligne.etapes)}
                     </span>
                     {RAISON[ligne.nature] && (
                       <span className="cal-resinc-raison">

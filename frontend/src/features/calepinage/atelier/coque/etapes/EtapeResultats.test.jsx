@@ -593,6 +593,25 @@ describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet
     expect(within(fiche).getByRole('link', { name: 'Renseigner' })).toBeInTheDocument()
   })
 
+  it('ACAL1652 — deux étapes qui demandent le même champ : UNE ligne qui nomme les deux, un seul « à renseigner »', async () => {
+    const base = COMPLET()
+    const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    const data = { ...base, production: borne.production, simulation: borne.simulation, cascade: JSON.parse(JSON.stringify(borne.cascade)) }
+    const [salissure, mismatch] = data.cascade.a_renseigner.lignes
+    // Le même champ servi pour deux étapes (le cas du coefficient de température) : mêmes `section` et `cle`, étapes différentes.
+    const jumelle = { ...mismatch, etape: 'chaleur', libelle: 'Chaleur', section: salissure.section, cle: salissure.cle, cible: salissure.cible }
+    data.cascade.a_renseigner.lignes = [salissure, jumelle, mismatch]
+    servir(data)
+    rendre()
+    const lignes = await screen.findAllByTestId('acal700-ligne')
+    expect(lignes.filter((l) => l.textContent.includes('Chaleur'))).toHaveLength(1)
+    const commune = lignes.find((l) => l.textContent.includes('Chaleur'))
+    expect(commune.textContent).toContain(' et ')
+    expect(commune.textContent).toMatch(/Salissure|poussi/i)
+    expect(lignes.filter((l) => within(l).queryByTestId('acal700-renseigner'))).toHaveLength(2)
+    expect(screen.getByTestId('acal1833-compteur')).toHaveTextContent(/^2 /)
+  })
+
   it('Demande croisée — « Démarrage rapide » ne compte que les lignes `reglage_societe` (pas les lignes de fiche panneau)', async () => {
     const base = COMPLET()
     const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
