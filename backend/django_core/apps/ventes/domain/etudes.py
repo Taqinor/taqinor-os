@@ -595,6 +595,10 @@ CLES_DERIVEES_NON_COPIEES = (
     # copie dont les entrées changent ; il ne se recalcule pas, donc il se
     # purge (une copie refaite par le chemin automatique reçoit le sien).
     'journal_auto',
+    # ACAL1237 — la base de production FIGÉE à l'ENVOI appartient au document
+    # envoyé : une V+1, un clone/variante ou une gamme sœur est un brouillon
+    # qui relit la pose servie, jamais la base figée de sa source.
+    'base_production_envoi',
 ) + tuple(
     # AGR122 — TOUTES les dérivées du moteur pompage (v2 + les sept clés v1
     # lues par le rendu) : une copie/V2 les RECALCULE (AGR123) sur ses
