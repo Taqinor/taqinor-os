@@ -2,7 +2,7 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -120,3 +120,31 @@ class TestParrainage(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data['total'], 1)
         self.assertEqual(Decimal(r.data['recompenses_versees']), Decimal('300'))
+
+
+class TestParrainageLecturePure(SimpleTestCase):
+    """Profil société — les réglages de parrainage (lus à l'acceptation d'un
+    devis par ``receivers_clients``) passent par ``CompanyProfile.lire``
+    (jamais ``get``, qui crée la ligne au fuseau par défaut et périmait les
+    simulations de calepinage). Sans profil : les défauts d'hier. Sans
+    base."""
+
+    def test_lit_par_lire_jamais_par_get(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.crm.clients_pilotage import (
+            parrainage_actif, recompense_par_defaut,
+        )
+        company = SimpleNamespace(pk=7, id=7, nom='Sans Profil')
+        defaut = CompanyProfile(nom='Sans Profil')
+        with mock.patch.object(CompanyProfile, 'get',
+                               side_effect=AssertionError('get')) as get, \
+                mock.patch.object(CompanyProfile, 'lire',
+                                  return_value=defaut) as lu:
+            self.assertEqual(parrainage_actif(company),
+                             bool(defaut.referral_enabled))
+            recompense = recompense_par_defaut(company)
+        self.assertEqual(recompense, defaut.referral_reward)
+        get.assert_not_called()
+        self.assertEqual(lu.call_count, 2)
