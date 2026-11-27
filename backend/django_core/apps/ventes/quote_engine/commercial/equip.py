@@ -330,9 +330,19 @@ def _rangees_installation(d, L, fmt):
     items = [it for it in d.get("all_items") or []
              if _num(it.get("quantite")) > 0]
     rangees = []
+    # Lecteurs en aval (constat 4) — le rôle RANGÉ de l'item d'abord, aux seuls
+    # devis que la coupure ouvre (``classe_par_role`` posé par le moteur) ;
+    # sinon, ou sans rôle : l'expression d'hier.
+    from apps.ventes.domain import classe_ligne as cl
+
+    def _classe(it, classe, repli):
+        declaree = (cl.classe_du_role(it.get("role_devis"))
+                    if d.get("classe_par_role") else None)
+        return cl.verdict(declaree, classe, repli)
+
     panneaux = [f'{_num(it.get("quantite")):g} × {it.get("designation")}'
-                for it in items if sc.is_panel(it.get("designation") or "",
-                                               it.get("_produit_nom") or "")]
+                for it in items if _classe(it, cl.PANNEAU, lambda it=it: sc.is_panel(
+                    it.get("designation") or "", it.get("_produit_nom") or ""))]
     if panneaux:
         watt = _num(d.get("watt_par_panneau"), None)
         kwc = premium_base.kwc_str(systeme.get("kwc"), "")
@@ -347,7 +357,8 @@ def _rangees_installation(d, L, fmt):
     # réseau… », ``role_ci`` du tableau) n'est pas un onduleur.
     from apps.ventes.moteur_ci.composition import ROLES_TABLEAU_CI
     onduleurs = [f'{_num(it.get("quantite")):g} × {it.get("designation")}'
-                 for it in items if sc.is_inverter(it.get("designation") or "")
+                 for it in items if _classe(it, cl.ONDULEUR, lambda it=it: sc.is_inverter(
+                     it.get("designation") or ""))
                  and it.get("role_ci") not in ROLES_TABLEAU_CI]
     # AMOT93 — le total AC SERVI par ``synthese_ci.installation`` (jamais
     # recalculé ici) ; absent ⇒ aucun total imprimé.

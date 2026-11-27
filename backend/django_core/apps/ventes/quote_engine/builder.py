@@ -490,6 +490,14 @@ def _avec_regles_pose_reelle(data, pose_reelle, devis=None):
     return data
 
 
+def _drapeau_classe_par_role(devis):
+    """Lecteurs en aval — ``{"classe_par_role": True}`` quand ce devis classe ses
+    lignes par le rôle rangé (``regles_calcul.classe_par_role_ouverte``), sinon
+    ``{}`` : un devis envoyé avant la coupure reste octet-identique."""
+    from apps.ventes.domain.regles_calcul import classe_par_role_ouverte
+    return {"classe_par_role": True} if classe_par_role_ouverte(devis) else {}
+
+
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from apps.ventes.domain.regles_calcul import (
@@ -1558,7 +1566,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         avec_batterie_differee=avec_batterie_differee, avec_items=avec_items,
         mode=mode, opts=opts, sans_items=sans_items, totaux_all=totaux_all,
         totaux_avec=totaux_avec, totaux_sans=totaux_sans, tva_pct=tva_pct,
-        watt=watt)
+        watt=watt, devis=devis)
 
     # SPL164 — phase E3 : ``conditions_commerciales.conditions_et_liens``.
     (_dates_prevues, _tenant_site, doc_texts, entreprise, links, payment_terms,
@@ -2162,6 +2170,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         ("regles_0411_historique", not regles_au_moins(devis, REGLES_ECARTS_0411)),  # AMOT123/AMOT126
         ("regles_sensibilites_historique", not regles_au_moins(devis, REGLES_SENSIBILITES_1911)),  # D-SENS-1
         ("regles_arrondi_historique", not regles_au_moins(devis, REGLES_ARRONDI_3010))) if pose})  # CE2E4 : tout mode
+
+    # Lecteurs en aval (constat 4) — les gabarits (``commercial.equip``) lisent
+    # le rôle RANGÉ des items aux seuls devis que la coupure ouvre.
+    data.update(_drapeau_classe_par_role(devis))
 
     # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),
     # exposée pour le rendu (D3). Additif : la clé n'est posée QUE lorsqu'une

@@ -62,6 +62,26 @@ class PucesOptionTests(TestCase):
         self.assertIn(_PUCE, data['sans_bullets'])
         self.assertIn(_PUCE, data['avec_bullets'])
 
+    def test_lecteurs_aval_cas_abc_ranges_sur_les_cartes(self):
+        """Constat 4 (lecteurs aval) — moteur réel : la batterie A, les 30
+        panneaux B et l'hybride C, aux noms muets mais RANGÉS, sont sur la
+        carte « Avec batterie » ; la carte « Sans » ne porte pas la batterie."""
+        a, b, c = ('Deye BOS-B Pro-A3 16 kWh', 'Canadian Solar TOPBiHiKu7 CS7N-715TB',
+                   'DEYE SUN-80K-SG02HP3-EU-EM6')
+        self.n += 1
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            (b, '30', '1200'), (c, '1', '60000'), (a, '1', '30000'),
+        ], reference=f'DEV-AMOT16-{self.n}', etude_params=dict(DEUX_OPTIONS))
+        for nom, role in ((a, 'batterie'), (b, 'panneau'), (c, 'onduleur_hybride')):
+            devis.lignes.filter(designation=nom).update(role_devis=role)
+        devis.refresh_from_db()
+        data = self._data(devis)
+        self.assertTrue(data['avec_bullets'][0].startswith('30 panneaux'))
+        self.assertIn(c, data['avec_bullets'])
+        self.assertIn(a, data['avec_bullets'])
+        self.assertNotIn(a, data['sans_bullets'])
+        self.assertTrue(data.get('classe_par_role'))
+
     def test_structure_sans_pose_pas_de_puce(self):
         data = self._data(self._devis(extra=[
             ('Structure acier', '10', '300')]))

@@ -649,3 +649,77 @@ class LecteursAvalComptesEnBaseTest(TestCase):
         capture = comptes_panneaux_du_devis(devis)
         self.assertEqual(capture[''], 30)
         self.assertEqual(capture, _comptes_panneaux(_lignes_produit(devis), devis))
+
+
+#: Les trois cas de preuve de la revue : A batterie, B panneaux, C hybride (noms muets).
+_NOM_A, _NOM_B, _NOM_C = ('Deye BOS-B Pro-A3 16 kWh', 'Canadian Solar TOPBiHiKu7 CS7N-715TB',
+                          'DEYE SUN-80K-SG02HP3-EU-EM6')
+
+
+def _avant_la_coupure():
+    from datetime import date, timedelta
+
+    from apps.ventes.domain.regles_calcul import COUPURE_CLASSE_PAR_ROLE
+    return SimpleNamespace(statut='envoye', regles_calcul=14,
+                           date_envoi=date(*COUPURE_CLASSE_PAR_ROLE) - timedelta(days=1))
+
+
+def _items_abc():
+    """Les items du moteur PDF (``_line_to_item`` transporte ``role_devis``) des cas A, B, C."""
+    def item(nom, role, quantite):
+        return {'designation': nom, '_produit_nom': nom, 'quantite': float(quantite),
+                'role_devis': role, 'prix_unit_ht': 1000.0, 'prix_unit_ttc': 1200.0}
+    return [item(_NOM_B, 'panneau', 30), item(_NOM_C, 'onduleur_hybride', 1),
+            item(_NOM_A, 'batterie', 1)]
+
+
+class LecteursAvalTextesPdfTest(SimpleTestCase):
+    """Constat 4 — les textes du PDF lisent le rôle RANGÉ : la carte « Avec
+    batterie » (``conditions_commerciales.remises_et_puces``) et la fiche
+    « Votre installation en bref » (``commercial.equip``) listent la batterie A,
+    les 30 panneaux B et l'hybride C. Envoyé avant la coupure : les puces d'hier."""
+
+    @staticmethod
+    def _puces(devis):
+        from apps.ventes.quote_engine.conditions_commerciales import remises_et_puces
+        sortie = remises_et_puces(
+            PUCE_AVEC_BATTERIE_DIFFEREE='(différée)', _corrige=True, _scal={}, all_items=[],
+            avec_batterie_differee=False, avec_items=_items_abc(), mode='residentiel',
+            opts={'include_etude': False}, sans_items=_items_abc()[:2], totaux_all={},
+            totaux_avec={}, totaux_sans={}, tva_pct=20, watt=715, devis=devis)
+        return sortie[5], sortie[1]  # sans_bullets, avec_bullets
+
+    def test_cartes_d_option_listent_les_lignes_rangees(self):
+        sans, avec = self._puces(_BROUILLON)
+        self.assertEqual(avec[:3], ['30 panneaux 715 W', _NOM_C, _NOM_A])
+        self.assertEqual(sans[:2], ['30 panneaux 715 W', _NOM_C])
+        self.assertNotIn(_NOM_A, sans)
+
+    def test_cartes_d_option_envoye_avant_la_coupure_les_puces_d_hier(self):
+        sans, avec = self._puces(_avant_la_coupure())
+        self.assertEqual(avec, [])
+        self.assertEqual(sans, [])
+
+    @staticmethod
+    def _installation(**drapeaux):
+        from apps.ventes.quote_engine.commercial.equip import _rangees_installation
+        d = dict(all_items=_items_abc(), watt_par_panneau=715, **drapeaux)
+        return dict(_rangees_installation(
+            d, lambda _cle, fr, **valeurs: fr.format(**valeurs), str))
+
+    def test_installation_en_bref_lit_les_lignes_rangees(self):
+        rangees = self._installation(classe_par_role=True)
+        self.assertTrue(rangees['Modules'].startswith('30 × ' + _NOM_B))
+        self.assertEqual(rangees['Onduleurs'], '1 × ' + _NOM_C)
+
+    def test_installation_en_bref_sans_drapeau_les_rangees_d_hier(self):
+        rangees = self._installation()
+        self.assertNotIn('Modules', rangees)
+        self.assertNotIn('Onduleurs', rangees)
+
+    def test_le_drapeau_suit_la_coupure(self):
+        """Le moteur pose ``classe_par_role`` aux seuls devis que la coupure ouvre
+        (un devis envoyé avant reste octet-identique : aucune clé de plus)."""
+        from apps.ventes.quote_engine.builder import _drapeau_classe_par_role
+        self.assertEqual(_drapeau_classe_par_role(_BROUILLON), {'classe_par_role': True})
+        self.assertEqual(_drapeau_classe_par_role(_avant_la_coupure()), {})
