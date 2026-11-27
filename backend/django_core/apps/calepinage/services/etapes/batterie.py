@@ -109,29 +109,29 @@ COLONNES_POSEES = ('charge_kwh', 'batterie_soc_pct', 'reseau_import_kwh',
 
 MOTIF_SANS_DECLARATION = (
     "Aucune batterie n'est déclarée sur ce calepinage : le bloc « batterie » "
-    'est OMIS. Une batterie supposée changerait le taux d’autonomie, donc la '
+    'est omis. Une batterie supposée changerait le taux d’autonomie, donc la '
     'proposition faite au client.')
 
 MOTIF_SANS_STRATEGIE = (
     "Aucune stratégie de batterie n'a été choisie : le bloc « batterie » est "
-    'OMIS. Une batterie ne se pilote pas toute seule — tant que personne n’a '
+    'omis. Une batterie ne se pilote pas toute seule — tant que personne n’a '
     'choisi entre autoconsommation, effacement de pointe, secours et '
     'décalage, aucun kWh stocké ne peut être publié.')
 
 MOTIF_SANS_CAPACITE = (
-    "La capacité UTILE de la batterie déclarée est inconnue : elle se lit sur "
+    "La capacité utile de la batterie déclarée est inconnue : elle se lit sur "
     'la fiche du pack (CAL153), elle ne se suppose pas. Le bloc « batterie » '
-    'est OMIS.')
+    'est omis.')
 
 MOTIF_SANS_PRODUCTION = (
     "Aucune colonne d'énergie n'est lisible sur la série sortie de chaîne : "
-    'le dispatch se joue heure par heure CONTRE une production, et celle-ci '
-    "n'est pas calculée. Le bloc « batterie » est OMIS.")
+    'le dispatch se joue heure par heure contre une production, et celle-ci '
+    "n'est pas calculée. Le bloc « batterie » est omis.")
 
 MOTIF_DECALAGE_PAS_NON_HORAIRE = (
-    'La stratégie de décalage se règle sur des HEURES saisies (0 à 23), et la '
+    'La stratégie de décalage se règle sur des heures saisies (0 à 23), et la '
     'série n’avance pas par pas d’une heure : rattacher chaque pas à une '
-    'heure reviendrait à deviner le calendrier. Le bloc « batterie » est OMIS.')
+    'heure reviendrait à deviner le calendrier. Le bloc « batterie » est omis.')
 
 #: CALX63 — la clé du contexte qui porte les LIBELLÉS d'heures de la grille
 #: horaire SAISIE par la société (``services/batterie.py::
@@ -143,10 +143,10 @@ CLE_TOU_HEURES = 'tou_heures'
 CLE_RACCORDEMENT = 'raccordement'
 
 MOTIF_TARIF_PAS_NON_HORAIRE = (
-    'La stratégie « heures du tarif » se règle sur les HEURES de la grille '
+    'La stratégie « heures du tarif » se règle sur les heures de la grille '
     'horaire de la société, et la série n’avance pas par pas d’une heure : '
     'rattacher chaque pas à une heure reviendrait à deviner le calendrier. Le '
-    'bloc « batterie » est OMIS.')
+    'bloc « batterie » est omis.')
 
 MENTION_PLAFOND_AU_COMPTEUR = (
     'Stratégie « plafond d’injection » : la batterie ne stocke que le surplus '
@@ -163,15 +163,15 @@ MENTION_CHARGE_RESEAU = (
     'inventé).')
 
 MOTIF_VIEILLISSEMENT_PAS_ANNUEL = (
-    'La série ne couvre pas une année entière : les cycles ANNUELS de la '
+    'La série ne couvre pas une année entière : les cycles annuels de la '
     'batterie ne se lisent pas sur elle, et le vieillissement par cycles est '
-    'OMIS.')
+    'omis.')
 
 MOTIF_VIEILLISSEMENT_PLUSIEURS = (
     'Plusieurs groupes de batteries sont déclarés : leurs fiches ne publient '
     'pas forcément les mêmes cycles ni la même rétention de fin de vie, et le '
     'nombre de cycles n’est pas publié groupe par groupe. Le vieillissement '
-    'par cycles est OMIS.')
+    'par cycles est omis.')
 
 MENTION_PLUSIEURS_GROUPES = (
     'Plusieurs groupes de batteries sont déclarés : ils sont dispatchés comme '
@@ -182,7 +182,7 @@ MENTION_PLUSIEURS_GROUPES = (
 MOTIF_RESERVE_EN_DOUBLE = (
     'Une réserve de secours nue ET des appareils secourus sont déclarés : la '
     'réserve se saisit d’une seule façon, jamais les deux. Le bloc '
-    '« batterie » est OMIS.')
+    '« batterie » est omis.')
 
 #: ACAL1911 — des fenêtres saisies pour une stratégie qui n'en a pas : ignorées, dites en clair.
 MENTION_FENETRES_IGNOREES = (

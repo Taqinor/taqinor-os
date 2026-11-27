@@ -20,7 +20,7 @@ MOTIF_BASE_HORAIRE_INCONNUE = (
 MOTIF_RESOLUTION_DIVERGENTE = (
     'Le réglage « parametres.simulation.resolution_minutes » annonce {reglage} '
     'min, mais la série météo servie est au pas de {mesure} min : c\'est le '
-    'pas MESURÉ qui fait foi, et aucune interpolation n\'est faite pour '
+    'pas mesuré qui fait foi, et aucune interpolation n\'est faite pour '
     'atteindre le pas réglé.')
 
 __all__ = ['MOTIF_FUSEAU_ABSENT', 'MOTIF_BASE_HORAIRE_INCONNUE',

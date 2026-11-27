@@ -71,7 +71,7 @@ REFERENCE_PVSOL = (
 MOTIF_SANS_TEMPERATURE = (
     "La série ne porte pas de température de cellule heure par heure : sans "
     "elle, la tension de la chaîne ne se calcule pour aucune heure et "
-    "l'étape est omise. Elle est écrite par l'étape « thermique » (CALX163) "
+    "l'étape est omise. Elle est écrite par l'étape « thermique » "
     "quand celle-ci s'applique.")
 
 MOTIF_SANS_COEFFICIENT = (

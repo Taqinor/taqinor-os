@@ -91,7 +91,7 @@ COLONNES_POSEES = ('charge_kwh', 'reseau_import_kwh', 'reseau_export_kwh')
 MOTIF_PLAGES_PAS_NON_HORAIRE = (
     "Les plages horaires du plafond d'injection se lisent heure par heure : "
     "la série n'est pas au pas de 60 min, le bloc « autoconsommation » est "
-    'OMIS plutôt que de fabriquer des heures.')
+    'omis plutôt que de fabriquer des heures.')
 
 REFERENCE_PVSYST = (
     'PVsyst — Self-consumption : les échanges d’énergie sont instantanés, le '
@@ -100,15 +100,15 @@ REFERENCE_PVSYST = (
     'definition/self-consumption.html)')
 
 MOTIF_HORS_RESEAU = (
-    'Ce calepinage est déclaré HORS RÉSEAU : il n’y a ni import ni injection, '
+    'Ce calepinage est déclaré hors réseau : il n’y a ni import ni injection, '
     'donc aucun taux d’autoconsommation réseau à publier. Le bloc '
-    '« autoconsommation » est OMIS — c’est le bloc « hors_reseau » (CALX191) '
+    '« autoconsommation » est omis — c’est le bloc « hors_reseau » '
     'qui décrit ce mode.')
 
 MOTIF_SANS_PRODUCTION = (
     "Aucune colonne d'énergie n'est lisible sur la série sortie de chaîne : "
-    'le croisement se joue heure par heure CONTRE une production, et '
-    "celle-ci n'est pas calculée. Le bloc « autoconsommation » est OMIS.")
+    'le croisement se joue heure par heure contre une production, et '
+    "celle-ci n'est pas calculée. Le bloc « autoconsommation » est omis.")
 
 DEFINITION_TAUX = (
     "Taux d'autoconsommation = énergie autoconsommée ÷ production vue au "

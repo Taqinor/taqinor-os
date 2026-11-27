@@ -15,7 +15,7 @@ La dispersion de FABRICATION seule — l'écart de puissance entre modules d'un
 même lot. PV*SOL sépare explicitement « mismatch (information fabricant) » de
 « mismatch (configuration/ombrage) » dans son bilan d'énergie
 (https://help.valentin-software.com/pvsol/en/pages/results/energy-balance/) :
-la seconde est l'affaire de l'étape ``mismatch_ombrage`` (CALX168), qui se
+la seconde est l'affaire de l'étape ``mismatch_ombrage``, qui se
 calcule par chaîne à partir des I-V. Les deux ne doivent jamais se recouvrir,
 d'où le refus déclaré plus bas.
 
@@ -65,7 +65,7 @@ ENTREE_REGLAGE = 'reglages_simulation.%s' % CLE_REGLAGE
 CLE_SUIVI_MPP = 'suivi_mpp_par_module'
 
 #: La clé de ``contexte`` sous laquelle l'étape « mismatch d'ombrage »
-#: (CALX168) déclare l'origine de sa propre dispersion.
+#: déclare l'origine de sa propre dispersion.
 CLE_MISMATCH_OMBRAGE = 'mismatch_ombrage'
 
 LIBELLE = 'Dispersion de fabrication (mismatch)'
@@ -100,7 +100,7 @@ MOTIF_VALEUR_ILLISIBLE = (
     "qu'on ne sait pas relire.")
 
 MOTIF_MEME_ORIGINE = (
-    "L'étape « mismatch_ombrage » (CALX168) tire sa dispersion de la MÊME "
+    "L'étape « mismatch_ombrage » tire sa dispersion de la même "
     "entrée que celle-ci : appliquer les deux compterait une seule "
     "dispersion deux fois. La dispersion de fabrication est donc omise, et "
     "c'est la dispersion d'ombrage, calculée par chaîne, qui s'applique.")

@@ -63,7 +63,7 @@ REFERENCE_PVSOL = (
 
 MOTIF_VALEUR_UNIQUE = (
     "Aucune courbe de rendement n'est publiée sur la fiche : le rendement "
-    "européen est une valeur UNIQUE, une moyenne pondérée de la norme, "
+    "européen est une valeur unique, une moyenne pondérée de la norme, "
     "appliquée à plat à chaque heure. Elle ne distingue pas une heure à "
     "pleine charge d'une heure à 10 % de charge.")
 
@@ -73,7 +73,7 @@ MOTIF_SANS_RENDEMENT = (
     "calculable et l'étape est omise. Aucun rendement n'est supposé.")
 
 MOTIF_PLUSIEURS_COURBES = (
-    "La fiche publie une courbe de rendement PAR TENSION d'entrée, et la "
+    "La fiche publie une courbe de rendement par tension d'entrée, et la "
     "tension de la chaîne n'est pas connue : l'étape est omise plutôt que "
     "d'élire une courbe au hasard. Il y faut le Vmp de la fiche module et le "
     "nombre de modules par chaîne (bloc « electrique.chainage »).")

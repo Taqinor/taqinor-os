@@ -112,7 +112,7 @@ MOTIF_SANS_PUISSANCE_STC = (
 MOTIF_MICRO_SANS_SAISIE = (
     "Groupe déclaré sous micro-onduleur : il n'existe aucune liaison DC de "
     "chaîne, et la seule perte continue porte sur le câble module → "
-    "micro-onduleur, dont la longueur et la section sont SAISIES. Elles ne "
+    "micro-onduleur, dont la longueur et la section sont saisies. Elles ne "
     "le sont pas : l'étape est omise, et aucun forfait n'est appliqué à "
     "leur place.")
 
