@@ -67,17 +67,24 @@ def _numero(module):
     return str(module['module']).rpartition('#')[2]
 
 
-def _ordre_de_numero(module):
-    """Du plus petit au plus grand numéro (comme ``plan_cablage``) ; un
-    repère sans numéro lisible suit, dans l'ordre de l'affectation."""
+def _ordre_dans_la_chaine(module, rang_de_pan=0):
+    """ACAL1719 (revue) — l'ordre du plan de câblage
+    (``plan_cablage.cle_dans_la_chaine``) : le rang du module dans sa chaîne,
+    celui du DXF ; en repli, le pan puis le numéro, un repère sans numéro
+    lisible après."""
+    from .documents.plan_cablage import cle_dans_la_chaine
+
     numero = _numero(module)
-    return ((0, int(numero)) if numero.isdigit()
-            else (1, module['rang'] or 0))
+    return cle_dans_la_chaine(module, (rang_de_pan, 0, int(numero))
+                              if numero.isdigit() else (rang_de_pan, 1, 0))
 
 
 def _chaines_du_pan(modules_du_pan, modules, entrees, pans):
     """Par chaîne présente sur ce pan, dans l'ordre d'apparition :
-    ``{chaine, couleur, modules (par numéro), total, suite}``."""
+    ``{chaine, couleur, modules (dans l'ordre de la chaîne), total, suite,
+    bouts}``."""
+    from .documents.plan_cablage import bouts_publies
+
     totaux = {e['chaine']: e['modules'] for e in entrees}
     ordre = {pan['repere']: rang for rang, pan in enumerate(pans)}
     noms = {pan['repere']: _libelle_de_pan(pan) for pan in pans}
@@ -87,12 +94,21 @@ def _chaines_du_pan(modules_du_pan, modules, entrees, pans):
             chaines.setdefault(module['chaine'], []).append(module)
     sortie = []
     for chaine, lot in chaines.items():
-        lot = sorted(lot, key=_ordre_de_numero)
+        lot = sorted(lot, key=_ordre_dans_la_chaine)
         autres = sorted({m['pan'] for m in modules
                          if m['chaine'] == chaine
                          and m['pan'] != lot[0]['pan']},
                         key=lambda cle: ordre.get(cle, 0))
+        # ACAL1719 — « + » / « − » seulement sur le pan du premier / dernier
+        # module de TOUTE la chaîne (même ordre que le plan de câblage).
+        tous = sorted((m for m in modules if m['chaine'] == chaine),
+                      key=lambda m: _ordre_dans_la_chaine(
+                          m, ordre.get(m['pan'], 0)))
+        publies = bouts_publies(tous, totaux.get(chaine))
         sortie.append({
+            'bouts': (tous[0] is lot[0] and publies[0],
+                      tous[-1] is lot[-1] and publies[1]),
+            'seul': len(tous) < 2,
             'chaine': chaine, 'couleur': lot[0]['couleur'], 'modules': lot,
             'total': totaux.get(chaine), 'suite': [noms.get(c, c)
                                                    for c in autres]})
@@ -132,13 +148,20 @@ def _dessin_du_module(module, vers_feuille):
 def _reperes_de_chaine(chaine, vers_feuille):
     """La flèche de la chaîne sur ce pan (``plan_cablage._fleche_de_chaine``,
     la même que le plan de câblage) : par les centres, du premier au dernier
-    numéro. Aucun « + » ni « − » (ACAL643) ; rien pour un module seul."""
-    from .documents.plan_cablage import _fleche_de_chaine
+    numéro, encre foncée, « + » et « − » aux bouts (ACAL1719) ; rien pour une
+    chaîne d'un seul module. ACAL1719 (revue) — le bout d'une chaîne seul sur
+    ce pan garde son signe, sans flèche."""
+    from .documents.plan_cablage import _fleche_de_chaine, signes_de_bout
 
     lot = chaine['modules']
-    if len(lot) < 2:
+    if len(lot) >= 2:
+        return [_fleche_de_chaine(lot, vers_feuille, chaine['bouts'])]
+    if chaine.get('seul') or not any(chaine['bouts']):
         return []
-    return [_fleche_de_chaine(lot, chaine['couleur'], vers_feuille)]
+    point = vers_feuille(lot[0]['centre'])
+    return ['<g class="bout-chaine" data-chaine="%s">%s</g>'
+            % (escape(str(chaine['chaine']), quote=True),
+               signes_de_bout(point, point, chaine['bouts']))]
 
 
 def _colonne_de_legende(chaines, sans_chaine):
@@ -562,7 +585,9 @@ def _feuille_de_pan(pan, modules, entrees, pans, pied, zones=(),
         corps += _reperes_de_chaine(chaine, vers_feuille)
     corps += _reperes_de_chantier(reperes, vers_feuille, echelle)
     lignes = _colonne_de_legende(chaines, not entrees)
-    if any(len(chaine['modules']) > 1 for chaine in chaines):
+    if any(len(chaine['modules']) > 1
+           or (not chaine.get('seul') and any(chaine['bouts']))
+           for chaine in chaines):
         lignes.append((None, LEGENDE_SENS))
     lignes += _lignes_de_mesures(distances, motif, cotes_de_zones)
     lignes += _encart_fixation(fixation)

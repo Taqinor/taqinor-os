@@ -27,7 +27,8 @@ import {
   daysInMonth,
   rescaleByPanels,
 } from '../../lib/productionWindow';
-import { PANEL_KWC, type PerKwcProduction } from '../../lib/productionEngine';
+import { PANEL_KWC, type PerKwcProduction, type SpecificDateProfile } from '../../lib/productionEngine';
+import { clipDcAcKwh, effectiveDcAcRatio, type ConfigFamily } from '../../lib/estimatorBrainV2';
 import { catalogueAvecModulesDuDocument, estRefus, kwcDuPan, lireModulesDisponibles, resoudreModuleDuPan } from './moduleSelect'; // demande croisée
 import { occupiedCount } from '../../lib/layoutVariability';
 import { type Ctx } from './context';
@@ -66,6 +67,68 @@ export interface ProdWindow {
   syncProductionWindow: () => void;
 }
 
+/** Aspect PVGIS ramené dans [−180 ; 180[ (ce que `/api/roof-production` accepte). */
+const aspectBorne = (a: number): number => ((((a + 180) % 360) + 360) % 360) - 180;
+
+/**
+ * ACAL982 (revue) — les plans PVGIS d'une pose et leur poids, la règle de la CARTE (`estimatorBrainV7.ts::evalOne`,
+ * `optimizer.ts::legsFor`) : un plan Sud/pente = une jambe ; une pose est-ouest = deux jambes `aspect − 90` (est) et
+ * `aspect + 90` (ouest), la moitié du kWc chacune. Avant : UN plan à `aspect` (le faîte, donc le sud) pour l'est-ouest.
+ */
+export function jambesDeProduction(cfg: { aspect: number; family?: ConfigFamily }): { aspect: number; poids: number }[] {
+  if (cfg.family !== 'eastwest') return [{ aspect: cfg.aspect, poids: 1 }];
+  return [{ aspect: aspectBorne(cfg.aspect - 90), poids: 0.5 }, { aspect: aspectBorne(cfg.aspect + 90), poids: 0.5 }];
+}
+
+/** ACAL982 (revue) — l'écrêtage DC/AC de la famille que la carte applique au kWh PVGIS (W94, `renderLiveWinner`) :
+ *  1 pour un Sud/une pente (ratio de conception), < 1 pour une « tente » est-ouest. Linéaire : `clip(x) = x × facteur`. */
+export function facteurEcretageFamille(family: ConfigFamily | undefined): number {
+  return family ? clipDcAcKwh(1, effectiveDcAcRatio(family)) : 1;
+}
+
+const SOURCE_RANG: Record<PerKwcProduction['source'], number> = { pvgis: 0, 'pvgis-monthly': 1, estimate: 2 };
+
+/** ACAL982 (revue) — UNE production par kWc depuis les jambes : moyenne pondérée série par série (année, mois, jour
+ *  type, journalier) puis écrêtage de la famille ; la source est la moins sûre des jambes. Une jambe à 1 = elle-même. */
+export function combinerJambes(parts: { perKwc: PerKwcProduction; poids: number }[], facteur = 1): PerKwcProduction {
+  const somme = (lire: (p: PerKwcProduction) => number): number => parts.reduce((s, j) => s + j.poids * lire(j.perKwc), 0) * facteur;
+  const premier = parts[0].perKwc;
+  return {
+    source: parts.reduce<PerKwcProduction['source']>((s, j) => (SOURCE_RANG[j.perKwc.source] > SOURCE_RANG[s] ? j.perKwc.source : s), premier.source),
+    annualKwh: somme((p) => p.annualKwh),
+    monthlyKwh: premier.monthlyKwh.map((_, m) => somme((p) => p.monthlyKwh[m] ?? 0)),
+    typicalDayByMonth: premier.typicalDayByMonth.map((prof, m) => prof.map((_, h) => somme((p) => p.typicalDayByMonth[m]?.[h] ?? 0))),
+    dailyKwhByMonth: premier.dailyKwhByMonth.map((_, m) => somme((p) => p.dailyKwhByMonth[m] ?? 0)),
+  };
+}
+
+/** ACAL982 (revue) — jumeau ERP : l'option `productionAtelier` interrogée PAR JAMBE (même `cfg`, l'aspect de la jambe),
+ *  puis la même combinaison. Plan Sud/pente : `fournir(cfg)` tel quel. Une jambe sans production ⇒ null. */
+export function productionAtelierDesJambes(
+  fournir: (cfg: ProdConfig) => PerKwcProduction | null,
+  cfg: ProdConfig,
+): PerKwcProduction | null {
+  const jambes = jambesDeProduction(cfg);
+  const facteur = facteurEcretageFamille(cfg.family);
+  if (jambes.length === 1 && facteur === 1) return fournir(cfg);
+  const parts = jambes.map((j) => ({ perKwc: fournir({ ...cfg, aspect: j.aspect }), poids: j.poids }));
+  return parts.every((p) => p.perKwc) ? combinerJambes(parts as { perKwc: PerKwcProduction; poids: number }[], facteur) : null;
+}
+
+/** Même règle pour le profil d'une date précise (déjà mis à l'échelle par la route) ; une jambe sans profil ⇒ null. */
+function combinerDates(dates: (SpecificDateProfile | null | undefined)[], poids: number[], facteur: number): SpecificDateProfile | null {
+  if (!dates.length || dates.some((d) => !d)) return null;
+  const ds = dates as SpecificDateProfile[];
+  const somme = (lire: (d: SpecificDateProfile) => number): number => ds.reduce((s, d, i) => s + poids[i] * lire(d), 0) * facteur;
+  return {
+    month: ds[0].month,
+    day: ds[0].day,
+    hourlyKw: ds[0].hourlyKw.map((_, h) => somme((d) => d.hourlyKw[h] ?? 0)),
+    dailyKwh: somme((d) => d.dailyKwh),
+    yearsAveraged: Math.min(...ds.map((d) => d.yearsAveraged)),
+  };
+}
+
 export function createProdWindow(ctx: Ctx, dom: ProdWindowDom, deps: ProdWindowDeps): ProdWindow {
   const { graphs, renderConsumption, renderLayoutPanel, snapshotActiveAreaResult, renderAreasPanel } = deps;
 
@@ -77,7 +140,7 @@ export function createProdWindow(ctx: Ctx, dom: ProdWindowDom, deps: ProdWindowD
   };
 
   const prodPlaneKeyOf = (p: ProdPlaneKey): string =>
-    `${p.lat.toFixed(4)},${p.lon.toFixed(4)},${Math.round(p.tiltDeg)},${Math.round(p.aspect)},${p.mountingplace}`;
+    `${p.lat.toFixed(4)},${p.lon.toFixed(4)},${Math.round(p.tiltDeg)},${Math.round(p.aspect)},${p.mountingplace}${p.family ? `,${p.family}` : ''}`; // ACAL982 (revue) — la famille change les jambes
 
   // PV75 — éléments DYNAMIQUES (ligne P50/P90 + mini cascade des pertes), créés
   // UNIQUEMENT si `ctx.opts.bankable` est fourni par la page hôte. Zéro modification
@@ -233,40 +296,54 @@ export function createProdWindow(ctx: Ctx, dom: ProdWindowDom, deps: ProdWindowD
     const token = ++ctx.prodToken;
     const wantDay = ctx.prodScope === 'day' && ctx.prodDay != null;
     const dayMonth = ctx.prodMonth + 1; // l'API attend 1-based
-    void fetch('/api/roof-production', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        lat: cfg.lat,
-        lon: cfg.lon,
-        tiltDeg: cfg.tiltDeg,
-        aspect: cfg.aspect,
-        mountingplace: cfg.mountingplace,
-        placedPanels: ctx.prodPanels,
-        ...(wantDay ? { dateMonth: dayMonth, dateDay: ctx.prodDay } : {}),
-      }),
-    })
-      .then((r) => r.json())
-      .then((data: ProductionApiResponse) => {
+    // ACAL982 (revue) — une requête PAR JAMBE (est-ouest : `aspect ∓ 90`), comme la carte ; un plan Sud/pente = une.
+    const jambes = jambesDeProduction(cfg);
+    const facteur = facteurEcretageFamille(cfg.family);
+    const lireJambe = (aspect: number): Promise<ProductionApiResponse> =>
+      fetch('/api/roof-production', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          lat: cfg.lat,
+          lon: cfg.lon,
+          tiltDeg: cfg.tiltDeg,
+          aspect,
+          mountingplace: cfg.mountingplace,
+          placedPanels: ctx.prodPanels,
+          ...(wantDay ? { dateMonth: dayMonth, dateDay: ctx.prodDay } : {}),
+        }),
+      }).then((r) => r.json());
+    const placedKwcDe = (d: ProductionApiResponse): number =>
+      typeof d.placedKwc === 'number' && d.placedKwc > 0 ? d.placedKwc : ctx.prodPanels * PANEL_KWC;
+    void Promise.all(jambes.map((j) => lireJambe(j.aspect)))
+      .then((reponses: ProductionApiResponse[]) => {
         if (token !== ctx.prodToken) return; // une requête plus récente a pris la main
-        if (!data || data.ok !== true) return;
+        if (reponses.some((d) => !d || d.ok !== true)) return;
+        const data = reponses[0];
         // On reconstitue la production PAR 1 kWc (pour rescaler ensuite côté client) en
         // divisant la réponse mise à l'échelle par le kWc posé renvoyé.
-        const placedKwc = typeof data.placedKwc === 'number' && data.placedKwc > 0 ? data.placedKwc : ctx.prodPanels * PANEL_KWC;
-        ctx.prodPerKwc = perKwcFromResponse(data, placedKwc);
-        ctx.prodScaled = {
-          source: data.source,
-          placedKwc,
-          annualKwh: data.annualKwh,
-          monthlyKwh: data.monthlyKwh,
-          typicalDayByMonth: data.typicalDayByMonth,
-          dailyKwhByMonth: data.dailyKwhByMonth,
-        };
-        // Demande croisée — la route met à l'échelle à 720 W/panneau ; un module désigné d'une autre puissance est rescalé.
-        if (kwcParPanneau() !== PANEL_KWC) ctx.prodScaled = rescaleByPanels(ctx.prodPerKwc, ctx.prodPanels, kwcParPanneau());
-        ctx.prodSource = data.source;
+        const placedKwc = placedKwcDe(data);
+        if (reponses.length === 1 && facteur === 1) {
+          ctx.prodPerKwc = perKwcFromResponse(data, placedKwc);
+          ctx.prodScaled = {
+            source: data.source,
+            placedKwc,
+            annualKwh: data.annualKwh,
+            monthlyKwh: data.monthlyKwh,
+            typicalDayByMonth: data.typicalDayByMonth,
+            dailyKwhByMonth: data.dailyKwhByMonth,
+          };
+          // Demande croisée — la route met à l'échelle à 720 W/panneau ; un module désigné d'une autre puissance est rescalé.
+          if (kwcParPanneau() !== PANEL_KWC) ctx.prodScaled = rescaleByPanels(ctx.prodPerKwc, ctx.prodPanels, kwcParPanneau());
+          ctx.prodSpecificDate = data.specificDate ?? null;
+        } else {
+          // ACAL982 (revue) — jambes moyennées à leurs poids réels puis écrêtées comme la carte : UNE valeur, UNE source.
+          ctx.prodPerKwc = combinerJambes(reponses.map((d, i) => ({ perKwc: perKwcFromResponse(d, placedKwcDe(d)), poids: jambes[i].poids })), facteur);
+          ctx.prodScaled = rescaleByPanels(ctx.prodPerKwc, ctx.prodPanels, kwcParPanneau());
+          ctx.prodSpecificDate = combinerDates(reponses.map((d) => d.specificDate), jambes.map((j) => j.poids), facteur);
+        }
+        ctx.prodSource = ctx.prodPerKwc.source;
         ctx.prodPlaneKey = planKey;
-        ctx.prodSpecificDate = data.specificDate ?? null;
         renderProdWindow();
       })
       .catch(() => {
@@ -313,7 +390,8 @@ export function createProdWindow(ctx: Ctx, dom: ProdWindowDom, deps: ProdWindowD
       lat: centroid[1],
       lon: centroid[0],
       tiltDeg: w.tiltDeg,
-      aspect: w.aspect,
+      aspect: w.aspect, // est-ouest : l'aspect du FAÎTE (az − 90) ; les jambes viennent de `jambesDeProduction`
+      family: w.family, // ACAL982 (revue)
       mountingplace: 'free', // toit plat racké
       panels: w.placedCount,
       target: res.target,
@@ -333,7 +411,7 @@ export function createProdWindow(ctx: Ctx, dom: ProdWindowDom, deps: ProdWindowD
     const cfg = prodConfigFromState();
     // W69 — même règle que la fenêtre : en disposition personnalisée, le nombre posé édité.
     const panels = !cfg ? 0 : ctx.layoutMode && ctx.layoutState ? occupiedCount(ctx.layoutState) : cfg.panels;
-    const perKwc = cfg && panels > 0 ? fournir(cfg) : null;
+    const perKwc = cfg && panels > 0 ? productionAtelierDesJambes(fournir, cfg) : null;
     ctx.prodPanels = perKwc ? Math.max(0, Math.round(panels)) : 0;
     ctx.prodTarget = cfg ? Math.max(0, cfg.target) : 0;
     ctx.prodPerKwc = perKwc;

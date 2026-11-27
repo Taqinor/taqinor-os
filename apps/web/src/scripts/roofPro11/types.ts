@@ -828,6 +828,8 @@ export interface ProdPlaneKey {
   tiltDeg: number;
   aspect: number;
   mountingplace: 'building' | 'free';
+  /** ACAL982 (revue) — famille de pose du toit plat : `eastwest` = deux jambes (`aspect ∓ 90`). Absente = un plan. */
+  family?: ConfigFamily;
 }
 
 /** Configuration de production du plan courant (déduite du winner de l'optimiseur). */
@@ -835,8 +837,11 @@ export interface ProdConfig {
   lat: number;
   lon: number;
   tiltDeg: number;
+  /** Écart au sud de la FACE (Sud, pente) ou du FAÎTE (est-ouest : les jambes sont `aspect − 90` et `aspect + 90`). */
   aspect: number;
   mountingplace: 'building' | 'free';
+  /** ACAL982 (revue) — famille de pose du toit plat (`aspect` du gagnant, `estimatorBrainV7.ts::LiveConfigEval`). */
+  family?: ConfigFamily;
   panels: number;
   target: number;
 }
