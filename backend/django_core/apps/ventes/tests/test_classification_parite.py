@@ -1013,3 +1013,23 @@ class LecteursAvalSuite3Test(SimpleTestCase):
         for devis in (_BROUILLON, _avant_la_coupure()):
             self.assertEqual(fiche(devis, _ligne('Batterie Lithium Pylontech 5kWh')), omise)
             self.assertIsNone(fiche(devis, _ligne('Panneau Jinko 710W', quantite=12)))
+
+    def _structure_apres_retouche(self, devis, nom, role):
+        """La quantité de la structure quand le vendeur passe 10 panneaux « ``nom`` » à 12."""
+        from apps.ventes.domain.pipeline import _soeurs_suivent_panneaux_retouches
+        en_base = self._devis_aux_lignes(_devis_taille(devis, 12), _ligne(nom, role=role, quantite=10))
+        specs = [{'designation': nom, 'quantite': '12', 'role_devis': role or ''},
+                 {'designation': 'Structure aluminium', 'quantite': '1'}]
+        _soeurs_suivent_panneaux_retouches(en_base, specs)
+        return specs[1]['quantite']
+
+    def test_5_soeurs_suivent_les_panneaux_ranges_retouches(self):
+        """Cas B — 10 → 12 « CS7N-715TB » rangés ``panneau`` : la structure de l'option
+        suit (règle de la composition) ; avant la coupure : rien ne bouge, comme hier."""
+        from apps.ventes.domain.composition import quantites_derivees_du_compte
+        suit = str(quantites_derivees_du_compte(12, 0)['structure'])
+        self.assertNotEqual(suit, '1')
+        self.assertEqual(self._structure_apres_retouche(_BROUILLON, _NOM_B, 'panneau'), suit)
+        self.assertEqual(self._structure_apres_retouche(_avant_la_coupure(), _NOM_B, 'panneau'), '1')
+        for devis in (_BROUILLON, _avant_la_coupure()):
+            self.assertEqual(self._structure_apres_retouche(devis, 'Panneau Jinko 710W', None), suit)

@@ -678,10 +678,11 @@ def _reecrire_quantites_soeurs(lignes_in, nb_panneaux, affleurants=0, avertissem
             spec['quantite'] = str(derivees[categorie])
 
 
-def _panneaux_par_variante(lignes):
-    """``{variante: nb panneaux}`` de lignes (specs dict ou ``LigneDevis``) :
-    lignes produit non optionnelles que ``classer_produit`` dit ``panneau``."""
+def _panneaux_par_variante(lignes, devis=None):
+    """``{variante: nb panneaux}`` de lignes (specs dict ou ``LigneDevis``) : lignes produit non
+    optionnelles de rôle RANGÉ ``panneau`` (``domain.classe_ligne``), sinon dites panneau par ``classer_produit``."""
     from apps.ventes.domain.catalogue import classer_produit
+    from apps.ventes.domain.classe_ligne import role_de_ligne
 
     def lire(li, champ, defaut=None):
         return li.get(champ, defaut) if isinstance(li, dict) else getattr(li, champ, defaut)
@@ -689,7 +690,7 @@ def _panneaux_par_variante(lignes):
     for li in lignes:
         if (lire(li, 'type_ligne') or 'produit') != 'produit' or lire(li, 'optionnelle'):
             continue
-        if classer_produit(lire(li, 'designation') or '') != 'panneau':
+        if role_de_ligne(li, lambda li=li: classer_produit(lire(li, 'designation') or ''), devis=devis) != 'panneau':
             continue
         try:
             q = int(float(lire(li, 'quantite') or 0))
@@ -717,8 +718,8 @@ def _soeurs_suivent_panneaux_retouches(devis, lignes_in, avertissements=None):
     # industriel ou agricole porte les quantités que SON moteur a composées.
     if (getattr(devis, 'mode_installation', None) or 'residentiel') != 'residentiel':
         return
-    avant = _panneaux_par_variante(devis.lignes.all())
-    apres = _panneaux_par_variante(lignes_in)
+    avant = _panneaux_par_variante(devis.lignes.all(), devis)
+    apres = _panneaux_par_variante(lignes_in, devis)
     affleurants = _affleurants_au_niveau(devis, getattr(devis, 'roof_layout', None))
     for variante, nb in apres.items():
         if variante not in avant or avant[variante] == nb or nb <= 0:
