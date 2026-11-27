@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { ReactReduxContext } from 'react-redux'
 import { Link, useNavigate } from 'react-router-dom'
 import CarteDevisCree from './CarteDevisCree'
 import ApercuMaterielDevis from './commun/ApercuMaterielDevis'
@@ -13,6 +14,10 @@ import {
   bloquageElectrique, refusServeur, texteBloquant,
 } from './refusDevis'
 import usePeutGenererDevis from './usePeutGenererDevis'
+import {
+  abonnerIssuesDevis, afficherCadreTaille, annoncerDevisGenere, cleIssueDevis, epoqueIssuesDevis, lireIssueDevis,
+  poserIssueDevis,
+} from './atelier/contexteAtelier'
 
 /* ============================================================================
    CAL38 — LA SORTIE VERS LE DEVIS d'un calepinage, et elle n'existait nulle
@@ -139,7 +144,9 @@ export const MESSAGE_VERIFICATION_A_LA_CONFIRMATION = 'La vérification électri
   + 'bloque, rien n’est écrit et l’écran dit pourquoi.'
 export const MESSAGE_APERCU_RELU = 'La conception ou le devis a changé depuis l’aperçu : voici ce que la '
   + 'resynchronisation changera maintenant.'
-export const MESSAGE_APERCU_FERME = 'La conception a été retouchée : l’aperçu est fermé, rien n’a été écrit. '
+// ACAL1738 — la consigne du 409 `confirmation_taille` d'un lead sans facture (`detail` ET `refus` la portent).
+const CONSIGNE_FACTURE = /renseignez la facture/i
+export const MESSAGE_APERCU_FERME ='La conception a été retouchée : l’aperçu est fermé, rien n’a été écrit. '
   + '« Resynchroniser le devis » montre ce qui changera maintenant.'
 const DELAI_SURVEILLANCE_RETOUCHES_MS = 500
 
@@ -208,6 +215,28 @@ function ApercuResync({ apercu, avis, enCours, onConfirmer, onAnnuler }) {
   )
 }
 
+// ACAL1946 — l'issue du geste est retenue par calepinage hors du composant (contexteAtelier) : elle survit au remontage du portail.
+// Revue ACAL1946 — la clé porte l'utilisateur connecté ; l'écriture porte l'époque du rendu (une réponse arrivée après
+// la fermeture de l'atelier ne repose rien). Le setter accepte une fonction, comme celui de `useState`.
+const sansAbonnement = () => () => {}
+function useUtilisateurConnecteId() {
+  // Lu par le CONTEXTE du store (jamais `useSelector`, qui lève hors <Provider>) : même patron que `useDroitMetier`.
+  const store = useContext(ReactReduxContext)?.store
+  return useSyncExternalStore(store?.subscribe ?? sansAbonnement, () => {
+    try { return store?.getState()?.auth?.user?.id ?? null } catch { return null }
+  })
+}
+function useIssueRetenue(calepinageId, nom, utilisateurId) {
+  const cle = cleIssueDevis(calepinageId, nom, utilisateurId)
+  // L'époque est lue au MONTAGE effectif (effet, donc après l'oubli simulé du StrictMode), pas au rendu.
+  const epoque = useRef(null)
+  useEffect(() => { epoque.current = epoqueIssuesDevis(calepinageId) })
+  const valeur = useSyncExternalStore(abonnerIssuesDevis, () => lireIssueDevis(cle))
+  const poser = (v) => poserIssueDevis(cle, typeof v === 'function' ? v(lireIssueDevis(cle)) : v,
+    { calepinageId, epoque: epoque.current })
+  return [valeur, poser]
+}
+
 function BoutonDevisCalepinage({
   calepinageId, detail = null, lectureSeule = false, onRecharger, onRelire,
   enregistrerAvant = null, aDesRetouches = null, revisionPossible = false,
@@ -231,22 +260,31 @@ function BoutonDevisCalepinage({
   const peutDeroger = !!detail?.permissions?.peut_deroger
   const [enCours, setEnCours] = useState(false)
   // ACAL171 — le refus électrique : `{geste, detail, bloquants, derogationPossible}`.
-  const [bloquage, setBloquage] = useState(null)
+  // ACAL1946 — les issues d'un geste survivent au remontage du portail pendant la requête (`useIssueRetenue`) ;
+  // revue : le refus électrique (`bloquage`) et le refus du motif aussi, par calepinage ET par utilisateur.
+  const utilisateurId = useUtilisateurConnecteId()
+  const [bloquage, setBloquage] = useIssueRetenue(calepinageId, 'bloquage', utilisateurId)
   const [motif, setMotif] = useState('')
-  const [motifErreur, setMotifErreur] = useState(null)
-  const [refus, setRefus] = useState(null)
-  const [conflit, setConflit] = useState(null)
+  const [motifErreur, setMotifErreur] = useIssueRetenue(calepinageId, 'motifErreur', utilisateurId)
+  const [refus, setRefus] = useIssueRetenue(calepinageId, 'refus', utilisateurId)
+  const [conflit, setConflit] = useIssueRetenue(calepinageId, 'conflit', utilisateurId)
   // ACAL923 — la question du 409 `confirmation_taille` (ACAL922) : `{detail, refus}` du serveur.
-  const [confirmation, setConfirmation] = useState(null)
+  const [confirmation, setConfirmation] = useIssueRetenue(calepinageId, 'confirmation', utilisateurId)
   // Recette R2-22 — le 409 `devis_existant` : `{detail, devis, reference}` du serveur.
-  const [devisExistant, setDevisExistant] = useState(null)
+  const [devisExistant, setDevisExistant] = useIssueRetenue(calepinageId, 'devisExistant', utilisateurId)
+  // Revue ACAL1738 — tant que le cadre « Confirmer et générer » est À L'ÉCRAN, son motif est connu de l'atelier :
+  // le bandeau `acal-cible-estimee` se tait quand il dirait la même consigne (retiré au démontage du cadre).
+  const motifCadreTaille = confirmation ? (confirmation.motif ?? null) : null
+  useEffect(() => (
+    calepinageId && motifCadreTaille ? afficherCadreTaille(calepinageId, motifCadreTaille) : undefined
+  ), [calepinageId, motifCadreTaille])
   // Le corps du dernier « Générer » : une réponse à une question le complète, sans perdre l'autre.
   const dernierCorps = useRef({})
   // Revue du 26/11 — le corps de la dernière resynchro CONFIRMÉE (sans dérogation), rejoué par « Passer outre ».
   const dernierCorpsSync = useRef({})
   // ACAL95 — le retour du serveur à LIRE avant de poursuivre :
   // `{messages, lignes, inchange, devisId, suite: 'recharger' | 'ouvrir' | null}`.
-  const [retour, setRetour] = useState(null)
+  const [retour, setRetour] = useIssueRetenue(calepinageId, 'retour', utilisateurId)
   // ACAL1320 — l'aperçu servi de la resynchronisation, à confirmer (`null` : rien en attente).
   const [apercuResync, setApercuResync] = useState(null)
   const [avisApercu, setAvisApercu] = useState(null) // revue du 26/11 — pourquoi l'aperçu a été relu
@@ -337,7 +375,8 @@ function BoutonDevisCalepinage({
       }
       // ACAL923 — rien ne dimensionne le devis : une QUESTION, jamais « devis figé ».
       if (statut === 409 && data?.code === 'confirmation_taille') {
-        setConfirmation({ detail: data.detail, refus: data.refus })
+        // Revue ACAL1738 — le motif structuré du serveur : le bandeau de l'atelier se tait quand il dit la même chose.
+        setConfirmation({ detail: data.detail, refus: data.refus, motif: data.motif ?? null })
         return null
       }
       // Revue du 26/11 — l'aperçu confirmé ne décrit plus ce qui serait écrit : il est relu (`syncConfirmee`).
@@ -408,6 +447,7 @@ function BoutonDevisCalepinage({
       () => calepinageApi.calepinages.genererDevis(calepinageId, { ...selection, ...corps }, { suppressErrorToast: true }))
     const nouveau = res?.data?.devis
     if (!nouveau) return
+    annoncerDevisGenere(calepinageId) // ACAL1957 — l'atelier relit son contexte : la cible lit ce devis
     setBloquage(null)
     setMotif('')
     // Recette R2-22 — rattaché à un brouillon EXISTANT : le dire (jamais « Devis … créé »).
@@ -848,7 +888,10 @@ function BoutonDevisCalepinage({
       {confirmation && (
         <div className="border border-warning/40 bg-warning/10 p-3" data-testid="cal-devis-confirmation-taille">
           <p className="text-sm text-foreground" role="alert">{confirmation.detail}</p>
-          {confirmation.refus && <p className="mt-1 text-xs text-muted-foreground">{confirmation.refus}</p>}
+          {/* ACAL1738 — la consigne « renseignez la facture » que la phrase du cadre dit déjà n'est pas répétée
+              en sous-ligne ; une autre précision du serveur (R2-17 : la cible des factures) reste lue. */}
+          {confirmation.refus && !(CONSIGNE_FACTURE.test(confirmation.detail ?? '') && CONSIGNE_FACTURE.test(confirmation.refus))
+            && <p className="mt-1 text-xs text-muted-foreground">{confirmation.refus}</p>}
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
