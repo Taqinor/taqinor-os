@@ -527,7 +527,8 @@ function PuceResume({ figures, publiee, site = null, aRefaire = false, partDeLaC
   const aRefaireTexte = !publiee && aRefaire ? `${SIMULATION_A_REFAIRE} Relancez-la à l’étape Les résultats.` : null
   // ACAL1914 — la simulation est faite mais incomplète : sa production servie est DITE à côté de l'estimation, nommée borne haute.
   const incompleteTexte = !publiee && incomplete
-    ? `La simulation dit ${kwh(incomplete.p50)} (résultat incomplet : borne haute) ; l’estimation ci-dessus peut compter des panneaux non raccordés.`
+    ? `La simulation dit ${kwh(incomplete.p50)} (résultat incomplet : borne haute)${incomplete.nonRaccordes > 0
+      ? ` ; ${incomplete.nonRaccordes} panneau${incomplete.nonRaccordes > 1 ? 'x' : ''} posé${incomplete.nonRaccordes > 1 ? 's' : ''} non raccordé${incomplete.nonRaccordes > 1 ? 's' : ''} : l’estimation ci-dessus ne compte que les panneaux raccordés.` : '.'}`
     : null
   if (lus.length === 0 && !phrase && !aRefaireTexte && !incompleteTexte) return null
   return (

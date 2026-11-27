@@ -1296,6 +1296,25 @@ describe('R2-16/17 — carte de résultat : production, bande, estimation, pose 
   const MAD = /MAD\/an/g;
   const prodEstimee = (): number => { const b = monter({}); const v = b.t('rp9-reco-prod'); b.fin(); return Number(v.replace(/\D/g, '')); }; // ACAL2022 — l'estimation locale ne se lit plus qu'en mode public
 
+  // ACAL1914 (revue) — des panneaux posés que AUCUNE chaîne ne raccorde ne gonflent plus l'estimation du navigateur : quand la table
+  // d'affectation servie existe, l'estimation est celle des modules raccordés du pan (part = raccordés ÷ modules servis du pan) ;
+  // sans chaîne formée, l'estimation d'aujourd'hui reste telle quelle.
+  it('ACAL1914 — l’estimation ne compte que les panneaux raccordés quand des chaînes existent ; sans chaîne, inchangée', () => {
+    const modules = (n: number, raccordes: number) => {
+      const colorByModule = new Map<string, unknown>(); const labelByModule = new Map<string, string>();
+      for (let i = 1; i <= n; i++) { colorByModule.set(`z1#${i}`, [0, 0, 0]); if (i <= raccordes) labelByModule.set(`z1#${i}`, 'chaîne 1'); }
+      return { colorByModule, labelByModule, legend: [] };
+    };
+    const tous = prodEstimee(); // 10 panneaux posés, aucune table : l'estimation d'aujourd'hui
+    const lire = (coloration: unknown) => { const b = monter({}, { activeAreaId: 'z1', affectationColoration: coloration }); const v = Number(b.t('rp9-reco-prod').replace(/\D/g, '')); b.fin(); return v; };
+    expect(tous).toBeGreaterThan(0);
+    expect(lire(modules(10, 10))).toBe(tous); // tous raccordés : rien ne change
+    expect(lire(modules(10, 0))).toBe(tous); // aucune chaîne encore : l'estimation reste (un design sans chaîne)
+    const huit = lire(modules(10, 8)); // 2 panneaux non raccordés
+    expect(Math.abs(huit - (tous * 8) / 10)).toBeLessThanOrEqual(1); // = la production des 8 raccordés (production par panneau × 8)
+    expect(huit).toBeLessThan(tous);
+  });
+
   it('PRODUCTION : la production SERVIE à kWc égal ; l’estimation sinon (jamais une valeur servie pour un autre kWc)', () => {
     const base = erp(null);
     const estimation = base.t('rp9-reco-prod');

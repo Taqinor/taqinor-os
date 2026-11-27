@@ -49,7 +49,8 @@ export function simulationIncomplete(resultat) {
   const total = resultat?.production?.total
   if (resultat?.simule !== true || resultat?.simulation_perimee !== false) return null
   if (typeof total?.p50_kwh !== 'number' || !estIncomplet(total)) return null
-  return { p50: total.p50_kwh }
+  const horsChaine = resultat?.production?.hors_chaine?.modules // panneaux posés raccordés à aucune chaîne, servis par le résultat
+  return { p50: total.p50_kwh, nonRaccordes: typeof horsChaine === 'number' && horsChaine > 0 ? horsChaine : 0 }
 }
 
 /**

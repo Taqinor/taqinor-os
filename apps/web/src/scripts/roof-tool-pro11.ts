@@ -4274,6 +4274,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     setAffectationChaines: (rows: readonly AffectationRow[] | null | undefined, mode: AffectationMode = 'chaine') => {
       const coloring = buildAffectationColoring(rows, mode);
       ctx.affectationColoration = coloring.colorByModule.size > 0 ? coloring : null;
+      optimizer.repeindreCarte(); // ACAL1914 — l'estimation de la carte ne compte que les panneaux raccordés
       scene3d.rafraichirAffectation();
     },
     // ACAL87 — PROMESSE : l'aperçu est lu après un rendu réel ; null si l'image est vide.

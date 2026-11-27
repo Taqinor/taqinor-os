@@ -866,6 +866,20 @@ describe('étape Panneaux — sur la carte', () => {
     expect(puce).not.toHaveTextContent('Production la première année')
     await waitFor(() => expect(within(puce).getByTestId('cal-puce-simulation-incomplete')).toHaveTextContent('La simulation dit 52 695 kWh'))
     expect(puce).toHaveTextContent('borne haute')
+    // ACAL1914 (revue) — incomplet pour une AUTRE raison (pertes manquantes) : aucun panneau non raccordé servi, aucune phrase dessus.
+    expect(within(puce).getByTestId('cal-puce-simulation-incomplete')).not.toHaveTextContent('raccordé')
+  })
+
+  it('puce : résultat incomplet AVEC panneaux non raccordés servis → la phrase dit combien, et que l’estimation ne compte que les raccordés', async () => {
+    servir({ resultat: { simule: true, simulation_perimee: false,
+      production: { total: { p50_kwh: 52695, complete: false }, hors_chaine: { modules: 2 } }, pose: { total_modules: 36 } } })
+    monterConstructeur()
+    rendre()
+    const puce = within(noeudCarte).getByTestId('cal-sur-carte-resume')
+    const phrase = await waitFor(() => within(puce).getByTestId('cal-puce-simulation-incomplete'))
+    expect(phrase).toHaveTextContent('La simulation dit 52 695 kWh')
+    expect(phrase).toHaveTextContent('2 panneaux posés non raccordés')
+    expect(phrase).toHaveTextContent('ne compte que les panneaux raccordés')
   })
 
   it('puce : résultat périmé ou complet → aucune phrase « la simulation dit » (ACAL1914)', async () => {
