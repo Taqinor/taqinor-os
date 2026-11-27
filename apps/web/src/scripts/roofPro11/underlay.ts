@@ -391,7 +391,7 @@ export function specSourceFond(placement: Extract<PlacementFond, { ok: true }>):
 
 /** La spécification de couche MapLibre d'un fond. `type: 'raster'` — donc l'opacité du
  *  panneau de calques la pilote par `raster-opacity` (`opacityPropFor`, CAL103). */
-export function specCoucheFond(placement: Extract<PlacementFond, { ok: true }>): {
+export function specCoucheFond(placement: Extract<PlacementFond, { ok: true }>, sombre = false): {
   id: string;
   type: 'raster';
   source: string;
@@ -401,8 +401,16 @@ export function specCoucheFond(placement: Extract<PlacementFond, { ok: true }>):
     id: placement.layerId,
     type: 'raster',
     source: placement.layerId,
-    paint: { 'raster-opacity': placement.opacite },
+    paint: { 'raster-opacity': placement.opacite, ...(sombre ? peintureFondSelonTheme(true) : {}) },
   };
+}
+
+/** ACAL1828 — maquette v2 « Atelier — Toit (sombre) » : en thème sombre, le fond (photo ou plan) perd 15 % de saturation
+ *  et 6 % de luminosité ; en clair, les valeurs par défaut de MapLibre (0 et 1) : la bascule de thème les repose telles quelles. */
+export function peintureFondSelonTheme(sombre: boolean): { 'raster-saturation': number; 'raster-brightness-max': number } {
+  return sombre
+    ? { 'raster-saturation': -0.15, 'raster-brightness-max': 0.94 }
+    : { 'raster-saturation': 0, 'raster-brightness-max': 1 };
 }
 
 /**

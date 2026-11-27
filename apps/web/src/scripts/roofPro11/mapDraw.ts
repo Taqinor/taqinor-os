@@ -26,6 +26,7 @@ import {
   coucheAvantPourFond,
   deplacerCalage,
   lireUnderlay,
+  peintureFondSelonTheme,
   placementDuFond,
   specCoucheFond,
   specSourceFond,
@@ -633,6 +634,24 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     retirerFond(UNDERLAY_PHOTO_LAYER_ID);
   }
 
+  /** ACAL1828 — thème sombre de l'atelier = `html.dark` ; le fond posé suit la bascule sans être reposé. */
+  function themeSombre(): boolean {
+    return typeof document !== 'undefined' && document.documentElement?.classList?.contains('dark') === true;
+  }
+  function peindreFondSelonTheme() {
+    for (const id of [UNDERLAY_PLAN_LAYER_ID, UNDERLAY_PHOTO_LAYER_ID]) {
+      try {
+        if (!map.getLayer?.(id)) continue;
+        for (const [prop, val] of Object.entries(peintureFondSelonTheme(themeSombre()))) map.setPaintProperty(id, prop as never, val as never);
+      } catch {
+        /* style pas prêt : le fond sera posé avec la bonne peinture */
+      }
+    }
+  }
+  if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined' && document.documentElement) {
+    new MutationObserver(peindreFondSelonTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+  }
+
   /** CALX108 — la ressource d'affichage du fond courant (URL pré-signée, calage photo,
    *  taille du fichier), mémorisée pour pouvoir REPLACER le fond après un calage ou un
    *  ajustement sans que l'hôte ait à la redonner. */
@@ -678,7 +697,7 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
         MAPLIBRE_LAYERS_PAR_CALQUE,
         (id) => Boolean(map.getLayer?.(id)),
       );
-      map.addLayer(specCoucheFond(placement) as never, avant as never);
+      map.addLayer(specCoucheFond(placement, themeSombre()) as never, avant as never);
     } catch {
       // ACAL68 — style pas encore chargé : le fond (déjà porté par le document) est REPOSÉ
       // au chargement du style, s'il est toujours celui du document à ce moment-là.
