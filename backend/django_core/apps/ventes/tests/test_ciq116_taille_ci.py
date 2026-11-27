@@ -392,6 +392,63 @@ class TailleCITests(unittest.TestCase):
         self.assertEqual(ligne['nb_panneaux'], avec['nb_panneaux'])
 
 
+class _Arret(Exception):
+    """Sentinelle : l'appel à ``etudier_ci`` est capturé, le geste s'arrête là."""
+
+
+class VerdictCreationJumeauxAcal1226Tests(unittest.TestCase):
+    """ACAL1226 (revue) — les deux jumeaux de ``etudes_lignes.etude_ci_calculee``
+    (recomposition des batteries, révision après visite) passent eux aussi le
+    verdict de création à ``etudier_ci`` : une taille venue du balayage de
+    création n'y est plus « taille saisie souveraine ». Mutant : retirer
+    ``verdict_creation=`` d'un appelant ⇒ son cas échoue."""
+
+    VERDICT = {'retenue_kwc': 55.38, 'raison_arret': 'horizon_marginal'}
+
+    def _devis(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(mode_installation='commercial', company=object(), lead=object(),
+                               is_active=True, statut='brouillon',
+                               etude_params={'taille_creation_ci': dict(self.VERDICT)})
+
+    def _capturer(self, appel, *patches):
+        from contextlib import ExitStack
+        from unittest import mock
+        vus = {}
+
+        def etudier(company, entrees, **kw):
+            vus.update(kw, entrees=entrees)
+            raise _Arret
+        with ExitStack() as pile:
+            pile.enter_context(mock.patch('apps.ventes.domain.etude_ci.etudier_ci', etudier))
+            pile.enter_context(mock.patch('apps.ventes.domain.etudes.puissances_etude_horaire',
+                                          return_value=(55.38, 55.38)))
+            for p in patches:
+                pile.enter_context(p)
+            with self.assertRaises(_Arret):
+                appel()
+        return vus
+
+    def test_recomposition_batteries_passe_le_verdict(self):
+        from apps.ventes.domain import recomposition_batteries_ci as R
+        from apps.ventes.domain.scenario import SCENARIO_LES_DEUX
+        vus = self._capturer(lambda: R._etude(self._devis(), SCENARIO_LES_DEUX, 2))
+        self.assertEqual(vus['entrees']['taille_explicite_kwc'], 55.38)
+        self.assertEqual(vus.get('verdict_creation'), self.VERDICT)
+
+    def test_revision_apres_visite_passe_le_verdict(self):
+        from contextlib import nullcontext
+        from unittest import mock
+        from apps.ventes.domain.revision_visite_ci import reviser_devis_apres_visite
+        vus = self._capturer(
+            lambda: reviser_devis_apres_visite(self._devis()),
+            mock.patch('apps.visites.selectors.releve_ci_pour_lead', return_value={'id': 1}),
+            mock.patch('apps.ventes.domain.modifiabilite.ttc_du_devis', return_value=0),
+            mock.patch('django.db.transaction.atomic', nullcontext))
+        self.assertEqual(vus['entrees']['taille_explicite_kwc'], 55.38)
+        self.assertEqual(vus.get('verdict_creation'), self.VERDICT)
+
+
 class SautOnduleurTests(unittest.TestCase):
     """Fondateur 26/10/2026 — boulangerie : 30 → 35 kWc coûte +41 281 HT (onduleur
     25 → 50 kW) pour +3 585 MAD/an (11,5 ans seul) ; 30 → 40 ensemble se

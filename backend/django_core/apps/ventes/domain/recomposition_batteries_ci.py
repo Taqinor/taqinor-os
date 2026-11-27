@@ -94,14 +94,16 @@ def _taille_sans(devis, scenario):
 def _etude(devis, scenario, nombre):
     """L'étude recalculée avec N (mêmes entrées que la création : le lead et
     les entrées stockées du devis), sa banque calculée R et ses lignes."""
-    from .etude_ci import etudier_ci, provenance_lignes_du_devis, refus_devis_auto_ci
+    from .etude_ci import CLE_TAILLE_CREATION, etudier_ci, provenance_lignes_du_devis, refus_devis_auto_ci
     from .etude_ci_batterie import CLE, lignes_du_scenario
     corps = {'mode': devis.mode_installation.lower(), 'options': {'nb_batteries': nombre}}
     taille = _taille_sans(devis, scenario)
     if taille:
         corps['taille_explicite_kwc'] = taille
+    # ACAL1226 — la taille issue du verdict de création est dite « calculée à la création ».
     etude = etudier_ci(devis.company, corps, devis=devis, lead=devis.lead,
-                       provenance_corps=provenance_lignes_du_devis())
+                       provenance_corps=provenance_lignes_du_devis(),
+                       verdict_creation=(devis.etude_params or {}).get(CLE_TAILLE_CREATION))
     refus = refus_devis_auto_ci(etude)
     if refus:
         raise RecompositionBatteriesError(*refus)
