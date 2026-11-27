@@ -24,8 +24,13 @@ def _cites(motifs, statuts):
     return texte + ('…' if len(libelles) > _LIBELLES_CITES else '')
 
 
-def synthese_de_publication(publication):
-    """La ``publication`` servie, gagnant ``titre`` et ``phrase`` (``None`` ⇒ ``None``)."""
+def synthese_de_publication(publication, points_du_rail=None):
+    """La ``publication`` servie, gagnant ``titre`` et ``phrase`` (``None`` ⇒ ``None``).
+
+    ACAL1937 — « À compléter : N points » dit le nombre du RAIL (``nombre_a_regler`` +
+    ``nombre_bloquants`` de « Prêt à envoyer ? », étape Électrique) quand l'appelant le
+    fournit : un seul compte pour le rail, la pastille et le Verdict. Sans lui, le compte
+    des motifs de la publication (``points``) reste servi tel quel."""
     if publication is None:
         return None
     from core.electrique.types import STATUT_BLOQUANT, STATUT_NON_VERIFIABLE
@@ -38,6 +43,8 @@ def synthese_de_publication(publication):
         titre = 'Bloquant : %d' % points
         phrase = 'Publication impossible : %s' % _cites(motifs, (STATUT_BLOQUANT,))
     elif etat == 'a_completer':
+        if points_du_rail:
+            points = points_du_rail
         titre = 'À compléter : %s' % _points(points)
         reste = 'restent' if points > 1 else 'reste'
         phrase = 'Aucun motif bloquant ; %s %s à compléter : %s' % (
