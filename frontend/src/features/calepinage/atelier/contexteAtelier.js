@@ -451,11 +451,35 @@ export function ecouterDevisGenere(calepinageId, f) {
 
 /* ACAL1946 — l'issue du dernier geste « Générer le devis » (devis créé, question de taille, refus nommé), PAR
    calepinage, hors du composant : quand le portail de l'étape se remonte pendant la requête (contexte relu après
-   l'enregistrement), la réponse arrive à l'instance montée au lieu de se perdre avec l'ancienne. */
+   l'enregistrement), la réponse arrive à l'instance montée au lieu de se perdre avec l'ancienne.
+   Revue ACAL1946 — sa DURÉE DE VIE est celle de l'atelier ouvert sur CE calepinage : `useAtelierBoot` l'oublie quand
+   l'atelier se ferme (on le quitte, on se déconnecte : la page se démonte) ou que l'utilisateur change ; la clé porte
+   l'utilisateur (un autre compte du même onglet ne lit rien) ; un geste qui démarre efface l'issue précédente
+   (`executer`). Une réponse arrivée APRÈS la fermeture est jetée : l'oubli change l'« époque » du calepinage, et une
+   écriture faite pour une époque passée ne pose plus rien. */
 const issuesDevis = new Map()
 const abonnesIssuesDevis = new Set()
+const epoquesIssuesDevis = new Map()
+const prefixeIssuesDevis = (calepinageId) => `${calepinageId}:`
+export function cleIssueDevis(calepinageId, nom, utilisateurId = null) {
+  return `${prefixeIssuesDevis(calepinageId)}${utilisateurId ?? ''}:${nom}`
+}
+export function epoqueIssuesDevis(calepinageId) { return epoquesIssuesDevis.get(String(calepinageId)) ?? 0 }
 export function abonnerIssuesDevis(f) { abonnesIssuesDevis.add(f); return () => { abonnesIssuesDevis.delete(f) } }
 export function lireIssueDevis(cle) { return issuesDevis.get(cle) ?? null }
-export function poserIssueDevis(cle, valeur) { issuesDevis.set(cle, valeur); abonnesIssuesDevis.forEach((f) => f()) }
-export function oublierIssuesDevis() { issuesDevis.clear() }
+export function poserIssueDevis(cle, valeur, { calepinageId = null, epoque = null } = {}) {
+  if (calepinageId != null && epoque != null && epoque !== epoqueIssuesDevis(calepinageId)) return
+  issuesDevis.set(cle, valeur)
+  abonnesIssuesDevis.forEach((f) => f())
+}
+// Sans argument (tests) : tout ; avec un calepinage : ses seules issues, et son époque avance.
+export function oublierIssuesDevis(calepinageId) {
+  if (calepinageId == null) issuesDevis.clear()
+  else {
+    const prefixe = prefixeIssuesDevis(calepinageId)
+    ;[...issuesDevis.keys()].forEach((cle) => { if (cle.startsWith(prefixe)) issuesDevis.delete(cle) })
+    epoquesIssuesDevis.set(String(calepinageId), epoqueIssuesDevis(calepinageId) + 1)
+  }
+  abonnesIssuesDevis.forEach((f) => f())
+}
 

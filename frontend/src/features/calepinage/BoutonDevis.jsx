@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { ReactReduxContext } from 'react-redux'
 import { Link, useNavigate } from 'react-router-dom'
 import CarteDevisCree from './CarteDevisCree'
 import ApercuMaterielDevis from './commun/ApercuMaterielDevis'
@@ -14,7 +15,7 @@ import {
 } from './refusDevis'
 import usePeutGenererDevis from './usePeutGenererDevis'
 import {
-  abonnerIssuesDevis, annoncerDevisGenere, lireIssueDevis, poserIssueDevis,
+  abonnerIssuesDevis, annoncerDevisGenere, cleIssueDevis, epoqueIssuesDevis, lireIssueDevis, poserIssueDevis,
 } from './atelier/contexteAtelier'
 
 /* ============================================================================
@@ -214,10 +215,25 @@ function ApercuResync({ apercu, avis, enCours, onConfirmer, onAnnuler }) {
 }
 
 // ACAL1946 — l'issue du geste est retenue par calepinage hors du composant (contexteAtelier) : elle survit au remontage du portail.
-function useIssueRetenue(calepinageId, nom) {
-  const cle = `${calepinageId}:${nom}`
+// Revue ACAL1946 — la clé porte l'utilisateur connecté ; l'écriture porte l'époque du rendu (une réponse arrivée après
+// la fermeture de l'atelier ne repose rien). Le setter accepte une fonction, comme celui de `useState`.
+const sansAbonnement = () => () => {}
+function useUtilisateurConnecteId() {
+  // Lu par le CONTEXTE du store (jamais `useSelector`, qui lève hors <Provider>) : même patron que `useDroitMetier`.
+  const store = useContext(ReactReduxContext)?.store
+  return useSyncExternalStore(store?.subscribe ?? sansAbonnement, () => {
+    try { return store?.getState()?.auth?.user?.id ?? null } catch { return null }
+  })
+}
+function useIssueRetenue(calepinageId, nom, utilisateurId) {
+  const cle = cleIssueDevis(calepinageId, nom, utilisateurId)
+  // L'époque est lue au MONTAGE effectif (effet, donc après l'oubli simulé du StrictMode), pas au rendu.
+  const epoque = useRef(null)
+  useEffect(() => { epoque.current = epoqueIssuesDevis(calepinageId) })
   const valeur = useSyncExternalStore(abonnerIssuesDevis, () => lireIssueDevis(cle))
-  return [valeur, (v) => poserIssueDevis(cle, v)]
+  const poser = (v) => poserIssueDevis(cle, typeof v === 'function' ? v(lireIssueDevis(cle)) : v,
+    { calepinageId, epoque: epoque.current })
+  return [valeur, poser]
 }
 
 function BoutonDevisCalepinage({
@@ -243,23 +259,25 @@ function BoutonDevisCalepinage({
   const peutDeroger = !!detail?.permissions?.peut_deroger
   const [enCours, setEnCours] = useState(false)
   // ACAL171 — le refus électrique : `{geste, detail, bloquants, derogationPossible}`.
-  const [bloquage, setBloquage] = useState(null)
+  // ACAL1946 — les issues d'un geste survivent au remontage du portail pendant la requête (`useIssueRetenue`) ;
+  // revue : le refus électrique (`bloquage`) et le refus du motif aussi, par calepinage ET par utilisateur.
+  const utilisateurId = useUtilisateurConnecteId()
+  const [bloquage, setBloquage] = useIssueRetenue(calepinageId, 'bloquage', utilisateurId)
   const [motif, setMotif] = useState('')
-  const [motifErreur, setMotifErreur] = useState(null)
-  // ACAL1946 — les issues d'un geste survivent au remontage du portail pendant la requête (`useIssueRetenue`).
-  const [refus, setRefus] = useIssueRetenue(calepinageId, 'refus')
-  const [conflit, setConflit] = useIssueRetenue(calepinageId, 'conflit')
+  const [motifErreur, setMotifErreur] = useIssueRetenue(calepinageId, 'motifErreur', utilisateurId)
+  const [refus, setRefus] = useIssueRetenue(calepinageId, 'refus', utilisateurId)
+  const [conflit, setConflit] = useIssueRetenue(calepinageId, 'conflit', utilisateurId)
   // ACAL923 — la question du 409 `confirmation_taille` (ACAL922) : `{detail, refus}` du serveur.
-  const [confirmation, setConfirmation] = useIssueRetenue(calepinageId, 'confirmation')
+  const [confirmation, setConfirmation] = useIssueRetenue(calepinageId, 'confirmation', utilisateurId)
   // Recette R2-22 — le 409 `devis_existant` : `{detail, devis, reference}` du serveur.
-  const [devisExistant, setDevisExistant] = useIssueRetenue(calepinageId, 'devisExistant')
+  const [devisExistant, setDevisExistant] = useIssueRetenue(calepinageId, 'devisExistant', utilisateurId)
   // Le corps du dernier « Générer » : une réponse à une question le complète, sans perdre l'autre.
   const dernierCorps = useRef({})
   // Revue du 26/11 — le corps de la dernière resynchro CONFIRMÉE (sans dérogation), rejoué par « Passer outre ».
   const dernierCorpsSync = useRef({})
   // ACAL95 — le retour du serveur à LIRE avant de poursuivre :
   // `{messages, lignes, inchange, devisId, suite: 'recharger' | 'ouvrir' | null}`.
-  const [retour, setRetour] = useIssueRetenue(calepinageId, 'retour')
+  const [retour, setRetour] = useIssueRetenue(calepinageId, 'retour', utilisateurId)
   // ACAL1320 — l'aperçu servi de la resynchronisation, à confirmer (`null` : rien en attente).
   const [apercuResync, setApercuResync] = useState(null)
   const [avisApercu, setAvisApercu] = useState(null) // revue du 26/11 — pourquoi l'aperçu a été relu

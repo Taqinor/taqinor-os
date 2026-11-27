@@ -1066,3 +1066,46 @@ describe('D-ACAL-106 — « Générer le devis » selon le droit de la route gen
     expect(await screen.findByTestId('cal-generer-devis')).toBeInTheDocument()
   })
 })
+
+/* Revue ACAL1946 — l'issue retenue a une DURÉE DE VIE : le refus électrique survit lui aussi au remontage du portail ;
+   un autre utilisateur du même onglet (même calepinage) ne la lit pas. (Quitter l'atelier l'oublie :
+   `atelier/useAtelierBoot.test.js`.) */
+describe('Revue ACAL1946 — l’issue retenue : remontage oui, autre utilisateur non', () => {
+  const REFUS = exempleContrat('calepinage', 'calepinage_publication_electrique', 'exemple_refus_409')
+  const monter = async (id) => {
+    const { Provider } = await import('react-redux')
+    const { configureStore } = await import('@reduxjs/toolkit')
+    const store = configureStore({ reducer: { auth: (s = { role: 'admin', permissions: [], user: { id } }) => s } })
+    return render(
+      <Provider store={store}>
+        <MemoryRouter><BoutonDevis calepinageId={DETAIL_VIDE.id} detail={DETAIL_VIDE} /></MemoryRouter>
+      </Provider>,
+    )
+  }
+
+  it('le refus électrique (bloquage) survit au remontage pendant la requête', async () => {
+    const attente = {}
+    calepinageApi.calepinages.genererDevis.mockImplementation(() => new Promise((ok, ko) => Object.assign(attente, { ok, ko })))
+    const premier = rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    await waitFor(() => expect(calepinageApi.calepinages.genererDevis).toHaveBeenCalledTimes(1))
+    premier.unmount()
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    attente.ko({ response: { status: 409, data: REFUS } })
+    expect(await screen.findByTestId('cal-devis-bloquants')).toBeTruthy()
+  })
+
+  it('un autre utilisateur (même onglet, même calepinage) ne voit pas « Devis … créé »', async () => {
+    calepinageApi.calepinages.genererDevis.mockResolvedValueOnce({ data: { devis: 44, reference: 'DEV-2611-0044' } })
+    const a = await monter(7)
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    expect(await screen.findByTestId('cal-devis-cree')).toHaveTextContent('Devis DEV-2611-0044 créé')
+    a.unmount()
+    const b = await monter(8)
+    await screen.findByTestId('cal-generer-devis')
+    expect(screen.queryByTestId('cal-devis-cree')).toBeNull()
+    b.unmount()
+    await monter(7) // le même utilisateur, sans quitter l'atelier (remontage) : l'issue est toujours là
+    expect(await screen.findByTestId('cal-devis-cree')).toHaveTextContent('Devis DEV-2611-0044 créé')
+  })
+})

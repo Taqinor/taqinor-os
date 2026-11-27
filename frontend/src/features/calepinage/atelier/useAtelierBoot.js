@@ -19,7 +19,7 @@ import {
   repereDuLead, leadToBuilderPayload,
   contexteCalepinageVersPayload, bankableFromDevis,
   stockageBrouillonLocal, stockageSessionLocal, tailleImagePlan, messageRefusRepere,
-  reglagesAtelierDesParametres, phraseCalepinageCharge, siteLocaliseInitial, ecouterDevisGenere,
+  reglagesAtelierDesParametres, phraseCalepinageCharge, siteLocaliseInitial, ecouterDevisGenere, oublierIssuesDevis,
 } from './contexteAtelier.js'
 
 // R2-20 — le refus de DROIT (403) n'est pas « introuvable — réessayez » : l'écran le DIT et masque ses outils.
@@ -674,4 +674,8 @@ export function useAtelierBoot(ctx) {
   })
   useEffect(() => (estCalepinage ? ecouterDevisGenere(calepinageId, () => relireApresDevis()) : undefined),
     [calepinageId, estCalepinage])
+  // Revue ACAL1946 — l'issue retenue de « Générer le devis » vit le temps de CET atelier : le quitter (la page se
+  // démonte, y compris à la déconnexion), changer de calepinage ou d'utilisateur l'oublie.
+  useEffect(() => (calepinageId ? () => oublierIssuesDevis(calepinageId) : undefined),
+    [calepinageId, utilisateurCourantId])
 }
