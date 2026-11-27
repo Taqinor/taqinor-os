@@ -1,0 +1,49 @@
+{
+  "endpoint": "GET /api/django/public/stock/panneau-par-defaut/",
+  "relais_site": "GET /api/panneau-defaut (apps/web/src/pages/api/panneau-defaut.ts)",
+  "forme_serveur": "complete",
+  "pourquoi": "D-ACAL-169 (a) et décision fondateur du 27/11/2026 (D-27/11-2, décision 2) : le SITE PUBLIC estime lui aussi avec le panneau par défaut de la société (à 715 Wc : pro 10 kWc 15 -> 14 panneaux, capture 11,5 kWc 16 -> 17) ; les textes des installations réelles (études de cas, fiches, blog) ne changent pas. Le site code aujourd'hui en dur estimatorPro.ts::PANEL_W = 710, estimatorAgricole.ts::PANEL_W = 710, proposition.ts::CAPTURE_PANEL_WATT = 720 ; l'ERP a la valeur (apps/stock/selectors_panneau_defaut.py::watt_panneau_par_defaut) mais seulement derrière le login (GET /api/django/stock/panneau-par-defaut/, contrat panneau_par_defaut.json). Ce fichier est la version PUBLIQUE, réduite à ce qu'un visiteur peut savoir : une puissance en Wc. Il part SEUL, avant la vue ERP, le relais du site et les lecteurs.",
+  "exemple": {
+    "pmax_wc": 715,
+    "source": "designe"
+  },
+  "exemple_aucun": {
+    "pmax_wc": null,
+    "source": "aucun"
+  },
+  "cles": {
+    "pmax_wc": "nombre > 0 (entier en pratique, décimal possible si la fiche MODULE le porte) = watt_panneau_par_defaut(company), sinon null. Jamais un nombre inventé ni un repli côté serveur : le repli (710 / 710 / 720) appartient au SITE.",
+    "source": "« designe » quand pmax_wc est un nombre ; « aucun » dans TOUS les autres cas (aucun panneau désigné, désigné mais archivé, sans prix de vente, plus reconnu comme panneau, watt contradictoire, société non résolue, erreur de lecture). Les sources internes archive / sans_prix / pas_un_panneau / watt_contradictoire NE sont PAS exposées : elles décrivent l'état du catalogue, pas ce qu'un visiteur peut savoir."
+  },
+  "regles": {
+    "cles_exactes": "La réponse a EXACTEMENT les deux clés pmax_wc et source, toujours présentes — aucune autre clé, jamais (le test de la vue l'affirme).",
+    "jamais_expose": [
+      "produit_id ou tout identifiant interne",
+      "nom du produit, marque, référence, fournisseur",
+      "prix de vente, prix d'achat (prix_achat), remise, marge — aucun prix d'aucune sorte",
+      "quantité en stock, entrepôt, disponibilité",
+      "motif (la phrase interne du contrat panneau_par_defaut.json, qui cite le nom du produit)",
+      "identifiant ou nom de la société"
+    ],
+    "societe": "Résolue CÔTÉ SERVEUR par settings.WEBSITE_LEADS_COMPANY_ID, comme crm/public_chat_views.py::_resolve_company — jamais lue de la requête (ni corps, ni query string, ni en-tête). Réglage absent, vide ou ne désignant aucune Company : réponse 200 exemple_aucun (PAS le repli « première Company » du livechat : un watt d'un autre tenant ne doit jamais atteindre le site), un logger.error, jamais un 500.",
+    "lecture": "Uniquement watt_panneau_par_defaut(company) de apps/stock/selectors_panneau_defaut.py (même app : pas de franchissement de frontière). Toute exception de lecture : 200 exemple_aucun + logger.exception, jamais un 500.",
+    "acces": "Sans authentification (AllowAny, authentication_classes vides), GET seul (autre méthode : 405). Limité par IP par un SimpleRateThrottle à débit inline (même motif que stock/public_views.py::QuaiCheckinThrottle, aucun réglage settings nouveau), proposé 60/minute ; dépassement : 429 (le relais le traite comme ERP injoignable). En-tête X-Robots-Tag: noindex comme les autres vues publiques stock.",
+    "montage": "Route dans apps/stock/public_urls.py (montée sous /api/django/public/stock/ par erp_agentique/urls.py), PAS dans apps/stock/urls.py qui est monté derrière le login (ASTK233 : survivant unique des routes publiques stock = public_urls.py).",
+    "cache_serveur": "Réponse Cache-Control: public, max-age=300. Aucune invalidation active : désigner / retirer un panneau dans le stock atteint le site en 5 minutes au plus (cache ERP + cache du relais)."
+  },
+  "relais": {
+    "fichier": "apps/web/src/pages/api/panneau-defaut.ts, motif de proposition-contact.ts : resolveApiBase() de _apiBase.ts, appel GET <base>/api/django/public/stock/panneau-par-defaut/, aucun secret, aucune donnée visiteur transmise (pas de cookie, pas de corps ; seul l'IP visiteur peut suivre via entetesIpVisiteur pour que le throttle compte par visiteur).",
+    "reponse": "Toujours 200 avec la même forme à deux clés. Il ne retransmet que pmax_wc (si nombre fini > 0, sinon null) et source (« designe » si pmax_wc est un nombre, sinon « aucun ») : toute autre clé venue de l'ERP est jetée.",
+    "erp_injoignable": "ERP 4xx / 5xx / 429, délai dépassé (proposé 2 s), JSON illisible, forme inattendue : 200 exemple_aucun, jamais une page d'erreur, jamais un statut d'erreur vers le navigateur.",
+    "cache": "Cache-Control: public, max-age=300 sur la réponse du relais (s-maxage identique au bord Cloudflare)."
+  },
+  "repli_site": {
+    "regle": "pmax_wc null (ou relais injoignable, ou nombre hors bornes) : le site garde SA constante d'aujourd'hui — estimatorPro.ts 710, estimatorAgricole.ts 710, proposition.ts (capture) 720 — et n'affiche RIEN de nouveau (aucun message, aucun badge). Le calcul ne bloque jamais en attendant le relais : il part avec la constante et se recalcule si un watt arrive.",
+    "bornes": "Le lecteur n'utilise pmax_wc que s'il est un nombre fini dans [100, 1000] Wc ; sinon constante (garde contre une fiche mal saisie).",
+    "hors_perimetre": "Études de cas (caseStudies.ts), fiches produit, blog : textes d'installations réelles, ne lisent PAS ce relais."
+  },
+  "attendu_par_le_site": {
+    "pmax_wc_715": "pro 10 kWc -> 14 panneaux ; capture 11,5 kWc -> 17 panneaux",
+    "pmax_wc_null": "pro 10 kWc -> 15 panneaux ; capture 11,5 kWc -> 16 panneaux (comptes d'aujourd'hui)"
+  }
+}
