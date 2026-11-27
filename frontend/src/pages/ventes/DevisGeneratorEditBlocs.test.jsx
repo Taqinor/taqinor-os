@@ -170,3 +170,23 @@ describe('ACAL1208 — le numéro du devis ouvert en édition est sa référence
     expect(document.getElementById('gen-num').value).toBe('Généré automatiquement')
   })
 })
+
+describe('ACAL1209 — le distributeur du lead est repris tant que le commercial n\'a pas choisi', () => {
+  const ouvrirDepuisLead = async (distributeur) => {
+    crmApi.getLead.mockResolvedValue({ data: { ...LEAD, distributeur } })
+    renderGeneratorPage(DevisGenerator, {
+      crmApi, stockApi, produits: [PANNEAU, ONDULEUR], store: makeStoreDirecteur(), leads: [{ ...LEAD, distributeur }],
+      route: `/ventes/devis/nouveau?lead=${LEAD.id}`,
+    })
+    await waitFor(() => expect(document.getElementById('gen-hiver')?.value).toBe('3000'))
+  }
+  const libelle = () => document.getElementById('gen-distributeur')?.textContent
+  it('lead « lydec » ⇒ le choix Distributeur montre Lydec', async () => {
+    await ouvrirDepuisLead('lydec')
+    await waitFor(() => expect(libelle()).toMatch(/Lydec/))
+  })
+  it('valeur SRM inconnue du sélecteur ⇒ ONEE inchangé', async () => {
+    await ouvrirDepuisLead('srm_beni_mellal')
+    expect(libelle()).toMatch(/ONEE/)
+  })
+})

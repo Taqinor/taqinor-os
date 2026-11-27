@@ -1212,7 +1212,7 @@ export default function DevisGenerator({
     setConsoMensuelle, setHorsReseau, horsReseauTouched, setPompeCv, setPompeHmt, setPompeDebit,
     appliquerEntreesPompage,
     facturesProtegeesRef, reinitialiserFactures, setAvisFactures, consoMensuelle,
-    pompeCv, pompeHmt, pompeDebit, baremeSociete,
+    pompeCv, pompeHmt, pompeDebit, baremeSociete, distributeurChoisi, setDistributeur,
   })
 
   // SPL45 — chargeur `?edit=` (déplacé tel quel dans le hook, même position : l'ordre des effets est inchangé).
