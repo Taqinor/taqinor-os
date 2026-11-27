@@ -167,16 +167,16 @@ export default function CarteEcheancier({
                   <option value={UNITE_PCT}>%</option>
                   <option value={UNITE_MONTANT}>MAD TTC</option>
                 </select>
-                <Input id={`gen-echeance-delai-${i}`} type="number" min="0" step="any"
+                <ChampDecimal id={`gen-echeance-delai-${i}`}
                        aria-label={`Délai de règlement (jours) — ${t.libelle}`}
                        placeholder="Délai (j)"
                        value={t.delai_reglement_jours ?? ''}
-                       onChange={e => modifier(i, 'delai_reglement_jours', e.target.value)} />
-                <Input id={`gen-echeance-semaines-${i}`} type="number" min="0" step="any"
+                       onValeur={v => modifier(i, 'delai_reglement_jours', v)} />
+                <ChampDecimal id={`gen-echeance-semaines-${i}`}
                        aria-label={`Semaines indicatives — ${t.libelle}`}
                        placeholder="Sem. (indicatif)"
                        value={t.semaines_indicatives ?? ''}
-                       onChange={e => modifier(i, 'semaines_indicatives', e.target.value)} />
+                       onValeur={v => modifier(i, 'semaines_indicatives', v)} />
                 <Input id={`gen-echeance-date-${i}`} type="date"
                        aria-label={`Date prévue — ${t.libelle}`}
                        value={t.date_prevue || ''}

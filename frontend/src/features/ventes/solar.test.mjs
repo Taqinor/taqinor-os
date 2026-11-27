@@ -212,6 +212,14 @@ test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => 
     decimaux.forEach(c => assert.ok(!/step=/.test(c), `${rel} : un ChampDecimal reçoit un step`))
     champsNombre += decimaux.length
   }
+  // ACAL1210 — aucun champ de saisie du générateur n'est plus un `type="number"`
+  // natif (un Chrome en anglais lit « 12,5 » comme 125) : seules les lignes de
+  // commentaire peuvent encore citer la chaîne.
+  for (const rel of SURFACES_SAISIE.filter(r => r.includes('/generator/'))) {
+    const champsNatifs = lire(rel).split('\n')
+      .filter(l => !/^\s*(\/\/|\*|\{?\/\*)/.test(l) && l.includes('type="number"'))
+    assert.deepEqual(champsNatifs, [], `${rel} : champ type="number" natif restant`)
+  }
   // Le champ décimal lui-même : texte à clavier décimal, `step="any"`, rien ne
   // le borne (ni min, ni max, ni pattern).
   const champ = lire(CHAMP_DECIMAL)
