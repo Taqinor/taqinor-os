@@ -29,10 +29,11 @@ from django.test import SimpleTestCase
 
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.electrique import (
-    BLOCS_SIMULATION, CLE_SIMULATION, MENTION_ECART_DEVIS, _ecart_devis,
-    resultat_calepinage,
+    BLOCS_SIMULATION, CLE_SIMULATION, resultat_calepinage,
 )
-from apps.calepinage.services.ecart_devis import ecart_devis_et_motif
+from apps.calepinage.services.ecart_devis import (
+    MENTION_ECART_DEVIS, _ecart_devis, ecart_devis_et_motif,
+)
 from apps.calepinage.services.rapport.production import html_de_section
 from apps.ventes.models import Devis
 

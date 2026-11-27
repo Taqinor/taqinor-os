@@ -62,7 +62,7 @@ from . import (agregation_electrique as _agregation_electrique,  # ACAL1623 (rev
                suppositions as _suppositions)  # ACAL980
 from .regle_chaine_publiee import _regle_chaine_publiee  # ACAL645 — extraite
 from .valeurs import nombre as _nombre
-from .ecart_devis import MENTION_ECART_DEVIS, _ecart_devis, cles_ecart_devis  # noqa: F401 — ACAL1915 : extraits
+from .ecart_devis import cles_ecart_devis  # ACAL1915 : extrait
 from .devis_retenu import bloc_conception, bloc_devis_retenu, bloc_production_devis  # ACAL1952-1956, 2015
 from .equipements import PROVENANCE_MOTEUR, materiel_de_la_conception, options_de_la_conception  # ACAL2013
 
