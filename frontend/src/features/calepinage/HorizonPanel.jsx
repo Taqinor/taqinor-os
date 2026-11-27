@@ -340,7 +340,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
               step="any"
               value={saisie.azimut}
               onChange={(e) => setSaisie((s) => ({ ...s, azimut: e.target.value }))}
-              className="mt-1 min-h-11 w-28 rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+              className="mt-1 min-h-11 w-28 rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground"
             />
           </label>
           <label className="block" data-testid="cal-horizon-champ-hauteur">
@@ -350,7 +350,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
               step="any"
               value={saisie.hauteur}
               onChange={(e) => setSaisie((s) => ({ ...s, hauteur: e.target.value }))}
-              className="mt-1 min-h-11 w-28 rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+              className="mt-1 min-h-11 w-28 rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground"
             />
           </label>
           <button

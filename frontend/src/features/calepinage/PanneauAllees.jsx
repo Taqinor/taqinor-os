@@ -167,7 +167,7 @@ function ContraintesSite({ calepinageId, initiales, lectureSeule, onEnregistrees
         type="number" step="any" min="0" id={id} value={valeurChamp}
         disabled={lectureSeule}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+        className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground"
       />
       {regle && (
         <span className="mt-0.5 block text-xs text-muted-foreground"
@@ -192,7 +192,7 @@ function ContraintesSite({ calepinageId, initiales, lectureSeule, onEnregistrees
         <select
           id="ciq138-assureur" value={champs.assureur} disabled={lectureSeule}
           onChange={(e) => maj({ assureur: e.target.value })}
-          className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+          className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground"
         >
           {ASSUREURS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
@@ -222,19 +222,19 @@ function ContraintesSite({ calepinageId, initiales, lectureSeule, onEnregistrees
           <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source — document</span>
           <input type="text" id="ciq138-source-document" value={champs.document}
             disabled={lectureSeule} onChange={(e) => maj({ document: e.target.value })}
-            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground" />
+            className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground" />
         </label>
         <label className="block">
           <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source — date</span>
           <input type="text" id="ciq138-source-date" value={champs.date}
             disabled={lectureSeule} onChange={(e) => maj({ date: e.target.value })}
-            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground" />
+            className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground" />
         </label>
         <label className="block">
           <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source — référence</span>
           <input type="text" id="ciq138-source-reference" value={champs.reference}
             disabled={lectureSeule} onChange={(e) => maj({ reference: e.target.value })}
-            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground" />
+            className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground" />
         </label>
       </div>
       {erreurs.source && (
@@ -395,7 +395,7 @@ export default function PanneauAllees({
                 id="cal-allees-largeur-calepinage"
                 value={champCalepinage}
                 onChange={(e) => { setChampCalepinage(e.target.value); setSourceCalepinage('saisie') }}
-                className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+                className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground"
               />
             </label>
             <div className="mt-3 flex flex-wrap gap-3">

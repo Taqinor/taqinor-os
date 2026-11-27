@@ -33,7 +33,7 @@ const corpsCirculation = (l) => ({
 })
 const CHAMPS_LIGNE = [['pays', 'Pays (2 lettres)'], ['largeur_m', 'Largeur (m)'], ['source', 'Source'], ['reference', 'Référence']]
 const CLASSE_ETIQUETTE = 'text-xs font-semibold uppercase tracking-wide text-muted-foreground'
-const CLASSE_CHAMP = 'mt-1 rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground'
+const CLASSE_CHAMP = 'mt-1 rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground'
 
 export default function ReglagesAllees() {
   const peutGerer = usePeutReglerSociete()

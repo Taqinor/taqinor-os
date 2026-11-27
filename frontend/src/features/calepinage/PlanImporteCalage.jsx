@@ -53,7 +53,7 @@ import { echelleDepuisDeuxPoints, phraseControleEchelle } from './PlanImporteCal
 const RAD = Math.PI / 180
 
 /** ACAL1443 — UNE classe de champ pour tout l'écran : celle de l'atelier (bordure, fond de champ, 44 px), jamais le
- *  `bg-black/30` du thème sombre qui rendait les champs gris pleins en thème clair. */
+ *  fond noir translucide du thème sombre qui rendait les champs gris pleins en thème clair. */
 const CLASSE_CHAMP = 'mt-1 w-full min-h-11 border border-border bg-muted px-3 py-2 text-base text-foreground outline-none focus:border-brass-400'
 
 /** ACAL1443 — le sélecteur de fichier en français : un bouton relié à l'`input` masqué (qui garde son `data-testid`),

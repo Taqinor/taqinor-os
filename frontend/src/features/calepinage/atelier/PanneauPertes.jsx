@@ -255,7 +255,7 @@ function SelectSource({ poste, saisie, disabled, onChangeSource }) {
         value={saisie.source ?? ''}
         disabled={disabled}
         onChange={(e) => onChangeSource(poste, e.target.value)}
-        className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+        className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground"
       >
         <option value="">— aucune —</option>
         {SOURCES.map(([cle, label]) => <option key={cle} value={cle}>{label}</option>)}
@@ -278,7 +278,7 @@ function LignePourcentage({ poste, saisie, erreur, disabled, onChangePct, onChan
           onChange={(e) => onChangePct(poste, e.target.value)}
           aria-invalid={erreur ? 'true' : undefined}
           aria-describedby={erreur ? `cal-pertes-erreur-${poste}` : undefined}
-          className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+          className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground"
         />
       </label>
       <SelectSource poste={poste} saisie={saisie} disabled={disabled} onChangeSource={onChangeSource} />
@@ -308,7 +308,7 @@ function LigneMensuelle({ poste, saisie, erreur, disabled, onChangeMois, onChang
                 onChange={(e) => onChangeMois(poste, i, e.target.value)}
                 aria-invalid={erreur ? 'true' : undefined}
                 aria-describedby={erreur ? `cal-pertes-erreur-${poste}` : undefined}
-                className="mt-1 w-full rounded border border-border bg-black/30 px-1 py-1 text-xs text-foreground"
+                className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-1 py-1 text-xs text-foreground"
               />
             </label>
           ))}
@@ -372,7 +372,7 @@ function LignePoste({
             value={saisie.reference ?? ''}
             disabled={lectureSeule}
             onChange={(e) => onChangeChamp(poste, 'reference', e.target.value)}
-            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+            className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground"
           />
         </label>
       </div>
@@ -395,7 +395,7 @@ function LignePoste({
             type="text"
             value={saisie.motif_force ?? ''}
             onChange={(e) => onChangeChamp(poste, 'motif_force', e.target.value)}
-            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+            className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground"
           />
         </label>
       )}

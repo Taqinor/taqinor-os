@@ -33,6 +33,17 @@ test("les 5 fichiers de l'enveloppe n'ont plus aucune classe de L", () => {
 test('ACAL479 : aucune classe héritée du site public, nulle part, sans exception', () => {
   for (const f of cibles) assert.equal(compte(f), 0, `${f} : ${(readFileSync(join(SRC, f), 'utf8').match(L) || []).join(', ')} (classe(s) du site public)`)
 })
+// ACAL1823 — plus aucun fond noir/blanc translucide littéral (`bg-black/30` : pavé gris moyen en thème clair).
+// Le champ actif lit `--cal-surface`, qui suit le thème.
+test('ACAL1823 : aucune classe bg-black/ ni bg-white/ dans les écrans du module', () => {
+  const FOND = /bg-(?:black|white)\/\d+/g
+  const fautifs = []
+  for (const p of fichiers(join(SRC, C))) {
+    const trouves = readFileSync(p, 'utf8').match(FOND)
+    if (trouves) fautifs.push(`${relative(SRC, p).split(sep).join('/')} : ${trouves.join(', ')}`)
+  }
+  assert.deepEqual(fautifs, [])
+})
 const SOUS_DOSSIERS = [
   'pompage/PompagePanel.jsx', 'equipements/FichesIncompletes.jsx', 'electrique/SaisiesElectriques.jsx',
   'electrique/Raccordement.jsx', 'electrique/VerdictElectrique.jsx', 'electrique/MaterielElectrique.jsx',

@@ -58,7 +58,7 @@ function Champ({ cle, label, valeur, onChange }) {
         id={`cal-pente-${cle}`}
         value={valeur ?? ''}
         onChange={(e) => onChange(cle, e.target.value)}
-        className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+        className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground"
       />
     </label>
   )
@@ -368,7 +368,7 @@ export default function SaisiePente({
           Pan
           <select value={zoneId} data-testid="cal-pente-pan"
             onChange={(e) => setZoneChoisie(e.target.value)}
-            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground">
+            className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground">
             {zones.map((z) => (
               <option key={z.id} value={String(z.id)}>{z.label || z.id}</option>
             ))}
