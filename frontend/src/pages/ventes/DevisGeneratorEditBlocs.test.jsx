@@ -240,4 +240,25 @@ describe('ACAL1209 — le distributeur du lead est repris tant que le commercial
     await ouvrirDepuisLead('srm_beni_mellal')
     expect(libelle()).toMatch(/ONEE/)
   })
+  // Revue 4 — le lead RÉ-appliqué (sélecteur) n'écrase jamais un distributeur choisi à la main ; avant ce choix, il le pose.
+  it('choix manuel ⇒ un lead ré-appliqué ne change pas le distributeur', async () => {
+    const { useLeadClientEcran } = await import('./generator/hooks/useLeadClientEcran')
+    const setDistributeur = vi.fn()
+    const leads = [{ ...LEAD, id: 1, distributeur: 'lydec' }, { ...LEAD, id: 2, distributeur: 'redal' }]
+    const ctx = (distributeurChoisi) => ({
+      leads, structuresCatalogue: [], setSaving: vi.fn(), setErrors: vi.fn(), dispatchSizing: vi.fn(), finish: vi.fn(),
+      leadId: '', setLeadId: vi.fn(), clientId: '', setClientId: vi.fn(), setFHiver: vi.fn(), setFEte: vi.fn(),
+      setMonthly: vi.fn(), setConsoMensuelle: vi.fn(), setHorsReseau: vi.fn(), horsReseauTouched: false,
+      setPompeCv: vi.fn(), setPompeHmt: vi.fn(), setPompeDebit: vi.fn(), appliquerEntreesPompage: vi.fn(),
+      facturesProtegeesRef: { current: false }, reinitialiserFactures: vi.fn(), setAvisFactures: vi.fn(),
+      consoMensuelle: '', baremeSociete: null, distributeurChoisi, setDistributeur,
+    })
+    const { result, rerender } = renderHook((p) => useLeadClientEcran(p), { initialProps: ctx(false) })
+    act(() => { result.current.applyLead('1') })
+    expect(setDistributeur).toHaveBeenLastCalledWith('lydec')
+    setDistributeur.mockClear()
+    rerender(ctx(true))
+    act(() => { result.current.applyLead('2') })
+    expect(setDistributeur).not.toHaveBeenCalled()
+  })
 })
