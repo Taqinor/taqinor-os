@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import calepinageApi from '../../api/calepinageApi'
 import useSuiviJob from './production/useSuiviJob'
+import CarteConseils from './CarteConseils'
 import { regimeDePreuve } from './RemplissageProuve.helpers'
 
 /* ============================================================================
@@ -130,6 +131,7 @@ export default function RemplissageProuve({
             Tant que vous ne l’appliquez pas, votre disposition manuelle reste
             celle du calepinage.
           </p>
+          <CarteConseils suggestions={resultat?.suggestions} />
         </div>
       )}
 
