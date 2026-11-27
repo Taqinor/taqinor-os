@@ -210,7 +210,7 @@ import { appliquerHypotheses, etatHypotheses, sourcePenteClic, type EtatHypothes
 import { monterAidePente } from './roofPro11/penteAide'; // ACAL416
 import { type TableOmbrage } from './roofPro11/tableOmbrage'; // ACAL459
 import { type FacteurVueCiel } from './roofPro11/vueCiel'; // ACAL460
-import { creerEtatVide } from './roofPro11/etatVide'; // ACAL420
+import { consigneTrace, creerEtatVide, pointeurTactile } from './roofPro11/etatVide'; // ACAL420
 import { creerBandeauAnnuler, demanderEffacer, fermerAuProchainGeste } from './roofPro11/bandeauAnnuler'; // ACAL413
 import { monterToitParCotes } from './roofPro11/toitParCotes'; // ACAL422
 import { optionsGestesCarte, geleDefilementPendantGeste } from './roofPro11/gestesCarte'; // ACAL952
@@ -1840,7 +1840,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // direct), au lieu d'ouvrir la liste de suggestions. On ne géocode pas si on a déjà
     // hydraté un contour/pin (le vol vers le lead l'emporte).
     if (!seeded && opts.initialQuery) void geocode(opts.initialQuery, true);
-    else if (!seeded) setStatus('Cherchez votre adresse, puis cliquez les coins de votre toit.');
+    else if (!seeded) setStatus(consigneTrace('adresse', pointeurTactile(window)));
     // ACAL68 — « hydratation terminée » : la page hôte pose le fond du document ICI, quand
     // `fondDuDocument()` décrit le document ouvert — jamais depuis `onApiReady` (appelé en
     // fin d'init, avant l'hydratation, quand il vaut null ou le fond du document PRÉCÉDENT).
@@ -2520,7 +2520,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     syncChips();
     appliquerVue(map, 'dessus', facingAzimuthDeg, !!opts.reducedMotion); // ACAL435 — même cible (0, 0) et même 600 ms
     updateCompass();
-    setStatus('Cliquez les coins de votre toit. Double-cliquez pour fermer.');
+    setStatus(consigneTrace('efface', pointeurTactile(window)));
   }
 
   /** « Effacer » (reset complet) : vide l'éditeur ET ramène la liste des zones à UNE
@@ -2645,7 +2645,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     clearEditorState();
     poserValeursJeuVives(posees);
     renderAreasPanel();
-    setStatus(`${fresh.label} — tracez le contour de cette nouvelle zone (double-cliquez pour fermer).`);
+    setStatus(consigneTrace('nouvelle-zone', pointeurTactile(window), fresh.label));
     afficherMentionJeu(jeu);
   }
 

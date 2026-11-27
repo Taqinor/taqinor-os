@@ -2,7 +2,9 @@
 // Nouveau fichier car : `etatVide.ts` n'avait aucun module de test (le tracé libre de `formesToit.ts` y est couvert aussi).
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
-import { creerEtatVide, ETAPE_COINS, ETAPE_LOCALISER } from './etatVide';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { consigneTrace, creerEtatVide, ETAPE_COINS, ETAPE_LOCALISER } from './etatVide';
 import { monterFormesToit } from './formesToit';
 
 const MOT_SOURIS = /clic|clique/i;
@@ -67,5 +69,29 @@ describe('monterFormesToit — la consigne du tracé libre lit le pointeur (ACAL
 
   it('à la souris : « cliquez sur la carte »', () => {
     expect(cliquerTraceLibre(false)).toContain('cliquez sur la carte');
+  });
+});
+
+describe('consigneTrace — la pilule d’état lit le pointeur (ACAL1808 revue)', () => {
+  const cas = ['adresse', 'efface', 'nouvelle-zone'] as const;
+  it('au doigt : ni clic ni double-clic, et « Terminer le tracé »', () => {
+    for (const c of cas) {
+      const t = consigneTrace(c, true, 'Pan 2');
+      expect(t).not.toMatch(MOT_SOURIS);
+      expect(t).toMatch(/touchez/i);
+    }
+    expect(consigneTrace('efface', true)).toContain('Terminer le tracé');
+  });
+  it('à la souris : les mots d’aujourd’hui', () => {
+    expect(consigneTrace('adresse', false)).toBe('Cherchez votre adresse, puis cliquez les coins de votre toit.');
+    expect(consigneTrace('efface', false)).toBe('Cliquez les coins de votre toit. Double-cliquez pour fermer.');
+    expect(consigneTrace('nouvelle-zone', false, 'Pan 2')).toContain('(double-cliquez pour fermer)');
+  });
+  it('l’entrée appelle l’aide aux trois endroits', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/scripts/roof-tool-pro11.ts'), 'utf8');
+    expect(src).toContain("consigneTrace('adresse', pointeurTactile(window))");
+    expect(src).toContain("consigneTrace('efface', pointeurTactile(window))");
+    expect(src).toContain("consigneTrace('nouvelle-zone', pointeurTactile(window), fresh.label)");
+    expect(src).not.toMatch(/setStatus\([`'][^)]*liquez/);
   });
 });

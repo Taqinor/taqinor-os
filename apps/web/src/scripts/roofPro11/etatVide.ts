@@ -20,6 +20,27 @@ export function pointeurTactile(fenetre: { matchMedia?: (requete: string) => { m
   return Boolean(fenetre && optionsGestesCarte(fenetre).cooperativeGestures);
 }
 
+/** ACAL1808 (revue) — les consignes de la pilule d'état, lues par pointeur (1 définition avec la carte d'aide). */
+export function consigneTrace(
+  cas: 'adresse' | 'efface' | 'nouvelle-zone',
+  tactile: boolean,
+  libelle = '',
+): string {
+  if (cas === 'adresse') {
+    return tactile
+      ? 'Cherchez votre adresse, puis touchez les coins de votre toit.'
+      : 'Cherchez votre adresse, puis cliquez les coins de votre toit.';
+  }
+  if (cas === 'efface') {
+    return tactile
+      ? 'Touchez les coins de votre toit, puis « Terminer le tracé ».'
+      : 'Cliquez les coins de votre toit. Double-cliquez pour fermer.';
+  }
+  return tactile
+    ? `${libelle} — tracez le contour de cette nouvelle zone (touchez les coins, puis « Terminer le tracé »).`
+    : `${libelle} — tracez le contour de cette nouvelle zone (double-cliquez pour fermer).`;
+}
+
 /** Le texte de la carte pour l'état du tracé, ou null quand elle doit disparaître. */
 export function texteEtatVide(sommets: number, ferme: boolean, tactile = false): string | null {
   if (ferme) return null;
