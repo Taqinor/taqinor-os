@@ -132,7 +132,7 @@ class FactureCycleActionsMixin:
                     status=status.HTTP_409_CONFLICT,
                 )
             from apps.parametres.models import CompanyProfile
-            profile = CompanyProfile.get(company=facture.company)
+            profile = CompanyProfile.lire(company=facture.company)
             if getattr(profile, 'factures_immuables', False):
                 return Response(
                     {'detail': (
@@ -218,7 +218,7 @@ class FactureCycleActionsMixin:
         # c'est un abandon de créance, qui a son propre geste et son écriture.
         from decimal import Decimal
         from apps.parametres.models import CompanyProfile
-        profile = CompanyProfile.get(company=facture.company)
+        profile = CompanyProfile.lire(company=facture.company)
         tolerance = getattr(
             profile, 'tolerance_ecart_reglement', None) or Decimal('0')
         reste = facture.montant_du
