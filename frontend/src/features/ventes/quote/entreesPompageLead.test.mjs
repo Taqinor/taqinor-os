@@ -93,6 +93,29 @@ test('besoin::test_heures_seules_ne_choisissent_aucun_mode', () => {
   assert.equal(res.ecran.pompeDebit, '20')
 })
 
+// ACAL1261 — les VALEURS reprises s'affichent en français ; l'état d'écran
+// garde la clé machine ; une valeur inconnue passe telle quelle.
+test('libelles::test_valeurs_reprises_en_francais_cle_machine_dans_l_etat', () => {
+  const res = entreesPompageDuLead(lead([
+    entree('pompe_actuelle_type', 'immergee'), entree('pompe_alim_actuelle', 'diesel'),
+    entree('mode_pompe', 'neuve'), entree('irrigation_methode', 'goutte'),
+    entree('pompe_actuelle_phases', 3), entree('region_agricole', 'inconnue-x'),
+  ]))
+  const affiche = Object.fromEntries(res.provenances.map((p) => [p.colonne, p.valeur]))
+  assert.deepEqual(affiche, {
+    pompe_actuelle_type: 'Immergée', pompe_alim_actuelle: 'Gasoil', mode_pompe: 'Pompe neuve',
+    irrigation_methode: 'Goutte-à-goutte', pompe_actuelle_phases: 'Triphasé',
+    region_agricole: 'inconnue-x',
+  })
+  assert.equal(res.ecran.pompeType, 'immergee')
+  assert.equal(res.eco.energie, 'diesel')
+  assert.equal(res.ecran.farmIrrigation, 'goutte')
+  assert.equal(res.saisie.mode_pompe, 'neuve')
+  assert.equal(res.saisie['plaque.phases'], 'tri')
+  // Un nombre garde sa forme (aucune table pour lui).
+  assert.equal(entreesPompageDuLead(lead([entree('pompe_hmt_m', 60)])).provenances[0].valeur, '60')
+})
+
 test('besoin::test_une_saisie_du_vendeur_n_est_jamais_ecrasee', () => {
   const res = entreesPompageDuLead(lead([
     entree('pompe_actuelle_debit_m3h', 12), entree('pompage_heures_jour', 8),
