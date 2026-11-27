@@ -72,19 +72,19 @@ REFERENCE_PVSOL = (
 
 MOTIF_SANS_ALTERNATIF = (
     "La série ne déclare pas de puissance alternative : la conversion "
-    "continu → alternatif (étape « onduleur », CALX170) ne s'est pas "
+    "continu → alternatif (étape « onduleur ») ne s'est pas "
     "appliquée, et il n'y a aucun transit alternatif à faire chuter. Étape "
-    "OMISE.")
+    "omise.")
 
 MOTIF_SANS_PHASES = (
     "La fiche de l'onduleur ne publie pas son nombre de phases : "
     "monophasé et triphasé ne perdent pas la même chose pour le même "
-    "transit, et le régime ne se suppose pas. Étape OMISE.")
+    "transit, et le régime ne se suppose pas. Étape omise.")
 
 MOTIF_SANS_SECTION = (
     "Le métré ne publie pas de section pour le câble AC de repère "
     "« {repere} » : la résistance de la liaison n'est pas calculable. Étape "
-    "OMISE.")
+    "omise.")
 
 __all__ = ['appliquer', 'LIBELLE', 'REPERE_AC', 'COLONNE_ALTERNATIVE',
            'CONDUCTEURS_ACTIFS']
@@ -230,7 +230,7 @@ def _motif_longueur_ac(contexte):
     if manques:
         return 'Liaison AC non dimensionnée : %s.' % manques[0]
     return ("Aucun câble AC de repère « %s » n'est publié par le métré : la "
-            "perte ohmique alternative n'est pas calculable. Étape OMISE."
+            "perte ohmique alternative n'est pas calculable. Étape omise."
             % REPERE_AC)
 
 

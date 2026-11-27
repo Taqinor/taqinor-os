@@ -197,7 +197,7 @@ class ToujoursOmisesTest(unittest.TestCase):
 
     def test_leur_motif_ne_forfaitise_jamais_le_chiffre_du_concurrent(self):
         self.assertNotIn('diodes', TOUJOURS_OMISES)
-        self.assertIn('0,5 %', EXCLUSIVITES['diodes'][1])
+        self.assertNotIn('0,5 %', EXCLUSIVITES['diodes'][1])  # ACAL1655
         self.assertIn('aucun forfait', EXCLUSIVITES['diodes'][1])
 
     def test_un_module_livre_ne_les_reveille_pas_tout_seul(self):
@@ -275,6 +275,43 @@ class PostesDePertesTest(unittest.TestCase):
         self.assertIn('spectral', [e['etape'] for e in autres['etapes']])
         for omise in autres['etapes']:
             self.assertTrue(omise['motif_omission'])
+
+    def test_chaque_poste_sert_sa_cause_courte_celle_du_pdf(self):
+        """ACAL1676 — l'écran lit `poste.cause`, la même que la fiche PDF.
+
+        Les motifs sont les VRAIS motifs d'omission du moteur
+        (``chaine_pertes.EXCLUSIVITES``), pas des textes inventés ici."""
+        from apps.calepinage.services.chaine_pertes import EXCLUSIVITES
+        from apps.calepinage.services.documents.pertes_en_postes import (
+            _cause_courte)
+        from apps.calepinage.services.regroupement_pertes import regrouper
+
+        motif_ombre = EXCLUSIVITES['ombrage_proche'][1]
+        motif_optimiseur = EXCLUSIVITES['optimiseur'][1]
+
+        def etape(nom, avant, perte, motif=''):
+            return {'etape': nom, 'libelle': nom.replace('_', ' '),
+                    'kwh_avant': avant, 'kwh_apres': avant - perte,
+                    'perte_kwh': perte, 'motif_omission': motif}
+
+        cascade = {'total_pct': 5.0, 'etapes': [
+            etape('ombrage_proche', 1000.0, 0.0, motif_ombre),
+            etape('thermique', 1000.0, 50.0),
+            etape('optimiseur', 950.0, 0.0, motif_optimiseur)]}
+        postes = {p['poste']: p for p in regrouper(cascade)['postes']}
+
+        omise = postes['ombres_proches']['etapes'][0]
+        self.assertEqual(omise['motif_omission'], motif_ombre)
+        self.assertEqual(postes['ombres_proches']['cause'],
+                         'déjà compté : aucun obstacle saisi')
+        self.assertEqual(postes['ombres_proches']['cause'],
+                         _cause_courte(omise))
+        self.assertEqual(postes['autres']['cause'],
+                         'sans objet : optimiseurs')
+        # Un poste compté sans étape omise : aucune cause (jamais inventée).
+        self.assertEqual(postes['chaleur']['cause'], '')
+        # Jamais le paragraphe technique recopié.
+        self.assertNotIn(motif_ombre, postes['ombres_proches']['cause'])
 
     def test_cascade_vide_motivee(self):
         from apps.calepinage.services.regroupement_pertes import regrouper

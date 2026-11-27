@@ -159,13 +159,13 @@ __all__ = ['CLE_ALBEDO', 'CLE_HAUTEUR', 'CLE_OCCUPATION', 'CLE_PAS',
 
 MOTIF_MONOFACIAL = (
     'La fiche du module ne déclare aucune bifacialité '
-    f'(« {CHAMP_BIFACIALITE} ») : ce module est MONOFACIAL, il n\'a pas de '
+    f'(« {CHAMP_BIFACIALITE} ») : ce module est monofacial, il n\'a pas de '
     "face arrière à compter. Rien ne manque — l'étape est simplement sans "
     'objet ici.')
 
 MOTIF_MOIS_ABSENT = (
     "La série horaire ne porte pas le mois de chacune de ses heures : un "
-    "albédo MENSUEL ne peut être attribué à aucune heure, et aucun mois n'est "
+    "albédo mensuel ne peut être attribué à aucune heure, et aucun mois n'est "
     "comblé par la moyenne des autres.")
 
 MOTIF_AUCUN_PAN = (
@@ -174,7 +174,7 @@ MOTIF_AUCUN_PAN = (
 
 MOTIF_REFLECHIE_ABSENTE = (
     "PVGIS n'a pas rendu la composante réfléchie « gr_i_w_m2 » : le repère "
-    "de réflexion de face AVANT reste inconnu. Il n'entre dans aucun facteur "
+    "de réflexion de face avant reste inconnu. Il n'entre dans aucun facteur "
     'du gain arrière — seul le repère manque, pas le calcul.')
 
 

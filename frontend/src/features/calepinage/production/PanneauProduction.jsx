@@ -7,6 +7,7 @@ import { useHasPermission } from '../../../hooks/useHasPermission'
 import { formatNumber, formatPercent } from '../../../lib/format'
 import { Button, Card } from '../../../ui'
 import ListeManques from './ListeManques'
+import { publierRefus } from './refusPublie'
 import RetourAtelier from '../atelier/RetourAtelier'
 import {
   libelleBouton, cibleDuManque, etatCalcul, lienReglage, refusDepuisErreur, refusRenvoieAuxReglages,
@@ -155,6 +156,13 @@ export function BoutonCalculer({
   })
   const { enCours, job } = suiviJob
 
+  // ACAL1650 — les lignes du refus sont publiées : la liste et le rail disent le MÊME compte que lui.
+  const lignesRefus = refus?.manquants
+  useEffect(() => {
+    publierRefus(calepinageId, lignesRefus)
+    return () => publierRefus(calepinageId, [])
+  }, [calepinageId, lignesRefus])
+
   const etat = etatCalcul(data)
 
   const lancer = (forcerDemande = false) => {
@@ -228,11 +236,11 @@ export function BoutonCalculer({
         </p>
       )}
 
-      {variante !== 'carte' && (manque.length > 0 || avertissements.length > 0) && (
+      {variante !== 'carte' && (manque.length > 0 || avertissements.length > 0 || lignesRefus?.length > 0) && (
         <div data-testid="calx48-manques">
           <p className="text-xs font-medium text-muted-foreground">Ce qui manque encore :</p>
-          {manque.length > 0
-            ? <ListeManques calepinageId={calepinageId} manque={manque} />
+          {manque.length > 0 || lignesRefus?.length > 0
+            ? <ListeManques calepinageId={calepinageId} manque={manque} refus={lignesRefus} />
             : (
               <ul className="list-disc pl-5 text-xs text-muted-foreground">
                 {avertissements.map((a) => <li key={a}>{a}</li>)}
@@ -505,7 +513,7 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
       {data?.simule === true && !perime && <PartiesProduction parties={production?.parties} />}
       {data?.simule === true && !perime && <EcartPvgis validation={data?.validation} />}
       {data?.simule === true && !perime && <PourquoiProduction cascade={data?.cascade} />}
-      {data?.simule === true && !perime && <LigneSurLaDuree production={production} />}
+      {data?.simule === true && !perime && <LigneSurLaDuree production={production} incertitude={data?.incertitude} />}
       {data?.simule === true && !perime && <ResultatIncomplet calepinageId={id} data={data} parcours={parcours} />}
       {data?.simule === true && !perime && <GraphiqueMensuel autoconsommation={data?.autoconsommation} production={data?.production} />}
       <ReglagesUtilises simulation={data?.simulation} ouvert={sourcesOuvertes} onBascule={setSourcesOuvertes} />

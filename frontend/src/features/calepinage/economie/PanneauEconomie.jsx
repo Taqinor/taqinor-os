@@ -241,7 +241,12 @@ function ListeOmissions({ omissions }) {
    le bandeau de provenance — jamais recalculé ici (il avait le signe inverse). Sans `ecart_devis` servi (devis qui
    n'imprime pas la simulation, simulation périmée), rien. */
 const SEUIL_ECART_PCT = 1
-function EcartProduction({ economie, p50, ecartPct }) {
+function EcartProduction({ economie, p50, ecartPct, motif = '' }) {
+  // ACAL1915 — écart non servi alors qu'un devis est lié : le serveur dit pourquoi (`ecart_devis_motif`), une phrase
+  // affichée telle quelle ; jamais un silence, jamais un écart recalculé ici.
+  if (typeof ecartPct !== 'number' && typeof motif === 'string' && motif) {
+    return <p className="text-xs text-muted-foreground" data-testid="acal1915-ecart-motif">{motif}</p>
+  }
   const devis = economie.hypotheses?.find((h) => h.cle === 'production_annee1_kwh')?.valeur
   if (typeof devis !== 'number' || typeof p50 !== 'number' || typeof ecartPct !== 'number') return null
   if (Math.abs(ecartPct) <= SEUIL_ECART_PCT) return null
@@ -254,7 +259,7 @@ function EcartProduction({ economie, p50, ecartPct }) {
   )
 }
 
-function BlocEconomie({ economie, p50 = null, ecartPct = null }) {
+function BlocEconomie({ economie, p50 = null, ecartPct = null, motifEcart = '' }) {
   const { horizon_ans: horizonAns, flux, hypotheses, omissions } = economie
   return (
     <div className="flex flex-col gap-4" data-testid="calx289-bloc">
@@ -279,7 +284,7 @@ function BlocEconomie({ economie, p50 = null, ecartPct = null }) {
       <GraphiqueFlux flux={flux} retourAns={economie.retour_ans} />
       <TableauFlux flux={flux} />
       <TableauHypotheses hypotheses={hypotheses} />
-      <EcartProduction economie={economie} p50={p50} ecartPct={ecartPct} />
+      <EcartProduction economie={economie} p50={p50} ecartPct={ecartPct} motif={motifEcart} />
       <ListeOmissions omissions={omissions} />
     </div>
   )
@@ -318,7 +323,7 @@ export default function PanneauEconomie({ calepinageId }) {
     () => calepinageApi.calepinages.resultat(id), id,
     {
       enabled: Boolean(devisId),
-      select: (r) => ({ p50: r.data?.production?.total?.p50_kwh ?? null, ecartPct: r.data?.ecart_devis?.ecart_pct ?? null }),
+      select: (r) => ({ p50: r.data?.production?.total?.p50_kwh ?? null, ecartPct: r.data?.ecart_devis?.ecart_pct ?? null, motifEcart: r.data?.ecart_devis_motif ?? '' }),
       errorMessage: 'Production simulée indisponible.',
     },
   )
@@ -342,7 +347,7 @@ export default function PanneauEconomie({ calepinageId }) {
         <p className="text-sm text-destructive" data-testid="calx289-erreur-economie">{errorEconomie}</p>
       )}
       {devisId && !loadingEconomie && !errorEconomie && economie && (
-        <BlocEconomie economie={economie} p50={lecture?.p50 ?? null} ecartPct={lecture?.ecartPct ?? null} />
+        <BlocEconomie economie={economie} p50={lecture?.p50 ?? null} ecartPct={lecture?.ecartPct ?? null} motifEcart={lecture?.motifEcart ?? ''} />
       )}
     </Card>
   )

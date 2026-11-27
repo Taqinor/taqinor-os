@@ -91,9 +91,9 @@ class CourbeAbsenteTest(unittest.TestCase):
                       'entree', 'reference'):
             self.assertIsNone(etape[champ], champ)
 
-    def test_une_fiche_vide_nomme_le_module_retenu(self):
+    def test_une_fiche_vide_nomme_ce_module(self):
         etape = cascade({'fiche_module': {}})
-        self.assertIn('le module retenu', etape['motif_omission'])
+        self.assertIn('ce module', etape['motif_omission'])
         self.assertIn('FicheTechnique.rendement_par_irradiance',
                       etape['motif_omission'])
 

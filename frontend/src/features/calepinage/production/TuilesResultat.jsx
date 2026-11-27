@@ -73,7 +73,19 @@ const CIRCONFERENCE = 2 * Math.PI * RAYON
 function Consommation({ autoconsommation, phraseTailles = null }) {
   const [ouvert, setOuvert] = useState(false)
   const taux = autoconsommation?.taux_couverture
-  if (!nombre(taux)) return null
+  // ACAL1631 — la part n'est pas servie : la tuile reste, « — » et le MOTIF servi (la phrase de la tuile jumelle
+  // `TuileCouverture` à défaut), jamais un 0 % ni une tuile qui disparaît en laissant un trou à droite.
+  if (!nombre(taux)) {
+    const motif = typeof autoconsommation?.motif_absence === 'string' && autoconsommation.motif_absence
+      ? autoconsommation.motif_absence : 'Aucune consommation connue.'
+    return (
+      <div className="cal-res-tuile" data-tuile="couverture">
+        <span className="cal-res-tuile-label">De la consommation</span>
+        <span className="cal-res-tuile-corps"><span className="cal-res-tuile-valeur">—</span></span>
+        <span className="cal-res-tuile-note">{motif}</span>
+      </div>
+    )
+  }
   // T4-X9-008 — la part servie est celle de la CONCEPTION du lead : à une autre taille que la pose, la phrase la remplace
   // (jamais un pourcentage d'une autre taille à côté de la production simulée de la pose).
   if (phraseTailles) {
@@ -166,7 +178,12 @@ function EcartPvgis({ validation }) {
   // `_memes_puissances`) : la phrase de la maquette est donc exacte ; un verdict servi s'y ajoute.
   // `pertes_totales.egales` (servi depuis ACAL1606) : le serveur a comparé les pertes système des deux côtés ; seul un
   // « vrai » autorise la mention « à pertes système égales » (jamais affirmée sans cette clé).
+  // ACAL1933 — `pertes_totales.omises_vs_pvgis` (servi) : les étapes que PVGIS compte et que notre chaîne a omises faute
+  // de donnée, nommées par leur `designation` ; dites ici, jamais déduites.
+  const omises = (Array.isArray(validation.pertes_totales?.omises_vs_pvgis) ? validation.pertes_totales.omises_vs_pvgis : [])
+    .map((o) => o?.designation).filter((d) => typeof d === 'string' && d)
   const memes = `Même site, mêmes panneaux${validation.pertes_totales?.egales === true ? ', à pertes système égales' : ''}`
+    + (omises.length > 0 ? `, sans ${omises.length > 1 ? `${omises.slice(0, -1).join(', ')} ni ${omises[omises.length - 1]}` : omises[0]}, que PVGIS compte` : '')
   let phrase = memes
   if (tolerance && validation.verdict === 'dans_la_tolerance') phrase = `${memes} · dans ±${tolerance.slice(1)}`
   else if (tolerance && validation.verdict === 'hors_tolerance') phrase = `${memes} · hors de ${tolerance}`

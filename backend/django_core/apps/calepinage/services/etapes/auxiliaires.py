@@ -70,13 +70,13 @@ REFERENCE_PVSYST = (
 MOTIF_SANS_PUISSANCE = (
     "Aucune puissance d'auxiliaires saisie : les trois champs « {constante} "
     "», « {par_kw} » et « {nuit} » sont vides, et la fiche de l'onduleur ne "
-    "publie pas de consommation de nuit exploitable. L'étape est OMISE — un "
+    "publie pas de consommation de nuit exploitable. L'étape est omise — un "
     "pourcentage ne décrit pas une énergie soutirée.")
 
 MOTIF_SANS_ALTERNATIF = (
     "La série ne déclare pas de puissance alternative : les auxiliaires se "
-    "retranchent APRÈS la conversion de l'onduleur (CALX170), jamais sur la "
-    "puissance continue. Étape OMISE.")
+    "retranchent après la conversion de l'onduleur, jamais sur la "
+    "puissance continue. Étape omise.")
 
 __all__ = ['appliquer', 'LIBELLE', 'COLONNE_ALTERNATIVE', 'CLE_CONSTANTE',
            'CLE_PAR_KW', 'CLE_NUIT']

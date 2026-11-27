@@ -185,6 +185,20 @@ class CibleDeCouvertureTest(unittest.TestCase):
                 self.assertEqual(erreur.exception.champ, champ)
                 self.assertFalse(erreur.exception.forme)
 
+    def test_acal1628_serie_au_jour_dit_le_reglage_et_le_geste(self):
+        from apps.calepinage.services.balayage import BalayageInvalide
+        from apps.calepinage.services.cible_couverture import lire_socle
+
+        frais = {'simule': True, 'simulation_perimee': False}
+        with self.assertRaises(BalayageInvalide) as erreur:
+            lire_socle(frais, dict(self._serie(), tronquee=True), 10)
+        motif = str(erreur.exception)
+        self.assertIn('fenêtre météo', motif)
+        self.assertIn('une année', motif)
+        self.assertIn('Réglages simulation', motif)
+        self.assertIn('dimensionner par objectif', motif)
+        self.assertEqual(erreur.exception.champ, 'simulation')
+
     def test_la_forme_de_l_objectif_est_refusee_en_400(self):
         from apps.calepinage.services.balayage import (
             BalayageInvalide, valider_objectif)

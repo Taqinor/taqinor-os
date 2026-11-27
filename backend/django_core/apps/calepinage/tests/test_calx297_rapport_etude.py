@@ -594,7 +594,8 @@ class MiseEnPageTest(unittest.TestCase):
             corps = re.sub(r'<h2>.*?</h2>', '', bloc)
             self.assertTrue(re.sub(r'<[^>]+>', '', corps).strip(), bloc)
         self.assertIn('Donnée manquante', html)
-        self.assertIn('production.mensuel[]', html)
+        self.assertIn('production mois par mois', html)  # ACAL1716 — plus la clé brute
+        self.assertNotIn('production.mensuel[]', html)
 
     def test_le_pied_porte_l_empreinte_et_la_version_du_moteur(self):
         pied = re.search(r'<div class="gabarit-pied">.*?</div></div>',
@@ -888,3 +889,26 @@ class EndpointRapportEnBaseTest(BaseApiCalepinage):
 
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()
+
+
+class AnnexeEtValidationSansCleBruteTest(unittest.TestCase):
+    """ACAL1716 — « Donnée manquante » et la méthode de validation parlent
+    métier : aucun chemin pointé (``production.total.p50_kwh``) ni code de
+    poste (``thermique, ohmique_ac``) dans le texte imprimé."""
+
+    def test_table_non_calcule_sans_chemin_pointe(self):
+        from apps.calepinage.services.rapport.annexe_hypotheses import _table_non_calcule
+
+        html = _table_non_calcule([
+            ('production.total.p50_kwh', 'Donnée manquante'),
+            ('production.base', 'Donnée manquante'),
+            ('production.mensuel[]', 'Donnée manquante')])
+        for brut in ('production.total', 'production.base', 'production.mensuel', 'p50_kwh'):
+            self.assertNotIn(brut, html)
+
+    def test_methode_de_validation_sans_code_de_poste(self):
+        from apps.calepinage.services.rapport.validation import html_de_section
+
+        html = html_de_section({'resultat': {}})
+        for code in ('thermique', 'ohmique_ac'):
+            self.assertNotIn(code, html)

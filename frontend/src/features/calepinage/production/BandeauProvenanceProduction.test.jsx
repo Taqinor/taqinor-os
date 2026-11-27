@@ -343,6 +343,20 @@ describe('EcartPvgis (ACAL854)', () => {
     expect(screen.getByTestId('acal854-ecart-pvgis')).not.toHaveTextContent('pertes système égales')
   })
 
+  it('ACAL1933 — les étapes que PVGIS compte et que nous omettons sont nommées (`omises_vs_pvgis`), sans « pertes égales »', () => {
+    rendreEcart({
+      ...validation,
+      pertes_totales: {
+        ...validation.pertes_totales,
+        egales: false,
+        omises_vs_pvgis: [{ etape: 'chaleur', libelle: 'Chaleur', designation: 'la chaleur des panneaux' }],
+      },
+    })
+    expect(screen.getByTestId('acal854-ecart-pvgis').textContent.replace(/\s/g, ' '))
+      .toContain('Comparé à PVGIS au même endroit, sans la chaleur des panneaux, que PVGIS compte : −2,0 %')
+    expect(screen.getByTestId('acal854-ecart-pvgis')).not.toHaveTextContent('pertes système égales')
+  })
+
   it('sans tolérance ⇒ « écart publié sans verdict » et le lien vers le réglage', () => {
     rendreEcart({ ...validation, tolerance_pct: null, verdict: null })
     expect(screen.getByTestId('acal854-sans-verdict')).toHaveTextContent('écart publié sans verdict')

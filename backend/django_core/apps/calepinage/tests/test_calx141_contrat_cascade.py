@@ -244,6 +244,37 @@ class MotifServiLisibleTest(unittest.TestCase):
         self.assertEqual(stocke, avant, 'le résultat stocké ne bouge pas')
 
 
+class MotifsEnFrancaisDeMetierTest(unittest.TestCase):
+    """ACAL1655 — aucun motif d'omission de la vraie cascade ne parle le
+    jargon de développeur (« v1 », « PV*SOL assume », « littéral de code »,
+    « n'est pas dérate », « fiche de le module », majuscules d'insistance)."""
+
+    SERIE = {'pas_minutes': 60, 'colonne_energie': 'p_w', 'points': [{
+        'annee': 2020, 'mois': 6, 'jour': 21, 'heure': 11,
+        'gb_i_w_m2': 800.0, 'gd_i_w_m2': 150.0, 'gr_i_w_m2': 50.0,
+        'gi_w_m2': 1000.0, 'p_w': 4000.0}]}
+
+    ACRONYMES = {'STC', 'MPPT', 'PVGIS', 'LID', 'IAM', 'NOCT', 'TRI', 'DEM'}
+
+    def test_les_motifs_de_la_cascade_reelle_sont_du_francais_de_metier(self):
+        import re
+
+        from apps.calepinage.services.chaine_pertes import appliquer_chaine
+
+        _serie, cascade = appliquer_chaine(self.SERIE, {})
+        motifs = [(e['etape'], e['motif_omission'])
+                  for e in cascade['etapes'] if e['motif_omission']]
+        self.assertGreater(len(motifs), 5)  # le cas porte bien des omissions
+        for etape, motif in motifs:
+            for interdit in ('en v1', 'PV*SOL', 'littéral', "n'est pas dérate",
+                             'silence est explicite', 'fiche de le ',
+                             'TOUJOURS_OMISES', 'DÉJÀ'):
+                self.assertNotIn(interdit, motif, etape)
+            criees = [m for m in re.findall(r'\b[A-ZÀ-Ý]{4,}\b', motif)
+                      if m not in self.ACRONYMES]
+            self.assertEqual(criees, [], (etape, motif))
+
+
 class AdressesPublieesIntactesTest(unittest.TestCase):
     """Revue lot 6 (ACAL1654/1656) — une adresse publiée citée comme source
     ressort de ``motif_lisible`` EXACTE (« array-incidence-loss-iam.html »

@@ -5,7 +5,7 @@
    aucun code technique à l'écran, le pied et son bouton, la carte « au plus » du résultat incomplet. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-library/react'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { exempleContrat } from '../../../../../test/fixtures/contractSamples'
 import { formatNumber } from '../../../../../lib/format'
 import { feuilleAuDoigt } from '../../../__tests__/feuilleAuDoigt'
@@ -26,6 +26,7 @@ vi.mock('../../../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn(
 import calepinageApi from '../../../../../api/calepinageApi'
 import ventesApi from '../../../../../api/ventesApi'
 import EtapeResultats from './EtapeResultats'
+import BarreEnregistrement from '../../BarreEnregistrement'
 import { oublierLecturesServies } from './panneaux/lectures'
 import PanneauPertesUnifie from '../../PanneauPertesUnifie'
 
@@ -84,23 +85,57 @@ describe('Étape Résultats — résultat complet (maquette Resultats)', () => {
     const lignes = [...carte.querySelectorAll('.cal-res-poste')].map((li) => li.textContent)
     expect(lignes[0]).toContain('Soleil reçu par les panneaux')
     expect(lignes[1]).toMatch(/Ombres proches.*− 3,0 %/)
-    expect(lignes[2]).toMatch(/Chaleur.*− 6,4 %/)
-    expect(lignes[3]).toMatch(/Électricité produite.*81,4 %/)
-    expect(carte).not.toHaveTextContent('Poussière')
+    expect(lignes[2]).toMatch(/Poussière.*non compté/) // ACAL1676 — le poste non compté est montré, sans barre
+    expect(lignes[3]).toMatch(/Chaleur.*− 6,4 %/)
+    expect(lignes[4]).toMatch(/Électricité produite.*81,4 %/)
     expect(document.body.textContent).not.toMatch(/CALX\d|ACAL\d|ohmique_dc|ombrage_proche/)
     expect(within(carte).getByText(/Voir les \d+ étapes/)).toBeInTheDocument()
   })
 
-  it('tuile sans valeur servie : omise (jamais 0 ni tiret)', async () => {
+  it('tuile sans valeur servie : omise (jamais 0), sauf la consommation qui dit « — » et son motif (ACAL1631)', async () => {
     const d = COMPLET()
     d.autoconsommation.taux_couverture = null
+    d.autoconsommation.motif_absence = 'Aucune courbe de consommation horaire pour ce calepinage.'
     d.validation.ecart_pct = null
     servir(d)
     rendre()
     const tuiles = await screen.findByTestId('cal-resultats-tuiles')
     const labels = [...tuiles.querySelectorAll('.cal-res-tuile-label')].map((n) => n.textContent)
-    expect(labels).toEqual(['Production la première année', 'Pertes au total'])
+    expect(labels).toEqual(['Production la première année', 'De la consommation', 'Pertes au total'])
+    const conso = tuiles.querySelector('[data-tuile="couverture"]')
+    expect(conso.querySelector('.cal-res-tuile-valeur').textContent).toBe('—')
+    expect(conso).toHaveTextContent('Aucune courbe de consommation horaire pour ce calepinage.')
     expect(tuiles).not.toHaveTextContent('non calculée')
+    expect(tuiles).not.toHaveTextContent('0 %')
+  })
+
+  it('ACAL1631 — consommation absente sans motif servi : « — » et la phrase de repli de la tuile jumelle', async () => {
+    const d = COMPLET()
+    d.autoconsommation.taux_couverture = null
+    d.autoconsommation.motif_absence = ''
+    servir(d)
+    rendre()
+    const conso = (await screen.findByTestId('cal-resultats-tuiles')).querySelector('[data-tuile="couverture"]')
+    expect(conso.querySelector('.cal-res-tuile-valeur').textContent).toBe('—')
+    expect(conso).toHaveTextContent('Aucune consommation connue.')
+  })
+
+  it('ACAL1631 — « Mois par mois » sans consommation servie : une ligne le dit avec le motif servi', async () => {
+    const d = COMPLET_MAQUETTE()
+    d.autoconsommation.par_mois = d.autoconsommation.par_mois.map((m) => ({ ...m, consommation_kwh: null }))
+    d.autoconsommation.motif_absence = 'Aucune courbe de consommation horaire pour ce calepinage.'
+    servir(d)
+    rendre()
+    const mois = await screen.findByTestId('cal-resultats-mois')
+    expect(within(mois).getByTestId('cal-res-mois-sans-conso'))
+      .toHaveTextContent('Consommation non tracée : Aucune courbe de consommation horaire pour ce calepinage.')
+  })
+
+  it('ACAL1631 — consommation servie : aucune ligne d’absence', async () => {
+    servir(COMPLET_MAQUETTE())
+    rendre()
+    const mois = await screen.findByTestId('cal-resultats-mois')
+    expect(within(mois).queryByTestId('cal-res-mois-sans-conso')).toBeNull()
   })
 
   /* T4-X7-005 — 3 panneaux 710 W sur un Deye 5 kW : 0 kWh, pertes 100 %, et aucune phrase sur l'étape ; la cause (tension
@@ -167,7 +202,7 @@ describe('Étape Résultats — résultat complet (maquette Resultats)', () => {
     const onClick = vi.fn()
     const { unmount } = rendre({ action: { libelle: 'Préparer les documents', onClick } })
     const pied = await screen.findByTestId('cal-resultats-pied')
-    expect(pied).toHaveTextContent('Année basse (9 fois sur 10 au-dessus) : 11 900 kWh · Dans 2 ans : 12 929 kWh')
+    expect(pied).toHaveTextContent('Année basse (variabilité météo seule, 9 années sur 10 au-dessus) : 11 900 kWh · Dans 2 ans : 12 929 kWh')
     fireEvent.click(within(pied).getByRole('button', { name: /Préparer les documents/ }))
     expect(onClick).toHaveBeenCalledTimes(1)
     unmount()
@@ -253,10 +288,11 @@ describe('Étape Résultats — résultat complet, bloc par bloc (maquette Resul
       '3 réglages utilisent des valeurs publiées, non mesurées sur ce chantier (reflets du verre, écarts entre panneaux, réflexion du sol). Voir les sources')
     // 4. Pied : phrase + bouton doré, après les deux cartes.
     expect(texte(screen.getByTestId('cal-resultats-pied'))).toBe(
-      'Année basse (9 fois sur 10 au-dessus) : 11 900 kWh · Dans 2 ans : 12 929 kWhPréparer les documents')
+      'Année basse (variabilité météo seule, 9 années sur 10 au-dessus) : 11 900 kWh · Dans 2 ans : 12 929 kWhPréparer les documents')
     // Ordre global : tuiles, milieu (mois puis pertes), pied.
     const ordre = [...racine.children].map((n) => n.getAttribute('data-testid') || n.className)
-    expect(ordre.slice(0, 3)).toEqual(['cal-resultats-tuiles', 'cal-res-milieu', 'cal-resultats-pied'])
+    // ACAL1630 : l'exemple du contrat sert une supposition (`suppose[]`) — sa section vient entre le milieu et le pied.
+    expect(ordre.slice(0, 4)).toEqual(['cal-resultats-tuiles', 'cal-res-milieu', 'acal980-suppose', 'cal-resultats-pied'])
   })
 })
 
@@ -714,6 +750,32 @@ describe('Étape Résultats — la simulation part seule (ACAL1987)', () => {
     await screen.findByTestId('cal-avant-simulation')
     expect(document.querySelector('[data-zone="simulation-manque"]')).toBeNull()
     expect(document.querySelector('[data-zone="simulation-en-cours"]')).toBeNull()
+  })
+})
+
+/* ACAL1653 — à la fin d'une simulation, le bandeau d'enregistrement passe à « Simulation à jour · HH:MM » sans recharger :
+   la barre écoute le résultat publié par l'étape (même canal que le résumé Expert). */
+describe('Étape Résultats — le bandeau suit la fin du calcul (ACAL1653)', () => {
+  it('fin de simulation : « Enregistré à… » devient « Simulation à jour · HH:MM », sans rechargement', async () => {
+    const enCours = { ...JAMAIS(), simulation_automatique: { ...JAMAIS().simulation_automatique, en_cours: true, job_id: 7 } }
+    const fini = { ...COMPLET(), simulation_perimee: false, calcule_le: '2026-11-26T14:32:00Z' }
+    calepinageApi.calepinages.resultat
+      .mockResolvedValueOnce({ data: enCours })
+      .mockResolvedValueOnce({ data: enCours })
+      .mockResolvedValue({ data: fini })
+    render(
+      <MemoryRouter initialEntries={['/calepinage/1?onglet=production']}>
+        <Routes><Route path="/calepinage/:id" element={(
+          <>
+            <BarreEnregistrement libelle="Enregistrer le calepinage" enregistreLe="2026-11-26T14:00:00Z" />
+            <EtapeResultats calepinageId={1} intervalleMs={5} />
+          </>
+        )} /></Routes>
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('cal-etat-enregistrement')).toHaveTextContent(/^Enregistré/)
+    await screen.findByTestId('cal-resultats-tuiles')
+    await waitFor(() => expect(screen.getByTestId('cal-etat-enregistrement')).toHaveTextContent(/Simulation à jour · \d{2}:\d{2}/))
   })
 })
 
@@ -1187,5 +1249,138 @@ describe('ACAL1268 (D-ACAL-66 = outil_pose) — l’étape Résultats d’un lea
     await screen.findByTestId('cal-resultats-tuiles')
     expect(autre.innerHTML).toBe(sansContexte)
     expect(document.querySelector('[data-zone="pompage-outil-pose"]')).toBeNull()
+  })
+})
+
+/* ACAL1630 — « Ce qui est supposé » (`suppose[]` de `GET resultat/`) rendu par l'étape Résultats, sous la production. */
+describe('Étape Résultats — ce qui est supposé (ACAL1630)', () => {
+  it('suppose servi ⇒ section rendue sous la production, une ligne par repli avec son champ à renseigner', async () => {
+    const d = COMPLET()
+    d.suppose = [
+      { code: 'longueur_chaine_dossier', libelle: 'Longueur de chaîne de dossier : 16 modules', valeur: 16, champ: 'fiche technique du module et de l’onduleur' },
+      { code: 'allee_par_defaut', libelle: 'Allée : 0,60 m', valeur: 0.6, champ: 'panneau Allées de l’atelier' },
+    ]
+    servir(d)
+    rendre()
+    const section = await screen.findByTestId('acal980-suppose')
+    expect(section).toHaveTextContent('Ce qui est supposé')
+    expect(within(section).getAllByRole('listitem')).toHaveLength(2)
+    expect(screen.getByTestId('acal980-longueur_chaine_dossier')).toHaveTextContent('Longueur de chaîne de dossier : 16 modules')
+    expect(screen.getByTestId('acal980-allee_par_defaut')).toHaveTextContent('À renseigner : panneau Allées de l’atelier')
+    expect(screen.getByTestId('cal-resultats-tuiles').compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('aucune supposition servie ⇒ aucune section', async () => {
+    const d = COMPLET()
+    d.suppose = []
+    servir(d)
+    rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    expect(screen.queryByTestId('acal980-suppose')).toBeNull()
+  })
+})
+
+/* ACAL1638 — « Le devis annonce » à l'étape Résultats guidée : le chiffre IMPRIMÉ par le devis lié et l'écart servi
+   (`ecart_devis`, ACAL104) avec l'étude technique. Sans devis lié, aucune ligne. */
+describe('Étape Résultats — « Le devis annonce » (ACAL1638)', () => {
+  const ECART = { devis: 412, reference: 'DEV-202610-0042', production_devis_kwh: 12600, p50_calepinage_kwh: 13000, ecart_pct: 3.2, mention: '' }
+
+  it('devis lié ⇒ la ligne dit ce que le devis imprime et l’écart avec l’étude technique', async () => {
+    const d = COMPLET()
+    d.ecart_devis = ECART
+    servir(d)
+    rendre()
+    const ligne = await screen.findByTestId('acal1638-devis-annonce')
+    expect(ligne).toHaveTextContent(/^Le devis annonce : 12\s600 kWh\/an \(étude technique : \+3,2 %\)$/)
+  })
+
+  it('sans devis lié, ou écart non servi ⇒ aucune ligne ; sans écart servi, le chiffre seul', async () => {
+    servir(COMPLET())
+    const { unmount } = rendre()
+    await screen.findByTestId('cal-resultats-tuiles')
+    expect(screen.queryByTestId('acal1638-devis-annonce')).toBeNull()
+    unmount()
+    const d = COMPLET()
+    d.ecart_devis = { ...ECART, ecart_pct: null }
+    servir(d)
+    rendre()
+    expect(await screen.findByTestId('acal1638-devis-annonce')).toHaveTextContent(/^Le devis annonce : 12\s600 kWh\/an$/)
+  })
+})
+
+/* ACAL1676 — les cinq postes de « Du soleil au réseau », le poste non compté avec son motif ; les barres ne cumulent que
+   les postes comptés. ACAL1632 — la note « valeurs publiées » : noms en clair, pertes seulement. ACAL1933 — la phrase
+   des étapes que PVGIS compte et pas nous. */
+describe('Étape Résultats — « Du soleil au réseau » à cinq postes (ACAL1676)', () => {
+  const avecOmbresNonComptees = () => {
+    const d = COMPLET_MAQUETTE()
+    const [ombres, ...autres] = d.cascade.postes_lisibles.postes
+    d.cascade.postes_lisibles.postes = [
+      { ...ombres, perte_kwh: null, perte_pct: null, statut: 'non_compte',
+        etapes: [{ etape: 'ombrage_proche', motif_omission: 'Aucun obstacle saisi.' }] },
+      ...autres,
+    ]
+    d.cascade.postes_lisibles.arrivee_pct = 84.4
+    return d
+  }
+
+  it('cinq postes : « Ombres proches — non compté : aucun obstacle saisi », sans barre ; les barres ne cumulent que les postes comptés', async () => {
+    servir(avecOmbresNonComptees())
+    rendre()
+    const carte = await screen.findByTestId('cal-resultats-pertes')
+    const postes = [...carte.querySelectorAll('.cal-res-poste[data-statut]')]
+    expect(postes).toHaveLength(5)
+    const ombres = carte.querySelector('[data-poste="ombres_proches"]')
+    expect(ombres).toHaveTextContent('Ombres proches')
+    expect(ombres).toHaveTextContent('non compté')
+    expect(ombres).toHaveTextContent('Aucun obstacle saisi.')
+    expect(ombres.querySelector('.cal-res-piste')).toBeNull()
+    // Les quatre autres : le restant part de 100 (le poste non compté ne retire rien).
+    const pistes = [...carte.querySelectorAll('.cal-res-poste[data-statut="compte"] .cal-res-piste')]
+    expect(pistes).toHaveLength(4)
+    expect(Number.parseFloat(pistes[0].firstElementChild.style.width)).toBeCloseTo(97, 5)
+    expect(Number.parseFloat(pistes[3].firstElementChild.style.width)).toBeCloseTo(100 - 3 - 6.4 - 4.5 - 3.1, 5)
+  })
+})
+
+describe('Étape Résultats — note des valeurs publiées (ACAL1632)', () => {
+  it('la note nomme chaque réglage en clair, ne compte que les pertes : aucune clé « electrique_societe.* »', async () => {
+    const d = COMPLET_MAQUETTE()
+    const ref = 'Profil de départ — PVsyst, Array and system losses'
+    d.simulation = { ...d.simulation, reglages_utilises: {
+      ...d.simulation.reglages_utilises,
+      'electrique_societe.seuil_bas_dc_ac': { valeur: 0.8, source: 'profil', reference: ref },
+      'electrique_societe.tolerance_polystring_bloquante_pct': { valeur: 10, source: 'profil', reference: ref },
+      'electrique_societe.tolerance_polystring_acceptable_pct': { valeur: 5, source: 'profil', reference: ref },
+    } }
+    servir(d)
+    rendre()
+    const note = await screen.findByTestId('acal698-texte-note')
+    expect(note).toHaveTextContent('3 réglages utilisent des valeurs publiées')
+    expect(note).not.toHaveTextContent('electrique_societe')
+    expect(note).not.toHaveTextContent(/seuil_bas|polystring|taille minimale|entre chaînes/i)
+    expect(note).not.toHaveTextContent('_')
+  })
+})
+
+describe('Étape Résultats — étapes que PVGIS compte et pas nous (ACAL1933)', () => {
+  it('omises_vs_pvgis servie : « sans la chaleur des panneaux, que PVGIS compte », aucune mention d’égalité', async () => {
+    const d = COMPLET_MAQUETTE()
+    d.validation.pertes_totales = { ...d.validation.pertes_totales, egales: false,
+      omises_vs_pvgis: [{ etape: 'thermique', libelle: 'Échauffement des modules', designation: 'la chaleur des panneaux' }] }
+    servir(d)
+    rendre()
+    const tuile = (await screen.findByTestId('cal-resultats-tuiles')).querySelector('[data-tuile="ecart-pvgis"]')
+    expect(tuile).toHaveTextContent('sans la chaleur des panneaux, que PVGIS compte')
+    expect(tuile).not.toHaveTextContent('pertes système égales')
+  })
+
+  it('rien d’omis (liste vide) : pas de phrase « que PVGIS compte »', async () => {
+    const d = COMPLET_MAQUETTE()
+    d.validation.pertes_totales = { ...d.validation.pertes_totales, omises_vs_pvgis: [] }
+    servir(d)
+    rendre()
+    const tuile = (await screen.findByTestId('cal-resultats-tuiles')).querySelector('[data-tuile="ecart-pvgis"]')
+    expect(tuile).not.toHaveTextContent('que PVGIS compte')
   })
 })

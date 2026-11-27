@@ -13,7 +13,7 @@ import { PARAM_ONGLET, ongletParCle, resoudreOnglet } from './onglets'
 import RailGuide from '../commun/RailGuide'
 import OutilPosePompage from '../commun/OutilPosePompage'
 import { PARAM_MODE, useModeExpert } from './modeExpert'
-import { PARAM_CHAMP, useOuvrirChamp } from './ouvrirChamp'
+import { PARAM_CHAMP, amenerDansLaVue, useOuvrirChamp } from './ouvrirChamp'
 import {
   ECRANS_ETAPE, ongletsVisibles, premierOngletEtape, useParcours, vueParcours,
 } from './parcoursGuide'
@@ -203,9 +203,12 @@ function RailCorps({
   const focusApresOuverture = useRef(false)
 
   useEffect(() => {
+    // ACAL1714 — l'onglet ouvert (par le rail OU par `?onglet=`) amène SON panneau dans la vue : en Expert il vit tout en
+    // bas d'un panneau très haut, et le focus seul ne le montre pas.
+    if (cleActive) amenerDansLaVue(panneauRef.current, 'start')
     if (!focusApresOuverture.current) return
     focusApresOuverture.current = false
-    panneauRef.current?.focus()
+    panneauRef.current?.focus({ preventScroll: true })
   }, [cleActive])
 
   // CALX397 — l'onglet MONTÉ est signalé (une fois par session, sans bloquer).
@@ -219,8 +222,9 @@ function RailCorps({
   const ouvrir = (cle) => {
     if (cle === cleVue) {
       // Rouvrir l'onglet déjà ouvert (Entrée sur lui) : rien à écrire dans
-      // l'URL, le focus part simplement sur son panneau.
-      panneauRef.current?.focus()
+      // l'URL, le focus part simplement sur son panneau (amené dans la vue).
+      amenerDansLaVue(panneauRef.current, 'start')
+      panneauRef.current?.focus({ preventScroll: true })
       return
     }
     focusApresOuverture.current = true

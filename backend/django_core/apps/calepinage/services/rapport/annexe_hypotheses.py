@@ -65,7 +65,7 @@ from . import (
     sections_declarees,
 )
 from ..note_calcul import LIBELLE_SOURCE
-from .champs_lisibles import SOURCES_LISIBLES, motif_lisible
+from .champs_lisibles import SOURCES_LISIBLES, champ_en_clair, motif_lisible
 
 __all__ = ['CSS_SECTION', 'SOURCE_NON_RENSEIGNEE', 'html_de_section']
 
@@ -186,10 +186,20 @@ def _etapes_omises(resultat):
     return lignes
 
 
+def _grandeur_en_clair(chemin):
+    """ACAL1716 — l'intitulé de métier d'une grandeur ; jamais un chemin brut
+    (``production.base``) : sans intitulé connu, « une donnée »."""
+    clair = champ_en_clair(chemin)
+    if clair:
+        return clair
+    brut = str(chemin or '')
+    return 'une donnée' if any(c in brut for c in '._[]') else brut
+
+
 def _table_non_calcule(lignes):
     entete = '<tr><th>Grandeur</th><th>Motif</th></tr>'
     corps = ''.join(
-        '<tr><td>%s</td><td>%s</td></tr>' % (escape(chemin), escape(motif))
+        '<tr><td>%s</td><td>%s</td></tr>' % (escape(_grandeur_en_clair(chemin)), escape(motif))
         for chemin, motif in lignes) or AUCUNE_LIGNE  # ACAL1626 — « aucune »
     return '<table class="annexe-hypotheses">%s%s</table>' % (entete, corps)
 
