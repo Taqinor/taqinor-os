@@ -288,6 +288,9 @@
   position: absolute;
   left: 16px;
   bottom: 28px;
+  /* R8-N8 : bornée sous l'en-tête (70 strings = 1 558 px) ; elle défile au-delà. */
+  max-height: calc(100% - 28px - var(--cal-haut-barre, 56px) - 16px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -313,7 +316,9 @@
   gap: 8px;
 }
 .cel-barre-message {
-  max-width: 420px;
+  /* R8-N3 : largeur réelle du texte (jusqu'à 420 px) au lieu de la largeur min-content. */
+  width: max-content;
+  max-width: min(420px, calc(100vw - 32px));
   padding: 8px 12px;
   border-radius: var(--cal-rayon-pile);
   background: var(--cal-flottante-dense);

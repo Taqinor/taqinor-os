@@ -293,3 +293,23 @@ test('ACAL1978 : au bureau (≥ 1024 px) le pied de la vue client est posé en h
   assert.equal(d.right, '28px')
   assert.equal(d.background, 'transparent')
 })
+
+// R8-N3 / R8-N8 — étape Électrique : le message « Onduleur placé… » ne s'effondre plus en colonne d'un mot par ligne,
+// et la légende des strings (70 strings = 1 558 px) reste bornée sous l'en-tête.
+test('R8-N3 / R8-N8 : message de la barre à largeur réelle, légende bornée et défilante', () => {
+  const source = readFileSync(new URL('../../styles/calepinage/53-etape-electrique.css', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+  const regle = (sel) => regles(source).find((r) => r.sel.trim() === sel)
+  const message = regle('.cel-barre-message')
+  assert.ok(message, 'règle .cel-barre-message absente')
+  const m = declarations(message.corps)
+  assert.ok(m.width || m['min-width'], '.cel-barre-message doit fixer width ou min-width (pas min-content)')
+  assert.notEqual(m.width, 'min-content')
+  const plafond = /(\d+)px/.exec(m['max-width'] ?? '')
+  assert.ok(plafond && Number(plafond[1]) <= 420, 'max-width ≤ 420px attendu')
+  const legende = regle('.cel-legende')
+  assert.ok(legende, 'règle .cel-legende absente')
+  const l = declarations(legende.corps)
+  assert.ok(l['max-height'], '.cel-legende doit avoir un max-height')
+  assert.equal(l['overflow-y'], 'auto')
+})
