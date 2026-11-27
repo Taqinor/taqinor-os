@@ -219,10 +219,29 @@ class LePanneauParDefautDeLaSocieteDemarreLeCalepinageTest(SimpleTestCase):
         self.assertEqual([e['module']['produitId'] for e in servi['modules']], [4112, 4140])  # favori d'abord
         self.assertTrue(all('par_defaut' not in e for e in servi['modules']))
 
-    def test_le_module_de_la_conception_du_devis_garde_la_tete(self):
+    def test_rejeu_un_pan_neuf_part_du_panneau_par_defaut_meme_si_la_conception_dit_un_autre_module(self):
+        """D-ACAL-169 (rejeu) — 715 Wc désigné, conception du lead au 710 : le premier module d'un pan NEUF était
+        « CS 710W — module de départ » (le module de la conception en tête). L'atelier pose d'office le premier
+        choisissable (``moduleDeDepart``) : c'est désormais le panneau par défaut utilisable."""
         servi = self._servi(self._produit_715(), [_produit_complet(), self._produit_715()], du_devis='4112')
+        self.assertEqual([e['module']['produitId'] for e in servi['modules']], [4140, 4112])
+        premier = next(e for e in servi['modules'] if e['selectionnable'])
+        self.assertTrue(premier['par_defaut'])
+        self.assertEqual(premier['module']['id'], 'produit-4140')
+
+    def test_rejeu_un_pan_existant_garde_son_module_il_reste_servi_et_choisissable(self):
+        """D-ACAL-169 (rejeu) — un pan EXISTANT (ou un calepinage enregistré) cite son module par
+        ``zones[].geometry.moduleId`` : ce module reste servi, choisissable, au même identifiant stable, juste
+        après le panneau par défaut. Rien n'est réécrit dans le document."""
+        servi = self._servi(self._produit_715(), [_produit_complet(), self._produit_715()], du_devis='4112')
+        cite = next(e for e in servi['modules'] if e['module']['id'] == 'produit-4112')
+        self.assertTrue(cite['selectionnable'])
+        self.assertNotIn('par_defaut', cite)
+
+    def test_un_panneau_par_defaut_grise_laisse_la_tete_au_module_de_la_conception(self):
+        incomplet = _FauxProduit(4140, 'Module 715 Wc', _FausseFiche(longueur_mm=2384, largeur_mm=1303))
+        servi = self._servi(incomplet, [_produit_complet(), incomplet], du_devis='4112')
         self.assertEqual([e['module']['produitId'] for e in servi['modules']], [4112, 4140])
-        self.assertTrue(servi['modules'][1]['par_defaut'])
 
     def test_une_fiche_incomplete_n_ouvre_pas_le_calepinage_et_le_dit(self):
         incomplet = _FauxProduit(4140, 'Module 715 Wc', _FausseFiche(longueur_mm=2384, largeur_mm=1303))

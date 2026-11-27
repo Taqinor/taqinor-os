@@ -16,7 +16,9 @@ import {
   etatPrixCi, TEXTE_TARIF_PARAMETRES_CI, TEXTE_PRIX_BAREME_CI, ROUTE_PARAMETRES_PRESTATIONS_CI,
 } from '../../features/stock/catalogue'
 import { formatMAD, formatNumber } from '../../lib/format'
-import { estResumePanneau } from '../../features/stock/panneauParDefaut'
+import {
+  estResumePanneau, panneauDefautInutilisable, LIBELLE_DEFAUT_INUTILISABLE,
+} from '../../features/stock/panneauParDefaut'
 import {
   FICHE_ABSENTE, FICHE_PARTIELLE, FICHE_COMPLETE,
   completudeFiche, TON_FICHE, LABEL_FICHE,
@@ -153,9 +155,11 @@ export function LignePanneauParDefaut({ resume }) {
       </p>
     )
   }
+  // D-ACAL-169 (rejeu) — un produit désigné mais inutilisable n'est pas « aucun » : le motif servi le nomme.
+  const titre = panneauDefautInutilisable(resume) ? LIBELLE_DEFAUT_INUTILISABLE : 'Aucun panneau par défaut'
   return (
     <p data-testid="panneau-par-defaut-ligne" className="text-sm text-muted-foreground">
-      <span className="font-medium text-foreground">Aucun panneau par défaut</span>
+      <span className="font-medium text-foreground">{titre}</span>
       {resume.motif && <> — {resume.motif}</>}
     </p>
   )
@@ -314,7 +318,9 @@ export function CatalogueTable({
                   ? <span className="font-mono">{p.sku}</span>
                   : <Badge tone="warning">SKU manquant</Badge>}
                 {(p.marque || '').trim() && <span>· {p.marque}</span>}
-                {p.panneau_par_defaut && <Badge tone="success">Panneau par défaut</Badge>}
+                {p.panneau_par_defaut && (panneauDefautInutilisable(panneauParDefaut)
+                  ? <Badge tone="warning" title={panneauParDefaut.motif}>{LIBELLE_DEFAUT_INUTILISABLE}</Badge>
+                  : <Badge tone="success">Panneau par défaut</Badge>)}
                 {manquantesOnduleur.length > 0 && (
                   <Badge
                     tone="warning"
@@ -534,7 +540,7 @@ export function CatalogueTable({
       },
       exportValue: (p) => p.seuil_alerte,
     },
-  ], [editable, canWrite, canEditPrix, voitPrixVente, onInlineSave, onAjusterStock, selectable, selected, onToggleSelect, fichesParProduit])
+  ], [editable, canWrite, canEditPrix, voitPrixVente, onInlineSave, onAjusterStock, selectable, selected, onToggleSelect, fichesParProduit, panneauParDefaut])
 
   // Actions de ligne (≤2 rapides + menu kebab) — historique / éditer / supprimer.
   const rowActions = (p) => {

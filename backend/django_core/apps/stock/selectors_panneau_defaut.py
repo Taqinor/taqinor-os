@@ -110,9 +110,17 @@ def _texte(valeur):
 
 
 def phrase_desaccord_watt(au_nom, de_fiche):
-    """La phrase (refus de l'action ET motif du résumé) qui nomme les deux valeurs et dit quoi corriger."""
+    """La phrase du REFUS de l'action (dite sous le bouton de CE produit) qui nomme les deux valeurs et dit quoi
+    corriger. Le motif du résumé, lu loin de la fiche, est ``motif_desaccord_watt`` (il nomme le produit)."""
     return (f"Le nom de ce produit dit {_texte(au_nom)} W et sa fiche technique {_texte(de_fiche)} Wc : "
             "corrigez l'un des deux, puis désignez-le.")
+
+
+def motif_desaccord_watt(nom, au_nom, de_fiche):
+    """D-ACAL-169 (rejeu) — le MOTIF du résumé pour un désigné au watt contradictoire : il NOMME le produit (la ligne
+    du stock le lit telle quelle, loin de la fiche du produit), les deux valeurs, et ce qui s'applique d'ici là."""
+    return (f"Le panneau désigné « {nom} » n'est pas utilisable : son nom dit {_texte(au_nom)} W et sa fiche "
+            f"technique {_texte(de_fiche)} Wc. Corrigez l'un des deux ; d'ici là, {_REGLE_DU_JOUR}")
 
 
 def watt_du_panneau(produit):
@@ -153,7 +161,7 @@ def resume_du_produit(produit):
         if produit is None:
             motif = MOTIF_AUCUN
         elif source == WATT_CONTRADICTOIRE:
-            motif = phrase_desaccord_watt(*desaccord_watt(produit))
+            motif = motif_desaccord_watt(produit.nom, *desaccord_watt(produit))
         else:
             motif = _MOTIFS[source].format(nom=produit.nom)
         return {'produit_id': None, 'nom': None, 'pmax_wc': None, 'source': source, 'motif': motif}

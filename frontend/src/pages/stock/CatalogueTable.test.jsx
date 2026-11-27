@@ -652,11 +652,31 @@ describe('CatalogueTable — panneau par défaut (D-ACAL-169)', () => {
   })
 
   it('aucun panneau désigné : « Aucun panneau par défaut » et la raison servie', () => {
-    const resume = exempleContrat('stock', 'panneau_par_defaut', 'exemple_archive')
+    const resume = exempleContrat('stock', 'panneau_par_defaut', 'exemple_aucun')
     renderTable({ panneauParDefaut: resume })
     const ligne = screen.getByTestId('panneau-par-defaut-ligne')
     expect(ligne.textContent).toBe(`Aucun panneau par défaut — ${resume.motif}`)
   })
+
+  // D-ACAL-169 (rejeu) — désigné mais inutilisable (nom 700 W, fiche 715 Wc ; archivé ; sans prix…) : UNE vérité
+  // sur la page. La ligne nomme le produit et dit pourquoi ; la pastille de la ligne dit le même état.
+  it.each(['exemple_watt_contradictoire', 'exemple_archive', 'exemple_sans_prix', 'exemple_pas_un_panneau'])(
+    'désigné inutilisable (%s) : la ligne et la pastille disent « non utilisable », le produit est nommé',
+    (variante) => {
+      const resume = exempleContrat('stock', 'panneau_par_defaut', variante)
+      renderTable({ panneauParDefaut: resume, produits: [
+        baseProduit({ id: 1, nom: 'Panneau Jinko 710 W', sku: 'PAN-710', panneau_par_defaut: true }),
+      ] })
+      const ligne = screen.getByTestId('panneau-par-defaut-ligne')
+      expect(ligne.textContent).toBe(`Panneau par défaut non utilisable — ${resume.motif}`)
+      expect(ligne.textContent).not.toContain('Aucun panneau par défaut')
+      expect(resume.motif).toMatch(/« .+ »/)
+      const rangee = within(screen.getByRole('grid')).getAllByRole('row')
+        .find((r) => within(r).queryByText('Panneau Jinko 710 W'))
+      const pastille = within(rangee).getByText('Panneau par défaut non utilisable')
+      expect(pastille.getAttribute('title')).toBe(resume.motif)
+      expect(within(rangee).queryByText('Panneau par défaut')).toBeNull()
+    })
 
   it('sans résumé servi : aucune ligne (rendu d’hier)', () => {
     renderTable()

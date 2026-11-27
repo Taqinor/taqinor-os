@@ -151,11 +151,34 @@ def decider_taille_residentielle(*, lead, company, target_kwc=None, scenario=Non
     if zone_client:
         layout.update(zone_client)
         journal['contour_client'] = len(zone_client['outline'])
+    if auto.designe and auto.prefere(watt) is None:
+        # D-ACAL-169 (rejeu) — le défaut accepté n'a pas fait la taille : la règle
+        # d'aujourd'hui, et le vendeur apprend POURQUOI (panneau et raison nommés).
+        R._ajouter_alerte(journal, 'panneau_par_defaut', _motif_defaut_non_retenu(company, auto, watt, phase))
     return DecisionResidentielle(
         panneaux=panneaux, watt=watt, kwc=kwc, source=source, optimum_avec=optimum_avec,
         choix_batterie=choix_batterie, avec_batterie=avec_batterie, deux_options=deux_options,
         phase=phase, hors_reseau=hors_reseau, layout=layout, journal=journal,
         panneau_prefere_id=auto.prefere(watt))
+
+
+def _motif_defaut_non_retenu(company, auto, watt, phase):
+    """D-ACAL-169 (rejeu) — la phrase au vendeur quand le panneau par défaut ``auto`` (accepté par la
+    composition) n'est pas celui de la taille décidée (``watt``) : la raison de la composition (couple
+    électrique, onduleur et bloquants nommés), sinon la puissance réelle de l'étude. Jamais une panne."""
+    from apps.ventes.domain.etape_composer import (
+        contexte_sonde_neuf, refus_du_panneau_par_defaut, reglages_de_composition)
+    try:
+        raison = refus_du_panneau_par_defaut(contexte_sonde_neuf(
+            panneau=auto, company=company, reglages=reglages_de_composition(company), phase=phase))
+    except Exception:  # noqa: BLE001 — sonde illisible : la phrase sans la raison électrique (D-ENF22-BLE001)
+        logger.warning('D-ACAL-169 : raison du panneau par défaut illisible pour %r', company, exc_info=True)
+        raison = None
+    if not raison:
+        valeur = float(watt)
+        raison = "l'étude de ce lead est dimensionnée en panneaux de %s W" % (
+            int(valeur) if valeur.is_integer() else str(valeur).replace('.', ','))
+    return auto.refus('le devis automatique', raison).motif
 
 
 def _plafond_du_toit(lead, plafond_toit, panneaux, kwc, watt, optimum_avec, journal):

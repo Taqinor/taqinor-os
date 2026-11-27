@@ -236,9 +236,10 @@ def modules_disponibles_du_calepinage(calepinage, produits):
     """
     entrees = [_entree_module(produit) for produit in (produits or [])]
     fiches_du_catalogue = len(entrees)
-    # D-ACAL-169 — le panneau par défaut de la société vient juste APRÈS le module de la conception et AVANT les
-    # favoris : quand rien d'autre ne décide, c'est lui que l'atelier pose d'office. Sélectionnable seulement ;
-    # sinon il est listé et dit pourquoi, l'ordre d'aujourd'hui reste.
+    # D-ACAL-169 (rejeu) — le panneau par défaut UTILISABLE de la société passe EN TÊTE, devant le module de la
+    # conception et les favoris : c'est lui que l'atelier pose d'office sur un pan NEUF (« 715 partout »). Un pan
+    # existant cite son module par ``moduleId`` : ce module reste servi et choisissable, rien n'est réécrit.
+    # Grisé (fiche incomplète), il est listé et dit pourquoi ; l'ordre d'aujourd'hui reste.
     defaut = _panneau_par_defaut(calepinage)
     if defaut is not None:
         _marquer_le_panneau_par_defaut(entrees, defaut)
@@ -251,14 +252,15 @@ def modules_disponibles_du_calepinage(calepinage, produits):
             for position, identifiant in enumerate(favoris)}
     for entree in entrees:
         entree['favori'] = str(entree['module']['produitId']) in rang
-    # Rejeu T3-VAGUEC2 + ACAL2025 — le module de la CONCEPTION passe EN TÊTE,
-    # devant les favoris. L'atelier pose d'office le premier module du catalogue
-    # (``moduleDeDepart``) : c'est donc lui, jamais un module d'essai de même
-    # puissance. Le choisir autrement reste un geste de l'atelier.
+    # Rejeu T3-VAGUEC2 + ACAL2025 — le module de la CONCEPTION passe devant les
+    # favoris (derrière le seul panneau par défaut utilisable, D-ACAL-169 rejeu).
+    # L'atelier pose d'office le premier module du catalogue (``moduleDeDepart``) :
+    # jamais un module d'essai de même puissance. Le choisir autrement reste un
+    # geste de l'atelier.
     du_devis = _module_de_la_conception(calepinage)
     entrees.sort(key=lambda entree: (
-        0 if du_devis is not None and str(entree['module']['produitId']) == du_devis else 1,
         0 if entree.get('par_defaut') and entree['selectionnable'] else 1,
+        0 if du_devis is not None and str(entree['module']['produitId']) == du_devis else 1,
         0 if entree['favori'] else 1,
         rang.get(str(entree['module']['produitId']), 0)))
     selectionnables = [entree for entree in entrees if entree['selectionnable']]

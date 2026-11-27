@@ -502,6 +502,20 @@ def sonder_wattage(contexte):
         return 0.0
 
 
+def refus_du_panneau_par_defaut(contexte):
+    """D-ACAL-169 (rejeu) — POURQUOI la composition de ``contexte`` ne retient
+    pas son panneau par défaut : la même sonde que :func:`sonder_wattage` (un
+    panneau, à SA puissance), dont on lit la raison du remplacement (couple
+    électrique, ``CompositionLignes.panneau_prefere_refuse``). ``None`` : aucun
+    défaut, ou la composition le retient. La quantité en stock n'y entre pas."""
+    defaut = getattr(contexte, 'panneau_defaut', None)
+    if defaut is None or not defaut.designe:
+        return None
+    sonde = composer_sonde(dataclasses.replace(contexte, panel_watt=defaut.watt, hors_reseau=False), 1,
+                           avec_batterie=False)
+    return getattr(sonde, 'panneau_prefere_refuse', None)
+
+
 # ── Étape 4 — VERIFIER ───────────────────────────────────────────────────────
 # Le constat QB82 (audit L3 du 29/08/2026) : la pré-vérification
 # ``validate_composition_for_layout`` était (a) câblée sur UN SEUL des cinq
