@@ -1558,6 +1558,12 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
         vue_interne['apres_impot'] = apres
         if motif_apres is not None:
             vue_interne['apres_impot_motif'] = motif_apres
+    indicateurs = flux['indicateurs']
+    if isinstance(indicateurs, dict):  # ACAL1224 — le retour au dixième que le PDF imprime
+        servi = indicateurs.get('retour_ans')  # (couverture.retour_dixieme ; avant le niveau 3 : l'entier)
+        dixieme = None if servi is None or reglages.get('regles_origine') else _options.retour_au_dixieme(
+            flux['flux_ttc'] if flux['base'] == BASE_TTC else flux['flux_ht'])
+        indicateurs['retour_dixieme_ans'] = servi if dixieme is None else dixieme
     hypotheses = [dict(HYPOTHESE_VALORISATION), _hypothese_tarif(tarif)]
     hypotheses.extend(valo.get('hypotheses') or [])
     bloc = {
