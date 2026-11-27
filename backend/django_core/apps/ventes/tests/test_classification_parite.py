@@ -35,7 +35,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.ventes.domain.catalogue import _parse_kwh, classer_produit
 from apps.ventes.quote_engine.lignes_classement import (
@@ -490,28 +490,66 @@ class LecteursAvalRoleRangeTest(SimpleTestCase):
     def test_cas_b_panneaux_ranges_tous_les_comptes_d_accord(self):
         """Cas B — « Canadian Solar TOPBiHiKu7 CS7N-715TB » ×30 rangé ``panneau`` :
         compte du PDF (``panneaux_et_watt_lu``), paires kWc, compte du re-tarif
-        (``_comptes_panneaux``), compte de la garde (``comptes_panneaux_valides``)
-        et dimensionnement public : 30 partout."""
+        (``retarifer`` : ``_comptes_panneaux`` sur ``devis.lignes``), compte
+        CAPTURÉ avant un geste (``comptes_panneaux_du_devis``, relu EN BASE),
+        compte de la garde (``comptes_panneaux_valides``) et dimensionnement
+        public : 30 partout.
+
+        Constat 3 — sur le CHEMIN RÉEL : des ``LigneDevis`` (pas des doublures,
+        qui ont toujours leur devis « chargé »). Les lignes de ``devis.lignes``
+        portent leur devis ; celles que ``comptes_panneaux_du_devis`` relit par
+        ``LigneDevis.objects.filter(devis_id=…)`` ne le portent PAS — seul le
+        devis transmis ouvre alors la lecture par rôle. Avant le correctif, le
+        compte capturé valait 0 face aux 30 du re-tarif : un écart que la garde
+        des devis envoyés lit comme un changement de compte."""
+        from datetime import date, timedelta
+        from decimal import Decimal
+        from unittest import mock
+
+        from apps.stock.models import FicheTechnique, Produit
         from apps.ventes.domain.dimensionnement_devis import comptes_panneaux_valides
-        from apps.ventes.domain.lignes import _comptes_panneaux
+        from apps.ventes.domain.lignes import _comptes_panneaux, comptes_panneaux_du_devis
+        from apps.ventes.domain.regles_calcul import COUPURE_CLASSE_PAR_ROLE
+        from apps.ventes.models import Devis, LigneDevis
         from apps.ventes.public.payload_horaire import _dimensionnement_option_depuis_items
         from apps.ventes.quote_engine.lignes_classement import (
             paires_panneaux_lues, panneaux_et_watt_lu)
         nom = 'Canadian Solar TOPBiHiKu7 CS7N-715TB'
         self.assertFalse(_is_panel(nom))
-        devis = SimpleNamespace(statut='brouillon', date_envoi=None, regles_calcul=14)
-        panneau = _ligne(nom, role='panneau', devis=devis, quantite=30,
-                         produit=SimpleNamespace(nom=nom, fiche_technique=_FicheLue('module', pmax_wc=715)))
-        devis.lignes = _Lignes([panneau])
+        produit = Produit(nom=nom)
+        FicheTechnique(produit=produit, type_fiche='module', pmax_wc=Decimal('715'))
+
+        def ligne(role, devis=None):
+            champs = dict(designation=nom, role_devis=role, type_ligne='produit', produit=produit,
+                          quantite=Decimal('30'), prix_unitaire=Decimal('1200'), remise=Decimal('0'))
+            return LigneDevis(devis=devis, **champs) if devis is not None else LigneDevis(**champs)
+
+        def capture(devis, lignes_en_base):
+            requete = mock.Mock()
+            requete.filter.return_value.select_related.return_value = lignes_en_base
+            with mock.patch.object(LigneDevis, 'objects', requete):
+                return comptes_panneaux_du_devis(devis)
+
+        reel = Devis(pk=41, statut='brouillon', date_envoi=None, regles_calcul=14)
+        panneau = ligne('panneau', reel)  # telle que la rend ``devis.lignes.all()``
+        devis = SimpleNamespace(pk=41, statut='brouillon', date_envoi=None, regles_calcul=14,
+                                lignes=_Lignes([panneau]))
         self.assertEqual(panneaux_et_watt_lu([panneau]), (30, 715))
         self.assertEqual(paires_panneaux_lues([panneau]), [(30, 715)])
         self.assertEqual(_comptes_panneaux([panneau])[''], 30)
+        self.assertEqual(capture(devis, [ligne('panneau')])[''], 30)
         self.assertEqual(comptes_panneaux_valides(devis), {30})
         self.assertEqual(_dimensionnement_option_depuis_items([_item(panneau)], devis)['nb_panneaux'], 30)
+        # Envoyé avant la coupure : 0 des DEUX côtés, le verdict d'hier, aucun écart.
+        avant = SimpleNamespace(pk=41, statut='envoye', regles_calcul=14,
+                                date_envoi=date(*COUPURE_CLASSE_PAR_ROLE) - timedelta(days=1))
+        self.assertEqual(capture(avant, [ligne('panneau')])[''], 0)
+        self.assertEqual(_comptes_panneaux([ligne('panneau')], devis=avant)[''], 0)
         # Sans rôle rangé : 0 partout, le verdict d'hier.
-        muet = _ligne(nom, devis=devis, quantite=30)
+        muet = ligne(None, reel)
         self.assertEqual(panneaux_et_watt_lu([muet])[0], 0)
         self.assertEqual(_comptes_panneaux([muet])[''], 0)
+        self.assertEqual(capture(devis, [ligne(None)])[''], 0)
 
     def test_le_scenario_de_l_etude_lit_les_roles_emis_par_la_composition(self):
         """Constat 2 — ``cles_etude_de_composition`` (étape 6 du pipeline et
@@ -581,3 +619,33 @@ class LecteursAvalRoleRangeTest(SimpleTestCase):
         avant = devis(statut='envoye', date_envoi=date(*COUPURE_CLASSE_PAR_ROLE) - timedelta(days=1))
         self.assertEqual(_auto_scenario(avant), SCENARIO_SANS_BATTERIE)
         self.assertEqual(_autos_banque_batterie(avant), {})
+
+
+class LecteursAvalComptesEnBaseTest(TestCase):
+    """Constat 3 — EN BASE (CI) : le compte capturé avant un geste
+    (``comptes_panneaux_du_devis``, lignes relues SANS leur devis) égale le
+    compte du re-tarif (``devis.lignes``) pour le cas B rangé ``panneau``."""
+
+    def test_cas_b_compte_capture_egal_au_compte_du_retarif(self):
+        from decimal import Decimal
+
+        from authentication.models import Company
+
+        from apps.crm.models import Client
+        from apps.stock.models import Produit
+        from apps.ventes.domain.lignes import _comptes_panneaux, _lignes_produit, comptes_panneaux_du_devis
+        from apps.ventes.models import Devis, LigneDevis
+        company = Company.objects.create(slug='lav-comptes-b', nom='lav-comptes-b')
+        client_obj = Client.objects.create(company=company, nom='Client cas B')
+        devis = Devis.objects.create(company=company, reference='DEV-LAV-B-01', client=client_obj,
+                                     statut='brouillon', taux_tva=Decimal('20'),
+                                     mode_installation='residentiel')
+        nom = 'Canadian Solar TOPBiHiKu7 CS7N-715TB'
+        produit = Produit.objects.create(company=company, nom=nom, prix_vente=1200, quantite_stock=50)
+        LigneDevis.objects.create(devis=devis, produit=produit, designation=nom, role_devis='panneau',
+                                  quantite=Decimal('30'), prix_unitaire=Decimal('1200'),
+                                  remise=Decimal('0'))
+        devis = Devis.objects.get(pk=devis.pk)
+        capture = comptes_panneaux_du_devis(devis)
+        self.assertEqual(capture[''], 30)
+        self.assertEqual(capture, _comptes_panneaux(_lignes_produit(devis), devis))

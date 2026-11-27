@@ -76,7 +76,7 @@ def _lignes_produit(devis):
             if getattr(ligne, 'type_ligne', 'produit') == 'produit']
 
 
-def _classe_ligne(ligne, predicat):
+def _classe_ligne(ligne, predicat, devis=None):
     """Classe une ligne sur sa DÉSIGNATION, à défaut sur le nom du produit.
 
     La désignation est ce que lit ``quote_engine/builder.py`` (contrat
@@ -88,12 +88,16 @@ def _classe_ligne(ligne, predicat):
     RANGÉ sur la ligne à son écriture (``domain.classe_ligne``) ; nouveaux
     rendus seulement, et un prédicat hors de ``solar_classification`` garde
     les seuls mots-clés.
+
+    ``devis`` — celui de la ligne, à transmettre quand la ligne a été lue SANS
+    lui (``LigneDevis.objects.filter(devis_id=…)``) : sans devis connu, le rôle
+    rangé ne se lit pas et seuls les mots-clés parlent.
     """
     from apps.ventes.domain.classe_ligne import est
 
     return est(ligne, predicat, lambda: (
         predicat(ligne.designation or '')
-        or predicat(getattr(ligne.produit, 'nom', '') or '')))
+        or predicat(getattr(ligne.produit, 'nom', '') or '')), devis=devis)
 
 
 def _pmax_wc_du_produit(produit):
@@ -868,7 +872,7 @@ def avertissement_forfait_commun_divergent(designation):
             'qu\'il suive chaque compte.' % designation)
 
 
-def _comptes_panneaux(lignes):
+def _comptes_panneaux(lignes, devis=None):
     """Le compte de panneaux de CHAQUE vue, lu sur les lignes du devis.
 
     Rend ``{variante: nb}`` pour les trois valeurs de ``variante``. Sur un
@@ -877,6 +881,8 @@ def _comptes_panneaux(lignes):
     les lignes COMMUNES plus les leurs (même règle que
     ``lignes_de_variante``), et la clé COMMUNE vaut ``None`` quand les deux
     divergent : il n'existe alors AUCUN compte qui décrive les deux options.
+
+    ``devis`` — transmis à :func:`_classe_ligne` (lignes lues sans leur devis).
     """
     def _quantite(ligne):
         try:
@@ -885,7 +891,7 @@ def _comptes_panneaux(lignes):
         except (ArithmeticError, TypeError, ValueError):
             return 0
 
-    panneaux = [li for li in lignes if _classe_ligne(li, _is_panel)]
+    panneaux = [li for li in lignes if _classe_ligne(li, _is_panel, devis)]
     if not any((getattr(li, 'variante', '') or '') for li in panneaux):
         total = sum(_quantite(li) for li in panneaux)
         return {VARIANTE_COMMUNE: total,
@@ -909,7 +915,10 @@ def comptes_panneaux_du_devis(devis):
     from apps.ventes.models import LigneDevis
     lignes = list(LigneDevis.objects.filter(
         devis_id=devis.pk, type_ligne='produit').select_related('produit'))
-    return _comptes_panneaux(lignes)
+    # Lecteurs en aval (constat 3) — ces lignes ne portent PAS leur devis : le
+    # transmettre, sinon ce compte (mots-clés seuls) diverge de celui du
+    # re-tarif (rôle rangé) qu'il est censé égaler.
+    return _comptes_panneaux(lignes, devis)
 
 
 def _statut_en_base(devis):
@@ -976,7 +985,7 @@ def retarifer_forfaits_par_panneau(devis, *, avertissements=None,
     """
     messages = avertissements if isinstance(avertissements, list) else []
     lignes = _lignes_produit(devis)
-    comptes = _comptes_panneaux(lignes)
+    comptes = _comptes_panneaux(lignes, devis)
     geles = {}
     if _statut_en_base(devis) not in (None, 'brouillon'):
         if comptes_avant is None or comptes_avant == comptes:
@@ -1342,7 +1351,7 @@ def lignes_neuves(devis, lignes_in, company, *, avertissements=None):
               for champs in _champs_des_lignes(lignes_in, company, lambda _lot: None)]
     produits = [li for li in lignes if li.type_ligne == 'produit']
     messages = avertissements if isinstance(avertissements, list) else []
-    for ligne, attendu in _retarifs(produits, _comptes_panneaux(produits), {}, messages):
+    for ligne, attendu in _retarifs(produits, _comptes_panneaux(produits, devis), {}, messages):
         ligne.prix_unitaire = attendu
     return lignes
 
