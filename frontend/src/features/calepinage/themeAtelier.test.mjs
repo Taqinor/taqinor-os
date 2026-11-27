@@ -254,3 +254,42 @@ test('ACAL1985 : aucune règle ne redessine le bouton de BoutonDevis par-dessus 
   }
   assert.deepEqual(fautives, [], `bouton de BoutonDevis redessiné : ${fautives.join(' | ')}`)
 })
+
+// ACAL1942 — un seul aplat doré par écran, réservé à l'action suivante (K8). « Localiser » (Toit sans contour, à côté de
+// « Poser les panneaux ») et « Recalculer » (Expert > Pertes, résultat frais : plus d'action suivante) passent au gabarit
+// contour (surface + filet), sans fond d'or. Mutant : remettre `background: var(--cal-action)` / `var(--primary)` ⇒ échec.
+test('ACAL1942 : « Localiser » et « Recalculer » sont des boutons à contour, jamais un aplat doré', () => {
+  const feuille = (f) => regles(readFileSync(new URL(`../../styles/calepinage/${f}`, import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, ''))
+  const OR = /var\(--(cal-action|primary|cal-production|cal-or[\w-]*)\)|brass/
+  const cibles = [
+    ['50-coque-atelier.css', (s) => s.includes('#rp9-search') && s.includes("button[type='submit']")],
+    ['54-etape-resultats.css', (s) => s.includes('calx48-lancer-bouton') && s.includes("data-etat='frais'")],
+  ]
+  for (const [f, vise] of cibles) {
+    const regs = feuille(f).filter((r) => r.sel.split(',').some((s) => vise(s) && !s.includes(':hover')))
+    assert.ok(regs.length > 0, `${f} : aucune règle ne vise le bouton secondaire`)
+    const d = Object.assign({}, ...regs.map((r) => declarations(r.corps)))
+    assert.equal(d.background, 'var(--cal-surface)', `${f} : fond`)
+    assert.ok(!OR.test(d.background), `${f} : fond doré`)
+    assert.ok(/var\(--cal-filet-fort\)/.test(d.border ?? ''), `${f} : filet`)
+  }
+})
+
+// ACAL1978 — « Montrer au client » à 1440 × 900 : la mise en page grand écran existe (58-telephone.css, @media ≥ 1024 px) —
+// pied « Retour à l'atelier / Envoyer le lien » posé en haut à droite, sans barre ; la carte de production flotte. Le libellé
+// vient de `PiedClient` (VueClient.test.jsx). Ce cas fige la règle : sans elle la vue client redevient la colonne du téléphone.
+test('ACAL1978 : au bureau (≥ 1024 px) le pied de la vue client est posé en haut à droite, sans barre', () => {
+  const source = readFileSync(new URL('../../styles/calepinage/58-telephone.css', import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+  const debut = source.indexOf('@media (min-width: 1024px)')
+  assert.ok(debut >= 0, 'bloc @media (min-width: 1024px) absent')
+  const bloc = source.slice(debut, source.indexOf('\n}\n', debut))
+  const regle = regles(bloc).find((r) => /\.cal-tel-pied\s*$/.test(r.sel))
+  assert.ok(regle, 'aucune règle .cal-tel-pied dans le bloc grand écran')
+  const d = declarations(regle.corps)
+  assert.equal(d.position, 'absolute')
+  assert.equal(d.top, '28px')
+  assert.equal(d.right, '28px')
+  assert.equal(d.background, 'transparent')
+})
