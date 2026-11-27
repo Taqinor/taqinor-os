@@ -815,3 +815,96 @@ class LecteursAvalPariteDuPaybackTest(SimpleTestCase):
         devis = Devis(pk=41, reference='DEV-LAV-5', statut='envoye', date_envoi=avant.date_envoi,
                       regles_calcul=14, remise_globale=0, taux_tva=20)
         self.assertIsNone(self._payback(devis)['cout_onduleur_ttc'])
+
+
+#: Le rôle que le GÉNÉRATEUR range pour les cas A, B, C (vivier chargé avec la fiche ;
+#: C ne tient son hybride que de son rôle déclaré, sa fiche réelle ne publie aucun port).
+_ROLES_DU_GENERATEUR = {_NOM_A: 'batterie', _NOM_B: 'panneau', _NOM_C: 'onduleur_hybride'}
+
+
+def _produits_abc(*, fiche_chargee):
+    """Les produits A, B, C tels que les rend une requête, avec ou sans la fiche chargée."""
+    from decimal import Decimal
+
+    from apps.stock.models import FicheTechnique, Produit
+    sortie = []
+    for pk, (nom, role, type_fiche) in enumerate(
+            ((_NOM_A, None, 'batterie'), (_NOM_B, None, 'module'),
+             (_NOM_C, 'onduleur_hybride', 'onduleur')), start=1):
+        produit = Produit(pk=pk, nom=nom, role_devis=role, prix_vente=Decimal('1000'), company_id=1)
+        if fiche_chargee:
+            produit.fiche_technique = FicheTechnique(type_fiche=type_fiche)
+        sortie.append(produit)
+    return sortie
+
+
+class _Catalogue:
+    """Doublure de ``stock.selectors.produits_qs`` : la fiche n'est chargée que
+    si l'appelant la joint (``select_related('fiche_technique')``)."""
+
+    def __init__(self, pk, jointe=False):
+        self.pk, self.jointe = pk, jointe
+
+    def select_related(self, *noms):
+        return _Catalogue(self.pk, self.jointe or 'fiche_technique' in noms)
+
+    def filter(self, *args, **kwargs):
+        return self
+
+    def first(self):
+        return _produits_abc(fiche_chargee=self.jointe)[self.pk - 1]
+
+
+class LecteursAvalEcrivainsTest(SimpleTestCase):
+    """Constat 6 — les écrivains rangent TOUS le rôle du générateur : l'assistant
+    (``lignes_assistant.produit_vendable`` puis l'écrivain unique) et la création
+    d'une ligne seule par l'API (``LigneDevisSerializer``) ; un devis envoyé avant
+    la coupure garde l'écriture d'hier."""
+
+    def _par_l_assistant(self, devis, pk):
+        from unittest import mock
+
+        from apps.ventes.domain.lignes import _champs_a_la_creation
+        from apps.ventes.domain.lignes_assistant import produit_vendable
+        with mock.patch('apps.stock.selectors.produits_qs', return_value=_Catalogue(pk)):
+            produit = produit_vendable(devis, pk)
+        return _champs_a_la_creation(devis, {'produit': produit, 'designation': produit.nom})['role_devis']
+
+    def _par_l_api(self, devis, produit):
+        from decimal import Decimal
+        from unittest import mock
+
+        from rest_framework import serializers
+
+        from apps.ventes.serializers import LigneDevisSerializer
+        with mock.patch.object(serializers.ModelSerializer, 'create', lambda self, donnees: donnees):
+            return LigneDevisSerializer().create({
+                'devis': devis, 'produit': produit, 'designation': produit.nom,
+                'quantite': Decimal('1'), 'prix_unitaire': Decimal('1000'), 'taux_tva': Decimal('20')})
+
+    def test_l_assistant_range_le_role_du_generateur(self):
+        devis = SimpleNamespace(**vars(_BROUILLON), company_id=1, taux_tva=20)
+        self.assertEqual({nom: self._par_l_assistant(devis, pk) for pk, nom in
+                          enumerate((_NOM_A, _NOM_B, _NOM_C), start=1)}, _ROLES_DU_GENERATEUR)
+
+    def test_l_assistant_avant_la_coupure_garde_l_ecriture_d_hier(self):
+        devis = SimpleNamespace(**vars(_avant_la_coupure()), company_id=1, taux_tva=20)
+        self.assertEqual([self._par_l_assistant(devis, pk) for pk in (1, 2, 3)],
+                         [None, None, 'onduleur_hybride'])
+
+    def test_l_api_joint_la_fiche_du_produit(self):
+        from apps.stock.models import Produit
+        from apps.ventes.serializers import _ProduitSocieteOuCatalogueGlobalField
+        champ = _ProduitSocieteOuCatalogueGlobalField(queryset=Produit.objects.all())
+        champ._context = {}
+        self.assertIn('fiche_technique', champ.get_queryset().query.select_related or {})
+
+    def test_l_api_range_le_role_du_generateur(self):
+        devis = SimpleNamespace(**vars(_BROUILLON), company_id=1, taux_tva=20)
+        self.assertEqual({p.nom: self._par_l_api(devis, p).get('role_devis')
+                          for p in _produits_abc(fiche_chargee=True)}, _ROLES_DU_GENERATEUR)
+
+    def test_l_api_avant_la_coupure_garde_l_ecriture_d_hier(self):
+        devis = SimpleNamespace(**vars(_avant_la_coupure()), company_id=1, taux_tva=20)
+        for produit in _produits_abc(fiche_chargee=True):
+            self.assertNotIn('role_devis', self._par_l_api(devis, produit), produit.nom)

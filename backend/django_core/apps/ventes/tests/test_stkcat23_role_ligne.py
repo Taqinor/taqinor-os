@@ -360,6 +360,26 @@ class EcritureDuRoleTest(TestCase):
                                        'prix_unitaire': '36400'}], self.company)
         self.assertEqual(list(self.devis.lignes.values_list('role_devis', flat=True)), ['batterie'])
 
+    def test_lecteurs_aval_l_assistant_range_le_role_par_la_fiche(self):
+        """Constat 6 — l'assistant (« ajouter ») range le rôle du générateur."""
+        from apps.ventes.domain.lignes_assistant import appliquer_operation
+        produit = self._batterie_bos('STKCAT23-BOS-ASSISTANT')
+        appliquer_operation(self.devis, 'ajouter', {'produit': produit.id, 'quantite': '1'},
+                            utilisateur=self.user)
+        self.assertEqual(list(self.devis.lignes.values_list('role_devis', flat=True)), ['batterie'])
+
+    def test_lecteurs_aval_l_api_d_une_ligne_seule_range_le_role_par_la_fiche(self):
+        """Constat 6 — ``POST /devis-lignes/`` range le rôle du générateur."""
+        from rest_framework.test import APIClient
+        produit = self._batterie_bos('STKCAT23-BOS-API')
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+        rep = api.post('/api/django/ventes/devis-lignes/', {
+            'devis': self.devis.id, 'produit': produit.id, 'designation': produit.nom,
+            'quantite': '1', 'prix_unitaire': '36400'}, format='json')
+        self.assertEqual(rep.status_code, 201, rep.content)
+        self.assertEqual(list(self.devis.lignes.values_list('role_devis', flat=True)), ['batterie'])
+
     def test_lecteurs_aval_retouche_du_catalogue_apres_l_ecriture_sans_effet(self):
         """Le rôle est RANGÉ : déclarer ensuite un autre rôle au produit ne
         reclasse pas la ligne déjà écrite, pour aucun lecteur."""
