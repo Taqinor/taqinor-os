@@ -937,6 +937,36 @@ describe('ACAL1268 — le rail d’un lead de pompage', () => {
   })
 })
 
+/* ACAL1714 — en Expert l'onglet ouvert vit tout en bas d'un panneau très haut : l'ouvrir (par le rail OU par `?onglet=`,
+   comme après « Créer les variantes et comparer ») amène son panneau dans la vue, sans défilement à la main. */
+describe('ACAL1714 — ouvrir un onglet en Expert défile jusqu’à son panneau', () => {
+  const amenes = []
+  let original
+  beforeEach(() => {
+    amenes.length = 0
+    original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function defiler(options) { amenes.push({ el: this, options }) }
+  })
+  afterEach(() => { Element.prototype.scrollIntoView = original })
+
+  it('clic sur un onglet du rail : le panneau (cal-onglet-panneau) est amené en haut de la vue', async () => {
+    const utilisateur = userEvent.setup()
+    rendreRail('?onglet=production&mode=expert')
+    await panneauOuvert()
+    amenes.length = 0
+    await utilisateur.click(screen.getByTestId('cal-onglet-pertes'))
+    await waitFor(() => expect(screen.getByTestId('cal-onglet-panneau')).toBeInTheDocument())
+    await waitFor(() => expect(amenes.some((a) => a.el === screen.getByTestId('cal-onglet-panneau'))).toBe(true))
+    expect(amenes.find((a) => a.el === screen.getByTestId('cal-onglet-panneau')).options).toMatchObject({ block: 'start' })
+  })
+
+  it('arrivée par `?onglet=` (navigation après « Créer les variantes ») : le panneau est amené dans la vue', async () => {
+    rendreRail('?onglet=variantes&mode=expert')
+    const panneau = await panneauOuvert()
+    await waitFor(() => expect(amenes.some((a) => a.el === panneau)).toBe(true))
+  })
+})
+
 /* ACAL1650 — le refus 409 de la simulation (réglages météo vides) nomme LE vrai blocage : la liste « Ce qui manque
    encore » met ses lignes en tête, les autres restent dessous (« Pour un résultat complet »), et la pastille de l'étape
    Résultats du rail dit le même compte que le refus. Entrée réelle : le bouton de simulation (POST 409). */

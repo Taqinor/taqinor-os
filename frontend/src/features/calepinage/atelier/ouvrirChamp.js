@@ -9,6 +9,11 @@ export const PARAM_CHAMP = 'champ'
 const ESSAIS = 10
 const DELAI_MS = 100
 
+/** UNE définition du défilement vers un élément (ACAL1714 : le rail s'en sert aussi pour amener son panneau en vue). */
+export function amenerDansLaVue(el, block = 'center') {
+  el?.scrollIntoView?.({ block })
+}
+
 export function useOuvrirChamp(champ, cleOnglet) {
   useEffect(() => {
     if (!champ) return undefined
@@ -17,7 +22,7 @@ export function useOuvrirChamp(champ, cleOnglet) {
     const chercher = () => {
       const el = document.getElementById(champ)
       if (el) {
-        el.scrollIntoView?.({ block: 'center' })
+        amenerDansLaVue(el)
         el.focus?.()
         return
       }
