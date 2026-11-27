@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Icone } from '../atelier/coque/primitives'
-import { lienManque } from './lienManque'
+import { lienManque, lienEtape } from './lienManque'
 import { BandeauBorneHaute } from './BandeauProvenanceProduction'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import { nomDePerte } from './nomsPertes'
@@ -23,6 +23,12 @@ const RAISON = {
   reglage_societe: 'Aucune valeur pour votre société',
   fiche_panneau: 'Absent de la fiche du panneau',
 }
+
+/* ACAL1940 — les étapes qui lisent la fiche de l'ONDULEUR : sans onduleur désigné (le parcours sert `materiel_designe`
+   qui le nomme), leur ligne dit « Aucun onduleur désigné » au lieu de « Absent de la fiche du panneau ». */
+const ETAPES_ONDULEUR = new Set(['mppt', 'onduleur', 'ecretage'])
+const sansOnduleurDesigne = (parcours) => (parcours?.manque || [])
+  .some((m) => m?.code === 'materiel_designe' && /onduleur/i.test(m?.message || ''))
 
 /** « Remplir les 3 réglages vides » quand « Remplir » les remplit tous ; sinon « Remplir 1 des 3 réglages vides ». */
 function libelleRemplir(compte) {
@@ -234,6 +240,7 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null,
   // Le compte annoncé (« N pertes ») égale les lignes listées, sinon « et K autres » avec « Voir les étapes ».
   const compte = compteDuResultat(aRenseigner)
   const { autres, reglagesVides: societe } = compte
+  const sansOnduleur = sansOnduleurDesigne(parcours)
   return (
     <div className="cal-resinc" data-testid="acal700-incomplet">
       <div className="cal-resinc-haut">
@@ -282,11 +289,16 @@ export default function ResultatIncomplet({ calepinageId, data, parcours = null,
                     <span className="cal-resinc-nom" title={nomDePerte(ligne.etape, ligne.libelle).technique || undefined}>
                       {nomDePerte(ligne.etape, ligne.libelle).nom}
                     </span>
-                    {RAISON[ligne.nature] && <span className="cal-resinc-raison">{RAISON[ligne.nature]}</span>}
+                    {RAISON[ligne.nature] && (
+                      <span className="cal-resinc-raison">
+                        {sansOnduleur && ETAPES_ONDULEUR.has(ligne.etape) ? 'Aucun onduleur désigné' : RAISON[ligne.nature]}
+                      </span>
+                    )}
                   </span>
-                  <Link to={lienManque(calepinageId, ligne.cible)} className="cal-resinc-bouton"
-                    data-testid="acal700-renseigner">
-                    Renseigner
+                  <Link to={sansOnduleur && ETAPES_ONDULEUR.has(ligne.etape)
+                    ? lienEtape(calepinageId, 'electrique') : lienManque(calepinageId, ligne.cible)}
+                  className="cal-resinc-bouton" data-testid="acal700-renseigner">
+                    {sansOnduleur && ETAPES_ONDULEUR.has(ligne.etape) ? 'Désigner' : 'Renseigner'}
                   </Link>
                 </li>
               ))}

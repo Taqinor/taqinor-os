@@ -33,3 +33,8 @@ export function destinationManque(calepinageId, m) {
     ? { to: lienManque(calepinageId, { onglet: premierOngletEtape(etape) }), state: { etapeChoisie: true } }
     : { to: lienManque(calepinageId, m?.cible), state: undefined }
 }
+
+/** ACAL1940 — le lien vers l'ÉCRAN d'une étape (son premier onglet), p. ex. « Désigner » l'onduleur → Électrique. */
+export function lienEtape(calepinageId, etape) {
+  return lienManque(calepinageId, { onglet: premierOngletEtape(etape) })
+}

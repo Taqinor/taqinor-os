@@ -551,6 +551,35 @@ describe('Étape Résultats — résultat incomplet (maquette ResultatsIncomplet
     }
   })
 
+  it('ACAL1940 — sans onduleur désigné : « Aucun onduleur désigné » et « Désigner » vers l’Électrique, pas « Absent de la fiche du panneau »', async () => {
+    const base = COMPLET()
+    const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
+    const data = { ...base, production: borne.production, simulation: borne.simulation, cascade: JSON.parse(JSON.stringify(borne.cascade)) }
+    const [societe] = data.cascade.a_renseigner.lignes
+    const mppt = { etape: 'mppt', libelle: 'Fenêtre MPPT', nature: 'fiche_panneau', section: 'fiche_module', cle: 'vmp_v',
+      libelle_champ: 'vmp_v', unite: '', ou_trouver: 'Fiche technique du panneau', cible: { onglet: 'fiches', champ: 'vmp_v' } }
+    data.cascade.a_renseigner.lignes = [societe, mppt]
+    servir(data)
+    const sansOnduleur = { manque: [{ code: 'materiel_designe', etape: 'electrique', gravite: 'a_regler', nombre: 1,
+      cible: { onglet: 'electrique', champ: '' }, message: 'Aucun onduleur désigné : le raccordement ne peut pas être vérifié.' }] }
+    rendre({ parcours: sansOnduleur })
+    const lignes = await screen.findAllByTestId('acal700-ligne')
+    const ligne = lignes.find((l) => l.textContent.includes('onduleur'))
+    expect(ligne).toHaveTextContent('Aucun onduleur désigné')
+    expect(ligne).not.toHaveTextContent('Absent de la fiche du panneau')
+    const lien = within(ligne).getByRole('link', { name: 'Désigner' })
+    expect(lien.getAttribute('href')).toMatch(/^\/calepinage\/1\?.*onglet=/)
+    expect(lien.getAttribute('href')).not.toContain('fiches')
+    cleanup()
+    // Un onduleur désigné (aucune ligne « matériel » à compléter) : le cas courant garde sa raison de fiche et « Renseigner ».
+    servir(data)
+    rendre({ parcours: { manque: [] } })
+    const lignes2 = await screen.findAllByTestId('acal700-ligne')
+    const fiche = lignes2.find((l) => l.textContent.includes('onduleur'))
+    expect(fiche).toHaveTextContent('Absent de la fiche du panneau')
+    expect(within(fiche).getByRole('link', { name: 'Renseigner' })).toBeInTheDocument()
+  })
+
   it('Demande croisée — « Démarrage rapide » ne compte que les lignes `reglage_societe` (pas les lignes de fiche panneau)', async () => {
     const base = COMPLET()
     const borne = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_borne_haute')
