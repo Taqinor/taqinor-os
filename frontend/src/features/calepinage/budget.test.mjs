@@ -150,6 +150,17 @@ test('CAL224 — chaque onglet NEUF de l’atelier est LAZY dans le registre `on
   }
 })
 
+// ACAL2046 — le garde mesuré ne sert à rien s'il se tait en CI : le workflow doit le jouer APRÈS le build.
+test('ACAL2046 — ci.yml joue budget.test.mjs après « Build frontend » (sur un vrai dist/)', () => {
+  const ci = readFileSync(join(FRONTEND_ROOT, '..', '.github', 'workflows', 'ci.yml'), 'utf8')
+  const build = ci.search(/- name: Build frontend\r?\n/)
+  const garde = ci.indexOf('src/features/calepinage/budget.test.mjs')
+  assert.ok(build >= 0, 'étape « Build frontend » introuvable dans ci.yml')
+  assert.ok(garde > build,
+    'ci.yml ne joue pas `node --test src/features/calepinage/budget.test.mjs` après « Build frontend » : '
+    + 'le garde mesuré se tairait (dist/ absent).')
+})
+
 // ── 2. GARDE MESURÉ (actif seulement si `dist/` existe — voir en-tête) ────
 
 const distDisponible = existsSync(DIST_ASSETS)
