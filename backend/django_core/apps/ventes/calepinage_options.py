@@ -669,6 +669,26 @@ def _marquer_existants(layout_public, brut):
     return dict(layout_public, zones=marquees)
 
 
+def totaux_publics(layout, zones):
+    """``public_views._safe_roof_layout`` — ``(zones, result)`` publiés : les zones
+    marquées « existant » et les totaux GÉOMÉTRIQUES du layout BRUT ``layout``."""
+    # Totaux GÉOMÉTRIQUES uniquement (kWc, panneaux, production) — pas savings.
+    _res = layout.get("result") or {}
+    result = {}
+    for k in ("panels", "kwc", "annualKwh"):
+        if isinstance(_res, dict) and _res.get(k) is not None:
+            result[k] = _res.get(k)
+    # ACAL1240 — un pan « existant » (modules déjà en place) est publié comme tel et ses modules ne sont pas vendus.
+    # Revue ACAL1240 — les modules en place se comptent comme le devis les compte (``pans_du_document`` :
+    # ``geometry.panels`` > ``geometry.count`` > ``result.count``), sur le layout BRUT : une seule lecture.
+    from .domain.geometrie import pans_du_document
+    zones = _marquer_existants({"zones": zones}, layout)["zones"]
+    deja = sum(p["modules"] for p in pans_du_document(layout) if p.get("existant"))
+    if deja and isinstance(result.get("panels"), (int, float)):
+        result["panels"] = max(0, result["panels"] - deja)
+    return zones, result
+
+
 def nb_panneaux_publies(layout_public):
     """Le nombre de panneaux que le calepinage PUBLIÉ dessine réellement.
 
