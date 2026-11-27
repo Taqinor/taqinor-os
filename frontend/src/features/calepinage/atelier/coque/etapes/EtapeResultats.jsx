@@ -524,7 +524,7 @@ export default function EtapeResultats({
       <Suppose suppose={data?.suppose} />
       {/* ACAL1958 — le bouton de l'étape est là dans les TROIS états (avant simulation, incomplet, complet) ;
           la phrase de durée ne lit que les valeurs d'un résultat complet. */}
-      <PiedResultats production={complet ? data?.production : null} action={action} />
+      <PiedResultats production={complet ? data?.production : null} incertitude={data?.incertitude} action={action} />
       <details open={ouvert} onToggle={(e) => setAvanceOuvert(e.currentTarget.open)}
         className="cal-res-carte" data-zone="avance">
         <summary className="cursor-pointer font-medium">Détail des pertes et réglages</summary>

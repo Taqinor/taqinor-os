@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { formatNumber } from '../../../lib/format'
 import { PARAM_ONGLET } from '../atelier/onglets'
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
+import { libelleAnneeBasse } from './LigneSurLaDuree.helpers'
 
 /* LE PIED de l'étape Résultats (maquette Resultats.dc.html) : « Année basse (9 fois sur 10 au-dessus) :
    … · Dans N ans : … » et le bouton doré de l'étape suivante. La phrase n'est faite que de valeurs
@@ -14,11 +15,11 @@ import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 const servi = (v) => typeof v === 'number' && Number.isFinite(v)
 const enKwh = (v) => `${formatNumber(v, { decimals: 0 })} kWh`
 
-function phraseSurLaDuree(production) {
+function phraseSurLaDuree(production, incertitude) {
   const total = production?.total
   const segments = []
   if (!estIncomplet(total) && servi(total?.p90_kwh)) {
-    segments.push(`Année basse (9 fois sur 10 au-dessus) : ${enKwh(total.p90_kwh)}`)
+    segments.push(`${libelleAnneeBasse(incertitude)} : ${enKwh(total.p90_kwh)}`)
   }
   const projection = Array.isArray(production?.projection) ? production.projection : []
   const derniere = projection[projection.length - 1]
@@ -28,9 +29,9 @@ function phraseSurLaDuree(production) {
   return segments.join(' · ')
 }
 
-export default function PiedResultats({ production, action = null }) {
+export default function PiedResultats({ production, incertitude = null, action = null }) {
   const [parametres, setParametres] = useSearchParams()
-  const phrase = phraseSurLaDuree(production)
+  const phrase = phraseSurLaDuree(production, incertitude)
   const versDocuments = () => {
     const suivants = new URLSearchParams(parametres)
     suivants.set(PARAM_ONGLET, 'documents')

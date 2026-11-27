@@ -505,7 +505,7 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000, p
       {data?.simule === true && !perime && <PartiesProduction parties={production?.parties} />}
       {data?.simule === true && !perime && <EcartPvgis validation={data?.validation} />}
       {data?.simule === true && !perime && <PourquoiProduction cascade={data?.cascade} />}
-      {data?.simule === true && !perime && <LigneSurLaDuree production={production} />}
+      {data?.simule === true && !perime && <LigneSurLaDuree production={production} incertitude={data?.incertitude} />}
       {data?.simule === true && !perime && <ResultatIncomplet calepinageId={id} data={data} parcours={parcours} />}
       {data?.simule === true && !perime && <GraphiqueMensuel autoconsommation={data?.autoconsommation} production={data?.production} />}
       <ReglagesUtilises simulation={data?.simulation} ouvert={sourcesOuvertes} onBascule={setSourcesOuvertes} />
