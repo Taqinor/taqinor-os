@@ -121,12 +121,15 @@ def brouillons_a_mettre_a_jour(company_id, lead_id, version):
 
 
 def _comptes(devis):
-    """``{option: panneaux}`` (« '' » = commune) — classement du moteur PDF."""
+    """``{option: panneaux}`` (« '' » = commune) — classement du moteur PDF : le rôle
+    RANGÉ d'abord (``domain.classe_ligne.role_de_ligne``), sinon les mots-clés."""
     from apps.ventes.domain.catalogue import classer_produit
+    from apps.ventes.domain.classe_ligne import role_de_ligne
 
     par_option = {}
     for ligne in devis.lignes.filter(type_ligne='produit', optionnelle=False).select_related('produit'):
-        if classer_produit(getattr(ligne.produit, 'nom', '') or ligne.designation) == 'panneau':
+        if role_de_ligne(ligne, lambda li=ligne: classer_produit(
+                getattr(li.produit, 'nom', '') or li.designation), devis=devis) == 'panneau':
             option = ligne.variante or ''
             par_option[option] = par_option.get(option, 0) + int(ligne.quantite)
     return par_option

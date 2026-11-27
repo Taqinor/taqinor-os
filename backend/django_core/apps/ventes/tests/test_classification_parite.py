@@ -965,3 +965,33 @@ class LecteursAvalSuite3Test(SimpleTestCase):
         ordinaires = (('Panneau Jinko 710W', None), ('Onduleur hybride Deye 10kW', None))
         for devis in (_BROUILLON, _avant_la_coupure()):
             self.assertEqual(self._materiel(devis, *ordinaires), {'module': 1, 'onduleur': 2})
+
+    @staticmethod
+    def _devis_aux_lignes(devis, *lignes):
+        """``devis`` (doublure) dont ``lignes`` répond à ``all`` / ``filter`` / ``select_related``."""
+        class _Filtrables(_Lignes):
+            def filter(self, **criteres):
+                return _Filtrables([li for li in self._lignes
+                                    if all(getattr(li, k) == v for k, v in criteres.items())])
+
+            def select_related(self, *_):
+                return self
+
+            def __iter__(self):
+                return iter(self._lignes)
+        return SimpleNamespace(**vars(devis), lignes=_Filtrables(lignes))
+
+    def test_3_comptes_des_brouillons_lisent_le_role_range(self):
+        """Cas B — les 30 « CS7N-715TB » rangés ``panneau`` comptent dans la taille du
+        brouillon (historique « 30 », avance du pointeur) ; avant la coupure : 0, comme hier."""
+        from apps.ventes.conception.brouillons import _comptes
+
+        def comptes(devis, *lignes):
+            return _comptes(self._devis_aux_lignes(devis, *lignes))
+        abc = (_ligne(_NOM_A, role='batterie'), _ligne(_NOM_B, role='panneau', quantite=30),
+               _ligne(_NOM_C, role='onduleur_hybride'))
+        self.assertEqual(comptes(_BROUILLON, *abc), {'': 30})
+        self.assertEqual(comptes(_avant_la_coupure(), *abc), {})
+        for devis in (_BROUILLON, _avant_la_coupure()):
+            self.assertEqual(comptes(devis, _ligne('Panneau Jinko 710W', quantite=12, variante='avec')),
+                             {'avec': 12})
