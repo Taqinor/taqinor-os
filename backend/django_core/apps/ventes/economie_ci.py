@@ -121,8 +121,19 @@ def _revente_bt(apercu):
     }
 
 
+_LIBELLES_POSTE = {'pointe': 'Énergie heures de pointe', 'pleines': 'Énergie heures pleines',
+                   'creuses': 'Énergie heures creuses', 'normales': 'Énergie heures normales'}
+
+
+def libelle_poste(poste):
+    """ACAL1225 — le libellé de métier d'un poste (``tranche_3`` → « Énergie tranche 3 »)."""
+    if '+' in poste:
+        return 'Énergie, toutes tranches'
+    return _LIBELLES_POSTE.get(poste) or 'Énergie ' + poste.replace('_', ' ')
+
+
 def _ligne(poste, kwh, ht, ttc):
-    return {'poste': poste, 'kwh_evites': int(round(kwh)),
+    return {'poste': poste, 'libelle': libelle_poste(poste), 'kwh_evites': int(round(kwh)),
             'tarif_kwh': ht, 'mad': round(kwh * ht, 2),
             'tarif_kwh_ttc': ttc, 'mad_ttc': round(kwh * ttc, 2)}
 
@@ -148,10 +159,10 @@ def _valoriser_mt(cellules, tarif):
     for p in prix:
         ht, ttc = prix[p]['tarif_kwh_ht'], prix[p]['tarif_kwh_ttc']
         apres = max(0.0, avant[p] - evites[p])
-        fav.append({'poste': p, 'kwh': int(round(avant[p])),
+        fav.append({'poste': p, 'libelle': libelle_poste(p), 'kwh': int(round(avant[p])),
                     'mad_ht': round(avant[p] * ht, 2),
                     'mad_ttc': round(avant[p] * ttc, 2)})
-        fap.append({'poste': p, 'kwh': int(round(apres)),
+        fap.append({'poste': p, 'libelle': libelle_poste(p), 'kwh': int(round(apres)),
                     'mad_ht': round(apres * ht, 2),
                     'mad_ttc': round(apres * ttc, 2)})
     return par_poste, fav, fap
@@ -201,7 +212,7 @@ def _valoriser_bt(cellules, tarif, apercu, tarif_declare, origine=False):
     nom = '+'.join(p['poste'] for p in postes)
 
     def _facture(kwhs):
-        return [{'poste': nom,
+        return [{'poste': nom, 'libelle': libelle_poste(nom),
                  'mad_ht': round(sum(k * p['tarif_kwh_ht']
                                      for k, p in zip(kwhs, postes)), 2),
                  'mad_ttc': round(sum(k * p['tarif_kwh_ttc']
@@ -311,12 +322,9 @@ BASE_HT = 'ht'
 BASE_TTC = 'ttc'
 BASE_DEUX = 'deux'
 
-MOTIF_BASE_HT = "TVA récupérable déclarée « oui » : économies en HT (D-CIQ-3)"
-MOTIF_BASE_TTC = (
-    "TVA non récupérable déclarée « non » : économies en TTC (D-CIQ-3)")
-MOTIF_BASE_DEUX = (
-    "statut TVA non déclaré : les deux bases sont montrées (HT et TTC, "
-    "D-CIQ-3)")
+MOTIF_BASE_HT = "TVA récupérable déclarée « oui » : économies en HT"  # ACAL1225 : aucun code
+MOTIF_BASE_TTC = "TVA non récupérable déclarée « non » : économies en TTC"
+MOTIF_BASE_DEUX = "statut TVA non déclaré : les deux bases sont montrées (HT et TTC)"
 
 
 class SaisieEconomieCiInvalide(ValueError):
@@ -1217,7 +1225,7 @@ def economie_ci_publique(bloc):
 MOTIF_ETUDE_CI_ABSENTE = (
     "étude C&I du devis absente (aucun panneau au devis ou étude non "
     "calculée) — économies non chiffrées")
-MOTIF_FINANCEMENT_ABSENT = "aucune offre écrite de prêteur saisie (D-CIQ-15)"
+MOTIF_FINANCEMENT_ABSENT = "aucune offre écrite de prêteur saisie"
 ALERTE_TARIF_REPLI = (
     "Tarif valorisé sur la grille officielle (repli) : lire une facture du "
     "client pour un chiffre déclaré.")
@@ -1226,7 +1234,7 @@ ALERTE_TARIF_REPLI = (
 CODES_ALERTES_RELAYEES = ('cos_phi_apres_pv',)
 PARCOURS_AIDE = ('aucun', 'sr500', 'autre')
 MOTIF_SR500_AUCUN = "aucun parcours d'aide déclaré"
-MOTIF_SR500 = ("candidature SR500 manuelle d'abord (D-CIQ-17) — indicateur "
+MOTIF_SR500 = ("candidature SR500 manuelle d'abord — indicateur "
                "interne seulement, jamais un montant")
 MOTIF_AIDE_AUTRE = ("parcours d'aide « autre » déclaré — non évalué, jamais "
                     "un montant")

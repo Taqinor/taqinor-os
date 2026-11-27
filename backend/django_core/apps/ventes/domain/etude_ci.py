@@ -53,12 +53,12 @@ VERSION_MOTEUR = 'ci-1'
 METHODE = (
     "autoconsommation horaire : production PVGIS du site × profil déclaré, "
     "12 mois × types de jour ; taille par tranches de 5 kWc jusqu'à "
-    "l'horizon marginal de %d ans (D-CIQ-1, D-CIQ-2)" % HORIZON_MARGINAL_CI)
+    "l'horizon marginal de %d ans" % HORIZON_MARGINAL_CI)  # ACAL1225 : aucun code servi
 #: AMOT99 (D-ACI-18=a) — avec la série horaire ; ``METHODE`` = le repli (dit).
 METHODE_8760 = (
     "autoconsommation horaire : production PVGIS de l'année type du site (8 760 h, "
     "pente/azimut/pose déclarés) × profil déclaré, heure par heure ; taille par "
-    "tranches de 5 kWc jusqu'à l'horizon marginal de %d ans (D-CIQ-1, D-CIQ-2, D-ACI-18)"
+    "tranches de 5 kWc jusqu'à l'horizon marginal de %d ans"
     % HORIZON_MARGINAL_CI)
 CLES_INTERDITES = frozenset({'prix_achat', 'marge'})
 MODES = ('commercial', 'industriel')
@@ -179,7 +179,7 @@ REGIMES_CONTRAT = {
     'autorisation_anre': ('autorisation', '≥ 5 MW'),
 }
 SOURCE_REGIME = ('loi 82-21 + décret 2.25.100 (BO 7489) — déclaration < 11 kW, '
-                 'accord de raccordement 11 kW–5 MW, autorisation ≥ 5 MW (D-CIQ-4)')
+                 'accord de raccordement 11 kW–5 MW, autorisation ≥ 5 MW')
 
 
 # ── petits outils ────────────────────────────────────────────────────────────
@@ -1031,7 +1031,7 @@ def _sous_reserve_visite(res, lead, niveau_donnees):
     else:
         tension = res.valeur('tension')
         if tension == 'mt':
-            motifs.append('site MT : visite avant le devis final (D-CIQ-5)')
+            motifs.append('site MT : visite avant le devis final')
         elif tension in (None, 'inconnue'):
             motifs.append('tension de raccordement inconnue')
         if _ps_kva(res) is None:
@@ -1483,7 +1483,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     valoriser = _valoriseur(tarif, res.valeur('tarif_declare'), jours_types, tension)
     hypotheses.append({'cle': 'base_taille', 'valeur': 'HT', 'statut': 'estimation',
                        'source': 'coût de vente HT ÷ économie HT (la base HT/TTC du '
-                                 'document suit D-CIQ-3, economie_ci)'})
+                                 'document suit celle de l\'économie)'})
     borne_toit = _borne_toit(res, devis, catalogue['module'], alertes)
     _charge_toiture(res, catalogue, alertes)
     kwc_explicite = _taille_en_panneaux_entiers(res.valeur('taille_explicite_kwc'), catalogue['module'], hypotheses)
