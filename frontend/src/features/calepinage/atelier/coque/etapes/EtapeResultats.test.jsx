@@ -30,6 +30,8 @@ import CoqueAtelier from '../CoqueAtelier'
 import { formaterHeureBrouillon } from '../../contexteAtelier'
 import { oublierLecturesServies } from './panneaux/lectures'
 import PanneauPertesUnifie from '../../PanneauPertesUnifie'
+import RailGuide from '../../../commun/RailGuide'
+import { publierRefus } from '../../../production/refusPublie'
 
 const COMPLET = () => {
   const base = JSON.parse(JSON.stringify(exempleContrat('calepinage', 'calepinage_resultat', 'exemple')))
@@ -818,6 +820,30 @@ describe('Étape Résultats — la simulation part seule (ACAL1987)', () => {
     expect(await screen.findByTestId('cal-resultats-tuiles')).toBeInTheDocument()
     expect(screen.queryByText('Simulation en cours…')).toBeNull()
     expect(calepinageApi.calepinages.resultat.mock.calls.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('ACAL1650 — guidé : la pastille Résultats du rail compte les manquants de la simulation automatique, et les retire au démontage sans effacer le bouton de calcul', async () => {
+    const etats = { toit: 'fait', panneaux: 'fait', electrique: 'fait', resultats: 'a_faire' }
+    const parcoursServi = [1, 2, 3, 4, 5].map((n) => ({ code: `x${n}`, message: `Point ${n}`, etape: 'resultats', gravite: 'a_regler', nombre: 1, cible: { onglet: 'reglages', champ: '' } }))
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: avecAuto(INCOMPLETE()) })
+    const nManquants = INCOMPLETE().manquants.length
+    const { unmount } = render(
+      <MemoryRouter>
+        <RailGuide vertical calepinageId={1} etapeActive="resultats" etats={etats} manque={parcoursServi} onChoisir={() => {}} />
+        <EtapeResultats calepinageId={1} />
+      </MemoryRouter>,
+    )
+    const pastille = () => within(screen.getByTestId('cal-etape-resultats'))
+    expect(pastille().getByText('5 à régler')).toBeInTheDocument() // avant la lecture : le parcours servi
+    await waitFor(() => expect(pastille().getByText(`${nManquants} à régler`)).toBeInTheDocument())
+    // le bouton de calcul publie aussi : démonter l'étape ne retire que la publication de l'étape
+    publierRefus(1, [{ champ: 'a', motif: 'A' }, { champ: 'b', motif: 'B' }, { champ: 'c', motif: 'C' }], 'autre')
+    unmount()
+    cleanup()
+    render(<MemoryRouter><RailGuide vertical calepinageId={1} etapeActive="resultats" etats={etats} manque={parcoursServi} onChoisir={() => {}} /></MemoryRouter>)
+    expect(within(screen.getByTestId('cal-etape-resultats')).getByText('3 à régler')).toBeInTheDocument()
+    publierRefus(1, [], 'autre')
+    await waitFor(() => expect(within(screen.getByTestId('cal-etape-resultats')).getByText('5 à régler')).toBeInTheDocument())
   })
 
   it('pose incomplète : « Il manque … » avec les phrases servies ; le bouton de calcul reste', async () => {

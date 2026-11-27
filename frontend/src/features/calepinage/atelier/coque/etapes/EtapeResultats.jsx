@@ -25,6 +25,7 @@ import { useModeExpert } from '../../modeExpert'
 import { PARAM_ONGLET } from '../../onglets'
 import { premierOngletEtape } from '../../parcoursGuide'
 import { publierResultat } from '../../simulationFraiche'
+import { publierRefus } from '../../../production/refusPublie'
 import PanneauPertes from '../../PanneauPertes'
 import { useLectureServie } from './panneaux/lectures'
 
@@ -450,6 +451,13 @@ export default function EtapeResultats({
   )
   // T4-X8-013 — le résultat lu ici est celui que reprennent le résumé de la feuille « Avancé » et le Total du constructeur.
   useEffect(() => { if (data) publierResultat(id, data) }, [id, data])
+  // ACAL1650 — en guidé le blocage vient de `simulation_automatique.manquants` (pas du bouton de calcul) : publié, le
+  // rail compte les mêmes lignes que l'écran. Source propre : le retrait n'efface pas la publication du bouton.
+  const manquantsAuto = data?.simulation_automatique?.manquants
+  useEffect(() => {
+    publierRefus(id, manquantsAuto, 'simulation_automatique')
+    return () => publierRefus(id, [], 'simulation_automatique')
+  }, [id, manquantsAuto])
   // T4-X5-001 — la taille de la conception (lecture partagée du design-context, jamais un second appel en vol).
   const contexte = useLectureServie('contexte', id, { actif: data?.conception != null })
   if (loading || error) {
