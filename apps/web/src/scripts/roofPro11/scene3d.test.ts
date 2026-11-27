@@ -42,13 +42,12 @@ import {
   GAIN_TEINTE_PANNEAU, // ACAL1408
   clePanAffectation, // ACAL1516
   materiauVerre, // ACAL1984
-  poseMasqueeSurCoque, // ACAL1945 (revue)
-  celluleDessinee,
 } from './scene3d';
 import { couleurAccesActive } from '../../lib/shadingEngine'; // ACAL1408
 import { buildAreasFromShape } from './zones';
 import { coinLePlusProche, positionsPoignees, projeterPoignees } from './poigneesSommets3d'; // ACAL1185
 import { DEG2M } from './constants'; // ACAL1185
+import { poseMasqueeSurCoque, celluleDessinee } from './poseMasquee'; // ACAL1945 (revue)
 import { decouperContour, monterFormesToit } from './formesToit';
 import { geodesicAreaM2, type LngLat } from '../../lib/roof';
 import { rectRing } from './harnaisAtelier';

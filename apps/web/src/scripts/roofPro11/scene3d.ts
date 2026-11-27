@@ -54,6 +54,8 @@ import { type AreaRecord, type ZoneRenderPlan, type RenderSceneFn } from './type
 import { makeCanadianPanelTexture, type JeuPanneau } from './panelTexture';
 import { aplatirEnPlan, poserOeil, verreEtOeilAtelier } from './oeilCamera'; // ACAL1984, T4-U1-017, LOT 6
 import { boiteObstacle } from './obstacle3d'; // ACAL1820
+import { poseMasqueeSurCoque, celluleDessinee } from './poseMasquee'; // ACAL1945
+import { shapeToEnu, shapeFromEnu, enuAzimuthDeg, enuVertexAverage, outwardEdgeAzimuthDeg } from './roofShapeEnu';
 import { etiquettesChaines, calqueElectriqueVisible, brancherCalqueElectrique, type ChaineAPoser } from './electrique3d'; // ACAL1944 ; T4-X7-015
 import { teintesBatiment, eclatPresentation, TEINTES_PRESENTATION, jeuDeLaScene, cadreOmbreClient, solOmbreClient, ombresObstacles } from './jeuPresentation'; // ACAL1839 ; lot 8
 import { geometrieJupe } from './jupePignon'; // ACAL1839
@@ -243,18 +245,6 @@ function naturalRidgeHeightM(pan: RidgePan): number {
  * `lift = ridgeCommun − faîtièreNaturelle` (≥ 0 ; le plan monte, l'égout reste ≥ base). Un
  * pan isolé (groupe de 1) ou non-pente garde lift 0 → rendu inchangé. Pur.
  */
-/** ACAL1945 (revue) — l'étape Toit du Guidé (`data-pose-masquee` sur la coque) ne montre AUCUN panneau : ce test est lu par
- *  le point de passage unique des panneaux de la scène (`buildZoneMeshes`), donc la première pose de l'optimiseur
- *  (`optimizer.ts` → `renderScene`) est couverte comme les rendus de l'éditeur de disposition. */
-export function poseMasqueeSurCoque(doc: Document | undefined = typeof document === 'undefined' ? undefined : document): boolean {
-  return !!doc?.querySelector?.('.cal-coque[data-pose-masquee]');
-}
-/** La cellule `i` du pavage est-elle dessinée ? Jamais quand la pose est masquée. */
-export function celluleDessinee(i: number, occupiedSet: Set<number> | undefined, count: number, masquee: boolean): boolean {
-  if (masquee) return false;
-  return occupiedSet ? occupiedSet.has(i) : i < Math.max(0, count);
-}
-
 export function computeRidgeLifts(pans: RidgePan[]): number[] {
   const n = pans.length;
   const lifts = new Array<number>(n).fill(0);
@@ -397,48 +387,6 @@ export type RoofShapePreset = 'flat' | 'shed' | 'gable' | 'hip' | 'l_gable' | 't
 export interface RoofShapePan {
   vertices: LngLat[];
   facingAzimuthDeg: number;
-}
-
-/** Projection ENU locale (mètres) autour d'une origine — même formule que partout ailleurs
- *  dans roofPro11 (freeMode.toEnu, estimatorBrainV2.roofDominantAzimuthDeg). */
-function shapeToEnu(pt: LngLat, origin: LngLat): [number, number] {
-  const cosLat = Math.cos(origin[1] * DEG2RAD);
-  return [(pt[0] - origin[0]) * DEG2M * cosLat, (pt[1] - origin[1]) * DEG2M];
-}
-function shapeFromEnu(p: [number, number], origin: LngLat): LngLat {
-  const cosLat = Math.cos(origin[1] * DEG2RAD);
-  return [origin[0] + p[0] / (DEG2M * cosLat), origin[1] + p[1] / DEG2M];
-}
-
-/** Azimut (0=N, 90=E…) d'un vecteur ENU (E, N) — même convention que roofDominantAzimuthDeg. */
-function enuAzimuthDeg(de: number, dn: number): number {
-  return (Math.atan2(de, dn) / DEG2RAD + 360) % 360;
-}
-
-/** Centre (moyenne des sommets, ENU) — suffit à déterminer le côté « extérieur » d'une
- *  arête sur un contour convexe (le cas visé : un pan de toit tracé est quasi convexe). */
-function enuVertexAverage(pts: [number, number][]): [number, number] {
-  let sx = 0;
-  let sy = 0;
-  for (const [x, y] of pts) {
-    sx += x;
-    sy += y;
-  }
-  return [sx / pts.length, sy / pts.length];
-}
-
-/** Azimut de face sortant de l'arête (a→b), perpendiculaire à l'arête et pointant à
- *  l'opposé du centre du contour. */
-function outwardEdgeAzimuthDeg(a: [number, number], b: [number, number], center: [number, number]): number {
-  const de = b[0] - a[0];
-  const dn = b[1] - a[1];
-  // Deux perpendiculaires possibles ; on garde celle qui s'éloigne du centre.
-  const n1: [number, number] = [dn, -de];
-  const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-  const toMid: [number, number] = [mid[0] - center[0], mid[1] - center[1]];
-  const dot1 = n1[0] * toMid[0] + n1[1] * toMid[1];
-  const outward: [number, number] = dot1 >= 0 ? n1 : [-n1[0], -n1[1]];
-  return enuAzimuthDeg(outward[0], outward[1]);
 }
 
 /** Découpe un polygone ENU par un demi-plan (Sutherland-Hodgman) : garde les points du
