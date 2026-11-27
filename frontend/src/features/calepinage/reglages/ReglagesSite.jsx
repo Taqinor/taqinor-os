@@ -139,7 +139,7 @@ export default function ReglagesSite({ imagerie = null }) {
   const champsFautifs = Object.keys(erreurs).filter((cle) => cle !== '_general')
 
   return (
-    <Card className="mt-5 p-4" data-testid="acal130-site">
+    <Card id="site" className="mt-5 p-4" data-testid="acal130-site">
       <h2 className="text-base font-semibold text-foreground">Site &amp; imagerie</h2>
 
       <p className="mt-1 text-sm text-muted-foreground" data-testid="acal130-fuseau-effectif">

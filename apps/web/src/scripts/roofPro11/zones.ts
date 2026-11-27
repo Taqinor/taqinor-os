@@ -699,7 +699,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
         </tr>`,
       )
       .join('');
-    el.innerHTML = `<table class="w-full min-w-[520px] border-collapse text-xs text-lune-soft">
+    el.innerHTML = `<table class="w-full border-collapse text-xs text-lune-soft">
       <thead>
         <tr class="border-b border-white/15 text-left text-[11px] uppercase tracking-wide text-lune-faint">
           <th class="px-2 py-1">Pan</th>
@@ -731,15 +731,15 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     el.className = 'rp9-pan-geometry mt-3 flex flex-wrap items-center gap-2 text-xs';
     el.innerHTML =
       `<span class="font-semibold" id="rp9-pan-geometry-nom"></span>` +
-      `<label class="inline-flex items-center gap-1" for="rp9-pan-largeur">Largeur (m)` +
+      `<label class="flex min-w-0 flex-col gap-1" for="rp9-pan-largeur">Largeur (m)` +
       `<input type="text" id="rp9-pan-largeur" class="rp9-input w-20" inputmode="decimal" /></label>` +
-      `<label class="inline-flex items-center gap-1" for="rp9-pan-longueur">Longueur (m)` +
+      `<label class="flex min-w-0 flex-col gap-1" for="rp9-pan-longueur">Longueur (m)` +
       `<input type="text" id="rp9-pan-longueur" class="rp9-input w-20" inputmode="decimal" /></label>` +
       `<button type="button" id="rp9-pan-coter" class="rp9-btn">Appliquer les cotes</button>` +
-      `<label class="inline-flex items-center gap-1" for="rp9-pan-rotation">Rotation (°)` +
+      `<label class="flex min-w-0 flex-col gap-1" for="rp9-pan-rotation">Rotation (°)` +
       `<input type="text" id="rp9-pan-rotation" class="rp9-input w-20" inputmode="decimal" /></label>` +
       `<button type="button" id="rp9-pan-pivoter" class="rp9-btn">Pivoter le pan</button>` +
-      `<label class="inline-flex items-center gap-1" for="rp9-site-rotation">Rotation du site (°)` +
+      `<label class="flex min-w-0 flex-col gap-1" for="rp9-site-rotation">Rotation du site (°)` +
       `<input type="text" id="rp9-site-rotation" class="rp9-input w-20" inputmode="decimal" /></label>` +
       `<button type="button" id="rp9-site-pivoter" class="rp9-btn">Pivoter le site</button>` +
       `<span id="rp9-pan-geometry-erreur" class="text-alert-300" role="alert" hidden></span>` +
@@ -1025,7 +1025,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     el.id = 'rp9-pan-duplicate';
     el.className = 'rp9-pan-duplicate mt-2 flex flex-wrap items-center gap-2 text-xs';
     el.innerHTML =
-      `<label class="inline-flex items-center gap-1" for="rp9-pan-dup-pas">Décalage de la copie (m)` +
+      `<label class="flex min-w-0 flex-col gap-1" for="rp9-pan-dup-pas">Décalage de la copie (m)` +
       `<input type="text" id="rp9-pan-dup-pas" class="rp9-input w-20" inputmode="decimal" value="" /></label>` +
       `<button type="button" id="rp9-pan-dup" class="rp9-btn" disabled>Dupliquer ce pan</button>` +
       `<span id="rp9-pan-dup-motif" class="text-alert-300" role="status"></span>`;
@@ -1121,8 +1121,8 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
       ),
     ].join('');
     el.innerHTML =
-      `<label class="inline-flex items-center gap-1" for="rp9-pan-module-select">Module du pan` +
-      `<select id="rp9-pan-module-select" class="rp9-input">${options}</select></label>` +
+      `<label class="flex w-full min-w-0 flex-col gap-1" for="rp9-pan-module-select">Module du pan` +
+      `<select id="rp9-pan-module-select" class="rp9-input w-full min-w-0">${options}</select></label>` +
       `<span id="rp9-pan-module-mention" class="text-lune-faint"></span>` +
       `<span id="rp9-pan-module-erreur" class="text-alert-300" role="alert" hidden></span>`;
     areasWindowEl.appendChild(el);
@@ -1134,10 +1134,14 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
   const moduleErreurEl = document.getElementById('rp9-pan-module-erreur');
 
   /** Affiche (ou efface) un refus NOMMÉ, à côté du sélecteur ET dans le bandeau de statut. */
-  function direRefusModule(motif: string | null) {
+  function direRefusModule(motif: string | null, code?: string) {
     if (moduleErreurEl) {
       moduleErreurEl.textContent = motif ?? '';
       moduleErreurEl.hidden = !motif;
+      // ACAL1980 — un blocage « module absent » est AUSSI posé au canal « À régler » : la coque (`BandeauxCoque`) lit ce
+      // marqueur et le dit dans le panneau de l'étape, au ton « À régler » ; la pilule du bas de carte reste.
+      if (motif && code) { moduleErreurEl.dataset.ton = code === 'catalogue-illisible' ? 'info' : 'a-regler'; moduleErreurEl.dataset.code = code; }
+      else { delete moduleErreurEl.dataset.ton; delete moduleErreurEl.dataset.code; }
     }
     if (motif) deps.setStatus?.(motif);
   }
@@ -1180,8 +1184,9 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
           ? `${nomDuPanActif()} : le catalogue des modules n’a pas pu être lu — ${nom} n’est pas vérifié.`
             + ' Cliquez sur « Réessayer » pour le relire.'
           : `${nomDuPanActif()} : ${nom} ne figure plus dans le catalogue de la société —`
-            + ' rechargez le catalogue, ou choisissez un module de la liste.');
-      }
+            + ' rechargez le catalogue, ou choisissez un module de la liste.',
+        ctx.opts?.modulesDisponibles === null ? 'catalogue-illisible' : 'module-absent');
+      } else if (moduleErreurEl?.dataset.code) direRefusModule(null); // le module est revenu : le motif part
     }
     // ACAL913/ACAL1415 — un module posé d'office reste « à confirmer » tant que le pan ne porte pas le drapeau
     // `moduleChoisi` (écrit au document : il survit à l'enregistrement, contrairement à un état de session).
@@ -1604,7 +1609,24 @@ export function largeurAlleeDepuisReglages(
 function motifAlleeSansLargeur(code: string): string {
   return code
     ? `Allée non tracée : aucune largeur d’allée n’est réglée pour le pays « ${code} ». Réglez-la dans Réglages › Allées.`
-    : 'Allée non tracée : le pays du site n’est pas réglé. Réglez-le dans Réglages › Site.';
+    : 'Allée non tracée : le pays du site n’est pas réglé. Réglez-le dans Réglages simulation › Site & imagerie.';
+}
+
+/** ACAL1737 (revue) — la mention « Réglages simulation › Site & imagerie » d'un motif devient un VRAI lien vers la même ancre
+ *  que l'heure légale (`/calepinage/reglages#site`). Nouvel onglet : le tracé en cours n'est pas perdu par un rechargement. */
+export const MENTION_REGLAGE_SITE = 'Réglages simulation › Site & imagerie';
+export function poserMotifAvecLien(el: HTMLElement, motif: string): void {
+  const i = motif.indexOf(MENTION_REGLAGE_SITE);
+  el.textContent = '';
+  if (i < 0) { el.textContent = motif; return; }
+  const doc = el.ownerDocument;
+  const lien = doc.createElement('a');
+  lien.href = '/calepinage/reglages#site';
+  lien.target = '_blank';
+  lien.rel = 'noopener';
+  lien.className = 'underline';
+  lien.textContent = MENTION_REGLAGE_SITE;
+  el.append(motif.slice(0, i), lien, motif.slice(i + MENTION_REGLAGE_SITE.length));
 }
 
 /** Verdict d'un tracé d'allée — un refus NOMME toujours sa raison. */

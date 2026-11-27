@@ -496,6 +496,15 @@ export default function EtapeToit({
     coque.dataset.sansToit = '1'
     return () => { delete coque.dataset.sansToit }
   }, [sansToit])
+  // ACAL1945 — à l'étape Toit du Guidé, la carte ne montre aucun panneau posé (maquette Main) : le drapeau lu par le moteur
+  // (`layoutEditor.ts::poseMasquee`) vit tant que l'étape est montée ; à la sortie il tombe et le moteur re-rend la pose.
+  useEffect(() => {
+    const coque = document.querySelector('.cal-coque')
+    if (!coque || coque.dataset.expert === '1') return undefined
+    coque.dataset.poseMasquee = '1'
+    document.dispatchEvent(new CustomEvent('cal:pose-etape'))
+    return () => { delete coque.dataset.poseMasquee; document.dispatchEvent(new CustomEvent('cal:pose-etape')) }
+  }, [])
   // T4-X7-018 — un tracé signalé « à la mauvaise échelle » : la phrase du script qui le contredit (« Surface trop petite pour une
   // rangée ») est masquée (`data-contredit`, 50-coque-atelier.css), aucune surface absurde n'est imprimée (puce de la carte) et
   // l'action suivante est désactivée avec son motif — jamais un chiffre inventé à la place.

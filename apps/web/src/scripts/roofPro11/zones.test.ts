@@ -661,6 +661,45 @@ describe('ACAL1415 — module de départ « à confirmer » / module choisi, apr
       const refus = document.getElementById('rp9-pan-module-erreur')?.textContent ?? '';
       expect(refus).toContain('« Module 715 W »');
       expect(refus).not.toContain('produit-23019');
+      // ACAL1980 — le motif est aussi posé au canal « À régler » (lu par la coque pour le panneau d'étape), pas seulement en pilule.
+      const noeud = document.getElementById('rp9-pan-module-erreur')!;
+      expect(noeud.hidden).toBe(false);
+      expect(noeud.dataset.ton).toBe('a-regler');
+      expect(noeud.dataset.code).toBe('module-absent');
+    } finally { g.document = avant; }
+  });
+
+  it('ACAL1980 (revue) — un catalogue illisible n’est pas marqué « À régler » : sa cause se lit au code', () => {
+    const m715 = { ...m710, id: 'produit-23019', produitId: 23019, libelle: 'Module 715 W', epaisseurMm: null }
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"></div></body>').window.document;
+    try {
+      const areas = [panDeTest('area-1', { renderPlan: plan, roofType: 'flat', moduleId: 'produit-23019' })];
+      const ctx = { ...ctxDeBase(areas, 'area-1'), opts: { modulesDisponibles: null }, modulesDuDocument: [m715],
+        activeArea: () => areas[0], closed: true, dom: { areasWindowEl: document.getElementById('rp9-areas') } } as unknown as Ctx;
+      createZones(ctx, { recalc: vi.fn(), setStatus: vi.fn() });
+      const noeud = document.getElementById('rp9-pan-module-erreur')!;
+      expect(noeud.dataset.code).toBe('catalogue-illisible');
+      expect(noeud.dataset.ton).not.toBe('a-regler');
+    } finally { g.document = avant; }
+  });
+
+  it('ACAL1980 — un module qui revient au catalogue retire le motif du canal « À régler »', () => {
+    const m715 = { ...m710, id: 'produit-23019', produitId: 23019, libelle: 'Module 715 W', epaisseurMm: null }
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"></div></body>').window.document;
+    try {
+      const areas = [panDeTest('area-1', { renderPlan: plan, roofType: 'flat', moduleId: 'produit-23019' })];
+      const ctx = { ...ctxDeBase(areas, 'area-1'), opts: { modulesDisponibles: catalogue }, modulesDuDocument: [m715],
+        activeArea: () => areas[0], closed: true, dom: { areasWindowEl: document.getElementById('rp9-areas') } } as unknown as Ctx;
+      const zones = createZones(ctx, { recalc: vi.fn(), setStatus: vi.fn() });
+      const noeud = document.getElementById('rp9-pan-module-erreur')!;
+      expect(noeud.dataset.ton).toBe('a-regler');
+      expect(zones.choisirModuleDuPanActif('produit-7')).toBe(true); // un module du catalogue est choisi
+      expect(noeud.hidden).toBe(true);
+      expect(noeud.dataset.ton).toBeUndefined();
     } finally { g.document = avant; }
   });
 
@@ -858,6 +897,54 @@ describe('ACAL520 — motifPanVerrouille', () => {
     expect(motifPanVerrouille({ label: 'Pan 1' })).toBeNull();
     expect(motifPanVerrouille(undefined)).toBeNull();
   });
+});
+
+// ACAL1925 / ACAL1964 — le panneau d'un pan en Expert : étiquette AU-DESSUS du champ, sélecteur contenu, tableau par pan
+// sans largeur minimale. Le vrai gabarit est monté par `createZones` + `renderAreasPanel` (rien n'est recopié ici).
+describe('ACAL1925 / ACAL1964 — panneau du pan : étiquettes en colonne, tableau sans largeur minimale', () => {
+  const m710 = { id: 'produit-7', produitId: 7, libelle: 'Module 710 W', longueurMm: 2384, largeurMm: 1303, epaisseurMm: 33, poidsKg: 38, pmaxWc: 710, source: 'fiche' };
+  const catalogue = { calepinage: 1, modules: [{ module: m710, selectionnable: true, champs_manquants: [], motif: null }], champs_requis: [], motif_liste_vide: null };
+  function monterPanneau() {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"><ul id="liste"></ul></div></body>').window.document;
+    try {
+      const areas = [panDeTest('area-1'), panDeTest('area-2')];
+      const ctx = { ...ctxDeBase(areas, 'area-1'), opts: { modulesDisponibles: catalogue }, activeArea: () => areas[0], closed: true,
+        dom: { areasWindowEl: document.getElementById('rp9-areas'), areasListEl: document.getElementById('liste') } } as unknown as Ctx;
+      createZones(ctx, { recalc: vi.fn(), setStatus: vi.fn() }).renderAreasPanel();
+      const pris = (sel: string) => [...document.querySelectorAll(sel)] as HTMLElement[];
+      return {
+        etiquettes: pris('#rp9-pan-geometry label, #rp9-pan-duplicate label, #rp9-pan-module label').map((l) => ({ texte: l.textContent ?? '', classe: l.className })),
+        selecteur: document.getElementById('rp9-pan-module-select')?.className ?? '',
+        tableau: document.querySelector('[data-pan-stat]')?.closest('table')?.className ?? '',
+      };
+    } finally { g.document = avant; }
+  }
+
+  it('« Largeur », « Rotation », « Rotation du site », « Décalage de la copie », « Module du pan » : étiquette au-dessus du champ', () => {
+    const { etiquettes } = monterPanneau();
+    const noms = ['Largeur', 'Rotation (', 'Rotation du site', 'Décalage de la copie', 'Module du pan'];
+    for (const nom of noms) {
+      const e = etiquettes.find((x) => x.texte.includes(nom));
+      expect(e, nom).toBeDefined();
+      expect(e!.classe, nom).toContain('flex-col');
+      expect(e!.classe, nom).not.toContain('inline-flex');
+    }
+  });
+
+  it('le sélecteur « Module du pan » prend la largeur de son panneau (ne dépasse pas le bord droit)', () => {
+    const { selecteur } = monterPanneau();
+    expect(selecteur).toContain('w-full');
+    expect(selecteur).toContain('min-w-0');
+  });
+
+  it('ACAL1964 — le tableau par pan n’a aucune largeur minimale (520 px dans un panneau de 384 px)', () => {
+    const { tableau } = monterPanneau();
+    expect(tableau).toContain('w-full');
+    expect(tableau).not.toMatch(/min-w-\[/);
+  });
+
 });
 
 // ACAL1430 — après « 2 pans » (identifiants area-2 / area-3), la liste, le cadenas, le refus et le tableau disent le
@@ -1592,5 +1679,50 @@ describe('ACAL1735 — confirmer la pente d’un pan la confirme pour la même d
     const pans = [p('area-2', 30), p('area-3', 22)];
     expect(propagerPenteDecoupe(pans, new Set(['area-2', 'area-3']), 'area-2', 22, 30, { mode: 'degres', degres: 30 })).toEqual(['area-3']);
     expect(pans[1].pitchDeg).toBe(30);
+  });
+});
+
+// ACAL1665 — « le plus de panneaux » est stocké comme le plafond du besoin (400) : aucune phrase de l'atelier ERP ne le montre
+// comme une cible (« 13 posés / 400 cible »), par le chemin réel de l'optimiseur (`liveResolveFlat` → `syncNeedControl`).
+describe('ACAL1665 — « le plus de panneaux » ne se lit jamais comme une cible de 400', () => {
+  const noteAvec = async (toitM: number, opts: Record<string, unknown>) => {
+    const { createOptimizer } = await import('./optimizer');
+    const { rectRing } = await import('./harnaisAtelier');
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><p id="rp9-need-note"></p><input id="rp9-need-input"></body>').window.document;
+    try {
+      const vertices = rectRing(toitM, toitM);
+      const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
+      const pan = { id: 'z1', label: 'Zone 1', vertices, obstacles: [], roofType: 'flat' };
+      const ctx = {
+        closed: true, vertices, roofType: 'flat', areas: [pan], activeAreaId: 'z1', activeArea: () => pan, opts, dom: {},
+        centroid: [cLng, cLat], centroidLat: cLat, pinned: new Set<string>(), sel: { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' },
+        v4YieldCache: new Map(), overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], obstacles: [],
+        neededAuto: false, neededPanels: 400, devisMode: true, cibleVendue: false, layoutPlan: null, layoutState: null, layoutOptimalCount: 0, useRecommended: true,
+        freeMode: false, freeState: null,
+      } as unknown as Ctx;
+      const renderScene = vi.fn((pack: unknown, grid: { panels: unknown[] }, tiltDeg: number, family: string, maxCount: number, flush: boolean, occ?: Set<number>) => {
+        if (occ) return;
+        Object.assign(ctx, { layoutPlan: { pack, grid, tiltDeg, family, flush }, layoutOptimalCount: Math.min(grid.panels.length, Math.round(maxCount)), layoutState: null });
+      });
+      const deps = { renderScene, paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+        syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 0, obstructionRings: () => [], obstructionClearances: () => [], setStatus: vi.fn() };
+      createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]).liveResolveFlat();
+      return g.document!.getElementById('rp9-need-note')!.textContent ?? '';
+    } finally { g.document = avant; }
+  };
+  it('ERP, toit qui tient des panneaux : « le plus de panneaux possible », jamais « 400 »', async () => {
+    const note = await noteAvec(14, { chiffrage: null });
+    expect(note).toMatch(/le plus de panneaux possible : \d+ posés/);
+    expect(note).not.toContain('400');
+  });
+  it('ERP, aucun panneau ne tient : la phrase dit « le plus possible » en mots, jamais « / 400 cible »', async () => {
+    const note = await noteAvec(0.5, { chiffrage: null });
+    expect(note).not.toContain('400');
+    expect(note).toContain('le plus possible');
+  });
+  it('site public : inchangé (le nombre à poser, « au devis »)', async () => {
+    expect(await noteAvec(14, {})).toMatch(/posés \/ 400 au devis/);
   });
 });
