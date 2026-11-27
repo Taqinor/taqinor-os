@@ -545,8 +545,13 @@ export default function PanneauAgricole({
               { value: 'volume_declare', label: 'Volume déclaré' },
               { value: 'pompe_actuelle', label: 'Pompe actuelle' },
               { value: 'agronomique', label: 'Cultures' },
+              // ACAL1262 — le débit souhaité × heures (mode serveur
+              // `debit_souhaite`) a son onglet : sans mode choisi, c'est LUI
+              // qui fait le besoin, il est donc sélectionné.
+              { value: 'debit_souhaite', label: 'Débit souhaité' },
             ]}
-            value={besoin.mode || ''}
+            value={besoin.mode
+              || (besoinDepuisDebitSouhaite({ ...besoin, debit_souhaite_m3h: pompeDebit }) ? 'debit_souhaite' : '')}
             onChange={maj('besoin.mode')}
           />
         </div>

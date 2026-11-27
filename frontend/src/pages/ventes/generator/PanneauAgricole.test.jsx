@@ -319,6 +319,28 @@ describe('résultat serveur (AGR129)', () => {
     expect(entete().textContent).toBe('Production (m³/j)')
   })
 
+  // ACAL1262 — le besoin calculé depuis le débit souhaité a SON onglet
+  // sélectionné (mode serveur `debit_souhaite`, `domain/pompage.py::_besoin`).
+  it('besoin du débit souhaité ⇒ onglet « Débit souhaité » sélectionné', () => {
+    const majPompage = vi.fn()
+    const coche = () => [...screen.getByTestId('bloc-besoin').querySelectorAll('[role="radio"]')]
+      .filter((b) => b.getAttribute('aria-checked') === 'true').map((b) => b.textContent)
+    const { rerender } = render(<PanneauAgricole {...PROPS_VIDES} pompeDebit="10" majPompage={majPompage} />)
+    expect(coche()).toEqual(['Débit souhaité'])
+    expect(screen.getByTestId('besoin-debit-souhaite')).toBeTruthy()
+    rerender(<PanneauAgricole {...PROPS_VIDES} pompeDebit="" />)
+    expect(coche()).toEqual([])
+    rerender(<PanneauAgricole {...PROPS_VIDES} pompeDebit="10"
+      pompageSaisie={poserSaisie(POMPAGE_SAISIE_VIDE, 'besoin.mode', 'volume_declare')} />)
+    expect(coche()).toEqual(['Volume déclaré'])
+    rerender(<PanneauAgricole {...PROPS_VIDES} pompeDebit="10" majPompage={majPompage}
+      pompageSaisie={poserSaisie(POMPAGE_SAISIE_VIDE, 'besoin.mode', 'debit_souhaite')} />)
+    expect(coche()).toEqual(['Débit souhaité'])
+    expect(screen.getByTestId('besoin-debit-souhaite')).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', { name: 'Cultures' }))
+    expect(majPompage).toHaveBeenCalledWith('besoin.mode', 'agronomique')
+  })
+
   it('aucune valeur affichée sans réponse serveur', () => {
     render(<PanneauAgricole {...PROPS_VIDES} apercuPompage={null} />)
     expect(screen.queryByTestId('resultat-pompage')).toBeNull()
