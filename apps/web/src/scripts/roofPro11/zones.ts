@@ -1609,7 +1609,7 @@ export function largeurAlleeDepuisReglages(
 function motifAlleeSansLargeur(code: string): string {
   return code
     ? `Allée non tracée : aucune largeur d’allée n’est réglée pour le pays « ${code} ». Réglez-la dans Réglages › Allées.`
-    : 'Allée non tracée : le pays du site n’est pas réglé. Réglez-le dans Réglages › Site.';
+    : 'Allée non tracée : le pays du site n’est pas réglé. Réglez-le dans Réglages simulation › Site & imagerie.';
 }
 
 /** Verdict d'un tracé d'allée — un refus NOMME toujours sa raison. */

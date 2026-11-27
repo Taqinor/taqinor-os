@@ -518,7 +518,7 @@ describe('CALX403 — une allée de circulation se trace, et retire sa surface',
       expect(p).not.toContain('?');
     }
     expect(phrases[0]).toBe('Allée non tracée : aucune largeur d’allée n’est réglée pour le pays « ma ». Réglez-la dans Réglages › Allées.');
-    expect(phrases[1]).toBe('Allée non tracée : le pays du site n’est pas réglé. Réglez-le dans Réglages › Site.');
+    expect(phrases[1]).toBe('Allée non tracée : le pays du site n’est pas réglé. Réglez-le dans Réglages simulation › Site & imagerie.');
     expect(phrases[3]).toBe(phrases[1]);
   });
 
