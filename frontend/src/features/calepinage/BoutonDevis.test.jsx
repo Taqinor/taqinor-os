@@ -419,7 +419,6 @@ describe('BoutonDevis — confirmation de taille (ACAL923)', () => {
 
     const encadre = await screen.findByTestId('cal-devis-confirmation-taille')
     expect(encadre).toHaveTextContent(QUESTION.detail)
-    expect(encadre).toHaveTextContent(QUESTION.refus)
     expect(screen.queryByTestId('cal-devis-conflit')).toBeNull()
     expect(within(encadre).getByRole('link', { name: 'Renseigner la facture du lead' }))
       .toHaveAttribute('href', `/crm/leads/${DETAIL_VIDE.lead.id}`)
@@ -429,6 +428,18 @@ describe('BoutonDevis — confirmation de taille (ACAL923)', () => {
       .toHaveBeenLastCalledWith(DETAIL_VIDE.id, CORPS, SANS_TOAST))
     expect(await screen.findByTestId('cal-devis-cree')).toHaveTextContent('Devis DEV-2611-0043 créé')
     expect(screen.queryByTestId('cal-devis-confirmation-taille')).toBeNull()
+  })
+
+  // ACAL1738 — lead sans facture : la consigne est dite UNE fois, dans le cadre « Confirmer et générer » (la phrase
+  // du serveur et le lien « Renseigner la facture du lead ») ; la sous-ligne du refus ne la répète plus.
+  it('ACAL1738 — la consigne n’apparaît qu’une fois', async () => {
+    calepinageApi.calepinages.genererDevis.mockRejectedValueOnce({ response: { status: 409, data: QUESTION } })
+    const { container } = rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    const encadre = await screen.findByTestId('cal-devis-confirmation-taille')
+    expect(encadre).toHaveTextContent(QUESTION.detail)
+    expect(container.textContent.match(/renseignez la facture/gi)).toHaveLength(1)
+    expect(screen.queryByText(QUESTION.refus)).toBeNull()
   })
 })
 

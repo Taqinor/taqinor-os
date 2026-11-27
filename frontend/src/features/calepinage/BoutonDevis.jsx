@@ -140,7 +140,9 @@ export const MESSAGE_VERIFICATION_A_LA_CONFIRMATION = 'La vérification électri
   + 'bloque, rien n’est écrit et l’écran dit pourquoi.'
 export const MESSAGE_APERCU_RELU = 'La conception ou le devis a changé depuis l’aperçu : voici ce que la '
   + 'resynchronisation changera maintenant.'
-export const MESSAGE_APERCU_FERME = 'La conception a été retouchée : l’aperçu est fermé, rien n’a été écrit. '
+// ACAL1738 — la consigne du 409 `confirmation_taille` d'un lead sans facture (`detail` ET `refus` la portent).
+const CONSIGNE_FACTURE = /renseignez la facture/i
+export const MESSAGE_APERCU_FERME ='La conception a été retouchée : l’aperçu est fermé, rien n’a été écrit. '
   + '« Resynchroniser le devis » montre ce qui changera maintenant.'
 const DELAI_SURVEILLANCE_RETOUCHES_MS = 500
 
@@ -850,7 +852,10 @@ function BoutonDevisCalepinage({
       {confirmation && (
         <div className="border border-warning/40 bg-warning/10 p-3" data-testid="cal-devis-confirmation-taille">
           <p className="text-sm text-foreground" role="alert">{confirmation.detail}</p>
-          {confirmation.refus && <p className="mt-1 text-xs text-muted-foreground">{confirmation.refus}</p>}
+          {/* ACAL1738 — la consigne « renseignez la facture » que la phrase du cadre dit déjà n'est pas répétée
+              en sous-ligne ; une autre précision du serveur (R2-17 : la cible des factures) reste lue. */}
+          {confirmation.refus && !(CONSIGNE_FACTURE.test(confirmation.detail ?? '') && CONSIGNE_FACTURE.test(confirmation.refus))
+            && <p className="mt-1 text-xs text-muted-foreground">{confirmation.refus}</p>}
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
