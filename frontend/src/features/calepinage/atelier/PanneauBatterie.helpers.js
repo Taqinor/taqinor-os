@@ -37,7 +37,7 @@ const estObjet = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 export function depuisEntree(entree) {
   const b = estObjet(entree?.batterie) ? entree.batterie : {}
   const h = estObjet(entree?.hors_reseau) ? entree.hors_reseau : {}
-  const etat = { strategie: enTexte(b.strategie), couplage: enTexte(b.couplage), actif: h.actif === true, jours: enTexte(h.jours_autonomie) }
+  const etat = { produit: enTexte(b.produit), strategie: enTexte(b.strategie), couplage: enTexte(b.couplage), actif: h.actif === true, jours: enTexte(h.jours_autonomie) }
   for (const { cle } of CHAMPS_BATTERIE) etat[cle] = enTexte(b[cle])
   // ACAL788 — appareils à tenir pendant une coupure : relus du stock, jamais préremplis.
   etat.appareils = Array.isArray(b.appareils)
@@ -101,6 +101,8 @@ export function corpsDeclaration(etat, entree) {
   }
   pose('strategie', texteOuNull(etat.strategie))
   pose('couplage', texteOuNull(etat.couplage))
+  // ACAL1668 — la batterie choisie dans le stock ; vide = la ligne batterie du devis lié (rien n'est posté).
+  pose('produit', nombreOuNull(etat.produit))
   for (const { cle, genre } of CHAMPS_BATTERIE) {
     pose(cle, genre === 'heures'
       ? (String(etat[cle]).trim() === '' ? null : lireHeures(etat[cle]))

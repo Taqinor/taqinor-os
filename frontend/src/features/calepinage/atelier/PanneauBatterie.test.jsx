@@ -961,6 +961,36 @@ describe('PanneauBatterie — champs lisibles et refus en mots (ACAL1644)', () =
     expect(calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[1][1].batterie.appareils).toEqual(SECOURS.appareils)
   })
 
+  it('ACAL1668 — sans devis lié, la liste des batteries du stock (celle du comparateur) pose batterie.produit', async () => {
+    const donnees = donneesSimulees()
+    const stock = donnees.batterie.capacites_candidates.capacites_stock
+    expect(stock.length).toBeGreaterThan(1)
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donnees })
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+    rendreExpert()
+    await screen.findByTestId('acal167-declaration', {}, { timeout: 8000 })
+    const liste = document.getElementById('acal167-produit')
+    const options = Array.from(liste.querySelectorAll('option')).slice(1)
+    expect(options.map((o) => o.value)).toEqual(stock.map((s) => String(s.produit)))
+    expect(options[1]).toHaveTextContent(stock[1].libelle)
+    fireEvent.change(liste, { target: { value: String(stock[1].produit) } })
+    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
+    await screen.findByTestId('acal167-message')
+    expect(calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[0][1])
+      .toEqual({ batterie: { produit: stock[1].produit } })
+  })
+
+  it('ACAL1668 — sans choix de produit, rien n’est posté (la ligne du devis lié reste le défaut)', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donneesSimulees() })
+    calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
+    rendreExpert()
+    await screen.findByTestId('acal167-declaration', {}, { timeout: 8000 })
+    expect(document.getElementById('acal167-produit')).toHaveValue('')
+    fireEvent.click(screen.getByTestId('acal167-enregistrer'))
+    await screen.findByTestId('acal167-message')
+    expect(calepinageApi.calepinages.enregistrerEntreeElectrique.mock.calls[0][1]).toEqual({})
+  })
+
   it('chaque champ fait au moins 44 px (min-h-11) et s’empile sur une colonne', async () => {
     rendreExpert()
     await screen.findByTestId('acal167-declaration')
