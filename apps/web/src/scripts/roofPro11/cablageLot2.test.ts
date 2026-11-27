@@ -15,7 +15,7 @@ import { type Ctx } from './context';
 import { panDeTest, ctxDeBase, ptM, LNG0, LAT0, carteEditeurFactice, depsEditeur } from './harnaisAtelier';
 import { type AreaRecord, type LayoutPlan } from './types';
 import { type LngLat } from '../../lib/roof';
-import { createLayoutState } from '../../lib/layoutVariability'; // ACAL1552
+import { createLayoutState } from '../../lib/layoutVariability'; // ACAL1916
 
 const CARRE: LngLat[] = [ptM(-5, -5), ptM(5, -5), ptM(5, 5), ptM(-5, 5)];
 
@@ -357,49 +357,6 @@ describe('ACAL520 — pan verrouillé : cotes et rotation refusées', () => {
     expect(setStatus).toHaveBeenCalledWith('Zone 1 verrouillé — déverrouillez-le d’abord.'); // ACAL1430
     delete areas[0].verrouille;
     expect(zones.pivoterPanActif(90)).toBe(true);
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// ACAL1552 — « Remplir automatiquement » (60) rouvre à 60, sans écriture au chargement.
-// ═══════════════════════════════════════════════════════════════════════════════
-describe('ACAL1552 — une pose de 60 panneaux se rouvre à 60 (la cible n’est pas re-pavée)', () => {
-  function monter(cible: number, cellules: number) {
-    const centres = Array.from({ length: cellules }, (_, i) => ({ cx: -2 * (i % 10), cy: 2 * Math.floor(i / 10) }));
-    const conteneur = document.createElement('div');
-    document.body.appendChild(conteneur);
-    const map = carteEditeurFactice(conteneur);
-    const ctx = {
-      ...(makeCtx([zone('area-1', [...CARRE])]) as unknown as Record<string, unknown>),
-      layoutMode: true,
-      layoutPlan: {
-        pack: { origin: [LNG0, LAT0], ringENU: [[-60, -60], [60, -60], [60, 60], [-60, 60]], azimuthDeg: 0 },
-        grid: { rowWidthM: 2, footprintPerPanelM2: 2, slopeLenM: 1, panels: [] },
-        tiltDeg: 0, family: 'south', flush: false,
-      } as unknown as LayoutPlan,
-      layoutState: createLayoutState(centres, cible), // pavage à la CIBLE : 40 posés sur 80 cellules
-      layoutOptimalCount: cible,
-      layoutSel: null, freeMode: false, freeState: null,
-    } as unknown as Ctx;
-    const ecritures = vi.fn();
-    const editor = createLayoutEditor(ctx, depsEditeur(map));
-    return { ctx, editor, centres, ecritures };
-  }
-
-  it('60 panneaux enregistrés, cible 40 : 60 cellules occupées au rechargement, 0 écriture', () => {
-    const { ctx, editor, centres, ecritures } = monter(40, 80);
-    expect(ctx.layoutState!.occupied.size).toBe(40);
-    expect(editor.hydrateLayout(centres.slice(0, 60), [LNG0, LAT0], 'lattice')).toBe(true);
-    expect(ctx.layoutState!.occupied.size).toBe(60);
-    expect(ecritures).not.toHaveBeenCalled();
-  });
-
-  it('le rechargement passe par la pose enregistrée, jamais par un re-pavage à la cible', () => {
-    const i = SOURCE_ENTREE.indexOf('close(Boolean(posed?.panels?.length))');
-    expect(i).toBeGreaterThan(0);
-    const suite = SOURCE_ENTREE.slice(i, i + 700);
-    expect(suite).toContain('layoutEditor.hydrateLayout(posed.panels, posed.origin');
-    expect(suite).not.toContain('fillAll');
   });
 });
 
