@@ -30,7 +30,7 @@ import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import recordsApi from '../../api/recordsApi'
 import DevisGenerator from './DevisGenerator'
-import { bancEdition, devisResidentielRouvert } from './devisGenerator.testHelpers.jsx'
+import { bancEdition, devisResidentielRouvert, renderGeneratorPage, makeStoreDirecteur, LEAD, PANNEAU, ONDULEUR } from './devisGenerator.testHelpers.jsx'
 
 
 function devisRouvert(variante, calepinage = 'exemple', extra = {}) {
@@ -158,3 +158,15 @@ describe('ACAL1205 —Auto-remplir attend l\'étude horaire (taille « avec batt
   })
 })
 
+
+describe('ACAL1208 — le numéro du devis ouvert en édition est sa référence', () => {
+  it('édition ⇒ « DEV-202611-0072 » ; création ⇒ « Généré automatiquement »', async () => {
+    ventesApi.getDevisById.mockResolvedValue(devisRouvert('exemple_brouillon', 'exemple_vide', { reference: 'DEV-202611-0072' }))
+    const { unmount } = renderEdition(12)
+    await waitFor(() => expect(document.getElementById('gen-num').value).toBe('DEV-202611-0072'))
+    unmount()
+    renderGeneratorPage(DevisGenerator, { crmApi, stockApi, produits: [PANNEAU, ONDULEUR], store: makeStoreDirecteur() })
+    await waitFor(() => expect(document.getElementById('gen-num')).not.toBeNull())
+    expect(document.getElementById('gen-num').value).toBe('Généré automatiquement')
+  })
+})

@@ -1835,7 +1835,7 @@ export default function DevisGenerator({
           <CardContent className="grid gap-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="grid gap-1.5">
               <Label htmlFor="gen-num">N° de Devis</Label>
-              <Input id="gen-num" value="Généré automatiquement" disabled />
+              <Input id="gen-num" value={editDevis?.reference || 'Généré automatiquement'} disabled />
             </div>
             <div className={modeInstallation === 'agricole' ? 'hidden' : 'grid gap-1.5'}>
               {/* OFFGRID — « Raccordement » du devis : défaut « Raccordé au
