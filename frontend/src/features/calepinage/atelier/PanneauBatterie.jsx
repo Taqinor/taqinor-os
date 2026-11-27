@@ -7,7 +7,7 @@ import { formatNumber, formatPercent } from '../../../lib/format'
 import { Button, Card, Checkbox, Input, Label, Spinner, Stat } from '../../../ui'
 import { refusParChamp } from '../electrique/entreeElectrique'
 import { BoutonCalculer } from '../production/PanneauProduction'
-import { CHAMPS_BATTERIE, STRATEGIES, corpsDeclaration, depuisEntree } from './PanneauBatterie.helpers'
+import { CHAMPS_BATTERIE, STRATEGIES, corpsDeclaration, depuisEntree, refusEnMots } from './PanneauBatterie.helpers'
 import { MotifAbsence } from '../MotifAbsence'
 import SemaineBatterie from './SemaineBatterie'
 import Pourquoi from '../commun/Pourquoi'
@@ -122,7 +122,7 @@ function BandeauNonSimule({ avertissements }) {
 }
 
 
-function DeclarationBatterie({ id, onRelancer, reserve = null, secours = null }) {
+function DeclarationBatterie({ id, onRelancer, reserve = null, secours = null, stock = null }) {
   const [entree, setEntree] = useState(null)
   const [etat, setEtat] = useState(null)
   const [erreurs, setErreurs] = useState({})
@@ -156,7 +156,7 @@ function DeclarationBatterie({ id, onRelancer, reserve = null, secours = null })
       })
       .catch((err) => {
         const parChamp = refusParChamp(err?.response?.data)
-        setErreurs(Object.keys(parChamp).length ? parChamp : { declaration: 'Déclaration non enregistrée : le serveur n’a pas accepté la saisie.' })
+        setErreurs(Object.keys(parChamp).length ? refusEnMots(parChamp, etat) : { declaration: 'Déclaration non enregistrée : le serveur n’a pas accepté la saisie.' })
       })
       .finally(() => setEnCours(false))
   }
@@ -178,7 +178,7 @@ function DeclarationBatterie({ id, onRelancer, reserve = null, secours = null })
       {refus ? <p className="text-xs text-destructive" data-testid={`acal167-erreur-${cle}`}>{refus}</p> : null}
     </div>
   )
-  const liste = (cle, libelle, valeur, options, refus) => (
+  const liste = (cle, libelle, valeur, options, refus, vide = '— non choisi —') => (
     <div key={cle} className="flex flex-col gap-1">
       <Label htmlFor={`acal167-${cle}`}>{libelle}</Label>
       <select
@@ -188,7 +188,7 @@ function DeclarationBatterie({ id, onRelancer, reserve = null, secours = null })
         aria-invalid={refus ? 'true' : undefined}
         className="h-[var(--control-h)] min-h-11 w-full rounded-md border border-input bg-card px-2 text-sm text-foreground"
       >
-        <option value="">— non choisi —</option>
+        <option value="">{vide}</option>
         {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
       </select>
       {refus ? <p className="text-xs text-destructive" data-testid={`acal167-erreur-${cle}`}>{refus}</p> : null}
@@ -210,11 +210,14 @@ function DeclarationBatterie({ id, onRelancer, reserve = null, secours = null })
         ? <p role="alert" className="text-sm text-destructive" data-testid="acal167-bandeau">{erreurs.declaration}</p>
         : null}
       <div className="grid gap-3 sm:grid-cols-2">
+        {stock?.length > 0 && liste('produit', 'Batterie du stock', etat.produit,
+          stock.map((s) => [String(s.produit), `${s.libelle} — ${formatNumber(s.capacite_utile_kwh)} kWh utiles`]),
+          erreur('produit'), 'Ligne batterie du devis lié')}
         {liste('strategie', 'Stratégie', etat.strategie, STRATEGIES.map((v) => [v, libelleStrategie(v)]), erreur('strategie'))}
         {liste('couplage', 'Couplage', etat.couplage, [['ac', 'AC'], ['dc', 'DC']], erreur('couplage'))}
         {CHAMPS_BATTERIE.map((c) => champ(
           c.cle, c.libelle, etat[c.cle], (v) => poser(c.cle, v), c.genre === 'nombre' ? 'number' : 'text',
-          erreur(c.cle), c.cle === 'reserve_backup_kwh' && etat.appareils.length > 0))}
+          erreur(c.cle), c.cle === 'reserve_backup_kwh' && etat.strategie === 'backup' && etat.appareils.length > 0))}
       </div>
       {expert && etat.strategie === 'decalage' && (
         <FenetresBatterie fenetres={etat.fenetres} erreurs={erreurs} onChange={(v) => poser('fenetres', v)} />
@@ -602,6 +605,7 @@ export default function PanneauBatterie({ calepinageId, intervalleMs = 2000 }) {
         onRelancer={() => setRelance((n) => n + 1)}
         reserve={!perime && data?.simule ? data?.batterie?.total?.reserve_secours : null}
         secours={!perime && data?.simule ? data?.batterie?.total?.secours : null}
+        stock={!perime && data?.simule ? data?.batterie?.capacites_candidates?.capacites_stock : null}
       />
       <BoutonCalculer calepinageId={id} data={data} onTermine={refetch} declenchement={relance} intervalleMs={intervalleMs} />
       {!perime && data?.simule && (

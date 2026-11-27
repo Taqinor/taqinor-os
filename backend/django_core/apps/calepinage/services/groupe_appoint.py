@@ -85,6 +85,13 @@ MENTION_GROUPE = (
     "des moteurs n'est pas modélisé. Aucun carburant, aucun prix.")
 
 
+#: ACAL1932 — pourquoi un groupe actif n'a jamais tourné (seuils SAISIS, jamais devinés).
+CAUSE_SOUS_LA_VEILLE = (
+    "le groupe ne démarre jamais : seuil de démarrage sous la veille "
+    "(démarrage à %g %%, veille à %g %%) — la batterie cesse de se décharger "
+    "à la veille, son état de charge n'atteint donc jamais le démarrage")
+
+
 class Groupe:
     """La machine d'états du groupe (``services/hors_reseau.py`` la fait
     avancer pas à pas) : arrêt ⇄ marche, un budget d'heures par jour.
@@ -95,11 +102,12 @@ class Groupe:
     du pas.
     """
 
-    def __init__(self, reglage, capacite_kwh, pas_heures):
+    def __init__(self, reglage, capacite_kwh, pas_heures, veille_pct=None):
         self.puissance_kw = _nombre(reglage['puissance_kw'])
         self.soc_demarrage_pct = _nombre(reglage['soc_demarrage_pct'])
         self.soc_arret_pct = _nombre(reglage['soc_arret_pct'])
         self.heures_max_par_jour = _nombre(reglage['heures_max_par_jour'])
+        self.veille_pct = _nombre(veille_pct)
         self._demarrage_kwh = capacite_kwh * self.soc_demarrage_pct / 100.0
         self._arret_kwh = capacite_kwh * self.soc_arret_pct / 100.0
         self._pas = pas_heures
@@ -140,6 +148,14 @@ class Groupe:
         return self._par_mois.setdefault(mois, {
             'mois': mois, 'heures_de_marche': 0.0, 'energie_fournie_kwh': 0.0})
 
+    def cause_inactif(self):
+        """Le texte qui dit pourquoi le groupe n'a jamais tourné, ou ``None`` :
+        seulement s'il n'a pas marché ET que son démarrage est sous la veille."""
+        if (self.heures_de_marche > 0 or self.veille_pct is None
+                or self.soc_demarrage_pct >= self.veille_pct):
+            return None
+        return CAUSE_SOUS_LA_VEILLE % (self.soc_demarrage_pct, self.veille_pct)
+
     def publier(self):
         """Le bloc ``hors_reseau.groupe`` sur la fenêtre simulée (l'étape le
         ramène à l'année moyenne)."""
@@ -150,6 +166,7 @@ class Groupe:
             'heures_max_par_jour': self.heures_max_par_jour,
             'heures_de_marche': round(self.heures_de_marche, 3),
             'energie_fournie_kwh': round(self.energie_fournie_kwh, 3),
+            'cause_inactif': self.cause_inactif(),
             'par_mois': [
                 {'mois': ligne['mois'],
                  'heures_de_marche': round(ligne['heures_de_marche'], 3),
