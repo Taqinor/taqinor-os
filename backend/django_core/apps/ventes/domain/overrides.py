@@ -347,7 +347,7 @@ def quantite_ligne_panneau(devis, lignes, *, avertissements=None):
     """
     from apps.ventes.domain.scenario import ligne_panneau_dominante
 
-    dominante = ligne_panneau_dominante(lignes or ())
+    dominante = ligne_panneau_dominante(lignes or (), devis)
     if dominante is None:
         return None, None
     verdict = preseance_nb_panneaux(devis, dominante,

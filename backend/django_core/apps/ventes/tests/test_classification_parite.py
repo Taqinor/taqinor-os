@@ -908,3 +908,40 @@ class LecteursAvalEcrivainsTest(SimpleTestCase):
         devis = SimpleNamespace(**vars(_avant_la_coupure()), company_id=1, taux_tva=20)
         for produit in _produits_abc(fiche_chargee=True):
             self.assertNotIn('role_devis', self._par_l_api(devis, produit), produit.nom)
+
+
+def _devis_taille(devis, nb):
+    """``devis`` (doublure) portant la surcharge de NIVEAU DEVIS ``taille.nb_panneaux = nb``."""
+    return SimpleNamespace(**vars(devis), pk=41, reference='DEV-LAV-S3', mode_installation='residentiel',
+                           roof_layout=None, overrides={'taille.nb_panneaux': {'valeur': nb, 'origine': 'manuel'}})
+
+
+class LecteursAvalSuite3Test(SimpleTestCase):
+    """Lecteurs aval (suite 3) — les lecteurs que les lanes précédentes ont
+    laissés lisent le rôle RANGÉ (``domain.classe_ligne``), puis les mots-clés
+    d'hier ; un devis envoyé avant la coupure garde l'expression d'hier."""
+
+    @staticmethod
+    def _preseance(devis, designation, role):
+        from apps.ventes.domain.pipeline import _appliquer_preseance_quantite
+        specs = [{'designation': designation, 'quantite': '14', 'role_devis': role, 'produit': 1}]
+        _appliquer_preseance_quantite(_devis_taille(devis, 21), specs)
+        return specs[0]['quantite']
+
+    def test_1_ligne_panneau_dominante_lit_le_role_range(self):
+        """Cas B — la ligne de 30 « CS7N-715TB » rangée ``panneau`` est LA dominante
+        (préséance R4-A de ``taille.nb_panneaux`` : 14 → 21 sur la spec, kWc) ;
+        envoyé avant la coupure : aucune dominante, comme hier."""
+        from apps.ventes.domain.scenario import ligne_panneau_dominante
+        b = _ligne(_NOM_B, role='panneau', quantite=30)
+        a = _ligne(_NOM_A, role='batterie', quantite=1)
+        self.assertIs(ligne_panneau_dominante([a, b]), b)
+        self.assertIsNone(ligne_panneau_dominante([a, b], devis=_avant_la_coupure()))
+        self.assertEqual(self._preseance(_BROUILLON, _NOM_B, 'panneau'), '21')
+        self.assertEqual(self._preseance(_avant_la_coupure(), _NOM_B, 'panneau'), '14')
+        # Nom ordinaire : inchangé, avant comme après la coupure.
+        jinko = _ligne('Panneau Jinko 710W', quantite=12)
+        self.assertIs(ligne_panneau_dominante([a, jinko]), jinko)
+        self.assertIs(ligne_panneau_dominante([a, jinko], devis=_avant_la_coupure()), jinko)
+        for devis in (_BROUILLON, _avant_la_coupure()):
+            self.assertEqual(self._preseance(devis, 'Panneau Jinko 710W', ''), '21')

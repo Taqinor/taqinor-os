@@ -522,11 +522,12 @@ class _SpecCommeLigne:
     """
 
     __slots__ = ('index', 'designation', 'produit', 'quantite_manuelle',
-                 '_quantite')
+                 '_quantite', 'role_devis')
 
     def __init__(self, index, spec):
         self.index = index
         self.designation = spec.get('designation') or ''
+        self.role_devis = spec.get('role_devis') or ''
         self.produit = spec.get('produit')
         self.quantite_manuelle = bool(spec.get('quantite_manuelle', False))
         try:
