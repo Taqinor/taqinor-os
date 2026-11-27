@@ -7,7 +7,7 @@
 .cliste-page {
   background: var(--cal-papier);
   box-shadow: 0 0 0 100vmax var(--cal-papier);
-  clip-path: inset(-100vmax -100vmax -100vmax -100vmax);
+  clip-path: inset(0 -100vmax);
 }
 /* ACAL1747 — le compteur « N projets » / « Chargement… » : le jeton de texte secondaire de l'écran (≈ 7,4 : 1 en
    clair, ≈ 8,3 : 1 en sombre sur le papier de la liste), pas le gris pâle du thème que l'apparition de la liste
