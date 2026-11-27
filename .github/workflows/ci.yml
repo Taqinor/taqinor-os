@@ -1862,6 +1862,11 @@ jobs:
       - name: Check bundle budget
         working-directory: frontend
         run: npm run check-bundle-budget
+      # ACAL2046 — le plafond de poids des écrans du calepinage ne se mesure que sur un vrai dist/ :
+      # l'étape « Frontend unit tests » passe avant le build et ce test s'y tait. On le rejoue ici.
+      - name: Check calepinage module budget
+        working-directory: frontend
+        run: node --test src/features/calepinage/budget.test.mjs
 
   # Couche UX : rendu/interaction (Testing Library) + accessibilité (axe),
   # exécutée par Vitest (fichiers *.test.jsx, jsdom) + résumé de couverture.

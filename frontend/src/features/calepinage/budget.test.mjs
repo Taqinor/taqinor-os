@@ -50,7 +50,7 @@ import { fileURLToPath } from 'node:url'
    Rollup — AUCUN poids neuf) : cinq d'entre elles étaient déjà suivies
    ci-dessus, les huit autres restent HORS PÉRIMÈTRE de cette tâche (des
    routes préexistantes, sans lien avec l'ajout du rail).
-   Le budget ci-dessous (73 Ko) est le PALIER IMMÉDIATEMENT au-dessus de la
+   [Remplacé le 27/11 : voir MODULE_BUDGET_KB.] L'ancien budget (73 Ko) était le PALIER IMMÉDIATEMENT au-dessus de la
    mesure (~3 Ko de marge, jamais élargi « pour respirer ») — à RELEVER PAR
    PALIER documenté le jour où un onglet légitime le dépasse, même convention
    que `check_bundle_budget.mjs`.
@@ -71,8 +71,13 @@ const FRONTEND_ROOT = racineFrontend()
 const DIST_ASSETS = join(FRONTEND_ROOT, 'dist', 'assets')
 const DIST_INDEX = join(FRONTEND_ROOT, 'dist', 'index.html')
 
-//: Mesuré (voir en-tête). Relevé PAR PALIER documenté, jamais élargi à vue.
-const MODULE_BUDGET_KB = 73
+//: DÉCISION FONDATEUR 27/11 : plafond GELÉ au poids que la CI mesure
+//: aujourd'hui ; il ne peut QUE BAISSER (cliquet), une tâche distincte devant
+//: alléger le module roof-layout. Mesure du relecteur sur un build de cette
+//: voie : 124,36 Ko gzip (27 chunks, `Projet` désambiguïsé) ; le palier (le
+//: Ko entier) au-dessus est 125. L'orchestrateur le CONFIRME sur le run CI et
+//: l'abaisse à la valeur réellement imprimée si elle est plus basse. Jamais relevé.
+const MODULE_BUDGET_KB = 125
 
 //: Les composants du module RÉELLEMENT lazy-chargés par `module.config.jsx`
 //: (préfixe de chunk = nom du fichier source, convention Vite/Rollup par
@@ -102,17 +107,31 @@ const CHUNKS_ATELIER_ONGLETS = [
   'PanneauDocuments', 'PanneauPertes', 'PanneauReleve', 'PanneauActivite',
   'PanneauVersions', 'PanneauMasseLestage', 'PanneauSeries', 'PanneauBatterie',
   'EquipementsElectriques', 'CheminementCables', 'Raccordement',
-  'OngletCoupeRangees', 'VerdictElectrique', 'PanneauEconomie', 'Projet',
+  'OngletCoupeRangees', 'VerdictElectrique', 'PanneauEconomie', 'PanneauProjet',
   'DiffVersions',
 ]
 
 const CHUNKS_DU_MODULE = [...CHUNKS_MODULE_CONFIG, ...CHUNKS_ATELIER_ONGLETS]
 
+// ACAL2046 (revue) — EXACTEMENT un chunk par préfixe, sinon on échoue en nommant
+// le préfixe : `find` prenait « le premier » (ordre dépendant du hash) et
+// `filter(Boolean)` taisait un préfixe disparu. Le préfixe `Projet` a ainsi
+// compté la page des tâches (15,4 Ko) au lieu de l'onglet calepinage (2,56 Ko) ;
+// l'onglet s'appelle désormais `PanneauProjet` (aucune collision).
+export function fichiersParPrefixe(fichiers, prefixes) {
+  return prefixes.map((prefixe) => {
+    const trouves = fichiers.filter((f) => f.endsWith('.js') && f.startsWith(`${prefixe}-`))
+    if (trouves.length !== 1) {
+      throw new Error(
+        `préfixe de chunk « ${prefixe} » : ${trouves.length} fichier(s) dans dist/assets `
+        + `(attendu : exactement 1)${trouves.length ? ` — ${trouves.join(', ')}` : ''}`)
+    }
+    return trouves[0]
+  })
+}
+
 function fichiersDuModule() {
-  const fichiers = readdirSync(DIST_ASSETS).filter((f) => f.endsWith('.js'))
-  return CHUNKS_DU_MODULE
-    .map((prefixe) => fichiers.find((f) => f.startsWith(`${prefixe}-`)))
-    .filter(Boolean)
+  return fichiersParPrefixe(readdirSync(DIST_ASSETS), CHUNKS_DU_MODULE)
 }
 
 // ── 1. GARDE STATIQUE (toujours actif, aucun `dist/` requis) ──────────────
@@ -150,6 +169,17 @@ test('CAL224 — chaque onglet NEUF de l’atelier est LAZY dans le registre `on
   }
 })
 
+// ACAL2046 — le garde mesuré ne sert à rien s'il se tait en CI : le workflow doit le jouer APRÈS le build.
+test('ACAL2046 — ci.yml joue budget.test.mjs après « Build frontend » (sur un vrai dist/)', () => {
+  const ci = readFileSync(join(FRONTEND_ROOT, '..', '.github', 'workflows', 'ci.yml'), 'utf8')
+  const build = ci.search(/- name: Build frontend\r?\n/)
+  const garde = ci.indexOf('src/features/calepinage/budget.test.mjs')
+  assert.ok(build >= 0, 'étape « Build frontend » introuvable dans ci.yml')
+  assert.ok(garde > build,
+    'ci.yml ne joue pas `node --test src/features/calepinage/budget.test.mjs` après « Build frontend » : '
+    + 'le garde mesuré se tairait (dist/ absent).')
+})
+
 // ── 2. GARDE MESURÉ (actif seulement si `dist/` existe — voir en-tête) ────
 
 const distDisponible = existsSync(DIST_ASSETS)
@@ -175,7 +205,7 @@ test('CAL224 — le poids gzip des chunks du module reste sous le budget MESURÉ
     }
 
     assert.ok(totalKb <= MODULE_BUDGET_KB,
-      `module calepinage: ${totalKb.toFixed(2)} Ko (gzip) > budget `
+      `module calepinage MESURÉ: ${totalKb.toFixed(2)} Ko (gzip) > plafond `
       + `${MODULE_BUDGET_KB} Ko.\n${detail.join('\n')}`)
   })
 
@@ -196,3 +226,20 @@ test('CAL224 — aucun chunk du module n\u2019est modulepreloadé sur /login',
       + 'calepinage ne doit jamais être modulepreloadé sur une page qui ne '
       + 'l\u2019ouvre pas.')
   })
+
+// ── 3. RÈGLE « EXACTEMENT UN CHUNK PAR PRÉFIXE » (liste factice, sans dist/) ──
+
+test('ACAL2046 — un préfixe qui matche deux chunks fait échouer la mesure en le nommant', () => {
+  const listing = ['Projet-aaa.js', 'Projet-bbb.js', 'Raccordement-ccc.js', 'Raccordement-ccc.js.map']
+  assert.throws(() => fichiersParPrefixe(listing, ['Projet']), /« Projet » : 2 fichier/)
+})
+
+test('ACAL2046 — un préfixe sans chunk fait échouer la mesure (plus de filter(Boolean) muet)', () => {
+  assert.throws(() => fichiersParPrefixe(['Raccordement-ccc.js'], ['PanneauProjet']), /« PanneauProjet » : 0 fichier/)
+})
+
+test('ACAL2046 — un chunk par préfixe passe', () => {
+  assert.deepEqual(
+    fichiersParPrefixe(['PanneauProjet-x.js', 'Projet-y.js', 'PanneauProjet-x.js.map'], ['PanneauProjet', 'Projet']),
+    ['PanneauProjet-x.js', 'Projet-y.js'])
+})
