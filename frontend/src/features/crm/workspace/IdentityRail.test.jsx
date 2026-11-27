@@ -4,6 +4,7 @@ import { documentContrat, exempleContrat, reponseContrat } from '../../../test/f
 import { initState } from './draftCore'
 import IdentityRail from './IdentityRail'
 import crmApi from '../../../api/crmApi'
+import calepinageApi from '../../../api/calepinageApi'
 import { EVENEMENT_OUVRIR } from '../../ia/copilotMessages'
 import { CANAL_LABELS, formatMAD } from '../stages'
 
@@ -48,8 +49,8 @@ vi.mock('../../../ui/confirm', async (importOriginal) => {
 vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
 // AssigneePicker mocké en bouton cliquable pour tester le PATCH du responsable.
 vi.mock('../../../components/AssigneePicker', () => ({
-  default: ({ value, onChange, disabled }) => (
-    <button type="button" data-testid="assignee" disabled={disabled} onClick={() => onChange(9)}>{String(value ?? '')}</button>
+  default: ({ value, onChange, disabled, nomServi }) => (
+    <button type="button" data-testid="assignee" data-nom-servi={nomServi ?? ''} disabled={disabled} onClick={() => onChange(9)}>{String(value ?? '')}</button>
   ),
 }))
 // ADRG20 — droits des gestes (code fin, sinon palier) : tous accordés par
@@ -179,6 +180,37 @@ describe('LW14 — IdentityRail identité + actions', () => {
     ouvrir.mockRestore()
   })
 
+  // ACAL1271 — Safari iOS bloque un window.open posé APRÈS un await : l'onglet est pré-ouvert dans le tap.
+  it('ACAL1271 — « Dessiner le toit » pré-ouvre l’onglet AVANT la réponse du serveur, puis le dirige vers l’atelier', async () => {
+    let resoudre
+    calepinageApi.calepinages.depuisLead.mockImplementationOnce(
+      () => new Promise((r) => { resoudre = r }),
+    )
+    const onglet = { location: { href: '' }, close: vi.fn(), opener: {} }
+    const ouvrir = vi.spyOn(window, 'open').mockImplementation(() => onglet)
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Dessiner le toit/ }))
+    // Le serveur n'a pas encore répondu : l'onglet est déjà ouvert (dans le geste).
+    expect(ouvrir).toHaveBeenCalledTimes(1)
+    expect(onglet.location.href).toBe('')
+    resoudre({ data: { calepinage: 77 } })
+    await waitFor(() => expect(onglet.location.href).toBe('/calepinage/77'))
+    expect(ouvrir).toHaveBeenCalledTimes(1)
+    expect(onglet.close).not.toHaveBeenCalled()
+    ouvrir.mockRestore()
+  })
+
+  it('ACAL1271 — refus du serveur : l’onglet pré-ouvert est refermé', async () => {
+    calepinageApi.calepinages.depuisLead.mockRejectedValueOnce({ response: { data: { lead: ['Refusé.'] } } })
+    const onglet = { location: { href: '' }, close: vi.fn(), opener: {} }
+    const ouvrir = vi.spyOn(window, 'open').mockImplementation(() => onglet)
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    fireEvent.click(screen.getByRole('button', { name: /Dessiner le toit/ }))
+    await waitFor(() => expect(onglet.close).toHaveBeenCalledTimes(1))
+    expect(onglet.location.href).toBe('')
+    ouvrir.mockRestore()
+  })
+
   it('Convertir route par onAction depuis le menu « ⋯ »', async () => {
     render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
     ouvrirPlus()
@@ -224,6 +256,24 @@ describe('LW14 — IdentityRail identité + actions', () => {
     expect(screen.getByText(/Toit épinglé/)).toBeInTheDocument()
     expect(screen.getByText(/Facture saisie/)).toBeInTheDocument()
     expect(screen.getByText(/Prêt à deviser/)).toBeInTheDocument()
+  })
+
+  // ACAL1269 — pompage (agricole) : champ au sol, gasoil — ni toit ni facture d'électricité.
+  it('ACAL1269 — lead agricole : ni « Toit non épinglé » ni « Facture manquante », « Prêt à deviser » reste', () => {
+    render(<IdentityRail
+      state={makeState({ type_installation: 'agricole', devis_auto: { pret: true, manquants: [], requis: [] } })}
+      onAction={onAction}
+      users={[]}
+    />)
+    expect(screen.queryByText(/Toit/)).toBeNull()
+    expect(screen.queryByText(/Facture/)).toBeNull()
+    expect(screen.getByText(/Prêt à deviser/)).toBeInTheDocument()
+  })
+
+  it('ACAL1269 — lead résidentiel : les deux badges restent', () => {
+    render(<IdentityRail state={makeState({ type_installation: 'residentiel' })} onAction={onAction} users={[]} />)
+    expect(screen.getByText(/Toit non épinglé/)).toBeInTheDocument()
+    expect(screen.getByText(/Facture manquante/)).toBeInTheDocument()
   })
 
   // T4-U1-022 — un lead résidentiel déclaré en kWh, sans facture : le serveur le dit prêt (groupe
@@ -290,6 +340,11 @@ describe('LW15 — triade responsable · prochaine action · relance', () => {
     render(<IdentityRail state={makeState()} onAction={onAction} users={[{ id: 9, username: 'Meriem' }]} />)
     fireEvent.click(screen.getByTestId('assignee'))
     expect(onAction).toHaveBeenCalledWith('set-field', { key: 'owner', value: 9 })
+  })
+
+  it('ACAL1245 — le rail passe le nom du responsable servi (owner_nom) au sélecteur, liste vide', () => {
+    render(<IdentityRail state={makeState({ owner_nom: 'Sami Alami' })} onAction={onAction} users={[]} />)
+    expect(screen.getByTestId('assignee')).toHaveAttribute('data-nom-servi', 'Sami Alami')
   })
 
   it('changer la relance PATCHe via onAction(set-field, relance_date) en date locale', () => {
