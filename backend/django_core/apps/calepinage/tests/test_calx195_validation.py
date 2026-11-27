@@ -502,6 +502,63 @@ class PerteSystemeTest(SimpleTestCase):
         self.assertIn('sans la chaleur des panneaux, que PVGIS compte', motif)
 
 
+#: Une courbe de rendement à éclairement partiel telle que les fiches en
+#: publient (celle de ``test_calx162_niveau_irradiance.COURBE_REELLE``).
+COURBE_FAIBLE_ECLAIREMENT = [
+    {'w_m2': 200, 'rendement_relatif_pct': 96.0},
+    {'w_m2': 600, 'rendement_relatif_pct': 99.0},
+    {'w_m2': 1000, 'rendement_relatif_pct': 100.0},
+]
+
+
+def _serie_avec_composantes():
+    """La série d'entrée, plus Gb/Gd/Gr de la réponse ENREGISTRÉE au même
+    point, même plan, même année (``components=1``) : l'IAM s'applique."""
+    composantes = _charge('seriescalc_casablanca_sud_composantes.json')
+    serie = serie_entree()
+    for point, ligne in zip(serie['points'],
+                            composantes['outputs']['hourly']):
+        point.update(gb_i_w_m2=ligne['Gb(i)'], gd_i_w_m2=ligne['Gd(i)'],
+                     gr_i_w_m2=ligne['Gr(i)'])
+    return serie
+
+
+def _mesure_chaine_complete(fiche):
+    """La CHAÎNE ENTIÈRE (``ORDRE_ETAPES`` non réduit), contexte neuf."""
+    ctx = contexte()
+    ctx['fiche_module'] = dict(fiche)
+    return v.ecart_vs_pvcalc(_serie_avec_composantes(), ctx, REPONSE_PVGIS,
+                             maintenant=FAITE_LE)
+
+
+class EgaliteSurLaChaineCompleteTest(SimpleTestCase):
+    """ACAL1933 (revue) — sur la chaîne RÉELLE, le spectre (toujours omis en
+    v1) ne compte pas : seule une étape que PVGIS modélise et que CE
+    calepinage omet faute de donnée retire « à pertes système égales »."""
+
+    def test_rien_d_omis_hors_toujours_omises_reste_a_pertes_egales(self):
+        fiche = dict(_fiche_du_scenario(),
+                     rendement_par_irradiance=COURBE_FAIBLE_ECLAIREMENT)
+        bloc = _mesure_chaine_complete(fiche)
+        pertes = bloc['pertes_totales']
+        self.assertEqual(pertes['omises_vs_pvgis'], [])
+        self.assertTrue(pertes['egales'])
+        self.assertIn('à pertes système égales', bloc['motif'])
+        self.assertEqual([e['etape'] for e in pertes['etapes_exclues']],
+                         ['iam', 'niveau_irradiance', 'thermique'])
+
+    def test_une_etape_pvgis_omise_par_choix_retire_l_egalite(self):
+        bloc = _mesure_chaine_complete(_fiche_du_scenario())
+        pertes = bloc['pertes_totales']
+        self.assertFalse(pertes['egales'])
+        self.assertEqual(pertes['omises_vs_pvgis'], [{
+            'etape': 'niveau_irradiance', 'libelle': "Niveau d'irradiance",
+            'designation': 'la perte par faible éclairement'}])
+        self.assertNotIn('à pertes système égales', bloc['motif'])
+        self.assertIn('sans la perte par faible éclairement, que PVGIS '
+                      'compte', bloc['motif'])
+
+
 class FormePvcalcMensuelleTest(SimpleTestCase):
     """La réponse ``PVcalc`` (mensuelle) est lue comme la série horaire.
 

@@ -69,7 +69,8 @@ import datetime
 
 from apps.calepinage.services import etapes as _etapes
 from apps.calepinage.services.chaine_pertes import (
-    DECIMALES_KWH, LIBELLES, annees_de_la_fenetre, appliquer_chaine,
+    DECIMALES_KWH, LIBELLES, TOUJOURS_OMISES, annees_de_la_fenetre,
+    appliquer_chaine,
 )
 from .valeurs import nombre as _flottant
 
@@ -480,11 +481,15 @@ def _pertes_totales(cascade, mesure_pvgis):
     l'arrondi près, la perte de la cascade entière et les étapes retirées."""
     chaine, exclues = perte_systeme(cascade)
     pvgis = mesure_pvgis.get('loss_pct')
-    # ACAL1933 — une étape que PVGIS calcule, OMISE chez nous : pas d'égalité.
+    # ACAL1933 — une étape que PVGIS calcule, OMISE chez nous PAR CHOIX pour
+    # ce calepinage (donnée absente) : pas d'égalité. Les étapes TOUJOURS
+    # omises en v1 (``TOUJOURS_OMISES``, le spectre) sont omises de TOUT
+    # calepinage : les compter retirerait « à pertes système égales » et la
+    # branche de tolérance (ACAL1606) à chaque calepinage (revue ACAL1933).
     omises = [{'etape': nom, 'libelle': LIBELLES.get(nom),
                'designation': DESIGNATIONS_PVGIS[nom]}
               for nom in (cascade or {}).get('etapes_omises') or ()
-              if nom in DESIGNATIONS_PVGIS]
+              if nom in DESIGNATIONS_PVGIS and nom not in TOUJOURS_OMISES]
     egales = (not omises and chaine is not None and pvgis is not None
               and abs(float(chaine) - float(pvgis)) <= EPSILON_PERTE_PCT)
     return {'chaine_pct': chaine, 'pvgis_pct': pvgis, 'egales': bool(egales),
