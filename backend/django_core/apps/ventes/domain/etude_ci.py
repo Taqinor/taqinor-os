@@ -608,6 +608,13 @@ def _courbe_mesuree_resolue(courbe, annee_reference):
     return valeurs, debut, source
 
 
+def _gardes_factures(res, tarif, alertes, lead, feuille_retenue):
+    """:func:`etudier_ci` — la garde kWh/facture, puis ACAL1227 (facture d'été non lue)."""
+    from apps.ventes.domain.suppositions_ci import alerte_facture_ete_non_lue
+    _garde_kwh_factures(res, tarif, alertes)
+    alertes.extend(alerte_facture_ete_non_lue(lead, feuille_retenue))  # ACAL1227
+
+
 def _garde_kwh_factures(res, tarif, alertes):
     """Décision du 30/09 : un kWh déclaré qui contredit la facture (> 2×) bloque."""
     from apps.ventes.horaire.conso import RATIO_KWH_FACTURE_MAX, RATIO_KWH_FACTURE_MIN
@@ -1356,7 +1363,6 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     ``provenance_corps`` : voir :func:`resoudre_entrees` (défaut « saisie »).
     """
     from apps.ventes import tarif_ci
-    from apps.ventes.domain.suppositions_ci import alerte_facture_ete_non_lue
     from apps.ventes.moteur_ci.composition import composer_ci
     from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
     from apps.ventes.moteur_ci.production import (
@@ -1387,8 +1393,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
                                niveau='bloquant'))
     conso, feuille_retenue, registres, mesuree = _consommation_retenue(
         res, tarif, alertes, hypotheses)
-    _garde_kwh_factures(res, tarif, alertes)
-    alertes.extend(alerte_facture_ete_non_lue(lead, feuille_retenue))  # ACAL1227
+    _gardes_factures(res, tarif, alertes, lead, feuille_retenue)
 
     site = res.valeur('site') or {}
     toit_declare, toit_serie = _toit_declare(res)
