@@ -238,6 +238,59 @@ async function ouvrirAtelier(page, id, appareil) {
   await page.waitForLoadState('networkidle').catch(() => {})
 }
 
+// ACAL1824 — K-COUCHE-FIXE (docs/audits/l5-calepinage/T2/classes/K-COUCHE-FIXE.md) : aucune pièce fixe ou flottante ne
+// recouvre une réponse, une consigne ou une commande. `document.elementFromPoint` au centre de l'élément rend l'élément
+// lui-même ou un descendant ; un centre hors de la fenêtre (null) est lui aussi refusé : la réponse doit être EN VUE.
+const TAILLES_COUCHE = [
+  { cle: '1440x900', largeur: 1440, hauteur: 900 },
+  { cle: '1180x820', largeur: 1180, hauteur: 820 },
+  { cle: '390x664', largeur: 390, hauteur: 664 },
+]
+// Les éléments visibles de `css` dont le centre est recouvert (ou hors fenêtre) : une ligne par élément, qui le NOMME,
+// et le nombre d'éléments réellement mesurés (une garde qui ne mesure rien ne prouve rien : le test exige au moins un).
+async function recouverts(page, css, { defiler = false } = {}) {
+  const cibles = page.locator(css)
+  const n = await cibles.count()
+  const fautes = []
+  let mesures = 0
+  for (let i = 0; i < n; i += 1) {
+    const el = cibles.nth(i)
+    if (!(await el.isVisible())) continue
+    mesures += 1
+    if (defiler) await el.scrollIntoViewIfNeeded()
+    const lecture = await el.evaluate((node) => {
+      const r = node.getBoundingClientRect()
+      const x = r.left + r.width / 2
+      const y = r.top + r.height / 2
+      const dessus = document.elementFromPoint(x, y)
+      return {
+        ok: Boolean(dessus) && (dessus === node || node.contains(dessus)),
+        y: Math.round(y),
+        vh: window.innerHeight,
+        dessus: dessus ? `${dessus.tagName.toLowerCase()}${dessus.dataset?.testid ? `[${dessus.dataset.testid}]` : ''}` : 'hors fenêtre',
+      }
+    })
+    if (!lecture.ok) fautes.push(`${css} #${i + 1} : centre à y ${lecture.y} sur ${lecture.vh}, recouvert par ${lecture.dessus}`)
+  }
+  return { fautes, mesures }
+}
+
+test('ACAL1824: la garde K-COUCHE-FIXE nomme l’élément recouvert', async ({ page }) => {
+  await page.setContent('<button id="a" style="position:fixed;top:10px;left:10px;width:80px;height:40px">A</button>'
+    + '<div style="position:fixed;top:0;left:0;width:200px;height:100px"></div>'
+    + '<button id="b" style="position:fixed;top:300px;left:10px;width:80px;height:40px">B</button>')
+  const a = await recouverts(page, '#a')
+  const b = await recouverts(page, '#b')
+  expect(a.fautes).toHaveLength(1)
+  expect(a.mesures).toBe(1)
+  expect(b.fautes).toEqual([])
+  expect(b.mesures).toBe(1)
+  expect((await recouverts(page, '#absent')).mesures).toBe(0)
+})
+
+// Tout ce qui suit joue sur la pile : en série, un test rouge fait sauter les suivants. Les plafonds de la maquette
+// (sans pile) sont dans un groupe à part, en fin de fichier, pour qu'un plafond rouge n'éteigne aucune autre garde.
+test.describe('sur la pile (série)', () => {
 test.describe.configure({ mode: 'serial' })
 
 test('ACAL385: mesures de l’atelier ≤ base committée', async ({ page }) => {
@@ -315,8 +368,6 @@ test('ACAL385: mesures de l’atelier ≤ base committée', async ({ page }) => 
   for (const cle of CLES) {
     expect(actuel[cle], `${cle} : ${actuel[cle]} dépasse la base ${base[cle]}`).toBeLessThanOrEqual(base[cle])
   }
-  expect(actuel.controles_visibles, 'premier écran de l’étape Toit : plafond de la maquette').toBeLessThanOrEqual(PLAFOND_MAQUETTE.controles)
-  expect(actuel.tailles_texte_distinctes, 'tailles de texte du premier écran : plafond de la maquette').toBeLessThanOrEqual(PLAFOND_MAQUETTE.tailles_texte)
 })
 
 // ACAL989 — l'action suivante et le chiffre résultat restent dans la PREMIÈRE hauteur d'écran, à 1440×900
@@ -383,15 +434,6 @@ test('ACAL989+ACAL1189: la comparaison à la base échoue en nommant élément, 
   expect(ecartsParEtape({ resultats: { onglets: 3, controles_panneau: 20 } }, basePar)).toEqual([])
 })
 
-// ACAL1286/ACAL1293 — la base committée elle-même tient sous la maquette (sans pile : lit le JSON). Rouge tant que la base
-// relevée sur l'ancienne coque dit 34 / 36 contrôles ; l'orchestrateur la relève (`CAL_MESURES_ECRIRE=1`) sur la pile.
-test('ACAL1286+ACAL1293: la base de mesures tient sous la maquette (≤ 33 contrôles, ≤ 6 tailles de texte)', () => {
-  const base = lireBase()
-  expect(base.controles_visibles, 'base : contrôles visibles à l’arrivée').toBeLessThanOrEqual(PLAFOND_MAQUETTE.controles)
-  expect(base.mode_guide?.controles_premier_ecran, 'base : contrôles du premier écran guidé').toBeLessThanOrEqual(PLAFOND_MAQUETTE.controles)
-  expect(base.tailles_texte_distinctes, 'base : tailles de texte').toBeLessThanOrEqual(PLAFOND_MAQUETTE.tailles_texte)
-})
-
 // ACAL478 — budget de simplicité du MODE GUIDÉ (mode expert éteint, par défaut).
 // Seuls les « 5 étapes » viennent du squelette du complément ; tous les autres
 // seuils sont LUS dans `mode_guide` de la base (mesurés, jamais tapés ici).
@@ -455,7 +497,6 @@ test('ACAL478: budget du mode guidé', async ({ page }) => {
   expect(base, 'section mode_guide absente : lancer une fois avec CAL_MESURES_ECRIRE=1 puis committer le JSON').toBeTruthy()
   expect(controles, `contrôles du premier écran : ${controles} dépasse la base ${base.controles_premier_ecran}`)
     .toBeLessThanOrEqual(base.controles_premier_ecran)
-  expect(controles, 'contrôles du premier écran : plafond de la maquette').toBeLessThanOrEqual(PLAFOND_MAQUETTE.controles)
   expect(base.par_etape, 'mode_guide.par_etape absente : lancer une fois avec CAL_MESURES_ECRIRE=1 puis committer le JSON').toBeTruthy()
   expect(ecartsParEtape(parEtape, base.par_etape), 'étape(s) du mode guidé au-dessus de leur base').toEqual([])
 })
@@ -577,48 +618,6 @@ test('ACAL1817: relevé à 1180 × 820 — deux colonnes, barre du bas pleine la
   }
 })
 
-// ACAL1824 — K-COUCHE-FIXE (docs/audits/l5-calepinage/T2/classes/K-COUCHE-FIXE.md) : aucune pièce fixe ou flottante ne
-// recouvre une réponse, une consigne ou une commande. `document.elementFromPoint` au centre de l'élément rend l'élément
-// lui-même ou un descendant ; un centre hors de la fenêtre (null) est lui aussi refusé : la réponse doit être EN VUE.
-const TAILLES_COUCHE = [
-  { cle: '1440x900', largeur: 1440, hauteur: 900 },
-  { cle: '1180x820', largeur: 1180, hauteur: 820 },
-  { cle: '390x664', largeur: 390, hauteur: 664 },
-]
-// Les éléments visibles de `css` dont le centre est recouvert (ou hors fenêtre) : une ligne par élément, qui le NOMME.
-async function recouverts(page, css, { defiler = false } = {}) {
-  const cibles = page.locator(css)
-  const n = await cibles.count()
-  const fautes = []
-  for (let i = 0; i < n; i += 1) {
-    const el = cibles.nth(i)
-    if (!(await el.isVisible())) continue
-    if (defiler) await el.scrollIntoViewIfNeeded()
-    const lecture = await el.evaluate((node) => {
-      const r = node.getBoundingClientRect()
-      const x = r.left + r.width / 2
-      const y = r.top + r.height / 2
-      const dessus = document.elementFromPoint(x, y)
-      return {
-        ok: Boolean(dessus) && (dessus === node || node.contains(dessus)),
-        y: Math.round(y),
-        vh: window.innerHeight,
-        dessus: dessus ? `${dessus.tagName.toLowerCase()}${dessus.dataset?.testid ? `[${dessus.dataset.testid}]` : ''}` : 'hors fenêtre',
-      }
-    })
-    if (!lecture.ok) fautes.push(`${css} #${i + 1} : centre à y ${lecture.y} sur ${lecture.vh}, recouvert par ${lecture.dessus}`)
-  }
-  return fautes
-}
-
-test('ACAL1824: la garde K-COUCHE-FIXE nomme l’élément recouvert', async ({ page }) => {
-  await page.setContent('<button id="a" style="position:fixed;top:10px;left:10px;width:80px;height:40px">A</button>'
-    + '<div style="position:fixed;top:0;left:0;width:200px;height:100px"></div>'
-    + '<button id="b" style="position:fixed;top:300px;left:10px;width:80px;height:40px">B</button>')
-  expect(await recouverts(page, '#a')).toHaveLength(1)
-  expect(await recouverts(page, '#b')).toEqual([])
-})
-
 test('ACAL1824: K-COUCHE-FIXE — rien ne recouvre consigne, réponse, commande, à 1440 × 900, 1180 × 820 et 390 × 664', async ({ page }) => {
   test.setTimeout(900_000)
   await carteRefusee(page.context())
@@ -626,7 +625,10 @@ test('ACAL1824: K-COUCHE-FIXE — rien ne recouvre consigne, réponse, commande,
   const vide = await calepinageParApi(page.request, 'ACAL1824 Vide')
   const trace = await calepinageParApi(page.request, 'ACAL1824 Toit', { layout: true })
   const fautes = []
-  const noter = (ecran, taille, liste) => fautes.push(...liste.map((f) => `${ecran} à ${taille.cle} — ${f}`))
+  const noter = (ecran, taille, { fautes: liste, mesures }) => {
+    if (mesures < 1) fautes.push(`${ecran} à ${taille.cle} — aucun élément mesuré : la garde n'a rien vérifié`)
+    fautes.push(...liste.map((f) => `${ecran} à ${taille.cle} — ${f}`))
+  }
   for (const taille of TAILLES_COUCHE) {
     // Atelier, étape Toit, avant le tracé : la consigne et « Terminer le tracé ».
     await ouvrirAtelier(page, vide, taille)
@@ -651,11 +653,10 @@ test('ACAL1824: K-COUCHE-FIXE — rien ne recouvre consigne, réponse, commande,
     await page.goto(`/calepinage/${trace}/releve`)
     await expect(page.getByTestId('releve-mesures')).toBeVisible({ timeout: 120_000 })
     const terminer = page.getByTestId('releve-terminer')
-    if (await terminer.count() > 0) {
-      await terminer.click()
-      await expect(page.getByTestId('releve-message')).toBeVisible({ timeout: 60_000 })
-      noter('relevé après Terminer', taille, await recouverts(page, '[data-testid="releve-message"], [data-testid="releve-terminer"]'))
-    }
+    await expect(terminer, 'le bouton « Terminer le relevé » est toujours dans le pied du relevé').toBeVisible()
+    await terminer.click()
+    await expect(page.getByTestId('releve-message')).toBeVisible({ timeout: 60_000 })
+    noter('relevé après Terminer', taille, await recouverts(page, '[data-testid="releve-message"], [data-testid="releve-terminer"]'))
 
     // Vue client : messages et commandes de la page.
     await page.goto(`/calepinage/${trace}/client`)
@@ -685,4 +686,16 @@ test('ACAL1819: liste à 390 × 664 — le nom de la première carte est dans le
   await expect(page.getByTestId('cal-liste-filtres-etat')).toBeHidden()
   await page.getByTestId('acal957-filtres-basculer').click()
   await expect(page.getByTestId('cal-liste-filtres-etat')).toBeVisible()
+})
+})
+
+test.describe('plafond de la maquette (sans pile, hors série)', () => {
+// ACAL1286/ACAL1293 — la base committée elle-même tient sous la maquette (sans pile : lit le JSON). Rouge tant que la base
+// relevée sur l'ancienne coque dit 34 / 36 contrôles ; l'orchestrateur la relève (`CAL_MESURES_ECRIRE=1`) sur la pile.
+test('ACAL1286+ACAL1293: la base de mesures tient sous la maquette (≤ 33 contrôles, ≤ 6 tailles de texte)', () => {
+  const base = lireBase()
+  expect(base.controles_visibles, 'base : contrôles visibles à l’arrivée').toBeLessThanOrEqual(PLAFOND_MAQUETTE.controles)
+  expect(base.mode_guide?.controles_premier_ecran, 'base : contrôles du premier écran guidé').toBeLessThanOrEqual(PLAFOND_MAQUETTE.controles)
+  expect(base.tailles_texte_distinctes, 'base : tailles de texte').toBeLessThanOrEqual(PLAFOND_MAQUETTE.tailles_texte)
+})
 })
