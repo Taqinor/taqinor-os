@@ -342,7 +342,9 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
     const st = stateRef.current
     if (st.mode !== 'edit' || st.leadId == null) return
     try {
-      const res = (await crmApi.getLead(st.leadId)).data
+      // ACAL1243 — relecture best-effort (souvent après un envoi RÉUSSI) : un délai
+      // dépassé ne doit pas toaster « La connexion a expiré » pour une action qui a abouti.
+      const res = (await crmApi.getLead(st.leadId, { suppressErrorToast: true })).data
       dispatch({ type: 'SET_SERVER', res })
       if (res) setOpenedAt(res.id, res.date_modification)
       relireConceptionLead(st.leadId)  // R5A-N6 — devis/facture/fusion : la conception rangée a pu changer
