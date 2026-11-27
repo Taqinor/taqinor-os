@@ -1134,10 +1134,14 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
   const moduleErreurEl = document.getElementById('rp9-pan-module-erreur');
 
   /** Affiche (ou efface) un refus NOMMÉ, à côté du sélecteur ET dans le bandeau de statut. */
-  function direRefusModule(motif: string | null) {
+  function direRefusModule(motif: string | null, code?: string) {
     if (moduleErreurEl) {
       moduleErreurEl.textContent = motif ?? '';
       moduleErreurEl.hidden = !motif;
+      // ACAL1980 — un blocage « module absent » est AUSSI posé au canal « À régler » : la coque (`BandeauxCoque`) lit ce
+      // marqueur et le dit dans le panneau de l'étape, au ton « À régler » ; la pilule du bas de carte reste.
+      if (motif && code) { moduleErreurEl.dataset.ton = 'a-regler'; moduleErreurEl.dataset.code = code; }
+      else { delete moduleErreurEl.dataset.ton; delete moduleErreurEl.dataset.code; }
     }
     if (motif) deps.setStatus?.(motif);
   }
@@ -1180,8 +1184,9 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
           ? `${nomDuPanActif()} : le catalogue des modules n’a pas pu être lu — ${nom} n’est pas vérifié.`
             + ' Cliquez sur « Réessayer » pour le relire.'
           : `${nomDuPanActif()} : ${nom} ne figure plus dans le catalogue de la société —`
-            + ' rechargez le catalogue, ou choisissez un module de la liste.');
-      }
+            + ' rechargez le catalogue, ou choisissez un module de la liste.',
+        ctx.opts?.modulesDisponibles === null ? 'catalogue-illisible' : 'module-absent');
+      } else if (moduleErreurEl?.dataset.ton === 'a-regler') direRefusModule(null); // le module est revenu : le motif part
     }
     // ACAL913/ACAL1415 — un module posé d'office reste « à confirmer » tant que le pan ne porte pas le drapeau
     // `moduleChoisi` (écrit au document : il survit à l'enregistrement, contrairement à un état de session).

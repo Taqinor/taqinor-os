@@ -60,14 +60,50 @@ function useADeplier(ref) {
   return aDeplier
 }
 
+/* ACAL1980 — « module absent du catalogue » : le script (zones.ts::direRefusModule) écrit le motif dans
+   `#rp9-pan-module-erreur` et le marque `data-ton="a-regler"`. Avant, il n'apparaissait que dans la pilule grise du bas de
+   carte. La bande le dit au ton « À régler », avec le geste de réparation (choisir un module à l'étape Panneaux, où se
+   trouve le sélecteur — qui, lui, porte déjà le motif : la bande ne le répète pas là). */
+function useMotifARegler(ref) {
+  const [motif, setMotif] = useState('')
+  useEffect(() => {
+    const racine = ref.current?.closest?.('.cal-coque') ?? document
+    const lire = () => {
+      const noeud = racine.querySelector('#rp9-pan-module-erreur[data-ton="a-regler"]')
+      const etape = racine.getAttribute?.('data-etape')
+      setMotif(noeud && !noeud.hidden && etape !== 'panneaux' ? (noeud.textContent ?? '').trim() : '')
+    }
+    lire()
+    if (typeof MutationObserver === 'undefined') return undefined
+    const obs = new MutationObserver(lire)
+    obs.observe(racine, { subtree: true, childList: true, characterData: true, attributes: true,
+      attributeFilter: ['hidden', 'data-ton', 'data-etape'] })
+    return () => obs.disconnect()
+  }, [ref])
+  return motif
+}
+
 export function BandeauAlertes({ children, cache = false }) {
   const [deplie, setDeplie] = useState(false)
   const bande = useRef(null)
   usePublierHauteurAlertes(bande)
   const aDeplier = useADeplier(bande)
+  const motifARegler = useMotifARegler(bande)
+  const allerAuxPanneaux = () => bande.current?.closest?.('.cal-coque')?.querySelector('[data-testid="cal-etape-panneaux"]')?.click()
   return (
     <div ref={bande} className="cal-coque-alertes" data-deplie={deplie ? '1' : '0'} hidden={cache || undefined}>
-      <div className="cal-coque-alertes-contenu">{children}</div>
+      <div className="cal-coque-alertes-contenu">
+        {children}
+        {motifARegler && (
+          <div className="cal-alerte-entiere" data-testid="cal-a-regler-module" data-ton="a-regler">
+            <p><strong>À régler</strong></p>
+            <p>{motifARegler}</p>
+            <div>
+              <button type="button" onClick={allerAuxPanneaux}>Choisir un module</button>
+            </div>
+          </div>
+        )}
+      </div>
       {(aDeplier || deplie) && (
         <button type="button" className="cal-coque-alertes-plus" aria-expanded={deplie}
           onClick={() => setDeplie((d) => !d)}>

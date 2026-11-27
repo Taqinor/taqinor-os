@@ -661,6 +661,29 @@ describe('ACAL1415 — module de départ « à confirmer » / module choisi, apr
       const refus = document.getElementById('rp9-pan-module-erreur')?.textContent ?? '';
       expect(refus).toContain('« Module 715 W »');
       expect(refus).not.toContain('produit-23019');
+      // ACAL1980 — le motif est aussi posé au canal « À régler » (lu par la coque pour le panneau d'étape), pas seulement en pilule.
+      const noeud = document.getElementById('rp9-pan-module-erreur')!;
+      expect(noeud.hidden).toBe(false);
+      expect(noeud.dataset.ton).toBe('a-regler');
+      expect(noeud.dataset.code).toBe('module-absent');
+    } finally { g.document = avant; }
+  });
+
+  it('ACAL1980 — un module qui revient au catalogue retire le motif du canal « À régler »', () => {
+    const m715 = { ...m710, id: 'produit-23019', produitId: 23019, libelle: 'Module 715 W', epaisseurMm: null }
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"></div></body>').window.document;
+    try {
+      const areas = [panDeTest('area-1', { renderPlan: plan, roofType: 'flat', moduleId: 'produit-23019' })];
+      const ctx = { ...ctxDeBase(areas, 'area-1'), opts: { modulesDisponibles: catalogue }, modulesDuDocument: [m715],
+        activeArea: () => areas[0], closed: true, dom: { areasWindowEl: document.getElementById('rp9-areas') } } as unknown as Ctx;
+      const zones = createZones(ctx, { recalc: vi.fn(), setStatus: vi.fn() });
+      const noeud = document.getElementById('rp9-pan-module-erreur')!;
+      expect(noeud.dataset.ton).toBe('a-regler');
+      expect(zones.choisirModuleDuPanActif('produit-7')).toBe(true); // un module du catalogue est choisi
+      expect(noeud.hidden).toBe(true);
+      expect(noeud.dataset.ton).toBeUndefined();
     } finally { g.document = avant; }
   });
 
