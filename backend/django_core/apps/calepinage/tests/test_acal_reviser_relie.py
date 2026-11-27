@@ -352,6 +352,17 @@ class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
         self.c = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, client=self.client_a,
             devis=self.v1, titre='R6-N1 révision', roof_layout=layout)
+        # Le profil de la société EXISTE avant le calcul, comme pour une
+        # société en service. Sans lui, la simulation est faite sans fuseau
+        # (``site._fuseau_du_profil`` → ``None``) ; puis l'acceptation crée la
+        # ligne (abonné chantier → ``installations.services.default_installer_for``
+        # → ``CompanyProfile.get``, fuseau par défaut « Africa/Casablanca ») :
+        # le fuseau du site change, l'empreinte de simulation aussi, et la
+        # péremption est VRAIE (les blocs horaires dépendent du fuseau).
+        from apps.parametres.models_company import CompanyProfile
+        CompanyProfile.objects.create(company=self.company,
+                                      nom=self.company.nom,
+                                      fuseau_horaire='Africa/Casablanca')
         with patch_materiel():
             simuler_calepinage(self.c, client=_ClientParOrientation(),
                                materiel=MATERIEL, enregistrer=True)
