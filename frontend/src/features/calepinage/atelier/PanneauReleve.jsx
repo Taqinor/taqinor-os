@@ -43,7 +43,7 @@ function ChampTexte({ id, testId, label, valeur, onChange, type = 'text' }) {
         id={id}
         value={valeur ?? ''}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+        className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground"
       />
     </label>
   )
@@ -354,7 +354,7 @@ function AppliquerCoteAuPan({ calepinageId, releve, documentVivant = null, lectu
           Pan
           <select value={zoneId} data-testid="cal-releve-cote-pan"
             onChange={(e) => { setZoneId(e.target.value); setCoteIndex('') }}
-            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground">
+            className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground">
             <option value="">— choisir —</option>
             {zones.map((z) => <option key={z.id} value={String(z.id)}>{z.label || z.id}</option>)}
           </select>
@@ -363,7 +363,7 @@ function AppliquerCoteAuPan({ calepinageId, releve, documentVivant = null, lectu
           Côté
           <select value={coteIndex} data-testid="cal-releve-cote-cote" disabled={!zone}
             onChange={(e) => setCoteIndex(e.target.value)}
-            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground">
+            className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground">
             <option value="">— choisir —</option>
             {cotes.map((c) => (
               <option key={c.index} value={String(c.index)}>
@@ -376,7 +376,7 @@ function AppliquerCoteAuPan({ calepinageId, releve, documentVivant = null, lectu
           Cote mesurée
           <select value={mesureCle} data-testid="cal-releve-cote-mesure"
             onChange={(e) => setMesureCle(e.target.value)}
-            className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground">
+            className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground">
             <option value="">— choisir —</option>
             {mesures.map((m) => (
               <option key={m.cle} value={m.cle} disabled={m.aConfirmer}>
@@ -497,7 +497,7 @@ function AppliquerAzimutAuPan({
         Pan
         <select value={zoneId} data-testid="cal-releve-azimut-pan"
           onChange={(e) => setZoneId(e.target.value)}
-          className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground">
+          className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground">
           <option value="">— choisir —</option>
           {zones.map((z) => <option key={z.id} value={String(z.id)}>{z.label || z.id}</option>)}
         </select>
@@ -703,7 +703,7 @@ export default function PanneauReleve({
           id="cal-releve-notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="mt-1 w-full rounded border border-border bg-black/30 px-2 py-1 text-sm text-foreground"
+          className="mt-1 w-full rounded border border-border bg-[var(--cal-surface)] px-2 py-1 text-sm text-foreground"
         />
       </label>
       <ErreurChamp champ="notes" erreurs={erreurs} />

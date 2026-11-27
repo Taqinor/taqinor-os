@@ -105,7 +105,8 @@ export const phraseTiennent = (placed: number, cible: CibleAtelier | null): stri
  *  « 16 posés / 7 cible (Factures du lead) · 9 de plus que la cible ». Sans cible servie : M = le nombre à poser, comme avant. */
 export function texteSurDevis(placed: number, besoin: number, erp: boolean, devisLie: boolean, duDevis: number | null | undefined, qui = '', cible: CibleAtelier | null = null): string {
   if (!erp) return `${fmt(placed)} posés / ${fmt(besoin)} au devis`;
-  const base = cible ? `${fmt(placed)} posés / ${fmt(cible.panneaux)} cible (${cible.origine})${ecartALaCible(placed, cible.panneaux)}` : `${fmt(placed)} posés / ${fmt(besoin)} cible`;
+  // ACAL1665 — « le plus de panneaux » (le plafond 400) n'est pas une cible : dit en mots, jamais « / 400 cible ».
+  const base = cible ? `${fmt(placed)} posés / ${fmt(cible.panneaux)} cible (${cible.origine})${ecartALaCible(placed, cible.panneaux)}` : estLePlus(besoin) ? `${fmt(placed)} posés — le plus possible` : `${fmt(placed)} posés / ${fmt(besoin)} cible`;
   return devisLie && typeof duDevis === 'number' && duDevis > 0 ? `${base} · ${fmt(duDevis)} au devis${qui}` : base;
 }
 

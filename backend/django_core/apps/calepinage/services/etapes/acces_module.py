@@ -59,25 +59,25 @@ POSTE = 'acces_module'
 #: l'absence de chacune empêche de trancher.
 CLES_METHODE = {
     'horizon': (
-        "la méthode ne dit pas si l'accès solaire inclut le masque LOINTAIN "
-        "(« horizon »). L'horizon est un poste séparé (CALX156) : sans cette "
+        "la méthode ne dit pas si l'accès solaire inclut le masque lointain "
+        "(« horizon »). L'horizon est un poste séparé : sans cette "
         'réponse, il serait compté une fois ici et une fois là.'),
     'rangees': (
-        "la méthode ne dit pas si l'auto-ombrage entre RANGÉES est déjà "
+        "la méthode ne dit pas si l'auto-ombrage entre rangées est déjà "
         "compté (« rangees ») : sans cette réponse, l'ombre des rangées "
         "serait comptée deux fois avec l'étape « inter_rangees »."),
 }
 
 #: Le motif publié quand la méthode déclare inclure l'horizon lointain.
 MOTIF_HORIZON_INCLUS = (
-    "La méthode d'accès solaire déclare inclure le masque LOINTAIN "
+    "La méthode d'accès solaire déclare inclure le masque lointain "
     '(« horizon: true ») : l\'horizon a son propre poste dans la cascade '
-    "(CALX156) et l'appliquer aussi ici le compterait deux fois. Reprenez la "
+    "et l'appliquer aussi ici le compterait deux fois. Reprenez la "
     "lecture d'accès solaire sans l'horizon, ou laissez l'horizon seul.")
 
 #: Le motif publié quand aucun module du plan n'a d'accès calculé.
 MOTIF_AUCUN_MODULE_CALCULE = (
-    "Le document porte bien une lecture d'accès solaire, mais AUCUN module "
+    "Le document porte bien une lecture d'accès solaire, mais aucun module "
     "n'y est calculé (toutes les entrées valent « null »). Un module sans "
     "accès calculé n'est pas un module non ombré : rien n'est supposé.")
 

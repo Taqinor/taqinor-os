@@ -289,3 +289,37 @@ class AucuneRegleEtrangereTest(unittest.TestCase):
 
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()
+
+
+class DemarrageSousLaVeilleServiTest(SimpleTestCase):
+    """ACAL1667 (suite) — l'avertissement de ``valider_hors_reseau`` atteint
+    la réponse : il est collecté par ``resultat_calepinage`` (``avertissements``)."""
+
+    def _servi(self, demarrage):
+        import copy
+
+        from apps.calepinage.services.electrique import resultat_calepinage
+
+        from .test_calx5_simulation import LAYOUT, MATERIEL, REGLAGES, _Calepinage
+
+        pivot = _Calepinage(layout=copy.deepcopy(LAYOUT))
+        entree = {'hors_reseau': {
+            'actif': True, 'jours_autonomie': 2,
+            'seuils': {'veille_pct': 30, 'entretien_pct': 20, 'arret_pct': 10},
+            'groupe': {'actif': True, 'puissance_kw': 5,
+                       'soc_demarrage_pct': demarrage, 'soc_arret_pct': 90,
+                       'heures_max_par_jour': 8}}}
+        return resultat_calepinage(pivot, entree=entree,
+                                   materiel=copy.deepcopy(MATERIEL),
+                                   reglages=REGLAGES)
+
+    def test_le_groupe_sous_la_veille_se_lit_dans_les_avertissements(self):
+        servi = self._servi(20)
+        self.assertTrue(any('groupe démarre sous le seuil de veille' in a
+                            for a in servi['avertissements']),
+                        servi['avertissements'])
+
+    def test_un_demarrage_correct_n_ajoute_rien(self):
+        servi = self._servi(45)
+        self.assertFalse(any('groupe démarre sous' in a
+                             for a in servi['avertissements']))

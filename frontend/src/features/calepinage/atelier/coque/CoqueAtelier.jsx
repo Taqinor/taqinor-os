@@ -369,7 +369,7 @@ export default function CoqueAtelier({
           libelleDevis={libelleDevis} onDevis={devisPossible ? onDevis : null}
           enregistrement={enregistrement && <BarreEnregistrement {...enregistrement} etatPropre={etatPropre}
             derniereVersionLe={derniereVersionLe} />} />
-        <BandeauAlertes cache={!!presentation}>{alertes}</BandeauAlertes>
+        <BandeauAlertes cache={!!presentation} calepinageId={calepinageId}>{alertes}</BandeauAlertes>
         <div id="rp9-studio" className="cal-coque-corps">
           <RailEtapes calepinageId={calepinageId} cache={!!presentation} etapeActive={cleEtape} parcours={parcours} onChoisir={allerA}
             avance={feuille || (expert && !tiroir)} onAvance={setAvanceOuvert} />

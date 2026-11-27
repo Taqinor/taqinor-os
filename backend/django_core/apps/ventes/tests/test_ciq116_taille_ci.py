@@ -164,6 +164,28 @@ class TailleCITests(unittest.TestCase):
         self.assertIn('taille_au_dela_du_toit', codes)
         self.assertIn('taille_au_dela_ps', codes)
 
+    def test_acal1226_taille_du_verdict_de_creation_dite_calculee(self):
+        # ACAL1226 — devis 90 : la taille relue sur les lignes vient du
+        # balayage de création ⇒ « calcule », jamais « taille saisie ».
+        def hyp(r):
+            return next(h for h in r['hypotheses'] if h['cle'] == 'taille_explicite_kwc')
+        r = self._taille('hotel', 20000, taille_explicite_kwc=120, taille_issue_creation=True)
+        self.assertEqual(hyp(r)['statut'], 'calcule')
+        self.assertEqual(hyp(r)['source'], 'taille calculée à la création (règle des %d ans), '
+                                           'relue sur les lignes du devis' % H)
+        saisie = hyp(self._taille('hotel', 20000, taille_explicite_kwc=120))
+        self.assertEqual((saisie['statut'], saisie['source']),
+                         ('declare', 'D-QJR5-13 — taille saisie souveraine'))
+
+    def test_acal1226_drapeau_lu_du_verdict_de_creation(self):
+        from apps.ventes.domain.etude_ci import taille_issue_de_creation
+        verdict = {'retenue_kwc': 55.38, 'raison_arret': 'horizon_marginal'}
+        self.assertTrue(taille_issue_de_creation(verdict, 55.38))
+        self.assertFalse(taille_issue_de_creation(verdict, 56.09))   # lignes changées
+        self.assertFalse(taille_issue_de_creation(None, 55.38))      # taille saisie
+        self.assertFalse(taille_issue_de_creation(
+            {'retenue_kwc': 55.38, 'raison_arret': 'taille_explicite'}, 55.38))
+
     def test_unite_de_la_puissance_ac_comparee_a_la_ps(self):
         # CLD10 — S max non publiée (Huawei seedés) : la puissance comparée à
         # la PS est en kW AC, jamais libellée « kVA » ; publiée : en kVA.
@@ -368,6 +390,63 @@ class TailleCITests(unittest.TestCase):
         ligne = self._taille('bureau', 6000, composer=composer, pmax_wc=None)['taille']
         self.assertEqual(ligne['retenue_kwc'], avec['retenue_kwc'])
         self.assertEqual(ligne['nb_panneaux'], avec['nb_panneaux'])
+
+
+class _Arret(Exception):
+    """Sentinelle : l'appel à ``etudier_ci`` est capturé, le geste s'arrête là."""
+
+
+class VerdictCreationJumeauxAcal1226Tests(unittest.TestCase):
+    """ACAL1226 (revue) — les deux jumeaux de ``etudes_lignes.etude_ci_calculee``
+    (recomposition des batteries, révision après visite) passent eux aussi le
+    verdict de création à ``etudier_ci`` : une taille venue du balayage de
+    création n'y est plus « taille saisie souveraine ». Mutant : retirer
+    ``verdict_creation=`` d'un appelant ⇒ son cas échoue."""
+
+    VERDICT = {'retenue_kwc': 55.38, 'raison_arret': 'horizon_marginal'}
+
+    def _devis(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(mode_installation='commercial', company=object(), lead=object(),
+                               is_active=True, statut='brouillon',
+                               etude_params={'taille_creation_ci': dict(self.VERDICT)})
+
+    def _capturer(self, appel, *patches):
+        from contextlib import ExitStack
+        from unittest import mock
+        vus = {}
+
+        def etudier(company, entrees, **kw):
+            vus.update(kw, entrees=entrees)
+            raise _Arret
+        with ExitStack() as pile:
+            pile.enter_context(mock.patch('apps.ventes.domain.etude_ci.etudier_ci', etudier))
+            pile.enter_context(mock.patch('apps.ventes.domain.etudes.puissances_etude_horaire',
+                                          return_value=(55.38, 55.38)))
+            for p in patches:
+                pile.enter_context(p)
+            with self.assertRaises(_Arret):
+                appel()
+        return vus
+
+    def test_recomposition_batteries_passe_le_verdict(self):
+        from apps.ventes.domain import recomposition_batteries_ci as R
+        from apps.ventes.domain.scenario import SCENARIO_LES_DEUX
+        vus = self._capturer(lambda: R._etude(self._devis(), SCENARIO_LES_DEUX, 2))
+        self.assertEqual(vus['entrees']['taille_explicite_kwc'], 55.38)
+        self.assertEqual(vus.get('verdict_creation'), self.VERDICT)
+
+    def test_revision_apres_visite_passe_le_verdict(self):
+        from contextlib import nullcontext
+        from unittest import mock
+        from apps.ventes.domain.revision_visite_ci import reviser_devis_apres_visite
+        vus = self._capturer(
+            lambda: reviser_devis_apres_visite(self._devis()),
+            mock.patch('apps.visites.selectors.releve_ci_pour_lead', return_value={'id': 1}),
+            mock.patch('apps.ventes.domain.modifiabilite.ttc_du_devis', return_value=0),
+            mock.patch('django.db.transaction.atomic', nullcontext))
+        self.assertEqual(vus['entrees']['taille_explicite_kwc'], 55.38)
+        self.assertEqual(vus.get('verdict_creation'), self.VERDICT)
 
 
 class SautOnduleurTests(unittest.TestCase):

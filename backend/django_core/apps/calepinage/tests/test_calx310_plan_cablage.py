@@ -570,34 +570,89 @@ if __name__ == '__main__':  # pragma: no cover
 class SensDeNumerotationTest(unittest.TestCase):
     """ACAL643 — une flèche par chaîne de plus d'un module, sans polarité."""
 
-    def test_une_fleche_par_chaine_dans_sa_couleur_et_la_legende(self):
+    def test_une_fleche_par_chaine_et_la_legende(self):
         plan = _plan_de_cablage(LAYOUT, AFFECTATION)
         svg = svg_de(plan)
         fleches = formes(svg, 'fleche-chaine')
         self.assertEqual([e.get('data-chaine') for e in fleches], ['1', '2'])
-        for fleche, couleur in zip(fleches, PALETTE_CHAINES):
-            lignes = [e for e in fleche.iter() if e.tag.endswith('polyline')]
-            self.assertEqual(lignes[0].get('stroke'), couleur)
         self.assertIn('sens de numérotation — la polarité se vérifie sur '
                       'site', _lignes_de_legende(plan))
         self.assertIn('sens de numérotation — la polarité se vérifie sur '
                       'site', svg)
-        # Aucun repère de polarité n'est inventé.
-        for fleche in fleches:
-            texte = ET.tostring(fleche, encoding='unicode')
-            self.assertNotIn('<text', texte)
 
-    def test_la_fleche_va_du_plus_petit_au_plus_grand_numero(self):
-        # La table est donnée DANS LE DÉSORDRE : le sens suit les numéros.
-        desordre = list(reversed(AFFECTATION[:6])) + AFFECTATION[6:]
-        plan = _plan_de_cablage(LAYOUT, desordre)
-        premiere = formes(svg_de(plan), 'fleche-chaine')[0]
-        ligne = [e for e in premiere.iter() if e.tag.endswith('polyline')][0]
+    def test_la_fleche_n_a_pas_la_couleur_des_modules_plus_et_moins(self):
+        # ACAL1719 — encre foncée sur liseré clair, pointe pleine, « + » au
+        # premier module et « − » au dernier, aussi sur une chaîne de 3.
+        trois = AFFECTATION[:6] + [ligne(r, 2) for r in range(7, 10)] + [
+            ligne(r, None) for r in range(10, 13)]
+        for table in (AFFECTATION, trois):
+            plan = _plan_de_cablage(LAYOUT, table)
+            svg = svg_de(plan)
+            fleches = formes(svg, 'fleche-chaine')
+            self.assertEqual(len(fleches), 2)
+            for fleche, couleur in zip(fleches, PALETTE_CHAINES):
+                traits = [e.get('stroke') for e in fleche.iter()
+                          if e.tag.endswith('polyline')]
+                pointe = [e for e in fleche.iter()
+                          if e.tag.endswith('polygon')][0]
+                self.assertEqual(traits, ['#ffffff', '#111111'])
+                self.assertEqual(pointe.get('fill'), '#111111')
+                self.assertNotIn(couleur, ET.tostring(fleche, 'unicode'))
+                self.assertEqual([e.text for e in fleche.iter()
+                                  if e.tag.endswith('text')], ['+', '−'])
+            sens = formes(svg, 'legende-sens')[0]
+            self.assertGreaterEqual(float(sens.get('font-size')), 3.18)
+
+    def test_la_fleche_suit_le_rang_publie_et_les_signes_ceux_du_dxf(self):
+        # ACAL1719 (revue) — affectation MANUELLE hors de l'ordre des numéros :
+        # la flèche suit le rang de la chaîne (l'attribut N du DXF, ACAL674),
+        # « + » sur le module N = 1, « − » sur N = 6 : un seul ordre pour les
+        # deux livrables (avant : « + » sur z1#1, que le DXF dit N = 2).
+        import math
+
+        import ezdxf
+
+        ordre = [3, 1, 6, 2, 5, 4]
+        table = [ligne(r, 1, source='affectation manuelle')
+                 for r in ordre] + AFFECTATION[6:]
+        plan = _plan_de_cablage(LAYOUT, table)
+        centres = {m['module']: m['centre'] for m in plan['modules']}
+        document = ezdxf.read(io.StringIO(octets_dxf(
+            plan['geometrie'], chaines=plan['modules']).decode('utf-8')))
+        par_rang = {}
+        for insert in document.modelspace().query('INSERT'):
+            attributs = {a.dxf.tag: a.dxf.text for a in insert.attribs}
+            if attributs.get('CHAINE') != '1':
+                continue
+            x, y = insert.dxf.insert.x, insert.dxf.insert.y
+            par_rang[int(attributs['N'])] = min(
+                centres, key=lambda cle: math.hypot(centres[cle][0] - x,
+                                                    centres[cle][1] - y))
+        self.assertEqual([par_rang[n] for n in range(1, 7)],
+                         ['z1#%d' % r for r in ordre])
+
+        svg = svg_de(plan)
+        dessines = {}
+        for forme in formes(svg, 'module-chaine'):
+            coins = [tuple(float(c) for c in p.split(','))
+                     for p in forme.get('points').split()]
+            dessines[forme.get('data-module')] = (
+                sum(c[0] for c in coins) / len(coins),
+                sum(c[1] for c in coins) / len(coins))
+        attendus = [dessines[par_rang[n]] for n in range(1, 7)]
+        premiere = formes(svg, 'fleche-chaine')[0]
+        trace = [e for e in premiere.iter() if e.tag.endswith('polyline')][0]
         points = [tuple(float(c) for c in p.split(','))
-                  for p in ligne.get('points').split()]
+                  for p in trace.get('points').split()]
         self.assertEqual(len(points), 6)
-        # z1#1 est à gauche du z1#4 (même rangée) : x croît du n°1 au n°4.
-        self.assertLess(points[0][0], points[3][0])
+        for lu, attendu in zip(points, attendus):
+            self.assertAlmostEqual(lu[0], attendu[0], delta=0.05)
+            self.assertAlmostEqual(lu[1], attendu[1], delta=0.05)
+        signes = {e.text: (float(e.get('x')), float(e.get('y')) + 1.6)
+                  for e in premiere.iter() if e.tag.endswith('text')}
+        for signe, attendu in (('+', attendus[0]), ('−', attendus[-1])):
+            self.assertAlmostEqual(signes[signe][0], attendu[0], delta=0.05)
+            self.assertAlmostEqual(signes[signe][1], attendu[1], delta=0.05)
 
     def test_une_chaine_d_un_seul_module_n_a_pas_de_fleche(self):
         table = AFFECTATION[:11] + [ligne(12, 3, mppt=2)]

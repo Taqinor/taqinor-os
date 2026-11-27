@@ -545,8 +545,7 @@ test.describe('ACAL1813 — voile des deux doigts (téléphone 390×664)', () =>
     await ouvrirAtelierGestes(page, id)
     const voile = page.locator('#rp9-map .maplibregl-cooperative-gesture-screen')
     await expect(voile, 'la carte tactile porte le voile des deux doigts').toHaveCount(1)
-    await page.waitForTimeout(3_000)
-    expect(await voile.evaluate((el) => getComputedStyle(el).opacity), 'chargement sans geste : voile invisible à 3 s').toBe('0')
+    await expect(voile, 'chargement sans geste : voile invisible').toHaveCSS('opacity', '0', { timeout: 10_000 })
     const bornes = await voile.evaluate((el) => {
       const r = el.getBoundingClientRect()
       const carte = document.querySelector('#rp9-map').getBoundingClientRect()

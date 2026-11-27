@@ -352,6 +352,17 @@ class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
         self.c = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, client=self.client_a,
             devis=self.v1, titre='R6-N1 révision', roof_layout=layout)
+        # Le profil de la société EXISTE avant le calcul, comme pour une
+        # société en service. Sans lui, la simulation est faite sans fuseau
+        # (``site._fuseau_du_profil`` → ``None``) ; puis l'acceptation crée la
+        # ligne (abonné chantier → ``installations.services.default_installer_for``
+        # → ``CompanyProfile.get``, fuseau par défaut « Africa/Casablanca ») :
+        # le fuseau du site change, l'empreinte de simulation aussi, et la
+        # péremption est VRAIE (les blocs horaires dépendent du fuseau).
+        from apps.parametres.models_company import CompanyProfile
+        CompanyProfile.objects.create(company=self.company,
+                                      nom=self.company.nom,
+                                      fuseau_horaire='Africa/Casablanca')
         with patch_materiel():
             simuler_calepinage(self.c, client=_ClientParOrientation(),
                                materiel=MATERIEL, enregistrer=True)
@@ -487,19 +498,55 @@ class EtudesDeLaV2SuiventLeCalepinageTest(BaseApiCalepinage):
                               user=vendeur, nom='Client R6-N1',
                               date_acceptation=date.today(),
                               option='sans_batterie')
-            journal = self._espion()
+            # Ce que la lecture de l'ombrage VOIT au moment du calcul (statut
+            # du devis, verdict du calepinage) : dit par l'assertion plus bas,
+            # au lieu d'un ``None`` sans cause.
+            vu = {}
+
+            def _mesure(d):
+                from apps.calepinage import selectors as cal
+                from apps.ventes.horaire.ombrage import perte_ombrage_du_devis
+                from apps.ventes.selectors_calepinage import _conception_a_jour
+                vu['statut'] = d.statut
+                try:
+                    c = cal._calepinage_lisible_pour_devis(d.pk, d.company)
+                    vu['lisible'] = getattr(c, 'pk', None)
+                    vu['devis_du_calepinage'] = getattr(c, 'devis_id', None)
+                    if c is not None:
+                        vu['conception_a_jour'] = _conception_a_jour(d, c)
+                        servi = cal.resultat_servi(c)
+                        vu['resultat'] = {k: servi.get(k) for k in (
+                            'statut', 'simulation_perimee', 'motif')}
+                    vu['ombrage_servi'] = cal.ombrage_servi(d.pk, d.company)
+                except Exception as exc:  # noqa: BLE001 — diagnostic de test
+                    vu['erreur'] = repr(exc)
+                return perte_ombrage_du_devis(d)
+
+            from apps.ventes.tests.test_acal_devis_revise_evenement import (
+                espionner_etudes)
+            journal = []
+            espionner_etudes(self, journal, mesure=_mesure)
             # Sans rejouer les rappels du commit (abonnés de l'acceptation) :
             # tout ce qui est vérifié ici se joue DANS la transaction du geste.
-            with self.materiel():
+            # Aucun échec SILENCIEUX : la re-liaison (journal ERROR de
+            # ``domain.revision``) et la lecture de l'ombrage (journal WARNING
+            # de ``horaire.ombrage``) avalent leurs exceptions — un rouge ici
+            # nomme la cause au lieu d'un ``None`` muet plus bas.
+            with self.materiel(), \
+                    self.assertNoLogs('apps.ventes.domain.revision',
+                                      level='ERROR'), \
+                    self.assertNoLogs('apps.ventes.horaire.ombrage',
+                                      level='WARNING'):
                 corps = appliquer_prix_negocie(v1, user=vendeur,
                                                remise_pct='2')
         v2 = Devis.objects.get(pk=corps['devis_v2']['id'])
         self.assertEqual(v2.statut, Devis.Statut.ACCEPTE)
-        appels = [a for a in journal if a[1] == v2.pk]
-        self.assertEqual(len(appels), 1, appels)
-        self.assertAlmostEqual(appels[0][3], self.perte_servie, places=6)
         self.c.refresh_from_db()
         self.assertEqual(self.c.devis_id, v2.pk)
+        appels = [a for a in journal if a[1] == v2.pk]
+        self.assertEqual(len(appels), 1, appels)
+        self.assertIsNotNone(appels[0][3], vu)
+        self.assertAlmostEqual(appels[0][3], self.perte_servie, places=6)
         self.assertEqual(self._versions_envoyees(), 1)
 
     def test_avant_acceptation_rollback_laisse_le_calepinage_sur_la_v1(self):

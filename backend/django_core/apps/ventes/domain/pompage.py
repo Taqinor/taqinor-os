@@ -727,6 +727,8 @@ def _forme_taille(taille, retenue):
             'couverture_mois_critique_pct'),
         'total_ttc': taille.get('total_ttc'),
         'prix_connu': taille.get('prix_connu'),
+        # ACAL1257 — les lignes du kit sans prix, NOMMÉES (jamais un prix).
+        'articles_sans_prix': taille.get('articles_sans_prix') or [],
         'retenue': retenue, 'motif': taille.get('motif'),
     }
 

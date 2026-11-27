@@ -290,7 +290,7 @@ const notFoundLoader = async () => {
 // responsable/admin pour un compte légacy) au lieu du ET strict par défaut.
 // La règle elle-même vit dans `moduleGating.estAutoriseEntree` — source
 // UNIQUE partagée avec la Sidebar, la BottomTabBar et le lanceur d'apps.
-// T4-X8-016 — `permModule` (4e argument) : miroir de `LectureDuModule`.
+// T4-X8-016 — `permModule` (4e argument) : même sémantique que `LectureDuModule`.
 const roleLoader = (roles, perm, permRepliPalier, permModule) => async ({ request }) => {
   const user = await ensurePortalScope()
   if (estHorsLigne(user)) return user

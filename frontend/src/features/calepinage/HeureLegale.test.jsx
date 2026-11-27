@@ -73,7 +73,7 @@ describe('ACAL719 — HeureLegale', () => {
       return l
     })
     expect(ligne).not.toHaveTextContent('13 h')
-    expect(screen.getByRole('link', { name: /Réglages › site/ })).toHaveAttribute('href', '/calepinage/reglages')
+    expect(screen.getByRole('link', { name: /Réglages simulation › Site & imagerie/ })).toHaveAttribute('href', '/calepinage/reglages#site')
   })
 
   // T4-U4-015 / T4-U1-018 — épingle non posée : la phrase dit quoi faire ; aucun toast global « Site.pin : … » en plus.

@@ -52,8 +52,12 @@ export function mesurerPanVide(pack: PackResult, grid: PanelGrid, retraitM: numb
 export function causeDuPanVide(m: MesuresPanVide): MotifPanVide {
   const utile = Math.max(0, m.largeurPanM - 2 * (m.retraitM ?? 0));
   if (m.retraitM != null && m.retraitM > 0 && utile < m.coteCourtM) {
+    // ACAL1966 — anneau posable VIDE : aucune largeur à citer (« 0,00 m sur 0,00 m » n'est pas une mesure du pan).
+    const message = m.largeurPanM > 0
+      ? `Aucun module : le retrait de rive (${fr(m.retraitM)} m de chaque côté) ne laisse que ${fr(utile)} m sur ${fr(m.largeurPanM)} m de large`
+      : `Aucun module : aucun anneau posable — le retrait de rive (${fr(m.retraitM)} m de chaque côté) ne laisse aucune surface sur ce pan`;
     return { code: 'retrait_rive',
-      message: `Aucun module : le retrait de rive (${fr(m.retraitM)} m de chaque côté) ne laisse que ${fr(utile)} m sur ${fr(m.largeurPanM)} m de large`,
+      message,
       mesures: { retraitM: r2(m.retraitM), largeurPanM: r2(m.largeurPanM), largeurUtileM: r2(utile), coteModuleM: r2(m.coteCourtM) } };
   }
   if (m.aireM2 > 0 && m.surfacePosableM2 <= 1e-6) {

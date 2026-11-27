@@ -131,18 +131,18 @@ MOTIF_REGLE_INCONNUE = (
     "l'étape est omise.")
 
 MOTIF_REGLE_AUCUNE = (
-    'La société a choisi de n\'appliquer AUCUNE perte de qualité module '
+    'La société a choisi de n\'appliquer aucune perte de qualité module '
     '({source}) : l\'étape figure dans la cascade pour être VUE et reste '
     "sans effet. C'est une décision déclarée, pas une donnée manquante.")
 
 MOTIF_BORNE_HAUTE_ABSENTE = (
-    'La règle « {regle} » a besoin des DEUX bornes de tolérance, et la borne '
+    'La règle « {regle} » a besoin des deux bornes de tolérance, et la borne '
     "haute de {produit} n'est pas publiée. L'étape est omise plutôt que "
     'calculée sur une seule borne.')
 
 MOTIF_BORNES_INCOHERENTES = (
     'La tolérance publiée de {produit} a une borne haute ({maximum} %) '
-    'INFÉRIEURE à sa borne basse ({minimum} %) : la plage ne se lit pas. '
+    'inférieure à sa borne basse ({minimum} %) : la plage ne se lit pas. '
     "L'étape est omise plutôt que calculée sur une plage retournée.")
 
 MOTIF_ENERGIE_ILLISIBLE = (

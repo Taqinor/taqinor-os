@@ -25,6 +25,7 @@ from __future__ import annotations
 from core.pompage import hypotheses as hypotheses_noyau
 
 from .. import i18n_labels, i18n_labels_agricole
+from ..ci.onepage import pdf_historique_lot10
 from ..ci.synthese import _pcts_au_reliquat
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
@@ -450,8 +451,10 @@ def _valeur_provenance(lg, cle, valeur):
     return f"{texte} {_t(lg, unite)}" if unite else texte
 
 
-def _provenance(synthese, lg, nom_societe, sans_reserve=False):
+def _provenance(synthese, lg, nom_societe, sans_reserve=False, une_ligne=False):
     prov = synthese.get("provenance") or {}
+    a_confirmer = synthese.get("a_confirmer_par_visite") or []
+    reserve, fusionnees = mentions.phrase_provenance("a_confirmer", lg), set()
     lignes = []
     for cle, p in prov.items():
         if not isinstance(p, dict):
@@ -468,6 +471,10 @@ def _provenance(synthese, lg, nom_societe, sans_reserve=False):
                 lignes.append(f'<div class="ag-li"><b>{_entree(lg, cle)}</b>'
                               f' : {valeur}</div>')
             continue
+        if une_ligne and cle in a_confirmer:
+            # ACAL1266 (nouveaux rendus) — non mesurée : la réserve sur SA ligne, une fois.
+            phrase += "" if phrase == reserve else ("، " if lg == "ar" else ", ") + reserve
+            fusionnees.add(cle)
         lignes.append(f'<div class="ag-li"><b>{_entree(lg, cle)}</b> : '
                       + (f'{valeur} — ' if valeur else "")
                       + f'{phrase}</div>')
@@ -483,8 +490,7 @@ def _provenance(synthese, lg, nom_societe, sans_reserve=False):
                    pompe=f'{_n(controle.get("debit_pompe_m3h"))} {u}',
                    forage=f'{_n(controle.get("debit_forage_m3h"))} {u}')
         lignes.append(f'<div class="ag-li">{texte}</div>')
-    visite = [_entree(lg, c) for c in synthese.get("a_confirmer_par_visite")
-              or []]
+    visite = [_entree(lg, c) for c in a_confirmer if c not in fusionnees]
     bloc_visite = (
         f'<div class="ag-note"><b>{_t(lg, "agr_a_confirmer_visite")}</b> '
         + ", ".join(visite) + ".</div>") if visite else ""
@@ -535,10 +541,14 @@ def page1(ctx):
         entete = f'<div class="ag-logo">{logo}</div>{entete}'
     # AGC12 — un bloc argent absent n'empile plus deux respirations.
     argent = _argent(synthese, lg) or _depense_declaree(synthese, lg)
+    # ACAL1266 — nouveaux rendus : une ligne par entrée non mesurée ; un devis envoyé (drapeau
+    # ``regles_pdf_historique_lot10`` de la migration 0164) garde ses deux listes reçues.
+    provenance = _provenance(synthese, lg, ctx["nom_societe"], bool(d.get("phrases_pdf_2511")),
+                             une_ligne=not pdf_historique_lot10(d.get("etude")))
     return (f'<div class="ag-pad">{entete}{_qj(10)}{_hero(synthese, lg, declare)}'
             f'{_qj(15)}{_cartes(synthese, lg)}{_qj(25)}'
             f'{argent}{_qj(25) if argent else ""}'
-            f'{_provenance(synthese, lg, ctx["nom_societe"], bool(d.get("phrases_pdf_2511")))}{_qj(15)}'
+            f'{provenance}{_qj(15)}'
             f'{_etapes_suivantes(synthese, lg)}'
             f'</div>')
 

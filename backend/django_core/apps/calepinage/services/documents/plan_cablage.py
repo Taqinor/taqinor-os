@@ -305,11 +305,31 @@ def _lignes_de_chaine(entree, chaines=None):
 LEGENDE_SENS = 'sens de numérotation — la polarité se vérifie sur site'
 
 
-def _modules_par_chaine_ordonnes(plan):
-    """``{chaîne: [modules…]}`` dessinés, du plus petit au plus grand numéro.
+def cle_dans_la_chaine(module, repli):
+    """ACAL1719 (revue) — la clé d'ordre d'un module DANS SA CHAÎNE : son
+    ``rang`` (ACAL674, l'ordre des lignes de l'affectation publiée), celui que
+    le DXF publie en attribut ``N`` ; « + » et « − » tombent ainsi sur les
+    mêmes modules dans les deux livrables. Sans rang connu : ``repli``."""
+    if module.get('rang') is not None:
+        return (0, module['rang'])
+    return (1,) + tuple(repli)
 
-    Le numéro est celui du repère « <pan>#<n> » dans son pan ; les pans
-    gardent l'ordre du document, et un repère sans numéro lisible garde sa
+
+def bouts_publies(ordonnes, total):
+    """``(premier, dernier)`` : le premier module dessiné est-il le rang 1, le
+    dernier le rang ``total`` de la chaîne ? Sans rang connu, on garde le
+    bout dessiné (comportement d'avant)."""
+    premier, dernier = ordonnes[0].get('rang'), ordonnes[-1].get('rang')
+    return (premier is None or premier == 1,
+            dernier is None or total is None or dernier == total)
+
+
+def _modules_par_chaine_ordonnes(plan):
+    """``{chaîne: [modules…]}`` dessinés, dans l'ordre de la chaîne.
+
+    L'ordre est le rang du module dans sa chaîne (``cle_dans_la_chaine``) ;
+    en repli, sans rang : le numéro du repère « <pan>#<n> » dans son pan, les
+    pans dans l'ordre du document, et un repère sans numéro lisible garde sa
     position dans le document."""
     pans = {}
     ordonnes = {}
@@ -319,9 +339,14 @@ def _modules_par_chaine_ordonnes(plan):
         numero = str(module['module']).rpartition('#')[2]
         pan = pans.setdefault(module['pan'], len(pans))
         ordonnes.setdefault(module['chaine'], []).append(
-            ((pan, int(numero) if numero.isdigit() else position), module))
+            (cle_dans_la_chaine(module, (
+                pan, int(numero) if numero.isdigit() else position)), module))
     return {chaine: [m for _cle, m in sorted(lot, key=lambda c: c[0])]
             for chaine, lot in ordonnes.items()}
+
+
+def _totaux_de_chaine(plan):
+    return {entree['chaine']: entree['modules'] for entree in plan['legende']}
 
 
 def _chaines_a_fleche(plan):
@@ -334,10 +359,30 @@ def _chaines_a_fleche(plan):
             if len(modules) > 1}
 
 
-def _fleche_de_chaine(modules, couleur, vers_feuille):
-    """ACAL643 — la flèche d'une chaîne : une ligne brisée par les centres
-    de ses modules, du plus petit au plus grand numéro, dans la couleur de
-    la chaîne, et sa pointe sur le dernier. Aucun « + » ni « − »."""
+_LISERE = '#ffffff'
+
+
+def signes_de_bout(premier, dernier, bouts):
+    """« + » au-dessus de ``premier`` et « − » au-dessus de ``dernier`` (points
+    déjà sur la feuille), chacun seulement si son bout est vrai."""
+    from ..planche import _n
+
+    return ''.join(
+        '<text x="%s" y="%s" font-size="3.6" font-weight="bold" '
+        'text-anchor="middle" fill="%s" stroke="%s" stroke-width="0.5" '
+        'paint-order="stroke">%s</text>'
+        % (_n(x), _n(y - 1.6), _NOIR, _LISERE, signe)
+        for (x, y), signe, imprime in ((premier, '+', bouts[0]),
+                                       (dernier, '−', bouts[1]))
+        if imprime)
+
+
+def _fleche_de_chaine(modules, vers_feuille, bouts=(True, True)):
+    """ACAL643 / ACAL1719 — la flèche d'une chaîne : une ligne brisée par les
+    centres de ses modules, du plus petit au plus grand numéro, en encre
+    foncée sur un liseré clair (jamais la teinte des modules qu'elle
+    traverse), pointe pleine sur le dernier, « + » au premier et « − » au
+    dernier."""
     from ..planche import TRAIT_PAN, _n
 
     points = [vers_feuille(m['centre']) for m in modules]
@@ -352,13 +397,19 @@ def _fleche_de_chaine(modules, couleur, vers_feuille):
         (xb, yb),
         (base[0] - uy * taille / 2, base[1] + ux * taille / 2),
         (base[0] + uy * taille / 2, base[1] - ux * taille / 2)))
+    trace = ' '.join('%s,%s' % (_n(x), _n(y)) for x, y in points)
+    bouts = signes_de_bout(points[0], points[-1], bouts)
     return ('<g class="fleche-chaine" data-chaine="%s">'
             '<polyline points="%s" fill="none" stroke="%s" '
+            'stroke-width="%s" stroke-linejoin="round" />'
+            '<polyline points="%s" fill="none" stroke="%s" '
             'stroke-width="%s" />'
-            '<polygon points="%s" fill="%s" /></g>'
+            '<polygon points="%s" fill="%s" stroke="%s" stroke-width="%s" />'
+            '%s</g>'
             % (escape(str(modules[0]['chaine']), quote=True),
-               ' '.join('%s,%s' % (_n(x), _n(y)) for x, y in points),
-               couleur, _n(TRAIT_PAN * 3), pointe, couleur))
+               trace, _LISERE, _n(TRAIT_PAN * 6), trace, _NOIR,
+               _n(TRAIT_PAN * 3), pointe, _NOIR, _LISERE, _n(TRAIT_PAN),
+               bouts))
 
 
 def _lignes_de_legende(plan):
@@ -494,7 +545,7 @@ def _legende_svg(plan):
     if _chaines_a_fleche(plan):
         def sens(y):
             return ('<text class="legende-sens" x="%s" y="%s" '
-                    'font-size="2.5" fill="%s">%s</text>'
+                    'font-size="3.2" fill="%s">%s</text>'
                     % (_n(x), _n(y), _GRIS_TEXTE, escape(LEGENDE_SENS)))
         blocs.append((_PAS_SOUS_LIGNE + 1.0, sens))
 
@@ -574,10 +625,11 @@ def _svg_de_plan_cablage(plan, *, titre='', sous_titre='', pied=''):
         for module in plan['modules']:
             if module['manuel']:
                 couche.append(_marque_manuelle(module, vers_feuille))
-        couleurs = {e['chaine']: e['couleur'] for e in plan['legende']}
+        totaux = _totaux_de_chaine(plan)
         for chaine, modules in _chaines_a_fleche(plan).items():
-            couche.append(_fleche_de_chaine(modules, couleurs[chaine],
-                                            vers_feuille))
+            couche.append(_fleche_de_chaine(
+                modules, vers_feuille,
+                bouts_publies(modules, totaux.get(chaine))))
     couche.append('</g>')
     couche.append(_legende_svg(plan))
     # ACAL260 — un SVG empilé (toit + surfaces de pose) reçoit la couche dans

@@ -89,4 +89,11 @@ describe('ArbreHistorique — rendu', () => {
     />)
     expect(screen.getByText('WhatsApp')).toBeInTheDocument()
   })
+
+  it("l'heure suit le fuseau de la société : 00:23 UTC s'affiche 01:23 (comme « Recalculé le … à 1 h 23 »)", () => {
+    render(<ArbreHistorique
+      historique={[act('whatsapp', { id: 5, created_at: '2026-11-27T00:23:00+00:00' })]}
+    />)
+    expect(screen.getByText('01:23')).toBeInTheDocument()
+  })
 })

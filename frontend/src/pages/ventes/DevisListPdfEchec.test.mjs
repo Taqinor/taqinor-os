@@ -121,3 +121,18 @@ test('les minuteries sont mémorisées puis nettoyées au démontage', () => {
 test('la boucle se tait immédiatement si l’écran est démonté', () => {
   assert.match(genererUnPdfBody, /if \(pollAnnule\.current\) return/)
 })
+
+// ACAL1236 — un sondage manqué replanifie, mais après 5 manqués DE SUITE le
+// sondage le dit (« la vérification du PDF a échoué — Réessayer ») et s'arrête ;
+// un sondage réussi remet le compte à zéro.
+test('ACAL1236 — 5 sondages manqués de suite : message + Réessayer, arrêt ; un succès remet à zéro', () => {
+  const catchBloc = genererUnPdfBody.slice(genererUnPdfBody.indexOf('sondage manqué'))
+  assert.match(genererUnPdfBody, /let manquesDeSuite = 0/)
+  assert.match(genererUnPdfBody, /manquesDeSuite = 0\r?\n/)
+  assert.match(catchBloc, /manquesDeSuite \+= 1/)
+  assert.match(catchBloc, /manquesDeSuite >= 5/)
+  assert.match(catchBloc, /la vérification du PDF a échoué/)
+  assert.match(catchBloc, /label: 'Réessayer'/)
+  // La replanification au même pas reste là pour les manqués isolés.
+  assert.match(catchBloc, /setTimeout\(poll, slow \? 10000 : 2000\)/)
+})

@@ -64,6 +64,8 @@ Module PUR : aucune base, aucun réseau, aucun appel PVGIS.
 """
 from __future__ import annotations
 
+from apps.calepinage.services.etapes import fiche_du_module
+
 import math
 
 from apps.calepinage.services import bifacial_sheds
@@ -157,13 +159,13 @@ __all__ = ['CLE_ALBEDO', 'CLE_HAUTEUR', 'CLE_OCCUPATION', 'CLE_PAS',
 
 MOTIF_MONOFACIAL = (
     'La fiche du module ne déclare aucune bifacialité '
-    f'(« {CHAMP_BIFACIALITE} ») : ce module est MONOFACIAL, il n\'a pas de '
+    f'(« {CHAMP_BIFACIALITE} ») : ce module est monofacial, il n\'a pas de '
     "face arrière à compter. Rien ne manque — l'étape est simplement sans "
     'objet ici.')
 
 MOTIF_MOIS_ABSENT = (
     "La série horaire ne porte pas le mois de chacune de ses heures : un "
-    "albédo MENSUEL ne peut être attribué à aucune heure, et aucun mois n'est "
+    "albédo mensuel ne peut être attribué à aucune heure, et aucun mois n'est "
     "comblé par la moyenne des autres.")
 
 MOTIF_AUCUN_PAN = (
@@ -172,7 +174,7 @@ MOTIF_AUCUN_PAN = (
 
 MOTIF_REFLECHIE_ABSENTE = (
     "PVGIS n'a pas rendu la composante réfléchie « gr_i_w_m2 » : le repère "
-    "de réflexion de face AVANT reste inconnu. Il n'entre dans aucun facteur "
+    "de réflexion de face avant reste inconnu. Il n'entre dans aucun facteur "
     'du gain arrière — seul le repère manque, pas le calcul.')
 
 
@@ -181,7 +183,7 @@ def appliquer(serie, contexte):
     contexte = contexte if isinstance(contexte, dict) else {}
     serie = serie if isinstance(serie, dict) else {}
 
-    fiche = contexte.get('fiche_module')
+    fiche = fiche_du_module(contexte)
     fiche = fiche if isinstance(fiche, dict) else {}
     bifacialite = _nombre(fiche.get(CHAMP_BIFACIALITE))
     if fiche and bifacialite is None:

@@ -696,7 +696,9 @@ def devis_events_for_lead(lead_id, company):
     {sent, opened, signed, refused}. ``engagement`` (résumé par section) n'est
     posé que sur l'événement ``opened``.
     """
-    from .models import Devis, ShareLink
+    from core.user_display import nom_affiche
+
+    from .models import Devis, DevisActivity, ShareLink
 
     if not lead_id:
         return []
@@ -718,6 +720,14 @@ def devis_events_for_lead(lead_id, company):
     def _iso(d):
         return d.isoformat() if d is not None else None
 
+    # ACAL1233 — dernière activité d'acceptation par devis (plus récente d'abord).
+    acceptations = {}
+    for act in (DevisActivity.objects.select_related('user')
+                .filter(devis__lead_id=lead_id, company=company,
+                        field_label='Acceptation')
+                .order_by('devis_id', '-created_at')):
+        acceptations.setdefault(act.devis_id, act)
+
     events = []
     for devis in devis_qs:
         ref = devis.reference
@@ -735,9 +745,16 @@ def devis_events_for_lead(lead_id, company):
                 'engagement': eng_by_devis.get(devis.id) or {},
             })
         if devis.statut == 'accepte' and devis.date_acceptation is not None:
+            # ACAL1233 — l'heure réelle est celle de l'activité d'acceptation ;
+            # sans activité, la date seule (aucune heure inventée).
+            acte = acceptations.get(devis.id)
             events.append({
                 'devis_id': devis.id, 'reference': ref, 'kind': 'signed',
-                'label': 'Devis signé', 'at': _iso(devis.date_acceptation),
+                'label': 'Devis signé',
+                'at': _iso(acte.created_at if acte else devis.date_acceptation),
+                # ACAL1235 — l'auteur de l'acceptation (nom complet, comme le
+                # chatter ; login en dernier recours) ; None sans acteur.
+                'user_nom': nom_affiche(getattr(acte, 'user', None)),
                 'engagement': None,
             })
         if devis.statut == 'refuse' and devis.date_refus is not None:

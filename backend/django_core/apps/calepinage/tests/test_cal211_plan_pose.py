@@ -288,8 +288,9 @@ def fleches(svg):
 class FeuilleDePanTest(SimpleTestCase):
     """ACAL590 - une feuille A4 par pan : teintes, numeros, fleches de chaine.
 
-    Aucun repere « + » / « − » : l'affectation ne connait pas la polarite
-    (meme convention et meme legende que le plan de cablage, ACAL643)."""
+    « + » au premier numero, « − » au dernier (ACAL1719), la polarite se
+    verifie sur site (meme convention et meme legende que le plan de cablage,
+    ACAL643)."""
 
     def feuilles(self, layout, table):
         from apps.calepinage.services.planche_pan import _svgs_de_pans
@@ -315,22 +316,47 @@ class FeuilleDePanTest(SimpleTestCase):
                               for m in modules}), 2)
         for numero in range(1, 7):
             self.assertIn('>%d</text>' % numero, svg)
-        self.assertNotIn('>+</text>', svg)
-        self.assertNotIn('>−</text>', svg)
+        # ACAL1719 — « + » au premier module, « − » au dernier, par chaîne.
+        self.assertEqual(svg.count('>+</text>'), 2)
+        self.assertEqual(svg.count('>−</text>'), 2)
         self.assertNotIn('début', texte_de_svg(svg))
         self.assertIn(LEGENDE_SENS, texte_de_svg(svg))
         self.assertEqual(svg.count('class="fleche-chaine"'), 2)
         self.assertIn('calepinage aaaaaaaaaaaa', svg)
 
-    def test_la_fleche_va_du_premier_au_dernier_numero(self):
-        """L'ordre de l'affectation ne change pas la fleche : elle suit les
-        numeros (1 -> 3), comme le plan de cablage."""
+    def test_la_fleche_suit_le_rang_publie_de_la_chaine(self):
+        """ACAL1719 (revue) - la fleche suit le rang du module dans sa chaine
+        (l'ordre de l'affectation publiee, l'attribut N du DXF), comme le plan
+        de cablage : une table a l'envers donne la fleche a l'envers."""
         dans_l_ordre = self.feuilles(layout_six_modules(), affectation(
             (1, ['z1#1', 'z1#2', 'z1#3'])))[0]
         a_l_envers = self.feuilles(layout_six_modules(), affectation(
             (1, ['z1#3', 'z1#2', 'z1#1'])))[0]
         self.assertEqual(len(fleches(dans_l_ordre)), 1)
-        self.assertEqual(fleches(a_l_envers), fleches(dans_l_ordre))
+        self.assertEqual(fleches(a_l_envers)[0].split(),
+                         list(reversed(fleches(dans_l_ordre)[0].split())))
+
+    def test_le_bout_seul_sur_son_pan_garde_son_signe(self):
+        """ACAL1719 (revue) - le dernier module d'une chaine, seul sur son
+        pan : pas de fleche, mais son « − » (et la legende du sens)."""
+        from apps.calepinage.services.documents.plan_cablage import (
+            LEGENDE_SENS)
+
+        layout = layout_six_modules()
+        zone_b = copy.deepcopy(layout['zones'][0])
+        zone_b.update(id='z2', label='Pan B')
+        zone_b['geometry']['panels'] = [{'cx': 1.0, 'cy': 1.0},
+                                        {'cx': 3.5, 'cy': 1.0}]
+        layout['zones'].append(zone_b)
+        table = affectation((1, ['z1#1', 'z1#2', 'z1#3', 'z2#1']))
+        feuille_a, feuille_b = self.feuilles(layout, table)
+        self.assertEqual((feuille_a.count('>+</text>'),
+                          feuille_a.count('>−</text>')), (1, 0))
+        self.assertEqual(fleches(feuille_b), [])
+        self.assertEqual((feuille_b.count('>+</text>'),
+                          feuille_b.count('>−</text>')), (0, 1))
+        self.assertIn('class="bout-chaine"', feuille_b)
+        self.assertIn(LEGENDE_SENS, texte_de_svg(feuille_b))
 
     def test_un_module_non_affecte_reste_en_contour_gris_seul(self):
         table = affectation((1, ['z1#1', 'z1#2', 'z1#3', 'z1#4', 'z1#5']))
@@ -362,8 +388,11 @@ class FeuilleDePanTest(SimpleTestCase):
         feuille_a, feuille_b = self.feuilles(layout, table)
         for feuille in (feuille_a, feuille_b):
             self.assertEqual(len(fleches(feuille)), 1)
-            self.assertNotIn('>+</text>', feuille)
-            self.assertNotIn('>−</text>', feuille)
+        # ACAL1719 — « + » sur le pan du premier module, « − » sur le dernier.
+        self.assertEqual((feuille_a.count('>+</text>'),
+                          feuille_a.count('>−</text>')), (1, 0))
+        self.assertEqual((feuille_b.count('>+</text>'),
+                          feuille_b.count('>−</text>')), (0, 1))
         self.assertIn('suite sur Pan B', feuille_a)
         self.assertIn('suite sur Pan Sud', feuille_b)
 

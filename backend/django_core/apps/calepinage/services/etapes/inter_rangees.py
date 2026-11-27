@@ -223,7 +223,7 @@ _MOTIF_SITE = (
 
 _MOTIF_HEURE = (
     "L'heure de la série n'est pas datable en UTC : PVGIS sert l'UTC par "
-    "défaut et l'heure LOCALE STANDARD sous « localtime=1 », et la base "
+    "défaut et l'heure locale standard sous « localtime=1 », et la base "
     'horaire ou le décalage réellement appliqué manque ici. Dater le soleil '
     "à une heure fausse vaudrait jusqu'à 15° d'angle horaire par heure "
     "d'écart — aucune ombre n'est projetée tant que le champ manque.")

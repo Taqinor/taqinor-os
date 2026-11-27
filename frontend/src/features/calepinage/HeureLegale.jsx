@@ -108,7 +108,7 @@ export function PhraseHeureIndisponible({ etat }) {
   if (etat === 'fuseau') {
     return (
       <>heure légale non calculée : fuseau du site non renseigné{' '}
-        (<Link to="/calepinage/reglages" className="underline">Réglages › site</Link>)</>
+        (<Link to="/calepinage/reglages#site" className="underline">Réglages simulation › Site &amp; imagerie</Link>)</>
     )
   }
   if (etat === 'pin') return <>heure légale non calculée : posez d’abord l’épingle du site sur la carte</>

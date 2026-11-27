@@ -12,7 +12,7 @@
 import * as maplibregl from 'maplibre-gl';
 import { isSimplePolygon, type LngLat } from '../../lib/roof';
 import {
-  availableOptionalLayers, getOptionalLayer, imageryDisclosure, optionalLayerSourceSpec, resolveImageryProvider,
+  availableOptionalLayers, FOND_SANS_IMAGERIE_CLAIR, FOND_SANS_IMAGERIE_SOMBRE, getOptionalLayer, imageryDisclosure, optionalLayerSourceSpec, resolveImageryProvider,
 } from '../../lib/roofConfig';
 import { $ } from './dom';
 import {
@@ -26,6 +26,7 @@ import {
   coucheAvantPourFond,
   deplacerCalage,
   lireUnderlay,
+  peintureFondSelonTheme,
   placementDuFond,
   specCoucheFond,
   specSourceFond,
@@ -633,6 +634,44 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     retirerFond(UNDERLAY_PHOTO_LAYER_ID);
   }
 
+  /** ACAL1828 — thème sombre de l'atelier = `html.dark` ; le fond posé suit la bascule sans être reposé. */
+  function themeSombre(): boolean {
+    return typeof document !== 'undefined' && document.documentElement?.classList?.contains('dark') === true;
+  }
+  function peindreFondSelonTheme() {
+    for (const id of [UNDERLAY_PLAN_LAYER_ID, UNDERLAY_PHOTO_LAYER_ID]) {
+      try {
+        if (!map.getLayer?.(id)) continue;
+        for (const [prop, val] of Object.entries(peintureFondSelonTheme(themeSombre()))) map.setPaintProperty(id, prop as never, val as never);
+      } catch {
+        /* style pas prêt : le fond sera posé avec la bonne peinture */
+      }
+    }
+  }
+  /** ACAL1828 (revue) — le « fond neutre sans photo » (calque `background`, pas raster) suit le même interrupteur de thème. */
+  function peindreFondNeutreSelonTheme() {
+    try {
+      if (map.getLayer?.('fond-sans-imagerie')) {
+        map.setPaintProperty('fond-sans-imagerie', 'background-color', themeSombre() ? FOND_SANS_IMAGERIE_SOMBRE : FOND_SANS_IMAGERIE_CLAIR);
+      }
+    } catch {
+      /* style pas prêt */
+    }
+  }
+  // ACAL1828 (revue) — l'observateur est GARDÉ et débranché au retrait de la carte (sinon un de plus par montage de l'atelier, chacun tenant une carte morte).
+  let observateurTheme: MutationObserver | null = null;
+  if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined' && document.documentElement) {
+    observateurTheme = new MutationObserver(() => {
+      peindreFondSelonTheme();
+      peindreFondNeutreSelonTheme();
+    });
+    observateurTheme.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    map.on?.('remove', () => {
+      observateurTheme?.disconnect();
+      observateurTheme = null;
+    });
+  }
+
   /** CALX108 — la ressource d'affichage du fond courant (URL pré-signée, calage photo,
    *  taille du fichier), mémorisée pour pouvoir REPLACER le fond après un calage ou un
    *  ajustement sans que l'hôte ait à la redonner. */
@@ -678,7 +717,7 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
         MAPLIBRE_LAYERS_PAR_CALQUE,
         (id) => Boolean(map.getLayer?.(id)),
       );
-      map.addLayer(specCoucheFond(placement) as never, avant as never);
+      map.addLayer(specCoucheFond(placement, themeSombre()) as never, avant as never);
     } catch {
       // ACAL68 — style pas encore chargé : le fond (déjà porté par le document) est REPOSÉ
       // au chargement du style, s'il est toujours celui du document à ce moment-là.

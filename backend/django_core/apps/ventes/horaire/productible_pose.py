@@ -21,6 +21,9 @@ SOURCE_POSE = 'calepinage_enregistre'
 #: ADEV155 (D-ACAL-108, niveau 15 seulement) — la base du PLAN PAR DÉFAUT d'un lead sans
 #: toit tracé (``conception/porte_calepinage.productible_du_plan_par_defaut``).
 SOURCE_PLAN_PAR_DEFAUT = 'plan_par_defaut'
+#: ACAL1237 — la base rangée À L'ENVOI (``domain/envoi.geler_document_engage``) quand le bloc
+#: horaire n'en porte pas (sans 12 mois de consommation, l'étude horaire est ``None``).
+CLE_BASE_ENVOI = 'base_production_envoi'
 
 
 def base_depuis_servi(servi, *, kwc=None):
@@ -52,8 +55,20 @@ def _base_rangee(devis):
     bloc = etude.get('etude_horaire') if isinstance(etude, dict) else None
     base = bloc.get('base_production') if isinstance(bloc, dict) else None
     if not isinstance(base, dict) or not base.get('kwh_kwc_annuel'):
+        base = etude.get(CLE_BASE_ENVOI) if isinstance(etude, dict) else None  # ACAL1237
+    if not isinstance(base, dict) or not base.get('kwh_kwc_annuel'):
         return None, 'aucune base rangée au bloc horaire'
     return dict(base), ''
+
+
+def base_a_ranger_a_l_envoi(devis):
+    """ACAL1237 — la base que le BROUILLON imprime, à ranger sous :data:`CLE_BASE_ENVOI` (appel
+    avant la bascule) ; ``None`` quand le bloc horaire la porte déjà, au niveau ≤ 14 ou en ville."""
+    bloc = (getattr(devis, 'etude_params', None) or {}).get('etude_horaire')
+    base = bloc.get('base_production') if isinstance(bloc, dict) else None
+    if isinstance(base, dict) and base.get('kwh_kwc_annuel'):
+        return None
+    return base_de_production(devis)
 
 
 def _base_du_plan_rangee(devis):

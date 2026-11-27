@@ -1295,9 +1295,10 @@ class EcartsDeLignesSansBaseTest(SimpleTestCase):
     def test_revue_avertissement_chiffre_a_sa_forme_sans_montant(self):
         """Revue du 26/11 (D-ACAL-106/165) — le seul avertissement de la resynchro qui porte un montant
         de vente (``lignes.avertissement_forfait_verrouille``) a sa phrase sans montant ; tous les
-        lecteurs d'aujourd'hui lisent toujours la phrase complète (un ``str``), JSON et pickle compris."""
+        lecteurs d'aujourd'hui lisent toujours la phrase complète (un ``str``), JSON et copie profonde
+        compris (``copy.deepcopy`` passe par ``__reduce_ex__``, le protocole même de pickle)."""
+        import copy
         import json
-        import pickle
 
         from apps.ventes.domain.lignes import avertissement_forfait_verrouille
         from apps.ventes.services import avertissements_sans_montant
@@ -1305,7 +1306,7 @@ class EcartsDeLignesSansBaseTest(SimpleTestCase):
         complet = avertissement_forfait_verrouille('Pose', 14, '4 200,00')
         self.assertIn('4 200,00 MAD HT', complet)
         self.assertEqual(json.loads(json.dumps([complet])), [str(complet)])
-        self.assertEqual(str(pickle.loads(pickle.dumps(complet))), str(complet))
+        self.assertEqual(str(copy.deepcopy(complet)), str(complet))
         autre = 'La conception 3D porte le devis de 9 à 14 panneaux.'
         cache = avertissements_sans_montant([complet, autre])
         self.assertEqual(cache[1], autre)

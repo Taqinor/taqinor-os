@@ -25,7 +25,7 @@ export default function SeuilsHorsReseau({ seuils, erreurs = {}, onChange }) {
       {erreurs['hors_reseau.seuils']
         ? <p role="alert" className="text-xs text-destructive" data-testid="acal791-erreur">{erreurs['hors_reseau.seuils']}</p>
         : null}
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3">
         {SEUILS.map(({ cle, libelle }) => (
           <Champ
             key={cle}

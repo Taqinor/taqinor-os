@@ -60,6 +60,8 @@ PIPELINE = 'pipeline'
 #: marqueur ``composition_imposee``. Un corps de requête ne le forge ni ne
 #: l'efface jamais (clé DÉRIVÉE d'un propriétaire qui n'est pas l'écran).
 COMPOSITION_IMPOSEE = 'composition_imposee'
+#: ACAL1237 — le gel du document engagé (``domain/envoi.geler_document_engage``).
+ENVOI = 'envoi'
 #: Personne : clé HISTORIQUE que plus aucun chemin ne pose (voir les notes).
 ORPHELINE = 'orpheline'
 
@@ -214,6 +216,11 @@ SCHEMA = {
 
     # ── Ce que le MOTEUR calcule (DÉRIVÉES) ──────────────────────────────────
     'etude_horaire': _cle((dict,), MOTEUR_HORAIRE, DERIVEE),
+    'base_production_envoi': _cle((dict,), ENVOI, DERIVEE,
+                                  'ACAL1237 — la base de la pose réelle imprimée par le brouillon '
+                                  '(niveau 15, sans bloc horaire), rangée à l’envoi ; relue par '
+                                  '`horaire/productible_pose._base_rangee`. Hors empreinte (dérivée) ; '
+                                  'retirée au gel d’une copie/V2 qui n’en a pas.'),
     'etude_horaire_sans': _cle((dict,), MOTEUR_HORAIRE, DERIVEE,
                                'I7 — le bloc horaire de l’option SANS, posé '
                                'SEULEMENT quand les deux options portent des '
@@ -247,6 +254,12 @@ SCHEMA = {
         (bool,), ORPHELINE, DERIVEE,
         'R4-02 — posé par la migration ventes 0160 ; lu par '
         '`quote_engine/ci/synthese.py::synthese_ci` ; jamais copié (V2, copie).'),
+    # ACAL1217 / ACAL1266 — drapeau de rendu posé par la migration 0164 (devis
+    # non brouillons) : le une-page et le PDF agricole gardent le texte reçu.
+    'regles_pdf_historique_lot10': _cle(
+        (bool,), ORPHELINE, DERIVEE,
+        'ACAL1217 — posé par la migration ventes 0164 ; lu par '
+        '`quote_engine/ci/onepage.py::pdf_historique_lot10` ; jamais copié (V2, copie).'),
     'economies_annuelles': _cle((int, float), CALEPINAGE, DERIVEE),
     'autoconso_sans': _cle((int, float), CALEPINAGE, DERIVEE),
     'autoconso_avec': _cle((int, float), CALEPINAGE, DERIVEE),

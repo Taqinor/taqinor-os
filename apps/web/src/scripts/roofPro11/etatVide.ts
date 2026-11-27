@@ -7,19 +7,51 @@
  * clic (`pointer-events: none`) et reste `aria-hidden` : le statut `aria-live` est le canal des
  * lecteurs d'écran.
  */
+import { optionsGestesCarte } from './gestesCarte';
+
 export const ETAPE_LOCALISER = '1 · Localisez le toit : tapez l’adresse, puis cliquez le premier coin';
 export const ETAPE_COINS = '2 · Un clic par coin, double-clic pour fermer le contour';
+/** ACAL1808 — mêmes étapes au doigt : aucun mot de souris sur un écran tactile. */
+export const ETAPE_LOCALISER_TACTILE = '1 · Localisez le toit : tapez l’adresse, puis touchez le premier coin';
+export const ETAPE_COINS_TACTILE = '2 · Touchez la carte pour poser chaque coin, puis « Terminer le tracé »';
+
+/** Le pointeur est un doigt : la détection est celle des gestes de la carte (1 définition). */
+export function pointeurTactile(fenetre: { matchMedia?: (requete: string) => { matches: boolean } } | undefined): boolean {
+  return Boolean(fenetre && optionsGestesCarte(fenetre).cooperativeGestures);
+}
+
+/** ACAL1808 (revue) — les consignes de la pilule d'état, lues par pointeur (1 définition avec la carte d'aide). */
+export function consigneTrace(
+  cas: 'adresse' | 'efface' | 'nouvelle-zone',
+  tactile: boolean,
+  libelle = '',
+): string {
+  if (cas === 'adresse') {
+    return tactile
+      ? 'Cherchez votre adresse, puis touchez les coins de votre toit.'
+      : 'Cherchez votre adresse, puis cliquez les coins de votre toit.';
+  }
+  if (cas === 'efface') {
+    return tactile
+      ? 'Touchez les coins de votre toit, puis « Terminer le tracé ».'
+      : 'Cliquez les coins de votre toit. Double-cliquez pour fermer.';
+  }
+  return tactile
+    ? `${libelle} — tracez le contour de cette nouvelle zone (touchez les coins, puis « Terminer le tracé »).`
+    : `${libelle} — tracez le contour de cette nouvelle zone (double-cliquez pour fermer).`;
+}
 
 /** Le texte de la carte pour l'état du tracé, ou null quand elle doit disparaître. */
-export function texteEtatVide(sommets: number, ferme: boolean): string | null {
+export function texteEtatVide(sommets: number, ferme: boolean, tactile = false): string | null {
   if (ferme) return null;
+  if (tactile) return sommets === 0 ? ETAPE_LOCALISER_TACTILE : ETAPE_COINS_TACTILE;
   return sommets === 0 ? ETAPE_LOCALISER : ETAPE_COINS;
 }
 
 export function creerEtatVide(conteneur: HTMLElement | null): { maj: (sommets: number, ferme: boolean) => void } {
   let el: HTMLElement | null = null;
   const maj = (sommets: number, ferme: boolean) => {
-    const t = texteEtatVide(sommets, ferme);
+    const t = texteEtatVide(sommets, ferme, pointeurTactile(typeof window === 'undefined' ? undefined : window));
     if (!el && (t === null || !conteneur || typeof document === 'undefined')) return;
     if (!el) {
       el = document.createElement('div');

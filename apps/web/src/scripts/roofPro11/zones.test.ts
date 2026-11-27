@@ -40,7 +40,10 @@ import {
   ajoutDePanEnCours, monterToitGriseSousTrace, toitExistantGeoJSON, // ACAL1329
   type ExclusionZone,
 } from './zones';
-import { deserializeLayout, hydrateFromDevis, serializeLayout, type SerializedLayout } from './prefill'; // ACAL64, ACAL1415
+import { deserializeLayout, hydrateFromDevis, serializeLayout, selectionSansChangement, type SerializedLayout } from './prefill';
+import { heriterDuPanDecoupe } from './tailleAuto'; // ACAL1707
+import { createLayoutState } from '../../lib/layoutVariability'; // ACAL1707
+import { decouperContour, propagerPenteDecoupe } from './formesToit'; // ACAL1735 // ACAL64, ACAL1415, ACAL1916
 import { MENTION_MODULE_DE_DEPART, affectationDesPans } from './moduleSelect'; // ACAL1415
 import { panAuModuleChoisi, remplacerParPanVierge, reprendreModuleChoisi } from './repriseModule'; // ACAL1416
 import { type Ctx } from './context'; // ACAL64
@@ -658,6 +661,45 @@ describe('ACAL1415 — module de départ « à confirmer » / module choisi, apr
       const refus = document.getElementById('rp9-pan-module-erreur')?.textContent ?? '';
       expect(refus).toContain('« Module 715 W »');
       expect(refus).not.toContain('produit-23019');
+      // ACAL1980 — le motif est aussi posé au canal « À régler » (lu par la coque pour le panneau d'étape), pas seulement en pilule.
+      const noeud = document.getElementById('rp9-pan-module-erreur')!;
+      expect(noeud.hidden).toBe(false);
+      expect(noeud.dataset.ton).toBe('a-regler');
+      expect(noeud.dataset.code).toBe('module-absent');
+    } finally { g.document = avant; }
+  });
+
+  it('ACAL1980 (revue) — un catalogue illisible n’est pas marqué « À régler » : sa cause se lit au code', () => {
+    const m715 = { ...m710, id: 'produit-23019', produitId: 23019, libelle: 'Module 715 W', epaisseurMm: null }
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"></div></body>').window.document;
+    try {
+      const areas = [panDeTest('area-1', { renderPlan: plan, roofType: 'flat', moduleId: 'produit-23019' })];
+      const ctx = { ...ctxDeBase(areas, 'area-1'), opts: { modulesDisponibles: null }, modulesDuDocument: [m715],
+        activeArea: () => areas[0], closed: true, dom: { areasWindowEl: document.getElementById('rp9-areas') } } as unknown as Ctx;
+      createZones(ctx, { recalc: vi.fn(), setStatus: vi.fn() });
+      const noeud = document.getElementById('rp9-pan-module-erreur')!;
+      expect(noeud.dataset.code).toBe('catalogue-illisible');
+      expect(noeud.dataset.ton).not.toBe('a-regler');
+    } finally { g.document = avant; }
+  });
+
+  it('ACAL1980 — un module qui revient au catalogue retire le motif du canal « À régler »', () => {
+    const m715 = { ...m710, id: 'produit-23019', produitId: 23019, libelle: 'Module 715 W', epaisseurMm: null }
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"></div></body>').window.document;
+    try {
+      const areas = [panDeTest('area-1', { renderPlan: plan, roofType: 'flat', moduleId: 'produit-23019' })];
+      const ctx = { ...ctxDeBase(areas, 'area-1'), opts: { modulesDisponibles: catalogue }, modulesDuDocument: [m715],
+        activeArea: () => areas[0], closed: true, dom: { areasWindowEl: document.getElementById('rp9-areas') } } as unknown as Ctx;
+      const zones = createZones(ctx, { recalc: vi.fn(), setStatus: vi.fn() });
+      const noeud = document.getElementById('rp9-pan-module-erreur')!;
+      expect(noeud.dataset.ton).toBe('a-regler');
+      expect(zones.choisirModuleDuPanActif('produit-7')).toBe(true); // un module du catalogue est choisi
+      expect(noeud.hidden).toBe(true);
+      expect(noeud.dataset.ton).toBeUndefined();
     } finally { g.document = avant; }
   });
 
@@ -855,6 +897,54 @@ describe('ACAL520 — motifPanVerrouille', () => {
     expect(motifPanVerrouille({ label: 'Pan 1' })).toBeNull();
     expect(motifPanVerrouille(undefined)).toBeNull();
   });
+});
+
+// ACAL1925 / ACAL1964 — le panneau d'un pan en Expert : étiquette AU-DESSUS du champ, sélecteur contenu, tableau par pan
+// sans largeur minimale. Le vrai gabarit est monté par `createZones` + `renderAreasPanel` (rien n'est recopié ici).
+describe('ACAL1925 / ACAL1964 — panneau du pan : étiquettes en colonne, tableau sans largeur minimale', () => {
+  const m710 = { id: 'produit-7', produitId: 7, libelle: 'Module 710 W', longueurMm: 2384, largeurMm: 1303, epaisseurMm: 33, poidsKg: 38, pmaxWc: 710, source: 'fiche' };
+  const catalogue = { calepinage: 1, modules: [{ module: m710, selectionnable: true, champs_manquants: [], motif: null }], champs_requis: [], motif_liste_vide: null };
+  function monterPanneau() {
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><div id="rp9-areas"><ul id="liste"></ul></div></body>').window.document;
+    try {
+      const areas = [panDeTest('area-1'), panDeTest('area-2')];
+      const ctx = { ...ctxDeBase(areas, 'area-1'), opts: { modulesDisponibles: catalogue }, activeArea: () => areas[0], closed: true,
+        dom: { areasWindowEl: document.getElementById('rp9-areas'), areasListEl: document.getElementById('liste') } } as unknown as Ctx;
+      createZones(ctx, { recalc: vi.fn(), setStatus: vi.fn() }).renderAreasPanel();
+      const pris = (sel: string) => [...document.querySelectorAll(sel)] as HTMLElement[];
+      return {
+        etiquettes: pris('#rp9-pan-geometry label, #rp9-pan-duplicate label, #rp9-pan-module label').map((l) => ({ texte: l.textContent ?? '', classe: l.className })),
+        selecteur: document.getElementById('rp9-pan-module-select')?.className ?? '',
+        tableau: document.querySelector('[data-pan-stat]')?.closest('table')?.className ?? '',
+      };
+    } finally { g.document = avant; }
+  }
+
+  it('« Largeur », « Rotation », « Rotation du site », « Décalage de la copie », « Module du pan » : étiquette au-dessus du champ', () => {
+    const { etiquettes } = monterPanneau();
+    const noms = ['Largeur', 'Rotation (', 'Rotation du site', 'Décalage de la copie', 'Module du pan'];
+    for (const nom of noms) {
+      const e = etiquettes.find((x) => x.texte.includes(nom));
+      expect(e, nom).toBeDefined();
+      expect(e!.classe, nom).toContain('flex-col');
+      expect(e!.classe, nom).not.toContain('inline-flex');
+    }
+  });
+
+  it('le sélecteur « Module du pan » prend la largeur de son panneau (ne dépasse pas le bord droit)', () => {
+    const { selecteur } = monterPanneau();
+    expect(selecteur).toContain('w-full');
+    expect(selecteur).toContain('min-w-0');
+  });
+
+  it('ACAL1964 — le tableau par pan n’a aucune largeur minimale (520 px dans un panneau de 384 px)', () => {
+    const { tableau } = monterPanneau();
+    expect(tableau).toContain('w-full');
+    expect(tableau).not.toMatch(/min-w-\[/);
+  });
+
 });
 
 // ACAL1430 — après « 2 pans » (identifiants area-2 / area-3), la liste, le cadenas, le refus et le tableau disent le
@@ -1498,5 +1588,141 @@ describe('T4-X2-010 — un pan non actif rouvert garde sa pose : document, table
       // Le plan posé ne change pas le document : le pan non actif est réémis tel qu'enregistré.
       expect(serializeLayout(ctx).zones[0].geometry).toEqual(doc.zones[0].geometry);
     } finally { g.document = avant; }
+  });
+});
+
+describe('ACAL1916 — choisir un pan ne marque pas le document modifié', () => {
+  const pan = () => ({
+    id: 'area-1', vertices: [A, B, [-7.5990, 33.5]] as LngLat[], obstacles: [], roofType: 'flat', pitchDeg: 0,
+    facingAzimuthDeg: 180, facingManual: false, neededPanels: 4, neededAuto: true,
+    geometrieEnregistree: { count: 4, panels: [{ cx: 1, cy: 2 }] },
+  });
+  const vif = (a: ReturnType<typeof pan>) => ({
+    vertices: [...a.vertices], obstacles: [...a.obstacles], roofType: a.roofType, pitchDeg: a.pitchDeg,
+    facingAzimuthDeg: a.facingAzimuthDeg, facingManual: a.facingManual, neededPanels: a.neededPanels, neededAuto: a.neededAuto,
+  });
+  it('rien n’a bougé depuis le chargement ⇒ la sélection ne réécrit rien', () => {
+    const a = pan();
+    expect(selectionSansChangement(a as never, vif(a), { count: 4, panels: [{ cx: 1, cy: 2 }] } as never)).toBe(true);
+  });
+  it('un panneau déplacé, une pente ou un nombre changés ⇒ la sélection capture (modifié)', () => {
+    const a = pan();
+    expect(selectionSansChangement(a as never, vif(a), { count: 4, panels: [{ cx: 9, cy: 2 }] } as never)).toBe(false);
+    expect(selectionSansChangement(a as never, { ...vif(a), pitchDeg: 22 }, a.geometrieEnregistree as never)).toBe(false);
+    expect(selectionSansChangement(a as never, { ...vif(a), neededPanels: 5 }, a.geometrieEnregistree as never)).toBe(false);
+  });
+  it('un pan sans pose enregistrée n’est jamais « inchangé »', () => {
+    const a = { ...pan(), geometrieEnregistree: undefined };
+    expect(selectionSansChangement(a as never, vif(a as never), null)).toBe(false);
+  });
+});
+
+describe('ACAL1707 — « 2 pans » sur un toit à 4 panneaux pose et enregistre 4 panneaux', () => {
+  // Le geste réel (`appliquer` de `monterFormesToit`, roof-tool-pro11.ts) : découpe, nombre hérité, le pan découpé remplacé
+  // par les pans, le PREMIER chargé (`loadArea(pans[0])` : son nombre pilote la pose vivante). Puis « Enregistrer » sans
+  // ouvrir le pan 2 : ce que `serializeLayout` écrit. Toit long nord-sud : deux pans est / ouest, tous deux exposés.
+  function decouperPuisEnregistrer(besoin: { neededPanels: number; neededAuto: boolean }) {
+    const avant = panDeTest('area-1', { vertices: rectRing(9, 12), roofType: 'pitched', pitchDeg: 22, ...besoin, moduleId: 'm' } as never);
+    const areas: AreaRecord[] = [avant];
+    const v = decouperContour(avant.vertices, 'gable', 22, areas);
+    if (!v.ok) throw new Error(v.motif);
+    const pans = v.pans;
+    heriterDuPanDecoupe(avant, besoin, pans, true);
+    areas.splice(0, 1, ...pans);
+    const actif = pans[0];
+    const cellules = Array.from({ length: 12 }, (_, i) => ({ cx: (i % 4) * 1.2 - 2, cy: Math.floor(i / 4) * 2.2 - 2 })); // 12 tiennent sur le pan
+    const pose = Math.min(actif.neededPanels, cellules.length); // `placedFor` : min(nombre voulu, ce qui tient)
+    const ctx = {
+      ...ctxDeBase(areas, actif.id), activeArea: () => actif, closed: true,
+      layoutPlan: {
+        pack: { origin: [-7.6, 33.5], ringENU: [[-6, -6], [6, -6], [6, 6], [-6, 6]], azimuthDeg: 180 },
+        grid: { rowWidthM: 2, footprintPerPanelM2: 2, slopeLenM: 1, kwc: 12 * 0.71, panels: cellules },
+        tiltDeg: 22, family: 'south', flush: true,
+      },
+      layoutOptimalCount: pose,
+      layoutState: createLayoutState(cellules, pose),
+    } as unknown as Ctx;
+    return { pans, pose, doc: serializeLayout(ctx) };
+  }
+
+  it('nombre figé à 4 : 4 posés sur le pan chargé, 4 écrits au document (aucun pan non ouvert ne retire de panneau)', () => {
+    const { pans, pose, doc } = decouperPuisEnregistrer({ neededPanels: 4, neededAuto: false });
+    expect(pans.length).toBe(2);
+    expect(pose).toBe(4);
+    expect(doc.zones.reduce((s, z) => s + (z.geometry?.count ?? 0), 0)).toBe(4);
+    expect(doc.zones[0].geometry?.panels.length).toBe(4);
+    expect(doc.zones[0].neededPanels).toBe(4);
+  });
+
+  it('nombre d’après la facture (auto) : le pan chargé garde la cible, aucun pan n’est rempli en plus', () => {
+    const { pose, doc } = decouperPuisEnregistrer({ neededPanels: 4, neededAuto: true });
+    expect(pose).toBe(4);
+    expect(doc.zones.reduce((s, z) => s + (z.geometry?.count ?? 0), 0)).toBe(4);
+  });
+});
+
+describe('ACAL1735 — confirmer la pente d’un pan la confirme pour la même découpe', () => {
+  const p = (id: string, pitchDeg: number, extra: object = {}) => ({ id, roofType: 'pitched' as const, pitchDeg, ...extra });
+  it('les pans de la même découpe, de même pente et sans provenance, suivent', () => {
+    const pans = [p('area-2', 22, { pitchSource: { mode: 'degres', degres: 22 } }), p('area-3', 22)];
+    const src = { mode: 'degres', degres: 22 };
+    expect(propagerPenteDecoupe(pans, new Set(['area-2', 'area-3']), 'area-2', 22, 22, src)).toEqual(['area-3']);
+    expect((pans[1] as { pitchSource?: unknown }).pitchSource).toEqual(src);
+  });
+  it('un pan d’une autre découpe, d’une autre pente ou déjà confirmé n’est pas touché', () => {
+    const pans = [p('area-2', 22), p('area-3', 30), p('area-4', 22), p('area-5', 22, { pitchSource: { mode: 'mesure' } })];
+    const src = { mode: 'degres', degres: 22 };
+    expect(propagerPenteDecoupe(pans, new Set(['area-2', 'area-3', 'area-5']), 'area-2', 22, 22, src)).toEqual([]);
+    expect(propagerPenteDecoupe(pans, new Set(['area-3']), 'area-2', 22, 22, src)).toEqual([]);
+  });
+  it('la pente changée est suivie par les pans qui l’avaient', () => {
+    const pans = [p('area-2', 30), p('area-3', 22)];
+    expect(propagerPenteDecoupe(pans, new Set(['area-2', 'area-3']), 'area-2', 22, 30, { mode: 'degres', degres: 30 })).toEqual(['area-3']);
+    expect(pans[1].pitchDeg).toBe(30);
+  });
+});
+
+// ACAL1665 — « le plus de panneaux » est stocké comme le plafond du besoin (400) : aucune phrase de l'atelier ERP ne le montre
+// comme une cible (« 13 posés / 400 cible »), par le chemin réel de l'optimiseur (`liveResolveFlat` → `syncNeedControl`).
+describe('ACAL1665 — « le plus de panneaux » ne se lit jamais comme une cible de 400', () => {
+  const noteAvec = async (toitM: number, opts: Record<string, unknown>) => {
+    const { createOptimizer } = await import('./optimizer');
+    const { rectRing } = await import('./harnaisAtelier');
+    const g = globalThis as unknown as { document?: Document };
+    const avant = g.document;
+    g.document = new JSDOM('<!doctype html><body><p id="rp9-need-note"></p><input id="rp9-need-input"></body>').window.document;
+    try {
+      const vertices = rectRing(toitM, toitM);
+      const [cLng, cLat] = [(vertices[0][0] + vertices[2][0]) / 2, (vertices[0][1] + vertices[2][1]) / 2];
+      const pan = { id: 'z1', label: 'Zone 1', vertices, obstacles: [], roofType: 'flat' };
+      const ctx = {
+        closed: true, vertices, roofType: 'flat', areas: [pan], activeAreaId: 'z1', activeArea: () => pan, opts, dom: {},
+        centroid: [cLng, cLat], centroidLat: cLat, pinned: new Set<string>(), sel: { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' },
+        v4YieldCache: new Map(), overhangM: 0, documentRelu: null, batiments: [], environment: [], shadeObstructions: [], obstacles: [],
+        neededAuto: false, neededPanels: 400, devisMode: true, cibleVendue: false, layoutPlan: null, layoutState: null, layoutOptimalCount: 0, useRecommended: true,
+        freeMode: false, freeState: null,
+      } as unknown as Ctx;
+      const renderScene = vi.fn((pack: unknown, grid: { panels: unknown[] }, tiltDeg: number, family: string, maxCount: number, flush: boolean, occ?: Set<number>) => {
+        if (occ) return;
+        Object.assign(ctx, { layoutPlan: { pack, grid, tiltDeg, family, flush }, layoutOptimalCount: Math.min(grid.panels.length, Math.round(maxCount)), layoutState: null });
+      });
+      const deps = { renderScene, paintComparison: vi.fn(), highlightRow: vi.fn(), syncProductionWindow: vi.fn(), prefillLead: vi.fn(),
+        syncChips: vi.fn(), renderMatrixOptimumCard: vi.fn(), monthlyBill: () => 0, obstructionRings: () => [], obstructionClearances: () => [], setStatus: vi.fn() };
+      createOptimizer(ctx, deps as unknown as Parameters<typeof createOptimizer>[1]).liveResolveFlat();
+      return g.document!.getElementById('rp9-need-note')!.textContent ?? '';
+    } finally { g.document = avant; }
+  };
+  it('ERP, toit qui tient des panneaux : « le plus de panneaux possible », jamais « 400 »', async () => {
+    const note = await noteAvec(14, { chiffrage: null });
+    expect(note).toMatch(/le plus de panneaux possible : \d+ posés/);
+    expect(note).not.toContain('400');
+  });
+  it('ERP, aucun panneau ne tient : la phrase dit « le plus possible » en mots, jamais « / 400 cible »', async () => {
+    const note = await noteAvec(0.5, { chiffrage: null });
+    expect(note).not.toContain('400');
+    expect(note).toContain('le plus possible');
+  });
+  it('site public : inchangé (le nombre à poser, « au devis »)', async () => {
+    expect(await noteAvec(14, {})).toMatch(/posés \/ 400 au devis/);
   });
 });

@@ -294,7 +294,13 @@ def motif_note_indisponible(calepinage):
         servi, _stocke = _resultat_servi_et_stocke(calepinage)
         _controler_servi(servi)
     except NoteRefusee as refus:
-        return str(refus)
+        from .documents import MOTIF_SANS_SIMULATION_DOCUMENT
+        from .rapport import SANS_RESULTAT
+
+        # ACAL1724 — sans calcul : la phrase des autres cartes, jamais celle
+        # du rapport d'étude.
+        return (MOTIF_SANS_SIMULATION_DOCUMENT if str(refus) == SANS_RESULTAT
+                else str(refus))
     return None
 
 

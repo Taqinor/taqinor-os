@@ -130,6 +130,8 @@ SURFACE_PUBLIQUE = (
     # Décision fondateur 08/10/2026 — dés-acceptation.
     "annuler_acceptation",
     "anomalies_emission_facture",
+    # ACAL1320 — l'aperçu de resynchronisation joué puis annulé (lu par calepinage).
+    "apercu_de_resynchronisation",
     "arbitrer_compte_calepinage",
     "auto_devis_tunnel_actif",
     "avertissement_aucun_onduleur_triphase",
@@ -137,6 +139,8 @@ SURFACE_PUBLIQUE = (
     "avertissement_batterie_plafond_banc",
     "avertissement_batterie_rupture_stock",
     "avertissement_vivier_batterie_vide",
+    # ACAL1320 — les avertissements sans montant (lus par calepinage).
+    "avertissements_sans_montant",
     "battery_du_document",
     "bcf_share_url",
     "build_devis_auto",
@@ -208,6 +212,8 @@ SURFACE_PUBLIQUE = (
     "get_facture_or_none",
     "get_parametres_gammes",
     "installation_share_link",
+    # ACAL1320 — le jeton de l'aperçu de resynchronisation (lu par calepinage).
+    "jeton_de_resynchronisation",
     # CAD57 — le nombre de jours de validité RÉGLÉ par la société (aucun
     # chiffre en dur : le repli est nommé à la source).
     "jours_validite_societe",

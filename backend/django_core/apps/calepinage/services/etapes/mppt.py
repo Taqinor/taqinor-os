@@ -51,6 +51,8 @@ n'a pas d'énergie à perdre, et sa tension ne veut rien dire.
 """
 from __future__ import annotations
 
+from apps.calepinage.services.etapes import fiche_du_module
+
 from apps.calepinage.services import etapes
 from core.electrique.types import TEMPERATURE_STC_C
 from ..valeurs import nombre as _nombre
@@ -71,7 +73,7 @@ REFERENCE_PVSOL = (
 MOTIF_SANS_TEMPERATURE = (
     "La série ne porte pas de température de cellule heure par heure : sans "
     "elle, la tension de la chaîne ne se calcule pour aucune heure et "
-    "l'étape est omise. Elle est écrite par l'étape « thermique » (CALX163) "
+    "l'étape est omise. Elle est écrite par l'étape « thermique » "
     "quand celle-ci s'applique.")
 
 MOTIF_SANS_COEFFICIENT = (
@@ -112,7 +114,7 @@ def appliquer(serie, contexte):
     if colonne is None:
         return serie, etapes.etape_omise(LIBELLE, MOTIF_SERIE_ILLISIBLE)
 
-    fiche_module = contexte.get('fiche_module') or {}
+    fiche_module = fiche_du_module(contexte) or {}
     coefficient = _nombre(fiche_module.get(CHAMP_COEFFICIENT))
     if coefficient is None:
         return serie, etapes.etape_omise(LIBELLE, MOTIF_SANS_COEFFICIENT,

@@ -134,6 +134,23 @@ describe('Étape Toit — le panneau de la maquette Main', () => {
     expect(document.querySelector('.cal-coque').dataset.sansToit).toBeUndefined()
   })
 
+  // ACAL1945 — le moteur lit ce drapeau pour ne montrer aucun panneau posé à l'étape Toit du Guidé ; Expert : la 3D reste.
+  it('ACAL1945 — Guidé : la coque porte data-pose-masquee tant que l’étape Toit est montée, et le moteur en est prévenu à l’entrée et à la sortie ; Expert : aucun drapeau', () => {
+    const signaux = vi.fn()
+    document.addEventListener('cal:pose-etape', signaux)
+    const { unmount } = rendre()
+    const coque = document.querySelector('.cal-coque')
+    expect(coque.dataset.poseMasquee).toBe('1')
+    expect(signaux).toHaveBeenCalledTimes(1)
+    unmount()
+    expect(coque.dataset.poseMasquee).toBeUndefined()
+    expect(signaux).toHaveBeenCalledTimes(2)
+    cleanup(); document.body.innerHTML = ''
+    rendre({}, (hote) => { hote.dataset.expert = '1' })
+    expect(document.querySelector('.cal-coque').dataset.poseMasquee).toBeUndefined()
+    document.removeEventListener('cal:pose-etape', signaux)
+  })
+
   // R5B-N7 (rejeu 26/11) — toit 10 × 8 créé en 2 pans : « Largeur » relisait 4 sans dire que ce sont les cotes d'UN pan.
   it('R5B-N7 — plusieurs pans : les cotes sont dites celles du pan sélectionné ; un seul pan : rien de plus', async () => {
     rendre()

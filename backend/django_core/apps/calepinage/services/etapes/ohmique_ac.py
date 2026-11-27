@@ -72,7 +72,7 @@ REFERENCE_PVSOL = (
 
 MOTIF_SANS_ALTERNATIF = (
     "La série ne déclare pas de puissance alternative : la conversion "
-    "continu → alternatif (étape « onduleur », CALX170) ne s'est pas "
+    "continu → alternatif (étape « onduleur ») ne s'est pas "
     "appliquée, et il n'y a aucun transit alternatif à faire chuter. Étape "
     "omise.")
 

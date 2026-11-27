@@ -75,7 +75,7 @@ MOTIF_SANS_PUISSANCE = (
 
 MOTIF_SANS_ALTERNATIF = (
     "La série ne déclare pas de puissance alternative : les auxiliaires se "
-    "retranchent après la conversion de l'onduleur (CALX170), jamais sur la "
+    "retranchent après la conversion de l'onduleur, jamais sur la "
     "puissance continue. Étape omise.")
 
 __all__ = ['appliquer', 'LIBELLE', 'COLONNE_ALTERNATIVE', 'CLE_CONSTANTE',

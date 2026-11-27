@@ -937,7 +937,7 @@ def _champs_pro_depuis_reponses(lead, section, reponses) -> dict:
     if 'heure_debut' in out or 'heure_fin' in out:
         debut = out.get('heure_debut', lead.heure_debut)
         fin = out.get('heure_fin', lead.heure_fin)
-        if debut is not None and fin is not None and debut >= fin:
+        if debut is not None and fin is not None and debut == fin:
             out.pop('heure_debut', None)
             out.pop('heure_fin', None)
     return out

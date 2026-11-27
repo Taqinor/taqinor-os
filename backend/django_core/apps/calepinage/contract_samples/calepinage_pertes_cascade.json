@@ -142,6 +142,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -150,6 +151,7 @@
             "perte_kwh": null,
             "perte_pct": null,
             "statut": "non_compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -158,6 +160,7 @@
             "perte_kwh": 1344.0,
             "perte_pct": 8.0,
             "statut": "compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -166,6 +169,7 @@
             "perte_kwh": 127.4,
             "perte_pct": 0.758,
             "statut": "compte",
+            "cause": "",
             "etapes": []
           },
           {
@@ -174,6 +178,7 @@
             "perte_kwh": -463.7,
             "perte_pct": -2.76,
             "statut": "partiel",
+            "cause": "non calculé : modèle spectral ; non renseigné : périodes d'arrêt",
             "etapes": [
               {
                 "etape": "spectral",

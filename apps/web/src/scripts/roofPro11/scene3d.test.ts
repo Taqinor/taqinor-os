@@ -1,6 +1,7 @@
 // CAL56 — préréts de forme de toiture (2/4 pans, appentis, plat) : géométrie PURE qui
 // GÉNÈRE les pans depuis un contour fermé + une pente saisie, au lieu du choix binaire
 // plat/pente par zone. Testé hors DOM/Three (pure geometry in, geometry out).
+import { JSDOM } from 'jsdom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { numeroterDocument, poserEtiquettesNumeros, registreAtelier } from './numerotation'; // R3 (visuel lot 7)
 import { identifiantsModulesParCellule, numerosStablesDuPan } from './libellesAffectation'; // R3 (visuel lot 7)
@@ -41,6 +42,8 @@ import {
   GAIN_TEINTE_PANNEAU, // ACAL1408
   clePanAffectation, // ACAL1516
   materiauVerre, // ACAL1984
+  poseMasqueeSurCoque, // ACAL1945 (revue)
+  celluleDessinee,
 } from './scene3d';
 import { couleurAccesActive } from '../../lib/shadingEngine'; // ACAL1408
 import { buildAreasFromShape } from './zones';
@@ -1386,5 +1389,22 @@ describe('T4-X7-015 — la case Électrique redit les étiquettes « Chaîne n �
     expect(etiquettes(couche)).toHaveLength(0);
     expect(teinte(mesh)).toEqual([1, 1, 1]);
     expect(ctx.affectationColoration).toBeNull();
+  });
+});
+
+describe('ACAL1945 (revue) — étape Toit du Guidé : la première pose de l’optimiseur n’est pas dessinée', () => {
+  it('le drapeau de la coque masque toute cellule, avec ou sans occupation explicite', () => {
+    const doc = new JSDOM('<!doctype html><body><div class="cal-coque"></div></body>').window.document;
+    expect(poseMasqueeSurCoque(doc)).toBe(false);
+    doc.querySelector('.cal-coque')!.setAttribute('data-pose-masquee', '1');
+    expect(poseMasqueeSurCoque(doc)).toBe(true);
+    expect(celluleDessinee(0, undefined, 12, true)).toBe(false); // rendu de l’optimiseur (sans occupation)
+    expect(celluleDessinee(0, new Set([0]), 12, true)).toBe(false);
+    expect(celluleDessinee(0, undefined, 12, false)).toBe(true); // hors étape Toit : inchangé
+    expect(celluleDessinee(12, undefined, 12, false)).toBe(false);
+  });
+  it('buildZoneMeshes (tous les pans, optimiseur compris) filtre ses cellules par ce test', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/scripts/roofPro11/scene3d.ts'), 'utf8');
+    expect(src).toContain('celluleDessinee(i, occupiedSet, plan.count, masquee)');
   });
 });

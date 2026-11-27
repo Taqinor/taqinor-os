@@ -638,6 +638,9 @@ export interface MatrixV6Options {
   obstructionClearancesM?: number[];
   /** PV63 — retraits de rive séparés (latéral / extrémité / acrotère) quand la marge est gardée. */
   setbacksM?: Partial<PerimeterSetbacks>;
+  /** ACAL1918 — le nombre de panneaux voulu POSÉ à l'écran (> 0) : il remplace le besoin déduit de la facture pour
+   *  plafonner chaque ligne. Absent / 0 → besoin déduit de la facture, comme avant. */
+  neededPanelsPose?: number;
   /** CALX114 — le fragment `optimisation` SAISI dans le document (CALX88). Absent →
    *  objectif historique, NOMMÉ dans `MatrixV6Result.cible`. */
   optimisation?: ChoixOptimisation | null;
@@ -682,7 +685,8 @@ export function fineGridMatrixV6(
 ): MatrixV6Result {
   const tariff = tariffForCity(options.city);
   const target = billToAnnualKwh(monthlyBillMad, tariff);
-  const needed = neededPanelsForTarget(target, latitudeDeg);
+  // ACAL1918 — la cible POSÉE à l'écran (nombre voulu) plafonne chaque ligne : le nombre annoncé est celui de la pose au clic.
+  const needed = (options.neededPanelsPose ?? 0) > 0 ? Math.round(options.neededPanelsPose as number) : neededPanelsForTarget(target, latitudeDeg);
   const roofAz = roofDominantAzimuthDeg(ring);
   const offSouthDeg = ((roofAz - 180 + 540) % 360) - 180;
   const setback = PERIMETER_SETBACK_M;
@@ -698,6 +702,7 @@ export function fineGridMatrixV6(
   const ewAzes = uniqueAz([90, norm360(roofAz - 90)]);
 
   const rows: MatrixEvalV6[] = [];
+  const vues = new Set<string>(); // ACAL1918
   let anyPvgis = false;
   // CALX114 — mesures RÉELLEMENT obtenues sur ce balayage (elles décident si une cible
   // qui en dépend peut classer quoi que ce soit).
@@ -706,6 +711,11 @@ export function fineGridMatrixV6(
 
   const consider = (cfg: MatrixCfg) => {
     const e = evalMatrixConfig(ring, latitudeDeg, cfg, needed, target, obstructions, setback, overhang, tariff, options.yieldFn, cache, options.obstructionClearancesM, options.setbacksM, options.mesuresCible);
+    // ACAL1918 — une pose déjà listée (même libellé, mêmes nombres, même énergie — typiquement marge gardée /
+    // retirée sans effet sur ce toit) n'est pas listée deux fois ; la première, dans l'ordre d'évaluation, reste.
+    const signature = `${e.label}|${e.fitCount}|${e.placedCount}|${Math.round(e.annualKwh)}`;
+    if (vues.has(signature)) return;
+    vues.add(signature);
     rows.push(e);
     if (e.yieldSource === 'pvgis') anyPvgis = true;
     if (Number.isFinite(e.accesSolaireMoyen as number)) aAccesSolaire = true;

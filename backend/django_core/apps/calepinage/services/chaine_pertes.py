@@ -309,7 +309,7 @@ def _acces_module(contexte):
 EXCLUSIVITES = {
     'ombrage_proche': (
         _acces_module_disponible,
-        "Le document porte une lecture d'accès solaire MODULE PAR MODULE : "
+        "Le document porte une lecture d'accès solaire module par module : "
         "c'est elle qui s'applique, et la matrice 12×24 du même moteur "
         "d'ombrage est écartée pour ne pas compter l'ombre deux fois."),
     'inter_rangees': (
@@ -329,7 +329,7 @@ EXCLUSIVITES = {
         'module marqué) : aucune perte de conversion à compter.'),
     'horizon': (
         _horizon_deja_dans_la_meteo,
-        "L'horizon vient du modèle de terrain de PVGIS, qui l'a DÉJÀ "
+        "L'horizon vient du modèle de terrain de PVGIS, qui l'a déjà "
         "retranché de l'irradiance rendue : le retrancher ici le compterait "
         'deux fois.'),
 }
@@ -954,7 +954,7 @@ PAS_JOURNALIER_MINUTES = 24 * 60
 MOTIF_SERIE_AGREGEE = (
     'La série calculée porte {points} points au pas de {pas} min, au-delà de '
     'la borne de {plafond} points ({jours} jours) que le résultat persiste. '
-    'Elle est publiée AGRÉGÉE AU JOUR (moyenne de chaque colonne sur les '
+    'Elle est publiée agrégée au jour (moyenne de chaque colonne sur les '
     'points du jour, donc la même énergie) plutôt que coupée au milieu de '
     "l'année : le détail horaire se recalcule, il ne se devine pas.")
 
@@ -2223,10 +2223,10 @@ def _refuser_si_modifiee(nom, avant, apres):
 
 #: Ce qui est dit à l'écran quand une étape calculée écarte une saisie.
 MOTIF_SAISIE_ECARTEE = (
-    'Le poste saisi « {poste} » est ÉCARTÉ : l\'étape « {etape} » l\'a '
-    'CALCULÉ à partir de ses propres entrées, et cumuler les deux '
-    'compterait la même perte deux fois. Le poste reste servi en LECTURE '
-    'SEULE au panneau de saisie, avec le nom de l\'étape qui l\'a calculé.')
+    'Le poste saisi « {poste} » est écarté : l\'étape « {etape} » l\'a '
+    'calculé à partir de ses propres entrées, et cumuler les deux '
+    'compterait la même perte deux fois. Le poste reste servi en lecture '
+    'seule au panneau de saisie, avec le nom de l\'étape qui l\'a calculé.')
 
 #: ACAL135 — la source publiée d'un poste FORCÉ (forçage signé).
 SOURCE_SAISIE_FORCEE = 'saisie_forcee'
@@ -2247,8 +2247,8 @@ AVERTISSEMENT_HORS_CHAINE = (
 
 #: Ce qui est ajouté au motif d'omission quand la saisie n'a pas de source.
 MOTIF_SAISIE_SANS_SOURCE = (
-    ' Le poste saisi « {poste} » porte bien un pourcentage, mais SANS '
-    'SOURCE : il n\'entre pas dans la cascade, et son nom figure dans '
+    ' Le poste saisi « {poste} » porte bien un pourcentage, mais sans '
+    'source : il n\'entre pas dans la cascade, et son nom figure dans '
     '« postes_non_sources ».')
 
 

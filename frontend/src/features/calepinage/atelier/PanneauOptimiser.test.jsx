@@ -119,6 +119,16 @@ describe('PanneauOptimiser (ACAL469)', () => {
     expect(refus.textContent).not.toMatch(/mode_meteo|parametres\./)
   })
 
+  it('ACAL1629 (revue) — un champ pointé utile (axes.*) reste nommé', async () => {
+    calepinageApi.calepinages.balayer.mockRejectedValue({ response: { data: {
+      'axes.inclinaison_deg': ['Le minimum dépasse le maximum.'],
+    } } })
+    render(<PanneauOptimiser calepinageId={7} />)
+    fireEvent.click(screen.getByTestId('acal469-lancer'))
+    const refus = await screen.findByTestId('acal469-refus')
+    expect(refus).toHaveTextContent('axes.inclinaison_deg : Le minimum dépasse le maximum.')
+  })
+
   it('un refus 400 du serveur nomme le champ fautif', async () => {
     calepinageApi.calepinages.balayer.mockRejectedValue({ response: { data: { pan: ['Pan introuvable dans le document : 9.'] } } })
     render(<PanneauOptimiser calepinageId={7} />)

@@ -1,7 +1,7 @@
 {
   "endpoint": "GET /api/django/crm/leads/<id>/",
   "forme_serveur": "partielle",
-  "pourquoi": "QJR506 (M0 QJR5) — la liste des champs de provenance du lead APRÈS QJR587 (un seul échantillon pour QJR587 et QJR656).",
+  "pourquoi": "QJR506 (M0 QJR5) — la liste des champs de provenance du lead APRÈS QJR587 (un seul échantillon pour QJR587 et QJR656). ACAL1234 : + les champs du rythme pro que le devis C&I recopie.",
   "exemple": {
     "champs": [
       "facture_hiver",
@@ -26,7 +26,18 @@
       "type_installation",
       "ville",
       "ville_reference",
-      "pompe_alim_actuelle"
+      "pompe_alim_actuelle",
+      "regime_equipes",
+      "heure_debut",
+      "heure_fin",
+      "jours_ouverture",
+      "fermeture_mois",
+      "equipements_hors_horaires",
+      "categorie_commerciale",
+      "reponses_categorie",
+      "contrat_electricite",
+      "tva_recuperable",
+      "compteur_puissance_kva"
     ]
   }
 }

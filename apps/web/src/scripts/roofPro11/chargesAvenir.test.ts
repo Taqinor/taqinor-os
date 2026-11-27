@@ -43,6 +43,27 @@ describe('ACAL780 — panneau des charges à venir', () => {
     expect((enregistrerAtelier(rouvert).consumption as { charges?: ChargeAvenir[] }).charges).toEqual([voiture]);
   });
 
+  it('ACAL1645 — une climatisation saisie (12 000 BTU, EER 10, 10-15 h) est postée, enregistrée et relue', () => {
+    const doc = documentRiche() as unknown as { consumption: Record<string, unknown> };
+    const c = ouvrirAtelier({ id: 9, geometrie: { roof_layout: doc as unknown as SerializedLayout }, cibleVendue: false }).c;
+    const hote = monter(c);
+    const choix = hote.querySelector<HTMLSelectElement>('[data-cons-charge-type]')!;
+    expect(Array.from(choix.options).map((o) => o.value)).toContain('clim');
+    choix.value = 'clim';
+    choix.dispatchEvent(new Event('change', { bubbles: true }));
+    saisir(hote, { btu: '12000', eer: '10', heures_fonctionnement: '10-15' });
+    // puissance_kw = BTU/h ÷ EER ÷ 1000 (définition de l'EER) : c'est ce que le serveur lit pour `clim`
+    const clim: ChargeAvenir = { type: 'clim', btu: 12000, eer: 10, puissance_kw: 1.2, heures_fonctionnement: [10, 11, 12, 13, 14, 15] };
+    const ecrit = enregistrerAtelier(c).consumption as { charges?: ChargeAvenir[] };
+    expect(ecrit.charges).toEqual([clim]);
+    const rouvert = ouvrirAtelier({
+      id: 9, geometrie: { roof_layout: { ...doc, consumption: ecrit } as unknown as SerializedLayout }, cibleVendue: false,
+    }).c;
+    const hote2 = monter(rouvert);
+    expect(hote2.textContent).toContain('Climatisation');
+    expect((enregistrerAtelier(rouvert).consumption as { charges?: ChargeAvenir[] }).charges).toEqual([clim]);
+  });
+
   it('un champ vide est refusé sous le champ, rien n’est écrit ; « déjà dans mes factures » se coche et se relit', () => {
     const doc = documentRiche() as unknown as SerializedLayout;
     const c = ouvrirAtelier({ id: 9, geometrie: { roof_layout: doc }, cibleVendue: false }).c;

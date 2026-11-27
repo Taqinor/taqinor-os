@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 
@@ -30,6 +31,7 @@ import BoutonDevis, {
   MESSAGE_APERCU_FERME, MESSAGE_APERCU_RELU, MESSAGE_BROUILLON_MIS_A_JOUR, MESSAGE_RIEN_A_CHANGER,
   MESSAGE_VERIFICATION_A_LA_CONFIRMATION,
 } from './BoutonDevis'
+import { ecouterDevisGenere, oublierIssuesDevis } from './atelier/contexteAtelier'
 
 const DETAIL = exempleContrat('calepinage', 'calepinage_detail')
 const DETAIL_VIDE = exempleContrat('calepinage', 'calepinage_detail',
@@ -62,6 +64,7 @@ async function resynchroniserEtConfirmer() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  oublierIssuesDevis() // ACAL1946 — l'issue retenue d'un test ne déborde pas sur le suivant
   calepinageApi.calepinages.apercuResync.mockResolvedValue({ data: APERCU_RESYNC })
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
@@ -419,7 +422,6 @@ describe('BoutonDevis — confirmation de taille (ACAL923)', () => {
 
     const encadre = await screen.findByTestId('cal-devis-confirmation-taille')
     expect(encadre).toHaveTextContent(QUESTION.detail)
-    expect(encadre).toHaveTextContent(QUESTION.refus)
     expect(screen.queryByTestId('cal-devis-conflit')).toBeNull()
     expect(within(encadre).getByRole('link', { name: 'Renseigner la facture du lead' }))
       .toHaveAttribute('href', `/crm/leads/${DETAIL_VIDE.lead.id}`)
@@ -429,6 +431,18 @@ describe('BoutonDevis — confirmation de taille (ACAL923)', () => {
       .toHaveBeenLastCalledWith(DETAIL_VIDE.id, CORPS, SANS_TOAST))
     expect(await screen.findByTestId('cal-devis-cree')).toHaveTextContent('Devis DEV-2611-0043 créé')
     expect(screen.queryByTestId('cal-devis-confirmation-taille')).toBeNull()
+  })
+
+  // ACAL1738 — lead sans facture : la consigne est dite UNE fois, dans le cadre « Confirmer et générer » (la phrase
+  // du serveur et le lien « Renseigner la facture du lead ») ; la sous-ligne du refus ne la répète plus.
+  it('ACAL1738 — la consigne n’apparaît qu’une fois', async () => {
+    calepinageApi.calepinages.genererDevis.mockRejectedValueOnce({ response: { status: 409, data: QUESTION } })
+    const { container } = rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    const encadre = await screen.findByTestId('cal-devis-confirmation-taille')
+    expect(encadre).toHaveTextContent(QUESTION.detail)
+    expect(container.textContent.match(/renseignez la facture/gi)).toHaveLength(1)
+    expect(screen.queryByText(QUESTION.refus)).toBeNull()
   })
 })
 
@@ -825,6 +839,73 @@ describe('ACAL1705 — le devis lié se rouvre d’un clic, lu sur le calepinage
     expect(within(carte).getByRole('link', { name: 'Voir le devis' })).toHaveAttribute('href', '/ventes/devis?devis=42')
     expect(within(carte).getByRole('button', { name: 'Revenir à la conception' })).toBeTruthy()
   })
+
+  it('ACAL1957 — un 201 est annoncé à l’atelier de CE calepinage (qui relit son contexte) ; un refus ne l’est pas', async () => {
+    const { ecouterDevisGenere } = await import('./atelier/contexteAtelier')
+    const relu = vi.fn()
+    const arreter = ecouterDevisGenere(DETAIL_VIDE.id, relu)
+    try {
+      calepinageApi.calepinages.genererDevis.mockRejectedValueOnce({ response: { status: 400, data: { detail: 'Refusé.' } } })
+      rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+      await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+      await screen.findByText('Refusé.')
+      expect(relu).not.toHaveBeenCalled()
+      calepinageApi.calepinages.genererDevis.mockResolvedValue({ data: { devis: 42, reference: 'DEV-2609-0042' } })
+      await userEvent.click(screen.getByTestId('cal-generer-devis'))
+      await screen.findByTestId('cal-devis-cree')
+      expect(relu).toHaveBeenCalledTimes(1)
+    } finally { arreter() }
+  })
+})
+
+/* ACAL1946 — le résultat de « Générer le devis » est dit dès la réponse, même quand l'écran s'est remonté pendant la
+   requête (l'enregistrement préalable relit le contexte : le portail de l'étape Documents se remonte). */
+describe('ACAL1946 — le résultat de « Générer le devis » est dit dès la réponse', () => {
+  const QUESTION = exempleContrat('calepinage', 'calepinage_publication', 'exemple_409_confirmation_taille')
+  it.each([
+    ['réponse 201 ⇒ « Devis … créé » dit', (r) => r.ok({ data: { devis: 44, reference: 'DEV-2611-0044' } }),
+      'cal-devis-cree', 'Devis DEV-2611-0044 créé'],
+    ['409 confirmation_taille ⇒ la question dite', (r) => r.ko({ response: { status: 409, data: QUESTION } }),
+      'cal-devis-confirmation-taille', QUESTION.detail],
+    ['refus ⇒ le refus nommé', (r) => r.ko({ response: { status: 400, data: { detail: 'Calepinage verrouillé.' } } }),
+      'cal-devis-refus', 'Calepinage verrouillé.'],
+  ])('%s', async (_cas, repondre, testId, texte) => {
+    const attente = {}
+    calepinageApi.calepinages.genererDevis.mockImplementation(() => new Promise((ok, ko) => Object.assign(attente, { ok, ko })))
+    const premier = rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    await waitFor(() => expect(calepinageApi.calepinages.genererDevis).toHaveBeenCalledTimes(1))
+    premier.unmount() // le portail se remonte pendant la requête
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    repondre(attente)
+    expect(await screen.findByTestId(testId)).toHaveTextContent(texte)
+  })
+})
+
+/* ACAL1972 — la carte « Devis … créé » à boîte nulle : le 201 relit le contexte de l'atelier (ACAL1957), la coque
+   remonte le nœud de son portail ; la carte est rendue DANS le nœud monté, pas dans l'ancien, détaché. */
+describe('ACAL1972 — 201 ⇒ la carte est rendue avec sa boîte après le rechargement du contexte', () => {
+  function CoqueQuiSeRemonte() {
+    const [tour, setTour] = useState(0)
+    useEffect(() => ecouterDevisGenere(DETAIL_VIDE.id, () => setTour((t) => t + 1)), [])
+    return (
+      <MemoryRouter>
+        <div key={tour} data-testid={`portail-${tour}`}>
+          <BoutonDevis calepinageId={DETAIL_VIDE.id} detail={tour ? DETAIL : DETAIL_VIDE} />
+        </div>
+      </MemoryRouter>
+    )
+  }
+
+  it('la carte et « Voir le devis » sont dans le portail remonté', async () => {
+    calepinageApi.calepinages.genererDevis.mockResolvedValue({ data: { devis: 44, reference: 'DEV-2611-0044' } })
+    render(<CoqueQuiSeRemonte />)
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    const carte = await within(await screen.findByTestId('portail-1')).findByTestId('cal-devis-cree')
+    expect(carte.isConnected).toBe(true)
+    expect(carte).toHaveTextContent('Devis DEV-2611-0044 créé')
+    expect(within(carte).getByTestId('cal-devis-ouvrir')).toHaveAttribute('href', '/ventes/devis?devis=44')
+  })
 })
 
 describe('ACAL1414 — la réouverture relit les surfaces que le devis lié chiffre', () => {
@@ -983,5 +1064,48 @@ describe('D-ACAL-106 — « Générer le devis » selon le droit de la route gen
     unmount()
     monter(['calepinage_voir', 'calepinage_gerer'])
     expect(await screen.findByTestId('cal-generer-devis')).toBeInTheDocument()
+  })
+})
+
+/* Revue ACAL1946 — l'issue retenue a une DURÉE DE VIE : le refus électrique survit lui aussi au remontage du portail ;
+   un autre utilisateur du même onglet (même calepinage) ne la lit pas. (Quitter l'atelier l'oublie :
+   `atelier/useAtelierBoot.test.js`.) */
+describe('Revue ACAL1946 — l’issue retenue : remontage oui, autre utilisateur non', () => {
+  const REFUS = exempleContrat('calepinage', 'calepinage_publication_electrique', 'exemple_refus_409')
+  const monter = async (id) => {
+    const { Provider } = await import('react-redux')
+    const { configureStore } = await import('@reduxjs/toolkit')
+    const store = configureStore({ reducer: { auth: (s = { role: 'admin', permissions: [], user: { id } }) => s } })
+    return render(
+      <Provider store={store}>
+        <MemoryRouter><BoutonDevis calepinageId={DETAIL_VIDE.id} detail={DETAIL_VIDE} /></MemoryRouter>
+      </Provider>,
+    )
+  }
+
+  it('le refus électrique (bloquage) survit au remontage pendant la requête', async () => {
+    const attente = {}
+    calepinageApi.calepinages.genererDevis.mockImplementation(() => new Promise((ok, ko) => Object.assign(attente, { ok, ko })))
+    const premier = rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    await waitFor(() => expect(calepinageApi.calepinages.genererDevis).toHaveBeenCalledTimes(1))
+    premier.unmount()
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
+    attente.ko({ response: { status: 409, data: REFUS } })
+    expect(await screen.findByTestId('cal-devis-bloquants')).toBeTruthy()
+  })
+
+  it('un autre utilisateur (même onglet, même calepinage) ne voit pas « Devis … créé »', async () => {
+    calepinageApi.calepinages.genererDevis.mockResolvedValueOnce({ data: { devis: 44, reference: 'DEV-2611-0044' } })
+    const a = await monter(7)
+    await userEvent.click(await screen.findByTestId('cal-generer-devis'))
+    expect(await screen.findByTestId('cal-devis-cree')).toHaveTextContent('Devis DEV-2611-0044 créé')
+    a.unmount()
+    const b = await monter(8)
+    await screen.findByTestId('cal-generer-devis')
+    expect(screen.queryByTestId('cal-devis-cree')).toBeNull()
+    b.unmount()
+    await monter(7) // le même utilisateur, sans quitter l'atelier (remontage) : l'issue est toujours là
+    expect(await screen.findByTestId('cal-devis-cree')).toHaveTextContent('Devis DEV-2611-0044 créé')
   })
 })

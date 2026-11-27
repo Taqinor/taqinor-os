@@ -81,6 +81,15 @@ def _statut_couple_panneau(panneau, onduleurs, froid=None):
     return pire[1], pire[2]
 
 
+def _raison_du_couple(coince):
+    """D-ACAL-169 (rejeu) — la raison, en clair, d'un couple panneau / onduleur
+    INCOMPATIBLE : l'onduleur nommé et les bloquants du noyau, mot pour mot."""
+    onduleur, verdict = coince
+    raisons = ' ; '.join(verdict.get('raisons') or []) or 'couple électrique incompatible'
+    return "il ne se raccorde pas à l'onduleur « %s » : %s" % (
+        getattr(onduleur, 'nom', '') or '?', raisons)
+
+
 def _choisir_panneau(pool, watt, prefere_id=None):
     """Panneau : wattage demandé d'abord, à défaut le plus proche.
 
@@ -735,6 +744,9 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # RSIZ4 — corps extrait tel quel dans :func:`_choisir_panneau`.
     tries, exacts, panneau = _choisir_panneau(
         par_marque(par_type.get('panneau'), 'panneau'), watt, panneau_prefere_id)
+    # D-ACAL-169 (rejeu) — pourquoi le panneau PAR DÉFAUT retenu ci-dessus a été
+    # remplacé (couple électrique) ; ``None`` = retenu, ou aucun défaut passé.
+    panneau_prefere_refuse = None
 
     # ── PVCOMPAT — LE COUPLE PANNEAU / ONDULEUR EST VÉRIFIÉ ────────────────
     # Les deux choix ci-dessus sont INDÉPENDANTS : rien ne garantissait qu'ils
@@ -777,6 +789,9 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                         '« %s » a été composé à la place.'
                         % (getattr(panneau, 'nom', '') or '?',
                            getattr(candidat, 'nom', '') or '?'))
+                    if (panneau_prefere_id is not None and coince
+                            and getattr(panneau, 'pk', None) == panneau_prefere_id):
+                        panneau_prefere_refuse = _raison_du_couple(coince)
                     panneau, statut, coince = candidat, statut_bis, coince_bis
                     break
         if statut in (STATUT_INCOMPATIBLE, STATUT_RESERVE) and coince:
@@ -1216,6 +1231,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # rend le vrai, pour que personne n'affiche un kWc théorique divergent.
     _watt_reel = _parse_watt(getattr(panneau, 'nom', '')) if panneau else None
     lignes.panel_watt_reel = _watt_reel or watt
+    lignes.panneau_prefere_refuse = panneau_prefere_refuse  # D-ACAL-169 (rejeu)
     lignes.kwc_reel = round(nb * float(lignes.panel_watt_reel) / 1000.0, 3)
     if panneaux_designes:
         # ACAL63 — kWc des lignes = kWc du dessin : la somme modèle par modèle.
