@@ -139,6 +139,30 @@ describe('ACAL1212 — ?lead= : aucun Auto-remplir résidentiel avant l\'applica
     await act(async () => { await result.current.handleAutoFill() })
     expect(String(etat.erreurs.autofill)).not.toMatch(/en cours de chargement/)
   })
+
+  // Revue 4 — un lead `?lead=` introuvable (absent de la liste, relu en 404) ne bloque plus Auto-remplir derrière un faux
+  // « Lead en cours de chargement » : la recherche terminée sans lead lève l'attente, l'écran dit « Lead introuvable ».
+  it('lead introuvable ⇒ l\'attente cesse : Auto-remplir suit sa branche normale (refus faute de taille, nommé)', async () => {
+    const { fireEvent } = await import('@testing-library/react')
+    crmApi.getLead.mockRejectedValue({ response: { status: 404 } })
+    renderGeneratorPage(DevisGenerator, {
+      crmApi, stockApi, produits: [PANNEAU, ONDULEUR], store: makeStoreDirecteur(), leads: [LEAD],
+      route: '/ventes/devis/nouveau?lead=999',
+    })
+    expect((await screen.findAllByText(/Lead introuvable \(n° 999\)/)).length).toBeGreaterThan(0)
+    fireEvent.click(screen.getAllByTestId('btn-auto-remplir')[0])
+    const erreur = await screen.findByTestId('autofill-erreur')
+    expect(erreur.textContent).not.toMatch(/en cours de chargement/)
+    expect(erreur.textContent).toMatch(/Aucune taille/)
+  })
+  it('clic pendant l\'attente puis recherche terminée sans lead ⇒ « en cours » est remplacé par « aucun lead appliqué »', async () => {
+    const { etat, ctx, monte } = await bancAutoFill()
+    const { result, rerender } = monte(ctx({ kwp: 0, leadAttendu: '999' }))
+    await act(async () => { await result.current.handleAutoFill() })
+    expect(String(etat.erreurs.autofill)).toMatch(/en cours de chargement/)
+    await act(async () => { rerender(ctx({ kwp: 0, leadAttendu: null })) })
+    await waitFor(() => expect(String(etat.erreurs.autofill)).toMatch(/Aucun lead appliqué/))
+  })
 })
 
 describe('ACAL1205 —Auto-remplir attend l\'étude horaire (taille « avec batterie »)', () => {

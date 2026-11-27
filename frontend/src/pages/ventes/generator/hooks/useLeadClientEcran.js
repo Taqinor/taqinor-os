@@ -23,11 +23,19 @@ export function useLeadClientEcran(ctx) {
     pompeCv, pompeHmt, pompeDebit, baremeSociete, distributeurChoisi, setDistributeur,
   } = ctx
   const vide = (v) => v == null || String(v).trim() === ''
+  // ACAL1212 (revue 4) — la recherche du lead d'arrivée est TERMINÉE : lead appliqué (ou choisi/effacé au
+  // sélecteur) ou introuvable. Auto-remplir n'attend plus ensuite un lead qui ne viendra jamais.
+  const [arriveeResolue, setArriveeResolue] = useState(false)
+  const signalerLeadIntrouvable = (leadParam) => {
+    setErrors(prev => ({ ...prev, client: `Lead introuvable (n° ${leadParam}).` }))
+    setArriveeResolue(true)
+  }
 
   // AGNR19 — `leadLu` : le lead déjà relu par son id (arrivée `?lead=`,
   // prop `leadId`) ; à défaut, la liste chargée (sélecteur).
   const applyLead = (id, leadLu = null) => {
     setLeadId(id)
+    setArriveeResolue(true)
     if (!id) return
     setClientId('') // le client est résolu côté serveur depuis le lead
     const lead = leadLu || leads.find(l => String(l.id) === String(id))
@@ -210,6 +218,6 @@ export function useLeadClientEcran(ctx) {
   }
 
   return {
-    applyLead, applyClient, runAutoQuote, alertesAuto,
+    applyLead, applyClient, runAutoQuote, alertesAuto, arriveeResolue, signalerLeadIntrouvable,
   }
 }

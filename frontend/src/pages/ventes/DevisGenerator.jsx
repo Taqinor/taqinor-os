@@ -1205,7 +1205,7 @@ export default function DevisGenerator({
 
   // SPL50 — lien lead/client du devis (déplacé tel quel dans le hook ; l'effet d'arrivée du lead reste plus bas).
   const {
-    applyLead, applyClient, runAutoQuote,
+    applyLead, applyClient, runAutoQuote, arriveeResolue, signalerLeadIntrouvable,
   } = useLeadClientEcran({
     leads, structuresCatalogue, setSaving, setErrors, sizing, dispatchSizing, finish, leadId,
     setLeadId, clientId, setClientId, setFHiver, setFEte, setMonthly: poserMoisDerives, modeInstallation,
@@ -1319,7 +1319,7 @@ export default function DevisGenerator({
     // un id introuvable des deux côtés est DIT.
     const appliquerArrivee = (lead) => {
       if (!lead) {
-        setErrors(prev => ({ ...prev, client: `Lead introuvable (n° ${leadParam}).` }))
+        signalerLeadIntrouvable(leadParam)
         return
       }
       // Initialisation unique (garde autoRan) — pas de cascade.
@@ -1509,7 +1509,7 @@ export default function DevisGenerator({
     setAutoFillLoading, setCompositionErreur, profilCi, horsReseau, kwp, selectedLead,
     etudeHoraireDonnees, etudeHoraireChargement, marcheCi, ctxProfilCi, apercuCi, resolveKwcAvec,
     recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard: quoteLogic.tvaStandard, sizing, lines,
-    panneauDefaut, leadAttendu: editId ? null : (embedded ? leadIdProp : searchParams.get('lead')),
+    panneauDefaut, leadAttendu: editId || arriveeResolue ? null : (embedded ? leadIdProp : searchParams.get('lead')),
   })
 
   const selectedClient = clientsConnus.find(c => String(c.id) === String(clientId))

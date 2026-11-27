@@ -45,6 +45,7 @@ export function avertissementCompositionCi(composition) {
 }
 
 const MESSAGE_ETUDE_EN_COURS = 'Dimensionnement en cours — réessayez dans un instant.'
+const MESSAGE_LEAD_EN_COURS = 'Lead en cours de chargement — réessayez dans un instant.'
 
 export function useCompositionEcran(ctx) {
   const {
@@ -177,6 +178,16 @@ export function useCompositionEcran(ctx) {
     queueMicrotask(() => setErrors(e => (e.autofill === MESSAGE_ETUDE_EN_COURS ? { ...e, autofill: suite } : e)))
   }, [attendEtudeAvec, tailleAvecServie, setErrors])
 
+  // ACAL1212 (revue 4) — la recherche du lead terminée, « en cours de chargement » ne reste jamais affiché :
+  // effacé quand le lead est appliqué, sinon il dit qu'aucun lead n'est appliqué (Auto-remplir compose sans lui).
+  const attendLead = !!leadAttendu && !selectedLead
+  const leadApplique = !!selectedLead
+  useEffect(() => {
+    if (attendLead) return
+    const suite = leadApplique ? null : 'Aucun lead appliqué — Auto-remplir composera sans lead : réessayez.'
+    queueMicrotask(() => setErrors(e => (e.autofill === MESSAGE_LEAD_EN_COURS ? { ...e, autofill: suite } : e)))
+  }, [attendLead, leadApplique, setErrors])
+
   const handleAutoFill = async () => {
     // PVOND — le bandeau des onduleurs grisés appartient au DERNIER
     // auto-remplissage : on le vide d'abord, sinon un message du run précédent
@@ -218,8 +229,8 @@ export function useCompositionEcran(ctx) {
     }
     // ACAL1212 — `?lead=` attendu mais pas encore appliqué : le marché affiché est celui d'AVANT le lead
     // (résidentiel par défaut) ; jamais une branche résidentielle ni son message. On relit `selectedLead`, jamais un doublon.
-    if (leadAttendu && !selectedLead) {
-      setErrors(e => ({ ...e, autofill: 'Lead en cours de chargement — réessayez dans un instant.' }))
+    if (attendLead) {
+      setErrors(e => ({ ...e, autofill: MESSAGE_LEAD_EN_COURS }))
       return
     }
     // U3COMPOSE (26/08/2026) — RÉSIDENTIEL SEULEMENT : le dry-run serveur
