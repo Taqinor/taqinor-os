@@ -127,7 +127,8 @@ class LeadActivitySerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_user_nom(self, obj):
-        return getattr(obj.user, 'username', None)
+        from core.user_display import nom_affiche
+        return nom_affiche(obj.user)
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_attachment_url(self, obj):

@@ -696,6 +696,8 @@ def devis_events_for_lead(lead_id, company):
     {sent, opened, signed, refused}. ``engagement`` (résumé par section) n'est
     posé que sur l'événement ``opened``.
     """
+    from core.user_display import nom_affiche
+
     from .models import Devis, DevisActivity, ShareLink
 
     if not lead_id:
@@ -750,10 +752,9 @@ def devis_events_for_lead(lead_id, company):
                 'devis_id': devis.id, 'reference': ref, 'kind': 'signed',
                 'label': 'Devis signé',
                 'at': _iso(acte.created_at if acte else devis.date_acceptation),
-                # ACAL1235 — l'auteur de l'acceptation (nom d'utilisateur,
-                # comme le chatter) ; None sans acteur connu.
-                'user_nom': getattr(getattr(acte, 'user', None),
-                                    'username', None),
+                # ACAL1235 — l'auteur de l'acceptation (nom complet, comme le
+                # chatter ; login en dernier recours) ; None sans acteur.
+                'user_nom': nom_affiche(getattr(acte, 'user', None)),
                 'engagement': None,
             })
         if devis.statut == 'refuse' and devis.date_refus is not None:
