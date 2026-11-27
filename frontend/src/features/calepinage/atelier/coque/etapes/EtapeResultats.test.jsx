@@ -1349,6 +1349,24 @@ describe('Étape Résultats — ce qui est supposé (ACAL1630)', () => {
     expect(screen.getByTestId('cal-resultats-tuiles').compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  it('ACAL1630 (revue) — un repli qui porte sa cible mène au champ ; sans cible, le champ reste du texte', async () => {
+    const d = COMPLET()
+    d.suppose = [
+      { code: 'longueur_chaine_dossier', libelle: 'Longueur : 16 modules', valeur: 16, champ: 'fiche technique du module et de l’onduleur', cible: { onglet: 'fiches' } },
+      { code: 'allee_par_defaut', libelle: 'Allée : 0,60 m', valeur: 0.6, champ: 'panneau Allées de l’atelier', cible: { onglet: 'reglages', champ: 'allees' } },
+      { code: 'sans_cible', libelle: 'Autre repli', valeur: 1, champ: 'un champ sans cible' },
+    ]
+    servir(d)
+    rendre()
+    const fiches = await screen.findByTestId('acal980-longueur_chaine_dossier')
+    expect(within(fiches).getByRole('link', { name: /fiche technique du module/ })).toHaveAttribute('href', '/calepinage/1?onglet=fiches')
+    expect(within(screen.getByTestId('acal980-allee_par_defaut')).getByRole('link', { name: /Allées de l’atelier/ }))
+      .toHaveAttribute('href', '/calepinage/reglages/allees')
+    const sans = screen.getByTestId('acal980-sans_cible')
+    expect(sans).toHaveTextContent('À renseigner : un champ sans cible')
+    expect(within(sans).queryByRole('link')).toBeNull()
+  })
+
   it('aucune supposition servie ⇒ aucune section', async () => {
     const d = COMPLET()
     d.suppose = []

@@ -10,6 +10,8 @@ export function lienManque(calepinageId, cible) {
   const onglet = cible?.onglet || ''
   const champ = cible?.champ || ''
   if (onglet === 'reglages') {
+    // ACAL1630 (revue) — les allées de la société ont leur écran (`/calepinage/reglages/allees`), pas un champ du registre.
+    if (champ === 'allees') return '/calepinage/reglages/allees'
     // Le champ d'une clé de registre est monté sous `calx69-<clé>` (ReglagesSimulation) ; le serveur de
     // « à renseigner » (ACAL700) sert la clé nue, celui des refus de simulation l'id déjà préfixé. Les autres
     // ancres (`norme`, `lestage`, `lestage-<clé>`…) n'ont pas de « _ » et passent telles quelles.

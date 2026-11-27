@@ -519,7 +519,7 @@ export default function EtapeResultats({
         </>
       )}
       {/* ACAL1630 — les replis cachés du moteur, servis (`suppose[]`), sous la production ; vide ⇒ rien. */}
-      <Suppose suppose={data?.suppose} />
+      <Suppose suppose={data?.suppose} calepinageId={calepinageId} />
       {/* ACAL1958 — le bouton de l'étape est là dans les TROIS états (avant simulation, incomplet, complet) ;
           la phrase de durée ne lit que les valeurs d'un résultat complet. */}
       <PiedResultats production={complet ? data?.production : null} incertitude={data?.incertitude} action={action} />
