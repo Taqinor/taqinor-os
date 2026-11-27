@@ -284,6 +284,19 @@ class GroupeDAppointTest(SimpleTestCase):
                     'heures_max_par_jour'):
             self.assertEqual(groupe[cle], GROUPE[cle])
 
+    def test_acal1932_demarrage_sous_la_veille_dit_pourquoi_le_groupe_ne_tourne_pas(self):
+        # Veille 30 % / démarrage 20 % : la banque ne descend jamais à 20 %.
+        groupe = self._bloc(GROUPE, seuils=SEUILS)['groupe']
+        self.assertEqual(groupe['heures_de_marche'], 0)
+        self.assertIn('le groupe ne démarre jamais : seuil de démarrage '
+                      'sous la veille', groupe['cause_inactif'])
+        self.assertIn('20 %', groupe['cause_inactif'])
+        self.assertIn('30 %', groupe['cause_inactif'])
+        # Sans seuils saisis, ou groupe qui a tourné : aucune cause inventée.
+        self.assertIsNone(self._bloc(GROUPE)['groupe']['cause_inactif'])
+        self.assertIsNone(self._bloc(
+            GROUPE, seuils=dict(SEUILS, veille_pct=20))['groupe']['cause_inactif'])
+
     def test_actif_faux_ou_sans_groupe_rend_le_resultat_d_aujourd_hui(self):
         sans = self._bloc()
         self.assertIsNone(sans['groupe'])

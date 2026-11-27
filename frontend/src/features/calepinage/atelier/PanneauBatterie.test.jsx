@@ -656,6 +656,31 @@ describe('PanneauBatterie — groupe d’appoint hors réseau (ACAL803)', () => 
     expect(await screen.findByTestId('acal803-soc_demarrage_pct-erreur')).toHaveTextContent(motif)
   })
 
+  it('ACAL1932 — seuils veille 30 % / démarrage 20 % : « 0 h » s’accompagne de la cause servie ; un groupe qui a tourné n’en porte pas', async () => {
+    const cause = 'le groupe ne démarre jamais : seuil de démarrage sous la veille '
+      + '(démarrage à 20 %, veille à 30 %) — la batterie cesse de se décharger à la veille, '
+      + 'son état de charge n’atteint donc jamais le démarrage'
+    servirHorsReseau({
+      ...SERVI,
+      groupe: { ...SERVI.groupe, heures_de_marche: 0, energie_fournie_kwh: 0, par_mois: [], cause_inactif: cause },
+    })
+    rendreExpert()
+    await declaration()
+    const lecture = await screen.findByTestId('acal803-groupe')
+    expect(lecture).toHaveTextContent(/Le groupe a tourné 0 h dans l’année/)
+    expect(lecture).toHaveTextContent('le groupe ne démarre jamais : seuil de démarrage sous la veille')
+    expect(lecture).toHaveTextContent('démarrage à 20 %, veille à 30 %')
+  })
+
+  it('ACAL1932 — le groupe de l’exemple (90 h de marche, cause nulle) ne porte aucune phrase de cause', async () => {
+    expect(SERVI.groupe.cause_inactif).toBeNull()
+    servirHorsReseau(SERVI)
+    rendreExpert()
+    await declaration()
+    const lecture = await screen.findByTestId('acal803-groupe')
+    expect(lecture).not.toHaveTextContent('ne démarre jamais')
+  })
+
   it('case décochée et rien au stock : aucun groupe posté ; sans groupe servi, rien de nouveau', async () => {
     calepinageApi.calepinages.enregistrerEntreeElectrique.mockResolvedValue({ data: {} })
     servirHorsReseau({ ...SERVI, groupe: null, banque_mois_charge: null, motif_banque_mois_charge: 'Mois non calculé.' })

@@ -62,6 +62,7 @@ export function LectureGroupe({ horsReseau, nomMois }) {
         <>
           <p data-testid="acal803-groupe">
             Le groupe a tourné {heures(g.heures_de_marche)} dans l’année ({kwh(g.energie_fournie_kwh)} fournis)
+            {g.cause_inactif ? ` — ${g.cause_inactif}` : ''}
           </p>
           {g.par_mois?.length > 0 && (
             <table className="w-full text-sm" data-testid="acal803-groupe-par-mois">
