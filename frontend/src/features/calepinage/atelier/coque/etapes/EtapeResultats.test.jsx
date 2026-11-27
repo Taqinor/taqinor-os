@@ -894,6 +894,34 @@ describe('Étape Résultats — le bandeau suit la fin du calcul (ACAL1653)', ()
   })
 })
 
+/* ACAL1653 (revue) — la pastille « N à régler » du rail est relue quand le calcul se termine (la VRAIE coque). */
+describe('Étape Résultats — la pastille du rail est relue à la fin du calcul (ACAL1653)', () => {
+  it('trois points à régler avant le calcul, un seul après : le rail dit le compte servi après le calcul', async () => {
+    const ancien = { ...COMPLET(), simulation_perimee: false, calcule_le: '2026-11-26T13:10:00Z' }
+    const recent = { ...COMPLET(), simulation_perimee: false, calcule_le: '2026-11-26T14:32:00Z' }
+    const ligne = (n) => ({ code: `p${n}`, message: `Point ${n}`, etape: 'resultats', gravite: 'a_regler', nombre: 1, cible: { onglet: 'reglages', champ: '' } })
+    const etapes = [{ cle: 'toit', etat: 'fait' }, { cle: 'panneaux', etat: 'fait' }, { cle: 'electrique', etat: 'fait' }, { cle: 'resultats', etat: 'en_cours' }]
+    calepinageApi.calepinages.parcours
+      .mockResolvedValueOnce({ data: { etapes, manque: [ligne(1), ligne(2), ligne(3)] } })
+      .mockResolvedValue({ data: { etapes, manque: [ligne(1)] } })
+    calepinageApi.calepinages.get.mockResolvedValue({ data: {} })
+    calepinageApi.calepinages.resultat
+      .mockResolvedValueOnce({ data: ancien })
+      .mockResolvedValue({ data: recent })
+    render(
+      <MemoryRouter initialEntries={['/calepinage/1?onglet=production']}>
+        <Routes><Route path="/calepinage/:id" element={(
+          <CoqueAtelier calepinageId={1} titre="Pose" retour={{ to: '/calepinage', libelle: 'Calepinages' }} enregistreLe="2026-11-26T12:00:00Z"
+            enregistrement={{ libelle: 'Enregistrer le calepinage', enregistreLe: '2026-11-26T12:00:00Z' }} />
+        )} /></Routes>
+      </MemoryRouter>,
+    )
+    await screen.findByTestId('cal-resultats-tuiles')
+    await waitFor(() => expect(within(screen.getByTestId('cal-etape-resultats')).getByText('1 à régler')).toBeInTheDocument())
+    expect(calepinageApi.calepinages.parcours.mock.calls.length).toBeGreaterThanOrEqual(2)
+  })
+})
+
 describe('Étape Résultats — calcul à refaire (simulation périmée)', () => {
   it('même mise en page, titre « Calcul à refaire », bouton de relance, aucun bandeau en plus', async () => {
     rendreAvec(PERIME())

@@ -1,5 +1,6 @@
-import { lazy, useEffect, useState } from 'react'
+import { lazy, useEffect, useRef, useState } from 'react'
 import calepinageApi from '../../../api/calepinageApi'
+import { ecouterResultat } from './simulationFraiche'
 
 /* ============================================================================
    ACAL393 — LA TABLE DU PARCOURS GUIDÉ : étape → panneaux de l'atelier.
@@ -221,6 +222,18 @@ export function useParcours(calepinageId, relecture = null) {
   // états (pastilles, carte des ombres) sans jamais changer d'écran — l'étape ne change que par un geste de l'utilisateur.
   const [memorisee, setMemorisee] = useState(() => lireEtapeMemorisee(calepinageId))
   const [parcours, setParcours] = useState({ etats: {}, manque: [] })
+  // ACAL1653 (revue) — la fin d'un calcul (un `calcule_le` nouveau dans le résultat publié) relit le parcours : la pastille
+  // « N à régler » du rail ne garde pas le compte d'avant le calcul. Les relectures du MÊME calcul ne le relisent pas.
+  const [apresCalcul, setApresCalcul] = useState(0)
+  const dernierCalcul = useRef(undefined)
+  useEffect(() => {
+    dernierCalcul.current = undefined
+    return ecouterResultat(calepinageId, (resultat) => {
+      const calcule = resultat?.calcule_le ?? null
+      if (dernierCalcul.current !== undefined && dernierCalcul.current !== calcule) setApresCalcul((n) => n + 1)
+      dernierCalcul.current = calcule
+    })
+  }, [calepinageId])
   useEffect(() => {
     if (!calepinageId) return undefined
     let vivant = true
@@ -239,7 +252,7 @@ export function useParcours(calepinageId, relecture = null) {
       })
       .catch(() => {})
     return () => { vivant = false }
-  }, [calepinageId, relecture])
+  }, [calepinageId, relecture, apresCalcul])
   return { ...parcours, memorisee }
 }
 
