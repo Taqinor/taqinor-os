@@ -28,8 +28,9 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/proxyPermissif')).moduleApiPermissif({
   calepinages: new Proxy({}, { get: (_c, prop) => (prop === 'parcours' ? (...a) => mocks.parcours(...a)
     : prop === 'modulesDisponibles' ? (...a) => mocks.modulesDisponibles(...a)
-      : prop === 'pretAEnvoyer' ? (...a) => mocks.pretAEnvoyer(...a)
-        : prop === 'entreeElectrique' ? (...a) => mocks.entreeElectrique(...a) : () => Promise.resolve({ data: {} })) }),
+      : prop === 'simuler' ? (...a) => mocks.simuler(...a)
+        : prop === 'pretAEnvoyer' ? (...a) => mocks.pretAEnvoyer(...a)
+          : prop === 'entreeElectrique' ? (...a) => mocks.entreeElectrique(...a) : () => Promise.resolve({ data: {} })) }),
 }))
 vi.mock('../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
 
@@ -38,7 +39,7 @@ vi.mock('../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } })
    `AtelierPanneaux.test.jsx`). Sans lui, le panneau lève et le rail affiche
    son bandeau d'échec au lieu du contenu. */
 const mocks = vi.hoisted(() => ({
-  hasPermission: vi.fn(() => false), parcours: vi.fn(), modulesDisponibles: vi.fn(),
+  hasPermission: vi.fn(() => false), parcours: vi.fn(), modulesDisponibles: vi.fn(), simuler: vi.fn(),
   pretAEnvoyer: vi.fn(() => Promise.resolve({ data: {} })), entreeElectrique: vi.fn(() => Promise.resolve({ data: {} })),
 }))
 vi.mock('../../../hooks/useHasPermission', () => ({
@@ -48,6 +49,8 @@ vi.mock('../../../hooks/useHasPermission', () => ({
 import AtelierPanneaux from '../AtelierPanneaux'
 import config from '../module.config.jsx'
 import Rail from './Rail'
+import RailGuide from '../commun/RailGuide'
+import { BoutonCalculer } from '../production/PanneauProduction'
 import { BoutonOr, BoutonMarine, Segmente, Tuile, Indicateur, SectionEtape } from './coque/primitives'
 import { GLOSSAIRE_ONGLETS } from '../commun/glossaireOnglets'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
@@ -931,5 +934,62 @@ describe('ACAL1268 — le rail d’un lead de pompage', () => {
     expect(within(zone()).queryByRole('link')).toBeNull()
     expect(within(panneau).getByText('Un devis agricole du lead porte ce champ (accès réservé aux rôles du module Ventes).')).toBeInTheDocument()
     expect(within(panneau).queryByText(/Créer le devis agricole/)).toBeNull()
+  })
+})
+
+/* ACAL1650 — le refus 409 de la simulation (réglages météo vides) nomme LE vrai blocage : la liste « Ce qui manque
+   encore » met ses lignes en tête, les autres restent dessous (« Pour un résultat complet »), et la pastille de l'étape
+   Résultats du rail dit le même compte que le refus. Entrée réelle : le bouton de simulation (POST 409). */
+describe('ACAL1650 — le refus météo est nommé par la liste et par le rail', () => {
+  const refusMeteo = {
+    response: {
+      status: 409,
+      data: {
+        'parametres.simulation.mode_meteo': ['Choisissez le mode météo.'],
+        manquants: [
+          { champ: 'parametres.simulation.mode_meteo', motif: 'Choisissez le mode météo.',
+            cible: { onglet: 'reglages', champ: 'calx69-mode_meteo' } },
+          { champ: 'parametres.simulation.fenetre_annees', motif: 'Choisissez la fenêtre d’années météo.',
+            cible: { onglet: 'reglages', champ: 'calx69-fenetre_annees' } },
+        ],
+      },
+    },
+  }
+  const ligneManque = (code, message, champ) => ({
+    code, message, etape: 'resultats', gravite: 'a_regler', nombre: 1, cible: { onglet: 'reglages', champ },
+  })
+  const manque = [
+    ligneManque('norme_absente', 'La norme n’est pas choisie.', 'norme'),
+    ligneManque('ombrage', 'L’ombrage n’est pas mesuré.', 'ombrage'),
+    ligneManque('dossier', 'La longueur de dossier manque.', 'dossier'),
+    ligneManque('temperatures', 'Les températures manquent.', 'temperatures'),
+  ]
+  const etats = { toit: 'fait', panneaux: 'fait', electrique: 'fait', resultats: 'a_faire' }
+
+  it('409 météo : « 2 à régler » sur le rail, les deux lignes du refus en tête, le reste sous « Pour un résultat complet »', async () => {
+    mocks.hasPermission.mockImplementation(() => true)
+    mocks.simuler.mockRejectedValue(refusMeteo)
+    const utilisateur = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={[`/calepinage/${ID}`]}>
+        <RailGuide vertical calepinageId={ID} etapeActive="resultats" etats={etats} manque={manque} onChoisir={() => {}} />
+        <BoutonCalculer calepinageId={ID} data={null} manque={manque} />
+      </MemoryRouter>,
+    )
+    // avant le refus : le parcours servi (4 lignes) fait le compte
+    expect(within(screen.getByTestId('cal-etape-resultats')).getByText('4 à régler')).toBeInTheDocument()
+    await utilisateur.click(screen.getByTestId('calx48-lancer-bouton'))
+    await waitFor(() => expect(within(screen.getByTestId('cal-etape-resultats')).getByText('2 à régler')).toBeInTheDocument())
+    const liste = screen.getByTestId('calx48-manques')
+    const lignes = within(liste).getAllByTestId('calx48-manque-ligne')
+    expect(lignes.map((l) => l.textContent).slice(0, 2))
+      .toEqual(['Choisissez le mode météo.', 'Choisissez la fenêtre d’années météo.'])
+    expect(lignes).toHaveLength(6)
+    expect(within(liste).getByText('Pour un résultat complet')).toBeInTheDocument()
+    expect(lignes[0]).toHaveAttribute('href', '/calepinage/reglages#calx69-mode_meteo')
+    // un nouveau lancement efface le refus : le rail redit le compte du parcours
+    mocks.simuler.mockReturnValue(new Promise(() => {}))
+    await utilisateur.click(screen.getByTestId('calx48-lancer-bouton'))
+    await waitFor(() => expect(within(screen.getByTestId('cal-etape-resultats')).getByText('4 à régler')).toBeInTheDocument())
   })
 })
