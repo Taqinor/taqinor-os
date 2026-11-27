@@ -107,6 +107,29 @@ export function decouperContour(
   }
 }
 
+/** ACAL1735 — confirmer la pente d'un pan d'une découpe la confirme pour les pans de la MÊME découpe qui avaient la même pente
+ *  (`avantDeg`) et aucune provenance : ils suivent (pente + `pitchSource`). Un pan d'une autre pente, déjà confirmé, ou hors
+ *  découpe n'est jamais touché. Rend les ids modifiés. */
+export function propagerPenteDecoupe(
+  pans: ReadonlyArray<{ id: string; roofType: string; pitchDeg: number; pitchSource?: Record<string, unknown> }>,
+  idsDecoupe: ReadonlySet<string>,
+  idActif: string,
+  avantDeg: number,
+  apresDeg: number,
+  source: Record<string, unknown>,
+): string[] {
+  const touches: string[] = [];
+  if (!idsDecoupe.has(idActif)) return touches;
+  for (const p of pans) {
+    if (p.id === idActif || !idsDecoupe.has(p.id) || p.roofType !== 'pitched' || p.pitchDeg !== avantDeg
+      || (p.pitchSource && !(p.pitchSource.mode === 'degres' && p.pitchSource.degres === avantDeg))) continue; // un pan déjà confirmé à cette pente suit aussi (curseur)
+    p.pitchDeg = apresDeg;
+    p.pitchSource = JSON.parse(JSON.stringify(source)) as Record<string, unknown>;
+    touches.push(p.id);
+  }
+  return touches;
+}
+
 export interface FormesToitDeps {
   /** Le bouton « + Ajouter une zone » : les puces se posent juste après. */
   ancre: HTMLElement | null;

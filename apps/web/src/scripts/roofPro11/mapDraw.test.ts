@@ -4,7 +4,10 @@
 // absent (repli `ma` : comportement marocain byte-identique), et la mention affichée
 // à côté du champ de recherche. PURE : aucun DOM, aucune carte.
 import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs'; // ACAL1926
+import { resolve } from 'node:path'; // ACAL1926
 import { methodesCarteInertes } from './harnaisAtelier';
+import { epingleAReposer } from './epingleSite'; // ACAL1926
 import {
   GEOCODE_DEFAULT_COUNTRY,
   geocodeCountry,
@@ -662,5 +665,37 @@ describe('T4-U4-013 — la provenance du site suit les gestes', () => {
     const publicSite = monter(6, false);
     tracer(publicSite.draw);
     expect(latitudeDuCalcul(publicSite.ctx, 31.79)).toBe(31.79);
+  });
+});
+
+describe('ACAL1926 — Effacer sur un calepinage rouvert repose l’épingle', () => {
+  it('document rouvert avec son toit (aucun repère planté) ⇒ le point de l’épingle du document', () => {
+    expect(epingleAReposer(false, { pin: { lat: 33.5, lng: -7.6 } })).toEqual([-7.6, 33.5]);
+  });
+  it('un repère existe déjà, ou le document n’a pas d’épingle ⇒ rien à poser', () => {
+    expect(epingleAReposer(true, { pin: { lat: 33.5, lng: -7.6 } })).toBeNull();
+    expect(epingleAReposer(false, { pin: null })).toBeNull();
+    expect(epingleAReposer(false, null)).toBeNull();
+  });
+});
+
+describe('ACAL1926 (revue) — « Effacer » repose l’épingle : repli lead et câblage de l’entrée', () => {
+  it('document sans `pin` ⇒ le point GPS du lead ; le `pin` du document passe avant le lead', () => {
+    expect(epingleAReposer(false, { pin: null }, { lat: 33.59, lng: -7.61 })).toEqual([-7.61, 33.59]);
+    expect(epingleAReposer(false, { pin: { lat: 33.5, lng: -7.6 } }, { lat: 33.59, lng: -7.61 })).toEqual([-7.6, 33.5]);
+    expect(epingleAReposer(false, null, { lat: Number.NaN, lng: -7.61 })).toBeNull();
+    expect(epingleAReposer(true, { pin: null }, { lat: 33.59, lng: -7.61 })).toBeNull();
+  });
+
+  /** L'entrée est une page à effets de bord, non importable en test : on lit son SOURCE (comme cablageLot2.test.ts). */
+  const SOURCE_ENTREE = readFileSync(resolve(process.cwd(), 'src/scripts/roof-tool-pro11.ts'), 'utf8');
+  it('`reset` (« Effacer ») plante le repère rendu par `epingleAReposer`, avec le lead du document rouvert', () => {
+    const i = SOURCE_ENTREE.indexOf('function reset() {');
+    expect(i).toBeGreaterThan(0);
+    const corps = SOURCE_ENTREE.slice(i, SOURCE_ENTREE.indexOf('shadingUi.reset();', i));
+    const appel = corps.indexOf('const aReposer = epingleAReposer(!!clientPinMarker, ctx.documentRelu, pointLeadSite);');
+    expect(appel).toBeGreaterThan(corps.indexOf('clearEditorState();'));
+    expect(corps.indexOf('if (aReposer) planterClientPinMarker(aReposer);')).toBeGreaterThan(appel);
+    expect(SOURCE_ENTREE).toContain('pointLeadSite = devis.geometrie?.roof_point ?? null;');
   });
 });

@@ -1460,6 +1460,18 @@ export function geometrieZoneActive(ctx: Ctx, meta?: SerializeMeta): SerializedZ
   return zone?.geometry ? (JSON.parse(JSON.stringify(zone.geometry)) as SerializedZoneGeometry) : null;
 }
 
+/** ACAL1916 — « Voir » un pan : vrai quand le pan actif est EXACTEMENT ce que le document porte déjà (forme, réglages,
+ *  nombre, pose), donc quitter ce pan n'a rien à réécrire. Faux dès qu'une valeur diffère ou qu'aucune pose n'est enregistrée. */
+export function selectionSansChangement(
+  a: Pick<AreaRecord, 'vertices' | 'obstacles' | 'roofType' | 'pitchDeg' | 'facingAzimuthDeg' | 'facingManual' | 'neededPanels' | 'neededAuto' | 'geometrieEnregistree'>,
+  vif: Pick<AreaRecord, 'vertices' | 'obstacles' | 'roofType' | 'pitchDeg' | 'facingAzimuthDeg' | 'facingManual' | 'neededPanels' | 'neededAuto'>,
+  geo: SerializedZoneGeometry | null,
+): boolean {
+  if (!a.geometrieEnregistree || !geo) return false;
+  const cles = ['vertices', 'obstacles', 'roofType', 'pitchDeg', 'facingAzimuthDeg', 'facingManual', 'neededPanels', 'neededAuto'] as const;
+  return cles.every((k) => memeJson(a[k] ?? null, vif[k] ?? null)) && (['count', 'panels', 'azimuthDeg', 'tiltDeg'] as const).every((k) => memeJson(a.geometrieEnregistree?.[k] ?? null, geo[k] ?? null)); // la pose ; tables d'ombrage / accès solaire relus restent ceux du document
+}
+
 // ═══════════ PV19 — HYDRATATION DEPUIS UN DEVIS ═══════════
 // Un devis EXISTANT porte déjà un design (le layout sérialisé) et une CIBLE commerciale
 // (le nombre de panneaux vendus). Repartir de la facture serait un contresens : le devis
