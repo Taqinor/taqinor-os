@@ -838,6 +838,47 @@ describe('PanneauProduction — charges ajoutées (ACAL781)', () => {
     expect(detail).toHaveTextContent('plafonnée par la borne')
   })
 
+  it('ACAL1646 — une charge ignorée par le serveur est nommée en mots : « Voiture électrique : ignorée — <motif> », sans le code', async () => {
+    avecCharges((c) => {
+      c.avertissements = [
+        'La charge n°2 (vehicule) est déjà comprise dans les factures : elle est ignorée pour ne pas être comptée deux '
+        + "fois (décochez la case pour l'ajouter).",
+        '« Piscine » est seulement PRÉVU : sa consommation est comptée et le devis le dit.',
+      ]
+    })
+    rendre()
+    const ligne = await screen.findByTestId('calx-charges-ajoutees')
+    const ignoree = within(ligne).getByTestId('calx-charge-ignoree-vehicule')
+    expect(ignoree).toHaveTextContent(/^Voiture électrique : ignorée — déjà comprise dans les factures/)
+    expect(ignoree).toHaveTextContent('pour ne pas être comptée deux fois')
+    expect(ignoree).not.toHaveTextContent('vehicule')
+    expect(ligne).not.toHaveTextContent('n°2')
+    // La charge comptée garde sa ligne ; l'avertissement « prévu » n'est pas une charge ignorée.
+    expect(within(ligne).getAllByTestId(/^calx-charge-ignoree-/)).toHaveLength(1)
+  })
+
+  it('ACAL1646 — toutes les charges ignorées : la ligne « Charges ajoutées » ne ment pas, l’ignorée reste dite', async () => {
+    avecCharges((c) => {
+      c.charges = []
+      c.total_charges_kwh = 0
+      c.avertissements = ['La charge n°1 (pac) est déjà comprise dans les factures : elle est ignorée pour ne pas être comptée deux fois (décochez la case pour l\'ajouter).']
+    })
+    rendre()
+    const ligne = await screen.findByTestId('calx-charges-ajoutees')
+    expect(ligne).toHaveTextContent('Pompe à chaleur : ignorée — déjà comprise dans les factures')
+    expect(ligne).not.toHaveTextContent('Charges ajoutées')
+  })
+
+  it('ACAL1608 — l’écran dit la source de la courbe de base : « facture du lead » quand `courbe_origine` le dit', async () => {
+    avecCharges((c) => { c.courbe_origine = 'facture_lead' })
+    rendre()
+    expect(await screen.findByTestId('calx-courbe-origine')).toHaveTextContent('Courbe de base : facture du lead')
+    cleanup()
+    avecCharges((c) => { c.courbe_origine = 'profil_mensuel' })
+    rendre()
+    expect(await screen.findByTestId('calx-courbe-origine')).toHaveTextContent('Courbe de base : douze mois saisis')
+  })
+
   it('sans charge déclarée : aucune ligne', async () => {
     avecCharges((c) => { c.charges = []; c.total_charges_kwh = 0 })
     rendre()
@@ -893,17 +934,19 @@ describe('PanneauProduction — valeurs publiées (ACAL698)', () => {
   /* Item 15 (T4-U2-013, T4-U4-009) — la simulation sert les clés PRÉFIXÉES (`electrique_societe.…`) ; les libellés
      sont tenus SANS préfixe : trois clés brutes s'imprimaient. Un seul résolveur, avec et sans préfixe ; une clé sans
      libellé ne s'imprime jamais brute. */
-  it('Item 15 — clés préfixées « electrique_societe.… » : leurs noms ; une clé sans libellé : « autre réglage (réglage de la société) »', async () => {
+  it('Item 15 / ACAL1632 — clés préfixées : leurs noms en clair ; les « electrique_societe.… » ne sont pas des pertes (ni nommées ni comptées) ; une clé sans libellé : « autre réglage (réglage de la société) »', async () => {
     render(<MemoryRouter><NoteValeursPubliees onVoirSources={vi.fn()} simulation={{ reglages_utilises: {
+      'pertes.salissure_mensuelle_pct': publie(2),
+      'pertes.reglage_sans_libelle_x': publie(1),
       'electrique_societe.seuil_bas_dc_ac': publie(0.8),
       'electrique_societe.tolerance_polystring_bloquante_pct': publie(10),
       'electrique_societe.tolerance_polystring_acceptable_pct': publie(5),
-      'electrique_societe.reglage_sans_libelle_x': publie(1),
     } }} /></MemoryRouter>)
     const note = await screen.findByTestId('acal698-texte-note')
-    expect(note).toHaveTextContent('taille minimale des panneaux face à l’onduleur, écart bloquant entre chaînes, '
-      + 'écart acceptable entre chaînes, autre réglage (réglage de la société)')
+    expect(note).toHaveTextContent('2 réglages utilisent des valeurs publiées')
+    expect(note).toHaveTextContent('poussière sur les panneaux, autre réglage (réglage de la société)')
     expect(note).not.toHaveTextContent('electrique_societe')
+    expect(note).not.toHaveTextContent(/onduleur|entre chaînes/)
     expect(note).not.toHaveTextContent('_')
   })
 
@@ -1194,11 +1237,41 @@ describe('PanneauProduction — sur la durée (ACAL710)', () => {
     annee: i + 1, facteur: i ? 0.99 : null, p50_kwh: 13000 - i * 100, source: 'x',
   }))
 
+  it('ACAL1657 — « Année basse » nomme ce qu’elle compte : météo seule, puis chaque composante servie', async () => {
+    localStorage.setItem(CLE_EXPERT, '1')
+    const servirIncertitude = (composantes) => {
+      const reponse = reponseContrat('calepinage', 'calepinage_resultat', 'exemple')
+      if (composantes) reponse.data.incertitude = { ...reponse.data.incertitude, composantes }
+      calepinageApi.calepinages.resultat.mockResolvedValue(reponse)
+    }
+    servirIncertitude(null)
+    rendre()
+    expect(await screen.findByTestId('acal710-basse'))
+      .toHaveTextContent('Année basse (variabilité météo seule, 9 années sur 10 au-dessus) : 11 900 kWh')
+    expect(screen.getByTestId('acal710-basse')).not.toHaveTextContent('9 fois sur 10')
+    cleanup()
+    servirIncertitude([
+      { nom: 'variabilite_interannuelle', sigma_relatif: 0.0195, source: 'pvgis' },
+      { nom: 'modele_simulation', sigma_relatif: 0.03, source: 'texte' },
+      { nom: 'biais_long_terme', sigma_relatif: 0.02, source: 'texte' },
+    ])
+    rendre()
+    expect(await screen.findByTestId('acal710-basse')).toHaveTextContent(
+      'Année basse (variabilité météo, modèle de simulation et biais à long terme, 9 années sur 10 au-dessus) : 11 900 kWh')
+  })
+
+  it('ACAL1657 — le pied de l’étape Résultats dit la même chose', () => {
+    const complet = exempleContrat('calepinage', 'calepinage_resultat')
+    render(<MemoryRouter><PiedResultats production={complet.production} incertitude={complet.incertitude} /></MemoryRouter>)
+    expect(screen.getByTestId('cal-resultats-pied'))
+      .toHaveTextContent('Année basse (variabilité météo seule, 9 années sur 10 au-dessus) : 11 900 kWh')
+  })
+
   it('N lu dans la dernière année (2, 20, 25), garantie seulement à 10 ou 25 ans', async () => {
     localStorage.setItem(CLE_EXPERT, '1')
     servirDuree()
     rendre()
-    expect(await screen.findByTestId('acal710-basse')).toHaveTextContent('Année basse (9 fois sur 10 au-dessus) : 11 900 kWh')
+    expect(await screen.findByTestId('acal710-basse')).toHaveTextContent('Année basse (variabilité météo seule, 9 années sur 10 au-dessus) : 11 900 kWh')
     expect(screen.getByTestId('acal710-derniere')).toHaveTextContent('Dans 2 ans : 12 929 kWh')
     expect(screen.getByTestId('acal710-derniere')).not.toHaveTextContent('garantie fabricant')
     cleanup()

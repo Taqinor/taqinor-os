@@ -141,6 +141,13 @@ export function MoisParMois({ data, nomProduction = null }) {
           )}
         </div>
       </div>
+      {/* ACAL1631 — la consommation n'est pas servie : une ligne le dit (le motif servi), jamais un graphe muet. */}
+      {avecProd && !avecConso && (
+        <p className="cal-res-sourdine" data-testid="cal-res-mois-sans-conso">
+          {`Consommation non tracée : ${typeof data?.autoconsommation?.motif_absence === 'string' && data.autoconsommation.motif_absence
+            ? data.autoconsommation.motif_absence : 'aucune consommation connue pour ce calepinage.'}`}
+        </p>
+      )}
       <div className="cal-res-graphe">
         <div className="cal-res-axe" aria-hidden="true">
           {/* T4-X7-005 — le repère 0 est dit : une courbe nulle se lit sur la ligne du bas, jamais « sous 400 kWh ». */}
