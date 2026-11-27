@@ -1006,6 +1006,16 @@ describe('ACAL549 — causeDuPanVide', () => {
     expect(m.mesures).toMatchObject({ retraitM: 0.8, largeurPanM: 1.5, largeurUtileM: 0 });
   });
 
+  it('ACAL1966 — anneau posable vide ⇒ « aucun anneau posable », jamais « ne laisse que 0,00 m sur 0,00 m »', () => {
+    const pack = { ringENU: [], areaM2: 0, usableAreaM2: 0 } as unknown as Parameters<typeof mesurerPanVide>[0];
+    const grille = { panels: [] } as unknown as Parameters<typeof mesurerPanVide>[1];
+    const m = causeDuPanVide(mesurerPanVide(pack, grille, retraitApplique(undefined, 0.8), MODULE, null));
+    expect(m.code).toBe('retrait_rive');
+    expect(m.message).toBe('Aucun module : aucun anneau posable — le retrait de rive (0,80 m de chaque côté) ne laisse aucune surface sur ce pan');
+    expect(m.message).not.toContain('0,00 m sur 0,00 m');
+    expect(m.mesures).toMatchObject({ retraitM: 0.8, largeurPanM: 0, largeurUtileM: 0 });
+  });
+
   it('obstacles couvrant tout ⇒ obstacles (et passe AVANT le seuil) ; seuil ⇒ seuil_acces_solaire ; rien ⇒ module_trop_grand / inconnue', () => {
     expect(causeDuPanVide(mesures({ surfacePosableM2: 0, seuil: 0.8, ecartes: 3 })).code).toBe('obstacles');
     const s = causeDuPanVide(mesures({ seuil: 0.8, ecartes: 3 }));
@@ -1965,5 +1975,29 @@ describe('ACAL1331 — la taille de la cible posée d’elle-même sur un calepi
     const publics = [{ id: 'area-2', neededPanels: 0, neededAuto: true }];
     heriterDuPanDecoupe({ moduleId: 'produit-710' }, { neededPanels: 5, neededAuto: false }, publics as never, false); // site public : rien
     expect(publics).toEqual([{ id: 'area-2', neededPanels: 0, neededAuto: true }]);
+  });
+});
+
+// ACAL1919 — la carte « Densité maximale (plein sud) » ne cite pas un second nombre sans le nommer.
+describe('ACAL1919 — un seul nombre de panneaux par carte de recommandation', () => {
+  const grandToit = rectRing(10, 7);
+  it('cible posée à 5 : l’en-tête dit 5, la raison nomme ce qui tient ET les 5 posés', async () => {
+    const { fineGridMatrixV6 } = await import('../../lib/estimatorBrainV6');
+    const { pickVariantCards } = await import('./optimizer');
+    const res = fineGridMatrixV6(grandToit, 33.59, 5000, [], { neededPanelsPose: 5 });
+    const carte = pickVariantCards(res).find((c) => c.id === 'south-max');
+    expect(carte).toBeDefined();
+    expect(carte!.count).toBe(5);
+    const nombres = carte!.reason.match(/\d+(?=\s+(panneaux|tiennent|posés))/g) ?? [];
+    expect(carte!.row.fitCount).toBeGreaterThan(5);
+    expect(carte!.reason).toContain(`${carte!.row.fitCount} tiennent au total`);
+    expect(carte!.reason).toContain('5 posés pour votre cible');
+    expect(nombres.length).toBe(2);
+  });
+
+  it('quand tout ce qui tient est posé, la phrase ne dit qu’un nombre', async () => {
+    const { phraseDensiteMax } = await import('./phrasesRecommandation');
+    const p = phraseDensiteMax({ fitCount: 8, placedCount: 8, tiltDeg: 15, layoutLabel: 'paysage' });
+    expect(p).toBe('La plus dense en plein sud : 8 panneaux tiennent à 15°, paysage.');
   });
 });

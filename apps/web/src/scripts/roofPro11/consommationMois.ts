@@ -78,7 +78,7 @@ export const liaisonFactures = (ctx: CtxFactures): LiaisonFactures => ({
 /** Les 12 barres lues dans `mois[]` : pleines (facture) ou en pointillé avec « estimé ». */
 export function htmlBarres(mois: readonly MoisPropose[]): string {
   const max = Math.max(...mois.map((m) => m.kwh), 1);
-  return mois.map((m) => `<div data-cons-mois-barre="${m.mois}" data-source="${m.source}" class="flex-1 text-center text-xs">
+  return mois.map((m) => `<div data-cons-mois-barre="${m.mois}" data-source="${m.source}" class="text-center" style="flex-grow:1;flex-shrink:1;flex-basis:0;min-width:0;overflow-wrap:anywhere;font-size:0.625rem;line-height:1.2">
     <div style="height:${Math.round((m.kwh / max) * 64)}px;${m.source === 'estime' ? 'border:2px dashed currentColor;' : 'background:currentColor;'}"></div>
     <div>${esc(MOIS_COURTS[m.mois - 1] ?? String(m.mois))}</div><div>${Math.round(m.kwh)}</div>
     ${m.source === 'estime' ? '<div>estimé</div>' : '<div>facture</div>'}</div>`).join('');
@@ -166,7 +166,7 @@ export function monterGrilleFactures(hote: HTMLElement, deps: DepsGrille): void 
       <input data-cons-mois-valeur inputmode="decimal" step="any" aria-label="Facture de ${nom}" style="min-height:44px">
       <select data-cons-mois-unite aria-label="Unité de ${nom}" style="min-height:44px"><option value="kwh">kWh</option><option value="mad">MAD</option></select>
       <p data-cons-mois-refus hidden role="alert" class="text-xs"></p></div>`).join('')}
-    <div data-cons-mois-barres class="flex items-end gap-1"></div>`;
+    <div data-cons-mois-barres class="flex items-end" style="gap:2px;width:100%;min-width:0"></div>`;
   hote.appendChild(grille);
   const lignes = (): LigneSaisie[] => Array.from(grille.querySelectorAll<HTMLElement>('[data-cons-mois-ligne]')).map((el) => ({
     mois: Number(el.getAttribute('data-cons-mois-ligne')),
