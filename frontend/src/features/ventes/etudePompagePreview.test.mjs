@@ -217,7 +217,12 @@ test('T4-U3-004 — pompe retenue sans prix : nommée, avec sa raison et qui sai
   assert.match(m, /Modifier les prix du catalogue/)
   assert.match(m, /Directeur ou Administrateur/)
   assert.match(m, /OSP 30\/13/)
-  assert.equal(messagePompeSansPrix({ ...donnees, pompe: { placeholder: false } }), null)
+  // ACAL1256 — pompe chiffrée retenue : seules les AUTRES pompes à courbe manquent de prix.
+  const autres = messagePompeSansPrix({ ...donnees, pompe: { placeholder: false, prix_connu: true } })
+  assert.match(autres, /^D'autres pompes à courbe conviendraient mais n'ont pas de prix : .*OSP 30\/13/)
+  assert.doesNotMatch(autres, /ne peut donc pas être chiffrée/)
+  assert.match(messagePompeSansPrix({ ...donnees, pompe: { placeholder: false, prix_connu: false } }),
+    /ne peut donc pas être chiffrée/)
   assert.equal(messagePompeSansPrix({ ...donnees, prix_a_renseigner: [] }), null)
   assert.equal(messagePompeSansPrix(null), null)
 })

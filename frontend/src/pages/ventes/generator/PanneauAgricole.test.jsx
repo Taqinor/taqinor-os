@@ -12,6 +12,7 @@ import { MemoryRouter } from 'react-router-dom'
 import authReducer from '../../../features/auth/store/authSlice'
 import ventesReducer from '../../../features/ventes/store/ventesSlice'
 import PanneauAgricole from './PanneauAgricole'
+import CarteCreation from './CarteCreation'
 import { ECO_POMPAGE_VIDE } from '../../../features/ventes/quote/etudeMarcheBloc'
 import { documentContrat, exempleContrat } from '../../../test/fixtures/contractSamples'
 import {
@@ -334,6 +335,43 @@ describe('résultat serveur (AGR129)', () => {
     expect(ligne()).toBeNull()
     rerender(<PanneauAgricole {...PROPS_VIDES} apercuPompage={{ donnees: { ...REPONSE, production: null } }} />)
     expect(ligne()).toBeNull()
+  })
+})
+
+// ACAL1256 — le bandeau « prix à renseigner » de la carte Création : une pompe
+// SANS COURBE chiffrée retenue (pré-dimensionnement) n'est pas « non chiffrée »,
+// seules les pompes à courbe qui conviendraient n'ont pas de prix.
+describe('bandeau pompes sans prix (ACAL1256)', () => {
+  const carte = (donnees) => render(
+    <MemoryRouter>
+      <CarteCreation errors={{}} warnings={{}} modeInstallation="agricole"
+        apercuPompage={{ donnees }} kpiTotal={0} cancel={vi.fn()} handleReset={vi.fn()}
+        setNote={vi.fn()} note="" />
+    </MemoryRouter>)
+  const SANS_COURBE = {
+    ...CONTRAT.exemple,
+    pompe: { ...CONTRAT.exemple.pompe, nom: 'Pompe immergée 4" 7.5 kW', courbe: null,
+      placeholder: false, prix_connu: true },
+    prix_a_renseigner: ['Pompe immergée OSP 30/8 — 10 CV', 'Pompe immergée OSP 30/11 — 12.5 CV'],
+  }
+
+  it('pompe sans courbe chiffrée retenue + pompes à courbe sans prix ⇒ « d’autres pompes »', () => {
+    carte(SANS_COURBE)
+    const texte = screen.getByTestId('pompage-prix-a-renseigner').textContent
+    expect(texte).toBe("D'autres pompes à courbe conviendraient mais n'ont pas de prix : "
+      + 'Pompe immergée OSP 30/8 — 10 CV, Pompe immergée OSP 30/11 — 12.5 CV.')
+    expect(texte).not.toMatch(/ne peut donc pas être chiffrée|Aucune pompe/)
+  })
+
+  it('pompe servie placeholder ⇒ le texte d’aujourd’hui reste', () => {
+    carte(CONTRAT.exemple_aucune_pompe_chiffrable)
+    expect(screen.getByTestId('pompage-prix-a-renseigner').textContent)
+      .toMatch(/Son prix de vente n'est pas saisi, elle ne peut donc pas être chiffrée/)
+  })
+
+  it('pompe chiffrée sans pompe à courbe manquante ⇒ aucun bandeau', () => {
+    carte(CONTRAT.exemple)
+    expect(screen.queryByTestId('pompage-prix-a-renseigner')).toBeNull()
   })
 })
 
