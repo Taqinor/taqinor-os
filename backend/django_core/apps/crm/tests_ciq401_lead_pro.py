@@ -309,13 +309,19 @@ class SaisieParLApi(TestCase):
         self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('facture_tranche_declaree', resp.data)
 
-    def test_heure_de_fin_avant_le_debut_refusee(self):
-        # ERR-ENF11-FUZZ-CRM — règle entre deux nombres : 409 (état), nommée.
-        resp = self._patch({'heure_debut': 18, 'heure_fin': 8})
+    def test_acal1244_plage_passant_minuit_acceptee_plage_nulle_refusee(self):
+        # ACAL1244 — 22 h -> 6 h est une plage de nuit valide (8 h) ; seule
+        # la plage nulle (debut == fin) est refusee, avec une phrase nommee.
+        resp = self._patch({'heure_debut': 22, 'heure_fin': 6})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertEqual((self.lead.heure_debut, self.lead.heure_fin), (22, 6))
+        resp = self._patch({'heure_debut': 8, 'heure_fin': 8})
         self.assertEqual(resp.status_code, 409)
         self.assertIn('heure_fin', resp.data)
-        self._patch({'heure_debut': 8})
-        resp = self._patch({'heure_fin': 6})
+        self.assertIn('0 → 24', str(resp.data['heure_fin']))
+        self._patch({'heure_debut': 8, 'heure_fin': 18})
+        resp = self._patch({'heure_fin': 8})
         self.assertEqual(resp.status_code, 409)
         self.assertIn('heure_fin', resp.data)
 

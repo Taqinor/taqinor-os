@@ -237,6 +237,18 @@ def provenance_site(lead):
 
 # DC11 — provenance des valeurs énergie/toiture reprises du lead ──────────────
 
+# ACAL1234 — le devis C&I recopie le rythme du lead dans
+# `etude_params.rythme` : horaires, équipes, jours, contrat, TVA, puissance
+# souscrite. Une dérive après le devis doit se voir. (Noms sans marqueur
+# énergie/toiture : la garde QJR234 ne les cherche pas.)
+LEAD_PROVENANCE_FIELDS_PRO = (
+    'regime_equipes', 'heure_debut', 'heure_fin', 'jours_ouverture',
+    'fermeture_mois', 'equipements_hors_horaires', 'categorie_commerciale',
+    'reponses_categorie', 'contrat_electricite', 'tva_recuperable',
+    'compteur_puissance_kva',
+)
+
+
 # Valeurs énergie + toiture du lead recopiées dans le devis. Une divergence sur
 # l'une de ces clés (lead modifié APRÈS capture) déclenche la bannière
 # « valeurs du lead modifiées depuis » côté générateur. Source unique pour que
@@ -261,7 +273,7 @@ LEAD_PROVENANCE_FIELDS = (
     # AGR404 (ex-AGR215) — l'énergie de la pompe actuelle est lue par
     # `entrees_pompage` pour l'économie agricole : une dérive doit se voir.
     'pompe_alim_actuelle',
-)
+) + LEAD_PROVENANCE_FIELDS_PRO
 
 
 # ── QJR234 — LA GARDE : plus une seule omission SILENCIEUSE ──────────────────
@@ -329,11 +341,11 @@ _RAISON_POMPAGE_AGR = (
 
 
 _RAISON_PRO_CIQ = (
-    "colonne du lead pro (CIQ401, contrat CIQ1) : le devis C&I ne la "
-    "RECOPIE pas encore dans `etude_params` — elle est lue par "
-    "`entrees_ci` (CIQ405) au moment où le moteur serveur C&I (D-CIQ-0) "
-    "compose l'étude ; à déclarer dans `LEAD_PROVENANCE_FIELDS` le jour où "
-    "le devis en garde une copie."
+    "colonne du lead pro (CIQ401, contrat CIQ1) que le devis C&I ne "
+    "RECOPIE pas dans `etude_params` (seul le rythme y est gardé, et ses "
+    "champs sont déclarés dans `LEAD_PROVENANCE_FIELDS`) : elle est lue par "
+    "`entrees_ci` (CIQ405) au moment où le moteur compose l'étude ; à "
+    "déclarer le jour où le devis en garde une copie."
 )
 
 
@@ -704,7 +716,7 @@ def lead_jalons_devis(lead):
             'created_at': evenement.get('at'),
             'devis_id': evenement.get('devis_id'),
             'reference': reference,
-            'user_nom': None,
+            'user_nom': evenement.get('user_nom'),
             'pinned': False,
         })
     return lignes
