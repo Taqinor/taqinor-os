@@ -240,3 +240,79 @@ class InvestissementNonChiffreTest(SimpleTestCase):
         self.assertIsNone(_omission_investissement(bloc))
         self.assertIsNotNone(bloc['indicateurs']['retour_ans'])
         self.assertTrue(bloc['flux_ht']['flux'])
+
+
+def _textes(o):
+    if isinstance(o, str):
+        yield o
+    elif isinstance(o, dict):
+        for v in o.values():
+            yield from _textes(v)
+    elif isinstance(o, list):
+        for v in o:
+            yield from _textes(v)
+
+
+class AucunCodeDeDecisionServiTest(SimpleTestCase):
+    """ACAL1225 — l'économie C&I ne sert aucun code de décision (« D-CIQ-n »)
+    à l'écran, et chaque poste porte son libellé de métier ; ``poste`` et
+    ``motif`` gardent leur forme. Études complètes : le devis industriel de
+    l'empreinte de conception (BT, tranches) et l'aperçu MT du contrat."""
+
+    def _blocs(self):
+        import copy
+        from apps.ventes.tests.test_ciq206_flux_ci import _etude_industrielle_realiste
+        from apps.ventes.tests.test_ciq210_branchement import _apercu
+        etude, lignes, investissement = _etude_industrielle_realiste()
+        for tva in ('oui', 'non', 'inconnu'):
+            saisies = {'tva_recuperable': {'valeur': tva, 'provenance': 'declare_client',
+                                           'saisi_le': '2026-11-20'},
+                       'parcours_aide': 'sr500'}
+            yield tva, 'bt', eco.assembler_economie_ci(
+                copy.deepcopy(etude), tarif_declare={'contrat': 'bt_patente'},
+                saisies=saisies, investissement=investissement, lignes=lignes,
+                mode_installation='industriel')
+            yield tva, 'mt', eco.assembler_economie_ci(
+                _apercu('mt'), saisies=saisies,
+                investissement={'ht': 900000.0, 'ttc': 1080000.0},
+                mode_installation='industriel')
+
+    def test_aucun_texte_servi_ne_porte_de_code(self):
+        for tva, tension, bloc in self._blocs():
+            for texte in _textes(bloc):
+                # Seule exception : la source de l'horizon, CLÉ du PDF
+                # (``couverture.SOURCES_CLIENT`` → ``ci_src_horizon``) — à changer
+                # là d'abord ; le PDF l'imprime déjà sans le code.
+                if texte == eco.HORIZON_CI_SOURCE:
+                    continue
+                with self.subTest(tva=tva, tension=tension, texte=texte):
+                    self.assertNotIn('D-CIQ', texte)
+
+    def test_constantes_sans_code(self):
+        from apps.ventes.domain import etude_ci
+        for texte in (eco.MOTIF_BASE_HT, eco.MOTIF_BASE_TTC, eco.MOTIF_BASE_DEUX,
+                      eco.MOTIF_FINANCEMENT_ABSENT, eco.MOTIF_SR500, etude_ci.METHODE,
+                      etude_ci.METHODE_8760, etude_ci.SOURCE_REGIME):
+            with self.subTest(texte=texte):
+                self.assertNotIn('D-CIQ', texte)
+
+    def test_chaque_poste_porte_son_libelle(self):
+        vus = set()
+        for tva, tension, bloc in self._blocs():
+            postes = list(bloc['economie_annee1']['par_poste'])
+            for cle in ('facture_avant', 'facture_apres'):
+                postes += (bloc[cle] or {}).get('energie_par_poste') or []
+            self.assertTrue(postes, tension)
+            for p in postes:
+                with self.subTest(tva=tva, tension=tension, poste=p['poste']):
+                    libelle = p.get('libelle')
+                    self.assertTrue(libelle)
+                    self.assertNotEqual(libelle, p['poste'])
+                    self.assertNotIn('_', libelle)
+                    self.assertNotIn('D-CIQ', libelle)
+                    vus.add((p['poste'], libelle))
+        self.assertIn(('pointe', 'Énergie heures de pointe'), vus)
+        self.assertTrue(any('+' in poste and libelle == 'Énergie, toutes tranches'
+                            for poste, libelle in vus), vus)
+        self.assertTrue(any(poste.startswith('tranche_') and libelle == 'Énergie tranche '
+                            + poste.split('_')[1] for poste, libelle in vus), vus)

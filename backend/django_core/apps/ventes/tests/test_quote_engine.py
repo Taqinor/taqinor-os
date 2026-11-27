@@ -375,6 +375,45 @@ class RibDevisFinalPagesTest(SimpleTestCase):
         self._verifier(renderer, data_complete(nb_lignes_extra=40), 3)
 
 
+class ProvenanceUneLigneAcal1266Test(SimpleTestCase):
+    """ACAL1266 (C-ACAL-REC-R5-06) — au PDF agricole, une entrée du point d'eau
+    DÉCLARÉE et non mesurée tient sur UNE ligne « 30 m — déclaré par vous le …,
+    à confirmer par la visite » et ne revient plus dans la liste « À confirmer
+    par la visite » ; une entrée mesurée reste sur sa ligne sans réserve.
+    Nouveaux rendus seulement (drapeau ``phrases_pdf_lot10``) : sans lui, le
+    texte reçu par un devis envoyé ne bouge pas. Mutant : garder les deux
+    listes ⇒ le libellé « Niveau statique » sort deux fois, échec."""
+
+    SYNTHESE = {
+        'provenance': {
+            'niveau_statique_m': {'origine': 'saisie', 'detail': None,
+                                  'date': '2026-11-20', 'valeur': 30},
+            'niveau_dynamique_m': {'origine': 'saisie', 'detail': 'mesure_visite',
+                                   'date': '2026-11-21', 'valeur': 40}},
+        'a_confirmer_par_visite': ['niveau_statique_m', 'profondeur_forage_m']}
+
+    def _html(self, une_ligne):
+        from apps.ventes.quote_engine.agricole.pages import _provenance
+        return _provenance(dict(self.SYNTHESE), 'fr', 'SOCIETE', une_ligne=une_ligne)
+
+    def test_declaree_non_mesuree_sur_une_seule_ligne(self):
+        from apps.ventes.quote_engine.agricole.pages import _entree
+        html = self._html(True)
+        self.assertIn('30 m — déclaré par vous le 20/11/2026, à confirmer par la visite', html)
+        self.assertEqual(html.count(_entree('fr', 'niveau_statique_m')), 1)
+        # La profondeur, sans ligne de provenance, reste dans la liste.
+        self.assertIn(_entree('fr', 'profondeur_forage_m'), html)
+        mesuree = next(li for li in html.split('<div class="ag-li">')
+                       if _entree('fr', 'niveau_dynamique_m') in li)
+        self.assertNotIn('à confirmer', mesuree)
+
+    def test_sans_drapeau_texte_recu_inchange(self):
+        from apps.ventes.quote_engine.agricole.pages import _entree
+        html = self._html(False)
+        self.assertNotIn(', à confirmer par la visite', html)
+        self.assertEqual(html.count(_entree('fr', 'niveau_statique_m')), 2)
+
+
 class FicheRemisePremiumMultivilla(TestCase):
     """ADOC198 (C-ADOC-VER4-002) — la fiche de remise premium liste le
     matériel VENDU × nombre de villas (``lignes_vendues``), comme le dossier

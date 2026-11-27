@@ -12,7 +12,7 @@
     "statut": "calcule",
     "motifs_omission": [],
     "base": "deux",
-    "motif_base": "TVA récupérable non déclarée : économies affichées en HT et en TTC (D-CIQ-3)",
+    "motif_base": "statut TVA non déclaré : les deux bases sont montrées (HT et TTC)",
     "tarif": {
       "origine": "grille_officielle",
       "contrat": "bt_patente",
@@ -739,7 +739,7 @@
       },
       {
         "cle": "financement",
-        "motif": "aucune offre écrite de prêteur saisie (D-CIQ-15)"
+        "motif": "aucune offre écrite de prêteur saisie"
       }
     ],
     "alertes_internes": [
@@ -762,7 +762,7 @@
     "statut": "calcule",
     "motifs_omission": [],
     "base": "ht",
-    "motif_base": "TVA récupérable déclarée « oui » : économies en HT (D-CIQ-3)",
+    "motif_base": "TVA récupérable déclarée « oui » : économies en HT",
     "tarif": {
       "origine": "declare_facture",
       "contrat": "mt_general",
@@ -804,18 +804,21 @@
       "par_poste": [
         {
           "poste": "pointe",
+          "libelle": "Énergie heures de pointe",
           "kwh_evites": 20000,
           "tarif_kwh": 1.18,
           "mad": 23600.0
         },
         {
           "poste": "pleines",
+          "libelle": "Énergie heures pleines",
           "kwh_evites": 230000,
           "tarif_kwh": 0.84,
           "mad": 193200.0
         },
         {
           "poste": "creuses",
+          "libelle": "Énergie heures creuses",
           "kwh_evites": 30000,
           "tarif_kwh": 0.62,
           "mad": 18600.0
@@ -828,16 +831,19 @@
       "energie_par_poste": [
         {
           "poste": "pointe",
+          "libelle": "Énergie heures de pointe",
           "kwh": 60000,
           "mad_ht": 70800.0
         },
         {
           "poste": "pleines",
+          "libelle": "Énergie heures pleines",
           "kwh": 330000,
           "mad_ht": 277200.0
         },
         {
           "poste": "creuses",
+          "libelle": "Énergie heures creuses",
           "kwh": 90000,
           "mad_ht": 55800.0
         }
@@ -848,16 +854,19 @@
       "energie_par_poste": [
         {
           "poste": "pointe",
+          "libelle": "Énergie heures de pointe",
           "kwh": 40000,
           "mad_ht": 47200.0
         },
         {
           "poste": "pleines",
+          "libelle": "Énergie heures pleines",
           "kwh": 100000,
           "mad_ht": 84000.0
         },
         {
           "poste": "creuses",
+          "libelle": "Énergie heures creuses",
           "kwh": 60000,
           "mad_ht": 37200.0
         }
@@ -1268,7 +1277,7 @@
       "comparaison_cse": null,
       "sr500": {
         "statut": "non_evalue",
-        "motif": "candidature SR500 manuelle d'abord (D-CIQ-17) — indicateur interne seulement, jamais un montant"
+        "motif": "candidature SR500 manuelle d'abord — indicateur interne seulement, jamais un montant"
       },
       "apres_impot": null
     }
