@@ -497,5 +497,30 @@ class ReferencesDeLoiTests(unittest.TestCase):
                                               rf'(?!\d)')
 
 
+class ProfilLecturePureTests(unittest.TestCase):
+    """Profil société — le bloc société d'un acte lit le profil par
+    ``CompanyProfile.lire`` (jamais ``get``, qui crée la ligne : le dossier
+    de contrats préparé à la création du chantier, donc à l'acceptation,
+    écrivait un profil au fuseau par défaut qui périmait les simulations de
+    calepinage). Sans base."""
+
+    def test_lit_par_lire_jamais_par_get(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.documents.contrats.contenu import Lecture
+        from apps.parametres.models import CompanyProfile
+        company = SimpleNamespace(pk=7, id=7, nom='Sans Profil')
+        defaut = CompanyProfile(nom='Sans Profil')
+        lecture = Lecture(SimpleNamespace(company=company))
+        with mock.patch.object(CompanyProfile, 'get',
+                               side_effect=AssertionError('get')) as get, \
+                mock.patch.object(CompanyProfile, 'lire',
+                                  return_value=defaut) as lu:
+            self.assertIs(lecture.profil(), defaut)
+        get.assert_not_called()
+        lu.assert_called_once_with(company=company)
+
+
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()
