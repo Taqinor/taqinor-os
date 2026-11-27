@@ -5,7 +5,9 @@ import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
 
 // Neutralise les dépendances réseau / contexte manquant.
-vi.mock('./Sidebar', () => ({ default: () => <div className="sidebar" /> }))
+vi.mock('./Sidebar', () => ({
+  default: ({ collapsed }) => <div className="sidebar" data-collapsed={String(collapsed)} />,
+}))
 vi.mock('./Header', () => ({ default: () => <header className="header" /> }))
 vi.mock('./BottomTabBar', () => ({ default: () => null }))
 vi.mock('../../features/ia/CopilotPanel', () => ({ default: () => null }))
@@ -156,5 +158,37 @@ describe('Layout — pré-chargement de la tournée selon le droit (ADRG122)', (
     const { findByText } = renderLayout(<p>accueil</p>, { ...TECHNICIEN, isAuthenticated: false })
     expect(await findByText('accueil')).toBeInTheDocument()
     expect(installationsApi.getMaTournee).not.toHaveBeenCalled()
+  })
+})
+
+/* ACAL1276 — iPad portrait 820 px : le menu latéral (260 px) mange la carte de
+   l'atelier. Replié par défaut entre 769 et 900 px ; le choix mémorisé de
+   l'utilisateur prime toujours ; 1180 px (paysage) et bureau : inchangés. */
+describe('ACAL1276 — menu latéral replié par défaut sur tablette portrait', () => {
+  const largeurInitiale = window.innerWidth
+  const poser = (w) => Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: w })
+  beforeEach(() => { window.localStorage.removeItem('taqinor.sidebar.collapsed') })
+  afterEach(() => { poser(largeurInitiale); window.localStorage.removeItem('taqinor.sidebar.collapsed') })
+
+  it('820 px, rien de mémorisé : replié', () => {
+    poser(820)
+    const { container } = renderLayout()
+    expect(container.querySelector('.sidebar')).toHaveAttribute('data-collapsed', 'true')
+  })
+
+  it('820 px, l’utilisateur l’avait ouvert (« 0 » mémorisé) : respecté, ouvert', () => {
+    poser(820)
+    window.localStorage.setItem('taqinor.sidebar.collapsed', '0')
+    const { container } = renderLayout()
+    expect(container.querySelector('.sidebar')).toHaveAttribute('data-collapsed', 'false')
+  })
+
+  it('1180 px (paysage) et 1440 px (bureau) : ouvert comme aujourd’hui', () => {
+    for (const w of [1180, 1440]) {
+      poser(w)
+      const { container, unmount } = renderLayout()
+      expect(container.querySelector('.sidebar')).toHaveAttribute('data-collapsed', 'false')
+      unmount()
+    }
   })
 })

@@ -527,3 +527,15 @@
 .mb-8  { margin-bottom: 8px; }
 .mt-16 { margin-top: 16px; }
 
+/* ACAL1276 — iPad portrait (769–900 px) : le menu latéral est replié par défaut
+   (Layout.jsx::readCollapsed) ; la barre du haut cède ses libellés aux icônes
+   pour ne rien superposer. Le bureau (> 900 px) et le mobile (≤ 768 px) ne
+   sont pas touchés. */
+@media (min-width: 769px) and (max-width: 900px) {
+  .header-left { min-width: 0; flex-shrink: 1; }
+  .header-heading { min-width: 0; overflow: hidden; }
+  .header-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .header-cmdk-kbd,
+  .header-user-name,
+  .header-app-pill-name { display: none; }
+}

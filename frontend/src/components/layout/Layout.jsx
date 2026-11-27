@@ -51,10 +51,11 @@ const CopilotPanel = lazy(() => import('../../features/ia/CopilotPanel'))
 
 function readCollapsed() {
   try {
-    return window.localStorage.getItem(COLLAPSE_KEY) === '1'
-  } catch {
-    return false
-  }
+    const memorise = window.localStorage.getItem(COLLAPSE_KEY)
+    if (memorise != null) return memorise === '1'   // le choix de l'utilisateur prime
+  } catch { /* stockage indisponible : repli sur la largeur */ }
+  // ACAL1276 — iPad portrait (769–900 px) : replié par défaut, la carte garde sa largeur.
+  return window.innerWidth > 768 && window.innerWidth <= 900
 }
 
 function writeCollapsed(v) {
