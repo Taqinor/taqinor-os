@@ -427,3 +427,66 @@ class AucunCodeDeDecisionEtudeServieTest(TestCase):
                 for texte in _textes(sortie):
                     with self.subTest(cas=nom, sortie=quoi, texte=texte[:120]):
                         self.assertNotIn('D-CIQ', texte)
+
+
+def _poser_source_horizon(o, source):
+    """Toute source ``horizon_ans`` du bloc ``economie_ci`` → ``source``."""
+    if isinstance(o, dict):
+        if o.get('cle') == 'horizon_ans' and 'source' in o:
+            o['source'] = source
+        if isinstance(o.get('horizon_ans'), dict):
+            o['horizon_ans']['source'] = source
+        for v in o.values():
+            _poser_source_horizon(v, source)
+    elif isinstance(o, list):
+        for v in o:
+            _poser_source_horizon(v, source)
+
+
+class HorizonImprimeEchappeTest(SimpleTestCase):
+    """ACAL1225 (revue-13) — le CHEMIN RÉEL du PDF : ``builder.
+    echapper_textes_client`` (« ' » devient « &#x27; ») puis le rendu de la
+    page finance, industriel et commercial. La ligne reste « Horizon :
+    25 ans », exactement ce qu'imprime dev-lot10 : la source « horizon
+    d'analyse : 25 ans » (servie) comme « D-CIQ-10 : 25 ans » (ancienne) se
+    lit dans ``SOURCES_CLIENT`` malgré l'échappement — jamais répétée après
+    l'horizon. Un devis envoyé réimprimé ne change pas de texte."""
+
+    @staticmethod
+    def _texte(page):
+        import html
+        import re
+        t = re.sub(r"<style>.*?</style>", "", page, flags=re.S)
+        t = html.unescape(re.sub(r"<[^>]+>", " ", t))
+        return re.sub(r"\s+", " ", t.replace("\xa0", " "))
+
+    def _rendu(self, moteur, source):
+        from apps.ventes.quote_engine.builder import echapper_textes_client
+        from apps.ventes.quote_engine.industriel import sample_data as ind_sample
+        if moteur == 'industriel':
+            from apps.ventes.quote_engine.industriel import render, renderer, sample_data
+            d = sample_data.build()
+        else:
+            from apps.ventes.quote_engine.commercial import render, renderer, sample_data
+            d = sample_data.build('hotel')
+        d['totaux_all'] = {'ht_brut': 1458333.33, 'remise': 0, 'ht_net': 1458333.33,
+                           'tva': 291666.67, 'ttc': 1750000}
+        d['economie_ci'] = ind_sample.economie_ci('exemple')
+        _poser_source_horizon(d['economie_ci'], source)
+        return self._texte(render.build_html(renderer._augment(echapper_textes_client(d))))
+
+    def test_ligne_horizon_inchangee_apres_echappement(self):
+        import re
+        # La ligne imprimée par dev-lot10 : « Horizon : 25 ans » (page finance
+        # industrielle), « Horizon | 25 ans » (cellules, commercial).
+        for moteur, attendu in (('industriel', 'Horizon : 25 ans'),
+                                ('commercial', 'Horizon 25 ans')):
+            for source in (eco.HORIZON_CI_SOURCE, 'D-CIQ-10 : 25 ans'):
+                with self.subTest(moteur=moteur, source=source):
+                    texte = self._rendu(moteur, source)
+                    lignes = re.findall(r"Horizon(?: :)? 25 ans(?: — [^|]{0,30})?", texte)
+                    self.assertTrue(lignes, texte[:400])
+                    self.assertEqual(set(lignes), {attendu})
+                    self.assertNotIn("horizon d'analyse", texte)
+                    self.assertNotIn("durée d'analyse", texte)
+                    self.assertNotIn('D-CIQ', texte)
