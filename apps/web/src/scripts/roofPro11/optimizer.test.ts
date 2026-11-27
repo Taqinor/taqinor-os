@@ -1006,23 +1006,7 @@ describe('ACAL549 — causeDuPanVide', () => {
     expect(m.mesures).toMatchObject({ retraitM: 0.8, largeurPanM: 1.5, largeurUtileM: 0 });
   });
 
-  it('ACAL1966 — anneau posable vide ⇒ « aucun anneau posable », jamais « ne laisse que 0,00 m sur 0,00 m »', () => {
-    const pack = { ringENU: [], areaM2: 0, usableAreaM2: 0 } as unknown as Parameters<typeof mesurerPanVide>[0];
-    const grille = { panels: [] } as unknown as Parameters<typeof mesurerPanVide>[1];
-    const m = causeDuPanVide(mesurerPanVide(pack, grille, retraitApplique(undefined, 0.8), MODULE, null));
-    expect(m.code).toBe('retrait_rive');
-    expect(m.message).toBe('Aucun module : aucun anneau posable — le retrait de rive (0,80 m de chaque côté) ne laisse aucune surface sur ce pan');
-    expect(m.message).not.toContain('0,00 m sur 0,00 m');
-    expect(m.mesures).toMatchObject({ retraitM: 0.8, largeurPanM: 0, largeurUtileM: 0 });
-  });
-
-  it('ACAL1966 — anneau posable vide + contour du pan ⇒ le message cite la largeur du pan', () => {
-    const pack = { ringENU: [], areaM2: 0, usableAreaM2: 0 } as unknown as Parameters<typeof mesurerPanVide>[0];
-    const grille = { panels: [] } as unknown as Parameters<typeof mesurerPanVide>[1];
-    const m = causeDuPanVide(mesurerPanVide(pack, grille, retraitApplique(undefined, 0.8), MODULE, null, [[0, 0], [3, 0], [3, 1.5], [0, 1.5]]));
-    expect(m.message).toBe('Aucun module : aucun anneau posable — le retrait de rive (0,80 m de chaque côté) ne laisse aucune surface sur ce pan de 1,50 m de large');
-    expect(m.mesures).toMatchObject({ retraitM: 0.8, largeurPanM: 1.5, largeurUtileM: 0 });
-  });
+  // ACAL1966 — les cas « anneau posable vide » vivent dans motifPanVide.test.ts (fichier gelé, C20).
 
   it('obstacles couvrant tout ⇒ obstacles (et passe AVANT le seuil) ; seuil ⇒ seuil_acces_solaire ; rien ⇒ module_trop_grand / inconnue', () => {
     expect(causeDuPanVide(mesures({ surfacePosableM2: 0, seuil: 0.8, ecartes: 3 })).code).toBe('obstacles');
